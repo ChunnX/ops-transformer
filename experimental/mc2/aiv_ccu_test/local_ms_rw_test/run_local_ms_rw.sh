@@ -9,13 +9,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 # 用法:
-#   bash run_local_ms_rw.sh -v ascend950pr_9599 -b Release -c ON -r ON -m 0 -i 1 -w 0 -u 0 -l 100 -s 4096 -n 1
+#   bash run_local_ms_rw.sh -v ascend950pr_9599 -b Release -c ON -r ON -m 0 -w 0 -u 0 -l 100 -s 4096 -n 1
 #   -v soc-version     芯片版本 (ascend950pr_9599)
 #   -b build-type      Release or Debug
 #   -c cmake-rebuild   ON=重新编译, OFF=不编译
 #   -r run-test        ON=运行用例, OFF=不运行
 #   -m mode0           0=写, 1=读, 2=读写混合, 3=先写后读
-#   -i mode1           0=不交织, 1=交织
 #   -w warmup          0=不预热, 1=正式打点前执行一次相同操作
 #   -u ms_id           选择测试的 MS ID，范围 0..3
 #   -l loop_count      正式执行循环次数
@@ -36,7 +35,6 @@ SOC_VERSION="ascend950pr_9599"
 CMAKE_REBUILD="OFF"
 RUN_TEST="OFF"
 MODE0=0
-MODE1=1
 WARMUP=0
 MS_ID=0
 LOOP_COUNT=100
@@ -44,8 +42,8 @@ DATA_SIZE=4096
 RANKSIZE=1
 RANK_ID=0
 
-SHORT=v:,b:,c:,r:,m:,i:,w:,u:,l:,s:,n:,a:,
-LONG=soc-version:,build-type:,cmake-rebuild:,run-test:,mode0:,mode1:,warmup:,ms-id:,loop-count:,data-size:,ranksize:,rank-id:,
+SHORT=v:,b:,c:,r:,m:,w:,u:,l:,s:,n:,a:,
+LONG=soc-version:,build-type:,cmake-rebuild:,run-test:,mode0:,warmup:,ms-id:,loop-count:,data-size:,ranksize:,rank-id:,
 OPTS=$(getopt -a --options $SHORT --longoptions $LONG -- "$@")
 eval set -- "$OPTS"
 
@@ -69,10 +67,6 @@ while :; do
         ;;
     -m | --mode0)
         MODE0="$2"
-        shift 2
-        ;;
-    -i | --mode1)
-        MODE1="$2"
         shift 2
         ;;
     -w | --warmup)
@@ -143,7 +137,6 @@ if [[ "$RUN_TEST" == "ON" ]]; then
     export LD_LIBRARY_PATH=${INSTALL_PREFIX}/lib:${INSTALL_PREFIX}/lib64:${_ASCEND_INSTALL_PATH}/lib64:$LD_LIBRARY_PATH
     echo "========== 开始执行本地 MS 读写测试 =========="
     echo "mode0(WRITE=0/READ=1/READ_WRITE=2/WRITE_THEN_READ=3): $MODE0"
-    echo "mode1(SEQUENTIAL=0/INTERLEAVED=1):  $MODE1"
     echo "warmup(OFF=0/ON=1):                 $WARMUP"
     echo "ms_id:                              $MS_ID"
     echo "loop_count:                         $LOOP_COUNT"
@@ -158,7 +151,6 @@ if [[ "$RUN_TEST" == "ON" ]]; then
     #             --rank_id ${rank_id} \
     #             --ranksize ${RANKSIZE} \
     #             --mode0 ${MODE0} \
-    #             --mode1 ${MODE1} \
     #             --data_size ${DATA_SIZE}
     #     ) &
     # done
@@ -167,7 +159,6 @@ if [[ "$RUN_TEST" == "ON" ]]; then
         --rank_id ${RANK_ID} \
         --ranksize ${RANKSIZE} \
         --mode0 ${MODE0} \
-        --mode1 ${MODE1} \
         --warmup ${WARMUP} \
         --ms_id ${MS_ID} \
         --loop_count ${LOOP_COUNT} \

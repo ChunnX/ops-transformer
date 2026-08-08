@@ -68,13 +68,14 @@ constexpr double NS_PER_CYCLE = 1.0; // 1000MHz → 1 cycle = 1 ns
 // ========== 默认参数 ==========
 constexpr int64_t BLOCK_NUM = 1;
 constexpr int64_t HCCL_BUFFER_SIZE = 200;
-constexpr uint64_t MAX_DATA_SIZE = 120 * 1024; // 120KB，WriteThenRead 模式单次搬运上限
+constexpr uint64_t MIN_DATA_SIZE = 32;                  // 32B，DataCopy 最小对齐
+constexpr uint64_t MAX_DATA_SIZE_SINGLE_BUF = 240 * 1024;  // 240KB，单 buffer 上限（WRITE/READ）
+constexpr uint64_t MAX_DATA_SIZE_DOUBLE_BUF = 120 * 1024;  // 120KB，双 buffer 上限（WTR/READ_WRITE）
 constexpr uint32_t RESULT_WORDS = 4;
 int32_t g_rankId = 0;
 int32_t g_ranksize = 1;        // 卡数（本地测试默认单卡）
 uint32_t g_mode0 = 3;          // 0=写, 1=读, 2=读写混合, 3=先写后读
-uint32_t g_mode1 = 1;          // 0=不交织, 1=交织
-uint32_t g_enableWarmup = 0;   // 0=不预热, 1=正式打点前执行一次相同操作
+uint32_t g_enableWarmup = 0;   // 预热次数，0=不预热
 uint32_t g_msId = 0;           // 0..3，选择测试哪块 MS
 uint32_t g_loopCount = 100;    // 正式打点内循环次数
 uint64_t g_dataSize = 4096;    // 默认 4KB
@@ -82,7 +83,6 @@ uint64_t g_dataSize = 4096;    // 默认 4KB
 static const struct option kLongOptions[] = {{"rank_id", 1, 0, 'a'},
                                              {"ranksize", 1, 0, 'd'},
                                              {"mode0", 1, 0, 'm'},
-                                             {"mode1", 1, 0, 'i'},
                                              {"warmup", 1, 0, 'w'},
                                              {"ms_id", 1, 0, 'u'},
                                              {"loop_count", 1, 0, 'l'},
@@ -93,7 +93,7 @@ void GetOption(int argc, char **argv)
 {
     int optionIndex = 0, c = 1;
     while (c != -1) {
-        c = getopt_long(argc, argv, "a:d:m:i:w:u:l:s:", kLongOptions, &optionIndex);
+        c = getopt_long(argc, argv, "a:d:m:w:u:l:s:", kLongOptions, &optionIndex);
         switch (c) {
             case 'a':
                 g_rankId = atoi(optarg);
@@ -101,12 +101,15 @@ void GetOption(int argc, char **argv)
             case 'd':
                 g_ranksize = atoi(optarg);
                 break;
-            case 'm':
-                g_mode0 = (uint32_t)atoi(optarg);
+            case 'm': {
+                std::string m(optarg);
+                if (m == "write" || m == "WRITE") { g_mode0 = 0; }
+                else if (m == "read" || m == "READ") { g_mode0 = 1; }
+                else if (m == "read_write" || m == "READ_WRITE" || m == "rw" || m == "RW") { g_mode0 = 2; }
+                else if (m == "write_then_read" || m == "WRITE_THEN_READ" || m == "wtr" || m == "WTR") { g_mode0 = 3; }
+                else { g_mode0 = static_cast<uint32_t>(atoi(optarg)); }
                 break;
-            case 'i':
-                g_mode1 = (uint32_t)atoi(optarg);
-                break;
+            }
             case 'w':
                 g_enableWarmup = (uint32_t)atoi(optarg);
                 break;
@@ -136,32 +139,36 @@ const char *GetMode0Str(uint32_t mode0)
     }
 }
 
-const char *GetMode1Str(uint32_t mode1)
-{
-    return mode1 == 0 ? "SEQUENTIAL" : "INTERLEAVED";
-}
-
 int main(int argc, char *argv[])
 {
     GetOption(argc, argv);
 
     LOG_PRINT("[INFO] ===== 本地读写 MS 测试 =====\n");
-    LOG_PRINT("[INFO] rank_id=%d, ranksize=%d, mode0=%s, mode1=%s, warmup=%u, ms_id=%u, loop_count=%u, "
+    LOG_PRINT("[INFO] rank_id=%d, ranksize=%d, mode0=%s, warmup=%u, ms_id=%u, loop_count=%u, "
               "data_size=%lu bytes (%.2f KB)\n",
-              g_rankId, g_ranksize, GetMode0Str(g_mode0), GetMode1Str(g_mode1), g_enableWarmup, g_msId,
+              g_rankId, g_ranksize, GetMode0Str(g_mode0), g_enableWarmup, g_msId,
               g_loopCount, g_dataSize, (double)g_dataSize / 1024.0);
 
     CHECK_RET(g_mode0 <= 3, LOG_PRINT("[ERROR] mode0 invalid: %u\n", g_mode0); return -1);
-    CHECK_RET(g_mode1 <= 1, LOG_PRINT("[ERROR] mode1 invalid: %u\n", g_mode1); return -1);
-    CHECK_RET(g_enableWarmup <= 1, LOG_PRINT("[ERROR] warmup invalid: %u\n", g_enableWarmup); return -1);
+    CHECK_RET(g_enableWarmup <= 1000, LOG_PRINT("[ERROR] warmup invalid: %u (0-1000)\n", g_enableWarmup); return -1);
     CHECK_RET(g_msId < 4, LOG_PRINT("[ERROR] ms_id invalid: %u, valid range is 0..3\n", g_msId); return -1);
     CHECK_RET(g_loopCount > 0, LOG_PRINT("[ERROR] loop_count must be greater than 0.\n"); return -1);
 
-    // ========== dataSize 上限校验 ==========
-    if (g_mode0 == 3 && g_dataSize > MAX_DATA_SIZE) {
-        LOG_PRINT("[ERROR] WriteThenRead 模式下 dataSize=%lu 超过单次搬运上限 %lu bytes，请减小 data_size\n",
-                  g_dataSize, MAX_DATA_SIZE);
-        return -1;
+    // ========== dataSize 校验 ==========
+    CHECK_RET(g_dataSize >= MIN_DATA_SIZE && (g_dataSize % MIN_DATA_SIZE) == 0,
+              LOG_PRINT("[ERROR] dataSize=%lu 不满足 32B 对齐要求\n", g_dataSize); return -1);
+    if (g_mode0 == 0 || g_mode0 == 1) {
+        if (g_dataSize > MAX_DATA_SIZE_SINGLE_BUF) {
+            LOG_PRINT("[ERROR] dataSize=%lu 超过单 buffer UB 上限 %lu bytes\n",
+                      g_dataSize, MAX_DATA_SIZE_SINGLE_BUF);
+            return -1;
+        }
+    } else {
+        if (g_dataSize > MAX_DATA_SIZE_DOUBLE_BUF) {
+            LOG_PRINT("[ERROR] dataSize=%lu 超过双 buffer UB 上限 %lu bytes\n",
+                      g_dataSize, MAX_DATA_SIZE_DOUBLE_BUF);
+            return -1;
+        }
     }
 
     // ========== acl 初始化 ==========
@@ -220,7 +227,7 @@ int main(int argc, char *argv[])
 
     // ========== <<<>>> 调用 Kernel ==========
     LOG_PRINT("[INFO] 启动 Kernel (blockDim=%ld)...\n", BLOCK_NUM);
-    local_ms_rw_demo(g_mode0, g_mode1, g_enableWarmup, g_msId, g_loopCount, g_dataSize, (uint32_t)BLOCK_NUM, stream,
+    local_ms_rw_demo(g_mode0, g_enableWarmup, g_msId, g_loopCount, g_dataSize, (uint32_t)BLOCK_NUM, stream,
                      (uint8_t *)msAddrs[0], (uint8_t *)msAddrs[1], (uint8_t *)msAddrs[2], (uint8_t *)msAddrs[3],
                      (uint8_t *)timeGm);
 
@@ -239,35 +246,32 @@ int main(int argc, char *argv[])
     uint64_t warmupCycles = timeHost[3];
     uint64_t elapsedCycles = endCycle - startCycle;
     double elapsedNs = (double)elapsedCycles * NS_PER_CYCLE;
+    double avgNs = elapsedNs / static_cast<double>(g_loopCount);
     double elapsedUs = elapsedNs / 1000.0;
     double dataKB = (double)g_dataSize / 1024.0;
     uint64_t bytesPerLoop = g_dataSize;
     if (g_mode0 == 2 || g_mode0 == 3) {
         bytesPerLoop *= 2;
     }
-    double bandwidthGBs = (double)bytesPerLoop * (double)g_loopCount / (elapsedNs); // bytes / ns = GB/s
+    double bandwidthGBs = (double)bytesPerLoop * (double)g_loopCount / (elapsedNs);
 
     LOG_PRINT("\n");
-    LOG_PRINT("===== 性能结果 =====\n");
-    LOG_PRINT("  模式:       %s\n", GetMode0Str(g_mode0));
-    LOG_PRINT("  交织:       %s\n", GetMode1Str(g_mode1));
-    LOG_PRINT("  warmup:     %u\n", g_enableWarmup);
-    LOG_PRINT("  MS ID:      %u\n", g_msId);
-    LOG_PRINT("  循环次数:   %u\n", g_loopCount);
-    LOG_PRINT("  数据量:     %.2f KB (%lu bytes)\n", dataKB, g_dataSize);
-    LOG_PRINT("  warmup耗时: %lu cycles\n", warmupCycles);
-    LOG_PRINT("  startCycle: %lu\n", startCycle);
-    LOG_PRINT("  endCycle:   %lu\n", endCycle);
-    LOG_PRINT("  耗时:       %.2f ns (%.2f us)\n", elapsedNs, elapsedUs);
-    LOG_PRINT("  带宽:       %.4f GB/s\n", bandwidthGBs);
+    LOG_PRINT("===== MS 测试结果 =====\n");
+    LOG_PRINT("  模式:         %s\n", GetMode0Str(g_mode0));
+    LOG_PRINT("  warmup:       %u\n", g_enableWarmup);
+    LOG_PRINT("  MS ID:        %u\n", g_msId);
+    LOG_PRINT("  loop_count:   %u\n", g_loopCount);
+    LOG_PRINT("  数据量:       %.2f KB (%lu bytes)\n", dataKB, g_dataSize);
+    LOG_PRINT("  warmupCycle:  %lu\n", warmupCycles);
+    LOG_PRINT("  startCycle:   %lu\n", startCycle);
+    LOG_PRINT("  endCycle:     %lu\n", endCycle);
+    LOG_PRINT("  耗时:         %.2f ns (%.2f us)\n", elapsedNs, elapsedUs);
+    LOG_PRINT("  平均:         %.4f ns/loop\n", avgNs);
+    LOG_PRINT("  带宽:         %.4f GB/s\n", bandwidthGBs);
     if (g_mode0 == 3) {
-        if (verifyResult == 0) {
-            LOG_PRINT("  数据校验:   通过\n");
-        } else {
-            LOG_PRINT("  数据校验:   失败\n");
-        }
+        LOG_PRINT("  数据校验:     %s\n", verifyResult == 0 ? "通过" : "失败");
     }
-    LOG_PRINT("====================\n");
+    LOG_PRINT("=======================\n");
 
     // ========== 释放资源 ==========
     aclrtFree(timeGm);

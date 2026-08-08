@@ -22,7 +22,7 @@ using namespace AscendC;
 using namespace LocalMsRwImpl;
 
 __attribute__((always_inline)) __aicore__ __inline__ void
-local_ms_rw_kernel_impl(uint32_t mode0, uint32_t mode1, uint32_t enableWarmup, uint32_t msId, uint32_t loopCount,
+local_ms_rw_kernel_impl(uint32_t mode0, uint32_t enableWarmup, uint32_t msId, uint32_t loopCount,
                         uint64_t dataSize,
                         GM_ADDR msAddr0, GM_ADDR msAddr1, GM_ADDR msAddr2, GM_ADDR msAddr3,
                         GM_ADDR timeAddr, uint32_t blockDim)
@@ -33,23 +33,23 @@ local_ms_rw_kernel_impl(uint32_t mode0, uint32_t mode1, uint32_t enableWarmup, u
     GM_ADDR msAddrs[4] = {msAddr0, msAddr1, msAddr2, msAddr3};
 
     LocalMsRw<uint8_t> op;
-    op.Init(mode0, mode1, enableWarmup, msId, loopCount, dataSize, msAddrs, timeAddr, blockDim, &pipe);
+    op.Init(mode0, enableWarmup, msId, loopCount, dataSize, msAddrs, timeAddr, blockDim, &pipe);
     op.Process();
 }
 
-extern "C" __global__ __aicore__ void Aivccu_COMM(uint32_t mode0, uint32_t mode1, uint32_t enableWarmup,
-                                                   uint32_t msId, uint32_t loopCount, uint64_t dataSize,
-                                                   GM_ADDR msAddr0, GM_ADDR msAddr1, GM_ADDR msAddr2,
-                                                   GM_ADDR msAddr3, GM_ADDR timeAddr, uint32_t blockDim)
+extern "C" __global__ __aicore__ void Aivccu_COMM(uint32_t mode0, uint32_t enableWarmup,
+                                                    uint32_t msId, uint32_t loopCount, uint64_t dataSize,
+                                                    GM_ADDR msAddr0, GM_ADDR msAddr1, GM_ADDR msAddr2,
+                                                    GM_ADDR msAddr3, GM_ADDR timeAddr, uint32_t blockDim)
 {
-    local_ms_rw_kernel_impl(mode0, mode1, enableWarmup, msId, loopCount, dataSize, msAddr0, msAddr1, msAddr2,
+    local_ms_rw_kernel_impl(mode0, enableWarmup, msId, loopCount, dataSize, msAddr0, msAddr1, msAddr2,
                             msAddr3, timeAddr, blockDim);
 }
 
-void local_ms_rw_demo(uint32_t mode0, uint32_t mode1, uint32_t enableWarmup, uint32_t msId, uint32_t loopCount,
+void local_ms_rw_demo(uint32_t mode0, uint32_t enableWarmup, uint32_t msId, uint32_t loopCount,
                       uint64_t dataSize, uint32_t blockDim, void *stream, uint8_t *msAddr0, uint8_t *msAddr1,
                       uint8_t *msAddr2, uint8_t *msAddr3, uint8_t *timeAddr)
 {
-    Aivccu_COMM<<<blockDim, nullptr, stream>>>(mode0, mode1, enableWarmup, msId, loopCount, dataSize, msAddr0,
+    Aivccu_COMM<<<blockDim, nullptr, stream>>>(mode0, enableWarmup, msId, loopCount, dataSize, msAddr0,
                                                 msAddr1, msAddr2, msAddr3, timeAddr, blockDim);
 }

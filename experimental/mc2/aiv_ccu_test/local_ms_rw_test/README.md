@@ -7,11 +7,14 @@
 ```
 ├── CMakeLists.txt                    # 构建配置
 ├── kernel/
-│   └── local_ms_rw_kernel.h          # Kernel 核心逻辑（读/写/混合/先写后读 + 交织/非交织 + 计时 + 校验）
+│   └── local_ms_rw_kernel.h          # Kernel 核心逻辑（读/写/混合/先写后读 + 计时 + 校验）
 ├── local_ms_rw.h                     # <<<>>> 调用函数声明
 ├── local_ms_rw.cpp                   # Kernel 入口 + <<<>>> 封装
 ├── test_local_ms_rw.cpp              # Host 侧测试代码
-├── run_local_ms_rw.sh                # 编译运行脚本
+├── run_local_ms_rw.sh                # 单次编译运行脚本
+├── batch_run.sh                      # 批量跑 CSV 用例脚本
+├── cases/
+│   └── cases_example.csv             # 示例用例文件
 ├── design.md                         # 原始设计文档
 ├── local_ms_rw_impl.md               # 实现方案
 └── WriteThenRead方案.md              # WriteThenRead 模式方案
@@ -34,8 +37,8 @@ export RANK_TABLE_FILE=/path/to/rank_table.json
 ### 一键编译运行
 
 ```shell
-# 编译 + 运行（先写后读，MS0，预热关闭，正式循环 100 次，4KB，非交织，单卡）
-bash run_local_ms_rw.sh -v ascend950pr_9599 -b Release -c ON -r ON -m 3 -i 0 -w 0 -u 0 -l 100 -s 4096 -n 1
+# 编译 + 运行（先写后读，MS0，预热关闭，正式循环 100 次，4KB，单卡）
+bash run_local_ms_rw.sh -v ascend950pr_9599 -b Release -c ON -r ON -m 3 -w 0 -u 0 -l 100 -s 4096 -n 1
 ```
 
 ### 仅编译
@@ -47,7 +50,7 @@ bash run_local_ms_rw.sh -v ascend950pr_9599 -b Release -c ON -r OFF
 ### 仅运行（复用编译产物）
 
 ```shell
-bash run_local_ms_rw.sh -v ascend950pr_9599 -b Release -c OFF -r ON -m 3 -i 0 -w 1 -u 3 -l 100 -s 4096
+bash run_local_ms_rw.sh -v ascend950pr_9599 -b Release -c OFF -r ON -m 3 -w 1 -u 3 -l 100 -s 4096
 ```
 
 ### 选项说明
@@ -59,7 +62,6 @@ bash run_local_ms_rw.sh -v ascend950pr_9599 -b Release -c OFF -r ON -m 3 -i 0 -w
 | `-c` | 是否重新编译 ON/OFF | OFF |
 | `-r` | 是否运行 ON/OFF | OFF |
 | `-m` | mode0：0=写, 1=读, 2=读写混合, 3=先写后读 | 0 |
-| `-i` | mode1：0=非交织, 1=交织 | 1 |
 | `-w` | warmup：0=不预热, 1=正式打点前执行一次相同操作 | 0 |
 | `-u` | ms_id：选择测试的 MS，范围 0..3 | 0 |
 | `-l` | loop_count：正式打点内循环次数 | 100 |
@@ -71,17 +73,90 @@ bash run_local_ms_rw.sh -v ascend950pr_9599 -b Release -c OFF -r ON -m 3 -i 0 -w
 
 ```shell
 # 先写后读 4KB（验证链路）
-bash run_local_ms_rw.sh -c ON -r ON -m 3 -i 0 -w 1 -u 0 -l 100 -s 4096
+bash run_local_ms_rw.sh -c ON -r ON -m 3 -w 1 -u 0 -l 100 -s 4096
 
 # 测 MS3，先写后读 64KB，正式循环 1000 次
-bash run_local_ms_rw.sh -c OFF -r ON -m 3 -i 0 -w 1 -u 3 -l 1000 -s 65536
+bash run_local_ms_rw.sh -c OFF -r ON -m 3 -w 1 -u 3 -l 1000 -s 65536
 
 # 先写后读 120KB（接近单次搬运上限）
-bash run_local_ms_rw.sh -c OFF -r ON -m 3 -i 0 -w 0 -u 0 -l 100 -s 122880
+bash run_local_ms_rw.sh -c OFF -r ON -m 3 -w 0 -u 0 -l 100 -s 122880
 
-# 纯写 4KB 交织
-bash run_local_ms_rw.sh -c OFF -r ON -m 0 -i 1 -w 0 -u 0 -l 100 -s 4096
+# 纯写 4KB
+bash run_local_ms_rw.sh -c OFF -r ON -m 0 -w 0 -u 0 -l 100 -s 4096
 ```
+
+### 批量运行
+
+```shell
+source /usr/local/Ascend/cann/set_env.sh
+export RANK_TABLE_FILE=/path/to/rank_table.json
+
+# 一条命令搞定：自动编译 + 批跑 CSV 用例 + 回写结果
+bash batch_run.sh cases/cases_example.csv
+
+# 指定输出文件名
+bash batch_run.sh cases/cases_example.csv cases/my_result.csv
+
+# 只跑 id=3 的用例
+bash batch_run.sh cases/cases_example.csv -caseid 3
+
+# 只跑 id=3，指定输出文件
+bash batch_run.sh cases/cases_example.csv cases/my_result.csv -caseid 3
+```
+
+脚本会自动检测：如果二进制不存在或源码有更新，自动重新编译；否则跳过编译直接跑。
+
+`batch_run.sh` 参数：
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| input.csv | 输入用例 CSV 文件 | 必填 |
+| output.csv | 输出结果 CSV 文件 | input 文件名加 `_result` |
+| -caseid N | 只跑 id=N 的用例（匹配 CSV 中 id 列） | 不传=跑全部 |
+
+## 批量运行说明
+
+### 输入 CSV 格式
+
+首行为表头（字段顺序固定），每行一条用例：
+
+```csv
+id,mode0,warmup,ms_id,loop_count,data_size,rank_id,ranksize
+0,write_then_read,1,0,100,8192,0,1
+4,write,1,0,100,32,0,1
+12,read,0,0,1,8192,0,1
+```
+
+| 字段 | 含义 | 取值 |
+|------|------|------|
+| id | 用例 ID | 从 0 开始，用于 `-caseid` 指定单跑 |
+| mode0 | 读写模式 | `write` / `read` / `read_write` / `write_then_read`（也支持数字 0/1/2/3） |
+| warmup | 预热 | 0=不预热, 1=预热一次 |
+| ms_id | MS 编号 | 0..3 |
+| loop_count | 正式打点循环次数 | 正整数 |
+| data_size | 数据量（字节） | 32B ~ 1.5MB（1572864），需 32B 对齐；WTR 模式上限 120KB |
+| rank_id | rank ID | 默认 0 |
+| ranksize | 卡数 | 默认 1 |
+
+### 输出 CSV 格式
+
+在输入列后追加结果列，自动回写：
+
+```csv
+id,mode0,warmup,ms_id,loop_count,data_size,rank_id,ranksize,warmup_cycles,start_cycle,end_cycle,avg_cycles,avg_ns,bandwidth_gbs,verify_result,status
+3,0,1,0,1000,4096,0,1,1234,5678,6789,11.11,11.11,40.96,N/A,OK
+```
+
+| 追加字段 | 含义 |
+|----------|------|
+| warmup_cycles | 预热耗时（cycle） |
+| start_cycle | 打点起始 cycle |
+| end_cycle | 打点结束 cycle |
+| avg_cycles | 平均每轮 cycle 数 |
+| avg_ns | 平均每轮耗时（ns） |
+| bandwidth_gbs | 带宽（GB/s） |
+| verify_result | 校验结果（PASS/FAIL/N/A，仅 mode0=3 有） |
+| status | 执行状态（OK/ERROR） |
 
 ## 模式说明
 
@@ -89,17 +164,10 @@ bash run_local_ms_rw.sh -c OFF -r ON -m 0 -i 1 -w 0 -u 0 -l 100 -s 4096
 
 | 值 | 名称 | 说明 |
 |----|------|------|
-| 0 | WRITE | 纯写：UB → MS，4KB 分块循环搬运 |
-| 1 | READ | 纯读：MS → UB，4KB 分块循环搬运 |
+| 0 | WRITE | 纯写：UB → MS，4KB 分块循环搬运（支持 32B ~ 1.5MB） |
+| 1 | READ | 纯读：MS → UB，4KB 分块循环搬运（支持 32B ~ 1.5MB） |
 | 2 | READ_WRITE | 读写混合：每块先读后写，4KB 分块 |
-| 3 | WRITE_THEN_READ | 先写后读：一次写全部 → Barrier → 一次读全部，打点外校验 |
-
-### mode1（交织模式）
-
-| 值 | 名称 | 说明 |
-|----|------|------|
-| 0 | SEQUENTIAL | 非交织：连续写满 CCUA0(1.5MB) 再写 CCUA1 |
-| 1 | INTERLEAVED | 交织：每 8 个 4KB 块轮转 CCUA0→1→2→3 |
+| 3 | WRITE_THEN_READ | 先写后读：一次写全部 → Barrier → 一次读全部，打点外校验（上限 120KB） |
 
 ## WriteThenRead 模式详解 (mode0=3)
 
@@ -134,31 +202,31 @@ WriteThenRead 模式一次搬运全部数据，受 UB 容量约束：
 
 ```
 [INFO] ===== 本地读写 MS 测试 =====
-[INFO] rank_id=0, ranksize=1, mode0=WRITE_THEN_READ, mode1=SEQUENTIAL, warmup=1, ms_id=0, loop_count=100, data_size=4096 bytes (4.00 KB)
+[INFO] rank_id=0, ranksize=1, mode0=WRITE_THEN_READ, warmup=10, ms_id=0, loop_count=100, data_size=8192 bytes (8.00 KB)
 [INFO] 通信域初始化成功。
-[INFO] 获取 TLV Handle...
-[INFO] 查询 MS 地址...
-[INFO] MSAddr0 (CCUA0): va=0x0000123456789000, size=1572864 bytes
-[INFO] MSAddr1 (CCUA1): va=0x0000123456abc000, size=1572864 bytes
-[INFO] MSAddr2 (CCUA2): va=0x0000123456def000, size=1572864 bytes
-[INFO] MSAddr3 (CCUA3): va=0x0000123457012000, size=1572864 bytes
+[INFO] 获取 CCU TLV Handle...
+[INFO] ccuHanle=0x...
+[INFO] MSAddr0 (CCUA0): va=0x0000123456789000
+[INFO] MSAddr1 (CCUA1): va=0x0000123456abc000
+[INFO] MSAddr2 (CCUA2): va=0x0000123456def000
+[INFO] MSAddr3 (CCUA3): va=0x0000123457012000
 [INFO] 启动 Kernel (blockDim=1)...
 [INFO] Kernel 执行完成。
 
-===== 性能结果 =====
-  模式:       WRITE_THEN_READ
-  交织:       SEQUENTIAL
-  warmup:     1
-  MS ID:      0
-  循环次数:   100
-  数据量:     4.00 KB (4096 bytes)
-  warmup耗时: 100 cycles
-  startCycle: 1234567890
-  endCycle:   1234567990
-  耗时:       100.00 ns (0.10 us)
-  带宽:       40.9600 GB/s
-  数据校验:   通过
-====================
+===== MS 测试结果 =====
+  模式:         WRITE_THEN_READ
+  warmup:       10
+  MS ID:        0
+  loop_count:   100
+  数据量:       8.00 KB (8192 bytes)
+  warmupCycle:  1234
+  startCycle:   1234567890
+  endCycle:     1234567990
+  耗时:         100.00 ns (0.10 us)
+  平均:         1.0000 ns/loop
+  带宽:         81.9200 GB/s
+  数据校验:     通过
+=======================
 ```
 
 ## 工作原理
