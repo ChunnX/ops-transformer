@@ -11,7 +11,7 @@
 #include <gtest/gtest.h>
 #include <iostream>
 
-#include "../../../../op_host/compressor_grad_tiling.h"
+#include "../../../op_host/compressor_grad_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 
@@ -99,7 +99,7 @@ TEST_F(CompressorGradTilingTest, bsh_c4a_bf16)
             {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
         },
         &compileInfo, "Ascend950", CompressorGrad_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 32;
+    int64_t expectTilingKey = 1;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -132,7 +132,7 @@ TEST_F(CompressorGradTilingTest, bsh_c4a_fp16)
             {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
         },
         &compileInfo, "Ascend950", CompressorGrad_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 34;
+    int64_t expectTilingKey = 9;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -165,7 +165,7 @@ TEST_F(CompressorGradTilingTest, bsh_c4li_bf16)
             {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
         },
         &compileInfo, "Ascend950", CompressorGrad_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 32;
+    int64_t expectTilingKey = 1;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -198,7 +198,7 @@ TEST_F(CompressorGradTilingTest, bsh_c128a_bf16)
             {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         },
         &compileInfo, "Ascend950", CompressorGrad_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 16;
+    int64_t expectTilingKey = 0;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -231,7 +231,7 @@ TEST_F(CompressorGradTilingTest, bsh_non_divisible_s)
             {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
         },
         &compileInfo, "Ascend950", CompressorGrad_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 32;
+    int64_t expectTilingKey = 1;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -270,7 +270,7 @@ TEST_F(CompressorGradTilingTest, th_c4a_bf16)
             {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
         },
         &compileInfo, "Ascend950", CompressorGrad_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 35;
+    int64_t expectTilingKey = 5;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -303,7 +303,7 @@ TEST_F(CompressorGradTilingTest, th_c4a_fp16)
             {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
         },
         &compileInfo, "Ascend950", CompressorGrad_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 36;
+    int64_t expectTilingKey = 13;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 

@@ -75,6 +75,8 @@ TEST_F(CompressorTilingArch35, test1)
         {
             {{{2, 2, 512}, {2, 2, 512}}, ge::DT_BF16, ge::FORMAT_ND},        // cmp_kv
             {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND}, // state_cache (in-place)
+            {{{2, 2, 8, 512}, {2, 2, 8, 512}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_score
+            {{{2, 2, 8, 512}, {2, 2, 8, 512}}, ge::DT_FLOAT, ge::FORMAT_ND}, // kv
         },
         {
             {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -107,6 +109,8 @@ TEST_F(CompressorTilingArch35, test2)
         {
             {{{2, 2, 512}, {2, 2, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 2, 8, 512}, {2, 2, 8, 512}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_score
+            {{{2, 2, 8, 512}, {2, 2, 8, 512}}, ge::DT_FLOAT, ge::FORMAT_ND}, // kv
         },
         {
             {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -139,6 +143,8 @@ TEST_F(CompressorTilingArch35, test3)
         {
             {{{2, 2, 128}, {2, 2, 128}}, ge::DT_BF16, ge::FORMAT_ND},
             {{{4, 128, 512}, {4, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 2, 8, 128}, {2, 2, 8, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_score
+            {{{2, 2, 8, 128}, {2, 2, 8, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}, // kv
         },
         {
             {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -171,6 +177,8 @@ TEST_F(CompressorTilingArch35, test4)
         {
             {{{2, 1, 512}, {2, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
             {{{4, 128, 1024}, {4, 128, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 1, 128, 512}, {2, 1, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_score
+            {{{2, 1, 128, 512}, {2, 1, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND}, // kv
         },
         {
             {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
@@ -203,6 +211,8 @@ TEST_F(CompressorTilingArch35, test5)
         {
             {{{1, 2, 128}, {1, 2, 128}}, ge::DT_BF16, ge::FORMAT_ND},
             {{{2, 128, 512}, {2, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 2, 8, 128}, {1, 2, 8, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_score
+            {{{1, 2, 8, 128}, {1, 2, 8, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}, // kv
         },
         {
             {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -239,6 +249,8 @@ TEST_F(CompressorTilingArch35, test6)
         {
             {{{2, 512}, {2, 512}}, ge::DT_BF16, ge::FORMAT_ND},
             {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 8, 512}, {2, 8, 512}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_score
+            {{{2, 8, 512}, {2, 8, 512}}, ge::DT_FLOAT, ge::FORMAT_ND}, // kv
         },
         {
             {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -275,6 +287,8 @@ TEST_F(CompressorTilingArch35, test7)
         {
             {{{2, 2, 512}, {2, 2, 512}}, ge::DT_BF16, ge::FORMAT_ND},
             {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 3, 8, 512}, {2, 3, 8, 512}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_score
+            {{{2, 3, 8, 512}, {2, 3, 8, 512}}, ge::DT_FLOAT, ge::FORMAT_ND}, // kv
         },
         {
             {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
@@ -307,6 +321,8 @@ TEST_F(CompressorTilingArch35, test8)
         {
             {{{2, 2, 512}, {2, 2, 512}}, ge::DT_BF16, ge::FORMAT_ND},
             {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 2, 8, 512}, {2, 2, 8, 512}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_score
+            {{{2, 2, 8, 512}, {2, 2, 8, 512}}, ge::DT_FLOAT, ge::FORMAT_ND}, // kv
         },
         {
             {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -339,6 +355,8 @@ TEST_F(CompressorTilingArch35, test9)
         {
             {{{2, 2, 256}, {2, 2, 256}}, ge::DT_BF16, ge::FORMAT_ND},
             {{{4, 128, 1024}, {4, 128, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 2, 8, 256}, {2, 2, 8, 256}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_score
+            {{{2, 2, 8, 256}, {2, 2, 8, 256}}, ge::DT_FLOAT, ge::FORMAT_ND}, // kv
         },
         {
             {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -371,6 +389,8 @@ TEST_F(CompressorTilingArch35, test10)
         {
             {{{2, 2, 512}, {2, 2, 512}}, ge::DT_BF16, ge::FORMAT_ND},
             {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2, 2, 8, 512}, {2, 2, 8, 512}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_score
+            {{{2, 2, 8, 512}, {2, 2, 8, 512}}, ge::DT_FLOAT, ge::FORMAT_ND}, // kv
         },
         {
             {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
