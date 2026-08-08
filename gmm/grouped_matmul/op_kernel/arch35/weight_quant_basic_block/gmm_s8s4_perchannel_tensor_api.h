@@ -14,7 +14,7 @@
 #include <type_traits>
 
 #include "kernel_operator.h"
-#include "blaze/gemm/kernel/kernel_gmm_s8s4.h"
+#include "blaze/gemm/kernel/kernel_gmm_fixpipe_quant.h"
 #include "../int4_weight_to_int8_preprocess.h"
 #include "gmm_s8s4_rowsum_preprocess.h"
 #include "../grouped_matmul_tiling_data_apt.h"
@@ -118,7 +118,7 @@ __aicore__ inline void InvokeGmmS8S4TensorApi(
     params.gmmParams.groupListType = tiling->gmmQuantParams.groupListType;
     {
         TensorApiKernel kernel;
-        kernel(params, pipe);
+        kernel(params);
     }
 #if defined(BLAZE_S8S4_DEBUG)
     AscendC::printf("[S8S4][local kernel destroyed] block=%u ratio=%u\\n",

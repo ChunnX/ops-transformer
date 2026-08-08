@@ -19,7 +19,7 @@
 #include "../grouped_matmul_tiling_data_apt.h"
 #include "tensor_api/tensor.h"
 
-#include "blaze/gemm/kernel/kernel_gmm_a4w4.h"
+#include "blaze/gemm/kernel/kernel_gmm_fixpipe_quant.h"
 #include "../int4_tensor_to_int8_preprocess.h"
 #include "../int4_weight_to_int8_preprocess.h"
 #include "../../grouped_matmul_utils.h"
@@ -45,7 +45,7 @@ __aicore__ inline void GmmS4S4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     using LayoutC = yLayout;
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;  // (M, N, K, pad)
 
-    // ---- Blaze 类型装配(与 kernel_gmm_a4w4.h::GmmS4S4PerChannel 同款) ----
+    // ---- Blaze grouped FixPipe kernel 类型装配 ----
     // BTypeTuple = (BType, X2ScaleType): BlockMmad 从 tuple 取 BType=int8 与 X2ScaleType=uint64。
     using BTypeTuple = AscendC::Std::tuple<int8_t, uint64_t>;
     // DispatchPolicy 用 FixPipeQuant + Grouped schedule(匹配 block_mmad_a8w8_fixpipe_quant.h 偏特化)。
@@ -200,7 +200,7 @@ __aicore__ inline void GmmS4S4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     params.gmmParams = gmmParams;
 
     QgmmKernel gmm;
-    gmm(params, que);
+    gmm(params);
 }
 
 #endif  // QGMM_S4S4_KERNEL_H
