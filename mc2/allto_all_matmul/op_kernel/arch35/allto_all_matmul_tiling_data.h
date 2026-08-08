@@ -49,7 +49,7 @@ struct AlltoAllMatmulTilingData {
     Mc2MatMulV3TilingData mc2MmV3TailTilingData; // 通算切分尾块matmul tiling数据
 };
 
-// MX量化tiling结构体（旧版，使用MatMulASWKernel）
+// MX量化tiling结构体
 struct AlltoAllQuantMatmulTilingData {
     Mc2InitTiling mc2InitTiling;                            // 初始化通信任务配置
     Mc2CcTiling mc2CcTiling;                                // 具体每个通信任务的参数配置
