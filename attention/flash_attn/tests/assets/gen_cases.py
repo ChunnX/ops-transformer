@@ -292,10 +292,14 @@ def _build_attrs(p):
     cu_kv = p.get("cu_seqlens_kv")
     sq = p.get("seqused_q")
     skv = p.get("seqused_kv")
-    _set("cu_seqlens_q", list(cu_q) if cu_q else None)
-    _set("cu_seqlens_kv", list(cu_kv) if cu_kv else None)
-    _set("seqused_q", list(sq) if sq else None)
-    _set("seqused_kv", list(skv) if skv else None)
+    # 小整数张量的值不直接放同名 attr: TTK match_overload 会把
+    # "张量参数名出现在 attrs" 重复计入输入数, 超出 flash_attn_ttk 的
+    # 11 参数上限导致 PARAM_PLAN_FAILURE。改用 *_values 键,
+    # 由 impl/inputs.py customize_inputs 填入对应张量。
+    _set("cu_seqlens_q_values", list(cu_q) if cu_q else None)
+    _set("cu_seqlens_kv_values", list(cu_kv) if cu_kv else None)
+    _set("seqused_q_values", list(sq) if sq else None)
+    _set("seqused_kv_values", list(skv) if skv else None)
 
     _set("max_seqlen_q", _resolve_max_seqlen(p, "q", cu_q, sq))
     _set("max_seqlen_kv", _resolve_max_seqlen(p, "kv", cu_kv, skv))
