@@ -251,6 +251,180 @@ class QuantBlockSparseAttnMetadataBuilder:
         return metadata
 
 
+def _synchronize_npu(tensor):
+    """Finish eager preparation before ACLGraph starts capturing."""
+    if tensor.device.type != "npu":
+        return
+    import torch_npu
+
+    torch_npu.npu.synchronize()
+
+
+class QuantBlockSparseAttnGraph(torch.nn.Module):
+    """TTK graph adapter that prepares host-dependent inputs before capture.
+
+    TTK instantiates a registered ``torch_graph`` module before calling
+    ``torch.compile``.  QBSA metadata generation and the PA combined-KV packing
+    must happen at that point: both paths can copy data between host and device,
+    which ACLGraph GLOBAL capture rejects.  ``forward`` therefore contains only
+    the graph-safe main operator call.
+    """
+
+    def __init__(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        q_descale: torch.Tensor,
+        k_descale: torch.Tensor,
+        v_descale: torch.Tensor,
+        sparse_indices: torch.Tensor,
+        sparse_seq_len: torch.Tensor,
+        atten_mask: torch.Tensor,
+        p_scale: Optional[torch.Tensor] = None,
+        *,
+        cu_seqlens_q: Optional[torch.Tensor] = None,
+        cu_seqlens_kv: Optional[torch.Tensor] = None,
+        seqused_q: Optional[torch.Tensor] = None,
+        seqused_kv: Optional[torch.Tensor] = None,
+        block_table: Optional[torch.Tensor] = None,
+        metadata: Optional[torch.Tensor] = None,
+        softmax_scale: float = 1.0,
+        sparse_q_block_size: int = 128,
+        sparse_kv_block_size: int = 128,
+        layout_kv: str = "PA_BNSD",
+        layout_q: str = "BSND",
+        layout_sparse_indices: str = "B_N_Qb_Kb",
+        layout_out: str = "TND",
+        quant_mode: int = 1,
+        mask_mode: int = 3,
+        return_softmax_lse: bool = False,
+        actual_seq_q: Optional[List[int]] = None,
+        actual_seq_kv: Optional[List[int]] = None,
+        empty_actual_seq: bool = False,
+        block_table_pattern: str = "sequential",
+        seed: int = 0,
+    ):
+        super().__init__()
+        _ensure_cann_ops()
+
+        if seqused_q is None and cu_seqlens_q is None:
+            seqused_q, seqused_kv, cu_seqlens_q, cu_seqlens_kv, block_table = (
+                _auto_generate_params(
+                    query,
+                    key,
+                    sparse_indices,
+                    seqused_q,
+                    seqused_kv,
+                    cu_seqlens_q,
+                    cu_seqlens_kv,
+                    block_table,
+                    layout_q,
+                    int(key.shape[2]) if key.dim() == 4 else sparse_kv_block_size,
+                    actual_seq_q,
+                    actual_seq_kv,
+                    empty_actual_seq,
+                    block_table_pattern,
+                    seed,
+                )
+            )
+
+        # Metadata reads the eagerly-created sequence tensors.  Synchronize both
+        # sides of that dependency before torch.compile starts ACLGraph capture.
+        _synchronize_npu(query)
+        if metadata is None or metadata.numel() < 584:
+            metadata = QuantBlockSparseAttnMetadataBuilder.build(
+                query,
+                key,
+                value,
+                q_descale,
+                k_descale,
+                v_descale,
+                p_scale,
+                sparse_indices,
+                sparse_seq_len,
+                atten_mask,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_kv=cu_seqlens_kv,
+                seqused_q=seqused_q,
+                seqused_kv=seqused_kv,
+                block_table=block_table,
+                softmax_scale=softmax_scale,
+                sparse_q_block_size=sparse_q_block_size,
+                sparse_kv_block_size=sparse_kv_block_size,
+                layout_q=layout_q,
+                layout_kv=layout_kv,
+                layout_sparse_indices=layout_sparse_indices,
+                mask_mode=mask_mode,
+                quant_mode=quant_mode,
+            )
+
+        if key.dim() == 4 and int(quant_mode) != 2:
+            key, value, k_descale = _pack_combined_kv(key, value, k_descale)
+        _synchronize_npu(query)
+
+        for name, tensor in (
+            ("query", query),
+            ("key", key),
+            ("value", value),
+            ("q_descale", q_descale),
+            ("k_descale", k_descale),
+            ("v_descale", v_descale),
+            ("p_scale", p_scale),
+            ("sparse_indices", sparse_indices),
+            ("sparse_seq_len", sparse_seq_len),
+            ("atten_mask", atten_mask),
+            ("cu_seqlens_q", cu_seqlens_q),
+            ("cu_seqlens_kv", cu_seqlens_kv),
+            ("seqused_q", seqused_q),
+            ("seqused_kv", seqused_kv),
+            ("block_table", block_table),
+            ("metadata", metadata),
+        ):
+            self.register_buffer(name, tensor, persistent=False)
+
+        self.softmax_scale = float(softmax_scale)
+        self.sparse_q_block_size = int(sparse_q_block_size)
+        self.sparse_kv_block_size = int(sparse_kv_block_size)
+        self.layout_kv = layout_kv
+        self.layout_q = layout_q
+        self.layout_sparse_indices = layout_sparse_indices
+        self.layout_out = layout_out
+        self.quant_mode = int(quant_mode)
+        self.mask_mode = int(mask_mode)
+        self.return_softmax_lse = bool(return_softmax_lse)
+
+    def forward(self):
+        return torch.ops.custom.npu_quant_block_sparse_attn(
+            self.query,
+            self.key,
+            self.value,
+            self.q_descale,
+            self.k_descale,
+            self.v_descale,
+            self.p_scale,
+            self.sparse_indices,
+            self.sparse_seq_len,
+            self.atten_mask,
+            cu_seqlens_q=self.cu_seqlens_q,
+            cu_seqlens_kv=self.cu_seqlens_kv,
+            seqused_q=self.seqused_q,
+            seqused_kv=self.seqused_kv,
+            block_table=self.block_table,
+            metadata=self.metadata,
+            softmax_scale=self.softmax_scale,
+            sparse_q_block_size=self.sparse_q_block_size,
+            sparse_kv_block_size=self.sparse_kv_block_size,
+            layout_kv=self.layout_kv,
+            layout_q=self.layout_q,
+            layout_sparse_indices=self.layout_sparse_indices,
+            layout_out=self.layout_out,
+            quant_mode=self.quant_mode,
+            mask_mode=self.mask_mode,
+            return_softmax_lse=self.return_softmax_lse,
+        )
+
+
 def quant_block_sparse_attn(
     query: torch.Tensor,
     key: torch.Tensor,
