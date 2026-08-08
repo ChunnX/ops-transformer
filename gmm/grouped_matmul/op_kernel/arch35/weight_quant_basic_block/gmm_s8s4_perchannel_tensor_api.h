@@ -15,6 +15,8 @@
 
 #include "kernel_operator.h"
 #include "blaze/gemm/kernel/kernel_gmm_s8s4.h"
+#include "../int4_weight_to_int8_preprocess.h"
+#include "gmm_s8s4_rowsum_preprocess.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 #include "../../grouped_matmul_utils.h"
 
@@ -47,20 +49,44 @@ __aicore__ inline void InvokeGmmS8S4TensorApi(
     GM_ADDR expandedWeight = workspace + s8s4.expandedWeightOffsetBytes;
     GM_ADDR tileWorkspace = workspace + s8s4.tileWorkspaceOffsetBytes;
     GM_ADDR rowSumWorkspace = workspace + s8s4.rowSumOffsetBytes;
+    GM_ADDR xGmAddr = reinterpret_cast<GM_ADDR>(
+        GROUPED_MATMUL::GetTensorAddr<int8_t>(0, x));
+    GM_ADDR weightGmAddr = reinterpret_cast<GM_ADDR>(
+        GROUPED_MATMUL::GetTensorAddr<AscendC::int4b_t>(0, weight));
+
+    // Operator-owned preprocessing phase. Both AIV producers finish their GM
+    // writes before all cores enter the compute-only Tensor API kernel.
+    {
+        using WeightPreprocess =
+            GROUPED_MATMUL::INT4_PREPROCESS::Int4WeightToInt8Preprocess<LayoutB>;
+        typename WeightPreprocess::Params weightParams{};
+        weightParams.weightGmAddr = weightGmAddr;
+        weightParams.workspaceGmAddr = expandedWeight;
+        weightParams.groupNum = tiling->gmmQuantParams.groupNum;
+        weightParams.n = mm.n;
+        weightParams.k = mm.k;
+        weightParams.inputTransposedNz =
+            WFormat == CubeFormat::NZ && s8s4.specialWeightFormat != 0U;
+        weightParams.inputNzC032 = WFormat == CubeFormat::NZ;
+        WeightPreprocess weightPreprocess;
+        weightPreprocess(weightParams, pipe);
+
+        S8S4RowSumPreprocess::Params rowSumParams{};
+        rowSumParams.xGmAddr = xGmAddr;
+        rowSumParams.rowSumGmAddr = rowSumWorkspace;
+        rowSumParams.m = mm.m;
+        rowSumParams.k = mm.k;
+        rowSumParams.enabled =
+            s8s4.dequantMode != 0U && s8s4.hasOffset != 0U;
+        S8S4RowSumPreprocess rowSumPreprocess;
+        rowSumPreprocess(rowSumParams, pipe);
+
+        AscendC::SyncAll<false>();
+        pipe->Reset();
+    }
 
     Params params{};
-    params.problemShape = ProblemShape{
-        static_cast<int64_t>(mm.m), static_cast<int64_t>(mm.n), static_cast<int64_t>(mm.k), 0L};
-    params.weightPreprocessParams.weightGmAddr = reinterpret_cast<GM_ADDR>(
-        GROUPED_MATMUL::GetTensorAddr<AscendC::int4b_t>(0, weight));
-    params.weightPreprocessParams.workspaceGmAddr = expandedWeight;
-    params.weightPreprocessParams.inputTransposedNz =
-        WFormat == CubeFormat::NZ && s8s4.specialWeightFormat != 0U;
-    params.weightPreprocessParams.inputNzC032 = WFormat == CubeFormat::NZ;
-    params.rowSumPreprocessParams.xGmAddr = reinterpret_cast<GM_ADDR>(
-        GROUPED_MATMUL::GetTensorAddr<int8_t>(0, x));
-    params.rowSumPreprocessParams.rowSumGmAddr = rowSumWorkspace;
-    params.mmadParams.aGmAddr = params.rowSumPreprocessParams.xGmAddr;
+    params.mmadParams.aGmAddr = xGmAddr;
     params.mmadParams.bGmAddr = expandedWeight;
     params.mmadParams.cGmAddr = tileWorkspace;
     params.mmadParams.scaleBGmAddr = reinterpret_cast<GM_ADDR>(

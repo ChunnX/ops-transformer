@@ -20,6 +20,8 @@
 #include "tensor_api/tensor.h"
 
 #include "blaze/gemm/kernel/kernel_gmm_a4w4.h"
+#include "../int4_tensor_to_int8_preprocess.h"
+#include "../int4_weight_to_int8_preprocess.h"
 #include "../../grouped_matmul_utils.h"
 
 template <class xType, class wType, class biasType, class scaleType, class ptScaleType, class yType,
@@ -91,7 +93,6 @@ __aicore__ inline void GmmS4S4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     gmmParams.dbL0C = static_cast<uint8_t>(mmTilingData->dbL0C);
     gmmParams.withOffset = 0U;  // S4S4 对称量化(offset=null, 无 xRowSum 修正)
     gmmParams.groupListType = gmmBaseParams->groupListType;
-    gmmParams.isPerTokenQuant = static_cast<uint8_t>(gmmBaseParams->isPerTokenQuant);  // F3: Run prologue 据此填全 1
 
     // The user workspace follows the runtime-reserved system workspace.
     constexpr uint64_t S4S4_MMOUT_PIPELINE = 4UL;  // 与 host S4S4_MMOUT_PIPELINE 一致
@@ -121,7 +122,6 @@ __aicore__ inline void GmmS4S4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     GM_ADDR int8XWsAddr = int8WeightWsAddr + int8WeightWs;
     GM_ADDR mmOutWsAddr = int8XWsAddr + int8XWs;  // cube FixPipe 输出 / AIV epilogue 读
     // F3: isPerTokenQuant=0 时 perTokenScale 兜底段 (mmOut 之后, totalM·float)。
-    //     桥接仅切换 perTokenScaleGmAddr 指向此段; 全 1 填充在 kernel_gmm_a4w4.h::Run prologue。
     GM_ADDR perTokenScaleFillWsAddr = mmOutWsAddr + mmOutWs;
 
     // 原始 int4 x/weight GM 地址(预处理输入); cube 读 int8 workspace, 不读原始 int4。
@@ -129,33 +129,48 @@ __aicore__ inline void GmmS4S4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     GM_ADDR weightGmAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<int4b_t>(0, weight));
     GM_ADDR yGmAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
     GM_ADDR scaleGmAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<ScaleType>(0, scale));
-    // F3: isPerTokenQuant=0 (无 perTokenScale 输入) 时用 workspace 全 1 段, epilogue 正常 mul (乘 1)。
-    //     保持 S8S4 epilogue 逐字同步不改。全 1 填充见下方 §3.5 (AIV, gmm(params) 前)。
+    // F3: isPerTokenQuant=0 时 epilogue 使用 host 预留的 perTokenScale 兜底段。
     GM_ADDR perTokenScaleGmAddr = (gmmBaseParams->isPerTokenQuant == 0U)
         ? perTokenScaleFillWsAddr : perTokenScale;
 
-    // WeightPreprocess: int4 weight -> int8 workspace(AIV)。
-    typename QgmmKernel::WeightPreprocessParams weightPreprocessParams{};
+    // Operator-owned preprocessing: int4 weight/X -> int8 workspaces on AIV.
+    using WeightPreprocess =
+        GROUPED_MATMUL::INT4_PREPROCESS::Int4WeightToInt8Preprocess<LayoutB>;
+    typename WeightPreprocess::Params weightPreprocessParams{};
     weightPreprocessParams.weightGmAddr = weightGmAddr;
     weightPreprocessParams.workspaceGmAddr = int8WeightWsAddr;
     weightPreprocessParams.groupNum = gmmBaseParams->groupNum;
     weightPreprocessParams.n = gmmBaseParams->n;
     weightPreprocessParams.k = gmmBaseParams->k;
-    // inputTransposedNz: weight 为 NZ 且 transB 时, weightPreprocessOp_ 走 ConvertTransposedNzTile
+    // inputTransposedNz: weight 为 NZ 且 transB 时走 ConvertTransposedNzTile
     // ([E,N,K] int4 NZ -> [E,K,N] int8 NZ); 否则走标准 NZ/ND 路径。
     // host tiling 通过 GMMBaseParamsA4W4.reserved 下发:
     // bit0=weightIsNz, bit1=transB, bit2=input NZ C0=32。
     weightPreprocessParams.inputTransposedNz = weightIsNz && transB;
     weightPreprocessParams.inputNzC032 = weightIsNz && weightNzC032;
 
-    // XPreprocess: int4 x -> int8 workspace(AIV, S4S4 独有)。
-    typename QgmmKernel::XPreprocessParams xPreprocessParams{};
+    // XPreprocess: int4 x -> int8 workspace(AIV, A4W4 独有)。
+    using XPreprocess =
+        GROUPED_MATMUL::INT4_PREPROCESS::Int4TensorToInt8Preprocess<LayoutA>;
+    typename XPreprocess::Params xPreprocessParams{};
     xPreprocessParams.srcInt4GmAddr = xGmAddr;
     xPreprocessParams.dstInt8GmAddr = int8XWsAddr;
     xPreprocessParams.groupNum = 1UL;                  // X 单 tensor，groupNum=1
     xPreprocessParams.outerDim = gmmBaseParams->m;      // M
     xPreprocessParams.innerDim = gmmBaseParams->k;      // K
     xPreprocessParams.inputTransposedNz = false;        // X 为 ND，无 NZ 转置
+
+    {
+        WeightPreprocess weightPreprocess;
+        weightPreprocess(weightPreprocessParams, que);
+        XPreprocess xPreprocess;
+        xPreprocess(xPreprocessParams, que);
+
+        // Publish both expanded workspaces before releasing preprocessing UB
+        // and entering the compute-only Tensor API kernel.
+        AscendC::SyncAll<false>();
+        que->Reset();
+    }
 
     // BlockMmad: cube A=int8 x ws, B=int8 weight ws, C=mmOut ws, scaleB=weight scale。
     typename QgmmBlockMmad::Params mmadParams{};
@@ -179,9 +194,6 @@ __aicore__ inline void GmmS4S4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     epilogueParams.withOffset = false;  // S4S4 对称(withOffset=false, offset/rowSum 不用)
 
     Params params{};
-    params.problemShape = {gmmParams.m, gmmParams.n, gmmParams.k, static_cast<int64_t>(1)};
-    params.weightPreprocessParams = weightPreprocessParams;
-    params.xPreprocessParams = xPreprocessParams;
     params.mmadParams = mmadParams;
     params.epilogueParams = epilogueParams;
     params.groupListGmAddr = groupList;
