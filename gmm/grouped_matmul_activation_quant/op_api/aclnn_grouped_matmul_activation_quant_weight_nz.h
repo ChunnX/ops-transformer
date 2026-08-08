@@ -23,20 +23,22 @@ extern "C" {
  * @domain aclnn_ops_infer
  *
  * @param [in] x:
- * 表示公式中的x，当前MXFP8量化场景下数据类型支持FLOAT8_E4M3FN、FLOAT8_E5M2，数据格式支持ND。
+ * 表示公式中的x，当前MX场景下数据类型支持FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、
+ * FLOAT4_E1M2，数据格式支持ND。
  * @param [in] groupList:
  * 表示分组信息，数据类型支持INT64，数据格式支持ND。groupListType为0时，表示每个group在M轴上尾部索引的累积和；
  * groupListType为1时，表示每个group在M轴上的大小。
  * @param [in] weight:
  * 表示公式中的weight，tensorList长度当前仅支持1。调用者必须传入FRACTAL_NZ格式的weight，
- * 当前MXFP8量化场景下数据类型支持FLOAT8_E4M3FN，viewShape要求为3维，storageShape要求为5维。
+ * 当前MX场景下数据类型支持FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2，viewShape要求为3维，
+ * storageShape要求为5维。
  * @param [in] weightScale:
- * 表示weight矩阵的量化因子，tensorList长度当前仅支持1。当前MXFP8量化场景下数据类型支持FLOAT8_E8M0，
+ * 表示weight矩阵的量化因子，tensorList长度当前仅支持1。当前MX场景下数据类型支持FLOAT8_E8M0，
  * 数据格式支持ND。
  * @param [in] bias:
- * 表示偏置。当前MXFP8量化场景下必须为空，支持nullptr、空tensorList或长度为1且元素shape为(0)的空tensorList。
+ * 表示偏置。当前MX场景下必须为空，支持nullptr、空tensorList或长度为1且元素shape为(0)的空tensorList。
  * @param [in] xScaleOptional:
- * 表示x矩阵的量化因子。当前MXFP8量化场景下必选，不能传nullptr，数据类型支持FLOAT8_E8M0，数据格式支持ND。
+ * 表示x矩阵的量化因子。当前MX场景下必选，不能传nullptr，数据类型支持FLOAT8_E8M0，数据格式支持ND。
  * @param [in] activationType:
  * 表示激活函数类型，当前仅支持"gelu_tanh"。
  * @param [in] groupListType:
@@ -50,7 +52,7 @@ extern "C" {
  * @param [in] scaleAlg:
  * 表示量化因子计算算法，当前支持0或1，其中0表示OCP实现，1表示cuBLAS实现。
  * @param [in] dstTypeMax:
- * 表示maxType的取值，对应公式中的Amax(DType)。当前MXFP8场景仅支持0.0。
+ * 表示maxType的取值，对应公式中的Amax(DType)。当前MX场景仅支持0.0。
  * @param [out] y:
  * 表示激活并量化后的输出矩阵，数据类型支持FLOAT8_E4M3FN、FLOAT8_E5M2；MXFP4输入时还支持
  * FLOAT4_E2M1、FLOAT4_E1M2，数据格式支持ND。
