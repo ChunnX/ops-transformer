@@ -254,7 +254,7 @@ def _cpu_mxfp8_golden(
             q_fallback = int(query.shape[1]) // batch
         else:
             q_fallback = int(query.shape[0]) // batch
-        kv_fallback = int(key.shape[0]) * int(key.shape[2]) // batch
+        kv_fallback = int(sparse_indices.shape[-1]) * int(sparse_kv_block_size)
         q_lengths = (
             [int(item) for item in actual_seq_q]
             if actual_seq_q is not None
@@ -276,6 +276,11 @@ def _cpu_mxfp8_golden(
             "actual_seq_q": q_lengths,
             "actual_seq_kv": kv_lengths,
             "s2_base_size": int(kwargs.get("s2_base_size", 512)),
+            "blocknum": (
+                None
+                if kwargs.get("blocknum") is None
+                else int(kwargs["blocknum"])
+            ),
             "block_size": int(key.shape[2]),
             "mask_mode": int(mask_mode),
             "fp8_dtype": torch.float8_e4m3fn,
@@ -333,6 +338,7 @@ def _cpu_mxfp8_golden(
         data["cu_seqlens_q"],
         data["sparse_indices"],
         data["sparse_seq_len"],
+        data["block_table"],
     )
     attention_out = attention_out.to(torch.bfloat16)
     if not return_softmax_lse:
