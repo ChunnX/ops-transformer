@@ -158,7 +158,8 @@ private:
                                                 uint32_t toExpertId, uint32_t toExpertIndex);
     __aicore__ inline void TokenToExpert(GlobalTensor<XOutType> dstWinGMTensor, TQue<QuePosition::VECIN, 1> inQueue,
                                          uint32_t srcTokenIndex, uint32_t toExpertIndex);
-    __aicore__ inline void RecordRankCommDuration(LocalTensor<int32_t> &performanceInfoTensor, uint64_t startTime);
+    __aicore__ inline void RecordRankCommDuration(LocalTensor<int32_t> &performanceInfoTensor, uint64_t startTime,
+                                                  bool isCompactStatus);
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
         return ctx_.GetWindAddrByRankId(rankId, epRankIdOriginal_) + winDataSizeOffset_;
@@ -1539,24 +1540,45 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     LocalTensor<uint32_t> gatherTmpTensor = scalarBuf_.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
     LocalTensor<float> statusSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
     statusFp32Tensor_ = waitStatusBuf_.Get<float>();
-    uint32_t mask = 1;
     gatherTmpTensor.SetValue(0, 1);
     float compareTarget = static_cast<float>(1.0) * recStatusNumPerCore_;
     float sumOfFlag = static_cast<float>(-1.0);
-    DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
     SyncFunc<AscendC::HardEvent::S_V>();
     uint64_t performanceTimeStart = static_cast<uint64_t>(GetSystemCycle());
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    // A5仅紧凑搬运每个32B状态块中的4B flag，避免轮询期间反复搬运count和padding。
+    DataCopyExtParams flagCopyParams{static_cast<uint16_t>(recStatusNumPerCore_), sizeof(float),
+                                     STATE_OFFSET - sizeof(float), 0U, 0U};
+    DataCopyPadExtParams<float> flagCopyPadParams{false, 0U, 0U, 0.0f};
+    uint32_t flagSumInner = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
+    SumParams flagSumParams{1, flagSumInner, recStatusNumPerCore_};
+    while (sumOfFlag != compareTarget) {
+        DataCopyPad<float, PaddingMode::Compact>(
+            statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * FLAG_OFFSET], flagCopyParams,
+            flagCopyPadParams);
+        if (isPerformanceFlag_) {
+            RecordRankCommDuration(performanceInfoTensor_, performanceTimeStart, true);
+        }
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        Sum(statusSumOutTensor, statusFp32Tensor_, flagSumParams);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        sumOfFlag = statusSumOutTensor.GetValue(0);
+    }
+#else
+    uint32_t mask = 1;
+    DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
     while (sumOfFlag != compareTarget) {
         DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)],
                  intriParams);
         if (isPerformanceFlag_) {
-            RecordRankCommDuration(performanceInfoTensor_, performanceTimeStart);
+            RecordRankCommDuration(performanceInfoTensor_, performanceTimeStart, false);
         }
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
     }
+#endif
     RunPosRecord(RUNPOS_CALCUMSUM); // 维测打点
     if (isPerformanceFlag_) {
         SyncFunc<AscendC::HardEvent::S_MTE3>();
@@ -1566,6 +1588,12 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         DataCopyPad(performanceInfoGMTensor_, performanceInfoTensor_, performanceInfoCopyParams);
         SetAtomicNone();
     }
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    // 后续cumsum仍使用原始32B状态布局；flag全部到达后只需完整搬运一次。
+    DataCopyParams statusCopyParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
+    DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * FLAG_OFFSET], statusCopyParams);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+#endif
     // 清状态
     WaitDispatchClearStatus();
     GatherSumRecvCnt(gatherMaskOutTensor, gatherTmpTensor, statusSumOutTensor);
@@ -1647,13 +1675,14 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 
 template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::RecordRankCommDuration(
-    LocalTensor<int32_t> &performanceInfoTensor, uint64_t startTime)
+    LocalTensor<int32_t> &performanceInfoTensor, uint64_t startTime, bool isCompactStatus)
 {
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint64_t endTime = static_cast<uint64_t>(GetSystemCycle());
     int32_t duration = static_cast<int32_t>((endTime - startTime) / CYCLES_PER_US);
     for (uint32_t i = 0; i < recStatusNumPerCore_; i++) {
-        float statusFp32 = statusFp32Tensor_.GetValue(i * FLAG_OFFSET);
+        uint32_t flagIndex = isCompactStatus ? i : i * FLAG_OFFSET;
+        float statusFp32 = statusFp32Tensor_.GetValue(flagIndex);
         int32_t performanceFlag = performanceFlagTensor_.GetValue(i);
         if (statusFp32 > float(0.5) && performanceFlag == 0) {
             performanceFlagTensor_.SetValue(i, 1);
