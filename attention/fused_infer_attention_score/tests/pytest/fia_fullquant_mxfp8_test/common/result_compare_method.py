@@ -177,9 +177,9 @@ def check_result(expect, npu_result):
             result = "Failed"
 
     logger.info('---------------------------------------------------------------------------------------')
-    logger.info('Rtol   \t Atol   \t PctRlt   \t Result')
+    logger.info('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
     logger.info('---------------------------------------------------------------------------------------')
-    logger.info('%.4f    \t %.6f  \t %.6f%%   \t %s', rtol, atol, fulfill_percent, result)
+    logger.info('%.4f    \t %.6f  \t %.2f%%   \t %.6f%%   \t %s', rtol, atol, pct_thd, fulfill_percent, result)
 
     if err_diff.numel() > 0:
         logger.info('Max-RelativeError is: %s. Threshold is: %s.', max_error, max_diff_hd)

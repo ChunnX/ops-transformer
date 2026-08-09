@@ -247,6 +247,7 @@ void FiaTilingFullQuantMxArch35::InitImplParam()
 
 void FiaTilingFullQuantMxArch35::AdjustSinnerAndSouter()
 {
+    // mxfp8 基本块大小为 128*512
     sOuterFactor_ = SOUTER_64;
     if (fiaInfo_->qkHeadDim == DSIZE_256) {
         sInnerFactor_ = SINNER_256;
