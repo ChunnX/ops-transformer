@@ -127,12 +127,8 @@ def lse_compare(npu_out, golden_out):
     }
 
 
-def _compare_fp8(*outputs, **kwargs):
-    """Compare NPU outputs against golden references.
-
-    Expects [npu_attention_out, npu_softmax_lse, golden_attention_out, golden_softmax_lse]
-    or [npu_attention_out, golden_attention_out] when return_softmax_lse=False.
-    """
+def _compare_outputs(outputs, attention_compare_fn, lse_compare_fn):
+    """Compare the shared output protocol and ignore an invalid LSE slot."""
     if len(outputs) < 2 or len(outputs) % 2 != 0:
         return {
             "pass": False,
@@ -144,12 +140,16 @@ def _compare_fp8(*outputs, **kwargs):
     npu_outputs = outputs[:half]
     golden_outputs = outputs[half:]
 
-    results = [attention_compare(npu_outputs[0], golden_outputs[0])]
+    results = [attention_compare_fn(npu_outputs[0], golden_outputs[0])]
 
-    if half > 1:
-        results.append(lse_compare(npu_outputs[1], golden_outputs[1]))
+    if half > 1 and golden_outputs[1] is not None:
+        results.append(lse_compare_fn(npu_outputs[1], golden_outputs[1]))
 
     return results[0] if len(results) == 1 else results
+
+
+def _compare_fp8(*outputs, **kwargs):
+    return _compare_outputs(outputs, attention_compare, lse_compare)
 
 
 def _mxfp8_tolerance(value):
@@ -281,19 +281,9 @@ def _mxfp8_lse_compare(npu_out, golden_out):
 
 
 def _compare_mxfp8(*outputs, **kwargs):
-    if len(outputs) < 2 or len(outputs) % 2 != 0:
-        return {
-            "pass": False,
-            "precision": "invalid",
-            "error_info": f"compare expects even number of outputs, got {len(outputs)}",
-        }
-    half = len(outputs) // 2
-    npu_outputs = outputs[:half]
-    golden_outputs = outputs[half:]
-    results = [_mxfp8_attention_compare(npu_outputs[0], golden_outputs[0])]
-    if half > 1 and golden_outputs[1] is not None:
-        results.append(_mxfp8_lse_compare(npu_outputs[1], golden_outputs[1]))
-    return results[0] if len(results) == 1 else results
+    return _compare_outputs(
+        outputs, _mxfp8_attention_compare, _mxfp8_lse_compare
+    )
 
 
 def compare(*outputs, **kwargs):
