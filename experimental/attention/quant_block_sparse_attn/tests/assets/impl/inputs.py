@@ -92,6 +92,15 @@ def _inplace_copy(destination, source):
         destination[...] = source_tensor
 
 
+def _numel(value):
+    """Return element count for the NumPy or Torch buffers supplied by TTK."""
+    if isinstance(value, torch.Tensor):
+        return int(value.numel())
+    if isinstance(value, np.ndarray):
+        return int(value.size)
+    return int(np.size(value))
+
+
 def _normalize_data_range(data_range):
     """Preserve scalar radius or normalize an explicit [min, max] range."""
     if isinstance(data_range, (list, tuple)):
@@ -341,7 +350,7 @@ def _customize_inputs_mxfp8(
     _inplace_copy(q_descale, q_scale)
     _inplace_copy(k_descale, module.fp32_to_e8m0fnu_safe(k_scale_pa, "K descale"))
     _inplace_copy(v_descale, module.fp32_to_e8m0fnu_safe(v_scale_pa, "V descale"))
-    if p_scale is not None and p_scale.numel() > 0:
+    if p_scale is not None and _numel(p_scale) > 0:
         _inplace_copy(
             p_scale,
             module.fp32_to_e8m0fnu_safe(data["p_scale"], "P scale"),
