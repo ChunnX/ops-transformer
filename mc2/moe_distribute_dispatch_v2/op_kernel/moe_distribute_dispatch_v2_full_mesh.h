@@ -1808,7 +1808,9 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::CheckDataArriveWit
     LocalTensor<float> flagSumOutTensor = scalarBuf_.Get<float>();
     ReduceSum(flagSumOutTensor, flagRecvTensor_, flagReduceWorkTensor_, 1U, flagNum, 1U);
     SyncFunc<AscendC::HardEvent::V_S>();
-    return flagSumOutTensor.GetValue(0) == static_cast<float>(flagNum) ? static_cast<uint32_t>(copyCnt) : 0U;
+    // aicore禁止uint->float的显式转换，借助浮点乘法隐式转换得到期望和
+    float expectFlagSum = 1.0F * flagNum;
+    return flagSumOutTensor.GetValue(0) == expectFlagSum ? static_cast<uint32_t>(copyCnt) : 0U;
 }
 
 template <TemplateMC2TypeFullmeshClass>
