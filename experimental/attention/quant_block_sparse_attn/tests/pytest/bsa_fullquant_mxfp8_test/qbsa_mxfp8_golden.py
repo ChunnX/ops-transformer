@@ -2467,9 +2467,31 @@ def npu_mxfp8_fa(
         # (for example Fill) are not available for every FP8 dtype.
         kv_cache_fp8 = torch.stack(
             [k_input.view(torch.uint8), v_input.view(torch.uint8)], dim=1
-        ).view(FP8_DTYPE).npu()
-        k_npu = kv_cache_fp8[:, 0]
-        v_npu = kv_cache_fp8[:, 1]
+        ).reshape(-1).view(FP8_DTYPE).npu()
+        key_segment_size = k_input[0].numel()
+        value_segment_size = v_input[0].numel()
+        pa_block_stride = key_segment_size + value_segment_size
+        key_stride = (
+            pa_block_stride,
+            k_input.shape[2] * k_input.shape[3],
+            k_input.shape[3],
+            1,
+        )
+        value_stride = (
+            pa_block_stride,
+            v_input.shape[2] * v_input.shape[3],
+            v_input.shape[3],
+            1,
+        )
+        k_npu = torch.as_strided(
+            kv_cache_fp8, k_input.shape, key_stride, storage_offset=0
+        )
+        v_npu = torch.as_strided(
+            kv_cache_fp8,
+            v_input.shape,
+            value_stride,
+            storage_offset=key_segment_size,
+        )
         logger.info(
             "[NPU] key is_contiguous=%s, stride=%s; "
             "value is_contiguous=%s, stride=%s",
