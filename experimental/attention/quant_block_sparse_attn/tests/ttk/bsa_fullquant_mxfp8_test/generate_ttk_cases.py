@@ -47,18 +47,15 @@ def load_python_cases():
     ]
 
 
-def normalize_lengths(case, field, max_field):
+def normalize_lengths(case, field):
     batch = int(case["B"])
     values = [int(item) for item in case[field]]
-    if len(values) == batch:
-        return values
-    if len(values) == 1 and batch > 1:
-        total = values[0]
-        if total == int(case[max_field]) and total % batch == 0:
-            return [total // batch] * batch
-    raise ValueError(
-        f"{case['name']}: {field} must contain B={batch} values, got {values}"
-    )
+    if len(values) != batch:
+        raise ValueError(
+            f"{case['name']}: {field} must contain B={batch} explicit values, "
+            f"got {values}"
+        )
+    return values
 
 
 def normalize_data_range(case, field):
@@ -118,8 +115,8 @@ def validate_case(case, q_lengths, kv_lengths):
 
 
 def case_to_row(case, source):
-    q_lengths = normalize_lengths(case, "actual_seq_q", "S1")
-    kv_lengths = normalize_lengths(case, "actual_seq_kv", "S2")
+    q_lengths = normalize_lengths(case, "actual_seq_q")
+    kv_lengths = normalize_lengths(case, "actual_seq_kv")
     validate_case(case, q_lengths, kv_lengths)
 
     batch = int(case["B"])
