@@ -42,9 +42,7 @@ __aicore__ inline void PrepareSharedExpertInput(const DispatchPrepareContext &co
         return;
     }
 
-    int32_t jobTokenNum;
-    int32_t jobTokenOffset;
-    TilingByJobContext(context.common.tokenNum, jobTokenNum, jobTokenOffset, job.jobIndex, job.totalJobs, 1);
+    WorkRange tokenRange = TilingByJobContext(context.common.tokenNum, job.jobIndex, job.totalJobs, 1U);
 
     int64_t tokenDataElementCount = context.common.tokenHiddenDim / ActivationElementsPerByte;
     int64_t tokenScaleElementCount = Ops::Base::CeilDiv(static_cast<int64_t>(context.common.tokenHiddenDim),
@@ -64,8 +62,8 @@ __aicore__ inline void PrepareSharedExpertInput(const DispatchPrepareContext &co
 
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
-    for (int32_t index = 0; index < jobTokenNum; ++index) {
-        int32_t tokenIdx = jobTokenOffset + index;
+    for (uint32_t index = 0; index < tokenRange.count; ++index) {
+        uint32_t tokenIdx = tokenRange.start + index;
         uint64_t srcOffset =
             static_cast<uint64_t>(tokenIdx) * static_cast<uint64_t>(config.quantTokenScaleAlignBytes);
         bool useFirstBuffer = index % DOUBLE_BUFFER == 0;
