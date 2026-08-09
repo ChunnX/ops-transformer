@@ -89,7 +89,7 @@ __aicore__ inline void LoadMoeExpertInput(
                                              static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
         using Fp8Type = typename std::conditional<CombineMode == MXFP8_E4M3_COMM_QUANT,
                                                   fp8_e4m3fn_t, fp8_e5m2_t>::type;
-        MegaMoeCombineImpl::DeQuantMxFp8<Fp8Type, bfloat16_t>(
+        Mxfp8::DeQuantMxFp8<Fp8Type, bfloat16_t>(
             dataInBf16, dataInFp32, scratch.bf16ScaleTensor, scratch.fp32ScaleTensor, nScale,
             context.common.tokenHiddenDim);
     }
@@ -194,6 +194,44 @@ __aicore__ inline void WaitSharedExpertGmm2Ready(const TokenUnpermuteContext &co
     }
 }
 
+template <uint8_t CombineMode, typename TopkWeightsType, bool TopkWeightsPrefetch,
+          uint32_t Gmm1TileM>
+__aicore__ inline void ProcessTokenUnpermuteBatch(
+    const TokenUnpermuteContext &context, const Params &params, TokenUnpermuteScratch &scratch,
+    const MegaMoeUnpermuteBufferConfig &bufferConfig, const GlobalTensor<bfloat16_t> &expandedX,
+    GlobalTensor<bfloat16_t> &output, int32_t jobOffset, int32_t batchTokenOffset,
+    int32_t batchTokenCount, TEventID outputBufferEvent)
+{
+    if constexpr (!TopkWeightsPrefetch) {
+        LoadTokenUnpermuteWeights<TopkWeightsType>(
+            context, params, scratch, jobOffset, batchTokenOffset, batchTokenCount);
+    }
+    for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.inputBufferCount; ++bufferIdx) {
+        SetFlag<HardEvent::V_MTE2>(static_cast<TEventID>(bufferIdx));
+    }
+    for (int32_t localIdx = 0; localIdx < batchTokenCount; ++localIdx) {
+        int32_t tokenIdx = jobOffset + batchTokenOffset + localIdx;
+        AccumulateMoeExpertsForToken<CombineMode, TopkWeightsPrefetch>(
+            context, scratch, tokenIdx, localIdx, expandedX, bufferConfig);
+        for (uint32_t sharedExpertIdx = 0; sharedExpertIdx < context.common.sharedExpertNum;
+             ++sharedExpertIdx) {
+            WaitSharedExpertGmm2Ready<Gmm1TileM>(context, params, tokenIdx, sharedExpertIdx);
+            AccumulateSharedExpertForToken(
+                context, params, scratch, tokenIdx, localIdx, sharedExpertIdx, bufferConfig);
+        }
+        WaitFlag<HardEvent::MTE3_V>(outputBufferEvent);
+        Cast(scratch.dataResTensor, scratch.dataResFp32Tensor, RoundMode::CAST_RINT,
+             context.common.tokenHiddenDim);
+        SyncFuncStatic<HardEvent::V_MTE3, SYNC_EVENT_ID3>();
+        DataCopy(output[static_cast<uint64_t>(tokenIdx) * context.common.tokenHiddenDim],
+                 scratch.dataResTensor, context.common.tokenHiddenDim);
+        SetFlag<HardEvent::MTE3_V>(outputBufferEvent);
+    }
+    for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.inputBufferCount; ++bufferIdx) {
+        WaitFlag<HardEvent::V_MTE2>(static_cast<TEventID>(bufferIdx));
+    }
+}
+
 // 原型：MegaMoe::Unpermute。执行当前 token 分区的完整 Unpermute 流水。
 template <uint8_t CombineMode, typename TopkWeightsType, bool TopkWeightsPrefetch,
           uint32_t Gmm1TileM>
@@ -205,13 +243,13 @@ __aicore__ inline void UnpermuteTokens(const TokenUnpermuteContext &context,
     if constexpr (g_coreType == AIC) {
         return;
     }
-    int32_t jobLen = 0;
-    int32_t jobOffset = 0;
-    TilingByJobContext(static_cast<int32_t>(context.common.tokenNum), jobLen, jobOffset,
-                       context.job.jobIndex, context.job.totalJobs, 1);
-    if (jobLen == 0) {
+    WorkRange tokenRange = TilingByJobContext(context.common.tokenNum, context.job.jobIndex,
+                                               context.job.totalJobs, 1U);
+    if (tokenRange.count == 0U) {
         return;
     }
+    int32_t jobLen = static_cast<int32_t>(tokenRange.count);
+    int32_t jobOffset = static_cast<int32_t>(tokenRange.start);
     GlobalTensor<bfloat16_t> expandedX;
     expandedX.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(params.peermemInfo.combineSendPtr));
     GlobalTensor<bfloat16_t> output;
@@ -225,34 +263,9 @@ __aicore__ inline void UnpermuteTokens(const TokenUnpermuteContext &context,
             batchTokenOffset + bufferConfig.tokensPerBatch > jobLen ?
                 jobLen - batchTokenOffset :
                 bufferConfig.tokensPerBatch;
-        if constexpr (!TopkWeightsPrefetch) {
-            LoadTokenUnpermuteWeights<TopkWeightsType>(
-                context, params, scratch, jobOffset, batchTokenOffset, batchTokenCount);
-        }
-        for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.inputBufferCount; ++bufferIdx) {
-            SetFlag<HardEvent::V_MTE2>(static_cast<TEventID>(bufferIdx));
-        }
-        for (int32_t localIdx = 0; localIdx < batchTokenCount; ++localIdx) {
-            int32_t tokenIdx = jobOffset + batchTokenOffset + localIdx;
-            AccumulateMoeExpertsForToken<CombineMode, TopkWeightsPrefetch>(
-                context, scratch, tokenIdx, localIdx, expandedX, bufferConfig);
-            for (uint32_t sharedExpertIdx = 0; sharedExpertIdx < context.common.sharedExpertNum;
-                 ++sharedExpertIdx) {
-                WaitSharedExpertGmm2Ready<Gmm1TileM>(context, params, tokenIdx, sharedExpertIdx);
-                AccumulateSharedExpertForToken(
-                    context, params, scratch, tokenIdx, localIdx, sharedExpertIdx, bufferConfig);
-            }
-            WaitFlag<HardEvent::MTE3_V>(outputBufferEvent);
-            Cast(scratch.dataResTensor, scratch.dataResFp32Tensor, RoundMode::CAST_RINT,
-                 context.common.tokenHiddenDim);
-            SyncFuncStatic<HardEvent::V_MTE3, SYNC_EVENT_ID3>();
-            DataCopy(output[static_cast<uint64_t>(tokenIdx) * context.common.tokenHiddenDim],
-                     scratch.dataResTensor, context.common.tokenHiddenDim);
-            SetFlag<HardEvent::MTE3_V>(outputBufferEvent);
-        }
-        for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.inputBufferCount; ++bufferIdx) {
-            WaitFlag<HardEvent::V_MTE2>(static_cast<TEventID>(bufferIdx));
-        }
+        ProcessTokenUnpermuteBatch<CombineMode, TopkWeightsType, TopkWeightsPrefetch, Gmm1TileM>(
+            context, params, scratch, bufferConfig, expandedX, output, jobOffset,
+            batchTokenOffset, batchTokenCount, outputBufferEvent);
     }
     WaitFlag<HardEvent::MTE3_V>(outputBufferEvent);
 }

@@ -1960,7 +1960,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
     AscendC::DataCopy(metaInfoTensor, tripleGm, batchCount * META_INFO_SIZE);
 
     // 执行 combine 并发送
-    MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true, IsQuant>(
+    CombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true, IsQuant>(
         currentRow, batchCount, k_, expertIdx, rankId_, gmmAddrInfo.gmm2OutGlobal, params_, metaInfoTensor,
         combineUbTensorSize_, offset, quantTokenSizeBytes);
 
@@ -2252,7 +2252,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
                                                               fp8_e5m2_t>::type;
                     SetFlag<AscendC::HardEvent::S_V>(event);
                     WaitFlag<AscendC::HardEvent::S_V>(event);
-                    MegaMoeCombineImpl::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_,
+                    Mxfp8::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_,
                                                                           fp32ScaleTensor_, nScale, k_);
                 }
                 PipeBarrier<PIPE_V>();
