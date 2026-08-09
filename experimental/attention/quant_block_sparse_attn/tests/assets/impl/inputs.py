@@ -193,7 +193,7 @@ def _build_mxfp8_case(
         "layout_sparse_indices": layout_sparse_indices,
         "layout_out": layout_out,
         "kv_cache_layout": "BnNBsD",
-        "is_contiguous": True,
+        "is_contiguous": bool(kwargs.get("is_contiguous", True)),
         "p_scale_value": (
             None if p_scale_value is None else float(p_scale_value)
         ),

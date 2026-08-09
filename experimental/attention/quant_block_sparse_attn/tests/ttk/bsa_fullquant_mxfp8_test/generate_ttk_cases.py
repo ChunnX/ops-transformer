@@ -192,6 +192,7 @@ def case_to_row(case, source):
         "actual_seq_q": q_lengths,
         "actual_seq_kv": kv_lengths,
         "empty_actual_seq": bool(case.get("empty_actual_seq", False)),
+        "is_contiguous": bool(case.get("is_contiguous", True)),
         "block_table_pattern": case["block_table_pattern"],
         "seed": int(case["seed"]),
         "sparse_count": int(case["sparse_count"]),

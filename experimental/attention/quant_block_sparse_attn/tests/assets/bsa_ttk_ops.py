@@ -84,6 +84,40 @@ def _pack_combined_kv(key, value, k_descale):
     return key_view, value_view, k_scale_view
 
 
+def _pack_mxfp8_kv_views(key, value):
+    """Pack MXFP8 K/V into one PA storage while keeping descales contiguous.
+
+    Only the physical-block stride is enlarged.  The inner BNBD strides remain
+    ``[block_size * D, D, 1]``, which is the MXFP8 wrapper contract.
+    """
+    num_blocks, n2, block_size, d = (
+        int(key.shape[0]),
+        int(key.shape[1]),
+        int(key.shape[2]),
+        int(key.shape[3]),
+    )
+    dv = int(value.shape[-1])
+    key_seg = n2 * block_size * d
+    value_seg = n2 * block_size * dv
+    pa_block_stride = key_seg + value_seg
+
+    storage = torch.empty(
+        (num_blocks * pa_block_stride,), dtype=key.dtype, device=key.device
+    )
+    key_view = torch.as_strided(
+        storage, key.shape, (pa_block_stride, block_size * d, d, 1), 0
+    )
+    value_view = torch.as_strided(
+        storage,
+        value.shape,
+        (pa_block_stride, block_size * dv, dv, 1),
+        key_seg,
+    )
+    key_view.copy_(key)
+    value_view.copy_(value)
+    return key_view, value_view
+
+
 def _auto_generate_params(
     query,
     key,
@@ -395,6 +429,7 @@ class QuantBlockSparseAttnGraph(torch.nn.Module):
         sparse_count: int = 0,
         sparse_pattern: str = "sequential",
         blocknum: Optional[int] = None,
+        is_contiguous: bool = True,
         seed: int = 0,
     ):
         super().__init__()
@@ -457,8 +492,11 @@ class QuantBlockSparseAttnGraph(torch.nn.Module):
                 quant_mode=quant_mode,
             )
 
-        if key.dim() == 4 and int(quant_mode) != 2:
-            key, value, k_descale = _pack_combined_kv(key, value, k_descale)
+        if key.dim() == 4:
+            if int(quant_mode) == 2 and not bool(is_contiguous):
+                key, value = _pack_mxfp8_kv_views(key, value)
+            elif int(quant_mode) != 2:
+                key, value, k_descale = _pack_combined_kv(key, value, k_descale)
         _synchronize_npu(query)
 
         for name, tensor in (
@@ -559,6 +597,7 @@ def quant_block_sparse_attn(
     sparse_count: int = 0,
     sparse_pattern: str = "sequential",
     blocknum: Optional[int] = None,
+    is_contiguous: bool = True,
     seed: int = 0,
 ):
     """Compute metadata first, then call the real QBSA operator.
@@ -623,8 +662,11 @@ def quant_block_sparse_attn(
             quant_mode=quant_mode,
         )
 
-    if key.dim() == 4 and int(quant_mode) != 2:
-        key, value, k_descale = _pack_combined_kv(key, value, k_descale)
+    if key.dim() == 4:
+        if int(quant_mode) == 2 and not bool(is_contiguous):
+            key, value = _pack_mxfp8_kv_views(key, value)
+        elif int(quant_mode) != 2:
+            key, value, k_descale = _pack_combined_kv(key, value, k_descale)
     return torch.ops.custom.npu_quant_block_sparse_attn(
         query,
         key,

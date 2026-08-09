@@ -291,7 +291,7 @@ def _cpu_mxfp8_golden(
             "layout_sparse_indices": layout_sparse_indices,
             "layout_out": layout_out,
             "kv_cache_layout": "BnNBsD",
-            "is_contiguous": True,
+            "is_contiguous": bool(kwargs.get("is_contiguous", True)),
             "p_scale_value": (
                 None
                 if kwargs.get("p_scale_value") is None
