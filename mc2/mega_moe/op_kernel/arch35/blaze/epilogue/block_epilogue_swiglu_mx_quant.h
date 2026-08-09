@@ -365,9 +365,10 @@ BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateNextProblem(
     const ProblemShape &problemShape)
 {
-    n_ = Get<N_VALUE>(problemShape); // n/2
-    scaleN_ =
-        Ops::Base::CeilDiv(static_cast<uint64_t>(n_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+    n_ = AscendC::Get<MegaMoeImpl::N_VALUE>(problemShape); // n/2
+    scaleN_ = Ops::Base::CeilDiv(static_cast<uint64_t>(n_),
+                                 static_cast<uint64_t>(MegaMoeImpl::MXFP_DIVISOR_SIZE)) *
+              MegaMoeImpl::MXFP_MULTI_BASE_SIZE;
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -396,8 +397,10 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
 {
     AscendC::DataCopyExtParams ub2GmParams{0, 0, 0, 0, 0};
-    auto blockScaleN = Ops::Base::CeilDiv(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
-                       MXFP_MULTI_BASE_SIZE; // 256 / 32 = 8
+    auto blockScaleN =
+        Ops::Base::CeilDiv(static_cast<uint64_t>(singleN_),
+                           static_cast<uint64_t>(MegaMoeImpl::MXFP_DIVISOR_SIZE)) *
+        MegaMoeImpl::MXFP_MULTI_BASE_SIZE; // 256 / 32 = 8
     // scale layout in UB is already compact: (mSize, blockScaleN). Compact copy avoids (mSize*8)->(mSize,32).
     ub2GmParams.blockCount = blockCount; // 128
     ub2GmParams.blockLen = blockScaleN;  // 8
@@ -1115,8 +1118,8 @@ BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()(
     const BlockShape &blockShape, const BlockCoord &blockCoord, uint16_t pingpongIdx)
 {
-    singleM_ = Get<M_VALUE>(blockShape); // 128
-    singleN_ = Get<N_VALUE>(blockShape); // 256
+    singleM_ = AscendC::Get<MegaMoeImpl::M_VALUE>(blockShape); // 128
+    singleN_ = AscendC::Get<MegaMoeImpl::N_VALUE>(blockShape); // 256
     blockCoord_ = blockCoord;
 
     if (singleM_ == 0) {

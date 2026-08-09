@@ -2252,7 +2252,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
                                                               fp8_e5m2_t>::type;
                     SetFlag<AscendC::HardEvent::S_V>(event);
                     WaitFlag<AscendC::HardEvent::S_V>(event);
-                    MegaMoeCombineImpl::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_,
+                    Mxfp8::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_,
                                                                           fp32ScaleTensor_, nScale, k_);
                 }
                 PipeBarrier<PIPE_V>();
