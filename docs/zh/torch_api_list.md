@@ -30,6 +30,7 @@
 | ----------- | ------------------- | ------------------- | ------------------- |
 |[causal_conv1d_fn](../../torch_extension/cann_ops_transformer/docs/zh/causal_conv1d_fn.md)| 因果一维卷积前向计算（prefill/chunk-prefill），封装aclnnCausalConv1dFn。| - | 默认支持确定性计算 |
 |[causal_conv1d_update](../../torch_extension/cann_ops_transformer/docs/zh/causal_conv1d_update.md)| 因果一维卷积状态更新（decode/update），封装aclnnCausalConv1dUpdate。 | - | 默认支持确定性计算 |
+|[chunk_kda_fwd](../../torch_extension/cann_ops_transformer/docs/zh/chunk_kda_fwd.md)|完成KDA分块正向计算，返回注意力输出、可选最终状态和反向所需的可选中间量。|默认支持确定性计算|默认支持确定性计算|
 |[compressor](../../torch_extension/cann_ops_transformer/docs/zh/compressor.md)| 将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。| 默认支持确定性计算 | 默认支持确定性计算  |
 |[dense_lightning_indexer_softmax_lse](../../torch_extension/cann_ops_transformer/docs/zh/dense_lightning_indexer_softmax_lse.md)| dense场景DenseLightningIndexerGradKlLoss算子计算Softmax输入的一个分支算子。支持压缩注意力（Compressed Attention），并支持通过metadata前置算子进行分核负载均衡。需与`dense_lightning_indexer_softmax_lse_metadata`配套使用。|-|默认确定性实现|
 |[dense_lightning_indexer_softmax_lse_metadata](../../torch_extension/cann_ops_transformer/docs/zh/dense_lightning_indexer_softmax_lse.md)| dense_lightning_indexer_softmax_lse接口的前置接口，用于计算dense_lightning_indexer_softmax_lse的负载均衡。|-|默认确定性实现|
