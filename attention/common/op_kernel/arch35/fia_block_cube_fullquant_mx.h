@@ -1,4 +1,3 @@
-//#define FIA_DUMP_INTERMEDIATE
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -207,7 +206,7 @@ public:
         l0cBufferManager.Init(tPipe, 262144); // 256 * 1024
         // L0A B C当前写死，要改成通过计算获取
         mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);
-        mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);  // L0B DB 32KB/buf, architect confirmed do not change
+        mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);
 
         if constexpr (mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
                       mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4) {
@@ -993,16 +992,15 @@ public:
 
     if constexpr (s2BaseSize == 256) {
         if (!(runInfo.isFirstS2Loop && runInfo.isLastS2Loop)) {
-            PipeBarrier<PIPE_ALL>();  // NIGHT12w guard: D256 mxfp8 multi-s2Loop only (drain cure scoped, not blanket)
+            PipeBarrier<PIPE_ALL>();  // D256 multi-s2Loop only: full-pipe drain before BMM2, scoped (not blanket)
         }
     }
 
         constexpr uint32_t pScaleOffset = mBaseSize * s2BaseSize;
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
-            // PathC: D128 K-major (s2BaseSize>256) P1-init 0x7f7f (P1=1.0, 0bda7a4a pattern). NO diagZero
-            // (would clobber vec.h P0 rescale 0x7e -> 1.0 => P0 unrescaled). D256 M-major (s2BaseSize==256):
-            // skip both (vec.h selective writes per-row 0x7e to FULL P0+P1 region; cube init would clobber).
-            if constexpr (s2BaseSize > 256) {  // D128 K-major only (s2BaseSize=512); D256 M-major (256) skips
+            // D128 K-major (s2BaseSize>256): init P1 scale to 1.0 (0x7f7f).
+            // D256 M-major (s2BaseSize==256): skip — vec.h writes per-row P0+P1 scale, cube init would clobber it.
+            if constexpr (s2BaseSize > 256) {  // D128 only (s2BaseSize>256); D256 (==256) skips
                 constexpr uint32_t sizeOfInt16 = 2U;
                 LocalTensor<int16_t> mm2AScaleTensor = mm2A.GetTensor<int16_t>(pScaleOffset / sizeOfInt16 +
                     mBaseSize * s2SplitSize / MXFP_GROUP_SIZE / sizeOfInt16);
@@ -1013,7 +1011,7 @@ public:
         LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset);
     if constexpr (s2BaseSize == 256) {
         if (!(runInfo.isFirstS2Loop && runInfo.isLastS2Loop)) {
-            PipeBarrier<PIPE_ALL>();  // NIGHT12w guard: D256 mxfp8 multi-s2Loop only (drain cure scoped, not blanket)
+            PipeBarrier<PIPE_ALL>();  // D256 multi-s2Loop only: full-pipe drain before BMM2, scoped (not blanket)
         }
     }
 
@@ -1025,7 +1023,7 @@ public:
         mm2ResL0C.Wait<HardEvent::FIX_M>();
 
         if constexpr (s2BaseSize > 256) {
-            // PathC D128 KV512: 0bda7a4a path (MatmulFullMX kLoops, baseK=s2SplitSize, per-kIdx scale; fixes MatmulN single-K=512 L0A 64KB>32KB overflow crash)
+            // D128 KV512: MatmulFullMX kLoops, baseK=s2SplitSize, per-kIdx scale (MatmulN single-K=512 overflows L0A 64KB>32KB)
             constexpr uint32_t baseK = s2SplitSize;
             uint64_t l1BaseKOffset = baseK * mBaseSize;
             uint64_t l1ScaleOffset = l1BaseKOffset / MXFP_GROUP_SIZE;
@@ -1070,11 +1068,11 @@ public:
                 mm2B.Set<HardEvent::MTE1_MTE2>();
             }
         } else {
-            // D256 KV256: selective path (MatmulN single, K=256 fits 32KB; NIGHT3 2b gate skips InitConstValue; selective vec.h pScale 100%)
+            // D256 KV256: MatmulN single-K (K=256 fits 32KB); skip InitConstValue (vec.h selective pScale covers P0+P1)
             constexpr uint32_t baseK = s2BaseSize;
             uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
 
-            // Load V as one contiguous block (matching reference IterateBmm2l0Split)
+            // Load V as one contiguous block
             Buffer<BufferType::L1> mm2B;
             if constexpr (HAS_ROPE) {
                 mm2B = l1VBuffers.Get();
@@ -1113,7 +1111,7 @@ public:
 
             if constexpr (s2BaseSize == 256) {
                 if (!(runInfo.isFirstS2Loop && runInfo.isLastS2Loop)) {
-                    PipeBarrier<PIPE_ALL>();  // NIGHT12w guard: D256 mxfp8 multi-s2Loop only (drain cure scoped, not blanket)
+                    PipeBarrier<PIPE_ALL>();  // D256 multi-s2Loop only: full-pipe drain before BMM2, scoped (not blanket)
                 }
             }
 
