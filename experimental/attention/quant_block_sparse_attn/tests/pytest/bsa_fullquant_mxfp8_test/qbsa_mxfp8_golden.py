@@ -663,8 +663,33 @@ def set_active_case(case):
     )
 
 
-CASE = _load_initial_case()
-set_active_case(CASE)
+# Keep module import independent from the default Python case file.  The CLI
+# parses --csv/--case_files only after module initialization, and TTK imports
+# this module before supplying its active case.  If the optional default
+# Python case file is absent, defer initialization until main() or the TTK
+# adapter calls set_active_case().
+CASE = None
+B = N_q = N_kv = D = None
+ACTUAL_SEQ_Q = ACTUAL_SEQ_KV = None
+BLOCK_SIZE = MASK_MODE = None
+FP8_DTYPE = SCALE_DTYPE = QUANT_GROUP_SIZE = None
+Q_INPUT_LAYOUT = KV_CACHE_LAYOUT = IS_CONTIGUOUS = None
+ENABLE_LSE = None
+DATA_RANGE_Q = DATA_RANGE_K = DATA_RANGE_V = None
+DEVICE_ID = SPARSE_BLOCK_SIZE = None
+QUANT_MODE_MXFP8 = None
+KEY_LAYOUT = SPARSE_INDICES_LAYOUT = OUT_LAYOUT = None
+BLOCK_NUM = None
+
+_default_case_path = os.path.join(CURRENT_DIR, f"{_DEFAULT_CASE_FILE}.py")
+if os.path.exists(_default_case_path):
+    CASE = _load_initial_case()
+    set_active_case(CASE)
+else:
+    logger.debug(
+        "Default Python case file is unavailable; active case initialization "
+        "is deferred to CLI arguments or set_active_case()."
+    )
 
 # ==============================================================================
 # 固定运行常量
