@@ -7,7 +7,8 @@
 - `qbsa_mxfp8_golden.py`：执行入口，负责生成输入、CPU golden、NPU 调用和精度对比。
 - `qbsa_mxfp8_test_cases.py`：默认 testcase 文件，保留少量典型 case，便于日常快速回归。
 - `qbsa_mxfp8_test_cases.csv`：批量 testcase 文件，每行对应一个 case。
-- `qbsa_mxfp8_test_cases_full.csv`：单 batch 全量因子组合表。
+- `qbsa_mxfp8_test_cases_STC.csv`：80 条 STC 正向用例，与 TTK STC 表参数一致。
+- `qbsa_mxfp8_test_cases_full.csv`：10000 条 Full 正向用例，与 TTK Full 表参数一致。
 - `qbsa_mxfp8_test_cases_batch_large.csv`：多 batch、ragged 和规模压力典型组合表。
 - `golden_cache.py`：输入、CPU 输出、NPU 输出缓存工具。
 - `result_compare_method.py`：精度比较工具。
@@ -119,21 +120,22 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
   --csv --case_files /path/to/cases_a.csv,/path/to/cases_b.csv
 ```
 
-Golden 同时支持直接读取 QBSA 的标准 TTK 12 列 E2E 表。这样 pytest 和 TTK 可以共用同一份
-`tensor_view_shapes`、`tensor_dtypes` 和 `attributes`，不再维护重复参数：
+Golden 同时支持直接读取 QBSA 的标准 TTK 12 列 E2E 表。pytest 目录已经生成对应的
+STC/Full CSV，可直接按文件名运行；两套框架使用相同的 `tensor_view_shapes`、
+`tensor_dtypes` 和 `attributes`：
 
 ```bash
 # 80 条 STC；--no_save 表示只输出本次执行结果，不写 golden_cache
 python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --csv \
-  --case_files ../../ttk/bsa_fullquant_mxfp8_test/qbsa_mxfp8_test_case_STC.csv \
+  --case_files qbsa_mxfp8_test_cases_STC.csv \
   --mode all \
   --no_save
 
 # 10000 条 Full
 python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --csv \
-  --case_files ../../ttk/bsa_fullquant_mxfp8_test/qbsa_mxfp8_test_case_full.csv \
+  --case_files qbsa_mxfp8_test_cases_full.csv \
   --mode all \
   --no_save
 ```
@@ -214,8 +216,10 @@ pytest 未使用的字段，也可以继续加载；实际运行字段仍需提�
 S1/S2 相等时，“S1 不对齐 128、S2 对齐 512”在数学上不可实现：一个数只要对齐 512，就必然对齐
 128。因此三个关系与四种对齐状态共有 11 个有效组合，而不是 12 个。
 
-`qbsa_mxfp8_test_cases_full.csv` 包含 2948 条单 batch 用例，补齐 `mask_mode=0/3` 与
-`return_softmax_lse=true/false` 的排列组合；物理页数统一由实际 KV 序列自动推导。
+`qbsa_mxfp8_test_cases_STC.csv` 包含 80 条 STC 正向用例，
+`qbsa_mxfp8_test_cases_full.csv` 包含 10000 条 Full 正向用例。两张表均覆盖
+`mask_mode=0/3`、`return_softmax_lse=true/false`、多 batch/ragged、有效长度为 0、
+稀疏模式、block table、`blocknum`、连续与非连续 K/V 等合法组合。
 
 `qbsa_mxfp8_test_cases_batch_large.csv` 包含 300 条全部启用的多 batch 典型与大规模用例：
 
