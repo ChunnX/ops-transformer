@@ -147,6 +147,12 @@ set_directory_properties(PROPERTIES
 )
 
 include(cmake/third_party/opbase.cmake)
+string(REPLACE "," ";" _ASCEND_OP_NAME_LIST "${ASCEND_OP_NAME}")
+if("${ASCEND_OP_NAME}" STREQUAL "all" OR "${ASCEND_OP_NAME}" STREQUAL "ALL"
+   OR "chunk_kda_fwd" IN_LIST _ASCEND_OP_NAME_LIST)
+  include(cmake/third_party/catlass.cmake)
+endif()
+unset(_ASCEND_OP_NAME_LIST)
 if(DOWNLOAD_OPS_TEST_KIT)
   include(cmake/third_party/ops_test_kit.cmake)
 endif()
