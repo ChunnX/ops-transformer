@@ -1745,14 +1745,32 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 {
     // Check cumsum is finished
     int32_t cumSumFlag = 0;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    // 同步槽按int32_t 1写入；A5仅紧凑搬运每个32B槽的首个值，Sum后继续按int32_t读取。
+    int32_t targetFlag = aivUsedCumSum_;
+#else
     int32_t targetFlag = aivUsedCumSum_ * UB_ALIGN_DATA_COUNT;
+#endif
     uint32_t cumSumFlagOffset = (CUMSUM_FLAG_OFFSET + aivId_ * aivUsedCumSum_ * UB_ALIGN) / sizeof(float);
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    DataCopyExtParams flagCopyParams{static_cast<uint16_t>(aivUsedCumSum_), sizeof(float),
+                                     UB_ALIGN - sizeof(float), 0U, 0U};
+    DataCopyPadExtParams<float> flagCopyPadParams{false, 0U, 0U, 0.0f};
+    uint32_t innerSumParams = Ceil(aivUsedCumSum_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
+    SumParams sumFlagParams{1, innerSumParams, aivUsedCumSum_};
+#else
     uint32_t innerSumParams = aivUsedCumSum_ * UB_ALIGN / sizeof(float);
     SumParams sumFlagParams{1, innerSumParams, aivUsedCumSum_ * UB_ALIGN_DATA_COUNT};
+#endif
     LocalTensor<float> statusSumOutTensor = scalarBuf_.Get<float>();
 
     while (true) {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+        DataCopyPad<float, PaddingMode::Compact>(statusFp32Tensor_, selfRankWinInGMTensor_[cumSumFlagOffset],
+                                                 flagCopyParams, flagCopyPadParams);
+#else
         DataCopy(statusFp32Tensor_, selfRankWinInGMTensor_[cumSumFlagOffset], aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
+#endif
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Sum(statusSumOutTensor, statusFp32Tensor_, sumFlagParams);
         SyncFunc<AscendC::HardEvent::V_S>();
@@ -2057,10 +2075,16 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     tpipe_->Reset();
     TBuf<> cumSumBuf, statusWaitBuf, statusCleanBuf;
     uint32_t rscvNumAlign = Ceil(rscvStatusNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    uint32_t statusWaitBufSize = Ceil(aivUsedCumSum_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
+#else
+    uint32_t statusWaitBufSize = aivUsedCumSum_ * UB_ALIGN;
+#endif
+    uint32_t statusCleanBufSize = aivUsedCumSum_ * UB_ALIGN;
     tpipe_->InitBuffer(scalarBuf_, UB_ALIGN);
-    tpipe_->InitBuffer(statusWaitBuf, aivUsedCumSum_ * UB_ALIGN);
+    tpipe_->InitBuffer(statusWaitBuf, statusWaitBufSize);
     tpipe_->InitBuffer(cumSumBuf, rscvNumAlign);
-    tpipe_->InitBuffer(statusCleanBuf, aivUsedCumSum_ * UB_ALIGN);
+    tpipe_->InitBuffer(statusCleanBuf, statusCleanBufSize);
     statusFp32Tensor_ = statusWaitBuf.Get<float>();
     statusCleanFp32Tensor_ = statusCleanBuf.Get<float>();
     sendCntTensor_ = cumSumBuf.Get<int32_t>();
@@ -2077,8 +2101,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     tpipe_->InitBuffer(expertMapBuf, expInfoSize);
     tpipe_->InitBuffer(expertFinishBuf, expInfoSize);
     tpipe_->InitBuffer(expertLeftBuf, expInfoSize);
-    tBufRealSize_ = FULL_MESH_MAX_UB_SIZE - (UB_ALIGN + rscvNumAlign + 2 * aivUsedCumSum_ * UB_ALIGN) -
-                    (expInfoSize * 3); // 3为expInfoSize大小buffer申请个数
+    tBufRealSize_ = FULL_MESH_MAX_UB_SIZE -
+                    (UB_ALIGN + rscvNumAlign + statusWaitBufSize + statusCleanBufSize) -
+                    (expInfoSize * 3);       // 3为expInfoSize大小buffer申请个数
     tpipe_->InitBuffer(tBuf, tBufRealSize_); // 其余buffer空间统一申请
     expertMapTensor_ = expertMapBuf.Get<uint32_t>();
     expertFinishNumTensor_ = expertFinishBuf.Get<uint32_t>();
