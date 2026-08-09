@@ -255,16 +255,46 @@ def _cpu_mxfp8_golden(
         else:
             q_fallback = int(query.shape[0]) // batch
         kv_fallback = int(sparse_indices.shape[-1]) * int(sparse_kv_block_size)
-        q_lengths = (
-            [int(item) for item in actual_seq_q]
-            if actual_seq_q is not None
-            else [q_fallback] * batch
-        )
+        cu_q_value = kwargs.get("cu_seqlens_q_value")
+        if cu_q_value is not None:
+            cu_q_value = [int(item) for item in cu_q_value]
+            if len(cu_q_value) != batch + 1 or cu_q_value[0] != 0:
+                raise ValueError(
+                    "cu_seqlens_q_value must contain B+1 values starting at 0"
+                )
+            q_lengths = [
+                end - start
+                for start, end in zip(cu_q_value, cu_q_value[1:])
+            ]
+        else:
+            q_lengths = (
+                [int(item) for item in actual_seq_q]
+                if actual_seq_q is not None
+                else [q_fallback] * batch
+            )
+            cu_q_value = [0] + [
+                sum(q_lengths[: index + 1]) for index in range(batch)
+            ]
+        used_kv_value = kwargs.get("seqused_kv_value")
         kv_lengths = (
-            [int(item) for item in actual_seq_kv]
-            if actual_seq_kv is not None
-            else [kv_fallback] * batch
+            [int(item) for item in used_kv_value]
+            if used_kv_value is not None
+            else (
+                [int(item) for item in actual_seq_kv]
+                if actual_seq_kv is not None
+                else [kv_fallback] * batch
+            )
         )
+        if kwargs.get("cu_seqlens_kv_value", []) not in (None, []):
+            raise ValueError(
+                "cu_seqlens_kv_value must be empty for MXFP8 normal cases"
+            )
+        if kwargs.get("seqused_q_value", []) not in (None, []):
+            raise ValueError("seqused_q_value must be empty for MXFP8 normal cases")
+        if any(length < 0 for length in q_lengths + kv_lengths):
+            raise ValueError("Q/KV effective lengths must be non-negative")
+        if sum(q_lengths) <= 0 or sum(kv_lengths) <= 0:
+            raise ValueError("total Q/KV effective lengths must be positive")
         head_axis = 0 if layout_q == "NTD" else 1
         case = {
             "B": batch,
@@ -275,6 +305,10 @@ def _cpu_mxfp8_golden(
             "S2": max(kv_lengths),
             "actual_seq_q": q_lengths,
             "actual_seq_kv": kv_lengths,
+            "cu_seqlens_q_value": cu_q_value,
+            "cu_seqlens_kv_value": [],
+            "seqused_q_value": [],
+            "seqused_kv_value": kv_lengths,
             "s2_base_size": int(kwargs.get("s2_base_size", 512)),
             "blocknum": (
                 None
@@ -313,7 +347,7 @@ def _cpu_mxfp8_golden(
             "device_id": 0,
             "sparse_q_block_size": int(sparse_q_block_size),
             "sparse_kv_block_size": int(sparse_kv_block_size),
-            "sparse_count": int(kwargs.get("sparse_count", 0)),
+            "sparse_count": kwargs.get("sparse_count", 0),
             "sparse_pattern": str(kwargs.get("sparse_pattern", "sequential")),
             "block_table_pattern": block_table_pattern,
             "quant_mode": 2,

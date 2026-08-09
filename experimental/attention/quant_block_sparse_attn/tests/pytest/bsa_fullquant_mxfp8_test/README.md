@@ -47,6 +47,19 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 - `npu`：调用 NPU 算子
 - `compare`：比较 CPU/NPU 输出
 
+如果只需要本次执行结果、不希望向 `golden_cache/` 写入 input、CPU Golden 或 NPU output，增加
+`--no_save`：
+
+```bash
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --mode all \
+  --case_name STC_B1_BS128_MIN_PAGE_EQ_MASK3 \
+  --no_save
+```
+
+`--mode all --no_save` 会在内存中完成数据生成、CPU Golden、NPU 调用和精度比较。若执行模式不包含
+`gen`、`cpu`，脚本仍会按原有语义从缓存读取所需输入或 CPU Golden，但不会写入新的缓存文件。
+
 每个 case 开始时会打印 `CASE START [idx/total]` 标志；一次运行多个 case 时，脚本末尾会输出
 `QBSA MXFP8 CASE SUMMARY` 汇总表。汇总表各列含义：
 
@@ -105,6 +118,46 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --csv --case_files /path/to/cases_a.csv,/path/to/cases_b.csv
 ```
+
+Golden 同时支持直接读取 QBSA 的标准 TTK 12 列 E2E 表。这样 pytest 和 TTK 可以共用同一份
+`tensor_view_shapes`、`tensor_dtypes` 和 `attributes`，不再维护重复参数：
+
+```bash
+# 80 条 STC；--no_save 表示只输出本次执行结果，不写 golden_cache
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --csv \
+  --case_files ../../ttk/bsa_fullquant_mxfp8_test/qbsa_mxfp8_test_case_STC.csv \
+  --mode all \
+  --no_save
+
+# 10000 条 Full
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --csv \
+  --case_files ../../ttk/bsa_fullquant_mxfp8_test/qbsa_mxfp8_test_case_full.csv \
+  --mode all \
+  --no_save
+```
+
+标准表头为：
+
+```text
+testcase_name,api_name,tensor_view_shapes,tensor_dtypes,tensor_formats,
+attributes,output_tensor_indexes,golden_api,input_data_ranges,
+precision_tolerances,absolute_precision,uncontiguous_dim
+```
+
+标准 TTK 表中的 `attributes` 按“算子原生属性 → 输入 Tensor 值 → 用例构造变量”排列。
+其中 `cu_seqlens_q_value` 是 Q 有效长度的累加和；`seqused_kv_value` 是逐 batch KV 有效长度；
+正常 MXFP8 用例的 `cu_seqlens_kv_value` 和 `seqused_q_value` 必须为空列表，执行时分别传入
+`cu_seqlens_kv=None` 和 `seqused_q=None`。`B` 必须大于 0；单个 batch 的有效长度可以为 0，
+但整条用例的 Q/KV 总长度必须大于 0。
+
+`sparse_count` 可使用正整数、百分比字符串、逐 batch list、`random`、`empty_random` 和
+`empty`。正整数及 list 元素统一取 `min(配置数量, 当前有效块数)`；百分比按当前有效块数向上取整；
+`empty_random` 用于部分空稀疏，`empty` 用于全空稀疏。
+
+`uncontiguous_dim=-1` 表示连续 K/V，`uncontiguous_dim=1` 表示使用合法非连续 K/V PA view。
+原有以 `name,B,N1,...` 开头的 pytest 宽表继续兼容。
 
 执行 300 条多 batch 与规模压力用例：
 

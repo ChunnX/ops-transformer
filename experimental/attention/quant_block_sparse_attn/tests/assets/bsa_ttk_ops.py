@@ -118,6 +118,36 @@ def _pack_mxfp8_kv_views(key, value):
     return key_view, value_view
 
 
+def _resolve_sparse_count(sparse_count, batch_idx, available_count, rng, ordinal):
+    if available_count <= 0:
+        return 0
+    value = sparse_count
+    if isinstance(value, (list, tuple)):
+        if batch_idx >= len(value):
+            raise ValueError(
+                "sparse_count list length must equal the runtime batch size"
+            )
+        value = value[batch_idx]
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "empty":
+            return 0
+        if normalized == "random":
+            return rng.randint(1, available_count)
+        if normalized == "empty_random":
+            return 0 if ordinal % 2 == 0 else rng.randint(1, available_count)
+        if normalized.endswith("%"):
+            percent = float(normalized[:-1])
+            if not 0 < percent <= 100:
+                raise ValueError("sparse_count percentage must be in (0, 100]")
+            return min(
+                available_count,
+                max(1, math.ceil(available_count * percent / 100)),
+            )
+        value = int(normalized)
+    return min(available_count, max(0, int(value)))
+
+
 def _auto_generate_params(
     query,
     key,
@@ -140,6 +170,10 @@ def _auto_generate_params(
     sparse_pattern="sequential",
     mask_mode=3,
     blocknum=None,
+    cu_seqlens_q_value=None,
+    cu_seqlens_kv_value=None,
+    seqused_q_value=None,
+    seqused_kv_value=None,
 ):
     """Auto-generate missing seqused/cu_seqlens/block_table from available info."""
     B = int(sparse_indices.shape[0]) if sparse_indices is not None else 1
@@ -160,29 +194,44 @@ def _auto_generate_params(
             raise ValueError(f"{name} must contain B={B} values, got {len(lengths)}")
         return lengths
 
-    q_lengths = normalize_lengths(actual_seq_q, q_fallback, "actual_seq_q")
-    kv_lengths = normalize_lengths(actual_seq_kv, kv_fallback, "actual_seq_kv")
+    if cu_seqlens_q_value is not None:
+        cu_q_values = [int(value) for value in cu_seqlens_q_value]
+        if len(cu_q_values) != B + 1 or cu_q_values[0] != 0:
+            raise ValueError("cu_seqlens_q_value must contain B+1 values starting at 0")
+        q_lengths = [
+            end - start for start, end in zip(cu_q_values, cu_q_values[1:])
+        ]
+    else:
+        q_lengths = normalize_lengths(actual_seq_q, q_fallback, "actual_seq_q")
+        cu_q_values = [0] + [sum(q_lengths[: index + 1]) for index in range(B)]
+    kv_lengths = (
+        normalize_lengths(seqused_kv_value, kv_fallback, "seqused_kv_value")
+        if seqused_kv_value is not None
+        else normalize_lengths(actual_seq_kv, kv_fallback, "actual_seq_kv")
+    )
+    if cu_seqlens_kv_value not in (None, []):
+        raise ValueError("cu_seqlens_kv_value must be empty for MXFP8 normal cases")
+    if seqused_q_value not in (None, []):
+        raise ValueError("seqused_q_value must be empty for MXFP8 normal cases")
+    if any(length < 0 for length in q_lengths + kv_lengths):
+        raise ValueError("Q/KV effective lengths must be non-negative")
+    if sum(q_lengths) <= 0 or sum(kv_lengths) <= 0:
+        raise ValueError("total Q/KV effective lengths must be positive")
+    if isinstance(sparse_count, (list, tuple)) and len(sparse_count) != B:
+        raise ValueError(f"sparse_count list must contain B={B} values")
 
     if seqused_q is None:
-        seqused_q = torch.tensor(
-            [] if empty_actual_seq else q_lengths,
-            dtype=torch.int32,
-            device=query.device,
-        )
+        seqused_q = None
     if seqused_kv is None:
         seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32, device=query.device)
     if cu_seqlens_q is None:
         cu_seqlens_q = torch.tensor(
-            [0] + [sum(q_lengths[: index + 1]) for index in range(B)],
+            cu_q_values,
             dtype=torch.int32,
             device=query.device,
         )
     if cu_seqlens_kv is None:
-        cu_seqlens_kv = torch.tensor(
-            [0] + [sum(kv_lengths[: index + 1]) for index in range(B)],
-            dtype=torch.int32,
-            device=query.device,
-        )
+        cu_seqlens_kv = None
     if block_table is None:
         block_counts = [math.ceil(length / page_block_size) for length in kv_lengths]
         max_block_count = max(block_counts, default=0)
@@ -247,30 +296,38 @@ def _auto_generate_params(
                 else:
                     raise ValueError(f"unsupported mask_mode: {mask_mode}")
 
-                for _ in range(num_heads_q):
+                for head_idx in range(num_heads_q):
                     if q_block_idx >= q_block_count:
                         selected = []
-                    elif sparse_count <= 0 or not allowed or sparse_pattern == "empty":
+                    elif not allowed or sparse_pattern == "empty":
                         selected = []
-                    elif sparse_pattern in ("sequential", "dense", "causal"):
-                        selected = allowed[: min(int(sparse_count), len(allowed))]
-                    elif sparse_pattern == "reverse":
-                        count = min(int(sparse_count), len(allowed))
-                        selected = list(reversed(allowed[-count:]))
-                    elif sparse_pattern == "tail":
-                        count = min(int(sparse_count), len(allowed))
-                        selected = allowed[: max(0, count - 1)]
-                        if allowed[-1] not in selected:
-                            selected.append(allowed[-1])
-                        selected = selected[: int(sparse_count)]
-                    elif sparse_pattern == "random":
-                        selected = allowed[:]
-                        rng.shuffle(selected)
-                        selected = selected[: min(int(sparse_count), len(selected))]
                     else:
-                        raise ValueError(
-                            f"unsupported sparse_pattern: {sparse_pattern}"
+                        ordinal = (
+                            (batch_idx * num_heads_q + head_idx) * q_block_max
+                            + q_block_idx
                         )
+                        count = _resolve_sparse_count(
+                            sparse_count, batch_idx, len(allowed), rng, ordinal
+                        )
+                        if count <= 0:
+                            selected = []
+                        elif sparse_pattern in ("sequential", "dense", "causal"):
+                            selected = allowed[:count]
+                        elif sparse_pattern == "reverse":
+                            selected = list(reversed(allowed[-count:]))
+                        elif sparse_pattern == "tail":
+                            selected = allowed[: max(0, count - 1)]
+                            if allowed[-1] not in selected:
+                                selected.append(allowed[-1])
+                            selected = selected[:count]
+                        elif sparse_pattern == "random":
+                            selected = allowed[:]
+                            rng.shuffle(selected)
+                            selected = selected[:count]
+                        else:
+                            raise ValueError(
+                                f"unsupported sparse_pattern: {sparse_pattern}"
+                            )
                     needed_logical_ids[batch_idx].update(
                         block_id // sparse_blocks_per_page for block_id in selected
                     )
@@ -424,9 +481,13 @@ class QuantBlockSparseAttnGraph(torch.nn.Module):
         return_softmax_lse: bool = False,
         actual_seq_q: Optional[List[int]] = None,
         actual_seq_kv: Optional[List[int]] = None,
+        cu_seqlens_q_value: Optional[List[int]] = None,
+        cu_seqlens_kv_value: Optional[List[int]] = None,
+        seqused_q_value: Optional[List[int]] = None,
+        seqused_kv_value: Optional[List[int]] = None,
         empty_actual_seq: bool = False,
         block_table_pattern: str = "sequential",
-        sparse_count: int = 0,
+        sparse_count=0,
         sparse_pattern: str = "sequential",
         blocknum: Optional[int] = None,
         is_contiguous: bool = True,
@@ -459,6 +520,10 @@ class QuantBlockSparseAttnGraph(torch.nn.Module):
                     sparse_pattern,
                     mask_mode,
                     blocknum,
+                    cu_seqlens_q_value=cu_seqlens_q_value,
+                    cu_seqlens_kv_value=cu_seqlens_kv_value,
+                    seqused_q_value=seqused_q_value,
+                    seqused_kv_value=seqused_kv_value,
                 )
             )
 
@@ -592,9 +657,13 @@ def quant_block_sparse_attn(
     return_softmax_lse: bool = False,
     actual_seq_q: Optional[List[int]] = None,
     actual_seq_kv: Optional[List[int]] = None,
+    cu_seqlens_q_value: Optional[List[int]] = None,
+    cu_seqlens_kv_value: Optional[List[int]] = None,
+    seqused_q_value: Optional[List[int]] = None,
+    seqused_kv_value: Optional[List[int]] = None,
     empty_actual_seq: bool = False,
     block_table_pattern: str = "sequential",
-    sparse_count: int = 0,
+    sparse_count=0,
     sparse_pattern: str = "sequential",
     blocknum: Optional[int] = None,
     is_contiguous: bool = True,
@@ -632,6 +701,10 @@ def quant_block_sparse_attn(
                 sparse_pattern,
                 mask_mode,
                 blocknum,
+                cu_seqlens_q_value=cu_seqlens_q_value,
+                cu_seqlens_kv_value=cu_seqlens_kv_value,
+                seqused_q_value=seqused_q_value,
+                seqused_kv_value=seqused_kv_value,
             )
         )
 

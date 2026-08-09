@@ -134,6 +134,10 @@ def _build_mxfp8_case(
     return_softmax_lse,
     actual_seq_q,
     actual_seq_kv,
+    cu_seqlens_q_value,
+    cu_seqlens_kv_value,
+    seqused_q_value,
+    seqused_kv_value,
     empty_actual_seq,
     sparse_count,
     sparse_pattern,
@@ -146,6 +150,7 @@ def _build_mxfp8_case(
     data_range_q,
     data_range_k,
     data_range_v,
+    is_contiguous,
 ):
     batch = int(sparse_indices.shape[0])
     if layout_q == "BSND":
@@ -155,21 +160,39 @@ def _build_mxfp8_case(
     else:
         q_fallback = int(query.shape[0]) // batch
     kv_fallback = int(sparse_indices.shape[-1]) * int(sparse_kv_block_size)
-    q_lengths = (
-        [int(value) for value in actual_seq_q]
-        if actual_seq_q is not None
-        else [q_fallback] * batch
-    )
-    kv_lengths = (
-        [int(value) for value in actual_seq_kv]
-        if actual_seq_kv is not None
-        else [kv_fallback] * batch
-    )
+    if cu_seqlens_q_value is not None:
+        cu_q = [int(value) for value in cu_seqlens_q_value]
+        if len(cu_q) != batch + 1 or cu_q[0] != 0:
+            raise ValueError("cu_seqlens_q_value must contain B+1 values starting at 0")
+        q_lengths = [end - start for start, end in zip(cu_q, cu_q[1:])]
+    else:
+        q_lengths = (
+            [int(value) for value in actual_seq_q]
+            if actual_seq_q is not None
+            else [q_fallback] * batch
+        )
+        cu_q = [0] + [sum(q_lengths[: index + 1]) for index in range(batch)]
+    if seqused_kv_value is not None:
+        kv_lengths = [int(value) for value in seqused_kv_value]
+    else:
+        kv_lengths = (
+            [int(value) for value in actual_seq_kv]
+            if actual_seq_kv is not None
+            else [kv_fallback] * batch
+        )
+    if cu_seqlens_kv_value not in (None, []):
+        raise ValueError("cu_seqlens_kv_value must be empty for MXFP8 normal cases")
+    if seqused_q_value not in (None, []):
+        raise ValueError("seqused_q_value must be empty for MXFP8 normal cases")
     if len(q_lengths) != batch or len(kv_lengths) != batch:
         raise ValueError(
             f"actual sequence lengths must match B={batch}, got "
             f"q={len(q_lengths)}, kv={len(kv_lengths)}"
         )
+    if any(length < 0 for length in q_lengths + kv_lengths):
+        raise ValueError("Q/KV effective lengths must be non-negative")
+    if sum(q_lengths) <= 0 or sum(kv_lengths) <= 0:
+        raise ValueError("total Q/KV effective lengths must be positive")
     head_axis = 0 if layout_q == "NTD" else 1
     normalized_blocknum = None if blocknum is None else int(blocknum)
     return {
@@ -181,6 +204,10 @@ def _build_mxfp8_case(
         "S2": max(kv_lengths, default=kv_fallback),
         "actual_seq_q": q_lengths,
         "actual_seq_kv": kv_lengths,
+        "cu_seqlens_q_value": cu_q,
+        "cu_seqlens_kv_value": [],
+        "seqused_q_value": [],
+        "seqused_kv_value": kv_lengths,
         "s2_base_size": int(s2_base_size),
         "blocknum": normalized_blocknum,
         "block_size": int(key.shape[2]),
@@ -193,7 +220,7 @@ def _build_mxfp8_case(
         "layout_sparse_indices": layout_sparse_indices,
         "layout_out": layout_out,
         "kv_cache_layout": "BnNBsD",
-        "is_contiguous": bool(kwargs.get("is_contiguous", True)),
+        "is_contiguous": bool(is_contiguous),
         "p_scale_value": (
             None if p_scale_value is None else float(p_scale_value)
         ),
@@ -207,7 +234,7 @@ def _build_mxfp8_case(
         "device_id": 0,
         "sparse_q_block_size": int(sparse_q_block_size),
         "sparse_kv_block_size": int(sparse_kv_block_size),
-        "sparse_count": int(sparse_count),
+        "sparse_count": sparse_count,
         "sparse_pattern": sparse_pattern,
         "block_table_pattern": block_table_pattern,
         "quant_mode": 2,
@@ -237,6 +264,10 @@ def _customize_inputs_mxfp8(
     return_softmax_lse=False,
     actual_seq_q=None,
     actual_seq_kv=None,
+    cu_seqlens_q_value=None,
+    cu_seqlens_kv_value=None,
+    seqused_q_value=None,
+    seqused_kv_value=None,
     empty_actual_seq=False,
     sparse_count=0,
     sparse_pattern="sequential",
@@ -249,6 +280,7 @@ def _customize_inputs_mxfp8(
     data_range_q=1.0,
     data_range_k=1.0,
     data_range_v=1.0,
+    is_contiguous=True,
     testcase_name=None,
     **kwargs,
 ):
@@ -268,6 +300,10 @@ def _customize_inputs_mxfp8(
         return_softmax_lse=return_softmax_lse,
         actual_seq_q=actual_seq_q,
         actual_seq_kv=actual_seq_kv,
+        cu_seqlens_q_value=cu_seqlens_q_value,
+        cu_seqlens_kv_value=cu_seqlens_kv_value,
+        seqused_q_value=seqused_q_value,
+        seqused_kv_value=seqused_kv_value,
         empty_actual_seq=empty_actual_seq,
         sparse_count=sparse_count,
         sparse_pattern=sparse_pattern,
@@ -280,6 +316,7 @@ def _customize_inputs_mxfp8(
         data_range_q=data_range_q,
         data_range_k=data_range_k,
         data_range_v=data_range_v,
+        is_contiguous=is_contiguous,
     )
     module.set_active_case(case)
     data = module._generate_reference_style_mxfp8_inputs()

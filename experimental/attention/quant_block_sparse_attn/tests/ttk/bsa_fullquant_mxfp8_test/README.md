@@ -28,6 +28,50 @@ python3 -m ttk e2e -i "${QBSA_MXFP8_CASES}" --plugin "${QBSA_ASSETS}" --validate
 python3 -m ttk list -i "${QBSA_MXFP8_CASES}"
 ```
 
+本目录的 `qbsa_mxfp8_cases.csv`、`qbsa_mxfp8_test_case_STC.csv` 和
+`qbsa_mxfp8_test_case_full.csv` 统一使用以下 12 列 E2E 表头：
+
+```text
+testcase_name,api_name,tensor_view_shapes,tensor_dtypes,tensor_formats,
+attributes,output_tensor_indexes,golden_api,input_data_ranges,
+precision_tolerances,absolute_precision,uncontiguous_dim
+```
+
+`attributes` 中的键固定按以下三组排列，便于同时核对算子接口和测试构造逻辑：
+
+1. 算子原生属性：`softmax_scale`、`sparse_q_block_size`、
+   `sparse_kv_block_size`、`layout_kv`、`layout_q`、
+   `layout_sparse_indices`、`layout_out`、`quant_mode`、`mask_mode`、
+   `return_softmax_lse`；顺序与 QBSA 接口一致。
+2. 转换为输入 Tensor 的值：`p_scale_value`、`cu_seqlens_q_value`、
+   `cu_seqlens_kv_value`、`seqused_q_value`、`seqused_kv_value`。
+3. 构造用例的辅助变量：`is_contiguous`、`block_table_pattern`、
+   `sparse_count`、`sparse_pattern`、`seed`、`quant_group_size`、
+   `s2_base_size`、可选 `blocknum` 以及 Q/K/V 数据范围。
+
+MXFP8 正常用例的序列输入约定如下：
+
+- `cu_seqlens_q_value` 保存 Q 各 batch 有效长度的累加和，长度必须为 `B+1`，首元素为 0；
+- `cu_seqlens_kv_value=[]`，执行时转换为 `cu_seqlens_kv=None`；
+- `seqused_q_value=[]`，执行时转换为 `seqused_q=None`；
+- `seqused_kv_value` 保存每个 batch 的 KV 有效长度，长度必须为 `B`；
+- `B` 必须大于 0；单个 batch 的 Q/KV 有效长度允许为 0，但整条用例的 Q/KV 总长度必须大于 0。
+
+`sparse_count` 支持六种形式：
+
+| 写法 | 含义 |
+|---|---|
+| `"random"` | 在当前有效稀疏块中随机选择 1 到有效块总数个 |
+| `10` | 选择 `min(10, 当前有效块总数)` 个 |
+| `"10%"` | 按当前有效块总数的 10% 选择，向上取整且至少 1 个 |
+| `[n0, n1, ...]` | 按 batch 指定数量；list 长度必须等于 `B`，每项仍取有效块数上限 |
+| `"empty_random"` | 交替生成 0 块和随机非 0 块，用于部分空稀疏 |
+| `"empty"` | 所有位置均不选择稀疏块，用于全空稀疏 |
+
+`tensor_view_shapes`、`tensor_dtypes`、`tensor_formats` 按 wrapper 的 10 个输入位置一一对应；
+`uncontiguous_dim=-1` 表示连续 K/V，`uncontiguous_dim=1` 表示合法非连续 K/V PA view。
+pytest Golden 也能直接读取这三张表，保证两套执行框架使用相同参数。
+
 先执行一条小用例冒烟：
 
 ```bash
@@ -339,4 +383,6 @@ python3 experimental/attention/quant_block_sparse_attn/tests/ttk/bsa_fullquant_m
 python3 experimental/attention/quant_block_sparse_attn/tests/ttk/bsa_fullquant_mxfp8_test/generate_ttk_cases.py --check
 ```
 
-生成器只读取 `qbsa_mxfp8_test_cases.py`，并只输出其中 `enable=True` 的用例；当前共 71 条。生成结果保留 ragged `actual_seq_q/actual_seq_kv`、page block size、稀疏模式、数据范围、随机种子和 LSE 开关。
+生成器只读取 `qbsa_mxfp8_test_cases.py`，并只输出其中 `enable=True` 的用例；当前共 71 条。生成结果把 pytest 的 Q/KV 有效长度转换为 `cu_seqlens_q_value` 和 `seqused_kv_value`，并保留 page block size、稀疏模式、数据范围、随机种子和 LSE 开关。
+
+`qbsa_mxfp8_factor_coverage_report.xlsx` 汇总 STC/Full 的单因子、关键交互、有效长度为 0、空稀疏预算和硬约束覆盖情况。

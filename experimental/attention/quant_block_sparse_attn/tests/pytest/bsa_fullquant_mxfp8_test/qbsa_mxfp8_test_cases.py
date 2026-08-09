@@ -3799,3 +3799,22 @@ TestCases = [
         "alignment": "s1_aligned_s2_aligned",
     },
 ]
+
+
+def _prefix_sum(lengths):
+    total = 0
+    result = [0]
+    for length in lengths:
+        total += int(length)
+        result.append(total)
+    return result
+
+
+# Keep the pytest source cases aligned with the metadata values used by the
+# TTK/Eager/ACLGraph adapters.  MXFP8 normal cases pass cu_seqlens_q and
+# seqused_kv, while cu_seqlens_kv and seqused_q must remain empty/None.
+for _case in TestCases:
+    _case["cu_seqlens_q_value"] = _prefix_sum(_case["actual_seq_q"])
+    _case["cu_seqlens_kv_value"] = []
+    _case["seqused_q_value"] = []
+    _case["seqused_kv_value"] = list(_case["actual_seq_kv"])

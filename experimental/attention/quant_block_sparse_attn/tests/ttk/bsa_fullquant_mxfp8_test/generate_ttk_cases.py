@@ -31,12 +31,51 @@ FIELDNAMES = (
     "api_name",
     "tensor_view_shapes",
     "tensor_dtypes",
-    "input_data_ranges",
+    "tensor_formats",
     "attributes",
-    "is_enabled",
-    "remark",
-    "priority",
+    "output_tensor_indexes",
+    "golden_api",
+    "input_data_ranges",
+    "precision_tolerances",
+    "absolute_precision",
+    "uncontiguous_dim",
 )
+
+PRECISION_TOLERANCES = ((0.0078125, 0.0001), (0.005, 0.000025))
+ABSOLUTE_PRECISION = 1e-8
+
+
+def prefix_sum(lengths):
+    total = 0
+    result = [0]
+    for length in lengths:
+        total += int(length)
+        result.append(total)
+    return result
+
+
+def validate_sparse_count(name, sparse_count, batch):
+    if isinstance(sparse_count, (list, tuple)):
+        if len(sparse_count) != batch:
+            raise ValueError(
+                f"{name}: sparse_count list length must equal B={batch}"
+            )
+        if any(int(value) < 0 for value in sparse_count):
+            raise ValueError(f"{name}: sparse_count list values must be >= 0")
+        return
+    if isinstance(sparse_count, str):
+        value = sparse_count.strip().lower()
+        if value in {"random", "empty_random", "empty"}:
+            return
+        if value.endswith("%"):
+            percent = float(value[:-1])
+            if 0 < percent <= 100:
+                return
+            raise ValueError(
+                f"{name}: sparse_count percentage must be in (0, 100]"
+            )
+    if int(sparse_count) < 0:
+        raise ValueError(f"{name}: sparse_count integer must be >= 0")
 
 def load_python_cases():
     namespace = runpy.run_path(str(PYTHON_CASES))
@@ -88,6 +127,13 @@ def normalize_data_range(case, field):
     return radius
 
 
+def ttk_data_range(value):
+    if isinstance(value, list):
+        return tuple(value)
+    radius = float(value)
+    return (-radius, radius)
+
+
 def validate_case(case, q_lengths, kv_lengths):
     name = case["name"]
     if int(case["quant_mode"]) != 2:
@@ -107,6 +153,7 @@ def validate_case(case, q_lengths, kv_lengths):
     )
     if sum(q_lengths) <= 0 or sum(kv_lengths) <= 0:
         raise ValueError(f"{name}: total Q/KV sequence length must be positive")
+    validate_sparse_count(name, case["sparse_count"], int(case["B"]))
     blocknum = case.get("blocknum")
     if blocknum is not None and int(blocknum) <= 0:
         warnings.warn(
@@ -178,7 +225,12 @@ def case_to_row(case, source):
     if softmax_scale is None:
         softmax_scale = 1.0 / math.sqrt(head_dim)
 
+    # Keep CSV attributes in three stable groups:
+    # 1) native operator attributes, in API order;
+    # 2) values materialized as optional input tensors;
+    # 3) test-data/case construction controls.
     attributes = {
+        # Native operator attributes.
         "softmax_scale": float(softmax_scale),
         "sparse_q_block_size": sparse_q,
         "sparse_kv_block_size": sparse_kv,
@@ -189,36 +241,69 @@ def case_to_row(case, source):
         "quant_mode": 2,
         "mask_mode": int(case["mask_mode"]),
         "return_softmax_lse": bool(case["return_softmax_lse"]),
-        "actual_seq_q": q_lengths,
-        "actual_seq_kv": kv_lengths,
-        "empty_actual_seq": bool(case.get("empty_actual_seq", False)),
-        "is_contiguous": bool(case.get("is_contiguous", True)),
-        "block_table_pattern": case["block_table_pattern"],
-        "seed": int(case["seed"]),
-        "sparse_count": int(case["sparse_count"]),
-        "sparse_pattern": case["sparse_pattern"],
+        # Optional input-tensor values, in API input order.
         "p_scale_value": (
             None if p_scale_value is None else float(p_scale_value)
         ),
+        "cu_seqlens_q_value": prefix_sum(q_lengths),
+        "cu_seqlens_kv_value": [],
+        "seqused_q_value": [],
+        "seqused_kv_value": kv_lengths,
+        # Test-data and case-construction controls.
+        "is_contiguous": bool(case.get("is_contiguous", True)),
+        "block_table_pattern": case["block_table_pattern"],
+        "sparse_count": case["sparse_count"],
+        "sparse_pattern": case["sparse_pattern"],
+        "seed": int(case["seed"]),
         "quant_group_size": int(case["quant_group_size"]),
         "s2_base_size": int(case["s2_base_size"]),
         "data_range_q": normalize_data_range(case, "data_range_q"),
         "data_range_k": normalize_data_range(case, "data_range_k"),
         "data_range_v": normalize_data_range(case, "data_range_v"),
     }
+    # blocknum is a construction control; insert it before the data ranges while
+    # preserving the three-group layout above.
     if blocknum is not None:
+        range_items = {
+            key: attributes.pop(key)
+            for key in ("data_range_q", "data_range_k", "data_range_v")
+        }
         attributes["blocknum"] = int(blocknum)
-    group = case.get("case_group") or "ungrouped"
+        attributes.update(range_items)
+    tensor_formats = tuple(
+        None if shape is None else "ND" for shape in tensor_shapes
+    )
+    input_data_ranges = (
+        ttk_data_range(attributes["data_range_q"]),
+        ttk_data_range(attributes["data_range_k"]),
+        ttk_data_range(attributes["data_range_v"]),
+        (None, None),
+        (None, None),
+        (None, None),
+        (None, None),
+        (None, None),
+        (None, None),
+        (
+            (None, None)
+            if p_scale_value is None
+            else (float(p_scale_value), float(p_scale_value))
+        ),
+    )
     return {
         "testcase_name": case["name"],
         "api_name": "bsa_ttk_ops.quant_block_sparse_attn",
         "tensor_view_shapes": repr(tensor_shapes),
         "tensor_dtypes": repr(tensor_dtypes),
-        "input_data_ranges": "",
+        "tensor_formats": repr(tensor_formats),
         "attributes": repr(attributes),
-        "is_enabled": str(bool(case.get("enable", True))),
-        "remark": f"source={source}; case_group={group}",
-        "priority": "0",
+        "output_tensor_indexes": "()",
+        "golden_api": "",
+        "input_data_ranges": repr(input_data_ranges),
+        "precision_tolerances": repr(PRECISION_TOLERANCES),
+        "absolute_precision": repr(ABSOLUTE_PRECISION),
+        "uncontiguous_dim": (
+            "-1" if bool(case.get("is_contiguous", True)) else "1"
+        ),
     }
 
 
