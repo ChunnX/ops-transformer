@@ -135,6 +135,10 @@ def _build_mxfp8_case(
     actual_seq_q,
     actual_seq_kv,
     empty_actual_seq,
+    cu_seqlens_q_value,
+    cu_seqlens_kv_value,
+    seqused_q_value,
+    seqused_kv_value,
     sparse_count,
     sparse_pattern,
     block_table_pattern,
@@ -148,28 +152,58 @@ def _build_mxfp8_case(
     data_range_v,
 ):
     batch = int(sparse_indices.shape[0])
-    if layout_q == "BSND":
-        q_fallback = int(query.shape[1])
-    elif layout_q == "NTD":
-        q_fallback = int(query.shape[1]) // batch
-    else:
-        q_fallback = int(query.shape[0]) // batch
-    kv_fallback = int(sparse_indices.shape[-1]) * int(sparse_kv_block_size)
-    q_lengths = (
-        [int(value) for value in actual_seq_q]
-        if actual_seq_q is not None
-        else [q_fallback] * batch
-    )
-    kv_lengths = (
-        [int(value) for value in actual_seq_kv]
-        if actual_seq_kv is not None
-        else [kv_fallback] * batch
-    )
-    if len(q_lengths) != batch or len(kv_lengths) != batch:
+    if cu_seqlens_q_value is None and actual_seq_q is not None:
+        legacy_q_lengths = [int(value) for value in actual_seq_q]
+        if len(legacy_q_lengths) != batch:
+            raise ValueError(
+                f"actual_seq_q must contain B={batch} values, "
+                f"got {len(legacy_q_lengths)}"
+            )
+        cu_seqlens_q_value = [0]
+        for length in legacy_q_lengths:
+            cu_seqlens_q_value.append(cu_seqlens_q_value[-1] + length)
+    if cu_seqlens_q_value is None:
+        raise ValueError("cu_seqlens_q_value is required for MXFP8 cases")
+    cu_q_values = [int(value) for value in cu_seqlens_q_value]
+    if len(cu_q_values) != batch + 1 or not cu_q_values or cu_q_values[0] != 0:
         raise ValueError(
-            f"actual sequence lengths must match B={batch}, got "
-            f"q={len(q_lengths)}, kv={len(kv_lengths)}"
+            f"cu_seqlens_q_value must contain B+1={batch + 1} values starting at 0"
         )
+    q_lengths = [
+        end - start for start, end in zip(cu_q_values, cu_q_values[1:])
+    ]
+    if any(length < 0 for length in q_lengths):
+        raise ValueError("cu_seqlens_q_value must be monotonically non-decreasing")
+
+    expected_total_q = (
+        int(query.shape[0]) * int(query.shape[1])
+        if layout_q == "BSND"
+        else int(query.shape[1])
+        if layout_q == "NTD"
+        else int(query.shape[0])
+    )
+    if cu_q_values[-1] != expected_total_q:
+        raise ValueError(
+            f"cu_seqlens_q_value[-1] must equal query total T={expected_total_q}, "
+            f"got {cu_q_values[-1]}"
+        )
+
+    if seqused_kv_value is None and actual_seq_kv is not None:
+        seqused_kv_value = actual_seq_kv
+    if seqused_kv_value is None:
+        raise ValueError("seqused_kv_value is required for MXFP8 cases")
+    kv_lengths = [int(value) for value in seqused_kv_value]
+    if len(kv_lengths) != batch:
+        raise ValueError(
+            f"seqused_kv_value must contain B={batch} values, got {len(kv_lengths)}"
+        )
+    if any(length < 0 for length in kv_lengths):
+        raise ValueError("seqused_kv_value values must be non-negative")
+    if cu_seqlens_kv_value not in (None, []):
+        raise ValueError("cu_seqlens_kv_value must be empty for MXFP8 cases")
+    if seqused_q_value not in (None, []):
+        raise ValueError("seqused_q_value must be empty for MXFP8 cases")
+
     head_axis = 0 if layout_q == "NTD" else 1
     normalized_blocknum = None if blocknum is None else int(blocknum)
     return {
@@ -177,10 +211,18 @@ def _build_mxfp8_case(
         "N1": int(query.shape[head_axis]),
         "N2": int(key.shape[1]),
         "D": int(query.shape[-1]),
-        "S1": max(q_lengths, default=q_fallback),
-        "S2": max(kv_lengths, default=kv_fallback),
+        "S1": max(q_lengths, default=0),
+        "S2": max(kv_lengths, default=0),
         "actual_seq_q": q_lengths,
         "actual_seq_kv": kv_lengths,
+        "cu_seqlens_q": cu_q_values,
+        "cu_seqlens_kv": [],
+        "seqused_q": [],
+        "seqused_kv": kv_lengths,
+        "cu_seqlens_q_value": cu_q_values,
+        "cu_seqlens_kv_value": [],
+        "seqused_q_value": [],
+        "seqused_kv_value": kv_lengths,
         "s2_base_size": int(s2_base_size),
         "blocknum": normalized_blocknum,
         "block_size": int(key.shape[2]),
@@ -238,10 +280,14 @@ def _customize_inputs_mxfp8(
     actual_seq_q=None,
     actual_seq_kv=None,
     empty_actual_seq=False,
+    cu_seqlens_q_value=None,
+    cu_seqlens_kv_value=None,
+    seqused_q_value=None,
+    seqused_kv_value=None,
     sparse_count=0,
     sparse_pattern="sequential",
     block_table_pattern="sequential",
-    p_scale_value=1.0,
+    p_scale_value=None,
     seed=0,
     quant_group_size=32,
     s2_base_size=512,
@@ -269,6 +315,10 @@ def _customize_inputs_mxfp8(
         actual_seq_q=actual_seq_q,
         actual_seq_kv=actual_seq_kv,
         empty_actual_seq=empty_actual_seq,
+        cu_seqlens_q_value=cu_seqlens_q_value,
+        cu_seqlens_kv_value=cu_seqlens_kv_value,
+        seqused_q_value=seqused_q_value,
+        seqused_kv_value=seqused_kv_value,
         sparse_count=sparse_count,
         sparse_pattern=sparse_pattern,
         block_table_pattern=block_table_pattern,

@@ -339,4 +339,6 @@ python3 experimental/attention/quant_block_sparse_attn/tests/ttk/bsa_fullquant_m
 python3 experimental/attention/quant_block_sparse_attn/tests/ttk/bsa_fullquant_mxfp8_test/generate_ttk_cases.py --check
 ```
 
-生成器只读取 `qbsa_mxfp8_test_cases.py`，并只输出其中 `enable=True` 的用例；当前共 71 条。生成结果保留 ragged `actual_seq_q/actual_seq_kv`、page block size、稀疏模式、数据范围、随机种子和 LSE 开关。
+生成器只读取 `qbsa_mxfp8_test_cases.py`，并只输出其中 `enable=True` 的用例；当前共 71 条。生成结果保留 `actual_seq_q/actual_seq_kv/empty_actual_seq`，TTK 适配层内部再生成 `cu_seqlens_q` 和 `seqused_kv`，并将 `cu_seqlens_kv`、`seqused_q` 传为 `None`。此外还保留 page block size、稀疏模式、数据范围、随机种子和 LSE 开关。
+
+源 case 可以省略 `sparse_pattern`、`block_table_pattern`、`sparse_count`、`blocknum` 和 `p_scale_value`。对应默认值依次为 `sequential`、`sequential`、`0`、根据 `actual_seq_kv` 推导物理 page 数，以及 `None`。

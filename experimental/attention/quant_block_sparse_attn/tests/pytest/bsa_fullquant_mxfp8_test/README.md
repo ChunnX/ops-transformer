@@ -272,10 +272,11 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 
 字段格式：
 
-- `actual_seq_q`、`actual_seq_kv` 使用 JSON 数组文本，例如 `[256]`。
-- 等长多 batch 可以使用单元素总 T，例如 `B=8, S1=65536, actual_seq_q=[65536]` 会在运行时展开为
-  8 个 8192。
+- `actual_seq_q` 和 `actual_seq_kv` 必须分别包含 `B` 个有效长度；适配层内部会转换成 `cu_seqlens_q` 和 `seqused_kv`。
+- `cu_seqlens_kv` 和 `seqused_q` 在 MXFP8 调用算子时固定传入 `None`。
 - `enable`、`is_contiguous`、`return_softmax_lse`、`empty_actual_seq` 使用 `true/false`。
+- `sparse_pattern` 和 `block_table_pattern` 缺省为 `sequential`；`sparse_count` 缺省为 `0`。
+- `blocknum` 缺省时根据每个 batch 的 `actual_seq_kv` 和 `block_size` 自动计算；MXFP8 的 `p_scale_value` 缺省时为 `None`。
 - `softmax_scale` 留空时，脚本按 `1 / sqrt(D)` 自动补齐。
 - `N1` 必须能被 `N2` 整除；`n1_n2_ratio` 仅记录用例设计，不参与运行校验。
 - `s2_base_size` 是 golden 划分 C1 子块的必需运行字段，当前 MXFP8 模板固定为 `512`。
