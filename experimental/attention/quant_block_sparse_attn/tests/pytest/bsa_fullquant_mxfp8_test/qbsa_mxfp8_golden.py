@@ -21,6 +21,7 @@ MXFP8 Flash Attention Golden
 """
 
 import argparse
+import ast
 import csv
 import importlib.util
 import json
@@ -30,6 +31,7 @@ import os
 import random
 import sys
 import time
+import warnings
 
 import torch
 import torch_npu
@@ -54,6 +56,7 @@ _DEFAULT_CASE_CSV = "qbsa_mxfp8_test_cases.csv"
 _CASE_LOG_WIDTH = 100
 _DTYPE_MAP = {
     "float8_e4m3fn": torch.float8_e4m3fn,
+    "float8_e8m0": torch.float8_e8m0fnu,
     "float8_e8m0fnu": torch.float8_e8m0fnu,
 }
 
@@ -77,7 +80,6 @@ _CASE_INT_FIELDS = {
     "device_id",
     "sparse_q_block_size",
     "sparse_kv_block_size",
-    "sparse_count",
     "quant_mode",
     "s2_base_size",
 }
@@ -86,7 +88,14 @@ _CASE_FLOAT_FIELDS = {
     "softmax_scale",
 }
 _CASE_RANGE_FIELDS = {"data_range_q", "data_range_k", "data_range_v"}
-_CASE_INT_LIST_FIELDS = {"actual_seq_q", "actual_seq_kv"}
+_CASE_INT_LIST_FIELDS = {
+    "actual_seq_q",
+    "actual_seq_kv",
+    "cu_seqlens_q_value",
+    "cu_seqlens_kv_value",
+    "seqused_q_value",
+    "seqused_kv_value",
+}
 _CASE_REQUIRED_RUNTIME_FIELDS = {
     "B",
     "N1",
@@ -237,6 +246,18 @@ def _parse_case_field(field_name, value):
         if not isinstance(parsed, list):
             raise ValueError(f"{field_name} must be a JSON list, got: {value}")
         return [int(item) for item in parsed]
+    if field_name == "sparse_count":
+        if isinstance(value, (int, list, tuple)):
+            return list(value) if isinstance(value, tuple) else value
+        text = str(value).strip()
+        if text.startswith("["):
+            parsed = json.loads(text)
+            if not isinstance(parsed, list):
+                raise ValueError(f"sparse_count must be a list, got: {value}")
+            return [int(item) for item in parsed]
+        if text.lower() in {"random", "empty_random", "empty"} or text.endswith("%"):
+            return text.lower()
+        return int(text)
     return value
 
 
@@ -251,20 +272,163 @@ def _resolve_case_csv_path(case_csv):
     return case_path
 
 
+def _literal_eval_csv_cell(row, field_name, default=None):
+    value = row.get(field_name)
+    if value is None or not str(value).strip():
+        return default
+    try:
+        return ast.literal_eval(str(value).strip())
+    except (SyntaxError, ValueError) as error:
+        raise ValueError(
+            f"{field_name} is not a valid Python literal: {value}"
+        ) from error
+
+
+def _lengths_from_prefix(prefix, field_name):
+    values = [int(value) for value in prefix]
+    if len(values) < 2 or values[0] != 0:
+        raise ValueError(f"{field_name} must start with 0 and contain B+1 values")
+    lengths = [end - start for start, end in zip(values, values[1:])]
+    if any(length < 0 for length in lengths):
+        raise ValueError(f"{field_name} must be nondecreasing, got {values}")
+    return lengths
+
+
+def _sequence_values_from_attributes(attributes):
+    cu_q = attributes.get("cu_seqlens_q_value")
+    used_kv = attributes.get("seqused_kv_value")
+    q_lengths = (
+        _lengths_from_prefix(cu_q, "cu_seqlens_q_value")
+        if cu_q is not None
+        else [int(value) for value in attributes.get("actual_seq_q", [])]
+    )
+    kv_lengths = (
+        [int(value) for value in used_kv]
+        if used_kv is not None
+        else [int(value) for value in attributes.get("actual_seq_kv", [])]
+    )
+    if not q_lengths or not kv_lengths:
+        raise ValueError(
+            "attributes must provide cu_seqlens_q_value and seqused_kv_value"
+        )
+    if attributes.get("cu_seqlens_kv_value", []) not in (None, []):
+        raise ValueError("cu_seqlens_kv_value must be empty for MXFP8 normal cases")
+    if attributes.get("seqused_q_value", []) not in (None, []):
+        raise ValueError("seqused_q_value must be empty for MXFP8 normal cases")
+    return q_lengths, kv_lengths
+
+
+def _load_ttk_case_row(row):
+    """Convert one standard TTK E2E row to the legacy pytest case model."""
+    shapes = _literal_eval_csv_cell(row, "tensor_view_shapes", ())
+    dtypes = _literal_eval_csv_cell(row, "tensor_dtypes", ())
+    attributes = _literal_eval_csv_cell(row, "attributes", {})
+    if not isinstance(attributes, dict):
+        raise ValueError("attributes must be a Python dict")
+    if len(shapes) != 10 or len(dtypes) != 10:
+        raise ValueError(
+            "QBSA MXFP8 TTK rows must contain exactly 10 tensor shapes/dtypes"
+        )
+
+    q_shape, k_shape = shapes[0], shapes[1]
+    sparse_shape = shapes[6]
+    if q_shape is None or k_shape is None or sparse_shape is None:
+        raise ValueError("query, key and sparse_indices shapes must not be None")
+
+    q_lengths, kv_lengths = _sequence_values_from_attributes(attributes)
+
+    batch = int(sparse_shape[0])
+    if len(q_lengths) != batch or len(kv_lengths) != batch:
+        raise ValueError(
+            "actual_seq_q/actual_seq_kv length must equal sparse_indices batch "
+            f"dimension B={batch}"
+        )
+
+    uncontiguous_dim = int(row.get("uncontiguous_dim") or -1)
+    if uncontiguous_dim not in (-1, 1):
+        raise ValueError(
+            f"uncontiguous_dim must be -1 or 1, got {uncontiguous_dim}"
+        )
+    is_contiguous = uncontiguous_dim == -1
+    if (
+        "is_contiguous" in attributes
+        and bool(attributes["is_contiguous"]) != is_contiguous
+    ):
+        raise ValueError(
+            "attributes['is_contiguous'] conflicts with uncontiguous_dim: "
+            f"{attributes['is_contiguous']} vs {uncontiguous_dim}"
+        )
+
+    case = dict(attributes)
+    case.update(
+        {
+            "name": str(row["testcase_name"]).strip(),
+            "enable": _parse_bool(row.get("is_enabled", True), "is_enabled"),
+            "B": batch,
+            "N1": int(q_shape[1]),
+            "N2": int(k_shape[1]),
+            "D": int(q_shape[-1]),
+            "S1": max(q_lengths),
+            "S2": max(kv_lengths),
+            "block_size": int(k_shape[2]),
+            "actual_seq_q": q_lengths,
+            "actual_seq_kv": kv_lengths,
+            "cu_seqlens_q_value": [0]
+            + [sum(q_lengths[: index + 1]) for index in range(batch)],
+            "cu_seqlens_kv_value": [],
+            "seqused_q_value": [],
+            "seqused_kv_value": kv_lengths,
+            "fp8_dtype": dtypes[0],
+            "scale_dtype": dtypes[3],
+            "kv_cache_layout": attributes.get("kv_cache_layout", "BnNBsD"),
+            "is_contiguous": is_contiguous,
+            "empty_actual_seq": bool(attributes.get("empty_actual_seq", False)),
+            "device_id": int(attributes.get("device_id", 0)),
+            "uncontiguous_dim": uncontiguous_dim,
+            "tensor_view_shapes": shapes,
+            "tensor_dtypes": dtypes,
+            "tensor_formats": _literal_eval_csv_cell(row, "tensor_formats", ()),
+            "output_tensor_indexes": _literal_eval_csv_cell(
+                row, "output_tensor_indexes", ()
+            ),
+            "golden_api": row.get("golden_api") or "",
+            "input_data_ranges": _literal_eval_csv_cell(
+                row, "input_data_ranges", ()
+            ),
+            "precision_tolerances": _literal_eval_csv_cell(
+                row, "precision_tolerances", None
+            ),
+            "absolute_precision": _literal_eval_csv_cell(
+                row, "absolute_precision", 1e-8
+            ),
+        }
+    )
+    return case
+
+
 def _load_case_csv(case_csv):
     case_path = _resolve_case_csv_path(case_csv)
     with open(case_path, "r", encoding="utf-8-sig", newline="") as csv_file:
         reader = csv.DictReader(csv_file)
-        if not reader.fieldnames or "name" not in reader.fieldnames:
-            raise ValueError(f"{case_path} must contain a name column")
+        if not reader.fieldnames:
+            raise ValueError(f"{case_path} must contain a header")
+        is_legacy = "name" in reader.fieldnames
+        is_ttk_e2e = "testcase_name" in reader.fieldnames
+        if not is_legacy and not is_ttk_e2e:
+            raise ValueError(
+                f"{case_path} must contain name or testcase_name column"
+            )
         for row_number, row in enumerate(reader, start=2):
             if not any(value is not None and value.strip() for value in row.values()):
                 continue
             try:
-                yield {
-                    field: _parse_case_field(field, value)
-                    for field, value in row.items()
-                }
+                if is_ttk_e2e:
+                    yield _load_ttk_case_row(row)
+                else:
+                    yield {
+                        field: _parse_case_field(field, value)
+                        for field, value in row.items()
+                    }
             except (TypeError, ValueError) as error:
                 raise ValueError(
                     f"invalid case data in {case_path}:{row_number}: {error}"
@@ -307,8 +471,42 @@ def _validate_case_design_fields(case):
                 f"got block_size={block_size}, sparse_kv_block_size={sparse_kv_block_size}"
             )
 
-    _get_runtime_seq_lengths(case, "actual_seq_q", "S1")
-    _get_runtime_seq_lengths(case, "actual_seq_kv", "S2")
+    q_lengths = _get_runtime_seq_lengths(case, "actual_seq_q", "S1")
+    kv_lengths = _get_runtime_seq_lengths(case, "actual_seq_kv", "S2")
+    expected_cu_q = [0] + [sum(q_lengths[: index + 1]) for index in range(case["B"])]
+    if case.get("cu_seqlens_q_value", expected_cu_q) != expected_cu_q:
+        raise ValueError(
+            "cu_seqlens_q_value must be the cumulative prefix of actual_seq_q"
+        )
+    if case.get("cu_seqlens_kv_value", []) not in (None, []):
+        raise ValueError("cu_seqlens_kv_value must be empty for MXFP8 normal cases")
+    if case.get("seqused_q_value", []) not in (None, []):
+        raise ValueError("seqused_q_value must be empty for MXFP8 normal cases")
+    if case.get("seqused_kv_value", kv_lengths) != kv_lengths:
+        raise ValueError("seqused_kv_value must equal actual_seq_kv")
+    _validate_sparse_count(case.get("sparse_count"), int(case["B"]))
+
+
+def _validate_sparse_count(sparse_count, batch):
+    if isinstance(sparse_count, (list, tuple)):
+        if len(sparse_count) != batch:
+            raise ValueError(
+                f"sparse_count list length must equal B={batch}, got {len(sparse_count)}"
+            )
+        if any(int(value) < 0 for value in sparse_count):
+            raise ValueError("sparse_count list values must be >= 0")
+        return
+    if isinstance(sparse_count, str):
+        value = sparse_count.strip().lower()
+        if value in {"random", "empty_random", "empty"}:
+            return
+        if value.endswith("%"):
+            percent = float(value[:-1])
+            if 0 < percent <= 100:
+                return
+            raise ValueError("sparse_count percentage must be in (0, 100]")
+    if int(sparse_count) < 0:
+        raise ValueError("sparse_count integer must be >= 0")
 
 
 def _get_runtime_seq_lengths(case, field_name, total_field_name):
@@ -346,6 +544,15 @@ def _normalize_case(case):
     case["softmax_scale"] = case.get("softmax_scale") or (
         1.0 / math.sqrt(float(case["D"]))
     )
+    q_lengths = _get_runtime_seq_lengths(case, "actual_seq_q", "S1")
+    kv_lengths = _get_runtime_seq_lengths(case, "actual_seq_kv", "S2")
+    case.setdefault(
+        "cu_seqlens_q_value",
+        [0] + [sum(q_lengths[: index + 1]) for index in range(int(case["B"]))],
+    )
+    case.setdefault("cu_seqlens_kv_value", [])
+    case.setdefault("seqused_q_value", [])
+    case.setdefault("seqused_kv_value", kv_lengths)
     _validate_case_design_fields(case)
     return case
 
@@ -442,13 +649,47 @@ def set_active_case(case):
     SPARSE_INDICES_LAYOUT = CASE["layout_sparse_indices"]
     OUT_LAYOUT = CASE["layout_out"]
     _block_num_raw = CASE.get("blocknum", None)
-    if _block_num_raw is not None and _block_num_raw <= 0:
-        raise ValueError(f"blocknum must be > 0 or None, got {_block_num_raw}")
-    BLOCK_NUM = _block_num_raw if _block_num_raw is not None else -1
+    if _block_num_raw is not None and int(_block_num_raw) <= 0:
+        warnings.warn(
+            f"{CASE.get('name', '<unnamed>')}: blocknum is expected to be >= 0; "
+            f"got {_block_num_raw} (<= 0), so it will be derived from actual_seq_kv",
+            UserWarning,
+            stacklevel=2,
+        )
+    BLOCK_NUM = (
+        int(_block_num_raw)
+        if _block_num_raw is not None and int(_block_num_raw) > 0
+        else sum(math.ceil(int(seq_len) / BLOCK_SIZE) for seq_len in ACTUAL_SEQ_KV)
+    )
 
 
-CASE = _load_initial_case()
-set_active_case(CASE)
+# Keep module import independent from the default Python case file.  The CLI
+# parses --csv/--case_files only after module initialization, and TTK imports
+# this module before supplying its active case.  If the optional default
+# Python case file is absent, defer initialization until main() or the TTK
+# adapter calls set_active_case().
+CASE = None
+B = N_q = N_kv = D = None
+ACTUAL_SEQ_Q = ACTUAL_SEQ_KV = None
+BLOCK_SIZE = MASK_MODE = None
+FP8_DTYPE = SCALE_DTYPE = QUANT_GROUP_SIZE = None
+Q_INPUT_LAYOUT = KV_CACHE_LAYOUT = IS_CONTIGUOUS = None
+ENABLE_LSE = None
+DATA_RANGE_Q = DATA_RANGE_K = DATA_RANGE_V = None
+DEVICE_ID = SPARSE_BLOCK_SIZE = None
+QUANT_MODE_MXFP8 = None
+KEY_LAYOUT = SPARSE_INDICES_LAYOUT = OUT_LAYOUT = None
+BLOCK_NUM = None
+
+_default_case_path = os.path.join(CURRENT_DIR, f"{_DEFAULT_CASE_FILE}.py")
+if os.path.exists(_default_case_path):
+    CASE = _load_initial_case()
+    set_active_case(CASE)
+else:
+    logger.debug(
+        "Default Python case file is unavailable; active case initialization "
+        "is deferred to CLI arguments or set_active_case()."
+    )
 
 # ==============================================================================
 # 固定运行常量
@@ -717,22 +958,46 @@ def _allowed_blocks(
     return list(range(max_block + 1))
 
 
-def _select_blocks(blocks, sparse_count, pattern, rng):
-    if sparse_count <= 0 or not blocks or pattern == "empty":
+def _resolve_sparse_count(sparse_count, batch_idx, available_count, rng, ordinal):
+    if available_count <= 0:
+        return 0
+    value = sparse_count
+    if isinstance(value, (list, tuple)):
+        value = value[batch_idx]
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "empty":
+            return 0
+        if normalized == "random":
+            return rng.randint(1, available_count)
+        if normalized == "empty_random":
+            return 0 if ordinal % 2 == 0 else rng.randint(1, available_count)
+        if normalized.endswith("%"):
+            percent = float(normalized[:-1])
+            return min(available_count, max(1, math.ceil(available_count * percent / 100)))
+        value = int(normalized)
+    return min(available_count, max(0, int(value)))
+
+
+def _select_blocks(blocks, sparse_count, pattern, rng, batch_idx=0, ordinal=0):
+    count = _resolve_sparse_count(
+        sparse_count, batch_idx, len(blocks), rng, ordinal
+    )
+    if count <= 0 or not blocks or pattern == "empty":
         return []
     if pattern in ("sequential", "dense", "causal"):
-        return blocks[: min(sparse_count, len(blocks))]
+        return blocks[:count]
     if pattern == "reverse":
-        return list(reversed(blocks[-min(sparse_count, len(blocks)) :]))
+        return list(reversed(blocks[-count:]))
     if pattern == "tail":
-        selected = blocks[: max(0, min(sparse_count, len(blocks)) - 1)]
+        selected = blocks[: max(0, count - 1)]
         if blocks[-1] not in selected:
             selected.append(blocks[-1])
-        return selected[:sparse_count]
+        return selected[:count]
     if pattern == "random":
         selected = blocks[:]
         rng.shuffle(selected)
-        return selected[: min(sparse_count, len(selected))]
+        return selected[:count]
     raise ValueError(f"Unsupported sparse pattern: {pattern}")
 
 
@@ -761,8 +1026,14 @@ def _make_reference_sparse_indices(case, q_lengths, kv_lengths, rng):
                 if qb_idx >= qb_batch:
                     selected = []
                 else:
+                    ordinal = (batch_idx * n1 + head_idx) * qb_max + qb_idx
                     selected = _select_blocks(
-                        allowed, case["sparse_count"], case["sparse_pattern"], rng
+                        allowed,
+                        case["sparse_count"],
+                        case["sparse_pattern"],
+                        rng,
+                        batch_idx,
+                        ordinal,
                     )
                 sparse_seq_len[batch_idx, head_idx, qb_idx] = len(selected)
                 if selected:
@@ -1084,12 +1355,16 @@ def _generate_reference_style_mxfp8_inputs():
     sparse_indices, sparse_seq_len = _make_reference_sparse_indices(
         case, q_lengths, kv_lengths, rng
     )
+    # Keep physical-page permutation independent from sparse selection. TTK
+    # reconstructs the hidden block table from persisted sparse_indices; a
+    # dedicated seed keeps fresh generation and manual-data replay aligned.
+    block_table_rng = random.Random(case["seed"])
     block_table = _make_reference_block_table(
         batch,
         kv_lengths,
         BLOCK_SIZE,
         case["block_table_pattern"],
-        rng,
+        block_table_rng,
         BLOCK_NUM,
         sparse_indices,
         sparse_seq_len,
@@ -1803,8 +2078,9 @@ class _QuantBlockSparseAttnGraph(torch.nn.Module):
             self.sparse_block_size,
             self.sparse_block_size,
             cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_kv=cu_seqlens_kv,
-            seqused_q=seqused_q,
+            # The current MXFP8 operator contract requires both inputs to be None.
+            cu_seqlens_kv=None,
+            seqused_q=None,
             seqused_kv=seqused_kv,
             block_table=block_table,
             metadata=metadata,
@@ -2188,13 +2464,45 @@ def npu_mxfp8_fa(
     k_npu = k_input.npu()
     v_npu = v_input.npu()
     if not IS_CONTIGUOUS:
-        kv_cache = torch.stack([k_pa, v_pa], dim=2).npu()
-        k_npu = kv_cache[:, :, 0]
-        v_npu = kv_cache[:, :, 1]
+        # Segmented PA_BNSD permits padding only between physical blocks. Pack
+        # each block as [K segment, V segment], then select the segment view so
+        # the inner strides remain [block_size * head_dim, head_dim, 1].
+        # Build the cache as bytes on CPU because generic FP8 device kernels
+        # (for example Fill) are not available for every FP8 dtype.
+        kv_cache_fp8 = torch.stack(
+            [k_input.view(torch.uint8), v_input.view(torch.uint8)], dim=1
+        ).reshape(-1).view(FP8_DTYPE).npu()
+        key_segment_size = k_input[0].numel()
+        value_segment_size = v_input[0].numel()
+        pa_block_stride = key_segment_size + value_segment_size
+        key_stride = (
+            pa_block_stride,
+            k_input.shape[2] * k_input.shape[3],
+            k_input.shape[3],
+            1,
+        )
+        value_stride = (
+            pa_block_stride,
+            v_input.shape[2] * v_input.shape[3],
+            v_input.shape[3],
+            1,
+        )
+        k_npu = torch.as_strided(
+            kv_cache_fp8, k_input.shape, key_stride, storage_offset=0
+        )
+        v_npu = torch.as_strided(
+            kv_cache_fp8,
+            v_input.shape,
+            value_stride,
+            storage_offset=key_segment_size,
+        )
         logger.info(
-            "[NPU] key is_contiguous=%s, value is_contiguous=%s",
+            "[NPU] key is_contiguous=%s, stride=%s; "
+            "value is_contiguous=%s, stride=%s",
             k_npu.is_contiguous(),
+            k_npu.stride(),
             v_npu.is_contiguous(),
+            v_npu.stride(),
         )
 
     k_scale_pa = mxfp8_pa_preprocessing(
@@ -2235,18 +2543,10 @@ def npu_mxfp8_fa(
         k_descale=k_scale_e8m0,
         v_descale=v_scale_e8m0,
     )
+    # The non-contiguous factor applies to the PA K/V cache only. Descale
+    # tensors retain the operator-defined packed shapes and contiguous strides.
     deq_k_npu = k_scale_e8m0.npu()
     deq_v_npu = v_scale_e8m0.npu()
-    if not IS_CONTIGUOUS:
-        fake_kscale_tensor = torch.ones_like(deq_k_npu)
-        fake_vscale_tensor = torch.ones_like(deq_v_npu)
-        deq_k_npu = torch.stack([deq_k_npu, fake_kscale_tensor], dim=2)[:, :, 0]
-        deq_v_npu = torch.stack([deq_v_npu, fake_vscale_tensor], dim=2)[:, :, 0]
-        logger.info(
-            "[NPU] deq_k_descale is_contiguous=%s, deq_v_descale is_contiguous=%s",
-            deq_k_npu.is_contiguous(),
-            deq_v_npu.is_contiguous(),
-        )
 
     logger.info("[NPU PA] kv_layout=%s", KV_CACHE_LAYOUT)
     logger.info("[NPU PA] k=%s, v=%s", k_npu.shape, v_npu.shape)
@@ -2323,6 +2623,14 @@ def _load_golden_cache():
     except ImportError:
         import golden_cache
     return golden_cache
+
+
+def _save_cache_unless_disabled(no_save, save_func, *args, **kwargs):
+    """Save one cache artifact unless ``--no_save`` is active."""
+    if no_save:
+        logger.info("[CACHE] skip %s (--no_save)", save_func.__name__)
+        return
+    save_func(*args, **kwargs)
 
 
 def _cache_case_name(case_id, case_name_arg, total_case_num):
@@ -2486,6 +2794,7 @@ def run_one_case(
     rdv_cache_dir=None,
     debug=False,
     graph=False,
+    no_save=False,
 ):
     start_time = time.time()
     golden_cache = _load_golden_cache()
@@ -2524,7 +2833,9 @@ def run_one_case(
             cu_seqlens_q,
             cu_seqlens_kv,
         ) = generate_data()
-        golden_cache.save_input(
+        _save_cache_unless_disabled(
+            no_save,
+            golden_cache.save_input,
             case_name,
             {
                 "q_fp8": q_fp8,
@@ -2580,7 +2891,10 @@ def run_one_case(
     )
 
     if "gen" in mode and not (mode & {"cpu", "npu", "compare"}):
-        logger.info("\n[Done] 数据已保存，退出")
+        logger.info(
+            "\n[Done] 数据生成完成（%s），退出",
+            "未写入缓存" if no_save else "已保存",
+        )
         return _make_case_result(
             case_id, "Generated", time.time() - start_time, mfu_time=mfu_time
         )
@@ -2610,12 +2924,22 @@ def run_one_case(
             sparse_seq_len,
             block_table_torch,
         )
-        golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cache_dir)
+        _save_cache_unless_disabled(
+            no_save,
+            golden_cache.save_cpu_output,
+            case_name,
+            cpu_out,
+            cpu_lse,
+            cache_dir=cache_dir,
+        )
     elif "compare" in mode:
         cpu_out, cpu_lse = golden_cache.load_cpu_output(case_name, cache_dir=cache_dir)
 
     if "cpu" in mode and not (mode & {"npu", "compare"}):
-        logger.info("\n[Done] CPU 输出已保存，退出")
+        logger.info(
+            "\n[Done] CPU 输出生成完成（%s），退出",
+            "未写入缓存" if no_save else "已保存",
+        )
         return _make_case_result(
             case_id, "CpuDone", time.time() - start_time, mfu_time=mfu_time
         )
@@ -2639,14 +2963,24 @@ def run_one_case(
             sparse_seq_len,
             graph=graph,
         )
-        golden_cache.save_npu_output(case_name, atten_out, lse_out, cache_dir=cache_dir)
+        _save_cache_unless_disabled(
+            no_save,
+            golden_cache.save_npu_output,
+            case_name,
+            atten_out,
+            lse_out,
+            cache_dir=cache_dir,
+        )
     else:
         atten_out, lse_out = golden_cache.load_npu_output(
             case_name, cache_dir=cache_dir
         )
 
     if "npu" in mode and "compare" not in mode:
-        logger.info("\n[Done] NPU 输出已保存，退出")
+        logger.info(
+            "\n[Done] NPU 输出生成完成（%s），退出",
+            "未写入缓存" if no_save else "已保存",
+        )
         return _make_case_result(
             case_id, "NpuDone", time.time() - start_time, mfu_time=mfu_time
         )
@@ -2872,6 +3206,7 @@ if __name__ == "__main__":
                         rdv_cache_dir=args.cache_dir,
                         debug=args.debug,
                         graph=args.aclgraph,
+                        no_save=args.no_save,
                     )
                 )
             except Exception as err:  # pylint: disable=broad-except

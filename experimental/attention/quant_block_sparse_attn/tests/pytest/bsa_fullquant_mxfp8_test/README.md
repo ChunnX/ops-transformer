@@ -7,7 +7,8 @@
 - `qbsa_mxfp8_golden.py`：执行入口，负责生成输入、CPU golden、NPU 调用和精度对比。
 - `qbsa_mxfp8_test_cases.py`：默认 testcase 文件，保留少量典型 case，便于日常快速回归。
 - `qbsa_mxfp8_test_cases.csv`：批量 testcase 文件，每行对应一个 case。
-- `qbsa_mxfp8_test_cases_full.csv`：单 batch 全量因子组合表。
+- `qbsa_mxfp8_test_cases_STC.csv`：80 条 STC 正向用例，与 TTK STC 表参数一致。
+- `qbsa_mxfp8_test_cases_full.csv`：10000 条 Full 正向用例，与 TTK Full 表参数一致。
 - `qbsa_mxfp8_test_cases_batch_large.csv`：多 batch、ragged 和规模压力典型组合表。
 - `golden_cache.py`：输入、CPU 输出、NPU 输出缓存工具。
 - `result_compare_method.py`：精度比较工具。
@@ -46,6 +47,19 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 - `cpu`：生成 CPU golden
 - `npu`：调用 NPU 算子
 - `compare`：比较 CPU/NPU 输出
+
+如果只需要本次执行结果、不希望向 `golden_cache/` 写入 input、CPU Golden 或 NPU output，增加
+`--no_save`：
+
+```bash
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --mode all \
+  --case_name STC_B1_BS128_MIN_PAGE_EQ_MASK3 \
+  --no_save
+```
+
+`--mode all --no_save` 会在内存中完成数据生成、CPU Golden、NPU 调用和精度比较。若执行模式不包含
+`gen`、`cpu`，脚本仍会按原有语义从缓存读取所需输入或 CPU Golden，但不会写入新的缓存文件。
 
 每个 case 开始时会打印 `CASE START [idx/total]` 标志；一次运行多个 case 时，脚本末尾会输出
 `QBSA MXFP8 CASE SUMMARY` 汇总表。汇总表各列含义：
@@ -106,6 +120,47 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
   --csv --case_files /path/to/cases_a.csv,/path/to/cases_b.csv
 ```
 
+Golden 同时支持直接读取 QBSA 的标准 TTK 12 列 E2E 表。pytest 目录已经生成对应的
+STC/Full CSV，可直接按文件名运行；两套框架使用相同的 `tensor_view_shapes`、
+`tensor_dtypes` 和 `attributes`：
+
+```bash
+# 80 条 STC；--no_save 表示只输出本次执行结果，不写 golden_cache
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --csv \
+  --case_files qbsa_mxfp8_test_cases_STC.csv \
+  --mode all \
+  --no_save
+
+# 10000 条 Full
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --csv \
+  --case_files qbsa_mxfp8_test_cases_full.csv \
+  --mode all \
+  --no_save
+```
+
+标准表头为：
+
+```text
+testcase_name,api_name,tensor_view_shapes,tensor_dtypes,tensor_formats,
+attributes,output_tensor_indexes,golden_api,input_data_ranges,
+precision_tolerances,absolute_precision,uncontiguous_dim
+```
+
+标准 TTK 表中的 `attributes` 按“算子原生属性 → 输入 Tensor 值 → 用例构造变量”排列。
+其中 `cu_seqlens_q_value` 是 Q 有效长度的累加和；`seqused_kv_value` 是逐 batch KV 有效长度；
+正常 MXFP8 用例的 `cu_seqlens_kv_value` 和 `seqused_q_value` 必须为空列表，执行时分别传入
+`cu_seqlens_kv=None` 和 `seqused_q=None`。`B` 必须大于 0；单个 batch 的有效长度可以为 0，
+但整条用例的 Q/KV 总长度必须大于 0。
+
+`sparse_count` 可使用正整数、百分比字符串、逐 batch list、`random`、`empty_random` 和
+`empty`。正整数及 list 元素统一取 `min(配置数量, 当前有效块数)`；百分比按当前有效块数向上取整；
+`empty_random` 用于部分空稀疏，`empty` 用于全空稀疏。
+
+`uncontiguous_dim=-1` 表示连续 K/V，`uncontiguous_dim=1` 表示使用合法非连续 K/V PA view。
+原有以 `name,B,N1,...` 开头的 pytest 宽表继续兼容。
+
 执行 300 条多 batch 与规模压力用例：
 
 ```bash
@@ -161,8 +216,10 @@ pytest 未使用的字段，也可以继续加载；实际运行字段仍需提�
 S1/S2 相等时，“S1 不对齐 128、S2 对齐 512”在数学上不可实现：一个数只要对齐 512，就必然对齐
 128。因此三个关系与四种对齐状态共有 11 个有效组合，而不是 12 个。
 
-`qbsa_mxfp8_test_cases_full.csv` 包含 2948 条单 batch 用例，补齐 `mask_mode=0/3` 与
-`return_softmax_lse=true/false` 的排列组合；物理页数统一由实际 KV 序列自动推导。
+`qbsa_mxfp8_test_cases_STC.csv` 包含 80 条 STC 正向用例，
+`qbsa_mxfp8_test_cases_full.csv` 包含 10000 条 Full 正向用例。两张表均覆盖
+`mask_mode=0/3`、`return_softmax_lse=true/false`、多 batch/ragged、有效长度为 0、
+稀疏模式、block table、`blocknum`、连续与非连续 K/V 等合法组合。
 
 `qbsa_mxfp8_test_cases_batch_large.csv` 包含 300 条全部启用的多 batch 典型与大规模用例：
 
