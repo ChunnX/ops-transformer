@@ -2507,18 +2507,32 @@ def npu_mxfp8_fa(
         k_descale=k_scale_e8m0,
         v_descale=v_scale_e8m0,
     )
-    deq_k_npu = k_scale_e8m0.npu()
-    deq_v_npu = v_scale_e8m0.npu()
     if not IS_CONTIGUOUS:
-        fake_kscale_tensor = torch.ones_like(deq_k_npu)
-        fake_vscale_tensor = torch.ones_like(deq_v_npu)
-        deq_k_npu = torch.stack([deq_k_npu, fake_kscale_tensor], dim=2)[:, :, 0]
-        deq_v_npu = torch.stack([deq_v_npu, fake_vscale_tensor], dim=2)[:, :, 0]
+        # Ascend Fill/ones_like does not support float8_e8m0 on device.  Build
+        # the backing storage on CPU, transfer it once, then slice a legal
+        # non-contiguous E8M0 view on NPU.  The duplicated lane is padding only.
+        k_scale_bytes = k_scale_e8m0.contiguous().view(torch.uint8)
+        v_scale_bytes = v_scale_e8m0.contiguous().view(torch.uint8)
+        k_scale_storage_npu = (
+            torch.stack([k_scale_bytes, k_scale_bytes], dim=2)
+            .view(torch.float8_e8m0fnu)
+            .npu()
+        )
+        v_scale_storage_npu = (
+            torch.stack([v_scale_bytes, v_scale_bytes], dim=2)
+            .view(torch.float8_e8m0fnu)
+            .npu()
+        )
+        deq_k_npu = k_scale_storage_npu[:, :, 0]
+        deq_v_npu = v_scale_storage_npu[:, :, 0]
         logger.info(
             "[NPU] deq_k_descale is_contiguous=%s, deq_v_descale is_contiguous=%s",
             deq_k_npu.is_contiguous(),
             deq_v_npu.is_contiguous(),
         )
+    else:
+        deq_k_npu = k_scale_e8m0.npu()
+        deq_v_npu = v_scale_e8m0.npu()
 
     logger.info("[NPU PA] kv_layout=%s", KV_CACHE_LAYOUT)
     logger.info("[NPU PA] k=%s, v=%s", k_npu.shape, v_npu.shape)
