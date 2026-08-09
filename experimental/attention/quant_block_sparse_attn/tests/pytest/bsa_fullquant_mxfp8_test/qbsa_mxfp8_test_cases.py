@@ -51,9 +51,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "base",
         "s1_base_size": 128,
-        "n1_n2_ratio": 1,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "MIX_00_mfu_128_65536_512",
@@ -95,9 +92,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "mix",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "MIX_01_mfu_128_131072_1024",
@@ -157,9 +151,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "mix",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "MIX_02_mfu_64_65536_1024",
@@ -201,9 +192,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "mix",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "MIX_03_mfu_64_131072_2048",
@@ -263,9 +251,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "mix",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "MIX_04_pipeline_128_4096_32",
@@ -307,9 +292,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "mix",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "MIX_05_pipeline_128_8192_32",
@@ -351,9 +333,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "mix",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "MIX_06_pipeline_64_4096_64",
@@ -395,9 +374,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "mix",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "MIX_07_pipeline_64_8192_64",
@@ -439,9 +415,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "mix",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B1_BS128_MIN_PAGE_EQ_MASK3",
@@ -483,9 +456,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_boundary",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_unaligned",
     },
     {
         "name": "STC_B1_BS64_STITCH_8_BLOCKS_MASK3",
@@ -527,9 +497,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_stitch",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B1_BS128_TWO_S2_LOOPS_REVERSE",
@@ -571,9 +538,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_loop_index",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B1_PA960_S64_S2_TAIL_MASK3",
@@ -615,9 +579,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_tail",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_unaligned",
     },
     {
         "name": "STC_B1_BS128_S1_TAIL_GT_GQA10",
@@ -659,9 +620,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_tail",
         "s1_base_size": 128,
-        "n1_n2_ratio": 10,
-        "s1_s2_relation": "gt",
-        "alignment": "s1_unaligned_s2_aligned",
     },
     {
         "name": "STC_B1_PA1024_S64_BOTH_TAIL_GQA16",
@@ -703,9 +661,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_tail",
         "s1_base_size": 128,
-        "n1_n2_ratio": 16,
-        "s1_s2_relation": "gt",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B1_NOMASK_BS128_EQ_TAIL",
@@ -747,9 +702,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_no_mask",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B1_NOMASK_BS64_S2_TAIL_SCALE8",
@@ -791,9 +743,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_no_mask_scale",
         "s1_base_size": 128,
-        "n1_n2_ratio": 10,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B1_BS128_RANDOM_SPARSE_AND_BLOCK_TABLE",
@@ -835,9 +784,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_block_table",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B1_BS64_REVERSE_SPARSE_AND_BLOCK_TABLE",
@@ -879,9 +825,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_block_table",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B1_BS128_TAIL_SPARSE_REVERSE_BLOCK_TABLE",
@@ -923,9 +866,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_block_table_large",
         "s1_base_size": 128,
-        "n1_n2_ratio": 16,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B1_BS64_GQA10_S2_TAIL_SEQUENTIAL",
@@ -967,9 +907,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_block_table_large",
         "s1_base_size": 128,
-        "n1_n2_ratio": 10,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B1_HIGH_RANGE_QK_PSCALE64",
@@ -1011,9 +948,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_scale",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B1_ASYMMETRIC_DATA_RANGE",
@@ -1055,9 +989,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_scale",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B1_CUSTOM_SOFTMAX_HIGH_S1_GT_S2",
@@ -1099,9 +1030,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_softmax_scale",
         "s1_base_size": 128,
-        "n1_n2_ratio": 10,
-        "s1_s2_relation": "gt",
-        "alignment": "s1_aligned_s2_unaligned",
     },
     {
         "name": "STC_B1_LSE_OFF_MASK3_BS128",
@@ -1143,9 +1071,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_lse",
         "s1_base_size": 128,
-        "n1_n2_ratio": 16,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B1_LSE_OFF_NOMASK_BS64_TAIL",
@@ -1187,9 +1112,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_lse",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B2_UNIFORM_BS128_MASK3",
@@ -1231,9 +1153,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_batch_uniform",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B2_RAGGED_BS128_S1_TAIL",
@@ -1275,9 +1194,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_batch_ragged",
         "s1_base_size": 128,
-        "n1_n2_ratio": 10,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_aligned",
     },
     {
         "name": "STC_B2_RAGGED_BS64_RANDOM",
@@ -1319,9 +1235,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_batch_ragged",
         "s1_base_size": 128,
-        "n1_n2_ratio": 16,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B2_ZERO_LENGTH_ROWS_MASK3",
@@ -1363,9 +1276,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_zero_length",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B2_RAGGED_S1_GT_S2_NOMASK",
@@ -1407,9 +1317,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_batch_ragged",
         "s1_base_size": 128,
-        "n1_n2_ratio": 10,
-        "s1_s2_relation": "gt",
-        "alignment": "s1_aligned_s2_unaligned",
     },
     {
         "name": "STC_B4_UNIFORM_BS64_MASK3",
@@ -1451,9 +1358,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_batch_uniform",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B4_RAGGED_BS128_RANDOM",
@@ -1495,9 +1399,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_batch_ragged",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_aligned",
     },
     {
         "name": "STC_B4_RAGGED_BS64_BOTH_TAIL",
@@ -1539,9 +1440,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_batch_ragged",
         "s1_base_size": 128,
-        "n1_n2_ratio": 10,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B4_HIGH_HEAD_BS64_MASK3",
@@ -1583,9 +1481,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_head",
         "s1_base_size": 128,
-        "n1_n2_ratio": 16,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B4_NOMASK_LSE_OFF_BS128",
@@ -1627,9 +1522,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_no_mask",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B8_UNIFORM_BS128_MASK3",
@@ -1671,9 +1563,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_batch_uniform",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B8_RAGGED_BS128_REVERSE",
@@ -1715,9 +1604,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_batch_ragged",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B8_RAGGED_BS64_RANDOM_LARGE_S2",
@@ -1759,9 +1645,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_batch_ragged",
         "s1_base_size": 128,
-        "n1_n2_ratio": 10,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B8_NOMASK_BS128_RANDOM_LSE_OFF",
@@ -1803,9 +1686,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_no_mask",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B16_UNIFORM_TINY_BS64_MASK3",
@@ -1881,9 +1761,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_batch_large",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B16_RAGGED_BS128_RANDOM",
@@ -1959,9 +1836,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_batch_large",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B16_ONE_LARGE_BATCH_BS128",
@@ -2037,9 +1911,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_batch_large",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B16_HIGH_HEAD_BS64_NOMASK",
@@ -2115,9 +1986,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_batch_large",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B4_EXTREME_SCALE_RAGGED_TAIL",
@@ -2159,9 +2027,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_scale",
         "s1_base_size": 128,
-        "n1_n2_ratio": 10,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_EMPTY_ACTUAL_SEQ_INPUT",
@@ -2203,9 +2068,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_empty_tensor",
         "s1_base_size": 128,
-        "n1_n2_ratio": 16,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_unaligned",
     },
     {
         "name": "NO_PSCALE_B1_BS128_MASK3_SEQ",
@@ -2247,9 +2109,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "no_pscale",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B1_SPARSE128_PA1024_MASK3",
@@ -2291,9 +2150,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_pa_block_size",
         "s1_base_size": 128,
-        "n1_n2_ratio": 4,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B3_PA256_S128_GQA6_N2_6_DR025",
@@ -2335,9 +2191,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_pa_block_size",
         "s1_base_size": 128,
-        "n1_n2_ratio": 6,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B1_PA384_S128_N2_7_NOMASK",
@@ -2379,9 +2232,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_pa_block_size",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B1_PA512_S128_GT_TAIL",
@@ -2423,9 +2273,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_pa_block_size",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "gt",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B1_PA640_S128_REVERSE",
@@ -2467,9 +2314,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_pa_block_size",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B1_PA768_S128_LSE_OFF",
@@ -2511,9 +2355,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_pa_block_size",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B1_PA896_S128_NOMASK_UNALIGN",
@@ -2555,9 +2396,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_pa_block_size",
         "s1_base_size": 128,
-        "n1_n2_ratio": 16,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B1_PA576_S64_MASK3",
@@ -2599,9 +2437,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_pa_block_size",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B1_PA640_S64_NOMASK_TAIL",
@@ -2643,9 +2478,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_pa_block_size",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B1_PA704_S64_REVERSE_LSE_OFF",
@@ -2687,9 +2519,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_pa_block_size",
         "s1_base_size": 128,
-        "n1_n2_ratio": 10,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_unaligned",
     },
     {
         "name": "STC_B1_PA768_S64_RANDOM_GT",
@@ -2731,9 +2560,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_pa_block_size",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "gt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B12_PA832_S64_MASK3",
@@ -2788,9 +2614,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_pa_block_size",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "STC_B32_PA896_S64_NOMASK",
@@ -2898,9 +2721,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "stc_pa_block_size",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "BSA_FP8_e4m3_FP8_e4m3_BF16_mxfp8_1_1_1_8192_16384_128_128_00000",
@@ -2942,9 +2762,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 1,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
         "blocknum": 86,
     },
     {
@@ -2987,9 +2804,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 2,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
         "blocknum": 361,
     },
     {
@@ -3032,9 +2846,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 3,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
         "blocknum": 688,
     },
     {
@@ -3077,9 +2888,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 4,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
         "blocknum": 299,
     },
     {
@@ -3122,9 +2930,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 5,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
         "blocknum": 449,
     },
     {
@@ -3167,9 +2972,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 6,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_aligned",
         "blocknum": 220,
     },
     {
@@ -3212,9 +3014,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 7,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_unaligned",
         "blocknum": 17,
     },
     {
@@ -3257,9 +3056,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
         "blocknum": 100,
     },
     {
@@ -3302,9 +3098,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 9,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_unaligned",
         "blocknum": 155,
     },
     {
@@ -3347,9 +3140,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 10,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_aligned",
         "blocknum": 162,
     },
     {
@@ -3392,9 +3182,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 11,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
         "blocknum": 189,
     },
     {
@@ -3437,9 +3224,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 12,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_unaligned_s2_unaligned",
         "blocknum": 10,
     },
     {
@@ -3482,9 +3266,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 13,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_unaligned_s2_unaligned",
         "blocknum": 18,
     },
     {
@@ -3527,9 +3308,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 14,
-        "s1_s2_relation": "gt",
-        "alignment": "s1_aligned_s2_aligned",
         "blocknum": 34,
     },
     {
@@ -3572,9 +3350,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 15,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
         "blocknum": 120,
     },
     {
@@ -3617,9 +3392,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "redLine",
         "s1_base_size": 128,
-        "n1_n2_ratio": 16,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_unaligned_s2_unaligned",
         "blocknum": 15,
     },
     {
@@ -3662,9 +3434,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "no_pscale",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "eq",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "NO_PSCALE_B1_BS128_MASK3_REVERSE_LSE_OFF",
@@ -3706,9 +3475,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "no_pscale",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "NO_PSCALE_B4_BS128_MASK3_RANDOM_LSE_ON",
@@ -3750,9 +3516,6 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "no_pscale",
         "s1_base_size": 128,
-        "n1_n2_ratio": 4,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
     {
         "name": "NO_PSCALE_B2_BS128_MASK0_DENSE_LSE_OFF",
@@ -3794,8 +3557,5 @@ TestCases = [
         "quant_mode": 2,
         "case_group": "no_pscale",
         "s1_base_size": 128,
-        "n1_n2_ratio": 8,
-        "s1_s2_relation": "lt",
-        "alignment": "s1_aligned_s2_aligned",
     },
 ]

@@ -136,6 +136,8 @@ def infer_geometry(
     cu_seqlens_kv,
     seqused_q,
     seqused_kv,
+    max_seqlen_q=0,
+    max_seqlen_kv=0,
 ):
     D = int(query.shape[-1])
     N2 = int(key.shape[1]) if key.dim() >= 2 else 1
@@ -147,17 +149,19 @@ def infer_geometry(
         N1 = int(query.shape[1]) if layout_q == "TND" else int(query.shape[0])
         T = int(query.shape[0]) if layout_q == "TND" else int(query.shape[1])
         B = int(sparse_indices.shape[0]) if sparse_indices is not None else 1
-        S1 = T // B if B > 0 else T
+        S1 = max_seqlen_q if max_seqlen_q > 0 else (T // B if B > 0 else T)
         q_lengths = to_list(seqused_q) or lengths_from_prefix(cu_seqlens_q) or [S1] * B
 
     kv_lengths = to_list(seqused_kv) or lengths_from_prefix(cu_seqlens_kv)
     if not kv_lengths:
-        if key.dim() == 4:
+        if max_seqlen_kv > 0:
+            S2 = max_seqlen_kv
+        elif key.dim() == 4:
             num_blocks = int(key.shape[0])
             block_size = int(key.shape[2])
-            S2 = num_blocks * block_size // B
+            S2 = num_blocks * block_size
         else:
-            S2 = int(key.shape[0]) // B
+            S2 = int(key.shape[0])
         kv_lengths = [S2] * B if B > 0 else [S2]
 
     return B, S1, N1, N2, D, q_lengths, kv_lengths
@@ -236,10 +240,6 @@ def _cpu_mxfp8_golden(
     actual_seq_q=None,
     actual_seq_kv=None,
     empty_actual_seq=False,
-    cu_seqlens_q_value=None,
-    cu_seqlens_kv_value=None,
-    seqused_q_value=None,
-    seqused_kv_value=None,
     block_table_pattern="sequential",
     seed=0,
     **kwargs,
@@ -252,59 +252,23 @@ def _cpu_mxfp8_golden(
 
     if cached is None:
         batch = int(sparse_indices.shape[0])
-        if cu_seqlens_q_value is None and actual_seq_q is not None:
-            legacy_q_lengths = [int(item) for item in actual_seq_q]
-            if len(legacy_q_lengths) != batch:
-                raise ValueError(
-                    f"actual_seq_q must contain B={batch} values, "
-                    f"got {len(legacy_q_lengths)}"
-                )
-            cu_seqlens_q_value = [0]
-            for length in legacy_q_lengths:
-                cu_seqlens_q_value.append(cu_seqlens_q_value[-1] + length)
-        if cu_seqlens_q_value is None:
-            raise ValueError("cu_seqlens_q_value is required for MXFP8 cases")
-        cu_q_values = [int(item) for item in cu_seqlens_q_value]
-        if len(cu_q_values) != batch + 1 or not cu_q_values or cu_q_values[0] != 0:
-            raise ValueError(
-                f"cu_seqlens_q_value must contain B+1={batch + 1} values "
-                "starting at 0"
-            )
-        q_lengths = [
-            end - start for start, end in zip(cu_q_values, cu_q_values[1:])
-        ]
-        if any(length < 0 for length in q_lengths):
-            raise ValueError(
-                "cu_seqlens_q_value must be monotonically non-decreasing"
-            )
-        expected_total_q = (
-            int(query.shape[0]) * int(query.shape[1])
-            if layout_q == "BSND"
-            else int(query.shape[1])
-            if layout_q == "NTD"
-            else int(query.shape[0])
+        if layout_q == "BSND":
+            q_fallback = int(query.shape[1])
+        elif layout_q == "NTD":
+            q_fallback = int(query.shape[1]) // batch
+        else:
+            q_fallback = int(query.shape[0]) // batch
+        kv_fallback = int(sparse_indices.shape[-1]) * int(sparse_kv_block_size)
+        q_lengths = (
+            [int(item) for item in actual_seq_q]
+            if actual_seq_q is not None
+            else [q_fallback] * batch
         )
-        if cu_q_values[-1] != expected_total_q:
-            raise ValueError(
-                f"cu_seqlens_q_value[-1] must equal query total T="
-                f"{expected_total_q}, got {cu_q_values[-1]}"
-            )
-        if seqused_kv_value is None and actual_seq_kv is not None:
-            seqused_kv_value = actual_seq_kv
-        if seqused_kv_value is None:
-            raise ValueError("seqused_kv_value is required for MXFP8 cases")
-        kv_lengths = [int(item) for item in seqused_kv_value]
-        if len(kv_lengths) != batch:
-            raise ValueError(
-                f"seqused_kv_value must contain B={batch} values, "
-                f"got {len(kv_lengths)}"
-            )
-        if any(length < 0 for length in kv_lengths):
-            raise ValueError("seqused_kv_value values must be non-negative")
-        if cu_seqlens_kv_value not in (None, []):
-            raise ValueError("cu_seqlens_kv_value must be empty for MXFP8 cases")
-        if seqused_q_value not in (None, []):
-            raise ValueError("seqused_q_value must be empty for MXFP8 cases")
+        kv_lengths = (
+            [int(item) for item in actual_seq_kv]
+            if actual_seq_kv is not None
+            else [kv_fallback] * batch
+        )
         head_axis = 0 if layout_q == "NTD" else 1
         case = {
             "B": batch,
@@ -315,14 +279,6 @@ def _cpu_mxfp8_golden(
             "S2": max(kv_lengths),
             "actual_seq_q": q_lengths,
             "actual_seq_kv": kv_lengths,
-            "cu_seqlens_q": cu_q_values,
-            "cu_seqlens_kv": [],
-            "seqused_q": [],
-            "seqused_kv": kv_lengths,
-            "cu_seqlens_q_value": cu_q_values,
-            "cu_seqlens_kv_value": [],
-            "seqused_q_value": [],
-            "seqused_kv_value": kv_lengths,
             "s2_base_size": int(kwargs.get("s2_base_size", 512)),
             "blocknum": (
                 None
@@ -418,6 +374,8 @@ def cpu_quant_block_sparse_attn(
     seqused_kv=None,
     block_table=None,
     metadata=None,
+    max_seqlen_q=0,
+    max_seqlen_kv=0,
     layout_kv="PA_BNSD",
     layout_q="BSND",
     layout_sparse_indices="B_N_Qb_Kb",
@@ -478,11 +436,21 @@ def cpu_quant_block_sparse_attn(
         cu_seqlens_kv_cpu,
         seqused_q_cpu,
         seqused_kv_cpu,
+        max_seqlen_q,
+        max_seqlen_kv,
     )
 
     sparse_q_block_size = int(sparse_q_block_size)
     sparse_kv_block_size = int(sparse_kv_block_size)
-    S2 = max(kv_lengths) if kv_lengths else S1
+    max_seqlen_q = int(max_seqlen_q) if max_seqlen_q > 0 else S1
+    max_seqlen_kv = (
+        int(max_seqlen_kv)
+        if max_seqlen_kv > 0
+        else max(kv_lengths)
+        if kv_lengths
+        else S1
+    )
+    S2 = max(kv_lengths) if kv_lengths else max_seqlen_kv
 
     if key_cpu.dim() != 4:
         raise ValueError(
@@ -551,4 +519,4 @@ def cpu_quant_block_sparse_attn(
 
     if return_softmax_lse:
         return [attention_out, softmax_lse]
-    return [attention_out, None]
+    return [attention_out]
