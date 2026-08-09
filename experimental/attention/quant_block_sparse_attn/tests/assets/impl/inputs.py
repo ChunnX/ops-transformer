@@ -148,37 +148,36 @@ def _build_mxfp8_case(
     data_range_v,
 ):
     batch = int(sparse_indices.shape[0])
-    if layout_q == "BSND":
-        q_fallback = int(query.shape[1])
-    elif layout_q == "NTD":
-        q_fallback = int(query.shape[1]) // batch
-    else:
-        q_fallback = int(query.shape[0]) // batch
-    kv_fallback = int(sparse_indices.shape[-1]) * int(sparse_kv_block_size)
-    q_lengths = (
-        [int(value) for value in actual_seq_q]
-        if actual_seq_q is not None
-        else [q_fallback] * batch
-    )
-    kv_lengths = (
-        [int(value) for value in actual_seq_kv]
-        if actual_seq_kv is not None
-        else [kv_fallback] * batch
-    )
+    if layout_q != "TND":
+        raise ValueError(f"MXFP8 requires layout_q='TND', got {layout_q!r}")
+    if batch <= 0:
+        raise ValueError(f"MXFP8 requires a positive batch size, got B={batch}")
+    if actual_seq_q is None or actual_seq_kv is None:
+        raise ValueError(
+            "MXFP8 requires explicit actual_seq_q and actual_seq_kv values"
+        )
+    q_lengths = [int(value) for value in actual_seq_q]
+    kv_lengths = [int(value) for value in actual_seq_kv]
     if len(q_lengths) != batch or len(kv_lengths) != batch:
         raise ValueError(
             f"actual sequence lengths must match B={batch}, got "
             f"q={len(q_lengths)}, kv={len(kv_lengths)}"
         )
-    head_axis = 0 if layout_q == "NTD" else 1
+    if any(length < 0 for length in q_lengths + kv_lengths):
+        raise ValueError("MXFP8 sequence lengths must be non-negative")
+    if sum(q_lengths) != int(query.shape[0]):
+        raise ValueError(
+            f"sum(actual_seq_q) must equal query T={int(query.shape[0])}, "
+            f"got {sum(q_lengths)}"
+        )
     normalized_blocknum = None if blocknum is None else int(blocknum)
     return {
         "B": batch,
-        "N1": int(query.shape[head_axis]),
+        "N1": int(query.shape[1]),
         "N2": int(key.shape[1]),
         "D": int(query.shape[-1]),
-        "S1": max(q_lengths, default=q_fallback),
-        "S2": max(kv_lengths, default=kv_fallback),
+        "S1": max(q_lengths),
+        "S2": max(kv_lengths),
         "actual_seq_q": q_lengths,
         "actual_seq_kv": kv_lengths,
         "s2_base_size": int(s2_base_size),
