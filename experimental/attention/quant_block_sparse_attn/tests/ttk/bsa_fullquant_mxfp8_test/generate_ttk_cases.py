@@ -38,7 +38,6 @@ FIELDNAMES = (
     "priority",
 )
 
-
 def load_python_cases():
     namespace = runpy.run_path(str(PYTHON_CASES))
     return [
@@ -48,18 +47,18 @@ def load_python_cases():
     ]
 
 
-def sequence_lengths(case):
+def normalize_lengths(case, field, max_field):
     batch = int(case["B"])
-    q_lengths = [int(item) for item in case["actual_seq_q"]]
-    kv_lengths = [int(item) for item in case["actual_seq_kv"]]
-    if len(q_lengths) != batch or len(kv_lengths) != batch:
-        raise ValueError(
-            f"{case['name']}: actual sequence lists must contain B={batch} "
-            f"values, got q={len(q_lengths)}, kv={len(kv_lengths)}"
-        )
-    if any(length < 0 for length in q_lengths + kv_lengths):
-        raise ValueError(f"{case['name']}: actual sequence lengths must be non-negative")
-    return q_lengths, kv_lengths
+    values = [int(item) for item in case[field]]
+    if len(values) == batch:
+        return values
+    if len(values) == 1 and batch > 1:
+        total = values[0]
+        if total == int(case[max_field]) and total % batch == 0:
+            return [total // batch] * batch
+    raise ValueError(
+        f"{case['name']}: {field} must contain B={batch} values, got {values}"
+    )
 
 
 def normalize_data_range(case, field):
@@ -119,7 +118,8 @@ def validate_case(case, q_lengths, kv_lengths):
 
 
 def case_to_row(case, source):
-    q_lengths, kv_lengths = sequence_lengths(case)
+    q_lengths = normalize_lengths(case, "actual_seq_q", "S1")
+    kv_lengths = normalize_lengths(case, "actual_seq_kv", "S2")
     validate_case(case, q_lengths, kv_lengths)
 
     batch = int(case["B"])
@@ -192,12 +192,10 @@ def case_to_row(case, source):
         "actual_seq_q": q_lengths,
         "actual_seq_kv": kv_lengths,
         "empty_actual_seq": bool(case.get("empty_actual_seq", False)),
-        "block_table_pattern": case.get("block_table_pattern", "sequential"),
+        "block_table_pattern": case["block_table_pattern"],
         "seed": int(case["seed"]),
-        "sparse_count": (
-            0 if case.get("sparse_count") is None else case["sparse_count"]
-        ),
-        "sparse_pattern": case.get("sparse_pattern", "sequential"),
+        "sparse_count": int(case["sparse_count"]),
+        "sparse_pattern": case["sparse_pattern"],
         "p_scale_value": (
             None if p_scale_value is None else float(p_scale_value)
         ),

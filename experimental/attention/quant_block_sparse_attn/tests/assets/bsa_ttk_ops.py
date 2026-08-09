@@ -98,10 +98,6 @@ def _auto_generate_params(
     actual_seq_q=None,
     actual_seq_kv=None,
     empty_actual_seq=False,
-    cu_seqlens_q_value=None,
-    cu_seqlens_kv_value=None,
-    seqused_q_value=None,
-    seqused_kv_value=None,
     block_table_pattern="sequential",
     seed=0,
     sparse_q_block_size=128,
@@ -110,138 +106,49 @@ def _auto_generate_params(
     sparse_pattern="sequential",
     mask_mode=3,
     blocknum=None,
-    quant_mode=1,
 ):
-    """Materialize sequence inputs and the block table from case values.
-
-    MXFP8 uses ``cu_seqlens_q`` and ``seqused_kv`` as the only sources of
-    per-batch sequence lengths.  In particular, a TND tensor's total T must not
-    be divided by B because ragged batches do not have a uniform S.
-    """
+    """Auto-generate missing seqused/cu_seqlens/block_table from available info."""
     B = int(sparse_indices.shape[0]) if sparse_indices is not None else 1
 
-    def tensor_values(tensor):
-        if tensor is None:
-            return None
-        return [int(value) for value in tensor.detach().cpu().reshape(-1).tolist()]
-
-    def require_empty(tensor, values, name):
-        if tensor is not None and tensor.numel() != 0:
-            raise ValueError(f"{name} must be None or an empty tensor for MXFP8")
-        if values not in (None, []):
-            raise ValueError(f"{name}_value must be empty for MXFP8")
-        return None
-
-    if int(quant_mode) == 2:
-        cu_q_values = tensor_values(cu_seqlens_q)
-        if cu_q_values is None:
-            cu_q_values = cu_seqlens_q_value
-        if cu_q_values is None and actual_seq_q is not None:
-            legacy_q_lengths = [int(value) for value in actual_seq_q]
-            if len(legacy_q_lengths) != B:
-                raise ValueError(
-                    f"actual_seq_q must contain B={B} values, "
-                    f"got {len(legacy_q_lengths)}"
-                )
-            cu_q_values = [0]
-            for length in legacy_q_lengths:
-                cu_q_values.append(cu_q_values[-1] + length)
-        if cu_q_values is None:
-            raise ValueError("cu_seqlens_q_value is required for MXFP8 cases")
-        cu_q_values = [int(value) for value in cu_q_values]
-        if len(cu_q_values) != B + 1 or not cu_q_values or cu_q_values[0] != 0:
-            raise ValueError(
-                f"cu_seqlens_q must contain B+1={B + 1} values starting at 0"
-            )
-        q_lengths = [
-            end - start for start, end in zip(cu_q_values, cu_q_values[1:])
-        ]
-        if any(length < 0 for length in q_lengths):
-            raise ValueError("cu_seqlens_q must be monotonically non-decreasing")
-
-        expected_total_q = (
-            int(query.shape[0]) * int(query.shape[1])
-            if layout_q == "BSND"
-            else int(query.shape[1])
-            if layout_q == "NTD"
-            else int(query.shape[0])
-        )
-        if cu_q_values[-1] != expected_total_q:
-            raise ValueError(
-                f"cu_seqlens_q[-1] must equal query total T={expected_total_q}, "
-                f"got {cu_q_values[-1]}"
-            )
-
-        kv_lengths = tensor_values(seqused_kv)
-        if kv_lengths is None:
-            kv_lengths = seqused_kv_value
-        if kv_lengths is None and actual_seq_kv is not None:
-            kv_lengths = actual_seq_kv
-        if kv_lengths is None:
-            raise ValueError("seqused_kv_value is required for MXFP8 cases")
-        kv_lengths = [int(value) for value in kv_lengths]
-        if len(kv_lengths) != B:
-            raise ValueError(
-                f"seqused_kv must contain B={B} values, got {len(kv_lengths)}"
-            )
-        if any(length < 0 for length in kv_lengths):
-            raise ValueError("seqused_kv values must be non-negative")
-
-        cu_seqlens_kv = require_empty(
-            cu_seqlens_kv, cu_seqlens_kv_value, "cu_seqlens_kv"
-        )
-        seqused_q = require_empty(seqused_q, seqused_q_value, "seqused_q")
-        if cu_seqlens_q is None:
-            cu_seqlens_q = torch.tensor(
-                cu_q_values, dtype=torch.int32, device=query.device
-            )
-        if seqused_kv is None:
-            seqused_kv = torch.tensor(
-                kv_lengths, dtype=torch.int32, device=query.device
-            )
+    if layout_q == "BSND":
+        q_fallback = int(query.shape[1])
+    elif layout_q == "NTD":
+        q_fallback = int(query.shape[1]) // B
     else:
-        if layout_q == "BSND":
-            q_fallback = int(query.shape[1])
-        elif layout_q == "NTD":
-            q_fallback = int(query.shape[1]) // B
-        else:
-            q_fallback = int(query.shape[0]) // B
-        kv_fallback = int(sparse_indices.shape[-1]) * int(sparse_kv_block_size)
+        q_fallback = int(query.shape[0]) // B
+    kv_fallback = int(sparse_indices.shape[-1]) * int(sparse_kv_block_size)
 
-        def legacy_lengths(values, fallback, name):
-            if values is None:
-                return [int(fallback)] * B
-            lengths = [int(value) for value in values]
-            if len(lengths) != B:
-                raise ValueError(
-                    f"{name} must contain B={B} values, got {len(lengths)}"
-                )
-            return lengths
+    def normalize_lengths(values, fallback, name):
+        if values is None:
+            return [int(fallback)] * B
+        lengths = [int(value) for value in values]
+        if len(lengths) != B:
+            raise ValueError(f"{name} must contain B={B} values, got {len(lengths)}")
+        return lengths
 
-        q_lengths = legacy_lengths(actual_seq_q, q_fallback, "actual_seq_q")
-        kv_lengths = legacy_lengths(actual_seq_kv, kv_fallback, "actual_seq_kv")
-        if seqused_q is None:
-            seqused_q = torch.tensor(
-                [] if empty_actual_seq else q_lengths,
-                dtype=torch.int32,
-                device=query.device,
-            )
-        if seqused_kv is None:
-            seqused_kv = torch.tensor(
-                kv_lengths, dtype=torch.int32, device=query.device
-            )
-        if cu_seqlens_q is None:
-            cu_seqlens_q = torch.tensor(
-                [0] + [sum(q_lengths[: index + 1]) for index in range(B)],
-                dtype=torch.int32,
-                device=query.device,
-            )
-        if cu_seqlens_kv is None:
-            cu_seqlens_kv = torch.tensor(
-                [0] + [sum(kv_lengths[: index + 1]) for index in range(B)],
-                dtype=torch.int32,
-                device=query.device,
-            )
+    q_lengths = normalize_lengths(actual_seq_q, q_fallback, "actual_seq_q")
+    kv_lengths = normalize_lengths(actual_seq_kv, kv_fallback, "actual_seq_kv")
+
+    if seqused_q is None:
+        seqused_q = torch.tensor(
+            [] if empty_actual_seq else q_lengths,
+            dtype=torch.int32,
+            device=query.device,
+        )
+    if seqused_kv is None:
+        seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32, device=query.device)
+    if cu_seqlens_q is None:
+        cu_seqlens_q = torch.tensor(
+            [0] + [sum(q_lengths[: index + 1]) for index in range(B)],
+            dtype=torch.int32,
+            device=query.device,
+        )
+    if cu_seqlens_kv is None:
+        cu_seqlens_kv = torch.tensor(
+            [0] + [sum(kv_lengths[: index + 1]) for index in range(B)],
+            dtype=torch.int32,
+            device=query.device,
+        )
     if block_table is None:
         block_counts = [math.ceil(length / page_block_size) for length in kv_lengths]
         max_block_count = max(block_counts, default=0)
@@ -484,10 +391,6 @@ class QuantBlockSparseAttnGraph(torch.nn.Module):
         actual_seq_q: Optional[List[int]] = None,
         actual_seq_kv: Optional[List[int]] = None,
         empty_actual_seq: bool = False,
-        cu_seqlens_q_value: Optional[List[int]] = None,
-        cu_seqlens_kv_value: Optional[List[int]] = None,
-        seqused_q_value: Optional[List[int]] = None,
-        seqused_kv_value: Optional[List[int]] = None,
         block_table_pattern: str = "sequential",
         sparse_count: int = 0,
         sparse_pattern: str = "sequential",
@@ -510,22 +413,17 @@ class QuantBlockSparseAttnGraph(torch.nn.Module):
                     block_table,
                     layout_q,
                     int(key.shape[2]) if key.dim() == 4 else sparse_kv_block_size,
-                    actual_seq_q=actual_seq_q,
-                    actual_seq_kv=actual_seq_kv,
-                    empty_actual_seq=empty_actual_seq,
-                    cu_seqlens_q_value=cu_seqlens_q_value,
-                    cu_seqlens_kv_value=cu_seqlens_kv_value,
-                    seqused_q_value=seqused_q_value,
-                    seqused_kv_value=seqused_kv_value,
-                    block_table_pattern=block_table_pattern,
-                    seed=seed,
-                    sparse_q_block_size=sparse_q_block_size,
-                    sparse_kv_block_size=sparse_kv_block_size,
-                    sparse_count=sparse_count,
-                    sparse_pattern=sparse_pattern,
-                    mask_mode=mask_mode,
-                    blocknum=blocknum,
-                    quant_mode=quant_mode,
+                    actual_seq_q,
+                    actual_seq_kv,
+                    empty_actual_seq,
+                    block_table_pattern,
+                    seed,
+                    sparse_q_block_size,
+                    sparse_kv_block_size,
+                    sparse_count,
+                    sparse_pattern,
+                    mask_mode,
+                    blocknum,
                 )
             )
 
@@ -657,10 +555,6 @@ def quant_block_sparse_attn(
     actual_seq_q: Optional[List[int]] = None,
     actual_seq_kv: Optional[List[int]] = None,
     empty_actual_seq: bool = False,
-    cu_seqlens_q_value: Optional[List[int]] = None,
-    cu_seqlens_kv_value: Optional[List[int]] = None,
-    seqused_q_value: Optional[List[int]] = None,
-    seqused_kv_value: Optional[List[int]] = None,
     block_table_pattern: str = "sequential",
     sparse_count: int = 0,
     sparse_pattern: str = "sequential",
@@ -688,22 +582,17 @@ def quant_block_sparse_attn(
                 block_table,
                 layout_q,
                 int(key.shape[2]) if key.dim() == 4 else sparse_kv_block_size,
-                actual_seq_q=actual_seq_q,
-                actual_seq_kv=actual_seq_kv,
-                empty_actual_seq=empty_actual_seq,
-                cu_seqlens_q_value=cu_seqlens_q_value,
-                cu_seqlens_kv_value=cu_seqlens_kv_value,
-                seqused_q_value=seqused_q_value,
-                seqused_kv_value=seqused_kv_value,
-                block_table_pattern=block_table_pattern,
-                seed=seed,
-                sparse_q_block_size=sparse_q_block_size,
-                sparse_kv_block_size=sparse_kv_block_size,
-                sparse_count=sparse_count,
-                sparse_pattern=sparse_pattern,
-                mask_mode=mask_mode,
-                blocknum=blocknum,
-                quant_mode=quant_mode,
+                actual_seq_q,
+                actual_seq_kv,
+                empty_actual_seq,
+                block_table_pattern,
+                seed,
+                sparse_q_block_size,
+                sparse_kv_block_size,
+                sparse_count,
+                sparse_pattern,
+                mask_mode,
+                blocknum,
             )
         )
 

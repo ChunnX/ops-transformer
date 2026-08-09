@@ -88,24 +88,16 @@ _CASE_FLOAT_FIELDS = {
     "softmax_scale",
 }
 _CASE_RANGE_FIELDS = {"data_range_q", "data_range_k", "data_range_v"}
-_CASE_INT_LIST_FIELDS = {
-    "cu_seqlens_q",
-    "cu_seqlens_kv",
-    "seqused_q",
-    "seqused_kv",
-    # Legacy CSV compatibility. Python source cases no longer use these.
-    "actual_seq_q",
-    "actual_seq_kv",
-}
+_CASE_INT_LIST_FIELDS = {"actual_seq_q", "actual_seq_kv"}
 _CASE_REQUIRED_RUNTIME_FIELDS = {
     "B",
     "N1",
     "N2",
     "D",
-    "cu_seqlens_q",
-    "cu_seqlens_kv",
-    "seqused_q",
-    "seqused_kv",
+    "S1",
+    "S2",
+    "actual_seq_q",
+    "actual_seq_kv",
     "s2_base_size",
     "block_size",
     "mask_mode",
@@ -126,7 +118,10 @@ _CASE_REQUIRED_RUNTIME_FIELDS = {
     "device_id",
     "sparse_q_block_size",
     "sparse_kv_block_size",
+    "sparse_count",
     "quant_mode",
+    "sparse_pattern",
+    "block_table_pattern",
 }
 
 # 其余列作为用例设计参考信息原样保留，不参与 pytest 计算。CSV 按列名解析，允许继续携带扩展字段。
@@ -314,10 +309,8 @@ def _validate_case_design_fields(case):
                 f"got block_size={block_size}, sparse_kv_block_size={sparse_kv_block_size}"
             )
 
-    if case["cu_seqlens_kv"]:
-        raise ValueError("cu_seqlens_kv must be empty for MXFP8 cases")
-    if case["seqused_q"]:
-        raise ValueError("seqused_q must be empty for MXFP8 cases")
+    _get_runtime_seq_lengths(case, "actual_seq_q", "S1")
+    _get_runtime_seq_lengths(case, "actual_seq_kv", "S2")
 
 
 def _get_runtime_seq_lengths(case, field_name, total_field_name):
@@ -326,41 +319,21 @@ def _get_runtime_seq_lengths(case, field_name, total_field_name):
     batch = int(case["B"])
     if len(values) == batch:
         return values
+    if len(values) == 1 and batch > 1:
+        total_size = values[0]
+        if total_size != int(case[total_field_name]) or total_size % batch != 0:
+            raise ValueError(
+                f"single-value {field_name} must equal {total_field_name} and be divisible by B, "
+                f"got {values}, {total_field_name}={case[total_field_name]}, B={batch}"
+            )
+        return [total_size // batch] * batch
     raise ValueError(
-        f"{field_name} length must be B={batch}, got {len(values)}; "
-        "ragged lengths are never inferred from total T/B"
+        f"{field_name} length must be B or 1, got {len(values)} for B={batch}"
     )
 
 
 def _normalize_case(case):
     case = dict(case)
-    batch = int(case["B"])
-    if case.get("cu_seqlens_q") is None and case.get("actual_seq_q") is not None:
-        legacy_q_lengths = [int(value) for value in case["actual_seq_q"]]
-        if len(legacy_q_lengths) != batch:
-            raise ValueError(
-                f"legacy actual_seq_q must contain B={batch} values, "
-                f"got {len(legacy_q_lengths)}"
-            )
-        case["cu_seqlens_q"] = [0]
-        for length in legacy_q_lengths:
-            case["cu_seqlens_q"].append(case["cu_seqlens_q"][-1] + length)
-    if case.get("seqused_kv") is None and case.get("actual_seq_kv") is not None:
-        case["seqused_kv"] = [int(value) for value in case["actual_seq_kv"]]
-    if case.get("cu_seqlens_kv") is None:
-        case["cu_seqlens_kv"] = []
-    if case.get("seqused_q") is None:
-        case["seqused_q"] = []
-    if case.get("s2_base_size") is None:
-        case["s2_base_size"] = 512
-    if case.get("sparse_pattern") is None:
-        case["sparse_pattern"] = "sequential"
-    if case.get("block_table_pattern") is None:
-        case["block_table_pattern"] = "sequential"
-    if case.get("sparse_count") is None:
-        case["sparse_count"] = 0
-    case.setdefault("blocknum", None)
-    case.setdefault("p_scale_value", None)
     missing_fields = sorted(
         field for field in _CASE_REQUIRED_RUNTIME_FIELDS if case.get(field) is None
     )
@@ -375,31 +348,6 @@ def _normalize_case(case):
     case["softmax_scale"] = case.get("softmax_scale") or (
         1.0 / math.sqrt(float(case["D"]))
     )
-    cu_seqlens_q = [int(value) for value in case["cu_seqlens_q"]]
-    if len(cu_seqlens_q) != batch + 1 or not cu_seqlens_q or cu_seqlens_q[0] != 0:
-        raise ValueError(
-            f"cu_seqlens_q must contain B+1={batch + 1} values starting at 0"
-        )
-    q_lengths = [
-        end - start for start, end in zip(cu_seqlens_q, cu_seqlens_q[1:])
-    ]
-    if any(length < 0 for length in q_lengths):
-        raise ValueError("cu_seqlens_q must be monotonically non-decreasing")
-    kv_lengths = [int(value) for value in case["seqused_kv"]]
-    if len(kv_lengths) != batch:
-        raise ValueError(
-            f"seqused_kv must contain B={batch} values, got {len(kv_lengths)}"
-        )
-    if any(length < 0 for length in kv_lengths):
-        raise ValueError("seqused_kv values must be non-negative")
-    case["cu_seqlens_q"] = cu_seqlens_q
-    case["seqused_kv"] = kv_lengths
-    # The existing reference implementation consumes per-batch lengths. Keep
-    # these as internal aliases only; source cases use the real operator names.
-    case["actual_seq_q"] = q_lengths
-    case["actual_seq_kv"] = kv_lengths
-    case["S1"] = max(q_lengths, default=0)
-    case["S2"] = max(kv_lengths, default=0)
     _validate_case_design_fields(case)
     return case
 
@@ -499,7 +447,7 @@ def set_active_case(case):
     if _block_num_raw is not None and int(_block_num_raw) <= 0:
         warnings.warn(
             f"{CASE.get('name', '<unnamed>')}: blocknum is expected to be >= 0; "
-            f"got {_block_num_raw} (<= 0), so it will be derived from seqused_kv",
+            f"got {_block_num_raw} (<= 0), so it will be derived from actual_seq_kv",
             UserWarning,
             stacklevel=2,
         )
@@ -781,12 +729,7 @@ def _allowed_blocks(
 
 
 def _select_blocks(blocks, sparse_count, pattern, rng):
-    if not blocks or pattern == "empty":
-        return []
-    if sparse_count is None or sparse_count == "dense":
-        return blocks[:]
-    sparse_count = int(sparse_count)
-    if sparse_count <= 0:
+    if sparse_count <= 0 or not blocks or pattern == "empty":
         return []
     if pattern in ("sequential", "dense", "causal"):
         return blocks[: min(sparse_count, len(blocks))]
@@ -1110,8 +1053,8 @@ def _generate_reference_style_mxfp8_inputs():
 
     q_lengths = _get_runtime_seq_lengths(case, "actual_seq_q", "S1")
     kv_lengths = _get_runtime_seq_lengths(case, "actual_seq_kv", "S2")
-    cu_seqlens_q = torch.tensor(case["cu_seqlens_q"], dtype=torch.int32)
-    cu_seqlens_kv = None
+    cu_seqlens_q = _prefix(q_lengths)
+    cu_seqlens_kv = _prefix(kv_lengths)
     total_q = int(cu_seqlens_q[-1].item())
 
     batch = case["B"]
@@ -1953,11 +1896,16 @@ def _prepare_npu_metadata(
     sparse_seq_len,
 ):
     """准备 metadata 算子输入，并生成主算子依赖的 metadata。"""
-    seqused_q = None
-    seqused_kv = torch.tensor(CASE["seqused_kv"], dtype=torch.int32)
+    if CASE.get("empty_actual_seq", False):
+        seqused_q = torch.empty((0,), dtype=torch.int32)
+        seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
+    else:
+        seqused_q = torch.tensor(q_lengths, dtype=torch.int32)
+        seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
 
     cu_seqlens_q = _to_npu(cu_seqlens_q)
-    cu_seqlens_kv = None
+    cu_seqlens_kv = _to_npu(cu_seqlens_kv)
+    seqused_q = seqused_q.npu()
     seqused_kv = seqused_kv.npu()
     sparse_indices = _to_npu(sparse_indices)
     sparse_seq_len = _to_npu(sparse_seq_len)
@@ -2890,11 +2838,11 @@ def run_one_case(
             "kv_lengths", _get_runtime_seq_lengths(CASE, "actual_seq_kv", "S2")
         )
         cu_seqlens_q = data.get("cu_seqlens_q")
+        cu_seqlens_kv = data.get("cu_seqlens_kv")
         if cu_seqlens_q is None:
-            cu_seqlens_q = torch.tensor(CASE["cu_seqlens_q"], dtype=torch.int32)
-        # These two MXFP8 inputs are required to be absent even when an older
-        # cache contains a materialized cu_seqlens_kv tensor.
-        cu_seqlens_kv = None
+            cu_seqlens_q = _prefix(q_lengths)
+        if cu_seqlens_kv is None:
+            cu_seqlens_kv = _prefix(kv_lengths)
         if sparse_indices is None or sparse_seq_len is None:
             sparse_indices, sparse_seq_len = _make_reference_sparse_for_lengths(
                 q_lengths, kv_lengths
