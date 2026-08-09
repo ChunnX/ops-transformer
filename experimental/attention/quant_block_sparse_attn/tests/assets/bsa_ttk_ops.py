@@ -167,25 +167,28 @@ def _auto_generate_mxfp8_params(
 ):
     """Generate MXFP8 sequence tensors and sparse-aware PA block mapping."""
     B = int(sparse_indices.shape[0]) if sparse_indices is not None else 1
-
-    if layout_q == "BSND":
-        q_fallback = int(query.shape[1])
-    elif layout_q == "NTD":
-        q_fallback = int(query.shape[1]) // B
-    else:
-        q_fallback = int(query.shape[0]) // B
-    kv_fallback = int(sparse_indices.shape[-1]) * int(sparse_kv_block_size)
-
-    def normalize_lengths(values, fallback, name):
-        if values is None:
-            return [int(fallback)] * B
-        lengths = [int(value) for value in values]
-        if len(lengths) != B:
-            raise ValueError(f"{name} must contain B={B} values, got {len(lengths)}")
-        return lengths
-
-    q_lengths = normalize_lengths(actual_seq_q, q_fallback, "actual_seq_q")
-    kv_lengths = normalize_lengths(actual_seq_kv, kv_fallback, "actual_seq_kv")
+    if layout_q != "TND":
+        raise ValueError(f"MXFP8 requires layout_q='TND', got {layout_q!r}")
+    if B <= 0:
+        raise ValueError(f"MXFP8 requires a positive batch size, got B={B}")
+    if actual_seq_q is None or actual_seq_kv is None:
+        raise ValueError(
+            "MXFP8 requires explicit actual_seq_q and actual_seq_kv values"
+        )
+    q_lengths = [int(value) for value in actual_seq_q]
+    kv_lengths = [int(value) for value in actual_seq_kv]
+    if len(q_lengths) != B or len(kv_lengths) != B:
+        raise ValueError(
+            f"actual sequence lengths must match B={B}, got "
+            f"q={len(q_lengths)}, kv={len(kv_lengths)}"
+        )
+    if any(length < 0 for length in q_lengths + kv_lengths):
+        raise ValueError("MXFP8 sequence lengths must be non-negative")
+    if sum(q_lengths) != int(query.shape[0]):
+        raise ValueError(
+            f"sum(actual_seq_q) must equal query T={int(query.shape[0])}, "
+            f"got {sum(q_lengths)}"
+        )
 
     if seqused_q is None:
         seqused_q = torch.tensor(
