@@ -127,7 +127,19 @@ def lse_compare(npu_out, golden_out):
     }
 
 
-def _compare_outputs(outputs, attention_compare_fn, lse_compare_fn):
+def _as_bool(value):
+    if isinstance(value, str):
+        return value.strip().lower() not in ("false", "0", "no", "off", "")
+    return bool(value)
+
+
+def _compare_outputs(
+    outputs,
+    attention_compare_fn,
+    lse_compare_fn,
+    *,
+    return_softmax_lse=True,
+):
     """Compare the shared output protocol and ignore an invalid LSE slot."""
     if len(outputs) < 2 or len(outputs) % 2 != 0:
         return {
@@ -142,14 +154,23 @@ def _compare_outputs(outputs, attention_compare_fn, lse_compare_fn):
 
     results = [attention_compare_fn(npu_outputs[0], golden_outputs[0])]
 
-    if half > 1 and golden_outputs[1] is not None:
+    if (
+        return_softmax_lse
+        and half > 1
+        and golden_outputs[1] is not None
+    ):
         results.append(lse_compare_fn(npu_outputs[1], golden_outputs[1]))
 
     return results[0] if len(results) == 1 else results
 
 
 def _compare_fp8(*outputs, **kwargs):
-    return _compare_outputs(outputs, attention_compare, lse_compare)
+    return _compare_outputs(
+        outputs,
+        attention_compare,
+        lse_compare,
+        return_softmax_lse=_as_bool(kwargs.get("return_softmax_lse", True)),
+    )
 
 
 def _mxfp8_tolerance(value):
@@ -282,7 +303,10 @@ def _mxfp8_lse_compare(npu_out, golden_out):
 
 def _compare_mxfp8(*outputs, **kwargs):
     return _compare_outputs(
-        outputs, _mxfp8_attention_compare, _mxfp8_lse_compare
+        outputs,
+        _mxfp8_attention_compare,
+        _mxfp8_lse_compare,
+        return_softmax_lse=_as_bool(kwargs.get("return_softmax_lse", True)),
     )
 
 
