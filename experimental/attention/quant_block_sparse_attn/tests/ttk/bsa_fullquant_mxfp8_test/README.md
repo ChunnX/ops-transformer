@@ -37,6 +37,11 @@ attributes,output_tensor_indexes,golden_api,input_data_ranges,
 precision_tolerances,absolute_precision,uncontiguous_dim
 ```
 
+`input_data_ranges` 仅保留 Q/K/V 三组有效范围。所有 Tensor 最终都会由
+`customize_inputs` 根据 `attributes` 重新构造，因此后续输入不再重复填写
+`(None, None)` 占位；可选 `p_scale` 的确定值以
+`attributes.p_scale_value` 为准。
+
 `attributes` 中的键固定按以下三组排列，便于同时核对算子接口和测试构造逻辑：
 
 1. 算子原生属性：`softmax_scale`、`sparse_q_block_size`、

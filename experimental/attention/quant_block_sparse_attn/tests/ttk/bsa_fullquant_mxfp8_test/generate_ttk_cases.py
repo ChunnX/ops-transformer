@@ -277,17 +277,6 @@ def case_to_row(case, source):
         ttk_data_range(attributes["data_range_q"]),
         ttk_data_range(attributes["data_range_k"]),
         ttk_data_range(attributes["data_range_v"]),
-        (None, None),
-        (None, None),
-        (None, None),
-        (None, None),
-        (None, None),
-        (None, None),
-        (
-            (None, None)
-            if p_scale_value is None
-            else (float(p_scale_value), float(p_scale_value))
-        ),
     )
     return {
         "testcase_name": case["name"],
