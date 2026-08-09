@@ -82,6 +82,9 @@ static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_DYNAMIC = {4, 0};
 #else
 #include "arch35/non_quant/grouped_matmul_basic_kernel.h"
 #include "arch35/non_quant/grouped_matmul_tiling_key.h"
+#if IS_BLAZE
+#include "arch35/non_quant/grouped_matmul_tensor_api_kernel.h"
+#endif
 #endif
 
 using namespace AscendC;
@@ -261,6 +264,19 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 #else
 #define GMM_QUANT_CUBE_IMPL_CLASS(transposeX1, transposeX2, xLayout, wLayout, yLayout)                                 \
     GMM_QUANT_IMPL_CLASS(transposeX1, transposeX2, GmmASWKernel)
+#endif
+
+#if IS_BLAZE
+// Non-quantized A1/A2 (AIC_ONLY) run on the blaze Tensor-API kernel; the transpose_x MIX branch below
+// (tilingKey 4) keeps the CMCT kernel because it needs the AIV EmptyTensor zero-fill for k==0 groups.
+// The blaze BlockMmad widens the bias to a float BT table, so fp16/bf16/fp32 bias all work directly.
+#define GMM_NO_QUANT_IMPL_CLASS(xLayout, wLayout, yLayout)                                                              \
+    do {                                                                                                                \
+        GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, gmmNoQuantParam, gmmNoQuantParam_, tiling);                        \
+        GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, mmTilingData, mmTilingData_, tiling);                              \
+        GmmTensorApiBasicKernel<DTYPE_X, DTYPE_X, DTYPE_BIAS, DTYPE_Y, xLayout, wLayout, yLayout>(                      \
+            x, weight, bias, groupList, y, user1, &gmmNoQuantParam_, &mmTilingData_, &tPipe);                           \
+    } while (0)
 #endif
 
 #if defined(V310_GMM_QUANT)
@@ -511,6 +527,38 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #endif
 #else
     REGISTER_TILING_DEFAULT(GMMNoQuantTilingData);
+#if IS_BLAZE
+    // A1 (tk=0) / A2 (tk=1) go to the blaze Tensor-API kernel; the transpose_x MIX branch (tk=4) keeps
+    // the CMCT kernel because it needs the AIV EmptyTensor zero-fill for k==0 groups.
+    if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) {
+        if constexpr (wFormat == CubeFormat::NZ) {
+            GMM_NO_QUANT_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn,
+                                    AscendC::Te::NDExtLayoutPtn);
+        } else {
+            GMM_NO_QUANT_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn,
+                                    AscendC::Te::NDExtLayoutPtn);
+        }
+    } else if constexpr (NO_QUANT_B_TRANS == GMM_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) { // weight transposed
+        if constexpr (wFormat == CubeFormat::NZ) {
+            GMM_NO_QUANT_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::ZNLayoutPtn,
+                                    AscendC::Te::NDExtLayoutPtn);
+        } else {
+            GMM_NO_QUANT_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn,
+                                    AscendC::Te::NDExtLayoutPtn);
+        }
+    } else if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_TRANS) { // x transposed
+        if ASCEND_IS_AIV {
+            EmptyTensor<DTYPE_Y>(x, weight, groupList, y, tiling);
+        }
+        if ASCEND_IS_AIC {
+            if constexpr (wFormat == CubeFormat::NZ) {
+                GmmNoQuantAswt<layout::ColumnMajor, layout::Nz>(x, weight, bias, groupList, y, tiling);
+            } else {
+                GmmNoQuantAswt<layout::ColumnMajor, layout::RowMajor>(x, weight, bias, groupList, y, tiling);
+            }
+        }
+    }
+#else
     if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) {
         if constexpr (wFormat == CubeFormat::NZ) {
             GmmNoQuantAswt<layout::RowMajor, layout::Nz>(x, weight, bias, groupList, y, tiling);
@@ -535,6 +583,7 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
             GmmNoQuantAswt<layout::RowMajor, layout::ColumnMajor>(x, weight, bias, groupList, y, tiling);
         }
     }
+#endif
 #endif
 #endif
 }
