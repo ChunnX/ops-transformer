@@ -2460,13 +2460,23 @@ def npu_mxfp8_fa(
     k_npu = k_input.npu()
     v_npu = v_input.npu()
     if not IS_CONTIGUOUS:
-        kv_cache = torch.stack([k_pa, v_pa], dim=2).npu()
-        k_npu = kv_cache[:, :, 0]
-        v_npu = kv_cache[:, :, 1]
+        # Segmented PA_BNSD permits padding only between physical blocks. Pack
+        # each block as [K segment, V segment], then select the segment view so
+        # the inner strides remain [block_size * head_dim, head_dim, 1].
+        # Build the cache as bytes on CPU because generic FP8 device kernels
+        # (for example Fill) are not available for every FP8 dtype.
+        kv_cache_fp8 = torch.stack(
+            [k_input.view(torch.uint8), v_input.view(torch.uint8)], dim=1
+        ).view(FP8_DTYPE).npu()
+        k_npu = kv_cache_fp8[:, 0]
+        v_npu = kv_cache_fp8[:, 1]
         logger.info(
-            "[NPU] key is_contiguous=%s, value is_contiguous=%s",
+            "[NPU] key is_contiguous=%s, stride=%s; "
+            "value is_contiguous=%s, stride=%s",
             k_npu.is_contiguous(),
+            k_npu.stride(),
             v_npu.is_contiguous(),
+            v_npu.stride(),
         )
 
     k_scale_pa = mxfp8_pa_preprocessing(
@@ -2507,32 +2517,10 @@ def npu_mxfp8_fa(
         k_descale=k_scale_e8m0,
         v_descale=v_scale_e8m0,
     )
-    if not IS_CONTIGUOUS:
-        # Ascend Fill/ones_like does not support float8_e8m0 on device.  Build
-        # the backing storage on CPU, transfer it once, then slice a legal
-        # non-contiguous E8M0 view on NPU.  The duplicated lane is padding only.
-        k_scale_bytes = k_scale_e8m0.contiguous().view(torch.uint8)
-        v_scale_bytes = v_scale_e8m0.contiguous().view(torch.uint8)
-        k_scale_storage_npu = (
-            torch.stack([k_scale_bytes, k_scale_bytes], dim=2)
-            .view(torch.float8_e8m0fnu)
-            .npu()
-        )
-        v_scale_storage_npu = (
-            torch.stack([v_scale_bytes, v_scale_bytes], dim=2)
-            .view(torch.float8_e8m0fnu)
-            .npu()
-        )
-        deq_k_npu = k_scale_storage_npu[:, :, 0]
-        deq_v_npu = v_scale_storage_npu[:, :, 0]
-        logger.info(
-            "[NPU] deq_k_descale is_contiguous=%s, deq_v_descale is_contiguous=%s",
-            deq_k_npu.is_contiguous(),
-            deq_v_npu.is_contiguous(),
-        )
-    else:
-        deq_k_npu = k_scale_e8m0.npu()
-        deq_v_npu = v_scale_e8m0.npu()
+    # The non-contiguous factor applies to the PA K/V cache only. Descale
+    # tensors retain the operator-defined packed shapes and contiguous strides.
+    deq_k_npu = k_scale_e8m0.npu()
+    deq_v_npu = v_scale_e8m0.npu()
 
     logger.info("[NPU PA] kv_layout=%s", KV_CACHE_LAYOUT)
     logger.info("[NPU PA] k=%s, v=%s", k_npu.shape, v_npu.shape)
