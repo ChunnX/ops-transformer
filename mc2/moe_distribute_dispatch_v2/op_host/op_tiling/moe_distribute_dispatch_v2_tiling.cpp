@@ -80,6 +80,11 @@ constexpr int64_t K_MAX = 16;
 constexpr int64_t FULLMESH_K_MAX = 12;
 constexpr size_t SYSTEM_NEED_WORKSPACE = 16UL * 1024UL * 1024UL;
 constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512;
+// 前缀和临时区位于recvCnt工作区之后，分为数据区和同步标记区
+constexpr uint64_t CUMSUM_WS_FLAG_OFFSET = 32UL * 1024UL; // 32*32*32=32KB
+constexpr uint64_t CUMSUM_MAX_CORE_NUM_A5 = 32U;
+constexpr uint64_t CUMSUM_MAX_CORE_NUM_NON_A5 = 16U;
+constexpr uint64_t UB_ALIGN_VAL = 32U;
 constexpr uint32_t RANK_LIST_NUM = 2;
 constexpr int32_t HCCL_BUFFER_SIZE_DEFAULT = 200 * 1024 * 1024; // Bytes
 constexpr int64_t H_MIN = 1024;
@@ -1730,7 +1735,12 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const char *no
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "workSpaces"), return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+    uint64_t cumsumMaxCoreNum = mc2tiling::GetSocVersion(context) == "Ascend950" ?
+        CUMSUM_MAX_CORE_NUM_A5 : CUMSUM_MAX_CORE_NUM_NON_A5;
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<size_t>(WORKSPACE_ELEMENT_OFFSET * aivNum * aivNum);
+    // 为前缀和同步标记预留空间
+    workSpaces[0] += CUMSUM_WS_FLAG_OFFSET +
+        static_cast<uint64_t>(aivNum) * cumsumMaxCoreNum * UB_ALIGN_VAL;
     return ge::GRAPH_SUCCESS;
 }
 
