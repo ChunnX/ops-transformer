@@ -109,8 +109,14 @@ public:
         int64_t kScaleBlocks = (k + 63) / 64;
         int64_t splitKScaleBlocks = k / 64 + groupNum;
         bool isSplitKPertensor = groupType == 2 && scaleDtype != ge::DT_FLOAT8_E8M0;
+        // MX quant carries a 3-dim per-group perTokenScale; the fixpipe cube path uses a
+        // per-group scalar (g,) for the double-scale case and an empty tensor otherwise.
+        const bool isMxPerTokenScale = scaleDtype == ge::DT_FLOAT8_E8M0;
         gert::StorageShape perTokenScaleShape =
             isSplitKPertensor ? ops::ut::MakeGertStorageShape({groupNum}, {groupNum}) :
+            !isMxPerTokenScale ?
+                (perTokenScaleDtype == ge::DT_UNDEFINED ? MakeEmptyShape() :
+                                                          ops::ut::MakeGertStorageShape({groupNum}, {groupNum})) :
             groupType == 2 ? ops::ut::MakeGertStorageShape({splitKScaleBlocks, m, 2}, {splitKScaleBlocks, m, 2}) :
                              ops::ut::MakeGertStorageShape({m, kScaleBlocks, 2}, {m, kScaleBlocks, 2});
 
@@ -130,11 +136,23 @@ public:
         }
         gert::StorageShape weightShape = ops::ut::MakeGertStorageShape(weightOriginDims, weightStorageDims);
 
-        vector<int64_t> scaleDims =
-            isSplitKPertensor ? vector<int64_t>{groupNum} :
-            groupType == 2 ? vector<int64_t>{splitKScaleBlocks, n, 2}
-                           : (transposeWeight ? vector<int64_t>{groupNum, n, kScaleBlocks, 2}
-                                              : vector<int64_t>{groupNum, kScaleBlocks, n, 2});
+        // MX quant uses the 4-dim per-group scale layout; the fixpipe cube path (QUANT_CUBE /
+        // PERTENSOR_CUBE) uses a per-channel (g, n) or per-tensor (g,) scale instead.
+        // scale=UINT64/INT64 -> per-channel (V310_GMM_QUANT_CUBE);
+        // scale=FLOAT/BF16 (non-MX) -> per-tensor (V310_GMM_QUANT_PERTENSOR_CUBE).
+        const bool isMxScale = scaleDtype == ge::DT_FLOAT8_E8M0;
+        const bool isPerChannelScale = scaleDtype == ge::DT_UINT64 || scaleDtype == ge::DT_INT64;
+        vector<int64_t> scaleDims;
+        if (isSplitKPertensor) {
+            scaleDims = vector<int64_t>{groupNum};
+        } else if (!isMxScale) {
+            scaleDims = isPerChannelScale ? vector<int64_t>{groupNum, n} : vector<int64_t>{groupNum};
+        } else if (groupType == 2) {
+            scaleDims = vector<int64_t>{splitKScaleBlocks, n, 2};
+        } else {
+            scaleDims = transposeWeight ? vector<int64_t>{groupNum, n, kScaleBlocks, 2}
+                                        : vector<int64_t>{groupNum, kScaleBlocks, n, 2};
+        }
         gert::StorageShape scaleShape = ops::ut::MakeGertStorageShape(scaleDims, scaleDims);
 
         gert::TilingContextPara tilingContextPara(
@@ -167,8 +185,12 @@ public:
 
         ASSERT_EQ(tilingInfo.blockNum, expectBlockDim) << "prefix=" << prefix;
         ASSERT_EQ(tilingInfo.tilingKey, expectTilingKey) << "prefix=" << prefix;
-        ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMQuantBasicApiTilingData))
-            << "prefix=" << prefix;
+        // MX quant emits GMMQuantBasicApiTilingData (basic-api tiling); the fixpipe cube path
+        // (QUANT_CUBE / PERTENSOR_CUBE) emits the full GMMQuantTilingData with TCubeTiling.
+        const size_t expectTilingDataSize =
+            scaleDtype == ge::DT_FLOAT8_E8M0 ? sizeof(GroupedMatmulTilingData::GMMQuantBasicApiTilingData) :
+                                               sizeof(GroupedMatmulTilingData::GMMQuantTilingData);
+        ASSERT_EQ(tilingInfo.tilingDataSize, expectTilingDataSize) << "prefix=" << prefix;
 
         string actualTilingData = TilingData2Str(tilingInfo.tilingData.get(), tilingInfo.tilingDataSize);
         ASSERT_EQ(actualTilingData, expectTilingData) << "prefix=" << prefix;

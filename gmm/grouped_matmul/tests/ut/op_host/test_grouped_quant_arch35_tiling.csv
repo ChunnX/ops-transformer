@@ -28,3 +28,6 @@ Ascend950,mxfp8_basic_api_groupnum_zero,true,mxfp8_basic_api_groupnum_zero,,256,
 Ascend950,fp4e1m2_weight_nd_error,true,fp4e1m2_weight_nd_error,,64,256,128,2,false,false,0,ND,FLOAT4_E2M1,FLOAT4_E1M2,FLOAT8-E8M0,FLOAT8-E8M0,FLOAT,BF16,false,false,0,0,
 Ascend950,fp4e1m2_weight_nz_success,true,fp4e1m2_weight_nz_success,,64,256,128,2,false,false,0,NZ,FLOAT4_E2M1,FLOAT4_E1M2,FLOAT8-E8M0,FLOAT8-E8M0,FLOAT,BF16,false,true,0,0,
 Ascend950,mxfp4_same_dtype_weight_nz_success,true,mxfp4_same_dtype_weight_nz_success,,64,256,128,2,false,false,0,NZ,FLOAT4_E2M1,FLOAT4_E2M1,FLOAT8-E8M0,FLOAT8-E8M0,FLOAT,BF16,false,true,32,0,2 0 8 8 65793 0 64 128 256 64 128 256 256 256 256 256 197120 0
+
+Ascend950,quant_cube_int8_scale64,true,quant_cube_int8_scale64,,256,1024,512,2,false,false,0,ND,INT8,INT8,UINT64,FLOAT,INT32,FLOAT16,false,true,32,0,
+Ascend950,quant_cube_int8_scale64_transw,true,quant_cube_int8_scale64_transw,,256,1024,512,2,false,true,0,ND,INT8,INT8,UINT64,FLOAT,INT32,FLOAT16,false,true,32,1,
