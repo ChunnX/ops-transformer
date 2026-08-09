@@ -1,4 +1,4 @@
-#define FIA_DUMP_INTERMEDIATE
+//#define FIA_DUMP_INTERMEDIATE
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -868,17 +868,6 @@ public:
         mm1A.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
         mm1ResL0C.Set<HardEvent::M_FIX>();  // 通知
         mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
-        #if 0  // 0802 strip BMM1-S probes desc628-647 (stall source codebase-facts:66) keep BMM2 L0C desc621-627
-            DumpTensor<T>(mm1ResL0C.GetTensor<T>(), 628, 256);   // x47: S(BMM1 Q@K^T) front r0c0 rows0-15 cols0-15 pre-fixpipe
-            DumpTensor<T>(mm1ResL0C.GetTensor<T>(1024), 629, 256);  // x47: S back-M r4c0 rows64-79 cols0-15
-            DumpTensor<T>(mm1ResL0C.GetTensor<T>(1792), 631, 256);  // x47: S back-M r7c0 rows112-127 cols0-15 (row127 block)
-            DumpTensor<T>(mm1ResL0C.GetTensor<T>(2048), 642, 256);  // s642: S offset2048 brute-force rows64-79
-            DumpTensor<T>(mm1ResL0C.GetTensor<T>(4096), 643, 256);  // s643: S offset4096
-            DumpTensor<T>(mm1ResL0C.GetTensor<T>(6144), 644, 256);  // s644: S offset6144
-            DumpTensor<T>(mm1ResL0C.GetTensor<T>(8192), 645, 256);  // s645: S offset8192
-            DumpTensor<T>(mm1ResL0C.GetTensor<T>(10240), 646, 256);  // s646: S offset10240
-            DumpTensor<T>(mm1ResL0C.GetTensor<T>(12288), 647, 256);  // s647: S offset12288
-        #endif
 
         outputBuf.WaitCrossCore();
 
@@ -1002,9 +991,11 @@ public:
         MM2_ABUF_T mm2A = inputBuf.Get();
         mm2A.WaitCrossCore();
 
-#ifdef FIA_DUMP_INTERMEDIATE
-    PipeBarrier<PIPE_ALL>();  // NIGHT12i drain-validation: was DumpTensor (implicit pipe_barrier*2 each). Tests if local drain alone cures multi-s2Loop timing.
-#endif
+    if constexpr (s2BaseSize == 256) {
+        if (!(runInfo.isFirstS2Loop && runInfo.isLastS2Loop)) {
+            PipeBarrier<PIPE_ALL>();  // NIGHT12w guard: D256 mxfp8 multi-s2Loop only (drain cure scoped, not blanket)
+        }
+    }
 
         constexpr uint32_t pScaleOffset = mBaseSize * s2BaseSize;
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
@@ -1020,9 +1011,11 @@ public:
             }
         }
         LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset);
-#ifdef FIA_DUMP_INTERMEDIATE
-    PipeBarrier<PIPE_ALL>();  // NIGHT12i drain-validation: was DumpTensor (implicit pipe_barrier*2 each). Tests if local drain alone cures multi-s2Loop timing.
-#endif
+    if constexpr (s2BaseSize == 256) {
+        if (!(runInfo.isFirstS2Loop && runInfo.isLastS2Loop)) {
+            PipeBarrier<PIPE_ALL>();  // NIGHT12w guard: D256 mxfp8 multi-s2Loop only (drain cure scoped, not blanket)
+        }
+    }
 
         constexpr uint32_t baseN = l1BaseD;
         uint32_t nLoops = ((uint32_t)constInfo.dSizeV + baseN - 1) / baseN;
@@ -1118,9 +1111,11 @@ public:
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();
 
-        #ifdef FIA_DUMP_INTERMEDIATE
-            PipeBarrier<PIPE_ALL>();  // NIGHT12i drain-validation: was DumpTensor (implicit pipe_barrier*2 each). Tests if local drain alone cures multi-s2Loop timing.
-        #endif
+            if constexpr (s2BaseSize == 256) {
+                if (!(runInfo.isFirstS2Loop && runInfo.isLastS2Loop)) {
+                    PipeBarrier<PIPE_ALL>();  // NIGHT12w guard: D256 mxfp8 multi-s2Loop only (drain cure scoped, not blanket)
+                }
+            }
 
         if constexpr (BMM2_TOUB) {
             outputBuf.WaitCrossCore();

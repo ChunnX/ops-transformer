@@ -1,4 +1,4 @@
-#define FIA_DUMP_INTERMEDIATE
+//#define FIA_DUMP_INTERMEDIATE
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
