@@ -1355,12 +1355,16 @@ def _generate_reference_style_mxfp8_inputs():
     sparse_indices, sparse_seq_len = _make_reference_sparse_indices(
         case, q_lengths, kv_lengths, rng
     )
+    # Keep physical-page permutation independent from sparse selection. TTK
+    # reconstructs the hidden block table from persisted sparse_indices; a
+    # dedicated seed keeps fresh generation and manual-data replay aligned.
+    block_table_rng = random.Random(case["seed"])
     block_table = _make_reference_block_table(
         batch,
         kv_lengths,
         BLOCK_SIZE,
         case["block_table_pattern"],
-        rng,
+        block_table_rng,
         BLOCK_NUM,
         sparse_indices,
         sparse_seq_len,

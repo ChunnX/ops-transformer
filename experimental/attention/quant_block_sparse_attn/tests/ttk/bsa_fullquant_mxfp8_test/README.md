@@ -357,6 +357,8 @@ python3 -m ttk e2e \
 
 prepare 和 replay 必须使用相同的 CSV 和兼容的插件代码，且 replay 选择的每条用例都必须已经 prepare。回放时建议只传入当前数据目录；如果同时传入新旧目录，TTK 可能优先命中不兼容的旧数据。
 
+`block_table_pattern=random` 用例会从实际 `sparse_indices` 推导所需逻辑 PA page，并使用独立 seed 排列物理 page。首次更新到包含该逻辑的版本时，必须使用空目录重新 prepare；旧 bin 与新的运行时 block table 不兼容。
+
 ### 执行 NPU 的同时保存现场 dump
 
 如果需要一次执行中保存 input、device output 和 golden，可以使用 `--dump full`。这种现场 dump 用于问题定位，不等同于可通过 `--manual-data-dirs` 回放的 manual-data。
