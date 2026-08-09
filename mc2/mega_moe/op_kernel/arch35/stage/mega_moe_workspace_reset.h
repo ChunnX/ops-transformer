@@ -15,6 +15,8 @@
 
 namespace MegaMoeImpl {
 
+using namespace AscendC;
+
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 struct ResetWorkspaceConfig {
     int32_t flagElementCount;

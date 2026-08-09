@@ -15,6 +15,8 @@
 
 namespace MegaMoeImpl {
 
+using namespace AscendC;
+
 // Token Dispatch uses a logical block job for work partitioning and a physical
 // workspace slot for count/flag publication. Neither index is derived here.
 struct TokenDispatchContext {
@@ -50,84 +52,6 @@ struct TokenDispatchScratch {
     int64_t revScaleElemCnt;
     uint64_t cumsumRevCntInRank;
 };
-
-// Prototype: MegaMoe::DispatchBuffInit. Builds the bounded-UB scratch layout used by Token Dispatch.
-template <typename ActivationType, bool EnableA8W4, uint32_t ActivationElementsPerByte>
-__aicore__ inline void InitTokenDispatchBuffers(const TokenDispatchContext &context, const Params &params,
-                                                 TokenDispatchScratch<ActivationType> &scratch)
-{
-    scratch.expertRevNumsGlobalTensor.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.expertRevTokenNumsPtr));
-    if constexpr (g_coreType == AIC) {
-        return;
-    }
-    // Only AIV1 performs SendCnt/Dispatch and later exports the cumsum result.
-    if (GetSubBlockIdx() != 1) {
-        return;
-    }
-    const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
-    scratch.revTokenElemCnt = context.common.tokenHiddenDim / ActivationElementsPerByte;
-    scratch.revScaleElemCnt =
-        Ops::Base::CeilDiv(static_cast<int64_t>(context.common.tokenHiddenDim),
-                           static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
-        MXFP_MULTI_BASE_SIZE;
-    uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(context.common.worldSize * context.common.moeExpertPerRank * sizeof(int32_t)),
-        static_cast<int64_t>(ALIGN_32));
-    if constexpr (EnableA8W4) {
-        scratch.cumsumInfoGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-            params.workspaceInfo.cumsumInfoPtr +
-            static_cast<uint64_t>(cumsumInfoTensorSize) * context.countWorkspace.blockIdx));
-    }
-    scratch.cumsumRevCntInRank = 0;
-
-    uint32_t expertTokenCntTensorAddr = 0;
-    uint32_t expertTokenCntTensorSize = ALIGN_32;
-    scratch.expertTokenCntTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, expertTokenCntTensorAddr, expertTokenCntTensorSize / sizeof(int32_t));
-
-    uint32_t cumsumInfoTensorAddr = expertTokenCntTensorAddr + expertTokenCntTensorSize;
-    scratch.cumsumInfoTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorAddr, cumsumInfoTensorSize / sizeof(int32_t));
-
-    uint32_t sendCntTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
-    uint32_t sendCntTensorSize = context.common.worldSize * static_cast<uint32_t>(ALIGN_32);
-    scratch.sendCntTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, sendCntTensorAddr, sendCntTensorSize / sizeof(int32_t));
-
-    uint32_t maskBatchTensorAddr = sendCntTensorAddr + sendCntTensorSize;
-    uint32_t maskBatchTensorSize = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8);
-    scratch.maskBatchTensor = LocalTensor<uint8_t>(TPosition::VECCALC, maskBatchTensorAddr, maskBatchTensorSize);
-    scratch.maskBatchU32Tensor =
-        LocalTensor<uint32_t>(TPosition::VECCALC, maskBatchTensorAddr, maskBatchTensorSize / sizeof(uint32_t));
-
-    uint32_t validTopkIndexTensorAddr = maskBatchTensorAddr + maskBatchTensorSize;
-    uint32_t validTopkIndexTensorSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(bufferConfig.routeItemsPerBatch * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    scratch.validTopkIndexTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, validTopkIndexTensorAddr, validTopkIndexTensorSize / sizeof(int32_t));
-
-    uint32_t topkIndexTensorAddr = validTopkIndexTensorAddr + validTopkIndexTensorSize;
-    uint32_t topkIndexTensorSize = validTopkIndexTensorSize;
-    scratch.topkIndexTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr, topkIndexTensorSize / sizeof(int32_t));
-
-    scratch.copyTmpBaseAddr = topkIndexTensorAddr + topkIndexTensorSize;
-    uint32_t copyTmpTotalSize = static_cast<uint32_t>(bufferConfig.bufferCount) * context.quantTokenScaleAlignBytes;
-
-    uint32_t expertTokenNumsOutTensorAddr = scratch.copyTmpBaseAddr + copyTmpTotalSize;
-    uint32_t expertTokenNumsOutTensorSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(context.common.moeExpertPerRank * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    scratch.expertTokenNumsOutTensor = LocalTensor<int32_t>(TPosition::VECCALC, expertTokenNumsOutTensorAddr,
-                                                            expertTokenNumsOutTensorSize / sizeof(int32_t));
-    uint32_t metaInfoTensorAddr = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;
-    uint32_t metaInfoTensorSize = static_cast<uint32_t>(bufferConfig.bufferCount) * INT32_PER_256B * sizeof(int32_t);
-    scratch.metaInfoTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, metaInfoTensorAddr, metaInfoTensorSize / sizeof(int32_t));
-
-    // ComputeExpertTokenCountAndNotify overwrites every cumsum element before it is read. Clearing it here
-    // would also introduce an unsynchronized V-to-S WAW with the first scalar updates.
-}
 
 template <typename ActivationType>
 __aicore__ inline LocalTensor<ActivationType> GetDispatchCopyBuffer(
@@ -512,25 +436,6 @@ struct ExpertTokenCountExportScratch {
     LocalTensor<int32_t> compactTensor;
 };
 
-__aicore__ inline void InitExpertTokenCountExportBuffers(
-    const TokenDispatchContext &context, ExpertTokenCountExportScratch &scratch)
-{
-    if constexpr (g_coreType == AIC) {
-        return;
-    }
-    if (GetSubBlockIdx() != 1U || context.blockJob.jobIndex != 0U) {
-        return;
-    }
-    uint32_t expertPerRank = context.common.moeExpertPerRank;
-    uint32_t stridedTensorBytes = expertPerRank * static_cast<uint32_t>(ALIGN_32);
-    scratch.stridedTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, 0U, stridedTensorBytes / sizeof(int32_t));
-    uint32_t compactTensorBytes = Ops::Base::CeilAlign(
-        static_cast<uint64_t>(expertPerRank * sizeof(int32_t)), static_cast<uint64_t>(ALIGN_32));
-    scratch.compactTensor = LocalTensor<int32_t>(
-        TPosition::VECCALC, stridedTensorBytes, compactTensorBytes / sizeof(int32_t));
-}
-
 // 从稳定的物理 workspace 槽导出专家 token 数。
 __aicore__ inline void ExportExpertTokenCountsFromWorkspace(
     const TokenDispatchContext &context, const Params &params, ExpertTokenCountExportScratch &scratch)
@@ -584,24 +489,6 @@ __aicore__ inline void RunMoeExpertDispatchStage(
         if (sendCnt != 0U) {
             DispatchExpertTokens<ActivationType, QuantScaleType, EnableA8W4, Gmm1TileM, TopkWeightsPrefetch>(
                 context, params, winRankAddr, scratch, expertIdx);
-        }
-    }
-}
-
-// 推进 AIV1 Dispatch 游标，并确保每个新暴露的专家只预取一次。
-template <typename ActivationType, typename QuantScaleType, uint32_t Gmm1TileM, bool TopkWeightsPrefetch>
-__aicore__ inline void DispatchWaveExpertsUntil(
-    const TokenDispatchContext &context, const Params &params, GM_ADDR *winRankAddr,
-    TokenDispatchScratch<ActivationType> &scratch, uint32_t &nextDispatchExpert, uint32_t dispatchEnd)
-{
-    if constexpr (g_coreType == AIV) {
-        if (GetSubBlockIdx() != 1U) {
-            return;
-        }
-        for (; nextDispatchExpert < dispatchEnd; ++nextDispatchExpert) {
-            uint64_t sendCnt = 0U;
-            RunMoeExpertDispatchStage<ActivationType, QuantScaleType, false, Gmm1TileM, TopkWeightsPrefetch>(
-                context, params, winRankAddr, scratch, nextDispatchExpert, sendCnt);
         }
     }
 }

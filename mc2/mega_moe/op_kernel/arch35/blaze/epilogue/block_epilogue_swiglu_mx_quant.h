@@ -24,6 +24,10 @@
 #endif
 #include "../../common/mega_moe_utils.h"
 
+namespace MegaMoeImpl {
+
+using namespace AscendC;
+
 namespace SwigluQuantMsg {
 enum class QuantMode : uint32_t {
     DEFAULT = 0x0U,
@@ -328,7 +332,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     // 重构UB内存
     // 当前master默认非interleaved，保留完整256x256空间；interleaved预留按half tile + pingpong偏移使用。
     constexpr uint32_t MAX_SINGLE_MN_ALIAS =
-        IsInterleaved_ ? MAX_SINGLE_MN / MegaMoeImpl::SWIGLU_N_HALF : MAX_SINGLE_MN;
+        IsInterleaved_ ? MAX_SINGLE_MN / SWIGLU_N_HALF : MAX_SINGLE_MN;
     constexpr uint32_t gluResOffset = 0;
     gluRes_ = AscendC::LocalTensor<bfloat16_t>(AscendC::TPosition::VECCALC, gluResOffset, MAX_SINGLE_MN_ALIAS);
     constexpr uint32_t quantOutputOffset = gluResOffset + MAX_SINGLE_MN_ALIAS * sizeof(bfloat16_t);
@@ -346,7 +350,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     // weight UB: 放在 VECIN 区之后的安全区域，仅 mode=1 分配
     if constexpr (TopkWeightsPrefetch) {
         constexpr uint32_t vecinEnd = MAX_SINGLE_MN * sizeof(DataTypeIn) * 2U;
-        weightUb_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECCALC, vecinEnd, MAX_TILE_M * INT32_PER_256B);
+        weightUb_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECCALC, vecinEnd,
+                                                MAX_TILE_M * INT32_PER_256B);
     }
 }
 
@@ -366,8 +371,9 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     const ProblemShape &problemShape)
 {
     n_ = Get<N_VALUE>(problemShape); // n/2
-    scaleN_ =
-        Ops::Base::CeilDiv(static_cast<uint64_t>(n_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+    scaleN_ = Ops::Base::CeilDiv(static_cast<uint64_t>(n_),
+                                 static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
+              MXFP_MULTI_BASE_SIZE;
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -396,8 +402,10 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
 {
     AscendC::DataCopyExtParams ub2GmParams{0, 0, 0, 0, 0};
-    auto blockScaleN = Ops::Base::CeilDiv(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
-                       MXFP_MULTI_BASE_SIZE; // 256 / 32 = 8
+    auto blockScaleN =
+        Ops::Base::CeilDiv(static_cast<uint64_t>(singleN_),
+                           static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
+        MXFP_MULTI_BASE_SIZE; // 256 / 32 = 8
     // scale layout in UB is already compact: (mSize, blockScaleN). Compact copy avoids (mSize*8)->(mSize,32).
     ub2GmParams.blockCount = blockCount; // 128
     ub2GmParams.blockLen = blockScaleN;  // 8
@@ -1154,6 +1162,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
 }
+
+} // namespace MegaMoeImpl
 
 #endif // defined(__DAV_C310__)
 #endif // BLOCK_EPILOGUE_SWIGLU_MX_QUANT_H

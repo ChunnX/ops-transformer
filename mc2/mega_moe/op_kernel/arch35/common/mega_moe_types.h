@@ -17,6 +17,10 @@
 #include "mega_moe_workspace.h"
 #include "adv_api/hcomm/hcomm.h"
 
+namespace MegaMoeImpl {
+
+using namespace AscendC;
+
 struct Mc2MoeContext {
     uint32_t epRankId = 0;
     uint32_t rankSizePerServer = 0;
@@ -37,6 +41,7 @@ struct GMMAddrInfo {
     __gm__ int32_t *dispatchToGmm1Flag;
     __gm__ int32_t *gmm2CombineSyncCounter;
     __gm__ int32_t *gmmToEpilogueFlag;
+    __gm__ int32_t *gmm1TileStatus;
     __gm__ int32_t *sharedExpertGmm2TileCounter;
 };
 
@@ -93,8 +98,6 @@ template <typename T>
 struct PackedElementTraits {
     static constexpr uint32_t ELEMENTS_PER_BYTE = Std::IsSame<T, fp4x2_e2m1_t>::value ? 2U : 1U;
 };
-
-namespace MegaMoeImpl {
 
 struct AivJobContext {
     uint32_t jobIndex;

@@ -47,9 +47,10 @@
 #include "../../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
 #endif
 
+namespace MegaMoeImpl {
+
 using namespace AscendC;
 
-namespace MegaMoeImpl {
 constexpr uint32_t UNPERMUTE_LIST_NUM = 3U;
 constexpr int64_t HALF_TO_FP32 = 2U;
 constexpr int64_t DEQUANT_SCALE_EXPAND = 2U;
@@ -297,16 +298,16 @@ private:
     static constexpr uint32_t C_ELEMS_PER_BYTE = PackedElementTraits<SwigluQuantOutType>::ELEMENTS_PER_BYTE;
 
     // SwigluQuant 输出的元素字节密度：fp4 时为 2elem/B，fp8 时为 1elem/B。
-    static constexpr uint32_t GMM1_TILE_M = MegaMoeImpl::L1_TILE_M_256;
+    static constexpr uint32_t GMM1_TILE_M = L1_TILE_M_256;
     static constexpr uint32_t EPILOGUE_TILE_M =
-        TopkWeightsPrefetch ? MegaMoeImpl::L1_TILE_M_128 : MegaMoeImpl::L1_TILE_M_256;
+        TopkWeightsPrefetch ? L1_TILE_M_128 : L1_TILE_M_256;
 
     using BlockEpilogue =
         BlockEpilogueSwigluMxQuant<SwigluQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
-                                   EPILOGUE_TILE_M, MegaMoeImpl::L1_TILE_N, TopkWeightsPrefetch>;
+                                   EPILOGUE_TILE_M, L1_TILE_N, TopkWeightsPrefetch>;
     using SharedBlockEpilogue =
         BlockEpilogueSwigluMxQuant<SwigluQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
-                                   MegaMoeImpl::L1_TILE_M_256, MegaMoeImpl::L1_TILE_N, false>;
+                                   L1_TILE_M_256, L1_TILE_N, false>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
 };
@@ -333,7 +334,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     maxOutputSize_ = tilingData->maxOutputSize;
     // 与 WorkspaceInfo 构造里 flagDispatchToGmm1Ptr 的分配公式保持一致。
     maxWavesPerExpert_ = static_cast<int32_t>(
-        Ops::Base::CeilDiv(static_cast<int64_t>(maxOutputSize_), static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256)));
+        Ops::Base::CeilDiv(static_cast<int64_t>(maxOutputSize_), static_cast<int64_t>(L1_TILE_M_256)));
     dispatchFlagSlotsPerExpert_ = maxWavesPerExpert_ * INT_CACHELINE;
     hiddenDim_ = tilingData->hiddenDim;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
@@ -447,7 +448,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
     // 分轮次参数计算：validTopkIndexTensor_ + topkIndexTensor_ + gatherMaskTensor_ 均为 round-sized
     // SendCntCal 改为直接从 GM 读 count，不再加载完整 mask slot 到 UB
     // round 张量: validTopkIndex(R*4) + topkIndex(R*4) + gatherMask(R/8) = 8R + R/8 = 65R/8
-    // 预留 metaInfoTensor_: MegaMoeImpl::L1_TILE_M_256 * ALIGN_32
+    // 预留 metaInfoTensor_: L1_TILE_M_256 * ALIGN_32
     uint32_t dispatchFixedCost = 0;
     {
         uint32_t tokenScaleSize = mxQuantTokenScaleAlignBytes_;
@@ -455,7 +456,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
         uint32_t relayFlagBytes =
             Ops::Base::CeilAlign(static_cast<uint32_t>(m_ * sizeof(uint64_t)), static_cast<uint32_t>(ALIGN_32));
         uint32_t relayReceivedBytes = Ops::Base::CeilAlign(
-            static_cast<uint32_t>(MegaMoeImpl::L1_TILE_M_256 * sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
+            static_cast<uint32_t>(L1_TILE_M_256 * sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
         uint32_t relayAndCopyTmpBytes =
             (relayFlagBytes > copyTmpBytes ? relayFlagBytes : copyTmpBytes) + relayReceivedBytes;
         dispatchFixedCost = relayAndCopyTmpBytes + SEND_DEDUP_MASK_UB_BYTES + MX_QUANT_TEMP_UB_BYTES +
@@ -463,7 +464,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
                             Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t) +
                             Ops::Base::CeilAlign(static_cast<int64_t>(moeExpertPerRank_ * sizeof(int32_t)),
                                                  static_cast<int64_t>(ALIGN_32)) +
-                            static_cast<uint32_t>(MegaMoeImpl::L1_TILE_M_256) * static_cast<uint32_t>(ALIGN_32);
+                            static_cast<uint32_t>(L1_TILE_M_256) * static_cast<uint32_t>(ALIGN_32);
     }
     uint32_t fixedBefore = cumsumInfoTensorAddr + cumsumInfoTensorSize;
     uint32_t dispatchAvailUb = 0;
@@ -530,7 +531,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
     uint32_t relayReceivedTensorAddr =
         copyTmpBaseAddr + (relayFlagTensorSize > copyTmpTotalSize ? relayFlagTensorSize : copyTmpTotalSize);
     uint32_t relayReceivedTensorSize = Ops::Base::CeilAlign(
-        static_cast<uint32_t>(MegaMoeImpl::L1_TILE_M_256 * sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
+        static_cast<uint32_t>(L1_TILE_M_256 * sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
     relayReceivedTensor_ =
         LocalTensor<int32_t>(TPosition::VECCALC, relayReceivedTensorAddr, relayReceivedTensorSize / sizeof(int32_t));
     // Tensor用处：Level1DispatchUrma 中按 (targetServer, localTokenIdx) 去重。
@@ -1361,7 +1362,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
     }
 
     SyncFuncStatic<AscendC::HardEvent::S_V, SYNC_EVENT_ID4>();
-    Duplicate<int32_t>(relayReceivedTensor_, 0, static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256));
+    Duplicate<int32_t>(relayReceivedTensor_, 0, static_cast<int32_t>(L1_TILE_M_256));
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
 
     uint64_t flagSnapshotBytes = static_cast<uint64_t>(m_) * sizeof(uint64_t);
@@ -1483,7 +1484,7 @@ template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo,
                                                                                               int32_t localExpertId)
 {
-    constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
+    constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(L1_TILE_M_256);
     int32_t priorExpertCumsum = (localExpertId == 0) ? 0 : cumsumInfoTensor_.GetValue(localExpertId * worldSize_ - 1);
 
     // A8W4 + prefetch 路径下 SwigluQuant 覆盖 V1 UB，topkIndexTensor_ 需重新初始化
@@ -1496,7 +1497,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::MetaInfoC
         }
     }
 
-    constexpr int32_t MAX_META_INFO_ROWS_PER_CHUNK = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
+    constexpr int32_t MAX_META_INFO_ROWS_PER_CHUNK = static_cast<int32_t>(L1_TILE_M_256);
     for (uint32_t srcRankInServer = blockIdx_; srcRankInServer < rankPerServer_; srcRankInServer += blockNum_) {
         for (uint32_t srcServer = 0; srcServer < serverNum_; ++srcServer) {
             uint32_t dstRankIdx = srcServer * rankPerServer_ + srcRankInServer;
@@ -1960,7 +1961,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
     AscendC::DataCopy(metaInfoTensor, tripleGm, batchCount * META_INFO_SIZE);
 
     // 执行 combine 并发送
-    MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true, IsQuant>(
+    CombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true, IsQuant>(
         currentRow, batchCount, k_, expertIdx, rankId_, gmmAddrInfo.gmm2OutGlobal, params_, metaInfoTensor,
         combineUbTensorSize_, offset, quantTokenSizeBytes);
 
@@ -2002,7 +2003,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         logicalCoreCount = blockAivNum_ / 2;
     }
-    MegaMoeImpl::GroupSyncSlotLayout slotLayout = MegaMoeImpl::CalcGroupSyncSlotLayout(mExpert, logicalCoreCount);
+    GroupSyncSlotLayout slotLayout = CalcGroupSyncSlotLayout(mExpert, logicalCoreCount);
     __gm__ int32_t *expertCounterBase = (__gm__ int32_t *)gmmAddrInfo.gmm2CombineSyncCounter;
 
     uint32_t rankIndex = 0;
@@ -2020,8 +2021,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
 
         uint32_t firstSyncSlot = 0;
         uint32_t syncSlotCount = 0;
-        MegaMoeImpl::GetGroupSyncSlotRange(targetGroup, slotLayout, firstSyncSlot, syncSlotCount);
-        __gm__ int32_t *counterAddr = MegaMoeImpl::GetCombineSyncCounterAddress(expertCounterBase, firstSyncSlot);
+        GetGroupSyncSlotRange(targetGroup, slotLayout, firstSyncSlot, syncSlotCount);
+        __gm__ int32_t *counterAddr = GetCombineSyncCounterAddress(expertCounterBase, firstSyncSlot);
 
         if (AscendC::ReadGmByPassDCache(counterAddr) >= static_cast<int32_t>(nTilesPerGroup)) {
             ProcessCombineBatch(gmmAddrInfo, gmm2State, expertIdx, rankIndex, rankInfoTensor, processRankNum,
@@ -2252,7 +2253,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
                                                               fp8_e5m2_t>::type;
                     SetFlag<AscendC::HardEvent::S_V>(event);
                     WaitFlag<AscendC::HardEvent::S_V>(event);
-                    MegaMoeCombineImpl::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_,
+                    Mxfp8::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_,
                                                                           fp32ScaleTensor_, nScale, k_);
                 }
                 PipeBarrier<PIPE_V>();
@@ -2443,23 +2444,20 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
     if constexpr (IsShared) {
         // 共享专家不参与权重前移，走原 UB ping-pong + 硬同步路径
         if constexpr (ENABLE_A8W4) {
-            MegaMoeImpl::RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
-                                                    QuantScaleOutType, GMM1_TILE_M, MegaMoeImpl::L1_TILE_M_256, false,
-                                                    IsShared>(sharedEpilogueOp_, params_, state.problemShape,
-                                                              gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-                                                              state.expertBeforeCnt, expertIdx);
+            RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
+                         L1_TILE_M_256, false, IsShared>(sharedEpilogueOp_, params_, state.problemShape, gmmAddrInfo,
+                                                        startBlockIdx_, vecSetSyncCom, state.expertBeforeCnt,
+                                                        expertIdx);
         } else {
             if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                 params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-                MegaMoeImpl::RunGmm1Generic<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
-                                                    QuantScaleOutType, QuantScaleOutType, true, GMM1_TILE_M,
-                                                    MegaMoeImpl::L1_TILE_M_256, false, IsShared, false>(
+                RunGmm1Generic<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
+                               QuantScaleOutType, true, GMM1_TILE_M, L1_TILE_M_256, false, IsShared, false>(
                     sharedEpilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
                     state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
             } else {
-                MegaMoeImpl::RunGmm1Generic<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
-                                                    QuantScaleOutType, QuantScaleOutType, false, GMM1_TILE_M,
-                                                    MegaMoeImpl::L1_TILE_M_256, false, IsShared, false>(
+                RunGmm1Generic<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
+                               QuantScaleOutType, false, GMM1_TILE_M, L1_TILE_M_256, false, IsShared, false>(
                     sharedEpilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
                     state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
             }
@@ -2467,25 +2465,24 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
     } else {
         // MoE 专家走 prefetch 路径
         if constexpr (ENABLE_A8W4) {
-            MegaMoeImpl::RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
-                                                    QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,
-                                                    TopkWeightsPrefetch, IsShared>(
+            RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
+                         EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared>(
                 epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
                 state.expertBeforeCnt, expertIdx);
         } else {
             if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                 params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
                 // NZ format (A8W8_NZ / A4W4_NZ): isWeightNZ=true, EpilogueElementA 由 SwigluQuantOutType 自动处理类型提升
-                MegaMoeImpl::RunGmm1Generic<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
-                                                    QuantScaleOutType, QuantScaleOutType, true, GMM1_TILE_M,
-                                                    EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared, false>(
+                RunGmm1Generic<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
+                               QuantScaleOutType, true, GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared,
+                               false>(
                     epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
                     state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
             } else {
                 // Generic: fp8/fp4 activation × fp8/fp4 weight in ND format (includes A4W4 ND)
-                MegaMoeImpl::RunGmm1Generic<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
-                                                    QuantScaleOutType, QuantScaleOutType, false, GMM1_TILE_M,
-                                                    EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared, false>(
+                RunGmm1Generic<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
+                               QuantScaleOutType, false, GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared,
+                               false>(
                     epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
                     state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
             }
@@ -2503,22 +2500,19 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx, int32_t &gmTileSequence)
 {
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
-        MegaMoeImpl::RunGmm2A8W4<CombineQuantMode, SwigluQuantOutType, Weight1Type, bfloat16_t,
-                                             QuantScaleOutType, QuantScaleOutType, MegaMoeImpl::L1_TILE_M_256,
-                                             TopkWeightsPrefetch, IsShared, true>(
+        RunGmm2A8W4<CombineQuantMode, SwigluQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
+                     QuantScaleOutType, L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true>(
             params_, state.problemShape, gmmAddrInfo, startBlockIdx_, gmTileSequence);
     } else {
         // A8W8_NZ / Generic 共用 RunGmm2Generic，仅 LayoutB 不同（ZN/ND）。
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
-            MegaMoeImpl::RunGmm2Generic<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
-                                        QuantScaleOutType,
-                                      QuantScaleOutType, true, true, MegaMoeImpl::L1_TILE_M_256, TopkWeightsPrefetch,
-                                      IsShared>(state.problemShape, gmmAddrInfo, startBlockIdx_);
+            RunGmm2Generic<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
+                           QuantScaleOutType, true, true, L1_TILE_M_256, TopkWeightsPrefetch, IsShared>(
+                state.problemShape, gmmAddrInfo, startBlockIdx_);
         } else {
-            MegaMoeImpl::RunGmm2Generic<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
-                                        QuantScaleOutType,
-                                      QuantScaleOutType, false, true, MegaMoeImpl::L1_TILE_M_256, TopkWeightsPrefetch,
-                                      IsShared>(state.problemShape, gmmAddrInfo, startBlockIdx_);
+            RunGmm2Generic<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
+                           QuantScaleOutType, false, true, L1_TILE_M_256, TopkWeightsPrefetch, IsShared>(
+                state.problemShape, gmmAddrInfo, startBlockIdx_);
         }
     }
     if constexpr (g_coreType == AIV && !IsShared) {
@@ -2530,10 +2524,16 @@ template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSharedExpertGmm1(
     const TupleShape &initShape, const BlockOffset &initOffset, int32_t &gmTileSequence)
 {
-    sharedEpilogueOp_.Init({params_.workspaceInfo.sharedExpertSwigluDataPtr,
-                            params_.workspaceInfo.sharedExpertSwigluScalePtr, nullptr, nullptr, nullptr, nullptr,
-                            nullptr, params_.tilingData->clampLimit, static_cast<uint8_t>(ActMode::SWIGLU),
-                            static_cast<uint8_t>(ActSubMode::DEFAULT), 1.0f, 1.0f});
+    sharedEpilogueOp_.Init({.yGmAddr = params_.workspaceInfo.sharedExpertSwigluDataPtr,
+                            .yScaleGmAddr = params_.workspaceInfo.sharedExpertSwigluScalePtr,
+                            .x2ScaleGmAddr = nullptr,
+                            .x1ScaleGmAddr = nullptr,
+                            .biasGmAddr = nullptr,
+                            .clampLimit = params_.tilingData->clampLimit,
+                            .actMode = static_cast<uint8_t>(ActMode::SWIGLU),
+                            .actSubMode = static_cast<uint8_t>(ActSubMode::DEFAULT),
+                            .activationAlpha = 1.0f,
+                            .activationBeta = 1.0f});
 
     GMMAddrInfo sharedGmm1AddrInfo;
     ExpertLoopState sharedGmm1State{initShape, initOffset, 0};

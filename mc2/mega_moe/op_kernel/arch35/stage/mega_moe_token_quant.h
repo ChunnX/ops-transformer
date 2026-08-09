@@ -11,14 +11,12 @@
 #ifndef MEGA_MOE_TOKEN_QUANT_H
 #define MEGA_MOE_TOKEN_QUANT_H
 
+#include "../common/mega_moe_mxfp8_utils.h"
 #include "../common/mega_moe_utils.h"
-#if __has_include("../../../moe_distribute_dispatch_v2/quantize_functions.h")
-#include "../../../moe_distribute_dispatch_v2/quantize_functions.h"
-#else
-#include "../../../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
-#endif
 
 namespace MegaMoeImpl {
+
+using namespace AscendC;
 
 struct QuantProcessConfig {
     uint32_t quantTokenAlignBytes;
@@ -83,19 +81,17 @@ __aicore__ inline void QuantizeLocalTokens(const DispatchPrepareContext &context
         return;
     }
     const AivJobContext &job = context.job;
-    int32_t currentNum;
-    int32_t currentOffset;
-    TilingByJobContext(context.common.tokenNum, currentNum, currentOffset, job.jobIndex, job.totalJobs, 1);
-    if (currentNum <= 0) {
+    WorkRange tokenRange = TilingByJobContext(context.common.tokenNum, job.jobIndex, job.totalJobs, 1U);
+    if (tokenRange.count == 0U) {
         return;
     }
     uint32_t hiddenDim = context.common.tokenHiddenDim;
     GlobalTensor<bfloat16_t> srcGlobalTensor;
     GlobalTensor<uint8_t> dstGlobalTensor;
     srcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(params.aGmAddr) +
-                                     static_cast<uint64_t>(currentOffset) * hiddenDim);
+                                     static_cast<uint64_t>(tokenRange.start) * hiddenDim);
     dstGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(params.peermemInfo.quantTokenScalePtr) +
-                                    static_cast<uint64_t>(currentOffset) * config.quantTokenScaleAlignBytes);
+                                    static_cast<uint64_t>(tokenRange.start) * config.quantTokenScaleAlignBytes);
     DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(hiddenDim * sizeof(bfloat16_t)), 0U, 0U};
     DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
     DataCopyExtParams xCopyOutParams = {1U, config.quantTokenScaleAlignBytes, 0U, 0U, 0U};
@@ -105,7 +101,7 @@ __aicore__ inline void QuantizeLocalTokens(const DispatchPrepareContext &context
             .GetPhyAddr());
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
-    for (int32_t index = 0; index < currentNum; index++) {
+    for (uint32_t index = 0; index < tokenRange.count; ++index) {
         bool useFirstBuffer = index % DOUBLE_BUFFER == 0;
         auto event = useFirstBuffer ? EVENT_ID0 : EVENT_ID1;
         auto xInTensor = useFirstBuffer ? scratch.xInTensor0 : scratch.xInTensor1;
@@ -114,7 +110,7 @@ __aicore__ inline void QuantizeLocalTokens(const DispatchPrepareContext &context
         DataCopyPad(xInTensor, srcGlobalTensor[static_cast<uint64_t>(index) * hiddenDim], xCopyInParams,
                     xCopyInPadParams);
         LoadTopkWeightsToUb<TopkWeightsType, ActivationType, TopkWeightsPrefetch>(
-            context, params, config, scratch, xOutTensor, currentOffset + index, event);
+            context, params, config, scratch, xOutTensor, tokenRange.start + index, event);
         if constexpr (!TopkWeightsPrefetch) {
             SetFlag<AscendC::HardEvent::MTE2_V>(event);
             WaitFlag<AscendC::HardEvent::MTE2_V>(event);
@@ -124,15 +120,16 @@ __aicore__ inline void QuantizeLocalTokens(const DispatchPrepareContext &context
         __ubuf__ uint16_t *mxScaleAddr =
             (__ubuf__ uint16_t *)xOutTensor[config.quantTokenAlignBytes].GetPhyAddr();
 
-        Quant::ComputeMaxExp(srcAddr, maxExpAddr, hiddenDim);
-        Quant::ComputeScale<QuantOutType>(maxExpAddr, mxScaleAddr, halfScaleAddr,
-                                         config.quantScaleNumAlignPerToken);
         if constexpr (QuantMode == E2M1_QUANT) {
+            Quant::ComputeMaxExp(srcAddr, maxExpAddr, hiddenDim);
+            Quant::ComputeScale<QuantOutType>(maxExpAddr, mxScaleAddr, halfScaleAddr,
+                                              config.quantScaleNumAlignPerToken);
             Quant::ComputeFp4Data<bfloat16_t, QuantOutType, AscendC::RoundMode::CAST_TRUNC,
                                   AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleAddr, outDataAddr, hiddenDim);
         } else {
-            Quant::ComputeFp8Data<bfloat16_t, QuantOutType, AscendC::RoundMode::CAST_TRUNC,
-                                  AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleAddr, outDataAddr, hiddenDim);
+            Mxfp8::ComputeFp8Token<bfloat16_t, QuantOutType>(
+                srcAddr, maxExpAddr, mxScaleAddr, halfScaleAddr, outDataAddr, hiddenDim,
+                config.quantScaleNumAlignPerToken);
         }
         SetFlag<AscendC::HardEvent::V_MTE3>(event);
         WaitFlag<AscendC::HardEvent::V_MTE3>(event);

@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MEGA_MOE_GMM_H
-#define MEGA_MOE_GMM_H
+#ifndef MEGA_MOE_GMM_COMMON_H
+#define MEGA_MOE_GMM_COMMON_H
 
 #include "kernel_operator.h"
 #include "tensor_api/tensor.h"
@@ -22,6 +22,8 @@
 #include "../blaze/prologue/block_prologue_mx_fp8fp4.h"
 
 namespace MegaMoeImpl {
+
+using namespace AscendC;
 
 namespace GmmKernel {
 
@@ -56,7 +58,7 @@ struct BlockMmadSelector<true, C> {
 // 汇总 GMM1/GMM2 在不同量化路径下共用的类型、shape 和 layout 配置。
 template <bool IsA8W4, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false,
-          uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false,
+          bool TopkWeightsPrefetch = false, bool IsShared = false,
           bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
 struct Config {
     static constexpr bool IS_SHARED = IsShared;
@@ -66,18 +68,19 @@ struct Config {
     using ElementCType = ElementC;
     using ElementMxScaleAType = ElementMxScaleA;
     using ElementMxScaleBType = ElementMxScaleB;
+    using BiasType = float;
 
     static constexpr uint32_t C0_SIZE_A = AuxGetC0Size<ElementA>();
     static constexpr uint32_t C0_SIZE_C = AuxGetC0Size<ElementC>();
     static constexpr uint32_t C0_SIZE_SCALE = 2U;
     static constexpr uint32_t C0_SIZE_B = IsA8W4 ? 32U : AuxGetC0Size<ElementB>();
+    static constexpr uint32_t C0_SIZE_BIAS = AuxGetC0Size<BiasType>();
 
     using LayoutA = Te::NDExtLayoutPtn;
     using LayoutC = Te::NDExtLayoutPtn;
     using LayoutScaleA = Te::ScaleANDLayoutPtn;
     using LayoutScaleB = Te::ScaleBDNLayoutPtn;
 
-    using BiasType = float;
     using LayoutBias = Te::NDExtLayoutPtn;
     using DispatchPolicy =
         Std::conditional_t<IsA8W4, Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit, Blaze::Gemm::MatmulWithScaleMx<>>;
@@ -89,6 +92,7 @@ struct Config {
     using MakeLayoutScaleA = Te::FrameLayoutFormat<LayoutScaleA, Std::Int<C0_SIZE_SCALE>>;
     using MakeLayoutScaleB = Te::FrameLayoutFormat<LayoutScaleB, Std::Int<C0_SIZE_SCALE>>;
     using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<C0_SIZE_C>>;
+    using MakeLayoutBias = Te::FrameLayoutFormat<LayoutBias, Std::Int<C0_SIZE_BIAS>>;
 
     using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using LayoutAType = decltype(MakeLayoutA{}(uint32_t{}, uint32_t{}));
@@ -96,7 +100,7 @@ struct Config {
     using LayoutScaleAType = decltype(MakeLayoutScaleA{}(uint32_t{}, uint32_t{}));
     using LayoutScaleBType = decltype(MakeLayoutScaleB{}(uint32_t{}, uint32_t{}));
     using LayoutCType = decltype(MakeLayoutC{}(uint32_t{}, uint32_t{}));
-    using LayoutBiasType = decltype(Te::MakeFrameLayout<LayoutBias>(uint32_t{}, uint32_t{}));
+    using LayoutBiasType = decltype(MakeLayoutBias{}(uint32_t{}, uint32_t{}));
 
     using BlockMmad = typename BlockMmadSelector<IsA8W4, Config>::type;
     using BlockPrologue =
@@ -139,16 +143,18 @@ struct Config {
         LayoutBiasType bias;
     };
 
-    __aicore__ static inline void FinalizeProblemConfig(ProblemConfig &config, const BlockJobContext &blockJob)
+    __aicore__ static inline void FinalizeProblemConfig(ProblemConfig &config, const BlockJobContext &blockJob,
+                                                        uint32_t gmm1TileM)
     {
         config.blockNum = blockJob.totalJobs;
         config.blockIdx = blockJob.jobIndex;
         config.scaleK = CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-        config.swigluTileM = TopkWeightsPrefetch ? L1_TILE_M_128 : Gmm1TileM;
+        config.swigluTileM = TopkWeightsPrefetch ? L1_TILE_M_128 : gmm1TileM;
     }
 
     __aicore__ static inline ProblemConfig BuildGmm1ProblemConfig(const ProblemShape &problemShape,
-                                                                  const BlockJobContext &blockJob)
+                                                                  const BlockJobContext &blockJob,
+                                                                  uint32_t gmm1TileM)
     {
         ProblemConfig config;
         config.m = Get<M_VALUE>(problemShape);
@@ -156,13 +162,14 @@ struct Config {
         config.k = Get<K_VALUE>(problemShape);
         config.outputN = config.n / SWIGLU_N_HALF;
         config.schedulerN = IsGmm1Interleaved ? config.n : config.outputN;
-        config.tileM = Gmm1TileM;
-        FinalizeProblemConfig(config, blockJob);
+        config.tileM = gmm1TileM;
+        FinalizeProblemConfig(config, blockJob, gmm1TileM);
         return config;
     }
 
     __aicore__ static inline ProblemConfig BuildGmm2ProblemConfig(const ProblemShape &problemShape,
-                                                                  const BlockJobContext &blockJob)
+                                                                  const BlockJobContext &blockJob,
+                                                                  uint32_t gmm1TileM)
     {
         ProblemConfig config;
         config.m = Get<M_VALUE>(problemShape);
@@ -171,7 +178,7 @@ struct Config {
         config.outputN = config.n;
         config.schedulerN = config.outputN;
         config.tileM = L1_TILE_M_256;
-        FinalizeProblemConfig(config, blockJob);
+        FinalizeProblemConfig(config, blockJob, gmm1TileM);
         return config;
     }
 
@@ -183,7 +190,7 @@ struct Config {
         layouts.scaleA = MakeLayoutScaleA{}(config.m, config.scaleK);
         layouts.scaleB = MakeLayoutScaleB{}(config.scaleK, config.n);
         layouts.c = MakeLayoutC{}(config.m, config.n);
-        layouts.bias = Te::MakeFrameLayout<LayoutBias>(1U, config.n);
+        layouts.bias = MakeLayoutBias{}(1U, config.n);
         return layouts;
     }
 };
@@ -204,4 +211,4 @@ struct GroupMatmulWorkSet {
 } // namespace GmmKernel
 } // namespace MegaMoeImpl
 
-#endif // MEGA_MOE_GMM_H
+#endif // MEGA_MOE_GMM_COMMON_H

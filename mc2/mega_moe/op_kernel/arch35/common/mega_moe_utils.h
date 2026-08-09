@@ -23,42 +23,39 @@
 #include "mega_moe_constants.h"
 #include "mega_moe_types.h"
 
-constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
-constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
-constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
-
-namespace MegaMoeImpl {
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 #define MEGA_MOE_HOST_DEVICE_INLINE __aicore__ inline
 #else
 #define MEGA_MOE_HOST_DEVICE_INLINE inline
 #endif
 
-struct TokenRange {
+namespace MegaMoeImpl {
+
+using namespace AscendC;
+
+constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
+constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
+constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
+
+struct WorkRange {
     uint32_t start = 0;
     uint32_t count = 0;
 };
 
-__aicore__ inline void TilingByJobContext(int32_t totalLen, int32_t &jobLen, int32_t &jobOffset,
-                                          uint32_t jobIndex, uint32_t totalJobs, int32_t align = ALIGN_32)
+__aicore__ inline WorkRange TilingByJobContext(uint32_t totalLen, uint32_t jobIndex,
+                                               uint32_t totalJobs, uint32_t align = ALIGN_32)
 {
     if (totalJobs == 0U || jobIndex >= totalJobs) {
-        jobLen = 0;
-        jobOffset = 0;
-        return;
+        return {};
     }
-    int32_t lenPerJob = Ops::Base::CeilDiv(static_cast<uint32_t>(totalLen), totalJobs);
-    int32_t lenPerJobAlign =
-        Ops::Base::CeilAlign(static_cast<uint32_t>(lenPerJob), static_cast<uint32_t>(align));
-    jobLen = lenPerJobAlign;
-    jobOffset = static_cast<int32_t>(jobIndex) * lenPerJobAlign;
+    uint32_t lenPerJob = Ops::Base::CeilDiv(totalLen, totalJobs);
+    uint32_t alignedLenPerJob = Ops::Base::CeilAlign(lenPerJob, align);
+    uint32_t jobOffset = jobIndex * alignedLenPerJob;
     if (jobOffset >= totalLen) {
-        jobLen = 0;
-        return;
+        return {};
     }
-    if (jobOffset + jobLen > totalLen) {
-        jobLen = totalLen - jobOffset;
-    }
+    uint32_t jobLen = jobOffset + alignedLenPerJob > totalLen ? totalLen - jobOffset : alignedLenPerJob;
+    return {jobOffset, jobLen};
 }
 
 __aicore__ inline GroupSyncSlotLayout CalcGroupSyncSlotLayout(uint32_t expertTokenCount, uint32_t logicalCoreCount)
@@ -124,8 +121,8 @@ MEGA_MOE_HOST_DEVICE_INLINE uint32_t GetWaveExpertCount(uint32_t waveBegin, uint
 }
 
 // 连续均衡分配 token，前 totalTokens % workerCount 个任务各多处理一个 token。
-MEGA_MOE_HOST_DEVICE_INLINE TokenRange GetBalancedTokenRange(uint32_t totalTokens, uint32_t workerIdx,
-                                                             uint32_t workerCount)
+MEGA_MOE_HOST_DEVICE_INLINE WorkRange GetBalancedTokenRange(uint32_t totalTokens, uint32_t workerIdx,
+                                                            uint32_t workerCount)
 {
     if (workerCount == 0U || workerIdx >= workerCount) {
         return {};
@@ -142,22 +139,21 @@ template <int32_t JobAlignment>
 __aicore__ inline void ResetWorkspaceRegion(const AivJobContext &job, GM_ADDR regionPtr, int32_t elementCount,
                                             int32_t batchElementCount, LocalTensor<int32_t> &resetTensor)
 {
-    int32_t jobLen;
-    int32_t jobOffset;
-    TilingByJobContext(elementCount, jobLen, jobOffset, job.jobIndex, job.totalJobs, JobAlignment);
+    WorkRange range = TilingByJobContext(static_cast<uint32_t>(elementCount), job.jobIndex,
+                                          job.totalJobs, static_cast<uint32_t>(JobAlignment));
     GlobalTensor<int32_t> regionGm;
     regionGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(regionPtr));
-    for (int32_t offset = 0; offset < jobLen; offset += batchElementCount) {
-        int32_t batchCount = jobLen - offset < batchElementCount ? jobLen - offset : batchElementCount;
+    for (uint32_t offset = 0; offset < range.count; offset += static_cast<uint32_t>(batchElementCount)) {
+        uint32_t batchCount = range.count - offset < static_cast<uint32_t>(batchElementCount) ?
+                                  range.count - offset : static_cast<uint32_t>(batchElementCount);
         DataCopyExtParams copyParams{1U, static_cast<uint32_t>(batchCount * sizeof(int32_t)), 0U, 0U, 0U};
-        DataCopyPad(regionGm[jobOffset + offset], resetTensor, copyParams);
+        DataCopyPad(regionGm[range.start + offset], resetTensor, copyParams);
     }
 }
 
 #endif
 
 #undef MEGA_MOE_HOST_DEVICE_INLINE
-} // namespace MegaMoeImpl
 
 __aicore__ inline void NotifyCube(uint16_t value = 0)
 {
@@ -290,5 +286,7 @@ __aicore__ inline void SyncFuncStatic()
     AscendC::SetFlag<event>(static_cast<event_t>(eventId));
     AscendC::WaitFlag<event>(static_cast<event_t>(eventId));
 }
+
+} // namespace MegaMoeImpl
 
 #endif // MEGA_MOE_UTILS_H

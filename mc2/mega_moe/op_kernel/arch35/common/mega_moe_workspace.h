@@ -27,7 +27,8 @@
 #include "../mega_moe_tiling.h"
 #include "mega_moe_constants.h"
 
-namespace {
+namespace MegaMoeImpl {
+
 constexpr int64_t PEERMEM_DATA_OFFSET = 1024 * 60LL;
 constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
@@ -54,7 +55,7 @@ HOST_DEVICE int64_t CalcMegaMoeFlagWorkspaceSize(const MegaMoeTilingData *tiling
         (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
     int64_t maxWavesPerExpert =
         Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize),
-                           static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256));
+                           static_cast<int64_t>(L1_TILE_M_256));
     int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
     int64_t swigluFlagSlotsPerExpert =
         useMteA8W8Wave ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
@@ -78,14 +79,12 @@ HOST_DEVICE int64_t CalcMegaMoeFlagWorkspaceSize(const MegaMoeTilingData *tiling
     }
     if (tilingData->sharedExpertNum > 0) {
         int64_t tokenGroupCount = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->bs),
-                                                     static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256));
+                                                     static_cast<int64_t>(L1_TILE_M_256));
         flagElementCount += tokenGroupCount * static_cast<int64_t>(tilingData->sharedExpertNum) *
                             static_cast<int64_t>(INT_CACHELINE);
     }
     return flagElementCount * SIZE_INT_32;
 }
-
-} // namespace
 
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 struct PeermemInfo {
@@ -202,11 +201,11 @@ struct WorkspaceInfo {
 
         swigluQuantDataPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(
-            SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim / MegaMoeImpl::SWIGLU_N_HALF, ALIGN_512);
+            SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim / SWIGLU_N_HALF, ALIGN_512);
 
         swigluQuantScalePtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim /
-                                                  MegaMoeImpl::SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
+                                                  SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
                                               ALIGN_512);
 
         expertRevTokenNumsPtr = base + workspaceSize;
@@ -226,7 +225,7 @@ struct WorkspaceInfo {
 
         int64_t maxWavesPerExpert =
             Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize),
-                               static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256));
+                               static_cast<int64_t>(L1_TILE_M_256));
         int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
         // 只有 wave 流水会按 256 行粒度消费 SwiGLU；普通和 layered 路径仍为每个专家保留一个 cache line 槽。
         int64_t swigluFlagSlotsPerExpert =
@@ -271,7 +270,7 @@ struct WorkspaceInfo {
         if (tilingData->sharedExpertNum > 0) {
             sharedExpertGmm2TileCounterPtr = base + workspaceSize;
             int64_t tokenGroupCount = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->bs),
-                                                         static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256));
+                                                         static_cast<int64_t>(L1_TILE_M_256));
             workspaceSize += SIZE_INT_32 * tokenGroupCount *
                              static_cast<int64_t>(tilingData->sharedExpertNum) * INT_CACHELINE;
         }
@@ -384,15 +383,18 @@ struct WorkspaceInfo {
             // sharedExpertSwigluData：SwiGLU 量化输出 [sharedExpertNum × bs × hiddenDim / 2] FP8。
             sharedExpertSwigluDataPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum *
-                                                      tilingData->hiddenDim / MegaMoeImpl::SWIGLU_N_HALF,
+                                                      tilingData->hiddenDim / SWIGLU_N_HALF,
                                                   ALIGN_512);
             // sharedExpertSwigluScale：SwiGLU scale [sharedExpertNum × bs × hiddenDim / 2 / 32]。
             sharedExpertSwigluScalePtr = base + workspaceSize;
             workspaceSize +=
                 Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim /
-                                         MegaMoeImpl::SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
+                                         SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
                                      ALIGN_512);
         }
     }
 };
+
+} // namespace MegaMoeImpl
+
 #endif // MEGA_MOE_WORKSPACE_H

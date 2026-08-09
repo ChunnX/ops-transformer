@@ -15,6 +15,8 @@
 
 namespace MegaMoeImpl {
 
+using namespace AscendC;
+
 struct SendMaskConfig {
     uint32_t maskAlignSize;
     uint64_t maskWinOffset;

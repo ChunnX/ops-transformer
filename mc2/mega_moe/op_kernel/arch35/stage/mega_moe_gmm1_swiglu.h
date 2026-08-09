@@ -19,12 +19,51 @@
 #include "lib/matmul_intf.h"
 #include "tensor_api/tensor.h"
 #include "../blaze/epilogue/block_epilogue_swiglu_mx_quant.h"
-#include "../common/mega_moe_gmm.h"
+#include "../common/mega_moe_gmm_common.h"
 
 namespace MegaMoeImpl {
 
+using namespace AscendC;
+
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = 256U * 256U;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = 128U * 256U;
+
+using Gmm1ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
+using SharedExpertGmm1ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
+
+struct Gmm1ExpertLoopState {
+    Gmm1ProblemShape problemShape;
+    int64_t rowOffset;
+};
+
+struct Gmm1SwigluContext {
+    MoeStageCommonContext common;
+    BlockJobContext blockJob;
+    BlockWorkspaceContext countWorkspace;
+    int32_t dispatchFlagSlotsPerExpert;
+    int32_t swigluFlagSlotsPerExpert;
+    uint32_t maxTilesPerExpert;
+    int32_t groupedMatmulMode;
+    bool isPerExpertWeightTensor;
+};
+
+struct Gmm1SwigluScratch {
+    GlobalTensor<int32_t> expertRevNumsGlobalTensor;
+};
+
+struct Gmm1SwigluState {
+    uint32_t &startBlockIdx;
+    int32_t &vecSetSyncCom;
+    int32_t &gmTileSequence;
+    uint16_t &pingpongIdx;
+};
+
+struct SharedExpertGmm1SwigluState {
+    uint32_t &startBlockIdx;
+    int32_t &vecSetSyncCom;
+    int32_t &gmTileSequence;
+    uint16_t &pingpongIdx;
+};
 
 // 等待当前 GMM1 tile 对应的 Dispatch 输入就绪。
 template <bool IsShared, typename Config>
@@ -71,11 +110,11 @@ __aicore__ inline void NotifyGmm2InputReady(__gm__ int32_t *flagBase, uint32_t f
     AscendC::AtomicAdd(flagBase, 1);
 }
 
-__aicore__ inline void NotifyGmm1TileStatus(const Params &params, uint32_t expertIdx, uint32_t loopIdx)
+__aicore__ inline void NotifyGmm1TileStatus(const GMMAddrInfo &gmmAddrInfo,
+                                            uint32_t expertIdx, uint32_t loopIdx)
 {
-    __gm__ int32_t *statusAddr = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm1TileStatusPtr) +
-                                 (static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert + loopIdx) *
-                                     INT_CACHELINE;
+    __gm__ int32_t *statusAddr =
+        gmmAddrInfo.gmm1TileStatus + static_cast<uint64_t>(loopIdx) * INT_CACHELINE;
     AscendC::WriteGmByPassDCache(statusAddr, static_cast<int32_t>(expertIdx + 1));
 }
 
@@ -210,7 +249,7 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(
             kLoc, gmBlockA, gmBlockScaleA);
         AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-        NotifyGmm1TileStatus(params, expertIdx, loopIdx);
+        NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
     }
 }
 
@@ -306,7 +345,7 @@ __aicore__ inline void Gmm1AicMmadA8W4(
         AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
         if constexpr (TopkWeightsPrefetch) {
-            NotifyGmm1TileStatus(params, expertIdx, loopIdx);
+            NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
         } else {
             AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++gmTileSequence);
         }
@@ -609,11 +648,11 @@ __aicore__ inline void Gmm1Aiv0PrologueA8W4(Scheduler &scheduler, TensorB &gmB, 
     }
 }
 
-__aicore__ inline void WaitGmm1TileStatus(const Params &params, uint32_t expertIdx, uint32_t loopIdx)
+__aicore__ inline void WaitGmm1TileStatus(const GMMAddrInfo &gmmAddrInfo,
+                                          uint32_t expertIdx, uint32_t loopIdx)
 {
-    __gm__ int32_t *statusAddr = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm1TileStatusPtr) +
-                                 (static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert + loopIdx) *
-                                     INT_CACHELINE;
+    __gm__ int32_t *statusAddr =
+        gmmAddrInfo.gmm1TileStatus + static_cast<uint64_t>(loopIdx) * INT_CACHELINE;
     int32_t roundTag = static_cast<int32_t>(expertIdx + 1);
     while (AscendC::ReadGmByPassDCache(statusAddr) != roundTag) {
         int64_t startCycle = AscendC::GetSystemCycle();
@@ -635,7 +674,7 @@ __aicore__ inline void Gmm1Aiv0PrefetchEpilogueGeneric(
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        WaitGmm1TileStatus(params, expertIdx, loopIdx);
+        WaitGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
         if constexpr (IsGmm1Interleaved) {
             Gmm1Aiv0PrefetchInterleavedEpilogueTileGeneric<MakeLayoutC, ElementC, IsWaveFlagGrained>(
                 config, workSet.gmC, workSet.metaInfoGm, swigluQuantOp, gmmAddrInfo, expertBeforeCnt, actualShape,
@@ -752,7 +791,7 @@ __aicore__ inline void Gmm1Aiv1PrefetchEpilogueA8W4(
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        WaitGmm1TileStatus(params, expertIdx, loopIdx);
+        WaitGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
         Gmm1Aiv1PrefetchEpilogueTileA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
             swigluQuantOp, workSet.gmC, workSet.metaInfoGm, gmmAddrInfo, config, actualShape, mLoc, nLoc,
             expertBeforeCnt);
@@ -854,9 +893,9 @@ __aicore__ inline void RunGmm1Generic(
     uint32_t expertBeforeCnt, uint32_t expertIdx, uint16_t &pingpongIdx)
 {
     using GmmConfig = GmmKernel::Config<false, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
-                                        ElementMxScaleB, IsWeightNZ, Gmm1TileM, TopkWeightsPrefetch, IsShared,
+                                        ElementMxScaleB, IsWeightNZ, TopkWeightsPrefetch, IsShared,
                                         false, IsGmm1Interleaved, IsWaveFlagGrained>;
-    auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob);
+    auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     GmmKernel::BlockScheduler scheduler(
         {config.m, config.schedulerN, config.k},
@@ -920,8 +959,8 @@ __aicore__ inline void RunGmm1A8W4(
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
 
     using GmmConfig = GmmKernel::Config<true, 0, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
-                                        false, Gmm1TileM, TopkWeightsPrefetch, IsShared, false>;
-    auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob);
+                                        false, TopkWeightsPrefetch, IsShared, false>;
+    auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     if constexpr (g_coreType == AIV) {
         swigluQuantOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
@@ -969,35 +1008,6 @@ __aicore__ inline void RunGmm1A8W4(
         expertIdx);
 }
 
-
-using Gmm1ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
-
-struct Gmm1ExpertLoopState {
-    Gmm1ProblemShape problemShape;
-    int64_t rowOffset;
-};
-
-struct Gmm1SwigluContext {
-    MoeStageCommonContext common;
-    BlockJobContext blockJob;
-    BlockWorkspaceContext countWorkspace;
-    int32_t dispatchFlagSlotsPerExpert;
-    int32_t swigluFlagSlotsPerExpert;
-    uint32_t maxTilesPerExpert;
-    int32_t groupedMatmulMode;
-    bool isPerExpertWeightTensor;
-};
-
-struct Gmm1SwigluScratch {
-    GlobalTensor<int32_t> expertRevNumsGlobalTensor;
-};
-
-struct Gmm1SwigluState {
-    uint32_t &startBlockIdx;
-    int32_t &vecSetSyncCom;
-    int32_t &gmTileSequence;
-    uint16_t &pingpongIdx;
-};
 
 __aicore__ inline Gmm1ExpertLoopState CreateGmm1ExpertLoopState(const Gmm1SwigluContext &context)
 {
@@ -1068,6 +1078,10 @@ __aicore__ inline void UpdateGmm1GlobalBuffer(
     if constexpr (EnableA8W4 || TopkWeightsPrefetch) {
         gmmAddrInfo.gmm1OutGlobal = workspace.gmm1MmadResPtr + state.rowOffset * n * sizeof(bfloat16_t);
     }
+    if constexpr (TopkWeightsPrefetch) {
+        gmmAddrInfo.gmm1TileStatus = reinterpret_cast<__gm__ int32_t *>(workspace.gmm1TileStatusPtr) +
+                                     static_cast<uint64_t>(expertIdx) * context.maxTilesPerExpert * INT_CACHELINE;
+    }
     gmmAddrInfo.metaInfoGlobal = workspace.metaInfoPtr;
     gmmAddrInfo.swigluToGmm2Flag = reinterpret_cast<__gm__ int32_t *>(workspace.flagSwiGluToGmm2Ptr) +
                                    expertOffset * context.swigluFlagSlotsPerExpert;
@@ -1122,36 +1136,25 @@ __aicore__ inline void RunGmm1SwigluByMode(
     uint32_t expertIdx)
 {
     if constexpr (EnableA8W4) {
-        MegaMoeImpl::RunGmm1A8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType,
-                                  Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, false, IsWaveFlagGrained>(
+        RunGmm1A8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType, Gmm1TileM,
+                     EpilogueTileM, TopkWeightsPrefetch, false, IsWaveFlagGrained>(
             epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.gmTileSequence, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx);
     } else if (context.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                context.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-        MegaMoeImpl::RunGmm1Generic<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType,
-                                    QuantScaleType, true, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch,
-                                    false, IsGmm1Interleaved, IsWaveFlagGrained>(
+        RunGmm1Generic<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, true,
+                       Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, false, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
             runtimeState.pingpongIdx);
     } else {
-        MegaMoeImpl::RunGmm1Generic<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType,
-                                    QuantScaleType, false, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch,
-                                    false, IsGmm1Interleaved, IsWaveFlagGrained>(
+        RunGmm1Generic<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, false,
+                       Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, false, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
             runtimeState.pingpongIdx);
     }
 }
-
-using SharedExpertGmm1ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
-
-struct SharedExpertGmm1SwigluState {
-    uint32_t &startBlockIdx;
-    int32_t &vecSetSyncCom;
-    int32_t &gmTileSequence;
-    uint16_t &pingpongIdx;
-};
 
 // 原型：MegaMoe::UpdateSharedGlobalBuffer<GMM1>。构造一个共享专家的 GMM1 和 SwiGLU GM 视图。
 template <typename ActivationType, typename WeightType, typename SwigluOutType, typename QuantScaleType,
@@ -1220,74 +1223,29 @@ __aicore__ inline void RunSharedExpertGmm1SwigluStage(const Gmm1SwigluContext &c
 {
     uint32_t expertBeforeCnt = sharedExpertIdx * context.common.tokenNum;
     if constexpr (EnableA8W4) {
-        MegaMoeImpl::RunGmm1A8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType,
-                                  Gmm1TileM, MegaMoeImpl::L1_TILE_M_256, false, true, IsWaveFlagGrained>(
+        RunGmm1A8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType, Gmm1TileM, L1_TILE_M_256,
+                     false, true, IsWaveFlagGrained>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.gmTileSequence,
             context.blockJob, expertBeforeCnt, sharedExpertIdx);
     } else if (context.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                context.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-        MegaMoeImpl::RunGmm1Generic<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType,
-                                    QuantScaleType, true, Gmm1TileM, MegaMoeImpl::L1_TILE_M_256, false, true,
-                                    IsGmm1Interleaved, IsWaveFlagGrained>(
+        RunGmm1Generic<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, true,
+                       Gmm1TileM, L1_TILE_M_256, false, true, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
             context.blockJob, expertBeforeCnt, sharedExpertIdx, runtimeState.pingpongIdx);
     } else {
-        MegaMoeImpl::RunGmm1Generic<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType,
-                                    QuantScaleType, false, Gmm1TileM, MegaMoeImpl::L1_TILE_M_256, false, true,
-                                    IsGmm1Interleaved, IsWaveFlagGrained>(
+        RunGmm1Generic<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, false,
+                       Gmm1TileM, L1_TILE_M_256, false, true, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
             context.blockJob, expertBeforeCnt, sharedExpertIdx, runtimeState.pingpongIdx);
     }
-}
-
-// 原型：MegaMoe::ProcessSharedExpertGmm1。处理一个逻辑 MIX block 任务上的共享专家 GMM1 和 SwiGLU。
-template <typename QuantOutType, typename ActivationType, typename WeightType, typename SwigluOutType,
-          typename QuantScaleType, bool EnableA8W4, uint32_t Gmm1TileM, bool IsGmm1Interleaved = false,
-          bool IsWaveFlagGrained = false, typename BlockEpilogue>
-__aicore__ inline void SharedExpertGmm1SwigluPipeline(
-    const Gmm1SwigluContext &context, const Params &gmmParams,
-    const ExpertWeightTensorListAddrs &weights, BlockEpilogue &epilogueOp,
-    SharedExpertGmm1SwigluState &runtimeState)
-{
-    if (context.blockJob.totalJobs == 0U || context.blockJob.jobIndex >= context.blockJob.totalJobs ||
-        context.common.sharedExpertNum == 0U) {
-        return;
-    }
-
-    typename BlockEpilogue::Params epilogueParams{
-        .yGmAddr = gmmParams.workspaceInfo.sharedExpertSwigluDataPtr,
-        .yScaleGmAddr = gmmParams.workspaceInfo.sharedExpertSwigluScalePtr,
-        .x2ScaleGmAddr = nullptr,
-        .x1ScaleGmAddr = nullptr,
-        .biasGmAddr = nullptr,
-        .clampLimit = gmmParams.tilingData->clampLimit,
-        .actMode = gmmParams.tilingData->actMode,
-        .actSubMode = gmmParams.tilingData->actSubMode,
-        .activationAlpha = gmmParams.tilingData->activationAlpha,
-        .activationBeta = gmmParams.tilingData->activationBeta};
-    epilogueOp.Init(epilogueParams);
-
-    SharedExpertGmm1ProblemShape problemShape;
-    Get<M_VALUE>(problemShape) = context.common.tokenNum;
-    Get<N_VALUE>(problemShape) = context.common.gmm1OutputDim;
-    Get<K_VALUE>(problemShape) = context.common.tokenHiddenDim;
-    GMMAddrInfo gmmAddrInfo{};
-
-    for (uint32_t sharedExpertIdx = 0; sharedExpertIdx < context.common.sharedExpertNum; ++sharedExpertIdx) {
-        UpdateSharedExpertGmm1GlobalBuffer<ActivationType, WeightType, SwigluOutType, QuantScaleType, EnableA8W4>(
-            context, gmmParams.workspaceInfo, weights, epilogueOp, gmmAddrInfo, sharedExpertIdx);
-        RunSharedExpertGmm1SwigluStage<QuantOutType, WeightType, SwigluOutType, QuantScaleType, EnableA8W4,
-                                       Gmm1TileM, IsGmm1Interleaved, IsWaveFlagGrained>(
-            context, gmmParams, epilogueOp, gmmAddrInfo, problemShape, runtimeState, sharedExpertIdx);
-    }
-    EndSync<IsGmm1Interleaved>(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
 }
 
 // 执行一个 MoE 专家的 GMM1 和 SwiGLU。
 template <typename QuantOutType, typename ActivationType, typename WeightType, typename SwigluOutType,
           typename QuantScaleType, bool EnableA8W4, uint32_t Gmm1TileM, uint32_t EpilogueTileM,
-          bool TopkWeightsPrefetch, typename BlockEpilogue>
+          bool TopkWeightsPrefetch, bool IsGmm1Interleaved, bool IsWaveFlagGrained, typename BlockEpilogue>
 __aicore__ inline void RunMoeExpertGmm1SwigluStage(
     const Gmm1SwigluContext &context, const Params &gmmParams, const ExpertWeightTensorListAddrs &weights,
     BlockEpilogue &epilogueOp, Gmm1SwigluScratch &scratch, Gmm1ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
@@ -1301,7 +1259,8 @@ __aicore__ inline void RunMoeExpertGmm1SwigluStage(
                            PackedElementTraits<QuantOutType>::ELEMENTS_PER_BYTE, EnableA8W4, TopkWeightsPrefetch>(
         context, gmmParams.workspaceInfo, weights, epilogueOp, gmmAddrInfo, state, expertIdx);
     RunGmm1SwigluByMode<QuantOutType, WeightType, SwigluOutType, QuantScaleType, EnableA8W4,
-                        Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch>(
+                         Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch,
+                         IsGmm1Interleaved, IsWaveFlagGrained>(
         context, gmmParams, epilogueOp, gmmAddrInfo, state, runtimeState, expertIdx);
 }
 
@@ -1329,35 +1288,6 @@ __aicore__ inline void FinishMoeGmm1SwigluStage(
         }
     } else {
         EndSync(runtimeState.vecSetSyncCom);
-    }
-}
-
-// 原型：MegaMoeWave::ProcessGmm1Wave。
-// AIC/AIV0 执行一个专家 wave，AIV1 继续专用于 Dispatch 和 Combine。
-template <typename QuantOutType, typename ActivationType, typename WeightType, typename QuantScaleType,
-          uint32_t Gmm1TileM, uint32_t EpilogueTileM, bool TopkWeightsPrefetch,
-          bool IsGmm1Interleaved, typename BlockEpilogue>
-__aicore__ inline void RunWaveGmm1Stage(
-    const Gmm1SwigluContext &context, const Params &params, const ExpertWeightTensorListAddrs &weights,
-    BlockEpilogue &epilogueOp, Gmm1SwigluScratch &scratch, uint32_t batchBegin, uint32_t batchEnd,
-    Gmm1ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, Gmm1SwigluState &runtimeState)
-{
-    if constexpr (g_coreType == AIV) {
-        if (GetSubBlockIdx() == 1U) {
-            return;
-        }
-    }
-    for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
-        if (!WaitAndUpdateGmm1GroupParams<false>(context, params.workspaceInfo, scratch, state, expertIdx, 0U)) {
-            continue;
-        }
-        UpdateGmm1GlobalBuffer<ActivationType, WeightType, ActivationType, QuantScaleType,
-                               PackedElementTraits<QuantOutType>::ELEMENTS_PER_BYTE, false, TopkWeightsPrefetch>(
-            context, params.workspaceInfo, weights, epilogueOp, gmmAddrInfo, state, expertIdx);
-        RunGmm1SwigluByMode<QuantOutType, WeightType, ActivationType, QuantScaleType,
-                            false, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch,
-                            IsGmm1Interleaved, true>(
-            context, params, epilogueOp, gmmAddrInfo, state, runtimeState, expertIdx);
     }
 }
 

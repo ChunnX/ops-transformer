@@ -425,7 +425,7 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyCL0c2GmOrUb(cons
     auto layoutL0C =
         AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<L0C_C0>>(param.mL1Size, param.nL1Size);
     auto tensorL0C = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0C, float>(0), layoutL0C);
-    if constexpr (Std::is_same_v<Te::GetMemLocation<TensorC>, Te::Location::UB>) {
+    if constexpr (AscendC::Std::is_same_v<AscendC::Te::GetMemLocation<TensorC>, AscendC::Te::Location::UB>) {
         // C L0C->UB
         auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{});
         AscendC::Te::Copy(CopyL0C2UB.with(AscendC::Te::FixpipeParams(3, copyUbToV1)), tensorC, tensorL0C,
