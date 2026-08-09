@@ -180,7 +180,7 @@ public:
             constexpr uint32_t mmSz = mBaseSize / 2U * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(T);
 
             // FD 业务区起始字节偏移（跳过 bmm1/bmm2/mm2In 区域）
-            constexpr uint32_t BASE = mmSz * 2U;
+            constexpr uint32_t BASE = mmSz * ((dVBaseSize > 128) ? 2U : 4U);
 
             // 各共享区块的绝对字节偏移（与原 LocalMemAllocator 分配顺序完全一致）
             // SharedBuffer2[0]：attenMaskBuf[0](FA) / fdLseMaxUb(FD)，8192 bytes
