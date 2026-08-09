@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -236,7 +237,7 @@ def run_case(
     norm_eps: float = 1e-6,
 ):
     load_k_pool_public_api()
-    torch_npu.npu.set_device(0)
+    torch_npu.npu.set_device(int(os.environ.get("ASCEND_DEVICE_ID", "0")))
     (
         hidden_states,
         wk,
