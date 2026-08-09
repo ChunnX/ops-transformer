@@ -20,6 +20,8 @@ from pathlib import Path
 
 import torch
 
+from bsa_ttk_ops import _make_fp8_block_table
+
 PYTEST_GOLDEN_MODULE = None
 PYTEST_MXFP8_GOLDEN_MODULE = None
 _MXFP8_MODULE_NAME = "_qbsa_mxfp8_pytest_golden"
@@ -179,22 +181,15 @@ def _lengths_to_prefix(lengths):
     return torch.tensor(values, dtype=torch.int32)
 
 
-def _auto_block_table(B, S2, block_size, pattern="sequential", seed=0):
-    num_blocks_per_batch = math.ceil(S2 / block_size)
-    block_table = torch.empty((B, num_blocks_per_batch), dtype=torch.int32)
-    rng = random.Random(seed)
-    for batch_idx in range(B):
-        ids = list(
-            range(
-                batch_idx * num_blocks_per_batch, (batch_idx + 1) * num_blocks_per_batch
-            )
-        )
-        if pattern == "reverse":
-            ids.reverse()
-        elif pattern == "random":
-            rng.shuffle(ids)
-        block_table[batch_idx] = torch.tensor(ids, dtype=torch.int32)
-    return block_table
+def _auto_block_table(
+    B, S2, block_size, pattern="sequential", seed=0, blocknum=None
+):
+    width = math.ceil(S2 / block_size)
+    needed_block_num = B * width
+    blocknum = needed_block_num if blocknum is None else int(blocknum)
+    return _make_fp8_block_table(
+        B, S2, block_size, blocknum, pattern, seed, torch.device("cpu")
+    )
 
 
 def _pack_pa_to_combined(key_pa, value_pa, k_scale_pa, block_size, layout_kv):
@@ -464,7 +459,12 @@ def cpu_quant_block_sparse_attn(
         )
     if block_table_cpu is None:
         block_table_cpu = _auto_block_table(
-            B, S2, sparse_kv_block_size, "sequential", 0
+            B,
+            S2,
+            sparse_kv_block_size,
+            str(kwargs.get("block_table_pattern", "sequential")),
+            int(kwargs.get("seed", 0)),
+            blocknum=int(key_cpu.shape[0]),
         )
 
     if cu_seqlens_q_cpu is None and layout_q != "BSND":
