@@ -23,7 +23,7 @@
 #include "lib/matmul_intf.h"
 #include "tensor_api/tensor.h"
 #include "adv_api/reduce/reduce.h"
-#include "../common/mega_moe_gmm.h"
+#include "../common/mega_moe_gmm_common.h"
 #include "../common/mega_moe_utils.h"
 #include "../common/mega_moe_mxfp8_utils.h"
 #if __has_include("../../../common/mc2_kernel_utils.h")
@@ -37,6 +37,8 @@
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
+
+using namespace MegaMoeImpl;
 
 // 为 tile 内每个 token 行发送一段有效的 GMM2 tile 数据。
 template <typename ElementMMadOut2, typename BlockShape>
@@ -198,7 +200,7 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
             SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
             AscendC::DataCopyPad(ubBf16, gmm2OutGm[(tokenStart + i) * n], gm2UbParams, copyPadParams);
             SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID4>();
-            QuantMxFp8<QuantMode, T>(ubQuantData, ubBf16, floatTemp, n);
+            MegaMoeImpl::Mxfp8::QuantMxFp8<QuantMode, T>(ubQuantData, ubBf16, floatTemp, n);
             SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID5>();
         }
 
@@ -225,6 +227,38 @@ namespace MegaMoeImpl {
 
 constexpr uint32_t META_INFO_TENSOR_ADDR = 200U * 1024U;
 constexpr int32_t MAX_AICORE_NUM = 36;
+
+using Gmm2ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
+using Gmm2BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
+                              int64_t, int64_t, int64_t, int64_t, int64_t>;
+
+struct Gmm2ExpertLoopState {
+    Gmm2ProblemShape problemShape;
+    Gmm2BlockOffset baseOffset;
+    uint32_t expertBeforeCnt = 0;
+};
+
+struct Gmm2Context {
+    MoeStageCommonContext common;
+    BlockJobContext blockJob;
+    BlockWorkspaceContext countWorkspace;
+    int32_t swigluFlagSlotsPerExpert;
+    int32_t dispatchFlagSlotsPerExpert;
+    uint64_t combineSyncSlotCountPerExpert;
+    int32_t groupedMatmulMode;
+    bool isPerExpertWeightTensor;
+};
+
+struct Gmm2Scratch {
+    GlobalTensor<int32_t> expertRevNumsGlobalTensor;
+};
+
+struct Gmm2RuntimeState {
+    uint32_t &startBlockIdx;
+    int32_t &vecSetSyncCom;
+    int32_t &gmTileSequence;
+    uint16_t &pingpongIdx;
+};
 
 struct QuantCombineBufferConfig {
     int64_t combineUbElementCount;
@@ -304,52 +338,8 @@ __aicore__ inline QuantCombineBufferConfig CreateQuantCombineBufferConfig(uint32
     return {static_cast<int64_t>(singleTokenBytes * DOUBLE_BUFFER / sizeof(bfloat16_t)), quantTokenSizeBytes};
 }
 
-// 原型：MegaMoeWave::CombineBuffInit。构造 wave Combine 行环形 buffer 和 metadata 视图。
-template <uint8_t CombineMode>
-__aicore__ inline WaveCombineBufferConfig InitWaveCombineBuffers(const WaveCombineContext &context,
-                                                                 WaveCombineScratch &scratch)
-{
-    WaveCombineBufferConfig bufferConfig{};
-    if constexpr (g_coreType == AIC) {
-        return bufferConfig;
-    }
-    if (GetSubBlockIdx() != 1U) {
-        return bufferConfig;
-    }
-    bufferConfig.rowBytes = context.common.tokenHiddenDim * sizeof(bfloat16_t);
-    bufferConfig.rowStrideBytes = static_cast<uint32_t>(
-        Ops::Base::CeilAlign(static_cast<uint64_t>(bufferConfig.rowBytes), static_cast<uint64_t>(ALIGN_32)));
-    bufferConfig.slotStrideBytes = bufferConfig.rowStrideBytes;
-    if constexpr (CombineMode != COMBINE_NO_QUANT) {
-        uint32_t nScale =
-            Ops::Base::CeilDiv(context.common.tokenHiddenDim, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
-        uint32_t tokenStorageBytes =
-            Ops::Base::CeilAlign(context.common.tokenHiddenDim, static_cast<uint32_t>(ALIGN_256));
-        uint32_t storedScaleBytes = Ops::Base::CeilAlign(nScale, 2U);
-        bufferConfig.quantRowStorageBytes =
-            Ops::Base::CeilAlign(tokenStorageBytes + storedScaleBytes, static_cast<uint32_t>(ALIGN_32));
-        bufferConfig.quantRowElements = bufferConfig.quantRowStorageBytes;
-        bufferConfig.slotStrideBytes += bufferConfig.quantRowStorageBytes;
-        bufferConfig.quantTempElements =
-            Ops::Base::CeilAlign(storedScaleBytes, static_cast<uint32_t>(ALIGN_32)) + storedScaleBytes / 2U;
-    }
-    constexpr uint32_t rowBufferCount =
-        CombineMode == COMBINE_NO_QUANT ? WAVE_COMBINE_NO_QUANT_ROW_BUFFER_NUM :
-                                         WAVE_COMBINE_QUANT_ROW_BUFFER_NUM;
-    uint32_t rowRingBytes = rowBufferCount * bufferConfig.slotStrideBytes;
-    scratch.rowBufferTensor = LocalTensor<bfloat16_t>(
-        TPosition::VECIN, WAVE_COMBINE_UB_BASE, rowRingBytes / sizeof(bfloat16_t));
-    scratch.metaInfoTensor = LocalTensor<int32_t>(
-        TPosition::VECCALC, META_INFO_TENSOR_ADDR, WAVE_COMBINE_META_INFO_TOKEN_CAPACITY * META_INFO_SIZE);
-    if constexpr (CombineMode != COMBINE_NO_QUANT) {
-        scratch.quantTempTensor = LocalTensor<float>(
-            TPosition::VECIN, WAVE_COMBINE_UB_BASE + rowRingBytes, bufferConfig.quantTempElements);
-    }
-    return bufferConfig;
-}
-
 // 返回一个逻辑 wave Combine 任务负责的连续 token 范围。
-__aicore__ inline TokenRange GetWaveCombineOwnedRange(const WaveCombineContext &context, uint32_t tokenCount)
+__aicore__ inline WorkRange GetWaveCombineOwnedRange(const WaveCombineContext &context, uint32_t tokenCount)
 {
     if (GetSubBlockIdx() != 1U) {
         return {};
@@ -432,7 +422,7 @@ __aicore__ inline void SendWaveCombineToken(const WaveCombineContext &context,
             scratch.rowBufferTensor[slotElementOffset + bufferConfig.rowStrideBytes / sizeof(bfloat16_t)];
         SetFlag<HardEvent::MTE2_V>(eventId);
         WaitFlag<HardEvent::MTE2_V>(eventId);
-        MegaMoeCombineImpl::QuantMxFp8<CombineMode, bfloat16_t>(
+        Mxfp8::QuantMxFp8<CombineMode, bfloat16_t>(
             quantUb, rowUb, scratch.quantTempTensor, context.common.tokenHiddenDim);
         SetFlag<HardEvent::V_MTE3>(eventId);
         WaitFlag<HardEvent::V_MTE3>(eventId);
@@ -840,9 +830,9 @@ __aicore__ inline void RunGmm2Generic(
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, const BlockJobContext &blockJob)
 {
     using GmmConfig = GmmKernel::Config<false, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
-                                        ElementMxScaleB, IsWeightNZ, Gmm1TileM, TopkWeightsPrefetch, IsShared,
+                                        ElementMxScaleB, IsWeightNZ, TopkWeightsPrefetch, IsShared,
                                         IsLayered, IsGmm1Interleaved, IsWaveFlagGrained>;
-    auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, blockJob);
+    auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     GmmKernel::BlockScheduler scheduler(
         {config.m, config.schedulerN, config.k},
@@ -893,8 +883,8 @@ __aicore__ inline void RunGmm2A8W4(
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
 
     using GmmConfig = GmmKernel::Config<true, 0, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
-                                        false, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsLayered>;
-    auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, blockJob);
+                                        false, TopkWeightsPrefetch, IsShared, IsLayered>;
+    auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     using BlockMmad = typename GmmConfig::BlockMmad;
     using BlockPrologue = typename GmmConfig::BlockPrologue;
@@ -933,38 +923,6 @@ __aicore__ inline void RunGmm2A8W4(
         params, problemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, blockJob);
 }
 
-
-using Gmm2ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
-using Gmm2BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
-                              int64_t, int64_t, int64_t, int64_t, int64_t>;
-
-struct Gmm2ExpertLoopState {
-    Gmm2ProblemShape problemShape;
-    Gmm2BlockOffset baseOffset;
-    uint32_t expertBeforeCnt = 0;
-};
-
-struct Gmm2Context {
-    MoeStageCommonContext common;
-    BlockJobContext blockJob;
-    BlockWorkspaceContext countWorkspace;
-    int32_t swigluFlagSlotsPerExpert;
-    int32_t dispatchFlagSlotsPerExpert;
-    uint64_t combineSyncSlotCountPerExpert;
-    int32_t groupedMatmulMode;
-    bool isPerExpertWeightTensor;
-};
-
-struct Gmm2Scratch {
-    GlobalTensor<int32_t> expertRevNumsGlobalTensor;
-};
-
-struct Gmm2RuntimeState {
-    uint32_t &startBlockIdx;
-    int32_t &vecSetSyncCom;
-    int32_t &gmTileSequence;
-    uint16_t &pingpongIdx;
-};
 
 __aicore__ inline Gmm2ExpertLoopState CreateGmm2ExpertLoopState(const Gmm2Context &context)
 {
@@ -1139,32 +1097,65 @@ __aicore__ inline void RunGmm2ByMode(const Gmm2Context &context, const Params &p
     }
 }
 
-// 原型：MegaMoe::ProcessSharedExpertGmm2 / MegaMoeWave::ProcessSharedExpertGmm2。
-// 使用可复用的 GMM2 block 任务处理全部共享专家。
-template <typename GenericElementA, typename A8W4ElementA, typename WeightType, typename QuantScaleType,
-          bool EnableA8W4, bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
-          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
-__aicore__ inline void ProcessSharedExpertGmm2(const Gmm2Context &context, const Params &params,
-                                               const ExpertWeightTensorListAddrs &weights,
-                                               Gmm2RuntimeState &runtimeState)
+template <typename ActivationType, typename SwigluOutType, typename QuantScaleType,
+          uint32_t ActivationElementsPerByte, uint32_t WeightElementsPerByte,
+          uint32_t SwigluElementsPerByte, bool ConfigureGmm2Output,
+          bool ConfigureCombineCounter, bool ConfigureGmmToEpilogue>
+__aicore__ inline bool PrepareMoeExpertGmm2Stage(
+    const Gmm2Context &context, const WorkspaceInfo &workspace,
+    const ExpertWeightTensorListAddrs &weights, Gmm2Scratch &scratch,
+    Gmm2ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx)
 {
-    Gmm2ExpertLoopState state = CreateGmm2ExpertLoopState(context);
-    GMMAddrInfo gmmAddrInfo{};
-    for (uint32_t sharedExpertIdx = 0; sharedExpertIdx < context.common.sharedExpertNum; ++sharedExpertIdx) {
-        if (!UpdateSharedGmm2GroupParams<PackedElementTraits<GenericElementA>::ELEMENTS_PER_BYTE,
-                                         PackedElementTraits<WeightType>::ELEMENTS_PER_BYTE,
-                                         PackedElementTraits<A8W4ElementA>::ELEMENTS_PER_BYTE>(
-                context, state, sharedExpertIdx)) {
-            continue;
-        }
-        UpdateSharedGmm2GlobalBuffer<A8W4ElementA, QuantScaleType, Gmm1TileM,
-                                      EnableA8W4 || EnableA4W4>(
-            context, params.workspaceInfo, weights, gmmAddrInfo, state, sharedExpertIdx);
-        RunGmm2ByMode<COMBINE_NO_QUANT, GenericElementA, A8W4ElementA, WeightType, QuantScaleType,
-                      EnableA8W4, EnableA4W4, Gmm1TileM, TopkWeightsPrefetch, true, IsGmm1Interleaved,
-                      IsWaveFlagGrained>(
-            context, params, gmmAddrInfo, state, runtimeState);
+    if (!UpdateMoeGmm2GroupParams<ActivationElementsPerByte, WeightElementsPerByte,
+                                  SwigluElementsPerByte>(context, scratch, state, expertIdx)) {
+        return false;
     }
+    UpdateMoeGmm2GlobalBuffer<ActivationType, SwigluOutType, QuantScaleType,
+                              ConfigureGmm2Output, ConfigureCombineCounter,
+                              ConfigureGmmToEpilogue>(
+        context, workspace, weights, gmmAddrInfo, state, expertIdx);
+    return true;
+}
+
+template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA,
+          typename WeightType, typename QuantScaleType, bool EnableA8W4,
+          bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
+          bool IsGmm1Interleaved, bool IsWaveFlagGrained>
+__aicore__ inline void RunMoeExpertGmm2Stage(
+    const Gmm2Context &context, const Params &params, const GMMAddrInfo &gmmAddrInfo,
+    const Gmm2ExpertLoopState &state, Gmm2RuntimeState &runtimeState)
+{
+    RunGmm2ByMode<CombineMode, GenericElementA, A8W4ElementA, WeightType,
+                  QuantScaleType, EnableA8W4, EnableA4W4, Gmm1TileM,
+                  TopkWeightsPrefetch, false, IsGmm1Interleaved,
+                  IsWaveFlagGrained>(
+        context, params, gmmAddrInfo, state, runtimeState);
+}
+
+template <typename GenericElementA, typename A8W4ElementA, typename WeightType,
+          typename QuantScaleType, bool EnableA8W4, bool EnableA4W4,
+          uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved,
+          bool IsWaveFlagGrained>
+__aicore__ inline bool RunSharedExpertGmm2Stage(
+    const Gmm2Context &context, const Params &params,
+    const ExpertWeightTensorListAddrs &weights, Gmm2ExpertLoopState &state,
+    GMMAddrInfo &gmmAddrInfo, Gmm2RuntimeState &runtimeState, uint32_t sharedExpertIdx)
+{
+    if (!UpdateSharedGmm2GroupParams<PackedElementTraits<GenericElementA>::ELEMENTS_PER_BYTE,
+                                     PackedElementTraits<WeightType>::ELEMENTS_PER_BYTE,
+                                     PackedElementTraits<A8W4ElementA>::ELEMENTS_PER_BYTE>(
+            context, state, sharedExpertIdx)) {
+        return false;
+    }
+    UpdateSharedGmm2GlobalBuffer<A8W4ElementA, QuantScaleType, Gmm1TileM,
+                                 EnableA8W4 || EnableA4W4>(
+        context, params.workspaceInfo, weights, gmmAddrInfo, state, sharedExpertIdx);
+    RunGmm2ByMode<COMBINE_NO_QUANT, GenericElementA, A8W4ElementA, WeightType,
+                  QuantScaleType, EnableA8W4, EnableA4W4, Gmm1TileM,
+                  TopkWeightsPrefetch, true, IsGmm1Interleaved,
+                  IsWaveFlagGrained>(
+        context, params, gmmAddrInfo, state, runtimeState);
+    return true;
 }
 
 // 调度普通模板当前 MoE 专家的量化 Combine，并保持原有 GMM2-ready 等待顺序。
@@ -1219,51 +1210,6 @@ __aicore__ inline void ScheduleQuantizedMoeExpertCombine(
             static_cast<uint64_t>(expertBeforeCnt) + groupTokenStart + tokenOffsetWithinGroup,
             expertIdx};
         CombineQuantizedTokenRange<CombineMode>(context, bufferConfig, params, gmmAddrInfo, tokenRange);
-    }
-}
-
-// 原型：MegaMoe 的 MoE 专家 GMM2 循环。执行 GMM2 及可选的量化 Combine。
-template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, typename WeightType,
-          typename QuantScaleType, typename WeightAddressType, bool EnableA8W4, bool EnableA4W4,
-          uint32_t Gmm1TileM, bool TopkWeightsPrefetch>
-__aicore__ inline void RunMoeGmm2CombineStage(
-    const Gmm2Context &gmm2Context, const Params &params, const ExpertWeightTensorListAddrs &weights,
-    Gmm2Scratch &gmm2Scratch,
-    const QuantCombineContext &combineContext, const QuantCombineBufferConfig &combineBufferConfig,
-    Gmm2RuntimeState &runtimeState)
-{
-    if (gmm2Context.blockJob.totalJobs == 0U ||
-        gmm2Context.blockJob.jobIndex >= gmm2Context.blockJob.totalJobs ||
-        gmm2Context.countWorkspace.blockNum == 0U ||
-        gmm2Context.countWorkspace.blockIdx >= gmm2Context.countWorkspace.blockNum) {
-        return;
-    }
-    gmm2Scratch.expertRevNumsGlobalTensor.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.expertRevTokenNumsPtr));
-    Gmm2ExpertLoopState state = CreateGmm2ExpertLoopState(gmm2Context);
-    GMMAddrInfo gmmAddrInfo{};
-    for (uint32_t expertIdx = 0; expertIdx < gmm2Context.common.moeExpertPerRank; ++expertIdx) {
-        if (!UpdateMoeGmm2GroupParams<PackedElementTraits<GenericElementA>::ELEMENTS_PER_BYTE,
-                                      PackedElementTraits<WeightType>::ELEMENTS_PER_BYTE,
-                                      PackedElementTraits<A8W4ElementA>::ELEMENTS_PER_BYTE>(
-                gmm2Context, gmm2Scratch, state, expertIdx)) {
-            continue;
-        }
-        constexpr bool configureGmm2Output =
-            EnableA8W4 || EnableA4W4 || CombineMode != COMBINE_NO_QUANT;
-        constexpr bool configureCombineCounter = CombineMode != COMBINE_NO_QUANT;
-        UpdateMoeGmm2GlobalBuffer<WeightAddressType, A8W4ElementA, QuantScaleType,
-                                  configureGmm2Output, configureCombineCounter, EnableA8W4 || EnableA4W4>(
-            gmm2Context, params.workspaceInfo, weights, gmmAddrInfo, state, expertIdx);
-        RunGmm2ByMode<CombineMode, GenericElementA, A8W4ElementA, WeightType, QuantScaleType,
-                      EnableA8W4, EnableA4W4, Gmm1TileM, TopkWeightsPrefetch, false>(
-            gmm2Context, params, gmmAddrInfo, state, runtimeState);
-        ScheduleQuantizedMoeExpertCombine<CombineMode>(
-            combineContext, combineBufferConfig, params, gmmAddrInfo,
-            static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)), state.expertBeforeCnt, expertIdx);
-    }
-    if constexpr (CombineMode == COMBINE_NO_QUANT) {
-        EndGMM2Sync(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
     }
 }
 
@@ -1337,89 +1283,31 @@ __aicore__ inline void WaitWaveGmm2Ready(const WaveCombineContext &context,
     }
 }
 
-// 原型：MegaMoeWave::ProcessGmm2Wave。
-// AIC 执行一个专家 wave，同时 AIV0 推进对应的虚拟 GMM2 游标。
-template <typename QuantOutType, typename ActivationType, typename WeightType, typename QuantScaleType,
-          uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
-__aicore__ inline void RunWaveGmm2Stage(
-    const Gmm2Context &context, const Params &params, const ExpertWeightTensorListAddrs &weights,
-    Gmm2Scratch &scratch, const WaveCombineContext &combineContext,
-    uint32_t batchBegin, uint32_t batchEnd, Gmm2ExpertLoopState &state,
-    GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom,
-    uint16_t &gmm2PingPongIdx)
+template <uint8_t CombineMode>
+__aicore__ inline void RunWaveExpertCombineStage(
+    const WaveCombineContext &context, const WaveCombineBufferConfig &bufferConfig,
+    WaveCombineScratch &scratch, const Params &params, const GMMAddrInfo &gmmAddrInfo,
+    const Gmm2ExpertLoopState &state, uint32_t expertIdx, uint32_t &rowSequence)
 {
-    if constexpr (g_coreType == AIV) {
-        if (GetSubBlockIdx() == 1U) {
-            return;
-        }
+    uint32_t currentExpertTokenNum = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
+    WorkRange currentCoreTokenRange = GetWaveCombineOwnedRange(context, currentExpertTokenNum);
+    if (currentCoreTokenRange.count != 0U) {
+        WaitWaveGmm2Ready(context, params, expertIdx);
     }
-    int32_t gmTileSequence = 0;
-    Gmm2RuntimeState runtimeState{startBlockIdx, vecSetSyncCom, gmTileSequence, gmm2PingPongIdx};
-    for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
-        if (!UpdateMoeGmm2GroupParams<1U, 1U, 1U>(context, scratch, state, expertIdx)) {
-            continue;
-        }
-        UpdateMoeGmm2GlobalBuffer<ActivationType, ActivationType, QuantScaleType,
-                                  true, false, false>(
-            context, params.workspaceInfo, weights, gmmAddrInfo, state, expertIdx);
-        RunGmm2ByMode<COMBINE_NO_QUANT, QuantOutType, ActivationType, WeightType,
-                      QuantScaleType, false, false, Gmm1TileM, TopkWeightsPrefetch, false,
-                      IsGmm1Interleaved, true>(
-            context, params, gmmAddrInfo, state, runtimeState);
-        NotifyWaveGmm2Ready(combineContext, params, expertIdx);
+    for (uint32_t processedTokenNum = 0U; processedTokenNum < currentCoreTokenRange.count;) {
+        uint32_t remainingTokenNum = currentCoreTokenRange.count - processedTokenNum;
+        uint32_t chunkTokenNum =
+            remainingTokenNum < WAVE_COMBINE_META_INFO_TOKEN_CAPACITY ?
+                remainingTokenNum : WAVE_COMBINE_META_INFO_TOKEN_CAPACITY;
+        PreloadWaveCombineMetaInfo(
+            params, scratch,
+            static_cast<uint64_t>(state.expertBeforeCnt) + currentCoreTokenRange.start + processedTokenNum,
+            chunkTokenNum, 0U);
+        CombineWaveTokenRange<CombineMode>(
+            context, bufferConfig, scratch, params, gmmAddrInfo.gmm2OutGlobal,
+            currentCoreTokenRange.start + processedTokenNum, chunkTokenNum, 0U, rowSequence);
+        processedTokenNum += chunkTokenNum;
     }
-}
-
-// 原型：MegaMoeWave::ProcessCombineExperts。
-// 等待一个 wave 的 GMM2 汇聚完成，并发送 AIV1 任务负责的 token 范围。
-template <uint8_t CombineMode, typename ActivationType, typename QuantScaleType>
-__aicore__ inline void RunWaveCombineStage(
-    const Gmm2Context &gmm2Context, const Params &params, const ExpertWeightTensorListAddrs &weights,
-    Gmm2Scratch &gmm2Scratch, const WaveCombineContext &combineContext,
-    const WaveCombineBufferConfig &bufferConfig,
-    WaveCombineScratch &combineScratch, uint32_t batchBegin,
-    uint32_t batchEnd, Gmm2ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo)
-{
-    if constexpr (g_coreType == AIC) {
-        return;
-    }
-    if (GetSubBlockIdx() != 1U) {
-        return;
-    }
-
-    uint32_t rowSequence = 0U;
-    for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
-        if (!UpdateMoeGmm2GroupParams<1U, 1U, 1U>(
-                gmm2Context, gmm2Scratch, state, expertIdx)) {
-            continue;
-        }
-        UpdateMoeGmm2GlobalBuffer<ActivationType, ActivationType, QuantScaleType,
-                                  true, false, false>(
-            gmm2Context, params.workspaceInfo, weights, gmmAddrInfo, state, expertIdx);
-        uint32_t currentExpertTokenNum = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
-        TokenRange currentCoreTokenRange =
-            GetWaveCombineOwnedRange(combineContext, currentExpertTokenNum);
-        if (currentCoreTokenRange.count != 0U) {
-            WaitWaveGmm2Ready(combineContext, params, expertIdx);
-        }
-
-        for (uint32_t processedTokenNum = 0U; processedTokenNum < currentCoreTokenRange.count;) {
-            uint32_t remainingTokenNum = currentCoreTokenRange.count - processedTokenNum;
-            uint32_t chunkTokenNum =
-                remainingTokenNum < WAVE_COMBINE_META_INFO_TOKEN_CAPACITY ?
-                    remainingTokenNum :
-                    WAVE_COMBINE_META_INFO_TOKEN_CAPACITY;
-            PreloadWaveCombineMetaInfo(
-                params, combineScratch,
-                static_cast<uint64_t>(state.expertBeforeCnt) + currentCoreTokenRange.start + processedTokenNum,
-                chunkTokenNum, 0U);
-            CombineWaveTokenRange<CombineMode>(
-                combineContext, bufferConfig, combineScratch, params, gmmAddrInfo.gmm2OutGlobal,
-                currentCoreTokenRange.start + processedTokenNum, chunkTokenNum, 0U, rowSequence);
-            processedTokenNum += chunkTokenNum;
-        }
-    }
-    DrainWaveCombineRowRing<CombineMode>(rowSequence);
 }
 
 } // namespace MegaMoeImpl

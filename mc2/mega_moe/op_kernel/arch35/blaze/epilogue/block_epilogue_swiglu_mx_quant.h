@@ -356,8 +356,8 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlob
     const BlockCoord &baseOffset)
 {
     if constexpr (g_coreType == AscendC::AIV) {
-        quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)yGmAddr_ + Get<Y_IDX>(baseOffset));
-        quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)yScaleGmAddr_ + Get<Y_SCALE_IDX>(baseOffset));
+        quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)yGmAddr_ + MegaMoeImpl::Get<Y_IDX>(baseOffset));
+        quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)yScaleGmAddr_ + MegaMoeImpl::Get<Y_SCALE_IDX>(baseOffset));
     }
 }
 
@@ -365,9 +365,10 @@ BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateNextProblem(
     const ProblemShape &problemShape)
 {
-    n_ = Get<N_VALUE>(problemShape); // n/2
-    scaleN_ =
-        Ops::Base::CeilDiv(static_cast<uint64_t>(n_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+    n_ = MegaMoeImpl::Get<MegaMoeImpl::N_VALUE>(problemShape); // n/2
+    scaleN_ = Ops::Base::CeilDiv(static_cast<uint64_t>(n_),
+                                 static_cast<uint64_t>(MegaMoeImpl::MXFP_DIVISOR_SIZE)) *
+              MegaMoeImpl::MXFP_MULTI_BASE_SIZE;
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -396,8 +397,10 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
 {
     AscendC::DataCopyExtParams ub2GmParams{0, 0, 0, 0, 0};
-    auto blockScaleN = Ops::Base::CeilDiv(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
-                       MXFP_MULTI_BASE_SIZE; // 256 / 32 = 8
+    auto blockScaleN =
+        Ops::Base::CeilDiv(static_cast<uint64_t>(singleN_),
+                           static_cast<uint64_t>(MegaMoeImpl::MXFP_DIVISOR_SIZE)) *
+        MegaMoeImpl::MXFP_MULTI_BASE_SIZE; // 256 / 32 = 8
     // scale layout in UB is already compact: (mSize, blockScaleN). Compact copy avoids (mSize*8)->(mSize,32).
     ub2GmParams.blockCount = blockCount; // 128
     ub2GmParams.blockLen = blockScaleN;  // 8
@@ -1115,8 +1118,8 @@ BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()(
     const BlockShape &blockShape, const BlockCoord &blockCoord, uint16_t pingpongIdx)
 {
-    singleM_ = Get<M_VALUE>(blockShape); // 128
-    singleN_ = Get<N_VALUE>(blockShape); // 256
+    singleM_ = MegaMoeImpl::Get<MegaMoeImpl::M_VALUE>(blockShape); // 128
+    singleN_ = MegaMoeImpl::Get<MegaMoeImpl::N_VALUE>(blockShape); // 256
     blockCoord_ = blockCoord;
 
     if (singleM_ == 0) {
@@ -1127,9 +1130,9 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     UBBlockSize_ = BLOCK_SIZE;                                         // 32
     elementAfterReduce_ = AscendC::VECTOR_REG_WIDTH / UBBlockSize_;    // 256 / 32 = 8
 
-    uint64_t yOffset = Get<Y_IDX>(blockCoord);
-    uint64_t yScaleOffset = Get<Y_SCALE_IDX>(blockCoord);
-    uint64_t mLoc = Get<M_LOC_IDX>(blockCoord);
+    uint64_t yOffset = MegaMoeImpl::Get<Y_IDX>(blockCoord);
+    uint64_t yScaleOffset = MegaMoeImpl::Get<Y_SCALE_IDX>(blockCoord);
+    uint64_t mLoc = MegaMoeImpl::Get<M_LOC_IDX>(blockCoord);
     VFDoSwigluForMX(singleM_, pingpongIdx, mLoc); // switch(x)*y 计算quant quantScale
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
