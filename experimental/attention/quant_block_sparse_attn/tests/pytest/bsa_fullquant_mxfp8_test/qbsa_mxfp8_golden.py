@@ -312,6 +312,22 @@ def _validate_case_design_fields(case):
     _get_runtime_seq_lengths(case, "actual_seq_q", "S1")
     _get_runtime_seq_lengths(case, "actual_seq_kv", "S2")
 
+    p_scale_mode = case.get(
+        "p_scale_mode",
+        "none" if case.get("p_scale_value") is None else "value",
+    )
+    if p_scale_mode not in ("none", "empty", "value"):
+        raise ValueError(
+            f"p_scale_mode must be none/empty/value, got {p_scale_mode!r}"
+        )
+    if p_scale_mode == "value":
+        if case.get("p_scale_value") is None or float(case["p_scale_value"]) <= 0:
+            raise ValueError("value p_scale must carry a positive p_scale_value")
+    elif case.get("p_scale_value") is not None:
+        raise ValueError(
+            f"p_scale_mode={p_scale_mode!r} requires p_scale_value=None"
+        )
+
 
 def _get_runtime_seq_lengths(case, field_name, total_field_name):
     """支持逐 batch 长度，也支持用单元素总 T 表示等长 batch。"""
@@ -1106,10 +1122,14 @@ def _generate_reference_style_mxfp8_inputs():
         sparse_seq_len,
         case["sparse_kv_block_size"],
     )
+    p_scale_mode = case.get(
+        "p_scale_mode",
+        "none" if case.get("p_scale_value") is None else "value",
+    )
     p_scale_value = case.get("p_scale_value")
     p_scale = (
         None
-        if p_scale_value is None
+        if p_scale_mode != "value"
         else torch.tensor([float(p_scale_value)], dtype=torch.float32)
     )
 
@@ -2415,12 +2435,21 @@ def npu_mxfp8_fa(
     deq_q_npu = q_scale_e8m0.npu()
     logger.info("[NPU] Q descale layout=TND, shape=%s", q_scale_e8m0.shape)
 
-    if p_scale is not None:
+    p_scale_mode = CASE.get(
+        "p_scale_mode",
+        "none" if p_scale is None else "value",
+    )
+    if p_scale_mode == "value":
+        if p_scale is None:
+            raise ValueError("p_scale_mode='value' requires a p_scale tensor")
         p_scale_e8m0 = fp32_to_e8m0fnu_safe(p_scale, "P scale")
         p_scale_npu = p_scale_e8m0.npu()
         logger.info(
             "[NPU] P scale dtype=%s, shape=%s", p_scale_e8m0.dtype, p_scale_e8m0.shape
         )
+    elif p_scale_mode == "none":
+        p_scale_npu = None
+        logger.info("[NPU] P scale=None (optional input omitted, default 1.0)")
     else:
         p_scale_npu = torch.tensor([], dtype=torch.float8_e8m0fnu).npu()
         logger.info("[NPU] P scale=empty tensor (shape size 0, default 1.0)")
