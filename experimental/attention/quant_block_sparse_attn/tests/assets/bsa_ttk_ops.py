@@ -476,12 +476,6 @@ class QuantBlockSparseAttnMetadataBuilder:
             sparse_block_size_k=int(sparse_kv_block_size),
             quant_mode=int(quant_mode),
             mask_mode=int(mask_mode),
-            max_seqlen_q=cls.max_seq(
-                cu_seqlens_q, seqused_q, max_seqlen_q or q_fallback
-            ),
-            max_seqlen_kv=cls.max_seq(
-                cu_seqlens_kv, seqused_kv, max_seqlen_kv or kv_fallback
-            ),
             layout_q=layout_q,
             layout_kv=layout_kv,
             layout_sparse_indices=layout_sparse_indices,

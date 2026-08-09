@@ -341,7 +341,7 @@ def _customize_inputs_mxfp8(
     _inplace_copy(q_descale, q_scale)
     _inplace_copy(k_descale, module.fp32_to_e8m0fnu_safe(k_scale_pa, "K descale"))
     _inplace_copy(v_descale, module.fp32_to_e8m0fnu_safe(v_scale_pa, "V descale"))
-    if p_scale is not None:
+    if p_scale is not None and p_scale.numel() > 0:
         _inplace_copy(
             p_scale,
             module.fp32_to_e8m0fnu_safe(data["p_scale"], "P scale"),
