@@ -13,6 +13,8 @@
 
 #include <cstdint>
 
+namespace MegaMoeImpl {
+
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;
 constexpr uint64_t K_VALUE = 2UL;
@@ -59,7 +61,6 @@ constexpr uint32_t META_INFO_SIZE = 8U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A8W8_NZ = 2U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A4W4_NZ = 4U;
 
-namespace MegaMoeImpl {
 constexpr uint32_t L1_TILE_M_256 = 256U;
 constexpr uint32_t L1_TILE_M_128 = 128U;
 constexpr uint32_t L1_TILE_N = 256U;

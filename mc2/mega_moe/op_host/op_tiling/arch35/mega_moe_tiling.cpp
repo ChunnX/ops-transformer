@@ -35,6 +35,7 @@
 using namespace Mc2Tiling;
 using namespace AscendC;
 using namespace ge;
+using namespace MegaMoeImpl;
 
 namespace optiling {
 namespace {

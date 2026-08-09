@@ -47,9 +47,9 @@
 #include "../../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
 #endif
 
-using namespace AscendC;
-
 namespace MegaMoeImpl {
+
+using namespace AscendC;
 constexpr uint32_t UNPERMUTE_LIST_NUM = 3U;
 constexpr int64_t HALF_TO_FP32 = 2U;
 constexpr int64_t DEQUANT_SCALE_EXPAND = 2U;
@@ -1960,7 +1960,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
     AscendC::DataCopy(metaInfoTensor, tripleGm, batchCount * META_INFO_SIZE);
 
     // 执行 combine 并发送
-    MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true, IsQuant>(
+    CombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true, IsQuant>(
         currentRow, batchCount, k_, expertIdx, rankId_, gmmAddrInfo.gmm2OutGlobal, params_, metaInfoTensor,
         combineUbTensorSize_, offset, quantTokenSizeBytes);
 
@@ -2252,7 +2252,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
                                                               fp8_e5m2_t>::type;
                     SetFlag<AscendC::HardEvent::S_V>(event);
                     WaitFlag<AscendC::HardEvent::S_V>(event);
-                    MegaMoeCombineImpl::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_,
+                    Mxfp8::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_,
                                                                           fp32ScaleTensor_, nScale, k_);
                 }
                 PipeBarrier<PIPE_V>();
@@ -2530,10 +2530,16 @@ template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSharedExpertGmm1(
     const TupleShape &initShape, const BlockOffset &initOffset, int32_t &gmTileSequence)
 {
-    sharedEpilogueOp_.Init({params_.workspaceInfo.sharedExpertSwigluDataPtr,
-                            params_.workspaceInfo.sharedExpertSwigluScalePtr, nullptr, nullptr, nullptr, nullptr,
-                            nullptr, params_.tilingData->clampLimit, static_cast<uint8_t>(ActMode::SWIGLU),
-                            static_cast<uint8_t>(ActSubMode::DEFAULT), 1.0f, 1.0f});
+    sharedEpilogueOp_.Init({.yGmAddr = params_.workspaceInfo.sharedExpertSwigluDataPtr,
+                            .yScaleGmAddr = params_.workspaceInfo.sharedExpertSwigluScalePtr,
+                            .x2ScaleGmAddr = nullptr,
+                            .x1ScaleGmAddr = nullptr,
+                            .biasGmAddr = nullptr,
+                            .clampLimit = params_.tilingData->clampLimit,
+                            .actMode = static_cast<uint8_t>(ActMode::SWIGLU),
+                            .actSubMode = static_cast<uint8_t>(ActSubMode::DEFAULT),
+                            .activationAlpha = 1.0f,
+                            .activationBeta = 1.0f});
 
     GMMAddrInfo sharedGmm1AddrInfo;
     ExpertLoopState sharedGmm1State{initShape, initOffset, 0};

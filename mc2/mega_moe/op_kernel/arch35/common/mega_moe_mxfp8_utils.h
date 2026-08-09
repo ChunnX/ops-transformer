@@ -19,9 +19,23 @@
 #include "../../../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
 #endif
 
+namespace MegaMoeImpl {
+
 using namespace AscendC;
 
-namespace MegaMoeCombineImpl {
+namespace Mxfp8 {
+
+template <typename InputType, typename Fp8Type>
+__aicore__ inline void ComputeFp8Token(__ubuf__ InputType *srcAddr, __ubuf__ uint16_t *maxExpAddr,
+                                       __ubuf__ uint16_t *mxScaleAddr, __ubuf__ uint16_t *halfScaleAddr,
+                                       __ubuf__ int8_t *outDataAddr, uint32_t processLen, uint32_t scaleNum)
+{
+    Quant::ComputeMaxExp(srcAddr, maxExpAddr, processLen);
+    Quant::ComputeScale<Fp8Type>(maxExpAddr, mxScaleAddr, halfScaleAddr, scaleNum);
+    Quant::ComputeFp8Data<InputType, Fp8Type, AscendC::RoundMode::CAST_TRUNC,
+                          AscendC::RoundMode::CAST_RINT>(
+        srcAddr, halfScaleAddr, outDataAddr, processLen);
+}
 
 // 将一行 BF16 token 量化为带 padding 的 MXFP8 data + scale 记录。
 template <uint8_t QuantMode, typename ExpandXType>
@@ -39,10 +53,8 @@ __aicore__ inline void QuantMxFp8(LocalTensor<ExpandXType> &outLocal, LocalTenso
     uint32_t tokenStorageElementCount = Align256<uint32_t>(static_cast<uint32_t>(processLen));
     __ubuf__ uint16_t *mxScaleLocalAddr =
         (__ubuf__ uint16_t *)castFp8LocalTensor[tokenStorageElementCount].GetPhyAddr();
-    Quant::ComputeMaxExp(srcAddr, maxExpAddr, processLen);
-    Quant::ComputeScale<Fp8Type>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
-    Quant::ComputeFp8Data<ExpandXType, Fp8Type, AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
-        srcAddr, halfScaleLocalAddr, outLocalAddr, processLen);
+    ComputeFp8Token<ExpandXType, Fp8Type>(srcAddr, maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr,
+                                         outLocalAddr, static_cast<uint32_t>(processLen), mxScaleNum);
 }
 
 // 将一条 MXFP8 token 记录反量化为 FP32，供 Unpermute 累加。
@@ -112,6 +124,7 @@ __aicore__ inline void DeQuantMxFp8(LocalTensor<XType> &inLocal, LocalTensor<flo
     }
 }
 
-} // namespace MegaMoeCombineImpl
+} // namespace Mxfp8
+} // namespace MegaMoeImpl
 
 #endif // MEGA_MOE_MXFP8_UTILS_H

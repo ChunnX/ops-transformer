@@ -27,7 +27,8 @@
 #include "../mega_moe_tiling.h"
 #include "mega_moe_constants.h"
 
-namespace {
+namespace MegaMoeImpl {
+
 constexpr int64_t PEERMEM_DATA_OFFSET = 1024 * 60LL;
 constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
@@ -84,8 +85,6 @@ HOST_DEVICE int64_t CalcMegaMoeFlagWorkspaceSize(const MegaMoeTilingData *tiling
     }
     return flagElementCount * SIZE_INT_32;
 }
-
-} // namespace
 
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 struct PeermemInfo {
@@ -395,4 +394,7 @@ struct WorkspaceInfo {
         }
     }
 };
+
+} // namespace MegaMoeImpl
+
 #endif // MEGA_MOE_WORKSPACE_H
