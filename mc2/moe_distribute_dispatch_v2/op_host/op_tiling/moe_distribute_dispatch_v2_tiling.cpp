@@ -1616,8 +1616,11 @@ static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context,
     uint32_t moeUsedAivNum = aivUsedAllToAll - sharedUsedAivNum;
     uint32_t maskSizePerExpert = Ceil((expertIdsBufSize / sizeof(int32_t)) / 8, UB_ALIGN, nodeName); // 8 is 1byte->8bit
     uint32_t expertMaskBufSize = maskSizePerExpert * Ceil(moeExpertNum, moeUsedAivNum, nodeName) / moeUsedAivNum;
-    UbForMoe = UbForMoe + expertMaskBufSize;                                        // expertMaskBuf
-    UbForMoe = UbForMoe + Ceil(moeExpertNum * sizeof(int32_t), UB_ALIGN, nodeName); // tokenNumToExpertBuf
+    uint32_t expertCounterBufSize = Ceil(moeExpertNum * sizeof(int32_t), UB_ALIGN, nodeName);
+    uint32_t tokenExpertOffsetBufSize = Ceil(kSize * sizeof(int32_t), UB_ALIGN, nodeName);
+    uint32_t expertMaskPathBufSize = expertMaskBufSize + expertCounterBufSize;
+    uint32_t counterPathBufSize = expertCounterBufSize + tokenExpertOffsetBufSize;
+    UbForMoe = expertMaskPathBufSize > counterPathBufSize ? expertMaskPathBufSize : counterPathBufSize;
     return UbForMoe;
 }
 
