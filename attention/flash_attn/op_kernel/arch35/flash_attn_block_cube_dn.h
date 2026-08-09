@@ -68,6 +68,8 @@ public:
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
     static constexpr uint32_t CC_MM_0 = 0U;
     static constexpr uint32_t CC_MM_1 = 1U;
+    static constexpr uint32_t CC_MM_2 = 2U;
+    static constexpr uint32_t CC_MM_3 = 3U;
     static constexpr uint32_t CC_L1P_0 = 5U;
     static constexpr uint32_t CC_L1P_1 = 6U;
     static constexpr uint32_t CC_L1P_2 = 7U;
@@ -89,7 +91,7 @@ public:
     static constexpr uint32_t L0C_EVENT3 = 13;
 
     // UB
-    static constexpr uint32_t UB_MM_RES_BUFCNT = 2U;
+    static constexpr uint32_t UB_MM_RES_BUFCNT = (dBaseSize > 128) ? 2U : 4U;
     static constexpr uint32_t UB_MM_RES_BUF_BYTES =
         mBaseSize / CV_RATIO * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(MM_T);
     LocalTensor<uint8_t> ubMmResBuffers_;
@@ -106,15 +108,11 @@ public:
     LocalTensor<uint8_t> l1KvBuffers_;
     uint32_t qBufId_ = 0;
     uint32_t kvBufId_ = 0;
-    // L0C — 非对称分配: 1×128K (BMM2) + 2×64K (BMM1 交替) = 256K
-    static constexpr uint32_t L0C_BMM2_BUF_BYTES = 128 * 1024;
-    static constexpr uint32_t L0C_BMM1_BUF_BYTES = 64 * 1024;
-    static constexpr uint32_t L0C_BMM1_BUFCNT = 2;
-    static constexpr uint32_t L0C_BMM2_OFFSET = 0;
-    static constexpr uint32_t L0C_BMM1_BASE = L0C_BMM2_BUF_BYTES;
-    static constexpr uint32_t L0C_TOTAL_BYTES = L0C_BMM2_BUF_BYTES + L0C_BMM1_BUFCNT * L0C_BMM1_BUF_BYTES;
+    // L0C
+    static constexpr uint32_t L0C_BUFCNT = 4;
+    static constexpr uint32_t L0C_BUF_BYTES = 64 * 1024;
     LocalTensor<uint8_t> l0CBuffers_;
-    uint32_t l0cBmm1BufId_ = 0;
+    uint32_t l0cBufId_ = 0;
     uint32_t mmResBufId_ = 0;
     // L0A/B
     fa_base_matmul::BufferManager<fa_base_matmul::BufferType::L0A> l0aBufferManager_;
@@ -168,7 +166,7 @@ public:
         l0bBufferManager_.Init(BUFFER_SIZE_BYTE_64K);
 
         /*--------------------------------------------L0C--------------------------------------------*/
-        l0CBuffers_ = LocalTensor<uint8_t>(TPosition::CO1, 0U, L0C_TOTAL_BYTES);
+        l0CBuffers_ = LocalTensor<uint8_t>(TPosition::CO1, 0U, L0C_BUFCNT * L0C_BUF_BYTES);
     }
 
     __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
@@ -214,6 +212,12 @@ public:
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_MM_0 + AIV0_AIV1_OFFSET);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_MM_1);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_MM_1 + AIV0_AIV1_OFFSET);
+        if constexpr (dBaseSize <= 128) {
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_MM_2);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_MM_2 + AIV0_AIV1_OFFSET);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_MM_3);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_MM_3 + AIV0_AIV1_OFFSET);
+        }
     }
 
     __aicore__ inline void AllocEventID()
@@ -319,9 +323,8 @@ public:
         Mutex::Unlock<PIPE_MTE2>(KV_L1_EVENT0 + kvBufId_);
         Mutex::Lock<PIPE_MTE1>(KV_L1_EVENT0 + kvBufId_);
         {
-            Mutex::Lock<PIPE_M>(L0C_EVENT1 + l0cBmm1BufId_);
-            uint32_t l0cOffset = L0C_BMM1_BASE + l0cBmm1BufId_ * L0C_BMM1_BUF_BYTES;
-            LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cOffset].template ReinterpretCast<MM_T>();
+            Mutex::Lock<PIPE_M>(L0C_EVENT0 + l0cBufId_);
+            LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
             MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
                                         (uint32_t)(constInfo_.dSize), false, true);
             if constexpr (dBaseSize > 128) {
@@ -331,13 +334,13 @@ public:
                 MatmulBase<KV_T, Q_T, MM_T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
                     kL1Tensor, qL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
             }
-            Mutex::Unlock<PIPE_M>(L0C_EVENT1 + l0cBmm1BufId_);
-            Mutex::Lock<PIPE_FIX>(L0C_EVENT1 + l0cBmm1BufId_);
+            Mutex::Unlock<PIPE_M>(L0C_EVENT0 + l0cBufId_);
+            Mutex::Lock<PIPE_FIX>(L0C_EVENT0 + l0cBufId_);
 
             FixpipeMm1Dn(mm1ResUbTensor, l0CSubTensor, runInfo);
 
-            Mutex::Unlock<PIPE_FIX>(L0C_EVENT1 + l0cBmm1BufId_);
-            l0cBmm1BufId_ = (l0cBmm1BufId_ + 1) % L0C_BMM1_BUFCNT;
+            Mutex::Unlock<PIPE_FIX>(L0C_EVENT0 + l0cBufId_);
+            l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
         }
         Mutex::Unlock<PIPE_MTE1>(KV_L1_EVENT0 + kvBufId_);
         kvBufId_ = (kvBufId_ + 1) % L1_KV_BUFCNT;
@@ -394,34 +397,46 @@ public:
         Mutex::Unlock<PIPE_MTE2>(KV_L1_EVENT0 + kvBufId_);
         Mutex::Lock<PIPE_MTE1>(KV_L1_EVENT0 + kvBufId_);
         {
-            Mutex::Lock<PIPE_M>(L0C_EVENT0);
-            LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[L0C_BMM2_OFFSET].template ReinterpretCast<MM_T>();
-            MMParam param = {
-                (uint32_t)mBaseSize,                   // singleM 128
-                (uint32_t)constInfo_.dSizeV,           // singleN 128
-                (uint32_t)runInfo.actSingleLoopS2Size, // singleK
-                true,                                  // isLeftTranspose
-                false                                  // isRightTranspose
-            };
+            uint32_t nLoops = (constInfo_.dSizeV + 128 - 1) / 128;
+            for (uint32_t n = 0; n < nLoops; n++) {
+                uint32_t tileN = (n == nLoops - 1) ? (constInfo_.dSizeV - n * 128) : 128;
+                Mutex::Lock<PIPE_M>(L0C_EVENT0 + l0cBufId_);
+                LocalTensor<MM_T> l0CSubTensor =
+                    l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
+                MMParam param = {
+                    (uint32_t)mBaseSize,
+                    tileN,
+                    (uint32_t)runInfo.actSingleLoopS2Size,
+                    true,
+                    false
+                };
+                param.realM = (uint32_t)runInfo.actMSize;
 
-            if constexpr (dVBaseSize > 128) {
-                MatmulN<Q_T, KV_T, MM_T, mBaseSize, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
-                    pL1Tensor, vL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
-            } else {
-                if constexpr (s2BaseSize == 128) {
-                    MatmulFull<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
-                        pL1Tensor, vL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
+                uint32_t s2Aligned = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U);
+                uint64_t vL1Offset = n * 128U / 16U * s2Aligned * 16U;
+                LocalTensor<KV_T> vL1TileTensor = vL1Tensor[vL1Offset];
+
+                if constexpr (dVBaseSize > 128) {
+                    MatmulFull<Q_T, KV_T, MM_T, 128, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
+                        pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
                 } else {
-                    MatmulBase<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
-                        pL1Tensor, vL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
+                    if constexpr (s2BaseSize == 128) {
+                        MatmulFull<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
+                            pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
+                    } else {
+                        MatmulBase<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
+                            pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
+                    }
                 }
+                Mutex::Unlock<PIPE_M>(L0C_EVENT0 + l0cBufId_);
+                Mutex::Lock<PIPE_FIX>(L0C_EVENT0 + l0cBufId_);
+
+                uint32_t dstOffset = n * 128U;
+                FixpipeMm2PartialN(mm2ResUbTensor[dstOffset], l0CSubTensor, tileN, runInfo);
+
+                Mutex::Unlock<PIPE_FIX>(L0C_EVENT0 + l0cBufId_);
+                l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
             }
-            Mutex::Unlock<PIPE_M>(L0C_EVENT0);
-            Mutex::Lock<PIPE_FIX>(L0C_EVENT0);
-
-            FixpipeMm2PartialN(mm2ResUbTensor, l0CSubTensor, constInfo_.dSizeV, runInfo);
-
-            Mutex::Unlock<PIPE_FIX>(L0C_EVENT0);
         }
         Mutex::Unlock<PIPE_MTE1>(KV_L1_EVENT0 + kvBufId_);
         kvBufId_ = (kvBufId_ + 1) % L1_KV_BUFCNT;

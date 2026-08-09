@@ -71,6 +71,8 @@ public:
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
     static constexpr uint32_t CC_MM_0 = 0U;
     static constexpr uint32_t CC_MM_1 = 1U;
+    static constexpr uint32_t CC_MM_2 = 2U;
+    static constexpr uint32_t CC_MM_3 = 3U;
     static constexpr uint32_t CC_L1P_0 = 5U;
     static constexpr uint32_t CC_L1P_1 = 6U;
     static constexpr uint32_t CC_L1P_2 = 7U;
@@ -89,7 +91,7 @@ public:
     LocalTensor<uint8_t> l1PBuffers_;
 
     // UB
-    static constexpr uint32_t UB_MM_RES_BUFCNT = 2U;
+    static constexpr uint32_t UB_MM_RES_BUFCNT = (dBaseSize > 128) ? 2U : 4U;
     static constexpr uint32_t UB_MM_RES_BUF_BYTES =
         mBaseSize / CV_RATIO * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(T);
     LocalTensor<uint8_t> ubMmResBuffers_;
@@ -213,6 +215,10 @@ public:
     {
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_0);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_1);
+        if constexpr (dBaseSize <= 128) {
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_2);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_3);
+        }
     }
 
     __aicore__ inline void UnInitCrossCoreSync()
