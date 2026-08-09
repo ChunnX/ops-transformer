@@ -127,6 +127,11 @@ def lengths_from_prefix(value):
     )
 
 
+def _format_golden_outputs(attention_out, softmax_lse, return_softmax_lse):
+    """Keep the operator's two output slots and invalidate disabled LSE."""
+    return [attention_out, softmax_lse if return_softmax_lse else None]
+
+
 def infer_geometry(
     query,
     key,
@@ -345,12 +350,9 @@ def _cpu_mxfp8_golden(
         data["block_table"],
     )
     attention_out = attention_out.to(torch.bfloat16)
-    if not return_softmax_lse:
-        # The PTA extension materializes a scalar-shaped placeholder via
-        # at::empty({}) when LSE is disabled.  It carries no valid value, so
-        # suppress this output slot instead of comparing fabricated data.
-        softmax_lse = None
-    return [attention_out, softmax_lse]
+    return _format_golden_outputs(
+        attention_out, softmax_lse, return_softmax_lse
+    )
 
 
 def cpu_quant_block_sparse_attn(
@@ -517,6 +519,6 @@ def cpu_quant_block_sparse_attn(
         kv_lengths,
     )
 
-    if return_softmax_lse:
-        return [attention_out, softmax_lse]
-    return [attention_out]
+    return _format_golden_outputs(
+        attention_out, softmax_lse, return_softmax_lse
+    )
