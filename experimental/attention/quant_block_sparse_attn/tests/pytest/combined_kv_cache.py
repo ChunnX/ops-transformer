@@ -111,7 +111,8 @@ def pack_combined_kv_cache(
     if dense_key.shape[:3] != dense_value.shape[:3] or dense_key.shape[:3] != dense_k_scale.shape:
         raise ValueError("dense key/value/k_scale B/S/N dimensions should match")
 
-    batch, seq_len, n2, d_size = dense_key.shape
+    batch, _, n2, d_size = dense_key.shape
+    seq_len = seqused_kv[batch]
     dv_size = dense_value.shape[-1]
     if physical_block_num is None:
         block_num = int(block_table.max().item()) + 1
