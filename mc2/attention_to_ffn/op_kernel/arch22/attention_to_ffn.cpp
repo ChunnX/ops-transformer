@@ -37,9 +37,10 @@ __global__ __aicore__ void attention_to_ffn(GM_ADDR x, GM_ADDR sessionId, GM_ADD
 
     if constexpr (ArchTag == TILINGKEY_TPL_A3) {
         GET_TILING_DATA_WITH_STRUCT(AttentionToFFNTilingData, tilingData, tilingGM);
-        AttentionToFFN<DTYPE_X, isQuant, isSync, isActiveMask> op;
-        op.Init(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, active_mask, workspaceGM,
-                &pipe, &tilingData);
+        GM_ADDR contextGM0 = (GM_ADDR)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+        AttentionToFFN<DTYPE_X, isQuant, isSync, isActiveMask, AttentionToFFNContextType::HCCL_CONTEXT> op;
+        op.Init(contextGM0, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, active_mask,
+                workspaceGM, &pipe, &tilingData);
         op.Process();
     }
 }
