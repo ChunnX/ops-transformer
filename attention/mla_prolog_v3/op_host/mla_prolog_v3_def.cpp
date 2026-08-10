@@ -64,12 +64,12 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         this->Input("kr_cache")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_INT8, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         this->Input("cache_index")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT64})
