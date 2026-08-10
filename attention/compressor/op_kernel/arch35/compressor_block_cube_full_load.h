@@ -342,7 +342,7 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::ComputeMm1(const RunIn
     if (mSize == 0) {
         return;
     }
-    uint32_t K_L1_BASE = constInfo_.batchConsistency == 3 ? 256 : 128;
+    uint32_t K_L1_BASE = constInfo_.batchConsistency == BATCH_CONSISTENCY ? 256 : 128;
     static constexpr uint32_t M_L0_BASE = 128;
     static constexpr uint32_t K_L0_BASE = 128;
     static constexpr uint32_t N_L0_BASE = 128;
