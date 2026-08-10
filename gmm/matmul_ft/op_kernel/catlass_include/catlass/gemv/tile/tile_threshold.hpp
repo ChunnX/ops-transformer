@@ -1,0 +1,34 @@
+#ifndef CATLASS_GEMV_TILE_TILE_THRESHOLD_HPP
+#define CATLASS_GEMV_TILE_TILE_THRESHOLD_HPP
+
+#include "../../catlass.hpp"
+#include "../../arch/arch.hpp"
+#include "../../gemm/helper.hpp"
+#include "../helper.hpp"
+#include "../../layout/layout.hpp"
+#include "../../gemm/gemm_type.hpp"
+
+namespace Vecself::Gemv::Tile {
+
+using namespace Catlass;
+template <
+    /// Tag indicating architecture
+    class ArchTag,
+    Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM ALGO_TYPE_,
+    class AType,
+    class XType,
+    class YType,
+    class BiasType = void
+>
+struct TileThreCalc
+{
+    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported TileThreCalc, can not find the specialization.");
+};
+
+}
+
+#include "tile_threshold_compute.hpp" 
+#include "tile_threshold_mean_max_std_fused.hpp"
+#include "tile_threshold_robust.hpp"
+#include "tile_threshold_simplified.hpp"
+#endif
