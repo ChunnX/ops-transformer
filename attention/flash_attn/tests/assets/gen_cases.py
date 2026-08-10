@@ -91,8 +91,10 @@ def normalize_params(raw):
     c.setdefault("mask_mode", 0)
     c.setdefault("win_left", -1)
     c.setdefault("win_right", -1)
-    # mask_mode=3(因果掩码)时算子不接受 win_left/win_right 有值, 强制归 -1
-    if int(c.get("mask_mode", 0)) == 3:
+    # mask_mode=0(无掩码)/3(因果掩码)时算子不接受 win_left/win_right 有值:
+    # mask_checker 要求其必须为 -1 (op_host/checkers/mask_checker.cpp CheckParaExistence),
+    # 历史用例透传的 65536("无限窗口"哨兵值)语义与 -1 等价, 此处统一归 -1
+    if int(c.get("mask_mode", 0)) in (0, 3):
         c["win_left"] = -1
         c["win_right"] = -1
     c.setdefault("return_softmax_lse", False)
