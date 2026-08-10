@@ -368,7 +368,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     InitCombineBuffers();
     InitTokenUnpermuteConfig(commonConfig);
 }
-
+ 
 // 普通模板 Token Dispatch 使用的 UB/GM 视图。
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
