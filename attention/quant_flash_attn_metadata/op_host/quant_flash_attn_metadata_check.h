@@ -3,7 +3,7 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -75,7 +75,7 @@ QuantFlashAttnMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, co
                                          const char *layoutQ, const char *layoutQDescale, const char *layoutKv,
                                          const char *layoutOut, const aclTensor *metadata)
 {
-    (void)vDescaleOptional; // v_descale 校验下沉至 aicpu kernel
+    (void)vDescaleOptional;  // v_descale 校验下沉至 aicpu kernel
     auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, layoutQ,
                              layoutQDescale, layoutKv, layoutOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -113,7 +113,8 @@ QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ
         QUANT_MODE_GQA_FP8_FULLQUANT};
     CHECK_COND(quantModeSet.count(quantMode) > 0, ACLNN_ERR_RUNTIME_ERROR,
                "quantMode only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) "
-               "and 6(A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) but got %ld", quantMode);
+               "and 6(A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) "
+               "but got %ld", quantMode);
 
     // 文档约束(单参数校验): max_seqlen_q / max_seqlen_kv 值域为 -1(默认,表示未传) 或 >=0(有效值)
     // 场景相关的存在性约束由 CheckExistency(特性交叉校验)负责: 非TND时与seqused_q/kv至少传1个
