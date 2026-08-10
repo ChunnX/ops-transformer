@@ -120,7 +120,7 @@ def _tensor_compare(npu_out, golden_out, name):
     if (
         name == _OUTPUT_NAMES[3]
         or name == _OUTPUT_NAMES[4]
-        or name == "batch_consisteny"
+        or name == "batch_consistency"
     ):
         rtol = 0
         atol = 0
@@ -278,9 +278,9 @@ def _batch_consistency_check(npu_cmp_kv, kwargs):
                         else:
                             bidx = slices[0][slice_idx][0]
                             slice_idx += 1
-                        headSize = cmp_ratio - (start + start_pos_list[0]) % cmp_ratio
+                        headSize = cmp_ratio - (start + start_pos_list[b_idx]) % cmp_ratio
                         compare_len = (stop - start - headSize % cmp_ratio) // cmp_ratio
-                        cache_len = cmp_ratio - start_pos_list[0] % cmp_ratio
+                        cache_len = cmp_ratio - start_pos_list[b_idx] % cmp_ratio
                         start_idx = (
                             (start - cache_len) // cmp_ratio + 1
                             if headSize == cmp_ratio
@@ -301,7 +301,7 @@ def _batch_consistency_check(npu_cmp_kv, kwargs):
                 else:
                     cached = _BATCH_CONSISTENCY_CACHE[dl]
                     compare_result = _tensor_compare(
-                        cached["base"], slice_output, "batch_consisteny"
+                        cached["base"], slice_output, "batch_consistency"
                     )
                     result.append(compare_result)
                     status = "Pass" if compare_result["pass"] else "Failed"
