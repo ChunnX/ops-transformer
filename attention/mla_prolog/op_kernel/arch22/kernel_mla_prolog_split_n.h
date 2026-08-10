@@ -1422,7 +1422,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ComputeBlkScatterOffsets(Glob
     int64_t indexOffset = batchIndexOffset + batchTokenIndex / baseParams_->blockSize;
     int64_t paBlkId = indexGm(indexOffset); // 取cacheIdx
 
-    int64_t pageTokenOffset = paBlkId * baseParams_->blockSize;
     if (leftRowsInPage < rows) {
         rowsThisStep = rows - leftRowsInPage;
         spill = true;
@@ -1435,12 +1434,14 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ComputeBlkScatterOffsets(Glob
 
 
     MaterializeOffsetsWithHeadSize<krCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_BLK_NZ)>(
-        pageTokenOffset, tokenOffsetInPage, rowsThisStep, spill, nextPageId, baseParams_->dimHeadRope,
+        paBlkId, tokenOffsetInPage, rowsThisStep, spill, nextPageId, baseParams_->dimHeadRope,
+        baseParams_->krCacheStride0,
         ropeAndScatterKrParams);
 
     // --- Materialize for RMSNorm/CKV ---
     MaterializeOffsetsWithHeadSize<kvCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_BLK_NZ)>(
-        pageTokenOffset, tokenOffsetInPage, rowsThisStep, spill, nextPageId, baseParams_->headSizeCkv,
+        paBlkId, tokenOffsetInPage, rowsThisStep, spill, nextPageId, baseParams_->headSizeCkv,
+        baseParams_->kvCacheStride0,
         rmsNormAndScatterCkvParams);
 }
 
@@ -1529,7 +1530,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndScatterCkv(
         ScatterCache<kvCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_NZ)>(
             kvCacheGm_, outputLocal,
             ScatterCacheParams{baseParams_->blockSize, paTokenIndex, vectorRow_, baseParams_->headSizeCkv,
-                               baseParams_->dtileSize});
+                               baseParams_->dtileSize, static_cast<int64_t>(baseParams_->kvCacheStride0)});
         // 刷新量化scale
         if (baseParams_->quantScaleRepoMode == 1U && isPertile) {
             // BSND:
@@ -1548,13 +1549,15 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndScatterCkv(
             ScatterCacheUnAligned<kvCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_NZ)>(
                 kvCacheGm_[startOffset], quantScaleCkvInt8Tensor,
                 ScatterCacheParams{baseParams_->blockSize, paTokenIndex, vectorRow_,
-                                   static_cast<int64_t>(sizeof(float) * tileNum), baseParams_->dtileSize});
+                                   static_cast<int64_t>(sizeof(float) * tileNum), baseParams_->dtileSize,
+                                   static_cast<int64_t>(baseParams_->kvCacheStride0)});
         }
     } else {
         ScatterCacheMultiRows<kvCacheType, MLAPT::cacheMode == CACHE_MODE::PA_BLK_NZ>(
             kvCacheGm_, outputLocal,
             ScatterCacheParams{baseParams_->blockSize, rmsNormAndScatterCkvParams.cacheOffset, vectorRow_,
-                               baseParams_->headSizeCkv, baseParams_->headSizeCkv, baseParams_->seq1Size,
+                               baseParams_->headSizeCkv, baseParams_->headSizeCkv,
+                               static_cast<int64_t>(baseParams_->kvCacheStride0), baseParams_->seq1Size,
                                rmsNormAndScatterCkvParams.tokenIndex},
             rmsNormAndScatterCkvParams.rowsInCurBatch, rmsNormAndScatterCkvParams.cacheOffset,
             rmsNormAndScatterCkvParams.nextBatchOffset);
@@ -1638,18 +1641,19 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeAndScatterKr(LocalTensor<
                 kvCacheGm_[startOffset], outputKrInt8Tensor,
                 ScatterCacheParams{baseParams_->blockSize, paTokenIndex, vectorRow_,
                                    static_cast<int64_t>(sizeof(krCacheType) * baseParams_->dimHeadRope),
-                                   baseParams_->dtileSize});
+                                   baseParams_->dtileSize, static_cast<int64_t>(baseParams_->kvCacheStride0)});
         } else {
             ScatterCache<krCacheType, MLAPT::cacheMode == CACHE_MODE::PA_NZ>(
                 krCacheGm_, outputKrLocal,
                 ScatterCacheParams{baseParams_->blockSize, paTokenIndex, vectorRow_, baseParams_->dimHeadRope,
-                                   baseParams_->dimHeadRope});
+                                   baseParams_->dimHeadRope, static_cast<int64_t>(baseParams_->krCacheStride0)});
         }
     } else {
         ScatterCacheMultiRows<krCacheType, MLAPT::cacheMode == CACHE_MODE::PA_BLK_NZ>(
             krCacheGm_, outputKrLocal,
             ScatterCacheParams{baseParams_->blockSize, ropeAndScatterKrParams.cacheOffset, vectorRow_,
-                               baseParams_->dimHeadRope, baseParams_->dimHeadRope, baseParams_->seq1Size,
+                               baseParams_->dimHeadRope, baseParams_->dimHeadRope,
+                               static_cast<int64_t>(baseParams_->krCacheStride0), baseParams_->seq1Size,
                                ropeAndScatterKrParams.tokenIndex},
             ropeAndScatterKrParams.rowsInCurBatch, ropeAndScatterKrParams.cacheOffset,
             ropeAndScatterKrParams.nextBatchOffset);
