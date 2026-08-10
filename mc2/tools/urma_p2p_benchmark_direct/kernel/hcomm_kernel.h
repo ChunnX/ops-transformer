@@ -44,6 +44,7 @@ public:
 
         uint64_t channelEntityVA = channelPtrTable_.GetValue(channelSlot);
         if (channelEntityVA == 0) return;
+        AscendC::ChannelHandle channelHandle = channelEntityVA;
 
         DecodedChannel ch;
         AscendC::LocalTensor<uint8_t> scratch = decodeScratch_.Get<uint8_t>();
@@ -66,7 +67,7 @@ public:
 
         for (uint32_t i = 0; i < n; ++i) {
             uint64_t off = (static_cast<uint64_t>(i) % numSlots) * sqeBytes;
-            hcomm.WriteNbi(channelEntityVA,
+            hcomm.WriteNbi(channelHandle,
                            ch.remoteBufAddr + off,
                            ch.localBufAddr + off,
                            S);
@@ -74,7 +75,7 @@ public:
 
         timingLocal.SetValue(1, AscendC::GetSystemCycle());
 
-        hcomm.Drain(channelEntityVA);
+        hcomm.Drain(channelHandle);
 
         timingLocal.SetValue(2, AscendC::GetSystemCycle());
         timingLocal.SetValue(3, AscendC::GetSystemCycle());
