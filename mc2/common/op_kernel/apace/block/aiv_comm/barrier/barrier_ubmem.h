@@ -151,7 +151,10 @@ __aicore__ inline void TeamBarrier::CrossDeviceExecute(int64_t count)
     uint32_t nranks = ctx_->rankSize;
     uint32_t myRank = ctx_->rankId;
     int32_t step = totalJobs_ < nranks ? (int32_t)totalJobs_ : (int32_t)nranks;
-    auto localFlag = (__gm__ int32_t*)(ctx_->commBufferAddrs[ctx_->rankId]);
+
+    uint64_t crossDeviceBase = reinterpret_cast<uint64_t>(ctx_->commBufferAddrs[ctx_->rankId])
+        + BARRIER_FLAG_SIZE + totalJobs_ * BARRIER_FLAG_SIZE * 2;
+    auto localFlag = (__gm__ int32_t*)(crossDeviceBase + jobIndex_ * BARRIER_FLAG_SIZE);
 
     auto copyGM2UB = Te::MakeCopy(Te::CopyGM2UB{});
     auto copyUB2GM = Te::MakeCopy(Te::CopyUB2GM{});
@@ -172,7 +175,9 @@ __aicore__ inline void TeamBarrier::CrossDeviceExecute(int64_t count)
         if (i == myRank) {
             continue;
         }
-        __gm__ int32_t* remotePtr = (__gm__ int32_t*)(ctx_->commBufferAddrs[i]);
+        uint64_t remoteBase = reinterpret_cast<uint64_t>(ctx_->commBufferAddrs[i])
+            + BARRIER_FLAG_SIZE + totalJobs_ * BARRIER_FLAG_SIZE * 2;
+        __gm__ int32_t* remotePtr = (__gm__ int32_t*)(remoteBase + myRank * BARRIER_FLAG_SIZE);
         auto gmRemote = Te::MakeTensor(
             Te::MakeMemPtr<Te::Location::GM>(remotePtr),
             Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, BARRIER_FLAG_ELEMS));
