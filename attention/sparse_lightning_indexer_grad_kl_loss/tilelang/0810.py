@@ -418,7 +418,7 @@ def tilelang_grad_kl_loss_single_kernel(
         Query, QueryRope, QueryIndex, GatherKey_ws, GatherKeyRope_ws, GatherKeyIndex_ws,
         bmm1Res, bmm2Res, bz_task, s1_begin_task, s1_end_task, task_slot,
     ):
-        """C1：P/SY 各自双缓冲，并在阶段边界复用同一批物理 L0 地址。"""
+        """C1：P 使用双槽；SY 串行复用 P 槽 0 的物理 L0 地址。"""
         with T.Scope("C"):
             c1_query_chunk_0_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
             c1_query_chunk_1_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
@@ -437,9 +437,6 @@ def tilelang_grad_kl_loss_single_kernel(
             c1_sy_slot0_qi_l0a = T.alloc_L0A((Nidx1, K_SPLIT), input_dtype)
             c1_sy_slot0_ki_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
             c1_sy_slot0_l0c = T.alloc_L0C((Nidx1, N_SPLIT), calc_dtype)
-            c1_sy_slot1_qi_l0a = T.alloc_L0A((Nidx1, K_SPLIT), input_dtype)
-            c1_sy_slot1_ki_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
-            c1_sy_slot1_l0c = T.alloc_L0C((Nidx1, N_SPLIT), calc_dtype)
             T.set_flag("mte1", "mte2", 0)
             T.set_flag("m", "mte1", 0)
             T.set_flag("fix", "m", 0)
@@ -501,9 +498,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("m", "mte1", 0)
                     T.copy(c1_qi_l1, c1_sy_slot0_qi_l0a)
                     T.set_flag("m", "mte1", 0)
-                    T.wait_flag("m", "mte1", 2)
-                    T.copy(c1_qi_l1, c1_sy_slot1_qi_l0a)
-                    T.set_flag("m", "mte1", 2)
                 for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
                     flag_slot = (task_slot + k_outer) % 2
                     if flag_slot == 0:
@@ -512,23 +506,16 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.wait_cross_flag(V0_TO_C1_SY_FLAGS[1])
                     for k_inner in T.serial(S2_WORKSPACE // N_SPLIT):
                         k_start = k_outer * S2_WORKSPACE + k_inner * N_SPLIT
-                        if k_inner % 2 == 0:
-                            cube1_sy_tile(
-                                GatherKeyIndex_ws, bmm2Res, c1_qi_l1, c1_ki_l1,
-                                c1_sy_slot0_qi_l0a, c1_sy_slot0_ki_l0b, c1_sy_slot0_l0c,
-                                bz_task, s1_id, k_start, 0,
-                            )
-                        else:
-                            cube1_sy_tile(
-                                GatherKeyIndex_ws, bmm2Res, c1_qi_l1, c1_ki_l1,
-                                c1_sy_slot1_qi_l0a, c1_sy_slot1_ki_l0b, c1_sy_slot1_l0c,
-                                bz_task, s1_id, k_start, 2,
-                            )
+                        cube1_sy_tile(
+                            GatherKeyIndex_ws, bmm2Res, c1_qi_l1, c1_ki_l1,
+                            c1_sy_slot0_qi_l0a, c1_sy_slot0_ki_l0b, c1_sy_slot0_l0c,
+                            bz_task, s1_id, k_start, 0,
+                        )
                 T.wait_flag("mte1", "mte2", 1)
                 T.wait_flag("m", "mte1", 0)
                 T.wait_flag("fix", "m", 0)
-                T.wait_flag("m", "mte1", 2)
-                T.wait_flag("fix", "m", 2)
+                T.set_flag("m", "mte1", 0)
+                T.set_flag("fix", "m", 0)
                 if task_slot == 0:
                     T.set_cross_flag("FIX", C1_TO_V1_SY_FLAGS[0])
                 else:
