@@ -1,4 +1,4 @@
-0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+0721 general test: suite=all, cases=1, benchmark=True, resource_excluded=9
 Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
 
 ========================================================================================
@@ -14,5 +14,6 @@ Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on 
   query诊断：launch_cores=4 tasks_per_core=1 first_failed=None failed=0/1
     b= 0 q=   0 task=   0 round= 0 core= 0 kReal= 1025 dQ_norm=0.00e+00 dW_norm=0.00e+00
   query最差：b0q0(task=0,dQ=0.0e+00,dW=0.0e+00)
-[00] isolate_tail_b1_s1_1_k_4096 PASS dQ_norm=0.00e+00 dK_norm=9.97e-06 dW_norm=0.00e+00 Loss_norm=1.69e-07
+[00] isolate_tail_b1_s1_1_k_4096 bench tl_med=0.463ms off_med=0.166ms ratio=0.36x
+  TileLang: avg=0.467ms min=0.456ms; Official: avg=0.168ms min=0.160ms
 Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
