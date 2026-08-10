@@ -17,6 +17,7 @@ Compares 5 tensors: cmp_kv, kv_state_update, score_state_update,
 kv_state_origin, score_state_origin.
 """
 
+import gc
 import numpy as np
 import torch
 import importlib.util
@@ -84,7 +85,9 @@ def _tensor_compare(npu_out, golden_out, name):
     golden = as_numpy(golden_out)
 
     real_data = npu.flatten().astype(np.float32)
+    del npu
     data_compe = golden.flatten().astype(np.float32)
+    del golden
 
     if real_data.size == 0 and real_data.size == data_compe.size:
         return {
@@ -185,7 +188,8 @@ def _tensor_compare(npu_out, golden_out, name):
             f"{name} compare failed: fulfill_percent={fulfill_percent:.4f}%, "
             f"max_rel_err={max_rel_err:.4f}, err_count={int(err_idx.size)}"
         )
-
+    del real_data, data_compe, diff_result, err_idx, diff_abs
+    gc.collect()
     return {
         "pass": is_pass,
         "precision": fulfill_percent,
@@ -332,6 +336,7 @@ def compare(*outputs, **kwargs):
                 npu_outputs[0][cmp_kv_mask], golden_outputs[0][cmp_kv_mask], "cmp_kv"
             )
         ]
+        gc.collect()
         for i in range(1, len(golden_outputs)):
             name = _OUTPUT_NAMES[i] if i < len(_OUTPUT_NAMES) else f"output_{i}"
             results.append(
@@ -399,7 +404,9 @@ def compare(*outputs, **kwargs):
     result_consistency = _batch_consistency_check(npu_outputs[0], kwargs)
     if result_consistency is not None:
         results.append(result_consistency)
-
+    del npu_cmp_kv, npu_state_cache, cpu_cmp_kv, cpu_state_cache
+    del npu_sub_outputs, golden_sub_outputs
+    gc.collect()
     return results
 
 def compare_aclnn(*outputs, **kwargs):
@@ -422,6 +429,7 @@ def compare_aclnn(*outputs, **kwargs):
                 npu_outputs[0][cmp_kv_mask].to(torch.float32), golden_outputs[0][cmp_kv_mask].to(torch.float32), "cmp_kv"
             )
         ]
+        gc.collect()
         for i in range(1, len(golden_outputs)):
             name = _OUTPUT_NAMES[i] if i < len(_OUTPUT_NAMES) else f"output_{i}"
             results.append(
@@ -489,5 +497,7 @@ def compare_aclnn(*outputs, **kwargs):
     result_consistency = _batch_consistency_check(npu_outputs[0].to(torch.float32), kwargs)
     if result_consistency is not None:
         results.append(result_consistency)
-
+    del npu_cmp_kv, npu_state_cache, cpu_cmp_kv, cpu_state_cache
+    del npu_sub_outputs, golden_sub_outputs
+    gc.collect()
     return results
