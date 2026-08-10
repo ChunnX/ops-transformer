@@ -42,6 +42,7 @@
 - 通信风格参考 `all_to_all_mx_quant_matmul_hcomm_impl.h`（HcommCommState + HcommCommWaitPolicy 模式）
 - AllGather API 用法参考 `all_gather_matmul_fp16_bf16.h` 和 `all_gather_quant_bmm.h`（hccl_.AllGather<true> 签名）
 - FragmentTensor 计算能力参考 `all_gather_mx_matmul_udma_impl.h`（HEAD/MAIN/TAIL 区域调度）
+- 约束：tileCnt > 0（确保至少有一个 head tile，空 tensor 场景由上层拦截不进入此 kernel）
 
 ### 1.5 与现有方案的核心差异
 
@@ -89,7 +90,8 @@ workspaceGM
 │   ├── rank1: [tile0 | tile1 | ... | tail]
 │   └── ...
 │
-└── HCCL 内部 workspace（由 mc2InitTiling 配置）
+└── HCCL 内部 workspace [dataRegionBytes + scaleRegionBytes, ...)
+    起始偏移 = dataRegionBytes + scaleRegionBytes，大小由 mc2InitTiling 独立配置，不与 data/scale 段重叠
 ```
 
 关键尺寸：
@@ -121,7 +123,6 @@ struct HcommCommState {
     HcclHandle dataHeadHandle_{0};
     HcclHandle dataTailHandle_{0};
     uint32_t tileCnt_{0};
-    uint32_t totalTiles_{0};
 };
 ```
 
@@ -165,11 +166,18 @@ dependTileIdx 与 handle 的映射关系：
 > - 绑定 CommPolicy（`GetCommPolicy().state_ = &commState_`）→ 直接参考
 
 ```cpp
+// 以下代码中 hccl_、scaleHandle_ 等均为 commState_ 的成员，省略 commState_. 前缀
+
+// 0. HCCL dataType 映射（参考 all_to_all_mx_quant_matmul_hcomm_impl.h）
+//    scale 固定 FP8E8M0，data 按 AType 映射（e4m3 → FP8E4M3, e5m2 → FP8E5M2）
+static constexpr uint64_t scaleDataType = AscendC::HCCL_DATA_TYPE_FP8E8M0;
+static constexpr uint64_t dataDataType = GetHcclDataType<AType>();  // 模板映射 helper
+
 // 1. HCCL 初始化
-hccl_.InitV2(GetHcclContext<0>(), &mc2InitTiling);
-hccl_.SetCcTilingV2(offsetof(TilingDataType, mc2CcTiling));
-rankId_ = hccl_.GetRankId();
-rankSize_ = hccl_.GetRankDim();
+commState_.hccl_.InitV2(GetHcclContext<0>(), &mc2InitTiling);
+commState_.hccl_.SetCcTilingV2(offsetof(TilingDataType, mc2CcTiling));
+rankId_ = commState_.hccl_.GetRankId();
+rankSize_ = commState_.hccl_.GetRankDim();
 
 // 2. 计算 Gather 缓冲区地址
 gatherDataAddr_  = workspaceGM;
@@ -177,28 +185,28 @@ gatherScaleAddr_ = workspaceGM + dataRegionBytes;
 
 // 3. 提交 AllGather（非阻塞 <true>），Scale 先于 Data
 //    Scale: 全量一次性提交
-scaleHandle_ = hccl_.AllGather<true>(aScaleGM, gatherScaleAddr,
-    m * scaleKLen, dataType, m * scaleKLen, 1);
+commState_.scaleHandle_ = commState_.hccl_.AllGather<true>(
+    aScaleGM, gatherScaleAddr, m * scaleKLen,
+    static_cast<HcclDataType>(scaleDataType), m * scaleKLen, 1);
 
 //    Data Head: 通过 repeat 批量提交所有 head tile
-if (tileCnt > 0) {
-    dataHeadHandle_ = hccl_.AllGather<true>(aGM, gatherDataAddr,
-        tileM * k, dataType, m * k, tileCnt);
-}
+commState_.dataHeadHandle_ = commState_.hccl_.AllGather<true>(
+    aGM, gatherDataAddr, tileM * k,
+    static_cast<HcclDataType>(dataDataType), m * k, tileCnt);
 
 //    Data Tail: 通过 repeat 批量提交所有 tail tile
 if (tailCnt > 0) {
-    dataTailHandle_ = hccl_.AllGather<true>(
+    commState_.dataTailHandle_ = commState_.hccl_.AllGather<true>(
         aGM + headRows * k * sizeof(AType),
         gatherDataAddr + headRows * k * sizeof(AType),
-        tailM * k, dataType, m * k, tailCnt);
+        tailM * k, static_cast<HcclDataType>(dataDataType), m * k, tailCnt);
 }
 
 // 4. 绑定 CommPolicy -> CommState
 quantMatmulKernelImpl_.GetCommPolicy().state_ = &commState_;
 ```
 
-### 3.3 通算同步设计
+### 3.2 通算同步设计
 
 参考 `all_to_all_mx_quant_matmul_hcomm_impl.h` 和 `all_to_all_mx_quant_matmul_udma_impl.h` 的设计，通信与计算的同步通过 **CommPolicy 策略模式** 解耦：kernel 通过模板参数注入 WaitPolicy，不感知底层是 UDMA 还是 CCU 通信。
 
@@ -213,20 +221,7 @@ struct UdmaCommWaitPolicy {
 };
 
 // CCU 版本：核内 hccl_.Wait 同步（AIC 内通信+计算）
-struct HcommCommWaitPolicy {
-    HcommCommState *state_{nullptr};
-    __aicore__ inline void WaitTile(uint32_t tileIdx) {
-        if (tileIdx == 0) return;                    // HEAD: 本 rank 数据
-        if (tileIdx == 1) {                          // 首次远端: 等 scale
-            state_->hccl_.Wait(state_->scaleHandle_);
-        }
-        if (tileIdx <= state_->tileCnt_) {           // MAIN: 等 dataHead
-            state_->hccl_.Wait(state_->dataHeadHandle_);
-        } else {                                      // TAIL: 等 dataTail
-            state_->hccl_.Wait(state_->dataTailHandle_);
-        }
-    }
-};
+// HcommCommWaitPolicy 定义见第 3.1 节
 ```
 
 kernel 通过 `CommPolicy` 模板参数选择策略，同步点在 `Process()` 核心循环中：
@@ -273,7 +268,7 @@ for (uint32_t t = 0; t <= commTurn; ++t) {
 
 `waitedMask` 去重机制和收尾 wait 循环对两种策略通用，保证同一依赖只 wait 一次，防止通信资源泄漏。
 
-### 3.2 计算层设计
+### 3.3 计算层设计
 
 #### Kernel 复用策略
 
@@ -292,7 +287,11 @@ public:
 - UDMA 版本：`CommPolicy = UdmaCommWaitPolicy`（默认，内部调用 `CrossCoreWaitFlag`）
 - CCU 版本：`CommPolicy = HcommCommWaitPolicy`（内部调用 `hccl_.Wait(handle)`）
 
-唯一改动：将 kernel `Process()` 中的 `CrossCoreWaitFlag<0x2, PIPE_MTE2>(dependTileIdx)` 替换为 `commPolicy_.WaitTile(dependTileIdx)`。其余所有逻辑（FragmentTensor 构建、区域调度、BlockScheduler、BlockMmadFragC 计算、L2 Cache 优化）完全不变。
+共 2 处改动：将 kernel `Process()` 中的 `CrossCoreWaitFlag<0x2, PIPE_MTE2>` 替换为 `commPolicy_.WaitTile`：
+- 主循环内（行 371）：`CrossCoreWaitFlag<0x2, PIPE_MTE2>(ctx.dependTileIdx)` → `commPolicy_.WaitTile(ctx.dependTileIdx)`
+- 收尾循环（行 412）：`CrossCoreWaitFlag<0x2, PIPE_MTE2>(t)` → `commPolicy_.WaitTile(t)`
+
+其余所有逻辑（FragmentTensor 构建、区域调度、BlockScheduler、BlockMmadFragC 计算、L2 Cache 优化）完全不变。
 
 #### FragmentTensor 原理
 
@@ -470,12 +469,14 @@ public:
 | 改动 | 改动前 | 改动后 |
 |------|--------|--------|
 | 模板参数 | `<AType, BType, CType>` | `<AType, BType, CType, CommPolicy = UdmaCommWaitPolicy>` |
-| 通信等待 | `CrossCoreWaitFlag<0x2, PIPE_MTE2>(idx)` | `commPolicy_.WaitTile(idx)` |
+| 通信等待 | `CrossCoreWaitFlag<0x2, PIPE_MTE2>(idx)`（2 处：主循环 + 收尾循环） | `commPolicy_.WaitTile(idx)`（2 处） |
 | 新增成员 | 无 | `CommPolicy commPolicy_` + `GetCommPolicy()` |
 
 **不变部分**：FragmentTensor 构建、ResolveTileCtx 区域调度、BlockScheduler、BlockMmadFragC 计算、L2 Cache 优化、B 矩阵共享处理。
 
 **UDMA 兼容性**：默认模板参数 `UdmaCommWaitPolicy` 保持原有 UDMA 行为不变，现有 UDMA 调用方无需修改。
+
+**UdmaCommWaitPolicy 安置**：`UdmaCommWaitPolicy` 当前定义在 `all_to_all_mx_quant_matmul_udma_impl.h` 中，`all_gather_mx_matmul_udma_impl.h` 未包含此头文件。修改 `qmm_mx_kernel_ag_udma.h` 时需在文件内内联定义默认 `UdmaCommWaitPolicy`，或将该类型提取到共享头文件。
 
 ### 5.3 Impl（新增）
 
@@ -483,22 +484,23 @@ public:
 
 **基于**：`all_to_all_mx_quant_matmul_hcomm_impl.h`（CCU 通信风格）+ `all_gather_mx_matmul_udma_impl.h`（AllGather 语义 + FragmentTensor kernel 调用）
 
-**新增组件**：HcommCommState（详见第 3.1 节）、HcommCommWaitPolicy（详见第 3.3 节）、AllGatherMxMatmulCcuImpl。
+**新增组件**：HcommCommState（详见第 3.1 节）、HcommCommWaitPolicy（详见第 3.1 节）、AllGatherMxMatmulCcuImpl。
 
 **Init 流程**：
 1. 解析 tiling（tileCnt, tileM, tailCnt, tailM, k, n）
-2. `hccl_.InitV2(GetHcclContext<0>(), &mc2InitTiling)`
-3. `hccl_.SetCcTilingV2(offsetof(..., mc2CcTiling))`
-4. 获取 rankId, rankSize
-5. 计算 Gather 缓冲区地址（workspaceGM 偏移）
-6. 批量提交 AllGather（scale → data head → data tail）
-7. 绑定 `commPolicy_.state_ = &commState_`
-8. 构造 kernel params（FragmentParams + GM 指针 + win 基址）
+2. HCCL dataType 映射：scale → `HCCL_DATA_TYPE_FP8E8M0`，data → `GetHcclDataType<AType>()`（e4m3/e5m2 自动映射）
+3. `commState_.hccl_.InitV2(GetHcclContext<0>(), &mc2InitTiling)`
+4. `commState_.hccl_.SetCcTilingV2(offsetof(..., mc2CcTiling))`
+5. 获取 rankId, rankSize
+6. 计算 Gather 缓冲区地址（workspaceGM 偏移）
+7. 批量提交 AllGather（scale → data head → data tail）
+8. 绑定 `commPolicy_.state_ = &commState_`
+9. 构造 kernel params（FragmentParams + GM 指针 + win 基址）
 
 **Run 流程**：
 1. `quantMatmulKernelImpl_(params)` — FragmentTensor kernel 执行
 2. `SyncAll()`
-3. `hccl_.Finalize()`
+3. `commState_.hccl_.Finalize()`
 
 ### 5.4 Kernel Entry（新增）
 
@@ -519,7 +521,7 @@ __global__ __aicore__ void AllGatherQuantMatmulCcuKernel(
 
 > Kernel entry 中的模板参数（A/B 类型）由上层 dispatch 根据输入 dtype 选择，支持 fp8_e4m3fn_t / fp8_e5m2_t 任意组合。Scale 固定为 fp8_e8m0_t，C 固定为 bfloat16_t。
 >
-> Context 传递方式见待确认问题 Q1：当前方案在 impl Init 内调用 `GetHcclContext<0>()`，若改为 kernel entry 传入则需同步调整 entry 参数和 impl Init 签名。
+> Context 传递方式见「设计决策记录」节：在 impl Init 内调用 `GetHcclContext<0>()`（已验证可行）。
 
 ### 5.5 改动汇总
 
@@ -544,7 +546,7 @@ __global__ __aicore__ void AllGatherQuantMatmulCcuKernel(
 | `all_gather_mx_matmul_udma_impl.h` | AllGather 语义参考：FragmentTensor kernel 调用、HEAD/MAIN/TAIL 区域调度、win buffer 布局 |
 | `qmm_mx_kernel_ag_udma.h` | Kernel 复用基底：FragmentTensor 构建、ResolveTileCtx、BlockScheduler 集成 |
 | `all_to_all_mx_quant_matmul_hcomm_impl.h` | CCU 通信风格参考：HcommCommState、HcommCommWaitPolicy、InitV2/SetCcTilingV2、批量提交+batch wait |
-| `all_to_all_mx_quant_matmul_udma_impl.h` | UDMA 同步对照参考：UdmaCommWaitPolicy（CrossCoreWaitFlag）vs HcommCommWaitPolicy（hccl_.Wait），CommPolicy 策略模式解耦（详见第 3.3 节） |
+| `all_to_all_mx_quant_matmul_udma_impl.h` | UDMA 同步对照参考：UdmaCommWaitPolicy（CrossCoreWaitFlag）vs HcommCommWaitPolicy（hccl_.Wait），CommPolicy 策略模式解耦（详见第 3.2 节） |
 | `all_to_all_matmul_tiling_data.h` | CCU tiling 结构参考：ccuAllToAllMatmulTilingData（Mc2InitTiling + Mc2CcTiling） |
 | `all_gather_matmul_fp16_bf16.h` | AllGather API 用法参考：hccl_.AllGather<true> 签名、stride/repeat 参数、handle 数组管理 |
 | `quant_matmul_mx_kernel.h` | 标准 QuantMatmulMxKernel 参考：CommPolicy 注入模式、LOCAL/REMOTE/DEFERRED_SYNC 模式 |
@@ -554,14 +556,14 @@ __global__ __aicore__ void AllGatherQuantMatmulCcuKernel(
 
 ---
 
-## 待确认问题
+## 设计决策记录
 
-### Q1: HCCL Context 传递方式（关键遗留）
+### Context 传递方式
 
-**当前方案**：在 impl 的 Init 中调用 `GetHcclContext<0>()`（参考 alltoall hcomm impl）。
+**已确认**：在 impl 的 Init 内调用 `GetHcclContext<0>()`（参考 `all_to_all_mx_quant_matmul_hcomm_impl.h` 行 177，已验证可行）。kernel entry 不传 context 参数，impl 内部自行获取。
 
-**替代方案**：在 kernel entry 中获取 context 并作为参数传入 impl（参考 `all_gather_quant_bmm.h` 和 `all_gather_matmul_fp16_bf16.h` 的 `contextGM` 参数）。
+### AllGather repeat > 1 验证
 
-**问题**：两种方式是否等价？`GetHcclContext<0>()` 在 kernel entry 调用还是在 impl Init 中调用更合适？此问题涉及 apace 仓库的 context 管理机制，需进一步确认。
+**说明**：AllGather 批量提交（`repeat = tileCnt`）为新用法，现有 AllGather 实现（`all_gather_quant_bmm.h`、`all_gather_matmul_fp16_bf16.h`）均使用 `repeat = 1` + 手动循环。AlltoAll 的 repeat 批量提交已验证可行，AllGather 的 repeat 语义需在实现阶段通过单测验证 stride 和地址推进与 AlltoAll 一致。
 
 
