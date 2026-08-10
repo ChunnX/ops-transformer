@@ -966,6 +966,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         dense_key,
         dense_value,
         dense_k_scale,
+        seqused_kv,
         block_table,
         sparse_kv_block_size,
         case["pa_block_padding_bytes"],
