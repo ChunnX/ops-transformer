@@ -168,7 +168,7 @@ private:
 
     // ---- Tile context resolution ----
     struct TileCtx {
-        uint32_t dependId;
+        uint32_t dependTileIdx;
         uint32_t roundIdx;
         RegionTag region;
         int64_t regionMPos;
@@ -342,11 +342,12 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Process(
 
     const auto& mTailTile = mmT.mTailTile;
     const auto& nTailTile = mmT.nTailTile;
+    // 尾块拆分：需核数(尾块数×M拆分×N拆分)≤总核数才拆分；mTailTile=nTailTile=1时等价no-op。
     if ((sch.GetEndBlockIdx() + 1) * mTailTile * nTailTile <= AscendC::GetBlockNum()) {
         sch.UpdateTailTile(mTailTile, nTailTile);
     }
-    uint32_t waitedMask = 0U;
-    // dependId=0 由 AIV 预触发，无需等待。
+    uint32_t readyTileIdx = 0;
+    CrossCoreWaitFlag<0x2, PIPE_MTE2>(0); // dependTileIdx=0 由 AIV 预触发，无需等待。
 
     Te::Coord<int64_t, int64_t, int64_t, int64_t> blockIdx;
     int64_t mPos = 0L, nPos = 0L;
@@ -364,11 +365,9 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Process(
 
         auto ctx = ResolveTileCtx(mPos, headMainRows, mainRoundRows, mainSectionRows,
                                   fp.rankSize, fp.commTurn);
-
-        // 按位记录已等待过的 dependId，避免重复 wait。
-        if ((waitedMask & (1U << ctx.dependId)) == 0U) {
-            CrossCoreWaitFlag<0x2, PIPE_MTE2>(ctx.dependId);
-            waitedMask |= (1U << ctx.dependId);
+        while (readyTileIdx < ctx.dependTileIdx) {
+            readyTileIdx++;
+            CrossCoreWaitFlag<0x2, PIPE_MTE2>(readyTileIdx);
         }
 
         // Per-tile L2 cache hint
@@ -405,11 +404,10 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Process(
                 ctx.rankCnt, Ni, singleShape, ctx.regionMPos, nPos, 0, blockC);
     }
 
-    // 确保所有 dependId 均已 wait（收尾清理）。
-    for (uint32_t t = 0; t <= fp.commTurn; ++t) {
-        if ((waitedMask & (1U << t)) == 0U) {
-            CrossCoreWaitFlag<0x2, PIPE_MTE2>(t);
-        }
+    // 确保所有 dependTileIdx 均已 wait（收尾清理）。
+    while (readyTileIdx < fp.commTurn) {
+        readyTileIdx++;
+        CrossCoreWaitFlag<0x2, PIPE_MTE2>(readyTileIdx);
     }
 }
 
@@ -561,7 +559,7 @@ QmmMxKernelAgUdma<AType, BType, CType>::ResolveTileCtx(
 {
     TileCtx ctx{};
     if (mPos < headMainRows) {
-        ctx.dependId = 0;
+        ctx.dependTileIdx = 0;
         ctx.region = HEAD;
         ctx.regionMPos = mPos;
         ctx.fragA = &headFragA_;
@@ -571,7 +569,7 @@ QmmMxKernelAgUdma<AType, BType, CType>::ResolveTileCtx(
     } else if (mPos < headMainRows + mainSectionRows) {
         int64_t relPos = mPos - headMainRows;
         ctx.roundIdx = static_cast<uint32_t>(relPos / mainRoundRows);
-        ctx.dependId = ctx.roundIdx + 1;
+        ctx.dependTileIdx = ctx.roundIdx + 1;
         ctx.region = MAIN;
         ctx.regionMPos = relPos % mainRoundRows;
         ctx.fragA = &curMainA_;
@@ -579,7 +577,7 @@ QmmMxKernelAgUdma<AType, BType, CType>::ResolveTileCtx(
         ctx.fragC = &curMainC_;
         ctx.rankCnt = static_cast<uint64_t>(rankSize - 1);
     } else {
-        ctx.dependId = commTurn;
+        ctx.dependTileIdx = commTurn;
         ctx.region = TAIL;
         ctx.regionMPos = mPos - headMainRows - mainSectionRows;
         ctx.fragA = &tailFragA_;
