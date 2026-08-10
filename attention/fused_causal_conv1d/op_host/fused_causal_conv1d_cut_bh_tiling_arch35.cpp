@@ -242,6 +242,11 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetAttrInfo()
         convMode_ = *convModePtr;
     }
 
+    const int64_t *maxDraftTokens = attrs->GetAttrPointer<int64_t>(ATTR_MAX_DRAFT_TOKENS_INDEX);
+    if (maxDraftTokens != nullptr) {
+        maxDraftTokens_ = *maxDraftTokens;
+    }
+
     // 原地更新开关：由构造时传入的 isInplace_ 决定（拆分后不再从 attr 读取）
     inplace_ = isInplace_ ? 1 : 0;
 
@@ -691,7 +696,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateApcOptionalInputs()
 }
 
 // 属性合法性校验：activation_mode / pad_slot_id / run_mode / residual_connection /
-//                 block_size / max_query_len / conv_mode
+//                 block_size / max_query_len / conv_mode / max_draft_tokens
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateAttrs()
 {
     // activation_mode ∈ {0, 1, 2}
@@ -757,6 +762,13 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateAttrs()
         return ge::GRAPH_FAILED;
     }
 
+    // max_draft_tokens ∈ [0, 16]
+    if (maxDraftTokens_ < 0 || maxDraftTokens > 16) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "max_draft_tokens", std::to_string(maxDraftTokens_).c_str(),
+                                              "The value of max_draft_tokens must be between 0 and 16");
+        return ge::GRAPH_FAILED;
+    }
+    
     return ge::GRAPH_SUCCESS;
 }
 

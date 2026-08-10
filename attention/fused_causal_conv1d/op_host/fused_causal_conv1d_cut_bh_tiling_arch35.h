@@ -74,7 +74,7 @@ constexpr int64_t MAX_DIM = 16384;      // dim 上限
 constexpr int64_t MIN_BATCH = 1;        // batch 下限
 constexpr int64_t MAX_BATCH = 256;      // batch 上限
 constexpr int64_t MIN_M = 0;            // seqLen-1 的最小值（m 值）
-constexpr int64_t MAX_M = 7;            // seqLen-1 的最大值（F4 扩展至 [0, 7]）
+constexpr int64_t MAX_M = 16;            // seqLen-1 的最大值（F4 扩展至 [0, 16]）
 constexpr int64_t DIM_0 = 0;            // 维度索引常量
 constexpr int64_t DIM_1 = 1;
 constexpr int64_t DIM_2 = 2;
@@ -202,6 +202,7 @@ private:
     int64_t inplace_ = 0;              // conv_states 是否原地更新：0=否，1=是（由 isInplace_ 决定）
     bool isInplace_ = false;           // 构造时传入，替代 attr 读取
     int64_t convMode_ = 0;             // 卷积模式：0=Qwen3，1=Pangu v2（前 width-1 token 置零）
+    int64_t maxDraftTokens_ = 0;
     int64_t hasNumComputedTokens_ = 0; // numComputedTokens 是否有效：0=无，1=有
     int64_t maxQueryLen_ = MAX_M + 1;  // 2D 输入时最大序列长度（来自 max_query_len 属性）
 
