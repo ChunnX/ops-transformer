@@ -41,7 +41,10 @@ Gate、Prepare、Post-WU、FwdH 和 Finalize 只是该 kernel 内部计算阶段
 将 raw/已激活 gate 转为 FP32 chunk-local log2 累计值：
 
 ```text
-gk = cumsum(gate) / ln(2)
+gamma = g                                                        use_gate_in_kernel=false
+gamma = -exp(A_log) * softplus(g + dt_bias)                      use_gate_in_kernel=true, safe_gate=false
+gamma = lower_bound * sigmoid(exp(A_log) * (g + dt_bias))        use_gate_in_kernel=true, safe_gate=true
+gk = chunk_local_cumsum(gamma) / ln(2)
 ```
 
 该算子同时保留独立 L2 接口供 GDN2 调用，输入和输出固定为 BNSD/NTD。
@@ -54,6 +57,12 @@ gk = cumsum(gate) / ln(2)
 Aqk, Akk, qg, w_seed, u_seed
 ```
 
+```text
+qg[i] = q[i] * exp2(gk[i])
+w_seed[i] = beta[i] * k[i] * exp2(gk[i])
+u_seed[i] = beta[i] * v[i]
+```
+
 score 点积以 BF16/FP16 为输入、FP32 累积。`Akk=(I+L)^{-1}` 的 `L`、单位阵、
 对角块求逆、分块合并、Cube 输入/累积和 workspace 均为 FP32，并显式关闭 HF32；只在完整
 FP32 求解结束后将公开 `Akk` 写回为 q dtype。
@@ -63,7 +72,10 @@ FP32 求解结束后将公开 `Akk` 写回为 q dtype。
 只读取 `k/gk/w_seed/Akk/u_seed`，产生：
 
 ```text
-w, u, kg, v_new_seed
+w, u, kg
+w = Akk @ w_seed
+u = Akk @ u_seed
+kg[i] = k[i] * exp2(gk[last] - gk[i])
 ```
 
 `Akk` 的 head 循环按 `H_v` 执行，GQA 映射只在读取 q/k head 时换算，避免按 `H_k` 重复或漏算。
@@ -78,6 +90,8 @@ Post-WU 是否作为单独的内部阶段执行由 tiling 决定。满足 A5 den
 ```text
 v_new = u - w @ h_prev
 h_next = exp2(gk_last) * h_prev + kg^T @ v_new
+h[chunk] = h_prev
+final_state = h_after_last_chunk
 ```
 
 arch22 和 arch35 均使用 `ChunkKdaFwd` 目录内的 KDA 私有 FwdH 实现，不依赖其他算子的
@@ -96,6 +110,13 @@ attn_out = scale * (qg @ h) + Aqk @ v_new
 
 kernel 内直接按 BSND/TND 写出 `attn_out`。供反向使用的中间量保持 BNSD/NTD。
 
+## 数值实现
+
+- `q`、`k`、`v`和公式中以输入dtype保存的中间量作为矩阵乘输入，矩阵乘使用FP32累加。
+- `Akk=(I+L)^{-1}`的$L$、单位阵、对角块求逆、分块合并、Cube输入和累加保持FP32，不启用HF32。
+- chunk间状态$h_c$和`final_state`的计算保持FP32，不使用公开`h`的低精度快照继续下一个chunk的状态传播。
+- `attn_out`的两项矩阵乘和加法使用FP32累加，在最终写回时转为输出dtype。
+
 ## 状态布局
 
 内部状态统一使用 `[...,K,V]`。`state_v_first=true` 时，L2 在进入 FwdH 前转置 initial state。
@@ -113,11 +134,18 @@ L2 不理解 autograd 重计算策略。`final_state/gk/w/u/qg/kg/v_new/h` 是�
 Python/legacy 包装层对齐 fla-org `chunk_kda_fwd` 提交
 `0f0f0c97af39343855b43bbbaddcedfda5cb9d77`：
 
-- `Aqk/Akk` 始终返回。
-- `disable_recompute=false` 时不保留 `w/u/qg/kg/v_new`。
-- `disable_recompute=true` 或 `return_intermediate_states=true` 时保留公开 `hOut`。
-- `use_gate_in_kernel=false` 或 `disable_recompute=true` 时保留 `gk`。
-- `final_state` 只在 `output_final_state=true` 时创建公开输出。
+- `attn_out` 始终返回。
+- `final_state` 只在 `output_final_state=true` 时返回。
+- `gk` 在 `use_gate_in_kernel=false` 或 `disable_recompute=true` 时返回。
+- `Aqk` 始终返回。
+- `Akk` 始终返回。
+- `w` 在 `disable_recompute=true` 时返回。
+- `u` 在 `disable_recompute=true` 时返回。
+- `qg` 在 `disable_recompute=true` 时返回。
+- `kg` 在 `disable_recompute=true` 时返回。
+- `v_new` 在 `disable_recompute=true` 时返回。
+- `h` 在 `disable_recompute=true` 或 `return_intermediate_states=true` 时返回。
+- `initial_state` 由Python层原对象透传，不是aclnn输出。
 
 内部 `hCompute` 与公开 `hOut` 是两个生命周期：`hCompute` 是 FwdH 到 Finalize 的必需
 head-major 阶段结果，`hOut` 为空时由 kernel workspace 承接；`hOut` 非空时，L2 提供 head-major
