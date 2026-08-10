@@ -141,7 +141,7 @@ ge::graphStatus InferShapeQuantFlashAttn(gert::InferShapeContext *context)
     } else if (layoutKvStr == "PA_BNBD" && vShape->GetDimNum() >= 4) {
         headDimV = vShape->GetDim(3);
     } else if (layoutKvStr == "PA_NZ" && vShape->GetDimNum() >= 5) {
-        headDimV = vShape->GetDim(2) * vShape->GetDim(4);
+        headDimV = headDim;
     }
 
     gert::Shape *attnOutShape = context->GetOutputShape(OUTPUT_IDX_ATTN_OUT);

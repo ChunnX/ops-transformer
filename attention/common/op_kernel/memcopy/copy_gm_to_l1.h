@@ -319,7 +319,7 @@ private:
             // 拷贝数据
             if constexpr (GM_FORMAT == GmFormat::PA_NZ) {
                 DataCopyParams intriParams;
-                intriParams.blockCount = gmCoord.dDealSize / blockElementCnt;
+                intriParams.blockCount = (gmCoord.dDealSize + blockElementCnt - 1) / blockElementCnt;
                 intriParams.blockLen = copyRowCnt;
                 intriParams.dstStride = dstTensor.rowCount - copyRowCnt;
                 intriParams.srcStride = offsetCalculator.GetBlockSize() - copyRowCnt;
@@ -411,14 +411,14 @@ private:
             // 拷贝数据
             if constexpr (GM_FORMAT == GmFormat::PA_NZ) {
                 DataCopyParams intriParamsK;
-                intriParamsK.blockCount = gmCoordK.dDealSize / blockElementCnt;
+                intriParamsK.blockCount = (gmCoordK.dDealSize + blockElementCnt - 1) / blockElementCnt;
                 intriParamsK.blockLen = copyRowCnt;
                 intriParamsK.dstStride = dstTensorK.rowCount - copyRowCnt;
                 intriParamsK.srcStride = offsetCalculatorK.GetBlockSize() - copyRowCnt;
                 DataCopy(dstTensorK.tensor[l1Offset], srcTensorK.gmTensor[gmOffsetK], intriParamsK);
 
                 DataCopyParams intriParamsKrope;
-                intriParamsKrope.blockCount = gmCoordKrope.dDealSize / blockElementCnt;
+                intriParamsKrope.blockCount = (gmCoordKrope.dDealSize + blockElementCnt - 1) / blockElementCnt;
                 intriParamsKrope.blockLen = copyRowCnt;
                 intriParamsKrope.dstStride = dstTensorKrope.rowCount - copyRowCnt;
                 intriParamsKrope.srcStride = offsetCalculatorKrope.GetBlockSize() - copyRowCnt;
@@ -763,7 +763,7 @@ private:
             // 拷贝数据
             if constexpr (GM_FORMAT == GmFormat::PA_NZ) {
                 DataCopyParams intriParams;
-                intriParams.blockCount = gmCoord.dDealSize / blockElementCnt;
+                intriParams.blockCount = (gmCoord.dDealSize + blockElementCnt - 1) / blockElementCnt;
                 intriParams.blockLen = copyRowCnt;
                 intriParams.dstStride = dstTensor.rowCount - copyRowCnt;
                 intriParams.srcStride = offsetCalculator.GetBlockSize() - copyRowCnt;
