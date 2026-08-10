@@ -187,8 +187,8 @@ aclnn接口不接收`output_final_state`、`disable_recompute`或`return_interme
 
 | 调用方式 | 样例代码 | 说明 |
 | :--- | :--- | :--- |
-| aclnn接口 | [aclnnChunkKdaFwd](./docs/api.md#aclnn接口) | 通过`aclnnChunkKdaFwdGetWorkspaceSize`和`aclnnChunkKdaFwd`调用。 |
+| aclnn接口 | [aclnnChunkKdaFwd](./docs/aclnnChunkKdaFwd.md) | 通过`aclnnChunkKdaFwdGetWorkspaceSize`和`aclnnChunkKdaFwd`调用。 |
 | PyTorch API | [chunk_kda_fwd](../../torch_extension/cann_ops_transformer/docs/zh/chunk_kda_fwd.md) | 通过`cann_ops_transformer.ops.chunk_kda_fwd`调用。 |
 | pytest | [ChunkKdaFwd测试框架](./tests/pytest/README.md) | 覆盖功能、跨布局一致性、确定性和性能验证。 |
 
-阶段划分、平台模板和流水设计见[设计文档](./docs/design.md)。
+阶段划分、平台模板和流水设计见[ChunkKdaFwd算子设计介绍](./docs/ChunkKdaFwd算子设计介绍.md)。
