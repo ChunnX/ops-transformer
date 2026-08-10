@@ -4,7 +4,7 @@
 // ============================================================================
 // SQE Write Benchmark Kernel (64B Write SQE, opcode=0x3)
 //
-// 流程: decode channel → 生成SQE模板 → [warmup+loop循环] {
+// 流程: decode channel → 生成SQE模板 → [loop循环] {
 //   重置CQ ring → 组装n个数据SQE写入ring+doorbell → 发1个completion SQE →
 //   poll CQ等待完成 → 记录timing(仅正式轮)
 // }
@@ -52,7 +52,6 @@ public:
         const uint64_t sqeBytes    = tiling_->sqeBytes;
         const uint64_t bufBytes    = tiling_->bufBytes;
         const uint32_t dbInterval  = (tiling_->dbInterval >= 1U) ? tiling_->dbInterval : 1U;
-        const uint32_t warmupCount = tiling_->warmupCount;
         const uint32_t loopCount   = (tiling_->loopCount > 0U) ? tiling_->loopCount : 1U;
 
         // 从channelPtrTable读取ChannelEntity的device VA

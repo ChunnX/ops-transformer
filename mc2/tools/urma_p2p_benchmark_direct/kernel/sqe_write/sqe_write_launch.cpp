@@ -10,7 +10,7 @@ extern "C" __global__ __aicore__ void sqe_write_bench_kernel(
     GM_ADDR channelPtrTable, GM_ADDR stateGm, GM_ADDR timingGm,
     uint32_t peer, uint32_t numSqe, uint64_t sqeBytes, uint64_t bufBytes,
     uint32_t dbInterval, uint32_t channelSlot, uint32_t cqOwnerSlot, uint32_t stateStride,
-    uint32_t warmupCount, uint32_t loopCount)
+    uint32_t loopCount)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     TPipe pipe;
@@ -23,7 +23,6 @@ extern "C" __global__ __aicore__ void sqe_write_bench_kernel(
     tiling.channelSlot = channelSlot;
     tiling.cqOwnerSlot = cqOwnerSlot;
     tiling.stateStride = stateStride;
-    tiling.warmupCount = warmupCount;
     tiling.loopCount = loopCount;
     SqeWriteBenchOp op;
     op.Init(channelPtrTable, stateGm, timingGm, &pipe, &tiling);
@@ -38,5 +37,5 @@ void sqe_write_bench_launch(uint32_t blockDim, void *stream,
         (void*)channelPtrTable, (void*)stateGm, (void*)timingGm,
         tiling->peer, tiling->numSqe, tiling->sqeBytes, tiling->bufBytes,
         tiling->dbInterval, tiling->channelSlot, tiling->cqOwnerSlot, tiling->stateStride,
-        tiling->warmupCount, tiling->loopCount);
+        tiling->loopCount);
 }

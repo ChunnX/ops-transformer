@@ -6,7 +6,7 @@
 //   aclrtMalloc workspace → HcclCommMemReg →
 //   HcclRankGraphGetLinks(枚举UBC链路) → HcclChannelAcquire(跨rank握手) →
 //   HcommChannelGetPtrByHandle(handle→device VA) →
-//   <<<>>> kernel launch(warmup+loop在kernel内部) → 读timing
+//   <<<>>> kernel launch(loop在kernel内部) → 读timing
 // ============================================================================
 
 #include <cstdlib>
@@ -58,7 +58,6 @@ struct BenchArgs {
     uint64_t bufBytes = DEFAULT_BUF_BYTES;
     uint32_t dbInterval = DEFAULT_DB_INTERVAL;
     uint32_t loopCount = 100;
-    uint32_t warmup = 10;
     uint32_t sqeMode = 1;
     uint32_t devCount = 2;
     std::vector<uint32_t> devIds;
@@ -297,11 +296,10 @@ int Sample(void *arg)
     tilingHost.cqOwnerSlot  = slot;
     tilingHost.stateStride  = stateStride;
 
-    tilingHost.warmupCount  = args->warmup;
-    tilingHost.loopCount    = args->loopCount;
+    tilingHost.loopCount      = args->loopCount;
 
     barrier(devCount);
-    fprintf(stderr, "[INFO] rank %u: barrier passed, launching kernel (warmup=%u loop=%u)\n", rank, args->warmup, args->loopCount);
+    fprintf(stderr, "[INFO] rank %u: barrier passed, launching kernel (loop=%u)\n", rank, args->loopCount);
 
     // rank 0 sends, rank 1 waits (P2P one-way benchmark)
     bool isSender = (rank == 0);
@@ -382,7 +380,6 @@ int main(int argc, char *argv[])
         else if ((val = find_val("--buf_bytes")).size()) g_args.bufBytes = std::stoull(val);
         else if ((val = find_val("--db_interval")).size()) g_args.dbInterval = (uint32_t)std::stoul(val);
         else if ((val = find_val("--loop_count")).size()) g_args.loopCount = (uint32_t)std::stoul(val);
-        else if ((val = find_val("--warmup")).size()) g_args.warmup = (uint32_t)std::stoul(val);
         else if ((val = find_val("--sqe_mode")).size()) g_args.sqeMode = (uint32_t)std::stoul(val);
         else if ((val = find_val("--dev_count")).size()) g_args.devCount = (uint32_t)std::stoul(val);
         else if ((val = find_val("--peer")).size()) { g_args.peerOverride = (uint32_t)std::stoul(val); g_args.hasPeer = true; }
@@ -406,9 +403,9 @@ int main(int argc, char *argv[])
     fprintf(stderr, "[INFO] dev_ids=");
     for (auto d : g_args.devIds) fprintf(stderr, "%u ", d);
     fprintf(stderr, "dev_count=%u num_sqe=%u sqe_bytes=%lu buf_bytes=%lu "
-            "db_interval=%u loop=%u warmup=%u sqe_mode=%u(%s)",
+            "db_interval=%u loop=%u sqe_mode=%u(%s)",
             g_args.devCount, g_args.numSqe, g_args.sqeBytes, g_args.bufBytes,
-            g_args.dbInterval, g_args.loopCount, g_args.warmup, g_args.sqeMode,
+            g_args.dbInterval, g_args.loopCount, g_args.sqeMode,
             g_args.sqeMode == 1 ? "WriteWithNotify(mc2)" :
             g_args.sqeMode == 2 ? "Hcomm(WriteNbi+Drain)" : "Write(samples)");
     if (g_args.hasPeer) fprintf(stderr, " peer=rank %u", g_args.peerOverride);

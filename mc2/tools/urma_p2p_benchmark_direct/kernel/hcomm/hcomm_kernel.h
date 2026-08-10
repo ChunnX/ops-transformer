@@ -10,7 +10,7 @@
 //   - Drain: 等待完成(内部自动poll CQ)
 //   - 通信流程更简洁, 但无法拆分assemble/issue/wait细节
 //
-// 流程: decode channel → Hcomm.Init → [warmup+loop循环] {
+// 流程: decode channel → Hcomm.Init → [loop循环] {
 //   n×WriteNbi → Drain → 记录timing(仅正式轮)
 // }
 // ============================================================================
@@ -58,7 +58,6 @@ public:
         const uint32_t numSqe      = tiling_->numSqe;
         const uint64_t sqeBytes    = tiling_->sqeBytes;
         const uint64_t bufBytes    = tiling_->bufBytes;
-        const uint32_t warmupCount = tiling_->warmupCount;
         const uint32_t loopCount   = (tiling_->loopCount > 0U) ? tiling_->loopCount : 1U;
 
         // 从channelPtrTable读取ChannelEntity的device VA

@@ -58,11 +58,11 @@ bash run.sh -c ON -v ascend950pr_9599
 
 ### 基本用法
 
-单进程多线程模式，参考 HCCL `01_send_recv` 样例：`HcclGetRootInfo` + `HcclCommInitRootInfo`，每个设备一个线程，共享同一份 `rootInfo`。**不需要 rank table 文件**。
+单进程多线程模式，参考 HCCL `01_send_recv` 样例：`HcclGetRootInfo` + `HcclCommInitRootInfoConfig`，每个设备一个线程，共享同一份 `rootInfo`。**不需要 rank table 文件**。
 
 ```bash
 # 编译后直接运行 (默认卡0和卡1, WriteWithNotify模式)
-bash run.sh -r ON -m 1 -n 16 -s 65536 -l 100 -w 10
+bash run.sh -r ON -m 1 -n 16 -s 65536 -l 100
 ```
 
 ### 指定通信的卡
@@ -71,25 +71,13 @@ bash run.sh -r ON -m 1 -n 16 -s 65536 -l 100 -w 10
 
 ```bash
 # 卡0和卡3通信
-bash run.sh -r ON -i 0,3 -m 1 -n 16 -s 65536 -l 100 -w 10
+bash run.sh -r ON -i 0,3 -m 1 -n 16 -s 65536 -l 100
 
 # 卡2和卡5通信
-bash run.sh -r ON -i 2,5 -m 2 -n 32 -s 131072 -l 200 -w 20
-
-# 3张卡
-bash run.sh -r ON -i 0,2,4 -m 1 -n 16 -s 65536 -l 100 -w 10
+bash run.sh -r ON -i 2,5 -m 2 -n 32 -s 131072 -l 200
 ```
 
 `dev_ids` 列表第 N 个 = rank N 的物理设备号。不传默认 `0,1,...,devCount-1`。
-
-### 指定目标 rank
-
-通过 `--peer` (`-p`) 指定目标 rank（不填则自动 `(rank+1)%devCount`）：
-
-```bash
-# rank 0 发给 rank 1 (3卡场景下指定 peer)
-bash run.sh -r ON -i 0,2,4 -p 1 -m 1 -n 16 -s 65536
-```
 
 ### 命令行参数
 
@@ -103,8 +91,7 @@ bash run.sh -r ON -i 0,2,4 -p 1 -m 1 -n 16 -s 65536
 | `--sqe_bytes` | `-s` | 65536 | 每个 SQE 传输的数据量 (字节) |
 | `--buf_bytes` | `-b` | 104857600 (100MB) | 注册 workspace 大小 |
 | `--db_interval` | `-k` | 1 | 每 K 个 SQE 敲一次 DoorBell |
-| `--loop_count` | `-l` | 100 | 正式测试迭代次数 |
-| `--warmup` | `-w` | 10 | 预热迭代次数 |
+| `--loop_count` | `-l` | 100 | kernel 内正式执行次数 (一次launch) |
 | `--soc-version` | `-v` | ascend950pr_9599 | 芯片版本 |
 | `--cmake-rebuild` | `-c` | OFF | ON=重新编译 |
 | `--run-test` | `-r` | OFF | ON=运行测试 |
@@ -112,20 +99,20 @@ bash run.sh -r ON -i 0,2,4 -p 1 -m 1 -n 16 -s 65536
 ### 运行示例
 
 ```bash
-# 基本测试: mc2 WriteWithNotify, 16 SQE × 64KB
-bash run.sh -r ON -i 0,1 -m 1 -n 16 -s 65536 -l 100 -w 10
+# 基本测试: mc2 WriteWithNotify, 16 SQE × 64KB, 100轮
+bash run.sh -r ON -i 0,1 -m 1 -n 16 -s 65536 -l 100
 
 # Hcomm 模式
-bash run.sh -r ON -i 0,1 -m 2 -n 16 -s 65536 -l 100 -w 10
+bash run.sh -r ON -i 0,1 -m 2 -n 16 -s 65536 -l 100
 
 # 大包带宽测试: 64 SQE × 256KB
-bash run.sh -r ON -i 0,1 -m 1 -n 64 -s 262144 -l 200 -w 20
+bash run.sh -r ON -i 0,1 -m 1 -n 64 -s 262144 -l 200
 
 # 小包延迟测试: 1 SQE × 256B
-bash run.sh -r ON -i 0,1 -m 0 -n 1 -s 256 -l 1000 -w 100
+bash run.sh -r ON -i 0,1 -m 0 -n 1 -s 256 -l 1000
 
 # DoorBell 间隔测试: 每8个SQE敲一次 (仅SQE模式)
-bash run.sh -r ON -i 0,1 -m 1 -n 64 -s 65536 -k 8 -l 100 -w 10
+bash run.sh -r ON -i 0,1 -m 1 -n 64 -s 65536 -k 8 -l 100
 
 # 三种模式对比
 bash run.sh -r ON -i 0,1 -m 0 -n 16 -s 65536 -l 100   # Write
@@ -135,10 +122,8 @@ bash run.sh -r ON -i 0,1 -m 2 -n 16 -s 65536 -l 100   # Hcomm
 
 ### 输出格式
 
-每次迭代输出一行：
-
 ```
-[rank 0 (dev 0)][42] assemble=12.34us issue=15.67us wait=8.90us total=24.57us bw=42.71GB/s
+[rank 0 (dev 0)] assemble=12.34us issue=15.67us wait=8.90us total=24.57us bw=42.71GB/s
 ```
 
 | 字段 | 含义 |
@@ -148,7 +133,7 @@ bash run.sh -r ON -i 0,1 -m 2 -n 16 -s 65536 -l 100   # Hcomm
 | `assemble` | n 个数据 SQE 组装 + ring 写入 + doorbell 时间 |
 | `issue` | assemble + completion SQE + 最终 doorbell |
 | `wait` | 从 doorbell 到 CQ 完成事件落地 (Hcomm 模式 ≈0) |
-| `total` | 端到端总时间 |
+| `total` | 端到端总时间 (最后一轮的 timing) |
 | `bw` | 带宽 = numSqe × sqeBytes / total |
 
 ## 工作原理
@@ -161,14 +146,14 @@ main()
   ├─ HcclGetRootInfo(rootInfo)          # 主线程生成 rootInfo
   ├─ std::thread per device:            # 每个设备一个线程
   │   ├─ aclrtSetDevice(physicalDev)    #   设置物理设备
-  │   ├─ HcclCommInitRootInfo(devCount, rootInfo, rank, &comm)  # 初始化通信域
+  │   ├─ HcclCommInitRootInfoConfig     #   初始化通信域
   │   ├─ aclrtMalloc workspace          #   申请 URMA 目标缓冲区
   │   ├─ HcclCommMemReg                 #   注册 workspace
-  │   ├─ HcclRankGraphGetLayers/GetLinks #  枚举 UBC_CTP/UBC_TP 链路
+  │   ├─ HcclRankGraphGetLinks          #   枚举 UBC_CTP/UBC_TP 链路
   │   ├─ HcclChannelAcquire             #   获取 ChannelHandle (跨 rank 握手)
   │   ├─ HcommChannelGetPtrByHandle     #   handle → device VA (dlsym 兼容新旧 ABI)
   │   ├─ barrier(devCount)              #   等所有 rank 就绪
-  │   └─ for iter: <<<>>> launch + synchronize + 读打点
+  │   └─ <<<>>> launch (loop在kernel内部) → 读timing
   └─ join all threads
 ```
 
@@ -178,13 +163,16 @@ main()
 
 **SQE Write / WriteWithNotify:**
 ```
-DecodePeerChannel → GenerateCommWriteSQE → for(n): SetCommWriteSQE + PutSQEToRing + DoorBell
-→ trailing cqe=1 SQE → DoorBell → Poll CQ
+DecodePeerChannel → 生成SQE模板 → for(loopCount):
+  重置SQ/CQ状态 → [首轮]InvalidateCqRing →
+  组装n个数据SQE写入ring+doorbell → 发1个completion SQE →
+  Poll CQ等待完成 → 记录timing(最后一轮写GM)
 ```
 
 **Hcomm:**
 ```
-DecodePeerChannel → Hcomm.Init → for(n): WriteNbi → Drain
+DecodePeerChannel → Hcomm.Init → for(loopCount):
+  n×WriteNbi → Drain → 记录timing(最后一轮写GM)
 ```
 
 ### Timing Slots
@@ -195,6 +183,8 @@ DecodePeerChannel → Hcomm.Init → for(n): WriteNbi → Drain
 | `[1]` | n 个数据 SQE 完毕 | 组装+ring写入+doorbell | n × WriteNbi 调用 |
 | `[2]` | completion SQE + doorbell | issue 完成 | Drain 完毕 |
 | `[3]` | CQ poll 收到 completion | 等待完成 | ≈[2] (Drain 内部已等待) |
+
+> timing 记录的是**最后一轮**的值。`loopCount` 轮在 kernel 内部循环，无 Host↔Device 同步开销。
 
 ## SQE 模式选择指南
 
@@ -211,15 +201,17 @@ DecodePeerChannel → Hcomm.Init → for(n): WriteNbi → Drain
 | 维度 | mc2 算子版 | 本直调版 |
 |------|-----------|---------|
 | 调用方式 | GE 图框架调度 aclnn | `<<<>>>` 直调 |
-| HCCL 初始化 | `HcclCommInitClusterInfoConfig` + rank table | `HcclGetRootInfo` + `HcclCommInitRootInfo` (单进程多线程) |
+| HCCL 初始化 | `HcclCommInitClusterInfoConfig` + rank table | `HcclGetRootInfo` + `HcclCommInitRootInfoConfig` (单进程多线程) |
 | 通道建立 | `MC2().HcclGroup()` 框架自动 | `HcclCommMemReg` + `HcclChannelAcquire` |
 | SQE 模式 | 仅 WriteWithNotify | 运行时切换 Write / WriteWithNotify / Hcomm |
+| 多轮循环 | Host 侧多次 launch | kernel 内部循环, 一次 launch |
 | 编译依赖 | mc2 全量代码 | 仅 CANN headers |
 | rank table | 需要 | 不需要 |
 
 ## 限制
 
 - 单核执行 (blockDim=1, aivId==0)
+- 单向发送: rank 0 发, rank 1 等 (URMA Write 单向, 接收方无需操作)
 - `sqeBytes` 需 ≤ `bufBytes`，建议 32B 对齐
 - WriteWithNotify 每个 SQE 占 2 个 WQEBB，`numSqe` 需满足 `numSqe * 2 < sqDepth` (通常 256)
 - 需要物理 UBC_CTP 或 UBC_TP 链路 (同机 NPU 间)
