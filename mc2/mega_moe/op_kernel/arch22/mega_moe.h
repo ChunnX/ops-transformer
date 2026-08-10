@@ -214,7 +214,12 @@ template <MegaMoeClass>
 __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
 {
     using ArchTag = Arch::AtlasA2;
-    constexpr bool enableUnitFlag = false;
+    // 【性能优化】开启 BlockMmad 的硬件 unit flag，使 fixpipe(i) 与 Mmad(i+1) 流水并行。
+    // A3 ws16 decode 实测：aic_fixpipe_ratio 由 0.004~0.013 升至 0.042~0.073（5~10 倍），
+    // 证实 fixpipe 与 mmad 已重叠；11 个 decode 用例 Duration 提升 +0.2~1.2%。
+    // 该常量经 MmadDispatchPolicyFor_t 传入 BlockMmad（见下方 l0CStages 一行），
+    // 属编译期模板参数，不触及 flag9/flag10 握手计数，无死锁风险。
+    constexpr bool enableUnitFlag = true;
     constexpr bool enableShuffleK = true;
 
     constexpr bool isW4A8 = std::is_same_v<BType_, AscendC::int4b_t> || std::is_same_v<BType_, int32_t>;

@@ -65,6 +65,64 @@ using namespace Mc2Tiling;
 constexpr uint16_t SYNCFLAGC2V = 9;
 constexpr uint16_t SYNCFLAGV2C = 10;
 constexpr int32_t UB_MOVE_NUM = 16 * 1024;
+// dispatch/combine 二维并行分块参数：每个 (rank, 专家组) 的 token 行按该行数切块，
+// 让 EP < AIV 核数（如 EP=8 < 40）时空转的 AIV 也能参与搬运。
+//
+// 【为什么要有下限，且下限不能只夹块大小】
+// 块太小会把大 burst 搬运碎片化、拉低 MTE2 效率。实测教训（ws16 大 batch）：
+//   - 固定 8 行/块：kimi_k2_ws16 mte2 0.928→0.855、Duration +26%
+//   - 只夹块大小到 8 行：kimi_k2_ws16 每 rank 仅 10.7 行 → 切成 8 + 2.7 行，
+//     第二块是纯碎片，且 epr=24 把这个代价放大 24 倍 → 仍 +17%
+// 因此判据改为「切完之后每块仍要 ≥ MIN_ROWS_PER_BLOCK 行」，即
+// 只有 rowsPerRank >= 2×MIN_ROWS_PER_BLOCK 才值得切第一刀。
+constexpr uint32_t MIN_ROWS_PER_BLOCK = 8;
+// dispatch/CombineV1 每 dstEpIdx 块数前缀和数组的上限，
+// 与 host 侧 tiling 校验的 VALID_EP_WORLD_SIZE 最大值（128）对齐。
+static constexpr uint32_t MAX_DISPATCH_RANKS = 128;
+// cumsumMM 列切片 UB 缓存的起始偏移与容量。
+//
+// 【为什么放 UB 尾部，而不是此前的 64KB】
+// 原实现放在 64KB 并注释「CombineV1 期间 epilogue 从 0 起分配，均不触及本区间」——该假设是错的。
+// BlockEpilogue2（EpilogueAtlasA2PerTokenDequant<ubStages=2>，见 utils/block_epilogue_pertoken_row.hpp）
+// 从 UB[0] 起按 stage 连续分配，每 stage 占 n2×(sizeof(ElementC)+sizeof(ElementD)+sizeof(float))
+// = hidden×10B，两个 stage 合计：
+//     hidden=4096 → 80KB   hidden=6144 → 120KB   hidden=7168 → 140KB   hidden=8192 → 160KB
+// 即 64KB 必落在 epilogue 的占用区内 → 每个 group 调用 epilogue 都会冲掉 cumsumCache，
+// 后续 group 的 BuildRankBlockPrefix / 任务反查读到 epilogue 中间数据，块映射错乱，
+// 表现为 cos 0.002~0.02、Duration 涨 5 倍、偶发 CRASH（rowsPerRank∈[21,32] 时稳定复现）。
+//
+// 现改为放在 UB 尾部：起点 = UB_SIZE - CACHE_BYTES。epilogue 最坏占用 160KB（hidden=8192），
+// 尾部 8KB 区间 [184KB,192KB) 不被触及；dispatch 的搬运 ping-pong 占 [0,32KB)/[96KB,128KB)、
+// int4 预处理占 [0,~30KB)，同样不触及。
+// 容量 8KB = 2048 个 int32，覆盖 EP×expertPerRank 的上界（EP≤128、epr≤128 时按 host 校验
+// 组合不会同时取满；实际最大用例 EP16×epr24=384 个 int32 = 1.5KB）。
+static constexpr uint32_t DISPATCH_CACHE_BYTES = 8 * 1024;
+static constexpr uint32_t DISPATCH_CACHE_UB_OFFSET = Arch::AtlasA2::UB_SIZE - DISPATCH_CACHE_BYTES;
+
+// 计算每块行数。返回值 == rowsPerRank 表示不分块（退化为原「一 AIV 一 rank」语义）。
+// 分块条件（三个都要满足）：
+//   1) EP < coreNum          —— 否则原实现已无空转核，分块只有碎片化代价
+//   2) coreNum/EP >= 2       —— 每 rank 至少能分到 2 块才有并行意义
+//   3) rowsPerRank >= 2×MIN  —— 保证切完每块仍是有意义的大 burst，不产生碎片尾块
+__aicore__ inline uint32_t CalcRowsPerBlock(uint32_t rowsPerRank, uint32_t ep, uint32_t coreNum)
+{
+    if (rowsPerRank == 0) {
+        return 1U;
+    }
+    if (ep == 0 || ep >= coreNum || rowsPerRank < 2U * MIN_ROWS_PER_BLOCK) {
+        return rowsPerRank;  // 不分块
+    }
+    uint32_t wantBlocks = coreNum / ep;  // 每 rank 期望切几块才填满核
+    if (wantBlocks <= 1U) {
+        return rowsPerRank;
+    }
+    // 块数上限：保证每块 >= MIN_ROWS_PER_BLOCK，避免尾块碎片
+    uint32_t maxBlocks = rowsPerRank / MIN_ROWS_PER_BLOCK;
+    if (wantBlocks > maxBlocks) {
+        wantBlocks = maxBlocks;
+    }
+    return CeilDiv(rowsPerRank, wantBlocks);
+}
 
 // Atlas A3 (910_93) kernel.
 template <class BlockMmad_, class BlockScheduler_, class ElementGroupList_, class BlockEpilogue1_,
@@ -579,17 +637,39 @@ private:
         WaitFlag<HardEvent::MTE3_V>(EVENT_ID7);
     }
 
+    // 单条向量指令的 repeat 上限为 255，int32 每 repeat 处理 64 个元素，
+    // 因此「按数据量」的向量接口一次最多覆盖 255*64 = 16320 个 int32。
+    static constexpr uint32_t kVecI32MaxCalCount = 255U * 64U;
+
+    // 沿 rank 维（EP 维）对 tokenPerExpert 做 inclusive 前缀和，结果密排写入 result(cumsumMM)。
+    //
+    // 语义：tokenPerExpert(srcRank, dstRank, e) = srcRank 发给 dstRank 的第 e 号本地专家的 token 数。
+    //       本函数只取 dstRank == rankId 的那一列切片，得到 EP × expertPerRank 的矩阵
+    //       cnt[i][e]，然后逐列做前缀和：result[i][e] = Σ_{j<=i} cnt[j][e]。
+    //       消费方：result[(EP-1)*epr + g] = 本 rank 第 g 号专家的总行数；
+    //               result[(i-1)*epr + g]  = 第 i 个源 rank 在该专家内的起始行号。
+    //
+    // 性能：原实现是 EP-1 次「单行 Add + PipeBarrier<PIPE_V>」，依赖链长度 O(EP)
+    //       （EP=16 时 15 次全 V 流水排空，只为累加 16 个 int32，是全 kernel 性价比最低的一段）。
+    //       这里改成 Hillis-Steele 倍增扫描，依赖链降到 ceil(log2(EP))（EP=16 → 4 步），
+    //       且每步用「整段多行」的向量指令一次覆盖 (EP-d) 行，指令条数 15 → 2*4。
+    //       用 bufA/bufB ping-pong 避免 dst 与 src 部分重叠（AscendC 向量接口只允许完全重叠）。
     CATLASS_DEVICE
     void GetCumsumForMMAIV(AscendC::GlobalTensor<int32_t> &tokenPerExpert, AscendC::GlobalTensor<int32_t> &result,
-                           uint32_t expertPerRank, uint32_t rankId, uint32_t EP)
+                           AscendC::GlobalTensor<int32_t> &expertTokenNums, uint32_t expertPerRank, uint32_t rankId,
+                           uint32_t EP)
     {
-        int32_t expertPerRankAligned = (expertPerRank + 8 - 1) / 8 * 8;
-        AscendC::LocalTensor<int32_t> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<int32_t>(0);
-        AscendC::LocalTensor<int32_t> tmpResult =
-            resource.ubBuf.template GetBufferByByte<int32_t>(EP * expertPerRank * sizeof(int32_t));
+        // DataCopyPad(GM->UB) 的 dstStride=0 会把每个 block 落到下一个 32B 对齐位置，
+        // 因此第 i 个 rank 的行首恰好落在 i * expertPerRankAligned（int32 元素）处。
+        const uint32_t expertPerRankAligned = (expertPerRank + 8 - 1) / 8 * 8;
+        const uint32_t rowsTotal = EP * expertPerRankAligned; // ping-pong 单块元素数（32B 对齐）
+
+        AscendC::LocalTensor<int32_t> bufA = resource.ubBuf.template GetBufferByByte<int32_t>(0);
+        AscendC::LocalTensor<int32_t> bufB =
+            resource.ubBuf.template GetBufferByByte<int32_t>(rowsTotal * sizeof(int32_t));
 #define U16(x) static_cast<uint16_t>(x)
 
-        AscendC::DataCopyPad(tmpBuffer1, tokenPerExpert[rankId * expertPerRank],
+        AscendC::DataCopyPad(bufA, tokenPerExpert[rankId * expertPerRank],
                              {U16(EP), U16(expertPerRank * sizeof(int32_t)),
                               U16((paddedExpertNumAligned - expertPerRank) * sizeof(int32_t)), 0},
                              {});
@@ -597,16 +677,40 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
 
-        for (uint32_t i = 1; i < EP; ++i) {
-            AscendC::Add(tmpBuffer1[i * expertPerRankAligned], tmpBuffer1[i * expertPerRankAligned],
-                         tmpBuffer1[(i - 1) * expertPerRankAligned], expertPerRank);
+        // 倍增扫描：step d 满足 dst[i] = src[i] + src[i-d] (i>=d)，dst[i] = src[i] (i<d)。
+        // 走完 d = 1,2,4,...(<EP) 共 ceil(log2(EP)) 步后即为 inclusive 前缀和。
+        // 行尾 padding lane（expertPerRank..expertPerRankAligned）也会被一并相加，但
+        // 最终 DataCopyPad(UB->GM) 只取每行前 expertPerRank 个元素，padding 不会写出去。
+        AscendC::LocalTensor<int32_t> src = bufA;
+        AscendC::LocalTensor<int32_t> dst = bufB;
+        for (uint32_t d = 1; d < EP; d <<= 1) {
+            const uint32_t head = d * expertPerRankAligned;
+            // 前 d 行本步不变，原样带到 ping-pong 的另一块（Adds 与 Add 同在 PIPE_V，共用一次 barrier）
+            for (uint32_t off = 0; off < head; off += kVecI32MaxCalCount) {
+                uint32_t n = head - off;
+                n = (n > kVecI32MaxCalCount) ? kVecI32MaxCalCount : n;
+                AscendC::Adds(dst[off], src[off], 0, static_cast<int32_t>(n));
+            }
+            // 其余行做 dst[i] = src[i] + src[i-d]；src/dst 分属两块 UB，无地址重叠
+            for (uint32_t off = head; off < rowsTotal; off += kVecI32MaxCalCount) {
+                uint32_t n = rowsTotal - off;
+                n = (n > kVecI32MaxCalCount) ? kVecI32MaxCalCount : n;
+                AscendC::Add(dst[off], src[off], src[off - head], static_cast<int32_t>(n));
+            }
             AscendC::PipeBarrier<PIPE_V>();
+            AscendC::LocalTensor<int32_t> swapTmp = src;
+            src = dst;
+            dst = swapTmp;
         }
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
 
-        AscendC::DataCopyPad(result, tmpBuffer1, {U16(EP), U16((expertPerRank) * sizeof(int32_t)), 0, 0});
+        AscendC::DataCopyPad(result, src, {U16(EP), U16((expertPerRank) * sizeof(int32_t)), 0, 0});
+        // ExpertTokenNums 就是最后一行（全 rank 汇总），直接从 UB 写出，
+        // 省掉原先「SyncAll 之后再 CopyGMToGM(cumsumMM -> ExpertTokenNums)」的 GM->UB->GM 往返。
+        AscendC::DataCopyPad(expertTokenNums, src[(EP - 1) * expertPerRankAligned],
+                             {1, U16(expertPerRank * sizeof(int32_t)), 0, 0});
     }
 
     CATLASS_DEVICE
@@ -1146,23 +1250,23 @@ private:
 
         if (coreIdx == 0) {
             exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::CUMSUM_TOKEN_PER_EXPERT);
-            GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, runtimeRank, params.EP);
+            // ExpertTokenNums（cumsum 最后一行）由 GetCumsumForMMAIV 直接从 UB 写出，
+            // 不再走「SyncAll 之后 CopyGMToGM(cumsumMM -> ExpertTokenNums)」的 GM->UB->GM 往返。
+            AscendC::GlobalTensor<int32_t> expertTokenNums;
+            expertTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.ptrExpertTokenNums));
+            GetCumsumForMMAIV(tokenPerExpert, cumsumMM, expertTokenNums, params.expertPerRank, runtimeRank, params.EP);
         }
 
         AscendC::SyncAll<true>();
 
-        AscendC::GlobalTensor<int32_t> ExpertTokenNums;
-        ExpertTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.ptrExpertTokenNums));
-        if (coreIdx == 0) {
-            CopyGMToGM(ExpertTokenNums, cumsumMM[(params.EP - 1) * params.expertPerRank], params.expertPerRank,
-                       UB_MOVE_NUM);
-        }
         uint16_t syncgmm1Idx = 0;
         AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(syncgmm1Idx / CROSS_CORE_FLAG_MAX_SET_COUNT);
         syncgmm1Idx++;
 
         uint32_t prevGroupSum1 = 0;
         uint32_t prevGroupSum2 = 0;
+        // P2 修复：每 dstEpIdx 块数前缀和（EP ≤ 128），每个 group 重建一次。
+        uint32_t rankBlockPrefix[MAX_DISPATCH_RANKS + 1];
         nSyncSwiglu = 0;
         dequantSum[0] = 0;
         uint32_t dequantSumTemp = 0;
@@ -1175,22 +1279,61 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         }
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::DISPATCH);
+        // P2 修复：cumsumMM 列切片一次性搬进 UB 缓存，group 循环内每 rank 行数 /
+        // 组内起始行全部从 UB 读（避免每 group 每核 O(EP) 次 GM 标量读）。
+        AscendC::LocalTensor<int32_t> cumsumCache = PrefetchCumsumColumn(params);
         for (int32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
             // ----------------------------------------------------------
             // Each core pulls its `dstEpIdx`'s tokens out of the remote
             // rank's local peer-mem and runs the pre-process step.
             // ----------------------------------------------------------
             uint32_t currentM = cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
-            for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
-                uint32_t rowStartInGroup =
-                    dstEpIdx == 0 ? 0 : cumsumMM((dstEpIdx - 1) * params.expertPerRank + groupIdx);
-                uint32_t rowStart = rowStartInGroup + prevGroupSum1;
+            // P2 优化：dispatch 从「一 AIV 一 rank」改为「rank × token 行块」二维并行，
+            // 让 EP < 40 时空转的 AIV 也参与搬运。块大小由 CalcRowsPerBlock 自适应：
+            // EP 已达核数时退化为不分块，避免把大 burst 搬运碎片化（ws16 大 batch 实测教训）。
+            //
+            // ⚠️ P2 bug 修复：任务块数必须按【每 dstEpIdx 的实际行数】算，不能按全局平均。
+            // 旧实现 tokenBlocks = CeilDiv(rowsPerRankEst, rowsPerBlock)（rowsPerRankEst 是
+            // currentM/EP 的平均行数）且任务网格是 EP × tokenBlocks 均匀网格；稀疏路由下
+            // 某 dstEpIdx 的实际行数远超平均时，其超出 tokenBlocks×rowsPerBlock 的尾段行
+            // 没有任何任务块覆盖 → 行丢失。现在用 BuildRankBlockPrefix 把任务空间压成
+            // 「每 rank 块数 Σ 的连续序列」，taskIdx 经前缀和反查 (dstEpIdx, blockIdx)，
+            // 每 rank 的全部行都被恰好一个块覆盖一次。
+            // rowStart / rowSrc / gmOffsetA 偏移公式不变（分块仍是行区间的有序切分，
+            // 每块绝对地址不变），GMM1 侧读 ptrA 的布局不受影响。
+            uint32_t rowsPerRankEst = CeilDiv(currentM, static_cast<uint32_t>(params.EP));
+            uint32_t rowsPerBlock =
+                CalcRowsPerBlock(rowsPerRankEst, static_cast<uint32_t>(params.EP), coreNum);
+            uint32_t totalTasks = BuildRankBlockPrefix(params, groupIdx, rowsPerBlock, prevGroupSum1,
+                                                       params.maxOutputSize, cumsumCache, rankBlockPrefix);
+            for (uint32_t taskIdx = static_cast<uint32_t>(coreIdx); taskIdx < totalTasks;
+                 taskIdx += coreNum) {
+                uint32_t dstEpIdx = 0;
+                while (dstEpIdx + 1 < static_cast<uint32_t>(params.EP) &&
+                       rankBlockPrefix[dstEpIdx + 1] <= taskIdx) {
+                    ++dstEpIdx;
+                }
+                uint32_t blockIdx = taskIdx - rankBlockPrefix[dstEpIdx];
+                uint32_t prevCumsumDst = dstEpIdx == 0 ? 0 : cumsumCache((dstEpIdx - 1) * params.expertPerRank + groupIdx);
+                uint32_t rowStartInGroup = prevCumsumDst;
+                uint32_t rowStart = rowStartInGroup + prevGroupSum1 + blockIdx * rowsPerBlock;
                 if (rowStart < params.maxOutputSize) {
-                    uint32_t rows = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, runtimeRank, groupIdx));
+                    uint32_t rowsTotal =
+                        cumsumCache(dstEpIdx * params.expertPerRank + groupIdx) - prevCumsumDst;
+                    // 该源 rank 的行数可能不足（rowsTotal==0 或 < blockIdx*rowsPerBlock），
+                    // 直接跳过该块，避免 rowsTotal - blockIdx*rowsPerBlock 下溢成巨数。
+                    if (blockIdx * rowsPerBlock >= rowsTotal) {
+                        continue;
+                    }
+                    uint32_t rows = rowsTotal - blockIdx * rowsPerBlock;
+                    if (rows > rowsPerBlock) {
+                        rows = rowsPerBlock;
+                    }
                     if (rowStart + rows > params.maxOutputSize) {
                         rows = params.maxOutputSize - rowStart;
                     }
-                    uint32_t rowSrc = preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
+                    uint32_t rowSrc = preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx) +
+                                      blockIdx * rowsPerBlock;
                     GM_ADDR otherRankPtr = shmem(0, dstEpIdx);
                     AscendC::GlobalTensor<ElementABefore> gmRemoteA;
                     gmRemoteA.SetGlobalBuffer(
@@ -1201,7 +1344,8 @@ private:
                     // 所以dispatch的时候每个专家之间间隔从密排改为max（k， k2）
                     // 但是专家之内仍然是密排的
                     int64_t gmOffsetA = static_cast<int64_t>(prevGroupSum1) * params.gmm1InputExpertSlotWidth +
-                                        static_cast<int64_t>(rowStartInGroup) * params.problemShape.k();
+                                        static_cast<int64_t>(rowStartInGroup + blockIdx * rowsPerBlock) *
+                                            params.problemShape.k();
                     if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
                         int64_t gmOffsetPeer = rowSrc * (params.problemShape.k() + ALIGN_512);
                         FetchAndPreprocessInt8ToInt4(static_cast<uint64_t>(gmOffsetA), gmPerTokenScale1[rowStart],
@@ -1428,13 +1572,84 @@ private:
         }
     }
 
+    // dispatch / CombineV1 共用：构建「每 dstEpIdx 块数」的前缀和映射（P2 bug 修复）。
+    //
+    // 旧实现用【全局平均行数】rowsPerRankEst 推 tokenBlocks，任务网格是 EP × tokenBlocks
+    // 的均匀网格；稀疏路由下某 dstEpIdx 的实际行数远超平均时，其尾段行（超出
+    // tokenBlocks×rowsPerBlock 的部分）没有任何任务块覆盖，数据整段丢失——这是
+    // 4 个 FAIL case 的共同根因（etn_ok=True、cos 0.82~0.98、偶发 NaN、FAIL rank 漂移）。
+    //
+    // 本函数按【每个 dstEpIdx 的实际行数】计算块数 = CeilDiv(rowsTotal, rowsPerBlock)，
+    // 并把任务空间压成跨 rank 连续的序列：rankBlockPrefix[r] = Σ_{i<r} blocks(i)，
+    // 返回总任务数 = rankBlockPrefix[EP]。调用方用 taskIdx 经前缀和线性反查
+    // (dstEpIdx, blockIdx)，保证每 rank 的全部行被恰好一个块覆盖一次；分块仍是行区间
+    // 的有序切分，GM 偏移公式（rowStart / rowSrc / gmOffsetA）因此保持不变。
+    //
+    // rowsTotal 按 maxOutputSize 剩余容量收敛：rank 的组内起始行 groupBase + prevCumsum
+    // >= maxOutputSize 时块数为 0，与旧实现的行级截断守卫语义一致，避免容量溢出时
+    // 生成纯跳过的空块。
+    //
+    // 【性能】每 rank 行数不再单独读 tokenPerExpert，而是取 cumsumMM 列切片的相邻差：
+    //   rowsTotal(dstEpIdx) = cumsumCache[dstEpIdx*epr+g] - cumsumCache[(dstEpIdx-1)*epr+g]
+    // （cumsumMM 就是 tokenPerExpert 的 rank 维 inclusive 前缀和，相邻差严格等于原始值）。
+    // cumsumCache 由 PrefetchCumsumColumn 在 group 循环前一次性向量搬进 UB，
+    // 避免每 group 每核在 GM 上做 O(EP) 次标量读（AIC 标量 GM 读延迟高且几乎无流水，
+    // 实测 qwen3_235b_ws8 因此回退 +260us）。
+    CATLASS_DEVICE
+    uint32_t BuildRankBlockPrefix(Params const &params, uint32_t groupIdx, uint32_t rowsPerBlock,
+                                  uint64_t groupBase, uint64_t maxOutputSize,
+                                  AscendC::LocalTensor<int32_t> const &cumsumCache, uint32_t *rankBlockPrefix)
+    {
+        const uint32_t ep = static_cast<uint32_t>(params.EP);
+        const uint32_t epr = static_cast<uint32_t>(params.expertPerRank);
+        uint32_t totalTasks = 0;
+        uint32_t prevCumsum = 0;
+        rankBlockPrefix[0] = 0;
+        for (uint32_t dstEpIdx = 0; dstEpIdx < ep; ++dstEpIdx) {
+            uint32_t curCumsum = cumsumCache(dstEpIdx * epr + groupIdx);
+            uint32_t rowsTotal = curCumsum - prevCumsum;  // 该 rank 实际行数（cumsum 相邻差）
+            uint64_t base = groupBase + prevCumsum;       // 该 rank 组内起始行（= rowStartInGroup）
+            if (base >= maxOutputSize) {
+                rowsTotal = 0;
+            } else {
+                uint64_t cap = maxOutputSize - base;
+                if (cap < rowsTotal) {
+                    rowsTotal = static_cast<uint32_t>(cap);
+                }
+            }
+            totalTasks += CeilDiv(rowsTotal, rowsPerBlock);
+            rankBlockPrefix[dstEpIdx + 1] = totalTasks;
+            prevCumsum = curCumsum;
+        }
+        return totalTasks;
+    }
+
+    // 把 cumsumMM 列切片（EP×epr 个 int32，本 rank workspace 内连续）向量搬进 UB 缓存，
+    // 供 BuildRankBlockPrefix 与 dispatch/CombineV1 的 task 循环从 UB 读。
+    // 返回的 LocalTensor 在 DISPATCH_CACHE_UB_OFFSET 起（≤8KB）。
+    CATLASS_DEVICE
+    AscendC::LocalTensor<int32_t> PrefetchCumsumColumn(Params const &params)
+    {
+        const uint32_t elems = static_cast<uint32_t>(params.EP) * static_cast<uint32_t>(params.expertPerRank);
+        AscendC::LocalTensor<int32_t> cache =
+            resource.ubBuf.template GetBufferByByte<int32_t>(DISPATCH_CACHE_UB_OFFSET);
+        const uint32_t aligned = AlignUp(elems, 8U);  // DataCopy 要求 32B 对齐（8 个 int32）
+        cache.SetSize(static_cast<int64_t>(aligned));
+        AscendC::DataCopy(cache, cumsumMM[0], aligned);
+        AscendC::PipeBarrier<PIPE_ALL>();
+        return cache;
+    }
+
     CATLASS_DEVICE
     // CombineV1: selected when ElementB == int8_t && m * topK > 4096.
     void CombineV1(Params const &params, BlockEpilogue2 &blockEpilogue)
     {
         uint32_t n2 = params.problemShape.k();
         int32_t prevGroupSum2 = 0;
-        int32_t runtimeRank = RuntimeRank(params);
+        // P2 修复：每 dstEpIdx 块数前缀和（EP ≤ 128），每个 group 重建一次；
+        // cumsumMM 列切片搬进 UB 缓存后逐 group 从 UB 读。
+        uint32_t rankBlockPrefix[MAX_DISPATCH_RANKS + 1];
+        AscendC::LocalTensor<int32_t> cumsumCache = PrefetchCumsumColumn(params);
 
         icache_preload(8);
         for (uint32_t t_groupIdx = 0; t_groupIdx < params.expertPerRank; ++t_groupIdx) {
@@ -1443,19 +1658,56 @@ private:
             AscendC::SyncAll<true>();
 
             uint32_t groupIdx = t_groupIdx;
+            uint32_t groupTokenTotal = cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
+            if (prevGroupSum2 >= static_cast<int32_t>(params.maxOutputSize)) {
+                groupTokenTotal = 0;
+            } else if (prevGroupSum2 + groupTokenTotal > params.maxOutputSize) {
+                groupTokenTotal = params.maxOutputSize - prevGroupSum2;
+            }
 
-            for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
-                __gm__ void *dstPeermemPtr = shmem(peermemInfo.offsetD, dstEpIdx);
-                AscendC::GlobalTensor<ElementD2> gmRemotePeer;
-                gmRemotePeer.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2 *>(dstPeermemPtr));
-                uint32_t srcRowOffset =
-                    (dstEpIdx == 0 ? 0 : cumsumMM((dstEpIdx - 1) * params.expertPerRank + groupIdx)) + prevGroupSum2;
+            // P2 优化：CombineV1 从「一 AIV 一 rank」改为「rank × token 行块」二维并行，
+            // 与 dispatch 同理，让空转 AIV 也参与 combine 搬运；块大小同样自适应，
+            // EP 达到核数时退化为不分块，避免碎片化拖低 MTE2。
+            // ⚠️ P2 bug 修复：任务块数按【每 dstEpIdx 的实际行数】算（groupTokenTotal
+            // 只是跨全部 rank 的总行数），映射方式与 dispatch 一致（BuildRankBlockPrefix
+            // + 前缀和反查），保证每 rank 全部行被恰好一个块覆盖一次。
+            uint32_t rowsPerRankEst = CeilDiv(groupTokenTotal, static_cast<uint32_t>(params.EP));
+            uint32_t rowsPerBlock =
+                CalcRowsPerBlock(rowsPerRankEst, static_cast<uint32_t>(params.EP), coreNum);
+            uint32_t totalTasks = BuildRankBlockPrefix(params, groupIdx, rowsPerBlock, prevGroupSum2,
+                                                       params.maxOutputSize, cumsumCache, rankBlockPrefix);
+            for (uint32_t taskIdx = static_cast<uint32_t>(coreIdx); taskIdx < totalTasks;
+                 taskIdx += coreNum) {
+                uint32_t dstEpIdx = 0;
+                while (dstEpIdx + 1 < static_cast<uint32_t>(params.EP) &&
+                       rankBlockPrefix[dstEpIdx + 1] <= taskIdx) {
+                    ++dstEpIdx;
+                }
+                uint32_t blockIdx = taskIdx - rankBlockPrefix[dstEpIdx];
+                uint32_t prevCumsumDst =
+                    dstEpIdx == 0 ? 0 : cumsumCache((dstEpIdx - 1) * params.expertPerRank + groupIdx);
+                uint32_t rowStartInGroup = prevCumsumDst + prevGroupSum2;
+                uint32_t srcRowOffset = rowStartInGroup + blockIdx * rowsPerBlock;
                 if (srcRowOffset < params.maxOutputSize) {
-                    uint32_t dataRows = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, runtimeRank, groupIdx));
+                    uint32_t rowsTotal =
+                        cumsumCache(dstEpIdx * params.expertPerRank + groupIdx) - prevCumsumDst;
+                    // 该源 rank 的行数可能不足（rowsTotal==0 或 < blockIdx*rowsPerBlock），
+                    // 直接跳过该块，避免 rowsTotal - blockIdx*rowsPerBlock 下溢成巨数。
+                    if (blockIdx * rowsPerBlock >= rowsTotal) {
+                        continue;
+                    }
+                    uint32_t dataRows = rowsTotal - blockIdx * rowsPerBlock;
+                    if (dataRows > rowsPerBlock) {
+                        dataRows = rowsPerBlock;
+                    }
                     if (srcRowOffset + dataRows > params.maxOutputSize) {
                         dataRows = params.maxOutputSize - srcRowOffset;
                     }
-                    uint32_t dstRowOffset = preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
+                    __gm__ void *dstPeermemPtr = shmem(peermemInfo.offsetD, dstEpIdx);
+                    AscendC::GlobalTensor<ElementD2> gmRemotePeer;
+                    gmRemotePeer.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2 *>(dstPeermemPtr));
+                    uint32_t dstRowOffset = preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx) +
+                                            blockIdx * rowsPerBlock;
                     MatrixCoord offsetC{srcRowOffset, 0};
                     MatrixCoord offsetPeer{dstRowOffset, 0};
                     MatrixCoord shapeC{dataRows, n2};
@@ -1467,7 +1719,7 @@ private:
                     }
                 }
             }
-            prevGroupSum2 += cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
+            prevGroupSum2 += groupTokenTotal;
         }
         blockEpilogue.Finalize();
     }
