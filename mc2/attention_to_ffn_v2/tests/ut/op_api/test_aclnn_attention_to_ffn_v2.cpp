@@ -16,7 +16,7 @@ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULA
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
-#include "../../../op_api/aclnn_attention_to_ffn_v2.h"
+#include "aclnn/aclnn_attention_to_ffn_v2.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
