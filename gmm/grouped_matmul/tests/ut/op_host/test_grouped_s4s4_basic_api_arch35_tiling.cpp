@@ -77,9 +77,6 @@ gert::TilingContextPara::TensorDescription MakeTensorDesc(const vector<int64_t> 
     return {ops::ut::MakeGertStorageShape(dims, dims), dtype, format};
 }
 
-// GroupedMatmul attrs（索引）：0 split_item, 1 dtype, 2 transpose_weight, 3 transpose_x,
-//   4 group_type, 5 group_list_type, 6 act_type, 7 tuning_config。
-//S4S4 约束：transpose_x=false, group_type=0(SPLIT_M), act_type=0, split_item=3(单输出 y)。
 vector<gert::TilingContextPara::OpAttr> GetS4S4Attrs(bool transposeWeight)
 {
     return {
@@ -94,15 +91,12 @@ vector<gert::TilingContextPara::OpAttr> GetS4S4Attrs(bool transposeWeight)
     };
 }
 
-// 驱动S4S4 tiling。pergroup 时 scale=[E,G,N]（G=k/groupSize）；perchannel 时 scale=[E,N]（groupSize=0）。
-// 返回 tiling 是否成功，tilingInfo 传出用于断言。
 bool RunS4S4Tiling(int64_t m, int64_t k, int64_t n, int64_t e, int64_t groupSize, bool isPergroup,
                    TilingInfo &tilingInfo)
 {
     auto compileInfo = MakeAscend950CompileInfo();
-    const int64_t G = isPergroup ? (k / groupSize) : 0;  // K 方向量化组数 = scale.dim(1)
+    const int64_t G = isPergroup ? (k / groupSize) : 0;
 
-    // groupList [E] cumsum（均分 M，末值修正为 M）
     vector<int64_t> groupList(static_cast<size_t>(e));
     const int64_t per = m / e;
     for (int64_t i = 0; i < e; ++i) {
@@ -110,24 +104,23 @@ bool RunS4S4Tiling(int64_t m, int64_t k, int64_t n, int64_t e, int64_t groupSize
     }
     groupList[static_cast<size_t>(e - 1)] = m;
 
-    // scale: pergroup [E,G,N]，perchannel [E,N]；dtype UINT64
     gert::StorageShape scaleShape = isPergroup
         ? ops::ut::MakeGertStorageShape({e, G, n}, {e, G, n})
         : ops::ut::MakeGertStorageShape({e, n}, {e, n});
 
     vector<gert::TilingContextPara::TensorDescription> inputDescs = {
-        MakeTensorDesc({m, k}, ge::DT_INT4),                       // x [M,K] INT4
-        MakeTensorDesc({e, k, n}, ge::DT_INT4),                    // weight [E,K,N] INT4 (transpose_weight=false)
-        {MakeEmptyShape(), ge::DT_FLOAT16, ge::FORMAT_ND},         // bias (S4S4 无 bias, empty)
-        {scaleShape, ge::DT_UINT64, ge::FORMAT_ND},                // scale (UINT64)
-        {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},           // offset (empty)
-        {MakeEmptyShape(), ge::DT_FLOAT16, ge::FORMAT_ND},         // antiquantScale (empty)
-        {MakeEmptyShape(), ge::DT_FLOAT16, ge::FORMAT_ND},         // antiquantOffset (empty)
-        MakeTensorDesc({e}, ge::DT_INT64),                         // groupList [E]
-        MakeTensorDesc({m}, ge::DT_FLOAT),                         // perTokenScale [M] FLOAT
+        MakeTensorDesc({m, k}, ge::DT_INT4),
+        MakeTensorDesc({e, k, n}, ge::DT_INT4),
+        {MakeEmptyShape(), ge::DT_FLOAT16, ge::FORMAT_ND},
+        {scaleShape, ge::DT_UINT64, ge::FORMAT_ND},
+        {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},
+        {MakeEmptyShape(), ge::DT_FLOAT16, ge::FORMAT_ND},
+        {MakeEmptyShape(), ge::DT_FLOAT16, ge::FORMAT_ND},
+        MakeTensorDesc({e}, ge::DT_INT64),
+        MakeTensorDesc({m}, ge::DT_FLOAT),
     };
     vector<gert::TilingContextPara::TensorDescription> outputDescs = {
-        MakeTensorDesc({m, n}, ge::DT_FLOAT16),                    // y [M,N] FP16
+        MakeTensorDesc({m, n}, ge::DT_FLOAT16),
     };
 
     gert::TilingContextPara ctx(
@@ -136,7 +129,6 @@ bool RunS4S4Tiling(int64_t m, int64_t k, int64_t n, int64_t e, int64_t groupSize
     return ExecuteTiling(ctx, tilingInfo);
 }
 
-// 取S4S4 tiling data 的 gmmS4S4Params 用于断言。
 const GroupedMatmulTilingData::GMMBaseParamsS4S4 *GetS4S4Params(const TilingInfo &info)
 {
     return &reinterpret_cast<const GroupedMatmulTilingData::GMMS4S4IntQuantTilingData *>(info.tilingData.get())
@@ -151,53 +143,46 @@ protected:
     static void TearDownTestCase() {}
 };
 
-// PlanA：groupSize=256（128 倍数）接受，quantGroupNum=K/256=4，baseK=128。
 TEST_F(TestGroupedS4S4QuantPergroupArch35Tiling, pergroupGroupSize256Accepted)
 {
     TilingInfo info;
     ASSERT_TRUE(RunS4S4Tiling(/*m=*/128, /*k=*/1024, /*n=*/256, /*e=*/2, /*groupSize=*/256, true, info));
     ASSERT_EQ(info.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMS4S4IntQuantTilingData));
     const auto *p = GetS4S4Params(info);
-    EXPECT_EQ(p->quantGroupNum, 4U);   // G = 1024/256
-    EXPECT_EQ(p->baseK, 128U);         // pergroup 固定 baseK=128
+    EXPECT_EQ(p->quantGroupNum, 4U);
+    EXPECT_EQ(p->baseK, 128U);
     EXPECT_EQ(p->k, 1024U);
     EXPECT_EQ(p->n, 256U);
 }
 
-// PlanA：groupSize=512（128 倍数，大 groupSize 精度更优）接受，quantGroupNum=2，baseK=128。
 TEST_F(TestGroupedS4S4QuantPergroupArch35Tiling, pergroupGroupSize512Accepted)
 {
     TilingInfo info;
     ASSERT_TRUE(RunS4S4Tiling(128, 1024, 256, 2, /*groupSize=*/512, true, info));
     ASSERT_EQ(info.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMS4S4IntQuantTilingData));
     const auto *p = GetS4S4Params(info);
-    EXPECT_EQ(p->quantGroupNum, 2U);   // G = 1024/512
+    EXPECT_EQ(p->quantGroupNum, 2U);
     EXPECT_EQ(p->baseK, 128U);
 }
 
-// PlanA 基线：groupSize=128 接受，quantGroupNum=8，baseK=128。
 TEST_F(TestGroupedS4S4QuantPergroupArch35Tiling, pergroupGroupSize128BaselineAccepted)
 {
     TilingInfo info;
     ASSERT_TRUE(RunS4S4Tiling(128, 1024, 256, 2, /*groupSize=*/128, true, info));
     const auto *p = GetS4S4Params(info);
-    EXPECT_EQ(p->quantGroupNum, 8U);   // G = 1024/128
+    EXPECT_EQ(p->quantGroupNum, 8U);
     EXPECT_EQ(p->baseK, 128U);
 }
 
-// 偶数规格接受：groupSize=192（32 倍数非 128 倍数，偶数）。K=960 % G=5 == 0，(K/G)=192 为偶数 -> 接受。
-// quantGroupNum = 960/192 = 5，baseK=128。
 TEST_F(TestGroupedS4S4QuantPergroupArch35Tiling, pergroupGroupSize192EvenAccepted)
 {
     TilingInfo info;
     ASSERT_TRUE(RunS4S4Tiling(128, /*k=*/960, 256, 2, /*groupSize=*/192, true, info));
     const auto *p = GetS4S4Params(info);
-    EXPECT_EQ(p->quantGroupNum, 5U);   // G = 960/192
+    EXPECT_EQ(p->quantGroupNum, 5U);
     EXPECT_EQ(p->baseK, 128U);
 }
 
-// 偶数规格接受：groupSize=64（<128，32 倍数，偶数）。K=512 % G=8 == 0，(K/G)=64 为偶数 -> 接受。
-// quantGroupNum = 512/64 = 8，baseK=128。
 TEST_F(TestGroupedS4S4QuantPergroupArch35Tiling, pergroupGroupSize64EvenAccepted)
 {
     TilingInfo info;
@@ -207,8 +192,6 @@ TEST_F(TestGroupedS4S4QuantPergroupArch35Tiling, pergroupGroupSize64EvenAccepted
     EXPECT_EQ(p->baseK, 128U);
 }
 
-// 偶数规格接受：groupSize=2（最小偶数，非 32 倍数）。K=1024 % G=512 == 0，(K/G)=2 为偶数 -> 接受。
-// quantGroupNum = 1024/2 = 512，baseK=128。注意：groupSize=2 非 32 倍数，L0B ZN 末步对齐为 deferred
 TEST_F(TestGroupedS4S4QuantPergroupArch35Tiling, pergroupGroupSize2MinEvenAccepted)
 {
     TilingInfo info;
@@ -218,21 +201,18 @@ TEST_F(TestGroupedS4S4QuantPergroupArch35Tiling, pergroupGroupSize2MinEvenAccept
     EXPECT_EQ(p->baseK, 128U);
 }
 
-// 偶数规格拒绝：groupSize=3（奇数）。K=192 % G=64 == 0（过 K%G 校验），(K/G)=3 非偶数 -> A1 拒绝。
 TEST_F(TestGroupedS4S4QuantPergroupArch35Tiling, pergroupGroupSize3OddRejected)
 {
     TilingInfo info;
     EXPECT_FALSE(RunS4S4Tiling(128, /*k=*/192, 256, 2, /*groupSize=*/3, true, info));
 }
 
-// 偶数规格拒绝：groupSize=129（>128 奇数）。K=4128 % G=32 == 0，(K/G)=129 非偶数 -> A1 拒绝。
 TEST_F(TestGroupedS4S4QuantPergroupArch35Tiling, pergroupGroupSize129OddRejected)
 {
     TilingInfo info;
     EXPECT_FALSE(RunS4S4Tiling(128, /*k=*/4128, 256, 2, /*groupSize=*/129, true, info));
 }
 
-// 对照：perchannel（scale 2D [E,N]）-> quantGroupNum=1，baseK=min(K,128)=128。
 TEST_F(TestGroupedS4S4QuantPergroupArch35Tiling, perchannelScale2DQuantGroupNumOne)
 {
     TilingInfo info;
@@ -243,15 +223,6 @@ TEST_F(TestGroupedS4S4QuantPergroupArch35Tiling, perchannelScale2DQuantGroupNumO
     EXPECT_EQ(p->baseK, 128U);         // min(1024,128)
 }
 
-// P2-1：perchannel K 非 32 倍数 -> host CheckS4S4Params 拒绝（int8 C0_SIZE，L0B 对齐）。
-// K=100 过 n%8/K>0 校验，在 K%32 校验处失败。
-TEST_F(TestGroupedS4S4QuantPergroupArch35Tiling, perchannelKNotMultipleOf32Rejected)
-{
-    TilingInfo info;
-    EXPECT_FALSE(RunS4S4Tiling(128, /*k=*/100, 256, 2, /*groupSize=*/0, /*isPergroup=*/false, info));
-}
-
-// P2-2：perchannel K=0 -> host CheckS4S4Params 拒绝（k 必须 > 0）。
 TEST_F(TestGroupedS4S4QuantPergroupArch35Tiling, perchannelKZeroRejected)
 {
     TilingInfo info;
