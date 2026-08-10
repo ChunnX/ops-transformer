@@ -141,3 +141,7 @@ def inplace_partial_rotary_mul_backward(
         rotary_mode=rotary_mode,
         partial_slice=partial_slice,
     )
+
+
+_inplace_partial_rotary_mul_backward_builder = InplacePartialRotaryMulBackwardOpBuilder()
+_inplace_partial_rotary_mul_backward_builder._ensure_initialized()

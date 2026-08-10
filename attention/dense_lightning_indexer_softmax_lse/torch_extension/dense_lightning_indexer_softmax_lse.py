@@ -311,3 +311,7 @@ def dense_lightning_indexer_softmax_lse_fallback(
 
 
 torch.compiler.allow_in_graph(dense_lightning_indexer_softmax_lse)
+
+
+dense_lightning_indexer_softmax_lse_op_builder = DenseLightningIndexerSoftmaxLseOpBuilder()
+dense_lightning_indexer_softmax_lse_op_builder._ensure_initialized()
