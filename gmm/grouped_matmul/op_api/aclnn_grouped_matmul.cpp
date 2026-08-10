@@ -217,6 +217,17 @@ bool IsS8S4PseudoQuantDataFlow(const gmm::GroupedMatmulParams &gmmParams)
     return (*gmmParams.scaleOptional)[0]->GetDataType() == DataType::DT_UINT64;
 }
 
+bool IsS8S4PseudoQuantWeightNz(const aclTensorList *x, const aclTensorList *weight,
+                               const aclTensorList *scaleOptional)
+{
+    return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
+           x->Size() == 1 && (*x)[0] != nullptr && (*x)[0]->GetDataType() == DataType::DT_INT8 &&
+           weight->Size() == 1 && (*weight)[0] != nullptr && (*weight)[0]->GetDataType() == DataType::DT_INT4 &&
+           scaleOptional != nullptr && scaleOptional->Size() == 1 && (*scaleOptional)[0] != nullptr &&
+           ((*scaleOptional)[0]->GetDataType() == DataType::DT_UINT64 ||
+            (*scaleOptional)[0]->GetDataType() == DataType::DT_INT64);
+}
+
 const char *GetGmmScenarioName(const DataType &xDtype, const DataType &weightDtype)
 {
     if (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT8) {
@@ -3218,14 +3229,7 @@ aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(
             UnpackB32ToB4(x, "x", true);
         }
     }
-    const bool isS8S4PseudoQuant =
-        op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-        x->Size() == 1 && (*x)[0] != nullptr && (*x)[0]->GetDataType() == DataType::DT_INT8 &&
-        weight->Size() == 1 && (*weight)[0] != nullptr && (*weight)[0]->GetDataType() == DataType::DT_INT4 &&
-        scaleOptional != nullptr && scaleOptional->Size() == 1 && (*scaleOptional)[0] != nullptr &&
-        ((*scaleOptional)[0]->GetDataType() == DataType::DT_UINT64 ||
-         (*scaleOptional)[0]->GetDataType() == DataType::DT_INT64);
-    if (isS8S4PseudoQuant) {
+    if (IsS8S4PseudoQuantWeightNz(x, weight, scaleOptional)) {
         bool hasOffset = offsetOptional != nullptr && offsetOptional->Size() == 1 &&
                          (*offsetOptional)[0] != nullptr;
         if (hasOffset) {
