@@ -140,7 +140,7 @@ uint64_t MatmulAllReduceTilingA5::GetTilingKey() const
         return tilingKey;
     }
     bool matmulWithAdd = true;
-    if (!matmulAllReduce910TilingData_.param.isAdd) {
+    if (!matmulAllReduce910TilingData_.param.isAdd && !args_.isBias) {
         matmulWithAdd = false;
     }
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
@@ -245,6 +245,7 @@ ge::graphStatus MatmulAllReduceTilingA5::Do910Tiling()
                     OP_LOGE(opName_, "Get mmv3 priority policy failed."), return ge::GRAPH_FAILED);
     Mc2MMRegisterCfg registerCfg{"Mc2MatMulV3", npuArch_, priorities};
     mc2tiling::NewUpdateMatmulV3Args(mmV3Args_, args_, opName_);
+    mmV3Args_.hasBias = false;
 
     // 获取tileTiling
     mmV3Args_.mValue = tileMValue_;
@@ -258,6 +259,23 @@ ge::graphStatus MatmulAllReduceTilingA5::Do910Tiling()
         Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
                                                           reinterpret_cast<const void *>(&mmV3Args_));
         MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MmV3TailTilingData()));
+    }
+    matmulAllReduce910TilingData_.param.isVecBias = args_.isBias ? 1U : 0U;
+    if (args_.isBias) {
+        constexpr uint32_t alignDataSize = 32U;
+        uint32_t dtypeSize = static_cast<uint32_t>(D_MTYPE_SIZE_MAP.at(args_.cType));
+        uint32_t alignedN = mc2tiling::AlignUp(static_cast<uint32_t>(args_.orgNValue), alignDataSize / dtypeSize);
+        uint32_t biasBufNum = (matmulAllReduce910TilingData_.param.isAdd != 0U) ? 7U : 5U;
+        uint32_t biasUbFactor = biasBufNum * alignedN * dtypeSize;
+        if (biasUbFactor == 0U) {
+            matmulAllReduce910TilingData_.param.biasUbRows = 1U;
+            return ge::GRAPH_SUCCESS;
+        }
+        uint32_t biasUbRows = mc2tiling::AlignDown(static_cast<uint32_t>(aicoreParams_.ubSize) / biasUbFactor, alignDataSize);
+        if (biasUbRows == 0U) {
+            biasUbRows = 1U;
+        }
+        matmulAllReduce910TilingData_.param.biasUbRows = biasUbRows;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -367,13 +385,15 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckInput()
 }
 
 MatmulAllReduceTilingA5::MatmulAllReduceTilingA5(gert::TilingContext *context)
-    : MatmulAllReduceTilingBase(context), matmulAllReduce910TilingData_(matmulAllReduce910TilingDataSelf_)
+    : MatmulAllReduceTilingBase(context),
+      matmulAllReduce910TilingData_(matmulAllReduce910TilingDataSelf_)
 {
 }
 
 MatmulAllReduceTilingA5::MatmulAllReduceTilingA5(gert::TilingContext *context, MMRCtxInfo *mmrCtxInfo,
                                                  MatmulAllReduce910TilingDataA5 *out)
-    : MatmulAllReduceTilingBase(context, mmrCtxInfo), matmulAllReduce910TilingData_(*out)
+    : MatmulAllReduceTilingBase(context, mmrCtxInfo),
+      matmulAllReduce910TilingData_(*out)
 {
 }
 
