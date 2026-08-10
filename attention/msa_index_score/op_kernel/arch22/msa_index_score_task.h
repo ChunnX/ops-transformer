@@ -10,10 +10,14 @@
 
 /*!
  * \file msa_index_score_task.h
- * \brief varlen + 因果裁剪的任务枚举器。
+ * \brief varlen + sparse_mode 因果裁剪的任务枚举器。
  *
- * AIC 与 AIV 各自持有一个实例并走完全相同的任务序列，是 cross-core flag
- * set/wait 计数配对的前提，因此本文件中的推导必须保持为纯函数、两侧共用。
+ * atten_mask（sparse_mode=3）采用与 LightningIndexer 相同的 rightDownCausal 解析：
+ *   visible_key_end(q) = kv_len - q_len + t_off + 1
+ * 不物化 / 不加载 [2048,2048] 模板。
+ *
+ * start_loc[b] 为当前 query 所在逻辑 block 索引，仅用于 local_mask（强制高分），
+ * 不再作为 token 级 prefix 偏移。
  */
 
 #ifndef MSA_INDEX_SCORE_TASK_H
@@ -34,19 +38,34 @@ __aicore__ inline uint32_t MsaMinU32(uint32_t a, uint32_t b)
     return a < b ? a : b;
 }
 
+__aicore__ inline int32_t MsaClampI32(int32_t v, int32_t lo, int32_t hi)
+{
+    if (v < lo) {
+        return lo;
+    }
+    if (v > hi) {
+        return hi;
+    }
+    return v;
+}
+
 /// 一个任务 = 一个请求内的一个 M-tile。
 /// M 维 = 请求内 (token, head) 扁平行索引，head 为低位。
 struct MsaTask {
     uint32_t batchIdx;
-    uint32_t cuQStart;      // 该请求首个 token 的全局扁平下标
-    uint32_t mStart;        // tile 在请求内的起始行
-    uint32_t mActual;       // tile 实际行数
-    uint32_t globalRowBase; // cuQStart * numQHeads + mStart
-    int32_t startLoc;
+    uint32_t cuQStart;
+    uint32_t mStart;
+    uint32_t mActual;
+    uint32_t globalRowBase;
+    int32_t startLoc; // 当前 query 所在逻辑 block 索引（local_mask）
     int32_t kvLen;
-    uint32_t fullEndBlk;    // [0, fullEndBlk) 全可见，无需 mask
-    uint32_t visibleEndBlk; // [fullEndBlk, visibleEndBlk) 需 mask；>= visibleEndBlk 全不可见
-    uint32_t numSTiles;     // 本任务需要产出的 S-tile 数
+    int32_t qLen;
+    uint32_t sparseMode;
+    uint32_t initBlocks;
+    uint32_t localBlocks;
+    uint32_t fullEndBlk;
+    uint32_t visibleEndBlk;
+    uint32_t numSTiles;
 };
 
 class MsaTaskScheduler {
@@ -54,8 +73,8 @@ public:
     __aicore__ inline MsaTaskScheduler() {}
 
     __aicore__ inline void Init(uint32_t batch, uint32_t numQHeads, uint32_t maxBlocksPerBatch,
-                                uint32_t scoreBlockStride, bool fillInvalidTail,
-                                const AscendC::GlobalTensor<int32_t> &cuSeqQ,
+                                uint32_t scoreBlockStride, uint32_t sparseMode, uint32_t initBlocks,
+                                uint32_t localBlocks, const AscendC::GlobalTensor<int32_t> &cuSeqQ,
                                 const AscendC::GlobalTensor<int32_t> &kvLen,
                                 const AscendC::GlobalTensor<int32_t> &startLoc)
     {
@@ -63,7 +82,9 @@ public:
         numQHeads_ = numQHeads;
         maxBlocksPerBatch_ = maxBlocksPerBatch;
         scoreBlockStride_ = scoreBlockStride;
-        fillInvalidTail_ = fillInvalidTail;
+        sparseMode_ = sparseMode;
+        initBlocks_ = initBlocks;
+        localBlocks_ = localBlocks;
         gCuSeqQ_ = cuSeqQ;
         gKvLen_ = kvLen;
         gStartLoc_ = startLoc;
@@ -88,7 +109,17 @@ public:
         LoadBatch(0);
     }
 
-    /// taskIdx 必须单调不减（核内 taskIdx += coreNum 的遍历顺序天然满足）。
+    /// 按 sparse_mode 计算某 query token 的可见 key 上界（半开区间右端）。
+    __aicore__ inline int32_t VisibleKeyEndOf(int32_t tOff) const
+    {
+        if (sparseMode_ == MSA_SPARSE_MODE_RIGHT_DOWN) {
+            // rightDownCausal：j <= kvLen - qLen + tOff  <=>  end = kvLen - qLen + tOff + 1
+            return MsaClampI32(kvLen_ - qLen_ + tOff + 1, 0, kvLen_ < 0 ? 0 : kvLen_);
+        }
+        // defaultMask：仅受 kv_len 截断
+        return kvLen_ < 0 ? 0 : kvLen_;
+    }
+
     __aicore__ inline void Decode(uint32_t taskIdx, MsaTask &task)
     {
         while (taskIdx >= taskBase_ + curTasks_) {
@@ -101,35 +132,32 @@ public:
         task.cuQStart = cuQStart_;
         task.startLoc = startLoc_;
         task.kvLen = kvLen_;
+        task.qLen = qLen_;
+        task.sparseMode = sparseMode_;
+        task.initBlocks = initBlocks_;
+        task.localBlocks = localBlocks_;
         task.mStart = (taskIdx - taskBase_) * MSA_ROW_TILE_M;
         task.mActual = MsaMinU32(MSA_ROW_TILE_M, curRows_ - task.mStart);
         task.globalRowBase = cuQStart_ * numQHeads_ + task.mStart;
 
-        // 因果 / 长度边界：与 Triton _prefill_index_score_kernel L217-L237 等价。
         const uint32_t tLo = task.mStart / numQHeads_;
         const uint32_t tHi = (task.mStart + task.mActual - 1) / numQHeads_;
-        const int32_t qPosLo = startLoc_ + static_cast<int32_t>(tLo);
-        const int32_t qPosHi = startLoc_ + static_cast<int32_t>(tHi);
+        const int32_t visibleKeyEndHi = VisibleKeyEndOf(static_cast<int32_t>(tHi));
+        const int32_t visibleKeyEndLo = VisibleKeyEndOf(static_cast<int32_t>(tLo));
 
-        int32_t visibleKeyEnd = (qPosHi + 1) < kvLen_ ? (qPosHi + 1) : kvLen_;
-        if (visibleKeyEnd < 0) {
-            visibleKeyEnd = 0;
-        }
-        uint32_t visibleEndBlk = MsaCeilDiv(static_cast<uint32_t>(visibleKeyEnd), MSA_BLOCK_SIZE);
+        uint32_t visibleEndBlk =
+            MsaCeilDiv(static_cast<uint32_t>(visibleKeyEndHi), MSA_BLOCK_SIZE);
         visibleEndBlk = MsaMinU32(visibleEndBlk, maxBlocksPerBatch_);
 
-        const int32_t causalFullSigned = (qPosLo + 1) < 0 ? 0 : (qPosLo + 1);
-        const uint32_t causalFull = static_cast<uint32_t>(causalFullSigned) / MSA_BLOCK_SIZE;
+        const uint32_t causalFull = static_cast<uint32_t>(visibleKeyEndLo) / MSA_BLOCK_SIZE;
         const uint32_t seqFull = (kvLen_ < 0 ? 0U : static_cast<uint32_t>(kvLen_)) / MSA_BLOCK_SIZE;
         uint32_t fullEndBlk = MsaMinU32(causalFull, seqFull);
 
         task.visibleEndBlk = visibleEndBlk;
         task.fullEndBlk = MsaMinU32(fullEndBlk, visibleEndBlk);
 
-        const uint32_t outEndBlk = fillInvalidTail_ ?
-            scoreBlockStride_ :
-            MsaCeilDiv(visibleEndBlk, MSA_BLOCKS_PER_STILE) * MSA_BLOCKS_PER_STILE;
-        task.numSTiles = MsaCeilDiv(outEndBlk, MSA_BLOCKS_PER_STILE);
+        // 不可见尾一律写 -inf，末维对齐到 scoreBlockStride
+        task.numSTiles = MsaCeilDiv(scoreBlockStride_, MSA_BLOCKS_PER_STILE);
     }
 
 private:
@@ -140,12 +168,16 @@ private:
             curRows_ = 0;
             cuQStart_ = 0;
             kvLen_ = 0;
+            qLen_ = 0;
             startLoc_ = 0;
             return;
         }
         cuQStart_ = static_cast<uint32_t>(gCuSeqQ_.GetValue(b));
-        const uint32_t qLen = static_cast<uint32_t>(gCuSeqQ_.GetValue(b + 1)) - cuQStart_;
-        curRows_ = qLen * numQHeads_;
+        qLen_ = static_cast<int32_t>(gCuSeqQ_.GetValue(b + 1)) - static_cast<int32_t>(cuQStart_);
+        if (qLen_ < 0) {
+            qLen_ = 0;
+        }
+        curRows_ = static_cast<uint32_t>(qLen_) * numQHeads_;
         curTasks_ = MsaCeilDiv(curRows_, MSA_ROW_TILE_M);
         kvLen_ = gKvLen_.GetValue(b);
         startLoc_ = gStartLoc_.GetValue(b);
@@ -159,7 +191,9 @@ private:
     uint32_t numQHeads_ = 1;
     uint32_t maxBlocksPerBatch_ = 0;
     uint32_t scoreBlockStride_ = 0;
-    bool fillInvalidTail_ = true;
+    uint32_t sparseMode_ = MSA_SPARSE_MODE_RIGHT_DOWN;
+    uint32_t initBlocks_ = MSA_DEFAULT_INIT_BLOCKS;
+    uint32_t localBlocks_ = MSA_DEFAULT_LOCAL_BLOCKS;
 
     uint32_t totalTasks_ = 0;
     uint32_t curBatch_ = 0;
@@ -168,6 +202,7 @@ private:
     uint32_t curRows_ = 0;
     uint32_t cuQStart_ = 0;
     int32_t kvLen_ = 0;
+    int32_t qLen_ = 0;
     int32_t startLoc_ = 0;
 };
 

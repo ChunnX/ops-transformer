@@ -11,6 +11,10 @@
 /*!
  * \file msa_index_score.cpp
  * \brief MsaIndexScore kernel 入口。
+ *
+ * 入参顺序与 op_def / aclnn 对齐：
+ *   query, key, block_table, scale, atten_mask, cu_seq_q, kv_len, start_loc, score
+ * atten_mask 仅做 host 校验；device 侧按 sparse_mode 解析因果，不消费该 GM。
  */
 
 #include "kernel_operator.h"
@@ -23,17 +27,19 @@ using namespace MsaIndexScoreNs;
 #define MSA_INVOKE_KERNEL(ElementQ, IsQuant)                                                                  \
     do {                                                                                                      \
         MsaIndexScoreKernel<ElementQ, IsQuant> op;                                                            \
-        op.Init(query, keyCache, blockTable, scale, actualSeqLengthsQuery, actualSeqLengthsKey, startLoc,      \
-                score, userWs, tilingData);                                                                   \
+        op.Init(query, key, blockTable, scale, actualSeqLengthsQuery, actualSeqLengthsKey, startLoc, score,   \
+                userWs, tilingData);                                                                          \
         op.Process();                                                                                         \
     } while (0)
 
-extern "C" __global__ __aicore__ void msa_index_score(GM_ADDR query, GM_ADDR keyCache, GM_ADDR blockTable,
-                                                      GM_ADDR scale, GM_ADDR actualSeqLengthsQuery,
+extern "C" __global__ __aicore__ void msa_index_score(GM_ADDR query, GM_ADDR key, GM_ADDR blockTable,
+                                                      GM_ADDR scale, GM_ADDR attenMask,
+                                                      GM_ADDR actualSeqLengthsQuery,
                                                       GM_ADDR actualSeqLengthsKey, GM_ADDR startLoc,
                                                       GM_ADDR score, GM_ADDR workspace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    (void)attenMask; // host 校验；device 按 sparse_mode 解析 rightDownCausal
     GM_ADDR userWs = AscendC::GetUserWorkspace(workspace);
     if (userWs == nullptr) {
         return;

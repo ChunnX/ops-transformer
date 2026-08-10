@@ -15,7 +15,7 @@ from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 SCORE_STRIDE_ALIGN = 16
-DEFAULT_BLOCK_SIZE = 128
+DEFAULT_SPARSE_MODE = 3
 
 
 def _round_up(value: int, align: int) -> int:
@@ -27,41 +27,32 @@ class MsaIndexScoreOpBuilder(OpBuilder):
         super(MsaIndexScoreOpBuilder, self).__init__("msa_index_score")
 
     def sources(self):
-        """Path to C++ source code."""
         return ["ops/csrc/msa_index_score.cpp"]
 
     def schema(self) -> str:
-        """PyTorch operator signature."""
         return (
-            "msa_index_score(Tensor query, Tensor key_cache, Tensor block_table, "
-            "Tensor actual_seq_lengths_query, Tensor actual_seq_lengths_key, Tensor start_loc, *, "
-            "Tensor? scale=None, int block_size=128, bool fill_invalid_tail=True) -> Tensor"
+            "msa_index_score(Tensor query, Tensor key, Tensor? block_table, "
+            "Tensor? scale, Tensor? atten_mask, Tensor? actual_seq_lengths_query, "
+            "Tensor? actual_seq_lengths_key, Tensor start_loc, *, int sparse_mode=3) -> Tensor"
         )
 
     def register_meta(self):
-        """Registers the Meta implementation (Shape/Dtype inference)."""
-
         @impl(AS_LIBRARY, self.name, "Meta")
         def msa_index_score_meta(
             query: torch.Tensor,
-            key_cache: torch.Tensor,
-            block_table: torch.Tensor,
-            actual_seq_lengths_query: torch.Tensor,
-            actual_seq_lengths_key: torch.Tensor,
+            key: torch.Tensor,
+            block_table: Optional[torch.Tensor],
+            scale: Optional[torch.Tensor],
+            atten_mask: Optional[torch.Tensor],
+            actual_seq_lengths_query: Optional[torch.Tensor],
+            actual_seq_lengths_key: Optional[torch.Tensor],
             start_loc: torch.Tensor,
             *,
-            scale: Optional[torch.Tensor] = None,
-            block_size: int = DEFAULT_BLOCK_SIZE,
-            fill_invalid_tail: bool = True,
+            sparse_mode: int = DEFAULT_SPARSE_MODE,
         ):
-            torch._check(
-                query.dim() == 3,
-                lambda: f"query must be 3D [T, Hq, D], but got dim={query.dim()}",
-            )
-            torch._check(
-                block_table.dim() == 2,
-                lambda: f"block_table must be 2D [B, MB], but got dim={block_table.dim()}",
-            )
+            torch._check(query.dim() == 3, lambda: "query must be 3D [T, Hq, D]")
+            torch._check(block_table is not None and block_table.dim() == 2,
+                         lambda: "block_table must be 2D [B, MB]")
             total_q = query.size(0)
             num_q_heads = query.size(1)
             max_blocks = block_table.size(1)
@@ -87,76 +78,64 @@ def _get_op_module():
 @impl(AS_LIBRARY, _msa_index_score_op_builder.name, "PrivateUse1")
 def _msa_index_score(
     query: torch.Tensor,
-    key_cache: torch.Tensor,
-    block_table: torch.Tensor,
-    actual_seq_lengths_query: torch.Tensor,
-    actual_seq_lengths_key: torch.Tensor,
+    key: torch.Tensor,
+    block_table: Optional[torch.Tensor],
+    scale: Optional[torch.Tensor],
+    atten_mask: Optional[torch.Tensor],
+    actual_seq_lengths_query: Optional[torch.Tensor],
+    actual_seq_lengths_key: Optional[torch.Tensor],
     start_loc: torch.Tensor,
     *,
-    scale: Optional[torch.Tensor] = None,
-    block_size: int = DEFAULT_BLOCK_SIZE,
-    fill_invalid_tail: bool = True,
+    sparse_mode: int = DEFAULT_SPARSE_MODE,
 ) -> torch.Tensor:
-    """Dispatcher implementation for NPU (PrivateUse1)."""
     return _get_op_module().msa_index_score(
         query,
-        key_cache,
+        key,
         block_table,
+        scale,
+        atten_mask,
         actual_seq_lengths_query,
         actual_seq_lengths_key,
         start_loc,
-        scale,
-        block_size,
-        fill_invalid_tail,
+        sparse_mode,
     )
 
 
 def msa_index_score(
     query: torch.Tensor,
-    key_cache: torch.Tensor,
-    block_table: torch.Tensor,
-    actual_seq_lengths_query: torch.Tensor,
-    actual_seq_lengths_key: torch.Tensor,
+    key: torch.Tensor,
     start_loc: torch.Tensor,
     *,
+    block_table: Optional[torch.Tensor] = None,
     scale: Optional[torch.Tensor] = None,
-    block_size: int = DEFAULT_BLOCK_SIZE,
-    fill_invalid_tail: bool = True,
+    atten_mask: Optional[torch.Tensor] = None,
+    actual_seq_lengths_query: Optional[torch.Tensor] = None,
+    actual_seq_lengths_key: Optional[torch.Tensor] = None,
+    sparse_mode: int = DEFAULT_SPARSE_MODE,
 ) -> torch.Tensor:
-    """MSA Lightning Indexer 的 block score 计算，封装 aclnnMsaIndexScore。
-
-    Prefill / Decode 归一到同一接口。非量化路径不得传入 ``scale``；
-    int8 前融合路径 ``key_cache`` 为 int8，且必须传入
-    ``scale``，shape 为 ``[num_pages, num_kv_heads, block_size]``。
+    """MSA Index Branch block score，封装 aclnnMsaIndexScore。
 
     Args:
-        query (Tensor): index query，shape ``[T, Hq, D]``，dtype float16 / bfloat16。
-        key_cache (Tensor): 分页 index key cache，shape ``[NP, P, Hkv, D]``。
-            非量化与 query 同 dtype；量化为 int8（当前要求 query 为 float16）。
-        block_table (Tensor): 逻辑 block → 物理 page，shape ``[B, MB]``，dtype int32。
-        actual_seq_lengths_query (Tensor): query 长度前缀和，shape ``[B+1]``，dtype int32。
-        actual_seq_lengths_key (Tensor): 每请求可见 kv 长度，shape ``[B]``，dtype int32。
-        start_loc (Tensor): 首个 query token 在自身 kv 序列中的位置，shape ``[B]``，dtype int32。
-        scale (Tensor, optional): int8 反量化系数 ``[NP, N_kv, P]`` float32；非量化必须为 None。
-        block_size (int): sparse block / page token 数，当前仅支持 128。
-        fill_invalid_tail (bool): 不可见 block 是否写 ``-inf``，默认 True。
+        query: ``[T1, N1, D]`` float16 / bfloat16
+        key: PA BBND ``[NP, P, N2, D]``；非量化同 query，量化为 int8
+        start_loc: ``[B]``，当前 query 所在逻辑 block 索引（local_mask）
+        block_table: ``[B, MB]``，PA 必选
+        scale: int8 反量化 ``[NP, N2, P]``；非量化为 None
+        atten_mask: sparse_mode=3 时 ``[2048, 2048]`` int8
+        actual_seq_lengths_query / key: TND/PA 长度元数据
+        sparse_mode: 0 或 3
 
     Returns:
-        Tensor: block score，shape ``[Hq, T, RoundUp(MB, 16)]``，dtype float32。
-
-    Example:
-        >>> score = cann_ops_transformer.msa_index_score(
-        ...     query, key_cache, block_table, cu_seq_q, kv_len, start_loc,
-        ...     block_size=128, fill_invalid_tail=True)
+        ``[N1, T1, RoundUp(MB, 16)]`` float32
     """
     return torch.ops.cann_ops_transformer.msa_index_score(
         query,
-        key_cache,
+        key,
         block_table,
+        scale,
+        atten_mask,
         actual_seq_lengths_query,
         actual_seq_lengths_key,
         start_loc,
-        scale=scale,
-        block_size=block_size,
-        fill_invalid_tail=fill_invalid_tail,
+        sparse_mode=sparse_mode,
     )

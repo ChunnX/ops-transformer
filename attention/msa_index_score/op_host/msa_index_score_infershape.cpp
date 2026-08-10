@@ -22,7 +22,7 @@ using namespace ge;
 namespace ops {
 namespace {
 constexpr uint32_t MSA_QUERY_INDEX = 0;
-constexpr uint32_t MSA_BLOCK_TABLE_INDEX = 2;
+constexpr uint32_t MSA_BLOCK_TABLE_INDEX = 2; // optional；InferShape 仍要求 PA 传入
 constexpr uint32_t MSA_QUERY_DIM_NUM = 3;
 constexpr uint32_t MSA_BLOCK_TABLE_DIM_NUM = 2;
 constexpr int64_t MSA_SCORE_STRIDE_ALIGN = 16;
@@ -41,8 +41,9 @@ static ge::graphStatus InferShapeMsaIndexScore(gert::InferShapeContext *context)
 
     const gert::Shape *queryShape = context->GetInputShape(MSA_QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
-    const gert::Shape *blockTableShape = context->GetInputShape(MSA_BLOCK_TABLE_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, blockTableShape);
+    const gert::Shape *blockTableShape = context->GetOptionalInputShape(MSA_BLOCK_TABLE_INDEX);
+    OP_CHECK_IF(blockTableShape == nullptr, OP_LOGE(context, "PageAttention requires block_table for InferShape."),
+                return ge::GRAPH_FAILED);
     gert::Shape *scoreShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, scoreShape);
 
