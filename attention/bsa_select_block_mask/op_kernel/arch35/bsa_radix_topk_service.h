@@ -182,7 +182,7 @@ BSARadixTopKService<BSAT>::InitParams(const BSAConstInfo &constInfo,
     this->validXBlocks_ = constInfo.xBlocks;
     this->validYBlocks_ = constInfo.yBlocks;
     this->useCompactTopKMapping_ =
-        tilingData->baseParams.useActualSeqLenQ || tilingData->baseParams.useActualSeqLenK;
+        tilingData->baseParams.useActualSeqLenQ && tilingData->baseParams.useActualSeqLenK;
 
     uint64_t maxSortLen = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks;
     ConfigureTopKParams(maxSortLen, constInfo.topKValue);
