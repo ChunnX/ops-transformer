@@ -34,11 +34,25 @@ std::tuple<at::Tensor, at::Tensor> moe_finalize_routing_grad(
     const c10::optional<at::Tensor> &expertIdxOptional, const c10::optional<at::Tensor> &biasOptional,
     int64_t dropPadMode, int64_t activeNum, int64_t expertNum, int64_t expertCapacity)
 {
-    TORCH_CHECK(gradY.dim() == DIM_TWO, "grad_y must be a 2D tensor, but got ", gradY.dim(), " dimensions.");
-    TORCH_CHECK(expandedRowIdx.dim() == DIM_ONE, "expanded_row_idx must be a 1D tensor, but got ", expandedRowIdx.dim(),
-                " dimensions.");
+    TORCH_CHECK(gradY.dim() == DIM_TWO, "grad_y should be 2D, but got ", gradY.dim(), "-D.");
+    TORCH_CHECK(
+        gradY.scalar_type() == at::kHalf || gradY.scalar_type() == at::kFloat ||
+            gradY.scalar_type() == at::kBFloat16,
+        "grad_y dtype should be float16, float32 or bfloat16, but got ", gradY.scalar_type(), ".");
+    TORCH_CHECK(expandedRowIdx.dim() == DIM_ONE, "expanded_row_idx should be 1D, but got ", expandedRowIdx.dim(), "-D.");
+    TORCH_CHECK(expandedRowIdx.scalar_type() == at::kInt,
+                "expanded_row_idx dtype should be int32, but got ", expandedRowIdx.scalar_type(), ".");
     TORCH_CHECK(dropPadMode == DROP_PAD_MODE_DROPLESS || dropPadMode == DROP_PAD_MODE_EXPERT_PACKED,
                 "drop_pad_mode must be 0 or 1, but got ", dropPadMode, ".");
+    TORCH_CHECK(!biasOptional.has_value() || expertIdxOptional.has_value(),
+                "expert_idx must be provided when bias is provided.");
+    TORCH_CHECK(!scalesOptional.has_value() || expandedXOptional.has_value(),
+                "expanded_x must be provided when scales is provided.");
+    if (dropPadMode == DROP_PAD_MODE_EXPERT_PACKED) {
+        TORCH_CHECK(expertNum > 0, "expert_num must be positive when drop_pad_mode=1, but got ", expertNum, ".");
+        TORCH_CHECK(expertCapacity > 0,
+                    "expert_capacity must be positive when drop_pad_mode=1, but got ", expertCapacity, ".");
+    }
 
     int64_t hidden = gradY.size(1);
 

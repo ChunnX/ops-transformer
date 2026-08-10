@@ -24,11 +24,24 @@ constexpr int64_t DROP_PAD_MODE_DROP_PAD = 1;
 at::Tensor moe_init_routing_grad(const at::Tensor &gradExpandedX, const at::Tensor &expandedRowIdx,
                                  int64_t topK, int64_t dropPadMode, int64_t activeNum)
 {
-    TORCH_CHECK(expandedRowIdx.dim() == 1, "expanded_row_idx must be a 1D tensor, but got ", expandedRowIdx.dim(),
-                " dimensions.");
+    TORCH_CHECK(gradExpandedX.dim() == 2 || gradExpandedX.dim() == 3,
+                "grad_expanded_x should be 2D or 3D, but got ", gradExpandedX.dim(), "-D.");
+    TORCH_CHECK(
+        gradExpandedX.scalar_type() == at::kHalf || gradExpandedX.scalar_type() == at::kFloat ||
+            gradExpandedX.scalar_type() == at::kBFloat16,
+        "grad_expanded_x dtype should be float16, float32 or bfloat16, but got ",
+        gradExpandedX.scalar_type(), ".");
+    TORCH_CHECK(expandedRowIdx.dim() == 1, "expanded_row_idx should be 1D, but got ", expandedRowIdx.dim(), "-D.");
+    TORCH_CHECK(expandedRowIdx.scalar_type() == at::kInt,
+                "expanded_row_idx dtype should be int32, but got ", expandedRowIdx.scalar_type(), ".");
     TORCH_CHECK(dropPadMode == DROP_PAD_MODE_DROPLESS || dropPadMode == DROP_PAD_MODE_DROP_PAD,
                 "drop_pad_mode must be 0 or 1, but got ", dropPadMode, ".");
     TORCH_CHECK(topK > 0, "top_k must be greater than 0, but got ", topK, ".");
+    TORCH_CHECK(activeNum >= 0, "active_num must be non-negative, but got ", activeNum, ".");
+    if (dropPadMode == DROP_PAD_MODE_DROP_PAD) {
+        TORCH_CHECK(gradExpandedX.dim() == 3,
+                    "grad_expanded_x should be 3D when drop_pad_mode=1, but got ", gradExpandedX.dim(), "-D.");
+    }
 
     int64_t gradXDim0 = expandedRowIdx.numel() / topK;
     int64_t gradXDim1 = (dropPadMode == DROP_PAD_MODE_DROP_PAD) ? gradExpandedX.size(2) : gradExpandedX.size(1);
