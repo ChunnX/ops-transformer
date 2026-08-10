@@ -321,9 +321,9 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCom
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
     uint64_t combineDataSizePerRank = nmt * topK * static_cast<uint64_t>(info.cfg.perSlotBytes);
 
-    uint64_t dispatchNotifySize = (nmt + NOTIFY_CNT_ALIGN - 1) / NOTIFY_CNT_ALIGN * epWorldSize * COMM_ALIGN;
-    uint64_t dispatchWinStateSize =
-        epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + epWorldSize * COMM_ALIGN + dispatchNotifySize;
+    uint64_t dispatchSlotNotifySize = epWorldSize * AlignUpWin(nmt * sizeof(uint64_t));
+    uint64_t dispatchWinStateSize = epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) +
+                                    epWorldSize * COMM_ALIGN + dispatchSlotNotifySize;
     uint64_t combineWinStateSize = nmt * topK * COMM_ALIGN + epWorldSize * COMM_ALIGN;
     uint64_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint64_t topKAlign = (topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
@@ -348,11 +348,12 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCom
         winNeedTotal = payloadStashWinOffset + payloadStashWinSize;
     } else {
         uint64_t dispatchRecvWinDataReservedSize = epWorldSize * nmt * dispatchReservedPerSlotBytes;
+        uint64_t totalStateWinSizeEp = dispatchWinStateSize + combineWinStateSize;
         uint64_t stateAndRecvDataWinSize =
-            dispatchWinStateSize + combineWinStateSize + dispatchRecvWinDataReservedSize + combineDataSizePerRank;
-        uint64_t dispatchSendWinDataReservedSize = dispatchRecvWinDataReservedSize;
-        combineDataWinOffset = dispatchWinStateSize + combineWinStateSize + dispatchRecvWinDataReservedSize;
-        winNeedTotal = stateAndRecvDataWinSize + dispatchSendWinDataReservedSize;
+            totalStateWinSizeEp + dispatchRecvWinDataReservedSize + combineDataSizePerRank;
+        uint64_t stashWinSize = nmt * dispatchReservedPerSlotBytes;
+        combineDataWinOffset = totalStateWinSizeEp + dispatchRecvWinDataReservedSize;
+        winNeedTotal = stateAndRecvDataWinSize + stashWinSize;
     }
     OP_TILING_CHECK(winNeedTotal > maxWindowSize,
                     OP_LOGE(nodeName, "HCCL_BUFFSIZE too small, need %luMB, available %luMB.",
