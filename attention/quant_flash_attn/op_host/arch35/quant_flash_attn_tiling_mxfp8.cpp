@@ -328,6 +328,17 @@ bool QuantFlashAttnTilingImpl::CheckNeedInitOutput() const
     if (seqUsedQFlag_ || seqUsedKvFlag_) {
         return true;
     }
+    // 参考 IsActualSeqLengthsKVHasZero: 存在实际 KV 序列长度为 0 的 batch 时需要刷0
+    if (cuSeqLenKVFlag_) {
+        const gert::Tensor *actSeqLenKV = qfaInfo_->opParamInfo.cuSeqlensKv.tensor;
+        const int32_t *kvData = actSeqLenKV->GetData<int32_t>();
+        uint32_t kvDims = actSeqLenKV->GetShapeSize();
+        for (uint32_t bIdx = 0; bIdx + 1U < kvDims; bIdx++) {
+            if (kvData[bIdx + 1] - kvData[bIdx] == 0) {
+                return true;
+            }
+        }
+    }
     if (qfaInfo_->qLayout == QfaLayout::TND && qfaInfo_->kvLayout == QfaLayout::TND) {
         return qfaInfo_->maskMode != static_cast<int64_t>(MaskMode::NO_MASK);
     }
