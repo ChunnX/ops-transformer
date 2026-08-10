@@ -538,7 +538,7 @@ def create_npu_tensor_from_window(shape, dtype, window_addr):
 def attn2ffn_get_kwargs(
     context, x, session_id, micro_batch_id, layer_id, expert_ids, expert_rank_table, group, world_size,
     ffn_token_info_table_shape, ffn_token_data_shape, attn_token_info_table_shape, moe_expert_num,
-    scales, active_mask, quant_mode, sync_flag, ffn_start_rank_id
+    scales, active_mask, quant_mode, sync_flag, ffn_start_rank_id, ccl_buffer_size
 ):
     '''attn2ffn算子的入参
     '''
@@ -569,6 +569,7 @@ def attn2ffn_get_kwargs(
         'quant_mode': quant_mode,
         'sync_flag': sync_flag,
         'ffn_start_rank_id': ffn_start_rank_id,
+        'ccl_buffer_size': ccl_buffer_size,
         'scales': scales,
         'active_mask': active_mask,
     }
@@ -651,6 +652,7 @@ def attn2ffn_run_npu(queue, rank, x, expert_ids, expert_rank_table, scales, acti
             quant_mode = quant_mode,
             sync_flag = sync_flag,
             ffn_start_rank_id = ffn_start_rank_id,
+            ccl_buffer_size = ctx_buffer.ccl_buffer_size,
         )
 
         if is_full_core:

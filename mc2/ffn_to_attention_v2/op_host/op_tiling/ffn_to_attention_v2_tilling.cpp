@@ -57,6 +57,7 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     config.attrWorldSizeIndex = 1U;
     config.attrTokenInfoTableShapeIndex = 2U;
     config.attrTokenDataShapeIndex = 3U;
+    config.attrCclBufferSizeIndex = 4U;
     config.isMc2Context = true;
 
     auto ret = FFNToAttentionTilingFuncBase(context, config);

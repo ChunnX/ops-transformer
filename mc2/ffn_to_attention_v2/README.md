@@ -107,13 +107,30 @@
     <td>INT32</td>
     <td>-</td>
     </tr>
+    <tr>
+    <td>cclBufferSize</td>
+    <td>属性</td>
+    <td>CCL通信缓冲区总大小（Bytes），由 <code>get_ffn_to_attention_v2_ccl_buffer_size</code> 接口计算得到。需 >= token_info_size + token_data_size（按2MB向上对齐）。</td>
+    <td>INT64</td>
+    <td>-</td>
+    </tr>
 
   </tbody>
 </table>
 
 ## 约束说明
 
-- 调用算子过程中使用的`group`、`worldSize`、`tokenInfoTableShape`、`tokenDataShape`参数及`HCCL_BUFFSIZE`取值所有卡需保持一致，网络中不同层中也需保持一致。
+- 调用算子过程中使用的`group`、`worldSize`、`tokenInfoTableShape`、`tokenDataShape`参数及`ccl_buffer_size`取值所有卡需保持一致，网络中不同层中也需保持一致。
+
+- `ccl_buffer_size`为HBM上分配的CCL通信缓冲区**总大小**（Bytes），需满足：
+
+$$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{tokenDataSize},\ 2\,\mathrm{MB})$$
+
+其中：
+  - `tokenInfoSize = microBatchNum × BS × expertNumPerToken × 4B`
+  - `tokenDataSize = microBatchNum × BS × expertNumPerToken × HS × 2B`
+
+可通过 `get_ffn_to_attention_v2_ccl_buffer_size` 接口计算所需最小值。
 
 - 参数说明里shape格式说明：
     - `Y`：表示本卡需要分发的最大token数量。

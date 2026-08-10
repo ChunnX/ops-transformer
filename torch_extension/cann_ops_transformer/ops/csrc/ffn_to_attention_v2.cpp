@@ -28,7 +28,8 @@ void NpuFFNToAttentionV2(
     const at::Tensor &context, const at::Tensor &x, const at::Tensor &sessionIds, const at::Tensor &microBatchIds,
     const at::Tensor &tokenIds, const at::Tensor &expertOffsets, const at::Tensor &actualTokenNum,
     const c10::optional<at::Tensor> &attnRankTable, std::string group, int64_t worldSize,
-    const std::vector<int64_t> &tokenInfoTableShape, const std::vector<int64_t> &tokenDataShape)
+    const std::vector<int64_t> &tokenInfoTableShape, const std::vector<int64_t> &tokenDataShape,
+    int64_t cclBufferSize)
 {
     TORCH_CHECK((x.dim() == DIM_TWO), "The x should be 2D, current dim is: ", x.dim());
     TORCH_CHECK((sessionIds.dim() == DIM_ONE) && (microBatchIds.dim() == DIM_ONE) && (tokenIds.dim() == DIM_ONE) &&
@@ -59,12 +60,44 @@ void NpuFFNToAttentionV2(
     at::IntArrayRef tokenDataShapeRef(tokenDataShape);
 
     ACLNN_CMD(aclnnFFNToAttentionV2, context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum,
-              attnRankTable, groupPtr, worldSize, tokenInfoTableShapeRef, tokenDataShapeRef);
+              attnRankTable, groupPtr, worldSize, tokenInfoTableShapeRef, tokenDataShapeRef, cclBufferSize);
+}
+
+namespace {
+constexpr int64_t MB_ALIGN = 2LL * 1024LL * 1024LL; // 2MB
+constexpr int64_t BYTES_PER_FP16 = 2;
+constexpr int64_t BYTES_PER_INT32 = 4;
+
+int64_t CeilAlign(int64_t val, int64_t align)
+{
+    return (val + align - 1) / align * align;
+}
+} // namespace
+
+int64_t GetFFNToAttentionV2CclBufferSize(const std::vector<int64_t> &tokenInfoTableShape,
+                                          const std::vector<int64_t> &tokenDataShape)
+{
+    TORCH_CHECK(tokenInfoTableShape.size() == 3, "token_info_table_shape should have 3 elements, but got ",
+                tokenInfoTableShape.size());
+    TORCH_CHECK(tokenDataShape.size() == 4, "token_data_shape should have 4 elements, but got ",
+                tokenDataShape.size());
+
+    int64_t microBatchNum = tokenInfoTableShape[0];
+    int64_t bs = tokenInfoTableShape[1];
+    int64_t expertNumPerToken = tokenInfoTableShape[2];
+    int64_t hs = tokenDataShape[3];
+
+    int64_t tokenDataSize = microBatchNum * bs * expertNumPerToken * hs * BYTES_PER_FP16;
+    int64_t tokenInfoSize = microBatchNum * bs * expertNumPerToken * BYTES_PER_INT32;
+    int64_t rawSize = tokenDataSize + tokenInfoSize;
+    return CeilAlign(rawSize, MB_ALIGN);
 }
 
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("npu_ffn_to_attention_v2", &NpuFFNToAttentionV2, "npu_ffn_to_attention_v2");
+    m.def("get_ffn_to_attention_v2_ccl_buffer_size", &GetFFNToAttentionV2CclBufferSize,
+          "get_ffn_to_attention_v2_ccl_buffer_size");
 }
 } // namespace op_api

@@ -69,18 +69,18 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *sessionIds, 
 }
 
 aclnnStatus aclnnFFNToAttentionV2GetWorkspaceSize(const aclTensor *context, const aclTensor *x, const aclTensor *sessionIds,
-                                                const aclTensor *microBatchIds, const aclTensor *tokenIds,
-                                                const aclTensor *expertOffsets, const aclTensor *actualTokenNum,
-                                                const aclTensor *attnRankTable, const char *group, int64_t worldSize,
-                                                const aclIntArray *tokenInfoTableShape,
-                                                const aclIntArray *tokenDataShape, uint64_t *workspaceSize,
-                                                aclOpExecutor **executor)
+                                                 const aclTensor *microBatchIds, const aclTensor *tokenIds,
+                                                 const aclTensor *expertOffsets, const aclTensor *actualTokenNum,
+                                                 const aclTensor *attnRankTable, const char *group, int64_t worldSize,
+                                                 const aclIntArray *tokenInfoTableShape,
+                                                 const aclIntArray *tokenDataShape, int64_t cclBufferSize,
+                                                 uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto retParam = CheckParams(x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerFFNToAttentionV2GetWorkspaceSize(
         context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable, const_cast<char *>(group),
-        worldSize, tokenInfoTableShape, tokenDataShape, workspaceSize, executor);
+        worldSize, tokenInfoTableShape, tokenDataShape, cclBufferSize, workspaceSize, executor);
     return ret;
 }
 

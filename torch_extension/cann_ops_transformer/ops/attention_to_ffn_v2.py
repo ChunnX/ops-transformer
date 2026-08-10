@@ -31,7 +31,7 @@ class _AttentionToFfnV2OpBuilder(OpBuilder):
             "Tensor micro_batch_id, Tensor layer_id, Tensor expert_ids, Tensor expert_rank_table, "
             "str group, int world_size, "
             "int[] ffn_token_info_table_shape, int[] ffn_token_data_shape, int[] attn_token_info_table_shape, "
-            "int moe_expert_num, int quant_mode, int sync_flag, int ffn_start_rank_id, *, "
+            "int moe_expert_num, int quant_mode, int sync_flag, int ffn_start_rank_id, int ccl_buffer_size, *, "
             "Tensor? scales=None, Tensor? active_mask=None) -> ()"
         )
 
@@ -54,6 +54,7 @@ class _AttentionToFfnV2OpBuilder(OpBuilder):
             quant_mode,
             sync_flag,
             ffn_start_rank_id,
+            ccl_buffer_size,
             scales=None,
             active_mask=None,
         ):
@@ -113,6 +114,7 @@ def _npu_attention_to_ffn_v2(
     quant_mode,
     sync_flag,
     ffn_start_rank_id,
+    ccl_buffer_size,
     scales=None,
     active_mask=None,
 ):
@@ -136,6 +138,7 @@ def _npu_attention_to_ffn_v2(
         quant_mode,
         sync_flag,
         ffn_start_rank_id,
+        ccl_buffer_size,
     )
 
 
@@ -155,23 +158,32 @@ def _get_npu_backend(group):
 
 def _calc_window_size(ffn_token_info_table_shape, ffn_token_data_shape, quant_mode=0):
     """Calculate the required window buffer size in bytes."""
-    attention_worker_num = ffn_token_data_shape[0]
-    micro_batch_num = ffn_token_data_shape[1]
-    bs = ffn_token_data_shape[2]
-    k_plus_shared = ffn_token_data_shape[3]
-    hs = ffn_token_data_shape[4]
-    info_table_last_dim = ffn_token_info_table_shape[2]
+    _op_module = _attention_to_ffn_v2_op_builder.load()
+    return _op_module.get_attention_to_ffn_v2_ccl_buffer_size(
+        ffn_token_info_table_shape, ffn_token_data_shape, quant_mode
+    )
 
-    token_info_size = attention_worker_num * micro_batch_num * info_table_last_dim * 4
-    if quant_mode != 0:
-        # 量化模式: int8 (1 byte), hs already includes 128B scale padding
-        token_data_size = attention_worker_num * micro_batch_num * bs * k_plus_shared * hs
-    else:
-        # 非量化模式: float16/bfloat16 (2 bytes)
-        token_data_size = attention_worker_num * micro_batch_num * bs * k_plus_shared * hs * 2
-    raw_size = token_info_size + token_data_size
-    mb_align = 2 * 1024 * 1024
-    return ((raw_size + mb_align - 1) // mb_align) * mb_align
+
+def get_attention_to_ffn_v2_ccl_buffer_size(
+    ffn_token_info_table_shape: List[int],
+    ffn_token_data_shape: List[int],
+    quant_mode: int = 0,
+) -> int:
+    """Calculate the required CCL buffer size (bytes) for attention_to_ffn_v2.
+
+    The returned value should be passed to ``AttentionToFfnV2Buffer`` (or used as
+    ``customCclBufferSize`` when constructing ``CommContextManager`` directly).
+
+    Args:
+        ffn_token_info_table_shape (List[int]): 3-element list.
+        ffn_token_data_shape (List[int]): 5-element list
+            [attnWorkerNum, microBatchNum, BS, K+shared, HS].
+        quant_mode (int): 0=none, 2=dynamic. Default 0.
+
+    Returns:
+        int: Required CCL buffer size in bytes, aligned to 2 MB.
+    """
+    return _calc_window_size(ffn_token_info_table_shape, ffn_token_data_shape, quant_mode)
 
 
 
@@ -247,6 +259,7 @@ def attention_to_ffn_v2(
     quant_mode: int = 0,
     sync_flag: int = 0,
     ffn_start_rank_id: int = 0,
+    ccl_buffer_size: int = 0,
     *,
     scales: Optional[torch.Tensor] = None,
     active_mask: Optional[torch.Tensor] = None,
@@ -306,6 +319,7 @@ def attention_to_ffn_v2(
         quant_mode,
         sync_flag,
         ffn_start_rank_id,
+        ccl_buffer_size,
         scales=scales,
         active_mask=active_mask,
     )

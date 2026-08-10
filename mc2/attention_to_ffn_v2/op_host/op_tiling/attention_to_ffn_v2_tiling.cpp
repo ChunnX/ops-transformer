@@ -51,6 +51,7 @@ ge::graphStatus AttentionToFfnV2TilingFunc(gert::TilingContext *context)
     config.attrQuantModeIndex = 6U;
     config.attrSyncFlagIndex = 7U;
     config.attrFfnStartRankIdIndex = 8U;
+    config.attrCclBufferSizeIndex = 9U;
     config.isMc2Context = true;
 
     auto ret = AttentionToFFNTilingFuncBase(context, config);

@@ -30,7 +30,7 @@ class _FFNToAttentionV2OpBuilder(OpBuilder):
             "npu_ffn_to_attention_v2(Tensor context, Tensor x, Tensor session_ids, "
             "Tensor micro_batch_ids, Tensor token_ids, Tensor expert_offsets, Tensor actual_token_num, "
             "str group, int world_size, "
-            "int[] token_info_table_shape, int[] token_data_shape, *, "
+            "int[] token_info_table_shape, int[] token_data_shape, int ccl_buffer_size, *, "
             "Tensor? attn_rank_table=None) -> ()"
         )
 
@@ -48,6 +48,7 @@ class _FFNToAttentionV2OpBuilder(OpBuilder):
             world_size,
             token_info_table_shape,
             token_data_shape,
+            ccl_buffer_size,
             attn_rank_table=None,
         ):
             torch._check(
@@ -90,6 +91,7 @@ def _npu_ffn_to_attention_v2(
     world_size,
     token_info_table_shape,
     token_data_shape,
+    ccl_buffer_size,
     attn_rank_table=None,
 ):
     _op_module = _ffn_to_attention_v2_op_builder.load()
@@ -106,6 +108,7 @@ def _npu_ffn_to_attention_v2(
         world_size,
         token_info_table_shape,
         token_data_shape,
+        ccl_buffer_size,
     )
 
 
@@ -125,15 +128,29 @@ def _get_npu_backend(group):
 
 def _calc_window_size(token_info_table_shape, token_data_shape):
     """Calculate the required window buffer size in bytes."""
-    micro_batch_num = token_info_table_shape[0]
-    bs = token_info_table_shape[1]
-    expert_num_per_token = token_info_table_shape[2]
-    hs = token_data_shape[3]
-    token_data_size = micro_batch_num * bs * expert_num_per_token * hs * 2
-    token_info_size = micro_batch_num * bs * expert_num_per_token * 4
-    raw_size = token_data_size + token_info_size
-    mb_align = 2 * 1024 * 1024
-    return ((raw_size + mb_align - 1) // mb_align) * mb_align
+    _op_module = _ffn_to_attention_v2_op_builder.load()
+    return _op_module.get_ffn_to_attention_v2_ccl_buffer_size(token_info_table_shape, token_data_shape)
+
+
+def get_ffn_to_attention_v2_ccl_buffer_size(
+    token_info_table_shape: List[int],
+    token_data_shape: List[int],
+) -> int:
+    """Calculate the required CCL buffer size (bytes) for ffn_to_attention_v2.
+
+    The returned value should be passed to ``FFNToAttentionV2Buffer`` (or used as
+    ``customCclBufferSize`` when constructing ``CommContextManager`` directly).
+
+    Args:
+        token_info_table_shape (List[int]): 3-element list
+            [microBatchNum, BS, expertNumPerToken].
+        token_data_shape (List[int]): 4-element list
+            [microBatchNum, BS, expertNumPerToken, HS].
+
+    Returns:
+        int: Required CCL buffer size in bytes, aligned to 2 MB.
+    """
+    return _calc_window_size(token_info_table_shape, token_data_shape)
 
 
 class FFNToAttentionV2Buffer:
@@ -205,6 +222,7 @@ def ffn_to_attention_v2(
     world_size: int,
     token_info_table_shape: List[int],
     token_data_shape: List[int],
+    ccl_buffer_size: int = 0,
     *,
     attn_rank_table: Optional[torch.Tensor] = None,
 ) -> None:
@@ -250,5 +268,6 @@ def ffn_to_attention_v2(
         world_size,
         token_info_table_shape,
         token_data_shape,
+        ccl_buffer_size,
         attn_rank_table=attn_rank_table,
     )

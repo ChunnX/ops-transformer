@@ -31,7 +31,7 @@ void NpuAttentionToFfnV2(
     const c10::optional<at::Tensor> &scalesOptional, const c10::optional<at::Tensor> &activeMaskOptional,
     std::string group, int64_t worldSize, const std::vector<int64_t> &ffnTokenInfoTableShape,
     const std::vector<int64_t> &ffnTokenDataShape, const std::vector<int64_t> &attnTokenInfoTableShape,
-    int64_t moeExpertNum, int64_t quantMode, int64_t syncFlag, int64_t ffnStartRankId)
+    int64_t moeExpertNum, int64_t quantMode, int64_t syncFlag, int64_t ffnStartRankId, int64_t cclBufferSize)
 {
     TORCH_CHECK((x.dim() == DIM_THREE), "The x should be 3D, current dim is: ", x.dim());
     TORCH_CHECK((sessionId.dim() == DIM_ONE) && (microBatchId.dim() == DIM_ONE) && (layerId.dim() == DIM_ONE),
@@ -69,12 +69,55 @@ void NpuAttentionToFfnV2(
 
     ACLNN_CMD(aclnnAttentionToFfnV2, context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable,
               scalesOptional, activeMaskOptional, groupPtr, worldSize, ffnTokenInfoTableShapeRef,
-              ffnTokenDataShapeRef, attnTokenInfoTableShapeRef, moeExpertNum, quantMode, syncFlag, ffnStartRankId);
+              ffnTokenDataShapeRef, attnTokenInfoTableShapeRef, moeExpertNum, quantMode, syncFlag, ffnStartRankId,
+              cclBufferSize);
+}
+
+namespace {
+constexpr int64_t MB_ALIGN = 2LL * 1024LL * 1024LL; // 2MB
+constexpr int64_t NO_QUANT_MODE = 0;
+constexpr int64_t BYTES_PER_FP16 = 2;
+constexpr int64_t BYTES_PER_INT32 = 4;
+
+int64_t CeilAlign(int64_t val, int64_t align)
+{
+    return (val + align - 1) / align * align;
+}
+} // namespace
+
+int64_t GetAttentionToFfnV2CclBufferSize(const std::vector<int64_t> &ffnTokenInfoTableShape,
+                                          const std::vector<int64_t> &ffnTokenDataShape, int64_t quantMode)
+{
+    TORCH_CHECK(ffnTokenInfoTableShape.size() == 3, "ffn_token_info_table_shape should have 3 elements, but got ",
+                ffnTokenInfoTableShape.size());
+    TORCH_CHECK(ffnTokenDataShape.size() == 5, "ffn_token_data_shape should have 5 elements, but got ",
+                ffnTokenDataShape.size());
+
+    int64_t attentionWorkerNum = ffnTokenDataShape[0];
+    int64_t microBatchNum = ffnTokenDataShape[1];
+    int64_t bs = ffnTokenDataShape[2];
+    int64_t kPlusShared = ffnTokenDataShape[3];
+    int64_t hs = ffnTokenDataShape[4];
+    int64_t infoTableLastDim = ffnTokenInfoTableShape[2];
+
+    int64_t tokenInfoSize = attentionWorkerNum * microBatchNum * infoTableLastDim * BYTES_PER_INT32;
+    int64_t tokenDataSize;
+    if (quantMode != NO_QUANT_MODE) {
+        // 量化模式: int8 (1 byte), hs already includes 128B scale padding
+        tokenDataSize = attentionWorkerNum * microBatchNum * bs * kPlusShared * hs;
+    } else {
+        // 非量化模式: float16/bfloat16 (2 bytes)
+        tokenDataSize = attentionWorkerNum * microBatchNum * bs * kPlusShared * hs * BYTES_PER_FP16;
+    }
+    int64_t rawSize = tokenInfoSize + tokenDataSize;
+    return CeilAlign(rawSize, MB_ALIGN);
 }
 
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("npu_attention_to_ffn_v2", &NpuAttentionToFfnV2, "npu_attention_to_ffn_v2");
+    m.def("get_attention_to_ffn_v2_ccl_buffer_size", &GetAttentionToFfnV2CclBufferSize,
+          "get_attention_to_ffn_v2_ccl_buffer_size");
 }
 } // namespace op_api

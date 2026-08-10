@@ -147,12 +147,30 @@
     <td style="white-space: nowrap">INT64</td>
     <td style="white-space: nowrap">-</td>
     </tr>
+    <tr>
+    <td style="white-space: nowrap">cclBufferSize</td>
+    <td style="white-space: nowrap">属性</td>
+    <td style="white-space: nowrap">CCL通信缓冲区总大小（Bytes），由 <code>get_attention_to_ffn_v2_ccl_buffer_size</code> 接口计算得到。需 >= token_info_size + token_data_size（按2MB向上对齐）。</td>
+    <td style="white-space: nowrap">INT64</td>
+    <td style="white-space: nowrap">-</td>
+    </tr>
   </tbody>
 </table>
 
 ## 约束说明
 
-- 调用算子过程中使用的`group`、`worldSize`、`tokenInfoTableShape`、`tokenDataShape`参数及`HCCL_BUFFSIZE`取值所有卡需保持一致，网络中不同层中也需保持一致。
+- 调用算子过程中使用的`group`、`worldSize`、`tokenInfoTableShape`、`tokenDataShape`参数及`ccl_buffer_size`取值所有卡需保持一致，网络中不同层中也需保持一致。
+
+- `ccl_buffer_size`为HBM上分配的CCL通信缓冲区**总大小**（Bytes），需满足：
+
+$$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{tokenDataSize},\ 2\,\mathrm{MB})$$
+
+其中：
+  - `tokenInfoSize = attentionWorkerNum × microBatchNum × infoTableLastDim × 4B`
+  - 非量化模式：`tokenDataSize = attentionWorkerNum × microBatchNum × BS × (K+shared) × HS × 2B`
+  - 量化模式：`tokenDataSize = attentionWorkerNum × microBatchNum × BS × (K+shared) × HS × 1B`
+
+可通过 `get_attention_to_ffn_v2_ccl_buffer_size` 接口计算所需最小值。
 
 - 参数说明里shape格式说明：
     - `X`：表示micro batch sequence size（token组数），当前版本只支持`X` = 1。

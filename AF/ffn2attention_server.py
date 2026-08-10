@@ -332,7 +332,7 @@ def get_attn_num_in_server():
 
 def ffn2attn_get_kwargs(
     context, x, session_ids, micro_batch_ids, token_ids, expert_offsets, actual_token_num,
-    attn_rank_table, group, world_size, token_info_table_shape, token_data_shape
+    attn_rank_table, group, world_size, token_info_table_shape, token_data_shape, ccl_buffer_size
 ):
     x = x.to(input_dtype).npu()
     session_ids = session_ids.to(torch.int32).npu()
@@ -355,6 +355,7 @@ def ffn2attn_get_kwargs(
         'world_size': world_size,
         'token_info_table_shape': token_info_table_shape,
         'token_data_shape': token_data_shape,
+        'ccl_buffer_size': ccl_buffer_size,
     }
 
 _ACL_LIB = ctypes.CDLL("libascendcl.so")
@@ -517,6 +518,7 @@ def ffn2attn_run_npu(queue, rank, x, token_ids, actual_token_num, session_ids, m
             world_size = world_size,
             token_info_table_shape = token_info_table_shape,
             token_data_shape= token_data_table_shape,
+            ccl_buffer_size = ctx_buffer.ccl_buffer_size,
         )
 
         if is_full_core:

@@ -74,7 +74,7 @@ aclnnStatus aclnnAttentionToFfnV2GetWorkspaceSize(
     const aclTensor *scalesOptional, const aclTensor *activeMaskOptional, const char *group, int64_t worldSize,
     const aclIntArray *ffnTokenInfoTableShape, const aclIntArray *ffnTokenDataShape,
     const aclIntArray *attnTokenInfoTableShape, int64_t moeExpertNum, int64_t quantMode, int64_t syncFlag,
-    int64_t ffnStartRankId, uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t ffnStartRankId, int64_t cclBufferSize, uint64_t *workspaceSize, aclOpExecutor **executor)
 
 {
     auto retParam = CheckParams(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group);
@@ -82,7 +82,7 @@ aclnnStatus aclnnAttentionToFfnV2GetWorkspaceSize(
     aclnnStatus ret = aclnnInnerAttentionToFfnV2GetWorkspaceSize(
         context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scalesOptional, activeMaskOptional,
         const_cast<char *>(group), worldSize, ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape,
-        moeExpertNum, quantMode, syncFlag, ffnStartRankId, workspaceSize, executor);
+        moeExpertNum, quantMode, syncFlag, ffnStartRankId, cclBufferSize, workspaceSize, executor);
     return ret;
 }
 

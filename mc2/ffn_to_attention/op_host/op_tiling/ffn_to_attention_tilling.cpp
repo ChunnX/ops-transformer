@@ -590,6 +590,32 @@ ge::graphStatus FFNToAttentionTilingFuncBase(gert::TilingContext *context,
                         "The value of neededSize must not be greater than viable window size"),
                     return ge::GRAPH_FAILED);
 
+    // Validate ccl_buffer_size when provided (V2 path)
+    if (config.attrCclBufferSizeIndex != UINT32_MAX) {
+        auto attrsPtr = context->GetAttrs();
+        OP_TILING_CHECK(attrsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"),
+                        return ge::GRAPH_FAILED);
+        auto cclBufferSizePtr = attrsPtr->GetAttrPointer<int64_t>(config.attrCclBufferSizeIndex);
+        OP_TILING_CHECK(cclBufferSizePtr == nullptr,
+                        OP_LOGE_WITH_INVALID_INPUT(nodeName, "ccl_buffer_size"), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(*cclBufferSizePtr <= 0,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "ccl_buffer_size",
+                                                  std::to_string(*cclBufferSizePtr).c_str(), "greater than 0"),
+                        return ge::GRAPH_FAILED);
+        // neededSize is in MB (CalWinSize divides by MB_SIZE and adds 1).
+        // ccl_buffer_size is in bytes. Minimum required bytes = neededSize * MB_SIZE.
+        uint64_t leastCclBufferSizeBytes = neededSize * MB_SIZE;
+        OP_TILING_CHECK(static_cast<uint64_t>(*cclBufferSizePtr) < leastCclBufferSizeBytes,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            nodeName, "ccl_buffer_size", std::to_string(*cclBufferSizePtr).c_str(),
+                            (std::string("should >= ") + std::to_string(leastCclBufferSizeBytes) +
+                             " bytes (token_info + token_data)")
+                                .c_str()),
+                        return ge::GRAPH_FAILED);
+        OP_LOGD(nodeName, "ccl_buffer_size is %ld bytes, leastCclBufferSize is %lu bytes", *cclBufferSizePtr,
+                leastCclBufferSizeBytes);
+    }
+
     // Set WorkSpace
     OP_TILING_CHECK(SetWorkSpace(context, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);

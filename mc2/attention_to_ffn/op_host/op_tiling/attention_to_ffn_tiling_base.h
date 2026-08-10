@@ -41,6 +41,7 @@ struct AttentionToFFNTilingConfig {
     uint32_t attrQuantModeIndex = 6U;
     uint32_t attrSyncFlagIndex = 7U;
     uint32_t attrFfnStartRankIdIndex = 8U;
+    uint32_t attrCclBufferSizeIndex = UINT32_MAX;
 
     bool isMc2Context = false;
 };
