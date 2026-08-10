@@ -112,7 +112,7 @@ class KvQuantSparseFlashAttentionInputAdapter:
 
     def generate(self, query, key, value, sparse_indices, scale_value,
                  key_quant_mode, value_quant_mode, *, key_dequant_scale=None,
-                 value_dequant_scale=None, block_table=None,
+                 value_dequant_scale=None, block_table=None, sinks=None,
                  actual_seq_lengths_query=None, actual_seq_lengths_kv=None,
                  sparse_block_size=1, layout_query="BSND", layout_kv="BSND",
                  sparse_mode=3, attention_mode=0, quant_scale_repo_mode=1,
@@ -162,6 +162,7 @@ class KvQuantSparseFlashAttentionInputAdapter:
             raise ValueError("PA_BSND requires block_table to be declared by the CSV")
         self.copy_sequence(actual_seq_lengths_query, params["actualseqlengths"], "actual_seq_lengths_query")
         self.copy_sequence(actual_seq_lengths_kv, params["actualseqlengthskv"], "actual_seq_lengths_kv")
+        self.copy_tensor(sinks, generated.get("sinks"), "sinks")
 
         golden_module.CASE_DATA.put(
             testcase_name,
@@ -171,7 +172,7 @@ class KvQuantSparseFlashAttentionInputAdapter:
 
 def generate_qsfa_inputs(query, key, value, sparse_indices, scale_value,
                          key_quant_mode, value_quant_mode, *, key_dequant_scale=None,
-                         value_dequant_scale=None, block_table=None,
+                         value_dequant_scale=None, block_table=None, sinks=None,
                          actual_seq_lengths_query=None, actual_seq_lengths_kv=None,
                          sparse_block_size=1, layout_query="BSND", layout_kv="BSND",
                          sparse_mode=3, attention_mode=0, quant_scale_repo_mode=1,
@@ -190,6 +191,7 @@ def generate_qsfa_inputs(query, key, value, sparse_indices, scale_value,
         block_table=block_table,
         actual_seq_lengths_query=actual_seq_lengths_query,
         actual_seq_lengths_kv=actual_seq_lengths_kv,
+        sinks=sinks,
         sparse_block_size=sparse_block_size,
         layout_query=layout_query,
         layout_kv=layout_kv,

@@ -116,7 +116,7 @@ class SparseFlashAttentionInputAdapter:
 
     def generate(self, query, key, value, sparse_indices, scale_value, *, block_table=None,
                  actual_seq_lengths_query=None, actual_seq_lengths_kv=None,
-                 query_rope=None, key_rope=None, sparse_block_size=1,
+                 query_rope=None, key_rope=None, sinks=None, sparse_block_size=1,
                  layout_query="BSND", layout_kv="BSND", sparse_mode=3,
                  attention_mode=0, return_softmax_lse=False, testcase_name=None,
                  input_ranges=None, **kwargs):
@@ -159,6 +159,9 @@ class SparseFlashAttentionInputAdapter:
         self.copy_sequence(actual_seq_lengths_kv, params["actualseqlengthskv"], "actual_seq_lengths_kv")
         self.copy_tensor(query_rope, generated.get("query_rope"), "query_rope")
         self.copy_tensor(key_rope, generated.get("key_rope_cache", generated.get("key_rope")), "key_rope")
+        if sinks is not None:
+            self.copy_tensor(sinks, generated.get("sinks"), "sinks")
+
 
         golden_module.CASE_DATA.put(
             testcase_name,
@@ -172,7 +175,7 @@ class SparseFlashAttentionInputAdapter:
 
 def generate_sfa_inputs(query, key, value, sparse_indices, scale_value, *, block_table=None,
                         actual_seq_lengths_query=None, actual_seq_lengths_kv=None,
-                        query_rope=None, key_rope=None, sparse_block_size=1,
+                        query_rope=None, key_rope=None, sinks=None, sparse_block_size=1,
                         layout_query="BSND", layout_kv="BSND", sparse_mode=3,
                         attention_mode=0, return_softmax_lse=False, testcase_name=None,
                         input_ranges=None, **kwargs):
@@ -187,6 +190,7 @@ def generate_sfa_inputs(query, key, value, sparse_indices, scale_value, *, block
         actual_seq_lengths_kv=actual_seq_lengths_kv,
         query_rope=query_rope,
         key_rope=key_rope,
+        sinks=sinks,
         sparse_block_size=sparse_block_size,
         layout_query=layout_query,
         layout_kv=layout_kv,
