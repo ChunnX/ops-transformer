@@ -16,15 +16,15 @@
 #ifndef ALL_GATHER_MATMUL_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H
 #define ALL_GATHER_MATMUL_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H
 
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/dispatch_policy.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/callback.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
+#include "catlass/catlass.hpp"
+#include "catlass/arch/resource.hpp"
+#include "catlass/epilogue/dispatch_policy.hpp"
+#include "catlass/gemm_coord.hpp"
+#include "catlass/gemm/gemm_type.hpp"
+#include "catlass/matrix_coord.hpp"
+#include "catlass/layout/layout.hpp"
+#include "catlass/detail/callback.hpp"
+#include "catlass/epilogue/tile/copy_gm_to_ub.hpp"
 
 namespace Catlass::Epilogue::Block {
 

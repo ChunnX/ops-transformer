@@ -484,6 +484,25 @@ function(add_ops_src_copy)
         endif ()
     endif ()
 
+    set(OPS_CATLASS_INC_KERNEL_TARGET ops_catlass_inc_kernel_${SRC_COPY_COMPUTE_UNIT})
+    if (DEFINED OPS_CATLASS_INC AND EXISTS "${OPS_CATLASS_INC}" AND
+        NOT TARGET ${OPS_CATLASS_INC_KERNEL_TARGET})
+        get_filename_component(_ROOT_OPS_SRC_DIR "${SRC_COPY_DST}" DIRECTORY)
+        set(OPS_CATLASS_INC_KERNEL_DIR ${_ROOT_OPS_SRC_DIR}/ascendc/common)
+        set(CATLASS_COPY_STAMP ${OPS_CATLASS_INC_KERNEL_DIR}/catlass/.catlass_copy.stamp)
+        file(GLOB_RECURSE CATLASS_HEADER_FILES CONFIGURE_DEPENDS ${OPS_CATLASS_INC}/*)
+        add_custom_command(OUTPUT ${CATLASS_COPY_STAMP}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_CATLASS_INC_KERNEL_DIR}
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_CATLASS_INC} ${OPS_CATLASS_INC_KERNEL_DIR}
+            COMMAND ${CMAKE_COMMAND} -E touch ${CATLASS_COPY_STAMP}
+            DEPENDS ${CATLASS_HEADER_FILES}
+            VERBATIM
+        )
+        add_custom_target(${OPS_CATLASS_INC_KERNEL_TARGET}
+            DEPENDS ${CATLASS_COPY_STAMP}
+        )
+    endif ()
+
     file(GLOB_RECURSE CONFIGURE_DEPENDS SRC_FILES ${SRC_COPY_SRC}/*)
     list(FILTER SRC_FILES EXCLUDE REGEX "op_host")
 
@@ -517,6 +536,9 @@ function(add_ops_src_copy)
 
     if (TARGET ${OPS_UTILS_INC_KERNEL_TARGET})
         add_dependencies(${DOING_TARGET_NAME} ${OPS_UTILS_INC_KERNEL_TARGET})
+    endif ()
+    if (TARGET ${OPS_CATLASS_INC_KERNEL_TARGET})
+        add_dependencies(${DOING_TARGET_NAME} ${OPS_CATLASS_INC_KERNEL_TARGET})
     endif ()
 
     if (DEFINED SRC_COPY_BE_RELIED)
