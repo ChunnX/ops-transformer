@@ -1,115 +1,194 @@
 # ChunkKdaFwd
 
-## 功能
+## 产品支持情况
 
-`ChunkKdaFwd` 对齐不涉及 CP 切分的 FLA `chunk_kda_fwd` 顶层语义。公共接口接收 raw gate 或已激活的
-自然对数 gate，在一次 `ChunkKdaFwd` device kernel launch 内依次执行 Gate、Prepare、Post-WU、
-FwdH 和 Finalize 内部阶段。
+| 产品 | 是否支持 |
+| :--- | :---: |
+| <term>Ascend 950PR/Ascend 950DT</term> | √ |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | √ |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
+| <term>Atlas 200I/500 A2 推理产品</term> | × |
+| <term>Atlas 推理系列产品</term> | × |
+| <term>Atlas 训练系列产品</term> | × |
 
-本文使用 `B/S/T/H/H_v/K/V/N/N_c` 分别表示 batch、单序列长度、总 token 数、Q/K head 数、
-V/gate head 数、Q/K head dim、V head dim、逻辑序列数和每序列 chunk 数。
+## 功能说明
 
-## Gate 公式
+- 算子功能：完成不涉及CP切分的KDA分块正向计算，计算注意力输出、最终状态以及可选的反向中间量。
 
-令 `x = g + dt_bias`。逐 token、逐 K 维的自然对数衰减为：
+- 计算公式：
 
-```text
-use_gate_in_kernel = false:
-    gate = g
+  将每条序列按$C=chunk\_size$划分为$M$个chunk。以第$c$个chunk为例，$i$、$j$为chunk内token下标，$l_c$为该chunk最后一个有效token下标。公式省略batch和head下标；GQA场景中，每个Value head使用其对应的Query/Key head。
 
-use_gate_in_kernel = true, safe_gate = false:
-    gate = -exp(A_log) * softplus(x)
+  令$x_{c,i,d}=g_{c,i,d}+dt\_bias_d$，未传入`dt_bias`时令$dt\_bias_d=0$。激活后gate为：
 
-use_gate_in_kernel = true, safe_gate = true:
-    gate = lower_bound * sigmoid(exp(A_log) * x)
-```
+  $$
+  \gamma_{c,i,d}=
+  \begin{cases}
+  g_{c,i,d}, & use\_gate\_in\_kernel=false,\\
+  -\exp(A_{log})\operatorname{softplus}(x_{c,i,d}),
+      & use\_gate\_in\_kernel=true,\ safe\_gate=false,\\
+  lower\_bound\operatorname{sigmoid}(\exp(A_{log})x_{c,i,d}),
+      & use\_gate\_in\_kernel=true,\ safe\_gate=true.
+  \end{cases}
+  $$
 
-随后在每个 chunk 内计算：
+  `gk`为chunk-local的log2累计gate：
 
-```text
-gk_i = cumsum(gate)_i / ln(2)
-```
+  $$
+  gk_{c,i,d}=\frac{1}{\ln 2}\sum_{t=0}^{i}\gamma_{c,t,d}.
+  $$
 
-因此后续 `exp2(gk)` 与自然指数 gate 严格绑定，不暴露额外 gate scale。
+  `qg`和`kg`分别为gate缩放后的Query和Key：
 
-## 输入
+  $$
+  qg_{c,i,d}=q_{c,i,d}2^{gk_{c,i,d}},\qquad
+  kg_{c,i,d}=k_{c,i,d}2^{gk_{c,l_c,d}-gk_{c,i,d}}.
+  $$
 
-| 名称 | 必选性 | Shape/Dtype | 说明 |
-| --- | --- | --- | --- |
-| `q/k` | 必选 | 输入 layout 对应 Shape；FP16/BF16 | Query/Key |
-| `v` | 必选 | 输入 layout 对应 Shape；与 q 同 dtype | Value |
-| `g` | 必选 | 输入 layout 对应 K 维 Shape；FP32/BF16 | raw gate 或已激活自然对数 gate |
-| `beta` | 必选 | 去掉 g 的 K 维；FP32/BF16 | Delta 系数 |
-| `A_log` | 条件必选 | `[H_v]`，FP32 | `use_gate_in_kernel=true` 时必选 |
-| `dt_bias` | 可选 | `[H_v*K]`，FP32 | gate bias |
-| `initial_state` | 可选 | `[N,H_v,K,V]` 或 `[N,H_v,V,K]`，FP32 | 由 `state_v_first` 解释 |
-| `cu_seqlens` | 可选 | `[N+1]`，INT64 | 变长序列 |
-| `chunk_indices` | 可选 | `[2*N_c]`，INT64 | canonical chunk 顺序 |
+  对同一chunk内的token $i$、$j$，`Aqk`为包含对角线的下三角Query-Key系数矩阵：
 
-`layout` 只描述上述输入。BSND/TND 由 L2 使用 `l0op::Transpose` 转为内部 BNSD/NTD。
+  $$
+  Aqk_{c,i,j}=\mathbb{1}_{j\le i}\cdot scale
+  \sum_d q_{c,i,d}k_{c,j,d}2^{gk_{c,i,d}-gk_{c,j,d}}.
+  $$
 
-## 输出
+  严格下三角矩阵$L_c$及`Akk`为：
 
-Python 返回顺序为：
+  $$
+  L_{c,i,j}=\mathbb{1}_{j<i}\cdot\beta_{c,i}
+  \sum_d k_{c,i,d}k_{c,j,d}2^{gk_{c,i,d}-gk_{c,j,d}},\qquad
+  Akk_c=(I+L_c)^{-1}.
+  $$
 
-```text
-(attn_out, final_state, gk, Aqk, Akk, w, u, qg, kg, v_new, h, initial_state)
-```
+  令$w^{seed}$和$u^{seed}$为：
 
-- `attn_out` 固定为 BSND/TND。
-- `final_state` 固定按序列排列，末两维服从 `state_v_first`。
-- `Aqk/Akk` 始终返回，固定为 head-major。
-- `gk/w/u/qg/kg/v_new` 是供反向使用的 head-major 中间量。
-- 公开 `h` 固定为 sequence-major；内部 `hCompute` 保持 head-major 供 Finalize 使用。
-- 第 12 个返回值是 Python 层对 `initial_state` 的原对象透传，不是 aclnn 输出。
+  $$
+  w^{seed}_{c,i,d}=\beta_{c,i}k_{c,i,d}2^{gk_{c,i,d}},\qquad
+  u^{seed}_{c,i,e}=\beta_{c,i}v_{c,i,e}.
+  $$
 
-输出保留策略对齐 fla-org
-[`chunk_kda_fwd`](https://github.com/fla-org/flash-linear-attention/blob/0f0f0c97af39343855b43bbbaddcedfda5cb9d77/fla/ops/kda/chunk_fwd.py)
-提交 `0f0f0c97af39343855b43bbbaddcedfda5cb9d77`：
+  `w`和`u`为：
 
-| 条件 | 返回 |
-| --- | --- |
-| `output_final_state=true` | 返回 `final_state`，否则为 `None` |
-| `use_gate_in_kernel=false` 或 `disable_recompute=true` | 返回 `gk` |
-| 始终 | 返回 `Aqk/Akk` |
-| `disable_recompute=true` | 返回 `w/u/qg/kg/v_new` |
-| `disable_recompute=true` 或 `return_intermediate_states=true` | 返回 `h` |
+  $$
+  w_c=Akk_c\,w^{seed}_c,\qquad u_c=Akk_c\,u^{seed}_c.
+  $$
 
-这是 `cann_ops_transformer.ops.chunk_kda_fwd` 的低层 12 返回值语义；不涉及 CP。aclnn L2 不接收
-`output_final_state/disable_recompute/return_intermediate_states`，每个可选输出是否写出仅由对应
-输出指针是否为空决定。`w/u/qg/kg/v_new/h` 的 L0 阶段固定写内部 compute 张量，L2 仅在
-对应指针非空时通过 `ViewCopy` 导出；`gkOut` 非空时直接复用为 `gkCompute`，避免目标场景
-额外复制整张 FP32 gate。内部 `hCompute` 是 FwdH 到 Finalize 的必需 head-major 阶段结果；
-公开 `hOut` 非空时，L2 转为 sequence-major 后导出。`hOut` 为空时仍创建 `hCompute`，但不
-作为第 11 个 Python 返回值公开。
+  令$h_c$为第$c$个chunk计算前的状态；传入`initial_state`时$h_0=initial\_state$，否则$h_0=0$。`v_new`和下一个chunk状态为：
 
-## 属性
+  $$
+  v^{new}_c=u_c-w_c\,h_c,
+  $$
 
-| 名称 | 默认值 | 支持范围 |
-| --- | --- | --- |
-| `layout` | `BSND` | `BSND/BNSD/TND/NTD` |
-| `scale` | 必传 | 通常为 `K**-0.5` |
-| `chunk_size` | `64` | `64/128` |
-| `output_final_state` | `false` | bool |
-| `safe_gate` | `false` | bool |
-| `lower_bound` | `-5.0` | safe raw gate 时 `[-5,0)` |
-| `use_gate_in_kernel` | `false` | bool |
-| `disable_recompute` | `false` | bool |
-| `return_intermediate_states` | `false` | bool |
-| `state_v_first` | `false` | bool |
+  $$
+  h_{c+1}=2^{gk_{c,l_c}}\odot h_c+kg_c^T\,v^{new}_c,
+  $$
 
-## 支持范围
+  其中$2^{gk_{c,l_c}}\odot h_c$表示按$K$维缩放状态矩阵。`h`输出保存各个chunk的输入状态，`final_state`为最后一个chunk更新后的状态：
 
-- A2 (`ascend910b`)、A3 (`ascend910_93`)、A5 (`ascend950`)。
-- `K/V` 为 `[16,256]` 内 16 的倍数；交付重点覆盖 K=128、V=128/256。
-- `chunk_size` 为 64/128。
-- TND/NTD 均支持多 head。
-- 变长调用最多 1024 条逻辑序列，rank-4 变长输入要求 B=1。
+  $$
+  h[c]=h_c,\qquad final\_state=h_M.
+  $$
 
-## 验证
+  `attn_out`为：
 
-数值、边界和 Python 接口测试位于 `tests/`。性能结论使用 `msopprof`；A5 的 BF16、H=H_v=96、
-T=16384、K=V=128、chunk=64 关键场景以 10 ms 为目标。门禁保守累加公开 BSND 调用中
-`beta` 布局转换和 `ChunkKdaFwd` 主 kernel 的各自最大值，合计超过 11 ms 即不满足准入要求。
+  $$
+  attn\_out_c=scale\cdot qg_c\,h_c+Aqk_c\,v^{new}_c.
+  $$
 
-完整 API 见 [API 文档](docs/api.md)，阶段和内存设计见 [设计文档](docs/design.md)。
+  Python接口的第12项返回值为输入对象透传：
+
+  $$
+  initial\_state\_out=initial\_state.
+  $$
+
+  可选输出参数只决定是否向调用方返回对应中间量，不改变上述计算语义。
+
+## 参数说明
+
+本文使用以下维度符号：
+
+- B：输入样本batch大小。
+- S：rank-4输入的序列长度。
+- T：rank-3输入的总token数。
+- H：Query和Key的head数。
+- HV：Value和gate的head数。
+- K：Query和Key的head dim。
+- V：Value的head dim。
+- N：逻辑序列数。
+- C：chunk大小。
+- NC：未传入`cu_seqlens`时为每条序列的chunk数$\lceil S/C\rceil$；传入`cu_seqlens`时为所有逻辑序列的chunk总数。
+
+| 参数名 | 输入/输出/属性 | 描述 | 数据类型 | 数据格式 |
+| :--- | :--- | :--- | :--- | :--- |
+| q | 输入 | 公式中的Query。`BSND`为(B, S, H, K)，`BNSD`为(B, H, S, K)，`TND`为(T, H, K)，`NTD`为(H, T, K)。 | FLOAT16、BFLOAT16 | ND |
+| k | 输入 | 公式中的Key。shape和数据类型必须与`q`相同。 | FLOAT16、BFLOAT16 | ND |
+| v | 输入 | 公式中的Value。`BSND`为(B, S, HV, V)，`BNSD`为(B, HV, S, V)，`TND`为(T, HV, V)，`NTD`为(HV, T, V)。数据类型必须与`q`相同。 | FLOAT16、BFLOAT16 | ND |
+| g | 输入 | raw gate或已激活的自然对数gate。`BSND`为(B, S, HV, K)，`BNSD`为(B, HV, S, K)，`TND`为(T, HV, K)，`NTD`为(HV, T, K)。 | FLOAT、BFLOAT16 | ND |
+| beta | 输入 | 公式中的Delta系数。`BSND`为(B, S, HV)，`BNSD`为(B, HV, S)，`TND`为(T, HV)，`NTD`为(HV, T)。 | FLOAT、BFLOAT16 | ND |
+| a_log | 可选输入 | gate衰减参数，shape为(HV)。当`use_gate_in_kernel=true`时必须传入。 | FLOAT | ND |
+| dt_bias | 可选输入 | gate偏置，shape为(HV×K)。 | FLOAT | ND |
+| initial_state | 可选输入 | 初始状态。`state_v_first=false`时shape为(N, HV, K, V)，否则为(N, HV, V, K)。 | FLOAT | ND |
+| cu_seqlens | 可选输入 | 变长序列累计长度，shape为(N+1)，首元素为0，末元素为T或S，元素单调不减。 | INT64 | ND |
+| chunk_indices | 可选输入 | chunk索引，shape为(2×NC)，按`(seq_id, chunk_id)`保存，必须采用sequence-major canonical顺序。传入时必须同时传入`cu_seqlens`。 | INT64 | ND |
+| attn_out | 输出 | 注意力输出。rank-4输入固定输出BSND格式(B, S, HV, V)；rank-3输入固定输出TND格式(T, HV, V)。 | FLOAT16、BFLOAT16 | ND |
+| final_state | 可选输出 | 最终状态。`state_v_first=false`时shape为(N, HV, K, V)，否则为(N, HV, V, K)。 | FLOAT | ND |
+| gk | 可选输出 | chunk-local log2累计gate。rank-4输入为(B, HV, S, K)，rank-3输入为(HV, T, K)。 | FLOAT | ND |
+| Aqk | 输出 | chunk内Query-Key系数矩阵。rank-4输入为(B, HV, S, C)，rank-3输入为(HV, T, C)。 | FLOAT16、BFLOAT16 | ND |
+| Akk | 输出 | chunk内下三角求逆结果。rank-4输入为(B, HV, S, C)，rank-3输入为(HV, T, C)。 | FLOAT16、BFLOAT16 | ND |
+| w | 可选输出 | 供反向使用的W中间量。rank-4输入为(B, HV, S, K)，rank-3输入为(HV, T, K)。 | FLOAT16、BFLOAT16 | ND |
+| u | 可选输出 | 供反向使用的U中间量。rank-4输入为(B, HV, S, V)，rank-3输入为(HV, T, V)。 | FLOAT16、BFLOAT16 | ND |
+| qg | 可选输出 | 供反向使用的gate缩放Query。rank-4输入为(B, HV, S, K)，rank-3输入为(HV, T, K)。 | FLOAT16、BFLOAT16 | ND |
+| kg | 可选输出 | 供反向使用的gate缩放Key。rank-4输入为(B, HV, S, K)，rank-3输入为(HV, T, K)。 | FLOAT16、BFLOAT16 | ND |
+| v_new | 可选输出 | 供反向使用的Value中间量。rank-4输入为(B, HV, S, V)，rank-3输入为(HV, T, V)。 | FLOAT16、BFLOAT16 | ND |
+| h | 可选输出 | 公开chunk状态。rank-4输入为(B, NC, HV, K, V)，rank-3输入为(NC, HV, K, V)；`state_v_first=true`时交换末两维。 | FLOAT16、BFLOAT16 | ND |
+| layout | 可选属性 | 输入布局。支持`BSND`、`BNSD`、`TND`、`NTD`，默认值为`BSND`。该属性只描述输入布局。 | STRING | - |
+| scale | 必选属性 | Query缩放系数。通常取$K^{-0.5}$。 | FLOAT | - |
+| chunk_size | 必选属性 | chunk大小。支持64、128，默认值为64。 | INT | - |
+| safe_gate | 必选属性 | 是否使用有界gate。默认值为false。 | BOOL | - |
+| lower_bound | 可选属性 | 有界gate下界。`safe_gate=true`时取值范围为[-5, 0)，默认值为-5.0。 | FLOAT | - |
+| use_gate_in_kernel | 必选属性 | 是否在kernel内由raw gate计算激活。默认值为false。 | BOOL | - |
+| state_v_first | 可选属性 | 是否将状态张量末两维排列为(V, K)。默认值为false。 | BOOL | - |
+
+## Python返回策略
+
+`cann_ops_transformer.ops.chunk_kda_fwd`固定返回12项。每一项的返回条件如下：
+
+| 返回项 | 返回条件 |
+| :--- | :--- |
+| attn_out | 始终返回。 |
+| final_state | `output_final_state=true`时返回，否则为`None`。 |
+| gk | `use_gate_in_kernel=false`或`disable_recompute=true`时返回，否则为`None`。 |
+| Aqk | 始终返回。 |
+| Akk | 始终返回。 |
+| w | `disable_recompute=true`时返回，否则为`None`。 |
+| u | `disable_recompute=true`时返回，否则为`None`。 |
+| qg | `disable_recompute=true`时返回，否则为`None`。 |
+| kg | `disable_recompute=true`时返回，否则为`None`。 |
+| v_new | `disable_recompute=true`时返回，否则为`None`。 |
+| h | `disable_recompute=true`或`return_intermediate_states=true`时返回，否则为`None`。 |
+| initial_state | 原样返回Python输入`initial_state`，不是aclnn输出。 |
+
+aclnn接口不接收`output_final_state`、`disable_recompute`或`return_intermediate_states`。L2只根据每个可选输出指针是否为空决定是否导出该输出。
+
+## 约束说明
+
+- H和HV必须为正整数，且满足HV≥H、HV≤128、HV % H=0。
+- K和V取值范围为[16, 256]，且必须为16的倍数。
+- `chunk_size`仅支持64和128。
+- `q`、`k`、`v`的数据类型必须相同。
+- `use_gate_in_kernel=true`时，`a_log`必须传入；`dt_bias`可以不传入。
+- `safe_gate=true`且`use_gate_in_kernel=true`时，`lower_bound`取值范围为[-5, 0)。
+- rank-4变长输入要求B=1。
+- 变长输入最多支持1024条逻辑序列。
+- `layout`只描述输入。`attn_out`固定为sequence-major；供反向继续计算的中间输出固定为head-major；`final_state`和公开`h`按参数表约定输出。
+- 默认支持确定性计算。
+
+## 调用说明
+
+| 调用方式 | 样例代码 | 说明 |
+| :--- | :--- | :--- |
+| aclnn接口 | [aclnnChunkKdaFwd](./docs/api.md#aclnn接口) | 通过`aclnnChunkKdaFwdGetWorkspaceSize`和`aclnnChunkKdaFwd`调用。 |
+| PyTorch API | [chunk_kda_fwd](../../torch_extension/cann_ops_transformer/docs/zh/chunk_kda_fwd.md) | 通过`cann_ops_transformer.ops.chunk_kda_fwd`调用。 |
+| pytest | [ChunkKdaFwd测试框架](./tests/pytest/README.md) | 覆盖功能、跨布局一致性、确定性和性能验证。 |
+
+阶段划分、平台模板和流水设计见[设计文档](./docs/design.md)。
