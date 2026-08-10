@@ -115,11 +115,11 @@ aclnnStatus aclnnMlaPrologV2WeightNzGetWorkspaceSize(
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor dequantScaleQNopeOut!");
         return ge::GRAPH_FAILED;
     }
-    if(tokenX == nullptr) {
+    if (tokenX == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "tokenX cannot be null!");
         return ge::GRAPH_FAILED;
     }
-    if(kvCacheRef == nullptr) {
+    if (kvCacheRef == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "kvCacheRef cannot be null!");
         return ge::GRAPH_FAILED;
     }
