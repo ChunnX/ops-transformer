@@ -387,6 +387,16 @@ def _nc_fields(shape, nc_kv_dims):
     return tuple(storage), tuple(strides), 0
 
 
+def _contiguous_stride(shape):
+    """计算 shape 的连续 strides (numpy/torch 行主序约定)。"""
+    if not shape:
+        return ()
+    strides = [1] * len(shape)
+    for d in range(len(shape) - 2, -1, -1):
+        strides[d] = strides[d + 1] * shape[d + 1]
+    return tuple(strides)
+
+
 def _build_row(case_name, p):
     q_shape, k_shape, v_shape = _qkv_shapes(p)
     bt_shape, cu_q_shape, cu_kv_shape, sq_shape, skv_shape = _aux_shapes(p)
@@ -423,16 +433,26 @@ def _build_row(case_name, p):
     attrs = _build_attrs(p)
     prec = _precision(p)
 
-    # kv 0 轴非连续声明(k/v 槽位 1、2; 其余槽位留空 = TTK 默认连续)
+    # kv 0 轴非连续声明列(仅套件含 nc_kv_dims 用例时输出)。
+    # 注意: TTK 对这三列没有"留空=None=默认连续"的回退 —— flat_storage_shape/
+    # flat_view_offset 会把显式 None 原样返回 (RandomData 与 torch.as_strided 均会
+    # 抛错导致 INPUT_GEN_FAILURE), 因此所有有张量的槽位都必须填显式连续值。
     nc_kv_dims = p.get("nc_kv_dims")
     storage_shapes = [None] * len(shapes)
     view_strides = [None] * len(shapes)
     view_offsets = [None] * len(shapes)
     if nc_kv_dims is not None:
-        for i in (1, 2):
-            storage_shapes[i], view_strides[i], view_offsets[i] = _nc_fields(
-                shapes[i], nc_kv_dims
-            )
+        for i, shape in enumerate(shapes):
+            if shape is None:
+                continue  # 槽位无张量, TTK 跳过
+            if i in (1, 2):
+                storage_shapes[i], view_strides[i], view_offsets[i] = _nc_fields(
+                    shape, nc_kv_dims
+                )
+            else:
+                storage_shapes[i] = shape
+                view_strides[i] = _contiguous_stride(shape)
+                view_offsets[i] = 0
 
     return [
         case_name,
