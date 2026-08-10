@@ -23,10 +23,10 @@
 #include "hccl/hccl.h"
 #include "aclnn/opdev/fp16_t.h"
 #include "../../../common/op_kernel/attention_ffn_context.h"
-#include "../../../common/op_api/mc2_context.h"
+#include "../../../common/op_kernel/apace/utils/comm_channel_builder.h"
 
-static_assert(sizeof(Mc2Aclnn::AttentionFFNContext) == sizeof(Mc2Aclnn::Mc2MoeContext),
-              "AttentionFFNContext and Mc2MoeContext must have the same ABI");
+static_assert(sizeof(Mc2Aclnn::AttentionFFNContext) % sizeof(int32_t) == 0,
+              "AttentionFFNContext must be representable as an INT32 tensor");
 
 extern "C" aclnnStatus aclnnAttentionToFfnV2GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
@@ -89,6 +89,44 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     return 0;
 }
 
+int CreateAttentionFfnContextTensor(HcclComm comm, uint64_t &cclBufferSize, void **deviceAddr, aclTensor **tensor)
+{
+    Mc2Aclnn::AttentionFFNContext hostContext{};
+    CommChannelBuilder<ChannelMode::UBMEM, ChannelMode::UBMEM> channelBuilder(comm);
+    if (!channelBuilder.Init()) {
+        LOG_PRINT("[ERROR] CommChannelBuilder init failed.\n");
+        return -1;
+    }
+
+    const uint32_t rankSize = channelBuilder.GetRankSize();
+    if (rankSize == 0 || rankSize > Mc2Aclnn::HCCL_MAX_RANK_SIZE) {
+        LOG_PRINT("[ERROR] Invalid HCCL rank size: %u.\n", rankSize);
+        return -1;
+    }
+    hostContext.epRankId = channelBuilder.GetRankId();
+    hostContext.rankSizePerServer = rankSize;
+
+    if (!channelBuilder.AllocRegAndBuildChannels(ChannelMode::UBMEM, "attention_to_ffn_v2_buffer",
+                                                  hostContext.hcommHandle_, hostContext.epHcclBuffer_)) {
+        LOG_PRINT("[ERROR] Build AttentionFFNContext channels failed.\n");
+        return -1;
+    }
+
+    void *localBuffer = nullptr;
+    const HcclResult hcclRet = HcclGetHcclBuffer(comm, &localBuffer, &cclBufferSize);
+    if (hcclRet != HCCL_SUCCESS || localBuffer == nullptr) {
+        LOG_PRINT("[ERROR] HcclGetHcclBuffer failed. ret = %d\n", hcclRet);
+        return -1;
+    }
+    hostContext.epHcclBuffer_[hostContext.epRankId] = reinterpret_cast<uint64_t>(localBuffer);
+
+    constexpr size_t contextElementNum = sizeof(Mc2Aclnn::AttentionFFNContext) / sizeof(int32_t);
+    std::vector<int32_t> contextHostData(contextElementNum);
+    std::memcpy(contextHostData.data(), &hostContext, sizeof(hostContext));
+    const std::vector<int64_t> contextShape{static_cast<int64_t>(contextElementNum)};
+    return CreateAclTensor(contextHostData, contextShape, deviceAddr, ACL_INT32, tensor);
+}
+
 int LaunchOneProcessAttentionToFfnV2(Args &args)
 {
     int ret = aclrtSetCurrentContext(args.context);
@@ -100,12 +138,13 @@ int LaunchOneProcessAttentionToFfnV2(Args &args)
     LOG_PRINT("[INFO] rank = %d, hcomName = %s, attentionToFFNStream = %p, context = %p\n", args.rankId, hcomName,
               args.attentionToFFNStream, args.context);
 
-    uint64_t hcclBufferSize = 0;
+    void *attentionFfnContextDeviceAddr = nullptr;
     aclTensor *attentionFfnContextTensor = nullptr;
-    ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(
-        hcomName, "AttentionToFfnV2", hcclBufferSize, attentionFfnContextTensor);
+    uint64_t hcclBufferSize = 0;
+    ret = CreateAttentionFfnContextTensor(
+        args.hcclComm, hcclBufferSize, &attentionFfnContextDeviceAddr, &attentionFfnContextTensor);
     CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("[ERROR] GetMc2ContextTensor failed. ret = %d\n", ret); return ret);
+              LOG_PRINT("[ERROR] CreateAttentionFfnContextTensor failed. ret = %d\n", ret); return ret);
 
     int64_t X = 1;
     int64_t L = 1;
@@ -266,6 +305,9 @@ int LaunchOneProcessAttentionToFfnV2(Args &args)
     }
     if (attentionFfnContextTensor != nullptr) {
         aclDestroyTensor(attentionFfnContextTensor);
+    }
+    if (attentionFfnContextDeviceAddr != nullptr) {
+        aclrtFree(attentionFfnContextDeviceAddr);
     }
     if (ffnTokenInfoTableShape != nullptr) {
         aclDestroyIntArray(ffnTokenInfoTableShape);
