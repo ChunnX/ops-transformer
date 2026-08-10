@@ -27,11 +27,11 @@
 template <class xType, class wType, class biasType, class scaleType, class ptScaleType, class yType,
           class xLayout, class wLayout, class yLayout, class l0cType>
 __aicore__ inline void GmmS4S4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale,
-                                      GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR y,
-                                      GM_ADDR user1,
-                                      const GroupedMatmulTilingData::GMMBaseParamsS4S4* gmmBaseParams,
-                                      const TCubeTiling* mmTilingData,
-                                      AscendC::TPipe* que)
+                                     GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR y,
+                                     GM_ADDR user1,
+                                     const GroupedMatmulTilingData::GMMBaseParamsS4S4 *gmmBaseParams,
+                                     const TCubeTiling *mmTilingData,
+                                     AscendC::TPipe *que)
 {
     using AType = int8_t;
     using BType = int8_t;
@@ -49,7 +49,7 @@ __aicore__ inline void GmmS4S4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
         Blaze::Gemm::MatmulWithScaleFixpipeQuant<0UL, false, Blaze::Gemm::KernelGroupedMmadWithScaleFixpipeQuant>;
     using QgmmBlockMmad = Blaze::Gemm::Block::BlockMmad<
         DispatchPolicy, AType, LayoutA, BTypeTuple, LayoutB, CType, LayoutC, BiasType, LayoutC>;
-    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueGmmS8S4<YType, CType>;
+    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpiloguePerTokenScale<YType, CType>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
     using QgmmKernel =
         Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, QgmmBlockMmad, BlockEpilogue, BlockScheduler>;
@@ -62,12 +62,8 @@ __aicore__ inline void GmmS4S4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     const uint32_t kAL1 = static_cast<uint32_t>(mmTilingData->stepKa) * baseK;
     const uint32_t kBL1 = static_cast<uint32_t>(mmTilingData->stepKb) * baseK;
 
-    const uint32_t quantGroupSize = isPerGroup
-        ? static_cast<uint32_t>(gmmBaseParams->k / gmmBaseParams->quantGroupNum)
-        : 0U;
-    const uint32_t quantMode = isPerGroup
-        ? static_cast<uint32_t>(Blaze::Gemm::QuantMode::PERGROUP_MODE)
-        : static_cast<uint32_t>(Blaze::Gemm::QuantMode::PERCHANNEL_MODE);
+    const uint32_t quantGroupSize = isPerGroup ? static_cast<uint32_t>(gmmBaseParams->k / gmmBaseParams->quantGroupNum) : 0U;
+    const uint32_t quantMode = isPerGroup ? static_cast<uint32_t>(Blaze::Gemm::QuantMode::PERGROUP_MODE) : static_cast<uint32_t>(Blaze::Gemm::QuantMode::PERCHANNEL_MODE);
 
     GMMTiling gmmParams{};
     gmmParams.groupNum = gmmBaseParams->groupNum;
@@ -92,12 +88,8 @@ __aicore__ inline void GmmS4S4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     const bool weightNzC032 = (weightFmtFlags & 4ULL) != 0;
     constexpr uint64_t INT8_NZ_K_ALIGN = 16UL;
     constexpr uint64_t INT8_NZ_N_ALIGN = 32UL;
-    const uint64_t int8WeightK = weightIsNz
-        ? (static_cast<uint64_t>(gmmBaseParams->k) + INT8_NZ_K_ALIGN - 1UL) / INT8_NZ_K_ALIGN * INT8_NZ_K_ALIGN
-        : static_cast<uint64_t>(gmmBaseParams->k);
-    const uint64_t int8WeightN = weightIsNz
-        ? (static_cast<uint64_t>(gmmBaseParams->n) + INT8_NZ_N_ALIGN - 1UL) / INT8_NZ_N_ALIGN * INT8_NZ_N_ALIGN
-        : static_cast<uint64_t>(gmmBaseParams->n);
+    const uint64_t int8WeightK = weightIsNz ? (static_cast<uint64_t>(gmmBaseParams->k) + INT8_NZ_K_ALIGN - 1UL) / INT8_NZ_K_ALIGN * INT8_NZ_K_ALIGN : static_cast<uint64_t>(gmmBaseParams->k);
+    const uint64_t int8WeightN = weightIsNz ? (static_cast<uint64_t>(gmmBaseParams->n) + INT8_NZ_N_ALIGN - 1UL) / INT8_NZ_N_ALIGN * INT8_NZ_N_ALIGN : static_cast<uint64_t>(gmmBaseParams->n);
     const uint64_t int8WeightWs = static_cast<uint64_t>(gmmBaseParams->groupNum) *
                                   int8WeightK * int8WeightN;
     const uint64_t int8XWs = static_cast<uint64_t>(gmmBaseParams->m) *
@@ -112,8 +104,7 @@ __aicore__ inline void GmmS4S4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     GM_ADDR weightGmAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<int4b_t>(0, weight));
     GM_ADDR yGmAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
     GM_ADDR scaleGmAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<ScaleType>(0, scale));
-    GM_ADDR perTokenScaleGmAddr = (gmmBaseParams->isPerTokenQuant == 0U)
-        ? perTokenScaleFillWsAddr : perTokenScale;
+    GM_ADDR perTokenScaleGmAddr = (gmmBaseParams->isPerTokenQuant == 0U) ? perTokenScaleFillWsAddr : perTokenScale;
 
     using WeightPreprocess =
         GROUPED_MATMUL::INT4_PREPROCESS::Int4WeightToInt8Preprocess<LayoutB>;

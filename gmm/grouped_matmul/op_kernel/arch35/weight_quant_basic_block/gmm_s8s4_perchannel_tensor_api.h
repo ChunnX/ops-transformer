@@ -25,7 +25,7 @@ namespace GROUPED_MATMUL::S8S4V5 {
 template <typename YType, CubeFormat WFormat>
 __aicore__ inline void InvokeGmmS8S4TensorApi(
     GM_ADDR x, GM_ADDR weight, GM_ADDR scale, GM_ADDR offset, GM_ADDR groupList,
-    GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace, AscendC::TPipe* pipe,
+    GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace, AscendC::TPipe *pipe,
     const GroupedMatmulTilingData::GMMS8S4BasicApiTilingData *tiling)
 {
     using LayoutB = std::conditional_t<
@@ -38,7 +38,7 @@ __aicore__ inline void InvokeGmmS8S4TensorApi(
         0UL, false, Blaze::Gemm::KernelGroupedMmadWithScaleFixpipeQuant>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<
         DispatchPolicy, int8_t, LayoutA, BTypeTuple, LayoutB, half, LayoutC, int32_t, LayoutBias>;
-    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueGmmS8S4<YType, half>;
+    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpiloguePerTokenScale<YType, half>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
     using ProblemShape = typename BlockMmad::ProblemShape;
     using TensorApiKernel =
@@ -94,7 +94,8 @@ __aicore__ inline void InvokeGmmS8S4TensorApi(
     params.epilogueParams.workspaceGmAddr = tileWorkspace;
     params.epilogueParams.perTokenScaleGmAddr = perTokenScale;
     params.epilogueParams.offsetGmAddr = s8s4.hasOffset != 0U ? reinterpret_cast<GM_ADDR>(
-        GROUPED_MATMUL::GetTensorAddr<float>(0, offset)) : nullptr;
+                                                                    GROUPED_MATMUL::GetTensorAddr<float>(0, offset)) :
+                                                                nullptr;
     params.epilogueParams.xRowSumGmAddr = rowSumWorkspace;
     params.epilogueParams.outGmAddr = reinterpret_cast<GM_ADDR>(
         GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
@@ -112,8 +113,8 @@ __aicore__ inline void InvokeGmmS8S4TensorApi(
     params.gmmParams.baseK = mm.baseK;
     params.gmmParams.quantGroupSize = s8s4.quantGroupSize;
     params.gmmParams.quantMode = s8s4.dequantMode == 0U ?
-        static_cast<uint32_t>(Blaze::Gemm::QuantMode::PERGROUP_MODE) :
-        static_cast<uint32_t>(Blaze::Gemm::QuantMode::PERCHANNEL_MODE);
+                                     static_cast<uint32_t>(Blaze::Gemm::QuantMode::PERGROUP_MODE) :
+                                     static_cast<uint32_t>(Blaze::Gemm::QuantMode::PERCHANNEL_MODE);
     params.gmmParams.kAL1 = mm.kAL1;
     params.gmmParams.kBL1 = mm.kBL1;
     params.gmmParams.nBufferNum = 2U;
