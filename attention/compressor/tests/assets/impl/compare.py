@@ -278,9 +278,9 @@ def _batch_consistency_check(npu_cmp_kv, kwargs):
                         else:
                             bidx = slices[0][slice_idx][0]
                             slice_idx += 1
-                        headSize = cmp_ratio - (start + start_pos_list[b_idx]) % cmp_ratio
+                        headSize = cmp_ratio - (start + start_pos_list[bidx]) % cmp_ratio
                         compare_len = (stop - start - headSize % cmp_ratio) // cmp_ratio
-                        cache_len = cmp_ratio - start_pos_list[b_idx] % cmp_ratio
+                        cache_len = cmp_ratio - start_pos_list[bidx] % cmp_ratio
                         start_idx = (
                             (start - cache_len) // cmp_ratio + 1
                             if headSize == cmp_ratio
