@@ -14,12 +14,13 @@ BUF_BYTES=104857600
 DB_INTERVAL=1
 LOOP_COUNT=100
 WARMUP=10
-RANKSIZE=2
-RANK_ID=0
-SQE_MODE=0
+SQE_MODE=1
+DEV_COUNT=2
+DEV_IDS=""
+PEER=""
 
-SHORT=v:,b:,c:,r:,n:,s:,k:,l:,w:,d:,a:,m:
-LONG=soc-version:,build-type:,cmake-rebuild:,run-test:,num-sqe:,sqe-bytes:,buf-bytes:,db-interval:,loop-count:,warmup:,ranksize:,rank-id:,sqe-mode:
+SHORT=v:,b:,c:,r:,n:,s:,k:,l:,w:,m:,d:,i:,p:
+LONG=soc-version:,build-type:,cmake-rebuild:,run-test:,num-sqe:,sqe-bytes:,buf-bytes:,db-interval:,loop-count:,warmup:,sqe-mode:,dev-count:,dev-ids:,peer:
 OPTS=$(getopt -a --options $SHORT --longoptions $LONG -- "$@")
 eval set -- "$OPTS"
 
@@ -34,9 +35,10 @@ while :; do
     -k | --db-interval)     DB_INTERVAL="$2"; shift 2 ;;
     -l | --loop-count)      LOOP_COUNT="$2"; shift 2 ;;
     -w | --warmup)          WARMUP="$2"; shift 2 ;;
-    -d | --ranksize)        RANKSIZE="$2"; shift 2 ;;
-    -a | --rank-id)         RANK_ID="$2"; shift 2 ;;
     -m | --sqe-mode)        SQE_MODE="$2"; shift 2 ;;
+    -d | --dev-count)       DEV_COUNT="$2"; shift 2 ;;
+    -i | --dev-ids)         DEV_IDS="$2"; shift 2 ;;
+    -p | --peer)            PEER="$2"; shift 2 ;;
     --) shift; break ;;
     *) echo "[ERROR] Unexpected option: $1"; break ;;
     esac
@@ -69,18 +71,12 @@ fi
 if [[ "$RUN_TEST" == "ON" ]]; then
     export LD_LIBRARY_PATH=${INSTALL_PREFIX}/lib:${INSTALL_PREFIX}/lib64:${_ASCEND_INSTALL_PATH}/lib64:$LD_LIBRARY_PATH
     echo "========== URMA P2P Bench =========="
-    echo "num_sqe=$NUM_SQE sqe_bytes=$SQE_BYTES buf_bytes=$BUF_BYTES db_interval=$DB_INTERVAL"
-    echo "loop_count=$LOOP_COUNT warmup=$WARMUP ranksize=$RANKSIZE rank_id=$RANK_ID sqe_mode=$SQE_MODE"
+    echo "dev_count=$DEV_COUNT dev_ids=$DEV_IDS num_sqe=$NUM_SQE sqe_bytes=$SQE_BYTES buf_bytes=$BUF_BYTES db_interval=$DB_INTERVAL"
+    echo "loop_count=$LOOP_COUNT warmup=$WARMUP sqe_mode=$SQE_MODE peer=$PEER"
     echo "====================================="
-    ./out/bin/test_urma_p2p_bench \
-        --rank_id ${RANK_ID} \
-        --ranksize ${RANKSIZE} \
-        --num_sqe ${NUM_SQE} \
-        --sqe_bytes ${SQE_BYTES} \
-        --buf_bytes ${BUF_BYTES} \
-        --db_interval ${DB_INTERVAL} \
-        --loop_count ${LOOP_COUNT} \
-        --warmup ${WARMUP} \
-        --sqe_mode ${SQE_MODE}
+    RUN_ARGS="--dev_count ${DEV_COUNT} --num_sqe ${NUM_SQE} --sqe_bytes ${SQE_BYTES} --buf_bytes ${BUF_BYTES} --db_interval ${DB_INTERVAL} --loop_count ${LOOP_COUNT} --warmup ${WARMUP} --sqe_mode ${SQE_MODE}"
+    if [ -n "$DEV_IDS" ]; then RUN_ARGS="$RUN_ARGS --dev_ids=$DEV_IDS"; fi
+    if [ -n "$PEER" ]; then RUN_ARGS="$RUN_ARGS --peer=$PEER"; fi
+    ./out/bin/test_urma_p2p_bench $RUN_ARGS
     echo "========== Done =========="
 fi

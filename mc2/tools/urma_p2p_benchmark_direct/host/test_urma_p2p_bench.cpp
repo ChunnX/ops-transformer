@@ -1,10 +1,12 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
-#include <getopt.h>
-#include <dlfcn.h>
 #include <vector>
 #include <string>
+#include <sstream>
+#include <thread>
+#include <atomic>
+#include <dlfcn.h>
 #include "acl/acl.h"
 #include "hccl/hccl.h"
 #include "hccl/hccl_comm.h"
@@ -16,10 +18,9 @@
 #include "../kernel/sqe_write/sqe_write_launch.h"
 #include "../kernel/sqe_write_with_notify/sqe_write_with_notify_launch.h"
 #include "../kernel/hcomm/hcomm_launch.h"
+#include "../kernel/common/urma_p2p_bench_tiling.h"
 
-constexpr uint32_t SYS_CYCLE_FREQ_MHZ = 1000U;
 constexpr double NS_PER_CYCLE = 1.0;
-
 constexpr int64_t BLOCK_NUM = 1;
 constexpr uint64_t DEFAULT_BUF_BYTES = 100 * 1024 * 1024ULL;
 constexpr uint32_t DEFAULT_NUM_SQE = 16;
@@ -36,47 +37,26 @@ constexpr HcommResult HCOMM_SUCCESS_VALUE = 0;
 extern "C" HcommResult HcommChannelGetPtrByHandle(const ChannelHandle *channelList,
                                                    uint32_t listNum, ChannelPtr *channelPtr);
 
-int32_t g_rankId = 0;
-int32_t g_ranksize = 2;
-uint32_t g_numSqe = DEFAULT_NUM_SQE;
-uint64_t g_sqeBytes = DEFAULT_SQE_BYTES;
-uint64_t g_bufBytes = DEFAULT_BUF_BYTES;
-uint32_t g_dbInterval = DEFAULT_DB_INTERVAL;
-uint32_t g_loopCount = 100;
-uint32_t g_warmup = 10;
-uint32_t g_sqeMode = 0;  // 0=Write(samples), 1=WriteWithNotify(mc2)
+struct BenchArgs {
+    uint32_t numSqe = DEFAULT_NUM_SQE;
+    uint64_t sqeBytes = DEFAULT_SQE_BYTES;
+    uint64_t bufBytes = DEFAULT_BUF_BYTES;
+    uint32_t dbInterval = DEFAULT_DB_INTERVAL;
+    uint32_t loopCount = 100;
+    uint32_t warmup = 10;
+    uint32_t sqeMode = 1;
+    uint32_t devCount = 2;
+    std::vector<uint32_t> devIds;
+    uint32_t peerOverride = 0;
+    bool hasPeer = false;
+};
 
-static const struct option kLongOptions[] = {
-    {"rank_id", 1, 0, 'a'}, {"ranksize", 1, 0, 'd'},
-    {"num_sqe", 1, 0, 'n'}, {"sqe_bytes", 1, 0, 's'},
-    {"buf_bytes", 1, 0, 'b'}, {"db_interval", 1, 0, 'k'},
-    {"loop_count", 1, 0, 'l'}, {"warmup", 1, 0, 'w'},
-    {"sqe_mode", 1, 0, 'm'},
-    {0, 0, 0, 0}};
-
-void GetOption(int argc, char **argv)
-{
-    int optIdx = 0, c = 1;
-    while (c != -1) {
-        c = getopt_long(argc, argv, "a:d:n:s:b:k:l:w:m:", kLongOptions, &optIdx);
-        switch (c) {
-            case 'a': g_rankId = atoi(optarg); break;
-            case 'd': g_ranksize = atoi(optarg); break;
-            case 'n': g_numSqe = (uint32_t)atoi(optarg); break;
-            case 's': g_sqeBytes = (uint64_t)atoll(optarg); break;
-            case 'b': g_bufBytes = (uint64_t)atoll(optarg); break;
-            case 'k': g_dbInterval = (uint32_t)atoi(optarg); break;
-            case 'l': g_loopCount = (uint32_t)atoi(optarg); break;
-            case 'w': g_warmup = (uint32_t)atoi(optarg); break;
-            case 'm': g_sqeMode = (uint32_t)atoi(optarg); break;
-            default: break;
-        }
-    }
-}
+static BenchArgs g_args;
 
 struct BenchCtx {
     uint32_t rank{0};
     uint32_t worldSize{0};
+    HcclComm hcclComm{nullptr};
     void *workspaceDev{nullptr};
     HcclMemHandle workspaceMemHandle{nullptr};
     void *channelPtrTableDev{nullptr};
@@ -139,13 +119,13 @@ static HcclResult build_channel_descs(HcclComm comm, uint32_t self, uint32_t wor
 
 static BenchCtx *setup_ctx(HcclComm comm, uint32_t rank, uint32_t world, uint64_t bufBytes)
 {
-    static BenchCtx ctx;
+    static thread_local BenchCtx ctx;
     ctx.rank = rank;
     ctx.worldSize = world;
 
-    const std::string tag = "urma_p2p_bench";
+    const std::string tag = "urma_p2p_bench_" + std::to_string(rank);
     aclError ar = aclrtMalloc(&ctx.workspaceDev, bufBytes, ACL_MEM_MALLOC_HUGE_FIRST);
-    if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] aclrtMalloc workspace failed: %d\n", ar); return nullptr; }
+    if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMalloc workspace failed: %d\n", rank, ar); return nullptr; }
     aclrtMemset(ctx.workspaceDev, bufBytes, 0, bufBytes);
 
     CommMem mem;
@@ -153,18 +133,18 @@ static BenchCtx *setup_ctx(HcclComm comm, uint32_t rank, uint32_t world, uint64_
     mem.addr = ctx.workspaceDev;
     mem.size = bufBytes;
     HcclResult r = HcclCommMemReg(comm, tag.c_str(), &mem, &ctx.workspaceMemHandle);
-    if (r != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] HcclCommMemReg failed: %d\n", r); return nullptr; }
+    if (r != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: HcclCommMemReg failed: %d\n", rank, r); return nullptr; }
 
     std::vector<HcclChannelDesc> descs;
     std::vector<size_t> descSlots;
     r = build_channel_descs(comm, rank, world, &ctx.workspaceMemHandle, descs, descSlots, ctx.numLayers);
-    if (r != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] build_channel_descs failed: %d\n", r); return nullptr; }
+    if (r != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: build_channel_descs failed: %d\n", rank, r); return nullptr; }
 
     ctx.channels.resize(descs.size(), 0);
     r = HcclChannelAcquire(comm, CommEngine::COMM_ENGINE_AIV,
                            descs.data(), static_cast<uint32_t>(descs.size()),
                            ctx.channels.data());
-    if (r != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] HcclChannelAcquire failed: %d\n", r); return nullptr; }
+    if (r != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: HcclChannelAcquire failed: %d\n", rank, r); return nullptr; }
 
     const size_t tableSlots = static_cast<size_t>(ctx.numLayers) * 1 * world;
     ctx.channelPtrsHost.resize(tableSlots, 0);
@@ -175,7 +155,7 @@ static BenchCtx *setup_ctx(HcclComm comm, uint32_t rank, uint32_t world, uint64_
         std::vector<ChannelPtr> ptrs(ctx.channels.size(), 0);
         HcommResult hr = getPtrByHandle(ctx.channels.data(),
                                         static_cast<uint32_t>(ctx.channels.size()), ptrs.data());
-        if (hr != HCOMM_SUCCESS_VALUE) { fprintf(stderr, "[ERROR] HcommChannelGetPtrByHandle failed: %d\n", hr); return nullptr; }
+        if (hr != HCOMM_SUCCESS_VALUE) { fprintf(stderr, "[ERROR] rank %u: HcommChannelGetPtrByHandle failed: %d\n", rank, hr); return nullptr; }
         for (size_t i = 0; i < descs.size(); ++i) ctx.channelPtrsHost[descSlots[i]] = ptrs[i];
     } else {
         for (size_t i = 0; i < descs.size(); ++i)
@@ -184,92 +164,91 @@ static BenchCtx *setup_ctx(HcclComm comm, uint32_t rank, uint32_t world, uint64_
 
     size_t tableBytes = tableSlots * sizeof(ChannelPtr);
     ar = aclrtMalloc(&ctx.channelPtrTableDev, tableBytes, ACL_MEM_MALLOC_HUGE_FIRST);
-    if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] aclrtMalloc table failed: %d\n", ar); return nullptr; }
+    if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMalloc table failed: %d\n", rank, ar); return nullptr; }
     aclrtMemcpy(ctx.channelPtrTableDev, tableBytes, ctx.channelPtrsHost.data(), tableBytes, ACL_MEMCPY_HOST_TO_DEVICE);
 
     size_t stateBytes = tableSlots * 2 * sizeof(uint32_t);
     ar = aclrtMalloc(&ctx.stateGmDev, stateBytes, ACL_MEM_MALLOC_HUGE_FIRST);
-    if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] aclrtMalloc state failed: %d\n", ar); return nullptr; }
+    if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMalloc state failed: %d\n", rank, ar); return nullptr; }
     aclrtMemset(ctx.stateGmDev, stateBytes, 0, stateBytes);
 
     fprintf(stderr, "[INFO] rank=%u world=%u numLayers=%u tableSlots=%zu descs=%zu\n",
             rank, world, ctx.numLayers, tableSlots, descs.size());
-    for (size_t i = 0; i < descSlots.size(); ++i) {
-        fprintf(stderr, "[INFO] slot=%zu peer=%u channelPtr=0x%llx\n",
-                descSlots[i], descs[i].remoteRank,
-                (unsigned long long)ctx.channelPtrsHost[descSlots[i]]);
-    }
     return &ctx;
 }
 
-int main(int argc, char *argv[])
+struct ThreadContext {
+    HcclRootInfo *rootInfo;
+    uint32_t device;
+    uint32_t devCount;
+    BenchArgs *args;
+};
+
+static std::atomic<uint32_t> g_barrierCount{0};
+
+static void barrier(uint32_t total)
 {
-    GetOption(argc, argv);
+    g_barrierCount.fetch_add(1, std::memory_order_acq_rel);
+    while (g_barrierCount.load(std::memory_order_acquire) < total) {
+        std::this_thread::yield();
+    }
+}
 
-    uint32_t peer = (g_rankId == 0) ? 1 : 0;
-    if (g_ranksize > 2) peer = (g_rankId + 1) % g_ranksize;
+int Sample(void *arg)
+{
+    ThreadContext *tctx = (ThreadContext *)arg;
+    uint32_t rank = tctx->device;
+    uint32_t devCount = tctx->devCount;
+    BenchArgs *args = tctx->args;
 
-    fprintf(stderr, "[INFO] ===== URMA P2P Bench =====\n");
-    fprintf(stderr, "[INFO] rank=%d ranksize=%d peer=%u num_sqe=%u sqe_bytes=%lu "
-            "buf_bytes=%lu db_interval=%u loop=%u warmup=%u sqe_mode=%u(%s)\n",
-            g_rankId, g_ranksize, peer, g_numSqe, g_sqeBytes,
-            g_bufBytes, g_dbInterval, g_loopCount, g_warmup, g_sqeMode,
-            g_sqeMode == 1 ? "WriteWithNotify(mc2)" :
-            g_sqeMode == 2 ? "Hcomm(WriteNbi+Drain)" : "Write(samples)");
+    uint32_t physicalDev = (rank < args->devIds.size()) ? args->devIds[rank] : rank;
+    uint32_t peerRank;
+    if (args->hasPeer) {
+        peerRank = args->peerOverride;
+    } else {
+        peerRank = (rank == 0) ? 1 : 0;
+        if (devCount > 2) peerRank = (rank + 1) % devCount;
+    }
 
-    int ret = aclInit(nullptr);
-    if (ret != ACL_SUCCESS) { fprintf(stderr, "[ERROR] aclInit: %d\n", ret); return ret; }
-    ret = aclrtSetDevice(g_rankId);
-    if (ret != ACL_SUCCESS) { fprintf(stderr, "[ERROR] aclrtSetDevice: %d\n", ret); return ret; }
+    aclrtSetDevice(static_cast<int32_t>(physicalDev));
 
-    aclrtContext context;
-    aclrtCreateContext(&context, g_rankId);
-    aclrtStream stream;
-    aclrtCreateStream(&stream);
+    HcclComm hcclComm;
+    HcclResult hr = HcclCommInitRootInfo(devCount, tctx->rootInfo, rank, &hcclComm);
+    if (hr != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u (dev %u): HcclCommInitRootInfo failed: %d\n", rank, physicalDev, hr); return hr; }
+    fprintf(stderr, "[INFO] rank %u (dev %u): HCCL comm init success, peer=rank %u\n", rank, physicalDev, peerRank);
 
-    HcclCommConfig config;
-    HcclCommConfigInit(&config);
-    config.hcclDeterministic = 1;
-    config.hcclBufferSize = 200;
-    strcpy_s(config.hcclCommName, COMM_NAME_MAX_LENGTH - 1, "urma_p2p_bench");
-
-    const char *rankTableFile = getenv("RANK_TABLE_FILE");
-    if (rankTableFile == nullptr) { fprintf(stderr, "[ERROR] RANK_TABLE_FILE not set\n"); return -1; }
-
-    HcclComm comms;
-    ret = HcclCommInitClusterInfoConfig(rankTableFile, g_rankId, &config, &comms);
-    if (ret != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] HcclCommInitClusterInfoConfig: %d\n", ret); return ret; }
-    fprintf(stderr, "[INFO] HCCL comm init success\n");
-    aclrtSetCurrentContext(context);
-
-    BenchCtx *ctx = setup_ctx(comms, (uint32_t)g_rankId, (uint32_t)g_ranksize, g_bufBytes);
+    BenchCtx *ctx = setup_ctx(hcclComm, rank, devCount, args->bufBytes);
     if (ctx == nullptr) return -1;
 
-    uint32_t slot = peer;
+    uint32_t slot = peerRank;
     if (slot >= ctx->channelPtrsHost.size() || ctx->channelPtrsHost[slot] == 0) {
-        fprintf(stderr, "[ERROR] no URMA channel to peer %u\n", peer);
+        fprintf(stderr, "[ERROR] rank %u (dev %u): no URMA channel to peer rank %u\n", rank, physicalDev, peerRank);
         return -1;
     }
+
+    aclrtStream stream;
+    aclrtCreateStream(&stream);
 
     void *timingGm = nullptr;
     aclrtMalloc(&timingGm, TIMING_SLOTS_SIZE * sizeof(int64_t), ACL_MEM_MALLOC_HUGE_FIRST);
 
-    uint32_t stateStride = (uint32_t)(ctx->numLayers * 1 * g_ranksize);
+    uint32_t stateStride = (uint32_t)(ctx->numLayers * 1 * devCount);
 
     UrmaP2pBenchTiling tilingHost{};
-    tilingHost.rankId       = (uint32_t)g_rankId;
-    tilingHost.peer         = peer;
-    tilingHost.numSqe       = g_numSqe;
-    tilingHost.sqeBytes     = g_sqeBytes;
-    tilingHost.bufBytes     = g_bufBytes;
-    tilingHost.dbInterval   = g_dbInterval;
+    tilingHost.peer         = peerRank;
+    tilingHost.numSqe       = args->numSqe;
+    tilingHost.sqeBytes     = args->sqeBytes;
+    tilingHost.bufBytes     = args->bufBytes;
+    tilingHost.dbInterval   = args->dbInterval;
     tilingHost.channelSlot  = slot;
     tilingHost.cqOwnerSlot  = slot;
     tilingHost.stateStride  = stateStride;
 
-    for (uint32_t iter = 0; iter < g_warmup + g_loopCount; ++iter) {
+    barrier(devCount);
+
+    for (uint32_t iter = 0; iter < args->warmup + args->loopCount; ++iter) {
         aclrtSynchronizeStream(stream);
-        switch (g_sqeMode) {
+        switch (args->sqeMode) {
             case 0:
                 sqe_write_bench_launch((uint32_t)BLOCK_NUM, stream,
                     (uint64_t)ctx->channelPtrTableDev, (uint64_t)ctx->stateGmDev,
@@ -286,12 +265,12 @@ int main(int argc, char *argv[])
                     (uint64_t)timingGm, &tilingHost);
                 break;
             default:
-                fprintf(stderr, "[ERROR] invalid sqe_mode %u\n", g_sqeMode);
+                fprintf(stderr, "[ERROR] invalid sqe_mode %u\n", args->sqeMode);
                 return -1;
         }
         aclrtSynchronizeStream(stream);
 
-        if (iter < g_warmup) continue;
+        if (iter < args->warmup) continue;
 
         int64_t timingHost[TIMING_SLOTS_SIZE] = {0};
         aclrtMemcpy(timingHost, sizeof(timingHost), timingGm, sizeof(timingHost), ACL_MEMCPY_DEVICE_TO_HOST);
@@ -303,11 +282,11 @@ int main(int argc, char *argv[])
 
         double totalNs   = (double)totalCycles * NS_PER_CYCLE;
         double totalUs   = totalNs / 1000.0;
-        double totalData = (double)g_numSqe * g_sqeBytes;
+        double totalData = (double)args->numSqe * args->sqeBytes;
         double bwGBs     = totalData / (totalNs);
 
-        printf("[%u] assemble=%.2fus issue=%.2fus wait=%.2fus total=%.2fus bw=%.2fGB/s\n",
-               iter,
+        printf("[rank %u (dev %u)][%u] assemble=%.2fus issue=%.2fus wait=%.2fus total=%.2fus bw=%.2fGB/s\n",
+               rank, physicalDev, iter,
                (double)assembleCycles * NS_PER_CYCLE / 1000.0,
                (double)issueCycles * NS_PER_CYCLE / 1000.0,
                (double)waitCycles * NS_PER_CYCLE / 1000.0,
@@ -315,10 +294,80 @@ int main(int argc, char *argv[])
     }
 
     aclrtFree(timingGm);
-    HcclCommDestroy(comms);
+    HcclCommDestroy(hcclComm);
     aclrtDestroyStream(stream);
-    aclrtDestroyContext(context);
-    aclrtResetDevice(g_rankId);
+    aclrtResetDevice(physicalDev);
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        auto find_val = [&](const std::string &name) -> std::string {
+            if (arg.find(name + "=") == 0) return arg.substr(name.size() + 1);
+            if (arg == name && i + 1 < argc) { return argv[++i]; }
+            return "";
+        };
+        std::string val;
+        if ((val = find_val("--num_sqe")).size()) g_args.numSqe = (uint32_t)std::stoul(val);
+        else if ((val = find_val("--sqe_bytes")).size()) g_args.sqeBytes = std::stoull(val);
+        else if ((val = find_val("--buf_bytes")).size()) g_args.bufBytes = std::stoull(val);
+        else if ((val = find_val("--db_interval")).size()) g_args.dbInterval = (uint32_t)std::stoul(val);
+        else if ((val = find_val("--loop_count")).size()) g_args.loopCount = (uint32_t)std::stoul(val);
+        else if ((val = find_val("--warmup")).size()) g_args.warmup = (uint32_t)std::stoul(val);
+        else if ((val = find_val("--sqe_mode")).size()) g_args.sqeMode = (uint32_t)std::stoul(val);
+        else if ((val = find_val("--dev_count")).size()) g_args.devCount = (uint32_t)std::stoul(val);
+        else if ((val = find_val("--peer")).size()) { g_args.peerOverride = (uint32_t)std::stoul(val); g_args.hasPeer = true; }
+        else if ((val = find_val("--dev_ids")).size()) {
+            g_args.devIds.clear();
+            std::stringstream ss(val);
+            std::string tok;
+            while (std::getline(ss, tok, ',')) {
+                g_args.devIds.push_back((uint32_t)std::stoul(tok));
+            }
+            g_args.devCount = (uint32_t)g_args.devIds.size();
+        }
+    }
+
+    if (g_args.devIds.empty()) {
+        for (uint32_t i = 0; i < g_args.devCount; i++) g_args.devIds.push_back(i);
+    }
+    g_args.devCount = (uint32_t)g_args.devIds.size();
+
+    fprintf(stderr, "[INFO] ===== URMA P2P Bench =====\n");
+    fprintf(stderr, "[INFO] dev_ids=");
+    for (auto d : g_args.devIds) fprintf(stderr, "%u ", d);
+    fprintf(stderr, "dev_count=%u num_sqe=%u sqe_bytes=%lu buf_bytes=%lu "
+            "db_interval=%u loop=%u warmup=%u sqe_mode=%u(%s)",
+            g_args.devCount, g_args.numSqe, g_args.sqeBytes, g_args.bufBytes,
+            g_args.dbInterval, g_args.loopCount, g_args.warmup, g_args.sqeMode,
+            g_args.sqeMode == 1 ? "WriteWithNotify(mc2)" :
+            g_args.sqeMode == 2 ? "Hcomm(WriteNbi+Drain)" : "Write(samples)");
+    if (g_args.hasPeer) fprintf(stderr, " peer=rank %u", g_args.peerOverride);
+    fprintf(stderr, "\n");
+
+    aclInit(nullptr);
+
+    void *rootInfoBuf = nullptr;
+    aclrtMallocHost(&rootInfoBuf, sizeof(HcclRootInfo));
+    HcclRootInfo *rootInfo = (HcclRootInfo *)rootInfoBuf;
+    HcclGetRootInfo(rootInfo);
+
+    std::vector<std::thread> threads(g_args.devCount);
+    std::vector<ThreadContext> args(g_args.devCount);
+    for (uint32_t i = 0; i < g_args.devCount; i++) {
+        args[i].rootInfo = rootInfo;
+        args[i].device = i;
+        args[i].devCount = g_args.devCount;
+        args[i].args = &g_args;
+        threads[i] = std::thread(Sample, (void *)&args[i]);
+    }
+    for (uint32_t i = 0; i < g_args.devCount; i++) {
+        threads[i].join();
+    }
+
+    aclrtFreeHost(rootInfoBuf);
     aclFinalize();
     return 0;
 }
