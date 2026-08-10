@@ -1404,6 +1404,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQTnd(Local
 {
     LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
     uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
+    float boundary = static_cast<float>(boundaryHalf);
     uint64_t processed = 0;
 
     while (processed < curTileLen && curTileK > 0) {
@@ -1415,39 +1416,20 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQTnd(Local
         uint64_t outputOffset = outputHeadOffset + static_cast<uint64_t>(row) * constInfo.yBlocks + col;
         GlobalTensor<uint8_t> maskOutSegmentGm;
         maskOutSegmentGm.SetGlobalBuffer((__gm__ uint8_t *)(maskOutGmU8Local.GetPhyAddr() + outputOffset));
-        uint64_t alignLen = BSAAlignTo(static_cast<uint64_t>(segmentLen), COMPARES_ALIGN_LEN);
         DataCopyPad(maskLocal, maskOutSegmentGm[0],
                     DataCopyExtParams(1, static_cast<uint32_t>(segmentLen * sizeof(uint8_t)), 0, 0, 0),
-                    DataCopyPadExtParams<uint8_t>(false, 0, static_cast<uint8_t>(alignLen - segmentLen), 0));
-        MTE2ToVSync();
+                    DataCopyPadExtParams<uint8_t>(false, 0, 0, 0));
+        MTE2ToSSync();
 
-        LocalTensor<half> xSegment = outValueBuf_.Get<half>();
-        StageTndSegment(xSegment, xLocal, boundaryHalf, processed, segmentLen, alignLen);
-
-        LocalTensor<uint8_t> cmpMask = tempBuf_.Get<uint8_t>();
-        Compares<half, uint8_t>(cmpMask, xSegment, boundaryHalf, AscendC::CMPMODE::EQ, alignLen);
-        PipeBarrier<PIPE_V>();
-
-        LocalTensor<int32_t> vecIndex = outIndexBuf_.Get<int32_t>();
-        CreateVecIndex<int32_t>(vecIndex, static_cast<int32_t>(0), segmentLen);
-        PipeBarrier<PIPE_V>();
-
-        uint64_t eqRsvdCnt = 0;
-        GatherMask(vecIndex, vecIndex, cmpMask.template ReinterpretCast<uint32_t>(), true, segmentLen, {1, 1, 0, 0},
-                   eqRsvdCnt);
-        PipeBarrier<PIPE_V>();
-
-        uint32_t writeCnt = BSAMin(static_cast<uint32_t>(curTileK), static_cast<uint32_t>(eqRsvdCnt));
-        if (writeCnt > 0) {
-            LocalTensor<uint8_t> writeValueLocal = outValueBuf_.Get<uint8_t>();
-            uint64_t writeCntAlign = BSAAlignTo(static_cast<uint64_t>(writeCnt), static_cast<uint64_t>(VEC_ALIGN_SIZE));
-            Duplicate<uint8_t>(writeValueLocal, writeValue, writeCntAlign);
-            PipeBarrier<PIPE_V>();
-            Scatter<uint8_t>(maskLocal, writeValueLocal, vecIndex.template ReinterpretCast<uint32_t>(), 0, writeCnt);
-            PipeBarrier<PIPE_V>();
+        uint32_t writeCnt = 0;
+        for (uint32_t idx = 0; idx < segmentLen && writeCnt < static_cast<uint32_t>(curTileK); ++idx) {
+            if (static_cast<float>(xLocal.GetValue(processed + idx)) == boundary) {
+                maskLocal.SetValue(idx, writeValue);
+                ++writeCnt;
+            }
         }
 
-        VToMTE3Sync();
+        SToMTE3Sync();
         DataCopyPad(maskOutSegmentGm[0], maskLocal,
                     DataCopyExtParams(1, static_cast<uint32_t>(segmentLen * sizeof(uint8_t)), 0, 0, 0));
         MTE3ToMTE2Sync();
