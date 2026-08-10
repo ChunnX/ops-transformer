@@ -607,13 +607,13 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimMatching(size_t
     size_t weightKDim = 0;
     const size_t weightKPosFromEnd = IsS8S4SpecialWeightFormat() ? 1 : 2;
     if (unlikely(GetDimFromEnd((*gmmParams_.weight)[wIdx], weightKPosFromEnd, weightKDim,
-                              "weight[" + std::to_string(wIdx) + "]") != ACLNN_SUCCESS)) {
+                             "weight[" + std::to_string(wIdx) + "]") != ACLNN_SUCCESS)) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     size_t weightNDim = 0;
     const size_t weightNPosFromEnd = IsS8S4SpecialWeightFormat() ? 2 : 1;
     if (unlikely(GetDimFromEnd((*gmmParams_.weight)[wIdx], weightNPosFromEnd, weightNDim,
-                              "weight[" + std::to_string(wIdx) + "]") != ACLNN_SUCCESS)) {
+                             "weight[" + std::to_string(wIdx) + "]") != ACLNN_SUCCESS)) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (unlikely(xKDim != weightKDim)) {

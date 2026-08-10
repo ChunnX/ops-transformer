@@ -2737,10 +2737,10 @@ static aclnnStatus SetTransposedTensorListContiguous(gmm::GroupedMatmulParams &p
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
             ((IsQuant(params.xDtype, weightDtype) &&
               (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
-             (params.apiVersion == gmm::GMMApiVersion::WeightNz &&
-              IsWeightQuant(params.xDtype, weightDtype)) ||
-             (IsS8S4PseudoQuantDataFlow(params) &&
-              (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ))) {
+            (params.apiVersion == gmm::GMMApiVersion::WeightNz &&
+             IsWeightQuant(params.xDtype, weightDtype)) ||
+            (IsS8S4PseudoQuantDataFlow(params) &&
+             (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ))) {
             for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
                 (*params.weight)[idx]->SetStorageShape(nZShapes[idx]);
             }
@@ -2760,8 +2760,8 @@ static aclnnStatus ParamsDataContiguous(gmm::GroupedMatmulParams &params, aclOpE
     if (!(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
           ((IsQuant(xDtype, weightDtype) &&
             (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
-           (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype)) ||
-           (IsS8S4PseudoQuantDataFlow(params) &&
+          (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype)) ||
+          (IsS8S4PseudoQuantDataFlow(params) &&
             (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ)))) {
         CHECK_COND(DataContiguous(params.weight, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "Contiguous weight failed."); // make w contiguous
@@ -2915,8 +2915,8 @@ static aclnnStatus SetStorageShape(gmm::GroupedMatmulParams &params, const std::
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
         ((IsQuant(xDtype, weightDtype) &&
           (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
-         (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype)) ||
-         (IsS8S4PseudoQuantDataFlow(params) &&
+        (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype)) ||
+        (IsS8S4PseudoQuantDataFlow(params) &&
           (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ))) {
         CHECK_COND(wqbmmNzShapes.size() == (*params.weight).Size(), ACLNN_ERR_PARAM_INVALID,
                    "wqbmmNzShapes size[%zu] must be equal to weight size[%lu].", wqbmmNzShapes.size(),

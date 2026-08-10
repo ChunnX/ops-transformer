@@ -345,7 +345,8 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightNzSpecialParams() co
     std::string xWeightDtypes = std::string("x=") + op::ToString(gmmParams_.xDtype).GetString() +
         ", weight=" + op::ToString(wDtype).GetString();
     GMM_CHECK_REPORT(
-        (gmmParams_.xDtype == DataType::DT_INT8 && wDtype == DataType::DT_INT8) || isInputFp8e4m3 || isInputFp4 || isInputInt4,
+        (gmmParams_.xDtype == DataType::DT_INT8 && wDtype == DataType::DT_INT8) || isInputFp8e4m3 ||
+            isInputFp4 || isInputInt4,
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(GetAclnnOpName(), "x and weight", xWeightDtypes.c_str(),
             "when the format of weight is FRACTAL_NZ, the dtypes of x and weight must be within the range "
             "INT8, FLOAT8_E4M3FN, FLOAT4_E2M1, FLOAT4_E1M2, INT4"));

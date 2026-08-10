@@ -308,7 +308,8 @@ be in {UINT64, INT64, FLOAT, BF16}, actual is %s.",
     return true;
 }
 
-bool GroupedQmmTiling::CheckPertokenScaleDtypeForWeightNz(bool isA8W8Int, bool isA8W8Fp, bool isA4W4Fp, bool isA4W4Int) const
+bool GroupedQmmTiling::CheckPertokenScaleDtypeForWeightNz(
+    bool isA8W8Int, bool isA8W8Fp, bool isA4W4Fp, bool isA4W4Int) const
 {
     if (isA8W8Int) {
         OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT ||

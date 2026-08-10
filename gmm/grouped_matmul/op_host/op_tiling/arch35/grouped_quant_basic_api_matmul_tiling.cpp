@@ -287,7 +287,8 @@ constexpr float EFFECTIVE_TASK_RATIO = 0.95f;
 
 inline uint64_t CeilDiv(uint64_t a, uint64_t b) { return (a + b - 1UL) / b; }
 inline uint64_t CeilAlign(uint64_t a, uint64_t b) { return CeilDiv(a, b) * b; }
-inline uint64_t GetSizeWithDataType(uint64_t shapeSize, ge::DataType dtype) {
+inline uint64_t GetSizeWithDataType(uint64_t shapeSize, ge::DataType dtype)
+{
     return shapeSize * static_cast<uint64_t>(ge::GetSizeByDataType(dtype));
 }
 // AlignUp in grouped_matmul_tiling.cpp is `static inline` (internal linkage), invisible here; mirror it locally.
@@ -377,7 +378,8 @@ ge::graphStatus GroupedS4S4IntQuantTiling::GetShapeAttrsInfo()
     inputParams_.transB = (transposeWeightPtr != nullptr) && *transposeWeightPtr;
     inputParams_.transA = (transposeXPtr != nullptr) && *transposeXPtr;
     inputParams_.groupType = (groupTypePtr != nullptr) ? static_cast<int8_t>(*groupTypePtr) : inputParams_.groupType;
-    inputParams_.groupListType = (groupListTypePtr != nullptr) ? static_cast<uint8_t>(*groupListTypePtr) : inputParams_.groupListType;
+    inputParams_.groupListType = (groupListTypePtr != nullptr)
+        ? static_cast<uint8_t>(*groupListTypePtr) : inputParams_.groupListType;
     int64_t actTypeVal = (actTypePtr != nullptr) ? *actTypePtr : 0L;
     OP_CHECK_IF(actTypeVal != 0L,
                 OP_LOGE(context_->GetNodeName(), "S4S4: actType must be 0, got %ld.", actTypeVal),
@@ -396,17 +398,20 @@ ge::graphStatus GroupedS4S4IntQuantTiling::GetShapeAttrsInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShapePtr);
     OP_CHECK_NULL_WITH_CONTEXT(context_, wShapePtr);
     const auto &weightStorageShape = wShapePtr->GetStorageShape();
- 	weightNzC032_ = inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ &&
- 	                weightStorageShape.GetDimNum() > 0U &&
- 	                weightStorageShape.GetDim(weightStorageShape.GetDimNum() - 1U) == 32;
+    weightNzC032_ = inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ &&
+                    weightStorageShape.GetDimNum() > 0U &&
+                    weightStorageShape.GetDim(weightStorageShape.GetDimNum() - 1U) == 32;
     OP_CHECK_IF(!SetMKN(xShapePtr->GetOriginShape(), wShapePtr->GetOriginShape()),
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 SetMKN failed."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 SetGroupNum failed."),
+    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX),
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 SetGroupNum failed."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!AnalyzeS4S4(), OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 AnalyzeS4S4 failed."),
+    OP_CHECK_IF(!AnalyzeS4S4(),
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 AnalyzeS4S4 failed."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!CheckS4S4Params(), OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 CheckS4S4Params failed."),
+    OP_CHECK_IF(!CheckS4S4Params(),
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 CheckS4S4Params failed."),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -640,19 +645,25 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalL1Depth(uint64_t leftL1Size)
     constexpr uint64_t scaleElemBytes = sizeof(uint64_t);
     auto AlignUpL = [](uint64_t v, uint64_t a) -> uint64_t { return (v + a - 1UL) / a * a; };
     auto GetAL1Bytes = [&](uint64_t kAL1) -> uint64_t {
-        return AlignUpL(s4s4Tiling_.baseM, CUBE_BLOCK) * AlignUpL(kAL1, INT8_C0) * elemBytes; };
+        return AlignUpL(s4s4Tiling_.baseM, CUBE_BLOCK) * AlignUpL(kAL1, INT8_C0) * elemBytes;
+    };
     auto GetBL1Bytes = [&](uint64_t kBL1) -> uint64_t {
-        return AlignUpL(kBL1, INT8_C0) * AlignUpL(s4s4Tiling_.baseN, CUBE_BLOCK) * elemBytes; };
+        return AlignUpL(kBL1, INT8_C0) * AlignUpL(s4s4Tiling_.baseN, CUBE_BLOCK) * elemBytes;
+    };
     auto GetScaleL1Bytes = [&]() -> uint64_t {
-        return AlignUpL(s4s4Tiling_.baseN * scaleElemBytes, DATA_BLOCK_BYTES); };
+        return AlignUpL(s4s4Tiling_.baseN * scaleElemBytes, DATA_BLOCK_BYTES);
+    };
     auto GetL1StageBytes = [&](uint64_t kAL1, uint64_t kBL1) -> uint64_t {
         return AlignUpL(GetAL1Bytes(kAL1), DATA_BLOCK_BYTES) +
-               AlignUpL(GetBL1Bytes(kBL1), DATA_BLOCK_BYTES) + GetScaleL1Bytes(); };
+               AlignUpL(GetBL1Bytes(kBL1), DATA_BLOCK_BYTES) + GetScaleL1Bytes();
+    };
 
     const uint64_t halfL1 = leftL1Size / L1_BUFFER_NUM;
     const uint64_t baseAPhys = GetAL1Bytes(s4s4Tiling_.baseK);
     const uint64_t baseBPhys = GetBL1Bytes(s4s4Tiling_.baseK);
-    auto floorEven = [](uint64_t v) -> uint64_t { return v / static_cast<uint64_t>(DB_SIZE) * static_cast<uint64_t>(DB_SIZE); };
+    auto floorEven = [](uint64_t v) -> uint64_t {
+        return v / static_cast<uint64_t>(DB_SIZE) * static_cast<uint64_t>(DB_SIZE);
+    };
     uint64_t depthA1 = floorEven(halfL1 / baseAPhys);
     uint64_t depthB1 = floorEven(halfL1 / baseBPhys);
     while (depthA1 >= DB_SIZE && depthB1 >= DB_SIZE) {
@@ -747,7 +758,7 @@ ge::graphStatus GroupedS4S4IntQuantTiling::PostTiling()
     p.groupListType = s4s4Tiling_.groupListType;
     p.reserved = ((inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) ? S4S4_WEIGHT_NZ_FLAG : 0ULL) |
                  (inputParams_.transB ? S4S4_TRANSPOSE_WEIGHT_FLAG : 0ULL) |
- 	             (weightNzC032_ ? S4S4_WEIGHT_NZ_C0_32_FLAG : 0ULL);
+                  (weightNzC032_ ? S4S4_WEIGHT_NZ_C0_32_FLAG : 0ULL);
     errno_t retM = memcpy_s(tilingData_.gmmArray.mList, sizeof(tilingData_.gmmArray.mList), mList_, sizeof(mList_));
     OP_CHECK_IF(retM != EOK, OP_LOGE(context_->GetNodeName(), "memcpy_s mList failed, ret=%d", retM),
                 return ge::GRAPH_FAILED);
