@@ -1,0 +1,111 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+"""Process-local lifecycle for the CatCCOS UDMA communication domain."""
+
+import os
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Iterator, Optional
+
+import torch
+
+
+@dataclass(frozen=True)
+class UdmaConfig:
+    rank: int
+    world_size: int
+    init_method: str
+    heap_size: int
+    device: str
+
+
+_config: Optional[UdmaConfig] = None
+_anchor: Optional[torch.Tensor] = None
+
+
+def _env_int(name: str, default: Optional[int] = None) -> int:
+    value = os.environ.get(name)
+    if value is None:
+        if default is None:
+            raise RuntimeError(f"{name} is required")
+        return default
+    return int(value)
+
+
+def init_udma_group(
+    *,
+    rank: Optional[int] = None,
+    world_size: Optional[int] = None,
+    local_rank: Optional[int] = None,
+    init_method: Optional[str] = None,
+    heap_size: int = 1 << 30,
+) -> UdmaConfig:
+    """Initialize one UDMA PE; call once in each ``torchrun`` worker."""
+    global _anchor, _config
+
+    rank = _env_int("RANK", 0) if rank is None else rank
+    world_size = _env_int("WORLD_SIZE", 1) if world_size is None else world_size
+    local_rank = _env_int("LOCAL_RANK", rank) if local_rank is None else local_rank
+    if init_method is None:
+        host = os.environ.get("MASTER_ADDR", "127.0.0.1")
+        default_port = str(int(os.environ.get("MASTER_PORT", "29500")) + 1)
+        port = os.environ.get("UDMA_MASTER_PORT", default_port)
+        init_method = f"{host}:{port}"
+    requested = UdmaConfig(rank, world_size, init_method, heap_size, f"npu:{local_rank}")
+
+    if _config is not None:
+        if requested != _config:
+            raise RuntimeError(f"UDMA is already initialized as {_config}, requested {requested}")
+        return _config
+
+    import torch_npu
+
+    torch_npu.npu.set_device(local_rank)
+    anchor = torch.empty(0, dtype=torch.uint8, device=requested.device)
+    torch.ops.ops_transformer_catccos_udma._configure_udma(
+        anchor, rank, world_size, init_method, heap_size
+    )
+    _anchor = anchor
+    _config = requested
+    return requested
+
+
+def destroy_udma_group() -> None:
+    """Synchronize outstanding UDMA work and release the symmetric heap."""
+    global _anchor, _config
+    if _anchor is None:
+        return
+    torch.ops.ops_transformer_catccos_udma._finalize_udma(_anchor)
+    _anchor = None
+    _config = None
+
+
+def get_udma_config() -> UdmaConfig:
+    if _config is None:
+        raise RuntimeError("UDMA is not initialized; call init_udma_group() first")
+    return _config
+
+
+def empty_symmetric(shape, *, dtype=torch.bfloat16) -> torch.Tensor:
+    """Allocate a reusable NPU tensor directly from the registered SHMEM heap.
+
+    Delete every tensor returned here before calling :func:`destroy_udma_group`.
+    """
+    if _anchor is None:
+        raise RuntimeError("UDMA is not initialized; call init_udma_group() first")
+    return torch.ops.ops_transformer_catccos_udma._empty_symmetric(_anchor, list(shape), dtype)
+
+
+def to_symmetric(tensor: torch.Tensor) -> torch.Tensor:
+    """Copy a tensor once into reusable registered memory for the zero-staging launch path."""
+    result = empty_symmetric(tensor.shape, dtype=tensor.dtype)
+    result.copy_(tensor)
+    return result
+
+
+@contextmanager
+def udma_group(**kwargs) -> Iterator[UdmaConfig]:
+    config = init_udma_group(**kwargs)
+    try:
+        yield config
+    finally:
+        destroy_udma_group()
