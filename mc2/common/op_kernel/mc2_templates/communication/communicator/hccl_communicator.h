@@ -236,7 +236,7 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
     }
 
     if (notifyFlag_) {
-        AscendC::PRINTF("===AlltoAllMatmul MX Finalize===");
+        AscendC::PRINTF("===AlltoAllMatmul MX Finalize:randID[%u]===", hccl_.GetRankId());
         hccl_.Finalize();
     }
 }
