@@ -134,9 +134,9 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t& gammaExist)
 
     auto shapePhi = context_->GetInputShape(1);
     hcMix_ = shapePhi->GetStorageShape().GetDim(0);
-    OP_CHECK_IF(hcMix_ != nn_fac && hcMix_ != nn_pow,
+    OP_CHECK_IF(hcMix_ != nn_fac && hcMix_ != nn_pow && hcMix_ != 2 * hcMult_,
                     OP_LOGE(context_->GetNodeName(),
-                             "Phi dim 0 should be equal with %ld or %ld, but is %ld", nn_fac, nn_pow, shapePhi->GetStorageShape().GetDim(1)),
+                             "Phi dim 0 should be equal with %ld or %ld or %ld, but is %ld", nn_fac, nn_pow, 2 * hcMult_, shapePhi->GetStorageShape().GetDim(0)),
                     return ge::GRAPH_FAILED);
     OP_CHECK_IF(shapePhi->GetStorageShape().GetDim(1) != d_ * hcMult_,
                     OP_LOGE(context_->GetNodeName(),
@@ -147,16 +147,18 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t& gammaExist)
     }
     auto shapeAlpha = context_->GetInputShape(2);
     int64_t scaleFirstDim = shapeAlpha->GetStorageShape().GetDim(0);
-    OP_CHECK_IF(scaleFirstDim != 3,
+    OP_CHECK_IF(scaleFirstDim != 2 && scaleFirstDim != 3,
                     OP_LOGE(context_->GetNodeName(),
-                             "alpha size should be equal with 3, but is %ld", scaleFirstDim),
+                             "alpha size should be 2 or 3, but is %ld", scaleFirstDim),
                     return ge::GRAPH_FAILED);
+    bool hasResi = (scaleFirstDim == 3);
 
     auto shapeBias = context_->GetInputShape(3);
     int64_t baseFirstDim = shapeBias->GetStorageShape().GetDim(0);
-    OP_CHECK_IF(baseFirstDim != hcMix_,
+    int64_t expectedBias = hasResi ? hcMix_ : 2 * hcMult_;
+    OP_CHECK_IF(baseFirstDim != expectedBias,
                     OP_LOGE(context_->GetNodeName(),
-                             "bias size should be equal with mixhc, but is %ld", baseFirstDim),
+                             "bias size should be equal with %ld, but is %ld", expectedBias, baseFirstDim),
                     return ge::GRAPH_FAILED);
     auto shapeGamma = context_->GetOptionalInputShape(4);
     gammaExist = CheckOptionalParamsExisting(shapeGamma);
@@ -386,6 +388,7 @@ ge::graphStatus MhcPreMembaseTiling::DoOpTiling()
         return ge::GRAPH_FAILED;
     }
     tilingData_.set_hasGamma(gammaExist);
+    tilingData_.set_hasResi(hasResi ? 1 : 0);
     // 预留参数计算（切K）与stage2计算
     if (CalcOpTiling() == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
@@ -477,6 +480,9 @@ ge::graphStatus MhcPreMembaseTiling::CalcStage1Tiling()
 
     int64_t mm1M = bsFactor * 2;
     int64_t mm1N = isFac ? nn_fac : nn_pow;
+    if (!hasResi) {
+        mm1N = 2 * hcMult_;
+    }
     int64_t mm1K = hcMult_ * d_;
 
     auto platformInfo = context_->GetPlatformInfo();
@@ -511,6 +517,9 @@ ge::graphStatus MhcPreMembaseTiling::CalcStage1Tiling()
         int64_t invRmsWsSize = bs_ * sizeof(float);
         // hcBeforeNorm: bs * hcMix * sizeof(float)
         int64_t hcMix = isFac ? nn_fac : nn_pow;
+        if (!hasResi) {
+            hcMix = 2 * hcMult_;
+        }
         int64_t hcBeforeNormWsSize = bs_ * hcMix * sizeof(float);
         
         workspaceSize_ += invRmsWsSize + hcBeforeNormWsSize;
@@ -530,11 +539,15 @@ ge::graphStatus MhcPreMembaseTiling::GetWorkspaceSize()
 
 ge::graphStatus MhcPreMembaseTiling::PostTiling()
 {
-    if (isFac) {
-        context_->SetTilingKey(10);
-    } else {
-        context_->SetTilingKey(0);
+    int64_t tilingKey = 0;
+    if (isFac && hasResi) {
+        tilingKey = 10;
+    } else if (isFac && !hasResi) {
+        tilingKey = 11;
+    } else if (!isFac && !hasResi) {
+        tilingKey = 1;
     }
+    context_->SetTilingKey(tilingKey);
     context_->SetBlockDim(aicCoreNum_);
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize_;

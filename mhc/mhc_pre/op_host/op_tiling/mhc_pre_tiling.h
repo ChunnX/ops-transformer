@@ -71,6 +71,7 @@ TILING_DATA_FIELD_DEF(int64_t, cubeCoreNum);                 // Cube核心数
 
 TILING_DATA_FIELD_DEF(int64_t, needGrad);                    // 是否需要梯度
 TILING_DATA_FIELD_DEF(int64_t, hasGamma);                   // 是否有gamma输入
+TILING_DATA_FIELD_DEF(int64_t, hasResi);                     // 是否有res(alpha=[3])
 
 // 预留参数，切K优化情况 尾批次专用参数 (tailBs != BS_SPLIT_THRESHOLD 时使用)
 TILING_DATA_FIELD_DEF(int64_t, tailBsRowOfFormerBlock);         // 尾批次前核处理BS总数
@@ -94,7 +95,9 @@ TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mm1TilingData)
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPre_0, MhcPreMembaseTilingData)
+REGISTER_TILING_DATA_CLASS(MhcPre_1, MhcPreMembaseTilingData)
 REGISTER_TILING_DATA_CLASS(MhcPre_10, MhcPreMembaseTilingData)
+REGISTER_TILING_DATA_CLASS(MhcPre_11, MhcPreMembaseTilingData)
 
 struct MhcPreMembaseCompileInfo {
     uint64_t coreNum = 0;

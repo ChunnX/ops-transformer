@@ -22,7 +22,7 @@
 
 namespace MhcPre {
 using namespace AscendC;
-template <typename T, bool isFac>
+template <typename T, bool isFac, bool hasResi>
 class MhcPreStage1 {
 public:
     __aicore__ inline MhcPreStage1() {}
@@ -263,7 +263,7 @@ public:
     TQue<QuePosition::VECIN, 1> gammaQue;     // gamma UB buffer (per nc segment)
 
     // Cube Compute
-    HcCubeCompute<float, isFac> cubeCompute_;
+    HcCubeCompute<float, isFac, hasResi> cubeCompute_;
     
     // 标志
     bool needGrad_ = true;
@@ -285,7 +285,7 @@ public:
     static constexpr uint64_t CV_RATIO = 2;
 };
 
-template <typename T, bool isFac>
+template <typename T, bool isFac, bool hasResi>
 class MhcPreStage2 {
 public:
     __aicore__ inline MhcPreStage2()
@@ -304,6 +304,9 @@ public:
         resSize = hcMult * hcMultAlign;
         if constexpr (isFac) {
             resSize = Factorial(hcMult);
+        }
+        if constexpr (!hasResi) {
+            resSize = 0;
         }
         xGm.SetGlobalBuffer((__gm__ T *)x);
         hcScaleGm.SetGlobalBuffer((__gm__ float *)hcScale);
@@ -409,10 +412,12 @@ public:
                 sizeof(float);
             CopyIn(hcBaseGm, hcBase0Local, 1, hcMult);
             CopyIn(hcBaseGm[hcMult], hcBase1Local, 1, hcMult);
-            if constexpr (isFac) {
-                CopyIn(hcBaseGm[hcMult * NUM_TWO], hcBase2Local, 1, resSize);
-            } else {
-                CopyIn(hcBaseGm[hcMult * NUM_TWO], hcBase2Local, hcMult, hcMult);
+            if constexpr (hasResi) {
+                if constexpr (isFac) {
+                    CopyIn(hcBaseGm[hcMult * NUM_TWO], hcBase2Local, 1, resSize);
+                } else {
+                    CopyIn(hcBaseGm[hcMult * NUM_TWO], hcBase2Local, hcMult, hcMult);
+                }
             }
             event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
             SetFlag<HardEvent::MTE2_V>(eventId);
@@ -497,46 +502,50 @@ public:
                 postQue.FreeTensor(postLocal);
 
                 // hRes
-                mixes2Local = mixesQue2.AllocTensor<float>();
-                mixBaseOffset = stage2BlockIdx * curRowOfFormerBlock * hcMix + rowOuterIdx * curStage2RowFactor * hcMix;
-                for (int64_t j = 0; j < curRowFactor; ++j) {
-                    if constexpr (isFac) {
-                        CopyIn(hcBeforeNormGm[mixBaseOffset + j * hcMix + hcMult * NUM_TWO], mixes2Local[j * resSize],
-                               1, resSize);
-                    } else {
-                        CopyIn(hcBeforeNormGm[mixBaseOffset + j * hcMix + hcMult * NUM_TWO],
-                               mixes2Local[j * hcMult * hcMultAlign], hcMult, hcMult);
+            if constexpr (hasResi) {
+                    mixes2Local = mixesQue2.AllocTensor<float>();
+                    mixBaseOffset = stage2BlockIdx * curRowOfFormerBlock * hcMix + rowOuterIdx * curStage2RowFactor * hcMix;
+                    for (int64_t j = 0; j < curRowFactor; ++j) {
+                        if constexpr (isFac) {
+                            CopyIn(hcBeforeNormGm[mixBaseOffset + j * hcMix + hcMult * NUM_TWO], mixes2Local[j * resSize],
+                                   1, resSize);
+                        } else {
+                            CopyIn(hcBeforeNormGm[mixBaseOffset + j * hcMix + hcMult * NUM_TWO],
+                                   mixes2Local[j * hcMult * hcMultAlign], hcMult, hcMult);
+                        }
                     }
-                }
-                mixesQue2.EnQue(mixes2Local);
-                mixes2Local = mixesQue2.DeQue<float>();
+                    mixesQue2.EnQue(mixes2Local);
+                    mixes2Local = mixesQue2.DeQue<float>();
 
-                combFragLocal = combFragQue.AllocTensor<float>();
-                MulABLastDimBrcInline<float, false>(mxies02ReduceLocal, mixes2Local, rsqrtLocal, rowBrcbLocal0,
-                                                    curRowFactor, resSize);
-                mixesQue2.FreeTensor(mixes2Local);
-                Muls(mxies02ReduceLocal, mxies02ReduceLocal, hcScaleGm.GetValue(NUM_TWO), curRowFactor * resSize);
-                PipeBarrier<PIPE_V>();
-                AddBAFirstDimBrcInline<float>(mxies02ReduceLocal, mxies02ReduceLocal, hcBase2Local, curRowFactor,
-                                              resSize);
-                Copy(combFragLocal, mxies02ReduceLocal, curRowFactor * resSize, 1, {1, 1, 0, 0});
-                PipeBarrier<PIPE_V>();
-                squareSumQue.template FreeTensor(squareSumOutLocal);
+                    combFragLocal = combFragQue.AllocTensor<float>();
+                    MulABLastDimBrcInline<float, false>(mxies02ReduceLocal, mixes2Local, rsqrtLocal, rowBrcbLocal0,
+                                                        curRowFactor, resSize);
+                    mixesQue2.FreeTensor(mixes2Local);
+                    Muls(mxies02ReduceLocal, mxies02ReduceLocal, hcScaleGm.GetValue(NUM_TWO), curRowFactor * resSize);
+                    PipeBarrier<PIPE_V>();
+                    AddBAFirstDimBrcInline<float>(mxies02ReduceLocal, mxies02ReduceLocal, hcBase2Local, curRowFactor,
+                                                  resSize);
+                    Copy(combFragLocal, mxies02ReduceLocal, curRowFactor * resSize, 1, {1, 1, 0, 0});
+                    PipeBarrier<PIPE_V>();
+                    squareSumQue.template FreeTensor(squareSumOutLocal);
 
-                combFragQue.EnQue(combFragLocal);
-                combFragLocal = combFragQue.DeQue<float>();
-                if constexpr (isFac) {
-                    CopyOut(combFragLocal,
-                            hResGm[stage2BlockIdx * curRowOfFormerBlock * resSize +
-                                   rowOuterIdx * curStage2RowFactor * resSize],
-                            curRowFactor, resSize);
+                    combFragQue.EnQue(combFragLocal);
+                    combFragLocal = combFragQue.DeQue<float>();
+                    if constexpr (isFac) {
+                        CopyOut(combFragLocal,
+                                hResGm[stage2BlockIdx * curRowOfFormerBlock * resSize +
+                                       rowOuterIdx * curStage2RowFactor * resSize],
+                                curRowFactor, resSize);
+                    } else {
+                        CopyOut(combFragLocal,
+                                hResGm[stage2BlockIdx * curRowOfFormerBlock * hcMult * hcMult +
+                                       rowOuterIdx * curStage2RowFactor * hcMult * hcMult],
+                                curRowFactor * hcMult, hcMult);
+                    }
+                    combFragQue.FreeTensor(combFragLocal);
                 } else {
-                    CopyOut(combFragLocal,
-                            hResGm[stage2BlockIdx * curRowOfFormerBlock * hcMult * hcMult +
-                                   rowOuterIdx * curStage2RowFactor * hcMult * hcMult],
-                            curRowFactor * hcMult, hcMult);
+                    squareSumQue.template FreeTensor(squareSumOutLocal);
                 }
-                combFragQue.FreeTensor(combFragLocal);
             }
         }
     }
