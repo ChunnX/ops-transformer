@@ -87,7 +87,7 @@ def _normalize_params(params):
         "sparse_kv_block_size",
         "seed",
         "block_num",
-        "maxblock_perbatch",
+        "max_block_per_batch",
         "pa_block_padding_bytes",
     ):
         if isinstance(normalized.get(key), float) and normalized[key].is_integer():
@@ -234,17 +234,17 @@ def _make_block_table(
     pattern,
     rng,
     blocknum=None,
-    maxblock_perbatch=None,
+    max_block_per_batch=None,
 ):
-    if not isinstance(maxblock_perbatch, int) or maxblock_perbatch <= 0:
+    if not isinstance(max_block_per_batch, int) or max_block_per_batch <= 0:
         raise ValueError(
-            "maxblock_perbatch should be a positive int, "
-            f"got {maxblock_perbatch}"
+            "max_block_per_batch should be a positive int, "
+            f"got {max_block_per_batch}"
         )
     if not isinstance(blocknum, int) or blocknum <= 0:
         raise ValueError(f"blocknum should be a positive int, got {blocknum}")
 
-    total_slots = batch * maxblock_perbatch
+    total_slots = batch * max_block_per_batch
     if pattern == "random":
         physical_ids = [rng.randrange(blocknum) for _ in range(total_slots)]
     elif pattern == "sequential":
@@ -257,7 +257,7 @@ def _make_block_table(
         raise ValueError(f"unsupported block_table_pattern: {pattern}")
 
     return torch.tensor(physical_ids, dtype=torch.int32).reshape(
-        batch, maxblock_perbatch
+        batch, max_block_per_batch
     )
 
 
@@ -924,7 +924,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         batch, s2, sparse_kv_block_size, case["block_table_pattern"], rng,
         blocknum=case.get("block_num"),
         q_block_num=math.ceil(case["S1"] / case["sparse_q_block_size"]),
-        maxblock_perbatch=case["maxblock_perbatch"],
+        max_block_per_batch=case["max_block_per_batch"],
     )
     case["data_generation_mode"] = "fia_style_fullquant"
     case["data_range_left"] = DATA_RANGE_LEFT

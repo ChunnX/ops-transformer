@@ -73,7 +73,7 @@ def check_valid_param(params):
         if not isinstance(block_num, int) or block_num <= 0:
             raise ValueError(f"block_num should be a positive int or None, got {block_num}")
 
-    _require_positive(params, "maxblock_perbatch")
+    _require_positive(params, "max_block_per_batch")
 
     for key in ("q_datarange", "k_datarange", "v_datarange"):
         value = params.get(key)
