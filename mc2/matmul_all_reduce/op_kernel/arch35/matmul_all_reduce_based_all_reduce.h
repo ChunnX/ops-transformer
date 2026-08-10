@@ -21,7 +21,11 @@ class MatmulAllReduceBase<XType, YType, CoreType, false, commMode> {
 public:
     __aicore__ inline MatmulAllReduceBase(MC2GmAddrs *addrs, QuantGmAddrs *quantAddrs, ArnGmAddrs *arnAddrs,
                                           MC2TilingHeader *tilingData, TPipe *tPipe)
-        : addrs_(addrs), quantAddrs_(quantAddrs), arnAddrs_(arnAddrs), tilingData_(tilingData), tPipe_(tPipe)
+        : addrs_(addrs),
+          quantAddrs_(quantAddrs),
+          arnAddrs_(arnAddrs),
+          tilingData_(tilingData),
+          tPipe_(tPipe)
     {
         if constexpr (CoreType == Mc2CoreType::ON_CUBE) {
             notifyFlag_ = (GetBlockIdx() == 0);
@@ -29,6 +33,7 @@ public:
             notifyFlag_ = (g_coreType == AscendC::AIV && GetBlockIdx() == 0);
         }
         paramInTiling_ = &tilingData->param;
+        vecBiasFlag_ = (paramInTiling_->isVecBias != 0U);
     }
 
     __aicore__ inline void Init()
@@ -104,11 +109,22 @@ protected:
     __aicore__ inline void PostProcEachTurn(AscendC::HcclHandle handleId, uint64_t aOffset, uint64_t cOffset,
                                             uint64_t index = 0)
     {
-        if (addFlag_ && addrs_->cGM != addrs_->addGM) {
+        if (vecBiasFlag_ || (addFlag_ && addrs_->cGM != addrs_->addGM)) {
             Mc2SyncAll<CoreType>();
-            MatmulAllReduceAddX3Kernel<YType>(addrs_->cGM, addrs_->addGM, cOffset / sizeof(YType),
-                                              paramInTiling_->addX3UbCnt, tPipe_);
-            addrs_->addGM += cOffset;
+            if (vecBiasFlag_ && addFlag_ && addrs_->cGM != addrs_->addGM) {
+                MatmulAllReduceAddBiasX3Kernel<YType>(addrs_->cGM, addrs_->biasGM, addrs_->addGM,
+                                                      cOffset / sizeof(YType), paramInTiling_->rankN,
+                                                      paramInTiling_->biasUbRows, tPipe_, true);
+                addrs_->addGM += cOffset;
+            } else if (vecBiasFlag_) {
+                MatmulAllReduceAddBiasX3Kernel<YType>(addrs_->cGM, addrs_->biasGM, addrs_->addGM,
+                                                      cOffset / sizeof(YType), paramInTiling_->rankN,
+                                                      paramInTiling_->biasUbRows, tPipe_, false);
+            } else {
+                MatmulAllReduceAddX3Kernel<YType>(addrs_->cGM, addrs_->addGM, cOffset / sizeof(YType),
+                                                  paramInTiling_->addX3UbCnt, tPipe_);
+                addrs_->addGM += cOffset;
+            }
         }
 
         addrs_->aGM += aOffset;
@@ -151,6 +167,7 @@ protected:
     typename HcclTypeSelector<commMode>::type hccl_;
     bool notifyFlag_;
     bool addFlag_;
+    bool vecBiasFlag_;
     bool tailFlag_;
     bool isOneTileFlag_;
 };

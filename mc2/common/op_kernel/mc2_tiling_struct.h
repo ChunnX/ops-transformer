@@ -36,8 +36,8 @@ struct MC2ServerCfg {        // server 通用参数
 }; // 16 bytes
 
 struct MC2HcommCfg {
-    uint8_t skipLocalRankCopy; // 跳过本卡拷贝，在通信结果只需要给MC2内部计算使用或者本卡拷贝由aicore完成时，
-                               // 可以跳过本卡数据send-recv搬运
+    uint8_t skipLocalRankCopy;    // 跳过本卡拷贝，在通信结果只需要给MC2内部计算使用或者本卡拷贝由aicore完成时，
+                                  // 可以跳过本卡数据send-recv搬运
     uint8_t skipBufferWindowCopy; // 跳过hbm到window间搬运 0 不跳过， 1 跳过snd-window， 2 跳过 window-rcv
     uint8_t stepSize;             // 通信步长，粗粒度融合时填0
                                   // 细粒度融合时连续计算stepsize块数据再commit或wait通信
@@ -52,20 +52,20 @@ struct MC2HcommCfg {
 
 struct Mc2Msg {               // 同aicpu_hccl_def KFCTilingData
     uint32_t preparePosition; // 任务准备位置：0表示在host完成所有通信任务的准备，1表示在kernel侧完成
-    uint64_t sendOff;      // 发送数据地址偏移，count * dataTypeSize
-    uint64_t recvOff;      // 接收数据地址偏移, count * dataTypeSize
-    uint64_t tailSendOff;  // 尾块发送数据地址偏移，count * dataTypeSize
-    uint64_t tailRecvOff;  // 尾块接收数据地址偏移, count * dataTypeSize
-    uint64_t sendCnt;      // 整块发送数据个数
-    uint64_t recvCnt;      // 整块接收数据个数
-    uint64_t tailSendCnt;  // 尾块发送数据个数
-    uint64_t tailRecvCnt;  // 尾块接收数据个数
-    uint64_t totalCnt;     // 总数据个数
-    uint32_t turnNum;      // 总轮次
-    uint32_t tailNum;      // 总轮次
-    uint32_t stride;       // 跳写间隔
-    uint32_t workspaceOff; // 使用workspace作为recvbuf时的workspace偏移
-    uint32_t notifyOff;    // device notify write/read value偏移
+    uint64_t sendOff;         // 发送数据地址偏移，count * dataTypeSize
+    uint64_t recvOff;         // 接收数据地址偏移, count * dataTypeSize
+    uint64_t tailSendOff;     // 尾块发送数据地址偏移，count * dataTypeSize
+    uint64_t tailRecvOff;     // 尾块接收数据地址偏移, count * dataTypeSize
+    uint64_t sendCnt;         // 整块发送数据个数
+    uint64_t recvCnt;         // 整块接收数据个数
+    uint64_t tailSendCnt;     // 尾块发送数据个数
+    uint64_t tailRecvCnt;     // 尾块接收数据个数
+    uint64_t totalCnt;        // 总数据个数
+    uint32_t turnNum;         // 总轮次
+    uint32_t tailNum;         // 总轮次
+    uint32_t stride;          // 跳写间隔
+    uint32_t workspaceOff;    // 使用workspace作为recvbuf时的workspace偏移
+    uint32_t notifyOff;       // device notify write/read value偏移
 
     uint16_t notifyBeginCnt; // notift write value的使用个数
     uint16_t notifyEndCnt;   // notift write value的使用个数
@@ -74,16 +74,16 @@ struct Mc2Msg {               // 同aicpu_hccl_def KFCTilingData
     uint8_t dataType;        // hccl 数据类型
     uint8_t groupNum;        // groupNum
 
-    uint8_t reuseMode;  // 不复用填turnNum，内存优化选择复用的内存块个数
-    uint8_t commType;   // 通信类型
-    uint8_t reduceOp;   // reduce op type
-    uint8_t commOrder;  // 通信顺序，0表示通信在前，1表示通信在后
-    uint8_t waitPolicy; // 等待任务启动的阻塞策略，2、首轮等待，1、每轮等待。
-                        // KFC根据此标记在主流任务前面加wait，AIC需要按策略发对应record才能触发执行
-    uint8_t rspPolicy; // 任务执行结束时的响应策略， 2、最后通知一次，
-                       // 1、每轮通知一次。KFC根据此标记在主流任务后面加record
-    uint8_t exitPolicy; // 退出策略，0，一次通信任务下发完成直接退出；1. 通信任务执行完成退出；2.
-                        // 等待AIC通知退出(可以多次执行任务)。
+    uint8_t reuseMode;       // 不复用填turnNum，内存优化选择复用的内存块个数
+    uint8_t commType;        // 通信类型
+    uint8_t reduceOp;        // reduce op type
+    uint8_t commOrder;       // 通信顺序，0表示通信在前，1表示通信在后
+    uint8_t waitPolicy;      // 等待任务启动的阻塞策略，2、首轮等待，1、每轮等待。
+                             // KFC根据此标记在主流任务前面加wait，AIC需要按策略发对应record才能触发执行
+    uint8_t rspPolicy;       // 任务执行结束时的响应策略， 2、最后通知一次，
+                             // 1、每轮通知一次。KFC根据此标记在主流任务后面加record
+    uint8_t exitPolicy;      // 退出策略，0，一次通信任务下发完成直接退出；1. 通信任务执行完成退出；2.
+                             // 等待AIC通知退出(可以多次执行任务)。
     uint8_t commAlg;         // 用于指定具体通信算法。
                              // 0：default, 1：fullmesh, 2：doublering, 3：switchwing
     uint8_t taskType;        // 从参数获取通信任务，直接下发。AIC自己发Record激活
@@ -131,6 +131,8 @@ struct RCSTiling {
     uint32_t dataType;
     uint32_t commInt8WorkSpace;
     uint32_t dynamicQuantTempBuffSize;
+    uint32_t isVecBias;
+    uint32_t biasUbRows;
 };
 
 struct TileL2Tiling {
