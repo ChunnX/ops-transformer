@@ -51,6 +51,9 @@ struct CopyL1ToL0AMxA5 {
         loadData2DParamsA.kStep = dAct / 64;                 // 源 k = D（64-块）[移植 :165]
         loadData2DParamsA.srcStride = s2Act / 16;            // [移植 :166]
         loadData2DParamsA.dstStride = (dAct + 15) / 16 + 1;  // L0A dst stride，+1 给 D+16 seed 行间隔 [移植 :167]
+        if (dAct <= 64 ){
+            loadData2DParamsA.dstStride = loadData2DParamsA.dstStride + 4;
+        }
         loadData2DParamsA.ifTranspose = true;                 // 转置：源 (S2,D) -> L0A (D,S2) [移植 :168]
 
         AscendC::LoadData2DMxParams load2DMxParamsA;
