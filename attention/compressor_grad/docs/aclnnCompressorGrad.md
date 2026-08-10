@@ -107,9 +107,9 @@ aclnnStatus aclnnCompressorGrad(
     | dCmpKv | 输入 | 公式中的$dC$，前向输出cmp\_kv的上游梯度。 | 不支持空Tensor。 | FLOAT16、BFLOAT16 | ND |BS合轴：[min(T,T//cmp_ratio+B),D]、BS非合轴：[B,ceil(S/cmp_ratio),D]|×|
     | softmaxScore | 输入 | 公式中的$S$，前向在gradEnabled为true时导出的分组softmax中间结果。 | 不支持空Tensor。 | FLOAT32 | ND |BS合轴：[min(T,T//cmp_ratio+B), coff*cmp_ratio, D]、BS非合轴：[B,ceil(S/cmp_ratio),coff*cmp_ratio,D]|×|
     | kv | 输入 | 公式中的$K$，前向在gradEnabled为true时导出的softmax结果与kv\_state的Hadamard乘积中间结果。 | 不支持空Tensor。 | FLOAT32 | ND |同softmaxScore|×|
-    | cuSeqlens | 可选输入 | 表示不同Batch中的有效token数。 | 当x的shape为[T,H]时必传，输入shape为[B+1,]；当x的shape为[B,S,H]时，参数必须为空。不支持空Tensor。| INT32          | ND         |当x的shape为[T,H]时，输入shape为[B+1,]|×|
-    | seqused | 可选输入 | 表示不同Batch中实际参与压缩的token数。 | 为None时，表示和每个Batch上的Sequence Length长度相同；要求seqused[n]不超过对应Sequence Length，且不小于0。| INT32          | ND         |[B,]|×|
-    | startPos | 可选输入 | 表示计算起始位置。 | 为None时，表示从0开始进行计算。| INT32          | ND         |[B,]|×|
+    | cuSeqlensOptional | 可选输入 | 表示不同Batch中的有效token数。 | 当x的shape为[T,H]时必传，输入shape为[B+1,]；当x的shape为[B,S,H]时，参数必须为空。不支持空Tensor。| INT32          | ND         |当x的shape为[T,H]时，输入shape为[B+1,]|×|
+    | sequsedOptional | 可选输入 | 表示不同Batch中实际参与压缩的token数。 | 为None时，表示和每个Batch上的Sequence Length长度相同；要求seqused[n]不超过对应Sequence Length，且不小于0。| INT32          | ND         |[B,]|×|
+    | startPosOptional | 可选输入 | 表示计算起始位置。 | 为None时，表示从0开始进行计算。| INT32          | ND         |[B,]|×|
     | cmpRatio | 输入 | 用于稀疏计算，表示数据压缩率，与前向一致。 |取值范围为[2, 128]内的整数。| INT32          | -         |-|-|
     | coff | 可选输入 | 表示是否进行overlap数据重排，与前向一致。 |取值范围为[1, 2]。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。| INT32          | -         |-|-|
     | dXOut | 输出 | 公式中的$dX$，输入x的梯度。 | 不支持空Tensor。| FLOAT16、BFLOAT16         | ND          |与x相同：BS合轴：[T,H]、BS非合轴：[B,S,H]|×|
@@ -214,13 +214,13 @@ aclnnStatus aclnnCompressorGrad(
     - dX支持输出shape：与x相同，BS合轴时为[T,H]、BS非合轴时为[B,S,H]
     - dWkv、dWgate支持输出shape[coff* D,H]
     - dApe支持输出shape[cmp_ratio,coff* D]
-    - startPos支持输入shape[B,]
+    - startPosOptional支持输入shape[B,]
     - 若x的维度采用BS合轴，即x的输入shape为[T,H]
-        - cuSeqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须为0。
-        - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。
+        - cuSeqlensOptional输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须为0。
+        - sequsedOptional，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即sequsedOptional[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。
     - 若x的维度不采用BS合轴，即x的输入shape为[B,S,H]
-        - cuSeqlens，参数必须为空。
-        - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即要求seqused[n] <= S，且不小于0。
+        - cuSeqlensOptional，参数必须为空。
+        - sequsedOptional，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即要求sequsedOptional[n] <= S，且不小于0。
 - 输入值域限制：
   - 该接口支持B、S泛化，且存在如下场景限制：
       - **不支持B、S、T为0的空Tensor**：与正向Compressor不同，CompressorGrad所有输入/输出均不支持空Tensor，shapeSize必须大于0。
