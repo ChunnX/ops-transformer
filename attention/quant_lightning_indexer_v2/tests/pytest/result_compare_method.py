@@ -233,6 +233,8 @@ def judge_value_by_isclose(real_data, data_compe):
 
     if is_bfloat16:
         atol = 0.0001
+        rtol = 1.0 / 128
+        diff_thd = 1.0 / 128
         diff_result = np.isclose(
             real_data.astype(np.float32),
             data_compe.astype(np.float32),
@@ -847,16 +849,9 @@ def check_result_return_value(
 
     start_time = time()
 
-    for t_id in range(total_rows):
-        cur_cpu_output_value = cpu_reshape[t_id, :]
-        cur_npu_output_value = npu_reshape[t_id, :]
-        npu_pass_t, max_re_t = compare_return_value(
-            cur_npu_output_value, cur_cpu_output_value
-        )
-        if np.any(invalid_index_reshape[t_id]):
-            npu_pass_t = False
-        if not npu_pass_t:
-            npu_pass = False
+    npu_pass = judge_value_by_isclose(npu_reshape, cpu_reshape)
+    if np.any(invalid_index_reshape):
+        npu_pass = False
     end_time = time()
     print(f"耗时：{end_time - start_time:.6f} 秒")
     print(f"npu_pass is {npu_pass}")

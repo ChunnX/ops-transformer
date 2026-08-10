@@ -154,6 +154,8 @@ def judge_value_by_isclose(real_data, data_compe):
 
     if str(real_data.dtype) == 'bfloat16':
         atol = 0.0001
+        rtol = 1.0 / 128
+        diff_thd = 1.0 / 128
         diff_result = np.isclose(real_data.astype(np.float32), data_compe.astype(np.float32), rtol=rtol, atol=atol,
                                  equal_nan=True)
     else:
@@ -480,23 +482,7 @@ def check_result_return_value(expect, result, params):
     start_time = time()
     invalid_data = cpu_reshape != -1
     valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)
-    for t_id in range(total_rows):
-        bsn = np.unravel_index(t_id, sp)
-        if layout_query == "TND":
-            if seqused_q is not None:
-                b_idx, s1_idx = find_batch_and_position(seqused_q, bsn[0])
-            else:
-                b_idx, s1_idx = find_batch_and_position(cu_seqlens_q, bsn[0])
-            bsn = (b_idx, s1_idx, bsn[-1])
-        cur_cpu_output_value = cpu_reshape[t_id, :]
-        cur_npu_output_value = npu_reshape[t_id, :]
-        npu_pass_t = True
-        max_re_t = 0
-        valid_len = valid_lens[t_id]
-        npu_pass_t, max_re_t = compare_return_value(cur_npu_output_value,
-                                                    cur_cpu_output_value)
-        if not npu_pass_t:
-            npu_pass = False
+    npu_pass = judge_value_by_isclose(npu_reshape, cpu_reshape)
     end_time = time()
     print(f"耗时：{end_time - start_time:.6f} 秒")
     print(f"npu_pass is {npu_pass}")
