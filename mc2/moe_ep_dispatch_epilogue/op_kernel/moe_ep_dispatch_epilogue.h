@@ -16,17 +16,6 @@
 #ifndef MOE_EP_DISPATCH_EPILOGUE_H
 #define MOE_EP_DISPATCH_EPILOGUE_H
 
-#if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
-#include "version/asc_devkit_version.h"
-#include "version/hcomm_version.h"
-
-#if (ASC_DEVKIT_MAJOR > 9 || (ASC_DEVKIT_MAJOR == 9 && ASC_DEVKIT_MINOR > 0)) && \
-    (HCOMM_MAJOR > 9 || (HCOMM_MAJOR == 9 && HCOMM_MINOR > 0))
-#define ENABLE_MOE_EP_DISPATCH_EPILOGUE_KERNEL
-#endif
-
-#endif
-
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else
@@ -47,8 +36,6 @@
 #endif
 
 namespace MoeEpDispatchEpilogueImpl {
-
-#if defined(ENABLE_MOE_EP_DISPATCH_EPILOGUE_KERNEL)
 
 using namespace AscendC;
 
@@ -175,8 +162,6 @@ private:
     uint32_t totalNotifyCnt_{0};
     uint64_t winDataOffset_{0};
     uint64_t slotWinStateOffset_{0};
-    int32_t ppEvtSToMte3_[2] = {0, 0};
-    int32_t ppEvtMte3ToS_[2] = {0, 0};
 };
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
@@ -262,8 +247,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             Ceil((uint32_t)(SLOTS_TILE * paddedTopkElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubRecvCntBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
-        uint32_t ubStageMetaBytes = axisK_ * UB_ALIGN * 2;
-        uint32_t ubStageWeightsBytes = axisK_ * UB_ALIGN * 2;
+        uint32_t ubStageMetaBytes = axisK_ * UB_ALIGN;
+        uint32_t ubStageWeightsBytes = axisK_ * UB_ALIGN;
         uint32_t ubHitListBytes = Ceil((uint32_t)(axisK_ * HIT_ENTRY_SIZE * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubLocalCursorBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
 
@@ -289,10 +274,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         ubStageMeta_ = ubStageMetaBuf_.Get<int32_t>();
         ubHitList_ = ubHitListBuf_.Get<int64_t>();
         ubLocalCursor_ = ubLocalCursorBuf_.Get<int32_t>();
-        ppEvtSToMte3_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::S_MTE3));
-        ppEvtSToMte3_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::S_MTE3));
-        ppEvtMte3ToS_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_S));
-        ppEvtMte3ToS_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_S));
     }
 
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
@@ -365,7 +346,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     DataCopyParams clearStatusCopyParams = {static_cast<uint16_t>(totalNotifyCnt_), 1U, 0U,
                                             static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN)};
 
-    SyncFunc<AscendC::HardEvent::S_V>(); // 确保expertSum_计算完成
+    SyncFunc<AscendC::HardEvent::S_V>();    // 确保expertSum_计算完成
     while (sumOfFlag != commpareFlag) {
         DataCopy(ubWaitStatus_, statusGMTensor, statusCopyParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -507,8 +488,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
             for (uint32_t localSlot = 0; localSlot < tileCnt; ++localSlot) {
                 uint32_t metaBase = localSlot * paddedMetaElems_;
-                uint32_t slotBufId = localSlot & 1U;
-                uint32_t stageOff = slotBufId * axisK_ * ELEM_ALIGN;
                 uint32_t hitCnt = 0;
                 int32_t srcRankMeta = ubMeta_.GetValue(metaBase + META_TOPK_SECTION * axisKAlign_);
                 int32_t tokenIdxMeta = ubMeta_.GetValue(metaBase + META_TOPK_SECTION * axisKAlign_ + 1);
@@ -528,15 +507,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                     hitCnt++;
                 }
                 if (hitCnt == 0) {
-                    if (localSlot >= 2U) {
-                        WaitFlag<AscendC::HardEvent::MTE3_S>(ppEvtMte3ToS_[slotBufId]);
-                    }
-                    SetFlag<AscendC::HardEvent::MTE3_S>(ppEvtMte3ToS_[slotBufId]);
                     continue;
-                }
-
-                if (localSlot >= 2U) {
-                    WaitFlag<AscendC::HardEvent::MTE3_S>(ppEvtMte3ToS_[slotBufId]);
                 }
 
                 GlobalTensor<XType> srcTokenTensor;
@@ -572,35 +543,26 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
                     if constexpr (HasTopkWeights) {
                         float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
-                        ubStageWeights_.SetValue(stageOff + i * ELEM_ALIGN, weights);
+                        ubStageWeights_.SetValue(i * ELEM_ALIGN, weights);
                     }
-                    ubStageMeta_.SetValue(stageOff + i * ELEM_ALIGN + META_SRC_RANK_OFFSET, srcRankMeta);
-                    ubStageMeta_.SetValue(stageOff + i * ELEM_ALIGN + META_TOKEN_IDX_OFFSET, tokenIdxMeta);
-                    ubStageMeta_.SetValue(stageOff + i * ELEM_ALIGN + META_TOPK_IDX_OFFSET,
-                                          static_cast<int32_t>(topkIdx));
-                    ubStageMeta_.SetValue(stageOff + i * ELEM_ALIGN + META_SLOT_IDX_OFFSET,
+                    ubStageMeta_.SetValue(i * ELEM_ALIGN + META_SRC_RANK_OFFSET, srcRankMeta);
+                    ubStageMeta_.SetValue(i * ELEM_ALIGN + META_TOKEN_IDX_OFFSET, tokenIdxMeta);
+                    ubStageMeta_.SetValue(i * ELEM_ALIGN + META_TOPK_IDX_OFFSET, static_cast<int32_t>(topkIdx));
+                    ubStageMeta_.SetValue(i * ELEM_ALIGN + META_SLOT_IDX_OFFSET,
                                           static_cast<int32_t>(slotStart + tileStart + localSlot));
                 }
                 tokenQueue_.FreeTensor(tokenOut);
 
-                SetFlag<AscendC::HardEvent::S_MTE3>(ppEvtSToMte3_[slotBufId]);
-                WaitFlag<AscendC::HardEvent::S_MTE3>(ppEvtSToMte3_[slotBufId]);
+                SyncFunc<AscendC::HardEvent::S_MTE3>();
                 for (uint32_t i = 0; i < hitCnt; i++) {
                     int64_t globalRow = ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_ROW_OFFSET);
                     if constexpr (HasTopkWeights) {
-                        DataCopyPad(recvTopkWeightsGm_[globalRow], ubStageWeights_[stageOff + i * ELEM_ALIGN],
-                                    weightOutParams);
+                        DataCopyPad(recvTopkWeightsGm_[globalRow], ubStageWeights_[i * ELEM_ALIGN], weightOutParams);
                     }
-                    DataCopyPad(recvSrcMetadataGm_[globalRow * RECV_META_FIELDS],
-                                ubStageMeta_[stageOff + i * ELEM_ALIGN], metaOutParams);
+                    DataCopyPad(recvSrcMetadataGm_[globalRow * RECV_META_FIELDS], ubStageMeta_[i * ELEM_ALIGN],
+                                metaOutParams);
                 }
-                SetFlag<AscendC::HardEvent::MTE3_S>(ppEvtMte3ToS_[slotBufId]);
-            }
-            if (tileCnt >= 1U) {
-                WaitFlag<AscendC::HardEvent::MTE3_S>(ppEvtMte3ToS_[(tileCnt - 1U) & 1U]);
-            }
-            if (tileCnt >= 2U) {
-                WaitFlag<AscendC::HardEvent::MTE3_S>(ppEvtMte3ToS_[(tileCnt - 2U) & 1U]);
+                SyncFunc<AscendC::HardEvent::MTE3_S>();
             }
             SyncFunc<AscendC::HardEvent::S_MTE2>();
         }
@@ -709,8 +671,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         processed += tileCnt;
     }
 }
-#endif
-
 } // namespace MoeEpDispatchEpilogueImpl
 
 #endif // MOE_EP_DISPATCH_EPILOGUE_H

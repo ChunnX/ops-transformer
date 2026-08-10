@@ -20,7 +20,6 @@ framework for comparison; benchmark outputs are stored in _GOLDEN_CONTEXT for
 the custom compare to retrieve and perform three-party cross_check.
 """
 
-import gc
 import importlib.util
 import sys
 import torch
@@ -160,14 +159,16 @@ def _run_benchmark(
     """
     bench_mod = load_pytest_benchmark_module()
 
-    q = query
-    k = key
-    v = value
-    beta_b = beta
-    state = initial_state
+    q = query.clone()
+    k = key.clone()
+    v = value.clone()
+    beta_b = beta.clone()
+    state = initial_state.clone()
 
     if g is None:
         g = torch.zeros((v.shape[0], v.shape[1]), dtype=torch.float32, device=v.device)
+    else:
+        g = g.clone()
 
     if scale is None:
         scale = 1.0 / (query.shape[-1] ** 0.5)
@@ -204,9 +205,6 @@ def _compute_and_store(
         scale,
         g,
     )
-
-    gc.collect()
-
     o_b, state_b = _run_benchmark(
         query,
         key,

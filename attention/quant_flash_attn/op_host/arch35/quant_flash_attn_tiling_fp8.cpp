@@ -4,7 +4,7 @@
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -18,25 +18,25 @@
 #include <vector>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
+#include "../quant_flash_attn_tiling_utils.h"
 #include "../../op_kernel/arch35/quant_flash_attn_template_tiling_key.h"
 #include "../../../common/op_host/fia_tiling_templates_registry.h"
-#include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_constants.h"
+#include "../quant_flash_attn_tiling_constants.h"
 
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
 namespace quant_flash_attn {
-using namespace arch35FIA;
-constexpr uint64_t PRE_LOAD_NUM_QFA_ARCH35 = 3;
-// GQA FP8 fullquant 固定切分：SOUTER=64, SINNER=256（与 MXFP8 的 SINNER=512 不同）
+using namespace arch35QFA;
+// GQA FP8 fullquant 固定切分：SOUTER=64, SINNER=256
 constexpr uint32_t GQA_SINNER_256 = 256;
 
-void QuantFlashAttnFp8TilingImpl::InitTilingInfo(TilingInfo *tilingInfo)
+void QuantFlashAttnTilingFp8Impl::InitTilingInfo(TilingInfo *tilingInfo)
 {
     qfaInfo_ = static_cast<QfaTilingInfo *>(tilingInfo);
 }
 
-bool QuantFlashAttnFp8TilingImpl::IsCapable()
+bool QuantFlashAttnTilingFp8Impl::IsCapable()
 {
     if (qfaInfo_ == nullptr) {
         return false;
@@ -48,13 +48,14 @@ bool QuantFlashAttnFp8TilingImpl::IsCapable()
     return true;
 }
 
-void QuantFlashAttnFp8TilingImpl::CalcScheduleMode()
+void QuantFlashAttnTilingFp8Impl::CalcScheduleMode()
 {
     scheduleMode_ = ScheduleMode::BATCH_MODE;
-    OP_LOGI(qfaInfo_->opName, "QuantFlashAttn(GQA) schedule mode: %u.", static_cast<uint32_t>(scheduleMode_));
+    OP_LOGI(qfaInfo_->opName, "QuantFlashAttn(GQA FP8 Fullquant) schedule mode: %u.",
+            static_cast<uint32_t>(scheduleMode_));
 }
 
-ge::graphStatus QuantFlashAttnFp8TilingImpl::DoOpTiling()
+ge::graphStatus QuantFlashAttnTilingFp8Impl::DoOpTiling()
 {
     OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS, OP_LOGE(qfaInfo_->opName, "Set plat memory info fail."),
                 return ge::GRAPH_FAILED);
@@ -74,7 +75,7 @@ ge::graphStatus QuantFlashAttnFp8TilingImpl::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantFlashAttnFp8TilingImpl::SetPlatMemoryInfo()
+ge::graphStatus QuantFlashAttnTilingFp8Impl::SetPlatMemoryInfo()
 {
     auto platformInfoPtr = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(qfaInfo_->opName, "The platformInfoPtr is null!"),
@@ -99,7 +100,7 @@ ge::graphStatus QuantFlashAttnFp8TilingImpl::SetPlatMemoryInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void QuantFlashAttnFp8TilingImpl::InitImplParam()
+void QuantFlashAttnTilingFp8Impl::InitImplParam()
 {
     const gert::Tensor *actSeqLenQ = qfaInfo_->opParamInfo.cuSeqlensQ.tensor;
     const gert::Tensor *actSeqLenKV = qfaInfo_->opParamInfo.cuSeqlensKv.tensor;
@@ -115,11 +116,9 @@ void QuantFlashAttnFp8TilingImpl::InitImplParam()
     uint32_t seqUsedKvDims = (seqUsedKv != nullptr) ? seqUsedKv->GetShapeSize() : 0;
     seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr) || (seqUsedQ->GetData<int32_t>() == nullptr));
     seqUsedKvFlag_ = !((seqUsedKvDims == 0) || (seqUsedKv == nullptr) || (seqUsedKv->GetData<int32_t>() == nullptr));
-
-    // GQA 无 prefill/decode 区分，无 decodeS1GMerge
 }
 
-void QuantFlashAttnFp8TilingImpl::SplitPolicy()
+void QuantFlashAttnTilingFp8Impl::SplitPolicy()
 {
     sOuterFactor_ = SOUTER_64;
     sInnerFactor_ = GQA_SINNER_256;
@@ -127,40 +126,24 @@ void QuantFlashAttnFp8TilingImpl::SplitPolicy()
     flashDecodeFlag_ = false;
 }
 
-void QuantFlashAttnFp8TilingImpl::UpdateTilingKeyConfig()
+void QuantFlashAttnTilingFp8Impl::UpdateTilingKeyConfig()
 {
     // GQA FP8 fullquant 固定 Config: S1=128, S2=256, D=DV=128
     tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128;
 }
 
-void QuantFlashAttnFp8TilingImpl::UpdateTilingKeyLayout()
+void QuantFlashAttnTilingFp8Impl::UpdateTilingKeyLayout()
 {
-    if (qfaInfo_->qLayout == QfaLayout::BNSD) {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_BNSD_BNSD;
-    } else if (qfaInfo_->qLayout == QfaLayout::TND) {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_TND_TND;
-    } else if (qfaInfo_->qLayout == QfaLayout::NTD) {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_NTD_TND;
-    } else {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_BSH_BSH;
-    }
+    tilingKeyInfo_.inputLayout = InOutLayoutType_NTD_TND;
 }
 
-void QuantFlashAttnFp8TilingImpl::UpdateTilingKeyKvLayout()
+void QuantFlashAttnTilingFp8Impl::UpdateTilingKeyKvLayout()
 {
     // GQA 强制 PA 场景，layout_kv 仅支持 PA_BNBD
-    if (qfaInfo_->kvLayout == QfaLayout::PA_BNBD) {
-        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
-    } else if (qfaInfo_->kvLayout == QfaLayout::PA_BBND) {
-        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BBH;
-    } else if (qfaInfo_->kvLayout == QfaLayout::PA_NZ) {
-        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
-    } else {
-        tilingKeyInfo_.kvLayoutType = KvLayoutType_NO_PA;
-    }
+    tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
 }
 
-void QuantFlashAttnFp8TilingImpl::UpdateTilingKeyInfo()
+void QuantFlashAttnTilingFp8Impl::UpdateTilingKeyInfo()
 {
     UpdateTilingKeyLayout();
     UpdateTilingKeyConfig();
@@ -170,13 +153,13 @@ void QuantFlashAttnFp8TilingImpl::UpdateTilingKeyInfo()
     tilingKeyInfo_.isFd = flashDecodeFlag_;
 }
 
-void QuantFlashAttnFp8TilingImpl::UpdateTilingKeyQuantMode()
+void QuantFlashAttnTilingFp8Impl::UpdateTilingKeyQuantMode()
 {
     // GQA 无 prefill/decode 区分，固定写 QFA_GQA_FP8_FULLQUANT
     tilingKeyInfo_.quantMode = static_cast<uint64_t>(QFA_GQA_FP8_FULLQUANT);
 }
 
-void QuantFlashAttnFp8TilingImpl::GenTilingKey()
+void QuantFlashAttnTilingFp8Impl::GenTilingKey()
 {
     UpdateTilingKeyInfo();
     tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config,
@@ -191,7 +174,7 @@ void QuantFlashAttnFp8TilingImpl::GenTilingKey()
             tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd);
 }
 
-void QuantFlashAttnFp8TilingImpl::CalcNumBlocks(uint32_t aicNum)
+void QuantFlashAttnTilingFp8Impl::CalcNumBlocks(uint32_t aicNum)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(qfaInfo_->platformInfo);
     auto aivNum = aicNum * platformInfo_.cvRatio;
@@ -200,7 +183,7 @@ void QuantFlashAttnFp8TilingImpl::CalcNumBlocks(uint32_t aicNum)
     OP_LOGI(qfaInfo_->opName, "GQA QuantFlashAttn block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, aicNum);
 }
 
-void QuantFlashAttnFp8TilingImpl::CalcWorkspaceSize()
+void QuantFlashAttnTilingFp8Impl::CalcWorkspaceSize()
 {
     size_t sysWorkspaceSize = platformInfo_.defaultSysWorkspaceSize;
     uint32_t mSize = sOuterFactor_ * platformInfo_.cvRatio;
@@ -219,14 +202,14 @@ void QuantFlashAttnFp8TilingImpl::CalcWorkspaceSize()
     OP_LOGI(qfaInfo_->opName, "GQA Workspaces: %lu", workspaceSize_);
 }
 
-void QuantFlashAttnFp8TilingImpl::FillTiling()
+void QuantFlashAttnTilingFp8Impl::FillTiling()
 {
     ComputeTilingData();
     SetQFATilingData();
     PrintAllTilingData();
 }
 
-void QuantFlashAttnFp8TilingImpl::ComputeTilingData()
+void QuantFlashAttnTilingFp8Impl::ComputeTilingData()
 {
     tilingData_.baseTiling.quantFlashAttnAttenMaskParams.sparseMode = qfaInfo_->maskMode;
 
@@ -250,7 +233,7 @@ void QuantFlashAttnFp8TilingImpl::ComputeTilingData()
     }
 }
 
-void QuantFlashAttnFp8TilingImpl::SetQFATilingData()
+void QuantFlashAttnTilingFp8Impl::SetQFATilingData()
 {
     tilingData_.baseTiling.quantFlashAttnBaseParams.bSize = qfaInfo_->bSize;
     tilingData_.baseTiling.quantFlashAttnBaseParams.t1Size = qfaInfo_->qTSize;
@@ -302,10 +285,9 @@ void QuantFlashAttnFp8TilingImpl::SetQFATilingData()
     tilingData_.baseTiling.quantFlashAttnBaseParams.kDescaleStrides.n2Stride = qfaInfo_->kDescaleStrides->GetStride(1);
     tilingData_.baseTiling.quantFlashAttnBaseParams.vDescaleStrides.bnStride = qfaInfo_->vDescaleStrides->GetStride(0);
     tilingData_.baseTiling.quantFlashAttnBaseParams.vDescaleStrides.n2Stride = qfaInfo_->vDescaleStrides->GetStride(1);
-    
 }
 
-bool QuantFlashAttnFp8TilingImpl::CheckNeedInitOutput() const
+bool QuantFlashAttnTilingFp8Impl::CheckNeedInitOutput() const
 {
     if (seqUsedQFlag_ || seqUsedKvFlag_) {
         return true;
@@ -325,7 +307,7 @@ bool QuantFlashAttnFp8TilingImpl::CheckNeedInitOutput() const
     return false;
 }
 
-ge::graphStatus QuantFlashAttnFp8TilingImpl::SetTilingData(QuantFlashAttnTilingData &tilingData)
+ge::graphStatus QuantFlashAttnTilingFp8Impl::SetTilingData(QuantFlashAttnTilingData &tilingData)
 {
     QuantFlashAttnTilingData *tiling = context_->GetTilingData<QuantFlashAttnTilingData>();
     OP_CHECK_IF(tiling == nullptr, OP_LOGE(qfaInfo_->opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
@@ -333,7 +315,7 @@ ge::graphStatus QuantFlashAttnFp8TilingImpl::SetTilingData(QuantFlashAttnTilingD
     return ge::GRAPH_SUCCESS;
 }
 
-void QuantFlashAttnFp8TilingImpl::PrintAllTilingData()
+void QuantFlashAttnTilingFp8Impl::PrintAllTilingData()
 {
     QuantFlashAttnQuantTilingArch35 &baseTiling = tilingData_.baseTiling;
     QuantFlashAttnBaseParams &params = baseTiling.quantFlashAttnBaseParams;
@@ -390,8 +372,8 @@ void QuantFlashAttnFp8TilingImpl::PrintAllTilingData()
 
 } // namespace quant_flash_attn
 
-using quant_flash_attn::QuantFlashAttnFp8TilingImpl;
+using quant_flash_attn::QuantFlashAttnTilingFp8Impl;
 
-REGISTER_TILING_TEMPLATE_FIA(QuantFlashAttn, QuantFlashAttnFp8TilingImpl,
+REGISTER_TILING_TEMPLATE_FIA(QuantFlashAttn, QuantFlashAttnTilingFp8Impl,
                               std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}), 2);
 } // namespace optiling

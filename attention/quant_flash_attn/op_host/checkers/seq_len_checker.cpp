@@ -228,13 +228,13 @@ ge::graphStatus SeqLenChecker::CheckSequsedMaxSeqlenAtLeastOne(const QfaTilingIn
     // 注意: max_seqlen_q/kv 默认值为 -1, 表示未传入; seqused_q/kv 为 nullptr 表示未传入
 
     // q 侧: layout_q 不为 TND 时, seqused_q 与 max_seqlen_q 至少传1个
-    if (qfaInfo.qLayout != QfaLayout::TND) {
+    if (qfaInfo.qLayout != QfaLayout::TND && qfaInfo.qLayout != QfaLayout::NTD) {
         bool sequsedQExists =
             (qfaInfo.opParamInfo.sequsedQ.tensor != nullptr && qfaInfo.opParamInfo.sequsedQ.desc != nullptr);
         bool maxSeqQProvided = (qfaInfo.maxSeqQ >= 0);
         OP_CHECK_IF(!sequsedQExists && !maxSeqQProvided,
                     OP_LOGE(qfaInfo.opName,
-                            "When layout_q is %s (not TND), at least one of seqused_q or max_seqlen_q "
+                            "When layout_q is %s (not TND or NTD), at least one of seqused_q or max_seqlen_q "
                             "must be provided.",
                             QfaLayoutToSerialString(qfaInfo.qLayout).c_str()),
                     return ge::GRAPH_FAILED);
