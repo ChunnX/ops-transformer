@@ -84,8 +84,8 @@ private:
         gm_in.SetGlobalBuffer(gm_input + in_addr, len);
         if (l % ALIGN == 0) DataCopy(local_in, gm_in, l);
         else {
-            DataCopyExtParams p{1, l * (uint32_t)sizeof(T), 0, 0, 0};
             DataCopyPadExtParams<T> pad{false, 0, 0, T(0)};
+            DataCopyExtParams p{1, l * (uint32_t)sizeof(T), 0, 0, 0};
             DataCopyPad(local_in, gm_in, p, pad);
         }
         inQue.EnQue(local_in);
