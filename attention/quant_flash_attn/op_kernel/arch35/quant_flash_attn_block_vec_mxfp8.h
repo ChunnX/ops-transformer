@@ -705,7 +705,20 @@ public:
             return;
         }
 
-        uint32_t vecMSize = USE_DN ? runInfo.actVecMSize : (runInfo.actMSizeAlign32 / 2);
+        uint32_t vecMSize;
+        if constexpr (USE_DN) {
+            vecMSize = runInfo.actVecMSize;
+        } else {
+            // nd分支: 每个sub-block只处理本块的有效行(actMSizeAlign32/2只是UB上行的分块边界),
+            // 尾块有效行=actMSize-16*ceil(actMSize/32), 避免把L0C中[realM, align32(actMSize))的陈旧行算进结果
+            uint32_t groupsOf32 = (runInfo.actMSize + 31) / 32;
+            if (constInfo_.subBlockIdx == 0) {
+                vecMSize = groupsOf32 * 16 > runInfo.actMSize ? runInfo.actMSize : groupsOf32 * 16;
+            } else {
+                int32_t vec1RemainRows = runInfo.actMSize - 16 * groupsOf32;
+                vecMSize = 0 > vec1RemainRows ? 0 : vec1RemainRows;
+            }
+        }
         int64_t vec2CalcSize = vecMSize * dTemplateAlign64;
         constexpr float deSCaleVValue = 1.0f;
 
@@ -735,18 +748,7 @@ public:
                 LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(vec2ResUb, vec2ResUb, sumUb, vecMSize,
                                                                           (uint16_t)dTemplateAlign64, deSCaleVValue);
             }
-            uint32_t DealRowCount;
-            if constexpr (USE_DN) {
-                DealRowCount = runInfo.actVecMSize;
-            } else {
-                uint32_t groupsOf32 = (runInfo.actMSize + 31) / 32;
-                if (constInfo_.subBlockIdx == 0) {
-                    DealRowCount = groupsOf32 * 16 > runInfo.actMSize ? runInfo.actMSize : groupsOf32 * 16;
-                } else {
-                    int32_t vec1RemainRows = runInfo.actMSize - 16 * groupsOf32;
-                    DealRowCount = 0 > vec1RemainRows ? 0 : vec1RemainRows;
-                }
-            }
+            uint32_t DealRowCount = vecMSize;
             if (DealRowCount == 0) {
                 SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
                 return;
