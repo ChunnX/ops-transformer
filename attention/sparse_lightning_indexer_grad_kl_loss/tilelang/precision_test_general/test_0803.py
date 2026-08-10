@@ -22,9 +22,9 @@ WARMUP_ITERS = 5
 BENCH_ITERS = 10
 
 CASE_CONFIG = {
-    "B": 1, "S1": 1024, "S2": 5120, "N1": 32, "N2": 1,
-    "Nidx1": 8, "Nidx2": 1, "DQuery": 512, "DQueryIndex": 128,
-    "d_rope": 64, "K": 5120, "layout": "BSND",
+    "B": 2, "S1": 2, "S2": 2048, "N1": 128, "N2": 1,
+    "Nidx1": 64, "Nidx2": 1, "DQuery": 512, "DQueryIndex": 128,
+    "d_rope": 64, "K": 2048, "layout": "BSND",
 }
 
 
