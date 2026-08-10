@@ -570,16 +570,17 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
             }
 
             if (validS2Len < topkCount_) {
-                uint64_t mask[1];
+                uint64_t mask[2];
                 mask[0] = ~0;
                 mask[0] = mask[0] << (validS2Len % 16);
+                mask[1] = ~0;
                 PipeBarrier<PIPE_V>();
                 Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16],
                             constInfo_.INVALID_VAL, mask, 1, 1, 0);
             }
             if (validS2Len / 16 * 16 + 64 < topkCount_) {
                 PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16 + 64],
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16 + 128],
                             constInfo_.INVALID_VAL, topkCount_ - (validS2Len / 16 * 16 + 64));
             }
             SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
