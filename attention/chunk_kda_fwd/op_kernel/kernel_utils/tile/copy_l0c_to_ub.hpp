@@ -23,15 +23,10 @@ namespace Common::Tile {
 
 #if defined(CATLASS_ARCH) && CATLASS_ARCH == 3510
 
-template <
-    class ArchTag,
-    class TensorSrc,
-    class TensorDst,
-    Catlass::Gemm::Tile::CopyL0CToUBMode CopyMode = Catlass::Gemm::Tile::CopyL0CToUBMode::NO_SPLIT,
-    Catlass::Gemm::Tile::ScaleGranularity DEQUANT_GRANULARITY = Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT,
-    bool ReluEnable = false,
-    class Enable = void
->
+template <class ArchTag, class TensorSrc, class TensorDst,
+          Catlass::Gemm::Tile::CopyL0CToUBMode CopyMode = Catlass::Gemm::Tile::CopyL0CToUBMode::NO_SPLIT,
+          Catlass::Gemm::Tile::ScaleGranularity DEQUANT_GRANULARITY = Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT,
+          bool ReluEnable = false, class Enable = void>
 struct CopyL0CToUBTla {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy l0c to ub, can not find the specialization.");
 };
@@ -42,15 +37,8 @@ struct CopyL0CToUBTla {
 
 template <
     /// Tag indicating architecture
-    class ArchTag,
-    class ElementA_,
-    class LayoutTagA_,
-    class ElementB_,
-    class LayoutTagB_,
-    class ElementC_,
-    class LayoutTagC_,
-    class ElementBias = void,
-    bool ReluEnable_ = false,
+    class ArchTag, class ElementA_, class LayoutTagA_, class ElementB_, class LayoutTagB_, class ElementC_,
+    class LayoutTagC_, class ElementBias = void, bool ReluEnable_ = false,
     Catlass::Gemm::Tile::ScaleGranularity DEQUANT_GRANULARITY_ = Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT,
     class L0CCopyMode = Catlass::Gemm::Tile::CopyToGM>
 struct PackedTileCopyTla {
@@ -59,15 +47,19 @@ struct PackedTileCopyTla {
     using LayoutTagA = LayoutTagA_;
     using LayoutTagB = LayoutTagB_;
     using LayoutTagC = LayoutTagC_;
-    using ElementAccumulator = typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementB>::ElementAccumulator;
+    using ElementAccumulator =
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementB>::ElementAccumulator;
     static constexpr bool ReluEnable = ReluEnable_;
     static constexpr Catlass::Gemm::Tile::ScaleGranularity DEQUANT_GRANULARITY = DEQUANT_GRANULARITY_;
 
     static constexpr bool HAS_BIAS = !std::is_void_v<ElementBias>;
-    static constexpr bool HAS_QUANT_TENSOR = (DEQUANT_GRANULARITY == Catlass::Gemm::Tile::ScaleGranularity::PER_CHANNEL);
+    static constexpr bool HAS_QUANT_TENSOR =
+        (DEQUANT_GRANULARITY == Catlass::Gemm::Tile::ScaleGranularity::PER_CHANNEL);
 
-    using LayoutTagL1A = typename Catlass::Gemm::helper::L1ATypeSelector<Catlass::Gemm::GemmType<ElementA, LayoutTagA>>::L1AType::Layout;
-    using LayoutTagL1B = typename Catlass::Gemm::helper::L1BTypeSelector<Catlass::Gemm::GemmType<ElementB, LayoutTagB>>::L1BType::Layout;
+    using LayoutTagL1A =
+        typename Catlass::Gemm::helper::L1ATypeSelector<Catlass::Gemm::GemmType<ElementA, LayoutTagA>>::L1AType::Layout;
+    using LayoutTagL1B =
+        typename Catlass::Gemm::helper::L1BTypeSelector<Catlass::Gemm::GemmType<ElementB, LayoutTagB>>::L1BType::Layout;
     using LayoutTagL0A = typename Catlass::Gemm::helper::L0ALayoutSelector<ArchTag>::Layout;
     using LayoutTagL0B = Catlass::layout::nZ;
     using LayoutTagL0C = Catlass::layout::L0C;
@@ -95,28 +87,23 @@ struct PackedTileCopyTla {
         tla::Tensor<AscendC::LocalTensor<ElementA>, LayoutL0A, tla::Coord<tla::_0, tla::_0>, AscendC::TPosition::A2>;
     using TensorL0B =
         tla::Tensor<AscendC::LocalTensor<ElementB>, LayoutL0B, tla::Coord<tla::_0, tla::_0>, AscendC::TPosition::B2>;
-    using TensorL0C = tla::
-        Tensor<AscendC::LocalTensor<ElementAccumulator>, LayoutL0C, tla::Coord<tla::_0, tla::_0>, AscendC::TPosition::CO1>;
-    using TensorL1Bias = std::conditional_t<
-        HAS_BIAS,
-        tla::Tensor<
-            AscendC::LocalTensor<ElementBias>,
-            Catlass::detail::TagToLayout_t<ElementBias, Catlass::layout::VectorLayout>,
-            tla::Coord<tla::_0>,
-            AscendC::TPosition::A1>,
-        Catlass::EmptyClass>;
-    using TensorL0Bias = tla::Tensor<
-        AscendC::LocalTensor<ElementAccumulator>,
-        Catlass::detail::TagToLayout_t<ElementAccumulator, Catlass::layout::VectorLayout>,
-        tla::Coord<tla::_0>,
-        AscendC::TPosition::C2>;
-    using TensorL1Quant = std::conditional_t<
-        HAS_QUANT_TENSOR,
-        tla::Tensor<AscendC::LocalTensor<uint64_t>,
-            Catlass::detail::TagToLayout_t<uint64_t, Catlass::layout::VectorLayout>,
-            tla::Coord<tla::_0>,
-            AscendC::TPosition::A1>,
-        Catlass::EmptyClass>;
+    using TensorL0C = tla::Tensor<AscendC::LocalTensor<ElementAccumulator>, LayoutL0C, tla::Coord<tla::_0, tla::_0>,
+                                  AscendC::TPosition::CO1>;
+    using TensorL1Bias =
+        std::conditional_t<HAS_BIAS,
+                           tla::Tensor<AscendC::LocalTensor<ElementBias>,
+                                       Catlass::detail::TagToLayout_t<ElementBias, Catlass::layout::VectorLayout>,
+                                       tla::Coord<tla::_0>, AscendC::TPosition::A1>,
+                           Catlass::EmptyClass>;
+    using TensorL0Bias = tla::Tensor<AscendC::LocalTensor<ElementAccumulator>,
+                                     Catlass::detail::TagToLayout_t<ElementAccumulator, Catlass::layout::VectorLayout>,
+                                     tla::Coord<tla::_0>, AscendC::TPosition::C2>;
+    using TensorL1Quant =
+        std::conditional_t<HAS_QUANT_TENSOR,
+                           tla::Tensor<AscendC::LocalTensor<uint64_t>,
+                                       Catlass::detail::TagToLayout_t<uint64_t, Catlass::layout::VectorLayout>,
+                                       tla::Coord<tla::_0>, AscendC::TPosition::A1>,
+                           Catlass::EmptyClass>;
 
     using L1AAlignHelper = Catlass::Gemm::helper::L1AlignHelper<ElementA, LayoutTagA>;
     using L1BAlignHelper = Catlass::Gemm::helper::L1AlignHelper<ElementB, LayoutTagB>;
@@ -129,24 +116,29 @@ struct PackedTileCopyTla {
 
     template <class TensorBias>
     using CopyGmToL1Bias =
-        std::conditional_t<HAS_BIAS, Catlass::Gemm::Tile::TileCopyTla<ArchTag, TensorBias, TensorL1Bias>, Catlass::EmptyClass>;
+        std::conditional_t<HAS_BIAS, Catlass::Gemm::Tile::TileCopyTla<ArchTag, TensorBias, TensorL1Bias>,
+                           Catlass::EmptyClass>;
 
     template <class TensorQuant>
     using CopyGmToL1Scale =
-        std::conditional_t<HAS_QUANT_TENSOR, Catlass::Gemm::Tile::TileCopyTla<ArchTag, TensorQuant, TensorL1Quant>, Catlass::EmptyClass>;
+        std::conditional_t<HAS_QUANT_TENSOR, Catlass::Gemm::Tile::TileCopyTla<ArchTag, TensorQuant, TensorL1Quant>,
+                           Catlass::EmptyClass>;
 
     using CopyL1ToL0A = Catlass::Gemm::Tile::TileCopyTla<ArchTag, TensorL1A, TensorL0A>;
     using CopyL1ToL0B = Catlass::Gemm::Tile::TileCopyTla<ArchTag, TensorL1B, TensorL0B>;
     using CopyL1ToBT =
-        std::conditional_t<HAS_BIAS, Catlass::Gemm::Tile::TileCopyTla<ArchTag, TensorL1Bias, TensorL0Bias>, Catlass::EmptyClass>;
+        std::conditional_t<HAS_BIAS, Catlass::Gemm::Tile::TileCopyTla<ArchTag, TensorL1Bias, TensorL0Bias>,
+                           Catlass::EmptyClass>;
 
 #if (defined(CATLASS_ARCH) && CATLASS_ARCH == 3510)
     template <class TensorC>
-    using CopyL0CToDst = Catlass::Gemm::Tile::CopyL0CToGmTla<ArchTag, TensorL0C, TensorC, DEQUANT_GRANULARITY, ReluEnable>;
+    using CopyL0CToDst =
+        Catlass::Gemm::Tile::CopyL0CToGmTla<ArchTag, TensorL0C, TensorC, DEQUANT_GRANULARITY, ReluEnable>;
 #endif
 #if (defined(CATLASS_ARCH) && CATLASS_ARCH == 2201)
     template <class TensorC>
-    using CopyL0CToGm = Catlass::Gemm::Tile::CopyL0CToGmTla<ArchTag, TensorL0C, TensorC, DEQUANT_GRANULARITY, ReluEnable>;
+    using CopyL0CToGm =
+        Catlass::Gemm::Tile::CopyL0CToGmTla<ArchTag, TensorL0C, TensorC, DEQUANT_GRANULARITY, ReluEnable>;
 #endif
 };
 
@@ -154,28 +146,25 @@ struct PackedTileCopyTla {
 
 template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
 struct CopyL0CToUBTla<
-    Catlass::Arch::Ascend950,
-    TensorSrc_,
+    Catlass::Arch::Ascend950, TensorSrc_,
     tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
-    Catlass::Gemm::Tile::CopyL0CToUBMode::NO_SPLIT,
-    Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT,
-    ReluEnable_,
+    Catlass::Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT, ReluEnable_,
     std::enable_if_t<tla::detail::isRowMajor<LayoutDst_>::value>> {
     using ArchTag = Catlass::Arch::Ascend950;
     using ElementDst = ElementDst_;
     using ElementSrc = typename TensorSrc_::Element;
     static constexpr auto quantPre =
-        Catlass::Gemm::Tile::CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT>::VALUE;
+        Catlass::Gemm::Tile::CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst,
+                                                   Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT>::VALUE;
     static constexpr auto reluEn = ReluEnable_;
 
     template <class TensorDst, class TensorSrc>
     CATLASS_DEVICE void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor"
-        );
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 
@@ -194,19 +183,18 @@ struct CopyL0CToUBTla<
         auto srcOffset = srcTensor.layout()(srcTensor.coord());
 
         // Call AscendC Fixpipe
-        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
-            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(dstTensor.data()[dstOffset],
+                                                                   srcTensor.data()[srcOffset], intriParams);
     }
 
     template <class TensorDst, class TensorSrc>
     CATLASS_DEVICE void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint32_t ubRowNum,
-        uint8_t beginSubBlockIdx, uint8_t sendVecNum,uint8_t unitFlag = 0)
+                                   uint8_t beginSubBlockIdx, uint8_t sendVecNum, uint8_t unitFlag = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor"
-        );
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 
@@ -228,28 +216,27 @@ struct CopyL0CToUBTla<
         auto srcOffset = srcTensor.layout()(srcTensor.coord());
 
         // Call AscendC Fixpipe
-        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
-            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(dstTensor.data()[dstOffset],
+                                                                   srcTensor.data()[srcOffset], intriParams);
         if (sendVecNum > 1) {
             if (dstTensorRowNum > ubRowNum) {
                 intriParams.mSize = dstTensorRowNum - ubRowNum;
                 intriParams.subBlockId = (beginSubBlockIdx + 1) % 2;
                 srcOffset += ubRowNum * tla::get<0, 0>(srcTensor.stride());
-                AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
-                    dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+                AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(dstTensor.data()[dstOffset],
+                                                                           srcTensor.data()[srcOffset], intriParams);
             }
         }
     }
 
     template <class TensorDst, class TensorSrc>
-    CATLASS_DEVICE void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor,
-        uint8_t subBlockIdx, uint8_t unitFlag = 0)
+    CATLASS_DEVICE void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t subBlockIdx,
+                                   uint8_t unitFlag = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor"
-        );
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 
@@ -270,35 +257,32 @@ struct CopyL0CToUBTla<
         auto srcOffset = srcTensor.layout()(srcTensor.coord());
 
         // Call AscendC Fixpipe
-        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
-            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(dstTensor.data()[dstOffset],
+                                                                   srcTensor.data()[srcOffset], intriParams);
     }
 };
 
 template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
 struct CopyL0CToUBTla<
-    Catlass::Arch::Ascend950,
-    TensorSrc_,
+    Catlass::Arch::Ascend950, TensorSrc_,
     tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
-    Catlass::Gemm::Tile::CopyL0CToUBMode::SPLIT_M,
-    Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT,
-    ReluEnable_,
+    Catlass::Gemm::Tile::CopyL0CToUBMode::SPLIT_M, Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT, ReluEnable_,
     std::enable_if_t<tla::detail::isRowMajor<LayoutDst_>::value>> {
     using ArchTag = Catlass::Arch::Ascend950;
     using ElementDst = ElementDst_;
     using ElementSrc = typename TensorSrc_::Element;
     static constexpr auto quantPre =
-        Catlass::Gemm::Tile::CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT>::VALUE;
+        Catlass::Gemm::Tile::CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst,
+                                                   Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT>::VALUE;
     static constexpr auto reluEn = ReluEnable_;
 
     template <class TensorDst, class TensorSrc>
     CATLASS_DEVICE void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor"
-        );
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 
@@ -318,35 +302,32 @@ struct CopyL0CToUBTla<
         auto srcOffset = srcTensor.layout()(srcTensor.coord());
 
         // Call AscendC Fixpipe
-        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
-            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(dstTensor.data()[dstOffset],
+                                                                   srcTensor.data()[srcOffset], intriParams);
     }
 };
 
 template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
 struct CopyL0CToUBTla<
-    Catlass::Arch::Ascend950,
-    TensorSrc_,
+    Catlass::Arch::Ascend950, TensorSrc_,
     tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
-    Catlass::Gemm::Tile::CopyL0CToUBMode::SPLIT_N,
-    Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT,
-    ReluEnable_,
+    Catlass::Gemm::Tile::CopyL0CToUBMode::SPLIT_N, Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT, ReluEnable_,
     std::enable_if_t<tla::detail::isRowMajor<LayoutDst_>::value>> {
     using ArchTag = Catlass::Arch::Ascend950;
     using ElementDst = ElementDst_;
     using ElementSrc = typename TensorSrc_::Element;
     static constexpr auto quantPre =
-        Catlass::Gemm::Tile::CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT>::VALUE;
+        Catlass::Gemm::Tile::CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst,
+                                                   Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT>::VALUE;
     static constexpr auto reluEn = ReluEnable_;
 
     template <class TensorDst, class TensorSrc>
     CATLASS_DEVICE void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor"
-        );
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 
@@ -366,8 +347,8 @@ struct CopyL0CToUBTla<
         auto srcOffset = srcTensor.layout()(srcTensor.coord());
 
         // Call AscendC Fixpipe
-        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
-            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(dstTensor.data()[dstOffset],
+                                                                   srcTensor.data()[srcOffset], intriParams);
     }
 };
 
@@ -375,34 +356,20 @@ struct CopyL0CToUBTla<
 
 template <
     /// Tag indicating architecture
-    class ArchTag,
-    class ElementA_,
-    class LayoutTagA,
-    class ElementB_,
-    class LayoutTagB,
-    class ElementC_,
-    class LayoutTagC,
-    class ElementBias = void,
+    class ArchTag, class ElementA_, class LayoutTagA, class ElementB_, class LayoutTagB, class ElementC_,
+    class LayoutTagC, class ElementBias = void,
     Catlass::Gemm::Tile::CopyL0CToUBMode CopyMode_ = Catlass::Gemm::Tile::CopyL0CToUBMode::NO_SPLIT,
     bool ReluEnable = false,
     Catlass::Gemm::Tile::ScaleGranularity DEQUANT_GRANULARITY = Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT>
-struct PackedTileCopyTlaToUB
-    : public PackedTileCopyTla<ArchTag, ElementA_, LayoutTagA, ElementB_, LayoutTagB, ElementC_, LayoutTagC, ElementBias> {
+struct PackedTileCopyTlaToUB : public PackedTileCopyTla<ArchTag, ElementA_, LayoutTagA, ElementB_, LayoutTagB,
+                                                        ElementC_, LayoutTagC, ElementBias> {
     static constexpr Catlass::Gemm::Tile::CopyL0CToUBMode CopyMode = CopyMode_;
     // 重写 CopyL0CToDst
-    using TensorL0C = typename PackedTileCopyTla<
-        ArchTag,
-        ElementA_,
-        LayoutTagA,
-        ElementB_,
-        LayoutTagB,
-        ElementC_,
-        LayoutTagC,
-        ElementBias>::TensorL0C;
+    using TensorL0C = typename PackedTileCopyTla<ArchTag, ElementA_, LayoutTagA, ElementB_, LayoutTagB, ElementC_,
+                                                 LayoutTagC, ElementBias>::TensorL0C;
 
     template <class TensorC>
-    using CopyL0CToDst =
-        CopyL0CToUBTla<ArchTag, TensorL0C, TensorC, CopyMode, DEQUANT_GRANULARITY, ReluEnable>;
+    using CopyL0CToDst = CopyL0CToUBTla<ArchTag, TensorL0C, TensorC, CopyMode, DEQUANT_GRANULARITY, ReluEnable>;
 };
 
 #endif

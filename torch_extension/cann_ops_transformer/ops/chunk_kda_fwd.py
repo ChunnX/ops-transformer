@@ -6,7 +6,7 @@
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # -----------------------------------------------------------------------------------------------------------
-from typing import Optional, Sequence, Tuple
+from typing import NamedTuple, Optional, Sequence, Tuple
 
 import torch
 from torch.library import impl
@@ -25,7 +25,31 @@ def _to_int_tuple(values, name):
         raise ValueError(f"{name} must be a one-dimensional integer sequence") from exc
 
 
-def _shape_contract(q, v, layout, chunk_size, cu_seqlens, chunk_indices, state_v_first):
+class _LayoutDimensions(NamedTuple):
+    rank3: bool
+    batch: int
+    seqlen: int
+    v_heads: int
+    k_dim: int
+    v_dim: int
+
+
+class _ChunkShapeSpec(NamedTuple):
+    chunk_size: int
+    cu_seqlens: Optional[Sequence[int]]
+    chunk_indices: Optional[Sequence[int]]
+
+
+class _OutputShapes(NamedTuple):
+    attn: Tuple[int, ...]
+    matrix: Tuple[int, ...]
+    k: Tuple[int, ...]
+    v: Tuple[int, ...]
+    state: Tuple[int, ...]
+    h: Tuple[int, ...]
+
+
+def _layout_dimensions(q, v, layout):
     rank3 = layout in {"TND", "NTD"}
     if layout == "TND":
         batch, seqlen, v_heads = 1, q.shape[0], v.shape[1]
@@ -36,24 +60,58 @@ def _shape_contract(q, v, layout, chunk_size, cu_seqlens, chunk_indices, state_v
     else:
         batch, seqlen, v_heads = q.shape[0], q.shape[1], v.shape[2]
     k_dim, v_dim = q.shape[-1], v.shape[-1]
-    seq_num = len(cu_seqlens) - 1 if cu_seqlens is not None else batch
-    if chunk_indices is not None:
-        total_chunks = len(chunk_indices) // 2
-    elif cu_seqlens is not None:
-        total_chunks = sum(
-            (int(cu_seqlens[i + 1]) - int(cu_seqlens[i]) + chunk_size - 1) // chunk_size
-            for i in range(len(cu_seqlens) - 1)
+    return _LayoutDimensions(rank3, batch, seqlen, v_heads, k_dim, v_dim)
+
+
+def _total_chunks(seqlen, shape_spec):
+    if shape_spec.chunk_indices is not None:
+        return len(shape_spec.chunk_indices) // 2
+    if shape_spec.cu_seqlens is not None:
+        return sum(
+            (
+                int(shape_spec.cu_seqlens[i + 1])
+                - int(shape_spec.cu_seqlens[i])
+                + shape_spec.chunk_size
+                - 1
+            )
+            // shape_spec.chunk_size
+            for i in range(len(shape_spec.cu_seqlens) - 1)
         )
-    else:
-        total_chunks = (seqlen + chunk_size - 1) // chunk_size
-    attn_shape = (seqlen, v_heads, v_dim) if rank3 else (batch, seqlen, v_heads, v_dim)
-    matrix_shape = (v_heads, seqlen, chunk_size) if rank3 else (batch, v_heads, seqlen, chunk_size)
-    k_shape = (v_heads, seqlen, k_dim) if rank3 else (batch, v_heads, seqlen, k_dim)
-    v_shape = (v_heads, seqlen, v_dim) if rank3 else (batch, v_heads, seqlen, v_dim)
-    state_tail = (v_dim, k_dim) if state_v_first else (k_dim, v_dim)
-    state_shape = (seq_num, v_heads, *state_tail)
-    h_shape = (total_chunks, v_heads, *state_tail) if rank3 else (batch, total_chunks, v_heads, *state_tail)
-    return attn_shape, matrix_shape, k_shape, v_shape, state_shape, h_shape
+    return (seqlen + shape_spec.chunk_size - 1) // shape_spec.chunk_size
+
+
+def _shape_contract(q, v, layout, shape_spec, state_v_first):
+    dims = _layout_dimensions(q, v, layout)
+    seq_num = len(shape_spec.cu_seqlens) - 1 if shape_spec.cu_seqlens is not None else dims.batch
+    total_chunks = _total_chunks(dims.seqlen, shape_spec)
+    attn_shape = (
+        (dims.seqlen, dims.v_heads, dims.v_dim)
+        if dims.rank3
+        else (dims.batch, dims.seqlen, dims.v_heads, dims.v_dim)
+    )
+    matrix_shape = (
+        (dims.v_heads, dims.seqlen, shape_spec.chunk_size)
+        if dims.rank3
+        else (dims.batch, dims.v_heads, dims.seqlen, shape_spec.chunk_size)
+    )
+    k_shape = (
+        (dims.v_heads, dims.seqlen, dims.k_dim)
+        if dims.rank3
+        else (dims.batch, dims.v_heads, dims.seqlen, dims.k_dim)
+    )
+    v_shape = (
+        (dims.v_heads, dims.seqlen, dims.v_dim)
+        if dims.rank3
+        else (dims.batch, dims.v_heads, dims.seqlen, dims.v_dim)
+    )
+    state_tail = (dims.v_dim, dims.k_dim) if state_v_first else (dims.k_dim, dims.v_dim)
+    state_shape = (seq_num, dims.v_heads, *state_tail)
+    h_shape = (
+        (total_chunks, dims.v_heads, *state_tail)
+        if dims.rank3
+        else (dims.batch, total_chunks, dims.v_heads, *state_tail)
+    )
+    return _OutputShapes(attn_shape, matrix_shape, k_shape, v_shape, state_shape, h_shape)
 
 
 class ChunkKdaFwdOpBuilder(OpBuilder):
@@ -75,6 +133,8 @@ class ChunkKdaFwdOpBuilder(OpBuilder):
         )
 
     def register_meta(self):
+        # The dispatcher implementation must preserve the published operator schema.
+        # pylint: disable=huawei-too-many-arguments,huawei-invalid-name,too-many-return-values
         @impl(AS_LIBRARY, self.name, "Meta")
         def chunk_kda_fwd_meta(
             q, k, v, g, beta, scale, initial_state=None, output_final_state=False,
@@ -85,12 +145,20 @@ class ChunkKdaFwdOpBuilder(OpBuilder):
         ):
             del k, g, beta, scale, safe_gate, lower_bound, A_log, dt_bias
             shapes = _shape_contract(
-                q, v, layout, chunk_size, cu_seqlens, chunk_indices, state_v_first
+                q,
+                v,
+                layout,
+                _ChunkShapeSpec(chunk_size, cu_seqlens, chunk_indices),
+                state_v_first,
             )
             attn_shape, matrix_shape, k_shape, v_shape, state_shape, h_shape = shapes
             attn_out = torch.empty(attn_shape, dtype=v.dtype, device="meta")
             final_state = torch.empty(state_shape, dtype=torch.float32, device="meta") if output_final_state else None
-            gk = torch.empty(k_shape, dtype=torch.float32, device="meta") if not use_gate_in_kernel or disable_recompute else None
+            gk = (
+                torch.empty(k_shape, dtype=torch.float32, device="meta")
+                if not use_gate_in_kernel or disable_recompute
+                else None
+            )
             aqk = torch.empty(matrix_shape, dtype=q.dtype, device="meta")
             akk = torch.empty(matrix_shape, dtype=q.dtype, device="meta")
             w = torch.empty(k_shape, dtype=q.dtype, device="meta") if disable_recompute else None
@@ -98,13 +166,20 @@ class ChunkKdaFwdOpBuilder(OpBuilder):
             qg = torch.empty(k_shape, dtype=q.dtype, device="meta") if disable_recompute else None
             kg = torch.empty(k_shape, dtype=q.dtype, device="meta") if disable_recompute else None
             v_new = torch.empty(v_shape, dtype=v.dtype, device="meta") if disable_recompute else None
-            h = torch.empty(h_shape, dtype=q.dtype, device="meta") if disable_recompute or return_intermediate_states else None
+            h = (
+                torch.empty(h_shape, dtype=q.dtype, device="meta")
+                if disable_recompute or return_intermediate_states
+                else None
+            )
             return attn_out, final_state, gk, aqk, akk, w, u, qg, kg, v_new, h, initial_state
+        # pylint: enable=huawei-too-many-arguments,huawei-invalid-name,too-many-return-values
 
 
 _chunk_kda_fwd_op_builder = ChunkKdaFwdOpBuilder()
 
 
+# The dispatcher implementation must preserve the published operator schema.
+# pylint: disable=huawei-too-many-arguments,huawei-invalid-name
 @impl(AS_LIBRARY, _chunk_kda_fwd_op_builder.name, "PrivateUse1")
 def _chunk_kda_fwd(
     q, k, v, g, beta, scale, initial_state=None, output_final_state=False,
@@ -120,8 +195,11 @@ def _chunk_kda_fwd(
         A_log, dt_bias, chunk_size, disable_recompute,
         return_intermediate_states, state_v_first, layout,
     )
+# pylint: enable=huawei-too-many-arguments,huawei-invalid-name
 
 
+# This public signature intentionally follows the upstream chunk_kda_fwd API.
+# pylint: disable=huawei-too-many-arguments,huawei-invalid-name
 def chunk_kda_fwd(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -178,3 +256,4 @@ def chunk_kda_fwd(
         for tensor in converted_gate_params:
             tensor.record_stream(current_stream)
     return outputs
+# pylint: enable=huawei-too-many-arguments,huawei-invalid-name
