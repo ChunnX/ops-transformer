@@ -443,8 +443,9 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     uint64_t superNodeCount = static_cast<uint64_t>(info.numScaleoutRanks);
     uint64_t cntWinStateSize =
         epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + epWorldSize * WIN_ADDR_ALIGN;
-    uint64_t dispatchNotifyCount = (nmt + NOTIFY_CNT_ALIGN - 1) / NOTIFY_CNT_ALIGN;
-    uint64_t dispatchWinStateSize = cntWinStateSize + dispatchNotifyCount * epWorldSize * WIN_ADDR_ALIGN;
+    constexpr uint64_t SLOT_NOTIFY_STRIDE = 64UL;
+    uint64_t slotWinStateSize = epWorldSize * AlignUpWin(nmt * SLOT_NOTIFY_STRIDE);
+    uint64_t dispatchWinStateSize = cntWinStateSize + slotWinStateSize;
     uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t topKAlign = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
@@ -470,9 +471,9 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
         uint64_t dispatchRecvWinDataReservedSize = epWorldSize * nmt * dispatchReservedPerSlotBytes;
         uint64_t stateAndRecvDataWinSize =
             dispatchRecvWinDataReservedSize + combineWinDataSize + totalStateWinSizeEp;
-        uint64_t dispatchSendWinDataReservedSize = dispatchRecvWinDataReservedSize;
+        uint64_t stashWinSize = nmt * dispatchReservedPerSlotBytes;
         winDataOffset = totalStateWinSizeEp;
-        winNeed = stateAndRecvDataWinSize + dispatchSendWinDataReservedSize;
+        winNeed = stateAndRecvDataWinSize + stashWinSize;
     }
     OP_TILING_CHECK(
         winNeed > maxWindowSize,
@@ -485,7 +486,8 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
 
     info.winDataOffset = winDataOffset;
     info.slotWinStateOffset = cntWinStateSize;
-    info.dispatchNotifyCount = static_cast<uint32_t>(dispatchNotifyCount);
+    info.dispatchNotifyCount = static_cast<uint32_t>((nmt + NOTIFY_CNT_ALIGN - 1) / NOTIFY_CNT_ALIGN);
+    info.slotStateWinSize = AlignUpWin(nmt * SLOT_NOTIFY_STRIDE);
     return ge::GRAPH_SUCCESS;
 }
 

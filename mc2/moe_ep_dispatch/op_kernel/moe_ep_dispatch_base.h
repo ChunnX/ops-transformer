@@ -94,9 +94,8 @@ __aicore__ inline GM_ADDR GetWindowAddrByRankId(__gm__ Mc2Aclnn::MoeCommContext 
 }
 
 __aicore__ inline uint64_t GetCommHandle(__gm__ Mc2Aclnn::MoeCommContext *context, uint32_t rankId,
-                                         uint32_t channelIndex = 0U)
+                                         uint32_t channelsPerRank, uint32_t channelIndex = 0U)
 {
-    uint32_t channelsPerRank = context->channelsPerRank == 0U ? 1U : context->channelsPerRank;
     return context->hcommHandle[rankId * channelsPerRank + channelIndex];
 }
 
