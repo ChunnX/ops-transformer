@@ -86,9 +86,9 @@ struct HcommCommWaitPolicy {
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
           typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4>
-class AllToAllMxQuantMatmulImpl {
+class AllToAllMxQuantMatmulHcommImpl {
 public:
-    __aicore__ inline AllToAllMxQuantMatmulImpl(AlltoAllMatmulTilingDataType *tilingData,
+    __aicore__ inline AllToAllMxQuantMatmulHcommImpl(AlltoAllMatmulTilingDataType *tilingData,
                                                  AscendC::TPipe *tPipe)
         : tilingData_(tilingData), tPipe_(tPipe) {}
 
@@ -158,7 +158,7 @@ private:
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
           typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void
-AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
+AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
                           AlltoAllMatmulTilingDataType, ServerType, IsMxFp4>::Init(
     GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out, GM_ADDR x1_scale, GM_ADDR x2_scale,
     GM_ADDR workspaceGM)
@@ -227,7 +227,7 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
           typename AlltoAllMatmulTilingDataType, AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void
-AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
+AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
                           AlltoAllMatmulTilingDataType, ServerType, IsMxFp4>::Run()
 {
     if (tilingData_->localMatmul != 0) {
