@@ -57,8 +57,11 @@ private:
     ~Mc2MoeGraphContext();
     static Mc2MoeGraphContext &GetInstance();
 
-    bool BuildContextData(const std::string &groupEp, std::vector<int32_t> &contextData, int64_t &hcclBuffSize);
+    bool BuildContextData(const std::string &groupEp, const std::string &opName, std::vector<int32_t> &contextData,
+                          int64_t &hcclBuffSize);
     bool LoadHcclSymbols();
+    bool EnsureEngineCtx(const HcclComm &hcclHandle, const std::string &mc2ContextTag, void *contextStruct,
+                         uint64_t ctxSize);
     bool GetCommHandle(const char *groupEp, HcclComm &hcclHandle);
     bool GetHcclCommLink(const HcclComm &hcclHandle, uint32_t netLayerId, uint32_t srcRankId, uint32_t dstRankId,
                          const CommProtocol &protocol, CommLink *&links);
@@ -92,6 +95,9 @@ private:
     HcclResult (*HcclGetRankId)(HcclComm, uint32_t *) = nullptr;
     HcclResult (*HcclGetRankSize)(HcclComm, uint32_t *) = nullptr;
     HcclResult (*HcclRankGraphGetRanksByLayer)(HcclComm, uint32_t, uint32_t **, uint32_t *) = nullptr;
+    HcclResult (*HcclEngineCtxCreate)(HcclComm, const char *, CommEngine, uint64_t, void **) = nullptr;
+    HcclResult (*HcclEngineCtxGet)(HcclComm, const char *, CommEngine, void **, uint64_t *) = nullptr;
+    HcclResult (*HcclEngineCtxCopy)(HcclComm, CommEngine, const char *, void *, uint64_t, uint64_t) = nullptr;
 
     std::unordered_map<std::string, std::pair<std::vector<int32_t>, int64_t>> contextCache_;
 };
