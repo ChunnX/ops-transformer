@@ -7,8 +7,8 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
@@ -118,7 +118,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[n^2+2n, nD]或[2n, nD]</td>
+      <td>[n!+2n, nD]或[n^2+2n, nD]或[2n, nD]</td>
       <td>√</td>
   </tr>
   <tr>
@@ -138,7 +138,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>-</td>
-      <td>[n^2+2n]或[2n]</td>
+      <td>[n!+2n]或[n^2+2n]或[2n]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -198,7 +198,7 @@ aclnnStatus aclnnMhcPre(
       <td>当alpha=[3]时不能为空Tensor；当alpha=[2]时可传空指针。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[B,S,n,n] 或 [T,n,n]</td>
+      <td>[B,S,n,n] 或 [T,n,n]或[B,S,n!] 或 [T,n!]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -218,7 +218,7 @@ aclnnStatus aclnnMhcPre(
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[B,S,n^2+2n] 或 [T,n^2+2n] 或 [B,S,2n] 或 [T, 2n]</td>
+      <td>[B,S,n!+2n] 或 [T,n!+2n] 或[B,S,n^2+2n] 或 [T,n^2+2n] 或 [B,S,2n] 或 [T, 2n]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -342,9 +342,12 @@ aclnnStatus aclnnMhcPre(
   - aclnnMhcPre默认确定性实现。
 
 - 规格约束：
-  - n目前支持4、6、8。
-  - D支持1~16384范围以内，需满足D为16对齐。
-  - 当alpha=[3]时，支持hRes输出，必须满足以下条件：输入phi=[n^2+2n, nD],bias=[n^2+2n]，输出hMixOptional=[B,S,n^2+2n] 或 [T,n^2+2n]；当alpha=[2]时，hRes输出为0，必须满足以下条件：输入phi=[2n, nD],bias=[2n]，输出hMixOptional=[B,S,2n] 或 [T,2n]。
+  - n目前支持4。
+  - D支持100000范围以内，需满足D为128对齐。
+  - 当alpha=[3]时，支持hRes输出，必须满足以下条件：
+    - 输入phi=[n^2+2n, nD], bias=[n^2+2n]，输出hMixOptional=[B,S,n^2+2n] 或 [T,n^2+2n]；
+    - 输入phi=[n!+2n, nD], bias=[n!+2n]，输出hMixOptional=[B,S,n!+2n] 或 [T,n!+2n]；
+  - 当alpha=[2]时，hRes输出为0，必须满足以下条件：输入phi=[2n, nD],bias=[2n]，输出hMixOptional=[B,S,2n] 或 [T,2n]。
   - 可选输出 invRmsOptional、hMixOptional、hPreOptional 为互存关系，需同时输出或全部不输出，不支持仅返回其中部分，输出条件：invRmsOptional!=nullptr && hMixOptional!=nullptr && hPreOptional!=nullptr。
 
 ## 调用示例
