@@ -39,8 +39,6 @@
 #if __has_include("adv_api/hcomm/hcomm.h")
 #include "adv_api/hcomm/hcomm.h"
 #endif
-#include "hcomm/hcomm_res_entity_defs.h"
-
 #include "moe_ep_combine_tiling_key.h"
 #if __has_include("../common/moe_distribute_base.h")
 #include "../common/moe_distribute_base.h"
@@ -394,16 +392,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
         uint64_t batchHandleBeforeFlush = activeBatchHandle_;
         uint32_t batchCountBeforeFlush = preparedWriteCount_;
         if (ret == HCOMM_PREPARE_QUEUE_FULL) {
-            __gm__ ChannelEntity *channelEntity = reinterpret_cast<__gm__ ChannelEntity *>(commHandle);
-            auto sqContext = channelEntity->sqContextAddr[0];
-            auto cqContext = channelEntity->cqContextAddr[0];
-            uint32_t sqHead = channelEntity->sqHead;
-            uint32_t cqHead = channelEntity->cqHead;
-            uint32_t cqTail = channelEntity->cqTail;
-            uint32_t sqDepth = sqContext.contextInfo.ubJfs.sqDepth;
-            uint32_t cqDepth = cqContext.contextInfo.ubJfc.cqDepth;
-            uint32_t outstandingSq = sqHead - cqTail * 2U;
-            uint32_t outstandingCq = cqHead - cqTail;
             AscendC::printf(
                 "WriteNbiPrepare queue full before flush: ret=%d, aivId=%u, srcRank=%d, channelIndex=%u, "
                 "tokenIndex=%u\n",
@@ -413,13 +401,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
                 "preparedWriteCount=%u\n",
                 static_cast<unsigned long long>(commHandle),
                 static_cast<unsigned long long>(batchHandleBeforeFlush), batchCountBeforeFlush);
-            AscendC::printf(
-                "WriteNbiPrepare queue full state: sqHead=%u, cqHead=%u, cqTail=%u, sqDepth=%u, cqDepth=%u\n",
-                sqHead, cqHead, cqTail, sqDepth, cqDepth);
-            AscendC::printf(
-                "WriteNbiPrepare queue full outstanding: outstandingSq=%u, outstandingCq=%u, pendingSq=%u, "
-                "pendingCq=%u\n",
-                outstandingSq, outstandingCq, batchCountBeforeFlush * 2U, batchCountBeforeFlush);
         }
         ascendc_assert(preparedWriteCount_ != 0,
                        "WriteNbiPrepare failed on an empty batch, ret=%d, aivId=%u", ret, aivId_);
@@ -427,16 +408,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
         ret = hcomm_.WriteNbiPrepare<DEFAULT_WQE_CONFIG>(commHandle, dst, src, len, notifyAddr, 1,
                                                          batchBuffer, HCOMM_BATCH_BUFFER_BYTES);
         if (ret != HCOMM_SUCCESS) {
-            __gm__ ChannelEntity *channelEntity = reinterpret_cast<__gm__ ChannelEntity *>(commHandle);
-            auto sqContext = channelEntity->sqContextAddr[0];
-            auto cqContext = channelEntity->cqContextAddr[0];
-            uint32_t sqHead = channelEntity->sqHead;
-            uint32_t cqHead = channelEntity->cqHead;
-            uint32_t cqTail = channelEntity->cqTail;
-            uint32_t sqDepth = sqContext.contextInfo.ubJfs.sqDepth;
-            uint32_t cqDepth = cqContext.contextInfo.ubJfc.cqDepth;
-            uint32_t outstandingSq = sqHead - cqTail * 2U;
-            uint32_t outstandingCq = cqHead - cqTail;
             AscendC::printf(
                 "WriteNbiPrepare retry failed after flush: ret=%d, aivId=%u, srcRank=%d, channelIndex=%u, "
                 "tokenIndex=%u\n",
@@ -446,12 +417,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
                 static_cast<unsigned long long>(commHandle),
                 static_cast<unsigned long long>(batchHandleBeforeFlush), batchCountBeforeFlush);
             AscendC::printf(
-                "WriteNbiPrepare retry batch state: activeBatchHandle=%llu, preparedWriteCount=%u, sqHead=%u, "
-                "cqHead=%u, cqTail=%u\n",
-                static_cast<unsigned long long>(activeBatchHandle_), preparedWriteCount_, sqHead, cqHead, cqTail);
-            AscendC::printf(
-                "WriteNbiPrepare retry queue state: sqDepth=%u, cqDepth=%u, outstandingSq=%u, outstandingCq=%u\n",
-                sqDepth, cqDepth, outstandingSq, outstandingCq);
+                "WriteNbiPrepare retry batch state: activeBatchHandle=%llu, preparedWriteCount=%u\n",
+                static_cast<unsigned long long>(activeBatchHandle_), preparedWriteCount_);
         }
     }
     ascendc_assert(ret == HCOMM_SUCCESS, "WriteNbiPrepare failed, ret=%d, aivId=%u", ret, aivId_);
