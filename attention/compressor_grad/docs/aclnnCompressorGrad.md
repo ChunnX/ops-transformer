@@ -214,13 +214,13 @@ aclnnStatus aclnnCompressorGrad(
     - dX支持输出shape：与x相同，BS合轴时为[T,H]、BS非合轴时为[B,S,H]
     - dWkv、dWgate支持输出shape[coff* D,H]
     - dApe支持输出shape[cmp_ratio,coff* D]
-    - startPosOptional支持输入shape[B,]
+    - startPos支持输入shape[B,]
     - 若x的维度采用BS合轴，即x的输入shape为[T,H]
-        - cuSeqlensOptional输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须为0。
-        - sequsedOptional，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即sequsedOptional[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。
+        - cuSeqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须为0。
+        - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。
     - 若x的维度不采用BS合轴，即x的输入shape为[B,S,H]
-        - cuSeqlensOptional，参数必须为空。
-        - sequsedOptional，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即要求sequsedOptional[n] <= S，且不小于0。
+        - cuSeqlens，参数必须为空。
+        - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即要求seqused[n] <= S，且不小于0。
 - 输入值域限制：
   - 该接口支持B、S泛化，且存在如下场景限制：
       - **不支持B、S、T为0的空Tensor**：与正向Compressor不同，CompressorGrad所有输入/输出均不支持空Tensor，shapeSize必须大于0。
