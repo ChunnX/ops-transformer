@@ -423,7 +423,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckAttrs()
     }
 
     // max_draft_tokens ∈ [0, 16]
-    if (maxDraftTokens_ < 0 || maxDraftTokens > 16) {
+    if (maxDraftTokens_ < 0 || maxDraftTokens_ > 16) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "max_draft_tokens", std::to_string(maxDraftTokens_).c_str(),
                                               "The value of max_draft_tokens must be between 0 and 16");
         return ge::GRAPH_FAILED;
