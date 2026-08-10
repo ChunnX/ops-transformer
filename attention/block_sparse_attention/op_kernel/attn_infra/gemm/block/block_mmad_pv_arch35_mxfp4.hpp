@@ -362,11 +362,11 @@ public:
     //     这里不再 .data() 重包——直收 tla。
     //   [注] 直接实例化 Tile::CopyL0CToUBTla（block 的 TileCopy::CopyL0CToDst 实为 L0C→GM，非 UB）。
     template <class TensorUB>
-    __aicore__ inline void FixpipeMm2(uint32_t s1Align64, uint32_t embedReal, TensorUB &ubOTmpTensor)
+    __aicore__ inline void FixpipeMm2(uint32_t s1Align64, TensorUB &ubOTmpTensor)
     {
         // L0C tla：rows=D+16（与 MatmulPV 的 mMmad=D+16 一致）→ srcStride=D+16
         auto l0CTensorTla = tla::MakeTensor(l0CTensor[0],
-            tla::MakeLayoutL0C(embedReal + MXFP4::ROW_SUM_PAD_NUM , s1Align64), Arch::PositionL0C{});
+            tla::MakeLayoutL0C(MXFP4::ROW_SUM_NUM + MXFP4::ROW_SUM_PAD_NUM , s1Align64), Arch::PositionL0C{});
         // 模板参序 (ArchTag, TensorSrc=L0C, TensorDst=UB, SPLIT_N, NO_QUANT, ReluEnable=false)
         using CopyL0CToDst = Tile::CopyL0CToUBTla<ArchTag, decltype(l0CTensorTla), TensorUB,
                                                    Tile::CopyL0CToUBMode::SPLIT_N,
@@ -387,11 +387,11 @@ public:
     }
 
     template <class TensorUB>
-    __aicore__ inline void FixpipeMm2SingleVect(uint32_t s1Align64, uint32_t embedReal, TensorUB &ubOTmpTensor)
+    __aicore__ inline void FixpipeMm2SingleVect(uint32_t s1Align64, TensorUB &ubOTmpTensor)
     {
         // L0C tla：rows=D+16（与 MatmulPV 的 mMmad=D+16 一致）→ srcStride=D+16
         auto l0CTensorTla = tla::MakeTensor(l0CTensor[0],
-            tla::MakeLayoutL0C(embedReal + MXFP4::ROW_SUM_PAD_NUM , s1Align64), Arch::PositionL0C{});
+            tla::MakeLayoutL0C(MXFP4::ROW_SUM_NUM + MXFP4::ROW_SUM_PAD_NUM , s1Align64), Arch::PositionL0C{});
         // 模板参序 (ArchTag, TensorSrc=L0C, TensorDst=UB, SPLIT_N, NO_QUANT, ReluEnable=false)
         using CopyL0CToDst = Tile::CopyL0CToUBTla<ArchTag, decltype(l0CTensorTla), TensorUB,
                                                    Tile::CopyL0CToUBMode::NO_SPLIT,
@@ -532,7 +532,7 @@ public:
         
         // AscendC::printf("[P-CHK] s2Align64=%u s2Align32=%u s1Align128=%u\n", (unsigned)delay20TileInfo.kvsActBaseTileAlign64, (unsigned)delay20TileInfo.kvsActBaseTileAlign32, (unsigned)delay20TaskInfo.qsActBaseTileAlign128);
 
-        uint32_t mMmad = embedReal + MXFP4::ROW_SUM_PAD_NUM;   // m = D+16（含 rowsum seed 行）
+        uint32_t mMmad = MXFP4::ROW_SUM_NUM + MXFP4::ROW_SUM_PAD_NUM;   // 完全按照144的m方向做矩阵乘
 
         // --- P 尾部补零（S2 对齐 32 但没到 64 → P pad 到 align64）---
         // if (curBaseTileSize != delay20TileInfo.kvsActBaseTileAlign64) {
@@ -631,9 +631,9 @@ public:
             // AscendC::printf("[CPY-G2L1] FixpipeMm2 \n"); 
             // 如果在s1不满64的时候，全部由某一个子vector核处理。如果fixpipe也要缩小基块到64的话，在vect的处理不变的情况下，就需要在s1不满64但是>32的时候，切换搬运模式到单目标搬出
             if (delay20TaskInfo.qsActBaseTileAlign8 <= 64) {
-                FixpipeMm2SingleVect(delay20TaskInfo.qsActBaseTileAlign64,embedReal,ubOTmpTensor);
+                FixpipeMm2SingleVect(delay20TaskInfo.qsActBaseTileAlign64,ubOTmpTensor);
             } else {
-                FixpipeMm2(delay20TaskInfo.qsActBaseTileAlign64,embedReal,ubOTmpTensor);
+                FixpipeMm2(delay20TaskInfo.qsActBaseTileAlign64,ubOTmpTensor);
             }
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);  // [#5] FIX→M: fixpipe 完成，L0C 释放给下一 TileGroup
         }
