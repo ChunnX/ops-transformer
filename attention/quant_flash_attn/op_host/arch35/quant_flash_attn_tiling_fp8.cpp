@@ -3,8 +3,8 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -51,7 +51,8 @@ bool QuantFlashAttnFp8TilingImpl::IsCapable()
 void QuantFlashAttnFp8TilingImpl::CalcScheduleMode()
 {
     scheduleMode_ = ScheduleMode::BATCH_MODE;
-    OP_LOGI(qfaInfo_->opName, "QuantFlashAttn(GQA FP8 Fullquant) schedule mode: %u.", static_cast<uint32_t>(scheduleMode_));
+    OP_LOGI(qfaInfo_->opName, "QuantFlashAttn(GQA FP8 Fullquant) schedule mode: %u.",
+            static_cast<uint32_t>(scheduleMode_));
 }
 
 ge::graphStatus QuantFlashAttnFp8TilingImpl::DoOpTiling()
@@ -284,7 +285,6 @@ void QuantFlashAttnFp8TilingImpl::SetQFATilingData()
     tilingData_.baseTiling.quantFlashAttnBaseParams.kDescaleStrides.n2Stride = qfaInfo_->kDescaleStrides->GetStride(1);
     tilingData_.baseTiling.quantFlashAttnBaseParams.vDescaleStrides.bnStride = qfaInfo_->vDescaleStrides->GetStride(0);
     tilingData_.baseTiling.quantFlashAttnBaseParams.vDescaleStrides.n2Stride = qfaInfo_->vDescaleStrides->GetStride(1);
-    
 }
 
 bool QuantFlashAttnFp8TilingImpl::CheckNeedInitOutput() const
