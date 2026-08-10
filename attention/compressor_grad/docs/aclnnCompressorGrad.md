@@ -112,10 +112,10 @@ aclnnStatus aclnnCompressorGrad(
     | startPos | 可选输入 | 表示计算起始位置。 | 为None时，表示从0开始进行计算。| INT32          | ND         |[B,]|×|
     | cmpRatio | 输入 | 用于稀疏计算，表示数据压缩率，与前向一致。 |取值范围为[2, 128]内的整数。| INT32          | -         |-|-|
     | coff | 可选输入 | 表示是否进行overlap数据重排，与前向一致。 |取值范围为[1, 2]。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。| INT32          | -         |-|-|
-    | dX | 输出 | 公式中的$dX$，输入x的梯度。 | 不支持空Tensor。| FLOAT16、BFLOAT16         | ND          |与x相同：BS合轴：[T,H]、BS非合轴：[B,S,H]|×|
-    | dWkv | 输出 | 公式中的$dW^{KV}$，权重wkv的梯度。 | 不支持空Tensor。| FLOAT16、BFLOAT16         | ND          |[coff* D,H]|×|
-    | dWgate | 输出 | 公式中的$dW^{Gate}$，权重wgate的梯度。 | 不支持空Tensor。| FLOAT16、BFLOAT16         | ND          |[coff* D,H]|×|
-    | dApe | 输出 | 公式中的$dApe$，APE位置编码的梯度。 | 不支持空Tensor。| FLOAT32         | ND          |[cmp_ratio,coff* D]|×|
+    | dXOut | 输出 | 公式中的$dX$，输入x的梯度。 | 不支持空Tensor。| FLOAT16、BFLOAT16         | ND          |与x相同：BS合轴：[T,H]、BS非合轴：[B,S,H]|×|
+    | dWkvOut | 输出 | 公式中的$dW^{KV}$，权重wkv的梯度。 | 不支持空Tensor。| FLOAT16、BFLOAT16         | ND          |[coff* D,H]|×|
+    | dWgateOut | 输出 | 公式中的$dW^{Gate}$，权重wgate的梯度。 | 不支持空Tensor。| FLOAT16、BFLOAT16         | ND          |[coff* D,H]|×|
+    | dApeOut | 输出 | 公式中的$dApe$，APE位置编码的梯度。 | 不支持空Tensor。| FLOAT32         | ND          |[cmp_ratio,coff* D]|×|
 
 - **返回值**
 

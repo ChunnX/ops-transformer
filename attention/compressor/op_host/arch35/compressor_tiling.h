@@ -97,6 +97,8 @@ static const std::string CMP_RATIO_NAME = "cmp_ratio";
 static const std::string COFF_NAME = "coff";
 static const std::string CACHE_MODE_NAME = "cache_mode";
 static const std::string CMP_KV_NAME = "cmp_kv";
+static const std::string SOFTMAX_SCORE_NAME = "softmax_score";
+static const std::string KV_NAME = "kv";
 
 static std::string DataTypeToSerialString(ge::DataType type);
 
@@ -111,8 +113,8 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {SEQUSED_NAME,            {ge::DT_INT32}},
     {START_POS_NAME,          {ge::DT_INT32}},
     {CMP_KV_NAME,             {ge::DT_BF16, ge::DT_FLOAT16}},
-    {"softmax_score",          {ge::DT_FLOAT}},
-    {"kv",                     {ge::DT_FLOAT}}
+    {SOFTMAX_SCORE_NAME,       {ge::DT_FLOAT}},
+    {KV_NAME,                  {ge::DT_FLOAT}}
 };
 
 const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
@@ -126,8 +128,8 @@ const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
     {SEQUSED_NAME,            {COMPRESSOR_DIM_NUM_1}},
     {START_POS_NAME,          {COMPRESSOR_DIM_NUM_1}},
     {CMP_KV_NAME,             {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}},
-    {"softmax_score",          {COMPRESSOR_DIM_NUM_3, COMPRESSOR_DIM_NUM_4}},
-    {"kv",                     {COMPRESSOR_DIM_NUM_3, COMPRESSOR_DIM_NUM_4}}
+    {SOFTMAX_SCORE_NAME,       {COMPRESSOR_DIM_NUM_3, COMPRESSOR_DIM_NUM_4}},
+    {KV_NAME,                  {COMPRESSOR_DIM_NUM_3, COMPRESSOR_DIM_NUM_4}}
 };
 
 static const std::map<std::string, uint32_t> LAYOUT_DIM_MAP = {

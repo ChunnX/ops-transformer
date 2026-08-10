@@ -645,12 +645,8 @@ ge::graphStatus CompressorTiling::CheckSingleParaCmpKv() const
 
 ge::graphStatus CompressorTiling::CheckSingleParaSoftmaxScore() const
 {
-    if (context_->softmaxScore.desc == nullptr) {
-        OP_LOGE(context_->opName, "tensor softmaxScore is nullptr");
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->softmaxScore.desc, "softmax_score") ||
-        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->softmaxScore.shape, "softmax_score")) {
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->softmaxScore.desc, SOFTMAX_SCORE_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->softmaxScore.shape, SOFTMAX_SCORE_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -658,12 +654,8 @@ ge::graphStatus CompressorTiling::CheckSingleParaSoftmaxScore() const
 
 ge::graphStatus CompressorTiling::CheckSingleParaKv() const
 {
-    if (context_->kv.desc == nullptr) {
-        OP_LOGE(context_->opName, "tensor kv is nullptr");
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->kv.desc, "kv") ||
-        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->kv.shape, "kv")) {
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->kv.desc, KV_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->kv.shape, KV_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
