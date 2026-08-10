@@ -11,8 +11,8 @@ import torch
 import torch_npu
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
-from npu_ops_transformer.op_builder.builder import OpBuilder
-from npu_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 
 class UrmaP2pBenchmarkOpBuilder(OpBuilder):
@@ -75,5 +75,5 @@ def _npu_urma_p2p_benchmark(x, group, world_size, max_bs, mode,
 def npu_urma_p2p_benchmark(x, group, world_size, max_bs, mode,
                             ccl_buffer_size, comm_alg, dst_rank_id, aiv_num):
 
-    return torch.ops.npu_ops_transformer.npu_urma_p2p_benchmark(
+    return torch.ops.cann_ops_transformer.npu_urma_p2p_benchmark(
         x, group, world_size, max_bs, mode, ccl_buffer_size, comm_alg, dst_rank_id, aiv_num)

@@ -11,7 +11,7 @@ Test modes:
 
 Note: SQE mode uses .MC2().HcclGroup({"group"}) for auto context creation.
 Hcomm mode uses Host-side Mc2Context with COMM_PROTOCOL_UBC_CTP protocol.
-Operator invoked via npu_ops_transformer.ops.npu_urma_p2p_benchmark.
+Operator invoked via cann_ops_transformer.ops.npu_urma_p2p_benchmark.
 """
 
 import os
@@ -22,7 +22,7 @@ os.environ['TORCH_EXTENSIONS_DIR'] = cache_dir
 
 import sys
 
-# 将项目torch_extension目录插入sys.path最前面，确保优先加载项目自带的npu_ops_transformer
+# 将项目torch_extension目录插入sys.path最前面，确保优先加载项目自带的cann_ops_transformer
 # （包含urma_p2p_benchmark），而非CANN自带的版本（不含urma_p2p_benchmark）
 # 注意: 路径从脚本目录(mc2/tools/urma_p2p_benchmark/)向上3级到项目根目录
 project_root = os.path.abspath(os.path.join(script_dir, '../../..'))
@@ -34,10 +34,10 @@ import argparse
 import torch
 import torch_npu
 
-# 清除可能被torch_npu提前导入的CANN自带npu_ops_transformer缓存
-# 必须在torch_npu导入之后执行，因为torch_npu内部可能已经加载了CANN的npu_ops_transformer
+# 清除可能被torch_npu提前导入的CANN自带cann_ops_transformer缓存
+# 必须在torch_npu导入之后执行，因为torch_npu内部可能已经加载了CANN的cann_ops_transformer
 for key in list(sys.modules.keys()):
-    if key.startswith('npu_ops_transformer'):
+    if key.startswith('cann_ops_transformer'):
         del sys.modules[key]
 
 import torch.distributed as dist
@@ -50,7 +50,7 @@ import numpy as np
 from math import ceil
 from typing import List, Tuple, Dict, Any
 
-import npu_ops_transformer
+import cann_ops_transformer
 
 
 # region 命令行参数解析
@@ -446,7 +446,7 @@ def urma_p2p_benchmark_op(x, group, world_size, max_bs, mode,
                           ccl_buffer_size, comm_alg, dst_rank_id_attr, aiv_num):
     """调用UrmaP2pBenchmark算子（双模式: SQE/Hcomm）
 
-    通过npu_ops_transformer.ops.npu_urma_p2p_benchmark调用GE算子。
+    通过cann_ops_transformer.ops.npu_urma_p2p_benchmark调用GE算子。
 
     Args:
         x: 输入tensor (bs, h), dtype=float16
@@ -470,7 +470,7 @@ def urma_p2p_benchmark_op(x, group, world_size, max_bs, mode,
           [0]=HCOMM_PROCESS_START, [1]=HCOMM_DATA_COPY_END, [2]=HCOMM_WRITE_NBI_END,
           [3]=HCOMM_DRAIN_END, [4]=HCOMM_NOTIFY_END, [5-11]=PADDING
     """
-    y, receive_cnt, performance_info = npu_ops_transformer.ops.npu_urma_p2p_benchmark(
+    y, receive_cnt, performance_info = cann_ops_transformer.ops.npu_urma_p2p_benchmark(
         x, group, world_size, max_bs, mode, ccl_buffer_size, comm_alg, dst_rank_id_attr, aiv_num
     )
     return y, receive_cnt, performance_info
