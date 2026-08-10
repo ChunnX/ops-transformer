@@ -499,19 +499,29 @@ ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo) const
     return ge::GRAPH_SUCCESS;
 }
 
-// Decode MLA N1:1/2/4/8/16/32/64/128 N2:1
+// Decode MLA N1: A5(DAV_3510)为[1,128]泛化，其余为1/2/4/8/16/32/64/128；N2:1
 ge::graphStatus RopeChecker::CheckNSize(const FiaTilingInfo &fiaInfo) const
 {
     if (fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512) {
         return ge::GRAPH_SUCCESS;
     }
     static const std::set<uint32_t> supportNumHeadForMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
-    OP_CHECK_IF((supportNumHeadForMLA.find(fiaInfo.n1Size) == supportNumHeadForMLA.end()),
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    fiaInfo.opName, "query",
-                    ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-                    "In MLA decode scenario, the N axis of query must be in {1,2,4,8,16,32,64,128}"),
-                return ge::GRAPH_FAILED);
+    // A5(DAV_3510)场景qN支持[1,128]泛化，其余平台仅支持2的幂次
+    if (fiaInfo.npuArch == NpuArch::DAV_3510) {
+        OP_CHECK_IF((fiaInfo.n1Size < NUM1 || fiaInfo.n1Size > NUM_128),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        fiaInfo.opName, "query",
+                        ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+                        "In MLA decode scenario, the N axis of query must be within the range [1, 128]"),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF((supportNumHeadForMLA.find(fiaInfo.n1Size) == supportNumHeadForMLA.end()),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        fiaInfo.opName, "query",
+                        ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+                        "In MLA decode scenario, the N axis of query must be in {1,2,4,8,16,32,64,128}"),
+                    return ge::GRAPH_FAILED);
+    }
 
     OP_CHECK_IF((*fiaInfo.opParamInfo.kvHeadNums != NUM1),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(

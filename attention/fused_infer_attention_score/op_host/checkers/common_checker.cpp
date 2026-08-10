@@ -628,7 +628,15 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
             return ge::GRAPH_FAILED;
         }
         static const std::set<uint32_t> SUPPORT_G_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景g轴支持范围
-        if ((SUPPORT_G_IN_IFAMLA.find(fiaInfo.gSize) == SUPPORT_G_IN_IFAMLA.end())) {
+        // A5(DAV_3510)场景g轴支持[1,128]泛化，其余平台仅支持2的幂次
+        if (fiaInfo.npuArch == NpuArch::DAV_3510) {
+            if (fiaInfo.gSize < NUM1 || fiaInfo.gSize > NUM_128) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis G",
+                    std::to_string(fiaInfo.n1Size / fiaInfo.n2Size).c_str(),
+                    "The value of axis G must be within the range [1, 128] in the Decode MLA scenario");
+                return ge::GRAPH_FAILED;
+            }
+        } else if (SUPPORT_G_IN_IFAMLA.find(fiaInfo.gSize) == SUPPORT_G_IN_IFAMLA.end()) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis G",
                 std::to_string(fiaInfo.n1Size / fiaInfo.n2Size).c_str(),
                 "The value of axis G must be in the range of {1, 2, 4, 8, 16, 32, 64, 128} "
@@ -1085,7 +1093,15 @@ ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
 
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) { // ifamla
         static const std::set<uint32_t> SUPPORT_NUM_HEAD_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景qN支持范围
-        if ((SUPPORT_NUM_HEAD_IN_IFAMLA.find(fiaInfo.n1Size) == SUPPORT_NUM_HEAD_IN_IFAMLA.end())) {
+        // A5(DAV_3510)场景qN支持[1,128]泛化，其余平台仅支持2的幂次
+        if (fiaInfo.npuArch == NpuArch::DAV_3510) {
+            if (fiaInfo.n1Size < NUM1 || fiaInfo.n1Size > NUM_128) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
+                    std::to_string(fiaInfo.n1Size).c_str(),
+                    "The value of num_heads must be within the range [1, 128] in the Decode MLA scenario");
+                return ge::GRAPH_FAILED;
+            }
+        } else if (SUPPORT_NUM_HEAD_IN_IFAMLA.find(fiaInfo.n1Size) == SUPPORT_NUM_HEAD_IN_IFAMLA.end()) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
                 std::to_string(fiaInfo.n1Size).c_str(),
                 "The value of num_heads must be in the range of {1, 2, 4, 8, 16, 32, 64, 128} "
