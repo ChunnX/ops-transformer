@@ -293,7 +293,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUdmaImpl<AType, BType, CType, TransA
         mmTile->baseM, mmTile->baseN, mmTile->mTailTile, mmTile->nTailTile,
         mmTile->mBaseTailSplitCnt, mmTile->nBaseTailSplitCnt, mmTile->mTailMain, mmTile->nTailMain};
     // 基础 Tiling 参数
-    QBMMTiling qbmmParams{mmTile->baseM, mmTile->baseN, mmTile->baseK, mmTile->dbL0c, false};
+    QBMMTiling qbmmParams{mmTile->baseM, mmTile->baseN, mmTile->baseK, mmTile->dbL0c, QBMMTiling::BIAS_DISABLED};
 
     out = {problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, localParams};
 }
