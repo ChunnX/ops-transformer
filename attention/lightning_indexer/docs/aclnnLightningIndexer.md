@@ -196,7 +196,7 @@ aclnnStatus aclnnLightningIndexer(
       </td>
       <td>INT32</td>
       <td>ND</td>
-      <td>shape支持(B,S2/blockSize)</td>
+      <td>shape支持(B,max_S2/blockSize)</td>
       <td>x</td>
     </tr>
     <tr>
