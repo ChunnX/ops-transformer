@@ -17,7 +17,7 @@ class SqeWriteBenchOp {
 public:
     __aicore__ inline void Init(GM_ADDR channelPtrTable, GM_ADDR stateGm,
                                 GM_ADDR timingGm, AscendC::TPipe* pipe,
-                                const UrmaP2pBenchTiling* tiling)
+                                const __gm__ UrmaP2pBenchTiling* tiling)
     {
         pipe_ = pipe;
         stateGm_ = stateGm;
@@ -133,7 +133,7 @@ private:
     AscendC::TPipe* pipe_{nullptr};
     GM_ADDR stateGm_{nullptr};
     GM_ADDR timingGm_{nullptr};
-    const UrmaP2pBenchTiling* tiling_{nullptr};
+    const __gm__ UrmaP2pBenchTiling* tiling_{nullptr};
     uint32_t aivId_{0};
     AscendC::GlobalTensor<uint64_t> channelPtrTable_;
     AscendC::TBuf<> decodeScratch_;

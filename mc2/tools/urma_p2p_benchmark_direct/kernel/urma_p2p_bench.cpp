@@ -10,7 +10,7 @@ using namespace UrmaP2pBench;
 // ---- SQE Write (64B, opcode 0x3, comm_samples style) ----
 extern "C" __global__ __aicore__ void sqe_write_bench_kernel(
     GM_ADDR channelPtrTable, GM_ADDR stateGm, GM_ADDR timingGm,
-    UrmaP2pBenchTiling *tiling)
+    __gm__ UrmaP2pBenchTiling *tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     TPipe pipe;
@@ -30,7 +30,7 @@ void sqe_write_bench_launch(uint32_t blockDim, void *stream,
 // ---- SQE WriteWithNotify (96B, opcode 0x5, mc2 style) ----
 extern "C" __global__ __aicore__ void sqe_write_with_notify_bench_kernel(
     GM_ADDR channelPtrTable, GM_ADDR stateGm, GM_ADDR timingGm,
-    UrmaP2pBenchTiling *tiling)
+    __gm__ UrmaP2pBenchTiling *tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     TPipe pipe;
@@ -50,7 +50,7 @@ void sqe_write_with_notify_bench_launch(uint32_t blockDim, void *stream,
 // ---- Hcomm (WriteNbi + Drain) ----
 extern "C" __global__ __aicore__ void hcomm_bench_kernel(
     GM_ADDR channelPtrTable, GM_ADDR stateGm, GM_ADDR timingGm,
-    UrmaP2pBenchTiling *tiling)
+    __gm__ UrmaP2pBenchTiling *tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     TPipe pipe;
