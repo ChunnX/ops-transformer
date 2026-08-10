@@ -21,7 +21,7 @@
 #include "acl/acl.h"
 #include "hccl/hccl.h"
 #include "aclnn/opdev/fp16_t.h"
-#include "aclnnop/aclnn_attention_to_ffn_v2.h"
+#include "aclnn/aclnn_attention_to_ffn_v2.h"
 #include "../../common/op_api/mc2_context.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
