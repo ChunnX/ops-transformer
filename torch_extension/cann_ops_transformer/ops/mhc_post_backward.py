@@ -30,5 +30,4 @@ _mhc_post_backward_impl = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mhc_post_backward_impl)
 
 mhc_post_backward = _mhc_post_backward_impl.mhc_post_backward
-_mhc_post_backward_dispatch = _mhc_post_backward_impl._mhc_post_backward_dispatch
 mhc_post_backward_op_builder = _mhc_post_backward_impl.mhc_post_backward_op_builder
