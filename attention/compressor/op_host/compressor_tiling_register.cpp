@@ -11,10 +11,6 @@
 /*!
  * \file compressor_tiling_register.cpp
  * \brief Compressor 算子 tiling 入口注册与 arch 分发
- *
- * 背景：arch22/arch35 各自 IMPL_OP_OPTILING(Compressor) 会在同时编译两 arch 的
- * 场景（op_host UT）造成重复注册 → GetOpImpl 异常（tiling 返回 -1 / SIGSEGV）。
- * 本文件统一注册入口，按 socVersion 分发到 TilingCompressorArch22/Arch35。
  */
 
 #include "register/op_def_registry.h"
