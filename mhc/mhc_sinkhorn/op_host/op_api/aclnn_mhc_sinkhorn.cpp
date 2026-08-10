@@ -7,8 +7,8 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
- /*!
+
+/*!
  * \file aclnn_mhc_sinkhorn.cpp
  * \brief aclnn_mhc_sinkhorn
  */
@@ -38,6 +38,7 @@ extern "C" {
 
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
 
+static constexpr size_t DIM_ZERO = 0;
 static constexpr size_t DIM_ONE = 1;
 static constexpr size_t DIM_TWO = 2;
 static constexpr size_t DIM_THREE = 3;
@@ -48,7 +49,8 @@ static constexpr size_t SUPPORT_DIM_NUM_4 = 4;
 static const int64_t N_VALID_4 = 4;
 static const int64_t N_VALID_6 = 6;
 static const int64_t N_VALID_8 = 8;
-
+static constexpr int64_t N_ALIGN = 8;
+static constexpr int64_t DOUBLE_SIZE = 2;
 
 static bool CheckNotNull(const aclTensor *x, int64_t outFlag, const aclTensor *output, const aclTensor *normOut,
                          const aclTensor *sumOut)
@@ -134,6 +136,51 @@ static bool CheckShape(const aclTensor *x, int64_t outFlag, const aclTensor *out
                 N_VALID_8, n0, n1);
         return false;
     }
+
+    // outFlag为1时，校验normOut和sumOut的元素总数是否符合预期
+    if (outFlag) {
+        int64_t T = xShape.GetDim(DIM_ZERO);
+        if (xDim == SUPPORT_DIM_NUM_4) {
+            T = xShape.GetDim(DIM_ZERO) * xShape.GetDim(DIM_ONE);
+        }
+        int64_t n = n0;
+        int64_t expectNormSize = DOUBLE_SIZE * numIters * T * n * N_ALIGN;
+        int64_t expectSumSize = DOUBLE_SIZE * numIters * T * N_ALIGN;
+        if (normOut->GetViewShape().GetDimNum() != 1 ||
+            normOut->GetViewShape().GetShapeSize() != expectNormSize) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "normOut shape must be 1-dim and size %ld, but got dim=%ld size=%ld.",
+                    expectNormSize, normOut->GetViewShape().GetDimNum(),
+                    normOut->GetViewShape().GetShapeSize());
+            return false;
+        }
+        if (sumOut->GetViewShape().GetDimNum() != 1 ||
+            sumOut->GetViewShape().GetShapeSize() != expectSumSize) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "sumOut shape must be 1-dim and size %ld, but got dim=%ld size=%ld.",
+                    expectSumSize, sumOut->GetViewShape().GetDimNum(),
+                    sumOut->GetViewShape().GetShapeSize());
+            return false;
+        }
+    } else {
+        // outFlag为0时，normOut和sumOut应为shape{1}的空输出
+        if (normOut->GetViewShape().GetDimNum() != 1 ||
+            normOut->GetViewShape().GetShapeSize() != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "outFlag is 0, normOut shape must be {1}, but got dim=%ld size=%ld.",
+                    normOut->GetViewShape().GetDimNum(),
+                    normOut->GetViewShape().GetShapeSize());
+            return false;
+        }
+        if (sumOut->GetViewShape().GetDimNum() != 1 ||
+            sumOut->GetViewShape().GetShapeSize() != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "outFlag is 0, sumOut shape must be {1}, but got dim=%ld size=%ld.",
+                    sumOut->GetViewShape().GetDimNum(),
+                    sumOut->GetViewShape().GetShapeSize());
+            return false;
+        }
+    }
     return true;
 }
 
@@ -165,12 +212,28 @@ aclnnStatus aclnnMhcSinkhornGetWorkspaceSize(const aclTensor *x, float eps, int6
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
+    // 通过shape判断outFlag: shape为{1}或nullptr视为辅助输出无效(outFlag=0)
     int64_t outFlag = 1;
-    if (normOut == nullptr || sumOut == nullptr) {
-        Shape emptyShape({});
-        normOut = (uniqueExecutor.get())->AllocTensor(emptyShape, x->GetDataType(), Format::FORMAT_ND);
-        sumOut = (uniqueExecutor.get())->AllocTensor(emptyShape, x->GetDataType(), Format::FORMAT_ND);
+    bool normEmpty = (normOut == nullptr) || (normOut->GetViewShape().GetShapeSize() == 1);
+    bool sumEmpty = (sumOut == nullptr) || (sumOut->GetViewShape().GetShapeSize() == 1);
+    if (normEmpty && sumEmpty) {
+        Shape emptyShape({1});
+        if (normOut == nullptr) {
+            normOut = (uniqueExecutor.get())->AllocTensor(emptyShape, x->GetDataType(), Format::FORMAT_ND);
+        }
+        if (sumOut == nullptr) {
+            sumOut = (uniqueExecutor.get())->AllocTensor(emptyShape, x->GetDataType(), Format::FORMAT_ND);
+        }
         outFlag = 0;
+    } else if (!normEmpty && !sumEmpty) {
+        outFlag = 1;
+    } else {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "normOut and sumOut must both be valid (shape != {1}) or both be empty (shape {1} or nullptr), "
+                "but got normOut shape size %ld, sumOut shape size %ld.",
+                normOut ? normOut->GetViewShape().GetShapeSize() : 0,
+                sumOut ? sumOut->GetViewShape().GetShapeSize() : 0);
+        return ACLNN_ERR_PARAM_INVALID;
     }
 
     // 固定写法，参数检查
@@ -185,7 +248,7 @@ aclnnStatus aclnnMhcSinkhornGetWorkspaceSize(const aclTensor *x, float eps, int6
     // 将输入x转换成连续的tensor
     const aclTensor *xContiguous = l0op::Contiguous(x, uniqueExecutor.get());
     CHECK_RET(xContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    aclTensor *outputContiguous = const_cast<aclTensor*>(l0op::Contiguous(output, uniqueExecutor.get()));
+    aclTensor *outputContiguous = const_cast<aclTensor *>(l0op::Contiguous(output, uniqueExecutor.get()));
     CHECK_RET(outputContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     const aclTensor *kernelOut =
