@@ -68,8 +68,8 @@ public:
         for (uint32_t i = 0; i < n; ++i) {
             uint64_t off = (static_cast<uint64_t>(i) % numSlots) * sqeBytes;
             hcomm.WriteNbi(channelHandle,
-                           ch.remoteBufAddr + off,
-                           ch.localBufAddr + off,
+                           (GM_ADDR)(ch.remoteBufAddr + off),
+                           (GM_ADDR)(ch.localBufAddr + off),
                            S);
         }
 
