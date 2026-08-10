@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -286,7 +296,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
 - 输入限制：
   - 输入输出的shape数据范围约束如下：
     - B（Batchsize）：取值范围为1~32。
-    - B * S（Batchsize * SeqLength）：取值范围为1~512K。
+    - B *S（Batchsize* SeqLength）：取值范围为1~512K。
     - H（hiddenSize）：取值范围384~24576，且是64的整数倍。
     - W：W当前只支持3。
 - 算子入参与中间计算结果，在对应运行数据类型（float16/bfloat16）下，数值均不会超出该类型值域范围。

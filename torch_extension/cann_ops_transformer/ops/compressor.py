@@ -7,11 +7,17 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+from enum import IntEnum
 from typing import Optional
 import torch
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+
+
+class CacheMode(IntEnum):
+    LINEAR_BUFFER = 1
+    RING_BUFFER = 2
 
 
 class CompressorOpBuilder(OpBuilder):
@@ -53,18 +59,16 @@ class CompressorOpBuilder(OpBuilder):
             seqused=None,
             start_pos=None,
             coff=1,
-            cache_mode=1,
+            cache_mode=CacheMode.LINEAR_BUFFER,
         ):
             d = wkv.size(0) // coff
             if x.dim() == 3:
                 b = x.size(0)
                 s = x.size(1)
-                h = x.size(2)
                 sr = (s + cmp_ratio - 1) // cmp_ratio
                 cmp_kv_size = (b, sr, d)
             else:
                 t = x.size(0)
-                h = x.size(1)
                 sr = (t + cmp_ratio - 1) // cmp_ratio
                 cmp_kv_size = (sr, d)
 
@@ -88,7 +92,7 @@ def compressor(
     seqused: Optional[torch.Tensor] = None,
     start_pos: Optional[torch.Tensor] = None,
     coff: Optional[int] = 1,
-    cache_mode: Optional[int] = 1,
+    cache_mode: Optional[CacheMode] = CacheMode.LINEAR_BUFFER,
 ) -> torch.tensor:
     """
     dispatcher implementation for NPU.
@@ -109,3 +113,6 @@ def compressor(
         coff,
         cache_mode,
     )
+
+
+compressor.CacheMode = CacheMode

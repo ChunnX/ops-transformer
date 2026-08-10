@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                       |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                              |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -39,7 +49,7 @@
         \frac{x}{1 + \exp\left(-1.595769121 \times \left(x + 0.044715 \times x^3\right)\right)}
         $$
       * $E$ 表示专家数，$M$ 表示总token数，$K$ 表示输入特征维度，$N$ 表示输出特征维度。
-      * $blocksize$ 表示MX量化时共享指数的分组大小，当前仅支持64。
+      * $blocksize$ 表示MX量化结果的存储block大小，当前仅支持64，对应2个MX量化group，每个group包含32个元素。
 
     - **输入**：
 
@@ -57,21 +67,21 @@
 
     - **计算过程**
 
-      - 1. 根据groupList[i]确定当前分组的token范围，$i \in [0, Len(groupList))$。
+      - 1.根据groupList[i]确定当前分组的token范围，$i \in [0, Len(groupList))$。
 
-      - 2. 根据分组确定的入参进行GroupedMatmul和反量化计算，中间GroupedMatmul结果默认为FLOAT32类型：
+      - 2.根据分组确定的入参进行GroupedMatmul和反量化计算，中间GroupedMatmul结果默认为FLOAT32类型：
 
         $C_i = (X_i \cdot weight_i) \odot xScale_{i\ Broadcast} \odot weightScale_{i\ Broadcast}$
 
-      - 3. 执行gelu_tanh激活：
+      - 3.执行gelu_tanh激活：
 
         $S_i = GeluTanh(C_i)$
 
         注：当前kernel底层实现使用gelu_sigmoid函数近似计算gelu_tanh，近似公式见定义。
 
-      - 4. 对激活结果进行MX量化，目标数据类型DType由输出Tensor y的数据类型指定：
+      - 4.对激活结果进行MX量化，目标数据类型DType由输出Tensor y的数据类型指定：
 
-        - 场景1，当scaleAlg为0时，表示OCP实现，将激活结果$S_i$在N轴按$k=blocksize$分组，一组$k$个数$\{V_j\}_{j=1}^{k}$动态量化为$\{YScale, \{P_j\}_{j=1}^{k}\}$。
+        - 场景1，当scaleAlg为0时，表示OCP实现，将激活结果$S_i$在N轴按$group\_size=32$分组，一组$group\_size$个数$\{V_j\}_{j=1}^{group\_size}$动态量化为$\{YScale, \{P_j\}_{j=1}^{group\_size}\}$。
 
           $$
           shared\_exp = floor(log_2(max_j(|V_j|))) - emax
@@ -82,10 +92,10 @@
           $$
 
           $$
-          P_j = cast\_to\_dst\_type(V_j / YScale, roundMode), \space j \space from \space 1 \space to \space blocksize
+          P_j = cast\_to\_dst\_type(V_j / YScale, roundMode), \space j \space from \space 1 \space to \space group\_size
           $$
 
-          量化后的$P_j$按对应$V_j$的位置组成输出$Y$，$YScale$按对应N轴分组组成输出$YScale$。
+          量化后的$P_j$按对应$V_j$的位置组成输出$Y$，$YScale$按对应N轴的量化group组成输出$YScale$。
 
           - $emax$：对应数据类型的最大正则数的指数位。
 
@@ -94,7 +104,7 @@
             | FLOAT8_E4M3FN | 8 |
             | FLOAT8_E5M2 | 15 |
 
-        - 场景2，当scaleAlg为1时，表示cuBLAS实现，只涉及FP8类型。将激活结果$S_i$在N轴按$k=blocksize$分组，每块单独计算一个块缩放因子$S_{fp32}^b$，再把块内所有元素用同一个$S_{fp32}^b$映射到目标FP8类型。如果最后一块不足$k$个元素，缺失值视为0并按完整块处理。
+        - 场景2，当scaleAlg为1时，表示cuBLAS实现，只涉及FP8类型。将激活结果$S_i$在N轴按存储$blocksize=64$分组，每块单独计算一个块缩放因子$S_{fp32}^b$，再把块内所有元素用同一个$S_{fp32}^b$映射到目标FP8类型。如果最后一块不足$blocksize$个元素，缺失值视为0并按完整块处理。
 
           找到该块中数值的最大绝对值：
 
@@ -368,6 +378,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
   </tbody>
   </table>
 
+  <!-- npu="950" id7 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - x仅支持非转置输入，weight支持非转置和转置输入，接口会根据weight和weightScale的形状及转置关系推导weight是否转置。
     - weightScale转置属性需要与weight保持一致。
@@ -375,6 +386,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       - weight和weightScale作为必选输入，不支持空tensorlist，tensorlist中的元素不能为nullptr。
       - 支持M为0或N为0的空Tensor场景：x和xScaleOptional支持M为0，weight和weightScale支持N为0；该场景下允许K为0，第一段接口返回ACLNN_SUCCESS，workspaceSize为0；当M和N均不为0时，不支持K为0。
       - 支持groupList为空的空Tensor场景：当groupList为空，且输出y或yScale为空时，第一段接口返回ACLNN_SUCCESS，workspaceSize为0。
+
+  <!-- end id7 -->
 
 - **返回值**
 
@@ -545,6 +558,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         </tr>
       </tbody>
       </table>
+
+    - 表中xScale和outputScale的shape第三维为2，表示每个64元素的存储block中包含2个MX量化group，每个group覆盖32个元素。
 
     - N必须为64整数倍。
 

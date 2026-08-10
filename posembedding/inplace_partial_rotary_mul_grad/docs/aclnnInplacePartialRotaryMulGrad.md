@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         |  是否支持   |
-| :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×    |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -203,7 +213,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
     <tr>
       <td>partialSlice</td>
       <td>输入</td>
-      <td>D维度上的切片范围[start, end)，默认{0, 0}表示不做有效计算。start须在[0, D]内，end须在[start, D]内。</td>
+      <td>dyRef最后一维(D维)上的切片范围，为[start, end)，表示对dyRef[..., start:end]执行旋转位置编码梯度计算。</td>
       <td>-</td>
       <td>IntArray</td>
       <td>-</td>
@@ -321,7 +331,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
 - 该算子仅支持Ascend 950 AI Processor。
 - 该算子仅支持连续Tensor，不支持非连续Tensor。
 - **该算子当前版本仅支持 interleave 模式（`rotary_mode=1`）**。half（0）、quarter（2）、interleave-half（3）模式暂未实现。
-- 该算子不支持输入空Tensor（任意维度大小不能为0），不支持 slice 长度为零（即 `partial_slice[0] == partial_slice[1]`）的场景。
+- 该算子不支持输入空Tensor（任意维度大小不能为0），不支持 slice 长度为零（即 `partial_slice[0] == partial_slice[1]`，也就是 `start == end`）的场景。
 
 - 确定性计算：
   - aclnnInplacePartialRotaryMulGrad默认确定性实现。
@@ -333,7 +343,6 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
   - half、interleave和interleave-half模式下，切片长度(end - start)必须能被2整除。
   - quarter模式下，切片长度(end - start)必须能被4整除。
   - 输入张量cos和sin的数据类型必须相同。
-
 
 ## 调用示例
 

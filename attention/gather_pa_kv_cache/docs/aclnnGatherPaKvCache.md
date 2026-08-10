@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                 |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term> |      ×     |
-| <term>Atlas 推理系列产品</term> |      ×     |
-| <term>Atlas 训练系列产品</term> |      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -22,11 +32,11 @@
   - 如果isSeqLensCumsum为false，则seqLens中所有值的累加和即为keyRef/valueRef的第一个维度大小：keyRef[dim0] = sum(seqLens)
 
   关于**keyRef**、**valueRef**的一些限制条件如下：
-  - 每个token大小控制在148k以内，例如，对于fp16/bf16类型，num_heads * head_size(keyRef/valueRef)取128*576。
+  - 每个token大小控制在148k以内，例如，对于fp16/bf16类型，num_heads *head_size(keyRef/valueRef)取128*576。
 
 - 示例：
 
-  ```
+  ```python
     keyCache_shape: [128, 128, 16, 144]
     valueCache_shape: [128, 128, 16, 128]
     blockTables_shape: [16, 12]
@@ -204,12 +214,17 @@ aclnnStatus aclnnGatherPaKvCache(
   </tbody>
   </table>
 
+  <!-- npu="950" id7 -->
   - <term>Ascend 950PR/Ascend 950DT</term>:
     - 允许keyCache为FLOAT8_E4M3FN、valueCache为FLOAT16或BFLOAT16的组合。
 
+  <!-- end id7 -->
+  <!-- npu="A3,910b" id8 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 输入keyCache、valueCache、keyRef、valueRef不支持FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN数据类型。
     - 输入blockTables、seqLens、seqOffsetOptional不支持INT64数据类型。
+
+  <!-- end id8 -->
 
 - **返回值：**
 

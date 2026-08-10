@@ -2,19 +2,33 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √      |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
 - 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。增加`sinkInOptional`可选输入。
+
+  <!-- npu="950" id7 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：暂不支持sinkInOptional参数。
+
+  <!-- end id7 -->
 
 - 计算公式：
 
@@ -76,45 +90,45 @@ $$
 
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize(
-	const aclTensor   *query,
-	const aclTensor   *queryRope,
-	const aclTensor   *keyIn,
-	const aclTensor   *keyInRope,
-	const aclTensor   *value,
-	const aclTensor   *dy,
-	const aclTensor   *pseShiftOptional,
-	const aclTensor   *dropMaskOptional,
-	const aclTensor   *paddingMaskOptional,
-	const aclTensor   *attenMaskOptional,
-	const aclTensor   *softmaxMaxOptional,
-	const aclTensor   *softmaxSumOptional,
-	const aclTensor   *softmaxInOptional,
-	const aclTensor   *attentionInOptional,
-	const aclTensor   *sinkInOptional,
-	const aclIntArray *prefixOptional,
-	const aclIntArray *actualSeqQLenOptional,
-	const aclIntArray *actualSeqKvLenOptional,
-	const aclIntArray *qStartIdxOptional,
-	const aclIntArray *kvStartIdxOptional,
-	double             scaleValue,
-	double             keepProb,
-	int64_t            preTokens,
-	int64_t            nextTokens,
-	int64_t            headNum,
-	char              *inputLayout,
-	int64_t            innerPrecise,
-	int64_t            sparseMode,
-	int64_t            pseType,
-	char              *softmaxInLayout,
-	const aclTensor   *dqOut,
-	const aclTensor   *dqRopeOut,
-	const aclTensor   *dkOut,
-	const aclTensor   *dkRopeOut,
-	const aclTensor   *dvOut,
-	const aclTensor   *dpseOut,
-	const aclTensor   *dsinkOut,
-	uint64_t          *workspaceSize,
-	aclOpExecutor    **executor);
+ const aclTensor   *query, 
+ const aclTensor   *queryRope, 
+ const aclTensor   *keyIn, 
+ const aclTensor   *keyInRope, 
+ const aclTensor   *value, 
+ const aclTensor   *dy, 
+ const aclTensor   *pseShiftOptional, 
+ const aclTensor   *dropMaskOptional, 
+ const aclTensor   *paddingMaskOptional, 
+ const aclTensor   *attenMaskOptional, 
+ const aclTensor   *softmaxMaxOptional, 
+ const aclTensor   *softmaxSumOptional, 
+ const aclTensor   *softmaxInOptional, 
+ const aclTensor   *attentionInOptional, 
+ const aclTensor   *sinkInOptional, 
+ const aclIntArray *prefixOptional, 
+ const aclIntArray *actualSeqQLenOptional, 
+ const aclIntArray *actualSeqKvLenOptional, 
+ const aclIntArray *qStartIdxOptional, 
+ const aclIntArray *kvStartIdxOptional, 
+ double             scaleValue, 
+ double             keepProb, 
+ int64_t            preTokens, 
+ int64_t            nextTokens, 
+ int64_t            headNum, 
+ char              *inputLayout, 
+ int64_t            innerPrecise, 
+ int64_t            sparseMode, 
+ int64_t            pseType, 
+ char              *softmaxInLayout, 
+ const aclTensor   *dqOut, 
+ const aclTensor   *dqRopeOut, 
+ const aclTensor   *dkOut, 
+ const aclTensor   *dkRopeOut, 
+ const aclTensor   *dvOut, 
+ const aclTensor   *dpseOut, 
+ const aclTensor   *dsinkOut, 
+ uint64_t          *workspaceSize, 
+ aclOpExecutor    **executor);
 ```
 
 ```c++
@@ -666,7 +680,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
 - pseShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可开启alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
-  - TND场景下，每个batch段内部仍按[N, Sq_i, Skv_i]生成，但存储与传参时统一flatten。若第i个batch段的真实query长度为Sq_i、真实key/value长度为Skv_i，则该段PSE元素个数为N * Sq_i * Skv_i，整段PSE总长度pseTotalLen为sum_i(N * Sq_i * Skv_i)。
+  - TND场景下，每个batch段内部仍按[N, Sq_i, Skv_i]生成，但存储与传参时统一flatten。若第i个batch段的真实query长度为Sq_i、真实key/value长度为Skv_i，则该段PSE元素个数为N *Sq_i* Skv_i，整段PSE总长度pseTotalLen为sum_i(N *Sq_i* Skv_i)。
   - 如果pseType为2或3的时候，数据类型需为FLOAT32,对应shape支持范围是[B,N]或[N]。
   - 如果不开启该参数，pseShiftOptional需要传入nullptr，pseType需要传入1。
 - pseType各个取值含义

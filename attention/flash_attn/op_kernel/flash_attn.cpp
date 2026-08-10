@@ -14,15 +14,7 @@
  *        参考 quant_flash_attn.cpp 单层 __global__ 风格。
  */
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_vec_intf.h"
-#include "kernel_cube_intf.h"
-#else
-#include "kernel_operator.h"
-#endif
-
 #include "arch35/flash_attn_template_tiling_key.h"
-#include "arch35/flash_attn_tiling_data.h"
 #include "utils/flash_attn_utils.h"
 #include "utils/flash_attn_common_def.h"
 #if __has_include("../../common/op_kernel/arch35/flash_attention_score_common_regbase.h")
@@ -30,8 +22,8 @@
 #else
 #include "../common/arch35/flash_attention_score_common_regbase.h"
 #endif
-#include "arch35/flash_attn_kernel_noquant_gqa_dn.h"
-#include "arch35/flash_attn_kernel_noquant_gqa_nd.h"
+#include "arch35/flash_attn_kernel_dn.h"
+#include "arch35/flash_attn_kernel_nd.h"
 
 using namespace AscendC;
 

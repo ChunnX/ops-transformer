@@ -40,13 +40,16 @@ struct GMMAddrInfo {
     __gm__ int32_t *swigluToGmm2Flag;
     __gm__ int32_t *dispatchToGmm1Flag;
     __gm__ int32_t *gmm2CombineSyncCounter;
+    __gm__ int32_t *gmmToEpilogueFlag;
+    __gm__ int32_t *sharedExpertGmm2TileCounter;
 };
 
 struct PeermemInfo {
     GM_ADDR rankSyncInWorldPtr;
     GM_ADDR maskRecvPtr;        // 源卡算好的 send-mask 接收区, 布局 [localExpert][srcRank]
     GM_ADDR quantTokenScalePtr; // 量化结果，包括data+scale
-    GM_ADDR dispatchRecivePtr;  // dispatch 1级通信区,
+    GM_ADDR dispatchRecivePtr;  // dispatch 一级通信数据区，仅保存 token + scale
+    GM_ADDR dispatchFlagPtr;    // dispatch ready flag 区，布局 [sourceServer][tokenId] uint64_t
     GM_ADDR combineSendPtr;
     __aicore__ inline PeermemInfo() = default;
     __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1,
@@ -55,7 +58,7 @@ struct PeermemInfo {
         rankSyncInWorldPtr = base;
         int64_t offset = PEERMEM_DATA_OFFSET;
         maskRecvPtr = base + offset;
-        // 每张卡为自己的 expertPerRank 个专家、各 worldSize 个源卡保留一份 [mask | count] 槽位。
+        // 每张卡为自己的 moeExpertPerRank 个 routed 专家、各 worldSize 个源卡保留一份 [mask | count] 槽位。
         // 槽位 = bit-packed mask (CeilAlign(compareCount/8,32)) + 32B count(源卡 SendMaskCal 同步算好),
         // 与 mega_moe.h FirstBuffInit 的 maskSlotSize_ 一致; 接收端直接读 count, 不再 GatherMask 计数。
         int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
@@ -64,7 +67,7 @@ struct PeermemInfo {
         int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
         int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32; // mask + 32B count
         // 整个 mask 区按 512 对齐, 保证后续 quantTokenScalePtr 仍 512 对齐(CopyGMToGMPerToken 用普通 DataCopy 读)。
-        offset += Ops::Base::CeilAlign((int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize,
+        offset += Ops::Base::CeilAlign((int64_t)tilingData->moeExpertPerRank * tilingData->epWorldSize * maskSlotSize,
                                        (int64_t)ALIGN_512);
 
         if (tilingData->topoType == TOPO_TYPE_MTE) {
@@ -74,6 +77,11 @@ struct PeermemInfo {
                 Ops::Base::CeilAlign(tilingData->h / elemsPerByte, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
             uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
             uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+            if (tilingData->topkWeightsPrefetch == 1) {
+                uint32_t weightBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)),
+                                                            static_cast<uint32_t>(ALIGN_32));
+                tokenBytes = Ops::Base::CeilAlign(tokenBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+            }
             offset += Ops::Base::CeilAlign(
                 (int64_t)(static_cast<int64_t>(tilingData->bs) * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
         } else {
@@ -82,13 +90,20 @@ struct PeermemInfo {
             uint32_t dataBytes =
                 Ops::Base::CeilAlign(tilingData->h / elemsPerByte, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
             uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
-            uint32_t tokenBytes = Ops::Base::CeilAlign(
-                static_cast<int64_t>(Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32)) +
-                                     ALIGN_32),
-                static_cast<int64_t>(ALIGN_512));
-            offset += Ops::Base::CeilAlign((int64_t)(static_cast<int64_t>(tilingData->bs) * tokenBytes *
+            uint32_t tokenScaleBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+            if (tilingData->topkWeightsPrefetch == 1) {
+                uint32_t weightBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)),
+                                                            static_cast<uint32_t>(ALIGN_32));
+                tokenScaleBytes = Ops::Base::CeilAlign(tokenScaleBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+            }
+            uint32_t relayRecordBytes = Ops::Base::CeilAlign(tokenScaleBytes, static_cast<uint32_t>(ALIGN_512));
+            offset += Ops::Base::CeilAlign((int64_t)(static_cast<int64_t>(tilingData->bs) * relayRecordBytes *
                                                      sizeof(int8_t) * static_cast<int64_t>(serverNum)),
                                            (int64_t)ALIGN_512);
+            dispatchFlagPtr = base + offset;
+            offset += Ops::Base::CeilAlign(
+                static_cast<int64_t>(serverNum) * tilingData->bs * static_cast<int64_t>(sizeof(uint64_t)),
+                static_cast<int64_t>(ALIGN_512));
         }
         combineSendPtr = base + offset;
     }
@@ -98,6 +113,14 @@ struct CombineCommParams {
     uint32_t rankId;
     Hcomm<COMM_PROTOCOL_UBC_CTP> *hcomm;
     __gm__ Mc2MoeContext *mc2Context;
+};
+
+// 保存 TensorList 入口地址，便于逐 expert 布局按当前 expert 下标解析权重。
+struct ExpertWeightTensorListAddrs {
+    GM_ADDR weight1 = nullptr;
+    GM_ADDR weightScales1 = nullptr;
+    GM_ADDR weight2 = nullptr;
+    GM_ADDR weightScales2 = nullptr;
 };
 
 struct Params {
@@ -125,6 +148,27 @@ enum class AddrUpdateMode : int32_t {
     GMM2
 };
 
+// Logical block-job scheduling information supplied by the caller. jobIndex
+// is zero-based and contiguous in [0, totalJobs). All three physical cores
+// in one MIX_AIC_1_2 block must receive the same context.
+struct BlockJobContext {
+    uint32_t jobIndex;
+    uint32_t totalJobs;
+};
+
+// GM workspace indexing is independent of the number of blocks participating
+// in a reusable stage. This keeps shared data readable by later stages that may
+// use a different block count.
+struct BlockWorkspaceContext {
+    uint32_t blockIdx;
+    uint32_t blockNum;
+};
+
+template <typename T>
+struct PackedElementTraits {
+    static constexpr uint32_t ELEMENTS_PER_BYTE = Std::IsSame<T, fp4x2_e2m1_t>::value ? 2U : 1U;
+};
+
 __aicore__ inline void NotifyCube(uint16_t value = 0)
 {
     CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG + value);
@@ -145,35 +189,27 @@ __aicore__ inline void WaitForCube(uint16_t value = 0)
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
 }
 
-__aicore__ inline void NotifyAiv1GmTileReady(uint16_t value = 0)
-{
-    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_EPILOGUE_FLAG + FLAG_ID_MAX_PER_V + value);
-}
-
-__aicore__ inline void WaitForAicGmTileReady(uint16_t value = 0)
-{
-    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_MTE2>(AIC_SYNC_AIV_EPILOGUE_FLAG + value);
-}
-
-// AIV1 acknowledges that it has accepted the AIC-to-AIV1 GM tile notification.
-// On DAV_3510, an AIV1 flag ID maps to the AIC flag ID plus FLAG_ID_MAX_PER_V.
-__aicore__ inline void NotifyAicGmTileAccepted()
-{
-    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE2>(AIV1_SYNC_AIC_EPILOGUE_ACK_FLAG);
-}
-
-__aicore__ inline void WaitForAiv1GmTileAccepted()
-{
-    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV1_SYNC_AIC_EPILOGUE_ACK_FLAG + FLAG_ID_MAX_PER_V);
-}
-
-__aicore__ inline void EndSync(int32_t &vecSetSyncCom)
+template <bool IsPingPong = false>
+__aicore__ inline void EndSync(int32_t vecSetSyncCom, uint16_t pingpongIdx = 0)
 {
     if (vecSetSyncCom == 0) {
         return;
     }
     if constexpr (g_coreType == AIC) {
-        WaitForVector();
+        if constexpr (IsPingPong) {
+            if (vecSetSyncCom == 1) {
+                // pingpongIdx already points at the next slot, so the only
+                // outstanding tile occupies the opposite slot.
+                WaitForVector(1U - pingpongIdx);
+            } else {
+                // Drain the oldest slot first, then the other outstanding
+                // acknowledgement.
+                WaitForVector(pingpongIdx);
+                WaitForVector(1U - pingpongIdx);
+            }
+        } else {
+            WaitForVector();
+        }
     }
 }
 
@@ -223,7 +259,6 @@ __aicore__ inline uint64_t GetUrmaCommHandle(__gm__ Mc2MoeContext *mc2Context_, 
     return mc2Context_->hcommHandle[index];
 }
 
-
 inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
 __aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t offset)
 {
@@ -236,6 +271,18 @@ __aicore__ inline GM_ADDR GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
     uint64_t tensorPtrOffset = *dataAddr;
     __gm__ uint64_t *retPtr = dataAddr + (tensorPtrOffset >> 3);
     return reinterpret_cast<GM_ADDR>(*(retPtr + index));
+}
+
+template <typename ElementType>
+__aicore__ inline GM_ADDR GetExpertWeightAddr(GM_ADDR tensorListAddr, bool isPerExpertWeightTensor,
+                                              uint32_t expertIdx, uint64_t elementOffset)
+{
+    uint16_t tensorIdx = isPerExpertWeightTensor ? static_cast<uint16_t>(expertIdx) : 0U;
+    GM_ADDR tensorAddr = GetTensorAddr(tensorIdx, tensorListAddr);
+    if (isPerExpertWeightTensor) {
+        return tensorAddr;
+    }
+    return tensorAddr + elementOffset * sizeof(ElementType);
 }
 
 // Base template: handles single-index case

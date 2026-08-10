@@ -42,7 +42,8 @@ TILING_DATA_FIELD_DEF(uint32_t, paCmpBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, oriMaxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, cmpMaxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, nNumOfQInOneGroup)
-TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)
+TILING_DATA_FIELD_DEF(uint32_t, oriSparseBlockCount)
+TILING_DATA_FIELD_DEF(uint32_t, cmpSparseBlockCount)
 TILING_DATA_FIELD_DEF(float, softmaxScale) // 即 scaleValue
 TILING_DATA_FIELD_DEF(int32_t, oriKvStride)
 TILING_DATA_FIELD_DEF(int32_t, cmpKvStride)
@@ -54,6 +55,7 @@ TILING_DATA_FIELD_DEF(int32_t, oriWinRight)
 TILING_DATA_FIELD_DEF(uint32_t, sparseBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, dSize)
 TILING_DATA_FIELD_DEF(uint32_t, dSizeVInput)
+TILING_DATA_FIELD_DEF(uint32_t, returnSoftmaxLse)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantSparseFlashMlaBaseParamsOp, QuantSparseFlashMlaBaseParams)
 
@@ -80,5 +82,5 @@ private:
     QSMLATilingInfo *qsmlaInfo_ = nullptr;
 };
 
-}
+} // namespace optiling
 #endif

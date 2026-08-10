@@ -2,7 +2,7 @@
 
 数据格式（format）是用于描述一个多维Tensor的轴的业务语义，表示数据的物理排布格式，如1D、2D、3D、4D、5D等，一般在CNN（Convolutional Neural Networks）类的API中需要描述具体的格式。
 
-关于aclTensor支持的**全量数据格式范围**参见[《acl API（C）》](https://hiascend.com/document/redirect/CannCommercialCppApi)中“数据类型及其操作接口>aclFormat”。
+关于aclTensor支持的**全量数据格式范围**参见[《Runtime运行时API》](https://hiascend.com/document/redirect/CannCommunityRuntimeApi)中“数据类型及其操作接口>aclFormat”。
 
 关于**数据格式排布原理**介绍参见[《Ascend C算子开发指南》](https://hiascend.com/document/redirect/CannCommunityOpdevAscendC)中“概念原理和术语>神经网络和算子>数据排布格式”。
 
@@ -12,7 +12,7 @@
 
 >**说明：**
 >
->- 两段式接口参数说明时，为简化描述，**将原始数据格式“ACL\_FORMAT\_XXXX_”简写为“_XXXX_”**。
+>- 两段式接口参数说明时，为简化描述，**将原始数据格式“ACL\_FORMAT\_XXXX_”简写为“\_XXXX_”**。
 >- 数据格式中各维度含义：N（Batch）表示批量大小、H（Height）表示特征图高度、W（Width）表示特征图宽度、C（Channels）表示特征图通道、D（Depth）表示特征图深度、L（Length）表示特征图长度。
 
 ## 常见数据格式

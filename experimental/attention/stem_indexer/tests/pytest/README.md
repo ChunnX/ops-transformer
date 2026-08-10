@@ -8,6 +8,8 @@
 - NPU侧：先通过`torch.ops.custom.npu_stem_indexer_metadata`生成分核信息，再通过
   `torch.ops.custom.npu_stem_indexer`获取实际结果（接口位于
   `experimental/attention/stem_indexer/torch_ops_extension`，由 `custom_ops.py` 加载注册）。
+  支持两种调用模式：eager（直接调用算子）和 graph（通过 `torch.compile` + `torchair` 编译为 aclgraph 图）。
+  通过环境变量 `STEM_INDEXER_MODE` 切换，默认 `eager`。
 - 结果比对：比较`sparse_seq_len`，并只比较`sparse_indices`中`sparse_seq_len`范围内的有效前缀；尾部未定义区域不校验。
 
 ## 用例来源
@@ -16,13 +18,17 @@
 
 ```text
 test_stem_indexer_paramset.py
-excel/stem_indexer_cases.xlsx
+csv/stem_indexer_generalized_cases.csv
 ```
 
-case直接维护在`ENABLED_PARAMS`中，每条case前用注释记录覆盖点和设计原因。
-`excel/stem_indexer_cases.xlsx`记录同一批case，作为批量模式生成`.pt`文件的输入。
+single case直接维护在`ENABLED_PARAMS`中，每条case前通过注释记录覆盖点和设计原因。
+`csv/stem_indexer_generalized_cases.csv`保存批量用例信息，作为批量模式生成`.pt`文件的输入。
 
-当前共有100条正例case，其中single模式直接读取`ENABLED_PARAMS`，batch模式按QLI风格读取Excel并生成`.pt`文件。
+single和batch模式当前均维护154条正例case，分别从`ENABLED_PARAMS`和CSV读取。
+两种用例源均包含`topk_score_precision`：1表示uint32，2表示uint16，未显式配置时默认1。
+其中`SI_WB_001`～`SI_WB_100`固定使用uint32 TopK score路径；`SI_WB_101`～`SI_WB_150`
+镜像前50条功能场景，固定使用uint16 TopK score路径。
+`SI_WB_001_1`、`SI_WB_001_2`及其uint16镜像`SI_WB_101_1`、`SI_WB_101_2`额外覆盖batch=8的64K/128K等长prefill场景。
 
 ## 当前覆盖点
 
@@ -44,7 +50,8 @@ case直接维护在`ENABLED_PARAMS`中，每条case前用注释记录覆盖点�
 ## Metadata说明
 
 `metadata`是StemIndexer主算子的前置输入，pytest正例和普通单case脚本都会先调用
-`stem_indexer_metadata`生成`int32[2048]`的metadata，再传给`stem_indexer`。
+`stem_indexer_metadata`按`16 + B * kv_heads * (36 + 72) * 16`生成动态容量的metadata，
+并向上对齐到4096个INT32元素，再传给`stem_indexer`。
 当前case表只保留可运行并可与golden比对的正例。
 
 当前StemIndexer主算子使用BNSD布局，`q_seq_lens`和`kv_seq_lens`按batch实际长度传入，
@@ -55,18 +62,19 @@ case直接维护在`ENABLED_PARAMS`中，每条case前用注释记录覆盖点�
 ## 文件结构
 
 ```text
-test_run.sh                         # 执行脚本
-test_stem_indexer_paramset.py        # single用例参数表
-stem_indexer_golden.py               # CPU侧golden实现
-result_compare_method.py             # sparse输出比较
-test_stem_indexer_single.py          # single主执行入口
-test_stem_indexer_batch.py           # batch主执行入口
-test_npu_stem_indexer.py             # 参考LI写法的普通单case脚本
-pytest.ini                           # pytest标记
-excel/stem_indexer_cases.xlsx        # batch用例表
-batch/stem_indexer_pt_save.py        # 读取Excel并生成pt
-batch/stem_indexer_pt_loadprocess.py # 读取pt并调用算子
-batch/replace_path.py                # 替换batch pytest中的pt路径
+test_run.sh                             # 执行脚本
+test_stem_indexer_paramset.py           # single用例参数表
+stem_indexer_golden.py                  # CPU侧golden实现
+result_compare_method.py                # sparse输出比较
+test_stem_indexer_single.py             # single主执行入口
+test_stem_indexer_batch.py              # batch主执行入口
+stem_indexer_aclgraph.py                # single/batch共用的aclgraph(graph)调用实现
+test_npu_stem_indexer.py                # 参考LI写法的普通单case脚本
+pytest.ini                              # pytest标记
+csv/stem_indexer_generalized_cases.csv  # batch用例表
+batch/stem_indexer_pt_save.py           # 读取CSV并生成pt
+batch/stem_indexer_pt_loadprocess.py    # 读取pt并调用算子
+batch/replace_path.py                   # 替换batch pytest中的pt路径
 ```
 
 ## 使用方法
@@ -74,13 +82,22 @@ batch/replace_path.py                # 替换batch pytest中的pt路径
 在当前pytest目录执行：
 
 ```bash
-bash test_run.sh single
+bash test_run.sh single        # single (eager)
+bash test_run.sh single_graph  # single (graph)
+```
+
+single和batch模式都支持通过`STEM_INDEXER_CASE_ID`只运行指定用例，多个case_id使用逗号分隔：
+
+```bash
+STEM_INDEXER_CASE_ID=SI_WB_001,SI_WB_002 python3 -m pytest test_stem_indexer_single.py
+STEM_INDEXER_CASE_ID=SI_WB_001,SI_WB_002 python3 -m pytest test_stem_indexer_batch.py
 ```
 
 批量测试：
 
 ```bash
-bash test_run.sh batch
+bash test_run.sh batch        # eager 模式
+bash test_run.sh batch_graph  # graph 模式
 ```
 
 复跑已生成的`.pt`文件：
@@ -92,14 +109,21 @@ python3 -m pytest test_stem_indexer_batch.py
 batch模式流程与QLI保持一致：
 
 ```text
-1. 读取excel/stem_indexer_cases.xlsx。
-2. 生成每条case的.pt文件，保存输入、metadata和CPU golden。
-3. pytest逐个读取.pt文件并调用NPU算子。
+1. 读取csv/stem_indexer_generalized_cases.csv。
+2. 生成每条case的.pt文件，保存输入和CPU golden。
+3. pytest逐个读取.pt文件，运行时动态构造metadata并调用NPU算子。
 4. 与.pt中保存的golden比对。
-5. 生成result.xlsx记录批量执行结果。
+5. 生成result.csv记录批量执行结果。
 ```
 
-`.pt`文件和`result.xlsx`是本地生成产物，不需要提交。
+生成`.pt`时也使用`STEM_INDEXER_CASE_ID`只选择指定用例，多个case_id使用逗号分隔：
+
+```bash
+STEM_INDEXER_CASE_ID=SI_WB_001_1,SI_WB_101_1 \
+    python3 batch/stem_indexer_pt_save.py csv/stem_indexer_generalized_cases.csv pt_path
+```
+
+`.pt`文件和`result.csv`是本地生成产物，不需要提交。
 
 普通单case脚本可直接执行：
 
