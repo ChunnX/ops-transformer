@@ -462,21 +462,9 @@ function(add_ops_src_copy)
                 ${TENSOR_API}/impl/c_api/*
                 ${TENSOR_API}/include/c_api/*
             )
-            set(CATLASS_COPY_COMMANDS)
-            if (DEFINED OPS_ADV_CATLASS_INC AND EXISTS "${OPS_ADV_CATLASS_INC}")
-                file(GLOB_RECURSE CATLASS_FILES CONFIGURE_DEPENDS ${OPS_ADV_CATLASS_INC}/*)
-                list(APPEND UTILS_FILES ${CATLASS_FILES})
-                set(CATLASS_COPY_COMMANDS
-                    COMMAND ${CMAKE_COMMAND} -E rm -rf
-                            ${OPS_UTILS_INC_KERNEL_DIR}/catlass ${OPS_UTILS_INC_KERNEL_DIR}/tla
-                    COMMAND ${CMAKE_COMMAND} -E copy_directory
-                            ${OPS_ADV_CATLASS_INC} ${OPS_UTILS_INC_KERNEL_DIR}
-                )
-            endif()
             add_custom_command(OUTPUT ${UTILS_COPY_STAMP}
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/regbase
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
-                ${CATLASS_COPY_COMMANDS}
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_ADV_UTILS_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_CGMCT} ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_GMM_COMMON_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
