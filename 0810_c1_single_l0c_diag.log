@@ -1,0 +1,18 @@
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] bsnd_b1_s1_1_k_1024: suite=core kind=coverage layout=BSND B=1 S1=1 S2=1281 N1=128 Nidx1=64 K=1024 valid_k=[1024,1024] exec_k=1024 scatter_exec_k=1024 invalid=0 path=full-valid dtype=bfloat16
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0810_kernel_source.cpp
+  TileLang: completed
+  Official: completed
+  dQueryIndex  max_abs=3.051758e-05 mean_abs=4.688332e-09 mean_rel=6.546018e-06 norm_rel=5.125991e-07
+  dKeyIndex    max_abs=6.103516e-05 mean_abs=1.015033e-08 mean_rel=2.586279e-05 norm_rel=2.670318e-06
+  dWeights     max_abs=0.000000e+00 mean_abs=0.000000e+00 mean_rel=0.000000e+00 norm_rel=0.000000e+00
+  Loss         max_abs=1.907349e-06 mean_abs=1.907349e-06 mean_rel=2.118616e-07 norm_rel=2.118616e-07
+  batch=0 dQueryIndex=5.13e-07 dKeyIndex=2.67e-06 dWeights=0.00e+00
+  query诊断：launch_cores=3 tasks_per_core=1 first_failed=None failed=0/1
+    b= 0 q=   0 task=   0 round= 0 core= 0 kReal= 1024 dQ_norm=5.13e-07 dW_norm=0.00e+00
+  query最差：b0q0(task=0,dQ=5.1e-07,dW=0.0e+00)
+[00] bsnd_b1_s1_1_k_1024 PASS dQ_norm=5.13e-07 dK_norm=2.67e-06 dW_norm=0.00e+00 Loss_norm=2.12e-07
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
