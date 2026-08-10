@@ -563,9 +563,21 @@ def ffn2attn_run_npu(queue, rank, x, token_ids, actual_token_num, session_ids, m
 
 
 def compare_output(str_name, golden_per_card, npu_per_card, compare_dtype, tensor_name, mask_per_card=None):
-    def compare(golden, npu, mask, dtype, tensor_name, diffThd=0.001, pctThd=0.001):       
-        np_output_npu = np.array(golden.cpu())
-        np_output_golden = np.array(npu.cpu())
+    def convert_to_numpy(tensor, dtype):
+        tensor = tensor.cpu().contiguous()
+        if dtype == "bfloat16":
+            from ml_dtypes import bfloat16
+            return tensor.view(torch.int16).numpy().view(bfloat16)
+        else:
+            try:
+                torch_dtype = getattr(torch, dtype)
+                return tensor.to(torch_dtype).numpy()
+            except Exception:
+                raise ValueError(f"Data type '{dtype}' is currently not supported.")
+
+    def compare(golden, npu, mask, dtype, tensor_name, diffThd=0.001, pctThd=0.001):
+        np_output_npu = convert_to_numpy(npu, dtype)
+        np_output_golden = convert_to_numpy(golden, dtype)
 
         if mask is not None:
             np_mask = np.array(mask.cpu())
@@ -574,22 +586,22 @@ def compare_output(str_name, golden_per_card, npu_per_card, compare_dtype, tenso
 
         print("dtype: ", dtype)
         max_diff_hd = 0.0
-        if dtype == torch.int8:
+        if dtype in ("int8", "float32"):
             max_diff_hd = 1.0
-        res_output = toolss_attn.data_compare_np(np_output_golden, np_output_npu, diff_thd=diffThd, pct_thd=pctThd, max_diff_hd=max_diff_hd)
+        res_output = toolss_attn.data_compare_np(np_output_npu, np_output_golden, diff_thd=diffThd, pct_thd=pctThd, max_diff_hd=max_diff_hd)
 
         print(f'[INFO] tensor {tensor_name} output测试的精度结果为: {res_output}')
         toolss_attn.write_row_to_csv('attention.csv', [current_case_name, tensor_name, res_output])
         return res_output[0] == 'PASS'
-    
+
     result = {}
 
     if not compare_per_rank:
         print(f"##################Compare {str_name}##################")
         mask_arg = torch.cat(mask_per_card) if mask_per_card else None
         res = compare(
-            torch.cat(golden_per_card).to(compare_dtype), 
-            torch.cat(npu_per_card).to(compare_dtype), 
+            torch.cat(golden_per_card),
+            torch.cat(npu_per_card),
             mask_arg,
             compare_dtype,
             None
@@ -602,10 +614,10 @@ def compare_output(str_name, golden_per_card, npu_per_card, compare_dtype, tenso
             local_rank_id = i
 
             res = compare(
-                golden_per_card[local_rank_id].to(compare_dtype), 
-                npu_per_card[local_rank_id].to(compare_dtype), 
+                golden_per_card[local_rank_id],
+                npu_per_card[local_rank_id],
                 mask_arg,
-                compare_dtype, 
+                compare_dtype,
                 f"{tensor_name}_{i}"
             )
             result[f"{tensor_name}_{i}"] = res
@@ -647,7 +659,7 @@ if __name__ == '__main__':
                 'state',
                 [token_info_golden[i] for i in range(golden_start, golden_start + compare_num)],
                 [token_states_cpu_list[i] for i in range(golden_start, golden_start + compare_num)],
-                torch.float32,
+                "float32",
                 'ffn_token_state',
                 None
             )
@@ -656,7 +668,7 @@ if __name__ == '__main__':
                 'data',
                 [token_data_golden[i] for i in range(golden_start, golden_start + compare_num)],
                 [token_data_cpu_list[i] for i in range(golden_start, golden_start + compare_num)],
-                torch.float32,
+                "float32",
                 'ffn_token_data',
                 [token_data_mask[i] for i in range(golden_start, golden_start + compare_num)]
             )

@@ -96,7 +96,7 @@ def data_compare_np(npu_output, cpu_output, diff_thd=0.01, pct_thd=0.05, max_dif
               (float(split_count), max_diff_hd))
 
     has_nan_inf = False
-    if 'nan' in str(real_data) or 'inf' in str(real_data) or 'nan' in str(data_compe) or 'inf' in str(data_compe):
+    if np.isnan(real_data).any() or np.isinf(real_data).any() or np.isnan(data_compe).any() or np.isinf(data_compe).any():
         has_nan_inf = True
 
     # 默认精度比对方式
