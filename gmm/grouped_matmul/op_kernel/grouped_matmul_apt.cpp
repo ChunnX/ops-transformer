@@ -13,11 +13,16 @@
  * \brief
  */
 
+#if __has_include("version/asc_devkit_version.h")
+#include "version/asc_devkit_version.h"
+#endif
+
+// Blaze/Tensor API is available from CANN DevKit 9.1.0 onward.
 #if defined(ASC_DEVKIT_MAJOR) && defined(ASC_DEVKIT_MINOR) && \
-    (ASC_DEVKIT_MAJOR > 9 || (ASC_DEVKIT_MAJOR == 9 && ASC_DEVKIT_MINOR > 0))
-#define IS_BLAZE true
+    (ASC_DEVKIT_MAJOR > 9 || (ASC_DEVKIT_MAJOR == 9 && ASC_DEVKIT_MINOR >= 1))
+#define IS_BLAZE 1
 #else
-#define IS_BLAZE false
+#define IS_BLAZE 0
 #endif
 
 #include "grouped_matmul_utils.h"
@@ -227,6 +232,9 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 #if IS_BLAZE
 #define GMM_QUANT_MX_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)                   \
     do {                                                                                                               \
+        if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {                                           \
+            AscendC::printf("zzzlog path=GmmTensorApiMxKernel is_blaze=1\n");                                         \
+        }                                                                                                              \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
         GmmTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout,         \
@@ -236,6 +244,9 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 #else
 #define GMM_QUANT_MX_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)                   \
     do {                                                                                                               \
+        if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {                                           \
+            AscendC::printf("zzzlog path=GmmCgmctMxKernel is_blaze=0\n");                                             \
+        }                                                                                                              \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
         GmmCgmctMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, cgmctXLayout, cgmctWLayout,   \
@@ -386,8 +397,14 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                   ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
                   ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
 #if IS_BLAZE
+        if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
+            AscendC::printf("zzzlog path=GmmWeightQuantTensorApiMxKernel is_blaze=1\n");
+        }
         INVOKE_GMM_WEIGHT_QUANT_MXA8W4_TENSOR_API_IMPL();
 #else
+        if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
+            AscendC::printf("zzzlog path=GMMWeightQuantResplitController is_blaze=0\n");
+        }
         INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
                                                           VEC_ANTIQUANT_CONFIG_DYNAMIC);
 #endif
