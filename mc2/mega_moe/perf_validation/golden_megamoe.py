@@ -72,7 +72,10 @@ def assert_case(c):
     h, ih = c["hidden"], c["intermediate_hidden"]
     ws, exp, topk = c["world_size"], c["num_experts"], c["topk"]
     assert 1024 <= h <= 8192 and h % 512 == 0, f"hidden={h} 必须 ∈[1024,8192] 且 %512==0"
-    assert 1024 <= ih <= 3072 and ih % 512 == 0, f"intermediate_hidden={ih} 必须 ∈[1024,3072] 且 %512==0 (上限3072)"
+    # 与 tiling CheckWeight2Input 保持一致（ih∈[1024,3072] 且 512 对齐，SwiGLU 2× 后仍对齐）。
+    # 放宽会让脚本放行、算子层才报 EZ1008，反而更难定位。实测被此约束排除的高影响力模型：
+    # Qwen3-30B-A3B(768)、Qwen3.6(512)、Mixtral(14336)、Llama-4(8192)、GLM-4.5-Air(1408)。
+    assert 1024 <= ih <= 3072 and ih % 512 == 0, f"intermediate_hidden={ih} 必须 ∈[1024,3072] 且 %512==0 (算子 tiling 硬约束)"
     assert 1 <= topk <= 16, f"topk={topk} 必须 ∈[1,16]"
     assert ws in (2, 4, 8, 16, 32), f"world_size={ws} 必须 ∈{{2,4,8,16,32}}"
     assert exp % ws == 0, f"num_experts={exp} 必须能被 world_size={ws} 整除"
@@ -1125,6 +1128,25 @@ CASES = [
     dict(name="glm45_ep4_b1024_w8a8",      world_size=4, num_experts=160, hidden=5120, intermediate_hidden=1536, topk=8, num_tokens=1024, num_max_tokens_per_rank=2048, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=127, quant="w8a8"),
     # Llama-4 Maverick（128E/k8/h5120）
     dict(name="llama4_ep4_b1024_w8a8",     world_size=4, num_experts=128, hidden=5120, intermediate_hidden=2048, topk=8, num_tokens=1024, num_max_tokens_per_rank=2048, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=128, quant="w8a8"),
+    # —— D 组：高影响力开源模型 × 小 EP（开源生态 × 优化收益的最佳交集）——
+    # 【筛选逻辑】开源 MoE 影响力（HF 下载量，2026-08 实测）与收益的交叉：
+    #   收益 ∝ 空转核数 = 40-EP，且每 rank 块数 = coreNum/EP。128 专家模型（Qwen3 系）在 EP=4
+    #   tok1024 时 rpr=64 → 切 8 块 → +31~48%（与 C 组 qwen3_235b 实测一致）；256+ 专家模型
+    #   （DSV4/GLM-5.2 级）在 EP=4 时 rpr 太小切不动、EP=16 时只切 2 块 → 收益仅 1~7%。
+    #   这正是用户预期的收益梯队：小模型 20~30%+、大模型 6~7%。
+    # 【算子硬约束】tiling CheckWeight2Input 要求 ih ∈ [1024,3072] 且 512 对齐（SwiGLU 2× 后仍对齐）。
+    # 已实测排除：Qwen3-30B-A3B(ih=768)、Qwen3.6(512)、Qwen3-Next(512)、Mixtral(14336/16384)、
+    # Llama-4(8192)、GLM-4.5-Air(1408→2816 非512对齐) 均不可测（tiling 报 EZ1008）。
+    # 可测的高影响力模型：Qwen3-235B-A22B(128E, +47.9% 实测)、GLM-4.5(160E)、DeepSeek-V3(256E)、
+    # GLM-5.2(256E)、Kimi-K2.5(384E)、DeepSeek-V4-Flash(256E)、DeepSeek-V4-Pro(384E)。
+    # 【shape 来源】ModelScope config.json 实拉。
+    # Qwen3-Coder-480B（160E/k8/h6144/moe_ih2560）—— 编码场景旗舰，128→160 专家中间档
+    dict(name="qwen3coder_ep4_b1024_w8a8", world_size=4, num_experts=160, hidden=6144, intermediate_hidden=2560, topk=8, num_tokens=1024, num_max_tokens_per_rank=2048, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=132, quant="w8a8"),
+    # DeepSeek-V4-Flash（256E/k6/h4096）—— 大模型梯队，EP4 时 rpr=tok*6/256：tok1024→24(切3块)
+    dict(name="dsv4f_ep4_b1024_w8a8",  world_size=4, num_experts=256, hidden=4096, intermediate_hidden=2048, topk=6, num_tokens=1024, num_max_tokens_per_rank=2048, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=135, quant="w8a8"),
+    dict(name="dsv4f_ep16_b1024_w8a8", world_size=16, num_experts=256, hidden=4096, intermediate_hidden=2048, topk=6, num_tokens=1024, num_max_tokens_per_rank=2048, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=136, quant="w8a8"),
+    # DeepSeek-V4-Pro（384E/k6/h7168）—— 最大档，权重 384E 需 EP16 才能装下
+    dict(name="dsv4pro_ep16_b1024_w8a8", world_size=16, num_experts=384, hidden=7168, intermediate_hidden=3072, topk=6, num_tokens=1024, num_max_tokens_per_rank=2048, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=137, quant="w8a8"),
     # —— B 组：未过门槛对照（rowsPerRank < 16，碎片守卫拒绝分块，预期持平）——
     # 保留以佐证「门槛公式成立」：同模型同 EP 下仅 token 不同，收益应从 ≈0 跃变到正收益。
     dict(name="glm52_ep16_b256_w8a8",   world_size=16, num_experts=256, hidden=6144, intermediate_hidden=2048, topk=8, num_tokens=256, num_max_tokens_per_rank=512, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=103, quant="w8a8"),
