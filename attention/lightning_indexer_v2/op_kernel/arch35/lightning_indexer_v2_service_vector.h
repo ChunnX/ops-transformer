@@ -168,7 +168,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe *
     // returnvalue
     // 大小：topK * sizeof(float)
     if (topkCount_ <= 2048) {
-        pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(float));
+        pipe->InitBuffer(valueOutBuf_, (topkCountAlign256_ + 64) * sizeof(float));
         valueOutLocal_ = valueOutBuf_.Get<float>();
     } else {
         valueOutLocal_ = mrgValueBuf_.Get<float>();
@@ -633,7 +633,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
                 PipeBarrier<PIPE_V>();
                 Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[validS2Len / 8 * 8], neg, mask, 1, 1, 0);
             }
-            
+
             if (validS2Len / 8 * 8 + 64 < topkCount_) {
                 PipeBarrier<PIPE_V>();
                 Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[validS2Len / 8 * 8 + 64],
@@ -645,7 +645,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_],
                                 indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
-            
+
             // 是否返回Value值
             if (returnValueFlag) {
                 WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
@@ -655,17 +655,17 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
                 if (validS2Len < topkCount_) {
                     uint64_t mask[1];
                     mask[0] = ~0;
-                    mask[0] = mask[0] << (validS2Len % 16);
+                    mask[0] = mask[0] << (validS2Len % 8);
                     PipeBarrier<PIPE_V>();
-                    Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16],
+                    Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 8 * 8],
                             constInfo_.NEG_INF_FLOAT, mask, 1, 1, 0);
                 }
-            
-                if (validS2Len / 16 * 16 + 64 < topkCount_) {
+
+                if (validS2Len / 8 * 8 + 64 < topkCount_) {
                     PipeBarrier<PIPE_V>();
-                    Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16 + 64],
+                    Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 8 * 8 + 64],
                             constInfo_.NEG_INF_FLOAT,
-                            topkCount_ - (validS2Len / 16 * 16 + 64));
+                            topkCount_ - (validS2Len / 8 * 8 + 64));
                 }
                 SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -787,7 +787,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessLD()
 
             uint64_t baseLdGmOffset = ldInfo_.workspaceIdx * s1BaseSize_ * topkCountAlign16_ +
                                       topkCountAlign16_ * (ldInfo_.mStart + j);
-            
+
             ldScoreSliceParams.blockLen = topkCountAlign16_ * sizeof(SCORE_T);
             ldIndexSliceParams.blockLen = topkCountAlign16_ * sizeof(uint32_t);
 
@@ -806,7 +806,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessLD()
                     topkCountAlign256_ - topkCountAlign16_);
                 PipeBarrier<PIPE_V>();
             }
-            
+
             AscendC::DataCopy(indicesOutLocal_, ldIndexLocal_, topkCountAlign256_);
             AscendC::DataCopy(scoreOutLocal_, mrgValueLocal_, topkCountAlign256_);
 
@@ -835,7 +835,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessLD()
 
                     uint32_t s2Len = topkCountAlign256_ + chunkLen;
                     uint32_t s2LenAlign = LIV2Common::Align(s2Len, (uint32_t)256);
-                    
+
                     topkOp_.LdTopK(mrgValueLocal_, ldIndexLocal_, indicesOutLocal_, scoreOutLocal_,
                                     s2LenAlign, j, ldInfo_.workspaceNum);
                     if (topkCountAlign256_ != topkCount_) {
@@ -871,7 +871,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessLD()
                                 constInfo_.kHeadNum * topkCount_;
             AscendC::DataCopyPad(indiceOutGm[indiceOutGmOffset],
                             indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
-            
+
             if (returnValueFlag) {
                 PipeBarrier<PIPE_V>();
                 liV2Vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_,
@@ -979,7 +979,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessLD()
                             constInfo_.kHeadNum * topkCount_;
         AscendC::DataCopyPad(indiceOutGm[indiceOutGmOffset],
                          indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
-        
+
         if (returnValueFlag) {
             PipeBarrier<PIPE_V>();
             liV2Vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_,
