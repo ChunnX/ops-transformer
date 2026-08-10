@@ -45,7 +45,7 @@ using namespace Mc2GroupedMatmulTilingData;
 #endif
 
 template <bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GMM_WEIGHT_TRANS, bool TILINGKEY_SHARED_MM_WEIGHT_TRANS,
-          int TILINGKEY_COMM_MODE>
+          int TILINGKEY_COMM_MODE, bool TILINGKEY_COUNTS_FROM_TENSOR>
 __global__ __aicore__ void
 grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorOptionalGM,
                            GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,
@@ -70,7 +70,7 @@ grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
                                   offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
     constexpr CubeFormat W_FORMAT = CubeFormat::ND;
 
-    using HcclOpType = HcclA2avOp<DTYPE_Y, false, TILINGKEY_COMM_MODE>;
+    using HcclOpType = HcclA2avOp<DTYPE_Y, false, TILINGKEY_COMM_MODE, TILINGKEY_COUNTS_FROM_TENSOR>;
     using ComputeOpType =
         QuantGroupedMatmul<QuantGmmA2avTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT, DTYPE_GMM_X,
                            DTYPE_Y, CubeFormat::ND, false, TILINGKEY_GMM_WEIGHT_TRANS, false, false>;
@@ -91,13 +91,15 @@ grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
     GM_ADDR sendBufferAddr = gmmOutputGM;
     HcclOpType hcclOp;
     hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, sendBufferAddr, yGM,
-        static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
+                static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum), &pipe,
+                sendCountsTensorOptionalGM, recvCountsTensorOptionalGM);
 
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
                                        gmmArrayAddr_, tilingGM);
     ComputeOpType computeOp;
     computeOp.Init(gmmxGM, gmmweightGM, nullptr, nullptr, gmmOutputGM, gmmComputeWSGM,
-                   tilingData_, &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe);
+                   tilingData_, &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe, false,
+                   sendCountsTensorOptionalGM, recvCountsTensorOptionalGM);
 
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
                                        mmArrayAddr_, tilingGM);

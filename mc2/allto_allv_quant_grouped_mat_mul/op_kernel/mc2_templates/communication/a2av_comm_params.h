@@ -25,9 +25,10 @@ struct A2avCommParams {
     uint64_t recvOffset[MAX_EP_RANK_SIZE] = {0UL};
 };
 
+template <typename GetCountFn>
 __aicore__ inline void CalcA2avCommBeforeParams(
     A2avCommParams &params,
-    const uint64_t *rawSendCounts, const uint64_t *rawRecvCounts,
+    GetCountFn getCount,
     uint32_t rankDim, uint32_t e, uint32_t startExpertIdx, uint32_t expertNum,
     uint64_t axis,
     uint64_t &sendOffsetLastSum, uint64_t &recvOffsetLastSum)
@@ -36,24 +37,24 @@ __aicore__ inline void CalcA2avCommBeforeParams(
         params.sendCnt[i] = 0UL;
         params.recvCnt[i] = 0UL;
         for (uint64_t expertIdx = startExpertIdx; expertIdx < startExpertIdx + expertNum; expertIdx++) {
-            params.sendCnt[i] += static_cast<uint64_t>(rawSendCounts[expertIdx + i * e]) * axis;
-            params.recvCnt[i] += static_cast<uint64_t>(rawRecvCounts[expertIdx + i * e]) * axis;
+            params.sendCnt[i] += getCount(true, expertIdx + i * e) * axis;
+            params.recvCnt[i] += getCount(false, expertIdx + i * e) * axis;
         }
     }
 
     params.sendOffset[0] = 0UL;
     for (uint32_t j = 0U; j < startExpertIdx; j++) {
-        params.sendOffset[0] += static_cast<uint64_t>(rawSendCounts[j]) * axis;
+        params.sendOffset[0] += getCount(true, j) * axis;
     }
     for (uint32_t i = 1U; i < rankDim; i++) {
         params.sendOffset[i] = 0UL;
         for (uint32_t k = 0U; k < i; k++) {
             for (uint32_t j = 0U; j < e; j++) {
-                params.sendOffset[i] += static_cast<uint64_t>(rawSendCounts[j + k * e]) * axis;
+                params.sendOffset[i] += getCount(true, j + k * e) * axis;
             }
         }
         for (uint32_t j = 0U; j < startExpertIdx; j++) {
-            params.sendOffset[i] += static_cast<uint64_t>(rawSendCounts[j + i * e]) * axis;
+            params.sendOffset[i] += getCount(true, j + i * e) * axis;
         }
     }
 
@@ -68,9 +69,10 @@ __aicore__ inline void CalcA2avCommBeforeParams(
     }
 }
 
+template <typename GetCountFn>
 __aicore__ inline void CalcA2avCommAfterParams(
     A2avCommParams &params,
-    const uint64_t *rawSendCounts, const uint64_t *rawRecvCounts,
+    GetCountFn getCount,
     uint32_t rankDim, uint32_t e, uint32_t startExpertIdx, uint32_t expertNum,
     uint64_t axis, uint64_t &sendOffsetLastSum, uint64_t &recvOffsetLastSum)
 {
@@ -78,15 +80,15 @@ __aicore__ inline void CalcA2avCommAfterParams(
         params.sendCnt[i] = 0UL;
         params.recvCnt[i] = 0UL;
         for (uint64_t expertIdx = startExpertIdx; expertIdx < startExpertIdx + expertNum; expertIdx++) {
-            params.sendCnt[i] += static_cast<uint64_t>(rawSendCounts[expertIdx + i * e]) * axis;
-            params.recvCnt[i] += static_cast<uint64_t>(rawRecvCounts[expertIdx + i * e]) * axis;
+            params.sendCnt[i] += getCount(true, expertIdx + i * e) * axis;
+            params.recvCnt[i] += getCount(false, expertIdx + i * e) * axis;
         }
     }
 
     uint64_t batchStartOffset = 0UL;
     for (uint64_t i = 0UL; i < startExpertIdx; i++) {
         for (uint64_t j = 0UL; j < rankDim; j++) {
-            batchStartOffset += static_cast<uint64_t>(rawSendCounts[i + j * e]);
+            batchStartOffset += getCount(true, i + j * e);
         }
     }
     batchStartOffset *= axis;
@@ -94,18 +96,18 @@ __aicore__ inline void CalcA2avCommAfterParams(
     uint64_t rankRunningOffset = 0UL;
     for (uint64_t i = 1UL; i < rankDim; i++) {
         for (uint64_t expertIdx = startExpertIdx; expertIdx < startExpertIdx + expertNum; expertIdx++) {
-            rankRunningOffset += static_cast<uint64_t>(rawSendCounts[expertIdx + (i - 1) * e]) * axis;
+            rankRunningOffset += getCount(true, expertIdx + (i - 1) * e) * axis;
         }
         params.sendOffset[i] = batchStartOffset + rankRunningOffset;
     }
     params.recvOffset[0] = 0UL;
-    for (uint64_t i = 0UL; i < startExpertIdx; i++) {
-        params.recvOffset[0] += static_cast<uint64_t>(rawRecvCounts[i]) * axis;
+    for (uint32_t i = 0U; i < startExpertIdx; i++) {
+        params.recvOffset[0] += getCount(false, i) * axis;
     }
-    for (uint64_t i = 1UL; i < rankDim; i++) {
+    for (uint32_t i = 1U; i < rankDim; i++) {
         params.recvOffset[i] = params.recvOffset[i - 1];
-        for (uint64_t j = 0UL; j < e; j++) {
-            params.recvOffset[i] += static_cast<uint64_t>(rawRecvCounts[startExpertIdx + (i - 1) * e + j]) * axis;
+        for (uint32_t j = 0UL; j < e; j++) {
+            params.recvOffset[i] += getCount(false, startExpertIdx + (i - 1) * e + j) * axis;
         }
     }
 }

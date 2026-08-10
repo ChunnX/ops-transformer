@@ -21,6 +21,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
+#include "mc2_log_compat.h"
 #include "platform/soc_spec.h"
 #include "opdev/platform.h"
 #include "securec.h"
@@ -112,13 +113,8 @@ static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
                             const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const char *group,
                             const aclTensor *y, const aclTensor *mmYOptional)
 {
-    if ((sendCountsTensorOptional != nullptr) || (recvCountsTensorOptional != nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
-                "sendCountsTensorOptional and recvCountsTensorOptional should be all empty, "
-                "but got: sendCountsTensorOptional is %s, recvCountsTensorOptional is %s.",
-                sendCountsTensorOptional ? "non-empty" : "empty", recvCountsTensorOptional ? "non-empty" : "empty");
-        return false;
-    }
+    (void)sendCountsTensorOptional;
+    (void)recvCountsTensorOptional;
     if ((group == nullptr) || (strnlen(group, HCCL_GROUP_NAME_MAX) == 0)) { // HCCL_GROUP_NAME_MAX = 128U
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required group name is Empty.");
         return false;
@@ -126,29 +122,84 @@ static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
     return CheckMmOptionalConsistency(mmXOptional, mmWeightOptional, mmYOptional);
 }
 
-static aclnnStatus CheckIntArrayNotEmpty(const aclIntArray *arr, const char *name)
+static aclnnStatus checkCounts(const char *apiName, const aclTensor *gmmWeight, int64_t epWorldSize,
+                               const aclTensor *sendCountsTensorOptional,
+                               const aclTensor *recvCountsTensorOptional,
+                               const aclIntArray *sendCounts, const aclIntArray *recvCounts)
 {
-    if (arr == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s should not be null.", name);
+    bool hasSendTensor = (sendCountsTensorOptional != nullptr);
+    bool hasRecvTensor = (recvCountsTensorOptional != nullptr);
+    bool hasSendAttr = false;
+    bool hasRecvAttr = false;
+    uint64_t sendSize = 0U;
+    uint64_t recvSize = 0U;
+    if (sendCounts != nullptr) {
+        aclGetIntArraySize(sendCounts, &sendSize);
+        hasSendAttr = (sendSize > 0U);
+    }
+    if (recvCounts != nullptr) {
+        aclGetIntArraySize(recvCounts, &recvSize);
+        hasRecvAttr = (recvSize > 0U);
+    }
+    if (hasSendTensor && hasSendAttr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName, "sendCounts/sendCountsTensor", "both set",
+                                              "sendCounts attr and sendCountsTensor are mutually exclusive.");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    uint64_t size = 0U;
-    aclGetIntArraySize(arr, &size);
-    if (size == 0U) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s size should not be 0.", name);
+    if (hasSendTensor != hasRecvTensor) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName, "sendCountsTensor/recvCountsTensor",
+                                              (std::to_string(hasSendTensor) + "/" + std::to_string(hasRecvTensor)).c_str(),
+                                              "sendCountsTensor and recvCountsTensor must use the same source.");
         return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (hasSendAttr != hasRecvAttr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName, "sendCounts/recvCounts",
+                                              (std::to_string(hasSendAttr) + "/" + std::to_string(hasRecvAttr)).c_str(),
+                                              "sendCounts and recvCounts attrs must use the same source.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (!hasSendTensor && !hasSendAttr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName, "sendCounts/sendCountsTensor", "both null",
+                                              "at least one of sendCounts attr or sendCountsTensor must be provided.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 校验 counts tensor 元素个数 == ep * epWorldSize
+    if (hasSendTensor) {
+        int64_t ep = 0;
+        if (gmmWeight != nullptr) {
+            auto gmmWeightShape = gmmWeight->GetViewShape();
+            ep = gmmWeightShape.GetDim(0);
+        }
+        int64_t expectedCount = ep * epWorldSize;
+        if (expectedCount <= 0) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName, "ep*epWorldSize", std::to_string(expectedCount).c_str(),
+                                                  "ep*epWorldSize must be positive when using counts tensor.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        int64_t sendTensorElems = 1;
+        auto sendShape = sendCountsTensorOptional->GetViewShape();
+        for (size_t i = 0; i < sendShape.GetDimNum(); i++) {
+            sendTensorElems *= sendShape.GetDim(i);
+        }
+        int64_t recvTensorElems = 1;
+        auto recvShape = recvCountsTensorOptional->GetViewShape();
+        for (size_t i = 0; i < recvShape.GetDimNum(); i++) {
+            recvTensorElems *= recvShape.GetDim(i);
+        }
+        if (sendTensorElems != expectedCount) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                apiName, "sendCountsTensor", std::to_string(sendTensorElems).c_str(),
+                (std::to_string(expectedCount) + " (ep*epWorldSize)").c_str());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (recvTensorElems != expectedCount) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                apiName, "recvCountsTensor", std::to_string(recvTensorElems).c_str(),
+                (std::to_string(expectedCount) + " (ep*epWorldSize)").c_str());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
     return ACLNN_SUCCESS;
-}
-
-// check send and recv
-static aclnnStatus CheckSendAndRecv(const aclIntArray *sendCounts, const aclIntArray *recvCounts)
-{
-    auto ret = CheckIntArrayNotEmpty(sendCounts, "sendCounts");
-    if (ret != ACLNN_SUCCESS) {
-        return ret;
-    }
-    return CheckIntArrayNotEmpty(recvCounts, "recvCounts");
 }
 
 static bool CheckRequiredScaleTensor(const aclTensor *xScale, const aclTensor *weightScale, const char *xName,
@@ -440,8 +491,9 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2GetWorkspaceSize(
                     gmmWeightQuantMode, mmXQuantMode, mmWeightQuantMode, commQuantMode, group, epWorldSize, sendCounts,
                     recvCounts, transGmmWeight, transMmWeight, y, mmYOptional, workspaceSize, executor);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    auto retSendAndRecv = CheckSendAndRecv(sendCounts, recvCounts);
-    CHECK_RET(retSendAndRecv == ACLNN_SUCCESS, retSendAndRecv);
+    auto retCounts = checkCounts("aclnnQuantGroupedMatMulAllToAllvV2GetWorkspaceSize", gmmWeight, epWorldSize,
+                                 sendCountsTensorOptional, recvCountsTensorOptional, sendCounts, recvCounts);
+    CHECK_RET(retCounts == ACLNN_SUCCESS, retCounts);
     char *strGroup = const_cast<char *>(group);
     int64_t yDtype = y->GetDataType();
     int64_t mmDtype = mmYOptional == nullptr ? 0 : mmYOptional->GetDataType();
@@ -480,10 +532,20 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2GetWorkspaceSize(
     uint8_t commModeEnum = 0;
     aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
+    uint64_t sendArrSize = 0U;
+    uint64_t recvArrSize = 0U;
+    if (sendCounts != nullptr) {
+        aclGetIntArraySize(sendCounts, &sendArrSize);
+    }
+    if (recvCounts != nullptr) {
+        aclGetIntArraySize(recvCounts, &recvArrSize);
+    }
+    const aclIntArray *sendCountsReal = (sendCounts != nullptr && sendArrSize == 0U) ? nullptr : sendCounts;
+    const aclIntArray *recvCountsReal = (recvCounts != nullptr && recvArrSize == 0U) ? nullptr : recvCounts;
     aclnnStatus ret = aclnnInnerQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
         gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
         mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, commQuantScaleOptional, strGroup, epWorldSize,
-        sendCounts, recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight, mmXQuantMode,
+        sendCountsReal, recvCountsReal, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight, mmXQuantMode,
         mmWeightQuantMode, commQuantMode, groupSize, yDtype, mmDtype, commQuantDtypeOptional, str_commMode, y,
         mmYOptional, workspaceSize, executor);
     if (*executor != nullptr) {

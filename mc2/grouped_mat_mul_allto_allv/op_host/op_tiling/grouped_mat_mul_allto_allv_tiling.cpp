@@ -41,6 +41,13 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::GetShapeAttrsInfo()
 {
     opName_ = context_->GetNodeName();
     localParams_.opName = opName_;
+
+    auto sendCountsTensorShape = context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_OPTIONAL_INDEX);
+    auto recvCountsTensorShape = context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_OPTIONAL_INDEX);
+    bool hasSendTensor = sendCountsTensorShape != nullptr;
+    bool hasRecvTensor = recvCountsTensorShape != nullptr;
+    countsFromTensor_ = hasSendTensor && hasRecvTensor;
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -51,13 +58,6 @@ bool GroupedMatmulAllToAllvTiling::IsCapable()
 
 ge::graphStatus GroupedMatmulAllToAllvTiling::CheckOpInputSingleParamsTensorNotSupport()
 {
-    auto sendCountsTensorShape = context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_OPTIONAL_INDEX);
-    auto recvCountsTensorShape = context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_OPTIONAL_INDEX);
-    OP_TILING_CHECK(
-        sendCountsTensorShape != nullptr || recvCountsTensorShape != nullptr,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sendCountsTensor/recvCountsTensor", "not nullptr",
-                                              "The values of sendCountsTensor/recvCountsTensor must be nullptr."),
-        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -305,10 +305,21 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLocalParams
         return ge::GRAPH_FAILED;
     }
     uint64_t expertNum = localParams_.ep * rankDim;
-    OP_TILING_CHECK(expertNum > MAX_EXPERT_NUM,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "expertNum", std::to_string(expertNum).c_str(),
-                                                          "exceeds max expert num"),
-                    return ge::GRAPH_FAILED);
+    if (countsFromTensor_) {
+        OP_TILING_CHECK(expertNum > MAX_TOTAL_EXPERTS_FOR_TENSOR,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "expertNum", std::to_string(expertNum).c_str(),
+                                                              "exceeds max expert num for countsFromTensor"),
+                        return ge::GRAPH_FAILED);
+    } else {
+        OP_TILING_CHECK(expertNum > EXPERT_MAX_VALUE,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "expertNum", std::to_string(expertNum).c_str(),
+                                                              (std::string("exceeds max expert num, use "
+                                                                           "sendCountsTensor/recvCountsTensor when "
+                                                                           "expertNum > ") +
+                                                               std::to_string(EXPERT_MAX_VALUE))
+                                                                  .c_str()),
+                        return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -368,9 +379,9 @@ uint64_t GroupedMatmulAllToAllvTiling::GetTilingKey() const
         return ge::GRAPH_FAILED;
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
-                                                  localParams_.isMmWeightTrans, commMode);
-    OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
-            localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, tilingKey);
+                                                  localParams_.isMmWeightTrans, commMode, countsFromTensor_);
+    OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
+            localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, countsFromTensor_, tilingKey);
     return tilingKey;
 }
 

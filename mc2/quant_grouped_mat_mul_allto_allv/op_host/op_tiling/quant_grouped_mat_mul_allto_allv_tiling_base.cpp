@@ -55,10 +55,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::GetShapeAttrsInfo()
     auto recvCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
     OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_ATTR(opName_, "epWorldSize", "null", "not null"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(sendCountsPtr == nullptr, OP_LOGE_WITH_INVALID_ATTR(opName_, "sendCounts", "null", "not null"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(recvCountsPtr == nullptr, OP_LOGE_WITH_INVALID_ATTR(opName_, "recvCounts", "null", "not null"),
-                    return ge::GRAPH_FAILED);
+    // sendCounts/recvCounts 现在是 optional 的，允许为空（当使用 tensor 时）
 
     return ge::GRAPH_SUCCESS;
 }

@@ -50,7 +50,7 @@ struct GMMATAVType { // Grouped_Mat_Mul_All_To_Allv_Type
 
 
 template <bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GROUPED_MATMUL_TRANS, bool TILINGKEY_MATMUL_TRANS,
-          int TILINGKEY_COMM_MODE>
+          int TILINGKEY_COMM_MODE, bool TILINGKEY_COUNTS_FROM_TENSOR>
 __global__ __aicore__ void
 quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM,
                                  GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM,
@@ -92,7 +92,7 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
     GM_ADDR sharedGmmComputeWSGM = userWorkspace + wsOffset;
     wsOffset += tilingData_->workspaceInfo.wsSharedGmmComputeWorkspaceSize;
 
-    using HcclOpType = HcclA2avOp<DTYPE_Y, false, TILINGKEY_COMM_MODE>;
+    using HcclOpType = HcclA2avOp<DTYPE_Y, false, TILINGKEY_COMM_MODE, TILINGKEY_COUNTS_FROM_TENSOR>;
     using GmmASWKernelType =
         Mc2GroupedMatmul::Mc2GmmASWKernel<DTYPE_GMM_X, DTYPE_GMM_WEIGHT, float, DTYPE_GMM_X_SCALE, DTYPE_Y, W_FORMAT,
                                           TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS>;
@@ -108,13 +108,15 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
     GM_ADDR sendBufferAddr = gmmOutputGM;
     HcclOpType hcclOp;
     hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, sendBufferAddr, yGM,
-                static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
+                static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum), &pipe,
+                sendCountsTensorOptionalGM, recvCountsTensorOptionalGM);
     // gmm: yGM=GMM输出缓冲(通信发送源), workspaceGM=groupList+ptrTable区域
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
                                        gmmArrayAddr_, tilingGM);
     ComputeOpType computeOp;
     computeOp.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmOutputGM, gmmComputeWSGM, tilingData_,
-                   &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe);
+                   &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe, false,
+                   sendCountsTensorOptionalGM, recvCountsTensorOptionalGM);
     // sharedmm
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
                                        mmArrayAddr_, tilingGM);

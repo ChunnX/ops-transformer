@@ -70,6 +70,10 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::GetShapeAttrsInfo()
     OP_TILING_CHECK((opName_ == nullptr), OP_LOGE("QUANTGMMALLTOALLV", "The opName_ is null."),
                     return ge::GRAPH_FAILED);
 
+    auto sendCountsTensorShape = context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_OPTIONAL_INDEX);
+    auto recvCountsTensorShape = context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_OPTIONAL_INDEX);
+    countsFromTensor_ = (sendCountsTensorShape != nullptr) && (recvCountsTensorShape != nullptr);
+
     localParams_.opName = opName_;
     return ge::GRAPH_SUCCESS;
 }
@@ -77,15 +81,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::GetShapeAttrsInfo()
 // not support param
 ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckOpInputSingleParamsTensorNotSupport()
 {
-    auto sendCountsTensorShape = context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_OPTIONAL_INDEX);
-    auto recvCountsTensorShape = context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_OPTIONAL_INDEX);
-    bool sendCountsTensorShapeNotNull = sendCountsTensorShape != nullptr;
-    bool recvCountsTensorShapeNotNull = recvCountsTensorShape != nullptr;
-    OP_TILING_CHECK(
-        sendCountsTensorShapeNotNull || recvCountsTensorShapeNotNull,
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "sendCountsTensor, recvCountsTensor", "not null",
-                                               "The values of sendCountsTensor and recvCountsTensor must be nullptr."),
-        return ge::GRAPH_FAILED);
+    // sendCountsTensor/recvCountsTensor 现在是支持的（countsFromTensor 模式），不再拒绝
     auto commQuantScaleTensorShape = context_->GetOptionalInputShape(COMM_QUANT_SCALE_OPTIONAL_INDEX);
     OP_TILING_CHECK(commQuantScaleTensorShape != nullptr,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "commQuantScale", "not null",
@@ -634,10 +630,22 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckParamsAttrEpAndSet
     bool isEpNumMatch = (localParams_.ep > 0) && (localParams_.ep < 33);
     if (isEpNumMatch) {
         uint64_t expertNum = localParams_.ep * rankDim;
-        OP_TILING_CHECK(expertNum > MAX_EXPERT_NUM,
-                        OP_LOGE_FOR_INVALID_VALUE(opName_, "expertNum", std::to_string(expertNum),
-                                                  "<= " + std::to_string(MAX_EXPERT_NUM)),
-                        return ge::GRAPH_FAILED);
+        if (countsFromTensor_) {
+            OP_TILING_CHECK(expertNum > MAX_TOTAL_EXPERTS_FOR_TENSOR,
+                            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                                opName_, "expertNum", std::to_string(expertNum),
+                                "exceeds max expert num for countsFromTensor"),
+                            return ge::GRAPH_FAILED);
+        } else {
+            OP_TILING_CHECK(expertNum > MAX_EXPERT_NUM,
+                            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                                opName_, "expertNum", std::to_string(expertNum),
+                                (std::string("exceeds max expert num, use sendCountsTensor/recvCountsTensor when "
+                                             "expertNum > ") +
+                                 std::to_string(EXPERT_MAX_VALUE))
+                                    .c_str()),
+                            return ge::GRAPH_FAILED);
+        }
     } else {
         OP_LOGE_FOR_INVALID_VALUE(opName_, "ep", std::to_string(localParams_.ep),
                                   "in range (0, " + std::to_string(MAX_EXPERT_NUM_PER_RANK) + "]");
@@ -659,6 +667,10 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckParamsAttrEpAndSet
 
 ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckAndSetSendRecvCountsAttr()
 {
+    if (countsFromTensor_) {
+        // counts 来源为 GM tensor，kernel 侧会从 tensor 读取，跳过 attr 检查与填充
+        return ge::GRAPH_SUCCESS;
+    }
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     uint64_t expertNum = localParams_.ep * localParams_.epWorldSize;
     auto sendCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
@@ -880,13 +892,18 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
     MC2_CHECK_LOG_RET(opName_, gmmTile.SetCommonInputParams(localParams_));
     // tokens最多的专家作为MM计算的M
     uint64_t mMaxSize = 0;
-    uint64_t mSize = 0;
-    for (uint64_t expertIdx = 0; expertIdx < localParams_.ep; expertIdx++) {
-        mSize = 0;
-        for (uint64_t i = 0; i < localParams_.epWorldSize; i++) {
-            mSize += localTilingData_.taskTilingInfo.sendCnt[i * localParams_.ep + expertIdx];
+    if (countsFromTensor_) {
+        // counts 来源为 GM tensor，tiling 阶段无法逐元素读取，使用 A 作为上界
+        mMaxSize = localParams_.A;
+    } else {
+        uint64_t mSize = 0;
+        for (uint64_t expertIdx = 0; expertIdx < localParams_.ep; expertIdx++) {
+            mSize = 0;
+            for (uint64_t i = 0; i < localParams_.epWorldSize; i++) {
+                mSize += localTilingData_.taskTilingInfo.sendCnt[i * localParams_.ep + expertIdx];
+            }
+            mMaxSize = std::max(mSize, mMaxSize);
         }
-        mMaxSize = std::max(mSize, mMaxSize);
     }
     // check expertNum
     OP_TILING_CHECK(
@@ -1080,6 +1097,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::PostTiling()
 {
     PrintQuantGmmA2avTilingData(localTilingData_);
     context_->SetBlockDim(localParams_.aicCoreNum);
+    localTilingData_.taskTilingInfo.countsFromTensor = countsFromTensor_ ? 1U : 0U;
     QuantGmmA2avTilingData *outTilingData = context_->GetTilingData<QuantGmmA2avTilingData>();
     size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
     OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Failed to get tiling data from context"),
@@ -1118,9 +1136,9 @@ uint64_t QuantGroupedMatmulAllToAllvTilingCommon::GetTilingKey() const
         return ge::GRAPH_FAILED;
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
-                                                  localParams_.isMmWeightTrans, commMode);
-    OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
-            localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, tilingKey);
+                                                  localParams_.isMmWeightTrans, commMode, countsFromTensor_);
+    OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
+            localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, countsFromTensor_, tilingKey);
     return tilingKey;
 }
 
