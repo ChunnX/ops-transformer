@@ -16,7 +16,7 @@
 #include "basic_api/kernel_basic_intf.h"
 #endif
 #include "kernel_operator.h"
-#include "aiv_urma_channel_decode.h"
+#include "../common/aiv_urma_channel_decode.h"
 
 namespace CommWithUrmaImpl {
 

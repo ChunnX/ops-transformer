@@ -6,6 +6,7 @@
 #endif
 #include "kernel_operator.h"
 #include "../common/urma_p2p_bench_tiling.h"
+#include "../sqe_write/aiv_urma_sqe.h"
 #include "../common/aiv_urma_channel_decode.h"
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/hcomm/hcomm.h"
@@ -20,7 +21,7 @@ class HcommBenchOp {
 public:
     __aicore__ inline void Init(GM_ADDR channelPtrTable, GM_ADDR stateGm,
                                 GM_ADDR timingGm, AscendC::TPipe* pipe,
-                                const __gm__ UrmaP2pBenchTiling* tiling)
+                                const UrmaP2pBenchTiling* tiling)
     {
         pipe_ = pipe;
         stateGm_ = stateGm;
@@ -90,7 +91,7 @@ private:
     AscendC::TPipe* pipe_{nullptr};
     GM_ADDR stateGm_{nullptr};
     GM_ADDR timingGm_{nullptr};
-    const __gm__ UrmaP2pBenchTiling* tiling_{nullptr};
+    const UrmaP2pBenchTiling* tiling_{nullptr};
     uint32_t aivId_{0};
     AscendC::GlobalTensor<uint64_t> channelPtrTable_;
     AscendC::TBuf<> decodeScratch_;

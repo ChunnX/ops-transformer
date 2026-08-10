@@ -32,7 +32,7 @@ void sqe_write_with_notify_bench_launch(uint32_t blockDim, void *stream,
                                         uint64_t timingGm, UrmaP2pBenchTiling *tiling)
 {
     sqe_write_with_notify_bench_kernel<<<blockDim, nullptr, stream>>>(
-        channelPtrTable, stateGm, timingGm,
+        (void*)channelPtrTable, (void*)stateGm, (void*)timingGm,
         tiling->peer, tiling->numSqe, tiling->sqeBytes, tiling->bufBytes,
         tiling->dbInterval, tiling->channelSlot, tiling->cqOwnerSlot, tiling->stateStride);
 }
