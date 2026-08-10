@@ -233,7 +233,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 #define GMM_QUANT_MX_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)                   \
     do {                                                                                                               \
         if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {                                           \
-            AscendC::printf("zzzlog path=GmmTensorApiMxKernel is_blaze=1\n");                                         \
+            AscendC::printf("zzzlog%d path=GmmTensorApiMxKernel is_blaze=1\n", __LINE__);                             \
         }                                                                                                              \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
@@ -245,7 +245,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 #define GMM_QUANT_MX_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)                   \
     do {                                                                                                               \
         if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {                                           \
-            AscendC::printf("zzzlog path=GmmCgmctMxKernel is_blaze=0\n");                                             \
+            AscendC::printf("zzzlog%d path=GmmCgmctMxKernel is_blaze=0\n", __LINE__);                                 \
         }                                                                                                              \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
@@ -398,12 +398,12 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                   ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
 #if IS_BLAZE
         if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
-            AscendC::printf("zzzlog path=GmmWeightQuantTensorApiMxKernel is_blaze=1\n");
+            AscendC::printf("zzzlog%d path=GmmWeightQuantTensorApiMxKernel is_blaze=1\n", __LINE__);
         }
         INVOKE_GMM_WEIGHT_QUANT_MXA8W4_TENSOR_API_IMPL();
 #else
         if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
-            AscendC::printf("zzzlog path=GMMWeightQuantResplitController is_blaze=0\n");
+            AscendC::printf("zzzlog%d path=GMMWeightQuantResplitController is_blaze=0\n", __LINE__);
         }
         INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
                                                           VEC_ANTIQUANT_CONFIG_DYNAMIC);

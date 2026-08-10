@@ -25,6 +25,9 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     GM_ADDR y, const GroupedMatmulTilingData::GMMWeightQuantParam* gmmTiling,
     const TCubeTiling* mmTiling)
 {
+    if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
+        AscendC::printf("zzzlog%d tensor_api_adapter enter\n", __LINE__);
+    }
     using LayoutA = AscendC::Te::NDExtLayoutPtn;
     using LayoutB = AscendC::Te::ZNLayoutPtn;
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
@@ -47,7 +50,16 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     const int64_t baseM = static_cast<int64_t>(mmTiling->baseM);
     const int64_t baseN = static_cast<int64_t>(mmTiling->baseN);
     const int64_t baseK = static_cast<int64_t>(mmTiling->baseK);
+    if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
+        AscendC::printf("zzzlog%d shape m=%d n=%d k=%d baseM=%d baseN=%d baseK=%d groups=%d bias=%d\n",
+            __LINE__, static_cast<int32_t>(m), static_cast<int32_t>(n), static_cast<int32_t>(k),
+            static_cast<int32_t>(baseM), static_cast<int32_t>(baseN), static_cast<int32_t>(baseK),
+            static_cast<int32_t>(gmmTiling->groupNum), static_cast<int32_t>(gmmTiling->hasBias));
+    }
     if (n <= 0 || k <= 0 || baseM <= 0 || baseN <= 0 || baseK <= 0) {
+        if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
+            AscendC::printf("zzzlog%d invalid_tiling return\n", __LINE__);
+        }
         return;
     }
 
@@ -64,6 +76,10 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     // dynamic TensorList.  It is already the data address and must not be
     // decoded as a tensor-list descriptor.
     GM_ADDR perTokenScaleAddr = perTokenScale;
+    if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
+        AscendC::printf("zzzlog%d addresses_ready kL1=%d kBub=%d\n", __LINE__,
+            static_cast<int32_t>(kL1Size), static_cast<int32_t>(kBubSize));
+    }
 
     typename GroupedKernel::Params params{
         {{m, n, k},
@@ -75,7 +91,13 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
         {gmmTiling->groupNum, gmmTiling->groupListType, gmmTiling->hasBias != 0U},
         weight, antiquantScale, bias, groupList};
     GroupedKernel kernel;
+    if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
+        AscendC::printf("zzzlog%d grouped_kernel before\n", __LINE__);
+    }
     kernel(params);
+    if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
+        AscendC::printf("zzzlog%d grouped_kernel after\n", __LINE__);
+    }
 }
 
 #endif // GMM_WEIGHT_QUANT_TENSOR_API_MX_KERNEL_H
