@@ -342,7 +342,7 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::ComputeMm1(const RunIn
     if (mSize == 0) {
         return;
     }
-    uint32_t K_L1_BASE = constInfo_.batchConsistency == BATCH_CONSISTENCY ? 256 : 128;
+    static constexpr uint32_t K_L1_BASE = 128;
     static constexpr uint32_t M_L0_BASE = 128;
     static constexpr uint32_t K_L0_BASE = 128;
     static constexpr uint32_t N_L0_BASE = 128;
@@ -356,6 +356,7 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::ComputeMm1(const RunIn
     for (uint32_t h = 0; h < hSize; h += K_L1_BASE) {
         // h方向错位搬运
         uint32_t hIdx = (h + hIdxStart) % (CeilDivT(hSize, K_L1_BASE) * K_L1_BASE);
+        hIdx = constInfo_.batchConsistency == BATCH_CONSISTENCY ? h : hIdx;
         if (hIdx + K_L1_BASE > hSize) {
             kSize = hSize - hIdx;
         } else {
