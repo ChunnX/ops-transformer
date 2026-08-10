@@ -10,177 +10,130 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""Compare helpers for quant_block_sparse_attn TestSpec adapters."""
+"""PyTorch precision comparison for quant_block_sparse_attn TTK adapters."""
 
-import numpy as np
 import torch
 
-_BF16_RTOL = 0.01
-_BF16_ATOL = 0.001
-_FAIL_RATIO_LIMIT = 0.05
-
-_MXFP8_DEFAULT_RTOL = 0.005
-_MXFP8_DEFAULT_ATOL = 0.000025
-_MXFP8_BF16_RTOL = 0.0078125
-_MXFP8_BF16_ATOL = 0.0001
-_MXFP8_FAIL_RATIO_LIMIT = 0.005
-_MXFP8_MAX_RELATIVE_ERROR = 10.0
-_MXFP8_EPSILON = 1e-10
+_FP32_RTOL = 0.005
+_FP32_ATOL = 0.000025
+_BF16_RTOL = 0.0078125
+_BF16_ATOL = 0.0001
+_FAIL_RATIO_LIMIT = 0.005
+_MAX_NORMALIZED_ERROR = 10.0
+_NORMALIZATION_EPSILON = 1e-10
+_NORMALIZATION_FLOOR = (1.0 / (1 << 14)) / _FP32_RTOL
 
 
-def as_numpy(value):
-    if hasattr(value, "detach"):
-        value = value.detach().cpu()
-        if value.dtype == torch.bfloat16:
-            value = value.float()
-        value = value.numpy()
-    return np.asarray(value)
+def _as_cpu_tensor(value):
+    if torch.is_tensor(value):
+        return value.detach().cpu()
+    return torch.as_tensor(value)
 
 
-def attention_compare(npu_out, golden_out):
-    """Compare attention output tensors with BF16-aware tolerance."""
-    npu = as_numpy(npu_out)
-    golden = as_numpy(golden_out)
+def _compare_tolerance(npu_out, golden_out):
+    dtype_names = (
+        str(getattr(npu_out, "dtype", "")),
+        str(getattr(golden_out, "dtype", "")),
+    )
+    if any("bfloat16" in name for name in dtype_names):
+        return _BF16_RTOL, _BF16_ATOL
+    return _FP32_RTOL, _FP32_ATOL
 
-    if npu.shape != golden.shape:
-        return {
-            "pass": False,
-            "precision": "shape_mismatch",
-            "error_info": f"shape mismatch: npu={npu.shape}, golden={golden.shape}",
-        }
 
-    if golden.size == 0:
+def _torch_compare(npu_out, golden_out, output_name):
+    """Compare one output with the unified PyTorch precision protocol."""
+    npu = _as_cpu_tensor(npu_out)
+    golden = _as_cpu_tensor(golden_out)
+
+    if npu.numel() == 0 and golden.numel() == 0:
         return {"pass": True, "precision": 100.0}
 
-    npu_f32 = npu.astype(np.float32)
-    golden_f32 = golden.astype(np.float32)
-
-    abs_diff = np.abs(npu_f32 - golden_f32)
-    denom = np.maximum(np.abs(golden_f32), 1e-10)
-    rel_diff = abs_diff / denom
-
-    mismatch = (rel_diff > _BF16_RTOL) & (abs_diff > _BF16_ATOL)
-    diff_count = int(np.sum(mismatch))
-    precision = (golden.size - diff_count) / golden.size * 100
-    fail_ratio = diff_count / golden.size
-
-    passed = fail_ratio <= _FAIL_RATIO_LIMIT
-    error_info = None
-    if diff_count > 0:
-        max_abs = float(np.max(abs_diff[mismatch])) if diff_count > 0 else 0.0
-        max_rel = float(np.max(rel_diff[mismatch])) if diff_count > 0 else 0.0
-        error_info = (
-            f"attention compare mismatches={diff_count}, fail_ratio={fail_ratio:.6g}, "
-            f"max_abs_diff={max_abs:.6g}, max_rel_diff={max_rel:.6g}"
-        )
-
-    return {
-        "pass": passed,
-        "precision": precision,
-        "diff_indices": np.where(mismatch.reshape(-1))[0][:1000].tolist(),
-        "error_info": error_info,
-        "metrics": {
-            "rtol": _BF16_RTOL,
-            "atol": _BF16_ATOL,
-            "fail_ratio": fail_ratio,
-            "fail_ratio_limit": _FAIL_RATIO_LIMIT,
-            "max_abs_diff": float(np.max(abs_diff)) if abs_diff.size > 0 else 0.0,
-            "max_rel_diff": float(np.max(rel_diff)) if rel_diff.size > 0 else 0.0,
-        },
-    }
-
-
-def _lse_compare_with_golden_rules(
-    npu_out,
-    golden_out,
-    *,
-    normalization_epsilon,
-    max_error_count=None,
-    nonfinite_error_to_inf=False,
-):
-    """Implement the common result_compare_method.check_result protocol."""
-    npu = as_numpy(npu_out)
-    golden = as_numpy(golden_out)
-
-    if npu.size == 0 and golden.size == 0:
-        return {"pass": True, "precision": 100.0}
-
-    # Both pytest comparators flatten tensors and only require equal element
-    # counts; preserve that behavior instead of adding a stricter shape rule.
-    if npu.size != golden.size:
+    if npu.numel() != golden.numel():
         return {
             "pass": False,
             "precision": "size_mismatch",
             "error_info": (
-                f"lse size mismatch: npu={npu.size}, golden={golden.size}, "
-                f"npu_shape={npu.shape}, golden_shape={golden.shape}"
+                f"{output_name} size mismatch: npu={npu.numel()}, "
+                f"golden={golden.numel()}, npu_shape={tuple(npu.shape)}, "
+                f"golden_shape={tuple(golden.shape)}"
             ),
         }
 
-    npu_f32 = npu.astype(np.float32).reshape(-1)
-    golden_f32 = golden.astype(np.float32).reshape(-1)
-    rtol, atol = _MXFP8_DEFAULT_RTOL, _MXFP8_DEFAULT_ATOL
-    with np.errstate(invalid="ignore"):
-        abs_diff = np.abs(npu_f32 - golden_f32)
-    close_mask = np.isclose(
-        npu_f32, golden_f32, rtol=rtol, atol=atol, equal_nan=True
+    rtol, atol = _compare_tolerance(npu_out, golden_out)
+    npu_f32 = npu.to(torch.float32).flatten()
+    golden_f32 = golden.to(torch.float32).flatten()
+    close_mask = torch.isclose(
+        npu_f32,
+        golden_f32,
+        rtol=rtol,
+        atol=atol,
+        equal_nan=True,
     )
     mismatch = ~close_mask
-    diff_count = int(np.sum(mismatch))
-    element_count = max(int(golden_f32.size), 1)
+    diff_count = int(mismatch.sum().item())
+    element_count = max(int(golden_f32.numel()), 1)
     fail_ratio = diff_count / element_count
 
-    floor = (1.0 / (1 << 14)) / _MXFP8_DEFAULT_RTOL
-    denominator = np.maximum(
-        np.maximum(np.abs(npu_f32), np.abs(golden_f32)), floor
-    ) + normalization_epsilon
-    with np.errstate(invalid="ignore", divide="ignore"):
-        normalized_error = abs_diff / denominator
-    if nonfinite_error_to_inf:
-        normalized_error = np.where(
-            np.isfinite(normalized_error), normalized_error, np.inf
-        )
-    normalized_error = normalized_error[mismatch]
-    if max_error_count is not None:
-        normalized_error = normalized_error[:max_error_count]
-    max_relative_error = (
-        float(max(normalized_error.tolist())) if normalized_error.size else 0.0
+    abs_diff = torch.abs(npu_f32 - golden_f32)
+    floor = torch.tensor(
+        _NORMALIZATION_FLOOR,
+        dtype=torch.float32,
+        device=npu_f32.device,
     )
-    max_abs_diff = float(np.max(abs_diff[mismatch])) if diff_count else 0.0
-    passed = fail_ratio <= _MXFP8_FAIL_RATIO_LIMIT
-    if max_relative_error >= _MXFP8_MAX_RELATIVE_ERROR:
+    denominator = torch.maximum(
+        torch.maximum(torch.abs(npu_f32), torch.abs(golden_f32)), floor
+    ) + _NORMALIZATION_EPSILON
+    normalized_error = (abs_diff / denominator)[mismatch]
+
+    # Preserve NaN/Inf instead of coercing them. Equal NaN/NaN and same-sign
+    # Inf/Inf were already accepted by isclose and do not enter this tensor.
+    max_normalized_error = (
+        float(torch.max(normalized_error).item())
+        if normalized_error.numel() > 0
+        else 0.0
+    )
+    max_abs_diff = (
+        float(torch.max(abs_diff[mismatch]).item()) if diff_count > 0 else 0.0
+    )
+
+    passed = fail_ratio <= _FAIL_RATIO_LIMIT
+    if max_normalized_error >= _MAX_NORMALIZED_ERROR:
         passed = False
+
+    error_info = None
+    if not passed:
+        error_info = (
+            f"{output_name} mismatches={diff_count}, "
+            f"fail_ratio={fail_ratio:.6g}, "
+            f"max_abs_diff={max_abs_diff:.6g}, "
+            f"max_normalized_error={max_normalized_error:.6g}"
+        )
 
     return {
         "pass": passed,
         "precision": (element_count - diff_count) / element_count * 100.0,
-        "diff_indices": np.where(mismatch.reshape(-1))[0][:1000].tolist(),
-        "error_info": (
-            None
-            if passed
-            else f"lse mismatches={diff_count}, fail_ratio={fail_ratio:.6g}, "
-            f"max_abs_diff={max_abs_diff:.6g}, "
-            f"max_normalized_rel_error={max_relative_error:.6g}"
-        ),
+        "diff_indices": torch.nonzero(mismatch, as_tuple=False)
+        .flatten()[:1000]
+        .tolist(),
+        "error_info": error_info,
         "metrics": {
             "rtol": rtol,
             "atol": atol,
-            "max_abs_diff": max_abs_diff,
             "fail_ratio": fail_ratio,
-            "fail_ratio_limit": _MXFP8_FAIL_RATIO_LIMIT,
-            "max_normalized_rel_error": max_relative_error,
+            "fail_ratio_limit": _FAIL_RATIO_LIMIT,
+            "max_abs_diff": max_abs_diff,
+            "max_normalized_error": max_normalized_error,
+            "normalization_epsilon": _NORMALIZATION_EPSILON,
         },
     }
 
 
+def attention_compare(npu_out, golden_out):
+    return _torch_compare(npu_out, golden_out, "attention_out")
+
+
 def lse_compare(npu_out, golden_out):
-    """Match the FP8 pytest comparator, including its two 1e-9 epsilons."""
-    return _lse_compare_with_golden_rules(
-        npu_out,
-        golden_out,
-        normalization_epsilon=2e-9,
-        max_error_count=10_000_000,
-    )
+    return _torch_compare(npu_out, golden_out, "softmax_lse")
 
 
 def _as_bool(value):
@@ -189,14 +142,7 @@ def _as_bool(value):
     return bool(value)
 
 
-def _compare_outputs(
-    outputs,
-    attention_compare_fn,
-    lse_compare_fn,
-    *,
-    return_softmax_lse=True,
-):
-    """Compare the shared output protocol and ignore an invalid LSE slot."""
+def _compare_outputs(outputs, *, return_softmax_lse=True):
     if len(outputs) < 2 or len(outputs) % 2 != 0:
         return {
             "pass": False,
@@ -207,121 +153,21 @@ def _compare_outputs(
     half = len(outputs) // 2
     npu_outputs = outputs[:half]
     golden_outputs = outputs[half:]
-
-    results = [attention_compare_fn(npu_outputs[0], golden_outputs[0])]
+    results = [attention_compare(npu_outputs[0], golden_outputs[0])]
 
     if (
         return_softmax_lse
         and half > 1
         and golden_outputs[1] is not None
     ):
-        results.append(lse_compare_fn(npu_outputs[1], golden_outputs[1]))
+        results.append(lse_compare(npu_outputs[1], golden_outputs[1]))
 
     return results[0] if len(results) == 1 else results
 
 
-def _compare_fp8(*outputs, **kwargs):
-    return _compare_outputs(
-        outputs,
-        attention_compare,
-        lse_compare,
-        return_softmax_lse=_as_bool(kwargs.get("return_softmax_lse", True)),
-    )
-
-
-def _mxfp8_tolerance(value):
-    dtype_name = str(getattr(value, "dtype", ""))
-    if "bfloat16" in dtype_name:
-        return _MXFP8_BF16_RTOL, _MXFP8_BF16_ATOL
-    return _MXFP8_DEFAULT_RTOL, _MXFP8_DEFAULT_ATOL
-
-
-def _mxfp8_normalized_relative_error(npu, golden, mismatch):
-    if not np.any(mismatch):
-        return 0.0
-    absolute_diff = np.abs(golden - npu)
-    floor = (1.0 / (1 << 14)) / _MXFP8_DEFAULT_RTOL
-    denominator = np.maximum(np.maximum(np.abs(npu), np.abs(golden)), floor)
-    relative = absolute_diff / (denominator + _MXFP8_EPSILON)
-    relative = np.where(np.isfinite(relative), relative, np.inf)
-    return float(np.max(relative[mismatch]))
-
-
-def _mxfp8_attention_compare(npu_out, golden_out):
-    npu = as_numpy(npu_out)
-    golden = as_numpy(golden_out)
-    if npu.shape != golden.shape:
-        return {
-            "pass": False,
-            "precision": "shape_mismatch",
-            "error_info": f"shape mismatch: npu={npu.shape}, golden={golden.shape}",
-        }
-    if golden.size == 0:
-        return {"pass": True, "precision": 100.0}
-
-    npu_f32 = npu.astype(np.float32)
-    golden_f32 = golden.astype(np.float32)
-    rtol, atol = _mxfp8_tolerance(npu_out)
-    abs_diff = np.abs(npu_f32 - golden_f32)
-    denom = np.maximum(np.abs(golden_f32), _MXFP8_EPSILON)
-    rel_diff = abs_diff / denom
-    mismatch = (rel_diff > rtol) & (abs_diff > atol)
-    diff_count = int(np.sum(mismatch))
-    fail_ratio = diff_count / golden.size
-    max_relative_error = _mxfp8_normalized_relative_error(
-        npu_f32, golden_f32, mismatch
-    )
-    passed = (
-        fail_ratio <= _MXFP8_FAIL_RATIO_LIMIT
-        and max_relative_error < _MXFP8_MAX_RELATIVE_ERROR
-    )
-    error_info = None
-    if diff_count > 0:
-        error_info = (
-            f"attention compare mismatches={diff_count}, "
-            f"fail_ratio={fail_ratio:.6g}, "
-            f"max_abs_diff={float(np.max(abs_diff[mismatch])):.6g}, "
-            f"max_rel_diff={float(np.max(rel_diff[mismatch])):.6g}, "
-            f"max_normalized_rel_error={max_relative_error:.6g}"
-        )
-    return {
-        "pass": passed,
-        "precision": (golden.size - diff_count) / golden.size * 100,
-        "diff_indices": np.where(mismatch.reshape(-1))[0][:1000].tolist(),
-        "error_info": error_info,
-        "metrics": {
-            "rtol": rtol,
-            "atol": atol,
-            "fail_ratio": fail_ratio,
-            "fail_ratio_limit": _MXFP8_FAIL_RATIO_LIMIT,
-            "max_normalized_rel_error": max_relative_error,
-            "max_abs_diff": float(np.max(abs_diff)) if abs_diff.size else 0.0,
-            "max_rel_diff": float(np.max(rel_diff)) if rel_diff.size else 0.0,
-        },
-    }
-
-
-def _mxfp8_lse_compare(npu_out, golden_out):
-    """Match the MXFP8 pytest comparator's single 1e-10 epsilon."""
-    return _lse_compare_with_golden_rules(
-        npu_out,
-        golden_out,
-        normalization_epsilon=_MXFP8_EPSILON,
-        nonfinite_error_to_inf=True,
-    )
-
-
-def _compare_mxfp8(*outputs, **kwargs):
-    return _compare_outputs(
-        outputs,
-        _mxfp8_attention_compare,
-        _mxfp8_lse_compare,
-        return_softmax_lse=_as_bool(kwargs.get("return_softmax_lse", True)),
-    )
-
-
 def compare(*outputs, **kwargs):
-    """Use MXFP8 precision only for quant_mode=2; preserve FP8 comparison."""
-    if int(kwargs.get("quant_mode", 1)) == 2:
-        return _compare_mxfp8(*outputs, **kwargs)
-    return _compare_fp8(*outputs, **kwargs)
+    """Compare FP8 and MXFP8 outputs with one PyTorch precision protocol."""
+    return _compare_outputs(
+        outputs,
+        return_softmax_lse=_as_bool(kwargs.get("return_softmax_lse", True)),
+    )
