@@ -36,12 +36,12 @@ class MoeInitRoutingOpBuilder(OpBuilder):
         def moe_init_routing_meta(
             x,
             expert_idx,
-            active_num,
-            expert_capacity,
-            expert_num,
-            drop_pad_mode,
-            expert_tokens_count_or_cumsum_flag,
-            expert_tokens_before_capacity_flag,
+            active_num=0,
+            expert_capacity=0,
+            expert_num=0,
+            drop_pad_mode=0,
+            expert_tokens_count_or_cumsum_flag=0,
+            expert_tokens_before_capacity_flag=False,
         ):
             n = x.size(0)
             cols = x.size(1)

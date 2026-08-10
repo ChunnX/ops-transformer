@@ -29,7 +29,7 @@ class MoeInitRoutingGradOpBuilder(OpBuilder):
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
         def moe_init_routing_grad_meta(
-            grad_expanded_x, expanded_row_idx, top_k, drop_pad_mode, active_num
+            grad_expanded_x, expanded_row_idx, top_k, drop_pad_mode=0, active_num=0
         ):
             grad_x_dim0 = expanded_row_idx.numel() // top_k
             grad_x_dim1 = (
