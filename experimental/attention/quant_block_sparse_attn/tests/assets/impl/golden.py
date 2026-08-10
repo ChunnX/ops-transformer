@@ -87,6 +87,8 @@ def to_list(value):
         return []
     if torch.is_tensor(value):
         return [int(x) for x in value.detach().cpu().reshape(-1).tolist()]
+    if hasattr(value, "reshape") and hasattr(value, "tolist"):
+        return [int(x) for x in value.reshape(-1).tolist()]
     if isinstance(value, (list, tuple)):
         return [int(x) for x in value]
     return [int(value)]
@@ -94,6 +96,12 @@ def to_list(value):
 
 def to_cpu(value):
     return value.detach().cpu() if torch.is_tensor(value) else value
+
+
+def _numel(value):
+    if value is None:
+        return 0
+    return int(value.numel()) if torch.is_tensor(value) else int(value.size)
 
 
 def _normalize_data_range(data_range):
@@ -354,7 +362,7 @@ def _cpu_mxfp8_golden(
     )
 
 
-def cpu_quant_block_sparse_attn(
+def _cpu_quant_block_sparse_attn_impl(
     query,
     key,
     value,
@@ -525,4 +533,81 @@ def cpu_quant_block_sparse_attn(
 
     return _format_golden_outputs(
         attention_out, softmax_lse, return_softmax_lse
+    )
+
+
+def cpu_quant_block_sparse_attn(
+    query,
+    key,
+    value,
+    q_descale,
+    k_descale,
+    v_descale,
+    sparse_indices,
+    sparse_seq_len,
+    p_scale,
+    cu_seqlens_q,
+    cu_seqlens_kv,
+    seqused_q,
+    seqused_kv,
+    block_table,
+    atten_mask,
+    metadata,
+    *,
+    quant_mode=1,
+    softmax_scale=1.0,
+    mask_mode=3,
+    blocksize=0,
+    sparse_block_size_q=128,
+    sparse_block_size_kv=128,
+    layout_q="TND",
+    layout_kv="PA_BNSD",
+    layout_out="TND",
+    layout_sparse_indices="B_N_Qb_Kb",
+    return_softmax_lse=False,
+    **kwargs,
+):
+    """Map the shared 16-input CSV signature to the existing pytest golden."""
+    del metadata
+    if _numel(cu_seqlens_kv) != 0:
+        raise ValueError("cu_seqlens_kv must be empty")
+    if _numel(seqused_q) != 0:
+        raise ValueError("seqused_q must be empty")
+    if p_scale is not None and _numel(p_scale) == 0:
+        p_scale = None
+    if blocksize and int(key.shape[2]) != int(blocksize):
+        raise ValueError("blocksize does not match key")
+
+    q_prefix = to_list(cu_seqlens_q)
+    q_lengths = [end - start for start, end in zip(q_prefix, q_prefix[1:])]
+    kv_lengths = to_list(seqused_kv)
+    return _cpu_quant_block_sparse_attn_impl(
+        query,
+        key,
+        value,
+        q_descale,
+        k_descale,
+        v_descale,
+        sparse_indices,
+        sparse_seq_len,
+        atten_mask,
+        p_scale,
+        softmax_scale=softmax_scale,
+        sparse_q_block_size=sparse_block_size_q,
+        sparse_kv_block_size=sparse_block_size_kv,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_kv=None,
+        seqused_q=None,
+        seqused_kv=seqused_kv,
+        block_table=block_table,
+        layout_kv=layout_kv,
+        layout_q=layout_q,
+        layout_sparse_indices=layout_sparse_indices,
+        layout_out=layout_out,
+        quant_mode=quant_mode,
+        mask_mode=mask_mode,
+        return_softmax_lse=return_softmax_lse,
+        actual_seq_q=q_lengths,
+        actual_seq_kv=kv_lengths,
+        **kwargs,
     )

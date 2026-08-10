@@ -572,15 +572,130 @@ def _synchronize_npu(tensor):
     torch_npu.npu.synchronize()
 
 
-class QuantBlockSparseAttnGraph(torch.nn.Module):
-    """TTK graph adapter that prepares host-dependent inputs before capture.
+def _none_if_empty(tensor):
+    return None if tensor is None or int(tensor.numel()) == 0 else tensor
 
-    TTK instantiates a registered ``torch_graph`` module before calling
-    ``torch.compile``.  QBSA metadata generation and the PA combined-KV packing
-    must happen at that point: both paths can copy data between host and device,
-    which ACLGraph GLOBAL capture rejects.  ``forward`` therefore contains only
-    the graph-safe main operator call.
-    """
+
+def _validate_shared_inputs(
+    query,
+    key,
+    sparse_indices,
+    cu_seqlens_q,
+    cu_seqlens_kv,
+    seqused_q,
+    seqused_kv,
+    *,
+    batch_size,
+    num_heads_q,
+    num_heads_kv,
+    head_dim,
+    blocksize,
+    layout_q,
+):
+    if cu_seqlens_kv is not None and int(cu_seqlens_kv.numel()) != 0:
+        raise ValueError("cu_seqlens_kv must be an empty tensor")
+    if seqused_q is not None and int(seqused_q.numel()) != 0:
+        raise ValueError("seqused_q must be an empty tensor")
+    if int(sparse_indices.shape[0]) != int(batch_size):
+        raise ValueError("batch_size does not match sparse_indices")
+    query_heads = int(query.shape[0] if layout_q == "NTD" else query.shape[1])
+    if query_heads != int(num_heads_q):
+        raise ValueError("num_heads_q does not match query")
+    if int(key.shape[1]) != int(num_heads_kv):
+        raise ValueError("num_heads_kv does not match key")
+    if int(query.shape[-1]) != int(head_dim):
+        raise ValueError("head_dim does not match query")
+    if int(key.shape[2]) != int(blocksize):
+        raise ValueError("blocksize does not match key")
+    if int(cu_seqlens_q.numel()) != int(batch_size) + 1:
+        raise ValueError("cu_seqlens_q must contain batch_size + 1 values")
+    if int(seqused_kv.numel()) != int(batch_size):
+        raise ValueError("seqused_kv must contain batch_size values")
+
+
+def _prepare_operator_inputs(
+    query,
+    key,
+    value,
+    q_descale,
+    k_descale,
+    v_descale,
+    p_scale,
+    sparse_indices,
+    sparse_seq_len,
+    atten_mask,
+    cu_seqlens_q,
+    cu_seqlens_kv,
+    seqused_q,
+    seqused_kv,
+    block_table,
+    metadata,
+    *,
+    quant_mode,
+    softmax_scale,
+    mask_mode,
+    blocksize,
+    sparse_block_size_q,
+    sparse_block_size_kv,
+    layout_q,
+    layout_kv,
+    layout_sparse_indices,
+    batch_size,
+    num_heads_q,
+    num_heads_kv,
+    head_dim,
+):
+    _validate_shared_inputs(
+        query,
+        key,
+        sparse_indices,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        batch_size=batch_size,
+        num_heads_q=num_heads_q,
+        num_heads_kv=num_heads_kv,
+        head_dim=head_dim,
+        blocksize=blocksize,
+        layout_q=layout_q,
+    )
+    p_scale = _none_if_empty(p_scale)
+    if int(quant_mode) == 1 and p_scale is None:
+        raise ValueError("FP8 requires a non-empty p_scale tensor")
+    if metadata is None or int(metadata.numel()) < 584:
+        metadata = QuantBlockSparseAttnMetadataBuilder.build(
+            query,
+            key,
+            value,
+            q_descale,
+            k_descale,
+            v_descale,
+            p_scale,
+            sparse_indices,
+            sparse_seq_len,
+            atten_mask,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_kv=None,
+            seqused_q=None,
+            seqused_kv=seqused_kv,
+            block_table=block_table,
+            softmax_scale=softmax_scale,
+            sparse_q_block_size=sparse_block_size_q,
+            sparse_kv_block_size=sparse_block_size_kv,
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            layout_sparse_indices=layout_sparse_indices,
+            mask_mode=mask_mode,
+            quant_mode=quant_mode,
+        )
+    if int(quant_mode) == 1:
+        key, value, k_descale = _pack_combined_kv(key, value, k_descale)
+    return key, value, k_descale, p_scale, metadata
+
+
+class QuantBlockSparseAttnGraph(torch.nn.Module):
+    """Build metadata before ACLGraph capture and capture only the main operator."""
 
     def __init__(
         self,
@@ -592,107 +707,66 @@ class QuantBlockSparseAttnGraph(torch.nn.Module):
         v_descale: torch.Tensor,
         sparse_indices: torch.Tensor,
         sparse_seq_len: torch.Tensor,
+        p_scale: torch.Tensor,
+        cu_seqlens_q: torch.Tensor,
+        cu_seqlens_kv: torch.Tensor,
+        seqused_q: torch.Tensor,
+        seqused_kv: torch.Tensor,
+        block_table: torch.Tensor,
         atten_mask: torch.Tensor,
-        p_scale: Optional[torch.Tensor] = None,
+        metadata: torch.Tensor,
         *,
-        cu_seqlens_q: Optional[torch.Tensor] = None,
-        cu_seqlens_kv: Optional[torch.Tensor] = None,
-        seqused_q: Optional[torch.Tensor] = None,
-        seqused_kv: Optional[torch.Tensor] = None,
-        block_table: Optional[torch.Tensor] = None,
-        metadata: Optional[torch.Tensor] = None,
-        softmax_scale: float = 1.0,
-        sparse_q_block_size: int = 128,
-        sparse_kv_block_size: int = 128,
-        max_seqlen_q: int = 0,
-        max_seqlen_kv: int = 0,
-        layout_kv: str = "PA_BNSD",
-        layout_q: str = "BSND",
-        layout_sparse_indices: str = "B_N_Qb_Kb",
-        layout_out: str = "TND",
         quant_mode: int = 1,
+        softmax_scale: float = 1.0,
         mask_mode: int = 3,
+        blocksize: int = 0,
+        sparse_block_size_q: int = 128,
+        sparse_block_size_kv: int = 128,
+        layout_q: str = "TND",
+        layout_kv: str = "PA_BNSD",
+        layout_out: str = "TND",
+        layout_sparse_indices: str = "B_N_Qb_Kb",
         return_softmax_lse: bool = False,
-        actual_seq_q: Optional[List[int]] = None,
-        actual_seq_kv: Optional[List[int]] = None,
-        empty_actual_seq: bool = False,
-        block_table_pattern: str = "sequential",
-        sparse_count: int = 0,
-        sparse_pattern: str = "sequential",
-        blocknum: Optional[int] = None,
-        seed: int = 0,
+        batch_size: int = 0,
+        num_heads_q: int = 0,
+        num_heads_kv: int = 0,
+        head_dim: int = 0,
     ):
         super().__init__()
         _ensure_cann_ops()
-
-        if seqused_q is None and cu_seqlens_q is None:
-            seqused_q, seqused_kv, cu_seqlens_q, cu_seqlens_kv, block_table = (
-                _generate_params_for_mode(
-                    query,
-                    key,
-                    sparse_indices,
-                    seqused_q,
-                    seqused_kv,
-                    cu_seqlens_q,
-                    cu_seqlens_kv,
-                    block_table,
-                    quant_mode=quant_mode,
-                    max_seqlen_q=max_seqlen_q,
-                    max_seqlen_kv=max_seqlen_kv,
-                    layout_q=layout_q,
-                    page_block_size=(
-                        int(key.shape[2]) if key.dim() == 4 else sparse_kv_block_size
-                    ),
-                    actual_seq_q=actual_seq_q,
-                    actual_seq_kv=actual_seq_kv,
-                    empty_actual_seq=empty_actual_seq,
-                    block_table_pattern=block_table_pattern,
-                    seed=seed,
-                    sparse_q_block_size=sparse_q_block_size,
-                    sparse_kv_block_size=sparse_kv_block_size,
-                    sparse_count=sparse_count,
-                    sparse_pattern=sparse_pattern,
-                    mask_mode=mask_mode,
-                    blocknum=blocknum,
-                )
-            )
-
-        # Metadata reads the eagerly-created sequence tensors.  Synchronize both
-        # sides of that dependency before torch.compile starts ACLGraph capture.
         _synchronize_npu(query)
-        if metadata is None or metadata.numel() < 584:
-            metadata = QuantBlockSparseAttnMetadataBuilder.build(
-                query,
-                key,
-                value,
-                q_descale,
-                k_descale,
-                v_descale,
-                p_scale,
-                sparse_indices,
-                sparse_seq_len,
-                atten_mask,
-                cu_seqlens_q=cu_seqlens_q,
-                cu_seqlens_kv=None,
-                seqused_q=None,
-                seqused_kv=seqused_kv,
-                block_table=block_table,
-                softmax_scale=softmax_scale,
-                sparse_q_block_size=sparse_q_block_size,
-                sparse_kv_block_size=sparse_kv_block_size,
-                layout_q=layout_q,
-                layout_kv=layout_kv,
-                layout_sparse_indices=layout_sparse_indices,
-                mask_mode=mask_mode,
-                quant_mode=quant_mode,
-                max_seqlen_q=max_seqlen_q,
-                max_seqlen_kv=max_seqlen_kv,
-            )
-
-        if key.dim() == 4 and int(quant_mode) != 2:
-            key, value, k_descale = _pack_combined_kv(key, value, k_descale)
+        key, value, k_descale, p_scale, metadata = _prepare_operator_inputs(
+            query,
+            key,
+            value,
+            q_descale,
+            k_descale,
+            v_descale,
+            p_scale,
+            sparse_indices,
+            sparse_seq_len,
+            atten_mask,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            seqused_q,
+            seqused_kv,
+            block_table,
+            metadata,
+            quant_mode=quant_mode,
+            softmax_scale=softmax_scale,
+            mask_mode=mask_mode,
+            blocksize=blocksize,
+            sparse_block_size_q=sparse_block_size_q,
+            sparse_block_size_kv=sparse_block_size_kv,
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            layout_sparse_indices=layout_sparse_indices,
+            batch_size=batch_size,
+            num_heads_q=num_heads_q,
+            num_heads_kv=num_heads_kv,
+            head_dim=head_dim,
+        )
         _synchronize_npu(query)
-
         for name, tensor in (
             ("query", query),
             ("key", key),
@@ -703,23 +777,20 @@ class QuantBlockSparseAttnGraph(torch.nn.Module):
             ("p_scale", p_scale),
             ("sparse_indices", sparse_indices),
             ("sparse_seq_len", sparse_seq_len),
-            ("atten_mask", atten_mask),
             ("cu_seqlens_q", cu_seqlens_q),
-            ("cu_seqlens_kv", cu_seqlens_kv),
-            ("seqused_q", seqused_q),
             ("seqused_kv", seqused_kv),
             ("block_table", block_table),
+            ("atten_mask", atten_mask),
             ("metadata", metadata),
         ):
             self.register_buffer(name, tensor, persistent=False)
-
         self.softmax_scale = float(softmax_scale)
-        self.sparse_q_block_size = int(sparse_q_block_size)
-        self.sparse_kv_block_size = int(sparse_kv_block_size)
-        self.layout_kv = layout_kv
+        self.sparse_block_size_q = int(sparse_block_size_q)
+        self.sparse_block_size_kv = int(sparse_block_size_kv)
         self.layout_q = layout_q
-        self.layout_sparse_indices = layout_sparse_indices
+        self.layout_kv = layout_kv
         self.layout_out = layout_out
+        self.layout_sparse_indices = layout_sparse_indices
         self.quant_mode = int(quant_mode)
         self.mask_mode = int(mask_mode)
         self.return_softmax_lse = bool(return_softmax_lse)
@@ -737,15 +808,14 @@ class QuantBlockSparseAttnGraph(torch.nn.Module):
             self.sparse_seq_len,
             self.atten_mask,
             cu_seqlens_q=self.cu_seqlens_q,
-            # Keep the shared operator contract: these two optional inputs are absent.
             cu_seqlens_kv=None,
             seqused_q=None,
             seqused_kv=self.seqused_kv,
             block_table=self.block_table,
             metadata=self.metadata,
             softmax_scale=self.softmax_scale,
-            sparse_q_block_size=self.sparse_q_block_size,
-            sparse_kv_block_size=self.sparse_kv_block_size,
+            sparse_q_block_size=self.sparse_block_size_q,
+            sparse_kv_block_size=self.sparse_block_size_kv,
             layout_kv=self.layout_kv,
             layout_q=self.layout_q,
             layout_sparse_indices=self.layout_sparse_indices,
@@ -765,107 +835,64 @@ def quant_block_sparse_attn(
     v_descale: torch.Tensor,
     sparse_indices: torch.Tensor,
     sparse_seq_len: torch.Tensor,
+    p_scale: torch.Tensor,
+    cu_seqlens_q: torch.Tensor,
+    cu_seqlens_kv: torch.Tensor,
+    seqused_q: torch.Tensor,
+    seqused_kv: torch.Tensor,
+    block_table: torch.Tensor,
     atten_mask: torch.Tensor,
-    p_scale: Optional[torch.Tensor] = None,
+    metadata: torch.Tensor,
     *,
-    cu_seqlens_q: Optional[torch.Tensor] = None,
-    cu_seqlens_kv: Optional[torch.Tensor] = None,
-    seqused_q: Optional[torch.Tensor] = None,
-    seqused_kv: Optional[torch.Tensor] = None,
-    block_table: Optional[torch.Tensor] = None,
-    metadata: Optional[torch.Tensor] = None,
-    softmax_scale: float = 1.0,
-    sparse_q_block_size: int = 128,
-    sparse_kv_block_size: int = 128,
-    max_seqlen_q: int = 0,
-    max_seqlen_kv: int = 0,
-    layout_kv: str = "PA_BNSD",
-    layout_q: str = "BSND",
-    layout_sparse_indices: str = "B_N_Qb_Kb",
-    layout_out: str = "TND",
     quant_mode: int = 1,
+    softmax_scale: float = 1.0,
     mask_mode: int = 3,
+    blocksize: int = 0,
+    sparse_block_size_q: int = 128,
+    sparse_block_size_kv: int = 128,
+    layout_q: str = "TND",
+    layout_kv: str = "PA_BNSD",
+    layout_out: str = "TND",
+    layout_sparse_indices: str = "B_N_Qb_Kb",
     return_softmax_lse: bool = False,
-    actual_seq_q: Optional[List[int]] = None,
-    actual_seq_kv: Optional[List[int]] = None,
-    empty_actual_seq: bool = False,
-    block_table_pattern: str = "sequential",
-    sparse_count: int = 0,
-    sparse_pattern: str = "sequential",
-    blocknum: Optional[int] = None,
-    seed: int = 0,
+    batch_size: int = 0,
+    num_heads_q: int = 0,
+    num_heads_kv: int = 0,
+    head_dim: int = 0,
 ):
-    """Compute metadata first, then call the real QBSA operator.
-
-    The TTK-facing signature keeps required tensors before the optional
-    ``p_scale`` tensor.  The real operator call below restores its native
-    argument order, where ``p_scale`` precedes the sparse-index tensors.
-    """
+    """Adapt the shared CSV inputs and call the installed QBSA operator."""
     _ensure_cann_ops()
-
-    if seqused_q is None and cu_seqlens_q is None:
-        seqused_q, seqused_kv, cu_seqlens_q, cu_seqlens_kv, block_table = (
-            _generate_params_for_mode(
-                query,
-                key,
-                sparse_indices,
-                seqused_q,
-                seqused_kv,
-                cu_seqlens_q,
-                cu_seqlens_kv,
-                block_table,
-                quant_mode=quant_mode,
-                max_seqlen_q=max_seqlen_q,
-                max_seqlen_kv=max_seqlen_kv,
-                layout_q=layout_q,
-                page_block_size=(
-                    int(key.shape[2]) if key.dim() == 4 else sparse_kv_block_size
-                ),
-                actual_seq_q=actual_seq_q,
-                actual_seq_kv=actual_seq_kv,
-                empty_actual_seq=empty_actual_seq,
-                block_table_pattern=block_table_pattern,
-                seed=seed,
-                sparse_q_block_size=sparse_q_block_size,
-                sparse_kv_block_size=sparse_kv_block_size,
-                sparse_count=sparse_count,
-                sparse_pattern=sparse_pattern,
-                mask_mode=mask_mode,
-                blocknum=blocknum,
-            )
-        )
-
-    if metadata is None or metadata.numel() < 584:
-        metadata = QuantBlockSparseAttnMetadataBuilder.build(
-            query,
-            key,
-            value,
-            q_descale,
-            k_descale,
-            v_descale,
-            p_scale,
-            sparse_indices,
-            sparse_seq_len,
-            atten_mask,
-            cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_kv=None,
-            seqused_q=None,
-            seqused_kv=seqused_kv,
-            block_table=block_table,
-            softmax_scale=softmax_scale,
-            sparse_q_block_size=sparse_q_block_size,
-            sparse_kv_block_size=sparse_kv_block_size,
-            layout_q=layout_q,
-            layout_kv=layout_kv,
-            layout_sparse_indices=layout_sparse_indices,
-            mask_mode=mask_mode,
-            quant_mode=quant_mode,
-            max_seqlen_q=max_seqlen_q,
-            max_seqlen_kv=max_seqlen_kv,
-        )
-
-    if key.dim() == 4 and int(quant_mode) != 2:
-        key, value, k_descale = _pack_combined_kv(key, value, k_descale)
+    key, value, k_descale, p_scale, metadata = _prepare_operator_inputs(
+        query,
+        key,
+        value,
+        q_descale,
+        k_descale,
+        v_descale,
+        p_scale,
+        sparse_indices,
+        sparse_seq_len,
+        atten_mask,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        block_table,
+        metadata,
+        quant_mode=quant_mode,
+        softmax_scale=softmax_scale,
+        mask_mode=mask_mode,
+        blocksize=blocksize,
+        sparse_block_size_q=sparse_block_size_q,
+        sparse_block_size_kv=sparse_block_size_kv,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        layout_sparse_indices=layout_sparse_indices,
+        batch_size=batch_size,
+        num_heads_q=num_heads_q,
+        num_heads_kv=num_heads_kv,
+        head_dim=head_dim,
+    )
     return torch.ops.custom.npu_quant_block_sparse_attn(
         query,
         key,
@@ -884,8 +911,8 @@ def quant_block_sparse_attn(
         block_table=block_table,
         metadata=metadata,
         softmax_scale=float(softmax_scale),
-        sparse_q_block_size=int(sparse_q_block_size),
-        sparse_kv_block_size=int(sparse_kv_block_size),
+        sparse_q_block_size=int(sparse_block_size_q),
+        sparse_kv_block_size=int(sparse_block_size_kv),
         layout_kv=layout_kv,
         layout_q=layout_q,
         layout_sparse_indices=layout_sparse_indices,
