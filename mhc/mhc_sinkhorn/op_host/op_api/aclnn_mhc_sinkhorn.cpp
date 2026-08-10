@@ -52,15 +52,10 @@ static const int64_t N_VALID_8 = 8;
 static constexpr int64_t N_ALIGN = 8;
 static constexpr int64_t DOUBLE_SIZE = 2;
 
-static bool CheckNotNull(const aclTensor *x, int64_t outFlag, const aclTensor *output, const aclTensor *normOut,
-                         const aclTensor *sumOut)
+static bool CheckNotNull(const aclTensor *x, const aclTensor *output)
 {
     OP_CHECK_NULL(x, return false);
     OP_CHECK_NULL(output, return false);
-    if (outFlag) {
-        OP_CHECK_NULL(normOut, return false);
-        OP_CHECK_NULL(sumOut, return false);
-    }
     return true;
 }
 
@@ -187,16 +182,13 @@ static bool CheckShape(const aclTensor *x, int64_t outFlag, const aclTensor *out
 static inline aclnnStatus CheckParams(const aclTensor *x, int64_t outFlag, float eps, int64_t numIters,
                                       const aclTensor *output, const aclTensor *normOut, const aclTensor *sumOut)
 {
-    // 1. 检查参数是否为空指针
-    CHECK_RET(CheckNotNull(x, outFlag, output, normOut, sumOut), ACLNN_ERR_PARAM_NULLPTR);
-
-    // 2. 检查输入的数据类型是否在API支持的数据类型范围之内
+    // 1. 检查输入的数据类型是否在API支持的数据类型范围之内
     CHECK_RET(CheckDtypeValid(x, outFlag, output, normOut, sumOut), ACLNN_ERR_PARAM_INVALID);
 
-    // 3. 检查输入形状是否满足
+    // 2. 检查输入形状是否满足
     CHECK_RET(CheckShape(x, outFlag, output, normOut, sumOut, numIters), ACLNN_ERR_PARAM_INVALID);
 
-    // 4. 检查输入输出format是否一致
+    // 3. 检查输入输出format是否一致
     CHECK_RET(CheckFormat(x, outFlag, output, normOut, sumOut), ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
@@ -207,6 +199,10 @@ aclnnStatus aclnnMhcSinkhornGetWorkspaceSize(const aclTensor *x, float eps, int6
                                              aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnMhcSinkhorn, DFX_IN(x, eps, numIters), DFX_OUT(output, normOut, sumOut));
+
+    CHECK_RET(CheckNotNull(x, output), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
     // 固定写法，创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -220,9 +216,11 @@ aclnnStatus aclnnMhcSinkhornGetWorkspaceSize(const aclTensor *x, float eps, int6
         Shape emptyShape({1});
         if (normOut == nullptr) {
             normOut = (uniqueExecutor.get())->AllocTensor(emptyShape, x->GetDataType(), Format::FORMAT_ND);
+            CHECK_RET(normOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
         }
         if (sumOut == nullptr) {
             sumOut = (uniqueExecutor.get())->AllocTensor(emptyShape, x->GetDataType(), Format::FORMAT_ND);
+            CHECK_RET(sumOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
         }
         outFlag = 0;
     } else if (!normEmpty && !sumEmpty) {
