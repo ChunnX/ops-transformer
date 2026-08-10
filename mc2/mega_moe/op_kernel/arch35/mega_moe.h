@@ -2299,7 +2299,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // ===== A8W4 动态 wave：GMM1(wave) → GMM2(wave) 逐 wave 交错；非 A8W4 与 A8W4-prefetch 保持原两段式 =====
     // A8W4 的 GMM 走 gmTileSequence、不递增 vecSetSyncCom，故 EndSync/EndGMM2Sync 对 A8W4 均为 no-op（见设计文档 4.4）。
-    // dispatch 独立游标推进（AIV1）：count 落 GM 后由 consumer 读取，当前 GMM1 期间预取下一完整 wave。
+    // dispatch 独立游标推进（AIV1）：启动时预取首个完整 wave，稳态下与当前 GMM1 按 expert 交叉预取下一 wave。
     // combine 触发复用 gmm2CombineSyncCounter。
     // TopkWeightsPrefetch 路径的 allDone + SyncAll 为真同步，wave 化暂缓（保持原两段式）。
     if constexpr (ENABLE_A8W4 && !TopkWeightsPrefetch) {
@@ -2316,8 +2316,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
         uint32_t dispatchExpert = 0; // AIV1 下一个尚未 dispatch 的 expert
 
-        // 启动阶段：AIV1 先 dispatch 第一个完整 wave。AIC/AIV0 可以直接进入下方 GMM1
-        // 循环，并在 count-ready flag 上等待当前 expert 的 count。
+        // 启动阶段先 dispatch 第一个完整 wave，使首轮 GMM1 所需输入全部就绪。
         if constexpr (g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
                 uint32_t dispatchWaveGmm1Tiles = 0;
@@ -2348,11 +2347,24 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
         uint32_t currentWaveBegin = 0;
         while (currentWaveBegin < moeExpertPerRank_) {
-            // AIV1 在 AIC/AIV0 执行当前 GMM1 时，使用空闲窗口 dispatch 下一个完整 wave。
+            uint32_t nextDispatchWaveGmm1Tiles = 0;
+            bool nextDispatchWaveComplete = true;
             if constexpr (g_coreType == AIV) {
-                if (subBlockIdx_ == 1 && dispatchExpert < moeExpertPerRank_) {
-                    uint32_t dispatchWaveGmm1Tiles = 0;
-                    while (dispatchExpert < moeExpertPerRank_) {
+                if (subBlockIdx_ == 1) {
+                    nextDispatchWaveComplete = dispatchExpert >= moeExpertPerRank_;
+                }
+            }
+
+            // 各核根据已发布 count 累计 GMM1 tile，因此会得到相同的 currentWaveEnd。
+            uint32_t currentWaveEnd = currentWaveBegin;
+            uint32_t currentWaveGmm1Tiles = 0;
+            uint32_t currentGmm1Expert = currentWaveBegin;
+            bool currentGmm1WaveComplete = false;
+            while (!currentGmm1WaveComplete || !nextDispatchWaveComplete) {
+                // AIV1 每次只 dispatch 下一 wave 的一个 expert，随后立即加入当前 expert
+                // 的 SwiGLU epilogue；AIC/AIV0 同时执行当前 expert 的 GMM1。
+                if constexpr (g_coreType == AIV) {
+                    if (subBlockIdx_ == 1 && !nextDispatchWaveComplete) {
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
                         BeginDispatchTrace(dispatchExpert);
 #endif
@@ -2362,81 +2374,80 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                             UpdateGlobalBuffer<AddrUpdateMode::GMM1>(dispatchAddrInfo, dispatchState,
                                                                      dispatchExpert);
                             MetaInfoCalAndDispatch(dispatchAddrInfo, dispatchExpert, dispatchBufferConfig);
-                            dispatchWaveGmm1Tiles +=
-                                Ops::Base::CeilDiv(static_cast<uint32_t>(nextSendCnt),
-                                                   static_cast<uint32_t>(GMM1_TILE_M)) *
-                                gmm1TileN;
                         }
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
                         EndDispatchTrace();
 #endif
+                        if (nextSendCnt != 0U) {
+                            nextDispatchWaveGmm1Tiles +=
+                                Ops::Base::CeilDiv(static_cast<uint32_t>(nextSendCnt),
+                                                   static_cast<uint32_t>(GMM1_TILE_M)) *
+                                gmm1TileN;
+                        }
                         ++dispatchExpert;
-                        if (dispatchWaveGmm1Tiles >= waveTileTarget &&
-                            moeExpertPerRank_ - dispatchExpert >= 2U) {
-                            break;
-                        }
+                        nextDispatchWaveComplete =
+                            dispatchExpert >= moeExpertPerRank_ ||
+                            (nextDispatchWaveGmm1Tiles >= waveTileTarget &&
+                             moeExpertPerRank_ - dispatchExpert >= 2U);
                     }
                 }
-            }
 
-            // AIC/AIV0 直接进入当前 GMM1，并由 dispatch-to-GMM1 row flag 保证输入就绪；
-            // AIV1 预取完下一 wave 后加入当前 wave 的 epilogue。各核在同一循环中
-            // 根据已发布 count 累计 GMM1 tile，因此会得到相同的 currentWaveEnd。
-            uint32_t currentWaveEnd = currentWaveBegin;
-            uint32_t currentWaveGmm1Tiles = 0;
-            for (uint32_t localExpertId = currentWaveBegin; localExpertId < moeExpertPerRank_; ++localExpertId) {
-                if (UpdateGroupParamsFromPublishedCount<AddrUpdateMode::GMM1>(gmm1State, localExpertId)) {
-                    UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State, localExpertId);
+                if (!currentGmm1WaveComplete) {
+                    if (UpdateGroupParamsFromPublishedCount<AddrUpdateMode::GMM1>(gmm1State, currentGmm1Expert)) {
+                        UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State, currentGmm1Expert);
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-                    if (CriticalPathTracePtr() != nullptr) {
-                        if constexpr (g_coreType == AIC) {
-                            criticalPathTrace_.PrepareExpertStage0(localExpertId);
-                        } else if (subBlockIdx_ == 0U) {
-                            criticalPathTrace_.PrepareExpertStage0(localExpertId);
-                        } else {
-                            criticalPathTrace_.PrepareExpertStage1(localExpertId);
+                        if (CriticalPathTracePtr() != nullptr) {
+                            if constexpr (g_coreType == AIC) {
+                                criticalPathTrace_.PrepareExpertStage0(currentGmm1Expert);
+                            } else if (subBlockIdx_ == 0U) {
+                                criticalPathTrace_.PrepareExpertStage0(currentGmm1Expert);
+                            } else {
+                                criticalPathTrace_.PrepareExpertStage1(currentGmm1Expert);
+                            }
                         }
-                    }
 #endif
-                    GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State, localExpertId, vecSetSyncCom, gmTileSequence);
+                        GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State, currentGmm1Expert, vecSetSyncCom,
+                                                   gmTileSequence);
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-                    if (CriticalPathTracePtr() != nullptr) {
-                        if constexpr (g_coreType == AIC) {
-                            if (criticalPathTrace_.HasExpertStage0Work()) {
-                                // Every A8W4 tile publishes only after FIX_S, so return is an actual GMM1 completion boundary.
-                                // TRACE_POINT: a8w4_gmm1_end_S
-                                uint32_t gmm1EndCycle = CriticalPathTrace::Now();
-                                criticalPathTrace_.EndExpertStage0(gmm1EndCycle);
+                        if (CriticalPathTracePtr() != nullptr) {
+                            if constexpr (g_coreType == AIC) {
+                                if (criticalPathTrace_.HasExpertStage0Work()) {
+                                    // Every A8W4 tile publishes only after FIX_S, so return is an actual GMM1 completion boundary.
+                                    // TRACE_POINT: a8w4_gmm1_end_S
+                                    uint32_t gmm1EndCycle = CriticalPathTrace::Now();
+                                    criticalPathTrace_.EndExpertStage0(gmm1EndCycle);
+                                }
+                                criticalPathTrace_.FinishExpertStage0();
+                            } else if (subBlockIdx_ == 0U) {
+                                if (criticalPathTrace_.HasExpertStage0Work()) {
+                                    AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+                                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+                                    // TRACE_POINT: a8w4_gmm1_prologue_end_S
+                                    uint32_t gmm1PrologueEndCycle = CriticalPathTrace::Now();
+                                    criticalPathTrace_.EndExpertStage0(gmm1PrologueEndCycle);
+                                }
+                                criticalPathTrace_.FinishExpertStage0();
+                            } else {
+                                if (criticalPathTrace_.HasExpertStage1Work()) {
+                                    // TRACE_POINT: a8w4_swiglu_end_S
+                                    uint32_t swigluEndCycle = CriticalPathTrace::Now();
+                                    criticalPathTrace_.EndExpertStage1(swigluEndCycle);
+                                }
+                                criticalPathTrace_.FinishExpertStage1();
                             }
-                            criticalPathTrace_.FinishExpertStage0();
-                        } else if (subBlockIdx_ == 0U) {
-                            if (criticalPathTrace_.HasExpertStage0Work()) {
-                                AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
-                                AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
-                                // TRACE_POINT: a8w4_gmm1_prologue_end_S
-                                uint32_t gmm1PrologueEndCycle = CriticalPathTrace::Now();
-                                criticalPathTrace_.EndExpertStage0(gmm1PrologueEndCycle);
-                            }
-                            criticalPathTrace_.FinishExpertStage0();
-                        } else {
-                            if (criticalPathTrace_.HasExpertStage1Work()) {
-                                // TRACE_POINT: a8w4_swiglu_end_S
-                                uint32_t swigluEndCycle = CriticalPathTrace::Now();
-                                criticalPathTrace_.EndExpertStage1(swigluEndCycle);
-                            }
-                            criticalPathTrace_.FinishExpertStage1();
                         }
-                    }
 #endif
-                    currentWaveGmm1Tiles +=
-                        Ops::Base::CeilDiv(static_cast<uint32_t>(Get<M_VALUE>(gmm1State.problemShape)),
-                                           static_cast<uint32_t>(GMM1_TILE_M)) *
-                        gmm1TileN;
-                }
-                currentWaveEnd = localExpertId + 1U;
-                if (currentWaveGmm1Tiles >= waveTileTarget &&
-                    moeExpertPerRank_ - currentWaveEnd >= 2U) {
-                    break;
+                        currentWaveGmm1Tiles +=
+                            Ops::Base::CeilDiv(static_cast<uint32_t>(Get<M_VALUE>(gmm1State.problemShape)),
+                                               static_cast<uint32_t>(GMM1_TILE_M)) *
+                            gmm1TileN;
+                    }
+                    ++currentGmm1Expert;
+                    currentWaveEnd = currentGmm1Expert;
+                    currentGmm1WaveComplete =
+                        currentGmm1Expert >= moeExpertPerRank_ ||
+                        (currentWaveGmm1Tiles >= waveTileTarget &&
+                         moeExpertPerRank_ - currentGmm1Expert >= 2U);
                 }
             }
 
