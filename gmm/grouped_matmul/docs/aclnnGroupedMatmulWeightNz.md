@@ -34,7 +34,7 @@
 
       - 输入的weight会被接口按AI处理器亲和数据排布格式（FRACTAL_NZ）解析。
       - 新增参数quantGroupSize，整数型参数，代表分组量化（per-group）的分组大小，不涉及分组量化时，填0。
-      - <term>Ascend 950PR/Ascend 950DT</term>：A8W4伪量化的对称per-group场景quantGroupSize填256，非对称per-channel场景填0；其余场景暂不支持该参数。
+      - <term>Ascend 950PR/Ascend 950DT</term>：S8S4伪量化的对称per-group场景quantGroupSize填256，非对称per-channel场景填0；其余场景暂不支持该参数。
 
   - **计算公式**：
 
@@ -369,7 +369,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>quantGroupSize</td>
     <td>输入</td>
     <td>代表分组量化（per-group）的分组大小。</td>
-    <td>不涉及分组量化时，填0。<term>Ascend 950PR/Ascend 950DT</term>的A8W4伪量化对称per-group场景填256，非对称per-channel场景填0；其余场景暂不支持。</td>
+    <td>不涉及分组量化时，填0。<term>Ascend 950PR/Ascend 950DT</term>的S8S4伪量化对称per-group场景填256，非对称per-channel场景填0；其余场景暂不支持。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -620,7 +620,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |-1/0   |FLOAT16     |FLOAT16     |FLOAT16/FLOAT32/null    | FLOAT16|
 
   - 伪量化场景支持的数据类型为：
-    **A8W4场景：**
+    **S8S4场景：**
 
       **数据类型要求：**
 
@@ -631,7 +631,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
       **约束说明：**
 
-      除公共约束外，A8W4场景其余约束如下：
+      除公共约束外，S8S4场景其余约束如下：
 
       - 仅支持groupType=0、splitItem=2/3、actType=0，groupListType仅支持1（count）。
       - x、weight、scaleOptional、biasOptional、perTokenScaleOptional和out均为长度1的TensorList；x和weight均不支持转置。

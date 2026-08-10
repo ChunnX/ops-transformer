@@ -136,7 +136,7 @@ $$
 - **V4 → V5**：
 
   - Atlas A3/A2 系列产品：增加可选参数tuningConfigOptional，调优参数。数组中第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值进行最优tiling。
-  - Ascend 950PR/Ascend 950DT：A8W4兼容Atlas A3/A2的tuningConfigOptional语义。数组中第一个值表示各个专家处理的token数的预期值；第二个值置1时开启特殊weight格式模板。
+  - Ascend 950PR/Ascend 950DT：S8S4兼容Atlas A3/A2的tuningConfigOptional语义。数组中第一个值表示各个专家处理的token数的预期值；第二个值置1时开启特殊weight格式模板。
 
 - **V1 → V4**：
 
@@ -316,7 +316,7 @@ aclnnGroupedMatmulV5默认确定性实现。
   - groupListType=0：须为非负单调非递减数列（累积和），groupList中最后一个值不大于x中tensor的第一维。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
   - groupListType=1：须为非负数列（各组大小），groupList中数值总和不大于x中tensor的第一维。例如：`[64, 0, 128, 64]`
   - groupListType=2：仅全量化且groupType=0场景下支持，须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置，groupList第二列的数值总和不大于x中tensor的第一维。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
-- tuningConfigOptional：A8W4伪量化支持第一个值配置预期token数；offsetOptional不为空的per-channel NZ权重场景支持第二个值置1，表示weight已离线按`[E,N,K]`连续排布并转换为NZ。该模式下weight仍不转置，`transposeWeight`必须为false。其余场景不支持。
+- tuningConfigOptional：S8S4伪量化支持第一个值配置预期token数；offsetOptional不为空的per-channel NZ权重场景支持第二个值置1，表示weight已离线按`[E,N,K]`连续排布并转换为NZ。该模式下weight仍不转置，`transposeWeight`必须为false。其余场景不支持。
 - actType（0~5）：
   - 非量化/伪量化仅支持 0。
   - 全量化下x、weight数据类型为INT8且out数据类型为BFLOAT16/FLOAT16，静态T-C或动态K-C、scale数据类型为FLOAT32/BFLOAT16时支持0/1/2/4/5（注意3不支持）；其余场景仅支持0。
@@ -347,7 +347,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 | 动态量化（<abbr title="pergroup-pergroup（G-G）量化模式，量化参数类型为FLOAT8_E8M0，group size为32的特例">MX</abbr>） | FLOAT8_E5M2/FLOAT8_E4M3FN / FLOAT4_E2M1 | FLOAT8_E5M2/FLOAT8_E4M3FN / FLOAT4_E2M1 | BFLOAT16/FLOAT16/FLOAT32 | [动态量化（MX）场景约束](#ascend950-动态量化-mx) |
 | 动态量化（<abbr title="左矩阵pergroup，右矩阵perblock">G-B</abbr>） | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | BFLOAT16/FLOAT16/FLOAT32 | [动态量化（G-B）场景约束](#ascend950-动态量化-gb) |
 | 全量化-S4S4 | INT4 | INT4 | BFLOAT16/FLOAT16 | [S4S4场景约束](#ascend950-s4s4场景约束) |
-| 伪量化-A8W4 | INT8 | INT4 | BFLOAT16/FLOAT16 | [伪量化场景约束](#ascend950-伪量化场景约束) |
+| 伪量化-S8S4 | INT8 | INT4 | BFLOAT16/FLOAT16 | [伪量化场景约束](#ascend950-伪量化场景约束) |
 | <abbr title="对右矩阵权重进行量化的模式，包括perchannel量化模式">伪量化</abbr> | FLOAT16 / BFLOAT16 | INT8/INT4 | FLOAT16 / BFLOAT16 | [伪量化场景约束](#ascend950-伪量化场景约束) |
 | <abbr title="对右矩阵权重进行量化的模式，包括perchannel量化模式">伪量化</abbr> | FLOAT16 / BFLOAT16 | FLOAT8_E5M2/FLOAT8_E4M3FN/HIFLOAT8 | FLOAT16 / BFLOAT16 | [伪量化场景约束](#ascend950-伪量化场景约束) |
 
@@ -531,7 +531,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 <details>
 <summary>伪量化场景约束</summary>
 
-**A8W4场景：**
+**S8S4场景：**
 
 **数据类型要求：**
 
@@ -604,7 +604,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 - groupType：支持M轴分组（0）和不分组（-1），非量化额外支持 K轴分组（2）。全量化下 groupType 仅支持0（M轴分组）。
 - tuningConfigOptional：支持，为Host侧INT64 aclIntArray。
   - `[0]`：预期各专家处理的token数，tiling 按此优化，适用场景：A8W4/A8W8/A4W4，x/weight/out 单Tensor。
-  - `[1]`：置1时开启weight特殊亲和格式。适用于A8W4 offsetOptional不为空的per-channel NZ单Tensor场景；weight须离线按`[E,N,K]`连续排布后转换为NZ，`transposeWeight`仍为false。
+  - `[1]`：是否开启weight亲和格式（先转置再 NZ），适用场景：A8W4。
   - `[2]`：允许额外workspace上限（-1=不限），适用场景：A8W8定轴算法优化。
 - actType：仅A8W8（x、weight数据类型为INT8）且输出数据类型为FLOAT16/BFLOAT16时支持激活函数类型0/1/2/4/5（3不支持）；其余场景仅支持0。
 - 输入参数 x、weight，输出参数out支持最多128个Tensor。
@@ -745,7 +745,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 - **约束说明**
 
   除平台约束外，A8W4场景其余约束如下：
-  - 仅支持groupType=0（M轴分组），actType=0，groupListType仅支持1（count）
+  - 仅支持groupType=0（M轴分组），actType=0
   - 当前支持x、out均为长度为1的TensorList
   - weight、scaleOptional、biasOptional和offsetOptional支持单Tensor场景（tensorlist长度为1）和多Tensor场景（tensorlist长度大于1）
   - x不支持转置、weight不支持转置
@@ -754,13 +754,14 @@ aclnnGroupedMatmulV5默认确定性实现。
   - Bias为计算过程中离线计算的辅助结果，值要求为 $8 \times weight \times scale$，并在第1维累加，shape要求为 $[E, N]$
   - 当weight传入数据类型为INT32时，会将每个INT32视为8个INT4
   - offset为空时
-    - k要求为quantGroupSize的整数倍，且要求k <= 18432。其中quantGroupSize为k方向上pergroup量化长度，当前支持quantGroupSize=256
+    - 该场景下仅支持groupListType为1（算子不会检查groupListType的值，会认为groupListType为1），k要求为quantGroupSize的整数倍，且要求k <= 18432。其中quantGroupSize为k方向上pergroup量化长度，当前支持quantGroupSize=256
+    - 该场景下要求n为8的整数倍
     - 该场景下scale为pergroup与perchannel离线融合后的结果，shape要求为 $[E, quantGroupNum, N]$，其中 $quantGroupNum = k \div quantGroupSize$
     - 该场景下，各个专家处理的token数的预期值大于n/4时，即tuningConfigOptional中第一个值大于n/4时，通常会取得更好的性能，此时显存占用会增加 $g \times k \times n$ 字节（其中g为matmul组数即分组数）
   - offset不为空时
     - scale为pergroup与perchannel离线融合后的结果，shape要求为 $[E, 1, N]$
     - 该场景下offsetOptional不为空。非对称量化offsetOptional为计算过程中离线计算辅助结果，即 $antiquantOffset \times scale$，shape要求为 $[E, 1, N]$，dtype为FLOAT32
-  - tuningConfigOptional数组第二个元素可置1，以使能A8W4 offset不为空的per-channel场景中weight的特殊格式模板，以优化算子性能（性能优势的shape范围参考：K >= 2048 && N >= 2048）。使用该模板时，应将数学意义上shape为`[E,K,N]`的weight离线连续重排为`[E,N,K]`，然后进行ND2NZ转换并作为算子输入；该模式不是运行时转置，`transposeWeight`必须为false，不得在NZ Tensor上再创建末两维转置view
+  - tuningConfigOptional数组第二个元素可置1，以使能A8W4场景(仅支持perchannel)中weight的特殊格式模板，以优化算子性能(性能优势的shape范围参考：K >= 2048 && N >= 2048)。需要说明的是，该模板要求weight的shape为（E，N，K）,然后再对其进行ND2NZ转换后作为算子输入
 
 </details>
 
