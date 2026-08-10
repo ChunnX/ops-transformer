@@ -60,8 +60,8 @@ extern "C" {
  * @param [in] numMaxTokensPerRank:
  * 计算可选输入，int。每个Rank最大可接收Token数，默认值为0表示所有卡的token数相同且为当前bs（x的dim0）。
  * @param [in] activation:
- * 计算可选输入，str。激活函数类型，A2/A3支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"，A5仅支持
- * "swiglu"，默认值为"swiglu"。
+ * 计算可选输入，str。激活函数类型，A2/A3支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"，A5支持
+ * "swiglu"和"situglu"，默认值为"swiglu"。
  * @param [in] activationParams: 计算属性，host侧的aclFloatArray。参数格式由activation决定。
  * @param [in] topoType: 计算可选输入，int。通信拓扑类型，默认值为0。
  * @param [in] topkWeightsType: 计算可选输入，int。权重前移模式，0=不开启（默认），1=开启权重前移。

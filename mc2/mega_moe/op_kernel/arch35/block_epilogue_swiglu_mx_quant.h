@@ -267,11 +267,11 @@ private:
     float activationBeta_{1.0f};
 };
 
-// ============================================================================
-// ActivationContext: 激活分块上下文
-// 仅含标量与 UB 指针（不含 RegTensor），可安全跨函数传递给各 ActivationFlow*
-// 由 VFDoSwigluAndQuantForMX 填充后分派给具体激活函数
-// ============================================================================
+/*
+ * ActivationContext: 激活分块上下文
+ * 仅含标量与 UB 指针（不含 RegTensor），可安全跨函数传递给各 ActivationFlow*
+ * 由 VFDoSwigluAndQuantForMX 填充后分派给具体激活函数
+ */
 template <typename DataTypeInT>
 struct ActivationContext {
     // 源数据地址
@@ -631,17 +631,17 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeDat
     return;
 }
 
-// ============================================================================
-// COMPUTE_TANH_TWOPATH: 两段式 tanh 宏（多项式路 + sigmoid 分解路）
-//   多项式路(|x|<0.6): x*(1 + c1*x^2 + c2*x^4 + c3*x^6 + c4*x^8), Horner + FusedMulDstAdd
-//   sigmoid路(|x|>=0.6): 2/(1+e^{-2x}) - 1, 天然保号无相消
-//   系数来源: tanh_dag.h / situ_mx_quant_common.h
-//   c1=-0.333327681, c2=0.133152977, c3=-0.0523039624, c4=0.0157396831
-// 用法: COMPUTE_TANH_TWOPATH(result, zReg, msk, oneReg, absReg, sqrReg,
-//                           polyReg, tmpReg, expReg, c1Reg, c2Reg, cmpMask);
-// 注意: 宏在函数内展开，所用寄存器须在调用点函数作用域内声明；
-//       宏会覆盖 sqrReg/polyReg/tmpReg/expReg/absReg/cmpMask，结果写入 result
-// ============================================================================
+/*
+ * COMPUTE_TANH_TWOPATH: 两段式 tanh 宏（多项式路 + sigmoid 分解路）
+ *   多项式路(|x|<0.6): x*(1 + c1*x^2 + c2*x^4 + c3*x^6 + c4*x^8), Horner + FusedMulDstAdd
+ *   sigmoid路(|x|>=0.6): 2/(1+e^{-2x}) - 1, 天然保号无相消
+ *   系数来源: tanh_dag.h / situ_mx_quant_common.h
+ *   c1=-0.333327681, c2=0.133152977, c3=-0.0523039624, c4=0.0157396831
+ * 用法: COMPUTE_TANH_TWOPATH(result, zReg, msk, oneReg, absReg, sqrReg,
+ *                           polyReg, tmpReg, expReg, c1Reg, c2Reg, cmpMask);
+ * 注意: 宏在函数内展开，所用寄存器须在调用点函数作用域内声明；
+ *       宏会覆盖 sqrReg/polyReg/tmpReg/expReg/absReg/cmpMask，结果写入 result
+ */
 #define COMPUTE_TANH_TWOPATH(result, zReg, msk, oneReg, absReg, sqrReg, \
                              polyReg, tmpReg, expReg, c1Reg, c2Reg, cmpMask) \
     do { \
@@ -664,11 +664,11 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeDat
         AscendC::MicroAPI::Select(result, tmpReg, polyReg, cmpMask); \
     } while (0)
 
-// ============================================================================
-// ActivationFlowSwiGLU: SwiGLU 激活完整计算流
-//   swish(x1) * x2, 其中 swish(x) = x / (exp(-x) + 1) = x * sigmoid(x)
-//   含主循环 + 尾循环 + pad 填零，所有寄存器在本函数内声明
-// ============================================================================
+/*
+ * ActivationFlowSwiGLU: SwiGLU 激活完整计算流
+ *   swish(x1) * x2, 其中 swish(x) = x / (exp(-x) + 1) = x * sigmoid(x)
+ *   含主循环 + 尾循环 + pad 填零，所有寄存器在本函数内声明
+ */
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 template <bool IsInterleaved>
 __aicore__ inline void
@@ -777,14 +777,14 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Activation
     }
 }
 
-// ============================================================================
-// ActivationFlowSiTU: SiTU 激活完整计算流
-//   situ_a = beta * tanh(gate/beta) * sigmoid(gate)
-//   ActSub==LINEAR: out = situ_a * (alpha * tanh(up/alpha))
-//   ActSub==DEFAULT: out = situ_a * up
-//   tanh 采用两段式（多项式路 + sigmoid 分解路），保号无相消
-//   参照 situ_mx_quant_common.h::ComputeVfSitu，含主循环 + 尾循环 + pad 填零
-// ============================================================================
+/*
+ * ActivationFlowSiTU: SiTU 激活完整计算流
+ *   situ_a = beta * tanh(gate/beta) * sigmoid(gate)
+ *   ActSub==LINEAR: out = situ_a * (alpha * tanh(up/alpha))
+ *   ActSub==DEFAULT: out = situ_a * up
+ *   tanh 采用两段式（多项式路 + sigmoid 分解路），保号无相消
+ *   参照 situ_mx_quant_common.h::ComputeVfSitu，含主循环 + 尾循环 + pad 填零
+ */
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 template <ActSubMode ActSub, bool IsInterleaved>
 __aicore__ inline void
@@ -956,13 +956,13 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Activation
     }
 }
 
-// ============================================================================
-// VFDoSwigluAndQuantForMX: 激活 + MX 量化主入口（重构后为分派器）
-//   1. 标量分块计算（对齐、tail、mask）
-//   2. 填充 ActivationContext
-//   3. 按模板参数 Activation 分派到 ActivationFlowSwiGLU / ActivationFlowSiTU
-//   4. MX 量化调度（ComputeMaxExp / ComputeScale / ComputeDataForQuantTargetFp8/Fp4）
-// ============================================================================
+/*
+ * VFDoSwigluAndQuantForMX: 激活 + MX 量化主入口（重构后为分派器）
+ *   1. 标量分块计算（对齐、tail、mask）
+ *   2. 填充 ActivationContext
+ *   3. 按模板参数 Activation 分派到 ActivationFlowSwiGLU / ActivationFlowSiTU
+ *   4. MX 量化调度（ComputeMaxExp / ComputeScale / ComputeDataForQuantTargetFp8/Fp4）
+ */
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 template <SwigluQuantMsg::QuantMode quantMode, bool IsInterleavedSrc, ActMode Activation, ActSubMode ActSub>
 __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwigluAndQuantForMX(

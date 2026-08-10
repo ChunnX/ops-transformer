@@ -803,7 +803,7 @@
   <tr>
    <td>activation</td>
    <td>可选属性</td>
-   <td>激活函数类型。默认值为"swiglu"。可选值为"swiglu"、"swiglustep"、"swigluoai"和"situglu"。</td>
+   <td>激活函数类型。默认值为"swiglu"。A2/A3支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"；A5支持"swiglu"和"situglu"。</td>
    <td>STRING</td>
    <td></td>
   </tr>
@@ -905,8 +905,8 @@
       | A8W4-INT | BF16 | INT4(INT32) | INT4(INT32) | UINT64 | UINT64 | FP32 | FP32 | BF16 | 2 | 1（INT8） |
 
   - **<term>Ascend 950PR/Ascend 950DT</term>**：
-    - `activation`仅支持"swiglu"。
-    - `activation_params`仅支持[]或[clamp]。
+    - `activation`支持"swiglu"和"situglu"。
+    - `activation_params`："swiglu"传[clamp]；"situglu"传[beta]或[beta, linear_beta]，beta和linear_beta需为有限非零值。
     - `BS`（`x`.dim0）支持[1, +∞)，实际上限受`cclBufferSize`约束。算子采用分批处理机制，BS不再受UB容量硬限制，dispatch阶段按固定粒度分批处理。
     - `H`（`x`.dim1）支持1024、2048、3072、4096、5120、6144、7168、8192。
     - `topK`（`topkIds`.dim1）支持[1, 32]。

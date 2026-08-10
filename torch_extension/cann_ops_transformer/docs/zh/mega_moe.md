@@ -913,7 +913,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation</td>
         <td>str</td>
         <td>可选</td>
-        <td>激活函数类型，默认值为"swiglu"。可选值为"swiglu"、"swiglustep"、"swigluoai"和"situglu"。</td>
+        <td>激活函数类型，默认值为"swiglu"。A2/A3支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"；A5支持"swiglu"和"situglu"。</td>
         <td>str</td>
         <td>不涉及</td>
         <td>不涉及</td>
@@ -1380,8 +1380,8 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
   <!-- end id17 -->
   <!-- npu="950" id18 -->
   - **Ascend 950PR/Ascend 950DT：**
-    - `activation`仅支持"swiglu"。
-    - `activation_params`无需设置，截断值通过`activation_clamp`传入。
+    - `activation`支持"swiglu"和"situglu"。
+    - `activation_params`："swiglu"传[clamp]；"situglu"传[beta]或[beta, linear_beta]，beta和linear_beta需为有限非零值。
     - num_tokens（x.dim0）范围 [1, +∞)，实际上限受`ccl_buffer_size`约束。算子采用分批处理机制，BS不再受UB容量硬限制，dispatch阶段按固定粒度分批处理。
     - hidden（x.dim1）仅支持1024、2048、3072、4096、5120、6144、7168、8192。
     - num_topk（topk_ids.dim1）支持[1, 32]。
