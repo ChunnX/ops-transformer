@@ -96,6 +96,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
       <td>
         <ul>
           <li>x必须转置。</li>
+          <li>不支持空Tensor。</li>
         </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
@@ -110,6 +111,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
       <td>
         <ul>
           <li>weight不支持转置。</li>
+          <li>不支持空Tensor。</li>
         </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
