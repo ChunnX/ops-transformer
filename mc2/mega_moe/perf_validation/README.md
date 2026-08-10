@@ -93,15 +93,21 @@ export HCCL_BUFFSIZE=512   # 4 rank 且 batch>=1024 时必需，默认 200MB 不
 
 ### 3.3 精度与性能验证
 
-`golden_megamoe.py` 是**单脚本合一工具**（无外部依赖）：rank0 自动 profiler 抓取每个用例的
-kernel Duration，同时与 NPU 小算子级联参考实现比对精度，**一次跑出性能 + 精度**。
+本目录下的 `golden_megamoe.py` 是**单脚本合一工具**（无外部依赖，无需额外安装）：rank0 自动
+profiler 抓取每个用例的 kernel Duration，同时与 NPU 小算子级联参考实现比对精度，
+**一次跑出性能 + 精度**。
 
 ```bash
-python3 golden_megamoe.py --list                        # 列出全部用例
-python3 golden_megamoe.py --case qwen3_235b_ep4_b1024_w8a8   # 单用例（输出 PASS + Duration）
-python3 golden_megamoe.py --all                         # 全量 88 用例，约 67 分钟
+python3 golden_megamoe.py --list                              # 列出全部用例
+python3 golden_megamoe.py --case qwen3_235b_ep4_b1024_w8a8    # 跑单个用例
+python3 golden_megamoe.py --filter qwen3_235b,glm45           # 按名字子串批量跑（逗号分隔）
+python3 golden_megamoe.py --all                               # 全量 88 用例，约 67 分钟
 ```
 
-- **通过标准**：每 rank `cos > 0.99` 且 `etn_ok=True`（expert_token_nums 严格相等）。
+- **通过标准**：每 rank `cos > 0.99` 且 `etn_ok=True`（expert_token_nums 严格相等），
+  脚本末尾输出 `N/N 用例通过`。
+- **单用例输出示例**：`[rank 0] PASS | etn_ok=True | cos=0.999960 Dur=1393.2us`，
+  其中 `Dur` 即该用例的 kernel 耗时，用于两个 vendor 间的性能对比。
+- **对比测试做法**：先 source master 的 vendor 跑一遍记录 `Dur`，再 source 优化分支的
+  vendor 跑同样的用例，两次结果相减即为收益。建议同时段背靠背运行以减小环境波动。
 - **最新全量结果**：88/88 用例通过，0 失败。
-- 全量回归脚本：`scripts/run_regression.sh <vendor>`；5 用例快速抽样：`scripts/smoke5.sh <vendor>`。
