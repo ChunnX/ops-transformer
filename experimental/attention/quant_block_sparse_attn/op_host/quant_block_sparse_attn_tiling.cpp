@@ -121,8 +121,8 @@ void QuantBlockSparseAttnTiling::FillInputParams()
     inputParams.set_isSoftMaxLseEnable(info.returnSoftmaxLseVal ? 1 : 0);
     uint32_t fp8PScaleShapeSize = 0U;
     if (info.opParamInfo.pScale.shape != nullptr) {
-        const auto sz = info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize();
-        fp8PScaleShapeSize = (sz > 0) ? static_cast<uint32_t>(sz) : 0U;
+        const int64_t shapeSize = info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize();
+        fp8PScaleShapeSize = (shapeSize > 0) ? static_cast<uint32_t>(shapeSize) : 0U;
     }
     inputParams.set_pScaleShapeSize(fp8PScaleShapeSize);
 }
@@ -245,8 +245,8 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     scaleParams.valueScaleDSize = valueScaleDSize;
     uint32_t pScaleShapeSize = 0U;
     if (info.opParamInfo.pScale.shape != nullptr) {
-        const auto sz = info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize();
-        pScaleShapeSize = (sz > 0) ? static_cast<uint32_t>(sz) : 0U;
+        const int64_t shapeSize = info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize();
+        pScaleShapeSize = (shapeSize > 0) ? static_cast<uint32_t>(shapeSize) : 0U;
     }
     scaleParams.pScaleShapeSize = pScaleShapeSize;
     scaleParams.queryQuantMode = QBSA_MXFP8_PER_TOKEN_GROUP_MODE;
@@ -434,7 +434,7 @@ ge::graphStatus QuantBlockSparseAttnTiling::SaveTilingData()
         if (rawTilingData->GetCapacity() < dataSize) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 kOpName, "tilingDataCapacity", std::to_string(rawTilingData->GetCapacity()),
-                "must be at least " + std::to_string(dataSize) + " for MXFP8 full-quant tiling data");
+                "Must be at least " + std::to_string(dataSize) + " for MXFP8 full-quant tiling data");
             return ge::GRAPH_FAILED;
         }
         std::memcpy(rawTilingData->GetData(), &mxTilingData_, dataSize);
@@ -460,7 +460,7 @@ ge::graphStatus QuantBlockSparseAttnTiling::DoOpTiling(QuantBlockSparseAttnTilin
     if (totalTaskNum_ == 0U || totalTaskNum_ > std::numeric_limits<uint32_t>::max()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             kOpName, "bSize * n1Size * gS1OuterSize", std::to_string(totalTaskNum_),
-            "total task num must be in range [1, " + std::to_string(std::numeric_limits<uint32_t>::max()) + "]");
+            "Total task num must be in range [1, " + std::to_string(std::numeric_limits<uint32_t>::max()) + "]");
         return ge::GRAPH_FAILED;
     }
 

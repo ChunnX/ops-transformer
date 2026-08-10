@@ -52,15 +52,13 @@ static const int64_t N_VALID_8 = 8;
 static constexpr int64_t N_ALIGN = 8;
 static constexpr int64_t DOUBLE_SIZE = 2;
 
-static bool CheckNotNull(const aclTensor *x, int64_t outFlag, const aclTensor *output, const aclTensor *normOut,
-                         const aclTensor *sumOut)
+static bool CheckNotNull(const aclTensor *x, const aclTensor *output, const uint64_t *workspaceSize,
+                         aclOpExecutor **executor)
 {
     OP_CHECK_NULL(x, return false);
     OP_CHECK_NULL(output, return false);
-    if (outFlag) {
-        OP_CHECK_NULL(normOut, return false);
-        OP_CHECK_NULL(sumOut, return false);
-    }
+    OP_CHECK_NULL(workspaceSize, return false);
+    OP_CHECK_NULL(executor, return false);
     return true;
 }
 
@@ -146,13 +144,37 @@ static bool CheckShape(const aclTensor *x, int64_t outFlag, const aclTensor *out
         int64_t n = n0;
         int64_t expectNormSize = DOUBLE_SIZE * numIters * T * n * N_ALIGN;
         int64_t expectSumSize = DOUBLE_SIZE * numIters * T * N_ALIGN;
-        if (normOut->GetViewShape().GetShapeSize() != expectNormSize) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "normOut shape size must be %ld, but got %ld.", expectNormSize,
+        if (normOut->GetViewShape().GetDimNum() != 1 ||
+            normOut->GetViewShape().GetShapeSize() != expectNormSize) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "normOut shape must be 1-dim and size %ld, but got dim=%ld size=%ld.",
+                    expectNormSize, normOut->GetViewShape().GetDimNum(),
                     normOut->GetViewShape().GetShapeSize());
             return false;
         }
-        if (sumOut->GetViewShape().GetShapeSize() != expectSumSize) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sumOut shape size must be %ld, but got %ld.", expectSumSize,
+        if (sumOut->GetViewShape().GetDimNum() != 1 ||
+            sumOut->GetViewShape().GetShapeSize() != expectSumSize) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "sumOut shape must be 1-dim and size %ld, but got dim=%ld size=%ld.",
+                    expectSumSize, sumOut->GetViewShape().GetDimNum(),
+                    sumOut->GetViewShape().GetShapeSize());
+            return false;
+        }
+    } else {
+        // outFlag为0时，normOut和sumOut应为shape{1}的空输出
+        if (normOut->GetViewShape().GetDimNum() != 1 ||
+            normOut->GetViewShape().GetShapeSize() != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "outFlag is 0, normOut shape must be {1}, but got dim=%ld size=%ld.",
+                    normOut->GetViewShape().GetDimNum(),
+                    normOut->GetViewShape().GetShapeSize());
+            return false;
+        }
+        if (sumOut->GetViewShape().GetDimNum() != 1 ||
+            sumOut->GetViewShape().GetShapeSize() != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "outFlag is 0, sumOut shape must be {1}, but got dim=%ld size=%ld.",
+                    sumOut->GetViewShape().GetDimNum(),
                     sumOut->GetViewShape().GetShapeSize());
             return false;
         }
@@ -163,16 +185,13 @@ static bool CheckShape(const aclTensor *x, int64_t outFlag, const aclTensor *out
 static inline aclnnStatus CheckParams(const aclTensor *x, int64_t outFlag, float eps, int64_t numIters,
                                       const aclTensor *output, const aclTensor *normOut, const aclTensor *sumOut)
 {
-    // 1. 检查参数是否为空指针
-    CHECK_RET(CheckNotNull(x, outFlag, output, normOut, sumOut), ACLNN_ERR_PARAM_NULLPTR);
-
-    // 2. 检查输入的数据类型是否在API支持的数据类型范围之内
+    // 1. 检查输入的数据类型是否在API支持的数据类型范围之内
     CHECK_RET(CheckDtypeValid(x, outFlag, output, normOut, sumOut), ACLNN_ERR_PARAM_INVALID);
 
-    // 3. 检查输入形状是否满足
+    // 2. 检查输入形状是否满足
     CHECK_RET(CheckShape(x, outFlag, output, normOut, sumOut, numIters), ACLNN_ERR_PARAM_INVALID);
 
-    // 4. 检查输入输出format是否一致
+    // 3. 检查输入输出format是否一致
     CHECK_RET(CheckFormat(x, outFlag, output, normOut, sumOut), ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
@@ -184,16 +203,36 @@ aclnnStatus aclnnMhcSinkhornGetWorkspaceSize(const aclTensor *x, float eps, int6
 {
     L2_DFX_PHASE_1(aclnnMhcSinkhorn, DFX_IN(x, eps, numIters), DFX_OUT(output, normOut, sumOut));
 
+    CHECK_RET(CheckNotNull(x, output, workspaceSize, executor), ACLNN_ERR_PARAM_NULLPTR);
+
     // 固定写法，创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
+    // 通过shape判断outFlag: shape为{1}或nullptr视为辅助输出无效(outFlag=0)
     int64_t outFlag = 1;
-    if (normOut == nullptr || sumOut == nullptr) {
-        Shape emptyShape({});
-        normOut = (uniqueExecutor.get())->AllocTensor(emptyShape, x->GetDataType(), Format::FORMAT_ND);
-        sumOut = (uniqueExecutor.get())->AllocTensor(emptyShape, x->GetDataType(), Format::FORMAT_ND);
+    bool normEmpty = (normOut == nullptr) || (normOut->GetViewShape().GetShapeSize() == 1);
+    bool sumEmpty = (sumOut == nullptr) || (sumOut->GetViewShape().GetShapeSize() == 1);
+    if (normEmpty && sumEmpty) {
+        Shape emptyShape({1});
+        if (normOut == nullptr) {
+            normOut = (uniqueExecutor.get())->AllocTensor(emptyShape, x->GetDataType(), Format::FORMAT_ND);
+            CHECK_RET(normOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        }
+        if (sumOut == nullptr) {
+            sumOut = (uniqueExecutor.get())->AllocTensor(emptyShape, x->GetDataType(), Format::FORMAT_ND);
+            CHECK_RET(sumOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        }
         outFlag = 0;
+    } else if (!normEmpty && !sumEmpty) {
+        outFlag = 1;
+    } else {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "normOut and sumOut must both be valid (shape != {1}) or both be empty (shape {1} or nullptr), "
+                "but got normOut shape size %ld, sumOut shape size %ld.",
+                normOut ? normOut->GetViewShape().GetShapeSize() : 0,
+                sumOut ? sumOut->GetViewShape().GetShapeSize() : 0);
+        return ACLNN_ERR_PARAM_INVALID;
     }
 
     // 固定写法，参数检查
