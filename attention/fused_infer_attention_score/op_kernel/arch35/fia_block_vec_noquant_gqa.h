@@ -25,7 +25,7 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "fia_public_define_arch35.h"
 #include "../../../common/op_kernel/vector_common.h"
-#include "../../../common/op_kernel/memory_copy_arch35.h"
+#include "memory_copy_arch35.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -506,7 +506,8 @@ public:
             int32_t gStartIdx = vecMStartIdx / runInfo.actS1Size;
             int32_t gEndIdx = vecMEndIdx / runInfo.actS1Size;
             if (gStartIdx != gEndIdx) { // 跨多个G
-                ret = (s1FirstValidToken > 0) || (s1LastValidToken < (runInfo.actS1Size - 1));
+                ret = (s1FirstValidToken > 0) ||
+                      (s1LastValidToken < static_cast<int64_t>(runInfo.actS1Size) - 1);
             } else { // 只跨1个G
                 ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
             }
