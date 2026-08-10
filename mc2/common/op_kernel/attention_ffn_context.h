@@ -15,11 +15,9 @@
 #ifndef ATTENTION_FFN_CONTEXT_H
 #define ATTENTION_FFN_CONTEXT_H
 
-#include <cstdint>
+#include "mc2_moe_context.h"
 
 namespace Mc2Aclnn {
-constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
-
 struct AttentionFFNContext {
     uint32_t epRankId;
     uint32_t rankSizePerServer;

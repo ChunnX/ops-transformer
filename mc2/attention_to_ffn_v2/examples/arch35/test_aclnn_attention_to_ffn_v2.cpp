@@ -21,8 +21,12 @@
 #include "acl/acl.h"
 #include "hccl/hccl.h"
 #include "aclnn/opdev/fp16_t.h"
-#include "aclnn/aclnn_attention_to_ffn_v2.h"
-#include "../../common/op_api/mc2_context.h"
+//#include "aclnn/aclnn_attention_to_ffn_v2.h"
+#include "../../../common/op_kernel/attention_ffn_context.h"
+#include "../../../common/op_api/mc2_context.h"
+
+static_assert(sizeof(Mc2Aclnn::AttentionFFNContext) == sizeof(Mc2Aclnn::Mc2MoeContext),
+              "AttentionFFNContext and Mc2MoeContext must have the same ABI");
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
@@ -86,9 +90,9 @@ int LaunchOneProcessAttentionToFfnV2(Args &args)
               args.attentionToFFNStream, args.context);
 
     uint64_t hcclBufferSize = 0;
-    aclTensor *mc2Context = nullptr;
+    aclTensor *attentionFfnContextTensor = nullptr;
     ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(
-        hcomName, "AttentionToFfnV2", hcclBufferSize, mc2Context);
+        hcomName, "AttentionToFfnV2", hcclBufferSize, attentionFfnContextTensor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("[ERROR] GetMc2ContextTensor failed. ret = %d\n", ret); return ret);
 
@@ -192,7 +196,7 @@ int LaunchOneProcessAttentionToFfnV2(Args &args)
     /*************************************** Call AttentionToFfnV2 ****************************************/
     // 璋冪敤绗竴闃舵鎺ュ彛
     ret = aclnnAttentionToFfnV2GetWorkspaceSize(
-        mc2Context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable,
+        attentionFfnContextTensor, x, sessionId, microBatchId, layerId, expertIds, expertRankTable,
         (quantMode > 0 ? scales : nullptr), nullptr,
         hcomName, WORLD_SIZE, ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape, moeExpertNum,
         quantMode, syncFlag, ffnStartRankId, &attentionToFFNWorkspaceSize, &attentionToFFNExecutor);
@@ -248,8 +252,8 @@ int LaunchOneProcessAttentionToFfnV2(Args &args)
     if (scales != nullptr) {
         aclDestroyTensor(scales);
     }
-    if (mc2Context != nullptr) {
-        aclDestroyTensor(mc2Context);
+    if (attentionFfnContextTensor != nullptr) {
+        aclDestroyTensor(attentionFfnContextTensor);
     }
     if (ffnTokenInfoTableShape != nullptr) {
         aclDestroyIntArray(ffnTokenInfoTableShape);
