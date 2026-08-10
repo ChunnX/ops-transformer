@@ -45,6 +45,16 @@ Mc2MoeGraphContext &Mc2MoeGraphContext::GetInstance()
     return instance;
 }
 
+std::string Mc2MoeGraphContext::MakeContextKey(const std::string &groupEp, const std::string &opName)
+{
+    return groupEp + opName;
+}
+
+std::string Mc2MoeGraphContext::MakeContextConstName(const std::string &groupEp, const std::string &opName)
+{
+    return std::string(kContextConstNamePrefix) + MakeContextKey(groupEp, opName);
+}
+
 const std::string Mc2MoeGraphContext::GetLibPath()
 {
     const char *ascendPath = std::getenv("ASCEND_HOME_PATH");
@@ -355,19 +365,20 @@ bool Mc2MoeGraphContext::BuildContextData(const std::string &groupEp, std::vecto
     return true;
 }
 
-bool Mc2MoeGraphContext::GetContextData(const std::string &groupEp, std::vector<int32_t> &contextData,
-                                        int64_t &hcclBuffSize)
+bool Mc2MoeGraphContext::GetContextData(const std::string &groupEp, const std::string &opName,
+                                        std::vector<int32_t> &contextData, int64_t &hcclBuffSize)
 {
-    if (groupEp.empty()) {
-        OPS_LOG_E(CONTEXT_NAME, "groupEp is empty.");
+    if (groupEp.empty() || opName.empty()) {
+        OPS_LOG_E(CONTEXT_NAME, "groupEp or opName is empty.");
         return false;
     }
+    const std::string contextKey = MakeContextKey(groupEp, opName);
     Mc2MoeGraphContext &manager = GetInstance();
-    auto iter = manager.contextCache_.find(groupEp);
+    auto iter = manager.contextCache_.find(contextKey);
     if (iter != manager.contextCache_.end()) {
         contextData = iter->second.first;
         hcclBuffSize = iter->second.second;
-        OPS_LOG_D(CONTEXT_NAME, "Found cached Mc2MoeContext data, groupEp %s.", groupEp.c_str());
+        OPS_LOG_D(CONTEXT_NAME, "Found cached Mc2MoeContext data, contextKey %s.", contextKey.c_str());
         return true;
     }
     // 与 aclnn 场景（mc2_context.cpp 每次调用新建实例）对齐：
@@ -376,7 +387,7 @@ bool Mc2MoeGraphContext::GetContextData(const std::string &groupEp, std::vector<
     if (!builder.BuildContextData(groupEp, contextData, hcclBuffSize)) {
         return false;
     }
-    manager.contextCache_.emplace(groupEp, std::make_pair(contextData, hcclBuffSize));
+    manager.contextCache_.emplace(contextKey, std::make_pair(contextData, hcclBuffSize));
     return true;
 }
 
@@ -384,10 +395,11 @@ bool Mc2MoeGraphContext::GetContextData(const std::string &groupEp, std::vector<
 template void *Mc2MoeGraphContext::GetHcclLibFunc<void *>(void *handle, const std::string &funcName);
 
 ge::graphStatus Mc2MoeGraphContext::CreateContextConstNode(ge::Graph &graph, const std::string &groupEp,
+                                                           const std::string &opName,
                                                            const std::vector<int32_t> &contextData,
                                                            ge::GNode &constNode)
 {
-    const std::string constName = kContextConstNamePrefix + groupEp;
+    const std::string constName = MakeContextConstName(groupEp, opName);
     const size_t dataLen = contextData.size() * sizeof(int32_t);
     ge::Shape shape({static_cast<int64_t>(contextData.size())});
     ge::TensorDesc tensorDesc(shape, ge::FORMAT_ND, ge::DT_INT32);
@@ -406,19 +418,21 @@ ge::graphStatus Mc2MoeGraphContext::CreateContextConstNode(ge::Graph &graph, con
     return ge::GRAPH_SUCCESS;
 }
 
-ge::GNode Mc2MoeGraphContext::FindContextConstNode(ge::Graph &graph, const std::string &groupEp)
+bool Mc2MoeGraphContext::FindContextConstNode(ge::Graph &graph, const std::string &groupEp, const std::string &opName,
+                                              ge::GNode &constNode)
 {
-    const std::string constName = kContextConstNamePrefix + groupEp;
+    const std::string constName = MakeContextConstName(groupEp, opName);
     for (auto &gNode : graph.GetDirectNode()) {
         ge::AscendString name;
         ge::AscendString type;
         if (gNode.GetName(name) == ge::GRAPH_SUCCESS && name.GetString() != nullptr &&
             constName == name.GetString() && gNode.GetType(type) == ge::GRAPH_SUCCESS &&
             type.GetString() != nullptr && std::string(type.GetString()) == "Const") {
-            return gNode;
+            constNode = gNode;
+            return true;
         }
     }
-    return ge::GNode();
+    return false;
 }
 } // namespace ops
 #endif // HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION

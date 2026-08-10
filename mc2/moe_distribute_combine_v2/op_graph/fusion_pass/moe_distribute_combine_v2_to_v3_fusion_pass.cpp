@@ -34,6 +34,7 @@ namespace {
 const std::string FUSION_PASS_NAME = "MoeDistributeCombineV2FusionPass";
 const std::string FUSED_OP_TYPE2 = "MoeDistributeCombineV2";
 const std::string FUSED_OP_TYPE3 = "MoeDistributeCombineV3";
+const std::string MC2_CONTEXT_OP_NAME = "moe_distribute_v2";
 constexpr size_t kV2TotalInputs = 18; // 5 个必选 + 13 个可选输入
 constexpr size_t kV2TotalOutputs = 1; // x
 constexpr size_t kV2RequiredInputs = 5;
@@ -315,15 +316,17 @@ ge::graphStatus MoeDistributeCombineV2FusionPass::Run(ge::GraphPtr &graph, ge::C
         if (contextNodes.find(groupEpStr) == contextNodes.end()) {
             std::vector<int32_t> contextData;
             int64_t hcclBuffSize = 0;
-            if (!ops::Mc2MoeGraphContext::GetContextData(groupEpStr, contextData, hcclBuffSize)) {
+            if (!ops::Mc2MoeGraphContext::GetContextData(groupEpStr, MC2_CONTEXT_OP_NAME, contextData,
+                                                         hcclBuffSize)) {
                 OPS_LOG_E(FUSION_PASS_NAME.c_str(), "get mc2 context data failed, V2 node kept as-is.");
                 continue;
             }
-            // 先按名查重：另一个 pass（dispatch/combine 互为对端）可能已为本通信域创建过 context Const
-            ge::GNode contextNode = ops::Mc2MoeGraphContext::FindContextConstNode(*graph, groupEpStr);
-            ge::AscendString tmpType;
-            if (contextNode.GetType(tmpType) != ge::GRAPH_SUCCESS) {
-                if (ops::Mc2MoeGraphContext::CreateContextConstNode(*graph, groupEpStr, contextData, contextNode) !=
+            // 先按名查重：dispatch pass 与 combine 使用同一个 opName，可共享本通信域 context Const
+            ge::GNode contextNode;
+            if (!ops::Mc2MoeGraphContext::FindContextConstNode(*graph, groupEpStr, MC2_CONTEXT_OP_NAME,
+                                                               contextNode)) {
+                if (ops::Mc2MoeGraphContext::CreateContextConstNode(*graph, groupEpStr, MC2_CONTEXT_OP_NAME,
+                                                                    contextData, contextNode) !=
                     ge::GRAPH_SUCCESS) {
                     continue;
                 }

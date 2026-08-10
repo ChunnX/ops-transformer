@@ -34,6 +34,7 @@ namespace {
 const std::string FUSION_PASS_NAME = "MoeDistributeDispatchV2FusionPass";
 const std::string FUSED_OP_TYPE2 = "MoeDistributeDispatchV2";
 const std::string FUSED_OP_TYPE3 = "MoeDistributeDispatchV3";
+const std::string MC2_CONTEXT_OP_NAME = "moe_distribute_v2";
 constexpr size_t kV2TotalInputs = 7;  // x, expert_ids + 5 个可选输入
 constexpr size_t kV2TotalOutputs = 7; // expand_x, dynamic_scales, assist_info_for_combine,
                                       // expert_token_nums, ep_recv_count, tp_recv_count, expand_scales
@@ -312,15 +313,17 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::
         if (contextNodes.find(groupEpStr) == contextNodes.end()) {
             std::vector<int32_t> contextData;
             int64_t hcclBuffSize = 0;
-            if (!ops::Mc2MoeGraphContext::GetContextData(groupEpStr, contextData, hcclBuffSize)) {
+            if (!ops::Mc2MoeGraphContext::GetContextData(groupEpStr, MC2_CONTEXT_OP_NAME, contextData,
+                                                         hcclBuffSize)) {
                 OPS_LOG_E(FUSION_PASS_NAME.c_str(), "get mc2 context data failed, V2 node kept as-is.");
                 continue;
             }
-            // 先按名查重：另一个 pass（dispatch/combine 互为对端）可能已为本通信域创建过 context Const
-            ge::GNode contextNode = ops::Mc2MoeGraphContext::FindContextConstNode(*graph, groupEpStr);
-            ge::AscendString tmpType;
-            if (contextNode.GetType(tmpType) != ge::GRAPH_SUCCESS) {
-                if (ops::Mc2MoeGraphContext::CreateContextConstNode(*graph, groupEpStr, contextData, contextNode) !=
+            // 先按名查重：combine pass 与 dispatch 使用同一个 opName，可共享本通信域 context Const
+            ge::GNode contextNode;
+            if (!ops::Mc2MoeGraphContext::FindContextConstNode(*graph, groupEpStr, MC2_CONTEXT_OP_NAME,
+                                                               contextNode)) {
+                if (ops::Mc2MoeGraphContext::CreateContextConstNode(*graph, groupEpStr, MC2_CONTEXT_OP_NAME,
+                                                                    contextData, contextNode) !=
                     ge::GRAPH_SUCCESS) {
                     continue;
                 }

@@ -34,6 +34,7 @@ namespace {
 const std::string FUSION_PASS_NAME = "DistributeBarrierFusionPass";
 const std::string FUSED_OP_TYPE2 = "DistributeBarrier";
 const std::string FUSED_OP_TYPE_EXTEND = "DistributeBarrierExtend";
+const std::string MC2_CONTEXT_OP_NAME = "distribute_barrier_extend";
 constexpr size_t kBarrierTotalInputs = 3;  // x_ref, time_out, elastic_info
 constexpr size_t kBarrierTotalOutputs = 1; // x_ref
 constexpr size_t kBarrierRequiredInputs = 1;
@@ -260,16 +261,15 @@ ge::graphStatus DistributeBarrierFusionPass::Run(ge::GraphPtr &graph, ge::Custom
         if (contextNodes.find(groupStr) == contextNodes.end()) {
             std::vector<int32_t> contextData;
             int64_t hcclBuffSize = 0;
-            if (!ops::Mc2MoeGraphContext::GetContextData(groupStr, contextData, hcclBuffSize)) {
+            if (!ops::Mc2MoeGraphContext::GetContextData(groupStr, MC2_CONTEXT_OP_NAME, contextData, hcclBuffSize)) {
                 OPS_LOG_E(FUSION_PASS_NAME.c_str(), "get mc2 context data failed, barrier node kept as-is.");
                 continue;
             }
-            // 先按名查重：D&C 的 pass 可能已为本通信域创建过 context Const
-            ge::GNode contextNode = ops::Mc2MoeGraphContext::FindContextConstNode(*graph, groupStr);
-            ge::AscendString tmpType;
-            if (contextNode.GetType(tmpType) != ge::GRAPH_SUCCESS) {
-                if (ops::Mc2MoeGraphContext::CreateContextConstNode(*graph, groupStr, contextData, contextNode) !=
-                    ge::GRAPH_SUCCESS) {
+            // 先按名查重：barrier 使用独立 opName，与 D&C 的 context Const 区分开
+            ge::GNode contextNode;
+            if (!ops::Mc2MoeGraphContext::FindContextConstNode(*graph, groupStr, MC2_CONTEXT_OP_NAME, contextNode)) {
+                if (ops::Mc2MoeGraphContext::CreateContextConstNode(*graph, groupStr, MC2_CONTEXT_OP_NAME, contextData,
+                                                                    contextNode) != ge::GRAPH_SUCCESS) {
                     continue;
                 }
             }
