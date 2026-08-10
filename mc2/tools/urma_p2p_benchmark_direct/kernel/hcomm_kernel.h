@@ -12,6 +12,8 @@
 
 namespace UrmaP2pBench {
 
+using namespace CommWithUrmaImpl;
+
 constexpr uint32_t HCOMM_INIT_BUF_SIZE = 512U;
 
 class HcommBenchOp {
@@ -26,8 +28,9 @@ public:
         tiling_ = tiling;
         aivId_ = AscendC::GetBlockIdx();
         channelPtrTable_.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t*>(channelPtrTable));
-        pipe_->InitBuffer(decodeScratch_, CommWithUrmaImpl::DECODE_SCRATCH_SIZE);
+        pipe_->InitBuffer(decodeScratch_, DECODE_SCRATCH_SIZE);
         pipe_->InitBuffer(hcommBuf_, HCOMM_INIT_BUF_SIZE);
+        pipe_->InitBuffer(timingBuf_, TIMING_SLOTS * sizeof(int64_t));
     }
 
     __aicore__ inline void Process()
@@ -57,9 +60,9 @@ public:
         hcomm.Init(hcommBuf, HCOMM_INIT_BUF_SIZE);
 
         const uint32_t S = static_cast<uint32_t>(sqeBytes);
+        AscendC::LocalTensor<int64_t> timingLocal = timingBuf_.Get<int64_t>();
 
-        int64_t timing[TIMING_SLOTS] = {0};
-        timing[0] = AscendC::GetSystemCycle();
+        timingLocal.SetValue(0, AscendC::GetSystemCycle());
 
         for (uint32_t i = 0; i < n; ++i) {
             uint64_t off = (static_cast<uint64_t>(i) % numSlots) * sqeBytes;
@@ -69,27 +72,20 @@ public:
                            S);
         }
 
-        timing[1] = AscendC::GetSystemCycle();
+        timingLocal.SetValue(1, AscendC::GetSystemCycle());
 
         hcomm.Drain(channelEntityVA);
 
-        timing[2] = AscendC::GetSystemCycle();
-        timing[3] = AscendC::GetSystemCycle();
+        timingLocal.SetValue(2, AscendC::GetSystemCycle());
+        timingLocal.SetValue(3, AscendC::GetSystemCycle());
 
-        WriteTiming(timing);
-    }
-
-private:
-    __aicore__ inline void WriteTiming(int64_t* timing)
-    {
         AscendC::GlobalTensor<int64_t> timingGm;
         timingGm.SetGlobalBuffer((__gm__ int64_t*)timingGm_);
-        AscendC::LocalTensor<int64_t> timingLocal;
-        timingLocal.SetLocalBuffer((__local__ int64_t*)timing, TIMING_SLOTS * sizeof(int64_t));
         AscendC::DataCopy(timingGm, timingLocal, TIMING_SLOTS);
         SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
 
+private:
     AscendC::TPipe* pipe_{nullptr};
     GM_ADDR stateGm_{nullptr};
     GM_ADDR timingGm_{nullptr};
@@ -98,6 +94,7 @@ private:
     AscendC::GlobalTensor<uint64_t> channelPtrTable_;
     AscendC::TBuf<> decodeScratch_;
     AscendC::TBuf<> hcommBuf_;
+    AscendC::TBuf<> timingBuf_;
 };
 
 }  // namespace UrmaP2pBench

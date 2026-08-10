@@ -11,6 +11,8 @@
 
 namespace UrmaP2pBench {
 
+using namespace CommWithUrmaImpl;
+
 class SqeWriteBenchOp {
 public:
     __aicore__ inline void Init(GM_ADDR channelPtrTable, GM_ADDR stateGm,
@@ -23,16 +25,16 @@ public:
         tiling_ = tiling;
         aivId_ = AscendC::GetBlockIdx();
         channelPtrTable_.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t*>(channelPtrTable));
-        pipe_->InitBuffer(decodeScratch_, CommWithUrmaImpl::DECODE_SCRATCH_SIZE);
-        pipe_->InitBuffer(sqeBuf_, CommWithUrmaImpl::WRITE_SQE_SIZE);
-        pipe_->InitBuffer(cqeBuf_, CommWithUrmaImpl::WRITE_CQE_SIZE);
+        pipe_->InitBuffer(decodeScratch_, DECODE_SCRATCH_SIZE);
+        pipe_->InitBuffer(sqeBuf_, WRITE_SQE_SIZE);
+        pipe_->InitBuffer(cqeBuf_, WRITE_CQE_SIZE);
+        pipe_->InitBuffer(timingBuf_, TIMING_SLOTS * sizeof(int64_t));
     }
 
     __aicore__ inline void Process()
     {
         if (aivId_ != 0) return;
 
-        const uint32_t peer        = tiling_->peer;
         const uint32_t channelSlot = tiling_->channelSlot;
         const uint32_t stateStride = tiling_->stateStride;
         const uint32_t numSqe      = tiling_->numSqe;
@@ -74,7 +76,7 @@ public:
         uint32_t ownerCqCiLinear = stateGm.GetValue(stateStride + tiling_->cqOwnerSlot);
         if (ownerCqCiLinear == 0) {
             InvalidateCqRing(ch.cqVa, ch.cqeSize, ch.cqDepth,
-                             scratch, CommWithUrmaImpl::DECODE_SCRATCH_SIZE / CommWithUrmaImpl::WRITE_CQE_SIZE);
+                             scratch, DECODE_SCRATCH_SIZE / WRITE_CQE_SIZE);
         }
 
         AscendC::LocalTensor<uint8_t> sqe = sqeBuf_.Get<uint8_t>();
@@ -85,9 +87,9 @@ public:
                                     ch.remoteTokenId, ch.remoteTokenValue);
 
         const uint32_t S = static_cast<uint32_t>(sqeBytes);
+        AscendC::LocalTensor<int64_t> timingLocal = timingBuf_.Get<int64_t>();
 
-        int64_t timing[TIMING_SLOTS] = {0};
-        timing[0] = AscendC::GetSystemCycle();
+        timingLocal.SetValue(0, AscendC::GetSystemCycle());
 
         for (uint32_t i = 0; i < n; ++i) {
             uint64_t off = (static_cast<uint64_t>(i) % numSlots) * sqeBytes;
@@ -100,40 +102,34 @@ public:
             }
         }
 
-        timing[1] = AscendC::GetSystemCycle();
+        timingLocal.SetValue(1, AscendC::GetSystemCycle());
 
         SetCommWriteSQE(sqe, ch.localBufAddr, ch.remoteBufAddr,
-                        CommWithUrmaImpl::COMM_URMA_BENCH_COMPLETION_BYTES, ch.localTokenId, 1);
+                        COMPLETION_SQE_BYTES, ch.localTokenId, 1);
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         PutSQEToRing(ch.sqVa, ch.wqeSize, ch.sqDepth, sqe, sqPi, sqPiLinear);
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         RingJFSDoorbell(ch.sqDbVa, sqPiLinear);
 
-        timing[2] = AscendC::GetSystemCycle();
+        timingLocal.SetValue(2, AscendC::GetSystemCycle());
 
         AscendC::LocalTensor<uint8_t> cqe = cqeBuf_.Get<uint8_t>();
         uint32_t cqCi = ownerCqCiLinear % ch.cqDepth;
         while (CqeSlotEmpty(ch.cqVa, ch.cqeSize, cqCi, cqe)) {}
         ++ownerCqCiLinear;
 
-        timing[3] = AscendC::GetSystemCycle();
+        timingLocal.SetValue(3, AscendC::GetSystemCycle());
 
         stateGm.SetValue(channelSlot, sqPiLinear);
         stateGm.SetValue(stateStride + tiling_->cqOwnerSlot, ownerCqCiLinear);
-        WriteTiming(timing);
-    }
 
-private:
-    __aicore__ inline void WriteTiming(int64_t* timing)
-    {
         AscendC::GlobalTensor<int64_t> timingGm;
         timingGm.SetGlobalBuffer((__gm__ int64_t*)timingGm_);
-        AscendC::LocalTensor<int64_t> timingLocal;
-        timingLocal.SetLocalBuffer((__local__ int64_t*)timing, TIMING_SLOTS * sizeof(int64_t));
         AscendC::DataCopy(timingGm, timingLocal, TIMING_SLOTS);
         SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
 
+private:
     AscendC::TPipe* pipe_{nullptr};
     GM_ADDR stateGm_{nullptr};
     GM_ADDR timingGm_{nullptr};
@@ -143,6 +139,7 @@ private:
     AscendC::TBuf<> decodeScratch_;
     AscendC::TBuf<> sqeBuf_;
     AscendC::TBuf<> cqeBuf_;
+    AscendC::TBuf<> timingBuf_;
 };
 
 }  // namespace UrmaP2pBench

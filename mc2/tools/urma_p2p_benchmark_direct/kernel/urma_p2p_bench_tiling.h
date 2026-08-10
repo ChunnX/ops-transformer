@@ -4,6 +4,7 @@
 #include <cstdint>
 
 constexpr uint32_t TIMING_SLOTS = 8;
+constexpr uint32_t COMPLETION_SQE_BYTES = 32U;
 
 struct UrmaP2pBenchTiling {
     uint32_t rankId;
