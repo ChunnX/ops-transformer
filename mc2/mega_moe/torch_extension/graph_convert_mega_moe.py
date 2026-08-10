@@ -41,7 +41,7 @@ try:
 except ImportError:
     _TORCHAIR_AVAILABLE = False
 
-from cann_ops_transformer.ops.mega_moe import _normalize_activation_params
+from cann_ops_transformer.ops.mc2.mega_moe import _normalize_activation_params
 
 if _TORCHAIR_AVAILABLE:
 
