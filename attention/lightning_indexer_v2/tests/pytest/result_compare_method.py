@@ -153,6 +153,7 @@ def judge_value_by_isclose(real_data, data_compe):
     split_count = int(end - start + 1) if end != start else 1
 
     if str(real_data.dtype) == 'bfloat16':
+        # bf16 尾数位少、舍入误差大，误差门限放宽到 1/128（约 0.0078125）
         atol = 0.0001
         rtol = 1.0 / 128
         diff_thd = 1.0 / 128
