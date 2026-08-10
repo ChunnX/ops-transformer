@@ -103,12 +103,9 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto c1_p_slot1_key_l0b = ascend_l0b.GetWithOffset<bfloat16_t>(16384, 32768);
   auto c1_p_slot1_l0c = ascend_l0c.GetWithOffset<float>(16384, 65536);
   auto c1_sy_slot0_qi_l0a = ascend_l0a.GetWithOffset<bfloat16_t>(8192, 0);
-  auto c1_sy_slot1_qi_l0a = ascend_l0a.GetWithOffset<bfloat16_t>(8192, 16384);
   auto c1_ki_l1 = ascend_l1.GetWithOffset<bfloat16_t>(16384, 212992);
-  auto c1_sy_slot0_l0c = ascend_l0c.GetWithOffset<float>(8192, 0);
-  auto c1_sy_slot1_l0c = ascend_l0c.GetWithOffset<float>(8192, 0);
   auto c1_sy_slot0_ki_l0b = ascend_l0b.GetWithOffset<bfloat16_t>(16384, 0);
-  auto c1_sy_slot1_ki_l0b = ascend_l0b.GetWithOffset<bfloat16_t>(16384, 0);
+  auto c1_sy_slot0_l0c = ascend_l0c.GetWithOffset<float>(8192, 0);
   auto v1_p_max = ascend_ub.GetWithOffset<float>(128, 49152);
   auto v1_p_sum = ascend_ub.GetWithOffset<float>(128, 49664);
   auto v1_p_partial = ascend_ub.GetWithOffset<float>(128, 50176);
@@ -150,9 +147,9 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto c2_dq_l0c = ascend_l0c.GetWithOffset<float>(8192, 0);
   auto c2_rg_l1 = ascend_l1.GetWithOffset<bfloat16_t>(8192, 262144);
   auto c2_gki_l1 = ascend_l1.GetWithOffset<bfloat16_t>(16384, 278528);
-  auto c2_dk_rg_l0a = ascend_l0a.GetWithOffset<bfloat16_t>(8192, 32768);
+  auto c2_dk_rg_l0a = ascend_l0a.GetWithOffset<bfloat16_t>(8192, 16384);
   auto c2_dk_qi_l0b = ascend_l0b.GetWithOffset<bfloat16_t>(8192, 0);
-  auto c2_dq_rg_l0a = ascend_l0a.GetWithOffset<bfloat16_t>(8192, 49152);
+  auto c2_dq_rg_l0a = ascend_l0a.GetWithOffset<bfloat16_t>(8192, 32768);
   auto c2_dq_gki_l0b = ascend_l0b.GetWithOffset<bfloat16_t>(16384, 16384);
   auto c2_dk_l0c = ascend_l0c.GetWithOffset<float>(16384, 0);
   auto v2_zero_batch = ascend_ub.GetWithOffset<float>(4096, 0);
@@ -355,52 +352,30 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
           AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
           tl::ascend::copy_l1_to_l0a<bfloat16_t, 64, 128, false>(c1_sy_slot0_qi_l0a[0], c1_qi_l1[0], 64, 128);
           AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
-          AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(2);
-          tl::ascend::copy_l1_to_l0a<bfloat16_t, 64, 128, false>(c1_sy_slot1_qi_l0a[0], c1_qi_l1[0], 64, 128);
-          AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(2);
           AscendC::CrossCoreWaitFlag(2);
           for (int32_t k_inner_1 = 0; k_inner_1 < 8; ++k_inner_1) {
-            if ((k_inner_1 % 2) == 0) {
-              AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
-              tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_ki_l1[0], GatherKeyIndex_ws[((((pipe_iter * 393216) + (cid * 131072)) + (k_inner_1 * 16384)) - 393216)], 128, 128, 128, true);
-              AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(1);
-              AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
-              AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(1);
-              tl::ascend::copy_l1_to_l0b<bfloat16_t, 128, 128, true>(c1_sy_slot0_ki_l0b[0], c1_ki_l1[0], 128, 128);
-              AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(1);
-              AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
-              AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
-              AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
-              tl::ascend::mma<bfloat16_t, float, 64, 128>(c1_sy_slot0_qi_l0a[0],c1_sy_slot0_ki_l0b[0],c1_sy_slot0_l0c[0], (bool)1, 128);
-              AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
-              AscendC::SetFlag<AscendC::HardEvent::M_FIX>(0);
-              AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(0);
-              tl::ascend::copy_l0c_to_gm<float, float, layout::RowMajor, 64, 128, 1>(bmm2Res[((((pipe_iter * 196608) + (cid * 65536)) + (k_inner_1 * 128)) - 196608)], c1_sy_slot0_l0c[0], 1024, 64, 128, 0);
-              AscendC::SetFlag<AscendC::HardEvent::FIX_M>(0);
-            } else {
-              AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
-              tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_ki_l1[0], GatherKeyIndex_ws[((((pipe_iter * 393216) + (cid * 131072)) + (k_inner_1 * 16384)) - 393216)], 128, 128, 128, true);
-              AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(1);
-              AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(2);
-              AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(1);
-              tl::ascend::copy_l1_to_l0b<bfloat16_t, 128, 128, true>(c1_sy_slot1_ki_l0b[0], c1_ki_l1[0], 128, 128);
-              AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(1);
-              AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(2);
-              AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(2);
-              AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(2);
-              tl::ascend::mma<bfloat16_t, float, 64, 128>(c1_sy_slot1_qi_l0a[0],c1_sy_slot1_ki_l0b[0],c1_sy_slot1_l0c[0], (bool)1, 128);
-              AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(2);
-              AscendC::SetFlag<AscendC::HardEvent::M_FIX>(2);
-              AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(2);
-              tl::ascend::copy_l0c_to_gm<float, float, layout::RowMajor, 64, 128, 1>(bmm2Res[((((pipe_iter * 196608) + (cid * 65536)) + (k_inner_1 * 128)) - 196608)], c1_sy_slot1_l0c[0], 1024, 64, 128, 0);
-              AscendC::SetFlag<AscendC::HardEvent::FIX_M>(2);
-            }
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
+            tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_ki_l1[0], GatherKeyIndex_ws[((((pipe_iter * 393216) + (cid * 131072)) + (k_inner_1 * 16384)) - 393216)], 128, 128, 128, true);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(1);
+            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(1);
+            tl::ascend::copy_l1_to_l0b<bfloat16_t, 128, 128, true>(c1_sy_slot0_ki_l0b[0], c1_ki_l1[0], 128, 128);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(1);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
+            tl::ascend::mma<bfloat16_t, float, 64, 128>(c1_sy_slot0_qi_l0a[0],c1_sy_slot0_ki_l0b[0],c1_sy_slot0_l0c[0], (bool)1, 128);
+            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
+            AscendC::SetFlag<AscendC::HardEvent::M_FIX>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(0);
+            tl::ascend::copy_l0c_to_gm<float, float, layout::RowMajor, 64, 128, 1>(bmm2Res[((((pipe_iter * 196608) + (cid * 65536)) + (k_inner_1 * 128)) - 196608)], c1_sy_slot0_l0c[0], 1024, 64, 128, 0);
+            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(0);
           }
           AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
           AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
           AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
-          AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(2);
-          AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(2);
+          AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
+          AscendC::SetFlag<AscendC::HardEvent::FIX_M>(0);
           AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(6);
         }
         if ASCEND_IS_AIV {
