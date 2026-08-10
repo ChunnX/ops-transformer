@@ -112,8 +112,7 @@ int main()
     int64_t dim = 128;            // feature dimension
     int64_t batch = 4;            // number of sequences
     int64_t numSlots = 8;         // total cache slots (>= batch for non-APC)
-    int64_t stateLen = 6 + K - 1; // cache state length per slot (= 2)
-    // prefill: seq_lens = [5, 3, 7, 4], cuSeqLen = 19
+    int64_t stateLen = 6 + K - 1; // cache state length per slot (decode:m+k-1)
     int64_t cuSeqLen = 19;
 
     // ---- Tensor shapes ----
