@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file all_to_all_mx_matmul_udma_impl.h
+ * \file all_to_all_mx_matmul_urma_impl.h
  * \brief AlltoAll MX Quant Matmul — 通信+计算融合实现
  *
  * Run():
