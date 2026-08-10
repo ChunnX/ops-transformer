@@ -378,11 +378,10 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     - biasOptional支持BF16。
     - sharedInputOptional支持二维，维度为(bsdp,n)，bsdp代表batchSize / dataParallelSize。
     - perTokenScaleOptional支持FLOAT8_E8M0。shape支持三维，维度为(m,Ceil(k/64),2)。
-    - x1、x2、scaleOptional、pertokenScaleOptional、groupListOptional、logitOptional、rowIndexOptional是必选参数，biasOptional，sharedInputOptional是可选参数。目前暂不支持offsetOptional参数。所有参数均不支持空tensor。
+    - x1、x2、scaleOptional、pertokenScaleOptional、groupListOptional、logitOptional、rowIndexOptional是必选参数，biasOptional，sharedInputOptional是可选参数。目前暂不支持offsetOptional参数。
     - out的第一维batch、sharedInputOffset必须大于等于0，且小于等于m。
     - 当sharedInputOptional不为空时，其第一维长度为shareInputLen。sharedInputOffset、shareInputLen以及两者之和均需小于等于out的第一维batch。
-    - x1支持M为0的空Tensor。
-    - x2支持N为0的空Tensor。
+    - 空Tensor处理规则：x1支持M为0，x2支持N为0；其他空Tensor场景不支持。
 
   <!-- end id10 -->
 
@@ -419,7 +418,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>x1、x2、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional或out的shape不满足校验条件。</td>
     </tr>
     <tr>
-      <td>x1、x2、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional或out的shape是空tensor。</td>
+      <td>除x1的M为0或x2的N为0外，传入了其他空Tensor。</td>
     </tr>
   </tbody></table>
 
