@@ -79,10 +79,25 @@ constexpr uint32_t MIN_ROWS_PER_BLOCK = 8;
 // dispatch/CombineV1 每 dstEpIdx 块数前缀和数组的上限，
 // 与 host 侧 tiling 校验的 VALID_EP_WORLD_SIZE 最大值（128）对齐。
 static constexpr uint32_t MAX_DISPATCH_RANKS = 128;
-// cumsumMM 列切片 UB 缓存的起始偏移（64KB 起，≤8KB，远离两侧）。
-// dispatch 期间搬运 ping-pong 占用 [0,32KB) 与 [96KB,128KB)、int4 预处理占用
-// [0,~30KB)；CombineV1 期间 epilogue 从 0 起分配，均不触及本区间。
-static constexpr uint32_t DISPATCH_CACHE_UB_OFFSET = 64 * 1024;
+// cumsumMM 列切片 UB 缓存的起始偏移与容量。
+//
+// 【为什么放 UB 尾部，而不是此前的 64KB】
+// 原实现放在 64KB 并注释「CombineV1 期间 epilogue 从 0 起分配，均不触及本区间」——该假设是错的。
+// BlockEpilogue2（EpilogueAtlasA2PerTokenDequant<ubStages=2>，见 utils/block_epilogue_pertoken_row.hpp）
+// 从 UB[0] 起按 stage 连续分配，每 stage 占 n2×(sizeof(ElementC)+sizeof(ElementD)+sizeof(float))
+// = hidden×10B，两个 stage 合计：
+//     hidden=4096 → 80KB   hidden=6144 → 120KB   hidden=7168 → 140KB   hidden=8192 → 160KB
+// 即 64KB 必落在 epilogue 的占用区内 → 每个 group 调用 epilogue 都会冲掉 cumsumCache，
+// 后续 group 的 BuildRankBlockPrefix / 任务反查读到 epilogue 中间数据，块映射错乱，
+// 表现为 cos 0.002~0.02、Duration 涨 5 倍、偶发 CRASH（rowsPerRank∈[21,32] 时稳定复现）。
+//
+// 现改为放在 UB 尾部：起点 = UB_SIZE - CACHE_BYTES。epilogue 最坏占用 160KB（hidden=8192），
+// 尾部 8KB 区间 [184KB,192KB) 不被触及；dispatch 的搬运 ping-pong 占 [0,32KB)/[96KB,128KB)、
+// int4 预处理占 [0,~30KB)，同样不触及。
+// 容量 8KB = 2048 个 int32，覆盖 EP×expertPerRank 的上界（EP≤128、epr≤128 时按 host 校验
+// 组合不会同时取满；实际最大用例 EP16×epr24=384 个 int32 = 1.5KB）。
+static constexpr uint32_t DISPATCH_CACHE_BYTES = 8 * 1024;
+static constexpr uint32_t DISPATCH_CACHE_UB_OFFSET = Arch::AtlasA2::UB_SIZE - DISPATCH_CACHE_BYTES;
 
 // 计算每块行数。返回值 == rowsPerRank 表示不分块（退化为原「一 AIV 一 rank」语义）。
 // 分块条件（三个都要满足）：
