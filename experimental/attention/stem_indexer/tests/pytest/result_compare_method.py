@@ -162,9 +162,7 @@ def explain_topk_mismatch(
         for item in expected_differences
         if item["relative_error"] > TOPK_BOUNDARY_RE_TOLERANCE
     ]
-    exceeded_difference_count = max(
-        len(bad_actual_indices), len(bad_expected_indices)
-    )
+    exceeded_difference_count = max(len(bad_actual_indices), len(bad_expected_indices))
     if exceeded_difference_count > 0:
         return {
             "b": b_idx,
@@ -251,9 +249,7 @@ def assert_stem_indexer_result(
                 tolerated_row_count += 1
             elif "exceeded_difference_count" in failure:
                 exceeded_row_count += 1
-                total_exceeded_difference_count += failure[
-                    "exceeded_difference_count"
-                ]
+                total_exceeded_difference_count += failure["exceeded_difference_count"]
                 if len(exceeded_details) < MAX_PRINT_FAILURES:
                     exceeded_details.append(failure)
             else:
