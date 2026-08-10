@@ -67,10 +67,8 @@ def build_flash_attn_metadata(
         num_heads_kv = int(k.shape[1])
     elif layout_kv == "BNSD":
         num_heads_kv = int(k.shape[1])
-    elif layout_kv in ("PA_BNBD", "PA_NZ"):
-        num_heads_kv = int(k.shape[1])
-    elif layout_kv == "PA_BBND":
-        num_heads_kv = int(k.shape[2])
+    elif layout_kv in ("PA_BBND", "PA_BNBD"):
+        num_heads_kv = int(k.shape[2]) if layout_kv == "PA_BBND" else int(k.shape[1])
     else:
         num_heads_kv = int(k.shape[2])
 
