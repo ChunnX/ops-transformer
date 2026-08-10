@@ -59,6 +59,7 @@ constexpr uint64_t MXFP_MULTI_BASE_SIZE = 2UL;
 constexpr uint64_t MXFP_BASEK_FACTOR = 64UL;
 constexpr size_t MXFP_TYPE_K_SCALE_DIM_NUM = 3;
 constexpr size_t MXFP_TYPE_M_SCALE_DIM_NUM = 4;
+constexpr size_t MXFP_SCALE_NN_DIM_NUM = 5;
 constexpr size_t MXFP_PER_TOKEN_SCALE_DIM_NUM = 3;
 constexpr uint32_t RESERVED_LENGTH = 1024U;
 constexpr uint16_t FIRST_TENSOR_INDEX = 0U;
@@ -203,9 +204,11 @@ public:
 
     ge::Format aFormat = ge::FORMAT_ND;
     ge::Format bFormat = ge::FORMAT_ND;
+    ge::Format scaleFormat = ge::FORMAT_ND;
     ge::Format cFormat = ge::FORMAT_ND;
     bool transA = false;
     bool transB = false;
+    bool scaleNzFlag = false;
     bool hasBias = false;
     bool isSingleX = false;
     bool isSingleW = false;

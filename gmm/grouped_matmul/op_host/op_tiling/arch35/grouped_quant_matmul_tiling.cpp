@@ -390,6 +390,16 @@ bool GroupedQmmTiling::AnalyzeDtype()
     auto scaleDesc = context_->GetDynamicInputDesc(SCALE_INDEX, 0);
     inputParams_.scaleDtype = scaleDesc != nullptr && inputParams_.cDtype != ge::DT_INT32 ? scaleDesc->GetDataType() :
                                                                                             inputParams_.scaleDtype;
+    if (scaleDesc != nullptr && inputParams_.cDtype != ge::DT_INT32) {
+        inputParams_.scaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(scaleDesc->GetStorageFormat()));
+        auto scaleShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
+        const bool scaleNnStorage = scaleShape != nullptr &&
+                                    scaleShape->GetOriginShape().GetDimNum() == MXFP_TYPE_M_SCALE_DIM_NUM &&
+                                    scaleShape->GetStorageShape().GetDimNum() == MXFP_SCALE_NN_DIM_NUM;
+        const bool scaleNzFormat = inputParams_.scaleFormat == ge::FORMAT_FRACTAL_NZ_C0_2 ||
+                                   (inputParams_.scaleFormat == ge::FORMAT_FRACTAL_NZ && scaleNnStorage);
+        inputParams_.scaleNzFlag = IsMicroScaling() && scaleNzFormat;
+    }
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
     inputParams_.perTokenScaleDtype =
         pertokenScaleDesc != nullptr ? pertokenScaleDesc->GetDataType() : inputParams_.perTokenScaleDtype;
@@ -1254,7 +1264,8 @@ void GroupedQmmTiling::SetKernelType()
 uint64_t GroupedQmmTiling::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA),
-                              static_cast<uint64_t>(inputParams_.kernelType));
+                              static_cast<uint64_t>(inputParams_.kernelType),
+                              static_cast<uint64_t>(inputParams_.scaleNzFlag));
 }
 
 ge::graphStatus GroupedQmmTiling::GetWorkspaceSize()
@@ -1595,9 +1606,11 @@ void GQmmInputInfo::Reset()
     outScaleDtype = ge::DT_FLOAT;
     aFormat = ge::FORMAT_ND;
     bFormat = ge::FORMAT_ND;
+    scaleFormat = ge::FORMAT_ND;
     cFormat = ge::FORMAT_ND;
     transA = false;
     transB = false;
+    scaleNzFlag = false;
     hasBias = false;
     isSingleX = false;
     isSingleW = false;

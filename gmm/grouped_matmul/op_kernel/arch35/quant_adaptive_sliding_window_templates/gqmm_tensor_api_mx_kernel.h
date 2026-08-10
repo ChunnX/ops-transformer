@@ -26,7 +26,7 @@ using GMMQuantParams = GroupedMatmulTilingData::GMMQuantParams;
 using QuantBasicApiMMTiling = GroupedMatmulTilingData::QuantBasicApiMMTiling;
 
 template <class xType, class wType, class biasType, class scaleType, class ptScaleType, class yType, class xLayout,
-          class wLayout, class yLayout, class l0cType>
+          class wLayout, class yLayout, class l0cType, bool ScaleNz = false>
 __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
                                             GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace,
                                             const GMMQuantParams *gmmBaseParamsIn,
@@ -45,7 +45,8 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
     using LayoutB = wLayout;
     using LayoutC = yLayout;
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
-    using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0>;
+    using BlockMmadPolicy =
+        Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelGroupedMmadWithScaleMx, ScaleNz>;
     using QgmmBlockMmad = Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC,
                                                         BiasType, LayoutC>;
     using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueEmpty;
