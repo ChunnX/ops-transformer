@@ -90,41 +90,97 @@ def attention_compare(npu_out, golden_out):
     }
 
 
-def lse_compare(npu_out, golden_out):
-    """Compare softmax LSE tensors."""
+def _lse_compare_with_golden_rules(
+    npu_out,
+    golden_out,
+    *,
+    normalization_epsilon,
+    max_error_count=None,
+    nonfinite_error_to_inf=False,
+):
+    """Implement the common result_compare_method.check_result protocol."""
     npu = as_numpy(npu_out)
     golden = as_numpy(golden_out)
 
     if npu.size == 0 and golden.size == 0:
         return {"pass": True, "precision": 100.0}
 
-    if npu.shape != golden.shape:
+    # Both pytest comparators flatten tensors and only require equal element
+    # counts; preserve that behavior instead of adding a stricter shape rule.
+    if npu.size != golden.size:
         return {
             "pass": False,
-            "precision": "shape_mismatch",
-            "error_info": f"lse shape mismatch: npu={npu.shape}, golden={golden.shape}",
+            "precision": "size_mismatch",
+            "error_info": (
+                f"lse size mismatch: npu={npu.size}, golden={golden.size}, "
+                f"npu_shape={npu.shape}, golden_shape={golden.shape}"
+            ),
         }
 
-    if golden.size == 0:
-        return {"pass": True, "precision": 100.0}
+    npu_f32 = npu.astype(np.float32).reshape(-1)
+    golden_f32 = golden.astype(np.float32).reshape(-1)
+    rtol, atol = _MXFP8_DEFAULT_RTOL, _MXFP8_DEFAULT_ATOL
+    with np.errstate(invalid="ignore"):
+        abs_diff = np.abs(npu_f32 - golden_f32)
+    close_mask = np.isclose(
+        npu_f32, golden_f32, rtol=rtol, atol=atol, equal_nan=True
+    )
+    mismatch = ~close_mask
+    diff_count = int(np.sum(mismatch))
+    element_count = max(int(golden_f32.size), 1)
+    fail_ratio = diff_count / element_count
 
-    npu_f32 = npu.astype(np.float32)
-    golden_f32 = golden.astype(np.float32)
-
-    valid_mask = golden_f32 > -3e38
-    if not np.any(valid_mask):
-        return {"pass": True, "precision": 100.0}
-
-    abs_diff = np.abs(npu_f32 - golden_f32)
-    max_abs_diff = float(np.max(abs_diff[valid_mask]))
-    passed = max_abs_diff < 0.01
+    floor = (1.0 / (1 << 14)) / _MXFP8_DEFAULT_RTOL
+    denominator = np.maximum(
+        np.maximum(np.abs(npu_f32), np.abs(golden_f32)), floor
+    ) + normalization_epsilon
+    with np.errstate(invalid="ignore", divide="ignore"):
+        normalized_error = abs_diff / denominator
+    if nonfinite_error_to_inf:
+        normalized_error = np.where(
+            np.isfinite(normalized_error), normalized_error, np.inf
+        )
+    normalized_error = normalized_error[mismatch]
+    if max_error_count is not None:
+        normalized_error = normalized_error[:max_error_count]
+    max_relative_error = (
+        float(max(normalized_error.tolist())) if normalized_error.size else 0.0
+    )
+    max_abs_diff = float(np.max(abs_diff[mismatch])) if diff_count else 0.0
+    passed = fail_ratio <= _MXFP8_FAIL_RATIO_LIMIT
+    if max_relative_error >= _MXFP8_MAX_RELATIVE_ERROR:
+        passed = False
 
     return {
         "pass": passed,
-        "precision": 100.0 if passed else 0.0,
-        "error_info": None if passed else f"lse max_abs_diff={max_abs_diff:.6g}",
-        "metrics": {"max_abs_diff": max_abs_diff},
+        "precision": (element_count - diff_count) / element_count * 100.0,
+        "diff_indices": np.where(mismatch.reshape(-1))[0][:1000].tolist(),
+        "error_info": (
+            None
+            if passed
+            else f"lse mismatches={diff_count}, fail_ratio={fail_ratio:.6g}, "
+            f"max_abs_diff={max_abs_diff:.6g}, "
+            f"max_normalized_rel_error={max_relative_error:.6g}"
+        ),
+        "metrics": {
+            "rtol": rtol,
+            "atol": atol,
+            "max_abs_diff": max_abs_diff,
+            "fail_ratio": fail_ratio,
+            "fail_ratio_limit": _MXFP8_FAIL_RATIO_LIMIT,
+            "max_normalized_rel_error": max_relative_error,
+        },
     }
+
+
+def lse_compare(npu_out, golden_out):
+    """Match the FP8 pytest comparator, including its two 1e-9 epsilons."""
+    return _lse_compare_with_golden_rules(
+        npu_out,
+        golden_out,
+        normalization_epsilon=2e-9,
+        max_error_count=10_000_000,
+    )
 
 
 def _as_bool(value):
@@ -246,59 +302,13 @@ def _mxfp8_attention_compare(npu_out, golden_out):
 
 
 def _mxfp8_lse_compare(npu_out, golden_out):
-    npu = as_numpy(npu_out)
-    golden = as_numpy(golden_out)
-    if npu.size == 0 and golden.size == 0:
-        return {"pass": True, "precision": 100.0}
-    if npu.shape != golden.shape:
-        return {
-            "pass": False,
-            "precision": "shape_mismatch",
-            "error_info": f"lse shape mismatch: npu={npu.shape}, golden={golden.shape}",
-        }
-    if golden.size == 0:
-        return {"pass": True, "precision": 100.0}
-
-    npu_f32 = npu.astype(np.float32)
-    golden_f32 = golden.astype(np.float32)
-    valid_mask = golden_f32 > -3e38
-    if not np.any(valid_mask):
-        return {"pass": True, "precision": 100.0}
-
-    rtol, atol = _mxfp8_tolerance(npu_out)
-    abs_diff = np.abs(npu_f32 - golden_f32)
-    denom = np.maximum(np.abs(golden_f32), _MXFP8_EPSILON)
-    rel_diff = abs_diff / denom
-    mismatch = valid_mask & (rel_diff > rtol) & (abs_diff > atol)
-    diff_count = int(np.sum(mismatch))
-    valid_count = max(int(np.sum(valid_mask)), 1)
-    fail_ratio = diff_count / valid_count
-    max_relative_error = _mxfp8_normalized_relative_error(
-        npu_f32, golden_f32, mismatch
+    """Match the MXFP8 pytest comparator's single 1e-10 epsilon."""
+    return _lse_compare_with_golden_rules(
+        npu_out,
+        golden_out,
+        normalization_epsilon=_MXFP8_EPSILON,
+        nonfinite_error_to_inf=True,
     )
-    max_abs_diff = float(np.max(abs_diff[valid_mask]))
-    passed = (
-        fail_ratio <= _MXFP8_FAIL_RATIO_LIMIT
-        and max_relative_error < _MXFP8_MAX_RELATIVE_ERROR
-    )
-    return {
-        "pass": passed,
-        "precision": (valid_count - diff_count) / valid_count * 100.0,
-        "error_info": (
-            None
-            if passed
-            else f"lse max_abs_diff={max_abs_diff:.6g}, "
-            f"fail_ratio={fail_ratio:.6g}, "
-            f"max_normalized_rel_error={max_relative_error:.6g}"
-        ),
-        "metrics": {
-            "rtol": rtol,
-            "atol": atol,
-            "max_abs_diff": max_abs_diff,
-            "fail_ratio": fail_ratio,
-            "max_normalized_rel_error": max_relative_error,
-        },
-    }
 
 
 def _compare_mxfp8(*outputs, **kwargs):
