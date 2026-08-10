@@ -145,10 +145,10 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckAttrParaInfo()
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(std::isnan(*opParamInfo_.alpha) || (*opParamInfo_.alpha <= ALPHA_MIN) ||
                     (*opParamInfo_.alpha > ALPHA_MAX),
-                 OP_LOGE_WITH_INVALID_ATTR(
-                     opName_, "alpha", std::to_string(*opParamInfo_.alpha).c_str(),
-                     ("(" + std::to_string(ALPHA_MIN) + ", " + std::to_string(ALPHA_MAX) + "]").c_str()),
-                 return ge::GRAPH_FAILED);
+                OP_LOGE_WITH_INVALID_ATTR(
+                    opName_, "alpha", std::to_string(*opParamInfo_.alpha).c_str(),
+                    ("(" + std::to_string(ALPHA_MIN) + ", " + std::to_string(ALPHA_MAX) + "]").c_str()),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!IsFloatEqual(*opParamInfo_.kBlockNumRateMedium, K_BLOCK_NUM_RATE_MEDIUM_LIMIT),
                 OP_LOGE_WITH_INVALID_ATTR(opName_, "k_block_num_rate_medium",
                                           std::to_string(*opParamInfo_.kBlockNumRateMedium).c_str(),
@@ -268,9 +268,7 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckInOutDataType()
     outputType_ = opParamInfo_.sparseIndicesOut.desc->GetDataType();
     seqLenType_ = opParamInfo_.qSeqLens.desc->GetDataType();
     metadataType_ = opParamInfo_.metadata.desc->GetDataType();
-    const ge::DataType numPromptType = useKvSeqLensAsNumPrompt_
-                                           ? opParamInfo_.kvSeqLens.desc->GetDataType()
-                                           : opParamInfo_.numPromptTokens.desc->GetDataType();
+    const ge::DataType numPromptType = useKvSeqLensAsNumPrompt_ ? opParamInfo_.kvSeqLens.desc->GetDataType() : opParamInfo_.numPromptTokens.desc->GetDataType();
 
     OP_CHECK_IF(inputQType_ != ge::DT_BF16 || inputKType_ != ge::DT_BF16,
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
@@ -287,7 +285,7 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckInOutDataType()
                     opName_, "q_seq_lens, kv_seq_lens and num_prompt_tokens",
                     (Ops::Base::ToString(seqLenType_) + ", " +
                      Ops::Base::ToString(opParamInfo_.kvSeqLens.desc->GetDataType()) + " and " +
-                      Ops::Base::ToString(numPromptType))
+                     Ops::Base::ToString(numPromptType))
                         .c_str(),
                     "The dtypes of input q_seq_lens, kv_seq_lens and num_prompt_tokens should be INT32"),
                 return ge::GRAPH_FAILED);
