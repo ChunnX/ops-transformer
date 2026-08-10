@@ -85,9 +85,7 @@ def _tensor_compare(npu_out, golden_out, name):
     golden = as_numpy(golden_out)
 
     real_data = npu.flatten().astype(np.float32)
-    del npu
     data_compe = golden.flatten().astype(np.float32)
-    del golden
 
     if real_data.size == 0 and real_data.size == data_compe.size:
         return {
@@ -188,12 +186,14 @@ def _tensor_compare(npu_out, golden_out, name):
             f"{name} compare failed: fulfill_percent={fulfill_percent:.4f}%, "
             f"max_rel_err={max_rel_err:.4f}, err_count={int(err_idx.size)}"
         )
+    err_count = int(err_idx.size)
+    diff_indices = err_idx[:1000].tolist() if len(err_idx) > 0 else []
     del real_data, data_compe, diff_result, err_idx, diff_abs
     gc.collect()
     return {
         "pass": is_pass,
         "precision": fulfill_percent,
-        "diff_indices": err_idx[:1000].tolist() if len(err_idx) > 0 else [],
+        "diff_indices": diff_indices,
         "error_info": error_info,
         "metrics": {
             "standard": "check_result",
@@ -204,7 +204,7 @@ def _tensor_compare(npu_out, golden_out, name):
             "pct_rlt": fulfill_percent,
             "max_rel_err": max_rel_err,
             "max_diff_hd": _MAX_DIFF_HD,
-            "err_count": int(err_idx.size),
+            "err_count": err_count,
         },
     }
 
