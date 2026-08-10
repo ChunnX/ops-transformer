@@ -105,6 +105,8 @@ namespace MXFP4 {
 
     static constexpr uint32_t ROW_SUM_PAD_NUM = 16; 
 
+    static constexpr uint32_t ROW_SUM_NUM = 128; 
+
 }  // namespace MXFP4
 
 }  // namespace NpuArch::Gemm::Block

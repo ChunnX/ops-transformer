@@ -265,7 +265,7 @@ public:
                     //   非标 RowMajor（stride≠cols），由 block 的 FixpipeMm2 经 CopyL0CToUBTla SPLIT_N 消费；
                     //   isRowMajor 只查 stride<1>==1 → 命中。block 直传此 tla（不再 .data() 重包）。
                      auto ubOTmpLayoutTla = tla::MakeLayout(
- 	                         tla::MakeShape(embed_ + 1, delay20TaskInfo.qsActBaseTileAlign64),
+ 	                         tla::MakeShape(GmMXFP4::ROW_SUM_NUM + 1, delay20TaskInfo.qsActBaseTileAlign64),
  	                         tla::MakeStride(static_cast<int64_t>(64), tla::Int<1>{}));
                     auto ubOTmpTensorTla = tla::MakeTensor(ubOTmpTensor, ubOTmpLayoutTla, Arch::PositionUB{});
 
