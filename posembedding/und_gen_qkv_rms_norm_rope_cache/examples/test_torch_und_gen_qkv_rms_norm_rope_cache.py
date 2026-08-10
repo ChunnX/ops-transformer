@@ -21,20 +21,12 @@ golden、用例集与输入构造都取自 ../tests/assets/golden.py（本算子
   2. torch_extension 已安装：cd torch_extension && python3 -m build --wheel -n
                             && pip install dist/*.whl --force-reinstall --no-deps
   3. export LD_LIBRARY_PATH=$ASCEND_HOME_PATH/opp/vendors/custom_transformer/op_api/lib/:$LD_LIBRARY_PATH
-  4. CANN 自带的 python/site-packages 里有一份同名旧包，会遮蔽新装的 wheel，
-     跑之前要把 venv 的 site-packages 前置：
-     export PYTHONPATH=<venv>/lib/python3.12/site-packages:$PYTHONPATH
-  5. torchair 需与 torch 版本匹配：cann_ops_transformer.ops 的 __init__ 会加载全部
-     算子，其中若干个在 import 期就引用 torchair，torchair 坏掉会让整包 import 失败。
-     本算子自身走 aclnn 直调，不经过 torchair。
 
 用法：
   python3 test_torch_und_gen_qkv_rms_norm_rope_cache.py             # 默认 case 集（T ≤ 10752）
   python3 test_torch_und_gen_qkv_rms_norm_rope_cache.py --full      # 追加 T=64K
   python3 test_torch_und_gen_qkv_rms_norm_rope_cache.py --whitebox  # 白盒集（见 WHITEBOX_CASES）
   python3 test_torch_und_gen_qkv_rms_norm_rope_cache.py --case t10752_typical_h8
-
-基线：2026-08-07 在 A5（Ascend950PR_9579）上 --full 17/17 全 PASS（含两个 T=64K）。
 """
 
 import argparse
@@ -55,14 +47,11 @@ from assets.golden import (  # noqa: E402
     golden_dense,
 )
 
-# 直接导入本算子，避免加载其他无关算子
-from cann_ops_transformer.ops.und_gen_qkv_rms_norm_rope_cache import (  # noqa: E402
-    und_gen_qkv_rms_norm_rope_cache,
-)
+import cann_ops_transformer  # noqa: E402
 
 # bf16 输出的比对判据，与 tests/st/arch35 两个 TTK CSV 的 precision_tolerances /
 # absolute_precision 取同一套值，口径统一：
-#   rtol=2^-7 —— A5 上 7600 万个元素的实测分歧上限（|golden|>1e-3 处恰为 2 个 bf16 ULP）
+#   rtol=2^-7 —— |golden|>1e-3 处的分歧上限，恰为 2 个 bf16 ULP
 #   atol=2^-13 —— 覆盖 |golden|<=1e-3 的长尾（绝对差 <=7.6e-6）与 RoPE 两项相消出的近零点
 # 判据本身不放松：下面 ok = (bad == 0)，不容许任何一个元素超标。
 RTOL = 2 ** -7
@@ -86,7 +75,7 @@ WHITEBOX_CASES = (
     dict(name="w_t38_bs39_capfull",     heads=(8, 1, 1),  und_len=33,   gen_len=5,
          cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False,
          block_size=39,  extra_blocks=0),
-    # T=56：恰好等于 A5 实测核数，每核 1 token 且余数为 0
+    # T 等于 AIV 核数：每核 1 个 token 且余数为 0，多核切分的边界
     dict(name="w_t56_bs33_h16",         heads=(16, 2, 2), und_len=40,   gen_len=16,
          cat="shuffled", slot_mode="shuffled", mrope_section=[16, 24, 24], big=False,
          block_size=33,  extra_blocks=0),
@@ -151,7 +140,7 @@ def run_case(spec, verbose=True):
     k_cache_in, v_cache_in = case["k_cache"], case["v_cache"]
     k_cache = k_cache_in.clone().npu()
     v_cache = v_cache_in.clone().npu()
-    q = und_gen_qkv_rms_norm_rope_cache(
+    q = cann_ops_transformer.und_gen_qkv_rms_norm_rope_cache(
         case["und_qkv"].npu(), case["und_weights_q"].npu(), case["und_weights_k"].npu(),
         case["cos_sin_cache"].npu(), k_cache, v_cache,
         case["slot_mapping"].npu(), case["positions"].npu(),
