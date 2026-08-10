@@ -436,13 +436,19 @@ CutResult AllToAllMxQuantMatmulTilingBase::GetCutResOfCommAndCompute()
         alltoallMatmulTileFormulate.GetTiling();
         cutRes = alltoallMatmulTileFormulate.tilingM_.cutRes;
     }
-    AlignCutResForKernel(cutRes, contextInfo_.args_.mValue);
+    if (!contextInfo_.allToAllOutFlag) {
+        AlignCutResForKernel(cutRes, contextInfo_.args_.mValue);
+    }
     return cutRes;
 }
 
 void AllToAllMxQuantMatmulTilingBase::AlignCutResForKernel(CutResult &cutRes, uint64_t mValue) const
 {
     constexpr uint64_t KERNEL_ALIGN_M = 256;
+    if (cutRes.longTileLen == 0 || mValue == 0) {
+        OP_LOGD(opName_, "AlignCutResForKernel skip: longTileLen=%lu mValue=%lu", cutRes.longTileLen, mValue);
+        return;
+    }
     auto alignUp = [](uint64_t val, uint64_t align) { return (val + align - 1) / align * align; };
 
     uint64_t longTile = alignUp(cutRes.longTileLen, KERNEL_ALIGN_M);
