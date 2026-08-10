@@ -16,7 +16,7 @@ import torch
 
 
 SUPPORTED_SPARSE_PATTERNS = {"sequential", "dense", "reverse", "tail", "random", "empty", "empty_tail", "causal"}
-SUPPORTED_BLOCK_TABLE_PATTERNS = {"sequential", "reverse", "random"}
+SUPPORTED_BLOCK_TABLE_PATTERNS = {"sequential", "random"}
 
 
 def _require_positive(params, key):

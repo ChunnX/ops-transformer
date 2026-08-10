@@ -218,24 +218,19 @@ def _quantize_value_per_head(tensor, max_abs=FP8_E4M3_MAX):
     return value, (1.0 / quant_scale).reshape(tensor.shape[2]).contiguous()
 
 
-def _physical_ids(start, count, pattern, rng):
-    ids = list(range(start, start + count))
-    if pattern == "reverse":
-        ids.reverse()
-    elif pattern == "random":
-        rng.shuffle(ids)
-    elif pattern != "sequential":
-        raise ValueError(f"unsupported block_table_pattern: {pattern}")
-    return ids
-
-
 def _make_block_table(
     batch,
+    seqused_kv,
+    block_size,
     pattern,
     rng,
     blocknum=None,
     max_block_per_batch=None,
 ):
+    if not isinstance(batch, int) or batch <= 0:
+        raise ValueError(f"batch should be a positive int, got {batch}")
+    if not isinstance(block_size, int) or block_size <= 0:
+        raise ValueError(f"block_size should be a positive int, got {block_size}")
     if not isinstance(max_block_per_batch, int) or max_block_per_batch <= 0:
         raise ValueError(
             "max_block_per_batch should be a positive int, "
@@ -244,17 +239,52 @@ def _make_block_table(
     if not isinstance(blocknum, int) or blocknum <= 0:
         raise ValueError(f"blocknum should be a positive int, got {blocknum}")
 
+    if pattern not in ("random", "sequential"):
+        raise ValueError(f"unsupported block_table_pattern: {pattern}")
+
+    kv_lengths = []
+    for batch_idx in range(batch):
+        seq_len = seqused_kv[batch_idx]
+        if hasattr(seq_len, "item"):
+            seq_len = seq_len.item()
+        kv_lengths.append(seq_len)
+
+    logical_block_counts = [
+        (seq_len + block_size - 1) // block_size for seq_len in kv_lengths
+    ]
+
+    if blocknum < batch:
+        raise ValueError(
+            f"blocknum should be at least batch={batch} so each batch tail block "
+            f"has a dedicated physical block, got {blocknum}"
+        )
+    has_non_tail_block = any(block_count > 1 for block_count in logical_block_counts)
+    if has_non_tail_block and blocknum < batch + 1:
+        raise ValueError(
+            f"blocknum should be at least batch + 1={batch + 1} when non-tail "
+            f"blocks exist, got {blocknum}"
+        )
+
     total_slots = batch * max_block_per_batch
-    if pattern == "random":
-        physical_ids = [rng.randrange(blocknum) for _ in range(total_slots)]
-    elif pattern == "sequential":
-        physical_ids = [index % blocknum for index in range(total_slots)]
-    elif pattern == "reverse":
+    non_tail_block_num = blocknum - batch
+    if non_tail_block_num == 0:
         physical_ids = [
-            (blocknum - 1 - (index % blocknum)) for index in range(total_slots)
+            batch_idx for batch_idx in range(batch)
+            for _ in range(max_block_per_batch)
+        ]
+    elif pattern == "random":
+        physical_ids = [
+            rng.randrange(non_tail_block_num) for _ in range(total_slots)
         ]
     else:
-        raise ValueError(f"unsupported block_table_pattern: {pattern}")
+        physical_ids = [
+            index % non_tail_block_num for index in range(total_slots)
+        ]
+
+    for batch_idx, block_count in enumerate(logical_block_counts):
+        tail_logical_block = block_count - 1
+        tail_slot = batch_idx * max_block_per_batch + tail_logical_block
+        physical_ids[tail_slot] = non_tail_block_num + batch_idx
 
     return torch.tensor(physical_ids, dtype=torch.int32).reshape(
         batch, max_block_per_batch
@@ -921,7 +951,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     cu_seqlens_q_input = cu_seqlens_q
 
     block_table = _make_block_table(
-        batch, case["block_table_pattern"], rng,
+        batch, seqused_kv, sparse_kv_block_size, case["block_table_pattern"], rng,
         blocknum=case.get("block_num"),
         max_block_per_batch=case["max_block_per_batch"],
     )
