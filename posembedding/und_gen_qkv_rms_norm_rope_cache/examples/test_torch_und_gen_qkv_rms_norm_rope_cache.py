@@ -55,10 +55,12 @@ from assets.golden import (  # noqa: E402
     golden_dense,
 )
 
-# 直接导入本算子，避免加载其他无关算子
-from cann_ops_transformer.ops.und_gen_qkv_rms_norm_rope_cache import (  # noqa: E402
-    und_gen_qkv_rms_norm_rope_cache,
-)
+# 调用形态与 torch_extension/cann_ops_transformer/docs/zh/ 下的接口文档保持一致。
+# NOTE: 不要试图用 from cann_ops_transformer.ops.und_gen_qkv_rms_norm_rope_cache import ...
+#       来"只加载本算子"——import 子模块时 Python 一定会先执行父包的 __init__，
+#       cann_ops_transformer/__init__.py 的 from .ops import * 照样会把全部算子拉起来，
+#       深层路径一点也躲不掉，见上面前置条件第 5 条。
+import cann_ops_transformer  # noqa: E402
 
 # bf16 输出的比对判据，与 tests/st/arch35 两个 TTK CSV 的 precision_tolerances /
 # absolute_precision 取同一套值，口径统一：
@@ -151,7 +153,7 @@ def run_case(spec, verbose=True):
     k_cache_in, v_cache_in = case["k_cache"], case["v_cache"]
     k_cache = k_cache_in.clone().npu()
     v_cache = v_cache_in.clone().npu()
-    q = und_gen_qkv_rms_norm_rope_cache(
+    q = cann_ops_transformer.und_gen_qkv_rms_norm_rope_cache(
         case["und_qkv"].npu(), case["und_weights_q"].npu(), case["und_weights_k"].npu(),
         case["cos_sin_cache"].npu(), k_cache, v_cache,
         case["slot_mapping"].npu(), case["positions"].npu(),
