@@ -7,11 +7,12 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+from typing import List
+
 import torch
-import torch_npu
 from torch.library import impl
-from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
 class UndGenQkvRmsNormRopeCacheOpBuilder(OpBuilder):
@@ -19,9 +20,10 @@ class UndGenQkvRmsNormRopeCacheOpBuilder(OpBuilder):
         super(UndGenQkvRmsNormRopeCacheOpBuilder, self).__init__("und_gen_qkv_rms_norm_rope_cache")
 
     def sources(self):
-        return ["ops/csrc/und_gen_qkv_rms_norm_rope_cache.cpp"]
+        """Path to C++ source code."""
+        return ["csrc/posembedding/und_gen_qkv_rms_norm_rope_cache.cpp"]
 
-    def schema(self) -> str:
+    def schema(self) -> List[str]:
         return [
             # k_cache/v_cache 由算子原地写入，必须带 (a!)/(b!) 别名标注，
             # 否则 functionalization / torch.compile 会把这个原地写当成无副作用而丢掉 cache 更新
@@ -32,7 +34,7 @@ class UndGenQkvRmsNormRopeCacheOpBuilder(OpBuilder):
         ]
 
     def register_meta(self):
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @impl(get_as_library(), self.name, "Meta")
         def und_gen_qkv_rms_norm_rope_cache_meta(
             und_qkv,
             und_weights_q,
@@ -60,9 +62,10 @@ class UndGenQkvRmsNormRopeCacheOpBuilder(OpBuilder):
 
 
 und_gen_qkv_rms_norm_rope_cache_op_builder = UndGenQkvRmsNormRopeCacheOpBuilder()
+und_gen_qkv_rms_norm_rope_cache_op_builder._ensure_initialized()
 
 
-@impl(AS_LIBRARY, "und_gen_qkv_rms_norm_rope_cache", "PrivateUse1")
+@impl(get_as_library(), "und_gen_qkv_rms_norm_rope_cache", "PrivateUse1")
 def und_gen_qkv_rms_norm_rope_cache(
     und_qkv,
     und_weights_q,
