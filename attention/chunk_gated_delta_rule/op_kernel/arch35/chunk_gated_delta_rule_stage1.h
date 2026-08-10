@@ -302,10 +302,10 @@ private:
     {
         // key @ key.transpose(-1,-2)
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AscendC::CrossCoreWaitFlag(0x9); // 同步0
+            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x9); // 同步0
             AICProcess(mmBf16_, keyConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], kkWsGm_[i * ccOffset_],
                        {chunkSize_, chunkSize_, dk_, chunkSize_, chunkSize_, dk_}, true);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0x8); // 同步1
+            AscendC::CrossCoreSetFlag<0x4, PIPE_MTE1>(0x8); // 同步1
         }
 
         // query @ key.transpose(-1,-2)   stage1 out
@@ -314,17 +314,17 @@ private:
                        outQkGm_[chunkRowBase_[i] * chunkSize_],
                        {validLenBatch_[i], validLenBatch_[i], dk_, validLenBatch_[i], validLenBatch_[i], dk_}, true);
         }
-        AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0xA); // 同步5
+        AscendC::CrossCoreSetFlag<0x4, PIPE_MTE1>(0xA); // 同步5
 
         // 求逆左下角矩阵
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AscendC::CrossCoreWaitFlag(0x7); // 同步2
+            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x7); // 同步2
             AttnInverseMMCompute(i * ccOffset_);
         }
 
         // attn @ k_cumdecay
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AscendC::CrossCoreWaitFlag(0x6); // 同步3
+            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x6); // 同步3
             AICProcess(mmBf16_, attnWsGm_[i * ccOffset_], gBKWsGm_[i * ckOffset_],
                        outKCumdecayGm_[chunkRowBase_[i] * dk_],
                        {chunkSize_, dk_, chunkSize_, chunkSize_, dk_, chunkSize_});
@@ -332,7 +332,7 @@ private:
 
         // attn @ v_beta    stage1 out
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AscendC::CrossCoreWaitFlag(0x5); // 同步4
+            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x5); // 同步4
             AICProcess(mmVInner_, attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_],
                        outVInnerGm_[chunkRowBase_[i] * dv_],
                        {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_});
@@ -349,7 +349,7 @@ private:
             outKgGm_ = outKgBaseGm_[chunkRowBase_[i] * dk_];
             QKPreProcess(queryGm_[qk_base], queryConGm_[wsOffset_], outKgGm_, subValidLenBatch_[i]);
             QKPreProcess(keyGm_[qk_base], keyConGm_[wsOffset_], outKgGm_, subValidLenBatch_[i], true);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x9); // 同步0
+            AscendC::CrossCoreSetFlag<0x4, PIPE_MTE3>(0x9); // 同步0
         }
         if constexpr (gOptional) {
             for (uint32_t i = 0; i < curParaNum; ++i) {
@@ -368,12 +368,12 @@ private:
         }
 
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AscendC::CrossCoreWaitFlag(0x8); // 同步1
+            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE3>(0x8); // 同步1
             // attn_1 = kkt * attn_1
             KKBetaCompute(kkWsGm_[i * ccOffset_], betaUbFloat_[i * halfChunkSize_]);
             // attn_1对角块求逆，对角块shape为INVERSE_SHAPE=32
             InverseCompute(attnWsGm_[i * ccOffset_], gammaUbFloat_[i * chunkSize_ * maxLen_]);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x7); // 同步2
+            AscendC::CrossCoreSetFlag<0x4, PIPE_MTE3>(0x7); // 同步2
         }
 
         for (uint32_t i = 0; i < curParaNum; ++i) {
@@ -383,7 +383,7 @@ private:
             uint64_t wsOffset_ = i * ckOffset_ + subOffset_ * dk_;
             GBKCompute(gBKWsGm_[i * ckOffset_], outKgGm_, betaUbFloat_[i * halfChunkSize_],
                        gCumSumUbFloat_[i * chunkSize_], gCumExpUbFloat_[i * chunkSize_], keyConGm_[wsOffset_]);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x6); // 同步3
+            AscendC::CrossCoreSetFlag<0x4, PIPE_MTE3>(0x6); // 同步3
         }
 
         for (uint32_t i = 0; i < curParaNum; ++i) {
@@ -393,7 +393,7 @@ private:
             uint64_t valueUbOffset = i * chunkSize_ * maxLen_;
             VBetaCompute(valueGm_[vOffset], vBetaWsGm_[i * cvOffset_], betaUbFloat_[betaUbOffset],
                          valueUbFloat_[valueUbOffset], subValidLenBatch_[i]);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5); // 同步4
+            AscendC::CrossCoreSetFlag<0x4, PIPE_MTE3>(0x5); // 同步4
         }
 
         for (uint32_t i = 0; i < curParaNum; ++i) {
@@ -402,7 +402,7 @@ private:
             QPrimeCompute(outQPrimeGm_[chunkRowBase_[i] * dk_], gCumSumUbFloat_[i * chunkSize_],
                           gCumExpUbFloat_[i * chunkSize_], queryConGm_[wsOffset_]);
         }
-        AscendC::CrossCoreWaitFlag(0xA); // 同步5
+        AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE3>(0xA); // 同步5
     }
     __aicore__ inline void QKPreProcess(const GlobalTensor<bfloat16_t> &srcGm, const GlobalTensor<bfloat16_t> &dstGm,
                                         const GlobalTensor<bfloat16_t> &outKgGm, uint32_t subValidRows,
