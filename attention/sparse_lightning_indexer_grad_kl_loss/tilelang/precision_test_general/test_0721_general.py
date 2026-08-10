@@ -990,8 +990,6 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.warmup < 0 or args.iters < 1:
         parser.error("--warmup must be non-negative and --iters must be at least one")
-    if args.diagnose:
-        args.bench = False
     return args
 
 
