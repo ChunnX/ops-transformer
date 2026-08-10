@@ -1,18 +1,42 @@
-# mega_moe 性能优化 — 62 用例全量验证（master vs megamoe-optimize）
+# mega_moe 性能优化 — 全量验证（master vs megamoe-optimize）
 
 > **环境**：A3（ascend910_93）/ arch22，单节点 16 卡，20 AIC + 40 AIV
-> **基线**：`master` @ `0b0856d56` ｜ **优化分支**：`megamoe-optimize` @ `58c0bdf64`（6 个性能优化 + 1 个正确性修复）
-> **覆盖**：BF16 非量化 + W8A8 量化，62 个用例（真实模型 shape + 边界 + 功能验证）
+> **基线**：`master` @ `0b0856d56` ｜ **优化分支**：`megamoe-optimize`（6 个性能优化 + 2 个正确性修复）
+> **覆盖**：BF16 非量化 + W8A8 量化，71 个用例（真实模型 shape + 边界 + 功能验证）
+
+---
+
+## 0. 分块收益的判据与选参公式（先读这一节）
+
+dispatch/combine 的 rank×token 二维并行只在三条判据同时成立时生效（`CalcRowsPerBlock`）：
+
+```
+rowsPerRank = num_tokens × topk / num_experts        ← 注意除的是【专家数】，不是 EP
+分块条件：EP < coreNum(40 AIV)  &&  coreNum/EP >= 2  &&  rowsPerRank >= 16
+每 rank 块数 = min(coreNum/EP, rowsPerRank/8)
+```
+
+推论（选参必须按此算，否则用例会落在无效区）：
+
+| 因素 | 规律 | 依据 |
+|---|---|---|
+| **EP 越小收益越大** | EP=4 → 切 10 块、36 核空转可填 → **+30~48%**；EP=8 → 5 块 → +4~8%；EP=16 → 仅 2 块 → ±2% | 见 §2.5 |
+| **专家数越多越难触发** | 需 `tok ≥ 16 × num_experts / topk`：256 专家/k8 需 tok≥512，384 专家需 tok≥768 | 门槛公式 |
+| **单 rank 搬运量不能饱和** | 喂满 MTE2 后并行化只剩调度开销，转为劣化 | qwen2_57b_ws8 -4.1% |
+
+> ⚠️ 曾误用 `tok×topk/EP`（漏除专家数，差 16~48 倍），据此选出的 GLM-5.2/Kimi-K2.5/DSV3.2
+> 在 batch 128/256 的用例 rowsPerRank 实际只有 2.7~8，全部被碎片守卫拦下不分块，测得"无收益"
+> 是选参错误的产物，非优化本身无效。
 
 ---
 
 ## 1. 总览
 
-- **62/62 用例精度全 PASS**（`cos > 0.99` 且 `expert_token_nums` 严格相等）。性能上 **20 个用例提升 >1%、29 个持平、13 个小幅劣化（-1~-8%）**，平均 **+1.2%**。
-- decode 场景（token ≤ 64）是 **HBM 权重搬运带宽受限**：权重搬运占耗时 >90%，算力利用率仅 12~28%。本分支的优化削减的是**固定串行开销**（与权重量无关的常数项），小模型场景提升 2~10%。
-- dispatch/combine 并行化：rank 数远小于 48 个 AIV 核时，把单 rank 串行拉取改成 rank×token 二维并行，小 world_size 场景最高 **+30%**（boundary_maxdims_ws4）。
-- 全部收益来自 **6 个经实测验证的优化 commit + 1 个正确性修复**，无行为重构、无精度牺牲。
-- 少量劣化集中在 **token=512+ 的大 batch 且 rank 数 < 40 的分块场景**（-1~-8%，如 qwen2_57b_ws8）：该场景单 rank 搬运量已能喂满 MTE2，分块引入的调度开销超过并行收益；同场景另有大幅收益（boundary_maxdims_ws4 +29.7%、glm45_ws16 +7.9%），取舍以整体为准。
+- **精度全 PASS**（`cos > 0.99` 且 `expert_token_nums` 严格相等）。
+- 小 batch 场景（token ≤ 64）是 **HBM 权重搬运带宽受限**：权重搬运占耗时 >90%，算力利用率仅 12~28%。本分支的优化削减的是**固定串行开销**（与权重量无关的常数项），小模型场景提升 2~10%。
+- dispatch/combine 二维并行：**EP=4 + token=1024 的主流模型形态稳定 +30~48%**（见 §2.5），是本优化的主战场。
+- 全部收益来自 **6 个经实测验证的优化 commit + 2 个正确性修复**，无行为重构、无精度牺牲。
+- 少量劣化集中在 **单 rank 搬运量已饱和的场景**（-1~-8%，如 qwen2_57b_ws8）：分块引入的调度开销超过并行收益。
 
 ---
 
@@ -40,7 +64,7 @@
 
 *基础功能（coded / probe）：10 用例，9 提升 / 1 持平 / 0 劣化*
 
-### 2.2 BF16 decode 场景（ws=16，token 16/32/64）
+### 2.2 BF16 小 batch 场景（ws=16，token 16/32/64）
 
 <!-- TABLE_B -->
 | case | ws | exp | h×ih | topk | tok | master(us) | optimize(us) | 提升 | 精度 |
@@ -60,7 +84,7 @@
 | qwen3_ws16_t32 | 16 | 128 | 4096×1536 | 8 | 32 | 330.6 | 324.7 | +1.8% | ✓ |
 | qwen3_ws16_t64 | 16 | 128 | 4096×1536 | 8 | 64 | 360.3 | 346.6 | +3.8% | ✓ |
 
-*BF16 decode（ws=16, token≤64）：14 用例，3 提升 / 11 持平 / 0 劣化*
+*BF16 小 batch（ws=16, token≤64）：14 用例，3 提升 / 11 持平 / 0 劣化*
 
 ### 2.3 BF16 prefill / 大 batch 场景（ws=8/16，token 256~1024）
 
@@ -116,6 +140,53 @@
 
 *W8A8 量化：24 用例，4 提升 / 14 持平 / 6 劣化*
 
+### 2.5 二维并行主战场：小 EP × 多 token 并发（主流模型真实 shape）
+
+> 本组按 §0 的门槛公式反推参数，专门覆盖「分块真正生效」的区间。数据为 **master vs 修复后分支**
+> 背靠背采集；标 ★ 的四例各跑 **2 轮**取均值，两轮离散 <1%，远超 ±5% 噪声带。
+> 模型 shape 取自 ModelScope 各模型 `config.json`（`n_routed_experts` / `num_experts_per_tok` /
+> `hidden_size` / `moe_intermediate_size`）。
+
+<!-- TABLE_E -->
+| case | EP | 专家(总/每rank) | topk | h×ih | tok | rowsPerRank | 块/rank | master(us) | optimize(us) | 提升 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| ★ qwen3_235b_ep4_b1024_w8a8 | 4 | 128 / 32 | 8 | 4096×1536 | 1024 | 64 | 8 | 2,663.9 | 1,388.8 | **+47.9%** |
+| ★ qwen2_57b_ep4_b1024_w8a8 | 4 | 64 / 16 | 8 | 3584×2560 | 1024 | 128 | 10 | 2,559.4 | 1,528.3 | **+40.3%** |
+| ★ glm45_ep4_b1024_w8a8 | 4 | 160 / 40 | 8 | 5120×1536 | 1024 | 51 | 6 | 2,845.2 | 1,710.7 | **+39.9%** |
+| ★ llama4_ep4_b1024_w8a8 | 4 | 128 / 32 | 8 | 5120×2048 | 1024 | 64 | 8 | 2,820.2 | 1,951.7 | **+30.8%** |
+| qwen2_57b_ep4_b512_w8a8 | 4 | 64 / 16 | 8 | 3584×2560 | 512 | 64 | 8 | 999.5 | 930.4 | +6.9% |
+| qwen3_235b_ep4_b512_w8a8 | 4 | 128 / 32 | 8 | 4096×1536 | 512 | 32 | 4 | 1,005.7 | 943.4 | +6.2% |
+| glm45_ep4_b512_w8a8 | 4 | 160 / 40 | 8 | 5120×1536 | 512 | 26 | 3 | 1,056.6 | 1,012.0 | +4.2% |
+| qwen2_57b_ep8_b512_w8a8 | 8 | 64 / 8 | 8 | 3584×2560 | 512 | 64 | 5 | 868.6 | 833.8 | +4.0% |
+| qwen3_235b_ep8_b512_w8a8 | 8 | 128 / 16 | 8 | 4096×1536 | 512 | 32 | 4 | 782.6 | 796.4 | -1.8% |
+
+*小 EP × 多 token：9 用例，4 例 >30%、4 例 +4~7%、1 例持平*
+
+**规律**：同一模型固定 EP=4，token 512 → 1024 时收益从 +4~7% 跃升到 +30~48% —— 因为 token 翻倍
+使 `rowsPerRank` 越过"每 rank 能切满 `coreNum/EP=10` 块"的水平，空转的 36 个 AIV 被完全填满。
+EP=8 同参数只有 +4~6%（仅 5 块），EP=16 更是只剩 ±2%（2 块），与 §0 的推论一致。
+
+### 2.6 大专家数模型（256~384E）在 EP=16 下的表现
+
+| case | EP | 专家(总/每rank) | topk | h×ih | tok | rowsPerRank | master(us) | optimize(us) | 提升 |
+|---|---|---|---|---|---|---|---|---|---|
+| glm52_ep16_b256_w8a8 | 16 | 256 / 16 | 8 | 6144×2048 | 256 | 8（不分块） | 890.7 | 886.0 | +0.5% |
+| kimik25_ep16_b256_w8a8 | 16 | 384 / 24 | 8 | 7168×2048 | 256 | 5（不分块） | 1,015.8 | 1,027.5 | -1.2% |
+| glm52_ep16_b512_w8a8 | 16 | 256 / 16 | 8 | 6144×2048 | 512 | 16 | 1,281.2 | 1,306.9 | -2.0% |
+| glm52_ep16_b1024_w8a8 | 16 | 256 / 16 | 8 | 6144×2048 | 1024 | 32 | 2,256.1 | 2,309.4 | -2.4% |
+| dsv32_ep16_b1024_w8a8 | 16 | 256 / 16 | 8 | 7168×2048 | 1024 | 32 | 2,579.4 | 2,656.3 | -3.0% |
+| kimik25_ep16_b1024_w8a8 | 16 | 384 / 24 | 8 | 7168×2048 | 1024 | 21 | 2,704.5 | 2,743.9 | -1.5% |
+| dsv4flash_ep16_b2048_w8a8 | 16 | 256 / 16 | 6 | 4096×2048 | 2048 | 48 | 2,406.7 | 2,371.0 | +1.5% |
+
+**结论（如实标注适用边界）**：GLM-5.2 / Kimi-K2.5 / DeepSeek-V3.2 这类 256~384 专家的模型，
+在 **EP=16 下本优化不产生收益**（-3% ~ +1.5%，均在噪声带内）：EP=16 时 `coreNum/EP = 2`，
+每 rank 最多切 2 块，只能多利用 16 个核，并行度增益抵不过调度开销。
+这些模型要拿到收益需降到 **EP=4/8** 部署，或使用中等专家数模型（见 §2.5）。
+
+*容量约束*：`tok=2048` 且 `hidden ≥ 6144` 无法运行 —— `max_recv = nmtr×ws×min(topk,epr) = 524288` 行，
+dispatch A 矩阵需 3.5~4.0GB 对称内存，超出 tiling 单次分配上限（实测 ≤2.0GB 可过、≥3.5GB 报
+EZ1008 `Failed to execute tiling function`）。仅 `hidden=4096` 的 DSV4-Flash 能跑 tok=2048。
+
 ---
 
 ## 3. 六个优化方案的思想
@@ -125,7 +196,7 @@
 ### 3.1 开启硬件 unit flag（fixpipe ∥ Mmad 流水并行）
 
 GMM 计算中 fixpipe（结果搬运）与 Mmad（矩阵乘）存在天然的流水机会，但默认关闭。
-开启 `enableUnitFlag` 后硬件自动让两者重叠，`aic_fixpipe_ratio` 提升 5~10 倍，decode 场景 +0.2~1.2%。
+开启 `enableUnitFlag` 后硬件自动让两者重叠，`aic_fixpipe_ratio` 提升 5~10 倍，小 batch 场景 +0.2~1.2%。
 
 ### 3.2 编译期关闭 ExceptionDump 阶段插桩
 
@@ -139,8 +210,8 @@ kernel 内 11 处阶段打点恒开：每次执行取系统时钟 + 2 次 GM 写
 
 ### 3.4 ExpertTokenCount 按专家区间分核
 
-路由后每个专家收到的 token 数原由**单核**统计（其余 36 核在栅栏干等，dec64 下 11.34us）。
-按专家区间分摊到全部 sort 核：各核切片互不重叠、无需归约，**dec64 −9.4us**。
+路由后每个专家收到的 token 数原由**单核**统计（其余 36 核在栅栏干等，token=64 下 11.34us）。
+按专家区间分摊到全部 sort 核：各核切片互不重叠、无需归约，**token=64 时 −9.4us**。
 
 ### 3.5 dispatch/combine rank×token 二维并行化
 
@@ -157,10 +228,38 @@ dispatch/combine 原为"每个 rank 一个 AIV 串行拉取"，而芯片有 48 �
 ### 3.7 正确性修复：分块按每 rank 实际行数（非平均）计算
 
 分块任务数最初按"专家组的平均行数"估计，稀疏路由下部分 rank 的实际行数远超平均，
-超出平均的行没有对应任务块而被丢弃（4 个 decode 用例精度 FAIL，cos 0.82~0.98）。
+超出平均的行没有对应任务块而被丢弃（4 个小 batch 用例精度 FAIL，cos 0.82~0.98）。
 修复为按**每个 rank 的实际行数**（cumsum 前缀和相邻差）计算块数、任务空间压成连续序列，
 每个 rank 的全部行恰好被一个块覆盖一次。修复后 4 个 FAIL 用例全部 PASS（cos=1.0），
 性能收益不受影响（boundary_maxdims_ws4 修复后 +29.8%）。
+
+### 3.8 正确性修复：cumsumCache 移出 epilogue 的 UB 占用区
+
+`PrefetchCumsumColumn` 原把 cumsum 列切片缓存在 `DISPATCH_CACHE_UB_OFFSET = 64KB`，注释声称
+"CombineV1 期间 epilogue 从 0 起分配，均不触及本区间" —— **该假设是错的**。
+
+`BlockEpilogue2`（`EpilogueAtlasA2PerTokenDequant<ubStages=2>`，见
+`utils/block_epilogue_pertoken_row.hpp`）从 UB[0] 起按 stage 连续分配，每 stage 占
+`n2 × (sizeof(ElementC) + sizeof(ElementD) + sizeof(float))` = `hidden × 10B`，两 stage 合计：
+
+| hidden | 4096 | 5120 | 6144 | 7168 | 8192 |
+|---|---|---|---|---|---|
+| epilogue 占用 | 80KB | 100KB | 120KB | 140KB | 160KB |
+
+即 64KB 必落在 epilogue 占用区内 —— CombineV1 每处理一个 group 调用 epilogue 都会冲掉
+cumsumCache，后续 group 的 `BuildRankBlockPrefix` 与任务反查读到 epilogue 中间数据，
+块映射错乱。**故障表现**（`rowsPerRank ∈ [21,32]` 且走 CombineV1 时稳定复现）：
+`etn_ok=True` 但 cos 掉到 0.002~0.02、Duration 涨 5 倍（glm52_ep16_b1024 2256→11429us）、
+偶发 CRASH；输出唯一值坍缩（6144 维只剩 1528 个唯一值），是"正确结果被错误累加"的特征。
+
+修复：cumsumCache 改放 UB **尾部** `[UB_SIZE-8KB, UB_SIZE)` = `[184KB, 192KB)`，
+避开 epilogue 最坏占用（160KB）与 dispatch 搬运 ping-pong（`[0,32KB)`/`[96KB,128KB)`）。
+修复后三个 FAIL 用例全部 PASS（cos>0.9999，耗时回落到 2.3~2.7ms），
+两个收益锚点无回退（boundary_maxdims_ws4 +29.3%、coded_L2_topk4_equal_ws8 +5.4%）。
+
+**为什么 62 用例漏测**：它们的 `rowsPerRank` 分布是 6~8（不分块）或 64~128（大 shape），
+恰好跳过 21~32 区间；且 +29% 的锚点 `boundary_maxdims_ws4`（m=512,topk=8 → `m*topK=4096`）
+走的是 **CombineV2**（判据 `ElementB==int8_t && m*topK > 4096`），从未执行过 CombineV1 的分块路径。
 
 ---
 
@@ -207,7 +306,7 @@ python3 golden_megamoe.py --all                      # 全量（62 用例，约 
 
 | 方案 | 实测结果 | 结论 |
 |---|---|---|
-| L2 预取（去掉 `CACHE_MODE_DISABLE`） | **+9.2% 劣化** | decode 下权重纯流式读、零复用，预取只冲刷 L2 |
+| L2 预取（去掉 `CACHE_MODE_DISABLE`） | **+9.2% 劣化** | 小 batch 下权重纯流式读、零复用，预取只冲刷 L2 |
 | 缓存 HCCL window 基址 | **+10.9% 劣化** | `HcclShmem` 被 combine epilogue 热路径大量拷贝 |
 | unpermute 全 AIV 化 | **+3~14% 劣化** | 省 2us 却新增全核 SyncAll（1.15us/次）栅栏 |
 | 末轮 skew 整平（GMM2 动态窃取） | 名义 79us → 真实 7.7us | skew ≠ 可回收；最佳手段**会死锁**，split-N +32.4% |

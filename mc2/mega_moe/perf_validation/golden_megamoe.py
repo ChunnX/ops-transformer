@@ -1058,6 +1058,78 @@ CASES = [
     dict(name="llama4_ws8_t16_w8a8",  world_size=8, num_experts=128, hidden=5120, intermediate_hidden=2048, topk=8, num_tokens=16,  num_max_tokens_per_rank=64,  input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=98, quant="w8a8"),
     dict(name="llama4_ws8_t64_w8a8",  world_size=8, num_experts=128, hidden=5120, intermediate_hidden=2048, topk=8, num_tokens=64,  num_max_tokens_per_rank=128, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=99, quant="w8a8"),
     dict(name="llama4_ws8_t512_w8a8", world_size=8, num_experts=128, hidden=5120, intermediate_hidden=2048, topk=8, num_tokens=512, num_max_tokens_per_rank=1024, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=100, quant="w8a8"),
+    # ---- dispatch/combine 二维并行收益用例（2026 主流新模型真实 shape × EP × 多 token 并发）----
+    # 【分块门槛的正确公式（踩坑记录，务必按此选参）】
+    #   kernel 内 dispatch 逐「本地专家」循环，对每个专家做（mega_moe_kernel_a3.hpp:1251-1272）：
+    #       currentM       = cumsumMM[(EP-1)*epr + groupIdx]   # 该专家收到的【跨全部 rank】总行数
+    #       rowsPerRankEst = CeilDiv(currentM, EP)             # 平均每个源 rank 为该专家贡献的行数
+    #       rowsPerBlock   = CalcRowsPerBlock(rowsPerRankEst, EP, coreNum)
+    #   代入 currentM = num_tokens × topk × EP / num_experts 得到关键结论：
+    #       rowsPerRankEst = num_tokens × topk / num_experts   ← 【与 EP 无关，且要除以专家数】
+    #   最初误按 num_tokens × topk / EP 选参（漏除专家数），选出的 8 个用例 rowsPerRank 仅 2.7~8，
+    #   全部被碎片守卫（要求 ≥ 2×MIN_ROWS_PER_BLOCK = 16）拦下不分块，master/optHEAD 实测全持平。
+    #
+    #   分块三条判据（全部满足才切）：① EP < coreNum(40 AIV) ② coreNum/EP ≥ 2 ③ rowsPerRankEst ≥ 16
+    #   → 专家数越多，触发所需的 token 越大：num_tokens ≥ 16 × num_experts / topk
+    #     256 专家/topk8 需 tok ≥ 512；384 专家/topk8 需 tok ≥ 768。
+    #
+    # 【已验证锚点（本环境实测，非引用）】master(0b0856d56) vs optHEAD(58c0bdf64)：
+    #     boundary_maxdims_ws4  (exp=32,  rpr=128, EP=4 ) 5147.9→3634.9us  +29.4%
+    #     coded_L2_topk4_equal_ws8(exp=16, rpr=64, EP=8 )  210.6→ 193.2us  +8.3%
+    #   EP 维度规律：EP=16 时 40/16=2 只切 2 块（保守、无碎片风险，锚点全正收益）；
+    #   EP=8 时切 5 块，大 shape 下碎片代价可能反超并行收益（qwen2_57b_ws8 -4.1%、qwen3_235b_ws8 -7.9%）。
+    #   故本组以 EP=16 为主，EP=8 仅留对照。
+    #
+    # 【shape 来源】ModelScope 各模型 config.json 实拉字段（n_routed_experts / num_experts_per_tok /
+    #   hidden_size / moe_intermediate_size），非推断值：
+    #     GLM-5/5.1/5.2     (GlmMoeDsaForCausalLM)   : 256E + 1shared, k8, h6144, ih2048, 75/78 层 MoE
+    #     Kimi-K2.5         (DeepseekV3ForCausalLM)  : 384E + 1shared, k8, h7168, ih2048, 60/61 层 MoE
+    #     DeepSeek-V3.2     (DeepseekV32ForCausalLM) : 256E + 1shared, k8, h7168, ih2048, 58/61 层 MoE
+    #     DeepSeek-V4-Flash (DeepseekV4ForCausalLM)  : 256E + 1shared, k6, h4096, ih2048, 42/43 层 MoE
+    #   Kimi-K3（896E/k16/BF16 约 13.6TB）已排除：EP=16 每卡仍需 ~681GB，单机 16 卡(64GB/卡)装不下。
+    # 【为什么全 w8a8】这些模型 BF16 权重 1.6~2.5TB，单机放不下；官方推理形态本身即 W8A8 量化。
+    # 【EP 语义】EP 由部署参数决定（vllm: ep = world_size_across_dp / expert_tensor_parallel_size），
+    #   不是模型属性。EP=8 对应 8 卡全 EP 或 TP4×DP2；EP=16 对应 vllm-ascend 推荐的 DP4×TP4 + EP。
+    #
+    # —— A 组：过门槛（rowsPerRank ≥ 16，分块生效，预期正收益）——
+    # ⚠ tok=2048 且 hidden ≥ 6144 的组合已实测不可用：max_recv = nmtr×ws×min(topk,epr) = 524288 行，
+    #   dispatch A 矩阵需 3.5~4.0GB 对称内存，超出 tiling 单次分配上限（实测 ≤2.0GB 可过、≥3.5GB 必挂），
+    #   报 EZ1008 "Failed to execute tiling function"。故 glm52/kimik25 的 b2048 变体已移除，
+    #   仅 dsv4flash（h4096/topk6 → 1.81GB）能承受 tok=2048。
+    # GLM-5.2（256E/k8）：tok 512/1024 → rpr 16/32
+    dict(name="glm52_ep16_b512_w8a8",    world_size=16, num_experts=256, hidden=6144, intermediate_hidden=2048, topk=8, num_tokens=512,  num_max_tokens_per_rank=1024, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=109, quant="w8a8"),
+    dict(name="glm52_ep16_b1024_w8a8",   world_size=16, num_experts=256, hidden=6144, intermediate_hidden=2048, topk=8, num_tokens=1024, num_max_tokens_per_rank=2048, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=110, quant="w8a8"),
+    # Kimi-K2.5（384E/k8）：专家最多，需 tok ≥ 768 才过门槛 → tok 1024 → rpr 21.3
+    dict(name="kimik25_ep16_b1024_w8a8", world_size=16, num_experts=384, hidden=7168, intermediate_hidden=2048, topk=8, num_tokens=1024, num_max_tokens_per_rank=2048, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=112, quant="w8a8"),
+    # DeepSeek-V3.2（256E/k8）：tok 1024 → rpr 32
+    dict(name="dsv32_ep16_b1024_w8a8",   world_size=16, num_experts=256, hidden=7168, intermediate_hidden=2048, topk=8, num_tokens=1024, num_max_tokens_per_rank=2048, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=114, quant="w8a8"),
+    # DeepSeek-V4-Flash（256E/k6）：topk 小需更大 tok → tok 2048 → rpr 48（h4096 才放得下）
+    dict(name="dsv4flash_ep16_b2048_w8a8", world_size=16, num_experts=256, hidden=4096, intermediate_hidden=2048, topk=6, num_tokens=2048, num_max_tokens_per_rank=4096, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=115, quant="w8a8"),
+    # —— C 组：小 EP 高收益（EP 越小空转 AIV 越多，收益越大）——
+    # 【依据】收益 ∝ 空转核数 = coreNum(40) - EP，且每 rank 块数 = coreNum/EP：
+    #   EP=16 → 只切 2 块、多用 16 核 → 实测仅 ±2%（A 组 tok1024 三例）
+    #   EP=8  → 切 5 块、多用 32 核 → coded_L2_topk4_ws8 实测 +5.4~8.3%
+    #   EP=4  → 切 10 块、多用 36 核 → boundary_maxdims_ws4 实测 +29.3%（唯一 >10% 的形态）
+    # 故本组用真实模型 shape 配 EP=4/8，目标复现 10%+ 收益。
+    # EP=4/8 是真实小规格部署形态（4 卡 / 8 卡全 EP，或 TP2×DP2 / TP4×DP2）。
+    # Qwen2-57B（64E/k8/h3584）—— 专家数最少，rpr 最容易冲高
+    dict(name="qwen2_57b_ep4_b512_w8a8",   world_size=4, num_experts=64,  hidden=3584, intermediate_hidden=2560, topk=8, num_tokens=512,  num_max_tokens_per_rank=1024, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=120, quant="w8a8"),
+    dict(name="qwen2_57b_ep4_b1024_w8a8",  world_size=4, num_experts=64,  hidden=3584, intermediate_hidden=2560, topk=8, num_tokens=1024, num_max_tokens_per_rank=2048, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=121, quant="w8a8"),
+    dict(name="qwen2_57b_ep8_b512_w8a8",   world_size=8, num_experts=64,  hidden=3584, intermediate_hidden=2560, topk=8, num_tokens=512,  num_max_tokens_per_rank=1024, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=122, quant="w8a8"),
+    # Qwen3-235B（128E/k8/h4096）—— 主流大模型里专家数较少的一档
+    dict(name="qwen3_235b_ep4_b512_w8a8",  world_size=4, num_experts=128, hidden=4096, intermediate_hidden=1536, topk=8, num_tokens=512,  num_max_tokens_per_rank=1024, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=123, quant="w8a8"),
+    dict(name="qwen3_235b_ep4_b1024_w8a8", world_size=4, num_experts=128, hidden=4096, intermediate_hidden=1536, topk=8, num_tokens=1024, num_max_tokens_per_rank=2048, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=124, quant="w8a8"),
+    dict(name="qwen3_235b_ep8_b512_w8a8",  world_size=8, num_experts=128, hidden=4096, intermediate_hidden=1536, topk=8, num_tokens=512,  num_max_tokens_per_rank=1024, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=125, quant="w8a8"),
+    # GLM-4.5（160E/k8/h5120）—— 真实 shape，EP=4 时每 rank 40 专家
+    dict(name="glm45_ep4_b512_w8a8",       world_size=4, num_experts=160, hidden=5120, intermediate_hidden=1536, topk=8, num_tokens=512,  num_max_tokens_per_rank=1024, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=126, quant="w8a8"),
+    dict(name="glm45_ep4_b1024_w8a8",      world_size=4, num_experts=160, hidden=5120, intermediate_hidden=1536, topk=8, num_tokens=1024, num_max_tokens_per_rank=2048, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=127, quant="w8a8"),
+    # Llama-4 Maverick（128E/k8/h5120）
+    dict(name="llama4_ep4_b1024_w8a8",     world_size=4, num_experts=128, hidden=5120, intermediate_hidden=2048, topk=8, num_tokens=1024, num_max_tokens_per_rank=2048, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=128, quant="w8a8"),
+    # —— B 组：未过门槛对照（rowsPerRank < 16，碎片守卫拒绝分块，预期持平）——
+    # 保留以佐证「门槛公式成立」：同模型同 EP 下仅 token 不同，收益应从 ≈0 跃变到正收益。
+    dict(name="glm52_ep16_b256_w8a8",   world_size=16, num_experts=256, hidden=6144, intermediate_hidden=2048, topk=8, num_tokens=256, num_max_tokens_per_rank=512, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=103, quant="w8a8"),
+    dict(name="kimik25_ep16_b256_w8a8", world_size=16, num_experts=384, hidden=7168, intermediate_hidden=2048, topk=8, num_tokens=256, num_max_tokens_per_rank=512, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=105, quant="w8a8"),
+    dict(name="dsv32_ep8_b256_w8a8",    world_size=8,  num_experts=256, hidden=7168, intermediate_hidden=2048, topk=8, num_tokens=256, num_max_tokens_per_rank=512, input_mode="random", topk_ids_mode="unique", topk_weights_mode="random", seed=107, quant="w8a8"),
 ]
 
 
