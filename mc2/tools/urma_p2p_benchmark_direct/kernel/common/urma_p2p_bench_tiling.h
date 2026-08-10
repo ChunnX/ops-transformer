@@ -6,6 +6,10 @@
 constexpr uint32_t TIMING_SLOTS = 8;
 constexpr uint32_t COMPLETION_SQE_BYTES = 32U;
 
+// timing slot语义:
+// [0]=assemble累计 [1]=issue累计 [2]=wait累计 [3]=total累计
+// [4]=最后一轮assemble [5]=最后一轮issue [6]=最后一轮wait [7]=最后一轮total
+
 struct UrmaP2pBenchTiling {
     uint32_t rankId;
     uint32_t peer;

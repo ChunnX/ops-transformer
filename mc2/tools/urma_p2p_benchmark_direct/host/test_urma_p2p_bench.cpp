@@ -332,22 +332,30 @@ int Sample(void *arg)
         int64_t timingHost[TIMING_SLOTS_SIZE] = {0};
         aclrtMemcpy(timingHost, sizeof(timingHost), timingGm, sizeof(timingHost), ACL_MEMCPY_DEVICE_TO_HOST);
 
-        int64_t assembleCycles = timingHost[1] - timingHost[0];
-        int64_t issueCycles    = timingHost[2] - timingHost[0];
-        int64_t waitCycles     = timingHost[3] - timingHost[2];
-        int64_t totalCycles    = timingHost[3] - timingHost[0];
+        // [0-3]=累计值, 除以loopCount得平均值; [4-7]=最后一轮单轮值
+        double loopCount = (double)args->loopCount;
+        double avgAssembleNs = (double)timingHost[0] * NS_PER_CYCLE / loopCount;
+        double avgIssueNs    = (double)timingHost[1] * NS_PER_CYCLE / loopCount;
+        double avgWaitNs     = (double)timingHost[2] * NS_PER_CYCLE / loopCount;
+        double avgTotalNs    = (double)timingHost[3] * NS_PER_CYCLE / loopCount;
 
-        double totalNs   = (double)totalCycles * NS_PER_CYCLE;
-        double totalUs   = totalNs / 1000.0;
+        double lastAssembleNs = (double)timingHost[4] * NS_PER_CYCLE;
+        double lastIssueNs    = (double)timingHost[5] * NS_PER_CYCLE;
+        double lastWaitNs     = (double)timingHost[6] * NS_PER_CYCLE;
+        double lastTotalNs    = (double)timingHost[7] * NS_PER_CYCLE;
+
         double totalData = (double)args->numSqe * args->sqeBytes;
-        double bwGBs     = totalData / (totalNs);
+        double avgBwGBs = totalData / (avgTotalNs);
+        double lastBwGBs = totalData / (lastTotalNs);
 
-        printf("[rank %u (dev %u)] assemble=%.2fus issue=%.2fus wait=%.2fus total=%.2fus bw=%.2fGB/s\n",
+        printf("[rank %u (dev %u)] avg  assemble=%.2fus issue=%.2fus wait=%.2fus total=%.2fus bw=%.2fGB/s (over %u loops)\n",
                rank, physicalDev,
-               (double)assembleCycles * NS_PER_CYCLE / 1000.0,
-               (double)issueCycles * NS_PER_CYCLE / 1000.0,
-               (double)waitCycles * NS_PER_CYCLE / 1000.0,
-               totalUs, bwGBs);
+               avgAssembleNs / 1000.0, avgIssueNs / 1000.0, avgWaitNs / 1000.0,
+               avgTotalNs / 1000.0, avgBwGBs, args->loopCount);
+        printf("[rank %u (dev %u)] last assemble=%.2fus issue=%.2fus wait=%.2fus total=%.2fus bw=%.2fGB/s (last loop)\n",
+               rank, physicalDev,
+               lastAssembleNs / 1000.0, lastIssueNs / 1000.0, lastWaitNs / 1000.0,
+               lastTotalNs / 1000.0, lastBwGBs);
     } else {
         std::this_thread::sleep_for(std::chrono::seconds(10));
     }
