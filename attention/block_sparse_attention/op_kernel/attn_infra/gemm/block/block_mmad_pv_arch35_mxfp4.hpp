@@ -481,9 +481,7 @@ public:
         // 补零量 = align64 - align32
         AscendC::InitConstValueParams<uint16_t> PL1InitParams(1, static_cast<uint16_t>(s2Align64 - s2Align32), 0, 0x0000);
         AscendC::Fill(l1BTensor[pSlot][s2Align32 * 64].template ReinterpretCast<uint16_t>(), PL1InitParams);
-        if (embedReal == MXFP4::mBaseSize) {  // [#9] 满块 M 才补第二个 plane（sub1 的 P 半块）
-            AscendC::Fill(l1BTensor[pSlot][2 * s2Align32 * 64 + (s2Align64 - s2Align32) * 64].template ReinterpretCast<uint16_t>(), PL1InitParams);
-        }
+        AscendC::Fill(l1BTensor[pSlot][2 * s2Align32 * 64 + (s2Align64 - s2Align32) * 64].template ReinterpretCast<uint16_t>(), PL1InitParams);
     }
 
     __aicore__ inline void PadVS2NotAlign64(uint32_t s2Align64,uint32_t curBaseTileSize,uint32_t embedReal)
@@ -491,9 +489,9 @@ public:
         // 补零量 = align64 - align32
         AscendC::InitConstValueParams<uint16_t> kvL1InitParams(1, static_cast<uint16_t>((s2Align64 - curBaseTileSize)), 0, 0x0000);
         // 两个 plane 各补零（fp4 2-element 打包使 L1 NZ fractal 尾部分两段）
-        AscendC::Fill(l1ATensor[l1ABufId][embedReal / 2 * curBaseTileSize].template ReinterpretCast<uint16_t>(), kvL1InitParams);
+        AscendC::Fill(l1ATensor[l1ABufId][MXFP4::ROW_SUM_NUM / 2 * curBaseTileSize].template ReinterpretCast<uint16_t>(), kvL1InitParams);
         // AscendC::PipeBarrier<PIPE_ALL>();
-        AscendC::Fill(l1ATensor[l1ABufId][embedReal / 2 * curBaseTileSize * 2 + (s2Align64 - curBaseTileSize) * embedReal / 2].template ReinterpretCast<uint16_t>(), kvL1InitParams);
+        AscendC::Fill(l1ATensor[l1ABufId][MXFP4::ROW_SUM_NUM / 2 * curBaseTileSize * 2 + (s2Align64 - curBaseTileSize) * MXFP4::ROW_SUM_NUM / 2].template ReinterpretCast<uint16_t>(), kvL1InitParams);
     }
 
 
