@@ -84,7 +84,6 @@ static constexpr size_t BIAS_DIM_A8W4 = 2UL;
 static constexpr size_t SCALE_GROUP_DIM_INDEX = 1UL;
 static constexpr int64_t GROUP_LIST_CUMSUM = 0L;
 static constexpr int64_t GROUP_LIST_COUNT = 1L;
-static constexpr int64_t QUANT_GROUP_SIZE_S8S4 = 256L;
 static constexpr int64_t N_ALIGN_S4S4 = 8L;
 static constexpr int64_t QUANT_GROUP_SIZE_S4S4 = 2L;
 static constexpr size_t PER_CHANNEL_SCALE_DIM = 2UL;
@@ -3218,33 +3217,13 @@ aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(
             UnpackB32ToB4(x, "x", true);
         }
     }
-    const bool isS8S4PseudoQuant =
-        op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-        x->Size() == 1 && (*x)[0] != nullptr && (*x)[0]->GetDataType() == DataType::DT_INT8 &&
-        weight->Size() == 1 && (*weight)[0] != nullptr && (*weight)[0]->GetDataType() == DataType::DT_INT4 &&
-        scaleOptional != nullptr && scaleOptional->Size() == 1 && (*scaleOptional)[0] != nullptr &&
-        ((*scaleOptional)[0]->GetDataType() == DataType::DT_UINT64 ||
-         (*scaleOptional)[0]->GetDataType() == DataType::DT_INT64);
-    if (isS8S4PseudoQuant) {
-        bool hasOffset = offsetOptional != nullptr && offsetOptional->Size() == 1 &&
-                         (*offsetOptional)[0] != nullptr;
-        if (hasOffset) {
-            const op::Shape &offsetShape = (*offsetOptional)[0]->GetViewShape();
-            hasOffset = !(offsetShape.GetDimNum() == 1 && offsetShape.GetDim(0) == 0);
-        }
-        CHECK_COND((hasOffset && quantGroupSize == 0) ||
-                       (!hasOffset && quantGroupSize == QUANT_GROUP_SIZE_S8S4),
-                   ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], when S8S4 quant through the WeightNz interface, quantGroupSize must be 0 for "
-                   "per-channel offset mode or 256 for symmetric per-group mode.",
-                   opName);
-    }
     // aclnnGroupedMatmulWeightNz dont support split K dim.
     CHECK_COND(groupType != gmm::SPLIT_K, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when groupType == 2(split-K), [%s] is not supported.", opName, "weight NZ");
     CHECK_COND(CheckCommonParam(x, weight, groupListOptional, splitItem, groupType, groupListType, actType, out,
                                 opName) == ACLNN_SUCCESS,
                ACLNN_ERR_PARAM_INVALID, "In op [%s], required inputs do not meet the requirement.", opName);
+    (void)quantGroupSize;
     return aclnnGroupedMatmulGetWorkspaceSizeCommon(
         x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional,
         perTokenScaleOptional, nullptr, groupListOptional, activationInputOptional, activationQuantScaleOptional,

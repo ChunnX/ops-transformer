@@ -136,7 +136,6 @@ $$
 - **V4 → V5**：
 
   - Atlas A3/A2 系列产品：增加可选参数tuningConfigOptional，调优参数。数组中第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值进行最优tiling。
-  - Ascend 950PR/Ascend 950DT：S8S4兼容Atlas A3/A2的tuningConfigOptional语义。数组中第一个值表示各个专家处理的token数的预期值；第二个值置1时开启特殊weight格式模板。
 
 - **V1 → V4**：
 
@@ -207,7 +206,7 @@ aclnnStatus aclnnGroupedMatmulV5(
   | groupType（int64_t） | 输入 | 代表需要分组的轴 | 如矩阵乘为 $C[m,n]=A[m,k]\times B[k,n]$：`-1` = 不分组；`0` = M轴分组；`2` = K轴分组 | - | - | - | - |
   | groupListType（int64_t） | 输入 | 代表groupList输入的分组方式 | `0` = 累积和（cumsum）；`1` = 各组大小；`2` = [组索引, 组大小] 对。详见 [约束说明](#7-约束说明) | - | - | - | - |
   | actType（int64_t） | 输入 | 代表激活函数类型 | `0`=GMM_ACT_TYPE_NONE / `1`=GMM_ACT_TYPE_RELU / `2`=GMM_ACT_TYPE_GELU_TANH / `3`=GMM_ACT_TYPE_GELU_ERR_FUNC（不支持） / `4`=GMM_ACT_TYPE_FAST_GELU / `5`=GMM_ACT_TYPE_SILU | - | - | - | - |
-  | tuningConfigOptional（aclIntArray *） | 可选输入 | 第一个数代表各个专家处理的 token数的预期值；第二个数置1时，<abbr title="A8 表示 Activation 采用 8bit 量化，W4 表示 weight 采用 4bit 量化，同理还有 A8W8、A4W4">A8W4</abbr> 可选开启离线按`[E,N,K]`排布并转换为NZ的特殊weight格式，该格式不表示weight运行时转置；第三个数代表允许额外使用的内存空间。详见 [约束说明](#7-约束说明) | 兼容历史版本，用户如不使用该参数，不传（即为 nullptr）即可 | INT64 | - | 3 | - |
+  | tuningConfigOptional（aclIntArray *） | 可选输入 | 第一个数代表各个专家处理的 token数的预期值；第二个数代表 <abbr title="A8 表示 Activation 采用 8bit 量化，W4 表示 weight 采用 4bit 量化，同理还有 A8W8、A4W4">A8W4</abbr> 可选开启weight先转置的NZ格式；第三个数代表允许额外使用的内存空间。详见 [约束说明](#7-约束说明) | 兼容历史版本，用户如不使用该参数，不传（即为 nullptr）即可 | INT64 | - | 3 | - |
   | out（aclTensorList *） | 输出 | 公式中的输出 $y$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT32、INT8、BFLOAT16 | ND | 2~3 | - |
   | activationFeatureOutOptional（aclTensorList *） | 输出 | 激活函数的输入数据，当前只支持传入nullptr | - | - | - | - | - |
   | dynQuantScaleOutOptional（aclTensorList *） | 输出 | 动态量化缩放因子，当前只支持传入nullptr | - | - | - | - | - |
@@ -277,7 +276,7 @@ aclnnStatus aclnnGroupedMatmulV5(
         <td>splitItem 为 0、1 的场景，out长度不等于weight的长度，groupListOptional长度不等于weight的长度。</td>
       </tr>
       <tr>
-        <td>传入参数 tuningConfigOptional 的第一个元素为负数，或者大于x的行数 m。</td>
+        <td>传入参数 tuningConfigOptional 的元素为负数，或者大于x的行数 m。</td>
       </tr>
     </tbody>
   </table>
@@ -313,10 +312,11 @@ aclnnGroupedMatmulV5默认确定性实现。
 
 - groupType：支持M轴分组（0）和不分组（-1）。非量化/全量化额外支持K轴分组（2）。
 - groupListType：支持0、1、2。
-  - groupListType=0：须为非负单调非递减数列（累积和），groupList中最后一个值不大于x中tensor的第一维。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
-  - groupListType=1：须为非负数列（各组大小），groupList中数值总和不大于x中tensor的第一维。例如：`[64, 0, 128, 64]`
-  - groupListType=2：仅全量化且groupType=0场景下支持，须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置，groupList第二列的数值总和不大于x中tensor的第一维。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
-- tuningConfigOptional：S8S4伪量化支持第一个值配置预期token数；offsetOptional不为空的per-channel NZ权重场景支持第二个值置1，表示weight已离线按`[E,N,K]`连续排布并转换为NZ。该模式下weight仍不转置，`transposeWeight`必须为false。其余场景不支持。
+  - groupListType=0：groupList须为非负单调非递减数列（累积和），最后一个值不大于x中tensor的第一维。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
+  - groupListType=1：groupList须为非负数列（各组大小），数值总和不大于x中tensor的第一维。例如：`[64, 0, 128, 64]`
+  - groupListType=2：仅全量化且groupType=0场景下支持，groupList须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置，第二列的数值总和不大于x中tensor的第一维。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
+- tuningConfigOptional：可选参数，数组中的第一个值表示各个专家处理的token数的预期值。当前仅S8S4场景支持，详见[S8S4场景约束](#ascend950-s8s4场景约束)。如不使用该参数不传即可。
+  - `[1]`：是否开启weight亲和格式（先转置再NZ），适用场景：[S8S4](#ascend950-s8s4场景约束)。
 - actType（0~5）：
   - 非量化/伪量化仅支持 0。
   - 全量化下x、weight数据类型为INT8且out数据类型为BFLOAT16/FLOAT16，静态T-C或动态K-C、scale数据类型为FLOAT32/BFLOAT16时支持0/1/2/4/5（注意3不支持）；其余场景仅支持0。
@@ -531,6 +531,8 @@ aclnnGroupedMatmulV5默认确定性实现。
 <details>
 <summary>伪量化场景约束</summary>
 
+<a id="ascend950-s8s4场景约束"></a>
+
 **S8S4场景：**
 
 **数据类型要求：**
@@ -542,7 +544,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 
 **约束说明：**
 
-除平台约束外，A8W4场景其余约束如下：
+除平台约束外，S8S4场景其余约束如下：
 
 - 仅支持groupType=0（M轴分组）、splitItem=2/3、actType=0，groupListType仅支持1（count）。
 - 当前仅支持x、weight、biasOptional、scaleOptional、offsetOptional、perTokenScaleOptional和out均为长度1的TensorList。
@@ -553,11 +555,10 @@ aclnnGroupedMatmulV5默认确定性实现。
 - offsetOptional为空时：
   - K不大于18432且必须是256的整数倍。
   - scaleOptional为per-group与per-channel离线融合后的结果，shape为`[E,K/256,N]`。
-  - 各专家预期处理的token数大于N/4时，即tuningConfigOptional中第一个值大于N/4时，通常可获得更好的性能，此时显存占用会增加`E × K × N`字节。
 - offsetOptional不为空时：
   - 仅支持per-channel，scaleOptional的shape为`[E,1,N]`。
   - offsetOptional为非对称量化离线计算的辅助结果，即`antiquantOffset × scale`，shape为`[E,1,N]`，数据类型为FLOAT32。
-- tuningConfigOptional数组第二个元素可置1，以开启A8W4 offsetOptional不为空的per-channel场景的weight特殊格式模板。使用该模板时，应将数学意义上shape为`[E,K,N]`的weight离线连续重排为`[E,N,K]`，再进行ND2NZ转换后作为算子输入；算子按`[E,N,K]`解释该特殊布局，其中N为weight第1维、K为weight第2维。该模式不是运行时转置，`transposeWeight`必须为false，不得在NZ Tensor上再创建末两维转置view。仅支持长度为1的weight TensorList，推荐用于K不小于2048且N不小于2048的场景。
+- S8S4 offsetOptional不为空的per-channel场景下，tuningConfigOptional数组第二个元素可置1。此时weight需按`[E,N,K]`排布并转换为NZ，仅支持长度为1的weight TensorList。
 
 **其他伪量化场景：**
 - 以下入参为空：scaleOptional、offsetOptional、perTokenScaleOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional
