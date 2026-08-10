@@ -6,11 +6,11 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
 
 /*!
  * \file quant_flash_attn_kernel_fullquant_fp8.h
- * \brief QuantFlashAttn arch35 GQA FP8 Fullquant Kernel（由FIA GQA迁移适配）
+ * \brief
  */
 
 #ifndef QUANT_FLASH_ATTN_KERNEL_FULLQUANT_FP8_H_
@@ -49,7 +49,7 @@ public:
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
     static constexpr bool FLASH_DECODE = VecFaBlockType::FLASH_DECODE;
 
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
+    static constexpr uint32_t PRELOAD_N = 2;  // C1 C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
@@ -163,7 +163,7 @@ public:
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
-            vecFaBlock_.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, pScale, blockTable, dequantScaleQuery, 
+            vecFaBlock_.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, pScale, blockTable, dequantScaleQuery,
                                     dequantScaleKey, dequantScaleValue, softmaxLse,
                                     attentionOut, workspace, qCuSeqLensParser_);
             vecFaBlock_.ClearOutput();
@@ -175,7 +175,7 @@ public:
         }
         if constexpr (FLASH_DECODE) {
             if ASCEND_IS_AIV {
-                fdMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + FA_METADATA_HEADER_OFFSET + 
+                fdMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + FA_METADATA_HEADER_OFFSET +
                                             QFA_METADATA_SIZE * QFA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
                                             QFA_AIV_CORE_NUM * 16U * sectionNum_);
                 vecFdBlock_.InitParams();
@@ -198,7 +198,7 @@ public:
         uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
         constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
         constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
-        l1BufferManager_.Init(pipe_, 524288); // 512 * 1024
+        l1BufferManager_.Init(pipe_, 524288);  // 512 * 1024
         l1PBuffers_.Init(l1BufferManager_, mm2LeftSize);
         ubBufferManager_.Init(pipe_, mm1ResultSize * 2 + mm2ResultSize);
         bmm2Buffers_.Init(ubBufferManager_, mm2ResultSize);
@@ -229,7 +229,7 @@ public:
         constInfo_.s2Size = qfaBaseParams.s2Size;
         constInfo_.dSize = qfaBaseParams.dSize;
         constInfo_.dSizeV = qfaBaseParams.dSizeV;
-        if constexpr (USE_DN) { // GQA prefill不合轴
+        if constexpr (USE_DN) {  // GQA prefill不合轴
             constInfo_.realN2Size = constInfo_.n2Size * constInfo_.gSize;
             constInfo_.realGSize = 1;
         } else {
@@ -452,10 +452,12 @@ public:
             preTokenLeftUp = static_cast<int64_t>(actSeqLensQ_) - static_cast<int64_t>(actSeqLensKv_) + preTokenLeftUp;
         }
 
-        if (constInfo_.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL || constInfo_.sparseMode == fa_base_vector::TREE) {
+        if (constInfo_.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL ||
+            constInfo_.sparseMode == fa_base_vector::TREE) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv_) - static_cast<int64_t>(actSeqLensQ_);
         } else if (constInfo_.sparseMode == fa_base_vector::BAND) {
-            nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv_) - static_cast<int64_t>(actSeqLensQ_) + nextTokenLeftUp;
+            nextTokenLeftUp =
+                static_cast<int64_t>(actSeqLensKv_) - static_cast<int64_t>(actSeqLensQ_) + nextTokenLeftUp;
         }
     }
 
@@ -491,7 +493,8 @@ public:
             s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo_.realGSize);
             s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo_.realGSize);
         } else {
-            if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ_) == s1GLastToken / static_cast<int64_t>(actSeqLensQ_)) {
+            if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ_) ==
+                s1GLastToken / static_cast<int64_t>(actSeqLensQ_)) {
                 s1FirstToken = s1GFirstToken % static_cast<int64_t>(actSeqLensQ_);
                 s1LastToken = s1GLastToken % static_cast<int64_t>(actSeqLensQ_);
             } else {
@@ -695,7 +698,8 @@ public:
         }
         fdParams_.fdBN2Idx =
             fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, QFA_FD_BN2_IDX_INDEX, sectionIdx));
-        fdParams_.fdMIdx = fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, QFA_FD_M_IDX_INDEX, sectionIdx));
+        fdParams_.fdMIdx =
+            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, QFA_FD_M_IDX_INDEX, sectionIdx));
         fdParams_.fdWorkspaceIdx =
             fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, QFA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
         fdParams_.fdS2SplitNum =
@@ -748,7 +752,7 @@ public:
             CrossCoreBufferUnInit();
         }
     }
-}; // QuantFlashAttnKernelGqaFp8
+};  // QuantFlashAttnKernelGqaFp8
 
 } // namespace BaseApi
 
