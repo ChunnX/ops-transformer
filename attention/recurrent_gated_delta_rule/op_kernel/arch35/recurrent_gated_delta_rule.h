@@ -205,6 +205,17 @@ public:
         queryUb_ = queryBuff_.Get<float>();
         keyUb_ = keyBuff_.Get<float>();
         valueUb_ = valueBuff_.Get<float>();
+
+        Duplicate<float>(gamaUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
+        Duplicate<float>(stateUb_, 0, BUFFER_SIZE_BYTE_32K / sizeof(float));
+        Duplicate<float>(queryUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
+        Duplicate<float>(keyUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
+        Duplicate<float>(valueUb_, 0, BUFFER_SIZE_BYTE_16K / sizeof(float));
+        LocalTensor<float> tmpUb2 = tmpBuff2_.Get<float>();
+        Duplicate<float>(tmpUb2, 0, BUFFER_SIZE_BYTE_32K / sizeof(float));
+        LocalTensor<float> tmpUb1 = tmpBuff1_.Get<float>();
+        Duplicate<float>(tmpUb1, 0, BUFFER_SIZE_BYTE_2K / sizeof(float));
+        AscendC::PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void ComputeAvgload()
@@ -371,14 +382,23 @@ private:
         }
         stateOutQueue_.EnQue<stateType>(stateOutLocal);
         stateOutQueue_.DeQue<stateType>();
-        DataCopyExtParams stateOutParams;
-        stateOutParams.blockCount = curSingleV;
-        stateOutParams.blockLen = DK_ * sizeof(stateType);
-        stateOutParams.srcStride = (alignDK_ - DK_) / (BLOCK_SIZE_32B / sizeof(stateType));
-        stateOutParams.dstStride = 0;
         uint64_t outStateGmOffset = (uint64_t)ssmStateIndicesGm_.GetValue(tIdx) * stateStride0_ +
                                     (uint64_t)head_i * stateStride1_ + (uint64_t)dvIdx * DK_;
-        DataCopyPad(finalStateGm_[outStateGmOffset], stateOutLocal, stateOutParams);
+        uint32_t rowBytes = DK_ * sizeof(stateType);
+        if (rowBytes % BLOCK_SIZE_32B == 0) {
+            DataCopyExtParams stateOutParams;
+            stateOutParams.blockCount = curSingleV;
+            stateOutParams.blockLen = rowBytes;
+            stateOutParams.srcStride = (alignDK_ - DK_) / (BLOCK_SIZE_32B / sizeof(stateType));
+            stateOutParams.dstStride = 0;
+            DataCopyPad(finalStateGm_[outStateGmOffset], stateOutLocal, stateOutParams);
+        } else {
+            for (uint32_t i = 0; i < curSingleV; i++) {
+                DataCopyExtParams rowParams{1, rowBytes, 0, 0, 0};
+                DataCopyPad(finalStateGm_[outStateGmOffset + (uint64_t)i * DK_],
+                            stateOutLocal[i * alignDK_], rowParams);
+            }
+        }
         stateOutQueue_.FreeTensor(stateOutLocal);
     }
 
@@ -386,16 +406,14 @@ private:
                                             uint32_t dvIdx, uint32_t curSingleV)
     {
         LocalTensor<outType> attnOutLocal = attnOutQueue_.AllocTensor<outType>();
-        Cast(attnOutLocal, attnOutFp32Ub, AscendC::RoundMode::CAST_RINT, curSingleV);
+        uint32_t outBlockElems = BLOCK_SIZE_32B / sizeof(outType);
+        uint32_t paddedCurSingleV = Ceil(curSingleV, outBlockElems) * outBlockElems;
+        Cast(attnOutLocal, attnOutFp32Ub, AscendC::RoundMode::CAST_RINT, paddedCurSingleV);
         AscendC::PipeBarrier<PIPE_V>();
         attnOutQueue_.EnQue<outType>(attnOutLocal);
         attnOutQueue_.DeQue<outType>();
-        DataCopyExtParams attnOutParams;
-        attnOutParams.blockCount = 1;
-        attnOutParams.blockLen = curSingleV * sizeof(outType);
-        attnOutParams.srcStride = 0;
-        attnOutParams.dstStride = 0;
         uint64_t attnOutGmOffset = (uint64_t)tIdx * NV_ * DV_ + (uint64_t)head_i * DV_ + dvIdx;
+        DataCopyExtParams attnOutParams{1, static_cast<uint32_t>(curSingleV * sizeof(outType)), 0, 0, 0};
         DataCopyPad(attnOutGm_[attnOutGmOffset], attnOutLocal, attnOutParams);
         attnOutQueue_.FreeTensor(attnOutLocal);
     }
