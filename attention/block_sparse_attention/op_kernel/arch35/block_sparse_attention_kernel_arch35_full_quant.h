@@ -615,12 +615,11 @@ public:
             mm1L0BTotalStages_ = (kvBaseTile_ / BlockMmadQK::L0_TILE_N) * (embed_ / BlockMmadQK::L0_TILE_K);
         }
         if constexpr (RESCALE_ON_CUBE) {
-            // 新 PV：每 tile L0A/L0B 用量 = PV^T 分块数 + RE 的 16 列块数（GO 沿 D 按 L0_TILE_M 切分、
-            // diag 不切；与 PV 内部 counter 结构（mL0×kL0 / nL0×kL0 + fr）严格对应）
+            // 新 PV：每 tile L0A/L0B 用量 = PV^T 分块数 + RE 批数（批宽 = qS/2 运行期、每批按 L0_TILE_M 切分、
+            // diag 双子核块一次搬满 1 个 stage；与 PV 内部 counter 结构（mL0×kL0 + frGrp×mL0 / nL0×kL0 + 1）严格对应）
             mm2L0ATotalStages_ = (embed_ / BlockMmadPV::L0_TILE_M) * (kvBaseTile_ / BlockMmadPV::L0_TILE_K) +
-                CeilDiv(qBaseTile_, 16) * (embed_ / BlockMmadPV::L0_TILE_M);
-            mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * (qBaseTile_ / BlockMmadPV::L0_TILE_N) +
-                CeilDiv(qBaseTile_, 16);
+                CeilDiv(qBaseTile_, qBaseTile_ / 2) * (embed_ / BlockMmadPV::L0_TILE_M);
+            mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * (qBaseTile_ / BlockMmadPV::L0_TILE_N) + 1;
         } else {
             mm2L0ATotalStages_ = (qBaseTile_ / BlockMmadPV::L0_TILE_M) * (kvBaseTile_ / BlockMmadPV::L0_TILE_K);
             mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * (embed_ / BlockMmadPV::L0_TILE_N);

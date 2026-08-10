@@ -107,8 +107,8 @@ public:
 
     // rescale on cube: A = GO^T [D, qS], B = diag(dm/vScale) 块 [qS/2, qS/2]，fp32
     static constexpr uint32_t DIAG_BUF_NUM = 3;  // aligned with PRE_LAUNCH pipeline
-    static constexpr uint32_t GO_Q_PER_SUBCORE = 64;  // qS/2
     static constexpr uint32_t SUB_BLOCK_NUM = 2;      // diag 每 stage 双子核各一块（L1 共享，需分块排布）
+    // 注：双子核块宽 = qS/2 为运行期值（qPerSubCore_ 成员），qS ≤ 128 且为偶数（tiling 约束）
     static constexpr bool rescaleOnCube = DispatchPolicy::rescaleOnCube;
     // GO^T 的 L1 写完成事件（FIX_M 的空闲 id，l0C 释放用 0-3）：
     // 中间块 FixPipe(CFG_NZ→L1) 后 set、非首块 RE 读 GO^T 前 wait——严格交替，单 id 即可
@@ -125,6 +125,7 @@ public:
         l1BTileN = mm2L1TileHelper.mm2L1TileM;   // B = (P)^T: N = qS
         l1ATileK = mm2L1TileHelper.mm2L1TileKRight;  // A = (V)^T: K = kvS
         l1BTileK = mm2L1TileHelper.mm2L1TileKLeft;   // B = (P)^T: K = kvS
+        qPerSubCore_ = l1BTileN / 2;   // diag 双子核块宽 = qS/2（运行期，与 S_trans 的 diagDmRound 一致）
         l1ABufNum = mm2L1TileHelper.vL1BufNum;   // A 读 V 段（gather 写入）
         l1BBufNum = mm2L1TileHelper.pL1BufNum;   // B 读 P 段（softmax 写入）
         // V 段在 P 段之后：l1BufAddrStart 指向 P 段，P 段后为 V 段
@@ -140,18 +141,21 @@ public:
             l1BTensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(
                 l1BufAddrStart + l1BTileK * l1BTileN * sizeof(ElementB) * i);
         }
-        // diag 块 [qS/2, qS/2] fp32：每 stage 双子核各一块（L1 共享物理，子核 s 的块在 stage 内偏移 s×16KB），3 份轮转
+        // diag 块 fp32：每 stage 双子核各一块（L1 共享物理），3 份轮转。
+        // 注：排布固定 64×64（与 kernel 分配/S_trans 写侧一致，full_quant.h:723），
+        // 有效区 [qS/2, qS/2] 在块内前部（qS<128 时后部为预留，RE 的 B 子块不消费）
         for (uint32_t i = 0; i < DIAG_BUF_NUM; i++) {
             l1DiagTensor[i] = resource.l1Buf.template GetBufferByByte<float>(
                 l1DiagAddrStart +
-                SUB_BLOCK_NUM * GO_Q_PER_SUBCORE * GO_Q_PER_SUBCORE * sizeof(float) * i);
+                SUB_BLOCK_NUM * 64 * 64 * sizeof(float) * i);
         }
         for (uint32_t i = 0; i < L0_STAGES; i++) {
             l0ATensor[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(
                 L0A_PINGPONG_BUF_SIZE * i);
             l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(
                 L0B_PINGPONG_BUF_SIZE * i);
-            // RE 段 float buffer：复用同一偏移（float [128,16]=8KB = fp8 [128,64]=8KB；[16,16]=1KB ≤ 8KB）
+            // RE 段 float buffer：复用同一偏移（float [128,64]=32KB = L0A_PINGPONG 满；双子核块 [64,64]×2=32KB = L0B_PINGPONG 满；
+            // qS<128 时按运行期 qS/2 缩小，均 ≤ 32KB；与 PV^T 段 fp8（16KB）同 stage 不同时使用）
             l0ARescaleTensor[i] = resource.l0ABuf.template GetBufferByByte<float>(
                 L0A_PINGPONG_BUF_SIZE * i);
             l0BRescaleTensor[i] = resource.l0BBuf.template GetBufferByByte<float>(
@@ -294,12 +298,13 @@ public:
         auto l1BTensorTla = tla::MakeTensor(l1BTensor[l1BBufId], l1BLayoutTla, Arch::PositionL1{});
 
         // GO^T [D, qS] fp32（kernel 构造的 zN TLA 传入，与末块 go 的 TLA 传入模式一致）
-        // diag 双子核块（每块 zN [64,64]，L1 顺序排布：块 0 在 0、块 1 在 16KB）——RE 全量时按 fr/4 选块
-        auto l1DiagLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(GO_Q_PER_SUBCORE, GO_Q_PER_SUBCORE);
+        // diag 双子核块（每块 zN [64,64] 固定排布，与 S_trans 写侧一致：块 0 在 0、块 1 在 16KB），
+        // 有效区 [qS/2, qS/2] 在块内前部——RE 的 B 子块按 qHalf 取对角块
+        auto l1DiagLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(64, 64);
         auto l1DiagTensorTlaBlk0 = tla::MakeTensor(
             l1DiagTensor[l1DiagBufId], l1DiagLayoutTla, Arch::PositionL1{});
         auto l1DiagTensorTlaBlk1 = tla::MakeTensor(
-            l1DiagTensor[l1DiagBufId][GO_Q_PER_SUBCORE * GO_Q_PER_SUBCORE], l1DiagLayoutTla, Arch::PositionL1{});
+            l1DiagTensor[l1DiagBufId][64 * 64], l1DiagLayoutTla, Arch::PositionL1{});
 
         // PV^T 与 RE 共用的 L0 分块数：M=D、N=qS、K=kvS（RE 的 GO 沿 M 方向同 D 切分）
         uint32_t mL0LoopNum = CeilDiv(embed, L0_TILE_M);
@@ -378,10 +383,9 @@ public:
             }
         }
 
-        // rescale：C 按 16 列块拼接累加（8 次 [D,16]×[16,16] 小 mmad，K=16，全量覆盖 qS）
-        // diag 双子核块各 [64,64] fp32 = 4×8 个 16×8 fractal，非零仅对角斜带（fractal 行 fr 的列 2fr/2fr+1）
-        // 按 16×16 块（=2 个 fractal）合并为 4×4 网格，仅 4 个对角块 (fr,fr) 非零
-        // → 只对非零块发 copy（GetTile 子块，copy 特化按子块 coord 自动推导 LoadData 参数）；fr/4 选双子核块
+        // rescale：GO^T 每批搬 [D 块, 64]（32KB 满一个 L0A buf，双缓冲 2 批装完 GO 全量 64KB）；
+        // diag 双子核块 [64,64]×2 一次搬满 L0B（32KB，批 0 前发，地址 0/16KB 隔离并行）；
+        // mmad 按 16 列块分开乘（K=16 不浪费计算；diag 块对角 → 批间交叉项为 0）
         // 首块（含单块）不涉及 rescale
         if (!isFirstKvSTile) {
             // GO^T 由上一块 FixPipe(CFG_NZ→L1) 写入：等 L1 写完成后再读（独立 event id，与 l0C 释放的 FIX_M 区分）
@@ -392,65 +396,96 @@ public:
             WaitCrossCoreSync<4, PIPE_MTE1>(diagFlag);
             // 尾块 qS 非 16 倍数时向上取整：最后一块用实际列数 nAct（mmad 的 k/n 用实际值，与 PV^T 的
             // K 尾块同惯例；k 对齐填充读的 B 行在 C 的列区内为 0——对角矩阵保证填充贡献恒为 0，无污染）
-            uint32_t blockNum = CeilDiv(rowNum, 16);   // 8
-            for (uint32_t fr = 0; fr < blockNum; fr++) {
-                uint32_t nAct = (fr == blockNum - 1) ? (rowNum - fr * 16) : 16;
-                // GO 沿 M 方向（D）按 L0_TILE_M 切分，与 PV^T 的 mL0 同结构（当前 D=128 退化为单层）
+            // 批宽 = qS/2（双子核，运行期）：批 0 列 [0, qHalf)、批 1 列 [qHalf, rowNum)——与 diag 双子核块一一对应
+            uint32_t qHalf = qPerSubCore_;
+            uint32_t frGrpNum = CeilDiv(rowNum, qHalf);  // rowNum 偶数时恒 2
+            // diag 的 L0B stage 固定 1 次（双子核块全量一次搬入，两批共用；与 PV^T 最后用的 stage 相差 1 无冲突）
+            uint32_t l0BLoopCounter = prefixSumL0BStages + nL0LoopNum * kL0LoopNum;
+            uint32_t l0BBufId = l0BLoopCounter % L0_STAGES;
+            uint32_t l0BEventId = l0BBufId + 2;
+            // B 大搬：diag 双子核块 [64,64] → L0B 偏移 0/16KB（float zN→nZ 转置，2 次并行发，地址隔离；
+            // 排布固定 64×64 与写侧一致，qS<128 时有效区在块内前部，多搬部分不被 mmad 消费）
+            auto l0BBlkLayoutTla = tla::MakeLayout<float, LayoutTagL0B>(64, 64);
+            auto l0BBlk0TensorTla = tla::MakeTensor(l0BRescaleTensor[l0BBufId],
+                l0BBlkLayoutTla, Arch::PositionL0B{});
+            auto l0BBlk1TensorTla = tla::MakeTensor(
+                l0BRescaleTensor[l0BBufId][64 * 64],
+                l0BBlkLayoutTla, Arch::PositionL0B{});
+            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
+            CopyL1ToL0BRescale copyL1ToL0BRescale;
+            copyL1ToL0BRescale(l0BBlk0TensorTla, l1DiagTensorTlaBlk0);
+            copyL1ToL0BRescale(l0BBlk1TensorTla, l1DiagTensorTlaBlk1);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
+
+            for (uint32_t frGrp = 0; frGrp < frGrpNum; frGrp++) {
+                // 批列区间 [grpColStart, grpColEnd)：批 0 = [0, qHalf)、尾批 = [qHalf, rowNum)
+                uint32_t grpColStart = frGrp * qHalf;
+                uint32_t grpColEnd = (frGrp == frGrpNum - 1) ? rowNum : (frGrp + 1) * qHalf;
+                uint32_t grpCols = grpColEnd - grpColStart;
+                uint32_t nGrpAct = CeilDiv(grpCols, 16);  // 批内 16 列块数（尾块可能 <16 列）
+                // A 大搬（先行循环，mL0 流水预取）：(GO_prev)^T 的 [D 块, 批列宽] 连续 → L0A zN 恒等（qS=128 时 32KB 满）
                 for (uint32_t mL0Itr = 0; mL0Itr < mL0LoopNum; mL0Itr++) {
                     uint32_t l0TileMAct = (mL0Itr == mL0LoopNum - 1) ? (embed - mL0Itr * L0_TILE_M) : L0_TILE_M;
-                    // RE 的 stage 接在 PV^T 之后：A 每 (fr, mL0) 一次（PV^T A 总 = mL0×kL0）、B 每 fr 一次（PV^T B 总 = nL0×kL0）
+                    // RE 的 stage 接在 PV^T 之后：A 每 (frGrp, mL0) 一次（PV^T A 总 = mL0×kL0）
                     uint32_t l0ALoopCounter = prefixSumL0AStages +
-                        mL0LoopNum * kL0LoopNum + fr * mL0LoopNum + mL0Itr;
-                    uint32_t l0BLoopCounter = prefixSumL0BStages + nL0LoopNum * kL0LoopNum + fr;
+                        mL0LoopNum * kL0LoopNum + frGrp * mL0LoopNum + mL0Itr;
                     uint32_t l0ABufId = l0ALoopCounter % L0_STAGES;
-                    uint32_t l0BBufId = l0BLoopCounter % L0_STAGES;
                     uint32_t l0AEventId = l0ABufId;
-                    uint32_t l0BEventId = l0BBufId + 2;
-
-                    // A 块 = (GO_prev)^T 的 [D 块, 尾块 nAct] 列块：zN -> L0A zN 恒等（尾块时 L0A 只装有效列）
                     auto l1GoTensorTlaTile = GetTile(l1GoTensorTla,
-                        tla::MakeCoord(mL0Itr * L0_TILE_M, fr * 16), tla::MakeShape(l0TileMAct, nAct));
-                    auto l0ALayoutTla = tla::MakeLayout<float, LayoutTagL0A>(l0TileMAct, nAct);
+                        tla::MakeCoord(mL0Itr * L0_TILE_M, grpColStart), tla::MakeShape(l0TileMAct, grpCols));
+                    auto l0ALayoutTla = tla::MakeLayout<float, LayoutTagL0A>(l0TileMAct, grpCols);
                     auto l0ATensorTla = tla::MakeTensor(l0ARescaleTensor[l0ABufId],
                         l0ALayoutTla, Arch::PositionL0A{});
                     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                     CopyL1ToL0ARescale copyL1ToL0ARescale;
                     copyL1ToL0ARescale(l0ATensorTla, l1GoTensorTlaTile);
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
-
-                    // B 块 = diag 的 [16, 16] 对角块：fr/4 选双子核块，块内偏移 (fr%4)×16（对角块 (fr,fr)）
-                    // diag 粒度固定 16（RE 对角块语义，非 L0_TILE），不随 mL0 循环切分
-                    uint32_t frInBlk = fr % 4;
-                    auto l1DiagTensorTla = (fr < 4) ? l1DiagTensorTlaBlk0 : l1DiagTensorTlaBlk1;
-                    auto l1DiagTensorTlaTile = GetTile(l1DiagTensorTla,
-                        tla::MakeCoord(frInBlk * 16, frInBlk * 16), tla::MakeShape(16, 16));
-                    auto l0BLayoutTla = tla::MakeLayout<float, LayoutTagL0B>(16, 16);
-                    auto l0BTensorTla = tla::MakeTensor(l0BRescaleTensor[l0BBufId],
-                        l0BLayoutTla, Arch::PositionL0B{});
-                    AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
-                    CopyL1ToL0BRescale copyL1ToL0BRescale;
-                    copyL1ToL0BRescale(l0BTensorTla, l1DiagTensorTlaTile);
-                    AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
-
-                    // mmad：C[D 块, 16fr:16fr+nAct] += A [D 块,nAct] × B [16,16]，K=nAct，累加到 PV^T 的 bias
-                    // A 块按 nAct 取（尾块 L0A 少装）；B=diag 块固定 [16,16]（物理 16×16，mmad K=nAct 截断有效部分）
+                }
+                // mmad：批内 nGrpAct 个 16 列子块分开乘（K=16 不浪费；B 子块为 L0B [qS/2,qS/2] 的对角块）
+                for (uint32_t mL0Itr = 0; mL0Itr < mL0LoopNum; mL0Itr++) {
+                    uint32_t l0TileMAct = (mL0Itr == mL0LoopNum - 1) ? (embed - mL0Itr * L0_TILE_M) : L0_TILE_M;
+                    uint32_t l0ALoopCounter = prefixSumL0AStages +
+                        mL0LoopNum * kL0LoopNum + frGrp * mL0LoopNum + mL0Itr;
+                    uint32_t l0ABufId = l0ALoopCounter % L0_STAGES;
+                    uint32_t l0AEventId = l0ABufId;
+                    auto l0ALayoutTla = tla::MakeLayout<float, LayoutTagL0A>(l0TileMAct, grpCols);
+                    auto l0ATensorTla = tla::MakeTensor(l0ARescaleTensor[l0ABufId],
+                        l0ALayoutTla, Arch::PositionL0A{});
+                    // B 子块源：frGrp 选双子核块（批 0 → 块 0 偏移 0、批 1 → 块 1 偏移 (qS/2)²）
+                    auto l0BTensorTla = (frGrp == 0) ? l0BBlk0TensorTla : l0BBlk1TensorTla;
                     // M 侧：等 MTE1 数据就绪（MTE1_M）再 mmad——与旧 PV/QK 惯例一致
                     AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
-                    AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
-                    auto l0CTensorTlaTileFr = GetTile(l0CTensorTla,
-                        tla::MakeCoord(mL0Itr * L0_TILE_M, fr * 16), tla::MakeShape(l0TileMAct, nAct));
-                    tileMmad(
-                        l0CTensorTlaTileFr,
-                        l0ATensorTla,
-                        l0BTensorTla,
-                        RoundUp(l0TileMAct, 16),
-                        nAct,
-                        nAct,
-                        false);
+                    if ((frGrp == 0) && (mL0Itr == 0)) {
+                        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
+                    }
+                    for (uint32_t j = 0; j < nGrpAct; j++) {
+                        // 批尾块实际列（批宽非 16 倍数时最后一列块 <16；mmad 的 k/n 用实际值，
+                        // B 的 16 行中 k 方向只消费前 nAct 行——块宽 ≥ 批宽，不越界）
+                        uint32_t nAct = (j == nGrpAct - 1) ? (grpColEnd - grpColStart - j * 16) : 16;
+                        // mmad 子块：C 列 grpColStart + j*16（全局）、A 列 j*16（批内）、B 对角 (16j,16j)——偏移由
+                        // tileMmad 的 layout()(coord()) 处理（与 copy 类同款机制）
+                        auto l0CTensorTlaTileFr = GetTile(l0CTensorTla,
+                            tla::MakeCoord(mL0Itr * L0_TILE_M, grpColStart + j * 16),
+                            tla::MakeShape(l0TileMAct, nAct));
+                        auto l0ATensorTlaTile = GetTile(l0ATensorTla,
+                            tla::MakeCoord(mL0Itr * L0_TILE_M, j * 16), tla::MakeShape(l0TileMAct, nAct));
+                        auto l0BTensorTlaTile = GetTile(l0BTensorTla,
+                            tla::MakeCoord(j * 16, j * 16), tla::MakeShape(16, nAct));
+                        tileMmad(
+                            l0CTensorTlaTileFr,
+                            l0ATensorTlaTile,
+                            l0BTensorTlaTile,
+                            RoundUp(l0TileMAct, 16),
+                            nAct,
+                            nAct,
+                            false);
+                    }
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
-                    AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
+                    if ((frGrp == frGrpNum - 1) && (mL0Itr == mL0LoopNum - 1)) {
+                        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
+                    }
                     // diag 消费完成（softmax 覆写同 buffer 前 wait）：最后一块 mmad 后 set（读已完成，单实例单发）
-                    if ((fr == blockNum - 1) && (mL0Itr == mL0LoopNum - 1)) {
+                    if ((frGrp == frGrpNum - 1) && (mL0Itr == mL0LoopNum - 1)) {
                         // 同一 flag set 回 consumed：VEC 下一轮覆写同 buffer 前 wait
                         SetCrossCoreSync<4, PIPE_MTE1>(diagFlag);
                     }
@@ -473,9 +508,11 @@ public:
             WaitCrossCoreSync<4, PIPE_FIX>(mm2ToReFlag);
             // 单目标（dualDstCtl=0）显式两次调用（Sub0/Sub1，与现有 MM1/PV 的 FixPipe 模式一致）：
             // 各搬 [D, qS/2] 半区到对应 AIV 的 UB（subBlockId 0/1 路由），双目标模式不支持随路量化
-            // 半区固定 GO_Q_PER_SUBCORE(64)（与 kernel 的 go UB TLA [embed_, 64] 一致）：FixPipe nSize 16
-            // 倍数对齐，尾块实际列 < 64 时多搬的部分为 L0C dummy / go 缓冲固定分配区，无害
-            uint32_t qHalf = GO_Q_PER_SUBCORE;
+            // 半区 = 列总对齐后 /2（与旧 PV/QK/KQ 的 FixPipe 惯例一致）：FP8 对齐 64（consistent with
+            // K*Q^t splitN）、非 FP8 对齐 32；qS=128 时 = 64（与 kernel go UB [embed_, 64] 一致）；
+            // 尾块实际列 < qHalf 时多搬的部分为 L0C dummy / go 缓冲固定分配区，无害
+            uint32_t qHalfAligned = FULL_QUANT_FP8 ? RoundUp(rowNum, 64) : RoundUp(rowNum, 32);
+            uint32_t qHalf = qHalfAligned / 2;
             auto l0CTensorTlaTileSub0 = GetTile(l0CTensorTla,
                 tla::MakeCoord(0, 0), tla::MakeShape(embed, qHalf));
             auto l0CTensorTlaTileSub1 = GetTile(l0CTensorTla,
@@ -521,6 +558,7 @@ protected:
     uint32_t l1BTileK;
     uint32_t l1ABufNum;
     uint32_t l1BBufNum;
+    uint32_t qPerSubCore_;   // diag 双子核块宽 = qS/2（运行期，qS ≤ 128 且偶数）
 };
 ////////////////////////////////////////////////////////////////////
 
