@@ -22,22 +22,11 @@ at::Tensor MoeFinalizeRouting(const at::Tensor &expandedX, const at::Tensor &exp
                               const c10::optional<at::Tensor> &biasOptional,
                               const c10::optional<at::Tensor> &scalesOptional,
                               const c10::optional<at::Tensor> &expertIdxOptional,
-                              const c10::optional<at::Tensor> &xOptional,
-                              const c10::optional<at::Tensor> &alpha1Optional,
-                              const c10::optional<at::Tensor> &alpha2Optional,
-                              const c10::optional<at::Tensor> &vOptional,
-                              c10::optional<int64_t> dropPadMode,
-                              const c10::optional<std::vector<int64_t>> &zeroExpertRange,
-                              const c10::optional<std::vector<int64_t>> &copyExpertRange,
-                              const c10::optional<std::vector<int64_t>> &constantExpertRange, c10::optional<int64_t> k)
+                              c10::optional<int64_t> dropPadMode)
 {
-    int64_t kAttr = c10::value_or_else(k, [] { return 1; });
-
     int64_t dim0 = expandedRowIdx.size(0);
     if (scalesOptional.has_value()) {
         dim0 = scalesOptional.value().size(0);
-    } else if (kAttr > 0) {
-        dim0 = dim0 / kAttr;
     }
     size_t dim1Index = INDEX_ONE;
     if (expandedX.dim() == DIM_THREE) {
@@ -46,15 +35,8 @@ at::Tensor MoeFinalizeRouting(const at::Tensor &expandedX, const at::Tensor &exp
     at::Tensor result = at::empty({dim0, expandedX.size(dim1Index)}, expandedX.options());
     int64_t mode = c10::value_or_else(dropPadMode, [] { return 0; });
 
-    std::vector<int64_t> zeroVec = zeroExpertRange.value_or(std::vector<int64_t>{});
-    std::vector<int64_t> copyVec = copyExpertRange.value_or(std::vector<int64_t>{});
-    std::vector<int64_t> constVec = constantExpertRange.value_or(std::vector<int64_t>{});
-    at::IntArrayRef zeroRange(zeroVec);
-    at::IntArrayRef copyRange(copyVec);
-    at::IntArrayRef constRange(constVec);
-    ACLNN_CMD(aclnnMoeFinalizeRoutingV4, expandedX, expandedRowIdx, x1Optional, x2Optional, biasOptional,
-              scalesOptional, expertIdxOptional, xOptional, alpha1Optional, alpha2Optional, vOptional, mode, zeroRange,
-              copyRange, constRange, kAttr, result);
+    ACLNN_CMD(aclnnMoeFinalizeRoutingV2, expandedX, expandedRowIdx, x1Optional, x2Optional, biasOptional,
+              scalesOptional, expertIdxOptional, mode, result);
 
     return result;
 }

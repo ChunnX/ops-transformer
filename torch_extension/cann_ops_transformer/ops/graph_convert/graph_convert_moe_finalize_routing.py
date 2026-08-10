@@ -11,7 +11,7 @@
 
 try:
     import torch
-    from typing import List, Optional
+    from typing import Optional
     from torchair.ge._ge_graph import Tensor, TensorSpec
     from torchair.ge._ge_graph import auto_convert_to_tensor
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
@@ -28,8 +28,8 @@ except ImportError:
 if _TORCHAIR_AVAILABLE:
 
     @auto_convert_to_tensor(
-        [False, False, False, False, False, False, False, False, False, False, False],
-        [False, False, True, True, True, True, True, True, True, True, True],
+        [False, False, False, False, False, False, False],
+        [False, False, True, True, True, True, True],
     )
     def MoeFinalizeRouting(
         expanded_x: Tensor,
@@ -39,16 +39,8 @@ if _TORCHAIR_AVAILABLE:
         bias: Optional[Tensor],
         scales: Optional[Tensor],
         expert_idx: Optional[Tensor],
-        x: Optional[Tensor],
-        alpha1: Optional[Tensor],
-        alpha2: Optional[Tensor],
-        v: Optional[Tensor],
         *,
         drop_pad_mode: int = 0,
-        zero_expert_range: Optional[List[int]] = None,
-        copy_expert_range: Optional[List[int]] = None,
-        constant_expert_range: Optional[List[int]] = None,
-        k: int = 1,
         dependencies=None,
         node_name=None,
     ):
@@ -60,23 +52,9 @@ if _TORCHAIR_AVAILABLE:
         .OPTIONAL_INPUT(bias, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))\n
         .OPTIONAL_INPUT(scales, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))\n
         .OPTIONAL_INPUT(expert_idx, TensorType({DT_INT32}))\n
-        .OPTIONAL_INPUT(x, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))\n
-        .OPTIONAL_INPUT(alpha1, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))\n
-        .OPTIONAL_INPUT(alpha2, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))\n
-        .OPTIONAL_INPUT(v, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))\n
         .OUTPUT(y, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))\n
         .ATTR(drop_pad_mode, Int, 0)\n
-        .ATTR(zero_expert_range, ListInt, {})\n
-        .ATTR(copy_expert_range, ListInt, {})\n
-        .ATTR(constant_expert_range, ListInt, {})\n
-        .ATTR(k, Int, 1)\n
         """
-        if zero_expert_range is None:
-            zero_expert_range = []
-        if copy_expert_range is None:
-            copy_expert_range = []
-        if constant_expert_range is None:
-            constant_expert_range = []
         if dependencies is None:
             dependencies = []
 
@@ -88,18 +66,10 @@ if _TORCHAIR_AVAILABLE:
             "bias": bias,
             "scales": scales,
             "expert_idx": expert_idx,
-            "x": x,
-            "alpha1": alpha1,
-            "alpha2": alpha2,
-            "v": v,
         }
 
         attrs = {
             "drop_pad_mode": attr.Int(drop_pad_mode),
-            "zero_expert_range": attr.ListInt(zero_expert_range),
-            "copy_expert_range": attr.ListInt(copy_expert_range),
-            "constant_expert_range": attr.ListInt(constant_expert_range),
-            "k": attr.Int(k),
         }
 
         outputs = ["y"]
@@ -119,15 +89,7 @@ if _TORCHAIR_AVAILABLE:
             .optional_input("bias", "DT_FLOAT, DT_FLOAT16, DT_BF16")
             .optional_input("scales", "DT_FLOAT, DT_FLOAT16, DT_BF16")
             .optional_input("expert_idx", "DT_INT32")
-            .optional_input("x", "DT_FLOAT, DT_FLOAT16, DT_BF16")
-            .optional_input("alpha1", "DT_FLOAT, DT_FLOAT16, DT_BF16")
-            .optional_input("alpha2", "DT_FLOAT, DT_FLOAT16, DT_BF16")
-            .optional_input("v", "DT_FLOAT, DT_FLOAT16, DT_BF16")
             .attr("drop_pad_mode", attr.Int(0))
-            .attr("zero_expert_range", attr.ListInt([]))
-            .attr("copy_expert_range", attr.ListInt([]))
-            .attr("constant_expert_range", attr.ListInt([]))
-            .attr("k", attr.Int(1))
             .output("y", "DT_FLOAT, DT_FLOAT16, DT_BF16"),
         )
 
@@ -142,15 +104,7 @@ if _TORCHAIR_AVAILABLE:
         bias: Optional[Tensor],
         scales: Optional[Tensor],
         expert_idx: Optional[Tensor],
-        x: Optional[Tensor],
-        alpha1: Optional[Tensor],
-        alpha2: Optional[Tensor],
-        v: Optional[Tensor],
         drop_pad_mode: int = 0,
-        zero_expert_range: Optional[List[int]] = None,
-        copy_expert_range: Optional[List[int]] = None,
-        constant_expert_range: Optional[List[int]] = None,
-        k: int = 1,
         meta_outputs: TensorSpec = None,
     ):
         return MoeFinalizeRouting(
@@ -161,13 +115,5 @@ if _TORCHAIR_AVAILABLE:
             bias=bias,
             scales=scales,
             expert_idx=expert_idx,
-            x=x,
-            alpha1=alpha1,
-            alpha2=alpha2,
-            v=v,
             drop_pad_mode=drop_pad_mode,
-            zero_expert_range=zero_expert_range,
-            copy_expert_range=copy_expert_range,
-            constant_expert_range=constant_expert_range,
-            k=k,
         )

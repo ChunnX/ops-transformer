@@ -16,8 +16,14 @@
 计算公式：
 
 $$
-\begin{aligned} &\mathrm{expertId} = \mathrm{expertIdx}[i,k] \\ &\text{if } \mathrm{expertId} \in \mathrm{zero\_expert\_range}:\\&\quad \text{skip}; \\&\text{elif } \mathrm{expertId} \in \mathrm{copy\_expert\_range}: \\ &\quad x = x[i] \\ &\quad \mathrm{out}(i, j) = x1_{i, j} + x2_{i, j} + \sum_{k=1}^{K}\mathrm{scales}_{i,k} \cdot \left(x + \mathrm{bias}_{\mathrm{expertId},j}\right) \\ &\text{elif } \mathrm{expertId} \in \mathrm{constant\_expert\_range}: \\&\quad x = \alpha_1 \cdot x[i] + \alpha_2 \cdot v \\ &\quad \mathrm{out}(i, j) = x1_{i, j} + x2_{i, j} + \sum_{k=1}^{K}\mathrm{scales}_{i,k} \cdot \left(x + \mathrm{bias}_{\mathrm{expertId},j}\right) \\ &\text{else}: \\ &\quad \mathrm{out}(i, j) = x1_{i, j} + x2_{i, j} + \sum_{k=0}^{K}\mathrm{scales}_{i,k} \cdot\big(\mathrm{expandedX}_{\mathrm{expandedRowIdx}_{i\cdot K+k},j} + \mathrm{bias}_{\mathrm{expertId}_{i\cdot K+k},j}\big) \end{aligned}
+\mathrm{expertid} = \mathrm{expertIdx}[i,k]
 $$
+
+$$
+\mathrm{out}(i, j) = x1_{i, j} + x2_{i, j} + \sum_{k=0}^{K}\mathrm{scales}_{i,k} \cdot \big(\mathrm{expandedX}_{\mathrm{expandedRowIdx}_{i+k \cdot num\_rows},j} + \mathrm{bias}_{\mathrm{expertid},j}\big)
+$$
+
+> 当`scales`为空时，K为1。
 
 ## 函数原型
 
@@ -30,15 +36,7 @@ cann_ops_transformer.ops.moe_finalize_routing(
     bias=None,
     scales=None,
     expert_idx=None,
-    x=None,
-    alpha1=None,
-    alpha2=None,
-    v=None,
     drop_pad_mode=0,
-    zero_expert_range=None,
-    copy_expert_range=None,
-    constant_expert_range=None,
-    k=1,
 ) -> Tensor
 ```
 
@@ -51,17 +49,9 @@ cann_ops_transformer.ops.moe_finalize_routing(
 | `x1` | Tensor | 可选 | 第一个共享专家输出，即公式中的x1。shape与输出一致。 | 与expanded_x一致 | `(NUM_ROWS, H)` |
 | `x2` | Tensor | 可选 | 第二个共享专家输出，即公式中的x2。shape与输出一致。x1未传入时，x2也不能传入。 | 与expanded_x一致 | `(NUM_ROWS, H)` |
 | `bias` | Tensor | 可选 | 偏置量。bias存在时，expert_idx必须同时存在。 | 与expanded_x一致 | `(E, H)` |
-| `scales` | Tensor | 可选 | 路由权重系数。 | FLOAT16、BFLOAT16、FLOAT32 | `(NUM_ROWS, K)` |
+| `scales` | Tensor | 可选 | 路由权重系数。scales为空时，K为1。 | FLOAT16、BFLOAT16、FLOAT32 | `(NUM_ROWS, K)` |
 | `expert_idx` | Tensor | 可选 | 专家索引，即公式中的expertIdx。bias存在时必须同时传入。值域为`[0, E-1]`。 | INT32 | `(NUM_ROWS, K)` |
-| `x` | Tensor | 可选 | copy expert和constant expert场景的输入。 | 与expanded_x一致 | `(NUM_ROWS, H)` |
-| `alpha1` | Tensor | 可选 | constant expert的第一缩放系数。 | 与expanded_x一致 | `(constant_expert_range_num, H)` |
-| `alpha2` | Tensor | 可选 | constant expert的第二缩放系数。 | 与expanded_x一致 | `(constant_expert_range_num, H)` |
-| `v` | Tensor | 可选 | constant expert的偏移向量。 | 与expanded_x一致 | `(constant_expert_range_num, H)` |
 | `drop_pad_mode` | int | 可选 | 丢弃/填充模式及expandedRowIdx的排列方式。`0`：drop less，按列排列；`1`：drop pad，按列排列；`2`：drop less，按行排列；`3`：drop pad，按行排列。默认值为0。 | int64 | - |
-| `zero_expert_range` | list[int] | 可选 | zero expert的范围`[start, end)`，左闭右开。该范围内的专家输出被跳过。 | list[int64] | 长度为2 |
-| `copy_expert_range` | list[int] | 可选 | copy expert的范围`[start, end)`，左闭右开。该范围内使用`x[i]`替代expandedX。 | list[int64] | 长度为2 |
-| `constant_expert_range` | list[int] | 可选 | constant expert的范围`[start, end)`，左闭右开。该范围内使用`alpha1 * x[i] + alpha2 * v`替代expandedX。 | list[int64] | 长度为2 |
-| `k` | int | 可选 | 每个token选出的top-K专家个数。scales不为空时，若显式传入k则k必须与scales的第二维一致。默认值为1。 | int64 | - |
 
 ## 返回值说明
 
@@ -70,13 +60,11 @@ cann_ops_transformer.ops.moe_finalize_routing(
 ## 约束说明
 
 - `expanded_x`必须是2D或3D Tensor。
-- `expanded_row_idx`必须是1D Tensor，若显式传入`k`，则元素个数必须能被`k`整除。
+- `expanded_row_idx`必须是1D Tensor。
 - `drop_pad_mode`取值范围为`[0, 3]`。
 - `x1`未传入时，`x2`也不能传入。
 - `bias`存在时，`expert_idx`必须同时存在。
-- `scales`不为空时，若显式传入`k`，则`k`必须与`scales`的第二维一致。
-- `scales`为空时，则必须传入`k`。
-- `zero_expert_range`、`copy_expert_range`、`constant_expert_range`三个范围不能重叠。
+- `scales`为空时，K为1。
 
 ## 调用示例
 
@@ -89,7 +77,6 @@ NUM_ROWS = 4
 K = 2
 H = 8
 E = 8
-CE_NUM = 2  # constant_expert_range_num = end - start
 
 expanded_x = torch.randn(NUM_ROWS * K, H, dtype=torch.float32, device="npu")
 row_idx = torch.arange(NUM_ROWS * K, dtype=torch.int32, device="npu")
@@ -100,10 +87,6 @@ bias = torch.randn(E, H, dtype=torch.float32, device="npu")
 expert_idx = torch.tensor(
     [[0, 1], [2, 3], [4, 5], [6, 7]], dtype=torch.int32, device="npu"
 )
-x = torch.randn(NUM_ROWS, H, dtype=torch.float32, device="npu")
-alpha1 = torch.randn(CE_NUM, H, dtype=torch.float32, device="npu")
-alpha2 = torch.randn(CE_NUM, H, dtype=torch.float32, device="npu")
-v = torch.randn(CE_NUM, H, dtype=torch.float32, device="npu")
 
 out = moe_finalize_routing(
     expanded_x,
@@ -113,15 +96,7 @@ out = moe_finalize_routing(
     bias=bias,
     scales=scales,
     expert_idx=expert_idx,
-    x=x,
-    alpha1=alpha1,
-    alpha2=alpha2,
-    v=v,
     drop_pad_mode=0,
-    zero_expert_range=[0, 2],
-    copy_expert_range=[2, 4],
-    constant_expert_range=[6, 8],
-    k=K,
 )
 print(out.shape)  # torch.Size([4, 8])
 ```
