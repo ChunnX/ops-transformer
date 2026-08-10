@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_matmul_tiling_swat.h
+ * \file quant_matmul_mx_tiling_swat.h
  * \brief SWAT tiling specialization for the MX non-full-load path.
  */
 
@@ -24,6 +24,14 @@ class QuantMatmulTilingSwat : public QuantMatmulTilingBase<aDataType, bDataType>
 public:
     QuantMatmulTilingSwat() = default;
     ~QuantMatmulTilingSwat() override = default;
+
+private:
+    using Base = QuantMatmulTilingBase<aDataType, bDataType>;
+    using Base::args_;
+    using Base::platformInfo_;
+    using Base::runInfo_;
+    using Base::isOpenOptimize_;
+    using Base::enableMTailAlign_;
 
 protected:
     const char* TilingName() const override
@@ -45,14 +53,6 @@ protected:
         uint32_t scaleKL1 = CalcScaleKL1();
         BuildTilingData(tilingData, scaleKL1, static_cast<uint8_t>(DB_SIZE));
     }
-
-private:
-    using Base = QuantMatmulTilingBase<aDataType, bDataType>;
-    using Base::args_;
-    using Base::platformInfo_;
-    using Base::runInfo_;
-    using Base::isOpenOptimize_;
-    using Base::enableMTailAlign_;
 
 private:
     uint32_t CalcScaleKL1() const
@@ -139,16 +139,12 @@ private:
                 secSplitValid = newSecTile;
             }
         } else {
-            while ((preSplit < preSplitMax &&
-                    CalUsedCoreNum(runInfo_, preSplit + 1UL, secSplit) <= platformInfo_.aicNum) ||
-                   (secSplit < secSplitMax &&
-                    CalUsedCoreNum(runInfo_, preSplit, secSplit + 1UL) <= platformInfo_.aicNum)) {
-                if (preSplit < preSplitMax &&
-                    CalUsedCoreNum(runInfo_, preSplit + 1UL, secSplit) <= platformInfo_.aicNum) {
+            while ((CalUsedCoreNum(runInfo_, preSplit + 1UL, secSplit) <= platformInfo_.aicNum && preSplit < preSplitMax) ||
+                   (CalUsedCoreNum(runInfo_, preSplit, secSplit + 1UL) <= platformInfo_.aicNum && secSplit < secSplitMax)) {
+                if (CalUsedCoreNum(runInfo_, preSplit + 1UL, secSplit) <= platformInfo_.aicNum && preSplit < preSplitMax) {
                     preSplitValid = ++preSplit;
                 }
-                if (secSplit < secSplitMax &&
-                    CalUsedCoreNum(runInfo_, preSplit, secSplit + 1UL) <= platformInfo_.aicNum) {
+                if (CalUsedCoreNum(runInfo_, preSplit, secSplit + 1UL) <= platformInfo_.aicNum && secSplit < secSplitMax) {
                     secSplitValid = ++secSplit;
                 }
             }
