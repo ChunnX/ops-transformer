@@ -16,7 +16,6 @@ from mixed_quant_sparse_flash_mla_paramset import ENABLED_PARAMS
 import result_compare_method
 import check_valid_param
 import mixed_quant_sparse_flash_mla_golden
-from batch import mixed_quant_sparse_flash_mla_process
 import pytest
 import pandas as pd
 from pathlib import Path
@@ -25,9 +24,13 @@ import os
 import multiprocessing as mp
 import concurrent.futures
 import utils
+from test_mixed_quant_sparse_flash_mla_batch_consistency import (
+    batch_consistency_level,
+    run_batch_consistency_case,
+)
 
 pt_save_path = "mqsmla_testcase"
-device_id = 0
+device_id = int(os.environ.get("MQSMLA_DEVICE_ID", 0))
 save_pt = False
 result_path = Path("result.xlsx")
 
@@ -89,7 +92,7 @@ for params in ENABLED_PARAMS:
 case_id = 0
 
 
-def mqsmla(param_combinations):
+def mqsmla(param_combinations, consistency_config=None):
     global case_id
 
     # 填充None参数的默认值
@@ -115,14 +118,25 @@ def mqsmla(param_combinations):
     except ValueError as e:
         pytest.skip(f"输入参数校验失败:{e}")
 
+    if consistency_config is not None and params["B"] < 2:
+        pytest.skip("batch consistency requires B >= 2")
+
     # 生成测试数据及golden
     test_data = mixed_quant_sparse_flash_mla_golden.generate_and_save_testdata(
         params, save_pt=save_pt, save_path=pt_save_path
     )
 
+    if consistency_config is not None:
+        with batch_consistency_level(device_id):
+            run_batch_consistency_case(test_data, **consistency_config)
+        case_id += 1
+        return
+
     # 获得cpu结果(真值)和算子结果（测试值）
     npu_error_msg = None
     try:
+        from batch import mixed_quant_sparse_flash_mla_process
+
         npu_result, cpu_quant_result, cpu_lse, npu_lse = (
             mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_ci(
                 test_data, device_id=device_id
@@ -188,10 +202,21 @@ testcase_ids = [_gen_testcase_id(p, i) for i, p in enumerate(param_combinations)
 
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations, ids=testcase_ids)
-def test_mixed_quant_sparse_flash_mla(param_combinations):
+def test_mixed_quant_sparse_flash_mla(param_combinations, pytestconfig):
+    consistency_config = None
+    if pytestconfig.getoption("single_batch_consistency"):
+        consistency_config = {
+            "mode": pytestconfig.getoption("consistency_mode"),
+            "seed": pytestconfig.getoption("consistency_seed"),
+            "split_count": pytestconfig.getoption("split_count"),
+            "raw_groups": pytestconfig.getoption("batch_groups"),
+        }
+
     # 线程池
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        futures = executor.submit(mqsmla, param_combinations)
+        futures = executor.submit(
+            mqsmla, param_combinations, consistency_config
+        )
         # 等待并获取结果
         for future in concurrent.futures.as_completed([futures]):
             try:

@@ -24,12 +24,33 @@ KEEP_PT=false
 BATCH_TEST_MODE=1
 RESULT_PATH="./mqsmla_result.xlsx"
 DEVICE_ID=0
+CONSISTENCY_MODE="all"
+CONSISTENCY_SEED=20260806
+SPLIT_COUNT=2
+BATCH_GROUPS=""
+SINGLE_BATCH_CONSISTENCY=false
 
 # ====================== 执行区 ======================
 
 run_single() {
     echo "===== 执行单用例算子调测 ====="
-    python3 -m pytest -rA -s $TEST_QSMLA_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+    export MQSMLA_DEVICE_ID="$DEVICE_ID"
+    single_args=()
+    if [ "$SINGLE_BATCH_CONSISTENCY" = true ]; then
+        echo "  batch一致性模式: $CONSISTENCY_MODE"
+        single_args=(
+            --single-batch-consistency
+            --consistency-mode "$CONSISTENCY_MODE"
+            --consistency-seed "$CONSISTENCY_SEED"
+            --split-count "$SPLIT_COUNT"
+        )
+        if [ -n "$BATCH_GROUPS" ]; then
+            single_args+=(--batch-groups "$BATCH_GROUPS")
+        fi
+    fi
+    python3 -m pytest -rA -s $TEST_QSMLA_SINGLE_SCRIPT -v -m ci \
+        "${single_args[@]}" \
+        -W ignore::UserWarning -W ignore::DeprecationWarning
 }
 
 run_batch_save() {
@@ -122,7 +143,16 @@ run_batch_consistency() {
 
     export MQSMLA_PT_DIR="$PT_SAVE_DIR"
     export MQSMLA_DEVICE_ID="$DEVICE_ID"
+    consistency_args=(
+        --consistency-mode "$CONSISTENCY_MODE"
+        --consistency-seed "$CONSISTENCY_SEED"
+        --split-count "$SPLIT_COUNT"
+    )
+    if [ -n "$BATCH_GROUPS" ]; then
+        consistency_args+=(--batch-groups "$BATCH_GROUPS")
+    fi
     python3 -m pytest -rA -s $TEST_QSMLA_BATCH_CONSISTENCY_SCRIPT -v -m batch_consistency \
+        "${consistency_args[@]}" \
         -W ignore::UserWarning -W ignore::DeprecationWarning
 }
 
@@ -171,6 +201,11 @@ show_help() {
     echo "  --result <路径>     指定结果保存路径（默认: ./mqsmla_result.xlsx）"
     echo "  --device-id <id>    指定NPU设备ID（默认: 0）"
     echo "  --mode <0|1>        批跑模式: 0=全量批跑(默认), 1=按表格中case批跑"
+    echo "  --batch-consistency          single从paramset生成数据并运行batch一致性（默认关闭）"
+    echo "  --consistency-mode <1|2|all>  一致性模式: 1=换序, 2=拆分, all=两者（默认: all）"
+    echo "  --consistency-seed <整数>     换序/随机拆分种子（默认: 20260806）"
+    echo "  --split-count <n>             模式2随机拆分组数（默认: 2）"
+    echo "  --batch-groups <JSON>         模式2显式分组，如 '[[2,0],[3],[1]]'"
     echo "  --keep-pt           执行完成后保留pt文件（默认清理，仅batch命令）"
     echo ""
     echo "环境变量（.py文件读取）："
@@ -184,6 +219,8 @@ show_help() {
     echo ""
     echo "示例："
     echo "  $0 single"
+    echo "  $0 single --batch-consistency --consistency-mode all"
+    echo "  $0 single --consistency-mode 2 --split-count 3"
     echo "  $0 batch_save"
     echo "  $0 batch_save --excel my.xlsx --sheet decode --pt-dir my_pt"
     echo "  $0 batch_exec                                          # 全量批跑"
@@ -191,6 +228,8 @@ show_help() {
     echo "  $0 batch_exec --pt-dir my_pt --result ./my_result.xlsx"
     echo "  $0 batch_exec_graph --mode 1                           # Graph模式按表格批跑"
     echo "  $0 batch_consistency --pt-dir my_pt --device-id 0"
+    echo "  $0 batch_consistency --pt-dir my_pt --consistency-mode 2 --split-count 3"
+    echo "  $0 batch_consistency --pt-dir my_pt --consistency-mode 2 --batch-groups '[[2,0],[3],[1]]'"
     echo "  $0 batch --keep-pt"
     echo "  $0 batch --excel my.xlsx --sheet decode --pt-dir my_pt --mode 1 --keep-pt"
 }
@@ -206,7 +245,7 @@ fi
 COMMAND="$1"
 shift
 
-if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND" = "batch_exec_graph" ] || [ "$COMMAND" = "batch_consistency" ] || [ "$COMMAND" = "batch" ]; then
+if [ "$COMMAND" = "single" ] || [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND" = "batch_exec_graph" ] || [ "$COMMAND" = "batch_consistency" ] || [ "$COMMAND" = "batch" ]; then
     while [ $# -gt 0 ]; do
         case "$1" in
             --excel)
@@ -256,6 +295,58 @@ if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND
                 fi
                 BATCH_TEST_MODE="$2"
                 shift 2
+                ;;
+            --consistency-mode)
+                if [ $# -lt 2 ]; then
+                    echo "错误：--consistency-mode 需要参数值"
+                    exit 1
+                fi
+                CONSISTENCY_MODE="$2"
+                if [ "$COMMAND" = "single" ]; then
+                    SINGLE_BATCH_CONSISTENCY=true
+                fi
+                shift 2
+                ;;
+            --consistency-seed)
+                if [ $# -lt 2 ]; then
+                    echo "错误：--consistency-seed 需要参数值"
+                    exit 1
+                fi
+                CONSISTENCY_SEED="$2"
+                if [ "$COMMAND" = "single" ]; then
+                    SINGLE_BATCH_CONSISTENCY=true
+                fi
+                shift 2
+                ;;
+            --split-count)
+                if [ $# -lt 2 ]; then
+                    echo "错误：--split-count 需要参数值"
+                    exit 1
+                fi
+                SPLIT_COUNT="$2"
+                if [ "$COMMAND" = "single" ]; then
+                    SINGLE_BATCH_CONSISTENCY=true
+                fi
+                shift 2
+                ;;
+            --batch-groups)
+                if [ $# -lt 2 ]; then
+                    echo "错误：--batch-groups 需要参数值"
+                    exit 1
+                fi
+                BATCH_GROUPS="$2"
+                if [ "$COMMAND" = "single" ]; then
+                    SINGLE_BATCH_CONSISTENCY=true
+                fi
+                shift 2
+                ;;
+            --batch-consistency)
+                if [ "$COMMAND" != "single" ]; then
+                    echo "错误：--batch-consistency 仅适用于 single 命令"
+                    exit 1
+                fi
+                SINGLE_BATCH_CONSISTENCY=true
+                shift
                 ;;
             --keep-pt)
                 if [ "$COMMAND" != "batch" ]; then
