@@ -33,8 +33,6 @@ if (BUILD_OPEN_PROJECT)  # custom
             OPTIONS -mllvm
                     -cce-aicore-dcci-before-kernel-end=false
                     -DENABLE_CV_COMM_VIA_SSBUF=true
-                    -I${BLAZE}
-                    -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(
