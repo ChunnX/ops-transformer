@@ -135,7 +135,7 @@ __aicore__ inline void QLIVector<QLIT>::GetKeyScale(const QLICommon::RunInfo &ru
             copyInParams.blockLen = firstPartLen * sizeof(half);
             int32_t blockId = blockTableGm.GetValue(blockTableBatchOffset + startBlockTableIdx);
             SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-            AscendC::DataCopyPad(resUb, kScaleGm[blockId * kCacheBlockSize_ + startBlockTableOffset],
+            AscendC::DataCopyPad(resUb, kScaleGm[blockId * constInfo_.keyDequantScaleStride0 + startBlockTableOffset],
                                  copyInParams, padParams);
             startBlockTableIdx++;
             getLen = getLen - firstPartLen;
@@ -149,7 +149,8 @@ __aicore__ inline void QLIVector<QLIT>::GetKeyScale(const QLICommon::RunInfo &ru
             }
             int32_t blockId = blockTableGm.GetValue(blockTableBatchOffset + startBlockTableIdx + i);
             SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-            AscendC::DataCopyPad(resUb[resUbBaseOffset + i * kCacheBlockSize_], kScaleGm[blockId * kCacheBlockSize_],
+            uint64_t kScaleOffset = blockId * constInfo_.keyDequantScaleStride0;
+            AscendC::DataCopyPad(resUb[resUbBaseOffset + i * kCacheBlockSize_], kScaleGm[kScaleOffset],
                                  copyInParams, padParams);
         }
     } else {
