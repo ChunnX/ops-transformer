@@ -39,6 +39,10 @@
 #if __has_include("adv_api/hcomm/hcomm.h")
 #include "adv_api/hcomm/hcomm.h"
 #endif
+#if __has_include("hcomm/hcomm_res_entity_defs.h")
+#include "hcomm/hcomm_res_entity_defs.h"
+#define MOE_EP_COMBINE_CHANNEL_STATE_DIAGNOSTICS
+#endif
 
 #include "moe_ep_combine_tiling_key.h"
 #if __has_include("../common/moe_distribute_base.h")
@@ -105,7 +109,8 @@ private:
     __aicore__ inline void CopyTokenToQueue(uint32_t tokenIndex);
     __aicore__ inline void CopyTokenFromQueue(GM_ADDR writeAddr);
     __aicore__ inline void PrepareWriteWithNotify(uint64_t commHandle, GM_ADDR dst, GM_ADDR src, uint64_t len,
-                                                  GM_ADDR notifyAddr);
+                                                  GM_ADDR notifyAddr, int32_t srcRank, uint32_t channelIndex,
+                                                  uint32_t tokenIndex);
     __aicore__ inline void FlushPreparedWrites();
     __aicore__ inline void SendQueuedToken(uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx,
                                            int32_t srcTopKIdx, uint32_t channelIndex);
@@ -378,7 +383,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPrepared
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteWithNotify(
-    uint64_t commHandle, GM_ADDR dst, GM_ADDR src, uint64_t len, GM_ADDR notifyAddr)
+    uint64_t commHandle, GM_ADDR dst, GM_ADDR src, uint64_t len, GM_ADDR notifyAddr, int32_t srcRank,
+    uint32_t channelIndex, uint32_t tokenIndex)
 {
     if (preparedWriteCount_ != 0 && activeBatchHandle_ != commHandle) {
         FlushPreparedWrites();
@@ -388,18 +394,69 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
     int32_t ret = hcomm_.WriteNbiPrepare<DEFAULT_WQE_CONFIG>(commHandle, dst, src, len, notifyAddr, 1,
                                                              batchBuffer, HCOMM_BATCH_BUFFER_BYTES);
     if (ret == HCOMM_PREPARE_BUFFER_FULL || ret == HCOMM_PREPARE_QUEUE_FULL) {
+        uint64_t batchHandleBeforeFlush = activeBatchHandle_;
+        uint32_t batchCountBeforeFlush = preparedWriteCount_;
+        if (ret == HCOMM_PREPARE_QUEUE_FULL) {
+#if defined(MOE_EP_COMBINE_CHANNEL_STATE_DIAGNOSTICS)
+            __gm__ ChannelEntity *channelEntity = reinterpret_cast<__gm__ ChannelEntity *>(commHandle);
+            AscendC::printf(
+                "WriteNbiPrepare queue full before flush: ret=%d, aivId=%u, srcRank=%d, channelIndex=%u, "
+                "tokenIndex=%u\n",
+                ret, aivId_, srcRank, channelIndex, tokenIndex);
+            AscendC::printf(
+                "WriteNbiPrepare queue full handles: commHandle=%llu, activeBatchHandle=%llu, "
+                "preparedWriteCount=%u\n",
+                static_cast<unsigned long long>(commHandle),
+                static_cast<unsigned long long>(batchHandleBeforeFlush), batchCountBeforeFlush);
+            AscendC::printf("WriteNbiPrepare queue full state: sqHead=%u, cqHead=%u, cqTail=%u\n",
+                            channelEntity->sqHead, channelEntity->cqHead, channelEntity->cqTail);
+#else
+            AscendC::printf(
+                "WriteNbiPrepare queue full before flush: ret=%d, aivId=%u, srcRank=%d, channelIndex=%u, "
+                "tokenIndex=%u\n",
+                ret, aivId_, srcRank, channelIndex, tokenIndex);
+            AscendC::printf(
+                "WriteNbiPrepare queue full handles: commHandle=%llu, activeBatchHandle=%llu, "
+                "preparedWriteCount=%u\n",
+                static_cast<unsigned long long>(commHandle),
+                static_cast<unsigned long long>(batchHandleBeforeFlush), batchCountBeforeFlush);
+#endif
+        }
         ascendc_assert(preparedWriteCount_ != 0,
                        "WriteNbiPrepare failed on an empty batch, ret=%d, aivId=%u", ret, aivId_);
         FlushPreparedWrites();
         ret = hcomm_.WriteNbiPrepare<DEFAULT_WQE_CONFIG>(commHandle, dst, src, len, notifyAddr, 1,
                                                          batchBuffer, HCOMM_BATCH_BUFFER_BYTES);
-    }
-    if (ret != HCOMM_SUCCESS) {
-        AscendC::printf(
-            "WriteNbiPrepare retry failed: ret=%d, aivId=%u, commHandle=%llu, activeBatchHandle=%llu, "
-            "preparedWriteCount=%u\n",
-            ret, aivId_, static_cast<unsigned long long>(commHandle),
-            static_cast<unsigned long long>(activeBatchHandle_), preparedWriteCount_);
+        if (ret != HCOMM_SUCCESS) {
+#if defined(MOE_EP_COMBINE_CHANNEL_STATE_DIAGNOSTICS)
+            __gm__ ChannelEntity *channelEntity = reinterpret_cast<__gm__ ChannelEntity *>(commHandle);
+            AscendC::printf(
+                "WriteNbiPrepare retry failed after flush: ret=%d, aivId=%u, srcRank=%d, channelIndex=%u, "
+                "tokenIndex=%u\n",
+                ret, aivId_, srcRank, channelIndex, tokenIndex);
+            AscendC::printf(
+                "WriteNbiPrepare retry handles: commHandle=%llu, flushedHandle=%llu, flushedCount=%u\n",
+                static_cast<unsigned long long>(commHandle),
+                static_cast<unsigned long long>(batchHandleBeforeFlush), batchCountBeforeFlush);
+            AscendC::printf(
+                "WriteNbiPrepare retry batch state: activeBatchHandle=%llu, preparedWriteCount=%u, sqHead=%u, "
+                "cqHead=%u, cqTail=%u\n",
+                static_cast<unsigned long long>(activeBatchHandle_), preparedWriteCount_, channelEntity->sqHead,
+                channelEntity->cqHead, channelEntity->cqTail);
+#else
+            AscendC::printf(
+                "WriteNbiPrepare retry failed after flush: ret=%d, aivId=%u, srcRank=%d, channelIndex=%u, "
+                "tokenIndex=%u\n",
+                ret, aivId_, srcRank, channelIndex, tokenIndex);
+            AscendC::printf(
+                "WriteNbiPrepare retry handles: commHandle=%llu, flushedHandle=%llu, flushedCount=%u\n",
+                static_cast<unsigned long long>(commHandle),
+                static_cast<unsigned long long>(batchHandleBeforeFlush), batchCountBeforeFlush);
+            AscendC::printf(
+                "WriteNbiPrepare retry batch state: activeBatchHandle=%llu, preparedWriteCount=%u\n",
+                static_cast<unsigned long long>(activeBatchHandle_), preparedWriteCount_);
+#endif
+        }
     }
     ascendc_assert(ret == HCOMM_SUCCESS, "WriteNbiPrepare failed, ret=%d, aivId=%u", ret, aivId_);
     activeBatchHandle_ = commHandle;
@@ -421,7 +478,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendQueuedTok
             CopyTokenFromQueue(localSendDataWorkspaceAddr);
             uint64_t commHandle = GetCommHandle(srcRank, channelIndex);
             PrepareWriteWithNotify(commHandle, remoteRankWinAddr, localSendDataWorkspaceAddr, XTypeAlign32Size_,
-                                   remoteRankStateAddr);
+                                   remoteRankStateAddr, srcRank, channelIndex, tokenIndex);
         } else {
             CopyTokenFromQueue(remoteRankWinAddr);
             GlobalTensor<uint32_t> state;
@@ -440,7 +497,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendQueuedTok
 
         GM_ADDR tokenAddr = (GM_ADDR)xGm_.GetPhyAddr(tokenIndex * axisH_);
         uint64_t commHandle = GetCommHandle(srcRank, channelIndex);
-        PrepareWriteWithNotify(commHandle, remoteRankWinAddr, tokenAddr, axisH_ * sizeof(XType), remoteRankStateAddr);
+        PrepareWriteWithNotify(commHandle, remoteRankWinAddr, tokenAddr, axisH_ * sizeof(XType), remoteRankStateAddr,
+                               srcRank, channelIndex, tokenIndex);
     }
 }
 
@@ -705,5 +763,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 #endif
 
 } // namespace MoeEpCombineImpl
+
+#if defined(MOE_EP_COMBINE_CHANNEL_STATE_DIAGNOSTICS)
+#undef MOE_EP_COMBINE_CHANNEL_STATE_DIAGNOSTICS
+#endif
 
 #endif // MOE_EP_COMBINE_H
