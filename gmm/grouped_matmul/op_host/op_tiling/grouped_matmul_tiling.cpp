@@ -56,6 +56,13 @@ static inline auto AlignUp(T num1, T num2) -> T
     return (num1 + num2 - 1) / num2 * num2;
 }
 
+static bool IsS8S4PseudoQuant(const gert::TilingContext *context, ge::DataType xDtype, ge::DataType weightDtype)
+{
+    const auto scaleDesc = context->GetDynamicInputDesc(SCALE_INDEX, 0);
+    return xDtype == ge::DT_INT8 && (weightDtype == ge::DT_INT4 || weightDtype == ge::DT_INT32) &&
+           scaleDesc != nullptr && scaleDesc->GetDataType() == ge::DT_UINT64;
+}
+
 constexpr uint32_t GROUP_LIST_SPARSE_M = 2U;
 // EFFECTIVE_TASK_RATIO表示动态分块后的任务数量占可处理任务数量的比例
 // 通常情况下阈值越高，优化效果越好，但是阈值调高会导致可能找不到更优分块
@@ -2370,10 +2377,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingGMM(gert::TilingContext *context)
     auto compileInfoPtr = context->GetCompileInfo<GMMCompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);
     if (compileInfoPtr->npuArch == NpuArch::DAV_3510) {
-        auto scale0Desc = context->GetDynamicInputDesc(SCALE_INDEX, 0);
-        const bool isS8S4PseudoQuant = xDType == ge::DT_INT8 &&
-                                       (weightDtype == ge::DT_INT4 || weightDtype == ge::DT_INT32) &&
-                                       scale0Desc != nullptr && scale0Desc->GetDataType() == ge::DT_UINT64;
+        const bool isS8S4PseudoQuant = IsS8S4PseudoQuant(context, xDType, weightDtype);
         // 全量化：双8bits或双4bits(不会有A4W2)
         bool isQuant = !isS8S4PseudoQuant &&
                        (xDType == ge::DT_FLOAT4_E2M1 || xDType == ge::DT_INT4 || xDType == ge::DT_FLOAT4_E1M2 ||

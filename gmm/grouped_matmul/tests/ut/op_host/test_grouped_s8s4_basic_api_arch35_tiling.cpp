@@ -62,6 +62,10 @@ struct S8S4Case {
     bool specialWeightFormat = false;
     bool invalidPackedStorageShape = false;
     bool apiNormalizedPackedInt32 = false;
+    bool multiBias = false;
+    bool multiOffset = false;
+    bool multiOutput = false;
+    int64_t splitItem = 3;
     std::vector<int64_t> tuningConfig = {0};
 };
 
@@ -85,7 +89,7 @@ TensorDescription MakeTensor(const std::vector<int64_t> &originShape, const std:
 std::vector<OpAttr> MakeAttrs(const S8S4Case &param)
 {
     return {
-        {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+        {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.splitItem)},
         {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
@@ -162,18 +166,66 @@ gert::TilingContextPara MakeContext(const S8S4Case &param, optiling::GMMCompileI
         MakeTensor({param.m, param.k}, ge::DT_INT8), // x
         MakeTensor(weightOriginShape, weightStorageShape, param.weightDtype, param.weightFormat),
         {biasShape, ge::DT_FLOAT, ge::FORMAT_ND}, // bias
+    };
+    if (param.multiBias) {
+        inputs.emplace_back(biasShape, ge::DT_FLOAT, ge::FORMAT_ND);
+    }
+    inputs.insert(inputs.end(), {
         MakeTensor({param.groupNum, param.scaleGroupNum, param.n}, ge::DT_UINT64), // scale
         {offsetShape, ge::DT_FLOAT, ge::FORMAT_ND},                                 // offset
+    });
+    if (param.multiOffset) {
+        inputs.emplace_back(offsetShape, ge::DT_FLOAT, ge::FORMAT_ND);
+    }
+    inputs.insert(inputs.end(), {
         {antiquantScaleShape, ge::DT_FLOAT, ge::FORMAT_ND},                        // antiquantScale
         {antiquantOffsetShape, ge::DT_FLOAT, ge::FORMAT_ND},                       // antiquantOffset
         MakeTensor(param.groupListTypeAttr == 2 ? std::vector<int64_t>{param.groupNum, 2} :
                                                   std::vector<int64_t>{param.groupNum},
                    ge::DT_INT64),                                                  // groupList
         MakeTensor({param.m}, ge::DT_FLOAT),                                       // perTokenScale
-    };
+    });
     std::vector<TensorDescription> outputs = {
         MakeTensor({param.m, param.n}, param.outDtype),
     };
+    if (param.multiOutput) {
+        outputs.emplace_back(MakeTensor({param.m, param.n}, param.outDtype));
+    }
+    if (param.multiBias || param.multiOffset || param.multiOutput) {
+        std::vector<TensorDescription> flatInputs = {
+            MakeTensor({param.m, param.k}, ge::DT_INT8),
+            MakeTensor(weightOriginShape, weightStorageShape, param.weightDtype, param.weightFormat),
+            {biasShape, ge::DT_FLOAT, ge::FORMAT_ND},
+        };
+        if (param.multiBias) {
+            flatInputs.emplace_back(biasShape, ge::DT_FLOAT, ge::FORMAT_ND);
+        }
+        flatInputs.emplace_back(MakeTensor({param.groupNum, param.scaleGroupNum, param.n}, ge::DT_UINT64));
+        if (param.hasOffset) {
+            flatInputs.emplace_back(offsetShape, ge::DT_FLOAT, ge::FORMAT_ND);
+            if (param.multiOffset) {
+                flatInputs.emplace_back(offsetShape, ge::DT_FLOAT, ge::FORMAT_ND);
+            }
+        }
+        if (param.hasAntiquantScale) {
+            flatInputs.emplace_back(antiquantScaleShape, ge::DT_FLOAT, ge::FORMAT_ND);
+        }
+        if (param.hasAntiquantOffset) {
+            flatInputs.emplace_back(antiquantOffsetShape, ge::DT_FLOAT, ge::FORMAT_ND);
+        }
+        flatInputs.emplace_back(MakeTensor(param.groupListTypeAttr == 2 ?
+                                               std::vector<int64_t>{param.groupNum, 2} :
+                                               std::vector<int64_t>{param.groupNum},
+                                           ge::DT_INT64));
+        flatInputs.emplace_back(MakeTensor({param.m}, ge::DT_FLOAT));
+        const std::vector<uint32_t> inputInstanceNum = {
+            1U, 1U, param.multiBias ? 2U : 1U, 1U,
+            param.hasOffset ? (param.multiOffset ? 2U : 1U) : 0U,
+            param.hasAntiquantScale ? 1U : 0U, param.hasAntiquantOffset ? 1U : 0U, 1U, 1U};
+        const std::vector<uint32_t> outputInstanceNum = {param.multiOutput ? 2U : 1U};
+        return gert::TilingContextPara("GroupedMatmul", flatInputs, outputs, MakeAttrs(param), inputInstanceNum,
+                                       outputInstanceNum, compileInfo, "3510", 32, 262144, 4096, socInfoString);
+    }
     return gert::TilingContextPara("GroupedMatmul", inputs, outputs, MakeAttrs(param), compileInfo, "3510", 32,
                                    262144, 4096, socInfoString);
 }
@@ -790,6 +842,53 @@ TEST(GroupedS8S4BasicApiArch35Tiling, RejectsSpecialWeightWithoutNzConversion)
     S8S4Case param;
     param.specialWeightFormat = true;
     param.tuningConfig = {0, 1};
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteS8S4Tiling(param, tilingInfo));
+}
+
+TEST(GroupedS8S4BasicApiArch35Tiling, RejectsInvalidSpecialWeightFormatFlag)
+{
+    for (const int64_t value : {-1L, 2L}) {
+        S8S4Case param;
+        param.tuningConfig = {0, value};
+        TilingInfo tilingInfo;
+        EXPECT_FALSE(ExecuteS8S4Tiling(param, tilingInfo)) << "tuningConfig[1]=" << value;
+    }
+}
+
+TEST(GroupedS8S4BasicApiArch35Tiling, RejectsUnsupportedSplitItem)
+{
+    for (const int64_t value : {0L, 1L}) {
+        S8S4Case param;
+        param.splitItem = value;
+        TilingInfo tilingInfo;
+        EXPECT_FALSE(ExecuteS8S4Tiling(param, tilingInfo)) << "splitItem=" << value;
+    }
+}
+
+TEST(GroupedS8S4BasicApiArch35Tiling, RejectsMultiBiasTensorList)
+{
+    S8S4Case param;
+    param.multiBias = true;
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteS8S4Tiling(param, tilingInfo));
+}
+
+TEST(GroupedS8S4BasicApiArch35Tiling, RejectsMultiOffsetTensorList)
+{
+    S8S4Case param;
+    param.hasOffset = true;
+    param.scaleGroupNum = 1;
+    param.outDtype = ge::DT_FLOAT16;
+    param.multiOffset = true;
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteS8S4Tiling(param, tilingInfo));
+}
+
+TEST(GroupedS8S4BasicApiArch35Tiling, RejectsMultiOutputTensorList)
+{
+    S8S4Case param;
+    param.multiOutput = true;
     TilingInfo tilingInfo;
     EXPECT_FALSE(ExecuteS8S4Tiling(param, tilingInfo));
 }

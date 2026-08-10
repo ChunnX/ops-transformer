@@ -2012,15 +2012,21 @@ bool GroupedS8S4BasicApiTiling::AnalyzeAttrs()
         groupListTypePtr != nullptr ? static_cast<int8_t>(*groupListTypePtr) : GROUP_LIST_COUNT;
     OP_CHECK_IF(inputParams_.groupListType != GROUP_LIST_COUNT,
                 OP_LOGE(context_->GetNodeName(), "groupListType must be 1(count)."), return false);
+    OP_CHECK_IF(inputParams_.splitItem != X_SEPARATED && inputParams_.splitItem != NO_SEPARATED,
+                OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi expects splitItem to be 2 or 3."), return false);
     if (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) {
         const auto tuningConfig = reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData());
         OP_CHECK_IF(tuningConfig[TUNING_CONFIG_EXPECTED_TOKEN_INDEX] < 0 ||
                         static_cast<uint64_t>(tuningConfig[TUNING_CONFIG_EXPECTED_TOKEN_INDEX]) > UINT32_MAX,
                     OP_LOGE(context_->GetNodeName(), "tuningConfig[0] must be in [0, UINT32_MAX]."), return false);
         expectedTokenNum_ = static_cast<uint32_t>(tuningConfig[TUNING_CONFIG_EXPECTED_TOKEN_INDEX]);
-        specialWeightFormat_ = tuningConfigPtr->GetSize() > TUNING_CONFIG_WEIGHT_FORMAT_INDEX &&
-                               tuningConfig[TUNING_CONFIG_WEIGHT_FORMAT_INDEX] ==
-                                   TUNING_CONFIG_SPECIAL_WEIGHT_FORMAT;
+        if (tuningConfigPtr->GetSize() > TUNING_CONFIG_WEIGHT_FORMAT_INDEX) {
+            OP_CHECK_IF(tuningConfig[TUNING_CONFIG_WEIGHT_FORMAT_INDEX] != 0 &&
+                            tuningConfig[TUNING_CONFIG_WEIGHT_FORMAT_INDEX] != TUNING_CONFIG_SPECIAL_WEIGHT_FORMAT,
+                        OP_LOGE(context_->GetNodeName(), "tuningConfig[1] must be 0 or 1."), return false);
+            specialWeightFormat_ =
+                tuningConfig[TUNING_CONFIG_WEIGHT_FORMAT_INDEX] == TUNING_CONFIG_SPECIAL_WEIGHT_FORMAT;
+        }
     }
     inputParams_.isSingleX = context_->GetDynamicInputDesc(X_INDEX, 1) == nullptr;
     inputParams_.isSingleW = context_->GetDynamicInputDesc(WEIGHT_INDEX, 1) == nullptr;
@@ -2046,8 +2052,15 @@ bool GroupedS8S4BasicApiTiling::CheckTensorLists() const
 {
     OP_CHECK_IF(context_->GetDynamicInputDesc(X_INDEX, 1) != nullptr ||
                     context_->GetDynamicInputDesc(WEIGHT_INDEX, 1) != nullptr ||
-                    context_->GetDynamicInputDesc(SCALE_INDEX, 1) != nullptr,
-                OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi only supports length-1 x/weight/scale TensorLists."),
+                    context_->GetDynamicInputDesc(BIAS_INDEX, 1) != nullptr ||
+                    context_->GetDynamicInputDesc(SCALE_INDEX, 1) != nullptr ||
+                    context_->GetDynamicInputDesc(OFFSET_INDEX, 1) != nullptr,
+                OP_LOGE(context_->GetNodeName(),
+                        "S8S4 BasicApi only supports length-1 x/weight/bias/scale/offset TensorLists."),
+                return false);
+    const auto outputInfo = context_->GetIrOutputInstanceInfo(Y_INDEX);
+    OP_CHECK_IF(outputInfo == nullptr || outputInfo->GetInstanceNum() != 1,
+                OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi only supports a length-1 out TensorList."),
                 return false);
     return true;
 }
