@@ -73,7 +73,7 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 | `bias` | List[Tensor] | 可选 | bias TensorList，默认值为`None`。当前MX FP8场景必须为空，支持`None`、空TensorList或单个空Tensor。 | `torch.float32` | - |
 | `x_scale` | Tensor | 可选 | `x`的MX量化scale。当前MX FP8场景必须传入有效Tensor。 | 通过`x_scale_dtype`按`torch_npu.float8_e8m0fnu`解析 | `(M, ceil(K / 64), 2)` |
 | `group_list_type` | int | 可选 | `group_list`语义类型，默认值为0，支持0或1。 | int | - |
-| `tuning_config` | List[int] | 可选 | 预留调优参数，默认值为`None`。 | int | - |
+| `tuning_config` | List[int] | 可选 | 首元素表示预期的单个group M轴长度，算子据此优化M轴tiling。默认值为`None`；传`None`、空列表或首元素为0时不启用。非空输入时首元素取值范围为`[0, M]`，其余元素预留。group不均分时建议传入有代表性的活跃group M轴长度；无法确定时保持`None`。 | int | - |
 | `quant_mode` | str | 可选 | 量化模式，默认值为`None`。torch层不解析该参数，直接透传到aclnn层；显式传值时当前仅支持`"mx"`。 | string | - |
 | `y_dtype` | torch.dtype | 可选 | 输出`y`的数据类型，默认值为`None`；为`None`时推导为与`x`相同的数据类型。 | `torch.float8_e4m3fn`、`torch.float8_e5m2` | - |
 | `round_mode` | str | 可选 | 舍入模式，默认值为`"rint"`，当前仅支持`"rint"`。 | string | - |

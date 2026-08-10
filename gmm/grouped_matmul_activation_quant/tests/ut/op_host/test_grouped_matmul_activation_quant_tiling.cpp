@@ -90,6 +90,14 @@ struct GroupedMatmulActivationQuantTilingCase {
         TilingInfo tilingInfo;
         ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo)) << "prefix=" << prefix;
         EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey) << "prefix=" << prefix;
+        if (expectedBaseM != 0U) {
+            ASSERT_EQ(tilingInfo.tilingDataSize,
+                      sizeof(GroupedMatmulActivationQuant::GMMActivationQuantTilingDataParams));
+            const auto *tilingData =
+                reinterpret_cast<const GroupedMatmulActivationQuant::GMMActivationQuantTilingDataParams *>(
+                    tilingInfo.tilingData.get());
+            EXPECT_EQ(tilingData->mmTilingData.baseM, expectedBaseM) << "prefix=" << prefix;
+        }
     }
 
     string socVersion;
@@ -110,6 +118,7 @@ struct GroupedMatmulActivationQuantTilingCase {
     float dstTypeMax = 0.0F;
     string tuningConfig;
     string activationType;
+    uint32_t expectedBaseM = 0U;
     vector<TensorDescParam> inputs;
     vector<TensorDescParam> outputs;
 
@@ -237,6 +246,64 @@ class TestGroupedMatmulActivationQuantTiling950 :
 TEST_P(TestGroupedMatmulActivationQuantTiling950, csvDrivenCase)
 {
     GetParam().Run();
+}
+
+GroupedMatmulActivationQuantTilingCase MakeExpectedGroupMCase(int64_t mSize, const string &tuningConfig,
+                                                              uint32_t expectedBaseM)
+{
+    GroupedMatmulActivationQuantTilingCase testCase;
+    testCase.caseName = "expected_group_m_" + std::to_string(mSize) + "_tuning_" + tuningConfig;
+    testCase.prefix = testCase.caseName;
+    testCase.expectSuccess = true;
+    testCase.activationType = "gelu_tanh";
+    testCase.groupListType = 0L;
+    testCase.tuningConfig = tuningConfig;
+    testCase.quantMode = "mx";
+    testCase.yDtype = 36L;
+    testCase.roundMode = "rint";
+    testCase.expectedBaseM = expectedBaseM;
+    testCase.inputs = {
+        {{mSize, 128L}, {mSize, 128L}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+        {{1L}, {1L}, ge::DT_INT64, ge::FORMAT_ND},
+        {{1L, 128L, 128L}, {1L, 4L, 8L, 16L, 32L}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_FRACTAL_NZ},
+        {{1L, 2L, 128L, 2L}, {1L, 2L, 128L, 2L}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+        {{1L, 128L}, {1L, 128L}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{mSize, 2L, 2L}, {mSize, 2L, 2L}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+    };
+    testCase.outputs = {
+        {{mSize, 128L}, {mSize, 128L}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+        {{mSize, 2L, 2L}, {mSize, 2L, 2L}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+    };
+    return testCase;
+}
+
+TEST(TestGroupedMatmulActivationQuantTuningConfig, zeroHintKeepsCommonBaseM)
+{
+    auto testCase = MakeExpectedGroupMCase(320L, "0", 256U);
+    ASSERT_FALSE(testCase.caseName.empty());
+    testCase.Run();
+}
+
+TEST(TestGroupedMatmulActivationQuantTuningConfig, balancesExpectedGroupM320)
+{
+    auto testCase = MakeExpectedGroupMCase(320L, "320", 160U);
+    ASSERT_FALSE(testCase.caseName.empty());
+    testCase.Run();
+}
+
+TEST(TestGroupedMatmulActivationQuantTuningConfig, balancesExpectedGroupM640)
+{
+    auto testCase = MakeExpectedGroupMCase(640L, "640", 224U);
+    ASSERT_FALSE(testCase.caseName.empty());
+    testCase.Run();
+}
+
+TEST(TestGroupedMatmulActivationQuantTuningConfig, rejectsOutOfRangeHint)
+{
+    auto testCase = MakeExpectedGroupMCase(320L, "321", 0U);
+    ASSERT_FALSE(testCase.caseName.empty());
+    testCase.expectSuccess = false;
+    testCase.Run();
 }
 
 INSTANTIATE_TEST_SUITE_P(GMM_ACTIVATION_QUANT_TILING_950, TestGroupedMatmulActivationQuantTiling950,

@@ -44,6 +44,7 @@ constexpr uint32_t ATTR_INDEX_Y_DTYPE = 5;
 constexpr uint32_t ATTR_INDEX_ROUND_MODE = 6;
 constexpr uint32_t ATTR_INDEX_SCALE_ALG = 7;
 constexpr uint32_t ATTR_INDEX_DST_TYPE_MAX = 8;
+constexpr size_t TUNING_CONFIG_EXPECTED_GROUP_M_INDEX = 0U;
 constexpr uint32_t WEIGHT_NZ_DIM_NUM = 5;
 constexpr uint32_t X_SCALE_M_DIM_INDEX = 0;
 constexpr uint32_t X_SCALE_K_BLOCK_DIM_INDEX = 1;
@@ -94,12 +95,26 @@ void GroupedMatmulActivationQuantTiling950::Reset()
     activationType_ = DEFAULT_ACTIVATION_TYPE_GELU_TANH;
     dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
     yDtype_ = ge::DT_FLOAT8_E4M3FN;
+    tuningConfig_ = 0L;
 }
 
 ge::graphStatus GroupedMatmulActivationQuantTiling950::GetShapeAttrsInfo()
 {
     inputParams_.Reset();
-    return GroupedQmmBasicApiTiling::GetShapeAttrsInfo();
+    OP_CHECK_IF(GroupedQmmBasicApiTiling::GetShapeAttrsInfo() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "GetShapeAttrsInfo failed."), return ge::GRAPH_FAILED);
+    // Keep empty-M calls compatible with the former reserved-attribute behavior. Such calls return before launch,
+    // so the performance hint has no effect.
+    if (inputParams_.mSize == 0UL) {
+        tuningConfig_ = 0L;
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(tuningConfig_ < 0L || static_cast<uint64_t>(tuningConfig_) > inputParams_.mSize,
+                OP_LOGE(context_->GetNodeName(),
+                        "Invalid tuning_config[0]: %ld. Valid range is [0, M(%lu)].", tuningConfig_,
+                        inputParams_.mSize),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
 }
 
 bool GroupedMatmulActivationQuantTiling950::IsFp8(ge::DataType dtype) const
@@ -121,6 +136,12 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
                                                       std::to_string(inputParams_.groupListType),
                                                       "group_list_type must be 0 or 1"),
                 return false);
+
+    const auto tuningConfigPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_INDEX_TUNING_CONFIG);
+    tuningConfig_ =
+        tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_EXPECTED_GROUP_M_INDEX ?
+            (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_EXPECTED_GROUP_M_INDEX] :
+            0L;
 
     const char *quantModePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_QUANT_MODE);
     const int64_t *yDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_Y_DTYPE);
@@ -377,6 +398,20 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
     // The kernel consumes compact low-level BasicAPI fields instead of TCubeTiling, so scaleKAL1 and scaleKBL1
     // must be identical.
     GroupedQmmTiling::CalBasicBlock();
+
+    // tuning_config[0] is an explicit expected per-group M hint. Balance the M tiles around that value while
+    // preserving its tile count. Without a hint, retain the common GMM baseM because total M divisibility cannot
+    // prove that the runtime group list is evenly distributed.
+    if (inputParams_.groupType == GroupedMatmul::SPLIT_M && tuningConfig_ > 0L) {
+        const uint64_t expectedGroupM = static_cast<uint64_t>(tuningConfig_);
+        const uint64_t groupMTileCount = Ops::Base::CeilDiv(expectedGroupM, basicTiling_.baseM);
+        const uint64_t balancedBaseM = GroupedMatmul::CeilAlign(
+            Ops::Base::CeilDiv(expectedGroupM, groupMTileCount), GmmConstant::CUBE_BLOCK);
+        if (balancedBaseM >= GmmConstant::CUBE_BLOCK && balancedBaseM < basicTiling_.baseM &&
+            Ops::Base::CeilDiv(expectedGroupM, balancedBaseM) == groupMTileCount) {
+            basicTiling_.baseM = balancedBaseM;
+        }
+    }
     basicTiling_.baseM = GroupedMatmul::CeilAlign(basicTiling_.baseM, GmmConstant::CUBE_BLOCK);
     OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);

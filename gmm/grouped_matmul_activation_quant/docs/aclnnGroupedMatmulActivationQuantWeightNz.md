@@ -288,8 +288,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
     <tr>
       <td>tuningConfig（const aclIntArray *）</td>
       <td>可选输入</td>
-      <td>表示调优参数，预留参数。</td>
-      <td>支持传入nullptr，当前暂不使用。</td>
+      <td>表示M轴tiling调优参数，数组首元素为预期的单个group M轴长度，其余元素预留。</td>
+      <td>支持传入nullptr或空数组；传入nullptr、空数组或首元素为0时不启用。非空输入时首元素取值范围为[0, M]。group不均分时建议传入有代表性的活跃group M轴长度；无法确定时保持nullptr。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

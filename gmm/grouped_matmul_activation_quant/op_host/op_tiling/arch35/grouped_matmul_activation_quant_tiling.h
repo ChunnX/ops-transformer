@@ -104,6 +104,7 @@ private:
     uint8_t activationType_ = DEFAULT_ACTIVATION_TYPE_GELU_TANH;
     float dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
     ge::DataType yDtype_ = ge::DT_FLOAT8_E4M3FN;
+    int64_t tuningConfig_ = 0L;
 };
 } // namespace optiling
 
