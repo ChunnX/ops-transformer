@@ -399,6 +399,15 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
         if (ret == HCOMM_PREPARE_QUEUE_FULL) {
 #if defined(MOE_EP_COMBINE_CHANNEL_STATE_DIAGNOSTICS)
             __gm__ ChannelEntity *channelEntity = reinterpret_cast<__gm__ ChannelEntity *>(commHandle);
+            auto sqContext = channelEntity->sqContextAddr[0];
+            auto cqContext = channelEntity->cqContextAddr[0];
+            uint32_t sqHead = channelEntity->sqHead;
+            uint32_t cqHead = channelEntity->cqHead;
+            uint32_t cqTail = channelEntity->cqTail;
+            uint32_t sqDepth = sqContext.contextInfo.ubJfs.sqDepth;
+            uint32_t cqDepth = cqContext.contextInfo.ubJfc.cqDepth;
+            uint32_t outstandingSq = sqHead - cqTail * 2U;
+            uint32_t outstandingCq = cqHead - cqTail;
             AscendC::printf(
                 "WriteNbiPrepare queue full before flush: ret=%d, aivId=%u, srcRank=%d, channelIndex=%u, "
                 "tokenIndex=%u\n",
@@ -408,8 +417,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
                 "preparedWriteCount=%u\n",
                 static_cast<unsigned long long>(commHandle),
                 static_cast<unsigned long long>(batchHandleBeforeFlush), batchCountBeforeFlush);
-            AscendC::printf("WriteNbiPrepare queue full state: sqHead=%u, cqHead=%u, cqTail=%u\n",
-                            channelEntity->sqHead, channelEntity->cqHead, channelEntity->cqTail);
+            AscendC::printf(
+                "WriteNbiPrepare queue full state: sqHead=%u, cqHead=%u, cqTail=%u, sqDepth=%u, cqDepth=%u\n",
+                sqHead, cqHead, cqTail, sqDepth, cqDepth);
+            AscendC::printf(
+                "WriteNbiPrepare queue full outstanding: outstandingSq=%u, outstandingCq=%u, pendingSq=%u, "
+                "pendingCq=%u\n",
+                outstandingSq, outstandingCq, batchCountBeforeFlush * 2U, batchCountBeforeFlush);
 #else
             AscendC::printf(
                 "WriteNbiPrepare queue full before flush: ret=%d, aivId=%u, srcRank=%d, channelIndex=%u, "
@@ -430,6 +444,15 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
         if (ret != HCOMM_SUCCESS) {
 #if defined(MOE_EP_COMBINE_CHANNEL_STATE_DIAGNOSTICS)
             __gm__ ChannelEntity *channelEntity = reinterpret_cast<__gm__ ChannelEntity *>(commHandle);
+            auto sqContext = channelEntity->sqContextAddr[0];
+            auto cqContext = channelEntity->cqContextAddr[0];
+            uint32_t sqHead = channelEntity->sqHead;
+            uint32_t cqHead = channelEntity->cqHead;
+            uint32_t cqTail = channelEntity->cqTail;
+            uint32_t sqDepth = sqContext.contextInfo.ubJfs.sqDepth;
+            uint32_t cqDepth = cqContext.contextInfo.ubJfc.cqDepth;
+            uint32_t outstandingSq = sqHead - cqTail * 2U;
+            uint32_t outstandingCq = cqHead - cqTail;
             AscendC::printf(
                 "WriteNbiPrepare retry failed after flush: ret=%d, aivId=%u, srcRank=%d, channelIndex=%u, "
                 "tokenIndex=%u\n",
@@ -441,8 +464,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
             AscendC::printf(
                 "WriteNbiPrepare retry batch state: activeBatchHandle=%llu, preparedWriteCount=%u, sqHead=%u, "
                 "cqHead=%u, cqTail=%u\n",
-                static_cast<unsigned long long>(activeBatchHandle_), preparedWriteCount_, channelEntity->sqHead,
-                channelEntity->cqHead, channelEntity->cqTail);
+                static_cast<unsigned long long>(activeBatchHandle_), preparedWriteCount_, sqHead, cqHead, cqTail);
+            AscendC::printf(
+                "WriteNbiPrepare retry queue state: sqDepth=%u, cqDepth=%u, outstandingSq=%u, outstandingCq=%u\n",
+                sqDepth, cqDepth, outstandingSq, outstandingCq);
 #else
             AscendC::printf(
                 "WriteNbiPrepare retry failed after flush: ret=%d, aivId=%u, srcRank=%d, channelIndex=%u, "
