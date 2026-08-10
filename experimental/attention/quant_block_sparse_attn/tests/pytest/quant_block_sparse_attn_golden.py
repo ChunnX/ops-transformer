@@ -231,15 +231,11 @@ def _physical_ids(start, count, pattern, rng):
 
 def _make_block_table(
     batch,
-    seq_len,
-    block_size,
     pattern,
     rng,
     blocknum=None,
-    q_block_num=1,
     maxblock_perbatch=None,
 ):
-    del seq_len, block_size, q_block_num
     if not isinstance(maxblock_perbatch, int) or maxblock_perbatch <= 0:
         raise ValueError(
             "maxblock_perbatch should be a positive int, "
@@ -255,7 +251,7 @@ def _make_block_table(
         physical_ids = [index % blocknum for index in range(total_slots)]
     elif pattern == "reverse":
         physical_ids = [
-            blocknum - 1 - (index % blocknum) for index in range(total_slots)
+            (blocknum - 1 - (index % blocknum)) for index in range(total_slots)
         ]
     else:
         raise ValueError(f"unsupported block_table_pattern: {pattern}")
