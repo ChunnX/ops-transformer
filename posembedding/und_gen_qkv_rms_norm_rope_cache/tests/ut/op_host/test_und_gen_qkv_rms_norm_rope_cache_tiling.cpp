@@ -142,8 +142,8 @@ struct TilingDataMirror {
 };
 #pragma pack()
 
-// UT faker 的 Ascend950 平台参数。真机上 tiling 走 GetCoreNumAiv / GetCoreMemSize 运行时读取
-// （A5 实测核数是 56 不是 64），这里的常量只用来复算 UT 里的期望值，不代表真机取值。
+// UT faker 的 Ascend950 平台参数。真机上 tiling 走 GetCoreNumAiv / GetCoreMemSize 运行时读取，
+// 实际核数可能与此处不同；这两个常量只用来复算 UT 里的期望值，不代表真机取值。
 constexpr int64_t PLATFORM_CORE_NUM = 64;
 constexpr int64_t PLATFORM_UB_BYTES = 256 * 1024;
 
