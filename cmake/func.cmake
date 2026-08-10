@@ -484,6 +484,47 @@ function(add_ops_src_copy)
         endif ()
     endif ()
 
+    set(MC2_OPS_LIST "matmul_reduce_scatter;"
+        "matmul_reduce_scatter_v2;"
+        "grouped_mat_mul_allto_allv;"
+        "quant_grouped_mat_mul_allto_allv;"
+        "grouped_mat_mul_all_reduce;"
+        "batch_mat_mul_reduce_scatter_allto_all;"
+        "allto_allv_grouped_mat_mul;"
+        "allto_allv_quant_grouped_mat_mul;"
+        "allto_all_all_gather_batch_mat_mul;"
+        "distribute_barrier;"
+        "distribute_barrier_extend;"
+        "moe_distribute_combine_add_rms_norm;"
+        "moe_distribute_dispatch;"
+        "moe_distribute_combine;"
+        "moe_distribute_dispatch_v2;"
+        "moe_distribute_combine_v2;"
+        "moe_distribute_dispatch_v3;"
+        "moe_distribute_combine_v3;"
+        "moe_update_expert;"
+        "all_gather_matmul;"
+        "all_gather_matmul_v2;"
+        "matmul_all_reduce;"
+        "matmul_all_reduce_apt;"
+        "matmul_all_reduce_add_rms_norm;"
+        "inplace_matmul_all_reduce_add_rms_norm;"
+        "quant_all_reduce;"
+        "quant_reduce_scatter;"
+        "allto_all_matmul;"
+        "matmul_allto_all;"
+        "attention_to_ffn;"
+        "ffn_to_attention;"
+        "urma_p2p_benchmark;"
+    ) # mc2算子列表
+
+    get_filename_component(FOLDER_NAME "${SRC_COPY_DST}" NAME_WE)
+    list(FIND MC2_OPS_LIST "${FOLDER_NAME}" INDEX)
+    set(BELONG_MC2_OPS FALSE)
+    if(NOT INDEX EQUAL -1)
+        set(BELONG_MC2_OPS TRUE)
+    endif()
+
     file(GLOB_RECURSE CONFIGURE_DEPENDS SRC_FILES ${SRC_COPY_SRC}/*)
     list(FILTER SRC_FILES EXCLUDE REGEX "op_host")
 
