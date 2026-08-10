@@ -46,6 +46,7 @@ constexpr uint64_t GROUP_MNK_BIT_SIZE = 0xFFFF;
 constexpr uint64_t GROUP_M_OFFSET = 32;
 constexpr uint64_t GROUP_N_OFFSET = 16;
 constexpr uint64_t BIT_NUMBER = 1;
+constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 16;
 class AllToAllMxQuantMatmulTilingBase : public AllToAllMatmulTilingBase {
     friend class AlltoAllMxQuantMatmulHelper;
 
@@ -86,6 +87,7 @@ private:
     AlltoAllQuantMatmulTilingData localTilingData_;
     hcommAllToAllMatmulTilingData hcommTilingData_;
     bool isMxFp4_ = false;
+    bool usingApaceImpl_ = false;
     uint64_t mmMvalueLen_ = 0;
     QuantType matmulQuantType_ = QuantType::MXFP8_QUANT;
     void PrintAlltoAllMxQuantMatmulTilingInfo(const std::string &opName, AlltoAllMatmulTilingInfo &tilingInfo);

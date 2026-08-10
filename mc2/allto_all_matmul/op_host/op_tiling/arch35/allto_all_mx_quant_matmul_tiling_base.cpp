@@ -436,7 +436,7 @@ CutResult AllToAllMxQuantMatmulTilingBase::GetCutResOfCommAndCompute()
         alltoallMatmulTileFormulate.GetTiling();
         cutRes = alltoallMatmulTileFormulate.tilingM_.cutRes;
     }
-    if (!contextInfo_.allToAllOutFlag) {
+    if (usingApaceImpl_) {
         AlignCutResForKernel(cutRes, contextInfo_.args_.mValue);
     }
     return cutRes;
@@ -449,9 +449,7 @@ void AllToAllMxQuantMatmulTilingBase::AlignCutResForKernel(CutResult &cutRes, ui
         OP_LOGD(opName_, "AlignCutResForKernel skip: longTileLen=%lu mValue=%lu", cutRes.longTileLen, mValue);
         return;
     }
-    auto alignUp = [](uint64_t val, uint64_t align) { return (val + align - 1) / align * align; };
-
-    uint64_t longTile = alignUp(cutRes.longTileLen, KERNEL_ALIGN_M);
+    uint64_t longTile = mc2tiling::AlignUp(cutRes.longTileLen, KERNEL_ALIGN_M);
     if (longTile >= mValue) {
         cutRes.longTileLen = mValue;
         cutRes.numLongTile = 1;
@@ -488,13 +486,8 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, InitTilingContextParameters());
     // 进行通算切分
     MC2_CHECK_LOG_RET(opName_, TileCommAndCompute());
-    if (contextInfo_.allToAllOutFlag) {
-        // arch35 主线路径: all2all_out 非空，使用 DequantBmm tiling
-        MC2_CHECK_LOG_RET(opName_, DoMxQuantMMTiling());
-    } else {
-        // hcomm 路径: all2all_out 为空，使用 Blaze tiling
-        MC2_CHECK_LOG_RET(opName_, DoHcommMxQuantMMTiling());
-    }
+    // 量化Matmul的tiling方法进行切分
+    MC2_CHECK_LOG_RET(opName_, DoMxQuantMMTiling());
     // hccl的tiling参数赋值处理
     MC2_CHECK_LOG_RET(opName_, SetHcclTiling());
     return ge::GRAPH_SUCCESS;
@@ -507,6 +500,12 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoOpTiling()
  */
 ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoMxQuantMMTiling()
 {
+    usingApaceImpl_ = (!contextInfo_.allToAllOutFlag) && (contextInfo_.args_.rankDim < APACE_IMPL_MAX_RANK_DIM);
+    if (usingApaceImpl_) {
+        // hcomm 路径: all2all_out为空且卡数<16，使用 Blaze tiling
+        return DoHcommMxQuantMMTiling();
+    }
+    // arch35 主线路径: all2all_out非空或卡数>=16，使用 DequantBmm tiling
     // 在切m时已经考虑除了rankDim
     mmMvalueLen_ = inferredInfo_.tileM;
     AlltoAllMxQuantMatmulHelper mmTile(*this, localTilingData_.mc2QuantMmTileTilingData, mmMvalueLen_);
@@ -557,7 +556,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::SetHcclTiling()
                 allToAllMatmulBuilder.errorMsg().c_str());
         return ge::GRAPH_FAILED;
     }
-    if (contextInfo_.allToAllOutFlag) {
+    if (!usingApaceImpl_) {
         allToAllTilingConfig.GetTiling(localTilingData_.mc2InitTiling);
         allToAllTilingConfig.GetTiling(localTilingData_.mc2CcTiling);
     } else {
@@ -799,7 +798,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
 {
     context_->SetScheduleMode(1);
     size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
-    if (contextInfo_.allToAllOutFlag) {
+    if (!usingApaceImpl_) {
         // arch35 主线路径: 输出 AlltoAllQuantMatmulTilingData
         SetTilingInfo(localTilingData_.alltoAllQuantMatmulTilingInfo);
         AlltoAllQuantMatmulTilingData *outTilingData = context_->GetTilingData<AlltoAllQuantMatmulTilingData>();
@@ -921,11 +920,10 @@ uint64_t AllToAllMxQuantMatmulTilingBase::GetTilingKey() const
         return ge::GRAPH_FAILED;
     }
     uint8_t commMode = (hcclServerType == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
-    bool hasAll2AllOut = contextInfo_.allToAllOutFlag;
     const uint64_t tilingKey = GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType, false, commMode,
-                                                    hasAll2AllOut);
-    OP_LOGD(opName_, "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE,HAS_ALL2ALL_OUT: [%d,%d,%d,0,%d,%d], "
-            "TilingKey is [%lu].", MX_QUANT_MODE, x2TransposeFlag, biasDType, commMode, hasAll2AllOut, tilingKey);
+                                                    usingApaceImpl_);
+    OP_LOGD(opName_, "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE,USING_APACE_IMPL: [%d,%d,%d,0,%d,%d], "
+            "TilingKey is [%lu].", MX_QUANT_MODE, x2TransposeFlag, biasDType, commMode, usingApaceImpl_, tilingKey);
     return tilingKey;
 }
 

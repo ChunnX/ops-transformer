@@ -104,7 +104,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #endif
 
 template <uint32_t QUANTMODE, bool X2TRANSPOSE, uint32_t DTYPEBIAS, bool ISSMALLK, uint32_t COMMTYPE,
-          bool HAS_ALL2ALL_OUT>
+          bool USING_APACE_IMPL>
 __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR x1_scale, GM_ADDR x2_scale,
                                             GM_ADDR comm_scale, GM_ADDR x1_offset, GM_ADDR x2_offset, GM_ADDR y,
                                             GM_ADDR all2all_out, GM_ADDR workspaceGM, GM_ADDR tilingGM)
@@ -130,7 +130,7 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     REGISTER_TILING_DEFAULT(AlltoAllQuantMatmulTilingData); // 按当前最大的结构体申请内存
 #if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
-    if constexpr (HAS_ALL2ALL_OUT) {
+    if constexpr (!USING_APACE_IMPL) {
         GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
         AscendC::HcclDataType hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E4M3;
         if constexpr (AscendC::IsSameType<DTYPE_X1, float8_e5m2_t>::value) {
@@ -146,7 +146,7 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
         op.Run();
     }
 #elif ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
-    if constexpr (HAS_ALL2ALL_OUT) {
+    if constexpr (!USING_APACE_IMPL) {
         GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
         ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, AscendC::HCCL_DATA_TYPE_UINT8, uint8_t, true);
     } else {
