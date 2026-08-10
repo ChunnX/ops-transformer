@@ -139,7 +139,7 @@ class ElasticBufferOpBuilder(OpBuilder):
             os.path.join(self._torch_npu_path, "include"),
             os.path.join(self._torch_npu_path, "include/third_party/hccl/inc"),
             os.path.join(self._torch_npu_path, "include/third_party/acl/inc"),
-            os.path.join(self._package_path, "common/inc"),
+            os.path.join(self._package_path, "common"),
         ]
 
 
