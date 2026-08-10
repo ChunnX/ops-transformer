@@ -20,6 +20,7 @@ import importlib.util
 import math
 import random
 import sys
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -596,7 +597,7 @@ def _dense_to_pa(dense_key, dense_value, dense_k_scale, block_table, block_size,
     return key_pa, value_pa, k_scale_pa
 
 
-def customize_inputs(
+def _customize_inputs_fp8(
     query,
     key,
     value,
@@ -778,3 +779,174 @@ def customize_inputs(
         atten_mask.copy_(atten_mask_data)
     elif atten_mask.numel() > 0:
         atten_mask.zero_()
+
+
+def _list_attr(value, name):
+    if value is None:
+        raise ValueError(f"{name} must be provided")
+    return [int(item) for item in value]
+
+
+def _require_empty_input(value, name):
+    if value is not None and _numel(value) != 0:
+        raise ValueError(f"{name} must be an empty tensor")
+
+
+def _sparse_parameters(sparse_mode, kv_lengths, sparse_block_size_kv, seed):
+    max_blocks = math.ceil(max(kv_lengths, default=0) / int(sparse_block_size_kv))
+    if sparse_mode == "full":
+        return max_blocks, "dense"
+    if sparse_mode == "random":
+        count = random.Random(seed).randint(1, max_blocks) if max_blocks else 0
+        return count, "random"
+    raise ValueError(f"sparse_mode must be 'full' or 'random', got {sparse_mode!r}")
+
+
+def customize_inputs(
+    query,
+    key,
+    value,
+    q_descale,
+    k_descale,
+    v_descale,
+    sparse_indices,
+    sparse_seq_len,
+    p_scale,
+    cu_seqlens_q,
+    cu_seqlens_kv,
+    seqused_q,
+    seqused_kv,
+    block_table,
+    atten_mask,
+    metadata,
+    *,
+    p_scale_value=1.0,
+    cu_seqlens_q_value=None,
+    cu_seqlens_kv_value=None,
+    seqused_q_value=None,
+    seqused_kv_value=None,
+    quant_mode=1,
+    softmax_scale=1.0,
+    mask_mode=3,
+    blocksize=0,
+    sparse_block_size_q=128,
+    sparse_block_size_kv=128,
+    layout_q="TND",
+    layout_kv="PA_BNSD",
+    layout_out="TND",
+    layout_sparse_indices="B_N_Qb_Kb",
+    return_softmax_lse=False,
+    sparse_mode="full",
+    input_ranges=None,
+    testcase_name=None,
+    **kwargs,
+):
+    """Convert the shared CSV attributes into the operator input tensors."""
+    _require_empty_input(cu_seqlens_kv, "cu_seqlens_kv")
+    _require_empty_input(seqused_q, "seqused_q")
+    _require_empty_input(metadata, "metadata")
+    if _list_attr(cu_seqlens_kv_value, "cu_seqlens_kv_value"):
+        raise ValueError("cu_seqlens_kv_value must be empty")
+    if _list_attr(seqused_q_value, "seqused_q_value"):
+        raise ValueError("seqused_q_value must be empty")
+
+    cu_q = _list_attr(cu_seqlens_q_value, "cu_seqlens_q_value")
+    if len(cu_q) < 2 or cu_q[0] != 0:
+        raise ValueError("cu_seqlens_q_value must start with 0 and contain B+1 values")
+    q_lengths = [end - start for start, end in zip(cu_q, cu_q[1:])]
+    kv_lengths = _list_attr(seqused_kv_value, "seqused_kv_value")
+    if len(q_lengths) != len(kv_lengths):
+        raise ValueError("cu_seqlens_q_value and seqused_kv_value must use the same B")
+    if any(length < 0 for length in q_lengths + kv_lengths):
+        raise ValueError("sequence lengths must be non-negative")
+
+    seed = zlib.crc32(str(testcase_name or "qbsa").encode("utf-8")) & 0x7FFFFFFF
+    sparse_count, sparse_pattern = _sparse_parameters(
+        sparse_mode, kv_lengths, sparse_block_size_kv, seed
+    )
+    data_ranges = input_ranges or ()
+    data_range_q = data_ranges[0] if len(data_ranges) > 0 else 1.0
+    data_range_k = data_ranges[1] if len(data_ranges) > 1 else 1.0
+    data_range_v = data_ranges[2] if len(data_ranges) > 2 else 1.0
+
+    if int(quant_mode) == 2:
+        _customize_inputs_mxfp8(
+            query,
+            key,
+            value,
+            q_descale,
+            k_descale,
+            v_descale,
+            p_scale,
+            sparse_indices,
+            sparse_seq_len,
+            atten_mask,
+            softmax_scale=softmax_scale,
+            sparse_q_block_size=sparse_block_size_q,
+            sparse_kv_block_size=sparse_block_size_kv,
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            layout_sparse_indices=layout_sparse_indices,
+            layout_out=layout_out,
+            mask_mode=mask_mode,
+            return_softmax_lse=return_softmax_lse,
+            actual_seq_q=q_lengths,
+            actual_seq_kv=kv_lengths,
+            sparse_count=sparse_count,
+            sparse_pattern=sparse_pattern,
+            block_table_pattern="sequential",
+            p_scale_value=p_scale_value,
+            seed=seed,
+            blocknum=int(key.shape[0]),
+            data_range_q=data_range_q,
+            data_range_k=data_range_k,
+            data_range_v=data_range_v,
+            testcase_name=testcase_name,
+            **kwargs,
+        )
+        module = _load_mxfp8_golden_module()
+        cached = module._TTK_MXFP8_CACHE[testcase_name or "__default__"]
+        block_table_data = cached["data"]["block_table"]
+    else:
+        if p_scale_value is None or _numel(p_scale) == 0:
+            raise ValueError("FP8 requires p_scale_value and a non-empty p_scale")
+        _customize_inputs_fp8(
+            query,
+            key,
+            value,
+            q_descale,
+            k_descale,
+            v_descale,
+            sparse_indices,
+            sparse_seq_len,
+            atten_mask,
+            p_scale,
+            softmax_scale=softmax_scale,
+            sparse_q_block_size=sparse_block_size_q,
+            sparse_kv_block_size=sparse_block_size_kv,
+            max_seqlen_q=max(q_lengths, default=0),
+            max_seqlen_kv=max(kv_lengths, default=0),
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            mask_mode=mask_mode,
+            quant_mode=quant_mode,
+            return_softmax_lse=return_softmax_lse,
+            sparse_count=sparse_count,
+            sparse_pattern=sparse_pattern,
+            block_table_pattern="sequential",
+            p_scale_value=p_scale_value,
+            seed=seed,
+        )
+        padded_kv = int(sparse_indices.shape[-1]) * int(sparse_block_size_kv)
+        block_table_data = _make_block_table(
+            len(kv_lengths),
+            padded_kv,
+            int(blocksize),
+            "sequential",
+            random.Random(seed),
+            blocknum=int(key.shape[0]),
+        )
+
+    _inplace_copy(cu_seqlens_q, torch.tensor(cu_q, dtype=torch.int32))
+    _inplace_copy(seqused_kv, torch.tensor(kv_lengths, dtype=torch.int32))
+    _inplace_copy(block_table, block_table_data)
