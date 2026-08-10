@@ -10,13 +10,14 @@
 
 /*!
  * \file msa_index_score_def.cpp
- * \brief MsaIndexScore 算子原型注册。
+ * \brief MsaIndexScore 算子原型注册（对齐 docs/aclnnMsaIndexScore.md）。
  *
  * dtype 组合（按列表下标对齐）：
  *   0: query=bf16, key=bf16  （非量化）
  *   1: query=fp16, key=fp16  （非量化）
- *   2: query=bf16, key=int8  （前融合 int8，scale 为反量化系数）
- *   3: query=fp16, key=int8  （前融合 int8）
+ *   2: query=fp16, key=int8  （前融合 int8，scale 为反量化系数）
+ *
+ * A2/A3 P0：PageAttention BBND key + sparse_mode∈{0,3}；FP8 / Ascend 950 暂不注册。
  */
 
 #include <cstdint>
@@ -27,57 +28,62 @@ class MsaIndexScore : public OpDef {
 public:
     explicit MsaIndexScore(const char *name) : OpDef(name)
     {
-        // index query, TND: [totalQ, numQHeads, headDim]
+        // Q_idx, TND: [T1, N1, D]
         this->Input("query")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        // paged index key cache, BSND: [numBlocks, blockSize, numKvHeads, headDim]
-        this->Input("key_cache")
+        // K_idx：P0 支持 BBND PageAttention [block_num, block_size, N2, D]
+        this->Input("key")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        // [batch, maxBlocksPerBatch], 逻辑 block -> 物理 page
+        // PA 逻辑 block → 物理 page；PA 场景必须传入
         this->Input("block_table")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        // 非量化：必须为空。
-        // int8 量化：key 的 per-token(+per-head) 反量化系数，shape [NP, N_kv, block_size]。
+        // 非量化：必须为空。int8：反量化系数 [block_num, N2, block_size]
         this->Input("scale")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        // query 长度前缀和 (cumsum), [batch + 1]
+        // sparse_mode=3 时必选，压缩下三角模板 [2048, 2048]；内核按 rightDownCausal 解析，不逐元素加载
+        this->Input("atten_mask")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        // query 长度前缀和 (cumsum), [B+1]；TND 必选
         this->Input("actual_seq_lengths_query")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        // 每个请求可见的 kv 长度, [batch]
+        // PA：各请求可见 S2，[B]
         this->Input("actual_seq_lengths_key")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        // 每个请求首个 query token 在自身 kv 序列中的位置, [batch]
+        // 当前 query 所在逻辑 block 索引，用于生成 local_mask，[B]
         this->Input("start_loc")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        // [numQHeads, totalQ, scoreBlockStride]
+        // [N1, T1, RoundUp(maxBlockNumPerSeq, 16)]
         this->Output("score")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
-        this->Attr("block_size").AttrType(OPTIONAL).Int(128); // 128: sparse block / page token 数
-        this->Attr("fill_invalid_tail").AttrType(OPTIONAL).Bool(true);
+        // 0: defaultMask；3: rightDownCausal
+        this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);
 
         OpAICoreConfig aicoreConfig;
         aicoreConfig.DynamicCompileStaticFlag(true)

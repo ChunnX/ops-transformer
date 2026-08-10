@@ -45,10 +45,17 @@ struct TestCase {
     int64_t numPages;
     std::vector<int32_t> qLen;    // 每个请求的 query 长度
     std::vector<int32_t> kvLen;   // 每个请求可见的 kv 长度
-    std::vector<int32_t> startLoc;
+    std::vector<int32_t> startLoc; // 当前 query 所在逻辑 block 索引（local_mask）
     bool useBf16;
-    bool useInt8Key; // true: key_cache=int8，scale=[NP,N_kv,P] 反量化
+    bool useInt8Key; // true: key=int8，scale=[NP,N_kv,P] 反量化
+    int64_t sparseMode = 3; // 0 / 3
 };
+
+constexpr float kLocalScoreInit = 1.0e30F;
+constexpr float kLocalScoreLocal = 1.0e29F;
+constexpr int64_t kInitBlocks = 0;
+constexpr int64_t kLocalBlocks = 1;
+constexpr int64_t kAttenMaskSize = 2048;
 
 int64_t CeilDivI64(int64_t a, int64_t b)
 {
@@ -133,8 +140,7 @@ private:
     std::vector<aclTensor *> tensors_;
 };
 
-/// CPU 参考：低精度/ int8 输入 ->（可选）反量化 -> fp32 点乘 -> 逐 block max。
-/// 非量化路径不乘任何 score-side scale。
+/// CPU 参考：score = Maxpool[(scale·)Q@Kᵀ + atten_mask] + local_mask
 void ComputeGolden(const TestCase &tc, const std::vector<int32_t> &cuSeqQ,
                    const std::vector<int32_t> &blockTable, int64_t maxBlocks, int64_t scoreStride,
                    int64_t totalQ, const std::vector<float> &queryF, const std::vector<float> &keyF,
@@ -146,10 +152,24 @@ void ComputeGolden(const TestCase &tc, const std::vector<int32_t> &cuSeqQ,
     for (int64_t b = 0; b < batch; ++b) {
         const int32_t qBegin = cuSeqQ[b];
         const int32_t qEnd = cuSeqQ[b + 1];
+        const int32_t qLen = qEnd - qBegin;
         const int64_t numBlocks = CeilDivI64(tc.kvLen[b], BLOCK_SIZE);
+        const int32_t qBlock = tc.startLoc[b];
+        const int32_t localStart =
+            (qBlock + 1 > static_cast<int32_t>(kLocalBlocks)) ? (qBlock + 1 - static_cast<int32_t>(kLocalBlocks)) : 0;
+
         for (int32_t t = qBegin; t < qEnd; ++t) {
-            const int32_t qPos = tc.startLoc[b] + (t - qBegin);
-            const int32_t visibleKeyEnd = (qPos + 1) < tc.kvLen[b] ? (qPos + 1) : tc.kvLen[b];
+            const int32_t tOff = t - qBegin;
+            int32_t visibleKeyEnd = tc.kvLen[b];
+            if (tc.sparseMode == 3) {
+                visibleKeyEnd = tc.kvLen[b] - qLen + tOff + 1;
+                if (visibleKeyEnd < 0) {
+                    visibleKeyEnd = 0;
+                }
+                if (visibleKeyEnd > tc.kvLen[b]) {
+                    visibleKeyEnd = tc.kvLen[b];
+                }
+            }
             for (int64_t h = 0; h < tc.numQHeads; ++h) {
                 for (int64_t blk = 0; blk < numBlocks; ++blk) {
                     const int32_t page = blockTable[b * maxBlocks + blk];
@@ -174,6 +194,19 @@ void ComputeGolden(const TestCase &tc, const std::vector<int32_t> &cuSeqQ,
                         continue;
                     }
                     golden[(h * totalQ + t) * scoreStride + blk] = best;
+                }
+                // local_mask
+                for (int64_t blk = 0; blk < numBlocks; ++blk) {
+                    float boost = 0.0F;
+                    if (blk < kInitBlocks) {
+                        boost = kLocalScoreInit;
+                    }
+                    if (blk >= localStart && blk <= qBlock) {
+                        boost = kLocalScoreLocal;
+                    }
+                    if (boost != 0.0F) {
+                        golden[(h * totalQ + t) * scoreStride + blk] = boost;
+                    }
                 }
             }
         }
@@ -207,8 +240,17 @@ void PrintTracePipeline(const TestCase &tc, const std::vector<int32_t> &cuSeqQ,
             const float *q = &queryF[static_cast<size_t>(flat * tc.headDim)];
             (void)printf("\n-- row flat=%ld (token=%ld head=%ld) --\n", flat, t, h);
             PrintVec("Q", q, tc.headDim);
-            const int32_t qPos = tc.startLoc[0] + static_cast<int32_t>(t);
-            const int32_t visibleKeyEnd = (qPos + 1) < tc.kvLen[0] ? (qPos + 1) : tc.kvLen[0];
+            const int32_t tOff = static_cast<int32_t>(t);
+            int32_t visibleKeyEnd = tc.kvLen[0];
+            if (tc.sparseMode == 3) {
+                visibleKeyEnd = tc.kvLen[0] - tc.qLen[0] + tOff + 1;
+                if (visibleKeyEnd < 0) {
+                    visibleKeyEnd = 0;
+                }
+                if (visibleKeyEnd > tc.kvLen[0]) {
+                    visibleKeyEnd = tc.kvLen[0];
+                }
+            }
             float best = kNegInf;
             bool any = false;
             for (int64_t n = 0; n < visibleKeyEnd + 2 && n < BLOCK_SIZE; ++n) {
@@ -255,6 +297,16 @@ bool Compare(const std::string &name, const std::vector<float> &actual, const st
                     hasBad = true;
                 }
                 ++infBad;
+            }
+            continue;
+        }
+        if (g >= 1.0e28F) { // local_mask 强制高分
+            if (!(a >= 1.0e28F)) {
+                if (!hasBad) {
+                    firstBad = i;
+                    hasBad = true;
+                }
+                ++badCount;
             }
             continue;
         }
@@ -370,13 +422,19 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     aclTensor *cuSeqQT = buf.Create(cuSeqQ, {batch + 1}, ACL_INT32);
     aclTensor *kvLenT = buf.Create(tc.kvLen, {batch}, ACL_INT32);
     aclTensor *startLocT = buf.Create(tc.startLoc, {batch}, ACL_INT32);
+    std::vector<int8_t> attenMaskHost(static_cast<size_t>(kAttenMaskSize * kAttenMaskSize), 0);
+    aclTensor *attenMaskT = nullptr;
+    if (tc.sparseMode == 3) {
+        attenMaskT = buf.Create(attenMaskHost, {kAttenMaskSize, kAttenMaskSize}, ACL_INT8);
+    }
 
     std::vector<float> scoreInit(static_cast<size_t>(tc.numQHeads * totalQ * scoreStride), 0.0F);
     void *scoreDev = nullptr;
     aclTensor *scoreT = buf.Create(scoreInit, scoreShape, ACL_FLOAT, &scoreDev);
 
     if (queryT == nullptr || keyT == nullptr || blockTableT == nullptr || cuSeqQT == nullptr ||
-        kvLenT == nullptr || startLocT == nullptr || scoreT == nullptr) {
+        kvLenT == nullptr || startLocT == nullptr || scoreT == nullptr ||
+        (tc.sparseMode == 3 && attenMaskT == nullptr)) {
         (void)printf("  [%s] create tensor failed -> FAIL\n", tc.name);
         return false;
     }
@@ -384,9 +442,8 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
-    int ret = aclnnMsaIndexScoreGetWorkspaceSize(queryT, keyT, blockTableT, scaleT, cuSeqQT, kvLenT,
-                                                 startLocT, BLOCK_SIZE, true, scoreT, &workspaceSize,
-                                                 &executor);
+    int ret = aclnnMsaIndexScoreGetWorkspaceSize(queryT, keyT, blockTableT, scaleT, attenMaskT, cuSeqQT, kvLenT,
+                                                 startLocT, tc.sparseMode, scoreT, &workspaceSize, &executor);
     if (ret != ACL_SUCCESS) {
         (void)printf("  [%s] GetWorkspaceSize failed, ERROR %d -> FAIL\n", tc.name, ret);
         return false;
@@ -432,28 +489,29 @@ int main()
         return -1;
     }
 
-    // 调试打印联调时优先跑小用例；MSA_INDEX_SCORE_RUN_ALL=1 跑完整矩阵。
+    // startLoc 为逻辑 block 索引；因果由 sparseMode=3（rightDownCausal）承担。
+    // 旧 token-prefix 语义下的 startLoc_token ≈ kv-q，对应 block = (kv-q)/P。
     const char *runAll = std::getenv("MSA_INDEX_SCORE_RUN_ALL");
     const std::vector<TestCase> allCases = {
-        // name                       Hq   D    pages  qLen           kvLen         startLoc      bf16   int8
-        {"L0-debug-trace",             2,  16,   2,   {2},           {5},          {3},          false, false},
-        {"L0-int8-dequant-trace",      2,  16,   2,   {2},           {5},          {3},          false, true},
-        {"L0-prefill-aligned",         8, 128,   8,   {32},          {256},        {224},        false, false},
-        {"L1-prefill-unaligned",       8, 128,   8,   {32, 17},      {300, 130},   {268, 113},   false, false},
-        {"L1-prefill-multi-mtile",     8, 128,  16,   {64, 48},      {700, 520},   {636, 472},   false, false},
+        // name                       Hq   D    pages  qLen           kvLen         startLoc(block) bf16  int8
+        {"L0-debug-trace",             2,  16,   2,   {2},           {5},          {16},          false, false},
+        {"L0-int8-dequant-trace",      2,  16,   2,   {2},           {5},          {16},          false, true},
+        {"L0-prefill-aligned",         8, 128,   8,   {32},          {256},        {1},           false, false},
+        {"L1-prefill-unaligned",       8, 128,   8,   {32, 17},      {300, 130},   {2, 0},        false, false},
+        {"L1-prefill-multi-mtile",     8, 128,  16,   {64, 48},      {700, 520},   {4, 3},        false, false},
         {"L1-decode-lq1",              8, 128,  16,   {1,1,1,1,1,1}, {900, 512, 128, 129, 1, 4096},
-                                                                      {899, 511, 127, 128, 0, 4095}, false, false},
-        {"L1-decode-speculative",      8, 128,  16,   {4, 2},        {1024, 260},  {1020, 258},  false, false},
-        {"L1-long-seq-multi-stile",    8, 128,  40,   {8},           {4096},       {4088},       false, false},
-        {"L1-bf16",                    8, 128,   8,   {32, 17},      {300, 130},   {268, 113},   true,  false},
-        {"L1-head-dim-64",             8,  64,   8,   {32, 17},      {300, 130},   {268, 113},   false, false},
-        {"L1-heads-16",               16, 128,   8,   {13},          {300},        {287},        false, false},
-        {"L1-int8-dequant",            8, 128,   8,   {32, 17},      {300, 130},   {268, 113},   false, true},
-        {"L2-tiny-kv",                 8, 128,   4,   {1, 1},        {1, 3},       {0, 2},       false, false},
+                                                                      {7, 3, 0, 1, 0, 31}, false, false},
+        {"L1-decode-speculative",      8, 128,  16,   {4, 2},        {1024, 260},  {7, 2},        false, false},
+        {"L1-long-seq-multi-stile",    8, 128,  40,   {8},           {4096},       {31},          false, false},
+        {"L1-bf16",                    8, 128,   8,   {32, 17},      {300, 130},   {2, 0},        true,  false},
+        {"L1-head-dim-64",             8,  64,   8,   {32, 17},      {300, 130},   {2, 0},        false, false},
+        {"L1-heads-16",               16, 128,   8,   {13},          {300},        {2},           false, false},
+        {"L1-int8-dequant",            8, 128,   8,   {32, 17},      {300, 130},   {2, 0},        false, true},
+        {"L2-tiny-kv",                 8, 128,   4,   {1, 1},        {1, 3},       {0, 0},        false, false},
     };
     const std::vector<TestCase> debugCases = {
-        {"L0-debug-trace",             2,  16,   2,   {2},           {5},          {3},          false, false},
-        {"L0-int8-dequant-trace",      2,  16,   2,   {2},           {5},          {3},          false, true},
+        {"L0-debug-trace",             2,  16,   2,   {2},           {5},          {16},          false, false},
+        {"L0-int8-dequant-trace",      2,  16,   2,   {2},           {5},          {16},          false, true},
     };
     const std::vector<TestCase> &cases =
         (runAll != nullptr && runAll[0] == '1') ? allCases : debugCases;

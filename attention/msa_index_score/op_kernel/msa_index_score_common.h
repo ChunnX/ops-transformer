@@ -66,6 +66,21 @@ constexpr uint32_t MSA_SCORE_STRIDE_ALIGN = 16;
 // 不可见 block 的填充值（-inf），使其在下游 topk 中必然落选。
 constexpr float MSA_FILL_VALUE = -3.4028234663852886e+38F;
 
+// local_mask 强制高分（对齐 Triton decode：init=1e30，local=1e29；local 覆盖 init）。
+constexpr float MSA_LOCAL_SCORE_INIT = 1.0e30F;
+constexpr float MSA_LOCAL_SCORE_LOCAL = 1.0e29F;
+
+// sparse_mode：0=defaultMask（无因果截断）；3=rightDownCausal（与 LightningIndexer 一致）。
+constexpr uint32_t MSA_SPARSE_MODE_DEFAULT = 0;
+constexpr uint32_t MSA_SPARSE_MODE_RIGHT_DOWN = 3;
+
+// MiniMax 默认强制选块数（接口文档未暴露 attr；P0 以常量对齐 HF/Triton 常见配置）。
+constexpr uint32_t MSA_DEFAULT_INIT_BLOCKS = 0;
+constexpr uint32_t MSA_DEFAULT_LOCAL_BLOCKS = 1;
+
+// atten_mask 压缩下三角模板边长（sparse_mode=3 时校验）。
+constexpr uint32_t MSA_ATTEN_MASK_SIZE = 2048;
+
 // FFTS cross-core flag id，合法范围 0~7（8/9/10 为保留 barrier）。
 constexpr uint16_t MSA_FLAG_S_READY = 1;
 constexpr uint16_t MSA_FLAG_S_READY_REVERSE = 2;

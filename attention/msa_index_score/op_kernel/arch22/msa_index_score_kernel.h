@@ -73,18 +73,18 @@ public:
 
     __aicore__ inline MsaIndexScoreKernel() {}
 
-    __aicore__ inline void Init(GM_ADDR query, GM_ADDR keyCache, GM_ADDR blockTable, GM_ADDR scale,
+    __aicore__ inline void Init(GM_ADDR query, GM_ADDR key, GM_ADDR blockTable, GM_ADDR scale,
                                 GM_ADDR cuSeqLenQ, GM_ADDR kvLen, GM_ADDR startLoc, GM_ADDR score,
                                 GM_ADDR workspace, const MsaIndexScoreTilingData *__restrict tiling)
     {
         tiling_ = tiling;
         gQuery_.SetGlobalBuffer(reinterpret_cast<__gm__ ElementQ *>(query));
         if constexpr (IS_QUANT_V) {
-            gKeyInt8_.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(keyCache));
+            gKeyInt8_.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(key));
             gKeyScratch_.SetGlobalBuffer(reinterpret_cast<__gm__ ElementQ *>(
                 reinterpret_cast<__gm__ float *>(workspace) + tiling_->kScratchOffsetElems));
         } else {
-            gKeyFp_.SetGlobalBuffer(reinterpret_cast<__gm__ ElementQ *>(keyCache));
+            gKeyFp_.SetGlobalBuffer(reinterpret_cast<__gm__ ElementQ *>(key));
         }
         gBlockTable_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(blockTable));
         gScale_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(scale));
@@ -95,8 +95,8 @@ public:
         gWorkspace_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspace));
 
         scheduler_.Init(tiling_->batch, tiling_->numQHeads, tiling_->maxBlocksPerBatch,
-                        tiling_->scoreBlockStride, tiling_->fillInvalidTail != 0U, gCuSeqLenQ_, gKvLen_,
-                        gStartLoc_);
+                        tiling_->scoreBlockStride, tiling_->sparseMode, tiling_->initBlocks,
+                        tiling_->localBlocks, gCuSeqLenQ_, gKvLen_, gStartLoc_);
     }
 
     __aicore__ inline void Process()

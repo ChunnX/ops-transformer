@@ -24,16 +24,17 @@
 
 namespace optiling {
 
+// 与 op_def 入参顺序一致
 constexpr uint32_t MSA_IDX_QUERY = 0;
-constexpr uint32_t MSA_IDX_KEY_CACHE = 1;
+constexpr uint32_t MSA_IDX_KEY = 1;
 constexpr uint32_t MSA_IDX_BLOCK_TABLE = 2;
 constexpr uint32_t MSA_IDX_SCALE = 3;
-constexpr uint32_t MSA_IDX_CU_SEQ_Q = 4;
-constexpr uint32_t MSA_IDX_KV_LEN = 5;
-constexpr uint32_t MSA_IDX_START_LOC = 6;
+constexpr uint32_t MSA_IDX_ATTEN_MASK = 4;
+constexpr uint32_t MSA_IDX_CU_SEQ_Q = 5;
+constexpr uint32_t MSA_IDX_KV_LEN = 6;
+constexpr uint32_t MSA_IDX_START_LOC = 7;
 
-constexpr uint32_t MSA_ATTR_BLOCK_SIZE = 0;
-constexpr uint32_t MSA_ATTR_FILL_INVALID_TAIL = 1;
+constexpr uint32_t MSA_ATTR_SPARSE_MODE = 0;
 
 BEGIN_TILING_DATA_DEF(MsaIndexScoreTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, batch)
@@ -46,19 +47,20 @@ TILING_DATA_FIELD_DEF(uint32_t, blockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlocksPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, scoreBlockStride)
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
-TILING_DATA_FIELD_DEF(uint32_t, isQuant) // 1: key_cache 为 int8，scale 为反量化系数
-TILING_DATA_FIELD_DEF(uint32_t, fillInvalidTail)
-TILING_DATA_FIELD_DEF(uint32_t, numPages) // key_cache / scale 的物理 page 数 NP
-// 以元素为单位的 stride
+TILING_DATA_FIELD_DEF(uint32_t, isQuant) // 1: key 为 int8
+TILING_DATA_FIELD_DEF(uint32_t, sparseMode) // 0 / 3
+TILING_DATA_FIELD_DEF(uint32_t, initBlocks)
+TILING_DATA_FIELD_DEF(uint32_t, localBlocks)
+TILING_DATA_FIELD_DEF(uint32_t, numPages)
 TILING_DATA_FIELD_DEF(uint32_t, strideQt)
 TILING_DATA_FIELD_DEF(uint32_t, strideQn)
 TILING_DATA_FIELD_DEF(uint32_t, strideKvBlock)
 TILING_DATA_FIELD_DEF(uint32_t, strideKvToken)
-TILING_DATA_FIELD_DEF(uint32_t, strideScalePage) // NP 维 stride = N_kv * block_size
-TILING_DATA_FIELD_DEF(uint32_t, strideScaleHead) // N_kv 维 stride = block_size
+TILING_DATA_FIELD_DEF(uint32_t, strideScalePage)
+TILING_DATA_FIELD_DEF(uint32_t, strideScaleHead)
 TILING_DATA_FIELD_DEF(uint32_t, strideOutHead)
 TILING_DATA_FIELD_DEF(uint32_t, strideOutToken)
-TILING_DATA_FIELD_DEF(uint32_t, kScratchOffsetElems) // userWs 内 K cast 暂存相对 float 基址的元素偏移
+TILING_DATA_FIELD_DEF(uint32_t, kScratchOffsetElems)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(MsaIndexScore, MsaIndexScoreTilingData)
 
@@ -74,8 +76,10 @@ struct MsaIndexScoreInfo {
     uint32_t blockSize = 0;
     uint32_t maxBlocksPerBatch = 0;
     uint32_t numPages = 0;
+    uint32_t sparseMode = 3;
+    uint32_t initBlocks = 0;
+    uint32_t localBlocks = 1;
     bool isQuant = false;
-    bool fillInvalidTail = true;
     ge::DataType queryDtype = ge::DT_BF16;
     ge::DataType keyDtype = ge::DT_BF16;
 };

@@ -29,50 +29,38 @@ except ImportError:
 if _TORCHAIR_AVAILABLE:
 
     @auto_convert_to_tensor(
-        [False, False, False, False, False, False, False],
-        [False, False, False, True, False, False, False],
+        [False, False, False, False, False, False, False, False],
+        [False, False, True, True, True, True, True, False],
     )
     def MsaIndexScore(
         query: Tensor,
-        key_cache: Tensor,
-        block_table: Tensor,
+        key: Tensor,
+        block_table: Optional[Tensor],
         scale: Optional[Tensor],
-        actual_seq_lengths_query: Tensor,
-        actual_seq_lengths_key: Tensor,
+        atten_mask: Optional[Tensor],
+        actual_seq_lengths_query: Optional[Tensor],
+        actual_seq_lengths_key: Optional[Tensor],
         start_loc: Tensor,
         *,
-        block_size: int = 128,
-        fill_invalid_tail: bool = True,
+        sparse_mode: int = 3,
         dependencies=None,
         node_name=None,
     ):
-        """REG_OP(MsaIndexScore)\n
-        .INPUT(query, TensorType({DT_FLOAT16, DT_BF16}))\n
-        .INPUT(key_cache, TensorType({DT_FLOAT16, DT_BF16, DT_INT8}))\n
-        .INPUT(block_table, TensorType({DT_INT32}))\n
-        .OPTIONAL_INPUT(scale, TensorType({DT_FLOAT}))\n
-        .INPUT(actual_seq_lengths_query, TensorType({DT_INT32}))\n
-        .INPUT(actual_seq_lengths_key, TensorType({DT_INT32}))\n
-        .INPUT(start_loc, TensorType({DT_INT32}))\n
-        .OUTPUT(score, TensorType({DT_FLOAT}))\n
-        .ATTR(block_size, Int, 128)\n
-        .ATTR(fill_invalid_tail, Bool, true)
-        """
         if dependencies is None:
             dependencies = []
 
         inputs = {
             "query": query,
-            "key_cache": key_cache,
+            "key": key,
             "block_table": block_table,
             "scale": scale,
+            "atten_mask": atten_mask,
             "actual_seq_lengths_query": actual_seq_lengths_query,
             "actual_seq_lengths_key": actual_seq_lengths_key,
             "start_loc": start_loc,
         }
         attrs = {
-            "block_size": attr.Int(block_size),
-            "fill_invalid_tail": attr.Bool(fill_invalid_tail),
+            "sparse_mode": attr.Int(sparse_mode),
         }
         outputs = ["score"]
         return ge_op(
@@ -83,14 +71,14 @@ if _TORCHAIR_AVAILABLE:
             dependencies=dependencies,
             ir=IrDef("MsaIndexScore")
             .input("query", "DT_FLOAT16, DT_BF16")
-            .input("key_cache", "DT_FLOAT16, DT_BF16, DT_INT8")
-            .input("block_table", "DT_INT32")
+            .input("key", "DT_FLOAT16, DT_BF16, DT_INT8")
+            .optional_input("block_table", "DT_INT32")
             .optional_input("scale", "DT_FLOAT")
-            .input("actual_seq_lengths_query", "DT_INT32")
-            .input("actual_seq_lengths_key", "DT_INT32")
+            .optional_input("atten_mask", "DT_INT8")
+            .optional_input("actual_seq_lengths_query", "DT_INT32")
+            .optional_input("actual_seq_lengths_key", "DT_INT32")
             .input("start_loc", "DT_INT32")
-            .attr("block_size", attr.Int(128))
-            .attr("fill_invalid_tail", attr.Bool(True))
+            .attr("sparse_mode", attr.Int(3))
             .output("score", "DT_FLOAT"),
         )
 
@@ -99,28 +87,27 @@ if _TORCHAIR_AVAILABLE:
     )
     def convert_msa_index_score(
         query: Tensor,
-        key_cache: Tensor,
-        block_table: Tensor,
-        actual_seq_lengths_query: Tensor,
-        actual_seq_lengths_key: Tensor,
+        key: Tensor,
+        block_table: Optional[Tensor],
+        scale: Optional[Tensor],
+        atten_mask: Optional[Tensor],
+        actual_seq_lengths_query: Optional[Tensor],
+        actual_seq_lengths_key: Optional[Tensor],
         start_loc: Tensor,
         *,
-        scale: Optional[Tensor] = None,
-        block_size: int = 128,
-        fill_invalid_tail: bool = True,
+        sparse_mode: int = 3,
         meta_outputs: TensorSpec = None,
     ):
-        """GE converter for msa_index_score."""
         return MsaIndexScore(
             query=query,
-            key_cache=key_cache,
+            key=key,
             block_table=block_table,
             scale=scale,
+            atten_mask=atten_mask,
             actual_seq_lengths_query=actual_seq_lengths_query,
             actual_seq_lengths_key=actual_seq_lengths_key,
             start_loc=start_loc,
-            block_size=block_size,
-            fill_invalid_tail=fill_invalid_tail,
+            sparse_mode=sparse_mode,
         )
 
 else:
