@@ -259,7 +259,6 @@ def test_mqsmla_quant_process_ci(test_data, device_id=0):
     cpu_output = test_data["cpu_output"]
     cpu_lse = test_data.get("cpu_lse")
     torch_npu.npu.set_device(device_id)
-
     print("test_data:", params)
     print("mixed_quant_sparse_flash_mla_metadata...")
     metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
@@ -321,6 +320,8 @@ def test_mqsmla_quant_process_ci(test_data, device_id=0):
     )
     torch.npu.synchronize()
     metadata.npu()
+    torch.set_printoptions(profile="full")
+    print(metadata)
     print("mixed_quant_sparse_flash_mla...")
     npu_result, npu_lse = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
         q=op_input["q"].npu() if op_input["q"] is not None else None,
