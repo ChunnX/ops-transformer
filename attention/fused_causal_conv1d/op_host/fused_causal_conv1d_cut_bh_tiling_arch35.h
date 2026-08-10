@@ -62,6 +62,7 @@ constexpr int32_t ATTR_MAX_QUERY_LEN_INDEX = 3;       // 2D 输入时的最大�
 constexpr int32_t ATTR_RESIDUAL_CONNECTION_INDEX = 4; // 是否使用残差连接：0=否，1=是
 constexpr int32_t ATTR_BLOCK_SIZE_INDEX = 5;          // APC block 大小（APC 开启时必须非零）
 constexpr int32_t ATTR_CONV_MODE_INDEX = 6;           // 卷积模式：0=Qwen3，1=Pangu v2（前 width-1 token 置零）
+constexpr int32_t ATTR_MAX_DRAFT_TOKENS_INDEX = 7;
 
 constexpr int64_t DIM_ALIGN_ELEMENT = 128;                      // dim 方向的最小对齐单元（128 个元素，fp16/bf16 = 256 字节）
 constexpr int64_t COARSE_GRAIN_THRESHOLD = 1024;                // dim >= 1024 时切换到粗粒度 tiling 模式
