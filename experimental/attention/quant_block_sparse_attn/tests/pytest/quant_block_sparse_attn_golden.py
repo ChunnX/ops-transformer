@@ -87,6 +87,7 @@ def _normalize_params(params):
         "sparse_kv_block_size",
         "seed",
         "block_num",
+        "maxblock_perbatch",
         "pa_block_padding_bytes",
     ):
         if isinstance(normalized.get(key), float) and normalized[key].is_integer():
@@ -228,32 +229,40 @@ def _physical_ids(start, count, pattern, rng):
     return ids
 
 
-def _make_block_table(batch, seq_len, block_size, pattern, rng, blocknum=None, q_block_num=1):
-    kv_block_num = math.ceil(seq_len / block_size)
-    width = kv_block_num
-    needed_block_num = batch * width
+def _make_block_table(
+    batch,
+    seq_len,
+    block_size,
+    pattern,
+    rng,
+    blocknum=None,
+    q_block_num=1,
+    maxblock_perbatch=None,
+):
+    del seq_len, block_size, q_block_num
+    if not isinstance(maxblock_perbatch, int) or maxblock_perbatch <= 0:
+        raise ValueError(
+            "maxblock_perbatch should be a positive int, "
+            f"got {maxblock_perbatch}"
+        )
+    if not isinstance(blocknum, int) or blocknum <= 0:
+        raise ValueError(f"blocknum should be a positive int, got {blocknum}")
 
-    if blocknum is None or blocknum >= needed_block_num:
-        block_table = torch.empty((batch, kv_block_num), dtype=torch.int32)
-        for batch_idx in range(batch):
-            physical_ids = _physical_ids(
-                batch_idx * kv_block_num, kv_block_num, pattern, rng
-            )
-            for block_idx, physical_block in enumerate(physical_ids):
-                block_table[batch_idx, block_idx] = int(physical_block)
-        return block_table
+    total_slots = batch * maxblock_perbatch
+    if pattern == "random":
+        physical_ids = [rng.randrange(blocknum) for _ in range(total_slots)]
+    elif pattern == "sequential":
+        physical_ids = [index % blocknum for index in range(total_slots)]
+    elif pattern == "reverse":
+        physical_ids = [
+            blocknum - 1 - (index % blocknum) for index in range(total_slots)
+        ]
+    else:
+        raise ValueError(f"unsupported block_table_pattern: {pattern}")
 
-    if blocknum < width:
-        # 物理块池小于每 batch 的逻辑块数：block_table 前几列共享（全部指向物理块 0），
-        # 其余列指向互不相同的物理块；所有 batch 行一致，总物理块数精确等于 blocknum。
-        shared_cols = width - blocknum + 1
-        if shared_cols <= 0 or shared_cols > width:
-            raise ValueError(f"blocknum={blocknum} out of range [1, {width}]")
-        block_table = torch.zeros((batch, width), dtype=torch.int32)
-        for batch_idx in range(batch):
-            for block_idx in range(shared_cols, width):
-                block_table[batch_idx, block_idx] = block_idx - shared_cols + 1
-        return block_table
+    return torch.tensor(physical_ids, dtype=torch.int32).reshape(
+        batch, maxblock_perbatch
+    )
 
 
 def _allowed_blocks(
@@ -919,6 +928,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         batch, s2, sparse_kv_block_size, case["block_table_pattern"], rng,
         blocknum=case.get("block_num"),
         q_block_num=math.ceil(case["S1"] / case["sparse_q_block_size"]),
+        maxblock_perbatch=case["maxblock_perbatch"],
     )
     case["data_generation_mode"] = "fia_style_fullquant"
     case["data_range_left"] = DATA_RANGE_LEFT
@@ -935,6 +945,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         sparse_kv_block_size,
         case["pa_block_padding_bytes"],
         case["layout_kv"],
+        physical_block_num=case["block_num"],
     )
     combined_kv_cache.assert_combined_kv_views(kv_cache_storage, kv_cache_meta)
     atten_mask = torch.tril(torch.ones((2048, 2048), dtype=torch.uint8)).T.contiguous()
