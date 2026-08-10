@@ -227,7 +227,8 @@ FlashAttnMetadataCheck::CheckConsistency(int64_t batchSize, int64_t numHeadsQ, i
                "sequsedKvOptional is not valid!");
 
     CHECK_COND((numHeadsQ % numHeadsKv == 0), ACLNN_ERR_RUNTIME_ERROR,
-               "numHeadsQ must be divisible by numHeadsKv, but got numHeadsQ=%ld, numHeadsKv=%ld", numHeadsQ, numHeadsKv);
+               "numHeadsQ must be divisible by numHeadsKv, but got numHeadsQ=%ld, numHeadsKv=%ld",
+               numHeadsQ, numHeadsKv);
 
     return ACLNN_SUCCESS;
 }
