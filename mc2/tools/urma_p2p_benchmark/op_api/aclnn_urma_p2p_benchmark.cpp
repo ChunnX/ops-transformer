@@ -136,16 +136,13 @@ aclnnStatus aclnnUrmaP2pBenchmarkGetWorkspaceSize(
     // 否则SQE先运行后缓存8KB的Mc2Context(不含hcommHandle_)，
     // Hcomm复用时hcommHandle_读垃圾值导致WriteNbi/Drain死锁
     const char *opName = strcmp(commAlg, "hcomm") == 0 ? "urma_p2p_benchmark_hcomm" : "urma_p2p_benchmark";
-    if (strcmp(commAlg, "hcomm") == 0) {
-        // Hcomm模式: 使用本地5参数版P2pHcommContext(含hcommHandle_)
-        // 创建COMM_PROTOCOL_UBC_CTP协议的通信上下文
-        aclnnRet = P2pHcommAclnn::P2pHcommContextHelper::GetP2pHcommContextTensor(
-            group, opName, hcclBuffSize, mc2Context, CommProtocol::COMM_PROTOCOL_UBC_CTP);
-    } else {
-        // SQE模式: 使用common的4参数版Mc2Context(不含hcommHandle_)
-        aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(
-            group, opName, hcclBuffSize, mc2Context);
-    }
+    // SQE和Hcomm均使用5参数版GetP2pHcommContextTensor + COMM_PROTOCOL_UBC_CTP创建通信上下文
+    // 原因: 4参数版GetMc2ContextTensor内部GetCommProtocol()硬编码返回UB_MEM，
+    // UB_MEM协议创建AIV通道时需要rtsIpcMemImportByKey跨设备UB内存映射，部分环境驱动不支持。
+    // UBC_CTP协议不需要驱动级P2P内存映射。SQE模式kernel侧使用HcclCombinOpParam(框架自动创建)，
+    // 不读取此contextGM，所以context结构体差异无影响。
+    aclnnRet = P2pHcommAclnn::P2pHcommContextHelper::GetP2pHcommContextTensor(
+        group, opName, hcclBuffSize, mc2Context, CommProtocol::COMM_PROTOCOL_UBC_CTP);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     aclnnRet = aclnnInnerUrmaP2pBenchmarkGetWorkspaceSize(
