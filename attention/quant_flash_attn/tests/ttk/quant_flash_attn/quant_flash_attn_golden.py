@@ -140,6 +140,75 @@ DATA_RANGE_V = None
 DEVICE_ID = None
 
 
+def reset_golden_state():
+    """批跑前重置所有可变全局状态，避免上一个 case 的残留污染当前 case。
+
+    包括:
+      - 重置所有 op 参数全局变量为默认值 (None / 0)
+      - 清空 NPU 显存缓存，避免上一 case 的 output tensor 内存被复用导致读到残留数据
+      - 重置 torch 随机数生成器状态
+
+    由 wrapper._apply_golden_globals 在注入 case 参数之前调用，保证 csv 未显式覆盖
+    的字段回到默认值，而不是沿用上一 case 的值。
+    """
+    global B, N_q, N_kv, D
+    global CU_SEQLENS_Q, CU_SEQLENS_KV, SEQUSED_Q, SEQUSED_KV
+    global MAX_SEQLEN_Q, MAX_SEQLEN_KV
+    global ENABLE_PA, BLOCK_SIZE, SPARSE_MODE
+    global INPUT_LAYOUT, Q_SCALE_LAYOUT, P_SCALE, SOFTMAX_SCALE
+    global KV_CACHE_LAYOUT, IS_CONTIGUOUS, ENABLE_LSE
+    global SEED_Q, SEED_K, SEED_V
+    global DATA_RANGE_Q, DATA_RANGE_K, DATA_RANGE_V, DEVICE_ID
+    global GRAPH_PATH
+
+    B = None
+    N_q = None
+    N_kv = None
+    D = None
+    CU_SEQLENS_Q = None
+    CU_SEQLENS_KV = None
+    SEQUSED_Q = None
+    SEQUSED_KV = None
+    MAX_SEQLEN_Q = None
+    MAX_SEQLEN_KV = None
+    ENABLE_PA = None
+    BLOCK_SIZE = None
+    SPARSE_MODE = 0
+    INPUT_LAYOUT = None
+    Q_SCALE_LAYOUT = None
+    P_SCALE = None
+    SOFTMAX_SCALE = None
+    KV_CACHE_LAYOUT = None
+    IS_CONTIGUOUS = None
+    ENABLE_LSE = None
+    SEED_Q = None
+    SEED_K = None
+    SEED_V = None
+    DATA_RANGE_Q = None
+    DATA_RANGE_K = None
+    DATA_RANGE_V = None
+    DEVICE_ID = None
+    GRAPH_PATH = int(_os.environ.get("GRAPH_PATH", "0"))
+
+    # 清空 NPU 显存缓存：避免上一 case 分配的 output/workspace 内存被本 case 复用，
+    # 从而出现 needInitOutput 未覆盖到的区域读到上一 case 残留大值的情况。
+    try:
+        if torch.npu.is_available():
+            torch.npu.synchronize()
+            torch.npu.empty_cache()
+    except Exception as _e:
+        logger.debug("[reset_golden_state] empty_cache skipped: %s", _e)
+
+    # 重置随机数生成器，保证数据生成可复现、不跨 case 累积偏移
+    try:
+        torch.manual_seed(0)
+        if torch.npu.is_available():
+            torch.npu.manual_seed(0)
+            torch.npu.manual_seed_all(0)
+    except Exception as _e:
+        logger.debug("[reset_golden_state] manual_seed skipped: %s", _e)
+
+
 def _get_npu_fa_kwargs():
     # 每次调用时读取最新全局变量，确保 pytest 修改配置后生效
     return dict(

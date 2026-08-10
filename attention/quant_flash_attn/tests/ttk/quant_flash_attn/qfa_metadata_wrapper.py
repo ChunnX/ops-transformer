@@ -49,6 +49,8 @@ logger = logging.getLogger(__name__)
 
 def _apply_golden_globals(params):
     """把 case 参数注入 golden 模块全局变量。"""
+    # 先重置所有全局状态，清空上一 case 残留 (含 NPU 显存缓存)
+    golden_mod.reset_golden_state()
     for k, v in params.items():
         setattr(golden_mod, k, v)
 
