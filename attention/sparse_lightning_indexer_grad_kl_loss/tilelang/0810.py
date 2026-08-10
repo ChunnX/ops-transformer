@@ -333,10 +333,10 @@ def tilelang_grad_kl_loss_single_kernel(
         GatherKey_ws, GatherKeyRope_ws, bmm1Res,
         c1_query_chunk_0_l1, c1_query_chunk_1_l1, c1_query_chunk_2_l1, c1_query_chunk_3_l1,
         c1_query_rope_cache_l1, c1_key_l1, c1_p_q_l0a, c1_p_key_l0b, c1_p_l0c,
-        bz_task, s1_id, k_start, p_event,
+        bz_task, s1_id, k_start, l0ab_event, l0c_event,
     ):
         for d_idx in T.serial(d_num_query):
-            T.wait_flag("m", "mte1", p_event)
+            T.wait_flag("m", "mte1", l0ab_event)
             T.wait_flag("mte2", "mte1", 0)
             if d_idx == 0:
                 T.copy(c1_query_chunk_0_l1, c1_p_q_l0a)
@@ -348,7 +348,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.copy(c1_query_chunk_3_l1, c1_p_q_l0a)
             T.copy(c1_key_l1, c1_p_key_l0b, transpose=True)
             T.set_flag("mte1", "mte2", 0)
-            T.set_flag("mte1", "m", p_event)
+            T.set_flag("mte1", "m", l0ab_event)
             if d_idx + 1 < d_num_query:
                 T.wait_flag("mte1", "mte2", 0)
                 T.copy(GatherKey_ws[bz_task, s1_id, k_start:k_start + N_SPLIT, (d_idx + 1) * K_SPLIT:(d_idx + 2) * K_SPLIT], c1_key_l1)
@@ -357,40 +357,68 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.wait_flag("mte1", "mte2", 0)
                 T.copy(GatherKeyRope_ws[bz_task, s1_id, k_start:k_start + N_SPLIT, 0:K_SPLIT], c1_key_l1)
                 T.set_flag("mte2", "mte1", 0)
-            T.wait_flag("mte1", "m", p_event)
-            T.wait_flag("fix", "m", p_event)
+            T.wait_flag("mte1", "m", l0ab_event)
+            T.wait_flag("fix", "m", l0c_event)
             T.mma(c1_p_q_l0a, c1_p_key_l0b, c1_p_l0c, init=(d_idx == 0))
-            T.set_flag("m", "mte1", p_event)
+            T.set_flag("m", "mte1", l0ab_event)
             if d_idx + 1 < d_num_query or d_num_rope > 0:
-                T.set_flag("fix", "m", p_event)
+                T.set_flag("fix", "m", l0c_event)
         for rope_idx in T.serial(d_num_rope):
-            T.wait_flag("m", "mte1", p_event)
+            T.wait_flag("m", "mte1", l0ab_event)
             T.wait_flag("mte2", "mte1", 0)
             T.copy(c1_query_rope_cache_l1[0:N1, rope_idx * K_SPLIT:(rope_idx + 1) * K_SPLIT], c1_p_q_l0a)
             T.copy(c1_key_l1, c1_p_key_l0b, transpose=True)
             T.set_flag("mte1", "mte2", 0)
-            T.set_flag("mte1", "m", p_event)
+            T.set_flag("mte1", "m", l0ab_event)
             if rope_idx + 1 < d_num_rope:
                 T.wait_flag("mte1", "mte2", 0)
                 T.copy(GatherKeyRope_ws[bz_task, s1_id, k_start:k_start + N_SPLIT, (rope_idx + 1) * K_SPLIT:(rope_idx + 2) * K_SPLIT], c1_key_l1)
                 T.set_flag("mte2", "mte1", 0)
-            T.wait_flag("mte1", "m", p_event)
-            T.wait_flag("fix", "m", p_event)
+            T.wait_flag("mte1", "m", l0ab_event)
+            T.wait_flag("fix", "m", l0c_event)
             T.mma(c1_p_q_l0a, c1_p_key_l0b, c1_p_l0c, init=False)
-            T.set_flag("m", "mte1", p_event)
+            T.set_flag("m", "mte1", l0ab_event)
             if rope_idx + 1 < d_num_rope:
-                T.set_flag("fix", "m", p_event)
-        T.set_flag("m", "fix", p_event)
-        T.wait_flag("m", "fix", p_event)
+                T.set_flag("fix", "m", l0c_event)
+        T.set_flag("m", "fix", l0c_event)
+        T.wait_flag("m", "fix", l0c_event)
         T.copy(c1_p_l0c, bmm1Res[bz_task, s1_id, 0:N1, k_start:k_start + N_SPLIT])
-        T.set_flag("fix", "m", p_event)
+        T.set_flag("fix", "m", l0c_event)
+
+    @T.macro
+    def cube1_sy_tile(
+        GatherKeyIndex_ws, bmm2Res, c1_qi_l1, c1_ki_l1,
+        c1_sy_qi_l0a, c1_sy_ki_l0b, c1_sy_l0c,
+        bz_task, s1_id, k_start, l0_event,
+    ):
+        for d_idx in T.serial(d_num_query_index):
+            T.wait_flag("mte1", "mte2", 1)
+            T.copy(GatherKeyIndex_ws[bz_task, s1_id, k_start:k_start + N_SPLIT, d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT], c1_ki_l1)
+            T.set_flag("mte2", "mte1", 1)
+            T.wait_flag("m", "mte1", l0_event)
+            T.wait_flag("mte2", "mte1", 1)
+            if d_num_query_index != 1:
+                T.copy(c1_qi_l1[0:Nidx1, d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT], c1_sy_qi_l0a)
+            T.copy(c1_ki_l1, c1_sy_ki_l0b, transpose=True)
+            T.set_flag("mte1", "mte2", 1)
+            T.set_flag("mte1", "m", l0_event)
+            T.wait_flag("mte1", "m", l0_event)
+            T.wait_flag("fix", "m", l0_event)
+            T.mma(c1_sy_qi_l0a, c1_sy_ki_l0b, c1_sy_l0c, init=(d_idx == 0))
+            T.set_flag("m", "mte1", l0_event)
+            if d_idx + 1 < d_num_query_index:
+                T.set_flag("fix", "m", l0_event)
+        T.set_flag("m", "fix", l0_event)
+        T.wait_flag("m", "fix", l0_event)
+        T.copy(c1_sy_l0c, bmm2Res[bz_task, s1_id, 0:Nidx1, k_start:k_start + N_SPLIT], enable_relu=True)
+        T.set_flag("fix", "m", l0_event)
 
     @T.macro
     def cube1_task(
         Query, QueryRope, QueryIndex, GatherKey_ws, GatherKeyRope_ws, GatherKeyIndex_ws,
         bmm1Res, bmm2Res, bz_task, s1_begin_task, s1_end_task, task_slot,
     ):
-        """C1：P 路径使用双 L0 slot，SY 路径保持精度基线。"""
+        """C1：P/SY 各自双缓冲，并在阶段边界复用同一批物理 L0 地址。"""
         with T.Scope("C"):
             c1_query_chunk_0_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
             c1_query_chunk_1_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
@@ -406,17 +434,18 @@ def tilelang_grad_kl_loss_single_kernel(
             c1_p_slot1_l0c = T.alloc_L0C((N1, N_SPLIT), calc_dtype)
             c1_qi_l1 = T.alloc_L1((Nidx1, K_SPLIT), input_dtype)
             c1_ki_l1 = T.alloc_L1((N_SPLIT, K_SPLIT), input_dtype)
-            c1_qi_l0a = T.alloc_L0A((Nidx1, K_SPLIT), input_dtype)
-            c1_ki_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
-            c1_sy_l0c = T.alloc_L0C((Nidx1, N_SPLIT), calc_dtype)
+            c1_sy_slot0_qi_l0a = T.alloc_L0A((Nidx1, K_SPLIT), input_dtype)
+            c1_sy_slot0_ki_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
+            c1_sy_slot0_l0c = T.alloc_L0C((Nidx1, N_SPLIT), calc_dtype)
+            c1_sy_slot1_qi_l0a = T.alloc_L0A((Nidx1, K_SPLIT), input_dtype)
+            c1_sy_slot1_ki_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
+            c1_sy_slot1_l0c = T.alloc_L0C((Nidx1, N_SPLIT), calc_dtype)
             T.set_flag("mte1", "mte2", 0)
             T.set_flag("m", "mte1", 0)
             T.set_flag("fix", "m", 0)
             T.set_flag("m", "mte1", 2)
             T.set_flag("fix", "m", 2)
             T.set_flag("mte1", "mte2", 1)
-            T.set_flag("m", "mte1", 1)
-            T.set_flag("fix", "m", 1)
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 T.copy(Query[bz_task, s1_id, 0:N1, 0:K_SPLIT], c1_query_chunk_0_l1)
                 T.copy(Query[bz_task, s1_id, 0:N1, K_SPLIT:2 * K_SPLIT], c1_query_chunk_1_l1)
@@ -445,29 +474,36 @@ def tilelang_grad_kl_loss_single_kernel(
                                 GatherKey_ws, GatherKeyRope_ws, bmm1Res,
                                 c1_query_chunk_0_l1, c1_query_chunk_1_l1, c1_query_chunk_2_l1, c1_query_chunk_3_l1,
                                 c1_query_rope_cache_l1, c1_key_l1, c1_p_slot0_q_l0a, c1_p_slot0_key_l0b, c1_p_slot0_l0c,
-                                bz_task, s1_id, k_start, 0,
+                                bz_task, s1_id, k_start, 0, 0,
                             )
                         else:
                             cube1_p_tile(
                                 GatherKey_ws, GatherKeyRope_ws, bmm1Res,
                                 c1_query_chunk_0_l1, c1_query_chunk_1_l1, c1_query_chunk_2_l1, c1_query_chunk_3_l1,
                                 c1_query_rope_cache_l1, c1_key_l1, c1_p_slot1_q_l0a, c1_p_slot1_key_l0b, c1_p_slot1_l0c,
-                                bz_task, s1_id, k_start, 2,
+                                bz_task, s1_id, k_start, 2, 2,
                             )
                 T.wait_flag("mte1", "mte2", 0)
                 T.wait_flag("m", "mte1", 0)
                 T.wait_flag("fix", "m", 0)
                 T.wait_flag("m", "mte1", 2)
                 T.wait_flag("fix", "m", 2)
+                T.set_flag("m", "mte1", 0)
+                T.set_flag("fix", "m", 0)
+                T.set_flag("m", "mte1", 2)
+                T.set_flag("fix", "m", 2)
                 if task_slot == 0:
                     T.set_cross_flag("FIX", C1_TO_V1_P_FLAGS[0])
                 else:
                     T.set_cross_flag("FIX", C1_TO_V1_P_FLAGS[1])
                 T.wait_flag("mte2", "mte1", 5)
                 if d_num_query_index == 1:
-                    T.wait_flag("m", "mte1", 1)
-                    T.copy(c1_qi_l1, c1_qi_l0a)
-                    T.set_flag("m", "mte1", 1)
+                    T.wait_flag("m", "mte1", 0)
+                    T.copy(c1_qi_l1, c1_sy_slot0_qi_l0a)
+                    T.set_flag("m", "mte1", 0)
+                    T.wait_flag("m", "mte1", 2)
+                    T.copy(c1_qi_l1, c1_sy_slot1_qi_l0a)
+                    T.set_flag("m", "mte1", 2)
                 for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
                     flag_slot = (task_slot + k_outer) % 2
                     if flag_slot == 0:
@@ -476,30 +512,23 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.wait_cross_flag(V0_TO_C1_SY_FLAGS[1])
                     for k_inner in T.serial(S2_WORKSPACE // N_SPLIT):
                         k_start = k_outer * S2_WORKSPACE + k_inner * N_SPLIT
-                        for d_idx in T.serial(d_num_query_index):
-                            T.wait_flag("mte1", "mte2", 1)
-                            T.copy(GatherKeyIndex_ws[bz_task, s1_id, k_start:k_start + N_SPLIT, d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT], c1_ki_l1)
-                            T.set_flag("mte2", "mte1", 1)
-                            T.wait_flag("m", "mte1", 1)
-                            T.wait_flag("mte2", "mte1", 1)
-                            if d_num_query_index != 1:
-                                T.copy(c1_qi_l1[0:Nidx1, d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT], c1_qi_l0a)
-                            T.copy(c1_ki_l1, c1_ki_l0b, transpose=True)
-                            T.set_flag("mte1", "mte2", 1)
-                            T.set_flag("mte1", "m", 1)
-                            T.wait_flag("mte1", "m", 1)
-                            T.wait_flag("fix", "m", 1)
-                            T.mma(c1_qi_l0a, c1_ki_l0b, c1_sy_l0c, init=(d_idx == 0))
-                            T.set_flag("m", "mte1", 1)
-                            if d_idx + 1 < d_num_query_index:
-                                T.set_flag("fix", "m", 1)
-                        T.set_flag("m", "fix", 1)
-                        T.wait_flag("m", "fix", 1)
-                        T.copy(c1_sy_l0c, bmm2Res[bz_task, s1_id, 0:Nidx1, k_start:k_start + N_SPLIT], enable_relu=True)
-                        T.set_flag("fix", "m", 1)
+                        if k_inner % 2 == 0:
+                            cube1_sy_tile(
+                                GatherKeyIndex_ws, bmm2Res, c1_qi_l1, c1_ki_l1,
+                                c1_sy_slot0_qi_l0a, c1_sy_slot0_ki_l0b, c1_sy_slot0_l0c,
+                                bz_task, s1_id, k_start, 0,
+                            )
+                        else:
+                            cube1_sy_tile(
+                                GatherKeyIndex_ws, bmm2Res, c1_qi_l1, c1_ki_l1,
+                                c1_sy_slot1_qi_l0a, c1_sy_slot1_ki_l0b, c1_sy_slot1_l0c,
+                                bz_task, s1_id, k_start, 2,
+                            )
                 T.wait_flag("mte1", "mte2", 1)
-                T.wait_flag("m", "mte1", 1)
-                T.wait_flag("fix", "m", 1)
+                T.wait_flag("m", "mte1", 0)
+                T.wait_flag("fix", "m", 0)
+                T.wait_flag("m", "mte1", 2)
+                T.wait_flag("fix", "m", 2)
                 if task_slot == 0:
                     T.set_cross_flag("FIX", C1_TO_V1_SY_FLAGS[0])
                 else:
