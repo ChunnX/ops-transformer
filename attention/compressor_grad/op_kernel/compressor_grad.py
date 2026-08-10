@@ -689,14 +689,15 @@ def _zero_outputs(core_idx, core_num, x_rows, hidden_size, total_head_dim, cmp_s
     tensor_dw_gate_flat = pl.make_tensor(d_wgate, [1, total_head_dim * hidden_size],
                                          [total_head_dim * hidden_size, 1], dtype=io_d_type)
     tensor_d_ape_flat = pl.make_tensor(d_ape, [1, cmp_size], [cmp_size, 1], dtype=pl.DT_FP32)
-    # ── 零 tile 初始化（一次）：ioDType 直接清零，FP32 仅供 d_ape ──
-    pl.set_validshape(zero_cast, [1, hidden_size])
+    # ── 零 tile 初始化（一次）：清满 tile 物理空间（BASE_SIZE*BASE_SIZE=16384 元素），
+    #    保证后续 d_w/d_ape 任意 cur_w_num/cur_rg_num（≤16384）的 store 读到的都是零 ──
+    pl.set_validshape(zero_cast, [1, BASE_SIZE * BASE_SIZE])
     if DataType == 0:                              # BF16
-        _vf_tile_zero_bf16(zero_cast, 1, hidden_size)
+        _vf_tile_zero_bf16(zero_cast, 1, BASE_SIZE * BASE_SIZE)
     else:                                          # FP16
-        _vf_tile_zero_f16(zero_cast, 1, hidden_size)
-    pl.set_validshape(reduce_acc, [1, hidden_size])
-    _vf_tile_zero(reduce_acc, 1, hidden_size)        # FP32 全零（d_ape 用）
+        _vf_tile_zero_f16(zero_cast, 1, BASE_SIZE * BASE_SIZE)
+    pl.set_validshape(reduce_acc, [1, BASE_SIZE * BASE_SIZE])
+    _vf_tile_zero(reduce_acc, 1, BASE_SIZE * BASE_SIZE)   # FP32 全零（d_ape 用）
 
 
     # ── d_x [xRows, hiddenSize]：按行分片（_reduce_dx 同款）──
