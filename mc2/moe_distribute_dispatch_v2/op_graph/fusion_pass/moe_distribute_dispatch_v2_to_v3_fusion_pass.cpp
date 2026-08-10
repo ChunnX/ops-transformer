@@ -193,12 +193,12 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::AddEdge(ge::Graph &graph, ge:
     // 迁移控制边到 V3（MC2 节点的流序控制依赖），否则 RemoveNode 时 IsolateNode 会把控制边旁路拼出环
     ge::AscendString moeName;
     moeNode.GetName(moeName);
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "node %s in-ctrl %zu, out-ctrl %zu.", moeName.GetString(),
+    OPS_LOG_E(FUSION_PASS_NAME.c_str(), "node %s in-ctrl %zu, out-ctrl %zu.", moeName.GetString(),
               moeNode.GetInControlNodes().size(), moeNode.GetOutControlNodes().size());
     for (auto &inCtrlNode : moeNode.GetInControlNodes()) {
         ge::AscendString ctrlName;
         inCtrlNode->GetName(ctrlName);
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "migrate in-control edge: %s -> %s.", ctrlName.GetString(),
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "migrate in-control edge: %s -> %s.", ctrlName.GetString(),
                   moeName.GetString());
         if (graph.AddControlEdge(*inCtrlNode, fusionNode) != ge::GRAPH_SUCCESS) {
             OPS_LOG_E(FUSION_PASS_NAME.c_str(), "migrate in-control edge failed.");
@@ -208,7 +208,7 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::AddEdge(ge::Graph &graph, ge:
     for (auto &outCtrlNode : moeNode.GetOutControlNodes()) {
         ge::AscendString ctrlName;
         outCtrlNode->GetName(ctrlName);
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "migrate out-control edge: %s -> %s.", moeName.GetString(),
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "migrate out-control edge: %s -> %s.", moeName.GetString(),
                   ctrlName.GetString());
         if (graph.AddControlEdge(fusionNode, *outCtrlNode) != ge::GRAPH_SUCCESS) {
             OPS_LOG_E(FUSION_PASS_NAME.c_str(), "migrate out-control edge failed.");
@@ -268,6 +268,7 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::FusionNode(ge::Graph &graph, 
 ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::CustomPassContext &passContext)
 {
     (void)passContext;
+    OPS_LOG_E(FUSION_PASS_NAME.c_str(), "进入fusionpass lijd.");
     if (graph == nullptr) {
         return ge::GRAPH_FAILED;
     }
@@ -285,22 +286,32 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::
     }
     // 按 groupEp 缓存 context Const 节点与 buffer 大小，同图同通信域的多个 V2 节点复用
     std::map<std::string, std::pair<ge::GNode, int64_t>> contextNodes;
+    size_t targetNodes = 0;
+    size_t fusedNodes = 0;
     for (auto &gNode : graph->GetDirectNode()) {
         ge::AscendString nodeType;
         if ((gNode.GetType(nodeType) != ge::GRAPH_SUCCESS) || (nodeType != FUSED_OP_TYPE2.c_str())) {
             continue;
         }
+        ++targetNodes;
+        ge::AscendString nameStr0;
+        gNode.GetName(nameStr0);
         // ccu 通信算法不支持 mc2Context，保持 V2 不变
         ge::AscendString commAlg;
         if (gNode.GetAttr(ge::AscendString("comm_alg"), commAlg) == ge::GRAPH_SUCCESS &&
             commAlg.GetString() != nullptr && std::string(commAlg.GetString()) == "ccu") {
+            OPS_LOG_E(FUSION_PASS_NAME.c_str(), "node %s: comm_alg is ccu, V2 node kept as-is.",
+                      nameStr0.GetString());
             continue;
         }
         ge::AscendString groupEp;
         if (gNode.GetAttr(ge::AscendString("group_ep"), groupEp) != ge::GRAPH_SUCCESS ||
             groupEp.GetString() == nullptr) {
+            OPS_LOG_E(FUSION_PASS_NAME.c_str(), "node %s: attr group_ep missing, V2 node kept as-is.",
+                      nameStr0.GetString());
             continue;
         }
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "node %s: group_ep is %s.", nameStr0.GetString(), groupEp.GetString());
         // 槽位映射预检：全槽位走索引、compact 按名解析，失败（必选输入缺失）安全回退
         {
             std::array<int32_t, kV2TotalInputs> mapping{};
@@ -342,13 +353,16 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::
             OPS_LOG_E(FUSION_PASS_NAME.c_str(), "node %s: V2->V3 fusion failed.", nameStr.GetString());
             continue;
         }
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "replace %s with %s success.", nameStr.GetString(), FUSED_OP_TYPE3.c_str());
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "replace %s with %s success, group_ep %s, ccl_buffer_size %ld.",
+                  nameStr.GetString(), FUSED_OP_TYPE3.c_str(), groupEpStr.c_str(), hcclBuffSize);
+        ++fusedNodes;
 #else
         // 老 HCCL 版本不支持 mc2 context，保持 V2 不变
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "hccl version not support mc2 context, V2 node kept as-is.");
         continue;
 #endif
     }
+    OPS_LOG_E(FUSION_PASS_NAME.c_str(), "target nodes %zu, fused %zu.", targetNodes, fusedNodes);
     return ge::GRAPH_SUCCESS;
 }
 
