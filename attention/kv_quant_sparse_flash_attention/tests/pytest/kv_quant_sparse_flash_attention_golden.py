@@ -1068,7 +1068,7 @@ def kv_concat_pa_preprocessing(input_tensor_dict, fa_param, params):
     k_dequant_scale_cache_shape[-1] = 512 // 128
 
     k_cache = torch.zeros(k_cache_shape, dtype=k_torch_dtype)
-    k_rope_cache = torch.zeros(k_rope_cache_shape, dtype=torch.bfloat16)
+    k_rope_cache = torch.zeros(k_rope_cache_shape, dtype=fa_param.get("_raw_key_rope").dtype)
     k_dequant_scale_cache = torch.zeros(
         k_dequant_scale_cache_shape, dtype=torch.float32
     )
