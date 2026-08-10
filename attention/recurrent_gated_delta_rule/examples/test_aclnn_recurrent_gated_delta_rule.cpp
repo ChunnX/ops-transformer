@@ -231,16 +231,16 @@ int main()
     aclDestroyTensor(attnOut);
 
     // 7. 释放device资源
-    aclrtFree(query);
-    aclrtFree(key);
-    aclrtFree(value);
-    aclrtFree(gama);
-    aclrtFree(beta);
-    aclrtFree(stateRef);
-    aclrtFree(actSeqLen);
-    aclrtFree(ssmStaId);
-    aclrtFree(numAccTok);
-    aclrtFree(attnOut);
+    aclrtFree(queryDeviceAddr);
+    aclrtFree(keyDeviceAddr);
+    aclrtFree(valueDeviceAddr);
+    aclrtFree(gamaDeviceAddr);
+    aclrtFree(betaDeviceAddr);
+    aclrtFree(stateRefDeviceAddr);
+    aclrtFree(actSeqLenDeviceAddr);
+    aclrtFree(ssmStaIdDeviceAddr);
+    aclrtFree(numAccTokDeviceAddr);
+    aclrtFree(attnOutDeviceAddr);
     if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);
     }

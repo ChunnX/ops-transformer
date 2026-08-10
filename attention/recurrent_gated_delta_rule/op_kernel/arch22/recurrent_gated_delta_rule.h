@@ -30,6 +30,7 @@ constexpr uint64_t BF16_NUM_PER_BLOCK = 16;
 constexpr uint64_t FP32_NUM_PER_BLOCK = 8;
 constexpr uint32_t REPEAT_LENTH = 64; // 256Byte for float
 constexpr uint32_t MAX_REPEAT_TIME = 255;
+constexpr uint32_t BLOCK_SIZE_32B = 32;
 
 struct RGDRInitParams {
     GM_ADDR query;
@@ -137,6 +138,8 @@ public:
         broadTmpInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(alignK_ * vStep_), buffOffset);
         buffOffset += cubeSize;
         betaInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(betaUbSize), buffOffset);
+        Duplicate<float>(tmpBuff.Get<float>(), 0, restUbSize_ / sizeof(float));
+        AscendC::PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void ComputeAvgload()
@@ -156,19 +159,19 @@ public:
             int32_t seq0 = seq1;
             seq1 += cuSeqlensGm_.GetValue(batch_i);
             uint32_t copyFlag = 0;
-            uint64_t stateOffset;
+            uint64_t stateBlockIdx;
             for (uint64_t head_i = 0; head_i < NV_; head_i++) {
                 if (!IsCurrentBlock(seq1 - seq0)) {
                     continue;
                 }
                 copyFlag++;
                 if (copyFlag == 1) {
-                    stateOffset = hasAcceptedTokens_ ?
+                    stateBlockIdx = hasAcceptedTokens_ ?
                                       ssmStateIndicesGm_.GetValue(seq0 + numAcceptedTokensGm_.GetValue(batch_i) - 1) :
                                       ssmStateIndicesGm_.GetValue(seq0);
                     CopyInGamaBeta(seq0, seq1);
                 }
-                ProcessHead(seq0, seq1, head_i, stateOffset);
+                ProcessHead(seq0, seq1, head_i, stateBlockIdx);
             }
             if (hasGama_ && copyFlag != 0) {
                 gamaInQueue_.FreeTensor(gamaInUb);
@@ -304,6 +307,10 @@ private:
         }
         stateOutQueue_.EnQue<stateType>(stateOutLocal);
         AscendC::PipeBarrier<PIPE_V>();
+        uint32_t outBlockElems = BLOCK_SIZE_32B / sizeof(outType);
+        uint32_t zeroElems = Ceil(vStep_, outBlockElems) * outBlockElems;
+        Duplicate<outType>(attnOutLocal, 0, zeroElems);
+        AscendC::PipeBarrier<PIPE_V>();
         Cast(attnOutLocal, attnInUb, AscendC::RoundMode::CAST_RINT, curSingleV);
         attnOutQueue_.EnQue<outType>(attnOutLocal);
     }
@@ -311,7 +318,7 @@ private:
     __aicore__ inline void CopyOutAttn(uint64_t attnOffset, uint32_t curSingleV)
     {
         LocalTensor<outType> attnLocal = attnOutQueue_.DeQue<outType>();
-        DataCopyParams attnOutParams{1, static_cast<uint16_t>(curSingleV * sizeof(outType)), 0, 0};
+        DataCopyExtParams attnOutParams{1, static_cast<uint32_t>(curSingleV * sizeof(outType)), 0, 0, 0};
         DataCopyPad(attnOutGm_[attnOffset], attnLocal, attnOutParams);
         attnOutQueue_.FreeTensor(attnLocal);
     }
@@ -319,14 +326,19 @@ private:
     __aicore__ inline void CopyOutState(uint64_t stateOffset, uint32_t curSingleV)
     {
         LocalTensor<stateType> stateOutLocal = stateOutQueue_.DeQue<stateType>();
-        // UB rows are alignK_-strided while GM is dense realK_-strided. DataCopyExtParams splits the
-        // strides (src/UB in 32B datablocks, dst/GM in bytes), so srcStride bridges the gap per row
-        // for both dtypes in one MTE op (mirrors arch35). blockElems = 32B / sizeof(stateType).
         constexpr uint32_t blockElems = std::is_same_v<stateType, float> ? FP32_NUM_PER_BLOCK : BF16_NUM_PER_BLOCK;
-        DataCopyExtParams stateOutParams{static_cast<uint16_t>(curSingleV),
-                                         static_cast<uint32_t>(realK_ * sizeof(stateType)),
-                                         static_cast<uint32_t>((alignK_ - realK_) / blockElems), 0, 0};
-        DataCopyPad(finalStateGm_[stateOffset], stateOutLocal, stateOutParams);
+        uint32_t rowBytes = realK_ * sizeof(stateType);
+        if (rowBytes % BLOCK_SIZE_32B == 0) {
+            DataCopyExtParams stateOutParams{static_cast<uint16_t>(curSingleV), rowBytes,
+                                             static_cast<uint32_t>((alignK_ - realK_) / blockElems), 0, 0};
+            DataCopyPad(finalStateGm_[stateOffset], stateOutLocal, stateOutParams);
+        } else {
+            for (uint32_t i = 0; i < curSingleV; i++) {
+                DataCopyExtParams rowParams{1, rowBytes, 0, 0, 0};
+                DataCopyPad(finalStateGm_[stateOffset + (uint64_t)i * realK_],
+                            stateOutLocal[i * alignK_], rowParams);
+            }
+        }
         stateOutQueue_.FreeTensor(stateOutLocal);
     }
 
@@ -353,14 +365,14 @@ private:
         }
     }
 
-    __aicore__ inline void ProcessHead(int32_t seq0, int32_t seq1, uint64_t head_i, uint64_t blockIdx)
+    __aicore__ inline void ProcessHead(int32_t seq0, int32_t seq1, uint64_t head_i, uint64_t stateBlockIdx)
     {
         uint64_t vOffset = (seq0 * NV_ + head_i) * realV_;
         uint64_t qkOffset = (seq0 * NK_ + head_i / (NV_ / NK_)) * realK_;
         CopyInQKV(vOffset, qkOffset, seq1 - seq0);
         for (uint64_t v_i = 0; v_i < realV_; v_i += vStep_) {
             uint32_t curSingleV = v_i + vStep_ > realV_ ? realV_ - v_i : vStep_;
-            uint64_t curStateOffset = blockIdx * stateStride0_ + head_i * stateStride1_ + v_i * realK_;
+            uint64_t curStateOffset = stateBlockIdx * stateStride0_ + head_i * stateStride1_ + v_i * realK_;
             CopyInState(curStateOffset, curSingleV);
             for (uint64_t seq_i = seq0; seq_i < seq1; seq_i++) {
                 uint64_t gbOffset = head_i + (seq_i - seq0) * NV_;
