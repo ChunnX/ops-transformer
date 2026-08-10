@@ -145,9 +145,9 @@ quant_flash_attn_gqa_fp8(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint
             s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;
 
 #ifdef __DAV_C310_CUBE__
-    using Kernel = BaseApi::QuantFlashAttnKernelGqaFp8<Fp8CubeBlock, Fp8VecFaBlockDummy, VecFdBlockDummy>;
+    using Kernel = BaseApi::QuantFlashAttnKernelFp8<Fp8CubeBlock, Fp8VecFaBlockDummy, VecFdBlockDummy>;
 #else
-    using Kernel = BaseApi::QuantFlashAttnKernelGqaFp8<Fp8CubeBlockDummy, Fp8VecFaBlock, VecFdBlock>;
+    using Kernel = BaseApi::QuantFlashAttnKernelFp8<Fp8CubeBlockDummy, Fp8VecFaBlock, VecFdBlock>;
 #endif
 
     const __gm__ QuantFlashAttnTilingData *__restrict tilingData =

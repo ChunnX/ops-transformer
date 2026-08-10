@@ -229,7 +229,6 @@ public:
         kScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ float *)gm);
         kScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, blockTableGm_, constInfo_.maxBlockNumPerBatch,
                                                  bnStrides, n2Strides);
-
     }
 
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
@@ -341,7 +340,7 @@ public:
     }
 
     __aicore__ inline void CopyKeyScaleSlice(const LocalTensor<float> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
-                                              RunInfoX &runInfo, bool isPreload)
+                                             RunInfoX &runInfo, bool isPreload)
     {
         FaUbTensor<float> ubTensor{.tensor = dstTensor, .rowCount = runInfo.actSingleLoopS2Size, .colCount = 1};
 
@@ -365,7 +364,7 @@ public:
     }
 
     __aicore__ inline void ProcessAntiqPA(FaUbTensor<T> &dstTensor, FaGmTensorKScale &srcTensor,
-                                           AntiqGmCoord &antiqGmCoord)
+                                          AntiqGmCoord &antiqGmCoord)
     {
         auto &offsetCal = srcTensor.offsetCalculator;
 
