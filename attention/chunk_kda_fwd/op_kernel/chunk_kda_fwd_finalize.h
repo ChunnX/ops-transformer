@@ -79,8 +79,7 @@ constexpr uint32_t KDA_GATE_TILE_ROWS = 32;
 
 using KdaArchTag = Catlass::Arch::AtlasA2;
 using KdaDispatchPolicy = Catlass::Gemm::MmadPingpong<KdaArchTag, true, false>;
-using KdaScoreDispatchPolicy =
-    Catlass::Gemm::MmadPingpongTlaMulti<KdaArchTag, true, false, 1, true, 2, 1, 2, 2>;
+using KdaScoreDispatchPolicy = Catlass::Gemm::MmadPingpongTlaMulti<KdaArchTag, true, false, 1, true, 2, 1, 2, 2>;
 static_assert(KdaScoreDispatchPolicy::ENABLE_L1_RESIDENT,
               "KDA Aqk/Akk score MMAD must keep the shared right matrix resident in L1");
 static_assert(KdaScoreDispatchPolicy::L1B_STAGES == 1,
@@ -157,8 +156,7 @@ public:
                                 GM_ADDR cuSeqlens, GM_ADDR chunkIndices, GM_ADDR preparedQG, GM_ADDR preparedAqk,
                                 GM_ADDR propagatedVNew, GM_ADDR propagatedH, GM_ADDR o, GM_ADDR finalState, GM_ADDR aqk,
                                 GM_ADDR akk, GM_ADDR w, GM_ADDR u, GM_ADDR qg, GM_ADDR kg, GM_ADDR vNew, GM_ADDR h,
-                                GM_ADDR workspace, const TilingData &tiling, TPipe *pipe,
-                                bool initVecBuffers = true)
+                                GM_ADDR workspace, const TilingData &tiling, TPipe *pipe, bool initVecBuffers = true)
     {
         pipe_ = pipe;
         q_.SetGlobalBuffer((__gm__ T *)q);
@@ -220,11 +218,9 @@ public:
         if (pipe_ != nullptr && initVecBuffers) {
             pipe_->InitBuffer(exp2Buf_, EXP2_UB_BYTES);
             pipe_->InitBuffer(vecBuf_, KDA_VEC_ARENA_ELEMENTS * sizeof(float));
-            const uint64_t gateWritebackRows =
-                ScoreVectorMaxRows(5 * sizeof(float) + 2 * sizeof(T) + sizeof(GK_T));
+            const uint64_t gateWritebackRows = ScoreVectorMaxRows(5 * sizeof(float) + 2 * sizeof(T) + sizeof(GK_T));
             pipe_->InitBuffer(gateWritebackBuf_,
-                              static_cast<uint32_t>(gateWritebackRows * K_ *
-                                                    (3 * sizeof(T) + sizeof(GK_T))));
+                              static_cast<uint32_t>(gateWritebackRows * K_ * (3 * sizeof(T) + sizeof(GK_T))));
             AllocVectorEvents();
         }
     }
@@ -234,10 +230,7 @@ public:
         ReleaseVectorEvents();
     }
 
-    __aicore__ inline void ProcessAic()
-    {
-        ProcessOutAic();
-    }
+    __aicore__ inline void ProcessAic() { ProcessOutAic(); }
 
 private:
     __aicore__ inline void AllocVectorEvents()
@@ -280,10 +273,7 @@ private:
         return ((b * T_ + t) * HV_ + hv) * V_ + d;
     }
 
-    __aicore__ inline uint64_t BetaOffset(uint64_t b, uint64_t hv, uint64_t t) const
-    {
-        return (b * HV_ + hv) * T_ + t;
-    }
+    __aicore__ inline uint64_t BetaOffset(uint64_t b, uint64_t hv, uint64_t t) const { return (b * HV_ + hv) * T_ + t; }
 
     __aicore__ inline uint64_t AOffset(uint64_t b, uint64_t hv, uint64_t t, uint64_t j) const
     {
@@ -300,8 +290,7 @@ private:
         return (((b * HV_ + hv) * NT_ + chunkIdx) * BT_ + t) * K_ + d;
     }
 
-    __aicore__ inline uint64_t SolveScratchOffset(uint64_t b, uint64_t hv, uint64_t chunkIdx,
-                                                  uint64_t slot) const
+    __aicore__ inline uint64_t SolveScratchOffset(uint64_t b, uint64_t hv, uint64_t chunkIdx, uint64_t slot) const
     {
         (void)b;
         (void)hv;
@@ -310,20 +299,12 @@ private:
         return solveCoreIdx_ * KDA_SOLVE_SCRATCH_SLOTS * matrixElements + slot * matrixElements;
     }
 
-    __aicore__ inline uint64_t ScoreScratchOffset(uint64_t slot, uint64_t plane, uint64_t t = 0,
-                                                  uint64_t d = 0) const
+    __aicore__ inline uint64_t ScoreScratchOffset(uint64_t slot, uint64_t plane, uint64_t t = 0, uint64_t d = 0) const
     {
-        return (((solveCoreIdx_ * KDA_SCORE_QUEUE_DEPTH + slot) * KDA_SCORE_SCRATCH_PLANES + plane) * BT_ + t) *
-                   K_ +
-               d;
+        return (((solveCoreIdx_ * KDA_SCORE_QUEUE_DEPTH + slot) * KDA_SCORE_SCRATCH_PLANES + plane) * BT_ + t) * K_ + d;
     }
 
-
-
-    __aicore__ inline uint64_t ScoreRefBlockSize() const
-    {
-        return KDA_SCORE_REF_BC;
-    }
+    __aicore__ inline uint64_t ScoreRefBlockSize() const { return KDA_SCORE_REF_BC; }
 
     __aicore__ inline uint64_t ScoreRowBlockCount(uint64_t curT, uint64_t rowBegin) const
     {
@@ -335,8 +316,7 @@ private:
         return rowCount;
     }
 
-    __aicore__ inline uint64_t ScoreRefToken(uint64_t start, uint64_t curT, uint64_t rowBegin,
-                                             uint64_t rowCount) const
+    __aicore__ inline uint64_t ScoreRefToken(uint64_t start, uint64_t curT, uint64_t rowBegin, uint64_t rowCount) const
     {
         uint64_t ref = rowBegin + rowCount / 2;
         if (ref >= curT) {
@@ -412,12 +392,8 @@ private:
         constexpr uint64_t blockBytes = 32;
         const uint64_t rowBytes = cols * sizeof(CopyT);
         const uint64_t gapBytes = (dstStride - cols) * sizeof(CopyT);
-        DataCopyParams params{
-            static_cast<uint16_t>(rows),
-            static_cast<uint16_t>(rowBytes / blockBytes),
-            0,
-            static_cast<uint16_t>(gapBytes / blockBytes)
-        };
+        DataCopyParams params{static_cast<uint16_t>(rows), static_cast<uint16_t>(rowBytes / blockBytes), 0,
+                              static_cast<uint16_t>(gapBytes / blockBytes)};
         DataCopy(dst[offset], src, params);
     }
 
@@ -465,9 +441,8 @@ private:
     }
 
     template <typename CopyT>
-    __aicore__ inline void LoadAsFloatVector(GlobalTensor<CopyT> &src, uint64_t srcOffset,
-                                              LocalTensor<float> &dst, LocalTensor<CopyT> &typedScratch,
-                                              uint64_t count)
+    __aicore__ inline void LoadAsFloatVector(GlobalTensor<CopyT> &src, uint64_t srcOffset, LocalTensor<float> &dst,
+                                             LocalTensor<CopyT> &typedScratch, uint64_t count)
     {
         if constexpr (IsSameType<CopyT, float>::value) {
             CopyVectorIn(dst, src, srcOffset, count);
@@ -505,10 +480,6 @@ private:
         WaitFlag<HardEvent::MTE3_V>(mte3ToVEvent_);
     }
 
-
-
-
-
     __aicore__ inline LocalTensor<float> Exp2NegG(uint64_t b, uint64_t hv, uint64_t t)
     {
         LocalTensor<float> exp2Local = exp2Buf_.Get<float>();
@@ -518,7 +489,6 @@ private:
         RunExp2(exp2Local, static_cast<uint32_t>(K_));
         return exp2Local;
     }
-
 
     __aicore__ inline uint64_t ScoreVectorMaxRows(uint64_t bytesPerElem) const
     {
@@ -530,8 +500,7 @@ private:
         return maxRows;
     }
 
-    __aicore__ inline void ComputeOutputCube(uint64_t b, uint64_t hv, uint64_t chunkIdx, uint64_t start,
-                                             uint64_t curT)
+    __aicore__ inline void ComputeOutputCube(uint64_t b, uint64_t hv, uint64_t chunkIdx, uint64_t start, uint64_t curT)
     {
         using ElementA = T;
         using ElementB = T;
@@ -539,10 +508,10 @@ private:
         using LayoutTagA = Catlass::layout::RowMajor;
         using LayoutTagB = Catlass::layout::RowMajor;
         using LayoutTagC = Catlass::layout::RowMajor;
-        using TileCopy = Catlass::Gemm::Tile::PackedTileCopyTla<KdaArchTag, ElementA, LayoutTagA, ElementB,
-                                                                LayoutTagB, ElementC, LayoutTagC>;
+        using TileCopy = Catlass::Gemm::Tile::PackedTileCopyTla<KdaArchTag, ElementA, LayoutTagA, ElementB, LayoutTagB,
+                                                                ElementC, LayoutTagC>;
         using BlockMmad = Catlass::Gemm::Block::BlockMmadTla<KdaDispatchPolicy, KdaL1TileShape, KdaL0TileShape,
-                                                              ElementA, ElementB, ElementC, void, TileCopy>;
+                                                             ElementA, ElementB, ElementC, void, TileCopy>;
 
         Catlass::Arch::Resource<KdaArchTag> resource;
         BlockMmad blockMmad(resource);
@@ -599,10 +568,8 @@ private:
         }
         const uint64_t rowBegin = (curT * subBlockIdx) / subBlockNum;
         const uint64_t rowEnd = (curT * (subBlockIdx + 1)) / subBlockNum;
-        const uint64_t gateWritebackRows =
-            ScoreVectorMaxRows(5 * sizeof(float) + 2 * sizeof(T) + sizeof(GK_T));
-        const uint64_t gateWritebackBytes =
-            gateWritebackRows * K_ * (3 * sizeof(T) + sizeof(GK_T));
+        const uint64_t gateWritebackRows = ScoreVectorMaxRows(5 * sizeof(float) + 2 * sizeof(T) + sizeof(GK_T));
+        const uint64_t gateWritebackBytes = gateWritebackRows * K_ * (3 * sizeof(T) + sizeof(GK_T));
         uint64_t maxRows = KDA_VEC_ARENA_ELEMENTS / (3 * V_);
         const uint64_t typedMaxRows = gateWritebackBytes / (V_ * sizeof(T));
         if (maxRows > typedMaxRows) {
@@ -661,9 +628,8 @@ private:
                 end = T_;
             }
         } else {
-            if (!KdaVarlen::ResolveChunkRange(
-                    cuSeqlensAddr_, chunkIndicesAddr_, N_, T_, BT_, flatChunk,
-                    seq, start, end)) {
+            if (!KdaVarlen::ResolveChunkRange(cuSeqlensAddr_, chunkIndicesAddr_, N_, T_, BT_, flatChunk, seq, start,
+                                              end)) {
                 return false;
             }
             b = 0;
@@ -673,8 +639,8 @@ private:
         return start < end;
     }
 
-    __aicore__ inline void ProcessChunkOutAiv(uint64_t b, uint64_t hv, uint64_t chunkIdx, uint64_t start,
-                                              uint64_t end, uint64_t subBlockIdx, uint64_t subBlockNum)
+    __aicore__ inline void ProcessChunkOutAiv(uint64_t b, uint64_t hv, uint64_t chunkIdx, uint64_t start, uint64_t end,
+                                              uint64_t subBlockIdx, uint64_t subBlockNum)
     {
         uint64_t curT = end - start;
         if (curT == 0) {
@@ -687,8 +653,7 @@ private:
         FinalizeOutputRows(b, hv, start, curT, subBlockIdx, subBlockNum);
     }
 
-    __aicore__ inline void ProcessChunkOutAic(uint64_t b, uint64_t hv, uint64_t chunkIdx, uint64_t start,
-                                             uint64_t end)
+    __aicore__ inline void ProcessChunkOutAic(uint64_t b, uint64_t hv, uint64_t chunkIdx, uint64_t start, uint64_t end)
     {
         uint64_t curT = end - start;
         if (curT == 0) {
@@ -786,15 +751,15 @@ private:
     TEventID mte3ToMte2Event_ = 0;
     bool vectorEventsAllocated_ = false;
     Catlass::Arch::CrossCoreFlagWithReverse<KDA_SCORE_QUEUE_DEPTH> scoreReadyFlag_{KDA_SCORE_READY_FLAG0,
-                                                                                  KDA_SCORE_READY_FLAG1};
+                                                                                   KDA_SCORE_READY_FLAG1};
     Catlass::Arch::CrossCoreFlagWithReverse<KDA_SCORE_QUEUE_DEPTH> scoreDoneFlag_{KDA_SCORE_DONE_FLAG0,
-                                                                                 KDA_SCORE_DONE_FLAG1};
+                                                                                  KDA_SCORE_DONE_FLAG1};
     // Score production is fully drained before solve starts, so the solve handshake can safely reuse
     // the existing score flags without consuming additional hardware flag IDs.
     Catlass::Arch::CrossCoreFlagWithReverse<KDA_SYNC_REVERSE_DEPTH> syncReadyFlag_{KDA_SCORE_READY_FLAG0,
-                                                                                  KDA_SCORE_READY_FLAG1};
+                                                                                   KDA_SCORE_READY_FLAG1};
     Catlass::Arch::CrossCoreFlagWithReverse<KDA_SYNC_REVERSE_DEPTH> syncDoneFlag_{KDA_SCORE_DONE_FLAG0,
-                                                                                 KDA_SCORE_DONE_FLAG1};
+                                                                                  KDA_SCORE_DONE_FLAG1};
     uint64_t B_ = 0;
     uint64_t N_ = 0;
     uint64_t H_ = 0;
@@ -816,33 +781,28 @@ private:
 } // namespace
 
 template <typename T, typename GK_T, typename BETA_T, typename TilingData>
-__aicore__ inline void RunChunkKdaOutput(
-    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR gk, GM_ADDR beta, GM_ADDR initialState,
-    GM_ADDR cuSeqlens, GM_ADDR chunkIndices, GM_ADDR qgScaled, GM_ADDR aqk,
-    GM_ADDR propagatedVNew, GM_ADDR propagatedH, GM_ADDR o, GM_ADDR userWorkspace,
-    const TilingData &tiling, TPipe &pipe)
+__aicore__ inline void RunChunkKdaOutput(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR gk, GM_ADDR beta,
+                                         GM_ADDR initialState, GM_ADDR cuSeqlens, GM_ADDR chunkIndices,
+                                         GM_ADDR qgScaled, GM_ADDR aqk, GM_ADDR propagatedVNew, GM_ADDR propagatedH,
+                                         GM_ADDR o, GM_ADDR userWorkspace, const TilingData &tiling, TPipe &pipe)
 {
     GM_ADDR outputScratch = userWorkspace + tiling.outputScratchOffset;
-    uint64_t outputElements = static_cast<uint64_t>(tiling.batch) *
-                              static_cast<uint64_t>(tiling.vHeadNum) *
-                              static_cast<uint64_t>(tiling.seqlen) *
-                              static_cast<uint64_t>(tiling.vHeadDim);
+    uint64_t outputElements = static_cast<uint64_t>(tiling.batch) * static_cast<uint64_t>(tiling.vHeadNum) *
+                              static_cast<uint64_t>(tiling.seqlen) * static_cast<uint64_t>(tiling.vHeadDim);
     GM_ADDR stateScratch = outputScratch;
     GM_ADDR localScratch = outputScratch + outputElements * sizeof(float);
     if ASCEND_IS_AIC {
         ChunkKdaFwdFinalizeKernel<T, GK_T, BETA_T> op;
-        op.Init(q, k, v, gk, beta, initialState, cuSeqlens, chunkIndices,
-                qgScaled, aqk, propagatedVNew, propagatedH, stateScratch, userWorkspace, aqk, userWorkspace,
-                userWorkspace, localScratch, userWorkspace, userWorkspace, o, propagatedH,
-                outputScratch, tiling, &pipe, false);
+        op.Init(q, k, v, gk, beta, initialState, cuSeqlens, chunkIndices, qgScaled, aqk, propagatedVNew, propagatedH,
+                stateScratch, userWorkspace, aqk, userWorkspace, userWorkspace, localScratch, userWorkspace,
+                userWorkspace, o, propagatedH, outputScratch, tiling, &pipe, false);
         op.ProcessAic();
     }
     if ASCEND_IS_AIV {
         ChunkKdaFwdFinalizeKernel<T, GK_T, BETA_T> op;
-        op.Init(q, k, v, gk, beta, initialState, cuSeqlens, chunkIndices,
-                qgScaled, aqk, propagatedVNew, propagatedH, stateScratch, userWorkspace, aqk, userWorkspace,
-                userWorkspace, localScratch, userWorkspace, userWorkspace, o, propagatedH,
-                outputScratch, tiling, &pipe);
+        op.Init(q, k, v, gk, beta, initialState, cuSeqlens, chunkIndices, qgScaled, aqk, propagatedVNew, propagatedH,
+                stateScratch, userWorkspace, aqk, userWorkspace, userWorkspace, localScratch, userWorkspace,
+                userWorkspace, o, propagatedH, outputScratch, tiling, &pipe);
         op.ProcessAiv();
     }
 }
