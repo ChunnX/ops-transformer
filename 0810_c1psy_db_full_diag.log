@@ -1,0 +1,54 @@
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] bsnd_b1_s1_1_k_1024: suite=core kind=coverage layout=BSND B=1 S1=1 S2=1281 N1=128 Nidx1=64 K=1024 valid_k=[1024,1024] exec_k=1024 scatter_exec_k=1024 invalid=0 path=full-valid dtype=bfloat16
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0810_kernel_source.cpp
+[00] bsnd_b1_s1_1_k_1024 TileLang FAIL: npuSynchronizeDevice:build/CMakeFiles/torch_npu.dir/compiler_depend.ts:575 NPU function error: AclrtSynchronizeDeviceWithTimeout, error code is 507015
+[ERROR] 2026-08-10-16:24:06 (PID:448630, Device:0, RankID:-1) ERR00100 PTA call acl api failed
+[Error]: The aicore execution is abnormal. 
+        Rectify the fault based on the error information in the ascend log.
+EH9999: Inner Error!
+EH9999[PID: 448630] 2026-08-10-16:23:58.469.630 (EH9999):  get device uuid failed, deviceId = 0, runtime result = 207000[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+        TraceBack (most recent call last):
+       The error from device(chipId:2, dieId:1), serial number is 384, there is an exception of fftsplus aicore error, core id is 11, error code = 0x20000, dump info: pc start: 0x12c082a3d000, current: 0x12c082a3ec4c, vec error info: 0, mte error info: 0xf703000038, ifu error info: 0x75e3116fa2480, ccu error info: 0x92189f8a01000049, cube error info: 0xfb000077, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100003080.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x20000, 0, 0) errorStr: L0C read/write conflict(vec read operation or cube write operation). fixp_error0 info: 0x3000038, fixp_error1 info: 0xf7, fsmId:1, tslot:6, thread:0, ctxid:0, blk:0, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       Kernel task happen error, retCode=0x26, [aicore exception].[FUNC:PreCheckTaskErr][FILE:davinci_kernel_task.cc][LINE:1729]
+       rtDeviceSynchronizeWithTimeout execution failed, reason=aicore exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:65]
+       wait for compute device to finish failed, runtime result = 507015.[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+
+Traceback (most recent call last):
+  File "/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/precision_test_general/test_0721_general.py", line 1082, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/precision_test_general/test_0721_general.py", line 1059, in main
+    _release_case_memory()
+  File "/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/precision_test_general/test_0721_general.py", line 856, in _release_case_memory
+    torch.npu.empty_cache()
+  File "/usr/local/python3.11.14/lib/python3.11/site-packages/torch_npu/npu/memory.py", line 164, in empty_cache
+    torch_npu._C._npu_emptyCache()
+RuntimeError: npuSynchronizeDevice:build/CMakeFiles/torch_npu.dir/compiler_depend.ts:575 NPU function error: AclrtSynchronizeDeviceWithTimeout, error code is 507015
+[ERROR] 2026-08-10-16:24:06 (PID:448630, Device:0, RankID:-1) ERR00100 PTA call acl api failed
+[Error]: The aicore execution is abnormal. 
+        Rectify the fault based on the error information in the ascend log.
+EE9999: Inner Error!
+EE9999[PID: 448630] 2026-08-10-16:24:06.157.526 (EE9999):  rtDeviceSynchronizeWithTimeout execution failed, reason=aicore exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:65]
+        TraceBack (most recent call last):
+       wait for compute device to finish failed, runtime result = 507015.[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+
+[W810 16:24:06.936104412 compiler_depend.ts:595] Warning: NPU warning, error code is 507015[Error]: 
+[Error]: The aicore execution is abnormal. 
+        Rectify the fault based on the error information in the ascend log.
+EE9999: Inner Error!
+EE9999[PID: 448630] 2026-08-10-16:24:06.159.671 (EE9999):  rtDeviceSynchronizeWithTimeout execution failed, reason=aicore exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:65]
+        TraceBack (most recent call last):
+       wait for compute device to finish failed, runtime result = 507015.[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+ (function npuSynchronizeUsedDevices)
+[W810 16:24:06.936535008 compiler_depend.ts:577] Warning: NPU warning, error code is 507015[Error]: 
+[Error]: The aicore execution is abnormal. 
+        Rectify the fault based on the error information in the ascend log.
+EE9999: Inner Error!
+EE9999[PID: 448630] 2026-08-10-16:24:06.160.208 (EE9999):  rtDeviceSynchronizeWithTimeout execution failed, reason=aicore exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:65]
+        TraceBack (most recent call last):
+       wait for compute device to finish failed, runtime result = 507015.[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+ (function npuSynchronizeDevice)
