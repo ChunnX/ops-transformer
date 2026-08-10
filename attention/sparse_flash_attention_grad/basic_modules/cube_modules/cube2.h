@@ -54,12 +54,12 @@ CubeOp<T1>::cube2ProcessSparse(const int64_t dyGmOffset, const int64_t valueGmOf
             l1_v_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
             
             currentDyOffset = dIdx * dimGAlign * K_SPLIT_SIZE;
-            // Key and value share the same data. selectedKWorkspace stores each row as
-            // [key, keyRope], so Cube2 reads the key part and skips keyRope with dimDTotal stride.
+            // Key and value share the same data. The key plane is contiguous and has
+            // a cache-line-aligned row stride.
             currentVOffset = valueGmOffset +
-                (nIdx - blkCntOffset) * selectedBlockSizeDtotal + dIdx * K_SPLIT_SIZE;
+                (nIdx - blkCntOffset) * selectedBlockSizeDqk + dIdx * K_SPLIT_SIZE;
             CopyGmToL1(l1_v_tensor, selectedKWorkspaceGm[currentVOffset], mmParam.singleN,
-                K_SPLIT_SIZE, dimDTotal);
+                K_SPLIT_SIZE, dimDqk);
             current_l1_dy_tensor = l1_dy_tensor[currentDyOffset];
 
             MmadInnerWithSync<T1>(l0cTensor, current_l1_dy_tensor, l1_v_tensor,

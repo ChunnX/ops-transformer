@@ -295,12 +295,12 @@ __aicore__ inline void VecOp<SFAGT>::InitParams(const TILING_CLASS *__restrict o
     outParamK.blockCount = 2 * selectedBlockSize;
     outParamK.blockLen = dimDqk * sizeof(T1);
     outParamK.srcStride = 0;
-    outParamK.dstStride = dimRope * sizeof(T1);
+    outParamK.dstStride = 0;
 
     outParamRope.blockCount = 2 * selectedBlockSize;
     outParamRope.blockLen = dimRope * sizeof(T1);
     outParamRope.srcStride = 0;
-    outParamRope.dstStride = dimDqk * sizeof(T1);
+    outParamRope.dstStride = 0;
 
     scatterParams.blockCount = 2;
     scatterParams.srcStride = 0;
@@ -801,7 +801,7 @@ __aicore__ inline void VecOp<SFAGT>::GatherKVNonOptimized(const int64_t n2Index,
     outParamK.blockCount = selectedBlockSize < 64 ? 2 * selectedBlockSize : selectedBlockSize;
     outParamRope.blockCount = selectedBlockSize < 64 ? 2 * selectedBlockSize : selectedBlockSize;
 
-    uint64_t totalD = dimDqk + dimRope;
+    uint64_t ropePlaneOffset = PER_LOOP_BLOCK_SIZE * dimDqk;
     event_t mte2WaitMte3EventId;
     event_t mte3WaitMte2EventId;
 
@@ -813,7 +813,8 @@ __aicore__ inline void VecOp<SFAGT>::GatherKVNonOptimized(const int64_t n2Index,
     uint32_t curBlk = subBlockIdx == 0 ? 0 : firstVecEnd;
     uint32_t curActualSelCntEnd = subBlockIdx == 0 ? firstVecEnd : runInfo.actualSelCntOffset;
     uint32_t curActualSelCntOffset = curActualSelCntEnd - curBlk;
-    uint64_t outWsOffset = subBlockIdx == 0 ? 0 : firstVecEnd * selectedBlockSize * totalD;
+    uint64_t outKOffset = subBlockIdx == 0 ? 0 : firstVecEnd * selectedBlockSize * dimDqk;
+    uint64_t outRopeOffset = subBlockIdx == 0 ? 0 : firstVecEnd * selectedBlockSize * dimRope;
     uint32_t i;
 
     bool isLast = runInfo.isLastBasicBlock && subBlockIdx == 1;
@@ -884,15 +885,16 @@ __aicore__ inline void VecOp<SFAGT>::GatherKVNonOptimized(const int64_t n2Index,
 
             outParamK.blockCount = curGatherSize;
             outParamRope.blockCount = curGatherSize;
-            DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + outWsOffset], gatherTensor, outParamK);
+            DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + outKOffset], gatherTensor, outParamK);
             if constexpr (HAS_ROPE) {
-                DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + dimDqk + outWsOffset], gatherRopeTensor,
-                            outParamRope);
+                DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + ropePlaneOffset + outRopeOffset],
+                            gatherRopeTensor, outParamRope);
             }
 
             SET_FLAG(MTE3, MTE2, mte2WaitMte3EventId);
             mergePingPong = 1 - mergePingPong;
-            outWsOffset += curGatherSize * totalD;
+            outKOffset += curGatherSize * dimDqk;
+            outRopeOffset += curGatherSize * dimRope;
             curGatherSize = 0;
         } else {
             SET_FLAG(MTE3, MTE2, mte2WaitMte3EventId);
@@ -937,11 +939,12 @@ __aicore__ inline void VecOp<SFAGT>::GatherKVNonOptimized(const int64_t n2Index,
         WAIT_FLAG(MTE2, MTE3, mte3WaitMte2EventId);
 
         outParamK.blockCount = curGatherSize;
-        DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + outWsOffset], gatherTensor, outParamK);
+        DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + outKOffset], gatherTensor, outParamK);
 
         if constexpr (HAS_ROPE) {
             outParamRope.blockCount = curGatherSize;
-            DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + dimDqk + outWsOffset], gatherRopeTensor, outParamRope);
+            DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + ropePlaneOffset + outRopeOffset],
+                        gatherRopeTensor, outParamRope);
         }
 
         SET_FLAG(MTE3, MTE2, mte2WaitMte3EventId);
@@ -962,10 +965,10 @@ __aicore__ inline void VecOp<SFAGT>::GatherKVOptimized(const int64_t n2Index, ui
     outParamK.blockCount = selectedBlockSize < 64 ? 2 * selectedBlockSize : selectedBlockSize;
     outParamK.blockLen = dimDqk * sizeof(T1);
     outParamK.srcStride = 0;
-    outParamK.dstStride = dimRope * sizeof(T1);
+    outParamK.dstStride = 0;
     outParamRope.blockCount = selectedBlockSize < 64 ? 2 * selectedBlockSize : selectedBlockSize;
 
-    uint64_t totalD = dimDqk + dimRope;
+    uint64_t ropePlaneOffset = PER_LOOP_BLOCK_SIZE * dimDqk;
     event_t mte2WaitMte3EventId;
     event_t mte3WaitMte2EventId;
 
@@ -975,7 +978,8 @@ __aicore__ inline void VecOp<SFAGT>::GatherKVOptimized(const int64_t n2Index, ui
     uint32_t curBlk = subBlockIdx == 0 ? 0 : firstVecEnd;
     uint32_t curActualSelCntEnd = subBlockIdx == 0 ? firstVecEnd : runInfo.actualSelCntOffset;
     uint32_t curActualSelCntOffset = curActualSelCntEnd - curBlk;
-    uint64_t outWsOffset = subBlockIdx == 0 ? 0 : firstVecEnd * selectedBlockSize * totalD;
+    uint64_t outKOffset = subBlockIdx == 0 ? 0 : firstVecEnd * selectedBlockSize * dimDqk;
+    uint64_t outRopeOffset = subBlockIdx == 0 ? 0 : firstVecEnd * selectedBlockSize * dimRope;
     uint32_t i;
 
     if (selectedBlockSize >= MAX_GATHER_SIZE) {
@@ -989,7 +993,8 @@ __aicore__ inline void VecOp<SFAGT>::GatherKVOptimized(const int64_t n2Index, ui
             for (uint32_t rowOffset = 0; rowOffset < blockRows; rowOffset += MAX_GATHER_SIZE) {
                 uint32_t copyRows = (blockRows - rowOffset) > MAX_GATHER_SIZE ?
                     MAX_GATHER_SIZE : (blockRows - rowOffset);
-                uint64_t kOutOffset = i * selectedBlockSize * totalD + rowOffset * totalD;
+                uint64_t kOutOffset = i * selectedBlockSize * dimDqk + rowOffset * dimDqk;
+                uint64_t ropeOutOffset = i * selectedBlockSize * dimRope + rowOffset * dimRope;
 
                 mte2WaitMte3EventId = mergePingPong ? runInfo.gatherMte2WaitMte3Pong :
                     runInfo.gatherMte2WaitMte3;
@@ -1022,15 +1027,15 @@ __aicore__ inline void VecOp<SFAGT>::GatherKVOptimized(const int64_t n2Index, ui
                 outParamK.blockCount = copyRows;
                 outParamK.blockLen = dimDqk * sizeof(T1);
                 outParamK.srcStride = 0;
-                outParamK.dstStride = dimRope * sizeof(T1);
+                outParamK.dstStride = 0;
                 DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + kOutOffset], gatherTensor, outParamK);
 
                 if constexpr (HAS_ROPE) {
                     outParamRope.blockCount = copyRows;
                     outParamRope.blockLen = dimRope * sizeof(T1);
                     outParamRope.srcStride = 0;
-                    outParamRope.dstStride = dimDqk * sizeof(T1);
-                    DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + dimDqk + kOutOffset],
+                    outParamRope.dstStride = 0;
+                    DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + ropePlaneOffset + ropeOutOffset],
                         gatherRopeTensor, outParamRope);
                 }
 
@@ -1105,14 +1110,16 @@ __aicore__ inline void VecOp<SFAGT>::GatherKVOptimized(const int64_t n2Index, ui
             outParamK.blockCount = curGatherSize;
             outParamRope.blockCount = curGatherSize;
             // CopyOut
-            DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + outWsOffset], gatherTensor, outParamK);
+            DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + outKOffset], gatherTensor, outParamK);
             if constexpr (HAS_ROPE) {
-                DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + dimDqk + outWsOffset], gatherRopeTensor, outParamRope);
+                DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + ropePlaneOffset + outRopeOffset],
+                            gatherRopeTensor, outParamRope);
             }
 
             SET_FLAG(MTE3, MTE2, mte2WaitMte3EventId);
             mergePingPong = 1 - mergePingPong;
-            outWsOffset += curGatherSize * totalD;
+            outKOffset += curGatherSize * dimDqk;
+            outRopeOffset += curGatherSize * dimRope;
             curGatherSize = 0;
         }
     }
@@ -1151,11 +1158,12 @@ __aicore__ inline void VecOp<SFAGT>::GatherKVOptimized(const int64_t n2Index, ui
         WAIT_FLAG(MTE2, MTE3, mte3WaitMte2EventId);
 
         outParamK.blockCount = curGatherSize;
-        DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + outWsOffset], gatherTensor, outParamK);
+        DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + outKOffset], gatherTensor, outParamK);
 
         if constexpr (HAS_ROPE) {
             outParamRope.blockCount = curGatherSize;
-            DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + dimDqk + outWsOffset], gatherRopeTensor, outParamRope);
+            DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + ropePlaneOffset + outRopeOffset],
+                        gatherRopeTensor, outParamRope);
         }
 
         mergePingPong = 1 - mergePingPong;
