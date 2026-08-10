@@ -101,7 +101,6 @@ int main() {
   // 2. 构造输入与输出，需要根据API的接口自定义构造
   int64_t s1 = 1;
   int64_t s2 = 1;
-  // Use padding: cu_seqlens = [0,1] but tensor size = 512
   int64_t t1 = 512;
   int64_t t2 = 512;
   int64_t n1 = 128;

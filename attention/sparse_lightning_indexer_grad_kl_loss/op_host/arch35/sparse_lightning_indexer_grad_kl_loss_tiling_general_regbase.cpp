@@ -323,7 +323,8 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(const g
                 t1Size < accumS1 || t2Size < accumS2,
                 OP_LOGE(
                     opName,
-                    "Query Tsize(%ld) and key Tsize(%ld) must be larger than sum of seqQLen(%ld) and seqkLen(%ld), respectively.",
+                    "Query Tsize(%ld) and key Tsize(%ld) must be larger than sum of "
+                    "seqQLen(%ld) and seqkLen(%ld), respectively.",
                     t1Size, t2Size, accumS1, accumS2),
                 return false);
             realT1Size = accumS1;

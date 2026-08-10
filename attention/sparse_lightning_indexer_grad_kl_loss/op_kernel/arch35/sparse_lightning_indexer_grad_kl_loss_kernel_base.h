@@ -125,16 +125,16 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         int64_t actualKLen = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
         int64_t t1PadLen = tilingData->baseParams.t1Size - actualLen;
         int64_t t2PadLen = tilingData->baseParams.t2Size - actualKLen;
-        int64_t actualAivNum = static_cast<int64_t>(GetBlockNum()) * static_cast<int64_t>(GetTaskRation());
+        int64_t actualAivNum = static_cast<int64_t>(tilingData->baseParams.totalAivNum);
 
         // 将padding行均分到各AIV核并行清零
         if (t1PadLen > 0) {
-            int64_t split = t1PadLen / actualAivNum;
-            int64_t remain = t1PadLen % actualAivNum;
-            int64_t coreCnt = split + (static_cast<int64_t>(constInfo.aivIdx) < remain ? 1 : 0);
-            int64_t coreOff = static_cast<int64_t>(constInfo.aivIdx) * split +
-                Min(static_cast<int64_t>(constInfo.aivIdx), remain);
             if ASCEND_IS_AIV {
+                int64_t split = t1PadLen / actualAivNum;
+                int64_t remain = t1PadLen % actualAivNum;
+                int64_t coreCnt = split + (static_cast<int64_t>(constInfo.aivIdx) < remain ? 1 : 0);
+                int64_t coreOff = static_cast<int64_t>(constInfo.aivIdx) * split +
+                    Min(static_cast<int64_t>(constInfo.aivIdx), remain);
                 if (coreCnt > 0) {  // 跳过无任务的核，避免构造越界GlobalTensor
                     int64_t rowElms = static_cast<int64_t>(constInfo.gSizeQueryIndex) *
                         static_cast<int64_t>(constInfo.dSizeQueryIndex);
@@ -149,17 +149,18 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
                     GlobalTensor<WEIGHT_T> tmpDW;
                     tmpDW.SetGlobalBuffer(reinterpret_cast<__gm__ WEIGHT_T *>(dWeight) + dWOff,
                         coreCnt * static_cast<int64_t>(constInfo.gSizeQueryIndex));
-                    AscendC::Fill(tmpDW, coreCnt * static_cast<int64_t>(constInfo.gSizeQueryIndex), static_cast<WEIGHT_T>(0));
+                    AscendC::Fill(tmpDW, coreCnt * static_cast<int64_t>(constInfo.gSizeQueryIndex),
+                        static_cast<WEIGHT_T>(0));
                 }
             }
         }
         if (t2PadLen > 0) {
-            int64_t split = t2PadLen / actualAivNum;
-            int64_t remain = t2PadLen % actualAivNum;
-            int64_t coreCnt = split + (static_cast<int64_t>(constInfo.aivIdx) < remain ? 1 : 0);
-            int64_t coreOff = static_cast<int64_t>(constInfo.aivIdx) * split +
-                Min(static_cast<int64_t>(constInfo.aivIdx), remain);
             if ASCEND_IS_AIV {
+                int64_t split = t2PadLen / actualAivNum;
+                int64_t remain = t2PadLen % actualAivNum;
+                int64_t coreCnt = split + (static_cast<int64_t>(constInfo.aivIdx) < remain ? 1 : 0);
+                int64_t coreOff = static_cast<int64_t>(constInfo.aivIdx) * split +
+                    Min(static_cast<int64_t>(constInfo.aivIdx), remain);
                 if (coreCnt > 0) {
                     // 清零dKeyIndex的padding区域
                     int64_t dKOff = (coreOff + actualKLen) *
@@ -167,7 +168,8 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
                     GlobalTensor<INPUT_T> tmpDK;
                     tmpDK.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dKeyIndex) + dKOff,
                         coreCnt * static_cast<int64_t>(constInfo.dSizeQueryIndex));
-                    AscendC::Fill(tmpDK, coreCnt * static_cast<int64_t>(constInfo.dSizeQueryIndex), static_cast<INPUT_T>(0));
+                    AscendC::Fill(tmpDK, coreCnt * static_cast<int64_t>(constInfo.dSizeQueryIndex),
+                        static_cast<INPUT_T>(0));
                 }
             }
         }
