@@ -25,17 +25,20 @@ constexpr uint32_t FLOAT_NUM_PER_REPEAT = BYTE_SIZE_PER_REPEAT / sizeof(float);
 constexpr uint32_t NZ_BLOCK_SIZE = 16;
 
 template <typename T>
-CATLASS_DEVICE T AlignUp(T a, T b) {
+CATLASS_DEVICE T AlignUp(T a, T b)
+{
     return (b == 0) ? 0 : (a + b - 1) / b * b;
 }
 
 template <typename T>
-CATLASS_DEVICE T Min(T a, T b) {
+CATLASS_DEVICE T Min(T a, T b)
+{
     return (a > b) ? b : a;
 }
 
 template <typename T>
-CATLASS_DEVICE T Max(T a, T b) {
+CATLASS_DEVICE T Max(T a, T b)
+{
     return (a > b) ? a : b;
 }
 
@@ -64,7 +67,6 @@ struct KdaFwdHOffsets {
     uint32_t batchIdx;
     uint32_t headIdx;
     uint32_t chunkIdx;
-
 };
 
 struct KdaFwdHStream {
@@ -133,8 +135,11 @@ struct BlockSchedulerKdaFwdH {
     BlockSchedulerKdaFwdH() {}
 
     CATLASS_DEVICE
-    void Init(GM_ADDR cu_seqlens, GM_ADDR chunk_indices, GM_ADDR tiling, GM_ADDR user, uint32_t coreIdx, uint32_t coreNum) {
-        __gm__ ChunkKdaFwdHRuntimeTiling *__restrict kdaFwdHTilingData = reinterpret_cast<__gm__ ChunkKdaFwdHRuntimeTiling *__restrict>(tiling);
+    void Init(GM_ADDR cu_seqlens, GM_ADDR chunk_indices, GM_ADDR tiling, GM_ADDR user, uint32_t coreIdx,
+              uint32_t coreNum)
+    {
+        __gm__ ChunkKdaFwdHRuntimeTiling *__restrict kdaFwdHTilingData =
+            reinterpret_cast<__gm__ ChunkKdaFwdHRuntimeTiling *__restrict>(tiling);
 
         batch = kdaFwdHTilingData->batch;
         seqlen = kdaFwdHTilingData->seqlen;
@@ -155,9 +160,9 @@ struct BlockSchedulerKdaFwdH {
     }
 
     template <typename TilingData>
-    CATLASS_DEVICE
-    void InitFromData(GM_ADDR cu_seqlens, GM_ADDR chunk_indices, const TilingData& tilingData,
-                      GM_ADDR user, uint32_t coreIdx, uint32_t coreNum) {
+    CATLASS_DEVICE void InitFromData(GM_ADDR cu_seqlens, GM_ADDR chunk_indices, const TilingData &tilingData,
+                                     GM_ADDR user, uint32_t coreIdx, uint32_t coreNum)
+    {
         batch = tilingData.batch;
         seqlen = tilingData.seqlen;
         kNumHead = tilingData.kNumHead;
@@ -177,9 +182,8 @@ struct BlockSchedulerKdaFwdH {
     }
 
     CATLASS_DEVICE
-    void InitRuntime(GM_ADDR cu_seqlens, GM_ADDR chunk_indices, GM_ADDR user,
-                     uint32_t coreIdx, uint32_t coreNum) {
-
+    void InitRuntime(GM_ADDR cu_seqlens, GM_ADDR chunk_indices, GM_ADDR user, uint32_t coreIdx, uint32_t coreNum)
+    {
         gmSeqlen.SetGlobalBuffer((__gm__ int64_t *)cu_seqlens);
         gmNumSeq.SetGlobalBuffer((__gm__ int64_t *)(user + numSeqWorkspaceOffset));
         gmNumChunks.SetGlobalBuffer((__gm__ int64_t *)(user + numChunksWorkspaceOffset));
@@ -216,19 +220,19 @@ struct BlockSchedulerKdaFwdH {
         uint32_t maxTaskCntPerLoop = taskNum > cubeCoreNum ? PING_PONG_STAGES : 1;
         taskStride = cubeCoreNum * maxTaskCntPerLoop;
         for (uint32_t streamId = 0; streamId < PING_PONG_STAGES; ++streamId) {
-            auto& stream = runningQ.streams[streamId];
-            stream.nextTaskIdx = (streamId < maxTaskCntPerLoop) ? (cubeCoreIdx * maxTaskCntPerLoop + streamId) : taskNum;
+            auto &stream = runningQ.streams[streamId];
+            stream.nextTaskIdx =
+                (streamId < maxTaskCntPerLoop) ? (cubeCoreIdx * maxTaskCntPerLoop + streamId) : taskNum;
             stream.chunkIdx = 0;
             stream.batchChunks = 0;
             stream.active = false;
         }
         isRunning = cubeCoreIdx * maxTaskCntPerLoop < taskNum;
-
     }
 
-
     CATLASS_DEVICE
-    void ResolveVarlenSequence(uint32_t compactBatchIdx, KdaFwdHStream& stream) {
+    void ResolveVarlenSequence(uint32_t compactBatchIdx, KdaFwdHStream &stream)
+    {
         uint32_t actualBatch = 0;
         int64_t chunkPrefix = 0;
         int64_t prevSeq = 0;
@@ -256,14 +260,16 @@ struct BlockSchedulerKdaFwdH {
     }
 
     CATLASS_DEVICE
-    uint32_t GetVarlenChunkOffset(uint32_t compactBatchIdx) {
+    uint32_t GetVarlenChunkOffset(uint32_t compactBatchIdx)
+    {
         KdaFwdHStream stream;
         ResolveVarlenSequence(compactBatchIdx, stream);
         return stream.chunkOffset;
     }
 
     CATLASS_DEVICE
-    void InitNewStream(KdaFwdHStream& newStream) {
+    void InitNewStream(KdaFwdHStream &newStream)
+    {
         newStream.batchIdx = taskIdx / vNumHead;
         newStream.vHeadIdx = taskIdx % vNumHead;
         newStream.kHeadIdx = newStream.vHeadIdx / headGroups;
@@ -281,8 +287,9 @@ struct BlockSchedulerKdaFwdH {
     }
 
     CATLASS_DEVICE
-    void AssignNextStream(uint32_t streamId) {
-        auto& stream = runningQ.streams[streamId];
+    void AssignNextStream(uint32_t streamId)
+    {
+        auto &stream = runningQ.streams[streamId];
         taskIdx = stream.nextTaskIdx;
         if (taskIdx >= taskNum) {
             stream.active = false;
@@ -299,9 +306,10 @@ struct BlockSchedulerKdaFwdH {
     }
 
     CATLASS_DEVICE
-    void UpdateTask(uint32_t streamId) {
-        auto& stream = runningQ.streams[streamId];
-        auto& offset = stream.offset;
+    void UpdateTask(uint32_t streamId)
+    {
+        auto &stream = runningQ.streams[streamId];
+        auto &offset = stream.offset;
 
         offset.isInitialState = stream.chunkIdx == 0;
         offset.isFinalState = stream.chunkIdx == (stream.batchChunks - 1);
@@ -309,16 +317,29 @@ struct BlockSchedulerKdaFwdH {
         uint32_t vBlockDim = vBlockSize;
         offset.initialStateOffset = (stream.batchIdx * vNumHead + stream.vHeadIdx) * kHeadDim * vHeadDim + vBlockOffset;
         offset.finalStateOffset = (stream.batchIdx * vNumHead + stream.vHeadIdx) * kHeadDim * vHeadDim + vBlockOffset;
-        offset.hSrcOffset = (stream.shapeBatchIdx * vNumHead * totalChunks + stream.vHeadIdx * totalChunks + stream.chunkOffset + stream.chunkIdx) * kHeadDim * vHeadDim + vBlockOffset;
+        offset.hSrcOffset = (stream.shapeBatchIdx * vNumHead * totalChunks + stream.vHeadIdx * totalChunks +
+                             stream.chunkOffset + stream.chunkIdx) *
+                                kHeadDim * vHeadDim +
+                            vBlockOffset;
         offset.hDstOffset = offset.hSrcOffset + kHeadDim * vHeadDim;
         if (storeFinalState && offset.isFinalState) {
             offset.hDstOffset = offset.hSrcOffset;
         }
-        offset.uvOffset = (stream.shapeBatchIdx * vNumHead * totalTokens + stream.vHeadIdx * totalTokens + stream.tokenOffset + stream.chunkIdx * chunkSize) * vHeadDim + vBlockOffset;
-        offset.wkOffset = (stream.shapeBatchIdx * kNumHead * totalTokens + stream.kHeadIdx * totalTokens + stream.tokenOffset + stream.chunkIdx * chunkSize) * kHeadDim;
-        offset.wOffset = (stream.shapeBatchIdx * vNumHead * totalTokens + stream.vHeadIdx * totalTokens + stream.tokenOffset + stream.chunkIdx * chunkSize) * kHeadDim;
-        offset.gOffset = stream.shapeBatchIdx * vNumHead * totalTokens + stream.vHeadIdx * totalTokens + stream.tokenOffset + stream.chunkIdx * chunkSize;
-        offset.gkOffset = (stream.shapeBatchIdx * vNumHead * totalTokens + stream.vHeadIdx * totalTokens + stream.tokenOffset + stream.chunkIdx * chunkSize) * kHeadDim;
+        offset.uvOffset = (stream.shapeBatchIdx * vNumHead * totalTokens + stream.vHeadIdx * totalTokens +
+                           stream.tokenOffset + stream.chunkIdx * chunkSize) *
+                              vHeadDim +
+                          vBlockOffset;
+        offset.wkOffset = (stream.shapeBatchIdx * kNumHead * totalTokens + stream.kHeadIdx * totalTokens +
+                           stream.tokenOffset + stream.chunkIdx * chunkSize) *
+                          kHeadDim;
+        offset.wOffset = (stream.shapeBatchIdx * vNumHead * totalTokens + stream.vHeadIdx * totalTokens +
+                          stream.tokenOffset + stream.chunkIdx * chunkSize) *
+                         kHeadDim;
+        offset.gOffset = stream.shapeBatchIdx * vNumHead * totalTokens + stream.vHeadIdx * totalTokens +
+                         stream.tokenOffset + stream.chunkIdx * chunkSize;
+        offset.gkOffset = (stream.shapeBatchIdx * vNumHead * totalTokens + stream.vHeadIdx * totalTokens +
+                           stream.tokenOffset + stream.chunkIdx * chunkSize) *
+                          kHeadDim;
         offset.hWorkOffset = (cubeCoreIdx * PING_PONG_STAGES + streamId) * kHeadDim * vBlockSize;
         offset.vWorkOffset = (cubeCoreIdx * PING_PONG_STAGES + streamId) * chunkSize * vBlockSize;
         offset.kDecayWorkOffset = (cubeCoreIdx * PING_PONG_STAGES + streamId) * chunkSize * kHeadDim;
@@ -332,10 +353,11 @@ struct BlockSchedulerKdaFwdH {
     }
 
     CATLASS_DEVICE
-    void InitTasks() {
+    void InitTasks()
+    {
         isRunning = false;
         for (uint32_t streamId = 0; streamId < PING_PONG_STAGES; ++streamId) {
-            auto& stream = runningQ.streams[streamId];
+            auto &stream = runningQ.streams[streamId];
             if (stream.active) {
                 stream.chunkIdx += 1;
                 if (stream.chunkIdx >= stream.batchChunks) {
@@ -355,29 +377,19 @@ struct BlockSchedulerKdaFwdH {
     }
 
     CATLASS_DEVICE
-    const KdaFwdHStream& GetStream(uint32_t i) const {
-        return runningQ.streams[i];
-    }
+    const KdaFwdHStream &GetStream(uint32_t i) const { return runningQ.streams[i]; }
 
     CATLASS_DEVICE
-    uint32_t GetStreamId(uint32_t i) const {
-        return i;
-    }
+    uint32_t GetStreamId(uint32_t i) const { return i; }
 
     CATLASS_DEVICE
-    const KdaFwdHOffsets& GetCurTaskOffsets(const KdaFwdHStream& stream) const {
-        return stream.offset;
-    }
+    const KdaFwdHOffsets &GetCurTaskOffsets(const KdaFwdHStream &stream) const { return stream.offset; }
 
     CATLASS_DEVICE
-    bool StreamIsDone(const KdaFwdHStream& stream) const {
-        return !stream.active;
-    }
+    bool StreamIsDone(const KdaFwdHStream &stream) const { return !stream.active; }
 
     CATLASS_DEVICE
-    bool NeedProcessStage2(const KdaFwdHStream& stream) {
-        return storeFinalState || !stream.offset.isFinalState;
-    }
+    bool NeedProcessStage2(const KdaFwdHStream &stream) { return storeFinalState || !stream.offset.isFinalState; }
 };
 
 struct BlockSchedulerKdaFwdHCube : public BlockSchedulerKdaFwdH {
@@ -385,17 +397,19 @@ struct BlockSchedulerKdaFwdHCube : public BlockSchedulerKdaFwdH {
     BlockSchedulerKdaFwdHCube() {}
 
     CATLASS_DEVICE
-    void Init(GM_ADDR cu_seqlens, GM_ADDR chunk_indices, GM_ADDR tiling, GM_ADDR user) {
-        BlockSchedulerKdaFwdH::Init(cu_seqlens, chunk_indices, tiling, user, AscendC::GetBlockIdx(), AscendC::GetBlockNum());
+    void Init(GM_ADDR cu_seqlens, GM_ADDR chunk_indices, GM_ADDR tiling, GM_ADDR user)
+    {
+        BlockSchedulerKdaFwdH::Init(cu_seqlens, chunk_indices, tiling, user, AscendC::GetBlockIdx(),
+                                    AscendC::GetBlockNum());
     }
 
     template <typename TilingData>
-    CATLASS_DEVICE
-    void InitFromData(GM_ADDR cu_seqlens, GM_ADDR chunk_indices, const TilingData& tilingData, GM_ADDR user) {
-        BlockSchedulerKdaFwdH::InitFromData(
-            cu_seqlens, chunk_indices, tilingData, user, AscendC::GetBlockIdx(), AscendC::GetBlockNum());
+    CATLASS_DEVICE void InitFromData(GM_ADDR cu_seqlens, GM_ADDR chunk_indices, const TilingData &tilingData,
+                                     GM_ADDR user)
+    {
+        BlockSchedulerKdaFwdH::InitFromData(cu_seqlens, chunk_indices, tilingData, user, AscendC::GetBlockIdx(),
+                                            AscendC::GetBlockNum());
     }
-
 };
 
 struct BlockSchedulerKdaFwdHVec : public BlockSchedulerKdaFwdH {
@@ -403,24 +417,21 @@ struct BlockSchedulerKdaFwdHVec : public BlockSchedulerKdaFwdH {
     BlockSchedulerKdaFwdHVec() {}
 
     CATLASS_DEVICE
-    void Init(GM_ADDR cu_seqlens, GM_ADDR chunk_indices, GM_ADDR tiling, GM_ADDR user) {
-        BlockSchedulerKdaFwdH::Init(
-            cu_seqlens, chunk_indices, tiling, user,
-            AscendC::GetBlockIdx() / AscendC::GetSubBlockNum(),
-            AscendC::GetBlockNum());
+    void Init(GM_ADDR cu_seqlens, GM_ADDR chunk_indices, GM_ADDR tiling, GM_ADDR user)
+    {
+        BlockSchedulerKdaFwdH::Init(cu_seqlens, chunk_indices, tiling, user,
+                                    AscendC::GetBlockIdx() / AscendC::GetSubBlockNum(), AscendC::GetBlockNum());
     }
 
     template <typename TilingData>
-    CATLASS_DEVICE
-    void InitFromData(GM_ADDR cu_seqlens, GM_ADDR chunk_indices, const TilingData& tilingData, GM_ADDR user) {
-        BlockSchedulerKdaFwdH::InitFromData(
-            cu_seqlens, chunk_indices, tilingData, user,
-            AscendC::GetBlockIdx() / AscendC::GetSubBlockNum(),
-            AscendC::GetBlockNum());
+    CATLASS_DEVICE void InitFromData(GM_ADDR cu_seqlens, GM_ADDR chunk_indices, const TilingData &tilingData,
+                                     GM_ADDR user)
+    {
+        BlockSchedulerKdaFwdH::InitFromData(cu_seqlens, chunk_indices, tilingData, user,
+                                            AscendC::GetBlockIdx() / AscendC::GetSubBlockNum(), AscendC::GetBlockNum());
     }
-
 };
 
-}  // namespace Catlass::Gemm::Block
+} // namespace Catlass::Gemm::Block
 
-#endif  // CATLASS_GEMM_SCHEDULER_KDA_FWD_H_HPP
+#endif // CATLASS_GEMM_SCHEDULER_KDA_FWD_H_HPP
