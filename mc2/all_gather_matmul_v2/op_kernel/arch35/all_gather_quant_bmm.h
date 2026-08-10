@@ -390,6 +390,7 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
     // 防止某一个核执行过快清空RcvCnt, 增加全核同步
     Mc2SyncAll<Mc2CoreType::ON_CUBE>();
     if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
+        AscendC::PRINTF("===AllGatherMatmul MX Finalize: blockID[%u], rankID[%u]===", GetBlockIdx(), rankId_);
         hcclAllgather_.Finalize();
     }
 }
