@@ -24,9 +24,6 @@ golden、用例集与输入构造都取自 ../tests/assets/golden.py（本算子
   4. CANN 自带的 python/site-packages 里有一份同名旧包，会遮蔽新装的 wheel，
      跑之前要把 venv 的 site-packages 前置：
      export PYTHONPATH=<venv>/lib/python3.12/site-packages:$PYTHONPATH
-  5. torchair 需与 torch 版本匹配：cann_ops_transformer.ops 的 __init__ 会加载全部
-     算子，其中若干个在 import 期就引用 torchair，torchair 坏掉会让整包 import 失败。
-     本算子自身走 aclnn 直调，不经过 torchair。
 
 用法：
   python3 test_torch_und_gen_qkv_rms_norm_rope_cache.py             # 默认 case 集（T ≤ 10752）
@@ -55,10 +52,7 @@ from assets.golden import (  # noqa: E402
     golden_dense,
 )
 
-# 直接导入本算子，避免加载其他无关算子
-from cann_ops_transformer.ops.und_gen_qkv_rms_norm_rope_cache import (  # noqa: E402
-    und_gen_qkv_rms_norm_rope_cache,
-)
+import cann_ops_transformer  # noqa: E402
 
 # bf16 输出的比对判据，与 tests/st/arch35 两个 TTK CSV 的 precision_tolerances /
 # absolute_precision 取同一套值，口径统一：
@@ -151,7 +145,7 @@ def run_case(spec, verbose=True):
     k_cache_in, v_cache_in = case["k_cache"], case["v_cache"]
     k_cache = k_cache_in.clone().npu()
     v_cache = v_cache_in.clone().npu()
-    q = und_gen_qkv_rms_norm_rope_cache(
+    q = cann_ops_transformer.und_gen_qkv_rms_norm_rope_cache(
         case["und_qkv"].npu(), case["und_weights_q"].npu(), case["und_weights_k"].npu(),
         case["cos_sin_cache"].npu(), k_cache, v_cache,
         case["slot_mapping"].npu(), case["positions"].npu(),

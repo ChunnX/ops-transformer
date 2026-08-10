@@ -2,40 +2,50 @@
 
 ## 产品支持情况
 
-| 产品 | 是否支持 |
-|:----|:--------:|
-| <term>Ascend 950PR/Ascend 950DT</term> | √ |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | × |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | × |
-| <term>Atlas 200I/500 A2 推理产品</term> | × |
-| <term>Atlas 推理系列产品</term> | × |
-| <term>Atlas 训练系列产品</term> | × |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
-- 接口功能：面向多模态大模型推理的 QKV 主干融合前处理算子。接口把理解阶段（undecoded）与生成阶段（generated）两段 QKV 输入按 `catIndicesOptional` 间接寻址拼成一条输出序列，逐 token 沿头维度拆分出 Q/K/V，对 Q 和 K 逐头执行 RMSNorm 归一化与 MRoPE（多模态旋转位置编码），V 不参与归一化与旋转；Q 作为独立输出返回，K 和 V 按 `slotMapping` 写入分页 KV Cache（`kCacheRef`/`vCacheRef` 原地更新）。RMSNorm 权重按源 token 落在理解段还是生成段在两套权重间选择。计算全程 float32，输出与 KV Cache 均为 BF16。当前接口无版本迭代关系，不存在 V1/V2 等版本变体。
+- 接口功能：面向多模态大模型推理的QKV主干融合前处理算子。接口把理解阶段（undecoded）与生成阶段（generated）两段QKV输入按`catIndicesOptional`间接寻址拼成一条输出序列，逐token沿头维度拆分出Q/K/V，对Q和K逐头执行RMSNorm归一化与MRoPE（多模态旋转位置编码），V不参与归一化与旋转；Q作为独立输出返回，K和V按`slotMapping`写入分页KV Cache（`kCacheRef`/`vCacheRef`原地更新）。RMSNorm权重按源token落在理解段还是生成段在两套权重间选择。计算全程float32，输出与KV Cache均为BF16。
 
 - 计算公式：
 
   完整计算流程可以分解为以下基本计算单元。
 
-  第一步，根据 `catIndicesOptional` 的间接寻址关系，从理解阶段或生成阶段的 QKV 输入中取出每个输出 token 对应的源数据行：
+  第一步，根据`catIndicesOptional`的间接寻址关系，从理解阶段或生成阶段的QKV输入中取出每个输出token对应的源数据行：
 
   $$
   X_t = \begin{cases} X_{\text{und}}[c_t] & \text{若 } c_t < L_{\text{und}} \\ X_{\text{gen}}[c_t - L_{\text{und}}] & \text{若 } c_t \geq L_{\text{und}} \end{cases}
   $$
 
-  说明：`catIndicesOptional` 给出第 t 个输出 token 的源 token 下标 c<sub>t</sub>，据此从理解阶段输入或生成阶段输入中取出对应的 QKV 数据行。该行沿头维度依次拆分为 Q（H<sub>q</sub> 个头）、K（H<sub>k</sub> 个头）和 V（H<sub>v</sub> 个头）三段。后续 RMSNorm 权重也按同一条件同步选择 und 段（`undWeightsQ`/`undWeightsK`）或 gen 段（`genWeightsQOptional`/`genWeightsKOptional`）。
+  说明：`catIndicesOptional`给出第t个输出token的源token下标c<sub>t</sub>，据此从理解阶段输入或生成阶段输入中取出对应的QKV数据行。该行沿头维度依次拆分为Q（H<sub>q</sub>个头）、K（H<sub>k</sub>个头）和V（H<sub>v</sub>个头）三段。后续RMSNorm权重也按同一条件同步选择und段（`undWeightsQ`/`undWeightsK`）或gen段（`genWeightsQOptional`/`genWeightsKOptional`）。
 
-  第二步，对每个 Q 头或 K 头的 D 维向量执行 RMSNorm 归一化：
+  第二步，对每个Q头或K头的D维向量执行RMSNorm归一化：
 
   $$
   \hat{x}_h = \frac{x_h}{\sqrt{\frac{1}{D} \sum_{i=0}^{D-1} x_{h,i}^2 + \epsilon}} \odot \gamma_h
   $$
 
-  说明：对单个头的 D 维向量计算均方根值，将原向量除以该值后逐元素乘以对应的 RMSNorm 权重 γ。同一 token 的所有 Q 头共用一份 Q 权重，所有 K 头共用一份 K 权重。V 不参与此步骤。
+  说明：对单个头的D维向量计算均方根值，将原向量除以该值后逐元素乘以对应的RMSNorm权重γ。同一token的所有Q头共用一份Q权重，所有K头共用一份K权重。V不参与此步骤。
 
-  第三步，对归一化后的 Q 和 K 执行 MRoPE 旋转位置编码，将 D 维向量按前后各半分为低半和高半两部分进行旋转。对低半索引 l（0 ≤ l < D/2），取 p<sub>l</sub> = p[α(l), t]，cos<sub>l</sub> = C[p<sub>l</sub>, l]，sin<sub>l</sub> = C[p<sub>l</sub>, l + D/2]：
+  第三步，对归一化后的Q和K执行MRoPE旋转位置编码，将D维向量按前后各半分为低半和高半两部分进行旋转。对低半索引l（0 ≤ l < D/2），取p<sub>l</sub> = p[α(l), t]，cos<sub>l</sub> = C[p<sub>l</sub>, l]，sin<sub>l</sub> = C[p<sub>l</sub>, l + D/2]：
 
   $$
   \tilde{x}_{\text{lo},l} = \hat{x}_{\text{lo},l} \cdot \cos_l - \hat{x}_{\text{hi},l} \cdot \sin_l
@@ -45,34 +55,34 @@
   \tilde{x}_{\text{hi},l} = \hat{x}_{\text{hi},l} \cdot \cos_l + \hat{x}_{\text{lo},l} \cdot \sin_l
   $$
 
-  说明：`cosSinCache` 的前 D/2 列为 cos、后 D/2 列为 sin。每个低半位置 l 由轴映射函数 α(l) 决定从 `positions` 的哪一轴取位置值，再以该位置值作为行号查 `cosSinCache`。`mropeSection` 为空时所有位置映射到时间轴，退化为标准 RoPE。同一 token 的所有 Q 头和 K 头共用同一份 cos/sin。V 不参与此步骤。
+  说明：`cosSinCache`的前D/2列为cos、后D/2列为sin。每个低半位置l由轴映射函数α(l)决定从`positions`的哪一轴取位置值，再以该位置值作为行号查`cosSinCache`。`mropeSection`为空时所有位置映射到时间轴，退化为标准RoPE。同一token的所有Q头和K头共用同一份cos/sin。V不参与此步骤。
 
-  第四步，将旋转后的 Q 和 K 转换为 BF16 后写出，V 直接透传写入 KV Cache。令 s<sub>t</sub> = s[t]：
+  第四步，将旋转后的Q和K转换为BF16后写出，V直接透传写入KV Cache。令s<sub>t</sub> = s[t]：
 
   $$
   Q_{\text{out}}[t] = \mathrm{Cast}_{\text{bf16}}(\tilde{q}_t), \quad K_{\text{cache}}\left[\left\lfloor s_t / B_s \right\rfloor,\ s_t \bmod B_s\right] = \mathrm{Cast}_{\text{bf16}}(\tilde{k}_t), \quad V_{\text{cache}}\left[\left\lfloor s_t / B_s \right\rfloor,\ s_t \bmod B_s\right] = v_t
   $$
 
-  说明：Q 按输出 token 顺序写入独立输出张量；K 按 `slotMapping` 指定的槽位写入分页 KV Cache；V 不做归一化与旋转，直接按 `slotMapping` 写入分页 KV Cache。槽位号 s<sub>t</sub> 由调用方预计算，拆成块号与块内行号后定位到 cache 的对应行。未被 `slotMapping` 命中的 cache 位置保持调用方传入的原值。
+  说明：Q按输出token顺序写入独立输出张量；K按`slotMapping`指定的槽位写入分页KV Cache；V不做归一化与旋转，直接按`slotMapping`写入分页KV Cache。槽位号s<sub>t</sub>由调用方预计算，拆成块号与块内行号后定位到cache的对应行。未被`slotMapping`命中的cache位置保持调用方传入的原值。
 
-  其中，X<sub>und</sub> 表示参数 `undQkv`，X<sub>gen</sub> 表示参数 `genQkvOptional`，γ<sub>h</sub> 表示参数 `undWeightsQ`、`undWeightsK`、`genWeightsQOptional` 或 `genWeightsKOptional`（按源 token 来自理解阶段还是生成阶段、以及当前是 Q 头还是 K 头选择对应权重），C 表示参数 `cosSinCache`，K<sub>cache</sub> 表示参数 `kCacheRef`，V<sub>cache</sub> 表示参数 `vCacheRef`，s 表示参数 `slotMapping`，p 表示参数 `positions`，c 表示参数 `catIndicesOptional`，H<sub>q</sub> 表示参数 `numHeadsQ`，H<sub>k</sub> 表示参数 `numHeadsK`，H<sub>v</sub> 表示参数 `numHeadsV`，ε 表示参数 `normEps`，m 表示参数 `mropeSection`，Q<sub>out</sub> 表示参数 `qOut`，B<sub>s</sub> 表示 `kCacheRef` 的第二维（blockSize），D 表示头维度（固定为 128），T 表示总 token 数（等于 `undQkv` 第一维与 `genQkvOptional` 第一维之和）。
+  其中，X<sub>und</sub>表示参数`undQkv`，X<sub>gen</sub>表示参数`genQkvOptional`，γ<sub>h</sub>表示参数`undWeightsQ`、`undWeightsK`、`genWeightsQOptional`或`genWeightsKOptional`（按源token来自理解阶段还是生成阶段、以及当前是Q头还是K头选择对应权重），C表示参数`cosSinCache`，K<sub>cache</sub>表示参数`kCacheRef`，V<sub>cache</sub>表示参数`vCacheRef`，s表示参数`slotMapping`，p表示参数`positions`，c表示参数`catIndicesOptional`，H<sub>q</sub>表示参数`numHeadsQ`，H<sub>k</sub>表示参数`numHeadsK`，H<sub>v</sub>表示参数`numHeadsV`，ε表示参数`normEps`，m表示参数`mropeSection`，Q<sub>out</sub>表示参数`qOut`，B<sub>s</sub>表示`kCacheRef`的第二维（blockSize），D表示头维度（固定为128），T表示总token数（等于`undQkv`第一维与`genQkvOptional`第一维之和）。
 
-  - L<sub>und</sub>：理解阶段的 token 数量，即 `undQkv` 的第一维，非接口参数。
-  - α(l)：MRoPE 轴映射函数，把每个低半位置 l（0 ≤ l < D/2）映射到时间（0）、高度（1）、宽度（2）三轴之一，规则为：
+  - L<sub>und</sub>：理解阶段的token数量，即`undQkv`的第一维，非接口参数。
+  - α(l)：MRoPE轴映射函数，把每个低半位置l（0 ≤ l < D/2）映射到时间（0）、高度（1）、宽度（2）三轴之一，规则为：
 
     $$
     \alpha(l) = \begin{cases} 1 & l \bmod 3 = 1 \ \text{且}\ l < 3 m_1 \\ 2 & l \bmod 3 = 2 \ \text{且}\ l < 3 m_2 \\ 0 & \text{其他} \end{cases}
     $$
 
-    该规则只读取 `mropeSection` 的第 2、3 个分量（m<sub>1</sub>、m<sub>2</sub>），第 1 个分量 m<sub>0</sub> 不参与计算，时间轴是"其余全归它"的兜底轴。因此 `mropeSection=[16,16,16]` 实际得到时间/高度/宽度 = 32/16/16，而 `[64,16,16]` 与 `[0,16,16]` 的轴映射逐位相同。`mropeSection` 为空时 α(l) ≡ 0，退化为标准 RoPE。非接口参数。
-  - cos<sub>l</sub>、sin<sub>l</sub>：按 α(l) 选轴、以 `positions` 中对应位置值为行号从 `cosSinCache` 查得的旋转角分量，非接口参数。
-  - x<sub>h</sub>：单个头的 D 维输入向量，从 X<sub>t</sub> 中按头拆分得到，非接口参数。
-  - x̂<sub>h</sub>：RMSNorm 归一化后的中间结果，非接口参数。
-  - x̂<sub>lo</sub>、x̂<sub>hi</sub>：归一化后向量的低半（前 D/2 个元素）和高半（后 D/2 个元素），非接口参数。
-  - x̃<sub>lo</sub>、x̃<sub>hi</sub>：MRoPE 旋转后的低半和高半结果，非接口参数。
-  - q̃<sub>t</sub>、k̃<sub>t</sub>：第 t 个 token 的 Q、K 旋转结果，非接口参数。
-  - v<sub>t</sub>：第 t 个 token 的 V 数据，直接透传不做任何转换，非接口参数。
-  - Cast<sub>bf16</sub>：将 float32 中间结果转换为 BF16 的数据类型转换操作，非接口参数。
+    该规则只读取`mropeSection`的第2、3个分量（m<sub>1</sub>、m<sub>2</sub>），第1个分量m<sub>0</sub>不参与计算，时间轴是"其余全归它"的兜底轴。因此`mropeSection=[16,16,16]`实际得到时间/高度/宽度 = 32/16/16，而`[64,16,16]`与`[0,16,16]`的轴映射逐位相同。`mropeSection`为空时α(l) ≡ 0，退化为标准RoPE。非接口参数。
+  - cos<sub>l</sub>、sin<sub>l</sub>：按α(l)选轴、以`positions`中对应位置值为行号从`cosSinCache`查得的旋转角分量，非接口参数。
+  - x<sub>h</sub>：单个头的D维输入向量，从X<sub>t</sub>中按头拆分得到，非接口参数。
+  - x̂<sub>h</sub>：RMSNorm归一化后的中间结果，非接口参数。
+  - x̂<sub>lo</sub>、x̂<sub>hi</sub>：归一化后向量的低半（前D/2个元素）和高半（后D/2个元素），非接口参数。
+  - x̃<sub>lo</sub>、x̃<sub>hi</sub>：MRoPE旋转后的低半和高半结果，非接口参数。
+  - q̃<sub>t</sub>、k̃<sub>t</sub>：第t个token的Q、K旋转结果，非接口参数。
+  - v<sub>t</sub>：第t个token的V数据，直接透传不做任何转换，非接口参数。
+  - Cast<sub>bf16</sub>：将float32中间结果转换为BF16的数据类型转换操作，非接口参数。
 
 ## 函数原型
 
@@ -224,7 +234,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
         <td>genQkvOptional（const aclTensor*）</td>
         <td>可选输入</td>
         <td>公式中的X<sub>gen</sub>，表示生成阶段QKV输入张量。</td>
-        <td><ul><li>该参数在IR中声明为可选，但当前实现必须提供且<code>gen_len</code>为正数，纯prefill退化路径暂不支持。</li><li>N和D维必须与<code>undQkv</code>一致。</li></ul></td>
+        <td><ul><li>当前版本必须传入且<code>gen_len</code>为正数，传入nullptr（纯prefill）暂不支持。</li><li>N和D维必须与<code>undQkv</code>一致。</li></ul></td>
         <td>BFLOAT16</td>
         <td>ND</td>
         <td><code>[gen_len,N,D]</code></td>
@@ -234,7 +244,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
         <td>genWeightsQOptional（const aclTensor*）</td>
         <td>可选输入</td>
         <td>公式中的γ<sub>h</sub>，表示生成阶段Q的RMSNorm权重。</td>
-        <td><ul><li>该参数在IR中声明为可选，但当前实现必须提供。</li><li>提供<code>genQkvOptional</code>时必须与<code>genWeightsKOptional</code>成对提供。</li></ul></td>
+        <td><ul><li>当前版本必须传入，传入nullptr暂不支持。</li><li>传入<code>genQkvOptional</code>时必须与<code>genWeightsKOptional</code>成对传入。</li></ul></td>
         <td>BFLOAT16</td>
         <td>ND</td>
         <td><code>[D]</code></td>
@@ -244,7 +254,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
         <td>genWeightsKOptional（const aclTensor*）</td>
         <td>可选输入</td>
         <td>公式中的γ<sub>h</sub>，表示生成阶段K的RMSNorm权重。</td>
-        <td><ul><li>该参数在IR中声明为可选，但当前实现必须提供。</li><li>提供<code>genQkvOptional</code>时必须与<code>genWeightsQOptional</code>成对提供。</li></ul></td>
+        <td><ul><li>当前版本必须传入，传入nullptr暂不支持。</li><li>传入<code>genQkvOptional</code>时必须与<code>genWeightsQOptional</code>成对传入。</li></ul></td>
         <td>BFLOAT16</td>
         <td>ND</td>
         <td><code>[D]</code></td>
@@ -254,7 +264,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
         <td>catIndicesOptional（const aclTensor*）</td>
         <td>可选输入</td>
         <td>公式中的c，表示输出token到源token的映射表。</td>
-        <td><ul><li>该参数在IR中声明为可选，但当前实现必须提供，恒等映射退化路径暂不支持。</li><li>取值应落在<code>[0, T-1]</code>；小于<code>und_len</code>时取理解段，否则取生成段。</li></ul></td>
+        <td><ul><li>当前版本必须传入，传入nullptr（单序列恒等映射）暂不支持。</li><li>取值应落在<code>[0, T-1]</code>；小于<code>und_len</code>时取理解段，否则取生成段。</li></ul></td>
         <td>INT64</td>
         <td>ND</td>
         <td><code>[T]</code></td>
@@ -382,7 +392,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
   </tbody>
   </table>
 
-  > 数据类型、shape 与属性取值的完整校验统一收敛在 tiling 一层实现（aclnn 单算子路径与图模式最终都会走 tiling，避免同一条约束在多处重复实现导致漂移）。代价是这类非法入参不在第一段接口报错，而是在第二段接口 `aclnnUndGenQkvRmsNormRopeCache` 执行阶段由 tiling 返回失败，具体原因见 host 侧日志。
+  > 数据类型、shape与属性取值的完整校验统一收敛在tiling一层实现（aclnn单算子路径与图模式最终都会走tiling，避免同一条约束在多处重复实现导致漂移）。代价是这类非法入参不在第一段接口报错，而是在第二段接口`aclnnUndGenQkvRmsNormRopeCache`执行阶段由tiling返回失败，具体原因见host侧日志。
 
 ## aclnnUndGenQkvRmsNormRopeCache
 
@@ -432,36 +442,36 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
 
 - 确定性说明：aclnnUndGenQkvRmsNormRopeCache默认确定性实现。
 
-<details>
-<summary><term>Ascend 950PR/Ascend 950DT</term></summary>
+<!-- npu="950" id7 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：
 
-- **公共约束**
-  <a id="公共约束"></a>
-  - 计算全程使用 float32，KV Cache 以 BF16 存储，不支持 FP8/INT8 量化。
-  - headDim 固定为 128。
-  - `(numHeadsQ, numHeadsK, numHeadsV)` 仅支持 `(8,1,1)` 和 `(16,2,2)` 两种组合。
-  - numHeadsQ + numHeadsK + numHeadsV 必须等于 `undQkv` 的第二维 N。
-  - und_len 必须为正数；T = und_len + gen_len 必须为正数。
-  - T 不设人为上限，真实上限由 KV Cache 容量决定，需满足 blockNum × blockSize ≥ T。上板已验证到 T = 64K。
-  - blockSize 不设限：cache 强制为连续 BBND，`[Bn, Bs, N, D]` 展平后等价 `[Bn*Bs, N, D]`，槽位号直接作为扁平行号使用，Bs 不参与地址计算，也不参与多核与 UB 切分。上板已验证 Bs ∈ {16, 64, 100, 128, 256, 512}，含非 2 的幂。
-  - `vCacheRef` 的 Bn、Bs 必须与 `kCacheRef` 一致。
-  - `kCacheRef` 第三维必须等于 numHeadsK，第四维必须等于 headDim（128）。
-  - `vCacheRef` 第三维必须等于 numHeadsV，第四维必须等于 headDim（128）。
-  - `kCacheRef`、`vCacheRef` 必须为内存连续 Tensor，不支持非连续（含 BNBD 物理布局）。
-  - `genQkvOptional` 的 N 和 D 维必须与 `undQkv` 一致。
-  - `undWeightsQ`、`undWeightsK`、`genWeightsQOptional`、`genWeightsKOptional` 均必须为 1 维 `[D]`，D = headDim = 128。
-  - `cosSinCache` 必须为 2 维 `[max_pos, D]`，max_pos 为正数，D = headDim = 128。
-  - `slotMapping` 必须为 1 维 `[T]`；`catIndicesOptional` 必须为 1 维 `[T]`；`positions` 必须为 2 维 `[3, T]`，第一维固定为 3。
-  - `qOut` 必须为 3 维 `[T, numHeadsQ, D]`。
-  - `normEps` 必须为正数。
-  - `mropeSection` 为空指针或空数组时按 `[D/2, 0, 0]` 处理；非空时长度必须为 3、每个元素非负、三元素之和不超过 D/2。
-  - **当前实现要求 `genQkvOptional`、`genWeightsQOptional`、`genWeightsKOptional`、`catIndicesOptional` 四个可选输入全部提供，且 gen_len 为正数**。缺省对应的退化路径（纯 prefill、单序列恒等映射）暂不支持，会在 tiling 阶段返回失败。IR 中保留 OPTIONAL 声明，后续版本放开。
-- **输入值域约束**（属运行期数据，Host 侧无法校验，由调用方保证）
-  - `slotMapping` 取值必须落在 `[0, Bn*Bs-1]` 且互不重复。出现重复槽位时多个核会写同一 cache 行，写入顺序与最终结果均不确定。
-  - `positions` 取值必须落在 `[0, max_pos-1]`，否则会越界访问 `cosSinCache`。
-  - `catIndicesOptional` 取值必须落在 `[0, T-1]`。
+    - **公共约束**
+      <a id="公共约束"></a>
+      - 计算全程使用float32，KV Cache以BF16存储，不支持FP8/INT8量化。
+      - headDim固定为128。
+      - `(numHeadsQ, numHeadsK, numHeadsV)`仅支持`(8,1,1)`和`(16,2,2)`两种组合。
+      - numHeadsQ + numHeadsK + numHeadsV必须等于`undQkv`的第二维N。
+      - und_len必须为正数；T = und_len + gen_len必须为正数。
+      - T不设人为上限，真实上限由KV Cache容量决定，需满足blockNum × blockSize ≥ T。上板已验证到T = 64K。
+      - blockSize不设限：cache强制为连续BBND，`[Bn, Bs, N, D]`展平后等价`[Bn*Bs, N, D]`，槽位号直接作为扁平行号使用，Bs不参与地址计算，也不参与多核与UB切分。上板已验证Bs ∈ {16, 64, 100, 128, 256, 512}，含非2的幂。
+      - `vCacheRef`的Bn、Bs必须与`kCacheRef`一致。
+      - `kCacheRef`第三维必须等于numHeadsK，第四维必须等于headDim（128）。
+      - `vCacheRef`第三维必须等于numHeadsV，第四维必须等于headDim（128）。
+      - `kCacheRef`、`vCacheRef`必须为内存连续Tensor，不支持非连续（含BNBD物理布局）。
+      - `genQkvOptional`的N和D维必须与`undQkv`一致。
+      - `undWeightsQ`、`undWeightsK`、`genWeightsQOptional`、`genWeightsKOptional`均必须为1维`[D]`，D = headDim = 128。
+      - `cosSinCache`必须为2维`[max_pos, D]`，max_pos为正数，D = headDim = 128。
+      - `slotMapping`必须为1维`[T]`；`catIndicesOptional`必须为1维`[T]`；`positions`必须为2维`[3, T]`，第一维固定为3。
+      - `qOut`必须为3维`[T, numHeadsQ, D]`。
+      - `normEps`必须为正数。
+      - `mropeSection`为空指针或空数组时按`[D/2, 0, 0]`处理；非空时长度必须为3、每个元素非负、三元素之和不超过D/2。
+      - **当前版本要求`genQkvOptional`、`genWeightsQOptional`、`genWeightsKOptional`、`catIndicesOptional`四个参数全部传入，且gen_len为正数**。传入nullptr对应的退化路径（纯prefill、单序列恒等映射）暂不支持，调用第二段接口时会返回失败。后续版本放开。
+    - **输入值域约束**（属运行期数据，Host侧无法校验，由调用方保证）
+      - `slotMapping`取值必须落在`[0, Bn*Bs-1]`且互不重复。出现重复槽位时多个核会写同一cache行，写入顺序与最终结果均不确定。
+      - `positions`取值必须落在`[0, max_pos-1]`，否则会越界访问`cosSinCache`。
+      - `catIndicesOptional`取值必须落在`[0, T-1]`。
 
-</details>
+<!-- end id7 -->
 
 ## 调用示例
 
