@@ -569,6 +569,41 @@ def randn_x(shape, x=1.0, dtype=torch.float32, device=None):
 def rand_range(shape, data_range=[-10, 10], dtype=torch.bfloat16, device=None):
     return data_range[0] + (data_range[1] - data_range[0]) * torch.rand(shape, dtype=dtype, device=device)
 
+def make_ocp_cross_head_scale_trap(shape_bnsd, dtype=torch.float32):
+ 	     """OCP 下强制「相邻头 e8m0 全局不等」的 BNSD 张量, 专打 TND/BSND Q/K-scale 行步长漏乘 N。
+ 	 
+ 	     OCP baseline: scale_exp = floor(log2(max_abs)) - 2
+ 	       偶头: |x|∈(0.60, 0.90) → block max∈(0.5,1) → exp=-3 (e8m0=124)
+ 	       奇头: |x|∈(1.20, 1.80) → block max∈[1,2)  → exp=-2 (e8m0=125)
+ 	     旧 kernel Dn2Nz srcDValue=D//64(未乘 N)时, 同头第 r 行会读到邻头 scale → 反量化差 2× → 精度挂;
+ 	     新 kernel srcDValue=N*(D//64) 后应对齐 golden。
+ 	     普通 U[-1,1] OCP 下 scale 近乎全等, 读错也看不见, 故需本陷阱。"""
+ 	     B, N, S, D = shape_bnsd
+ 	     assert N >= 2, f"scale-stride trap 需要 N>=2, 当前 N={N}"
+ 	     out = torch.empty(B, N, S, D, dtype=dtype)
+ 	     for n in range(N):
+ 	         if (n % 2) == 0:
+ 	             lo, hi = 0.60, 0.90
+ 	         else:
+ 	             lo, hi = 1.20, 1.80
+ 	         chunk = lo + (hi - lo) * torch.rand(B, S, D, dtype=dtype)
+ 	         sign = torch.where(torch.rand(B, S, D) > 0.5, 1.0, -1.0).to(dtype)
+ 	         out[:, n, :, :] = chunk * sign
+ 	     return out
+ 	 
+ 	 
+def _make_qkv(b, n1, n2, s1, s2, qk_d, v_d, data_x=1.0, data_kind='default'):
+    """统一造 Q/K/V (BNSD)。data_kind='ocp_scale_stride_trap' 时走跨头 e8m0 陷阱。"""
+    if data_kind == 'ocp_scale_stride_trap':
+        query = make_ocp_cross_head_scale_trap((b, n1, s1, qk_d)).to(torch.float32)
+        key = make_ocp_cross_head_scale_trap((b, n2, s2, qk_d)).to(torch.float32)
+        value = make_ocp_cross_head_scale_trap((b, n2, s2, v_d)).to(torch.float32)
+    else:
+        query = randn_x((b, n1, s1, qk_d), data_x).to(torch.float32)
+        key = randn_x((b, n2, s2, qk_d), data_x).to(torch.float32)
+        value = randn_x((b, n2, s2, v_d), data_x).to(torch.float32)
+    return query, key, value
+
 # =====================================================================
 # 第四部分: CPU golden — BNSD block-sparse MXFP4 分块 flash attention (kernel 模拟 + dump)
 # 这是【核心 golden】: 分块 flash 结构对齐 qfa _flash_attn_single_batch_kernel + kernel 的
@@ -854,13 +889,15 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
                         p_quant='snap_local', s_dtype='fp16',
                         dump=False, device_id=0,
                         s1_list=None, s2_list=None,
-                        data_x=1.0, dst_type_max=0.0, act_s1=None, act_s2=None):
+                        data_x=1.0, dst_type_max=0.0, act_s1=None, act_s2=None, 
+                        data_kind='default'):
     """qfa 风格: fp32 造数据 -> mxfp4 打包 -> CPU golden -> NPU -> check_result.
        p_quant: 'snap_local'|'none'; s_dtype: 'fp16'(默认)|'bf16'|'fp32'; dump: 落盘中间结果。
        input_layout: 'BNSD'(默认)|'BSND'|'TND'; BSND/TND 对齐 QFA 哲学——golden 保持 BNSD 不动, 仅 NPU I/O
        重排: BSND=permute(0,2,1,3)[+5D scale permute(0,2,1,3,4)]; TND uniform=BSND 重排 + flatten(0,1)(B,S->T)。
        TND varlen(s1_list/s2_list 给 per-batch 变长): per-batch 造数/golden/打包 + concat(B,S->T per batch,
        T=sum S1_b, BTkv=sum CeilDiv(S2_b,64)), actualSeq=[S1_b]/[S2_b]。输出同法重排回目标布局比对。
+       data_kind: 'default'| 'ocp_scale_stride_trap'(跨头强制 OCP e8m0 不等, 打 TND/BSND scale 行步长)。
        s1/s2(uniform, BNSD/BSND/uniform-TND) 或 s1_list/s2_list(TND varlen) 二选一。
        act_s1/act_s2(BNSD/BSND padded, 可选): actualSeqLengths < 张量 s1/s2(V3 doc L248/264 显式支持)。
        int=uniform 或 list=per-batch; s1/s2 此时为 padded 张量形状。golden 走 per-batch unpadded(golden 不改),
@@ -878,6 +915,13 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
         f"s_dtype 仅支持 'fp16'/'bf16'/'fp32', 当前 {s_dtype}"
     assert quant_mode in (QUANT_MODE_OCP, QUANT_MODE_CX), \
         f"quant_mode 仅支持 {QUANT_MODE_OCP}(OCP)/{QUANT_MODE_CX}(CX), 当前 {quant_mode}"
+    assert data_kind in ('default', 'ocp_scale_stride_trap'), \
+        f"data_kind 仅支持 'default'/'ocp_scale_stride_trap', 当前 {data_kind}"
+    if data_kind == 'ocp_scale_stride_trap':
+        assert n1 >= 2 and n2 >= 2, \
+            f"ocp_scale_stride_trap 需要 n1>=2 且 n2>=2(跨头 e8m0 不等), 当前 n1={n1} n2={n2}"
+        assert input_layout in ('BSND', 'TND'), \
+            f"ocp_scale_stride_trap 仅对 BSND/TND 有意义(BNSD 无 N 行步长 bug), 当前 {input_layout}"
     assert out_dtype in ('bfloat16', 'float16'), \
         f"out_dtype 仅支持 'bfloat16'/'float16', 当前 {out_dtype}"
     if quant_mode == QUANT_MODE_CX:
@@ -907,6 +951,9 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
           f"layout={input_layout} out_dtype={out_dtype} mask={mask_kind} "
           f"inner_precise={inner_precise} quant_mode={quant_mode} "
           f"p_quant={p_quant} s_dtype={s_dtype} dump={dump} device_id={device_id}")
+    if data_kind == 'ocp_scale_stride_trap':
+        print(f"[data_kind] ocp_scale_stride_trap: 跨头强制 OCP e8m0 偶头=124/奇头=125 "
+              f"(layout={input_layout} n1={n1} n2={n2})")
     scale = 1.0 / math.sqrt(qk_d)
     src_dtype = out_dtype
 
@@ -919,9 +966,13 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
         assert len(act_q) == b and len(act_kv) == b, "s1_list/s2_list 长度须 == b"
         mask = _build_block_sparse_mask_varlen(b, n1, act_q, act_kv, block_shape, mask_kind)
         # per-batch BNSD 造数(变长, TND 无 padding); 同一份 q_b/k_b/v_b 供 golden + 打包(mxfp4 噪声一致)
-        q_list = [randn_x((1, n1, act_q[bi], qk_d), data_x).to(torch.float32) for bi in range(b)]
-        k_list = [randn_x((1, n2, act_kv[bi], qk_d), data_x).to(torch.float32) for bi in range(b)]
-        v_list = [randn_x((1, n2, act_kv[bi], v_d), data_x).to(torch.float32) for bi in range(b)]
+        q_list, k_list, v_list = [], [], []
+        for bi in range(b):
+            q_b, k_b, v_b = _make_qkv(1, n1, n2, act_q[bi], act_kv[bi], qk_d, v_d,
+                                    data_x=data_x, data_kind=data_kind)
+            q_list.append(q_b)
+            k_list.append(k_b)
+            v_list.append(v_b)
         # golden per-batch(B=1, S=S_b, mask 切到实际) -> BNSD permute+flatten -> concat TND [Tq,N,D]
         # dump 修复: 循环外一次性 _enable_dump(True)(含 truncate), 循环内 dump=False 避免
         #   cpu_block_sparse_attention_bnsd_mxfp4_with_lse 进入时再 truncate 清掉前序 batch 数据;
@@ -1072,9 +1123,8 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
     assert s1 is not None and s2 is not None, "uniform 路径需 s1/s2(变长 TND 用 s1_list/s2_list)"
 
     # 1. 造 fp32 数据(qfa 风格 randn, 固定种子)
-    query = randn_x((b, n1, s1, qk_d), data_x).to(torch.float32)
-    key = randn_x((b, n2, s2, qk_d), data_x).to(torch.float32)
-    value = randn_x((b, n2, s2, v_d), data_x).to(torch.float32)
+    query, key, value = _make_qkv(b, n1, n2, s1, s2, qk_d, v_d,
+ 	                              data_x=data_x, data_kind=data_kind)
 
     # 2. 官方 block_sparse_mask 网格
     block_x, block_y = int(block_shape[0]), int(block_shape[1])
@@ -2187,6 +2237,151 @@ class TestBSAMxfp4Golden(TestCase):
         self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=256, qk_d=128,
                   block_shape=[128, 128], mask_kind='sparse', input_layout='BNSD',
                   act_s1=200, act_s2=200)
+    
+    # =====================================================================
+    # OCP scale-stride 回归: 普通 U[-1,1] OCP 下 e8m0 近乎全等, TND/BSND Q/K-scale
+    #   Dn2Nz srcDValue 漏乘 N 的缺陷被掩盖。本 case 跨头强制 OCP e8m0 偶头=124/奇头=125,
+    #   旧 kernel(srcDValue=D//64)必挂, 新 kernel(srcDValue=N*(D//64))应过。
+    # =====================================================================
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_tnd_mha_dense_scale_stride_trap_b1_qn2_kvn2_g1_qs128_kvs128_d128(self, device="npu"):
+        """OCP 回归陷阱: TND + N=2 + 跨头强制 e8m0 不等(偶头 max∈(0.5,1)→exp=-3;
+        奇头 max∈[1,2)→exp=-2)。专打 Q/K-scale GM→L1 Dn2Nz srcDValue 漏乘 qHeadMul/kvHeadMul。
+        旧代码必 Failed; 修好 headMul 后应 Pass。quant_mode=2(OCP)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=128, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_bsnd_mha_dense_scale_stride_trap_b1_qn2_kvn2_g1_qs128_kvs128_d128(self, device="npu"):
+        """OCP 回归陷阱(BSND 孪生): 同上跨头 e8m0 不等, 打 BSND 布局下 Q/K-scale 行步长。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=128, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    # --- 陷阱泛化: 边界值(decode/非对齐尾块/奇数头/大头数) + 常规(GQA/多 batch/长 KV/sparse/varlen) ---
+    # 注: padded(act_s1/act_s2)路径造数不走 data_kind, 无法与本陷阱组合, 故不含 actualSeq case。
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_tnd_mha_dense_scale_stride_trap_b1_qn2_kvn2_g1_qs1_kvs1024_d128(self, device="npu"):
+        """OCP 陷阱 decode 边界: TND s1=1(Q-scale 单行, 行步长退化), 主打 K-scale 侧
+        1024 行 × N=2 行步长 + 长 KV 多 chunk 反复 GM→L1 搬运 K-scale。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=1, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_tnd_mha_dense_scale_stride_trap_b1_qn2_kvn2_g1_qs127_kvs255_d128(self, device="npu"):
+        """OCP 陷阱非对齐边界: TND s1=127/s2=255 尾块不满(lastYBlockSize 裁剪),
+        验证尾块行数 < blockShape 时 scale 行步长仍按 N*(D//64) 计算。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=127, s2=255, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_tnd_mha_dense_scale_stride_trap_b1_qn2_kvn2_g1_qs128_kvs4096_d128(self, device="npu"):
+        """OCP 陷阱长 KV: TND s2=4096(32 kv 块, 16 chunk), 跨 chunk online-softmax rescale
+        叠加 K-scale 多轮搬运——任一轮行步长错读都会放大到最终输出。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=4096, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_tnd_gqa_dense_scale_stride_trap_b1_qn8_kvn2_g4_qs256_kvs1024_d128(self, device="npu"):
+        """OCP 陷阱 GQA 非对称: TND qn8/kvn2/g4, qHeadMul=8 与 kvHeadMul=2 不同——
+        Q-scale 与 K-scale 行步长须各乘各的 N, 只修一侧仍会挂。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_tnd_mha_dense_scale_stride_trap_b1_qn3_kvn3_g1_qs128_kvs128_d128(self, device="npu"):
+        """OCP 陷阱奇数头边界: TND N=3(偶头 exp=-3/奇头 exp=-2 交错且首尾头同为偶),
+        验证奇数 N 下行步长 3*(D//64) 无偶数对齐假设。"""
+        self._run(b=1, n1=3, n2=3, g=1, s1=128, s2=128, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_tnd_gqa_dense_scale_stride_trap_b1_qn16_kvn4_g4_qs256_kvs512_d128(self, device="npu"):
+        """OCP 陷阱大头数边界: TND qn16/kvn4/g4, 行步长放大到 16*(D//64)——
+        步长漏乘时读偏量最大, 且 15 对相邻头 e8m0 全不等, 错读必被放大。"""
+        self._run(b=1, n1=16, n2=4, g=4, s1=256, s2=512, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_tnd_mha_sparse_scale_stride_trap_b1_qn2_kvn2_g1_qs128_kvs1024_d128(self, device="npu"):
+        """OCP 陷阱 sparse 常规: TND 稀疏 gather 下 kv 块非连续选取,
+        K-scale 按块跳读时行基址 + 行步长两级偏移都须乘 N。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_bsnd_mha_dense_scale_stride_trap_b1_qn8_kvn8_g1_qs256_kvs256_d128(self, device="npu"):
+        """OCP 陷阱多头常规: BSND N=8(7 对相邻头 e8m0 全不等),
+        行步长 8*(D//64), 漏乘时中间头读偏更远、错读概率最大化。"""
+        self._run(b=1, n1=8, n2=8, g=1, s1=256, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_bsnd_gqa_dense_scale_stride_trap_b1_qn4_kvn2_g2_qs128_kvs512_d128(self, device="npu"):
+        """OCP 陷阱 BSND GQA 常规: qn4/kvn2/g2 非对称 headMul,
+        BSND token-stride=N*D 与 scale 行步长 N*(D//64) 叠加。"""
+        self._run(b=1, n1=4, n2=2, g=2, s1=128, s2=512, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_bsnd_mha_dense_scale_stride_trap_b4_qn2_kvn2_g1_qs128_kvs256_d128(self, device="npu"):
+        """OCP 陷阱多 batch 常规: BSND b=4, batch 基址偏移(S*N*(D//64))与
+        头内行步长叠加——batch>0 时基址正确但行步长漏乘同样必挂。"""
+        self._run(b=4, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_bsnd_mha_dense_scale_stride_trap_b1_qn2_kvn2_g1_qs129_kvs400_d128(self, device="npu"):
+        """OCP 陷阱 BSND 非对齐边界: s1=129(跨块 1 行尾块)/s2=400(尾块 16 行),
+        Q/K 两侧尾块同时不满, 验证尾块 scale 行数裁剪与行步长互不干扰。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=129, s2=400, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_bsnd_mha_dense_scale_stride_trap_b1_qn2_kvn2_g1_qs1_kvs2048_d128(self, device="npu"):
+        """OCP 陷阱 BSND decode 边界: s1=1 单 token + 长 KV s2=2048,
+        BSND 下 Q gather 单行 + K-scale 多轮搬运(与 TND decode 孪生, 走 BSND 行步长分支)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=1, s2=2048, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_bsnd_mha_dense_scale_stride_trap_b1_qn2_kvn2_g1_qs128_kvs256_d128_blk64x128(self, device="npu"):
+        """OCP 陷阱非方块边界: BSND block_shape=[64,128](q 块 64 行),
+        验证 scale 行步长与 blockShape 解耦——按 token 行计, 不随块形变化。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[64, 128], mask_kind='dense', input_layout='BSND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_tnd_varlen_mha_dense_scale_stride_trap_b2_qn2_kvn2_g1_s1_128_256_s2_256_129_d128(self, device="npu"):
+        """OCP 陷阱 TND varlen 常规: s1=[128,256] s2=[256,129](batch1 尾块 1 行),
+        per-batch base-offset 按 T*N*(D//64) 累加 + 头内行步长, 两级都漏乘 N 均必挂。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[128, 256], s2_list=[256, 129],
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_tnd_varlen_gqa_dense_scale_stride_trap_b2_qn8_kvn2_g4_s1_1_256_s2_512_256_d128(self, device="npu"):
+        """OCP 陷阱 TND varlen GQA 混合: s1=[1,256](batch0 decode) s2=[512,256],
+        varlen 累加 + 非对称 headMul(qHeadMul=8/kvHeadMul=2) + decode/prefill 混批全叠加。"""
+        self._run(b=2, n1=8, n2=2, g=4, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[1, 256], s2_list=[512, 256],
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
 
 
 if __name__ == "__main__":
