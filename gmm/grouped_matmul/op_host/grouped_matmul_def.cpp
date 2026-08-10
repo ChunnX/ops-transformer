@@ -268,7 +268,6 @@ public:
                        ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E1M2,
                        ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E1M2,
                        ge::DT_FLOAT16, ge::DT_BF16,
-                       // PR 9611 S8S4/A4W4 signatures
                        ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT4, ge::DT_INT4, ge::DT_INT4, ge::DT_INT4})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,

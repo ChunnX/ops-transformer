@@ -372,12 +372,6 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                                 AscendC::Te::NDExtLayoutPtn);
         }
     } else {
-        // NZ weight: 恒用 NZLayoutPtn。Transformer INT4 preprocess 无论 transB
-        // 都输出标准 [E,K,N] int8 NZ(ConvertNzTile/ConvertTransposedNzTile 输出布局一致),
-        // 故 cube 侧 TRANS_B=false -> MakeLayoutBL1 用 NZLayoutPtn 读,与 preprocess 输出一致。
-        // transB 通过运行时 inputTransposedNz(桥接 qgmm_s4s4_kernel.h 从 reserved.bit0/bit1 读)
-        // 驱动 preprocess 选 ConvertNzTile(transB=0)/ConvertTransposedNzTile(transB=1)。
-        // 注意:不可用 ZNLayoutPtn(transB=1),否则 cube 按 ZN 读 NZ 物理数据会错位。
         if constexpr ((QUANT_B_TRANS == GMM_NO_TRANS || QUANT_B_TRANS == GMM_TRANS) &&
                       QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_S4S4_MIX) {
             GET_TILING_DATA_WITH_STRUCT(GMMS4S4IntQuantTilingData, tilingData, tiling);
