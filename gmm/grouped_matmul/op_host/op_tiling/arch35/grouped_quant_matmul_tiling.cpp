@@ -392,7 +392,12 @@ bool GroupedQmmTiling::AnalyzeDtype()
                                                                                             inputParams_.scaleDtype;
     if (scaleDesc != nullptr && inputParams_.cDtype != ge::DT_INT32) {
         inputParams_.scaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(scaleDesc->GetStorageFormat()));
-        inputParams_.scaleNzFlag = IsMicroScaling() && inputParams_.scaleFormat == ge::FORMAT_FRACTAL_NZ_C0_2;
+        auto scaleShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
+        const bool scaleNnStorage = scaleShape != nullptr &&
+                                    scaleShape->GetOriginShape().GetDimNum() == MXFP_TYPE_M_SCALE_DIM_NUM &&
+                                    scaleShape->GetStorageShape().GetDimNum() == MXFP_SCALE_NN_DIM_NUM;
+        const bool scaleNzFormat = inputParams_.scaleFormat == ge::FORMAT_FRACTAL_NZ_C0_2 || scaleNnStorage;
+        inputParams_.scaleNzFlag = IsMicroScaling() && scaleNzFormat;
     }
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
     inputParams_.perTokenScaleDtype =
