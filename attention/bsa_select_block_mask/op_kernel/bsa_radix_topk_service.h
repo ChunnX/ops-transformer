@@ -30,7 +30,8 @@ public:
     using OUT_T = typename BSAT::outputT;
     static constexpr BSALayout LAYOUT_Q = BSAT::layoutQ;
     static constexpr BSALayout LAYOUT_KV = BSAT::layoutKV;
-    static constexpr bool IS_VARLEN = true;
+    static constexpr bool IS_VARLEN =
+        LAYOUT_Q == BSALayout::TND || LAYOUT_KV == BSALayout::TND;
     static constexpr uint64_t COMPARES_ALIGN_LEN = REPEAT_SIZE / sizeof(SCORE_T);
 
     __aicore__ inline BSARadixTopKService(){};
