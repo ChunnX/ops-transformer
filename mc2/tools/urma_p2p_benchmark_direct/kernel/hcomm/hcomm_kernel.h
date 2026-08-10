@@ -1,6 +1,20 @@
 #ifndef HCOMM_KERNEL_H
 #define HCOMM_KERNEL_H
 
+// ============================================================================
+// Hcomm Benchmark Kernel (WriteNbi + Drain 高层API)
+//
+// 与SQE模式的区别:
+//   - 不手动组装SQE/敲DoorBell/poll CQ, Hcomm内部封装全部底层操作
+//   - WriteNbi: 非阻塞写入(内部自动组装SQE+写ring+敲doorbell)
+//   - Drain: 等待完成(内部自动poll CQ)
+//   - 通信流程更简洁, 但无法拆分assemble/issue/wait细节
+//
+// 流程: decode channel → Hcomm.Init → [warmup+loop循环] {
+//   n×WriteNbi → Drain → 记录timing(仅正式轮)
+// }
+// ============================================================================
+
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #endif
@@ -29,6 +43,7 @@ public:
         tiling_ = tiling;
         aivId_ = AscendC::GetBlockIdx();
         channelPtrTable_.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t*>(channelPtrTable));
+        // UB缓冲区: decode scratch(640B) + Hcomm init(512B) + timing(64B)
         pipe_->InitBuffer(decodeScratch_, DECODE_SCRATCH_SIZE);
         pipe_->InitBuffer(hcommBuf_, HCOMM_INIT_BUF_SIZE);
         pipe_->InitBuffer(timingBuf_, TIMING_SLOTS * sizeof(int64_t));
@@ -36,17 +51,22 @@ public:
 
     __aicore__ inline void Process()
     {
+        // 仅0核执行，单核驱动单通道P2P发送
         if (aivId_ != 0) return;
 
         const uint32_t channelSlot = tiling_->channelSlot;
         const uint32_t numSqe      = tiling_->numSqe;
         const uint64_t sqeBytes    = tiling_->sqeBytes;
         const uint64_t bufBytes    = tiling_->bufBytes;
+        const uint32_t warmupCount = tiling_->warmupCount;
+        const uint32_t loopCount   = (tiling_->loopCount > 0U) ? tiling_->loopCount : 1U;
 
+        // 从channelPtrTable读取ChannelEntity的device VA
         uint64_t channelEntityVA = channelPtrTable_.GetValue(channelSlot);
         if (channelEntityVA == 0) return;
         AscendC::ChannelHandle channelHandle = channelEntityVA;
 
+        // 解码ChannelEntity: 提取localBufAddr/remoteBufAddr(数据搬运源/目的地址)
         DecodedChannel ch;
         AscendC::LocalTensor<uint8_t> scratch = decodeScratch_.Get<uint8_t>();
         DecodePeerChannel(channelEntityVA, scratch, ch);
@@ -54,9 +74,11 @@ public:
         uint32_t n = numSqe;
         if (n < 1U) n = 1U;
 
+        // workspace内可放下的SQE槽位数(用于地址回绕)
         uint64_t numSlots = (sqeBytes > 0U) ? (bufBytes / sqeBytes) : 1U;
         if (numSlots < 1U) numSlots = 1U;
 
+        // 初始化Hcomm实例(UBC_CTP协议)
         AscendC::LocalTensor<uint8_t> hcommBuf = hcommBuf_.Get<uint8_t>();
         AscendC::Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> hcomm;
         hcomm.Init(hcommBuf, HCOMM_INIT_BUF_SIZE);
@@ -64,27 +86,44 @@ public:
         const uint32_t S = static_cast<uint32_t>(sqeBytes);
         AscendC::LocalTensor<int64_t> timingLocal = timingBuf_.Get<int64_t>();
 
-        timingLocal.SetValue(0, AscendC::GetSystemCycle());
+        // ========== warmup + loop 循环 (kernel内部, 无Host同步开销) ==========
+        // Hcomm模式无需手动重置CQ: Drain内部自动管理SQ/CQ状态
+        uint32_t totalIters = warmupCount + loopCount;
+        for (uint32_t iter = 0; iter < totalIters; ++iter) {
+            // 正式轮才打点(warmup不记)
+            if (iter >= warmupCount) {
+                timingLocal.SetValue(0, AscendC::GetSystemCycle());  // timing[0]: 起始
+            }
 
-        for (uint32_t i = 0; i < n; ++i) {
-            uint64_t off = (static_cast<uint64_t>(i) % numSlots) * sqeBytes;
-            hcomm.WriteNbi(channelHandle,
-                           (GM_ADDR)(ch.remoteBufAddr + off),
-                           (GM_ADDR)(ch.localBufAddr + off),
-                           S);
+            // ---- n个WriteNbi: 非阻塞写入(内部自动SQE组装+ring写入+doorbell) ----
+            for (uint32_t i = 0; i < n; ++i) {
+                uint64_t off = (static_cast<uint64_t>(i) % numSlots) * sqeBytes;
+                hcomm.WriteNbi(channelHandle,
+                               (GM_ADDR)(ch.remoteBufAddr + off),  // dst: 远端workspace
+                               (GM_ADDR)(ch.localBufAddr + off),   // src: 本地workspace
+                               S);
+            }
+
+            if (iter >= warmupCount) {
+                timingLocal.SetValue(1, AscendC::GetSystemCycle());  // timing[1]: n×WriteNbi完毕
+            }
+
+            // ---- Drain: 等待所有WriteNbi完成(内部poll CQ) ----
+            hcomm.Drain(channelHandle);
+
+            if (iter >= warmupCount) {
+                timingLocal.SetValue(2, AscendC::GetSystemCycle());  // timing[2]: Drain完毕
+                timingLocal.SetValue(3, AscendC::GetSystemCycle());  // timing[3]: ≈timing[2](Drain内部已等待)
+
+                // 最后一轮: 把timing从UB拷到GM, 供Host读取
+                if (iter == warmupCount + loopCount - 1U) {
+                    AscendC::GlobalTensor<int64_t> timingGm;
+                    timingGm.SetGlobalBuffer((__gm__ int64_t*)timingGm_);
+                    AscendC::DataCopy(timingGm, timingLocal, TIMING_SLOTS);
+                    SyncFunc<AscendC::HardEvent::MTE3_S>();
+                }
+            }
         }
-
-        timingLocal.SetValue(1, AscendC::GetSystemCycle());
-
-        hcomm.Drain(channelHandle);
-
-        timingLocal.SetValue(2, AscendC::GetSystemCycle());
-        timingLocal.SetValue(3, AscendC::GetSystemCycle());
-
-        AscendC::GlobalTensor<int64_t> timingGm;
-        timingGm.SetGlobalBuffer((__gm__ int64_t*)timingGm_);
-        AscendC::DataCopy(timingGm, timingLocal, TIMING_SLOTS);
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
 
 private:
@@ -94,9 +133,9 @@ private:
     const UrmaP2pBenchTiling* tiling_{nullptr};
     uint32_t aivId_{0};
     AscendC::GlobalTensor<uint64_t> channelPtrTable_;
-    AscendC::TBuf<> decodeScratch_;
-    AscendC::TBuf<> hcommBuf_;
-    AscendC::TBuf<> timingBuf_;
+    AscendC::TBuf<> decodeScratch_;   // ChannelEntity解码scratch (640B)
+    AscendC::TBuf<> hcommBuf_;        // Hcomm初始化buffer (512B)
+    AscendC::TBuf<> timingBuf_;       // timing打点buffer (8×int64)
 };
 
 }  // namespace UrmaP2pBench

@@ -1,3 +1,14 @@
+// ============================================================================
+// URMA P2P Benchmark Host - 单进程多线程模式
+//
+// 流程: aclInit → HcclGetRootInfo → 每设备一个线程 →
+//   aclrtSetDevice → HcclCommInitRootInfoConfig →
+//   aclrtMalloc workspace → HcclCommMemReg →
+//   HcclRankGraphGetLinks(枚举UBC链路) → HcclChannelAcquire(跨rank握手) →
+//   HcommChannelGetPtrByHandle(handle→device VA) →
+//   <<<>>> kernel launch(warmup+loop在kernel内部) → 读timing
+// ============================================================================
+
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
@@ -6,6 +17,7 @@
 #include <sstream>
 #include <thread>
 #include <atomic>
+#include <chrono>
 #include <dlfcn.h>
 #include "acl/acl.h"
 #include "hccl/hccl.h"
@@ -28,9 +40,12 @@ constexpr uint64_t DEFAULT_SQE_BYTES = 65536;
 constexpr uint32_t DEFAULT_DB_INTERVAL = 1;
 constexpr uint32_t TIMING_SLOTS_SIZE = 8;
 
+// UBC_CTP=4, UBC_TP=5: AIV URMA通信协议(同机NPU间的UB fabric链路)
 constexpr int COMM_PROTOCOL_UBC_CTP_VALUE = 4;
 constexpr int COMM_PROTOCOL_UBC_TP_VALUE = 5;
 
+// HcommChannelGetPtrByHandle: 旧版hcomm ABI需要把ChannelHandle翻译成device VA
+// 新版CANN(9.1.0+)的HcclChannelAcquire直接返回device VA, 此符号不存在, 用dlsym兼容
 typedef uint64_t ChannelPtr;
 typedef int32_t HcommResult;
 constexpr HcommResult HCOMM_SUCCESS_VALUE = 0;
@@ -66,6 +81,7 @@ struct BenchCtx {
     uint32_t numLayers{1};
 };
 
+// 枚举UBC_CTP/UBC_TP链路, 为每个peer构建一个HcclChannelDesc(附带workspace的memHandle)
 static HcclResult build_channel_descs(HcclComm comm, uint32_t self, uint32_t world,
                                        HcclMemHandle *myMemHandle,
                                        std::vector<HcclChannelDesc> &outDescs,
@@ -117,6 +133,13 @@ static HcclResult build_channel_descs(HcclComm comm, uint32_t self, uint32_t wor
     return outDescs.empty() ? HCCL_E_NOT_FOUND : HCCL_SUCCESS;
 }
 
+// setup_ctx: 完整的通信上下文建立流程(每步都有[1/6]~[6/6]日志)
+// 1. aclrtMalloc workspace(URMA目标缓冲区)
+// 2. HcclCommMemReg(注册workspace给HCCL, 使对端URMA可写)
+// 3. build_channel_descs(枚举UBC链路, 构建ChannelDesc)
+// 4. HcclChannelAcquire(跨rank握手, 获取ChannelHandle)
+// 5. resolve channel ptrs(handle→device VA, 兼容新旧ABI)
+// 6. alloc table+state GM(channelPtrTable和state持久化到device)
 static BenchCtx *setup_ctx(HcclComm comm, uint32_t rank, uint32_t world, uint64_t bufBytes)
 {
     static thread_local BenchCtx ctx;
@@ -210,6 +233,9 @@ static void barrier(uint32_t total)
     }
 }
 
+// Sample: 每个设备一个线程的worker函数
+// rank 0 = sender(跑kernel), rank 1 = receiver(sleep等待)
+// URMA Write是单向的, 接收方不需要做任何事
 int Sample(void *arg)
 {
     ThreadContext *tctx = (ThreadContext *)arg;
@@ -271,13 +297,17 @@ int Sample(void *arg)
     tilingHost.cqOwnerSlot  = slot;
     tilingHost.stateStride  = stateStride;
 
-    barrier(devCount);
-    fprintf(stderr, "[INFO] rank %u: barrier passed, starting kernel loop\n", rank);
+    tilingHost.warmupCount  = args->warmup;
+    tilingHost.loopCount    = args->loopCount;
 
-    for (uint32_t iter = 0; iter < args->warmup + args->loopCount; ++iter) {
-        if (iter == 0) fprintf(stderr, "[INFO] rank %u: iter 0: calling aclrtSynchronizeStream (pre-launch)\n", rank);
+    barrier(devCount);
+    fprintf(stderr, "[INFO] rank %u: barrier passed, launching kernel (warmup=%u loop=%u)\n", rank, args->warmup, args->loopCount);
+
+    // rank 0 sends, rank 1 waits (P2P one-way benchmark)
+    bool isSender = (rank == 0);
+
+    if (isSender) {
         aclrtSynchronizeStream(stream);
-        if (iter == 0) fprintf(stderr, "[INFO] rank %u: iter 0: launching kernel (sqeMode=%u)\n", rank, args->sqeMode);
         switch (args->sqeMode) {
             case 0:
                 sqe_write_bench_launch((uint32_t)BLOCK_NUM, stream,
@@ -298,11 +328,8 @@ int Sample(void *arg)
                 fprintf(stderr, "[ERROR] invalid sqe_mode %u\n", args->sqeMode);
                 return -1;
         }
-        if (iter == 0) fprintf(stderr, "[INFO] rank %u: iter 0: kernel launched, calling aclrtSynchronizeStream (post-launch)\n", rank);
         aclrtSynchronizeStream(stream);
-        if (iter == 0) fprintf(stderr, "[INFO] rank %u: iter 0: synchronize done\n", rank);
-
-        if (iter < args->warmup) continue;
+        fprintf(stderr, "[INFO] rank %u: kernel done\n", rank);
 
         int64_t timingHost[TIMING_SLOTS_SIZE] = {0};
         aclrtMemcpy(timingHost, sizeof(timingHost), timingGm, sizeof(timingHost), ACL_MEMCPY_DEVICE_TO_HOST);
@@ -317,12 +344,14 @@ int Sample(void *arg)
         double totalData = (double)args->numSqe * args->sqeBytes;
         double bwGBs     = totalData / (totalNs);
 
-        printf("[rank %u (dev %u)][%u] assemble=%.2fus issue=%.2fus wait=%.2fus total=%.2fus bw=%.2fGB/s\n",
-               rank, physicalDev, iter,
+        printf("[rank %u (dev %u)] assemble=%.2fus issue=%.2fus wait=%.2fus total=%.2fus bw=%.2fGB/s\n",
+               rank, physicalDev,
                (double)assembleCycles * NS_PER_CYCLE / 1000.0,
                (double)issueCycles * NS_PER_CYCLE / 1000.0,
                (double)waitCycles * NS_PER_CYCLE / 1000.0,
                totalUs, bwGBs);
+    } else {
+        std::this_thread::sleep_for(std::chrono::seconds(10));
     }
 
     aclrtFree(timingGm);
@@ -333,6 +362,11 @@ int Sample(void *arg)
     return 0;
 }
 
+// main: 单进程多线程入口
+// 1. 解析命令行参数
+// 2. aclInit + HcclGetRootInfo(主线程, 需要先SetDevice绑定context)
+// 3. 每设备一个std::thread跑Sample
+// 4. join所有线程后释放资源
 int main(int argc, char *argv[])
 {
     for (int i = 1; i < argc; ++i) {
@@ -382,12 +416,13 @@ int main(int argc, char *argv[])
 
     aclInit(nullptr);
 
+    // HcclGetRootInfo需要当前线程绑定了device context
     aclrtSetDevice(0);
     void *rootInfoBuf = nullptr;
     aclrtMallocHost(&rootInfoBuf, sizeof(HcclRootInfo));
     HcclRootInfo *rootInfo = (HcclRootInfo *)rootInfoBuf;
     HcclGetRootInfo(rootInfo);
-    aclrtResetDevice(0);
+    aclrtResetDevice(0);  // 释放主线程的device, 子线程会各自SetDevice
 
     std::vector<std::thread> threads(g_args.devCount);
     std::vector<ThreadContext> args(g_args.devCount);

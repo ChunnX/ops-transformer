@@ -1,6 +1,20 @@
 #ifndef SQE_WRITE_WITH_NOTIFY_KERNEL_H
 #define SQE_WRITE_WITH_NOTIFY_KERNEL_H
 
+// ============================================================================
+// SQE WriteWithNotify Benchmark Kernel (96B WriteWithNotify SQE, opcode=0x5)
+//
+// 与SQE Write(64B)的区别:
+//   - SQE为96字节(占用2个WQEBB), 含notifyAddr/notifyData字段
+//   - 写数据同时向远端notifyAddr写入notifyData(1.0f标志值)
+//   - 语义与mc2 MoE dispatch通信一致
+//
+// 流程: decode channel → 生成SQE模板 → [warmup+loop循环] {
+//   重置CQ ring → 组装n个数据SQE写入ring+doorbell → 发1个completion SQE →
+//   poll CQ等待完成 → 记录timing(仅正式轮)
+// }
+// ============================================================================
+
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #endif
@@ -26,6 +40,7 @@ public:
         tiling_ = tiling;
         aivId_ = AscendC::GetBlockIdx();
         channelPtrTable_.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t*>(channelPtrTable));
+        // UB缓冲区: decode scratch(640B) + SQE(96B) + CQE(64B) + timing(64B)
         pipe_->InitBuffer(decodeScratch_, DECODE_SCRATCH_SIZE);
         pipe_->InitBuffer(sqeBuf_, WRITE_WITH_NOTIFY_SQE_SIZE);
         pipe_->InitBuffer(cqeBuf_, WRITE_CQE_SIZE);
@@ -34,6 +49,7 @@ public:
 
     __aicore__ inline void Process()
     {
+        // 仅0核执行，单核驱动单通道P2P发送
         if (aivId_ != 0) return;
 
         const uint32_t channelSlot = tiling_->channelSlot;
@@ -42,14 +58,19 @@ public:
         const uint64_t sqeBytes    = tiling_->sqeBytes;
         const uint64_t bufBytes    = tiling_->bufBytes;
         const uint32_t dbInterval  = (tiling_->dbInterval >= 1U) ? tiling_->dbInterval : 1U;
+        const uint32_t warmupCount = tiling_->warmupCount;
+        const uint32_t loopCount   = (tiling_->loopCount > 0U) ? tiling_->loopCount : 1U;
 
+        // 从channelPtrTable读取ChannelEntity的device VA
         uint64_t channelEntityVA = channelPtrTable_.GetValue(channelSlot);
         if (channelEntityVA == 0) return;
 
+        // 解码ChannelEntity: 提取SQ/CQ/buffer/token等通信字段
         DecodedChannel ch;
         AscendC::LocalTensor<uint8_t> scratch = decodeScratch_.Get<uint8_t>();
         DecodePeerChannel(channelEntityVA, scratch, ch);
 
+        // 共享CQ场景: 当前channel没有CQ时, 从CQ owner channel借用
         if (ch.cqVa == 0 && tiling_->cqOwnerSlot != channelSlot) {
             uint64_t ownerVA = channelPtrTable_.GetValue(tiling_->cqOwnerSlot);
             if (ownerVA != 0) {
@@ -61,73 +82,97 @@ public:
             }
         }
 
+        // SQE数量上限: WriteWithNotify每个SQE占2个WQEBB, 上限=(sqDepth-2)/2
         uint32_t maxN = (ch.sqDepth >= 3U) ? ((ch.sqDepth - 2U) / 2U) : 1U;
         uint32_t n = numSqe;
         if (n > maxN) n = maxN;
         if (n < 1U)   n = 1U;
 
+        // workspace内可放下的SQE槽位数(用于地址回绕)
         uint64_t numSlots = (sqeBytes > 0U) ? (bufBytes / sqeBytes) : 1U;
         if (numSlots < 1U) numSlots = 1U;
 
         AscendC::GlobalTensor<uint32_t> stateGm;
         stateGm.SetGlobalBuffer((__gm__ uint32_t*)stateGm_);
-        uint32_t sqPiLinear = stateGm.GetValue(channelSlot);
-        uint32_t sqPi = sqPiLinear % ch.sqDepth;
 
-        uint32_t ownerCqCiLinear = stateGm.GetValue(stateStride + tiling_->cqOwnerSlot);
-        if (ownerCqCiLinear == 0) {
-            InvalidateCqRing(ch.cqVa, ch.cqeSize, ch.cqDepth,
-                             scratch, DECODE_SCRATCH_SIZE / WRITE_CQE_SIZE);
-        }
-
+        // 生成WriteWithNotify SQE模板: 填固定字段(opcode=0x5, sge_num=1, owner, token_en等)
+        // 同一peer的所有SQE共用此模板, 循环内只填localAddr/remoteAddr/length/notifyAddr/notifyData
         AscendC::LocalTensor<uint8_t> sqe = sqeBuf_.Get<uint8_t>();
         GenerateCommWriteWithNotifySQE(sqe);
         FillCommWriteWithNotifySQEFromChannel(sqe, ch);
 
         const uint32_t S = static_cast<uint32_t>(sqeBytes);
         AscendC::LocalTensor<int64_t> timingLocal = timingBuf_.Get<int64_t>();
+        AscendC::LocalTensor<uint8_t> cqe = cqeBuf_.Get<uint8_t>();
 
-        timingLocal.SetValue(0, AscendC::GetSystemCycle());
+        // ========== warmup + loop 循环 (kernel内部, 无Host同步开销) ==========
+        uint32_t totalIters = warmupCount + loopCount;
+        for (uint32_t iter = 0; iter < totalIters; ++iter) {
+            // 每轮重置SQ/CQ状态: 不依赖上轮的持久化状态, 避免多轮CQ脏数据卡死
+            uint32_t sqPiLinear = 0;
+            uint32_t sqPi = 0;
+            uint32_t ownerCqCiLinear = 0;
 
-        for (uint32_t i = 0; i < n; ++i) {
-            uint64_t off = (static_cast<uint64_t>(i) % numSlots) * sqeBytes;
-            SetCommWriteWithNotifySQE(sqe,
-                ch.localBufAddr + off, ch.remoteBufAddr + off, S,
-                ch.remoteBufAddr, WDN_DEFAULT_NOTIFY_DATA, 0);
+            // 每轮初始化CQ ring: 全填0xff, 确保CqeSlotEmpty能正确判断
+            InvalidateCqRing(ch.cqVa, ch.cqeSize, ch.cqDepth,
+                             scratch, DECODE_SCRATCH_SIZE / WRITE_CQE_SIZE);
+
+            // 正式轮才打点(warmup不记)
+            if (iter >= warmupCount) {
+                timingLocal.SetValue(0, AscendC::GetSystemCycle());  // timing[0]: 起始
+            }
+
+            // ---- 组装并发送n个数据SQE (cqe=0, 不产生完成事件) ----
+            // WriteWithNotify: 每个SQE写数据同时向远端notifyAddr写notifyData
+            for (uint32_t i = 0; i < n; ++i) {
+                uint64_t off = (static_cast<uint64_t>(i) % numSlots) * sqeBytes;
+                SetCommWriteWithNotifySQE(sqe,
+                    ch.localBufAddr + off, ch.remoteBufAddr + off, S,
+                    ch.remoteBufAddr, WDN_DEFAULT_NOTIFY_DATA, 0);  // notifyAddr=远端buffer基址, notifyData=1.0f标志
+                SyncFunc<AscendC::HardEvent::S_MTE3>();       // 等Scalar写完SQE字段再DataCopy
+                PutWriteWithNotifySQEToRing(ch.sqVa, ch.wqeSize, ch.sqDepth, sqe, sqPi, sqPiLinear);  // DataCopy SQE→SQ ring
+                SyncFunc<AscendC::HardEvent::MTE3_S>();       // 等DataCopy完成再继续
+                // 每 dbInterval 个SQE敲一次DoorBell通知硬件
+                if ((i + 1U) % dbInterval == 0U) {
+                    RingJFSDoorbell(ch.sqDbVa, sqPiLinear);
+                }
+            }
+
+            if (iter >= warmupCount) {
+                timingLocal.SetValue(1, AscendC::GetSystemCycle());  // timing[1]: n个数据SQE组装+发送完毕
+            }
+
+            // ---- 发送1个completion SQE (cqe=1, 产生CQE完成事件) ----
+            // SQ有序: 此SQE的CQE落地 = 之前所有数据SQE已drain
+            SetCommWriteWithNotifySQE(sqe, ch.localBufAddr, ch.remoteBufAddr,
+                COMPLETION_SQE_BYTES,
+                ch.remoteBufAddr, WDN_DEFAULT_NOTIFY_DATA, 1);
             SyncFunc<AscendC::HardEvent::S_MTE3>();
             PutWriteWithNotifySQEToRing(ch.sqVa, ch.wqeSize, ch.sqDepth, sqe, sqPi, sqPiLinear);
             SyncFunc<AscendC::HardEvent::MTE3_S>();
-            if ((i + 1U) % dbInterval == 0U) {
-                RingJFSDoorbell(ch.sqDbVa, sqPiLinear);
+            RingJFSDoorbell(ch.sqDbVa, sqPiLinear);
+
+            if (iter >= warmupCount) {
+                timingLocal.SetValue(2, AscendC::GetSystemCycle());  // timing[2]: completion SQE+doorbell完毕
+            }
+
+            // ---- Poll CQ: spin等待completion事件落地 ----
+            uint32_t cqCi = ownerCqCiLinear % ch.cqDepth;
+            while (CqeSlotEmpty(ch.cqVa, ch.cqeSize, cqCi, cqe)) {}
+            ++ownerCqCiLinear;
+
+            if (iter >= warmupCount) {
+                timingLocal.SetValue(3, AscendC::GetSystemCycle());  // timing[3]: CQ poll完成
+
+                // 最后一轮: 把timing从UB拷到GM, 供Host读取
+                if (iter == warmupCount + loopCount - 1U) {
+                    AscendC::GlobalTensor<int64_t> timingGm;
+                    timingGm.SetGlobalBuffer((__gm__ int64_t*)timingGm_);
+                    AscendC::DataCopy(timingGm, timingLocal, TIMING_SLOTS);
+                    SyncFunc<AscendC::HardEvent::MTE3_S>();
+                }
             }
         }
-
-        timingLocal.SetValue(1, AscendC::GetSystemCycle());
-
-        SetCommWriteWithNotifySQE(sqe, ch.localBufAddr, ch.remoteBufAddr,
-            COMPLETION_SQE_BYTES,
-            ch.remoteBufAddr, WDN_DEFAULT_NOTIFY_DATA, 1);
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
-        PutWriteWithNotifySQEToRing(ch.sqVa, ch.wqeSize, ch.sqDepth, sqe, sqPi, sqPiLinear);
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
-        RingJFSDoorbell(ch.sqDbVa, sqPiLinear);
-
-        timingLocal.SetValue(2, AscendC::GetSystemCycle());
-
-        AscendC::LocalTensor<uint8_t> cqe = cqeBuf_.Get<uint8_t>();
-        uint32_t cqCi = ownerCqCiLinear % ch.cqDepth;
-        while (CqeSlotEmpty(ch.cqVa, ch.cqeSize, cqCi, cqe)) {}
-        ++ownerCqCiLinear;
-
-        timingLocal.SetValue(3, AscendC::GetSystemCycle());
-
-        stateGm.SetValue(channelSlot, sqPiLinear);
-        stateGm.SetValue(stateStride + tiling_->cqOwnerSlot, ownerCqCiLinear);
-
-        AscendC::GlobalTensor<int64_t> timingGm;
-        timingGm.SetGlobalBuffer((__gm__ int64_t*)timingGm_);
-        AscendC::DataCopy(timingGm, timingLocal, TIMING_SLOTS);
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
 
 private:
@@ -137,10 +182,10 @@ private:
     const UrmaP2pBenchTiling* tiling_{nullptr};
     uint32_t aivId_{0};
     AscendC::GlobalTensor<uint64_t> channelPtrTable_;
-    AscendC::TBuf<> decodeScratch_;
-    AscendC::TBuf<> sqeBuf_;
-    AscendC::TBuf<> cqeBuf_;
-    AscendC::TBuf<> timingBuf_;
+    AscendC::TBuf<> decodeScratch_;   // ChannelEntity解码scratch (640B)
+    AscendC::TBuf<> sqeBuf_;          // SQE组装buffer (96B)
+    AscendC::TBuf<> cqeBuf_;          // CQE读取buffer (64B)
+    AscendC::TBuf<> timingBuf_;       // timing打点buffer (8×int64)
 };
 
 }  // namespace UrmaP2pBench

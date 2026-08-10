@@ -16,6 +16,8 @@ struct UrmaP2pBenchTiling {
     uint32_t channelSlot;
     uint32_t cqOwnerSlot;
     uint32_t stateStride;
+    uint32_t warmupCount;
+    uint32_t loopCount;
 };
 
 #endif
