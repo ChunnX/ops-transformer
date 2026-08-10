@@ -280,7 +280,7 @@ static bool CheckOutputDims(const MhcParamsBase &params)
     // hres shape should be [b,s,n,n] [t,n,n] [b,s, n!] [t, n!]
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
         if (alphaSize == ALPHA_DIM_SIZE_3 && phiShape.GetDim(0) == expectedPhiRows_factorial) {
-            return CheckTensorRank(params.hRes, "hRes", DIM_NUM_3) || CheckTensorRank(params.hRes, "hRes", DIM_NUM_2);
+            return CheckTensorRank(params.hRes, "hRes", (xDimNum - 1));
         } else if (alphaSize == ALPHA_DIM_SIZE_3 && phiShape.GetDim(0) == expectedPhiRows_pow) {
             return CheckTensorRank(params.hRes, "hRes", xDimNum);
         }
