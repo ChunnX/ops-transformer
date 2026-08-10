@@ -188,10 +188,15 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     this->AllocEventID();
     int64_t taskId = 0;
     int64_t sTaskId = 0;
+    int64_t processNum = 0;
     FagRunInfo runInfos[2]; // for cv ping pong
     FagRunInfo deterRunInfos[2];
     for (int32_t i = 0; i < this->processBS1ByCore; i++) {
         this->t1Index = this->cBlockIdx + this->usedCoreNum * i;
+        if (!this->IsValidTndT1Index(this->t1Index)) {
+            break;
+        }
+        processNum++;
         this->GetTndSeqLen(this->t1Index, this->bIndex);
         this->SetDeterRunInfo(deterRunInfos[sTaskId & 1], sTaskId);
         for (this->n2Index = 0; this->n2Index < this->tilingData->baseParams.n2; this->n2Index++) {
@@ -248,7 +253,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     }
 
     // 分核不均匀时部分核会少一个C核的全核同步
-    if (this->processBS1ByCore < this->tilingData->baseParams.formerCoreProcessNNum) {
+    if (this->NeedDeterExtraSync(processNum)) {
         if ASCEND_IS_AIC {
             CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
             CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
@@ -272,6 +277,9 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     FagRunInfo runInfos[2]; // for cv ping pong
     for (int32_t i = 0; i < this->processBS1ByCore; i++) {
         this->t1Index = this->cBlockIdx + this->usedCoreNum * i;
+        if (!this->IsValidTndT1Index(this->t1Index)) {
+            break;
+        }
         this->GetTndSeqLen(this->t1Index, this->bIndex);
         for (this->n2Index = 0; this->n2Index < this->tilingData->baseParams.n2; this->n2Index++) {
             this->GetActualSelCount(this->t1Index, this->n2Index, this->actualSelectedBlockCount);

@@ -599,6 +599,12 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         if (bS1Index >= tilingData->baseParams.totalSize) {
             break;
         }
+        if constexpr (IS_TND) {
+            int64_t validT1 = this->actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
+            if (bS1Index >= validT1) {
+                break;
+            }
+        }
 
         GetBS1Index(bS1Index, bIdx, s1Idx, constInfo);
         if (bIdx != preBIdx) {
