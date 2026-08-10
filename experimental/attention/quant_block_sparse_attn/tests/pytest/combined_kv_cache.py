@@ -100,6 +100,7 @@ def pack_combined_kv_cache(
     dense_key,
     dense_value,
     dense_k_scale,
+    seqused_kv,
     block_table,
     block_size,
     block_padding_bytes,
