@@ -109,15 +109,8 @@ def make_synthetic_capture(
     if fine_grained:
         preflight_record_header = {"moe_experts_per_rank": metadata["local_moe_expert_num"]}
         if a8w4:
-            max_gmm2_tiles = ((metadata["max_output_size"] + 255) // 256) * (
-                (metadata["h"] + 255) // 256
-            )
-            preflight_tiles_per_expert = (
-                max_gmm2_tiles + configured_aic_count - 1
-            ) // configured_aic_count
-            preflight_record_header["combine_tile_capacity"] = (
-                metadata["local_moe_expert_num"] * preflight_tiles_per_expert
-            )
+            preflight_tiles_per_expert = 0
+            preflight_record_header["combine_tile_capacity"] = 0
             preflight_waves_per_expert = (metadata["max_output_size"] + 255) // 256
             preflight_record_header["gmm1_wave_capacity"] = (
                 metadata["local_moe_expert_num"] * preflight_waves_per_expert
@@ -202,7 +195,7 @@ def make_synthetic_capture(
                             words[base + 3 + 6 * expert + 2 * stage] = (
                                 process_begin + end
                             ) & 0xFFFFFFFF
-                    if role_index == 2:
+                    if role_index == 2 and expected["combine_tile_capacity"] > 0:
                         tile_record_base = base + 2 + 6 * 8
                         tiles_per_expert = expected[
                             "combine_tiles_per_expert_per_core"
@@ -432,15 +425,9 @@ class TraceContractTests(unittest.TestCase):
             self.assertEqual(results[0]["protocol_version"], 3)
             normalized = load_json(directory / "rank0.normalized.json")
             self.assertEqual(normalized["schema_id"], "0xabb0fd53")
-            self.assertEqual(normalized["metadata"]["resolved_record_words"], 178)
+            self.assertEqual(normalized["metadata"]["resolved_record_words"], 114)
             order = load_json(directory / "rank0.order-check.json")
             self.assertEqual(order["span_summary"]["a8w4_process"]["count"], 108)
-            self.assertEqual(
-                order["span_summary"]["a8w4_combine_tile_wait"]["count"], 576
-            )
-            self.assertEqual(
-                order["span_summary"]["a8w4_combine_tile_work"]["count"], 576
-            )
             self.assertEqual(
                 order["span_summary"]["a8w4_gmm1_wave_wait"]["count"], 32
             )
@@ -548,8 +535,8 @@ class TraceContractTests(unittest.TestCase):
             )
             self.assertEqual(expected["aic_count"], 32)
             self.assertEqual(expected["record_count"], 96)
-            self.assertEqual(expected["combine_tiles_per_expert_per_core"], 2)
-            self.assertEqual(expected["combine_tile_capacity"], 16)
+            self.assertEqual(expected["combine_tiles_per_expert_per_core"], 0)
+            self.assertEqual(expected["combine_tile_capacity"], 0)
             self.assertEqual(expected["gmm1_waves_per_expert"], 2)
             self.assertEqual(expected["gmm1_wave_capacity"], 16)
             self.assertEqual(contract["header"]["role_counts"], [32, 32, 32])
