@@ -30,6 +30,25 @@ std::string AclnnGroupedMatmulWeightQuantDAV3510Checker::GetDataFlowString() con
            std::string(op::ToString(weightDtype_).GetString());
 }
 
+aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::GetDimFromEnd(const aclTensor *tensor, size_t posFromEnd,
+                                                                       size_t &out, const std::string &tensorName) const
+{
+    auto shape = tensor->GetViewShape();
+    if (unlikely(posFromEnd == 0 || posFromEnd > shape.GetDimNum())) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnName(), tensorName, std::to_string(posFromEnd),
+                                              "posFromEnd must be in [1, dimNum]");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    int64_t v = shape.GetDim(static_cast<int64_t>(shape.GetDimNum() - posFromEnd));
+    if (unlikely(v < 0)) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnName(), tensorName, std::to_string(v),
+                                              "dim value must be non-negative");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    out = static_cast<size_t>(v);
+    return ACLNN_SUCCESS;
+}
+
 // 根据 apiVersion 返回对应的 aclnn 函数名字符串
 const char *AclnnGroupedMatmulWeightQuantDAV3510Checker::GetAclnnName() const
 {
@@ -296,24 +315,28 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(si
                                                                               size_t wIdx) const
 {
     if (unlikely(op::IsPrivateFormat((*gmmParams_.x)[xIdx]->GetStorageFormat()))) {
-        OP_LOGE_FOR_INVALID_FORMAT(GetAclnnName(), "x", "not ND", "ND");
+        OP_LOGE_FOR_INVALID_FORMAT(GetAclnnName(), "x",
+                                   op::ToString((*gmmParams_.x)[xIdx]->GetStorageFormat()).GetString(), "ND");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (unlikely(op::IsPrivateFormat((*gmmParams_.y)[yIdx]->GetStorageFormat()))) {
-        OP_LOGE_FOR_INVALID_FORMAT(GetAclnnName(), "y", "not ND", "ND");
+        OP_LOGE_FOR_INVALID_FORMAT(GetAclnnName(), "y",
+                                   op::ToString((*gmmParams_.y)[yIdx]->GetStorageFormat()).GetString(), "ND");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (IsA16W8ND() || IsA16F8ND() || IsA16W4()) {
         if (unlikely(op::IsPrivateFormat((*gmmParams_.weight)[wIdx]->GetStorageFormat()))) {
-            OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(GetAclnnName(), "weight", "NZ",
-                                                    "The format of weight must be ND " + GetDataFlowString());
+            OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
+                GetAclnnName(), "weight", op::ToString((*gmmParams_.weight)[wIdx]->GetStorageFormat()).GetString(),
+                "The format of weight must be ND " + GetDataFlowString());
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
         if (unlikely(!op::IsPrivateFormat((*gmmParams_.weight)[wIdx]->GetStorageFormat()))) {
-            OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(GetAclnnName(), "weight", "ND",
-                                                    "The format of weight must be NZ " + GetDataFlowString());
+            OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
+                GetAclnnName(), "weight", op::ToString((*gmmParams_.weight)[wIdx]->GetStorageFormat()).GetString(),
+                "The format of weight must be NZ " + GetDataFlowString());
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -439,12 +462,21 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValue(size_t xI
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimMatching(size_t xIdx, size_t yIdx, size_t wIdx) const
 {
-    size_t xDimNum = (*gmmParams_.x)[xIdx]->GetViewShape().GetDimNum();
-    size_t xKDim = (*gmmParams_.x)[xIdx]->GetViewShape().GetDim(xDimNum - 1);
-    auto weightNIdx = (*gmmParams_.weight)[wIdx]->GetViewShape().GetDimNum() - 1;
-    auto weightKIdx = (*gmmParams_.weight)[wIdx]->GetViewShape().GetDimNum() - 2;
-    size_t weightKDim = (*gmmParams_.weight)[wIdx]->GetViewShape().GetDim(weightKIdx);
-    size_t weightNDim = (*gmmParams_.weight)[wIdx]->GetViewShape().GetDim(weightNIdx);
+    size_t xKDim = 0;
+    if (unlikely(GetDimFromEnd((*gmmParams_.x)[xIdx], 1, xKDim, "x[" + std::to_string(xIdx) + "]") != ACLNN_SUCCESS)) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    size_t weightKDim = 0;
+    // 倒数第2维
+    if (unlikely(GetDimFromEnd((*gmmParams_.weight)[wIdx], 2, weightKDim, "weight[" + std::to_string(wIdx) + "]") !=
+                 ACLNN_SUCCESS)) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    size_t weightNDim = 0;
+    if (unlikely(GetDimFromEnd((*gmmParams_.weight)[wIdx], 1, weightNDim, "weight[" + std::to_string(wIdx) + "]") !=
+                 ACLNN_SUCCESS)) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     if (unlikely(xKDim != weightKDim)) {
         std::string incorrectValues = "x[" + std::to_string(xIdx) + "] dim k value " + std::to_string(xKDim) +
                                       ", weight[" + std::to_string(wIdx) + "] dim k value " +
@@ -457,7 +489,10 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimMatching(size_t
                                                incorrectValues, reason);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    size_t yNDim = (*gmmParams_.y)[yIdx]->GetViewShape().GetDim(xDimNum - 1);
+    size_t yNDim = 0;
+    if (unlikely(GetDimFromEnd((*gmmParams_.y)[yIdx], 1, yNDim, "y[" + std::to_string(yIdx) + "]") != ACLNN_SUCCESS)) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     if (unlikely(yNDim != weightNDim)) {
         std::string incorrectValues = "y[" + std::to_string(yIdx) + "] dim n value " + std::to_string(yNDim) +
                                       ", weight[" + std::to_string(wIdx) + "] dim n value " +

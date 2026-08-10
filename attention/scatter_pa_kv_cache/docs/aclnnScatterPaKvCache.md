@@ -285,7 +285,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0lax">scatterModeOptional（char*）</td>
       <td class="tg-0lax">输入</td>
       <td class="tg-0lax">表示更新的key和value的状态。</td>
-      <td class="tg-0lax">当传空指针或"None"时，表示更新的key和value是非压缩状态且连续。<br>当传"Alibi"时，表示更新key和value是基于Alibi结构的压缩状态。<br>当传"Rope"时，表示更新key和value是基于Rope结构的压缩状态。<br>当传"Omni"时，表示更新key和value是基于Omni结构的压缩状态。<br>当传"Nct"时，表示更新的key和value是非压缩状态但非连续。<br>当传"NHSD"时，表示keyCacheRef和keyCacheRef的格式时[num_block, num_head, block_size, head_size]。</td>
+      <td class="tg-0lax">当传空指针或"None"时，表示更新的key和value是非压缩状态且连续。<br>当传"Alibi"时，表示更新key和value是基于Alibi结构的压缩状态。<br>当传"Rope"时，表示更新key和value是基于Rope结构的压缩状态。<br>当传"Omni"时，表示更新key和value是基于Omni结构的压缩状态。<br>当传"Nct"时，表示更新的key和value是非压缩状态但非连续。<br>当传"NHSD"时，表示keyCacheRef和valueCacheRef的格式为[num_block, num_head, block_size, head_size]。</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
@@ -305,7 +305,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0lax">offsetsOptional（aclIntArray*）</td>
       <td class="tg-0lax">输入</td>
       <td class="tg-0lax">key和value在非连续状态下的偏移。</td>
-      <td class="tg-0lax">数组长度为2。其值应该大于0。仅当scatterModeOptional为"Nct"时生效，分别表示offsetK和offsetV。</td>
+      <td class="tg-0lax">数组长度为2。其值应该大于等于0。仅当scatterModeOptional为"Nct"时生效，分别表示offsetK和offsetV。</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
@@ -336,11 +336,11 @@ aclnnStatus aclnnScatterPaKvCache(
   <!-- npu="A3,910b" id9 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
-    - 输入key、keyCacheRef、value、valueCacheRef不支持FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1数据类型。
+    - 输入key、keyCacheRef、value、valueCacheRef仅支持FLOAT16、BFLOAT16、INT8数据类型，不支持FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1。
 
   <!-- end id9 -->
   <!-- npu="950" id10 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：仅场景一、场景二scatter_mode为None时支持FLOAT4_E1M2、FLOAT4_E2M1。
+  - <term>Ascend 950PR/Ascend 950DT</term>：支持参数表中列出的全部数据类型；其中FLOAT4_E1M2、FLOAT4_E2M1仅场景一、场景二且scatterMode为"None"时支持。
 
   <!-- end id10 -->
 
@@ -549,9 +549,9 @@ aclnnStatus aclnnScatterPaKvCache(
     char * cacheMode = "PA_NZ";
     char * scatterMode = "None";
 
-    std::vector<int16_t> hostKey(128, 1);
-    std::vector<int16_t> hostValue(128, 1);
-    std::vector<int32_t> hostSlotMapping(2, 1);
+    std::vector<int16_t> hostKey(128, 0);
+    std::vector<int16_t> hostValue(128, 0);
+    std::vector<int32_t> hostSlotMapping = {0, 1};
     std::vector<int16_t> hostKeyCacheRef(2048, 1);
     std::vector<int16_t> hostValueCacheRef(2048, 1);
     std::vector<int64_t> hostStrides(2, 1);
@@ -598,13 +598,22 @@ aclnnStatus aclnnScatterPaKvCache(
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-    auto size = GetShapeSize(keyCacheShape);
-    std::vector<float> resultData(size, 0);
-    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), keyCacheDeviceAddr,
-                      size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t i = 0; i < size; i++) {
-        LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
+    auto keyCacheSize = GetShapeSize(keyCacheShape);
+    std::vector<int16_t> keyCacheResult(keyCacheSize, 0);
+    ret = aclrtMemcpy(keyCacheResult.data(), keyCacheResult.size() * sizeof(int16_t), keyCacheDeviceAddr,
+                      keyCacheSize * sizeof(int16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy keyCache from device to host failed. ERROR: %d\n", ret); return ret);
+    for (int64_t i = 0; i < keyCacheSize; i++) {
+      LOG_PRINT("keyCache[%ld] is: %d\n", i, keyCacheResult[i]);
+    }
+
+    auto valueCacheSize = GetShapeSize(valueCacheShape);
+    std::vector<int16_t> valueCacheResult(valueCacheSize, 0);
+    ret = aclrtMemcpy(valueCacheResult.data(), valueCacheResult.size() * sizeof(int16_t), valueCacheDeviceAddr,
+                      valueCacheSize * sizeof(int16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy valueCache from device to host failed. ERROR: %d\n", ret); return ret);
+    for (int64_t i = 0; i < valueCacheSize; i++) {
+      LOG_PRINT("valueCache[%ld] is: %d\n", i, valueCacheResult[i]);
     }
 
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改

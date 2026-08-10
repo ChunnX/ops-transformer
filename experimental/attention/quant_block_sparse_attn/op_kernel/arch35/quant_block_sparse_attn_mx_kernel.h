@@ -31,7 +31,7 @@ using namespace optiling;
 
 namespace BaseApi {
 // MX 独立 tiling/kernel 路径：两个 256 C1/V1 subLoop 生成 P[128,512]，再执行一次 C2/V2。
-template <typename inputType, typename mmType, typename outputType, BSALayout layout, BSALayout kvLayout,
+template <typename inputType, typename mmType, typename outputType, QBSALayout layout, QBSALayout kvLayout,
           S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType,
           DTemplateType dVTemplateType, bool hasAtten, bool hasLse, bool isPa, bool useDn = true>
 class QuantBlockSparseAttnMxKernel {
@@ -43,14 +43,14 @@ public:
     static constexpr bool HAS_ATTEN = hasAtten;
     static constexpr bool HAS_LSE = hasLse;
     static constexpr bool IS_PA = isPa;
-    static constexpr BSALayout LAYOUT = layout;
-    static constexpr BSALayout KV_LAYOUT = kvLayout;
+    static constexpr QBSALayout LAYOUT = layout;
+    static constexpr QBSALayout KV_LAYOUT = kvLayout;
     static constexpr uint32_t M_BASE = static_cast<uint32_t>(s1TemplateType);
     static constexpr uint32_t S2_BASE = static_cast<uint32_t>(s2TemplateType);
     static constexpr uint32_t S2_SPLIT = 256U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
-    static_assert(LAYOUT == BSALayout::TND && KV_LAYOUT == BSALayout::PA_BNSD && IS_PA,
+    static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNSD && IS_PA,
                   "MXFullQuantMode currently only supports TND query and PA_BNSD KV");
     static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
                   "MXFullQuantMode currently only supports S1=128, S2=512, D=128 and DV=128");
@@ -69,6 +69,9 @@ public:
                                 __gm__ uint8_t *, const QuantBlockSparseAttnMxTilingData *__restrict tiling,
                                 TPipe *tPipe)
     {
+        // 跨核 Buffer ID 由核内状态生成，ACL 图重放会复用该状态；每次启动时需重置计数器，
+        // 保证 AIC 与 AIV 使用相同的事件 ID 序列。
+        fa_base_matmul::idCounterNum = 0;
         // Q/K/V 在 cube 中结合 block_table 完成 PA 搬运。
         pipe = tPipe;
         tilingData = tiling;
@@ -86,12 +89,14 @@ public:
         InitConstInfo();
         InitMMResBuf();
         cubeBlock.Init(pipe, &l1BufferManager, queryPtr, keyPtr, valuePtr, blockTable, qScale, kScale, vScale);
-        vecBlock.Init(pipe, pScale, softmaxLse, attentionOut, attenMask, tilingData->attenMaskParams.attenMaskS2Size);
+        __gm__ uint8_t *pScalePtr = (tilingData->scaleParams.pScaleShapeSize == 0U) ? nullptr : pScale;
+        vecBlock.Init(pipe, pScalePtr, softmaxLse, attentionOut, attenMask,
+                      tilingData->attenMaskParams.attenMaskS2Size);
     }
 
     __aicore__ inline void Process()
     {
-        if (constInfo.aicIdx >= constInfo.coreNum || constInfo.aicIdx >= BSA_FA_AIC_CORE_NUM) {
+        if (constInfo.aicIdx >= constInfo.coreNum || constInfo.aicIdx >= QBSA_FA_AIC_CORE_NUM) {
             return;
         }
         CrossCoreBufferInit();
@@ -137,6 +142,7 @@ private:
         constInfo.paBlockStride = pageAttentionParams.paBlockStride;
         constInfo.qSparseBlockSize = pageAttentionParams.qBlockSize;
         constInfo.kvSparseBlockSize = pageAttentionParams.kvBlockSize;
+        constInfo.paBlockSize = pageAttentionParams.blockSize;
 
         constInfo.maxQb = sparseParams.maxQb;
         constInfo.maxKb = sparseParams.maxKb;

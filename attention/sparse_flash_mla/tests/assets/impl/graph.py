@@ -37,7 +37,7 @@ class SparseFlashMlaAclGraph(torch.nn.Module):
         cmp_topk_length=None,
         sinks=None,
         softmax_scale=1.0,
-        cmp_ratio=1,
+        cmp_ratio=None,
         ori_mask_mode=4,
         cmp_mask_mode=3,
         ori_win_left=127,
@@ -70,7 +70,7 @@ class SparseFlashMlaAclGraph(torch.nn.Module):
         self.cmp_topk_length = cmp_topk_length
         self.sinks = sinks
         self.softmax_scale = float(softmax_scale)
-        self.cmp_ratio = int(cmp_ratio)
+        self.cmp_ratio = 1 if cmp_ratio is None else int(cmp_ratio)
         self.ori_mask_mode = int(ori_mask_mode)
         self.cmp_mask_mode = int(cmp_mask_mode)
         self.ori_win_left = int(ori_win_left)
@@ -94,7 +94,7 @@ class SparseFlashMlaAclGraph(torch.nn.Module):
             cmp_residual_kv=cmp_residual_kv,
             ori_topk_length=ori_topk_length,
             cmp_topk_length=cmp_topk_length,
-            cmp_ratio=cmp_ratio,
+            cmp_ratio=self.cmp_ratio,
             ori_mask_mode=ori_mask_mode,
             cmp_mask_mode=cmp_mask_mode,
             ori_win_left=ori_win_left,

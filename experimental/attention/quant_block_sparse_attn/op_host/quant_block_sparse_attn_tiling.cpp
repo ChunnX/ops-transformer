@@ -29,38 +29,31 @@
 namespace optiling {
 namespace {
 constexpr const char *kOpName = "QuantBlockSparseAttn";
-constexpr uint32_t BSA_LAYOUT_Q_TND_VALUE = 2U;
-constexpr uint32_t BSA_LAYOUT_Q_NTD_VALUE = 5U;
-constexpr uint32_t BSA_LAYOUT_KV_PA_BNSD_VALUE = 1U;
-constexpr uint32_t BSA_LAYOUT_SPARSE_B_N_QB_KB_VALUE = 0U;
-constexpr uint8_t BSA_LAYOUT_TYPE_TND = 2U;
-constexpr uint8_t BSA_LAYOUT_TYPE_NTD = 5U;
-constexpr uint8_t BSA_PA_LAYOUT_TYPE_BNBD = 0U;
-constexpr uint8_t BSA_COMPAT_MASK_NONE = 0U;
-constexpr uint8_t BSA_COMPAT_MASK_RIGHT_DOWN_CAUSAL = 2U;
-constexpr uint32_t BSA_COMBINE_ALIGN_BYTES = 32U;
-constexpr uint32_t BSA_K_SCALE_BYTES = sizeof(float);
-constexpr uint32_t BSA_ATTEN_MASK_DEFAULT_BATCH = 1U;
-constexpr uint32_t BSA_ATTEN_MASK_DEFAULT_S1_SIZE = 2048U;
-constexpr uint32_t BSA_ATTEN_MASK_DEFAULT_S2_SIZE = 2048U;
-constexpr uint32_t BSA_MXFP8_P_SCALE_SHAPE_SIZE = 1U;
-constexpr uint32_t BSA_MXFP8_VALUE_SCALE_LAST_DIM = 2U;
+constexpr uint8_t QBSA_PA_LAYOUT_TYPE_BNBD = 0U;
+constexpr uint8_t QBSA_COMPAT_MASK_NONE = 0U;
+constexpr uint8_t QBSA_COMPAT_MASK_RIGHT_DOWN_CAUSAL = 2U;
+constexpr uint32_t QBSA_COMBINE_ALIGN_BYTES = 32U;
+constexpr uint32_t QBSA_K_SCALE_BYTES = sizeof(float);
+constexpr uint32_t QBSA_ATTEN_MASK_DEFAULT_BATCH = 1U;
+constexpr uint32_t QBSA_ATTEN_MASK_DEFAULT_S1_SIZE = 2048U;
+constexpr uint32_t QBSA_ATTEN_MASK_DEFAULT_S2_SIZE = 2048U;
+constexpr uint32_t QBSA_MXFP8_VALUE_SCALE_LAST_DIM = 2U;
 
 uint32_t GetAicCoreNum(gert::TilingContext *context)
 {
     auto platformInfo = context->GetPlatformInfo();
     if (platformInfo == nullptr) {
-        return BSA_MAX_CORE_NUM;
+        return QBSA_MAX_CORE_NUM;
     }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     const uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    return aicNum == 0U ? BSA_MAX_CORE_NUM : std::min<uint32_t>(aicNum, BSA_MAX_CORE_NUM);
+    return aicNum == 0U ? QBSA_MAX_CORE_NUM : std::min<uint32_t>(aicNum, QBSA_MAX_CORE_NUM);
 }
 
 uint32_t CalcMxScaleDSize(uint32_t dSize)
 {
     // 返回 MX scale 的 D/64 维度。
-    return BSACeilDiv(dSize, BSA_MXFP8_SCALE_GROUP_SIZE);
+    return QBSACeilDiv(dSize, QBSA_MXFP8_SCALE_GROUP_SIZE);
 }
 
 QuantBlockSparseAttnMxStrideParams MakePaBnbdStride(uint32_t n2Size, uint32_t blockSize, uint32_t lastDim)
@@ -82,7 +75,7 @@ void QuantBlockSparseAttnTiling::FillPaParams()
     auto &paParams = tilingData_.paParams;
     paParams.set_blockTableDim2(info.maxBlockNumPerBatch);
     paParams.set_paBlockNumSum(info.paBlockNumSum);
-    paParams.set_paLayoutType(BSA_PA_LAYOUT_TYPE_BNBD);
+    paParams.set_paLayoutType(QBSA_PA_LAYOUT_TYPE_BNBD);
     paParams.set_kvBlockSize(info.kvBlockSizeVal);
     paParams.set_qBlockSize(info.qBlockSizeVal);
     paParams.set_paBlockStride(info.paBlockStrideVal);
@@ -101,7 +94,7 @@ void QuantBlockSparseAttnTiling::FillInputParams()
 {
     const auto &info = *tilingInfo_;
     const uint8_t compatMaskMode =
-        (info.maskModeVal == BSA_MASK_MODE_CAUSAL) ? BSA_COMPAT_MASK_RIGHT_DOWN_CAUSAL : BSA_COMPAT_MASK_NONE;
+        (info.maskModeVal == QBSA_MASK_MODE_CAUSAL) ? QBSA_COMPAT_MASK_RIGHT_DOWN_CAUSAL : QBSA_COMPAT_MASK_NONE;
     auto &inputParams = tilingData_.inputParamsRegbase;
     inputParams.set_bSize(info.bSize);
     inputParams.set_t1Size(info.qTokenNum);
@@ -113,9 +106,9 @@ void QuantBlockSparseAttnTiling::FillInputParams()
     inputParams.set_preTokens(std::numeric_limits<int32_t>::max());
     inputParams.set_nextTokens(0);
     inputParams.set_bandIndex(0); // 当前为起始 idx
-    uint8_t layoutTypeVal = BSA_LAYOUT_TYPE_TND;
-    if (info.layoutQValue == BSA_LAYOUT_Q_NTD_VALUE) {
-        layoutTypeVal = BSA_LAYOUT_TYPE_NTD;
+    uint8_t layoutTypeVal = QBSA_REGBASE_LAYOUT_TYPE_TND;
+    if (info.layoutQValue == QBSA_LAYOUT_Q_NTD_VALUE) {
+        layoutTypeVal = QBSA_REGBASE_LAYOUT_TYPE_NTD;
     }
     inputParams.set_layoutType(layoutTypeVal);
     inputParams.set_attenMaskCompressMode(compatMaskMode);
@@ -126,6 +119,12 @@ void QuantBlockSparseAttnTiling::FillInputParams()
     inputParams.set_fromFused(0);      // 融合算子标记，稀疏算子固定设为 0
     inputParams.set_isGqa(info.isGqa ? 1 : 0);
     inputParams.set_isSoftMaxLseEnable(info.returnSoftmaxLseVal ? 1 : 0);
+    uint32_t fp8PScaleShapeSize = 0U;
+    if (info.opParamInfo.pScale.shape != nullptr) {
+        const auto sz = info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize();
+        fp8PScaleShapeSize = (sz > 0) ? static_cast<uint32_t>(sz) : 0U;
+    }
+    inputParams.set_pScaleShapeSize(fp8PScaleShapeSize);
 }
 
 void QuantBlockSparseAttnTiling::FillMultiCoreParams()
@@ -135,7 +134,7 @@ void QuantBlockSparseAttnTiling::FillMultiCoreParams()
     multiCoreParams.set_coreNum(static_cast<int32_t>(usedCoreNum_));
     multiCoreParams.set_s1OuterSize(info.qbMax);
 
-    uint32_t bnStartIdx[BSA_CORE_SPLIT_NUM] = {};
+    uint32_t bnStartIdx[QBSA_CORE_SPLIT_NUM] = {};
     for (uint32_t boundaryIdx = 0U; boundaryIdx <= usedCoreNum_; ++boundaryIdx) {
         const uint64_t taskOffset = totalTaskNum_ * boundaryIdx / usedCoreNum_;
         bnStartIdx[boundaryIdx] = static_cast<uint32_t>(taskOffset / info.gS1OuterSize);
@@ -147,7 +146,7 @@ void QuantBlockSparseAttnTiling::FillInitOutputParams()
 {
     const auto &info = *tilingInfo_;
     auto &initOutputParams = tilingData_.initOutputParams;
-    const int64_t totalOutputSize = static_cast<int64_t>(info.qTokenNum) * info.n1Size * BSA_D_SIZE;
+    const int64_t totalOutputSize = static_cast<int64_t>(info.qTokenNum) * info.n1Size * QBSA_D_SIZE;
     const int64_t totalSoftmaxLseSize = static_cast<int64_t>(info.qTokenNum) * info.n1Size;
     initOutputParams.set_singleCoreSize((totalOutputSize + static_cast<int64_t>(usedCoreNum_) * 2 - 1) /
                                         (static_cast<int64_t>(usedCoreNum_) * 2));
@@ -161,21 +160,21 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     // 填充独立 MX tiling payload。
     const auto &info = *tilingInfo_;
     const uint8_t compatMaskMode =
-        (info.maskModeVal == BSA_MASK_MODE_CAUSAL) ? BSA_COMPAT_MASK_RIGHT_DOWN_CAUSAL : BSA_COMPAT_MASK_NONE;
-    const uint32_t dSize = info.dSize == 0U ? BSA_D_SIZE : info.dSize;
-    const uint32_t dSizeV = info.dSizeV == 0U ? BSA_D_SIZE : info.dSizeV;
+        (info.maskModeVal == QBSA_MASK_MODE_CAUSAL) ? QBSA_COMPAT_MASK_RIGHT_DOWN_CAUSAL : QBSA_COMPAT_MASK_NONE;
+    const uint32_t dSize = info.dSize == 0U ? QBSA_D_SIZE : info.dSize;
+    const uint32_t dSizeV = info.dSizeV == 0U ? QBSA_D_SIZE : info.dSizeV;
     const uint32_t queryScaleDSize = CalcMxScaleDSize(dSize);
     const uint32_t keyScaleDSize = CalcMxScaleDSize(dSize);
     // 每个 PA block 的 VScale 为 [N,ceil(blockSize/64),DV,2]。
-    const uint32_t valueScaleBlockSize = BSACeilDiv(info.kvBlockSizeVal, BSA_MXFP8_SCALE_GROUP_SIZE);
-    const uint32_t valueScaleDSize = dSizeV * BSA_MXFP8_VALUE_SCALE_LAST_DIM;
+    const uint32_t valueScaleBlockSize = QBSACeilDiv(info.paBlockSizeVal, QBSA_MXFP8_SCALE_GROUP_SIZE);
+    const uint32_t valueScaleDSize = dSizeV * QBSA_MXFP8_VALUE_SCALE_LAST_DIM;
     const bool actualSeqQNull = info.opParamInfo.cuSeqlensQ.tensor == nullptr;
     const bool actualSeqKVNull = info.opParamInfo.seqUsedKV.tensor == nullptr;
 
     auto &attrParams = mxTilingData_.attrParams;
     attrParams.layoutQ = info.layoutQValue;
-    attrParams.layoutKv = BSA_LAYOUT_KV_PA_BNSD_VALUE;
-    attrParams.layoutSparseIndices = BSA_LAYOUT_SPARSE_B_N_QB_KB_VALUE;
+    attrParams.layoutKv = QBSA_REGBASE_KV_PA_BNSD;
+    attrParams.layoutSparseIndices = QBSA_REGBASE_SPARSE_B_N_QB_KB;
     attrParams.quantMode = info.quantModeVal;
     attrParams.maskMode = info.maskModeVal;
     attrParams.returnSoftmaxLse = info.returnSoftmaxLseVal ? 1U : 0U;
@@ -197,10 +196,10 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     baseParams.coreNum = usedCoreNum_;
     baseParams.outputLayout = info.layoutQValue;
     // K/V 数据与 K/V scale 均按 PA BNBD 映射。
-    baseParams.keyStrides = MakePaBnbdStride(info.n2Size, info.kvBlockSizeVal, dSize);
-    baseParams.valueStrides = MakePaBnbdStride(info.n2Size, info.kvBlockSizeVal, dSizeV);
+    baseParams.keyStrides = MakePaBnbdStride(info.n2Size, info.paBlockSizeVal, dSize);
+    baseParams.valueStrides = MakePaBnbdStride(info.n2Size, info.paBlockSizeVal, dSizeV);
     baseParams.kScaleStrides =
-        MakePaBnbdStride(info.n2Size, info.kvBlockSizeVal, keyScaleDSize * BSA_MXFP8_SCALE_LAST_DIM);
+        MakePaBnbdStride(info.n2Size, info.paBlockSizeVal, keyScaleDSize * QBSA_MXFP8_SCALE_LAST_DIM);
     baseParams.vScaleStrides = MakePaBnbdStride(info.n2Size, valueScaleBlockSize, valueScaleDSize);
 
     auto &attenMaskParams = mxTilingData_.attenMaskParams;
@@ -210,14 +209,14 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     attenMaskParams.isRowInvalidOpen = 1U;
     attenMaskParams.preTokens = std::numeric_limits<int32_t>::max();
     attenMaskParams.nextTokens = 0;
-    attenMaskParams.attenMaskBatch = BSA_ATTEN_MASK_DEFAULT_BATCH;
-    attenMaskParams.attenMaskS1Size = BSA_ATTEN_MASK_DEFAULT_S1_SIZE;
-    attenMaskParams.attenMaskS2Size = BSA_ATTEN_MASK_DEFAULT_S2_SIZE;
+    attenMaskParams.attenMaskBatch = QBSA_ATTEN_MASK_DEFAULT_BATCH;
+    attenMaskParams.attenMaskS1Size = QBSA_ATTEN_MASK_DEFAULT_S1_SIZE;
+    attenMaskParams.attenMaskS2Size = QBSA_ATTEN_MASK_DEFAULT_S2_SIZE;
     attenMaskParams.isExistRowInvalid = 1U;
 
     auto &pageAttentionParams = mxTilingData_.pageAttentionParams;
-    pageAttentionParams.paLayoutType = BSA_PA_LAYOUT_TYPE_BNBD;
-    pageAttentionParams.blockSize = info.kvBlockSizeVal;
+    pageAttentionParams.paLayoutType = QBSA_PA_LAYOUT_TYPE_BNBD;
+    pageAttentionParams.blockSize = info.paBlockSizeVal;
     pageAttentionParams.maxBlockNumPerBatch = info.maxBlockNumPerBatch;
     pageAttentionParams.paBlockNumSum = info.paBlockNumSum;
     pageAttentionParams.paBlockStride = info.paBlockStrideVal;
@@ -238,16 +237,21 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
 
     auto &scaleParams = mxTilingData_.scaleParams;
     // Q/K mode=6，V mode=8。
-    scaleParams.scaleGroupSize = BSA_MXFP8_SCALE_GROUP_SIZE;
-    scaleParams.scaleLastDim = BSA_MXFP8_SCALE_LAST_DIM;
+    scaleParams.scaleGroupSize = QBSA_MXFP8_SCALE_GROUP_SIZE;
+    scaleParams.scaleLastDim = QBSA_MXFP8_SCALE_LAST_DIM;
     scaleParams.queryScaleDSize = queryScaleDSize;
     scaleParams.keyScaleDSize = keyScaleDSize;
     scaleParams.valueScaleBlockSize = valueScaleBlockSize;
     scaleParams.valueScaleDSize = valueScaleDSize;
-    scaleParams.pScaleShapeSize = BSA_MXFP8_P_SCALE_SHAPE_SIZE;
-    scaleParams.queryQuantMode = BSA_MXFP8_PER_TOKEN_GROUP_MODE;
-    scaleParams.keyAntiquantMode = BSA_MXFP8_PER_TOKEN_GROUP_MODE;
-    scaleParams.valueAntiquantMode = BSA_MXFP8_PER_CHANNEL_GROUP_MODE;
+    uint32_t pScaleShapeSize = 0U;
+    if (info.opParamInfo.pScale.shape != nullptr) {
+        const auto sz = info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize();
+        pScaleShapeSize = (sz > 0) ? static_cast<uint32_t>(sz) : 0U;
+    }
+    scaleParams.pScaleShapeSize = pScaleShapeSize;
+    scaleParams.queryQuantMode = QBSA_MXFP8_PER_TOKEN_GROUP_MODE;
+    scaleParams.keyAntiquantMode = QBSA_MXFP8_PER_TOKEN_GROUP_MODE;
+    scaleParams.valueAntiquantMode = QBSA_MXFP8_PER_CHANNEL_GROUP_MODE;
 
     auto &emptyTensorParams = mxTilingData_.emptyTensorParams;
     const uint64_t totalOutputSize = static_cast<uint64_t>(info.qTokenNum) * info.n1Size * dSizeV;
@@ -259,13 +263,13 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
 void QuantBlockSparseAttnTiling::CalcTilingKey()
 {
     const auto &info = *tilingInfo_;
-    if (info.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
+    if (info.quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
         // MX 使用独立 tiling data 和 S2=512 config。
-        tilingKey_ = GET_TPL_TILING_KEY(BSA_DTYPE_FP8_E4M3FN, info.layoutQValue, BSA_KV_LAYOUT_PA_BNSD,
+        tilingKey_ = GET_TPL_TILING_KEY(QBSA_DTYPE_FP8_E4M3FN, info.layoutQValue, QBSA_KV_LAYOUT_PA_BNSD,
                                         info.maskModeVal, info.returnSoftmaxLseVal ? 1U : 0U,
                                         Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128, MXFullQuantMode);
     } else {
-        tilingKey_ = GET_TPL_TILING_KEY(BSA_DTYPE_FP8_E4M3FN, info.layoutQValue, BSA_KV_LAYOUT_PA_BNSD,
+        tilingKey_ = GET_TPL_TILING_KEY(QBSA_DTYPE_FP8_E4M3FN, info.layoutQValue, QBSA_KV_LAYOUT_PA_BNSD,
                                         info.maskModeVal, info.returnSoftmaxLseVal ? 1U : 0U,
                                         Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128, FP8QuantMode);
     }
@@ -312,7 +316,7 @@ void QuantBlockSparseAttnTiling::PrintAllTilingData()
     OP_LOGD(kOpName, "===== MultiCoreParams =====");
     OP_LOGD(kOpName, "coreNum:%d", multiCoreParams.get_coreNum());
     OP_LOGD(kOpName, "s1OuterSize:%ld", multiCoreParams.get_s1OuterSize());
-    for (uint32_t i = 0; i <= usedCoreNum_ && i < BSA_CORE_SPLIT_NUM; ++i) {
+    for (uint32_t i = 0; i <= usedCoreNum_ && i < QBSA_CORE_SPLIT_NUM; ++i) {
         OP_LOGD(kOpName, "bnStartIdx[%u]:%u", i, multiCoreParams.get_bnStartIdx()[i]);
     }
 
@@ -425,12 +429,12 @@ ge::graphStatus QuantBlockSparseAttnTiling::SaveTilingData()
         return ge::GRAPH_FAILED;
     }
 
-    if (tilingInfo_->quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
+    if (tilingInfo_->quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
         const auto dataSize = sizeof(QuantBlockSparseAttnMxTilingData);
         if (rawTilingData->GetCapacity() < dataSize) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 kOpName, "tilingDataCapacity", std::to_string(rawTilingData->GetCapacity()),
-                "must be at least " + std::to_string(dataSize) + " for MXFP8 full-quant tiling data");
+                "Must be at least " + std::to_string(dataSize) + " for MXFP8 full-quant tiling data");
             return ge::GRAPH_FAILED;
         }
         std::memcpy(rawTilingData->GetData(), &mxTilingData_, dataSize);
@@ -456,14 +460,14 @@ ge::graphStatus QuantBlockSparseAttnTiling::DoOpTiling(QuantBlockSparseAttnTilin
     if (totalTaskNum_ == 0U || totalTaskNum_ > std::numeric_limits<uint32_t>::max()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             kOpName, "bSize * n1Size * gS1OuterSize", std::to_string(totalTaskNum_),
-            "total task num must be in range [1, " + std::to_string(std::numeric_limits<uint32_t>::max()) + "]");
+            "Total task num must be in range [1, " + std::to_string(std::numeric_limits<uint32_t>::max()) + "]");
         return ge::GRAPH_FAILED;
     }
 
     const uint32_t maxAicCoreNum = GetAicCoreNum(context_);
     usedCoreNum_ = static_cast<uint32_t>(std::min<uint64_t>(static_cast<uint64_t>(maxAicCoreNum), totalTaskNum_));
 
-    if (tilingInfo_->quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
+    if (tilingInfo_->quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
         FillMxTilingData();
     } else {
         FillPaParams();
@@ -474,7 +478,7 @@ ge::graphStatus QuantBlockSparseAttnTiling::DoOpTiling(QuantBlockSparseAttnTilin
     }
     CalcTilingKey();
     CalcWorkspaceSize();
-    if (tilingInfo_->quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
+    if (tilingInfo_->quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
         PrintMxTilingData();
     } else {
         PrintAllTilingData();
