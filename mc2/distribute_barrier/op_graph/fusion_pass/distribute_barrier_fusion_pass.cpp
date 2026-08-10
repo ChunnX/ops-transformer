@@ -247,11 +247,14 @@ ge::graphStatus DistributeBarrierFusionPass::Run(ge::GraphPtr &graph, ge::Custom
     }
     // 按 group 缓存 context Const 节点，同图同通信域的多个 barrier 节点复用
     std::map<std::string, ge::GNode> contextNodes;
+    size_t targetNodes = 0;
+    size_t fusedNodes = 0;
     for (auto &gNode : graph->GetDirectNode()) {
         ge::AscendString nodeType;
         if ((gNode.GetType(nodeType) != ge::GRAPH_SUCCESS) || (nodeType != FUSED_OP_TYPE2.c_str())) {
             continue;
         }
+        ++targetNodes;
         ge::AscendString group;
         if (gNode.GetAttr(ge::AscendString("group"), group) != ge::GRAPH_SUCCESS || group.GetString() == nullptr) {
             continue;
@@ -288,12 +291,14 @@ ge::graphStatus DistributeBarrierFusionPass::Run(ge::GraphPtr &graph, ge::Custom
         }
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "replace %s with %s success.", nameStr.GetString(),
                   FUSED_OP_TYPE_EXTEND.c_str());
+        ++fusedNodes;
 #else
         // 老 HCCL 版本不支持 mc2 context，保持原 barrier 节点不变
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "hccl version not support mc2 context, barrier node kept as-is.");
         continue;
 #endif
     }
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "target nodes %zu, fused %zu.", targetNodes, fusedNodes);
     return ge::GRAPH_SUCCESS;
 }
 

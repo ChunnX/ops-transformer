@@ -288,11 +288,14 @@ ge::graphStatus MoeDistributeCombineV2FusionPass::Run(ge::GraphPtr &graph, ge::C
     }
     // 按 groupEp 缓存 context Const 节点与 buffer 大小，同图同通信域的多个 V2 节点复用
     std::map<std::string, std::pair<ge::GNode, int64_t>> contextNodes;
+    size_t targetNodes = 0;
+    size_t fusedNodes = 0;
     for (auto &gNode : graph->GetDirectNode()) {
         ge::AscendString nodeType;
         if ((gNode.GetType(nodeType) != ge::GRAPH_SUCCESS) || (nodeType != FUSED_OP_TYPE2.c_str())) {
             continue;
         }
+        ++targetNodes;
         // ccu 通信算法不支持 mc2Context，保持 V2 不变
         ge::AscendString commAlg;
         if (gNode.GetAttr(ge::AscendString("comm_alg"), commAlg) == ge::GRAPH_SUCCESS &&
@@ -346,12 +349,14 @@ ge::graphStatus MoeDistributeCombineV2FusionPass::Run(ge::GraphPtr &graph, ge::C
             continue;
         }
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "replace %s with %s success.", nameStr.GetString(), FUSED_OP_TYPE3.c_str());
+        ++fusedNodes;
 #else
         // 老 HCCL 版本不支持 mc2 context，保持 V2 不变
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "hccl version not support mc2 context, V2 node kept as-is.");
         continue;
 #endif
     }
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "target nodes %zu, fused %zu.", targetNodes, fusedNodes);
     return ge::GRAPH_SUCCESS;
 }
 

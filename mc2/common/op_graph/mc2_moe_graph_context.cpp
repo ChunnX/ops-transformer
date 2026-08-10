@@ -360,8 +360,10 @@ bool Mc2MoeGraphContext::BuildContextData(const std::string &groupEp, std::vecto
     contextData.resize(sizeof(Mc2Aclnn::Mc2MoeContext) / sizeof(int32_t));
     memcpy(contextData.data(), &context, sizeof(Mc2Aclnn::Mc2MoeContext));
     hcclBuffSize = static_cast<int64_t>(hcclBuffSize_);
-    OPS_LOG_I(CONTEXT_NAME, "Build Mc2MoeContext data success, groupEp %s, hcclBuffSize %ld.", groupEp.c_str(),
-              hcclBuffSize);
+    OPS_LOG_I(CONTEXT_NAME,
+              "Build Mc2MoeContext data success, groupEp %s, hcclBuffSize %ld, epRankId %u, epRankSize %u, "
+              "rankSizePerServer %u.",
+              groupEp.c_str(), hcclBuffSize, context.epRankId, epRankSize_, rankSizePerServer_);
     return true;
 }
 
