@@ -300,11 +300,15 @@ public:
         // GO^T [D, qS] fp32（kernel 构造的 zN TLA 传入，与末块 go 的 TLA 传入模式一致）
         // diag 双子核块（每块 zN [64,64] 固定排布，与 S_trans 写侧一致：块 0 在 0、块 1 在 16KB），
         // 有效区 [qS/2, qS/2] 在块内前部——RE 的 B 子块按 qHalf 取对角块
+        // 注：coord 显式用运行期 (0U, 0U)——copy 内部 CeilDiv<DIVISOR>(tla::get(coord)) 的模板 T 从实参
+        // 推导，编译期 C<0> 会导致 T=C<0> 赋值失败（整块 src 首次触发该路径）
         auto l1DiagLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(64, 64);
         auto l1DiagTensorTlaBlk0 = tla::MakeTensor(
-            l1DiagTensor[l1DiagBufId], l1DiagLayoutTla, Arch::PositionL1{});
+            l1DiagTensor[l1DiagBufId], l1DiagLayoutTla,
+            tla::MakeCoord(0U, 0U), Arch::PositionL1{});
         auto l1DiagTensorTlaBlk1 = tla::MakeTensor(
-            l1DiagTensor[l1DiagBufId][64 * 64], l1DiagLayoutTla, Arch::PositionL1{});
+            l1DiagTensor[l1DiagBufId][64 * 64], l1DiagLayoutTla,
+            tla::MakeCoord(0U, 0U), Arch::PositionL1{});
 
         // PV^T 与 RE 共用的 L0 分块数：M=D、N=qS、K=kvS（RE 的 GO 沿 M 方向同 D 切分）
         uint32_t mL0LoopNum = CeilDiv(embed, L0_TILE_M);
