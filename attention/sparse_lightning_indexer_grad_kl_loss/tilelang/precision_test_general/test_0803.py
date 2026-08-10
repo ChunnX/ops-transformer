@@ -12,34 +12,44 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from importlib import import_module
-mod = import_module("0803")
+mod = import_module("0803_gather32")
 sparse_lightning_indexer_grad_kl_loss = mod.sparse_lightning_indexer_grad_kl_loss
-
-# Clear all caches to avoid stale compiled kernels
-mod._clear_caches()
 
 WARMUP_ITERS = 5
 BENCH_ITERS = 10
 
-CASE_CONFIG = {
-    "B": 2, "S1": 2, "S2": 2048, "N1": 128, "N2": 1,
-    "Nidx1": 64, "Nidx2": 1, "DQuery": 512, "DQueryIndex": 128,
-    "d_rope": 64, "K": 2048, "layout": "BSND",
-}
+CASE_CONFIGS = (
+    (
+        "small_b1_s1_1_k_2048",
+        {
+            "B": 1, "S1": 1, "S2": 2048, "N1": 128, "N2": 1,
+            "Nidx1": 64, "Nidx2": 1, "DQuery": 512, "DQueryIndex": 128,
+            "d_rope": 64, "K": 2048, "layout": "BSND",
+        },
+    ),
+    (
+        "large_s1_b1_s1_1024_k_5120",
+        {
+            "B": 1, "S1": 1024, "S2": 5120, "N1": 128, "N2": 1,
+            "Nidx1": 64, "Nidx2": 1, "DQuery": 512, "DQueryIndex": 128,
+            "d_rope": 64, "K": 5120, "layout": "BSND",
+        },
+    ),
+)
 
 
-def gen_inputs(seed=42):
-    B = CASE_CONFIG["B"]
-    S1 = CASE_CONFIG["S1"]
-    S2 = CASE_CONFIG["S2"]
-    N1 = CASE_CONFIG["N1"]
-    N2 = CASE_CONFIG["N2"]
-    Nidx1 = CASE_CONFIG["Nidx1"]
-    Nidx2 = CASE_CONFIG["Nidx2"]
-    DQuery = CASE_CONFIG["DQuery"]
-    DQueryIndex = CASE_CONFIG["DQueryIndex"]
-    d_rope = CASE_CONFIG["d_rope"]
-    K = CASE_CONFIG["K"]
+def gen_inputs(case_config, seed=42):
+    B = case_config["B"]
+    S1 = case_config["S1"]
+    S2 = case_config["S2"]
+    N1 = case_config["N1"]
+    N2 = case_config["N2"]
+    Nidx1 = case_config["Nidx1"]
+    Nidx2 = case_config["Nidx2"]
+    DQuery = case_config["DQuery"]
+    DQueryIndex = case_config["DQueryIndex"]
+    d_rope = case_config["d_rope"]
+    K = case_config["K"]
 
     G = N1 // N2
     scale_value = 1.0 / math.sqrt(DQuery)
@@ -96,7 +106,7 @@ def gen_inputs(seed=42):
     }
 
 
-def call_tl(inputs):
+def call_tl(inputs, case_config):
     return sparse_lightning_indexer_grad_kl_loss(
         inputs["query"], inputs["key"],
         inputs["query_index"], inputs["key_index"],
@@ -106,13 +116,13 @@ def call_tl(inputs):
         query_rope=inputs["query_rope"],
         key_rope=inputs["key_rope"],
         layout_query="BSND",
-        actual_seq_lengths_query=[CASE_CONFIG["S1"]] * CASE_CONFIG["B"],
-        actual_seq_lengths_key=[CASE_CONFIG["S2"]] * CASE_CONFIG["B"],
+        actual_seq_lengths_query=[case_config["S1"]] * case_config["B"],
+        actual_seq_lengths_key=[case_config["S2"]] * case_config["B"],
         sparse_mode=3,
     )
 
 
-def call_official(inputs):
+def call_official(inputs, case_config):
     return torch_npu.npu_sparse_lightning_indexer_grad_kl_loss(
         inputs["query"], inputs["key"],
         inputs["query_index"], inputs["key_index"],
@@ -121,8 +131,8 @@ def call_official(inputs):
         inputs["scale_value"],
         query_rope=inputs["query_rope"],
         key_rope=inputs["key_rope"],
-        actual_seq_qlen=[CASE_CONFIG["S1"]] * CASE_CONFIG["B"],
-        actual_seq_klen=[CASE_CONFIG["S2"]] * CASE_CONFIG["B"],
+        actual_seq_qlen=[case_config["S1"]] * case_config["B"],
+        actual_seq_klen=[case_config["S2"]] * case_config["B"],
         layout="BSND", sparse_mode=3,
         pre_tokens=65536, next_tokens=65536,
     )
@@ -145,18 +155,19 @@ def bench(fn, warmup=WARMUP_ITERS, iters=BENCH_ITERS):
     return avg, med, mn
 
 
-def main():
+def run_case(case_name, case_config):
     print("=" * 60)
-    print("Case 0 - 0803.py (gather移入kernel V0 scope) 测试")
+    print(f"{case_name} - 0803_gather32.py (GATHER_CHUNK_SIZE=32)")
     print("=" * 60)
 
-    inputs = gen_inputs()
+    mod._clear_caches()
+    inputs = gen_inputs(case_config)
 
     # TileLang
     print("\n[1] TileLang (0803 kernel-gather)...")
     torch.npu.synchronize()
     try:
-        d_qi_tl, d_ki_tl, dw_tl, loss_tl = call_tl(inputs)
+        d_qi_tl, d_ki_tl, dw_tl, loss_tl = call_tl(inputs, case_config)
         torch.npu.synchronize()
         print("  完成")
     except Exception as e:
@@ -168,7 +179,7 @@ def main():
     # 官方
     print("\n[2] 官方...")
     torch.npu.synchronize()
-    d_qi_off, d_ki_off, dw_off, loss_off = call_official(inputs)
+    d_qi_off, d_ki_off, dw_off, loss_off = call_official(inputs, case_config)
     torch.npu.synchronize()
     print("  完成")
 
@@ -192,13 +203,18 @@ def main():
     # 性能
     print(f"\n[4] 性能测试 (warmup={WARMUP_ITERS}, bench={BENCH_ITERS})...")
     torch.npu.synchronize()
-    tl_avg, tl_med, tl_min = bench(lambda: call_tl(inputs))
+    tl_avg, tl_med, tl_min = bench(lambda: call_tl(inputs, case_config))
     torch.npu.synchronize()
-    off_avg, off_med, off_min = bench(lambda: call_official(inputs))
+    off_avg, off_med, off_min = bench(lambda: call_official(inputs, case_config))
     speedup = off_med / tl_med
     print(f"  TileLang: avg={tl_avg*1e3:.3f}ms, med={tl_med*1e3:.3f}ms, min={tl_min*1e3:.3f}ms")
     print(f"  官方:     avg={off_avg*1e3:.3f}ms, med={off_med*1e3:.3f}ms, min={off_min*1e3:.3f}ms")
     print(f"  加速比:   {speedup:.2f}x (基于中位数)")
+
+
+def main():
+    for case_name, case_config in CASE_CONFIGS:
+        run_case(case_name, case_config)
 
 
 if __name__ == "__main__":
