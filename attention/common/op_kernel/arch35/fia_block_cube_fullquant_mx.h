@@ -990,11 +990,11 @@ public:
         MM2_ABUF_T mm2A = inputBuf.Get();
         mm2A.WaitCrossCore();
 
-    if constexpr (s2BaseSize == 256) {
-        if (!(runInfo.isFirstS2Loop && runInfo.isLastS2Loop)) {
-            PipeBarrier<PIPE_ALL>();  // D256 multi-s2Loop only: full-pipe drain before BMM2, scoped (not blanket)
+        if constexpr (s2BaseSize == 256) {
+            if (!(runInfo.isFirstS2Loop && runInfo.isLastS2Loop)) {
+                PipeBarrier<PIPE_ALL>();  // D256 multi-s2Loop only: full-pipe drain before BMM2, scoped (not blanket)
+            }
         }
-    }
 
         constexpr uint32_t pScaleOffset = mBaseSize * s2BaseSize; // pScale在L1的偏移量
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
@@ -1009,11 +1009,11 @@ public:
             }
         }
         LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset);
-    if constexpr (s2BaseSize == 256) {
-        if (!(runInfo.isFirstS2Loop && runInfo.isLastS2Loop)) {
-            PipeBarrier<PIPE_ALL>();  // D256 multi-s2Loop only: full-pipe drain before BMM2, scoped (not blanket)
+        if constexpr (s2BaseSize == 256) {
+            if (!(runInfo.isFirstS2Loop && runInfo.isLastS2Loop)) {
+                PipeBarrier<PIPE_ALL>();  // D256 multi-s2Loop only: full-pipe drain before BMM2, scoped (not blanket)
+            }
         }
-    }
 
         constexpr uint32_t baseN = l1BaseD;
         uint32_t nLoops = ((uint32_t)constInfo.dSizeV + baseN - 1) / baseN;
@@ -1078,11 +1078,11 @@ public:
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();
 
-            if constexpr (s2BaseSize == 256) {
-                if (!(runInfo.isFirstS2Loop && runInfo.isLastS2Loop)) {
-                    PipeBarrier<PIPE_ALL>();  // D256 multi-s2Loop only: full-pipe drain before BMM2, scoped (not blanket)
-                }
+        if constexpr (s2BaseSize == 256) {
+            if (!(runInfo.isFirstS2Loop && runInfo.isLastS2Loop)) {
+                PipeBarrier<PIPE_ALL>();  // D256 multi-s2Loop only: full-pipe drain before BMM2, scoped (not blanket)
             }
+        }
 
         if constexpr (BMM2_TOUB) {
             outputBuf.WaitCrossCore();
