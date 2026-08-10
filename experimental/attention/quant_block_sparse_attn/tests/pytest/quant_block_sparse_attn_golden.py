@@ -921,9 +921,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     cu_seqlens_q_input = cu_seqlens_q
 
     block_table = _make_block_table(
-        batch, s2, sparse_kv_block_size, case["block_table_pattern"], rng,
+        batch, case["block_table_pattern"], rng,
         blocknum=case.get("block_num"),
-        q_block_num=math.ceil(case["S1"] / case["sparse_q_block_size"]),
         max_block_per_batch=case["max_block_per_batch"],
     )
     case["data_generation_mode"] = "fia_style_fullquant"
