@@ -57,6 +57,9 @@ private:
     __aicore__ inline void SendGradRemote(uint32_t dstRank, int32_t sendCount, int64_t sdispl, GM_ADDR localWinBase);
     __aicore__ inline void RecvGradFromPeers();
     __aicore__ inline void UniqueScatterAdd();
+    __aicore__ inline void InitCompanion(uint32_t numRecv);
+    __aicore__ inline void RunSort(uint32_t numRecv);
+    __aicore__ inline void WriteNumUniqueZero();
     __aicore__ inline void ZeroGradUnique(uint32_t numRecv);
     __aicore__ inline void CountUniquesParallel(uint32_t numRecv);
     __aicore__ inline void ScatterAddAtomicParallel(uint32_t numRecv);
@@ -103,6 +106,13 @@ private:
 
     uint64_t uniqueScatterAddStartCycle_{0};
     uint64_t uniqueScatterAddEndCycle_{0};
+    uint64_t usaCompanionCycle_{0};
+    uint64_t usaSortCycle_{0};
+    uint64_t usaZeroCountCycle_{0};
+    uint64_t usaScatterAddCycle_{0};
+    uint64_t usaCastCycle_{0};
+    uint64_t processStartCycle_{0};
+    uint64_t processEndCycle_{0};
 
     uint64_t barrierFlagOffset_{0};
     uint64_t tokenFlagOffset_{0};
@@ -128,6 +138,7 @@ private:
     GM_ADDR counterScratchGM_{0};
     GM_ADDR flagScratchGM_{0};
     GM_ADDR segCountGM_{0};
+    GM_ADDR coreStartGM_{0};
 
     GM_ADDR sortTempValGM_{0};
     GM_ADDR sortTempIdxGM_{0};
@@ -378,9 +389,13 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     wsOffset += UB_ALIGN;
     segCountGM_ = workspaceGM_ + wsOffset;
     wsOffset += static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t);
+    coreStartGM_ = workspaceGM_ + wsOffset;
+    wsOffset += static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t);
 
     uint32_t maxSortCount = static_cast<uint32_t>(totalRecv_);
-    uint32_t sortTileCount = (maxSortCount + SortWithIndexInt32::DEFAULT_TILE_SIZE - 1U) / SortWithIndexInt32::DEFAULT_TILE_SIZE;
+    uint32_t sortTileCountByCore = static_cast<uint32_t>(totalBlocks_);
+    uint32_t sortTileCountByDefault = (maxSortCount + SortWithIndexInt32::DEFAULT_TILE_SIZE - 1U) / SortWithIndexInt32::DEFAULT_TILE_SIZE;
+    uint32_t sortTileCount = (sortTileCountByCore > sortTileCountByDefault) ? sortTileCountByCore : sortTileCountByDefault;
     uint64_t sortTempSize = Ceil(static_cast<uint64_t>(maxSortCount) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     sortTempValGM_ = workspaceGM_ + wsOffset;
     wsOffset += sortTempSize;
@@ -403,7 +418,7 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     uint32_t statusBufSize = Ceil(numRanks_ * STATE_OFFSET, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
     tpipe_->InitBuffer(tempBuf_, statusBufSize);
-    uint32_t gradSumBufSize = Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float), UB_ALIGN) * UB_ALIGN;
+    uint32_t gradSumBufSize = Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * GRAD_SUB_BATCH, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(gradSumBuf_, gradSumBufSize);
     uint32_t indicesBufSize = 4U * 1024U;
     if (indicesBufSize < statusBufSize) {
@@ -591,132 +606,188 @@ __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
     }
 }
 
+__aicore__ inline void EngramFetchGradArch35::InitCompanion(uint32_t numRecv)
+{
+    uint32_t chunk = (numRecv + totalBlocks_ - 1U) / totalBlocks_;
+    uint32_t start = aivId_ * chunk;
+    uint32_t end = start + chunk;
+    if (end > numRecv) {
+        end = numRecv;
+    }
+
+    LocalTensor<int32_t> idxLocal = indicesBuf_.Get<int32_t>();
+    GlobalTensor<int32_t> compGM;
+    compGM.SetGlobalBuffer((__gm__ int32_t *)sortCompanionGM_);
+
+    uint32_t cur = start;
+    while (cur < end) {
+        uint32_t batchLen = end - cur;
+        if (batchLen > ENTRY_BATCH_CAP) {
+            batchLen = ENTRY_BATCH_CAP;
+        }
+        for (uint32_t i = 0; i < batchLen; i++) {
+            idxLocal.SetValue(i, static_cast<int32_t>(cur + i));
+        }
+        EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
+        DataCopyParams cp = {1U, static_cast<uint16_t>(batchLen * sizeof(int32_t)), 0U, 0U};
+        DataCopyPad(compGM[cur], idxLocal, cp);
+        EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
+        cur += batchLen;
+    }
+}
+
+__aicore__ inline void EngramFetchGradArch35::RunSort(uint32_t numRecv)
+{
+    sorter_.SetCount(numRecv);
+    sorter_.SetMaxValue(static_cast<uint32_t>(numRanks_) * static_cast<uint32_t>(numEntriesPerRank_));
+
+    GlobalTensor<int32_t> valGm, idxGm, outValGm, outIdxGm, tmpValGm, tmpIdxGm;
+    GlobalTensor<int32_t> histGm, prefixGm, offsetsGm;
+    valGm.SetGlobalBuffer((__gm__ int32_t *)recvLocalEntryOutGM_);
+    idxGm.SetGlobalBuffer((__gm__ int32_t *)sortCompanionGM_);
+    outValGm.SetGlobalBuffer((__gm__ int32_t *)recvLocalEntryOutGM_);
+    outIdxGm.SetGlobalBuffer((__gm__ int32_t *)sortCompanionGM_);
+    tmpValGm.SetGlobalBuffer((__gm__ int32_t *)sortTempValGM_);
+    tmpIdxGm.SetGlobalBuffer((__gm__ int32_t *)sortTempIdxGM_);
+    histGm.SetGlobalBuffer((__gm__ int32_t *)sortHistGm_);
+    prefixGm.SetGlobalBuffer((__gm__ int32_t *)sortPrefixGm_);
+    offsetsGm.SetGlobalBuffer((__gm__ int32_t *)sortOffsetsGm_);
+    sorter_.Process(valGm, idxGm, outValGm, outIdxGm, tmpValGm, tmpIdxGm,
+                    histGm, prefixGm, offsetsGm, *tpipe_);
+}
+
+__aicore__ inline void EngramFetchGradArch35::WriteNumUniqueZero()
+{
+    if (aivId_ != 0) {
+        SyncAll<true>();
+        return;
+    }
+    GlobalTensor<int32_t> numUniqueGM;
+    numUniqueGM.SetGlobalBuffer((__gm__ int32_t *)numUniqueOutGM_);
+    LocalTensor<int32_t> tmp = statusBuf_.Get<int32_t>();
+    tmp.SetValue(0, 0);
+    EngramFetchGradSyncFunc<HardEvent::S_MTE3>();
+    DataCopyParams params = {1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U};
+    DataCopyPad(numUniqueGM, tmp, params);
+    EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
+    SyncAll<true>();
+}
+
 __aicore__ inline void EngramFetchGradArch35::UniqueScatterAdd()
 {
     GlobalTensor<int32_t> numRecvGM;
     numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);
     uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
+
     if (numRecv == 0) {
-        if (aivId_ == 0) {
-            GlobalTensor<int32_t> numUniqueGM;
-            numUniqueGM.SetGlobalBuffer((__gm__ int32_t *)numUniqueOutGM_);
-            LocalTensor<int32_t> tmp = statusBuf_.Get<int32_t>();
-            tmp.SetValue(0, 0);
-            EngramFetchGradSyncFunc<HardEvent::S_MTE3>();            DataCopyParams params = {1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U};
-            DataCopyPad(numUniqueGM, tmp, params);
-            EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
-        }
-        SyncAll<true>();
+        WriteNumUniqueZero();
         return;
     }
 
-    {
-        uint32_t chunk = (numRecv + totalBlocks_ - 1U) / totalBlocks_;
-        uint32_t start = aivId_ * chunk;
-        uint32_t end = start + chunk;
-        if (end > numRecv) end = numRecv;
+    uint64_t t0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-        LocalTensor<int32_t> idxLocal = indicesBuf_.Get<int32_t>();
-        uint32_t bufCap = ENTRY_BATCH_CAP;
-        uint32_t cur = start;
-        while (cur < end) {
-            uint32_t batchLen = end - cur;
-            if (batchLen > bufCap) batchLen = bufCap;
-            for (uint32_t i = 0; i < batchLen; i++) idxLocal.SetValue(i, static_cast<int32_t>(cur + i));
-            EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
-            GlobalTensor<int32_t> compGM;
-            compGM.SetGlobalBuffer((__gm__ int32_t *)sortCompanionGM_);
-            DataCopyParams cp = {1U, static_cast<uint16_t>(batchLen * sizeof(int32_t)), 0U, 0U};
-            DataCopyPad(compGM[cur], idxLocal, cp);
-            EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
-            cur += batchLen;
-        }
-    }
+    InitCompanion(numRecv);
     SyncAll<true>();
+    uint64_t t1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-    sorter_.SetCount(numRecv);
-    AscendC::printf("EngramSort BEFORE Process: aivId=%u, numRecv=%u, tileCount=%u, coreCount=%u\n",
-                    aivId_, numRecv, sorter_.tileCount, sorter_.coreCount);
-    {
-        GlobalTensor<int32_t> valGm, idxGm, outValGm, outIdxGm, tmpValGm, tmpIdxGm;
-        GlobalTensor<int32_t> histGm, prefixGm, offsetsGm;
-        valGm.SetGlobalBuffer((__gm__ int32_t *)recvLocalEntryOutGM_);
-        idxGm.SetGlobalBuffer((__gm__ int32_t *)sortCompanionGM_);
-        outValGm.SetGlobalBuffer((__gm__ int32_t *)recvLocalEntryOutGM_);
-        outIdxGm.SetGlobalBuffer((__gm__ int32_t *)sortCompanionGM_);
-        tmpValGm.SetGlobalBuffer((__gm__ int32_t *)sortTempValGM_);
-        tmpIdxGm.SetGlobalBuffer((__gm__ int32_t *)sortTempIdxGM_);
-        histGm.SetGlobalBuffer((__gm__ int32_t *)sortHistGm_);
-        prefixGm.SetGlobalBuffer((__gm__ int32_t *)sortPrefixGm_);
-        offsetsGm.SetGlobalBuffer((__gm__ int32_t *)sortOffsetsGm_);
-        sorter_.Process(valGm, idxGm, outValGm, outIdxGm, tmpValGm, tmpIdxGm,
-                        histGm, prefixGm, offsetsGm, *tpipe_);
-    }
-    AscendC::printf("EngramSort AFTER Process: aivId=%u\n", aivId_);
+    RunSort(numRecv);
     SyncAll<true>();
+    uint64_t t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     ZeroGradUnique(numRecv);
     CountUniquesParallel(numRecv);
     SyncAll<true>();
+    uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     ScatterAddAtomicParallel(numRecv);
     SyncAll<true>();
+    uint64_t t4 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     CastGradUniqueToOutput();
     SyncAll<true>();
+    uint64_t t5 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+    usaCompanionCycle_ = t1 - t0;
+    usaSortCycle_ = t2 - t1;
+    usaZeroCountCycle_ = t3 - t2;
+    usaScatterAddCycle_ = t4 - t3;
+    usaCastCycle_ = t5 - t4;
 }
 
 
 __aicore__ inline void EngramFetchGradArch35::ZeroGradUnique(uint32_t numRecv)
 {
-    uint32_t zeroCount = static_cast<uint32_t>(numEntriesPerRank_);
+    uint32_t zeroCount = numRecv;
     uint64_t totalFloats = static_cast<uint64_t>(zeroCount) * static_cast<uint64_t>(hiddenDim_);
     uint64_t chunk = (totalFloats + totalBlocks_ - 1U) / totalBlocks_;
     uint64_t start = static_cast<uint64_t>(aivId_) * chunk;
     uint64_t end = start + chunk;
     if (end > totalFloats) end = totalFloats;
-    if (start >= end) return;
 
-    LocalTensor<float> zeroBuf = pingBuf_.Get<float>();
-    uint32_t tileFloats = TILE_BYTES / sizeof(float);
-    Duplicate<float>(zeroBuf, 0.0f, tileFloats);
-    EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
+    if (start < end) {
+        LocalTensor<float> zeroBuf = pongBuf_.Get<float>();
+        uint32_t tileFloats = TILE_BYTES / sizeof(float);
+        Duplicate<float>(zeroBuf, 0.0f, tileFloats);
+        EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
 
-    GM_ADDR dstBase = (outputDtype_ == ENGRAM_DT_FLOAT) ? gradUniqueOutGM_ : gradUniqueFp32GM_;
-    GlobalTensor<float> dstGM;
-    dstGM.SetGlobalBuffer((__gm__ float *)dstBase);
-    for (uint64_t off = start; off < end; off += tileFloats) {
-        uint64_t thisLen = end - off;
-        if (thisLen > tileFloats) thisLen = tileFloats;
-        DataCopyParams params{1U, static_cast<uint16_t>(thisLen * sizeof(float)), 0U, 0U};
-        DataCopyPad(dstGM[off], zeroBuf, params);
+        GM_ADDR dstBase = (outputDtype_ == ENGRAM_DT_FLOAT) ? gradUniqueOutGM_ : gradUniqueFp32GM_;
+        GlobalTensor<float> dstGM;
+        dstGM.SetGlobalBuffer((__gm__ float *)dstBase);
+        for (uint64_t off = start; off < end; off += tileFloats) {
+            uint64_t thisLen = end - off;
+            if (thisLen > tileFloats) thisLen = tileFloats;
+            DataCopyParams params{1U, static_cast<uint16_t>(thisLen * sizeof(float)), 0U, 0U};
+            DataCopyPad(dstGM[off], zeroBuf, params);
+        }
+        EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
     }
-    EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
 }
 
 __aicore__ inline void EngramFetchGradArch35::CountUniquesParallel(uint32_t numRecv)
 {
     uint32_t chunk = (numRecv + totalBlocks_ - 1U) / totalBlocks_;
-    uint32_t start = aivId_ * chunk;
-    uint32_t end = start + chunk;
-    if (end > numRecv) end = numRecv;
+    uint32_t rawStart = aivId_ * chunk;
+    uint32_t rawEnd = rawStart + chunk;
+    if (rawEnd > numRecv) rawEnd = numRecv;
+
+    GlobalTensor<int32_t> sortedEntryGM;
+    sortedEntryGM.SetGlobalBuffer((__gm__ int32_t *)recvLocalEntryOutGM_);
+
+    uint32_t start = rawStart;
+    if (rawStart > 0 && rawStart < rawEnd) {
+        LocalTensor<int32_t> probeUb = tempBuf_.Get<int32_t>();
+        uint32_t probeLen = rawEnd - rawStart + 1U;
+        if (probeLen > ENTRY_BATCH_CAP) probeLen = ENTRY_BATCH_CAP;
+        DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
+        DataCopyExtParams cpParams{1U, static_cast<uint32_t>(probeLen * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPad(probeUb, sortedEntryGM[rawStart - 1U], cpParams, cpPad);
+        EngramFetchGradSyncFunc<HardEvent::MTE2_S>();
+
+        int32_t boundaryEntry = probeUb.GetValue(0);
+        uint32_t p = 1U;
+        while (p < probeLen && probeUb.GetValue(p) == boundaryEntry) {
+            p++;
+        }
+        start = rawStart + p - 1U;
+    }
 
     uint32_t localUniqueCount = 0;
-    if (start < end) {
-        GlobalTensor<int32_t> sortedEntryGM;
-        sortedEntryGM.SetGlobalBuffer((__gm__ int32_t *)recvLocalEntryOutGM_);
-
+    if (start < rawEnd) {
+        LocalTensor<int32_t> entryUb = tempBuf_.Get<int32_t>();
         int32_t prevEntry;
         bool isFirstElement = (start == 0);
         if (!isFirstElement) {
-            prevEntry = sortedEntryGM.GetValue(start - 1);
+            DataCopyPadExtParams<int32_t> onePad{false, 0, 0, 0};
+            DataCopyExtParams oneParams{1U, sizeof(int32_t), 0U, 0U, 0U};
+            DataCopyPad(entryUb, sortedEntryGM[start - 1U], oneParams, onePad);
+            EngramFetchGradSyncFunc<HardEvent::MTE2_S>();
+            prevEntry = entryUb.GetValue(0);
         }
 
-        LocalTensor<int32_t> entryUb = indicesBuf_.Get<int32_t>();
         uint32_t cur = start;
-        while (cur < end) {
-            uint32_t batchLen = end - cur;
+        while (cur < rawEnd) {
+            uint32_t batchLen = rawEnd - cur;
             if (batchLen > ENTRY_BATCH_CAP) batchLen = ENTRY_BATCH_CAP;
 
             DataCopyExtParams cpParams{1U, static_cast<uint32_t>(batchLen * sizeof(int32_t)), 0U, 0U, 0U};
@@ -743,6 +814,14 @@ __aicore__ inline void EngramFetchGradArch35::CountUniquesParallel(uint32_t numR
     }
 
     LocalTensor<int32_t> cntUb = statusBuf_.Get<int32_t>();
+    cntUb.SetValue(0, static_cast<int32_t>(start));
+    EngramFetchGradSyncFunc<HardEvent::S_MTE3>();
+    GlobalTensor<int32_t> coreStartGM;
+    coreStartGM.SetGlobalBuffer((__gm__ int32_t *)coreStartGM_);
+    DataCopyParams startParams{1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U};
+    DataCopyPad(coreStartGM[aivId_], cntUb, startParams);
+    EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
+
     cntUb.SetValue(0, static_cast<int32_t>(localUniqueCount));
     EngramFetchGradSyncFunc<HardEvent::S_MTE3>();
     GlobalTensor<int32_t> segCountGM;
@@ -754,19 +833,38 @@ __aicore__ inline void EngramFetchGradArch35::CountUniquesParallel(uint32_t numR
 
 __aicore__ inline void EngramFetchGradArch35::ScatterAddAtomicParallel(uint32_t numRecv)
 {
-    uint32_t chunk = (numRecv + totalBlocks_ - 1U) / totalBlocks_;
-    uint32_t start = aivId_ * chunk;
-    uint32_t end = start + chunk;
-    if (end > numRecv) end = numRecv;
+    GlobalTensor<int32_t> coreStartGM;
+    coreStartGM.SetGlobalBuffer((__gm__ int32_t *)coreStartGM_);
+    LocalTensor<int32_t> startUb = tempBuf_.Get<int32_t>();
+    uint32_t readCores = aivId_ + 2U;
+    if (readCores > totalBlocks_) readCores = totalBlocks_;
+    if (aivId_ == totalBlocks_ - 1U) readCores = totalBlocks_;
+    DataCopyPadExtParams<int32_t> csPad{false, 0, 0, 0};
+    DataCopyExtParams csParams{1U, static_cast<uint32_t>(readCores * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPad(startUb, coreStartGM, csParams, csPad);
+    EngramFetchGradSyncFunc<HardEvent::MTE2_S>();
+
+    uint32_t start = static_cast<uint32_t>(startUb.GetValue(aivId_));
+    uint32_t end;
+    if (aivId_ == totalBlocks_ - 1U) {
+        end = numRecv;
+    } else {
+        end = static_cast<uint32_t>(startUb.GetValue(aivId_ + 1U));
+    }
     if (start >= end) return;
 
     int32_t preCoreOffset = 0;
     GlobalTensor<int32_t> segCountGM;
     segCountGM.SetGlobalBuffer((__gm__ int32_t *)segCountGM_);
-    for (uint32_t core = 0; core < aivId_; core++) {
-        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-            segCountGM[core]);
-        preCoreOffset += segCountGM.GetValue(core);
+    {
+        DataCopyPadExtParams<int32_t> scPad{false, 0, 0, 0};
+        DataCopyExtParams scParams{1U, static_cast<uint32_t>(aivId_ * sizeof(int32_t)), 0U, 0U, 0U};
+        if (aivId_ > 0) {
+            for (uint32_t core = 0; core < aivId_; core++) {
+                DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(segCountGM[core]);
+                preCoreOffset += segCountGM.GetValue(core);
+            }
+        }
     }
 
     GlobalTensor<int32_t> sortedEntryGM;
@@ -781,15 +879,14 @@ __aicore__ inline void EngramFetchGradArch35::ScatterAddAtomicParallel(uint32_t 
     atomicDstGM.SetGlobalBuffer((__gm__ float *)atomicDstBase);
 
     int32_t prevEntry = 0;
-    bool isFirstElement = (start == 0);
-    if (!isFirstElement) {
-        prevEntry = sortedEntryGM.GetValue(start - 1);
-    }
+    bool isFirstElement = true;
 
     LocalTensor<int32_t> entryUb = indicesBuf_.Get<int32_t>();
     LocalTensor<int32_t> pingInt32 = pingBuf_.Get<int32_t>();
     LocalTensor<int32_t> compUb = pingInt32;
     LocalTensor<int32_t> uniqueUb = pingInt32[ENTRY_BATCH_CAP];
+    LocalTensor<int32_t> recvIdxBuf = pingInt32[2 * ENTRY_BATCH_CAP];
+    LocalTensor<int32_t> compactIdxBuf = pingInt32[3 * ENTRY_BATCH_CAP];
     LocalTensor<uint8_t> gradRaw = pongBuf_.Get<uint8_t>();
     LocalTensor<float> gradFp32 = gradSumBuf_.Get<float>();
 
@@ -824,40 +921,58 @@ __aicore__ inline void EngramFetchGradArch35::ScatterAddAtomicParallel(uint32_t 
                 uniqueUb.SetValue(tileUniqueCnt, entry - static_cast<int32_t>(rankId_) * numEntriesPerRank_);
                 tileUniqueCnt++;
             }
-            int32_t compactIdx = runningOffset + inclusiveSum - 1;
+            compactIdxBuf.SetValue(i, runningOffset + inclusiveSum - 1);
+            recvIdxBuf.SetValue(i, compUb.GetValue(i));
+        }
 
-            int32_t recvIdx = compUb.GetValue(i);
-            GM_ADDR gradAddr = recvGradGM_ + static_cast<uint64_t>(recvIdx) * hiddenBytes_;
-            DataCopyExtParams gradParams{1U, static_cast<uint32_t>(hiddenBytes_), 0U, 0U, 0U};
+        for (uint32_t subStart = 0; subStart < batchLen; subStart += GRAD_SUB_BATCH) {
+            uint32_t subLen = batchLen - subStart;
+            if (subLen > GRAD_SUB_BATCH) subLen = GRAD_SUB_BATCH;
+
             DataCopyPadExtParams<uint8_t> gradPad{false, 0, 0, 0};
-            GlobalTensor<uint8_t> gradSrcGM;
-            gradSrcGM.SetGlobalBuffer((__gm__ uint8_t *)gradAddr);
-            DataCopyPad(gradRaw, gradSrcGM, gradParams, gradPad);
+            for (uint32_t j = 0; j < subLen; j++) {
+                int32_t recvIdx = recvIdxBuf.GetValue(subStart + j);
+                GM_ADDR gradAddr = recvGradGM_ + static_cast<uint64_t>(recvIdx) * hiddenBytes_;
+                DataCopyExtParams gradParams{1U, static_cast<uint32_t>(hiddenBytes_), 0U, 0U, 0U};
+                GlobalTensor<uint8_t> gradSrcGM;
+                gradSrcGM.SetGlobalBuffer((__gm__ uint8_t *)gradAddr);
+                DataCopyPad(gradRaw[static_cast<uint32_t>(j) * static_cast<uint32_t>(hiddenBytes_)], gradSrcGM, gradParams, gradPad);
+            }
 
             if (inputDtype_ == ENGRAM_DT_FLOAT) {
                 EngramFetchGradSyncFunc<HardEvent::MTE2_MTE3>();
                 LocalTensor<float> inT = gradRaw.ReinterpretCast<float>();
-                SetAtomicAdd<float>();
-                DataCopy(atomicDstGM[static_cast<uint64_t>(compactIdx) * hiddenDim_], inT,
-                         static_cast<uint32_t>(hiddenDim_));
-                SetAtomicNone();
+                for (uint32_t j = 0; j < subLen; j++) {
+                    int32_t compactIdx = compactIdxBuf.GetValue(subStart + j);
+                    SetAtomicAdd<float>();
+                    DataCopy(atomicDstGM[static_cast<uint64_t>(compactIdx) * hiddenDim_],
+                             inT[static_cast<uint32_t>(j) * static_cast<uint32_t>(hiddenDim_)],
+                             static_cast<uint32_t>(hiddenDim_));
+                    SetAtomicNone();
+                }
+                EngramFetchGradSyncFunc<HardEvent::MTE3_MTE2>();
             } else {
                 EngramFetchGradSyncFunc<HardEvent::MTE2_V>();
+                uint32_t castCount = subLen * static_cast<uint32_t>(hiddenDim_);
                 if (inputDtype_ == ENGRAM_DT_BFLOAT16) {
                     LocalTensor<bfloat16_t> inT = gradRaw.ReinterpretCast<bfloat16_t>();
-                    Cast(gradFp32, inT, AscendC::RoundMode::CAST_NONE, static_cast<uint32_t>(hiddenDim_));
+                    Cast(gradFp32, inT, AscendC::RoundMode::CAST_NONE, castCount);
                 } else {
                     LocalTensor<half> inT = gradRaw.ReinterpretCast<half>();
-                    Cast(gradFp32, inT, AscendC::RoundMode::CAST_NONE, static_cast<uint32_t>(hiddenDim_));
+                    Cast(gradFp32, inT, AscendC::RoundMode::CAST_NONE, castCount);
                 }
                 PipeBarrier<PIPE_V>();
                 EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
-                SetAtomicAdd<float>();
-                DataCopy(atomicDstGM[static_cast<uint64_t>(compactIdx) * hiddenDim_], gradFp32,
-                         static_cast<uint32_t>(hiddenDim_));
-                SetAtomicNone();
+                for (uint32_t j = 0; j < subLen; j++) {
+                    int32_t compactIdx = compactIdxBuf.GetValue(subStart + j);
+                    SetAtomicAdd<float>();
+                    DataCopy(atomicDstGM[static_cast<uint64_t>(compactIdx) * hiddenDim_],
+                             gradFp32[static_cast<uint32_t>(j) * static_cast<uint32_t>(hiddenDim_)],
+                             static_cast<uint32_t>(hiddenDim_));
+                    SetAtomicNone();
+                }
+                EngramFetchGradSyncFunc<HardEvent::MTE3_MTE2>();
             }
-            EngramFetchGradSyncFunc<HardEvent::MTE3_MTE2>();
         }
 
         if (tileUniqueCnt > 0) {
@@ -875,13 +990,17 @@ __aicore__ inline void EngramFetchGradArch35::ScatterAddAtomicParallel(uint32_t 
 
 __aicore__ inline void EngramFetchGradArch35::CastGradUniqueToOutput()
 {
-    int32_t numUnique = 0;
     GlobalTensor<int32_t> segCountGM;
     segCountGM.SetGlobalBuffer((__gm__ int32_t *)segCountGM_);
+    LocalTensor<int32_t> segCountUb = tempBuf_.Get<int32_t>();
+    DataCopyPadExtParams<int32_t> scPad{false, 0, 0, 0};
+    DataCopyExtParams scParams{1U, static_cast<uint32_t>(totalBlocks_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPad(segCountUb, segCountGM, scParams, scPad);
+    EngramFetchGradSyncFunc<HardEvent::MTE2_S>();
+
+    int32_t numUnique = 0;
     for (uint32_t core = 0; core < totalBlocks_; core++) {
-        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-            segCountGM[core]);
-        numUnique += segCountGM.GetValue(core);
+        numUnique += segCountUb.GetValue(core);
     }
 
     if (aivId_ == 0) {
@@ -896,6 +1015,7 @@ __aicore__ inline void EngramFetchGradArch35::CastGradUniqueToOutput()
     }
 
     if (numUnique == 0 || outputDtype_ == ENGRAM_DT_FLOAT) {
+        SyncAll<true>();
         return;
     }
 
@@ -904,7 +1024,10 @@ __aicore__ inline void EngramFetchGradArch35::CastGradUniqueToOutput()
     uint32_t start = aivId_ * chunk;
     uint32_t end = start + chunk;
     if (end > totalElements) end = totalElements;
-    if (start >= end) return;
+    if (start >= end) {
+        SyncAll<true>();
+        return;
+    }
 
     GlobalTensor<float> gradUniqueFp32GM;
     gradUniqueFp32GM.SetGlobalBuffer((__gm__ float *)gradUniqueFp32GM_);
@@ -927,7 +1050,6 @@ __aicore__ inline void EngramFetchGradArch35::CastGradUniqueToOutput()
         if (outputDtype_ == ENGRAM_DT_BFLOAT16) {
             LocalTensor<bfloat16_t> outTile = pongBuf_.Get<bfloat16_t>();
             Cast(outTile, fp32Tile, AscendC::RoundMode::CAST_RINT, thisLen);
-            PipeBarrier<PIPE_V>();
             EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
             DataCopyParams outParams{1U, static_cast<uint16_t>(thisLen * sizeof(bfloat16_t)), 0U, 0U};
             DataCopyPad(gradUniqueOutGM[static_cast<uint64_t>(off) * sizeof(bfloat16_t)],
@@ -935,7 +1057,6 @@ __aicore__ inline void EngramFetchGradArch35::CastGradUniqueToOutput()
         } else {
             LocalTensor<half> outTile = pongBuf_.Get<half>();
             Cast(outTile, fp32Tile, AscendC::RoundMode::CAST_RINT, thisLen);
-            PipeBarrier<PIPE_V>();
             EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
             DataCopyParams outParams{1U, static_cast<uint16_t>(thisLen * sizeof(half)), 0U, 0U};
             DataCopyPad(gradUniqueOutGM[static_cast<uint64_t>(off) * sizeof(half)],
@@ -944,6 +1065,7 @@ __aicore__ inline void EngramFetchGradArch35::CastGradUniqueToOutput()
         EngramFetchGradSyncFunc<HardEvent::MTE3_MTE2>();
         off += thisLen;
     }
+    SyncAll<true>();
 }
 
 __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
@@ -1050,6 +1172,8 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrier()
 __aicore__ inline void EngramFetchGradArch35::Process()
 {
     if ASCEND_IS_AIV {
+        processStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
         InitFlagsAndDispls();
         SyncAll<true>();
 
@@ -1063,10 +1187,18 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         uniqueScatterAddStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
         UniqueScatterAdd();
         uniqueScatterAddEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
-        AscendC::printf("UniqueScatterAdd timing: aivId=%u, cycles=%llu, us=%llu\n",
-                        aivId_,
-                        uniqueScatterAddEndCycle_ - uniqueScatterAddStartCycle_,
-                        (uniqueScatterAddEndCycle_ - uniqueScatterAddStartCycle_) / 1000U);
+
+        processEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+       
+            uint64_t totalUs = (processEndCycle_ - processStartCycle_) / 1000U;
+            uint64_t usaUs = (uniqueScatterAddEndCycle_ - uniqueScatterAddStartCycle_) / 1000U;
+            uint64_t preUs = (uniqueScatterAddStartCycle_ - processStartCycle_) / 1000U;
+            AscendC::printf("ENGRAM total=%lluu pre=%lluu usa=%lluu | companion=%lluu sort=%lluu zeroCount=%lluu scatterAdd=%lluu cast=%lluu\n",
+                            totalUs, preUs, usaUs,
+                            usaCompanionCycle_ / 1000U, usaSortCycle_ / 1000U,
+                            usaZeroCountCycle_ / 1000U, usaScatterAddCycle_ / 1000U, usaCastCycle_ / 1000U);
+        
     }
 }
 
