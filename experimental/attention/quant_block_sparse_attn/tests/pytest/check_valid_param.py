@@ -41,17 +41,24 @@ def check_valid_param(params):
     params.setdefault("quant_mode", 1)
     params.setdefault("mask_mode", 3)
     params.setdefault("output_dtype", torch.bfloat16)
+    if params.get("sparse_mode") is None:
+        params["sparse_mode"] = "random"
     params.setdefault("sparse_pattern", "sequential")
     params.setdefault("block_table_pattern", "sequential")
     params.setdefault("pa_block_padding_bytes", 0)
     params.setdefault("p_scale_value", 1.0)
-    params["sparse_count"] = params.get("sparse_count") or math.ceil(params["S2"] / params["sparse_kv_block_size"])
+    sparse_mode = params["sparse_mode"]
+    if isinstance(sparse_mode, str):
+        sparse_mode = sparse_mode.strip().lower()
+        params["sparse_mode"] = sparse_mode
+    if sparse_mode not in ("full", "random"):
+        raise ValueError(f"unsupported sparse_mode: {sparse_mode}")
     params["softmax_scale"] = params.get("softmax_scale") or (1.0 / math.sqrt(params["D"]))
     for key in ("quant_mode", "mask_mode"):
         if isinstance(params.get(key), float) and params[key].is_integer():
             params[key] = int(params[key])
 
-    for key in ("B", "S1", "S2", "N1", "N2", "D", "sparse_q_block_size", "sparse_kv_block_size", "sparse_count"):
+    for key in ("B", "S1", "S2", "N1", "N2", "D", "sparse_q_block_size", "sparse_kv_block_size"):
         _require_positive(params, key)
 
     pa_block_padding_bytes = params["pa_block_padding_bytes"]
@@ -132,7 +139,10 @@ def check_valid_param(params):
     if params["block_table_pattern"] not in SUPPORTED_BLOCK_TABLE_PATTERNS:
         raise ValueError(f"unsupported block_table_pattern: {params['block_table_pattern']}")
 
-    if not isinstance(params["p_scale_value"], (int, float)) or params["p_scale_value"] <= 0:
+    if params["p_scale_value"] is not None and (
+        not isinstance(params["p_scale_value"], (int, float))
+        or params["p_scale_value"] <= 0
+    ):
         raise ValueError(f"p_scale_value should be a positive number, got {params['p_scale_value']}")
 
     if params.get("softmax_scale") is None:
