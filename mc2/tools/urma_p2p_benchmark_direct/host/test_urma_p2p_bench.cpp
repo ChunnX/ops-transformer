@@ -254,16 +254,21 @@ int main(int argc, char *argv[])
 
     uint32_t stateStride = (uint32_t)(ctx->numLayers * 1 * g_ranksize);
 
-    UrmaP2pBenchTiling tiling{};
-    tiling.rankId       = (uint32_t)g_rankId;
-    tiling.peer         = peer;
-    tiling.numSqe       = g_numSqe;
-    tiling.sqeBytes     = g_sqeBytes;
-    tiling.bufBytes     = g_bufBytes;
-    tiling.dbInterval   = g_dbInterval;
-    tiling.channelSlot  = slot;
-    tiling.cqOwnerSlot  = slot;
-    tiling.stateStride  = stateStride;
+    UrmaP2pBenchTiling tilingHost{};
+    tilingHost.rankId       = (uint32_t)g_rankId;
+    tilingHost.peer         = peer;
+    tilingHost.numSqe       = g_numSqe;
+    tilingHost.sqeBytes     = g_sqeBytes;
+    tilingHost.bufBytes     = g_bufBytes;
+    tilingHost.dbInterval   = g_dbInterval;
+    tilingHost.channelSlot  = slot;
+    tilingHost.cqOwnerSlot  = slot;
+    tilingHost.stateStride  = stateStride;
+
+    UrmaP2pBenchTiling *tilingDev = nullptr;
+    aclrtMalloc((void **)&tilingDev, sizeof(UrmaP2pBenchTiling), ACL_MEM_MALLOC_HUGE_FIRST);
+    aclrtMemcpy(tilingDev, sizeof(UrmaP2pBenchTiling), &tilingHost,
+                sizeof(UrmaP2pBenchTiling), ACL_MEMCPY_HOST_TO_DEVICE);
 
     for (uint32_t iter = 0; iter < g_warmup + g_loopCount; ++iter) {
         aclrtSynchronizeStream(stream);
@@ -271,17 +276,17 @@ int main(int argc, char *argv[])
             case 0:
                 sqe_write_bench_launch((uint32_t)BLOCK_NUM, stream,
                     (uint64_t)ctx->channelPtrTableDev, (uint64_t)ctx->stateGmDev,
-                    (uint64_t)timingGm, tiling);
+                    (uint64_t)timingGm, tilingDev);
                 break;
             case 1:
                 sqe_write_with_notify_bench_launch((uint32_t)BLOCK_NUM, stream,
                     (uint64_t)ctx->channelPtrTableDev, (uint64_t)ctx->stateGmDev,
-                    (uint64_t)timingGm, tiling);
+                    (uint64_t)timingGm, tilingDev);
                 break;
             case 2:
                 hcomm_bench_launch((uint32_t)BLOCK_NUM, stream,
                     (uint64_t)ctx->channelPtrTableDev, (uint64_t)ctx->stateGmDev,
-                    (uint64_t)timingGm, tiling);
+                    (uint64_t)timingGm, tilingDev);
                 break;
             default:
                 fprintf(stderr, "[ERROR] invalid sqe_mode %u\n", g_sqeMode);
@@ -313,6 +318,7 @@ int main(int argc, char *argv[])
     }
 
     aclrtFree(timingGm);
+    aclrtFree(tilingDev);
     HcclCommDestroy(comms);
     aclrtDestroyStream(stream);
     aclrtDestroyContext(context);
