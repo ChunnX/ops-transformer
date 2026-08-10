@@ -64,6 +64,22 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoOpTiling()
 ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
 {
     GroupedQmmTiling::CalBasicBlock();
+
+    // The common tiling path derives baseM from total M and can leave a thin tail in every group. When total M
+    // proves that split-M groups are evenly sized, rebalance each group's M tiles without increasing its tile count.
+    if (inputParams_.groupType == GroupedMatmul::SPLIT_M && inputParams_.mSize > 0UL &&
+        inputParams_.groupNum > 0UL && basicTiling_.baseM > 0UL &&
+        inputParams_.mSize % inputParams_.groupNum == 0UL) {
+        const uint64_t groupM = inputParams_.mSize / inputParams_.groupNum;
+        const uint64_t groupMTileCount = CeilDiv(groupM, basicTiling_.baseM);
+        if (groupMTileCount > 1UL) {
+            const uint64_t balancedBaseM = CeilAlign(CeilDiv(groupM, groupMTileCount), GmmConstant::CUBE_BLOCK);
+            if (balancedBaseM >= GmmConstant::CUBE_BLOCK && balancedBaseM < basicTiling_.baseM &&
+                CeilDiv(groupM, balancedBaseM) == groupMTileCount) {
+                basicTiling_.baseM = balancedBaseM;
+            }
+        }
+    }
     OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
                 return ge::GRAPH_FAILED);
     tilingData_.mmTilingData.m = inputParams_.mSize;
