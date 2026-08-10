@@ -105,22 +105,20 @@ public:
         AscendC::LocalTensor<int64_t> timingLocal = timingBuf_.Get<int64_t>();
         AscendC::LocalTensor<uint8_t> cqe = cqeBuf_.Get<uint8_t>();
 
-        // ========== warmup + loop 循环 (kernel内部, 无Host同步开销) ==========
-        uint32_t totalIters = warmupCount + loopCount;
-        for (uint32_t iter = 0; iter < totalIters; ++iter) {
-            // 每轮重置SQ/CQ状态: 不依赖上轮的持久化状态, 避免多轮CQ脏数据卡死
+        // ========== 正式执行循环 (kernel内部, 无Host同步开销) ==========
+        // 无预热, 每轮都记录timing, 最后一轮写GM供Host读取
+        for (uint32_t iter = 0; iter < loopCount; ++iter) {
             uint32_t sqPiLinear = 0;
             uint32_t sqPi = 0;
             uint32_t ownerCqCiLinear = 0;
 
-            // 每轮初始化CQ ring: 全填0xff, 确保CqeSlotEmpty能正确判断
-            InvalidateCqRing(ch.cqVa, ch.cqeSize, ch.cqDepth,
-                             scratch, DECODE_SCRATCH_SIZE / WRITE_CQE_SIZE);
-
-            // 正式轮才打点(warmup不记)
-            if (iter >= warmupCount) {
-                timingLocal.SetValue(0, AscendC::GetSystemCycle());  // timing[0]: 起始
+            // 仅首轮初始化CQ ring: 后续轮次CqeSlotEmpty消费完会自动写回0xff
+            if (iter == 0) {
+                InvalidateCqRing(ch.cqVa, ch.cqeSize, ch.cqDepth,
+                                 scratch, DECODE_SCRATCH_SIZE / WRITE_CQE_SIZE);
             }
+
+            timingLocal.SetValue(0, AscendC::GetSystemCycle());  // timing[0]: 起始
 
             // ---- 组装并发送n个数据SQE (cqe=0, 不产生完成事件) ----
             // WriteWithNotify: 每个SQE写数据同时向远端notifyAddr写notifyData
@@ -138,9 +136,7 @@ public:
                 }
             }
 
-            if (iter >= warmupCount) {
-                timingLocal.SetValue(1, AscendC::GetSystemCycle());  // timing[1]: n个数据SQE组装+发送完毕
-            }
+            timingLocal.SetValue(1, AscendC::GetSystemCycle());  // timing[1]: n个数据SQE组装+发送完毕
 
             // ---- 发送1个completion SQE (cqe=1, 产生CQE完成事件) ----
             // SQ有序: 此SQE的CQE落地 = 之前所有数据SQE已drain
@@ -152,25 +148,21 @@ public:
             SyncFunc<AscendC::HardEvent::MTE3_S>();
             RingJFSDoorbell(ch.sqDbVa, sqPiLinear);
 
-            if (iter >= warmupCount) {
-                timingLocal.SetValue(2, AscendC::GetSystemCycle());  // timing[2]: completion SQE+doorbell完毕
-            }
+            timingLocal.SetValue(2, AscendC::GetSystemCycle());  // timing[2]: completion SQE+doorbell完毕
 
             // ---- Poll CQ: spin等待completion事件落地 ----
             uint32_t cqCi = ownerCqCiLinear % ch.cqDepth;
             while (CqeSlotEmpty(ch.cqVa, ch.cqeSize, cqCi, cqe)) {}
             ++ownerCqCiLinear;
 
-            if (iter >= warmupCount) {
-                timingLocal.SetValue(3, AscendC::GetSystemCycle());  // timing[3]: CQ poll完成
+            timingLocal.SetValue(3, AscendC::GetSystemCycle());  // timing[3]: CQ poll完成
 
-                // 最后一轮: 把timing从UB拷到GM, 供Host读取
-                if (iter == warmupCount + loopCount - 1U) {
-                    AscendC::GlobalTensor<int64_t> timingGm;
-                    timingGm.SetGlobalBuffer((__gm__ int64_t*)timingGm_);
-                    AscendC::DataCopy(timingGm, timingLocal, TIMING_SLOTS);
-                    SyncFunc<AscendC::HardEvent::MTE3_S>();
-                }
+            // 最后一轮: 把timing从UB拷到GM, 供Host读取
+            if (iter == loopCount - 1U) {
+                AscendC::GlobalTensor<int64_t> timingGm;
+                timingGm.SetGlobalBuffer((__gm__ int64_t*)timingGm_);
+                AscendC::DataCopy(timingGm, timingLocal, TIMING_SLOTS);
+                SyncFunc<AscendC::HardEvent::MTE3_S>();
             }
         }
     }

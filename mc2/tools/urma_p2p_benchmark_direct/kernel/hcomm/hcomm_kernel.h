@@ -86,14 +86,11 @@ public:
         const uint32_t S = static_cast<uint32_t>(sqeBytes);
         AscendC::LocalTensor<int64_t> timingLocal = timingBuf_.Get<int64_t>();
 
-        // ========== warmup + loop 循环 (kernel内部, 无Host同步开销) ==========
-        // Hcomm模式无需手动重置CQ: Drain内部自动管理SQ/CQ状态
-        uint32_t totalIters = warmupCount + loopCount;
-        for (uint32_t iter = 0; iter < totalIters; ++iter) {
-            // 正式轮才打点(warmup不记)
-            if (iter >= warmupCount) {
-                timingLocal.SetValue(0, AscendC::GetSystemCycle());  // timing[0]: 起始
-            }
+        // ========== 正式执行循环 (kernel内部, 无Host同步开销) ==========
+        // 无预热, 每轮都记录timing, 最后一轮写GM供Host读取
+        // Hcomm模式无需手动初始化CQ: Drain内部自动管理SQ/CQ状态
+        for (uint32_t iter = 0; iter < loopCount; ++iter) {
+            timingLocal.SetValue(0, AscendC::GetSystemCycle());  // timing[0]: 起始
 
             // ---- n个WriteNbi: 非阻塞写入(内部自动SQE组装+ring写入+doorbell) ----
             for (uint32_t i = 0; i < n; ++i) {
@@ -104,24 +101,20 @@ public:
                                S);
             }
 
-            if (iter >= warmupCount) {
-                timingLocal.SetValue(1, AscendC::GetSystemCycle());  // timing[1]: n×WriteNbi完毕
-            }
+            timingLocal.SetValue(1, AscendC::GetSystemCycle());  // timing[1]: n×WriteNbi完毕
 
             // ---- Drain: 等待所有WriteNbi完成(内部poll CQ) ----
             hcomm.Drain(channelHandle);
 
-            if (iter >= warmupCount) {
-                timingLocal.SetValue(2, AscendC::GetSystemCycle());  // timing[2]: Drain完毕
-                timingLocal.SetValue(3, AscendC::GetSystemCycle());  // timing[3]: ≈timing[2](Drain内部已等待)
+            timingLocal.SetValue(2, AscendC::GetSystemCycle());  // timing[2]: Drain完毕
+            timingLocal.SetValue(3, AscendC::GetSystemCycle());  // timing[3]: ≈timing[2](Drain内部已等待)
 
-                // 最后一轮: 把timing从UB拷到GM, 供Host读取
-                if (iter == warmupCount + loopCount - 1U) {
-                    AscendC::GlobalTensor<int64_t> timingGm;
-                    timingGm.SetGlobalBuffer((__gm__ int64_t*)timingGm_);
-                    AscendC::DataCopy(timingGm, timingLocal, TIMING_SLOTS);
-                    SyncFunc<AscendC::HardEvent::MTE3_S>();
-                }
+            // 最后一轮: 把timing从UB拷到GM, 供Host读取
+            if (iter == loopCount - 1U) {
+                AscendC::GlobalTensor<int64_t> timingGm;
+                timingGm.SetGlobalBuffer((__gm__ int64_t*)timingGm_);
+                AscendC::DataCopy(timingGm, timingLocal, TIMING_SLOTS);
+                SyncFunc<AscendC::HardEvent::MTE3_S>();
             }
         }
     }
