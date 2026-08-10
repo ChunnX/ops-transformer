@@ -95,6 +95,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize(
     char                *layoutK,
     int64_t              maskMode,
     int64_t              cmpRatio,
+    bool                 deterministic,
     const aclTensor     *dq,
     const aclTensor     *dk,
     const aclTensor     *dw,
@@ -313,6 +314,21 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>x</td>
             </tr>
             <tr>
+                <td>deterministic</td>
+                <td>输入</td>
+                <td>是否启用确定性计算。</td>
+                <td>
+                    <ul>
+                        <li>Atlas A2/A3：true走确定性实现；false为非确定性。与整网确定性配置取或。</li>
+                        <li>Ascend 950：本入参不由arch35 tiling读取；以整网确定性配置为准。</li>
+                    </ul>
+                </td>
+                <td>BOOL</td>
+                <td>-</td>
+                <td>-</td>
+                <td>x</td>
+            </tr>
+            <tr>
                 <td>dq</td>
                 <td>输出</td>
                 <td>q的梯度。</td>
@@ -467,7 +483,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
 - 确定性计算：
 
     <!-- npu="A3,910b" id8 -->
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclnn入参`deterministic=true`开启确定性，不支持通过aclrtCtxSetSysParamOpt开启确定性。
     <!-- end id8 -->
     <!-- npu="950" id9 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
@@ -792,6 +808,7 @@ int main() {
 
   char layoutQ[4] = {'T', 'N', 'D', 0};
   char layoutK[4] = {'T', 'N', 'D', 0};
+  bool deterministic = false;
 
   uint64_t metadataWorkspaceSize = 0;
   aclOpExecutor* metadataExecutor = nullptr;
@@ -816,7 +833,7 @@ int main() {
   aclOpExecutor* executor = nullptr;
   ret = aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize(
       q, k, w, sparseIndices, attnSoftmaxL1Norm, cuSeqLensQ, cuSeqLensK, nullptr, nullptr, nullptr, metadata,
-      layoutQ, layoutK, maskMode, cmpRatio, dq, dk, dw, softmaxOut, &workspaceSize, &executor);
+      layoutQ, layoutK, maskMode, cmpRatio, deterministic, dq, dk, dw, softmaxOut, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize failed. ERROR: %d\n", ret);
             return ret);

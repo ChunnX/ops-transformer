@@ -189,6 +189,13 @@
         <td>-</td>
     </tr>
     <tr>
+        <td>deterministic</td>
+        <td>属性</td>
+        <td>是否启用确定性计算（Atlas A2/A3）。true启用，false不启用；也可由整网确定性配置开启（二者取或）。Ascend 950 侧以整网确定性配置为准。</td>
+        <td>BOOL</td>
+        <td>-</td>
+    </tr>
+    <tr>
         <td>dq</td>
         <td>输出</td>
         <td>q的梯度。</td>
@@ -226,7 +233,8 @@
 ## 约束说明
 
 - 确定性计算：
-  - SparseLightningIndexerKLLossGrad外部接口不提供deterministic入参，kernel侧优先使用运行时上下文中的确定性配置。
+  - Atlas A2/A3：提供`deterministic`属性/aclnn入参；为true时走确定性实现，也可与整网确定性配置取或。
+  - Ascend 950：仍由运行时`GetDeterministic()`控制，不以本 Attr 作为 arch35 tiling 入参读取。
 - 公共约束
     - 参数q、k、dq、dk的数据类型应保持一致，支持FLOAT16和BFLOAT16。
     - 参数w、dw、attnSoftmaxL1Norm、softmaxOut的数据类型应为FLOAT32。

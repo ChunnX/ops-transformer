@@ -95,6 +95,7 @@ public:
         this->Attr("layout_k").AttrType(OPTIONAL).String("TND");
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(3);
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
+        this->Attr("deterministic").AttrType(OPTIONAL).Bool(false);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

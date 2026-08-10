@@ -19,6 +19,7 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
+#include "sparse_lightning_indexer_kl_loss_grad_tiling.h"
 
 using namespace AscendC;
 // 将isCheckTiling设置为false, 输入输出的max&sum&exp的shape为(m, 1)
@@ -37,11 +38,13 @@ constexpr uint8_t SYNC_V1_TO_C2_DW_FLAG[2] = {8, 9};
 
 constexpr uint8_t SYNC_C2_TO_V2_SA_FLAG[2] = {10, 11};
 
-constexpr uint8_t SYNC_V2_TO_C2_DETER_SA_FLAG = 12;
+constexpr uint8_t SYNC_AIV_TO_AIC_DETER_CREDIT_FLAG = 13;
+constexpr uint8_t SYNC_AIC_TO_AIV_DETER_BARRIER_FLAG = 14;
+constexpr uint8_t SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0 = 12;
 
-constexpr uint8_t SYNC_C2_TO_V2_DETER_SA_FLAG_MOD0[2] = {0, 1};
-
-constexpr uint8_t SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0 = 2;
+constexpr int32_t SLI_DETER_SCATTER_BANK_NUM = optiling::SLI_DETER_SCATTER_BANK_NUM;
+static_assert(SLI_DETER_SCATTER_BANK_NUM == 2 || SLI_DETER_SCATTER_BANK_NUM == 4,
+    "SLI_DETER_SCATTER_BANK_NUM must be 2 or 4");
 
 static constexpr uint32_t N_WORKSPACE_SIZE = 1024; // n方向切分
 static constexpr uint32_t K_BASE_SIZE = 2048; // n方向切分

@@ -52,6 +52,7 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::CheckContext()
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs->GetAttrPointer<char>(LAYOUT_K_ATTR_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs->GetAttrPointer<int64_t>(MASK_MODE_ATTR_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX));
+    OP_CHECK_NULL_WITH_CONTEXT(context_, attrs->GetAttrPointer<bool>(DETERMINISTIC_ATTR_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetWorkspaceSizes(1));
 
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputShape(QUERY_INPUT_INDEX));
@@ -75,7 +76,8 @@ bool SparseLightningIndexerKLLossGradTilingBase::AnalyzeAttrs()
     keyLayout = attrs->GetAttrPointer<char>(LAYOUT_K_ATTR_INDEX);
     sparseMode = *attrs->GetAttrPointer<int64_t>(MASK_MODE_ATTR_INDEX);
     cmpRatio = *attrs->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
-    deterministic = (context_->GetDeterministic() == 1);
+    deterministic = *attrs->GetAttrPointer<bool>(DETERMINISTIC_ATTR_INDEX) ||
+                    (context_->GetDeterministic() == 1);
     scaleValue = 1.0f;
     hasSoftmaxInput = 1;
     hasRope = false;
@@ -232,6 +234,8 @@ bool SparseLightningIndexerKLLossGradTilingBase::AnalyzeLayout()
                 return false);
     OP_CHECK_IF(dSizeQueryIndex != kShape.GetDim(kLayoutLen - 1),
                 OP_LOGE(opName, "q/k D dimension must be equal."), return false);
+    OP_CHECK_IF(dSizeQueryIndex != 128,
+                OP_LOGE(opName, "q/k D dimension must be equal to 128."), return false);
     OP_CHECK_IF(wShape.GetDim(wShape.GetDimNum() - 1) != qShape.GetDim(qLayoutLen - 2),
                 OP_LOGE(opName, "w N dimension must equal q N dimension."), return false);
     OP_CHECK_IF(sparseShape.GetDim(sparseShape.GetDimNum() - 2) != n2Size ||
@@ -401,8 +405,14 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetWorkspaceSize()
 
     int64_t singleCoreTotalSize = PING_PONG_VALUE *
         (pSize + bmm1Size + bmm2Size + reluGradSize + sySize + psySyncSize + bmm3Size);
-    int64_t multiCoreTotalSize = singleCoreTotalSize *
-        static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum()) + scatterAddOutSize;
+    int64_t multiCoreTotalSize = 0;
+    if (deterministic) {
+        multiCoreTotalSize = singleCoreTotalSize * static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum())
+                            + scatterAddOutSize * static_cast<int64_t>(SLI_DETER_SCATTER_BANK_NUM);
+    } else {
+        multiCoreTotalSize = singleCoreTotalSize * static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum())
+                            + scatterAddOutSize;
+    }
     workspaces[0] = static_cast<size_t>(multiCoreTotalSize) + WORK_SPACE_RESERVE_SIZE;
     OP_LOGW(context_, "workspace size:[%zu], multicoreTotalSize:[%ld]", workspaces[0], multiCoreTotalSize);
     return ge::GRAPH_SUCCESS;

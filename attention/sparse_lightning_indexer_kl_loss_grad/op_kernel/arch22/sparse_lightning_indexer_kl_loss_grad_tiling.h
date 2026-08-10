@@ -26,6 +26,8 @@ const uint32_t SLI_MAX_AIC_CORE_NUM = 26; // 25 + 1 保证数组8字节对齐
 // ------------------公共定义--------------------------
 constexpr uint32_t MAX_CORE_NUM = 25; // 目前使用AIC核的最大值为25
 
+constexpr int32_t SLI_DETER_SCATTER_BANK_NUM = 2; // host/kernel 共用，仅 2 或 4
+
 // struct InnerSplitParams {
 //     uint32_t s1GBaseSize = 1;
 //     uint32_t s2BaseSize = 1;

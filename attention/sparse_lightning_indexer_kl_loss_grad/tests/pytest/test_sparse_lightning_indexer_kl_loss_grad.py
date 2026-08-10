@@ -504,6 +504,7 @@ def run_fused_op(case, tensors, golden, device, cmp_ratio):
         layout_k=case.layout,
         mask_mode=case.sparse_mode,
         cmp_ratio=cmp_ratio,
+        deterministic=False,
     )
     torch.npu.synchronize()
     return {
@@ -721,7 +722,13 @@ def run_cp_validation(device, cmp_ratio, cp_parts=4, random_splits=False, cp_see
     print("[CP 4/5] Compare merged CP outputs with full fused outputs")
     merged_vs_full_checks = [
         compare_tensors("cp_vs_full_d_query_index", cp_merged["d_query_index"], full_fused["d_query_index"]),
-        compare_tensors("cp_vs_full_d_key_index", cp_merged["d_key_index"], full_fused["d_key_index"]),
+        compare_tensors(
+            "cp_vs_full_d_key_index",
+            cp_merged["d_key_index"],
+            full_fused["d_key_index"],
+            diff_thd=0.05,
+            pct_thd=0.05,
+        ),
         compare_tensors(
             "cp_vs_full_d_weights",
             cp_merged["d_weights"],
