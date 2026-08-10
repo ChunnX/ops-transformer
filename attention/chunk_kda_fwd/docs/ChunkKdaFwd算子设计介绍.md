@@ -1,6 +1,6 @@
-# ChunkKdaFwd 设计
+# ChunkKdaFwd算子设计介绍
 
-## 目标
+## 1 设计目标
 
 1. 顶层接口对齐非 CP 的 FLA `chunk_kda_fwd`。
 2. 不新增公开算子原型；A5 特化复用既有 `ChunkKdaFwd` L0 调用接口和
@@ -9,7 +9,9 @@
 4. 输入 layout 与输出 layout 解耦。
 5. FwdH 由 KDA 在 arch22/arch35 下分别维护，支持 key-wise gate 和 `state_v_first`。
 
-## L2 调度
+## 2 计算过程
+
+### 2.1 接口分层
 
 ```text
 raw g -> ChunkKdaFwd[
@@ -34,9 +36,9 @@ Gate、Prepare、Post-WU、FwdH 和 Finalize 只是该 kernel 内部计算阶段
 `ChunkKdaFwdPrepare`、`ChunkKdaFwdPostWu` 或 `ChunkKdaFwdFinalize` L0 算子。模板选择所需信息
 均由既有输入、shape 和属性推导，不增加公开属性或接口字段。
 
-## 阶段职责
+### 2.2 计算阶段
 
-### KdaGateCumsum
+#### 2.2.1 Gate Cumsum
 
 将 raw/已激活 gate 转为 FP32 chunk-local log2 累计值：
 
@@ -47,9 +49,7 @@ gamma = lower_bound * sigmoid(exp(A_log) * (g + dt_bias))        use_gate_in_ker
 gk = chunk_local_cumsum(gamma) / ln(2)
 ```
 
-该算子同时保留独立 L2 接口供 GDN2 调用，输入和输出固定为 BNSD/NTD。
-
-### Prepare
+#### 2.2.2 Prepare
 
 只读取 `q/k/v/gk/beta` 及变长元数据，产生：
 
@@ -67,7 +67,7 @@ score 点积以 BF16/FP16 为输入、FP32 累积。`Akk=(I+L)^{-1}` 的 `L`、�
 对角块求逆、分块合并、Cube 输入/累积和 workspace 均为 FP32，并显式关闭 HF32；只在完整
 FP32 求解结束后将公开 `Akk` 写回为 q dtype。
 
-### Post-WU
+#### 2.2.3 Post-WU
 
 只读取 `k/gk/w_seed/Akk/u_seed`，产生：
 
@@ -83,7 +83,7 @@ Post-WU 是否作为单独的内部阶段执行由 tiling 决定。满足 A5 den
 直接调用 Post-WU 计算组件；其他场景在 Prepare 结束并完成同步后执行内部 Post-WU 阶段。两种
 方式都复用同一 `ChunkKdaFwd` L0 调用接口和 device kernel launch 入口。
 
-### FwdH state propagation
+#### 2.2.4 FwdH
 
 读取 `kg/w/u/gk` 和可选 `initial_state`，计算 chunk 间状态更新：
 
@@ -98,7 +98,7 @@ arch22 和 arch35 均使用 `ChunkKdaFwd` 目录内的 KDA 私有 FwdH 实现，
 kernel 源码。跨 chunk 的 `h_prev/h_next` 固定保存在 FP32 workspace 或 FP32 `final_state` 中；
 公开 `h` 仅作为反向保存快照按 q dtype 写回，不能反向参与下一 chunk 的状态更新。
 
-### Finalize
+#### 2.2.5 Finalize
 
 只读取 `qg/Aqk/v_new/h`，以 FP32 累积计算：
 
@@ -110,28 +110,30 @@ attn_out = scale * (qg @ h) + Aqk @ v_new
 
 kernel 内直接按 BSND/TND 写出 `attn_out`。供反向使用的中间量保持 BNSD/NTD。
 
-## 数值实现
+## 3 数值设计
 
 - `q`、`k`、`v`和公式中以输入dtype保存的中间量作为矩阵乘输入，矩阵乘使用FP32累加。
 - `Akk=(I+L)^{-1}`的$L$、单位阵、对角块求逆、分块合并、Cube输入和累加保持FP32，不启用HF32。
 - chunk间状态$h_c$和`final_state`的计算保持FP32，不使用公开`h`的低精度快照继续下一个chunk的状态传播。
 - `attn_out`的两项矩阵乘和加法使用FP32累加，在最终写回时转为输出dtype。
 
-## 状态布局
+## 4 输出布局与重计算
+
+### 4.1 状态布局
 
 内部状态统一使用 `[...,K,V]`。`state_v_first=true` 时，L2 在进入 FwdH 前转置 initial state。
 内部 `hCompute` 始终保持 head-major 供 Finalize 消费；公开 `hOut` 在 L2 导出边界转为
 sequence-major，并按 `state_v_first` 决定末两维顺序。`final_state` 按序列排列，与 FLA 顶层
 输出一致。
 
-## 重计算策略
+### 4.2 重计算策略
 
 L2 不理解 autograd 重计算策略。`final_state/gk/w/u/qg/kg/v_new/h` 是相互独立的
 `OPTIONAL_OUTPUT`；非空指针表示导出，空指针表示不公开该结果。arch35 快路径为隐藏输出传递
 固定 ABI 占位，并由 tiling 在 kernel workspace 中承接实际中间结果；通用路径使用同一规则。
 公开输出存在时直接作为内部目标使用。
 
-Python/legacy 包装层对齐 fla-org `chunk_kda_fwd` 提交
+PyTorch API包装层对齐fla-org `chunk_kda_fwd`提交
 `0f0f0c97af39343855b43bbbaddcedfda5cb9d77`：
 
 - `attn_out` 始终返回。
@@ -152,19 +154,19 @@ head-major 阶段结果，`hOut` 为空时由 kernel workspace 承接；`hOut` �
 临时输出并在导出边界转为 sequence-major。该规则对齐非 CP 的低层 12 返回值接口；
 第 12 项 `initial_state` 由 Python 层原对象透传。
 
-## 模板化方案与 tiling key
+## 5 Tiling设计
 
 本文中的“模板”指由 tiling 或 kernel 条件选择、具有独立数据切分或流水组织的计算路径。
 C++ 中仅用于 dtype、常量传播或代码复用的普通 `template` helper 不单独列为场景模板。
 
-### 接口与实现目录
+### 5.1 接口与实现目录
 
 `ChunkKdaFwd` 保留一套 L0 注册、launcher 和 `op_kernel/chunk_kda_fwd.cpp` device kernel launch
 入口。A2/A3 通用实现位于 `op_kernel/*.h`，A5 特化位于 `op_kernel/arch35/*.h`，A5 host 派生
 选项位于 `op_host/arch35/chunk_kda_fwd_tiling_impl.h`。Prepare、Post-WU 和 Finalize 的 `.h`
 文件是同一 kernel 内部计算组件，不是独立 L0 算子接口。
 
-### 编译期 shape 模板
+### 5.2 编译期shape模板
 
 | tiling key | 编译期常量 | A2/A3 实现 | A5 实现 | 覆盖场景 |
 | --- | --- | --- | --- | --- |
@@ -174,7 +176,7 @@ C++ 中仅用于 dtype、常量传播或代码复用的普通 `template` helper 
 `SetTilingKey` 只检查 chunk、K、V，不检查 SoC、layout、是否 varlen 或是否存在尾块。因此 tiling
 key 表示 shape 模板族，不表示平台、接口或算子版本。平台差异由同一 key 编译时的架构分支选择。
 
-### A5 key2 执行组合模板
+### 5.3 A5 key2执行组合模板
 
 `ConfigureChunkKdaFwdArch35` 从既有输入和输出实例化状态派生四个内部选项。选项不属于公开
 属性，不改变 L0、aclnn L2 或 Python 接口。
@@ -192,7 +194,7 @@ key 表示 shape 模板族，不表示平台、接口或算子版本。平台差
 因此“Prepare/Post-WU 融合”只描述满足表中条件的执行组合，不表示所有 key2 场景都取消了
 内部 Post-WU 阶段。特别是 varlen 和非对齐尾块使用独立内部 Post-WU 阶段。
 
-### Gate 与 Prepare 内部模板
+### 5.4 Gate与Prepare内部模板
 
 | 模板 | 选择条件 | 主要实现 |
 | --- | --- | --- |
@@ -203,7 +205,7 @@ key 表示 shape 模板族，不表示平台、接口或算子版本。平台差
 | Prepare arch35 safe-gate head-pair | A5 key2、safe gate、`H_v % 2 == 0` | 两个 head lane，共享两级 score queue；32-row score block；Akk solve 与后续 score 搬运交叠 |
 | Prepare arch35 full-chunk fused-score | 上一行且 `curT=64`，并命中 fused Post-WU | QK/Akk 两次 MMAD 使用手工 L1/L0 流水，Aqk/Akk mask 和 beta seed 在写回前完成 |
 
-### Post-WU 内部模板
+### 5.5 Post-WU内部模板
 
 | 模板 | 选择条件 | 主要实现 |
 | --- | --- | --- |
@@ -217,7 +219,7 @@ key 表示 shape 模板族，不表示平台、接口或算子版本。平台差
 Post-WU sub-16 模板的最坏 staging 为
 `2*15*128*sizeof(BF16)+15*64*sizeof(BF16)=9,600 B`，不新增 workspace 或公开输出。
 
-### FwdH 内部模板
+### 5.6 FwdH内部模板
 
 | 模板 | 选择条件 | 主要实现 |
 | --- | --- | --- |
@@ -229,7 +231,7 @@ Post-WU sub-16 模板的最坏 staging 为
 arch35 dense FwdH 的 state、W 和 v_new L1 slot 使用 ready/free credit 保护复用。AIV 在最后一个
 task 完成后显式消费 AIC 返还的 terminal free credit，再退出 kernel，避免未消费 credit 进入后续执行。
 
-### Finalize 内部模板
+### 5.7 Finalize内部模板
 
 | 模板 | 选择条件 | 主要实现 |
 | --- | --- | --- |
@@ -247,7 +249,7 @@ Finalize sub-16 模板的最坏 staging 为
 所有模板保持相同公式、公开输出顺序、可选输出语义和 layout 契约。模板选择不得改变
 `ChunkKdaFwd` L0、`aclnnChunkKdaFwd` 或 `cann_ops_transformer.ops.chunk_kda_fwd` 的接口。
 
-## 性能设计
+## 6 流水设计
 
 - Prepare 的右矩阵在 L1 驻留，避免 K/K^T 重复搬运和重复转置。
 - AIC 使用 L1/L0 双缓冲组织 MTE2、MTE1、Cube、Fixpipe。
@@ -261,7 +263,7 @@ A5 的 H96/T16K、K=V=128、chunk=64、BF16 关键场景以 10 ms 为目标值�
 各自最大值；合计超过 11 ms 或任一组件未采集到有效样本都失败。
 同一关键场景使用非零输入连续执行 50 次，要求 `attn_out/final_state/Aqk/Akk` 二进制一致。
 
-## 验证矩阵
+## 7 验证矩阵
 
 - 平台：A2/A3/A5。
 - dtype：FP16/BF16。
