@@ -315,4 +315,11 @@ def run_main(
         lse_out = None
     elif isinstance(lse_out, torch.Tensor) and lse_out.ndim == 2:
         lse_out = lse_out.transpose(0, 1).contiguous()
+
+    # 批跑 workaround: KV=0 batch 的 output 行可能残留大值,显式清零
+    atten_out, lse_out = golden_mod._zero_out_invalid_kv_rows(
+        atten_out, lse_out, cu_seqlens_q_list, cu_seqlens_kv_list,
+        list(seqused_q) if seqused_q is not None else None,
+        list(seqused_kv) if seqused_kv is not None else None,
+    )
     return atten_out, lse_out
