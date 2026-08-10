@@ -30,8 +30,6 @@ public:
     using OUT_T = typename BSAT::outputT;
     static constexpr BSALayout LAYOUT_Q = BSAT::layoutQ;
     static constexpr BSALayout LAYOUT_KV = BSAT::layoutKV;
-    static constexpr bool IS_VARLEN =
-        LAYOUT_Q == BSALayout::TND || LAYOUT_KV == BSALayout::TND;
     static constexpr uint64_t COMPARES_ALIGN_LEN = REPEAT_SIZE / sizeof(SCORE_T);
 
     __aicore__ inline BSARadixTopKService(){};
@@ -145,6 +143,7 @@ private:
     uint64_t kValue_;
     uint64_t maxTileLen_;
     uint64_t maxTileLenScoreAlign_;
+    bool useCompactTopKMapping_;
     uint32_t validXBlocks_;
     uint32_t validYBlocks_;
     uint32_t round_;
@@ -182,6 +181,8 @@ BSARadixTopKService<BSAT>::InitParams(const BSAConstInfo &constInfo,
     this->round_ = RADIX_ROUNDS_FP16;
     this->validXBlocks_ = constInfo.xBlocks;
     this->validYBlocks_ = constInfo.yBlocks;
+    this->useCompactTopKMapping_ =
+        tilingData->baseParams.useActualSeqLenQ || tilingData->baseParams.useActualSeqLenK;
 
     uint64_t maxSortLen = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks;
     ConfigureTopKParams(maxSortLen, constInfo.topKValue);
@@ -1418,7 +1419,7 @@ template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, uint32_t headIdx)
 {
     LocalTensor<int32_t> tileTopK = tileHistAndTopKBuf_.Get<int32_t>();
-    uint64_t outputStride = IS_VARLEN ? static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks : sortLen_;
+    uint64_t outputStride = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks;
     uint64_t outputOffset = (static_cast<uint64_t>(batchIdx) * constInfo.numHeads + headIdx) * outputStride;
 
     // Restore boundary value (twiddle inverse transform)
@@ -1473,7 +1474,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
             LocalTensor<half> xLocal = curBuf.template Get<half>()[tileLenScoreAlign_].template ReinterpretCast<half>();
 
-            if constexpr (IS_VARLEN) {
+            if (useCompactTopKMapping_) {
                 SubTopKAndWriteMaskGTTnd(xLocal, boundaryHalf, curTileLen, tileGmOffset, outputOffset, curTileK);
             } else {
                 SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, outputGmOffset, curTileK);
@@ -1481,7 +1482,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
 
             if (curTileK > 0) {
-                if constexpr (IS_VARLEN) {
+                if (useCompactTopKMapping_) {
                     SubTopKAndWriteMaskEQTnd(xLocal, boundaryHalf, curTileLen, tileGmOffset, outputOffset, curTileK);
                 } else {
                     SubTopKAndWriteMaskEQ(xLocal, boundaryHalf, curTileLen, outputGmOffset, curTileK);
