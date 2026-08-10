@@ -262,7 +262,11 @@ struct RunInfo {
     uint32_t cmpRatio;                                                                                                 \
     float softmaxScale;                                                                                                \
     uint32_t oriMaskMode;                                                                                              \
-    uint32_t cmpMaskMode
+    uint32_t cmpMaskMode;                                                                                              \
+    uint32_t oriKvStride;                                                                                              \
+    uint32_t cmpKvStride;                                                                                              \
+    uint32_t alignedOriSparseBlockCount;                                                                               \
+    uint32_t alignedCmpSparseBlockCount
 
 struct ConstInfo {
     COMMON_CONST_INFO;
