@@ -135,6 +135,7 @@ private:
     ge::graphStatus CheckFeatureQuerySForAntiquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeaturePAForAntiquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureRopeForAntiquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeatureNzD32ForAntiquant(const FiaTilingInfo &fiaInfo) const;
 
     // MultiPara
     ge::graphStatus CheckMultiParaForAntiquant(const FiaTilingInfo &fiaInfo);

@@ -1004,8 +1004,9 @@ ge::graphStatus CheckKVNzShape(const gert::TilingContext *context)
     auto tempK = context->GetInputShape(KEY_INDEX);
     auto tempV = context->GetInputShape(VALUE_INDEX);
 
-    OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_4) != 16) || (tempV->GetStorageShape().GetDim(DIM_4) != 16),
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The last dimension of kv should to be 16."),
+    OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_4) != 16 && tempK->GetStorageShape().GetDim(DIM_4) != 32) ||
+                    (tempV->GetStorageShape().GetDim(DIM_4) != 16 && tempV->GetStorageShape().GetDim(DIM_4) != 32),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The last dimension of kv should to be 16 or 32."),
             return ge::GRAPH_FAILED);
     OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_3) != blockSize) ||
                     (tempV->GetStorageShape().GetDim(DIM_3) != blockSize),

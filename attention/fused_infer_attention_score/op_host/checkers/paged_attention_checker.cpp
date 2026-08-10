@@ -609,6 +609,14 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeAntiquant(const FiaTilingIn
                                               reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
+    // D0=32 PA_NZ antiquant: block_size must be 128 or 512
+    if (fiaInfo.kvCacheNzD0 == NUM_32 && fiaInfo.blockSize != NUM_128 && fiaInfo.blockSize != NUM_512) {
+        std::string reasonMsg = "When PA_NZ D0=32 antiquant is enabled, block_size must be 128 or 512, but got " +
+                                std::to_string(fiaInfo.blockSize);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
+                                              reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -818,7 +826,8 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
 ge::graphStatus PagedAttentionChecker::CheckFeatureQueryS(const FiaTilingInfo &fiaInfo) const
 {
     // When antiquantMode is 0 or 1 and data type of key/value is int8 scenario, page attention is not supported.
-    if (fiaInfo.s1Size > 1) {
+    // D0=32 (INT8 PA_NZ) antiquant path supports s1>1, skip this check.
+    if (fiaInfo.s1Size > 1 && fiaInfo.kvCacheNzD0 != NUM_32) {
         int64_t keyAntiquantMode = 0;
         if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
             keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
