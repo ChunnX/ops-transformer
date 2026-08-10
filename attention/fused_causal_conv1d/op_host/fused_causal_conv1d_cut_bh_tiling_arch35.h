@@ -200,6 +200,7 @@ private:
     int64_t inplace_ = 0;              // conv_states 是否原地更新：0=否，1=是（由 isInplace_ 决定）
     bool isInplace_ = false;           // 构造时传入，替代 attr 读取
     int64_t convMode_ = 0;             // 卷积模式：0=Qwen3，1=Pangu v2（前 width-1 token 置零）
+    int64_t maxDraftTokens_ = 0;
     int64_t hasNumComputedTokens_ = 0; // numComputedTokens 是否有效：0=无，1=有
     int64_t maxQueryLen_ = MAX_M + 1;  // 2D 输入时最大序列长度（来自 max_query_len 属性）
 

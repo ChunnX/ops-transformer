@@ -38,7 +38,7 @@ class FusedCausalConv1dOpBuilder(OpBuilder):
                 "Tensor? num_computed_tokens=None, "
                 "Tensor? block_idx_first_scheduled_token=None, "
                 "Tensor? block_idx_last_scheduled_token=None, "
-                "Tensor? initial_state_idx=None"
+                "Tensor? initial_state_idx=None, "
                 'str activation=None, '
                 "int pad_slot_id=-1, "
                 "int run_mode=0, "
@@ -80,8 +80,72 @@ class FusedCausalConv1dOpBuilder(OpBuilder):
             y = torch.empty_like(x)
             return y
 
+class InplaceFusedCausalConv1dOpBuilder(OpBuilder):
+    def __init__(self):
+        super(InplaceFusedCausalConv1dOpBuilder, self).__init__("inplace_fused_causal_conv1d")
 
-_fused_causal_conv1d_op_builder = FusedCausalConv1dOpBuilder()
+    def sources(self):
+        """Path to C++ source code."""
+        return ["ops/csrc/inplace_fused_causal_conv1d.cpp"]
+
+    def schema(self) -> str:
+        """PyTorch operator schema."""
+        return (
+            "inplace_fused_causal_conv1d("
+                "Tensor x, Tensor weight, "
+                "Tensor conv_states, "
+                "*, "
+                "Tensor? query_start_loc=None, "
+                "Tensor? cache_indices=None, "
+                "Tensor? initial_state_mode=None, "
+                "Tensor? bias=None, "
+                "Tensor? num_accepted_tokens=None, "
+                "Tensor? num_computed_tokens=None, "
+                "Tensor? block_idx_first_scheduled_token=None, "
+                "Tensor? block_idx_last_scheduled_token=None, "
+                "Tensor? initial_state_idx=None, "
+                'str activation=None, '
+                "int pad_slot_id=-1, "
+                "int run_mode=0, "
+                "int max_query_len=-1, "
+                "int residual_connection=1, "
+                "int block_size=128, "
+                "int conv_mode=1, "
+                "int max_draft_tokens=7"
+            ") -> Tensor"
+        )
+
+    def register_meta(self):
+        """Register Meta implementation for shape/dtype inference."""
+
+        @impl(AS_LIBRARY, self.name, "Meta")
+        def inplace_fused_causal_conv1d_meta(
+            x: torch.Tensor,
+            weight: torch.Tensor,
+            conv_states: torch.Tensor,
+            *,
+            query_start_loc: Optional[torch.Tensor] = None,
+            cache_indices: Optional[torch.Tensor] = None,
+            initial_state_mode: Optional[torch.Tensor] = None,
+            bias: Optional[torch.Tensor],
+            num_accepted_tokens: Optional[torch.Tensor] = None,
+            num_computed_tokens: Optional[torch.Tensor] = None,
+            block_idx_first_scheduled_token: Optional[torch.Tensor] = None,
+            block_idx_last_scheduled_token: Optional[torch.Tensor] = None,
+            initial_state_idx: Optional[torch.Tensor] = None,
+            activation: str = None,
+            pad_slot_id: int = -1,
+            run_mode: int = 0,
+            max_query_len: int = -1,
+            residual_connection: int = 1,
+            block_size: int = 128,
+            conv_mode: int = 1,
+            max_draft_tokens: int = 7
+        ) -> torch.Tensor:
+            y = torch.empty_like(x)
+            return y
+
+_inplace_fused_causal_conv1d_op_builder = InplaceFusedCausalConv1dOpBuilder()
 
 
 @impl(AS_LIBRARY, _fused_causal_conv1d_op_builder.name, "PrivateUse1")
