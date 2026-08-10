@@ -39,10 +39,7 @@
 #if __has_include("adv_api/hcomm/hcomm.h")
 #include "adv_api/hcomm/hcomm.h"
 #endif
-#if __has_include("hcomm/hcomm_res_entity_defs.h")
 #include "hcomm/hcomm_res_entity_defs.h"
-#define MOE_EP_COMBINE_CHANNEL_STATE_DIAGNOSTICS
-#endif
 
 #include "moe_ep_combine_tiling_key.h"
 #if __has_include("../common/moe_distribute_base.h")
@@ -397,7 +394,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
         uint64_t batchHandleBeforeFlush = activeBatchHandle_;
         uint32_t batchCountBeforeFlush = preparedWriteCount_;
         if (ret == HCOMM_PREPARE_QUEUE_FULL) {
-#if defined(MOE_EP_COMBINE_CHANNEL_STATE_DIAGNOSTICS)
             __gm__ ChannelEntity *channelEntity = reinterpret_cast<__gm__ ChannelEntity *>(commHandle);
             auto sqContext = channelEntity->sqContextAddr[0];
             auto cqContext = channelEntity->cqContextAddr[0];
@@ -424,17 +420,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
                 "WriteNbiPrepare queue full outstanding: outstandingSq=%u, outstandingCq=%u, pendingSq=%u, "
                 "pendingCq=%u\n",
                 outstandingSq, outstandingCq, batchCountBeforeFlush * 2U, batchCountBeforeFlush);
-#else
-            AscendC::printf(
-                "WriteNbiPrepare queue full before flush: ret=%d, aivId=%u, srcRank=%d, channelIndex=%u, "
-                "tokenIndex=%u\n",
-                ret, aivId_, srcRank, channelIndex, tokenIndex);
-            AscendC::printf(
-                "WriteNbiPrepare queue full handles: commHandle=%llu, activeBatchHandle=%llu, "
-                "preparedWriteCount=%u\n",
-                static_cast<unsigned long long>(commHandle),
-                static_cast<unsigned long long>(batchHandleBeforeFlush), batchCountBeforeFlush);
-#endif
         }
         ascendc_assert(preparedWriteCount_ != 0,
                        "WriteNbiPrepare failed on an empty batch, ret=%d, aivId=%u", ret, aivId_);
@@ -442,7 +427,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
         ret = hcomm_.WriteNbiPrepare<DEFAULT_WQE_CONFIG>(commHandle, dst, src, len, notifyAddr, 1,
                                                          batchBuffer, HCOMM_BATCH_BUFFER_BYTES);
         if (ret != HCOMM_SUCCESS) {
-#if defined(MOE_EP_COMBINE_CHANNEL_STATE_DIAGNOSTICS)
             __gm__ ChannelEntity *channelEntity = reinterpret_cast<__gm__ ChannelEntity *>(commHandle);
             auto sqContext = channelEntity->sqContextAddr[0];
             auto cqContext = channelEntity->cqContextAddr[0];
@@ -468,19 +452,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
             AscendC::printf(
                 "WriteNbiPrepare retry queue state: sqDepth=%u, cqDepth=%u, outstandingSq=%u, outstandingCq=%u\n",
                 sqDepth, cqDepth, outstandingSq, outstandingCq);
-#else
-            AscendC::printf(
-                "WriteNbiPrepare retry failed after flush: ret=%d, aivId=%u, srcRank=%d, channelIndex=%u, "
-                "tokenIndex=%u\n",
-                ret, aivId_, srcRank, channelIndex, tokenIndex);
-            AscendC::printf(
-                "WriteNbiPrepare retry handles: commHandle=%llu, flushedHandle=%llu, flushedCount=%u\n",
-                static_cast<unsigned long long>(commHandle),
-                static_cast<unsigned long long>(batchHandleBeforeFlush), batchCountBeforeFlush);
-            AscendC::printf(
-                "WriteNbiPrepare retry batch state: activeBatchHandle=%llu, preparedWriteCount=%u\n",
-                static_cast<unsigned long long>(activeBatchHandle_), preparedWriteCount_);
-#endif
         }
     }
     ascendc_assert(ret == HCOMM_SUCCESS, "WriteNbiPrepare failed, ret=%d, aivId=%u", ret, aivId_);
@@ -788,9 +759,5 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 #endif
 
 } // namespace MoeEpCombineImpl
-
-#if defined(MOE_EP_COMBINE_CHANNEL_STATE_DIAGNOSTICS)
-#undef MOE_EP_COMBINE_CHANNEL_STATE_DIAGNOSTICS
-#endif
 
 #endif // MOE_EP_COMBINE_H
