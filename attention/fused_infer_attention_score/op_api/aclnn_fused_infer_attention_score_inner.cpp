@@ -262,20 +262,19 @@ bool IsFirstAxisOnlyNonContiguous(const aclTensor *tensor, const char *name)
     auto viewShape = tensor->GetViewShape();
     int64_t dimNum = viewShape.GetDimNum();
     if (dimNum <= 1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "%s view shape dim num[%ld] should be greater than 1 in the current cache scene.", name, dimNum);
+        OP_LOGW("%s is non-contiguous with dim num[%ld] <= 1, it will be forced to be contiguous.", name, dimNum);
         return false;
     }
 
     int64_t *viewStrides = nullptr;
     uint64_t stridesNum = 0;
     if (!GetAclTensorViewStrides(tensor, viewStrides, stridesNum)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Failed to get view strides for %s.", name);
+        OP_LOGW("Failed to get view strides for %s, it will be forced to be contiguous.", name);
         return false;
     }
     if (stridesNum < static_cast<uint64_t>(dimNum)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "%s view strides num[%lu] is less than view shape dim num[%ld].", name, stridesNum, dimNum);
+        OP_LOGW("%s view strides num[%lu] is less than view shape dim num[%ld], it will be forced to be contiguous.",
+                name, stridesNum, dimNum);
         delete[] viewStrides;
         return false;
     }
@@ -284,9 +283,8 @@ bool IsFirstAxisOnlyNonContiguous(const aclTensor *tensor, const char *name)
     int64_t expectedStride = 1;
     for (int64_t dim = dimNum - 1; dim >= 1; --dim) {
         if (viewShape.GetDim(dim) != 1 && viewStrides[dim] != expectedStride) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "%s is non-contiguous at axis[%ld] (0-based): actual stride[%ld], expected stride[%ld], "
-                    "shape[%s]. Only axis[0] may be non-contiguous in the current cache scene.",
+            OP_LOGW("%s is non-contiguous at axis[%ld] (0-based): actual stride[%ld], expected stride[%ld], "
+                    "shape[%s]. It will be forced to be contiguous.",
                     name, dim, viewStrides[dim], expectedStride, op::ToString(viewShape).GetString());
             isFirstAxisOnlyNonContiguous = false;
             break;
@@ -296,26 +294,6 @@ bool IsFirstAxisOnlyNonContiguous(const aclTensor *tensor, const char *name)
 
     delete[] viewStrides;
     return isFirstAxisOnlyNonContiguous;
-}
-
-aclnnStatus CheckTensorListFirstAxisOnlyNonContiguous(const aclTensorList *tensorList, const char *name)
-{
-    if (tensorList == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "%s tensorList is nullptr.", name);
-        return ACLNN_ERR_PARAM_NULLPTR;
-    }
-
-    for (uint64_t i = 0; i < tensorList->Size(); ++i) {
-        auto tensor = (*tensorList)[i];
-        std::string tensorName = name;
-        if (tensorList->Size() > 1) {
-            tensorName += "[" + std::to_string(i) + "]";
-        }
-        if (!IsFirstAxisOnlyNonContiguous(tensor, tensorName.c_str())) {
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-    return ACLNN_SUCCESS;
 }
 
 aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const char *name, aclOpExecutor *executor)
@@ -400,7 +378,7 @@ aclnnStatus NormalizeFAICacheTensorList(const aclTensorList *&tensorList, const 
                 OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try normalize contiguous %s failed.", itemName.c_str());
                 return ACLNN_ERR_INNER_NULLPTR;
             }
-        } else {
+        } else if (IsFirstAxisOnlyNonContiguous(tensor, itemName.c_str())) {
             normalizedTensor = executor->CreateView(tensor, tensor->GetViewShape(), tensor->GetStorageShape(),
                                                     tensor->GetViewStrides(), tensor->GetViewOffset());
             if (normalizedTensor == nullptr) {
@@ -409,6 +387,12 @@ aclnnStatus NormalizeFAICacheTensorList(const aclTensorList *&tensorList, const 
             }
             const_cast<aclTensor *>(normalizedTensor)->SetStorageShape(tensor->GetViewShape());
             SetTensorFormatToND(normalizedTensor);
+        } else {
+            normalizedTensor = l0op::Contiguous(tensor, executor);
+            if (normalizedTensor == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try make %s contiguous failed.", itemName.c_str());
+                return ACLNN_ERR_INNER_NULLPTR;
+            }
         }
         tensors.emplace_back(normalizedTensor);
     }
@@ -443,8 +427,6 @@ aclnnStatus ProcessKVForL0Input(const aclTensorList *&key, const aclTensorList *
     const bool isCacheScene = IsCacheScene(blockTableOptional);
     const bool supportTensorV2 = NnopbaseSupportTensorV2 != nullptr;
     if (supportTensorV2 && isFAIRoutingCandidate && isCacheScene) {
-        CHECK_RET(CheckTensorListFirstAxisOnlyNonContiguous(key, "key") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-        CHECK_RET(CheckTensorListFirstAxisOnlyNonContiguous(value, "value") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         CHECK_RET(NormalizeFAICacheTensorList(key, "key", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
         CHECK_RET(NormalizeFAICacheTensorList(value, "value", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
         return ACLNN_SUCCESS;
