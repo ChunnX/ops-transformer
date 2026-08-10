@@ -3,7 +3,7 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -263,8 +263,10 @@ ge::graphStatus QfaInfoParser::GetQuantMode()
         return ge::GRAPH_FAILED;
     }
     int64_t quantModeVal = *opParamInfo_.quantMode;
-    if (quantModeVal != static_cast<int64_t>(QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) &&
-        quantModeVal != static_cast<int64_t>(QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32)) {
+    using QM = QfaQuantMode;
+    if (quantModeVal != static_cast<int64_t>(QM::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) &&
+        quantModeVal != static_cast<int64_t>(
+            QM::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode", std::to_string(quantModeVal).c_str(),
                                               "quant_mode must be 1 "
                                               "(A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) or "
@@ -612,7 +614,8 @@ ge::graphStatus QfaInfoParser::ParseAxisInfo()
     }
 
     uint32_t qDescaleDimNum = opParamInfo_.qDescale.shape->GetStorageShape().GetDimNum();
-    if (quantMode_ == QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+    using QM = QfaQuantMode;
+    if (quantMode_ == QM::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
         if (qDescaleDimNum != 2) {
             OP_LOGE(opName_, "q_descale must be 2D for GQA_FP8_FULLQUANT, but got %uD.", qDescaleDimNum);
             return ge::GRAPH_FAILED;
@@ -620,11 +623,13 @@ ge::graphStatus QfaInfoParser::ParseAxisInfo()
     } else {
         bool isDecode = (layoutQDescale_ == QfaLayout::N2TGD);
         if (isDecode && qDescaleDimNum != 5) {
-            OP_LOGE(opName_, "q_descale must be 5D in decode mode(layout_q_descale=N2TGD), but got %uD.", qDescaleDimNum);
+            OP_LOGE(opName_,
+                    "q_descale must be 5D in decode mode(layout_q_descale=N2TGD), but got %uD.", qDescaleDimNum);
             return ge::GRAPH_FAILED;
         }
         if (!isDecode && qDescaleDimNum != 4) {
-            OP_LOGE(opName_, "q_descale must be 4D in prefill mode(layout_q_descale=TND), but got %uD.", qDescaleDimNum);
+            OP_LOGE(opName_,
+                    "q_descale must be 4D in prefill mode(layout_q_descale=TND), but got %uD.", qDescaleDimNum);
             return ge::GRAPH_FAILED;
         }
     }
