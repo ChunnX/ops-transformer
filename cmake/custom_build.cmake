@@ -1033,17 +1033,33 @@ if (NOT ENABLE_AICPU_KERNEL)
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
 
-    file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
-foreach(_3rd_op_dir ${_3rd_op_dirs})
-    if(IS_DIRECTORY "${_3rd_op_dir}")
-        if(EXISTS "${_3rd_op_dir}/op_kernel" AND IS_DIRECTORY "${_3rd_op_dir}/op_kernel")
-            get_filename_component(_3rd_op_name "${_3rd_op_dir}" NAME)
-            install(DIRECTORY ${_3rd_op_dir}/op_kernel/
-                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd/${_3rd_op_name}
-            )
+    # CATLASS is header-only. MC2 kernels include it as "catlass/...", and the
+    # generated AscendC compile command already searches ascendc/common.
+    if ("allto_all_matmul" IN_LIST OP_LIST OR
+        "matmul_allto_all" IN_LIST OP_LIST OR
+        "all_gather_matmul_v2" IN_LIST OP_LIST OR
+        "matmul_reduce_scatter_v2" IN_LIST OP_LIST)
+        if (NOT EXISTS "${OPS_CATLASS_INC}/catlass/catlass.hpp")
+            message(FATAL_ERROR
+                    "CATLASS headers not found. Run: git submodule update --init 3rdparty/catlass")
         endif()
+        install(DIRECTORY ${OPS_CATLASS_INC}/
+                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+        )
     endif()
-endforeach(    )
+
+    file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
+    foreach(_3rd_op_dir ${_3rd_op_dirs})
+        if(IS_DIRECTORY "${_3rd_op_dir}")
+            if(EXISTS "${_3rd_op_dir}/op_kernel" AND IS_DIRECTORY "${_3rd_op_dir}/op_kernel")
+                get_filename_component(_3rd_op_name "${_3rd_op_dir}" NAME)
+                install(DIRECTORY ${_3rd_op_dir}/op_kernel/
+                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd/${_3rd_op_name}
+                        OPTIONAL
+                )
+            endif()
+        endif()
+    endforeach()
 
     install(DIRECTORY ${OPBASE_SOURCE_PATH}/include/op_common/log
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
