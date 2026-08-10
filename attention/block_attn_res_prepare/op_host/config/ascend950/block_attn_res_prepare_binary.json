@@ -1,0 +1,67 @@
+{
+    "op_type": "BlockAttnResPrepare",
+    "op_list": [
+        {
+            "bin_filename": "BlockAttnResPrepare_fp32",
+            "inputs": [
+                {
+                    "name": "block_residual",
+                    "index": 0,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "effective_query",
+                    "index": 1,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "valid_blocks",
+                    "index": 2,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "softmax_max",
+                    "index": 0,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "weighted_output",
+                    "index": 1,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "softmax_sum",
+                    "index": 2,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                }
+            ],
+            "attrs": [
+                {
+                    "name": "epsilon",
+                    "dtype": "float",
+                    "value": 0.000001
+                }
+            ]
+        }
+    ]
+}
