@@ -139,7 +139,10 @@ def check_valid_param(params):
     if params["block_table_pattern"] not in SUPPORTED_BLOCK_TABLE_PATTERNS:
         raise ValueError(f"unsupported block_table_pattern: {params['block_table_pattern']}")
 
-    if not isinstance(params["p_scale_value"], (int, float)) or params["p_scale_value"] <= 0:
+    if params["p_scale_value"] is not None and (
+        not isinstance(params["p_scale_value"], (int, float))
+        or params["p_scale_value"] <= 0
+    ):
         raise ValueError(f"p_scale_value should be a positive number, got {params['p_scale_value']}")
 
     if params.get("softmax_scale") is None:

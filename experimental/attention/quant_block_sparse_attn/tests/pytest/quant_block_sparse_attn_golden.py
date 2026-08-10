@@ -63,7 +63,6 @@ def _normalize_params(params):
     normalized.setdefault("quant_mode", 1)
     normalized.setdefault("mask_mode", 3)
     normalized.setdefault("return_softmax_lse", False)
-    normalized.setdefault("actlen_mode", "full")
     normalized.setdefault("S1EQS2", False)
     normalized.setdefault("seed", 0)
     if normalized.get("sparse_mode") is None:
@@ -102,21 +101,40 @@ def _normalize_params(params):
     return normalized
 
 
-def _make_lengths(batch, max_len, mode, rng):
-    if mode == "full":
-        return [max_len] * batch, max_len
-    if mode != "random":
-        raise ValueError(f"unsupported actlen_mode: {mode}")
-    low = max(1, max_len // 2)
-    res_lens = [rng.randint(low, max_len) for _ in range(batch)]
-    return res_lens, max(res_lens)
+def _make_lengths(case):
+    batch = case["B"]
+    cu_seqlens_q_value = case.get("cu_seqlens_q_value")
+    seqused_kv_value = case.get("seqused_kv_value")
+    if not isinstance(cu_seqlens_q_value, list):
+        raise ValueError("cu_seqlens_q_value should be an integer list")
+    if not isinstance(seqused_kv_value, list):
+        raise ValueError("seqused_kv_value should be an integer list")
+    if len(cu_seqlens_q_value) != batch + 1:
+        raise ValueError(
+            f"cu_seqlens_q_value length should be B + 1, got {len(cu_seqlens_q_value)}"
+        )
+    if len(seqused_kv_value) != batch:
+        raise ValueError(
+            f"seqused_kv_value length should be B, got {len(seqused_kv_value)}"
+        )
+    if any(
+        isinstance(value, bool) or not isinstance(value, int)
+        for value in cu_seqlens_q_value + seqused_kv_value
+    ):
+        raise ValueError("sequence length values should all be integers")
+    if cu_seqlens_q_value[0] != 0:
+        raise ValueError("cu_seqlens_q_value should start at 0")
 
-
-def _prefix(lengths):
-    values = [0]
-    for length in lengths:
-        values.append(values[-1] + int(length))
-    return torch.tensor(values, dtype=torch.int32)
+    q_lengths = [
+        cu_seqlens_q_value[index + 1] - cu_seqlens_q_value[index]
+        for index in range(batch)
+    ]
+    if any(length <= 0 or length > case["S1"] for length in q_lengths):
+        raise ValueError(f"query lengths should be in [1, S1], got {q_lengths}")
+    kv_lengths = list(seqused_kv_value)
+    if any(length <= 0 or length > case["S2"] for length in kv_lengths):
+        raise ValueError(f"KV lengths should be in [1, S2], got {kv_lengths}")
+    return q_lengths, max(q_lengths), kv_lengths, max(kv_lengths)
 
 
 def _source_absmax():
@@ -381,7 +399,11 @@ def _make_fullquant_tensors(case, cu_seqlens_q, seqused_kv, generator):
     dense_value, v_scale = _quantize_value_per_head(dense_value_source, v_max)
     v_scale = v_scale.contiguous()
 
-    p_scale = torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
+    p_scale = (
+        None
+        if case["p_scale_value"] is None
+        else torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
+    )
     return query, dense_key, dense_value, q_scale, dense_k_scale, v_scale, p_scale
 
 
@@ -647,7 +669,7 @@ def _reference_attention(
     output_dtype = case["output_dtype"]
     fp8_dtype = _fp8_dtype()
     softmax_scale = float(case["softmax_scale"])
-    p_scale_value = float(p_scale[0].item())
+    p_scale_value = 1.0 if p_scale is None else float(p_scale[0].item())
     ln_p_scale = (
         torch.log(torch.tensor(p_scale_value, dtype=torch.float32)).item()
         if p_scale_value > 0
@@ -884,15 +906,11 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     sparse_q_block_size = case["sparse_q_block_size"]
     sparse_kv_block_size = case["sparse_kv_block_size"]
 
-    q_lengths, q_max_len = _make_lengths(batch, s1, case["actlen_mode"], rng)
-    kv_lengths, kv_max_len = _make_lengths(batch, s2, case["actlen_mode"], rng)
+    q_lengths, q_max_len, kv_lengths, kv_max_len = _make_lengths(case)
     s1, case["S1"] = q_max_len, q_max_len
     s2, case["S2"] = kv_max_len, kv_max_len
-    if case["S1EQS2"]:
-        kv_lengths = [min(length, s2) for length in q_lengths]
 
-    cu_seqlens_q = _prefix(q_lengths)
-    seqused_q = torch.tensor(q_lengths, dtype=torch.int32)
+    cu_seqlens_q = torch.tensor(case["cu_seqlens_q_value"], dtype=torch.int32)
     seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
 
     cu_seqlens_q_input = cu_seqlens_q
@@ -978,7 +996,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "v_descale": v_scale,
             "p_scale": p_scale,
             "cu_seqlens_q": cu_seqlens_q_input,
-            "seqused_q": seqused_q,
+            "cu_seqlens_kv": None,
+            "seqused_q": None,
             "seqused_kv": seqused_kv,
             "sparse_indices": sparse_indices,
             "sparse_seq_len": sparse_seq_len,

@@ -10,18 +10,22 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import ast
 import os
 
 EXCEL_COLUMNS = [
     "case_name", "enable",
-    "B", "N1", "N2", "S1", "S2", "D",
+    "B", "N1", "N2", "S1", "S2",
+    "cu_seqlens_q_value", "cu_seqlens_kv_value",
+    "seqused_q_value", "seqused_kv_value",
+    "D",
     "sparse_q_block_size", "sparse_kv_block_size",
     "sparse_mode", "sparse_pattern",
     "block_table_pattern",
     "block_num",
     "q_datarange", "k_datarange", "v_datarange",
     "layout_q", "layout_kv", "layout_sparse_indices", "layout_out",  "output_dtype",
-    "actlen_mode", "quant_mode", "mask_mode",
+    "quant_mode", "mask_mode",
     "p_scale_value", "softmax_scale",
     "return_softmax_lse", "seed",
 ]
@@ -36,6 +40,10 @@ _INT_COLS = {"B", "N1", "N2", "S1", "S2", "D",
              "block_num"}
 _FLOAT_COLS = {"p_scale_value", "softmax_scale"}
 _BOOL_COLS = {"return_softmax_lse"}
+_INT_LIST_COLS = {
+    "cu_seqlens_q_value", "cu_seqlens_kv_value",
+    "seqused_q_value", "seqused_kv_value",
+}
 
 
 def _get_excel_paths(csv_path=None):
@@ -90,7 +98,23 @@ def _parse_int(val):
 def _parse_float(val):
     if val is None:
         return None
+    if isinstance(val, str) and val.strip().upper() == "NONE":
+        return None
     return float(val)
+
+
+def _parse_int_list(val):
+    if val is None:
+        return None
+    try:
+        values = ast.literal_eval(val) if isinstance(val, str) else val
+    except (SyntaxError, ValueError) as error:
+        raise ValueError(f"expected an integer list, got {val!r}") from error
+    if not isinstance(values, list):
+        raise ValueError(f"expected an integer list, got {val!r}")
+    if any(isinstance(item, bool) or not isinstance(item, int) for item in values):
+        raise ValueError(f"expected an integer list, got {val!r}")
+    return list(values)
 
 
 def _load_cases_from_one_csv(csv_path):
@@ -132,6 +156,8 @@ def _load_cases_from_one_csv(csv_path):
                 val = _parse_float(val)
             elif col in _BOOL_COLS:
                 val = _parse_bool(val)
+            elif col in _INT_LIST_COLS:
+                val = _parse_int_list(val)
             elif col == "output_dtype":
                 val = dtype_map.get(str(val).strip(), _torch.bfloat16) if val is not None else _torch.bfloat16
             params[col] = [val]

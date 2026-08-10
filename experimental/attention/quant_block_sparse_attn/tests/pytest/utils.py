@@ -65,7 +65,6 @@ def _row_from_dict(params, result, fulfill_percent):
         "quant_mode",
         "mask_mode",
         "return_softmax_lse",
-        "actlen_mode",
         "sparse_pattern",
         "block_table_pattern",
         "block_num",
