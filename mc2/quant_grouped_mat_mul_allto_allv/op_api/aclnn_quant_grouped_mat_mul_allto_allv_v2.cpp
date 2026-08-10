@@ -21,6 +21,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
+#include "mc2_log_compat.h"
 #include "platform/soc_spec.h"
 #include "opdev/platform.h"
 #include "securec.h"
