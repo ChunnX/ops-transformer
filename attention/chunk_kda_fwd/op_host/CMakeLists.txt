@@ -14,10 +14,19 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 add_modules_sources(OPTYPE chunk_kda_fwd ACLNNTYPE aclnn_exclude)
+
+set(CHUNK_KDA_CATLASS_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/3rdparty/catlass/include")
+if(NOT EXISTS "${CHUNK_KDA_CATLASS_INCLUDE_DIR}/tla/tensor.hpp")
+    message(FATAL_ERROR
+        "ChunkKdaFwd requires the Catlass submodule. Run: "
+        "git submodule update --init --recursive 3rdparty/catlass")
+endif()
+
 add_ops_compile_options(
     OP_NAME ChunkKdaFwd
     OPTIONS --cce-auto-sync=off
             -Wno-deprecated-declarations
+            -I${CHUNK_KDA_CATLASS_INCLUDE_DIR}
 )
 if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
     add_ops_compile_options(
