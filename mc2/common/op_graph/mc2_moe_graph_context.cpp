@@ -28,6 +28,7 @@ constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
 constexpr uint32_t EP_RANK_OFFSET_STEP = 1024;
+constexpr uint64_t KOPY_DEFAULT_CTX_OFFSET = 0;
 } // namespace
 
 namespace ops {
@@ -111,6 +112,9 @@ bool Mc2MoeGraphContext::LoadHcclSymbols()
         {reinterpret_cast<void **>(&HcclGetRankId), "HcclGetRankId"},
         {reinterpret_cast<void **>(&HcclGetRankSize), "HcclGetRankSize"},
         {reinterpret_cast<void **>(&HcclRankGraphGetRanksByLayer), "HcclRankGraphGetRanksByLayer"},
+        {reinterpret_cast<void **>(&HcclEngineCtxCreate), "HcclEngineCtxCreate"},
+        {reinterpret_cast<void **>(&HcclEngineCtxGet), "HcclEngineCtxGet"},
+        {reinterpret_cast<void **>(&HcclEngineCtxCopy), "HcclEngineCtxCopy"},
     };
     for (auto &sym : symbols) {
         *(sym.ptr) = GetHcclLibFunc<void *>(hcclLibHandle_, sym.name);
@@ -132,6 +136,7 @@ bool Mc2MoeGraphContext::GetCommHandle(const char *groupEp, HcclComm &hcclHandle
         OPS_LOG_E(CONTEXT_NAME, "Get HCCL handle failed, groupEp: %s.", groupEp);
         return false;
     }
+    OPS_LOG_I(CONTEXT_NAME, "Get HCCL handle success, groupEp %s, hcclHandle %p.", groupEp, hcclHandle);
     return true;
 }
 
@@ -173,6 +178,7 @@ bool Mc2MoeGraphContext::GetRankSizePerServer(const HcclComm &hcclHandle, uint32
         OPS_LOG_E(CONTEXT_NAME, "Get HCCL rank size per server failed.");
         return false;
     }
+    OPS_LOG_I(CONTEXT_NAME, "Get rank size per server success, rankSizePerServer %u.", rankSizePerServer_);
     return true;
 }
 
@@ -237,6 +243,8 @@ bool Mc2MoeGraphContext::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t
         OPS_LOG_E(CONTEXT_NAME, "Acquire HCCL channel failed.");
         return false;
     }
+    OPS_LOG_I(CONTEXT_NAME, "Acquire HCCL channel success, rankDim %u, srcRankId %u, channelNum %u.", rankDim,
+              srcRankId, channelNum);
     return true;
 }
 
@@ -307,8 +315,38 @@ bool Mc2MoeGraphContext::GetCommProtocol(const HcclComm &hcclHandle, CommProtoco
     return true;
 }
 
-bool Mc2MoeGraphContext::BuildContextData(const std::string &groupEp, std::vector<int32_t> &contextData,
-                                          int64_t &hcclBuffSize)
+// 与单算子路径（mc2_context.cpp）对齐：按 tag 查询/创建 HCCL 引擎 context 并拷贝内容，
+// 保证引擎侧注册动作在图模式编译期同样发生。已存在则复用，不重复创建。
+bool Mc2MoeGraphContext::EnsureEngineCtx(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
+                                         void *contextStruct, uint64_t ctxSize)
+{
+    void *ctx = nullptr;
+    uint64_t existCtxSize = 0;
+    if (HcclEngineCtxGet(hcclHandle, mc2ContextTag.c_str(), CommEngine::COMM_ENGINE_AIV, &ctx, &existCtxSize) ==
+        HCCL_SUCCESS) {
+        OPS_LOG_I(CONTEXT_NAME, "HCCL engine context already exists, tag %s, ctx %p, size %lu.",
+                  mc2ContextTag.c_str(), ctx, existCtxSize);
+        return true;
+    }
+    auto hcclRet =
+        HcclEngineCtxCreate(hcclHandle, mc2ContextTag.c_str(), CommEngine::COMM_ENGINE_AIV, ctxSize, &ctx);
+    if (hcclRet != HCCL_SUCCESS) {
+        OPS_LOG_E(CONTEXT_NAME, "Create HCCL engine context failed, tag %s.", mc2ContextTag.c_str());
+        return false;
+    }
+    hcclRet = HcclEngineCtxCopy(hcclHandle, CommEngine::COMM_ENGINE_AIV, mc2ContextTag.c_str(), contextStruct,
+                                ctxSize, KOPY_DEFAULT_CTX_OFFSET);
+    if (hcclRet != HCCL_SUCCESS) {
+        OPS_LOG_E(CONTEXT_NAME, "Copy context to HCCL engine failed, tag %s.", mc2ContextTag.c_str());
+        return false;
+    }
+    OPS_LOG_I(CONTEXT_NAME, "HCCL engine context created and copied, tag %s, ctx %p, size %lu.",
+              mc2ContextTag.c_str(), ctx, ctxSize);
+    return true;
+}
+
+bool Mc2MoeGraphContext::BuildContextData(const std::string &groupEp, const std::string &opName,
+                                          std::vector<int32_t> &contextData, int64_t &hcclBuffSize)
 {
     if (!LoadHcclSymbols()) {
         return false;
@@ -355,13 +393,23 @@ bool Mc2MoeGraphContext::BuildContextData(const std::string &groupEp, std::vecto
             return false;
         }
         context.epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
+        OPS_LOG_I(CONTEXT_NAME, "groupEp %s, rank %u, hccl buffer 0x%lx, epHcclBuffer 0x%lx.", groupEp.c_str(), i,
+                  reinterpret_cast<uint64_t>(tempBuffer), context.epHcclBuffer_[i]);
+    }
+
+    // 与单算子路径对齐：tag = groupEp + opName，确保 HCCL 引擎 context 已创建并写入相同内容
+    const std::string mc2ContextTag = groupEp + opName;
+    if (!EnsureEngineCtx(hcclHandle, mc2ContextTag, &context, sizeof(context))) {
+        return false;
     }
 
     contextData.resize(sizeof(Mc2Aclnn::Mc2MoeContext) / sizeof(int32_t));
     memcpy(contextData.data(), &context, sizeof(Mc2Aclnn::Mc2MoeContext));
     hcclBuffSize = static_cast<int64_t>(hcclBuffSize_);
-    OPS_LOG_I(CONTEXT_NAME, "Build Mc2MoeContext data success, groupEp %s, hcclBuffSize %ld.", groupEp.c_str(),
-              hcclBuffSize);
+    OPS_LOG_I(CONTEXT_NAME,
+              "Build Mc2MoeContext data success, groupEp %s, hcclBuffSize %ld, epRankId %u, epRankSize %u, "
+              "rankSizePerServer %u.",
+              groupEp.c_str(), hcclBuffSize, context.epRankId, epRankSize_, rankSizePerServer_);
     return true;
 }
 
@@ -378,13 +426,15 @@ bool Mc2MoeGraphContext::GetContextData(const std::string &groupEp, const std::s
     if (iter != manager.contextCache_.end()) {
         contextData = iter->second.first;
         hcclBuffSize = iter->second.second;
-        OPS_LOG_D(CONTEXT_NAME, "Found cached Mc2MoeContext data, contextKey %s.", contextKey.c_str());
+        OPS_LOG_I(CONTEXT_NAME, "Found cached Mc2MoeContext data, contextKey %s, hcclBuffSize %ld.",
+                  contextKey.c_str(), hcclBuffSize);
         return true;
     }
+    OPS_LOG_I(CONTEXT_NAME, "No cached Mc2MoeContext data, build new one, contextKey %s.", contextKey.c_str());
     // 与 aclnn 场景（mc2_context.cpp 每次调用新建实例）对齐：
     // 每次构建使用全新实例，layerMap 等中间状态不跨通信域复用，缓存仅保存最终产物
     Mc2MoeGraphContext builder;
-    if (!builder.BuildContextData(groupEp, contextData, hcclBuffSize)) {
+    if (!builder.BuildContextData(groupEp, opName, contextData, hcclBuffSize)) {
         return false;
     }
     manager.contextCache_.emplace(contextKey, std::make_pair(contextData, hcclBuffSize));
@@ -414,7 +464,9 @@ ge::graphStatus Mc2MoeGraphContext::CreateContextConstNode(ge::Graph &graph, con
     constOp.SetAttr("value", tensorValue);
 
     constNode = graph.AddNodeByOp(constOp);
-    OPS_LOG_I(CONTEXT_NAME, "Context Const node %s added, data len %zu.", constName.c_str(), dataLen);
+    OPS_LOG_I(CONTEXT_NAME,
+              "Context Const node %s added, data len %zu, epRankId %d, rankSizePerServer %d.", constName.c_str(),
+              dataLen, contextData[0], contextData[1]);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -429,9 +481,11 @@ bool Mc2MoeGraphContext::FindContextConstNode(ge::Graph &graph, const std::strin
             constName == name.GetString() && gNode.GetType(type) == ge::GRAPH_SUCCESS &&
             type.GetString() != nullptr && std::string(type.GetString()) == "Const") {
             constNode = gNode;
+            OPS_LOG_I(CONTEXT_NAME, "Found existing context Const node %s.", constName.c_str());
             return true;
         }
     }
+    OPS_LOG_I(CONTEXT_NAME, "Context Const node %s not found, will create.", constName.c_str());
     return false;
 }
 } // namespace ops

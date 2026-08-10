@@ -296,6 +296,8 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
         }
 
         mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
+        OP_LOGI("rank %u, hccl buffer 0x%lx, epHcclBuffer 0x%lx.", i, reinterpret_cast<uint64_t>(tempBuffer),
+                mc2ContextStruct->epHcclBuffer_[i]);
     }
     OP_LOGD("Get HCCL CommResource success");
     return ACLNN_SUCCESS;
@@ -480,7 +482,6 @@ aclnnStatus Mc2Context::ValidateContextTag(const std::string &mc2ContextTag)
     return ACLNN_SUCCESS;
 }
 
-
 aclnnStatus Mc2Context::CheckContextCache(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
                                           const CommEngine &engine, void *&ctx, uint64_t &hcclBuffSize)
 {
@@ -508,6 +509,7 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     void *ctx = nullptr;
     CommProtocol protocol;
     std::string mc2ContextTag = std::string(groupEp) + std::string(opName);
+    OP_LOGI("mc2ContextTag is: %s", mc2ContextTag.c_str());
     CommEngine engine = CommEngine::COMM_ENGINE_AIV;
     hcclBuffSize = 0; // Default to 0, will be updated in CheckContextCache
 
