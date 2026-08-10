@@ -81,6 +81,25 @@ struct QuantBasicApiMMTiling {
 #pragma pack(pop)
 
 #pragma pack(push, 8)
+struct NoQuantBasicApiMMTiling {
+    uint32_t m = 0;
+    uint32_t n = 0;
+    uint32_t k = 0;
+    uint32_t baseM = 0;
+    uint32_t baseN = 0;
+    uint32_t baseK = 0;
+    uint32_t mL1 = 0;
+    uint32_t nL1 = 0;
+    uint32_t kL1 = 0;
+    uint32_t usedCoreNum = 0;
+    uint8_t isBias = 0;
+    uint8_t dbL0C = 1;
+    uint8_t l1BufferStage = 2;
+    uint8_t isHf32 = 0;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 8)
 struct GMMWeightQuantParam {
     uint32_t groupNum = 0;
     uint32_t coreNum = 0;
@@ -122,7 +141,7 @@ struct GMMQuantBasicApiTilingData {
 #pragma pack(push, 8)
 struct GMMNoQuantTilingData {
     GMMNoQuantBaseParams gmmNoQuantParam;
-    TCubeTiling mmTilingData;
+    NoQuantBasicApiMMTiling mmTilingData;
 };
 #pragma pack(pop)
 

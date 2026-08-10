@@ -378,27 +378,21 @@ void GroupedNoQuantMatmulTiling::SetGMMTiling()
 
 void GroupedNoQuantMatmulTiling::SetMatMulTiling()
 {
-    tilingData_.mmTilingData.isBias = static_cast<int32_t>(hasBias_);
-    tilingData_.mmTilingData.M = m_;
-    tilingData_.mmTilingData.N = n_;
-    tilingData_.mmTilingData.Ka = k_;
-    tilingData_.mmTilingData.Kb = k_;
-    tilingData_.mmTilingData.singleCoreM = m_;
-    tilingData_.mmTilingData.singleCoreN = baseN_;
-    tilingData_.mmTilingData.singleCoreK = k_;
-    tilingData_.mmTilingData.dbL0A = DB_SIZE;
-    tilingData_.mmTilingData.dbL0B = DB_SIZE;
-    tilingData_.mmTilingData.dbL0C = 1;
+    tilingData_.mmTilingData.isBias = static_cast<uint8_t>(hasBias_);
+    tilingData_.mmTilingData.m = m_;
+    tilingData_.mmTilingData.n = n_;
+    tilingData_.mmTilingData.k = k_;
     tilingData_.mmTilingData.baseM = baseM_;
     tilingData_.mmTilingData.baseN = baseN_;
     tilingData_.mmTilingData.baseK = baseK_;
-    tilingData_.mmTilingData.stepKa = stepKa_;
-    tilingData_.mmTilingData.stepKb = stepKb_;
-    tilingData_.mmTilingData.depthA1 = depthA1_;
-    tilingData_.mmTilingData.depthB1 = depthB1_;
-    tilingData_.mmTilingData.stepM = 1;
-    tilingData_.mmTilingData.stepN = 1;
+    tilingData_.mmTilingData.mL1 = baseM_;
+    tilingData_.mmTilingData.nL1 = baseN_;
+    tilingData_.mmTilingData.kL1 = baseK_ * std::min(stepKa_, stepKb_);
     tilingData_.mmTilingData.usedCoreNum = usedCoreNum_;
+    tilingData_.mmTilingData.dbL0C = 1;
+    // TODO: low-level tiling does not expose these two decisions yet.
+    tilingData_.mmTilingData.l1BufferStage = DB_SIZE;
+    tilingData_.mmTilingData.isHf32 = 0;
 }
 
 bool GroupedNoQuantMatmulTiling::SetCustomParam(gert::TilingContext *context)
@@ -637,11 +631,13 @@ void GroupedNoQuantMatmulTiling::PrintTilingResult(const gert::TilingContext *co
             tilingData_.gmmNoQuantParam.nTailCnt, tilingData_.gmmNoQuantParam.weightNoL2Cache);
 
     OP_LOGI(context->GetNodeName(),
-            "GMM MatMul Tiling result: usedCoreNum: %d, baseM: %d, baseN: %d, baseK: %d, stepKa: %d,"
-            "stepKb: %d, depthA1: %d, depthB1: %d",
+            "GMM MatMul Tiling result: usedCoreNum: %u, baseM: %u, baseN: %u, baseK: %u, mL1: %u,"
+            "nL1: %u, kL1: %u, l1BufferStage: %u, dbL0C: %u, isHf32: %u",
             tilingData_.mmTilingData.usedCoreNum, tilingData_.mmTilingData.baseM, tilingData_.mmTilingData.baseN,
-            tilingData_.mmTilingData.baseK, tilingData_.mmTilingData.stepKa, tilingData_.mmTilingData.stepKb,
-            tilingData_.mmTilingData.depthA1, tilingData_.mmTilingData.depthB1);
+            tilingData_.mmTilingData.baseK, tilingData_.mmTilingData.mL1, tilingData_.mmTilingData.nL1,
+            tilingData_.mmTilingData.kL1, static_cast<uint32_t>(tilingData_.mmTilingData.l1BufferStage),
+            static_cast<uint32_t>(tilingData_.mmTilingData.dbL0C),
+            static_cast<uint32_t>(tilingData_.mmTilingData.isHf32));
 }
 
 uint64_t TilingKeyBuilder::GenTilingKey() const

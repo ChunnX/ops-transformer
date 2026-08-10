@@ -464,9 +464,11 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
     REGISTER_TILING_DEFAULT(GMMNoQuantTilingData);
     if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) {
         if constexpr (wFormat == CubeFormat::NZ) {
-            GmmNoQuantAswt<layout::RowMajor, layout::Nz>(x, weight, bias, groupList, y, tiling);
+            GmmNoQuantAswt<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn>(x, weight, bias, groupList, y,
+                                                                                 tiling);
         } else {
-            GmmNoQuantAswt<layout::RowMajor, layout::RowMajor>(x, weight, bias, groupList, y, tiling);
+            GmmNoQuantAswt<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(x, weight, bias, groupList, y,
+                                                                                    tiling);
         }
     } else if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_TRANS) { // x transposed
         if ASCEND_IS_AIV {
@@ -474,16 +476,20 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
         }
         if ASCEND_IS_AIC {
             if constexpr (wFormat == CubeFormat::NZ) {
-                GmmNoQuantAswt<layout::ColumnMajor, layout::Nz>(x, weight, bias, groupList, y, tiling);
+                GmmNoQuantAswt<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NZLayoutPtn>(x, weight, bias, groupList, y,
+                                                                                     tiling);
             } else {
-                GmmNoQuantAswt<layout::ColumnMajor, layout::RowMajor>(x, weight, bias, groupList, y, tiling);
+                GmmNoQuantAswt<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(x, weight, bias, groupList,
+                                                                                        y, tiling);
             }
         }
     } else if constexpr (NO_QUANT_B_TRANS == GMM_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) { // weight transposed
         if constexpr (wFormat == CubeFormat::NZ) {
-            GmmNoQuantAswt<layout::RowMajor, layout::Zn>(x, weight, bias, groupList, y, tiling);
+            GmmNoQuantAswt<AscendC::Te::NDExtLayoutPtn, AscendC::Te::ZNLayoutPtn>(x, weight, bias, groupList, y,
+                                                                                 tiling);
         } else {
-            GmmNoQuantAswt<layout::RowMajor, layout::ColumnMajor>(x, weight, bias, groupList, y, tiling);
+            GmmNoQuantAswt<AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn>(x, weight, bias, groupList, y,
+                                                                                    tiling);
         }
     }
 #endif

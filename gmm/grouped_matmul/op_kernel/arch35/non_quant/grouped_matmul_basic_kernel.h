@@ -16,13 +16,13 @@
 #ifndef NON_QUANT_GROUPED_MATMUL_BASIC_KERNEL_ACT
 #define NON_QUANT_GROUPED_MATMUL_BASIC_KERNEL_ACT
 
-#include "cgmct/kernel/kernel_grouped_matmul.h"
-#include "cgmct/block/block_scheduler_grouped_matmul_aswt.h"
+#include "blaze/epilogue/block/block_epilogue_empty.h"
+#include "blaze/gemm/block/block_mmad_matmul_basic.h"
+#include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
+#include "blaze/gemm/kernel/kernel_grouped_matmul_basic.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 #include "../../grouped_matmul_utils.h"
 
-using namespace Cgmct::Gemm;
-using namespace Cgmct::Gemm::Kernel;
 using GMMNoQuantTilingData = GroupedMatmulTilingData::GMMNoQuantTilingData;
 
 namespace GROUPED_MATMUL {
@@ -30,51 +30,47 @@ namespace GROUPED_MATMUL {
 constexpr uint64_t DIM_NUM = 2UL;
 constexpr uint64_t BUF_SIZE = 3UL;
 
-template <typename layoutA, typename layoutB>
+template <typename LayoutA, typename LayoutB>
 __aicore__ inline void GmmNoQuantAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR groupList, GM_ADDR y,
                                       GM_ADDR tiling)
 {
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, gmmNoQuantParam, gmmBaseParams_, tiling);
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, mmTilingData, mmTilingData_, tiling);
-    // 定义L1和L0的TileShape
-    using L1TileShape = AscendC::Shape<_0, _0, _0>;
-    using L0TileShape = AscendC::Shape<_0, _0, _0>;
-    // 定义矩阵的类型和布局
     using AType = DTYPE_X;
     using BType = DTYPE_X;
     using CType = DTYPE_Y;
     using BiasType = DTYPE_BIAS;
-    using LayoutA = layoutA;
-    using LayoutB = layoutB;
-    using LayoutC = layout::RowMajor;
-    using LayoutBias = layout::RowMajor;
-    // 定义scheduler类型
-    using BlockScheduler = GroupedMatmulAswtScheduler;
-    // 定义MMAD类型
-    using BlockMmad =
-        Block::BlockGroupedMatmulBuilder<AType, LayoutA, BType, LayoutB, CType, LayoutC, BiasType, LayoutBias,
-                                         L1TileShape, L0TileShape, BlockScheduler, MatmulMultiBlockBias<>>;
+    using LayoutC = AscendC::Te::NDExtLayoutPtn;
+    using LayoutBias = AscendC::Te::NDExtLayoutPtn;
+    using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using BlockMmadPolicy = Blaze::Gemm::MatmulMultiBlockBasic<>;
+    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
+                                                    BiasType, LayoutBias>;
     // 定义BlockEpilogue类型
-    using BlockEpilogue = Block::BlockEpilogueEmpty;
+    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueEmpty;
     // 定义shape的形状，tuple保存 m n k batch
-    using ProblemShape = MatmulShape;
     // 定义Kernel类型
-    using GroupedMatmulKernel = Kernel::KernelGroupedMatmul<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
+    using GroupedMatmulKernel =
+        Blaze::Gemm::Kernel::GroupedMatmulBasic<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename GroupedMatmulKernel::Params;
-    using GMMTiling = typename GroupedMatmulKernel::GMMTiling;
-    GMMTiling gmmParams{gmmBaseParams_.groupNum,       gmmBaseParams_.groupType,    gmmBaseParams_.groupListType,
-                        gmmBaseParams_.singleX,        gmmBaseParams_.singleWeight, gmmBaseParams_.singleY,
-                        gmmBaseParams_.hasBias,        gmmBaseParams_.mTailCnt,     gmmBaseParams_.nTailCnt,
-                        gmmBaseParams_.weightNoL2Cache};
-    gmmParams.matmulTiling = &mmTilingData_;
-    Params params = {// template shape, gmm shape can not get now
-                     {1, 1, 1, 1},
+    // TODO: l1BufferStage and isHf32 are not exposed by the current no-quant tiling context.
+    // The host fills conservative defaults (2 and 0) until the low-level tiling adaptation provides them.
+    Params params = {{mmTilingData_.m, mmTilingData_.n, mmTilingData_.k, 1},
                      // mmad args
-                     {x, weight, y, bias, groupList},
+                     {x, weight, y, gmmBaseParams_.hasBias != 0 ? bias : nullptr, groupList, nullptr,
+                      mmTilingData_.mL1, mmTilingData_.nL1,
+                      mmTilingData_.kL1, mmTilingData_.baseM, mmTilingData_.baseN, mmTilingData_.baseK,
+                      mmTilingData_.l1BufferStage, mmTilingData_.dbL0C, nullptr},
                      // epilogue args
                      {},
-                     // gmm tiling data
-                     gmmParams};
+                     // group list and GMM parameters
+                     groupList,
+                     {gmmBaseParams_.groupNum, gmmBaseParams_.groupType, gmmBaseParams_.groupListType,
+                      static_cast<uint8_t>(gmmBaseParams_.singleX),
+                      static_cast<uint8_t>(gmmBaseParams_.singleWeight),
+                      static_cast<uint8_t>(gmmBaseParams_.singleY), static_cast<uint8_t>(gmmBaseParams_.hasBias),
+                      static_cast<uint8_t>(gmmBaseParams_.weightNoL2Cache), mmTilingData_.isHf32}};
     GroupedMatmulKernel op;
     op(params);
 }
