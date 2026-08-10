@@ -101,7 +101,10 @@ aclnnStatus aclnnCompressorGetWorkspaceSize(
     int64_t          coff,
     int64_t          cacheMode,
     int64_t          stateCacheStrideDim0,
+    bool             gradEnabled,
     const aclTensor *cmpKvOut,
+    const aclTensor *softmaxScoreOut,
+    const aclTensor *kvOut,
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
@@ -133,12 +136,16 @@ aclnnStatus aclnnCompressor(
     | coff | 可选输入 | 表示是否进行overlap数据重排。 |取值范围为[1, 2]。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。| INT32          | -         |-|-|
     | cacheMode | 可选输入 | 表示state_cache的存储模式。 |取值范围为[1, 2]；1表示连续buffer，2表示循环buffer。| INT32          | -         |-|-|
     | stateCacheStrideDim0 | 可选输入 | 表示state_cache的0轴stride。 |-| INT32     | -         |-|-|
+    | gradEnabled | 可选输入 | 表示是否导出softmax\_score/kv中间结果。 | 取值范围为true/false，默认false。当值为true时，算子输出softmax\_score与kv中间结果（供反向传播使用）；值为false时softmax\_score与kv输出内容无效。 | BOOL | - | - | - |
     | cmpKv | 输出 | 表示压缩后的数据。 |支持B=0,S=0,T=0的空Tensor。| FLOAT16、BFLOAT16         | ND          |BS合轴：[min(T,T//cmp_ratio+B),D]、BS非合轴：[B,ceil(S/cmp_ratio),D]|×|
+    | softmaxScore | 输出 | 公式中的$S^\prime$，表示分组softmax结果。 | 仅在gradEnabled为true时输出有效；支持B=0,S=0,T=0的空Tensor。 | FLOAT32 | ND | BS合轴：[min(T,T//cmp_ratio+B), coff*cmp_ratio, D]、BS非合轴：[B,ceil(S/cmp_ratio),coff*cmp_ratio,D] | × |
+    | kv | 输出 | 公式中的$(S_H)_i$，表示softmax结果与kv\_state的Hadamard乘积。 | 仅在gradEnabled为true时输出有效；支持B=0,S=0,T=0的空Tensor。 | FLOAT32 | ND | 同softmaxScore | × |
 
 <!-- npu="A3" id6 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
  cacheMode不支持输入2，且不支持0轴非连续。
  cmp_ratio仅支持2/4/8/16/32/64/128
+ gradEnabled不支持为true。
 
 <!-- end id6 -->
 - **返回值**
