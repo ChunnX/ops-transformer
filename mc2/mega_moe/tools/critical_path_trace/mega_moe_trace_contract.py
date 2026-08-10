@@ -175,7 +175,9 @@ def resolve_record_words(
     for term in terms:
         count_field = term.get("count_header_field")
         count = header.get(count_field)
-        if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+        # Optional diagnostic sections may be disabled while their protocol
+        # fields remain present, in which case the corresponding capacity is 0.
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
             raise ContractError(
                 f"cannot resolve record_words from header field {count_field!r}: {count!r}"
             )
@@ -332,15 +334,12 @@ def expected_header_from_metadata(
     }
     if trace_name == "mega-moe-a8w4-critical-path" and protocol_version >= 2:
         max_output_size = _required_meta_int(metadata, "max_output_size")
-        max_gmm2_tiles = ceil_div(max_output_size, 256) * ceil_div(h, 256)
-        combine_tiles_per_expert_per_core = ceil_div(max_gmm2_tiles, aic_count)
         gmm1_waves_per_expert = ceil_div(max_output_size, 256)
         expected.update(
             {
                 "max_output_size": max_output_size,
-                "combine_tiles_per_expert_per_core": combine_tiles_per_expert_per_core,
-                "combine_tile_capacity": moe_experts
-                * combine_tiles_per_expert_per_core,
+                "combine_tiles_per_expert_per_core": 0,
+                "combine_tile_capacity": 0,
                 "gmm1_waves_per_expert": gmm1_waves_per_expert,
                 "gmm1_wave_capacity": moe_experts * gmm1_waves_per_expert,
             }
@@ -430,14 +429,8 @@ def validate_capture_contract(
             "moe_experts_per_rank": expected["moe_experts_per_rank"]
         }
         if "max_output_size" in expected:
-            preflight_tiles_per_expert = ceil_div(
-                ceil_div(expected["max_output_size"], 256)
-                * ceil_div(expected["h"], 256),
-                preflight_aic_count,
-            )
-            preflight_record_header["combine_tile_capacity"] = (
-                expected["moe_experts_per_rank"] * preflight_tiles_per_expert
-            )
+            preflight_tiles_per_expert = 0
+            preflight_record_header["combine_tile_capacity"] = 0
             preflight_record_header["gmm1_wave_capacity"] = expected[
                 "gmm1_wave_capacity"
             ]

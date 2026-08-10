@@ -128,13 +128,10 @@ def _critical_path_trace_validate_capacity():
         protocol_version = 3
         stage_count = 3
         header_words = 35
-        max_gmm2_tiles = (
-            (max_output_size + 255) // 256
-        ) * ((int(h) + 255) // 256)
-        combine_tiles_per_expert_per_core = (
-            max_gmm2_tiles + aic_count - 1
-        ) // aic_count
-        combine_tile_capacity = expert_count * combine_tiles_per_expert_per_core
+        # Per-tile GMM2-to-Combine tracing is temporarily disabled to keep the
+        # trace record bounded for large shapes. The protocol fields remain 0.
+        combine_tiles_per_expert_per_core = 0
+        combine_tile_capacity = 0
         gmm1_waves_per_expert = (max_output_size + 255) // 256
         gmm1_wave_capacity = expert_count * gmm1_waves_per_expert
     elif trace_profile == "a8w8-wave":

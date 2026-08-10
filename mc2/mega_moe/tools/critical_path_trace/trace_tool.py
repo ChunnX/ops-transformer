@@ -492,9 +492,9 @@ def _resolve_record_words(
                 f"{term_location} requires positive words_per_count and count_header_field"
             )
         count = header.get(count_field)
-        if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
             raise ContractError(
-                f"{location} cannot resolve positive header field {count_field!r}: {count!r}"
+                f"{location} cannot resolve non-negative header field {count_field!r}: {count!r}"
             )
         result += per_count * count
     return result
@@ -516,9 +516,9 @@ def _resolve_field_count(
     if not isinstance(count_field, str) or not count_field:
         raise ContractError(f"{location} dynamic count requires header_field")
     count = header.get(count_field)
-    if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+    if not isinstance(count, int) or isinstance(count, bool) or count < 0:
         raise ContractError(
-            f"{location} cannot resolve positive header field {count_field!r}: {count!r}"
+            f"{location} cannot resolve non-negative header field {count_field!r}: {count!r}"
         )
     return count
 
@@ -565,9 +565,9 @@ def _resolve_field_word(
                 f"{term_location} requires positive words_per_count and count_header_field"
             )
         count = header.get(count_field)
-        if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
             raise ContractError(
-                f"{location} cannot resolve positive header field {count_field!r}: {count!r}"
+                f"{location} cannot resolve non-negative header field {count_field!r}: {count!r}"
             )
         result += words_per_count * count
     return result

@@ -96,6 +96,8 @@ private:
                                                   const DispatchBufferConfig &bufferConfig);
     template <AddrUpdateMode Mode>
     __aicore__ inline bool UpdateGroupParams(ExpertLoopState &state, uint32_t expertIdx, uint64_t sendCnt = 0);
+    template <AddrUpdateMode Mode>
+    __aicore__ inline bool UpdateGroupParamsFromPublishedCount(ExpertLoopState &state, uint32_t expertIdx);
     __aicore__ inline bool UpdateSharedGroupParams(ExpertLoopState &state, uint32_t expertIdx);
     template <AddrUpdateMode Mode>
     __aicore__ inline void UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
@@ -373,12 +375,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
     const uint64_t carrierBytes = static_cast<uint64_t>(m_) * static_cast<uint64_t>(k_) * sizeof(OutputType);
     criticalPathTraceCarrierWords_ = carrierBytes / sizeof(uint32_t);
-    const uint32_t maxGmm2TilesPerExpert =
-        static_cast<uint32_t>(Ops::Base::CeilDiv(static_cast<int64_t>(maxOutputSize_),
-                                                 static_cast<int64_t>(L1_TILE_M_256))) *
-        Ops::Base::CeilDiv(k_, static_cast<uint32_t>(L1_TILE_N));
-    criticalPathTraceCombineTilesPerExpert_ = Ops::Base::CeilDiv(maxGmm2TilesPerExpert, aicNum_);
-    criticalPathTraceCombineTileCapacity_ = moeExpertPerRank_ * criticalPathTraceCombineTilesPerExpert_;
+    // 逐 tile 的 GMM2-to-Combine wait/work 记录数量会随 shape 快速增长，暂时关闭并保留
+    // 协议字段为 0；GMM2/Combine 仍保留 expert 级起止打点。
+    criticalPathTraceCombineTilesPerExpert_ = 0U;
+    criticalPathTraceCombineTileCapacity_ = 0U;
     criticalPathTraceGmm1WavesPerExpert_ =
         static_cast<uint32_t>(Ops::Base::CeilDiv(static_cast<int64_t>(maxOutputSize_),
                                                  static_cast<int64_t>(GMM1_TILE_M)));
@@ -1326,7 +1326,8 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
                 }
             }
 
-            uint64_t offsetInCnt = expertIdx * 8 * aicNum_ + 8 * blockIdx_;
+            uint64_t offsetInCnt = static_cast<uint64_t>(INT32_PER_256B) *
+                                   (static_cast<uint64_t>(expertIdx) * aicNum_ + blockIdx_);
             DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
                 expertRevNumsGlobalTensor_[offsetInCnt]);
             Get<M_VALUE>(state.problemShape) = expertRevNumsGlobalTensor_.GetValue(offsetInCnt);
@@ -1334,7 +1335,8 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
             Get<M_VALUE>(state.problemShape) = sendCnt;
         }
     } else if constexpr (Mode == AddrUpdateMode::GMM2) {
-        uint64_t offsetInCnt = expertIdx * 8 * aicNum_ + 8 * blockIdx_;
+        uint64_t offsetInCnt = static_cast<uint64_t>(INT32_PER_256B) *
+                               (static_cast<uint64_t>(expertIdx) * aicNum_ + blockIdx_);
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
             expertRevNumsGlobalTensor_[offsetInCnt]);
         Get<M_VALUE>(state.problemShape) = expertRevNumsGlobalTensor_.GetValue(offsetInCnt);
@@ -1344,6 +1346,56 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
         return false;
     }
     return true;
+}
+
+// A8W4 wave 路径专用：独立推进 state，并从 SendCntCal 已发布的 GM 槽读取 count。
+// GMM1 的 AIC/AIV0 先等待跨核 flag；AIV1 与生产者同核，直接 bypass DCache 读取。
+template <TemplateMegaMoeTypeClass>
+template <AddrUpdateMode Mode>
+__aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParamsFromPublishedCount(
+    ExpertLoopState &state, uint32_t expertIdx)
+{
+    if (expertIdx != 0) {
+        uint64_t m = Get<M_VALUE>(state.problemShape);
+        uint64_t n = Get<N_VALUE>(state.problemShape);
+        uint64_t k = Get<K_VALUE>(state.problemShape);
+        state.expertBeforeCnt += m;
+        Get<IDX_A_OFFSET>(state.baseOffset) += m * k / A_ELEMS_PER_BYTE;
+        Get<IDX_B_OFFSET>(state.baseOffset) += n * k / B_ELEMS_PER_BYTE;
+        auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+        Get<IDX_A_SCALE_OFFSET>(state.baseOffset) += m * scaleK;
+        Get<IDX_B_SCALE_OFFSET>(state.baseOffset) += n * scaleK;
+        Get<IDX_C_OFFSET>(state.baseOffset) += m * n / SWIGLU_N_HALF / C_ELEMS_PER_BYTE;
+        Get<IDX_C_SCALE_OFFSET>(state.baseOffset) +=
+            m * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+        Get<IDX_FLAG_OFFSET>(state.baseOffset) += 1;
+        Get<IDX_B2_OFFSET>(state.baseOffset) += k * n / SWIGLU_N_HALF / B_ELEMS_PER_BYTE;
+        Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) +=
+            k * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+        Get<IDX_Y2_OFFSET>(state.baseOffset) += m * k;
+        Get<IDX_M_OFFSET>(state.baseOffset) += m;
+        Get<IDX_GMM1_OFFSET>(state.baseOffset) += m * n;
+        Get<IDX_GMM2_OFFSET>(state.baseOffset) += m * k;
+    }
+
+    uint64_t offsetInCnt = static_cast<uint64_t>(INT32_PER_256B) *
+                           (static_cast<uint64_t>(expertIdx) * aicNum_ + blockIdx_);
+    __gm__ int32_t *expertTokenCount =
+        reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.expertRevTokenNumsPtr) + offsetInCnt;
+    if constexpr (Mode == AddrUpdateMode::GMM1) {
+        if (subBlockIdx_ == 0) {
+            __gm__ int32_t *sendCntFlag = (__gm__ int32_t *)params_.workspaceInfo.flagSendCntCalToUpdParamsPtr +
+                                          static_cast<uint64_t>(expertIdx) * aicNum_ * INT_CACHELINE +
+                                          static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
+            while (AscendC::ReadGmByPassDCache(sendCntFlag) == 0) {
+                int64_t st = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - st < 100) {
+                }
+            }
+        }
+    }
+    Get<M_VALUE>(state.problemShape) = AscendC::ReadGmByPassDCache(expertTokenCount);
+    return Get<M_VALUE>(state.problemShape) != 0;
 }
 
 // =====================================================================================================
@@ -2241,34 +2293,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     ExpertLoopState dispatchState{initShape, initOffset, 0};
     ExpertLoopState gmm1State{initShape, initOffset, 0};
 
-    // Dispatch-prefetch count forwarding（无成员变量耦合）：
-    //   SendCntCal 将 expert token 数写入 nextSendCnt；
-    //   循环顶部 nextSendCnt → curSendCnt 显式转发；
-    //   GMM1 consumer 始终读 curSendCnt。
-    uint64_t curSendCnt = 0;  // 当前 expert 的 sendCnt（GMM1 consumer 使用）
-    uint64_t nextSendCnt = 0; // 下一 expert 的 sendCnt（dispatch prefetch 算出）
+    // SendCntCal 保留 out 参数；A8W4 wave 后续从已发布的 GM 槽读取 count。
+    uint64_t nextSendCnt = 0;
     int32_t vecSetSyncCom = 0;
 
-    // 预调度 expert 0。
-    if constexpr (g_coreType == AIV) {
-        if (subBlockIdx_ == 1) {
-#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-            BeginDispatchTrace(0U);
-#endif
-            SendCntCal(0, nextSendCnt);
-            if (UpdateGroupParams<AddrUpdateMode::GMM1>(dispatchState, 0, nextSendCnt)) {
-                UpdateGlobalBuffer<AddrUpdateMode::GMM1>(dispatchAddrInfo, dispatchState, 0);
-                MetaInfoCalAndDispatch(dispatchAddrInfo, 0, dispatchBufferConfig);
-            }
-#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-            EndDispatchTrace();
-#endif
-        }
-    }
-
-    // ===== A8W4 wave 化（2 专家/wave）：GMM1(wave) → GMM2(wave) 逐 wave 交错；非 A8W4（A4W4/generic）与 A8W4-prefetch 保持原两段式 =====
+    // ===== A8W4 动态 wave：GMM1(wave) → GMM2(wave) 逐 wave 交错；非 A8W4 与 A8W4-prefetch 保持原两段式 =====
     // A8W4 的 GMM 走 gmTileSequence、不递增 vecSetSyncCom，故 EndSync/EndGMM2Sync 对 A8W4 均为 no-op（见设计文档 4.4）。
-    // dispatch 预取沿用逐专家 +1（GMM1(e) 期间预取 e+1，天然跨 wave 边界）；combine 触发复用 gmm2CombineSyncCounter。
+    // dispatch 独立游标推进（AIV1）：count 落 GM 后由 consumer 读取，当前 GMM1 期间预取下一完整 wave。
+    // combine 触发复用 gmm2CombineSyncCounter。
     // TopkWeightsPrefetch 路径的 allDone + SyncAll 为真同步，wave 化暂缓（保持原两段式）。
     if constexpr (ENABLE_A8W4 && !TopkWeightsPrefetch) {
         vecSetSyncCom = 0;
@@ -2278,39 +2310,82 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
         // 按 GMM1 tile 动态切波（约束 B/C）：每核 ≥2 tile ⟺ 每波 GMM1 tile 总数 ≥ 2×aicNum；
         // 每专家 GMM1 tile = ⌈M_e/256⌉ × ⌈hiddenDim/256⌉（GMM1_TILE_M = L1_TILE_M_256 = 256，GMM1 N 维 = hiddenDim_）。
-        const uint32_t gmm1TileN = Ops::Base::CeilDiv(hiddenDim_, L1_TILE_N);
+        const uint32_t gmm1TileN = static_cast<uint32_t>(
+            Ops::Base::CeilDiv(hiddenDim_, static_cast<int64_t>(L1_TILE_N)));
         const uint32_t waveTileTarget = 2U * aicNum_;
 
-        uint32_t waveBegin = 0;
-        while (waveBegin < moeExpertPerRank_) {
-            uint32_t waveEnd = waveBegin; // 当前 wave 的专家区间 [waveBegin, waveEnd)
-            uint32_t waveGmm1Tiles = 0;   // 当前 wave 累计 GMM1 tile
+        uint32_t dispatchExpert = 0; // AIV1 下一个尚未 dispatch 的 expert
 
-            // ---- GMM1(wave)：逐专家 GMM1 + dispatch 预取 e+1；累计 GMM1 tile，≥2A 且剩余 ≥2 专家时切波
-            //      （末波并入：剩余不足 2 个专家时不再切，残余并入当前 wave，消除"1 专家末波"空泡）----
-            for (uint32_t localExpertId = waveBegin; localExpertId < moeExpertPerRank_; ++localExpertId) {
-                curSendCnt = nextSendCnt; // forward: dispatch(e) → GMM1(e)
-
-                // Prefetch dispatch expert e+1，与当前 GMM1 consumer expert e 并发。
-                if constexpr (g_coreType == AIV) {
-                    if (subBlockIdx_ == 1 && localExpertId + 1 < moeExpertPerRank_) {
+        // 启动阶段：AIV1 先 dispatch 第一个完整 wave。AIC/AIV0 可以直接进入下方 GMM1
+        // 循环，并在 count-ready flag 上等待当前 expert 的 count。
+        if constexpr (g_coreType == AIV) {
+            if (subBlockIdx_ == 1) {
+                uint32_t dispatchWaveGmm1Tiles = 0;
+                while (dispatchExpert < moeExpertPerRank_) {
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-                        BeginDispatchTrace(localExpertId + 1U);
+                    BeginDispatchTrace(dispatchExpert);
 #endif
-                        SendCntCal(localExpertId + 1, nextSendCnt);
-                        if (UpdateGroupParams<AddrUpdateMode::GMM1>(dispatchState, localExpertId + 1, nextSendCnt)) {
+                    SendCntCal(dispatchExpert, nextSendCnt);
+                    if (UpdateGroupParamsFromPublishedCount<AddrUpdateMode::GMM1>(dispatchState, dispatchExpert)) {
+                        UpdateGlobalBuffer<AddrUpdateMode::GMM1>(dispatchAddrInfo, dispatchState, dispatchExpert);
+                        MetaInfoCalAndDispatch(dispatchAddrInfo, dispatchExpert, dispatchBufferConfig);
+                        dispatchWaveGmm1Tiles +=
+                            Ops::Base::CeilDiv(static_cast<uint32_t>(nextSendCnt),
+                                               static_cast<uint32_t>(GMM1_TILE_M)) *
+                            gmm1TileN;
+                    }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                    EndDispatchTrace();
+#endif
+                    ++dispatchExpert;
+                    if (dispatchWaveGmm1Tiles >= waveTileTarget &&
+                        moeExpertPerRank_ - dispatchExpert >= 2U) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        uint32_t currentWaveBegin = 0;
+        while (currentWaveBegin < moeExpertPerRank_) {
+            // AIV1 在 AIC/AIV0 执行当前 GMM1 时，使用空闲窗口 dispatch 下一个完整 wave。
+            if constexpr (g_coreType == AIV) {
+                if (subBlockIdx_ == 1 && dispatchExpert < moeExpertPerRank_) {
+                    uint32_t dispatchWaveGmm1Tiles = 0;
+                    while (dispatchExpert < moeExpertPerRank_) {
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                        BeginDispatchTrace(dispatchExpert);
+#endif
+                        SendCntCal(dispatchExpert, nextSendCnt);
+                        if (UpdateGroupParamsFromPublishedCount<AddrUpdateMode::GMM1>(dispatchState,
+                                                                                    dispatchExpert)) {
                             UpdateGlobalBuffer<AddrUpdateMode::GMM1>(dispatchAddrInfo, dispatchState,
-                                                                     localExpertId + 1);
-                            MetaInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1, dispatchBufferConfig);
+                                                                     dispatchExpert);
+                            MetaInfoCalAndDispatch(dispatchAddrInfo, dispatchExpert, dispatchBufferConfig);
+                            dispatchWaveGmm1Tiles +=
+                                Ops::Base::CeilDiv(static_cast<uint32_t>(nextSendCnt),
+                                                   static_cast<uint32_t>(GMM1_TILE_M)) *
+                                gmm1TileN;
                         }
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
                         EndDispatchTrace();
 #endif
+                        ++dispatchExpert;
+                        if (dispatchWaveGmm1Tiles >= waveTileTarget &&
+                            moeExpertPerRank_ - dispatchExpert >= 2U) {
+                            break;
+                        }
                     }
                 }
+            }
 
-                // GMM1 consumer 消费 expert e（空专家跳过 GMM1 与 tile 累计，但 wave 区间上界在循环尾部统一推进）。
-                if (UpdateGroupParams<AddrUpdateMode::GMM1>(gmm1State, localExpertId, curSendCnt)) {
+            // AIC/AIV0 直接进入当前 GMM1，并由 dispatch-to-GMM1 row flag 保证输入就绪；
+            // AIV1 预取完下一 wave 后加入当前 wave 的 epilogue。各核在同一循环中
+            // 根据已发布 count 累计 GMM1 tile，因此会得到相同的 currentWaveEnd。
+            uint32_t currentWaveEnd = currentWaveBegin;
+            uint32_t currentWaveGmm1Tiles = 0;
+            for (uint32_t localExpertId = currentWaveBegin; localExpertId < moeExpertPerRank_; ++localExpertId) {
+                if (UpdateGroupParamsFromPublishedCount<AddrUpdateMode::GMM1>(gmm1State, localExpertId)) {
                     UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State, localExpertId);
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
                     if (CriticalPathTracePtr() != nullptr) {
@@ -2353,21 +2428,21 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                         }
                     }
 #endif
-                    // 累计本专家 GMM1 tile（空专家不计入）。
-                    uint32_t gmm1M = Get<M_VALUE>(gmm1State.problemShape);
-                    waveGmm1Tiles += Ops::Base::CeilDiv(static_cast<uint32_t>(gmm1M), static_cast<uint32_t>(GMM1_TILE_M)) * gmm1TileN;
+                    currentWaveGmm1Tiles +=
+                        Ops::Base::CeilDiv(static_cast<uint32_t>(Get<M_VALUE>(gmm1State.problemShape)),
+                                           static_cast<uint32_t>(GMM1_TILE_M)) *
+                        gmm1TileN;
                 }
-                // 推进 wave 区间上界（空/非空都推进，防"全空 wave"下 waveEnd 不前进 → while 死循环）；
-                // 达到 2×aicNum 且剩余专家 ≥2 时切波（末波并入前一波，避免单专家空泡）。
-                waveEnd = localExpertId + 1U; // wave 上界 = 已遍历专家 + 1
-                if (waveGmm1Tiles >= waveTileTarget && (moeExpertPerRank_ - waveEnd) >= 2U) {
+                currentWaveEnd = localExpertId + 1U;
+                if (currentWaveGmm1Tiles >= waveTileTarget &&
+                    moeExpertPerRank_ - currentWaveEnd >= 2U) {
                     break;
                 }
             }
 
             // ---- GMM2(wave)：GMM2 + combine（combine 触发复用 gmm2CombineSyncCounter，逐 row-group 提前开）----
-            for (uint32_t expertIdx = waveBegin; expertIdx < waveEnd; expertIdx++) {
-                if (!UpdateGroupParams<AddrUpdateMode::GMM2>(gmm2State, expertIdx)) {
+            for (uint32_t expertIdx = currentWaveBegin; expertIdx < currentWaveEnd; expertIdx++) {
+                if (!UpdateGroupParamsFromPublishedCount<AddrUpdateMode::GMM2>(gmm2State, expertIdx)) {
                     continue;
                 }
                 UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State, expertIdx);
@@ -2415,7 +2490,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 }
 #endif
             }
-            waveBegin = waveEnd;
+            currentWaveBegin = currentWaveEnd;
         }
 
         // A8W4 收尾：token 数（所有 wave 结束后）；EndSync/EndGMM2Sync 对 A8W4 为 no-op，保留无副作用
@@ -2428,6 +2503,23 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             EndGMM2Sync(vecSetSyncCom, gmm2PingPongIdx_);
         }
     } else {
+    uint64_t curSendCnt = 0;
+    // 原路径预调度 expert 0，并继续通过 cur/nextSendCnt 转发 count。
+    if constexpr (g_coreType == AIV) {
+        if (subBlockIdx_ == 1) {
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+            BeginDispatchTrace(0U);
+#endif
+            SendCntCal(0, nextSendCnt);
+            if (UpdateGroupParams<AddrUpdateMode::GMM1>(dispatchState, 0, nextSendCnt)) {
+                UpdateGlobalBuffer<AddrUpdateMode::GMM1>(dispatchAddrInfo, dispatchState, 0);
+                MetaInfoCalAndDispatch(dispatchAddrInfo, 0, dispatchBufferConfig);
+            }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+            EndDispatchTrace();
+#endif
+        }
+    }
     for (uint32_t localExpertId = 0; localExpertId < moeExpertPerRank_; localExpertId++) {
         curSendCnt = nextSendCnt; // forward: dispatch(e) → GMM1(e)
 
