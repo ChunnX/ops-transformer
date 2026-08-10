@@ -6,11 +6,11 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
 
 /*!
  * \file quant_flash_attn_block_cube_fullquant_fp8.h
- * \brief QuantFlashAttn arch35 GQA FP8 Fullquant Cube Block（由FIA GQA迁移适配）
+ * \brief
  */
 
 #ifndef QUANT_FLASH_ATTN_BLOCK_CUBE_FULLQUANT_FP8_H_
@@ -37,7 +37,7 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
           DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0,
-          bool useDn = true>
+          bool useDn = false>
 class QuantFlashAttnBlockCubeGqaFp8 {
 public:
 
@@ -74,8 +74,8 @@ public:
     static constexpr bool USE_DN = useDn;
     static constexpr uint8_t KV_LAYOUT = 4;
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, true};
-    static constexpr GmFormat Q_FORMAT = GmFormat::NGTD;// GetQueryGmFormat<layout>();
-    static constexpr GmFormat KV_FORMAT = GmFormat::PA_BnNBsD; //GetKVGmFormat<layout, KV_LAYOUT, PAGE_ATTENTION>();
+    static constexpr GmFormat Q_FORMAT = GmFormat::NGTD;
+    static constexpr GmFormat KV_FORMAT = GmFormat::PA_BnNBsD;
 
     using Q_T = INPUT_T;
     using KV_T = INPUT_T;
@@ -95,7 +95,7 @@ public:
 
     static constexpr bool IS_TND_LAYOUT =
         (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD);
-    static constexpr bool Q_NEEDS_WZH = true; // (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND);
+    static constexpr bool Q_NEEDS_WZH = true;  // (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND);
     static constexpr bool KV_NEEDS_WZH = (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND);
 
     static constexpr ActualSeqLensMode Q_PARSER_MODE = GetQActSeqMode<LAYOUT>();
@@ -146,7 +146,7 @@ public:
 
     const ConstInfoX &constInfo_;
 
-    /*============================================================================== */
+    /* ============================================================================= */
     __aicore__ inline QuantFlashAttnBlockCubeGqaFp8(ConstInfoX &constInfo) : constInfo_(constInfo){};
 
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
@@ -171,7 +171,7 @@ public:
         // L0A B C 当前写死
         l0aBufferManager_.Init(tPipe_, 65536);  // 64 * 1024
         l0bBufferManager_.Init(tPipe_, 65536);  // 64 * 1024
-        l0cBufferManager_.Init(tPipe_, 262144); // 256 * 1024
+        l0cBufferManager_.Init(tPipe_, 262144);  // 256 * 1024
         mmL0ABuffers_.Init(l0aBufferManager_, 32 * 1024);
         mmL0BBuffers_.Init(l0bBufferManager_, 32 * 1024);
 
@@ -358,14 +358,15 @@ public:
         MMParam param =
             MakeMMParam((uint32_t)s2CalcSize, (uint32_t)runInfo.actMSize, (uint32_t)constInfo_.dSize, false, true);
         MatmulFull<Q_T, KV_T, T, 256, 128, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType>(
-            mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_, mm1ResL0C.GetTensor<T>(), param);
+            mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
+            mm1ResL0C.GetTensor<T>(), param);
 
         if (unlikely(runInfo.isLastS2Loop)) {
             mm1B.Set<HardEvent::MTE1_MTE2>();
         }
         mm1A.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
         mm1ResL0C.Set<HardEvent::M_FIX>();  // 通知
-        mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
+        mm1ResL0C.Wait<HardEvent::M_FIX>();  // 等待L0C
 
         outputBuf.WaitCrossCore();
 
@@ -433,7 +434,7 @@ public:
 
         outputBuf.SetCrossCore();
     }
-}; // QuantFlashAttnBlockCubeGqaFp8
+};  // QuantFlashAttnBlockCubeGqaFp8
 
 template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
