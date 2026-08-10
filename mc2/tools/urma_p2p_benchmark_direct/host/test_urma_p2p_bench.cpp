@@ -124,44 +124,60 @@ static BenchCtx *setup_ctx(HcclComm comm, uint32_t rank, uint32_t world, uint64_
     ctx.worldSize = world;
 
     const std::string tag = "urma_p2p_bench_" + std::to_string(rank);
+    fprintf(stderr, "[INFO] rank %u: [1/6] aclrtMalloc workspace (%lu bytes)\n", rank, bufBytes);
     aclError ar = aclrtMalloc(&ctx.workspaceDev, bufBytes, ACL_MEM_MALLOC_HUGE_FIRST);
     if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMalloc workspace failed: %d\n", rank, ar); return nullptr; }
     aclrtMemset(ctx.workspaceDev, bufBytes, 0, bufBytes);
+    fprintf(stderr, "[INFO] rank %u: [1/6] workspace=%p\n", rank, ctx.workspaceDev);
 
+    fprintf(stderr, "[INFO] rank %u: [2/6] HcclCommMemReg\n", rank);
     CommMem mem;
     mem.type = COMM_MEM_TYPE_DEVICE;
     mem.addr = ctx.workspaceDev;
     mem.size = bufBytes;
     HcclResult r = HcclCommMemReg(comm, tag.c_str(), &mem, &ctx.workspaceMemHandle);
     if (r != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: HcclCommMemReg failed: %d\n", rank, r); return nullptr; }
+    fprintf(stderr, "[INFO] rank %u: [2/6] memHandle=%p\n", rank, ctx.workspaceMemHandle);
 
+    fprintf(stderr, "[INFO] rank %u: [3/6] build_channel_descs\n", rank);
     std::vector<HcclChannelDesc> descs;
     std::vector<size_t> descSlots;
     r = build_channel_descs(comm, rank, world, &ctx.workspaceMemHandle, descs, descSlots, ctx.numLayers);
     if (r != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: build_channel_descs failed: %d\n", rank, r); return nullptr; }
+    fprintf(stderr, "[INFO] rank %u: [3/6] descs=%zu layers=%u\n", rank, descs.size(), ctx.numLayers);
 
+    fprintf(stderr, "[INFO] rank %u: [4/6] HcclChannelAcquire (waiting for peer...)\n", rank);
     ctx.channels.resize(descs.size(), 0);
     r = HcclChannelAcquire(comm, CommEngine::COMM_ENGINE_AIV,
                            descs.data(), static_cast<uint32_t>(descs.size()),
                            ctx.channels.data());
     if (r != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: HcclChannelAcquire failed: %d\n", rank, r); return nullptr; }
+    fprintf(stderr, "[INFO] rank %u: [4/6] HcclChannelAcquire done\n", rank);
 
     const size_t tableSlots = static_cast<size_t>(ctx.numLayers) * 1 * world;
     ctx.channelPtrsHost.resize(tableSlots, 0);
 
+    fprintf(stderr, "[INFO] rank %u: [5/6] resolve channel ptrs\n", rank);
     using GetPtrByHandleFn = HcommResult (*)(const ChannelHandle *, uint32_t, ChannelPtr *);
     auto getPtrByHandle = reinterpret_cast<GetPtrByHandleFn>(dlsym(RTLD_DEFAULT, "HcommChannelGetPtrByHandle"));
     if (getPtrByHandle != nullptr) {
+        fprintf(stderr, "[INFO] rank %u: [5/6] using HcommChannelGetPtrByHandle (old ABI)\n", rank);
         std::vector<ChannelPtr> ptrs(ctx.channels.size(), 0);
         HcommResult hr = getPtrByHandle(ctx.channels.data(),
                                         static_cast<uint32_t>(ctx.channels.size()), ptrs.data());
         if (hr != HCOMM_SUCCESS_VALUE) { fprintf(stderr, "[ERROR] rank %u: HcommChannelGetPtrByHandle failed: %d\n", rank, hr); return nullptr; }
         for (size_t i = 0; i < descs.size(); ++i) ctx.channelPtrsHost[descSlots[i]] = ptrs[i];
     } else {
+        fprintf(stderr, "[INFO] rank %u: [5/6] using direct handle (new ABI)\n", rank);
         for (size_t i = 0; i < descs.size(); ++i)
             ctx.channelPtrsHost[descSlots[i]] = static_cast<ChannelPtr>(ctx.channels[i]);
     }
+    for (size_t i = 0; i < ctx.channelPtrsHost.size(); ++i) {
+        fprintf(stderr, "[INFO] rank %u: [5/6] slot[%zu]=0x%llx\n", rank, i,
+                (unsigned long long)ctx.channelPtrsHost[i]);
+    }
 
+    fprintf(stderr, "[INFO] rank %u: [6/6] alloc table+state GM\n", rank);
     size_t tableBytes = tableSlots * sizeof(ChannelPtr);
     ar = aclrtMalloc(&ctx.channelPtrTableDev, tableBytes, ACL_MEM_MALLOC_HUGE_FIRST);
     if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMalloc table failed: %d\n", rank, ar); return nullptr; }
@@ -172,8 +188,8 @@ static BenchCtx *setup_ctx(HcclComm comm, uint32_t rank, uint32_t world, uint64_
     if (ar != ACL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u: aclrtMalloc state failed: %d\n", rank, ar); return nullptr; }
     aclrtMemset(ctx.stateGmDev, stateBytes, 0, stateBytes);
 
-    fprintf(stderr, "[INFO] rank=%u world=%u numLayers=%u tableSlots=%zu descs=%zu\n",
-            rank, world, ctx.numLayers, tableSlots, descs.size());
+    fprintf(stderr, "[INFO] rank %u: [6/6] tableDev=%p stateDev=%p\n",
+            rank, ctx.channelPtrTableDev, ctx.stateGmDev);
     return &ctx;
 }
 
@@ -211,20 +227,31 @@ int Sample(void *arg)
     }
 
     aclrtSetDevice(static_cast<int32_t>(physicalDev));
+    aclrtContext context;
+    aclrtCreateContext(&context, physicalDev);
+
+    HcclCommConfig config;
+    HcclCommConfigInit(&config);
+    config.hcclDeterministic = 1;
+    config.hcclBufferSize = 200;
+    snprintf(config.hcclCommName, COMM_NAME_MAX_LENGTH - 1, "urma_p2p_bench");
 
     HcclComm hcclComm;
-    HcclResult hr = HcclCommInitRootInfo(devCount, tctx->rootInfo, rank, &hcclComm);
+    HcclResult hr = HcclCommInitRootInfoConfig(devCount, tctx->rootInfo, rank, &config, &hcclComm);
     if (hr != HCCL_SUCCESS) { fprintf(stderr, "[ERROR] rank %u (dev %u): HcclCommInitRootInfo failed: %d\n", rank, physicalDev, hr); return hr; }
     fprintf(stderr, "[INFO] rank %u (dev %u): HCCL comm init success, peer=rank %u\n", rank, physicalDev, peerRank);
 
+    fprintf(stderr, "[INFO] rank %u: setting up context...\n", rank);
     BenchCtx *ctx = setup_ctx(hcclComm, rank, devCount, args->bufBytes);
     if (ctx == nullptr) return -1;
+    fprintf(stderr, "[INFO] rank %u: context setup done\n", rank);
 
     uint32_t slot = peerRank;
     if (slot >= ctx->channelPtrsHost.size() || ctx->channelPtrsHost[slot] == 0) {
         fprintf(stderr, "[ERROR] rank %u (dev %u): no URMA channel to peer rank %u\n", rank, physicalDev, peerRank);
         return -1;
     }
+    fprintf(stderr, "[INFO] rank %u: channel OK, slot=%u\n", rank, slot);
 
     aclrtStream stream;
     aclrtCreateStream(&stream);
@@ -245,9 +272,12 @@ int Sample(void *arg)
     tilingHost.stateStride  = stateStride;
 
     barrier(devCount);
+    fprintf(stderr, "[INFO] rank %u: barrier passed, starting kernel loop\n", rank);
 
     for (uint32_t iter = 0; iter < args->warmup + args->loopCount; ++iter) {
+        if (iter == 0) fprintf(stderr, "[INFO] rank %u: iter 0: calling aclrtSynchronizeStream (pre-launch)\n", rank);
         aclrtSynchronizeStream(stream);
+        if (iter == 0) fprintf(stderr, "[INFO] rank %u: iter 0: launching kernel (sqeMode=%u)\n", rank, args->sqeMode);
         switch (args->sqeMode) {
             case 0:
                 sqe_write_bench_launch((uint32_t)BLOCK_NUM, stream,
@@ -268,7 +298,9 @@ int Sample(void *arg)
                 fprintf(stderr, "[ERROR] invalid sqe_mode %u\n", args->sqeMode);
                 return -1;
         }
+        if (iter == 0) fprintf(stderr, "[INFO] rank %u: iter 0: kernel launched, calling aclrtSynchronizeStream (post-launch)\n", rank);
         aclrtSynchronizeStream(stream);
+        if (iter == 0) fprintf(stderr, "[INFO] rank %u: iter 0: synchronize done\n", rank);
 
         if (iter < args->warmup) continue;
 
@@ -296,6 +328,7 @@ int Sample(void *arg)
     aclrtFree(timingGm);
     HcclCommDestroy(hcclComm);
     aclrtDestroyStream(stream);
+    aclrtDestroyContext(context);
     aclrtResetDevice(physicalDev);
     return 0;
 }
@@ -349,10 +382,12 @@ int main(int argc, char *argv[])
 
     aclInit(nullptr);
 
+    aclrtSetDevice(0);
     void *rootInfoBuf = nullptr;
     aclrtMallocHost(&rootInfoBuf, sizeof(HcclRootInfo));
     HcclRootInfo *rootInfo = (HcclRootInfo *)rootInfoBuf;
     HcclGetRootInfo(rootInfo);
+    aclrtResetDevice(0);
 
     std::vector<std::thread> threads(g_args.devCount);
     std::vector<ThreadContext> args(g_args.devCount);
