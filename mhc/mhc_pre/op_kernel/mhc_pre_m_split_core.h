@@ -199,6 +199,7 @@ public:
                             }
                             PipeBarrier<PIPE_V>();
                             gammaQue.FreeTensor(gammaLocal);
+                            VToMTE3Sync();
                         }
 
                         // 5. CopyOut X_cast to workspace (gamma*x if hasGamma, else original x)
@@ -518,7 +519,7 @@ public:
                     mixes2Local = mixesQue2.DeQue<float>();
 
                     combFragLocal = combFragQue.AllocTensor<float>();
-                    MulABLastDimBrcInline<float, false>(mxies02ReduceLocal, mixes2Local, rsqrtLocal, rowBrcbLocal0,
+                    MulABLastDimBrcInline<float, false>(mxies02ReduceLocal, mixes2Local, squareSumOutLocal, rowBrcbLocal0,
                                                         curRowFactor, resSize);
                     mixesQue2.FreeTensor(mixes2Local);
                     Muls(mxies02ReduceLocal, mxies02ReduceLocal, hcScaleGm.GetValue(NUM_TWO), curRowFactor * resSize);
@@ -588,7 +589,6 @@ private:
     TBuf<QuePosition::VECCALC> hcBrcbBuf1;
     TBuf<QuePosition::VECCALC> reduceBuf;
 
-    TBuf<QuePosition::VECCALC> rsqrtBuf;
     TBuf<QuePosition::VECCALC> squareReduceBuf;
     TBuf<QuePosition::VECCALC> mxies01ReduceBuf;
     TBuf<QuePosition::VECCALC> mxies02ReduceBuf;
@@ -600,7 +600,6 @@ private:
 
     LocalTensor<float> mxies01Local;
     LocalTensor<float> mixes2Local;
-    LocalTensor<float> rsqrtLocal;
     LocalTensor<T> xLocal;
     LocalTensor<T> yLocal;
     LocalTensor<float> postLocal;
