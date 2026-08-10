@@ -38,6 +38,7 @@ constexpr uint32_t TOPK_3K = 3072;
 constexpr uint32_t TOPK_4K = 4096;
 constexpr uint32_t TOPK_5K = 5120;
 constexpr uint32_t TOPK_6K = 6144;
+constexpr uint32_t DUPSIZE = 256; // duplicate所需额外地址空间
 
 template <typename QLIV2T>
 class QLIV2Vector {
@@ -210,11 +211,11 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
     valueOutLocal_ = mrgValueBuf_.Get<bfloat16_t>();
 
-    pipe->InitBuffer(indicesOutBuf_, (topkCountAlign256_ + 64) * sizeof(uint32_t));
+    pipe->InitBuffer(indicesOutBuf_, topkCountAlign256_ * sizeof(uint32_t) + DUPSIZE);
     // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
 
-    pipe->InitBuffer(scoreOutBuf_, (topkCountAlign256_ + 64) * sizeof(SCORE_T));
+    pipe->InitBuffer(scoreOutBuf_, topkCountAlign256_ * sizeof(SCORE_T) + DUPSIZE);
     // (topkCountAlign256_ + 64) * sizeof(SCORE_T) 64:duplicate刷-1额外空间
     scoreOutLocal_ = scoreOutBuf_.Get<SCORE_T>();
 
@@ -244,7 +245,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitLDBuffers(TPipe *pipe,
     //   fixedBytes = topk内部固定区 + 三输出buffer的+64余量(见下方命名常量)
 
     // topk内部固定区: histograms(256)+idxHigh(256)+idxLow(256)+nkValue(64)，均为uint32
-    constexpr uint32_t TOPK_FIXED_BYTES = (3 * 256 + 64) * sizeof(uint32_t);
+    constexpr uint32_t TOPK_FIXED_BYTES = (3 * 256) * sizeof(uint32_t) + DUPSIZE;
     // 三输出buffer的+64余量(用于duplicate刷-1/刷0): indicesOut(uint32)+scoreOut(SCORE_T)+valueOut(bf16)
     constexpr uint32_t OUTPUT_PAD_BYTES = 64 * (sizeof(uint32_t) + sizeof(SCORE_T) + sizeof(bfloat16_t));
     const uint32_t fixedBytes = TOPK_FIXED_BYTES + OUTPUT_PAD_BYTES;
