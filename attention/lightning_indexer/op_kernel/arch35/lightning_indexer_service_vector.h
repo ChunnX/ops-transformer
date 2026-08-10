@@ -162,7 +162,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
     mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
     // returnvalue
     if (topkCount_ <= 2048) {
-        pipe->InitBuffer(valueOutBuf_, (topkCountAlign256_ + 64) * sizeof(K_T));
+        pipe->InitBuffer(valueOutBuf_, (topkCountAlign256_ + 128) * sizeof(K_T));
         valueOutLocal_ = valueOutBuf_.Get<K_T>();
     } else { // sparseCount > 2k时，复用return value相关UB
         valueOutLocal_ = mrgValueBuf_.Get<K_T>(); // returnValue float
