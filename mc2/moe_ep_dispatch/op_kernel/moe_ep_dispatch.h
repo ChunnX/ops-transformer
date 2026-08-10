@@ -182,6 +182,11 @@ private:
     uint32_t startRankId_{0};
     uint32_t endRankId_{0};
     uint32_t rankNumPerCore_{0};
+    uint32_t copyRankStart_{0};
+    uint32_t copyRankNum_{0};
+    uint32_t channelIndex_{0};
+    uint32_t coreIndexInGroup_{0};
+    uint32_t groupSize_{1};
     uint32_t hAlignSize_{0};
     uint32_t kAlignSize_{0};
     uint32_t axisKAlign_{0};
@@ -204,6 +209,7 @@ private:
     uint64_t payloadStashWinOffset_{0};
     uint64_t dstRankWinOffset_{0};
     uint64_t dstStateWinOffset_{0};
+    bool coreAssigned_{false};
 
     DataCopyParams statusCopyParams_;
     DataCopyParams clearStatusCopyParams_;
@@ -514,29 +520,25 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communication()
 {
-    uint32_t copyRankStart = 0;
-    uint32_t copyRankNum = 0;
-    uint32_t channelIndex = 0;
-    uint32_t coreIndexInGroup = 0;
-    uint32_t groupSize = 1;
-    if (!GetCoreAssignment(copyRankStart, copyRankNum, channelIndex, coreIndexInGroup, groupSize)) {
+    coreAssigned_ = GetCoreAssignment(copyRankStart_, copyRankNum_, channelIndex_, coreIndexInGroup_, groupSize_);
+    if (!coreAssigned_) {
         return;
     }
 
     GlobalTensor<uint64_t> numSendGMTensorU64;
-    numSendGMTensorU64.SetGlobalBuffer((__gm__ uint64_t *)(sendCntWorkspaceAddr_ + copyRankStart * WIN_ADDR_ALIGN));
+    numSendGMTensorU64.SetGlobalBuffer((__gm__ uint64_t *)(sendCntWorkspaceAddr_ + copyRankStart_ * WIN_ADDR_ALIGN));
     LocalTensor<uint64_t> sendCntPerRankU64 = sendCntRankBuf_.Get<uint64_t>();
-    DataCopyParams cntCopyParams = {static_cast<uint16_t>(copyRankNum), 1U,
+    DataCopyParams cntCopyParams = {static_cast<uint16_t>(copyRankNum_), 1U,
                                     static_cast<uint16_t>(STATE_STRIDE), 0U};
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     DataCopy(sendCntPerRankU64, numSendGMTensorU64, cntCopyParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 
-    for (uint32_t dstRankId = copyRankStart; dstRankId < copyRankStart + copyRankNum; ++dstRankId) {
-        if (channelIndex != 0) {
+    for (uint32_t dstRankId = copyRankStart_; dstRankId < copyRankStart_ + copyRankNum_; ++dstRankId) {
+        if (channelIndex_ != 0) {
             continue;
         }
-        uint32_t notifyStride = (dstRankId - copyRankStart) * INT64_UB_STRIDE;
+        uint32_t notifyStride = (dstRankId - copyRankStart_) * INT64_UB_STRIDE;
         uint32_t srcOffset = dstRankId * moeExpertNumPerRank_;
         uint64_t notifyVal = sendCntPerRankU64.GetValue(notifyStride);
         // 计算目标窗口地址:
@@ -546,7 +548,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
         GM_ADDR srcWorkspaceAddr = sendCntWorkspaceAddr_ + cntFlagWinSize_ + srcOffset * sizeof(int32_t);
 
         if (dstRankId != epRankId_) { // 远端 使用URMA发送 count + state
-            uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId, channelsPerRank_);
+            uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId, channelsPerRank_, channelIndex_);
             hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, URMA_CFG>(commHandle, remoteCountAddr,
                                      srcWorkspaceAddr, moeNumPerRankSize_, notifyAddr, notifyVal);
             continue;
@@ -736,28 +738,23 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteAddrIn
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemoteWindow()
 {
-    uint32_t copyRankStart = 0;
-    uint32_t copyRankNum = 0;
-    uint32_t channelIndex = 0;
-    uint32_t coreIndexInGroup = 0;
-    uint32_t groupSize = 1;
-    if (!GetCoreAssignment(copyRankStart, copyRankNum, channelIndex, coreIndexInGroup, groupSize)) {
+    if (!coreAssigned_) {
         return;
     }
 
     GlobalTensor<uint64_t> slotAddrGMTensor;
     LocalTensor<int32_t> sendNumPerRankTensor = sendCntRankBuf_.Get<int32_t>();
-    DataCopyParams sendCntCopyParams = {static_cast<uint16_t>(copyRankNum), 1U,
+    DataCopyParams sendCntCopyParams = {static_cast<uint16_t>(copyRankNum_), 1U,
                                         static_cast<uint16_t>(STATE_STRIDE), 0U};
-    DataCopy(sendNumPerRankTensor, sendCntPerRankGMTensor_[copyRankStart * WIN_ADDR_ALIGN / sizeof(int32_t)],
+    DataCopy(sendNumPerRankTensor, sendCntPerRankGMTensor_[copyRankStart_ * WIN_ADDR_ALIGN / sizeof(int32_t)],
              sendCntCopyParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 
-    for (uint32_t dstRankId = copyRankStart; dstRankId < copyRankStart + copyRankNum; ++dstRankId) {
-        uint32_t sendTokenNum = sendNumPerRankTensor.GetValue((dstRankId - copyRankStart) * UB_STRIDE + 1);
+    for (uint32_t dstRankId = copyRankStart_; dstRankId < copyRankStart_ + copyRankNum_; ++dstRankId) {
+        uint32_t sendTokenNum = sendNumPerRankTensor.GetValue((dstRankId - copyRankStart_) * UB_STRIDE + 1);
         GM_ADDR notifyAddr = GetWinAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) + dstStateWinOffset_;
         if (unlikely(dstRankId == epRankId_)) {
-            if (channelIndex == 0) {
+            if (channelIndex_ == 0) {
                 GlobalTensor<uint64_t> statusGMTensor;
                 statusGMTensor.SetGlobalBuffer((__gm__ uint64_t *)(notifyAddr));
                 statusGMTensor.SetValue(0, 1);
@@ -766,18 +763,18 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
             }
             continue;
         }
-        uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId, channelsPerRank_, channelIndex);
+        uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId, channelsPerRank_, channelIndex_);
         GM_ADDR remoteWinBaseAddr = GetWinAddrByRankId(mc2Context_, dstRankId, winDataOffset_) + dstRankWinOffset_;
         if (sendTokenNum == 0) {
-            if (channelIndex == 0) {
+            if (channelIndex_ == 0) {
                 hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, URMA_CFG>(commHandle, remoteWinBaseAddr,
                                          payloadStashWinAddr_, UB_ALIGN, notifyAddr, 1);
             }
             continue;
         }
 
-        uint32_t tokensPerChannel = Ceil(sendTokenNum, groupSize);
-        uint32_t tokenStart = coreIndexInGroup * tokensPerChannel;
+        uint32_t tokensPerChannel = Ceil(sendTokenNum, groupSize_);
+        uint32_t tokenStart = coreIndexInGroup_ * tokensPerChannel;
         if (tokenStart >= sendTokenNum) {
             continue;
         }
