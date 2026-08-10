@@ -13,7 +13,9 @@
 #include "hccl/hcomm_primitives.h"
 #include "hccl/hcomm_res_defs.h"
 #include "hccl/hccl_types.h"
-#include "urma_p2p_bench.h"
+#include "../kernel/sqe_write/sqe_write_launch.h"
+#include "../kernel/sqe_write_with_notify/sqe_write_with_notify_launch.h"
+#include "../kernel/hcomm/hcomm_launch.h"
 
 constexpr uint32_t SYS_CYCLE_FREQ_MHZ = 1000U;
 constexpr double NS_PER_CYCLE = 1.0;

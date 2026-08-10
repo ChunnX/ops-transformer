@@ -1,19 +1,19 @@
-#ifndef SQE_WRITE_KERNEL_H
-#define SQE_WRITE_KERNEL_H
+#ifndef SQE_WRITE_WITH_NOTIFY_KERNEL_H
+#define SQE_WRITE_WITH_NOTIFY_KERNEL_H
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #endif
 #include "kernel_operator.h"
-#include "urma_p2p_bench_tiling.h"
-#include "aiv_urma_sqe.h"
-#include "aiv_urma_channel_decode.h"
+#include "../common/urma_p2p_bench_tiling.h"
+#include "aiv_urma_sqe_mc2.h"
+#include "../common/aiv_urma_channel_decode.h"
 
 namespace UrmaP2pBench {
 
 using namespace CommWithUrmaImpl;
 
-class SqeWriteBenchOp {
+class SqeWriteWithNotifyBenchOp {
 public:
     __aicore__ inline void Init(GM_ADDR channelPtrTable, GM_ADDR stateGm,
                                 GM_ADDR timingGm, AscendC::TPipe* pipe,
@@ -26,7 +26,7 @@ public:
         aivId_ = AscendC::GetBlockIdx();
         channelPtrTable_.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t*>(channelPtrTable));
         pipe_->InitBuffer(decodeScratch_, DECODE_SCRATCH_SIZE);
-        pipe_->InitBuffer(sqeBuf_, WRITE_SQE_SIZE);
+        pipe_->InitBuffer(sqeBuf_, WRITE_WITH_NOTIFY_SQE_SIZE);
         pipe_->InitBuffer(cqeBuf_, WRITE_CQE_SIZE);
         pipe_->InitBuffer(timingBuf_, TIMING_SLOTS * sizeof(int64_t));
     }
@@ -60,7 +60,7 @@ public:
             }
         }
 
-        uint32_t maxN = (ch.sqDepth >= 3U) ? (ch.sqDepth - 2U) : 1U;
+        uint32_t maxN = (ch.sqDepth >= 3U) ? ((ch.sqDepth - 2U) / 2U) : 1U;
         uint32_t n = numSqe;
         if (n > maxN) n = maxN;
         if (n < 1U)   n = 1U;
@@ -80,11 +80,8 @@ public:
         }
 
         AscendC::LocalTensor<uint8_t> sqe = sqeBuf_.Get<uint8_t>();
-        GenerateCommWriteSQE(sqe);
-        FillCommWriteSQEFromChannel(sqe, ch.tpID,
-                                    ch.remoteEID0, ch.remoteEID1,
-                                    ch.remoteEID2, ch.remoteEID3,
-                                    ch.remoteTokenId, ch.remoteTokenValue);
+        GenerateCommWriteWithNotifySQE(sqe);
+        FillCommWriteWithNotifySQEFromChannel(sqe, ch);
 
         const uint32_t S = static_cast<uint32_t>(sqeBytes);
         AscendC::LocalTensor<int64_t> timingLocal = timingBuf_.Get<int64_t>();
@@ -93,9 +90,11 @@ public:
 
         for (uint32_t i = 0; i < n; ++i) {
             uint64_t off = (static_cast<uint64_t>(i) % numSlots) * sqeBytes;
-            SetCommWriteSQE(sqe, ch.localBufAddr + off, ch.remoteBufAddr + off, S, ch.localTokenId, 0);
+            SetCommWriteWithNotifySQE(sqe,
+                ch.localBufAddr + off, ch.remoteBufAddr + off, S,
+                ch.remoteBufAddr, WDN_DEFAULT_NOTIFY_DATA, 0);
             SyncFunc<AscendC::HardEvent::S_MTE3>();
-            PutSQEToRing(ch.sqVa, ch.wqeSize, ch.sqDepth, sqe, sqPi, sqPiLinear);
+            PutWriteWithNotifySQEToRing(ch.sqVa, ch.wqeSize, ch.sqDepth, sqe, sqPi, sqPiLinear);
             SyncFunc<AscendC::HardEvent::MTE3_S>();
             if ((i + 1U) % dbInterval == 0U) {
                 RingJFSDoorbell(ch.sqDbVa, sqPiLinear);
@@ -104,10 +103,11 @@ public:
 
         timingLocal.SetValue(1, AscendC::GetSystemCycle());
 
-        SetCommWriteSQE(sqe, ch.localBufAddr, ch.remoteBufAddr,
-                        COMPLETION_SQE_BYTES, ch.localTokenId, 1);
+        SetCommWriteWithNotifySQE(sqe, ch.localBufAddr, ch.remoteBufAddr,
+            COMPLETION_SQE_BYTES,
+            ch.remoteBufAddr, WDN_DEFAULT_NOTIFY_DATA, 1);
         SyncFunc<AscendC::HardEvent::S_MTE3>();
-        PutSQEToRing(ch.sqVa, ch.wqeSize, ch.sqDepth, sqe, sqPi, sqPiLinear);
+        PutWriteWithNotifySQEToRing(ch.sqVa, ch.wqeSize, ch.sqDepth, sqe, sqPi, sqPiLinear);
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         RingJFSDoorbell(ch.sqDbVa, sqPiLinear);
 
@@ -144,4 +144,4 @@ private:
 
 }  // namespace UrmaP2pBench
 
-#endif  // SQE_WRITE_KERNEL_H
+#endif  // SQE_WRITE_WITH_NOTIFY_KERNEL_H

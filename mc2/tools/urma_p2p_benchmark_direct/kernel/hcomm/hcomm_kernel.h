@@ -5,8 +5,8 @@
 #include "basic_api/kernel_basic_intf.h"
 #endif
 #include "kernel_operator.h"
-#include "urma_p2p_bench_tiling.h"
-#include "aiv_urma_channel_decode.h"
+#include "../common/urma_p2p_bench_tiling.h"
+#include "../common/aiv_urma_channel_decode.h"
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/hcomm/hcomm.h"
 
