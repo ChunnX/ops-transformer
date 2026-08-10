@@ -23,7 +23,7 @@ def _discover_ops_from_entry_points():
         eps = entry_points(group="cann_ops_transformer.ops")
         for ep in eps:
             ops[ep.name] = ep.value
-    except Exception:
+    except (ImportError, RuntimeError, AttributeError):
         pass
     return ops
 
@@ -101,3 +101,55 @@ try:
     del _ep_ops, _dir_ops, _all_ops, _name, _target
 except NameError:
     pass
+
+
+import sys as _sys
+
+_legacy_map = {
+    "causal_conv1d_fn": "mamba.causal_conv1d",
+    "causal_conv1d_update": "mamba.causal_conv1d",
+    "comm_context": "mc2.common",
+    "compressor": "attention.compressor",
+    "deep_ep": "mc2.moe_distribute_dispatch",
+    "dense_lightning_indexer_kl_loss_grad": "attention.dense_lightning_indexer_kl_loss_grad",
+    "dense_lightning_indexer_softmax_lse": "attention.dense_lightning_indexer_softmax_lse",
+    "elastic_buffer": "mc2.engram_fetch",
+    "flash_attn": "attention.flash_attn",
+    "grouped_matmul_activation_quant": "gmm.grouped_matmul_activation_quant",
+    "indexer_quant_cache": "attention.indexer_quant_cache",
+    "inplace_partial_rotary_mul": "posembedding.inplace_partial_rotary_mul",
+    "inplace_partial_rotary_mul_backward": "posembedding.inplace_partial_rotary_mul_grad",
+    "kv_compress_epilog": "attention.kv_compress_epilog",
+    "lightning_indexer": "attention.lightning_indexer",
+    "mega_moe": "mc2.mega_moe",
+    "mhc_post": "mhc.mhc_post",
+    "mhc_post_backward": "mhc.mhc_post_backward",
+    "mhc_pre_sinkhorn": "mhc.mhc_pre_sinkhorn",
+    "mhc_pre_sinkhorn_backward": "mhc.mhc_pre_sinkhorn_backward",
+    "mixed_quant_sparse_flash_mla": "attention.mixed_quant_sparse_flash_mla",
+    "moe_finalize_routing": "moe.moe_finalize_routing",
+    "moe_token_permute": "moe.moe_token_permute",
+    "qkv_rms_norm_rope_cache_with_k_scale": "posembedding.qkv_rms_norm_rope_cache_with_k_scale",
+    "quant_compressor": "attention.quant_compressor",
+    "quant_flash_attn": "attention.quant_flash_attn",
+    "quant_lightning_indexer": "attention.quant_lightning_indexer",
+    "quant_sparse_flash_mla": "attention.quant_sparse_flash_mla",
+    "scatter_pa_kv_cache_with_k_scale": "attention.scatter_pa_kv_cache_with_k_scale",
+    "sparse_flash_mla": "attention.sparse_flash_mla",
+    "sparse_flash_mla_grad": "attention.sparse_flash_mla_grad",
+    "sparse_flash_mla_softmax_l1_norm": "attention.sparse_flash_mla_softmax_l1_norm",
+    "sparse_lightning_indexer_kl_loss_grad": "attention.sparse_lightning_indexer_kl_loss_grad",
+    "stem_oam_prep_paged_kv": "attention.stem_oam_prep_paged_kv",
+    "stem_oam_prep_varlen_q": "attention.stem_oam_prep_varlen_q",
+}
+
+for _old_name, _new_target in _legacy_map.items():
+    try:
+        _new_mod = importlib.import_module(
+            "cann_ops_transformer.ops.%s" % _new_target
+        )
+        _sys.modules["cann_ops_transformer.ops.%s" % _old_name] = _new_mod
+    except (ImportError, RuntimeError, AttributeError) as _e:
+        logger.warning(
+            "Failed to register legacy module '%s': %s", _old_name, _e
+        )
