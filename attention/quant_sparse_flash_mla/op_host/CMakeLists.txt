@@ -29,11 +29,18 @@ add_ops_compile_options(
 add_modules_sources(OPTYPE quant_sparse_flash_mla ACLNNTYPE aclnn)
 
 add_tiling_modules()
+target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-    quant_sparse_flash_mla_check_consistency.cpp
-    quant_sparse_flash_mla_check_existance.cpp
-    quant_sparse_flash_mla_check_feature.cpp
-    quant_sparse_flash_mla_check_single_para.cpp
-    quant_sparse_flash_mla_check.cpp
+    qsmla_tiling_utils.cpp
+    qsmla_tiling_info_parser.cpp
     quant_sparse_flash_mla_tiling.cpp
+    checkers/base_checker.cpp
+    checkers/common_checker.cpp
+    checkers/mask_checker.cpp
+    checkers/seqlens_checker.cpp
+    checkers/sparse_compress_checker.cpp
+    checkers/paged_attention_checker.cpp
+    checkers/sinks_checker.cpp
+    checkers/softmax_lse_checker.cpp
+    checkers/qsmla_checker.cpp
 )
