@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900"
+     font-family="'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#64748b"/>
+    </marker>
+    <pattern id="dispatchSwiglu" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="8" height="16" fill="#f59e0b"/>
+      <rect x="8" width="8" height="16" fill="#10b981"/>
+    </pattern>
+  </defs>
+
+  <rect width="1400" height="900" fill="#ffffff"/>
+  <text x="700" y="34" text-anchor="middle" font-size="22" font-weight="bold" fill="#0f172a">
+    MegaMoe A8W4 动态 Wave 流水排布
+  </text>
+  <text x="700" y="58" text-anchor="middle" font-size="13" fill="#475569">
+    启动时准备首个完整 wave；稳态下按 expert 交叉执行下一 wave 的 Dispatch 与当前 wave 的 GMM1/SwiGLU
+  </text>
+
+  <!-- Legend -->
+  <g font-size="12" fill="#334155">
+    <rect x="250" y="76" width="24" height="14" rx="3" fill="#f59e0b"/><text x="282" y="88">Dispatch</text>
+    <rect x="382" y="76" width="24" height="14" rx="3" fill="#2563eb"/><text x="414" y="88">GMM1</text>
+    <rect x="492" y="76" width="24" height="14" rx="3" fill="#10b981"/><text x="524" y="88">SwiGLU</text>
+    <rect x="614" y="76" width="24" height="14" rx="3" fill="#0891b2"/><text x="646" y="88">GMM2</text>
+    <rect x="724" y="76" width="24" height="14" rx="3" fill="#8b5cf6"/><text x="756" y="88">Combine</text>
+    <rect x="846" y="76" width="24" height="14" rx="3" fill="#64748b"/><text x="878" y="88">GMM input-side</text>
+    <rect x="1015" y="76" width="24" height="14" rx="3" fill="url(#dispatchSwiglu)"/><text x="1047" y="88">AIV1 expert 级交叉</text>
+  </g>
+
+  <!-- Panel 1 -->
+  <rect x="34" y="108" width="1332" height="392" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="58" y="136" font-size="16" font-weight="bold" fill="#0f172a">1. 跨 Wave 的整体流水</text>
+  <text x="1316" y="136" text-anchor="end" font-size="12" fill="#64748b">时间向右</text>
+  <line x1="1160" y1="130" x2="1330" y2="130" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- phase backgrounds -->
+  <rect x="182" y="158" width="210" height="286" fill="#fff7ed" stroke="#fed7aa"/>
+  <rect x="392" y="158" width="462" height="286" fill="#eff6ff" stroke="#bfdbfe"/>
+  <rect x="854" y="158" width="462" height="286" fill="#f0fdf4" stroke="#bbf7d0"/>
+  <text x="287" y="181" text-anchor="middle" font-size="13" font-weight="bold" fill="#9a3412">启动填充</text>
+  <text x="623" y="181" text-anchor="middle" font-size="13" font-weight="bold" fill="#1e40af">处理 wave 0 / 预取 wave 1</text>
+  <text x="1085" y="181" text-anchor="middle" font-size="13" font-weight="bold" fill="#166534">处理 wave 1 / 预取 wave 2</text>
+
+  <!-- row labels and guides -->
+  <g font-size="13" font-weight="bold" fill="#334155">
+    <text x="62" y="231">AIC</text>
+    <text x="62" y="289">AIV0</text>
+    <text x="62" y="347">AIV1</text>
+    <text x="62" y="423">就绪状态</text>
+  </g>
+  <g stroke="#cbd5e1" stroke-dasharray="3,4">
+    <line x1="132" y1="238" x2="1336" y2="238"/>
+    <line x1="132" y1="296" x2="1336" y2="296"/>
+    <line x1="132" y1="354" x2="1336" y2="354"/>
+    <line x1="132" y1="430" x2="1336" y2="430"/>
+  </g>
+
+  <!-- AIC -->
+  <g font-size="12" fill="#ffffff" font-weight="bold" text-anchor="middle">
+    <rect x="410" y="204" width="266" height="34" rx="5" fill="#2563eb"/><text x="543" y="226">GMM1(W0)</text>
+    <rect x="676" y="204" width="160" height="34" rx="5" fill="#0891b2"/><text x="756" y="226">GMM2(W0)</text>
+    <rect x="872" y="204" width="266" height="34" rx="5" fill="#2563eb"/><text x="1005" y="226">GMM1(W1)</text>
+    <rect x="1138" y="204" width="160" height="34" rx="5" fill="#0891b2"/><text x="1218" y="226">GMM2(W1)</text>
+  </g>
+
+  <!-- AIV0 -->
+  <g font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">
+    <rect x="410" y="262" width="266" height="34" rx="5" fill="#64748b"/><text x="543" y="284">GMM1 input-side(W0)</text>
+    <rect x="676" y="262" width="160" height="34" rx="5" fill="#64748b"/><text x="756" y="284">GMM2 input-side</text>
+    <rect x="872" y="262" width="266" height="34" rx="5" fill="#64748b"/><text x="1005" y="284">GMM1 input-side(W1)</text>
+    <rect x="1138" y="262" width="160" height="34" rx="5" fill="#64748b"/><text x="1218" y="284">GMM2 input-side</text>
+  </g>
+
+  <!-- AIV1 -->
+  <g font-size="12" fill="#ffffff" font-weight="bold" text-anchor="middle">
+    <rect x="202" y="320" width="170" height="34" rx="5" fill="#f59e0b"/><text x="287" y="342">Dispatch(W0 whole)</text>
+    <rect x="410" y="320" width="266" height="34" rx="5" fill="url(#dispatchSwiglu)"/><text x="543" y="342">Dispatch(W1) ↔ SwiGLU(W0)</text>
+    <rect x="694" y="320" width="160" height="34" rx="5" fill="#8b5cf6"/><text x="774" y="342">Combine(W0)</text>
+    <rect x="872" y="320" width="266" height="34" rx="5" fill="url(#dispatchSwiglu)"/><text x="1005" y="342">Dispatch(W2) ↔ SwiGLU(W1)</text>
+    <rect x="1156" y="320" width="160" height="34" rx="5" fill="#8b5cf6"/><text x="1236" y="342">Combine(W1)</text>
+  </g>
+
+  <!-- ready-state arrows -->
+  <g font-size="12" font-weight="bold" text-anchor="middle">
+    <line x1="287" y1="354" x2="287" y2="393" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="205" y="396" width="164" height="32" rx="16" fill="#fffbeb" stroke="#f59e0b"/><text x="287" y="417" fill="#92400e">wave 0 全部就绪</text>
+    <line x1="543" y1="354" x2="543" y2="393" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="461" y="396" width="164" height="32" rx="16" fill="#fffbeb" stroke="#f59e0b"/><text x="543" y="417" fill="#92400e">wave 1 全部就绪</text>
+    <line x1="1005" y1="354" x2="1005" y2="393" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="923" y="396" width="164" height="32" rx="16" fill="#fffbeb" stroke="#f59e0b"/><text x="1005" y="417" fill="#92400e">wave 2 全部就绪</text>
+  </g>
+  <text x="58" y="476" font-size="12" fill="#475569">
+    GMM2 与 Combine 依靠既有细粒度 ready flag 重叠；图中块宽只表达先后与重叠关系，不代表固定耗时比例。
+  </text>
+
+  <!-- Panel 2 -->
+  <rect x="34" y="520" width="1332" height="338" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="58" y="550" font-size="16" font-weight="bold" fill="#0f172a">2. 稳态循环放大：下一 Wave 的 Dispatch 与当前 Wave 的 GMM1 按 Expert 交叉</text>
+  <text x="58" y="574" font-size="12" fill="#475569">
+    示例：当前 wave Wi 有 3 个 expert（e0~e2），下一 wave Wi+1 有 4 个 expert（f0~f3）。两侧独立判断完成状态。
+  </text>
+
+  <g font-size="13" font-weight="bold" fill="#334155">
+    <text x="62" y="632">AIC</text>
+    <text x="62" y="698">AIV1</text>
+  </g>
+  <g stroke="#cbd5e1" stroke-dasharray="3,4">
+    <line x1="132" y1="640" x2="1336" y2="640"/>
+    <line x1="132" y1="706" x2="1336" y2="706"/>
+  </g>
+
+  <!-- iteration backgrounds -->
+  <g font-size="11" fill="#64748b" text-anchor="middle">
+    <rect x="190" y="588" width="268" height="160" fill="#ffffff" stroke="#e2e8f0"/><text x="324" y="606">循环迭代 0</text>
+    <rect x="458" y="588" width="268" height="160" fill="#f8fafc" stroke="#e2e8f0"/><text x="592" y="606">循环迭代 1</text>
+    <rect x="726" y="588" width="268" height="160" fill="#ffffff" stroke="#e2e8f0"/><text x="860" y="606">循环迭代 2</text>
+    <rect x="994" y="588" width="268" height="160" fill="#fff7ed" stroke="#fed7aa"/><text x="1128" y="606">Dispatch 侧收尾</text>
+  </g>
+
+  <!-- AIC expert work -->
+  <g font-size="12" fill="#ffffff" font-weight="bold" text-anchor="middle">
+    <rect x="208" y="614" width="232" height="34" rx="5" fill="#2563eb"/><text x="324" y="636">GMM1(Wi, e0)</text>
+    <rect x="476" y="614" width="232" height="34" rx="5" fill="#2563eb"/><text x="592" y="636">GMM1(Wi, e1)</text>
+    <rect x="744" y="614" width="232" height="34" rx="5" fill="#2563eb"/><text x="860" y="636">GMM1(Wi, e2)</text>
+  </g>
+
+  <!-- AIV1 interleaving -->
+  <g font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">
+    <rect x="208" y="662" width="112" height="34" rx="5" fill="#f59e0b"/><text x="264" y="684">D(Wi+1,f0)</text>
+    <rect x="320" y="662" width="120" height="34" rx="5" fill="#10b981"/><text x="380" y="684">S(Wi,e0)</text>
+    <rect x="476" y="662" width="112" height="34" rx="5" fill="#f59e0b"/><text x="532" y="684">D(Wi+1,f1)</text>
+    <rect x="588" y="662" width="120" height="34" rx="5" fill="#10b981"/><text x="648" y="684">S(Wi,e1)</text>
+    <rect x="744" y="662" width="112" height="34" rx="5" fill="#f59e0b"/><text x="800" y="684">D(Wi+1,f2)</text>
+    <rect x="856" y="662" width="120" height="34" rx="5" fill="#10b981"/><text x="916" y="684">S(Wi,e2)</text>
+    <rect x="1012" y="662" width="232" height="34" rx="5" fill="#f59e0b"/><text x="1128" y="684">D(Wi+1,f3)</text>
+  </g>
+
+  <!-- completion annotations -->
+  <line x1="994" y1="610" x2="994" y2="730" stroke="#16a34a" stroke-width="2" stroke-dasharray="5,4"/>
+  <text x="982" y="726" text-anchor="end" font-size="11.5" font-weight="bold" fill="#15803d">当前 GMM1 wave 完成</text>
+  <line x1="1262" y1="610" x2="1262" y2="730" stroke="#ea580c" stroke-width="2" stroke-dasharray="5,4"/>
+  <text x="1250" y="744" text-anchor="end" font-size="11.5" font-weight="bold" fill="#c2410c">下一 Dispatch wave 完成</text>
+
+  <rect x="190" y="770" width="1072" height="58" rx="8" fill="#eef2ff" stroke="#c7d2fe"/>
+  <text x="210" y="794" font-size="12.5" font-weight="bold" fill="#3730a3">循环退出条件</text>
+  <text x="210" y="816" font-size="12" fill="#4338ca">
+    currentGmm1WaveComplete 与 nextDispatchWaveComplete 同时成立；较短的一侧先停，较长的一侧在同一循环内完成收尾。
+  </text>
+</svg>

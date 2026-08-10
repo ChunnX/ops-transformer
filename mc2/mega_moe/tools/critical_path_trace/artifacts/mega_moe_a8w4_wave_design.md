@@ -239,7 +239,7 @@ for (waveBegin = 0; waveBegin < moeExpertPerRank_; waveBegin += waveExpertNum) {
 
 ### 4.6 分步实施与验收
 
-> **当前状态（路线 B 已落地，已按约束 B/C 精化为动态切波）**：已在 `MegaMoe::Process()` 内实现 `if constexpr (ENABLE_A8W4 && !TopkWeightsPrefetch)` 分支——wave 循环（`GMM1(wave)→GMM2(wave)` 逐 wave 交错），**wave 边界由 GMM1 tile 累计 ≥ 2×aicNum 动态确定**（每专家 tile = ⌈M_e/256⌉×⌈hiddenDim/256⌉，M_e=该专家 token 数），**末波并入**（剩余不足 2 个专家时并入当前 wave，消除"1 专家末波"空泡）；A4W4/generic 与 A8W4-prefetch 保持原两段式（prefetch 的 allDone+SyncAll 真同步暂缓）。待验收：编译 + 精度 + trace。
+> **当前状态（路线 B 已落地，已按约束 B/C 精化为动态切波）**：已在 `MegaMoe::Process()` 内实现 `if constexpr (ENABLE_A8W4 && !TopkWeightsPrefetch)` 分支——wave 循环（`GMM1(wave)→GMM2(wave)` 逐 wave 交错），**wave 边界由 GMM1 tile 累计 ≥ 2×aicNum 动态确定**（每专家 tile = ⌈M_e/256⌉×⌈(hiddenDim/2)/256⌉，一个 scheduler tile 分别计算 up 和 gate），**末波并入**（剩余不足 2 个专家时并入当前 wave，消除"1 专家末波"空泡）；A4W4/generic 与 A8W4-prefetch 保持原两段式（prefetch 的 allDone+SyncAll 真同步暂缓）。待验收：编译 + 精度 + trace。
 >
 > **dispatch 解耦（已落地）**：dispatch 生产与 GMM1 消费拆为独立 `dispatchExpert` 游标（AIV1 sub==1）。启动时 dispatch 首个完整 wave；稳态下单个循环分别维护 Dispatch 与 GMM1 的完成状态，每轮先 dispatch 下一 wave 的一个 expert，再处理当前 wave 的一个 expert；动态 wave 长度不同时，已完成的一侧停止，另一侧继续到完成。`SendCntCal` Phase 3 将 cnt 发布到 `expertRevNumsGlobalTensor_`；dispatch、GMM1 和 GMM2 分别使用独立状态。GMM1 各核在消费 expert 的同一循环中累计 tile 并得到一致的 wave 边界，不再额外扫描 count。原三参数 `UpdateGroupParams(state, expertIdx, sendCnt)` 与非 wave 路径保持不变。待验收：编译（需 CANN 环境）+ 精度 + trace。
 >

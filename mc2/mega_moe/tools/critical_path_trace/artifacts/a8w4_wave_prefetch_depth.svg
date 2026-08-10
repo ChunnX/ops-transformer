@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900"
+     font-family="'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#64748b"/>
+    </marker>
+    <pattern id="waitPattern" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="6" height="12" fill="#fee2e2"/>
+      <rect x="6" width="6" height="12" fill="#fecaca"/>
+    </pattern>
+  </defs>
+
+  <rect width="1400" height="900" fill="#ffffff"/>
+  <text x="700" y="34" text-anchor="middle" font-size="22" font-weight="bold" fill="#0f172a">
+    为什么需要预取一个完整 Wave
+  </text>
+  <text x="700" y="60" text-anchor="middle" font-size="13" fill="#475569">
+    典型 shape：每 expert 12 个 GMM1 tile，36 个 AIC，waveTileTarget = 2 × 36 = 72 tile，因此一个 wave 需要 6 个 expert
+  </text>
+
+  <!-- Formula -->
+  <rect x="104" y="82" width="1192" height="78" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="130" y="110" font-size="14" font-weight="bold" fill="#0f172a">两轮完整 AIC 调度所需负载</text>
+  <text x="130" y="138" font-size="14" fill="#334155">
+    6 experts × 12 tiles/expert = 72 tiles = 2 rounds × 36 AIC slots
+  </text>
+  <text x="1270" y="122" text-anchor="end" font-size="12" fill="#64748b">
+    下图每个 expert 方块代表连续的 12 个调度 tile，非固定物理核分组
+  </text>
+
+  <!-- Left panel: +1 prefetch -->
+  <rect x="42" y="186" width="642" height="520" rx="12" fill="#fff7f7" stroke="#fecaca"/>
+  <text x="363" y="218" text-anchor="middle" font-size="18" font-weight="bold" fill="#991b1b">
+    旧策略：只预取下一个 Expert
+  </text>
+  <text x="363" y="242" text-anchor="middle" font-size="12.5" fill="#7f1d1d">
+    GMM1(e0) 期间只启动 Dispatch(e1)，e2~e5 尚未准备
+  </text>
+
+  <text x="72" y="282" font-size="13" font-weight="bold" fill="#334155">GMM1 开始时的输入状态</text>
+  <g font-size="12" font-weight="bold" text-anchor="middle">
+    <rect x="72" y="298" width="88" height="38" rx="5" fill="#dbeafe" stroke="#2563eb"/><text x="116" y="322" fill="#1e3a8a">e0 ready</text>
+    <rect x="166" y="298" width="104" height="38" rx="5" fill="#fef3c7" stroke="#f59e0b"/><text x="218" y="322" fill="#92400e">e1 dispatch</text>
+    <rect x="276" y="298" width="88" height="38" rx="5" fill="#f1f5f9" stroke="#94a3b8"/><text x="320" y="322" fill="#64748b">e2 未开始</text>
+    <rect x="370" y="298" width="88" height="38" rx="5" fill="#f1f5f9" stroke="#94a3b8"/><text x="414" y="322" fill="#64748b">e3 未开始</text>
+    <rect x="464" y="298" width="88" height="38" rx="5" fill="#f1f5f9" stroke="#94a3b8"/><text x="508" y="322" fill="#64748b">e4 未开始</text>
+    <rect x="558" y="298" width="88" height="38" rx="5" fill="#f1f5f9" stroke="#94a3b8"/><text x="602" y="322" fill="#64748b">e5 未开始</text>
+  </g>
+
+  <text x="72" y="378" font-size="13" font-weight="bold" fill="#334155">Wave 需要的两轮 AIC 调度</text>
+  <g font-size="11.5" fill="#475569" text-anchor="end">
+    <text x="150" y="431">第 1 轮</text>
+    <text x="150" y="501">第 2 轮</text>
+  </g>
+  <g font-size="12" font-weight="bold" text-anchor="middle">
+    <rect x="166" y="402" width="150" height="48" rx="6" fill="#2563eb"/><text x="241" y="431" fill="#ffffff">e0 · 12 tiles</text>
+    <rect x="322" y="402" width="150" height="48" rx="6" fill="#fef3c7" stroke="#f59e0b"/><text x="397" y="423" fill="#92400e">e1 · 12 tiles</text><text x="397" y="440" fill="#b45309" font-size="10.5">可能等待 Dispatch</text>
+    <rect x="478" y="402" width="150" height="48" rx="6" fill="url(#waitPattern)" stroke="#ef4444"/><text x="553" y="423" fill="#991b1b">e2 · 12 tiles</text><text x="553" y="440" fill="#b91c1c" font-size="10.5">等待 Dispatch</text>
+
+    <rect x="166" y="472" width="150" height="48" rx="6" fill="url(#waitPattern)" stroke="#ef4444"/><text x="241" y="493" fill="#991b1b">e3 · 12 tiles</text><text x="241" y="510" fill="#b91c1c" font-size="10.5">等待 Dispatch</text>
+    <rect x="322" y="472" width="150" height="48" rx="6" fill="url(#waitPattern)" stroke="#ef4444"/><text x="397" y="493" fill="#991b1b">e4 · 12 tiles</text><text x="397" y="510" fill="#b91c1c" font-size="10.5">等待 Dispatch</text>
+    <rect x="478" y="472" width="150" height="48" rx="6" fill="url(#waitPattern)" stroke="#ef4444"/><text x="553" y="493" fill="#991b1b">e5 · 12 tiles</text><text x="553" y="510" fill="#b91c1c" font-size="10.5">等待 Dispatch</text>
+  </g>
+  <line x1="166" y1="548" x2="628" y2="548" stroke="#ef4444" stroke-width="2"/>
+  <text x="397" y="574" text-anchor="middle" font-size="13" font-weight="bold" fill="#b91c1c">
+    预取深度小于消费批次：AIC 会在 wave 内等待输入 ready
+  </text>
+  <text x="397" y="602" text-anchor="middle" font-size="12" fill="#7f1d1d">
+    单个 expert 只有 12 tiles，无法独立覆盖 36 个 AIC，更无法形成目标的两轮调度
+  </text>
+
+  <!-- Right panel: full-wave prefetch -->
+  <rect x="716" y="186" width="642" height="520" rx="12" fill="#f0fdf4" stroke="#bbf7d0"/>
+  <text x="1037" y="218" text-anchor="middle" font-size="18" font-weight="bold" fill="#166534">
+    新策略：预取一个完整动态 Wave
+  </text>
+  <text x="1037" y="242" text-anchor="middle" font-size="12.5" fill="#166534">
+    GMM1(W0) 开始前，e0~e5 的 Dispatch 已全部完成
+  </text>
+
+  <text x="746" y="282" font-size="13" font-weight="bold" fill="#334155">GMM1 开始时的输入状态</text>
+  <g font-size="12" font-weight="bold" text-anchor="middle">
+    <rect x="746" y="298" width="88" height="38" rx="5" fill="#dcfce7" stroke="#16a34a"/><text x="790" y="322" fill="#166534">e0 ready</text>
+    <rect x="840" y="298" width="88" height="38" rx="5" fill="#dcfce7" stroke="#16a34a"/><text x="884" y="322" fill="#166534">e1 ready</text>
+    <rect x="934" y="298" width="88" height="38" rx="5" fill="#dcfce7" stroke="#16a34a"/><text x="978" y="322" fill="#166534">e2 ready</text>
+    <rect x="1028" y="298" width="88" height="38" rx="5" fill="#dcfce7" stroke="#16a34a"/><text x="1072" y="322" fill="#166534">e3 ready</text>
+    <rect x="1122" y="298" width="88" height="38" rx="5" fill="#dcfce7" stroke="#16a34a"/><text x="1166" y="322" fill="#166534">e4 ready</text>
+    <rect x="1216" y="298" width="88" height="38" rx="5" fill="#dcfce7" stroke="#16a34a"/><text x="1260" y="322" fill="#166534">e5 ready</text>
+  </g>
+
+  <text x="746" y="378" font-size="13" font-weight="bold" fill="#334155">Wave 的两轮 AIC 调度</text>
+  <g font-size="11.5" fill="#475569" text-anchor="end">
+    <text x="824" y="431">第 1 轮</text>
+    <text x="824" y="501">第 2 轮</text>
+  </g>
+  <g font-size="12" fill="#ffffff" font-weight="bold" text-anchor="middle">
+    <rect x="840" y="402" width="150" height="48" rx="6" fill="#2563eb"/><text x="915" y="431">e0 · 12 tiles</text>
+    <rect x="996" y="402" width="150" height="48" rx="6" fill="#2563eb"/><text x="1071" y="431">e1 · 12 tiles</text>
+    <rect x="1152" y="402" width="150" height="48" rx="6" fill="#2563eb"/><text x="1227" y="431">e2 · 12 tiles</text>
+    <rect x="840" y="472" width="150" height="48" rx="6" fill="#1d4ed8"/><text x="915" y="501">e3 · 12 tiles</text>
+    <rect x="996" y="472" width="150" height="48" rx="6" fill="#1d4ed8"/><text x="1071" y="501">e4 · 12 tiles</text>
+    <rect x="1152" y="472" width="150" height="48" rx="6" fill="#1d4ed8"/><text x="1227" y="501">e5 · 12 tiles</text>
+  </g>
+  <line x1="840" y1="548" x2="1302" y2="548" stroke="#16a34a" stroke-width="2"/>
+  <text x="1071" y="574" text-anchor="middle" font-size="13" font-weight="bold" fill="#15803d">
+    预取深度等于消费批次：72 个 tile 对应的数据在 wave 开始前全部 ready
+  </text>
+  <text x="1071" y="602" text-anchor="middle" font-size="12" fill="#166534">
+    AIC 可以连续领取两个完整调度轮次，不因后续 expert 尚未 Dispatch 而停顿
+  </text>
+
+  <!-- steady-state explanation -->
+  <rect x="104" y="734" width="1192" height="116" rx="10" fill="#eff6ff" stroke="#bfdbfe"/>
+  <text x="130" y="762" font-size="14" font-weight="bold" fill="#1e40af">如何避免完整 Wave 预取阻塞 AIV1 的 SwiGLU</text>
+  <g font-size="12" fill="#ffffff" font-weight="bold" text-anchor="middle">
+    <rect x="132" y="782" width="132" height="36" rx="5" fill="#f59e0b"/><text x="198" y="805">D(Wi+1,f0)</text>
+    <rect x="264" y="782" width="116" height="36" rx="5" fill="#10b981"/><text x="322" y="805">S(Wi,e0)</text>
+    <rect x="380" y="782" width="132" height="36" rx="5" fill="#f59e0b"/><text x="446" y="805">D(Wi+1,f1)</text>
+    <rect x="512" y="782" width="116" height="36" rx="5" fill="#10b981"/><text x="570" y="805">S(Wi,e1)</text>
+    <rect x="628" y="782" width="132" height="36" rx="5" fill="#f59e0b"/><text x="694" y="805">D(Wi+1,f2)</text>
+    <rect x="760" y="782" width="116" height="36" rx="5" fill="#10b981"/><text x="818" y="805">S(Wi,e2)</text>
+  </g>
+  <line x1="900" y1="800" x2="1010" y2="800" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="1030" y="793" font-size="12" font-weight="bold" fill="#1e3a8a">循环结束：</text>
+  <text x="1030" y="812" font-size="12" fill="#1e3a8a">Wi+1 整 wave 已就绪</text>
+  <text x="130" y="838" font-size="11.5" fill="#475569">
+    “预取完整 wave”表示最终深度；稳态仍按 expert 交叉推进，避免 AIV1 连续 Dispatch 整块后才返回当前 wave 的 SwiGLU。
+  </text>
+</svg>

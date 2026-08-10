@@ -2309,9 +2309,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         InitCombineBuffers();
 
         // 按 GMM1 tile 动态切波（约束 B/C）：每核 ≥2 tile ⟺ 每波 GMM1 tile 总数 ≥ 2×aicNum；
-        // 每专家 GMM1 tile = ⌈M_e/256⌉ × ⌈hiddenDim/256⌉（GMM1_TILE_M = L1_TILE_M_256 = 256，GMM1 N 维 = hiddenDim_）。
+        // 一个 GMM1 scheduler tile 分别计算 up 和 gate，因此 N 方向只需遍历 hiddenDim_ / 2。
+        // 每专家 GMM1 tile = ⌈M_e/256⌉ × ⌈(hiddenDim/2)/256⌉。
         const uint32_t gmm1TileN = static_cast<uint32_t>(
-            Ops::Base::CeilDiv(hiddenDim_, static_cast<int64_t>(L1_TILE_N)));
+            Ops::Base::CeilDiv(hiddenDim_ / static_cast<int64_t>(SWIGLU_N_HALF),
+                               static_cast<int64_t>(L1_TILE_N)));
         const uint32_t waveTileTarget = 2U * aicNum_;
 
         uint32_t dispatchExpert = 0; // AIV1 下一个尚未 dispatch 的 expert
