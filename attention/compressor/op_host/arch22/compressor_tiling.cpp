@@ -91,27 +91,27 @@ ge::graphStatus CompressorTiling::ConvertContext(gert::TilingContext &context, C
                 return ge::GRAPH_FAILED);
     compressorContext.workSpaces = context.GetWorkspaceSizes(1);
 
-    // Validate state_cache axis 1/2 contiguity via GetInputStride.
-    // Only axis 0 non-contiguous is supported; axis 1 and 2 must be contiguous.
-    {
-        auto *stateCacheStride = context.GetInputStride(STATE_CACHE_INPUT_INDEX);
-        const auto &stateCacheShape = compressorContext.stateCache.shape->GetStorageShape();
-        if (stateCacheStride != nullptr && stateCacheStride->GetDimNum() == stateCacheShape.GetDimNum()) {
-            uint64_t expectedStride = 1;
-            for (int64_t i = static_cast<int64_t>(stateCacheShape.GetDimNum()) - 1; i >= 1; --i) {
-                uint64_t actualStride = static_cast<uint64_t>(stateCacheStride->GetStride(static_cast<size_t>(i)));
-                if (actualStride != expectedStride) {
-                    OP_LOGE(context.GetNodeName(),
-                            "state_cache must be contiguous on axis 1 and 2, "
-                            "only axis 0 non-contiguous is supported. "
-                            "axis %ld: actual stride=%lu, expected=%lu.",
-                            i, actualStride, expectedStride);
-                    return ge::GRAPH_FAILED;
-                }
-                expectedStride *= static_cast<uint64_t>(stateCacheShape.GetDim(static_cast<size_t>(i)));
-            }
-        }
-    }
+//    // Validate state_cache axis 1/2 contiguity via GetInputStride.
+//    // Only axis 0 non-contiguous is supported; axis 1 and 2 must be contiguous.
+//    {
+//        auto *stateCacheStride = context.GetInputStride(STATE_CACHE_INPUT_INDEX);
+//        const auto &stateCacheShape = compressorContext.stateCache.shape->GetStorageShape();
+//        if (stateCacheStride != nullptr && stateCacheStride->GetDimNum() == stateCacheShape.GetDimNum()) {
+//            uint64_t expectedStride = 1;
+//            for (int64_t i = static_cast<int64_t>(stateCacheShape.GetDimNum()) - 1; i >= 1; --i) {
+//                uint64_t actualStride = static_cast<uint64_t>(stateCacheStride->GetStride(static_cast<size_t>(i)));
+//                if (actualStride != expectedStride) {
+//                    OP_LOGE(context.GetNodeName(),
+//                            "state_cache must be contiguous on axis 1 and 2, "
+//                            "only axis 0 non-contiguous is supported. "
+//                            "axis %ld: actual stride=%lu, expected=%lu.",
+//                            i, actualStride, expectedStride);
+//                    return ge::GRAPH_FAILED;
+//                }
+//                expectedStride *= static_cast<uint64_t>(stateCacheShape.GetDim(static_cast<size_t>(i)));
+//            }
+//        }
+//    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -745,6 +745,18 @@ ge::graphStatus CompressorTiling::CheckFeature() const
     OP_CHECK_IF(pageAttentionParams_->blockSize > MAX_BLOCK_SIZE || pageAttentionParams_->blockSize < MIN_BLOCK_SIZE,
                 OP_LOGE(context_->opName, "blockSize should be within [%u, %u], but got %u", MIN_BLOCK_SIZE,
                         MAX_BLOCK_SIZE, pageAttentionParams_->blockSize),
+                return ge::GRAPH_FAILED);
+    // state_cache stride0 must be >= contiguous stride (dim1 * dim2).
+    // Only axis 0 non-contiguous is supported; axis 1/2 must remain contiguous.
+    // Full per-axis validation via GetInputStride is in ConvertContext (ascend950)
+    // and via IsContiguousAxes in torch_extension csrc.
+    uint64_t contiguousStride0 = context_->stateCache.shape->GetShape().GetDim(1) *
+                                 context_->stateCache.shape->GetShape().GetDim(2);
+    OP_CHECK_IF(baseParams_->stateCacheStrideDim0 < contiguousStride0,
+                OP_LOGE(context_->opName,
+                        "state_cache stride0 (%lu) must be >= contiguous stride (%lu), "
+                        "only axis 0 non-contiguous is supported",
+                        baseParams_->stateCacheStrideDim0, contiguousStride0),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
