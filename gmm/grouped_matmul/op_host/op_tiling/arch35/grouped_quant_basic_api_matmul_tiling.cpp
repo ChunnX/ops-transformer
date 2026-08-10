@@ -160,6 +160,13 @@ ge::graphStatus GroupedQmmBasicApiTiling::CalL1Depth(uint64_t leftL1Size)
         basicTiling_.depthA1 = depthInit;
         basicTiling_.depthB1 = depthInit;
     }
+
+    // 仅 NZ weight 通过调整 tiling 优先使能 3-buffer；ND weight 保持原有 tiling 和使能判断逻辑。
+    if (inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ) {
+        ModifyDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
+        return FinalizeStepAndScale();
+    }
+
     const uint64_t initialDepthA1 = basicTiling_.depthA1;
     const uint64_t initialDepthB1 = basicTiling_.depthB1;
 
