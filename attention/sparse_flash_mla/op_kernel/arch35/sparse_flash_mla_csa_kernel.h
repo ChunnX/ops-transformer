@@ -144,6 +144,13 @@ private:
     /* 核Index信息 */
     int32_t aicIdx;
 
+    /* Init阶段metadata解析结果 */
+    uint32_t bN2StartIdx;
+    uint32_t gS1StartIdx;
+    uint32_t bN2EndIdx;
+    uint32_t nextGs1Idx;
+    uint32_t hasLoad;
+
     /* 初始化后不变的信息 */
     ConstInfo constInfo;
 
@@ -187,6 +194,34 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
                           cmpResidualKV);
     vecBlock.InitVecBlock(tPipe, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV);
     vecBlock.CleanOutput(attentionOut, softmaxLse, constInfo);
+
+    // 从meta data解析分核信息
+    bN2StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_BN2_START_INDEX, false));
+    gS1StartIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_M_START_INDEX, false));
+    bN2EndIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_BN2_END_INDEX, false));
+    nextGs1Idx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_M_END_INDEX, false));
+    hasLoad = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_CORE_ENABLE_INDEX, false));
+    if (nextGs1Idx != 0) {
+        bN2EndIdx++;
+    }
+
+    this->InitGlobalBuffer(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable,
+                           cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, seqUsedOriKV, seqUsedCmpKV,
+                           cmpResidualKV, oriTopkLength, cmpTopkLength, sinks, workspace, tiling, tPipe); // gm设置
+
+    if ASCEND_IS_AIV {
+        if constexpr ((TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                       TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                       TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
+                       IS_VEC_S2PHYADDR) {
+            this->vecBlock.GetKVPhyAddr(hasLoad, bN2StartIdx, bN2EndIdx, gS1StartIdx, nextGs1Idx, hasActualSeqQlen,
+                                        hasCuSeqlensQ, hasActualSeqOriKvlen, hasCuSeqlensOriKv, actualSeqOriKvlenGm,
+                                        cuSeqlensOriKvGm, oriTopkLengthGm, hasActualSeqCmpKvlen, hasCuSeqlensCmpKv,
+                                        actualSeqCmpKvlenGm, cuSeqlensCmpKvGm, cmpTopkLengthGm, cmpResidualKvGm,
+                                        actualSeqQlenGm, cuSeqlensQGm, workspace, constInfo);
+        }
+    }
+
     InitMMResBuf(workspace);
     if constexpr (IS_BATCH_CONSISTENCY) {
         vecBlock.InitS2SplitStaging(intraCoreCombineBuffer.Get(), crossCoreCombineBuffer.Get());
@@ -195,10 +230,6 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
     }
     cubeBlock.InitCubeBlock(pipe, l1BufferManager, query);
     this->ComputeConstexpr();
-
-    this->InitGlobalBuffer(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable,
-                           cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, seqUsedOriKV, seqUsedCmpKV,
-                           cmpResidualKV, oriTopkLength, cmpTopkLength, sinks, workspace, tiling, tPipe); // gm设置
     this->InitLocalBuffer();
 }
 
@@ -232,6 +263,11 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Par
     constInfo.cmpS2Size = sparseFlashMLACmpParams.cmpKvSeqSize;
     constInfo.oriSparseBlockCount = sparseFlashMLABaseParams.oriSparseBlockCount;
     constInfo.cmpSparseBlockCount = sparseFlashMLACmpParams.cmpSparseBlockCount;
+    constexpr uint32_t SPARSE_BLOCK_ALIGN_NUM = 128;
+    constInfo.alignedOriSparseBlockCount =
+        (constInfo.oriSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) / SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
+    constInfo.alignedCmpSparseBlockCount =
+        (constInfo.cmpSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) / SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
     constInfo.cmpRatio = sparseFlashMLACmpParams.cmpRatio;
     constInfo.oriMaskMode = sparseFlashMLABaseParams.oriMaskMode;
     constInfo.cmpMaskMode = sparseFlashMLACmpParams.cmpMaskMode;
@@ -242,8 +278,10 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Par
     constInfo.tileSize = 0;
     constInfo.dSizeRope = 64;
     constInfo.oriKeyStride0 = sparseFlashMLABaseParams.oriKeyStride0;
+    constInfo.oriKvStride = static_cast<uint32_t>(sparseFlashMLABaseParams.oriKeyStride0);
     if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
         constInfo.cmpKeyStride0 = sparseFlashMLACmpParams.cmpKeyStride0;
+        constInfo.cmpKvStride = static_cast<uint32_t>(sparseFlashMLACmpParams.cmpKeyStride0);
     }
     if ASCEND_IS_AIV {
         constInfo.softmaxScale = sparseFlashMLABaseParams.softmaxScale;
