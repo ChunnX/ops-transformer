@@ -394,6 +394,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
         ret = hcomm_.WriteNbiPrepare<DEFAULT_WQE_CONFIG>(commHandle, dst, src, len, notifyAddr, 1,
                                                          batchBuffer, HCOMM_BATCH_BUFFER_BYTES);
     }
+    if (ret != HCOMM_SUCCESS) {
+        AscendC::printf(
+            "WriteNbiPrepare retry failed: ret=%d, aivId=%u, commHandle=%llu, activeBatchHandle=%llu, "
+            "preparedWriteCount=%u\n",
+            ret, aivId_, static_cast<unsigned long long>(commHandle),
+            static_cast<unsigned long long>(activeBatchHandle_), preparedWriteCount_);
+    }
     ascendc_assert(ret == HCOMM_SUCCESS, "WriteNbiPrepare failed, ret=%d, aivId=%u", ret, aivId_);
     activeBatchHandle_ = commHandle;
     ++preparedWriteCount_;
