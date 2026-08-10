@@ -19,14 +19,25 @@
 #include <cstring>
 #include <vector>
 #include "acl/acl.h"
+#include "aclnn/aclnn_base.h"
 #include "hccl/hccl.h"
 #include "aclnn/opdev/fp16_t.h"
-//#include "aclnn/aclnn_attention_to_ffn_v2.h"
 #include "../../../common/op_kernel/attention_ffn_context.h"
 #include "../../../common/op_api/mc2_context.h"
 
 static_assert(sizeof(Mc2Aclnn::AttentionFFNContext) == sizeof(Mc2Aclnn::Mc2MoeContext),
               "AttentionFFNContext and Mc2MoeContext must have the same ABI");
+
+extern "C" aclnnStatus aclnnAttentionToFfnV2GetWorkspaceSize(
+    const aclTensor *context, const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
+    const aclTensor *layerId, const aclTensor *expertIds, const aclTensor *expertRankTable,
+    const aclTensor *scalesOptional, const aclTensor *activeMaskOptional, const char *group, int64_t worldSize,
+    const aclIntArray *ffnTokenInfoTableShape, const aclIntArray *ffnTokenDataShape,
+    const aclIntArray *attnTokenInfoTableShape, int64_t moeExpertNum, int64_t quantMode, int64_t syncFlag,
+    int64_t ffnStartRankId, int64_t cclBufferSize, uint64_t *workspaceSize, aclOpExecutor **executor);
+
+extern "C" aclnnStatus aclnnAttentionToFfnV2(
+    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
@@ -199,7 +210,8 @@ int LaunchOneProcessAttentionToFfnV2(Args &args)
         attentionFfnContextTensor, x, sessionId, microBatchId, layerId, expertIds, expertRankTable,
         (quantMode > 0 ? scales : nullptr), nullptr,
         hcomName, WORLD_SIZE, ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape, moeExpertNum,
-        quantMode, syncFlag, ffnStartRankId, &attentionToFFNWorkspaceSize, &attentionToFFNExecutor);
+        quantMode, syncFlag, ffnStartRankId, static_cast<int64_t>(hcclBufferSize), &attentionToFFNWorkspaceSize,
+        &attentionToFFNExecutor);
 
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAttentionToFfnV2GetWorkspaceSize failed. ret = %d \n", ret);
               return ret);
