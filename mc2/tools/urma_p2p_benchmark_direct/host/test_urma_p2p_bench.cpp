@@ -265,28 +265,23 @@ int main(int argc, char *argv[])
     tilingHost.cqOwnerSlot  = slot;
     tilingHost.stateStride  = stateStride;
 
-    UrmaP2pBenchTiling *tilingDev = nullptr;
-    aclrtMalloc((void **)&tilingDev, sizeof(UrmaP2pBenchTiling), ACL_MEM_MALLOC_HUGE_FIRST);
-    aclrtMemcpy(tilingDev, sizeof(UrmaP2pBenchTiling), &tilingHost,
-                sizeof(UrmaP2pBenchTiling), ACL_MEMCPY_HOST_TO_DEVICE);
-
     for (uint32_t iter = 0; iter < g_warmup + g_loopCount; ++iter) {
         aclrtSynchronizeStream(stream);
         switch (g_sqeMode) {
             case 0:
                 sqe_write_bench_launch((uint32_t)BLOCK_NUM, stream,
                     (uint64_t)ctx->channelPtrTableDev, (uint64_t)ctx->stateGmDev,
-                    (uint64_t)timingGm, tilingDev);
+                    (uint64_t)timingGm, &tilingHost);
                 break;
             case 1:
                 sqe_write_with_notify_bench_launch((uint32_t)BLOCK_NUM, stream,
                     (uint64_t)ctx->channelPtrTableDev, (uint64_t)ctx->stateGmDev,
-                    (uint64_t)timingGm, tilingDev);
+                    (uint64_t)timingGm, &tilingHost);
                 break;
             case 2:
                 hcomm_bench_launch((uint32_t)BLOCK_NUM, stream,
                     (uint64_t)ctx->channelPtrTableDev, (uint64_t)ctx->stateGmDev,
-                    (uint64_t)timingGm, tilingDev);
+                    (uint64_t)timingGm, &tilingHost);
                 break;
             default:
                 fprintf(stderr, "[ERROR] invalid sqe_mode %u\n", g_sqeMode);
@@ -318,7 +313,6 @@ int main(int argc, char *argv[])
     }
 
     aclrtFree(timingGm);
-    aclrtFree(tilingDev);
     HcclCommDestroy(comms);
     aclrtDestroyStream(stream);
     aclrtDestroyContext(context);
