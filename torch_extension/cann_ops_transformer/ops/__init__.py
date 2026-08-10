@@ -113,7 +113,7 @@ _legacy_map = {
     "deep_ep": "mc2.moe_distribute_dispatch",
     "dense_lightning_indexer_kl_loss_grad": "attention.dense_lightning_indexer_kl_loss_grad",
     "dense_lightning_indexer_softmax_lse": "attention.dense_lightning_indexer_softmax_lse",
-    "elastic_buffer": "mc2.engram_fetch",
+    "elastic_buffer": "mc2.common",
     "flash_attn": "attention.flash_attn",
     "grouped_matmul_activation_quant": "gmm.grouped_matmul_activation_quant",
     "indexer_quant_cache": "attention.indexer_quant_cache",
