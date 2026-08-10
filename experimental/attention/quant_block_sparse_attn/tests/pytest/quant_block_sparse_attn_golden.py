@@ -66,6 +66,8 @@ def _normalize_params(params):
     normalized.setdefault("actlen_mode", "full")
     normalized.setdefault("S1EQS2", False)
     normalized.setdefault("seed", 0)
+    if normalized.get("sparse_mode") is None:
+        normalized["sparse_mode"] = "random"
     normalized.setdefault("sparse_pattern", "sequential")
     normalized.setdefault("block_table_pattern", "sequential")
     normalized.setdefault("block_num", None)
@@ -84,16 +86,16 @@ def _normalize_params(params):
         "D",
         "sparse_q_block_size",
         "sparse_kv_block_size",
-        "sparse_count",
         "seed",
         "block_num",
         "pa_block_padding_bytes",
     ):
         if isinstance(normalized.get(key), float) and normalized[key].is_integer():
             normalized[key] = int(normalized[key])
-    normalized["sparse_count"] = normalized.get("sparse_count") or math.ceil(
-        normalized["S2"] / normalized["sparse_kv_block_size"]
-    )
+    sparse_mode = normalized["sparse_mode"]
+    if isinstance(sparse_mode, str):
+        sparse_mode = sparse_mode.strip().lower()
+        normalized["sparse_mode"] = sparse_mode
     normalized["softmax_scale"] = normalized.get("softmax_scale") or (
         1.0 / math.sqrt(normalized["D"])
     )
@@ -283,13 +285,27 @@ def _make_sparse_indices(case, q_lengths, kv_lengths, rng):
     group = n1 // n2
     qb_max = math.ceil(case["S1"] / case["sparse_q_block_size"])
     kv_max = math.ceil(case["S2"] / case["sparse_kv_block_size"])
-    sparse_count = case["sparse_count"]
+    sparse_mode = case["sparse_mode"]
+    if sparse_mode not in ("full", "random"):
+        raise ValueError(f"unsupported sparse_mode: {sparse_mode}")
+    sparse_counts = []
+    for batch_idx in range(batch):
+        batch_kv_max = math.ceil(
+            kv_lengths[batch_idx] / case["sparse_kv_block_size"]
+        )
+        sparse_count = (
+            batch_kv_max
+            if sparse_mode == "full"
+            else rng.randint(0, batch_kv_max)
+        )
+        sparse_counts.append(sparse_count)
     sparse_indices = torch.full(
         (batch, n1, qb_max, kv_max), fill_value=-1, dtype=torch.int32
     )
     sparse_seq_len = torch.zeros((batch, n1, qb_max), dtype=torch.int32)
 
     for batch_idx in range(batch):
+        sparse_count = sparse_counts[batch_idx]
         qb_batch = math.ceil(q_lengths[batch_idx] / case["sparse_q_block_size"])
         for qb_idx in range(qb_max):
             allowed = _allowed_blocks(

@@ -16,7 +16,7 @@ EXCEL_COLUMNS = [
     "case_name", "enable",
     "B", "N1", "N2", "S1", "S2", "D",
     "sparse_q_block_size", "sparse_kv_block_size",
-    "sparse_count", "sparse_pattern",
+    "sparse_mode", "sparse_pattern",
     "block_table_pattern",
     "block_num",
     "q_datarange", "k_datarange", "v_datarange",
@@ -32,7 +32,7 @@ EXCEL_FILENAME = "cases.csv,cases_stc.csv,cases_generalized.csv"
 
 _INT_COLS = {"B", "N1", "N2", "S1", "S2", "D",
              "sparse_q_block_size", "sparse_kv_block_size",
-             "sparse_count", "quant_mode", "mask_mode", "seed",
+             "quant_mode", "mask_mode", "seed",
              "block_num"}
 _FLOAT_COLS = {"p_scale_value", "softmax_scale"}
 _BOOL_COLS = {"return_softmax_lse"}
@@ -124,6 +124,8 @@ def _load_cases_from_one_csv(csv_path):
             val = record.get(col)
             if val == "":
                 val = None
+            if col == "sparse_mode" and val is None:
+                val = "random"
             if col in _INT_COLS:
                 val = _parse_int(val)
             elif col in _FLOAT_COLS:

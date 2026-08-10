@@ -58,7 +58,7 @@ def _row_from_dict(params, result, fulfill_percent):
         "D",
         "sparse_q_block_size",
         "sparse_kv_block_size",
-        "sparse_count",
+        "sparse_mode",
         "softmax_scale",
         "layout_sparse_indices",
         "layout_out",
