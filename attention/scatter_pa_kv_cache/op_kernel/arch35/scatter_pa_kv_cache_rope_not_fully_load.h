@@ -31,12 +31,12 @@ __simd_vf__ inline void CastToOriginNotFullyVf(__ubuf__ U* srcAddr, __ubuf__ T* 
     uint32_t sregMask = dataLen;
     for (uint16_t j = 0; j < loopTimes; j++) {
         preg = MicroAPI::UpdateMask<uint32_t>(sregMask);
-        MicroAPI::DataCopy<U, MicroAPI::LoadDist::DIST_NORM>(srcValue, srcAddr + VL_B32 * j);
+        MicroAPI::LoadAlign<U, MicroAPI::LoadDist::DIST_NORM>(srcValue, srcAddr + VL_B32 * j);
         if constexpr (IsSameType<T, int16_t>::value || IsSameType<T, uint16_t>::value) {
-            MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_PACK_B32>(dstAddr + VL_B32 * j,
+            MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(dstAddr + VL_B32 * j,
                                                                       (MicroAPI::RegTensor<T> &)srcValue, preg);
         } else {
-            MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_PACK4_B32>(dstAddr + VL_B32 * j,
+            MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK4_B32>(dstAddr + VL_B32 * j,
                                                                        (MicroAPI::RegTensor<T> &)srcValue, preg);
         }
     }
@@ -164,8 +164,8 @@ __aicore__ inline void
 ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::CastToOrigin(LocalTensor<T> &dstLocal,
                                                                          LocalTensor<U> &srcLocal, uint32_t dataLen)
 {
-    __local_mem__ U *srcAddr = (__local_mem__ U *)srcLocal.GetPhyAddr();
-    __local_mem__ T *dstAddr = (__local_mem__ T *)dstLocal.GetPhyAddr();
+    __ubuf__ U *srcAddr = (__ubuf__ U *)srcLocal.GetPhyAddr();
+    __ubuf__ T *dstAddr = (__ubuf__ T *)dstLocal.GetPhyAddr();
 
     uint16_t loopTimes = CeilDiv(dataLen, VL_B32);
 

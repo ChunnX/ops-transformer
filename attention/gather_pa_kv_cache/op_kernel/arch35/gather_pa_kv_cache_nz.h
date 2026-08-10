@@ -345,8 +345,8 @@ private:
             scrGm = valueCacheGm_;
             dstGm = outValueGm_;
         }
-        static constexpr MultiCopyConfig config = {false};
-        AscendC::MultiCopyLoopInfo<DIM_THREE> copyLoopInfo;
+        static constexpr NdDmaConfig config = {false};
+        AscendC::NdDmaLoopInfo<DIM_THREE> copyLoopInfo;
         copyLoopInfo.loopSrcStride[0] = blockSize_ * eleNumPerBlk;
         copyLoopInfo.loopSrcStride[1] = eleNumPerBlk;
         copyLoopInfo.loopSrcStride[DIM_TWO] = CONST_ONE;
@@ -356,7 +356,7 @@ private:
         copyLoopInfo.loopSize[0] = hiddenSize / eleNumPerBlk;
         copyLoopInfo.loopSize[1] = blockSize_;
         copyLoopInfo.loopSize[DIM_TWO] = eleNumPerBlk;
-        AscendC::MultiCopyParams<T, DIM_THREE> params = {copyLoopInfo, 0};
+        AscendC::NdDmaParams<T, DIM_THREE> params = {copyLoopInfo, 0};
 
         LocalTensor<T> cacheLocal = cacheQueue_.AllocTensor<T>();
         if (isFulledWithZero) {
