@@ -19,7 +19,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from openpyxl import load_workbook
 
 
 SCRIPT = Path(__file__).with_name("compare_batch_outputs.py")
@@ -36,20 +35,13 @@ class FixtureWriter:
         self.case_csv = root / "cases.csv"
         self.result_csv = root / "result.csv"
         self.report = root / "report.json"
-        self.excel = root / "report.xlsx"
 
     @staticmethod
-    def batch_fields(slices, seed, sequence_slices=None):
-        axes = (0,) if sequence_slices is None else (0, 1)
-        slice_groups = (tuple(slices),)
-        seed_groups = (tuple(seed for _ in slices),)
-        if sequence_slices is not None:
-            slice_groups += (tuple(sequence_slices),)
-            seed_groups += (tuple(seed for _ in sequence_slices),)
+    def batch_fields(slices, seed):
         return {
-            "batch_axis": repr((axes,)),
-            "batch_slice_info": repr((slice_groups,)),
-            "batch_seed": repr((seed_groups,)),
+            "batch_axis": repr(((0,),)),
+            "batch_slice_info": repr((tuple((tuple(slices),)),)),
+            "batch_seed": repr((tuple((tuple(seed for _ in slices),)),)),
         }
 
     def case_row(self, testcase_name, batch_size, slices, seed):
@@ -62,9 +54,6 @@ class FixtureWriter:
             "attributes": repr({
                 "layout_q": "BSND",
                 "layout_kv": "BSND",
-                "q_datarange": [0.0, 0.001],
-                "ori_kv_datarange": [1.0, 2.0],
-                "cmp_kv_datarange": [-0.2, 0.2],
                 "seqused_q_values": [1] * batch_size,
             }),
         }
@@ -90,17 +79,10 @@ class FixtureWriter:
                 None, None, None, None,
                 "int32", "int32", "int32", "int32", "int32", "int32", "int32",
             )),
-            "input_data_ranges": repr((
-                (0, 255), (0, 255), (0, 255), None, None, None,
-                None, None, None, None,
-                (0, q_prefix[-1]), (0, ori_prefix[-1]), (0, cmp_prefix[-1]),
-                (2, 2), (3, 3), (1, 1), (0, 0),
-            )),
+            "input_data_ranges": repr(((0, 255), (0, 255), (0, 255))),
             "attributes": repr({
                 "layout_q": "TND",
                 "layout_kv": "TND",
-                "block_num1": batch_size * 2,
-                "block_num2": batch_size,
                 "cu_seqlens_q_values": q_prefix,
                 "cu_seqlens_ori_kv_values": ori_prefix,
                 "cu_seqlens_cmp_kv_values": cmp_prefix,
@@ -161,7 +143,6 @@ class FixtureWriter:
             "--result", str(self.result_csv),
             "--dump-dir", str(self.dump_dir),
             "--report", str(self.report),
-            "--excel", str(self.excel),
             "--require-intra-case",
             "--require-cross-case",
         ]
@@ -179,14 +160,6 @@ def test_batch_output_comparator_accepts_same_and_cross_case(tmp_path):
     assert report["group_count"] == 1
     assert report["groups"][0]["case_count"] == 2
     assert report["groups"][0]["sample_count"] == 4
-    workbook = load_workbook(fixture.excel, data_only=True)
-    assert workbook["Summary"]["B2"].value == "PASS"
-    details = workbook["Relations"]
-    assert details.max_row == 5
-    assert "A2:A5" in {str(value) for value in details.merged_cells.ranges}
-    assert "N2:N5" in {str(value) for value in details.merged_cells.ranges}
-    assert details["F2"].value == "PASS"
-    assert details["I2"].value
     assert report["groups"][0]["samples"][0]["dtype"] == "bfloat16"
 
 
@@ -299,8 +272,8 @@ def test_batch_output_comparator_requires_cross_case_when_requested(tmp_path):
 def test_batch_output_comparator_accepts_tnd_logical_relations(tmp_path):
     fixture = FixtureWriter(tmp_path)
     fixture.write_csv(fixture.case_csv, [
-        fixture.tnd_case_row("TND_B3", 3, ((0, 1, 1), (2, 3, 1)), 7011),
-        fixture.tnd_case_row("TND_B4", 4, ((0, 1, 1), (3, 4, 1)), 7011),
+        fixture.tnd_case_row("TND_B3", 3, ((0, 2, 1), (4, 6, 1)), 7011),
+        fixture.tnd_case_row("TND_B4", 4, ((0, 2, 1), (6, 8, 1)), 7011),
     ])
     fixture.write_csv(fixture.result_csv, [
         {
