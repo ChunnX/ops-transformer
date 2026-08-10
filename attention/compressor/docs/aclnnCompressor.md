@@ -144,7 +144,7 @@ aclnnStatus aclnnCompressor(
 <!-- npu="A3" id6 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
  cacheMode不支持输入2，且不支持0轴非连续。
- cmp_ratio仅支持2/4/8/16/32/64/128
+ cmp_ratio仅支持2/4/8/16/32/64/128。
  gradEnabled不支持为true。
 
 <!-- end id6 -->
