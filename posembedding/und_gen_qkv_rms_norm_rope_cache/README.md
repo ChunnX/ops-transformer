@@ -24,7 +24,7 @@
 
 - 输入输出支持以下数据场景：
 
-    ```
+    ```text
     und_qkv:       [und_len, N, D]           N = Hq + Hk + Hv
     gen_qkv:       [gen_len, N, D]           当前必填，gen_len > 0
     und_weights_q: [D]   und_weights_k: [D]

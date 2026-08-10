@@ -75,6 +75,7 @@
     $$
 
     该规则只读取`mropeSection`的第2、3个分量（m<sub>1</sub>、m<sub>2</sub>），第1个分量m<sub>0</sub>不参与计算，时间轴是"其余全归它"的兜底轴。因此`mropeSection=[16,16,16]`实际得到时间/高度/宽度 = 32/16/16，而`[64,16,16]`与`[0,16,16]`的轴映射逐位相同。`mropeSection`为空时α(l) ≡ 0，退化为标准RoPE。非接口参数。
+
   - cos<sub>l</sub>、sin<sub>l</sub>：按α(l)选轴、以`positions`中对应位置值为行号从`cosSinCache`查得的旋转角分量，非接口参数。
   - x<sub>h</sub>：单个头的D维输入向量，从X<sub>t</sub>中按头拆分得到，非接口参数。
   - x̂<sub>h</sub>：RMSNorm归一化后的中间结果，非接口参数。
@@ -445,31 +446,31 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
 <!-- npu="950" id7 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
-    - **公共约束**
-      <a id="公共约束"></a>
-      - 计算全程使用float32，KV Cache以BF16存储，不支持FP8/INT8量化。
-      - headDim固定为128。
-      - `(numHeadsQ, numHeadsK, numHeadsV)`仅支持`(8,1,1)`和`(16,2,2)`两种组合。
-      - numHeadsQ + numHeadsK + numHeadsV必须等于`undQkv`的第二维N。
-      - und_len必须为正数；T = und_len + gen_len必须为正数。
-      - T不设人为上限，真实上限由KV Cache容量决定，需满足blockNum × blockSize ≥ T。上板已验证到T = 64K。
-      - blockSize不设限：cache强制为连续BBND，`[Bn, Bs, N, D]`展平后等价`[Bn*Bs, N, D]`，槽位号直接作为扁平行号使用，Bs不参与地址计算，也不参与多核与UB切分。上板已验证Bs ∈ {16, 64, 100, 128, 256, 512}，含非2的幂。
-      - `vCacheRef`的Bn、Bs必须与`kCacheRef`一致。
-      - `kCacheRef`第三维必须等于numHeadsK，第四维必须等于headDim（128）。
-      - `vCacheRef`第三维必须等于numHeadsV，第四维必须等于headDim（128）。
-      - `kCacheRef`、`vCacheRef`必须为内存连续Tensor，不支持非连续（含BNBD物理布局）。
-      - `genQkvOptional`的N和D维必须与`undQkv`一致。
-      - `undWeightsQ`、`undWeightsK`、`genWeightsQOptional`、`genWeightsKOptional`均必须为1维`[D]`，D = headDim = 128。
-      - `cosSinCache`必须为2维`[max_pos, D]`，max_pos为正数，D = headDim = 128。
-      - `slotMapping`必须为1维`[T]`；`catIndicesOptional`必须为1维`[T]`；`positions`必须为2维`[3, T]`，第一维固定为3。
-      - `qOut`必须为3维`[T, numHeadsQ, D]`。
-      - `normEps`必须为正数。
-      - `mropeSection`为空指针或空数组时按`[D/2, 0, 0]`处理；非空时长度必须为3、每个元素非负、三元素之和不超过D/2。
-      - **当前版本要求`genQkvOptional`、`genWeightsQOptional`、`genWeightsKOptional`、`catIndicesOptional`四个参数全部传入，且gen_len为正数**。传入nullptr对应的退化路径（纯prefill、单序列恒等映射）暂不支持，调用第二段接口时会返回失败。后续版本放开。
-    - **输入值域约束**（属运行期数据，Host侧无法校验，由调用方保证）
-      - `slotMapping`取值必须落在`[0, Bn*Bs-1]`且互不重复。出现重复槽位时多个核会写同一cache行，写入顺序与最终结果均不确定。
-      - `positions`取值必须落在`[0, max_pos-1]`，否则会越界访问`cosSinCache`。
-      - `catIndicesOptional`取值必须落在`[0, T-1]`。
+  - **公共约束**
+    <a id="公共约束"></a>
+    - 计算全程使用float32，KV Cache以BF16存储，不支持FP8/INT8量化。
+    - headDim固定为128。
+    - `(numHeadsQ, numHeadsK, numHeadsV)`仅支持`(8,1,1)`和`(16,2,2)`两种组合。
+    - numHeadsQ + numHeadsK + numHeadsV必须等于`undQkv`的第二维N。
+    - und_len必须为正数；T = und_len + gen_len必须为正数。
+    - T不设人为上限，真实上限由KV Cache容量决定，需满足blockNum × blockSize ≥ T。上板已验证到T = 64K。
+    - blockSize不设限：cache强制为连续BBND，`[Bn, Bs, N, D]`展平后等价`[Bn*Bs, N, D]`，槽位号直接作为扁平行号使用，Bs不参与地址计算，也不参与多核与UB切分。上板已验证Bs ∈ {16, 64, 100, 128, 256, 512}，含非2的幂。
+    - `vCacheRef`的Bn、Bs必须与`kCacheRef`一致。
+    - `kCacheRef`第三维必须等于numHeadsK，第四维必须等于headDim（128）。
+    - `vCacheRef`第三维必须等于numHeadsV，第四维必须等于headDim（128）。
+    - `kCacheRef`、`vCacheRef`必须为内存连续Tensor，不支持非连续（含BNBD物理布局）。
+    - `genQkvOptional`的N和D维必须与`undQkv`一致。
+    - `undWeightsQ`、`undWeightsK`、`genWeightsQOptional`、`genWeightsKOptional`均必须为1维`[D]`，D = headDim = 128。
+    - `cosSinCache`必须为2维`[max_pos, D]`，max_pos为正数，D = headDim = 128。
+    - `slotMapping`必须为1维`[T]`；`catIndicesOptional`必须为1维`[T]`；`positions`必须为2维`[3, T]`，第一维固定为3。
+    - `qOut`必须为3维`[T, numHeadsQ, D]`。
+    - `normEps`必须为正数。
+    - `mropeSection`为空指针或空数组时按`[D/2, 0, 0]`处理；非空时长度必须为3、每个元素非负、三元素之和不超过D/2。
+    - **当前版本要求`genQkvOptional`、`genWeightsQOptional`、`genWeightsKOptional`、`catIndicesOptional`四个参数全部传入，且gen_len为正数**。传入nullptr对应的退化路径（纯prefill、单序列恒等映射）暂不支持，调用第二段接口时会返回失败。后续版本放开。
+  - **输入值域约束**（属运行期数据，Host侧无法校验，由调用方保证）
+    - `slotMapping`取值必须落在`[0, Bn*Bs-1]`且互不重复。出现重复槽位时多个核会写同一cache行，写入顺序与最终结果均不确定。
+    - `positions`取值必须落在`[0, max_pos-1]`，否则会越界访问`cosSinCache`。
+    - `catIndicesOptional`取值必须落在`[0, T-1]`。
 
 <!-- end id7 -->
 
