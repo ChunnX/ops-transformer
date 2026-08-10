@@ -1584,9 +1584,8 @@ static graphStatus CheckNonQuantMatmulParams(fe::PlatformInfo& platformInfo, ger
         }
     }
     OP_CHECK_IF(CheckMatmulDataType(context, xDtype, weightDtype, biasDtype) != GRAPH_SUCCESS,
-              OP_LOGE(context->GetNodeName(), "case with x dtype %s and weight dtype %s is not supported!",
-                        TypeUtils::DataTypeToAscendString(xDtype).GetString(), TypeUtils::DataTypeToAscendString(weightDtype).GetString()),
-              return GRAPH_FAILED);
+                OP_LOGE(context->GetNodeName(), "x, weight or bias dtype does not match with required dtype."),
+                return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
@@ -1670,9 +1669,8 @@ static graphStatus CheckFunctionParamsForDtype(gert::InferDataTypeContext* conte
         // antiquant
         DataType biasDtype = xDtype == DataType::DT_BF16 ? DataType::DT_FLOAT: DataType::DT_FLOAT16;
         OP_CHECK_IF(CheckMatmulDataType(context, xDtype, weightDtype, biasDtype) != GRAPH_SUCCESS,
-                  OP_LOGE(context->GetNodeName(), "case with x dtype %s and weight dtype %s is not supported!",
-                            TypeUtils::DataTypeToAscendString(xDtype).GetString(), TypeUtils::DataTypeToAscendString(weightDtype).GetString()),
-                  return GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "x, weight or bias dtype does not match with required dtype."),
+                    return GRAPH_FAILED);
         return CheckGroupedMatmulAntiQuantForDtype(context);
     }
     OP_LOGE(context->GetNodeName(), "GMM: there is no matching xDtype and weightDtype pattern. "
