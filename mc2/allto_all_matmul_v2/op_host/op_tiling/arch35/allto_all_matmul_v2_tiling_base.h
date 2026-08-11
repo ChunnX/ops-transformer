@@ -58,6 +58,7 @@ protected:
     static constexpr size_t IDX_OUTPUT_Y = 0;
     static constexpr size_t IDX_ATTR_WORLD_SIZE = 1;
     static constexpr size_t IDX_ATTR_TRANSPOSE_X2 = 7;
+    static constexpr size_t IDX_ATTR_GROUP_SIZE = 8;
     static constexpr size_t IDX_ATTR_ALLTOALL_OUT_FLAG = 9;
     static constexpr size_t IDX_ATTR_COMM_MODE = 10;
     static constexpr size_t IDX_ATTR_PRECISION_MODE = 11;
@@ -66,6 +67,12 @@ protected:
     static constexpr uint64_t SCALE_DIM_NUM = 3;
     static constexpr int64_t MAX_INT32_VAL = 2147483647;
     static constexpr uint64_t K_MAX_VAL = 65535;
+    static constexpr uint64_t GROUP_MNK_BIT_SIZE = 0xFFFF;
+    static constexpr uint64_t GROUP_M_OFFSET = 32;
+    static constexpr uint64_t GROUP_N_OFFSET = 16;
+    static constexpr uint64_t MX_GROUP_M = 1;
+    static constexpr uint64_t MX_GROUP_N = 1;
+    static constexpr uint64_t MX_GROUP_K = 32;
 
     ge::graphStatus CheckTensorAttrs()
     {
@@ -196,6 +203,20 @@ protected:
         if (*a2aFlag) {
             OP_LOGE(opName, "alltoall_out_flag must be false, got true.");
             return ge::GRAPH_FAILED;
+        }
+
+        // ---- group_size validation (MX quant: [1,1,32]) ----
+        auto *gsPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_GROUP_SIZE);
+        if (gsPtr) {
+            uint64_t gs = static_cast<uint64_t>(*gsPtr);
+            uint64_t gsK = gs & GROUP_MNK_BIT_SIZE;
+            uint64_t gsN = (gs >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
+            uint64_t gsM = (gs >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
+            if (gsM != MX_GROUP_M || gsN != MX_GROUP_N || gsK != MX_GROUP_K) {
+                OP_LOGE(opName, "group_size must be [M=%lu,N=%lu,K=%lu] for MX quant, got [M=%lu,N=%lu,K=%lu].",
+                        MX_GROUP_M, MX_GROUP_N, MX_GROUP_K, gsM, gsN, gsK);
+                return ge::GRAPH_FAILED;
+            }
         }
 
         return ge::GRAPH_SUCCESS;
