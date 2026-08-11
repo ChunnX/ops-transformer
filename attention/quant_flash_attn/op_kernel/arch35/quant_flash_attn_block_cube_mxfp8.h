@@ -653,12 +653,10 @@ public:
     /* 针对S1Base=128, S2Base = 256, D = 128场景, L1全载/L0全载, K * Q^T, Q矩阵驻留. GS1>80, S=S1*S2 */
     __aicore__ inline void IterateBmm1Dn(MM1_DBUF_T &outputBuf, RunInfoX &runInfo, uint32_t subLoop)
     {
-        uint32_t s2CalcSize;
-        if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
-            s2CalcSize = runInfo.actSingleLoopS2Size;
-        } else {
+        uint32_t s2CalcSize = s2SplitSize;
+        if (unlikely(runInfo.actSingleLoopS2Size < s2BaseSize)) {//unlikely告诉编译器大概率走不到
             if (subLoop == 0) {
-                s2CalcSize = s2SplitSize;
+                s2CalcSize = AttentionCommon::Min((int32_t)s2SplitSize, (int32_t)runInfo.actSingleLoopS2Size);
             } else {
                 s2CalcSize = runInfo.actSingleLoopS2Size - s2SplitSize;
             }
