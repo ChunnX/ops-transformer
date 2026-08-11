@@ -875,6 +875,7 @@ ge::graphStatus TQSFATilingCheck::CheckActualSeqLensDType()
     }
     if (opParamInfo_.actualSeqLengths.desc->GetDataType() != ge::DT_INT32) {
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "actualSeqLengths invalid");
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -956,11 +957,21 @@ ge::graphStatus TQSFATilingCheck::CheckFeatureMlaAntiquantShapeSparseAndHeadDim(
                 OPS_REPORT_VECTOR_INNER_ERR(opName_, "sparseBlockSize_ invalid"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(qHeadDim_ <= ropeHeadDim_,
+    // kernel 侧 MM1 的 K 宽度与 vector scratch 容量均按 576 / 512 写死，
+    // 故此处必须按同一口径拦截，不能只做 qHeadDim_ > ropeHeadDim_ 的弱校验：
+    // 例如 qD=640/ropeD=64 可通过弱校验，却会让 vector scratch 越界。
+    OP_CHECK_IF(qHeadDim_ != TQ4_Q_HEAD_DIM,
                 OPS_REPORT_VECTOR_INNER_ERR(opName_, "qHeadDim_ invalid"),
                 return ge::GRAPH_FAILED);
 
+    OP_CHECK_IF(ropeHeadDim_ != TQ4_ROPE_HEAD_DIM,
+                OPS_REPORT_VECTOR_INNER_ERR(opName_, "ropeHeadDim_ invalid"),
+                return ge::GRAPH_FAILED);
+
     uint32_t kvLoraRank = qHeadDim_ - ropeHeadDim_;
+    OP_CHECK_IF(kvLoraRank != TQ4_NOPE_HEAD_DIM || (kvLoraRank % 2U) != 0U,
+                OPS_REPORT_VECTOR_INNER_ERR(opName_, "kvLoraRank invalid"),
+                return ge::GRAPH_FAILED);
     uint32_t tq4SlotBytes = kvLoraRank / 2 + ropeHeadDim_ * NUM_BYTES_BF16 + NUM_BYTES_FLOAT16;
     uint32_t expectedKHeadDim = tq4SlotBytes;
     OP_CHECK_IF(kHeadDim_ != expectedKHeadDim,

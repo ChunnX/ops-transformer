@@ -37,11 +37,11 @@ class TurboQuantSparseFlashAttentionOpBuilder(OpBuilder):
             "Tensor? key_dequant_scale=None, Tensor? value_dequant_scale=None, "
             "Tensor? block_table=None, Tensor? actual_seq_lengths_query=None, "
             "Tensor? actual_seq_lengths_kv=None, "
-            "float scale_value=1.0, int key_quant_mode=1, int value_quant_mode=1, "
+            "float scale_value=1.0, int key_quant_mode=3, int value_quant_mode=3, "
             "int sparse_block_size=1, "
             'str layout_query="TND", str layout_kv="PA_BSND", '
             "int sparse_mode=3, int pre_tokens=9223372036854775807, "
-            "int next_tokens=9223372036854775807, int attention_mode=0, "
+            "int next_tokens=9223372036854775807, int attention_mode=2, "
             "int quant_scale_repo_mode=1, int tile_size=128, int rope_head_dim=64, "
             "bool return_softmax_lse=False) -> (Tensor, Tensor, Tensor)"
         )
@@ -65,15 +65,15 @@ class TurboQuantSparseFlashAttentionOpBuilder(OpBuilder):
             actual_seq_lengths_query=None,
             actual_seq_lengths_kv=None,
             scale_value=1.0,
-            key_quant_mode=1,
-            value_quant_mode=1,
+            key_quant_mode=3,
+            value_quant_mode=3,
             sparse_block_size=1,
             layout_query="TND",
             layout_kv="PA_BSND",
             sparse_mode=3,
             pre_tokens=INT64_MAX,
             next_tokens=INT64_MAX,
-            attention_mode=0,
+            attention_mode=2,
             quant_scale_repo_mode=1,
             tile_size=128,
             rope_head_dim=64,
@@ -86,7 +86,11 @@ class TurboQuantSparseFlashAttentionOpBuilder(OpBuilder):
             )
             if return_softmax_lse:
                 kv_head_dim = key.size(2) if layout_kv == "PA_BSND" else key.size(1)
-                softmax_size = (kv_head_dim, query.size(0), query.size(1) // kv_head_dim)
+                softmax_size = (
+                    kv_head_dim,
+                    query.size(0),
+                    query.size(1) // kv_head_dim,
+                )
             else:
                 softmax_size = (0,)
             softmax_max = torch.empty(softmax_size, dtype=torch.float32, device="meta")
@@ -94,7 +98,9 @@ class TurboQuantSparseFlashAttentionOpBuilder(OpBuilder):
             return attention_out, softmax_max, softmax_sum
 
 
-turbo_quant_sparse_flash_attention_op_builder = TurboQuantSparseFlashAttentionOpBuilder()
+turbo_quant_sparse_flash_attention_op_builder = (
+    TurboQuantSparseFlashAttentionOpBuilder()
+)
 
 
 @impl(AS_LIBRARY, turbo_quant_sparse_flash_attention_op_builder.name, "PrivateUse1")
@@ -110,15 +116,15 @@ def turbo_quant_sparse_flash_attention(
     actual_seq_lengths_query: Optional[torch.Tensor] = None,
     actual_seq_lengths_kv: Optional[torch.Tensor] = None,
     scale_value: float = 1.0,
-    key_quant_mode: int = 1,
-    value_quant_mode: int = 1,
+    key_quant_mode: int = 3,  # 3: TQ4 码本量化，host 侧唯一合法值
+    value_quant_mode: int = 3,
     sparse_block_size: int = 1,
     layout_query: str = "TND",
     layout_kv: str = "PA_BSND",
     sparse_mode: int = 3,
     pre_tokens: int = INT64_MAX,
     next_tokens: int = INT64_MAX,
-    attention_mode: int = 0,
+    attention_mode: int = 2,  # 2: MLA-absorb，host 侧唯一合法值
     quant_scale_repo_mode: int = 1,
     tile_size: int = 128,
     rope_head_dim: int = 64,

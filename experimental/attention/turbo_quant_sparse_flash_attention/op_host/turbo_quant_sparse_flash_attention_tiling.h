@@ -23,12 +23,19 @@
 namespace optiling {
 // ------------------算子原型索引常量定义----------------
 // Inputs Index
+// 当前 kernel 的 MM1 K 宽度、vector scratch 容量均按下列值写死，
+// host 侧须按同口径校验，泛化维度需同步改造 cube / vector / workspace / tiling。
+constexpr uint32_t TQ4_Q_HEAD_DIM = 576U; // 512 latent + 64 rope
+constexpr uint32_t TQ4_NOPE_HEAD_DIM = 512U;
+constexpr uint32_t TQ4_ROPE_HEAD_DIM = 64U;
+constexpr uint32_t TQ4_KV_SLOT_BYTES = 386U; // 256 nibble + 128 rope(bf16) + 2 scale(fp16)
+
 constexpr uint32_t QUERY_INPUT_INDEX = 0;
 constexpr uint32_t KEY_INPUT_INDEX = 1;
 constexpr uint32_t VALUE_INPUT_INDEX = 2;
 constexpr uint32_t SPARSE_INDICES_INPUT_INDEX = 3;
-constexpr uint32_t KEY_DEQUANT_SCALE_INPUT_INDEX = 3;
-constexpr uint32_t VALUE_DEQUANT_SCALE_INPUT_INDEX = 3;
+constexpr uint32_t KEY_DEQUANT_SCALE_INPUT_INDEX = 4;
+constexpr uint32_t VALUE_DEQUANT_SCALE_INPUT_INDEX = 5;
 constexpr uint32_t BLOCK_TABLE_INPUT_INDEX = 6;
 constexpr uint32_t ACT_SEQ_LEN_Q_INPUT_INDEX = 7;
 constexpr uint32_t ACT_SEQ_LEN_KV_INPUT_INDEX = 8;
