@@ -98,27 +98,22 @@ output = udma.all_to_allv_grouped_mat_mul(
 `grouped_mat_mul_all_to_allv` performs the inverse order: local grouped
 matmuls followed by UDMA AllToAllV. Its `x` and `weight` inputs remain ordinary
 contiguous BF16 NPU tensors. UDMA GET writes the result directly, so the result
-is backed by the registered SHMEM heap:
+is an ordinary NPU tensor; only the internal remotely readable workspace uses
+the registered SHMEM heap:
 
 ```python
-import gc
-
 result = udma.grouped_mat_mul_all_to_allv(
     x, weight, local_tokens, global_tokens,
     ep_size=world_size, expert_num=expert_num,
 )
 
-# Reuse registered output so allocation stays outside repeated launches.
-reusable = udma.empty_symmetric((m, n))
+# Reuse an ordinary NPU output so allocation stays outside repeated launches.
+reusable = torch.empty((m, n), dtype=torch.bfloat16, device=x.device)
 udma.grouped_mat_mul_all_to_allv(
     x, weight, local_tokens, global_tokens,
     ep_size=world_size, expert_num=expert_num, out=reusable,
 )
 consume(result, reusable)
-
-# Every registered tensor must be released before destroy_udma_group().
-del result, reusable
-gc.collect()
 ```
 
 For this direction, `x` is grouped by the local experts according to the sums
@@ -171,11 +166,11 @@ FP32 CPU tensor, reconstructs destination-expert slices from the route matrix,
 and performs CPU FP32 matmul followed by BF16 conversion. Both automatic-output
 and reusable-output calls use the same ordinary input tensor and are checked.
 
-The SHMEM heap always contains the fixed communication workspace and
-synchronization state. GroupedMatMul-AllToAllV additionally allocates its
-`[m, n]` UDMA destination there; its ordinary `x` and `weight` inputs do not
-consume SHMEM. Validation defaults to 1 GiB. Set `UDMA_HEAP_SIZE` to an integer
-byte count when a larger output requires more capacity.
+The SHMEM heap contains only the fixed communication workspace and
+synchronization state. Inputs and outputs of both public operators use ordinary
+NPU memory, so larger model tensors do not increase the SHMEM heap requirement.
+Validation defaults to a 1 GiB heap; `UDMA_HEAP_SIZE` can override that runtime
+configuration when the internal workspace layout changes.
 
 Pass/fail follows the
 [opbase experimental precision standard](https://gitcode.com/cann/opbase/blob/master/docs/zh/ops_precision_standard/experimental_standard.md)

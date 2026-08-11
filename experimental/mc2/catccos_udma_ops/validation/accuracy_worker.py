@@ -164,7 +164,7 @@ def _run_case(case, rank, world_size, device, output_root):
         del ordinary
         gc.collect()
 
-        reusable_out = udma.empty_symmetric((m, n))
+        reusable_out = torch.empty((m, n), dtype=torch.bfloat16, device=device)
         for repeat in range(case["accuracy"]["repeats"]):
             out_actual = udma.grouped_mat_mul_all_to_allv(
                 x, weight, local_table, global_table,

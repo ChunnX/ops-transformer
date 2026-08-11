@@ -9,14 +9,28 @@ ASCEND950_ROOT = (
 )
 
 
-def test_kernel_keeps_inputs_regular_and_requires_registered_output():
+def test_kernel_keeps_inputs_and_output_in_regular_npu_memory():
     source = (ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma.cpp").read_text(
         encoding="utf-8"
     )
     assert 'reinterpret_cast<uint8_t *>(x.data_ptr())' in source
     assert 'reinterpret_cast<uint8_t *>(weight.data_ptr())' in source
-    assert "runtime.IsSymmetric(output.data_ptr())" in source
+    assert ": at::empty({m64, n64}, x.options())" in source
+    assert "runtime.IsSymmetric(output.data_ptr())" not in source
+    assert "AllocateSymmetricTensor(x, {m64, n64}" not in source
     assert "aclrtMemcpyAsync" not in source
+
+
+def test_validation_uses_regular_reusable_output():
+    accuracy = (PROJECT_ROOT / "validation" / "accuracy_worker.py").read_text(
+        encoding="utf-8"
+    )
+    performance = (PROJECT_ROOT / "validation" / "performance_worker.py").read_text(
+        encoding="utf-8"
+    )
+    assert "reusable_out = torch.empty((m, n)" in accuracy
+    assert "reusable_out = udma.empty_symmetric" not in accuracy
+    assert "out = udma.empty_symmetric" not in performance
 
 
 def test_kernel_configuration_matches_bf16_udma_get_example():

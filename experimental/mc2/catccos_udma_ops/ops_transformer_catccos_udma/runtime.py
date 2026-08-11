@@ -105,11 +105,11 @@ def get_udma_config() -> UdmaConfig:
 
 
 def empty_symmetric(shape, *, dtype=torch.bfloat16) -> torch.Tensor:
-    """Allocate a reusable tensor from the SHMEM heap for UDMA destinations.
+    """Allocate a tensor from the SHMEM heap for low-level interoperability.
 
-    This is needed only for operator arguments written directly by UDMA, such
-    as ``grouped_mat_mul_all_to_allv(..., out=...)``. Ordinary inputs remain in
-    regular NPU memory. Delete all such tensors before destroying the group.
+    The public operators do not require their inputs or outputs to use this
+    allocator; they keep only their internal remotely addressable workspace in
+    the symmetric heap. Delete all such tensors before destroying the group.
     """
     if _anchor is None:
         raise RuntimeError("UDMA is not initialized; call init_udma_group() first")

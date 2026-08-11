@@ -83,7 +83,10 @@ def main():
             shape["m"], rank, world_size, case["expert_num"], device
         )
         if case["operator"] == "grouped_mat_mul_all_to_allv":
-            out = udma.empty_symmetric((shape["m"], shape["n"]))
+            out = torch.empty(
+                (shape["m"], shape["n"]),
+                dtype=torch.bfloat16, device=device,
+            )
 
             def launch():
                 udma.grouped_mat_mul_all_to_allv(

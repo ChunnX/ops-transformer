@@ -157,13 +157,11 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
 
     at::Tensor output = outputOptional.has_value()
         ? outputOptional.value()
-        : AllocateSymmetricTensor(x, {m64, n64}, at::kBFloat16);
+        : at::empty({m64, n64}, x.options());
     CheckNpuTensor(output, "out", at::kBFloat16);
     TORCH_CHECK(output.device() == x.device(), "out and x must be on the same NPU");
     TORCH_CHECK(output.dim() == 2 && output.size(0) == m64 && output.size(1) == n64,
                 "out must have shape [m, n]");
-    TORCH_CHECK(runtime.IsSymmetric(output.data_ptr()),
-                "grouped_mat_mul_all_to_allv out must be allocated with empty_symmetric()");
     TORCH_CHECK(output.data_ptr() != x.data_ptr() && output.data_ptr() != weight.data_ptr(),
                 "out must not alias x or weight");
 

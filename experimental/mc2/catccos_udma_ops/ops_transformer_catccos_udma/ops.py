@@ -59,9 +59,10 @@ def grouped_mat_mul_all_to_allv(
     """Apply local grouped matmuls and return tokens with UDMA AllToAllV.
 
     ``x`` is a regular contiguous BF16 NPU tensor grouped by this rank's local
-    experts. The result has shape ``[m, n]`` and resides in SHMEM-registered NPU
-    memory because it is the local destination of UDMA GET operations. When
-    reusing ``out``, allocate it with :func:`empty_symmetric`.
+    experts. The result has shape ``[m, n]`` and resides in regular NPU memory.
+    UDMA GET writes directly to that local allocation, so a reusable ``out`` can
+    be created with :func:`torch.empty` and no symmetric-output staging or D2D
+    copy is required.
     """
     config = get_udma_config()
     if ep_size != config.world_size:
