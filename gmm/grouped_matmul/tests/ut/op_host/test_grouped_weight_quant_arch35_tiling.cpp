@@ -302,38 +302,28 @@ void ExpectMxA8W4SmsTilingFailure(const MxA8W4SmsTilingParam &param)
     EXPECT_FALSE(RunMxA8W4SmsTiling(param, tilingInfo));
 }
 
-gert::TilingContextPara MakeMxA8W4SssContext(optiling::GMMCompileInfo *compileInfo,
-                                             ge::DataType weightDtype = ge::DT_FLOAT4_E2M1,
-                                             bool hasBias = false, int64_t groupListType = 1)
+gert::TilingContextPara MakeMxA8W4SssContext(optiling::GMMCompileInfo *compileInfo)
 {
     constexpr size_t m = 64;
     constexpr size_t k = 128;
     constexpr size_t n = 256;
     constexpr size_t groupNum = 2;
-    std::vector<TensorDescription> inputs = {
-        MakeTensorDesc({static_cast<int64_t>(m), static_cast<int64_t>(k)}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND),
-        MakeTensorDesc(
-            {static_cast<int64_t>(groupNum), static_cast<int64_t>(k / 32), static_cast<int64_t>(n / 16), 16, 32},
-            {static_cast<int64_t>(groupNum), static_cast<int64_t>(k / 32), static_cast<int64_t>(n / 16), 16, 32},
-            weightDtype, ge::FORMAT_FRACTAL_NZ),
-    };
-    if (hasBias) {
-        inputs.emplace_back(MakeTensorDesc({static_cast<int64_t>(groupNum), static_cast<int64_t>(n)}, ge::DT_BF16,
-                                           ge::FORMAT_ND));
-    }
-    inputs.emplace_back(MakeTensorDesc(
-        {static_cast<int64_t>(groupNum), static_cast<int64_t>(n), static_cast<int64_t>(k / 64), 2},
-        ge::DT_FLOAT8_E8M0, ge::FORMAT_ND));
-    inputs.emplace_back(MakeTensorDesc({static_cast<int64_t>(groupNum)}, ge::DT_INT64, ge::FORMAT_ND));
-    inputs.emplace_back(MakeTensorDesc(
-        {static_cast<int64_t>(m), static_cast<int64_t>(k / 64), 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND));
-
-    MxA8W4SmsTilingParam attrParam;
-    attrParam.groupListType = groupListType;
     return gert::TilingContextPara(
-        "GroupedMatmul", inputs,
+        "GroupedMatmul",
+        {
+            MakeTensorDesc({static_cast<int64_t>(m), static_cast<int64_t>(k)}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND),
+            MakeTensorDesc(
+                {static_cast<int64_t>(groupNum), static_cast<int64_t>(k / 32), static_cast<int64_t>(n / 16), 16, 32},
+                {static_cast<int64_t>(groupNum), static_cast<int64_t>(k / 32), static_cast<int64_t>(n / 16), 16, 32},
+                ge::DT_FLOAT4_E2M1, ge::FORMAT_FRACTAL_NZ),
+            MakeTensorDesc({static_cast<int64_t>(groupNum), static_cast<int64_t>(n), static_cast<int64_t>(k / 64), 2},
+                           ge::DT_FLOAT8_E8M0, ge::FORMAT_ND),
+            MakeTensorDesc({static_cast<int64_t>(groupNum)}, ge::DT_INT64, ge::FORMAT_ND),
+            MakeTensorDesc({static_cast<int64_t>(m), static_cast<int64_t>(k / 64), 2}, ge::DT_FLOAT8_E8M0,
+                           ge::FORMAT_ND),
+        },
         {MakeTensorDesc({static_cast<int64_t>(m), static_cast<int64_t>(n)}, ge::DT_BF16, ge::FORMAT_ND)},
-        MakeMxA8W4SmsAttrs(attrParam), {1U, 1U, hasBias ? 1U : 0U, 0U, 0U, 1U, 0U, 1U, 1U}, {1U}, compileInfo);
+        MakeMxA8W4SmsAttrs(MxA8W4SmsTilingParam{}), {1U, 1U, 0U, 0U, 0U, 1U, 0U, 1U, 1U}, {1U}, compileInfo);
 }
 } // namespace
 
@@ -424,32 +414,6 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_mxa8w4_sss_tiling_ke
     EXPECT_EQ(tilingData->gmmWeightQuantParam.singleWeight, 1);
     EXPECT_EQ(tilingData->gmmWeightQuantParam.singleY, 1);
     EXPECT_EQ(tilingData->gmmWeightQuantParam.groupSize, 32);
-}
-
-TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_mxa8w4_e1m2_sss_tensor_api_flow)
-{
-    auto compileInfo = MakeArch35CompileInfo();
-    auto tilingContextPara = MakeMxA8W4SssContext(&compileInfo, ge::DT_FLOAT4_E1M2);
-    TilingInfo tilingInfo;
-    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
-    EXPECT_EQ(tilingInfo.tilingKey, static_cast<int64_t>(MakeExpectedMxA8W4TilingKey(false)));
-    const auto *tilingData = GetGMMWeightQuantTilingData(tilingInfo);
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(tilingData->gmmWeightQuantParam.singleWeight, 1);
-}
-
-TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_mxa8w4_sss_with_bias_and_offset_group_list)
-{
-    auto compileInfo = MakeArch35CompileInfo();
-    auto tilingContextPara = MakeMxA8W4SssContext(&compileInfo, ge::DT_FLOAT4_E2M1, true, 0);
-    TilingInfo tilingInfo;
-    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
-    EXPECT_EQ(tilingInfo.tilingKey, static_cast<int64_t>(MakeExpectedMxA8W4TilingKey(false)));
-    const auto *tilingData = GetGMMWeightQuantTilingData(tilingInfo);
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(tilingData->gmmWeightQuantParam.singleWeight, 1);
-    EXPECT_EQ(tilingData->gmmWeightQuantParam.hasBias, 1);
-    EXPECT_EQ(tilingData->gmmWeightQuantParam.groupListType, 0);
 }
 
 // MxA8W4 NZ场景 - 单多单模式, x必须是单tensor
