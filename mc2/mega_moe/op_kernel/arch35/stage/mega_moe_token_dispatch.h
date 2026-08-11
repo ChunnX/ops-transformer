@@ -17,12 +17,9 @@ namespace MegaMoeImpl {
 
 using namespace AscendC;
 
-// Token Dispatch uses a logical block job for work partitioning and a physical
-// workspace slot for count/flag publication. Neither index is derived here.
 struct TokenDispatchConfig {
     MoeStageCommonConfig common;
     BlockJobContext blockJob;
-    BlockWorkspaceContext countWorkspace;
     uint64_t maxOutputSize;
     MegaMoeDispatchBufferConfig bufferConfig;
     uint32_t maskAlignSize;
@@ -244,7 +241,8 @@ __aicore__ inline DispatchShardRange CalculateDispatchShardRange(
 // Prototype: MegaMoe::MetaInfoCalAndDispatch. Scans route batches and dispatches one block's token shards.
 template <typename ActivationType, typename QuantScaleType, bool EnableA8W4, uint32_t PipelineTileM,
           bool TopkWeightsPrefetch>
-__aicore__ inline void DispatchExpertTokens(const TokenDispatchConfig &context, const Params &params,
+__aicore__ inline void DispatchExpertTokens(const TokenDispatchConfig &context,
+                                            const BlockWorkspaceContext &countWorkspace, const Params &params,
                                             GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch,
                                             uint32_t localExpertId)
 {
@@ -256,7 +254,7 @@ __aicore__ inline void DispatchExpertTokens(const TokenDispatchConfig &context, 
     __gm__ int32_t *dispatchWaveReadyCount =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
         static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
-    uint32_t rankShardCount = context.countWorkspace.blockNum / context.common.worldSize;
+    uint32_t rankShardCount = countWorkspace.blockNum / context.common.worldSize;
     rankShardCount = rankShardCount == 0U ? 1U : rankShardCount;
 
     for (uint32_t dispatchShardIdx = context.blockJob.jobIndex;
@@ -337,11 +335,11 @@ __aicore__ inline void DispatchExpertTokens(const TokenDispatchConfig &context, 
 
 // 计算一个专家的接收 token 数，并发布就绪 flag。
 template <typename ActivationType, bool EnableA8W4, bool TopkWeightsPrefetch>
-__aicore__ inline void ComputeExpertTokenCountAndNotify(
-    const TokenDispatchConfig &context, const Params &params,
-    TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId, uint64_t &sendCnt)
+__aicore__ inline uint64_t ComputeExpertTokenCountAndNotify(
+    const TokenDispatchConfig &context, const BlockWorkspaceContext &countWorkspace, const Params &params,
+    TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId)
 {
-    sendCnt = 0;
+    uint64_t sendCnt = 0U;
     uint32_t maskSlotSize = context.maskAlignSize + static_cast<uint32_t>(ALIGN_32);
     GlobalTensor<int32_t> countSrcGlobal;
     countSrcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
@@ -377,8 +375,8 @@ __aicore__ inline void ComputeExpertTokenCountAndNotify(
 
     scratch.expertTokenCntTensor.SetValue(0, sendCnt);
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
-    uint64_t countOffset = localExpertId * INT32_PER_256B * context.countWorkspace.blockNum +
-                           INT32_PER_256B * context.countWorkspace.blockIdx;
+    uint64_t countOffset = localExpertId * INT32_PER_256B * countWorkspace.blockNum +
+                           INT32_PER_256B * countWorkspace.blockIdx;
     DataCopy<int32_t>(scratch.expertRevNumsGlobalTensor[countOffset], scratch.expertTokenCntTensor, INT32_PER_256B);
     if constexpr (EnableA8W4) {
         DataCopyPad(
@@ -389,9 +387,10 @@ __aicore__ inline void ComputeExpertTokenCountAndNotify(
 
     __gm__ int32_t *sendCntFlag =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagSendCntCalToUpdParamsPtr) +
-        static_cast<uint64_t>(localExpertId) * context.countWorkspace.blockNum * INT_CACHELINE +
-        static_cast<uint64_t>(context.countWorkspace.blockIdx) * INT_CACHELINE;
+        static_cast<uint64_t>(localExpertId) * countWorkspace.blockNum * INT_CACHELINE +
+        static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
     AscendC::AtomicAdd(sendCntFlag, static_cast<int32_t>(1));
+    return sendCnt;
 }
 
 // 导出 Token Dispatch 生成的逐专家接收 token 数。
@@ -438,7 +437,8 @@ struct ExpertTokenCountExportScratch {
 
 // 从稳定的物理 workspace 槽导出专家 token 数。
 __aicore__ inline void ExportExpertTokenCountsFromWorkspace(
-    const TokenDispatchConfig &context, const Params &params, ExpertTokenCountExportScratch &scratch)
+    const TokenDispatchConfig &context, const BlockWorkspaceContext &countWorkspace, const Params &params,
+    ExpertTokenCountExportScratch &scratch)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -451,9 +451,9 @@ __aicore__ inline void ExportExpertTokenCountsFromWorkspace(
     expertRevTokenNums.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.expertRevTokenNumsPtr));
     uint32_t expertCountStrideBytes =
-        context.countWorkspace.blockNum * static_cast<uint32_t>(INT32_PER_256B) * sizeof(int32_t);
+        countWorkspace.blockNum * static_cast<uint32_t>(INT32_PER_256B) * sizeof(int32_t);
     DataCopyPad(scratch.stridedTensor,
-                expertRevTokenNums[context.countWorkspace.blockIdx * static_cast<uint32_t>(INT32_PER_256B)],
+                expertRevTokenNums[countWorkspace.blockIdx * static_cast<uint32_t>(INT32_PER_256B)],
                 {static_cast<uint16_t>(expertPerRank), static_cast<uint32_t>(sizeof(int32_t)),
                  expertCountStrideBytes - static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U},
                 {true, 0U, 0U, 0U});
@@ -476,7 +476,8 @@ __aicore__ inline void ExportExpertTokenCountsFromWorkspace(
 template <typename ActivationType, typename QuantScaleType, bool EnableA8W4, uint32_t Gmm1TileM,
           bool TopkWeightsPrefetch>
 __aicore__ inline void RunMoeExpertDispatchStage(
-    const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
+    const TokenDispatchConfig &context, const BlockWorkspaceContext &countWorkspace, const Params &params,
+    GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t expertIdx, uint64_t &sendCnt)
 {
     sendCnt = 0U;
@@ -484,11 +485,11 @@ __aicore__ inline void RunMoeExpertDispatchStage(
         if (GetSubBlockIdx() != 1U) {
             return;
         }
-        ComputeExpertTokenCountAndNotify<ActivationType, EnableA8W4, TopkWeightsPrefetch>(
-            context, params, scratch, expertIdx, sendCnt);
+        sendCnt = ComputeExpertTokenCountAndNotify<ActivationType, EnableA8W4, TopkWeightsPrefetch>(
+            context, countWorkspace, params, scratch, expertIdx);
         if (sendCnt != 0U) {
             DispatchExpertTokens<ActivationType, QuantScaleType, EnableA8W4, Gmm1TileM, TopkWeightsPrefetch>(
-                context, params, winRankAddr, scratch, expertIdx);
+                context, countWorkspace, params, winRankAddr, scratch, expertIdx);
         }
     }
 }
