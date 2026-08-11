@@ -1457,11 +1457,16 @@ def _expand_d_group_scale(scale, width):
 
 
 def _gather_q_block_and_scale(
-    q_tensor, q_scale, cu_seqlens_q, batch_idx, q_start, q_end, head_idx
+    q_tensor, q_scale, layout_q, cu_seqlens_q, batch_idx, q_start, q_end, head_idx
 ):
-    base = int(cu_seqlens_q[batch_idx].item())
-    q_block = q_tensor[base + q_start : base + q_end, head_idx]
-    q_scale_block = q_scale[base + q_start : base + q_end, head_idx]
+    if layout_q == "NTD":
+        base = int(cu_seqlens_q[batch_idx].item())
+        q_block = q_tensor[head_idx, base + q_start : base + q_end]
+        q_scale_block = q_scale[head_idx, base + q_start : base + q_end]
+    else:
+        base = int(cu_seqlens_q[batch_idx].item())
+        q_block = q_tensor[base + q_start : base + q_end, head_idx]
+        q_scale_block = q_scale[base + q_start : base + q_end, head_idx]
     return q_block.to(torch.float32), q_scale_block.to(torch.float32)
 
 
@@ -1528,6 +1533,7 @@ def cpu_mxfp8_golden(
 
     attention_out = torch.zeros((total_q, n1, head_dim), dtype=torch.float32)
     softmax_lse = torch.full((total_q, n1), EMPTY_LSE, dtype=torch.float32)
+
     qb_max = math.ceil(max(q_lengths) / SPARSE_BLOCK_SIZE)
     neg_inf = float("-inf")
 
@@ -1565,6 +1571,7 @@ def cpu_mxfp8_golden(
                 q_block, q_scale_block = _gather_q_block_and_scale(
                     q_tensor,
                     q_scale,
+                    layout_q,
                     cu_seqlens_q,
                     batch_idx,
                     q_start,
@@ -1762,22 +1769,14 @@ def cpu_mxfp8_golden(
                 # m_run 已减去 ln_p_scale（对齐 NPU），LSE 需要加回 ln_p_scale 恢复原始语义。
                 lse = torch.log(safe_l) + m_run + ln_p_scale
 
-                # Only a structurally empty row has the empty-row output.  A
-                # row with valid KV whose direct FP32 dequantize-then-matmul
-                # overflows must retain NaN/Inf propagation from the score
-                # path instead of being reclassified through a shadow matmul.
-                row_invalid = ~any_valid
-                lse_invalid = row_invalid | (l_run == 0)
-
                 for local_idx in range(nq):
-                    if bool(row_invalid[local_idx].item()):
+                    if not bool(any_valid[local_idx].item()):
                         continue
                     out_idx = q_base + q_start + local_idx
                     attention_out[out_idx, head_idx] = attn[local_idx].to(
                         torch.bfloat16
                     )
-                    if not bool(lse_invalid[local_idx].item()):
-                        softmax_lse[out_idx, head_idx] = lse[local_idx]
+                    softmax_lse[out_idx, head_idx] = lse[local_idx]
 
     logger.info(
         "[CPU Golden] output(TND)=%s, lse(TN)=%s",
