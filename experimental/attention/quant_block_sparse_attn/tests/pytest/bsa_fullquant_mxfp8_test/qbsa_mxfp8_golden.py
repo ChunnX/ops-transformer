@@ -1751,6 +1751,12 @@ def _positions_from_sparse(
     return all_task_positions
 
 
+def _expand_d_group_scale(scale, width):
+    return scale.to(torch.float32).repeat_interleave(QUANT_GROUP_SIZE, dim=-1)[
+        ..., :width
+    ]
+
+
 def _gather_q_block_and_scale(
     q_tensor, q_scale, cu_seqlens_q, batch_idx, q_start, q_end, head_idx
 ):
@@ -1873,7 +1879,6 @@ def cpu_mxfp8_golden(
                     q_end,
                     head_idx,
                 )
-
                 m_run = torch.full((nq,), neg_inf, dtype=torch.float32)
                 l_run = torch.zeros((nq,), dtype=torch.float32)
                 acc = torch.zeros((nq, head_dim), dtype=torch.float32)
@@ -1903,7 +1908,6 @@ def cpu_mxfp8_golden(
                     k_scale_mat = k_scale[
                         physical_blocks, n2_idx, block_offsets, :, :
                     ].flatten(-2)
-
                     valid_mask = _valid_mask_for_positions(
                         q_indices, positions, q_len, kv_len
                     )

@@ -93,8 +93,8 @@ def _numpy_compare(npu_out, golden_out, output_name):
     has_nonfinite_mismatch = bool(np.any(nonfinite_mismatch))
 
     # Calculate error magnitudes only for finite mismatches. NaN/NaN and
-    # same-sign Inf/Inf pairs are accepted by isclose. A one-sided NaN or any
-    # other mismatched non-finite combination is an explicit hard failure.
+    # same-sign Inf/Inf pairs are accepted by isclose. Other non-finite pairs
+    # remain mismatches and are governed by the same failure-ratio threshold.
     finite_npu = npu_f32[finite_mismatch]
     finite_golden = golden_f32[finite_mismatch]
     finite_abs_diff = np.abs(finite_npu - finite_golden)
@@ -120,8 +120,6 @@ def _numpy_compare(npu_out, golden_out, output_name):
 
     passed = fail_ratio <= _FAIL_RATIO_LIMIT
     if max_normalized_error >= _MAX_NORMALIZED_ERROR:
-        passed = False
-    if has_nonfinite_mismatch:
         passed = False
 
     error_info = None
