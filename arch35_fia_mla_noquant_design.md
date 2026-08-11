@@ -707,7 +707,150 @@ Kernel FD 阶段:
 
 ---
 
-## 13. 待完成事项
+## 13. 支持范围
+
+### 13.1 平台与量化模式
+
+| 项目 | 支持值 | 来源 |
+|------|--------|------|
+| NPU 架构 | DAV_3510 (arch35) | 模板注册 `REGISTER_TILING_TEMPLATE_FIA` |
+| 量化模式 | 非量化 (NoQuant) | `IsCapableBasicCheckMla`: `quantMode != NO_QUANT → false` |
+| MLA 模式 | ROPE_SPLIT_D512 | `IsCapableBasicCheckMla`: `mlaMode != ROPE_SPLIT_D512 → false` |
+| 数据类型 (Q/K/V) | fp16 / bf16 | `fia_arch35_noquant.h` dtype 条件编译 |
+| 输出数据类型 | fp16 / bf16 / int8 / hifloat8 / fp8_e4m3 | `fia_arch35_noquant.h` 各 `ORIG_DTYPE_ATTENTION_OUT` 分支 |
+
+### 13.2 维度约束
+
+| 维度 | 支持值 | 约束来源 |
+|------|--------|----------|
+| QK HeadDim (D) | 512 | `IsCapableSparseLayoutCheckMla`: `qkHeadDim != DSIZE_512 → false` |
+| RoPE HeadDim | 64 | `ropeHeadDim != MLA_ROPE_D_DIM_64 → false` |
+| V HeadDim (DV) | 512 | `vHeadDim != DSIZE_512 → false` |
+| 实际 BMM1 K | 576 (512 + 64 rope) | 编译期 `DTemplateType::Aligned576` |
+| N2 (KV head) | 1 | `n2Size != 1 → false` |
+| N1 / G (Q head) | [1, 128] 任意整数 (arch35 非量化) | checker 放宽: `isArch35NonQuant` 分支 |
+| S1 (Q seq len) | >= 1 | `common_checker.cpp:624`: `s1Size < 1 → reject` |
+| S2 (KV seq len) | >= 0 (0 为空 batch) | `IsExistRowInvalid` 空 tensor 处理 |
+| B (batch) | (0, 65536] | `common_checker.cpp:569`: `bSize > B_LIMIT(65536) → reject` |
+
+### 13.3 布局支持
+
+#### 输入布局 (Q/K/V)
+
+| 布局 | 支持 | TilingKey 枚举 |
+|------|------|----------------|
+| BNSD | yes | `InOutLayoutType_BNSD_BNSD` (0) |
+| BSH / BSND | yes | `InOutLayoutType_BSH_BSH` (1) |
+| TND | yes | `InOutLayoutType_TND_TND` (2) |
+| NTD | yes | `InOutLayoutType_NTD_NTD` (4) |
+
+#### 输出布局
+
+| 输出布局 | 支持 | GmFormat |
+|----------|------|----------|
+| BSH | yes | BSNGD |
+| BNSD | yes | BNGSD |
+| TND | yes | TNGD |
+| NTD | yes | NGTD |
+| NBSD | yes | NGBSD |
+
+#### KV 存储布局
+
+| KV 布局 | TilingKey 枚举 | 支持 | 说明 |
+|---------|----------------|------|------|
+| 非 PA (连续) | `KvLayoutType_NO_PA` (0) | yes | 标准 BNSD/TND 连续 KV |
+| PA BBH | `KvLayoutType_PA_BBH` (1) | yes | Paged Attention, [B, B, H] |
+| PA BNBD | `KvLayoutType_PA_BNBD` (2) | yes | Paged Attention, [B, N, B, D] |
+| PA NZ | `KvLayoutType_PA_NZ` (3) | yes | Paged Attention, NZ 格式 |
+| TensorList | — | **no** | `kvStorageMode == TENSOR_LIST → false` |
+
+> PA blockSize 约束: [16, 1024]，且 16 对齐 (`BLOCK_SIZE_MAX_FOR_NO_QUANT=1024`, `BLOCK_SIZE_ALIGN_SIZE_16=16`)
+
+### 13.4 SparseMode 与 Mask 支持
+
+| SparseMode | 枚举值 | 支持 | Mask 要求 |
+|------------|--------|------|-----------|
+| NO_MASK / DEFAULT | 0 | yes | 可不传 mask；传 mask 则全量参与（pre/next 决定 S2 窗口） |
+| ALL_MASK | 1 | **no** | `IsCapableSparseLayoutCheckMla` 拒绝 |
+| LEFT_UP_CAUSAL | 2 | **no** | `IsCapableSparseLayoutCheckMla` 拒绝 |
+| RIGHT_DOWN_CAUSAL | 3 | yes | mask 必须 [2048, 2048] 精确尺寸 |
+| BAND | 4 | yes | mask 必须 [2048, 2048] 精确尺寸 |
+| TREE | 9 | **no** | `IsCapableSparseLayoutCheckMla` 拒绝 |
+
+#### Mask 参数约束（sparseMode=0 + mask 场景）
+
+| 约束项 | 要求 | 来源 |
+|--------|------|------|
+| Mask dtype | bool / int8 / uint8 | `mask_checker.cpp` |
+| Mask format | ND / NCHW / NHWC / NCDHW | `mask_checker.cpp` |
+| Mask 维数 | 3D `[B或1, >=S1, >=S2]` 或 4D `[B或1, 1, >=S1, >=S2]` | arch35 拒绝 2D mask |
+| Mask batch | {1, B} | `mask_checker.cpp` |
+| Mask 4D N 维 | == 1 | `mask_checker.cpp` |
+| Mask S1 下限 | >= s1Size (decode 即 >=1) | `mask_checker.cpp:538` |
+| Mask S2 下限 | >= maxActualseq (非 PA) 或 s2Size (PA) | `mask_checker.cpp:538` |
+| preTokens + nextTokens | >= 0 | `mask_checker.cpp:308` |
+| preTokens 默认 | INT_MAX | parser 未传时置 `SPARSE_MODE_INT_MAX` |
+| nextTokens 默认 | INT_MAX | 同上 |
+
+> sparseMode=0 不传 mask: 合法，跳过全部 mask 校验，pre/next 不生效（走 `CalcCurS2StartEndNoSparse`，S2 固定全量）。
+
+### 13.5 功能特性支持
+
+| 特性 | 支持 | 约束来源 |
+|------|------|----------|
+| AttenMask | yes | `hasAttenMask: false / true` 双路径 |
+| RoPE (query_rope / key_rope) | yes (必须) | `hasRope=true` 固定，`UpdateTilingKeyHasRope` |
+| FlashDecode (isFd) | yes | S2 多核切分时自动触发 |
+| softmaxLse 输出 | yes | `isSoftmaxLseEnable` 从入参解析 |
+| S1 外切 (enableS1OutSplit) | **no** | 固定 false，走 `SplitCore` 而非 `SplitS1OutCore` |
+| 空 Tensor (emptyTensor) | **no** | `IsCapableBasicCheckMla`: `emptyTensorFlag → false` |
+| 公共前缀 (sysPrefix) | **no** | `IsCapableFeatureCheckMla`: `sysPrefixFlag → false` |
+| PSE Shift | **no** | `pseShiftFlag → false` |
+| Alibi PSE | **no** | `enableAlibiPse → false` |
+| Q 左 Padding | **no** | `qPaddingSizeFlag → false` |
+| KV 左 Padding | **no** | `kvPaddingSizeFlag → false` |
+| 后量化 (PostQuant) | **no** | `isOutQuantEnable → false` |
+| Learnable Sink | **no** | `learnableSinkFlag → false` |
+| D 不等长 (isQKVDDifferent) | **no** | `isQKVDDifferent → false` |
+| KV TensorList | **no** | `kvStorageMode == TENSOR_LIST → false` |
+| 行无效 (RowInvalid) | yes | `isRowInvalidOpen = (innerPrecise >> 1) & 1` |
+| ViewStride (非连续 KV) | yes | `fiaInfo_->hasViewStride` 时写入 strides |
+
+### 13.6 Tiling 切分参数
+
+| 参数 | 值 | 说明 |
+|------|----|------|
+| SOuter (S1 外切) | 32 | `sOuterFactor_ = SOUTER_32`，GS1 方向每次 32 token |
+| SInner (S2 内切) | 128 | `sInnerFactor_ = SINNER_128`，KV S2 方向每次 128 token |
+| mBaseSize | 64 | `sOuter * CV_RATIO = 32 * 2`，Cube M 基本块 |
+| s2BaseSize | 128 | Cube N 基本块 |
+| FD M 切分 | 8 | `fdBalanceMBaseSize = 8`，FD 阶段 M 方向每次 8 行 |
+| FD gS1BaseSize | 8 | `splitParam.gS1BaseSizeOfFd = 8` |
+| PRE_LOAD_NUM | 2 | FD 阶段预取深度 |
+| StreamK | true | `splitParam.streamK = true`，流式 K 分配 |
+
+### 13.7 编译期实例化矩阵
+
+| 维度 | 取值数 | 值 |
+|------|--------|----|
+| InOutLayoutType | 4 | BNSD, BSH, TND, NTD |
+| Config | 1 | S1Aligned64_S2Aligned128_DAligned576_DVAligned512 (9) |
+| PseMode | 1 | PSE_NONE_TYPE (9) |
+| QuantMode | 1 | NoQuantMode (31) |
+| HasAttenMask | 2 | false, true |
+| HasRope | 1 | true (固定) |
+| KvLayoutType | 4 | NO_PA, PA_BBH, PA_BNBD, PA_NZ |
+| IsFd | 2 | false, true |
+| EmptyTensor | 1 | false (固定) |
+| EnableKVPrefix | 1 | false (固定) |
+| EnableS1OutSplit | 1 | false (固定) |
+| IsReconstructTemp | 1 | true (固定) |
+| **单 dtype 实例数** | **64** | 4 × 2 × 4 × 2 |
+| **总实例数 (含 half/bf16)** | **128** | 64 × 2 |
+
+---
+
+## 14. 待完成事项
 
 1. **测试用例补充**: sparseMode=0 + mask（3D/4D mask）、显式 pre/next（如 0/0 对角窗口）、innerPrecise 行无效、isFd+mask 组合
 2. **回归验证**: sparseMode=0 无 mask（保持现状行为不劣化）、sparseMode=3/4（已有放行）不劣化
