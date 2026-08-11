@@ -17,7 +17,7 @@
 #include "../../../numeric_size.hpp"
 #include "../../../layout/layout.hpp"
 #include "../../gemm_type.hpp"
-#include "../../../../tla/tensor.hpp"
+#include "tla/tensor.hpp"
 
 namespace Catlass::Gemm::Tile {
 

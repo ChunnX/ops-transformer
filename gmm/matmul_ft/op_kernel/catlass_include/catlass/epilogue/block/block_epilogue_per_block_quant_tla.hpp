@@ -21,8 +21,8 @@
 #include "../../detail/callback.hpp"
 #include "../tile/tile_perblock_quant.hpp"
 #include "../tile/copy_ub_to_gm_tla.hpp"
-#include "../../../tla/layout.hpp"
-#include "../../../tla/tensor.hpp"
+#include "tla/layout.hpp"
+#include "tla/tensor.hpp"
 
 namespace Catlass::Epilogue::Block {
 

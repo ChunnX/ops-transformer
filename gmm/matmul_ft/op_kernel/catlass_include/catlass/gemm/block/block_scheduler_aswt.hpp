@@ -15,7 +15,7 @@
 #include "../../detail/alignment.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
-#include "../../../tla/layout.hpp"
+#include "tla/layout.hpp"
 
 namespace Catlass::Gemm::Block {
 

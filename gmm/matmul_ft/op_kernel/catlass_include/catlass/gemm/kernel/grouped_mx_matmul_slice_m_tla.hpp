@@ -17,8 +17,8 @@
 #include "../../coord.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
-#include "../../../tla/layout.hpp"
-#include "../../../tla/tensor.hpp"
+#include "tla/layout.hpp"
+#include "tla/tensor.hpp"
 
 namespace Catlass::Gemm::Kernel {
 

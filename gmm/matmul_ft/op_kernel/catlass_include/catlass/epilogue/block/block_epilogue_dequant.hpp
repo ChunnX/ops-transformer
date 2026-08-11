@@ -19,8 +19,8 @@
 #include "../tile/tile_copy.hpp"
 #include "../../gemm/helper.hpp"
 #include "../../status.hpp"
-#include "../../../tla/tensor.hpp"
-#include "../../../tla/layout.hpp"
+#include "tla/tensor.hpp"
+#include "tla/layout.hpp"
 
 namespace Catlass::Epilogue::Block{
 

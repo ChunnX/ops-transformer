@@ -21,8 +21,8 @@
 #include "../../arch/cross_core_sync.hpp"
 #include "splitk_matmul.hpp"
 #include "../block/block_swizzle.hpp"
-#include "../../../tla/layout.hpp"
-#include "../../../tla/tensor.hpp"
+#include "tla/layout.hpp"
+#include "tla/tensor.hpp"
 
 namespace Catlass::Gemm::Kernel {
 

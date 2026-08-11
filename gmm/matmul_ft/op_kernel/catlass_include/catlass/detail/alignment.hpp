@@ -12,7 +12,7 @@
 #define CATLASS_DETAIL_ALIGNMENT_HPP
 
 #include "macros.hpp"
-#include "../../tla/numeric/integral_constant.hpp"
+#include "tla/numeric/integral_constant.hpp"
 
 template <uint32_t ALIGN, typename T>
 CATLASS_HOST_DEVICE

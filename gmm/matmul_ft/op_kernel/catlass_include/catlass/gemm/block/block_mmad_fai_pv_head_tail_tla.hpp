@@ -19,8 +19,8 @@
 #include "../../gemm_coord.hpp"
 #include "../tile/tile_copy.hpp"
 #include "../tile/tile_mmad.hpp"
-#include "../../../tla/layout.hpp"
-#include "../../../tla/tensor.hpp"
+#include "tla/layout.hpp"
+#include "tla/tensor.hpp"
 
 ////////////////////////////////////////////////////////////////////
 

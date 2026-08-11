@@ -15,7 +15,7 @@
 #include "../../../arch/arch.hpp"
 #include "../../../layout/layout.hpp"
 #include "../../gemm_type.hpp"
-#include "../../../../tla/tensor.hpp"
+#include "tla/tensor.hpp"
 
 using namespace tla;
 

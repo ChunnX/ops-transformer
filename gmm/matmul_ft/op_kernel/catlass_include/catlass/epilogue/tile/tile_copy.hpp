@@ -18,7 +18,7 @@
 #include "copy_ub_to_gm.hpp"
 #include "copy_gm_to_ub_tla.hpp"
 #include "copy_ub_to_gm_tla.hpp"
-#include "../../../tla/tensor.hpp"
+#include "tla/tensor.hpp"
 
 #if (defined (CATLASS_ARCH) && CATLASS_ARCH == 3510)
 #include "copy_ub_to_l1_tla.hpp"

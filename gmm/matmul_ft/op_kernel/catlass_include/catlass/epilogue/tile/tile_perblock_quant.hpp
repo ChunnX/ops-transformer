@@ -13,8 +13,8 @@
 
 #include "../../catlass.hpp"
 #include "../../arch/arch.hpp"
-#include "../../../tla/tensor.hpp"
-#include "../../../tla/layout.hpp"
+#include "tla/tensor.hpp"
+#include "tla/layout.hpp"
 
 namespace Catlass::Epilogue::Tile {
 

@@ -18,8 +18,8 @@
 #include "../../arch/resource.hpp"
 #include "../../arch/cross_core_sync.hpp"
 #include "../tile/tile_copy_tla.hpp"
-#include "../../../tla/layout.hpp"
-#include "../../../tla/tensor.hpp"
+#include "tla/layout.hpp"
+#include "tla/tensor.hpp"
 
 namespace Catlass::Gemm::Kernel {
 

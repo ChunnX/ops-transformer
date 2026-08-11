@@ -14,7 +14,7 @@
 #include "../../../catlass.hpp"
 #include "../../../arch/arch.hpp"
 #include "../../gemm_type.hpp"
-#include "../../../../tla/tensor.hpp"
+#include "tla/tensor.hpp"
 
 namespace Catlass::Gemm::Tile {
 

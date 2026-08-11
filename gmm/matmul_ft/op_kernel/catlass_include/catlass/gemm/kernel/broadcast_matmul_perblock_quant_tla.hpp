@@ -22,8 +22,8 @@
 #include "../../gemm_coord.hpp"
 #include "../dispatch_policy.hpp"
 #include "../../epilogue/block/block_epilogue.hpp"
-#include "../../../tla/tensor.hpp"
-#include "../../../tla/layout.hpp"
+#include "tla/tensor.hpp"
+#include "tla/layout.hpp"
 
 namespace Catlass::Gemm::Kernel {
 

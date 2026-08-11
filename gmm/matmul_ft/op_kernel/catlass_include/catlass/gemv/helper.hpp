@@ -16,7 +16,7 @@
 #include "../numeric_size.hpp"
 #include "../layout/layout.hpp"
 #include "../gemm/gemm_type.hpp"
-#include "../../tla/layout.hpp"
+#include "tla/layout.hpp"
 
 namespace Catlass::Gemm::helper {
 

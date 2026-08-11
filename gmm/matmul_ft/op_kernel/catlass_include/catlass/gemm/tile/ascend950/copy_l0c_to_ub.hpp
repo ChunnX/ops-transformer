@@ -15,7 +15,7 @@
 #include "../../../catlass.hpp"
 #include "copy_l0c_to_dst.hpp"
 #include "../../../numeric_size.hpp"
-#include "../../../../tla/tensor.hpp"
+#include "tla/tensor.hpp"
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 constexpr AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};

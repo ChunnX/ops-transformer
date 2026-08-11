@@ -13,7 +13,7 @@
 
 #include "../layout/layout.hpp"
 #include "../numeric_size.hpp"
-#include "../../tla/layout.hpp"
+#include "tla/layout.hpp"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

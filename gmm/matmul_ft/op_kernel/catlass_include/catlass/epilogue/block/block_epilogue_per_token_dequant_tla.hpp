@@ -19,8 +19,8 @@
 #include "../../matrix_coord.hpp"
 #include "../../layout/layout.hpp"
 #include "../../detail/callback.hpp"
-#include "../../../tla/layout.hpp"
-#include "../../../tla/tensor.hpp"
+#include "tla/layout.hpp"
+#include "tla/tensor.hpp"
 
 namespace Catlass::Epilogue::Block {
 
