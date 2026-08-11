@@ -12,6 +12,7 @@
  * \brief A template tiling (NO_BROADCAST, DxTilingKey=205)
  */
 #include "apply_rotary_pos_emb_grad_tiling.h"
+#include "op_kernel/math_util.h"
 
 namespace optiling {
 constexpr uint64_t APPLY_ROPE_GRAD_A_TILING_PRIORITY = 40000;
@@ -75,8 +76,8 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassA::ComputeUbFactor()
         OP_LOGE(context_, "D too big for UB"),
         return ge::GRAPH_FAILED);
     numDAvail /= ubBufNum;
-    ubFactorB_ = std::min(blockFactorB_, numDAvail);
-    ubFactorB_ = std::min(ubFactorB_, MAX_COPY_BLOCK_COUNT);
+    ubFactorB_ = AscendC::Std::min(blockFactorB_, numDAvail);
+    ubFactorB_ = AscendC::Std::min(ubFactorB_, MAX_COPY_BLOCK_COUNT);
     return ge::GRAPH_SUCCESS;
 }
 

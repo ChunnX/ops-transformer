@@ -12,6 +12,7 @@
  * \file apply_rotary_pos_emb_grad_common.h
  * \brief
  */
+
 #ifndef APPLY_ROTARY_POS_EMB_GRAD_COMMON_H
 #define APPLY_ROTARY_POS_EMB_GRAD_COMMON_H
 
@@ -35,6 +36,61 @@ constexpr uint32_t VL_FLOAT32_SIZE = GetVRegSize() / sizeof(float);
 constexpr uint32_t BLOCK_TYPE_SIZE = GetUbBlockSize();
 constexpr uint32_t HALF_COEF = 2;
 constexpr uint32_t DOUBLE_BUFFER = 2;
+
+/*
+    grad_out_1 = cos_1 * grad_1 + sin_2 * grad_2
+    grad_out_2 = cos_2 * grad_2 - sin_1 * grad_1
+*/
+template <typename T>
+__aicore__ inline void HalfGradAlignVF(
+    const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const LocalTensor<T>& inTensor,
+    const LocalTensor<T>& outTensor, uint32_t dLen, uint32_t dAlign, uint16_t currSNum, uint16_t currDNum)
+{
+    __local_mem__ T* sinUb = (__local_mem__ T*)sinTensor.GetPhyAddr();
+    __local_mem__ T* cosUb = (__local_mem__ T*)cosTensor.GetPhyAddr();
+    __local_mem__ T* inUb = (__local_mem__ T*)inTensor.GetPhyAddr();
+    __local_mem__ T* outUb = (__local_mem__ T*)outTensor.GetPhyAddr();
+    uint32_t halfD = dLen / HALF_COEF;
+    uint32_t halfDAlign = Ops::Base::CeilAlign(halfD, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
+    uint16_t repeatTimes = Ops::Base::CeilDiv(halfD, VL_FLOAT32_SIZE);
+    __local_mem__ T *currInUb, *currOutUb, *currSinUb, *currCosUb;
+
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<float> vregIn, vregHalfIn, vregSin, vregHalfSin, vregCos, vregHalfCos, vregOut, vregHalfOut;
+        MicroAPI::MaskReg preg;
+        for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
+            currSinUb = sinUb + sIdx * dAlign;
+            currCosUb = cosUb + sIdx * dAlign;
+            for (uint16_t row = 0; row < currDNum; row++) {
+                currInUb = inUb + (sIdx * currDNum + row) * dAlign;
+                currOutUb = outUb + (sIdx * currDNum + row) * dAlign;
+                uint32_t updateCnt = halfD;
+                for (uint16_t i = 0; i < repeatTimes; i++) {
+                    preg = MicroAPI::UpdateMask<float>(updateCnt);
+                    int32_t offset = i * VL_FLOAT32_SIZE;
+                    int32_t halfOffset = offset + halfDAlign;
+                    ops::LoadTwoTensorForDtypeT<T>(
+                        currInUb, currInUb, vregIn, vregHalfIn, preg, preg, offset, halfOffset);
+                    ops::LoadTwoTensorForDtypeT<T>(
+                        currSinUb, currSinUb, vregSin, vregHalfSin, preg, preg, offset, halfOffset);
+                    ops::LoadTwoTensorForDtypeT<T>(
+                        currCosUb, currCosUb, vregCos, vregHalfCos, preg, preg, offset, halfOffset);
+
+                    Mul(vregOut, vregCos, vregIn, preg);
+                    Mul(vregHalfSin, vregHalfSin, vregHalfIn, preg);
+                    Add(vregOut, vregOut, vregHalfSin, preg);
+                    Mul(vregSin, vregSin, vregIn, preg);
+                    Mul(vregHalfCos, vregHalfCos, vregHalfIn, preg);
+                    Sub(vregHalfOut, vregHalfCos, vregSin, preg);
+
+                    ops::StoreOneTensorForDtypeT<T>(currOutUb, vregOut, preg, offset);
+                    ops::StoreOneTensorForDtypeT<T>(currOutUb, vregHalfOut, preg, halfOffset);
+                }
+            }
+        }
+    }
+}
 
 // ============================================================================
 // BatchHalfGradContiguousVF — A 模板连续 D 布局 half gradient
