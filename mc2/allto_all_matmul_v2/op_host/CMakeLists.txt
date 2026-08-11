@@ -25,6 +25,10 @@ if (BUILD_OPEN_PROJECT)
     set(allto_all_matmul_v2_depends mc2/common mc2/3rd PARENT_SCOPE)
     set(allto_all_matmul_v2_apt_depends mc2/common mc2/3rd PARENT_SCOPE)
 
+    # newer ops-tensor lacks c_api dirs; create empty placeholders for cmake copy commands
+    file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/third_party/ops-tensor/include/tensor_api/impl/c_api
+                         ${CMAKE_SOURCE_DIR}/third_party/ops-tensor/include/tensor_api/include/c_api)
+
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
