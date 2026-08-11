@@ -1,3 +1,13 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
 #ifndef SORT_WITH_INDEX_INT32_H
 #define SORT_WITH_INDEX_INT32_H
 /*
@@ -12,23 +22,23 @@ namespace SortWithIndexInt32 {
 using namespace AscendC;
 
 enum : uint32_t {
-    HISTOGRAM_BINS     = 256,
-    DEFAULT_TILE_SIZE  = 4096,
-    BITS_PER_BYTE      = 8,
-    BYTES_PER_INT32    = 4,
-    VECTOR_LEN_INT32   = 64,
-    VECTOR_LEN_INT16   = 128,
-    VECTOR_LEN_INT8    = 256,
+    HISTOGRAM_BINS = 256,
+    DEFAULT_TILE_SIZE = 4096,
+    BITS_PER_BYTE = 8,
+    BYTES_PER_INT32 = 4,
+    VECTOR_LEN_INT32 = 64,
+    VECTOR_LEN_INT16 = 128,
+    VECTOR_LEN_INT8 = 256,
 };
 
 constexpr uint32_t UB_BLOCK_BYTES = Ops::Base::GetUbBlockSize();
 
-__aicore__ inline uint32_t MinU32(uint32_t a, uint32_t b)  { return a < b ? a : b; }
+__aicore__ inline uint32_t MinU32(uint32_t a, uint32_t b) { return a < b ? a : b; }
 __aicore__ inline uint32_t CeilDiv(uint32_t a, uint32_t b) { return (a + b - 1U) / b; }
 __aicore__ inline uint32_t AlignUpU32(uint32_t bytes) { return (bytes + UB_BLOCK_BYTES - 1U) / UB_BLOCK_BYTES * UB_BLOCK_BYTES; }
 
 template <HardEvent evt>
-__aicore__ inline void WaitPipe(TPipe& pipe)
+__aicore__ inline void WaitPipe(TPipe &pipe)
 {
     event_t e = static_cast<event_t>(pipe.FetchEventID(evt));
     SetFlag<evt>(e);
@@ -36,78 +46,78 @@ __aicore__ inline void WaitPipe(TPipe& pipe)
 }
 
 __aicore__ inline void ComputeTileHistogram(
-    __local_mem__ uint32_t* valueUb, uint32_t elementCount, uint32_t byteRound,
-    __local_mem__ uint16_t* histogramUb, __local_mem__ uint16_t* cumulativeUb,
-    __local_mem__ uint8_t* keyUb, __local_mem__ uint32_t* exclusiveUb);
+    __local_mem__ uint32_t *valueUb, uint32_t elementCount, uint32_t byteRound,
+    __local_mem__ uint16_t *histogramUb, __local_mem__ uint16_t *cumulativeUb,
+    __local_mem__ uint8_t *keyUb, __local_mem__ uint32_t *exclusiveUb);
 
 class SortWithIndexKernel {
 public:
     __aicore__ inline SortWithIndexKernel() = default;
 
     __aicore__ inline void Init(uint32_t totalElements, uint32_t numCores, uint32_t tileSize,
-                                TPipe& pipe);
+                                TPipe &pipe);
 
     __aicore__ inline void SetCount(uint32_t n);
 
     __aicore__ inline void SetMaxValue(uint32_t maxVal);
 
     __aicore__ inline void Process(
-        GlobalTensor<int32_t>& valueGm, GlobalTensor<int32_t>& indexGm,
-        GlobalTensor<int32_t>& outputValueGm, GlobalTensor<int32_t>& outputIndexGm,
-        GlobalTensor<int32_t>& tempValueGm, GlobalTensor<int32_t>& tempIndexGm,
-        GlobalTensor<int32_t>& histGm, GlobalTensor<int32_t>& prefixGm,
-        GlobalTensor<int32_t>& tileOffsetsGm, TPipe& pipe);
+        GlobalTensor<int32_t> &valueGm, GlobalTensor<int32_t> &indexGm,
+        GlobalTensor<int32_t> &outputValueGm, GlobalTensor<int32_t> &outputIndexGm,
+        GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &tempIndexGm,
+        GlobalTensor<int32_t> &histGm, GlobalTensor<int32_t> &prefixGm,
+        GlobalTensor<int32_t> &tileOffsetsGm, TPipe &pipe);
 
     __aicore__ inline void Process(
         GM_ADDR valueGm, GM_ADDR indexGm,
         GM_ADDR tempValueGm, GM_ADDR tempIndexGm,
-        GM_ADDR histGm, GM_ADDR prefixGm, GM_ADDR tileOffsetsGm, TPipe& pipe);
+        GM_ADDR histGm, GM_ADDR prefixGm, GM_ADDR tileOffsetsGm, TPipe &pipe);
 
 private:
     __aicore__ inline void ComputePrefixAndOffsets(
-        uint32_t tc, GlobalTensor<int32_t>& prefixGm, GlobalTensor<int32_t>& tileOffsetsGm,
-        GlobalTensor<int32_t>& histGm, TPipe& pipe);
+        uint32_t tc, GlobalTensor<int32_t> &prefixGm, GlobalTensor<int32_t> &tileOffsetsGm,
+        GlobalTensor<int32_t> &histGm, TPipe &pipe);
 
-    __aicore__ inline GlobalTensor<int32_t>* GetSrcValueGm(
-        uint32_t byteRound, GlobalTensor<int32_t>& valueGm,
-        GlobalTensor<int32_t>& tempValueGm, GlobalTensor<int32_t>& outputValueGm);
+    __aicore__ inline GlobalTensor<int32_t> *GetSrcValueGm(
+        uint32_t byteRound, GlobalTensor<int32_t> &valueGm,
+        GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &outputValueGm);
 
     __aicore__ inline void GetDstBuffers(
-        uint32_t byteRound, GlobalTensor<int32_t>& indexGm,
-        GlobalTensor<int32_t>& outputValueGm, GlobalTensor<int32_t>& outputIndexGm,
-        GlobalTensor<int32_t>& tempValueGm, GlobalTensor<int32_t>& tempIndexGm,
-        GlobalTensor<int32_t>*& srcIdx, GlobalTensor<int32_t>*& dstValue,
-        GlobalTensor<int32_t>*& dstIndex);
+        uint32_t byteRound, GlobalTensor<int32_t> &indexGm,
+        GlobalTensor<int32_t> &outputValueGm, GlobalTensor<int32_t> &outputIndexGm,
+        GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &tempIndexGm,
+        GlobalTensor<int32_t> *&srcIdx, GlobalTensor<int32_t> *&dstValue,
+        GlobalTensor<int32_t> *&dstIndex);
 
     __aicore__ inline void ProcessHistStage(
         uint32_t byteRound, uint32_t batchCount,
-        GlobalTensor<int32_t>* srcValueGm, GlobalTensor<int32_t>& histGm, TPipe& pipe);
+        GlobalTensor<int32_t> *srcValueGm, GlobalTensor<int32_t> &histGm, TPipe &pipe);
 
     __aicore__ inline void ScatterOneBin(
         uint32_t binStart, uint32_t binCount, int32_t gmPos,
-        LocalTensor<int32_t>& gatheredBuf, LocalTensor<int32_t>& valueLocal,
-        LocalTensor<int32_t>& indexLocal, LocalTensor<uint32_t>& sortIndices,
-        GlobalTensor<int32_t>* dstValue, GlobalTensor<int32_t>* dstIndex, TPipe& pipe);
+        LocalTensor<int32_t> &gatheredBuf, LocalTensor<int32_t> &valueLocal,
+        LocalTensor<int32_t> &indexLocal, LocalTensor<uint32_t> &sortIndices,
+        GlobalTensor<int32_t> *dstValue, GlobalTensor<int32_t> *dstIndex, TPipe &pipe);
 
     __aicore__ inline void ProcessScatterStage(
         uint32_t byteRound, uint32_t batchCount,
-        GlobalTensor<int32_t>* srcValueGm, GlobalTensor<int32_t>& indexGm,
-        GlobalTensor<int32_t>& outputValueGm, GlobalTensor<int32_t>& outputIndexGm,
-        GlobalTensor<int32_t>& tempValueGm, GlobalTensor<int32_t>& tempIndexGm,
-        GlobalTensor<int32_t>& histGm, GlobalTensor<int32_t>& prefixGm,
-        GlobalTensor<int32_t>& tileOffsetsGm, TPipe& pipe);
+        GlobalTensor<int32_t> *srcValueGm, GlobalTensor<int32_t> &indexGm,
+        GlobalTensor<int32_t> &outputValueGm, GlobalTensor<int32_t> &outputIndexGm,
+        GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &tempIndexGm,
+        GlobalTensor<int32_t> &histGm, GlobalTensor<int32_t> &prefixGm,
+        GlobalTensor<int32_t> &tileOffsetsGm, TPipe &pipe);
 
     __aicore__ inline void CopyTempToOutput(
-        GlobalTensor<int32_t>& tempValueGm, GlobalTensor<int32_t>& tempIndexGm,
-        GlobalTensor<int32_t>& outputValueGm, GlobalTensor<int32_t>& outputIndexGm,
-        TPipe& pipe);
+        GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &tempIndexGm,
+        GlobalTensor<int32_t> &outputValueGm, GlobalTensor<int32_t> &outputIndexGm,
+        TPipe &pipe);
 
     __aicore__ inline void ProcessOneByteRound(
-        uint32_t byteRound, GlobalTensor<int32_t>& valueGm, GlobalTensor<int32_t>& indexGm,
-        GlobalTensor<int32_t>& outputValueGm, GlobalTensor<int32_t>& outputIndexGm,
-        GlobalTensor<int32_t>& tempValueGm, GlobalTensor<int32_t>& tempIndexGm,
-        GlobalTensor<int32_t>& histGm, GlobalTensor<int32_t>& prefixGm,
-        GlobalTensor<int32_t>& tileOffsetsGm, TPipe& pipe);
+        uint32_t byteRound, GlobalTensor<int32_t> &valueGm, GlobalTensor<int32_t> &indexGm,
+        GlobalTensor<int32_t> &outputValueGm, GlobalTensor<int32_t> &outputIndexGm,
+        GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &tempIndexGm,
+        GlobalTensor<int32_t> &histGm, GlobalTensor<int32_t> &prefixGm,
+        GlobalTensor<int32_t> &tileOffsetsGm, TPipe &pipe);
 
     static constexpr SortConfig sortConfig{SortType::RADIX_SORT, false};
 
@@ -133,12 +143,13 @@ private:
 // ==== implementations ====
 
 __aicore__ inline void ComputeTileHistogram(
-    __local_mem__ uint32_t* valueUb, uint32_t elementCount, uint32_t byteRound,
-    __local_mem__ uint16_t* histogramUb, __local_mem__ uint16_t* cumulativeUb,
-    __local_mem__ uint8_t* keyUb, __local_mem__ uint32_t* exclusiveUb)
+    __local_mem__ uint32_t *valueUb, uint32_t elementCount, uint32_t byteRound,
+    __local_mem__ uint16_t *histogramUb, __local_mem__ uint16_t *cumulativeUb,
+    __local_mem__ uint8_t *keyUb, __local_mem__ uint32_t *exclusiveUb)
 {
     uint32_t shiftBits = byteRound * BITS_PER_BYTE;
-    __VEC_SCOPE__ {
+    __VEC_SCOPE__
+    {
         Reg::RegTensor<uint32_t> input0, input1, input2, input3;
         Reg::RegTensor<uint16_t> hist0, hist1, cumu0, cumu1;
         Reg::MaskReg mask32 = Reg::CreateMask<uint32_t>();
@@ -159,10 +170,10 @@ __aicore__ inline void ComputeTileHistogram(
             Reg::ShiftRights<uint32_t, int16_t>(s2, input2, shiftBits, mask32);
             Reg::ShiftRights<uint32_t, int16_t>(s3, input3, shiftBits, mask32);
             Reg::RegTensor<uint16_t> d0, d1, d2, d3;
-            Reg::DeInterleave(d0, d1, (Reg::RegTensor<uint16_t>&)s0, (Reg::RegTensor<uint16_t>&)s1);
-            Reg::DeInterleave(d2, d3, (Reg::RegTensor<uint16_t>&)s2, (Reg::RegTensor<uint16_t>&)s3);
+            Reg::DeInterleave(d0, d1, (Reg::RegTensor<uint16_t> &)s0, (Reg::RegTensor<uint16_t> &)s1);
+            Reg::DeInterleave(d2, d3, (Reg::RegTensor<uint16_t> &)s2, (Reg::RegTensor<uint16_t> &)s3);
             Reg::RegTensor<uint8_t> b0, b1;
-            Reg::DeInterleave(b0, b1, (Reg::RegTensor<uint8_t>&)d0, (Reg::RegTensor<uint8_t>&)d2);
+            Reg::DeInterleave(b0, b1, (Reg::RegTensor<uint8_t> &)d0, (Reg::RegTensor<uint8_t> &)d2);
             Reg::DataCopy<uint8_t, Reg::PostLiteral::POST_MODE_UPDATE>(keyUb, b0, VECTOR_LEN_INT8, elemMask);
             Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0, Reg::HistogramsType::FREQUENCY>(hist0, b0, elemMask);
             Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN1, Reg::HistogramsType::FREQUENCY>(hist1, b0, elemMask);
@@ -178,8 +189,8 @@ __aicore__ inline void ComputeTileHistogram(
         Reg::DataCopy<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(cumulativeUb, excl1, VECTOR_LEN_INT16, mask16);
         Reg::Duplicate(zero, (uint16_t)0, mask16);
         Reg::RegTensor<uint32_t> sum0, sum1, sum2, sum3, acc0, acc1, acc2, acc3;
-        Reg::Interleave((Reg::RegTensor<uint16_t>&)sum0, (Reg::RegTensor<uint16_t>&)sum1, excl0, zero);
-        Reg::Interleave((Reg::RegTensor<uint16_t>&)sum2, (Reg::RegTensor<uint16_t>&)sum3, excl1, zero);
+        Reg::Interleave((Reg::RegTensor<uint16_t> &)sum0, (Reg::RegTensor<uint16_t> &)sum1, excl0, zero);
+        Reg::Interleave((Reg::RegTensor<uint16_t> &)sum2, (Reg::RegTensor<uint16_t> &)sum3, excl1, zero);
         Reg::DataCopy<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(acc0, exclusiveUb, VECTOR_LEN_INT32);
         Reg::DataCopy<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(acc1, exclusiveUb, VECTOR_LEN_INT32);
         Reg::DataCopy<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(acc2, exclusiveUb, VECTOR_LEN_INT32);
@@ -196,23 +207,23 @@ __aicore__ inline void ComputeTileHistogram(
 }
 
 __aicore__ inline void SortWithIndexKernel::Init(uint32_t totalElements, uint32_t numCores,
-                                                  uint32_t tileSize, TPipe& pipe)
+                                                 uint32_t tileSize, TPipe &pipe)
 {
     elementCount_ = totalElements;
-    coreCount_    = numCores;
+    coreCount_ = numCores;
     tileElements_ = tileSize > 0 ? tileSize : DEFAULT_TILE_SIZE;
-    tileCount_    = CeilDiv(elementCount_, tileElements_);
+    tileCount_ = CeilDiv(elementCount_, tileElements_);
 
-    pipe.InitBuffer(valueBuffer_,      static_cast<uint32_t>(AlignUpU32(tileElements_ * sizeof(int32_t))));
-    pipe.InitBuffer(indexBuffer_,      static_cast<uint32_t>(AlignUpU32(tileElements_ * sizeof(int32_t))));
-    pipe.InitBuffer(keyBuffer_,        tileElements_);
-    pipe.InitBuffer(histogramBuffer_,  HISTOGRAM_BINS * sizeof(int32_t));
+    pipe.InitBuffer(valueBuffer_, static_cast<uint32_t>(AlignUpU32(tileElements_ * sizeof(int32_t))));
+    pipe.InitBuffer(indexBuffer_, static_cast<uint32_t>(AlignUpU32(tileElements_ * sizeof(int32_t))));
+    pipe.InitBuffer(keyBuffer_, tileElements_);
+    pipe.InitBuffer(histogramBuffer_, HISTOGRAM_BINS * sizeof(int32_t));
     pipe.InitBuffer(cumulativeBuffer_, HISTOGRAM_BINS * sizeof(uint16_t));
-    pipe.InitBuffer(exclusiveBuffer_,  static_cast<uint32_t>(AlignUpU32(tileElements_ * sizeof(uint32_t))));
-    pipe.InitBuffer(prefixBuffer_,     HISTOGRAM_BINS * sizeof(int32_t));
-    pipe.InitBuffer(sortTempBuffer_,   static_cast<uint32_t>(AlignUpU32(tileElements_ * sizeof(int32_t))));
-    pipe.InitBuffer(sortedKeyBuffer_,  tileElements_);
-    pipe.InitBuffer(histWideBuffer_,   HISTOGRAM_BINS * sizeof(int32_t));
+    pipe.InitBuffer(exclusiveBuffer_, static_cast<uint32_t>(AlignUpU32(tileElements_ * sizeof(uint32_t))));
+    pipe.InitBuffer(prefixBuffer_, HISTOGRAM_BINS * sizeof(int32_t));
+    pipe.InitBuffer(sortTempBuffer_, static_cast<uint32_t>(AlignUpU32(tileElements_ * sizeof(int32_t))));
+    pipe.InitBuffer(sortedKeyBuffer_, tileElements_);
+    pipe.InitBuffer(histWideBuffer_, HISTOGRAM_BINS * sizeof(int32_t));
     pipe.InitBuffer(prefixQueue_, 1, HISTOGRAM_BINS * sizeof(int32_t));
 }
 
@@ -240,8 +251,8 @@ __aicore__ inline void SortWithIndexKernel::SetMaxValue(uint32_t maxVal)
 }
 
 __aicore__ inline void SortWithIndexKernel::ComputePrefixAndOffsets(
-    uint32_t tc, GlobalTensor<int32_t>& prefixGm, GlobalTensor<int32_t>& tileOffsetsGm,
-    GlobalTensor<int32_t>& histGm, TPipe& pipe)
+    uint32_t tc, GlobalTensor<int32_t> &prefixGm, GlobalTensor<int32_t> &tileOffsetsGm,
+    GlobalTensor<int32_t> &histGm, TPipe &pipe)
 {
     LocalTensor<int32_t> histogram = prefixQueue_.AllocTensor<int32_t>();
     LocalTensor<int32_t> prefixUb = histWideBuffer_.Get<int32_t>();
@@ -274,9 +285,9 @@ __aicore__ inline void SortWithIndexKernel::ComputePrefixAndOffsets(
     prefixQueue_.FreeTensor(histogram);
 }
 
-__aicore__ inline GlobalTensor<int32_t>* SortWithIndexKernel::GetSrcValueGm(
-    uint32_t byteRound, GlobalTensor<int32_t>& valueGm,
-    GlobalTensor<int32_t>& tempValueGm, GlobalTensor<int32_t>& outputValueGm)
+__aicore__ inline GlobalTensor<int32_t> *SortWithIndexKernel::GetSrcValueGm(
+    uint32_t byteRound, GlobalTensor<int32_t> &valueGm,
+    GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &outputValueGm)
 {
     if (byteRound == 0) {
         return &valueGm;
@@ -288,22 +299,22 @@ __aicore__ inline GlobalTensor<int32_t>* SortWithIndexKernel::GetSrcValueGm(
 }
 
 __aicore__ inline void SortWithIndexKernel::GetDstBuffers(
-    uint32_t byteRound, GlobalTensor<int32_t>& indexGm,
-    GlobalTensor<int32_t>& outputValueGm, GlobalTensor<int32_t>& outputIndexGm,
-    GlobalTensor<int32_t>& tempValueGm, GlobalTensor<int32_t>& tempIndexGm,
-    GlobalTensor<int32_t>*& srcIdx, GlobalTensor<int32_t>*& dstValue,
-    GlobalTensor<int32_t>*& dstIndex)
+    uint32_t byteRound, GlobalTensor<int32_t> &indexGm,
+    GlobalTensor<int32_t> &outputValueGm, GlobalTensor<int32_t> &outputIndexGm,
+    GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &tempIndexGm,
+    GlobalTensor<int32_t> *&srcIdx, GlobalTensor<int32_t> *&dstValue,
+    GlobalTensor<int32_t> *&dstIndex)
 {
     if (byteRound == 0) {
-        srcIdx   = &indexGm;
+        srcIdx = &indexGm;
         dstValue = &tempValueGm;
         dstIndex = &tempIndexGm;
     } else if (byteRound % 2 == 1) {
-        srcIdx   = &tempIndexGm;
+        srcIdx = &tempIndexGm;
         dstValue = &outputValueGm;
         dstIndex = &outputIndexGm;
     } else {
-        srcIdx   = &outputIndexGm;
+        srcIdx = &outputIndexGm;
         dstValue = &tempValueGm;
         dstIndex = &tempIndexGm;
     }
@@ -311,28 +322,28 @@ __aicore__ inline void SortWithIndexKernel::GetDstBuffers(
 
 __aicore__ inline void SortWithIndexKernel::ProcessHistStage(
     uint32_t byteRound, uint32_t batchCount,
-    GlobalTensor<int32_t>* srcValueGm, GlobalTensor<int32_t>& histGm, TPipe& pipe)
+    GlobalTensor<int32_t> *srcValueGm, GlobalTensor<int32_t> &histGm, TPipe &pipe)
 {
     DataCopyPadExtParams<int32_t> valPad{false, 0, 0, 0};
     event_t evtMte2V = static_cast<event_t>(pipe.FetchEventID(HardEvent::MTE2_V));
-    event_t evtVS    = static_cast<event_t>(pipe.FetchEventID(HardEvent::V_S));
+    event_t evtVS = static_cast<event_t>(pipe.FetchEventID(HardEvent::V_S));
     event_t evtSMte3 = static_cast<event_t>(pipe.FetchEventID(HardEvent::S_MTE3));
 
     for (uint32_t batch = 0; batch < batchCount; batch++) {
-        uint32_t firstTile  = batch * coreCount_;
+        uint32_t firstTile = batch * coreCount_;
         uint32_t batchCores = MinU32(tileCount_ - firstTile, coreCount_);
-        uint32_t coreId     = GetBlockIdx();
+        uint32_t coreId = GetBlockIdx();
 
         if (coreId < batchCores) {
-            uint32_t tileId  = firstTile + coreId;
-            uint32_t offset  = tileId * tileElements_;
+            uint32_t tileId = firstTile + coreId;
+            uint32_t offset = tileId * tileElements_;
             uint32_t tileLen = MinU32(elementCount_ - offset, tileElements_);
 
-            LocalTensor<int32_t>  valueLocal     = valueBuffer_.Get<int32_t>();
-            LocalTensor<uint16_t> histLocal      = histogramBuffer_.Get<uint16_t>();
-            LocalTensor<uint16_t> cumsumLocal    = cumulativeBuffer_.Get<uint16_t>();
+            LocalTensor<int32_t> valueLocal = valueBuffer_.Get<int32_t>();
+            LocalTensor<uint16_t> histLocal = histogramBuffer_.Get<uint16_t>();
+            LocalTensor<uint16_t> cumsumLocal = cumulativeBuffer_.Get<uint16_t>();
             LocalTensor<uint32_t> exclusiveLocal = exclusiveBuffer_.Get<uint32_t>();
-            LocalTensor<uint8_t>  keyLocal       = keyBuffer_.Get<uint8_t>();
+            LocalTensor<uint8_t> keyLocal = keyBuffer_.Get<uint8_t>();
 
             uint32_t valBytes = tileLen * sizeof(int32_t);
             DataCopyExtParams valParam{1U, valBytes, 0U, 0U, 0U};
@@ -343,11 +354,11 @@ __aicore__ inline void SortWithIndexKernel::ProcessHistStage(
             Duplicate(exclusiveLocal, (uint32_t)0, HISTOGRAM_BINS);
 
             ComputeTileHistogram(
-                (__local_mem__ uint32_t*)valueLocal.GetPhyAddr(), tileLen, byteRound,
-                (__local_mem__ uint16_t*)histLocal.GetPhyAddr(),
-                (__local_mem__ uint16_t*)cumsumLocal.GetPhyAddr(),
-                (__local_mem__ uint8_t*)keyLocal.GetPhyAddr(),
-                (__local_mem__ uint32_t*)exclusiveLocal.GetPhyAddr());
+                (__local_mem__ uint32_t *)valueLocal.GetPhyAddr(), tileLen, byteRound,
+                (__local_mem__ uint16_t *)histLocal.GetPhyAddr(),
+                (__local_mem__ uint16_t *)cumsumLocal.GetPhyAddr(),
+                (__local_mem__ uint8_t *)keyLocal.GetPhyAddr(),
+                (__local_mem__ uint32_t *)exclusiveLocal.GetPhyAddr());
 
             SetFlag<HardEvent::V_S>(evtVS);
             WaitFlag<HardEvent::V_S>(evtVS);
@@ -370,9 +381,9 @@ __aicore__ inline void SortWithIndexKernel::ProcessHistStage(
 
 __aicore__ inline void SortWithIndexKernel::ScatterOneBin(
     uint32_t binStart, uint32_t binCount, int32_t gmPos,
-    LocalTensor<int32_t>& gatheredBuf, LocalTensor<int32_t>& valueLocal,
-    LocalTensor<int32_t>& indexLocal, LocalTensor<uint32_t>& sortIndices,
-    GlobalTensor<int32_t>* dstValue, GlobalTensor<int32_t>* dstIndex, TPipe& pipe)
+    LocalTensor<int32_t> &gatheredBuf, LocalTensor<int32_t> &valueLocal,
+    LocalTensor<int32_t> &indexLocal, LocalTensor<uint32_t> &sortIndices,
+    GlobalTensor<int32_t> *dstValue, GlobalTensor<int32_t> *dstIndex, TPipe &pipe)
 {
     DataCopyParams dcp{1U, static_cast<uint16_t>(binCount * sizeof(int32_t)), 0U, 0U};
 
@@ -393,46 +404,46 @@ __aicore__ inline void SortWithIndexKernel::ScatterOneBin(
 
 __aicore__ inline void SortWithIndexKernel::ProcessScatterStage(
     uint32_t byteRound, uint32_t batchCount,
-    GlobalTensor<int32_t>* srcValueGm, GlobalTensor<int32_t>& indexGm,
-    GlobalTensor<int32_t>& outputValueGm, GlobalTensor<int32_t>& outputIndexGm,
-    GlobalTensor<int32_t>& tempValueGm, GlobalTensor<int32_t>& tempIndexGm,
-    GlobalTensor<int32_t>& histGm, GlobalTensor<int32_t>& prefixGm,
-    GlobalTensor<int32_t>& tileOffsetsGm, TPipe& pipe)
+    GlobalTensor<int32_t> *srcValueGm, GlobalTensor<int32_t> &indexGm,
+    GlobalTensor<int32_t> &outputValueGm, GlobalTensor<int32_t> &outputIndexGm,
+    GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &tempIndexGm,
+    GlobalTensor<int32_t> &histGm, GlobalTensor<int32_t> &prefixGm,
+    GlobalTensor<int32_t> &tileOffsetsGm, TPipe &pipe)
 {
     DataCopyExtParams histParam{1U, HISTOGRAM_BINS * sizeof(int32_t), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> valPad{false, 0, 0, 0};
     event_t evtMte2S = static_cast<event_t>(pipe.FetchEventID(HardEvent::MTE2_S));
-    event_t evtSV    = static_cast<event_t>(pipe.FetchEventID(HardEvent::S_V));
-    event_t evtVS2   = static_cast<event_t>(pipe.FetchEventID(HardEvent::V_S));
+    event_t evtSV = static_cast<event_t>(pipe.FetchEventID(HardEvent::S_V));
+    event_t evtVS2 = static_cast<event_t>(pipe.FetchEventID(HardEvent::V_S));
 
     for (uint32_t batch = 0; batch < batchCount; batch++) {
-        uint32_t firstTile  = batch * coreCount_;
+        uint32_t firstTile = batch * coreCount_;
         uint32_t batchCores = MinU32(tileCount_ - firstTile, coreCount_);
-        uint32_t coreId     = GetBlockIdx();
+        uint32_t coreId = GetBlockIdx();
 
         if (coreId < batchCores) {
-            uint32_t tileId  = firstTile + coreId;
-            uint32_t offset  = tileId * tileElements_;
+            uint32_t tileId = firstTile + coreId;
+            uint32_t offset = tileId * tileElements_;
             uint32_t tileLen = MinU32(elementCount_ - offset, tileElements_);
 
-            GlobalTensor<int32_t>* srcIdx;
-            GlobalTensor<int32_t>* dstValue;
-            GlobalTensor<int32_t>* dstIndex;
+            GlobalTensor<int32_t> *srcIdx;
+            GlobalTensor<int32_t> *dstValue;
+            GlobalTensor<int32_t> *dstIndex;
             GetDstBuffers(byteRound, indexGm, outputValueGm, outputIndexGm,
                           tempValueGm, tempIndexGm, srcIdx, dstValue, dstIndex);
 
-            LocalTensor<int32_t>  valueLocal  = valueBuffer_.Get<int32_t>();
-            LocalTensor<int32_t>  indexLocal  = indexBuffer_.Get<int32_t>();
-            LocalTensor<uint8_t>  keyLocal    = keyBuffer_.Get<uint8_t>();
-            LocalTensor<uint8_t>  sortedKey   = sortedKeyBuffer_.Get<uint8_t>();
+            LocalTensor<int32_t> valueLocal = valueBuffer_.Get<int32_t>();
+            LocalTensor<int32_t> indexLocal = indexBuffer_.Get<int32_t>();
+            LocalTensor<uint8_t> keyLocal = keyBuffer_.Get<uint8_t>();
+            LocalTensor<uint8_t> sortedKey = sortedKeyBuffer_.Get<uint8_t>();
             LocalTensor<uint32_t> sortIndices = exclusiveBuffer_.Get<uint32_t>();
-            LocalTensor<int32_t>  prefixLocal = prefixBuffer_.Get<int32_t>();
-            LocalTensor<int32_t>  offsetLocal = histogramBuffer_.Get<int32_t>();
+            LocalTensor<int32_t> prefixLocal = prefixBuffer_.Get<int32_t>();
+            LocalTensor<int32_t> offsetLocal = histogramBuffer_.Get<int32_t>();
 
             uint32_t valBytes = tileLen * sizeof(int32_t);
             DataCopyExtParams valParam{1U, valBytes, 0U, 0U, 0U};
-            DataCopyPad(valueLocal,  (*srcValueGm)[offset], valParam, valPad);
-            DataCopyPad(indexLocal,  (*srcIdx)[offset], valParam, valPad);
+            DataCopyPad(valueLocal, (*srcValueGm)[offset], valParam, valPad);
+            DataCopyPad(indexLocal, (*srcIdx)[offset], valParam, valPad);
             DataCopyPad(prefixLocal, prefixGm, histParam, valPad);
             DataCopyPad(offsetLocal, tileOffsetsGm[tileId * HISTOGRAM_BINS], histParam, valPad);
 
@@ -475,9 +486,9 @@ __aicore__ inline void SortWithIndexKernel::ProcessScatterStage(
 }
 
 __aicore__ inline void SortWithIndexKernel::CopyTempToOutput(
-    GlobalTensor<int32_t>& tempValueGm, GlobalTensor<int32_t>& tempIndexGm,
-    GlobalTensor<int32_t>& outputValueGm, GlobalTensor<int32_t>& outputIndexGm,
-    TPipe& pipe)
+    GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &tempIndexGm,
+    GlobalTensor<int32_t> &outputValueGm, GlobalTensor<int32_t> &outputIndexGm,
+    TPipe &pipe)
 {
     uint32_t chunk = CeilDiv(elementCount_, coreCount_);
     uint32_t start = GetBlockIdx() * chunk;
@@ -516,14 +527,14 @@ __aicore__ inline void SortWithIndexKernel::CopyTempToOutput(
 }
 
 __aicore__ inline void SortWithIndexKernel::ProcessOneByteRound(
-    uint32_t byteRound, GlobalTensor<int32_t>& valueGm, GlobalTensor<int32_t>& indexGm,
-    GlobalTensor<int32_t>& outputValueGm, GlobalTensor<int32_t>& outputIndexGm,
-    GlobalTensor<int32_t>& tempValueGm, GlobalTensor<int32_t>& tempIndexGm,
-    GlobalTensor<int32_t>& histGm, GlobalTensor<int32_t>& prefixGm,
-    GlobalTensor<int32_t>& tileOffsetsGm, TPipe& pipe)
+    uint32_t byteRound, GlobalTensor<int32_t> &valueGm, GlobalTensor<int32_t> &indexGm,
+    GlobalTensor<int32_t> &outputValueGm, GlobalTensor<int32_t> &outputIndexGm,
+    GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &tempIndexGm,
+    GlobalTensor<int32_t> &histGm, GlobalTensor<int32_t> &prefixGm,
+    GlobalTensor<int32_t> &tileOffsetsGm, TPipe &pipe)
 {
     uint32_t batchCount = CeilDiv(tileCount_, coreCount_);
-    GlobalTensor<int32_t>* srcValueGm = GetSrcValueGm(byteRound, valueGm, tempValueGm, outputValueGm);
+    GlobalTensor<int32_t> *srcValueGm = GetSrcValueGm(byteRound, valueGm, tempValueGm, outputValueGm);
 
     ProcessHistStage(byteRound, batchCount, srcValueGm, histGm, pipe);
 
@@ -538,11 +549,11 @@ __aicore__ inline void SortWithIndexKernel::ProcessOneByteRound(
 }
 
 __aicore__ inline void SortWithIndexKernel::Process(
-    GlobalTensor<int32_t>& valueGm, GlobalTensor<int32_t>& indexGm,
-    GlobalTensor<int32_t>& outputValueGm, GlobalTensor<int32_t>& outputIndexGm,
-    GlobalTensor<int32_t>& tempValueGm, GlobalTensor<int32_t>& tempIndexGm,
-    GlobalTensor<int32_t>& histGm, GlobalTensor<int32_t>& prefixGm,
-    GlobalTensor<int32_t>& tileOffsetsGm, TPipe& pipe)
+    GlobalTensor<int32_t> &valueGm, GlobalTensor<int32_t> &indexGm,
+    GlobalTensor<int32_t> &outputValueGm, GlobalTensor<int32_t> &outputIndexGm,
+    GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &tempIndexGm,
+    GlobalTensor<int32_t> &histGm, GlobalTensor<int32_t> &prefixGm,
+    GlobalTensor<int32_t> &tileOffsetsGm, TPipe &pipe)
 {
     for (uint32_t byteRound = 0; byteRound < byteRounds_; byteRound++) {
         ProcessOneByteRound(byteRound, valueGm, indexGm, outputValueGm, outputIndexGm,
@@ -557,7 +568,7 @@ __aicore__ inline void SortWithIndexKernel::Process(
 __aicore__ inline void SortWithIndexKernel::Process(
     GM_ADDR valueGm, GM_ADDR indexGm,
     GM_ADDR tempValueGm, GM_ADDR tempIndexGm,
-    GM_ADDR histGm, GM_ADDR prefixGm, GM_ADDR tileOffsetsGm, TPipe& pipe)
+    GM_ADDR histGm, GM_ADDR prefixGm, GM_ADDR tileOffsetsGm, TPipe &pipe)
 {
     GlobalTensor<int32_t> valT, idxT, outValT, outIdxT, tmpValT, tmpIdxT, histT, prefixT, offsetsT;
     valT.SetGlobalBuffer((__gm__ int32_t *)valueGm);

@@ -1,3 +1,13 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
 #ifndef ENGRAM_FETCH_GRAD_UNIQUE_H
 #define ENGRAM_FETCH_GRAD_UNIQUE_H
 
@@ -47,16 +57,17 @@ public:
     }
 
     __aicore__ inline void Run(uint32_t numRecv,
-        GM_ADDR recvLocalEntryOutGM, GM_ADDR uniqueLocalEntryOutGM, GM_ADDR numUniqueOutGM,
-        GM_ADDR gradUniqueOutGM, GM_ADDR gradUniqueFp32GM, GM_ADDR recvGradGM,
-        GM_ADDR coreStartGM, GM_ADDR segCountGM, GM_ADDR sortCompanionGM);
+                               GM_ADDR recvLocalEntryOutGM, GM_ADDR uniqueLocalEntryOutGM, GM_ADDR numUniqueOutGM,
+                               GM_ADDR gradUniqueOutGM, GM_ADDR gradUniqueFp32GM, GM_ADDR recvGradGM,
+                               GM_ADDR coreStartGM, GM_ADDR segCountGM, GM_ADDR sortCompanionGM);
 
     __aicore__ inline void WriteNumUniqueZero(GM_ADDR numUniqueOutGM);
 
 private:
     __aicore__ inline void ZeroGradUnique(uint32_t numRecv, GM_ADDR gradUniqueOutGM, GM_ADDR gradUniqueFp32GM);
     __aicore__ inline void CountUniquesParallel(uint32_t numRecv, GM_ADDR recvLocalEntryOutGM,
-                                                 GM_ADDR coreStartGM, GM_ADDR segCountGM);
+                                                GM_ADDR coreStartGM, GM_ADDR segCountGM);
+    __aicore__ inline void FixCoreStartForSkippedCores(GM_ADDR coreStartGM, GM_ADDR segCountGM);
     __aicore__ inline void ScatterAddAtomicParallel(uint32_t numRecv, GM_ADDR recvLocalEntryOutGM,
                                                     GM_ADDR uniqueLocalEntryOutGM, GM_ADDR gradUniqueOutGM,
                                                     GM_ADDR gradUniqueFp32GM, GM_ADDR recvGradGM,
@@ -75,9 +86,9 @@ private:
     __aicore__ inline void AtomicAddGrad(GlobalTensor<float> &atomicDstGM, LocalTensor<float> &srcT,
                                          uint32_t subStart, uint32_t subLen);
     __aicore__ inline uint32_t ProcessBatchUnique(uint32_t cur, uint32_t batchLen, int32_t runningOffset,
-                                                   int32_t &prevEntry, bool &isFirstElement,
-                                                   int32_t &inclusiveSum,
-                                                   GM_ADDR recvLocalEntryOutGM, GM_ADDR sortCompanionGM);
+                                                  int32_t &prevEntry, bool &isFirstElement,
+                                                  int32_t &inclusiveSum,
+                                                  GM_ADDR recvLocalEntryOutGM, GM_ADDR sortCompanionGM);
     __aicore__ inline void WriteBatchUnique(uint32_t tileUniqueCnt, int32_t &runningUniqueOffset,
                                             GM_ADDR uniqueLocalEntryOutGM);
 
@@ -107,6 +118,9 @@ __aicore__ inline void UniqueScatterKernel::Run(
 {
     ZeroGradUnique(numRecv, gradUniqueOutGM, gradUniqueFp32GM);
     CountUniquesParallel(numRecv, recvLocalEntryOutGM, coreStartGM, segCountGM);
+    SyncAll<true>();
+
+    FixCoreStartForSkippedCores(coreStartGM, segCountGM);
     SyncAll<true>();
 
     ScatterAddAtomicParallel(numRecv, recvLocalEntryOutGM, uniqueLocalEntryOutGM,
@@ -142,7 +156,8 @@ __aicore__ inline void UniqueScatterKernel::ZeroGradUnique(uint32_t numRecv, GM_
     uint64_t chunk = (totalFloats + totalBlocks_ - 1U) / totalBlocks_;
     uint64_t start = static_cast<uint64_t>(aivId_) * chunk;
     uint64_t end = start + chunk;
-    if (end > totalFloats) end = totalFloats;
+    if (end > totalFloats)
+        end = totalFloats;
 
     if (start < end) {
         LocalTensor<float> zeroBuf = pongBuf_->Get<float>();
@@ -155,7 +170,8 @@ __aicore__ inline void UniqueScatterKernel::ZeroGradUnique(uint32_t numRecv, GM_
         dstGM.SetGlobalBuffer((__gm__ float *)dstBase);
         for (uint64_t off = start; off < end; off += tileFloats) {
             uint64_t thisLen = end - off;
-            if (thisLen > tileFloats) thisLen = tileFloats;
+            if (thisLen > tileFloats)
+                thisLen = tileFloats;
             DataCopyParams params{1U, static_cast<uint16_t>(thisLen * sizeof(float)), 0U, 0U};
             DataCopyPad(dstGM[off], zeroBuf, params);
         }
@@ -169,7 +185,8 @@ __aicore__ inline void UniqueScatterKernel::CountUniquesParallel(
     uint32_t chunk = (numRecv + totalBlocks_ - 1U) / totalBlocks_;
     uint32_t rawStart = aivId_ * chunk;
     uint32_t rawEnd = rawStart + chunk;
-    if (rawEnd > numRecv) rawEnd = numRecv;
+    if (rawEnd > numRecv)
+        rawEnd = numRecv;
 
     GlobalTensor<int32_t> sortedEntryGM;
     sortedEntryGM.SetGlobalBuffer((__gm__ int32_t *)recvLocalEntryOutGM);
@@ -178,7 +195,8 @@ __aicore__ inline void UniqueScatterKernel::CountUniquesParallel(
     if (rawStart > 0 && rawStart < rawEnd) {
         LocalTensor<int32_t> probeUb = tempBuf_->Get<int32_t>();
         uint32_t probeLen = rawEnd - rawStart + 1U;
-        if (probeLen > ENTRY_BATCH_CAP) probeLen = ENTRY_BATCH_CAP;
+        if (probeLen > ENTRY_BATCH_CAP)
+            probeLen = ENTRY_BATCH_CAP;
         DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
         DataCopyExtParams cpParams{1U, static_cast<uint32_t>(probeLen * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPad(probeUb, sortedEntryGM[rawStart - 1U], cpParams, cpPad);
@@ -208,7 +226,8 @@ __aicore__ inline void UniqueScatterKernel::CountUniquesParallel(
         uint32_t cur = start;
         while (cur < rawEnd) {
             uint32_t batchLen = rawEnd - cur;
-            if (batchLen > ENTRY_BATCH_CAP) batchLen = ENTRY_BATCH_CAP;
+            if (batchLen > ENTRY_BATCH_CAP)
+                batchLen = ENTRY_BATCH_CAP;
             DataCopyExtParams cpParams{1U, static_cast<uint32_t>(batchLen * sizeof(int32_t)), 0U, 0U, 0U};
             DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
             DataCopyPad(entryUb, sortedEntryGM[cur], cpParams, cpPad);
@@ -249,14 +268,44 @@ __aicore__ inline void UniqueScatterKernel::CountUniquesParallel(
     SyncFunc<HardEvent::MTE3_S>(*pipe_);
 }
 
+__aicore__ inline void UniqueScatterKernel::FixCoreStartForSkippedCores(GM_ADDR coreStartGM, GM_ADDR segCountGM)
+{
+    if (aivId_ != 0)
+        return;
+
+    GlobalTensor<int32_t> coreStartGMT;
+    coreStartGMT.SetGlobalBuffer((__gm__ int32_t *)coreStartGM);
+    GlobalTensor<int32_t> segCountGMT;
+    segCountGMT.SetGlobalBuffer((__gm__ int32_t *)segCountGM);
+
+    int32_t nextValidStart = -1;
+    for (int32_t core = static_cast<int32_t>(totalBlocks_) - 1; core >= 0; core--) {
+        int32_t segCnt = segCountGMT.GetValue(core);
+        if (segCnt == 0) {
+            if (nextValidStart >= 0) {
+                LocalTensor<int32_t> fixUb = statusBuf_->Get<int32_t>();
+                fixUb.SetValue(0, nextValidStart);
+                SyncFunc<HardEvent::S_MTE3>(*pipe_);
+                DataCopyParams fixParams{1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U};
+                DataCopyPad(coreStartGMT[core], fixUb, fixParams);
+                SyncFunc<HardEvent::MTE3_S>(*pipe_);
+            }
+        } else {
+            nextValidStart = coreStartGMT.GetValue(core);
+        }
+    }
+}
+
 __aicore__ inline void UniqueScatterKernel::LoadCoreRange(uint32_t numRecv, GM_ADDR coreStartGM, uint32_t &start, uint32_t &end)
 {
     GlobalTensor<int32_t> coreStartGM_;
     coreStartGM_.SetGlobalBuffer((__gm__ int32_t *)coreStartGM);
     LocalTensor<int32_t> startUb = tempBuf_->Get<int32_t>();
     uint32_t readCores = aivId_ + 2U;
-    if (readCores > totalBlocks_) readCores = totalBlocks_;
-    if (aivId_ == totalBlocks_ - 1U) readCores = totalBlocks_;
+    if (readCores > totalBlocks_)
+        readCores = totalBlocks_;
+    if (aivId_ == totalBlocks_ - 1U)
+        readCores = totalBlocks_;
     DataCopyPadExtParams<int32_t> csPad{false, 0, 0, 0};
     DataCopyExtParams csParams{1U, static_cast<uint32_t>(readCores * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(startUb, coreStartGM_, csParams, csPad);
@@ -382,7 +431,7 @@ __aicore__ inline uint32_t UniqueScatterKernel::ProcessBatchUnique(
 }
 
 __aicore__ inline void UniqueScatterKernel::WriteBatchUnique(uint32_t tileUniqueCnt, int32_t &runningUniqueOffset,
-                                                            GM_ADDR uniqueLocalEntryOutGM)
+                                                             GM_ADDR uniqueLocalEntryOutGM)
 {
     LocalTensor<int32_t> pingInt32 = pingBuf_->Get<int32_t>();
     LocalTensor<int32_t> uniqueUb = pingInt32[ENTRY_BATCH_CAP];
@@ -402,7 +451,8 @@ __aicore__ inline uint32_t UniqueScatterKernel::ProcessScatterBatch(
     GM_ADDR gradUniqueFp32GM, GM_ADDR recvGradGM, GM_ADDR sortCompanionGM)
 {
     uint32_t batchLen = end - cur;
-    if (batchLen > ENTRY_BATCH_CAP) batchLen = ENTRY_BATCH_CAP;
+    if (batchLen > ENTRY_BATCH_CAP)
+        batchLen = ENTRY_BATCH_CAP;
 
     int32_t inclusiveSum = 0;
     uint32_t tileUniqueCnt = ProcessBatchUnique(
@@ -411,7 +461,8 @@ __aicore__ inline uint32_t UniqueScatterKernel::ProcessScatterBatch(
 
     for (uint32_t subStart = 0; subStart < batchLen; subStart += GRAD_SUB_BATCH) {
         uint32_t subLen = batchLen - subStart;
-        if (subLen > GRAD_SUB_BATCH) subLen = GRAD_SUB_BATCH;
+        if (subLen > GRAD_SUB_BATCH)
+            subLen = GRAD_SUB_BATCH;
         ScatterGradSubBatch(subStart, subLen, gradUniqueOutGM, gradUniqueFp32GM, recvGradGM);
     }
 
@@ -429,7 +480,8 @@ __aicore__ inline void UniqueScatterKernel::ScatterAddAtomicParallel(
 {
     uint32_t start, end;
     LoadCoreRange(numRecv, coreStartGM, start, end);
-    if (start >= end) return;
+    if (start >= end)
+        return;
 
     int32_t preCoreOffset = ComputePreCoreOffset(segCountGM);
     int32_t runningOffset = preCoreOffset;
@@ -481,7 +533,8 @@ __aicore__ inline void UniqueScatterKernel::CastGradUniqueToOutput(
     uint32_t chunk = (totalElements + totalBlocks_ - 1U) / totalBlocks_;
     uint32_t start = aivId_ * chunk;
     uint32_t end = start + chunk;
-    if (end > totalElements) end = totalElements;
+    if (end > totalElements)
+        end = totalElements;
     if (start >= end) {
         SyncAll<true>();
         return;
@@ -498,7 +551,8 @@ __aicore__ inline void UniqueScatterKernel::CastGradUniqueToOutput(
     uint32_t off = start;
     while (off < end) {
         uint32_t thisLen = end - off;
-        if (thisLen > tileLen) thisLen = tileLen;
+        if (thisLen > tileLen)
+            thisLen = tileLen;
 
         DataCopyExtParams inParams{1U, static_cast<uint32_t>(thisLen * sizeof(float)), 0U, 0U, 0U};
         DataCopyPadExtParams<float> inPad{false, 0, 0, 0};

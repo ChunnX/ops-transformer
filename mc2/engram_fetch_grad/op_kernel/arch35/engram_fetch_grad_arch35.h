@@ -120,9 +120,6 @@ private:
     uint64_t winSize_{0};
     uint64_t ubSize_{0};
 
-    uint64_t processStartCycle_{0};
-    uint64_t processEndCycle_{0};
-
     uint64_t barrierFlagOffset_{0};
     uint64_t tokenFlagOffset_{0};
     uint64_t tokenWriteOffset_{0};
@@ -785,8 +782,6 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrier()
 __aicore__ inline void EngramFetchGradArch35::Process()
 {
     if ASCEND_IS_AIV {
-        processStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
-
         InitFlagsAndDispls();
         SyncAll<true>();
 
@@ -798,8 +793,6 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         UnsortGrad();
         ExchangeGrad();
         UniqueScatterAdd();
-
-        processEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
     }
 }
 
