@@ -18,6 +18,15 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
+enum class AttentionToFfnV2QuantDtype : uint32_t {
+    INT8 = 0U,
+    FP8_E4M3FN = 1U,
+    FP8_E5M2 = 2U,
+    FP4_E2M1 = 3U,
+    FP4_E1M2 = 4U,
+    BUTT
+};
+
 struct AttentionToFfnV2Info {
     uint32_t X;
     uint32_t BS;
@@ -42,6 +51,11 @@ struct AttentionToFfnV2Info {
     uint8_t windowType;
     uint64_t totalUbSize;
     uint64_t totalWinSize;
+    uint32_t quantDtype;
+    uint32_t tokenDataBytes;
+    uint32_t scaleOffset;
+    uint32_t scaleBytes;
+    uint32_t tokenStrideBytes;
 };
 
 struct AttentionToFfnV2TilingData {
