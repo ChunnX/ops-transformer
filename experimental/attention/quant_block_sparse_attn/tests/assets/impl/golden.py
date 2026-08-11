@@ -265,20 +265,14 @@ def _cpu_mxfp8_golden(
         q_prefix = to_list(cu_seqlens_q)
         q_lengths = lengths_from_prefix(cu_seqlens_q)
         kv_lengths = to_list(seqused_kv)
-        if layout_q != "TND":
-            raise ValueError(f"MXFP8 requires layout_q='TND', got {layout_q!r}")
-        if len(q_prefix) != batch + 1 or len(kv_lengths) != batch:
-            raise ValueError("invalid MXFP8 sequence input shapes")
-        if to_list(cu_seqlens_kv) or to_list(seqused_q):
-            raise ValueError("cu_seqlens_kv and seqused_q must be empty")
         case = {
             "B": batch,
             "N1": int(query.shape[1]),
             "N2": int(key.shape[1]),
             "D": int(query.shape[-1]),
             "cu_seqlens_q": q_prefix,
-            "cu_seqlens_kv": [],
-            "seqused_q": [],
+            "cu_seqlens_kv": to_list(cu_seqlens_kv),
+            "seqused_q": to_list(seqused_q),
             "seqused_kv": kv_lengths,
             "s2_base_size": int(kwargs.get("s2_base_size", 512)),
             "blocknum": int(key.shape[0]),
@@ -317,6 +311,7 @@ def _cpu_mxfp8_golden(
             "sparse_mode": sparse_mode,
             "quant_mode": 2,
         }
+        module.validate_mxfp8_case(case)
         module.set_active_case(case)
         data = {
             "query": to_cpu(query),
@@ -577,7 +572,7 @@ def cpu_quant_block_sparse_attn(
         raise ValueError("seqused_q must be empty")
     if p_scale is not None and _numel(p_scale) == 0:
         p_scale = None
-    if blocksize and int(key.shape[2]) != int(blocksize):
+    if int(quant_mode) != 2 and blocksize and int(key.shape[2]) != int(blocksize):
         raise ValueError("blocksize does not match key")
 
     return _cpu_quant_block_sparse_attn_impl(
