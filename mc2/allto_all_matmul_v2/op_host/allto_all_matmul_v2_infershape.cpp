@@ -50,7 +50,8 @@ ge::graphStatus AlltoAllMatmulV2InferShape(gert::InferShapeContext *context)
     OPS_CHECK_NULL_WITH_CONTEXT(context, x1Shape);
     OPS_CHECK_NULL_WITH_CONTEXT(context, x2Shape);
     OPS_CHECK(x1Shape->GetDimNum() < 2 || x2Shape->GetDimNum() < 2,
-              OP_LOGE(nodeName, "x1 and x2 must have at least 2 dimensions"), return ge::GRAPH_FAILED);
+              OP_LOGE(nodeName, "x1 and x2 must have at least 2D, got x1=%luD x2=%luD.",
+                      x1Shape->GetDimNum(), x2Shape->GetDimNum()), return ge::GRAPH_FAILED);
 
     int64_t m = x1Shape->GetDim(0U);
     int64_t ka = x1Shape->GetDim(1U); // per-rank K dim (Ka = K_total / world_size)
@@ -69,7 +70,8 @@ ge::graphStatus AlltoAllMatmulV2InferShape(gert::InferShapeContext *context)
 
     if ((x1Dtype != ge::DT_FLOAT8_E4M3FN && x1Dtype != ge::DT_FLOAT8_E5M2 && x1Dtype != ge::DT_FLOAT4_E2M1) ||
         (x2Dtype != ge::DT_FLOAT8_E4M3FN && x2Dtype != ge::DT_FLOAT8_E5M2 && x2Dtype != ge::DT_FLOAT4_E2M1)) {
-        OP_LOGE(nodeName, "Unsupported dtype. Only FP8/FP4 supported.");
+        OP_LOGE(nodeName, "Unsupported dtype, x1_dtype=%d x2_dtype=%d, only FP8/FP4 supported.",
+                static_cast<int>(x1Dtype), static_cast<int>(x2Dtype));
         return ge::GRAPH_FAILED;
     }
 
