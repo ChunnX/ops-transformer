@@ -67,22 +67,32 @@ static inline void FagCalcleActualToken(uint32_t sparseMode, int64_t s1Token, in
 // Source: normal_regbase.cpp:478-509 DoSplit + common_regbase.cpp:1256-1281 ProcessTokensInfo
 void FlashAttnMetadataCpuKernel::InitFagParams()
 {
-    // s1Inner: always 64 (FP32 large-d scenario not supported yet)
+    InitFagBaseDims();
+    InitFagLayoutAndSparse();
+    InitFagActualSeqlen();
+    fagSplitAxis_ = FAG_SPLIT_AXIS_BN2GS1S2;
+}
+
+// Compute s1/s2 inner, cvInner, outer dims and group size.
+void FlashAttnMetadataCpuKernel::InitFagBaseDims()
+{
     fagS1Inner_ = 64;
     fagS2Inner_ = 128;
 
-    // s1CvInner = min(s1Inner * S1CV_RATIO_DEFAULT, s1)
     int64_t s1 = static_cast<int64_t>(maxSeqlenQ_);
     int64_t s2 = static_cast<int64_t>(maxSeqlenKv_);
-    fagS1CvInner_ = (fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT > s1) ? s1 : fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT;
-    fagCvS2Inner_ = (fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT > s2) ? s2 : fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT;
-
-    fagS1Outer_ = (s1 + fagS1CvInner_ - 1) / fagS1CvInner_;
-    fagS2Outer_ = (s2 + fagCvS2Inner_ - 1) / fagCvS2Inner_;
-
+    fagS1CvInner_ = (s1 == 0) ? 1 :
+        ((fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT > s1) ? s1 : fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT);
+    fagCvS2Inner_ = (s2 == 0) ? 1 :
+        ((fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT > s2) ? s2 : fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT);
+    fagS1Outer_ = (s1 == 0) ? 0 : (s1 + fagS1CvInner_ - 1) / fagS1CvInner_;
+    fagS2Outer_ = (s2 == 0) ? 0 : (s2 + fagCvS2Inner_ - 1) / fagCvS2Inner_;
     fagG_ = static_cast<int64_t>(numHeadsQ_) / static_cast<int64_t>(numHeadsKv_);
+}
 
-    // Layout type mapping
+// Map layout string to FAG layout type; set sparse mode and tokens.
+void FlashAttnMetadataCpuKernel::InitFagLayoutAndSparse()
+{
     if (layoutQ_ == "TND") {
         fagLayoutType_ = FAG_INPUT_FORMAT_TND;
     } else if (layoutQ_ == "BNSD") {
@@ -91,50 +101,116 @@ void FlashAttnMetadataCpuKernel::InitFagParams()
         fagLayoutType_ = FAG_INPUT_FORMAT_BS2N2GD;
     }
 
-    // Sparse mode and token mapping
-    // Source: common_regbase.cpp:1256-1281 ProcessTokensInfo + common_regbase.cpp:1538-1578 SetSparseParams
+    // seqused has highest priority: if provided in non-TND layout, use TND-style
+    // splitting (per-batch variable lengths) without changing the actual layout type.
+    if (fagLayoutType_ == FAG_INPUT_FORMAT_TND) {
+        fagUseTndSplit_ = true;
+    } else {
+        bool hasSequsedQ = !actualSeqlenQ_.empty() && !isActualSeqlenQAccum_;
+        bool hasSequsedK = !actualSeqlenKv_.empty() && !isActualSeqlenKvAccum_;
+        if (hasSequsedQ || hasSequsedK) {
+            fagUseTndSplit_ = true;
+        }
+    }
+
     fagSparseMode_ = FAG_SPARSE_NO_MASK;
     fagIsSparse_ = false;
     fagS1Token_ = winLeft_;
     fagS2Token_ = winRight_;
 
+    int64_t s1 = static_cast<int64_t>(maxSeqlenQ_);
+    int64_t s2 = static_cast<int64_t>(maxSeqlenKv_);
+
     if (maskMode_ == 0) {
-        // NO_MASK: always full compute (Dense split), no sparse optimization
         fagIsSparse_ = false;
     } else if (maskMode_ == 3) {
-        // RIGHT_DOWN_CAUSAL
-        // Source: common_regbase.cpp:1262-1265: s1Token=INT32_MAX, s2Token=0
         fagSparseMode_ = FAG_SPARSE_RIGHT_DOWN_CAUSAL;
         fagIsSparse_ = true;
         fagS1Token_ = INT32_MAX;
         fagS2Token_ = 0;
-        // Source: common_regbase.cpp:1270-1275: "sparse_mode==3(RIGHT_DOWN_CAUSAL)时，
-        // token以右下角为基准，需要校正"。pad场景(非TND)需校正token以将causal对角线
-        // 从左上角偏移到右下角。TND场景由CalcleActualToken在运行时按per-batch校正。
-        if (fagLayoutType_ != FAG_INPUT_FORMAT_TND) {
+        if (!fagUseTndSplit_) {
             fagS1Token_ = fagS1Token_ + s1 - s2;
             fagS2Token_ = fagS2Token_ - s1 + s2;
         }
     } else if (maskMode_ == 4) {
-        // BAND
-        // Source: common_regbase.cpp:1270-1275: pad scenario token correction for non-TND
         fagSparseMode_ = FAG_SPARSE_BAND;
         if (s1 > fagS1Token_ || s2 > fagS2Token_) {
             fagIsSparse_ = true;
         }
-        if (fagLayoutType_ != FAG_INPUT_FORMAT_TND) {
+        if (!fagUseTndSplit_) {
             fagS1Token_ = fagS1Token_ + s1 - s2;
             fagS2Token_ = fagS2Token_ - s1 + s2;
         }
     }
+}
 
-    // For TND: if no actual seq lens available, use maxSeqlen as single-batch
-    if (fagLayoutType_ == FAG_INPUT_FORMAT_TND && actualSeqlenQ_.empty()) {
-        actualSeqlenQ_.push_back(s1);
-        actualSeqlenKv_.push_back(s2);
+// Ensure actualSeqlenQ_/Kv_ hold per-batch lengths (not prefix sums) for FAG split.
+void FlashAttnMetadataCpuKernel::InitFagActualSeqlen()
+{
+    if (!fagUseTndSplit_) {
+        return;
     }
 
-    fagSplitAxis_ = FAG_SPLIT_AXIS_BN2GS1S2;
+    int64_t s1 = static_cast<int64_t>(maxSeqlenQ_);
+    int64_t s2 = static_cast<int64_t>(maxSeqlenKv_);
+    int64_t b = static_cast<int64_t>(batchSize_);
+
+    // If no actual seq lens available, use maxSeqlen as single-batch
+    if (actualSeqlenQ_.empty() && actualSeqlenKv_.empty()) {
+        actualSeqlenQ_.push_back(s1);
+        actualSeqlenKv_.push_back(s2);
+        return;
+    }
+
+    // If only one side has seqused, fill the other with maxSeqlen for all batches
+    if (actualSeqlenQ_.empty()) {
+        actualSeqlenQ_.assign(b, s1);
+    }
+    if (actualSeqlenKv_.empty()) {
+        actualSeqlenKv_.assign(b, s2);
+    }
+
+    // When actualSeqlenQ_ comes from cuSeqlensQ (accumulated prefix sums),
+    // convert to per-batch actual lengths. FA side uses isActualSeqlenQAccum_=true
+    // to keep prefix-sum semantics; FAG split treats actualSeqlenQ_[i] as batch i length.
+    if (isActualSeqlenQAccum_) {
+        std::vector<int64_t> perBatch(actualSeqlenQ_.size());
+        int64_t prev = 0;
+        for (size_t i = 0; i < actualSeqlenQ_.size(); i++) {
+            perBatch[i] = actualSeqlenQ_[i] - prev;
+            prev = actualSeqlenQ_[i];
+        }
+        actualSeqlenQ_.swap(perBatch);
+    }
+    if (isActualSeqlenKvAccum_) {
+        std::vector<int64_t> perBatch(actualSeqlenKv_.size());
+        int64_t prev = 0;
+        for (size_t i = 0; i < actualSeqlenKv_.size(); i++) {
+            perBatch[i] = actualSeqlenKv_[i] - prev;
+            prev = actualSeqlenKv_[i];
+        }
+        actualSeqlenKv_.swap(perBatch);
+    }
+}
+
+void FlashAttnMetadataCpuKernel::SupportTransBSND() {
+    bool isTND = (fagLayoutType_ == FAG_INPUT_FORMAT_TND);
+    if (!actualSeqlenQ_.empty() && isTND) {
+        fagIsAllSame_ = true;
+        int64_t s1First = actualSeqlenQ_[0];
+        int64_t s2First = actualSeqlenKv_[0];
+        for (size_t i = 1; i < actualSeqlenQ_.size(); i++) {
+            if (actualSeqlenQ_[i] != s1First || actualSeqlenKv_[i] != s2First) {
+                fagIsAllSame_ = false;
+                break;
+            }
+        }
+    }
+    if (fagIsAllSame_ && isTND)
+    {
+        fagLayoutType_ = FAG_INPUT_FORMAT_BS2N2GD;
+        fagUseTndSplit_ = false;
+    }
 }
 
 // ===== SetFagSplitAxis: determine BN2/BN2S2/BN2GS1S2 =====
@@ -147,20 +223,9 @@ void FlashAttnMetadataCpuKernel::SetFagSplitAxis()
     int64_t n2 = static_cast<int64_t>(numHeadsKv_);
     int64_t d = static_cast<int64_t>(headDim_);
     int64_t b = static_cast<int64_t>(batchSize_);
-    bool isTND = (fagLayoutType_ == FAG_INPUT_FORMAT_TND);
 
     // isAllSame: all batches have same seq lengths (for TND)
-    fagIsAllSame_ = true;
-    if (!actualSeqlenQ_.empty()) {
-        int64_t s1First = actualSeqlenQ_[0];
-        int64_t s2First = actualSeqlenKv_[0];
-        for (size_t i = 1; i < actualSeqlenQ_.size(); i++) {
-            if (actualSeqlenQ_[i] != s1First || actualSeqlenKv_[i] != s2First) {
-                fagIsAllSame_ = false;
-                break;
-            }
-        }
-    }
+    SupportTransBSND();
 
     // isBn2: S<=128, N1==N2, D<=512
     fagIsBn2_ = (s1 <= 128 && s2 <= 128) && (n1 == n2) && (d <= 512);
@@ -168,7 +233,7 @@ void FlashAttnMetadataCpuKernel::SetFagSplitAxis()
     // bnLimit: BN >= 256, or BN >= 128 with S1/S2 aligned to 128
     bool bnLimit = ((b * n1) >= 256) ||
                    ((b * n1) >= 128 && (s1 % 128 == 0) && (s2 % 128 == 0));
-    bool bnSparseLimit = bnLimit && !isTND;
+    bool bnSparseLimit = bnLimit && !fagUseTndSplit_;
 
     // isBn2MultiBlk: BN limit + S>128 + S<=640 + N1==N2 + D<=512
     fagIsBn2MultiBlk_ = bnSparseLimit &&
@@ -180,7 +245,7 @@ void FlashAttnMetadataCpuKernel::SetFagSplitAxis()
     // Source: common_regbase.cpp:1608-1614
     // isBn2 && !isBn2MultiBlk: TND+D>128 时关闭 isBn2 (dropMaskOuter 不涉及)
     if (fagIsBn2_ && !fagIsBn2MultiBlk_) {
-        if (isTND && d > 128) {
+        if (fagUseTndSplit_ && d > 128) {
             fagIsBn2_ = false;
         }
     }
@@ -194,13 +259,13 @@ void FlashAttnMetadataCpuKernel::SetFagSplitAxis()
                             (s2 - s1 >= 128) && (d <= 128) &&
                             !fagIsSparse_;
     bool bn2S2RouteLimit = (d <= 512) &&
-                           (isTND || fagIsAllSame_ || bn2S2NotTndLimit) &&
+                           (fagUseTndSplit_ || fagIsAllSame_ || bn2S2NotTndLimit) &&
                            (n1 == n2);
 
-    if (!fagIsBn2_ && bn2S2RouteLimit) {
-        fagSplitAxis_ = FAG_SPLIT_AXIS_BN2S2;
-    } else if (fagIsBn2_) {
+    if (fagIsBn2_) {
         fagSplitAxis_ = FAG_SPLIT_AXIS_BN2;
+    } else if (bn2S2RouteLimit) {
+        fagSplitAxis_ = FAG_SPLIT_AXIS_BN2S2;
     } else {
         fagSplitAxis_ = FAG_SPLIT_AXIS_BN2GS1S2;
     }
@@ -233,8 +298,8 @@ void FlashAttnMetadataCpuKernel::DoFagSparse()
     }
 
     // Scenario 3-5: BN2GS1S2 (existing)
-    fagSplitAxis_ = FAG_SPLIT_AXIS_BN2GS1S2;
-    if (fagLayoutType_ == FAG_INPUT_FORMAT_TND) {
+    fagSplitAxis_ = fagIsBn2_ ? FAG_SPLIT_AXIS_BN2 : FAG_SPLIT_AXIS_BN2GS1S2;
+    if (fagUseTndSplit_) {
         DoFagTndSplit();
     } else if (fagIsSparse_) {
         DoFagSparseBlockInfo();
@@ -252,6 +317,11 @@ void FlashAttnMetadataCpuKernel::DoFagDenseSplit()
     int64_t g = fagG_;
     int64_t fusedOuter = b * n2 * g * fagS1Outer_ * fagS2Outer_;
     int64_t aicNum = static_cast<int64_t>(aicCoreNum_);
+    if (fusedOuter == 0) {
+        fagBlockOuter_ = 0;
+        fagBlockFactor_ = 0;
+        return;
+    }
     int64_t blockFactor = (fusedOuter + aicNum - 1) / aicNum;
     int64_t blockOuter = (fusedOuter + blockFactor - 1) / blockFactor;
 
@@ -272,8 +342,12 @@ void FlashAttnMetadataCpuKernel::DoFagDenseSplit()
 // Source: normal_regbase.cpp:1553-1622 GetSparseBlockInfo
 void FlashAttnMetadataCpuKernel::DoFagSparseBlockInfo()
 {
-    int64_t parseInfo[FAG_MAX_S2_OUTER][FAG_ARRAY_LENGTH];
-    std::memset(parseInfo, 0, sizeof(parseInfo));
+    if (fagS2Outer_ == 0) {
+        fagBlockOuter_ = 0;
+        fagBlockFactor_ = 0;
+        return;
+    }
+    std::vector<std::vector<int64_t>> parseInfo(fagS2Outer_, std::vector<int64_t>(FAG_ARRAY_LENGTH, 0));
     GetFagParseS1S2OuterInfo(parseInfo);
 
     int64_t s1s2oCount = parseInfo[fagS2Outer_ - 1][2]; // LENGTH_IDX = 2
@@ -334,7 +408,7 @@ void FlashAttnMetadataCpuKernel::DoFagSparseBlockInfo()
 
 // ===== GetFagParseS1S2OuterInfo: build sparse valid S1xS2 mapping table =====
 // Source: normal_regbase.cpp:1509-1551
-void FlashAttnMetadataCpuKernel::GetFagParseS1S2OuterInfo(int64_t (*parseInfo)[FAG_ARRAY_LENGTH])
+void FlashAttnMetadataCpuKernel::GetFagParseS1S2OuterInfo(std::vector<std::vector<int64_t>> &parseInfo)
 {
     int64_t s1 = static_cast<int64_t>(maxSeqlenQ_);
     int64_t s2 = static_cast<int64_t>(maxSeqlenKv_);
@@ -427,14 +501,17 @@ void FlashAttnMetadataCpuKernel::DoFagTndSplit()
     int64_t g = fagG_;
     int64_t aicNum = static_cast<int64_t>(aicCoreNum_);
 
-    // Build calculatedBlockInfo and totalBlockInfo
-    // Source: varlen_regbase.cpp:1046-1075 FillBlockInfo
+    if (fagS2Outer_ == 0 || b == 0) {
+        fagBlockOuter_ = 0;
+        fagBlockFactor_ = 0;
+        return;
+    }
+
     // calculatedBlockInfo[b][s2Outer][4]: BEGIN, END, SUM_S1S2, SUM_ALL
     // totalBlockInfo[b][2]: blockCount, cumulativePrefixSum
-    int64_t calculatedBlockInfo[FAG_BATCH_MAX_SIZE][FAG_MAX_S2_OUTER][4];
-    int64_t totalBlockInfo[FAG_BATCH_MAX_SIZE][2];
-    std::memset(calculatedBlockInfo, 0, sizeof(calculatedBlockInfo));
-    std::memset(totalBlockInfo, 0, sizeof(totalBlockInfo));
+    std::vector<std::vector<std::vector<int64_t>>> calculatedBlockInfo(
+        b, std::vector<std::vector<int64_t>>(fagS2Outer_, std::vector<int64_t>(4, 0)));
+    std::vector<std::vector<int64_t>> totalBlockInfo(b, std::vector<int64_t>(2, 0));
 
     for (int64_t i = 0; i < b; i++) {
         int64_t actualS1Len = actualSeqlenQ_[i];
@@ -619,8 +696,8 @@ bool FlashAttnMetadataCpuKernel::FagCheckUnpadSparseLeftAndRight(int64_t s1oDimI
 // ===== FagFillBlockInfoLoadBalance: build load balance table for TND =====
 // Source: normal_regbase.cpp:1685-1750
 void FlashAttnMetadataCpuKernel::FagFillBlockInfoLoadBalance(
-    int64_t (*totalBlockInfo)[2],
-    float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2])
+    std::vector<std::vector<int64_t>> &totalBlockInfo,
+    std::vector<std::vector<float>> &acturalBlockInfo)
 {
     int64_t b = static_cast<int64_t>(batchSize_);
     int64_t n2 = static_cast<int64_t>(numHeadsKv_);
@@ -674,7 +751,7 @@ void FlashAttnMetadataCpuKernel::FagFillBlockInfoLoadBalance(
 void FlashAttnMetadataCpuKernel::TryBn2s2Sparse()
 {
     fagSplitAxis_ = FAG_SPLIT_AXIS_BN2S2;
-    if (fagIsSparse_ || fagLayoutType_ == FAG_INPUT_FORMAT_TND) {
+    if (fagUseTndSplit_) {
         DoFagBn2s2SparseTndSplit();
     } else {
         DoFagBn2s2DenseSplit();
@@ -691,6 +768,11 @@ void FlashAttnMetadataCpuKernel::DoFagBn2s2DenseSplit()
     int64_t aicNum = static_cast<int64_t>(aicCoreNum_);
 
     int64_t fusedOuter = b * n2 * g * fagS2Outer_;
+    if (fusedOuter == 0 || fagS1Outer_ == 0) {
+        fagBlockOuter_ = 0;
+        fagBlockFactor_ = 0;
+        return;
+    }
     int64_t bns2Factor = (fusedOuter + aicNum - 1) / aicNum;
     int64_t blockOuter = (fusedOuter + bns2Factor - 1) / bns2Factor;
     int64_t totalBlock = fusedOuter * fagS1Outer_;
@@ -718,11 +800,14 @@ void FlashAttnMetadataCpuKernel::DoFagBn2s2SparseTndSplit()
     int64_t g = fagG_;
     int64_t aicNum = static_cast<int64_t>(aicCoreNum_);
 
-    // Use heap allocation for large arrays (BATCH_MAX_SIZE * MAX_S2_OUTER is too large for stack)
-    int64_t (*totalBlockInfo)[2] = new int64_t[FAG_BATCH_MAX_SIZE][2];
-    float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2] = new float[FAG_BATCH_MAX_SIZE + 2][FAG_MAX_S2_OUTER + 2];
-    std::memset(totalBlockInfo, 0, sizeof(int64_t) * FAG_BATCH_MAX_SIZE * 2);
-    std::memset(acturalBlockInfo, 0, sizeof(float) * (FAG_BATCH_MAX_SIZE + 2) * (FAG_MAX_S2_OUTER + 2));
+    if (fagS2Outer_ == 0 || b == 0) {
+        fagBlockOuter_ = 0;
+        fagBlockFactor_ = 0;
+        return;
+    }
+
+    std::vector<std::vector<int64_t>> totalBlockInfo(b, std::vector<int64_t>(2, 0));
+    std::vector<std::vector<float>> acturalBlockInfo(b + 2, std::vector<float>(fagS2Outer_ + 2, 0.0f));
 
     FagFillBlockInfoLoadBalance(totalBlockInfo, acturalBlockInfo);
 
@@ -737,16 +822,13 @@ void FlashAttnMetadataCpuKernel::DoFagBn2s2SparseTndSplit()
     } else {
         fagBlockFactor_ = static_cast<int64_t>(std::ceil(maxBlockNumPerCore));
     }
-
-    delete[] totalBlockInfo;
-    delete[] acturalBlockInfo;
 }
 
 // Source: varlen_regbase.cpp:1247-1262 BinarySearchMaxBlockNumPerCore
 float FlashAttnMetadataCpuKernel::Bn2s2BinarySearchMaxBlockNumPerCore(
     int64_t b, int64_t n2, int64_t g, int64_t aicNum,
-    int64_t (*totalBlockInfo)[2],
-    float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2])
+    std::vector<std::vector<int64_t>> &totalBlockInfo,
+    std::vector<std::vector<float>> &acturalBlockInfo)
 {
     float left = acturalBlockInfo[b + 1][0];
     float right = acturalBlockInfo[b][0];
@@ -765,7 +847,7 @@ float FlashAttnMetadataCpuKernel::Bn2s2BinarySearchMaxBlockNumPerCore(
 // Source: varlen_regbase.cpp:1373-1412 IsPossible
 bool FlashAttnMetadataCpuKernel::Bn2s2IsPossible(
     int64_t b, int64_t n2, int64_t g, int64_t aicNum, float possibleMax,
-    float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2])
+    std::vector<std::vector<float>> &acturalBlockInfo)
 {
     float currentSum = 0;
     uint64_t needCoreNum = 1;
@@ -792,8 +874,8 @@ bool FlashAttnMetadataCpuKernel::Bn2s2IsPossible(
 // Source: varlen_regbase.cpp:1264-1314 CaclePerCoreBlockInfo
 bool FlashAttnMetadataCpuKernel::Bn2s2CaclePerCoreBlockInfo(
     int64_t b, int64_t n2, int64_t g, int64_t aicNum,
-    int64_t (*totalBlockInfo)[2],
-    float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2],
+    std::vector<std::vector<int64_t>> &totalBlockInfo,
+    std::vector<std::vector<float>> &acturalBlockInfo,
     float maxBlockNumPerCore)
 {
     float currentSum = 0;
@@ -836,8 +918,8 @@ bool FlashAttnMetadataCpuKernel::Bn2s2CaclePerCoreBlockInfo(
 bool FlashAttnMetadataCpuKernel::TryBn2MultiBlkSparse()
 {
     fagSplitAxis_ = FAG_SPLIT_AXIS_BN2;
-    // TND path (GetBlockInfoOfTNDForBn2) is deprecated — BN2 does not support TND
-    if (fagLayoutType_ == FAG_INPUT_FORMAT_TND) {
+    // TND-style split (genuine TND or seqused-induced) does not support BN2
+    if (fagUseTndSplit_) {
         return false;
     }
     if (fagIsSparse_) {
@@ -858,6 +940,11 @@ void FlashAttnMetadataCpuKernel::DoFagBn2DenseSplit()
     int64_t aicNum = static_cast<int64_t>(aicCoreNum_);
 
     int64_t fusedOuter = b * n2 * g;
+    if (fusedOuter == 0 || fagS1Outer_ == 0 || fagS2Outer_ == 0) {
+        fagBlockOuter_ = 0;
+        fagBlockFactor_ = 0;
+        return;
+    }
     int64_t blockFactor = (fusedOuter + aicNum - 1) / aicNum;
     int64_t blockOuter = (fusedOuter + blockFactor - 1) / blockFactor;
     blockFactor *= (fagS1Outer_ * fagS2Outer_);
@@ -880,8 +967,12 @@ void FlashAttnMetadataCpuKernel::DoFagBn2DenseSplit()
 // Source: normal_regbase.cpp:549-619 GetSparseBlockInfoBn2
 bool FlashAttnMetadataCpuKernel::DoFagBn2SparseBlockInfo()
 {
-    int64_t parseInfo[FAG_MAX_S2_OUTER][FAG_ARRAY_LENGTH];
-    std::memset(parseInfo, 0, sizeof(parseInfo));
+    if (fagS2Outer_ == 0) {
+        fagBlockOuter_ = 0;
+        fagBlockFactor_ = 0;
+        return false;
+    }
+    std::vector<std::vector<int64_t>> parseInfo(fagS2Outer_, std::vector<int64_t>(FAG_ARRAY_LENGTH, 0));
     GetFagParseS1S2OuterInfo(parseInfo);
 
     int64_t s1s2oCount = parseInfo[fagS2Outer_ - 1][2];
@@ -980,6 +1071,13 @@ void FlashAttnMetadataCpuKernel::GenFagMetadata(uint32_t sectionNum)
         fag[FAG_BLOCK_ENDS_OFFSET + i] = static_cast<int32_t>(fagBlockEnds_[i]);
         fag[FAG_TND_START_BIDX_OFFSET + i] = static_cast<int32_t>(fagTndStartBIdx_[i]);
     }
+
+    // Write scalar params (passed via metadata instead of tilingData)
+    fag[FAG_MASK_MODE_INDEX] = static_cast<FA_METADATA_T>(maskMode_);
+    fag[FAG_WIN_LEFT_INDEX] = static_cast<FA_METADATA_T>(winLeft_);
+    fag[FAG_WIN_RIGHT_INDEX] = static_cast<FA_METADATA_T>(winRight_);
+    fag[FAG_MAX_SEQLEN_Q_INDEX] = static_cast<FA_METADATA_T>(maxSeqlenQ_);
+    fag[FAG_MAX_SEQLEN_KV_INDEX] = static_cast<FA_METADATA_T>(maxSeqlenKv_);
 }
 
 // ===== FAG metadata end =====

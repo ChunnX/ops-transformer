@@ -18,6 +18,7 @@
 
 #include <string>
 #include <cstring>
+#include <vector>
 #include "cpu_context.h"
 #include "cpu_kernel.h"
 #include "cpu_tensor.h"
@@ -27,7 +28,6 @@ namespace aicpu {
 
 using optiling::FAG_CORE_LIST_NUM;
 using optiling::FAG_ARRAY_LENGTH;
-using optiling::FAG_MAX_S2_OUTER;
 using optiling::FAG_SPLIT_AXIS_BN2GS1S2;
 using optiling::FAG_SPARSE_NO_MASK;
 using optiling::FAG_INPUT_FORMAT_BS2N2GD;
@@ -120,25 +120,30 @@ private:
     bool fagIsInvalidCol_ = false;
     bool fagIsInvalidRow_ = false;
     bool fagIsGradEnabled_ = false;
+    bool fagUseTndSplit_ = false;
 
     // FAG method declarations
     void InitFagParams();
+    void InitFagBaseDims();
+    void InitFagLayoutAndSparse();
+    void InitFagActualSeqlen();
     void DoFagSparse();
     void GenFagMetadata(uint32_t sectionNum);
 
     // FAG split implementations (defined in flash_attn_grad_metadata_split.h)
     void SetFagSplitAxis();
+    void SupportTransBSND();
     void DoFagDenseSplit();
     void DoFagTndSplit();
     void DoFagSparseBlockInfo();
-    void GetFagParseS1S2OuterInfo(int64_t (*parseInfo)[FAG_ARRAY_LENGTH]);
+    void GetFagParseS1S2OuterInfo(std::vector<std::vector<int64_t>> &parseInfo);
     bool FagCheckSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx);
     bool FagIsValid(int64_t blockIdx);
     bool FagIsValidUnpad(int64_t blockIdx);
     bool FagCheckUnpadSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx);
     void FagFillBlockInfoLoadBalance(
-        int64_t (*totalBlockInfo)[2],
-        float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2]);
+        std::vector<std::vector<int64_t>> &totalBlockInfo,
+        std::vector<std::vector<float>> &acturalBlockInfo);
 
     // BN2S2 split implementations
     void TryBn2s2Sparse();
@@ -146,16 +151,15 @@ private:
     void DoFagBn2s2SparseTndSplit();
     float Bn2s2BinarySearchMaxBlockNumPerCore(
         int64_t b, int64_t n2, int64_t g, int64_t aicNum,
-        int64_t (*totalBlockInfo)[2],
-        float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2]);
+        std::vector<std::vector<int64_t>> &totalBlockInfo,
+        std::vector<std::vector<float>> &acturalBlockInfo);
     bool Bn2s2IsPossible(
-        int64_t b, int64_t n2, int64_t g, int64_t aicNum,
-        float possibleMax,
-        float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2]);
+        int64_t b, int64_t n2, int64_t g, int64_t aicNum, float possibleMax,
+        std::vector<std::vector<float>> &acturalBlockInfo);
     bool Bn2s2CaclePerCoreBlockInfo(
         int64_t b, int64_t n2, int64_t g, int64_t aicNum,
-        int64_t (*totalBlockInfo)[2],
-        float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2],
+        std::vector<std::vector<int64_t>> &totalBlockInfo,
+        std::vector<std::vector<float>> &acturalBlockInfo,
         float maxBlockNumPerCore);
 
     // BN2 split implementations

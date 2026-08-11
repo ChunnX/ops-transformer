@@ -53,7 +53,7 @@ aclnnStatus aclnnFlashAttnMetadataGetWorkspaceSize(
 
     auto ret = FlashAttnMetadataCheck::ParamsCheck(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional,
         sequsedKvOptional, batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, maskMode, winLeft,
-        winRight, layoutQ, layoutKv, layoutOut, metaData);
+        winRight, layoutQ, layoutKv, layoutOut, metaData, isGradEnabled);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
