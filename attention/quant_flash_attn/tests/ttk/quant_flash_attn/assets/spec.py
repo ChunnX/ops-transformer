@@ -33,6 +33,20 @@ compare_module = load_impl_module("compare")
 graph_module = load_impl_module("graph")
 
 
+_TOLERANCE = {
+    "float16": {
+        "rtol": 0.005,
+        "ptol": 0.005,
+        "atol": 0.000025,
+    },
+    "bfloat16": {
+        "rtol": 0.0078125,
+        "ptol": 0.005,
+        "atol": 0.0001,
+    },
+}
+
+
 class QfaMxfp8Spec:
     """quant_flash_attn (MXFP8) 测试规范。"""
 
@@ -42,18 +56,7 @@ class QfaMxfp8Spec:
 
     torch_graph = graph_module.QuantFlashAttnAclGraph
 
-    tolerance = {
-        "float16": {
-            "rtol": 0.005,
-            "ptol": 0.005,
-            "atol": 0.000025,
-        },
-        "bfloat16": {
-            "rtol": 0.0078125,
-            "ptol": 0.005,
-            "atol": 0.0001,
-        },
-    }
+    tolerance = _TOLERANCE
 
 
 class QfaMetadataSpec:
@@ -67,18 +70,7 @@ class QfaMetadataSpec:
     customize_inputs = inputs_module.generate_qfa_mxfp8_inputs
     compare = compare_module.compare
 
-    tolerance = {
-        "float16": {
-            "rtol": 0.005,
-            "ptol": 0.005,
-            "atol": 0.000025,
-        },
-        "bfloat16": {
-            "rtol": 0.0078125,
-            "ptol": 0.005,
-            "atol": 0.0001,
-        },
-    }
+    tolerance = _TOLERANCE
 
 
 class QfaMainSpec:
@@ -92,22 +84,47 @@ class QfaMainSpec:
     customize_inputs = inputs_module.generate_qfa_mxfp8_inputs
     compare = compare_module.compare
 
-    tolerance = {
-        "float16": {
-            "rtol": 0.005,
-            "ptol": 0.005,
-            "atol": 0.000025,
-        },
-        "bfloat16": {
-            "rtol": 0.0078125,
-            "ptol": 0.005,
-            "atol": 0.0001,
-        },
-    }
+    tolerance = _TOLERANCE
+
+
+class QfaHif8Spec:
+    """quant_flash_attn (HIF8 per-tensor) 测试规范。
+
+    quant_mode=7: Q/K/V per-tensor FP32 标量 descale, 仅 TND layout, 无 PA。
+    """
+
+    golden = golden_module.cpu_qfa_hif8
+    customize_inputs = inputs_module.generate_qfa_hif8_inputs
+    compare = compare_module.compare
+
+    tolerance = _TOLERANCE
+
+
+class QfaHif8MetadataSpec:
+    """quant_flash_attn_metadata HIF8 独立测试规范 (T4 metadata/main 分离)。"""
+
+    golden = golden_module.cpu_qfa_hif8
+    customize_inputs = inputs_module.generate_qfa_hif8_inputs
+    compare = compare_module.compare
+
+    tolerance = _TOLERANCE
+
+
+class QfaHif8MainSpec:
+    """quant_flash_attn HIF8 主算子独立测试规范 (T4 metadata/main 分离)。"""
+
+    golden = golden_module.cpu_qfa_hif8
+    customize_inputs = inputs_module.generate_qfa_hif8_inputs
+    compare = compare_module.compare
+
+    tolerance = _TOLERANCE
 
 
 __spec__ = {
     "qfa_mxfp8_wrapper.npu_qfa_mxfp8": "QfaMxfp8Spec",
+    "qfa_mxfp8_wrapper.npu_qfa_hif8": "QfaHif8Spec",
     "qfa_metadata_wrapper.run_metadata": "QfaMetadataSpec",
+    "qfa_metadata_wrapper.run_metadata_hif8": "QfaHif8MetadataSpec",
     "qfa_main_wrapper.run_main": "QfaMainSpec",
+    "qfa_main_wrapper.run_main_hif8": "QfaHif8MainSpec",
 }
