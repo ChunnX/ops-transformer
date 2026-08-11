@@ -36,6 +36,13 @@ namespace AllGatherQuantMatmulImpl {
 
 using namespace AscendC;
 
+struct UdmaCommWaitPolicy {
+    __aicore__ inline void WaitTile(uint32_t tileIdx)
+    {
+        AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
+    }
+};
+
 using LayoutA = AscendC::Te::NDExtLayoutPtn;
 using LayoutB = AscendC::Te::DNExtLayoutPtn;
 using LayoutC = AscendC::Te::NDExtLayoutPtn;
@@ -43,7 +50,7 @@ using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 
 enum RegionTag { HEAD, MAIN, TAIL };
 
-template <typename AType, typename BType, typename CType>
+template <typename AType, typename BType, typename CType, typename CommPolicy = UdmaCommWaitPolicy>
 class QmmMxKernelAgUdma {
 public:
     __aicore__ inline QmmMxKernelAgUdma() {}
@@ -145,6 +152,7 @@ public:
 
     __aicore__ inline void Run(const Params& params);
     __aicore__ inline void operator()(const Params& params) { Run(params); }
+    __aicore__ inline CommPolicy& GetCommPolicy() { return commPolicy_; }
 
 private:
     __aicore__ inline void Init(const Params& params);
@@ -215,6 +223,7 @@ private:
     GM_ADDR tailAddrListScale_[MAX_FRAG]{};
     GM_ADDR tailAddrListC_[MAX_FRAG]{};
 
+    CommPolicy commPolicy_;
     uint32_t curMainRoundIdx_{0xFFFFFFFF};
     bool winBasesReady_{false};
     bool tailBuilt_{false};
@@ -228,8 +237,8 @@ private:
     uint64_t tileMCStride_{};
 };
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Init(const Params& params)
+template <typename AType, typename BType, typename CType, typename CommPolicy>
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType, CommPolicy>::Init(const Params& params)
 {
     if ASCEND_IS_AIV {
         return;
@@ -241,9 +250,9 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Init(const Params
     scaleBGmAddr_ = reinterpret_cast<__gm__ AscendC::fp8_e8m0_t*>(params.bScaleGM);
 }
 
-template <typename AType, typename BType, typename CType>
+template <typename AType, typename BType, typename CType, typename CommPolicy>
 template <typename TensorB, typename TensorScaleB>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::SetL2Cache(
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType, CommPolicy>::SetL2Cache(
     const ProblemShape& problemShape, int64_t baseM, int64_t baseN,
     TensorB& gmB, TensorScaleB& gmScaleB)
 {
@@ -272,8 +281,8 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::SetL2Cache(
                                               : AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Run(const Params& params)
+template <typename AType, typename BType, typename CType, typename CommPolicy>
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType, CommPolicy>::Run(const Params& params)
 {
     Init(params);
 
@@ -317,8 +326,8 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Run(const Params&
     Process(params, problemShape, sch, mmadFrag);
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Process(
+template <typename AType, typename BType, typename CType, typename CommPolicy>
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType, CommPolicy>::Process(
     const Params& params, const ProblemShape& problemShape, BlockScheduler& sch, BlockMmadFragC& mmadFrag)
 {
     const auto& mmT = *params.mmTile;
@@ -347,7 +356,7 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Process(
         sch.UpdateTailTile(mTailTile, nTailTile);
     }
     uint32_t waitedMask = 0U;
-    // dependTileIdx=0 由 AIV 预触发，无需等待。
+    // dependTileIdx=0 为本 rank 数据，无需等待通信。
 
     Te::Coord<int64_t, int64_t, int64_t, int64_t> blockIdx;
     int64_t mPos = 0L, nPos = 0L;
@@ -368,7 +377,7 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Process(
 
         // 按位记录已等待过的 dependTileIdx，避免重复 wait。
         if ((waitedMask & (1U << ctx.dependTileIdx)) == 0U) {
-            CrossCoreWaitFlag<0x2, PIPE_MTE2>(ctx.dependTileIdx);
+            commPolicy_.WaitTile(ctx.dependTileIdx);
             waitedMask |= (1U << ctx.dependTileIdx);
         }
 
@@ -409,14 +418,14 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Process(
     // 确保所有 dependTileIdx 均已 wait（收尾清理）。
     for (uint32_t t = 0; t <= fp.commTurn; ++t) {
         if ((waitedMask & (1U << t)) == 0U) {
-            CrossCoreWaitFlag<0x2, PIPE_MTE2>(t);
+            commPolicy_.WaitTile(t);
         }
     }
 }
 
-template <typename AType, typename BType, typename CType>
+template <typename AType, typename BType, typename CType, typename CommPolicy>
 __aicore__ inline Apace::Basic::FragmentParam<2>
-QmmMxKernelAgUdma<AType, BType, CType>::MakeFragParam(
+QmmMxKernelAgUdma<AType, BType, CType, CommPolicy>::MakeFragParam(
     uint64_t fragSize, uint64_t realFragSize, uint32_t fragCnt, uint64_t shape1) const
 {
     Apace::Basic::FragmentParam<2> param{};
@@ -429,8 +438,8 @@ QmmMxKernelAgUdma<AType, BType, CType>::MakeFragParam(
     return param;
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildFragmentTensors(const Params& params)
+template <typename AType, typename BType, typename CType, typename CommPolicy>
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType, CommPolicy>::BuildFragmentTensors(const Params& params)
 {
     const auto& fp = params.fragParams;
 
@@ -455,8 +464,8 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildFragmentTens
     // main / tail 的 fragment tensor 延迟到首次使用时构建，构建开销被 comm wait 掩盖。
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::EnsureWinRankBasesReady(const Params& params)
+template <typename AType, typename BType, typename CType, typename CommPolicy>
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType, CommPolicy>::EnsureWinRankBasesReady(const Params& params)
 {
     if (winBasesReady_) {
         return;
@@ -469,8 +478,8 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::EnsureWinRankBase
     winBasesReady_ = true;
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildMainFragment(
+template <typename AType, typename BType, typename CType, typename CommPolicy>
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType, CommPolicy>::BuildMainFragment(
     const Params& params, uint32_t roundIdx)
 {
     EnsureWinRankBasesReady(params);
@@ -499,8 +508,8 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildMainFragment
     curMainRoundIdx_ = roundIdx;
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildTailFragment(const Params& params)
+template <typename AType, typename BType, typename CType, typename CommPolicy>
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType, CommPolicy>::BuildTailFragment(const Params& params)
 {
     EnsureWinRankBasesReady(params);
     const auto& fp = params.fragParams;
@@ -528,8 +537,8 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildTailFragment
         MakeFragParam(fp.paddedTailM, fp.tailM, fp.rankSize, fp.n), tailAddrListC_);
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::UpdateMainRoundAddrs(
+template <typename AType, typename BType, typename CType, typename CommPolicy>
+__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType, CommPolicy>::UpdateMainRoundAddrs(
     const Params& params, uint32_t roundIdx)
 {
     const auto& fp = params.fragParams;
@@ -554,9 +563,9 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::UpdateMainRoundAd
     curMainRoundIdx_ = roundIdx;
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline typename QmmMxKernelAgUdma<AType, BType, CType>::TileCtx
-QmmMxKernelAgUdma<AType, BType, CType>::ResolveTileCtx(
+template <typename AType, typename BType, typename CType, typename CommPolicy>
+__aicore__ inline typename QmmMxKernelAgUdma<AType, BType, CType, CommPolicy>::TileCtx
+QmmMxKernelAgUdma<AType, BType, CType, CommPolicy>::ResolveTileCtx(
     int64_t mPos, int64_t headMainRows, int64_t mainRoundRows, int64_t mainSectionRows,
     uint32_t rankSize, uint32_t commTurn) const
 {
