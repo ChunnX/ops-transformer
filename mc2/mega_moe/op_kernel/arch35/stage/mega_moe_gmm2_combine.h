@@ -240,7 +240,7 @@ struct Gmm2Config {
     MoeStageCommonConfig common;
     BlockJobContext blockJob;
     BlockWorkspaceContext countWorkspace;
-    int32_t swigluFlagSlotsPerExpert;
+    int32_t activationFlagSlotsPerExpert;
     int32_t dispatchFlagSlotsPerExpert;
     uint64_t combineSyncSlotCountPerExpert;
     int32_t groupedMatmulMode;
@@ -488,11 +488,11 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
         uint32_t waveIdx = mLoc / L1_TILE_M_256;
         uint32_t waveStart = waveIdx * L1_TILE_M_256;
         uint32_t waveM = waveStart + L1_TILE_M_256 > config.m ? config.m - waveStart : L1_TILE_M_256;
-        constexpr uint32_t sourceNFactor = Config::SOURCE_GMM1_INTERLEAVED ? SWIGLU_N_HALF : 1U;
-        uint32_t targetLoops = Ops::Base::CeilDiv(waveM, config.swigluTileM) *
+        constexpr uint32_t sourceNFactor = Config::SOURCE_GMM1_INTERLEAVED ? ACTIVATION_N_HALF : 1U;
+        uint32_t targetLoops = Ops::Base::CeilDiv(waveM, config.activationTileM) *
                                Ops::Base::CeilDiv(config.k * sourceNFactor, L1_TILE_N);
         uint64_t flagOffset = static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
-        __gm__ int32_t *flagValueAddr = gmmAddrInfo.swigluToGmm2Flag + flagOffset;
+        __gm__ int32_t *flagValueAddr = gmmAddrInfo.activationToGmm2Flag + flagOffset;
         while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
@@ -501,10 +501,10 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
     } else {
         GmmKernel::BlockScheduler gmmBlockScheduler(
             {config.m, config.k, config.n},
-            GmmKernel::BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(config.swigluTileM),
+            GmmKernel::BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(config.activationTileM),
                                                             static_cast<int64_t>(L1_TILE_N))});
         uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
-        while (targetLoops != AscendC::ReadGmByPassDCache(gmmAddrInfo.swigluToGmm2Flag)) {
+        while (targetLoops != AscendC::ReadGmByPassDCache(gmmAddrInfo.activationToGmm2Flag)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
             }
@@ -931,7 +931,7 @@ __aicore__ inline Gmm2ExpertLoopState CreateGmm2ExpertLoopState(const Gmm2Config
 }
 
 template <uint32_t ActivationElementsPerByte, uint32_t WeightElementsPerByte,
-          uint32_t SwigluElementsPerByte>
+          uint32_t ActivationOutputElementsPerByte>
 __aicore__ inline void AdvanceGmm2ExpertOffsets(Gmm2ExpertLoopState &state)
 {
     uint64_t m = Get<M_VALUE>(state.problemShape);
@@ -944,13 +944,13 @@ __aicore__ inline void AdvanceGmm2ExpertOffsets(Gmm2ExpertLoopState &state)
         Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
     Get<IDX_A_SCALE_OFFSET>(state.baseOffset) += m * scaleK;
     Get<IDX_B_SCALE_OFFSET>(state.baseOffset) += n * scaleK;
-    Get<IDX_C_OFFSET>(state.baseOffset) += m * n / SWIGLU_N_HALF / SwigluElementsPerByte;
+    Get<IDX_C_OFFSET>(state.baseOffset) += m * n / ACTIVATION_N_HALF / ActivationOutputElementsPerByte;
     Get<IDX_C_SCALE_OFFSET>(state.baseOffset) +=
-        m * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+        m * Ops::Base::CeilDiv(n / ACTIVATION_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
     Get<IDX_FLAG_OFFSET>(state.baseOffset) += 1;
-    Get<IDX_B2_OFFSET>(state.baseOffset) += k * n / SWIGLU_N_HALF / WeightElementsPerByte;
+    Get<IDX_B2_OFFSET>(state.baseOffset) += k * n / ACTIVATION_N_HALF / WeightElementsPerByte;
     Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) +=
-        k * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+        k * Ops::Base::CeilDiv(n / ACTIVATION_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
     Get<IDX_Y2_OFFSET>(state.baseOffset) += m * k;
     Get<IDX_M_OFFSET>(state.baseOffset) += m;
     Get<IDX_GMM1_OFFSET>(state.baseOffset) += m * n;
@@ -959,13 +959,13 @@ __aicore__ inline void AdvanceGmm2ExpertOffsets(Gmm2ExpertLoopState &state)
 
 // 原型：MegaMoe::UpdateGmm2GroupParams。使用调用方选择的 workspace 槽更新一个 MoE 专家游标。
 template <uint32_t ActivationElementsPerByte, uint32_t WeightElementsPerByte,
-          uint32_t SwigluElementsPerByte>
+          uint32_t ActivationOutputElementsPerByte>
 __aicore__ inline bool UpdateMoeGmm2GroupParams(const Gmm2Config &context, Gmm2Scratch &scratch,
                                                 Gmm2ExpertLoopState &state, uint32_t expertIdx)
 {
     if (expertIdx != 0U) {
         AdvanceGmm2ExpertOffsets<ActivationElementsPerByte, WeightElementsPerByte,
-                                 SwigluElementsPerByte>(state);
+                                 ActivationOutputElementsPerByte>(state);
     }
     uint64_t countOffset = static_cast<uint64_t>(expertIdx) * INT32_PER_256B * context.countWorkspace.blockNum +
                            static_cast<uint64_t>(INT32_PER_256B) * context.countWorkspace.blockIdx;
@@ -977,19 +977,19 @@ __aicore__ inline bool UpdateMoeGmm2GroupParams(const Gmm2Config &context, Gmm2S
 
 // 原型：MegaMoe::UpdateSharedGroupParams。使用固定 token 数推进一个共享专家。
 template <uint32_t ActivationElementsPerByte, uint32_t WeightElementsPerByte,
-          uint32_t SwigluElementsPerByte>
+          uint32_t ActivationOutputElementsPerByte>
 __aicore__ inline bool UpdateSharedGmm2GroupParams(const Gmm2Config &context,
                                                    Gmm2ExpertLoopState &state, uint32_t expertIdx)
 {
     if (expertIdx != 0U) {
         AdvanceGmm2ExpertOffsets<ActivationElementsPerByte, WeightElementsPerByte,
-                                 SwigluElementsPerByte>(state);
+                                 ActivationOutputElementsPerByte>(state);
     }
     Get<M_VALUE>(state.problemShape) = context.common.tokenNum;
     return Get<M_VALUE>(state.problemShape) != 0;
 }
 
-template <typename ActivationType, typename SwigluOutType, typename QuantScaleType,
+template <typename ActivationType, typename ActivationOutType, typename QuantScaleType,
           bool ConfigureGmm2Output, bool ConfigureCombineCounter, bool ConfigureGmmToEpilogue>
 __aicore__ inline void UpdateMoeGmm2GlobalBuffer(const Gmm2Config &context, const WorkspaceInfo &workspace,
                                                  const ExpertWeightTensorListAddrs &weights, GMMAddrInfo &gmmAddrInfo,
@@ -1002,9 +1002,9 @@ __aicore__ inline void UpdateMoeGmm2GlobalBuffer(const Gmm2Config &context, cons
     gmmAddrInfo.metaInfoGlobal =
         workspace.metaInfoPtr + static_cast<uint64_t>(state.expertBeforeCnt) * META_INFO_SIZE * sizeof(int32_t);
     gmmAddrInfo.aGlobal =
-        workspace.swigluQuantDataPtr + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(SwigluOutType);
+        workspace.activationQuantDataPtr + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationOutType);
     gmmAddrInfo.aScaleGlobal =
-        workspace.swigluQuantScalePtr + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleType);
+        workspace.activationQuantScalePtr + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleType);
     gmmAddrInfo.bGlobal = GetExpertWeightAddr<ActivationType>(
         weights.weight2, context.isPerExpertWeightTensor, expertIdx,
         Get<IDX_B2_OFFSET>(state.baseOffset));
@@ -1018,8 +1018,8 @@ __aicore__ inline void UpdateMoeGmm2GlobalBuffer(const Gmm2Config &context, cons
             reinterpret_cast<__gm__ int32_t *>(workspace.gmm2CombineSyncCounterPtr) +
             expertSyncSlotOffset * static_cast<uint64_t>(INT_CACHELINE);
     }
-    gmmAddrInfo.swigluToGmm2Flag = reinterpret_cast<__gm__ int32_t *>(workspace.flagSwiGluToGmm2Ptr) +
-                                   Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.swigluFlagSlotsPerExpert;
+    gmmAddrInfo.activationToGmm2Flag = reinterpret_cast<__gm__ int32_t *>(workspace.flagActivationToGmm2Ptr) +
+                                   Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.activationFlagSlotsPerExpert;
     gmmAddrInfo.dispatchToGmm1Flag = reinterpret_cast<__gm__ int32_t *>(workspace.flagDispatchToGmm1Ptr) +
                                      Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.dispatchFlagSlotsPerExpert;
     if constexpr (ConfigureGmmToEpilogue) {
@@ -1042,9 +1042,9 @@ __aicore__ inline void UpdateSharedGmm2GlobalBuffer(const Gmm2Config &context, c
     gmmAddrInfo.gmm2OutGlobal =
         workspace.sharedExpertResultPtr + Get<IDX_GMM2_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
     gmmAddrInfo.aGlobal =
-        workspace.sharedExpertSwigluDataPtr + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationType);
+        workspace.sharedExpertActivationDataPtr + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationType);
     gmmAddrInfo.aScaleGlobal =
-        workspace.sharedExpertSwigluScalePtr + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleType);
+        workspace.sharedExpertActivationScalePtr + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleType);
     gmmAddrInfo.bGlobal = GetExpertWeightAddr<ActivationType>(
         weights.weight2, context.isPerExpertWeightTensor, sharedExpertIdx,
         Get<IDX_B2_OFFSET>(state.baseOffset));
@@ -1094,9 +1094,9 @@ __aicore__ inline void RunGmm2ByMode(const Gmm2Config &context, const Params &pa
     }
 }
 
-template <typename ActivationType, typename SwigluOutType, typename QuantScaleType,
+template <typename ActivationType, typename ActivationOutType, typename QuantScaleType,
           uint32_t ActivationElementsPerByte, uint32_t WeightElementsPerByte,
-          uint32_t SwigluElementsPerByte, bool ConfigureGmm2Output,
+          uint32_t ActivationOutputElementsPerByte, bool ConfigureGmm2Output,
           bool ConfigureCombineCounter, bool ConfigureGmmToEpilogue>
 __aicore__ inline bool PrepareMoeExpertGmm2Stage(
     const Gmm2Config &context, const WorkspaceInfo &workspace,
@@ -1104,10 +1104,10 @@ __aicore__ inline bool PrepareMoeExpertGmm2Stage(
     Gmm2ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx)
 {
     if (!UpdateMoeGmm2GroupParams<ActivationElementsPerByte, WeightElementsPerByte,
-                                  SwigluElementsPerByte>(context, scratch, state, expertIdx)) {
+                                  ActivationOutputElementsPerByte>(context, scratch, state, expertIdx)) {
         return false;
     }
-    UpdateMoeGmm2GlobalBuffer<ActivationType, SwigluOutType, QuantScaleType,
+    UpdateMoeGmm2GlobalBuffer<ActivationType, ActivationOutType, QuantScaleType,
                               ConfigureGmm2Output, ConfigureCombineCounter,
                               ConfigureGmmToEpilogue>(
         context, workspace, weights, gmmAddrInfo, state, expertIdx);
