@@ -168,6 +168,7 @@ struct RunInfoX {
     bool isValid = false;
     bool isChangeBatch = false;
     bool isFirstS2Loop = false;
+    bool isSecondS2Loop = false;
     bool isLastS2Loop = false;
 
     uint32_t bIdx = 0;
