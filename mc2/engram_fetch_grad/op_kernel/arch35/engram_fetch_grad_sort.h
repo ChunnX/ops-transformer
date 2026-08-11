@@ -58,6 +58,11 @@ public:
         GlobalTensor<int32_t>& histGm, GlobalTensor<int32_t>& prefixGm,
         GlobalTensor<int32_t>& tileOffsetsGm, TPipe& pipe);
 
+    __aicore__ inline void Process(
+        GM_ADDR valueGm, GM_ADDR indexGm,
+        GM_ADDR tempValueGm, GM_ADDR tempIndexGm,
+        GM_ADDR histGm, GM_ADDR prefixGm, GM_ADDR tileOffsetsGm, TPipe& pipe);
+
 private:
     __aicore__ inline void ComputePrefixAndOffsets(
         uint32_t tc, GlobalTensor<int32_t>& prefixGm, GlobalTensor<int32_t>& tileOffsetsGm,
@@ -547,6 +552,24 @@ __aicore__ inline void SortWithIndexKernel::Process(
     if (byteRounds_ % 2 == 1) {
         CopyTempToOutput(tempValueGm, tempIndexGm, outputValueGm, outputIndexGm, pipe);
     }
+}
+
+__aicore__ inline void SortWithIndexKernel::Process(
+    GM_ADDR valueGm, GM_ADDR indexGm,
+    GM_ADDR tempValueGm, GM_ADDR tempIndexGm,
+    GM_ADDR histGm, GM_ADDR prefixGm, GM_ADDR tileOffsetsGm, TPipe& pipe)
+{
+    GlobalTensor<int32_t> valT, idxT, outValT, outIdxT, tmpValT, tmpIdxT, histT, prefixT, offsetsT;
+    valT.SetGlobalBuffer((__gm__ int32_t *)valueGm);
+    idxT.SetGlobalBuffer((__gm__ int32_t *)indexGm);
+    outValT.SetGlobalBuffer((__gm__ int32_t *)valueGm);
+    outIdxT.SetGlobalBuffer((__gm__ int32_t *)indexGm);
+    tmpValT.SetGlobalBuffer((__gm__ int32_t *)tempValueGm);
+    tmpIdxT.SetGlobalBuffer((__gm__ int32_t *)tempIndexGm);
+    histT.SetGlobalBuffer((__gm__ int32_t *)histGm);
+    prefixT.SetGlobalBuffer((__gm__ int32_t *)prefixGm);
+    offsetsT.SetGlobalBuffer((__gm__ int32_t *)tileOffsetsGm);
+    Process(valT, idxT, outValT, outIdxT, tmpValT, tmpIdxT, histT, prefixT, offsetsT, pipe);
 }
 
 } // namespace SortWithIndexInt32
