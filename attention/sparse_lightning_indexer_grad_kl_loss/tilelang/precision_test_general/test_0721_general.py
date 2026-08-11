@@ -47,9 +47,9 @@ if TILELANG_DIR not in sys.path:
     sys.path.insert(0, TILELANG_DIR)
 
 IMPL_MODULE = os.environ.get("SLIG_IMPL_MODULE", "0721")
-if IMPL_MODULE not in {"0721", "0721_baseline", "0803", "0810"}:
+if IMPL_MODULE not in {"0721", "0721_baseline", "0803", "0810", "0811_work_split"}:
     raise ValueError(
-        "SLIG_IMPL_MODULE 仅支持 0721、0721_baseline、0803 或 0810，"
+        "SLIG_IMPL_MODULE 仅支持 0721、0721_baseline、0803、0810 或 0811_work_split，"
         f"当前值为 {IMPL_MODULE!r}"
     )
 MODULE = import_module(IMPL_MODULE)

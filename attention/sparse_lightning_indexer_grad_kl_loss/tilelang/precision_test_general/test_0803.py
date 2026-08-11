@@ -12,7 +12,8 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from importlib import import_module
-mod = import_module("0803_gather32")
+IMPL_MODULE = os.environ.get("SLIG_IMPL_MODULE", "0803_gather32")
+mod = import_module(IMPL_MODULE)
 sparse_lightning_indexer_grad_kl_loss = mod.sparse_lightning_indexer_grad_kl_loss
 
 WARMUP_ITERS = 5
@@ -157,14 +158,14 @@ def bench(fn, warmup=WARMUP_ITERS, iters=BENCH_ITERS):
 
 def run_case(case_name, case_config):
     print("=" * 60)
-    print(f"{case_name} - 0803_gather32.py (GATHER_CHUNK_SIZE=32)")
+    print(f"{case_name} - {IMPL_MODULE}.py")
     print("=" * 60)
 
     mod._clear_caches()
     inputs = gen_inputs(case_config)
 
     # TileLang
-    print("\n[1] TileLang (0803 kernel-gather)...")
+    print(f"\n[1] TileLang ({IMPL_MODULE})...")
     torch.npu.synchronize()
     try:
         d_qi_tl, d_ki_tl, dw_tl, loss_tl = call_tl(inputs, case_config)
