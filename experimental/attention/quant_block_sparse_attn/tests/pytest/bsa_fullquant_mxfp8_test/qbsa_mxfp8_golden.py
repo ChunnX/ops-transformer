@@ -1064,6 +1064,18 @@ def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale):
         raise ValueError(
             f"Q/K head dimensions must match, got {q_fp8.shape[1]} and {k_fp8.shape[1]}"
         )
+    if q_fp8.numel() == 0 or k_fp8.numel() == 0:
+        raise ValueError("npu_quant_matmul Q/K inputs must not be empty")
+    if QUANT_GROUP_SIZE != 32:
+        raise ValueError(
+            "this MXFP8 npu_quant_matmul path requires quant_group_size=32, "
+            f"got {QUANT_GROUP_SIZE}"
+        )
+    if q_fp8.shape[1] % QUANT_GROUP_SIZE != 0:
+        raise ValueError(
+            f"Q/K head dimension {q_fp8.shape[1]} must be divisible by "
+            f"quant_group_size={QUANT_GROUP_SIZE}"
+        )
     if q_scale.ndim != 2 or k_scale.ndim != 2:
         raise ValueError(
             "Q/K scale must be rank-2, got "
@@ -1075,6 +1087,18 @@ def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale):
             f"q={q_fp8.shape[0]}/{q_scale.shape[0]}, "
             f"k={k_fp8.shape[0]}/{k_scale.shape[0]}"
         )
+    for scale_name, scale_tensor in (("Q", q_scale), ("K", k_scale)):
+        scale_fp32 = scale_tensor.to(torch.float32)
+        valid_scale = torch.isfinite(scale_fp32) & (scale_fp32 > 0)
+        if not bool(torch.all(valid_scale).item()):
+            raise ValueError(
+                f"{scale_name} MXFP8 scale must contain only positive finite values"
+            )
+        scale_exponent = torch.log2(scale_fp32)
+        if not bool(torch.all(scale_exponent == torch.round(scale_exponent)).item()):
+            raise ValueError(
+                f"{scale_name} MXFP8 e8m0 scale values must be exact powers of two"
+            )
 
     d_group_count = math.ceil(q_fp8.shape[1] / QUANT_GROUP_SIZE)
     if q_scale.shape[1] != d_group_count or k_scale.shape[1] != d_group_count:
@@ -1098,15 +1122,67 @@ def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale):
     q_scale_npu = q_scale_packed.contiguous().npu()
     k_scale_npu = k_scale_packed.contiguous().npu()
 
-    scores_npu = torch_npu.npu_quant_matmul(
-        q_npu,
-        k_npu.transpose(0, 1),
-        k_scale_npu.transpose(0, 1),
-        pertoken_scale=q_scale_npu,
-        output_dtype=torch.float32,
-        scale_dtype=torch_npu.float8_e8m0fnu,
-        group_sizes=[1, 1, QUANT_GROUP_SIZE],
+    expected_scale_shape_q = (
+        q_fp8.shape[0],
+        d_group_count // 2,
+        2,
     )
+    expected_scale_shape_k = (
+        k_fp8.shape[0],
+        d_group_count // 2,
+        2,
+    )
+    if q_npu.dtype != FP8_DTYPE or k_npu.dtype != FP8_DTYPE:
+        raise TypeError(
+            f"npu_quant_matmul Q/K must be {FP8_DTYPE}, got "
+            f"{q_npu.dtype} and {k_npu.dtype}"
+        )
+    if q_npu.device.type != "npu" or k_npu.device.type != "npu":
+        raise ValueError(
+            f"npu_quant_matmul Q/K must be on NPU, got {q_npu.device} and {k_npu.device}"
+        )
+    if q_scale_npu.dtype != torch.int8 or k_scale_npu.dtype != torch.int8:
+        raise TypeError(
+            "MXFP8 Q/K scales must use int8 physical storage with logical "
+            "float8_e8m0fnu dtype attributes, got "
+            f"{q_scale_npu.dtype} and {k_scale_npu.dtype}"
+        )
+    if tuple(q_scale_npu.shape) != expected_scale_shape_q:
+        raise ValueError(
+            f"invalid Q pertoken_scale shape: expected {expected_scale_shape_q}, "
+            f"got {tuple(q_scale_npu.shape)}"
+        )
+    if tuple(k_scale_npu.shape) != expected_scale_shape_k:
+        raise ValueError(
+            f"invalid K scale shape: expected {expected_scale_shape_k}, "
+            f"got {tuple(k_scale_npu.shape)}"
+        )
+    if not hasattr(torch_npu, "float8_e8m0fnu"):
+        raise RuntimeError(
+            "the installed torch_npu does not expose float8_e8m0fnu; "
+            "MXFP8 npu_quant_matmul is not supported by this version"
+        )
+
+    e8m0_dtype = torch_npu.float8_e8m0fnu
+
+    try:
+        scores_npu = torch_npu.npu_quant_matmul(
+            q_npu,
+            k_npu.transpose(0, 1),
+            k_scale_npu.transpose(0, 1),
+            pertoken_scale=q_scale_npu,
+            output_dtype=torch.float32,
+            pertoken_scale_dtype=e8m0_dtype,
+            scale_dtype=e8m0_dtype,
+            group_sizes=[1, 1, QUANT_GROUP_SIZE],
+        )
+    except TypeError as error:
+        if "pertoken_scale_dtype" in str(error):
+            raise RuntimeError(
+                "the installed torch_npu.npu_quant_matmul does not support "
+                "pertoken_scale_dtype; an MXFP8-capable torch_npu version is required"
+            ) from error
+        raise
     return scores_npu.cpu()
 
 
