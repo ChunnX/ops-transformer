@@ -21,6 +21,12 @@ from typing import List, Optional
 import torch
 
 _CUSTOM_OPS_LOADED = False
+_FP32_BYTES = 4
+
+
+# ==================================================================================================
+# Common helpers and public adapters
+# ==================================================================================================
 
 
 def _ensure_cann_ops():
@@ -34,308 +40,59 @@ def _ensure_cann_ops():
         _CUSTOM_OPS_LOADED = True
 
 
-_FP32_BYTES = 4
+def _synchronize_npu(tensor):
+    """Finish eager preparation before ACLGraph starts capturing."""
+    if tensor.device.type != "npu":
+        return
+    import torch_npu
+
+    torch_npu.npu.synchronize()
 
 
-def _pack_combined_kv(key, value, k_descale):
-    """Pack separate PA key/value/k_descale into a combined KV storage.
-
-    Layout per physical block: [key_segment (FP8)] [value_segment (FP8)] [k_scale_segment (FP32)]
-    Returns 4D PA views whose shape matches the operator interface and whose block stride
-    points at the full physical KV-cache block.
-    """
-    num_blocks, n2, block_size, d = (
-        int(key.shape[0]),
-        int(key.shape[1]),
-        int(key.shape[2]),
-        int(key.shape[3]),
-    )
-    dv = int(value.shape[-1])
-
-    key_seg = n2 * block_size * d
-    value_seg = n2 * block_size * dv
-    k_scale_seg = n2 * block_size * _FP32_BYTES
-    pa_block_stride = key_seg + value_seg + k_scale_seg
-
-    storage = torch.zeros(
-        (num_blocks * pa_block_stride,), dtype=torch.uint8, device=key.device
-    )
-    fp8_storage = storage.view(torch.float8_e4m3fn)
-    fp32_storage = storage.view(torch.float32)
-
-    key_view = torch.as_strided(
-        fp8_storage, key.shape, (pa_block_stride, block_size * d, d, 1), 0
-    )
-    value_view = torch.as_strided(
-        fp8_storage, value.shape, (pa_block_stride, block_size * dv, dv, 1), key_seg
-    )
-    k_scale_shape = tuple(k_descale.shape) if k_descale.dim() == 4 else tuple(k_descale.shape) + (1,)
-    k_scale_view = torch.as_strided(
-        fp32_storage,
-        k_scale_shape,
-        (pa_block_stride // _FP32_BYTES, block_size, 1, 1),
-        (key_seg + value_seg) // _FP32_BYTES,
-    )
-
-    key_view.copy_(key)
-    value_view.copy_(value)
-    k_scale_view.copy_(k_descale if k_descale.dim() == 4 else k_descale.unsqueeze(-1))
-
-    return key_view, value_view, k_scale_view
+def _none_if_empty(tensor):
+    return None if tensor is None or int(tensor.numel()) == 0 else tensor
 
 
-def _make_fp8_block_table(
-    batch, seq_len, block_size, blocknum, pattern, seed, device, rng=None
-):
-    """Match the FP8 input generator's logical-to-physical PA mapping."""
-    width = math.ceil(seq_len / block_size)
-    needed_block_num = batch * width
-    if blocknum <= 0:
-        raise ValueError(f"blocknum must be positive, got {blocknum}")
-
-    rng = rng if rng is not None else random.Random(int(seed))
-    if blocknum >= needed_block_num:
-        block_table = torch.empty((batch, width), dtype=torch.int32, device=device)
-        for batch_idx in range(batch):
-            ids = list(range(batch_idx * width, (batch_idx + 1) * width))
-            if pattern == "reverse":
-                ids.reverse()
-            elif pattern == "random":
-                rng.shuffle(ids)
-            elif pattern != "sequential":
-                raise ValueError(f"unsupported block_table_pattern: {pattern}")
-            block_table[batch_idx] = torch.tensor(
-                ids, dtype=torch.int32, device=device
-            )
-        return block_table
-
-    if blocknum < width:
-        shared_cols = width - blocknum + 1
-        if shared_cols <= 0 or shared_cols > width:
-            raise ValueError(f"blocknum={blocknum} out of range [1, {width}]")
-        block_table = torch.zeros(
-            (batch, width), dtype=torch.int32, device=device
-        )
-        for batch_idx in range(batch):
-            for block_idx in range(shared_cols, width):
-                block_table[batch_idx, block_idx] = block_idx - shared_cols + 1
-        return block_table
-
-    block_table = torch.empty((batch, width), dtype=torch.int32, device=device)
-    shared_count = needed_block_num - blocknum
-    full_shared_cols = shared_count // (batch - 1)
-    partial_share = shared_count % (batch - 1)
-    next_id = 0
-    col = 0
-    for _ in range(full_shared_cols):
-        block_table[:, col] = next_id
-        next_id += 1
-        col += 1
-    if partial_share > 0:
-        shared_id = next_id
-        next_id += 1
-        block_table[: partial_share + 1, col] = shared_id
-        for batch_idx in range(partial_share + 1, batch):
-            block_table[batch_idx, col] = next_id
-            next_id += 1
-        col += 1
-    for batch_idx in range(batch):
-        for block_idx in range(col, width):
-            block_table[batch_idx, block_idx] = next_id
-            next_id += 1
-    if next_id != blocknum:
-        raise AssertionError(
-            f"block_table generated {next_id} physical blocks, expected {blocknum}"
-        )
-    return block_table
-
-
-def _auto_generate_params(
+def _validate_shared_inputs(
     query,
     key,
     sparse_indices,
-    seqused_q,
-    seqused_kv,
     cu_seqlens_q,
     cu_seqlens_kv,
-    block_table,
-    max_seqlen_q,
-    max_seqlen_kv,
-    layout_q,
-    sparse_kv_block_size,
-    block_table_pattern,
-    seed,
-):
-    """Auto-generate missing seqused/cu_seqlens/block_table from available info."""
-    B = int(sparse_indices.shape[0]) if sparse_indices is not None else 1
-
-    if max_seqlen_q <= 0:
-        if layout_q == "BSND":
-            max_seqlen_q = int(query.shape[1])
-        elif layout_q == "NTD":
-            max_seqlen_q = int(query.shape[1])
-        else:
-            max_seqlen_q = int(query.shape[0])
-
-    if max_seqlen_kv <= 0:
-        if key.dim() == 4:
-            max_seqlen_kv = int(key.shape[0]) * int(key.shape[2])
-        else:
-            max_seqlen_kv = int(key.shape[0])
-
-    if seqused_q is None:
-        seqused_q = torch.full(
-            (B,), max_seqlen_q, dtype=torch.int32, device=query.device
-        )
-    if seqused_kv is None:
-        seqused_kv = torch.full(
-            (B,), max_seqlen_kv, dtype=torch.int32, device=query.device
-        )
-    if cu_seqlens_q is None:
-        cu = torch.zeros(B + 1, dtype=torch.int32, device=query.device)
-        for i in range(B):
-            cu[i + 1] = cu[i] + int(seqused_q[i].item())
-        cu_seqlens_q = cu
-    if cu_seqlens_kv is None:
-        cu = torch.zeros(B + 1, dtype=torch.int32, device=query.device)
-        for i in range(B):
-            cu[i + 1] = cu[i] + int(seqused_kv[i].item())
-        cu_seqlens_kv = cu
-    if block_table is None:
-        blocknum = int(key.shape[0]) if key.dim() == 4 else B * math.ceil(
-            max_seqlen_kv / sparse_kv_block_size
-        )
-        block_table = _make_fp8_block_table(
-            B,
-            max_seqlen_kv,
-            sparse_kv_block_size,
-            blocknum,
-            block_table_pattern,
-            seed,
-            query.device,
-        )
-
-    return seqused_q, seqused_kv, cu_seqlens_q, cu_seqlens_kv, block_table
-
-
-def _use_explicit_mxfp8_params(
-    query,
-    key,
-    sparse_indices,
     seqused_q,
     seqused_kv,
-    cu_seqlens_q,
-    cu_seqlens_kv,
-    block_table,
-    layout_q,
-    page_block_size,
-    actual_seq_q=None,
-    actual_seq_kv=None,
-    empty_actual_seq=False,
-    block_table_pattern="sequential",
-    seed=0,
-    sparse_q_block_size=128,
-    sparse_kv_block_size=128,
-    sparse_count=0,
-    sparse_pattern="sequential",
-    mask_mode=3,
-    blocknum=None,
-):
-    """Use explicit MXFP8 sequence tensors and the Golden-generated block table."""
-    del (
-        query,
-        key,
-        sparse_indices,
-        page_block_size,
-        actual_seq_q,
-        actual_seq_kv,
-        empty_actual_seq,
-        block_table_pattern,
-        seed,
-        sparse_q_block_size,
-        sparse_kv_block_size,
-        sparse_count,
-        sparse_pattern,
-        mask_mode,
-        blocknum,
-    )
-    if layout_q != "TND":
-        raise ValueError(f"MXFP8 requires layout_q='TND', got {layout_q!r}")
-    if block_table is None:
-        raise ValueError(
-            "MXFP8 block_table must be generated by qbsa_mxfp8_golden.py"
-        )
-
-    return seqused_q, seqused_kv, cu_seqlens_q, cu_seqlens_kv, block_table
-
-
-def _generate_params_for_mode(
-    query,
-    key,
-    sparse_indices,
-    seqused_q,
-    seqused_kv,
-    cu_seqlens_q,
-    cu_seqlens_kv,
-    block_table,
     *,
-    quant_mode,
-    max_seqlen_q,
-    max_seqlen_kv,
+    batch_size,
+    num_heads_q,
+    num_heads_kv,
+    head_dim,
+    blocksize,
     layout_q,
-    page_block_size,
-    actual_seq_q,
-    actual_seq_kv,
-    empty_actual_seq,
-    block_table_pattern,
-    seed,
-    sparse_q_block_size,
-    sparse_kv_block_size,
-    sparse_count,
-    sparse_pattern,
-    mask_mode,
-    blocknum,
+    quant_mode,
 ):
+    if cu_seqlens_kv is not None and int(cu_seqlens_kv.numel()) != 0:
+        raise ValueError("cu_seqlens_kv must be an empty tensor")
+    if seqused_q is not None and int(seqused_q.numel()) != 0:
+        raise ValueError("seqused_q must be an empty tensor")
     if int(quant_mode) == 2:
-        return _use_explicit_mxfp8_params(
-            query,
-            key,
-            sparse_indices,
-            seqused_q,
-            seqused_kv,
-            cu_seqlens_q,
-            cu_seqlens_kv,
-            block_table,
-            layout_q,
-            page_block_size,
-            actual_seq_q,
-            actual_seq_kv,
-            empty_actual_seq,
-            block_table_pattern,
-            seed,
-            sparse_q_block_size,
-            sparse_kv_block_size,
-            sparse_count,
-            sparse_pattern,
-            mask_mode,
-            blocknum,
-        )
-    return _auto_generate_params(
-        query,
-        key,
-        sparse_indices,
-        seqused_q,
-        seqused_kv,
-        cu_seqlens_q,
-        cu_seqlens_kv,
-        block_table,
-        max_seqlen_q,
-        max_seqlen_kv,
-        layout_q,
-        sparse_kv_block_size,
-        block_table_pattern,
-        seed,
-    )
+        if layout_q != "TND":
+            raise ValueError(f"MXFP8 requires layout_q='TND', got {layout_q!r}")
+        return
+    if int(sparse_indices.shape[0]) != int(batch_size):
+        raise ValueError("batch_size does not match sparse_indices")
+    query_heads = int(query.shape[0] if layout_q == "NTD" else query.shape[1])
+    if query_heads != int(num_heads_q):
+        raise ValueError("num_heads_q does not match query")
+    if int(key.shape[1]) != int(num_heads_kv):
+        raise ValueError("num_heads_kv does not match key")
+    if int(query.shape[-1]) != int(head_dim):
+        raise ValueError("head_dim does not match query")
+    if int(key.shape[2]) != int(blocksize):
+        raise ValueError("blocksize does not match key")
+    if int(cu_seqlens_q.numel()) != int(batch_size) + 1:
+        raise ValueError("cu_seqlens_q must contain batch_size + 1 values")
+    if int(seqused_kv.numel()) != int(batch_size):
+        raise ValueError("seqused_kv must contain batch_size values")
 
 
 class QuantBlockSparseAttnMetadataBuilder:
@@ -431,61 +188,6 @@ class QuantBlockSparseAttnMetadataBuilder:
         return metadata
 
 
-def _synchronize_npu(tensor):
-    """Finish eager preparation before ACLGraph starts capturing."""
-    if tensor.device.type != "npu":
-        return
-    import torch_npu
-
-    torch_npu.npu.synchronize()
-
-
-def _none_if_empty(tensor):
-    return None if tensor is None or int(tensor.numel()) == 0 else tensor
-
-
-def _validate_shared_inputs(
-    query,
-    key,
-    sparse_indices,
-    cu_seqlens_q,
-    cu_seqlens_kv,
-    seqused_q,
-    seqused_kv,
-    *,
-    batch_size,
-    num_heads_q,
-    num_heads_kv,
-    head_dim,
-    blocksize,
-    layout_q,
-    quant_mode,
-):
-    if cu_seqlens_kv is not None and int(cu_seqlens_kv.numel()) != 0:
-        raise ValueError("cu_seqlens_kv must be an empty tensor")
-    if seqused_q is not None and int(seqused_q.numel()) != 0:
-        raise ValueError("seqused_q must be an empty tensor")
-    if int(quant_mode) == 2:
-        if layout_q != "TND":
-            raise ValueError(f"MXFP8 requires layout_q='TND', got {layout_q!r}")
-        return
-    if int(sparse_indices.shape[0]) != int(batch_size):
-        raise ValueError("batch_size does not match sparse_indices")
-    query_heads = int(query.shape[0] if layout_q == "NTD" else query.shape[1])
-    if query_heads != int(num_heads_q):
-        raise ValueError("num_heads_q does not match query")
-    if int(key.shape[1]) != int(num_heads_kv):
-        raise ValueError("num_heads_kv does not match key")
-    if int(query.shape[-1]) != int(head_dim):
-        raise ValueError("head_dim does not match query")
-    if int(key.shape[2]) != int(blocksize):
-        raise ValueError("blocksize does not match key")
-    if int(cu_seqlens_q.numel()) != int(batch_size) + 1:
-        raise ValueError("cu_seqlens_q must contain batch_size + 1 values")
-    if int(seqused_kv.numel()) != int(batch_size):
-        raise ValueError("seqused_kv must contain batch_size values")
-
-
 def _prepare_operator_inputs(
     query,
     key,
@@ -564,7 +266,7 @@ def _prepare_operator_inputs(
             quant_mode=quant_mode,
         )
     if int(quant_mode) == 1:
-        key, value, k_descale = _pack_combined_kv(key, value, k_descale)
+        key, value, k_descale = _fp8_pack_combined_kv(key, value, k_descale)
     return key, value, k_descale, p_scale, metadata
 
 
@@ -797,3 +499,121 @@ def quant_block_sparse_attn(
         mask_mode=int(mask_mode),
         return_softmax_lse=bool(return_softmax_lse),
     )
+
+
+# ==================================================================================================
+# FP8-only helpers
+# ==================================================================================================
+
+
+def _fp8_pack_combined_kv(key, value, k_descale):
+    """Pack separate PA key/value/k_descale into a combined KV storage.
+
+    Layout per physical block: [key_segment (FP8)] [value_segment (FP8)] [k_scale_segment (FP32)]
+    Returns 4D PA views whose shape matches the operator interface and whose block stride
+    points at the full physical KV-cache block.
+    """
+    num_blocks, n2, block_size, d = (
+        int(key.shape[0]),
+        int(key.shape[1]),
+        int(key.shape[2]),
+        int(key.shape[3]),
+    )
+    dv = int(value.shape[-1])
+
+    key_seg = n2 * block_size * d
+    value_seg = n2 * block_size * dv
+    k_scale_seg = n2 * block_size * _FP32_BYTES
+    pa_block_stride = key_seg + value_seg + k_scale_seg
+
+    storage = torch.zeros(
+        (num_blocks * pa_block_stride,), dtype=torch.uint8, device=key.device
+    )
+    fp8_storage = storage.view(torch.float8_e4m3fn)
+    fp32_storage = storage.view(torch.float32)
+
+    key_view = torch.as_strided(
+        fp8_storage, key.shape, (pa_block_stride, block_size * d, d, 1), 0
+    )
+    value_view = torch.as_strided(
+        fp8_storage, value.shape, (pa_block_stride, block_size * dv, dv, 1), key_seg
+    )
+    k_scale_shape = tuple(k_descale.shape) if k_descale.dim() == 4 else tuple(k_descale.shape) + (1,)
+    k_scale_view = torch.as_strided(
+        fp32_storage,
+        k_scale_shape,
+        (pa_block_stride // _FP32_BYTES, block_size, 1, 1),
+        (key_seg + value_seg) // _FP32_BYTES,
+    )
+
+    key_view.copy_(key)
+    value_view.copy_(value)
+    k_scale_view.copy_(k_descale if k_descale.dim() == 4 else k_descale.unsqueeze(-1))
+
+    return key_view, value_view, k_scale_view
+
+
+def _fp8_make_block_table(
+    batch, seq_len, block_size, blocknum, pattern, seed, device, rng=None
+):
+    """Match the FP8 input generator's logical-to-physical PA mapping."""
+    width = math.ceil(seq_len / block_size)
+    needed_block_num = batch * width
+    if blocknum <= 0:
+        raise ValueError(f"blocknum must be positive, got {blocknum}")
+
+    rng = rng if rng is not None else random.Random(int(seed))
+    if blocknum >= needed_block_num:
+        block_table = torch.empty((batch, width), dtype=torch.int32, device=device)
+        for batch_idx in range(batch):
+            ids = list(range(batch_idx * width, (batch_idx + 1) * width))
+            if pattern == "reverse":
+                ids.reverse()
+            elif pattern == "random":
+                rng.shuffle(ids)
+            elif pattern != "sequential":
+                raise ValueError(f"unsupported block_table_pattern: {pattern}")
+            block_table[batch_idx] = torch.tensor(
+                ids, dtype=torch.int32, device=device
+            )
+        return block_table
+
+    if blocknum < width:
+        shared_cols = width - blocknum + 1
+        if shared_cols <= 0 or shared_cols > width:
+            raise ValueError(f"blocknum={blocknum} out of range [1, {width}]")
+        block_table = torch.zeros(
+            (batch, width), dtype=torch.int32, device=device
+        )
+        for batch_idx in range(batch):
+            for block_idx in range(shared_cols, width):
+                block_table[batch_idx, block_idx] = block_idx - shared_cols + 1
+        return block_table
+
+    block_table = torch.empty((batch, width), dtype=torch.int32, device=device)
+    shared_count = needed_block_num - blocknum
+    full_shared_cols = shared_count // (batch - 1)
+    partial_share = shared_count % (batch - 1)
+    next_id = 0
+    col = 0
+    for _ in range(full_shared_cols):
+        block_table[:, col] = next_id
+        next_id += 1
+        col += 1
+    if partial_share > 0:
+        shared_id = next_id
+        next_id += 1
+        block_table[: partial_share + 1, col] = shared_id
+        for batch_idx in range(partial_share + 1, batch):
+            block_table[batch_idx, col] = next_id
+            next_id += 1
+        col += 1
+    for batch_idx in range(batch):
+        for block_idx in range(col, width):
+            block_table[batch_idx, block_idx] = next_id
+            next_id += 1
+    if next_id != blocknum:
+        raise AssertionError(
+            f"block_table generated {next_id} physical blocks, expected {blocknum}"
+        )
+    return block_table

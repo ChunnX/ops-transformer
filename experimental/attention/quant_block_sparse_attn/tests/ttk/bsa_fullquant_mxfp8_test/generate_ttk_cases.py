@@ -42,14 +42,47 @@ TENSOR_FORMATS = ("ND",) * 16
 PRECISION_TOLERANCES = ((0.0078125, 0.0001), (0.005, 0.000025))
 
 
-def _prefix_sums(lengths):
+# ==================================================================================================
+# Common CLI entry point
+# ==================================================================================================
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="fail when the checked-in CSV differs from regenerated content",
+    )
+    args = parser.parse_args()
+
+    content, count = _mxfp8_render_csv()
+    if args.check:
+        current = args.output.read_text(encoding="utf-8")
+        if current != content:
+            raise SystemExit(f"{args.output} is stale; regenerate it")
+        print(f"validated {count} MXFP8 TTK cases")
+        return
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(content, encoding="utf-8", newline="")
+    print(f"generated {count} MXFP8 TTK cases at {args.output}")
+
+
+# ==================================================================================================
+# MXFP8-only case conversion helpers
+# ==================================================================================================
+
+
+def _mxfp8_prefix_sums(lengths):
     values = [0]
     for length in lengths:
         values.append(values[-1] + int(length))
     return values
 
 
-def _normalize_range(value):
+def _mxfp8_normalize_range(value):
     if isinstance(value, (list, tuple)):
         if len(value) != 2:
             raise ValueError(f"data range must contain [min, max], got {value!r}")
@@ -63,7 +96,7 @@ def _normalize_range(value):
     return -radius, radius
 
 
-def build_case_row(
+def _mxfp8_build_case_row(
     *, testcase_name, batch_size, num_heads_q, num_heads_kv,
     head_dim, q_lengths, kv_lengths, blocksize, blocknum, max_block_per_batch,
     sparse_block_size_q, sparse_block_size_kv, mask_mode, p_scale_value,
@@ -134,7 +167,7 @@ def build_case_row(
     )
     attrs = {
         "p_scale_value": None if p_scale_value is None else float(p_scale_value),
-        "cu_seqlens_q_value": _prefix_sums(q_lengths),
+        "cu_seqlens_q_value": _mxfp8_prefix_sums(q_lengths),
         "cu_seqlens_kv_value": [],
         "seqused_q_value": [],
         "seqused_kv_value": kv_lengths,
@@ -155,7 +188,9 @@ def build_case_row(
         "head_dim": head_dim,
         "sparse_mode": sparse_mode,
     }
-    q_range, k_range, v_range = map(_normalize_range, (data_range_q, data_range_k, data_range_v))
+    q_range, k_range, v_range = map(
+        _mxfp8_normalize_range, (data_range_q, data_range_k, data_range_v)
+    )
     p_range = ((None, None) if p_scale_value is None
                else (float(p_scale_value), float(p_scale_value)))
     ranges = (
@@ -177,7 +212,8 @@ def build_case_row(
         "absolute_precision": repr(1e-8),
     }
 
-def load_python_cases():
+
+def _mxfp8_load_python_cases():
     namespace = runpy.run_path(str(PYTHON_CASES))
     return [
         dict(case)
@@ -186,7 +222,7 @@ def load_python_cases():
     ]
 
 
-def sequence_lengths(case):
+def _mxfp8_sequence_lengths(case):
     batch = int(case["B"])
     cu_q = [int(item) for item in case["cu_seqlens_q"]]
     cu_kv = [int(item) for item in case["cu_seqlens_kv"]]
@@ -206,7 +242,7 @@ def sequence_lengths(case):
     return q_lengths, kv_lengths
 
 
-def normalize_data_range(case, field):
+def _mxfp8_normalize_data_range(case, field):
     value = case[field]
     if isinstance(value, (list, tuple)):
         if len(value) != 2:
@@ -233,7 +269,7 @@ def normalize_data_range(case, field):
     return radius
 
 
-def validate_case(case, q_lengths, kv_lengths):
+def _mxfp8_validate_case(case, q_lengths, kv_lengths):
     name = case["name"]
     if int(case["quant_mode"]) != 2:
         raise ValueError(f"{name}: only quant_mode=2 belongs in the MXFP8 CSV")
@@ -262,9 +298,9 @@ def validate_case(case, q_lengths, kv_lengths):
         )
 
 
-def case_to_row(case):
-    q_lengths, kv_lengths = sequence_lengths(case)
-    validate_case(case, q_lengths, kv_lengths)
+def _mxfp8_case_to_row(case):
+    q_lengths, kv_lengths = _mxfp8_sequence_lengths(case)
+    _mxfp8_validate_case(case, q_lengths, kv_lengths)
 
     batch = int(case["B"])
     n1 = int(case["N1"])
@@ -284,7 +320,7 @@ def case_to_row(case):
     softmax_scale = case.get("softmax_scale")
     if softmax_scale is None:
         softmax_scale = 1.0 / math.sqrt(head_dim)
-    return build_case_row(
+    return _mxfp8_build_case_row(
         testcase_name=case["name"],
         batch_size=batch,
         num_heads_q=n1,
@@ -306,17 +342,17 @@ def case_to_row(case):
         layout_sparse_indices=case["layout_sparse_indices"],
         return_softmax_lse=bool(case["return_softmax_lse"]),
         sparse_mode=case["sparse_mode"],
-        data_range_q=normalize_data_range(case, "data_range_q"),
-        data_range_k=normalize_data_range(case, "data_range_k"),
-        data_range_v=normalize_data_range(case, "data_range_v"),
+        data_range_q=_mxfp8_normalize_data_range(case, "data_range_q"),
+        data_range_k=_mxfp8_normalize_data_range(case, "data_range_k"),
+        data_range_v=_mxfp8_normalize_data_range(case, "data_range_v"),
     )
 
 
-def render_csv():
+def _mxfp8_render_csv():
     rows = []
     names = set()
-    for case in load_python_cases():
-        row = case_to_row(case)
+    for case in _mxfp8_load_python_cases():
+        row = _mxfp8_case_to_row(case)
         name = row["testcase_name"]
         if name in names:
             raise ValueError(f"duplicate enabled testcase_name: {name}")
@@ -328,29 +364,6 @@ def render_csv():
     writer.writeheader()
     writer.writerows(rows)
     return output.getvalue(), len(rows)
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="fail when the checked-in CSV differs from regenerated content",
-    )
-    args = parser.parse_args()
-
-    content, count = render_csv()
-    if args.check:
-        current = args.output.read_text(encoding="utf-8")
-        if current != content:
-            raise SystemExit(f"{args.output} is stale; regenerate it")
-        print(f"validated {count} MXFP8 TTK cases")
-        return
-
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(content, encoding="utf-8", newline="")
-    print(f"generated {count} MXFP8 TTK cases at {args.output}")
 
 
 if __name__ == "__main__":

@@ -34,30 +34,9 @@ SCALE_EPSILON = 1e-8
 _MXFP8_MODULE_NAME = "_qbsa_mxfp8_pytest_golden"
 
 
-def _load_mxfp8_golden_module():
-    """Load the legacy MXFP8 reference once so input and golden share one cache."""
-    if _MXFP8_MODULE_NAME in sys.modules:
-        return sys.modules[_MXFP8_MODULE_NAME]
-
-    pytest_dir = Path(__file__).resolve().parents[2] / "pytest" / "bsa_fullquant_mxfp8_test"
-    module_path = pytest_dir / "qbsa_mxfp8_golden.py"
-    spec = importlib.util.spec_from_file_location(_MXFP8_MODULE_NAME, module_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"cannot load MXFP8 golden module from {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[_MXFP8_MODULE_NAME] = module
-    sys.path.insert(0, str(pytest_dir))
-    try:
-        spec.loader.exec_module(module)
-    except Exception:
-        sys.modules.pop(_MXFP8_MODULE_NAME, None)
-        raise
-    finally:
-        try:
-            sys.path.remove(str(pytest_dir))
-        except ValueError:
-            pass
-    return module
+# ==================================================================================================
+# Common helpers and TTK entry point
+# ==================================================================================================
 
 
 def _inplace_copy(destination, source):
@@ -102,7 +81,195 @@ def _numel(value):
     return int(np.size(value))
 
 
-def _normalize_data_range(data_range):
+def _list_attr(value, name):
+    if value is None:
+        raise ValueError(f"{name} must be provided")
+    return [int(item) for item in value]
+
+
+def _require_empty_input(value, name):
+    if value is not None and _numel(value) != 0:
+        raise ValueError(f"{name} must be an empty tensor")
+
+
+def customize_inputs(
+    query,
+    key,
+    value,
+    q_descale,
+    k_descale,
+    v_descale,
+    sparse_indices,
+    sparse_seq_len,
+    p_scale,
+    cu_seqlens_q,
+    cu_seqlens_kv,
+    seqused_q,
+    seqused_kv,
+    block_table,
+    atten_mask,
+    metadata,
+    *,
+    p_scale_value=1.0,
+    cu_seqlens_q_value=None,
+    cu_seqlens_kv_value=None,
+    seqused_q_value=None,
+    seqused_kv_value=None,
+    quant_mode=1,
+    softmax_scale=1.0,
+    mask_mode=3,
+    blocksize=0,
+    sparse_block_size_q=128,
+    sparse_block_size_kv=128,
+    layout_q="TND",
+    layout_kv="PA_BNSD",
+    layout_out="TND",
+    layout_sparse_indices="B_N_Qb_Kb",
+    return_softmax_lse=False,
+    sparse_mode="dense",
+    input_ranges=None,
+    testcase_name=None,
+    **kwargs,
+):
+    """Convert the shared CSV attributes into the operator input tensors."""
+    _require_empty_input(metadata, "metadata")
+    cu_q = _list_attr(cu_seqlens_q_value, "cu_seqlens_q_value")
+    cu_kv_values = _list_attr(cu_seqlens_kv_value, "cu_seqlens_kv_value")
+    seq_q_values = _list_attr(seqused_q_value, "seqused_q_value")
+    kv_lengths = _list_attr(seqused_kv_value, "seqused_kv_value")
+
+    seed = zlib.crc32(str(testcase_name or "qbsa").encode("utf-8")) & 0x7FFFFFFF
+    data_ranges = input_ranges or ()
+    data_range_q = data_ranges[0] if len(data_ranges) > 0 else 1.0
+    data_range_k = data_ranges[1] if len(data_ranges) > 1 else 1.0
+    data_range_v = data_ranges[2] if len(data_ranges) > 2 else 1.0
+
+    if int(quant_mode) == 2:
+        _mxfp8_customize_inputs(
+            query,
+            key,
+            value,
+            q_descale,
+            k_descale,
+            v_descale,
+            p_scale,
+            sparse_indices,
+            sparse_seq_len,
+            atten_mask,
+            softmax_scale=softmax_scale,
+            sparse_q_block_size=sparse_block_size_q,
+            sparse_kv_block_size=sparse_block_size_kv,
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            layout_sparse_indices=layout_sparse_indices,
+            layout_out=layout_out,
+            mask_mode=mask_mode,
+            return_softmax_lse=return_softmax_lse,
+            sparse_mode=sparse_mode,
+            cu_seqlens_q_value=cu_q,
+            cu_seqlens_kv_value=cu_kv_values,
+            seqused_q_value=seq_q_values,
+            seqused_kv_value=kv_lengths,
+            p_scale_value=p_scale_value,
+            seed=seed,
+            blocknum=int(key.shape[0]),
+            max_block_per_batch=int(block_table.shape[1]),
+            data_range_q=data_range_q,
+            data_range_k=data_range_k,
+            data_range_v=data_range_v,
+            testcase_name=testcase_name,
+            **kwargs,
+        )
+        module = _mxfp8_load_golden_module()
+        cached = module._TTK_MXFP8_CACHE[testcase_name or "__default__"]
+        block_table_data = cached["data"]["block_table"]
+    else:
+        cu_q, q_lengths, kv_lengths = _fp8_validate_sequence_inputs(
+            cu_seqlens_kv,
+            seqused_q,
+            cu_q,
+            cu_kv_values,
+            seq_q_values,
+            kv_lengths,
+        )
+        sparse_count, sparse_pattern = _fp8_sparse_parameters(
+            sparse_mode, kv_lengths, sparse_block_size_kv
+        )
+        if p_scale_value is None or _numel(p_scale) == 0:
+            raise ValueError("FP8 requires p_scale_value and a non-empty p_scale")
+        _fp8_customize_inputs(
+            query,
+            key,
+            value,
+            q_descale,
+            k_descale,
+            v_descale,
+            sparse_indices,
+            sparse_seq_len,
+            atten_mask,
+            p_scale,
+            softmax_scale=softmax_scale,
+            sparse_q_block_size=sparse_block_size_q,
+            sparse_kv_block_size=sparse_block_size_kv,
+            max_seqlen_q=max(q_lengths, default=0),
+            max_seqlen_kv=max(kv_lengths, default=0),
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            mask_mode=mask_mode,
+            return_softmax_lse=return_softmax_lse,
+            sparse_count=sparse_count,
+            sparse_pattern=sparse_pattern,
+            block_table_pattern="sequential",
+            p_scale_value=p_scale_value,
+            seed=seed,
+        )
+        padded_kv = int(sparse_indices.shape[-1]) * int(sparse_block_size_kv)
+        block_table_data = _fp8_make_block_table(
+            len(kv_lengths),
+            padded_kv,
+            int(blocksize),
+            "sequential",
+            random.Random(seed),
+            blocknum=int(key.shape[0]),
+        )
+
+    _inplace_copy(cu_seqlens_q, torch.tensor(cu_q, dtype=torch.int32))
+    _inplace_copy(seqused_kv, torch.tensor(kv_lengths, dtype=torch.int32))
+    _inplace_copy(block_table, block_table_data)
+
+
+# ==================================================================================================
+# MXFP8-only helpers
+# ==================================================================================================
+
+
+def _mxfp8_load_golden_module():
+    """Load the legacy MXFP8 reference once so input and golden share one cache."""
+    if _MXFP8_MODULE_NAME in sys.modules:
+        return sys.modules[_MXFP8_MODULE_NAME]
+
+    pytest_dir = Path(__file__).resolve().parents[2] / "pytest" / "bsa_fullquant_mxfp8_test"
+    module_path = pytest_dir / "qbsa_mxfp8_golden.py"
+    spec = importlib.util.spec_from_file_location(_MXFP8_MODULE_NAME, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load MXFP8 golden module from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[_MXFP8_MODULE_NAME] = module
+    sys.path.insert(0, str(pytest_dir))
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(_MXFP8_MODULE_NAME, None)
+        raise
+    finally:
+        try:
+            sys.path.remove(str(pytest_dir))
+        except ValueError:
+            pass
+    return module
+
+
+def _mxfp8_normalize_data_range(data_range):
     """Preserve scalar radius or normalize an explicit [min, max] range."""
     if isinstance(data_range, (list, tuple)):
         if len(data_range) != 2:
@@ -128,7 +295,7 @@ def _normalize_data_range(data_range):
     return radius
 
 
-def _assemble_mxfp8_case(
+def _mxfp8_assemble_case(
     query,
     key,
     sparse_indices,
@@ -196,9 +363,9 @@ def _assemble_mxfp8_case(
         "softmax_scale": float(softmax_scale),
         "return_softmax_lse": bool(return_softmax_lse),
         "seed": int(seed),
-        "data_range_q": _normalize_data_range(data_range_q),
-        "data_range_k": _normalize_data_range(data_range_k),
-        "data_range_v": _normalize_data_range(data_range_v),
+        "data_range_q": _mxfp8_normalize_data_range(data_range_q),
+        "data_range_k": _mxfp8_normalize_data_range(data_range_k),
+        "data_range_v": _mxfp8_normalize_data_range(data_range_v),
         "device_id": 0,
         "sparse_q_block_size": int(sparse_q_block_size),
         "sparse_kv_block_size": int(sparse_kv_block_size),
@@ -207,7 +374,7 @@ def _assemble_mxfp8_case(
     }
 
 
-def _customize_inputs_mxfp8(
+def _mxfp8_customize_inputs(
     query,
     key,
     value,
@@ -245,8 +412,8 @@ def _customize_inputs_mxfp8(
     testcase_name=None,
     **kwargs,
 ):
-    module = _load_mxfp8_golden_module()
-    case = _assemble_mxfp8_case(
+    module = _mxfp8_load_golden_module()
+    case = _mxfp8_assemble_case(
         query,
         key,
         sparse_indices,
@@ -319,42 +486,39 @@ def _customize_inputs_mxfp8(
     module._TTK_MXFP8_CACHE = cache
 
 
-def _fp8_rand(shape, low=-1.0, high=1.0, generator=None):
-    return (
-        torch.empty(shape, dtype=torch.float32)
-        .uniform_(low, high, generator=generator)
-        .to(FP8_DTYPE)
-    )
+# ==================================================================================================
+# FP8-only helpers
+# ==================================================================================================
 
 
-def _quant_fp32_to_fp8(tensor, quant_scale):
+def _fp8_quant_fp32_to_fp8(tensor, quant_scale):
     quantized = tensor.to(torch.float32) * quant_scale
     quantized = torch.clamp(quantized, -FP8_E4M3_MAX, FP8_E4M3_MAX)
     return quantized.to(FP8_DTYPE).contiguous()
 
 
-def _quantize_per_token_head(tensor):
+def _fp8_quantize_per_token_head(tensor):
     row_max = torch.abs(tensor).amax(dim=-1, keepdim=True)
     row_max = torch.maximum(
         row_max, torch.tensor(SCALE_EPSILON, dtype=torch.float32, device=tensor.device)
     )
     quant_scale = FP8_E4M3_MAX / row_max
-    return _quant_fp32_to_fp8(tensor, quant_scale), (
+    return _fp8_quant_fp32_to_fp8(tensor, quant_scale), (
         1.0 / quant_scale
     ).squeeze(-1).contiguous()
 
 
-def _quantize_value_per_head(tensor):
+def _fp8_quantize_value_per_head(tensor):
     head_max = torch.abs(tensor).amax(dim=(0, 1, 3), keepdim=True)
     head_max = torch.maximum(
         head_max, torch.tensor(SCALE_EPSILON, dtype=torch.float32, device=tensor.device)
     )
     quant_scale = FP8_E4M3_MAX / head_max
-    value = _quant_fp32_to_fp8(tensor, quant_scale)
+    value = _fp8_quant_fp32_to_fp8(tensor, quant_scale)
     return value, (1.0 / quant_scale).reshape(tensor.shape[2]).contiguous()
 
 
-def _rand_fullquant_source(shape, amp_low, amp_high, generator, amp_shape=None):
+def _fp8_rand_fullquant_source(shape, amp_low, amp_high, generator, amp_shape=None):
     base = torch.empty(shape, dtype=torch.float32).uniform_(-1.0, 1.0, generator=generator)
     if amp_shape is None:
         amp_shape = shape[:-1] + (1,)
@@ -367,7 +531,9 @@ def _rand_fullquant_source(shape, amp_low, amp_high, generator, amp_shape=None):
     return base * amps
 
 
-def _make_block_table(batch, seq_len, block_size, pattern, rng, blocknum=None, q_block_num=1):
+def _fp8_make_block_table(
+    batch, seq_len, block_size, pattern, rng, blocknum=None, q_block_num=1
+):
     kv_block_num = math.ceil(seq_len / block_size)
     width = kv_block_num
     needed_block_num = batch * width
@@ -433,7 +599,7 @@ def _make_block_table(batch, seq_len, block_size, pattern, rng, blocknum=None, q
     return block_table
 
 
-def _allowed_blocks(
+def _fp8_allowed_blocks(
     mask_mode, qb_idx, sparse_q_block_size, sparse_kv_block_size, q_len, kv_len
 ):
     block_num = math.ceil(kv_len / sparse_kv_block_size)
@@ -451,12 +617,12 @@ def _allowed_blocks(
     return list(range(max_block + 1))
 
 
-def _select_blocks(blocks, sparse_count, pattern, rng):
+def _fp8_select_blocks(blocks, sparse_count, pattern, rng):
     if sparse_count <= 0 or not blocks or pattern == "empty":
         return []
     if pattern == "random_count":
         # sparse_mode=random: choose both the count and block IDs independently
-        # for every (batch, head, Q block) handled by _make_sparse_indices().
+        # for every (batch, head, Q block) handled by _fp8_make_sparse_indices().
         selected = blocks[:]
         rng.shuffle(selected)
         random_count = rng.randint(1, len(selected))
@@ -477,7 +643,7 @@ def _select_blocks(blocks, sparse_count, pattern, rng):
     raise ValueError(f"unsupported sparse_pattern: {pattern}")
 
 
-def _make_sparse_indices(
+def _fp8_make_sparse_indices(
     B,
     N1,
     N2,
@@ -502,7 +668,7 @@ def _make_sparse_indices(
 
     for batch_idx in range(B):
         for qb_idx in range(qb_max):
-            allowed = _allowed_blocks(
+            allowed = _fp8_allowed_blocks(
                 mask_mode,
                 qb_idx,
                 sparse_q_block_size,
@@ -513,7 +679,7 @@ def _make_sparse_indices(
             for n2_idx in range(N2):
                 for group_idx in range(group):
                     head_idx = n2_idx * group + group_idx
-                    selected = _select_blocks(
+                    selected = _fp8_select_blocks(
                         allowed, sparse_count, sparse_pattern, rng
                     )
                     sparse_seq_len[batch_idx, head_idx, qb_idx] = len(selected)
@@ -524,7 +690,14 @@ def _make_sparse_indices(
     return sparse_indices, sparse_seq_len
 
 
-def _dense_to_pa(dense_key, dense_value, dense_k_scale, block_table, block_size, num_blocks=None):
+def _fp8_dense_to_pa(
+    dense_key,
+    dense_value,
+    dense_k_scale,
+    block_table,
+    block_size,
+    num_blocks=None,
+):
     B, S2, N2, D = dense_key.shape
     required = int(block_table.max().item()) + 1
     if num_blocks is not None and num_blocks < required:
@@ -555,7 +728,47 @@ def _dense_to_pa(dense_key, dense_value, dense_k_scale, block_table, block_size,
     return key_pa, value_pa, k_scale_pa
 
 
-def _customize_inputs_fp8(
+def _fp8_validate_sequence_inputs(
+    cu_seqlens_kv,
+    seqused_q,
+    cu_seqlens_q_value,
+    cu_seqlens_kv_value,
+    seqused_q_value,
+    seqused_kv_value,
+):
+    """Keep the existing FP8 sequence contract separate from MXFP8."""
+    _require_empty_input(cu_seqlens_kv, "cu_seqlens_kv")
+    _require_empty_input(seqused_q, "seqused_q")
+    if _list_attr(cu_seqlens_kv_value, "cu_seqlens_kv_value"):
+        raise ValueError("cu_seqlens_kv_value must be empty")
+    if _list_attr(seqused_q_value, "seqused_q_value"):
+        raise ValueError("seqused_q_value must be empty")
+
+    cu_q = _list_attr(cu_seqlens_q_value, "cu_seqlens_q_value")
+    if len(cu_q) < 2 or cu_q[0] != 0:
+        raise ValueError("cu_seqlens_q_value must start with 0 and contain B+1 values")
+    q_lengths = [end - start for start, end in zip(cu_q, cu_q[1:])]
+    kv_lengths = _list_attr(seqused_kv_value, "seqused_kv_value")
+    if len(q_lengths) != len(kv_lengths):
+        raise ValueError("cu_seqlens_q_value and seqused_kv_value must use the same B")
+    if any(length < 0 for length in q_lengths + kv_lengths):
+        raise ValueError("sequence lengths must be non-negative")
+    return cu_q, q_lengths, kv_lengths
+
+
+def _fp8_sparse_parameters(sparse_mode, kv_lengths, sparse_block_size_kv):
+    max_blocks = math.ceil(max(kv_lengths, default=0) / int(sparse_block_size_kv))
+    if sparse_mode == "dense":
+        return max_blocks, "dense"
+    if sparse_mode == "random":
+        # The concrete count is sampled independently for every
+        # (batch, head, Q block) by _fp8_select_blocks().  max_blocks is retained
+        # only as the case-level capacity; it is not a shared requested count.
+        return max_blocks, "random_count"
+    raise ValueError(f"sparse_mode must be 'dense' or 'random', got {sparse_mode!r}")
+
+
+def _fp8_customize_inputs(
     query,
     key,
     value,
@@ -575,7 +788,6 @@ def _customize_inputs_fp8(
     layout_q="BSND",
     layout_kv="PA_BNSD",
     mask_mode=3,
-    quant_mode=1,
     return_softmax_lse=False,
     sparse_count=0,
     sparse_pattern="sequential",
@@ -591,31 +803,6 @@ def _customize_inputs_fp8(
     Generation params (sparse_pattern, etc.) arrive via
     extra_attrs from CSV attributes (non-operator params).
     """
-    if int(quant_mode) == 2:
-        _customize_inputs_mxfp8(
-            query,
-            key,
-            value,
-            q_descale,
-            k_descale,
-            v_descale,
-            p_scale,
-            sparse_indices,
-            sparse_seq_len,
-            atten_mask,
-            softmax_scale=softmax_scale,
-            sparse_q_block_size=sparse_q_block_size,
-            sparse_kv_block_size=sparse_kv_block_size,
-            layout_q=layout_q,
-            layout_kv=layout_kv,
-            mask_mode=mask_mode,
-            return_softmax_lse=return_softmax_lse,
-            p_scale_value=p_scale_value,
-            seed=seed,
-            **kwargs,
-        )
-        return
-
     if FP8_DTYPE is None:
         raise RuntimeError(
             "torch.float8_e4m3fn is required for quant_block_sparse_attn test data"
@@ -653,30 +840,30 @@ def _customize_inputs_fp8(
 
     amp_high = FP8_E4M3_MAX
     if layout_q == "NTD":
-        query_source = _rand_fullquant_source(
+        query_source = _fp8_rand_fullquant_source(
             (N1, B * S1, D), amp_high * 0.01, amp_high, generator
         )
     else:
-        query_source = _rand_fullquant_source(
+        query_source = _fp8_rand_fullquant_source(
             (B * S1, N1, D), amp_high * 0.01, amp_high, generator
         )
-    query_fp8, q_scale = _quantize_per_token_head(query_source)
+    query_fp8, q_scale = _fp8_quantize_per_token_head(query_source)
     query.copy_(query_fp8)
 
-    dense_key_source = _rand_fullquant_source(
+    dense_key_source = _fp8_rand_fullquant_source(
         (B, S2, N2, D), 1.0, amp_high, generator
     )
-    dense_value_source = _rand_fullquant_source(
+    dense_value_source = _fp8_rand_fullquant_source(
         (B, S2, N2, D), 1.0, amp_high, generator, amp_shape=(B, 1, N2, 1)
     )
-    dense_key, dense_k_scale_base = _quantize_per_token_head(dense_key_source)
-    dense_value, v_scale = _quantize_value_per_head(dense_value_source)
+    dense_key, dense_k_scale_base = _fp8_quantize_per_token_head(dense_key_source)
+    dense_value, v_scale = _fp8_quantize_value_per_head(dense_value_source)
 
     dense_k_scale = torch.zeros((B, S2, N2), dtype=torch.float32)
     for b in range(B):
         dense_k_scale[b] = dense_k_scale_base[b]
 
-    block_table = _make_block_table(
+    block_table = _fp8_make_block_table(
         B,
         S2,
         sparse_kv_block_size,
@@ -684,7 +871,7 @@ def _customize_inputs_fp8(
         rng,
         blocknum=int(key.shape[0]) if key.dim() == 4 else None,
     )
-    key_pa, value_pa, k_scale_pa = _dense_to_pa(
+    key_pa, value_pa, k_scale_pa = _fp8_dense_to_pa(
         dense_key,
         dense_value,
         dense_k_scale,
@@ -709,7 +896,7 @@ def _customize_inputs_fp8(
         p_scale_data = torch.tensor([float(p_scale_value)], dtype=torch.float32)
     p_scale.copy_(p_scale_data)
 
-    sparse_indices_data, sparse_seq_len_data = _make_sparse_indices(
+    sparse_indices_data, sparse_seq_len_data = _fp8_make_sparse_indices(
         B,
         N1,
         N2,
@@ -734,201 +921,3 @@ def _customize_inputs_fp8(
         atten_mask.copy_(atten_mask_data)
     elif atten_mask.numel() > 0:
         atten_mask.zero_()
-
-
-def _list_attr(value, name):
-    if value is None:
-        raise ValueError(f"{name} must be provided")
-    return [int(item) for item in value]
-
-
-def _require_empty_input(value, name):
-    if value is not None and _numel(value) != 0:
-        raise ValueError(f"{name} must be an empty tensor")
-
-
-def _validate_fp8_sequence_inputs(
-    cu_seqlens_kv,
-    seqused_q,
-    cu_seqlens_q_value,
-    cu_seqlens_kv_value,
-    seqused_q_value,
-    seqused_kv_value,
-):
-    """Keep the existing FP8 sequence contract separate from MXFP8."""
-    _require_empty_input(cu_seqlens_kv, "cu_seqlens_kv")
-    _require_empty_input(seqused_q, "seqused_q")
-    if _list_attr(cu_seqlens_kv_value, "cu_seqlens_kv_value"):
-        raise ValueError("cu_seqlens_kv_value must be empty")
-    if _list_attr(seqused_q_value, "seqused_q_value"):
-        raise ValueError("seqused_q_value must be empty")
-
-    cu_q = _list_attr(cu_seqlens_q_value, "cu_seqlens_q_value")
-    if len(cu_q) < 2 or cu_q[0] != 0:
-        raise ValueError("cu_seqlens_q_value must start with 0 and contain B+1 values")
-    q_lengths = [end - start for start, end in zip(cu_q, cu_q[1:])]
-    kv_lengths = _list_attr(seqused_kv_value, "seqused_kv_value")
-    if len(q_lengths) != len(kv_lengths):
-        raise ValueError("cu_seqlens_q_value and seqused_kv_value must use the same B")
-    if any(length < 0 for length in q_lengths + kv_lengths):
-        raise ValueError("sequence lengths must be non-negative")
-    return cu_q, q_lengths, kv_lengths
-
-
-def _sparse_parameters(sparse_mode, kv_lengths, sparse_block_size_kv):
-    max_blocks = math.ceil(max(kv_lengths, default=0) / int(sparse_block_size_kv))
-    if sparse_mode == "dense":
-        return max_blocks, "dense"
-    if sparse_mode == "random":
-        # The concrete count is sampled independently for every
-        # (batch, head, Q block) by _select_blocks().  max_blocks is retained
-        # only as the case-level capacity; it is not a shared requested count.
-        return max_blocks, "random_count"
-    raise ValueError(f"sparse_mode must be 'dense' or 'random', got {sparse_mode!r}")
-
-
-def customize_inputs(
-    query,
-    key,
-    value,
-    q_descale,
-    k_descale,
-    v_descale,
-    sparse_indices,
-    sparse_seq_len,
-    p_scale,
-    cu_seqlens_q,
-    cu_seqlens_kv,
-    seqused_q,
-    seqused_kv,
-    block_table,
-    atten_mask,
-    metadata,
-    *,
-    p_scale_value=1.0,
-    cu_seqlens_q_value=None,
-    cu_seqlens_kv_value=None,
-    seqused_q_value=None,
-    seqused_kv_value=None,
-    quant_mode=1,
-    softmax_scale=1.0,
-    mask_mode=3,
-    blocksize=0,
-    sparse_block_size_q=128,
-    sparse_block_size_kv=128,
-    layout_q="TND",
-    layout_kv="PA_BNSD",
-    layout_out="TND",
-    layout_sparse_indices="B_N_Qb_Kb",
-    return_softmax_lse=False,
-    sparse_mode="dense",
-    input_ranges=None,
-    testcase_name=None,
-    **kwargs,
-):
-    """Convert the shared CSV attributes into the operator input tensors."""
-    _require_empty_input(metadata, "metadata")
-    cu_q = _list_attr(cu_seqlens_q_value, "cu_seqlens_q_value")
-    cu_kv_values = _list_attr(cu_seqlens_kv_value, "cu_seqlens_kv_value")
-    seq_q_values = _list_attr(seqused_q_value, "seqused_q_value")
-    kv_lengths = _list_attr(seqused_kv_value, "seqused_kv_value")
-
-    seed = zlib.crc32(str(testcase_name or "qbsa").encode("utf-8")) & 0x7FFFFFFF
-    data_ranges = input_ranges or ()
-    data_range_q = data_ranges[0] if len(data_ranges) > 0 else 1.0
-    data_range_k = data_ranges[1] if len(data_ranges) > 1 else 1.0
-    data_range_v = data_ranges[2] if len(data_ranges) > 2 else 1.0
-
-    if int(quant_mode) == 2:
-        _customize_inputs_mxfp8(
-            query,
-            key,
-            value,
-            q_descale,
-            k_descale,
-            v_descale,
-            p_scale,
-            sparse_indices,
-            sparse_seq_len,
-            atten_mask,
-            softmax_scale=softmax_scale,
-            sparse_q_block_size=sparse_block_size_q,
-            sparse_kv_block_size=sparse_block_size_kv,
-            layout_q=layout_q,
-            layout_kv=layout_kv,
-            layout_sparse_indices=layout_sparse_indices,
-            layout_out=layout_out,
-            mask_mode=mask_mode,
-            return_softmax_lse=return_softmax_lse,
-            sparse_mode=sparse_mode,
-            cu_seqlens_q_value=cu_q,
-            cu_seqlens_kv_value=cu_kv_values,
-            seqused_q_value=seq_q_values,
-            seqused_kv_value=kv_lengths,
-            p_scale_value=p_scale_value,
-            seed=seed,
-            blocknum=int(key.shape[0]),
-            max_block_per_batch=int(block_table.shape[1]),
-            data_range_q=data_range_q,
-            data_range_k=data_range_k,
-            data_range_v=data_range_v,
-            testcase_name=testcase_name,
-            **kwargs,
-        )
-        module = _load_mxfp8_golden_module()
-        cached = module._TTK_MXFP8_CACHE[testcase_name or "__default__"]
-        block_table_data = cached["data"]["block_table"]
-    else:
-        cu_q, q_lengths, kv_lengths = _validate_fp8_sequence_inputs(
-            cu_seqlens_kv,
-            seqused_q,
-            cu_q,
-            cu_kv_values,
-            seq_q_values,
-            kv_lengths,
-        )
-        sparse_count, sparse_pattern = _sparse_parameters(
-            sparse_mode, kv_lengths, sparse_block_size_kv
-        )
-        if p_scale_value is None or _numel(p_scale) == 0:
-            raise ValueError("FP8 requires p_scale_value and a non-empty p_scale")
-        _customize_inputs_fp8(
-            query,
-            key,
-            value,
-            q_descale,
-            k_descale,
-            v_descale,
-            sparse_indices,
-            sparse_seq_len,
-            atten_mask,
-            p_scale,
-            softmax_scale=softmax_scale,
-            sparse_q_block_size=sparse_block_size_q,
-            sparse_kv_block_size=sparse_block_size_kv,
-            max_seqlen_q=max(q_lengths, default=0),
-            max_seqlen_kv=max(kv_lengths, default=0),
-            layout_q=layout_q,
-            layout_kv=layout_kv,
-            mask_mode=mask_mode,
-            quant_mode=quant_mode,
-            return_softmax_lse=return_softmax_lse,
-            sparse_count=sparse_count,
-            sparse_pattern=sparse_pattern,
-            block_table_pattern="sequential",
-            p_scale_value=p_scale_value,
-            seed=seed,
-        )
-        padded_kv = int(sparse_indices.shape[-1]) * int(sparse_block_size_kv)
-        block_table_data = _make_block_table(
-            len(kv_lengths),
-            padded_kv,
-            int(blocksize),
-            "sequential",
-            random.Random(seed),
-            blocknum=int(key.shape[0]),
-        )
-
-    _inplace_copy(cu_seqlens_q, torch.tensor(cu_q, dtype=torch.int32))
-    _inplace_copy(seqused_kv, torch.tensor(kv_lengths, dtype=torch.int32))
-    _inplace_copy(block_table, block_table_data)
