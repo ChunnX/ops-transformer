@@ -253,15 +253,29 @@ def generate_for_case(case_name, shapes, dtypes, attrs, output_dir):
 
     # 2. 调用 inputs 生成函数 → 缓存到 golden_mod._cached_mxfp8_inputs
     kwargs = _build_kwargs(attrs)
-    inputs_module.generate_qfa_mxfp8_inputs(
-        *placeholder_tensors[:8],  # q,k,v,deq_q,deq_k,deq_v,p_scale,block_table
-        **kwargs,
-    )
-    cached = getattr(golden_mod, "_cached_mxfp8_inputs", None)
-    if cached is None:
-        raise RuntimeError(
-            f"case {case_name}: inputs 生成后 _cached_mxfp8_inputs 仍为空"
+    quant_mode = attrs.get("quant_mode", 1)
+
+    if quant_mode == 7:
+        from common import quant_flash_attn_hif8_golden as hif8_golden_mod
+        inputs_module.generate_qfa_hif8_inputs(
+            *placeholder_tensors[:8],
+            **kwargs,
         )
+        cached = getattr(hif8_golden_mod, "_cached_mxfp8_inputs", None)
+        if cached is None:
+            raise RuntimeError(
+                f"case {case_name}: hif8 inputs 生成后 _cached_mxfp8_inputs 仍为空"
+            )
+    else:
+        inputs_module.generate_qfa_mxfp8_inputs(
+            *placeholder_tensors[:8],
+            **kwargs,
+        )
+        cached = getattr(golden_mod, "_cached_mxfp8_inputs", None)
+        if cached is None:
+            raise RuntimeError(
+                f"case {case_name}: mxfp8 inputs 生成后 _cached_mxfp8_inputs 仍为空"
+            )
 
     # 3. 保存输入 bin：{case}_cpu_{idx}.bin
     # cached 顺序：q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale, block_table
@@ -288,11 +302,18 @@ def generate_for_case(case_name, shapes, dtypes, attrs, output_dir):
         os.path.join(output_dir, f"{case_name}_golden_{i}.bin")
         for i in range(2 if enable_lse else 1)
     ]
-    golden_module.cpu_qfa_mxfp8(
-        *placeholder_tensors[:8],
-        **kwargs,
-        __bin_golden_out=golden_out_paths,
-    )
+    if quant_mode == 7:
+        golden_module.cpu_qfa_hif8(
+            *placeholder_tensors[:8],
+            **kwargs,
+            __bin_golden_out=golden_out_paths,
+        )
+    else:
+        golden_module.cpu_qfa_mxfp8(
+            *placeholder_tensors[:8],
+            **kwargs,
+            __bin_golden_out=golden_out_paths,
+        )
     for i, path in enumerate(golden_out_paths):
         if os.path.exists(path):
             size = os.path.getsize(path)
