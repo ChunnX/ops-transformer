@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_SWIGLU_A2_BF16_HPP
-#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_SWIGLU_A2_BF16_HPP
+#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_ACTIVATION_HPP
+#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_ACTIVATION_HPP
 
 #include <limits>
 
@@ -20,18 +20,16 @@
 #include "../template_linear_algebra_v2/matrix_coord.hpp"
 #include "../template_linear_algebra_v2/layout/layout.hpp"
 #include "../template_linear_algebra_v2/detail/callback.hpp"
-#include "../utils/gated_activation.hpp"
+#include "gated_activation.hpp"
 
 namespace Catlass::Epilogue::Block {
 
-// A2 BF16/FP16 gated activation. The input row is split into fixed gate/up
-// tiles, making the UB footprint independent of N.
 template <uint32_t UB_STAGES_, class CType_, class LayoutPerTokenScale_, class DType_, class TileElemWiseMuls_,
           class TileCopy_>
-class BlockEpilogue<EpilogueAtlasA2PerTokenDequantSwigluQuantBF16<UB_STAGES_>, CType_,
+class BlockEpilogue<EpilogueAtlasA2PerTokenDequantActivationQuant<UB_STAGES_>, CType_,
                     Gemm::GemmType<float, LayoutPerTokenScale_>, DType_, TileElemWiseMuls_, TileCopy_> {
 public:
-    using DispatchPolicy = EpilogueAtlasA2PerTokenDequantSwigluQuantBF16<UB_STAGES_>;
+    using DispatchPolicy = EpilogueAtlasA2PerTokenDequantActivationQuant<UB_STAGES_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using Activation = typename DispatchPolicy::Activation;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
@@ -59,26 +57,49 @@ public:
     static_assert(BUFFER_SIZE + Activation::MIN_SHARED_TMP_BYTES <= ArchTag::UB_SIZE,
                   "The tiled activation buffers and workspace exceed UB capacity");
 
+    static_assert((std::is_same_v<ElementC, half> || std::is_same_v<ElementC, bfloat16_t>) &&
+                      (std::is_same_v<ElementD, float> || std::is_same_v<ElementD, int8_t> ||
+                       std::is_same_v<ElementD, half> || std::is_same_v<ElementD, bfloat16_t>),
+                  "The element type template parameters of BlockEpilogue are wrong");
+    static_assert(std::is_same_v<LayoutC, layout::RowMajor> &&
+                      std::is_same_v<LayoutPerTokenScale, layout::VectorLayout> &&
+                      std::is_same_v<LayoutD, layout::RowMajor>,
+                  "The layout template parameters of BlockEpilogue are wrong");
+
     using CopyGmToUbC = typename TileCopy_::CopyGmToUbC;
     using CopyUbToGmD = typename TileCopy_::CopyUbToGmD;
     using CopyUbToGmDequantScale =
         Epilogue::Tile::CopyUb2Gm<ArchTag, Gemm::GemmType<ElementPerTokenScale, LayoutPerTokenScale>>;
 
     struct Params {
+        __gm__ ElementPerTokenScale *ptrPerTokenScale{nullptr};
+        LayoutPerTokenScale layoutPerTokenScale{};
+        __gm__ ElementD *ptrD{nullptr};
+        LayoutD layoutD{};
+
         CATLASS_DEVICE Params() {};
+
+        CATLASS_DEVICE
+        Params(__gm__ ElementPerTokenScale *ptrPerTokenScale_, LayoutPerTokenScale const &layoutPerTokenScale_,
+               __gm__ ElementD *ptrD_, LayoutD const &layoutD_)
+            : ptrPerTokenScale(ptrPerTokenScale_),
+              layoutPerTokenScale(layoutPerTokenScale_),
+              ptrD(ptrD_),
+              layoutD(layoutD_)
+        {
+        }
     };
 
     CATLASS_DEVICE
     BlockEpilogue(Arch::Resource<ArchTag> const &resource, int32_t n, Params const &params = Params{})
+        : params(params)
     {
         (void)n;
-        (void)params;
-        size_t ubOffset = 0;
+        ubOffset = 0;
         int32_t eventVMTE2 = 0;
         int32_t eventMTE2V = 0;
         int32_t eventMTE3V = 0;
         int32_t eventVMTE3 = 0;
-
         for (uint32_t i = 0; i < UB_STAGES; ++i) {
             ubCList[i] = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
             ubOffset += 2 * TILE_LENGTH * sizeof(ElementC);
@@ -98,7 +119,6 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[i]);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[i]);
         }
-
         for (uint32_t i = 0; i < SCALE_BUFFER_COUNT; ++i) {
             ubPerTokenScaleOutputList[i] = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
             ubOffset += SCALE_BUFFER_BYTES;
@@ -121,18 +141,24 @@ public:
     {
     }
 
-    // Per-token dequant + activation + per-token dynamic quant. This overload
-    // is kept for interface compatibility with the unified kernel.
+    CATLASS_DEVICE
+    void UpdateParams(Params const &params_)
+    {
+        params = params_;
+    }
+
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementC> const &gmC, MatrixCoord const &shapeC,
                     AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale1,
                     AscendC::GlobalTensor<ElementD> const &gmD,
-                    AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2, uint32_t epilogueCoreNum = 40,
+                    AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2,
+                    Arch::Resource<ArchTag> const &resource, uint32_t epilogueCoreNum = 40,
                     float activationClamp = 0.0f, uint32_t activationCode = 0,
                     float activationParams1 = SwigluOaiActivation::DEFAULT_ALPHA,
                     float activationParams2 = SituActivation::DEFAULT_BETA, uint32_t gmmOutPreRowStride = 1,
                     Callback &&callback = Callback{})
     {
+        (void)resource;
         activationCode_ = activationCode;
         activationParams1_ = activationParams1;
         activationParams2_ = activationParams2;
@@ -180,7 +206,6 @@ public:
             ElementPerTokenScale quantMultiplier = rowAbsMax > 0.0f ? 127.0f / rowAbsMax : 0.0f;
             AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
-
             currentStage = 0;
             if (tileCount == 1) {
                 // Single-tile fast path: ubActivationList[0] still holds the first-pass activation
@@ -218,15 +243,15 @@ public:
         DrainScaleBuffers(scaleBatchIndex);
     }
 
-    // Non-quantized BF16/FP16 path.
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementC> const &gmC, MatrixCoord const &shapeC,
-                    AscendC::GlobalTensor<ElementD> const &gmD, uint32_t epilogueCoreNum = 40,
-                    float activationClamp = 0.0f, uint32_t activationCode = 0,
+                    AscendC::GlobalTensor<ElementD> const &gmD, Arch::Resource<ArchTag> const &resource,
+                    uint32_t epilogueCoreNum = 40, float activationClamp = 0.0f, uint32_t activationCode = 0,
                     float activationParams1 = SwigluOaiActivation::DEFAULT_ALPHA,
-                    float activationParams2 = SituActivation::DEFAULT_BETA, uint32_t gmmOutPreRowStride = 1,
-                    Callback &&callback = Callback{})
+                    float activationParams2 = SituActivation::DEFAULT_BETA,
+                    uint32_t gmmOutPreRowStride = 1, Callback &&callback = Callback{})
     {
+        (void)resource;
         activationCode_ = activationCode;
         activationParams1_ = activationParams1;
         activationParams2_ = activationParams2;
@@ -262,6 +287,23 @@ public:
     }
 
 private:
+    CATLASS_DEVICE
+    bool GetTaskRange(uint32_t blockM, uint32_t epilogueCoreNum, uint32_t &loopStartIdx, uint32_t &tasksForIdx)
+    {
+        uint32_t subblockIdx = get_block_idx() + get_subblockid() * get_block_num();
+        uint32_t moveDataCoreNum = get_block_num() * 2 - epilogueCoreNum;
+        if (subblockIdx < moveDataCoreNum) {
+            return false;
+        }
+        uint32_t epilogueCoreIdx = subblockIdx - moveDataCoreNum;
+        uint32_t perCoreData = blockM / epilogueCoreNum;
+        uint32_t remainderData = blockM % epilogueCoreNum;
+        tasksForIdx = epilogueCoreIdx < remainderData ? perCoreData + 1 : perCoreData;
+        loopStartIdx =
+            epilogueCoreIdx * perCoreData + (epilogueCoreIdx < remainderData ? epilogueCoreIdx : remainderData);
+        return true;
+    }
+
     CATLASS_DEVICE
     void FlushScaleBatch(AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale, uint32_t gmOffset,
                          uint32_t scaleCount, uint32_t scaleStage)
@@ -300,23 +342,6 @@ private:
     }
 
     CATLASS_DEVICE
-    bool GetTaskRange(uint32_t blockM, uint32_t epilogueCoreNum, uint32_t &loopStartIdx, uint32_t &tasksForIdx)
-    {
-        uint32_t subblockIdx = get_block_idx() + get_subblockid() * get_block_num();
-        uint32_t moveDataCoreNum = get_block_num() * 2 - epilogueCoreNum;
-        if (subblockIdx < moveDataCoreNum) {
-            return false;
-        }
-        uint32_t epilogueCoreIdx = subblockIdx - moveDataCoreNum;
-        uint32_t perCoreData = blockM / epilogueCoreNum;
-        uint32_t remainderData = blockM % epilogueCoreNum;
-        tasksForIdx = epilogueCoreIdx < remainderData ? perCoreData + 1 : perCoreData;
-        loopStartIdx =
-            epilogueCoreIdx * perCoreData + (epilogueCoreIdx < remainderData ? epilogueCoreIdx : remainderData);
-        return true;
-    }
-
-    CATLASS_DEVICE
     static uint32_t TileLength(uint32_t branchLength, uint32_t tileOffset)
     {
         uint32_t remaining = branchLength - tileOffset;
@@ -349,11 +374,9 @@ private:
         auto &ubC = ubCList[stageId];
         auto &ubGate = ubGateFp32List[stageId];
         auto &ubUp = ubUpFp32List[stageId];
-
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[stageId]);
         Activation::PrepareBranches(ubGate, ubUp, ubC, TILE_LENGTH, tileLength);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[stageId]);
-
         if (applyPerTokenScale) {
             AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
@@ -364,6 +387,29 @@ private:
         }
         Activation::Compute(ubActivationList[stageId], ubGate, ubUp, sharedTmpBuffer, tileLength, activationClamp,
                             activationCode_, activationParams1_, activationParams2_);
+    }
+
+    CATLASS_DEVICE
+    void QuantizeAndCopyTile(uint32_t stageId, AscendC::GlobalTensor<ElementD> const &gmTileD, uint32_t tileLength,
+                             ElementPerTokenScale quantMultiplier)
+    {
+        auto &ubQuantTmp = ubGateFp32List[stageId];
+        auto ubQuantS32 = ubQuantTmp.template ReinterpretCast<int32_t>();
+        auto ubQuantF16 = ubQuantTmp.template ReinterpretCast<half>();
+        AscendC::Muls(ubQuantTmp, ubActivationList[stageId], quantMultiplier, tileLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Cast(ubQuantS32, ubQuantTmp, AscendC::RoundMode::CAST_RINT, tileLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::SetDeqScale(static_cast<half>(1.0));
+        AscendC::Cast(ubQuantF16, ubQuantS32, AscendC::RoundMode::CAST_RINT, tileLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[stageId]);
+        AscendC::Cast(ubDList[stageId], ubQuantF16, AscendC::RoundMode::CAST_RINT, tileLength);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[stageId]);
+        LayoutD tileLayout{1, tileLength};
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[stageId]);
+        copyUbToGmD(gmTileD, ubDList[stageId], tileLayout, tileLayout);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[stageId]);
     }
 
     CATLASS_DEVICE
@@ -395,29 +441,6 @@ private:
     }
 
     CATLASS_DEVICE
-    void QuantizeAndCopyTile(uint32_t stageId, AscendC::GlobalTensor<ElementD> const &gmTileD, uint32_t tileLength,
-                             ElementPerTokenScale quantMultiplier)
-    {
-        auto &ubQuantTmp = ubGateFp32List[stageId];
-        auto ubQuantS32 = ubQuantTmp.template ReinterpretCast<int32_t>();
-        auto ubQuantF16 = ubQuantTmp.template ReinterpretCast<half>();
-        AscendC::Muls(ubQuantTmp, ubActivationList[stageId], quantMultiplier, tileLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Cast(ubQuantS32, ubQuantTmp, AscendC::RoundMode::CAST_RINT, tileLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::SetDeqScale(static_cast<half>(1.0));
-        AscendC::Cast(ubQuantF16, ubQuantS32, AscendC::RoundMode::CAST_RINT, tileLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[stageId]);
-        AscendC::Cast(ubDList[stageId], ubQuantF16, AscendC::RoundMode::CAST_RINT, tileLength);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[stageId]);
-        LayoutD tileLayout{1, tileLength};
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[stageId]);
-        copyUbToGmD(gmTileD, ubDList[stageId], tileLayout, tileLayout);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[stageId]);
-    }
-
-    CATLASS_DEVICE
     void CopyDirectTile(uint32_t stageId, AscendC::GlobalTensor<ElementD> const &gmTileD, uint32_t tileLength)
     {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[stageId]);
@@ -429,6 +452,7 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[stageId]);
     }
 
+    Params params;
     AscendC::LocalTensor<ElementC> ubCList[UB_STAGES];
     AscendC::LocalTensor<ElementD> ubDList[UB_STAGES];
     AscendC::LocalTensor<float> ubGateFp32List[UB_STAGES];
@@ -437,7 +461,6 @@ private:
     AscendC::LocalTensor<float> ubPerTokenScaleOutputList[SCALE_BUFFER_COUNT];
     AscendC::LocalTensor<float> ubRowAbsMax;
     AscendC::LocalTensor<uint8_t> sharedTmpBuffer;
-
     int32_t eventUbCVMTE2List[UB_STAGES];
     int32_t eventUbCMTE2VList[UB_STAGES];
     int32_t eventUbDMTE3VList[UB_STAGES];
@@ -445,6 +468,7 @@ private:
     uint32_t activationCode_{0};
     float activationParams1_{SwigluOaiActivation::DEFAULT_ALPHA};
     float activationParams2_{SituActivation::DEFAULT_BETA};
+    size_t ubOffset{0};
     CopyGmToUbC copyGmToUbC;
     CopyUbToGmD copyUbToGmD;
     CopyUbToGmDequantScale copyUbToGmDequantScale;
@@ -452,4 +476,4 @@ private:
 
 } // namespace Catlass::Epilogue::Block
 
-#endif // CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_SWIGLU_A2_BF16_HPP
+#endif // CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_ACTIVATION_HPP

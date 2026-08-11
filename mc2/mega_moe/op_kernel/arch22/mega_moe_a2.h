@@ -53,8 +53,8 @@ using namespace AscendC;
 // A2 epilogue utils (V2 variants for CombineV2, SwiGLU variants for GMM1 epilogue)
 #include "utilsA2/block_epilogue_pertoken_v2_int8_a2.hpp"
 #include "utilsA2/block_epilogue_pertoken_v2_bf16_a2.hpp"
-#include "utilsA2/block_epilogue_pertoken_swiglu_a2_int8.hpp"
-#include "utilsA2/block_epilogue_pertoken_swiglu_a2_bf16.hpp"
+#include "utilsA2/block_epilogue_pertoken_activation_a2_int8.hpp"
+#include "utilsA2/block_epilogue_pertoken_activation_a2_bf16.hpp"
 #include "utils/block_epilogue_w4a8post_pertoken_v2.hpp"
 
 #include "utils/block_epilogue_pertoken_v2.hpp"
@@ -279,9 +279,9 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     constexpr uint32_t ubStages = 2;
 
     using EpilogueDispatchPolicy1 =
-        std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant<ubStages>,
-                           std::conditional_t<isInt8, Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuantInt8<ubStages>,
-                                              Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuantBF16<ubStages>>>;
+        std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantActivationQuant<ubStages>,
+                           std::conditional_t<isInt8, Epilogue::EpilogueAtlasA2PerTokenDequantActivationQuantInt8<ubStages>,
+                                              Epilogue::EpilogueAtlasA2PerTokenDequantActivationQuantBF16<ubStages>>>;
 
     using EpilogueDispatchPolicy2 =
         std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantV2<ubStages>,

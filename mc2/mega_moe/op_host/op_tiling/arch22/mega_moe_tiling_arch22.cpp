@@ -288,7 +288,7 @@ static ge::graphStatus CheckActivationAttr(const char *ptr, uint32_t &activation
         activationCode = ACTIVATION_CODE_SWIGLU_OAI;
     } else {
         OP_LOGE(K_INNER_DEBUG,
-                "activation is invalid, support 'swiglu', 'swiglustep', 'swigluoai' and 'situglu', but got '%s'.",
+                "activation is invalid, support 'activation', 'activationstep', 'activationoai' and 'situglu', but got '%s'.",
                 ptr);
         return GRAPH_FAILED;
     }
@@ -373,7 +373,7 @@ static ge::graphStatus CheckActivationParamsAttr(const gert::TypedContinuousVect
     }
     if (info.activationCode == ACTIVATION_CODE_SWIGLU_OAI) {
         OP_TILING_CHECK(!IsFiniteActivationParam(info.activationParams2),
-                        OP_LOGE(K_INNER_DEBUG, "swigluoai beta must be finite, but got %f.",
+                        OP_LOGE(K_INNER_DEBUG, "activationoai beta must be finite, but got %f.",
                                 info.activationParams2),
                         return GRAPH_FAILED);
     }
@@ -1370,14 +1370,14 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
             megeMoeWorkspace += info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t); // GMM1&2 Out
         }
     } else if (archCode == SOC_ASCEND910B) {
-        uint64_t swigluSize = info.isQuantRouting ? 1UL : 2UL;
+        uint64_t activationSize = info.isQuantRouting ? 1UL : 2UL;
         uint64_t paddedExpertNumAligned = (info.worldSize * info.expertPerRank + 1 + 128 - 1) / 128 * 128;
         megeMoeWorkspace = (info.M + 256 - 1) / 256 * 256 * info.topK *
                                sizeof(int32_t) + // expandedRowIdx
                                                  // cumsum + ptrSumBeforeRankForDispatch + ptrSumBeforeRankForCombine
                            paddedExpertNumAligned * (info.worldSize + 2UL) * sizeof(int32_t) +
                            info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) + // GMM1&2 Out
-                           info.maxRecvTokenNum * std::max(info.K, k2) * swigluSize +      // swiglu out
+                           info.maxRecvTokenNum * std::max(info.K, k2) * activationSize +      // activation out
                            info.worldSize * sizeof(int32_t) * 16UL;                        // sync
         if (info.isQuantRouting) {
             megeMoeWorkspace += info.maxRecvTokenNum * sizeof(float) * 2UL; // perTokenScale GMM1&2

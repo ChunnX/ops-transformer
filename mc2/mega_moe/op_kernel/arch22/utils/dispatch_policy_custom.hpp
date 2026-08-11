@@ -104,7 +104,7 @@ struct EpilogueAtlasA2PerTokenDequantQuant {
 };
 
 template <uint32_t UB_STAGES_>
-struct EpilogueAtlasA2PerTokenDequantSwigluQuant {
+struct EpilogueAtlasA2PerTokenDequantActivationQuant {
     using ArchTag = Arch::AtlasA2;
     using Activation = Catlass::Epilogue::GatedActivation;
     static constexpr uint32_t TILE_LENGTH = Activation::PREFERRED_TILE_LENGTH;
@@ -112,7 +112,7 @@ struct EpilogueAtlasA2PerTokenDequantSwigluQuant {
 };
 
 template <uint32_t UB_STAGES_>
-struct EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant {
+struct EpilogueAtlasA2W4A8PostPerTokenDequantActivationQuant {
     using ArchTag = Arch::AtlasA2;
     using Activation = Catlass::Epilogue::GatedActivation;
     static constexpr uint32_t TILE_LENGTH = Activation::PREFERRED_TILE_LENGTH;
@@ -138,7 +138,7 @@ struct EpilogueAtlasA2PerTokenDequantBF16 {
 };
 
 template <uint32_t UB_STAGES_>
-struct EpilogueAtlasA2PerTokenDequantSwigluQuantInt8 {
+struct EpilogueAtlasA2PerTokenDequantActivationQuantInt8 {
     using ArchTag = Arch::AtlasA2;
     using Activation = Catlass::Epilogue::GatedActivation;
     static constexpr uint32_t TILE_LENGTH = Activation::PREFERRED_TILE_LENGTH;
@@ -147,9 +147,9 @@ struct EpilogueAtlasA2PerTokenDequantSwigluQuantInt8 {
 
 // A2-specific BF16 SwiGLU (non-quantized). Uses a distinct tag so the
 // A2 epilogue specialization does not conflict with the generic
-// EpilogueAtlasA2PerTokenDequantSwigluQuant specialization.
+// EpilogueAtlasA2PerTokenDequantActivationQuant specialization.
 template <uint32_t UB_STAGES_>
-struct EpilogueAtlasA2PerTokenDequantSwigluQuantBF16 {
+struct EpilogueAtlasA2PerTokenDequantActivationQuantBF16 {
     using ArchTag = Arch::AtlasA2;
     using Activation = Catlass::Epilogue::GatedActivation;
     static constexpr uint32_t TILE_LENGTH = Activation::PREFERRED_TILE_LENGTH;

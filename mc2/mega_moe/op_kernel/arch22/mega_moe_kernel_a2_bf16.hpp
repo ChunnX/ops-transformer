@@ -26,7 +26,7 @@
 
 #include "utilsA2/block_mmad_preload_async_fixpipe_quant_a2.hpp"
 #include "utils/copy_gm_to_l1_custom.hpp"
-#include "utilsA2/block_epilogue_pertoken_swiglu_a2_bf16.hpp"
+#include "utilsA2/block_epilogue_pertoken_activation_a2_bf16.hpp"
 #include "utilsA2/block_epilogue_pertoken_v2_bf16_a2.hpp"
 #include "utils/hccl_shmem.hpp"
 #include "utils/const_args.hpp"
@@ -113,7 +113,7 @@ public:
         uint64_t initRoutingQuantTilingKey;
         uint32_t epilogueCoreNum;
         uint32_t epilogueGranularity{0};
-        float swigluLimit;
+        float activationLimit;
         uint32_t activationCode{0};
         float activationParams1{Epilogue::SwigluOaiActivation::DEFAULT_ALPHA};
         float activationParams2{Epilogue::SituActivation::DEFAULT_BETA};
@@ -135,13 +135,13 @@ public:
                GM_ADDR moeInitRoutingQuantV2Scale_, GM_ADDR moeInitRoutingQuantV2Offset_,
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
-               uint32_t epilogueGranularity_ = 0, float swigluLimit_ = std::numeric_limits<float>::infinity(),
+               uint32_t epilogueGranularity_ = 0, float activationLimit_ = std::numeric_limits<float>::infinity(),
                uint32_t activationCode_ = 0,
                float activationParams1_ = Epilogue::SwigluOaiActivation::DEFAULT_ALPHA,
                float activationParams2_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
-              epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
+              epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), activationLimit(activationLimit_),
               activationCode(activationCode_), activationParams1(activationParams1_),
               activationParams2(activationParams2_),
               contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
@@ -1184,7 +1184,7 @@ private:
         uint32_t n = params.problemShape.n();
         BlockEpilogue1 blockEpilogue1(resource, n);
 
-        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::SWIGLU);
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::ACTIVATION);
         // Synchronous wait: SwiGLU waits for GMM1 [1]
         AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
         AscendC::SyncAll<true>();
@@ -1196,7 +1196,7 @@ private:
             int64_t gmOffsetC = layoutC.GetOffset(offsetC);
             int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
             blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], params.epilogueCoreNum,
-                           params.swigluLimit, params.activationCode, params.activationParams1,
+                           params.activationLimit, params.activationCode, params.activationParams1,
                            params.activationParams2,
                            params.gmmOutPreRowStride);
         }
@@ -1217,7 +1217,7 @@ private:
                 LayoutC layoutC{dequantLen, params.gmmOutPreRowStride};
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                 int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
-                blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], coreNum, params.swigluLimit,
+                blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], coreNum, params.activationLimit,
                                params.activationCode, params.activationParams1, params.activationParams2,
                                params.gmmOutPreRowStride);
             }

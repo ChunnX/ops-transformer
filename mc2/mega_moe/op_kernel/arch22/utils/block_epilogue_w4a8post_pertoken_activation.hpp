@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8POST_PER_TOKEN_SWIGLU_HPP
-#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8POST_PER_TOKEN_SWIGLU_HPP
+#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8POST_PER_TOKEN_ACTIVATION_HPP
+#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8POST_PER_TOKEN_ACTIVATION_HPP
 
 #include <limits>
 
@@ -27,10 +27,10 @@ namespace Catlass::Epilogue::Block {
 
 template <uint32_t UB_STAGES_, class CType_, class LayoutPerTokenScale_, class DType_, class TileElemWiseMuls_,
           class TileCopy_>
-class BlockEpilogue<EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant<UB_STAGES_>, CType_,
+class BlockEpilogue<EpilogueAtlasA2W4A8PostPerTokenDequantActivationQuant<UB_STAGES_>, CType_,
                     Gemm::GemmType<float, LayoutPerTokenScale_>, DType_, TileElemWiseMuls_, TileCopy_> {
 public:
-    using DispatchPolicy = EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant<UB_STAGES_>;
+    using DispatchPolicy = EpilogueAtlasA2W4A8PostPerTokenDequantActivationQuant<UB_STAGES_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using Activation = typename DispatchPolicy::Activation;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
@@ -538,4 +538,4 @@ private:
 
 } // namespace Catlass::Epilogue::Block
 
-#endif // CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8POST_PER_TOKEN_SWIGLU_HPP
+#endif // CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8POST_PER_TOKEN_ACTIVATION_HPP

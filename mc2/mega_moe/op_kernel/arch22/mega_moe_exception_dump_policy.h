@@ -32,7 +32,7 @@ enum class Stage : uint32_t {
     ALLGATHER_TOKEN_PER_EXPERT = 3, // CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2
     CUMSUM_TOKEN_PER_EXPERT = 4,
     DISPATCH = 5,
-    SWIGLU = 6,
+    ACTIVATION = 6,
     COMBINE = 7,
     RESET_TOKEN_PER_EXPERT = 8,
     CROSS_RANK_SYNC = 9,

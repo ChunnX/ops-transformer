@@ -37,9 +37,9 @@
 #include "utils/block_mmad_preload_async_fixpipe_quant.hpp"
 #include "utils/copy_gm_to_l1_custom.hpp"
 #include "utils/block_epilogue_w4a8post_pertoken_v2.hpp"
-#include "utils/block_epilogue_w4a8post_pertoken_swiglu.hpp"
+#include "utils/block_epilogue_w4a8post_pertoken_activation.hpp"
 #include "utils/block_epilogue_pertoken_v2.hpp"
-#include "utils/block_epilogue_pertoken_swiglu.hpp"
+#include "utils/block_epilogue_pertoken_activation.hpp"
 #include "utils/block_epilogue_pertoken_row.hpp"
 #include "utils/hccl_shmem.hpp"
 #include "utils/const_args.hpp"
@@ -151,7 +151,7 @@ public:
         // behavior (no special throttling). INT8 path historically uses
         // `expertPerRank - 1`; BF16 path historically uses `expertPerRank - 2`.
         uint32_t epilogueGranularity{0};
-        float swigluLimit;
+        float activationLimit;
         uint32_t activationCode{0};
         float activationParams1{Epilogue::SwigluOaiActivation::DEFAULT_ALPHA};
         float activationParams2{Epilogue::SituActivation::DEFAULT_BETA};
@@ -181,12 +181,12 @@ public:
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
                MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_, uint32_t epilogueGranularity_ = 0,
-               float swigluLimit_ = std::numeric_limits<float>::infinity(), uint32_t activationCode_ = 0,
+               float activationLimit_ = std::numeric_limits<float>::infinity(), uint32_t activationCode_ = 0,
                float activationParams1_ = Epilogue::SwigluOaiActivation::DEFAULT_ALPHA,
                float activationParams2_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
-              epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
+              epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), activationLimit(activationLimit_),
               activationCode(activationCode_), activationParams1(activationParams1_),
               activationParams2(activationParams2_),
               contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
@@ -229,13 +229,13 @@ public:
                GM_ADDR moeInitRoutingQuantV2Scale_, GM_ADDR moeInitRoutingQuantV2Offset_,
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
-               uint32_t epilogueGranularity_ = 0, float swigluLimit_ = std::numeric_limits<float>::infinity(),
+               uint32_t epilogueGranularity_ = 0, float activationLimit_ = std::numeric_limits<float>::infinity(),
                uint32_t activationCode_ = 0,
                float activationParams1_ = Epilogue::SwigluOaiActivation::DEFAULT_ALPHA,
                float activationParams2_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
-              epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
+              epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), activationLimit(activationLimit_),
               activationCode(activationCode_), activationParams1(activationParams1_),
               activationParams2(activationParams2_),
               contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
@@ -1163,7 +1163,7 @@ private:
 
         uint32_t prevGroupSum1 = 0;
         uint32_t prevGroupSum2 = 0;
-        nSyncSwiglu = 0;
+        nSyncActivation = 0;
         dequantSum[0] = 0;
         uint32_t dequantSumTemp = 0;
         uint32_t dequantSum1 = 0;
@@ -1197,7 +1197,7 @@ private:
                         reinterpret_cast<__gm__ ElementABefore *>(otherRankPtr + peermemInfo.offsetA));
 
                     MatrixCoord offsetPeer{rowSrc, 0};
-                    // 在做dispatch的时候，因为复用了gmm1的A矩阵与swiglu的输出
+                    // 在做dispatch的时候，因为复用了gmm1的A矩阵与activation的输出
                     // 所以dispatch的时候每个专家之间间隔从密排改为max（k， k2）
                     // 但是专家之内仍然是密排的
                     int64_t gmOffsetA = static_cast<int64_t>(prevGroupSum1) * params.gmm1InputExpertSlotWidth +
@@ -1232,8 +1232,8 @@ private:
                 }
 
                 if (IsSyncTask(groupIdx, params.expertPerRank)) {
-                    nSyncSwiglu++;
-                    dequantSum[nSyncSwiglu] = dequantSumTemp;
+                    nSyncActivation++;
+                    dequantSum[nSyncActivation] = dequantSumTemp;
                 }
             } else {
                 uint32_t tokenCount = currentM;
@@ -1282,10 +1282,10 @@ private:
         uint32_t n = params.problemShape.n();
         BlockEpilogue2 blockEpilogue2(resource, epilogueParams2);
         BlockEpilogue3 blockEpilogue3(resource, epilogueParams3);
-        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::SWIGLU);
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::ACTIVATION);
         BlockEpilogue1 blockEpilogue1(resource, n);
         if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
-            for (int32_t syncIdx = 0; syncIdx < nSyncSwiglu; syncIdx++) {
+            for (int32_t syncIdx = 0; syncIdx < nSyncActivation; syncIdx++) {
                 AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
                 AscendC::SyncAll<true>();
                 uint32_t curRowNum = dequantSum[syncIdx + 1] - dequantSum[syncIdx];
@@ -1300,7 +1300,7 @@ private:
                                    reinterpret_cast<__gm__ float *>(params.ptrBias1), gmA2I4_I8[gmOffsetD], cumsumMM,
                                    rowStartThisCore, gmPerTokenScale2[rowStartThisCore], params.expertPerRank,
                                    params.EP, runtimeRank, params.listLen, resource, params.epilogueCoreNum,
-                                   params.swigluLimit, params.activationCode, params.activationParams1,
+                                   params.activationLimit, params.activationCode, params.activationParams1,
                                    params.activationParams2,
                                    params.gmmOutPreRowStride);
                 }
@@ -1321,11 +1321,11 @@ private:
                 if constexpr (std::is_same_v<ElementB, int8_t>) {
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                    gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource,
-                                   params.epilogueCoreNum, params.swigluLimit, params.activationCode,
+                                   params.epilogueCoreNum, params.activationLimit, params.activationCode,
                                    params.activationParams1, params.activationParams2, params.gmmOutPreRowStride);
                 } else {
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, params.epilogueCoreNum,
-                                   params.swigluLimit, params.activationCode, params.activationParams1,
+                                   params.activationLimit, params.activationCode, params.activationParams1,
                                    params.activationParams2,
                                    params.gmmOutPreRowStride);
                 }
@@ -1348,11 +1348,11 @@ private:
                     if constexpr (std::is_same_v<ElementB, int8_t>) {
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                        gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource,
-                                       coreNum, params.swigluLimit, params.activationCode, params.activationParams1,
+                                       coreNum, params.activationLimit, params.activationCode, params.activationParams1,
                                        params.activationParams2, params.gmmOutPreRowStride);
                     } else {
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, coreNum,
-                                       params.swigluLimit, params.activationCode, params.activationParams1,
+                                       params.activationLimit, params.activationCode, params.activationParams1,
                                        params.activationParams2,
                                        params.gmmOutPreRowStride);
                     }
@@ -1625,7 +1625,7 @@ private:
             }
 
             if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
-                // swiglu out and gmm2 prechannel dequant res reuse workspace
+                // activation out and gmm2 prechannel dequant res reuse workspace
                 ptrA1Int4 = params.ptrWorkspace + workspaceOffset;
                 ptrA2Int4 = params.ptrWorkspace + workspaceOffset;
                 // sizeof(ElementA) is 1
@@ -1706,7 +1706,7 @@ private:
 
     uint32_t coreIdx;
     uint32_t coreNum;
-    uint32_t nSyncSwiglu;
+    uint32_t nSyncActivation;
 
     Params params;
     WorkspaceInfo workspaceInfo;

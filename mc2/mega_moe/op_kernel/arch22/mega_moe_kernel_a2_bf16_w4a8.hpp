@@ -27,7 +27,7 @@
 #include "utils/block_mmad_w4a4.hpp"
 #include "utils/copy_gm_to_l1_custom.hpp"
 #include "utils/block_epilogue_w4a8post_pertoken_v2.hpp"
-#include "utils/block_epilogue_w4a8post_pertoken_swiglu.hpp"
+#include "utils/block_epilogue_w4a8post_pertoken_activation.hpp"
 #include "utils/hccl_shmem.hpp"
 #include "utils/const_args.hpp"
 #include "utils/layout3d.hpp"
@@ -125,7 +125,7 @@ public:
         // behavior (no special throttling). INT8 path historically uses
         // `expertPerRank - 1`; BF16 path historically uses `expertPerRank - 2`.
         uint32_t epilogueGranularity{0};
-        float swigluLimit;
+        float activationLimit;
         uint32_t activationCode{0};
         float activationParams1{Epilogue::SwigluOaiActivation::DEFAULT_ALPHA};
         float activationParams2{Epilogue::SituActivation::DEFAULT_BETA};
@@ -149,12 +149,12 @@ public:
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
                MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_, uint32_t epilogueGranularity_ = 0,
-               float swigluLimit_ = std::numeric_limits<float>::infinity(), uint32_t activationCode_ = 0,
+               float activationLimit_ = std::numeric_limits<float>::infinity(), uint32_t activationCode_ = 0,
                float activationParams1_ = Epilogue::SwigluOaiActivation::DEFAULT_ALPHA,
                float activationParams2_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
-              epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
+              epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), activationLimit(activationLimit_),
               activationCode(activationCode_), activationParams1(activationParams1_),
               activationParams2(activationParams2_),
               contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
@@ -1223,7 +1223,7 @@ private:
         uint32_t dequantSum1 = 0;
         uint32_t dequantSum2 = 0;
         uint32_t prevGroupSum2 = 0;
-        nSyncSwiglu = 0;
+        nSyncActivation = 0;
         dequantSum[0] = 0;
         uint32_t dequantSumTemp = 0;
         icache_preload(8);
@@ -1297,8 +1297,8 @@ private:
             }
 
             if (IsSyncTask(groupIdx, params.expertPerRank)) {
-                nSyncSwiglu++;
-                dequantSum[nSyncSwiglu] = dequantSumTemp;
+                nSyncActivation++;
+                dequantSum[nSyncActivation] = dequantSumTemp;
             }
         }
         uint32_t n2 = params.problemShape.k();
@@ -1320,8 +1320,8 @@ private:
         BlockEpilogue2 blockEpilogue2(resource, epilogueParams);
         BlockEpilogue1 blockEpilogue1(resource, n);
 
-        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::SWIGLU);
-        for (int32_t syncIdx = 0; syncIdx < nSyncSwiglu; syncIdx++) {
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::ACTIVATION);
+        for (int32_t syncIdx = 0; syncIdx < nSyncActivation; syncIdx++) {
             AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
             AscendC::SyncAll<true>();
             uint32_t curRowNum = dequantSum[syncIdx + 1] - dequantSum[syncIdx];
@@ -1338,7 +1338,7 @@ private:
                                         tokenPerExpertLayout(0, params.EP - 1, 0)],
                                rowStartThisCore, gmPerTokenScale2[rowStartThisCore], params.expertPerRank, params.EP,
                                RuntimeRank(params), params.listLen, resource, params.epilogueCoreNum,
-                               params.swigluLimit, params.activationCode, params.activationParams1,
+                               params.activationLimit, params.activationCode, params.activationParams1,
                                params.activationParams2,
                                params.gmmOutPreRowStride);
             }
@@ -1628,7 +1628,7 @@ private:
 
     uint32_t coreIdx;
     uint32_t coreNum;
-    uint32_t nSyncSwiglu;
+    uint32_t nSyncActivation;
 
     Params params;
     WorkspaceInfo workspaceInfo;

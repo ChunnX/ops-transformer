@@ -271,8 +271,8 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
     constexpr uint32_t ubStages = 2;
 
     using EpilogueDispatchPolicy1 =
-        std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant<ubStages>,
-                           Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuant<ubStages>>;
+        std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantActivationQuant<ubStages>,
+                           Epilogue::EpilogueAtlasA2PerTokenDequantActivationQuant<ubStages>>;
     using EpilogueDispatchPolicy2 = Epilogue::EpilogueAtlasA2PerTokenDequant<ubStages>;
     using EpilogueDispatchPolicy3 =
         std::conditional_t<isW4A8, Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantV2<ubStages>,
