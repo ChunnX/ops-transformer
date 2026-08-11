@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from pathlib import Path
@@ -213,6 +214,42 @@ def check_pta_build() -> None:
             "PTA build script must print and verify the expected shared library")
 
 
+def check_pta_driver() -> None:
+    driver = read("examples/arch35/pta/test_allto_allv_grouped_mat_mul_shmem.py")
+    module = ast.parse(driver)
+    functions = {node.name for node in ast.walk(module) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    for name in (
+        "build_global_counts",
+        "rank_send_counts",
+        "rank_recv_counts",
+        "build_rank_input",
+        "build_rank_weight",
+        "build_golden",
+        "precision_metrics",
+        "worker",
+        "main",
+    ):
+        require(name in functions, f"PTA driver missing function: {name}")
+    for token in (
+        'mp.get_context("spawn")',
+        "torch.ops.load_library",
+        "torch.ops.allto_allv_grouped_mat_mul_shmem_pta.init",
+        "torch.ops.allto_allv_grouped_mat_mul_shmem_pta.run",
+        "torch.ops.allto_allv_grouped_mat_mul_shmem_pta.barrier",
+        "torch.ops.allto_allv_grouped_mat_mul_shmem_pta.finalize",
+        'default=2',
+        '"balanced"',
+        '"uneven"',
+        '"--self-check"',
+        "2 ** (-7)",
+        "2 ** (-6)",
+        "precision_failures",
+    ):
+        require(token in driver, f"PTA driver missing contract token: {token}")
+    require("torch.distributed" not in driver and "init_process_group" not in driver,
+            "SHMEM PTA driver must not initialize a torch/HCCL process group")
+
+
 def check_cases() -> None:
     precision = load_jsonl("tests/precision/allto_allv_grouped_mat_mul_shmem_precision_cases.jsonl")
     perf = load_jsonl("tests/performance/allto_allv_grouped_mat_mul_shmem_perf_cases.jsonl")
@@ -244,6 +281,7 @@ def main() -> int:
         check_tiling_and_kernel,
         check_pta_bridge,
         check_pta_build,
+        check_pta_driver,
         check_cases,
     ]
     for check in checks:
