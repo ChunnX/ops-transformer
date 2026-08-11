@@ -365,10 +365,8 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::VecCompute(VecOp<SMLAGT> &vec
     CrossCoreSetFlag<2, PIPE_MTE3>(taskMod == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
 
     if constexpr (IS_DETER) {
-        // Acc-previous：仅当已有 pending 时 Acc，去掉首 task 上的空 SyncAll+mode0
         if (needDeterAcc) {
             CrossCoreWaitFlag<2, PIPE_MTE2>(DETER_KV_SYNC_FLAG);
-            // 入口 mode0 + 按 core0..N-1 串行；每个 core 的 [singleN,D] 由全 AIV 均分累加
             DeterAccumulateAfterLocalSync(vecOp);
         }
         // 调度对本轮 task 的保序累加：cube345 在下一轮 CubeCompute 完成后再执行
@@ -526,15 +524,12 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetTndSeqLen(const int64_t t1
 template <typename SMLAGT>
 __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::DeterAccumulateAfterLocalSync(VecOp<SMLAGT> &vecOp)
 {
-    // 全 AIV 均分每个 core 的 staging；core 间 mode0 串行保序。
     vecOp.PublishDeterAccMeta(needDeterAcc, deterAccRunInfo);
     CrossCoreSetFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
     CrossCoreWaitFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
-    for (int64_t coreIdx = 0; coreIdx < static_cast<int64_t>(usedCoreNum); coreIdx++) {
-        vecOp.AccumulateKvDeter(coreIdx);
-        CrossCoreSetFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
-        CrossCoreWaitFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
-    }
+    vecOp.AccumulateKvDeter();
+    CrossCoreSetFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
+    CrossCoreWaitFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
     needDeterAcc = false;
     deterAccSeq++;
 }

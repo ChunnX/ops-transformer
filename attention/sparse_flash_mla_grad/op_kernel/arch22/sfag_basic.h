@@ -382,11 +382,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
                             VecComputeDeter(vecOp, hasPendingTask);
                             task++;
                         }
-                        // ping-pong：ori Process 常落在后续 cmp 的 VecComputeDeter，
-                        // needDeterAcc 延后到下一 ori Acc 或 Drain Acc 消费；无效 ori
-                        // slot 仍 Acc，保证全核 barrier 次数一致。
-                        // 每轮第一个 ori Acc：hasPendingTask 刚从 false 起步，全核
-                        // needDeterAcc=false，整波 SyncAll+mode0 可省。
                         if (isOriSlot) {
                             bool isRoundFirstAcc = (n2Index == 0 && slot == 0);
                             if (!isRoundFirstAcc) {
@@ -724,18 +719,15 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::GetTndSeqLen(const GM
 template <typename SMLAGT>
 __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::DeterAccumulateAfterLocalSync(VecOp<SMLAGT> &vecOp)
 {
-    // smlag_det (2)：全 AIV 均分每个 core 的 [singleN,D]；core0..N-1 mode0 串行。
     if (needDeterAcc) {
         CrossCoreWaitFlag<2, PIPE_MTE2>(DETER_KV_SYNC_FLAG);
     }
     vecOp.PublishDeterAccMeta(needDeterAcc, deterAccRunInfo);
     CrossCoreSetFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
     CrossCoreWaitFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
-    for (int64_t coreIdx = 0; coreIdx < static_cast<int64_t>(usedCoreNum); coreIdx++) {
-        vecOp.AccumulateKvDeter(coreIdx);
-        CrossCoreSetFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
-        CrossCoreWaitFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
-    }
+    vecOp.AccumulateKvDeter();
+    CrossCoreSetFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
+    CrossCoreWaitFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
     needDeterAcc = false;
 }
 

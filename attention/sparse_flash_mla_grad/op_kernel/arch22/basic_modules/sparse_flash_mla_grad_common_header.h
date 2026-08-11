@@ -34,7 +34,6 @@ constexpr static uint64_t SCFA_SCATTER_DB_NUM = 2;
 constexpr static uint64_t DETER_ACC_META_FIELDS = 8;
 constexpr static uint64_t DETER_ACC_META_BYTES =
     ((MAX_CORE_NUM * DETER_ACC_META_FIELDS * sizeof(int64_t) + 511) / 512) * 512;
-
 #define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))
 #define WAIT_FLAG(trigger, waiter, e) AscendC::WaitFlag<AscendC::HardEvent::trigger##_##waiter>((e))
 #define PIPE_BARRIER(pipe) AscendC::PipeBarrier<pipe>()
@@ -57,8 +56,8 @@ struct SMLAG_TYPE {
 // 与 sfag_basic DETER_KV_SYNC_FLAG(7, mode2) 错开，避免同 id 不同 mode 冲突
 constexpr uint32_t DETER_SCATTER_VEC_SYNC_FLAG = 10;
 constexpr uint32_t DETER_CMP_L1_SYNC_FLAG = 8;
-// AccumulateKvDeter：入口 mode0（替代 SyncAll，等 AccMeta Publish）+ core0..N-1 串行 mode0；
-// 每轮内全 AIV 均分该 core 的 [singleN,D]
+// AccumulateKvDeter：入口 mode0（等 AccMeta Publish）后按全局 S2 列并行 Acc；
+// 各 AIV 独占 globalRow%totalVec，core 贡献按 core0..N-1 固定序累加；出口再 mode0
 constexpr uint32_t DETER_ACC_VEC_SYNC_FLAG = 9;
 
 struct RunInfo {
