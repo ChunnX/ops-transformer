@@ -99,7 +99,7 @@ bool CheckGroupLength(const char *opName, const char *group)
 
 // 校验输入tensor的维度
 bool CheckInputDimensions(const char *opName, const aclTensor *x1, const aclTensor *x2, const aclTensor *output,
-                          const aclTensor *alltoAllOutOptional)
+                          const aclTensor *alltoAllOutOptional = nullptr)
 {
     if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName, "x1",
@@ -156,7 +156,7 @@ bool CheckBiasShape(const char *opName, const aclTensor *biasOptional, int64_t n
 bool CheckShapeMMAA(const char *opName, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                     bool transposeX2, const aclTensor *output)
 {
-    if (!CheckInputDimensions(opName, x1, x2, output, nullptr)) {
+    if (!CheckInputDimensions(opName, x1, x2, output)) {
         return false;
     }
     auto kdimX1 = x1->GetViewShape().GetDim(1);
