@@ -16,7 +16,7 @@
 #ifndef QUANTIZE_FUNCTIONS_H
 #define QUANTIZE_FUNCTIONS_H
 
-#include "common.h"
+#include <cstdint>
 
 namespace Quant {
 
@@ -56,6 +56,12 @@ constexpr uint32_t EPS_1E_4_FP32 = 0x38D1B717; // 1e-4 的 FP32 bit pattern，�
 
 using namespace AscendC;
 
+template <typename T>
+__aicore__ inline T CeilDiv(T x, T y)
+{
+    return (x + y - 1) / y;
+}
+
 __aicore__ inline constexpr uint32_t GetUbBlockSizeDispatch()
 {
     return 32U;
@@ -75,7 +81,7 @@ __aicore__ inline void ComputeMaxExp(__ubuf__ T *srcAddr, __ubuf__ uint16_t *max
 {
     uint32_t vlForHalfNumber = GetVRegSizeDispatch() / sizeof(T); // 每个向量寄存器可以存储的元素个数
     uint16_t elementAfterReduce = GetVRegSizeDispatch() / GetUbBlockSizeDispatch(); // Reduce操作后搬出的元素个数
-    uint16_t loopNum = Ceil(totalCountInUB, 2 * vlForHalfNumber);
+    uint16_t loopNum = CeilDiv(totalCountInUB, 2 * vlForHalfNumber);
 
     __VEC_SCOPE__
     {
@@ -144,7 +150,7 @@ __aicore__ inline void ComputeMaxExpClip(__ubuf__ T *srcAddr, __ubuf__ uint16_t 
 {
     uint32_t vlForHalfNumber = GetVRegSizeDispatch() / sizeof(T); // 每个向量寄存器可以存储的元素个数
     uint16_t elementAfterReduce = GetVRegSizeDispatch() / GetUbBlockSizeDispatch(); // Reduce操作后搬出的元素个数
-    uint16_t loopNum = Ceil(totalCountInUB, 2 * vlForHalfNumber);
+    uint16_t loopNum = CeilDiv(totalCountInUB, 2 * vlForHalfNumber);
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<T> vdExp0;
@@ -179,7 +185,7 @@ __aicore__ inline void ComputeScale(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint
                                     __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB)
 {
     uint32_t vlForHalfNumber = GetVRegSizeDispatch() / sizeof(uint16_t);
-    uint16_t loopNumScale = Ceil(totalScaleInUB, vlForHalfNumber);
+    uint16_t loopNumScale = CeilDiv(totalScaleInUB, vlForHalfNumber);
     uint16_t maxExponent;
     if constexpr (Std::IsSame<T, fp8_e4m3fn_t>::value) {
         maxExponent = FP8_E4M3_MAX_EXP;
@@ -249,7 +255,7 @@ __aicore__ inline void ComputeScaleClip(__ubuf__ uint16_t *maxExpAddr, __ubuf__ 
                                         __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB)
 {
     uint32_t vlForHalfNumber = GetVRegSizeDispatch() / sizeof(uint32_t);
-    uint16_t loopNumScale = Ceil(totalScaleInUB, vlForHalfNumber);
+    uint16_t loopNumScale = CeilDiv(totalScaleInUB, vlForHalfNumber);
     uint32_t dtypeMax;
     if constexpr (Std::IsSame<T, fp8_e4m3fn_t>::value) {
         dtypeMax = FP8_E4M3_MAX;
@@ -359,7 +365,7 @@ __aicore__ inline void ComputeFp8Data(__ubuf__ T *srcAddr, __ubuf__ uint16_t *ha
     uint32_t vlForHalfNumber = GetVRegSizeDispatch() / sizeof(T);
     uint16_t elementAfterReduce = GetVRegSizeDispatch() / GetUbBlockSizeDispatch();
     uint32_t totalCountInUB2 = totalCountInUB * DIGIT_TWO;
-    uint16_t loopNum = Ceil(totalCountInUB, 2 * vlForHalfNumber);
+    uint16_t loopNum = CeilDiv(totalCountInUB, 2 * vlForHalfNumber);
     __VEC_SCOPE__
     {
         MicroAPI::MaskReg dataMask1;
@@ -482,7 +488,7 @@ __aicore__ inline void ComputeFp4Data(__ubuf__ T *srcAddr, __ubuf__ uint16_t *ha
 {
     uint32_t vlForHalfNumber = GetVRegSizeDispatch() / sizeof(T);
     uint16_t elementAfterReduce = GetVRegSizeDispatch() / GetUbBlockSizeDispatch();
-    uint16_t loopNum = Ceil(totalCountInUB, 2 * vlForHalfNumber);
+    uint16_t loopNum = CeilDiv(totalCountInUB, 2 * vlForHalfNumber);
     __VEC_SCOPE__
     {
         MicroAPI::MaskReg dataMask1;
@@ -541,7 +547,7 @@ __aicore__ inline void ComputePerTileDynamic(__ubuf__ T *srcAddr, __ubuf__ float
 {
     uint32_t vlB16 = GetVRegSizeDispatch() / sizeof(T);
     uint32_t vlB32 = GetVRegSizeDispatch() / sizeof(float);
-    uint16_t loopNum = Ceil(totalCountInUB, vlB16);
+    uint16_t loopNum = CeilDiv(totalCountInUB, vlB16);
     uint32_t totalCntForB32 = totalCountInUB;
     float maxVal = 0.0f;
     float invMaxVal = 0.0f;

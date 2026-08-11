@@ -32,6 +32,19 @@ constexpr uint32_t SCALE_K_L1_RATE = 2U;
 
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset
 
+// 保存 GMM 执行所需的全部 tensor；当 bias 或 C 无实际存储时，调用方传入零地址占位 tensor。
+template <typename Scheduler, typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
+          typename TensorBias, typename TensorC>
+struct GroupMatmulWorkSet {
+    Scheduler &scheduler;
+    TensorA &gmA;
+    TensorB &gmB;
+    TensorScaleA &gmScaleA;
+    TensorScaleB &gmScaleB;
+    TensorBias &gmBias;
+    TensorC &gmC;
+};
+
 // 根据数据类型路径选择对应的 BlockMmad 实现。
 template <bool IsA8W4, typename C>
 struct BlockMmadSelector;
@@ -258,19 +271,6 @@ __aicore__ inline void SetWaveWeightL2CacheHint(const typename MatmulConfig::Pro
     gmScaleB.SetL2CacheHint(
         bypassScaleL2 ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
 }
-
-// 保存 GMM 执行所需的全部 tensor；当 bias 或 C 无实际存储时，调用方传入零地址占位 tensor。
-template <typename Scheduler, typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
-          typename TensorBias, typename TensorC>
-struct GroupMatmulWorkSet {
-    Scheduler &scheduler;
-    TensorA &gmA;
-    TensorB &gmB;
-    TensorScaleA &gmScaleA;
-    TensorScaleB &gmScaleB;
-    TensorBias &gmBias;
-    TensorC &gmC;
-};
 
 } // namespace GmmKernel
 } // namespace MegaMoeImpl
