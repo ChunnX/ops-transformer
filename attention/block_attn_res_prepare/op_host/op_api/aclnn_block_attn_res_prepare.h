@@ -12,6 +12,7 @@
 #define ACLNN_BLOCK_ATTN_RES_PREPARE_H_
 
 #include "aclnn/aclnn_base.h"
+#include "aclnn_util.h"
 
 #ifdef __cplusplus
 extern "C" {
