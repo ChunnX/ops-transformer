@@ -38,7 +38,7 @@ def write_csv(
 
 
 def udma_init_method_from_env() -> str:
-    """Build the numeric ``IPv4:port`` string accepted by SHMEM."""
+    """Build the numeric ``tcp://IPv4:port`` URI accepted by SHMEM."""
     host = os.environ.get("UDMA_MASTER_ADDR", "127.0.0.1")
     try:
         address = socket.gethostbyname(host)
@@ -53,7 +53,7 @@ def udma_init_method_from_env() -> str:
     )
     if port <= 0 or port > 65535:
         raise RuntimeError("UDMA_MASTER_PORT must be in [1, 65535]")
-    return "{}:{}".format(address, port)
+    return "tcp://{}:{}".format(address, port)
 
 
 def environment_fingerprint() -> Dict[str, Any]:

@@ -68,7 +68,7 @@ def init_udma_group(
         host = _resolve_master_addr(host)
         default_port = str(int(os.environ.get("MASTER_PORT", "29500")) + 1)
         port = os.environ.get("UDMA_MASTER_PORT", default_port)
-        init_method = f"{host}:{port}"
+        init_method = f"tcp://{host}:{port}"
     requested = UdmaConfig(rank, world_size, init_method, heap_size, f"npu:{local_rank}")
 
     if _config is not None:
