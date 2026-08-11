@@ -16,7 +16,7 @@
 - Python 3.8+
 - PyTorch
 - TorchNPU
-- npu_ops_transformer
+- cann_ops_transformer
 - pandas, numpy
 
 ## 快速开始

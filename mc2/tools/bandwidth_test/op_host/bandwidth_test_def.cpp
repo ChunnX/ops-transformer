@@ -20,15 +20,19 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("x").ParamType(REQUIRED).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND}).AutoContiguous();
+        this->Input("x")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_FLOAT16, ge::DT_BF16})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("dst_rank_id")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
 
-        this->Output("y").ParamType(REQUIRED).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
-        this->Output("receive_cnt").ParamType(REQUIRED).DataType({ge::DT_INT32}).Format({ge::FORMAT_ND});
+        this->Output("y").ParamType(REQUIRED).DataTypeList({ge::DT_FLOAT16, ge::DT_BF16}).FormatList({ge::FORMAT_ND});
+        this->Output("receive_cnt").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
 
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("world_size").AttrType(REQUIRED).Int();
@@ -47,7 +51,8 @@ public:
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("prebuildPattern.value", "Opaque")
-            .ExtendCfgInfo("jitCompile.flag", "static_false");
+            .ExtendCfgInfo("jitCompile.flag", "static_true")
+            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
 
         this->AICore().AddConfig("ascend950", aicore_config);
     }
