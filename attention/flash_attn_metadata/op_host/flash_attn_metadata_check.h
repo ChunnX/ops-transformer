@@ -31,7 +31,7 @@ public:
                                           int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
                                           int64_t numHeadsKv, int64_t headDim, int64_t maskMode, int64_t winLeft,
                                           int64_t winRight, const char *layoutQ, const char *layoutKv,
-                                          const char *layoutOut, const aclTensor *metadata);
+                                          const char *layoutOut, const aclTensor *metadata, bool isGradEnabled);
 
 private:
     static constexpr int64_t NONE_VALUE = -1;
@@ -65,11 +65,19 @@ FlashAttnMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const a
                                     int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
                                     int64_t numHeadsKv, int64_t headDim, int64_t maskMode, int64_t winLeft,
                                     int64_t winRight, const char *layoutQ, const char *layoutKv,
-                                    const char *layoutOut, const aclTensor *metadata)
+                                    const char *layoutOut, const aclTensor *metadata, bool isGradEnabled)
 {
     auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim,
                              layoutQ, layoutKv, layoutOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
+    if (isGradEnabled) {
+        CHECK_COND(maxSeqlenQ >= 0, ACLNN_ERR_RUNTIME_ERROR,
+            "maxSeqlenQ must be greater than or equal to 0 when isGradEnabled is true, but got %ld", maxSeqlenQ);
+        CHECK_COND(maxSeqlenKv >= 0, ACLNN_ERR_RUNTIME_ERROR,
+            "maxSeqlenKv must be greater than or equal to 0 when isGradEnabled is true, but got %ld", maxSeqlenKv);
+    }
+
     ret = CheckMask(maskMode, winLeft, winRight);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckExistency(maxSeqlenQ, maxSeqlenKv, layoutQ, layoutKv, cuSeqlensQOptional, cuSeqlensKvOptional,
@@ -167,6 +175,8 @@ FlashAttnMetadataCheck::CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqlenKv,
                                        const aclTensor *metadata)
 {
     CHECK_COND(metadata != nullptr, ACLNN_ERR_RUNTIME_ERROR, "metadata should be provided, but got null");
+    CHECK_COND(metadata->GetDataType() == aclDataType::ACL_INT32, ACLNN_ERR_RUNTIME_ERROR,
+        "metadata dtype must be INT32, but got %d", static_cast<int32_t>(metadata->GetDataType()));
 
     if (strcmp(layoutQ, "TND") == 0) {
         // layoutQ为TND时，必须传入cuSeqlensQOptional
@@ -237,6 +247,9 @@ FlashAttnMetadataCheck::CheckSeqLens(bool isCu, int64_t batchSize, const aclTens
 
     CHECK_COND(seqLens->GetViewShape().GetDimNum() == 1, ACLNN_ERR_RUNTIME_ERROR,
         "seqLens must be 1D tensor, but got %ld dims", seqLens->GetViewShape().GetDimNum());
+
+    CHECK_COND(seqLens->GetDataType() == aclDataType::ACL_INT32, ACLNN_ERR_RUNTIME_ERROR, 
+        "seqLens dtype must be INT32, but got %d", static_cast<int32_t>(seqLens->GetDataType()));
 
     if (isCu) {
         CHECK_COND(seqLens->GetViewShape().GetDim(0) == batchSize + 1, ACLNN_ERR_RUNTIME_ERROR,

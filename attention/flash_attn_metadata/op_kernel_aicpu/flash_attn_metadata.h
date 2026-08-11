@@ -56,7 +56,7 @@ constexpr uint32_t FD_M_NUM_INDEX = 5U;
 
 // FAG (Flash Attn Grad) Metadata Index Definitions — head[4] records FAG start offset
 constexpr uint32_t HEAD_FAG_START_OFFSET_INDEX = 4U;
-constexpr uint32_t FAG_METADATA_SIZE = 116U;
+constexpr uint32_t FAG_METADATA_SIZE = 121U;
 constexpr uint32_t FAG_CORE_LIST_NUM = 36U;
 
 // FAG Metadata field indices (relative to fagStartOffset)
@@ -71,6 +71,11 @@ constexpr uint32_t FAG_SPARSE_MODE_INDEX = 7U;
 constexpr uint32_t FAG_BLOCK_STARTS_OFFSET = 8U;
 constexpr uint32_t FAG_BLOCK_ENDS_OFFSET = 44U;
 constexpr uint32_t FAG_TND_START_BIDX_OFFSET = 80U;
+constexpr uint32_t FAG_MASK_MODE_INDEX = 116U;
+constexpr uint32_t FAG_WIN_LEFT_INDEX = 117U;
+constexpr uint32_t FAG_WIN_RIGHT_INDEX = 118U;
+constexpr uint32_t FAG_MAX_SEQLEN_Q_INDEX = 119U;
+constexpr uint32_t FAG_MAX_SEQLEN_KV_INDEX = 120U;
 
 // FAG internal constants
 constexpr uint32_t FAG_S1CV_RATIO_DEFAULT = 2U;
@@ -93,7 +98,7 @@ constexpr uint32_t FAG_SPARSE_BAND = 4U;
 // FAG split axis values (matching SplitAxisEnum)
 constexpr uint32_t FAG_SPLIT_AXIS_BN2GS1S2 = 0U;
 constexpr uint32_t FAG_SPLIT_AXIS_BN2 = 1U;
-constexpr uint32_t FAG_SPLIT_AXIS_BN2S2 = 5U;
+constexpr uint32_t FAG_SPLIT_AXIS_BN2S2 = 2U;
 
 namespace detail {
 struct FaMetadata {
