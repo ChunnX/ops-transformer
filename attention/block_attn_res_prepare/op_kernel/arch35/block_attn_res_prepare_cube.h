@@ -339,6 +339,43 @@ public:
         }
     }
 
+    __aicore__ inline void RunEmptyOnlineSoftmax(uint64_t workId, const BlockAttnResPrepareCubeGmParams &gm,
+                                                  const BlockAttnResPrepareCubeAddressPlan &plan,
+                                                  const optiling::BlockAttnResPrepareCubeTilingData &tiling)
+    {
+        const BlockAttnResPrepareCubeWorkInfo work = DecodeCubeWork(workId, tiling);
+        const uint64_t outputByteOffset = plan.vUbOffset;
+        const uint64_t statByteOffset = plan.dotUbOffset;
+        __ubuf__ float *statAddr = GetUbAddr<float>(statByteOffset);
+        __ubuf__ float *outputAddr = GetUbAddr<float>(outputByteOffset);
+
+        for (uint32_t localS = 0; localS < work.validS; ++localS) {
+            const uint64_t globalS = work.sStart + localS;
+            BlockAttnResPrepareVF::InitializeEmptyOnlineSoftmax(statAddr);
+            WaitVectorToMte3(static_cast<event_t>(EVENT_ID0));
+            CopyUbToGm(gm.softmaxMax + globalS * tiling.totalT + work.tIndex,
+                       statByteOffset + static_cast<uint64_t>(BlockAttnResPrepareVF::MAX_OFFSET) * sizeof(float),
+                       1, 1, 1, 1);
+            CopyUbToGm(gm.softmaxSum + globalS * tiling.totalT + work.tIndex,
+                       statByteOffset + static_cast<uint64_t>(BlockAttnResPrepareVF::SUM_OFFSET) * sizeof(float),
+                       1, 1, 1, 1);
+            WaitMte3ToVector(static_cast<event_t>(EVENT_ID0));
+
+            for (uint32_t dLoop = 0; dLoop < tiling.dTileNum; ++dLoop) {
+                const uint64_t dOffset = static_cast<uint64_t>(dLoop) * tiling.baseD;
+                const uint64_t remainingD = tiling.totalD - dOffset;
+                const uint32_t validD =
+                    static_cast<uint32_t>(remainingD < tiling.baseD ? remainingD : tiling.baseD);
+                BlockAttnResPrepareVF::FillZero(outputAddr, validD);
+                WaitVectorToMte3(static_cast<event_t>(EVENT_ID0));
+                __gm__ float *output =
+                    gm.weightedOutput + (globalS * tiling.totalT + work.tIndex) * tiling.totalD + dOffset;
+                CopyUbToGm(output, outputByteOffset, 1, validD, tiling.totalD, tiling.baseDAlign);
+                WaitMte3ToVector(static_cast<event_t>(EVENT_ID0));
+            }
+        }
+    }
+
 private:
     __aicore__ inline static event_t GetEvent(uint32_t bufferIndex)
     {
@@ -476,15 +513,24 @@ public:
         if (coreIndex >= tilingData_->usedCoreNum) {
             return;
         }
-        const int32_t validNValue = ReadValidBlocks();
-        if (validNValue < 1 || static_cast<uint64_t>(validNValue) > tilingData_->totalN) {
-            return;
-        }
-        const uint32_t validN = static_cast<uint32_t>(validNValue);
         const uint64_t workStart = static_cast<uint64_t>(coreIndex) * tilingData_->blockFactor +
                                    (coreIndex < tilingData_->bigCoreNum ? coreIndex : tilingData_->bigCoreNum);
         const uint32_t workCount =
             tilingData_->blockFactor + (coreIndex < tilingData_->bigCoreNum ? 1U : 0U);
+
+        int32_t validNValue = ReadValidBlocks();
+        if (validNValue <= 0) {
+            if ASCEND_IS_AIV {
+                for (uint32_t workOffset = 0; workOffset < workCount; ++workOffset) {
+                    aivService_.RunEmptyOnlineSoftmax(workStart + workOffset, gmParams_, addressPlan_, *tilingData_);
+                }
+            }
+            return;
+        }
+        if (static_cast<uint64_t>(validNValue) > tilingData_->totalN) {
+            validNValue = static_cast<int32_t>(tilingData_->totalN);
+        }
+        const uint32_t validN = static_cast<uint32_t>(validNValue);
 
         for (uint32_t workOffset = 0; workOffset < workCount; ++workOffset) {
             const uint64_t workId = workStart + workOffset;

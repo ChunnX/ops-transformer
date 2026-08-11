@@ -22,6 +22,36 @@ constexpr uint32_t SUM_SQUARE_OFFSET = 0U;
 constexpr uint32_t DOT_OFFSET = FP32_REG_ELEMS;
 constexpr uint32_t MAX_OFFSET = 2U * FP32_REG_ELEMS;
 constexpr uint32_t SUM_OFFSET = MAX_OFFSET + 8U;
+constexpr float FP32_LOWEST_FINITE = -3.4028234663852886e+38F;
+
+__simd_vf__ inline void InitializeEmptyOnlineSoftmax(__ubuf__ float *statAddr)
+{
+    MicroAPI::RegTensor<float> maxReg;
+    MicroAPI::RegTensor<float> sumReg;
+    MicroAPI::MaskReg oneMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
+
+    MicroAPI::Duplicate(maxReg, FP32_LOWEST_FINITE, oneMask);
+    MicroAPI::Duplicate(sumReg, 1.0F, oneMask);
+    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + MAX_OFFSET, maxReg, oneMask);
+    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + SUM_OFFSET, sumReg, oneMask);
+    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+}
+
+__simd_vf__ inline void FillZero(__ubuf__ float *outputAddr, uint32_t validD)
+{
+    MicroAPI::RegTensor<float> zeroReg;
+    MicroAPI::MaskReg allMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+    MicroAPI::Duplicate(zeroReg, 0.0F, allMask);
+
+    uint32_t remaining = validD;
+    const uint16_t loopCount = static_cast<uint16_t>((validD + FP32_REG_ELEMS - 1U) / FP32_REG_ELEMS);
+    for (uint16_t loop = 0; loop < loopCount; ++loop) {
+        MicroAPI::MaskReg validMask = MicroAPI::UpdateMask<float, MicroAPI::RegTraitNumOne>(remaining);
+        const uint32_t offset = static_cast<uint32_t>(loop) * FP32_REG_ELEMS;
+        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM>(outputAddr + offset, zeroReg, validMask);
+    }
+    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+}
 
 // These raw UB arguments are internal static byte offsets. UB offset zero is valid and must not be treated as nullptr.
 template <bool FIRST_D_TILE>

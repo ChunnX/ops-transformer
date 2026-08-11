@@ -29,6 +29,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> block_attn_res_prepare(const at::
     TORCH_CHECK(effectiveQuery.dim() == 2, "effective_query must be a 2D tensor, but got ", effectiveQuery.dim(), "D");
     TORCH_CHECK(validBlocks.dim() == 1 && validBlocks.size(0) == 1,
                 "valid_blocks must have shape [1], but got ", validBlocks.sizes());
+    TORCH_CHECK(blockResidual.size(1) >= 1 && blockResidual.size(1) <= 64,
+                "block_residual.size(1) must be in [1, 64], but got ", blockResidual.size(1));
+    TORCH_CHECK(blockResidual.size(2) >= 1 && blockResidual.size(2) <= 8192,
+                "block_residual.size(2) must be in [1, 8192], but got ", blockResidual.size(2));
     TORCH_CHECK(blockResidual.size(2) == effectiveQuery.size(1),
                 "block_residual.size(2) must equal effective_query.size(1)");
 

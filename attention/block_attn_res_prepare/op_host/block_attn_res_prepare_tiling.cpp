@@ -43,6 +43,7 @@ constexpr uint32_t CUBE_MAX_BASE_S = 32U;
 constexpr uint32_t CUBE_MIN_T = 32U;
 constexpr uint32_t CUBE_MIN_S = 16U;
 constexpr uint32_t CUBE_MIN_D = 256U;
+constexpr uint64_t MAX_HEAD_DIM = 8192UL;
 constexpr uint32_t SOFTMAX_MAX_N = FP32_REG_ELEMS;
 constexpr uint32_t STAT_VECTOR_COUNT = 2U;
 constexpr uint32_t SCALAR_BLOCK_ELEMS = 8U;
@@ -150,6 +151,9 @@ ge::graphStatus BlockAttnResPrepareTiling::CheckInputShapes()
     OP_CHECK_IF(totalN_ > SOFTMAX_MAX_N,
                 OP_LOGE(context_->GetNodeName(), "N=%lu exceeds the current single-VReg softmax limit %u", totalN_,
                         SOFTMAX_MAX_N),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(totalD_ > MAX_HEAD_DIM,
+                OP_LOGE(context_->GetNodeName(), "D=%lu exceeds the interface limit %lu", totalD_, MAX_HEAD_DIM),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(totalD_ > MAX_ALIGNED_D,
                 OP_LOGE(context_->GetNodeName(), "D=%lu is too large for uint32-aligned tiling", totalD_),
