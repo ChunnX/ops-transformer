@@ -31,7 +31,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-from _xlsx_minireader import col_to_idx, load_sheet1
+from _xlsx_minireader import col_to_idx, load_sheet, load_sheet1, list_sheet_names, header_to_name_idx
 
 _XLSX = os.path.join(_HERE, "redline.xlsx")
 
@@ -50,11 +50,18 @@ HEADER = [
     "absolute_precision",
 ]
 
-# 3 个 csv 的 api_name 和 testcase_name 后缀
+# 3 个 csv 的 api_name 和 testcase_name 后缀 (MXFP8, quant_mode=1)
 CSV_PROFILES = [
     ("qfa_mxfp8_excel.csv", "qfa_mxfp8_wrapper.npu_qfa_mxfp8", ""),
     ("qfa_mxfp8_excel_metadata.csv", "qfa_metadata_wrapper.run_metadata", "_metadata"),
     ("qfa_mxfp8_excel_main.csv", "qfa_main_wrapper.run_main", "_main"),
+]
+
+# HIF8 csv profiles (quant_mode=7, per-tensor, TND only, no PA)
+CSV_PROFILES_HIF8 = [
+    ("qfa_hif8_excel.csv", "qfa_mxfp8_wrapper.npu_qfa_hif8", ""),
+    ("qfa_hif8_excel_metadata.csv", "qfa_metadata_wrapper.run_metadata_hif8", "_hif8_metadata"),
+    ("qfa_hif8_excel_main.csv", "qfa_main_wrapper.run_main_hif8", "_hif8_main"),
 ]
 
 # excel dtype → csv dtype
@@ -434,19 +441,42 @@ def _row_to_csv(excel_row, api_name, testcase_suffix):
 
 
 def main():
-    rows = load_sheet1(_XLSX)
+    import argparse
+
+    parser = argparse.ArgumentParser(description="redline.xlsx → ttk e2e csv")
+    parser.add_argument(
+        "--sheet",
+        default=None,
+        help="sheet 名称（如 mxfp8/fp8/hif8）。不指定时默认读 sheet1（mxfp8）。",
+    )
+    parser.add_argument(
+        "--xlsx",
+        default=_XLSX,
+        help="xlsx 文件路径（默认 redline.xlsx）",
+    )
+    args = parser.parse_args()
+
+    if args.sheet is not None:
+        rows = load_sheet(args.xlsx, sheet_name=args.sheet)
+    else:
+        rows = load_sheet1(args.xlsx)
+
     if not rows:
-        raise RuntimeError("redline.xlsx sheet1 has no rows")
+        available = list_sheet_names(args.xlsx)
+        raise RuntimeError(
+            f"xlsx has no rows for sheet='{args.sheet}'. Available sheets: {available}"
+        )
     header_row = rows[0]
     data_rows = rows[1:]
     if len(data_rows) != 6:
-        raise RuntimeError(f"expected 6 data rows in mxfp8 sheet, got {len(data_rows)}")
+        raise RuntimeError(f"expected 6 data rows, got {len(data_rows)}")
 
     a_header = _strip_or_none(header_row.get(COL["A_testcase_name"]))
     if a_header != "testcase_name":
         raise RuntimeError(f"unexpected header A: {a_header!r}")
 
-    for fname, api_name, suffix in CSV_PROFILES:
+    profiles = CSV_PROFILES + CSV_PROFILES_HIF8
+    for fname, api_name, suffix in profiles:
         out_path = os.path.join(_HERE, fname)
         with open(out_path, "w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
@@ -455,7 +485,7 @@ def main():
                 writer.writerow(_row_to_csv(row, api_name, suffix))
         print(f"wrote {out_path}")
 
-    print(f"\n3 csv files written, each with {len(data_rows)} case rows.")
+    print(f"\n{len(profiles)} csv files written, each with {len(data_rows)} case rows.")
 
 
 if __name__ == "__main__":
