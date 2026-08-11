@@ -13,7 +13,7 @@
 MXFP8 Flash Attention Golden
 
 功能：参考式生成输入 → CPU golden → NPU 调用 → layout 对齐 → 精度对比
-支持：Q/QDescale 公共输入为 TND 或 NTD；K/V 生成后在本文件内部按 BNSD 保存，NPU 侧只支持 PA KV cache
+支持：MXFP8 Q/QDescale 公共输入仅为 TND；NPU 侧 K/V 使用 PA KV cache
 支持：PA 场景、GQA、causal/dense sparse mode、QDescale 固定 TND D-group 打包
 数据：随机 FP8 Q/K/V + MXFP8 D-group descale，生成结构对齐 quant_block_sparse_attn_golden.py
 输出：逐元素表格 + 统计汇总 (PctRlt 通过率，双千分之五标准)
@@ -281,8 +281,13 @@ def _resolve_dtype(value, field_name):
     return _DTYPE_MAP[value]
 
 
-def _validate_case_design_fields(case):
+def validate_mxfp8_case(case):
     """只校验实际参与运行的字段；参考字段允许由外部泛化表自由扩展。"""
+    if str(case.get("layout_q", "")).upper() != "TND":
+        raise ValueError(
+            f"MXFP8 layout_q only supports TND, got {case.get('layout_q')!r}"
+        )
+
     if case["N2"] <= 0 or case["N1"] % case["N2"] != 0:
         raise ValueError(
             f"N1 must be divisible by N2, got N1={case['N1']}, N2={case['N2']}"
@@ -351,6 +356,7 @@ def _get_sequence_inputs(case):
         raise ValueError(
             f"cu_seqlens_q must start with 0 and contain B+1={batch + 1} values, got {cu_q}"
         )
+
     q_lengths = [end - start for start, end in zip(cu_q, cu_q[1:])]
     if any(length < 0 for length in q_lengths):
         raise ValueError(f"cu_seqlens_q must be nondecreasing, got {cu_q}")
@@ -398,7 +404,7 @@ def _normalize_case(case):
             f"sparse_mode must be 'dense' or 'random', got {sparse_mode!r}"
         )
     case["sparse_mode"] = sparse_mode
-    _validate_case_design_fields(case)
+    validate_mxfp8_case(case)
     return case
 
 
@@ -528,7 +534,7 @@ _EMAX_MAP = {
 # 与 quant_block_sparse_attn_golden.py 保持同一组织方式：
 #   case -> rng/generator -> query/key/value/descale/block_table/sparse_indices
 # 当前文件的 MXFP8 full-quant 差异：
-#   - Q/QDescale 直接生成 TND 或 NTD，不经过 BNSD 中间格式
+#   - Q/QDescale 直接生成 TND，不经过其他 Q layout 中间格式
 #   - K/V 先按参考文件的 BSND 语义生成，再适配为本文件 CPU/PA 路径使用的 BNSD
 #   - Q/K/V descale 由对应 FP8 数据按 MXFP8 group 规则生成
 # ==============================================================================
@@ -681,18 +687,23 @@ def quantize_mxfp8_v(tensor_fp32, fp8_dtype, group_size=32):
     return quantized, descale
 
 
-def _make_reference_block_table(
+def make_mxfp8_block_table(
     batch,
     seq_lens,
     block_size,
-    rng,
-    physical_block_count=0,
+    physical_block_count,
+    seed,
     sparse_indices=None,
     sparse_seq_len=None,
     sparse_block_size=None,
     max_block_per_batch=None,
 ):
-    """Generate ``[B, max logical PA pages]`` with random physical IDs."""
+    """Generate and validate the MXFP8 ``[B, logical PA pages]`` mapping.
+
+    This is the single block-table construction entry used by both the pytest
+    golden and TTK. ``max_block_per_batch`` controls the requested table width;
+    the effective width is never smaller than the pages required by seqused_kv.
+    """
     if isinstance(seq_lens, int):
         seq_lens = [seq_lens] * batch
     block_nums = [math.ceil(int(seq_len) / block_size) for seq_len in seq_lens]
@@ -716,11 +727,26 @@ def _make_reference_block_table(
     # Sample with replacement.  Repeated IDs are valid and model physical-page
     # sharing; values in padded columns are harmless because seqused_kv limits
     # the logical pages that the kernel may read.
-    values = [
-        rng.randrange(physical_block_count)
-        for _ in range(batch * max_block_num)
-    ]
-    return torch.tensor(values, dtype=torch.int32).reshape(batch, max_block_num)
+    rng = random.Random(int(seed) ^ 0x5A17B10C)
+    values = [rng.randrange(physical_block_count) for _ in range(batch * max_block_num)]
+    block_table = torch.tensor(values, dtype=torch.int32).reshape(
+        batch, max_block_num
+    )
+    if (
+        sparse_indices is not None
+        and sparse_seq_len is not None
+        and sparse_block_size is not None
+    ):
+        _validate_reference_block_table(
+            block_table,
+            seq_lens,
+            block_size,
+            physical_block_count,
+            sparse_indices,
+            sparse_seq_len,
+            sparse_block_size,
+        )
+    return block_table
 
 
 def _validate_reference_block_table(
@@ -893,47 +919,36 @@ def _make_reference_sparse_for_lengths(q_lengths, kv_lengths):
 
 # ==============================================================================
 # Layout 转换函数 - 数据
-# Q/QDescale 公共输入只接受 TND/NTD；BNSD 仅作为 K/V 和 PA KV cache 的内部布局。
+# MXFP8 Q/QDescale 公共输入只接受 TND；BNSD 仅作为 K/V 和 PA KV cache 的内部布局。
 # ==============================================================================
 
 
 def canonical_q_input_layout(layout=None):
     layout = (layout or Q_INPUT_LAYOUT).upper()
-    if layout not in ("TND", "NTD"):
-        raise ValueError(f"Unsupported Q input layout: {layout}, expected TND or NTD")
-    return layout
+    if layout != "TND":
+        raise ValueError(f"MXFP8 Q input layout must be TND, got {layout}")
+    return "TND"
 
 
-def convert_q_tnd_or_ntd_to_tnd(tensor, seq_lens, num_heads, name="Q"):
-    """Q/QDescale input must be 3D TND or NTD; normalize to TND."""
+def require_q_tnd(tensor, seq_lens, num_heads, name="Q"):
+    """Return a contiguous MXFP8 TND tensor after one centralized check."""
     if tensor.dim() != 3:
         raise ValueError(
-            f"{name} must be TND/NTD rank-3 input, got rank {tensor.dim()} and shape {tuple(tensor.shape)}"
+            f"{name} must be a rank-3 TND tensor, got shape {tuple(tensor.shape)}"
         )
 
     total_s = sum(seq_lens)
-    if tensor.shape[0] == total_s and tensor.shape[1] == num_heads:
-        return tensor.contiguous()
-    if tensor.shape[0] == num_heads and tensor.shape[1] == total_s:
-        return tensor.permute(1, 0, 2).contiguous()
-
-    raise ValueError(
-        f"Unsupported {name} shape: {tuple(tensor.shape)}, expected TND=({total_s}, {num_heads}, D) "
-        f"or NTD=({num_heads}, {total_s}, D)"
-    )
-
-
-def convert_q_tnd_or_ntd_to_layout(tensor, seq_lens, num_heads, layout=None, name="Q"):
-    layout = canonical_q_input_layout(layout)
-    tensor_tnd = convert_q_tnd_or_ntd_to_tnd(tensor, seq_lens, num_heads, name)
-    if layout == "TND":
-        return tensor_tnd
-    return tensor_tnd.permute(1, 0, 2).contiguous()
+    if tensor.shape[0] != total_s or tensor.shape[1] != num_heads:
+        raise ValueError(
+            f"invalid {name} TND shape: got {tuple(tensor.shape)}, "
+            f"expected ({total_s}, {num_heads}, D)"
+        )
+    return tensor.contiguous()
 
 
 # ==============================================================================
 # Layout 转换函数 - Descale
-# QDescale 公共输入为 TND/NTD；K/V descale 在生成后以内部 BNSD 保存并按 NPU layout 打包。
+# QDescale 公共输入为 TND；K/V descale 在生成后按 NPU layout 打包。
 # ==============================================================================
 
 
@@ -987,9 +1002,9 @@ def pack_qk_scale_for_npu(scale_flat):
     return scale_flat.reshape(new_shape)
 
 
-def convert_q_scale_tnd_or_ntd_to_layout(scale, seq_lens):
-    """QDescale public input TND/NTD -> packed NPU TND descale layout."""
-    scale_tnd = convert_q_tnd_or_ntd_to_tnd(scale, seq_lens, N_q, "Q descale")
+def pack_q_scale_tnd_for_npu(scale, seq_lens):
+    """Pack the public TND Q descale into the NPU TND descale layout."""
+    scale_tnd = require_q_tnd(scale, seq_lens, N_q, "Q descale")
     return pack_qk_scale_for_npu(scale_tnd)
 
 
@@ -1209,17 +1224,22 @@ def _materialize_pa_bnsd(tensor):
 # ==============================================================================
 
 
-def _generate_reference_style_mxfp8_inputs():
+def generate_mxfp8_inputs(case=None, max_block_per_batch=None):
     """Generate test inputs with paired fp8 + descale.
 
     流程: fp32 随机 → 从 fp32 算 descale → fp8 = clamp(fp32/descale)
     fp8 和 descale 配套生成，保证 fp8 × descale ≈ 原始 fp32，反量化不溢出。
     """
+    if case is not None or max_block_per_batch is not None:
+        active_case = dict(CASE if case is None else case)
+        if max_block_per_batch is not None:
+            active_case["max_block_per_batch"] = int(max_block_per_batch)
+        validate_mxfp8_case(active_case)
+        set_active_case(active_case)
+
     case = dict(CASE)
+    validate_mxfp8_case(case)
     rng = random.Random(case["seed"])
-    # Keep PA placement reproducible but independent from how many random
-    # draws sparse-index generation performs.
-    block_table_rng = random.Random(int(case["seed"]) ^ 0x5A17B10C)
     generator = torch.Generator().manual_seed(case["seed"])
 
     sequence_inputs = _get_sequence_inputs(case)
@@ -1236,23 +1256,15 @@ def _generate_reference_style_mxfp8_inputs():
     n1 = case["N1"]
     n2 = case["N2"]
     head_dim = case["D"]
-    layout_q = case["layout_q"]
+    canonical_q_input_layout(case["layout_q"])
 
     # Q: fp32 随机 → MXFP8 配套量化 (per-32-group along D)
-    if layout_q == "NTD":
-        q_fp32 = _rand_float((n1, total_q, head_dim), generator, DATA_RANGE_Q)
-        query, q_descale = quantize_mxfp8_qk(
-            q_fp32.unsqueeze(0), FP8_DTYPE, QUANT_GROUP_SIZE
-        )
-        query = query.squeeze(0)
-        q_descale = q_descale.squeeze(0)
-    else:
-        q_fp32 = _rand_float((total_q, n1, head_dim), generator, DATA_RANGE_Q)
-        query, q_descale = quantize_mxfp8_qk(
-            q_fp32.unsqueeze(0), FP8_DTYPE, QUANT_GROUP_SIZE
-        )
-        query = query.squeeze(0)
-        q_descale = q_descale.squeeze(0)
+    q_fp32 = _rand_float((total_q, n1, head_dim), generator, DATA_RANGE_Q)
+    query, q_descale = quantize_mxfp8_qk(
+        q_fp32.unsqueeze(0), FP8_DTYPE, QUANT_GROUP_SIZE
+    )
+    query = query.squeeze(0)
+    q_descale = q_descale.squeeze(0)
 
     # K/V are physical PA-cache inputs, not temporary logical BNSD tensors.
     # Generate exactly the shapes passed to the operator:
@@ -1294,25 +1306,16 @@ def _generate_reference_style_mxfp8_inputs():
     sparse_indices, sparse_seq_len = _make_reference_sparse_indices(
         case, q_lengths, kv_lengths, rng
     )
-    block_table = _make_reference_block_table(
-        batch,
-        kv_lengths,
-        BLOCK_SIZE,
-        block_table_rng,
-        BLOCK_NUM,
-        sparse_indices,
-        sparse_seq_len,
-        case["sparse_kv_block_size"],
-        case.get("max_block_per_batch"),
-    )
-    _validate_reference_block_table(
-        block_table,
-        kv_lengths,
-        BLOCK_SIZE,
-        BLOCK_NUM,
-        sparse_indices,
-        sparse_seq_len,
-        case["sparse_kv_block_size"],
+    block_table = make_mxfp8_block_table(
+        batch=batch,
+        seq_lens=kv_lengths,
+        block_size=BLOCK_SIZE,
+        physical_block_count=BLOCK_NUM,
+        seed=case["seed"],
+        sparse_indices=sparse_indices,
+        sparse_seq_len=sparse_seq_len,
+        sparse_block_size=case["sparse_kv_block_size"],
+        max_block_per_batch=case.get("max_block_per_batch"),
     )
     p_scale_mode = case.get(
         "p_scale_mode",
@@ -1348,7 +1351,7 @@ def _generate_reference_style_mxfp8_inputs():
 
 def generate_data():
     """Generate inputs through the reference-style data-generation wrapper."""
-    data = _generate_reference_style_mxfp8_inputs()
+    data = generate_mxfp8_inputs()
     logger.info(
         "[INFO] reference-style data: q=%s, k=%s, v=%s, q_descale=%s, k_descale=%s, v_descale=%s",
         data["query"].shape,
@@ -1387,7 +1390,7 @@ def generate_data():
 # ==============================================================================
 # CPU Golden
 # 参考 quant_block_sparse_attn_golden.py 的 sparse block 计算流：
-#   - Q/QDescale 公共输入为 TND/NTD；K/V 与 K/V descale 使用内部 BNSD
+#   - Q/QDescale 公共输入为 TND；K/V 与 K/V descale 使用 PA_BNSD
 #   - 按 sparse_indices 中记录的 KV block 顺序收集 positions，并按 256-token C1 粒度做 online 累加
 #   - Q/K 使用 per-token D-group descale；V 使用 per-channel S-group descale
 #   - 输出 OUT 固定 TND，MXFP8 TND LSE 固定 TN
@@ -1454,16 +1457,11 @@ def _expand_d_group_scale(scale, width):
 
 
 def _gather_q_block_and_scale(
-    q_tensor, q_scale, layout_q, cu_seqlens_q, batch_idx, q_start, q_end, head_idx
+    q_tensor, q_scale, cu_seqlens_q, batch_idx, q_start, q_end, head_idx
 ):
-    if layout_q == "NTD":
-        base = int(cu_seqlens_q[batch_idx].item())
-        q_block = q_tensor[head_idx, base + q_start : base + q_end]
-        q_scale_block = q_scale[head_idx, base + q_start : base + q_end]
-    else:
-        base = int(cu_seqlens_q[batch_idx].item())
-        q_block = q_tensor[base + q_start : base + q_end, head_idx]
-        q_scale_block = q_scale[base + q_start : base + q_end, head_idx]
+    base = int(cu_seqlens_q[batch_idx].item())
+    q_block = q_tensor[base + q_start : base + q_end, head_idx]
+    q_scale_block = q_scale[base + q_start : base + q_end, head_idx]
     return q_block.to(torch.float32), q_scale_block.to(torch.float32)
 
 
@@ -1568,7 +1566,6 @@ def cpu_mxfp8_golden(
                 q_block, q_scale_block = _gather_q_block_and_scale(
                     q_tensor,
                     q_scale,
-                    layout_q,
                     cu_seqlens_q,
                     batch_idx,
                     q_start,
@@ -2322,16 +2319,12 @@ def npu_mxfp8_fa(
     softmax_scale = float(CASE["softmax_scale"])
 
     q_layout = canonical_q_input_layout(Q_INPUT_LAYOUT)
-    q_input = (
-        convert_q_tnd_or_ntd_to_layout(q_fp8, q_lengths, N_q, q_layout, "Q")
-        .contiguous()
-        .view(FP8_DTYPE)
-    )
+    q_input = require_q_tnd(q_fp8, q_lengths, N_q, "Q").view(FP8_DTYPE)
     q_npu = q_input.npu()
     logger.info("[NPU %s] q=%s", q_layout, q_npu.shape)
 
     q_scale_e8m0 = fp32_to_e8m0fnu_safe(
-        convert_q_scale_tnd_or_ntd_to_layout(dequant_scale_q, q_lengths), "Q descale"
+        pack_q_scale_tnd_for_npu(dequant_scale_q, q_lengths), "Q descale"
     )
     deq_q_npu = q_scale_e8m0.npu()
     logger.info("[NPU] Q descale layout=TND, shape=%s", q_scale_e8m0.shape)
