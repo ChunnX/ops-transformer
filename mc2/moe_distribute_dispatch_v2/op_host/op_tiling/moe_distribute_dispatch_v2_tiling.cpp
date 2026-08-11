@@ -1591,9 +1591,9 @@ static uint32_t Ceil(uint32_t dividend, uint32_t divisor, const char *nodeName)
     return 0;
 }
 
-static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context,
-                                          const MoeDistributeDispatchV2TilingData &tilingData,
-                                          uint32_t expertIdsBufSize, uint32_t kSize, const char *nodeName)
+static uint32_t SendToMoeExpertUsedBufferA3(const gert::TilingContext *context,
+                                            const MoeDistributeDispatchV2TilingData &tilingData,
+                                            uint32_t expertIdsBufSize, uint32_t kSize, const char *nodeName)
 {
     uint32_t UbForMoe = 0;
     uint32_t moeExpertNum = tilingData.moeDistributeDispatchV2Info.moeExpertNum;
@@ -1621,10 +1621,10 @@ static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context,
     return UbForMoe;
 }
 
-static uint32_t AllToAllBasicUsedBuffer(const gert::TilingContext *context,
-                                        const MoeDistributeDispatchV2TilingData &tilingData, uint32_t quantMode,
-                                        uint32_t &expertIdsBufSize, uint32_t hSize, uint32_t expertIdsCnt,
-                                        uint32_t &hOutSizeAlign, const char *nodeName)
+static uint32_t AllToAllBasicUsedBufferA3(const gert::TilingContext *context,
+                                          const MoeDistributeDispatchV2TilingData &tilingData, uint32_t quantMode,
+                                          uint32_t &expertIdsBufSize, uint32_t hSize, uint32_t expertIdsCnt,
+                                          uint32_t &hOutSizeAlign, const char *nodeName)
 {
     uint32_t UbForBasic = 0;
     uint32_t epWorldSize = tilingData.moeDistributeDispatchV2Info.epWorldSize;
@@ -1661,10 +1661,80 @@ static uint32_t AllToAllBasicUsedBuffer(const gert::TilingContext *context,
     return UbForBasic;
 }
 
+static uint32_t AllToAllBasicUsedBufferA5(const gert::TilingContext *context,
+                                          const MoeDistributeDispatchV2TilingData &tilingData, uint32_t quantMode,
+                                          uint32_t &expertIdsBufSize, uint32_t hSize, uint32_t expertIdsCnt,
+                                          uint32_t &hOutSizeAlign, const char *nodeName)
+{
+    uint32_t UbForBasic = 0;
+    uint32_t epWorldSize = tilingData.moeDistributeDispatchV2Info.epWorldSize;
+    if (tilingData.moeDistributeDispatchV2Info.hasElasticInfo) {
+        uint32_t elasticInfoSize = (ELASTIC_INFO_OFFSET + RANK_LIST_NUM * epWorldSize) * sizeof(int32_t);
+        uint32_t elasticInfoSizeAlign = Ceil(elasticInfoSize, UB_ALIGN, nodeName);
+        UbForBasic = UbForBasic + elasticInfoSizeAlign; // elasticInfoBuf_
+    }
+
+    auto xDesc = context->GetInputDesc(X_INDEX);
+    ge::DataType xType = xDesc->GetDataType();
+    bool isXFp4 = (xType == ge::DT_FLOAT4_E2M1) || (xType == ge::DT_FLOAT4_E1M2);
+    uint32_t xTypeSize = isXFp4 ? 1U : ge::GetSizeByDataType(xType);
+    const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(SCALES_INDEX);
+    bool isScales = (scalesStorageShape != nullptr);
+    uint32_t hAlignSize = 0;
+    if ((quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)) ||
+        (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT_CLIP)) ||
+        (quantMode == static_cast<uint32_t>(QuantModeA5::PERGROUP_DYNAMIC_QUANT))) {
+        hAlignSize = ((hSize + PERGROUP_BLOCK_SIZE - 1U) / PERGROUP_BLOCK_SIZE) * PERGROUP_BLOCK_SIZE * xTypeSize;
+    } else {
+        hAlignSize = Ceil(hSize * xTypeSize, UB_ALIGN, nodeName);
+        if ((quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT)) && isScales) {
+            hAlignSize += tilingData.moeDistributeDispatchV2Info.scalesCol *
+                          tilingData.moeDistributeDispatchV2Info.scalesTypeSize;
+        }
+    }
+    UbForBasic = UbForBasic + hAlignSize * BUFFER_NUM; // inQueue
+
+    auto expandXDesc = context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX);
+    ge::DataType expandXType = expandXDesc->GetDataType();
+    bool isExpandXFp4 = (expandXType == ge::DT_FLOAT4_E2M1) || (expandXType == ge::DT_FLOAT4_E1M2);
+    uint32_t expandXTypeSize = isExpandXFp4 ? 1U : ge::GetSizeByDataType(expandXType);
+    uint32_t expandXElementNum = isExpandXFp4 ? ((hSize + 1U) / 2U) : hSize;
+    uint32_t hOutSize = expandXElementNum * expandXTypeSize;
+    if ((quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)) ||
+        (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT_CLIP))) {
+        uint32_t mxDataSize = isExpandXFp4 ? Ceil(expandXElementNum, SIZE_ALIGN_256, nodeName) : Ceil(hSize, SIZE_ALIGN_256, nodeName) * expandXTypeSize;
+        uint32_t mxScaleNum = (hSize + MX_BLOCK_SIZE - 1U) / MX_BLOCK_SIZE;
+        hOutSize = mxDataSize + ((mxScaleNum + 1U) / 2U) * 2U;
+    } else if (quantMode == static_cast<uint32_t>(QuantModeA5::PERGROUP_DYNAMIC_QUANT)) {
+        uint32_t alignH = ((hSize + PERGROUP_BLOCK_SIZE - 1U) / PERGROUP_BLOCK_SIZE) * PERGROUP_BLOCK_SIZE;
+        uint32_t scaleNum = (hSize + PERGROUP_BLOCK_SIZE - 1U) / PERGROUP_BLOCK_SIZE;
+        hOutSize = alignH * expandXTypeSize + scaleNum * sizeof(float);
+    }
+    hOutSizeAlign = Ceil(hOutSize, UB_ALIGN, nodeName);
+    if ((quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT)) && isScales) {
+        uint32_t scaleInBytes =
+            tilingData.moeDistributeDispatchV2Info.scalesCol * tilingData.moeDistributeDispatchV2Info.scalesTypeSize;
+        hOutSizeAlign += scaleInBytes;
+    } else if (quantMode == static_cast<uint32_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)) {
+        hOutSizeAlign += sizeof(float);
+    }
+    uint32_t hScaleSizeAlign = Ceil(hOutSizeAlign, UB_ALIGN, nodeName);
+    uint32_t tokenQuantAlign = hScaleSizeAlign / sizeof(int32_t);
+    hOutSizeAlign = tokenQuantAlign * sizeof(int32_t) + UB_ALIGN;
+    uint32_t blockCntPerToken = Ceil(hOutSizeAlign, SPLIT_BLOCK_DATA_SIZE, nodeName) / SPLIT_BLOCK_DATA_SIZE;
+    uint32_t hCommuSize = blockCntPerToken * SPLIT_BLOCK_SIZE;
+    UbForBasic = UbForBasic + hCommuSize; // outBuf
+
+    expertIdsBufSize = Ceil(expertIdsCnt * sizeof(int32_t), SIZE_ALIGN_256, nodeName);
+    UbForBasic = UbForBasic + expertIdsBufSize; // expertIdsBuf_
+    return UbForBasic;
+}
+
 static ge::graphStatus CheckUBSize(const gert::TilingContext *context, MoeDistributeDispatchV2TilingData &tilingData,
                                    const char *nodeName)
 {
     uint32_t ubSize = UB_ALIGN; // dataStateBuf
+    bool isA5 = mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510;
 
     uint32_t quantMode = tilingData.moeDistributeDispatchV2Info.quantMode;
     uint32_t hSize = tilingData.moeDistributeDispatchV2Info.h;
@@ -1673,8 +1743,13 @@ static ge::graphStatus CheckUBSize(const gert::TilingContext *context, MoeDistri
     uint32_t expertIdsCnt = bsSize * kSize;
     uint32_t expertIdsBufSize = 0;
     uint32_t hOutSizeAlign = 0;
-    ubSize = ubSize + AllToAllBasicUsedBuffer(context, tilingData, quantMode, expertIdsBufSize, hSize, expertIdsCnt,
-                                              hOutSizeAlign, nodeName);
+    if (isA5) {
+        ubSize += AllToAllBasicUsedBufferA5(context, tilingData, quantMode, expertIdsBufSize, hSize, expertIdsCnt,
+                                            hOutSizeAlign, nodeName);
+    } else {
+        ubSize += AllToAllBasicUsedBufferA3(context, tilingData, quantMode, expertIdsBufSize, hSize, expertIdsCnt,
+                                            hOutSizeAlign, nodeName);
+    }
 
     const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
     const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(SCALES_INDEX);
@@ -1682,6 +1757,9 @@ static ge::graphStatus CheckUBSize(const gert::TilingContext *context, MoeDistri
     bool isScales = (scalesStorageShape != nullptr);
     bool needMaskCalFlag = (isActiveMask || tilingData.moeDistributeDispatchV2Info.zeroComputeExpertNum != 0);
     ubSize = ubSize + (needMaskCalFlag ? expertIdsBufSize : 0);
+    if (isA5 && tilingData.moeDistributeDispatchV2Info.hasExpertScales) {
+        ubSize += expertIdsBufSize;
+    }
 
     uint32_t hFp32Size = Ceil(hSize * sizeof(float), UB_ALIGN, nodeName);
     if ((quantMode == static_cast<uint32_t>(QuantModeA5::PERGROUP_DYNAMIC_QUANT)) && isScales) {
@@ -1694,7 +1772,11 @@ static ge::graphStatus CheckUBSize(const gert::TilingContext *context, MoeDistri
     maxSizeForUbBuffer = maxSizeForUbBuffer > xActivateMaskSize ? maxSizeForUbBuffer : xActivateMaskSize;
     maxSizeForUbBuffer = maxSizeForUbBuffer > bsKAlign256 ? maxSizeForUbBuffer : bsKAlign256;
     tilingData.moeDistributeDispatchV2Info.maxSizeForUbBuffer = maxSizeForUbBuffer;
-    if (quantMode > static_cast<uint32_t>(QuantModeA5::NON_QUANT)) {
+    auto xDesc = context->GetInputDesc(X_INDEX);
+    auto expandXDesc = context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX);
+    bool needQuantBuffer = quantMode > static_cast<uint32_t>(QuantModeA5::NON_QUANT) ||
+                           (isA5 && (xDesc->GetDataType() != expandXDesc->GetDataType()));
+    if (needQuantBuffer) {
         uint32_t hOutAlignUbSize = Ceil(hOutSizeAlign, UB_ALIGN, nodeName);
         ubSize = ubSize + hOutAlignUbSize;
         ubSize = ubSize + BUFFER_NUM * maxSizeForUbBuffer; // receiveDataCastFloatBuf smoothScalesBuf
@@ -1710,7 +1792,16 @@ static ge::graphStatus CheckUBSize(const gert::TilingContext *context, MoeDistri
         ubSize = ubSize + validBufferSize; // validExpertIndexBuf_
     }
 
-    ubSize = ubSize + SendToMoeExpertUsedBuffer(context, tilingData, expertIdsBufSize, kSize, nodeName);
+    if (isA5) {
+        uint32_t calTokenIdxBufSize = Ceil(expertIdsCnt * sizeof(int32_t), UB_ALIGN, nodeName);
+        ubSize += calTokenIdxBufSize; // calTempBuf
+        if (!needQuantBuffer && !needMaskCalFlag) {
+            ubSize += BUFFER_NUM * calTokenIdxBufSize; // dstExpBuf_ and subExpBuf_
+        }
+        ubSize += BUFFER_NUM * UB_ALIGN; // calBeginBuf_ and calEndBuf_
+    } else {
+        ubSize += SendToMoeExpertUsedBufferA3(context, tilingData, expertIdsBufSize, kSize, nodeName);
+    }
     uint64_t ubRealSize = 0;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubRealSize);

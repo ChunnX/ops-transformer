@@ -18,7 +18,7 @@
 #include "kernel_operator.h"
 #endif
 #include "../moe_distribute_dispatch_v2.h"
-#include "../moe_distribute_dispatch_v2_full_mesh.h"
+#include "moe_distribute_dispatch_v2_full_mesh.h"
 #include "moe_distribute_dispatch_v2_layered.h"
 #include "moe_distribute_dispatch_v2_tiling_key.h"
 #include "../moe_distribute_dispatch_tiling.h"
