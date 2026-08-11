@@ -135,22 +135,10 @@ private:
         wait_flag(PIPE_MTE2, PIPE_V, eventId);
     }
 
-    __aicore__ inline static void WaitVectorToMte2(event_t eventId)
-    {
-        set_flag(PIPE_V, PIPE_MTE2, eventId);
-        wait_flag(PIPE_V, PIPE_MTE2, eventId);
-    }
-
     __aicore__ inline static void WaitVectorToMte3(event_t eventId)
     {
         set_flag(PIPE_V, PIPE_MTE3, eventId);
         wait_flag(PIPE_V, PIPE_MTE3, eventId);
-    }
-
-    __aicore__ inline static void WaitMte3ToVector(event_t eventId)
-    {
-        set_flag(PIPE_MTE3, PIPE_V, eventId);
-        wait_flag(PIPE_MTE3, PIPE_V, eventId);
     }
 
     __aicore__ inline void BuildUbLayout()

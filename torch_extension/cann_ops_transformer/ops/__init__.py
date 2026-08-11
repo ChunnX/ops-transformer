@@ -65,3 +65,4 @@ from .dense_lightning_indexer_softmax_lse import (
     dense_lightning_indexer_softmax_lse,
     dense_lightning_indexer_softmax_lse_metadata,
 )
+from .block_attn_res_prepare import block_attn_res_prepare
