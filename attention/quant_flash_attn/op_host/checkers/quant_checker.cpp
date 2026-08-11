@@ -297,7 +297,7 @@ ge::graphStatus QuantChecker::CheckKDescaleShape(const QfaTilingInfo &qfaInfo) c
     if (qfaInfo.kvLayout == QfaLayout::TND) {
         expected = {qfaInfo.kTSize, qfaInfo.n2Size, DPerGroup, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BBND) {
- 	    expected = {qfaInfo.totalBlockNum, qfaInfo.blockSize, qfaInfo.n2Size, DPerGroup, 2};
+        expected = {qfaInfo.totalBlockNum, qfaInfo.blockSize, qfaInfo.n2Size, DPerGroup, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD) {
         expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize, DPerGroup, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_NZ) {
@@ -324,6 +324,7 @@ ge::graphStatus QuantChecker::CheckVDescaleShape(const QfaTilingInfo &qfaInfo) c
     //   PA_BNBD:  (Bn, KV_N, Bs/64, D, 2)            - 5D
     //   PA_NZ:    (Bn, KV_N, D/16, Bs/64, 16, 2)     - 6D
     const gert::StorageShape *shape = qfaInfo.opParamInfo.vDescale.shape;
+    const int64_t mxfp8BlockSize = 64;
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
@@ -338,11 +339,11 @@ ge::graphStatus QuantChecker::CheckVDescaleShape(const QfaTilingInfo &qfaInfo) c
         // 因此 dim0 不做数值校验(用 -1 占位), 仅校验维度数为 4D 及 dim[1..3]。
         expected = {-1, qfaInfo.n2Size, D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BBND) {
- 	    expected = {qfaInfo.totalBlockNum, qfaInfo.blockSize / 64, qfaInfo.n2Size, D, 2};
+        expected = {qfaInfo.totalBlockNum, CeilDivision(qfaInfo.blockSize, mxfp8BlockSize), qfaInfo.n2Size, D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD) {
-        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize / 64, D, 2};
+        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, CeilDivision(qfaInfo.blockSize, mxfp8BlockSize), D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_NZ) {
-        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, D / 16, qfaInfo.blockSize / 64, 16, 2};
+        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, D / 16, CeilDivision(qfaInfo.blockSize, mxfp8BlockSize), 16, 2};
     } else {
         OP_LOGE(qfaInfo.opName, "v_descale shape check: kv_layout %s is unsupported.",
                 QfaLayoutToSerialString(qfaInfo.kvLayout).c_str());
