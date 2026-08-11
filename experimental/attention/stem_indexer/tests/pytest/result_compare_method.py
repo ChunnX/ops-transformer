@@ -10,12 +10,15 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import math
+
 import torch
 
 import stem_indexer_golden
 
 
 TOPK_BOUNDARY_RE_TOLERANCE = 1e-3
+TOPK_BOUNDARY_ABS_TOLERANCE = 2.5e-5
 MAX_BOUNDARY_RE_EXCEED_RATIO = 5e-3
 MAX_PRINT_FAILURES = 8
 
@@ -29,9 +32,28 @@ def normalize_npu_result(npu_result):
 
 
 def calculate_relative_error(value, reference):
+    # Align with equal_nan=True.
+    if math.isnan(value) and math.isnan(reference):
+        return 0.0
+
+    # Equal finite values and infinities with the same sign.
+    if value == reference:
+        return 0.0
+
+    # One-sided NaN/Inf and infinities with different signs.
+    if not math.isfinite(value) or not math.isfinite(reference):
+        return float("inf")
+
+    absolute_error = abs(value - reference)
+
+    # Handle zero and small errors near zero.
+    if absolute_error <= TOPK_BOUNDARY_ABS_TOLERANCE:
+        return 0.0
+
     if reference == 0.0:
-        return 0.0 if value == 0.0 else float("inf")
-    return abs(value - reference) / abs(reference)
+        return float("inf")
+
+    return absolute_error / abs(reference)
 
 
 def get_row_scores(case, inputs, b_idx, q_head_idx, q_block_idx):

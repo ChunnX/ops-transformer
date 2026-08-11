@@ -268,7 +268,8 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckInOutDataType()
     outputType_ = opParamInfo_.sparseIndicesOut.desc->GetDataType();
     seqLenType_ = opParamInfo_.qSeqLens.desc->GetDataType();
     metadataType_ = opParamInfo_.metadata.desc->GetDataType();
-    const ge::DataType numPromptType = useKvSeqLensAsNumPrompt_ ? opParamInfo_.kvSeqLens.desc->GetDataType() : opParamInfo_.numPromptTokens.desc->GetDataType();
+    const auto promptDesc = useKvSeqLensAsNumPrompt_ ? opParamInfo_.kvSeqLens.desc : opParamInfo_.numPromptTokens.desc;
+    const ge::DataType numPromptType = promptDesc->GetDataType();
 
     OP_CHECK_IF(inputQType_ != ge::DT_BF16 || inputKType_ != ge::DT_BF16,
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
