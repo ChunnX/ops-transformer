@@ -195,5 +195,21 @@ TestCases = {
         "q_start_idx": 64,
         "kv_start_idx": 32,
         "keep_prob": 0.9,  # keep_prob = 1 - dropout_p
+    },
+    "DYN_OPT_BNSD": {
+        "B": 1,
+        "N1": 1,
+        "Sq": 30000,
+        "D": 128,
+        "input_layout": "BNSD",
+        "dtype": torch.bfloat16
+    },
+    "DYN_OPT_BSND": {
+        "B": 1,
+        "N1": 24,
+        "Sq": 576,
+        "D": 128,
+        "input_layout": "BSND",
+        "dtype": torch.bfloat16
     }
 }
