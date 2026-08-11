@@ -266,7 +266,7 @@ protected:
     virtual bool AnalyzeInputs();
     virtual void PrintQuantParams();
     bool IsMicroScaling() const;
-    bool CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape,
+    bool CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape, const gert::StorageShape *wScaleStorageShape,
                                     uint64_t expectedNSize = 0UL) const;
     bool CheckShapeForWeightNz(const gert::Shape &wShape, uint64_t expectedNSize = 0UL) const;
     uint64_t GetSizeWithDataType(uint64_t shapeSize, ge::DataType dtype) const;
@@ -307,10 +307,12 @@ private:
     bool CheckFp4Shape(const gert::Shape &xShape, const gert::Shape &wShape) const;
     bool CheckBiasDtype() const;
     bool CheckBiasShape(const gert::StorageShape *biasStorageShape) const;
-    bool CheckQuantParamsForMxQuantMode(const gert::StorageShape *xScaleStorageShape, const gert::Shape &wScaleShape,
+    bool CheckQuantParamsForMxQuantMode(const gert::StorageShape *xScaleStorageShape,
+                                        const gert::StorageShape *wScaleStorageShape,
                                         uint64_t expectedNSize = 0UL) const;
-    bool CheckQuantParams(const gert::StorageShape *xScaleStorageShape, const gert::Shape &wScaleShape,
+    bool CheckQuantParams(const gert::StorageShape *xScaleStorageShape, const gert::StorageShape *wScaleStorageShape,
                           uint64_t expectedNSize = 0UL) const;
+    bool CheckScaleNnShape(const gert::StorageShape *wScaleStorageShape, uint64_t expectedNSize = 0UL) const;
     bool CheckQuantParamsForNonKGroupQuantMode(const gert::Shape &wScaleShape, uint64_t expectedNSize = 0UL) const;
     bool SetMKNList();
     bool CheckDtypeForWeightNz(bool isPertokenScaleNull) const;

@@ -225,8 +225,8 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>公式中的<code>scale</code>，代表量化参数中的缩放因子。</td>
     <td>一般情况下，长度与weight相同。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
     <td>UINT64、INT64、BFLOAT16、FLOAT32、FLOAT8_E8M0<sup>2</sup></td>
-    <td>ND</td>
-    <td>-</td>
+    <td>ND/Nn</td>
+    <td>1~5</td>
     <td>-</td>
     </tr>
     <tr>
@@ -699,6 +699,13 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         |:---------:|:---------:| :------ |
         |0|weight单tensor|每个tensor 4维，当weight转置时，shape为(g, N, ceil(K / 64), 2)；当weight不转置时，shape为(g, ceil(K / 64), N, 2)|
         |0|weight多tensor|每个tensor 3维，当weight转置时，shape为(N, ceil(K / 64), 2)；当weight不转置时，shape为(ceil(K / 64), N, 2)|
+
+    - scaleOptional Nn格式说明：
+      - 仅动态量化（mx量化）场景支持，scaleOptional数据类型为FLOAT8_E8M0，且weight为NZ格式。
+      - Nn格式下，scaleOptional的逻辑shape仍为(g, ceil(K / 64), N, 2)，实际存储shape为(g, ceil(N / 16), ceil(K / 64), 16, 2)。
+      - 无论weight是否转置，scaleOptional的Nn存储shape均为(g, ceil(N / 16), ceil(K / 64), 16, 2)。
+      - weight多tensor场景下，scaleOptional中每个tensor的逻辑shape为(ceil(K / 64), N, 2)，实际存储shape为(ceil(N / 16), ceil(K / 64), 16, 2)。
+      - 非Nn格式下，scaleOptional继续使用上表中的原ND shape约束。
 
     - perTokenScaleOptional要满足下表：
 
