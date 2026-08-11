@@ -2146,6 +2146,14 @@ ge::graphStatus DequantChecker::CheckOffsetExistenceForAntiquant(const FiaTiling
     auto &keyAntiquantOffsetTensor = fiaInfo.opParamInfo.keyAntiquantOffset.tensor;
     auto &valueAntiquantOffsetTensor = fiaInfo.opParamInfo.valueAntiquantOffset.tensor;
     auto inputKvType = fiaInfo.opParamInfo.key.desc->GetDataType();
+    int64_t keyAntiquantMode = 0;
+    int64_t valueAntiquantMode = 0;
+    if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
+        keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
+    }
+    if (fiaInfo.opParamInfo.valueAntiquantMode != nullptr) {
+        valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
+    }
 
     // keyAntiquantOffset和valueAntiquantOffset要么同时存在，要么同时不存在
     OP_CHECK_IF((keyAntiquantOffsetTensor != nullptr && valueAntiquantOffsetTensor == nullptr),
@@ -2158,6 +2166,15 @@ ge::graphStatus DequantChecker::CheckOffsetExistenceForAntiquant(const FiaTiling
                     fiaInfo.opName, "key_antiquant_offset and value_antiquant_offset",
                     "When keyAntiquantOffsetTensor is empty, valueAntiquantOffsetDesc must be empty"),
                 return ge::GRAPH_FAILED);
+    // MXFP4 per-token-group keeps the established non-PA path symmetric. Optional offset is a PA-only extension.
+    if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE &&
+        fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION) {
+        OP_CHECK_IF((keyAntiquantOffsetTensor != nullptr),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        fiaInfo.opName, "key_antiquant_offset and value_antiquant_offset",
+                        "Per-token-group antiquant offset is supported only in PageAttention mode"),
+                    return ge::GRAPH_FAILED);
+    }
     // key、value的datatype为FLOAT8_E4M3FN、HIFLOAT8时，不支持Offset
     if (inputKvType == ge::DT_FLOAT8_E4M3FN || inputKvType == ge::DT_HIFLOAT8) {
         OP_CHECK_IF((keyAntiquantOffsetTensor != nullptr),
@@ -2650,8 +2667,9 @@ ge::graphStatus DequantChecker::CheckOffsetTypeForAntiquant(const FiaTilingInfo 
         valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
     }
     auto &queryDesc = fiaInfo.opParamInfo.query.desc;
-    if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
-        // per-token-group模式（MXFP4非对称）：offset的数据类型与query一致
+    if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE &&
+        fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
+        // PageAttention per-token-group模式（MXFP4非对称）：offset的数据类型与query一致
         auto &keyAntiquantOffsetDesc = fiaInfo.opParamInfo.keyAntiquantOffset.desc;
         if (keyAntiquantOffsetDesc != nullptr) {
             OP_CHECK_IF((keyAntiquantOffsetDesc->GetDataType() != queryDesc->GetDataType()),

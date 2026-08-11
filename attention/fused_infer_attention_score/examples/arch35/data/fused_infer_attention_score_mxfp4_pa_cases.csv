@@ -3,7 +3,8 @@
 # A positive optional seed selects reproducible pseudo-random data. It uses the
 # stable functional scale/offset range. A final profile value of 'wide' selects
 # the dedicated antiquant stress data; 'pta_affine' reproduces the op-plugin
-# deterministic PTA peer generator exactly. Each full 16-FP4
+# deterministic PTA peer generator exactly; 'e8m0_zero' fixes every scale to
+# the finite E8M0 endpoint 2^-127. Each full 16-FP4
 # segment remains a seeded permutation, so no E2M1 code drops from coverage.
 # The first two cases are the initial NZ numerical gate. All use the complete
 # FLOAT4_E2M1 code table; only shape/page-layout semantics live in this CSV.
@@ -29,6 +30,12 @@ nz_bf16_asymmetric_random_d512_seed16381,nz,bf16,1,2,3,1,512,128,10,257;129,9;2;
 # With S2=1, softmax is exactly one. This isolates wide E8M0/offset value
 # antiquantization and PA physical-page selection from multi-token softmax math.
 nz_bf16_asymmetric_wide_scale_single_token_seed65537,nz,bf16,1,3,3,1,128,128,10,1;1;1,9;2;5,65537,3,wide
+# E8M0 code 0 regression. S2=1 makes softmax exactly one, so the output directly
+# exposes whether the converter preserves 2^-127 or incorrectly substitutes 1.0.
+# NZ covers AntiqScalePerTokenGroupByVFImpl; BNBD/BBH cover AntiqScaleByVFImpl.
+nz_bf16_symmetric_e8m0_zero_single_token,nz,bf16,0,1,2,1,32,128,3,1,2,1,2,e8m0_zero
+bnbd_bf16_symmetric_e8m0_zero_single_token,bnbd,bf16,0,1,2,1,32,128,3,1,2,1,2,e8m0_zero
+bbh_bf16_symmetric_e8m0_zero_single_token,bbh,bf16,0,1,2,1,32,128,3,1,2,1,2,e8m0_zero
 # S2=2 is the smallest K/QK/softmax/PV path. It retains the same wide
 # dequantization data and non-identity physical page selection as S2=1.
 nz_bf16_asymmetric_wide_scale_two_token_seed65537,nz,bf16,1,3,3,1,128,128,10,2;2;2,9;2;5,65537,3,wide

@@ -1107,7 +1107,7 @@ __simd_vf__ void AntiqScaleByVFImpl(__ubuf__ uint8_t *ub_src_addr, __ubuf__ half
 
     MicroAPI::Duplicate(e8m0_zero, 0x0);
     MicroAPI::Duplicate(e8m0_nan, 0x7f80); // 0xff << 7
-    MicroAPI::Duplicate(b16_zero, 0x3f80); // E8M0 0x00 => bf16 1.0
+    MicroAPI::Duplicate(b16_zero, 0x0040); // E8M0 0x00 => bf16 2^-127
     MicroAPI::Duplicate(b16_nan, 0x7fff);
     for (uint16_t i = 0; i < static_cast<uint16_t>(loop_cnt); i++) {
         MicroAPI::LoadAlign<uint8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_UNPACK_B8>(
@@ -1191,7 +1191,7 @@ __simd_vf__ void AntiqScalePerTokenGroupByVFImpl(__ubuf__ uint8_t *ub_src_addr, 
     preg_135 = MicroAPI::CreateMask<Q_T, MicroAPI::MaskPattern::ALL>();
     int16_t shift_4bit_0 = 7;
 
-    MicroAPI::Duplicate(b16_zero, 0x3f80); // E8M0 0x00 => bf16 1.0
+    MicroAPI::Duplicate(b16_zero, 0x0040); // E8M0 0x00 => bf16 2^-127
     MicroAPI::Duplicate(b16_nan, 0x7fff);
     MicroAPI::Duplicate(e8m0_zero, 0x0);
     MicroAPI::Duplicate(e8m0_nan, 0x7f80); // 0xff << 7

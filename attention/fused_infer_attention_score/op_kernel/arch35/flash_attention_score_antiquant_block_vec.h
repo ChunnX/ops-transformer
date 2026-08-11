@@ -629,6 +629,7 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetAntiqParamCommon(const RunInfo<
     }
     taskParam.kvGmOffset = kvOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
     taskParam.s2BatchOffset = curSequence;
+    taskParam.kvPaddingBeginOffset = runInfo.kvLeftPaddingSize;
     if constexpr (KVFP4) {
         // per-token-group模式：B/N/S段偏移由antiquant processor按grpNum统一计算
         taskParam.antiqParamOffset = 0;

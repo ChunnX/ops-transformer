@@ -46,7 +46,7 @@ constexpr std::array<float, 16> FP4_E2M1_VALUES = {
 
 enum class QType : uint8_t { FP16, BF16 };
 enum class KvLayout : uint8_t { PA_NZ, PA_BNBD, PA_BBH };
-enum class RandomProfile : uint8_t { LEGACY, STABLE, WIDE, PTA_AFFINE };
+enum class RandomProfile : uint8_t { LEGACY, STABLE, WIDE, PTA_AFFINE, E8M0_ZERO };
 
 struct CaseConfig {
     std::string name;
@@ -157,6 +157,9 @@ const char *RandomProfileName(RandomProfile profile)
     if (profile == RandomProfile::STABLE) {
         return "stable";
     }
+    if (profile == RandomProfile::E8M0_ZERO) {
+        return "e8m0_zero";
+    }
     return profile == RandomProfile::PTA_AFFINE ? "pta_affine" : "legacy";
 }
 
@@ -205,6 +208,11 @@ uint8_t Fp4Code(const CaseConfig &config, int64_t p, int64_t n, int64_t token, i
 
 uint8_t ScaleCode(const CaseConfig &config, int64_t p, int64_t n, int64_t group, int64_t token, int64_t salt)
 {
+    if (config.randomProfile == RandomProfile::E8M0_ZERO) {
+        // E8M0 code 0 is the finite endpoint 2^-127. This catches accidental
+        // substitution with BF16 1.0 in the byte-to-BF16 conversion path.
+        return 0;
+    }
     if (config.randomProfile == RandomProfile::PTA_AFFINE) {
         return static_cast<uint8_t>(125 + ((5 * p + 3 * n + token + 7 * group +
                                             static_cast<int64_t>(config.seed) + salt) & 0x3U));
@@ -629,6 +637,8 @@ bool ParseCase(const std::vector<std::string> &fields, CaseConfig *config)
             config->randomProfile = RandomProfile::WIDE;
         } else if (fields[14] == "pta_affine") {
             config->randomProfile = RandomProfile::PTA_AFFINE;
+        } else if (fields[14] == "e8m0_zero") {
+            config->randomProfile = RandomProfile::E8M0_ZERO;
         } else {
             return false;
         }
