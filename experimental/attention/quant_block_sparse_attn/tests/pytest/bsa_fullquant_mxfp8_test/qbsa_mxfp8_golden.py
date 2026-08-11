@@ -62,15 +62,12 @@ _CASE_BOOL_FIELDS = {
     "enable",
     "is_contiguous",
     "return_softmax_lse",
-    "empty_actual_seq",
 }
 _CASE_INT_FIELDS = {
     "B",
     "N1",
     "N2",
     "D",
-    "S1",
-    "S2",
     "block_size",
     "mask_mode",
     "quant_group_size",
@@ -78,25 +75,32 @@ _CASE_INT_FIELDS = {
     "device_id",
     "sparse_q_block_size",
     "sparse_kv_block_size",
-    "sparse_count",
     "quant_mode",
     "s2_base_size",
+    "max_block_per_batch",
 }
 _CASE_FLOAT_FIELDS = {
     "p_scale_value",
     "softmax_scale",
 }
 _CASE_RANGE_FIELDS = {"data_range_q", "data_range_k", "data_range_v"}
-_CASE_INT_LIST_FIELDS = {"actual_seq_q", "actual_seq_kv"}
+_CASE_INT_LIST_FIELDS = {
+    "cu_seqlens_q",
+    "cu_seqlens_kv",
+    "seqused_q",
+    "seqused_kv",
+}
 _CASE_REQUIRED_RUNTIME_FIELDS = {
     "B",
     "N1",
     "N2",
     "D",
-    "S1",
-    "S2",
-    "actual_seq_q",
-    "actual_seq_kv",
+    "cu_seqlens_q",
+    "cu_seqlens_kv",
+    "seqused_q",
+    "seqused_kv",
+    "sparse_mode",
+    "max_block_per_batch",
     "s2_base_size",
     "block_size",
     "mask_mode",
@@ -117,10 +121,7 @@ _CASE_REQUIRED_RUNTIME_FIELDS = {
     "device_id",
     "sparse_q_block_size",
     "sparse_kv_block_size",
-    "sparse_count",
     "quant_mode",
-    "sparse_pattern",
-    "block_table_pattern",
 }
 
 # 其余列作为用例设计参考信息原样保留，不参与 pytest 计算。CSV 按列名解析，允许继续携带扩展字段。
@@ -307,9 +308,10 @@ def _validate_case_design_fields(case):
                 "block_size must be a multiple of sparse_kv_block_size, "
                 f"got block_size={block_size}, sparse_kv_block_size={sparse_kv_block_size}"
             )
+    if int(case["max_block_per_batch"]) < 0:
+        raise ValueError("max_block_per_batch must be non-negative")
 
-    _get_runtime_seq_lengths(case, "actual_seq_q", "S1")
-    _get_runtime_seq_lengths(case, "actual_seq_kv", "S2")
+    _get_sequence_inputs(case)
 
     p_scale_mode = case.get(
         "p_scale_mode",
@@ -328,23 +330,47 @@ def _validate_case_design_fields(case):
         )
 
 
-def _get_runtime_seq_lengths(case, field_name, total_field_name):
-    """支持逐 batch 长度，也支持用单元素总 T 表示等长 batch。"""
-    values = [int(item) for item in case[field_name]]
+def _case_list(case, name):
+    return [int(item) for item in case[name]]
+
+
+def _get_sequence_inputs(case):
+    """Return the four operator sequence inputs and their effective lengths.
+
+    New MXFP8 cases use cu_seqlens_q + seqused_kv as the two effective-length
+    sources.  cu_seqlens_kv and seqused_q are present but must be empty for the
+    current operator contract.
+    """
     batch = int(case["B"])
-    if len(values) == batch:
-        return values
-    if len(values) == 1 and batch > 1:
-        total_size = values[0]
-        if total_size != int(case[total_field_name]) or total_size % batch != 0:
-            raise ValueError(
-                f"single-value {field_name} must equal {total_field_name} and be divisible by B, "
-                f"got {values}, {total_field_name}={case[total_field_name]}, B={batch}"
-            )
-        return [total_size // batch] * batch
-    raise ValueError(
-        f"{field_name} length must be B or 1, got {len(values)} for B={batch}"
-    )
+    cu_q = _case_list(case, "cu_seqlens_q")
+    cu_kv = _case_list(case, "cu_seqlens_kv")
+    seq_q = _case_list(case, "seqused_q")
+    seq_kv = _case_list(case, "seqused_kv")
+
+    if len(cu_q) != batch + 1 or not cu_q or cu_q[0] != 0:
+        raise ValueError(
+            f"cu_seqlens_q must start with 0 and contain B+1={batch + 1} values, got {cu_q}"
+        )
+    q_lengths = [end - start for start, end in zip(cu_q, cu_q[1:])]
+    if any(length < 0 for length in q_lengths):
+        raise ValueError(f"cu_seqlens_q must be nondecreasing, got {cu_q}")
+    if len(seq_kv) != batch or any(length < 0 for length in seq_kv):
+        raise ValueError(
+            f"seqused_kv must contain B={batch} non-negative values, got {seq_kv}"
+        )
+    if cu_kv:
+        raise ValueError("cu_seqlens_kv must be empty for MXFP8")
+    if seq_q:
+        raise ValueError("seqused_q must be empty for MXFP8")
+
+    return {
+        "cu_seqlens_q": torch.tensor(cu_q, dtype=torch.int32),
+        "cu_seqlens_kv": torch.empty((0,), dtype=torch.int32),
+        "seqused_q": torch.empty((0,), dtype=torch.int32),
+        "seqused_kv": torch.tensor(seq_kv, dtype=torch.int32),
+        "q_lengths": q_lengths,
+        "kv_lengths": seq_kv,
+    }
 
 
 def _normalize_case(case):
@@ -363,6 +389,15 @@ def _normalize_case(case):
     case["softmax_scale"] = case.get("softmax_scale") or (
         1.0 / math.sqrt(float(case["D"]))
     )
+    sequence_inputs = _get_sequence_inputs(case)
+    for name in ("cu_seqlens_q", "cu_seqlens_kv", "seqused_q", "seqused_kv"):
+        case[name] = sequence_inputs[name].tolist()
+    sparse_mode = case.get("sparse_mode")
+    if sparse_mode not in ("dense", "random"):
+        raise ValueError(
+            f"sparse_mode must be 'dense' or 'random', got {sparse_mode!r}"
+        )
+    case["sparse_mode"] = sparse_mode
     _validate_case_design_fields(case)
     return case
 
@@ -416,7 +451,7 @@ def _load_initial_case():
 
 
 def set_active_case(case):
-    global CASE, B, N_q, N_kv, D, ACTUAL_SEQ_Q, ACTUAL_SEQ_KV, BLOCK_SIZE, MASK_MODE
+    global CASE, B, N_q, N_kv, D, Q_LENGTHS, KV_LENGTHS, BLOCK_SIZE, MASK_MODE
     global \
         FP8_DTYPE, \
         SCALE_DTYPE, \
@@ -438,8 +473,9 @@ def set_active_case(case):
     N_q = CASE["N1"]
     N_kv = CASE["N2"]
     D = CASE["D"]
-    ACTUAL_SEQ_Q = CASE["actual_seq_q"]
-    ACTUAL_SEQ_KV = CASE["actual_seq_kv"]
+    sequence_inputs = _get_sequence_inputs(CASE)
+    Q_LENGTHS = sequence_inputs["q_lengths"]
+    KV_LENGTHS = sequence_inputs["kv_lengths"]
     BLOCK_SIZE = CASE["block_size"]
     MASK_MODE = CASE["mask_mode"]
     FP8_DTYPE = CASE["fp8_dtype"]
@@ -462,14 +498,14 @@ def set_active_case(case):
     if _block_num_raw is not None and int(_block_num_raw) <= 0:
         warnings.warn(
             f"{CASE.get('name', '<unnamed>')}: blocknum is expected to be >= 0; "
-            f"got {_block_num_raw} (<= 0), so it will be derived from actual_seq_kv",
+            f"got {_block_num_raw} (<= 0), so it will be derived from seqused_kv",
             UserWarning,
             stacklevel=2,
         )
     BLOCK_NUM = (
         int(_block_num_raw)
         if _block_num_raw is not None and int(_block_num_raw) > 0
-        else sum(math.ceil(int(seq_len) / BLOCK_SIZE) for seq_len in ACTUAL_SEQ_KV)
+        else sum(math.ceil(int(seq_len) / BLOCK_SIZE) for seq_len in KV_LENGTHS)
     )
 
 
@@ -645,84 +681,127 @@ def quantize_mxfp8_v(tensor_fp32, fp8_dtype, group_size=32):
     return quantized, descale
 
 
-def _physical_ids(start, count, pattern, rng):
-    ids = list(range(start, start + count))
-    if pattern == "reverse":
-        ids.reverse()
-    elif pattern == "random":
-        rng.shuffle(ids)
-    elif pattern != "sequential":
-        raise ValueError(f"Unsupported block table pattern: {pattern}")
-    return ids
-
-
 def _make_reference_block_table(
     batch,
     seq_lens,
     block_size,
-    pattern,
     rng,
     physical_block_count=0,
     sparse_indices=None,
     sparse_seq_len=None,
     sparse_block_size=None,
+    max_block_per_batch=None,
 ):
+    """Generate ``[B, max logical PA pages]`` with random physical IDs."""
     if isinstance(seq_lens, int):
         seq_lens = [seq_lens] * batch
     block_nums = [math.ceil(int(seq_len) / block_size) for seq_len in seq_lens]
-    max_block_num = max(block_nums) if block_nums else 0
-    block_table = torch.full((batch, max_block_num), fill_value=-1, dtype=torch.int32)
-
-    total_logical_blocks = sum(block_nums)
-    if total_logical_blocks == 0:
-        return block_table
-
-    # physical_block_count > 0 时用传入的物理页数，否则自动推导。
-    total_physical_blocks = (
-        physical_block_count if physical_block_count > 0 else total_logical_blocks
+    required_width = max(block_nums) if block_nums else 0
+    requested_width = (
+        required_width
+        if max_block_per_batch is None
+        else int(max_block_per_batch)
     )
+    if requested_width < 0:
+        raise ValueError("max_block_per_batch must be non-negative")
+    max_block_num = max(required_width, requested_width)
+    if max_block_num == 0:
+        return torch.empty((batch, 0), dtype=torch.int32)
 
-    # sparse_indices uses sparse-block IDs, while block_table uses PA-page IDs.
-    # One PA page may contain several sparse blocks, so convert the IDs before
-    # deciding which logical PA pages need a physical mapping.
-    needed_logical_ids = [[] for _ in range(batch)]
-    if sparse_indices is not None and sparse_seq_len is not None:
-        if (
-            sparse_block_size is None
-            or sparse_block_size <= 0
-            or block_size % sparse_block_size != 0
-        ):
-            raise ValueError(
-                "sparse_block_size must be a positive divisor of block_size when "
-                "building a sparse PA block table"
-            )
-        sparse_blocks_per_page = block_size // sparse_block_size
-        for b in range(batch):
-            valid = sparse_indices[b][sparse_seq_len[b] > 0]
-            needed_logical_ids[b] = [
-                int(x)
-                for x in torch.div(
-                    valid[valid >= 0].unique(),
-                    sparse_blocks_per_page,
-                    rounding_mode="floor",
-                ).unique()
-                if x < block_nums[b]
-            ]
-
-    # 给选中的逻辑页分配物理页 ID，范围 [0, total_physical_blocks)
-    # physical_ids 按 pattern 生成物理页 ID 序列（sequential/reverse/random）
-    physical_ids = _physical_ids(0, total_physical_blocks, pattern, rng)
-    next_pid = 0
-    for b in range(batch):
-        needed = (
-            needed_logical_ids[b]
-            if needed_logical_ids[b]
-            else list(range(block_nums[b]))
+    physical_block_count = int(physical_block_count)
+    if physical_block_count <= 0:
+        raise ValueError(
+            "physical_block_count must be positive when block_table is non-empty"
         )
-        for lid in needed:
-            block_table[b, lid] = physical_ids[next_pid % total_physical_blocks]
-            next_pid += 1
-    return block_table
+    # Sample with replacement.  Repeated IDs are valid and model physical-page
+    # sharing; values in padded columns are harmless because seqused_kv limits
+    # the logical pages that the kernel may read.
+    values = [
+        rng.randrange(physical_block_count)
+        for _ in range(batch * max_block_num)
+    ]
+    return torch.tensor(values, dtype=torch.int32).reshape(batch, max_block_num)
+
+
+def _validate_reference_block_table(
+    block_table,
+    seq_lens,
+    block_size,
+    physical_block_count,
+    sparse_indices,
+    sparse_seq_len,
+    sparse_block_size,
+):
+    """Validate table shape/range and every sparse logical-page lookup."""
+    if block_size <= 0 or sparse_block_size <= 0:
+        raise ValueError("block sizes must be positive")
+    if block_size % sparse_block_size != 0:
+        raise ValueError("sparse_block_size must divide block_size")
+
+    seq_lens = [int(length) for length in seq_lens]
+    logical_counts = [math.ceil(length / block_size) for length in seq_lens]
+    minimum_width = max(logical_counts, default=0)
+    if block_table.dim() != 2 or block_table.shape[0] != len(seq_lens):
+        raise ValueError(
+            "invalid block_table shape: "
+            f"got {tuple(block_table.shape)}, expected B={len(seq_lens)}"
+        )
+    if block_table.shape[1] < minimum_width:
+        raise ValueError(
+            "block_table width is smaller than the maximum logical-page count: "
+            f"got {block_table.shape[1]}, need at least {minimum_width}"
+        )
+
+    physical_block_count = int(physical_block_count)
+    if block_table.numel() > 0 and (
+        physical_block_count <= 0
+        or torch.any(block_table < 0)
+        or torch.any(block_table >= physical_block_count)
+    ):
+        raise ValueError(
+            f"block_table physical IDs must be in [0, {physical_block_count})"
+        )
+
+    sparse_blocks_per_page = block_size // sparse_block_size
+    for batch_idx, (seq_len, logical_count) in enumerate(
+        zip(seq_lens, logical_counts)
+    ):
+        max_sparse_blocks = math.ceil(seq_len / sparse_block_size)
+        for head_idx in range(sparse_indices.shape[1]):
+            for qb_idx in range(sparse_indices.shape[2]):
+                count = int(sparse_seq_len[batch_idx, head_idx, qb_idx])
+                if count < 0 or count > sparse_indices.shape[-1]:
+                    raise ValueError(
+                        "invalid sparse_seq_len: "
+                        f"B={batch_idx}, N={head_idx}, Qb={qb_idx}, count={count}"
+                    )
+                sparse_ids = sparse_indices[
+                    batch_idx, head_idx, qb_idx, :count
+                ].to(torch.long)
+                if sparse_ids.numel() == 0:
+                    continue
+                if torch.any(sparse_ids < 0) or torch.any(
+                    sparse_ids >= max_sparse_blocks
+                ):
+                    raise ValueError(
+                        "sparse_indices references a block outside seqused_kv: "
+                        f"B={batch_idx}, N={head_idx}, Qb={qb_idx}, "
+                        f"ids={sparse_ids.tolist()}, max={max_sparse_blocks}"
+                    )
+                logical_ids = torch.div(
+                    sparse_ids, sparse_blocks_per_page, rounding_mode="floor"
+                )
+                physical_ids = block_table[batch_idx, logical_ids]
+                if torch.any(physical_ids < 0) or torch.any(
+                    physical_ids >= physical_block_count
+                ):
+                    raise ValueError(
+                        "sparse_indices references an unmapped PA page: "
+                        f"B={batch_idx}, N={head_idx}, Qb={qb_idx}, "
+                        f"logical={logical_ids.tolist()}, "
+                        f"physical={physical_ids.tolist()}"
+                    )
+
 
 
 def _allowed_blocks(
@@ -743,23 +822,17 @@ def _allowed_blocks(
     return list(range(max_block + 1))
 
 
-def _select_blocks(blocks, sparse_count, pattern, rng):
-    if sparse_count <= 0 or not blocks or pattern == "empty":
+def _select_blocks(blocks, sparse_mode, rng):
+    if not blocks:
         return []
-    if pattern in ("sequential", "dense", "causal"):
-        return blocks[: min(sparse_count, len(blocks))]
-    if pattern == "reverse":
-        return list(reversed(blocks[-min(sparse_count, len(blocks)) :]))
-    if pattern == "tail":
-        selected = blocks[: max(0, min(sparse_count, len(blocks)) - 1)]
-        if blocks[-1] not in selected:
-            selected.append(blocks[-1])
-        return selected[:sparse_count]
-    if pattern == "random":
+    if sparse_mode == "random":
         selected = blocks[:]
         rng.shuffle(selected)
-        return selected[: min(sparse_count, len(selected))]
-    raise ValueError(f"Unsupported sparse pattern: {pattern}")
+        random_count = rng.randint(1, len(selected))
+        return selected[:random_count]
+    if sparse_mode == "dense":
+        return blocks[:]
+    raise ValueError(f"Unsupported sparse_mode: {sparse_mode!r}")
 
 
 def _make_reference_sparse_indices(case, q_lengths, kv_lengths, rng):
@@ -787,9 +860,7 @@ def _make_reference_sparse_indices(case, q_lengths, kv_lengths, rng):
                 if qb_idx >= qb_batch:
                     selected = []
                 else:
-                    selected = _select_blocks(
-                        allowed, case["sparse_count"], case["sparse_pattern"], rng
-                    )
+                    selected = _select_blocks(allowed, case["sparse_mode"], rng)
                 sparse_seq_len[batch_idx, head_idx, qb_idx] = len(selected)
                 if selected:
                     sparse_indices[batch_idx, head_idx, qb_idx, : len(selected)] = (
@@ -798,15 +869,24 @@ def _make_reference_sparse_indices(case, q_lengths, kv_lengths, rng):
     return sparse_indices, sparse_seq_len
 
 
-def _make_reference_sparse_for_lengths(actual_seq_q, actual_seq_kv):
-    case = dict(CASE)
-    case["S1"] = max(int(item) for item in actual_seq_q)
-    case["S2"] = max(int(item) for item in actual_seq_kv)
-    case["sparse_count"] = math.ceil(case["S2"] / case["sparse_kv_block_size"])
+def _resolve_sparse_mode(case):
+    """Validate the shared dense/random sparse mode."""
+    resolved = dict(case)
+    sparse_mode = resolved.get("sparse_mode")
+    if sparse_mode not in ("dense", "random"):
+        raise ValueError(
+            f"sparse_mode must be 'dense' or 'random', got {sparse_mode!r}"
+        )
+    resolved["sparse_mode"] = sparse_mode
+    return resolved
+
+
+def _make_reference_sparse_for_lengths(q_lengths, kv_lengths):
+    case = _resolve_sparse_mode(CASE)
     return _make_reference_sparse_indices(
         case,
-        [int(item) for item in actual_seq_q],
-        [int(item) for item in actual_seq_kv],
+        [int(item) for item in q_lengths],
+        [int(item) for item in kv_lengths],
         random.Random(case["seed"]),
     )
 
@@ -1051,6 +1131,34 @@ def convert_v_scale_to_pa(scale_bnsd, seq_lens, group_size=32):
     return result
 
 
+def _validate_direct_pa_kv_shapes(key, value, k_descale, v_descale):
+    expected = {
+        "K": (BLOCK_NUM, N_kv, BLOCK_SIZE, D),
+        "V": (BLOCK_NUM, N_kv, BLOCK_SIZE, D),
+        "K descale": (BLOCK_NUM, N_kv, BLOCK_SIZE, D // 64, 2),
+        "V descale": (
+            BLOCK_NUM,
+            N_kv,
+            math.ceil(BLOCK_SIZE / 64),
+            D,
+            2,
+        ),
+    }
+    actual = {
+        "K": tuple(key.shape),
+        "V": tuple(value.shape),
+        "K descale": tuple(k_descale.shape),
+        "V descale": tuple(v_descale.shape),
+    }
+    mismatches = [
+        f"{name}: got {actual[name]}, expected {shape}"
+        for name, shape in expected.items()
+        if actual[name] != shape
+    ]
+    if mismatches:
+        raise ValueError("direct PA input shape mismatch; " + "; ".join(mismatches))
+
+
 # ==============================================================================
 # 数据生成
 # ==============================================================================
@@ -1064,12 +1172,19 @@ def _generate_reference_style_mxfp8_inputs():
     """
     case = dict(CASE)
     rng = random.Random(case["seed"])
+    # Keep PA placement reproducible but independent from how many random
+    # draws sparse-index generation performs.
+    block_table_rng = random.Random(int(case["seed"]) ^ 0x5A17B10C)
     generator = torch.Generator().manual_seed(case["seed"])
 
-    q_lengths = _get_runtime_seq_lengths(case, "actual_seq_q", "S1")
-    kv_lengths = _get_runtime_seq_lengths(case, "actual_seq_kv", "S2")
-    cu_seqlens_q = _prefix(q_lengths)
-    cu_seqlens_kv = _prefix(kv_lengths)
+    sequence_inputs = _get_sequence_inputs(case)
+    q_lengths = sequence_inputs["q_lengths"]
+    kv_lengths = sequence_inputs["kv_lengths"]
+    case = _resolve_sparse_mode(case)
+    cu_seqlens_q = sequence_inputs["cu_seqlens_q"]
+    cu_seqlens_kv = sequence_inputs["cu_seqlens_kv"]
+    seqused_q = sequence_inputs["seqused_q"]
+    seqused_kv = sequence_inputs["seqused_kv"]
     total_q = int(cu_seqlens_q[-1].item())
 
     batch = case["B"]
@@ -1094,18 +1209,41 @@ def _generate_reference_style_mxfp8_inputs():
         query = query.squeeze(0)
         q_descale = q_descale.squeeze(0)
 
-    # K/V: BSND fp32 → MXFP8 配套量化 → permute 到 BNSD
-    max_kv_len = max(kv_lengths)
-    k_fp32 = _rand_float((batch, max_kv_len, n2, head_dim), generator, DATA_RANGE_K)
-    v_fp32 = _rand_float((batch, max_kv_len, n2, head_dim), generator, DATA_RANGE_V)
+    # K/V are physical PA-cache inputs, not temporary logical BNSD tensors.
+    # Generate exactly the shapes passed to the operator:
+    #   K/V       [BlockNum, N2, BlockSize, D]
+    #   K descale [BlockNum, N2, BlockSize, D/64, 2]
+    #   V descale [BlockNum, N2, ceil(BlockSize/64), D, 2]
+    k_fp32 = _rand_float(
+        (BLOCK_NUM, n2, BLOCK_SIZE, head_dim), generator, DATA_RANGE_K
+    )
+    v_fp32 = _rand_float(
+        (BLOCK_NUM, n2, BLOCK_SIZE, head_dim), generator, DATA_RANGE_V
+    )
     _log_tensor_ranges(
         "original FP32 range",
         q=q_fp32,
         k=k_fp32,
         v=v_fp32,
     )
-    dense_key, dense_k_descale = quantize_mxfp8_qk(k_fp32, FP8_DTYPE, QUANT_GROUP_SIZE)
-    dense_value, dense_v_descale = quantize_mxfp8_v(v_fp32, FP8_DTYPE, QUANT_GROUP_SIZE)
+    key, k_descale_flat = quantize_mxfp8_qk(
+        k_fp32, FP8_DTYPE, QUANT_GROUP_SIZE
+    )
+    k_descale = pack_qk_scale_for_npu(k_descale_flat)
+
+    value_bsnd, v_descale_bsgnd = quantize_mxfp8_v(
+        v_fp32.permute(0, 2, 1, 3).contiguous(),
+        FP8_DTYPE,
+        QUANT_GROUP_SIZE,
+    )
+    value = value_bsnd.permute(0, 2, 1, 3).contiguous()
+    v_descale_bnsd = v_descale_bsgnd.permute(0, 2, 1, 3).contiguous()
+    v_descale = convert_v_scale_to_pa(
+        v_descale_bnsd,
+        [BLOCK_SIZE] * BLOCK_NUM,
+        QUANT_GROUP_SIZE,
+    )
+    _validate_direct_pa_kv_shapes(key, value, k_descale, v_descale)
 
     sparse_indices, sparse_seq_len = _make_reference_sparse_indices(
         case, q_lengths, kv_lengths, rng
@@ -1114,8 +1252,17 @@ def _generate_reference_style_mxfp8_inputs():
         batch,
         kv_lengths,
         BLOCK_SIZE,
-        case["block_table_pattern"],
-        rng,
+        block_table_rng,
+        BLOCK_NUM,
+        sparse_indices,
+        sparse_seq_len,
+        case["sparse_kv_block_size"],
+        case.get("max_block_per_batch"),
+    )
+    _validate_reference_block_table(
+        block_table,
+        kv_lengths,
+        BLOCK_SIZE,
         BLOCK_NUM,
         sparse_indices,
         sparse_seq_len,
@@ -1135,11 +1282,11 @@ def _generate_reference_style_mxfp8_inputs():
     return {
         "case": case,
         "query": query,
-        "key": dense_key.permute(0, 2, 1, 3).contiguous(),
-        "value": dense_value.permute(0, 2, 1, 3).contiguous(),
+        "key": key,
+        "value": value,
         "q_descale": q_descale,
-        "k_descale": dense_k_descale.permute(0, 2, 1, 3).contiguous(),
-        "v_descale": dense_v_descale.permute(0, 2, 1, 3).contiguous(),
+        "k_descale": k_descale,
+        "v_descale": v_descale,
         "p_scale": p_scale,
         "block_table": block_table,
         "sparse_indices": sparse_indices,
@@ -1148,6 +1295,8 @@ def _generate_reference_style_mxfp8_inputs():
         "kv_lengths": kv_lengths,
         "cu_seqlens_q": cu_seqlens_q,
         "cu_seqlens_kv": cu_seqlens_kv,
+        "seqused_q": seqused_q,
+        "seqused_kv": seqused_kv,
     }
 
 
@@ -1184,6 +1333,8 @@ def generate_data():
         data["kv_lengths"],
         data["cu_seqlens_q"],
         data["cu_seqlens_kv"],
+        data["seqused_q"],
+        data["seqused_kv"],
     )
 
 
@@ -1304,57 +1455,18 @@ def cpu_mxfp8_golden(
     if block_table_torch is None:
         raise ValueError("PA CPU golden requires block_table_torch")
 
-    # CPU golden must observe the same physical-page overwrite semantics as the
-    # NPU.  Reading the original dense K/V here is incorrect when several
-    # logical blocks reuse one physical block: mxfp8_pa_preprocessing writes
-    # the cache in batch/logical-block order, so later writes replace earlier
-    # data.  Build the CPU-side cache with the very same block table and helper
-    # used by npu_mxfp8_fa, then dereference it below for every sparse position.
+    # K/V and their descales are already physical PA-cache tensors.  The final
+    # physical cache is the source of truth: repeated block_table values make
+    # logical pages read the same physical data without any packing/overwrite
+    # order ambiguity.
     block_table = torch.as_tensor(block_table_torch, dtype=torch.int32)
-    k_tensor = mxfp8_pa_preprocessing(
-        k_fp8,
-        kv_lengths,
-        BLOCK_SIZE,
-        block_table,
-        is_vscale=False,
-        is_scale=False,
-        kv_layout="BnNBsD",
-        group_size=QUANT_GROUP_SIZE,
-        physical_block_count=BLOCK_NUM,
-    ).to(torch.float32)
-    v_tensor = mxfp8_pa_preprocessing(
-        v_fp8,
-        kv_lengths,
-        BLOCK_SIZE,
-        block_table,
-        is_vscale=False,
-        is_scale=False,
-        kv_layout="BnNBsD",
-        group_size=QUANT_GROUP_SIZE,
-        physical_block_count=BLOCK_NUM,
-    ).to(torch.float32)
-    k_scale = mxfp8_pa_preprocessing(
-        dequant_scale_k,
-        kv_lengths,
-        BLOCK_SIZE,
-        block_table,
-        is_vscale=False,
-        is_scale=True,
-        kv_layout="BnNBsD",
-        group_size=QUANT_GROUP_SIZE,
-        physical_block_count=BLOCK_NUM,
+    _validate_direct_pa_kv_shapes(
+        k_fp8, v_fp8, dequant_scale_k, dequant_scale_v
     )
-    v_scale = mxfp8_pa_preprocessing(
-        dequant_scale_v,
-        kv_lengths,
-        BLOCK_SIZE,
-        block_table,
-        is_vscale=True,
-        is_scale=True,
-        kv_layout="BnNBsD",
-        group_size=QUANT_GROUP_SIZE,
-        physical_block_count=BLOCK_NUM,
-    )
+    k_tensor = k_fp8.to(torch.float32)
+    v_tensor = v_fp8.to(torch.float32)
+    k_scale = torch.as_tensor(dequant_scale_k, dtype=torch.float32)
+    v_scale = torch.as_tensor(dequant_scale_v, dtype=torch.float32)
 
     total_q = int(cu_seqlens_q[-1].item())
     batch = len(q_lengths)
@@ -1641,11 +1753,17 @@ def _to_npu(tensor):
     return torch.as_tensor(tensor).npu()
 
 
+def _optional_npu_tensor(tensor):
+    if tensor is None or torch.as_tensor(tensor).numel() == 0:
+        return None
+    return _to_npu(tensor)
+
+
 def _prepare_npu_metadata(
-    q_lengths,
-    kv_lengths,
     cu_seqlens_q,
     cu_seqlens_kv,
+    seqused_q,
+    seqused_kv,
     block_table,
     q_n,
     kv_n,
@@ -1655,17 +1773,10 @@ def _prepare_npu_metadata(
     sparse_seq_len,
 ):
     """准备 metadata 算子输入，并生成主算子依赖的 metadata。"""
-    if CASE.get("empty_actual_seq", False):
-        seqused_q = torch.empty((0,), dtype=torch.int32)
-        seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
-    else:
-        seqused_q = torch.tensor(q_lengths, dtype=torch.int32)
-        seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
-
     cu_seqlens_q = _to_npu(cu_seqlens_q)
-    cu_seqlens_kv = _to_npu(cu_seqlens_kv)
-    seqused_q = seqused_q.npu()
-    seqused_kv = seqused_kv.npu()
+    cu_seqlens_kv = _optional_npu_tensor(cu_seqlens_kv)
+    seqused_q = _optional_npu_tensor(seqused_q)
+    seqused_kv = _to_npu(seqused_kv)
     sparse_indices = _to_npu(sparse_indices)
     sparse_seq_len = _to_npu(sparse_seq_len)
     block_table = _to_npu(block_table)
@@ -1679,8 +1790,8 @@ def _prepare_npu_metadata(
         kv_n,
         D,
         cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_kv=None,
-        seqused_q=None,
+        cu_seqlens_kv=cu_seqlens_kv,
+        seqused_q=seqused_q,
         seqused_kv=seqused_kv,
         batch_size=B,
         sparse_block_size_q=SPARSE_BLOCK_SIZE,
@@ -1709,10 +1820,10 @@ def _call_npu_fa_op(
     k,
     v,
     mask,
-    q_lengths,
-    kv_lengths,
     cu_seqlens_q,
     cu_seqlens_kv,
+    seqused_q,
+    seqused_kv,
     dequant_scale_q,
     dequant_scale_k,
     dequant_scale_v,
@@ -1740,10 +1851,10 @@ def _call_npu_fa_op(
         block_table,
         metadata,
     ) = _prepare_npu_metadata(
-        q_lengths,
-        kv_lengths,
         cu_seqlens_q,
         cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
         block_table,
         q_n,
         kv_n,
@@ -1768,8 +1879,8 @@ def _call_npu_fa_op(
         SPARSE_BLOCK_SIZE,
         SPARSE_BLOCK_SIZE,
         cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_kv=None,
-        seqused_q=None,
+        cu_seqlens_kv=cu_seqlens_kv,
+        seqused_q=seqused_q,
         seqused_kv=seqused_kv,
         block_table=block_table,
         metadata=metadata,
@@ -1833,9 +1944,8 @@ class _QuantBlockSparseAttnGraph(torch.nn.Module):
             self.sparse_block_size,
             self.sparse_block_size,
             cu_seqlens_q=cu_seqlens_q,
-            # The current MXFP8 operator contract requires both inputs to be None.
-            cu_seqlens_kv=None,
-            seqused_q=None,
+            cu_seqlens_kv=cu_seqlens_kv,
+            seqused_q=seqused_q,
             seqused_kv=seqused_kv,
             block_table=block_table,
             metadata=metadata,
@@ -1861,10 +1971,10 @@ def _call_npu_fa_op_graph(
     k,
     v,
     mask,
-    q_lengths,
-    kv_lengths,
     cu_seqlens_q,
     cu_seqlens_kv,
+    seqused_q,
+    seqused_kv,
     dequant_scale_q,
     dequant_scale_k,
     dequant_scale_v,
@@ -1892,10 +2002,10 @@ def _call_npu_fa_op_graph(
         block_table,
         metadata,
     ) = _prepare_npu_metadata(
-        q_lengths,
-        kv_lengths,
         cu_seqlens_q,
         cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
         block_table,
         q_n,
         kv_n,
@@ -1962,7 +2072,7 @@ def _call_npu_fa_op_graph(
 def _build_causal_mask():
     if MASK_MODE == 0:
         return torch.empty((0, 0), dtype=torch.uint8).npu()
-    return torch.triu(torch.ones(2048, 2048, dtype=torch.uint8), diagonal=0).npu()
+    return torch.tril(torch.ones(2048, 2048, dtype=torch.uint8), diagonal=0).npu()
 
 
 def _calc_cube_compute_amount(q_lengths, kv_lengths, sparse_indices, sparse_seq_len):
@@ -2144,6 +2254,8 @@ def npu_mxfp8_fa(
     kv_lengths,
     cu_seqlens_q,
     cu_seqlens_kv,
+    seqused_q,
+    seqused_kv,
     block_table_torch=None,
     sparse_indices=None,
     sparse_seq_len=None,
@@ -2197,32 +2309,11 @@ def npu_mxfp8_fa(
     if block_table_torch is None:
         raise ValueError("PA KV cache requires block_table_torch")
 
-    k_pa = mxfp8_pa_preprocessing(
-        k_fp8,
-        kv_lengths,
-        BLOCK_SIZE,
-        block_table_torch,
-        is_vscale=False,
-        is_scale=False,
-        kv_layout=KV_CACHE_LAYOUT,
-        group_size=QUANT_GROUP_SIZE,
-        sparse_indices=sparse_indices,
-        sparse_seq_len=sparse_seq_len,
-        physical_block_count=BLOCK_NUM,
+    _validate_direct_pa_kv_shapes(
+        k_fp8, v_fp8, dequant_scale_k, dequant_scale_v
     )
-    v_pa = mxfp8_pa_preprocessing(
-        v_fp8,
-        kv_lengths,
-        BLOCK_SIZE,
-        block_table_torch,
-        is_vscale=False,
-        is_scale=False,
-        kv_layout=KV_CACHE_LAYOUT,
-        group_size=QUANT_GROUP_SIZE,
-        sparse_indices=sparse_indices,
-        sparse_seq_len=sparse_seq_len,
-        physical_block_count=BLOCK_NUM,
-    )
+    k_pa = k_fp8
+    v_pa = v_fp8
     k_input = k_pa.contiguous().view(FP8_DTYPE)
     v_input = v_pa.contiguous().view(FP8_DTYPE)
     k_npu = k_input.npu()
@@ -2237,32 +2328,8 @@ def npu_mxfp8_fa(
             v_npu.is_contiguous(),
         )
 
-    k_scale_pa = mxfp8_pa_preprocessing(
-        dequant_scale_k,
-        kv_lengths,
-        BLOCK_SIZE,
-        block_table_torch,
-        is_vscale=False,
-        is_scale=True,
-        kv_layout=KV_CACHE_LAYOUT,
-        group_size=QUANT_GROUP_SIZE,
-        sparse_indices=sparse_indices,
-        sparse_seq_len=sparse_seq_len,
-        physical_block_count=BLOCK_NUM,
-    )
-    v_scale_pa = mxfp8_pa_preprocessing(
-        dequant_scale_v,
-        kv_lengths,
-        BLOCK_SIZE,
-        block_table_torch,
-        is_vscale=True,
-        is_scale=True,
-        kv_layout=KV_CACHE_LAYOUT,
-        group_size=QUANT_GROUP_SIZE,
-        sparse_indices=sparse_indices,
-        sparse_seq_len=sparse_seq_len,
-        physical_block_count=BLOCK_NUM,
-    )
+    k_scale_pa = dequant_scale_k
+    v_scale_pa = dequant_scale_v
 
     k_scale_e8m0 = fp32_to_e8m0fnu_safe(k_scale_pa, "K PA descale")
     v_scale_e8m0 = fp32_to_e8m0fnu_safe(v_scale_pa, "V PA descale")
@@ -2305,10 +2372,10 @@ def npu_mxfp8_fa(
         k_npu,
         v_npu,
         mask_arg,
-        q_lengths,
-        kv_lengths,
         cu_seqlens_q,
         cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
         deq_q_npu,
         deq_k_npu,
         deq_v_npu,
@@ -2538,12 +2605,13 @@ def run_one_case(
     logger.info("Q_INPUT_LAYOUT=%s, QDescale layout=TND", Q_INPUT_LAYOUT)
     logger.info("KV_CACHE_LAYOUT=%s", KV_CACHE_LAYOUT)
     logger.info("B=%d, N_q=%d, N_kv=%d, D=%d", B, N_q, N_kv, D)
-    logger.info("ACTUAL_SEQ_Q=%s, ACTUAL_SEQ_KV=%s", ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
+    logger.info("Q_LENGTHS=%s, KV_LENGTHS=%s", Q_LENGTHS, KV_LENGTHS)
     logger.info(
-        "block_size=%s, sparse_block_size=%s, sparse_count=%s",
+        "block_size=%s, sparse_block_size=%s, sparse_mode=%s, max_block_per_batch=%s",
         case.get("block_size"),
         case.get("sparse_q_block_size"),
-        case.get("sparse_count"),
+        case.get("sparse_mode"),
+        case.get("max_block_per_batch"),
     )
 
     if "gen" in mode:
@@ -2563,6 +2631,8 @@ def run_one_case(
             kv_lengths,
             cu_seqlens_q,
             cu_seqlens_kv,
+            seqused_q,
+            seqused_kv,
         ) = generate_data()
         golden_cache.save_input(
             case_name,
@@ -2581,6 +2651,8 @@ def run_one_case(
                 "kv_lengths": kv_lengths,
                 "cu_seqlens_q": cu_seqlens_q,
                 "cu_seqlens_kv": cu_seqlens_kv,
+                "seqused_q": seqused_q,
+                "seqused_kv": seqused_kv,
             },
             cache_dir=cache_dir,
         )
@@ -2598,18 +2670,21 @@ def run_one_case(
         block_table_torch = data.get("block_table_torch")
         sparse_indices = data.get("sparse_indices")
         sparse_seq_len = data.get("sparse_seq_len")
-        q_lengths = data.get(
-            "q_lengths", _get_runtime_seq_lengths(CASE, "actual_seq_q", "S1")
-        )
-        kv_lengths = data.get(
-            "kv_lengths", _get_runtime_seq_lengths(CASE, "actual_seq_kv", "S2")
-        )
+        sequence_inputs = _get_sequence_inputs(CASE)
+        q_lengths = data.get("q_lengths", sequence_inputs["q_lengths"])
+        kv_lengths = data.get("kv_lengths", sequence_inputs["kv_lengths"])
         cu_seqlens_q = data.get("cu_seqlens_q")
         cu_seqlens_kv = data.get("cu_seqlens_kv")
+        seqused_q = data.get("seqused_q")
+        seqused_kv = data.get("seqused_kv")
         if cu_seqlens_q is None:
-            cu_seqlens_q = _prefix(q_lengths)
+            cu_seqlens_q = sequence_inputs["cu_seqlens_q"]
         if cu_seqlens_kv is None:
-            cu_seqlens_kv = _prefix(kv_lengths)
+            cu_seqlens_kv = sequence_inputs["cu_seqlens_kv"]
+        if seqused_q is None:
+            seqused_q = sequence_inputs["seqused_q"]
+        if seqused_kv is None:
+            seqused_kv = sequence_inputs["seqused_kv"]
         if sparse_indices is None or sparse_seq_len is None:
             sparse_indices, sparse_seq_len = _make_reference_sparse_for_lengths(
                 q_lengths, kv_lengths
@@ -2674,6 +2749,8 @@ def run_one_case(
             kv_lengths,
             cu_seqlens_q,
             cu_seqlens_kv,
+            seqused_q,
+            seqused_kv,
             block_table_torch,
             sparse_indices,
             sparse_seq_len,

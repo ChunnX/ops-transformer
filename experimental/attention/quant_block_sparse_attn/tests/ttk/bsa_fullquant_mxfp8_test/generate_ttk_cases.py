@@ -63,14 +63,9 @@ def _normalize_range(value):
     return -radius, radius
 
 
-def sparse_mode_from_legacy(sparse_count, kv_lengths, sparse_kv_block_size):
-    max_blocks = math.ceil(max(kv_lengths, default=0) / int(sparse_kv_block_size))
-    return "full" if int(sparse_count) >= max_blocks else "random"
-
-
 def build_case_row(
     *, testcase_name, batch_size, num_heads_q, num_heads_kv,
-    head_dim, q_lengths, kv_lengths, blocksize, blocknum,
+    head_dim, q_lengths, kv_lengths, blocksize, blocknum, max_block_per_batch,
     sparse_block_size_q, sparse_block_size_kv, mask_mode, p_scale_value,
     softmax_scale, layout_q, layout_kv, layout_out, layout_sparse_indices,
     return_softmax_lse, sparse_mode, data_range_q, data_range_k, data_range_v,
@@ -82,6 +77,7 @@ def build_case_row(
     head_dim = int(head_dim)
     blocksize = int(blocksize)
     blocknum = int(blocknum)
+    max_block_per_batch = int(max_block_per_batch)
     sparse_block_size_q = int(sparse_block_size_q)
     sparse_block_size_kv = int(sparse_block_size_kv)
     q_lengths = [int(value) for value in q_lengths]
@@ -96,16 +92,19 @@ def build_case_row(
         raise ValueError(f"{testcase_name}: invalid PA/sparse block sizes")
     if blocknum <= 0:
         raise ValueError(f"{testcase_name}: blocknum must be positive")
+    if max_block_per_batch < 0:
+        raise ValueError(f"{testcase_name}: max_block_per_batch must be non-negative")
     if layout_kv != "PA_BNSD":
         raise ValueError(f"{testcase_name}: layout_kv must be PA_BNSD")
-    if sparse_mode not in ("full", "random"):
+    if sparse_mode not in ("dense", "random"):
         raise ValueError(f"{testcase_name}: invalid sparse_mode={sparse_mode!r}")
     total_q = sum(q_lengths)
     max_q = max(q_lengths, default=0)
     max_kv = max(kv_lengths, default=0)
     q_blocks = math.ceil(max_q / sparse_block_size_q)
     kv_blocks = math.ceil(max_kv / sparse_block_size_kv)
-    logical_pages = max((math.ceil(length / blocksize) for length in kv_lengths), default=0)
+    required_pages = max((math.ceil(length / blocksize) for length in kv_lengths), default=0)
+    logical_pages = max(required_pages, int(max_block_per_batch))
     if layout_q != "TND":
         raise ValueError(f"{testcase_name}: unsupported layout_q={layout_q!r}")
     query_shape = (total_q, num_heads_q, head_dim)
@@ -164,7 +163,7 @@ def build_case_row(
         (None, None), (None, None), (None, None),
         (-1, max(kv_blocks - 1, 0)), (0, kv_blocks), p_range,
         (0, total_q), (None, None), (None, None), (0, max_kv),
-        (-1, max(blocknum - 1, 0)), (0, 1), (None, None),
+        (0, max(blocknum - 1, 0)), (0, 1), (None, None),
     )
     return {
         "testcase_name": testcase_name,
@@ -187,15 +186,24 @@ def load_python_cases():
     ]
 
 
-def normalize_lengths(case, field):
+def sequence_lengths(case):
     batch = int(case["B"])
-    values = [int(item) for item in case[field]]
-    if len(values) != batch:
+    cu_q = [int(item) for item in case["cu_seqlens_q"]]
+    cu_kv = [int(item) for item in case["cu_seqlens_kv"]]
+    seq_q = [int(item) for item in case["seqused_q"]]
+    kv_lengths = [int(item) for item in case["seqused_kv"]]
+    if len(cu_q) != batch + 1 or not cu_q or cu_q[0] != 0:
+        raise ValueError(f"{case['name']}: invalid cu_seqlens_q")
+    if cu_kv or seq_q:
         raise ValueError(
-            f"{case['name']}: {field} must contain B={batch} explicit values, "
-            f"got {values}"
+            f"{case['name']}: cu_seqlens_kv and seqused_q must be empty"
         )
-    return values
+    if len(kv_lengths) != batch:
+        raise ValueError(f"{case['name']}: seqused_kv must contain B values")
+    q_lengths = [end - start for start, end in zip(cu_q, cu_q[1:])]
+    if any(length < 0 for length in q_lengths + kv_lengths):
+        raise ValueError(f"{case['name']}: sequence lengths must be non-negative")
+    return q_lengths, kv_lengths
 
 
 def normalize_data_range(case, field):
@@ -248,15 +256,14 @@ def validate_case(case, q_lengths, kv_lengths):
     if blocknum is not None and int(blocknum) <= 0:
         warnings.warn(
             f"{name}: blocknum is expected to be >= 0; got {blocknum} (<= 0), "
-            "so it will be derived from actual_seq_kv",
+            "so it will be derived from seqused_kv",
             UserWarning,
             stacklevel=2,
         )
 
 
 def case_to_row(case):
-    q_lengths = normalize_lengths(case, "actual_seq_q")
-    kv_lengths = normalize_lengths(case, "actual_seq_kv")
+    q_lengths, kv_lengths = sequence_lengths(case)
     validate_case(case, q_lengths, kv_lengths)
 
     batch = int(case["B"])
@@ -287,6 +294,7 @@ def case_to_row(case):
         kv_lengths=kv_lengths,
         blocksize=page_size,
         blocknum=physical_page_count,
+        max_block_per_batch=int(case["max_block_per_batch"]),
         sparse_block_size_q=sparse_q,
         sparse_block_size_kv=sparse_kv,
         mask_mode=int(case["mask_mode"]),
@@ -297,9 +305,7 @@ def case_to_row(case):
         layout_out=case["layout_out"],
         layout_sparse_indices=case["layout_sparse_indices"],
         return_softmax_lse=bool(case["return_softmax_lse"]),
-        sparse_mode=sparse_mode_from_legacy(
-            case["sparse_count"], kv_lengths, sparse_kv
-        ),
+        sparse_mode=case["sparse_mode"],
         data_range_q=normalize_data_range(case, "data_range_q"),
         data_range_k=normalize_data_range(case, "data_range_k"),
         data_range_v=normalize_data_range(case, "data_range_v"),
