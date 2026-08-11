@@ -110,8 +110,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
   const aclIntArray *mropeSection,
   aclTensor         *qOut,
   uint64_t          *workspaceSize,
-  aclOpExecutor     **executor
-);
+  aclOpExecutor     **executor)
 ```
 
 ```cpp
@@ -119,8 +118,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
   void          *workspace,
   uint64_t       workspaceSize,
   aclOpExecutor *executor,
-  aclrtStream    stream
-);
+  aclrtStream    stream)
 ```
 
 ## aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize
