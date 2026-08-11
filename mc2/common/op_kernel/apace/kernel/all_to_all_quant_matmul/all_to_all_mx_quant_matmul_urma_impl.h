@@ -75,7 +75,7 @@ public:
     __aicore__ inline void Init(__gm__ CommContext *hcommCtx,
                     GM_ADDR aGM, GM_ADDR scaleAGM,
                     GM_ADDR bGM, GM_ADDR scaleBGM,
-                    GM_ADDR cGM,
+                    GM_ADDR cGM, GM_ADDR biasGM,
                     const allToAllMatmulTilingData *tilingData);
     /**
      * @brief 执行算子逻辑（包含 AIC/AIV 分离逻辑）
@@ -140,6 +140,7 @@ private:
         GM_ADDR bGm{nullptr};
         GM_ADDR scaleBGm{nullptr};
         GM_ADDR cGm{nullptr};
+        GM_ADDR biasGm{nullptr};
 
         uint32_t rankId{0};
         int32_t  commTurn{0};     // 总流水步数
@@ -170,7 +171,7 @@ private:
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA, TransB>::Init(
     __gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR scaleAGM, GM_ADDR bGM, GM_ADDR scaleBGM, GM_ADDR cGM,
-    const allToAllMatmulTilingData *tilingData)
+    GM_ADDR biasGM, const allToAllMatmulTilingData *tilingData)
 {
     tilingData_ = tilingData;
     baseParams_.aGm = aGM;
@@ -178,6 +179,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     baseParams_.bGm = bGM;
     baseParams_.scaleBGm = scaleBGM;
     baseParams_.cGm = cGM;
+    baseParams_.biasGm = biasGM;
 
     syncBuffer_ = &(hcommCtx->ubmemCtx);
     udmaCtx_ = &(hcommCtx->udmaCtx);
@@ -287,6 +289,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 
     mmadParams.bGmAddr = baseParams_.bGm;
     mmadParams.scaleBGmAddr = baseParams_.scaleBGm;
+    mmadParams.biasGmAddr = baseParams_.biasGm;
 
     // 调度器参数
     BlockSchedulerParams schedulerParams{

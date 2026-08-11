@@ -41,7 +41,7 @@ public:
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
-        this->Input("bias") // bias is a placeholder: kernel ignores it, tiling rejects non-null
+        this->Input("bias")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
                        ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})

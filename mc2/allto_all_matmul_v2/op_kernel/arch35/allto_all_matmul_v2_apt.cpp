@@ -21,7 +21,6 @@ __global__ __aicore__ void allto_all_matmul_v2(GM_ADDR context, GM_ADDR x1, GM_A
                                                   GM_ADDR x1_scale, GM_ADDR x2_scale, GM_ADDR y, GM_ADDR all2all_out,
                                                   GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    (void)bias;
     (void)all2all_out;
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
 
@@ -41,6 +40,6 @@ __global__ __aicore__ void allto_all_matmul_v2(GM_ADDR context, GM_ADDR x1, GM_A
 #endif
 
     Impl impl;
-    impl.Init(hcommCtx, x1, x1_scale, x2, x2_scale, y, &tilingData);
+    impl.Init(hcommCtx, x1, x1_scale, x2, x2_scale, y, bias, &tilingData);
     impl.Run();
 }

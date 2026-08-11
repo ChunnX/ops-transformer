@@ -111,10 +111,7 @@ protected:
         }
 
         auto *biasDesc = context_->GetOptionalInputDesc(IDX_INPUT_BIAS);
-        if (biasDesc != nullptr) {
-            OP_LOGE(opName, "bias input must be empty.");
-            return ge::GRAPH_FAILED;
-        }
+        (void)biasDesc; // bias is passed through to kernel, validated by BlockMmad at runtime
 
         auto x1Dtype = x1Desc->GetDataType();
         auto x2Dtype = x2Desc->GetDataType();

@@ -59,6 +59,7 @@ def parse_args():
                         help="FP8 data type for x2 (overrides --dtype)")
     parser.add_argument("--ydtype", type=str, default="bf16", choices=["bf16", "fp16"],
                         help="Output data type")
+    parser.add_argument("--bias", action="store_true", help="Enable bias addition test")
     args = parser.parse_args()
     if args.x1dtype is None:
         args.x1dtype = args.dtype
@@ -91,7 +92,7 @@ def init_hccl_comm(rank, world_size):
 # Golden computation (mirrors gen_data.py logic, in-memory, no bin files)
 # ---------------------------------------------------------------------------
 
-def generate_inputs(bs, h, n, world_size, x1dtype="e4m3fn", x2dtype="e4m3fn"):
+def generate_inputs(bs, h, n, world_size, x1dtype="e4m3fn", x2dtype="e4m3fn", use_bias=False):
     np_dtype_x1 = FP8_NUMPY[x1dtype]
     np_dtype_x2 = FP8_NUMPY[x2dtype]
     """Generate all ranks' input data with a fixed seed.
@@ -157,6 +158,7 @@ def generate_inputs(bs, h, n, world_size, x1dtype="e4m3fn", x2dtype="e4m3fn"):
         "a_scale_list": a_scale_list,
         "a_dequant_list": a_dequant_list,
         "b_dequant": b_dequant,
+        "bias": np.random.uniform(-1, 1, n).astype(np.float32) if use_bias else None,
     }
 
 
@@ -204,8 +206,12 @@ def compute_golden(inputs, dst_rank):
     # Step 3: Matmul
     a_cpu = torch.from_numpy(a_permuted)
     b_cpu = torch.from_numpy(b_dequant)
+    out = torch.matmul(a_cpu, b_cpu)
+    if "bias" in inputs and inputs["bias"] is not None:
+        bias_t = torch.from_numpy(inputs["bias"])
+        out = out + bias_t
     out_dtype = torch.bfloat16 if inputs.get("ydtype", "bf16") == "bf16" else torch.float16
-    out = torch.matmul(a_cpu, b_cpu).to(out_dtype)
+    out = out.to(out_dtype)
 
     return out
 
@@ -240,9 +246,13 @@ def golden_test_worker(queue, rank, args, world_size):
         print(f"[INFO] rank {rank} scenario: x1/x2=fp8e4m3fn, scale=fp8e8m0, y=bfloat16 (MX quant)")
 
         # 1. Generate inputs (identical on every rank due to fixed seed)
-        inputs = generate_inputs(bs, h, n, world_size, args.x1dtype, args.x2dtype)
+        inputs = generate_inputs(bs, h, n, world_size, args.x1dtype, args.x2dtype, args.bias)
         inputs["ydtype"] = args.ydtype
         y_dtype_val = Y_DTYPE_BF16 if args.ydtype == "bf16" else Y_DTYPE_FP16
+
+        bias_npu = None
+        if args.bias and inputs["bias"] is not None:
+            bias_npu = torch.from_numpy(inputs["bias"]).npu()
 
         # This rank's x1 and x1_scale
         a_local = inputs["a_local_list"][rank]
@@ -272,6 +282,7 @@ def golden_test_worker(queue, rank, args, world_size):
                 x1,
                 x2,
                 group,
+                bias=bias_npu,
                 x1_scale=x1_scale,
                 x2_scale=x2_scale,
                 y_dtype=y_dtype_val,
@@ -293,6 +304,7 @@ def golden_test_worker(queue, rank, args, world_size):
             x1,
             x2,
             group,
+            bias=bias_npu,
             x1_scale=x1_scale,
             x2_scale=x2_scale,
             y_dtype=y_dtype_val,
