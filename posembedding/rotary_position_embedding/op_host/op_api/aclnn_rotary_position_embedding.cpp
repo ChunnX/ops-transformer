@@ -87,6 +87,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGetWorkspaceSize(const aclTensor* x, con
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
+    OP_CHECK_NULL(out, return ACLNN_ERR_PARAM_NULLPTR);
     if (out->IsEmpty()) {
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
@@ -126,12 +127,13 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2GetWorkspaceSize(const aclTensor* x, c
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
+    OP_CHECK_NULL(out, return ACLNN_ERR_PARAM_NULLPTR);
     if (out->IsEmpty()) {
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_SUCCESS;
     }
-    
+
     auto ret = RotaryPositionEmbeddingCommonProcess(x, cos, sin, rotate, mode, out, uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
