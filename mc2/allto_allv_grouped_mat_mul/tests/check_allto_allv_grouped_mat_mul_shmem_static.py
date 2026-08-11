@@ -285,6 +285,10 @@ def check_pta_run_and_docs() -> None:
         "PTA_TIMEOUT_SECONDS:-600",
         "timeout --signal=TERM --kill-after=30",
         "liballto_allv_grouped_mat_mul_shmem_pta.so",
+        "SHMEM_HOME_PATH",
+        "SHMEM_HOME",
+        "LD_LIBRARY_PATH",
+        "SHMEM runtime library directory",
         '"$@"',
     ):
         require(token in run, f"PTA run script missing contract token: {token}")
