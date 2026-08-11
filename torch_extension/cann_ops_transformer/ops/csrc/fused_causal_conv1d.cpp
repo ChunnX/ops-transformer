@@ -89,7 +89,7 @@ namespace op_api
         return y;
     }
 
-    at::Tensor npu_inplace_fused_causal_conv1d(
+    at::Tensor npu_fused_causal_conv1d_v2(
         const at::Tensor &x,
         const at::Tensor &weight,
         at::Tensor &conv_states,

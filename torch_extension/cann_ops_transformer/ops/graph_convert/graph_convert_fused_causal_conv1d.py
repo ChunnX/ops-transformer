@@ -98,10 +98,10 @@ if _TORCHAIR_AVAILABLE:
             "x": x,
             "weight": weight,
             "conv_states": conv_states,
-            "bias": bias,
             "query_start_loc": query_start_loc,
             "cache_indices": cache_indices,
             "initial_state_mode": initial_state_mode,
+            "bias": bias,
             "num_accepted_tokens": num_accepted_tokens,
             "num_computed_tokens": num_computed_tokens,
             "block_idx_first_scheduled_token": block_idx_first_scheduled_token,
@@ -109,7 +109,7 @@ if _TORCHAIR_AVAILABLE:
             "initial_state_idx": initial_state_idx,
         }
         attrs = {
-            "activation": attr.Str(activation),
+            "activation": _parse_activation(activation),
             "pad_slot_id": pad_slot_id,
             "run_mode": run_mode,
             "max_query_len": max_query_len,
@@ -128,7 +128,7 @@ if _TORCHAIR_AVAILABLE:
             outputs=outputs,
             dependencies=dependencies,
             node_name=node_name,
-            ir=IrDef("CausalConv1d")
+            ir=IrDef("FusedCausalConv1d")
             .input("x", "DT_BF16, DT_FLOAT16")
             .input("weight", "DT_BF16, DT_FLOAT16")
             .input("conv_states", "DT_BF16, DT_FLOAT16")
@@ -141,7 +141,7 @@ if _TORCHAIR_AVAILABLE:
             .optional_input("block_idx_first_scheduled_token", "DT_INT32")
             .optional_input("block_idx_last_scheduled_token", "DT_INT32")
             .optional_input("initial_state_idx", "DT_INT32")
-            .attr("activation_mode", attr.Str(None))
+            .attr("activation_mode", _parse_activation(activation))
             .attr("pad_slot_id", attr.Int(-1))
             .attr("run_mode", attr.Int(-1))
             .attr("max_query_len", attr.Int(-1))
@@ -205,13 +205,178 @@ if _TORCHAIR_AVAILABLE:
         )
         return y
 
+    def FusedCausalConv1dV2(
+        x: torch.Tensor,
+        weight: torch.Tensor,
+        conv_states: torch.Tensor,
+        *,
+        query_start_loc: Optional[torch.Tensor] = None,
+        cache_indices: Optional[torch.Tensor] = None,
+        initial_state_mode: Optional[torch.Tensor] = None,
+        bias: Optional[torch.Tensor],
+        num_accepted_tokens: Optional[torch.Tensor] = None,
+        num_computed_tokens: Optional[torch.Tensor] = None,
+        block_idx_first_scheduled_token: Optional[torch.Tensor] = None,
+        block_idx_last_scheduled_token: Optional[torch.Tensor] = None,
+        initial_state_idx: Optional[torch.Tensor] = None,
+        activation: str = None,
+        pad_slot_id: int = -1,
+        run_mode: int = 0,
+        max_query_len: int = -1,
+        residual_connection: int = 1,
+        block_size: int = 128,
+        conv_mode: int = 1,
+        max_draft_tokens: int = 7,
+        null_block_id: int = 0,
+        dependencies=None,
+        node_name=None,
+    ):
+        """REG_OP(InplaceFusedCausalConv1d)
+        .INPUT(x, TensorType({DT_BF16, DT_FLOAT16}))
+        .INPUT(weight, TensorType({DT_BF16, DT_FLOAT16}))
+        .INPUT(conv_states, TensorType({DT_BF16, DT_FLOAT16}))
+        .OPTIONAL_INPUT(query_start_loc, TensorType({DT_INT32}))
+        .OPTIONAL_INPUT(cache_indices, TensorType({DT_INT32}))
+        .OPTIONAL_INPUT(initial_state_mode, TensorType({DT_INT32}))
+        .OPTIONAL_INPUT(bias, TensorType({DT_BF16, DT_FLOAT16}))
+        .OPTIONAL_INPUT(num_accepted_tokens, TensorType({DT_INT32}))
+        .OPTIONAL_INPUT(num_computed_tokens, TensorType({DT_INT32}))
+        .OPTIONAL_INPUT(block_idx_first_scheduled_token, TensorType({DT_INT32}))
+        .OPTIONAL_INPUT(block_idx_last_scheduled_token, TensorType({DT_INT32}))
+        .OPTIONAL_INPUT(initial_state_idx, TensorType({DT_INT32}))
+        .ATTR(activation_mode, Int, 0)
+        .ATTR(pad_slot_id, Int, -1)
+        .ATTR(run_mode, Int, 0)
+        .ATTR(max_query_len, Int, -1)
+        .ATTR(residual_connection, Int, 1)
+        .ATTR(block_size, Int, 128)
+        .ATTR(conv_mode, Int, 0)
+        .ATTR(max_draft_tokens, Int, 7)
+        .OUTPUT(conv_states, TensorType({DT_BF16, DT_FLOAT16}))
+        .OUTPUT(y, TensorType({DT_BF16, DT_FLOAT16}))
+        .OP_END_FACTORY_REG(FusedCausalConv1d)
+        """
+        if dependencies is None:
+            dependencies = []
+
+        inputs = {
+            "x": x,
+            "weight": weight,
+            "conv_states": conv_states,
+            "query_start_loc": query_start_loc,
+            "cache_indices": cache_indices,
+            "initial_state_mode": initial_state_mode,
+            "bias": bias,
+            "num_accepted_tokens": num_accepted_tokens,
+            "num_computed_tokens": num_computed_tokens,
+            "block_idx_first_scheduled_token": block_idx_first_scheduled_token,
+            "block_idx_last_scheduled_token": block_idx_last_scheduled_token,
+            "initial_state_idx": initial_state_idx,
+        }
+        attrs = {
+            "activation": _parse_activation(activation),
+            "pad_slot_id": pad_slot_id,
+            "run_mode": run_mode,
+            "max_query_len": max_query_len,
+            "residual_connection": residual_connection,
+            "block_size": block_size,
+            "conv_mode": conv_mode,
+            "max_draft_tokens": max_draft_tokens,
+            "null_block_id": attr.Int(null_block_id),
+        }
+        outputs = ["conv_states", "y"]
+
+        return ge_op(
+            op_type="InplaceFusedCausalConv1d",
+            inputs=inputs,
+            attrs=attrs,
+            outputs=outputs,
+            dependencies=dependencies,
+            node_name=node_name,
+            ir=IrDef("FusedCausalConv1d")
+            .input("x", "DT_BF16, DT_FLOAT16")
+            .input("weight", "DT_BF16, DT_FLOAT16")
+            .input("conv_states", "DT_BF16, DT_FLOAT16")
+            .optional_input("bias", "DT_BF16, DT_FLOAT16")
+            .optional_input("query_start_loc", "DT_INT32")
+            .optional_input("cache_indices", "DT_INT32")
+            .optional_input("initial_state_mode", "DT_INT32")
+            .optional_input("num_accepted_tokens", "DT_INT32")
+            .optional_input("num_computed_tokens", "DT_INT32")
+            .optional_input("block_idx_first_scheduled_token", "DT_INT32")
+            .optional_input("block_idx_last_scheduled_token", "DT_INT32")
+            .optional_input("initial_state_idx", "DT_INT32")
+            .attr("activation_mode", _parse_activation(activation))
+            .attr("pad_slot_id", attr.Int(-1))
+            .attr("run_mode", attr.Int(-1))
+            .attr("max_query_len", attr.Int(-1))
+            .attr("residual_connection", attr.Int(-1))
+            .attr("block_size", attr.Int(-1))
+            .attr("conv_mode", attr.Int(-1))
+            .attr("max_draft_tokens", attr.Int(-1))
+            .attr("null_block_id", attr.Int(0))
+            .output("conv_states", "DT_BF16, DT_FLOAT16")
+            .output("y", "DT_BF16, DT_FLOAT16"),
+        )
+
+    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.fused_causal_conv1d_v2.default)
+    def converter_fused_causal_conv1d_v2(
+        x: Tensor,
+        weight: Tensor,
+        conv_states: Tensor,
+        *,
+        query_start_loc: Optional[Tensor] = None,
+        cache_indices: Optional[Tensor] = None,
+        initial_state_mode: Optional[Tensor] = None,
+        bias: Optional[Tensor] = None,
+        num_accepted_tokens: Optional[Tensor] = None,
+        activation: Optional[str] = "None",
+        pad_slot_id: Optional[int] = -1,
+        run_mode: Optional[int] = 0,
+        residual_connection: Optional[int] = 0,
+        max_query_len: Optional[int] = -1,
+        num_computed_tokens: Optional[Tensor] = None,
+        block_idx_first_scheduled_token: Optional[Tensor] = None,
+        block_idx_last_scheduled_token: Optional[Tensor] = None,
+        initial_state_idx: Optional[Tensor] = None,
+        block_size: Optional[int] = 128,
+        conv_mode: Optional[int] = 1,
+        max_draft_tokens: Optional[int] = 7,
+        null_block_id: int = 0,
+        meta_outputs: TensorSpec = None,
+    ):
+        _conv_states_out, y = FusedCausalConv1dV2(
+            x,
+            weight,
+            conv_states,
+            query_start_loc,
+            cache_indices,
+            initial_state_mode,
+            bias,
+            num_accepted_tokens,
+            num_computed_tokens,
+            block_idx_first_scheduled_token,
+            block_idx_last_scheduled_token,
+            initial_state_idx,
+            activation_mode=_parse_activation(activation),
+            pad_slot_id=pad_slot_id,
+            run_mode=run_mode,
+            max_query_len=max_query_len,
+            residual_connection=residual_connection,
+            block_size=block_size,
+            conv_mode=conv_mode,
+            max_draft_tokens=max_draft_tokens,
+            null_block_id=null_block_id,
+        )
+        return y
+
 else:
     def convert_fused_causal_conv1d(*args, **kwargs):
         raise RuntimeError(
             "GE converter requires torchair, but torchair is not available."
         )
 
-    def convert_inplace_fused_causal_conv1d(*args, **kwargs):
+    def convert_fused_causal_conv1d_v2(*args, **kwargs):
         raise RuntimeError(
             "GE converter requires torchair, but torchair is not available."
         )
