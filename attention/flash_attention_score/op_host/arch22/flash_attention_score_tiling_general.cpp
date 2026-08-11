@@ -141,6 +141,7 @@ static const int64_t D2_SIZE_L1CARRY_MAX = 256L;
 static const int64_t SOFTMAX_OUT_LAYOUT_INDEX = 12L;
 static const int64_t B4_SEQ_LIMIT = 48000L;
 static const int64_t SINK_INPUT_INDEX = 17L;
+static const int64_t DYNA_BASICBLOCK_S1_MAX = 32000;
 
 enum LayoutType : uint8_t {
     None = 0,
