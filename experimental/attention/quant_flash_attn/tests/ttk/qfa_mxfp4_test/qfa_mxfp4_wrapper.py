@@ -51,12 +51,17 @@ def _inject_replay_qkv(q, k, v, q_descale, k_descale, v_descale):
     用完必须清空 slot, 否则会污染同进程后续 case。
     """
     golden_mod._REPLAY_QKV_OVERRIDE = {
+<<<<<<< HEAD
         "q": q,
         "k": k,
         "v": v,
         "q_descale": q_descale,
         "k_descale": k_descale,
         "v_descale": v_descale,
+=======
+        "q": q, "k": k, "v": v,
+        "q_descale": q_descale, "k_descale": k_descale, "v_descale": v_descale,
+>>>>>>> 13706ea7e... ttk优化
     }
 
 
@@ -211,6 +216,7 @@ def npu_qfa_mxfp4(
 
     if _SKIP_GENERATE:
         _inject_replay_qkv(q, k, v, q_descale, k_descale, v_descale)
+<<<<<<< HEAD
     golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
     try:
         try:
@@ -233,6 +239,13 @@ def npu_qfa_mxfp4(
             "v_descale": v_descale,
         },
     )
+=======
+    try:
+        data_dict = golden_mod.generate_data()
+    finally:
+        if _SKIP_GENERATE:
+            _clear_replay_qkv()
+>>>>>>> 13706ea7e... ttk优化
     logger.info(
         "[WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d, skip_generate=%s",
         graph_path,
@@ -252,7 +265,11 @@ def npu_qfa_mxfp4(
         torch.npu.empty_cache()
         raise
 
+<<<<<<< HEAD
     gc.collect()
     torch.npu.empty_cache()
 
     return atten_out, lse_out
+=======
+    return atten_out, lse_out
+>>>>>>> 13706ea7e... ttk优化

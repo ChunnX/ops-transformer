@@ -135,6 +135,7 @@ SEED_V = 4
 # 非 replay 场景保持空 dict, 走原路径, 零影响。
 _REPLAY_QKV_OVERRIDE = {}
 
+<<<<<<< HEAD
 # 物理 S override: wrapper/inputs 从 CSV 分配的 q/k/v tensor shape 推导物理 S 后注入,
 # generate_data 优先用这两个值作为物理 S (生成 query/key/value 的 S 维),
 # 而不是 max(ACT_SEQ_LENS) / MAX_SEQLEN (后者只决定有效长度).
@@ -265,6 +266,8 @@ def _apply_csv_shape_override(data_dict, csv_tensors):
         )
         data_dict[name] = _adapt_tensor_to_shape(golden_t, csv_t.shape).contiguous()
 
+=======
+>>>>>>> 13706ea7e... ttk优化
 
 def _get_npu_fa_kwargs():
     return dict(
@@ -632,6 +635,7 @@ def generate_data():
         # 一致: golden 接收 FP32, 内部 _apply_input_quant 做量化反量化)
         fp32_bnsd = (query, key, value)
 
+<<<<<<< HEAD
         # Q/K padding 区域 (act_seq 之外) FP32 置 0: 量化后 packed=0/scale=127,
         # 避免 NPU 按 actSeq 向上取整分块时 padding 脏数据污染有效区域.
         # V 的 padding 由后续 per-batch 量化处理 (packed 填 0, scale 填 127).
@@ -643,6 +647,8 @@ def generate_data():
             if sk < s2:
                 key[b_idx, :, sk:, :] = 0
 
+=======
+>>>>>>> 13706ea7e... ttk优化
         # Q/K: 沿 D 维量化, V: 沿 S 维量化
         query_packed, q_descale = mxfp4_quantize_pack_last(
             query, quant_axis=-1, mode="baseline"
@@ -651,6 +657,7 @@ def generate_data():
             key, quant_axis=-1, mode="baseline"
         )
 
+<<<<<<< HEAD
         # V 按 act_seq_lens_kv 分批量化: padding 区域 packed 填 0, descale 只覆盖有效区域.
         # v_descale 的 S 维基于 s2_effective (= max(act_kv)), 与 NPU kernel stride
         # (基于 maxSeqlenKv) 及 metadata 校验 (ceil(max(seqused_kv)/64)) 对齐.
@@ -674,6 +681,34 @@ def generate_data():
             v_descale_list.append(scale_padded)
         value_packed = torch.cat(packed_value_list, dim=0)
         v_descale = torch.cat(v_descale_list, dim=0)
+=======
+        # V 按 act_seq_lens_kv 分批量化, padding 区域用 e8m0=127 (scale=1.0) 填充
+        if any(sk < s2 for sk in ACT_SEQ_LENS_KV) and len(ACT_SEQ_LENS_KV) > 1:
+            n_blocks_full = (s2 + 31) // 32
+            packed_value_list = []
+            v_descale_list = []
+            for b_idx in range(B):
+                sk = min(ACT_SEQ_LENS_KV[b_idx], s2)
+                v_b = value[b_idx : b_idx + 1, :, :sk, :]
+                v_b_packed, v_b_scale = mxfp4_quantize_pack_last(
+                    v_b, quant_axis=-2, mode="baseline"
+                )
+                packed_padded = torch.zeros((1, n2, s2, v_d // 2), dtype=v_b_packed.dtype)
+                packed_padded[:, :, :sk, :] = v_b_packed
+                packed_value_list.append(packed_padded)
+                n_blocks_actual = v_b_scale.shape[2]
+                scale_padded = torch.full(
+                    (1, n2, n_blocks_full, v_d), 127, dtype=v_b_scale.dtype
+                )
+                scale_padded[:, :, :n_blocks_actual, :] = v_b_scale
+                v_descale_list.append(scale_padded)
+            value_packed = torch.cat(packed_value_list, dim=0)
+            v_descale = torch.cat(v_descale_list, dim=0)
+        else:
+            value_packed, v_descale = mxfp4_quantize_pack_last(
+                value, quant_axis=-2, mode="baseline"
+            )
+>>>>>>> 13706ea7e... ttk优化
 
         # V scale: n_blocks 奇数时 pad 一个 block, 然后 reshape (Sg//2, D*2)
         if v_descale.shape[2] % 2 != 0:
@@ -701,6 +736,7 @@ def generate_data():
         )
 
         # Layout 转换 (Q packed + scale 用 query_layout; K/V packed + scale 用 kv_layout)
+<<<<<<< HEAD
         query_packed = rearrange_by_layout(query_packed, query_layout, B, act_seq_q_eff)
         key_packed = rearrange_by_layout(key_packed, kv_layout, B, act_seq_kv_eff)
         value_packed = rearrange_by_layout(value_packed, kv_layout, B, act_seq_kv_eff)
@@ -713,6 +749,20 @@ def generate_data():
         k_descale = transpose_kscale(k_descale, kv_layout)
 
         aligned_seq_lens_kv_v = [(x + 63) // 64 for x in act_seq_kv_eff]
+=======
+        query_packed = rearrange_by_layout(query_packed, query_layout, B, ACT_SEQ_LENS_Q)
+        key_packed = rearrange_by_layout(key_packed, kv_layout, B, ACT_SEQ_LENS_KV)
+        value_packed = rearrange_by_layout(value_packed, kv_layout, B, ACT_SEQ_LENS_KV)
+
+        q_descale = rearrange_by_layout(q_descale, query_layout, B, ACT_SEQ_LENS_Q)
+        q_descale = transpose_qscale(q_descale, query_layout, n2)
+
+        aligned_seq_lens_kv_k = [(x + 31) // 32 for x in ACT_SEQ_LENS_KV]
+        k_descale = rearrange_by_layout(k_descale, kv_layout, B, aligned_seq_lens_kv_k)
+        k_descale = transpose_kscale(k_descale, kv_layout)
+
+        aligned_seq_lens_kv_v = [(x + 63) // 64 for x in ACT_SEQ_LENS_KV]
+>>>>>>> 13706ea7e... ttk优化
         v_descale = rearrange_by_layout(v_descale, kv_layout, B, aligned_seq_lens_kv_v)
 
         # V descale 最后再 view 出 (*shape, -1, 2) 末尾两维
