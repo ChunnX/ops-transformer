@@ -467,15 +467,18 @@ def _blockwise_snap_local_quantize_p_eff(S: torch.Tensor, m_running, seqk_dim: i
     m_block_raw_safe = torch.where(torch.isinf(m_block_raw) & (m_block_raw < 0),
                                    torch.zeros_like(m_block_raw), m_block_raw)  # 全 -inf block -> 0
     if is_cx:
-        # CX(式19): K_block = ceil(Smax/ln2 - log2CX), 全程 fp16 域(对齐 kernel:
+        # CX(式19): K_block = ceil(Smax*INV_LN2 - log2CX), 全程 fp16 域(对齐 kernel:
         #   kernel: Smax(fp16)*dScale*INV_LN2(fp16) + NEG_LOG2_CX(fp16) -> Truncate<CAST_CEIL> -> *LN2(fp16))
-        #   golden: LN2/neg_log2_cx 都转 fp16, 与 m_block_raw_safe(fp16) 同精度运算, 避免 fp64
+        #   golden: INV_LN2/neg_log2_cx 都转 fp16, 与 m_block_raw_safe(fp16) 同精度运算, 避免 fp64
         #   标量混入导致 ceil 边界舍入翻转。
-        LN2_fp16 = torch.tensor(LN2, dtype=torch.float16, device=device)              # 对齐 kernel constexpr half LN2
+        #   注: 用乘法 Smax*INV_LN2 而非除法 Smax/LN2——fp16 下 1/LN2_fp16 ≠ INV_LN2_fp16
+        #   (差~1.29e-04), 除法在 ceil 边界翻转导致 golden≠kernel(dst_type_max=9.9 即此现象)。
+        INV_LN2_fp16 = torch.tensor(1.0 / LN2, dtype=torch.float16, device=device)            # 对齐 kernel constexpr half INV_LN2
+        LN2_fp16 = torch.tensor(LN2, dtype=torch.float16, device=device)                      # m_block_snap 用
         neg_log2_cx_fp16 = torch.tensor(neg_log2_cx, dtype=torch.float16, device=device)  # 对齐 kernel NEG_LOG2_CX
-        k_raw = m_block_raw_safe / LN2_fp16 + neg_log2_cx_fp16                        # 全 fp16
+        k_raw = m_block_raw_safe * INV_LN2_fp16 + neg_log2_cx_fp16                       # 全 fp16 乘法(对齐 kernel)
         K_block = torch.clamp(torch.ceil(k_raw), -127.0, 127.0)
-        m_block_snap = K_block * LN2_fp16                                            # 无 -2(式19), fp16
+        m_block_snap = K_block * LN2_fp16                                             # 无 -2(式19), fp16
     else:
         # OCP(式8): K_block = floor(Smax/ln2), 全程 fp16 域(对齐 kernel:
         #   kernel: Smax(fp16)*dScale*INV_LN2(fp16) -> Truncate<CAST_FLOOR> -> *LN2(fp16) -> -2*LN2(fp16))
