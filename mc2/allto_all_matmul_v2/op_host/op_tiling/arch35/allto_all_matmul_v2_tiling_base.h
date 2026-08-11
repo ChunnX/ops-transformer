@@ -81,8 +81,12 @@ protected:
 
         // ---- world_size validation ----
         auto *wsPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_WORLD_SIZE);
-        if (!wsPtr || *wsPtr <= 0) {
-            OP_LOGE(opName, "world_size must be positive.");
+        if (!wsPtr) {
+            OP_LOGE(opName, "world_size attr is required but missing.");
+            return ge::GRAPH_FAILED;
+        }
+        if (*wsPtr <= 0) {
+            OP_LOGE(opName, "world_size must be positive, got %ld.", (long)*wsPtr);
             return ge::GRAPH_FAILED;
         }
         uint64_t worldSize = static_cast<uint64_t>(*wsPtr);
@@ -110,18 +114,20 @@ protected:
         auto x2Dtype = x2Desc->GetDataType();
         if ((x1Dtype != ge::DT_FLOAT8_E4M3FN && x1Dtype != ge::DT_FLOAT8_E5M2 && x1Dtype != ge::DT_FLOAT4_E2M1) ||
             (x2Dtype != ge::DT_FLOAT8_E4M3FN && x2Dtype != ge::DT_FLOAT8_E5M2 && x2Dtype != ge::DT_FLOAT4_E2M1)) {
-            OP_LOGE(opName, "x1 and x2 dtype must be FP8_E4M3/FP8_E5M2/FP4_E2M1.");
+            OP_LOGE(opName, "x1/x2 dtype must be FP8_E4M3/FP8_E5M2/FP4_E2M1, got x1_dtype=%d x2_dtype=%d.",
+                    static_cast<int>(x1Dtype), static_cast<int>(x2Dtype));
             return ge::GRAPH_FAILED;
         }
         if ((x1Dtype == ge::DT_FLOAT4_E2M1) != (x2Dtype == ge::DT_FLOAT4_E2M1)) {
-            OP_LOGE(opName, "FP4 requires both x1 and x2 to be FP4_E2M1.");
+            OP_LOGE(opName, "FP4 requires both x1 and x2 to be FP4_E2M1, got x1_dtype=%d x2_dtype=%d.",
+                    static_cast<int>(x1Dtype), static_cast<int>(x2Dtype));
             return ge::GRAPH_FAILED;
         }
 
         // ---- y output dtype ----
         auto yDtype = yDesc->GetDataType();
         if (yDtype != ge::DT_BF16 && yDtype != ge::DT_FLOAT16) {
-            OP_LOGE(opName, "y output must be BF16 or FP16.");
+            OP_LOGE(opName, "y output must be BF16 or FP16, got y_dtype=%d.", static_cast<int>(yDtype));
             return ge::GRAPH_FAILED;
         }
 
@@ -135,13 +141,15 @@ protected:
         auto x1ScaleFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleDesc->GetStorageFormat()));
         auto x2ScaleFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleDesc->GetStorageFormat()));
         if (x1ScaleFmt != ge::FORMAT_ND || x2ScaleFmt != ge::FORMAT_ND) {
-            OP_LOGE(opName, "x1_scale and x2_scale format must be ND.");
+            OP_LOGE(opName, "x1_scale and x2_scale format must be ND, got x1_scale_fmt=%d x2_scale_fmt=%d.",
+                    static_cast<int>(x1ScaleFmt), static_cast<int>(x2ScaleFmt));
             return ge::GRAPH_FAILED;
         }
         auto x1ScaleDtype = x1ScaleDesc->GetDataType();
         auto x2ScaleDtype = x2ScaleDesc->GetDataType();
         if (x1ScaleDtype != ge::DT_FLOAT8_E8M0 || x2ScaleDtype != ge::DT_FLOAT8_E8M0) {
-            OP_LOGE(opName, "x1_scale and x2_scale must be FP8_E8M0.");
+            OP_LOGE(opName, "x1_scale and x2_scale must be FP8_E8M0, got x1_scale_dtype=%d x2_scale_dtype=%d.",
+                    static_cast<int>(x1ScaleDtype), static_cast<int>(x2ScaleDtype));
             return ge::GRAPH_FAILED;
         }
 
@@ -150,12 +158,12 @@ protected:
         if (biasDesc != nullptr) {
             auto biasDtype = biasDesc->GetDataType();
             if (biasDtype != ge::DT_FLOAT) {
-                OP_LOGE(opName, "bias dtype must be FLOAT.");
+                OP_LOGE(opName, "bias dtype must be FLOAT, got bias_dtype=%d.", static_cast<int>(biasDtype));
                 return ge::GRAPH_FAILED;
             }
             auto biasFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(biasDesc->GetStorageFormat()));
             if (biasFmt != ge::FORMAT_ND) {
-                OP_LOGE(opName, "bias format must be ND.");
+                OP_LOGE(opName, "bias format must be ND, got bias_fmt=%d.", static_cast<int>(biasFmt));
                 return ge::GRAPH_FAILED;
             }
         }
@@ -163,19 +171,27 @@ protected:
         // ---- attr checks ----
         auto *tx2 = context_->GetAttrs()->GetAttrPointer<bool>(IDX_ATTR_TRANSPOSE_X2);
         if (!tx2 || !(*tx2)) {
-            OP_LOGE(opName, "transpose_x2 must be true.");
+            OP_LOGE(opName, "transpose_x2 must be true, got %d.", tx2 ? (int)*tx2 : -1);
             return ge::GRAPH_FAILED;
         }
 
         auto *commModePtr = context_->GetAttrs()->GetAttrPointer<char>(IDX_ATTR_COMM_MODE);
-        if (!commModePtr || std::strcmp(commModePtr, "urma") != 0) {
-            OP_LOGE(opName, "comm_mode must be urma.");
+        if (!commModePtr) {
+            OP_LOGE(opName, "comm_mode attr is required but missing.");
+            return ge::GRAPH_FAILED;
+        }
+        if (std::strcmp(commModePtr, "urma") != 0) {
+            OP_LOGE(opName, "comm_mode must be urma, got '%s'.", commModePtr);
             return ge::GRAPH_FAILED;
         }
 
         auto *a2aFlag = context_->GetAttrs()->GetAttrPointer<bool>(IDX_ATTR_ALLTOALL_OUT_FLAG);
-        if (a2aFlag && *a2aFlag) {
-            OP_LOGE(opName, "alltoall_out_flag must be false.");
+        if (!a2aFlag) {
+            OP_LOGE(opName, "alltoall_out_flag attr is required but missing.");
+            return ge::GRAPH_FAILED;
+        }
+        if (*a2aFlag) {
+            OP_LOGE(opName, "alltoall_out_flag must be false, got true.");
             return ge::GRAPH_FAILED;
         }
 
@@ -251,11 +267,13 @@ protected:
         auto *biasShape = context_->GetOptionalInputShape(IDX_INPUT_BIAS);
         if (biasShape != nullptr) {
             if (biasShape->GetStorageShape().GetDimNum() != 1) {
-                OP_LOGE(opName, "bias must be 1D.");
+                OP_LOGE(opName, "bias must be 1D, got %luD.",
+                        biasShape->GetStorageShape().GetDimNum());
                 return ge::GRAPH_FAILED;
             }
-            if (biasShape->GetStorageShape().GetDim(0U) != x2N) {
-                OP_LOGE(opName, "bias dim0 must equal N=%lu.", x2N);
+            uint64_t biasDim0 = biasShape->GetStorageShape().GetDim(0U);
+            if (biasDim0 != x2N) {
+                OP_LOGE(opName, "bias dim0 must equal N=%lu, got bias_dim0=%lu.", x2N, biasDim0);
                 return ge::GRAPH_FAILED;
             }
         }
