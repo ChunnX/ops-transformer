@@ -2118,7 +2118,11 @@ def _call_npu_fa_op_graph(
 def _build_causal_mask():
     if MASK_MODE == 0:
         return torch.empty((0, 0), dtype=torch.uint8).npu()
-    return torch.tril(torch.ones(2048, 2048, dtype=torch.uint8), diagonal=0).npu()
+    return (
+        torch.tril(torch.ones(2048, 2048, dtype=torch.uint8))
+        .T.contiguous()
+        .npu()
+    )
 
 
 def _calc_cube_compute_amount(q_lengths, kv_lengths, sparse_indices, sparse_seq_len):

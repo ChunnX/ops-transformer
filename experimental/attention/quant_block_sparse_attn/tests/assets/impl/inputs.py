@@ -341,7 +341,8 @@ def _customize_inputs_mxfp8(
     _inplace_copy(sparse_seq_len, data["sparse_seq_len"])
     _inplace_copy(
         atten_mask,
-        torch.tril(torch.ones(tuple(atten_mask.shape), dtype=torch.uint8)),
+        torch.tril(torch.ones(tuple(atten_mask.shape), dtype=torch.uint8))
+        .T.contiguous(),
     )
 
     cache = getattr(module, "_TTK_MXFP8_CACHE", {})
