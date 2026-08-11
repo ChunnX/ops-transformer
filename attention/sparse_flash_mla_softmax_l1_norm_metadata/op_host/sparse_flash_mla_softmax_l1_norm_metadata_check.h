@@ -29,6 +29,10 @@ inline constexpr int64_t SMLA_CAUSAL_MASK_MODE = 3;
 inline constexpr int64_t SMLA_CMP_RATIO_LOWER_BOUND = 1;
 inline constexpr int64_t SMLA_CMP_RATIO_UPPER_BOUND = 128;
 inline constexpr int64_t SMLA_METADATA_SIZE = 64;
+inline constexpr int64_t SMLA_NUM_HEADS_Q_LOWER_BOUND = 1;
+inline constexpr int64_t SMLA_NUM_HEADS_Q_UPPER_BOUND = 128;
+inline constexpr int64_t SMLA_NUM_HEADS_K = 1;
+inline constexpr int64_t SMLA_HEAD_DIM = 512;
 
 inline bool IsTensorExistSmlaL1Norm(const aclTensor *tensor)
 {
@@ -88,11 +92,15 @@ aclnnStatus CheckSingleParamSmlaL1Norm(int64_t batchSize, int64_t maxSeqLenQ, in
     CHECK_COND(batchSize >= 0, ACLNN_ERR_PARAM_INVALID, "batch_size should be >= 0, but got %lld", batchSize);
     CHECK_COND(maxSeqLenQ >= 0, ACLNN_ERR_PARAM_INVALID, "max_seqlen_q should be >= 0, but got %lld", maxSeqLenQ);
     CHECK_COND(maxSeqLenK >= 0, ACLNN_ERR_PARAM_INVALID, "max_seqlen_k should be >= 0, but got %lld", maxSeqLenK);
-    CHECK_COND(numHeadsQ > 0, ACLNN_ERR_PARAM_INVALID, "num_heads_q should be > 0, but got %lld", numHeadsQ);
-    CHECK_COND(numHeadsK > 0, ACLNN_ERR_PARAM_INVALID, "num_heads_k should be > 0, but got %lld", numHeadsK);
+    CHECK_COND((numHeadsQ >= SMLA_NUM_HEADS_Q_LOWER_BOUND) && (numHeadsQ <= SMLA_NUM_HEADS_Q_UPPER_BOUND),
+               ACLNN_ERR_PARAM_INVALID, "num_heads_q should be in [%lld, %lld], but got %lld",
+               SMLA_NUM_HEADS_Q_LOWER_BOUND, SMLA_NUM_HEADS_Q_UPPER_BOUND, numHeadsQ);
+    CHECK_COND(numHeadsK == SMLA_NUM_HEADS_K, ACLNN_ERR_PARAM_INVALID, "num_heads_k should be %lld, but got %lld",
+               SMLA_NUM_HEADS_K, numHeadsK);
     CHECK_COND(numHeadsQ % numHeadsK == 0, ACLNN_ERR_PARAM_INVALID,
                "num_heads_q must be divisible by num_heads_k, but got %lld and %lld", numHeadsQ, numHeadsK);
-    CHECK_COND(headDim > 0, ACLNN_ERR_PARAM_INVALID, "head_dim should be > 0, but got %lld", headDim);
+    CHECK_COND(headDim == SMLA_HEAD_DIM, ACLNN_ERR_PARAM_INVALID, "head_dim should be %lld, but got %lld",
+               SMLA_HEAD_DIM, headDim);
     CHECK_COND(topk >= 0, ACLNN_ERR_PARAM_INVALID, "topk should be >= 0, but got %lld", topk);
     CHECK_COND((maskMode == SMLA_NO_MASK_MODE) || (maskMode == SMLA_CAUSAL_MASK_MODE), ACLNN_ERR_PARAM_INVALID,
                "mask_mode should be %lld/%lld, but got %lld", SMLA_NO_MASK_MODE, SMLA_CAUSAL_MASK_MODE, maskMode);
@@ -102,6 +110,8 @@ aclnnStatus CheckSingleParamSmlaL1Norm(int64_t batchSize, int64_t maxSeqLenQ, in
     CHECK_COND((layoutQ != nullptr), ACLNN_ERR_PARAM_INVALID, "layout_q is null!");
     CHECK_COND((strcmp(layoutQ, "TND") == 0) || (strcmp(layoutQ, "BSND") == 0), ACLNN_ERR_PARAM_INVALID,
                "layout_q must be TND or BSND, but got %s", layoutQ);
+    CHECK_COND((strcmp(layoutQ, "BSND") != 0) || (maxSeqLenQ > 0), ACLNN_ERR_PARAM_INVALID,
+               "When layout_q is BSND, max_seqlen_q should be > 0, but got %lld", maxSeqLenQ);
     CHECK_COND((layoutK != nullptr), ACLNN_ERR_PARAM_INVALID, "layout_k is null!");
     CHECK_COND((strcmp(layoutK, "TND") == 0) || (strcmp(layoutK, "BSND") == 0), ACLNN_ERR_PARAM_INVALID,
                "layout_k must be TND or BSND, but got %s", layoutK);
@@ -208,24 +218,32 @@ aclnnStatus CheckConsistencySmlaL1Norm(int64_t batchSize, const aclTensor *cuSeq
     }
     int64_t queryBatchSize = GetQueryBatchSizeSmlaL1Norm(batchSize, cuSeqLensQOptional, seqUsedQOptional, layoutQ);
     int64_t keyBatchSize = GetKeyBatchSizeSmlaL1Norm(batchSize, cuSeqLensKOptional, seqUsedKOptional, layoutK);
+    CHECK_COND(queryBatchSize > 0, ACLNN_ERR_PARAM_INVALID, "The valid batch size should be > 0, but got %lld",
+               queryBatchSize);
     CHECK_COND(queryBatchSize == keyBatchSize, ACLNN_ERR_PARAM_INVALID,
                "The batch_size obtained from query should be the same as that obtained from key, but got %lld and %lld",
                queryBatchSize, keyBatchSize);
-    if (strcmp(layoutQ, "TND") == 0 && IsTensorExistSmlaL1Norm(seqUsedQOptional)) {
-        int64_t cuSeqLensQBatchSize = cuSeqLensQOptional->GetViewShape().GetDim(0) - 1;
-        CHECK_COND(
-            cuSeqLensQBatchSize == queryBatchSize, ACLNN_ERR_PARAM_INVALID,
-            "When layout_q is TND and seq_used_q is passed, the batch_size from cu_seq_lens_q should equal that from "
-            "seq_used_q, but got %lld and %lld",
-            cuSeqLensQBatchSize, queryBatchSize);
+    if (IsTensorExistSmlaL1Norm(cuSeqLensQOptional)) {
+        int64_t cuSeqLensQLen = cuSeqLensQOptional->GetViewShape().GetDim(0);
+        CHECK_COND(cuSeqLensQLen == queryBatchSize + 1, ACLNN_ERR_PARAM_INVALID,
+                   "The length of cu_seq_lens_q should be query batch size + 1, but got %lld and %lld", cuSeqLensQLen,
+                   queryBatchSize + 1);
     }
-    if (strcmp(layoutK, "TND") == 0 && IsTensorExistSmlaL1Norm(seqUsedKOptional)) {
-        int64_t cuSeqLensKBatchSize = cuSeqLensKOptional->GetViewShape().GetDim(0) - 1;
-        CHECK_COND(
-            cuSeqLensKBatchSize == keyBatchSize, ACLNN_ERR_PARAM_INVALID,
-            "When layout_k is TND and seq_used_k is passed, the batch_size from cu_seq_lens_k should equal that from "
-            "seq_used_k, but got %lld and %lld",
-            cuSeqLensKBatchSize, keyBatchSize);
+    if (IsTensorExistSmlaL1Norm(cuSeqLensKOptional)) {
+        int64_t cuSeqLensKLen = cuSeqLensKOptional->GetViewShape().GetDim(0);
+        CHECK_COND(cuSeqLensKLen == keyBatchSize + 1, ACLNN_ERR_PARAM_INVALID,
+                   "The length of cu_seq_lens_k should be key batch size + 1, but got %lld and %lld", cuSeqLensKLen,
+                   keyBatchSize + 1);
+    }
+    if (IsTensorExistSmlaL1Norm(seqUsedQOptional)) {
+        CHECK_COND(seqUsedQOptional->GetViewShape().GetDim(0) == queryBatchSize, ACLNN_ERR_PARAM_INVALID,
+                   "The length of seq_used_q should be query batch size, but got %lld and %lld",
+                   seqUsedQOptional->GetViewShape().GetDim(0), queryBatchSize);
+    }
+    if (IsTensorExistSmlaL1Norm(seqUsedKOptional)) {
+        CHECK_COND(seqUsedKOptional->GetViewShape().GetDim(0) == keyBatchSize, ACLNN_ERR_PARAM_INVALID,
+                   "The length of seq_used_k should be key batch size, but got %lld and %lld",
+                   seqUsedKOptional->GetViewShape().GetDim(0), keyBatchSize);
     }
     if (IsTensorExistSmlaL1Norm(cmpResidualKOptional)) {
         auto cmpResidualKBatch = cmpResidualKOptional->GetViewShape().GetDim(0);
