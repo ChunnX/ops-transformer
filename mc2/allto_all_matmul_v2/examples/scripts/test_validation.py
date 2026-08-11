@@ -41,11 +41,12 @@ def make_valid():
 
 
 def call_op(x1, x2, g, s1, s2, **kw):
+    kwargs = {"y_dtype": 15, "x1_quant_mode": 6, "x2_quant_mode": 6,
+              "group_sizes": [1, 1, 32], "x1_scale_dtype": 293, "x2_scale_dtype": 293,
+              "comm_mode": "urma", "alltoall_out_flag": False}
+    kwargs.update(kw)
     return cann_ops_transformer.all_to_all_quant_matmul(
-        x1, x2, g, x1_scale=s1, x2_scale=s2,
-        y_dtype=15, x1_quant_mode=6, x2_quant_mode=6,
-        group_sizes=[1, 1, 32], x1_scale_dtype=293, x2_scale_dtype=293,
-        comm_mode="urma", alltoall_out_flag=False, **kw)
+        x1, x2, g, x1_scale=s1, x2_scale=s2, **kwargs)
 
 
 def check(desc, kwargs, expect_reject, g, x1, x2, s1, s2, results):
