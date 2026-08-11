@@ -16,6 +16,7 @@
 #define BLOCK_MMAD_PRELOAD_FIXPIPE_H
 
 #include "copy_gm_to_l1.h"
+#include "copy_l0c_to_gm.h"
 #include "catlass/catlass.hpp"
 #include "catlass/arch/resource.hpp"
 #include "catlass/coord.hpp"
@@ -61,8 +62,7 @@ public:
     using CopyGmToL1S = Gemm::Tile::CopyGmToL1<ArchTag, Gemm::GemmType<ElementScale, layout::VectorLayout>>;
     using CopyL1ToL0A = typename TileCopy::CopyL1ToL0A;
     using CopyL1ToL0B = typename TileCopy::CopyL1ToL0B;
-    using CopyL0CToGm =
-        Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType, Gemm::Tile::ScaleGranularity::PER_CHANNEL>;
+    using CopyL0CToGm = Gemm::Tile::CopyL0CToGmReduceScatterFixpipe<ElementAccumulator, ElementC, false>;
     using LayoutAInL1 = typename CopyL1ToL0A::LayoutSrc;
     using LayoutBInL1 = typename CopyL1ToL0B::LayoutSrc;
     using LayoutAInL0 = typename CopyL1ToL0A::LayoutDst;

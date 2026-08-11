@@ -13,20 +13,15 @@
  * \brief
  */
 
-#ifndef COPY_L0C_TO_GM_H
-#define COPY_L0C_TO_GM_H
+#ifndef MATMUL_REDUCE_SCATTER_V2_COPY_L0C_TO_GM_H
+#define MATMUL_REDUCE_SCATTER_V2_COPY_L0C_TO_GM_H
 
 #include "catlass/gemm/tile/copy_l0c_to_gm.hpp"
 
 namespace Catlass::Gemm::Tile {
-constexpr uint32_t PARAM_INDEX_0 = 0;
-constexpr uint32_t PARAM_INDEX_1 = 1;
-constexpr uint32_t PARAM_INDEX_2 = 2;
-constexpr uint32_t PARAM_INDEX_3 = 3;
 // Fixpipe with quant VDEQF16
 template <class ElementAccumulator_, class ElementDst_, bool ReluEnable_>
-struct CopyL0CToGm<Catlass::Arch::AtlasA2, ElementAccumulator_, Gemm::GemmType<ElementDst_, layout::RowMajor>,
-                   ScaleGranularity::PER_CHANNEL, ReluEnable_> {
+struct CopyL0CToGmReduceScatterFixpipe {
     using ArchTag = Catlass::Arch::AtlasA2;
     using ElementDst = ElementDst_;
     using ElementSrc = ElementAccumulator_;
@@ -44,10 +39,10 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA2, ElementAccumulator_, Gemm::GemmType<E
         AscendC::FixpipeParamsV220 intriParams;
 
         // Fixpipe layout information
-        intriParams.nSize = dstLayout.shape(PARAM_INDEX_1);
-        intriParams.mSize = dstLayout.shape(PARAM_INDEX_0);
-        intriParams.srcStride = srcLayout.stride(PARAM_INDEX_3) / srcLayout.stride(PARAM_INDEX_0);
-        intriParams.dstStride = dstLayout.stride(PARAM_INDEX_0);
+        intriParams.nSize = dstLayout.shape(1);
+        intriParams.mSize = dstLayout.shape(0);
+        intriParams.srcStride = srcLayout.stride(3) / srcLayout.stride(0);
+        intriParams.dstStride = dstLayout.stride(0);
 
         // Fixpipe auxiliary arguments
         intriParams.quantPre = quantPre;
@@ -62,4 +57,4 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA2, ElementAccumulator_, Gemm::GemmType<E
 
 } // namespace Catlass::Gemm::Tile
 
-#endif // COPY_L0C_TO_GM_H
+#endif // MATMUL_REDUCE_SCATTER_V2_COPY_L0C_TO_GM_H
