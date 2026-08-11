@@ -4,7 +4,7 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
@@ -32,7 +32,7 @@
     <td style="white-space: nowrap">x</td>
     <td style="white-space: nowrap">输入</td>
     <td style="white-space: nowrap">本卡发送的token数据，3D Tensor，shape为 <code>(X, Bs, H)。</code></td>
-    <td style="white-space: nowrap">FLOAT16、BFLOAT16</td>
+    <td style="white-space: nowrap">FLOAT16、BFLOAT16、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2</td>
     <td style="white-space: nowrap">ND</td>
     </tr>
     <tr>
@@ -74,7 +74,7 @@
     <td style="white-space: nowrap">scalesOptional</td>
     <td style="white-space: nowrap">输入</td>
     <td style="white-space: nowrap">可选参数，表示每个专家的量化平滑参数，3D Tensor，shape为 <code>(L, moeExpertNum + sharedExpertNum, H)。</code></td>
-    <td style="white-space: nowrap">FLOAT32</td>
+    <td style="white-space: nowrap">FLOAT32、FLOAT8_E8M0</td>
     <td style="white-space: nowrap">ND</td>
     </tr>
     <tr>
@@ -129,7 +129,7 @@
     <tr>
     <td style="white-space: nowrap">quantMode</td>
     <td style="white-space: nowrap">属性</td>
-    <td style="white-space: nowrap">表示量化模式，支持0（非量化）、2（动态量化）。</td>
+    <td style="white-space: nowrap">表示量化模式，值同时编码算法和输出类型。支持0（非量化）、2（PERTOKEN+INT8）、3（MX+FP8_E5M2）、4（MX+FP8_E4M3）、5（MX+FP4_E2M1）。</td>
     <td style="white-space: nowrap">INT64</td>
     <td style="white-space: nowrap">-</td>
     </tr>
@@ -157,6 +157,18 @@
   </tbody>
 </table>
 
+## 量化模式说明
+
+`quantMode` 值同时编码量化算法和输出数据类型（与 mega_moe dispatch quant 编码对齐）：
+
+| quantMode | 算法 | 输出类型 | 说明 |
+| :--------: | :--: | :------: | :---: |
+| 0 | 非量化 | 跟随输入 | FP16/BF16直接传输；FP8/FP4预量化数据直接传输（需提供scales） |
+| 2 | PERTOKEN | INT8 | 每个token动态计算scale并量化为INT8（兼容原有模式） |
+| 3 | MX | FP8_E5M2 | 每32个元素为一组计算MX scale（E8M0格式），输出FP8_E5M2 |
+| 4 | MX | FP8_E4M3 | 每32个元素为一组计算MX scale（E8M0格式），输出FP8_E4M3 |
+| 5 | MX | FP4_E2M1 | 每32个元素为一组计算MX scale（E8M0格式），输出FP4_E2M1 |
+
 ## 约束说明
 
 - 调用算子过程中使用的`group`、`worldSize`、`tokenInfoTableShape`、`tokenDataShape`参数及`ccl_buffer_size`取值所有卡需保持一致，网络中不同层中也需保持一致。
@@ -168,9 +180,15 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
 其中：
   - `tokenInfoSize = attentionWorkerNum × microBatchNum × infoTableLastDim × 4B`
   - 非量化模式：`tokenDataSize = attentionWorkerNum × microBatchNum × BS × (K+shared) × HS × 2B`
-  - 量化模式：`tokenDataSize = attentionWorkerNum × microBatchNum × BS × (K+shared) × HS × 1B`
+  - INT8/FP8量化模式：`tokenDataSize = attentionWorkerNum × microBatchNum × BS × (K+shared) × HS × 1B`
+  - FP4量化模式：`HS`已按打包字节计算，`tokenDataSize = attentionWorkerNum × microBatchNum × BS × (K+shared) × HS × 1B`
 
 可通过 `get_attention_to_ffn_v2_ccl_buffer_size` 接口计算所需最小值。
+
+- FP8/FP4量化约束：
+  - MX模式（quantMode 3/4/5）不支持传入scales参数。
+  - 非量化模式（quantMode=0）下传入FP8/FP4 dtype的x时，必须提供scales参数。
+  - FP4输出（quantMode=5）时H维度需为偶数。
 
 - 参数说明里shape格式说明：
     - `X`：表示micro batch sequence size（token组数），当前版本只支持`X` = 1。

@@ -62,27 +62,38 @@ constexpr uint32_t AlignUp(uint32_t value, uint32_t align)
     return (value + align - 1U) / align * align;
 }
 
+bool IsFp8Fp4Dtype(ge::DataType dtype)
+{
+    return dtype == ge::DT_FLOAT8_E5M2 || dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_HIFLOAT8 ||
+           dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_FLOAT4_E1M2;
+}
+
+bool IsMxQuantMode(uint32_t quantMode)
+{
+    return quantMode == ATTN_FFN_TILINGKEY_MX_E5M2 || quantMode == ATTN_FFN_TILINGKEY_MX_E4M3 ||
+           quantMode == ATTN_FFN_TILINGKEY_MX_E2M1;
+}
+
 ge::graphStatus CheckQuantMode(const char *nodeName, uint32_t quantMode, bool isScales)
 {
-    OP_TILING_CHECK(quantMode != ATTN_FFN_TILINGKEY_NO_QUANT &&
-                        quantMode != ATTN_FFN_TILINGKEY_PERTOKEN_QUANT &&
-                        quantMode != ATTN_FFN_TILINGKEY_PERGROUP_QUANT &&
-                        quantMode != ATTN_FFN_TILINGKEY_MX_QUANT &&
-                        quantMode != ATTN_FFN_TILINGKEY_MX_QUANT_CLIP,
+    static const std::set<uint32_t> validModes = {
+        ATTN_FFN_TILINGKEY_NO_QUANT, ATTN_FFN_TILINGKEY_PERTOKEN_INT8,
+        ATTN_FFN_TILINGKEY_MX_E5M2,  ATTN_FFN_TILINGKEY_MX_E4M3,
+        ATTN_FFN_TILINGKEY_MX_E2M1};
+    OP_TILING_CHECK(validModes.find(quantMode) == validModes.end(),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "quant_mode", std::to_string(quantMode).c_str(),
                                               "0, 2, 3, 4 or 5"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((quantMode == ATTN_FFN_TILINGKEY_MX_QUANT ||
-                     quantMode == ATTN_FFN_TILINGKEY_MX_QUANT_CLIP) &&
-                        isScales,
-                    OP_LOGE(nodeName, "scales must be absent in MX and MX-clip modes"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(IsMxQuantMode(quantMode) && isScales,
+                    OP_LOGE(nodeName, "scales must be absent in MX modes"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SetV2TilingKey(gert::TilingContext *context, const AttentionToFfnV2Info &info)
+ge::graphStatus SetV2TilingKey(gert::TilingContext *context, uint32_t quantMode, bool isScales,
+                              bool isSync, bool isActiveMask)
 {
     const uint64_t tilingKey = GET_TPL_TILING_KEY(
-        info.quantMode, info.isScales, info.syncFlag == 1U, info.isActiveMask, TILINGKEY_TPL_A5);
+        quantMode, isScales, isSync, isActiveMask, TILINGKEY_TPL_A5);
     context->SetTilingKey(tilingKey);
     OP_LOGD(context->GetNodeName(), "AttentionToFfnV2 cur case tilingKey is %lu", tilingKey);
     return ge::GRAPH_SUCCESS;
@@ -164,9 +175,14 @@ ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantM
     OP_TILING_CHECK(contextShape->GetStorageShape().GetDimNum() != DIM_ONE ||
                         contextDesc->GetDataType() != ge::DT_INT32,
                     OP_LOGE(nodeName, "context must be a 1D INT32 tensor"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(xShape->GetStorageShape().GetDimNum() != DIM_THREE ||
-                        (xDesc->GetDataType() != ge::DT_FLOAT16 && xDesc->GetDataType() != ge::DT_BF16),
-                    OP_LOGE(nodeName, "x must be a 3D FLOAT16/BF16 tensor"), return ge::GRAPH_FAILED);
+    auto xDtype = xDesc->GetDataType();
+    bool isValidXdtype = (xDtype == ge::DT_FLOAT16 || xDtype == ge::DT_BF16);
+    if (quantMode == ATTN_FFN_TILINGKEY_NO_QUANT) {
+        isValidXdtype = isValidXdtype || IsFp8Fp4Dtype(xDtype);
+    }
+    OP_TILING_CHECK(xShape->GetStorageShape().GetDimNum() != DIM_THREE || !isValidXdtype,
+                    OP_LOGE(nodeName, "x must be a 3D FLOAT16/BF16 tensor (or FP8/FP4 for non-quant mode)"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(sessionIdShape->GetStorageShape().GetDimNum() != DIM_ONE ||
                         microBatchIdShape->GetStorageShape().GetDimNum() != DIM_ONE ||
                         layerIdShape->GetStorageShape().GetDimNum() != DIM_ONE ||
@@ -227,12 +243,23 @@ ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantM
 
     if (isScales) {
         auto scalesDesc = context->GetOptionalInputDesc(7U);
-        OP_TILING_CHECK(scalesDesc == nullptr || scalesDesc->GetDataType() != ge::DT_FLOAT ||
-                            scalesShape->GetStorageShape().GetDimNum() != DIM_THREE ||
+        OP_TILING_CHECK(scalesDesc == nullptr,
+                        OP_LOGE(nodeName, "scales desc is null"), return ge::GRAPH_FAILED);
+        auto scalesDtype = scalesDesc->GetDataType();
+        if (quantMode == ATTN_FFN_TILINGKEY_NO_QUANT && IsFp8Fp4Dtype(xDtype)) {
+            OP_TILING_CHECK(scalesDtype != ge::DT_FLOAT && scalesDtype != ge::DT_FLOAT8_E8M0,
+                            OP_LOGE(nodeName, "scales must have FLOAT or FLOAT8_E8M0 dtype for non-quant FP8/FP4 input"),
+                            return ge::GRAPH_FAILED);
+        } else {
+            OP_TILING_CHECK(scalesDtype != ge::DT_FLOAT,
+                            OP_LOGE(nodeName, "scales must have FLOAT dtype"),
+                            return ge::GRAPH_FAILED);
+        }
+        OP_TILING_CHECK(scalesShape->GetStorageShape().GetDimNum() != DIM_THREE ||
                             scalesShape->GetStorageShape().GetDim(0) != layerNum ||
                             scalesShape->GetStorageShape().GetDim(1) != expertNum ||
                             scalesShape->GetStorageShape().GetDim(2) != h,
-                        OP_LOGE(nodeName, "scales must have shape [L, expertNum, H] and FLOAT dtype"),
+                        OP_LOGE(nodeName, "scales must have shape [L, expertNum, H]"),
                         return ge::GRAPH_FAILED);
     }
     if (isActiveMask) {
@@ -281,7 +308,7 @@ ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantM
 
     OP_TILING_CHECK(SetPlatformAndCommTiling(context, groupPtr, *tilingData) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "failed to set platform or communication tiling"), return ge::GRAPH_FAILED);
-    return SetV2TilingKey(context, info);
+    return SetV2TilingKey(context, quantMode, isScales, info.syncFlag == 1U, isActiveMask);
 }
 } // namespace
 
@@ -301,8 +328,18 @@ ge::graphStatus AttentionToFfnV2TilingFunc(gert::TilingContext *context)
                     OP_LOGE(context->GetNodeName(), "quant mode validation failed"),
                     return ge::GRAPH_FAILED);
 
-    if (quantMode != ATTN_FFN_TILINGKEY_NO_QUANT &&
-        quantMode != ATTN_FFN_TILINGKEY_PERTOKEN_QUANT) {
+    // Legacy path: quantMode 0 (FP16/BF16) and 2 (PERTOKEN+INT8) use v1 tiling
+    bool useNewTiling = false;
+    if (quantMode == ATTN_FFN_TILINGKEY_NO_QUANT) {
+        auto xDesc = context->GetInputDesc(1U);
+        if (xDesc != nullptr && IsFp8Fp4Dtype(xDesc->GetDataType())) {
+            useNewTiling = true; // Pre-quantized FP8/FP4 input
+        }
+    } else if (IsMxQuantMode(quantMode)) {
+        useNewTiling = true; // MX quant modes
+    }
+
+    if (useNewTiling) {
         return TilingNewQuantMode(context, quantMode);
     }
 
@@ -337,7 +374,8 @@ ge::graphStatus AttentionToFfnV2TilingFunc(gert::TilingContext *context)
     AttentionToFfnV2TilingData *tilingData = context->GetTilingData<AttentionToFfnV2TilingData>();
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "tilingData"),
                     return ge::GRAPH_FAILED);
-    return SetV2TilingKey(context, tilingData->attentionToFfnV2Info);
+    auto &info = tilingData->attentionToFfnV2Info;
+    return SetV2TilingKey(context, info.quantMode, info.isScales, info.syncFlag == 1U, info.isActiveMask);
 }
 
 struct AttentionToFfnV2CompileInfo {};

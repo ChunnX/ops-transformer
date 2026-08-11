@@ -27,8 +27,10 @@ public:
             .AutoContiguous();
         this->Input("x")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8,
+                       ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("session_id")
             .ParamType(REQUIRED)
@@ -57,7 +59,7 @@ public:
             .AutoContiguous();
         this->Input("scales")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
+            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("active_mask")

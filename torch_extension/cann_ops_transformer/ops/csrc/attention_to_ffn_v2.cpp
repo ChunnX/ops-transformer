@@ -48,8 +48,10 @@ void NpuAttentionToFfnV2(
     TORCH_CHECK((attnTokenInfoTableShape.size() == 3), "attn_token_info_table_shape should be 3D, current size is: ",
                 attnTokenInfoTableShape.size());
     TORCH_CHECK((moeExpertNum > 0), "The moe_expert_num should be greater than 0, current is: ", moeExpertNum);
-    TORCH_CHECK(((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf)),
-                "dtype of x should be bfloat16 or float16, but got ", x.scalar_type());
+    TORCH_CHECK(((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf) ||
+                 (x.scalar_type() == at::kFloat8_e5m2) || (x.scalar_type() == at::kFloat8_e4m3fn) ||
+                 (x.scalar_type() == at::kFloat4_e2m1) || (x.scalar_type() == at::kFloat4_e1m2)),
+                "dtype of x should be bfloat16, float16, float8_e5m2, float8_e4m3fn, float4_e2m1 or float4_e1m2, but got ", x.scalar_type());
     TORCH_CHECK((sessionId.scalar_type() == at::kInt), "dtype of sessionId should be int32.");
     TORCH_CHECK((microBatchId.scalar_type() == at::kInt), "dtype of microBatchId should be int32.");
     TORCH_CHECK((layerId.scalar_type() == at::kInt), "dtype of layerId should be int32.");
@@ -78,6 +80,7 @@ constexpr int64_t MB_ALIGN = 2LL * 1024LL * 1024LL; // 2MB
 constexpr int64_t NO_QUANT_MODE = 0;
 constexpr int64_t BYTES_PER_FP16 = 2;
 constexpr int64_t BYTES_PER_INT32 = 4;
+constexpr int64_t BYTES_PER_QUANT_ELEM = 1; // INT8/FP8 = 1 byte, FP4-packed HS already accounts for packing
 
 int64_t CeilAlign(int64_t val, int64_t align)
 {
@@ -86,7 +89,7 @@ int64_t CeilAlign(int64_t val, int64_t align)
 } // namespace
 
 int64_t GetAttentionToFfnV2CclBufferSize(const std::vector<int64_t> &ffnTokenInfoTableShape,
-                                          const std::vector<int64_t> &ffnTokenDataShape, int64_t quantMode)
+                                           const std::vector<int64_t> &ffnTokenDataShape, int64_t quantMode)
 {
     TORCH_CHECK(ffnTokenInfoTableShape.size() == 3, "ffn_token_info_table_shape should have 3 elements, but got ",
                 ffnTokenInfoTableShape.size());
@@ -101,14 +104,8 @@ int64_t GetAttentionToFfnV2CclBufferSize(const std::vector<int64_t> &ffnTokenInf
     int64_t infoTableLastDim = ffnTokenInfoTableShape[2];
 
     int64_t tokenInfoSize = attentionWorkerNum * microBatchNum * infoTableLastDim * BYTES_PER_INT32;
-    int64_t tokenDataSize;
-    if (quantMode != NO_QUANT_MODE) {
-        // 量化模式: int8 (1 byte), hs already includes 128B scale padding
-        tokenDataSize = attentionWorkerNum * microBatchNum * bs * kPlusShared * hs;
-    } else {
-        // 非量化模式: float16/bfloat16 (2 bytes)
-        tokenDataSize = attentionWorkerNum * microBatchNum * bs * kPlusShared * hs * BYTES_PER_FP16;
-    }
+    int64_t bytesPerElem = (quantMode == NO_QUANT_MODE) ? BYTES_PER_FP16 : BYTES_PER_QUANT_ELEM;
+    int64_t tokenDataSize = attentionWorkerNum * microBatchNum * bs * kPlusShared * hs * bytesPerElem;
     int64_t rawSize = tokenInfoSize + tokenDataSize;
     return CeilAlign(rawSize, MB_ALIGN);
 }
