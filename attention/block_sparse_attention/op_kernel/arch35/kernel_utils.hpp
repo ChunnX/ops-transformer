@@ -60,6 +60,23 @@ struct TaskInfo {
     
 };
 
+// CreateTaskInfo 跨调用持久状态：batch 扫描进度 + 各 GM 的 batch 累积偏移。
+// 同核 taskIdx (coreTaskId * coreNum + coreIdx) 单调递增，batch 只会前进不会后退，
+// 故扫描可从上次结束位置继续，无需每次从 batch 0 重扫。
+// curTotalTaskNum 需用 firstBatchTaskNum 初始化（tiling 运行期才知道），在主循环外完成。
+struct BatchOffsetInfo {
+    uint32_t curBatch = 0;         // 当前扫描到的 batch
+    uint32_t preTotalTaskNum = 0;  // curBatch 之前所有 batch 的 task 总数
+    uint32_t curTotalTaskNum = 0;  // 含 curBatch 在内的 task 总数（初始化为 firstBatchTaskNum）
+    // TND 下各 GM 的 batch 累积偏移（BNSD/BSND 由 curBatch 直接算，不用这些字段）
+    int64_t oBOffset = 0;          // O 输出
+    int64_t qBOffset = 0;          // Q 数据
+    int64_t qScaleBOffset = 0;     // Q-scale（字节）
+    int64_t vBOffset = 0;          // V(=K) 数据
+    int64_t vScaleBOffset = 0;     // V-scale（字节）
+    int64_t kScaleBOffset = 0;     // K-scale（字节）
+};
+
 struct TileInfo {
     uint32_t loop = 0; //单核上处理的所有qs对应的第几个kvs基本块(累加递增)
     uint32_t curKvsTileLoopIdx = 0; // 在当前qs对应的Kvs的循环下标 

@@ -208,7 +208,10 @@ public:
         TileInfo tileInfos[PRELOAD_TASK_CACHE_SIZE] = {};
 
 
-        int64_t oBOffset = 0;
+        // CreateTaskInfo 跨调用 batch 扫描状态：curTotalTaskNum 从首 batch task 数起步，
+        // 后续调用在 while 循环内基于该状态续算，不再从 batch 0 重扫
+        BatchOffsetInfo batchOffsetInfo;
+        batchOffsetInfo.curTotalTaskNum = firstBatchTaskNum_;
         // [BSND/TND stride 修复] 头内 per-token/per-group gather stride 因子: BNSD=1(头内连续);
         //   BSND/TND=kvHeads_/qHeads_(头内 token 隔 N*D)。原 gather layout 烧死 embed_=D(仅 BNSD 对),
         //   BSND/TND 头内越界 507015(开发者 :236 TODO)。修法=「乘 extent」hack:
@@ -236,7 +239,7 @@ public:
             if (curTaskTileIdx == 0 && coreTaskId < coreTaskNum) {
                 CreateTaskInfo(curTaskInfo, coreTaskId, coreIdx, coreNum,
                                gActualQseqlen, gActualKvseqlen, gSparseCount,
-                               gSparseIdx,oBOffset);
+                               gSparseIdx, batchOffsetInfo);
             }
 
             // main process
@@ -640,49 +643,42 @@ public:
         AscendC::GlobalTensor<int64_t>& gActualKvseqlen,
         AscendC::GlobalTensor<ElementSparseCount>& gSparseCount,
         AscendC::GlobalTensor<ElementSparseIdx>& gSparseIdx,
-        int64_t &oBOffset)
+        BatchOffsetInfo &batchInfo)
     {
         uint32_t taskIdx = coreTaskId * coreNum + coreIdx;  // 反推全局 task 序号
 
         uint32_t groupSize = qHeads_ / kvHeads_;
         uint32_t qSTileNumPerFullXBlock = CeilDiv(blockShapeX_, qBaseTile_);
 
-        // 反推 taskIdx 所在的 batch
-        uint32_t curBatch = 0;
-        uint32_t preTotalTaskNum = 0;
-        // TND 下 V 数据 / V-scale / K-scale / Q / Q-scale 的 batch 累积偏移（BNSD/BSND 由 curBatch 直接算）
-        int64_t vBOffset = 0;
-        int64_t vScaleBOffset = 0;
-        int64_t kScaleBOffset = 0;
-        int64_t qBOffset = 0;
-        int64_t qScaleBOffset = 0;
-        int64_t qSeqlen = actSeqAval_ ? gActualQseqlen.GetValue(curBatch) : qSeqlenAligned_;
-        int64_t kvSeqlen = actSeqAval_ ? gActualKvseqlen.GetValue(curBatch) : kvSeqlenAligned_;
+        // 反推 taskIdx 所在的 batch：同核 taskIdx 单调递增，
+        // 从 batchInfo 保存的上次扫描位置续算，不再从 batch 0 重扫
+        int64_t qSeqlen = actSeqAval_ ? gActualQseqlen.GetValue(batchInfo.curBatch) : qSeqlenAligned_;
+        int64_t kvSeqlen = actSeqAval_ ? gActualKvseqlen.GetValue(batchInfo.curBatch) : kvSeqlenAligned_;
         uint32_t curQSTileNum = GetCurQSTileNum(qSeqlen, blockShapeX_, qBaseTile_);
-        uint32_t curTotalTaskNum = firstBatchTaskNum_;
-        while (taskIdx >= curTotalTaskNum) {
-            ++curBatch;
-            preTotalTaskNum = curTotalTaskNum;
+        while (taskIdx >= batchInfo.curTotalTaskNum) {
+            ++batchInfo.curBatch;
+            batchInfo.preTotalTaskNum = batchInfo.curTotalTaskNum;
             // TND: 跨 batch 时累加上一 batch 实际长度（此时 kvSeqlen/qSeqlen 仍为上一 batch 值）
             if constexpr (qFormat == Format::TND) {
-                 oBOffset += qSeqlen * strideO_;
-                 qBOffset += qSeqlen * strideQData_;
-                 qScaleBOffset += qSeqlen * static_cast<int64_t>(qHeads_) * qScaleStrideN_;
-              }
-            if constexpr (kvFormat == Format::TND) {
-                vBOffset += kvSeqlen * strideKVData_;
-                vScaleBOffset += CeilDiv(kvSeqlen, static_cast<int64_t>(64)) *
-                                 static_cast<int64_t>(kvHeads_) * embed_ * 2;
-                kScaleBOffset += kvSeqlen * static_cast<int64_t>(kvHeads_) * kScaleStrideN_;
+                batchInfo.oBOffset += qSeqlen * strideO_;
+                batchInfo.qBOffset += qSeqlen * strideQData_;
+                batchInfo.qScaleBOffset += qSeqlen * static_cast<int64_t>(qHeads_) * qScaleStrideN_;
             }
-            qSeqlen = actSeqAval_ ? gActualQseqlen.GetValue(curBatch) : qSeqlenAligned_;
-            kvSeqlen = actSeqAval_ ? gActualKvseqlen.GetValue(curBatch) : kvSeqlenAligned_;
+            if constexpr (kvFormat == Format::TND) {
+                batchInfo.vBOffset += kvSeqlen * strideKVData_;
+                batchInfo.vScaleBOffset += CeilDiv(kvSeqlen, static_cast<int64_t>(64)) *
+                                           static_cast<int64_t>(kvHeads_) * embed_ * 2;
+                batchInfo.kScaleBOffset += kvSeqlen * static_cast<int64_t>(kvHeads_) * kScaleStrideN_;
+            }
+            qSeqlen = actSeqAval_ ? gActualQseqlen.GetValue(batchInfo.curBatch) : qSeqlenAligned_;
+            kvSeqlen = actSeqAval_ ? gActualKvseqlen.GetValue(batchInfo.curBatch) : kvSeqlenAligned_;
             curQSTileNum = GetCurQSTileNum(qSeqlen, blockShapeX_, qBaseTile_);
-            curTotalTaskNum += curQSTileNum * qHeads_;
+            batchInfo.curTotalTaskNum += curQSTileNum * qHeads_;
         }
+        uint32_t curBatch = batchInfo.curBatch;
 
         // 拆解 taskIdx 得到 head / qSTile / xBlock 索引
-        uint32_t taskIdxCurBatch = taskIdx - preTotalTaskNum;
+        uint32_t taskIdxCurBatch = taskIdx - batchInfo.preTotalTaskNum;
         uint32_t qHeadIdx = taskIdxCurBatch / curQSTileNum;
         uint32_t kvHeadIdx = qHeadIdx / groupSize;
         uint32_t qSTileIdx = taskIdxCurBatch - qHeadIdx * curQSTileNum;
@@ -716,12 +712,12 @@ public:
         // O GM offset
         int64_t qSOffset = static_cast<int64_t>(xBlockIdx) * blockShapeX_ + qSTileIdxCurXBlock * qBaseTile_;
         if constexpr (qFormat == Format::TND) {
-            info.gmOffsetO = oBOffset + qSOffset * strideO_ + qHeadIdx * embed_;
+            info.gmOffsetO = batchInfo.oBOffset + qSOffset * strideO_ + qHeadIdx * embed_;
         } else if constexpr (qFormat == Format::BNSD) {
-            oBOffset = static_cast<int64_t>(curBatch) * strideOB_;
+            int64_t oBOffset = static_cast<int64_t>(curBatch) * strideOB_;
             info.gmOffsetO = oBOffset + qHeadIdx * strideON_ + qSOffset * strideOS_;
         } else if constexpr (qFormat == Format::BSND) {
-            oBOffset = static_cast<int64_t>(curBatch) * strideOB_;
+            int64_t oBOffset = static_cast<int64_t>(curBatch) * strideOB_;
             info.gmOffsetO = oBOffset + qSOffset * strideOS_ + qHeadIdx * strideON_;
         }
         // O shape col
@@ -758,10 +754,10 @@ public:
         // V-scale batch+head 基址（字节单位，布局 [B,N2,S2//64,D,2]）
         if constexpr (kvFormat == Format::TND) {
             // TND V [T2,N2,D]：head 在 token 内 stride = embed_（≠ strideKVData_，后者是 batch-token 步长 kvHeads_*embed_）
-            info.gmOffsetV      = vBOffset      + kvHeadIdx * embed_;
-            info.gmOffsetVScale = vScaleBOffset + kvHeadIdx * vScaleStrideN_;
+            info.gmOffsetV      = batchInfo.vBOffset      + kvHeadIdx * embed_;
+            info.gmOffsetVScale = batchInfo.vScaleBOffset + kvHeadIdx * vScaleStrideN_;
             info.gmOffsetK      = info.gmOffsetV;
-            info.gmOffsetKScale = kScaleBOffset + kvHeadIdx * kScaleStrideN_;
+            info.gmOffsetKScale = batchInfo.kScaleBOffset + kvHeadIdx * kScaleStrideN_;
         } else if constexpr (kvFormat == Format::BNSD) {
             info.gmOffsetV      = static_cast<int64_t>(curBatch) * strideKVDataB_ + kvHeadIdx * strideKVDataN_;
             info.gmOffsetVScale = static_cast<int64_t>(curBatch) * vScaleStrideB_ + kvHeadIdx * vScaleStrideN_;
@@ -776,8 +772,8 @@ public:
         // Q / Q-scale：稠密搬需要带上本 task 的 Q seq 起点（与上方 O 的 qSOffset 一致）
         const int64_t qScaleBytesPerTok = static_cast<int64_t>(embed_ / 64) * 2;
         if constexpr (qFormat == Format::TND) {
-            info.gmOffsetQ      = qBOffset + qSOffset * strideQData_ + qHeadIdx * embed_;
-            info.gmOffsetQScale = qScaleBOffset +
+            info.gmOffsetQ      = batchInfo.qBOffset + qSOffset * strideQData_ + qHeadIdx * embed_;
+            info.gmOffsetQScale = batchInfo.qScaleBOffset +
                 qSOffset * static_cast<int64_t>(qHeads_) * qScaleBytesPerTok + qHeadIdx * qScaleStrideN_;
         } else if constexpr (qFormat == Format::BNSD) {
             info.gmOffsetQ = static_cast<int64_t>(curBatch) * strideQDataB_ +
