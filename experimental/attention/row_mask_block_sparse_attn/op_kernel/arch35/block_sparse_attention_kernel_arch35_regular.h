@@ -86,6 +86,10 @@ public:
         gSparseIdx.SetGlobalBuffer((__gm__ ElementSparseIdx *)params.workSpace);
         AscendC::GlobalTensor<ElementSparseCount> gSparseCount;
         gSparseCount.SetGlobalBuffer((__gm__ ElementSparseCount *)(params.workSpace + sparseIdxSize_));
+        AscendC::GlobalTensor<int32_t> gBlockEffRows;
+        if (enableEffRows_) {
+            gBlockEffRows.SetGlobalBuffer((__gm__ int32_t *)params.mask);
+        }
         // cross core data move dst buffers
         AscendC::LocalTensor<ElementP> l1PTensor[MAX_CROSS_CORE_BUF_STAGES];
         AscendC::LocalTensor<ElementS> ubSTensor[UB_S_OTMP_BUF_STAGES];
