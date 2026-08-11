@@ -29,12 +29,18 @@ public:
         for (uint32_t eventIndex = 0; eventIndex < MAX_PIPE_ID; ++eventIndex) {
             set_flag(PIPE_V, PIPE_MTE2, static_cast<event_t>(eventIndex));
         }
+        for (uint32_t eventIndex = 0; eventIndex < MTE3_MAX_PIPE_ID; ++eventIndex) {
+            set_flag(PIPE_MTE3, PIPE_V, static_cast<event_t>(eventIndex));
+        }
     }
 
     __aicore__ inline ~BlockAttnResPrepareVector()
     {
         for (uint32_t eventIndex = 0; eventIndex < MAX_PIPE_ID; ++eventIndex) {
             wait_flag(PIPE_V, PIPE_MTE2, static_cast<event_t>(eventIndex));
+        }
+        for (uint32_t eventIndex = 0; eventIndex < MTE3_MAX_PIPE_ID; ++eventIndex) {
+            set_flag(PIPE_MTE3, PIPE_V, static_cast<event_t>(eventIndex));
         }
     }
 
@@ -95,8 +101,14 @@ public:
         }
         const uint32_t validN = static_cast<uint32_t>(validNValue);
         // validN comes from valid_blocks at runtime. The host only provides
-        // the capacity; choose cache/reload here for the concrete N.
-        const bool cacheAllV = validNValue <= tilingData_->vCacheRows && baseDAlign_ >= dAlign_;
+        // the capacity; choose cache/reload here for the concrete N.  The
+        // V-cache path uses event IDs [qBufferNum, qBufferNum + validN - 1]
+        // for the MTE2->V handshakes, so it is legal only when the eight event
+        // IDs are not exceeded.
+        const bool eventIdRangeAvailable =
+            qBufferNum_ <= MAX_PIPE_ID && validN <= (MAX_PIPE_ID - qBufferNum_);
+        const bool cacheAllV = validNValue <= tilingData_->vCacheRows && baseDAlign_ >= dAlign_ &&
+                               eventIdRangeAvailable;
 
         const uint64_t workStart = static_cast<uint64_t>(blockIdx) * tilingData_->blockFactor +
                                    ((blockIdx < tilingData_->bigCoreNum) ? blockIdx : tilingData_->bigCoreNum);
@@ -109,7 +121,8 @@ public:
 private:
     static constexpr uint64_t FP32_BYTES = sizeof(float);
     static constexpr uint32_t FP32_32B_ALIGN_ELEMS = 8U;
-    static constexpr uint32_t MAX_PIPE_ID = 8U;
+    static constexpr uint32_t MAX_PIPE_ID = 8U; // valid event IDs are [0, MAX_PIPE_ID - 1]
+    static constexpr uint32_t MTE3_MAX_PIPE_ID = 4U;
     static constexpr uint64_t MAX_UINT32_VALUE = 0xFFFFFFFFULL;
 
     __aicore__ inline static bool IsBufferNumValid(uint32_t bufferNum)
@@ -311,6 +324,7 @@ private:
             const uint32_t validD = static_cast<uint32_t>(
                 remainingD < tilingData_->baseD ? remainingD : tilingData_->baseD);
             const uint64_t qOffset = sIndex * tilingData_->totalD + dOffset;
+            wait_flag(PIPE_V, PIPE_MTE2, qCount_ & 1);
             __ubuf__ float *qAddr = CopyInQ(qOffset, validD, dLoop);
 
             for (uint32_t nIndex = 0; nIndex < validN; ++nIndex) {
@@ -331,6 +345,8 @@ private:
                     vCount_++;
                 }
             }
+            set_flag(PIPE_V, PIPE_MTE2, qCount_ & 1);
+            qCount_++;
         }
 
         FinalizeStats(statAddr, validN);

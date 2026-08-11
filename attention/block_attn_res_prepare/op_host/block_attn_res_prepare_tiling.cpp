@@ -18,9 +18,11 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <limits>
 
 #include "log/log.h"
+#include "securec.h"
 
 namespace optiling {
 namespace {
@@ -257,23 +259,23 @@ ge::graphStatus BlockAttnResPrepareTiling::DoOpTiling()
                 OP_LOGE(context_->GetNodeName(), "no Vector baseD satisfies UB capacity"),
                 return ge::GRAPH_FAILED);
 
-    tilingData_.set_totalT(static_cast<uint32_t>(totalT_));
-    tilingData_.set_totalN(static_cast<uint32_t>(totalN_));
-    tilingData_.set_totalS(static_cast<uint32_t>(totalS_));
-    tilingData_.set_totalWorkUnits(static_cast<uint32_t>(totalWorkUnits));
-    tilingData_.set_totalD(totalD_);
-    tilingData_.set_usedCoreNum(usedCoreNum_);
-    tilingData_.set_bigCoreNum(bigCoreNum);
-    tilingData_.set_blockFactor(blockFactor);
-    tilingData_.set_tailBlockFactor(tailBlockFactor);
-    tilingData_.set_baseD(baseD_);
-    tilingData_.set_vCacheRows(static_cast<uint8_t>(vCacheRows_));
-    tilingData_.set_qBufferNum(static_cast<uint8_t>(qBufferNum_));
-    tilingData_.set_vBufferNum(static_cast<uint8_t>(vBufferNum_));
-    tilingData_.set_oBufferNum(static_cast<uint8_t>(oBufferNum_));
-    tilingData_.set_statUbElems(STAT_UB_ELEMS);
-    tilingData_.set_workUbElems(0U);
-    tilingData_.set_epsilon(epsilon_);
+    tilingData_.totalT = static_cast<uint32_t>(totalT_);
+    tilingData_.totalN = static_cast<uint32_t>(totalN_);
+    tilingData_.totalS = static_cast<uint32_t>(totalS_);
+    tilingData_.totalWorkUnits = static_cast<uint32_t>(totalWorkUnits);
+    tilingData_.totalD = totalD_;
+    tilingData_.usedCoreNum = usedCoreNum_;
+    tilingData_.bigCoreNum = bigCoreNum;
+    tilingData_.blockFactor = blockFactor;
+    tilingData_.tailBlockFactor = tailBlockFactor;
+    tilingData_.baseD = baseD_;
+    tilingData_.vCacheRows = static_cast<uint8_t>(vCacheRows_);
+    tilingData_.qBufferNum = static_cast<uint8_t>(qBufferNum_);
+    tilingData_.vBufferNum = static_cast<uint8_t>(vBufferNum_);
+    tilingData_.oBufferNum = static_cast<uint8_t>(oBufferNum_);
+    tilingData_.statUbElems = STAT_UB_ELEMS;
+    tilingData_.workUbElems = 0U;
+    tilingData_.epsilon = epsilon_;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -307,11 +309,12 @@ ge::graphStatus BlockAttnResPrepareTiling::PostTiling()
     auto *rawData = rawTilingData->GetData();
     OP_CHECK_IF(rawData == nullptr, OP_LOGE(context_->GetNodeName(), "raw tiling data buffer is null"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(rawTilingData->GetCapacity() < tilingData_.GetDataSize(),
+    OP_CHECK_IF(rawTilingData->GetCapacity() < sizeof(BlockAttnResPrepareTilingData),
                 OP_LOGE(context_->GetNodeName(), "raw tiling data capacity is insufficient"),
                 return ge::GRAPH_FAILED);
-    tilingData_.SaveToBuffer(rawData, rawTilingData->GetCapacity());
-    rawTilingData->SetDataSize(tilingData_.GetDataSize());
+    OP_CHECK_IF(memcpy_s(rawData, rawTilingData->GetCapacity(), &tilingData_, sizeof(tilingData_)) != EOK,
+                OP_LOGE(context_->GetNodeName(), "copy vector tiling data failed"), return ge::GRAPH_FAILED);
+    rawTilingData->SetDataSize(sizeof(BlockAttnResPrepareTilingData));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -449,41 +452,41 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
                 OP_LOGE(context_->GetNodeName(), "total workspace size overflows uint64"), return ge::GRAPH_FAILED);
     workspaceSize_ = systemWorkspaceSize_ + userWorkspaceBytes;
 
-    tilingData_.set_totalT(static_cast<uint32_t>(totalT_));
-    tilingData_.set_totalN(static_cast<uint32_t>(totalN_));
-    tilingData_.set_totalS(static_cast<uint32_t>(totalS_));
-    tilingData_.set_totalWorkUnits(static_cast<uint32_t>(totalWorkUnits));
-    tilingData_.set_totalD(totalD_);
-    tilingData_.set_usedCoreNum(usedCoreNum_);
-    tilingData_.set_aicCoreNum(static_cast<uint32_t>(aicCoreNum_));
-    tilingData_.set_aivCoreNum(static_cast<uint32_t>(aivCoreNum_));
-    tilingData_.set_bigCoreNum(bigCoreNum);
-    tilingData_.set_blockFactor(blockFactor);
-    tilingData_.set_tailBlockFactor(blockFactor + (bigCoreNum > 0U ? 1U : 0U));
-    tilingData_.set_baseT(baseT_);
-    tilingData_.set_baseS(baseS_);
-    tilingData_.set_baseD(baseD_);
-    tilingData_.set_baseDAlign(baseDAlign_);
-    tilingData_.set_sTileNum(sTileNum_);
-    tilingData_.set_dTileNum(dTileNum_);
-    tilingData_.set_sAlign(sAlign_);
-    tilingData_.set_nAlign(nAlign_);
-    tilingData_.set_dAlign(dAlign_);
-    tilingData_.set_qL1BufferNum(static_cast<uint8_t>(qL1BufferNum_));
-    tilingData_.set_vL1BufferNum(static_cast<uint8_t>(vL1BufferNum_));
-    tilingData_.set_vUbBufferNum(static_cast<uint8_t>(vUbBufferNum_));
-    tilingData_.set_l1CacheMode(static_cast<uint32_t>(BlockAttnResPrepareVCacheMode::RELOAD));
-    tilingData_.set_vL1CacheRows(static_cast<uint8_t>(0U));
-    tilingData_.set_qL1Elems(qL1Elems_);
-    tilingData_.set_vL1Elems(vL1Elems_);
-    tilingData_.set_eL1Elems(eL1Elems_);
-    tilingData_.set_vUbElems(vUbElems_);
-    tilingData_.set_dotUbElems(dotUbElems_);
-    tilingData_.set_reduceUbElems(reduceUbElems_);
-    tilingData_.set_softmaxUbElems(softmaxUbElems_);
-    tilingData_.set_workspaceOffset(systemWorkspaceSize_);
-    tilingData_.set_workspacePerCoreElems(workspacePerCoreElems_);
-    tilingData_.set_epsilon(epsilon_);
+    tilingData_.totalT = static_cast<uint32_t>(totalT_);
+    tilingData_.totalN = static_cast<uint32_t>(totalN_);
+    tilingData_.totalS = static_cast<uint32_t>(totalS_);
+    tilingData_.totalWorkUnits = static_cast<uint32_t>(totalWorkUnits);
+    tilingData_.totalD = totalD_;
+    tilingData_.usedCoreNum = usedCoreNum_;
+    tilingData_.aicCoreNum = static_cast<uint32_t>(aicCoreNum_);
+    tilingData_.aivCoreNum = static_cast<uint32_t>(aivCoreNum_);
+    tilingData_.bigCoreNum = bigCoreNum;
+    tilingData_.blockFactor = blockFactor;
+    tilingData_.tailBlockFactor = blockFactor + (bigCoreNum > 0U ? 1U : 0U);
+    tilingData_.baseT = baseT_;
+    tilingData_.baseS = baseS_;
+    tilingData_.baseD = baseD_;
+    tilingData_.baseDAlign = baseDAlign_;
+    tilingData_.sTileNum = sTileNum_;
+    tilingData_.dTileNum = dTileNum_;
+    tilingData_.sAlign = sAlign_;
+    tilingData_.nAlign = nAlign_;
+    tilingData_.dAlign = dAlign_;
+    tilingData_.qL1BufferNum = static_cast<uint8_t>(qL1BufferNum_);
+    tilingData_.vL1BufferNum = static_cast<uint8_t>(vL1BufferNum_);
+    tilingData_.vUbBufferNum = static_cast<uint8_t>(vUbBufferNum_);
+    tilingData_.l1CacheMode = static_cast<uint32_t>(BlockAttnResPrepareVCacheMode::RELOAD);
+    tilingData_.vL1CacheRows = static_cast<uint8_t>(0U);
+    tilingData_.qL1Elems = qL1Elems_;
+    tilingData_.vL1Elems = vL1Elems_;
+    tilingData_.eL1Elems = eL1Elems_;
+    tilingData_.vUbElems = vUbElems_;
+    tilingData_.dotUbElems = dotUbElems_;
+    tilingData_.reduceUbElems = reduceUbElems_;
+    tilingData_.softmaxUbElems = softmaxUbElems_;
+    tilingData_.workspaceOffset = systemWorkspaceSize_;
+    tilingData_.workspacePerCoreElems = workspacePerCoreElems_;
+    tilingData_.epsilon = epsilon_;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -547,11 +550,13 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::PostTiling()
     auto *rawTilingData = context_->GetRawTilingData();
     OP_CHECK_IF(rawTilingData == nullptr || rawTilingData->GetData() == nullptr,
                 OP_LOGE(context_->GetNodeName(), "raw Cube tiling data is null"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(rawTilingData->GetCapacity() < tilingData_.GetDataSize(),
+    OP_CHECK_IF(rawTilingData->GetCapacity() < sizeof(BlockAttnResPrepareCubeTilingData),
                 OP_LOGE(context_->GetNodeName(), "raw Cube tiling data capacity is insufficient"),
                 return ge::GRAPH_FAILED);
-    tilingData_.SaveToBuffer(rawTilingData->GetData(), rawTilingData->GetCapacity());
-    rawTilingData->SetDataSize(tilingData_.GetDataSize());
+    OP_CHECK_IF(memcpy_s(rawTilingData->GetData(), rawTilingData->GetCapacity(), &tilingData_, sizeof(tilingData_)) !=
+                    EOK,
+                OP_LOGE(context_->GetNodeName(), "copy Cube tiling data failed"), return ge::GRAPH_FAILED);
+    rawTilingData->SetDataSize(sizeof(BlockAttnResPrepareCubeTilingData));
     return ge::GRAPH_SUCCESS;
 }
 
