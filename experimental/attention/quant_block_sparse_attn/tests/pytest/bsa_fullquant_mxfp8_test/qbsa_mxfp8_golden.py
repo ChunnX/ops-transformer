@@ -1757,6 +1757,48 @@ def _expand_d_group_scale(scale, width):
     ]
 
 
+def _kernel_mxfp8_scores_for_row_invalid(
+    q_fp8, k_fp8, q_descale, k_descale, softmax_scale, head_dim
+):
+    """Reproduce the kernel score path used to identify an invalid row.
+
+    The MXFP8 kernel forms the FP8 dot product by D groups and applies the
+    corresponding Q/K descales afterwards.  Dequantizing Q/K before matmul is
+    retained for the Golden output path because it reproduces the kernel's
+    NaN propagation, but it loses the sign of an overflowing score.  That sign
+    is required for the kernel's ``row_max == -FLT_MAX`` invalid-row rule.
+
+    This helper is therefore used only to classify rows whose regular Golden
+    score is non-finite; it must not replace the output score calculation.
+    """
+    q_values = q_fp8.to(torch.float32)
+    k_values = k_fp8.to(torch.float32)
+    q_scales = q_descale.to(torch.float32).reshape(q_values.shape[0], -1)
+    k_scales = k_descale.to(torch.float32).reshape(k_values.shape[0], -1)
+    group_count = math.ceil(int(head_dim) / int(QUANT_GROUP_SIZE))
+    if q_scales.shape[1] != group_count or k_scales.shape[1] != group_count:
+        raise ValueError(
+            "MXFP8 Q/K descale group count does not match D: "
+            f"q={q_scales.shape[1]}, k={k_scales.shape[1]}, "
+            f"expected={group_count}"
+        )
+
+    padded_dim = group_count * int(QUANT_GROUP_SIZE)
+    if padded_dim != int(head_dim):
+        padding = padded_dim - int(head_dim)
+        q_values = torch.nn.functional.pad(q_values, (0, padding))
+        k_values = torch.nn.functional.pad(k_values, (0, padding))
+    q_groups = q_values.reshape(q_values.shape[0], group_count, QUANT_GROUP_SIZE)
+    k_groups = k_values.reshape(k_values.shape[0], group_count, QUANT_GROUP_SIZE)
+    group_products = torch.einsum("qgd,kgd->qkg", q_groups, k_groups)
+    combined_scales = (
+        q_scales[:, None, :]
+        * k_scales[None, :, :]
+        * float(softmax_scale)
+    )
+    return (group_products * combined_scales).sum(dim=-1)
+
+
 def _gather_q_block_and_scale(
     q_tensor, q_scale, cu_seqlens_q, batch_idx, q_start, q_end, head_idx
 ):
@@ -1830,6 +1872,7 @@ def cpu_mxfp8_golden(
 
     attention_out = torch.zeros((total_q, n1, head_dim), dtype=torch.float32)
     softmax_lse = torch.full((total_q, n1), EMPTY_LSE, dtype=torch.float32)
+    numeric_invalid_row_count = 0
 
     qb_max = math.ceil(max(q_lengths) / SPARSE_BLOCK_SIZE)
     neg_inf = float("-inf")
@@ -1883,6 +1926,10 @@ def cpu_mxfp8_golden(
                 l_run = torch.zeros((nq,), dtype=torch.float32)
                 acc = torch.zeros((nq, head_dim), dtype=torch.float32)
                 any_valid = torch.zeros((nq,), dtype=torch.bool)
+                # Kernel row-invalid handling is numeric, not only structural:
+                # a row whose scaled valid scores all saturate to -FLT_MAX is
+                # emitted as attention=0 and LSE=-FLT_MAX.
+                kernel_has_non_min_score = torch.zeros((nq,), dtype=torch.bool)
 
                 for task_chunks in all_task_chunks:
                     positions = [pos for chunk in task_chunks for pos in chunk]
@@ -1921,6 +1968,28 @@ def cpu_mxfp8_golden(
                         softmax_scale,
                         use_quant_matmul,
                     )
+                    kernel_scores = scores
+                    problematic_scores = valid_mask & (
+                        ~torch.isfinite(scores) | (scores <= EMPTY_LSE)
+                    )
+                    if bool(problematic_scores.any().item()):
+                        # The dequant-before-matmul path can turn both negative
+                        # and positive overflow into NaN.  Recover the kernel
+                        # grouped score only for invalid-row classification.
+                        kernel_scores = _kernel_mxfp8_scores_for_row_invalid(
+                            q_block,
+                            k_mat,
+                            q_scale_block,
+                            k_scale_mat,
+                            softmax_scale,
+                            head_dim,
+                        )
+                    kernel_score_is_non_min = torch.isnan(kernel_scores) | (
+                        kernel_scores > EMPTY_LSE
+                    )
+                    kernel_has_non_min_score |= (
+                        valid_mask & kernel_score_is_non_min
+                    ).any(dim=-1)
                     scores = torch.where(
                         valid_mask, scores, torch.full_like(scores, MASK_VALUE)
                     )
@@ -2028,8 +2097,15 @@ def cpu_mxfp8_golden(
                 attn = acc / safe_l.view(nq, 1)
                 lse = torch.log(safe_l) + m_run
 
+                # Match both kernel invalid-row exits:
+                #   1. final row max is the -FLT_MAX mask sentinel;
+                #   2. the accumulated softmax denominator is zero.
+                kernel_invalid = (~kernel_has_non_min_score) | (l_run == 0)
+                numeric_invalid = any_valid & kernel_invalid
+                numeric_invalid_row_count += int(numeric_invalid.sum().item())
+
                 for local_idx in range(nq):
-                    if not bool(any_valid[local_idx].item()):
+                    if bool(kernel_invalid[local_idx].item()):
                         continue
                     out_idx = q_base + q_start + local_idx
                     attention_out[out_idx, head_idx] = attn[local_idx].to(
@@ -2042,6 +2118,12 @@ def cpu_mxfp8_golden(
         attention_out.shape,
         softmax_lse.shape,
     )
+    if numeric_invalid_row_count:
+        logger.info(
+            "[CPU Golden] kernel numeric-invalid rows: %d "
+            "(attention=0, lse=EMPTY_LSE)",
+            numeric_invalid_row_count,
+        )
     return attention_out.contiguous(), softmax_lse.contiguous()
 
 
