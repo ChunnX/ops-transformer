@@ -61,6 +61,11 @@ struct alignas(STRUCT_ALIGNAS_EIGHT) QuantMatmulAllReduceTilingDataA5 {
 };
 #pragma pack(pop)
 
+struct MatmulAllReduceExtTiling {
+    uint32_t isVecBias;
+    uint32_t biasUbRows;
+};
+
 #pragma pack(push, 8)
 struct alignas(STRUCT_ALIGNAS_EIGHT) MatmulAllReduce910TilingDataA5 {
     Mc2InitTiling mc2InitTiling;
@@ -69,6 +74,7 @@ struct alignas(STRUCT_ALIGNAS_EIGHT) MatmulAllReduce910TilingDataA5 {
     Mc2Tiling::RCSTiling param;
     Mc2MatMulV3TilingData mC2Mmv3TileTilingData;
     Mc2MatMulV3TilingData mC2Mmv3TailTilingData;
+    MatmulAllReduceExtTiling extTiling;
 };
 #pragma pack(pop)
 

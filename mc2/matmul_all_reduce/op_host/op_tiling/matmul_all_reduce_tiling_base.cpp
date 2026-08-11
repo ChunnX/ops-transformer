@@ -146,7 +146,7 @@ void MatmulAllReduceTilingBase::DoAllReduceTiling(bool useHcclApi)
     args.commAlg = 0;
     args.taskType = static_cast<uint8_t>(mc2tiling::KfcTaskType::KFC_TASK_HCC_TASK_DELIVER);
 
-    args.commOrder = 1; // 0先AiCPU后MM;  1为先MM后AICPU
+    args.commOrder = 1;                                                               // 0先AiCPU后MM;  1为先MM后AICPU
     args.reuseMode = MutableRCSTilingData().tileCnt + MutableRCSTilingData().tailCnt; // 数据空间被使用
 
     CalcAllReduceSendRecvParams();
