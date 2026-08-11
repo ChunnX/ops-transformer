@@ -15,6 +15,10 @@ SCHEMA_VERSION = 1
 CASE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 SUPPORTED_RUN_MODES = {"accuracy", "performance"}
 SUPPORTED_DISTRIBUTIONS = {"uniform", "normal"}
+SUPPORTED_OPERATORS = {
+    "all_to_allv_grouped_mat_mul",
+    "grouped_mat_mul_all_to_allv",
+}
 
 
 class CaseManifestError(ValueError):
@@ -84,6 +88,13 @@ def _validate_case(raw_case: Mapping[str, Any]) -> Dict[str, Any]:
     }
     case["shape"] = shape
 
+    operator = case.get("operator", "all_to_allv_grouped_mat_mul")
+    if operator not in SUPPORTED_OPERATORS:
+        raise CaseManifestError(
+            f"case {case_id}: operator must be one of {sorted(SUPPORTED_OPERATORS)}"
+        )
+    case["operator"] = operator
+
     world_size = _require_positive_int(case_id, "world_size", case.get("world_size"))
     if world_size > 8:
         raise CaseManifestError(f"case {case_id}: world_size must not exceed 8")
@@ -92,8 +103,12 @@ def _validate_case(raw_case: Mapping[str, Any]) -> Dict[str, Any]:
     expert_num = _require_positive_int(case_id, "expert_num", case.get("expert_num"))
     if expert_num % world_size:
         raise CaseManifestError(f"case {case_id}: expert_num must be divisible by world_size")
-    if expert_num // world_size > 64:
-        raise CaseManifestError(f"case {case_id}: local expert count must not exceed 64")
+    local_expert_limit = 32 if operator == "grouped_mat_mul_all_to_allv" else 64
+    if expert_num // world_size > local_expert_limit:
+        raise CaseManifestError(
+            f"case {case_id}: local expert count must not exceed {local_expert_limit} "
+            f"for {operator}"
+        )
     case["expert_num"] = expert_num
 
     if case.get("dtype", "bfloat16") != "bfloat16":
@@ -252,6 +267,7 @@ def performance_workload_digest(case: Mapping[str, Any]) -> str:
     payload = {
         "dtype": case["dtype"],
         "expert_num": case["expert_num"],
+        "operator": case["operator"],
         "input_distribution": case["input_distribution"],
         "route": case["route"],
         "seed": case["seed"],

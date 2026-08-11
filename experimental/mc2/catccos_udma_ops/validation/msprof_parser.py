@@ -11,11 +11,18 @@ from statistics import median
 from typing import Any, Dict, List, Mapping, Sequence, Tuple, Union
 
 
-KERNEL_NAME_SUBSTRINGS = (
-    "Ascend950AllToAllVGroupedMatmul",
-    "all_to_allv_grouped_mat_mul_udma",
-    "AllToAllVGroupedMatMulUdma",
-)
+KERNEL_NAME_SUBSTRINGS = {
+    "all_to_allv_grouped_mat_mul": (
+        "Ascend950AllToAllVGroupedMatmul",
+        "all_to_allv_grouped_mat_mul_udma",
+        "AllToAllVGroupedMatMulUdma",
+    ),
+    "grouped_mat_mul_all_to_allv": (
+        "GroupedMatmulAllToAllV",
+        "grouped_mat_mul_all_to_allv_udma",
+        "GroupedMatMulAllToAllVUdma",
+    ),
+}
 
 
 def _field(row: Mapping[str, str], names: Sequence[str], default: str = "") -> str:
@@ -40,7 +47,9 @@ def _quantile(values: Sequence[float], fraction: float) -> float:
     return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
 
 
-def _read_rows(profile_dir: Path) -> Tuple[Dict[str, List[Tuple[float, float]]], List[str], List[str]]:
+def _read_rows(
+    profile_dir: Path, kernel_name_substrings: Sequence[str]
+) -> Tuple[Dict[str, List[Tuple[float, float]]], List[str], List[str]]:
     op_files = sorted(profile_dir.rglob("op_summary_*.csv"))
     if not op_files:
         raise FileNotFoundError("no exported op_summary_*.csv found under {}".format(profile_dir))
@@ -54,7 +63,7 @@ def _read_rows(profile_dir: Path) -> Tuple[Dict[str, List[Tuple[float, float]]],
                 name = _field(row, ("Op Name", "Name", "OP Type", "Op Type", "Type"))
                 if name:
                     candidate_names.add(name)
-                if not any(fragment.lower() in name.lower() for fragment in KERNEL_NAME_SUBSTRINGS):
+                if not any(fragment.lower() in name.lower() for fragment in kernel_name_substrings):
                     continue
                 device = _field(row, ("Device_id", "Device ID", "device_id"), "unknown")
                 duration_text = _field(row, ("Task Duration(us)", "Duration(us)", "Task Duration"))
@@ -75,7 +84,12 @@ def _read_rows(profile_dir: Path) -> Tuple[Dict[str, List[Tuple[float, float]]],
 
 
 def parse_msprof_case(profile_dir: Union[Path, str], case: Mapping[str, Any]) -> Dict[str, Any]:
-    devices, candidate_names, used_files = _read_rows(Path(profile_dir))
+    operator = case.get("operator", "all_to_allv_grouped_mat_mul")
+    if operator not in KERNEL_NAME_SUBSTRINGS:
+        raise ValueError("unsupported operator for msprof parsing: {}".format(operator))
+    devices, candidate_names, used_files = _read_rows(
+        Path(profile_dir), KERNEL_NAME_SUBSTRINGS[operator]
+    )
     performance = case["performance"]
     expected = performance["warmup"] + performance["repeats"] * (
         performance["align_iterations"] + performance["iterations"]

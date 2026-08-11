@@ -13,7 +13,7 @@ from wheel.bdist_wheel import bdist_wheel
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 PACKAGE_NAME = "ops_transformer_catccos_udma"
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 MINIMUM_CMAKE_VERSION = (3, 18, 4)
 
 

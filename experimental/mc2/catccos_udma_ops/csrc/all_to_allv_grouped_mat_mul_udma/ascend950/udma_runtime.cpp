@@ -87,6 +87,45 @@ void UdmaRuntime::EnsureInitialized() const
     TORCH_CHECK(initialized_, "UDMA runtime is not initialized; call init_udma_group() before the operator");
 }
 
+void *UdmaRuntime::AllocateSymmetric(size_t bytes)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    EnsureInitialized();
+    TORCH_CHECK(bytes > 0, "symmetric allocation size must be positive");
+    void *pointer = aclshmem_malloc(bytes);
+    TORCH_CHECK(pointer != nullptr, "failed to allocate ", bytes,
+                " bytes from the symmetric UDMA heap; increase heap_size if necessary");
+    externalAllocations_.insert(pointer);
+    return pointer;
+}
+
+void UdmaRuntime::FreeSymmetric(void *pointer)
+{
+    if (pointer == nullptr) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto allocation = externalAllocations_.find(pointer);
+    if (allocation == externalAllocations_.end()) {
+        return;
+    }
+    if (lastStream_ != nullptr) {
+        const aclError syncStatus = aclrtSynchronizeStream(lastStream_);
+        if (syncStatus != ACL_SUCCESS) {
+            TORCH_WARN("failed to synchronize before freeing symmetric memory: ", syncStatus);
+        }
+    }
+    aclshmem_free(pointer);
+    externalAllocations_.erase(allocation);
+}
+
+bool UdmaRuntime::IsSymmetric(const void *pointer) const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    EnsureInitialized();
+    return externalAllocations_.find(const_cast<void *>(pointer)) != externalAllocations_.end();
+}
+
 void UdmaRuntime::RecordStream(aclrtStream stream)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -104,6 +143,8 @@ void UdmaRuntime::Finalize(aclrtStream stream)
     if (!initialized_) {
         return;
     }
+    TORCH_CHECK(externalAllocations_.empty(), "cannot finalize UDMA while ", externalAllocations_.size(),
+                " symmetric output tensor(s) are still alive; delete them before destroy_udma_group()");
     aclrtStream streamToWait = lastStream_ != nullptr ? lastStream_ : stream;
     if (streamToWait != nullptr) {
         const aclError syncStatus = aclrtSynchronizeStream(streamToWait);

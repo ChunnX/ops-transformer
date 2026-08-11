@@ -8,6 +8,7 @@ from validation.msprof_parser import parse_msprof_case
 def _case():
     return {
         "id": "parser", "world_size": 2,
+        "operator": "all_to_allv_grouped_mat_mul",
         "performance": {
             "warmup": 1, "align_iterations": 1, "iterations": 2, "repeats": 1,
             "max_rank_skew_ratio": 0.10,

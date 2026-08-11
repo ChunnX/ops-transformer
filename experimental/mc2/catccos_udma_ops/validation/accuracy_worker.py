@@ -63,6 +63,63 @@ def _golden(x, weight, route_matrix, rank, world_size, expert_num):
     return torch.cat(expert_outputs, dim=0).to(dtype=torch.bfloat16, device=x.device)
 
 
+def _grouped_mat_mul_all_to_allv_golden(
+    x, weight, route_matrix, rank, world_size, expert_num
+):
+    """Compute local GMM in FP32, then route its pieces through CPU Gloo."""
+    x_cpu = x.detach().float().cpu()
+    weight_cpu = weight.detach().float().cpu()
+    local_experts = expert_num // world_size
+    local_outputs = []
+    offset = 0
+    for local_expert in range(local_experts):
+        global_expert = rank * local_experts + local_expert
+        rows = sum(route_matrix[source][global_expert] for source in range(world_size))
+        local_outputs.append(
+            x_cpu[offset:offset + rows].matmul(weight_cpu[local_expert])
+        )
+        offset += rows
+    if offset != x_cpu.shape[0]:
+        raise RuntimeError("route matrix does not describe the grouped input rows")
+    local_output = torch.cat(local_outputs, dim=0)
+    gathered = [torch.empty_like(local_output) for _ in range(world_size)]
+    dist.all_gather(gathered, local_output)
+
+    pieces = []
+    for expert_rank, expert_output in enumerate(gathered):
+        expert_offset = 0
+        for local_expert in range(local_experts):
+            global_expert = expert_rank * local_experts + local_expert
+            counts = [route_matrix[source][global_expert] for source in range(world_size)]
+            start = expert_offset + sum(counts[:rank])
+            pieces.append(expert_output[start:start + counts[rank]])
+            expert_offset += sum(counts)
+    expected = torch.cat(pieces, dim=0)
+    return expected.to(dtype=torch.bfloat16, device=x.device)
+
+
+def _grouped_mat_mul_all_to_allv_segments(
+    route_matrix, rank, world_size, expert_num
+):
+    local_experts = expert_num // world_size
+    segments = []
+    offset = 0
+    for expert_rank in range(world_size):
+        for local_expert in range(local_experts):
+            global_expert = expert_rank * local_experts + local_expert
+            rows = int(route_matrix[rank][global_expert])
+            segments.append({
+                "local_expert": global_expert,
+                "global_expert": global_expert,
+                "source_rank": expert_rank,
+                "row_start": offset,
+                "row_end": offset + rows,
+                "rows": rows,
+            })
+            offset += rows
+    return segments
+
+
 def _padding_stats(tensor, valid_rows):
     padding = tensor[valid_rows:].detach().float()
     if padding.numel() == 0:
@@ -88,44 +145,75 @@ def _run_case(case, rank, world_size, device, output_root):
         m, rank, world_size, expert_num, device
     )
     route_matrix = udma.build_global_route_matrix(m, world_size, expert_num)
-    expected = _golden(x, weight, route_matrix, rank, world_size, expert_num)
-    valid_rows = int(global_table.sum().item())
-    if valid_rows != expected.shape[0]:
-        raise RuntimeError("golden rows do not match the global route table")
-
     candidates = []
-    ordinary = udma.all_to_allv_grouped_mat_mul(
-        x, weight, local_table, global_table,
-        ep_size=world_size, expert_num=expert_num,
-    )
-    torch_npu.npu.synchronize()
-    candidates.append(("ordinary", ordinary.clone(), _padding_stats(ordinary, valid_rows)))
-
-    reusable_out = torch.zeros_like(ordinary)
-    for repeat in range(case["accuracy"]["repeats"]):
-        reusable_out.zero_()
-        out_actual = udma.all_to_allv_grouped_mat_mul(
+    segments_override = None
+    if case["operator"] == "grouped_mat_mul_all_to_allv":
+        expected = _grouped_mat_mul_all_to_allv_golden(
+            x, weight, route_matrix, rank, world_size, expert_num
+        )
+        valid_rows = m
+        segments_override = _grouped_mat_mul_all_to_allv_segments(
+            route_matrix, rank, world_size, expert_num
+        )
+        ordinary = udma.grouped_mat_mul_all_to_allv(
             x, weight, local_table, global_table,
-            ep_size=world_size, expert_num=expert_num, out=reusable_out,
+            ep_size=world_size, expert_num=expert_num,
         )
         torch_npu.npu.synchronize()
-        candidates.append(
-            (
-                "out_repeat_{}".format(repeat),
-                out_actual.clone(),
-                _padding_stats(out_actual, valid_rows),
+        candidates.append(("ordinary", ordinary.clone(), _padding_stats(ordinary, valid_rows)))
+        del ordinary
+        gc.collect()
+
+        reusable_out = udma.empty_symmetric((m, n))
+        for repeat in range(case["accuracy"]["repeats"]):
+            out_actual = udma.grouped_mat_mul_all_to_allv(
+                x, weight, local_table, global_table,
+                ep_size=world_size, expert_num=expert_num, out=reusable_out,
             )
+            torch_npu.npu.synchronize()
+            candidates.append((
+                "out_repeat_{}".format(repeat), out_actual.clone(),
+                _padding_stats(out_actual, valid_rows),
+            ))
+        del out_actual, reusable_out
+        gc.collect()
+    else:
+        expected = _golden(x, weight, route_matrix, rank, world_size, expert_num)
+        valid_rows = int(global_table.sum().item())
+        if valid_rows != expected.shape[0]:
+            raise RuntimeError("golden rows do not match the global route table")
+        ordinary = udma.all_to_allv_grouped_mat_mul(
+            x, weight, local_table, global_table,
+            ep_size=world_size, expert_num=expert_num,
         )
+        torch_npu.npu.synchronize()
+        candidates.append(("ordinary", ordinary.clone(), _padding_stats(ordinary, valid_rows)))
+
+        reusable_out = torch.zeros_like(ordinary)
+        for repeat in range(case["accuracy"]["repeats"]):
+            reusable_out.zero_()
+            out_actual = udma.all_to_allv_grouped_mat_mul(
+                x, weight, local_table, global_table,
+                ep_size=world_size, expert_num=expert_num, out=reusable_out,
+            )
+            torch_npu.npu.synchronize()
+            candidates.append((
+                "out_repeat_{}".format(repeat), out_actual.clone(),
+                _padding_stats(out_actual, valid_rows),
+            ))
 
     case_root = output_root / case["id"] / "rank_{}".format(rank)
     reports = []
     for name, actual, padding in candidates:
-        report = analyze_accuracy(
-            actual[:valid_rows], expected,
-            global_table=global_table.cpu().tolist(),
-            topk=case["accuracy"]["topk"],
-            heatmap_bins=case["accuracy"]["heatmap_bins"],
-        )
+        analyze_arguments = {
+            "topk": case["accuracy"]["topk"],
+            "heatmap_bins": case["accuracy"]["heatmap_bins"],
+        }
+        if segments_override is None:
+            analyze_arguments["global_table"] = global_table.cpu().tolist()
+        else:
+            analyze_arguments["segments_override"] = segments_override
+        report = analyze_accuracy(actual[:valid_rows], expected, **analyze_arguments)
         report.update(
             case_id=case["id"], rank=rank, path=name,
             valid_rows=valid_rows, padding=padding,
@@ -167,7 +255,7 @@ def _run_case(case, rank, world_size, device, output_root):
         "repeat_consistency": repeat_consistency,
     }
     write_json(case_root / "summary.json", summary)
-    del candidates, ordinary, reusable_out
+    del candidates
     gc.collect()
     return summary
 

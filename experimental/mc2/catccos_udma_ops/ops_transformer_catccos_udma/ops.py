@@ -44,3 +44,40 @@ def all_to_allv_grouped_mat_mul(
     return torch.ops.ops_transformer_catccos_udma.all_to_allv_grouped_mat_mul_udma_out(
         *arguments, out
     )
+
+
+def grouped_mat_mul_all_to_allv(
+    x: torch.Tensor,
+    weight: torch.Tensor,
+    local_tokens_per_expert: torch.Tensor,
+    global_tokens_per_local_expert: torch.Tensor,
+    *,
+    ep_size: int,
+    expert_num: int,
+    out: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Apply local grouped matmuls and return tokens with UDMA AllToAllV.
+
+    ``x`` is a regular contiguous BF16 NPU tensor grouped by this rank's local
+    experts. The result has shape ``[m, n]`` and resides in SHMEM-registered NPU
+    memory because it is the local destination of UDMA GET operations. When
+    reusing ``out``, allocate it with :func:`empty_symmetric`.
+    """
+    config = get_udma_config()
+    if ep_size != config.world_size:
+        raise ValueError("TP=1 requires ep_size == UDMA world_size")
+    arguments = (
+        x,
+        weight,
+        local_tokens_per_expert,
+        global_tokens_per_local_expert,
+        ep_size,
+        expert_num,
+    )
+    if out is None:
+        return torch.ops.ops_transformer_catccos_udma.grouped_mat_mul_all_to_allv_udma(
+            *arguments
+        )
+    return torch.ops.ops_transformer_catccos_udma.grouped_mat_mul_all_to_allv_udma_out(
+        *arguments, out
+    )

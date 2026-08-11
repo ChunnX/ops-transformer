@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <mutex>
 #include <string>
+#include <unordered_set>
 
 namespace OpsTransformer::CatccosUdma {
 
@@ -25,6 +26,9 @@ public:
     void Finalize(aclrtStream stream);
     void EnsureInitialized() const;
 
+    void *AllocateSymmetric(size_t bytes);
+    void FreeSymmetric(void *pointer);
+    bool IsSymmetric(const void *pointer) const;
     void RecordStream(aclrtStream stream);
     uint8_t *Workspace() const;
     uint64_t FftsAddress() const;
@@ -47,6 +51,7 @@ private:
     uint8_t *workspace_{nullptr};
     aclrtStream lastStream_{nullptr};
     uint64_t fftsAddress_{0};
+    std::unordered_set<void *> externalAllocations_;
 };
 
 } // namespace OpsTransformer::CatccosUdma

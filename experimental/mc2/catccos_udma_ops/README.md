@@ -1,9 +1,10 @@
 # CatCCOS UDMA operators for PyTorch
 
 This standalone project delivers the Ascend950 BF16
-`alltoallvgroupedmatmul` UDMA kernel as an installable Wheel. The Wheel contains
-the C++/AscendC extension (`_C.abi3.so`) and the SHMEM shared libraries required
-at runtime. The actual device launch remains a Fast Kernel Launch expression:
+`alltoallvgroupedmatmul` and `groupedmatmulalltoallv` UDMA BF16 kernels as an
+installable Wheel. The Wheel contains the C++/AscendC extension (`_C.abi3.so`)
+and the SHMEM shared libraries required at runtime. The actual device launch
+remains a Fast Kernel Launch expression:
 `KernelAdapter<Kernel><<<blockDim, nullptr, stream>>>(...)`.
 
 The CatCCOS dependency comes from the official
@@ -12,6 +13,9 @@ The CatCCOS dependency comes from the official
 are used, so this project does not change the repository-wide CATLASS version.
 The operator-local `csrc/catccos_overlay` directory contains only the
 UDMA all-to-all-v headers that have not yet landed in that official revision.
+The GroupedMatMul-AllToAllV configuration is migrated from CatCCOS commit
+`ee01c5181c50ce2aeb5feb05d603b568eb31a61a`; the fork is a source reference,
+not a build dependency.
 
 ## Build and install
 
@@ -91,6 +95,38 @@ output = udma.all_to_allv_grouped_mat_mul(
 )
 ```
 
+`grouped_mat_mul_all_to_allv` performs the inverse order: local grouped
+matmuls followed by UDMA AllToAllV. Its `x` and `weight` inputs remain ordinary
+contiguous BF16 NPU tensors. UDMA GET writes the result directly, so the result
+is backed by the registered SHMEM heap:
+
+```python
+import gc
+
+result = udma.grouped_mat_mul_all_to_allv(
+    x, weight, local_tokens, global_tokens,
+    ep_size=world_size, expert_num=expert_num,
+)
+
+# Reuse registered output so allocation stays outside repeated launches.
+reusable = udma.empty_symmetric((m, n))
+udma.grouped_mat_mul_all_to_allv(
+    x, weight, local_tokens, global_tokens,
+    ep_size=world_size, expert_num=expert_num, out=reusable,
+)
+consume(result, reusable)
+
+# Every registered tensor must be released before destroy_udma_group().
+del result, reusable
+gc.collect()
+```
+
+For this direction, `x` is grouped by the local experts according to the sums
+of `global_tokens_per_local_expert`; the output shape is `[m, n]`. Every Rank
+must allocate and release registered tensors in the same order. The runtime
+rejects finalization while such tensors are alive instead of leaving dangling
+PyTorch storage.
+
 ## Accuracy and performance validation
 
 Install the validation extra together with the Wheel. The tests deliberately
@@ -113,6 +149,17 @@ bash scripts/run_accuracy.sh --case-id aligned_m128_n256_k256_ep2_uniform
 bash scripts/run_accuracy.sh --include-tag smoke --output-dir /tmp/udma_accuracy
 ```
 
+The GroupedMatMul-AllToAllV BF16 cases use a separate manifest so their
+baselines and operator names cannot be mixed with the opposite direction:
+
+```bash
+bash scripts/run_accuracy.sh \
+  --cases validation/cases/grouped_mat_mul_all_to_allv.yaml
+bash scripts/run_performance.sh \
+  --cases validation/cases/grouped_mat_mul_all_to_allv.yaml \
+  --case-id gmm_a2av_m128_n256_k256_ep2_uniform
+```
+
 The installed-Wheel equivalent is `ops-transformer-udma-accuracy`; the
 performance command below is likewise available as
 `ops-transformer-udma-performance`.
@@ -124,11 +171,11 @@ FP32 CPU tensor, reconstructs destination-expert slices from the route matrix,
 and performs CPU FP32 matmul followed by BF16 conversion. Both automatic-output
 and reusable-output calls use the same ordinary input tensor and are checked.
 
-The SHMEM heap contains only the fixed remote-receive workspace and
-synchronization state, so its size is independent of `x`. Validation defaults
-to 1 GiB. Set `UDMA_HEAP_SIZE` to an integer byte count only when an explicit
-larger capacity is required; an undersized override is rejected before
-communication setup.
+The SHMEM heap always contains the fixed communication workspace and
+synchronization state. GroupedMatMul-AllToAllV additionally allocates its
+`[m, n]` UDMA destination there; its ordinary `x` and `weight` inputs do not
+consume SHMEM. Validation defaults to 1 GiB. Set `UDMA_HEAP_SIZE` to an integer
+byte count when a larger output requires more capacity.
 
 Pass/fail follows the
 [opbase experimental precision standard](https://gitcode.com/cann/opbase/blob/master/docs/zh/ops_precision_standard/experimental_standard.md)

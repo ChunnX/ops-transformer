@@ -1,0 +1,45 @@
+schema_version: 1
+
+defaults:
+  operator: grouped_mat_mul_all_to_allv
+  dtype: bfloat16
+  route: balanced
+  seed: 2026
+  accuracy:
+    standard: opbase_experimental
+    repeats: 2
+    topk: 20
+    heatmap_bins: 32
+    dump_on_failure: true
+  performance:
+    warmup: 10
+    align_iterations: 3
+    iterations: 50
+    repeats: 3
+    max_rank_skew_ratio: 0.10
+    max_regression_ratio: 0.00
+
+cases:
+  - id: gmm_a2av_m128_n256_k256_ep2_uniform
+    world_size: 2
+    shape: {m: 128, n: 256, k: 256}
+    expert_num: 8
+    input_distribution: {kind: uniform, low: -5.0, high: 5.0}
+    run: [accuracy, performance]
+    tags: [smoke, aligned, uniform, grouped_mat_mul_all_to_allv]
+
+  - id: gmm_a2av_m128_n256_k256_ep2_normal
+    world_size: 2
+    shape: {m: 128, n: 256, k: 256}
+    expert_num: 8
+    input_distribution: {kind: normal, mean: 0.0, std: 1.0}
+    run: [accuracy]
+    tags: [smoke, aligned, normal, grouped_mat_mul_all_to_allv]
+
+  - id: gmm_a2av_m256_n512_k1024_ep2_uniform
+    world_size: 2
+    shape: {m: 256, n: 512, k: 1024}
+    expert_num: 16
+    input_distribution: {kind: uniform, low: -5.0, high: 5.0}
+    run: [accuracy, performance]
+    tags: [multi_k, uniform, grouped_mat_mul_all_to_allv]

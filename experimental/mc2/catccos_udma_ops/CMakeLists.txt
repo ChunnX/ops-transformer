@@ -19,7 +19,7 @@ endif()
 
 find_package(ASC REQUIRED)
 find_package(AICPU REQUIRED)
-project(OpsTransformerCatccosUdma LANGUAGES ASC AICPU CXX VERSION 0.1.0)
+project(OpsTransformerCatccosUdma LANGUAGES ASC AICPU CXX VERSION 0.2.0)
 
 # CMake 3.27+ asks supported linkers to emit a dependency file with
 # --dependency-file. Bisheng's device linker does not implement that option and

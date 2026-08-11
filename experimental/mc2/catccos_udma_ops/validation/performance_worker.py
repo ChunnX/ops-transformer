@@ -82,16 +82,25 @@ def main():
         local_table, global_table = udma.build_rank_route_tensors(
             shape["m"], rank, world_size, case["expert_num"], device
         )
-        out = torch.empty(
-            (world_size * shape["m"], shape["n"]),
-            dtype=torch.bfloat16, device=device,
-        )
+        if case["operator"] == "grouped_mat_mul_all_to_allv":
+            out = udma.empty_symmetric((shape["m"], shape["n"]))
 
-        def launch():
-            udma.all_to_allv_grouped_mat_mul(
-                x, weight, local_table, global_table,
-                ep_size=world_size, expert_num=case["expert_num"], out=out,
+            def launch():
+                udma.grouped_mat_mul_all_to_allv(
+                    x, weight, local_table, global_table,
+                    ep_size=world_size, expert_num=case["expert_num"], out=out,
+                )
+        else:
+            out = torch.empty(
+                (world_size * shape["m"], shape["n"]),
+                dtype=torch.bfloat16, device=device,
             )
+
+            def launch():
+                udma.all_to_allv_grouped_mat_mul(
+                    x, weight, local_table, global_table,
+                    ep_size=world_size, expert_num=case["expert_num"], out=out,
+                )
 
         # All target launches are deliberately countable. The parser removes
         # warm-up and primer occurrences rather than timing Python-side scopes.
@@ -117,12 +126,12 @@ def main():
             ),
         })
     finally:
-        if initialized_dist:
-            dist.destroy_process_group()
         del out, x
         gc.collect()
         if initialized_udma:
             udma.destroy_udma_group()
+        if initialized_dist:
+            dist.destroy_process_group()
     return 0
 
 

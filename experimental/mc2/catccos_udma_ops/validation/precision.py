@@ -287,7 +287,8 @@ def analyze_accuracy(
     actual: Any,
     expected: Any,
     *,
-    global_table: Sequence[Sequence[int]],
+    global_table: Optional[Sequence[Sequence[int]]] = None,
+    segments_override: Optional[Sequence[Mapping[str, int]]] = None,
     topk: int = 20,
     heatmap_bins: int = 32,
 ) -> Dict[str, Any]:
@@ -338,7 +339,13 @@ def analyze_accuracy(
         l2_norm = math.nan
         rmse = math.nan
 
-    segments = _build_segments(global_table)
+    if (global_table is None) == (segments_override is None):
+        raise ValueError("provide exactly one of global_table or segments_override")
+    segments = (
+        [dict(segment) for segment in segments_override]
+        if segments_override is not None
+        else _build_segments(global_table or [])
+    )
     expected_rows = segments[-1]["row_end"] if segments else 0
     if expected_rows != actual.shape[0]:
         raise ValueError(
