@@ -1,0 +1,589 @@
+[
+    {
+        "id": 0,
+        "name": "aclnn.MlaPreprocess",
+        "aclnn_name": "MlaPreprocess",
+        "triton_name": null,
+        "version": "v2.1",
+        "expected_error_msg": null,
+        "api": "pytorch",
+        "api_type": "function_aclnn_mla_preprocess",
+        "aclnn_api_type": "function_pyaclnn_mla_preprocess",
+        "triton_api_type": "triton_function",
+        "fusion_api_type": "fusion_function",
+        "fusion_mode": null,
+        "dist_api_type": "dist_function",
+        "backward": false,
+        "standard": {
+            "acc": "default",
+            "perf": "not_key"
+        },
+        "outputs": null,
+        "inputs": [
+            {
+                "name": "input",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp16",
+                "shape": [
+                    8,
+                    2048
+                ],
+                "range_values": [
+                    1,
+                    2
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "gamma0",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp16",
+                "shape": [
+                    2048
+                ],
+                "range_values": [
+                    1,
+                    2
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "beta0",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp16",
+                "shape": [
+                    2048
+                ],
+                "range_values": [
+                    1,
+                    2
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "quantScale0",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp16",
+                "shape": [
+                    1
+                ],
+                "range_values": [
+                    1,
+                    2
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "quantOffset0",
+                "type": "tensor",
+                "required": true,
+                "dtype": "int8",
+                "shape": [
+                    1
+                ],
+                "range_values": [
+                    0,
+                    1
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "wdqkv",
+                "type": "tensor",
+                "required": true,
+                "dtype": "int8",
+                "shape": [
+                    2112,
+                    2048
+                ],
+                "range_values": [
+                    1,
+                    2
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "deScale0",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp32",
+                "shape": [
+                    2112
+                ],
+                "range_values": [
+                    0.001,
+                    0.002
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "bias0",
+                "type": "tensor",
+                "required": true,
+                "dtype": "int32",
+                "shape": [
+                    1,
+                    2112
+                ],
+                "range_values": [
+                    0,
+                    1
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "gamma1",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp16",
+                "shape": [
+                    1536
+                ],
+                "range_values": [
+                    1,
+                    2
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "beta1",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp16",
+                "shape": [
+                    1536
+                ],
+                "range_values": [
+                    1,
+                    2
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "quantScale1",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp16",
+                "shape": [
+                    1
+                ],
+                "range_values": [
+                    1,
+                    2
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "quantOffset1",
+                "type": "tensor",
+                "required": true,
+                "dtype": "int8",
+                "shape": [
+                    1
+                ],
+                "range_values": [
+                    0,
+                    1
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "wuq",
+                "type": "tensor",
+                "required": true,
+                "dtype": "int8",
+                "shape": [
+                    3072,
+                    1536
+                ],
+                "range_values": [
+                    1,
+                    2
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "deScale1",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp32",
+                "shape": [
+                    3072
+                ],
+                "range_values": [
+                    0.001,
+                    0.002
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "bias1",
+                "type": "tensor",
+                "required": true,
+                "dtype": "int32",
+                "shape": [
+                    1,
+                    3072
+                ],
+                "range_values": [
+                    0,
+                    1
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "gamma2",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp16",
+                "shape": [
+                    512
+                ],
+                "range_values": [
+                    1,
+                    2
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "cos",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp16",
+                "shape": [
+                    8,
+                    64
+                ],
+                "range_values": [
+                    1,
+                    2
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "sin",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp16",
+                "shape": [
+                    8,
+                    64
+                ],
+                "range_values": [
+                    1,
+                    2
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "wuk",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp16",
+                "shape": [
+                    16,
+                    128,
+                    512
+                ],
+                "range_values": [
+                    1,
+                    2
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "kvCache",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp16",
+                "shape": [
+                    192,
+                    128,
+                    1,
+                    512
+                ],
+                "range_values": 0,
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "kvCacheRope",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp16",
+                "shape": [
+                    192,
+                    128,
+                    1,
+                    64
+                ],
+                "range_values": 0,
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "slotmapping",
+                "type": "tensor",
+                "required": true,
+                "dtype": "int32",
+                "shape": [
+                    8
+                ],
+                "range_values": 24576,
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "ctkvScale",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp16",
+                "shape": [
+                    1
+                ],
+                "range_values": [
+                    1,
+                    2
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "qNopeScale",
+                "type": "tensor",
+                "required": true,
+                "dtype": "fp16",
+                "shape": [
+                    16
+                ],
+                "range_values": [
+                    1,
+                    2
+                ],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "wdqDim",
+                "type": "attr",
+                "required": true,
+                "dtype": "int",
+                "shape": null,
+                "range_values": [
+                    0
+                ],
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "qRopeDim",
+                "type": "attr",
+                "required": true,
+                "dtype": "int",
+                "shape": null,
+                "range_values": [
+                    0
+                ],
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "kRopeDim",
+                "type": "attr",
+                "required": true,
+                "dtype": "int",
+                "shape": null,
+                "range_values": [
+                    0
+                ],
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "epsilon",
+                "type": "attr",
+                "required": true,
+                "dtype": "double",
+                "shape": null,
+                "range_values": 1e-06,
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "qRotaryCoeff",
+                "type": "attr",
+                "required": true,
+                "dtype": "int",
+                "shape": null,
+                "range_values": [
+                    2
+                ],
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "kRotaryCoeff",
+                "type": "attr",
+                "required": true,
+                "dtype": "int",
+                "shape": null,
+                "range_values": [
+                    2
+                ],
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "transposeWdq",
+                "type": "attr",
+                "required": true,
+                "dtype": "bool",
+                "shape": null,
+                "range_values": [
+                    true
+                ],
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "transposeWuq",
+                "type": "attr",
+                "required": true,
+                "dtype": "bool",
+                "shape": null,
+                "range_values": [
+                    true
+                ],
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "transposeWuk",
+                "type": "attr",
+                "required": true,
+                "dtype": "bool",
+                "shape": null,
+                "range_values": [
+                    true
+                ],
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "cacheMode",
+                "type": "attr",
+                "required": true,
+                "dtype": "int",
+                "shape": null,
+                "range_values": 1,
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "quantMode",
+                "type": "attr",
+                "required": true,
+                "dtype": "int",
+                "shape": null,
+                "range_values": [
+                    0
+                ],
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "doRmsNorm",
+                "type": "attr",
+                "required": true,
+                "dtype": "bool",
+                "shape": null,
+                "range_values": [
+                    true
+                ],
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "name": "wdkvSplitCount",
+                "type": "attr",
+                "required": true,
+                "dtype": "int",
+                "shape": null,
+                "range_values": [
+                    1
+                ],
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            }
+        ],
+        "acl_json": "",
+        "method_inputs": null,
+        "tensor_input": null,
+        "save_name": null,
+        "uuid": null,
+        "downloaded": false,
+        "is_boundary": false,
+        "xrun_cs_name": null,
+        "xrun_data": null
+    }
+]

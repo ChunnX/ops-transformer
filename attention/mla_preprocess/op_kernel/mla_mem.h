@@ -45,10 +45,10 @@ public:
                                                                            HardwareInfo<ArchTag>::l0BSize,
                                                                            HardwareInfo<ArchTag>::l0CSize};
 #ifndef __CCE_KT_TEST__
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__)
         tensor[(uint32_t)BufferType::ASCEND_UB].InitBuffer(0, bufferSize[(uint32_t)BufferType::ASCEND_UB]);
         tensor[(uint32_t)BufferType::ASCEND_UB].address_.logicPos = static_cast<uint8_t>(AscendC::TPosition::VECIN);
-#elif defined(__DAV_C220_CUBE__)
+#elif defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
         tensor[(uint32_t)BufferType::ASCEND_CB].InitBuffer(0, bufferSize[(uint32_t)BufferType::ASCEND_CB]);
         tensor[(uint32_t)BufferType::ASCEND_CB].address_.logicPos = static_cast<uint8_t>(AscendC::TPosition::A1);
         tensor[(uint32_t)BufferType::ASCEND_L0A].InitBuffer(0, bufferSize[(uint32_t)BufferType::ASCEND_L0A]);

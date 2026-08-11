@@ -162,7 +162,119 @@ struct l1_to_l0_a<ArchType::ASCEND_V220, int8_t, true, DataFormat::ZN, DataForma
     }
 };
 
-/////////////////////////////////////////////////////
+// --- A5 (Ascend 950): L0A expects Nz format (column-major fractals) instead of Zz (row-major fractals) ---
+// NZ: fractal [m1, k1] physical address = k1 * M1 * FRACTAL_SIZE + m1 * FRACTAL_SIZE
+// ZZ: fractal [m1, k1] physical address = m1 * K1 * FRACTAL_SIZE + k1 * FRACTAL_SIZE
+// Key difference: outer loop over K (not M), repeat=M1 (not K1), because in NZ the M-direction fractals are contiguous.
+
+// No-transpose: L1(ZN row-major) -> L0A(NZ column-major)
+// Source ZN: [m1, k1] at m1*K1 + k1 (K-direction adjacent fractals separated by M1)
+// Dest   NZ: [m1, k1] at k1*M1 + m1 (M-direction adjacent fractals contiguous => dstGap=0)
+// Loop over K1, each iteration loads M1 fractals along M-direction.
+template <ArchType ArchTag, typename DataType>
+struct l1_to_l0_a<ArchTag, DataType, false, DataFormat::ZN, DataFormat::NZ> {
+    using HardwareParams = HardwareInfo<ArchTag>;
+    static constexpr uint32_t BLOCK_SIZE = HardwareParams::l1l0BlockSize / sizeof(DataType);
+    static constexpr uint32_t FRACTAL_SIZE = HardwareParams::fractalSize / sizeof(DataType);
+    static constexpr uint32_t BLOCK_NUM_PER_FRACTAL = HardwareParams::fractalSize / HardwareParams::l1l0BlockSize;
+
+    __aicore__ l1_to_l0_a(AscendC::LocalTensor<DataType> l0Tensor,
+                          AscendC::LocalTensor<DataType> l1Tensor,
+                          uint32_t mTileCeil,
+                          uint32_t kPartCeil,
+                          uint32_t mSrcStride,
+                          uint32_t kSrcStride,
+                          uint32_t mDstStride,
+                          uint32_t kDstStride)
+    {
+        uint32_t m1 = mTileCeil / BLOCK_NUM_PER_FRACTAL;
+        uint32_t k1 = kPartCeil / BLOCK_SIZE;
+        for (uint32_t ki = 0; ki < k1; ki++) {
+            AscendC::LoadData(l0Tensor[ki * m1 * FRACTAL_SIZE],
+                              l1Tensor[ki * kSrcStride * FRACTAL_SIZE],
+                              AscendC::LoadData2dParams(0,
+                                                        static_cast<uint16_t>(m1),
+                                                        mSrcStride,
+                                                        0,
+                                                        0,
+                                                        false,
+                                                        0));
+        }
+    };
+};
+
+// Transpose: L1(NZ) -> L0A(NZ) with fractal-internal transpose
+// ifTranspose=true transposes each fractal internally (16x16 -> 16x16 transposed)
+// Source L1 NZ: [m1, k1] at k1*M1 + m1 (M-direction contiguous, srcStride=1 for K-direction jumps)
+// After transpose, dest fractal represents transposed matrix element
+// Dest L0A NZ: K-direction adjacent fractals separated by M1 => dstGap = M1 - 1
+// Outer loop over M1, repeat=K1 along K-direction, srcStride=kSrcStride, dstGap=M1-1
+template <ArchType ArchTag, typename DataType>
+struct l1_to_l0_a<ArchTag, DataType, true, DataFormat::ZN, DataFormat::NZ> {
+    using HardwareParams = HardwareInfo<ArchTag>;
+    static constexpr uint32_t BLOCK_SIZE = HardwareParams::l1l0BlockSize / sizeof(DataType);
+    static constexpr uint32_t FRACTAL_SIZE = HardwareParams::fractalSize / sizeof(DataType);
+    static constexpr uint32_t BLOCK_NUM_PER_FRACTAL = HardwareParams::fractalSize / HardwareParams::l1l0BlockSize;
+
+    __aicore__ l1_to_l0_a(AscendC::LocalTensor<DataType> l0Tensor,
+                          AscendC::LocalTensor<DataType> l1Tensor,
+                          uint32_t mTileCeil,
+                          uint32_t kPartCeil,
+                          uint32_t mSrcStride,
+                          uint32_t kSrcStride,
+                          uint32_t mDstStride,
+                          uint32_t kDstStride)
+    {
+        uint32_t m1 = mTileCeil / BLOCK_SIZE;
+        uint32_t k1 = kPartCeil / BLOCK_NUM_PER_FRACTAL;
+        for (uint32_t mi = 0; mi < m1; mi++) {
+            AscendC::LoadData(l0Tensor[mi * mDstStride * FRACTAL_SIZE],
+                              l1Tensor[mi * mSrcStride * FRACTAL_SIZE],
+                              AscendC::LoadData2dParams(0,
+                                                        static_cast<uint16_t>(k1),
+                                                        kSrcStride,
+                                                        0,
+                                                        m1 - 1,
+                                                        true,
+                                                        0));
+        }
+    };
+};
+
+// int8_t transpose: A5 NZ dest, K-direction adjacent fractals separated by M1 => dstFracGap = M1 - 1
+// M1 = mTileCeil / BLOCK_NUM_PER_FRACTAL (same as generic transpose M1 calculation)
+template <>
+struct l1_to_l0_a<ArchType::ASCEND_V220, int8_t, true, DataFormat::ZN, DataFormat::NZ> {
+    using HardwareParams = HardwareInfo<ArchType::ASCEND_V220>;
+    static constexpr uint32_t BLOCK_SIZE = HardwareParams::l1l0BlockSize / sizeof(int8_t);
+    static constexpr uint32_t FRACTAL_SIZE = HardwareParams::fractalSize / sizeof(int8_t);
+    static constexpr uint32_t BLOCK_NUM_PER_FRACTAL = HardwareParams::fractalSize / HardwareParams::l1l0BlockSize;
+    static constexpr uint32_t NUM_FRACTAL_PER_ITER = 2;
+    __aicore__ l1_to_l0_a(AscendC::LocalTensor<int8_t> l0Tensor,
+                          AscendC::LocalTensor<int8_t> l1Tensor,
+                          uint32_t mTileCeil,
+                          uint32_t kPartCeil,
+                          uint32_t mSrcStride,
+                          uint32_t kSrcStride,
+                          uint32_t mDstStride,
+                          uint32_t kDstStride)
+    {
+        uint32_t loopCount = mTileCeil / (BLOCK_NUM_PER_FRACTAL * NUM_FRACTAL_PER_ITER);
+        uint32_t m1Total = mTileCeil / BLOCK_NUM_PER_FRACTAL;
+        for (uint64_t i = 0; i < loopCount; ++i) {
+            AscendC::LoadDataWithTranspose(
+                l0Tensor[i * mDstStride * FRACTAL_SIZE * NUM_FRACTAL_PER_ITER],
+                l1Tensor[i * mSrcStride * FRACTAL_SIZE],
+                AscendC::LoadData2dTransposeParams(0,
+                                                   static_cast<uint16_t>(CeilDiv<BLOCK_SIZE>(kPartCeil)),
+                                                   kSrcStride,
+                                                   1,
+                                                   m1Total - 1));
+        }
+    }
+};
+
+///////////////////////////////////////////////////
 // l1_to_l0_b
 /////////////////////////////////////////////////////
 

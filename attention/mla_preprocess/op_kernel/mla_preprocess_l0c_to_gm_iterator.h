@@ -31,7 +31,7 @@ struct l0c_to_gm<ArchType::ASCEND_V220, DataFormat::ND, half, float> {
                          uint32_t dstStride,
                          uint8_t  unitFlag = 0)
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
         auto intriParams = AscendC::FixpipeParamsV220(nTileActual, // nSize
                                                       mTileActual, // mSize
                                                       srcStride,   // srcStride
@@ -41,6 +41,7 @@ struct l0c_to_gm<ArchType::ASCEND_V220, DataFormat::ND, half, float> {
         intriParams.quantPre = QuantMode_t::F322F16;
         intriParams.unitFlag = unitFlag;
         AscendC::Fixpipe<half, float, AscendC::CFG_ROW_MAJOR>(gmTensor, l0cTensor, intriParams);
+#elif defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__)
 #else
         AscendC::FixpipeParams<float> intriParams(
             (nTileActual + BLOCK_NUM - 1) / AscendC::BLOCK_CUBE,
@@ -64,7 +65,7 @@ struct l0c_to_gm<ArchType::ASCEND_V220, DataFormat::ND, half, int32_t> {
                          uint32_t dstStride,
                          uint8_t  unitFlag = 0)
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
         auto intriParams = AscendC::FixpipeParamsV220(nTileActual, // nSize
                                                       mTileActual, // mSize
                                                       srcStride,   // srcStride
@@ -74,6 +75,7 @@ struct l0c_to_gm<ArchType::ASCEND_V220, DataFormat::ND, half, int32_t> {
         intriParams.quantPre = QuantMode_t::VDEQF16;
         intriParams.unitFlag = unitFlag;
         AscendC::Fixpipe<half, int32_t, AscendC::CFG_ROW_MAJOR>(gmTensor, l0cTensor, intriParams);
+#elif defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__)
 #else
         AscendC::FixpipeParams<int32_t> intriParams(
             (nTileActual + BLOCK_NUM - 1) / AscendC::BLOCK_CUBE,
@@ -97,7 +99,7 @@ struct l0c_to_gm<ArchType::ASCEND_V220, DataFormat::ND, bfloat16_t, float> {
                          uint32_t dstStride,
                          uint8_t  unitFlag = 0)
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
         auto intriParams = AscendC::FixpipeParamsV220(nTileActual, // nSize
                                                       mTileActual, // mSize
                                                       srcStride,   // srcStride
@@ -107,6 +109,7 @@ struct l0c_to_gm<ArchType::ASCEND_V220, DataFormat::ND, bfloat16_t, float> {
         intriParams.quantPre = QuantMode_t::F322BF16;
         intriParams.unitFlag = unitFlag;
         AscendC::Fixpipe<bfloat16_t, float, AscendC::CFG_ROW_MAJOR>(gmTensor, l0cTensor, intriParams);
+#elif defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__)
 #else
         AscendC::FixpipeParams<float> intriParams(
             (nTileActual + BLOCK_NUM - 1) / AscendC::BLOCK_CUBE,
@@ -133,7 +136,7 @@ struct l0c_to_gm<ArchType::ASCEND_V220, DataFormat::ND, float, float> {
                          uint32_t dstStride,
                          uint8_t  unitFlag = 0)
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
         auto intriParams = AscendC::FixpipeParamsV220(nTileActual, // nSize
                                                       mTileActual, // mSize
                                                       srcStride,   // srcStride
@@ -143,6 +146,7 @@ struct l0c_to_gm<ArchType::ASCEND_V220, DataFormat::ND, float, float> {
         intriParams.quantPre = QuantMode_t::NoQuant;
         intriParams.unitFlag = unitFlag;
         AscendC::Fixpipe<float, float, AscendC::CFG_ROW_MAJOR>(gmTensor, l0cTensor, intriParams);
+#elif defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__)
 #else
         AscendC::FixpipeParams<float> intriParams(
             (nTileActual + BLOCK_NUM - 1) / AscendC::BLOCK_CUBE,
@@ -166,7 +170,7 @@ struct l0c_to_gm<ArchType::ASCEND_V220, DataFormat::NZ, half, float> {
                          uint32_t dstStride,
                          uint8_t  unitFlag = 0)
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
         auto intriParams = AscendC::FixpipeParamsV220(nTileActual, // nSize
                                                       mTileActual, // mSize
                                                       srcStride,   // srcStride
@@ -176,6 +180,7 @@ struct l0c_to_gm<ArchType::ASCEND_V220, DataFormat::NZ, half, float> {
         intriParams.quantPre = QuantMode_t::F322F16;
         intriParams.unitFlag = unitFlag;
         AscendC::Fixpipe<half, float, AscendC::CFG_NZ>(gmTensor, l0cTensor, intriParams);
+#elif defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__)
 #else
         AscendC::FixpipeParams<float> intriParams(
             (nTileActual + BLOCK_NUM - 1) / AscendC::BLOCK_CUBE,
@@ -198,7 +203,7 @@ struct l0c_to_gm<ArchType::ASCEND_V220, DataFormat::ND, int32_t, int32_t> {
                          uint32_t dstStride,
                          uint8_t  unitFlag = 0)
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
         auto intriParams = AscendC::FixpipeParamsV220(nTileActual, // nSize
                                                       mTileActual, // mSize
                                                       srcStride,   // srcStride
@@ -208,6 +213,7 @@ struct l0c_to_gm<ArchType::ASCEND_V220, DataFormat::ND, int32_t, int32_t> {
         intriParams.quantPre = QuantMode_t::NoQuant;
         intriParams.unitFlag = unitFlag;
         AscendC::Fixpipe<int32_t, int32_t, AscendC::CFG_ROW_MAJOR>(gmTensor, l0cTensor, intriParams);
+#elif defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__)
 #else
         AscendC::FixpipeParams<int32_t> intriParams(
             (nTileActual + BLOCK_NUM - 1) / AscendC::BLOCK_CUBE,

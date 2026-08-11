@@ -12,5 +12,11 @@
 #define INCLUDE_LAYOUT_H
 namespace MlaPreprocess {
 enum class DataFormat { ND = 0, NZ, ZN, ZZ, NN, VECTOR };
+
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+constexpr DataFormat L0A_DATA_FORMAT = DataFormat::NZ;
+#else
+constexpr DataFormat L0A_DATA_FORMAT = DataFormat::ZZ;
+#endif
 }
 #endif

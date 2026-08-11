@@ -33,7 +33,7 @@ mla_preprocess(GM_ADDR hiddenStateGm, GM_ADDR gamma1Gm, GM_ADDR beta1Gm, GM_ADDR
 {
     SetAtomicnone();
     SetMasknorm();
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
     SetPadding<uint64_t>((uint64_t)0);
     SetNdpara(1, 0, 0);
 #endif

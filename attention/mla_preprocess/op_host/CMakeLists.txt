@@ -9,6 +9,12 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 
+add_ops_tiling_keys(
+    OP_NAME MlaPreprocess
+    COMPUTE_UNIT Vector;Cube
+    TILING_KEYS 56;184
+)
+
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
             mla_preprocess_def.cpp
