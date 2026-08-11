@@ -1769,7 +1769,8 @@ ge::graphStatus DequantChecker::CheckDSizeFullquant(const FiaTilingInfo &fiaInfo
         }
     } else if (enableQKVMxfp8FullQuant_) {
         if (!((fiaInfo.qkHeadDim == NUM_128 && fiaInfo.vHeadDim == NUM_128) ||
-              (fiaInfo.qkHeadDim == NUM_64 && fiaInfo.vHeadDim == NUM_64))) {
+              (fiaInfo.qkHeadDim == NUM_64 && fiaInfo.vHeadDim == NUM_64) ||
+              (fiaInfo.qkHeadDim == NUM_256 && fiaInfo.vHeadDim == NUM_256))) {
             std::string shapeMsg = ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
                                    ToString(fiaInfo.opParamInfo.value.shape->GetStorageShape());
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(

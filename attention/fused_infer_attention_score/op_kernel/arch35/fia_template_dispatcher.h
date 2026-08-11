@@ -90,7 +90,7 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
                                               (uint32_t)s1TemplateType == 64),
                       ((uint32_t)s2TemplateType == 256 && (uint32_t)s1TemplateType == 64), false);
     constexpr bool useDn = (quantMode == FULLQUANT_MODE_QKV_MXFP8_PREFILL);
-    constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
+    constexpr bool bmm2Write2Ub = (bmm2OutPos == TPosition::VECCALC) || (useDn && (uint16_t)dVTemplateType == (uint16_t)DTemplateType::Aligned256);
     constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
 
     // CubBlockType

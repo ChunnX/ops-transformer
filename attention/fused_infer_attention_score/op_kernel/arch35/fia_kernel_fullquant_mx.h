@@ -43,6 +43,7 @@ public:
     static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
     static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
+    static constexpr uint32_t s2SplitSize = (dBaseSize > 128) ? 128U : 256U;
 
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
@@ -534,7 +535,7 @@ public:
         RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
         RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
-            uint32_t c1v1Loop = CeilDiv(runInfo0.actSingleLoopS2Size, 256);
+            uint32_t c1v1Loop = CeilDiv(runInfo0.actSingleLoopS2Size, s2SplitSize);
             for (uint32_t subLoop = 0; subLoop < c1v1Loop; ++subLoop) {
                 if ASCEND_IS_AIC {
                     ComputeMm1(runInfo0, subLoop);

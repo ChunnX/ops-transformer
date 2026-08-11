@@ -369,7 +369,11 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::
 
     if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
         sOuterFactor_ = SOUTER_64;
-        sInnerFactor_ = SINNER_512;
+        if (fiaInfo.qkHeadDim == DSIZE_256) {
+            sInnerFactor_ = SINNER_256;
+        } else {
+            sInnerFactor_ = SINNER_512;
+        }
     }
 
     OP_LOGI(fiaInfo.opName, "Souter:%u SInner:%u softmaxSOuterFactor %u", sOuterFactor_, sInnerFactor_,
@@ -1224,7 +1228,11 @@ void FusedInferAttentionScoreTilingImpl::ApplySinnerSouterOverrides(const FiaTil
     }
     if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
         sOuterFactor_ = SOUTER_64;
-        sInnerFactor_ = SINNER_512;
+        if (fiaInfo.qkHeadDim == DSIZE_256) {
+            sInnerFactor_ = SINNER_256;
+        } else {
+            sInnerFactor_ = SINNER_512;
+        }
     }
 }
 
@@ -1334,6 +1342,7 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyConfig(const FiaTilingIn
         {false, SOUTER_128, SINNER_512, DSIZE_64, DSIZE_64, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64},
         {false, SOUTER_128, SINNER_512, DSIZE_128, DSIZE_128,
          Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128},
+        {false, SOUTER_128, SINNER_256, DSIZE_256, DSIZE_256, Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256},
     };
 
     for (const auto &rule : configRules) {

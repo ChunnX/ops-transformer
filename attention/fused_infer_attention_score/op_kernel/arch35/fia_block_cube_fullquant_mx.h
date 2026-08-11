@@ -68,7 +68,7 @@ public:
     static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
     static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
     static constexpr uint32_t l1BaseD = 128;
-    static constexpr uint32_t s2SplitSize = 256U;
+    static constexpr uint32_t s2SplitSize = (dBaseSize > 128) ? 128U : 256U;
     static constexpr uint32_t MXFP_GROUP_SIZE = 32U;
     static constexpr uint32_t MXFP_DIVISOR_SIZE = 64U;
     static constexpr uint32_t MXFP_MULTI_BASE_SIZE = 2U;
@@ -933,24 +933,41 @@ public:
         MM2_ABUF_T mm2A = inputBuf.Get();
         mm2A.WaitCrossCore();
 
+        if constexpr (s2BaseSize == 256) {
+            if (!(runInfo.isFirstS2Loop && runInfo.isLastS2Loop)) {
+                PipeBarrier<PIPE_ALL>();  // D256 multi-s2Loop only: full-pipe drain before BMM2, scoped (not blanket)
+            }
+        }
+
         constexpr uint32_t pScaleOffset = mBaseSize * s2BaseSize; // pScale在L1的偏移量
         constexpr uint32_t sizeOfInt16 = 2U;
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
-            LocalTensor<int16_t> mm2AScaleTensor = mm2A.GetTensor<int16_t>(
-                pScaleOffset / sizeOfInt16 + mBaseSize * s2SplitSize / MXFP_GROUP_SIZE / sizeOfInt16);
-            InitConstValue(mm2AScaleTensor,
-                           {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x7f7f});
-        } else if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
-            LocalTensor<int16_t> mm2AScaleTensor = mm2A.GetTensor<int16_t>(pScaleOffset / sizeOfInt16);
-            InitConstValue(mm2AScaleTensor,
-                           {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x7f7f});
+            // D128 K-major (s2BaseSize>256): init P1 scale to 1.0 (0x7f7f).
+            // D256 M-major (s2BaseSize==256): skip — vec.h writes per-row P0+P1 scale, cube init would clobber it.
+            if constexpr (s2BaseSize > 256) {  // D128 only (s2BaseSize>256); D256 (==256) skips
+                constexpr uint32_t sizeOfInt16 = 2U;
+                LocalTensor<int16_t> mm2AScaleTensor = mm2A.GetTensor<int16_t>(pScaleOffset / sizeOfInt16 +
+                    mBaseSize * s2SplitSize / MXFP_GROUP_SIZE / sizeOfInt16);
+                InitConstValue(mm2AScaleTensor,
+                    {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x7f7f});
+            }
         }
         LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset);
+        if constexpr (s2BaseSize == 256) {
+            if (!(runInfo.isFirstS2Loop && runInfo.isLastS2Loop)) {
+                PipeBarrier<PIPE_ALL>();  // D256 multi-s2Loop only: full-pipe drain before BMM2, scoped (not blanket)
+            }
+        }
+
+        constexpr uint32_t baseN = l1BaseD;
+        uint32_t nLoops = ((uint32_t)constInfo.dSizeV + baseN - 1) / baseN;
+        uint32_t realN = baseN;
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>();
 
-        constexpr uint32_t baseK = s2SplitSize;
+        // baseK: D128 (s2BaseSize>256) K=512 splits to s2SplitSize=128 per L0A 32KB; D256 (==256) K=256 fits single, baseK=s2BaseSize.
+        constexpr uint32_t baseK = (s2BaseSize > 256) ? s2SplitSize : s2BaseSize;
         uint64_t l1BaseKOffset = baseK * mBaseSize;
         uint64_t l1ScaleOffset = l1BaseKOffset / MXFP_GROUP_SIZE;
         uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
@@ -984,15 +1001,32 @@ public:
             if constexpr (!USE_DN) {
                 param.realM = (uint32_t)runInfo.actMSize;
             }
-            MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
-                         SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
-                mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset], mm2BTensor, mmL0ABuffers, mmL0BBuffers,
-                mm2ResL0C.GetTensor<T>(), param, mm2AScaleFakeTensor[k * l1ScaleOffset], mm2BScaleTensor);
+            // D128: MatmulFullMX kLoops splits K across L0A; D256: MatmulN single-K (kLoops=1), N-split for D=256.
+            if constexpr (s2BaseSize > 256) {
+                MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
+                           SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
+                    mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset],
+                    mm2BTensor, mmL0ABuffers, mmL0BBuffers,
+                    mm2ResL0C.GetTensor<T>(),
+                    param,
+                    mm2AScaleFakeTensor[k * l1ScaleOffset], mm2BScaleTensor);
+            } else {
+                MatmulN<INPUT_T, KV_T, T, 128, baseN, 128, ABLayout::MK, ABLayout::KN,
+                    L0AType, L0BType, SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
+                    mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers,
+                    mm2ResL0C.GetTensor<T>(), param, mm2AScaleFakeTensor, mm2BScaleTensor);
+            }
             mm2B.Set<HardEvent::MTE1_MTE2>();
         }
 
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();
+
+        if constexpr (s2BaseSize == 256) {
+            if (!(runInfo.isFirstS2Loop && runInfo.isLastS2Loop)) {
+                PipeBarrier<PIPE_ALL>();  // D256 multi-s2Loop only: full-pipe drain before BMM2, scoped (not blanket)
+            }
+        }
 
         if constexpr (BMM2_TOUB) {
             outputBuf.WaitCrossCore();

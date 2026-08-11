@@ -70,7 +70,7 @@ public:
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr uint32_t DB = 2;
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
-    static constexpr uint32_t s2SplitSize = 256U;
+    static constexpr uint32_t s2SplitSize = (s2BaseSize == 256) ? 128U : 256U;
     static constexpr uint32_t MXFP_GROUP_SIZE = 32U;
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
@@ -378,26 +378,61 @@ public:
         constexpr uint64_t pScaleDataLen = (mBaseSize >> 1) * s2BaseSizeCur / MXFP_GROUP_SIZE;
         constexpr uint16_t pScaleDstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
-        if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
-            for (uint16_t i = 0; i < 4; i++) {
-                // PScale在s2方向的block块大小为32，所以一共有256/32=8个，而L1上需要满足16x2的分形，所以重复拷贝4次
-                DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
+        if (runInfo.actSingleLoopS2Size > s2SplitSize) {
+            if constexpr (s2BaseSizeCur == 128) {  // D256 M-major KV256: selective P0 K-group rescale (fix NIGHT3 over-rescale P1)
+                // i=Ksg (LAYOUT_A: tile=l1_off//32, Ksg=tile%4=i). Ksg0,1=P0(K0-127), Ksg2,3=P1(K128-255).
+                // subLoop1 tensor=rescale(P0 factor exp(m0-m_new), 0x7e bad/0x7f good) -> Ksg0,1 (P0) ONLY.
+                // subLoop0 tensor=0x7f(P1 factor 1.0, P1=exp(S1-m_new) already m_new basis) -> Ksg2,3 (P1) ONLY.
+                // SIM-VERIFIED (sim_selective_verify.py): P0 bad rows Ksg0,1=0x7e(20/20), P1 Ksg2,3=0x7f NOT over-rescaled(20/20).
+                // e8m0 per-(M-row,K-group-32) NOT per-32-M-group (memory:616 LINCHPIN D128 l0amx 24 0x7e=3rowsx8Kgrp).
+                constexpr uint16_t pScaleDstStrideD256 = 3;
+                constexpr uint64_t vecOffsetSpacingD256 = mBaseSize * s2BaseSizeCur / MXFP_GROUP_SIZE;  // 128*128/32 = 0x200
+                uint64_t vecOffsetD256 = constInfo.subBlockIdx * vecOffsetSpacingD256;
+                if (subLoop % 2 == 1) {
+                    for (uint16_t i = 0; i < 2; i++) {  // Ksg 0,1 = P0 only (was 0..4 = over-rescale P1, NIGHT3)
+                        DataCopy(mm2AScaleL1Tensor[vecOffsetD256 + i * blockBytes],
+                            pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStrideD256});
+                    }
+                } else {
+                    for (uint16_t i = 2; i < 4; i++) {  // Ksg 2,3 = P1 only (fill P1=0x7f; cube gate s2BaseSize>256 skips InitConstValue)
+                        DataCopy(mm2AScaleL1Tensor[vecOffsetD256 + i * blockBytes],
+                            pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStrideD256});
+                    }
+                }
+            } else {  // D128 K-major: PathC 0bda7a4a pattern (subLoop1 only -> P0 region; cube P1-init 0x7f7f for P1 region; MatmulFullMX kLoops P0 rescale + P1=1.0)
+                if (subLoop % 2 == 1) {
+                    for (uint16_t i = 0; i < 4; i++) {
+                        DataCopy(mm2AScaleL1Tensor[vecOffset + i * blockBytes],
+                            pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
+                    }
+                }
+            }
+        } else if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
+            // 一次循环拷贝32个S1的scale，每个S1对应8个scale
+            // actVecMSize为64，通过2次拷贝覆盖完整的S1分形需求
+            for (uint16_t i = 0; i < 2; i++) {
+                DataCopy(mm2AScaleL1Tensor[vecOffset + i * blockBytes * 8],
+                    pScaleSubLoop0Tensor, {1, 8, 0, 0});
             }
         }
 
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
-        int64_t subLoopOffset = s2BaseSizeCur * mBaseSize * subLoop;
+        int64_t subLoopOffset = (s2BaseSizeCur == 128) ? (s2BaseSizeCur * 32 * subLoop)  // D256 KV256 Opt A (selective 100%, P1 in MatmulN read range)
+                                                       : (s2BaseSizeCur * mBaseSize * subLoop);  // D128 KV512 PathC 0bda7a4a (P1 at 0x8000 for MatmulFullMX kLoops l1BaseKOffset)
         constexpr uint16_t elementSize = 32;
         constexpr uint32_t singleProcessSOuterSize = mBaseSize >> 1;
         constexpr uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1) / elementSize;
         constexpr uint32_t actVec0Align32 = mBaseSize >> 1;
         uint32_t s2RealSizeAlign = (((runInfo.actSingleLoopS2Size + 63) >> 6) << 6);
         for (uint32_t i = 0; i < actCopyCount; i++) {
-            uint32_t dstOffset = 32 * s2BaseSizeCur * i + subLoopOffset;
+            // stride-fix(d256): LoadData reads L1 at 0x2000 stride (NZ fractal pair); d256 s2BaseSizeCur=128 -> 32*128=0x1000 (half stride) -> blocks 0x1000/0x3000 skipped + 0x2000 displaced to Mf2-3 (should be Mf4-5). d256-only double-stride so dstOffset lands 0x2000 grid like d128 (s2BaseSizeCur=256 -> 32*256=0x2000 unchanged).
+            constexpr uint32_t strideMul = (s2BaseSizeCur == 128) ? 64 : 32;
+            constexpr uint32_t subBlk1Mul = (s2BaseSizeCur == 128) ? 2 : 1;
+            uint32_t dstOffset = strideMul * s2BaseSizeCur * i + subLoopOffset;
             if (constInfo.subBlockIdx == 1) {
-                dstOffset += s2BaseSizeCur * actVec0Align32;
+                dstOffset += subBlk1Mul * s2BaseSizeCur * actVec0Align32;
             }
-            uint32_t srcOffset = i * (65 << 5);
+            uint32_t srcOffset = i * ((s2BaseSizeCur / 4 + 1) << 5);
             DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor[srcOffset],
                      {4, s2BaseSizeCur / 4, s2BaseSizeCur / 4 + 2, 0});
         }
