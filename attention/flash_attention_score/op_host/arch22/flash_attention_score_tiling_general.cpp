@@ -3219,12 +3219,47 @@ protected:
 
     void GetBufferNum(BufferNum &bufferNum) const override { bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM; }
 
+    int64_t find_optimal_s1BasicBlock()
+    {
+        int64_t target_basic_block = 128;
+        int64_t s1OuterSize = CeilDiv(s1Size, target_basic_block);
+        int64_t total_size = bSize * n2Size * gSize * s1OuterSize;
+
+        int64_t splitFactor = CeilDiv(total_size, static_cast<int64_t>(aivNum));
+        int64_t expectBasicBlock = bSize * n2Size * gSize * s1Size / aivNum /splitFactor;
+        int64_t s1BasicBlock = AlignUp(expectBasicBlock, FRACTAL_NUM);
+    }
+
+    bool isExecDynBasicBlock()
+    {
+        bool isBSNDInRange = bSize * s1Size * n2Size * gSize  <= DYNA_BASICBLOCK_S1_MAX && dSize == 128;
+        bool isBNSDInRange = bSize == 1 && n2Size == 1 && gSize == 1 &&
+                             s1Size <= DYNA_BASICBLOCK_S1_MAX && s1Size == s2Size && dSize == 128;
+        bool noMask = sparseMode == static_cast<int64_t>(NO_MASK);
+        bool isNotCausal = preTokens < s1Size || nextTokens != 0;
+
+        bool isSupportBSND = tilingData->inputParams.get_layoutType() == LAYOUT_BSND && isBSNDInRange;
+
+        bool isSupportBNSD = tilingData->inputParams.get_layoutType() == LAYOUT_BNSD && isBNSDInRange;
+
+        bool isSupportAttrs = pseExistFlag == 0 && dropMaskExistFlag == 0 &&
+                              noMask && isNotCausal;
+        
+        return (isSupportBSND || isSupportBNSD) && isSupportAttrs;
+
+    }
+
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
         s1BasicBlock = std::min(64L, alignedS1);
         // d轴为64
         if (bSize * n1Size * gSize * CeilDiv(s1Size, s1BasicBlock) > static_cast<int64_t>(aivNum)) {
-            s1BasicBlock = std::min(128L, alignedS1);
+            if (isExecDynBasicBlock()) {
+                OP_LOGD(context_, "Start dynamic calculation of s1BasicBlock");
+                s1BasicBlock = find_optimal_s1BasicBlock();
+            } else {
+                s1BasicBlock = std::min(128L, alignedS1);
+            }
         }
         s2BasicBlock = std::min(128L, alignedS2);
         if (s2Size % S2_NZTOND_SIZE_64 != 0 && dSize != D_SPECIFIC_SIZE) {
