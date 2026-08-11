@@ -539,12 +539,12 @@ ge::graphStatus MhcPreMembaseTiling::GetWorkspaceSize()
 ge::graphStatus MhcPreMembaseTiling::PostTiling()
 {
     int64_t tilingKey = 0;
-    if (isFac && hasResi) {
+    if (!isFac && hasResi) {
         tilingKey = 10;
-    } else if (isFac && !hasResi) {
-        tilingKey = 11;
     } else if (!isFac && !hasResi) {
-        tilingKey = 1;
+        tilingKey = 11;
+    } else{
+        tilingKey = 0;
     }
     context_->SetTilingKey(tilingKey);
     context_->SetBlockDim(aicCoreNum_);
