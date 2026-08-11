@@ -36,7 +36,7 @@
 #include "adv_api/hcomm/hcomm.h"
 #endif
 
-#include "engram_fetch_grad_sort.h"
+#include "engram_fetch_grad_sort_int32.h"
 #include "engram_fetch_grad_unique.h"
 
 namespace Mc2Kernel {
@@ -667,7 +667,6 @@ __aicore__ inline void EngramFetchGradArch35::UniqueScatterAdd()
     numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);
     uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
-
     if (numRecv == 0) {
         uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
         return;

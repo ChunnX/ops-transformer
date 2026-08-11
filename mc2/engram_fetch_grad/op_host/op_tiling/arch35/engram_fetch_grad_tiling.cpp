@@ -575,9 +575,10 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
                     OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenDim=%ld",
                             totalRecv, tilingData.hiddenDim),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(totalRecv > 0 && tilingData.hiddenDim * sizeof(float) > INT64_MAX / totalRecv,
-                    OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenDim=%ld, sizeof(float)=%zu",
-                            totalRecv, tilingData.hiddenDim, sizeof(float)),
+    OP_TILING_CHECK(totalRecv > 0 &&
+                        tilingData.hiddenDim > (INT64_MAX / totalRecv) / static_cast<int64_t>(sizeof(float)),
+                    OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenDim=%ld",
+                            totalRecv, tilingData.hiddenDim),
                     return ge::GRAPH_FAILED);
 
     int64_t wsGradSorted = numTokens * hiddenBytes;
@@ -589,6 +590,12 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsSegCount = static_cast<int64_t>(tilingData.aivNum) * sizeof(int32_t);
 
     int64_t maxSortCount = totalRecv;
+    OP_TILING_CHECK(maxSortCount > INT64_MAX / static_cast<int64_t>(sizeof(int32_t)),
+                    OP_LOGE(nodeName, "sort temp overflow: totalRecv=%ld", totalRecv),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(maxSortCount > INT64_MAX - 4095,
+                    OP_LOGE(nodeName, "sortTileCount CeilDiv overflow: totalRecv=%ld", totalRecv),
+                    return ge::GRAPH_FAILED);
     int64_t sortTempSize = (maxSortCount * sizeof(int32_t) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     int64_t sortTileCount = (maxSortCount + 4096 - 1) / 4096;
     int64_t wsSortTempVal = sortTempSize;
