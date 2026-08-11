@@ -1,206 +1,144 @@
-/* *
+/*
  * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include "aclnn_allto_allv_grouped_mat_mul_v2.h"
-#include <algorithm>
-#include "common/utils/op_mc2_def.h"
+
+#include <cstdint>
+#include <initializer_list>
+
+#include "aclnnInner_allto_allv_grouped_mat_mul_shmem.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "common/op_api/mc2_aclnn_util.h"
+#include "opdev/common_types.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
-#include "opdev/common_types.h"
-#include "aclnnInner_allto_allv_grouped_mat_mul.h"
-#include "mc2_comm_utils.h"
 
 using namespace op;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+namespace {
+constexpr int64_t MIN_EP_WORLD_SIZE = 1;
+constexpr int64_t MAX_EP_WORLD_SIZE = 8;
+constexpr uint64_t CONTEXT_TENSOR_ELEMENTS = 1;
+constexpr uint64_t DIM_X = 2;
+constexpr uint64_t DIM_WEIGHT = 3;
 
-enum class NnopbaseHcclServerType : uint32_t {
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_MTE,
-    NNOPBASE_HCCL_SERVER_TYPE_CCU,
-    NNOPBASE_HCCL_SERVER_TYPE_END
-};
-
-static constexpr uint32_t RANK_DIM_BOUNDARY = 8;
-
-extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
-extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
-extern "C" void *NnopbaseGetUserHandle(void *executor);
-
-static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum)
+aclnnStatus CheckRequired(const aclTensor *gmmX, const aclTensor *gmmWeight, void *shmemContext, aclTensor *gmmY,
+                          uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    const size_t maxLength = 7UL;
-    // 获取通信引擎参数
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-        } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.",
-                    commModeStr);
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    } else {
-        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-        } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Currently, commMode only support 'ai_cpu', but got %s.", commModeStr);
-            return ACLNN_ERR_PARAM_INVALID;
-        }
+    OP_CHECK_NULL(gmmX, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(gmmWeight, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(shmemContext, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(gmmY, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(workspaceSize, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(executor, return ACLNN_ERR_PARAM_NULLPTR);
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CheckTensorContract(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmY)
+{
+    const std::initializer_list<op::DataType> supportedDtypes = {op::DataType::DT_BF16};
+    OP_CHECK_DTYPE_NOT_SUPPORT(gmmX, supportedDtypes, return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK_DTYPE_NOT_SUPPORT(gmmWeight, supportedDtypes, return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK_DTYPE_NOT_SUPPORT(gmmY, supportedDtypes, return ACLNN_ERR_PARAM_INVALID);
+    if (gmmX->GetStorageFormat() != op::Format::FORMAT_ND ||
+        gmmWeight->GetStorageFormat() != op::Format::FORMAT_ND ||
+        gmmY->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmX/gmmWeight/gmmY must use ND storage format.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (!MC2Aclnn::IsTensorContiguous(gmmX) || !MC2Aclnn::IsTensorContiguous(gmmWeight) ||
+        !MC2Aclnn::IsTensorContiguous(gmmY)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "gmmX/gmmWeight/gmmY must be contiguous; SHMEM gmmX cannot be replaced by a temporary copy.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (gmmX->GetViewShape().GetDimNum() != DIM_X || gmmWeight->GetViewShape().GetDimNum() != DIM_WEIGHT ||
+        gmmY->GetViewShape().GetDimNum() != DIM_X) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmX/gmmWeight/gmmY must be 2D/3D/2D tensors.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    const int64_t m = gmmX->GetViewShape().GetDim(0);
+    const int64_t k = gmmX->GetViewShape().GetDim(1);
+    const int64_t experts = gmmWeight->GetViewShape().GetDim(0);
+    const int64_t weightK = gmmWeight->GetViewShape().GetDim(1);
+    const int64_t n = gmmWeight->GetViewShape().GetDim(2);
+    if (m < 0 || k <= 0 || experts <= 0 || experts > 64 || n <= 0 || k != weightK ||
+        gmmY->GetViewShape().GetDim(1) != n) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid source-compatible M/K/N/E dimensions.");
+        return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
 
-// check nullptr
-static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
-                            const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
-                            const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const char *group,
-                            bool permuteOutFlag, aclTensor *gmmY, const aclTensor *mmYOptional,
-                            const aclTensor *permuteOutOptional)
+aclnnStatus CheckCounts(const aclIntArray *sendCounts, const aclIntArray *recvCounts, int64_t epWorldSize,
+                        int64_t localExperts)
 {
-    // 检查必选入参出参为非空
-    OP_CHECK_NULL(gmmX, return false);
-    OP_CHECK_NULL(gmmWeight, return false);
-    OP_CHECK_NULL(gmmY, return false);
-    if ((sendCountsTensorOptional != nullptr) || (recvCountsTensorOptional != nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "sendCountsTensorOptional and recvCountsTensorOptional should be empty.");
-        return false;
-    }
-    if ((group == nullptr) || (strnlen(group, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required group name is Empty.");
-        return false;
-    }
-    if ((!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))) &&
-        (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr)))) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "mmXOptional, mmWeightOptional and mmYOptional should all be null or all not be null, left: %u, right: %u, "
-            "mmXOptional is nullptr: %u, mmWeightOptional is nullptr: %u, mmYOptional is nullptr: %u",
-            (!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))),
-            (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr))),
-            mmXOptional == nullptr, mmWeightOptional == nullptr, mmYOptional == nullptr);
-        return false;
-    }
-    if (permuteOutFlag == (permuteOutOptional == nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Optional output flag does not match optional output ptr!");
-        return false;
-    }
-    return true;
-}
-
-// 入参校验
-static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight,
-                               const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
-                               const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const char *group,
-                               int64_t epWorldSize, bool permuteOutFlag, aclTensor *gmmY, aclTensor *mmYOptional,
-                               aclTensor *permuteOutOptional)
-{
-    (void)epWorldSize; // Unused
-    CHECK_RET(CheckNullStatus(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
-                              mmWeightOptional, group, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional),
-              ACLNN_ERR_PARAM_NULLPTR);
-
-    if (strnlen(group, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required group name exceeds %zu.", HCCL_GROUP_NAME_MAX);
+    if (sendCounts == nullptr || recvCounts == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sendCounts and recvCounts must not be null.");
         return ACLNN_ERR_PARAM_INVALID;
     }
-
-    return ACLNN_SUCCESS;
-}
-
-static aclnnStatus CheckSendAndRecv(const aclIntArray *sendCounts, const aclIntArray *recvCounts)
-{
-    if (sendCounts == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sendCounts should not be null.");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (recvCounts == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "recvCounts should not be null.");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    uint64_t recvSize = 0U; // recvCounts的大小
-    uint64_t sendSize = 0U; // recvCounts的大小
-    aclGetIntArraySize(recvCounts, &recvSize);
+    uint64_t sendSize = 0;
+    uint64_t recvSize = 0;
     aclGetIntArraySize(sendCounts, &sendSize);
-    if (recvSize == 0U) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "recvCounts should not be empty.");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (sendSize == 0U) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sendCounts should not be empty.");
+    aclGetIntArraySize(recvCounts, &recvSize);
+    const uint64_t expected = static_cast<uint64_t>(epWorldSize * localExperts);
+    if (sendSize != expected || recvSize != expected) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "sendCounts/recvCounts length must equal epWorldSize * localExperts, expected %llu, got %llu/%llu.",
+                static_cast<unsigned long long>(expected), static_cast<unsigned long long>(sendSize),
+                static_cast<unsigned long long>(recvSize));
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(
-    const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *sendCountsTensorOptional,
-    const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
-    const char *group, const char *commMode, int64_t epWorldSize, const aclIntArray *sendCounts,
-    const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight, bool permuteOutFlag, aclTensor *gmmY,
-    aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+aclTensor *CreateShmemContextTensor(void *shmemContext)
 {
-    auto ret_param =
-        CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
-                    group, epWorldSize, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional);
-    CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
-    auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
-    CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
-    if (commMode == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Optional commMode name is Empty.");
+    const int64_t shape[1] = {static_cast<int64_t>(CONTEXT_TENSOR_ELEMENTS)};
+    const int64_t strides[1] = {1};
+    // Only the data address is consumed by the A5 kernel; the context memory is owned by the SHMEM runtime.
+    return aclCreateTensor(shape, 1, ACL_UINT8, strides, 0, ACL_FORMAT_ND, shape, 1, shmemContext);
+}
+} // namespace
+
+extern "C" aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(
+    const aclTensor *gmmX, const aclTensor *gmmWeight, void *shmemContext, int64_t epWorldSize,
+    const aclIntArray *sendCounts, const aclIntArray *recvCounts, aclTensor *gmmY, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
+{
+    auto ret = CheckRequired(gmmX, gmmWeight, shmemContext, gmmY, workspaceSize, executor);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The SHMEM V2 interface only supports Ascend 950 (DAV_3510).");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    char *str_commMode = const_cast<char *>(commMode);
-    uint8_t commModeEnum = 0;
-    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
-    CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
-    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(
-        gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
-        const_cast<char *>(group), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, permuteOutFlag,
-        str_commMode, gmmY, mmYOptional, permuteOutOptional, workspaceSize, executor);
-    OP_LOGD("AlltoAllvGroupedMatmul, aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize ret %d.", ret);
-    if (*executor != nullptr) {
-        void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
-        NnopbaseSetUserHandle(*executor, args);
+    if (epWorldSize < MIN_EP_WORLD_SIZE || epWorldSize > MAX_EP_WORLD_SIZE) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "epWorldSize must be in [1, 8], got %ld.", epWorldSize);
+        return ACLNN_ERR_PARAM_INVALID;
     }
+    ret = CheckTensorContract(gmmX, gmmWeight, gmmY);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = CheckCounts(sendCounts, recvCounts, epWorldSize, gmmWeight->GetViewShape().GetDim(0));
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
+    aclTensor *contextTensor = CreateShmemContextTensor(shmemContext);
+    if (contextTensor == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Failed to wrap shmemContext as a borrowed device tensor.");
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    ret = aclnnInnerAlltoAllvGroupedMatMulShmemGetWorkspaceSize(
+        gmmX, gmmWeight, contextTensor, epWorldSize, sendCounts, recvCounts, gmmY, workspaceSize, executor);
+    OP_LOGD("AlltoAllvGroupedMatMulV2 SHMEM GetWorkspaceSize returned %d.", ret);
     return ret;
 }
 
-aclnnStatus aclnnAlltoAllvGroupedMatMulV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                          aclrtStream stream)
+extern "C" aclnnStatus aclnnAlltoAllvGroupedMatMulV2(void *workspace, uint64_t workspaceSize,
+                                                      aclOpExecutor *executor, aclrtStream stream)
 {
-    if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            void *arg = NnopbaseGetUserHandle(executor);
-            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
-            uint8_t commMode = static_cast<uint8_t>(handleVal);
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                OP_LOGD("arch35, use AICPU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            } else {
-                OP_LOGD("arch35, use CCU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            }
-        } else {
-            OP_LOGD("Arch22 platform, use AICPU mode");
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        }
-    }
-    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMul(workspace, workspaceSize, executor, stream);
-    OP_LOGD("AlltoAllvGroupedMatmul, aclnnInnerAlltoAllvGroupedMatMul ret %d.", ret);
+    const aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulShmem(workspace, workspaceSize, executor, stream);
+    OP_LOGD("AlltoAllvGroupedMatMulV2 SHMEM execute returned %d.", ret);
     return ret;
 }
-
-#ifdef __cplusplus
-}
-#endif

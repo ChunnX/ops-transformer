@@ -11,12 +11,14 @@
 if (BUILD_OPEN_PROJECT)  # custom
     target_sources(op_host_aclnnInner PRIVATE
         allto_allv_grouped_mat_mul_def.cpp
+        allto_allv_grouped_mat_mul_shmem_def.cpp
     )
     add_modules_sources_with_soc(
         OP_API_INDEPENDENT ON
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
         OP_MC2_ENABLE ON
-        OPTYPE allto_allv_grouped_mat_mul allto_allv_grouped_mat_mul ACLNNTYPE aclnn aclnn_inner)
+        OPTYPE allto_allv_grouped_mat_mul allto_allv_grouped_mat_mul allto_allv_grouped_mat_mul_shmem
+        ACLNNTYPE aclnn aclnn_inner aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
     set(allto_allv_grouped_mat_mul_depends mc2/common mc2/3rd mc2/allto_allv_quant_grouped_mat_mul PARENT_SCOPE)
@@ -27,10 +29,39 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
-            OP_NAME AlltoAllvGroupedMatMul
+            OP_NAME AlltoAllvGroupedMatMulShmem
             OPTIONS --cce-auto-sync=off
                     -mllvm -cce-aicore-dcci-before-kernel-end=false
         )
+        if(DEFINED SHMEM_HOME_PATH AND NOT "${SHMEM_HOME_PATH}" STREQUAL "")
+            set(A2AV_GMM_SHMEM_ROOT "${SHMEM_HOME_PATH}")
+        elseif(DEFINED ENV{SHMEM_HOME_PATH} AND NOT "$ENV{SHMEM_HOME_PATH}" STREQUAL "")
+            set(A2AV_GMM_SHMEM_ROOT "$ENV{SHMEM_HOME_PATH}")
+        elseif(DEFINED SHMEM_HOME AND NOT "${SHMEM_HOME}" STREQUAL "")
+            set(A2AV_GMM_SHMEM_HCCL_ROOT "${SHMEM_HOME}")
+        elseif(DEFINED ENV{SHMEM_HOME} AND NOT "$ENV{SHMEM_HOME}" STREQUAL "")
+            set(A2AV_GMM_SHMEM_HCCL_ROOT "$ENV{SHMEM_HOME}")
+        else()
+            message(FATAL_ERROR
+                "SHMEM_HOME_PATH (source SDK layout) or SHMEM_HOME (HCCL-integrated layout) is required "
+                "to compile AlltoAllvGroupedMatMulShmem for ascend950.")
+        endif()
+        if(DEFINED A2AV_GMM_SHMEM_ROOT)
+            add_ops_compile_options(
+                OP_NAME AlltoAllvGroupedMatMulShmem
+                OPTIONS -I${A2AV_GMM_SHMEM_ROOT}/shmem/include
+                        -I${A2AV_GMM_SHMEM_ROOT}/shmem/src
+                        -I${A2AV_GMM_SHMEM_ROOT}/shmem/src/device
+                        -I${A2AV_GMM_SHMEM_ROOT}/memfabric_hybrid/include/smem/host
+                        -I${A2AV_GMM_SHMEM_ROOT}/memfabric_hybrid/include/smem/device
+            )
+        else()
+            add_ops_compile_options(
+                OP_NAME AlltoAllvGroupedMatMulShmem
+                OPTIONS -I${A2AV_GMM_SHMEM_HCCL_ROOT}/include
+                        -I${A2AV_GMM_SHMEM_HCCL_ROOT}/src/device
+            )
+        endif()
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(
             OP_NAME AlltoAllvGroupedMatMul
@@ -39,6 +70,8 @@ if (BUILD_OPEN_PROJECT)  # custom
         )
     endif()
 else() # 回黄host
-    add_mc2_modules_sources(OPTYPE allto_allv_grouped_mat_mul allto_allv_grouped_mat_mul ACLNNTYPE aclnn aclnn_inner)
+    add_mc2_modules_sources(
+        OPTYPE allto_allv_grouped_mat_mul allto_allv_grouped_mat_mul allto_allv_grouped_mat_mul_shmem
+        ACLNNTYPE aclnn aclnn_inner aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
 endif()

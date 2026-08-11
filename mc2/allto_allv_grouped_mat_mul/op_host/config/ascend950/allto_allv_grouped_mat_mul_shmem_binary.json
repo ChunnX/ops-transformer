@@ -1,0 +1,65 @@
+{
+  "op_type": "AlltoAllvGroupedMatMulShmem",
+  "op_list": [
+    {
+      "bin_filename": "AlltoAllvGroupedMatMulShmem_ND_ND_ND_BF16_BF16_UINT8",
+      "inputs": [
+        {
+          "name": "gmm_x",
+          "index": 0,
+          "dtype": "bfloat16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [-2],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "gmm_weight",
+          "index": 1,
+          "dtype": "bfloat16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [-2],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "shmem_context",
+          "index": 2,
+          "dtype": "uint8",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [-2],
+          "format_match_mode": "FormatAgnostic"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "gmm_y",
+          "index": 0,
+          "dtype": "bfloat16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [-2],
+          "format_match_mode": "FormatAgnostic"
+        }
+      ],
+      "attrs": [
+        {
+          "name": "ep_world_size",
+          "dtype": "int",
+          "value": 1
+        },
+        {
+          "name": "send_counts",
+          "dtype": "list_int",
+          "value": []
+        },
+        {
+          "name": "recv_counts",
+          "dtype": "list_int",
+          "value": []
+        }
+      ]
+    }
+  ]
+}

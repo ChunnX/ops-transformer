@@ -1,698 +1,132 @@
 # aclnnAlltoAllvGroupedMatMulV2
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/allto_allv_grouped_mat_mul)
+[查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/allto_allv_grouped_mat_mul)
 
 ## 产品支持情况
 
-<!-- npu="950" id1 -->
-- <term>Ascend 950DT</term>：支持
-<!-- end id1 -->
-<!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
-<!-- end id2 -->
-<!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
-<!-- end id3 -->
-<!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
-<!-- end id4 -->
-<!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
-<!-- end id5 -->
-<!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
-<!-- end id6 -->
+| 产品 | 是否支持 |
+|---|:---:|
+| Ascend 950DT | 是 |
+| Atlas A3 训练/推理系列产品 | 否 |
+| Atlas A2 训练/推理系列产品 | 否 |
 
 ## 功能说明
 
-- 接口功能：完成路由专家AlltoAllv、Permute、GroupedMatMul融合并实现与共享专家MatMul并行融合，**先通信后计算**。
+该接口通过调用方已经初始化的 CANN SHMEM/UDMA 通信域完成非均匀 AlltoAllV，并立即对接收结果执行本地专家 GroupedMatMul。V2 接口仅保留源算子能力：BF16、TP=1、非转置权重、无共享专家 MatMul、无独立 permute 输出。
 
-- 计算公式：
-    - 路由专家：
+对于本卡专家 $e$ 和来源 rank $r$，计算可表示为：
 
-    $$
-    ataOut = AlltoAllv(gmmX) \\
-    permuteOut = Permute(ataOut) \\
-    gmmY = permuteOut \times gmmWeight
-    $$
-
-    - 共享专家：
-
-    $$
-    mmY = mmX \times mmWeight
-    $$
-
-相较于`aclnnAlltoAllvGroupedMatMul`接口，该接口变更如下：
-
-- 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
-
-  <!-- npu="950" id7 -->
-  - <term>Ascend 950DT</term>：支持`ai_cpu`和`ccu`。
-
-  <!-- end id7 -->
+$$
+Y_{e,r} = \operatorname{AlltoAllV}(X)_{e,r} W_e
+$$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小，再调用`aclnnAlltoAllvGroupedMatMulV2`接口执行计算。
+该算子使用两段式 aclnn 接口。首先构造 executor 并取得 workspace 大小，然后在同一 SHMEM 生命周期内执行算子。
 
 ```cpp
 aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(
-    const aclTensor*   gmmX,
-    const aclTensor*   gmmWeight,
-    const aclTensor*   sendCountsTensorOptional,
-    const aclTensor*   recvCountsTensorOptional,
-    const aclTensor*   mmXOptional,
-    const aclTensor*   mmWeightOptional,
-    const char*        group,
-    const char*        commMode,
-    int64_t            epWorldSize,
-    const aclIntArray* sendCounts,
-    const aclIntArray* recvCounts,
-    bool               transGmmWeight,
-    bool               transMmWeight,
-    bool               permuteOutFlag,
-    aclTensor*         gmmY,
-    aclTensor*         mmYOptional,
-    aclTensor*         permuteOutOptional,
-    uint64_t*          workspaceSize,
-    aclOpExecutor**    executor)
+    const aclTensor *gmmX,
+    const aclTensor *gmmWeight,
+    void *shmemContext,
+    int64_t epWorldSize,
+    const aclIntArray *sendCounts,
+    const aclIntArray *recvCounts,
+    aclTensor *gmmY,
+    uint64_t *workspaceSize,
+    aclOpExecutor **executor);
 ```
 
 ```cpp
 aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
-    void*          workspace,
-    uint64_t       workspaceSize,
-    aclOpExecutor* executor,
-    aclrtStream    stream)
+    void *workspace,
+    uint64_t workspaceSize,
+    aclOpExecutor *executor,
+    aclrtStream stream);
 ```
 
-## aclnnAlltoAllvGroupedMatMulGetWorkspaceSize
+## 第一段接口参数
 
-- **参数说明**
+| 参数 | 输入/输出 | 类型 | 说明 |
+|---|---|---|---|
+| `gmmX` | 输入 | `const aclTensor *` | BF16、ND、二维张量，shape 为 `[M, K]`。存储必须由当前 SHMEM 对称堆分配。按目标 rank 分段，同一目标 rank 内按目标本地专家排列。 |
+| `gmmWeight` | 输入 | `const aclTensor *` | BF16、ND、三维张量，shape 为 `[E, K, N]`，其中 `E` 为本卡专家数。权重不转置。 |
+| `shmemContext` | 输入 | `void *` | 已初始化 SHMEM 运行时的设备 FFTS 配置地址，例如 `reinterpret_cast<void *>(shmemx_get_ffts_config())`。接口仅借用该地址，不接管生命周期。 |
+| `epWorldSize` | 输入 | `int64_t` | EP rank 数，取值范围 `[1, 8]`，执行时必须等于 `shmem_n_pes()`。 |
+| `sendCounts` | 输入 | `const aclIntArray *` | 长度为 `epWorldSize * E`。展平顺序为 `[目标 rank, 目标本地专家]`，元素为非负 uint32 范围整数，元素之和必须等于 `M`。 |
+| `recvCounts` | 输入 | `const aclIntArray *` | 长度为 `epWorldSize * E`。展平顺序为 `[来源 rank, 本地专家]`，元素为非负 uint32 范围整数。 |
+| `gmmY` | 输出 | `aclTensor *` | BF16、ND、二维张量，shape 为 `[sum(recvCounts), N]`。 |
+| `workspaceSize` | 输出 | `uint64_t *` | 返回第二段接口需要的完整 workspace 字节数。 |
+| `executor` | 输出 | `aclOpExecutor **` | 返回包含算子执行流程的 executor。 |
 
-    <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
-    <col style="width: 170px">
-    <col style="width: 120px">
-    <col style="width: 300px">
-    <col style="width: 330px">
-    <col style="width: 212px">
-    <col style="width: 100px">
-    <col style="width: 190px">
-    <col style="width: 145px">
-    </colgroup>
-    <thead>
-    <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-    </tr></thead>
-    <tbody>
-    <tr>
-        <td>gmmX(aclTensor*)</td>
-        <td>输入</td>
-        <td>该输入进行AlltoAllv通信与Permute操作后结果作为GroupedMatMul计算的左矩阵。</td>
-        <td>支持2维，shape为(BSK, H1)。</td>
-        <td>FLOAT16、BFLOAT16</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>x</td>
-    </tr>
-    <tr>
-        <td>gmmWeight(aclTensor*)</td>
-        <td>输入</td>
-        <td>GroupedMatMul计算的右矩阵。</td>
-        <td>支持3维，shape为(e, H1, N1)。</td>
-        <td>与gmmX保持一致</td>
-        <td>ND</td>
-        <td>3</td>
-        <td>√（仅适用转置场景）</td>
-    </tr>
-    <tr>
-        <td>sendCountsTensorOptional(aclTensor*)</td>
-        <td>输入</td>
-        <td>预留参数，当前版本仅支持传nullptr。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>recvCountsTensorOptional(aclTensor*)</td>
-        <td>输入</td>
-        <td>预留参数，当前版本仅支持传nullptr。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>mmXOptional(aclTensor*)</td>
-        <td>输入</td>
-        <td>可选输入，共享专家MatMul计算中的左矩阵。</td>
-        <td>支持2维，shape为(BS, H2)，需与mmWeightOptional同时传入或同为nullptr。</td>
-        <td>与gmmX保持一致</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>x</td>
-    </tr>
-    <tr>
-        <td>mmWeightOptional(aclTensor*)</td>
-        <td>输入</td>
-        <td>可选输入，共享专家MatMul计算中的右矩阵。</td>
-        <td>支持2维，shape为(H2, N2)，需与mmXOptional同时传入或同为nullptr。</td>
-        <td>与gmmX保持一致</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>√（仅适用转置场景）</td>
-    </tr>
-    <tr>
-        <td>group(char*)</td>
-        <td>输入</td>
-        <td>专家并行的通信域名，字符串长度要求(0, 128)。</td>
-        <td>通过Hccl提供的接口“extern HcclResult HcclGetCommName(HcclComm comm, char* commName);”获取，其中commName即为group。</td>
-        <td>STRING</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>commMode(char*)</td>
-        <td>输入</td>
-        <td>指定当前通信类型。</td>
-        <td>支持输入"ai_cpu"和"ccu"。</td>
-        <td>STRING</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>epWorldSize（int64_t）</td>
-        <td>输入</td>
-        <td>ep通信域的大小。</td>
-        <td><br><term>Atlas A3系列产品</term>支持8、16、32、64、128；<br><term>Ascend 950DT</term>支持2、4、8、16、32、64。</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>sendCounts(aclIntArray*)</td>
-        <td>输入</td>
-        <td>表示发送给其他卡的token数。</td>
-        <td>数据类型支持INT64，长度为e * epWorldSize，最大为256。输入类型需为list。</td>
-        <td>aclIntArray*（元素类型INT64）</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>recvCounts(aclIntArray*)</td>
-        <td>输入</td>
-        <td>表示接收其他卡的token数。</td>
-        <td>数据类型支持INT64，长度为e * epWorldSize，最大为256。输入类型需为list。</td>
-        <td>aclIntArray*（元素类型INT64）</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>transGmmWeight(bool)</td>
-        <td>输入</td>
-        <td>GroupedMatMul的右矩阵是否需要转置。</td>
-        <td>true表示需要转置，false表示不转置。</td>
-        <td>BOOL</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>transMmWeight(bool)</td>
-        <td>输入</td>
-        <td>共享专家MatMul的右矩阵是否需要转置。</td>
-        <td>true表示需要转置，false表示不转置。</td>
-        <td>BOOL</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>permuteOutFlag(bool)</td>
-        <td>输入</td>
-        <td>permuteOutOptional是否需要输出。</td>
-        <td>true表明需要输出，false表明不需要输出。</td>
-        <td>BOOL</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>gmmY(aclTensor*)</td>
-        <td>输出</td>
-        <td>路由专家计算的输出。</td>
-        <td>支持2维，shape为(A, N1)。</td>
-        <td>与gmmX保持一致</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>x</td>
-    </tr>
-    <tr>
-        <td>mmYOptional(aclTensor*)</td>
-        <td>输出</td>
-        <td>共享专家计算的输出。</td>
-        <td>支持2维，shape为(BS, N2)，仅当传入mmXOptional与mmWeightOptional才输出。</td>
-        <td>与mmXOptional保持一致</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>x</td>
-    </tr>
-    <tr>
-        <td>permuteOutOptional(aclTensor*)</td>
-        <td>输出</td>
-        <td>permute之后的输出。</td>
-        <td>支持2维，shape为(A, H1)，仅当permuteOutFlag为true时输出。</td>
-        <td>与gmmX保持一致</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>x</td>
-    </tr>
-    <tr>
-        <td>workspaceSize（uint64_t*）</td>
-        <td>输出</td>
-        <td>返回需要在Device侧申请的workspace大小。</td>
-        <td>-</td>
-        <td>UINT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>executor(aclOpExecutor**)</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子的计算流程。</td>
-        <td>-</td>
-        <td>aclOpExecutor*</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    </tbody></table>
+## 第二段接口参数
 
-- **返回值**
+| 参数 | 输入/输出 | 类型 | 说明 |
+|---|---|---|---|
+| `workspace` | 输入 | `void *` | 必须使用 `aclshmem_calloc` 或等价 SHMEM 对称堆接口，按第一段返回的 `workspaceSize` 分配。 |
+| `workspaceSize` | 输入 | `uint64_t` | 第一段接口返回的完整大小，不允许缩小。 |
+| `executor` | 输入 | `aclOpExecutor *` | 第一段接口返回的 executor。 |
+| `stream` | 输入 | `aclrtStream` | 执行流。各 rank 必须遵循相同的集合通信调用顺序。 |
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+## 支持的数据类型
 
-    第一阶段接口完成入参校验，出现以下场景报错：
+`gmmX`、`gmmWeight` 和 `gmmY` 仅支持 `BFLOAT16`。
 
-    <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
-    <col style="width: 282px">
-    <col style="width: 120px">
-    <col style="width: 747px">
-    </colgroup>
-    <thead>
-    <tr>
-    <th>返回值</th>
-    <th>错误码</th>
-    <th>描述</th>
-    </tr></thead>
-    <tbody>
-    <tr>
-    <td>ACLNN_ERR_PARAM_NULLPTR</td>
-    <td>161001</td>
-    <td>传入参数要求是必选输入、输出或者必选属性，但实际传入了空指针。</td>
-    </tr>
-    <tr>
-    <td>ACLNN_ERR_PARAM_INVALID</td>
-    <td>161002</td>
-    <td>gmmX、gmmWeight、sendCountsTensorOptional、recvCountsTensorOptional、mmXOptional、mmWeightOptional、group、epWorldSize、sendCounts、recvCounts的数据类型、数据格式或者维度不在支持的范围内。</td>
-    </tr>
-    </tbody></table>
+## Shape 与输出顺序
 
-## aclnnAlltoAllvGroupedMatMulV2
+- `gmmX`: `[M, K]`
+- `gmmWeight`: `[E, K, N]`
+- `gmmY`: `[R, N]`，其中 `R = sum(recvCounts)`
+- `sendCounts` 与 `recvCounts` 的存储都是 rank-major；每个 rank 段内按本地专家编号递增。
+- `gmmY` 保留源算子的 expert-major 输出顺序：先按本地专家编号递增，再在每个专家内按来源 rank 递增。每个 `(expert, source rank)` 分组内保持通信输入顺序。
 
-- **参数说明**
+例如 `EP=2, E=2` 时，`recvCounts` 存储顺序为：
 
-    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-    <col style="width: 168px">
-    <col style="width: 128px">
-    <col style="width: 854px">
-    </colgroup>
-    <thead>
-    <tr>
-    <th>参数名</th>
-    <th>输入/输出</th>
-    <th>描述</th>
-    </tr></thead>
-    <tbody>
-    <tr>
-    <td>workspace</td>
-    <td>输入</td>
-    <td>在Device侧申请的workspace内存地址。</td>
-    </tr>
-    <tr>
-    <td>workspaceSize</td>
-    <td>输入</td>
-    <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize</code>获取。</td>
-    </tr>
-    <tr>
-    <td>executor</td>
-    <td>输入</td>
-    <td>op执行器，包含了算子计算流程。</td>
-    </tr>
-    <tr>
-    <td>stream</td>
-    <td>输入</td>
-    <td>指定执行任务的Stream。</td>
-    </tr>
-    </tbody></table>
+```text
+[rank0/expert0, rank0/expert1, rank1/expert0, rank1/expert1]
+```
 
-- **返回值**
+而 `gmmY` 的行分组顺序为：
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+```text
+[expert0/rank0, expert0/rank1, expert1/rank0, expert1/rank1]
+```
 
-## 约束说明
+## SHMEM 与 workspace 约束
 
-- 通信引擎约束：
+- 调用 `GetWorkspaceSize` 前必须完成 `aclshmemx_init_attr`，并将通信引擎设置为 `ACLSHMEM_DATA_OP_UDMA`。
+- `gmmX` 和第二段接口的 `workspace` 必须来自同一个已初始化 SHMEM 对称堆；普通 `aclrtMalloc` workspace 不满足要求。
+- 算子 user workspace 固定包含 `400 MiB + 4096 B`：前 400 MiB 是双缓冲通信窗口，末尾页面保存跨 rank 信号与对齐空间。第一段返回值还可能包含框架 system workspace，调用方必须按返回的完整字节数进行 SHMEM 分配。
+- 源实现约束 `gmmX` 与固定 user workspace 的总量不超过 1004 MiB。调用方设置的 SHMEM heap 还必须容纳框架附加空间及其他对称分配。
+- `shmemContext`、`gmmX`、workspace 和 SHMEM runtime 的生命周期必须覆盖 executor 构造、kernel 执行及流同步。
+- 各 rank 的 `epWorldSize`、`E`、`K`、`N` 与集合通信调用顺序必须一致；发送表和对端接收表必须全局匹配。
 
-  <!-- npu="A3" id8 -->
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AICPU通信。
-  <!-- end id8 -->
-  <!-- npu="950" id9 -->
-  - <term>Ascend 950DT</term>：支持CCU通信和AICPU通信，CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
+## 其他约束
 
-  <!-- end id9 -->
+- 仅支持 Ascend 950（DAV_3510）。
+- `1 <= E <= 64`，`1 <= epWorldSize <= 8`。
+- `K > 0`、`N > 0`，且 `gmmX.shape[1] == gmmWeight.shape[1]`。
+- 每个 peer 的发送总量和接收总量必须可由 uint32 表示。
+- 不支持 FP16、权重转置、共享专家 MatMul 和 permute 独立输出。
+- 本接口允许破坏旧 V2 ABI；旧的 `group`、`commMode` 和可选张量参数不再存在。
 
-- 确定性计算：
-  - aclnnAlltoAllvGroupedMatMulV2默认确定性实现。
+## 返回值
 
-- 参数说明里shape使用的变量：
-  - BSK：本卡发送的token数，是sendCounts参数累加之和，取值范围(0, 52428800)。
-  - H1：表示路由专家hidden size隐藏层大小，取值范围(0, 65536)。
-  - H2：表示共享专家hidden size隐藏层大小，取值范围(0, 12288]。
-  - e：表示单卡上专家个数，e<=48，e * epWorldSize最大支持384。
-  - N1：表示路由专家的head_num，取值范围(0, 65536)。
-  - N2：表示共享专家的head_num，取值范围(0, 65536)。
-  - BS：batch sequence size。
-  - K：表示选取TopK个专家，K的范围[2, 8]。
-  - A：本卡收到的token数，是recvCounts参数累加之和。
-  - ep通信域内所有卡的A参数的累加和等于所有卡上的BSK参数的累加和。
+两个接口均返回 `aclnnStatus`：
 
-<!-- npu="A3" id10 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  : 单卡通信量在2MB以下可能存在性能劣化。
+- `ACLNN_SUCCESS`：接口调用成功。
+- `ACLNN_ERR_PARAM_NULLPTR`：必选 tensor、context、workspace 元数据或 executor 指针为空。
+- `ACLNN_ERR_PARAM_INVALID`：平台、dtype、shape、EP、counts 或 workspace 不符合约束。
 
-<!-- end id10 -->
+kernel 启动后的 SHMEM/UDMA 异常通过流同步和运行时最近错误信息返回。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+完整 C++ 示例见 [Ascend 950 SHMEM V2 示例](../examples/arch35/test_aclnn_allto_allv_grouped_mat_mul.cpp)。示例采用“一进程一 rank”，使用 `aclshmem_malloc` 分配 `gmmX`，使用 `aclshmem_calloc` 分配第一段接口返回的完整 workspace，并将 `shmemx_get_ffts_config()` 传入 V2。
 
-说明：
+编译支持以下两种 SHMEM SDK 布局：
 
-- 本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
-- 本示例代码以8卡为例，请根据实际环境卡数修改`EP_WORLD_SIZE`。
+- 源算子布局：设置 `SHMEM_HOME_PATH`，使用 `${SHMEM_HOME_PATH}/shmem/include`，示例链接 `${SHMEM_HOME_PATH}/shmem/lib/libshmem.so`。
+- HCCL 工程集成布局：设置 `SHMEM_HOME`，使用 `${SHMEM_HOME}/include` 与 `${SHMEM_HOME}/src/device`，示例通常链接 `${SHMEM_HOME}/build/lib/libshmem.so`。
 
-<!-- npu="950" id11 -->
-- <term>Ascend 950DT</term>：
-
-    ```cpp
-    #include <thread>
-    #include <iostream>
-    #include <string>
-    #include <cstring>
-    #include <vector>
-    #include "acl/acl.h"
-    #include "hccl/hccl.h"
-    #include "aclnnop/aclnn_allto_allv_grouped_mat_mul_v2.h"
-
-    #define CHECK_RET(cond, return_expr)                                                                                   \
-        do {                                                                                                               \
-            if (!(cond)) {                                                                                                 \
-                return_expr;                                                                                               \
-            }                                                                                                              \
-        } while (0)
-
-    #define LOG_PRINT(message, ...)                                                                                        \
-        do {                                                                                                               \
-            printf(message, ##__VA_ARGS__);                                                                                \
-        } while (0)
-
-    int64_t GetShapeSize(const std::vector<int64_t> &shape)
-    {
-        int64_t shape_size = 1;
-        for (auto i : shape) {
-            shape_size *= i;
-        }
-        return shape_size;
-    }
-
-    template <typename T>
-    int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                        aclDataType dataType, aclTensor **tensor)
-    {
-        auto size = GetShapeSize(shape) * sizeof(T);
-        auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret: %d\n", ret); return ret);
-        ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
-        std::vector<int64_t> strides(shape.size(), 1);
-        for (int64_t i = shape.size() - 2; i >= 0; i--) {
-            strides[i] = shape[i + 1] * strides[i + 1];
-        }
-        *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                                shape.data(), shape.size(), *deviceAddr);
-        return 0;
-    }
-
-    struct Args {
-        int rankId;
-        HcclComm hcclComm;
-        aclrtStream stream;
-        aclrtContext context;
-    };
-
-    // shape基本信息
-    constexpr int64_t EP_WORLD_SIZE = 2;
-    constexpr int64_t BS = 4096;
-    constexpr int64_t K = 2;
-    constexpr int64_t H = 7168;
-    constexpr int64_t e = 4;
-    constexpr int64_t N1 = 4096;
-    constexpr int64_t N2 = 4096;
-    constexpr int64_t A = BS * K;
-
-    std::vector<int16_t> pPermuteData(A *H, 0);
-    std::vector<int16_t> pGmmyData(A *N1, 0);
-    std::vector<int16_t> pmmXData(BS *H, 0);
-    std::vector<int16_t> pmmWData(H *N2, 0);
-    std::vector<int16_t> pmmYData(BS *N2, 0);
-
-    int LaunchOneThreadAlltoAllvGmm(Args &args)
-    {
-        int ret = aclrtSetCurrentContext(args.context);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret: %d\n", ret); return ret);
-        char hcomName[128] = {0};
-        ret = HcclGetCommName(args.hcclComm, hcomName);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
-
-        std::vector<int64_t> gmmXShape = {BS * K, H};
-        std::vector<int64_t> gmmWShape = {e, H, N1};
-        std::vector<int64_t> gmmYShape = {A, N1};
-        std::vector<int64_t> permuteShape = {A, H};
-        std::vector<int64_t> mmXShape = {BS, H};
-        std::vector<int64_t> mmWShape = {H, N2};
-        std::vector<int64_t> mmYShape = {BS, N2};
-        std::vector<int64_t> sendCountsShape = {EP_WORLD_SIZE * e};
-        std::vector<int64_t> recvCountsShape = {EP_WORLD_SIZE * e};
-
-        std::vector<int64_t> sendCountsList(EP_WORLD_SIZE * e, BS * K / (EP_WORLD_SIZE * e));
-        std::vector<int64_t> recvCountsList(EP_WORLD_SIZE * e, BS * K / (EP_WORLD_SIZE * e));
-
-        void *gmmXDeviceAddr = nullptr;
-        void *gmmWDeviceAddr = nullptr;
-        void *gmmYDeviceAddr = nullptr;
-        void *permuteDeviceAddr = nullptr;
-        void *mmXDeviceAddr = nullptr;
-        void *mmWDeviceAddr = nullptr;
-        void *mmYDeviceAddr = nullptr;
-
-        aclTensor *gmmX = nullptr;
-        aclTensor *gmmW = nullptr;
-        aclTensor *gmmY = nullptr;
-        aclTensor *mmX = nullptr;
-        aclTensor *mmW = nullptr;
-        aclTensor *mmY = nullptr;
-        aclTensor *permute = nullptr;
-        aclTensor *sendCountsTensor = nullptr;
-        aclTensor *recvCountsTensor = nullptr;
-
-        uint64_t workspaceSize = 0;
-        aclOpExecutor *executor = nullptr;
-        void *workspaceAddr = nullptr;
-
-        long long gmmXShapeSize = GetShapeSize(gmmXShape);
-        long long gmmWShapeSize = GetShapeSize(gmmWShape);
-        long long gmmYShapeSize = GetShapeSize(gmmYShape);
-        long long permuteShapeSize = GetShapeSize(permuteShape);
-        long long mmXShapeSize = GetShapeSize(mmXShape);
-        long long mmWShapeSize = GetShapeSize(mmWShape);
-        long long mmYShapeSize = GetShapeSize(mmYShape);
-
-        std::vector<uint16_t> gmmXHostData(gmmXShapeSize, (args.rankId + 1) * 1024); // BF16, FP16
-        std::vector<uint16_t> gmmWHostData(gmmWShapeSize, (args.rankId + 1) * 512);
-        std::vector<uint16_t> gmmYHostData(gmmYShapeSize, 65535);
-        std::vector<uint16_t> permuteHostData(permuteShapeSize, 65535);
-        std::vector<uint16_t> mmXHostData(mmXShapeSize, (args.rankId + 1) * 1024); // BF16, FP16
-        std::vector<uint16_t> mmWHostData(mmWShapeSize, (args.rankId + 1) * 512);
-        std::vector<uint16_t> mmYHostData(mmYShapeSize, 0);
-
-        ret = CreateAclTensor(gmmXHostData, gmmXShape, &gmmXDeviceAddr, aclDataType::ACL_FLOAT16, &gmmX);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(gmmWHostData, gmmWShape, &gmmWDeviceAddr, aclDataType::ACL_FLOAT16, &gmmW);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(gmmYHostData, gmmYShape, &gmmYDeviceAddr, aclDataType::ACL_FLOAT16, &gmmY);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(mmXHostData, mmXShape, &mmXDeviceAddr, aclDataType::ACL_FLOAT16, &mmX);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(mmWHostData, mmWShape, &mmWDeviceAddr, aclDataType::ACL_FLOAT16, &mmW);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
-        ret = CreateAclTensor(mmYHostData, mmYShape, &mmYDeviceAddr, aclDataType::ACL_FLOAT16, &mmY);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-        ret = CreateAclTensor(permuteHostData, permuteShape, &permuteDeviceAddr, aclDataType::ACL_FLOAT16, &permute);
-        CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-        aclIntArray *sendCounts = aclCreateIntArray(sendCountsList.data(), sendCountsList.size());
-        aclIntArray *recvCounts = aclCreateIntArray(recvCountsList.data(), recvCountsList.size());
-
-        // 调用第一阶段接口
-        ret = aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(gmmX, gmmW, sendCountsTensor, recvCountsTensor, mmX, mmW,
-                                                            hcomName, "ai_cpu", EP_WORLD_SIZE, sendCounts, recvCounts, false, false,
-                                                            true, gmmY, mmY, permute, &workspaceSize, &executor);
-        CHECK_RET(ret == ACL_SUCCESS,
-                LOG_PRINT("[ERROR] aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize failed. ret = %d \n", ret);
-                return ret);
-
-        if (workspaceSize > 0) {
-            ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
-        }
-
-        // 调用第二阶段接口
-        ret = aclnnAlltoAllvGroupedMatMulV2(workspaceAddr, workspaceSize, executor, args.stream);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAlltoAllvGroupedMatMulV2 failed. ret = %d \n", ret);
-                return ret);
-        //（固定写法）同步等待任务执行结束
-        ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000000);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
-                return ret);
-        LOG_PRINT("[INFO] device_%d aclnnAlltoAllvGroupedMatMulV2 execute successfully.\n", args.rankId);
-        // 释放device资源，需要根据具体API的接口定义修改
-        if (args.rankId == 0) {
-            size_t size = A * H * sizeof(int16_t);
-            aclrtMemcpy(pPermuteData.data(), size, permuteDeviceAddr, size, ACL_MEMCPY_DEVICE_TO_HOST);
-        }
-        if (args.rankId == 0) {
-            size_t size = A * N1 * sizeof(int16_t);
-            aclrtMemcpy(pGmmyData.data(), size, gmmYDeviceAddr, size, ACL_MEMCPY_DEVICE_TO_HOST);
-        }
-        if (gmmX != nullptr) {
-            aclDestroyTensor(gmmX);
-        }
-        if (gmmW != nullptr) {
-            aclDestroyTensor(gmmW);
-        }
-        if (gmmY != nullptr) {
-            aclDestroyTensor(gmmY);
-        }
-        if (mmX != nullptr) {
-            aclDestroyTensor(mmX);
-        }
-        if (mmW != nullptr) {
-            aclDestroyTensor(mmW);
-        }
-        if (mmY != nullptr) {
-            aclDestroyTensor(mmY);
-        }
-        if (permute != nullptr) {
-            aclDestroyTensor(permute);
-        }
-        if (gmmXDeviceAddr != nullptr) {
-            aclrtFree(gmmXDeviceAddr);
-        }
-        if (gmmWDeviceAddr != nullptr) {
-            aclrtFree(gmmWDeviceAddr);
-        }
-        if (gmmYDeviceAddr != nullptr) {
-            aclrtFree(gmmYDeviceAddr);
-        }
-        if (mmXDeviceAddr != nullptr) {
-            aclrtFree(mmXDeviceAddr);
-        }
-        if (mmWDeviceAddr != nullptr) {
-            aclrtFree(mmWDeviceAddr);
-        }
-        if (mmYDeviceAddr != nullptr) {
-            aclrtFree(mmYDeviceAddr);
-        }
-        if (permuteDeviceAddr != nullptr) {
-            aclrtFree(permuteDeviceAddr);
-        }
-        if (workspaceSize > 0) {
-            aclrtFree(workspaceAddr);
-        }
-        HcclCommDestroy(args.hcclComm);
-        aclrtDestroyStream(args.stream);
-        aclrtDestroyContext(args.context);
-        aclrtResetDevice(args.rankId);
-        return 0;
-    }
-
-    int main(int argc, char *argv[])
-    {
-        int ret = aclInit(nullptr);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
-        aclrtStream stream[EP_WORLD_SIZE];
-        aclrtContext context[EP_WORLD_SIZE];
-        for (uint32_t rankId = 0; rankId < EP_WORLD_SIZE; rankId++) {
-            ret = aclrtSetDevice(rankId);
-            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d \n", ret); return ret);
-            ret = aclrtCreateContext(&context[rankId], rankId);
-            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d \n", ret); return ret);
-            ret = aclrtCreateStream(&stream[rankId]);
-            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d \n", ret); return ret);
-        }
-
-        int32_t devices[EP_WORLD_SIZE];
-        for (int i = 0; i < EP_WORLD_SIZE; i++) {
-            devices[i] = i;
-        }
-        // 初始化集合通信域
-        HcclComm comms[EP_WORLD_SIZE];
-        ret = HcclCommInitAll(EP_WORLD_SIZE, devices, comms);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll failed. ret = %d \n", ret); return ret);
-
-        Args args[EP_WORLD_SIZE];
-        // 启动多线程
-        std::vector<std::unique_ptr<std::thread>> threads(EP_WORLD_SIZE);
-        for (uint32_t rankId = 0; rankId < EP_WORLD_SIZE; rankId++) {
-            args[rankId].rankId = rankId;
-            args[rankId].hcclComm = comms[rankId];
-            args[rankId].stream = stream[rankId];
-            args[rankId].context = context[rankId];
-            threads[rankId].reset(new std::thread(&LaunchOneThreadAlltoAllvGmm, std::ref(args[rankId])));
-        }
-        for (uint32_t rankId = 0; rankId < EP_WORLD_SIZE; rankId++) {
-            threads[rankId]->join();
-        }
-        aclFinalize();
-        return 0;
-    }
-    ```
-
-<!-- end id11 -->
+若 SHMEM 运行时承载在 HCCL 网络环境上，启动前应按实际机器配置 `HCCL_SOCKET_IFNAME`，并按集群情况设置 `HCCL_CONNECT_TIMEOUT`、`HCCL_EXEC_TIMEOUT` 与 SHMEM rendezvous 地址。各 rank 必须继承一致的运行时库路径和 rendezvous 配置；不要把 IP 或网卡名硬编码进算子仓。

@@ -1,287 +1,167 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file test_aclnn_allto_allv_grouped_mat_mul.cpp
- * \brief
+/*
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <thread>
-#include <iostream>
-#include <string>
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <vector>
-#include "acl/acl.h"
-#include "hccl/hccl.h"
-#include "aclnnop/aclnn_allto_allv_grouped_mat_mul.h"
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
+#include "acl/acl.h"
+#include "aclnnop/aclnn_allto_allv_grouped_mat_mul_v2.h"
+#include "shmem.h"
+
+namespace {
+constexpr uint64_t SHMEM_HEAP_BYTES = 1004ULL * 1024ULL * 1024ULL;
+constexpr int64_t LOCAL_EXPERTS = 2;
+constexpr int64_t K = 32;
+constexpr int64_t N = 64;
+
+#define CHECK_ACL(expression)                                                                                          \
     do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
+        const int checkRet = (expression);                                                                             \
+        if (checkRet != ACL_SUCCESS) {                                                                                  \
+            std::cerr << #expression << " failed, ret=" << checkRet << std::endl;                                      \
+            return checkRet;                                                                                           \
         }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
-    } while (0)
-
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+int SetShmemAttr(int32_t rank, int32_t rankSize, const char *ipPort, aclshmemx_init_attr_t &attr,
+                 aclshmemx_uniqueid_t &uniqueId)
 {
-    int64_t shape_size = 1;
-    for (auto i : shape) {
-        shape_size *= i;
-    }
-    return shape_size;
+    std::memset(&attr, 0, sizeof(attr));
+    std::memset(&uniqueId, 0, sizeof(uniqueId));
+    const size_t ipLength = std::min(std::strlen(ipPort), sizeof(attr.ip_port) - 1);
+    std::copy_n(ipPort, ipLength, attr.ip_port);
+    attr.ip_port[ipLength] = '\0';
+    attr.my_pe = rank;
+    attr.n_pes = rankSize;
+    attr.local_mem_size = SHMEM_HEAP_BYTES;
+    const int attrVersion = (1 << 16) + sizeof(aclshmemx_init_attr_t);
+    attr.option_attr = {attrVersion, ACLSHMEM_DATA_OP_UDMA, DEFAULT_TIMEOUT, DEFAULT_TIMEOUT, DEFAULT_TIMEOUT};
+    uniqueId.my_pe = rank;
+    uniqueId.n_pes = rankSize;
+    attr.comm_args = reinterpret_cast<void *>(&uniqueId);
+    return ACLSHMEM_SUCCESS;
 }
 
-template <typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor)
+int64_t Numel(const std::vector<int64_t> &shape)
 {
-    auto size = GetShapeSize(shape) * sizeof(T);
-    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret: %d\n", ret); return ret);
-    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
+    int64_t result = 1;
+    for (const int64_t dim : shape) {
+        result *= dim;
+    }
+    return result;
+}
+
+aclTensor *CreateTensor(void *deviceAddress, const std::vector<int64_t> &shape, aclDataType dtype)
+{
     std::vector<int64_t> strides(shape.size(), 1);
-    for (int64_t i = shape.size() - 2; i >= 0; i--) {
-        strides[i] = shape[i + 1] * strides[i + 1];
+    for (int64_t index = static_cast<int64_t>(shape.size()) - 2; index >= 0; --index) {
+        strides[index] = strides[index + 1] * shape[index + 1];
     }
-    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                              shape.data(), shape.size(), *deviceAddr);
-    return 0;
+    return aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0, ACL_FORMAT_ND, shape.data(),
+                           shape.size(), deviceAddress);
 }
+} // namespace
 
-struct Args {
-    int rankId;
-    HcclComm hcclComm;
-    aclrtStream stream;
-    aclrtContext context;
-};
-
-// shape 基本信息
-constexpr int64_t EP_WORLD_SIZE = 2;
-constexpr int64_t BS = 4096;
-constexpr int64_t K = 2;
-constexpr int64_t H = 7168;
-constexpr int64_t e = 4;
-constexpr int64_t N1 = 4096;
-constexpr int64_t N2 = 4096;
-constexpr int64_t A = BS * K;
-
-std::vector<int16_t> pPermuteData(A *H, 0);
-std::vector<int16_t> pGmmyData(A *N1, 0);
-std::vector<int16_t> pmmXData(BS *H, 0);
-std::vector<int16_t> pmmWData(H *N2, 0);
-std::vector<int16_t> pmmYData(BS *N2, 0);
-
-int LaunchOneThreadAlltoAllvGmm(Args &args)
+// Start one process per rank:
+//   test_aclnn_allto_allv_grouped_mat_mul <rank_size> <rank_id> <ip:port> <device_id>
+int main(int argc, char **argv)
 {
-    int ret = aclrtSetCurrentContext(args.context);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret: %d\n", ret); return ret);
-    char hcomName[128] = {0};
-    ret = HcclGetCommName(args.hcclComm, hcomName);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
+    if (argc != 5) {
+        std::cerr << "Usage: " << argv[0] << " rank_size rank_id ip:port device_id" << std::endl;
+        return 1;
+    }
+    const int32_t rankSize = std::atoi(argv[1]);
+    const int32_t rank = std::atoi(argv[2]);
+    const int32_t deviceId = std::atoi(argv[4]);
+    if (rankSize < 1 || rankSize > 8 || rank < 0 || rank >= rankSize) {
+        std::cerr << "This sample requires rank_size in [1,8]." << std::endl;
+        return 1;
+    }
+    const int64_t tokensPerRoute = 2;
+    const int64_t m = rankSize * LOCAL_EXPERTS * tokensPerRoute;
 
-    std::vector<int64_t> gmmXShape = {BS * K, H};
-    std::vector<int64_t> gmmWShape = {e, H, N1};
-    std::vector<int64_t> gmmYShape = {A, N1};
-    std::vector<int64_t> permuteShape = {A, H};
-    std::vector<int64_t> mmXShape = {BS, H};
-    std::vector<int64_t> mmWShape = {H, N2};
-    std::vector<int64_t> mmYShape = {BS, N2};
-    std::vector<int64_t> sendCountsShape = {EP_WORLD_SIZE * e};
-    std::vector<int64_t> recvCountsShape = {EP_WORLD_SIZE * e};
+    CHECK_ACL(aclInit(nullptr));
+    CHECK_ACL(aclrtSetDevice(deviceId));
+    aclrtStream stream = nullptr;
+    CHECK_ACL(aclrtCreateStream(&stream));
 
-    std::vector<int64_t> sendCountsList(EP_WORLD_SIZE * e, BS * K / (EP_WORLD_SIZE * e));
-    std::vector<int64_t> recvCountsList(EP_WORLD_SIZE * e, BS * K / (EP_WORLD_SIZE * e));
+    aclshmemx_init_attr_t shmemAttr{};
+    aclshmemx_uniqueid_t uniqueId{};
+    CHECK_ACL(SetShmemAttr(rank, rankSize, argv[3], shmemAttr, uniqueId));
+    CHECK_ACL(aclshmemx_init_attr(ACLSHMEMX_INIT_WITH_DEFAULT, &shmemAttr));
 
-    void *gmmXDeviceAddr = nullptr;
-    void *gmmWDeviceAddr = nullptr;
-    void *gmmYDeviceAddr = nullptr;
-    void *permuteDeviceAddr = nullptr;
-    void *mmXDeviceAddr = nullptr;
-    void *mmWDeviceAddr = nullptr;
-    void *mmYDeviceAddr = nullptr;
+    const std::vector<int64_t> xShape{m, K};
+    const std::vector<int64_t> weightShape{LOCAL_EXPERTS, K, N};
+    const std::vector<int64_t> yShape{m, N};
+    const uint64_t xBytes = Numel(xShape) * sizeof(uint16_t);
+    const uint64_t weightBytes = Numel(weightShape) * sizeof(uint16_t);
+    const uint64_t yBytes = Numel(yShape) * sizeof(uint16_t);
 
-    aclTensor *gmmX = nullptr;
-    aclTensor *gmmW = nullptr;
-    aclTensor *gmmY = nullptr;
-    aclTensor *mmX = nullptr;
-    aclTensor *mmW = nullptr;
-    aclTensor *mmY = nullptr;
-    aclTensor *permute = nullptr;
-    aclTensor *sendCountsTensor = nullptr;
-    aclTensor *recvCountsTensor = nullptr;
+    void *xDevice = aclshmem_malloc(xBytes);
+    if (xDevice == nullptr) {
+        std::cerr << "aclshmem_malloc(gmmX) failed" << std::endl;
+        return 1;
+    }
+    void *weightDevice = nullptr;
+    void *yDevice = nullptr;
+    CHECK_ACL(aclrtMalloc(&weightDevice, weightBytes, ACL_MEM_MALLOC_HUGE_FIRST));
+    CHECK_ACL(aclrtMalloc(&yDevice, yBytes, ACL_MEM_MALLOC_HUGE_FIRST));
+    const std::vector<uint16_t> xHost(Numel(xShape), 0);
+    const std::vector<uint16_t> weightHost(Numel(weightShape), 0);
+    CHECK_ACL(aclrtMemcpy(xDevice, xBytes, xHost.data(), xBytes, ACL_MEMCPY_HOST_TO_DEVICE));
+    CHECK_ACL(aclrtMemcpy(weightDevice, weightBytes, weightHost.data(), weightBytes, ACL_MEMCPY_HOST_TO_DEVICE));
+
+    aclTensor *x = CreateTensor(xDevice, xShape, ACL_BF16);
+    aclTensor *weight = CreateTensor(weightDevice, weightShape, ACL_BF16);
+    aclTensor *y = CreateTensor(yDevice, yShape, ACL_BF16);
+    if (x == nullptr || weight == nullptr || y == nullptr) {
+        std::cerr << "aclCreateTensor failed" << std::endl;
+        return 1;
+    }
+
+    const std::vector<int64_t> sendCounts(rankSize * LOCAL_EXPERTS, tokensPerRoute);
+    const std::vector<int64_t> recvCounts(rankSize * LOCAL_EXPERTS, tokensPerRoute);
+    aclIntArray *sendArray = aclCreateIntArray(sendCounts.data(), sendCounts.size());
+    aclIntArray *recvArray = aclCreateIntArray(recvCounts.data(), recvCounts.size());
+    if (sendArray == nullptr || recvArray == nullptr) {
+        std::cerr << "aclCreateIntArray failed" << std::endl;
+        return 1;
+    }
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    void *workspaceAddr = nullptr;
+    void *shmemContext = reinterpret_cast<void *>(shmemx_get_ffts_config());
+    CHECK_ACL(aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(x, weight, shmemContext, rankSize, sendArray, recvArray,
+                                                            y, &workspaceSize, &executor));
+    void *workspace = aclshmem_calloc(1, workspaceSize);
+    if (workspace == nullptr) {
+        std::cerr << "aclshmem_calloc(workspaceSize=" << workspaceSize << ") failed" << std::endl;
+        return 1;
+    }
+    CHECK_ACL(aclnnAlltoAllvGroupedMatMulV2(workspace, workspaceSize, executor, stream));
+    CHECK_ACL(aclrtSynchronizeStream(stream));
+    std::cout << "rank " << rank << " completed AlltoAllvGroupedMatMulV2 through SHMEM/UDMA" << std::endl;
 
-    long long gmmXShapeSize = GetShapeSize(gmmXShape);
-    long long gmmWShapeSize = GetShapeSize(gmmWShape);
-    long long gmmYShapeSize = GetShapeSize(gmmYShape);
-    long long permuteShapeSize = GetShapeSize(permuteShape);
-    long long mmXShapeSize = GetShapeSize(mmXShape);
-    long long mmWShapeSize = GetShapeSize(mmWShape);
-    long long mmYShapeSize = GetShapeSize(mmYShape);
-
-    std::vector<uint16_t> gmmXHostData(gmmXShapeSize, (args.rankId + 1) * 1024); // BF16, FP16
-    std::vector<uint16_t> gmmWHostData(gmmWShapeSize, (args.rankId + 1) * 512);
-    std::vector<uint16_t> gmmYHostData(gmmYShapeSize, 65535);
-    std::vector<uint16_t> permuteHostData(permuteShapeSize, 65535);
-    std::vector<uint16_t> mmXHostData(mmXShapeSize, (args.rankId + 1) * 1024); // BF16, FP16
-    std::vector<uint16_t> mmWHostData(mmWShapeSize, (args.rankId + 1) * 512);
-    std::vector<uint16_t> mmYHostData(mmYShapeSize, 0);
-
-    ret = CreateAclTensor(gmmXHostData, gmmXShape, &gmmXDeviceAddr, aclDataType::ACL_FLOAT16, &gmmX);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(gmmWHostData, gmmWShape, &gmmWDeviceAddr, aclDataType::ACL_FLOAT16, &gmmW);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(gmmYHostData, gmmYShape, &gmmYDeviceAddr, aclDataType::ACL_FLOAT16, &gmmY);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(mmXHostData, mmXShape, &mmXDeviceAddr, aclDataType::ACL_FLOAT16, &mmX);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(mmWHostData, mmWShape, &mmWDeviceAddr, aclDataType::ACL_FLOAT16, &mmW);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(mmYHostData, mmYShape, &mmYDeviceAddr, aclDataType::ACL_FLOAT16, &mmY);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-    ret = CreateAclTensor(permuteHostData, permuteShape, &permuteDeviceAddr, aclDataType::ACL_FLOAT16, &permute);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-    aclIntArray *sendCounts = aclCreateIntArray(sendCountsList.data(), sendCountsList.size());
-    aclIntArray *recvCounts = aclCreateIntArray(recvCountsList.data(), recvCountsList.size());
-
-    // 调用第一阶段接口
-    ret = aclnnAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmW, sendCountsTensor, recvCountsTensor, mmX, mmW,
-                                                      hcomName, EP_WORLD_SIZE, sendCounts, recvCounts, false, false,
-                                                      true, gmmY, mmY, permute, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("[ERROR] aclnnAlltoAllvGroupedMatMulGetWorkspaceSize failed. ret = %d \n", ret);
-              return ret);
-
-    if (workspaceSize > 0) {
-        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
-    }
-
-    // 调用第二阶段接口
-    ret = aclnnAlltoAllvGroupedMatMul(workspaceAddr, workspaceSize, executor, args.stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAlltoAllvGroupedMatMul failed. ret = %d \n", ret);
-              return ret);
-    // （固定写法）同步等待任务执行结束
-    ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000000);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
-              return ret);
-    LOG_PRINT("[INFO] device_%d aclnnAlltoAllvGroupedMatMul execute successfully.\n", args.rankId);
-    // 释放device资源，需要根据具体API的接口定义修改
-    if (args.rankId == 0) {
-        size_t size = A * H * sizeof(int16_t);
-        aclrtMemcpy(pPermuteData.data(), size, permuteDeviceAddr, size, ACL_MEMCPY_DEVICE_TO_HOST);
-    }
-    if (args.rankId == 0) {
-        size_t size = A * N1 * sizeof(int16_t);
-        aclrtMemcpy(pGmmyData.data(), size, gmmYDeviceAddr, size, ACL_MEMCPY_DEVICE_TO_HOST);
-    }
-    if (gmmX != nullptr) {
-        aclDestroyTensor(gmmX);
-    }
-    if (gmmW != nullptr) {
-        aclDestroyTensor(gmmW);
-    }
-    if (gmmY != nullptr) {
-        aclDestroyTensor(gmmY);
-    }
-    if (mmX != nullptr) {
-        aclDestroyTensor(mmX);
-    }
-    if (mmW != nullptr) {
-        aclDestroyTensor(mmW);
-    }
-    if (mmY != nullptr) {
-        aclDestroyTensor(mmY);
-    }
-    if (permute != nullptr) {
-        aclDestroyTensor(permute);
-    }
-    if (gmmXDeviceAddr != nullptr) {
-        aclrtFree(gmmXDeviceAddr);
-    }
-    if (gmmWDeviceAddr != nullptr) {
-        aclrtFree(gmmWDeviceAddr);
-    }
-    if (gmmYDeviceAddr != nullptr) {
-        aclrtFree(gmmYDeviceAddr);
-    }
-    if (mmXDeviceAddr != nullptr) {
-        aclrtFree(mmXDeviceAddr);
-    }
-    if (mmWDeviceAddr != nullptr) {
-        aclrtFree(mmWDeviceAddr);
-    }
-    if (mmYDeviceAddr != nullptr) {
-        aclrtFree(mmYDeviceAddr);
-    }
-    if (permuteDeviceAddr != nullptr) {
-        aclrtFree(permuteDeviceAddr);
-    }
-    if (workspaceSize > 0) {
-        aclrtFree(workspaceAddr);
-    }
-    HcclCommDestroy(args.hcclComm);
-    aclrtDestroyStream(args.stream);
-    aclrtDestroyContext(args.context);
-    aclrtResetDevice(args.rankId);
-    return 0;
-}
-
-int main(int argc, char *argv[])
-{
-    int ret = aclInit(nullptr);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
-    aclrtStream stream[EP_WORLD_SIZE];
-    aclrtContext context[EP_WORLD_SIZE];
-    for (uint32_t rankId = 0; rankId < EP_WORLD_SIZE; rankId++) {
-        ret = aclrtSetDevice(rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d \n", ret); return ret);
-        ret = aclrtCreateContext(&context[rankId], rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d \n", ret); return ret);
-        ret = aclrtCreateStream(&stream[rankId]);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d \n", ret); return ret);
-    }
-
-    int32_t devices[EP_WORLD_SIZE];
-    for (int i = 0; i < EP_WORLD_SIZE; i++) {
-        devices[i] = i;
-    }
-    // 初始化集合通信域
-    HcclComm comms[EP_WORLD_SIZE];
-    ret = HcclCommInitAll(EP_WORLD_SIZE, devices, comms);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll failed. ret = %d \n", ret); return ret);
-
-    Args args[EP_WORLD_SIZE];
-    // 启动多线程
-    std::vector<std::unique_ptr<std::thread>> threads(EP_WORLD_SIZE);
-    for (uint32_t rankId = 0; rankId < EP_WORLD_SIZE; rankId++) {
-        args[rankId].rankId = rankId;
-        args[rankId].hcclComm = comms[rankId];
-        args[rankId].stream = stream[rankId];
-        args[rankId].context = context[rankId];
-        threads[rankId].reset(new std::thread(&LaunchOneThreadAlltoAllvGmm, std::ref(args[rankId])));
-    }
-    for (uint32_t rankId = 0; rankId < EP_WORLD_SIZE; rankId++) {
-        threads[rankId]->join();
-    }
-    aclFinalize();
+    aclDestroyIntArray(sendArray);
+    aclDestroyIntArray(recvArray);
+    aclDestroyTensor(x);
+    aclDestroyTensor(weight);
+    aclDestroyTensor(y);
+    shmem_free(workspace);
+    shmem_free(xDevice);
+    aclrtFree(weightDevice);
+    aclrtFree(yDevice);
+    CHECK_ACL(shmem_finalize());
+    CHECK_ACL(aclrtDestroyStream(stream));
+    CHECK_ACL(aclrtResetDevice(deviceId));
+    CHECK_ACL(aclFinalize());
     return 0;
 }
