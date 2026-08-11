@@ -292,7 +292,7 @@ def golden_test_worker(queue, rank, args, world_size):
                 x1_scale_dtype=SCALE_DTYPE_FP8_E8M0,
                 x2_scale_dtype=SCALE_DTYPE_FP8_E8M0,
                 comm_mode="urma",
-                alltoall_out_flag=True,
+                alltoall_out_flag=False,
             )
             torch.npu.synchronize()
         print(f"[INFO] rank {rank} Warmup done. y.shape={y.shape} dtype={y.dtype}, "
@@ -314,7 +314,7 @@ def golden_test_worker(queue, rank, args, world_size):
             x1_scale_dtype=SCALE_DTYPE_FP8_E8M0,
             x2_scale_dtype=SCALE_DTYPE_FP8_E8M0,
             comm_mode="urma",
-            alltoall_out_flag=True,
+                alltoall_out_flag=False,
         )
         torch.npu.synchronize()
 
