@@ -35,6 +35,12 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
+#if __has_include("../../moe_distribute_dispatch_v2/quantize_functions.h")
+#include "../../moe_distribute_dispatch_v2/quantize_functions.h"
+#else
+#include "../../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
+#endif
+
 namespace AttentionToFFNImpl {
 constexpr uint8_t BUFFER_NUM = 2; // 多Buf
 constexpr uint32_t UB_ALIGN = 32; // UB按32字节对齐
@@ -57,8 +63,8 @@ enum class AttentionToFFNContextType : uint8_t {
 };
 
 #define TemplateAttentionToFFNTypeClass                                                                              \
-    typename XType, bool isQuant, bool isSync, bool isActiveMask, AttentionToFFNContextType contextType
-#define TemplateAttentionToFFNTypeFunc XType, isQuant, isSync, isActiveMask, contextType
+    typename XType, uint32_t QuantMode, bool isSync, bool isActiveMask, AttentionToFFNContextType contextType
+#define TemplateAttentionToFFNTypeFunc XType, QuantMode, isSync, isActiveMask, contextType
 
 using namespace AscendC;
 template <TemplateAttentionToFFNTypeClass>
@@ -259,7 +265,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::Init(
     tpipe_->InitBuffer(ffnFlagBuf_, UB_ALIGN);                                            // 对齐32B
     expertIdsTensor_ = expertIdsBuf_.Get<int32_t>();
     ffnFlagTensor_ = ffnFlagBuf_.Get<int32_t>();
-    if constexpr (isQuant) {
+    if constexpr (QuantMode == 2) {
         QuantInit(scales);
         castTempBuf_ = receiveDataCastFloatBuf_;
         sumOutBuf_ = smoothScalesBuf_;
@@ -273,7 +279,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::Init(
     }
     if constexpr (isActiveMask) {
         tpipe_->InitBuffer(activeMaskBuf_, axisBsAlignSize_); // BS
-        if constexpr (!isQuant) {
+        if constexpr (QuantMode == 0) {
             uint32_t bsAlignHalf = Ceil(axisBS_ * sizeof(half), UB_ALIGN) * UB_ALIGN; // 约束32对齐
             tpipe_->InitBuffer(castTempBuf_, bsAlignHalf);                            // BS * 2
             tpipe_->InitBuffer(sumOutBuf_, bsAlignHalf);                              // BS * 2
@@ -474,7 +480,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SendToken
     uint32_t tokenOffset = aivId_ + (tokenIdx * aivNum_);         // 当前token在BS*(K+1)的偏移
     uint32_t tokenId = tokenOffset / (axisK_ + sharedExpertNum_); // 当前token在BS中的Id
     uint32_t topkId = tokenOffset % (axisK_ + sharedExpertNum_);  // 当前token的第几个topk
-    if constexpr (isQuant) {
+    if constexpr (QuantMode == 2) {
         GlobalTensor<int8_t> tokenDataGMTensor;
         xInTensor_ = xInQueue_.AllocTensor<XType>();
         DataCopyPad(xInTensor_, xGMTensor_[tokenId * axisH_], xCopyParams, copyPadExtParams);

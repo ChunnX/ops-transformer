@@ -45,10 +45,9 @@ __global__ __aicore__ void attention_to_ffn_v2(GM_ADDR mc2Context, GM_ADDR x, GM
     TPipe pipe;
 
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
-        constexpr bool isQuant = QuantMode != ATTN_FFN_TILINGKEY_NO_QUANT;
         GET_TILING_DATA_WITH_STRUCT(AttentionToFfnV2TilingData, tilingData, tilingGM);
         const auto *v1TilingData = reinterpret_cast<const AttentionToFFNTilingData *>(&tilingData);
-        AttentionToFFN<DTYPE_X, isQuant, isSync, isActiveMask, AttentionToFFNContextType::MC2_CONTEXT> op;
+        AttentionToFFN<DTYPE_X, QuantMode, isSync, isActiveMask, AttentionToFFNContextType::MC2_CONTEXT> op;
         op.Init(mc2Context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, active_mask,
                 workspaceGM, &pipe, v1TilingData);
         op.Process();
