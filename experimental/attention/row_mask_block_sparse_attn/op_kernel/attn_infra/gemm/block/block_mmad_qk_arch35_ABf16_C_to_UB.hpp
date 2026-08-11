@@ -29,6 +29,7 @@
 #include "../../../attn_infra/gemm/tile_common/bsa_tile_mmad.hpp"
 #include "../../../tla/layout.hpp"
 #include "../../../tla/tensor.hpp"
+#include "bsa_block_eff_rows_gather.hpp"
 
 ////////////////////////////////////////////////////////////////////
 
@@ -203,10 +204,17 @@ public:
                                               uint32_t kvSBaseTile, uint32_t blockShapeY,
                                               uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
                                               uint32_t l1BTileNAct, uint32_t embed,
-                                              uint32_t kvSBaseTileInnerOffset)
+                                              uint32_t kvSBaseTileInnerOffset,
+                                              EffRowsCtx *effRowsCtx = nullptr)
     {
         using CopyGmToL1B = typename TileCopy_::template CopyGmToL1B<TensorB>;
         CopyGmToL1B copyGmToL1B;
+        if (effRowsCtx != nullptr && effRowsCtx->enabled) {
+            EffRowsGatherCopy<true>(gBTensor, l1BTensorTla, gSparseBlockIdx, *effRowsCtx,
+                                    yBlockNumRsvd, kvSeqlen, blockShapeY, embed,
+                                    l1BTileNAct, copyGmToL1B);
+            return;
+        }
         uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile + kvSBaseTileInnerOffset;
         uint32_t baseTileEndOffset = baseTileStartOffset + l1BTileNAct;
         // 稀疏情况下对实际选中的部分gather后进行基本块切分
@@ -264,7 +272,7 @@ public:
                                       uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
                                       uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
                                       Arch::CrossCoreFlag mm1ToSmFlag,
-                                      uint64_t deqScalar = 0)
+                                      uint64_t deqScalar = 0, EffRowsCtx *effRowsCtx = nullptr)
     {
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
         CopyL0CToDst copyL0CToDstSub0;
@@ -297,7 +305,7 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventId);
             SparseKL1TileNLoad(
                 gBTensor, l1BTensorTla, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
-                yBlockNumAval, yBlockNumRsvd, l1TileNAct, embed, nL1Itr * l1BTileN);
+                yBlockNumAval, yBlockNumRsvd, l1TileNAct, embed, nL1Itr * l1BTileN, effRowsCtx);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
             uint32_t nL0LoopNum = CeilDiv(l1TileNAct, L0_TILE_N);
