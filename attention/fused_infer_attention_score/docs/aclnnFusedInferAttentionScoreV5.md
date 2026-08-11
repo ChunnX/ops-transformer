@@ -721,7 +721,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>
         <ul>
             <li>用户不特意指定时建议传入0，表示key/value和query的head个数相等。</li>
-            <li>需要满足numHeads整除numKeyValueHeads，GQA非量化场景和Prefill MLA非量化场景下，numHeads与numKeyValueHeads的比值无限制; Decode MLA场景仅支持numHeads与numKeyValueHeads的比值为1、2、4、8、16、32、64、128。</li>
+            <li>需要满足numHeads整除numKeyValueHeads，GQA非量化场景和Prefill MLA场景下，numHeads与numKeyValueHeads的比值无限制; Decode MLA场景下，非量化场景numHeads与numKeyValueHeads的比值无限制，全量化场景仅支持numHeads与numKeyValueHeads的比值为1、2、4、8、16、32、64、128。</li>
             <li>在BNSD、BSND、BNSD_BSND、BSND_BNSD、BNSD_NBSD、BSND_NBSD、TND、NTD、NTD_TND、TND_NTD场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常</li>
         </ul>
         </td>
@@ -1359,7 +1359,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
             </tr>
             <tr>
                 <td>Decode MLA</td>
-                <td>仅支持1,2,4,8,16,32,64,128</td>
+                <td>须为整数，小于2的32次方</td>
                 <td>支持BNSD、BSND、BSH、TND、BNSD_NBSD、BSND_NBSD、BSH_NBSD、TND_NTD</td>
             </tr>
         </tbody>
@@ -1448,7 +1448,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
             <tr>
                 <td>Decode MLA</td>
                 <td>query/key/value/attentionOut的HeadDim需保持一致</td>
-                <td>仅numHeads为1、2、4、8、16、32、64、128, numKeyValueHeads为1。</td>
+                <td>非量化场景，numHeads需可整除numKeyValueHeads，numHeads与numKeyValueHeads的比值无限制；全量化场景，numHeads仅支持1、2、4、8、16、32、64、128；numKeyValueHeads为1。</td>
             </tr>
         </tbody>
     </table>
@@ -1816,7 +1816,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 入参blockSize需要满足以下条件：需要根据key、value dtype size 32B对齐，最大支持512。即当key、value dtype为INT8/HIFLOAT8/FLOAT8_E4M3FN时，blockSize需要32对齐，即当key、value dtype为INT4(INT32)、FLOAT4_E2M1时，blockSize需要64对齐
   - 全量化
     - Decode MLA全量化场景下，仅支持blockSize取值128
-    - MxFP8全量化场景下，仅支持blockSize取值512或1024
+    - MxFP8全量化场景下，仅支持blockSize取值64、128、256、512或1024
     - GQA全量化场景下，仅支持blockSize取值128
 - 存在性约束
   - 公共
@@ -1923,7 +1923,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 不支持伪量化场景
   - Decode MLA
     - Layout仅支持BNSD、BSND、BSH、TND、BNSD_NBSD、BSND_NBSD、BSH_NBSD、TND_NTD
-    - Q_N支持1/2/4/8/16/32/64/128；KV_N仅支持1
+    - 非量化场景，Q_N无限制；全量化场景，Q_N仅支持1/2/4/8/16/32/64/128；KV_N仅支持1
     - 非量化场景，Q_S无限制；全量化场景，Q_S支持 [1,16]
     - 不支持左padding场景、不支持tensorlist场景
   - Prefill MLA
