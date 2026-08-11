@@ -986,17 +986,19 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
 {
     InitCommBuffer();
     // 按卡分核，并与 combine_setup 保持同一旋转规则，保证同一 hcommHandle/jetty 始终由同一 AIV 维护
-    uint32_t coreIdxNew = (aivId_ + epRankId_) % aivNum_;
-    uint32_t sendRankNum = epWorldSize_ / aivNum_;
-    uint32_t remainderRankNum = epWorldSize_ % aivNum_;
-    uint32_t startRankId = sendRankNum * coreIdxNew;
-    if (coreIdxNew < remainderRankNum) {
-        ++sendRankNum;
-        startRankId += coreIdxNew;
-    } else {
-        startRankId += remainderRankNum;
-    }
-    uint32_t endRankId = startRankId + sendRankNum;
+    // uint32_t coreIdxNew = (aivId_ + epRankId_) % aivNum_;
+    // uint32_t sendRankNum = epWorldSize_ / aivNum_;
+    // uint32_t remainderRankNum = epWorldSize_ % aivNum_;
+    // uint32_t startRankId = sendRankNum * coreIdxNew;
+    // if (coreIdxNew < remainderRankNum) {
+    //     ++sendRankNum;
+    //     startRankId += coreIdxNew;
+    // } else {
+    //     startRankId += remainderRankNum;
+    // }
+    // uint32_t endRankId = startRankId + sendRankNum;
+    uint32_t startRankId, endRankId, sendRankNum;
+    SplitToCore(epWorldSize_, aivNum_, startRankId, endRankId, sendRankNum);
     if (sendRankNum == 0 || startRankId >= epWorldSize_) { // 空闲核，直接返回
         return;
     }
