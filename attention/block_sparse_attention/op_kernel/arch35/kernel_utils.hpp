@@ -98,6 +98,7 @@ struct TileInfo {
     uint32_t kvsActBaseTileAlign64 = 0;
     // ===== PV 稀疏 gather 所需（mxfp4）=====
     uint32_t pvGatheredKvSTileIdx = 0;  // 当前 tile 在 task 内的 gather 后 KV base tile 序号，供 PV
+    uint16_t pscaleNum = 0;
 };
 }
 
