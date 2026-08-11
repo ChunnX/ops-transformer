@@ -39,6 +39,7 @@ get_filename_component(OPS_ADV_CMAKE_DIR            "${OPS_ADV_DIR}/cmake"      
 get_filename_component(OPS_ADV_UTILS_KERNEL_INC     "${OPS_ADV_DIR}/common/include/op_kernel"   REALPATH)
 get_filename_component(OPS_CGMCT                    "${OPS_ADV_DIR}/gmm/common/cgmct"       REALPATH)
 get_filename_component(OPS_GMM_COMMON_KERNEL_INC    "${OPS_ADV_DIR}/gmm/common/op_kernel"   REALPATH)
+get_filename_component(OPS_CATLASS_INC               "${OPS_ADV_DIR}/3rdparty/catlass/include" REALPATH)
 
 
 #   构建树相关路径

@@ -16,14 +16,13 @@
 #ifndef CATLASS_GEMM_TILE_COPY_L0C_TO_GM_EXPAND_H
 #define CATLASS_GEMM_TILE_COPY_L0C_TO_GM_EXPAND_H
 
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/copy_l0c_to_gm.hpp"
+#include "catlass/gemm/tile/copy_l0c_to_gm.hpp"
 
 namespace Catlass::Gemm::Tile {
 
 // Fixpipe with quant VDEQF16
 template <class ElementAccumulator_, class ElementDst_, bool ReluEnable_>
-struct CopyL0CToGm<Catlass::Arch::AtlasA2, ElementAccumulator_, Gemm::GemmType<ElementDst_, layout::RowMajor>,
-                   ScaleGranularity::PER_CHANNEL, ReluEnable_> {
+struct CopyL0CToGmFixpipe {
     using ArchTag = Catlass::Arch::AtlasA2;
     using ElementDst = ElementDst_;
     using ElementSrc = ElementAccumulator_;

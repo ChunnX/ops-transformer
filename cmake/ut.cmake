@@ -526,6 +526,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
                 ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/op_kernel
                 ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common
                 ${PROJECT_SOURCE_DIR}/common/include/op_kernel
+                ${OPS_CATLASS_INC}
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/impl/basic_api
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/include
