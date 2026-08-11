@@ -2004,6 +2004,39 @@ def cpu_mxfp8_golden(
                     kernel_row_max = torch.maximum(
                         kernel_row_max, kernel_chunk_max
                     )
+                    kernel_scores = scores
+                    problematic_scores = valid_mask & (
+                        ~torch.isfinite(scores) | (scores <= EMPTY_LSE)
+                    )
+                    if bool(problematic_scores.any().item()):
+                        # The dequant-before-matmul path can turn both negative
+                        # and positive overflow into NaN.  Recover the kernel
+                        # grouped score only for invalid-row classification.
+                        kernel_scores = _kernel_mxfp8_scores_for_row_max(
+                            q_block,
+                            k_mat,
+                            q_scale_block,
+                            k_scale_mat,
+                            softmax_scale,
+                            head_dim,
+                        )
+                    # The kernel's negative saturation value and mask fill are
+                    # both -FLT_MAX.  Preserve NaN/+Inf as computation results;
+                    # they are not equal to the invalid-row sentinel.
+                    kernel_scores = torch.where(
+                        kernel_scores <= EMPTY_LSE,
+                        torch.full_like(kernel_scores, EMPTY_LSE),
+                        kernel_scores,
+                    )
+                    kernel_scores = torch.where(
+                        valid_mask,
+                        kernel_scores,
+                        torch.full_like(kernel_scores, EMPTY_LSE),
+                    )
+                    kernel_chunk_max = kernel_scores.max(dim=-1).values
+                    kernel_row_max = torch.maximum(
+                        kernel_row_max, kernel_chunk_max
+                    )
                     scores = torch.where(
                         valid_mask, scores, torch.full_like(scores, MASK_VALUE)
                     )
@@ -2110,6 +2143,13 @@ def cpu_mxfp8_golden(
                 safe_l = torch.where(any_valid, l_run, torch.ones_like(l_run))
                 attn = acc / safe_l.view(nq, 1)
                 lse = torch.log(safe_l) + m_run
+
+                # Match the kernel row-invalid rule directly.  The separate
+                # sum==0 guard belongs only to LSE output generation.
+                kernel_invalid = kernel_row_max == EMPTY_LSE
+                lse_invalid = kernel_invalid | (l_run == 0)
+                numeric_invalid = any_valid & kernel_invalid
+                numeric_invalid_row_count += int(numeric_invalid.sum().item())
 
                 # Match the kernel row-invalid rule directly.  The separate
                 # sum==0 guard belongs only to LSE output generation.
