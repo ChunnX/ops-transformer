@@ -70,10 +70,10 @@ class OpBuilder(ABC):
 
     def include_paths(self):
         paths = [
+            os.path.join(self._cann_path, "include"),
             os.path.join(self._torch_npu_path, "include"),
             os.path.join(self._torch_npu_path, "include/third_party/hccl/inc"),
             os.path.join(self._torch_npu_path, "include/third_party/acl/inc"),
-            os.path.join(self._cann_path, "include"),
             os.path.join(self._package_path, "common/inc"),
         ]
         return paths
