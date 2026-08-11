@@ -683,7 +683,11 @@ class SparseFlashMlaInputAdapter:
             "seqused_cmp_kv": seq_cmp,
             "cmp_residual_kv": residual,
             "template_mode": mode,
-            "cmp_ratio": kwargs.get("cmp_ratio"),
+            "cmp_ratio": (
+                kwargs.get("pytest_cmp_ratio")
+                if "pytest_cmp_ratio" in kwargs
+                else kwargs.get("cmp_ratio")
+            ),
             "cmp_mask_mode": kwargs.get("cmp_mask_mode"),
         })
         params.update({name: value for name, value in data_ranges.items() if value is not None})
@@ -718,17 +722,15 @@ class SparseFlashMlaInputAdapter:
         case_params = pytest_utils.generate_case_with_default_param(param_combinations[0])
         if batch_random is None:
             data = pytest_golden.gen_data(
-                case_params, prepare_device_storage=False
+                case_params, prepare_device_storage=False, generate_golden=False
             )
         else:
             batch_random.validate_params(case_params)
             with batch_random:
                 data = pytest_golden.gen_data(
-                    case_params, prepare_device_storage=False
+                    case_params, prepare_device_storage=False, generate_golden=False
                 )
             batch_random.normalize_block_tables(data)
-        testcase_name = params.get("testcase_name") or case_params.get("testcase_name")
-        self.load_golden_store().CASE_DATA.put(testcase_name, data)
         return data
 
     def customize(self, q, ori_kv, cmp_kv, ori_sparse_indices,
@@ -743,24 +745,52 @@ class SparseFlashMlaInputAdapter:
 INPUT_ADAPTER = SparseFlashMlaInputAdapter()
 
 
-def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_indices=None,
-                                     cmp_sparse_indices=None, ori_block_table=None, cmp_block_table=None,
-                                     cu_seqlens_q=None, cu_seqlens_ori_kv=None,
-                                     cu_seqlens_cmp_kv=None, seqused_q=None,
-                                     seqused_ori_kv=None, seqused_cmp_kv=None,
-                                     cmp_residual_kv=None, ori_topk_length=None,
-                                     cmp_topk_length=None, sinks=None, **kwargs):
-    """Reuse the pytest parameter and input processing for a TTK case."""
-    batch_random = TorchBatchRandomContext.from_case(q, ori_kv, cmp_kv, kwargs)
+def zero_metadata(metadata):
+    if metadata is None:
+        return
+    if torch.is_tensor(metadata):
+        metadata.zero_()
+    else:
+        metadata[...] = 0
+
+
+def generate_sparse_flash_mla_inputs(
+        q, *, ori_kv=None, cmp_kv=None, ori_sparse_indices=None,
+        cmp_sparse_indices=None, ori_block_table=None, cmp_block_table=None,
+        cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None,
+        seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None,
+        cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None,
+        sinks=None, metadata=None, softmax_scale=1.0, cmp_ratio=1,
+        ori_mask_mode=4, cmp_mask_mode=3, ori_win_left=127,
+        ori_win_right=0, layout_q="BSND", layout_kv="BSND",
+        topk_value_mode=1, return_softmax_lse=False,
+        context=None, **kwargs):
+    """Populate pytest-derived inputs and leave metadata for the pre-NPU stage."""
+    params = dict(kwargs)
+    params.update({
+        "softmax_scale": softmax_scale,
+        "cmp_ratio": cmp_ratio,
+        "ori_mask_mode": ori_mask_mode,
+        "cmp_mask_mode": cmp_mask_mode,
+        "ori_win_left": ori_win_left,
+        "ori_win_right": ori_win_right,
+        "layout_q": layout_q,
+        "layout_kv": layout_kv,
+        "topk_value_mode": topk_value_mode,
+        "return_softmax_lse": return_softmax_lse,
+        "ori_topk_length": ori_topk_length,
+        "cmp_topk_length": cmp_topk_length,
+    })
+    batch_random = TorchBatchRandomContext.from_case(q, ori_kv, cmp_kv, params)
     data = INPUT_ADAPTER.customize(
         q,
         ori_kv,
         cmp_kv,
         ori_sparse_indices,
         cmp_sparse_indices,
-        kwargs.get("layout_q"),
-        kwargs.get("layout_kv"),
-        kwargs,
+        layout_q,
+        layout_kv,
+        params,
         batch_random,
     )
     op_input = data["input"]
@@ -785,6 +815,60 @@ def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_
         ("sinks", sinks),
     ):
         source = op_input.get(name)
+        if name == "cu_seqlens_q" and layout_q != "TND":
+            source = None
         if name in ("ori_topk_length", "cmp_topk_length") and source is None:
             source = metadata_input.get(name)
         INPUT_ADAPTER.copy_tensor(tensor, source, name)
+    zero_metadata(metadata)
+    case_data = INPUT_ADAPTER.load_golden_store().CASE_DATA
+    testcase_name = params.get("testcase_name")
+    case_data.put(testcase_name, data)
+    case_data.persist(testcase_name, context)
+    return data
+
+
+def generate_aclnn_sparse_flash_mla_inputs(
+        q, ori_kv, cmp_kv, ori_sparse_indices, cmp_sparse_indices,
+        ori_block_table, cmp_block_table, cu_seqlens_q,
+        cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
+        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,
+        ori_topk_length, cmp_topk_length, sinks, metadata, softmax_scale,
+        cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left,
+        ori_win_right, layout_q, layout_kv, topk_value_mode,
+        return_softmax_lse, attn_out, softmax_lse_out,
+        context=None, **kwargs):
+    """Map the ACLNN C signature to the canonical pytest input adapter."""
+    del attn_out, softmax_lse_out
+    return generate_sparse_flash_mla_inputs(
+        q,
+        ori_kv=ori_kv,
+        cmp_kv=cmp_kv,
+        ori_sparse_indices=ori_sparse_indices,
+        cmp_sparse_indices=cmp_sparse_indices,
+        ori_block_table=ori_block_table,
+        cmp_block_table=cmp_block_table,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+        seqused_q=seqused_q,
+        seqused_ori_kv=seqused_ori_kv,
+        seqused_cmp_kv=seqused_cmp_kv,
+        cmp_residual_kv=cmp_residual_kv,
+        ori_topk_length=ori_topk_length,
+        cmp_topk_length=cmp_topk_length,
+        sinks=sinks,
+        metadata=metadata,
+        softmax_scale=softmax_scale,
+        cmp_ratio=cmp_ratio,
+        ori_mask_mode=ori_mask_mode,
+        cmp_mask_mode=cmp_mask_mode,
+        ori_win_left=ori_win_left,
+        ori_win_right=ori_win_right,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        topk_value_mode=topk_value_mode,
+        return_softmax_lse=return_softmax_lse,
+        context=context,
+        **kwargs,
+    )

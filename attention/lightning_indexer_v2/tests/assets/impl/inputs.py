@@ -57,6 +57,12 @@ class LightningIndexerV2InputAdapter:
     def load_pytest_golden(self):
         if self.pytest_golden is not None:
             return self.pytest_golden
+        # The upstream pytest module imports cann_ops_transformer at module scope.
+        # Registration only discovers the installed CANN package; it does not run NPU APIs.
+        from ttk.utilities.torch_ops_package_loader import TorchOpsPackageLoader
+        TorchOpsPackageLoader.ensure_registered(
+            "torch.ops.cann_ops_transformer.lightning_indexer"
+        )
         pytest_dir = Path(__file__).resolve().parents[2] / "pytest"
         path = pytest_dir / "lightning_indexer_v2_golden.py"
         name = "li_v2_pytest_golden"
@@ -219,21 +225,6 @@ class LightningIndexerV2InputAdapter:
         dst.copy_(src_cpu.to(dtype=dst.dtype, device=dst.device))
 
     @staticmethod
-    def golden_data(data, layout_q, cu_seqlens_q):
-        cu_q = None
-        if cu_seqlens_q is not None:
-            cu_q = cu_seqlens_q.detach().cpu().clone()
-        return {
-            "cpu_result": data["cpu_result"],
-            "topk_value": data["topk_value"],
-            "cpu_topk_value": data["cpu_topk_value"],
-            "params": data["params"],
-            "output_idx_offset": data.get("output_idx_offset"),
-            "score_layout": layout_q,
-            "cu_seqlens_q": cu_q,
-        }
-
-    @staticmethod
     def tensor_values(tensor):
         if tensor is None:
             return None
@@ -241,7 +232,7 @@ class LightningIndexerV2InputAdapter:
 
     @staticmethod
     def restore_paged_key(key, block_table, batch_size, sequence_length):
-        """Restore the logical BNSD key consumed by the pytest CPU model."""
+        """Restore the logical BNSD key consumed by the pytest compare model."""
         physical = key.detach().cpu()
         table = block_table.detach().cpu().to(torch.int64)
         if physical.ndim != 4:
@@ -269,7 +260,7 @@ class LightningIndexerV2InputAdapter:
 
     @staticmethod
     def normalize_compare_attributes(compare_context):
-        attrs = dict(compare_context.attributes)
+        attributes = dict(compare_context.attributes)
         aliases = {
             "maxSeqlenQ": "max_seqlen_q",
             "layoutQOptional": "layout_q",
@@ -279,17 +270,17 @@ class LightningIndexerV2InputAdapter:
             "returnValue": "return_value",
         }
         for source, target in aliases.items():
-            if target not in attrs and source in attrs:
-                attrs[target] = attrs[source]
-        return attrs
+            if target not in attributes and source in attributes:
+                attributes[target] = attributes[source]
+        return attributes
 
     def rebuild_compare_data(self, compare_context):
-        """Rebuild replay-safe TopK score context from restored API inputs."""
+        """Rebuild only the pytest TopK compare context from replayed inputs."""
         tensors = tuple(compare_context.input_tensors or ())
         if len(tensors) < 10:
             raise ValueError("LightningIndexerV2 compare context requires ten input slots")
         q, k, w, cu_q, cu_k, seq_q, seq_k, residual, block_table, offset = tensors[:10]
-        attrs = self.normalize_compare_attributes(compare_context)
+        attributes = self.normalize_compare_attributes(compare_context)
         for name, tensor in (
             ("cu_seqlens_q", cu_q),
             ("cu_seqlens_k", cu_k),
@@ -299,15 +290,15 @@ class LightningIndexerV2InputAdapter:
         ):
             values = self.tensor_values(tensor)
             if values is not None:
-                attrs[f"{name}_values"] = values
+                attributes[f"{name}_values"] = values
 
-        layout_q = attrs.get("layout_q")
-        layout_k = attrs.get("layout_k")
+        layout_q = attributes.get("layout_q")
+        layout_k = attributes.get("layout_k")
         if layout_q is None or layout_k is None:
             raise ValueError(
-                "LI_V2 replay compare requires layout_q and layout_k from the CSV or API attributes"
+                "LI_V2 replay compare requires layout_q and layout_k from attributes"
             )
-        params = self.build_case_params(q, k, layout_q, layout_k, attrs)
+        params = self.build_case_params(q, k, layout_q, layout_k, attributes)
         (
             batch_size, q_seq, k_seq, q_t_size, k_t_size,
             q_head_num, k_head_num, head_dim, block_size, block_num,
@@ -347,7 +338,7 @@ class LightningIndexerV2InputAdapter:
             "params": params,
             "scores": scores,
             "topk_value": scores,
-            "index_offsets": None if offset is None else offset.detach().cpu(),
+            "output_idx_offset": None if offset is None else offset.detach().cpu(),
             "score_layout": layout_q,
             "cu_seqlens_q": cu_q_cpu,
         }
@@ -358,7 +349,9 @@ class LightningIndexerV2InputAdapter:
         params = self.build_case_params(q, k, layout_q, layout_k, kwargs)
         golden_store = self.load_golden_store().CASE_DATA
         golden_store.clear()
-        data = self.load_pytest_golden().generate_liv2_test_data(params)
+        data = self.load_pytest_golden().generate_liv2_test_data(
+            params, generate_golden=False
+        )
         for name, dst, src_name in (
             ("q", q, "query"),
             ("k", k, "key"),
@@ -372,11 +365,6 @@ class LightningIndexerV2InputAdapter:
             ("output_idx_offset", output_idx_offset, "output_idx_offset"),
         ):
             self.copy_tensor(dst, data.get(src_name), name)
-        testcase_name = kwargs.get("testcase_name")
-        golden_store.put(
-            testcase_name,
-            self.golden_data(data, layout_q, cu_seqlens_q),
-        )
         return data
 
 
@@ -387,23 +375,71 @@ def rebuild_li_v2_compare_data(compare_context):
     return INPUT_ADAPTER.rebuild_compare_data(compare_context)
 
 
-def generate_li_v2_inputs(q, k, w, *, cu_seqlens_q=None, cu_seqlens_k=None,
-                          seqused_q=None, seqused_k=None, cmp_residual_k=None,
-                          block_table=None, output_idx_offset=None,
-                          layout_q=None, layout_k=None, **kwargs):
-    """Generate the exact pytest inputs and CPU golden for a TTK case."""
-    INPUT_ADAPTER.customize(
+def generate_li_v2_inputs(
+        q, k, w, topk, *, cu_seqlens_q=None, cu_seqlens_k=None,
+        seqused_q=None, seqused_k=None, cmp_residual_k=None,
+        block_table=None, output_idx_offset=None, metadata=None,
+        max_seqlen_q=-1, layout_q="BSND", layout_k="BSND", mask_mode=0,
+        cmp_ratio=1, return_value=0, context=None, **kwargs):
+    """Populate pytest-derived inputs and leave metadata for the pre-NPU stage."""
+    if metadata is None:
+        raise ValueError("LI_V2 direct API CSV must reserve the metadata tensor slot")
+    params = dict(kwargs)
+    params.update({
+        "topk": topk,
+        "max_seqlen_q": max_seqlen_q,
+        "layout_q": layout_q,
+        "layout_k": layout_k,
+        "mask_mode": mask_mode,
+        "cmp_ratio": cmp_ratio,
+        "return_value": return_value,
+    })
+    data = INPUT_ADAPTER.customize(
+        q, k, w, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+        cmp_residual_k, block_table, output_idx_offset, layout_q, layout_k,
+        params,
+    )
+    zero_metadata(metadata)
+    case_data = INPUT_ADAPTER.load_golden_store().CASE_DATA
+    testcase_name = params.get("testcase_name")
+    case_data.put(testcase_name, data)
+    case_data.persist(testcase_name, context)
+
+
+def zero_metadata(metadata):
+    if torch.is_tensor(metadata):
+        metadata.zero_()
+    else:
+        metadata.fill(0)
+
+
+def generate_aclnn_li_v2_inputs(
+        q, k, w, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+        cmp_residual_k, block_table, output_idx_offset, metadata, topk,
+        max_seqlen_q, layout_q, layout_k, mask_mode, cmp_ratio,
+        return_value, sparse_indices_out, sparse_values_out,
+        context=None, **kwargs):
+    """Map the ACLNN C signature to the canonical pytest input adapter."""
+    del sparse_indices_out, sparse_values_out
+    return generate_li_v2_inputs(
         q,
         k,
         w,
-        cu_seqlens_q,
-        cu_seqlens_k,
-        seqused_q,
-        seqused_k,
-        cmp_residual_k,
-        block_table,
-        output_idx_offset,
-        layout_q,
-        layout_k,
-        kwargs,
+        topk,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=cu_seqlens_k,
+        seqused_q=seqused_q,
+        seqused_k=seqused_k,
+        cmp_residual_k=cmp_residual_k,
+        block_table=block_table,
+        output_idx_offset=output_idx_offset,
+        metadata=metadata,
+        max_seqlen_q=max_seqlen_q,
+        layout_q=layout_q,
+        layout_k=layout_k,
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+        return_value=return_value,
+        context=context,
+        **kwargs,
     )

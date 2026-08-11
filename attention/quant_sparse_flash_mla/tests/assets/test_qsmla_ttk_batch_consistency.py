@@ -35,12 +35,12 @@ def batch_kwargs(slices, seed, sequence_slices=None):
     axes = (0,) if sequence_slices is None else (0, 1)
     slice_groups = (tuple(slices),)
     seed_groups = (tuple(seed for _ in slices),)
-    ids = [tuple(f"{seed}_0_{start}_{stop}_{step}"
+    ids = [tuple(f"{seed}_0_{len(range(start, stop, step))}_{step}"
                  for start, stop, step in slices)]
     if sequence_slices is not None:
         slice_groups += (tuple(sequence_slices),)
         seed_groups += (tuple(seed for _ in sequence_slices),)
-        ids.append(tuple(f"{seed}_1_{start}_{stop}_{step}"
+        ids.append(tuple(f"{seed}_1_{len(range(start, stop, step))}_{step}"
                          for start, stop, step in sequence_slices))
     return {
         "batch_consistency_id": (tuple(ids),),
@@ -384,6 +384,11 @@ def test_qsmla_batch_input_adapter_generates_equal_hca_slices():
     assert cmp_residual_kv.tolist() == [0, 0]
     data = INPUTS_MODULE.INPUT_ADAPTER.load_golden_store().CASE_DATA.get(testcase_name)
     assert data is not None
+    assert data["op_input"]["cu_seqlens_q"] is None
+    assert data["op_input"]["cu_seqlens_ori_kv"] is None
+    assert data["op_input"]["cu_seqlens_cmp_kv"] is None
+    assert data["cpu_output"] is None
+    INPUTS_MODULE.INPUT_ADAPTER.load_golden_store().materialize_golden(data)
     assert data["cpu_output"] is not None
 
 
