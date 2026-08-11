@@ -376,7 +376,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessTopK(const PkiCo
         SCORE_T zero = 0;
         int32_t neg = -1;
         if (constInfo_.attenMaskFlag) {
-            validS2Len = (int32_t)i + cuRealAcSeq;
+            validS2Len = ((int32_t)i + cuRealAcSeq) / static_cast<int32_t>(constInfo_.poolSize);
         }
         if (validS2Len <= 0) {
             WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);

@@ -293,17 +293,20 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
     }
     // cuRealAcSeq: 当前基本块S1对应的AcSeq
     int32_t cuRealAcSeq = info.actS2Size;
+    int32_t cuRealAcSeqCount = 0;
     if (constInfo_.attenMaskFlag) {
         // attenMask true场景
-        cuRealAcSeq = info.actS2Size - (info.actS1Size - cuS1BeginIdxPerAiv);
+        cuRealAcSeq = info.actS2SizeOrig - info.actS1Size + cuS1BeginIdxPerAiv;
     }
     LocalTensor<float> reduceOutBuff = reduceOutBuf_.Get<float>();
     LocalTensor<float> brcBuf = brcBuf_.Get<float>();
+    int32_t cuRealAcSeqIni = cuRealAcSeq;
     // LD输出S1方向偏移，保证2个Vector输出的内容连续
     uint32_t ldS1Offset = (blockId_ % 2 == 0) ? s1BaseSize_ / 2 - cuS1ProcNumPerAiv : 0;
     for (int innerS1Idx = 0; innerS1Idx < cuS1ProcNumPerAiv; innerS1Idx++) {
         if (constInfo_.attenMaskFlag) {
-            cuRealAcSeq += 1;
+            cuRealAcSeqCount += 1;
+            cuRealAcSeq = (cuRealAcSeqCount + cuRealAcSeqIni) / static_cast<int32_t>(constInfo_.poolSize);
         }
         int32_t cuS2Len = cuBaseS2Idx + s2BaseSize_ >= cuRealAcSeq ? cuRealAcSeq - cuBaseS2Idx : s2BaseSize_;
         int32_t cuS1Idx = cuS1BeginIdxPerAiv + innerS1Idx;
@@ -503,7 +506,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
             }
         }
 
-        int32_t invalidS1Num2 = info.actS1Size - info.actS2Size;
+        int32_t invalidS1Num2 = static_cast<int32_t>(info.actS1Size - info.actS2SizeOrig) / static_cast<int32_t>(constInfo_.poolSize);
         if (invalidS1Num2 > 0 && isS1LoopEnd && blockS2StartIdx_ == 0 && constInfo_.attenMaskFlag) {
             int32_t s1NumPerAiv = blockId_ % 2 == 0 ? CeilDiv(invalidS1Num2, 2) : (invalidS1Num2 / 2);
             int32_t s1OffsetPerAiv = (blockId_ % 2) * CeilDiv(invalidS1Num2, 2);

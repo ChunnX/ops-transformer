@@ -110,6 +110,8 @@ protected:
 
     GlobalTensor<uint32_t> actualSeqLengthsGmQ;
     GlobalTensor<uint32_t> actualSeqLengthsGmKv;
+    GlobalTensor<int32_t> poolTailKGm_;
+    bool hasPoolTailK_ = false;
 
     // ================================类成员变量====================================
     // aic、aiv核信息
@@ -244,23 +246,28 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::GetS1S2ActualSeqLen(uint32_t b
 {
     actS1Size = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, actualSeqLengthsGmQ,
                                 constInfo.qSeqSize);
-    actS2SizeOrig =
+    uint32_t actS2Pool =
         GetActualSeqLen(bIdx, constInfo.actualLenDims,
                          constInfo.isAccumSeqS2, actualSeqLengthsGmKv, constInfo.kSeqSize);
-    actS2Size = actS2SizeOrig;
+    uint32_t tailK = hasPoolTailK_ ? poolTailKGm_.GetValue(bIdx) : 0;
+    actS2SizeOrig = actS2Pool * constInfo.poolSize + tailK;
+    actS2Size = actS2SizeOrig / constInfo.poolSize;
 }
 
 template <typename LIT>
 __aicore__ inline uint32_t PoolKeyIndexerKernel<LIT>::GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size,
                                                                      uint32_t actS2SizeOrig)
 {
-    if (actS2SizeOrig == 0) {
+    if (actS2SizeOrig / constInfo.poolSize == 0) {
         return 0;
     }
     uint32_t s1Offset = constInfo.s1BaseSize * s1gIdx;
     int32_t validS2LenBase = static_cast<int32_t>(actS2SizeOrig) - static_cast<int32_t>(actS1Size);
-    int32_t validS2Len = (static_cast<int32_t>(s1Offset) + validS2LenBase + static_cast<int32_t>(constInfo.s1BaseSize));
-    validS2Len = Min(validS2Len, static_cast<int32_t>(actS2SizeOrig));
+    int32_t validS2Len = (static_cast<int32_t>(s1Offset) + validS2LenBase +
+                          static_cast<int32_t>(constInfo.s1BaseSize)) /
+                         static_cast<int32_t>(constInfo.poolSize);
+    validS2Len = Min(validS2Len, static_cast<int32_t>(actS2SizeOrig) /
+                        static_cast<int32_t>(constInfo.poolSize));
     validS2Len = Max(validS2Len, 1);
     return (validS2Len + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
 }
@@ -428,6 +435,10 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::Init(__gm__ uint8_t *query,
 
     InitTilingData(tiling);
     InitActualSeqLen(actualSeqLengthsQ, actualSeqLengthsK);
+    if (poolTailK != nullptr) {
+        poolTailKGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(poolTailK), constInfo.batchSize);
+        hasPoolTailK_ = true;
+    }
 
     // 获取分核信息
     SplitCore(aiCoreIdx, usedCoreNum, splitCoreInfo);
