@@ -3221,6 +3221,7 @@ ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB
     RegTensor<float> vreg_x_f32_5;
     RegTensor<float> vreg_x_f32_6;
     RegTensor<float> vreg_x_f32_7;
+    RegTensor<float> vreg_x_max_f32_b;
 
     MaskReg preg_108;
     MaskReg preg_134;
