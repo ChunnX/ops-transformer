@@ -12,8 +12,7 @@
 
 #if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #include "es_MatmulAllReduce.h"
-#include "es_AddRmsNorm.h"
-#include "es_InplaceAddRmsNorm.h"
+#include "es_nn_ops.h" // nn ops stub
 #include "es_MatmulAllReduceAddRmsNorm.h"
 #include "es_InplaceMatmulAllReduceAddRmsNorm.h"
 #include "mc2_platform_info.h"

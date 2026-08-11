@@ -13,7 +13,6 @@
 #if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #include "es_AlltoAllMatmul.h" // es autogen header
 #include "es_TransposeD.h"     // es autogen header for stub op
-#include "es_Bitcast.h"        // es autogen header for stub op
 #include "es_math_ops.h"       // math ops stub
 #include "mc2_platform_info.h"
 #include "mc2_common_log.h"

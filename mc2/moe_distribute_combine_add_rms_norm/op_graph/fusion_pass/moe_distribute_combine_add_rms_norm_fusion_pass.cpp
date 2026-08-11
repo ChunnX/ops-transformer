@@ -13,9 +13,8 @@
 #if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #include "es_MoeDistributeCombineV2.h"
 #include "es_MoeDistributeCombineAddRmsNorm.h"
-#include "es_Reshape.h"
-#include "es_Add.h"
-#include "es_InplaceAddRmsNorm.h"
+#include "es_nn_ops.h"   // nn ops stub
+#include "es_math_ops.h" // math ops stub
 #include "mc2_common_log.h"
 #include "ge/ge_utils.h"
 #include "acl/acl_rt.h"

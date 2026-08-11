@@ -8,14 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/*!
- * \file add_rms_norm_proto.h
- * \brief 图模式原型定义（来自 ops-nn norm/add_rms_norm，供 fusion pattern stub）
+/* !
+ * \file nn_proto_stub.cpp
+ * \brief
  */
-#ifndef ADD_RMS_NORM_STUB_PROTO_H
-#define ADD_RMS_NORM_STUB_PROTO_H
 
 #include "graph/operator_reg.h"
+#include "register/op_impl_registry.h"
 
 namespace ge {
 /**
@@ -51,6 +50,35 @@ REG_OP(AddRmsNorm)
     .ATTR(epsilon, Float, 1e-6f)
     .OP_END_FACTORY_REG(AddRmsNorm)
 
-} // namespace ge
+    /**
+    * @brief InplaceAddRmsNorm operator interface implementation. \n
+    *  calculating: x1, x2, gamma \n
+    *  x2 = x1 + x2 \n
+    *  rstd = np.rsqrt(np.mean(np.power(x,2), reduce_axis, keepdims=True) + epsilon)) \n
+    *  x1 = gamma * (x2 * rstd)
 
-#endif // ADD_RMS_NORM_STUB_PROTO_H
+    * @par Inputs
+    * Three inputs, including:
+    * @li x1: A Tensor. Support dtype: [float32, float16, bfloat16], support format: [ND].
+    * @li x2: A Tensor. Support dtype: [float32, float16, bfloat16], support format: [ND].
+    * @li gamma: A Tensor. Support dtype: [float32, float16, bfloat16], support format: [ND].
+
+    * @par Attributes:
+    * epsilon: A optional attribute, the type is float. Defaults to 1e-6.
+
+    * @par Outputs
+    * Three outputs, including:
+    * @li x1: A Tensor. Support dtype: [float32, float16, bfloat16], support format: [ND].
+    * @li rstd: A Tensor. Support dtype: [float32], support format: [ND].
+    * @li x2: A Tensor. Support dtype: [float32, float16, bfloat16], support format: [ND].
+    */
+    REG_OP(InplaceAddRmsNorm)
+    .INPUT(x1, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
+    .INPUT(x2, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
+    .INPUT(gamma, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
+    .OUTPUT(x1, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
+    .OUTPUT(rstd, TensorType({DT_FLOAT, DT_FLOAT, DT_FLOAT}))
+    .OUTPUT(x2, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
+    .ATTR(epsilon, Float, 1e-6f)
+    .OP_END_FACTORY_REG(InplaceAddRmsNorm)
+} // namespace ge
