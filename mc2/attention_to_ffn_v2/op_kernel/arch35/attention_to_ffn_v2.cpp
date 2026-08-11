@@ -25,17 +25,19 @@
 #endif
 #include "../attention_to_ffn_v2_tiling.h"
 #include "../attention_to_ffn_v2_tiling_key.h"
+#include <cstddef>
 
 using namespace AscendC;
 using namespace AttentionToFFNImpl;
 using namespace Mc2Tiling;
 
-static_assert(sizeof(AttentionToFfnV2Info) == sizeof(AttentionToFFNInfo),
-              "AttentionToFFN V1/V2 tiling info layout size mismatch");
-static_assert(sizeof(AttentionToFfnV2TilingData) == sizeof(AttentionToFFNTilingData),
-              "AttentionToFFN V1/V2 tiling data layout size mismatch");
+static_assert(offsetof(AttentionToFfnV2Info, quantDtype) == sizeof(AttentionToFFNInfo),
+              "AttentionToFFN V1 tiling info must remain a prefix of V2");
+static_assert(offsetof(AttentionToFfnV2TilingData, attentionToFfnV2Info) ==
+                  offsetof(AttentionToFFNTilingData, attentionToFFNInfo),
+              "AttentionToFFN V1/V2 tiling info offsets must match");
 
-template <bool isQuant, bool isSync, bool isActiveMask, uint8_t ArchTag>
+template <uint8_t QuantMode, uint8_t QuantDtype, bool ScaleMode, bool isSync, bool isActiveMask, uint8_t ArchTag>
 __global__ __aicore__ void attention_to_ffn_v2(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId,
                                             GM_ADDR layerId, GM_ADDR expertIds, GM_ADDR expertRankTable,
                                             GM_ADDR scales, GM_ADDR active_mask, GM_ADDR workspaceGM, GM_ADDR tilingGM)
@@ -45,6 +47,7 @@ __global__ __aicore__ void attention_to_ffn_v2(GM_ADDR mc2Context, GM_ADDR x, GM
     TPipe pipe;
 
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
+        constexpr bool isQuant = QuantMode != ATTN_FFN_TILINGKEY_NO_QUANT;
         GET_TILING_DATA_WITH_STRUCT(AttentionToFfnV2TilingData, tilingData, tilingGM);
         const auto *v1TilingData = reinterpret_cast<const AttentionToFFNTilingData *>(&tilingData);
         AttentionToFFN<DTYPE_X, isQuant, isSync, isActiveMask, AttentionToFFNContextType::MC2_CONTEXT> op;
