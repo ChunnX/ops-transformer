@@ -119,9 +119,11 @@ public:
             }
 
             if ASCEND_IS_AIC {
+                CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x4 + FLAG_ID_MAX);
                 CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x4);
                 AICProcess(tmpGM_[coreId_ * chunkSize_ * chunkSize_], sTP_->vInner[nvId * Sp_ * Dv_ + chunkPos * Dv_],
                            sTP_->attnOut[nvId * Dv_ + chunkPos * Nv_ * Dv_]);
+                CrossCoreSetFlag<0x4, PIPE_MTE1>(0x3 + FLAG_ID_MAX);
                 CrossCoreSetFlag<0x4, PIPE_MTE1>(0x3);
             }
         }
