@@ -1,0 +1,20 @@
+============================================================
+large_s1_b1_s1_1024_k_5120 - 0811_work_split.py
+============================================================
+
+[1] TileLang (0811_work_split)...
+  完成
+
+[2] 官方...
+  完成
+
+[3] 精度对比...
+  dQueryIndex: max_diff=2.356250e+01, mean_diff=8.119950e-01, rel_err=7.282452e+01, norm_rel=2.124186e+00
+  dKeyIndex: max_diff=1.876953e+01, mean_diff=9.218919e-01, rel_err=2.967563e+02, norm_rel=1.975612e+00
+  dWeights: max_diff=1.685000e+02, mean_diff=3.233351e+01, rel_err=1.108920e+01, norm_rel=3.702599e+00
+  Loss: abs_diff=1.133945e+02, rel_err=1.254832e-02
+
+[4] 性能测试 (warmup=5, bench=10)...
+  TileLang: avg=57.810ms, med=57.568ms, min=57.181ms
+  官方:     avg=19.562ms, med=19.562ms, min=19.531ms
+  加速比:   0.34x (基于中位数)
