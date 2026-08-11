@@ -27,7 +27,12 @@ import quant_flash_attn_golden as golden_mod
 
 logger = logging.getLogger(__name__)
 
-__golden__ = {"e2e": {"qfa_mxfp8_wrapper.npu_qfa_mxfp8": "cpu_qfa_mxfp8"}}
+__golden__ = {
+    "e2e": {
+        "qfa_mxfp8_wrapper.npu_qfa_mxfp8": "cpu_qfa_mxfp8",
+        "qfa_mxfp8_wrapper.npu_qfa_hif8": "cpu_qfa_hif8",
+    }
+}
 
 
 # ==============================================================================
@@ -568,3 +573,183 @@ def cpu_qfa_mxfp8(
         result = [cpu_out_aligned, None]
 
     return result
+
+
+# ==============================================================================
+# HIF8 CPU golden (quant_mode=7)
+# Q/K/V: per-tensor FP32 标量 descale, uint8 (hifloat8 编码), 仅 TND, 无 PA
+# ==============================================================================
+
+
+def cpu_qfa_hif8(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    dequant_scale_q: torch.Tensor,
+    dequant_scale_k: torch.Tensor,
+    dequant_scale_v: torch.Tensor,
+    p_scale: torch.Tensor,
+    block_table: torch.Tensor,
+    *,
+    B: int,
+    N_q: int,
+    N_kv: int,
+    D: int,
+    cu_seqlens_q: List[int],
+    cu_seqlens_kv: List[int],
+    seqused_q: List[int],
+    seqused_kv: List[int],
+    max_seqlen_q: int,
+    max_seqlen_kv: int,
+    enable_pa: bool,
+    kv_cache_layout: str,
+    block_size: int,
+    mask_mode: int,
+    q_scale_layout: str,
+    quant_mode: int = 7,
+    enable_lse: bool = False,
+    graph_path: int = 0,
+    input_layout: str = "TND",
+    is_contiguous: bool = True,
+    device_id: int = 0,
+    softmax_scale: float = None,
+    data_range_q: float = 1.0,
+    data_range_k: float = 1.0,
+    data_range_v: float = 1.0,
+    **kwargs,
+):
+    """HIF8 CPU golden (quant_mode=7, per-tensor, TND, 无 PA)。
+
+    入参 slot 由 inputs.py generate_qfa_hif8_inputs 写入:
+      q/k/v: TND uint8 (hifloat8 编码)
+      dequant_scale_q/k/v: (1,) float32 per-tensor descale
+      p_scale: (1,) float32
+    """
+    import quant_flash_attn_hif8_golden as hif8_golden_mod
+    hif8_golden_mod._csv_precision_tolerances = kwargs.get("precision_tolerances")
+    hif8_golden_mod._csv_absolute_precision = kwargs.get("absolute_precision")
+
+    cu_seqlens_q = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
+    cu_seqlens_kv = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
+    actual_seq_q = (
+        [cu_seqlens_q[i + 1] - cu_seqlens_q[i] for i in range(len(cu_seqlens_q) - 1)]
+        if len(cu_seqlens_q) > 1
+        else [0]
+    )
+    actual_seq_kv = (
+        [cu_seqlens_kv[i + 1] - cu_seqlens_kv[i] for i in range(len(cu_seqlens_kv) - 1)]
+        if len(cu_seqlens_kv) > 1
+        else [0]
+    )
+
+    p_scale_value = float(p_scale.item()) if isinstance(p_scale, torch.Tensor) else float(p_scale)
+
+    _apply_hif8_golden_globals(
+        {
+            "B": B,
+            "N_q": N_q,
+            "N_kv": N_kv,
+            "D": D,
+            "CU_SEQLENS_Q": cu_seqlens_q,
+            "CU_SEQLENS_KV": cu_seqlens_kv,
+            "SEQUSED_Q": list(seqused_q) if seqused_q is not None else None,
+            "SEQUSED_KV": list(seqused_kv) if seqused_kv is not None else None,
+            "MAX_SEQLEN_Q": max_seqlen_q,
+            "MAX_SEQLEN_KV": max_seqlen_kv,
+            "SPARSE_MODE": mask_mode,
+            "Q_SCALE_LAYOUT": q_scale_layout,
+            "INPUT_LAYOUT": input_layout,
+            "P_SCALE": p_scale_value,
+            "ENABLE_LSE": enable_lse,
+            "GRAPH_PATH": graph_path,
+            "SOFTMAX_SCALE": softmax_scale,
+        }
+    )
+
+    deq_q = dequant_scale_q if isinstance(dequant_scale_q, torch.Tensor) else torch.tensor([float(dequant_scale_q)], dtype=torch.float32)
+    deq_k = dequant_scale_k if isinstance(dequant_scale_k, torch.Tensor) else torch.tensor([float(dequant_scale_k)], dtype=torch.float32)
+    deq_v = dequant_scale_v if isinstance(dequant_scale_v, torch.Tensor) else torch.tensor([float(dequant_scale_v)], dtype=torch.float32)
+    p_scale_t = p_scale if isinstance(p_scale, torch.Tensor) else torch.tensor([float(p_scale)], dtype=torch.float32)
+
+    q_cpu = q.detach().cpu() if isinstance(q, torch.Tensor) else torch.as_tensor(q)
+    k_cpu = k.detach().cpu() if isinstance(k, torch.Tensor) else torch.as_tensor(k)
+    v_cpu = v.detach().cpu() if isinstance(v, torch.Tensor) else torch.as_tensor(v)
+
+    # TTK slot dtype is float8_e4m3fn, hif8 golden expects uint8 (hifloat8 encoded)
+    if str(q_cpu.dtype) == "torch.float8_e4m3fn":
+        q_cpu = q_cpu.view(torch.uint8)
+    if str(k_cpu.dtype) == "torch.float8_e4m3fn":
+        k_cpu = k_cpu.view(torch.uint8)
+    if str(v_cpu.dtype) == "torch.float8_e4m3fn":
+        v_cpu = v_cpu.view(torch.uint8)
+
+    # TTK slot is TND 3D, cpu_hif8_golden expects BNSD 4D
+    cu_seqlens_q_list = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
+    cu_seqlens_kv_list = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
+
+    def _tnd_to_bnsd(tensor_tnd, seq_lens, cu_seqlens=None):
+        B = len(seq_lens)
+        N = tensor_tnd.shape[1]
+        D = tensor_tnd.shape[2]
+        max_seq = max(seq_lens) if seq_lens else 0
+        result = torch.zeros((B, N, max_seq, D), dtype=tensor_tnd.dtype, device=tensor_tnd.device)
+        if cu_seqlens is not None:
+            for b in range(B):
+                act_s = seq_lens[b]
+                if act_s <= 0:
+                    continue
+                offset = cu_seqlens[b]
+                result[b, :, :act_s, :] = tensor_tnd[offset : offset + act_s, :, :]
+        else:
+            t = 0
+            for b in range(B):
+                act_s = seq_lens[b]
+                result[b, :, :act_s, :] = tensor_tnd[t : t + act_s, :, :]
+                t += act_s
+        return result.contiguous()
+
+    q_bnsd = _tnd_to_bnsd(q_cpu, actual_seq_q, cu_seqlens_q_list if len(cu_seqlens_q_list) > 1 else None)
+    k_bnsd = _tnd_to_bnsd(k_cpu, actual_seq_kv, cu_seqlens_kv_list if len(cu_seqlens_kv_list) > 1 else None)
+    v_bnsd = _tnd_to_bnsd(v_cpu, actual_seq_kv, cu_seqlens_kv_list if len(cu_seqlens_kv_list) > 1 else None)
+
+    cpu_out, cpu_lse = hif8_golden_mod.cpu_hif8_golden(
+        q_bnsd,
+        k_bnsd,
+        v_bnsd,
+        deq_q,
+        deq_k,
+        deq_v,
+        p_scale_t,
+        actual_seq_q,
+        actual_seq_kv,
+        softmax_scale=softmax_scale,
+    )
+
+    compare_layout = input_layout
+    cpu_out_aligned = hif8_golden_mod.convert_q_bnsd_to_layout(
+        cpu_out,
+        actual_seq_q,
+        compare_layout,
+        cu_seqlens=cu_seqlens_q if cu_seqlens_q else None,
+    )
+
+    if enable_lse:
+        cpu_lse_aligned = hif8_golden_mod.convert_q_bnsd_to_layout(
+            cpu_lse,
+            actual_seq_q,
+            compare_layout,
+            cu_seqlens=cu_seqlens_q if cu_seqlens_q else None,
+        )
+        if cpu_lse_aligned.ndim == 3 and cpu_lse_aligned.shape[-1] == 1:
+            cpu_lse_aligned = cpu_lse_aligned.squeeze(-1).contiguous()
+        result = [cpu_out_aligned, cpu_lse_aligned]
+    else:
+        result = [cpu_out_aligned, None]
+
+    return result
+
+
+def _apply_hif8_golden_globals(attrs):
+    """把 case 属性注入 hif8 golden 模块全局变量。"""
+    for attr_key, golden_key in attrs.items():
+        setattr(hif8_golden_mod, golden_key, attrs[attr_key])
