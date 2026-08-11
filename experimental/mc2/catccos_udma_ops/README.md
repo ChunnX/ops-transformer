@@ -34,9 +34,13 @@ as the active PyTorch installation.
 
 ## PyTorch API
 
-Run one process per NPU. `UDMA_MASTER_PORT` must be reachable by every rank and
-must differ from torchrun's rendezvous port; if omitted, the package uses
-`MASTER_PORT + 1`.
+Run one process per NPU. `UDMA_MASTER_ADDR` must resolve to a numeric IPv4
+address reachable by every rank, and `UDMA_MASTER_PORT` must differ from
+torchrun's rendezvous port. The package resolves hostnames before passing them
+to SHMEM. If omitted, the address follows `MASTER_ADDR` and the port uses
+`MASTER_PORT + 1`. The bundled single-node validation launchers explicitly use
+`127.0.0.1` for both torchrun rendezvous and UDMA bootstrap, so an automatically
+selected hostname cannot break SHMEM bootstrap.
 
 ```python
 import os

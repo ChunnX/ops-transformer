@@ -49,9 +49,17 @@ def main():
         resolved = output_root / "resolved_ep{}.json".format(world_size)
         write_resolved_cases(resolved, group_cases)
         environment = os.environ.copy()
-        environment["UDMA_MASTER_PORT"] = str(int(environment.get("UDMA_MASTER_PORT", "29601")) + group_index)
+        environment.setdefault("UDMA_MASTER_ADDR", "127.0.0.1")
+        rendezvous_port = int(
+            environment.get("VALIDATION_MASTER_PORT", environment.get("MASTER_PORT", "29500"))
+        ) + group_index
+        udma_port = int(environment.get("UDMA_MASTER_PORT", "29601")) + group_index
+        if rendezvous_port == udma_port:
+            raise RuntimeError("torchrun and UDMA bootstrap ports must differ")
+        environment["UDMA_MASTER_PORT"] = str(udma_port)
         command = [
-            sys.executable, "-m", "torch.distributed.run", "--standalone",
+            sys.executable, "-m", "torch.distributed.run",
+            "--master-addr=127.0.0.1", "--master-port={}".format(rendezvous_port),
             "--nproc-per-node={}".format(world_size), str(HERE / "accuracy_worker.py"),
             "--resolved-cases", str(resolved), "--output-dir", str(output_root),
         ]

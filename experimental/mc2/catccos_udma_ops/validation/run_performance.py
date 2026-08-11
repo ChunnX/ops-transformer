@@ -72,19 +72,28 @@ def main():
         profile_root.mkdir(parents=True, exist_ok=True)
         resolved = case_root / "resolved_case.json"
         write_resolved_cases(resolved, [case])
+        process_environment = os.environ.copy()
+        process_environment.setdefault("UDMA_MASTER_ADDR", "127.0.0.1")
+        rendezvous_port = int(
+            process_environment.get(
+                "VALIDATION_MASTER_PORT", process_environment.get("MASTER_PORT", "29500")
+            )
+        ) + index
+        udma_port = int(process_environment.get("UDMA_MASTER_PORT", "29601")) + index
+        if rendezvous_port == udma_port:
+            raise RuntimeError("torchrun and UDMA bootstrap ports must differ")
+        process_environment["UDMA_MASTER_PORT"] = str(udma_port)
         command = [
             msprof, "--output={}".format(profile_root), "--task-time={}".format(task_time),
             "--ascendcl=off", "--runtime-api=off", "--aicpu=off", "--ai-core=off",
             sys.executable,
-            "-m", "torch.distributed.run", "--standalone",
+            "-m", "torch.distributed.run",
+            "--master-addr=127.0.0.1",
+            "--master-port={}".format(rendezvous_port),
             "--nproc-per-node={}".format(case["world_size"]),
             str(HERE / "performance_worker.py"), "--resolved-case", str(resolved),
             "--output-dir", str(case_root),
         ]
-        process_environment = os.environ.copy()
-        process_environment["UDMA_MASTER_PORT"] = str(
-            int(process_environment.get("UDMA_MASTER_PORT", "29601")) + index
-        )
         print("+ " + " ".join(command), flush=True)
         run = subprocess.run(command, cwd=str(output_root), env=process_environment)
         if run.returncode:
