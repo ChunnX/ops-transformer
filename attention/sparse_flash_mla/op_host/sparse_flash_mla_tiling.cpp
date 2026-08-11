@@ -355,6 +355,9 @@ ge::graphStatus SMLAInfoParser::GetNpuInfo()
         return ge::GRAPH_FAILED;
     }
     batchConsistency_ = false;
+    if (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL) {
+        OP_LOGI(opName_, "Batch consistency is enabled.");
+    }
 
     return ge::GRAPH_SUCCESS;
 }

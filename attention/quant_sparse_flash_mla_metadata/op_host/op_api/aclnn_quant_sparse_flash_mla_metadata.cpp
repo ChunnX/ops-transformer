@@ -27,7 +27,10 @@
 #include "opdev/op_log.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/make_op_executor.h"
+#include "acl/acl_rt.h"
 #include "../quant_sparse_flash_mla_metadata_check.h"
+
+constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
 
 #ifdef __cplusplus
 extern "C" {
@@ -68,6 +71,15 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadataGetWorkspaceSize(
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
     std::string socVersionStr = npuInfo.GetSocLongVersion();
     const char *socVersion = socVersionStr.c_str();
+
+    int64_t batchConsistencyLevel = 0;
+    aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &batchConsistencyLevel);
+    if (aclRet != ACL_SUCCESS) {
+        OP_LOGW("aclnnQuantSparseFlashMlaMetadata unable to get system param batch consistency level.");
+    }
+    if (batchConsistencyLevel == BATCH_CONSISTENCY_LEVEL) {
+        OP_LOGI("aclnnQuantSparseFlashMlaMetadata", "Batch consistency is enabled.");
+    }
 
     auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                            sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,

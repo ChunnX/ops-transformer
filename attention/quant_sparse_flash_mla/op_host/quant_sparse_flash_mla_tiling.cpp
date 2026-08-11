@@ -25,6 +25,8 @@ using std::pair;
 using std::string;
 namespace optiling {
 
+constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
+
 struct QSMLACompileInfo {
     int64_t core_num;
 };
@@ -74,6 +76,9 @@ ge::graphStatus QSMLAInfoParser::GetNpuInfo()
     if (npuArch_ != NpuArch::DAV_3510) {
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
+    }
+    if (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL) {
+        OP_LOGI(opName_, "Batch consistency is enabled.");
     }
 
     return ge::GRAPH_SUCCESS;

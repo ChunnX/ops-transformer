@@ -79,6 +79,9 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize(
     }
     OP_LOGD("deterministic_level=%lld", deterministicLevel);
     bool isBatchConsistency = (deterministicLevel == BATCH_CONSISTENCY_LEVEL);
+    if (isBatchConsistency) {
+        OP_LOGI("aclnnMixedQuantSparseFlashMlaMetadata", "Batch consistency is enabled.");
+    }
 
     auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                            sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
