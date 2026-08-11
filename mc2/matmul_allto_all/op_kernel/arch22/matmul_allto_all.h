@@ -28,6 +28,9 @@ using namespace AscendC;
 #include "moe_distribute_base.h"
 #include "matmul_allto_all_util.h"
 
+#ifndef CATLASS_ARCH
+#define CATLASS_ARCH 2201
+#endif
 #include "catlass/catlass.hpp"
 #include "catlass/arch/arch.hpp"
 #include "catlass/layout/layout.hpp"

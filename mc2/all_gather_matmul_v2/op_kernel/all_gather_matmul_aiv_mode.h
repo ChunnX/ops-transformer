@@ -15,6 +15,10 @@
 
 #pragma once
 
+#ifndef CATLASS_ARCH
+#define CATLASS_ARCH 2201
+#endif
+
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else
@@ -26,7 +30,10 @@
 #include "all_gather_matmul_aiv_mode_tiling.h"
 #include "all_gather_matmul_aiv_mode_util.h"
 #include "all_gather_matmul_aiv_mode_padding.h"
+#define CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_HPP
 #include "all_gather_matmul_aiv_mode_dequant.h"
+#undef CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_HPP
+#include "block_mmad_preload.hpp"
 
 #include "catlass/catlass.hpp"
 #include "catlass/arch/arch.hpp"
