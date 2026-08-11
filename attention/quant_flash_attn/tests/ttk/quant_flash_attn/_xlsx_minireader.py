@@ -11,7 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 """极简 xlsx 读取器：zipfile + xml.dom.minidom，无 openPyXL/pandas 依赖。
 
-供 excel_to_csv.py 使用。只读 xl/worksheets/sheet1.xml（mxfp8 sheet）+
+供 excel_to_csv.py 使用。支持读取 xl/worksheets/sheetN.xml（通过 sheet 名或序号选择）+
 xl/sharedStrings.xml，返回 list[dict[col_idx]→text]，空单元格 → None。
 """
 
@@ -67,22 +67,8 @@ def _cell_text(cell, shared_strings):
     return None
 
 
-def load_sheet1(xlsx_path: str):
-    try:
-        with zipfile.ZipFile(xlsx_path) as z:
-            ss_xml = z.read("xl/sharedStrings.xml").decode("utf-8")
-            sheet_xml = z.read("xl/worksheets/sheet1.xml").decode("utf-8")
-    except KeyError:
-        return _load_sheet1_openpyxl(xlsx_path)
-
-    ss_doc = minidom.parseString(ss_xml)
-    shared_strings = []
-    for si in ss_doc.getElementsByTagName("si"):
-        ts = si.getElementsByTagName("t")
-        shared_strings.append(
-            "".join(t.firstChild.data if t.firstChild else "" for t in ts)
-        )
-
+def _parse_sheet_rows(sheet_xml: str, shared_strings: list):
+    """解析单个 sheet xml，返回 list[dict[col_idx]→text]。"""
     sh = minidom.parseString(sheet_xml)
     rows = sh.getElementsByTagName("row")
     rows = sorted(rows, key=lambda r: int(r.getAttribute("r")))
@@ -97,11 +83,96 @@ def load_sheet1(xlsx_path: str):
     return parsed_rows
 
 
-def _load_sheet1_openpyxl(xlsx_path: str):
+def _load_shared_strings(z: zipfile.ZipFile) -> list:
+    try:
+        ss_xml = z.read("xl/sharedStrings.xml").decode("utf-8")
+    except KeyError:
+        return []
+    ss_doc = minidom.parseString(ss_xml)
+    shared_strings = []
+    for si in ss_doc.getElementsByTagName("si"):
+        ts = si.getElementsByTagName("t")
+        shared_strings.append(
+            "".join(t.firstChild.data if t.firstChild else "" for t in ts)
+        )
+    return shared_strings
+
+
+def list_sheet_names(xlsx_path: str) -> list:
+    """列出 xlsx 中所有 sheet 名称（按 workbook.xml 中的顺序）。"""
+    try:
+        with zipfile.ZipFile(xlsx_path) as z:
+            wb_xml = z.read("xl/workbook.xml").decode("utf-8")
+    except KeyError:
+        return []
+    wb = minidom.parseString(wb_xml)
+    names = []
+    for sheet_el in wb.getElementsByTagName("sheet"):
+        name = sheet_el.getAttribute("name")
+        if name:
+            names.append(name)
+    return names
+
+
+def header_to_name_idx(xlsx_path: str) -> dict:
+    """返回 {sheet_name: sheet_index} 映射（1-based, 与 sheetN.xml 对应）。"""
+    try:
+        with zipfile.ZipFile(xlsx_path) as z:
+            wb_xml = z.read("xl/workbook.xml").decode("utf-8")
+    except KeyError:
+        return {}
+    wb = minidom.parseString(wb_xml)
+    result = {}
+    idx = 1
+    for sheet_el in wb.getElementsByTagName("sheet"):
+        name = sheet_el.getAttribute("name")
+        if name:
+            result[name] = idx
+            idx += 1
+    return result
+
+
+def load_sheet(xlsx_path: str, sheet_name: str = None, sheet_idx: int = 1):
+    """读取指定 sheet，返回 list[dict[col_idx]→text]。
+
+    sheet_name: sheet 名称（如 "mxfp8", "fp8", "hif8"）。优先使用。
+    sheet_idx:  1-based sheet 序号（1=sheet1.xml）。sheet_name 为 None 时使用。
+    """
+    try:
+        with zipfile.ZipFile(xlsx_path) as z:
+            shared_strings = _load_shared_strings(z)
+
+            if sheet_name is not None:
+                name_idx = header_to_name_idx(xlsx_path)
+                if sheet_name not in name_idx:
+                    available = list(name_idx.keys())
+                    raise ValueError(
+                        f"sheet '{sheet_name}' not found in {xlsx_path}. "
+                        f"Available sheets: {available}"
+                    )
+                sheet_idx = name_idx[sheet_name]
+
+            sheet_path = f"xl/worksheets/sheet{sheet_idx}.xml"
+            sheet_xml = z.read(sheet_path).decode("utf-8")
+    except KeyError:
+        return _load_sheet_openpyxl(xlsx_path, sheet_name, sheet_idx)
+
+    return _parse_sheet_rows(sheet_xml, shared_strings)
+
+
+def load_sheet1(xlsx_path: str):
+    """向后兼容：读取 sheet1。"""
+    return load_sheet(xlsx_path, sheet_idx=1)
+
+
+def _load_sheet_openpyxl(xlsx_path: str, sheet_name: str = None, sheet_idx: int = 1):
     import openpyxl
 
     wb = openpyxl.load_workbook(xlsx_path, data_only=True)
-    ws = wb.active
+    if sheet_name is not None:
+        ws = wb[sheet_name]
+    else:
+        ws = wb.worksheets[sheet_idx - 1]
     parsed_rows = []
     for row in ws.iter_rows():
         cells = {}
