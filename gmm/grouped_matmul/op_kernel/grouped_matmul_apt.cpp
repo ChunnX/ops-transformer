@@ -58,10 +58,6 @@ using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTili
 #include "arch35/weight_quant_basic_block/weight_quant_vcv_basic_block.h"
 #include "arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
 #if IS_BLAZE
-// Keep the JIT source signature in sync with the MX Tensor API adapter. The
-// runtime compiler cache keys the translation unit and does not reliably
-// invalidate on changes in nested project headers.
-#define GMM_MX_TENSOR_API_ADAPTER_REVISION 22
 #include "arch35/weight_quant_basic_block/gmm_weight_quant_tensor_api_mx_kernel.h"
 #endif
 using WeightQuantBatchMatmulV2::Arch35::A16MXF4_NZKN;
@@ -236,9 +232,6 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 #if IS_BLAZE
 #define GMM_QUANT_MX_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)                   \
     do {                                                                                                               \
-        if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {                                           \
-            AscendC::printf("zzzlog%d path=GmmTensorApiMxKernel is_blaze=1\n", __LINE__);                             \
-        }                                                                                                              \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
         GmmTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout,         \
@@ -248,9 +241,6 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 #else
 #define GMM_QUANT_MX_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)                   \
     do {                                                                                                               \
-        if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {                                           \
-            AscendC::printf("zzzlog%d path=GmmCgmctMxKernel is_blaze=0\n", __LINE__);                                 \
-        }                                                                                                              \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
         GmmCgmctMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, cgmctXLayout, cgmctWLayout,   \
@@ -401,18 +391,8 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                   ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
                   ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
 #if IS_BLAZE
-        if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
-            AscendC::printf(
-                "zzzlog%d tensor_api_confirm=1 path=GmmWeightQuantTensorApiMxKernel is_blaze=1 "
-                "scale_storage=uint8 scale_semantic=e8m0 block=%d sub=%d\n",
-                __LINE__, static_cast<int32_t>(AscendC::GetBlockIdx()),
-                static_cast<int32_t>(AscendC::GetSubBlockIdx()));
-        }
         INVOKE_GMM_WEIGHT_QUANT_MXA8W4_TENSOR_API_IMPL();
 #else
-        if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
-            AscendC::printf("zzzlog%d path=GMMWeightQuantResplitController is_blaze=0\n", __LINE__);
-        }
         INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
                                                           VEC_ANTIQUANT_CONFIG_DYNAMIC);
 #endif
