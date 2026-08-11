@@ -52,7 +52,8 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedQ(const FaTilingInfo 
     uint32_t sequsedQDimNum = sequsedQTensor->GetStorageShape().GetDimNum();
     OP_CHECK_IF(sequsedQDimNum != 1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(faInfo.opName, "seqused_q",
-                                                         std::to_string(sequsedQDimNum).c_str(), "The shape dim of seqused_q must be 1"),
+                                                         std::to_string(sequsedQDimNum).c_str(),
+                                                         "The shape dim of seqused_q must be 1"),
                 return ge::GRAPH_FAILED);
 
     uint32_t sequsedQShapeSize = sequsedQTensor->GetShapeSize();
@@ -87,7 +88,8 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedKv(const FaTilingInfo
     uint32_t sequsedKvDimNum = sequsedKvTensor->GetStorageShape().GetDimNum();
     OP_CHECK_IF(sequsedKvDimNum != 1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(faInfo.opName, "seqused_kv",
-                                                         std::to_string(sequsedKvDimNum).c_str(), "The shape dim of seqused_kv must be 1"),
+                                                         std::to_string(sequsedKvDimNum).c_str(),
+                                                         "The shape dim of seqused_kv must be 1"),
                 return ge::GRAPH_FAILED);
 
     uint32_t sequsedKvShapeSize = sequsedKvTensor->GetShapeSize();
@@ -123,7 +125,8 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensQ(const FaTilingInf
     uint32_t cuSeqlensQDimNum = cuSeqlensQTensor->GetStorageShape().GetDimNum();
     OP_CHECK_IF(cuSeqlensQDimNum != 1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(faInfo.opName, "cu_seqlens_q",
-                                                         std::to_string(cuSeqlensQDimNum).c_str(), "The shape dim of cu_seqlens_q must be 1"),
+                                                         std::to_string(cuSeqlensQDimNum).c_str(),
+                                                         "The shape dim of cu_seqlens_q must be 1"),
                 return ge::GRAPH_FAILED);
 
     uint32_t cuSeqlensQShapeSize = cuSeqlensQTensor->GetShapeSize();
@@ -159,7 +162,8 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensKv(const FaTilingIn
     uint32_t cuSeqlensKvDimNum = cuSeqlensKvTensor->GetStorageShape().GetDimNum();
     OP_CHECK_IF(cuSeqlensKvDimNum != 1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(faInfo.opName, "cu_seqlens_kv",
-                                                         std::to_string(cuSeqlensKvDimNum).c_str(), "The shape dim of cu_seqlens_kv must be 1"),
+                                                         std::to_string(cuSeqlensKvDimNum).c_str(),
+                                                         "The shape dim of cu_seqlens_kv must be 1"),
                 return ge::GRAPH_FAILED);
 
     uint32_t cuSeqlensKvShapeSize = cuSeqlensKvTensor->GetShapeSize();
@@ -194,7 +198,8 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenKv(const FaTilingIn
 
 ge::graphStatus ActualSeqLenChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 {
-    if (CheckSingleParaSequsedQ(faInfo) != ge::GRAPH_SUCCESS || CheckSingleParaSequsedKv(faInfo) != ge::GRAPH_SUCCESS ||
+    if (CheckSingleParaSequsedQ(faInfo) != ge::GRAPH_SUCCESS ||
+        CheckSingleParaSequsedKv(faInfo) != ge::GRAPH_SUCCESS ||
         CheckSingleParaCuSeqlensQ(faInfo) != ge::GRAPH_SUCCESS ||
         CheckSingleParaCuSeqlensKv(faInfo) != ge::GRAPH_SUCCESS ||
         CheckSingleParaMaxSeqlenQ(faInfo) != ge::GRAPH_SUCCESS ||
@@ -209,8 +214,9 @@ ge::graphStatus ActualSeqLenChecker::CheckParaExistence(const FaTilingInfo &faIn
     if (faInfo.pageAttentionFlag) {
         auto &sequsedKvTensor = faInfo.opParamInfo.sequsedKv.tensor;
         OP_CHECK_IF(sequsedKvTensor == nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "seqused_kv",
-                                                             "seqused_kv cannot be empty when paged attention is enabled"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        faInfo.opName, "seqused_kv",
+                        "seqused_kv cannot be empty when paged attention is enabled"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -222,8 +228,9 @@ ge::graphStatus ActualSeqLenChecker::CheckParaExistence(const FaTilingInfo &faIn
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(cuSeqlensQTensor != nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "cu_seqlens_q",
-                                                             "cu_seqlens_q must be empty when layout_q is not TND, only supported in TND layout"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        faInfo.opName, "cu_seqlens_q",
+                        "cu_seqlens_q must be empty when layout_q is not TND, only supported in TND layout"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -235,8 +242,9 @@ ge::graphStatus ActualSeqLenChecker::CheckParaExistence(const FaTilingInfo &faIn
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(cuSeqlensKvTensor != nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "cu_seqlens_kv",
-                                                             "cu_seqlens_kv must be empty when layout_kv is not TND, only supported in TND layout"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        faInfo.opName, "cu_seqlens_kv",
+                        "cu_seqlens_kv must be empty when layout_kv is not TND, only supported in TND layout"),
                     return ge::GRAPH_FAILED);
     }
 

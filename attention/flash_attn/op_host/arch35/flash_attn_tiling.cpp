@@ -86,7 +86,8 @@ ge::graphStatus FlashAttnTilingImpl::SetPlatMemoryInfo()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, platformInfo_.l2Size);
 
     platformInfo_.defaultSysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    OP_LOGD(faInfo_->opName, "AIV Num:%u AIC Num:%u L0ASize:%lu L0BSize:%lu L0CSize:%lu UBSize:%lu L1Size:%lu L2Size:%lu",
+    OP_LOGD(faInfo_->opName,
+            "AIV Num:%u AIC Num:%u L0ASize:%lu L0BSize:%lu L0CSize:%lu UBSize:%lu L1Size:%lu L2Size:%lu",
             platformInfo_.aivNum, platformInfo_.aicNum, platformInfo_.l0aSize, platformInfo_.l0bSize,
             platformInfo_.l0cSize, platformInfo_.ubSize, platformInfo_.l1Size, platformInfo_.l2Size);
 
@@ -309,8 +310,10 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.dSize = faInfo_->qkHeadDim;
     tilingData_.baseTiling.flashAttnBaseParams.dSizeV = faInfo_->vHeadDim;
     tilingData_.baseTiling.flashAttnBaseParams.scaleValue = faInfo_->softmaxScale;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize = faInfo_->qLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize = faInfo_->kvLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize =
+        faInfo_->qLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize =
+        faInfo_->kvLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.isKvContinuous = true;

@@ -44,7 +44,6 @@ ge::graphStatus FaInfoParser::CheckEmptyTensor()
         }
         return false;
     };
-
     if (checkEmptyTensor(opParamInfo_.query.shape, QUERY_NAME) || checkEmptyTensor(opParamInfo_.key.shape, KEY_NAME) ||
         checkEmptyTensor(opParamInfo_.value.shape, VALUE_NAME) ||
         checkEmptyTensor(opParamInfo_.attnOut.shape, ATTN_OUT_NAME)) {
@@ -427,8 +426,9 @@ ge::graphStatus FaInfoParser::GetBlockNum()
 ge::graphStatus FaInfoParser::GetS2SizeForPageAttention()
 {
     OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
-                                                      "When layout_kv is PA, block_table must be provided but got nullptr."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    opName_, "block_table", "provided",
+                    "When layout_kv is PA, block_table must be provided but got nullptr."),
                 return ge::GRAPH_FAILED);
     if (GetBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -541,7 +541,8 @@ ge::graphStatus FaInfoParser::GetGSize()
         std::string shapeStr = ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
                                ToString(opParamInfo_.key.shape->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key",
-                                               shapeStr.c_str(), "N of query must be an integer multiple of the same axis of key");
+                                               shapeStr.c_str(),
+                                               "N of query must be an integer multiple of the same axis of key");
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
@@ -642,7 +643,8 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
         return ge::GRAPH_FAILED;
     }
 
-    if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
+    if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() ||
+        ge::GRAPH_SUCCESS != GetOpParaInfo() ||
         ge::GRAPH_SUCCESS != CheckRequiredParaExistence() || ge::GRAPH_SUCCESS != CheckEmptyTensor()) {
         return ge::GRAPH_FAILED;
     }
