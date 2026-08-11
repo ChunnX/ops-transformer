@@ -83,6 +83,118 @@ def _calculate_metadata_size():
     return 4096
 
 
+# 各 layout 期望的 tensor 维度数
+_LAYOUT_EXPECTED_NDIM = {
+    "TND": 3,
+    "BSND": 4,
+    "BNSD": 4,
+    "PA_NZ": 5,
+    "PA_BNBD": 4,
+    "N2TGD": 4,
+}
+
+
+def _validate_layout_dims(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    q_descale: torch.Tensor,
+    k_descale: torch.Tensor,
+    v_descale: torch.Tensor,
+    layout_q: str,
+    layout_q_descale: str,
+    layout_kv: str,
+    layout_out: str,
+):
+    """根据 layout 校验 q/k/v/descale 的维度数，不合法时通过 torch._check 抛出拦截信息。
+
+    维度约定:
+      Q  TND:(T,N,D)  BSND:(B,S,N,D)  BNSD:(B,N,S,D)
+      KV TND:(T,Nkv,D) BSND:(B,S,Nkv,D) BNSD:(B,Nkv,S,D)
+         PA_NZ:(BlockNum,Nkv,D//32,Bs,32)  PA_BNBD:(BlockNum,Nkv,Bs,D)
+      q_descale: 维度数与 layout_q_descale 一致 (最后一维为 group 数)
+      k_descale: 维度数与 layout_kv 一致
+      v_descale: per-channel-group, 维度数与 layout_kv 一致
+    """
+    # === Q 维度校验 ===
+    q_expected = _LAYOUT_EXPECTED_NDIM.get(layout_q)
+    torch._check(
+        q_expected is not None,
+        lambda: f"Unsupported layout_q: {layout_q!r}, expected one of TND/BSND/BNSD",
+    )
+    torch._check(
+        q.dim() == q_expected,
+        lambda: f"q with layout {layout_q} expects {q_expected} dims, but got {q.dim()} dims {tuple(q.shape)}",
+    )
+
+    # === K 维度校验 ===
+    k_expected = _LAYOUT_EXPECTED_NDIM.get(layout_kv)
+    torch._check(
+        k_expected is not None,
+        lambda: f"Unsupported layout_kv: {layout_kv!r}, expected one of TND/BSND/BNSD/PA_NZ/PA_BNBD",
+    )
+    torch._check(
+        k.dim() == k_expected,
+        lambda: f"k with layout {layout_kv} expects {k_expected} dims, but got {k.dim()} dims {tuple(k.shape)}",
+    )
+
+    # === V 维度校验 ===
+    torch._check(
+        v.dim() == k_expected,
+        lambda: f"v with layout {layout_kv} expects {k_expected} dims, but got {v.dim()} dims {tuple(v.shape)}",
+    )
+
+    # === q_descale 维度校验 ===
+    if q_descale is not None:
+        dq_expected = _LAYOUT_EXPECTED_NDIM.get(layout_q_descale)
+        torch._check(
+            dq_expected is not None,
+            lambda: f"Unsupported layout_q_descale: {layout_q_descale!r}, expected one of TND/BSND/BNSD/N2TGD",
+        )
+        torch._check(
+            q_descale.dim() == dq_expected,
+            lambda: f"q_descale with layout {layout_q_descale} expects {dq_expected} dims, "
+            f"but got {q_descale.dim()} dims {tuple(q_descale.shape)}",
+        )
+
+    # === k_descale 维度校验 ===
+    if k_descale is not None:
+        torch._check(
+            k_descale.dim() == k_expected,
+            lambda: f"k_descale with layout {layout_kv} expects {k_expected} dims, "
+            f"but got {k_descale.dim()} dims {tuple(k_descale.shape)}",
+        )
+
+    # === v_descale 维度校验 ===
+    if v_descale is not None:
+        torch._check(
+            v_descale.dim() == k_expected,
+            lambda: f"v_descale with layout {layout_kv} expects {k_expected} dims, "
+            f"but got {v_descale.dim()} dims {tuple(v_descale.shape)}",
+        )
+
+    # === layout_out 与 layout_q 一致性校验 ===
+    torch._check(
+        layout_out in ("TND", "BSND", "BNSD"),
+        lambda: f"Unsupported layout_out: {layout_out!r}, expected one of TND/BSND/BNSD",
+    )
+    if layout_out == "TND":
+        torch._check(
+            layout_q == "TND",
+            lambda: f"When layout_out is TND, layout_q must be TND, but got {layout_q}",
+        )
+    elif layout_out == "BNSD":
+        torch._check(
+            layout_q == "BNSD",
+            lambda: f"When layout_out is BNSD, layout_q must be BNSD, but got {layout_q}",
+        )
+    else:  # BSND
+        torch._check(
+            layout_q in ("BSND", "BNSD"),
+            lambda: f"When layout_out is BSND, layout_q must be BSND or BNSD, but got {layout_q}",
+        )
+
+
 class QuantFlashAttnOpBuilder(OpBuilder):
     def __init__(self):
         super(QuantFlashAttnOpBuilder, self).__init__("quant_flash_attn")
@@ -174,6 +286,12 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             layout_out: Optional[str] = "BSND",
             return_softmax_lse: Optional[bool] = False,
         ):
+            # 根据 layout 校验 q/k/v/descale 维度
+            _validate_layout_dims(
+                q, k, v, q_descale, k_descale, v_descale,
+                layout_q, layout_q_descale, layout_kv, layout_out,
+            )
+
             if layout_q == "TND":
                 t_size = q.size(0)
                 n_size = q.size(1)
@@ -197,23 +315,10 @@ class QuantFlashAttnOpBuilder(OpBuilder):
                 d_size = v.size(3)
 
             if layout_out == "TND":
-                torch._check(
-                    layout_q == "TND",
-                    lambda: f"When the layout of output is TND, the layout of query must be TND, but got {layout_q}",
-                )
                 attention_out_size = (t_size, n_size, d_size)
             elif layout_out == "BNSD":
-                torch._check(
-                    layout_q == "BNSD",
-                    lambda: f"When the layout of output is BNSD, the layout of query must be BNSD, but got {layout_q}",
-                )
                 attention_out_size = (b_size, n_size, s_size, d_size)
             else:
-                torch._check(
-                    layout_q != "TND",
-                    lambda: f"When the layout of output is BSND, the layout of query "
-                    f"must be BNSD or BSND, but got {layout_q}",
-                )
                 attention_out_size = (b_size, s_size, n_size, d_size)
 
             return (
@@ -374,6 +479,11 @@ def quant_flash_attn(
     """
     quant_mode = _resolve_quant_mode(quant_mode)
     mask_mode = _resolve_mask_mode(mask_mode)
+    # 根据 layout 校验 q/k/v/descale 维度，拦截非法输入
+    _validate_layout_dims(
+        q, k, v, q_descale, k_descale, v_descale,
+        layout_q, layout_q_descale, layout_kv, layout_out,
+    )
     op_module = quant_flash_attn_op_builder.load()
     return op_module.quant_flash_attn(
         q,
