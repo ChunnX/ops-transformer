@@ -58,7 +58,7 @@ template <typename CommunicationType, typename TransposeType, typename Computati
 __aicore__ inline void AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType, ContextType>::Init()
 {
     commStage_->Init();
-    computeStage_->Init();
+    // computeStage_->Init();
 }
 
 template <typename CommunicationType, typename TransposeType, typename ComputationType, typename ContextType>
@@ -80,15 +80,15 @@ AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType, Contex
         if ASCEND_IS_AIV {
             commStage_->Process(index);
             AscendC::SyncAll<true>();
-            transStage_->Process(index);
+            // transStage_->Process(index);
             // 核间使用软同步，当前搭配的matmul没有使用软同步标识索引8和9，后续如果matmul有变化需要同步调整
-            AscendC::CrossCoreSetFlag<0, PIPE_MTE3>(8);
-            AscendC::CrossCoreWaitFlag(8);
-            AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(9);
+            // AscendC::CrossCoreSetFlag<0, PIPE_MTE3>(8);
+            // AscendC::CrossCoreWaitFlag(8);
+            // AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(9);
         }
         if ASCEND_IS_AIC {
-            AscendC::CrossCoreWaitFlag(9);
-            computeStage_->Process(index);
+            // AscendC::CrossCoreWaitFlag(9);
+            // computeStage_->Process(index);
         }
     }
 }
@@ -97,7 +97,7 @@ template <typename CommunicationType, typename TransposeType, typename Computati
 __aicore__ inline void AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType, ContextType>::End()
 {
     commStage_->End();
-    computeStage_->End();
+    // computeStage_->End();
 }
 }; // namespace Mc2Kernel
 
