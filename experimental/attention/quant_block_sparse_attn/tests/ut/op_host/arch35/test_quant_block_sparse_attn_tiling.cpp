@@ -45,6 +45,7 @@ static void SetStride(TensorDesc &td, uint64_t stride0, uint64_t stride1, uint64
     td.stride_.SetStride(1U, stride1);
     td.stride_.SetStride(2U, stride2);
     td.stride_.SetStride(3U, stride3);
+    td.stride_.SetDimNum(4U);
     td.hasStride_ = true;
 }
 
