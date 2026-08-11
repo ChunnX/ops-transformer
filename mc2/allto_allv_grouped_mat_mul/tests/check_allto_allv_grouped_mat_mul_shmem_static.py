@@ -178,6 +178,41 @@ def check_pta_bridge() -> None:
             "PTA bridge must not initialize or call HCCL")
 
 
+def check_pta_build() -> None:
+    cmake = read("examples/arch35/pta/CMakeLists.txt")
+    for token in (
+        "find_package(Python3 REQUIRED COMPONENTS Interpreter Development)",
+        "find_package(Torch REQUIRED)",
+        "cxx_std_17",
+        "SHMEM_HOME_PATH",
+        "SHMEM_HOME",
+        "CUST_OPAPI_LIBRARY",
+        "CUST_OPAPI_INCLUDE_DIR",
+        "torch_npu",
+        "ascendcl",
+        "shmem_utils",
+        "LIBRARY_OUTPUT_DIRECTORY",
+    ):
+        require(token in cmake, f"PTA CMake missing contract token: {token}")
+
+    build = read("examples/arch35/pta/build_pta.sh")
+    for token in (
+        "set -euo pipefail",
+        "ASCEND_HOME_PATH",
+        "SHMEM_HOME_PATH",
+        "SHMEM_HOME",
+        "CUST_OPAPI_LIBRARY",
+        "PYTHON_BIN",
+        "torch.utils.cmake_prefix_path",
+        "import torch_npu",
+        "cmake -S",
+        "cmake --build",
+    ):
+        require(token in build, f"PTA build script missing contract token: {token}")
+    require("liballto_allv_grouped_mat_mul_shmem_pta.so" in build,
+            "PTA build script must print and verify the expected shared library")
+
+
 def check_cases() -> None:
     precision = load_jsonl("tests/precision/allto_allv_grouped_mat_mul_shmem_precision_cases.jsonl")
     perf = load_jsonl("tests/performance/allto_allv_grouped_mat_mul_shmem_perf_cases.jsonl")
@@ -203,7 +238,14 @@ def check_cases() -> None:
 
 
 def main() -> int:
-    checks = [check_public_abi, check_registration_and_binary, check_tiling_and_kernel, check_pta_bridge, check_cases]
+    checks = [
+        check_public_abi,
+        check_registration_and_binary,
+        check_tiling_and_kernel,
+        check_pta_bridge,
+        check_pta_build,
+        check_cases,
+    ]
     for check in checks:
         check()
         print(f"PASS {check.__name__}")
