@@ -100,7 +100,7 @@ struct GroupedMatMulAllToAllVUdmaConfig {
     using BlockMmadScheduler =
         Catccos::DGemm::Block::BlockMmadSchedulerReduceScatterAllToAllV<MoeConstraints>;
     using BlockCommScheduler =
-        Catccos::Comm::Block::BlockCommSchedulerReduceScatterAllToAllV<
+        Catccos::CommEpilogue::Block::BlockCommSchedulerReduceScatterAllToAllV<
             MoeConstraints, kIsDynamic, void>;
     using CType = Catlass::Gemm::GemmType<ElementC, LayoutC>;
     using TileLocalCopy = Catccos::Comm::Tile::TileRemoteCopy<

@@ -24,6 +24,7 @@ def test_kernel_configuration_matches_bf16_udma_get_example():
         ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma_device.h"
     ).read_text(encoding="utf-8")
     assert "MoeConstraints<1, 8, 32>" in source
+    assert "CommEpilogue::Block::BlockCommSchedulerReduceScatterAllToAllV" in source
     assert "CopyDirect::Get" in source
     assert "CopyTransport::Mte" in source
     assert "200UL * 1024 * 1024 * sizeof(uint16_t)" in source
