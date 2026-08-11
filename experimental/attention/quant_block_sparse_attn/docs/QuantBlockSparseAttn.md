@@ -364,7 +364,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>return_softmax_lse=True:(N1,T1); return_softmax_lse=False:()</td>
     </tr>
   </tbody>
-</table>
+  </table>
 
 ## 返回值
 
