@@ -44,6 +44,7 @@ __aicore__ inline void GmmAddTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR groupL
         ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename GroupedMatmulAddKernel::Params;
     using GMMAddTiling = typename GroupedMatmulAddKernel::GMMAddTiling;
+    using BlockSchedulerParams = typename BlockScheduler::Params;
 
     const uint64_t baseM = static_cast<uint64_t>(mmTilingData.baseM);
     const uint64_t baseN = static_cast<uint64_t>(mmTilingData.baseN);
@@ -53,9 +54,17 @@ __aicore__ inline void GmmAddTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR groupL
     const uint64_t kL1 = baseK * Blaze::Gemm::Max(sharedKStep, static_cast<uint64_t>(1));
 
     GMMAddTiling gmmParams{static_cast<uint32_t>(gmmAddParams.groupNum),
-                           static_cast<uint32_t>(gmmAddParams.groupListType),
-                           static_cast<uint64_t>(gmmAddParams.mTailCnt),
-                           static_cast<uint64_t>(gmmAddParams.nTailCnt)};
+                           static_cast<uint32_t>(gmmAddParams.groupListType)};
+    constexpr uint32_t nTailAlign = BlockMmad::WEIGHT_NZ_FORMAT ?
+                                        static_cast<uint32_t>(AscendC::Te::C0_ELEMENT<BType>) :
+                                        1U;
+    BlockSchedulerParams schedulerParams{static_cast<int32_t>(baseM),
+                                         static_cast<int32_t>(baseN),
+                                         static_cast<int32_t>(baseK),
+                                         static_cast<uint64_t>(gmmAddParams.mTailCnt),
+                                         static_cast<uint64_t>(gmmAddParams.nTailCnt),
+                                         1U,
+                                         nTailAlign};
     typename BlockMmad::Params mmParams{
         x,
         weight,
@@ -77,7 +86,7 @@ __aicore__ inline void GmmAddTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR groupL
                               static_cast<int64_t>(mmTilingData.N),
                               static_cast<int64_t>(mmTilingData.Ka),
                               static_cast<int64_t>(1)};
-    Params params{problemShape, mmParams, {}, gmmParams};
+    Params params{problemShape, mmParams, {}, schedulerParams, gmmParams};
     GroupedMatmulAddKernel kernel;
     kernel(params);
 }
