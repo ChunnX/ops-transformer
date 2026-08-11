@@ -145,6 +145,191 @@ grep -c "FAILED" /tmp/install_vllm_ascend_j1.log
 tail -3 /tmp/install_vllm_ascend_j1.log
 ```
 
+## 步骤六：安装 memfabric_hybrid 和 memcache
+
+> 必须先安装 memfabric_hybrid，再安装 memcache（memcache 依赖 memfabric）
+
+### 6.1 安装 memfabric_hybrid
+
+```bash
+# 下载代码（切换到 v1.0.0 分支）
+cd /home
+git clone -b v1.0.0 https://gitcode.com/Ascend/memfabric_hybrid
+cd memfabric_hybrid
+git clean -xdf
+git reset --hard
+
+# 拉取第三方库
+git submodule update --recursive --init
+
+# pybind11 版本不能超过 3.0.1（否则编译报错：def_property family does not currently support call_guard）
+pip install pybind11==3.0.1
+
+# 编译
+# build_and_pack_run.sh 支持三个参数：<build_mode> <build_python> <xpu_type>
+# build_mode: RELEASE 或 DEBUG，默认 RELEASE
+# build_python: ON 或 OFF，默认 ON
+# xpu_type: NPU 或 GPU，默认 NPU
+bash script/build_and_pack_run.sh --build_mode RELEASE --build_python ON --xpu_type NPU
+
+# 安装，编译完后会生成 run 包到 output 目录，格式为 memfabric-hybrid-${version}_${os}_${arch}.run
+cd output
+bash memfabric_hybrid-1.0.0_linux_aarch64.run
+source /usr/local/memfabric_hybrid/set_env.sh
+
+# 检查 whl 包是否安装成功，未安装则手动安装
+pip show memfabric_hybrid
+cd /usr/local/memfabric_hybrid/1.0.0/aarch64-linux/wheel
+pip install memfabric_hybrid-1.0.0-cp311-cp311-linux_aarch64.whl
+```
+
+#### memfabric_hybrid 安装目录结构
+
+```
+/usr/local/memfabric_hybrid
+├── 1.0.0
+│   ├── aarch64-linux
+│   │   ├── bin
+│   │   ├── include
+│   │   │   ├── hybm
+│   │   │   │   ├── hybm.h
+│   │   │   │   ├── hybm_big_mem.h
+│   │   │   │   ├── hybm_data_op.h
+│   │   │   │   └── hybm_def.h
+│   │   │   └── smem
+│   │   │       ├── device
+│   │   │       │   ├── smem_shm_aicore_base_api.h
+│   │   │       │   ├── smem_shm_aicore_base_copy.h
+│   │   │       │   ├── smem_shm_aicore_base_define.h
+│   │   │       │   ├── smem_shm_aicore_base_meta.h
+│   │   │       │   └── smem_shm_aicore_base_rdma.h
+│   │   │       └── host
+│   │   │           ├── smem.h
+│   │   │           ├── smem_bm.h
+│   │   │           ├── smem_bm_def.h
+│   │   │           ├── smem_shm.h
+│   │   │           ├── smem_shm_def.h
+│   │   │           ├── smem_trans.h
+│   │   │           └── smem_trans_def.h
+│   │   ├── lib64
+│   │   │   ├── libmf_hybm_core.so
+│   │   │   └── libmf_smem.so
+│   │   ├── script
+│   │   │   ├── certs
+│   │   │   │   ├── generate_client_cert.py
+│   │   │   │   ├── generate_crl.py
+│   │   │   │   ├── generate_root_cert.py
+│   │   │   │   └── generate_server_cert.py
+│   │   │   └── mock_server
+│   │   └── wheel
+│   │       ├── mf_adapter-1.0.0-cp311-cp311-linux_aarch64.whl
+│   │       └── memfabric_hybrid-1.0.0-cp311-cp311-linux_aarch64.whl
+│   ├── uninstall.sh
+│   └── version.info
+├── latest -> 1.0.0
+└── set_env.sh
+```
+
+### 6.2 安装 memcache
+
+```bash
+# 下载代码（切换到 v1.0.0 分支）
+cd /home
+git clone -b v1.0.0 https://gitcode.com/Ascend/memcache
+cd memcache
+git clean -xdf
+git reset --hard
+
+# 拉取第三方库
+git submodule update --recursive --init
+git submodule update --remote 3rdparty/memfabric_hybrid
+
+# 编译
+# build_and_pack_run.sh 支持两个参数：<build_mode> <build_python>
+# build_mode: RELEASE 或 DEBUG
+# build_python: ON 或 OFF
+bash script/build_and_pack_run.sh --build_mode RELEASE
+
+# 安装，编译完后会生成 run 包到 output 目录，格式为 memcache_hybrid-${version}_${os}_${arch}.run
+cd output
+bash memcache_hybrid-1.0.0_linux_aarch64.run
+source /usr/local/memcache_hybrid/set_env.sh
+
+# 检查 whl 包是否安装成功，未安装则手动安装
+pip show memcache_hybrid
+cd /usr/local/memcache_hybrid/1.0.0/aarch64-linux/wheel
+pip install memcache_hybrid-1.0.0-cp311-cp311-linux_aarch64.whl
+```
+
+#### memcache 安装目录结构
+
+```
+/usr/local/memcache_hybrid/
+├── 1.0.0
+│   ├── aarch64-linux
+│   │   ├── bin
+│   │   │   └── mmc_meta_service
+│   │   ├── include
+│   │   │   └── memcache
+│   │   │       ├── cpp
+│   │   │       │   └── mmcache.h
+│   │   │       ├── mmc.h
+│   │   │       ├── mmc_client.h
+│   │   │       ├── mmc_def.h
+│   │   │       └── mmc_service.h
+│   │   ├── lib64
+│   │   │   ├── _pymmc.cpython-311-aarch64-linux-gnu.so
+│   │   │   └── libmf_memcache.so
+│   │   ├── logs
+│   │   │   ├── mmc-meta-audit.log
+│   │   │   └── mmc-meta.log
+│   │   ├── script
+│   │   │   ├── ha
+│   │   │   │   └── test-mmc-meta-ha.py
+│   │   │   ├── k8s_deploy
+│   │   │   │   ├── account-role-demo.yaml
+│   │   │   │   ├── local-pods-demo.yaml
+│   │   │   │   ├── meta-cluster-ip-demo.yaml
+│   │   │   │   ├── meta-lease-lock-demo.yaml
+│   │   │   │   └── meta-pods-demo.yaml
+│   │   │   └── mock_server
+│   │   │       ├── server.py
+│   │   │       └── smem_bm_server.py
+│   │   └── wheel
+│   │       └── memcache_hybrid-1.0.0-cp311-cp311-linux_aarch64.whl
+│   ├── config
+│   │   ├── mmc-local.conf
+│   │   └── mmc-meta.conf
+│   ├── uninstall.sh
+│   └── version.info
+├── latest -> 1.0.0
+└── set_env.sh
+```
+
+### 6.3 编译问题排查
+
+**问题**：pybind11 版本过高导致编译失败
+
+```
+error: static assertion failed: def_property family does not currently support call_guard. Use a py::cpp_function instead.
+```
+
+**修复**：降级 pybind11 到 3.0.1
+
+```bash
+pip install pybind11==3.0.1
+```
+
+然后清理 build 目录重新编译：
+
+```bash
+cd /home/memfabric_hybrid  # 或 /home/memcache
+git clean -xdf
+git reset --hard
+git submodule update --recursive --init
+bash script/build_and_pack_run.sh --build_mode RELEASE --build_python ON --xpu_type NPU
+```
+
 ## 环境信息
 
 - 服务器：121.37.53.41 (SSH端口 10001)
@@ -152,5 +337,8 @@ tail -3 /tmp/install_vllm_ascend_j1.log
 - 容器：tyy_b120
 - 基础镜像：quay.io/ascend/vllm-ascend:v0.20.2rc1
 - Python：3.11.15
-- vllm：0.19.0+empty
+- vllm：0.19.0+empty (源码可编辑安装)
 - vllm-ascend：0.1.dev1 (源码可编辑安装)
+- memfabric_hybrid：1.0.8
+- memcache_hybrid：1.0.4
+- pybind11：3.0.1 (降级以兼容 memfabric 编译)
