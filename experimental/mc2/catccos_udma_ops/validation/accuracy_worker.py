@@ -40,8 +40,14 @@ def _make_tensor(shape, distribution, device, generator):
 
 
 def _golden(x, weight, route_matrix, rank, world_size, expert_num):
-    gathered = [torch.empty_like(x) for _ in range(world_size)]
-    dist.all_gather(gathered, x)
+    # Keep the validation control plane on the host.  Initializing an HCCL
+    # communicator after ACLSHMEM has claimed the UDMA/HDC resources can fail,
+    # and an HCCL collective would make the Golden depend on a second device
+    # communication implementation.  Gloo gathers FP32 CPU inputs instead.
+    x_cpu = x.detach().float().cpu()
+    weight_cpu = weight.detach().float().cpu()
+    gathered = [torch.empty_like(x_cpu) for _ in range(world_size)]
+    dist.all_gather(gathered, x_cpu)
     local_experts = expert_num // world_size
     expert_outputs = []
     for local_expert in range(local_experts):
@@ -53,8 +59,8 @@ def _golden(x, weight, route_matrix, rank, world_size, expert_num):
             end = start + counts[global_expert]
             pieces.append(source_x[start:end])
         expert_input = torch.cat(pieces, dim=0)
-        expert_outputs.append(expert_input.float().matmul(weight[local_expert].float()))
-    return torch.cat(expert_outputs, dim=0).to(torch.bfloat16)
+        expert_outputs.append(expert_input.matmul(weight_cpu[local_expert]))
+    return torch.cat(expert_outputs, dim=0).to(dtype=torch.bfloat16, device=x.device)
 
 
 def _padding_stats(tensor, valid_rows):
@@ -186,6 +192,13 @@ def main():
     all_passed = True
     try:
         torch_npu.npu.set_device(local_rank)
+        if not dist.is_gloo_available():
+            raise RuntimeError(
+                "validation requires PyTorch Gloo support for host-side rank coordination"
+            )
+        dist.init_process_group("gloo", rank=rank, world_size=world_size)
+        initialized_dist = True
+        dist.barrier()
         init_method = udma_init_method_from_env()
         if rank == 0:
             print("UDMA bootstrap: {}".format(init_method), flush=True)
@@ -194,8 +207,6 @@ def main():
             init_method=init_method,
         )
         initialized_udma = True
-        dist.init_process_group("hccl", rank=rank, world_size=world_size)
-        initialized_dist = True
         for case in cases:
             summary = _run_case(case, rank, world_size, device, output_root)
             dist.barrier()

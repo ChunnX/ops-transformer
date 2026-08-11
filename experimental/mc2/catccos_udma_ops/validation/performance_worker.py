@@ -55,6 +55,13 @@ def main():
     out = None
     try:
         torch_npu.npu.set_device(local_rank)
+        if not dist.is_gloo_available():
+            raise RuntimeError(
+                "validation requires PyTorch Gloo support for host-side rank coordination"
+            )
+        dist.init_process_group("gloo", rank=rank, world_size=world_size)
+        initialized_dist = True
+        dist.barrier()
         init_method = udma_init_method_from_env()
         if rank == 0:
             print("UDMA bootstrap: {}".format(init_method), flush=True)
@@ -63,8 +70,6 @@ def main():
             init_method=init_method,
         )
         initialized_udma = True
-        dist.init_process_group("hccl", rank=rank, world_size=world_size)
-        initialized_dist = True
         generator = torch.Generator(device="cpu")
         generator.manual_seed(case["seed"] + rank)
         x = _make_tensor((shape["m"], shape["k"]), case["input_distribution"], device, generator)

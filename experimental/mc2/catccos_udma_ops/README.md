@@ -120,11 +120,12 @@ The installed-Wheel equivalent is `ops-transformer-udma-accuracy`; the
 performance command below is likewise available as
 `ops-transformer-udma-performance`.
 
-The independent Golden uses HCCL only to collect each source rank's packed
-input, reconstructs the destination expert slices from the route matrix, and
-performs FP32 matmul followed by BF16 conversion. HCCL is not used as a Golden
-for the fused communication semantics. Both the ordinary staging path and the
-symmetric-input/reusable-output path are checked.
+The validation control plane uses CPU Gloo, keeping HCCL off the device path so
+it cannot contend with ACLSHMEM for UDMA/HDC resources or pollute device-side
+profiling. The independent Golden gathers each source rank's packed input as an
+FP32 CPU tensor, reconstructs destination-expert slices from the route matrix,
+and performs CPU FP32 matmul followed by BF16 conversion. Both the ordinary
+staging path and the symmetric-input/reusable-output path are checked.
 
 Pass/fail follows the
 [opbase experimental precision standard](https://gitcode.com/cann/opbase/blob/master/docs/zh/ops_precision_standard/experimental_standard.md)
@@ -146,7 +147,7 @@ bash scripts/run_performance.sh --case-id aligned_m128_n256_k256_ep2_uniform \
   --output-dir /tmp/udma_perf_current
 ```
 
-Preprocessing, allocation and HCCL host barriers are outside the selected
+Preprocessing, allocation and Gloo host barriers are outside the selected
 operator rows. Before each measured repeat, all ranks enter a host barrier and
 issue primer launches. For every measured iteration the parser aligns the
 occurrence index across devices, records all device durations, and defines the
