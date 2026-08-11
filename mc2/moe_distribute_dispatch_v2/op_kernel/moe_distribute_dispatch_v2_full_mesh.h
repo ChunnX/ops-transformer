@@ -872,11 +872,20 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SendToMoeExpert(TQ
                 if (isScalingDownFlag_) {
                     toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
                 }
+                // 旋转源rank槽 (epRankId_+toRankId)%W；弹性回退非旋转，与读回配对
                 GM_ADDR rankGM = (__gm__ uint8_t *)(GetWindAddrByRankId(toRankId) +
-                                                    (expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_ +
-                                                                            dstExpertId % moeExpertNumPerRank_)) +
+                                                    expertPerSizeOnWin_ * (((epRankId_ + toRankId) % epWorldSize_) *
+                                                                           moeExpertNumPerRank_ +
+                                                                           dstExpertId % moeExpertNumPerRank_) +
                                                     hCommuSize_ * dstTokenPreCnt); // 计算地址偏移
                 dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)rankGM);
+                if (hasElasticInfoFlag_) { // 弹性：回退非旋转，与读回守卫对称
+                    rankGM = (__gm__ uint8_t *)(GetWindAddrByRankId(toRankId) +
+                                                expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_ +
+                                                                       dstExpertId % moeExpertNumPerRank_) +
+                                                hCommuSize_ * dstTokenPreCnt);
+                    dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)rankGM);
+                }
                 if constexpr ((QuantMode > UNQUANT) ||
                               (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
                     uint32_t quantExpertIdx = dstExpertId + sharedExpertNum_;
@@ -987,11 +996,20 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
                 toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
             }
 
+            // 旋转源rank槽 (epRankId_+toRankId)%W；弹性回退非旋转，与读回配对
             GM_ADDR rankGM = (__gm__ uint8_t *)(GetWindAddrByRankId(toRankId) +
-                                                expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_ +
+                                                expertPerSizeOnWin_ * (((epRankId_ + toRankId) % epWorldSize_) *
+                                                                       moeExpertNumPerRank_ +
                                                                        dstExpertId % moeExpertNumPerRank_) +
                                                 hCommuSize_ * curExpertCnt);
             dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)rankGM);
+            if (hasElasticInfoFlag_) { // 弹性：回退非旋转，与读回守卫对称
+                rankGM = (__gm__ uint8_t *)(GetWindAddrByRankId(toRankId) +
+                                            expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_ +
+                                                                   dstExpertId % moeExpertNumPerRank_) +
+                                            hCommuSize_ * curExpertCnt);
+                dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)rankGM);
+            }
 
             // Copy stride: srcTensor → outTensor_[slot]，slot 在批次内循环复用
             uint32_t slotOffInt32 = (ki - batchStart) * hCommuSize_ / sizeof(int32_t);
@@ -1868,12 +1886,11 @@ __aicore__ inline uint32_t
 MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GetLocalWindowSrcDataBlockIdx(
     uint32_t srcExpertId, uint32_t localExpertNum)
 {
+    // 旋转源rank槽位：与写侧寻址配对
     uint32_t srcDataBlockIdx = srcExpertId % epWorldSize_ * localExpertNum + srcExpertId / epWorldSize_;
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     if (!(isShareExpertRankFlag_ || hasElasticInfoFlag_)) {
         srcDataBlockIdx = (srcExpertId + epRankId_) % epWorldSize_ * localExpertNum + srcExpertId / epWorldSize_;
     }
-#endif
     return srcDataBlockIdx;
 }
 
