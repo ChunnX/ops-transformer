@@ -490,8 +490,7 @@ public:
         LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
         if (unlikely(runInfo.isFirstS2Loop)) {
-            DataCopy(vec2ResUb, mmRes, vec2CalcSize);
-            Muls(vec2ResUb, vec2ResUb, vScaleValue_, vec2CalcSize);
+            Muls(vec2ResUb, mmRes, vScaleValue_, vec2CalcSize);
         } else {
             LocalTensor<T> expUb = softmaxExpBuf_[runInfo.loop % (PRELOAD_N + 1)].template Get<T>();
             LocalTensor<T> pScaleUb;
