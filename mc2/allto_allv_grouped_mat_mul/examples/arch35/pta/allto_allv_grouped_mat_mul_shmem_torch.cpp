@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -68,6 +69,11 @@ void CheckAcl(int32_t status, const char *api, int64_t rank)
 void CheckShmem(int64_t status, const char *api, int64_t rank)
 {
     TORCH_CHECK(status == ACLSHMEM_SUCCESS, api, " failed on rank ", rank, ", ret=", status);
+}
+
+void ShmemLogCallback(int level, const char *message)
+{
+    std::cerr << "[aclshmem][level=" << level << "] " << (message == nullptr ? "<null>" : message) << std::endl;
 }
 
 void FillShmemAttr(int64_t rank, int64_t worldSize, int64_t heapBytes, const std::string &ipPort,
@@ -169,6 +175,7 @@ int64_t Init(int64_t rank, int64_t worldSize, int64_t heapBytes, const std::stri
     TORCH_CHECK(heapBytes > 0, "heap_bytes must be positive, got ", heapBytes);
     TORCH_CHECK(!ipPort.empty(), "ip_port must not be empty");
 
+    CheckShmem(aclshmemx_set_extern_logger(&ShmemLogCallback), "aclshmemx_set_extern_logger", rank);
     CheckShmem(aclshmemx_set_conf_store_tls(false, nullptr, 0), "aclshmemx_set_conf_store_tls", rank);
     aclshmemx_init_attr_t attr{};
     aclshmemx_uniqueid_t uniqueId{};

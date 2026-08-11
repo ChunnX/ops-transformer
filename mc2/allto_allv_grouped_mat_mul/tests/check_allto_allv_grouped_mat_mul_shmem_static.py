@@ -164,6 +164,7 @@ def check_pta_bridge() -> None:
         'm.def("barrier() -> int")',
         'm.def("finalize() -> int")',
         "aclshmemx_init_attr",
+        "aclshmemx_set_extern_logger",
         "shmemx_get_ffts_config",
         "aclshmem_malloc",
         "aclshmem_calloc",
@@ -288,6 +289,7 @@ def check_pta_run_and_docs() -> None:
         "SHMEM_HOME_PATH",
         "SHMEM_HOME",
         "LD_LIBRARY_PATH",
+        "SHMEM_LOG_LEVEL",
         "SHMEM runtime library directory",
         '"$@"',
     ):

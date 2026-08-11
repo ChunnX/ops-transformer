@@ -49,12 +49,14 @@ else
 fi
 prepend_runtime_dir "/usr/local/Ascend/driver/lib64/driver"
 export LD_LIBRARY_PATH
+export SHMEM_LOG_LEVEL=${SHMEM_LOG_LEVEL:-INFO}
 
 if [[ -z "$SHMEM_RUNTIME_LIBRARY_DIR" ]]; then
     echo "SHMEM runtime library directory does not contain libshmem.so; check SHMEM_HOME_PATH/SHMEM_HOME" >&2
     exit 1
 fi
 echo "SHMEM runtime library directory: $SHMEM_RUNTIME_LIBRARY_DIR"
+echo "SHMEM log level: $SHMEM_LOG_LEVEL"
 
 if [[ ! -f "$PTA_LIBRARY" ]]; then
     echo "Missing PTA library: $PTA_LIBRARY" >&2
