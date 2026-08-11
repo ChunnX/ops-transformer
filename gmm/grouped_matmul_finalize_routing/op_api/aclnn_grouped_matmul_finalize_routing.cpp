@@ -1167,7 +1167,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
     CHECK_RET(retxweightnullptr == ACLNN_SUCCESS, retxweightnullptr);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && dtype != 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "GroupedMatmulFinalizeRoutingWeightNzV2 dtype must be 0, but is %lld.", dtype);
+                "GroupedMatmulFinalizeRoutingWeightNzV2 dtype must be 0 (FLOAT32), but is %lld.", dtype);
         return ACLNN_ERR_PARAM_INVALID;
     }
     auto viewShape = x2->GetViewShape();
@@ -1508,7 +1508,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
 
     int64_t viewDimNum = x2->GetViewShape().GetDimNum();
     if (dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulFinalizeRoutingV3 dtype must be 0, but is %lld.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulFinalizeRoutingV3 dtype must be 0 (FLOAT32), but is %lld.",
                 dtype);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (viewDimNum < MIN_DIM_NUM_ND) {
