@@ -7,8 +7,12 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
+from .moe_finalize_routing_grad import moe_finalize_routing_grad
 from .moe_finalize_routing import moe_finalize_routing
+from .moe_init_routing_grad import moe_init_routing_grad
+from .moe_init_routing import moe_init_routing
+
+from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
 from .moe_token_permute import moe_token_permute
 from .mega_moe import get_symm_buffer_for_mega_moe, mega_moe
 from .deep_ep import MoeDistributeBuffer
@@ -65,6 +69,5 @@ from .dense_lightning_indexer_softmax_lse import (
     dense_lightning_indexer_softmax_lse,
     dense_lightning_indexer_softmax_lse_metadata,
 )
-from .moe_init_routing import moe_init_routing
 from .moe_re_routing import moe_re_routing
 from . import graph_convert as _graph_convert
