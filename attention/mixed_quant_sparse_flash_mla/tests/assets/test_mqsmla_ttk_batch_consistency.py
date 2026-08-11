@@ -36,12 +36,12 @@ def batch_kwargs(slices, seed, sequence_slices=None):
     axes = (0,) if sequence_slices is None else (0, 1)
     slice_groups = (tuple(slices),)
     seed_groups = (tuple(seed for _ in slices),)
-    ids = [tuple(f"{seed}_0_{start}_{stop}_{step}"
+    ids = [tuple(f"{seed}_0_{len(range(start, stop, step))}_{step}"
                  for start, stop, step in slices)]
     if sequence_slices is not None:
         slice_groups += (tuple(sequence_slices),)
         seed_groups += (tuple(seed for _ in sequence_slices),)
-        ids.append(tuple(f"{seed}_1_{start}_{stop}_{step}"
+        ids.append(tuple(f"{seed}_1_{len(range(start, stop, step))}_{step}"
                          for start, stop, step in sequence_slices))
     return {
         "batch_consistency_id": (tuple(ids),),
@@ -350,6 +350,58 @@ def test_non_batch_case_does_not_invent_pytest_geometry():
     assert "tile_size" not in params
 
 
+def test_quant_mode_two_uses_pytest_logical_pa_key_without_assets_rebuild():
+    q = torch.empty((1, 1, 1, 512), dtype=torch.bfloat16)
+    ori_kv = torch.empty((1, 2, 1, 584), dtype=torch.float8_e4m3fn)
+    ori_block_table = torch.empty((1, 1), dtype=torch.int32)
+    seqused_q = torch.empty((1,), dtype=torch.int32)
+    seqused_ori_kv = torch.empty((1,), dtype=torch.int32)
+    sinks = torch.empty((1,), dtype=torch.float32)
+
+    data = INPUTS_MODULE.generate_mixed_quant_sparse_flash_mla_inputs(
+        q,
+        ori_kv=ori_kv,
+        ori_block_table=ori_block_table,
+        seqused_q=seqused_q,
+        seqused_ori_kv=seqused_ori_kv,
+        sinks=sinks,
+        testcase_name="MQSMLA_Q2_REPLAY_DECODER",
+        layout_q="BSND",
+        layout_kv="PA_BBND",
+        S1=1,
+        S2=2,
+        block_num1=1,
+        block_num2=0,
+        block_size1=2,
+        block_size2=2,
+        quant_mode=2,
+        tile_size=64,
+        rope_head_dim=64,
+        softmax_scale=0.04419417,
+        cmp_ratio=1,
+        ori_mask_mode=4,
+        cmp_mask_mode=0,
+        ori_win_left=127,
+        ori_win_right=0,
+        return_softmax_lse=False,
+        has_ori_kv=True,
+        has_cmp_kv=False,
+        template_run_mode="SWA",
+        cu_seqlens_q_values=[0, 1],
+        seqused_q_values=[1],
+        seqused_ori_kv_values=[2],
+        cu_seqlens_ori_kv_values=[0, 2],
+        input_ranges=((-1, 1), (-1, 1), None),
+    )
+    assert data["metadata_input"]["quant_mode"] == 2
+    assert data["metadata_input"]["rope_head_dim"] == 64
+    assert torch.equal(
+        ori_kv.contiguous().view(torch.uint8),
+        data["op_input"]["ori_kv"].contiguous().view(torch.uint8),
+    )
+    assert data["golden_state"]["ori_k_bnsd"] is not None
+
+
 def test_batch_input_adapter_generates_equal_full_case_slices():
     batch_size = 2
     q = torch.empty((batch_size, 1, 64, 512), dtype=torch.bfloat16)
@@ -413,4 +465,9 @@ def test_batch_input_adapter_generates_equal_full_case_slices():
     assert cmp_residual_kv.tolist() == [0, 0]
     data = INPUTS_MODULE.INPUT_ADAPTER.load_golden_store().CASE_DATA.get(testcase_name)
     assert data is not None
+    assert data["op_input"]["cu_seqlens_q"] is None
+    assert data["op_input"]["cu_seqlens_ori_kv"] is None
+    assert data["op_input"]["cu_seqlens_cmp_kv"] is None
+    assert data["cpu_output"] is None
+    INPUTS_MODULE.INPUT_ADAPTER.load_golden_store().materialize_golden(data)
     assert data["cpu_output"] is not None
