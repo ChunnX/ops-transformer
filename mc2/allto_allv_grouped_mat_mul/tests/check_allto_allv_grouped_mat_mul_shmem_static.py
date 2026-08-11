@@ -105,6 +105,8 @@ def check_tiling_and_kernel() -> None:
         "Per-peer send/recv totals must fit the source uint32 scheduler",
     ):
         require(token in tiling, f"missing source tiling invariant: {token}")
+    require("uint32_t aicCoreNum, ::TCubeTiling &tiling)" in normalized(tiling),
+            "host tiling must use the global TCubeTiling type stored in kernel tiling data")
     require(tiling.count("GetStorageFormat() != ge::FORMAT_ND") == 4,
             "tiling must enforce ND for x/weight/context/y")
 

@@ -48,7 +48,7 @@ bool MulOverflow(uint64_t lhs, uint64_t rhs, uint64_t &out)
 }
 
 ge::graphStatus BuildMatmulTiling(const gert::TilingContext *context, uint32_t m0, uint32_t n0, uint32_t k,
-                                  uint32_t aicCoreNum, TCubeTiling &tiling)
+                                  uint32_t aicCoreNum, ::TCubeTiling &tiling)
 {
     matmul_tiling::MultiCoreMatmulTiling mm;
     mm.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
