@@ -44,9 +44,15 @@ The current single-VReg softmax implementation supports physical `N <= 64`. Netw
 `N=8`, `D=7168`, `S in {18,24}`, and `T in {1,2,4,32,254}`.
 
 The arch35 kernel also contains the no-`TPipe` mixed AIC/AIV Cube template contract: direct UB/L1 address planning,
-logical AIC/AIV work mapping, the runtime `N=1` bypass, and paired cross-core events for V ping/pong, MM1 dot, E, and
-MM2 consumption. Host tiling evaluates the Cube template first for the supported prefill candidate range and falls back
-to the Vector key when the shape or queried L1/L0/UB resources cannot satisfy the Cube plan. Cube MM1/E workspace uses
-the aligned `nAlign` row pitch, including the padded N tail consumed by MM2. Cube tiling independently searches
-`baseS` (full S first, then smaller M tiles) and `baseD`, and carries separate AIC/AIV counts, L1 buffer depths,
-aligned element counts, and both `TCubeTiling` records.
+the runtime `N=1` bypass, and paired cross-core events for MM1 dot, E, and MM2 output. The mixed template uses the
+hardware 1:2 task ratio; both AIV peers participate and split the S rows of RMS/softmax/MM2-copy work. Host tiling
+evaluates the Cube template first for the supported prefill candidate range and falls
+back to the Vector key when the shape or queried L1/L0/UB resources cannot satisfy the Cube plan. Cube MM1/E
+workspace starts after the platform system-workspace reservation. It keeps compact MM1 dot and aligned E tiles
+separate so the two AIV peers can process disjoint S rows without a read/write overlap; E includes the padded N tail
+consumed by MM2. MM2 Fixpipe first writes a contiguous per-core ND tile, then the AIV peers scatter their row slices
+to the `T*D`-strided `weighted_output` slice.
+Cube tiling independently searches
+`baseS` (full S first, then smaller M tiles) and `baseD`, and carries separate AIC/AIV counts, L1 buffer depths, and
+aligned element counts. MMAD parameters are built by the kernel from the same
+`baseS`, `baseD`, and aligned dimensions, so no duplicate library tiling record is serialized.

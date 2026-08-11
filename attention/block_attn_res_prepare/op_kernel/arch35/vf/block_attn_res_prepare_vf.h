@@ -16,6 +16,7 @@
 namespace BlockAttnResPrepareVF {
 
 using namespace AscendC;
+using MemType = AscendC::MicroAPI::MemType;
 
 constexpr uint32_t FP32_REG_ELEMS = 64U;
 constexpr uint32_t SUM_SQUARE_OFFSET = 0U;

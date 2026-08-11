@@ -77,17 +77,21 @@ class BlockAttnResPrepareCubeSync {
 public:
     static constexpr uint16_t DOT_READY_FLAG = 0U;
     static constexpr uint16_t E_READY_FLAG = 1U;
-    static constexpr uint16_t MM2_CONSUMED_FLAG = 2U;
-    static constexpr uint8_t SYNC_MODE = 2U;
+    static constexpr uint16_t MM2_READY_FLAG = 2U;
+    static constexpr uint16_t MM2_STORED_FLAG = 3U;
+    static constexpr uint16_t AIV1_FLAG_OFFSET = 16U;
+    // Mode 4 maps one AIC to two AIV peers; the second peer uses flagId + 16.
+    static constexpr uint8_t SYNC_MODE = 4U;
 
     __aicore__ inline static void NotifyDotReady()
     {
         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(DOT_READY_FLAG);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(DOT_READY_FLAG + AIV1_FLAG_OFFSET);
     }
 
     __aicore__ inline static void WaitDotReady()
     {
-        CrossCoreWaitFlag(DOT_READY_FLAG);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(DOT_READY_FLAG);
     }
 
     __aicore__ inline static void NotifyEReady()
@@ -97,17 +101,30 @@ public:
 
     __aicore__ inline static void WaitEReady()
     {
-        CrossCoreWaitFlag(E_READY_FLAG);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(E_READY_FLAG);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(E_READY_FLAG + AIV1_FLAG_OFFSET);
     }
 
-    __aicore__ inline static void NotifyMm2Consumed()
+    __aicore__ inline static void NotifyMm2Ready()
     {
-        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(MM2_CONSUMED_FLAG);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(MM2_READY_FLAG);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(MM2_READY_FLAG + AIV1_FLAG_OFFSET);
     }
 
-    __aicore__ inline static void WaitMm2Consumed()
+    __aicore__ inline static void WaitMm2Ready()
     {
-        CrossCoreWaitFlag(MM2_CONSUMED_FLAG);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(MM2_READY_FLAG);
+    }
+
+    __aicore__ inline static void NotifyMm2Stored()
+    {
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(MM2_STORED_FLAG);
+    }
+
+    __aicore__ inline static void WaitMm2Stored()
+    {
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(MM2_STORED_FLAG);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(MM2_STORED_FLAG + AIV1_FLAG_OFFSET);
     }
 };
 
@@ -132,7 +149,9 @@ public:
 
         auto qTensor = AscendC::Te::MakeTensor(
             AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(q),
-            MakeCubeNDExtLayout<float>(work.validS, tiling.totalD, tiling.totalD));
+            AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn,
+                                           AscendC::Te::LayoutTraitDefault<float>>{}(
+                static_cast<int64_t>(work.validS), static_cast<int64_t>(tiling.totalD)));
         auto vLayout = AscendC::Te::FrameLayoutFormat<
             AscendC::Te::DNExtLayoutPtn, AscendC::Te::LayoutTraitDefault<float>>{}(
             static_cast<int64_t>(tiling.totalD), static_cast<int64_t>(tiling.totalN));
@@ -140,10 +159,14 @@ public:
             AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(v), vLayout);
         auto dotTensor = AscendC::Te::MakeTensor(
             AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(workspace),
-            MakeCubeNDExtLayout<float>(work.validS, tiling.nAlign, tiling.nAlign));
+            AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn,
+                                           AscendC::Te::LayoutTraitDefault<float>>{}(
+                static_cast<int64_t>(work.validS), static_cast<int64_t>(tiling.totalN)));
         auto dummyBias = AscendC::Te::MakeTensor(
             AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(workspace),
-            MakeCubeNDExtLayout<float>(1, tiling.nAlign, tiling.nAlign));
+            AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn,
+                                           AscendC::Te::LayoutTraitDefault<float>>{}(
+                static_cast<int64_t>(1), static_cast<int64_t>(tiling.nAlign)));
 
         CubeMm1Block::Params params{};
         params.mL1 = tiling.sAlign;
@@ -163,17 +186,23 @@ public:
         mm1_(qTensor, vTensor, dummyBias, dotTensor, blockShape);
     }
 
-    __aicore__ inline void RunMm2(uint64_t workId, const BlockAttnResPrepareCubeGmParams &gm,
-                                  const optiling::BlockAttnResPrepareCubeTilingData &tiling)
+    __aicore__ inline void RunMm2Tile(uint64_t workId, uint32_t dLoop,
+                                      const BlockAttnResPrepareCubeGmParams &gm,
+                                      const optiling::BlockAttnResPrepareCubeTilingData &tiling)
     {
         const BlockAttnResPrepareCubeWorkInfo work = DecodeCubeWork(workId, tiling);
         __gm__ float *workspace = GetCoreWorkspace(gm, tiling);
+        const uint64_t dotWorkspaceElems = static_cast<uint64_t>(tiling.baseS) * tiling.totalN;
         auto eTensor = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(workspace),
-            MakeCubeNDExtLayout<float>(work.validS, tiling.nAlign, tiling.nAlign));
+            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(workspace + dotWorkspaceElems),
+            AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn,
+                                           AscendC::Te::LayoutTraitDefault<float>>{}(
+                static_cast<int64_t>(work.validS), static_cast<int64_t>(tiling.nAlign)));
         auto dummyBias = AscendC::Te::MakeTensor(
             AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(workspace),
-            MakeCubeNDExtLayout<float>(1, tiling.baseDAlign, tiling.baseDAlign));
+            AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn,
+                                           AscendC::Te::LayoutTraitDefault<float>>{}(
+                static_cast<int64_t>(1), static_cast<int64_t>(tiling.baseDAlign)));
 
         CubeMm2Block::Params params{};
         params.mL1 = tiling.sAlign;
@@ -187,25 +216,23 @@ public:
         params.biasGmAddr = nullptr;
         mm2_.Init(params);
 
-        for (uint32_t dLoop = 0; dLoop < tiling.dTileNum; ++dLoop) {
-            const uint64_t dOffset = static_cast<uint64_t>(dLoop) * tiling.baseD;
-            const uint64_t remainingD = tiling.totalD - dOffset;
-            const uint32_t validD =
-                static_cast<uint32_t>(remainingD < tiling.baseD ? remainingD : tiling.baseD);
-            __gm__ float *v = gm.blockResidual + work.tIndex * tiling.totalN * tiling.totalD + dOffset;
-            __gm__ float *o =
-                gm.weightedOutput + (work.sStart * tiling.totalT + work.tIndex) * tiling.totalD + dOffset;
-            auto vTensor = AscendC::Te::MakeTensor(
-                AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(v),
-                MakeCubeNDExtLayout<float>(tiling.totalN, validD, tiling.totalD));
-            auto oTensor = AscendC::Te::MakeTensor(
-                AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(o),
-                MakeCubeNDExtLayout<float>(work.validS, validD, tiling.totalT * tiling.totalD));
-            using BlockShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
-            BlockShape blockShape{static_cast<int64_t>(work.validS), static_cast<int64_t>(validD),
-                                  static_cast<int64_t>(tiling.totalN), 0};
-            mm2_(eTensor, vTensor, dummyBias, oTensor, blockShape);
-        }
+        const uint64_t dOffset = static_cast<uint64_t>(dLoop) * tiling.baseD;
+        const uint64_t remainingD = tiling.totalD - dOffset;
+        const uint32_t validD = static_cast<uint32_t>(remainingD < tiling.baseD ? remainingD : tiling.baseD);
+        __gm__ float *v = gm.blockResidual + work.tIndex * tiling.totalN * tiling.totalD + dOffset;
+        __gm__ float *mm2Workspace = workspace + dotWorkspaceElems + tiling.eL1Elems;
+        auto vTensor = AscendC::Te::MakeTensor(
+            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(v),
+            MakeCubeNDExtLayout<float>(tiling.totalN, validD, tiling.totalD));
+        auto oTensor = AscendC::Te::MakeTensor(
+            AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(mm2Workspace),
+            AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn,
+                                           AscendC::Te::LayoutTraitDefault<float>>{}(
+                static_cast<int64_t>(work.validS), static_cast<int64_t>(validD)));
+        using BlockShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+        BlockShape blockShape{static_cast<int64_t>(work.validS), static_cast<int64_t>(validD),
+                              static_cast<int64_t>(tiling.totalN), 0};
+        mm2_(eTensor, vTensor, dummyBias, oTensor, blockShape);
     }
 
 private:
@@ -213,7 +240,7 @@ private:
         const BlockAttnResPrepareCubeGmParams &gm, const optiling::BlockAttnResPrepareCubeTilingData &tiling)
     {
         const uint64_t coreIndex = GetBlockIdx();
-        return gm.workspace + tiling.workspaceOffset / sizeof(float) + coreIndex * tiling.workspacePerCoreElems;
+        return gm.workspace + coreIndex * tiling.workspacePerCoreElems;
     }
 
     CubeMm1Block mm1_{};
@@ -252,17 +279,20 @@ public:
         WaitVectorToMte2(GetEvent(bufferIndex));
     }
 
-    __aicore__ inline void FinalizeSoftmax(uint64_t workId, uint32_t validN,
+    __aicore__ inline void FinalizeSoftmax(uint64_t workId, uint32_t validN, uint32_t sRowStart,
+                                           uint32_t validSRows,
                                            const BlockAttnResPrepareCubeGmParams &gm,
                                            const BlockAttnResPrepareCubeAddressPlan &plan,
                                            const optiling::BlockAttnResPrepareCubeTilingData &tiling)
     {
+        if (validSRows == 0U) {
+            return;
+        }
         const BlockAttnResPrepareCubeWorkInfo work = DecodeCubeWork(workId, tiling);
-        __gm__ float *workspace = GetCoreWorkspace(gm, tiling);
-        // The MM1 result is stored with the aligned N pitch.  Keep the same pitch when
-        // moving it back to UB; using totalN here would reinterpret every row after the
-        // first one for N values that are not Cube-aligned.
-        CopyGmToUb(plan.dotUbOffset, workspace, work.validS, tiling.nAlign, tiling.nAlign, tiling.nAlign);
+        __gm__ float *workspace = GetCoreWorkspace(gm, tiling) + static_cast<uint64_t>(sRowStart) * tiling.totalN;
+        // Fixpipe writes the logical MM1 block as compact [validS, totalN]. Expand it to
+        // the Cube-aligned UB pitch here; FinalizeCubeSoftmax clears the padded N tail.
+        CopyGmToUb(plan.dotUbOffset, workspace, validSRows, tiling.totalN, tiling.nAlign, tiling.totalN);
         WaitMte2ToVector(static_cast<event_t>(EVENT_ID0));
 
         __ubuf__ float *sumSquareAddr = GetUbAddr<float>(plan.reduceUbOffset);
@@ -270,7 +300,7 @@ public:
         __ubuf__ float *maxAddr = GetUbAddr<float>(plan.softmaxUbOffset);
         __ubuf__ float *sumAddr = maxAddr + tiling.sAlign;
         const float reciprocalD = 1.0F / static_cast<float>(tiling.totalD);
-        for (uint32_t sIndex = 0; sIndex < work.validS; ++sIndex) {
+        for (uint32_t sIndex = 0; sIndex < validSRows; ++sIndex) {
             BlockAttnResPrepareVF::FinalizeCubeSoftmax(
                 sumSquareAddr, dotAddr + static_cast<uint64_t>(sIndex) * tiling.nAlign, maxAddr + sIndex,
                 sumAddr + sIndex, validN, tiling.nAlign, reciprocalD, tiling.epsilon);
@@ -278,13 +308,16 @@ public:
 
         WaitVectorToMte3(static_cast<event_t>(EVENT_ID0));
         // Preserve the zero-padded N tail in GM.  MM2 consumes an nAlign-wide E tile.
-        CopyUbToGm(workspace, plan.dotUbOffset, work.validS, tiling.nAlign, tiling.nAlign, tiling.nAlign);
-        CopyUbToGm(gm.softmaxMax + work.sStart * tiling.totalT + work.tIndex, plan.softmaxUbOffset, work.validS, 1,
+        const uint64_t dotWorkspaceElems = static_cast<uint64_t>(tiling.baseS) * tiling.totalN;
+        __gm__ float *eWorkspace = GetCoreWorkspace(gm, tiling) + dotWorkspaceElems +
+                                   static_cast<uint64_t>(sRowStart) * tiling.nAlign;
+        const uint64_t outputSStart = work.sStart + sRowStart;
+        CopyUbToGm(eWorkspace, plan.dotUbOffset, validSRows, tiling.nAlign, tiling.nAlign, tiling.nAlign);
+        CopyUbToGm(gm.softmaxMax + outputSStart * tiling.totalT + work.tIndex, plan.softmaxUbOffset, validSRows, 1,
                    tiling.totalT, 1);
-        CopyUbToGm(gm.softmaxSum + work.sStart * tiling.totalT + work.tIndex,
-                   plan.softmaxUbOffset + static_cast<uint64_t>(tiling.sAlign) * sizeof(float), work.validS, 1,
+        CopyUbToGm(gm.softmaxSum + outputSStart * tiling.totalT + work.tIndex,
+                   plan.softmaxUbOffset + static_cast<uint64_t>(tiling.sAlign) * sizeof(float), validSRows, 1,
                    tiling.totalT, 1);
-        WaitMte3ToVector(static_cast<event_t>(EVENT_ID0));
     }
 
     __aicore__ inline void RunN1FastPath(uint64_t workId, const BlockAttnResPrepareCubeGmParams &gm,
@@ -340,8 +373,8 @@ public:
     }
 
     __aicore__ inline void RunEmptyOnlineSoftmax(uint64_t workId, const BlockAttnResPrepareCubeGmParams &gm,
-                                                  const BlockAttnResPrepareCubeAddressPlan &plan,
-                                                  const optiling::BlockAttnResPrepareCubeTilingData &tiling)
+                                                 const BlockAttnResPrepareCubeAddressPlan &plan,
+                                                 const optiling::BlockAttnResPrepareCubeTilingData &tiling)
     {
         const BlockAttnResPrepareCubeWorkInfo work = DecodeCubeWork(workId, tiling);
         const uint64_t outputByteOffset = plan.vUbOffset;
@@ -374,6 +407,36 @@ public:
                 WaitMte3ToVector(static_cast<event_t>(EVENT_ID0));
             }
         }
+    }
+
+    __aicore__ inline void StoreMm2Tile(uint64_t workId, uint32_t dLoop, uint32_t sRowStart,
+                                        uint32_t validSRows,
+                                        const BlockAttnResPrepareCubeGmParams &gm,
+                                        const BlockAttnResPrepareCubeAddressPlan &plan,
+                                        const optiling::BlockAttnResPrepareCubeTilingData &tiling)
+    {
+        if (validSRows == 0U) {
+            return;
+        }
+        const BlockAttnResPrepareCubeWorkInfo work = DecodeCubeWork(workId, tiling);
+        const uint64_t dOffset = static_cast<uint64_t>(dLoop) * tiling.baseD;
+        const uint64_t remainingD = tiling.totalD - dOffset;
+        const uint32_t validD = static_cast<uint32_t>(remainingD < tiling.baseD ? remainingD : tiling.baseD);
+        __gm__ float *workspace = GetCoreWorkspace(gm, tiling);
+        const uint64_t dotWorkspaceElems = static_cast<uint64_t>(tiling.baseS) * tiling.totalN;
+        __gm__ float *mm2Workspace =
+            workspace + dotWorkspaceElems + tiling.eL1Elems + static_cast<uint64_t>(sRowStart) * validD;
+        __gm__ float *output =
+            gm.weightedOutput + ((work.sStart + sRowStart) * tiling.totalT + work.tIndex) * tiling.totalD + dOffset;
+
+        // Fixpipe stores MM2 to a contiguous ND tile. AIV performs the final
+        // scatter because weighted_output [S,T,D] has a T*D row pitch for a
+        // fixed-T work unit, which is not a legal direct Fixpipe destination.
+        CopyGmToUb(plan.vUbOffset, mm2Workspace, validSRows, validD, tiling.baseDAlign, validD);
+        WaitMte2ToVector(static_cast<event_t>(EVENT_ID0));
+        WaitVectorToMte3(static_cast<event_t>(EVENT_ID0));
+        CopyUbToGm(output, plan.vUbOffset, validSRows, validD, tiling.totalT * tiling.totalD,
+                   tiling.baseDAlign);
     }
 
 private:
@@ -442,7 +505,7 @@ private:
         const BlockAttnResPrepareCubeGmParams &gm, const optiling::BlockAttnResPrepareCubeTilingData &tiling)
     {
         const uint64_t coreIndex = GetBlockIdx() / 2U;
-        return gm.workspace + tiling.workspaceOffset / sizeof(float) + coreIndex * tiling.workspacePerCoreElems;
+        return gm.workspace + coreIndex * tiling.workspacePerCoreElems;
     }
 };
 
@@ -452,7 +515,9 @@ public:
     __aicore__ inline BlockAttnResPrepareCubeTemplate(
         const optiling::BlockAttnResPrepareCubeTilingData *__restrict tilingData, AIC_SERVICE &aicService,
         AIV_SERVICE &aivService)
-        : tilingData_(tilingData), aicService_(aicService), aivService_(aivService)
+        : tilingData_(tilingData),
+          aicService_(aicService),
+          aivService_(aivService)
     {}
 
     __aicore__ inline bool Init(GM_ADDR blockResidual, GM_ADDR effectiveQuery, GM_ADDR validBlocks,
@@ -479,8 +544,7 @@ public:
             tilingData_->baseDAlign < tilingData_->baseD ||
             tilingData_->sTileNum == 0U || tilingData_->dTileNum == 0U ||
             tilingData_->sAlign < tilingData_->baseS || tilingData_->nAlign < tilingData_->totalN ||
-            tilingData_->dAlign < tilingData_->totalD || tilingData_->workspacePerCoreElems <
-                static_cast<uint64_t>(tilingData_->sAlign) * tilingData_->nAlign ||
+            tilingData_->dAlign < tilingData_->totalD || tilingData_->workspacePerCoreElems < static_cast<uint64_t>(tilingData_->sAlign) * tilingData_->nAlign ||
             tilingData_->workspacePerCoreElems == 0U || tilingData_->aicCoreNum == 0U ||
             tilingData_->aivCoreNum == 0U) {
             return false;
@@ -503,12 +567,6 @@ public:
         if (!initialized_) {
             return;
         }
-        if ASCEND_IS_AIV {
-            if ((GetBlockIdx() & 1U) != 0U) {
-                return;
-            }
-        }
-
         const uint32_t coreIndex = GetLogicalAicIndex();
         if (coreIndex >= tilingData_->usedCoreNum) {
             return;
@@ -536,7 +594,9 @@ public:
             const uint64_t workId = workStart + workOffset;
             if (validN == 1U) {
                 if ASCEND_IS_AIV {
-                    aivService_.RunN1FastPath(workId, gmParams_, addressPlan_, *tilingData_);
+                    if (GetSubBlockIdx() == 0U) {
+                        aivService_.RunN1FastPath(workId, gmParams_, addressPlan_, *tilingData_);
+                    }
                 }
                 continue;
             }
@@ -583,6 +643,16 @@ private:
 
     __aicore__ inline void ProcessWork(uint64_t workId, uint32_t validN)
     {
+        uint32_t sRowStart = 0U;
+        uint32_t validSRows = 0U;
+        if ASCEND_IS_AIV {
+            const BlockAttnResPrepareCubeWorkInfo work = DecodeCubeWork(workId, *tilingData_);
+            const uint32_t firstAivRows = (work.validS + 1U) / 2U;
+            sRowStart = GetSubBlockIdx() * firstAivRows;
+            validSRows = sRowStart < work.validS ?
+                             Blaze::Gemm::Min(firstAivRows, work.validS - sRowStart) :
+                             0U;
+        }
         if ASCEND_IS_AIC {
             aicService_.RunMm1(workId, gmParams_, *tilingData_);
             BlockAttnResPrepareCubeSync::NotifyDotReady();
@@ -592,16 +662,25 @@ private:
                 aivService_.LoadVAndReduce(workId, dLoop, validN, gmParams_, addressPlan_, *tilingData_);
             }
             BlockAttnResPrepareCubeSync::WaitDotReady();
-            aivService_.FinalizeSoftmax(workId, validN, gmParams_, addressPlan_, *tilingData_);
+            aivService_.FinalizeSoftmax(workId, validN, sRowStart, validSRows, gmParams_, addressPlan_,
+                                        *tilingData_);
             BlockAttnResPrepareCubeSync::NotifyEReady();
         }
         if ASCEND_IS_AIC {
             BlockAttnResPrepareCubeSync::WaitEReady();
-            aicService_.RunMm2(workId, gmParams_, *tilingData_);
-            BlockAttnResPrepareCubeSync::NotifyMm2Consumed();
+            for (uint32_t dLoop = 0; dLoop < tilingData_->dTileNum; ++dLoop) {
+                aicService_.RunMm2Tile(workId, dLoop, gmParams_, *tilingData_);
+                BlockAttnResPrepareCubeSync::NotifyMm2Ready();
+                BlockAttnResPrepareCubeSync::WaitMm2Stored();
+            }
         }
         if ASCEND_IS_AIV {
-            BlockAttnResPrepareCubeSync::WaitMm2Consumed();
+            for (uint32_t dLoop = 0; dLoop < tilingData_->dTileNum; ++dLoop) {
+                BlockAttnResPrepareCubeSync::WaitMm2Ready();
+                aivService_.StoreMm2Tile(workId, dLoop, sRowStart, validSRows, gmParams_, addressPlan_,
+                                         *tilingData_);
+                BlockAttnResPrepareCubeSync::NotifyMm2Stored();
+            }
         }
     }
 

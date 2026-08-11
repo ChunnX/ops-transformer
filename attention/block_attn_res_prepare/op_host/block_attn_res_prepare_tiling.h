@@ -102,8 +102,6 @@ protected:
 
 private:
     bool SelectCubeBaseD();
-    void FillCubeTiling(TCubeTiling &cubeTiling, uint32_t m, uint32_t n, uint32_t k, uint32_t baseM,
-                        uint32_t baseN, uint32_t baseK) const;
 
     uint32_t usedCoreNum_ = 0;
     uint32_t baseT_ = 1;
