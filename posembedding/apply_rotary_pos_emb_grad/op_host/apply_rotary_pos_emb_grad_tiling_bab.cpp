@@ -131,7 +131,7 @@ void ApplyRotaryPosEmbGradRegbaseTilingClassBAB::SplitCore()
     // 方案1: B 优先铺满核
     auto blockFactorB1 = Ops::Base::CeilDiv(b_, coreNum_);
     auto blockNumB1 = Ops::Base::CeilDiv(b_, blockFactorB1);
-    auto blockNumS1 = std::min(coreNum_ / blockNumB1, s_);
+    auto blockNumS1 = AscendC::Std::min(coreNum_ / blockNumB1, s_);
     auto blockFactorS1 = Ops::Base::CeilDiv(s_, blockNumS1);
     blockNumS1 = Ops::Base::CeilDiv(s_, blockFactorS1);
     auto usedCoreNum1 = blockNumB1 * blockNumS1;
@@ -139,14 +139,14 @@ void ApplyRotaryPosEmbGradRegbaseTilingClassBAB::SplitCore()
     // 方案2: S 优先铺满核
     auto blockFactorS2 = Ops::Base::CeilDiv(s_, coreNum_);
     auto blockNumS2 = Ops::Base::CeilDiv(s_, blockFactorS2);
-    auto blockNumB2 = std::min(coreNum_ / blockNumS2, b_);
+    auto blockNumB2 = AscendC::Std::min(coreNum_ / blockNumS2, b_);
     auto blockFactorB2 = Ops::Base::CeilDiv(b_, blockNumB2);
     blockNumB2 = Ops::Base::CeilDiv(b_, blockFactorB2);
     auto usedCoreNum2 = blockNumB2 * blockNumS2;
 
     // 选优: usedCoreNum × ubFactorS 最大者为优
-    auto ubFactorS1 = std::min(ubFactorS_, blockFactorS1);
-    auto ubFactorS2 = std::min(ubFactorS_, blockFactorS2);
+    auto ubFactorS1 = AscendC::Std::min(ubFactorS_, blockFactorS1);
+    auto ubFactorS2 = AscendC::Std::min(ubFactorS_, blockFactorS2);
     if (usedCoreNum1 * ubFactorS1 >= usedCoreNum2 * ubFactorS2) {
         blockNumB_ = blockNumB1;
         blockFactorB_ = blockFactorB1;
@@ -213,6 +213,7 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassBAB::PostTiling()
     tilingData_->ropeGradParams.usedCoreNum = usedCoreNum_;
     tilingData_->ropeGradParams.rotaryMode = static_cast<int64_t>(rotaryMode_);
     tilingData_->ropeGradParams.layout = static_cast<int64_t>(layout_);
+    tilingData_->ropeGradParams.dCosFlag = dCosFlag_;
     tilingData_->dCosFlag = dCosFlag_;
     tilingData_->layout = static_cast<uint32_t>(layout_);
     SetTilingKeyBlockDim(static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_BAB));

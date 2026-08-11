@@ -17,7 +17,6 @@
 #include "arch35/apply_rotary_pos_emb_grad_tiling_key.h"
 #include "arch35/apply_rotary_pos_emb_grad_tiling_data.h"
 #include "arch35/apply_rotary_pos_emb_grad_bab.h"
-#include "arch35/apply_rotary_pos_emb_grad_ab.h"
 #include "arch35/apply_rotary_pos_emb_grad_a.h"
 #include "arch35/apply_rotary_pos_emb_grad_dag.h"
 
