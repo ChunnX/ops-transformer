@@ -25,6 +25,7 @@ from bsa_ttk_ops import _fp8_make_block_table
 PYTEST_GOLDEN_MODULE = None
 PYTEST_MXFP8_GOLDEN_MODULE = None
 _MXFP8_MODULE_NAME = "_qbsa_mxfp8_pytest_golden"
+_FP8_MODULE_NAME = "_qbsa_fp8_pytest_golden"
 
 
 # ==================================================================================================
@@ -362,15 +363,25 @@ def _fp8_load_pytest_golden_module():
     global PYTEST_GOLDEN_MODULE
     if PYTEST_GOLDEN_MODULE is not None:
         return PYTEST_GOLDEN_MODULE
+    if _FP8_MODULE_NAME in sys.modules:
+        PYTEST_GOLDEN_MODULE = sys.modules[_FP8_MODULE_NAME]
+        return PYTEST_GOLDEN_MODULE
     pytest_dir = Path(__file__).resolve().parents[2] / "pytest"
     module_path = pytest_dir / "quant_block_sparse_attn_golden.py"
     sys.path.insert(0, str(pytest_dir))
     try:
         spec = importlib.util.spec_from_file_location(
-            f"bsa_pytest_golden_{abs(hash(module_path))}", module_path
+            _FP8_MODULE_NAME, module_path
         )
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot load FP8 golden module from {module_path}")
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        sys.modules[_FP8_MODULE_NAME] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            sys.modules.pop(_FP8_MODULE_NAME, None)
+            raise
     finally:
         try:
             sys.path.remove(str(pytest_dir))
@@ -498,6 +509,16 @@ def _fp8_cpu_golden(
 ):
     """CPU reference implementation wrapping the existing pytest golden."""
     golden_module = _fp8_load_pytest_golden_module()
+    testcase_name = kwargs.get("testcase_name") or "__default__"
+    cache = getattr(golden_module, "_TTK_FP8_CACHE", {})
+    cached = cache.pop(testcase_name, None)
+    if cached is not None:
+        golden = cached["data"]["golden"]
+        return _format_golden_outputs(
+            golden["attention_out"],
+            golden["softmax_lse"],
+            return_softmax_lse,
+        )
 
     q_cpu = to_cpu(query)
     key_cpu = to_cpu(key)
@@ -526,6 +547,7 @@ def _fp8_cpu_golden(
         max_seqlen_q,
         max_seqlen_kv,
     )
+    S1 = max(q_lengths, default=S1)
 
     sparse_q_block_size = int(sparse_q_block_size)
     sparse_kv_block_size = int(sparse_kv_block_size)
@@ -577,10 +599,15 @@ def _fp8_cpu_golden(
         "actlen_mode": "full",
         "S1EQS2": False,
         "seed": int(kwargs.get("seed", 0)),
+        "sparse_mode": str(kwargs.get("sparse_mode") or "random"),
         "sparse_pattern": str(kwargs.get("sparse_pattern", "sequential")),
-        "block_table_pattern": "sequential",
+        "block_table_pattern": str(
+            kwargs.get("block_table_pattern", "sequential")
+        ),
         "sparse_count": int(kwargs.get("sparse_count", 0)),
-        "p_scale_value": float(p_scale_cpu[0].item()),
+        "p_scale_value": (
+            None if p_scale_cpu is None else float(p_scale_cpu[0].item())
+        ),
         "pa_block_padding_bytes": 0,
         "layout_kv": layout_kv,
         "layout_sparse_indices": layout_sparse_indices,
