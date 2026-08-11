@@ -3,7 +3,7 @@
 
 #include "../../catlass.hpp"
 #include "catlass/arch/arch.hpp"
-#include "../../layout/layout.hpp"
+#include "catlass/layout/layout.hpp"
 #include "../../gemm/gemm_type.hpp"
 
 

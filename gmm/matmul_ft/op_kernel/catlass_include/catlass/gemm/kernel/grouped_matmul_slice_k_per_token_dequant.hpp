@@ -15,7 +15,7 @@
 #include "catlass/arch/cross_core_sync_aiv.hpp"
 #include "catlass/arch/resource_aiv.hpp"
 #include "../../coord.hpp"
-#include "../../detail/callback.hpp"
+#include "catlass/detail/callback.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
 

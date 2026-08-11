@@ -18,8 +18,8 @@
 #include "../../matrix_coord.hpp"
 #include "tla/layout.hpp"
 #include "tla/tensor.hpp"
-#include "../../epilogue/block/block_epilogue.hpp"
-#include "../../epilogue/block/block_epilogue_per_group_per_block.hpp"
+#include "catlass/epilogue/block/block_epilogue.hpp"
+#include "catlass/epilogue/block/block_epilogue_per_group_per_block.hpp"
 
 namespace Catlass::Gemm::Kernel {
 

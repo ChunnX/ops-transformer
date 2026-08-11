@@ -4,7 +4,7 @@
 #include "../../catlass.hpp"
 #include "catlass/arch/arch.hpp"
 #include "../../gemm/helper.hpp"
-#include "../../layout/layout.hpp"
+#include "catlass/layout/layout.hpp"
 #include "../../gemm/gemm_type.hpp"
 
 namespace Vecself::Gemv::Tile {

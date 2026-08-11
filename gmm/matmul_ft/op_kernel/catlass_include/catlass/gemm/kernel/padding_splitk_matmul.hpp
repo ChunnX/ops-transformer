@@ -17,8 +17,8 @@
 #include "../../coord.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
-#include "../../epilogue/tile/copy_gm_to_ub.hpp"
-#include "../../epilogue/tile/copy_ub_to_gm.hpp"
+#include "catlass/epilogue/tile/copy_gm_to_ub.hpp"
+#include "catlass/epilogue/tile/copy_ub_to_gm.hpp"
 #include "padding_matmul.hpp"
 #include "splitk_matmul.hpp"
 

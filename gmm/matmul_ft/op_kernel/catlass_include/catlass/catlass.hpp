@@ -17,9 +17,9 @@
 #include <kernel_operator.h>
 #endif
 
-#include "detail/alignment.hpp"
-#include "detail/dependent_false.hpp"
-#include "detail/macros.hpp"
+#include "catlass/detail/alignment.hpp"
+#include "catlass/detail/dependent_false.hpp"
+#include "catlass/detail/macros.hpp"
 
 namespace Catlass {
 

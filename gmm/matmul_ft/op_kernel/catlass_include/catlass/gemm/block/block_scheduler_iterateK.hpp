@@ -12,7 +12,7 @@
 #define CATLASS_GEMM_BLOCK_BLOCK_SCHEDULER_ITERATEK_HPP
 
 #include "../../catlass.hpp"
-#include "../../detail/alignment.hpp"
+#include "catlass/detail/alignment.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
 

@@ -20,9 +20,9 @@
 #include "catlass/arch/cross_core_sync_aiv.hpp"
 #include "tla/layout.hpp"
 #include "tla/tensor.hpp"
-#include "../../detail/tag_to_layout.hpp"
+#include "catlass/detail/tag_to_layout.hpp"
 #include "../tile/tile_copy.hpp"
-#include "../../epilogue/tile/tile_copy.hpp"
+#include "catlass/epilogue/tile/tile_copy.hpp"
 
 namespace Catlass::Gemm::Kernel {
 

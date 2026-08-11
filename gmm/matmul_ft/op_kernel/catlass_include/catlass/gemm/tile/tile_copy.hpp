@@ -14,7 +14,7 @@
 #include <type_traits>
 
 #include "../../catlass.hpp"
-#include "../../detail/tag_to_layout.hpp"
+#include "catlass/detail/tag_to_layout.hpp"
 #include "../helper.hpp"
 #include "cast_fp8_to_fp16.hpp"
 #include "cast_int4_to_int8.hpp"

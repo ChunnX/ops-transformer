@@ -15,7 +15,7 @@
 #include "catlass/arch/resource_aiv.hpp"
 #include "../../catlass.hpp"
 #include "../../coord.hpp"
-#include "../../detail/callback.hpp"
+#include "catlass/detail/callback.hpp"
 #include "../dispatch_policy.hpp"
 #include "../helper.hpp"
 #include "../tile/tile_copy.hpp"

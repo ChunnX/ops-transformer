@@ -15,7 +15,7 @@
 #include "../../catlass.hpp"
 #include "catlass/arch/resource_aiv.hpp"
 #include "catlass/arch/cross_core_sync_aiv.hpp"
-#include "../../layout/layout.hpp"
+#include "catlass/layout/layout.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
 #include "../../status.hpp"

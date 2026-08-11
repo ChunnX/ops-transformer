@@ -2,7 +2,7 @@
 #define CATLASS_GEMV_TILE_TILE_FAULT_COPY_HPP_SELF
 
 #include "../../catlass.hpp"
-#include "../../detail/tag_to_layout.hpp"
+#include "catlass/detail/tag_to_layout.hpp"
 
 #include "vec_copy_gm_to_ub.hpp"
 #include "vec_copy_ub_to_gm.hpp"

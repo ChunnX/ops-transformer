@@ -12,7 +12,7 @@
 #define CATLASS_GEMV_TILE_VMULS_HPP
 
 #include "../../catlass.hpp"
-#include "../../layout/layout.hpp"
+#include "catlass/layout/layout.hpp"
 
 namespace Catlass::Gemv::Tile {
 

@@ -12,7 +12,7 @@
 #define CATLASS_GEMV_TILE_VEC_COPY_GM_TO_UB_PADDING_HPP
 
 #include "../../catlass.hpp"
-#include "../../layout/layout.hpp"
+#include "catlass/layout/layout.hpp"
 #include "../../gemm/gemm_type.hpp"
 // #include "../.."
 

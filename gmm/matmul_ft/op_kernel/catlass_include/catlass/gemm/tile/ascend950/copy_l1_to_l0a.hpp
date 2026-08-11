@@ -14,7 +14,7 @@
 #include "catlass/arch/arch.hpp"
 #include "../../../catlass.hpp"
 #include "../../../numeric_size.hpp"
-#include "../../../layout/layout.hpp"
+#include "catlass/layout/layout.hpp"
 #include "../../gemm_type.hpp"
 #include "../tile_copy_tla.hpp"
 #include "tla/tensor.hpp"

@@ -18,7 +18,7 @@
 #include "../../matrix_coord.hpp"
 #include "catlass/arch/resource_aiv.hpp"
 #include "catlass/arch/cross_core_sync_aiv.hpp"
-#include "../../detail/callback.hpp"
+#include "catlass/detail/callback.hpp"
 #include "../tile/tile_copy_tla.hpp"
 #include "tla/layout.hpp"
 #include "tla/tensor.hpp"

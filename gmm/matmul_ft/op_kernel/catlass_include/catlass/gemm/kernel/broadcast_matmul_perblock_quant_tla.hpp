@@ -18,10 +18,10 @@
 #include "../../catlass.hpp"
 #include "catlass/arch/resource_aiv.hpp"
 #include "../../coord.hpp"
-#include "../../detail/tag_to_layout.hpp"
+#include "catlass/detail/tag_to_layout.hpp"
 #include "../../gemm_coord.hpp"
 #include "../dispatch_policy.hpp"
-#include "../../epilogue/block/block_epilogue.hpp"
+#include "catlass/epilogue/block/block_epilogue.hpp"
 #include "tla/tensor.hpp"
 #include "tla/layout.hpp"
 

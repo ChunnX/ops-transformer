@@ -17,8 +17,8 @@
 #include "../../matrix_coord.hpp"
 #include "catlass/arch/resource_aiv.hpp"
 #include "catlass/arch/cross_core_sync_aiv.hpp"
-#include "../../epilogue/tile/copy_gm_to_ub.hpp"
-#include "../../epilogue/tile/copy_ub_to_gm.hpp"
+#include "catlass/epilogue/tile/copy_gm_to_ub.hpp"
+#include "catlass/epilogue/tile/copy_ub_to_gm.hpp"
 #include "padding_matmul.hpp"
 
 namespace Catlass::Gemm::Kernel {

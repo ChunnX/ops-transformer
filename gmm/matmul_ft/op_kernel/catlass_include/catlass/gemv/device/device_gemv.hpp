@@ -14,7 +14,7 @@
 #include <acl/acl.h>
 #include "../../catlass.hpp"
 #include "../../status.hpp"
-#include "../../detail/kernel_adapter.hpp"
+#include "catlass/detail/kernel_adapter.hpp"
 
 namespace Catlass::Gemm::Device {
 
