@@ -2,7 +2,7 @@
 
 import torch
 
-from validation.precision import analyze_accuracy, precision_standard
+from validation.precision import _quantiles, analyze_accuracy, precision_standard
 
 
 def test_bfloat16_opbase_thresholds_are_fixed():
@@ -31,3 +31,23 @@ def test_ratio_and_hard_limit_failures_are_reported_separately():
     assert not report["passed"]
     assert report["failure_reasons"] == ["FAIL_MATCHED_RATIO", "FAIL_MAX_ABS_ERROR"]
     assert report["hard_limit_violation_count"] == 2
+
+
+def test_large_diagnostic_quantiles_use_deterministic_sampling_only_for_percentiles():
+    values = torch.arange(100, dtype=torch.float64)
+    statistics = _quantiles(values, max_quantile_samples=10)
+    assert statistics["quantiles_approximate"]
+    assert statistics["total_elements"] == 100
+    assert statistics["finite_elements"] == 100
+    assert statistics["quantile_sample_elements"] == 10
+    assert statistics["mean"] == 49.5
+    assert statistics["max"] == 99.0
+
+
+def test_small_diagnostic_quantiles_remain_exact():
+    values = torch.tensor([0.0, 1.0, 2.0, 3.0, float("inf")])
+    statistics = _quantiles(values, max_quantile_samples=10)
+    assert not statistics["quantiles_approximate"]
+    assert statistics["finite_elements"] == 4
+    assert statistics["quantile_sample_elements"] == 4
+    assert statistics["median"] == 1.5

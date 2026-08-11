@@ -140,6 +140,12 @@ reported separately and is not counted as valid output. Every path/rank writes
 source-rank breakdowns, and a bounded `failure_dump.pt` on failure. The batch
 root contains machine-readable `summary.json` and `summary.csv`.
 
+Pass/fail counts and maximum error always use every meaningful output element.
+For tensors larger than 1,048,576 elements, diagnostic median/p90/p99 values use
+a deterministic uniform sample capped at that size; `report.json` records the
+total, finite and sampled element counts plus `quantiles_approximate`. Mean and
+maximum remain exact full-tensor reductions.
+
 Performance is collected from exported `msprof` `op_summary` rows, following
 the official [`--task-time` collection definition](https://www.hiascend.com/document/detail/zh/canncommercial/900/devaids/Profiling/atlasprofiling_16_0011.html),
 rather than Python or NPU Event wall time:

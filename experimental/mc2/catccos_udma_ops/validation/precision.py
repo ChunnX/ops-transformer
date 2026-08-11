@@ -25,6 +25,9 @@ _TOLERANCE_TABLE = {
     "float8e5m2": (2 ** -1, 2 ** -3, 0.99, 1e-1, 2 ** -2),
 }
 
+_QUANTILE_SAMPLE_LIMIT = 1 << 20
+_REDUCTION_CHUNK_ELEMENTS = 1 << 22
+
 
 def _normalize_dtype(dtype: Any) -> str:
     value = str(dtype).lower().replace("torch.", "").replace("_", "").replace(" ", "")
@@ -60,20 +63,75 @@ def _safe_float(value: Any) -> Optional[float]:
     return result if math.isfinite(result) else None
 
 
-def _quantiles(values: Any) -> Dict[str, Optional[float]]:
+def _quantiles(
+    values: Any, *, max_quantile_samples: int = _QUANTILE_SAMPLE_LIMIT
+) -> Dict[str, Any]:
+    """Return exact reductions and deterministic sampled quantiles at large scale."""
     import torch
 
-    finite = values[torch.isfinite(values)].double().flatten()
-    if finite.numel() == 0:
-        return {name: None for name in ("mean", "median", "p90", "p99", "max")}
+    if max_quantile_samples <= 0:
+        raise ValueError("max_quantile_samples must be positive")
+    flat = values.double().flatten()
+    total_elements = flat.numel()
+    finite_elements = 0
+    finite_sum = 0.0
+    finite_max: Optional[float] = None
+    for start in range(0, total_elements, _REDUCTION_CHUNK_ELEMENTS):
+        chunk = flat[start:start + _REDUCTION_CHUNK_ELEMENTS]
+        finite_mask = torch.isfinite(chunk)
+        if bool(finite_mask.all()):
+            finite_chunk = chunk
+        else:
+            finite_chunk = chunk[finite_mask]
+        if finite_chunk.numel() == 0:
+            continue
+        finite_elements += finite_chunk.numel()
+        finite_sum += float(finite_chunk.sum().item())
+        chunk_max = float(finite_chunk.max().item())
+        finite_max = chunk_max if finite_max is None else max(finite_max, chunk_max)
+
+    if total_elements <= max_quantile_samples:
+        sample = flat
+        quantiles_approximate = False
+    else:
+        indices = torch.div(
+            torch.arange(max_quantile_samples, dtype=torch.int64) * total_elements,
+            max_quantile_samples,
+            rounding_mode="floor",
+        )
+        sample = flat[indices]
+        quantiles_approximate = True
+    sample = sample[torch.isfinite(sample)]
+
+    if sample.numel() == 0 and finite_elements:
+        for start in range(0, total_elements, _REDUCTION_CHUNK_ELEMENTS):
+            chunk = flat[start:start + _REDUCTION_CHUNK_ELEMENTS]
+            finite_chunk = chunk[torch.isfinite(chunk)]
+            if finite_chunk.numel():
+                sample = finite_chunk[:max_quantile_samples]
+                quantiles_approximate = finite_elements > sample.numel()
+                break
+
+    metadata = {
+        "total_elements": total_elements,
+        "finite_elements": finite_elements,
+        "quantile_sample_elements": sample.numel(),
+        "quantiles_approximate": quantiles_approximate,
+    }
+    if finite_elements == 0:
+        return {
+            **{name: None for name in ("mean", "median", "p90", "p99", "max")},
+            **metadata,
+        }
     points = torch.tensor([0.5, 0.9, 0.99], dtype=torch.float64)
-    quantiles = torch.quantile(finite, points)
+    quantiles = torch.quantile(sample, points)
     return {
-        "mean": _safe_float(finite.mean()),
+        "mean": _safe_float(finite_sum / finite_elements),
         "median": _safe_float(quantiles[0]),
         "p90": _safe_float(quantiles[1]),
         "p99": _safe_float(quantiles[2]),
-        "max": _safe_float(finite.max()),
+        "max": _safe_float(finite_max),
+        **metadata,
     }
 
 
@@ -138,24 +196,21 @@ def _breakdown(
 
 
 def _error_ratio_histogram(error_ratio: Any) -> List[Dict[str, Any]]:
-    import torch
-
     flat = error_ratio.flatten()
     boundaries = [0.25, 0.5, 1.0, 2.0, 4.0]
     labels = ["[0,0.25]", "(0.25,0.5]", "(0.5,1]", "(1,2]", "(2,4]", ">4"]
-    masks = [flat <= boundaries[0]]
-    for lower, upper in zip(boundaries[:-1], boundaries[1:]):
-        masks.append((flat > lower) & (flat <= upper))
-    masks.append(flat > boundaries[-1])
     total = max(1, flat.numel())
-    return [
-        {
-            "range": label,
-            "count": int(mask.sum().item()),
-            "ratio": float(mask.sum().item()) / total,
-        }
-        for label, mask in zip(labels, masks)
-    ]
+    result = []
+    for index, label in enumerate(labels):
+        if index == 0:
+            mask = flat <= boundaries[0]
+        elif index == len(labels) - 1:
+            mask = flat > boundaries[-1]
+        else:
+            mask = (flat > boundaries[index - 1]) & (flat <= boundaries[index])
+        count = int(mask.sum().item())
+        result.append({"range": label, "count": count, "ratio": count / total})
+    return result
 
 
 def _heatmap(error_ratio: Any, bins: int) -> Dict[str, Any]:
@@ -206,9 +261,10 @@ def analyze_accuracy(
     total = actual_cpu.numel()
     mismatch_count = int(mismatch.sum().item())
     matched_ratio = 1.0 if total == 0 else (total - mismatch_count) / total
+    all_abs_error_finite = total == 0 or bool(torch.isfinite(abs_error).all())
     if total == 0:
         max_abs_error = 0.0
-    elif torch.isfinite(abs_error).all():
+    elif all_abs_error_finite:
         max_abs_error = float(abs_error.max().item())
     else:
         max_abs_error = math.inf
@@ -243,7 +299,7 @@ def analyze_accuracy(
     top_mismatches = []
     if total:
         top_count = min(max(1, int(topk)), total)
-        score = torch.nan_to_num(
+        score = abs_error.flatten() if all_abs_error_finite else torch.nan_to_num(
             abs_error.flatten(), nan=math.inf, posinf=math.inf, neginf=math.inf
         )
         top_values, top_indices = torch.topk(score, top_count)
