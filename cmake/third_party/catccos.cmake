@@ -82,6 +82,7 @@ set(CATCCOS_CATLASS_INCLUDE_DIR "${CATCCOS_SOURCE_PATH}/3rdparty/catlass/include
 set(CATCCOS_SHMEM_SOURCE_DIR "${CATCCOS_SOURCE_PATH}/3rdparty/shmem"
     CACHE INTERNAL "SHMEM source pinned by CatCCOS")
 set(CATCCOS_TOOLS_INCLUDE_DIR "${CATCCOS_SOURCE_PATH}/tools" CACHE INTERNAL "CatCCOS tool headers")
+set(CATCCOS_UTILS_INCLUDE_DIR "${CATCCOS_SOURCE_PATH}/utils" CACHE INTERNAL "CatCCOS utility headers")
 
 add_library(catccos_headers INTERFACE)
 add_library(catccos::headers ALIAS catccos_headers)
@@ -89,6 +90,7 @@ target_include_directories(catccos_headers INTERFACE
     "${CATCCOS_INCLUDE_DIR}"
     "${CATCCOS_CATLASS_INCLUDE_DIR}"
     "${CATCCOS_TOOLS_INCLUDE_DIR}"
+    "${CATCCOS_UTILS_INCLUDE_DIR}"
 )
 target_compile_definitions(catccos_headers INTERFACE CATLASS_ARCH=3510)
 
