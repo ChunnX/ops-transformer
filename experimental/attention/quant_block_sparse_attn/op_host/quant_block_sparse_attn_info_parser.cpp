@@ -232,9 +232,16 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseOptionalInputs(QuantBlockSp
             "block_table", "cu_seqlens_q", "seqused_kv", "metadata",
         };
         for (size_t i = 0U; i < sizeof(requiredInputs) / sizeof(requiredInputs[0]); ++i) {
-            if (requiredInputs[i]->desc == nullptr || requiredInputs[i]->tensor == nullptr) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, requiredInputNames[i], "nullptr or empty",
-                                                      "Must be a non-null and non-empty input in quant_mode=1");
+            if (requiredInputs[i]->desc == nullptr) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    kOpName, requiredInputNames[i], "nullptr",
+                    "The input tensor must be provided when quant_mode is 1.");
+                return ge::GRAPH_FAILED;
+            }
+            if (requiredInputs[i]->tensor == nullptr) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    kOpName, requiredInputNames[i], "empty",
+                    "The input tensor cannot be empty when quant_mode is 1.");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -358,10 +365,16 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
             "query", "key", "value", "q_descale", "k_descale", "v_descale", "sparse_indices", "sparse_seq_len",
         };
         for (size_t i = 0U; i < sizeof(requiredInputs) / sizeof(requiredInputs[0]); ++i) {
-            if (requiredInputs[i]->desc == nullptr || requiredInputs[i]->shape == nullptr ||
-                requiredInputs[i]->shape->GetStorageShape().GetShapeSize() <= 0) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, requiredInputNames[i], "nullptr or empty",
-                                                      "Must be a non-null and non-empty input in quant_mode=1");
+            if (requiredInputs[i]->desc == nullptr || requiredInputs[i]->shape == nullptr) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    kOpName, requiredInputNames[i], "nullptr",
+                    "The input tensor must be provided when quant_mode is 1.");
+                return ge::GRAPH_FAILED;
+            }
+            if (requiredInputs[i]->shape->GetStorageShape().GetShapeSize() <= 0) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    kOpName, requiredInputNames[i], "empty",
+                    "The input tensor cannot be empty when quant_mode is 1.");
                 return ge::GRAPH_FAILED;
             }
             const gert::Shape &inputShape = requiredInputs[i]->shape->GetStorageShape();
@@ -376,8 +389,9 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
         }
         if (opParamInfo.key.stride == nullptr || opParamInfo.value.stride == nullptr ||
             opParamInfo.key.stride->GetDimNum() == 0U || opParamInfo.value.stride->GetDimNum() == 0U) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "key/value stride[0]", "nullptr",
-                                                  "Both strides must exist in quant_mode=1");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                kOpName, "key/value stride[0]", "nullptr",
+                "The stride values of key and value must be provided when quant_mode is 1.");
             return ge::GRAPH_FAILED;
         }
         if (opParamInfo.key.stride->GetStride(0U) != opParamInfo.value.stride->GetStride(0U)) {
@@ -385,7 +399,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
                 kOpName, "key/value stride[0]",
                 std::to_string(opParamInfo.key.stride->GetStride(0U)) + "/" +
                     std::to_string(opParamInfo.value.stride->GetStride(0U)),
-                "Must be equal in quant_mode=1");
+                "The first stride values of key and value must be equal when quant_mode is 1.");
             return ge::GRAPH_FAILED;
         }
     }

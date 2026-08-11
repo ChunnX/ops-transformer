@@ -90,54 +90,22 @@ static void SetFp8PaStrides(TensorDesc &key, TensorDesc &value, TensorDesc &kDes
     SetStride(value, paBlockStride, valueBlockSize * valueD, valueD, 1U);
 }
 
-static QuantBlockSparseAttnTilingUtParam MakeValidFp8Param()
-{
-    const csv_map csvMap = {
-        {"caseName", "direct_fp8_validation"},
-        {"expectStatus", "SUCCESS"},
-        {"queryShape", "256 4 128"}, {"queryDtype", "FLOAT8_E4M3FN"}, {"queryFormat", "ND"},
-        {"keyShape", "4 4 128 128"}, {"keyDtype", "FLOAT8_E4M3FN"}, {"keyFormat", "ND"},
-        {"valueShape", "4 4 128 128"}, {"valueDtype", "FLOAT8_E4M3FN"}, {"valueFormat", "ND"},
-        {"qDescaleShape", "256 4"}, {"qDescaleDtype", "FLOAT"}, {"qDescaleFormat", "ND"},
-        {"kDescaleShape", "4 4 128 1"}, {"kDescaleDtype", "FLOAT"}, {"kDescaleFormat", "ND"},
-        {"vDescaleShape", "4"}, {"vDescaleDtype", "FLOAT"}, {"vDescaleFormat", "ND"},
-        {"pScaleShape", "1"}, {"pScaleDtype", "FLOAT"}, {"pScaleFormat", "ND"},
-        {"cuSeqlensQShape", "2"}, {"cuSeqlensQDtype", "INT32"}, {"cuSeqlensQFormat", "ND"},
-        {"sequsedKvShape", "1"}, {"sequsedKvDtype", "INT32"}, {"sequsedKvFormat", "ND"},
-        {"sparseIndicesShape", "1 4 2 4"}, {"sparseIndicesDtype", "INT32"},
-        {"sparseIndicesFormat", "ND"},
-        {"sparseSeqLenShape", "1 4 2"}, {"sparseSeqLenDtype", "INT32"}, {"sparseSeqLenFormat", "ND"},
-        {"blockTableShape", "1 8"}, {"blockTableDtype", "INT32"}, {"blockTableFormat", "ND"},
-        {"attenMaskShape", "2048 2048"}, {"attenMaskDtype", "UINT8"}, {"attenMaskFormat", "ND"},
-        {"metadataShape", "1"}, {"metadataDtype", "INT32"}, {"metadataFormat", "ND"},
-        {"attentionOutShape", "256 4 128"}, {"attentionOutDtype", "BF16"}, {"attentionOutFormat", "ND"},
-        {"softmaxLseShape", "4 256"}, {"softmaxLseDtype", "FLOAT"}, {"softmaxLseFormat", "ND"},
-        {"softmax_scale", "1.0"}, {"sparse_q_block_size", "128"}, {"sparse_kv_block_size", "128"},
-        {"layout_kv", "PA_BNSD"}, {"layout_q", "TND"}, {"layout_sparse_indices", "B_N_Qb_Kb"},
-        {"layout_out", "TND"}, {"quant_mode", "1"}, {"mask_mode", "3"},
-        {"return_softmax_lse", "false"},
-    };
-    return QuantBlockSparseAttnTilingUtParam(csvMap);
-}
-
-static bool ExecuteCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &tilingInfo,
-                        bool provideFp8Strides = true, bool provideFp8Metadata = true,
-                        bool useMismatchedValueStride = false)
+static bool ExecuteCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &tilingInfo)
 {
     TensorDesc key = NormalizeTd(param.key);
     TensorDesc value = NormalizeTd(param.value);
     TensorDesc kDescale = NormalizeTd(param.kDescale);
     TensorDesc metadata = NormalizeTd(param.metadata);
     if (param.quant_mode == 1) {
-        if (provideFp8Strides) {
+        if (param.provideFp8Strides) {
             SetFp8PaStrides(key, value, kDescale);
-            if (useMismatchedValueStride) {
+            if (param.mismatchValueStride) {
                 value.stride_.SetStride(0U, value.stride_.GetStride(0U) + 1U);
             }
         }
-        if (provideFp8Metadata && param.metadata.dtype_ == ge::DT_UNDEFINED) {
+        if (param.provideFp8Metadata && param.metadata.dtype_ == ge::DT_UNDEFINED) {
             metadata = DefaultMetadata;
-        } else if (!provideFp8Metadata) {
+        } else if (!param.provideFp8Metadata) {
             metadata = param.metadata;
         }
     }
@@ -193,170 +161,6 @@ TEST_P(QuantBlockSparseAttnTilingArch35Test, param)
     } else {
         EXPECT_EQ(ok, false);
     }
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsN1Above128)
-{
-    auto param = MakeValidFp8Param();
-    param.query = TensorDesc(gert::StorageShape({256, 129, 128}, {256, 129, 128}), ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND);
-    param.key = TensorDesc(gert::StorageShape({4, 3, 128, 128}, {4, 3, 128, 128}), ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND);
-    param.value =
-        TensorDesc(gert::StorageShape({4, 3, 128, 128}, {4, 3, 128, 128}), ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND);
-    param.qDescale = TensorDesc(gert::StorageShape({256, 129}, {256, 129}), ge::DT_FLOAT, ge::FORMAT_ND);
-    param.kDescale = TensorDesc(gert::StorageShape({4, 3, 128, 1}, {4, 3, 128, 1}), ge::DT_FLOAT, ge::FORMAT_ND);
-    param.vDescale = TensorDesc(gert::StorageShape({3}, {3}), ge::DT_FLOAT, ge::FORMAT_ND);
-    param.sparseIndices = TensorDesc(gert::StorageShape({1, 129, 2, 4}, {1, 129, 2, 4}), ge::DT_INT32, ge::FORMAT_ND);
-    param.sparseSeqLen = TensorDesc(gert::StorageShape({1, 129, 2}, {1, 129, 2}), ge::DT_INT32, ge::FORMAT_ND);
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsBatchAbove65536)
-{
-    auto param = MakeValidFp8Param();
-    param.sparseIndices =
-        TensorDesc(gert::StorageShape({65537, 4, 2, 4}, {65537, 4, 2, 4}), ge::DT_INT32, ge::FORMAT_ND);
-    param.sparseSeqLen = TensorDesc(gert::StorageShape({65537, 4, 2}, {65537, 4, 2}), ge::DT_INT32, ge::FORMAT_ND);
-    param.blockTable = TensorDesc(gert::StorageShape({65537, 8}, {65537, 8}), ge::DT_INT32, ge::FORMAT_ND);
-    param.cuSeqlensQ = TensorDesc(gert::StorageShape({65538}, {65538}), ge::DT_INT32, ge::FORMAT_ND);
-    param.sequsedKv = TensorDesc(gert::StorageShape({65537}, {65537}), ge::DT_INT32, ge::FORMAT_ND);
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsSparseIndicesN1Mismatch)
-{
-    auto param = MakeValidFp8Param();
-    param.sparseIndices = TensorDesc(gert::StorageShape({1, 8, 2, 4}, {1, 8, 2, 4}), ge::DT_INT32, ge::FORMAT_ND);
-    param.sparseSeqLen = TensorDesc(gert::StorageShape({1, 8, 2}, {1, 8, 2}), ge::DT_INT32, ge::FORMAT_ND);
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsSparseSeqLenBatchMismatch)
-{
-    auto param = MakeValidFp8Param();
-    param.sparseSeqLen = TensorDesc(gert::StorageShape({2, 4, 2}, {2, 4, 2}), ge::DT_INT32, ge::FORMAT_ND);
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsSparseSeqLenN1Mismatch)
-{
-    auto param = MakeValidFp8Param();
-    param.sparseSeqLen = TensorDesc(gert::StorageShape({1, 8, 2}, {1, 8, 2}), ge::DT_INT32, ge::FORMAT_ND);
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsSparseSeqLenMaxQbMismatch)
-{
-    auto param = MakeValidFp8Param();
-    param.sparseSeqLen = TensorDesc(gert::StorageShape({1, 4, 3}, {1, 4, 3}), ge::DT_INT32, ge::FORMAT_ND);
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsBlockTableShorterThanMaxKb)
-{
-    auto param = MakeValidFp8Param();
-    param.sparseIndices = TensorDesc(gert::StorageShape({1, 4, 2, 9}, {1, 4, 2, 9}), ge::DT_INT32, ge::FORMAT_ND);
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsMissingMetadata)
-{
-    auto param = MakeValidFp8Param();
-    param.metadata = TD_DEFAULT;
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo, true, false));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsEmptyMetadata)
-{
-    auto param = MakeValidFp8Param();
-    param.metadata = TensorDesc(gert::StorageShape({0}, {0}), ge::DT_INT32, ge::FORMAT_ND);
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsEmptyQuery)
-{
-    auto param = MakeValidFp8Param();
-    param.query = TensorDesc(gert::StorageShape({0, 4, 128}, {0, 4, 128}), ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND);
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsMetadataNot1D)
-{
-    auto param = MakeValidFp8Param();
-    param.metadata = TensorDesc(gert::StorageShape({1, 1}, {1, 1}), ge::DT_INT32, ge::FORMAT_ND);
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsPScaleRank2Singleton)
-{
-    auto param = MakeValidFp8Param();
-    param.pScale = TensorDesc(gert::StorageShape({1, 1}, {1, 1}), ge::DT_FLOAT, ge::FORMAT_ND);
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, AllowsEmptyPScaleWithoutDtypeRestriction)
-{
-    auto param = MakeValidFp8Param();
-    param.pScale = TensorDesc(gert::StorageShape({0}, {0}), ge::DT_FLOAT8_E8M0, ge::FORMAT_ND);
-    TilingInfo tilingInfo;
-    EXPECT_TRUE(ExecuteCase(param, tilingInfo));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsMissingKvStride)
-{
-    auto param = MakeValidFp8Param();
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo, false));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsMismatchedKvStride0)
-{
-    auto param = MakeValidFp8Param();
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo, true, true, true));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsNegativeMaskMode)
-{
-    auto param = MakeValidFp8Param();
-    param.mask_mode = -1;
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsNegativeQuantMode)
-{
-    auto param = MakeValidFp8Param();
-    param.quant_mode = -1;
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsNegativeQBlockSize)
-{
-    auto param = MakeValidFp8Param();
-    param.sparse_q_block_size = -1;
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo));
-}
-
-TEST(QuantBlockSparseAttnFp8ValidationTest, RejectsNegativeKvBlockSize)
-{
-    auto param = MakeValidFp8Param();
-    param.sparse_kv_block_size = -1;
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteCase(param, tilingInfo));
 }
 
 INSTANTIATE_TEST_SUITE_P(

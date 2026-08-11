@@ -401,11 +401,17 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckBlockSize() const
 ge::graphStatus QuantBlockSparseAttnCheck::CheckExistence() const
 {
     const auto &opParamInfo = tilingInfo_.opParamInfo;
-    if (tilingInfo_.quantModeVal == QBSA_QUANT_MODE_FP8 &&
-        (opParamInfo.metadata.desc == nullptr || opParamInfo.metadata.tensor == nullptr)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "metadata", "nullptr or empty",
-                                              "Must be passed as a non-empty tensor in quant_mode=1");
-        return ge::GRAPH_FAILED;
+    if (tilingInfo_.quantModeVal == QBSA_QUANT_MODE_FP8) {
+        if (opParamInfo.metadata.desc == nullptr) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                kOpName, "metadata", "nullptr", "The metadata tensor must be provided when quant_mode is 1.");
+            return ge::GRAPH_FAILED;
+        }
+        if (opParamInfo.metadata.tensor == nullptr) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                kOpName, "metadata", "empty", "The metadata tensor cannot be empty when quant_mode is 1.");
+            return ge::GRAPH_FAILED;
+        }
     }
     if (opParamInfo.blockTable.tensor == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "block_table", "nullptr",
@@ -455,15 +461,18 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
 
     if (tilingInfo_.quantModeVal == QBSA_QUANT_MODE_FP8) {
         if (tilingInfo_.n1Size > QBSA_FP8_MAX_N1_SIZE) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "query N1", std::to_string(tilingInfo_.n1Size),
-                                                  "Must be in range (0, 128] in quant_mode=1");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                kOpName, "query N1", std::to_string(tilingInfo_.n1Size),
+                "The value of query N1 must be within the range (0, " + std::to_string(QBSA_FP8_MAX_N1_SIZE) +
+                    "] when quant_mode is 1.");
             return ge::GRAPH_FAILED;
         }
         if (tilingInfo_.bSize > QBSA_FP8_MAX_BATCH_SIZE) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "sparse_indices batch",
                                                   std::to_string(tilingInfo_.bSize),
-                                                  "Must be in range (0, " +
-                                                      std::to_string(QBSA_FP8_MAX_BATCH_SIZE) + "] in quant_mode=1");
+                                                  "The batch size of sparse_indices must be within the range (0, " +
+                                                      std::to_string(QBSA_FP8_MAX_BATCH_SIZE) +
+                                                      "] when quant_mode is 1.");
             return ge::GRAPH_FAILED;
         }
         if (sparseIndicesShape.GetDim(1U) != static_cast<int64_t>(tilingInfo_.n1Size)) {
@@ -476,21 +485,27 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
             sparseSeqLenShape.GetDim(2U) != static_cast<int64_t>(tilingInfo_.qbMax)) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 kOpName, "sparse_seq_len", Ops::Base::ToString(sparseSeqLenShape),
-                "Must be [sparse_indices.B, query.N1, sparse_indices.max_Qb] in quant_mode=1");
+                "The shape of sparse_seq_len must be [sparse_indices.B, query.N1, sparse_indices.max_Qb] when "
+                "quant_mode is 1.");
             return ge::GRAPH_FAILED;
         }
         if (tilingInfo_.maxBlockNumPerBatch < tilingInfo_.sparseCount) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 kOpName, "block_table.shape[1]", std::to_string(tilingInfo_.maxBlockNumPerBatch),
-                "Must be greater than or equal to sparse_indices max_Kb " + std::to_string(tilingInfo_.sparseCount) +
-                    " in quant_mode=1");
+                "The second dimension of block_table must be greater than or equal to max_Kb of sparse_indices (" +
+                    std::to_string(tilingInfo_.sparseCount) + ") when quant_mode is 1.");
             return ge::GRAPH_FAILED;
         }
         const auto *metadataShape = reinterpret_cast<const gert::StorageShape *>(opParamInfo.metadata.tensor);
         const gert::Shape &metadataStorageShape = metadataShape->GetStorageShape();
-        if (metadataStorageShape.GetDimNum() != DIM_NUM_1 || metadataStorageShape.GetDim(0U) <= 0) {
+        if (metadataStorageShape.GetDimNum() != DIM_NUM_1) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "metadata", Ops::Base::ToString(metadataStorageShape),
-                                                  "Must be a non-empty 1D tensor in quant_mode=1");
+                                                  "The metadata tensor must be one-dimensional when quant_mode is 1.");
+            return ge::GRAPH_FAILED;
+        }
+        if (metadataStorageShape.GetDim(0U) <= 0) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "metadata", Ops::Base::ToString(metadataStorageShape),
+                                                  "The metadata tensor cannot be empty when quant_mode is 1.");
             return ge::GRAPH_FAILED;
         }
     }
