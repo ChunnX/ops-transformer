@@ -156,8 +156,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_
     bool has_scale = p_scale.defined();
 
     // x_dtype: determine actual ACL dtype and adjust h for float4 (mirrors MoeInitRoutingV2KernelNpuOpApi.cpp)
-    aclDataType x_acl_type = x_dtype.has_value() ? GetAclDataType(x_dtype.value())
-                                                 : ConvertToAclDataType(x.scalar_type());
+    aclDataType x_acl_type = x_dtype.has_value() ? GetAclDataType(x_dtype.value()) : ConvertToAclDataType(x.scalar_type());
     if (x_acl_type == aclDataType::ACL_FLOAT4_E2M1) {
         h = h * INT4_NUMS_IN_INT8;
     }
@@ -298,19 +297,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_
                                       (x.scalar_type() == at::kFloat8_e5m2 || x.scalar_type() == at::kFloat8_e4m3fn ||
                                        x_acl_type == aclDataType::ACL_FLOAT4_E2M1);
 
-    auto scale_acl_dtype = non_quant_fp8_or_fp4_input
-                            ? ACL_FLOAT8_E8M0
-                            : ConvertToAclDataType(p_scale.defined() ? p_scale.scalar_type() : at::kFloat);
+    auto scale_acl_dtype = non_quant_fp8_or_fp4_input ? ACL_FLOAT8_E8M0 : ConvertToAclDataType(p_scale.defined() ? p_scale.scalar_type() : at::kFloat);
     TensorWrapper scale_wrapper = {p_scale, scale_acl_dtype};
 
-    auto expanded_scale_acl_dtype = non_quant_fp8_or_fp4_input
-                                    ? ACL_FLOAT8_E8M0
-                                    : ConvertToAclDataType(expanded_scale.scalar_type());
+    auto expanded_scale_acl_dtype = non_quant_fp8_or_fp4_input ? ACL_FLOAT8_E8M0 : ConvertToAclDataType(expanded_scale.scalar_type());
     TensorWrapper expanded_scale_wrapper = {expanded_scale, expanded_scale_acl_dtype};
 
-    aclDataType x_wrapper_acl_dtype = (quant_mode == QUANT_MODE_UNQUANT && x_dtype.has_value())
-                                        ? x_acl_type
-                                        : ConvertToAclDataType(x.scalar_type());
+    aclDataType x_wrapper_acl_dtype = (quant_mode == QUANT_MODE_UNQUANT && x_dtype.has_value()) ? x_acl_type : ConvertToAclDataType(x.scalar_type());
     TensorWrapper x_wrapper = {x, x_wrapper_acl_dtype};
     TensorWrapper expanded_x_wrapper = {expanded_x, ConvertToAclDataType(expanded_x.scalar_type())};
 
