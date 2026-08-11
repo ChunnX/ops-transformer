@@ -13,21 +13,25 @@
  * \brief
  */
 
-#include <numeric>
 #include <alog_pub.h>
 #include <register/tilingdata_base.h>
 #include <tiling/tiling_api.h>
+
+#include <numeric>
+
+#include "../../op_kernel/arch22/flash_attention_score_template_tiling_key.h"
+#include "../../op_kernel/arch22/flash_attention_score_tiling.h"
+#include "../flash_attention_score_tiling_common.h"
 #include "log/log.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
 #include "op_host/tiling_type.h"
-#include "../flash_attention_score_tiling_common.h"
-#include "../../op_kernel/arch22/flash_attention_score_tiling.h"
-#include "../../op_kernel/arch22/flash_attention_score_template_tiling_key.h"
 
 using namespace Ops::Transformer::OpTiling;
-namespace optiling {
-namespace FA {
+namespace optiling
+{
+namespace FA
+{
 static const uint32_t BYTE_BLOCK = 32;
 static const int64_t GM_ALIGN = 512;
 static const int64_t FRACTAL_NUM = 16L;
@@ -51,7 +55,7 @@ static const int64_t BMM_SOFTMAX_RATIO = 4L;
 static const int64_t MAX_AIV_NUM = 48L;
 static const int64_t MAX_AIC_NUM = 24L;
 static const int64_t AIV_AIC_NUM_RATIO = 2L;
-static const int64_t DROP_MASK_ALIGN_UNIT = 256L; // input bits, and align to 32B in UB
+static const int64_t DROP_MASK_ALIGN_UNIT = 256L;  // input bits, and align to 32B in UB
 static const int64_t HIGH_PERF_BUFFER_NUM = 6L;
 static const int64_t HIGH_PERF_SUPPORT_S1_BASIC = 128L;
 static const int64_t HIGH_PERF_SUPPORT_S2_BASIC = 128L;
@@ -141,8 +145,10 @@ static const int64_t D2_SIZE_L1CARRY_MAX = 256L;
 static const int64_t SOFTMAX_OUT_LAYOUT_INDEX = 12L;
 static const int64_t B4_SEQ_LIMIT = 48000L;
 static const int64_t SINK_INPUT_INDEX = 17L;
+static const int64_t DYNA_BASICBLOCK_S1_MAX = 32000;
 
-enum LayoutType : uint8_t {
+enum LayoutType : uint8_t
+{
     None = 0,
     LAYOUT_BSH = 1,
     LAYOUT_BSND = 1,
@@ -151,16 +157,24 @@ enum LayoutType : uint8_t {
     LAYOUT_TND = 4,
 };
 
-enum AttenMaskShapeType : uint8_t {
+enum AttenMaskShapeType : uint8_t
+{
     ATTEN_B_N2_G_S1_S2 = 0,
     ATTEN_B_1_1_S1_S2 = 1,
     ATTEN_1_1_1_S1_S2 = 2,
     ATTEN_1_1_1_T_T = 99,
 };
 
-enum PseShapeType : uint8_t { PSE_B_N2_G_S1_S2 = 0, PSE_B_N2_G_1_S2 = 1, PSE_B_N2_G_SLOPE, PSE_1_N2_G_SLOPE };
+enum PseShapeType : uint8_t
+{
+    PSE_B_N2_G_S1_S2 = 0,
+    PSE_B_N2_G_1_S2 = 1,
+    PSE_B_N2_G_SLOPE,
+    PSE_1_N2_G_SLOPE
+};
 
-enum SparseMode : uint8_t {
+enum SparseMode : uint8_t
+{
     NO_MASK = 0,
     ALL_MASK,
     LEFT_UP_CAUSAL,
@@ -172,7 +186,8 @@ enum SparseMode : uint8_t {
     BAND_LEFT_UP_CAUSAL
 };
 
-enum AttenMaskCompressMode : uint8_t {
+enum AttenMaskCompressMode : uint8_t
+{
     NO_COMPRESS_MODE = 0,
     LEFT_UP_CAUSAL_MODE,
     RIGHT_DOWN_CAUSAL_MODE,
@@ -182,22 +197,30 @@ enum AttenMaskCompressMode : uint8_t {
     BAND_LEFT_UP_CAUSAL_MODE
 };
 
-enum ImplMode : uint8_t { AA_HIGH_PRECISION = 0, AA_HIGH_PERFORMANCE = 1, AA_INVALID_LINE_HIGH_PRECISION = 2 };
+enum ImplMode : uint8_t
+{
+    AA_HIGH_PRECISION = 0,
+    AA_HIGH_PERFORMANCE = 1,
+    AA_INVALID_LINE_HIGH_PRECISION = 2
+};
 
-enum PseType : uint8_t {
+enum PseType : uint8_t
+{
     PSE_OUTER_MUL_ADD_TYPE = 0,
-    PSE_OUTER_ADD_MUL_TYPE = 1, // default
+    PSE_OUTER_ADD_MUL_TYPE = 1,  // default
     PSE_INNER_MUL_ADD_TYPE,
     PSE_INNER_MUL_ADD_SQRT_TYPE,
     PSE_INVALID_TYPE
 };
 
-enum PseEncodeType : uint8_t {
+enum PseEncodeType : uint8_t
+{
     PSE_ENCODE_NONE = 0,
-    PSE_ENCODE_ALIBI_S2_FULL = 0x11, // shape: (1024, S2)
+    PSE_ENCODE_ALIBI_S2_FULL = 0x11,  // shape: (1024, S2)
 };
 
-enum class STemplateType : uint8_t {
+enum class STemplateType : uint8_t
+{
     S_TEMPLATE_UNKNOW = 0,
     ALIGNED_16 = 1,
     ALIGNED_32 = 2,
@@ -209,14 +232,16 @@ enum class STemplateType : uint8_t {
     ALIGNED_128 = 8,
 };
 
-enum class DTemplateType : uint8_t {
+enum class DTemplateType : uint8_t
+{
     D_TEMPLATE_UNKNOW = 0,
     ALIGNED_80 = 5,
     ALIGNED_96 = 6,
     ALIGNED_128 = 8,
 };
 
-struct MatmulConstParams {
+struct MatmulConstParams
+{
     int32_t baseM;
     int32_t baseN;
     int32_t baseK;
@@ -225,15 +250,21 @@ struct MatmulConstParams {
     DTemplateType dType;
 };
 
-enum MatmulPolicyType : uint8_t { MATMUL_POLICY_NORMAL = 0, MATMUL_POLICY_UNSPLITK = 1 };
+enum MatmulPolicyType : uint8_t
+{
+    MATMUL_POLICY_NORMAL = 0,
+    MATMUL_POLICY_UNSPLITK = 1
+};
 
 template <typename T>
 static T AlignUp(T num1, T num2)
 {
-    if (num2 == 0) {
+    if (num2 == 0)
+    {
         return 0;
     }
-    if (num1 < 0) {
+    if (num1 < 0)
+    {
         return -(-num1 / num2) * num2;
     }
     return (num1 + num2 - 1) / num2 * num2;
@@ -242,7 +273,8 @@ static T AlignUp(T num1, T num2)
 template <typename T>
 static T AlignDown(T num1, T num2)
 {
-    if (num2 == 0) {
+    if (num2 == 0)
+    {
         return 0;
     }
     return num1 / num2 * num2;
@@ -251,7 +283,8 @@ static T AlignDown(T num1, T num2)
 template <typename T>
 static T CeilDivision(T num1, T num2)
 {
-    if (num2 == 0) {
+    if (num2 == 0)
+    {
         return 0;
     }
     return (num1 + num2 - 1) / num2;
@@ -260,7 +293,8 @@ static T CeilDivision(T num1, T num2)
 template <typename T>
 static T CeilDiv(const T n1, const T n2)
 {
-    if (n1 == 0) {
+    if (n1 == 0)
+    {
         return 0;
     }
     return (n2 != 0) ? (((n1 - 1) / n2) + 1) : n1;
@@ -269,15 +303,17 @@ static T CeilDiv(const T n1, const T n2)
 template <typename T>
 static T CalcTailSize(T num1, T num2)
 {
-    if (num2 == 0) {
+    if (num2 == 0)
+    {
         return 0;
     }
     T mod = num1 % num2;
     return mod != 0 ? mod : num2;
 }
 
-class TilingKey {
-public:
+class TilingKey
+{
+   public:
     TilingKey() : splitS1(0), splitS2(0), splitD(0), dtype(0), layoutType(0), sparseType(0), reserved(0) {}
 
     void Reset()
@@ -306,7 +342,7 @@ public:
     uint32_t dtype : 2;
     uint32_t layoutType : 2;
     uint32_t sparseType : 2;
-    uint32_t reserved : 23; // to fullfil 32 bit, if add new template bit then decrease this number
+    uint32_t reserved : 23;  // to fullfil 32 bit, if add new template bit then decrease this number
 };
 
 inline bool operator==(const TilingKey &left, const TilingKey &right)
@@ -316,16 +352,18 @@ inline bool operator==(const TilingKey &left, const TilingKey &right)
 
 using TemplateType = TilingKey;
 
-class BufferNum {
-public:
+class BufferNum
+{
+   public:
     // sum and max always use fp32, shape is (S1, 1), inner axis align 32B.
-    size_t bufferS1S2Num; // unit: input dtype
+    size_t bufferS1S2Num;  // unit: input dtype
     size_t bufferS1DNum;
-    size_t bufferExpNum; // unit: input dtype, shape: [S1, 1], inner axis align 32B.
+    size_t bufferExpNum;  // unit: input dtype, shape: [S1, 1], inner axis align 32B.
 };
 
-class FlashAttentionScoreTilingBase : public TilingBaseClass {
-public:
+class FlashAttentionScoreTilingBase : public TilingBaseClass
+{
+   public:
     explicit FlashAttentionScoreTilingBase(gert::TilingContext *context) : TilingBaseClass(context) { Reset(); }
     ~FlashAttentionScoreTilingBase() override = default;
 
@@ -335,7 +373,7 @@ public:
         Reset();
     }
 
-protected:
+   protected:
     [[nodiscard]] gert::TilingContext *GetContext() { return context_; }
     bool IsCapable() override { return true; }
     // 1、获取平台信息比如CoreNum、UB/L1/L0C资源大小
@@ -464,7 +502,7 @@ protected:
     int64_t inputDtypeBytes;
     int64_t calcTypeSize;
 
-    bool isHighPercision; // fp16 high percision mode
+    bool isHighPercision;  // fp16 high percision mode
 
     DtypeEnum tilingKeyDType;
     LayoutType tilingKeyLayout;
@@ -482,8 +520,8 @@ protected:
     int64_t n2Size;
     int64_t s1Size;
     int64_t s2Size;
-    int64_t s1StrideSize; // query Shape S inner axes, for bmm1
-    int64_t s2StrideSize; // key Shape S inner axes, for bmm1
+    int64_t s1StrideSize;  // query Shape S inner axes, for bmm1
+    int64_t s2StrideSize;  // key Shape S inner axes, for bmm1
     int64_t vs2StrideSize;
     int64_t preTokens;
     int64_t nextTokens;
@@ -570,7 +608,8 @@ void FlashAttentionScoreTilingBase::GetMaxWorkspaceFlag()
 {
     auto actualSeqQLenShape = context_->GetOptionalInputShape(ACTUAL_SEQ_LENGTH_INPUT_INDEX);
     auto actualSeqKvLenShape = context_->GetOptionalInputShape(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX);
-    if (actualSeqQLenShape == nullptr || actualSeqKvLenShape == nullptr) {
+    if (actualSeqQLenShape == nullptr || actualSeqKvLenShape == nullptr)
+    {
         return;
     }
     size_t actualSeqQLenDims = static_cast<size_t>(actualSeqQLenShape->GetStorageShape().GetDimNum());
@@ -579,10 +618,13 @@ void FlashAttentionScoreTilingBase::GetMaxWorkspaceFlag()
     auto actualSeqQLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_INPUT_INDEX);
     auto actualSeqKvLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX);
     if ((actualSeqQLenTensor != nullptr && !actualSeqQLenTensor->GetData<int64_t>() && actualSeqQLenDims == 1) ||
-        (actualSeqKvLenTensor != nullptr && !actualSeqKvLenTensor->GetData<int64_t>() && actualSeqKvLenDims == 1)) {
+        (actualSeqKvLenTensor != nullptr && !actualSeqKvLenTensor->GetData<int64_t>() && actualSeqKvLenDims == 1))
+    {
         isMaxWorkspace = true;
         OP_LOGI(opName, "FA tiling sink");
-    } else {
+    }
+    else
+    {
         isMaxWorkspace = false;
     }
 }
@@ -590,7 +632,8 @@ void FlashAttentionScoreTilingBase::GetMaxWorkspaceFlag()
 ge::graphStatus FlashAttentionScoreTilingBase::GetPlatformInfo()
 {
     auto platformInfoPtr = context_->GetPlatformInfo();
-    if (platformInfoPtr == nullptr) {
+    if (platformInfoPtr == nullptr)
+    {
         auto compileInfoPtr = reinterpret_cast<const FlashAttentionScoreCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(opName, "compileInfoPtr is null."), return ge::GRAPH_FAILED);
         aivNum = compileInfoPtr->aivNum;
@@ -599,7 +642,9 @@ ge::graphStatus FlashAttentionScoreTilingBase::GetPlatformInfo()
         aicoreParams_.l1Size = compileInfoPtr->l1Size;
         aicoreParams_.l0cSize = compileInfoPtr->l0cSize;
         l2CacheSize = compileInfoPtr->l2CacheSize;
-    } else {
+    }
+    else
+    {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
         aivNum = ascendcPlatform.GetCoreNumAiv();
         aicNum = ascendcPlatform.GetCoreNumAic();
@@ -660,11 +705,13 @@ void FlashAttentionScoreTilingBase::SetSparseTilingInfo(SparseEnum &sparseType)
 
 void FlashAttentionScoreTilingBase::EnableBandInvalidLineImplMode()
 {
-    if (implMode == AA_INVALID_LINE_HIGH_PRECISION) {
+    if (implMode == AA_INVALID_LINE_HIGH_PRECISION)
+    {
         return;
     }
     // pretoken and nexttoken are already valid values (leftup vertex) after adjusted
-    if (preTokens < (s1Size - s2Size) || nextTokens < 0) {
+    if (preTokens < (s1Size - s2Size) || nextTokens < 0)
+    {
         implMode = AA_INVALID_LINE_HIGH_PRECISION;
         OP_LOGI(context_, "Enable invalid line impl mode.");
         return;
@@ -674,8 +721,10 @@ void FlashAttentionScoreTilingBase::EnableBandInvalidLineImplMode()
 bool FlashAttentionScoreTilingBase::PretokenAndNexttokenAdjustment(SparseEnum &sparseType)
 {
     if (sparseMode == static_cast<int64_t>(ALL_MASK) || sparseMode == static_cast<int64_t>(PREFIX) ||
-        sparseMode == static_cast<int64_t>(PREFIX_COMPRESS)) {
-        if (preTokens < s1Size - 1 || nextTokens < s2Size - 1) {
+        sparseMode == static_cast<int64_t>(PREFIX_COMPRESS))
+    {
+        if (preTokens < s1Size - 1 || nextTokens < s2Size - 1)
+        {
             OP_LOGW(context_,
                     "preTokens[%ld] and nextTokens[%ld] not match sparseMode[%ld], "
                     "preTokens and nextTokens will be reset max int value.",
@@ -683,30 +732,39 @@ bool FlashAttentionScoreTilingBase::PretokenAndNexttokenAdjustment(SparseEnum &s
             preTokens = std::numeric_limits<int32_t>::max();
             nextTokens = std::numeric_limits<int32_t>::max();
         }
-        sparseType = (sparseMode == PREFIX_COMPRESS) ? static_cast<SparseEnum>(static_cast<uint8_t>(PREFIX)) :
-                                                       static_cast<SparseEnum>(static_cast<uint8_t>(sparseMode));
-    } else if (sparseMode == static_cast<int64_t>(LEFT_UP_CAUSAL)) {
-        if (preTokens != s1Size || nextTokens != 0) {
+        sparseType = (sparseMode == PREFIX_COMPRESS) ? static_cast<SparseEnum>(static_cast<uint8_t>(PREFIX))
+                                                     : static_cast<SparseEnum>(static_cast<uint8_t>(sparseMode));
+    }
+    else if (sparseMode == static_cast<int64_t>(LEFT_UP_CAUSAL))
+    {
+        if (preTokens != s1Size || nextTokens != 0)
+        {
             OP_LOGW(context_,
                     "preTokens[%ld] and nextTokens[%ld] not match sparseMode[%ld], "
                     "preTokens will be reset max int value and nextTokens will be reset 0.",
                     preTokens, nextTokens, sparseMode);
-            preTokens = s1Size; // if sparse type is causal, template always need preTokens equal to s1Size
+            preTokens = s1Size;  // if sparse type is causal, template always need preTokens equal to s1Size
             nextTokens = 0;
         }
         sparseType = SparseEnum::CAUSAL;
-    } else if (sparseMode == static_cast<int64_t>(RIGHT_DOWN_CAUSAL)) {
-        if (s1Size == s2Size) {
-            if (preTokens != s1Size || nextTokens != 0) {
+    }
+    else if (sparseMode == static_cast<int64_t>(RIGHT_DOWN_CAUSAL))
+    {
+        if (s1Size == s2Size)
+        {
+            if (preTokens != s1Size || nextTokens != 0)
+            {
                 OP_LOGW(context_,
                         "preTokens[%ld] and nextTokens[%ld] not match sparseMode[%ld], "
                         "preTokens will be reset max int value and nextTokens will be reset 0.",
                         preTokens, nextTokens, sparseMode);
-                preTokens = s1Size; // if sparse type is causal, template always need preTokens equal to s1Size
+                preTokens = s1Size;  // if sparse type is causal, template always need preTokens equal to s1Size
                 nextTokens = 0;
             }
             sparseType = SparseEnum::CAUSAL;
-        } else {
+        }
+        else
+        {
             // unequal S, change to band
             preTokens = s1Size;
             nextTokens = s2Size - s1Size;
@@ -721,13 +779,17 @@ bool FlashAttentionScoreTilingBase::PretokenAndNexttokenAdjustment(SparseEnum &s
             s2SparseValidSize = std::min(AlignUp(nextTokens, HIGH_PERF_BLOCK_SIZE), s2Size);
             isSparseValidSizeAligned = true;
         }
-    } else if (sparseMode == static_cast<int64_t>(BAND)) {
+    }
+    else if (sparseMode == static_cast<int64_t>(BAND))
+    {
         // unequal s, pretoken and nexttoken count from rigthDown vertex, need to change to leftUp vertex
-        if (s1Size != s2Size) {
+        if (s1Size != s2Size)
+        {
             preTokens = s1Size - s2Size + preTokens;
             nextTokens = s2Size - s1Size + nextTokens;
         }
-        if (!SparseBandModeCheck(s1Size, s2Size, s1Size, s2Size, sparseType)) {
+        if (!SparseBandModeCheck(s1Size, s2Size, s1Size, s2Size, sparseType))
+        {
             return false;
         }
     }
@@ -739,8 +801,10 @@ bool FlashAttentionScoreTilingBase::SparseBandModeCheck(int64_t maxS1Value, int6
 {
     int64_t oriPreTokens = (sparseMode == static_cast<int64_t>(BAND)) ? (preTokens + s2Size - s1Size) : preTokens;
     int64_t oriNextTokens = (sparseMode == static_cast<int64_t>(BAND)) ? (nextTokens + s1Size - s2Size) : nextTokens;
-    if (preTokens >= 0 && nextTokens >= 0) {
-        if (preTokens >= maxS1Value && nextTokens >= maxS2Value) {
+    if (preTokens >= 0 && nextTokens >= 0)
+    {
+        if (preTokens >= maxS1Value && nextTokens >= maxS2Value)
+        {
             OP_LOGW(context_,
                     "PreTokens[%ld] and nextTokens[%ld] config error, should not both greater than maxS1Val[%ld] "
                     "maxS2Val[%ld].",
@@ -756,15 +820,18 @@ bool FlashAttentionScoreTilingBase::SparseBandModeCheck(int64_t maxS1Value, int6
         return true;
     }
 
-    if (preTokens < 0 && nextTokens < 0) {
+    if (preTokens < 0 && nextTokens < 0)
+    {
         OP_LOGE(context_, "PreTokens[%ld] and nextTokens[%ld] config error, there is no valid data block.",
                 oriPreTokens, oriNextTokens);
         return false;
     }
 
-    if (preTokens < 0 && nextTokens >= 0) {
+    if (preTokens < 0 && nextTokens >= 0)
+    {
         int64_t absPreTokens = std::abs(preTokens);
-        if (nextTokens >= absPreTokens && absPreTokens < minS2Value) {
+        if (nextTokens >= absPreTokens && absPreTokens < minS2Value)
+        {
             // check need to enable AA_INVALID_LINE_HIGH_PRECISION
             EnableBandInvalidLineImplMode();
             s1SparseValidSize = std::min(AlignUp(preTokens, HIGH_PERF_BLOCK_SIZE), 0L);
@@ -772,7 +839,9 @@ bool FlashAttentionScoreTilingBase::SparseBandModeCheck(int64_t maxS1Value, int6
             isSparseValidSizeAligned = true;
             sparseType = SparseEnum::BAND;
             return true;
-        } else {
+        }
+        else
+        {
             OP_LOGE(context_,
                     "PreTokens[%ld] and nextTokens[%ld] config error with S1[%ld], there is no valid data block.",
                     oriPreTokens, oriNextTokens, minS1Value);
@@ -780,9 +849,11 @@ bool FlashAttentionScoreTilingBase::SparseBandModeCheck(int64_t maxS1Value, int6
         }
     }
 
-    if (preTokens >= 0 && nextTokens < 0) {
+    if (preTokens >= 0 && nextTokens < 0)
+    {
         int64_t absNextTokens = std::abs(nextTokens);
-        if (absNextTokens <= preTokens && absNextTokens < minS1Value) {
+        if (absNextTokens <= preTokens && absNextTokens < minS1Value)
+        {
             // check need to enable AA_INVALID_LINE_HIGH_PRECISION
             EnableBandInvalidLineImplMode();
             s1SparseValidSize = std::min(AlignUp(preTokens, HIGH_PERF_BLOCK_SIZE), s1Size);
@@ -790,7 +861,9 @@ bool FlashAttentionScoreTilingBase::SparseBandModeCheck(int64_t maxS1Value, int6
             isSparseValidSizeAligned = true;
             sparseType = SparseEnum::BAND;
             return true;
-        } else {
+        }
+        else
+        {
             OP_LOGE(context_,
                     "PreTokens[%ld] and nextTokens[%ld] config error with S2[%ld], there is no valid data block.",
                     oriPreTokens, oriNextTokens, minS2Value);
@@ -802,26 +875,31 @@ bool FlashAttentionScoreTilingBase::SparseBandModeCheck(int64_t maxS1Value, int6
 
 bool FlashAttentionScoreTilingBase::SparseModeProcess(SparseEnum &sparseType)
 {
-    if (sparseMode > static_cast<int64_t>(PREFIX_COMPRESS)) {
+    if (sparseMode > static_cast<int64_t>(PREFIX_COMPRESS))
+    {
         OP_LOGE(context_, "Not support sparse mode of %ld.", sparseMode);
         return false;
     }
 
-    if (!PretokenAndNexttokenAdjustment(sparseType)) {
+    if (!PretokenAndNexttokenAdjustment(sparseType))
+    {
         return false;
     }
 
-    if (sparseMode == static_cast<int64_t>(SparseEnum::PREFIX) || sparseMode == static_cast<int64_t>(PREFIX_COMPRESS)) {
+    if (sparseMode == static_cast<int64_t>(SparseEnum::PREFIX) || sparseMode == static_cast<int64_t>(PREFIX_COMPRESS))
+    {
         std::ostringstream failReason;
         sparseType = GetPrefixNList(failReason);
-        if (sparseType != SparseEnum::PREFIX && sparseMode == static_cast<int64_t>(PREFIX_COMPRESS)) {
+        if (sparseType != SparseEnum::PREFIX && sparseMode == static_cast<int64_t>(PREFIX_COMPRESS))
+        {
             OP_LOGE(context_, "[%s] %s.", templateName, failReason.str().c_str());
             return false;
         }
 
         if (sparseType == SparseEnum::PREFIX && sparseMode == static_cast<int64_t>(PREFIX) &&
             tilingData->inputParams.get_attenMaskShapeType() != ATTEN_B_N2_G_S1_S2 &&
-            tilingData->inputParams.get_attenMaskShapeType() != ATTEN_B_1_1_S1_S2 && bSize != 1) {
+            tilingData->inputParams.get_attenMaskShapeType() != ATTEN_B_1_1_S1_S2 && bSize != 1)
+        {
             OP_LOGE(context_, "Prefix mode get invalid atten_mask shape, should be [BNSS] or [B1SS].");
             return false;
         }
@@ -833,28 +911,39 @@ bool FlashAttentionScoreTilingBase::GetSparseInfo(SparseEnum &sparseType)
 {
     OP_LOGD(context_, "check sparse info: preTokens[%ld], nextTokens[%ld], s1[%ld], s2[%ld], attenMaskExistFlag[%d].",
             preTokens, nextTokens, s1Size, s2Size, attenMaskExistFlag);
-    if (attenMaskExistFlag != 1) {
+    if (attenMaskExistFlag != 1)
+    {
         return true;
     }
 
-    if (tilingKeyLayout == LayoutType::LAYOUT_TND) {
+    if (tilingKeyLayout == LayoutType::LAYOUT_TND)
+    {
         return true;
     }
 
-    if (sparseMode == static_cast<int64_t>(NO_MASK)) {
-        if (preTokens >= s1Size && nextTokens == 0) {
+    if (sparseMode == static_cast<int64_t>(NO_MASK))
+    {
+        if (preTokens >= s1Size && nextTokens == 0)
+        {
             sparseType = SparseEnum::CAUSAL;
-            preTokens = s1Size; // if sparse type is causal, template always need preTokens equal to s1Size
-        } else {
-            if (preTokens >= s1Size && nextTokens >= s2Size) {
+            preTokens = s1Size;  // if sparse type is causal, template always need preTokens equal to s1Size
+        }
+        else
+        {
+            if (preTokens >= s1Size && nextTokens >= s2Size)
+            {
                 return true;
             }
-            if (!SparseBandModeCheck(s1Size, s2Size, s1Size, s2Size, sparseType)) {
+            if (!SparseBandModeCheck(s1Size, s2Size, s1Size, s2Size, sparseType))
+            {
                 return false;
             }
         }
-    } else {
-        if (!SparseModeProcess(sparseType)) {
+    }
+    else
+    {
+        if (!SparseModeProcess(sparseType))
+        {
             return false;
         }
     }
@@ -866,25 +955,33 @@ bool FlashAttentionScoreTilingBase::SetPseAlibiParams()
     auto &inputParams = tilingData->inputParams;
     inputParams.set_pseEncodeType(PSE_ENCODE_NONE);
     auto pseShape = context_->GetOptionalInputShape(PSE_INPUT_INDEX);
-    if (pseShape == nullptr || pseShape->GetStorageShape().GetDimNum() == 0) {
+    if (pseShape == nullptr || pseShape->GetStorageShape().GetDimNum() == 0)
+    {
         return true;
     }
     if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
-        pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
-        if (s1Size != s2Size) {
+        pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE))
+    {
+        if (s1Size != s2Size)
+        {
             OP_LOGE(context_, "INNER Pse alibi is supported only when s1Size and s2Size are equal.");
             return false;
         }
         return true;
     }
-    if (pseShape->GetStorageShape().GetDimNum() < 1) { // 1 is min dim num of legal pse
+    if (pseShape->GetStorageShape().GetDimNum() < 1)
+    {  // 1 is min dim num of legal pse
         OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).", pseShape->GetStorageShape().GetDimNum(), pseType);
         return false;
-    } else if (pseShape->GetStorageShape().GetDimNum() >= 2) {
+    }
+    else if (pseShape->GetStorageShape().GetDimNum() >= 2)
+    {
         auto pseS1Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 2);
         auto pseS2Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 1);
-        if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE && pseS2Size == s2Size) {
-            if (s1Size != s2Size) {
+        if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE && pseS2Size == s2Size)
+        {
+            if (s1Size != s2Size)
+            {
                 OP_LOGE(opName, "Pse alibi only support same S1 S2 when S1 lager than 1024");
                 return false;
             }
@@ -930,7 +1027,8 @@ ge::graphStatus FlashAttentionScoreTilingBase::GetShapeAttrsInfo()
     alignedD = AlignUp((dSize + dRopeSize), FRACTAL_NUM);
     alignedD2 = AlignUp(d2Size, FRACTAL_NUM);
 
-    if (!isMaxWorkspace) {
+    if (!isMaxWorkspace)
+    {
         OP_CHECK_IF(alignedS1 <= 0, OP_LOGE(opName, "invalid alignedS1 %ld.", alignedS1), return ge::GRAPH_FAILED);
         OP_CHECK_IF(alignedS2 <= 0, OP_LOGE(opName, "invalid alignedS2 %ld.", alignedS2), return ge::GRAPH_FAILED);
         OP_CHECK_IF(alignedD <= 0, OP_LOGE(opName, "invalid alignedD %ld.", alignedD), return ge::GRAPH_FAILED);
@@ -1039,7 +1137,8 @@ bool FlashAttentionScoreTilingBase::AnalyzeDtype()
 {
     inputDtype = context_->GetInputDesc(0)->GetDataType();
     inputDtypeBytes = ge::GetSizeByDataType(inputDtype);
-    switch (inputDtype) {
+    switch (inputDtype)
+    {
         case ge::DT_FLOAT16:
             bmmDtype = matmul_tiling::DataType::DT_FLOAT16;
             bmm1OutDtype = isHighPercision ? matmul_tiling::DataType::DT_FLOAT : matmul_tiling::DataType::DT_FLOAT16;
@@ -1092,42 +1191,59 @@ bool FlashAttentionScoreTilingBase::AnalyzeAttrs()
                 return false);
 
     implMode = ImplMode::AA_HIGH_PRECISION;
-    if (attrs->GetAttrNum() > idx) {
+    if (attrs->GetAttrNum() > idx)
+    {
         auto implModePtr = attrs->GetAttrPointer<uint8_t>(idx++);
-        if (static_cast<ImplMode>(*implModePtr) == ImplMode::AA_INVALID_LINE_HIGH_PRECISION) {
+        if (static_cast<ImplMode>(*implModePtr) == ImplMode::AA_INVALID_LINE_HIGH_PRECISION)
+        {
             implMode = ImplMode::AA_INVALID_LINE_HIGH_PRECISION;
         }
-        isHighPercision = true; // use default value
+        isHighPercision = true;  // use default value
     }
 
-    if (attrs->GetAttrNum() > idx) {
+    if (attrs->GetAttrNum() > idx)
+    {
         auto sparseModePtr = attrs->GetAttrPointer<int64_t>(idx++);
         sparseMode = *sparseModePtr;
-        if (sparseMode == static_cast<int64_t>(LEFT_UP_CAUSAL)) {
+        if (sparseMode == static_cast<int64_t>(LEFT_UP_CAUSAL))
+        {
             attenMaskCompressMode = LEFT_UP_CAUSAL_MODE;
-        } else if (sparseMode == static_cast<int64_t>(RIGHT_DOWN_CAUSAL)) {
+        }
+        else if (sparseMode == static_cast<int64_t>(RIGHT_DOWN_CAUSAL))
+        {
             attenMaskCompressMode = RIGHT_DOWN_CAUSAL_MODE;
-        } else if (sparseMode == static_cast<int64_t>(BAND)) {
+        }
+        else if (sparseMode == static_cast<int64_t>(BAND))
+        {
             attenMaskCompressMode = BAND_MODE;
-        } else if (sparseMode == static_cast<int64_t>(RIGHT_DOWN_CAUSAL_BAND)) {
+        }
+        else if (sparseMode == static_cast<int64_t>(RIGHT_DOWN_CAUSAL_BAND))
+        {
             attenMaskCompressMode = RIGHT_DOWN_CAUSAL_BAND_MODE;
-        } else if (sparseMode == static_cast<int64_t>(BAND_LEFT_UP_CAUSAL)) {
+        }
+        else if (sparseMode == static_cast<int64_t>(BAND_LEFT_UP_CAUSAL))
+        {
             attenMaskCompressMode = BAND_LEFT_UP_CAUSAL_MODE;
-        } else if (sparseMode == static_cast<int64_t>(PREFIX_COMPRESS)) {
+        }
+        else if (sparseMode == static_cast<int64_t>(PREFIX_COMPRESS))
+        {
             attenMaskCompressMode = PREFIX_MODE;
         }
         OP_LOGD(context_, "The current value of attenMaskCompressMode is %u.", attenMaskCompressMode);
     }
-    if (attrs->GetAttrNum() > idx) {
+    if (attrs->GetAttrNum() > idx)
+    {
         auto pseTypePtr = attrs->GetAttrPointer<int64_t>(idx++);
         pseType = *pseTypePtr;
         OP_CHECK_IF(pseType < 0 || pseType >= PSE_INVALID_TYPE, OP_LOGE(opName, "pseType value is out of range"),
                     return false);
     }
-    if (attrs->GetAttrNum() > static_cast<size_t>(SOFTMAX_OUT_LAYOUT_INDEX)) {
+    if (attrs->GetAttrNum() > static_cast<size_t>(SOFTMAX_OUT_LAYOUT_INDEX))
+    {
         // read 13th attr softmax_out_layout
         const char *softmaxOutLayout = attrs->GetAttrPointer<char>(SOFTMAX_OUT_LAYOUT_INDEX);
-        if (strcmp(inputLayout, "TND") == 0 && strcmp(softmaxOutLayout, "same_as_input") == 0) {
+        if (strcmp(inputLayout, "TND") == 0 && strcmp(softmaxOutLayout, "same_as_input") == 0)
+        {
             // check whether softmax_out_layout is TND
             tndSoftmaxOut = static_cast<uint8_t>(1);
         }
@@ -1172,29 +1288,38 @@ bool FlashAttentionScoreTilingBase::CouldConvertTND2BSH(std::array<int64_t, MAX_
 {
     auto pseShape = context_->GetOptionalInputShape(PSE_INPUT_INDEX);
     auto queryRopeShape = context_->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX);
-    if (queryRopeShape != nullptr) {
+    if (queryRopeShape != nullptr)
+    {
         return false;
     }
-    if (tndSoftmaxOut == 1) {
-        return false; // could not switch to BSH layout with TND softmax
+    if (tndSoftmaxOut == 1)
+    {
+        return false;  // could not switch to BSH layout with TND softmax
     }
-    if (!(pseShape == nullptr || pseShape->GetStorageShape().GetDimNum() == 0)) {
+    if (!(pseShape == nullptr || pseShape->GetStorageShape().GetDimNum() == 0))
+    {
         return false;
     }
-    if (sparseMode == RIGHT_DOWN_CAUSAL_BAND || sparseMode == BAND_LEFT_UP_CAUSAL) {
+    if (sparseMode == RIGHT_DOWN_CAUSAL_BAND || sparseMode == BAND_LEFT_UP_CAUSAL)
+    {
         return false;
     }
-    if (actualQBatch != actualKVBatch) {
+    if (actualQBatch != actualKVBatch)
+    {
         return false;
     }
-    if (s1Max * actualQBatch != t1Size || s2Max * actualKVBatch != t2Size) {
+    if (s1Max * actualQBatch != t1Size || s2Max * actualKVBatch != t2Size)
+    {
         return false;
     }
-    for (uint32_t i = firstValidIndex; i <= lastValidIndex; i++) {
-        if (resQ[i] == 0 && resKV[i] == 0) {
+    for (uint32_t i = firstValidIndex; i <= lastValidIndex; i++)
+    {
+        if (resQ[i] == 0 && resKV[i] == 0)
+        {
             continue;
         }
-        if ((resKV[i] == 0) || (resQ[i] == 0)) {
+        if ((resKV[i] == 0) || (resQ[i] == 0))
+        {
             return false;
         }
     }
@@ -1205,32 +1330,40 @@ void FlashAttentionScoreTilingBase::GetActualSeqLenData(int64_t inputIdx, std::a
                                                         int64_t &actualLen, int64_t &actualBatch, int64_t &endLen) const
 {
     auto actualSeqLenTensor = context_->GetOptionalInputTensor(inputIdx);
-    if (actualSeqLenTensor == nullptr) {
+    if (actualSeqLenTensor == nullptr)
+    {
         OP_LOGW(context_, "[%s]actualSeqLenTensor is null pointer", templateName);
         return;
     }
     auto &actualSeqLenShape = actualSeqLenTensor->GetShape().GetStorageShape();
-    if (actualSeqLenShape.GetDimNum() != 1) {
+    if (actualSeqLenShape.GetDimNum() != 1)
+    {
         OP_LOGW(context_, "[%s]actualSeqLenShape is invalid %lu %ld", templateName, actualSeqLenShape.GetDimNum(),
                 actualSeqLenShape.GetDim(0));
         return;
     }
     /* Get Data from tensor. */
     const int64_t *value = actualSeqLenTensor->GetData<int64_t>();
-    if (value == nullptr) {
+    if (value == nullptr)
+    {
         OP_LOGW(context_, "[%s]actualSeqLenTensor data is null pointer", templateName);
         return;
     }
     res[0] = value[0];
-    if (value[0] != 0) {
+    if (value[0] != 0)
+    {
         actualBatch++;
     }
     actualLen++;
-    for (int64_t i = 1; i < actualSeqLenShape.GetDim(0); ++i) {
+    for (int64_t i = 1; i < actualSeqLenShape.GetDim(0); ++i)
+    {
         auto qLen = value[i] - value[i - 1];
-        if (qLen <= 0) {
+        if (qLen <= 0)
+        {
             res[i] = 0;
-        } else {
+        }
+        else
+        {
             res[i] = qLen;
             actualBatch++;
         }
@@ -1247,32 +1380,38 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
     int64_t h2 = 0;
     int64_t h3 = 0;
     dRopeSize = 0;
-    if (layoutLen == 3UL) {
-        if (inputLayout[0] == 'B' && inputLayout[1] == 'S' && inputLayout[2] == 'H') { // 2: H idx
+    if (layoutLen == 3UL)
+    {
+        if (inputLayout[0] == 'B' && inputLayout[1] == 'S' && inputLayout[2] == 'H')
+        {  // 2: H idx
             s1Size = queryShape.GetDim(1);
             bSize = queryShape.GetDim(0);
             s2Size = keyShape.GetDim(1);
-            h1 = queryShape.GetDim(2); // 2: H idx
-            h2 = keyShape.GetDim(2);   // 2: H idx
-            h3 = valueShape.GetDim(2); // 2: H idx
+            h1 = queryShape.GetDim(2);  // 2: H idx
+            h2 = keyShape.GetDim(2);    // 2: H idx
+            h3 = valueShape.GetDim(2);  // 2: H idx
             s1StrideSize = h1;
             s2StrideSize = h2;
             vs2StrideSize = h3;
             tilingData->inputParams.set_layoutType(LAYOUT_BSH);
             tilingKeyLayout = LayoutType::LAYOUT_BSH;
-        } else if (inputLayout[0] == 'S' && inputLayout[1] == 'B' && inputLayout[2] == 'H') { // 2: H idx
+        }
+        else if (inputLayout[0] == 'S' && inputLayout[1] == 'B' && inputLayout[2] == 'H')
+        {  // 2: H idx
             s1Size = queryShape.GetDim(0);
             s2Size = keyShape.GetDim(0);
             bSize = queryShape.GetDim(1);
-            h1 = queryShape.GetDim(2); // 2: H idx
-            h2 = keyShape.GetDim(2);   // 2: H idx
-            h3 = valueShape.GetDim(2); // 2: H idx
+            h1 = queryShape.GetDim(2);  // 2: H idx
+            h2 = keyShape.GetDim(2);    // 2: H idx
+            h3 = valueShape.GetDim(2);  // 2: H idx
             s1StrideSize = h1 * bSize;
             s2StrideSize = h2 * bSize;
             vs2StrideSize = h3 * bSize;
             tilingData->inputParams.set_layoutType(LAYOUT_SBH);
             tilingKeyLayout = LayoutType::LAYOUT_SBH;
-        } else if (inputLayout[0] == 'T' && inputLayout[1] == 'N' && inputLayout[2] == 'D') {
+        }
+        else if (inputLayout[0] == 'T' && inputLayout[1] == 'N' && inputLayout[2] == 'D')
+        {
             int64_t actualSeqQLen = 0;
             int64_t actualSeqKVLen = 0;
             int64_t t1Size = queryShape.GetDim(0);
@@ -1282,10 +1421,13 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
             int64_t endQLen = -1;
             int64_t endKvLen = -1;
             realT1Size = t1Size;
-            if (isMaxWorkspace) {
+            if (isMaxWorkspace)
+            {
                 std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 1);
                 std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 1);
-            } else {
+            }
+            else
+            {
                 std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 0);
                 std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0);
             }
@@ -1305,8 +1447,10 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
                     t1Size, t2Size, accumS1, accumS2),
                 return false);
             // 校验EOD场景尾部是否补0
-            if (t1Size > accumS1 && t2Size > accumS2) {
-                if ((endQLen != 0 || endKvLen != 0) && (!isMaxWorkspace)) {
+            if (t1Size > accumS1 && t2Size > accumS2)
+            {
+                if ((endQLen != 0 || endKvLen != 0) && (!isMaxWorkspace))
+                {
                     OP_LOGE(
                         opName,
                         "The end of actualSeqQLen & actualSeqKvLen should be 0 in EOD scenario, but got (%d) and (%d).",
@@ -1316,14 +1460,18 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
             }
             uint32_t firstValidIndex = 0;
             uint32_t lastValidIndex = static_cast<uint32_t>(bSize - 1LL);
-            for (int64_t i = 0; i < bSize; ++i) {
-                if (actualSeqLenData[i] != 0) {
+            for (int64_t i = 0; i < bSize; ++i)
+            {
+                if (actualSeqLenData[i] != 0)
+                {
                     firstValidIndex = static_cast<uint32_t>(i);
                     break;
                 }
             }
-            for (auto i = bSize - 1; i >= 0; --i) {
-                if (actualSeqLenData[i] != 0) {
+            for (auto i = bSize - 1; i >= 0; --i)
+            {
+                if (actualSeqLenData[i] != 0)
+                {
                     lastValidIndex = static_cast<uint32_t>(i);
                     break;
                 }
@@ -1333,8 +1481,8 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
             bool couldConvert =
                 CouldConvertTND2BSH(actualSeqLenData, actualSeqLenKvData, firstValidIndex, lastValidIndex, actualQBatch,
                                     actualKVBatch, maxS1Val, maxS2Val, t1Size, t2Size);
-            if (couldConvert && queryShape.GetDim(2) == 128 && keyShape.GetDim(2) == 128 &&
-                valueShape.GetDim(2) == 128) {
+            if (couldConvert && queryShape.GetDim(2) == 128 && keyShape.GetDim(2) == 128 && valueShape.GetDim(2) == 128)
+            {
                 bSize = actualQBatch;
                 s1Size = maxS1Val;
                 s2Size = maxS2Val;
@@ -1346,15 +1494,19 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
                 h3 = vs2StrideSize;
                 tilingData->inputParams.set_layoutType(LAYOUT_BSH);
                 tilingKeyLayout = LayoutType::LAYOUT_BSH;
-            } else {
+            }
+            else
+            {
                 s1Size = maxS1Val;
                 s2Size = maxS2Val;
 
-                if (sparseMode == static_cast<int64_t>(RIGHT_DOWN_CAUSAL_BAND)) {
+                if (sparseMode == static_cast<int64_t>(RIGHT_DOWN_CAUSAL_BAND))
+                {
                     bandIndex = static_cast<int64_t>(lastValidIndex);
                     tilingData->inputParams.set_bandIndex(lastValidIndex);
                 }
-                if (sparseMode == BAND_LEFT_UP_CAUSAL) {
+                if (sparseMode == BAND_LEFT_UP_CAUSAL)
+                {
                     bandIndex = firstValidIndex;
                     tilingData->inputParams.set_bandIndex(firstValidIndex);
                 }
@@ -1382,24 +1534,33 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
                 tilingKeyLayout = LayoutType::LAYOUT_TND;
                 int32_t count512to1024 = 0;
                 int64_t seqQTotal = 0;
-                for (int64_t i = 0; i < bSize; i++) {
-                    if (actualSeqLenKvData[i] >= NUM_512 && actualSeqLenKvData[i] < NUM_1024) {
+                for (int64_t i = 0; i < bSize; i++)
+                {
+                    if (actualSeqLenKvData[i] >= NUM_512 && actualSeqLenKvData[i] < NUM_1024)
+                    {
                         count512to1024++;
                     }
                     seqQTotal += actualSeqLenData[i];
                 }
-                if (seqQTotal > SORA_TND_CASE_T1 && s2Size < NUM_1024 && sparseMode != PREFIX_COMPRESS) {
-                    if (count512to1024 * 2 >= bSize) { // 512-1024 超过一半使用256
+                if (seqQTotal > SORA_TND_CASE_T1 && s2Size < NUM_1024 && sparseMode != PREFIX_COMPRESS)
+                {
+                    if (count512to1024 * 2 >= bSize)
+                    {  // 512-1024 超过一半使用256
                         s1BasicBlockBest = TND_S1_BASICBLOCK_256;
-                    } else {
+                    }
+                    else
+                    {
                         s1BasicBlockBest = TND_S1_BASICBLOCK_512;
                     }
-                    if (bSize >= NUM_5) {
+                    if (bSize >= NUM_5)
+                    {
                         s1BasicBlockBest = TND_S1_BASICBLOCK_256;
                     }
                 }
             }
-        } else {
+        }
+        else
+        {
             return false;
         }
         OP_CHECK_IF(h1 == 0 || h2 == 0, OP_LOGE(opName, "H is zero."), return false);
@@ -1417,45 +1578,51 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
 bool FlashAttentionScoreTilingBase::Analyze4DimLayout(const gert::Shape &queryShape, const gert::Shape &keyShape,
                                                       const gert::Shape &valueShape, size_t layoutLen)
 {
-    if (layoutLen == 4UL) {
+    if (layoutLen == 4UL)
+    {
         // 2: N idx, 3: D idx
-        if (inputLayout[0] == 'B' && inputLayout[1] == 'S' && inputLayout[2] == 'N' && inputLayout[3] == 'D') {
+        if (inputLayout[0] == 'B' && inputLayout[1] == 'S' && inputLayout[2] == 'N' && inputLayout[3] == 'D')
+        {
             bSize = queryShape.GetDim(0);
             s1Size = queryShape.GetDim(1);
             s2Size = keyShape.GetDim(1);
-            n2Size = keyShape.GetDim(2); // 2: N idx
+            n2Size = keyShape.GetDim(2);  // 2: N idx
             OP_CHECK_IF(n2Size == 0, OP_LOGE(opName, "N2 is zero."), return false);
             OP_CHECK_IF(n1Size != queryShape.GetDim(2),
                         OP_LOGE(opName, "head_num is [%ld], but got query dim2 [%ld].", n1Size, queryShape.GetDim(2)),
                         return false);
-            gSize = queryShape.GetDim(2) / n2Size; // 2: N idx
-            dSize = queryShape.GetDim(3);          // 3: D1 idx
-            d2Size = valueShape.GetDim(3);         // 3: D2 idx
+            gSize = queryShape.GetDim(2) / n2Size;  // 2: N idx
+            dSize = queryShape.GetDim(3);           // 3: D1 idx
+            d2Size = valueShape.GetDim(3);          // 3: D2 idx
             s1StrideSize = gSize * n2Size * dSize;
             s2StrideSize = n2Size * dSize;
             vs2StrideSize = n2Size * d2Size;
             tilingData->inputParams.set_layoutType(LAYOUT_BSND);
             tilingKeyLayout = LayoutType::LAYOUT_BSND;
-        } else if (inputLayout[0] == 'B' && inputLayout[1] == 'N' &&
-                   // 2: S idx, 3: N idx
-                   inputLayout[2] == 'S' && inputLayout[3] == 'D') {
+        }
+        else if (inputLayout[0] == 'B' && inputLayout[1] == 'N' &&
+                 // 2: S idx, 3: N idx
+                 inputLayout[2] == 'S' && inputLayout[3] == 'D')
+        {
             bSize = queryShape.GetDim(0);
-            n2Size = keyShape.GetDim(1); // 1: N idx
+            n2Size = keyShape.GetDim(1);  // 1: N idx
             OP_CHECK_IF(n2Size == 0, OP_LOGE(opName, "N2 is zero."), return false);
             OP_CHECK_IF(n1Size != queryShape.GetDim(1),
                         OP_LOGE(opName, "head_num is [%ld], but got query dim1 [%ld].", n1Size, queryShape.GetDim(1)),
                         return false);
             gSize = queryShape.GetDim(1) / n2Size;
-            s1Size = queryShape.GetDim(2); // 2: S idx
-            s2Size = keyShape.GetDim(2);   // 2: S idx
-            dSize = queryShape.GetDim(3);  // 3: D1 idx
-            d2Size = valueShape.GetDim(3); // 3: D2 idx
+            s1Size = queryShape.GetDim(2);  // 2: S idx
+            s2Size = keyShape.GetDim(2);    // 2: S idx
+            dSize = queryShape.GetDim(3);   // 3: D1 idx
+            d2Size = valueShape.GetDim(3);  // 3: D2 idx
             s1StrideSize = dSize;
             s2StrideSize = dSize;
             vs2StrideSize = d2Size;
             tilingData->inputParams.set_layoutType(LAYOUT_BNSD);
             tilingKeyLayout = LayoutType::LAYOUT_BNSD;
-        } else {
+        }
+        else
+        {
             return false;
         }
     }
@@ -1466,20 +1633,23 @@ bool FlashAttentionScoreTilingBase::Analyze4DimLayout(const gert::Shape &querySh
 SparseEnum FlashAttentionScoreTilingBase::GetPrefixNList(std::ostringstream &failReason)
 {
     auto prefixN = context_->GetOptionalInputTensor(PREFIX_INPUT_INDEX);
-    if (prefixN == nullptr) {
+    if (prefixN == nullptr)
+    {
         OP_LOGW(context_, "[%s]prefixN is null pointer while sparse mode is prefix", templateName);
         failReason << "prefixN is null pointer while sparse mode is prefix";
         return SparseEnum::ALL;
     }
 
     auto &prefixShape = prefixN->GetShape().GetStorageShape();
-    if (prefixShape.GetDimNum() != 1) {
+    if (prefixShape.GetDimNum() != 1)
+    {
         OP_LOGW(context_, "[%s] prefixN shape is invalid, DimNum should be 1, but it is %lu.", templateName,
                 prefixShape.GetDimNum());
         failReason << "prefixN shape is invalid, DimNum should be 1, but it is " << prefixShape.GetDimNum();
         return SparseEnum::ALL;
     }
-    if (prefixShape.GetDim(0) != bSize) {
+    if (prefixShape.GetDim(0) != bSize)
+    {
         OP_LOGW(context_, "[%s] prefixN is invalid, it should be the same size as bSize[%ld], but it is %ld.",
                 templateName, bSize, prefixShape.GetDim(0));
         failReason << "prefixN is invalid, it should be the same size as bSize[" << bSize << "], but it is "
@@ -1488,15 +1658,18 @@ SparseEnum FlashAttentionScoreTilingBase::GetPrefixNList(std::ostringstream &fai
     }
     /* Get Data from tensor. */
     prefixNData = prefixN->GetData<int64_t>();
-    if (prefixNData == nullptr) {
+    if (prefixNData == nullptr)
+    {
         OP_LOGW(context_, "[%s]prefixN data is null pointer", templateName);
         failReason << "prefixN data is null pointer";
         return SparseEnum::ALL;
     }
 
     int64_t nMin = ((s2Size - s1Size) > 0) ? (s2Size - s1Size) : 0;
-    for (int64_t i = 0; i < bSize; ++i) {
-        if (prefixNData[i] < nMin || prefixNData[i] > s2Size) {
+    for (int64_t i = 0; i < bSize; ++i)
+    {
+        if (prefixNData[i] < nMin || prefixNData[i] > s2Size)
+        {
             OP_LOGW(context_, "[%s] batch[%ld] prefixN=%ld is invalid, should be in range of [%ld, %ld]", templateName,
                     i, prefixNData[i], nMin, s2Size);
             failReason << "batch[" << i << "] prefixN=" << prefixNData[i] << " is invalid, should be in range of ["
@@ -1504,7 +1677,8 @@ SparseEnum FlashAttentionScoreTilingBase::GetPrefixNList(std::ostringstream &fai
             return SparseEnum::ALL;
         }
 
-        if (s1Size > s2Size && prefixNData[i] == 0) {
+        if (s1Size > s2Size && prefixNData[i] == 0)
+        {
             implMode = AA_INVALID_LINE_HIGH_PRECISION;
             OP_LOGD(context_, "Enable invalid line impl mode.");
         }
@@ -1518,39 +1692,47 @@ void FlashAttentionScoreTilingBase::SetQKVStartIdx()
     tilingData->inputParams.set_qStartIdx(0);
     tilingData->inputParams.set_kvStartIdx(0);
     auto qStartIdxTensor = context_->GetOptionalInputTensor(Q_START_IDX_INPUT_INDEX);
-    if (qStartIdxTensor == nullptr) {
+    if (qStartIdxTensor == nullptr)
+    {
         OP_LOGW(context_, "[%s]qStartIdxTensor is null pointer", templateName);
         return;
     }
     auto &qStartIdxShape = qStartIdxTensor->GetShape().GetStorageShape();
-    if (qStartIdxShape.GetDimNum() != 1) {
+    if (qStartIdxShape.GetDimNum() != 1)
+    {
         return;
     }
-    if (qStartIdxShape.GetDim(0) <= 0) {
+    if (qStartIdxShape.GetDim(0) <= 0)
+    {
         return;
     }
     /* Get Data from tensor. */
     const int64_t *value = qStartIdxTensor->GetData<int64_t>();
-    if (value == nullptr) {
+    if (value == nullptr)
+    {
         return;
     }
     qStartIdx = value[0];
 
     auto kvStartIdxTensor = context_->GetOptionalInputTensor(KV_START_IDX_INPUT_INDEX);
-    if (kvStartIdxTensor == nullptr) {
+    if (kvStartIdxTensor == nullptr)
+    {
         OP_LOGW(context_, "[%s]kvStartIdxTensor is null pointer", templateName);
         return;
     }
     auto &kvStartIdxShape = kvStartIdxTensor->GetShape().GetStorageShape();
-    if (kvStartIdxShape.GetDimNum() != 1) {
+    if (kvStartIdxShape.GetDimNum() != 1)
+    {
         return;
     }
-    if (kvStartIdxShape.GetDim(0) <= 0) {
+    if (kvStartIdxShape.GetDim(0) <= 0)
+    {
         return;
     }
     /* Get Data from tensor. */
     const int64_t *kvValue = kvStartIdxTensor->GetData<int64_t>();
-    if (kvValue == nullptr) {
+    if (kvValue == nullptr)
+    {
         return;
     }
     kvStartIdx = kvValue[0];
@@ -1565,8 +1747,10 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
     // 0: (B,N2,G,S1,S2), 1: (B,N2,G,1,S2)
     PseShapeType pseShapeType = PSE_B_N2_G_1_S2;
     auto pseShape = context_->GetOptionalInputShape(PSE_INPUT_INDEX);
-    if (pseShape == nullptr || pseShape->GetStorageShape().GetDimNum() == 0) {
-        if (pseType != PSE_OUTER_ADD_MUL_TYPE) {
+    if (pseShape == nullptr || pseShape->GetStorageShape().GetDimNum() == 0)
+    {
+        if (pseType != PSE_OUTER_ADD_MUL_TYPE)
+        {
             /*
              * 1. pseType非默认值
              * 2. 未传入PSE
@@ -1578,45 +1762,63 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
             return false;
         }
     }
-    if (pseShape != nullptr && pseShape->GetStorageShape().GetDimNum() != 0) {
+    if (pseShape != nullptr && pseShape->GetStorageShape().GetDimNum() != 0)
+    {
         pseExistFlag = static_cast<uint8_t>(1);
         auto &pseShapeDims = pseShape->GetStorageShape();
         size_t pseDimNum = pseShapeDims.GetDimNum();
         int64_t pseBSize = pseShapeDims.GetDim(0);
         if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
-            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
-            if (pseDimNum != SLOPE_BN_DIM_NUM && pseDimNum != SLOPE_N_DIM_NUM) {
+            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE))
+        {
+            if (pseDimNum != SLOPE_BN_DIM_NUM && pseDimNum != SLOPE_N_DIM_NUM)
+            {
                 OP_LOGE(context_, "pse inner mode, unsupported pse shape");
                 return false;
             }
             pseShapeType = PSE_B_N2_G_SLOPE;
-            if (pseDimNum == 1) {
+            if (pseDimNum == 1)
+            {
                 pseShapeType = PSE_1_N2_G_SLOPE;
                 pseBSize = 1;
             }
-        } else if (tilingData->inputParams.get_layoutType() == LAYOUT_TND) {
+        }
+        else if (tilingData->inputParams.get_layoutType() == LAYOUT_TND)
+        {
             int64_t accumS1S2 = 0;
-            for (int64_t i = 0; i < bSize; i++) {
+            for (int64_t i = 0; i < bSize; i++)
+            {
                 accumS1S2 += (actualSeqLenData[i] * actualSeqLenKvData[i]);
             }
-            if (pseBSize == accumS2 * n1Size) {
+            if (pseBSize == accumS2 * n1Size)
+            {
                 pseShapeType = PSE_B_N2_G_1_S2;
-            } else if (pseBSize == accumS1S2 * n1Size) {
+            }
+            else if (pseBSize == accumS1S2 * n1Size)
+            {
                 pseShapeType = PSE_B_N2_G_S1_S2;
-            } else if (pseDimNum == PSE_DIM_NUM && (pseShapeDims.GetDim(0) == 1 || pseShapeDims.GetDim(0) == bSize) &&
-                       pseShapeDims.GetDim(1) == n1Size && pseShapeDims.GetDim(2) == PSE_ALIBI_S_SIZE &&
-                       pseShapeDims.GetDim(3) == s2Size) {
+            }
+            else if (pseDimNum == PSE_DIM_NUM && (pseShapeDims.GetDim(0) == 1 || pseShapeDims.GetDim(0) == bSize) &&
+                     pseShapeDims.GetDim(1) == n1Size && pseShapeDims.GetDim(2) == PSE_ALIBI_S_SIZE &&
+                     pseShapeDims.GetDim(3) == s2Size)
+            {
                 pseShapeType = PSE_B_N2_G_S1_S2;
-            } else {
+            }
+            else
+            {
                 OP_LOGE(context_, "get unsupported pse shape");
                 return false;
             }
-        } else {
-            if (pseDimNum != PSE_DIM_NUM) {
+        }
+        else
+        {
+            if (pseDimNum != PSE_DIM_NUM)
+            {
                 OP_LOGE(context_, "pse dim should be 4, but got %zu", pseDimNum);
                 return false;
             }
-            if (pseBSize != bSize && pseBSize != 1) {
+            if (pseBSize != bSize && pseBSize != 1)
+            {
                 OP_LOGE(context_, "pse batchsize should be 1 or %ld, but got %ld", bSize, pseBSize);
                 return false;
             }
@@ -1624,19 +1826,27 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
             int64_t pseDim1Size = pseShapeDims.GetDim(1);
             int64_t pseDim2Size = pseShapeDims.GetDim(2);
             int64_t pseDim3Size = pseShapeDims.GetDim(3);
-            if (pseDim1Size == n1Size && pseDim2Size == s1Size && pseDim3Size == s2Size) { // 2: pre last axiss
+            if (pseDim1Size == n1Size && pseDim2Size == s1Size && pseDim3Size == s2Size)
+            {  // 2: pre last axiss
                 pseShapeType = PSE_B_N2_G_S1_S2;
-            } else if (pseDim1Size == n1Size && pseDim2Size == 1 && pseDim3Size == s2Size) {
+            }
+            else if (pseDim1Size == n1Size && pseDim2Size == 1 && pseDim3Size == s2Size)
+            {
                 pseShapeType = PSE_B_N2_G_1_S2;
-            } else if (pseDim1Size == n1Size && pseDim2Size == static_cast<int64_t>(PSE_ALIBI_S_SIZE) &&
-                       pseDim3Size == s2Size) {
-                if (s1Size < pseDim2Size) {
+            }
+            else if (pseDim1Size == n1Size && pseDim2Size == static_cast<int64_t>(PSE_ALIBI_S_SIZE) &&
+                     pseDim3Size == s2Size)
+            {
+                if (s1Size < pseDim2Size)
+                {
                     OP_LOGE(opName, "get unsupported pse shape, the shape is [%ld, %ld, %ld, %ld]", pseBSize,
                             pseDim1Size, pseDim2Size, pseDim3Size);
                     return false;
                 }
                 pseShapeType = PSE_B_N2_G_S1_S2;
-            } else {
+            }
+            else
+            {
                 OP_LOGE(opName, "get unsupported pse shape, the shape is [%ld, %ld, %ld, %ld]", pseBSize, pseDim1Size,
                         pseDim2Size, pseDim3Size);
                 return false;
@@ -1650,7 +1860,8 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
     auto attenMaskInput = context_->GetOptionalInputDesc(ATTENTION_MASK_INPUT_INDEX);
     auto attenMaskShape = context_->GetOptionalInputShape(ATTENTION_MASK_INPUT_INDEX);
     if (attenMaskInput != nullptr && attenMaskShape != nullptr && attenMaskShape->GetStorageShape().GetDimNum() != 0 &&
-        !isMaxWorkspace) {
+        !isMaxWorkspace)
+    {
         attenMaskExistFlag = static_cast<uint8_t>(1);
         auto attenMaskType = attenMaskInput->GetDataType();
         OP_CHECK_IF(attenMaskType != ge::DT_BOOL && attenMaskType != ge::DT_UINT8,
@@ -1663,21 +1874,29 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
         AttenMaskShapeType attenMaskShapeType = ATTEN_B_N2_G_S1_S2;
         auto &attenMaskStorageShape = attenMaskShape->GetStorageShape();
         size_t attenMaskDimNum = attenMaskStorageShape.GetDimNum();
-        if (attenMaskDimNum == ATTENTION_MASK_DIM_NUM_4) {
+        if (attenMaskDimNum == ATTENTION_MASK_DIM_NUM_4)
+        {
             int64_t attenMaskDim0Size = attenMaskStorageShape.GetDim(0);
             int64_t attenMaskDim1Size = attenMaskStorageShape.GetDim(1);
             int64_t attenMaskDim2Size = attenMaskStorageShape.GetDim(2);
             int64_t attenMaskDim3Size = attenMaskStorageShape.GetDim(3);
             if (attenMaskDim0Size == 1 && attenMaskDim1Size == 1 && attenMaskDim2Size == s1Size &&
-                attenMaskDim3Size == s2Size) {
+                attenMaskDim3Size == s2Size)
+            {
                 attenMaskShapeType = ATTEN_1_1_1_S1_S2;
-            } else if (attenMaskDim0Size == bSize && attenMaskDim1Size == 1 && attenMaskDim2Size == s1Size &&
-                       attenMaskDim3Size == s2Size) {
+            }
+            else if (attenMaskDim0Size == bSize && attenMaskDim1Size == 1 && attenMaskDim2Size == s1Size &&
+                     attenMaskDim3Size == s2Size)
+            {
                 attenMaskShapeType = ATTEN_B_1_1_S1_S2;
-            } else if (attenMaskDim0Size == bSize && attenMaskDim1Size == n1Size && attenMaskDim2Size == s1Size &&
-                       attenMaskDim3Size == s2Size) {
+            }
+            else if (attenMaskDim0Size == bSize && attenMaskDim1Size == n1Size && attenMaskDim2Size == s1Size &&
+                     attenMaskDim3Size == s2Size)
+            {
                 attenMaskShapeType = ATTEN_B_N2_G_S1_S2;
-            } else {
+            }
+            else
+            {
                 OP_LOGE(context_,
                         "get unsupported atten_mask shape, the shape is [%ld, %ld, %ld, %ld]. B=[%ld], N=[%ld], "
                         "Sq=[%ld], Skv=[%ld], supported atten_mask shape can be [B, N, Sq, Skv], [B, 1, Sq, Skv], "
@@ -1686,21 +1905,31 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
                         s1Size, s2Size);
                 return false;
             }
-        } else if (attenMaskDimNum == ATTENTION_MASK_DIM_NUM_2) {
+        }
+        else if (attenMaskDimNum == ATTENTION_MASK_DIM_NUM_2)
+        {
             int64_t attenMaskDim0Size = attenMaskStorageShape.GetDim(0);
             int64_t attenMaskDim1Size = attenMaskStorageShape.GetDim(1);
             if ((attenMaskDim0Size == s1Size && attenMaskDim1Size == s2Size) ||
-                (attenMaskCompressMode != NO_COMPRESS_MODE)) {
-                attenMaskShapeType = ATTEN_1_1_1_S1_S2; // maybe [S1, S2]
-            } else if (attenMaskDim0Size == accumS1 && attenMaskDim1Size == accumS2) {
+                (attenMaskCompressMode != NO_COMPRESS_MODE))
+            {
+                attenMaskShapeType = ATTEN_1_1_1_S1_S2;  // maybe [S1, S2]
+            }
+            else if (attenMaskDim0Size == accumS1 && attenMaskDim1Size == accumS2)
+            {
                 attenMaskShapeType = ATTEN_1_1_1_T_T;
-            } else {
-                if (tilingData->inputParams.get_layoutType() == LAYOUT_TND) {
+            }
+            else
+            {
+                if (tilingData->inputParams.get_layoutType() == LAYOUT_TND)
+                {
                     OP_LOGE(context_,
                             "get unsupported atten_mask shape, the shape is [%ld, %ld]. MaxSq=[%ld],  MaxSkv=[%ld], "
                             "when input_layout is TND, the supported atten_mask shape is [MaxSq, MaxSkv].",
                             attenMaskDim0Size, attenMaskDim1Size, s1Size, s2Size);
-                } else {
+                }
+                else
+                {
                     OP_LOGE(context_,
                             "get unsupported atten_mask shape, the shape is [%ld, %ld]. B=[%ld], N=[%ld], Sq=[%ld], "
                             "Skv=[%ld], supported atten_mask shape can be [B, N, Sq, Skv], [B, 1, Sq, Skv], [1, 1, Sq, "
@@ -1709,7 +1938,9 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
                 }
                 return false;
             }
-        } else {
+        }
+        else
+        {
             OP_LOGE(context_, "atten mask dim should be 2 or 4, but got %zu", attenMaskDimNum);
             return false;
         }
@@ -1718,14 +1949,16 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
 
         if ((attenMaskCompressMode != NO_COMPRESS_MODE && attenMaskCompressMode != PREFIX_MODE) &&
             ((attenMaskStorageShape.GetDim(attenMaskDimNum - ATTEN_MASK_S1_REV_INDEX) != ATTEN_MASK_COMPRESS_LIMIT) ||
-             (attenMaskStorageShape.GetDim(attenMaskDimNum - 1) != ATTEN_MASK_COMPRESS_LIMIT))) {
+             (attenMaskStorageShape.GetDim(attenMaskDimNum - 1) != ATTEN_MASK_COMPRESS_LIMIT)))
+        {
             OP_LOGE(context_, "In the attenmask compression, please set the atten_mask_shape to [2048,2048].");
             return false;
         }
         if (attenMaskCompressMode == PREFIX_MODE &&
             ((attenMaskStorageShape.GetDim(attenMaskStorageShape.GetDimNum() - ATTEN_MASK_S1_REV_INDEX) !=
               ATTEN_MASK_COMPRESS_PREFIX_LIMIT) ||
-             (attenMaskStorageShape.GetDim(attenMaskStorageShape.GetDimNum() - 1) != ATTEN_MASK_COMPRESS_LIMIT))) {
+             (attenMaskStorageShape.GetDim(attenMaskStorageShape.GetDimNum() - 1) != ATTEN_MASK_COMPRESS_LIMIT)))
+        {
             OP_LOGE(context_, "In the prefix attenmask compression, please set the atten_mask_shape to [3072,2048].");
             return false;
         }
@@ -1734,7 +1967,8 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
 
     auto dropMaskShape = context_->GetOptionalInputShape(DROP_MASK_INPUT_INDEX);
     auto dropMaskInput = context_->GetOptionalInputDesc(DROP_MASK_INPUT_INDEX);
-    if (dropMaskInput != nullptr && dropMaskShape != nullptr && dropMaskShape->GetStorageShape().GetDimNum() != 0) {
+    if (dropMaskInput != nullptr && dropMaskShape != nullptr && dropMaskShape->GetStorageShape().GetDimNum() != 0)
+    {
         auto dropMaskDtype = dropMaskInput->GetDataType();
         OP_CHECK_IF(dropMaskDtype != ge::DT_UINT8,
                     OP_LOGE(opName, "invalid dropMask dtype[%s], only support uint8.",
@@ -1743,21 +1977,27 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
         int64_t dimNum = dropMaskShape->GetStorageShape().GetDimNum();
         int64_t dropMaskShapeSize = 1;
         int64_t shapeSize = 0;
-        for (int64_t i = 0; i < dimNum; ++i) {
+        for (int64_t i = 0; i < dimNum; ++i)
+        {
             int64_t dimValue = dropMaskShape->GetStorageShape().GetDim(i);
             dropMaskShapeSize *= dimValue;
         }
-        if (tilingData->inputParams.get_layoutType() == LAYOUT_TND) {
+        if (tilingData->inputParams.get_layoutType() == LAYOUT_TND)
+        {
             int64_t accumS1S2 = 0;
-            for (int64_t i = 0; i < bSize; i++) {
+            for (int64_t i = 0; i < bSize; i++)
+            {
                 accumS1S2 += (actualSeqLenData[i] * actualSeqLenKvData[i]);
             }
             shapeSize = accumS1S2 * n1Size;
-        } else {
+        }
+        else
+        {
             shapeSize = bSize * n1Size * s1Size * s2Size;
         }
         shapeSize = AlignUp(shapeSize, BYTE_BIT_NUM) / BYTE_BIT_NUM;
-        if (dropMaskShapeSize < shapeSize) {
+        if (dropMaskShapeSize < shapeSize)
+        {
             OP_LOGE(context_, "Input dropMask shapeSize is invalid, it should not be less than %ld, but got %ld",
                     shapeSize, dropMaskShapeSize);
             return false;
@@ -1767,14 +2007,16 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
 
     // if s2Size algined to 8, then no need dropMaskOp to transfer dropMask from bit to byte format
     tilingData->inputParams.set_needDropMaskOp(static_cast<uint8_t>(dropMaskExistFlag == 1 && s2Size % 8 != 0));
-    if (tilingKeyLayout == LayoutType::LAYOUT_TND) {
+    if (tilingKeyLayout == LayoutType::LAYOUT_TND)
+    {
         auto needDropMaskOp = (dropMaskExistFlag == 1) && (s2Size % 8 != 0 || bSize > 1);
         tilingData->inputParams.set_needDropMaskOp(static_cast<uint8_t>(needDropMaskOp));
     }
 
     auto sinkShapePtr = context_->GetOptionalInputShape(SINK_INPUT_INDEX);
     auto sinkInputPtr = context_->GetOptionalInputDesc(SINK_INPUT_INDEX);
-    if (sinkInputPtr != nullptr && sinkShapePtr != nullptr && sinkShapePtr->GetStorageShape().GetDimNum() != 0) {
+    if (sinkInputPtr != nullptr && sinkShapePtr != nullptr && sinkShapePtr->GetStorageShape().GetDimNum() != 0)
+    {
         auto shape = sinkShapePtr->GetStorageShape();
         int64_t dimNum = shape.GetDimNum();
         auto sinkDtype = sinkInputPtr->GetDataType();
@@ -1784,9 +2026,11 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
                     return false);
 
         std::string sinkShape = "";
-        for (int i = 0; i < dimNum; ++i) {
+        for (int i = 0; i < dimNum; ++i)
+        {
             sinkShape += std::to_string(shape.GetDim(i));
-            if (i < dimNum - 1) {
+            if (i < dimNum - 1)
+            {
                 sinkShape += ", ";
             }
         }
@@ -1797,7 +2041,8 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
         int64_t expectShapeSize = n1Size;
         auto actualSinkShapeSize = shape.GetShapeSize();
 
-        if (actualSinkShapeSize != expectShapeSize) {
+        if (actualSinkShapeSize != expectShapeSize)
+        {
             OP_LOGE(context_, "Input sink shapeSize is invalid, it should be %ld, but got %ld", expectShapeSize,
                     actualSinkShapeSize);
             return false;
@@ -1816,7 +2061,8 @@ ge::graphStatus FlashAttentionScoreTilingBase::DoOpTiling()
 {
     auto &inputParams = tilingData->inputParams;
     OP_LOGD(context_, "[%s]try template[%s]", templateName, expectTemplate.ToString().c_str());
-    if (!MatchTemplate()) {
+    if (!MatchTemplate())
+    {
         OP_LOGI(context_,
                 "[%s]not match template[%s], input params: bn2gs1s2d[%ld, %ld, %ld, %ld, %ld, %ld], "
                 "keepProb[%f]",
@@ -1830,7 +2076,8 @@ ge::graphStatus FlashAttentionScoreTilingBase::DoOpTiling()
     OP_CHECK_IF(!GetSparseInfo(sparseType), OP_LOGE(opName, "fail to get sparse info."), return ge::GRAPH_FAILED);
     SetSparseTilingInfo(sparseType);
     inputParams.set_implMode(implMode);
-    if (!isSparseValidSizeAligned) {
+    if (!isSparseValidSizeAligned)
+    {
         s1SparseValidSize = preTokens;
         s2SparseValidSize = nextTokens;
     }
@@ -1855,7 +2102,8 @@ bool FlashAttentionScoreTilingBase::MatchTemplate()
     CalcS1S2BasicBlock(bufferNum);
     CalcNRatio();
 
-    if (s2BasicBlock == std::numeric_limits<int64_t>::max()) {
+    if (s2BasicBlock == std::numeric_limits<int64_t>::max())
+    {
         OP_LOGD(context_,
                 "[%s]can't find proper S1S2 basic block for shape: S1[%ld] S2[%ld], D[%ld], minS1BasicBlock[%ld], "
                 "dtype[%s], high precision[%d]",
@@ -1869,7 +2117,8 @@ bool FlashAttentionScoreTilingBase::MatchTemplate()
     actualTemplate.splitS2 = s2BasicBlock < alignedS2 ? 1U : 0U;
     actualTemplate.splitD = dBasicBlock < alignedD ? 1U : 0U;
 
-    if (IsTemplateMatched()) {
+    if (IsTemplateMatched())
+    {
         (void)CalcUBSize(s1BasicBlock, s2BasicBlock);
         OP_LOGD(context_, "[%s]final basic block: [%ld, %ld, %ld], match template[%s].", templateName, s1BasicBlock,
                 s2BasicBlock, dBasicBlock, actualTemplate.ToString().c_str());
@@ -1882,45 +2131,56 @@ bool FlashAttentionScoreTilingBase::MatchTemplate()
 void FlashAttentionScoreTilingBase::CalcS1S2BasicBlock(const BufferNum &bufferNum)
 {
     // calc s1 s2 first, we set d basic block as s2 now
-    const int64_t actualD = expectTemplate.splitD == 0 ? alignedD : FRACTAL_NUM; // if split d we use min s2 16
+    const int64_t actualD = expectTemplate.splitD == 0 ? alignedD : FRACTAL_NUM;  // if split d we use min s2 16
     int64_t maxS1BasicBlock = CalcMaxS1BasicBlockSize(actualD, bufferNum);
     maxS1BasicBlock = std::min(maxS1BasicBlock, alignedS1);
-    if (maxS1BasicBlock == 0) {
+    if (maxS1BasicBlock == 0)
+    {
         return;
     }
 
     for (int64_t tmpS1BasicBlock = std::min(GetMinS1BasicBlock(), maxS1BasicBlock); tmpS1BasicBlock <= maxS1BasicBlock;
-         tmpS1BasicBlock += FRACTAL_NUM) {
+         tmpS1BasicBlock += FRACTAL_NUM)
+    {
         int64_t tmpS2BasicBlock = CalcMaxS2BasicBlockSize(bufferNum, tmpS1BasicBlock);
         tmpS2BasicBlock = std::min(tmpS2BasicBlock, alignedS2);
-        for (; tmpS2BasicBlock >= FRACTAL_NUM; tmpS2BasicBlock -= FRACTAL_NUM) {
+        for (; tmpS2BasicBlock >= FRACTAL_NUM; tmpS2BasicBlock -= FRACTAL_NUM)
+        {
             // drop mask bug workaround
             if (dropMaskExistFlag == 1 &&
                 (tmpS2BasicBlock <= static_cast<int64_t>(BYTE_BLOCK) ||
-                 CalcTailSize(alignedS2, tmpS2BasicBlock) <= static_cast<int64_t>(BYTE_BLOCK))) {
+                 CalcTailSize(alignedS2, tmpS2BasicBlock) <= static_cast<int64_t>(BYTE_BLOCK)))
+            {
                 continue;
             }
 
             int64_t tmpDBasicBlock = expectTemplate.splitD == 1 ? std::min(tmpS2BasicBlock, alignedD) : alignedD;
             OP_LOGD(context_, "[%s]try basic block: [%ld, %ld]", templateName, tmpS1BasicBlock, tmpS2BasicBlock);
             if (CalcUBSize(tmpS1BasicBlock, tmpS2BasicBlock) &&
-                SetMatMulTiling(tmpS1BasicBlock, tmpS2BasicBlock, tmpDBasicBlock)) {
+                SetMatMulTiling(tmpS1BasicBlock, tmpS2BasicBlock, tmpDBasicBlock))
+            {
                 break;
             }
         }
 
         // check whether is valid, if tmpS1BasicBlock is too big, then there is no proper tmpS2BasicBlock
-        if (tmpS2BasicBlock < FRACTAL_NUM) {
+        if (tmpS2BasicBlock < FRACTAL_NUM)
+        {
             break;
         }
 
         OP_LOGD(context_, "[%s]get candidate basic block: [%ld, %ld]", templateName, tmpS1BasicBlock, tmpS2BasicBlock);
-        if (s2BasicBlock == std::numeric_limits<int64_t>::max()) {
+        if (s2BasicBlock == std::numeric_limits<int64_t>::max())
+        {
             s1BasicBlock = tmpS1BasicBlock;
             s2BasicBlock = tmpS2BasicBlock;
-        } else if (s2BasicBlock == tmpS2BasicBlock && s1BasicBlock < tmpS1BasicBlock) {
+        }
+        else if (s2BasicBlock == tmpS2BasicBlock && s1BasicBlock < tmpS1BasicBlock)
+        {
             s1BasicBlock = tmpS1BasicBlock;
-        } else {
+        }
+        else
+        {
             break;
         }
     }
@@ -1940,7 +2200,7 @@ int64_t FlashAttentionScoreTilingBase::CalcMaxS1BasicBlockSize(int64_t actualD, 
     int64_t maxS1BasicBlock =
         aicoreParams_.ubSize / inputDtypeBytes /
         (FRACTAL_NUM * bufferNum.bufferS1S2Num + actualD * bufferNum.bufferS1DNum +
-         (bufferNum.bufferExpNum + 2) * alignUnit); // here 2 means FlashSoftMax sum and max output
+         (bufferNum.bufferExpNum + 2) * alignUnit);  // here 2 means FlashSoftMax sum and max output
     return AlignDown(maxS1BasicBlock, FRACTAL_NUM);
 }
 
@@ -1952,12 +2212,15 @@ int64_t FlashAttentionScoreTilingBase::CalcMaxS2BasicBlockSize(const BufferNum &
     // if D not full load, use S2 basic block var in above formula
     // just ignore apiTmp now, consider it at last
     int64_t tmpS2BasicBlock;
-    if (expectTemplate.splitD == 0) {
+    if (expectTemplate.splitD == 0)
+    {
         // here 2 means FlashSoftMax sum and max output
         tmpS2BasicBlock = (aicoreParams_.ubSize - tmpS1BasicBlock * (bufferNum.bufferExpNum + 2) * BYTE_BLOCK -
                            tmpS1BasicBlock * alignedD * bufferNum.bufferS1DNum * inputDtypeBytes) /
                           (tmpS1BasicBlock * bufferNum.bufferS1S2Num * inputDtypeBytes);
-    } else {
+    }
+    else
+    {
         // here 2 means FlashSoftMax sum and max output
         tmpS2BasicBlock = (aicoreParams_.ubSize - tmpS1BasicBlock * (bufferNum.bufferExpNum + 2) * BYTE_BLOCK) /
                           (tmpS1BasicBlock * (bufferNum.bufferS1DNum + bufferNum.bufferS1S2Num) * inputDtypeBytes);
@@ -1968,7 +2231,8 @@ int64_t FlashAttentionScoreTilingBase::CalcMaxS2BasicBlockSize(const BufferNum &
 bool FlashAttentionScoreTilingBase::IsBasicBlockInSoftMax(const ge::Shape &shape) const
 {
     // 2 axes at least
-    if (shape.GetDimNum() < 2) {
+    if (shape.GetDimNum() < 2)
+    {
         return false;
     }
 
@@ -1976,12 +2240,14 @@ bool FlashAttentionScoreTilingBase::IsBasicBlockInSoftMax(const ge::Shape &shape
     // last axis should be less than 2048 and fullfil 64 times
     int64_t basicLastAxis = 64;
     int64_t lastAxisNum = 2048;
-    if (lastAxis > lastAxisNum || lastAxis % basicLastAxis != 0) {
+    if (lastAxis > lastAxisNum || lastAxis % basicLastAxis != 0)
+    {
         return false;
     }
 
     int64_t preAxes = 1;
-    for (size_t idx = 0; idx < shape.GetDimNum() - 1; ++idx) {
+    for (size_t idx = 0; idx < shape.GetDimNum() - 1; ++idx)
+    {
         preAxes *= shape.GetDim(idx);
     }
 
@@ -1998,12 +2264,17 @@ void FlashAttentionScoreTilingBase::SetCoreParams()
     coreParams.set_s2BaseSize(s2BasicBlock);
     coreParams.set_s2BaseTailSize(CalcTailSize(s2Size, s2BasicBlock));
     coreParams.set_s2OuterSize(CeilDivision(s2Size, s2BasicBlock));
-    if (expectTemplate.splitS2 == 1) {
+    if (expectTemplate.splitS2 == 1)
+    {
         nRatio = std::min(GetNRatio(), coreParams.get_s2OuterSize());
         coreParams.set_s2OuterSize(CeilDivision(coreParams.get_s2OuterSize(), nRatio));
-    } else if (expectTemplate.splitS1 == 1) {
+    }
+    else if (expectTemplate.splitS1 == 1)
+    {
         nRatio = std::min(GetNRatio(), coreParams.get_s1OuterSize());
-    } else {
+    }
+    else
+    {
         nRatio = 1;
     }
     coreParams.set_nRatio(nRatio);
@@ -2051,7 +2322,8 @@ void FlashAttentionScoreTilingBase::SetMultiCoreParams()
 
 ge::graphStatus FlashAttentionScoreTilingBase::DoLibApiTiling()
 {
-    if (!SetMatMulTiling(s1BasicBlock, s2BasicBlock, dBasicBlock, batchBasic)) {
+    if (!SetMatMulTiling(s1BasicBlock, s2BasicBlock, dBasicBlock, batchBasic))
+    {
         return ge::GRAPH_FAILED;
     }
     SetSoftMaxTiling();
@@ -2066,7 +2338,8 @@ ge::graphStatus FlashAttentionScoreTilingBase::PostTiling()
     context_->SetBlockDim(blockDim);
     auto &inputParams = tilingData->inputParams;
     size_t *workspaces = context_->GetWorkspaceSizes(1);
-    if (inputParams.get_needDropMaskOp() == 1) {
+    if (inputParams.get_needDropMaskOp() == 1)
+    {
         blockDim = CalcTschBlockDim(aivNum, aicNum, aivNum);
         context_->SetBlockDim(blockDim);
         context_->SetScheduleMode(1);
@@ -2074,8 +2347,10 @@ ge::graphStatus FlashAttentionScoreTilingBase::PostTiling()
         int64_t shapeTotalSize = inputParams.get_bSize() * inputParams.get_n2Size() * inputParams.get_gSize() *
                                  inputParams.get_s1Size() * inputParams.get_s2Size();
         auto layoutType = tilingData->inputParams.get_layoutType();
-        if (layoutType == LAYOUT_TND) {
-            for (int64_t i = 0; i < bSize; i++) {
+        if (layoutType == LAYOUT_TND)
+        {
+            for (int64_t i = 0; i < bSize; i++)
+            {
                 dropTotalSize += (actualSeqLenData[i] * actualSeqLenKvData[i]);
             }
             shapeTotalSize = inputParams.get_n2Size() * inputParams.get_gSize() * dropTotalSize;
@@ -2085,12 +2360,16 @@ ge::graphStatus FlashAttentionScoreTilingBase::PostTiling()
     }
 
     if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
-        pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
-        if (isMaxWorkspace) {
+        pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE))
+    {
+        if (isMaxWorkspace)
+        {
             int64_t pseAlibiBytes =
                 AlignUp(static_cast<int64_t>(1024 * 512 * 2), GM_ALIGN) * (std::max(aicNum * 2, aivNum));
             workspaces[0] += pseAlibiBytes;
-        } else {
+        }
+        else
+        {
             tilingData->coreParams.set_pseAlibiBaseS1(pseAlibiBaseS1);
             tilingData->coreParams.set_pseAlibiBaseS2(pseAlibiBaseS2);
             int64_t pseAlibiBytes =
@@ -2115,10 +2394,12 @@ bool FlashAttentionScoreTilingBase::SetBmm1TilingInput(int64_t tmpS1BasicBlock, 
     bmm1.SetShape(std::min(tmpS1BasicBlock, s1Size), std::min(tmpS2BasicBlock, s2Size), dSize);
     bmm1.SetOrgShape(s1Size, s2Size, s1StrideSize, s2StrideSize);
     bmm1.SetBias(false);
-    if (bmm1.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0) {
+    if (bmm1.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0)
+    {
         return false;
     }
-    if (bmm1.SetFixSplit(tmpS1BasicBlock, tmpS2BasicBlock) != 0) {
+    if (bmm1.SetFixSplit(tmpS1BasicBlock, tmpS2BasicBlock) != 0)
+    {
         return false;
     }
 
@@ -2131,22 +2412,26 @@ bool FlashAttentionScoreTilingBase::SetMatMulTiling(int64_t tmpS1BasicBlock, int
                                                     matmul_tiling::MatmulApiTiling &bmm2)
 {
     if (!SetBmm1TilingInput(tmpS1BasicBlock, tmpS2BasicBlock, batch, bmm1) ||
-        !SetBmm2TilingInput(tmpS1BasicBlock, tmpS2BasicBlock, tmpDBasicBlock, batch, bmm2)) {
+        !SetBmm2TilingInput(tmpS1BasicBlock, tmpS2BasicBlock, tmpDBasicBlock, batch, bmm2))
+    {
         return false;
     }
 
-    if (bmm1.GetTiling(tilingData->bmm1TilingData) == -1) {
+    if (bmm1.GetTiling(tilingData->bmm1TilingData) == -1)
+    {
         OP_LOGE(context_, "BMM1 tiling failed.");
         return false;
     }
 
     if (isSameAB && tilingData->bmm1TilingData.baseK >= tilingData->bmm1TilingData.singleCoreK &&
-        tilingData->bmm1TilingData.depthA1 == BMM1_DEPTH_A1_2) {
+        tilingData->bmm1TilingData.depthA1 == BMM1_DEPTH_A1_2)
+    {
         tilingData->bmm1TilingData.depthA1 = BMM1_DEPTH_A1_3;
     }
 
     // 当D > 128，由于L0 DB开启的限制，在设置tiling时把baseK切小，在MatmulPolicy中仍然按照不切K搬运
-    if (matmulPolicyType == MATMUL_POLICY_UNSPLITK) {
+    if (matmulPolicyType == MATMUL_POLICY_UNSPLITK)
+    {
         tilingData->bmm1TilingData.baseK = AlignUp(dSize / NUM_2, FRACTAL_NUM);
         // TSCM 自主管理场景, mm1 开启dbL0C
         tilingData->bmm1TilingData.dbL0C = 2;
@@ -2156,7 +2441,8 @@ bool FlashAttentionScoreTilingBase::SetMatMulTiling(int64_t tmpS1BasicBlock, int
     tilingData->bmm1TilingData.shareL1Size = aicoreParams_.l1Size;
     tilingData->bmm1TilingData.shareL0CSize = aicoreParams_.l0cSize;
 
-    if (bmm2.GetTiling(tilingData->bmm2TilingData) == -1) {
+    if (bmm2.GetTiling(tilingData->bmm2TilingData) == -1)
+    {
         OP_LOGE(context_, "BMM2 tiling failed.");
         return false;
     }
@@ -2179,12 +2465,15 @@ bool FlashAttentionScoreTilingBase::SetMatMulTiling(int64_t tmpS1BasicBlock, int
                                                     int64_t tmpDBasicBlock, int64_t batch)
 {
     auto platformInfo = context_->GetPlatformInfo();
-    if (platformInfo != nullptr) {
+    if (platformInfo != nullptr)
+    {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
         matmul_tiling::MatmulApiTiling bmm1(ascendcPlatform);
         matmul_tiling::MatmulApiTiling bmm2(ascendcPlatform);
         return SetMatMulTiling(tmpS1BasicBlock, tmpS2BasicBlock, tmpDBasicBlock, batch, bmm1, bmm2);
-    } else {
+    }
+    else
+    {
         OP_LOGD(context_, "platform info is null, use default info to generate matmul tiling.");
         matmul_tiling::MatmulApiTiling bmm1;
         matmul_tiling::MatmulApiTiling bmm2;
@@ -2219,31 +2508,42 @@ void FlashAttentionScoreTilingBase::SetTensorSizeParams()
     int64_t batchInnerSize = coreParams.get_bBaseSize() * coreParams.get_n2BaseSize() * coreParams.get_gBaseSize();
     tensorSizeParams.set_bmm1ResUbSize(batchInnerSize * s1BasicBlock * s2BasicBlock);
     tensorSizeParams.set_attenMaskUbSize(attenMaskExistFlag * batchInnerSize * s1BasicBlock * s2BasicBlock);
-    if (tilingData->inputParams.get_pseShapeType() == PSE_B_N2_G_S1_S2) {
+    if (tilingData->inputParams.get_pseShapeType() == PSE_B_N2_G_S1_S2)
+    {
         tensorSizeParams.set_pseUbSize(pseExistFlag * batchInnerSize * s1BasicBlock * s2BasicBlock);
-    } else {
-        tensorSizeParams.set_pseUbSize(pseExistFlag * batchInnerSize * s2BasicBlock); // PSE_B_N2_G_1_S2
+    }
+    else
+    {
+        tensorSizeParams.set_pseUbSize(pseExistFlag * batchInnerSize * s2BasicBlock);  // PSE_B_N2_G_1_S2
     }
 
     tensorSizeParams.set_dropMaskUbSize(dropMaskExistFlag * batchInnerSize * s1BasicBlock *
                                         AlignUp(s2BasicBlock, DROP_MASK_ALIGN_UNIT) / BYTE_BIT_NUM / inputDtypeBytes);
 
-    if (tensorSizeParams.get_pseUbSize() > 0) {
+    if (tensorSizeParams.get_pseUbSize() > 0)
+    {
         hasPse = true;
     }
-    if (tensorSizeParams.get_dropMaskUbSize() > 0) {
+    if (tensorSizeParams.get_dropMaskUbSize() > 0)
+    {
         hasDropOut = true;
     }
-    if (tensorSizeParams.get_attenMaskUbSize() > 0) {
+    if (tensorSizeParams.get_attenMaskUbSize() > 0)
+    {
         hasAttenMask = true;
     }
-    if (coreParams.get_dRopeSize() != 0) {
+    if (coreParams.get_dRopeSize() != 0)
+    {
         hasRope = true;
     }
-    if (inputDtype == ge::DT_BF16 || isHighPercision) {
-        if (expectTemplate.splitS2 == 1) {
+    if (inputDtype == ge::DT_BF16 || isHighPercision)
+    {
+        if (expectTemplate.splitS2 == 1)
+        {
             tensorSizeParams.set_castUbSize(batchInnerSize * s1BasicBlock * std::max(s2BasicBlock, dBasicBlock));
-        } else {
+        }
+        else
+        {
             tensorSizeParams.set_castUbSize(batchInnerSize * s1BasicBlock * s2BasicBlock);
         }
     }
@@ -2260,16 +2560,21 @@ bool FlashAttentionScoreTilingBase::InitSparseValidArray(std::vector<int64_t> &s
     OP_CHECK_IF(sparseValidArray.size() == 0, OP_LOGE(opName, "Sparse valid array size should be larger than 0."),
                 return false);
     uint8_t sparseType = tilingData->inputParams.get_sparseType();
-    if (sparseType == static_cast<uint8_t>(SparseEnum::PREFIX)) {
-        for (int64_t i = 0; i < static_cast<int64_t>(sparseValidArray.size()); i++) {
+    if (sparseType == static_cast<uint8_t>(SparseEnum::PREFIX))
+    {
+        for (int64_t i = 0; i < static_cast<int64_t>(sparseValidArray.size()); i++)
+        {
             int64_t s2IgnoredEndLen =
                 tilingData->inputParams.get_s1Size() - tilingData->coreParams.get_s1BaseSize() * (i + 1);
             int64_t s2EndLen = 0;
             s2IgnoredEndLen = std::max(static_cast<int64_t>(0), s2IgnoredEndLen);
-            if (tilingData->inputParams.get_s2Size() > s2IgnoredEndLen) {
+            if (tilingData->inputParams.get_s2Size() > s2IgnoredEndLen)
+            {
                 s2EndLen = tilingData->inputParams.get_s2Size() - s2IgnoredEndLen;
                 s2EndLen = std::max(s2EndLen, prefixNData[bIdx]);
-            } else {
+            }
+            else
+            {
                 s2EndLen = tilingData->inputParams.get_s2Size();
                 s2EndLen = std::min(s2EndLen, prefixNData[bIdx]);
             }
@@ -2277,15 +2582,19 @@ bool FlashAttentionScoreTilingBase::InitSparseValidArray(std::vector<int64_t> &s
             s2EndLen = std::min(s2EndLen, tilingData->inputParams.get_s2Size());
             sparseValidArray[i] = CeilDivision(s2EndLen, s2BasicBlock);
         }
-    } else {
+    }
+    else
+    {
         int64_t s2BlkNum = CeilDivision(s2Size, s2BasicBlock);
         int64_t validS1Size = CeilDivision(s1SparseValidSize, s1BasicBlock);
         int64_t validS2Size = CeilDivision(s2SparseValidSize, s2BasicBlock);
         int64_t invalidRowSparseRatio = INVALID_ROW_SPARSE_RATIO;
-        if (s2Size <= s2BasicBlock) {
+        if (s2Size <= s2BasicBlock)
+        {
             invalidRowSparseRatio = 1;
         }
-        for (int64_t i = 0; i < static_cast<int64_t>(sparseValidArray.size()); i++) {
+        for (int64_t i = 0; i < static_cast<int64_t>(sparseValidArray.size()); i++)
+        {
             int64_t reduceBlk =
                 (i < validS1Size) ? 0 : (CeilDivision((i + 1) * s1BasicBlock - s1SparseValidSize, s2BasicBlock) - 1);
             int64_t addBlk =
@@ -2317,15 +2626,18 @@ bool FlashAttentionScoreTilingBase::PartitionSparseData(const std::vector<int64_
     int64_t rollingIdx = 0;
     int64_t loadSize = s1OuterLoadEachCore;
     partitionResult[0] = 0;
-    for (int64_t i = s1OuterNumEachCore; i < sparseArraySize; i++, rollingIdx++) {
+    for (int64_t i = s1OuterNumEachCore; i < sparseArraySize; i++, rollingIdx++)
+    {
         rollingIdx = (static_cast<uint64_t>(rollingIdx) >= sparseRollingArray.size()) ? 0 : rollingIdx;
         int64_t loadNext = sparseRollingArray[rollingIdx];
         bool needOneMoreCore = (loadSize + loadNext) > loadMaxEachCore;
-        if (needOneMoreCore && coreIdx >= (targetCoreNum - 1)) {
+        if (needOneMoreCore && coreIdx >= (targetCoreNum - 1))
+        {
             return false;
         }
 
-        if (needOneMoreCore) {
+        if (needOneMoreCore)
+        {
             partitionResult[++coreIdx] = i;
             i += s1OuterNumEachCore;
             i--;
@@ -2345,22 +2657,29 @@ void FlashAttentionScoreTilingBase::SetPrefixSparseStartIdx(const std::vector<st
                                                             MultiCoreParams &multiCoreParams)
 {
     int64_t validCoreNum;
-    if (isSameAB) {
+    if (isSameAB)
+    {
         validCoreNum = std::min(static_cast<int64_t>(multiCoreParams.get_coreNum() / AIV_AIC_NUM_RATIO), MAX_AIC_NUM);
-    } else {
+    }
+    else
+    {
         validCoreNum = std::min(static_cast<int64_t>(multiCoreParams.get_coreNum()), MAX_AIV_NUM);
     }
-    int64_t totalSize = multiCoreParams.get_totalSize(); // BN2GS1.o
+    int64_t totalSize = multiCoreParams.get_totalSize();  // BN2GS1.o
     int64_t *sparseStartIdx = multiCoreParams.get_sparseStartIdx();
-    for (int64_t idx = 0; idx < MAX_AIV_NUM; ++idx) {
+    for (int64_t idx = 0; idx < MAX_AIV_NUM; ++idx)
+    {
         sparseStartIdx[idx] = totalSize;
     }
-    if (totalSize <= validCoreNum) {
+    if (totalSize <= validCoreNum)
+    {
         int64_t idx = 0;
-        for (; idx < totalSize; ++idx) {
+        for (; idx < totalSize; ++idx)
+        {
             sparseStartIdx[idx] = idx;
         }
-        for (; idx < validCoreNum; ++idx) {
+        for (; idx < validCoreNum; ++idx)
+        {
             sparseStartIdx[idx] = totalSize;
         }
         return;
@@ -2368,7 +2687,8 @@ void FlashAttentionScoreTilingBase::SetPrefixSparseStartIdx(const std::vector<st
 
     int64_t loadTotal = 0;
     /* Need to adapt when we split b. */
-    for (int64_t i = 0; i < bSize; i++) {
+    for (int64_t i = 0; i < bSize; i++)
+    {
         loadTotal += std::accumulate(sparseValidArray[i].begin(), sparseValidArray[i].end(), 0LL);
     }
     int64_t n2G = tilingData->coreParams.get_n2OuterSize() * tilingData->coreParams.get_gOuterSize();
@@ -2380,36 +2700,46 @@ void FlashAttentionScoreTilingBase::SetPrefixSparseStartIdx(const std::vector<st
     int64_t coreIdx = 0;
     int64_t loadStartIdx = 0;
 
-    for (int64_t bNGS1Index = 0; bNGS1Index < bSize * n2G * s1OuterSize; ++bNGS1Index) {
+    for (int64_t bNGS1Index = 0; bNGS1Index < bSize * n2G * s1OuterSize; ++bNGS1Index)
+    {
         int64_t bIdx = bNGS1Index / (n2G * s1OuterSize);
-        if (s1OuterSize == 0) {
+        if (s1OuterSize == 0)
+        {
             continue;
         }
         int64_t s1Idx = bNGS1Index % s1OuterSize;
         auto currBlockNum = sparseValidArray[bIdx][s1Idx];
-        if (tempBlock >= loadEachCoreExpect) {
-            if ((tempBlock + currBlockNum - loadEachCoreExpect) >= (loadEachCoreExpect - (tempBlock))) {
+        if (tempBlock >= loadEachCoreExpect)
+        {
+            if ((tempBlock + currBlockNum - loadEachCoreExpect) >= (loadEachCoreExpect - (tempBlock)))
+            {
                 /* 不累加当前block */
                 sparseStartIdx[coreIdx++] = loadStartIdx;
                 loadStartIdx = bNGS1Index;
                 // 下一个核使用当前这个S1
                 tempBlock = currBlockNum;
-            } else {
+            }
+            else
+            {
                 sparseStartIdx[coreIdx++] = loadStartIdx;
                 loadStartIdx = (bNGS1Index + 1);
                 tempBlock = 0;
             }
-        } else {
+        }
+        else
+        {
             tempBlock += currBlockNum;
         }
     }
 
-    if (tempBlock != 0) {
+    if (tempBlock != 0)
+    {
         sparseStartIdx[coreIdx++] = loadStartIdx;
     }
 
     /* 将没用到的核的start index置为最大值 */
-    for (; coreIdx < MAX_AIV_NUM; ++coreIdx) {
+    for (; coreIdx < MAX_AIV_NUM; ++coreIdx)
+    {
         sparseStartIdx[coreIdx] = totalSize;
     }
 }
@@ -2419,19 +2749,25 @@ bool FlashAttentionScoreTilingBase::SetSparseStartIdx(const std::vector<int64_t>
 {
     // to avoid buffer overflow, or maybe sometimes we want to only verify single core
     int64_t validCoreNum;
-    if (isSameAB) {
+    if (isSameAB)
+    {
         validCoreNum = std::min(static_cast<int64_t>(multiCoreParams.get_coreNum() / AIV_AIC_NUM_RATIO), MAX_AIC_NUM);
-    } else {
+    }
+    else
+    {
         validCoreNum = std::min(static_cast<int64_t>(multiCoreParams.get_coreNum()), MAX_AIV_NUM);
     }
-    int64_t totalSize = multiCoreParams.get_totalSize(); // BN2GS1.o
+    int64_t totalSize = multiCoreParams.get_totalSize();  // BN2GS1.o
     int64_t *sparseStartIdx = multiCoreParams.get_sparseStartIdx();
-    for (int64_t idx = 0; idx < MAX_AIV_NUM; ++idx) {
+    for (int64_t idx = 0; idx < MAX_AIV_NUM; ++idx)
+    {
         sparseStartIdx[idx] = totalSize;
     }
 
-    if (totalSize <= validCoreNum) {
-        for (int64_t idx = 0; idx < totalSize; ++idx) {
+    if (totalSize <= validCoreNum)
+    {
+        for (int64_t idx = 0; idx < totalSize; ++idx)
+        {
             sparseStartIdx[idx] = idx;
         }
 
@@ -2448,10 +2784,12 @@ bool FlashAttentionScoreTilingBase::SetSparseStartIdx(const std::vector<int64_t>
     int64_t loadEachCoreLowerBound = loadTotal / validCoreNum - 1;
     int64_t loadEachCoreUpperBound =
         CeilDivision(loadTotal, validCoreNum) + (*std::max_element(sparseValidArray.begin(), sparseValidArray.end()));
-    while (loadEachCoreLowerBound + 1 < loadEachCoreUpperBound) {
+    while (loadEachCoreLowerBound + 1 < loadEachCoreUpperBound)
+    {
         int64_t loadMax = loadEachCoreLowerBound + (loadEachCoreUpperBound - loadEachCoreLowerBound) / 2;
         if ((loadMax * validCoreNum >= loadTotal) &&
-            PartitionSparseData(sparseValidArray, sparseArraySum, totalSize, loadMax, partitionResult)) {
+            PartitionSparseData(sparseValidArray, sparseArraySum, totalSize, loadMax, partitionResult))
+        {
             loadEachCoreUpperBound = loadMax;
             lastValidPartitionResult.swap(partitionResult);
             continue;
@@ -2459,7 +2797,8 @@ bool FlashAttentionScoreTilingBase::SetSparseStartIdx(const std::vector<int64_t>
         loadEachCoreLowerBound = loadMax;
     }
 
-    for (int64_t idx = 0; idx < validCoreNum; ++idx) {
+    for (int64_t idx = 0; idx < validCoreNum; ++idx)
+    {
         sparseStartIdx[idx] = lastValidPartitionResult[idx];
     }
 
@@ -2477,17 +2816,21 @@ int64_t FlashAttentionScoreTilingBase::PrintSparseMaxMinLoadPerCore(const std::v
     int64_t minLoadSize = std::numeric_limits<int64_t>::max();
     int64_t totalSize = tilingData->multiCoreParams.get_totalSize();
     int64_t s1OuterSize = tilingData->coreParams.get_s1OuterSize();
-    if (s1OuterSize == 0) {
+    if (s1OuterSize == 0)
+    {
         return 0;
     }
-    for (int64_t idx = 0; idx < validAivNum; ++idx) {
+    for (int64_t idx = 0; idx < validAivNum; ++idx)
+    {
         int64_t startIdx = sparseStartIdx[idx];
         int64_t endIdx = totalSize;
-        if (idx + 1 < validAivNum) {
+        if (idx + 1 < validAivNum)
+        {
             endIdx = sparseStartIdx[idx + 1];
         }
 
-        if (startIdx >= endIdx) {
+        if (startIdx >= endIdx)
+        {
             minLoadSize = 0;
             break;
         }
@@ -2495,19 +2838,26 @@ int64_t FlashAttentionScoreTilingBase::PrintSparseMaxMinLoadPerCore(const std::v
         int64_t s1OuterStartIdx = startIdx % s1OuterSize;
         int64_t s1OuterEndIdx = endIdx % s1OuterSize;
         int64_t loadSize = 0;
-        if (s1OuterEndIdx > s1OuterStartIdx) {
+        if (s1OuterEndIdx > s1OuterStartIdx)
+        {
             loadSize = std::accumulate(sparseValidArray.begin() + s1OuterStartIdx,
                                        sparseValidArray.begin() + s1OuterEndIdx, 0);
-        } else {
+        }
+        else
+        {
             loadSize = std::accumulate(sparseValidArray.begin() + s1OuterStartIdx, sparseValidArray.end(), 0);
             loadSize = std::accumulate(sparseValidArray.begin(), sparseValidArray.begin() + s1OuterEndIdx, loadSize);
         }
 
         int64_t s1OuterLoop = (endIdx / s1OuterSize) - (startIdx / s1OuterSize);
-        if (s1OuterLoop > 1) {
-            if (s1OuterEndIdx > s1OuterStartIdx) {
+        if (s1OuterLoop > 1)
+        {
+            if (s1OuterEndIdx > s1OuterStartIdx)
+            {
                 loadSize += s1OuterLoop * std::accumulate(sparseValidArray.begin(), sparseValidArray.end(), 0);
-            } else {
+            }
+            else
+            {
                 loadSize += (s1OuterLoop - 1) * std::accumulate(sparseValidArray.begin(), sparseValidArray.end(), 0);
             }
         }
@@ -2523,11 +2873,13 @@ int64_t FlashAttentionScoreTilingBase::PrintSparseMaxMinLoadPerCore(const std::v
 
 void FlashAttentionScoreTilingBase::SetSparseParams()
 {
-    if (tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::ALL)) {
+    if (tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::ALL))
+    {
         return;
     }
 
-    if (expectTemplate.splitS2 == 0) {
+    if (expectTemplate.splitS2 == 0)
+    {
         OP_LOGI(context_, "[%s]match not split S2 template, close sparse feature", templateName);
         tilingData->inputParams.set_sparseType(static_cast<uint8_t>(SparseEnum::ALL));
         return;
@@ -2538,14 +2890,18 @@ void FlashAttentionScoreTilingBase::SetSparseParams()
     coreParams.set_s2SparseValidSize(s2SparseValidSize);
 
     auto &multiCoreParams = tilingData->multiCoreParams;
-    if (tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::PREFIX)) {
+    if (tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::PREFIX))
+    {
         std::vector<std::vector<int64_t>> sparseValidArray;
-        for (int64_t bIdx = 0; bIdx < bSize; bIdx++) {
+        for (int64_t bIdx = 0; bIdx < bSize; bIdx++)
+        {
             sparseValidArray.emplace_back(std::vector<int64_t>(coreParams.get_s1OuterSize(), 0));
             InitSparseValidArray(sparseValidArray.back(), bIdx);
         }
         SetPrefixSparseStartIdx(sparseValidArray, multiCoreParams);
-    } else {
+    }
+    else
+    {
         std::vector<int64_t> sparseValidArray(coreParams.get_s1OuterSize(), 0);
         InitSparseValidArray(sparseValidArray, 0);
         SetSparseStartIdx(sparseValidArray, multiCoreParams);
@@ -2568,11 +2924,14 @@ bool FlashAttentionScoreTilingBase::MatchMatmulConst(MatmulConstParams &matmulCo
 void FlashAttentionScoreTilingBase::SetScalarConst()
 {
     SetMatmulConstArr();
-    if (!(CheckScalarConstCondation())) {
+    if (!(CheckScalarConstCondation()))
+    {
         return;
     }
-    for (auto &matmulConst : matmulConstArr) {
-        if (MatchMatmulConst(matmulConst)) {
+    for (auto &matmulConst : matmulConstArr)
+    {
+        if (MatchMatmulConst(matmulConst))
+        {
             s1TemplateType = matmulConst.s1Type;
             s2TemplateType = matmulConst.s2Type;
             dTemplateType = matmulConst.dType;
@@ -2595,8 +2954,9 @@ ge::graphStatus FlashAttentionScoreTilingBase::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-class FlashAttentionScoreTilingS1Bn2gs1 : public FlashAttentionScoreTilingBase {
-public:
+class FlashAttentionScoreTilingS1Bn2gs1 : public FlashAttentionScoreTilingBase
+{
+   public:
     explicit FlashAttentionScoreTilingS1Bn2gs1(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
     {
         expectTemplate.splitS1 = 1;
@@ -2605,20 +2965,20 @@ public:
     }
     ~FlashAttentionScoreTilingS1Bn2gs1() override = default;
 
-protected:
+   protected:
     int64_t s1Ratio = 1;
-    int64_t workspaceLimit = 131072; // 8*128*128
+    int64_t workspaceLimit = 131072;  // 8*128*128
     int64_t softmaxExtraSize = 512;
     int64_t s1dHighPerfBufferNum = 4;
     int64_t s2SizeLimitMax = 1024;
     int64_t s2SizeLimitMin = 128;
     int64_t isBasicBlockNum = 64;
-    int64_t minSizeLimit = 65536; // 64 * 1024
+    int64_t minSizeLimit = 65536;  // 64 * 1024
     int64_t nRatioMax = 4;
     int64_t highPerfBlock = 128;
     int64_t l1SizeRemain = 0;
     int64_t elementSize = 4;
-    int64_t nzndDataLimit = 20480; // 20 * 1024
+    int64_t nzndDataLimit = 20480;  // 20 * 1024
     int64_t s2SizeNzndMinLimit = 704;
     int64_t dSizeLimit = 256;
     int64_t aicRatio = 1;
@@ -2636,7 +2996,8 @@ protected:
     void SetEnableL1Reuse()
     {
         // FP32场景，不开启L1reuse
-        if (inputDtypeBytes == DATA_TYPE_FP32) {
+        if (inputDtypeBytes == DATA_TYPE_FP32)
+        {
             enableL1Reuse = false;
             return;
         }
@@ -2645,7 +3006,8 @@ protected:
         if ((s2Size >= L1REUSE_S2_LIMIT_512 && bSize * n2Size * gSize > L1REUSE_BNG_LIMIT_64 &&
              dSize <= L1REUSE_D_LIMIT) ||
             (bSize * n2Size * gSize >= L1REUSE_BNG_LIMIT_4800 && s2Size == BMM2_BASICBLOCK_K_256 &&
-             dSize == L1REUSE_D_LIMIT_144)) {
+             dSize == L1REUSE_D_LIMIT_144))
+        {
             enableL1Reuse = true;
             aicRatio = aicRatioL1reuse;
         }
@@ -2656,11 +3018,13 @@ protected:
         // L1reuse入口条件逻辑为：
         // 512<=S2<=1024且S1<=3840且D=64，并在非稀疏时开启
         if ((alignedS2 >= S2_REUSE_SIZE_512 && alignedS2 <= S2_REUSE_SIZE_1024) && s1Size <= S1_REUSE_SIZE_3840 &&
-            alignedD == D_SPECIFIC_SIZE && (tilingData->inputParams.get_sparseType() == 0)) {
+            alignedD == D_SPECIFIC_SIZE && (tilingData->inputParams.get_sparseType() == 0))
+        {
             tilingKeyBmm2Source = CubeInputSourceEnum::L1;
             enableL1Reuse = false;
             aicRatio = 1;
-            if (alignedS2 == S2_REUSE_SIZE_512) {
+            if (alignedS2 == S2_REUSE_SIZE_512)
+            {
                 nRatioMax = 1;
             }
         }
@@ -2684,14 +3048,16 @@ protected:
         SetEnableL1Reuse();
         // 稀疏场景不开启S1轴N:1配比
         FlashAttentionScoreTilingBase::SetCoreParams();
-        if (tilingData->inputParams.get_sparseType() != static_cast<uint8_t>(SparseEnum::ALL)) {
+        if (tilingData->inputParams.get_sparseType() != static_cast<uint8_t>(SparseEnum::ALL))
+        {
             return;
         }
         SetMultiCoreParams();
         auto &coreParams = tilingData->coreParams;
         auto &multiCoreParams = tilingData->multiCoreParams;
         // 对于S2 < 128且S1 16对齐的场景，bmm1输出改成NZ格式，配比设为4，提升fix pipe效率
-        if (alignedS2 < s2SizeLimitMin) {
+        if (alignedS2 < s2SizeLimitMin)
+        {
             nRatioMax = 1;
         }
         // NZND入口条件逻辑为
@@ -2701,15 +3067,18 @@ protected:
         // 4、满足以上条件且D>256时，开启NZND但不改变N配比；
         if ((s2Size % S2_NZTOND_SIZE_64 != 0 || s2Size == S2_NZTOND_SIZE_64) ||
             (s2Size >= s2SizeNzndMinLimit && s2Size % S2_NZTOND_SIZE_64 == 0 && s2Size % S2_NZTOND_SIZE_128 != 0 &&
-             bSize * n2Size * gSize * s1Size > nzndDataLimit)) {
-            if (dSize <= dSizeLimit) {
+             bSize * n2Size * gSize * s1Size > nzndDataLimit))
+        {
+            if (dSize <= dSizeLimit)
+            {
                 nRatioMax = 4;
             }
             tilingKeyBmm1Format = CubeFormatEnum::NZ;
         }
         // 当前能分满核，考虑增大N
         while (s1Ratio < nRatioMax && multiCoreParams.get_totalSize() > ((GetNRatio() - 1) * aivNum / GetNRatio()) &&
-               s1BasicBlock * GetNRatio() < alignedS1 && GetNRatio() * s1BasicBlock * alignedS2 <= workspaceLimit) {
+               s1BasicBlock * GetNRatio() < alignedS1 && GetNRatio() * s1BasicBlock * alignedS2 <= workspaceLimit)
+        {
             s1Ratio++;
             FlashAttentionScoreTilingBase::SetCoreParams();
             // S1轴N:1使能
@@ -2720,7 +3089,8 @@ protected:
         }
         // 分不满核，减小N
         while (multiCoreParams.get_totalSize() <= ((GetNRatio() - 1) * aivNum / GetNRatio()) ||
-               s1BasicBlock * GetNRatio() > alignedS1 || GetNRatio() * s1BasicBlock * alignedS2 > workspaceLimit) {
+               s1BasicBlock * GetNRatio() > alignedS1 || GetNRatio() * s1BasicBlock * alignedS2 > workspaceLimit)
+        {
             s1Ratio--;
             FlashAttentionScoreTilingBase::SetCoreParams();
             coreParams.set_s1OuterSize(CeilDivision(coreParams.get_s1OuterSize(), GetNRatio()));
@@ -2731,21 +3101,26 @@ protected:
 
     void SetSparseParams() override
     {
-        if (tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::ALL)) {
+        if (tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::ALL))
+        {
             return;
         }
         auto &coreParams = tilingData->coreParams;
         coreParams.set_s1SparseValidSize(s1SparseValidSize);
         coreParams.set_s2SparseValidSize(s2SparseValidSize);
         auto &multiCoreParams = tilingData->multiCoreParams;
-        if (tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::PREFIX)) {
+        if (tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::PREFIX))
+        {
             std::vector<std::vector<int64_t>> sparseValidArray;
-            for (int64_t bIdx = 0; bIdx < bSize; bIdx++) {
+            for (int64_t bIdx = 0; bIdx < bSize; bIdx++)
+            {
                 sparseValidArray.emplace_back(std::vector<int64_t>(coreParams.get_s1OuterSize(), 0));
                 InitSparseValidArray(sparseValidArray.back(), bIdx);
             }
             SetPrefixSparseStartIdx(sparseValidArray, multiCoreParams);
-        } else {
+        }
+        else
+        {
             std::vector<int64_t> sparseValidArray(coreParams.get_s1OuterSize(), 0);
             InitSparseValidArray(sparseValidArray, 0);
             SetSparseStartIdx(sparseValidArray, multiCoreParams);
@@ -2764,10 +3139,13 @@ protected:
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
-        if (IsB41L2CacheOptimizable()) {
+        if (IsB41L2CacheOptimizable())
+        {
             OP_LOGI(opName, "L2 cache optimization: s1BasicBlock set to 64 for B4_1.");
             s1BasicBlock = std::min(64L, alignedS1);
-        } else {
+        }
+        else
+        {
             s1BasicBlock = std::min(128L, alignedS1);
         }
         s2BasicBlock = std::min(128L, alignedS2);
@@ -2784,18 +3162,24 @@ protected:
         bmm1.SetShape(std::min(static_cast<int64_t>(tilingData->coreParams.get_s1BaseSize()), s1Size), s2Size, dSize);
         bmm1.SetOrgShape(s1Size, s2Size, s1StrideSize, s2StrideSize);
         bmm1.SetBias(false);
-        if (bmm1.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0) {
+        if (bmm1.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0)
+        {
             return false;
         }
-        if (bmm1.SetFixSplit(tmpS1BasicBlock, tmpS2BasicBlock) != 0) {
+        if (bmm1.SetFixSplit(tmpS1BasicBlock, tmpS2BasicBlock) != 0)
+        {
             return false;
         }
-        if (tilingKeyBmm2Source == CubeInputSourceEnum::L1) {
+        if (tilingKeyBmm2Source == CubeInputSourceEnum::L1)
+        {
             l1SizeRemain = aicoreParams_.l1Size - alignedS2 * alignedD * elementSize;
-        } else {
+        }
+        else
+        {
             l1SizeRemain = aicoreParams_.l1Size;
         }
-        if (bmm1.SetBufferSpace(l1SizeRemain, aicoreParams_.l0cSize) != 0) {
+        if (bmm1.SetBufferSpace(l1SizeRemain, aicoreParams_.l0cSize) != 0)
+        {
             return false;
         }
         return true;
@@ -2810,17 +3194,23 @@ protected:
         bmm2.SetShape(std::min(static_cast<int64_t>(tilingData->coreParams.get_s1BaseSize()), s1Size), dSize, s2Size);
         bmm2.SetOrgShape(s1Size, s2StrideSize, s2Size, s2StrideSize);
         bmm2.SetBias(false);
-        if (bmm2.SetBufferSpace(l1SizeRemain, aicoreParams_.l0cSize) != 0) {
+        if (bmm2.SetBufferSpace(l1SizeRemain, aicoreParams_.l0cSize) != 0)
+        {
             return false;
         }
         // 在S1=S2，S2大于S2_SPECIFIC_SIZE_928且D=64时，使用性能更亲和的BMM2基本块
         if (s1Size == s2Size && s2Size >= S2_SPECIFIC_SIZE_928 && dSize == D_SPECIFIC_SIZE &&
-            tilingData->inputParams.get_sparseType() == 0) {
-            if (bmm2.SetFixSplit(BMM2_BASICBLOCK_M_64, BMM2_BASICBLOCK_N_64, BMM2_BASICBLOCK_K_256) != 0) {
+            tilingData->inputParams.get_sparseType() == 0)
+        {
+            if (bmm2.SetFixSplit(BMM2_BASICBLOCK_M_64, BMM2_BASICBLOCK_N_64, BMM2_BASICBLOCK_K_256) != 0)
+            {
                 return false;
             }
-        } else {
-            if (bmm2.SetFixSplit(tmpS1BasicBlock, tmpDBasicBlock) != 0) {
+        }
+        else
+        {
+            if (bmm2.SetFixSplit(tmpS1BasicBlock, tmpDBasicBlock) != 0)
+            {
                 return false;
             }
         }
@@ -2829,19 +3219,23 @@ protected:
 
     bool IsTemplateMatched() const override
     {
-        if (s2Size > s2SizeLimitMax) {
+        if (s2Size > s2SizeLimitMax)
+        {
             return false;
         }
-        if (s2Size > s2SizeLimitMin) {
+        if (s2Size > s2SizeLimitMin)
+        {
             return true;
         }
         if (static_cast<uint64_t>(n2Size * gSize * ((alignedS1 + alignedS2) * alignedD + alignedS2) *
                                   inputDtypeBytes) >= aicoreParams_.l1Size ||
             static_cast<uint64_t>(n2Size * gSize * (alignedS1 + alignedD) * alignedS2 * inputDtypeBytes) >=
-                aicoreParams_.l1Size) {
+                aicoreParams_.l1Size)
+        {
             return true;
         }
-        if (n2Size * gSize * alignedS1 * alignedS2 * inputDtypeBytes <= minSizeLimit * DATA_TYPE_FP16) {
+        if (n2Size * gSize * alignedS1 * alignedS2 * inputDtypeBytes <= minSizeLimit * DATA_TYPE_FP16)
+        {
             return false;
         }
         return true;
@@ -2858,10 +3252,12 @@ protected:
     bool CheckScalarConstCondation() override
     {
         if (mm1BaseM == mm2BaseM && mm1BaseN == mm2BaseK && mm1BaseK == mm2BaseN && hasDropOut == false &&
-            hasAttenMask == false && hasPse == false && tilingKeyDType == DtypeEnum::BFLOAT16) {
+            hasAttenMask == false && hasPse == false && tilingKeyDType == DtypeEnum::BFLOAT16)
+        {
             if (tilingKeyLayout == LayoutType::LAYOUT_BSH ||
                 (tilingKeyLayout == LayoutType::LAYOUT_SBH &&
-                 mm1BaseK == static_cast<int64_t>(DTemplateType::ALIGNED_96) * FRACTAL_NUM)) {
+                 mm1BaseK == static_cast<int64_t>(DTemplateType::ALIGNED_96) * FRACTAL_NUM))
+            {
                 return true;
             }
         }
@@ -2870,7 +3266,8 @@ protected:
 
     bool MatchMatmulConst(MatmulConstParams &matmulConst) override
     {
-        if (enableL1Reuse == true) {
+        if (enableL1Reuse == true)
+        {
             return false;
         }
         return mm1BaseM == matmulConst.baseM && mm1BaseN == matmulConst.baseN && mm1BaseK == matmulConst.baseK;
@@ -2891,11 +3288,13 @@ protected:
 
     ge::graphStatus GetWorkspaceSize() override
     {
-        if (tilingData->inputParams.get_sparseType() == 0) {
+        if (tilingData->inputParams.get_sparseType() == 0)
+        {
             int32_t actualUsedAivNum = CeilDivision(tilingData->multiCoreParams.get_totalSize(),
                                                     (tilingData->multiCoreParams.get_splitFactorSize() / aicRatio));
             int32_t actualUsedAivNumMod2 = actualUsedAivNum % 2;
-            if (enableL1Reuse && actualUsedAivNumMod2) {
+            if (enableL1Reuse && actualUsedAivNumMod2)
+            {
                 actualUsedAivNum++;
             }
             tilingData->multiCoreParams.set_coreNum(std::min(int32_t(aivNum), actualUsedAivNum));
@@ -2919,7 +3318,8 @@ protected:
         workspaces[0] = static_cast<size_t>((bmm1AlignBytes + stage1AlignBytes + bmm2AlignBytes) *
                                             tilingData->multiCoreParams.get_coreNum()) +
                         WORK_SPACE_RESERVE_SIZE;
-        if (pseType == PSE_INNER_MUL_ADD_TYPE || pseType == PSE_INNER_MUL_ADD_SQRT_TYPE) {
+        if (pseType == PSE_INNER_MUL_ADD_TYPE || pseType == PSE_INNER_MUL_ADD_SQRT_TYPE)
+        {
             pseAlibiBaseS2 = alignedS2;
             pseAlibiBaseS1 =
                 std::min(static_cast<int64_t>(coreParams.get_s1BaseSize()), UB_BASIC_LIMIT_SIZE / pseAlibiBaseS2);
@@ -2929,15 +3329,16 @@ protected:
     }
 };
 
-class FlashAttentionScoreTilingB : public FlashAttentionScoreTilingBase {
-public:
+class FlashAttentionScoreTilingB : public FlashAttentionScoreTilingBase
+{
+   public:
     explicit FlashAttentionScoreTilingB(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
     {
         templateName = "FlashAttentionScoreB";
     }
     ~FlashAttentionScoreTilingB() override = default;
 
-protected:
+   protected:
     int64_t blockBSizeLimit_ = 64 * 1024;
     int64_t blockBL2SizeLimit_ = 128 * 1024;
     int64_t blockBUBSizeLimit_ = 8 * 1024;
@@ -2954,10 +3355,13 @@ protected:
         s1BasicBlock = std::min(s1BasicBlock, alignedS1);
         s1BasicBlock = std::min(maxS1BaseSize_, s1BasicBlock);
         dVec2BasicBlock_ = alignedD;
-        if (dVec2BasicBlock_ <= S1_VEC2_BASE_SIZE_MAX) {
+        if (dVec2BasicBlock_ <= S1_VEC2_BASE_SIZE_MAX)
+        {
             s1Vec2BasicBlock_ =
                 blockBUBSizeLimit_ / dVec2BasicBlock_ / FRACTAL_NUM * FRACTAL_NUM * DATA_TYPE_FP16 / inputDtypeBytes;
-        } else {
+        }
+        else
+        {
             s1Vec2BasicBlock_ = blockBUBSizeLimit_ / dVec2BasicBlock_ * DATA_TYPE_FP16 / inputDtypeBytes;
         }
         s1Vec2BasicBlock_ = std::min(s1Vec2BasicBlock_, alignedS1);
@@ -3006,12 +3410,12 @@ protected:
     {
         auto &multiCoreParams = tilingData->multiCoreParams;
         auto &coreParams = tilingData->coreParams;
-        int64_t totalSize = coreParams.get_bOuterSize(); // 核间一共处理的Bo大小
+        int64_t totalSize = coreParams.get_bOuterSize();  // 核间一共处理的Bo大小
         int64_t tempUsedAivNum = std::min(totalSize, static_cast<int64_t>(aivNum));
         multiCoreParams.set_totalSize(totalSize);
-        multiCoreParams.set_splitFactorSize(CeilDivision(totalSize, tempUsedAivNum)); // 每个核处理的Bo大小
+        multiCoreParams.set_splitFactorSize(CeilDivision(totalSize, tempUsedAivNum));  // 每个核处理的Bo大小
         multiCoreParams.set_splitFactorTailSize(
-            CalcTailSize(totalSize, multiCoreParams.get_splitFactorSize())); // 最后一个核处理的Bo大小
+            CalcTailSize(totalSize, multiCoreParams.get_splitFactorSize()));  // 最后一个核处理的Bo大小
         multiCoreParams.set_coreNum(
             static_cast<int32_t>(CeilDivision(totalSize, multiCoreParams.get_splitFactorSize())));
         OP_LOGD(context_,
@@ -3030,19 +3434,26 @@ protected:
         tensorSizeParams.set_dropMaskUbSize(dropMaskExistFlag * s1BasicBlock *
                                             AlignUp(s2BasicBlock, DROP_MASK_ALIGN_UNIT) / BYTE_BIT_NUM /
                                             inputDtypeBytes);
-        if (tensorSizeParams.get_pseUbSize() > 0) {
+        if (tensorSizeParams.get_pseUbSize() > 0)
+        {
             hasPse = true;
         }
-        if (tensorSizeParams.get_dropMaskUbSize() > 0) {
+        if (tensorSizeParams.get_dropMaskUbSize() > 0)
+        {
             hasDropOut = true;
         }
-        if (tensorSizeParams.get_attenMaskUbSize() > 0) {
+        if (tensorSizeParams.get_attenMaskUbSize() > 0)
+        {
             hasAttenMask = true;
         }
-        if (inputDtype == ge::DT_BF16 || isHighPercision) {
-            if (expectTemplate.splitS2 == 1) {
+        if (inputDtype == ge::DT_BF16 || isHighPercision)
+        {
+            if (expectTemplate.splitS2 == 1)
+            {
                 tensorSizeParams.set_castUbSize(s1BasicBlock * std::max(s2BasicBlock, dBasicBlock));
-            } else {
+            }
+            else
+            {
                 tensorSizeParams.set_castUbSize(s1BasicBlock * s2BasicBlock);
             }
         }
@@ -3068,10 +3479,12 @@ protected:
         bmm1.SetCLayout(bSize, s1Size, n2Size, gSize, s2Size);
         bmm1.SetBatchNum(batch);
         bmm1.SetBias(false);
-        if (bmm1.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0) {
+        if (bmm1.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0)
+        {
             return false;
         }
-        if (bmm1.SetFixSplit(tmpS1BasicBlock, tmpS2BasicBlock) != 0) {
+        if (bmm1.SetFixSplit(tmpS1BasicBlock, tmpS2BasicBlock) != 0)
+        {
             return false;
         }
         return true;
@@ -3084,17 +3497,19 @@ protected:
         bmm2.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
         bmm2.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm2OutDtype);
         bmm2.SetShape(s1Size, dSize, s2Size);
-        bmm2.SetOrgShape(s1Size, dSize, s2Size); // consider broadcst, N same as A tensor
+        bmm2.SetOrgShape(s1Size, dSize, s2Size);  // consider broadcst, N same as A tensor
         bmm2.SetALayout(bSize, s1Size, n2Size, gSize, s2Size);
         bmm2.SetBLayout(bSize, s2Size, n2Size, 1, dSize);
         bmm2.SetCLayout(bSize, s1Size, n2Size, gSize, dSize);
         bmm2.SetBatchNum(batch);
         bmm2.SetBias(false);
-        if (bmm2.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0) {
+        if (bmm2.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0)
+        {
             return false;
         }
         int64_t maxDBasicBlock = AlignDown(aicoreParams_.l0cSize / (tmpS1BasicBlock * calcTypeSize), 16UL);
-        if (bmm2.SetFixSplit(tmpS1BasicBlock, std::min(maxDBasicBlock, tmpDBasicBlock)) != 0) {
+        if (bmm2.SetFixSplit(tmpS1BasicBlock, std::min(maxDBasicBlock, tmpDBasicBlock)) != 0)
+        {
             return false;
         }
         return true;
@@ -3115,7 +3530,8 @@ protected:
     {
         if (mm1BaseM == mm2BaseM && mm1BaseN == mm2BaseK && mm1BaseK == mm2BaseN &&
             tilingKeyDType == DtypeEnum::BFLOAT16 && tilingKeyLayout == LayoutType::LAYOUT_BSH && hasDropOut == false &&
-            hasAttenMask == false && hasPse == false) {
+            hasAttenMask == false && hasPse == false)
+        {
             return true;
         }
         return false;
@@ -3140,13 +3556,16 @@ protected:
         int64_t n2 = inputParams.get_n2Size();
         int64_t g = inputParams.get_gSize();
         bool notMatched = false;
-        if (alignedS2 > HIGH_PERF_SUPPORT_S2_BASIC) {
+        if (alignedS2 > HIGH_PERF_SUPPORT_S2_BASIC)
+        {
             notMatched = true;
         }
-        if (n2 * g * alignedS1 * alignedS2 * inputDtypeBytes > blockBSizeLimit_ * DATA_TYPE_FP16) {
+        if (n2 * g * alignedS1 * alignedS2 * inputDtypeBytes > blockBSizeLimit_ * DATA_TYPE_FP16)
+        {
             notMatched = true;
         }
-        if (notMatched) {
+        if (notMatched)
+        {
             OP_LOGE(context_,
                     "[%s]not match template[%s], input params: bn2gs1s2d[%ld, %ld, %ld, %ld, %ld, %ld], "
                     "keepProb[%f]",
@@ -3183,7 +3602,8 @@ protected:
                         static_cast<size_t>((bmm1Byetes + bmm2Byetes) * pingPongNum * multiCoreParams.get_coreNum());
 
         if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
-            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
+            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE))
+        {
             pseAlibiBaseS2 = alignedS2;
             pseAlibiBaseS1 = std::min(s1BasicBlock, UB_BASIC_LIMIT_SIZE / pseAlibiBaseS2);
             pseAlibiBaseS1 = std::max(pseAlibiBaseS1, UB_BASIC_LIMIT_SIZE / s1BasicBlock);
@@ -3200,8 +3620,9 @@ protected:
     }
 };
 
-class FlashAttentionScoreTilingS1s2Bn2gs1 : public FlashAttentionScoreTilingBase {
-public:
+class FlashAttentionScoreTilingS1s2Bn2gs1 : public FlashAttentionScoreTilingBase
+{
+   public:
     explicit FlashAttentionScoreTilingS1s2Bn2gs1(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
     {
         expectTemplate.splitS1 = 1U;
@@ -3210,7 +3631,7 @@ public:
     }
     ~FlashAttentionScoreTilingS1s2Bn2gs1() override = default;
 
-protected:
+   protected:
     int64_t s2sizeLimitMin = 1024;
     int64_t dAlignSize = 16;
     bool enableL1Reuse = false;
@@ -3219,36 +3640,81 @@ protected:
 
     void GetBufferNum(BufferNum &bufferNum) const override { bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM; }
 
+    int64_t find_optimal_s1BasicBlock()
+    {
+        int64_t target_basic_block = 128;
+        int64_t s1OuterSize = CeilDiv(s1Size, target_basic_block);
+        int64_t total_size = bSize * n2Size * gSize * s1OuterSize;
+
+        int64_t splitFactor = CeilDiv(total_size, static_cast<int64_t>(aivNum));
+        int64_t expectBasicBlock = CeilDiv(bSize * n2Size * gSize * s1Size, splitFactor * aivNum);
+        int64_t s1BasicBlock = AlignUp(expectBasicBlock, FRACTAL_NUM);
+
+        return s1BasicBlock;
+    }
+
+    bool isExecDynBasicBlock()
+    {
+        bool isBSNDInRange = bSize * s1Size * n2Size * gSize <= DYNA_BASICBLOCK_S1_MAX && dSize == 128;
+        bool isBNSDInRange = bSize == 1 && n2Size == 1 && gSize == 1 && s1Size <= DYNA_BASICBLOCK_S1_MAX &&
+                             s1Size == s2Size && dSize == 128;
+        bool noMask = sparseMode == static_cast<int64_t>(NO_MASK);
+        bool isNotCausal = preTokens < s1Size || nextTokens != 0;
+
+        bool isSupportBSND = tilingData->inputParams.get_layoutType() == LAYOUT_BSND && isBSNDInRange;
+
+        bool isSupportBNSD = tilingData->inputParams.get_layoutType() == LAYOUT_BNSD && isBNSDInRange;
+
+        bool isSupportAttrs = pseExistFlag == 0 && dropMaskExistFlag == 0 && noMask && isNotCausal;
+
+        return (isSupportBSND || isSupportBNSD) && isSupportAttrs;
+    }
+
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
         s1BasicBlock = std::min(64L, alignedS1);
         // d轴为64
-        if (bSize * n1Size * gSize * CeilDiv(s1Size, s1BasicBlock) > static_cast<int64_t>(aivNum)) {
-            s1BasicBlock = std::min(128L, alignedS1);
+        if (bSize * n1Size * gSize * CeilDiv(s1Size, s1BasicBlock) > static_cast<int64_t>(aivNum))
+        {
+            if (isExecDynBasicBlock())
+            {
+                OP_LOGD(context_, "Start dynamic calculation of s1BasicBlock");
+                s1BasicBlock = find_optimal_s1BasicBlock();
+            }
+            else
+            {
+                s1BasicBlock = std::min(128L, alignedS1);
+            }
         }
         s2BasicBlock = std::min(128L, alignedS2);
-        if (s2Size % S2_NZTOND_SIZE_64 != 0 && dSize != D_SPECIFIC_SIZE) {
+        if (s2Size % S2_NZTOND_SIZE_64 != 0 && dSize != D_SPECIFIC_SIZE)
+        {
             tilingKeyBmm1Format = CubeFormatEnum::NZ;
         }
     }
 
     void CalcNRatio() override
     {
-        if (IsB41L2CacheOptimizable()) {
+        if (IsB41L2CacheOptimizable())
+        {
             OP_LOGI(opName, "L2 cache optimization: nRatio set to 4 for B4_1.");
             nRatio = 4L;
-        } else {
+        }
+        else
+        {
             nRatio = 8L;
         }
         // s2Size (1025, 1040]
-        if (s2Size / s2BasicBlock == 8L && s2Size % s2BasicBlock > 0 && s2Size % s2BasicBlock <= 16L) {
+        if (s2Size / s2BasicBlock == 8L && s2Size % s2BasicBlock > 0 && s2Size % s2BasicBlock <= 16L)
+        {
             nRatio = 5L;
         }
-        if (s2Size <= 2304 && s2Size >= 2049 && dSize == 64 &&
-            tilingData->inputParams.get_layoutType() == LAYOUT_BNSD) {
+        if (s2Size <= 2304 && s2Size >= 2049 && dSize == 64 && tilingData->inputParams.get_layoutType() == LAYOUT_BNSD)
+        {
             nRatio = 6L;
         }
-        if (IsKvL1ReuseTilingSupportedShape()) {
+        if (IsKvL1ReuseTilingSupportedShape())
+        {
             nRatio = 4L;
         }
     }
@@ -3266,41 +3732,49 @@ protected:
     void SetEnableL1Reuse()
     {
         // FP32场景，不开启L1reuse
-        if (inputDtypeBytes == DATA_TYPE_FP32) {
+        if (inputDtypeBytes == DATA_TYPE_FP32)
+        {
             enableL1Reuse = false;
             return;
         }
-        if (IsKvL1ReuseTilingSupportedShape()) {
+        if (IsKvL1ReuseTilingSupportedShape())
+        {
             enableL1Reuse = true;
             return;
         }
-        if (dSize > L1REUSE_D_LIMIT) {
+        if (dSize > L1REUSE_D_LIMIT)
+        {
             OP_LOGD(context_, "Current condition [dSize(%ld) > L1REUSE_D_LIMIT(%ld)] does not enable L1Reuse", dSize,
                     L1REUSE_D_LIMIT);
             return;
         }
         if (dSize == D_SPECIFIC_SIZE && tilingData->inputParams.get_layoutType() == LAYOUT_BNSD &&
             !(s2Size % L1REUSE_S2_LIMIT_256 == 0 || s2Size == L1REUSE_S2_LIMIT_4032) &&
-            s2Size != L1REUSE_S2_LIMIT_42192) {
+            s2Size != L1REUSE_S2_LIMIT_42192)
+        {
             OP_LOGD(context_, "Current condition [dSize(%ld) && layout(BNSD)] does not enable L1Reuse", dSize);
             return;
         }
-        if (tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::ALL)) {
+        if (tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::ALL))
+        {
             enableL1Reuse = true;
             return;
         }
 
         if ((tilingData->inputParams.get_layoutType() == LAYOUT_BSND ||
              tilingData->inputParams.get_layoutType() == LAYOUT_BSH) &&
-            s2Size <= L1REUSE_S2_LIMIT_2048 && dSize <= D_SPECIFIC_SIZE && bSize * n1Size <= L1REUSE_BNG_LIMIT) {
+            s2Size <= L1REUSE_S2_LIMIT_2048 && dSize <= D_SPECIFIC_SIZE && bSize * n1Size <= L1REUSE_BNG_LIMIT)
+        {
             OP_LOGD(context_, "Current condition [dSize(%ld) && layout(BSH/BSND) && BN(%ld)] does not enable L1Reuse",
                     dSize, bSize * n1Size);
             return;
         }
 
         if (tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::CAUSAL) ||
-            tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::PREFIX)) {
-            if (bSize * n1Size * gSize <= L1REUSE_BNG_LIMIT && s2Size <= L1REUSE_S2_LIMIT_2048) {
+            tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::PREFIX))
+        {
+            if (bSize * n1Size * gSize <= L1REUSE_BNG_LIMIT && s2Size <= L1REUSE_S2_LIMIT_2048)
+            {
                 OP_LOGD(context_, "Current condition [BNG(%ld) && s2Size(%ld)] does not enable L1Reuse.",
                         bSize * n1Size * gSize, s2Size);
                 return;
@@ -3309,9 +3783,11 @@ protected:
             return;
         }
 
-        if (tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::BAND)) {
+        if (tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::BAND))
+        {
             if ((bSize * n1Size * gSize <= L1REUSE_BNG_LIMIT && maxValidS2Len <= L1REUSE_S2_LIMIT_2048) ||
-                (maxValidS2Len <= L1REUSE_S2_LIMIT_1024)) {
+                (maxValidS2Len <= L1REUSE_S2_LIMIT_1024))
+            {
                 OP_LOGD(context_, "Current condition [BNG(%ld) && maxValidS2Len(%ld)] does not enable L1Reuse.",
                         bSize * n1Size * gSize, maxValidS2Len);
                 return;
@@ -3331,16 +3807,20 @@ protected:
                       std::min(tmpS2BasicBlock * tilingData->coreParams.get_nRatio(), s2Size), dSize);
         bmm1.SetOrgShape(s1Size, tmpS2BasicBlock * tilingData->coreParams.get_nRatio(), s1StrideSize, s2StrideSize);
         bmm1.SetBias(false);
-        if (bmm1.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0) {
+        if (bmm1.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0)
+        {
             return false;
         }
-        if (dSize > BMM1_BASICBLOCK_K_64 && dSize <= BMM1_BASICBLOCK_K_128 && inputDtypeBytes != DATA_TYPE_FP32) {
+        if (dSize > BMM1_BASICBLOCK_K_64 && dSize <= BMM1_BASICBLOCK_K_128 && inputDtypeBytes != DATA_TYPE_FP32)
+        {
             int64_t baseM = std::min(tmpS1BasicBlock, AlignUp(s1Size, FRACTAL_NUM));
             bmm1.SetFixSplit(baseM, BMM1_BASICBLOCK_N_128, dSize);
         }
 
-        if (IsSpecialShape()) {
-            if (bmm1.SetFixSplit(BMM1_BASICBLOCK_M_128, BMM1_BASICBLOCK_N_256, BMM1_BASICBLOCK_K_64) != 0) {
+        if (IsSpecialShape())
+        {
+            if (bmm1.SetFixSplit(BMM1_BASICBLOCK_M_128, BMM1_BASICBLOCK_N_256, BMM1_BASICBLOCK_K_64) != 0)
+            {
                 return false;
             }
         }
@@ -3358,13 +3838,16 @@ protected:
         bmm2.SetOrgShape(s1Size, s2StrideSize, std::min(tmpS2BasicBlock * tilingData->coreParams.get_nRatio(), s2Size),
                          s2StrideSize);
         bmm2.SetBias(false);
-        if (bmm2.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0) {
+        if (bmm2.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0)
+        {
             return false;
         }
         if (dSize == D_SPECIFIC_SIZE && tilingData->inputParams.get_layoutType() == LAYOUT_BNSD &&
             tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::ALL) &&
-            singleM >= BMM2_BASICBLOCK_M_64) {
-            if (bmm2.SetFixSplit(BMM2_BASICBLOCK_M_64, BMM2_BASICBLOCK_M_64, BMM2_BASICBLOCK_K_256) != 0) {
+            singleM >= BMM2_BASICBLOCK_M_64)
+        {
+            if (bmm2.SetFixSplit(BMM2_BASICBLOCK_M_64, BMM2_BASICBLOCK_M_64, BMM2_BASICBLOCK_K_256) != 0)
+            {
                 return false;
             }
         }
@@ -3387,10 +3870,12 @@ protected:
 
     bool IsCapable() override
     {
-        if (dSize != d2Size) { // D不等长(d != dv): S1S2 支持并主动接住
+        if (dSize != d2Size)
+        {  // D不等长(d != dv): S1S2 支持并主动接住
             return true;
         }
-        if (s2Size > s2sizeLimitMin) {
+        if (s2Size > s2sizeLimitMin)
+        {
             return true;
         }
         return false;
@@ -3407,10 +3892,12 @@ protected:
     void RefreshSplitFactor()
     {
         SetEnableL1Reuse();
-        if (IsKvL1ReuseTilingSupportedShape()) {
+        if (IsKvL1ReuseTilingSupportedShape())
+        {
             tilingData->bmm2TilingData.singleCoreK = L1REUSE_BMM2_SINGLE_CORE_K;
         }
-        if (enableL1Reuse) {
+        if (enableL1Reuse)
+        {
             auto &multiCoreParams = tilingData->multiCoreParams;
             int64_t totalSize = multiCoreParams.get_totalSize();
             multiCoreParams.set_splitFactorSize(
@@ -3435,29 +3922,38 @@ protected:
                                             aivNum) +
                         WORK_SPACE_RESERVE_SIZE;
         // NZND场景，stage1占用3倍的空间，stage2占用4倍空间
-        if (s2Size % S2_NZTOND_SIZE_64 != 0) {
+        if (s2Size % S2_NZTOND_SIZE_64 != 0)
+        {
             workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_3 +
                                                  SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
                                                 aivNum) +
                             WORK_SPACE_RESERVE_SIZE;
         }
         // FP32场景，stage1占用4倍的空间，stage2占用4倍空间
-        if (inputDtypeBytes == DATA_TYPE_FP32) {
+        if (inputDtypeBytes == DATA_TYPE_FP32)
+        {
             workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_4 +
                                                  SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
                                                 aivNum) +
                             WORK_SPACE_RESERVE_SIZE;
         }
         if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
-            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
+            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE))
+        {
             pseAlibiBaseS2 = s2sizeLimitMin;
-            if (tilingData->inputParams.get_sparseType() != static_cast<uint8_t>(SparseEnum::ALL)) {
+            if (tilingData->inputParams.get_sparseType() != static_cast<uint8_t>(SparseEnum::ALL))
+            {
                 pseAlibiBaseS1 = s1BasicBlock;
-            } else {
+            }
+            else
+            {
                 int64_t s2Tail = s2Size % s2sizeLimitMin;
-                if (s2Tail != 0) {
+                if (s2Tail != 0)
+                {
                     pseAlibiBaseS1 = std::min(s1BasicBlock, UB_BASIC_LIMIT_SIZE / AlignUp(s2Tail, FRACTAL_NUM));
-                } else {
+                }
+                else
+                {
                     pseAlibiBaseS1 = std::min(s1BasicBlock, UB_BASIC_LIMIT_SIZE / pseAlibiBaseS2);
                 }
             }
@@ -3479,33 +3975,43 @@ protected:
     bool SetPseAlibiParams() override
     {
         auto pseShape = context_->GetOptionalInputShape(PSE_INPUT_INDEX);
-        if (pseShape == nullptr || pseShape->GetStorageShape().GetDimNum() == 0) {
+        if (pseShape == nullptr || pseShape->GetStorageShape().GetDimNum() == 0)
+        {
             return true;
         }
         if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
-            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
-            if (s1Size != s2Size) {
+            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE))
+        {
+            if (s1Size != s2Size)
+            {
                 OP_LOGE(context_, "INNER Pse alibi is supported only when s1Size and s2Size are equal.");
                 return false;
             }
             return true;
         }
         // 2: pre last axiss
-        if (pseShape->GetStorageShape().GetDimNum() < 1) { // 1 is min dim num of legal pse
+        if (pseShape->GetStorageShape().GetDimNum() < 1)
+        {  // 1 is min dim num of legal pse
             OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).", pseShape->GetStorageShape().GetDimNum(),
                     pseType);
             return false;
-        } else if (pseShape->GetStorageShape().GetDimNum() >= 2) {
+        }
+        else if (pseShape->GetStorageShape().GetDimNum() >= 2)
+        {
             auto pseS1Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 2);
             auto pseS2Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 1);
 
             PseEncodeType pseEncodeType = PSE_ENCODE_NONE;
-            if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE) {
-                if (s1Size == s2Size) {
+            if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE)
+            {
+                if (s1Size == s2Size)
+                {
                     OP_CHECK_IF(tilingData->inputParams.get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL),
                                 OP_LOGE(opName, "Pse alibi only support causal sparse type."), return false);
                     pseEncodeType = PSE_ENCODE_ALIBI_S2_FULL;
-                } else {
+                }
+                else
+                {
                     OP_LOGE(opName, "Pse alibi only support same S1 S2 when S1 lager than 1024");
                     return false;
                 }
@@ -3519,8 +4025,9 @@ protected:
     }
 };
 
-class FlashAttentionScoreTilingS1s2Bn2gs1SameAB : public FlashAttentionScoreTilingBase {
-public:
+class FlashAttentionScoreTilingS1s2Bn2gs1SameAB : public FlashAttentionScoreTilingBase
+{
+   public:
     explicit FlashAttentionScoreTilingS1s2Bn2gs1SameAB(gert::TilingContext *context)
         : FlashAttentionScoreTilingBase(context)
     {
@@ -3530,7 +4037,7 @@ public:
     }
     ~FlashAttentionScoreTilingS1s2Bn2gs1SameAB() override = default;
 
-protected:
+   protected:
     int64_t s2sizeLimitMin = 1024;
     int64_t dAlignSize = 16;
     int64_t sAlignSize = 64;
@@ -3542,14 +4049,16 @@ protected:
         nRatio = 8L;
         // s2Size (1025, 1040]
         if (enableBestBlock &&
-            (s2Size / s2BasicBlock == 8L && s2Size % s2BasicBlock > 0 && s2Size % s2BasicBlock <= 16L)) {
+            (s2Size / s2BasicBlock == 8L && s2Size % s2BasicBlock > 0 && s2Size % s2BasicBlock <= 16L))
+        {
             nRatio = 5L;
         }
-        if (s2Size <= 2304 && s2Size >= 2049 && dSize == 64 &&
-            tilingData->inputParams.get_layoutType() == LAYOUT_BNSD) {
+        if (s2Size <= 2304 && s2Size >= 2049 && dSize == 64 && tilingData->inputParams.get_layoutType() == LAYOUT_BNSD)
+        {
             nRatio = 6L;
         }
-        if (IsKvL1ReuseTilingSupportedShape()) {
+        if (IsKvL1ReuseTilingSupportedShape())
+        {
             nRatio = 4L;
         }
     }
@@ -3559,13 +4068,15 @@ protected:
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
         s1BasicBlockBest = 256L;
-        if (enableBestBlock) {
+        if (enableBestBlock)
+        {
             s1BasicBlockBest = CeilDivision(alignedS1, 384L) < CeilDivision(alignedS1, 256L) ? 384L : 256L;
         }
         s1BasicBlock = std::min(s1BasicBlockBest, alignedS1);
         s2BasicBlock = std::min(128L, alignedS2);
         s1VecBasicBlock = s1BasicBlock / AIV_AIC_NUM_RATIO;
-        if (s2Size % S2_NZTOND_SIZE_64 != 0) {
+        if (s2Size % S2_NZTOND_SIZE_64 != 0)
+        {
             tilingKeyBmm1Format = CubeFormatEnum::NZ;
         }
     }
@@ -3583,9 +4094,12 @@ protected:
         multiCoreParams.set_splitFactorSize(CeilDivision(totalSize, actualUsedAicNum));
         multiCoreParams.set_splitFactorTailSize(CalcTailSize(totalSize, multiCoreParams.get_splitFactorSize()));
         actualUsedAicNum = CeilDivision(totalSize, multiCoreParams.get_splitFactorSize());
-        if (totalSize > aicNum) {
+        if (totalSize > aicNum)
+        {
             multiCoreParams.set_coreNum(static_cast<int32_t>(aicNum * AIV_AIC_NUM_RATIO));
-        } else {
+        }
+        else
+        {
             multiCoreParams.set_coreNum(static_cast<int32_t>(actualUsedAicNum * AIV_AIC_NUM_RATIO));
         }
     }
@@ -3609,18 +4123,22 @@ protected:
                       std::min(tmpS2BasicBlock * tilingData->coreParams.get_nRatio(), s2Size), dSize);
         bmm1.SetOrgShape(s1Size, tmpS2BasicBlock * tilingData->coreParams.get_nRatio(), s1StrideSize, s2StrideSize);
         bmm1.SetBias(false);
-        if (bmm1.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0) {
+        if (bmm1.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0)
+        {
             return false;
         }
         if ((dSize > BMM1_BASICBLOCK_K_64 && dSize <= BMM1_BASICBLOCK_K_128) ||
-            matmulPolicyType == MATMUL_POLICY_UNSPLITK) {
+            matmulPolicyType == MATMUL_POLICY_UNSPLITK)
+        {
             int64_t baseM = std::min(BMM1_BASICBLOCK_M_128, AlignUp(s1Size, FRACTAL_NUM));
             int64_t baseN = std::min(BMM1_BASICBLOCK_N_128, AlignUp(s2Size, FRACTAL_NUM));
             bmm1.SetFixSplit(baseM, baseN, alignedD);
         }
 
-        if (IsSpecialShape()) {
-            if (bmm1.SetFixSplit(BMM1_BASICBLOCK_M_128, BMM1_BASICBLOCK_N_256, BMM1_BASICBLOCK_K_64) != 0) {
+        if (IsSpecialShape())
+        {
+            if (bmm1.SetFixSplit(BMM1_BASICBLOCK_M_128, BMM1_BASICBLOCK_N_256, BMM1_BASICBLOCK_K_64) != 0)
+            {
                 return false;
             }
         }
@@ -3638,23 +4156,28 @@ protected:
         bmm2.SetOrgShape(s1Size, vs2StrideSize, std::min(tmpS2BasicBlock * tilingData->coreParams.get_nRatio(), s2Size),
                          vs2StrideSize);
         bmm2.SetBias(false);
-        if (bmm2.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0) {
+        if (bmm2.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0)
+        {
             return false;
         }
-        if (d2Size > BMM1_BASICBLOCK_K_64 && d2Size <= BMM1_BASICBLOCK_K_128) {
+        if (d2Size > BMM1_BASICBLOCK_K_64 && d2Size <= BMM1_BASICBLOCK_K_128)
+        {
             int64_t baseM = std::min(BMM2_BASICBLOCK_M_128, AlignUp(s1Size, FRACTAL_NUM));
             int64_t baseN = std::min(BMM2_BASICBLOCK_N_128, AlignUp(d2Size, FRACTAL_NUM));
             bmm2.SetFixSplit(baseM, baseN);
         }
-        if (matmulPolicyType == MATMUL_POLICY_UNSPLITK) {
+        if (matmulPolicyType == MATMUL_POLICY_UNSPLITK)
+        {
             int64_t baseM = std::min(BMM2_BASICBLOCK_M_128, AlignUp(s1Size, FRACTAL_NUM));
             int64_t baseN = AlignUp(d2Size, FRACTAL_NUM);
             bmm2.SetFixSplit(baseM, baseN);
         }
         if (d2Size == D_SPECIFIC_SIZE && tilingData->inputParams.get_layoutType() == LAYOUT_BNSD &&
             tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::ALL) &&
-            singleM >= BMM2_BASICBLOCK_M_64) {
-            if (bmm2.SetFixSplit(BMM2_BASICBLOCK_M_64, BMM2_BASICBLOCK_M_64, BMM2_BASICBLOCK_K_256) != 0) {
+            singleM >= BMM2_BASICBLOCK_M_64)
+        {
+            if (bmm2.SetFixSplit(BMM2_BASICBLOCK_M_64, BMM2_BASICBLOCK_M_64, BMM2_BASICBLOCK_K_256) != 0)
+            {
                 return false;
             }
         }
@@ -3676,30 +4199,35 @@ protected:
 
     bool IsCapable() override
     {
-        if (inputDtypeBytes == DATA_TYPE_FP32) {
+        if (inputDtypeBytes == DATA_TYPE_FP32)
+        {
             return false;
         }
-        if ((dSize % FRACTAL_NUM != 0 || dSize == D_SPECIFIC_SIZE_96) && (s2Size >= S2_REUSE_SIZE_512)) {
+        if ((dSize % FRACTAL_NUM != 0 || dSize == D_SPECIFIC_SIZE_96) && (s2Size >= S2_REUSE_SIZE_512))
+        {
             isSameAB = true;
             if (s1Size > SAMEAB_BASIC_BLOCK_OPTIMIZE && tilingKeyLayout != LayoutType::LAYOUT_BSH &&
-                l2CacheSize > B4_L2_CACHESIZE) {
+                l2CacheSize > B4_L2_CACHESIZE)
+            {
                 enableBestBlock = true;
             }
             return true;
         }
-        if (s2Size > s2sizeLimitMin && dSize > SAMEAB_D_LIMIT_128 && dSize < SAMEAB_D_LIMIT_196) {
+        if (s2Size > s2sizeLimitMin && dSize > SAMEAB_D_LIMIT_128 && dSize < SAMEAB_D_LIMIT_196)
+        {
             isSameAB = true;
             if (dSize == SAMEAB_D_LIMIT_192 && s1Size % HIGH_PERF_SUPPORT_S1_BASIC == 0 &&
                 s2Size % HIGH_PERF_SUPPORT_S2_BASIC == 0 && inputLayout[0] == 'B' && inputLayout[1] == 'N' &&
-                inputLayout[2] == 'S' && inputLayout[3] == 'D') {
+                inputLayout[2] == 'S' && inputLayout[3] == 'D')
+            {
                 matmulPolicyType = MATMUL_POLICY_UNSPLITK;
             }
             return true;
         }
         // D=64切sameAB
         if (dSize == D_SPECIFIC_SIZE && s2Size % sAlignSize != 0 &&
-            (s2Size > s2sizeLimitMin * 2 &&
-             s2Size < S2_SPECIFIC_SIZE_18432)) { // s2Size 大于最小限制的两倍且小于特定大小18432
+            (s2Size > s2sizeLimitMin * 2 && s2Size < S2_SPECIFIC_SIZE_18432))
+        {  // s2Size 大于最小限制的两倍且小于特定大小18432
             isSameAB = true;
             return true;
         }
@@ -3728,15 +4256,22 @@ protected:
                                             aicNum) +
                         WORK_SPACE_RESERVE_SIZE;
         if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
-            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
+            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE))
+        {
             pseAlibiBaseS2 = s2sizeLimitMin;
-            if (tilingData->inputParams.get_sparseType() != static_cast<uint8_t>(SparseEnum::ALL)) {
+            if (tilingData->inputParams.get_sparseType() != static_cast<uint8_t>(SparseEnum::ALL))
+            {
                 pseAlibiBaseS1 = s1VecBasicBlock;
-            } else {
+            }
+            else
+            {
                 int64_t s2Tail = s2Size % s2sizeLimitMin;
-                if (s2Tail != 0) {
+                if (s2Tail != 0)
+                {
                     pseAlibiBaseS1 = std::min(s1VecBasicBlock, UB_BASIC_LIMIT_SIZE / AlignUp(s2Tail, FRACTAL_NUM));
-                } else {
+                }
+                else
+                {
                     pseAlibiBaseS1 = std::min(s1VecBasicBlock, UB_BASIC_LIMIT_SIZE / pseAlibiBaseS2);
                 }
                 pseAlibiBaseS1 = std::max(pseAlibiBaseS1, UB_BASIC_LIMIT_SIZE / s1VecBasicBlock);
@@ -3758,32 +4293,42 @@ protected:
     bool SetPseAlibiParams() override
     {
         auto pseShape = context_->GetOptionalInputShape(PSE_INPUT_INDEX);
-        if (pseShape == nullptr || pseShape->GetStorageShape().GetDimNum() == 0) {
+        if (pseShape == nullptr || pseShape->GetStorageShape().GetDimNum() == 0)
+        {
             return true;
         }
         if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
-            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
-            if (s1Size != s2Size) {
+            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE))
+        {
+            if (s1Size != s2Size)
+            {
                 OP_LOGE(context_, "INNER Pse alibi is supported only when s1Size and s2Size are equal.");
                 return false;
             }
             return true;
         }
         // 1: pre last axiss
-        if (pseShape->GetStorageShape().GetDimNum() < 1) { // 1 is min dim num of legal pse
+        if (pseShape->GetStorageShape().GetDimNum() < 1)
+        {  // 1 is min dim num of legal pse
             OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).", pseShape->GetStorageShape().GetDimNum(),
                     pseType);
             return false;
-        } else if (pseShape->GetStorageShape().GetDimNum() >= 2) {
+        }
+        else if (pseShape->GetStorageShape().GetDimNum() >= 2)
+        {
             auto pseS1Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 2);
             auto pseS2Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 1);
             PseEncodeType pseEncodeType = PSE_ENCODE_NONE;
-            if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE) {
-                if (s1Size == s2Size) {
+            if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE)
+            {
+                if (s1Size == s2Size)
+                {
                     OP_CHECK_IF(tilingData->inputParams.get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL),
                                 OP_LOGE(opName, "Pse alibi only support causal sparse type."), return false);
                     pseEncodeType = PSE_ENCODE_ALIBI_S2_FULL;
-                } else {
+                }
+                else
+                {
                     OP_LOGE(opName, "Pse alibi only support same S1 S2 when S1 lager than 1024");
                     return false;
                 }
@@ -3798,8 +4343,9 @@ protected:
     }
 };
 
-class FlashAttentionVarLenScoreTiling : public FlashAttentionScoreTilingBase {
-public:
+class FlashAttentionVarLenScoreTiling : public FlashAttentionScoreTilingBase
+{
+   public:
     explicit FlashAttentionVarLenScoreTiling(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
     {
         expectTemplate.splitS1 = 1U;
@@ -3809,15 +4355,17 @@ public:
     ~FlashAttentionVarLenScoreTiling() override = default;
     using FlashAttentionScoreTilingBase::InitSparseValidArray;
 
-protected:
+   protected:
     int64_t s2sizeLimitMax = 1024;
 
     int64_t GetNRatio() override
     {
-        if (l2CacheSize <= B4_L2_CACHESIZE && isSameAB && alignedD == SAMEAB_D_LIMIT_128 &&
-            realT1Size >= B4_SEQ_LIMIT) {
+        if (l2CacheSize <= B4_L2_CACHESIZE && isSameAB && alignedD == SAMEAB_D_LIMIT_128 && realT1Size >= B4_SEQ_LIMIT)
+        {
             return 4L;
-        } else {
+        }
+        else
+        {
             return 8L;
         }
     }
@@ -3826,13 +4374,17 @@ protected:
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
-        if (isSameAB) {
+        if (isSameAB)
+        {
             s1BasicBlock = std::min(TND_S1_BASICBLOCK_256, alignedS1);
             s1VecBasicBlock = s1BasicBlock / 2;
-        } else {
+        }
+        else
+        {
             s1BasicBlock = s1BasicBlockBest;
             s1BasicBlock = std::min(s1BasicBlock, alignedS1);
-            if (attenMaskExistFlag) {
+            if (attenMaskExistFlag)
+            {
                 s1BasicBlock = std::min(TND_S1_BASICBLOCK_256, s1BasicBlock);
             }
         }
@@ -3849,15 +4401,19 @@ protected:
         bmm1.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm1OutDtype);
         // 分不满核，且稀疏场景，shape设置的较小能产生更好的tiling
         if (bSize * n1Size * gSize * CeilDiv(s1Size, s1BasicBlock) <= static_cast<int64_t>(aivNum) &&
-            attenMaskExistFlag == 1 && !isSameAB) {
+            attenMaskExistFlag == 1 && !isSameAB)
+        {
             bmm1.SetShape(std::min(tmpS1BasicBlock, s1Size), std::min(tmpS2BasicBlock, s2Size), dSize);
-        } else {
+        }
+        else
+        {
             bmm1.SetShape(std::min(tmpS1BasicBlock, s1Size),
                           std::min(tmpS2BasicBlock * tilingData->coreParams.get_nRatio(), s2Size), dSize);
         }
         bmm1.SetOrgShape(s1Size, tmpS2BasicBlock * tilingData->coreParams.get_nRatio(), s1StrideSize, s2StrideSize);
         bmm1.SetBias(false);
-        if (bmm1.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0) {
+        if (bmm1.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0)
+        {
             return false;
         }
 
@@ -3876,15 +4432,18 @@ protected:
                          s2StrideSize);
         bmm2.SetBias(false);
         if (!isSameAB && inputDtypeBytes != DATA_TYPE_FP32 && !hasRope && s1BasicBlock <= S1_BASIC_BLOCK_L1CARRY_MAX &&
-            dSize <= D_SIZE_L1CARRY_MAX && d2Size <= D2_SIZE_L1CARRY_MAX) {
+            dSize <= D_SIZE_L1CARRY_MAX && d2Size <= D2_SIZE_L1CARRY_MAX)
+        {
             // bmm2L1Carry走MDL，不切M/N
             bmm2.SetFixSplit(AlignUp(std::min(tmpS1BasicBlock, s1Size), FRACTAL_NUM), AlignUp(d2Size, FRACTAL_NUM), -1);
         }
-        if (isSameAB && (dSize == 192 || dSize == 128 || dSize == 88 || dSize == 80)) {
-            tmpS1BasicBlock = 256; // sameAB Bmm2Carry MDL 模板需要baseM >= singleM
+        if (isSameAB && (dSize == 192 || dSize == 128 || dSize == 88 || dSize == 80))
+        {
+            tmpS1BasicBlock = 256;  // sameAB Bmm2Carry MDL 模板需要baseM >= singleM
             bmm2.SetFixSplit(AlignUp(std::min(tmpS1BasicBlock, s1Size), FRACTAL_NUM), -1, -1);
         }
-        if (bmm2.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0) {
+        if (bmm2.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0)
+        {
             return false;
         }
         return true;
@@ -3893,7 +4452,8 @@ protected:
     uint64_t GetTilingKey() const override
     {
         // not care about layout in tiling key, pass BSND(enum value is 0)
-        if (isSameAB) {
+        if (isSameAB)
+        {
             return GET_TPL_TILING_KEY(
                 0, static_cast<uint8_t>(AxisEnum::S1), static_cast<uint8_t>(AxisEnum::NONE),
                 static_cast<uint8_t>(AxisEnum::NONE), static_cast<uint8_t>(implMode),
@@ -3920,21 +4480,29 @@ protected:
     {
         OP_LOGD(context_, "Set pseAlibiParams begin.");
         auto pseShape = context_->GetOptionalInputShape(PSE_INPUT_INDEX);
-        if (pseShape == nullptr || pseShape->GetStorageShape().GetDimNum() == 0) {
+        if (pseShape == nullptr || pseShape->GetStorageShape().GetDimNum() == 0)
+        {
             OP_LOGD(context_, "SetPseAlibiParams pseShape == nullptr.");
             return true;
         }
         if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
-            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
+            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE))
+        {
             OP_CHECK_IF(
                 tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL_BAND),
                 OP_LOGE(opName, "INNER Pse does not support sparse mode 7."), return false);
-            if (tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::BAND_LEFT_UP_CAUSAL)) {
-                for (int64_t i = 0L; i < bSize; ++i) {
-                    if (i == 0) {
-                        if (actualSeqLenData[0] - actualSeqLenKvData[0] + qStartIdx - kvStartIdx == 0) {
+            if (tilingData->inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::BAND_LEFT_UP_CAUSAL))
+            {
+                for (int64_t i = 0L; i < bSize; ++i)
+                {
+                    if (i == 0)
+                    {
+                        if (actualSeqLenData[0] - actualSeqLenKvData[0] + qStartIdx - kvStartIdx == 0)
+                        {
                             continue;
-                        } else {
+                        }
+                        else
+                        {
                             OP_LOGE(context_,
                                     "INNER Pse sparse mode 8 is only supported when actualSeqLenData[0] %ld + "
                                     "qStartIdx %ld - actualSeqLenKvData[0] %ld - kvStartIdx %ld == 0.",
@@ -3942,7 +4510,8 @@ protected:
                             return false;
                         }
                     }
-                    if (actualSeqLenData[i] != actualSeqLenKvData[i]) {
+                    if (actualSeqLenData[i] != actualSeqLenKvData[i])
+                    {
                         OP_LOGE(context_,
                                 "INNER Pse sparse mode 8 is only supported when actualSeqQLen[%ld] %ld and "
                                 "actualSeqKvLen[%ld] %ld are equal.",
@@ -3954,19 +4523,25 @@ protected:
             return true;
         }
         // 2: pre last axiss
-        if (pseShape->GetStorageShape().GetDimNum() < 1) { // 1 is min dim num of legal pse
+        if (pseShape->GetStorageShape().GetDimNum() < 1)
+        {  // 1 is min dim num of legal pse
             OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).", pseShape->GetStorageShape().GetDimNum(),
                     pseType);
             return false;
-        } else if (pseShape->GetStorageShape().GetDimNum() >= 2) {
+        }
+        else if (pseShape->GetStorageShape().GetDimNum() >= 2)
+        {
             auto pseS1Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 2);
             auto pseS2Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 1);
 
             PseEncodeType pseEncodeType = PSE_ENCODE_NONE;
             OP_LOGD(context_, "[%s] pseS1Size:%ld, pseS2Size:%ld.", templateName, pseS1Size, pseS2Size);
-            if (pseS1Size == PSE_ALIBI_S_SIZE) {
-                for (int64_t i = 0L; i < bSize; ++i) {
-                    if (actualSeqLenData[i] != actualSeqLenKvData[i]) {
+            if (pseS1Size == PSE_ALIBI_S_SIZE)
+            {
+                for (int64_t i = 0L; i < bSize; ++i)
+                {
+                    if (actualSeqLenData[i] != actualSeqLenKvData[i])
+                    {
                         OP_LOGE(context_, "Pse alibi only support when actualSeqQLen and actualSeqKvLen are equal.");
                         return false;
                     }
@@ -3988,19 +4563,22 @@ protected:
 
     bool IsCapable() override
     {
-        if (tilingKeyLayout != LayoutType::LAYOUT_TND) {
+        if (tilingKeyLayout != LayoutType::LAYOUT_TND)
+        {
             return false;
         }
         // 此处走SameAB模板的准入条件均为经验值
         if ((bSize >= SPACE_NUM_4 && accumS1 >= SAMEAB_TND_BASIC_SIZE && accumS2 >= SAMEAB_TND_BASIC_SIZE &&
              s1Size >= S2_REUSE_SIZE_512 && s2Size >= S2_REUSE_SIZE_512) ||
-            (s2Size > S2_REUSE_SIZE_5120 && s1Size > S2_REUSE_SIZE_5120)) {
+            (s2Size > S2_REUSE_SIZE_5120 && s1Size > S2_REUSE_SIZE_5120))
+        {
             isSameAB = true;
         }
 
         // FP32是因为sameAB暂不支持FP32，n1Size == 1 && n2Size == 1是因为测到的这种情况的case性能劣化较大
         if (inputDtypeBytes == DATA_TYPE_FP32 || (n1Size == 1 && n2Size == 1) ||
-            implMode == AA_INVALID_LINE_HIGH_PRECISION) {
+            implMode == AA_INVALID_LINE_HIGH_PRECISION)
+        {
             isSameAB = false;
         }
         return true;
@@ -4010,7 +4588,8 @@ protected:
         auto &multiCoreParams = tilingData->multiCoreParams;
         auto &coreParams = tilingData->coreParams;
         accumS1BlockNum = 0;
-        for (int64_t i = 0; i < bSize; i++) {
+        for (int64_t i = 0; i < bSize; i++)
+        {
             OP_LOGD(context_, "[%s]actualSeqLenData data %ld is %ld.", templateName, i, actualSeqLenData[i]);
             OP_LOGD(context_, "[%s]actualSeqLenKvData data %ld is %ld.", templateName, i, actualSeqLenKvData[i]);
             accumS1BlockNum += CeilDivision(actualSeqLenData[i], s1BasicBlock);
@@ -4039,20 +4618,25 @@ protected:
         auto &coreParams = tilingData->coreParams;
         // 走SameAB模板并满足条件S1BaseSize <= 256 && dSize == 192时使能L1自主管理，shareL1Size需设为0
         if (isSameAB && coreParams.get_s1BaseSize() <= 256 &&
-            (dSize == 192 || dSize == 128 || dSize == 88 || dSize == 80)) {
+            (dSize == 192 || dSize == 128 || dSize == 88 || dSize == 80))
+        {
             tilingData->bmm1TilingData.shareL1Size = 0;
             tilingData->bmm2TilingData.shareL1Size = 0;
         }
         size_t *workspaces = context_->GetWorkspaceSizes(1);
         int64_t bmm1Byetes;
-        if (isMaxWorkspace) {
+        if (isMaxWorkspace)
+        {
             bmm1Byetes = 8 * (512 * 128) * calcTypeSize;
-        } else {
+        }
+        else
+        {
             bmm1Byetes = coreParams.get_nRatio() * tensorSizeParams.get_bmm1ResUbSize() * calcTypeSize;
         }
         int64_t stage1Bytes = 0;
         // FP32场景，stage1需要再额外申请2倍的空间
-        if (inputDtypeBytes == DATA_TYPE_FP32) {
+        if (inputDtypeBytes == DATA_TYPE_FP32)
+        {
             stage1Bytes = bmm1Byetes;
         }
 
@@ -4063,26 +4647,34 @@ protected:
         int64_t actualSplitAiCoreNum = isSameAB ? actualUsedAicNum : actualUsedAivNum;
         int64_t pseAlignSize = 0;
         if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
-            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
-            if (s2Size > s2sizeLimitMax) {
+            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE))
+        {
+            if (s2Size > s2sizeLimitMax)
+            {
                 pseAlibiBaseS2 = s2sizeLimitMax;
-            } else {
+            }
+            else
+            {
                 pseAlibiBaseS2 = alignedS2;
             }
             pseAlibiBaseS1 = s1BasicBlock;
             int64_t pseSize = pseAlibiBaseS1 * pseAlibiBaseS2 * 2;
-            if (isSameAB) {
+            if (isSameAB)
+            {
                 pseAlignSize = (pseSize + NUM_512 - 1) / NUM_512 * NUM_512;
             }
         }
 
-        if (isMaxWorkspace) {
+        if (isMaxWorkspace)
+        {
             auto actualSplitAiCoreNumMax = std::max(aicNum, aivNum);
             workspaces[0] = static_cast<size_t>((bmm1Byetes * SPACE_NUM_3 + stage1Bytes * SPACE_NUM_2 +
                                                  SPACE_NUM_4 * 512 * alignedD * calcTypeSize + (512 * 1024 * 2)) *
                                                 actualSplitAiCoreNumMax) +
                             WORK_SPACE_RESERVE_SIZE;
-        } else {
+        }
+        else
+        {
             workspaces[0] = static_cast<size_t>((bmm1Byetes * SPACE_NUM_3 + stage1Bytes * SPACE_NUM_2 +
                                                  SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize +
                                                  pseAlignSize) *
@@ -4102,8 +4694,10 @@ protected:
 
     bool CheckPretokenAndNexttoken(SparseEnum &sparseType)
     {
-        if (sparseMode == static_cast<int64_t>(ALL_MASK)) {
-            if (preTokens < s1Size - 1 || nextTokens < s2Size - 1) {
+        if (sparseMode == static_cast<int64_t>(ALL_MASK))
+        {
+            if (preTokens < s1Size - 1 || nextTokens < s2Size - 1)
+            {
                 OP_LOGW(context_,
                         "preTokens[%ld] and nextTokens[%ld] not match sparseMode[%ld], "
                         "preTokens and nextTokens will be reset max int value.",
@@ -4112,80 +4706,105 @@ protected:
                 nextTokens = std::numeric_limits<int32_t>::max();
             }
             sparseType = static_cast<SparseEnum>(static_cast<uint8_t>(sparseMode));
-        } else if (sparseMode == static_cast<int64_t>(LEFT_UP_CAUSAL)) {
-            preTokens = s1Size; // if sparse type is causal, template always need preTokens equal to s1Size
+        }
+        else if (sparseMode == static_cast<int64_t>(LEFT_UP_CAUSAL))
+        {
+            preTokens = s1Size;  // if sparse type is causal, template always need preTokens equal to s1Size
             nextTokens = 0;
             sparseType = SparseEnum::CAUSAL;
-        } else if (sparseMode == static_cast<int64_t>(RIGHT_DOWN_CAUSAL)) {
-            for (int64_t i = 0L; i < bSize; ++i) {
-                if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
+        }
+        else if (sparseMode == static_cast<int64_t>(RIGHT_DOWN_CAUSAL))
+        {
+            for (int64_t i = 0L; i < bSize; ++i)
+            {
+                if (actualSeqLenData[i] > actualSeqLenKvData[i])
+                {
                     OP_LOGE(context_, "Batch[%ld] s1[%ld] is larger than s2[%ld], exist invalid row.", i,
                             actualSeqLenData[i], actualSeqLenKvData[i]);
                     return false;
                 }
             }
-            preTokens = s2Size; // if sparse type is causal, template always need preTokens equal to s1Size
+            preTokens = s2Size;  // if sparse type is causal, template always need preTokens equal to s1Size
             nextTokens = 0;
             sparseType = SparseEnum::RIGHT_DOWN_CAUSAL;
-        } else if (sparseMode == static_cast<int64_t>(BAND)) {
-            if (preTokens < 0) {
+        }
+        else if (sparseMode == static_cast<int64_t>(BAND))
+        {
+            if (preTokens < 0)
+            {
                 OP_LOGE(context_, "pre_tokens[%ld] config error, has invalid data block.", preTokens);
                 return false;
             }
-            if (nextTokens < 0 && preTokens + nextTokens < 0) {
+            if (nextTokens < 0 && preTokens + nextTokens < 0)
+            {
                 OP_LOGE(context_, "pre_tokens[%ld], next_tokens[%ld], invalid config.", preTokens, nextTokens);
                 return false;
             }
-            for (int64_t i = 0L; i < bSize; ++i) {
-                if (actualSeqLenData[i] == 0 || actualSeqLenKvData[i] == 0) {
+            for (int64_t i = 0L; i < bSize; ++i)
+            {
+                if (actualSeqLenData[i] == 0 || actualSeqLenKvData[i] == 0)
+                {
                     continue;
                 }
-                if (actualSeqLenData[i] - nextTokens > actualSeqLenKvData[i]) {
+                if (actualSeqLenData[i] - nextTokens > actualSeqLenKvData[i])
+                {
                     OP_LOGE(context_, "Batch[%ld], s1[%ld], s2[%ld], next_tokens[%ld], has invalid row.", i,
                             actualSeqLenData[i], actualSeqLenKvData[i], nextTokens);
                     return false;
                 }
             }
-            if (preTokens >= s2Size && nextTokens == 0) {
+            if (preTokens >= s2Size && nextTokens == 0)
+            {
                 preTokens = s2Size;
                 nextTokens = 0;
                 sparseType = SparseEnum::RIGHT_DOWN_CAUSAL;
                 return true;
             }
             sparseType = SparseEnum::BAND_COMPRESS;
-        } else if (sparseMode == static_cast<int64_t>(RIGHT_DOWN_CAUSAL_BAND)) {
+        }
+        else if (sparseMode == static_cast<int64_t>(RIGHT_DOWN_CAUSAL_BAND))
+        {
             int64_t lastS2 = actualSeqLenKvData[bandIndex];
-            if (preTokens < lastS2 || nextTokens > 0) {
+            if (preTokens < lastS2 || nextTokens > 0)
+            {
                 OP_LOGE(context_,
                         "RightDownCausal_Band mode: pre_tokens[%ld] is smaller than last valid s2[%ld]"
                         "or next_tokens[%ld] is larger than 0, wrong config.",
                         preTokens, lastS2, nextTokens);
                 return false;
             }
-            for (int64_t i = 0L; i < bSize; ++i) {
-                if (actualSeqLenData[i] == 0 || actualSeqLenKvData[i] == 0) {
+            for (int64_t i = 0L; i < bSize; ++i)
+            {
+                if (actualSeqLenData[i] == 0 || actualSeqLenKvData[i] == 0)
+                {
                     continue;
                 }
-                if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
+                if (actualSeqLenData[i] > actualSeqLenKvData[i])
+                {
                     OP_LOGE(context_, "Batch[%ld] s1[%ld] is larger than s2[%ld].", i, actualSeqLenData[i],
                             actualSeqLenKvData[i]);
                     return false;
                 }
-                if ((i == bandIndex) && (actualSeqLenData[i] - nextTokens > actualSeqLenKvData[i])) {
+                if ((i == bandIndex) && (actualSeqLenData[i] - nextTokens > actualSeqLenKvData[i]))
+                {
                     OP_LOGE(context_, "Batch[%ld], s1[%ld], s2[%ld], next_tokens[%ld], has invalid row.", i,
                             actualSeqLenData[i], actualSeqLenKvData[i], nextTokens);
                     return false;
                 }
             }
             sparseType = SparseEnum::RIGHT_DOWN_CAUSAL_BAND;
-        } else if (sparseMode == static_cast<int64_t>(BAND_LEFT_UP_CAUSAL)) {
-            if (actualSeqLenData[bandIndex] - nextTokens > actualSeqLenKvData[bandIndex]) {
+        }
+        else if (sparseMode == static_cast<int64_t>(BAND_LEFT_UP_CAUSAL))
+        {
+            if (actualSeqLenData[bandIndex] - nextTokens > actualSeqLenKvData[bandIndex])
+            {
                 OP_LOGE(context_, "Batch[%ld], s1[%ld], s2[%ld], next_tokens[%ld], has invalid row.", bandIndex,
                         actualSeqLenData[0], actualSeqLenKvData[0], nextTokens);
                 return false;
             }
             int64_t firstS2 = actualSeqLenKvData[bandIndex];
-            if (preTokens < firstS2) {
+            if (preTokens < firstS2)
+            {
                 OP_LOGE(context_, "Band_LeftUpCausal mode: pre_tokens[%ld] is smaller than first valid s2[%ld].",
                         preTokens, firstS2);
                 return false;
@@ -4197,24 +4816,30 @@ protected:
 
     bool SparseNoMaskModeCheck(int64_t maxS1Value, int64_t maxS2Value, int64_t minS2Value, SparseEnum &sparseType)
     {
-        if (nextTokens < 0) {
+        if (nextTokens < 0)
+        {
             OP_LOGE(context_, "nextTokens[%ld] config error, there is no valid data block.", nextTokens);
             return false;
         }
-        if (preTokens >= maxS1Value && nextTokens >= maxS2Value) {
+        if (preTokens >= maxS1Value && nextTokens >= maxS2Value)
+        {
             return true;
         }
-        for (int64_t i = 0L; i < bSize; ++i) {
-            if (actualSeqLenData[i] == 0 || actualSeqLenKvData[i] == 0) {
+        for (int64_t i = 0L; i < bSize; ++i)
+        {
+            if (actualSeqLenData[i] == 0 || actualSeqLenKvData[i] == 0)
+            {
                 continue;
             }
-            if (actualSeqLenKvData[i] + preTokens < actualSeqLenData[i]) {
+            if (actualSeqLenKvData[i] + preTokens < actualSeqLenData[i])
+            {
                 OP_LOGE(context_, "Batch[%ld] s1[%ld] s2[%ld] has invalid row, check pre_tokens and next_tokens.", i,
                         actualSeqLenData[i], actualSeqLenKvData[i]);
                 return false;
             }
         }
-        if (preTokens >= 0) {
+        if (preTokens >= 0)
+        {
             s1SparseValidSize = std::min(AlignUp(preTokens, HIGH_PERF_BLOCK_SIZE), s1Size);
             s2SparseValidSize = std::min(AlignUp(nextTokens, HIGH_PERF_BLOCK_SIZE), s2Size);
             sparseType = SparseEnum::BAND;
@@ -4222,15 +4847,19 @@ protected:
             return true;
         }
 
-        if (preTokens < 0) {
+        if (preTokens < 0)
+        {
             int64_t absPreTokens = std::abs(preTokens);
-            if (nextTokens >= absPreTokens) {
+            if (nextTokens >= absPreTokens)
+            {
                 s1SparseValidSize = std::min(AlignUp(preTokens, HIGH_PERF_BLOCK_SIZE), 0L);
                 s2SparseValidSize = std::min(AlignUp(nextTokens, HIGH_PERF_BLOCK_SIZE), s2Size);
                 sparseType = SparseEnum::BAND;
                 isSparseValidSizeAligned = true;
                 return true;
-            } else {
+            }
+            else
+            {
                 OP_LOGE(context_,
                         "preTokens[%ld] and nextTokens[%ld] config error with S[%ld], has invalid data block.",
                         preTokens, nextTokens, minS2Value);
@@ -4243,18 +4872,21 @@ protected:
     bool VarLenGetPrefixNList(SparseEnum &sparseType)
     {
         auto prefixN = context_->GetOptionalInputTensor(PREFIX_INPUT_INDEX);
-        if (prefixN == nullptr) {
+        if (prefixN == nullptr)
+        {
             OP_LOGE(context_, "[%s] prefixN is null pointer while sparse mode is prefix compress", templateName);
             return false;
         }
 
         auto &prefixShape = prefixN->GetShape().GetStorageShape();
-        if (prefixShape.GetDimNum() != 1) {
+        if (prefixShape.GetDimNum() != 1)
+        {
             OP_LOGE(context_, "[%s] prefixN shape is invalid, DimNum should be 1, but it is %zu.", templateName,
                     prefixShape.GetDimNum());
             return false;
         }
-        if (prefixShape.GetDim(0) != bSize) {
+        if (prefixShape.GetDim(0) != bSize)
+        {
             OP_LOGE(context_,
                     "[%s] prefixN is invalid, it should be the same size as bSize[%ld], but it "
                     "is %ld.",
@@ -4264,25 +4896,33 @@ protected:
 
         /* Get Data from tensor. */
         prefixNData = prefixN->GetData<int64_t>();
-        if (prefixNData == nullptr) {
+        if (prefixNData == nullptr)
+        {
             OP_LOGE(context_, "[%s] prefixN data is null pointer", templateName);
             return false;
         }
 
-        for (int64_t i = 0; i < bSize; ++i) {
-            if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
-                if (prefixNData[i] < 0 || prefixNData[i] > actualSeqLenKvData[i]) {
+        for (int64_t i = 0; i < bSize; ++i)
+        {
+            if (actualSeqLenData[i] > actualSeqLenKvData[i])
+            {
+                if (prefixNData[i] < 0 || prefixNData[i] > actualSeqLenKvData[i])
+                {
                     OP_LOGE(context_, "[%s] batch[%ld] prefixN=%ld is invalid, should be in range of [0, %ld]",
                             templateName, i, prefixNData[i], actualSeqLenKvData[i]);
                     return false;
                 }
-                if (prefixNData[i] == 0) {
+                if (prefixNData[i] == 0)
+                {
                     implMode = AA_INVALID_LINE_HIGH_PRECISION;
                     OP_LOGD(context_, "Enable invalid line impl mode.");
                 }
-            } else {
+            }
+            else
+            {
                 if (prefixNData[i] < actualSeqLenKvData[i] - actualSeqLenData[i] ||
-                    prefixNData[i] > actualSeqLenKvData[i]) {
+                    prefixNData[i] > actualSeqLenKvData[i])
+                {
                     OP_LOGE(context_, "[%s] batch[%ld] prefixN=%ld is invalid, should be in range of [%ld, %ld]",
                             templateName, i, prefixNData[i], actualSeqLenKvData[i] - actualSeqLenData[i],
                             actualSeqLenKvData[i]);
@@ -4297,18 +4937,22 @@ protected:
 
     bool VarLenSparseModeProcess(SparseEnum &sparseType)
     {
-        if (sparseMode == static_cast<int64_t>(PREFIX) || sparseMode > static_cast<int64_t>(BAND_LEFT_UP_CAUSAL)) {
+        if (sparseMode == static_cast<int64_t>(PREFIX) || sparseMode > static_cast<int64_t>(BAND_LEFT_UP_CAUSAL))
+        {
             OP_LOGE(context_, "Var len not support sparse mode %ld.", sparseMode);
             return false;
         }
 
-        if (!CheckPretokenAndNexttoken(sparseType)) {
+        if (!CheckPretokenAndNexttoken(sparseType))
+        {
             OP_LOGE(context_, "Check pre_tokens and next_tokens failed.");
             return false;
         }
 
-        if (sparseMode == static_cast<int64_t>(PREFIX_COMPRESS)) {
-            if (!VarLenGetPrefixNList(sparseType)) {
+        if (sparseMode == static_cast<int64_t>(PREFIX_COMPRESS))
+        {
+            if (!VarLenGetPrefixNList(sparseType))
+            {
                 return false;
             }
         }
@@ -4320,27 +4964,37 @@ protected:
         OP_LOGD(context_,
                 "check sparse feature: preTokens[%ld], nextTokens[%ld], s1[%ld], s2[%ld], attenMaskExist[%d].",
                 preTokens, nextTokens, s1Size, s2Size, attenMaskExistFlag);
-        if (attenMaskExistFlag != 1 || tilingKeyLayout != LayoutType::LAYOUT_TND) {
+        if (attenMaskExistFlag != 1 || tilingKeyLayout != LayoutType::LAYOUT_TND)
+        {
             return true;
         }
 
         // if sparseMode is NoMask, preTokens and nextTokens start from top left vertex;
         // if sparseMode is Band, preTokens and nextTokens start from bottom right vertex.
-        if (sparseMode == static_cast<int64_t>(NO_MASK)) {
-            if (preTokens >= s1Size && nextTokens == 0) {
+        if (sparseMode == static_cast<int64_t>(NO_MASK))
+        {
+            if (preTokens >= s1Size && nextTokens == 0)
+            {
                 sparseType = SparseEnum::CAUSAL;
-                preTokens = s1Size; // if sparse type is causal, template always need preTokens equal to s1Size
-            } else {
-                if (preTokens >= s1Size && nextTokens >= s2Size) {
+                preTokens = s1Size;  // if sparse type is causal, template always need preTokens equal to s1Size
+            }
+            else
+            {
+                if (preTokens >= s1Size && nextTokens >= s2Size)
+                {
                     return true;
                 }
                 int64_t minS2Value = *std::min_element(actualSeqLenKvData.begin(), actualSeqLenKvData.begin() + bSize);
-                if (!SparseNoMaskModeCheck(s1Size, s2Size, minS2Value, sparseType)) {
+                if (!SparseNoMaskModeCheck(s1Size, s2Size, minS2Value, sparseType))
+                {
                     return false;
                 }
             }
-        } else {
-            if (!VarLenSparseModeProcess(sparseType)) {
+        }
+        else
+        {
+            if (!VarLenSparseModeProcess(sparseType))
+            {
                 return false;
             }
         }
@@ -4350,20 +5004,26 @@ protected:
     int64_t GetS2RealSize(uint8_t sparseType, int32_t bOutIdx, int64_t s1OutIdx)
     {
         int64_t s2RealSize = s2Size;
-        if (sparseType == static_cast<uint8_t>(SparseEnum::CAUSAL)) {
+        if (sparseType == static_cast<uint8_t>(SparseEnum::CAUSAL))
+        {
             s2RealSize = s1BasicBlock * (s1OutIdx + 1);
-        } else if (sparseType == static_cast<uint8_t>(SparseEnum::PREFIX)) {
+        }
+        else if (sparseType == static_cast<uint8_t>(SparseEnum::PREFIX))
+        {
             s2RealSize =
                 std::max(s1BasicBlock * (s1OutIdx + 1) - actualSeqLenData[bOutIdx] + actualSeqLenKvData[bOutIdx],
                          prefixNData[bOutIdx]);
-        } else if (sparseType == static_cast<uint8_t>(SparseEnum::BAND_COMPRESS)) {
+        }
+        else if (sparseType == static_cast<uint8_t>(SparseEnum::BAND_COMPRESS))
+        {
             int64_t s2StartIdx = std::max(s1OutIdx * s1BasicBlock - actualSeqLenData[bOutIdx] +
                                               std::max(actualSeqLenKvData[bOutIdx] - preTokens, 0L),
                                           0L);
             int64_t s2EndIdx = std::min((s1OutIdx + 1) * s1BasicBlock + actualSeqLenKvData[bOutIdx] -
                                             std::max(actualSeqLenData[bOutIdx] - nextTokens, 0L),
                                         actualSeqLenKvData[bOutIdx]);
-            if (s2EndIdx - s2StartIdx <= 0) {
+            if (s2EndIdx - s2StartIdx <= 0)
+            {
                 s2StartIdx = 0;
                 s2EndIdx = actualSeqLenKvData[bOutIdx];
             }
@@ -4377,12 +5037,15 @@ protected:
     {
         uint8_t sparseType = tilingData->inputParams.get_sparseType();
         auto &coreParams = tilingData->coreParams;
-        for (int32_t i = 0; i < bSize; i++) {
+        for (int32_t i = 0; i < bSize; i++)
+        {
             int64_t n2G = coreParams.get_n2OuterSize() * coreParams.get_gOuterSize();
             int64_t s1BlockNum = CeilDivision(actualSeqLenData[i], s1BasicBlock);
             // 每个s1方向上切分块的计算量
-            for (int64_t k = 0; k < n2G; ++k) {
-                for (int64_t j = 0; j < s1BlockNum; ++j) {
+            for (int64_t k = 0; k < n2G; ++k)
+            {
+                for (int64_t j = 0; j < s1BlockNum; ++j)
+                {
                     // 此处暂时设置为1, 由于实测尾块1和128性能差距不大，理论上应该如下所示
                     // 理论值: s1RealSize为std::min(s1BasicBlock, (actualSeqLenData[i] - s1BasicBlock * j))
                     int64_t s1RealSize = 1;
@@ -4403,44 +5066,56 @@ protected:
                      std::vector<int64_t> &localValue, std::vector<int64_t> &sparseStartIdx)
     {
         // to avoid buffer overflow, or maybe sometimes we want to only verify single core
-        int64_t validAiCoreNum = isSameAB ?
-                                     std::min(static_cast<int64_t>(multiCoreParams.get_coreNum() / 2), MAX_AIC_NUM) :
-                                     std::min(static_cast<int64_t>(multiCoreParams.get_coreNum()), MAX_AIV_NUM);
+        int64_t validAiCoreNum = isSameAB
+                                     ? std::min(static_cast<int64_t>(multiCoreParams.get_coreNum() / 2), MAX_AIC_NUM)
+                                     : std::min(static_cast<int64_t>(multiCoreParams.get_coreNum()), MAX_AIV_NUM);
         int64_t totalSize = multiCoreParams.get_totalSize();
         int64_t maxVal = *std::max_element(localValue.begin(), localValue.end());
         int64_t tmpMaxVal = maxVal;
 
         // 从前往后遍历
-        for (int64_t idx = 1; idx < validAiCoreNum; ++idx) {
+        for (int64_t idx = 1; idx < validAiCoreNum; ++idx)
+        {
             int64_t start = sparseStartIdx[idx];
-            if (start < totalSize && start > 0 && ((localValue[idx - 1] + sparseValidArray[start]) < maxVal)) {
+            if (start < totalSize && start > 0 && ((localValue[idx - 1] + sparseValidArray[start]) < maxVal))
+            {
                 localValue[idx - 1] += sparseValidArray[start];
                 localValue[idx] -= sparseValidArray[start];
                 sparseStartIdx[idx] += 1;
-            } else if (start == totalSize) {
+            }
+            else if (start == totalSize)
+            {
                 break;
             }
         }
         tmpMaxVal = *std::max_element(localValue.begin(), localValue.end());
 
         // 从后往前遍历
-        for (int64_t idx = validAiCoreNum - 1; idx > 0; --idx) {
+        for (int64_t idx = validAiCoreNum - 1; idx > 0; --idx)
+        {
             int64_t start = sparseStartIdx[idx];
-            if (start == totalSize) {
-                if (sparseStartIdx[idx - 1] == totalSize) {
+            if (start == totalSize)
+            {
+                if (sparseStartIdx[idx - 1] == totalSize)
+                {
                     continue;
                 }
                 localValue[idx - 1] -= sparseValidArray[start - 1];
                 localValue[idx] = sparseValidArray[start - 1];
                 sparseStartIdx[idx] -= 1;
-            } else if (start > 0) {
-                if ((localValue[idx] + sparseValidArray[start - 1]) >= tmpMaxVal) {
+            }
+            else if (start > 0)
+            {
+                if ((localValue[idx] + sparseValidArray[start - 1]) >= tmpMaxVal)
+                {
                     continue;
                 }
                 localValue[idx - 1] -= sparseValidArray[start - 1];
                 localValue[idx] += sparseValidArray[start - 1];
                 sparseStartIdx[idx] -= 1;
-            } else {
+            }
+            else
+            {
                 break;
             }
         }
@@ -4452,13 +5127,17 @@ protected:
     inline bool InitLoadValue(const std::vector<int64_t> &sparseValidArray, int64_t validAivNum, int64_t totalSize,
                               const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue)
     {
-        for (int64_t idx = 0; idx < validAivNum; ++idx) {
+        for (int64_t idx = 0; idx < validAivNum; ++idx)
+        {
             int64_t start = sparseStartIdx[idx];
             int64_t end = ((idx + 1) < validAivNum) ? sparseStartIdx[idx + 1] : totalSize;
-            if (start < totalSize) {
+            if (start < totalSize)
+            {
                 localValue[idx] =
                     std::accumulate(sparseValidArray.begin() + start, sparseValidArray.begin() + end, 0LL);
-            } else {
+            }
+            else
+            {
                 break;
             }
         }
@@ -4468,10 +5147,10 @@ protected:
     bool SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray, MultiCoreParams &multiCoreParams) override
     {
         // to avoid buffer overflow, or maybe sometimes we want to only verify single core
-        int64_t validAiCoreNum = isSameAB ?
-                                     std::min(static_cast<int64_t>(multiCoreParams.get_coreNum() / 2), MAX_AIC_NUM) :
-                                     std::min(static_cast<int64_t>(multiCoreParams.get_coreNum()), MAX_AIV_NUM);
-        int64_t totalSize = multiCoreParams.get_totalSize(); // BN2GS1.o
+        int64_t validAiCoreNum = isSameAB
+                                     ? std::min(static_cast<int64_t>(multiCoreParams.get_coreNum() / 2), MAX_AIC_NUM)
+                                     : std::min(static_cast<int64_t>(multiCoreParams.get_coreNum()), MAX_AIV_NUM);
+        int64_t totalSize = multiCoreParams.get_totalSize();  // BN2GS1.o
         int64_t *sparseStartIdx = multiCoreParams.get_sparseStartIdx();
         int64_t maxAiCoreNum = isSameAB ? MAX_AIC_NUM : MAX_AIV_NUM;
         OP_CHECK_IF(totalSize <= 0 && !isMaxWorkspace, OP_LOGE(opName, "totalSize should be larger than 0."),
@@ -4480,7 +5159,8 @@ protected:
         // initLoad: 使用均分策略, 保证后续不会比均分差
         int64_t splitFactorSize = multiCoreParams.get_splitFactorSize();
         std::vector<int64_t> localSparseStartIdx(maxAiCoreNum, totalSize);
-        for (int64_t idx = 0; idx < maxAiCoreNum; ++idx) {
+        for (int64_t idx = 0; idx < maxAiCoreNum; ++idx)
+        {
             localSparseStartIdx[idx] = std::min((idx * splitFactorSize), totalSize);
         }
         std::vector<int64_t> localValue(validAiCoreNum, 0);
@@ -4493,16 +5173,19 @@ protected:
         int64_t avgVal = CeilDivision(sparseArraySum, validAiCoreNum);
 
         tmpsparseStartIdx[0] = 0;
-        for (int64_t idx = 1; idx < maxAiCoreNum; ++idx) {
+        for (int64_t idx = 1; idx < maxAiCoreNum; ++idx)
+        {
             int64_t start = tmpsparseStartIdx[idx - 1];
             int64_t singleLoadValue = 0;
             tmpsparseStartIdx[idx] = start;
-            while (singleLoadValue < avgVal && tmpsparseStartIdx[idx] < totalSize) {
+            while (singleLoadValue < avgVal && tmpsparseStartIdx[idx] < totalSize)
+            {
                 singleLoadValue += sparseValidArray[tmpsparseStartIdx[idx]];
                 tmpsparseStartIdx[idx] += 1;
             }
 
-            if ((start + 1) < tmpsparseStartIdx[idx]) {
+            if ((start + 1) < tmpsparseStartIdx[idx])
+            {
                 int64_t redoSingleLoadValue = singleLoadValue - sparseValidArray[tmpsparseStartIdx[idx] - 1];
                 bool loadValueFlag = (singleLoadValue - avgVal) > (avgVal - redoSingleLoadValue);
                 tmpsparseStartIdx[idx] = loadValueFlag ? (tmpsparseStartIdx[idx] - 1) : (tmpsparseStartIdx[idx]);
@@ -4515,17 +5198,20 @@ protected:
         InitLoadValue(sparseValidArray, validAiCoreNum, totalSize, tmpsparseStartIdx, tmpLocalValue);
 
         // 负载均衡精调
-        while (BalanceLoad(sparseValidArray, multiCoreParams, tmpLocalValue, tmpsparseStartIdx)) {
+        while (BalanceLoad(sparseValidArray, multiCoreParams, tmpLocalValue, tmpsparseStartIdx))
+        {
             // 根据负载均衡是否能得到更好预测结果决定是否结束循环
         }
 
         // exchange initLoad and 负载均衡
         if ((*std::max_element(localValue.begin(), localValue.end())) >
-            (*std::max_element(tmpLocalValue.begin(), tmpLocalValue.end()))) {
+            (*std::max_element(tmpLocalValue.begin(), tmpLocalValue.end())))
+        {
             localSparseStartIdx.swap(tmpsparseStartIdx);
             localValue.swap(tmpLocalValue);
         }
-        for (int64_t idx = 0; idx < maxAiCoreNum; ++idx) {
+        for (int64_t idx = 0; idx < maxAiCoreNum; ++idx)
+        {
             sparseStartIdx[idx] = localSparseStartIdx[idx];
         }
 
@@ -4534,7 +5220,8 @@ protected:
 
     void SetSparseParams() override
     {
-        if (isMaxWorkspace) {
+        if (isMaxWorkspace)
+        {
             return;
         }
         auto &coreParams = tilingData->coreParams;
@@ -4556,7 +5243,8 @@ protected:
         // TND EOD+Padding 场景下 kernel侧使用t1Size复用s1Size
         inputParams.set_s1Size(realT1Size);
         if (!isSameAB && inputDtypeBytes != DATA_TYPE_FP32 && !hasRope && s1BasicBlock <= S1_BASIC_BLOCK_L1CARRY_MAX &&
-            dSize <= D_SIZE_L1CARRY_MAX && d2Size <= D2_SIZE_L1CARRY_MAX) {
+            dSize <= D_SIZE_L1CARRY_MAX && d2Size <= D2_SIZE_L1CARRY_MAX)
+        {
             this->needL1Carry = true;
             tilingData->bmm1TilingData.shareL1Size = 0;
             tilingData->bmm2TilingData.shareL1Size = 0;
@@ -4566,17 +5254,19 @@ protected:
     }
 };
 
-class FlashAttentionScoreTilingDropMask : public FlashAttentionScoreTilingBase {
-public:
+class FlashAttentionScoreTilingDropMask : public FlashAttentionScoreTilingBase
+{
+   public:
     explicit FlashAttentionScoreTilingDropMask(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context) {}
     ~FlashAttentionScoreTilingDropMask() override = default;
 
-protected:
+   protected:
     ge::graphStatus DoOpTiling() override
     {
         auto &inputParams = tilingData->inputParams;
         auto &dropmaskParams = tilingData->dropmaskParams;
-        if (inputParams.get_needDropMaskOp() == 0) {
+        if (inputParams.get_needDropMaskOp() == 0)
+        {
             dropmaskParams.reset();
             return ge::GRAPH_PARAM_INVALID;
         }
@@ -4584,8 +5274,10 @@ protected:
         int64_t shapeTotalSize = inputParams.get_bSize() * inputParams.get_n2Size() * inputParams.get_gSize() *
                                  inputParams.get_s1Size() * inputParams.get_s2Size();
         auto layoutType = tilingData->inputParams.get_layoutType();
-        if (layoutType == LAYOUT_TND) {
-            for (int64_t i = 0; i < bSize; i++) {
+        if (layoutType == LAYOUT_TND)
+        {
+            for (int64_t i = 0; i < bSize; i++)
+            {
                 dropTotalSize += (actualSeqLenData[i] * actualSeqLenKvData[i]);
             }
             shapeTotalSize = inputParams.get_n2Size() * inputParams.get_gSize() * dropTotalSize;
@@ -4643,5 +5335,5 @@ REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilin
                                    std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}), 97);
 REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingB,
                                    std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}), 98);
-} // namespace FA
-} // namespace optiling
+}  // namespace FA
+}  // namespace optiling
