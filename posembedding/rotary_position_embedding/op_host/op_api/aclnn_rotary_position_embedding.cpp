@@ -111,8 +111,9 @@ aclnnStatus aclnnRotaryPositionEmbedding(void *workspace, uint64_t workspaceSize
 }
 
 /* v2 interface - supports rotate parameter */
-aclnnStatus aclnnRotaryPositionEmbeddingV2GetWorkspaceSize(const aclTensor *x, const aclTensor *cos, const aclTensor *sin,
-                                                           int64_t mode, const aclTensor *rotate, aclTensor *out,
+aclnnStatus aclnnRotaryPositionEmbeddingV2GetWorkspaceSize(const aclTensor *x, const aclTensor *cos,
+                                                           const aclTensor *sin, int64_t mode,
+                                                           const aclTensor *rotate, aclTensor *out,
                                                            uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnRotaryPositionEmbeddingV2,
