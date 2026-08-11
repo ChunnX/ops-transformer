@@ -11,21 +11,20 @@
 #ifndef CATLASS_GEMV_TILE_VEC_COPY_GM_TO_UB_PADDING_HPP
 #define CATLASS_GEMV_TILE_VEC_COPY_GM_TO_UB_PADDING_HPP
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/layout/layout.hpp"
-#include "../../gemm/gemm_type.hpp"
-// #include "../.."
+#include "catlass/gemm/gemm_type.hpp"
 
 // constexpr uint32_t STRIDE_LIMIT = 65536;
 
-namespace Vecself::Gemv::Tile {
+namespace FTSelf::Gemv::Tile {
 
 using namespace Catlass;
 
 template <
     class ArchTag,
     class VType,
-    Vecself::Gemv::helper::VEC_PADDING_TYPE PaddingType
+    FTSelf::Gemv::helper::VEC_PADDING_TYPE PaddingType
 >
 struct VecCopyGmToUBPadding
 {
@@ -39,7 +38,7 @@ template <
 struct VecCopyGmToUBPadding<
     ArchTag_,
     VType_,
-    Vecself::Gemv::helper::VEC_PADDING_TYPE::ALIGNED
+    FTSelf::Gemv::helper::VEC_PADDING_TYPE::ALIGNED
 > {
     using Element = typename VType_::Element;
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
@@ -75,7 +74,7 @@ template <
 struct VecCopyGmToUBPadding<
     ArchTag_,
     VType_,
-    Vecself::Gemv::helper::VEC_PADDING_TYPE::PADDING
+    FTSelf::Gemv::helper::VEC_PADDING_TYPE::PADDING
 > {
     using Element = typename VType_::Element;
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
@@ -152,6 +151,6 @@ struct VecCopyGmToUBPadding<
 };
 
 
-} // namespace Vecself::Gemv::Tile
+} // namespace FTSelf::Gemv::Tile
 
 #endif // CATLASS_GEMV_TILE_VEC_COPY_GM_TO_UB_HPP

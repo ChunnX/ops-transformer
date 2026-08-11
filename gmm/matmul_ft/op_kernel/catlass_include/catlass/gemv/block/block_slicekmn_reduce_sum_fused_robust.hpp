@@ -11,19 +11,19 @@
 #ifndef CATLASS_GEMV_BLOCK_BLOCK_SLICEKMN_RED_SUM_FUSED_HPP_ROBUST
 #define CATLASS_GEMV_BLOCK_BLOCK_SLICEKMN_RED_SUM_FUSED_HPP_ROBUST
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/resource_aiv.hpp"
-#include "../../coord.hpp"
-#include "../../gemv_coord.hpp"
-#include "../helper.hpp"
-#include "../../gemm/helper.hpp"
+#include "catlass/coord.hpp"
+#include "catlass/gemv_coord.hpp"
+#include "catlass/gemv/helper.hpp"
+#include "catlass/gemm/helper.hpp"
 #include "catlass/layout/layout.hpp"
 #include "catlass/detail/alignment.hpp"
-#include "../../gemm/dispatch_policy.hpp"
-#include "../../matrix_coord.hpp"
-#include "../tile/tile_reduce_mean_var.hpp"
+#include "catlass/gemm/dispatch_policy.hpp"
+#include "catlass/matrix_coord.hpp"
+#include "catlass/gemv/tile/tile_reduce_mean_var.hpp"
 
-namespace Vecself::Gemv::Block {
+namespace FTSelf::Gemv::Block {
 
 using namespace Catlass;
 
@@ -42,8 +42,8 @@ template <
     class TileVmuls_
 >
 struct BlockSliceKMNSum <
-    Gemm::GemvAtlasA2,
-    Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::A_B_ROBUST,
+    Catlass::Gemm::GemvAtlasA2,
+    FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::A_B_ROBUST,
     UBTileShapeforA_,
     UBTileShapeforB_,
     AType_,
@@ -59,7 +59,7 @@ struct BlockSliceKMNSum <
 > {
 public:
     // Type Aliases
-    using DispatchPolicy = Gemm::GemvAtlasA2;
+    using DispatchPolicy = Catlass::Gemm::GemvAtlasA2;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using UBTileShapeforA = UBTileShapeforA_;
     using UBTileShapeforB = UBTileShapeforB_;
@@ -80,11 +80,11 @@ public:
     using TileFaultSum = TileFaultSum_;
     using TileVmuls = TileVmuls_;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
-    using FT_REDUCE_TYPE = Vecself::Gemv::helper::FT_REDUCE_TYPE;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_REDUCE_TYPE = FTSelf::Gemv::helper::FT_REDUCE_TYPE;
 
-    using TileFaultMeanforB = Vecself::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::SUM, BType_, XType_>;
-    using TileFaultMaxforB = Vecself::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::MAX, BType_, XType_>;
+    using TileFaultMeanforB = FTSelf::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::SUM, BType_, XType_>;
+    using TileFaultMaxforB = FTSelf::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::MAX, BType_, XType_>;
 
     /*
     template <
@@ -98,7 +98,7 @@ public:
         class BiasType = void
     >
     */
-    using TileReduceMeanforB = Vecself::Gemv::Tile::TileReduce<
+    using TileReduceMeanforB = FTSelf::Gemv::Tile::TileReduce<
         ArchTag,
         FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
         FT_REDUCE_TYPE::MEAN_SQUARE,
@@ -107,7 +107,7 @@ public:
         XType_,
         void>;
 
-    using TileReduceVarforB = Vecself::Gemv::Tile::TileReduce<
+    using TileReduceVarforB = FTSelf::Gemv::Tile::TileReduce<
         ArchTag,
         FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
         FT_REDUCE_TYPE::VAR,
@@ -128,9 +128,9 @@ public:
     using MatrixCopyGmToUbSimplingStridedforB = typename TileCopyforB_::MatrixCopyGmToUbSimplingStrided;
 
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
 
-    using UBAlignHelper = Vecself::Gemv::helper::UBAlignHelper<ElementA>;
+    using UBAlignHelper = FTSelf::Gemv::helper::UBAlignHelper<ElementA>;
     using TensorCoord = layout::VectorLayout::TensorCoord;
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
 
@@ -1394,6 +1394,6 @@ protected:
 
 };
 
-} // namespace Vecself::Gemv::Block
+} // namespace FTSelf::Gemv::Block
 
 #endif // CATLASS_GEMV_BLOCK_BLOCK_GEMV_AIV_HPP

@@ -1,14 +1,14 @@
 #ifndef CATLASS_GEMV_TILE_TILE_STD_ESTIMATE_HPP
 #define CATLASS_GEMV_TILE_TILE_STD_ESTIMATE_HPP
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/arch.hpp"
-#include "../../gemm/helper.hpp"
-#include "../helper.hpp"
+#include "catlass/gemm/helper.hpp"
+#include "catlass/gemv/helper.hpp"
 #include "catlass/layout/layout.hpp"
-#include "../../gemm/gemm_type.hpp"
+#include "catlass/gemm/gemm_type.hpp"
 
-namespace Vecself::Gemv::Tile {
+namespace FTSelf::Gemv::Tile {
 
 using namespace Catlass;
 template <
@@ -52,14 +52,14 @@ template <
     class ElementY
 >
 struct TileStdEst<Arch::AtlasA2,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
     using ElementX = ElementY;
     // using ElementY = half;
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
@@ -70,7 +70,7 @@ struct TileStdEst<Arch::AtlasA2,
     CATLASS_DEVICE
     TileStdEst() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -90,22 +90,22 @@ struct TileStdEst<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
         AscendC::Sub(dstTensor,srcMaxTensor,srcMeanTensor,m_actual);
         AscendC::PipeBarrier<PIPE_V>();
 
-        
+
 
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& srcLocal, 
-        const T& scalarValue, 
+        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& srcLocal,
+        const T& scalarValue,
         const int32_t& calCount)
         */
 
@@ -131,12 +131,12 @@ template <
     class ElementY
 >
 struct TileStdEst<Arch::AtlasA2,
-                Gemm::GemmType<ElementX, layout::VectorLayout>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementX, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
@@ -147,7 +147,7 @@ struct TileStdEst<Arch::AtlasA2,
     CATLASS_DEVICE
     TileStdEst() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -167,9 +167,9 @@ struct TileStdEst<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
@@ -184,8 +184,8 @@ struct TileStdEst<Arch::AtlasA2,
 
         /*
         template <typename T1, typename T2>
-        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal, 
-            const LocalTensor<T2>& srcLocal, 
+        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal,
+            const LocalTensor<T2>& srcLocal,
             const RoundMode& round_mode, const uint32_t calCount)
 
         (uint64_t)mask, repeattimes, castparams
@@ -198,9 +198,9 @@ struct TileStdEst<Arch::AtlasA2,
 
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& srcLocal, 
-        const T& scalarValue, 
+        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& srcLocal,
+        const T& scalarValue,
         const int32_t& calCount)
         */
 
@@ -225,14 +225,14 @@ template <
     class ElementY
 >
 struct TileStdEstRobust<Arch::AtlasA2,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
     using ElementX = ElementY;
     // using ElementY = half;
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
@@ -243,7 +243,7 @@ struct TileStdEstRobust<Arch::AtlasA2,
     CATLASS_DEVICE
     TileStdEstRobust() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -263,9 +263,9 @@ struct TileStdEstRobust<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
@@ -275,9 +275,9 @@ struct TileStdEstRobust<Arch::AtlasA2,
         /*
         template <typename T>
         __aicore__ inline void Mul(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
         AscendC::Mul(srcMaxTensor, srcMaxTensor, srcMinTensor, m_actual);
@@ -292,15 +292,15 @@ struct TileStdEstRobust<Arch::AtlasA2,
 template <
 >
 struct TileStdEstRobust<Arch::AtlasA2,
-                Gemm::GemmType<float, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementX = float;
     using ElementY = float;
     // using ElementY = half;
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
@@ -311,7 +311,7 @@ struct TileStdEstRobust<Arch::AtlasA2,
     CATLASS_DEVICE
     TileStdEstRobust() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -331,9 +331,9 @@ struct TileStdEstRobust<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
@@ -343,9 +343,9 @@ struct TileStdEstRobust<Arch::AtlasA2,
         /*
         template <typename T>
         __aicore__ inline void Mul(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
         AscendC::Mul(srcMaxTensor, srcMaxTensor, srcMinTensor, m_actual);
@@ -363,12 +363,12 @@ template <
     class ElementY
 >
 struct TileStdEstRobust<Arch::AtlasA2,
-                Gemm::GemmType<ElementX, layout::VectorLayout>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementX, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementX>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementX>::ElementAccumulator;
 
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
@@ -398,9 +398,9 @@ struct TileStdEstRobust<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
@@ -410,9 +410,9 @@ struct TileStdEstRobust<Arch::AtlasA2,
         /*
         template <typename T>
         __aicore__ inline void Mul(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
         AscendC::Mul(srcMaxTensor, srcMaxTensor, srcMinTensor, m_actual);
@@ -430,8 +430,8 @@ struct TileStdEstRobust<Arch::AtlasA2,
 
         /*
         template <typename T1, typename T2>
-        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal, 
-            const LocalTensor<T2>& srcLocal, 
+        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal,
+            const LocalTensor<T2>& srcLocal,
             const RoundMode& round_mode, const uint32_t calCount)
 
         (uint64_t)mask, repeattimes, castparams
@@ -450,14 +450,14 @@ template <
     class ElementY
 >
 struct TileStdEstSimplified<Arch::AtlasA2,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
     using ElementX = ElementY;
     // using ElementY = half;
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
@@ -468,7 +468,7 @@ struct TileStdEstSimplified<Arch::AtlasA2,
     CATLASS_DEVICE
     TileStdEstSimplified() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -487,22 +487,22 @@ struct TileStdEstSimplified<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
         // AscendC::Sub(dstTensor,srcMaxTensor,srcMeanTensor,m_actual);
         // AscendC::PipeBarrier<PIPE_V>();
 
-        
+
 
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& srcLocal, 
-        const T& scalarValue, 
+        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& srcLocal,
+        const T& scalarValue,
         const int32_t& calCount)
         */
 
@@ -528,12 +528,12 @@ template <
     class ElementY
 >
 struct TileStdEstSimplified<Arch::AtlasA2,
-                Gemm::GemmType<ElementX, layout::VectorLayout>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementX, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
@@ -544,7 +544,7 @@ struct TileStdEstSimplified<Arch::AtlasA2,
     CATLASS_DEVICE
     TileStdEstSimplified() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -563,9 +563,9 @@ struct TileStdEstSimplified<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
@@ -580,8 +580,8 @@ struct TileStdEstSimplified<Arch::AtlasA2,
 
         /*
         template <typename T1, typename T2>
-        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal, 
-            const LocalTensor<T2>& srcLocal, 
+        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal,
+            const LocalTensor<T2>& srcLocal,
             const RoundMode& round_mode, const uint32_t calCount)
 
         (uint64_t)mask, repeattimes, castparams
@@ -594,9 +594,9 @@ struct TileStdEstSimplified<Arch::AtlasA2,
 
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& srcLocal, 
-        const T& scalarValue, 
+        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& srcLocal,
+        const T& scalarValue,
         const int32_t& calCount)
         */
 
@@ -626,14 +626,14 @@ struct TileStdEstSimplified<Arch::AtlasA2,
 
 template <>
 struct TileStdEst<Arch::AtlasA2,
-                Gemm::GemmType<float, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementX = float;
     using ElementY = float;
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
@@ -644,7 +644,7 @@ struct TileStdEst<Arch::AtlasA2,
     CATLASS_DEVICE
     TileStdEst() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -664,20 +664,20 @@ struct TileStdEst<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
         AscendC::Sub(dstTensor,srcMaxTensor,srcMeanTensor,m_actual);
-        AscendC::PipeBarrier<PIPE_V>();  
+        AscendC::PipeBarrier<PIPE_V>();
 
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& srcLocal, 
-        const T& scalarValue, 
+        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& srcLocal,
+        const T& scalarValue,
         const int32_t& calCount)
         */
 
@@ -701,14 +701,14 @@ struct TileStdEst<Arch::AtlasA2,
 
 template <>
 struct TileStdEst<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementX = half;
     using ElementY = half;
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
@@ -719,7 +719,7 @@ struct TileStdEst<Arch::AtlasA2,
     CATLASS_DEVICE
     TileStdEst() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -739,21 +739,21 @@ struct TileStdEst<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
         AscendC::Sub(dstTensor,srcMaxTensor,srcMeanTensor,m_actual);
         AscendC::PipeBarrier<PIPE_V>();
 
-        
+
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& srcLocal, 
-        const T& scalarValue, 
+        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& srcLocal,
+        const T& scalarValue,
         const int32_t& calCount)
         */
 
@@ -778,16 +778,16 @@ struct TileStdEst<Arch::AtlasA2,
 // class ElementY
 template <>
 struct TileStdEst<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementX = half;
     using ElementY = float;
 
     using ElementAccumulator = float;
-        
-    // typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
+
+    // typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
@@ -798,9 +798,9 @@ struct TileStdEst<Arch::AtlasA2,
     CATLASS_DEVICE
     TileStdEst() {};
 
-    
 
-    // 
+
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -820,9 +820,9 @@ struct TileStdEst<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
@@ -837,8 +837,8 @@ struct TileStdEst<Arch::AtlasA2,
 
         /*
         template <typename T1, typename T2>
-        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal, 
-            const LocalTensor<T2>& srcLocal, 
+        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal,
+            const LocalTensor<T2>& srcLocal,
             const RoundMode& round_mode, const uint32_t calCount)
 
         (uint64_t)mask, repeattimes, castparams
@@ -851,9 +851,9 @@ struct TileStdEst<Arch::AtlasA2,
 
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& srcLocal, 
-        const T& scalarValue, 
+        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& srcLocal,
+        const T& scalarValue,
         const int32_t& calCount)
         */
 
@@ -877,15 +877,15 @@ struct TileStdEst<Arch::AtlasA2,
 
 template <>
 struct TileStdEstRobust<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementX = half;
     using ElementY = half;
     // using ElementY = half;
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
@@ -896,7 +896,7 @@ struct TileStdEstRobust<Arch::AtlasA2,
     CATLASS_DEVICE
     TileStdEstRobust() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -916,9 +916,9 @@ struct TileStdEstRobust<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
@@ -928,9 +928,9 @@ struct TileStdEstRobust<Arch::AtlasA2,
         /*
         template <typename T>
         __aicore__ inline void Mul(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
         AscendC::Mul(srcMaxTensor, srcMaxTensor, srcMinTensor, m_actual);
@@ -944,15 +944,15 @@ struct TileStdEstRobust<Arch::AtlasA2,
 
 template <>
 struct TileStdEstRobust<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementX = half;
     using ElementY = float;
     // using ElementY = half;
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementX>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementX>::ElementAccumulator;
 
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
@@ -963,7 +963,7 @@ struct TileStdEstRobust<Arch::AtlasA2,
     CATLASS_DEVICE
     TileStdEstRobust() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -983,9 +983,9 @@ struct TileStdEstRobust<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
@@ -995,9 +995,9 @@ struct TileStdEstRobust<Arch::AtlasA2,
         /*
         template <typename T>
         __aicore__ inline void Mul(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
         AscendC::Mul(srcMaxTensor, srcMaxTensor, srcMinTensor, m_actual);
@@ -1013,15 +1013,15 @@ struct TileStdEstRobust<Arch::AtlasA2,
 
 template <>
 struct TileStdEstSimplified<Arch::AtlasA2,
-                Gemm::GemmType<float, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementX = float;
     using ElementY = float;
     // using ElementY = half;
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
@@ -1032,7 +1032,7 @@ struct TileStdEstSimplified<Arch::AtlasA2,
     CATLASS_DEVICE
     TileStdEstSimplified() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -1051,22 +1051,22 @@ struct TileStdEstSimplified<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
         // AscendC::Sub(dstTensor,srcMaxTensor,srcMeanTensor,m_actual);
         // AscendC::PipeBarrier<PIPE_V>();
 
-        
+
 
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& srcLocal, 
-        const T& scalarValue, 
+        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& srcLocal,
+        const T& scalarValue,
         const int32_t& calCount)
         */
 
@@ -1090,15 +1090,15 @@ struct TileStdEstSimplified<Arch::AtlasA2,
 
 template <>
 struct TileStdEstSimplified<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementX = half;
     using ElementY = half;
     // using ElementY = half;
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
@@ -1109,7 +1109,7 @@ struct TileStdEstSimplified<Arch::AtlasA2,
     CATLASS_DEVICE
     TileStdEstSimplified() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -1128,22 +1128,22 @@ struct TileStdEstSimplified<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
         // AscendC::Sub(dstTensor,srcMaxTensor,srcMeanTensor,m_actual);
         // AscendC::PipeBarrier<PIPE_V>();
 
-        
+
 
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& srcLocal, 
-        const T& scalarValue, 
+        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& srcLocal,
+        const T& scalarValue,
         const int32_t& calCount)
         */
 
@@ -1166,14 +1166,14 @@ struct TileStdEstSimplified<Arch::AtlasA2,
 
 template <>
 struct TileStdEstSimplified<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementX = half;
     using ElementY = float;
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementX>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementX>::ElementAccumulator;
 
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
@@ -1184,7 +1184,7 @@ struct TileStdEstSimplified<Arch::AtlasA2,
     CATLASS_DEVICE
     TileStdEstSimplified() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -1203,9 +1203,9 @@ struct TileStdEstSimplified<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
@@ -1220,8 +1220,8 @@ struct TileStdEstSimplified<Arch::AtlasA2,
 
         /*
         template <typename T1, typename T2>
-        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal, 
-            const LocalTensor<T2>& srcLocal, 
+        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal,
+            const LocalTensor<T2>& srcLocal,
             const RoundMode& round_mode, const uint32_t calCount)
 
         (uint64_t)mask, repeattimes, castparams
@@ -1234,9 +1234,9 @@ struct TileStdEstSimplified<Arch::AtlasA2,
 
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& srcLocal, 
-        const T& scalarValue, 
+        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& srcLocal,
+        const T& scalarValue,
         const int32_t& calCount)
         */
 

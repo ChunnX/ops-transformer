@@ -1,13 +1,13 @@
 #ifndef CATLASS_GEMV_TILE_TILE_MATRIX_COPY_UB_TO_GM_HPP
 #define CATLASS_GEMV_TILE_TILE_MATRIX_COPY_UB_TO_GM_HPP
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/arch.hpp"
 #include "catlass/layout/layout.hpp"
-#include "../../gemm/gemm_type.hpp"
+#include "catlass/gemm/gemm_type.hpp"
 
 
-namespace Vecself::Gemv::Tile {
+namespace FTSelf::Gemv::Tile {
 
 using namespace Catlass;
 
@@ -20,7 +20,7 @@ struct MatrixCopyUBToGm {
 };
 
 template <typename Element>
-struct MatrixCopyUBToGm<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
+struct MatrixCopyUBToGm<Arch::AtlasA2, Catlass::Gemm::GemmType<Element, layout::RowMajor>> {
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
@@ -41,7 +41,7 @@ struct MatrixCopyUBToGm<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>
             参数名称                                含义
             blockCount          指定该指令包含的连续传输数据块个数，数据类型为uint16_t，
                                 取值范围：blockCount∈[1, 4095]。
-            
+
             blockLen            指定该指令每个连续传输数据块长度，该指令支持非对齐搬运，
                                 每个连续传输数据块长度单位为Byte。数据类型为uint32_t，
                                 取值范围：blockLen∈[1, 2097151]。
@@ -71,10 +71,10 @@ struct MatrixCopyUBToGm<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>
 
 // new add vectorlayout version
 template <typename Element>
-struct MatrixCopyUBToGm<Arch::AtlasA2, Gemm::GemmType<Element, layout::VectorLayout>> {
+struct MatrixCopyUBToGm<Arch::AtlasA2, Catlass::Gemm::GemmType<Element, layout::VectorLayout>> {
     using LayoutSrc = layout::VectorLayout;
     using LayoutDst = layout::VectorLayout;
-    
+
     static constexpr uint32_t ELE_NUM_PER_BLK = BYTE_PER_BLK / sizeof(Element);
 
     // Mehtods
@@ -107,7 +107,7 @@ struct MatrixCopyUBToGmAligned {
 };
 
 template <typename Element>
-struct MatrixCopyUBToGmAligned<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
+struct MatrixCopyUBToGmAligned<Arch::AtlasA2, Catlass::Gemm::GemmType<Element, layout::RowMajor>> {
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
@@ -149,6 +149,6 @@ struct MatrixCopyUBToGmAligned<Arch::AtlasA2, Gemm::GemmType<Element, layout::Ro
         }
     }
 };
-} // namespace Vecself::Gemv::Tile
+} // namespace FTSelf::Gemv::Tile
 
 #endif // CATLASS_GEMV_TILE_TILE_MATRIX_COPY_UB_TO_GM_HPP

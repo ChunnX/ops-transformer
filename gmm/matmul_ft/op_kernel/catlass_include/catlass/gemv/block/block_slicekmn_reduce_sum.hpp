@@ -11,18 +11,18 @@
 #ifndef CATLASS_GEMV_BLOCK_BLOCK_SLICEKMN_RED_SUM_HPP
 #define CATLASS_GEMV_BLOCK_BLOCK_SLICEKMN_RED_SUM_HPP
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/resource_aiv.hpp"
-#include "../../coord.hpp"
-#include "../../gemv_coord.hpp"
-#include "../helper.hpp"
-#include "../../gemm/helper.hpp"
+#include "catlass/coord.hpp"
+#include "catlass/gemv_coord.hpp"
+#include "catlass/gemv/helper.hpp"
+#include "catlass/gemm/helper.hpp"
 #include "catlass/layout/layout.hpp"
 #include "catlass/detail/alignment.hpp"
-#include "../../gemm/dispatch_policy.hpp"
-#include "../../matrix_coord.hpp"
+#include "catlass/gemm/dispatch_policy.hpp"
+#include "catlass/matrix_coord.hpp"
 
-namespace Vecself::Gemv::Block {
+namespace FTSelf::Gemv::Block {
 
 using namespace Catlass;
 
@@ -35,8 +35,8 @@ template <
     class TileMatrixAdd_
 >
 struct BlockSliceKMNSum <
-    Gemm::GemvAtlasA2,
-    Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::ABE_FUSED_THRE,
+    Catlass::Gemm::GemvAtlasA2,
+    FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::ABE_FUSED_THRE,
     UBTileShape_,
     AType_,
     YType_,
@@ -46,7 +46,7 @@ struct BlockSliceKMNSum <
 > {
 public:
     // Type Aliases
-    using DispatchPolicy = Gemm::GemvAtlasA2;
+    using DispatchPolicy = Catlass::Gemm::GemvAtlasA2;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using UBTileShape = UBTileShape_;
     using ElementA = typename AType_::Element;
@@ -65,9 +65,9 @@ public:
     using VecCopyUbToGmforY = typename TileCopy_::VecCopyUbToGm;
 
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
 
-    using UBAlignHelper = Vecself::Gemv::helper::UBAlignHelper<ElementA>;
+    using UBAlignHelper = FTSelf::Gemv::helper::UBAlignHelper<ElementA>;
     using TensorCoord = layout::VectorLayout::TensorCoord;
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
     static constexpr uint32_t Abuf_SIZE_ = 64 * 1024;
@@ -492,6 +492,6 @@ protected:
     VecCopyUbToGmforY vecCopyUbToGmforY;
 };
 
-} // namespace Vecself::Gemv::Block
+} // namespace FTSelf::Gemv::Block
 
 #endif // CATLASS_GEMV_BLOCK_BLOCK_GEMV_AIV_HPP

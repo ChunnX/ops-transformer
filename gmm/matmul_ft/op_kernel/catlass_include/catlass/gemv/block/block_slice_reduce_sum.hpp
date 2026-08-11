@@ -11,17 +11,17 @@
 #ifndef CATLASS_GEMV_BLOCK_BLOCK_SLICE_REDUCE_SUM_AIV_HPP
 #define CATLASS_GEMV_BLOCK_BLOCK_SLICE_REDUCE_SUM_AIV_HPP
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/resource_aiv.hpp"
-#include "../../coord.hpp"
-#include "../../gemv_coord.hpp"
-#include "../helper.hpp"
-#include "../../gemm/helper.hpp"
+#include "catlass/coord.hpp"
+#include "catlass/gemv_coord.hpp"
+#include "catlass/gemv/helper.hpp"
+#include "catlass/gemm/helper.hpp"
 #include "catlass/layout/layout.hpp"
 #include "catlass/detail/alignment.hpp"
-#include "../../gemm/dispatch_policy.hpp"
+#include "catlass/gemm/dispatch_policy.hpp"
 
-namespace Vecself::Gemv::Block {
+namespace FTSelf::Gemv::Block {
 
 using namespace Catlass;
 
@@ -36,7 +36,7 @@ template <
     class TileSliceSum_
 >
 struct BlockSliceSum <
-    Gemm::GemvAtlasA2,
+    Catlass::Gemm::GemvAtlasA2,
     UBTileShape_,
     AType_,
     YType_,
@@ -46,7 +46,7 @@ struct BlockSliceSum <
 > {
 public:
     // Type Aliases
-    using DispatchPolicy = Gemm::GemvAtlasA2;
+    using DispatchPolicy = Catlass::Gemm::GemvAtlasA2;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using UBTileShape = UBTileShape_;
     using ElementA = typename AType_::Element;
@@ -58,9 +58,9 @@ public:
     using VecCopyUbToGm = typename TileCopy_::VecCopyUbToGm;
     using MatrixCopyGmToUb = typename TileCopy_::MatrixCopyGmToUb;
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
 
-    using UBAlignHelper = Vecself::Gemv::helper::UBAlignHelper<ElementA>;
+    using UBAlignHelper = FTSelf::Gemv::helper::UBAlignHelper<ElementA>;
     using TensorCoord = layout::VectorLayout::TensorCoord;
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
     static constexpr uint32_t Abuf_SIZE_ = 160 * 1024;
@@ -285,6 +285,6 @@ protected:
 
 
 
-} // namespace Vecself::Gemv::Block
+} // namespace FTSelf::Gemv::Block
 
 #endif // CATLASS_GEMV_BLOCK_BLOCK_GEMV_AIV_HPP

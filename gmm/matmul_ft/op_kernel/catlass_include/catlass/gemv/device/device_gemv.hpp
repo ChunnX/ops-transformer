@@ -1,113 +1,16 @@
-/**
- * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+#ifndef FTSELF_CATLASS_GEMV_DEVICE_DEVICE_GEMV_HPP
+#define FTSELF_CATLASS_GEMV_DEVICE_DEVICE_GEMV_HPP
 
-#ifndef CATLASS_GEMM_DEVICE_DEVICE_GEMM_HPP
-#define CATLASS_GEMM_DEVICE_DEVICE_GEMM_HPP
+#include_next "catlass/gemv/device/device_gemv.hpp"
 
-#include <acl/acl.h>
-#include "../../catlass.hpp"
-#include "../../status.hpp"
-#include "catlass/detail/kernel_adapter.hpp"
 
-namespace Catlass::Gemm::Device {
-
-template <class GemmKernel>
-class DeviceGemm {
-public:
-    using Kernel = GemmKernel;
-    /// Argument structure: User API
-    using Arguments = typename GemmKernel::Arguments;
-    /// Argument structure: Kernel API
-    using Params = typename GemmKernel::Params;
-private:
-    /// kernel API parameters object
-    Params params_;
-public:
-    DeviceGemm() {}
-    ~DeviceGemm() {}
-
-    /// Access the Params structure
-    Params const &params() const
-    {
-        return params_;
-    }
-
-    /// Determines whether the GEMM can execute the given problem.
-    static Status CanImplement(Arguments const &args)
-    {
-        if (GemmKernel::CanImplement(args)) {
-            return Status::kSuccess;
-        } else {
-            return Status::kInvalid;
-        }
-    }
-
-    /// Gets the workspace size
-    static size_t GetWorkspaceSize(Arguments const &args)
-    {
-        size_t workspace_bytes = 0;
-        workspace_bytes += GemmKernel::GetWorkspaceSize(args);
-        return workspace_bytes;
-    }
-
-    /// Initializes GEMM state from arguments
-    Status Initialize(Arguments const &args, uint8_t *workspace = nullptr, aclrtStream stream = nullptr)
-    {
-        // Initialize the Params structure
-        params_ = GemmKernel::ToUnderlyingArguments(args, workspace);
-        return Status::kSuccess;
-    }
-
-    /// Primary run() entry point API that is static allowing users to create and manage their own params.
-    /// Supplied params struct must be construct by calling matmul Kernel::to_underlying arguments
-    inline Status Run(aclrtStream stream, uint32_t blockDim, uint64_t fftsAddr)
-    {
-#if (defined (CATLASS_ARCH) && CATLASS_ARCH == 2201)
-        if (fftsAddr == 0) {
-            Catlass::KernelAdapter<GemmKernel><<<blockDim, nullptr, stream>>>(params_);
-        } else {
-            Catlass::KernelAdapter<GemmKernel><<<blockDim, nullptr, stream>>>(params_, fftsAddr);
-        }
-#elif (defined (CATLASS_ARCH) && CATLASS_ARCH == 3510)
-        Catlass::KernelAdapter<GemmKernel><<<blockDim, nullptr, stream>>>(params_);
-#endif
-        return Status::kSuccess;
-    }
-
-    /// Runs the kernel using initialized state
-    inline Status operator()(aclrtStream stream, uint32_t blockDim)
-    {
-        return Run(stream, blockDim, 0);
-    }
-
-    inline Status operator()(aclrtStream stream, uint32_t blockDim, uint64_t fftsAddr)
-    {
-        return Run(stream, blockDim, fftsAddr);
-    }
-};
-///////////////////////////////////////////////////////////////////////////////////
-
-} // namespace Catlass::Gemm::Device
-#endif
-
-// self implemented
-#ifndef CATLASS_GEMV_DEVICE_DEVICE_GEMV_SELF_HPP
-#define CATLASS_GEMV_DEVICE_DEVICE_GEMV_SELF_HPP
-
-#include "kernel_adapter.hpp"
+#include "catlass/gemv/device/kernel_adapter.hpp"
 
 #if defined(ENABLE_ASCENDC_DUMP)
-#include "../../debug.hpp"
+#include "catlass/debug.hpp"
 #endif
 
-namespace Vecself::Gemv::Device {
+namespace FTSelf::Gemv::Device {
 
 template <class GemvKernel>
 class DeviceGemv {
@@ -161,18 +64,18 @@ public:
         uint8_t *ptrDump{nullptr};
         aclCheck(aclrtMalloc(reinterpret_cast<void **>(&ptrDump), ALL_DUMPSIZE, ACL_MEM_MALLOC_HUGE_FIRST));
         if (fftsAddr == 0) {
-            Vecself::KernelAdapter<GemvKernel><<<blockDim, nullptr, stream>>>(params_, ptrDump);
+            FTSelf::KernelAdapter<GemvKernel><<<blockDim, nullptr, stream>>>(params_, ptrDump);
         } else {
-            Vecself::KernelAdapter<GemvKernel><<<blockDim, nullptr, stream>>>(params_, fftsAddr, ptrDump);
+            FTSelf::KernelAdapter<GemvKernel><<<blockDim, nullptr, stream>>>(params_, fftsAddr, ptrDump);
         }
         aclCheck(aclrtSynchronizeStream(stream));
         Adx::AdumpPrintWorkSpace(ptrDump, ALL_DUMPSIZE, stream, "device_gemv");
         aclCheck(aclrtFree(ptrDump));
 #else
         if (fftsAddr == 0) {
-            Vecself::KernelAdapter<GemvKernel><<<blockDim, nullptr, stream>>>(params_);
+            FTSelf::KernelAdapter<GemvKernel><<<blockDim, nullptr, stream>>>(params_);
         } else {
-            Vecself::KernelAdapter<GemvKernel><<<blockDim, nullptr, stream>>>(params_, fftsAddr);
+            FTSelf::KernelAdapter<GemvKernel><<<blockDim, nullptr, stream>>>(params_, fftsAddr);
         }
 #endif
         return Catlass::Status::kSuccess;
@@ -189,6 +92,6 @@ public:
     }
 };
 
-} // namespace Vecself::Gemv::Device
+} // namespace FTSelf::Gemv::Device
 
-#endif
+#endif // FTSELF_CATLASS_GEMV_DEVICE_DEVICE_GEMV_HPP

@@ -12,24 +12,24 @@
 #ifndef CATLASS_GEMV_BLOCK_LARGE_LOCAL_COPARE_AIV_HPP
 #define CATLASS_GEMV_BLOCK_LARGE_LOCAL_COPARE_AIV_HPP
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/resource_aiv.hpp"
-#include "../../coord.hpp"
-#include "../../gemv_coord.hpp"
-#include "../helper.hpp"
-#include "../../gemm/helper.hpp"
+#include "catlass/coord.hpp"
+#include "catlass/gemv_coord.hpp"
+#include "catlass/gemv/helper.hpp"
+#include "catlass/gemm/helper.hpp"
 #include "catlass/layout/layout.hpp"
 #include "catlass/detail/alignment.hpp"
-#include "../../gemm/dispatch_policy.hpp"
-#include "../tile/tile_fault_compare.hpp"
-#include "block_gemv.hpp"
+#include "catlass/gemm/dispatch_policy.hpp"
+#include "catlass/gemv/tile/tile_fault_compare.hpp"
+#include "catlass/gemv/block/block_gemv.hpp"
 
-namespace Vecself::Gemv::Block {
+namespace FTSelf::Gemv::Block {
 
 using namespace Catlass;
 
 template <
-    Vecself::Gemv::helper::FT_COMP_TYPE COMP_TYPE_,
+    FTSelf::Gemv::helper::FT_COMP_TYPE COMP_TYPE_,
     class UBTileShape_,
     class ZType_,
     class XType_,
@@ -37,7 +37,7 @@ template <
     class TileCopy_
 >
 struct BlockCompare <
-    Gemm::GemvAtlasA2,
+    Catlass::Gemm::GemvAtlasA2,
     COMP_TYPE_,
     UBTileShape_,
     ZType_,
@@ -47,8 +47,8 @@ struct BlockCompare <
 > {
 public:
     // Type Aliases
-    using DispatchPolicy = Gemm::GemvAtlasA2;
-    using FT_COMP_TYPE = Vecself::Gemv::helper::FT_COMP_TYPE;
+    using DispatchPolicy = Catlass::Gemm::GemvAtlasA2;
+    using FT_COMP_TYPE = FTSelf::Gemv::helper::FT_COMP_TYPE;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using UBTileShape = UBTileShape_;
 
@@ -82,7 +82,7 @@ public:
     /*
     <
     /// Tag indicating architecture
-    Vecself::Gemv::helper::FT_COMP_TYPE COMP_TYPE_,
+    FTSelf::Gemv::helper::FT_COMP_TYPE COMP_TYPE_,
     class ArchTag,
     class ZType,
     class XType,
@@ -90,10 +90,10 @@ public:
     >
     */
 
-    using TileCompare = Vecself::Gemv::Tile::TileFaultVcompare<COMP_TYPE_, ArchTag,
+    using TileCompare = FTSelf::Gemv::Tile::TileFaultVcompare<COMP_TYPE_, ArchTag,
                                         ZType_, XType_, YType_>;
 
-    using UBAlignHelper = Vecself::Gemv::helper::UBAlignHelper<ElementX>;
+    using UBAlignHelper = FTSelf::Gemv::helper::UBAlignHelper<ElementX>;
     using TensorCoord = layout::VectorLayout::TensorCoord;
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
     static constexpr uint32_t Xbuf_SIZE_ = 64 * 1024;
@@ -390,7 +390,7 @@ protected:
 };
 
 
-// Vecself::Gemv::helper::FT_COMP_TYPE COMP_TYPE_,
+// FTSelf::Gemv::helper::FT_COMP_TYPE COMP_TYPE_,
 template <
     class UBTileShape_,
     class ZType_,
@@ -399,8 +399,8 @@ template <
     class TileCopy_
 >
 struct BlockCompare <
-    Gemm::GemvAtlasA2,
-    Vecself::Gemv::helper::FT_COMP_TYPE::RSUB,
+    Catlass::Gemm::GemvAtlasA2,
+    FTSelf::Gemv::helper::FT_COMP_TYPE::RSUB,
     UBTileShape_,
     ZType_,
     XType_,
@@ -409,8 +409,8 @@ struct BlockCompare <
 > {
 public:
     // Type Aliases
-    using DispatchPolicy = Gemm::GemvAtlasA2;
-    using FT_COMP_TYPE = Vecself::Gemv::helper::FT_COMP_TYPE;
+    using DispatchPolicy = Catlass::Gemm::GemvAtlasA2;
+    using FT_COMP_TYPE = FTSelf::Gemv::helper::FT_COMP_TYPE;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using UBTileShape = UBTileShape_;
 
@@ -438,7 +438,7 @@ public:
     /*
     <
     /// Tag indicating architecture
-    Vecself::Gemv::helper::FT_COMP_TYPE COMP_TYPE_,
+    FTSelf::Gemv::helper::FT_COMP_TYPE COMP_TYPE_,
     class ArchTag,
     class ZType,
     class XType,
@@ -446,11 +446,11 @@ public:
     >
     */
 
-    using TileCompare = Vecself::Gemv::Tile::TileFaultVcompare<FT_COMP_TYPE::RSUB, ArchTag,
+    using TileCompare = FTSelf::Gemv::Tile::TileFaultVcompare<FT_COMP_TYPE::RSUB, ArchTag,
                                         ZType_, XType_, YType_>;
 
 
-    using UBAlignHelper = Vecself::Gemv::helper::UBAlignHelper<ElementX>;
+    using UBAlignHelper = FTSelf::Gemv::helper::UBAlignHelper<ElementX>;
     using TensorCoord = layout::VectorLayout::TensorCoord;
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
     static constexpr uint32_t Xbuf_SIZE_ = 60 * 1024;
@@ -790,6 +790,6 @@ protected:
 };
 
 
-} // namespace Vecself::Gemv::Block
+} // namespace FTSelf::Gemv::Block
 
 #endif // CATLASS_GEMV_BLOCK_LARGE_LOCAL_COPARE_AIV_HPP

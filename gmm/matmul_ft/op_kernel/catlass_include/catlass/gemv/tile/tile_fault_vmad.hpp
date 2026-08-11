@@ -1,13 +1,13 @@
 #ifndef CATLASS_GEMV_TILE_TILE_FAULT_VMAD_HPP_SELF
 #define CATLASS_GEMV_TILE_TILE_FAULT_VMAD_HPP_SELF
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/arch.hpp"
-#include "../../gemm/helper.hpp"
+#include "catlass/gemm/helper.hpp"
 #include "catlass/layout/layout.hpp"
-#include "../../gemm/gemm_type.hpp"
+#include "catlass/gemm/gemm_type.hpp"
 
-namespace Vecself::Gemv::Tile {
+namespace FTSelf::Gemv::Tile {
 
 using namespace Catlass;
 
@@ -30,16 +30,16 @@ template <
     class ElementY
 >
 struct TileFaultVmad<Arch::AtlasA2,
-                Gemm::GemmType<ElementA, layout::RowMajor>,
-                Gemm::GemmType<ElementX, layout::VectorLayout>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementA, layout::RowMajor>,
+                Catlass::Gemm::GemmType<ElementX, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
     using ElementAccumulator = ElementY;
 
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
-    
+
     // 这里是在矩阵上每个datablock 包含的element的数量
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementA);
 
@@ -145,7 +145,7 @@ struct TileFaultVmad<Arch::AtlasA2,
                 AscendC::MASK_PLACEHOLDER,
                 1,
                 params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
         }
         AscendC::SetMaskNorm();
@@ -195,7 +195,7 @@ struct TileFaultVmad<Arch::AtlasA2,
             1,  // 目标tensor相邻repeat迭代操作间步长，单位为目标tensor元素类型字节数（即目标tensor元素的数量）
             1, // 源操作数单次迭代内相邻datablock的步长，单位为datablock
             8); // 源操作数相邻repeat迭代间的地址步长，即源操作数每次repeat迭代跳过的datablock数目
-        
+
         AscendC::PipeBarrier<PIPE_V>();
         // 完成数据类型的转换
         AscendC::UnaryRepeatParams castparams;
@@ -206,9 +206,9 @@ struct TileFaultVmad<Arch::AtlasA2,
         castparams.srcRepStride = 8;
         /*
         template <typename T1, typename T2, bool isSetMask = true>
-        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal, 
-            const LocalTensor<T2>& srcLocal, const RoundMode& round_mode, 
-            const uint64_t mask, const uint8_t repeatTimes, 
+        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal,
+            const LocalTensor<T2>& srcLocal, const RoundMode& round_mode,
+            const uint64_t mask, const uint8_t repeatTimes,
             const UnaryRepeatParams& repeatParams)
         T1: 目的操作数类型
         T2：源操作数类型
@@ -257,9 +257,9 @@ struct TileFaultVmad<Arch::AtlasA2,
 
 template <>
 struct TileFaultVmad<Arch::AtlasA2,
-                Gemm::GemmType<float, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = float;
@@ -391,9 +391,9 @@ struct TileFaultVmad<Arch::AtlasA2,
 
 template <>
 struct TileFaultVmad<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -529,9 +529,9 @@ template <
     class ElementY
 >
 struct TileFaultVmad<Arch::AtlasA2,
-                Gemm::GemmType<ElementA, layout::ColumnMajor>,
-                Gemm::GemmType<ElementX, layout::VectorLayout>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementA, layout::ColumnMajor>,
+                Catlass::Gemm::GemmType<ElementX, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
     using ElementAccumulator = ElementY;
@@ -618,9 +618,9 @@ struct TileFaultVmad<Arch::AtlasA2,
 
 template <>
 struct TileFaultVmad<Arch::AtlasA2,
-                Gemm::GemmType<float, layout::ColumnMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::ColumnMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = float;
@@ -676,9 +676,9 @@ struct TileFaultVmad<Arch::AtlasA2,
 
 template <>
 struct TileFaultVmad<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::ColumnMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::ColumnMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -734,9 +734,9 @@ struct TileFaultVmad<Arch::AtlasA2,
 
 template <>
 struct TileFaultVmad<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -747,7 +747,7 @@ struct TileFaultVmad<Arch::AtlasA2,
 
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
-    
+
     // 这里是在矩阵上每个datablock 包含的element的数量
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementA);
 
@@ -765,7 +765,7 @@ struct TileFaultVmad<Arch::AtlasA2,
         LayoutDst const &layoutDst, LayoutSrc const &layoutSrc
     )
     {
-        
+
         uint32_t m_actual = layoutSrc.shape(0);
         uint32_t n_actual = layoutSrc.shape(1);
 
@@ -854,7 +854,7 @@ struct TileFaultVmad<Arch::AtlasA2,
                 AscendC::MASK_PLACEHOLDER,
                 1,
                 params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
         }
         AscendC::SetMaskNorm();
@@ -904,7 +904,7 @@ struct TileFaultVmad<Arch::AtlasA2,
             1,  // 目标tensor相邻repeat迭代操作间步长，单位为目标tensor元素类型字节数（即目标tensor元素的数量）
             1, // 源操作数单次迭代内相邻datablock的步长，单位为datablock
             8); // 源操作数相邻repeat迭代间的地址步长，即源操作数每次repeat迭代跳过的datablock数目
-        
+
         AscendC::PipeBarrier<PIPE_V>();
         // 完成数据类型的转换
         // AscendC::UnaryRepeatParams castparams;
@@ -915,9 +915,9 @@ struct TileFaultVmad<Arch::AtlasA2,
         // castparams.srcRepStride = 8;
         /*
         template <typename T1, typename T2, bool isSetMask = true>
-        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal, 
-            const LocalTensor<T2>& srcLocal, const RoundMode& round_mode, 
-            const uint64_t mask, const uint8_t repeatTimes, 
+        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal,
+            const LocalTensor<T2>& srcLocal, const RoundMode& round_mode,
+            const uint64_t mask, const uint8_t repeatTimes,
             const UnaryRepeatParams& repeatParams)
         T1: 目的操作数类型
         T2：源操作数类型

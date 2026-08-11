@@ -1,21 +1,21 @@
 #ifndef CATLASS_GEMV_TILE_TILE_REDUCE_MEAN_VAR_STD_FUSED_HPP_BAK
 #define CATLASS_GEMV_TILE_TILE_REDUCE_MEAN_VAR_STD_FUSED_HPP_BAK
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/arch.hpp"
-#include "../../gemm/helper.hpp"
-#include "../helper.hpp"
+#include "catlass/gemm/helper.hpp"
+#include "catlass/gemv/helper.hpp"
 #include "catlass/layout/layout.hpp"
-#include "../../gemm/gemm_type.hpp"
+#include "catlass/gemm/gemm_type.hpp"
 
-namespace Vecself::Gemv::Tile {
+namespace FTSelf::Gemv::Tile {
 
 using namespace Catlass;
 template <
     /// Tag indicating architecture
     class ArchTag,
-    Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM ALGO_TYPE_,
-    Vecself::Gemv::helper::FT_REDUCE_TYPE REDUCE_TYPE_,
+    FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM ALGO_TYPE_,
+    FTSelf::Gemv::helper::FT_REDUCE_TYPE REDUCE_TYPE_,
     class AType,
     class XType,
     class YType,
@@ -32,19 +32,19 @@ template <
     class ElementY
 >
 struct TileReduce<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::MEAN_SQUARE,
-                Gemm::GemmType<ElementA, layout::RowMajor>,
-                Gemm::GemmType<ElementX, layout::VectorLayout>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::MEAN_SQUARE,
+                Catlass::Gemm::GemmType<ElementA, layout::RowMajor>,
+                Catlass::Gemm::GemmType<ElementX, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
@@ -56,7 +56,7 @@ struct TileReduce<Arch::AtlasA2,
     CATLASS_DEVICE
     TileReduce() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensorMeanAbs,
@@ -75,7 +75,7 @@ struct TileReduce<Arch::AtlasA2,
 
         uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
         uint32_t dst_repeat_size = DST_ELE_NUM_PER_C0 * 8;
-        
+
         uint32_t mask = repeat_size;
         uint32_t dst_mask = dst_repeat_size;
 
@@ -127,11 +127,11 @@ struct TileReduce<Arch::AtlasA2,
             uint32_t offset = i * dst_repeat_size;
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& srcLocal, 
-                const T& scalarValue, 
-                uint64_t mask, 
-                const uint8_t repeatTimes, 
+            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& srcLocal,
+                const T& scalarValue,
+                uint64_t mask,
+                const uint8_t repeatTimes,
                 const UnaryRepeatParams& repeatParams)
             */
             AscendC::Muls<ElementA, true>(
@@ -141,15 +141,15 @@ struct TileReduce<Arch::AtlasA2,
                 abs_mask,
                 m_actual,
                 abs_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
             /*
             template <typename T, bool isSetMask = true>
             __aicore__ inline void Abs(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& srcLocal, 
-                uint64_t mask, 
-                const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& srcLocal,
+                uint64_t mask,
+                const uint8_t repeatTimes,
                 const UnaryRepeatParams& repeatParams)
             */
             AscendC::Abs<ElementA, true>(
@@ -160,14 +160,14 @@ struct TileReduce<Arch::AtlasA2,
                 abs_params);
 
             AscendC::PipeBarrier<PIPE_V>();
-            
+
             /*
             template <typename T, typename U, bool isSetMask = true>
             __aicore__ inline void MulAddDst(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<U>& src0Local, 
-                const LocalTensor<U>& src1Local, 
-                uint64_t mask, const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<U>& src0Local,
+                const LocalTensor<U>& src1Local,
+                uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
             AscendC::MulAddDst<ElementY, ElementA, true>(
@@ -175,7 +175,7 @@ struct TileReduce<Arch::AtlasA2,
                 srcMeanTensor[offset],
                 srcMeanTensor[offset],
                 square_mask, m_actual,
-                square_params); 
+                square_params);
 
             if(i > 0){
                 AscendC::Add<ElementA, true>(
@@ -185,9 +185,9 @@ struct TileReduce<Arch::AtlasA2,
                     add_mask,
                     m_actual,
                     add_params);
-            } 
+            }
 
-            AscendC::PipeBarrier<PIPE_V>();      
+            AscendC::PipeBarrier<PIPE_V>();
         }
 
         if (dst_remain > 0)
@@ -198,7 +198,7 @@ struct TileReduce<Arch::AtlasA2,
             {
                 dst_remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = dst_remain;
 
             AscendC::Muls<ElementA, true>(
@@ -208,7 +208,7 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 abs_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
 
             AscendC::Abs<ElementA, true>(
@@ -217,16 +217,16 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 abs_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
-            
+
             AscendC::MulAddDst<ElementY, ElementA, true>(
                 red_workspace,
                 srcMeanTensor[offset],
                 srcMeanTensor[offset],
                 remain_mask,
                 m_actual,
-                square_params);    
+                square_params);
 
             AscendC::Add<ElementA, true>(
                 srcMeanTensor,
@@ -234,7 +234,7 @@ struct TileReduce<Arch::AtlasA2,
                 srcMeanTensor,
                 remain_mask,
                 m_actual,
-                add_params);   
+                add_params);
         }
 
         uint64_t reduce_mask = (dst_repeat_num == 0) ? dst_remain : dst_repeat_size;
@@ -242,12 +242,12 @@ struct TileReduce<Arch::AtlasA2,
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void WholeReduceSum(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& srcLocal, 
-            const int32_t mask, 
-            const int32_t repeatTimes, 
-            const int32_t dstRepStride, 
-            const int32_t srcBlkStride, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& srcLocal,
+            const int32_t mask,
+            const int32_t repeatTimes,
+            const int32_t dstRepStride,
+            const int32_t srcBlkStride,
             const int32_t srcRepStride)
         */
         AscendC::WholeReduceSum<ElementA, true>(
@@ -268,7 +268,7 @@ struct TileReduce<Arch::AtlasA2,
             1,
             1,
             8);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         uint32_t final_add_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
@@ -296,7 +296,7 @@ struct TileReduce<Arch::AtlasA2,
             final_add_mask,
             CeilDiv(m_round, dst_repeat_size),
             add_params);
-        
+
         AscendC::Add<ElementY, true>(
             dstTensorMeanSquare,
             red_workspace,
@@ -304,7 +304,7 @@ struct TileReduce<Arch::AtlasA2,
             final_add_mask,
             CeilDiv(m_round, dst_repeat_size),
             square_params);
-    
+
         AscendC::PipeBarrier<PIPE_V>();
     }
 };
@@ -313,22 +313,22 @@ struct TileReduce<Arch::AtlasA2,
 template <
 >
 struct TileReduce<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::MEAN_SQUARE,
-                Gemm::GemmType<float, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::MEAN_SQUARE,
+                Catlass::Gemm::GemmType<float, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = float;
     using ElementX = float;
     using ElementY = float;
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
@@ -340,7 +340,7 @@ struct TileReduce<Arch::AtlasA2,
     CATLASS_DEVICE
     TileReduce() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensorMeanAbs,
@@ -359,7 +359,7 @@ struct TileReduce<Arch::AtlasA2,
 
         uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
         uint32_t dst_repeat_size = DST_ELE_NUM_PER_C0 * 8;
-        
+
         uint32_t mask = repeat_size;
         uint32_t dst_mask = dst_repeat_size;
 
@@ -411,11 +411,11 @@ struct TileReduce<Arch::AtlasA2,
             uint32_t offset = i * dst_repeat_size;
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& srcLocal, 
-                const T& scalarValue, 
-                uint64_t mask, 
-                const uint8_t repeatTimes, 
+            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& srcLocal,
+                const T& scalarValue,
+                uint64_t mask,
+                const uint8_t repeatTimes,
                 const UnaryRepeatParams& repeatParams)
             */
             AscendC::Muls<ElementA, true>(
@@ -425,15 +425,15 @@ struct TileReduce<Arch::AtlasA2,
                 abs_mask,
                 m_actual,
                 abs_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
             /*
             template <typename T, bool isSetMask = true>
             __aicore__ inline void Abs(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& srcLocal, 
-                uint64_t mask, 
-                const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& srcLocal,
+                uint64_t mask,
+                const uint8_t repeatTimes,
                 const UnaryRepeatParams& repeatParams)
             */
             AscendC::Abs<ElementA, true>(
@@ -442,16 +442,16 @@ struct TileReduce<Arch::AtlasA2,
                 abs_mask,
                 m_actual,
                 abs_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
-            
+
             /*
             template <typename T, typename U, bool isSetMask = true>
             __aicore__ inline void MulAddDst(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<U>& src0Local, 
-                const LocalTensor<U>& src1Local, 
-                uint64_t mask, const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<U>& src0Local,
+                const LocalTensor<U>& src1Local,
+                uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
             AscendC::MulAddDst<ElementY, ElementA, true>(
@@ -471,7 +471,7 @@ struct TileReduce<Arch::AtlasA2,
                     add_params);
             }
 
-            AscendC::PipeBarrier<PIPE_V>();       
+            AscendC::PipeBarrier<PIPE_V>();
         }
 
         if (dst_remain > 0)
@@ -482,7 +482,7 @@ struct TileReduce<Arch::AtlasA2,
             {
                 dst_remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = dst_remain;
 
             AscendC::Muls<ElementA, true>(
@@ -492,7 +492,7 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 abs_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
 
             AscendC::Abs<ElementA, true>(
@@ -501,9 +501,9 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 abs_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
-            
+
             AscendC::MulAddDst<ElementY, ElementA, true>(
                 red_workspace,
                 srcMeanTensor[offset],
@@ -511,7 +511,7 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 square_params);
-            
+
             AscendC::Add<ElementA, true>(
                 srcMeanTensor,
                 srcMeanTensor[offset],
@@ -526,12 +526,12 @@ struct TileReduce<Arch::AtlasA2,
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void WholeReduceSum(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& srcLocal, 
-            const int32_t mask, 
-            const int32_t repeatTimes, 
-            const int32_t dstRepStride, 
-            const int32_t srcBlkStride, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& srcLocal,
+            const int32_t mask,
+            const int32_t repeatTimes,
+            const int32_t dstRepStride,
+            const int32_t srcBlkStride,
             const int32_t srcRepStride)
         */
         AscendC::WholeReduceSum<ElementA, true>(
@@ -552,7 +552,7 @@ struct TileReduce<Arch::AtlasA2,
             1,
             1,
             8);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         uint32_t final_add_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
@@ -574,7 +574,7 @@ struct TileReduce<Arch::AtlasA2,
             final_add_mask,
             CeilDiv(m_round, dst_repeat_size),
             add_params);
-        
+
         AscendC::Add<ElementY, true>(
             dstTensorMeanSquare,
             red_workspace,
@@ -582,7 +582,7 @@ struct TileReduce<Arch::AtlasA2,
             final_add_mask,
             CeilDiv(m_round, dst_repeat_size),
             square_params);
-    
+
         AscendC::PipeBarrier<PIPE_V>();
     }
 };
@@ -592,22 +592,22 @@ struct TileReduce<Arch::AtlasA2,
 template <
 >
 struct TileReduce<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::MEAN_SQUARE,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::MEAN_SQUARE,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
     using ElementX = half;
     using ElementY = half;
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
@@ -619,7 +619,7 @@ struct TileReduce<Arch::AtlasA2,
     CATLASS_DEVICE
     TileReduce() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensorMeanAbs,
@@ -638,7 +638,7 @@ struct TileReduce<Arch::AtlasA2,
 
         uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
         uint32_t dst_repeat_size = DST_ELE_NUM_PER_C0 * 8;
-        
+
         uint32_t mask = repeat_size;
         uint32_t dst_mask = dst_repeat_size;
 
@@ -690,11 +690,11 @@ struct TileReduce<Arch::AtlasA2,
             uint32_t offset = i * dst_repeat_size;
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& srcLocal, 
-                const T& scalarValue, 
-                uint64_t mask, 
-                const uint8_t repeatTimes, 
+            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& srcLocal,
+                const T& scalarValue,
+                uint64_t mask,
+                const uint8_t repeatTimes,
                 const UnaryRepeatParams& repeatParams)
             */
             AscendC::Muls<ElementA, true>(
@@ -704,15 +704,15 @@ struct TileReduce<Arch::AtlasA2,
                 abs_mask,
                 m_actual,
                 abs_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
             /*
             template <typename T, bool isSetMask = true>
             __aicore__ inline void Abs(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& srcLocal, 
-                uint64_t mask, 
-                const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& srcLocal,
+                uint64_t mask,
+                const uint8_t repeatTimes,
                 const UnaryRepeatParams& repeatParams)
             */
             AscendC::Abs<ElementA, true>(
@@ -721,16 +721,16 @@ struct TileReduce<Arch::AtlasA2,
                 abs_mask,
                 m_actual,
                 abs_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
-            
+
             /*
             template <typename T, typename U, bool isSetMask = true>
             __aicore__ inline void MulAddDst(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<U>& src0Local, 
-                const LocalTensor<U>& src1Local, 
-                uint64_t mask, const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<U>& src0Local,
+                const LocalTensor<U>& src1Local,
+                uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
             AscendC::MulAddDst<ElementY, ElementA, true>(
@@ -739,7 +739,7 @@ struct TileReduce<Arch::AtlasA2,
                 srcMeanTensor[offset],
                 square_mask, m_actual,
                 square_params);
-            
+
             if(i > 0){
                 AscendC::Add<ElementA, true>(
                     srcMeanTensor,
@@ -750,7 +750,7 @@ struct TileReduce<Arch::AtlasA2,
                     add_params);
             }
 
-            AscendC::PipeBarrier<PIPE_V>();       
+            AscendC::PipeBarrier<PIPE_V>();
         }
 
         if (dst_remain > 0)
@@ -761,7 +761,7 @@ struct TileReduce<Arch::AtlasA2,
             {
                 dst_remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = dst_remain;
 
             AscendC::Muls<ElementA, true>(
@@ -771,7 +771,7 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 abs_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
 
             AscendC::Abs<ElementA, true>(
@@ -780,9 +780,9 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 abs_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
-            
+
             AscendC::MulAddDst<ElementY, ElementA, true>(
                 red_workspace,
                 srcMeanTensor[offset],
@@ -790,7 +790,7 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 square_params);
-            
+
             AscendC::Add<ElementA, true>(
                 srcMeanTensor,
                 srcMeanTensor[offset],
@@ -798,8 +798,8 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 add_params);
-            
-            // AscendC::PipeBarrier<PIPE_V>();       
+
+            // AscendC::PipeBarrier<PIPE_V>();
         }
 
         uint64_t reduce_mask = (dst_repeat_num == 0) ? dst_remain : dst_repeat_size;
@@ -807,12 +807,12 @@ struct TileReduce<Arch::AtlasA2,
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void WholeReduceSum(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& srcLocal, 
-            const int32_t mask, 
-            const int32_t repeatTimes, 
-            const int32_t dstRepStride, 
-            const int32_t srcBlkStride, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& srcLocal,
+            const int32_t mask,
+            const int32_t repeatTimes,
+            const int32_t dstRepStride,
+            const int32_t srcBlkStride,
             const int32_t srcRepStride)
         */
         AscendC::WholeReduceSum<ElementA, true>(
@@ -833,7 +833,7 @@ struct TileReduce<Arch::AtlasA2,
             1,
             1,
             8);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         uint32_t final_add_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
@@ -855,7 +855,7 @@ struct TileReduce<Arch::AtlasA2,
             final_add_mask,
             CeilDiv(m_round, dst_repeat_size),
             add_params);
-        
+
         AscendC::Add<ElementY, true>(
             dstTensorMeanSquare,
             red_workspace,
@@ -863,7 +863,7 @@ struct TileReduce<Arch::AtlasA2,
             final_add_mask,
             CeilDiv(m_round, dst_repeat_size),
             square_params);
-    
+
         AscendC::PipeBarrier<PIPE_V>();
     }
 };
@@ -871,11 +871,11 @@ struct TileReduce<Arch::AtlasA2,
 template <
 >
 struct TileReduce<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::MEAN_SQUARE,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::MEAN_SQUARE,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -883,11 +883,11 @@ struct TileReduce<Arch::AtlasA2,
     using ElementY = float;
 
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
@@ -899,7 +899,7 @@ struct TileReduce<Arch::AtlasA2,
     CATLASS_DEVICE
     TileReduce() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensorMeanAbs,
@@ -918,7 +918,7 @@ struct TileReduce<Arch::AtlasA2,
 
         uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
         uint32_t dst_repeat_size = DST_ELE_NUM_PER_C0 * 8;
-        
+
         uint32_t mask = repeat_size;
         uint32_t dst_mask = dst_repeat_size;
 
@@ -970,11 +970,11 @@ struct TileReduce<Arch::AtlasA2,
             uint32_t offset = i * dst_repeat_size;
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& srcLocal, 
-                const T& scalarValue, 
-                uint64_t mask, 
-                const uint8_t repeatTimes, 
+            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& srcLocal,
+                const T& scalarValue,
+                uint64_t mask,
+                const uint8_t repeatTimes,
                 const UnaryRepeatParams& repeatParams)
             */
             AscendC::Muls<ElementA, true>(
@@ -984,15 +984,15 @@ struct TileReduce<Arch::AtlasA2,
                 abs_mask,
                 m_actual,
                 abs_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
             /*
             template <typename T, bool isSetMask = true>
             __aicore__ inline void Abs(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& srcLocal, 
-                uint64_t mask, 
-                const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& srcLocal,
+                uint64_t mask,
+                const uint8_t repeatTimes,
                 const UnaryRepeatParams& repeatParams)
             */
             AscendC::Abs<ElementA, true>(
@@ -1001,16 +1001,16 @@ struct TileReduce<Arch::AtlasA2,
                 abs_mask,
                 m_actual,
                 abs_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
-            
+
             /*
             template <typename T, typename U, bool isSetMask = true>
             __aicore__ inline void MulAddDst(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<U>& src0Local, 
-                const LocalTensor<U>& src1Local, 
-                uint64_t mask, const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<U>& src0Local,
+                const LocalTensor<U>& src1Local,
+                uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
             AscendC::MulAddDst<ElementY, ElementA, true>(
@@ -1029,7 +1029,7 @@ struct TileReduce<Arch::AtlasA2,
                     m_actual,
                     add_params);
             }
-            
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -1041,7 +1041,7 @@ struct TileReduce<Arch::AtlasA2,
             {
                 dst_remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = dst_remain;
 
             AscendC::Muls<ElementA, true>(
@@ -1051,7 +1051,7 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 abs_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
 
             AscendC::Abs<ElementA, true>(
@@ -1060,9 +1060,9 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 abs_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
-            
+
             AscendC::MulAddDst<ElementY, ElementA, true>(
                 red_workspace,
                 srcMeanTensor[offset],
@@ -1070,7 +1070,7 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 square_params);
-            
+
             AscendC::Add<ElementA, true>(
                 srcMeanTensor,
                 srcMeanTensor[offset],
@@ -1085,12 +1085,12 @@ struct TileReduce<Arch::AtlasA2,
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void WholeReduceSum(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& srcLocal, 
-            const int32_t mask, 
-            const int32_t repeatTimes, 
-            const int32_t dstRepStride, 
-            const int32_t srcBlkStride, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& srcLocal,
+            const int32_t mask,
+            const int32_t repeatTimes,
+            const int32_t dstRepStride,
+            const int32_t srcBlkStride,
             const int32_t srcRepStride)
         */
         AscendC::WholeReduceSum<ElementA, true>(
@@ -1111,7 +1111,7 @@ struct TileReduce<Arch::AtlasA2,
             1,
             1,
             8);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         uint32_t final_add_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
@@ -1139,7 +1139,7 @@ struct TileReduce<Arch::AtlasA2,
             final_add_mask,
             CeilDiv(m_round, dst_repeat_size),
             add_params);
-        
+
         AscendC::Add<ElementY, true>(
             dstTensorMeanSquare,
             red_workspace,
@@ -1147,7 +1147,7 @@ struct TileReduce<Arch::AtlasA2,
             final_add_mask,
             CeilDiv(m_round, dst_repeat_size),
             square_params);
-    
+
         AscendC::PipeBarrier<PIPE_V>();
     }
 };
@@ -1158,19 +1158,19 @@ template <
     class ElementY
 >
 struct TileReduce<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::VAR,
-                Gemm::GemmType<ElementA, layout::RowMajor>,
-                Gemm::GemmType<ElementX, layout::VectorLayout>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::VAR,
+                Catlass::Gemm::GemmType<ElementA, layout::RowMajor>,
+                Catlass::Gemm::GemmType<ElementX, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
@@ -1182,7 +1182,7 @@ struct TileReduce<Arch::AtlasA2,
     CATLASS_DEVICE
     TileReduce() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensorVar,
@@ -1202,7 +1202,7 @@ struct TileReduce<Arch::AtlasA2,
 
         uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
         uint32_t dst_repeat_size = DST_ELE_NUM_PER_C0 * 8;
-        
+
         uint32_t mask = repeat_size;
         uint32_t dst_mask = dst_repeat_size;
 
@@ -1261,11 +1261,11 @@ struct TileReduce<Arch::AtlasA2,
             uint32_t offset = i * dst_repeat_size;
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& srcLocal, 
-                const T& scalarValue, 
-                uint64_t mask, 
-                const uint8_t repeatTimes, 
+            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& srcLocal,
+                const T& scalarValue,
+                uint64_t mask,
+                const uint8_t repeatTimes,
                 const UnaryRepeatParams& repeatParams)
             */
             AscendC::Muls<ElementA, true>(
@@ -1279,9 +1279,9 @@ struct TileReduce<Arch::AtlasA2,
             AscendC::PipeBarrier<PIPE_V>();
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& src0Local, 
-                const LocalTensor<T>& src1Local, 
+            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& src0Local,
+                const LocalTensor<T>& src1Local,
                 uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
@@ -1292,7 +1292,7 @@ struct TileReduce<Arch::AtlasA2,
                 sub_mask,
                 m_actual,
                 sub_params);
-            
+
             AscendC::Sub<ElementA, true>(
                 srcMinTensor[offset],
                 srcMeanTensor[offset],
@@ -1300,8 +1300,8 @@ struct TileReduce<Arch::AtlasA2,
                 sub_mask,
                 m_actual,
                 sub_params);
-            
-            AscendC::PipeBarrier<PIPE_V>();     
+
+            AscendC::PipeBarrier<PIPE_V>();
 
             // AscendC::Abs<ElementA,true>(
             //     srcMaxTensor[offset],
@@ -1317,14 +1317,14 @@ struct TileReduce<Arch::AtlasA2,
             //     m_actual,
             //     abs_params);
 
-            // AscendC::PipeBarrier<PIPE_V>(); 
+            // AscendC::PipeBarrier<PIPE_V>();
             /*
             template <typename T, typename U, bool isSetMask = true>
             __aicore__ inline void MulAddDst(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<U>& src0Local, 
-                const LocalTensor<U>& src1Local, 
-                uint64_t mask, const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<U>& src0Local,
+                const LocalTensor<U>& src1Local,
+                uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
 
@@ -1334,7 +1334,7 @@ struct TileReduce<Arch::AtlasA2,
                 srcMinTensor[offset],
                 var_mask, m_actual,
                 var_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -1346,7 +1346,7 @@ struct TileReduce<Arch::AtlasA2,
             {
                 dst_remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = dst_remain;
 
             AscendC::Muls<ElementA, true>(
@@ -1366,7 +1366,7 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 sub_params);
-            
+
             AscendC::Sub<ElementA, true>(
                 srcMinTensor[offset],
                 srcMeanTensor[offset],
@@ -1374,8 +1374,8 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 sub_params);
-            
-            AscendC::PipeBarrier<PIPE_V>();  
+
+            AscendC::PipeBarrier<PIPE_V>();
 
             // AscendC::Abs<ElementA,true>(
             //     srcMaxTensor[offset],
@@ -1391,16 +1391,16 @@ struct TileReduce<Arch::AtlasA2,
             //     m_actual,
             //     abs_params);
 
-            // AscendC::PipeBarrier<PIPE_V>(); 
-            
+            // AscendC::PipeBarrier<PIPE_V>();
+
             AscendC::MulAddDst<ElementY, ElementA, true>(
                 red_workspace,
                 srcMaxTensor[offset],
                 srcMinTensor[offset],
                 remain_mask, m_actual,
                 var_params);
-            
-            // AscendC::PipeBarrier<PIPE_V>(); 
+
+            // AscendC::PipeBarrier<PIPE_V>();
         }
 
         uint64_t reduce_mask = (dst_repeat_num == 0) ? dst_remain : dst_repeat_size;
@@ -1408,12 +1408,12 @@ struct TileReduce<Arch::AtlasA2,
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void WholeReduceSum(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& srcLocal, 
-            const int32_t mask, 
-            const int32_t repeatTimes, 
-            const int32_t dstRepStride, 
-            const int32_t srcBlkStride, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& srcLocal,
+            const int32_t mask,
+            const int32_t repeatTimes,
+            const int32_t dstRepStride,
+            const int32_t srcBlkStride,
             const int32_t srcRepStride)
         */
 
@@ -1425,7 +1425,7 @@ struct TileReduce<Arch::AtlasA2,
             1,
             1,
             8);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         uint32_t final_add_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
@@ -1435,7 +1435,7 @@ struct TileReduce<Arch::AtlasA2,
         var_params.dstRepStride = 8;
         var_params.src0RepStride = 8;
         var_params.src1RepStride = 8;
-        
+
         // AscendC::Add<ElementY, true>(
         //     dstTensorVar,
         //     red_workspace,
@@ -1457,11 +1457,11 @@ struct TileReduce<Arch::AtlasA2,
 
 template <>
 struct TileReduce<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::VAR,
-                Gemm::GemmType<float, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::VAR,
+                Catlass::Gemm::GemmType<float, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = float;
@@ -1469,11 +1469,11 @@ struct TileReduce<Arch::AtlasA2,
     using ElementY = float;
 
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
@@ -1485,7 +1485,7 @@ struct TileReduce<Arch::AtlasA2,
     CATLASS_DEVICE
     TileReduce() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensorVar,
@@ -1505,7 +1505,7 @@ struct TileReduce<Arch::AtlasA2,
 
         uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
         uint32_t dst_repeat_size = DST_ELE_NUM_PER_C0 * 8;
-        
+
         uint32_t mask = repeat_size;
         uint32_t dst_mask = dst_repeat_size;
 
@@ -1564,11 +1564,11 @@ struct TileReduce<Arch::AtlasA2,
             uint32_t offset = i * dst_repeat_size;
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& srcLocal, 
-                const T& scalarValue, 
-                uint64_t mask, 
-                const uint8_t repeatTimes, 
+            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& srcLocal,
+                const T& scalarValue,
+                uint64_t mask,
+                const uint8_t repeatTimes,
                 const UnaryRepeatParams& repeatParams)
             */
             AscendC::Muls<ElementA, true>(
@@ -1582,9 +1582,9 @@ struct TileReduce<Arch::AtlasA2,
             AscendC::PipeBarrier<PIPE_V>();
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& src0Local, 
-                const LocalTensor<T>& src1Local, 
+            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& src0Local,
+                const LocalTensor<T>& src1Local,
                 uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
@@ -1595,7 +1595,7 @@ struct TileReduce<Arch::AtlasA2,
                 sub_mask,
                 m_actual,
                 sub_params);
-            
+
             AscendC::Sub<ElementA, true>(
                 srcMinTensor[offset],
                 srcMeanTensor[offset],
@@ -1603,14 +1603,14 @@ struct TileReduce<Arch::AtlasA2,
                 sub_mask,
                 m_actual,
                 sub_params);
-            
-            AscendC::PipeBarrier<PIPE_V>(); 
-            
+
+            AscendC::PipeBarrier<PIPE_V>();
+
             // template <typename T, bool isSetMask = true>
-            // __aicore__ inline void Abs(const LocalTensor<T>& dstLocal, 
-            //     const LocalTensor<T>& srcLocal, 
-            //     uint64_t mask, 
-            //     const uint8_t repeatTimes, 
+            // __aicore__ inline void Abs(const LocalTensor<T>& dstLocal,
+            //     const LocalTensor<T>& srcLocal,
+            //     uint64_t mask,
+            //     const uint8_t repeatTimes,
             //     const UnaryRepeatParams& repeatParams)
 
             // AscendC::Abs<ElementA,true>(
@@ -1627,15 +1627,15 @@ struct TileReduce<Arch::AtlasA2,
             //     m_actual,
             //     abs_params);
 
-            // AscendC::PipeBarrier<PIPE_V>(); 
+            // AscendC::PipeBarrier<PIPE_V>();
 
             /*
             template <typename T, typename U, bool isSetMask = true>
             __aicore__ inline void MulAddDst(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<U>& src0Local, 
-                const LocalTensor<U>& src1Local, 
-                uint64_t mask, const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<U>& src0Local,
+                const LocalTensor<U>& src1Local,
+                uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
 
@@ -1645,7 +1645,7 @@ struct TileReduce<Arch::AtlasA2,
                 srcMinTensor[offset],
                 var_mask, m_actual,
                 var_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -1657,7 +1657,7 @@ struct TileReduce<Arch::AtlasA2,
             {
                 dst_remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = dst_remain;
 
             AscendC::Muls<ElementA, true>(
@@ -1677,7 +1677,7 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 sub_params);
-            
+
             AscendC::Sub<ElementA, true>(
                 srcMinTensor[offset],
                 srcMeanTensor[offset],
@@ -1685,8 +1685,8 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 sub_params);
-            
-            AscendC::PipeBarrier<PIPE_V>();  
+
+            AscendC::PipeBarrier<PIPE_V>();
 
             // AscendC::Abs<ElementA,true>(
             //     srcMaxTensor[offset],
@@ -1702,16 +1702,16 @@ struct TileReduce<Arch::AtlasA2,
             //     m_actual,
             //     abs_params);
 
-            // AscendC::PipeBarrier<PIPE_V>(); 
-            
+            // AscendC::PipeBarrier<PIPE_V>();
+
             AscendC::MulAddDst<ElementY, ElementA, true>(
                 red_workspace,
                 srcMaxTensor[offset],
                 srcMinTensor[offset],
                 remain_mask, m_actual,
                 var_params);
-            
-            // AscendC::PipeBarrier<PIPE_V>(); 
+
+            // AscendC::PipeBarrier<PIPE_V>();
         }
 
         uint64_t reduce_mask = (dst_repeat_num == 0) ? dst_remain : dst_repeat_size;
@@ -1719,12 +1719,12 @@ struct TileReduce<Arch::AtlasA2,
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void WholeReduceSum(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& srcLocal, 
-            const int32_t mask, 
-            const int32_t repeatTimes, 
-            const int32_t dstRepStride, 
-            const int32_t srcBlkStride, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& srcLocal,
+            const int32_t mask,
+            const int32_t repeatTimes,
+            const int32_t dstRepStride,
+            const int32_t srcBlkStride,
             const int32_t srcRepStride)
         */
 
@@ -1736,7 +1736,7 @@ struct TileReduce<Arch::AtlasA2,
             1,
             1,
             8);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         uint32_t final_add_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
@@ -1746,7 +1746,7 @@ struct TileReduce<Arch::AtlasA2,
         var_params.dstRepStride = 8;
         var_params.src0RepStride = 8;
         var_params.src1RepStride = 8;
-        
+
         // AscendC::Add<ElementY, true>(
         //     dstTensorVar,
         //     red_workspace,
@@ -1754,7 +1754,7 @@ struct TileReduce<Arch::AtlasA2,
         //     final_add_mask,
         //     CeilDiv(m_round, dst_repeat_size),
         //     var_params);
-        
+
         AscendC::Add<ElementY>(
             dstTensorVar,
             red_workspace,
@@ -1763,9 +1763,9 @@ struct TileReduce<Arch::AtlasA2,
 
         /*
         template <typename T>
-        __aicore__ inline void Add(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void Add(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
 
@@ -1776,23 +1776,23 @@ struct TileReduce<Arch::AtlasA2,
 
 template <>
 struct TileReduce<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::VAR,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::VAR,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
     using ElementX = half;
     using ElementY = half;
-    
+
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
@@ -1804,7 +1804,7 @@ struct TileReduce<Arch::AtlasA2,
     CATLASS_DEVICE
     TileReduce() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensorVar,
@@ -1824,7 +1824,7 @@ struct TileReduce<Arch::AtlasA2,
 
         uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
         uint32_t dst_repeat_size = DST_ELE_NUM_PER_C0 * 8;
-        
+
         uint32_t mask = repeat_size;
         uint32_t dst_mask = dst_repeat_size;
 
@@ -1876,11 +1876,11 @@ struct TileReduce<Arch::AtlasA2,
             uint32_t offset = i * dst_repeat_size;
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& srcLocal, 
-                const T& scalarValue, 
-                uint64_t mask, 
-                const uint8_t repeatTimes, 
+            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& srcLocal,
+                const T& scalarValue,
+                uint64_t mask,
+                const uint8_t repeatTimes,
                 const UnaryRepeatParams& repeatParams)
             */
             AscendC::Muls<ElementA, true>(
@@ -1894,9 +1894,9 @@ struct TileReduce<Arch::AtlasA2,
             AscendC::PipeBarrier<PIPE_V>();
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& src0Local, 
-                const LocalTensor<T>& src1Local, 
+            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& src0Local,
+                const LocalTensor<T>& src1Local,
                 uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
@@ -1907,7 +1907,7 @@ struct TileReduce<Arch::AtlasA2,
                 sub_mask,
                 m_actual,
                 sub_params);
-            
+
             AscendC::Sub<ElementA, true>(
                 srcMinTensor[offset],
                 srcMeanTensor[offset],
@@ -1915,15 +1915,15 @@ struct TileReduce<Arch::AtlasA2,
                 sub_mask,
                 m_actual,
                 sub_params);
-            
-            AscendC::PipeBarrier<PIPE_V>();     
+
+            AscendC::PipeBarrier<PIPE_V>();
             /*
             template <typename T, typename U, bool isSetMask = true>
             __aicore__ inline void MulAddDst(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<U>& src0Local, 
-                const LocalTensor<U>& src1Local, 
-                uint64_t mask, const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<U>& src0Local,
+                const LocalTensor<U>& src1Local,
+                uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
 
@@ -1933,7 +1933,7 @@ struct TileReduce<Arch::AtlasA2,
                 srcMinTensor[offset],
                 var_mask, m_actual,
                 var_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -1945,7 +1945,7 @@ struct TileReduce<Arch::AtlasA2,
             {
                 dst_remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = dst_remain;
 
             AscendC::Muls<ElementA, true>(
@@ -1965,7 +1965,7 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 sub_params);
-            
+
             AscendC::Sub<ElementA, true>(
                 srcMinTensor[offset],
                 srcMeanTensor[offset],
@@ -1973,17 +1973,17 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 sub_params);
-            
-            AscendC::PipeBarrier<PIPE_V>();  
-            
+
+            AscendC::PipeBarrier<PIPE_V>();
+
             AscendC::MulAddDst<ElementY, ElementA, true>(
                 red_workspace,
                 srcMaxTensor[offset],
                 srcMinTensor[offset],
                 remain_mask, m_actual,
                 var_params);
-            
-            // AscendC::PipeBarrier<PIPE_V>(); 
+
+            // AscendC::PipeBarrier<PIPE_V>();
         }
 
         uint64_t reduce_mask = (dst_repeat_num == 0) ? dst_remain : dst_repeat_size;
@@ -1991,12 +1991,12 @@ struct TileReduce<Arch::AtlasA2,
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void WholeReduceSum(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& srcLocal, 
-            const int32_t mask, 
-            const int32_t repeatTimes, 
-            const int32_t dstRepStride, 
-            const int32_t srcBlkStride, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& srcLocal,
+            const int32_t mask,
+            const int32_t repeatTimes,
+            const int32_t dstRepStride,
+            const int32_t srcBlkStride,
             const int32_t srcRepStride)
         */
 
@@ -2008,7 +2008,7 @@ struct TileReduce<Arch::AtlasA2,
             1,
             1,
             8);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         uint32_t final_add_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
@@ -2018,7 +2018,7 @@ struct TileReduce<Arch::AtlasA2,
         var_params.dstRepStride = 8;
         var_params.src0RepStride = 8;
         var_params.src1RepStride = 8;
-        
+
         AscendC::Add<ElementY, true>(
             dstTensorVar,
             red_workspace,
@@ -2033,23 +2033,23 @@ struct TileReduce<Arch::AtlasA2,
 
 template <>
 struct TileReduce<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::VAR,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::VAR,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
     using ElementX = half;
     using ElementY = float;
-    
+
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
@@ -2061,7 +2061,7 @@ struct TileReduce<Arch::AtlasA2,
     CATLASS_DEVICE
     TileReduce() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensorVar,
@@ -2081,7 +2081,7 @@ struct TileReduce<Arch::AtlasA2,
 
         uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
         uint32_t dst_repeat_size = DST_ELE_NUM_PER_C0 * 8;
-        
+
         uint32_t mask = repeat_size;
         uint32_t dst_mask = dst_repeat_size;
 
@@ -2133,11 +2133,11 @@ struct TileReduce<Arch::AtlasA2,
             uint32_t offset = i * dst_repeat_size;
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& srcLocal, 
-                const T& scalarValue, 
-                uint64_t mask, 
-                const uint8_t repeatTimes, 
+            __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& srcLocal,
+                const T& scalarValue,
+                uint64_t mask,
+                const uint8_t repeatTimes,
                 const UnaryRepeatParams& repeatParams)
             */
             AscendC::Muls<ElementA, true>(
@@ -2151,9 +2151,9 @@ struct TileReduce<Arch::AtlasA2,
             AscendC::PipeBarrier<PIPE_V>();
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& src0Local, 
-                const LocalTensor<T>& src1Local, 
+            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& src0Local,
+                const LocalTensor<T>& src1Local,
                 uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
@@ -2164,7 +2164,7 @@ struct TileReduce<Arch::AtlasA2,
                 sub_mask,
                 m_actual,
                 sub_params);
-            
+
             AscendC::Sub<ElementA, true>(
                 srcMinTensor[offset],
                 srcMeanTensor[offset],
@@ -2172,15 +2172,15 @@ struct TileReduce<Arch::AtlasA2,
                 sub_mask,
                 m_actual,
                 sub_params);
-            
-            AscendC::PipeBarrier<PIPE_V>();     
+
+            AscendC::PipeBarrier<PIPE_V>();
             /*
             template <typename T, typename U, bool isSetMask = true>
             __aicore__ inline void MulAddDst(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<U>& src0Local, 
-                const LocalTensor<U>& src1Local, 
-                uint64_t mask, const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<U>& src0Local,
+                const LocalTensor<U>& src1Local,
+                uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
 
@@ -2190,7 +2190,7 @@ struct TileReduce<Arch::AtlasA2,
                 srcMinTensor[offset],
                 var_mask, m_actual,
                 var_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -2202,7 +2202,7 @@ struct TileReduce<Arch::AtlasA2,
             {
                 dst_remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = dst_remain;
 
             AscendC::Muls<ElementA, true>(
@@ -2222,7 +2222,7 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 sub_params);
-            
+
             AscendC::Sub<ElementA, true>(
                 srcMinTensor[offset],
                 srcMeanTensor[offset],
@@ -2230,17 +2230,17 @@ struct TileReduce<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 sub_params);
-            
-            AscendC::PipeBarrier<PIPE_V>();  
-            
+
+            AscendC::PipeBarrier<PIPE_V>();
+
             AscendC::MulAddDst<ElementY, ElementA, true>(
                 red_workspace,
                 srcMaxTensor[offset],
                 srcMinTensor[offset],
                 remain_mask, m_actual,
                 var_params);
-            
-            // AscendC::PipeBarrier<PIPE_V>(); 
+
+            // AscendC::PipeBarrier<PIPE_V>();
         }
 
         uint64_t reduce_mask = (dst_repeat_num == 0) ? dst_remain : dst_repeat_size;
@@ -2248,12 +2248,12 @@ struct TileReduce<Arch::AtlasA2,
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void WholeReduceSum(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& srcLocal, 
-            const int32_t mask, 
-            const int32_t repeatTimes, 
-            const int32_t dstRepStride, 
-            const int32_t srcBlkStride, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& srcLocal,
+            const int32_t mask,
+            const int32_t repeatTimes,
+            const int32_t dstRepStride,
+            const int32_t srcBlkStride,
             const int32_t srcRepStride)
         */
 
@@ -2265,7 +2265,7 @@ struct TileReduce<Arch::AtlasA2,
             1,
             1,
             8);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         uint32_t final_add_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
@@ -2275,7 +2275,7 @@ struct TileReduce<Arch::AtlasA2,
         var_params.dstRepStride = 8;
         var_params.src0RepStride = 8;
         var_params.src1RepStride = 8;
-        
+
         AscendC::Add<ElementY, true>(
             dstTensorVar,
             red_workspace,
@@ -2294,19 +2294,19 @@ template <
     class ElementY
 >
 struct TileReduce<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::VAR_SIMPLIFIED,
-                Gemm::GemmType<ElementA, layout::RowMajor>,
-                Gemm::GemmType<ElementX, layout::VectorLayout>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::VAR_SIMPLIFIED,
+                Catlass::Gemm::GemmType<ElementA, layout::RowMajor>,
+                Catlass::Gemm::GemmType<ElementX, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED;
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
@@ -2318,7 +2318,7 @@ struct TileReduce<Arch::AtlasA2,
     CATLASS_DEVICE
     TileReduce() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensorVar,
@@ -2335,7 +2335,7 @@ struct TileReduce<Arch::AtlasA2,
 
         uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
         uint32_t dst_repeat_size = DST_ELE_NUM_PER_C0 * 8;
-        
+
         uint32_t mask = repeat_size;
         uint32_t dst_mask = dst_repeat_size;
 
@@ -2369,12 +2369,12 @@ struct TileReduce<Arch::AtlasA2,
 
         AscendC::PipeBarrier<PIPE_V>();
         for(uint32_t i=0; i < dst_repeat_num; i++){
-            uint32_t offset = i * dst_repeat_size;     
+            uint32_t offset = i * dst_repeat_size;
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& src0Local, 
-                const LocalTensor<T>& src1Local, 
+            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& src0Local,
+                const LocalTensor<T>& src1Local,
                 uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
@@ -2382,10 +2382,10 @@ struct TileReduce<Arch::AtlasA2,
             /*
             template <typename T, typename U, bool isSetMask = true>
             __aicore__ inline void MulAddDst(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<U>& src0Local, 
-                const LocalTensor<U>& src1Local, 
-                uint64_t mask, const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<U>& src0Local,
+                const LocalTensor<U>& src1Local,
+                uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
 
@@ -2395,7 +2395,7 @@ struct TileReduce<Arch::AtlasA2,
                 srcMaxTensor[offset],
                 var_mask, m_actual,
                 var_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -2407,17 +2407,17 @@ struct TileReduce<Arch::AtlasA2,
             {
                 dst_remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = dst_remain;
-            
+
             AscendC::MulAddDst<ElementY, ElementA, true>(
                 red_workspace,
                 srcMaxTensor[offset],
                 srcMaxTensor[offset],
                 remain_mask, m_actual,
                 var_params);
-            
-            // AscendC::PipeBarrier<PIPE_V>(); 
+
+            // AscendC::PipeBarrier<PIPE_V>();
         }
 
         uint64_t reduce_mask = (dst_repeat_num == 0) ? dst_remain : dst_repeat_size;
@@ -2425,12 +2425,12 @@ struct TileReduce<Arch::AtlasA2,
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void WholeReduceSum(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& srcLocal, 
-            const int32_t mask, 
-            const int32_t repeatTimes, 
-            const int32_t dstRepStride, 
-            const int32_t srcBlkStride, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& srcLocal,
+            const int32_t mask,
+            const int32_t repeatTimes,
+            const int32_t dstRepStride,
+            const int32_t srcBlkStride,
             const int32_t srcRepStride)
         */
 
@@ -2442,7 +2442,7 @@ struct TileReduce<Arch::AtlasA2,
             1,
             1,
             8);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         uint32_t final_add_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
@@ -2452,7 +2452,7 @@ struct TileReduce<Arch::AtlasA2,
         var_params.dstRepStride = 8;
         var_params.src0RepStride = 8;
         var_params.src1RepStride = 8;
-        
+
         AscendC::Add<ElementY, true>(
             dstTensorVar,
             red_workspace,
@@ -2467,11 +2467,11 @@ struct TileReduce<Arch::AtlasA2,
 
 template <>
 struct TileReduce<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::VAR_SIMPLIFIED,
-                Gemm::GemmType<float, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::VAR_SIMPLIFIED,
+                Catlass::Gemm::GemmType<float, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = float;
@@ -2479,11 +2479,11 @@ struct TileReduce<Arch::AtlasA2,
     using ElemetnX = float;
 
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED;
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
@@ -2495,7 +2495,7 @@ struct TileReduce<Arch::AtlasA2,
     CATLASS_DEVICE
     TileReduce() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensorVar,
@@ -2512,7 +2512,7 @@ struct TileReduce<Arch::AtlasA2,
 
         uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
         uint32_t dst_repeat_size = DST_ELE_NUM_PER_C0 * 8;
-        
+
         uint32_t mask = repeat_size;
         uint32_t dst_mask = dst_repeat_size;
 
@@ -2546,12 +2546,12 @@ struct TileReduce<Arch::AtlasA2,
 
         AscendC::PipeBarrier<PIPE_V>();
         for(uint32_t i=0; i < dst_repeat_num; i++){
-            uint32_t offset = i * dst_repeat_size;     
+            uint32_t offset = i * dst_repeat_size;
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& src0Local, 
-                const LocalTensor<T>& src1Local, 
+            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& src0Local,
+                const LocalTensor<T>& src1Local,
                 uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
@@ -2559,10 +2559,10 @@ struct TileReduce<Arch::AtlasA2,
             /*
             template <typename T, typename U, bool isSetMask = true>
             __aicore__ inline void MulAddDst(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<U>& src0Local, 
-                const LocalTensor<U>& src1Local, 
-                uint64_t mask, const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<U>& src0Local,
+                const LocalTensor<U>& src1Local,
+                uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
 
@@ -2572,7 +2572,7 @@ struct TileReduce<Arch::AtlasA2,
                 srcMaxTensor[offset],
                 var_mask, m_actual,
                 var_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -2584,17 +2584,17 @@ struct TileReduce<Arch::AtlasA2,
             {
                 dst_remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = dst_remain;
-            
+
             AscendC::MulAddDst<ElementY, ElementA, true>(
                 red_workspace,
                 srcMaxTensor[offset],
                 srcMaxTensor[offset],
                 remain_mask, m_actual,
                 var_params);
-            
-            // AscendC::PipeBarrier<PIPE_V>(); 
+
+            // AscendC::PipeBarrier<PIPE_V>();
         }
 
         uint64_t reduce_mask = (dst_repeat_num == 0) ? dst_remain : dst_repeat_size;
@@ -2602,12 +2602,12 @@ struct TileReduce<Arch::AtlasA2,
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void WholeReduceSum(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& srcLocal, 
-            const int32_t mask, 
-            const int32_t repeatTimes, 
-            const int32_t dstRepStride, 
-            const int32_t srcBlkStride, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& srcLocal,
+            const int32_t mask,
+            const int32_t repeatTimes,
+            const int32_t dstRepStride,
+            const int32_t srcBlkStride,
             const int32_t srcRepStride)
         */
 
@@ -2619,7 +2619,7 @@ struct TileReduce<Arch::AtlasA2,
             1,
             1,
             8);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         uint32_t final_add_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
@@ -2629,7 +2629,7 @@ struct TileReduce<Arch::AtlasA2,
         var_params.dstRepStride = 8;
         var_params.src0RepStride = 8;
         var_params.src1RepStride = 8;
-        
+
         AscendC::Add<ElementY, true>(
             dstTensorVar,
             red_workspace,
@@ -2645,23 +2645,23 @@ struct TileReduce<Arch::AtlasA2,
 
 template <>
 struct TileReduce<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::VAR_SIMPLIFIED,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::VAR_SIMPLIFIED,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
     using ElementY = half;
     using ElemetnX = half;
-    
+
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED;
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
@@ -2673,7 +2673,7 @@ struct TileReduce<Arch::AtlasA2,
     CATLASS_DEVICE
     TileReduce() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensorVar,
@@ -2690,7 +2690,7 @@ struct TileReduce<Arch::AtlasA2,
 
         uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
         uint32_t dst_repeat_size = DST_ELE_NUM_PER_C0 * 8;
-        
+
         uint32_t mask = repeat_size;
         uint32_t dst_mask = dst_repeat_size;
 
@@ -2724,12 +2724,12 @@ struct TileReduce<Arch::AtlasA2,
 
         AscendC::PipeBarrier<PIPE_V>();
         for(uint32_t i=0; i < dst_repeat_num; i++){
-            uint32_t offset = i * dst_repeat_size;     
+            uint32_t offset = i * dst_repeat_size;
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& src0Local, 
-                const LocalTensor<T>& src1Local, 
+            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& src0Local,
+                const LocalTensor<T>& src1Local,
                 uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
@@ -2737,10 +2737,10 @@ struct TileReduce<Arch::AtlasA2,
             /*
             template <typename T, typename U, bool isSetMask = true>
             __aicore__ inline void MulAddDst(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<U>& src0Local, 
-                const LocalTensor<U>& src1Local, 
-                uint64_t mask, const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<U>& src0Local,
+                const LocalTensor<U>& src1Local,
+                uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
 
@@ -2750,7 +2750,7 @@ struct TileReduce<Arch::AtlasA2,
                 srcMaxTensor[offset],
                 var_mask, m_actual,
                 var_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -2762,17 +2762,17 @@ struct TileReduce<Arch::AtlasA2,
             {
                 dst_remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = dst_remain;
-            
+
             AscendC::MulAddDst<ElementY, ElementA, true>(
                 red_workspace,
                 srcMaxTensor[offset],
                 srcMaxTensor[offset],
                 remain_mask, m_actual,
                 var_params);
-            
-            // AscendC::PipeBarrier<PIPE_V>(); 
+
+            // AscendC::PipeBarrier<PIPE_V>();
         }
 
         uint64_t reduce_mask = (dst_repeat_num == 0) ? dst_remain : dst_repeat_size;
@@ -2780,12 +2780,12 @@ struct TileReduce<Arch::AtlasA2,
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void WholeReduceSum(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& srcLocal, 
-            const int32_t mask, 
-            const int32_t repeatTimes, 
-            const int32_t dstRepStride, 
-            const int32_t srcBlkStride, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& srcLocal,
+            const int32_t mask,
+            const int32_t repeatTimes,
+            const int32_t dstRepStride,
+            const int32_t srcBlkStride,
             const int32_t srcRepStride)
         */
 
@@ -2797,7 +2797,7 @@ struct TileReduce<Arch::AtlasA2,
             1,
             1,
             8);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         uint32_t final_add_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
@@ -2807,7 +2807,7 @@ struct TileReduce<Arch::AtlasA2,
         var_params.dstRepStride = 8;
         var_params.src0RepStride = 8;
         var_params.src1RepStride = 8;
-        
+
         AscendC::Add<ElementY, true>(
             dstTensorVar,
             red_workspace,
@@ -2822,23 +2822,23 @@ struct TileReduce<Arch::AtlasA2,
 
 template <>
 struct TileReduce<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::VAR_SIMPLIFIED,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::VAR_SIMPLIFIED,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
     using ElementY = float;
     using ElemetnX = half;
-    
+
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_SIMPLIFIED;
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
@@ -2850,7 +2850,7 @@ struct TileReduce<Arch::AtlasA2,
     CATLASS_DEVICE
     TileReduce() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensorVar,
@@ -2867,7 +2867,7 @@ struct TileReduce<Arch::AtlasA2,
 
         uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
         uint32_t dst_repeat_size = DST_ELE_NUM_PER_C0 * 8;
-        
+
         uint32_t mask = repeat_size;
         uint32_t dst_mask = dst_repeat_size;
 
@@ -2901,12 +2901,12 @@ struct TileReduce<Arch::AtlasA2,
 
         AscendC::PipeBarrier<PIPE_V>();
         for(uint32_t i=0; i < dst_repeat_num; i++){
-            uint32_t offset = i * dst_repeat_size;     
+            uint32_t offset = i * dst_repeat_size;
             /*
             template <typename T, bool isSetMask = true>
-            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal, 
-                const LocalTensor<T>& src0Local, 
-                const LocalTensor<T>& src1Local, 
+            __aicore__ inline void Sub(const LocalTensor<T>& dstLocal,
+                const LocalTensor<T>& src0Local,
+                const LocalTensor<T>& src1Local,
                 uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
@@ -2914,10 +2914,10 @@ struct TileReduce<Arch::AtlasA2,
             /*
             template <typename T, typename U, bool isSetMask = true>
             __aicore__ inline void MulAddDst(
-                const LocalTensor<T>& dstLocal, 
-                const LocalTensor<U>& src0Local, 
-                const LocalTensor<U>& src1Local, 
-                uint64_t mask, const uint8_t repeatTimes, 
+                const LocalTensor<T>& dstLocal,
+                const LocalTensor<U>& src0Local,
+                const LocalTensor<U>& src1Local,
+                uint64_t mask, const uint8_t repeatTimes,
                 const BinaryRepeatParams& repeatParams)
             */
 
@@ -2927,7 +2927,7 @@ struct TileReduce<Arch::AtlasA2,
                 srcMaxTensor[offset],
                 var_mask, m_actual,
                 var_params);
-            
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -2939,17 +2939,17 @@ struct TileReduce<Arch::AtlasA2,
             {
                 dst_remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = dst_remain;
-            
+
             AscendC::MulAddDst<ElementY, ElementA, true>(
                 red_workspace,
                 srcMaxTensor[offset],
                 srcMaxTensor[offset],
                 remain_mask, m_actual,
                 var_params);
-            
-            // AscendC::PipeBarrier<PIPE_V>(); 
+
+            // AscendC::PipeBarrier<PIPE_V>();
         }
 
         uint64_t reduce_mask = (dst_repeat_num == 0) ? dst_remain : dst_repeat_size;
@@ -2957,12 +2957,12 @@ struct TileReduce<Arch::AtlasA2,
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void WholeReduceSum(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& srcLocal, 
-            const int32_t mask, 
-            const int32_t repeatTimes, 
-            const int32_t dstRepStride, 
-            const int32_t srcBlkStride, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& srcLocal,
+            const int32_t mask,
+            const int32_t repeatTimes,
+            const int32_t dstRepStride,
+            const int32_t srcBlkStride,
             const int32_t srcRepStride)
         */
 
@@ -2974,7 +2974,7 @@ struct TileReduce<Arch::AtlasA2,
             1,
             1,
             8);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         uint32_t final_add_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
@@ -2984,7 +2984,7 @@ struct TileReduce<Arch::AtlasA2,
         var_params.dstRepStride = 8;
         var_params.src0RepStride = 8;
         var_params.src1RepStride = 8;
-        
+
         AscendC::Add<ElementY, true>(
             dstTensorVar,
             red_workspace,

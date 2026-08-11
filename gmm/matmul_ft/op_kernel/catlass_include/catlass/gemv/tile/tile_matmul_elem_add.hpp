@@ -1,14 +1,14 @@
 #ifndef CATLASS_GEMV_TILE_TILE_MATMUL_ELEM_ADD_HPP_SELF
 #define CATLASS_GEMV_TILE_TILE_MATMUL_ELEM_ADD_HPP_SELF
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/arch.hpp"
-#include "../../gemm/helper.hpp"
-#include "../helper.hpp"
+#include "catlass/gemm/helper.hpp"
+#include "catlass/gemv/helper.hpp"
 #include "catlass/layout/layout.hpp"
-#include "../../gemm/gemm_type.hpp"
+#include "catlass/gemm/gemm_type.hpp"
 
-namespace Vecself::Gemv::Tile {
+namespace FTSelf::Gemv::Tile {
 
 using namespace Catlass;
 
@@ -29,11 +29,11 @@ template <
     class ElementY
 >
 struct TileMatmulAdd<Arch::AtlasA2,
-                Gemm::GemmType<ElementA, layout::RowMajor>,
-                Gemm::GemmType<ElementY, layout::RowMajor>,
+                Catlass::Gemm::GemmType<ElementA, layout::RowMajor>,
+                Catlass::Gemm::GemmType<ElementY, layout::RowMajor>,
                 void>
 {
-    
+
 };
 
 template <
@@ -41,11 +41,11 @@ template <
     class ElementY
 >
 struct TileMatmulAdd<Arch::AtlasA2,
-                Gemm::GemmType<ElementA, layout::VectorLayout>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementA, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
-    
+
 };
 
 template <
@@ -53,17 +53,17 @@ template <
     class ElementY
 >
 struct TileMatmulAdd<Arch::AtlasA2,
-                Gemm::GemmType<ElementA, layout::RowMajor>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementA, layout::RowMajor>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
-    
+
 };
 
 template <>
 struct TileMatmulAdd<Arch::AtlasA2,
-                Gemm::GemmType<float, layout::RowMajor>,
-                Gemm::GemmType<float, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::RowMajor>,
                 void>
 {
     using ElementA = float;
@@ -118,7 +118,7 @@ struct TileMatmulAdd<Arch::AtlasA2,
         params.dstRepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         params.src1RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
-        
+
         for (uint32_t i = 0; i < repeat_num; i++) {
             uint32_t offset = i * repeat_size;
             AscendC::Add<ElementA, true>(
@@ -137,7 +137,7 @@ struct TileMatmulAdd<Arch::AtlasA2,
             {
                 remain = n_actual - remain_offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Add<ElementA, true>(
                 dstTensor[remain_offset],
@@ -154,8 +154,8 @@ struct TileMatmulAdd<Arch::AtlasA2,
 
 template <>
 struct TileMatmulAdd<Arch::AtlasA2,
-                Gemm::GemmType<float, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = float;
@@ -214,8 +214,8 @@ struct TileMatmulAdd<Arch::AtlasA2,
 
 template <>
 struct TileMatmulAdd<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
                 void>
 {
     using ElementA = half;
@@ -270,7 +270,7 @@ struct TileMatmulAdd<Arch::AtlasA2,
         params.dstRepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         params.src1RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
-        
+
         for (uint32_t i = 0; i < repeat_num; i++) {
             uint32_t offset = i * repeat_size;
             AscendC::Add<ElementA, true>(
@@ -289,7 +289,7 @@ struct TileMatmulAdd<Arch::AtlasA2,
             {
                 remain = n_actual - remain_offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Add<ElementA, true>(
                 dstTensor[remain_offset],
@@ -306,8 +306,8 @@ struct TileMatmulAdd<Arch::AtlasA2,
 
 template <>
 struct TileMatmulAdd<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -365,8 +365,8 @@ struct TileMatmulAdd<Arch::AtlasA2,
 
 template <>
 struct TileMatmulAdd<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<float, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::RowMajor>,
                 void>
 {
     using ElementA = half;
@@ -426,7 +426,7 @@ struct TileMatmulAdd<Arch::AtlasA2,
         params.dstRepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         params.src1RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
-        
+
         for (uint32_t i = 0; i < repeat_num; i++) {
             uint32_t offset = i * repeat_size;
             AscendC::Add<ElementA, true>(
@@ -445,7 +445,7 @@ struct TileMatmulAdd<Arch::AtlasA2,
             {
                 remain = n_actual - remain_offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Add<ElementA, true>(
                 srcTensor_m1[remain_offset],
@@ -482,7 +482,7 @@ struct TileMatmulAdd<Arch::AtlasA2,
             {
                 dst_remain = n_actual - remain_offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = dst_remain;
 
             AscendC::Cast<ElementY, ElementA, true>(
@@ -500,8 +500,8 @@ struct TileMatmulAdd<Arch::AtlasA2,
 
 template <>
 struct TileMatmulAdd<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -543,7 +543,7 @@ struct TileMatmulAdd<Arch::AtlasA2,
             AscendC::Cast<ElementY, ElementA>(
                 dstTensor[offset],
                 srcTensor_m1[offset],
-                AscendC::RoundMode::CAST_NONE, 
+                AscendC::RoundMode::CAST_NONE,
                 MAX_COMPUTE_LENGTH);
         }
 
@@ -554,13 +554,13 @@ struct TileMatmulAdd<Arch::AtlasA2,
             {
                 remain = total_ele_num - remain_offset;
             }
-            
+
             AscendC::Add(srcTensor_m1[remain_offset], srcTensor_m1[remain_offset], srcTensor_m2[remain_offset], remain);
 
             AscendC::Cast<ElementY, ElementA>(
                 dstTensor[remain_offset],
                 srcTensor_m1[remain_offset],
-                AscendC::RoundMode::CAST_NONE, 
+                AscendC::RoundMode::CAST_NONE,
                 remain);
         }
 

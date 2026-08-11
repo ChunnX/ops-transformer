@@ -1,20 +1,20 @@
 #ifndef CATLASS_GEMV_BLOCK_BLOCK_SUM_AIV_AE_BMAX_MIXED_NOSPLITK_ROBUST_HPP
 #define CATLASS_GEMV_BLOCK_BLOCK_SUM_AIV_AE_BMAX_MIXED_NOSPLITK_ROBUST_HPP
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/resource_aiv.hpp"
-#include "../../coord.hpp"
-#include "../../gemv_coord.hpp"
-#include "../helper.hpp"
-#include "../../gemm/helper.hpp"
+#include "catlass/coord.hpp"
+#include "catlass/gemv_coord.hpp"
+#include "catlass/gemv/helper.hpp"
+#include "catlass/gemm/helper.hpp"
 #include "catlass/layout/layout.hpp"
 #include "catlass/detail/alignment.hpp"
-#include "../../gemm/dispatch_policy.hpp"
-#include "../tile/tile_vmad.hpp"
-#include "../tile/tile_fault_sum.hpp"
-#include "../tile/tile_vmuls.hpp"
+#include "catlass/gemm/dispatch_policy.hpp"
+#include "catlass/gemv/tile/tile_vmad.hpp"
+#include "catlass/gemv/tile/tile_fault_sum.hpp"
+#include "catlass/gemv/tile/tile_vmuls.hpp"
 
-namespace Vecself::Gemv::Block {
+namespace FTSelf::Gemv::Block {
 
 using namespace Catlass;
 
@@ -32,9 +32,9 @@ template <
     class TileFaultSum_
 >
 struct BlockFTSumNoSplitK <
-    Gemm::GemvAtlasA2,
-    Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
-    Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::A_B_MIXED,
+    Catlass::Gemm::GemvAtlasA2,
+    FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
+    FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::A_B_MIXED,
     UBTileShapeforB_,
     UBBlockShapeforB_,
     UBTileShapeforA_,
@@ -49,15 +49,15 @@ struct BlockFTSumNoSplitK <
 > {
 public:
     // Type Aliases
-    using DispatchPolicy = Gemm::GemvAtlasA2;
+    using DispatchPolicy = Catlass::Gemm::GemvAtlasA2;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using UBTileShapeforB = UBTileShapeforB_;
     using UBBlockShapeforB = UBBlockShapeforB_;
     using UBTileShapeforA = UBTileShapeforA_;
     using L1TileShape = L1TileShape_;
 
-    using FT_AIV_PIPE_FUSE_TYPE = Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE;
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_AIV_PIPE_FUSE_TYPE = FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
     using ElementA = typename AType_::Element;
     using LayoutA = typename AType_::Layout;
@@ -86,23 +86,23 @@ public:
 
 
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementA>::ElementAccumulator;
 
-    using UBAlignHelper = Vecself::Gemv::helper::UBAlignHelper<ElementA>;
+    using UBAlignHelper = FTSelf::Gemv::helper::UBAlignHelper<ElementA>;
 
     using TensorCoord = layout::VectorLayout::TensorCoord;
 
-    using FT_REDUCE_TYPE = Vecself::Gemv::helper::FT_REDUCE_TYPE;
+    using FT_REDUCE_TYPE = FTSelf::Gemv::helper::FT_REDUCE_TYPE;
 
-    using TileFaultSumBRed = Vecself::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::MAX_MIN, BType_, XType_>;
-    using TileFaultSumBSum = Vecself::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::SUM, BType_, XType_>;
-    using TileFaultSumARed = Vecself::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::MAX_MIN, AType_, YType_>;
+    using TileFaultSumBRed = FTSelf::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::MAX_MIN, BType_, XType_>;
+    using TileFaultSumBSum = FTSelf::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::SUM, BType_, XType_>;
+    using TileFaultSumARed = FTSelf::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::MAX_MIN, AType_, YType_>;
     using TileVmulsforMean = Catlass::Gemv::Tile::TileVmuls<ArchTag, YType_>;
     // using TileFaultSumA =
 
-    // Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::A_B_MIXED
-    static constexpr FT_AIV_PIPE_FUSE_TYPE FUSE_TYPE = Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::A_B_MIXED;
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
+    // FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::A_B_MIXED
+    static constexpr FT_AIV_PIPE_FUSE_TYPE FUSE_TYPE = FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::A_B_MIXED;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
 
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
     static constexpr uint32_t Abuf_SIZE_ = 128 * 1024;
@@ -1598,6 +1598,6 @@ protected:
 
 };
 
-} // namespace Vecself::Gemv::Block
+} // namespace FTSelf::Gemv::Block
 
 #endif // CATLASS_GEMV_BLOCK_BLOCK_GEMV_AIV_HPP

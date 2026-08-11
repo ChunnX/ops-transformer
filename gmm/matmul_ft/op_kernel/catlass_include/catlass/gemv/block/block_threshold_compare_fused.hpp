@@ -11,18 +11,18 @@
 #ifndef CATLASS_GEMV_BLOCK_BLOCK_THRESHOLD_COMPARE_FUSED_AIV_HPP
 #define CATLASS_GEMV_BLOCK_BLOCK_THRESHOLD_COMPARE_FUSED_AIV_HPP
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/resource_aiv.hpp"
-#include "../../coord.hpp"
-#include "../../gemv_coord.hpp"
-#include "../helper.hpp"
-#include "../../gemm/helper.hpp"
+#include "catlass/coord.hpp"
+#include "catlass/gemv_coord.hpp"
+#include "catlass/gemv/helper.hpp"
+#include "catlass/gemm/helper.hpp"
 #include "catlass/layout/layout.hpp"
 #include "catlass/detail/alignment.hpp"
-#include "../../gemm/dispatch_policy.hpp"
-#include "../tile/tile_fault_compare.hpp"
+#include "catlass/gemm/dispatch_policy.hpp"
+#include "catlass/gemv/tile/tile_fault_compare.hpp"
 
-namespace Vecself::Gemv::Block {
+namespace FTSelf::Gemv::Block {
 
 using namespace Catlass;
 
@@ -41,11 +41,11 @@ template <
     class TileVmuls_
 >
 struct BlockThresholdCalcFused <
-    Gemm::GemvAtlasA2,
-    Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::AABFT,
-    Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::NO_FUSED,
-    Vecself::Gemv::helper::FT_ENC_TYPE::RCE,
-    Vecself::Gemv::helper::FT_COMP_TYPE::RSUB,
+    Catlass::Gemm::GemvAtlasA2,
+    FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::AABFT,
+    FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::NO_FUSED,
+    FTSelf::Gemv::helper::FT_ENC_TYPE::RCE,
+    FTSelf::Gemv::helper::FT_COMP_TYPE::RSUB,
     UBTileShape_,
     UBTileShapeTotal_,
     AType_,
@@ -59,12 +59,12 @@ struct BlockThresholdCalcFused <
 > {
 public:
     // Type Aliases
-    using DispatchPolicy = Gemm::GemvAtlasA2;
+    using DispatchPolicy = Catlass::Gemm::GemvAtlasA2;
     using ArchTag = typename DispatchPolicy::ArchTag;
-    using FT_COMP_TYPE = Vecself::Gemv::helper::FT_COMP_TYPE;
+    using FT_COMP_TYPE = FTSelf::Gemv::helper::FT_COMP_TYPE;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
-    using FT_AIV_PIPE_FUSE_TYPE = Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_AIV_PIPE_FUSE_TYPE = FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE;
     using UBTileShape = UBTileShape_;
     using UBTileShapeTotal = UBTileShapeTotal_;
     using ElementA = typename AType_::Element;
@@ -88,9 +88,9 @@ public:
 
 
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementX>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementX>::ElementAccumulator;
 
-    using UBAlignHelper = Vecself::Gemv::helper::UBAlignHelper<ElementA>;
+    using UBAlignHelper = FTSelf::Gemv::helper::UBAlignHelper<ElementA>;
     using TensorCoord = layout::VectorLayout::TensorCoord;
 
     using ElementXoR = uint16_t;
@@ -99,7 +99,7 @@ public:
 
     using ElementWork = ElementY;
 
-    using TileCompare = Vecself::Gemv::Tile::TileFaultVcompare<FT_COMP_TYPE::RSUB, ArchTag,
+    using TileCompare = FTSelf::Gemv::Tile::TileFaultVcompare<FT_COMP_TYPE::RSUB, ArchTag,
                                         ZType_, YType_, YType_>;
 
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
@@ -424,10 +424,10 @@ protected:
 /*
 template <
     class DispatchPolicy,
-    Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM ALGO_TYPE_,
-    Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE FUSE_TYPE_,
-    Vecself::Gemv::helper::FT_ENC_TYPE ENC_TYPE_,
-    Vecself::Gemv::helper::FT_COMP_TYPE COMP_TYPE_,
+    FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM ALGO_TYPE_,
+    FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE FUSE_TYPE_,
+    FTSelf::Gemv::helper::FT_ENC_TYPE ENC_TYPE_,
+    FTSelf::Gemv::helper::FT_COMP_TYPE COMP_TYPE_,
     class... Args
 >
 struct BlockThresholdCalcFused
@@ -446,11 +446,11 @@ template <
     class TileVmuls_
 >
 struct BlockThresholdCalcFused <
-    Gemm::GemvAtlasA2,
-    Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::AABFT,
-    Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::THRE_FUSED,
-    Vecself::Gemv::helper::FT_ENC_TYPE::RCE,
-    Vecself::Gemv::helper::FT_COMP_TYPE::RSUB,
+    Catlass::Gemm::GemvAtlasA2,
+    FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::AABFT,
+    FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::THRE_FUSED,
+    FTSelf::Gemv::helper::FT_ENC_TYPE::RCE,
+    FTSelf::Gemv::helper::FT_COMP_TYPE::RSUB,
     UBTileShape_,
     UBTileShapeTotal_,
     L1TileShape_,
@@ -465,11 +465,11 @@ struct BlockThresholdCalcFused <
 > {
 public:
     // Type Aliases
-    using DispatchPolicy = Gemm::GemvAtlasA2;
+    using DispatchPolicy = Catlass::Gemm::GemvAtlasA2;
     using ArchTag = typename DispatchPolicy::ArchTag;
-    using FT_COMP_TYPE = Vecself::Gemv::helper::FT_COMP_TYPE;
-    using FT_AIV_PIPE_FUSE_TYPE = Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE;
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_COMP_TYPE = FTSelf::Gemv::helper::FT_COMP_TYPE;
+    using FT_AIV_PIPE_FUSE_TYPE = FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
     using UBTileShape = UBTileShape_;
     using UBTileShapeTotal = UBTileShapeTotal_;
@@ -496,9 +496,9 @@ public:
     using VecCopyUbToGmZ = typename TileCopy_::VecCopyUbToGmZ;
 
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementX>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementX>::ElementAccumulator;
 
-    using UBAlignHelper = Vecself::Gemv::helper::UBAlignHelper<ElementA>;
+    using UBAlignHelper = FTSelf::Gemv::helper::UBAlignHelper<ElementA>;
     using TensorCoord = layout::VectorLayout::TensorCoord;
 
     using ElementXoR = uint16_t;
@@ -507,7 +507,7 @@ public:
 
     using ElementWork = ElementY;
 
-    using TileCompare = Vecself::Gemv::Tile::TileFaultVcompare<FT_COMP_TYPE::RSUB, ArchTag,
+    using TileCompare = FTSelf::Gemv::Tile::TileFaultVcompare<FT_COMP_TYPE::RSUB, ArchTag,
                                         ZType_, YType_, YType_>;
 
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
@@ -845,6 +845,6 @@ protected:
 
 
 
-} // namespace Vecself::Gemv::Block
+} // namespace FTSelf::Gemv::Block
 
 #endif // CATLASS_GEMV_BLOCK_BLOCK_GEMV_AIV_HPP

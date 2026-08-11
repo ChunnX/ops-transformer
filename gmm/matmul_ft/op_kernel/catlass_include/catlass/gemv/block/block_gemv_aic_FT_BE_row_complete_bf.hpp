@@ -1,20 +1,20 @@
 #ifndef CATLASS_GEMV_BLOCK_BLOCK_AIC_FT_BE_ROWCOMPLETE_HPP_BF
 #define CATLASS_GEMV_BLOCK_BLOCK_AIC_FT_BE_ROWCOMPLETE_HPP_BF
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/resource_aiv.hpp"
-#include "../../coord.hpp"
-#include "../../gemm/dispatch_policy.hpp"
-#include "../../gemm/tile/tile_copy.hpp"
-#include "../../gemm/tile/tile_mmad.hpp"
-#include "../../gemv_coord.hpp"
+#include "catlass/coord.hpp"
+#include "catlass/gemm/dispatch_policy.hpp"
+#include "catlass/gemm/tile/tile_copy.hpp"
+#include "catlass/gemm/tile/tile_mmad.hpp"
+#include "catlass/gemv_coord.hpp"
 
-#include "../helper.hpp"
-#include "../../gemm/helper.hpp"
-#include "../tile/tile_copy.hpp"
+#include "catlass/gemv/helper.hpp"
+#include "catlass/gemm/helper.hpp"
+#include "catlass/gemv/tile/tile_copy.hpp"
 
-// Vecself::Gemv::helper::FT_AIC_BE_SCHEME  BeScheme_,
-namespace Vecself::Gemv::Block {
+// FTSelf::Gemv::helper::FT_AIC_BE_SCHEME  BeScheme_,
+namespace FTSelf::Gemv::Block {
 
 using namespace Catlass;
 template <
@@ -31,8 +31,8 @@ template <
     class TileMmad_
 >
 struct BlockFTGemvBe<
-    Gemm::MmadAtlasA2Preload<ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
-    Vecself::Gemv::helper::FT_AIC_BE_SCHEME::ROWCOMPLETE_BF,
+    Catlass::Gemm::MmadAtlasA2Preload<ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
+    FTSelf::Gemv::helper::FT_AIC_BE_SCHEME::ROWCOMPLETE_BF,
     UBBlockShape_,
     L1TileShape_,
     L0TileShape_,
@@ -45,13 +45,13 @@ struct BlockFTGemvBe<
 > {
 public:
     // Type Aliases
-    using DispatchPolicy = Gemm::MmadAtlasA2Preload<ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>;
+    using DispatchPolicy = Catlass::Gemm::MmadAtlasA2Preload<ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using L1TileShape = L1TileShape_;
     using L0TileShape = L0TileShape_;
     using UBBlockShape = UBBlockShape_;
 
-    using FT_AIC_BE_SCHEME = Vecself::Gemv::helper::FT_AIC_BE_SCHEME;
+    using FT_AIC_BE_SCHEME = FTSelf::Gemv::helper::FT_AIC_BE_SCHEME;
 
     using ElementA = typename AType_::Element;
     using LayoutA = typename AType_::Layout;
@@ -75,7 +75,7 @@ public:
     using CopyL0CToGmforBFAIV = typename TileCopy_::CopyL0CToGmforBFAIV;
 
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementX>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementX>::ElementAccumulator;
     using LayoutXInL1 = typename CopyL1ToL0A::LayoutSrc;
     using LayoutAInL1 = typename CopyL1ToL0B::LayoutSrc;
 
@@ -83,16 +83,16 @@ public:
     using LayoutAInL0 = typename CopyL1ToL0B::LayoutDst;
 
     using LayoutYInL0 = layout::zN;
-    using FT_ENC_TYPE = Vecself::Gemv::helper::FT_ENC_TYPE;
+    using FT_ENC_TYPE = FTSelf::Gemv::helper::FT_ENC_TYPE;
 
-    using L1AAlignHelper = Vecself::Gemv::helper::L1AlignHelper<ElementA, LayoutA>;
-    // using L1AColAlignHelper = Vecself::Gemv::helper::L1AlignHelper<ElementA, LayoutACol>;
-    using L1XAlignHelper = Vecself::Gemv::helper::L1AlignHelper<ElementX, LayoutX>;
+    using L1AAlignHelper = FTSelf::Gemv::helper::L1AlignHelper<ElementA, LayoutA>;
+    // using L1AColAlignHelper = FTSelf::Gemv::helper::L1AlignHelper<ElementA, LayoutACol>;
+    using L1XAlignHelper = FTSelf::Gemv::helper::L1AlignHelper<ElementX, LayoutX>;
 
     static constexpr bool ENABLE_UNIT_FLAG = DispatchPolicy::ENABLE_UNIT_FLAG;
     static constexpr bool ENABLE_SHUFFLE_K = DispatchPolicy::ENABLE_SHUFFLE_K;
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
-    static constexpr FT_AIC_BE_SCHEME BE_SCHEME = Vecself::Gemv::helper::FT_AIC_BE_SCHEME::ROWCOMPLETE_BF;
+    static constexpr FT_AIC_BE_SCHEME BE_SCHEME = FTSelf::Gemv::helper::FT_AIC_BE_SCHEME::ROWCOMPLETE_BF;
 
     static constexpr uint32_t L1B_SIZE = L1TileShape::M * L1TileShape::N * sizeof(ElementA);
     static constexpr uint32_t L0A_SIZE = ArchTag::L0A_SIZE;
@@ -844,6 +844,6 @@ protected:
     uint32_t tileMnum;
 };
 
-} // namespace Vecself::Gemv::Block
+} // namespace FTSelf::Gemv::Block
 
 #endif // CATLASS_GEMV_BLOCK_BLOCK_AIC_FT_HPP

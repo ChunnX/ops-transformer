@@ -1,19 +1,19 @@
 #ifndef CATLASS_GEMV_TILE_TILE_FAULT_VCOMP_HPP
 #define CATLASS_GEMV_TILE_TILE_FAULT_VCOMP_HPP
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/arch.hpp"
-#include "../../gemm/helper.hpp"
-#include "../helper.hpp"
+#include "catlass/gemm/helper.hpp"
+#include "catlass/gemv/helper.hpp"
 #include "catlass/layout/layout.hpp"
-#include "../../gemm/gemm_type.hpp"
+#include "catlass/gemm/gemm_type.hpp"
 
-namespace Vecself::Gemv::Tile {
+namespace FTSelf::Gemv::Tile {
 
 using namespace Catlass;
 template <
     /// Tag indicating architecture
-    Vecself::Gemv::helper::FT_COMP_TYPE COMP_TYPE_,
+    FTSelf::Gemv::helper::FT_COMP_TYPE COMP_TYPE_,
     class ArchTag,
     class ZType,
     class XType,
@@ -30,12 +30,12 @@ template<
     class ElementY
 >
 struct TileFaultVcompare<
-        Vecself::Gemv::helper::FT_COMP_TYPE::XOR,
-        Arch::AtlasA2, 
-        Gemm::GemmType<ElementZ, Catlass::layout::VectorLayout>,
-        Gemm::GemmType<ElementX, Catlass::layout::VectorLayout>,
-        Gemm::GemmType<ElementY, Catlass::layout::VectorLayout>
-        > 
+        FTSelf::Gemv::helper::FT_COMP_TYPE::XOR,
+        Arch::AtlasA2,
+        Catlass::Gemm::GemmType<ElementZ, Catlass::layout::VectorLayout>,
+        Catlass::Gemm::GemmType<ElementX, Catlass::layout::VectorLayout>,
+        Catlass::Gemm::GemmType<ElementY, Catlass::layout::VectorLayout>
+        >
 {
     using ElementWIn = uint16_t;
     using ElementWTmp = int32_t;
@@ -78,15 +78,15 @@ struct TileFaultVcompare<
         AscendC::PipeBarrier<PIPE_V>();
 
         AscendC::LocalTensor<ElementWTmp> srcTensor_x_rep_int = srcTensor_x_rep.template ReinterpretCast<ElementWTmp>();
-        
+
         // uint64_t mask_num = BYTE_PER_BLK * 8 / sizeof(ElementWTmp);
 
         uint32_t n_round_comp = n_round_xor * sizeof(ElementWIn) / sizeof(ElementWTmp);
         n_round_comp = RoundUp(n_round_comp, ELE_NUM_PER_REPEAT_TMP);
-        
-        AscendC::CompareScalar(dstTensor, srcTensor_x_rep_int, 
+
+        AscendC::CompareScalar(dstTensor, srcTensor_x_rep_int,
             static_cast<ElementWTmp>(0), AscendC::CMPMODE::EQ, n_round_comp);
-        
+
         // AscendC::PipeBarrier<PIPE_V>();
     }
 };
@@ -97,12 +97,12 @@ template<
     class ElementY
 >
 struct TileFaultVcompare<
-        Vecself::Gemv::helper::FT_COMP_TYPE::COMPARE,
-        Arch::AtlasA2, 
-        Gemm::GemmType<ElementZ, Catlass::layout::VectorLayout>,
-        Gemm::GemmType<ElementX, Catlass::layout::VectorLayout>,
-        Gemm::GemmType<ElementY, Catlass::layout::VectorLayout>
-        > 
+        FTSelf::Gemv::helper::FT_COMP_TYPE::COMPARE,
+        Arch::AtlasA2,
+        Catlass::Gemm::GemmType<ElementZ, Catlass::layout::VectorLayout>,
+        Catlass::Gemm::GemmType<ElementX, Catlass::layout::VectorLayout>,
+        Catlass::Gemm::GemmType<ElementY, Catlass::layout::VectorLayout>
+        >
 {
     using ElementWIn = int32_t;
     using ElementWTmp = int32_t;
@@ -138,8 +138,8 @@ struct TileFaultVcompare<
 
         AscendC::LocalTensor<ElementWIn> srcTensor_x_rep = srcTensor_x.template ReinterpretCast<ElementWIn>();
         AscendC::LocalTensor<ElementWIn> srcTensor_y_rep = srcTensor_y.template ReinterpretCast<ElementWIn>();
-        
-        AscendC::Compare(dstTensor, srcTensor_x_rep, 
+
+        AscendC::Compare(dstTensor, srcTensor_x_rep,
             srcTensor_y_rep, AscendC::CMPMODE::EQ, n_round_comp);
         // AscendC::PipeBarrier<PIPE_V>();
     }
@@ -151,12 +151,12 @@ template<
     class ElementY
 >
 struct TileFaultVcompare<
-        Vecself::Gemv::helper::FT_COMP_TYPE::SUB,
-        Arch::AtlasA2, 
-        Gemm::GemmType<ElementZ, Catlass::layout::VectorLayout>,
-        Gemm::GemmType<ElementX, Catlass::layout::VectorLayout>,
-        Gemm::GemmType<ElementY, Catlass::layout::VectorLayout>
-        > 
+        FTSelf::Gemv::helper::FT_COMP_TYPE::SUB,
+        Arch::AtlasA2,
+        Catlass::Gemm::GemmType<ElementZ, Catlass::layout::VectorLayout>,
+        Catlass::Gemm::GemmType<ElementX, Catlass::layout::VectorLayout>,
+        Catlass::Gemm::GemmType<ElementY, Catlass::layout::VectorLayout>
+        >
 {
     using ElementWIn = ElementX;
     using ElementWTmp = ElementX;
@@ -189,7 +189,7 @@ struct TileFaultVcompare<
         uint32_t ELE_NUM_PER_REPEAT_TMP = ELE_NUM_PER_BLK_TMP * 8;
 
         n_round_sub = RoundUp(n_round_sub, ELE_NUM_PER_REPEAT_IN);
-        
+
         uint64_t mask = ELE_NUM_PER_REPEAT_TMP;
 
         AscendC::BinaryRepeatParams repeatParams;
@@ -199,7 +199,7 @@ struct TileFaultVcompare<
         repeatParams.dstRepStride = 8;
         repeatParams.src0RepStride = 8;
         repeatParams.src1RepStride = 8;
-        
+
         uint32_t repeatTimes = n_round_sub / ELE_NUM_PER_BLK_TMP;
 
         // AscendC::Sub(workSpaceTensor, srcTensor_x, srcTensor_y, mask, (uint8_t)repeatTimes, repeatParams);
@@ -213,10 +213,10 @@ struct TileFaultVcompare<
 
         uint32_t n_round_comp = n_round_sub * sizeof(ElementWIn) / sizeof(ElementWTmp);
         n_round_comp = RoundUp(n_round_comp, ELE_NUM_PER_REPEAT_TMP);
-        
-        AscendC::CompareScalar(dstTensor, srcTensor_x, 
+
+        AscendC::CompareScalar(dstTensor, srcTensor_x,
             threshold, AscendC::CMPMODE::LE, n_round_comp);
-        
+
         // AscendC::PipeBarrier<PIPE_V>();
     }
 };
@@ -228,12 +228,12 @@ template<
     class ElementY
 >
 struct TileFaultVcompare<
-        Vecself::Gemv::helper::FT_COMP_TYPE::RSUB,
-        Arch::AtlasA2, 
-        Gemm::GemmType<ElementZ, Catlass::layout::VectorLayout>,
-        Gemm::GemmType<ElementX, Catlass::layout::VectorLayout>,
-        Gemm::GemmType<ElementY, Catlass::layout::VectorLayout>
-        > 
+        FTSelf::Gemv::helper::FT_COMP_TYPE::RSUB,
+        Arch::AtlasA2,
+        Catlass::Gemm::GemmType<ElementZ, Catlass::layout::VectorLayout>,
+        Catlass::Gemm::GemmType<ElementX, Catlass::layout::VectorLayout>,
+        Catlass::Gemm::GemmType<ElementY, Catlass::layout::VectorLayout>
+        >
 {
     using ElementWIn = ElementX;
     using ElementWTmp = ElementX;
@@ -269,7 +269,7 @@ struct TileFaultVcompare<
         ElementWTmp threshold_row = static_cast<ElementWTmp>(0.0f);
 
         n_round_sub = RoundUp(n_round_sub, ELE_NUM_PER_REPEAT_IN);
-        
+
         uint64_t mask = ELE_NUM_PER_REPEAT_TMP;
 
         AscendC::BinaryRepeatParams repeatParams;
@@ -279,7 +279,7 @@ struct TileFaultVcompare<
         repeatParams.dstRepStride = 8;
         repeatParams.src0RepStride = 8;
         repeatParams.src1RepStride = 8;
-        
+
         uint32_t repeatTimes = n_round_sub / ELE_NUM_PER_BLK_TMP;
 
         // AscendC::Sub(workSpaceTensor, srcTensor_x, srcTensor_y, mask, (uint8_t)repeatTimes, repeatParams);
@@ -297,10 +297,10 @@ struct TileFaultVcompare<
 
         uint32_t n_round_comp = n_round_sub * sizeof(ElementWIn) / sizeof(ElementWTmp);
         n_round_comp = RoundUp(n_round_comp, ELE_NUM_PER_REPEAT_TMP);
-        
-        AscendC::CompareScalar(dstTensor, srcTensor_x, 
+
+        AscendC::CompareScalar(dstTensor, srcTensor_x,
             threshold_row, AscendC::CMPMODE::LE, n_round_comp);
-        
+
         // AscendC::PipeBarrier<PIPE_V>();
     }
 };

@@ -1,20 +1,20 @@
 #ifndef CATLASS_GEMV_TILE_TILE_THRESHOLD_HPP
 #define CATLASS_GEMV_TILE_TILE_THRESHOLD_HPP
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/arch.hpp"
-#include "../../gemm/helper.hpp"
-#include "../helper.hpp"
+#include "catlass/gemm/helper.hpp"
+#include "catlass/gemv/helper.hpp"
 #include "catlass/layout/layout.hpp"
-#include "../../gemm/gemm_type.hpp"
+#include "catlass/gemm/gemm_type.hpp"
 
-namespace Vecself::Gemv::Tile {
+namespace FTSelf::Gemv::Tile {
 
 using namespace Catlass;
 template <
     /// Tag indicating architecture
     class ArchTag,
-    Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM ALGO_TYPE_,
+    FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM ALGO_TYPE_,
     class AType,
     class XType,
     class YType,
@@ -27,8 +27,8 @@ struct TileThreCalc
 
 }
 
-#include "tile_threshold_compute.hpp" 
-#include "tile_threshold_mean_max_std_fused.hpp"
-#include "tile_threshold_robust.hpp"
-#include "tile_threshold_simplified.hpp"
+#include "catlass/gemv/tile/tile_threshold_compute.hpp"
+#include "catlass/gemv/tile/tile_threshold_mean_max_std_fused.hpp"
+#include "catlass/gemv/tile/tile_threshold_robust.hpp"
+#include "catlass/gemv/tile/tile_threshold_simplified.hpp"
 #endif

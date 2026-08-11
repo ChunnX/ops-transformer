@@ -11,19 +11,19 @@
 #ifndef CATLASS_GEMV_TILE_MATRIX_COPY_GM_TO_UB_HPP_CONTINUE_SIMPLING
 #define CATLASS_GEMV_TILE_MATRIX_COPY_GM_TO_UB_HPP_CONTINUE_SIMPLING
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/arch.hpp"
 #include "catlass/layout/layout.hpp"
-#include "../../gemm/gemm_type.hpp"
+#include "catlass/gemm/gemm_type.hpp"
 
-namespace Vecself::Gemv::Tile {
+namespace FTSelf::Gemv::Tile {
 
 using namespace Catlass;
 
 template <
     class ArchTag,
     class GmType,
-    Vecself::Gemv::helper::MATRIX_SIMPLING_TYPE SimplingType
+    FTSelf::Gemv::helper::MATRIX_SIMPLING_TYPE SimplingType
 >
 struct MatrixCopyGmToUBSimpling
 {
@@ -34,14 +34,14 @@ struct MatrixCopyGmToUBSimpling
 /// Matrix A confirm
 template <class Element>
 struct MatrixCopyGmToUBSimpling<
-    Arch::AtlasA2, 
-    Gemm::GemmType<Element, layout::RowMajor>, 
-    Vecself::Gemv::helper::MATRIX_SIMPLING_TYPE::CONTINUOUS_SIMPLING>
+    Arch::AtlasA2,
+    Catlass::Gemm::GemmType<Element, layout::RowMajor>,
+    FTSelf::Gemv::helper::MATRIX_SIMPLING_TYPE::CONTINUOUS_SIMPLING>
 {
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
-    using MATRIX_SIMPLING_TYPE = Vecself::Gemv::helper::MATRIX_SIMPLING_TYPE;
+    using MATRIX_SIMPLING_TYPE = FTSelf::Gemv::helper::MATRIX_SIMPLING_TYPE;
 
     static constexpr MATRIX_SIMPLING_TYPE SimplingType = MATRIX_SIMPLING_TYPE::CONTINUOUS_SIMPLING;
 
@@ -56,7 +56,7 @@ struct MatrixCopyGmToUBSimpling<
     void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::GlobalTensor<Element> srcTensor,
-        LayoutDst const &layoutDst, 
+        LayoutDst const &layoutDst,
         LayoutSrc const &layoutSrc, uint32_t simpling_stride)
     {
         /*
@@ -64,7 +64,7 @@ struct MatrixCopyGmToUBSimpling<
         */
         uint32_t m_actual = layoutSrc.shape(0);
         uint32_t n_actual = layoutSrc.shape(1);
-        
+
         uint32_t m_round = layoutDst.shape(0);
         uint32_t n_round = layoutDst.shape(1);
         uint32_t stride = layoutSrc.stride(0);
@@ -73,7 +73,7 @@ struct MatrixCopyGmToUBSimpling<
 
         /*
             表7 DataCopyParams结构体参数定义
-        
+
         参数名称                    含义
         blockCount          指定该指令包含的连续传输数据块个数，
                             取值范围：blockCount∈[1, 4095]。
@@ -161,14 +161,14 @@ struct MatrixCopyGmToUBSimpling<
 /// Matrix A confirm
 template <class Element>
 struct MatrixCopyGmToUBSimpling<
-    Arch::AtlasA2, 
-    Gemm::GemmType<Element, layout::RowMajor>, 
-    Vecself::Gemv::helper::MATRIX_SIMPLING_TYPE::STRIDED_SIMPLING>
+    Arch::AtlasA2,
+    Catlass::Gemm::GemmType<Element, layout::RowMajor>,
+    FTSelf::Gemv::helper::MATRIX_SIMPLING_TYPE::STRIDED_SIMPLING>
 {
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
 
-    using MATRIX_SIMPLING_TYPE = Vecself::Gemv::helper::MATRIX_SIMPLING_TYPE;
+    using MATRIX_SIMPLING_TYPE = FTSelf::Gemv::helper::MATRIX_SIMPLING_TYPE;
 
     static constexpr MATRIX_SIMPLING_TYPE SimplingType = MATRIX_SIMPLING_TYPE::CONTINUOUS_SIMPLING;
 
@@ -183,7 +183,7 @@ struct MatrixCopyGmToUBSimpling<
     void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::GlobalTensor<Element> srcTensor,
-        LayoutDst const &layoutDst, 
+        LayoutDst const &layoutDst,
         LayoutSrc const &layoutSrc, uint32_t simpling_stride, uint32_t stride_unit)
     {
         /*
@@ -208,7 +208,7 @@ struct MatrixCopyGmToUBSimpling<
 
         /*
             表7 DataCopyParams结构体参数定义
-        
+
         参数名称                    含义
         blockCount          指定该指令包含的连续传输数据块个数，
                             取值范围：blockCount∈[1, 4095]。
@@ -239,7 +239,7 @@ struct MatrixCopyGmToUBSimpling<
             params.srcStride = (stride - stride_chunk_aligned) / ELE_NUM_PER_C0;
             params.dstStride = (n_round - stride_unit_aligned) / ELE_NUM_PER_C0;
 
-            
+
 
             for(int32_t j=0;j<(n_chunk_num-1);j++){
                 AscendC::DataCopy(
@@ -279,7 +279,7 @@ struct MatrixCopyGmToUBSimpling<
                 uint32_t final_unit_blk_len = (final_chunk_blk_len < stride_unit_align_blk) ? final_chunk_blk_len : stride_unit_align_blk;
                 uint32_t final_chunk_size = final_chunk_blk_len * ELE_NUM_PER_C0;
                 uint32_t final_unit_size = final_unit_blk_len * ELE_NUM_PER_C0;
-                
+
                 final_params.blockCount = counts;
                 final_params.blockLen = final_unit_blk_len;
                 final_params.srcStride = (ELE_NUM_PER_C0 * stride - final_chunk_size) / ELE_NUM_PER_C0;
@@ -321,8 +321,8 @@ struct MatrixCopyGmToUBSimpling<
                     // CeilDiv(n_actual_simpled, ELE_NUM_PER_C0);
                     params.srcStride = 0;
                     params.dstStride = 0;
-                }   
-                
+                }
+
                 final_params.blockCount = 1;
                 final_params.blockLen = final_unit_blk_len;
                 final_params.srcStride = 0;
@@ -364,8 +364,8 @@ struct MatrixCopyGmToUBSimpling<
                 // CeilDiv(n_actual_simpled, ELE_NUM_PER_C0);
                 params.srcStride = 0;
                 params.dstStride = 0;
-            }   
-                
+            }
+
             final_params.blockCount = 1;
             final_params.blockLen = final_unit_blk_len;
             final_params.srcStride = 0;
@@ -401,8 +401,8 @@ struct MatrixCopyGmToUBSimpling<
 template <class Element>
 struct MatrixCopyGmToUBSimpling<
     Arch::AtlasA2,
-    Gemm::GemmType<Element, layout::ColumnMajor>,
-    Vecself::Gemv::helper::MATRIX_SIMPLING_TYPE::CONTINUOUS_SIMPLING
+    Catlass::Gemm::GemmType<Element, layout::ColumnMajor>,
+    FTSelf::Gemv::helper::MATRIX_SIMPLING_TYPE::CONTINUOUS_SIMPLING
     >
 {
     using LayoutDst = layout::ColumnMajor;
@@ -410,7 +410,7 @@ struct MatrixCopyGmToUBSimpling<
 
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
 
-    using MATRIX_SIMPLING_TYPE = Vecself::Gemv::helper::MATRIX_SIMPLING_TYPE;
+    using MATRIX_SIMPLING_TYPE = FTSelf::Gemv::helper::MATRIX_SIMPLING_TYPE;
 
     static constexpr MATRIX_SIMPLING_TYPE SimplingType = MATRIX_SIMPLING_TYPE::CONTINUOUS_SIMPLING;
 
@@ -423,7 +423,7 @@ struct MatrixCopyGmToUBSimpling<
     void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
-        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc, 
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc,
         uint32_t simpling_stride)
     {
         uint32_t m_actual = layoutSrc.shape(0);
@@ -497,6 +497,6 @@ struct MatrixCopyGmToUBSimpling<
     }
 };
 
-} // namespace Vecself::Gemv::Tile
+} // namespace FTSelf::Gemv::Tile
 
 #endif // CATLASS_GEMV_TILE_MATRIX_COPY_GM_TO_UB_HPP

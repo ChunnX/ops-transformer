@@ -4,18 +4,18 @@
 #include "kernel_operator.h"
 #include "matmul_ft_tiling_data.h"
 
-#include "catlass_include/catlass/catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/resource_aiv.hpp"
 #include "catlass/arch/cross_core_sync_aiv.hpp"
 #include "catlass/layout/layout.hpp"
-#include "catlass_include/catlass/gemm_coord.hpp"
-#include "catlass_include/catlass/matrix_coord.hpp"
+#include "catlass/gemm_coord.hpp"
+#include "catlass/matrix_coord.hpp"
 #include "catlass/epilogue/tile/copy_gm_to_ub.hpp"
 #include "catlass/epilogue/tile/copy_ub_to_gm.hpp"
-#include "catlass_include/catlass/gemm/helper.hpp"
-#include "catlass_include/catlass/gemv/helper.hpp"
-#include "catlass_include/catlass/gemv_coord.hpp"
-#include "catlass_include/catlass/matrix_coord.hpp"
+#include "catlass/gemm/helper.hpp"
+#include "catlass/gemv/helper.hpp"
+#include "catlass/gemv_coord.hpp"
+#include "catlass/matrix_coord.hpp"
 #include <cmath>
 
 // class BlockEpilogue_,
@@ -66,14 +66,14 @@ public:
     using BlockFTGemvAIC = typename BlockConfig::BlockFTGemvAIC;
 
     // using BlockEpilogue = BlockEpilogue_;
-    using FT_ENC_TYPE = Vecself::Gemv::helper::FT_ENC_TYPE;
-    using FT_COMP_TYPE = Vecself::Gemv::helper::FT_COMP_TYPE;
+    using FT_ENC_TYPE = FTSelf::Gemv::helper::FT_ENC_TYPE;
+    using FT_COMP_TYPE = FTSelf::Gemv::helper::FT_COMP_TYPE;
 
-    using FT_AIV_PIPE_FUSE_TYPE = Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE;
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_AIV_PIPE_FUSE_TYPE = FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    using FT_RCE_THRE_TYPE = Vecself::Gemv::helper::FT_RCE_THRE_TYPE;
-    using FT_AIC_BE_SCHEME = Vecself::Gemv::helper::FT_AIC_BE_SCHEME;
+    using FT_RCE_THRE_TYPE = FTSelf::Gemv::helper::FT_RCE_THRE_TYPE;
+    using FT_AIC_BE_SCHEME = FTSelf::Gemv::helper::FT_AIC_BE_SCHEME;
     
     static const FT_AIV_PIPE_FUSE_TYPE FUSE_TYPE = BlockFTGemvAIV::FUSE_TYPE;
     static const FT_THRESHOLD_ALGORITHM ALGO_TYPE = FT_THRESHOLD_ALGORITHM::ASVAR;
@@ -176,8 +176,8 @@ public:
     using UBTileShapeBReduce = typename BlockSliceRed::UBTileShapeforB;
     using SliceSumUBTileShape = typename BlockSliceRed::UBTileShapeforA;
 
-    using UBAlignHelper = Vecself::Gemv::helper::UBAlignHelper<ElementA>;
-    using UBAlignHelperOut = Vecself::Gemv::helper::UBAlignHelper<ElementZ>;
+    using UBAlignHelper = FTSelf::Gemv::helper::UBAlignHelper<ElementA>;
+    using UBAlignHelperOut = FTSelf::Gemv::helper::UBAlignHelper<ElementZ>;
 
     using COMPUBTileShape = typename BlockFTGemvAIV::ThreCalcUBTileShapeTotal;
 

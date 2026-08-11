@@ -2,17 +2,17 @@
 #ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_PINGPONG_HPP_SELF_PRELOAD
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_PINGPONG_HPP_SELF_PRELOAD
 
-# include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/resource_aiv.hpp"
 #include "catlass/arch/cross_core_sync_aiv.hpp"
-# include "../../coord.hpp"
-# include "../../gemm_coord.hpp"
-# include "../dispatch_policy.hpp"
-# include "../helper.hpp"
-# include "../tile/tile_copy.hpp"
-# include "../tile/tile_mmad.hpp"
+#include "catlass/coord.hpp"
+#include "catlass/gemm_coord.hpp"
+#include "catlass/gemm/dispatch_policy.hpp"
+#include "catlass/gemm/helper.hpp"
+#include "catlass/gemm/tile/tile_copy.hpp"
+#include "catlass/gemm/tile/tile_mmad.hpp"
 
-namespace CubeSelf::Gemm::Block {
+namespace FTSelf::Gemm::Block {
 template<
     bool ENABLE_UNIT_FLAG_,
     class L1TileShape_,
@@ -49,17 +49,17 @@ public:
     1. AIC架构 （矩阵计算，Cube 核）
         a. 包含4个并行执行单元（搬运单元和计算单元）：MTE1，MTE2，Cube，Scalar，FixPipe
         b. 包含7个内存单元：GM（核外），L1，L0A，L0B，L0C，BiasTable Buffer，Fixpipe Buffer
-    
+
     2. AIV架构 (向量计算， Vector 核)
         a. 包含4个并行执行单元：MTE2，MTE3，Vector，Scalar
         b. 包含2个内存单元：GM（核外），UB
-    
+
     3. 典型计算数据流
         a. Vector计算：GM-UB-[Vector]-UB-GM
         b. Cube计算：
             1) GM-L1-L0A/L0B-[Cube]-L0C-FixPipe-GM
             2) GM-L1-L0A/L0B-[Cube]-L0C-FixPipe-L1 (进行后续的relu/scale等运算)
-    
+
     注意：实际上，在分离架构的 L1 Buffer 中，A1/B1/C1 等均是逻辑上的概念，不存在独立的空间
     而是上述的存储TPosition 共享 L1 Buffer 空间，所以这里在L1 上统一使用了 A1。
     */
@@ -71,7 +71,7 @@ public:
 
     using ElementA = typename AType_::Element;
     using LayoutA = typename AType_::Layout;
-    
+
     using ElementB = typename BType_::Element;
     using LayoutB = typename BType_::Layout;
 
@@ -86,7 +86,7 @@ public:
     using CopyL1ToL0B = typename TileCopy_::CopyL1ToL0B;
     using CopyL0CToGm = typename TileCopy_::CopyL0CToGm;
 
-    using ElementAccumulator = 
+    using ElementAccumulator =
         typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA,ElementB>::ElementAccumulator;
 
     using LayoutAInL1 = typename CopyL1ToL0A::LayoutSrc;
@@ -115,7 +115,7 @@ public:
     static_assert(std::is_same_v<LayoutC, Catlass::layout::RowMajor>, "LayoutC only support RowMajor yet!");
 
     // Check L1TileShape: 统一通过 A1 存储传输，所以要相加小于整体size
-    static_assert((L1A_SIZE * STAGES + L1B_SIZE * STAGES) <= ArchTag::L1_SIZE, 
+    static_assert((L1A_SIZE * STAGES + L1B_SIZE * STAGES) <= ArchTag::L1_SIZE,
         "L1TileShape exceeding the L1 space!");
 
     // Check L0TileShape
@@ -127,7 +127,7 @@ public:
 
     static_assert(L1TileShape::M == L0TileShape::M && L1TileShape::N == L0TileShape::N,
         "The situation where the basic blocks of L1 and L0 differ on the m and n axes is not supported yet");
-    
+
     /*
     同步控制简介
     TQueSync类提供同步控制接口，开发者可以使用这类API来自行完成同步控制。
@@ -147,13 +147,13 @@ public:
         并把向量计算、矩阵计算、数据搬运指令发射给对应单元的指令队列，
         向量计算单元、矩阵计算单元、数据搬运单元异步的并行执行接收到的指令。
         该过程可以表示为指令流。
-        
+
         b. 不同的指令间有可能存在依赖关系，
         为了保证不同指令队列间的指令按照正确的逻辑关系执行，
         Scalar计算单元也会给对应单元下发同步指令。
         Scalar与向量计算单元、矩阵计算单元、数据搬运单元之间的同步过程
         可以表示为同步信号流。
-        
+
         c.AI Core内部数据处理的基本过程：
         DMA搬入单元把数据搬运到Local Memory，
         Vector/Cube计算单元完成数据计算，
@@ -181,17 +181,17 @@ public:
                         表1 指令流水类型和相关说明
     流水类型                    含义
     PIPE_S              标量流水线，使用Tensor GetValue函数时为此流水
-    
+
     PIPE_V              矢量计算流水及L0C->UB 数据搬运流水
-    
+
     PIPE_M              矩阵计算流水
-    
+
     PIPE_MTE1           L1->L0A、L1->L0B数据搬运流水
-    
+
     PIPE_MTE2           GM->L1、GM->L0A、GM->L0B、GM->UB 数据搬运流水
 
     PIPE_MTE3           UB->GM、UB->L1数据搬运流水
-    
+
     PIPE_FIX            L0C->GM、L0C->L1数据搬运流水，
                         当前版本暂不支持该流水类型。
 
@@ -213,13 +213,13 @@ public:
         b. 多流水同步：PIPE_V、PIPE_MTE2、PIPE_MTE3、PIPE_S之间的多流水同步，都是双向的，
         PIPE_S 与 PIPE_V/PIPE_MTE2/PIPE_MTE3之间的同步由编译器自动完成同步插入，
         剩余的同步（上述其余流水内部的同步）由Ascend C框架完成。
-    
+
     2. Cube计算单元: Cube侧所有流水同步都由Ascend C框架完成，不需要算子开发者插入同步。
     */
     /// Construct
     CATLASS_DEVICE
     BlockMmadPreload(Catlass::Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0)
-    {   
+    {
         // block 上 L1 Cache 中 A1 和 B1 的起始地址偏移
         uint32_t l1AOffset = l1BufAddrStart;
         uint32_t l1BOffset = l1BufAddrStart + L1A_SIZE * STAGES;
@@ -288,7 +288,7 @@ public:
     a.SetFlag：
     template <HardEvent event>
         __aicore__ inline void SetFlag(int32_t eventID)
-    
+
     b.WaitFlag:
     template <HardEvent event>
     __aicore__ inline void WaitFlag(int32_t eventID)
@@ -373,7 +373,7 @@ public:
     II. 函数原型
     template <HardEvent evt>
     __aicore__ inline TEventID TPipe::AllocEventID()
-    
+
     III. 参数说明
                                     表1 模板参数说明
     参数名                                      描述
@@ -407,7 +407,7 @@ public:
     template <HardEvent evt>
     __aicore__ inline TEventID TPipe::FetchEventID()
     __aicore__ inline TEventID TPipe::FetchEventID(HardEvent evt)
-    
+
     III. 参数说明
     参数名                          输入/输出                       含义
     evt                               输入              HardEvent类型，硬件同步类型。
@@ -449,7 +449,7 @@ public:
         参数名          输入/输出                   描述
         id                 输入             TEventID类型，
                                         调用AllocEventID申请获得的TEventID。
-    
+
     IV. 约束说明
     AllocEventID、ReleaseEventID需成对出现，
     ReleaseEventID传入的TEventID需由对应的AllocEventID申请而来。
@@ -473,17 +473,17 @@ public:
     /// Perform a block-scoped matrix multiply-accumulate
     CATLASS_DEVICE
     void operator()(
-        AscendC::GlobalTensor<ElementA> const & gmA, 
+        AscendC::GlobalTensor<ElementA> const & gmA,
         AscendC::GlobalTensor<ElementA> const & gmNextA,
         LayoutA const &layoutA,
-        AscendC::GlobalTensor<ElementB> const & gmB, 
+        AscendC::GlobalTensor<ElementB> const & gmB,
         AscendC::GlobalTensor<ElementB> const & gmNextB,
         LayoutB const &layoutB,
         AscendC::GlobalTensor<ElementC> const & gmC, LayoutC const &layoutC,
         Catlass::GemmCoord const &actualShape, Catlass::GemmCoord const &actualShapeNext,
         bool isFirstBlock, bool hasNextBlock
     )
-    {   
+    {
         uint32_t mRound = RoundUp<L1AAlignHelper::M_ALIGNED>(actualShape.m());
         uint32_t nRound = RoundUp<L1BAlignHelper::N_ALIGNED>(actualShape.n());
 
@@ -492,12 +492,12 @@ public:
 
         auto layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(L1TileShape::M, L1TileShape::K);
         auto layoutBInL1 = LayoutBInL1::template MakeLayout<ElementB>(L1TileShape::K, L1TileShape::N);
-        
+
         auto layoutInL0C = LayoutCInL0::MakeLayoutInL0C(Catlass::MakeCoord(mRound, nRound));
         auto layoutInL0CNext = LayoutCInL0::MakeLayoutInL0C(Catlass::MakeCoord(mRoundNext, nRoundNext));
 
         uint32_t kActual = min(actualShape.k(), L1TileShape::K);
-        
+
 
         if(isFirstBlock){
             // load first matrix A tile from GM to L1
@@ -516,7 +516,7 @@ public:
             copyGmToL1B(l1BTensorList[l1ListId], gmB, layoutBInL1, layoutTileB);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventList[l1ListId]);
         }
-        
+
 
         if constexpr (!ENABLE_UNIT_FLAG) {
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
@@ -531,7 +531,7 @@ public:
         {
             // 下一阶段执行的stage id
             uint32_t l1ListIdNext = (l1ListId + 1 < STAGES)? (l1ListId + 1) : 0;
-            uint32_t kActualNext{0}; 
+            uint32_t kActualNext{0};
 
             // 流水线，提前将下一阶段的数据从 GM 加载到 L1 中与计算overlap
             // preload next tile from GM to L1
@@ -540,7 +540,7 @@ public:
                 // 下一阶段 若非最后一个 loop，那么执行一个L1TileShape::K,否则执行剩余的数据
                 kActualNext = (kLoopIdxNext < kTileCount - 1) ?
                     L1TileShape::K : (actualShape.k() - kLoopIdxNext * L1TileShape::K);
-                
+
                 // Get L1 Tensor for next stage
                 auto l1ATensor = l1ATensorList[l1ListIdNext];
                 auto l1BTensor = l1BTensorList[l1ListIdNext];
@@ -567,7 +567,7 @@ public:
                 uint32_t kLoopIdxNext = 0;
                 // 下一阶段 若非最后一个 loop，那么执行一个L1TileShape::K,否则执行剩余的数据
                 kActualNext = min(actualShapeNext.k(), L1TileShape::K);
-                
+
                 // Get L1 Tensor for next stage
                 auto l1ANextTensor = l1ATensorList[l1ListIdNext];
                 auto l1BNextTensor = l1BTensorList[l1ListIdNext];
@@ -606,7 +606,7 @@ public:
                 for(int kPartIdx=0; kPartIdx < kPartLoop; kPartIdx++){
                     uint32_t kPartActual = (kPartIdx < kPartLoop - 1) ?
                         L0TileShape::K : (kActual - kPartIdx * L0TileShape::K);
-                    
+
                     // Locate the current tile on L0A
                     auto l0ATile = l0ATensorList[l0AListId];
                     LayoutAInL0 layoutAInL0 = LayoutAInL0::template MakeLayout<ElementA>(mPartActual,kPartActual);
@@ -615,7 +615,7 @@ public:
                     Catlass::MatrixCoord l1AOffset{mPartIdx * L0TileShape::M, kPartIdx * L0TileShape::K};
 
                     auto l1ATile = l1ATensor[layoutAInL1.GetOffset(l1AOffset)];
-                    
+
                     // 等待现在的L0阶段中之前在L0上的数据消费已经完成，即相应 MMAD 计算完成
                     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventList[l0AListId]);
                     if((mPartIdx == 0) && (kPartIdx == 0)){
@@ -638,16 +638,16 @@ public:
                     for(int nPartIdx = 0; nPartIdx < nPartLoop; nPartIdx++){
                         uint32_t nPartActual = (nPartIdx < nPartLoop - 1) ?
                             L0TileShape::N : (nRound - nPartIdx * L0TileShape::N);
-                        
+
                         // Locate the current tile on L0B
                         auto l0BTile = l0BTensorList[l0BListId];
-                        LayoutBInL0 layoutBInL0 = 
+                        LayoutBInL0 layoutBInL0 =
                             LayoutBInL0::template MakeLayout<ElementB>(kPartActual, nPartActual);
-                        
+
                         // Locate the current tile of matrix B on L1
-                        Catlass::MatrixCoord l1BOffset{kPartIdx * L0TileShape::K, 
+                        Catlass::MatrixCoord l1BOffset{kPartIdx * L0TileShape::K,
                             nPartIdx * L0TileShape::N};
-                        
+
                         auto l1BTile = l1BTensor[layoutBInL1.GetOffset(l1BOffset)];
 
                         // Wait for mmad finished
@@ -702,7 +702,7 @@ public:
                             }
                         }
                         // Perform calculation operations
-                        tileMmad(l0CTile, l0ATile, l0BTile, mPartActual, 
+                        tileMmad(l0CTile, l0ATile, l0BTile, mPartActual,
                             nPartActual, kPartActual, initC, unitFlag);
 
                         // Notify to move the next L0B tile
@@ -747,7 +747,7 @@ protected:
 
     AscendC::LocalTensor<ElementA> l0ATensorList[STAGES];
     AscendC::LocalTensor<ElementB> l0BTensorList[STAGES];
-    
+
     AscendC::LocalTensor<ElementAccumulator> l0CTensor;
 
     // Multi-stage event id list
@@ -770,6 +770,6 @@ protected:
     CopyL1ToL0B copyL1ToL0B;
     CopyL0CToGm copyL0CToGm;
 };
-} // namespace CubeSelf::Gemm::Block
+} // namespace FTSelf::Gemm::Block
 
 #endif // CATLASS_GEMM_BLOCK_BLOCK_MMAD_PINGPONG_HPP

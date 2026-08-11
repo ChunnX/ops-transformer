@@ -1,32 +1,11 @@
-/**
- * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+#ifndef FTSELF_CATLASS_GEMM_TILE_COPY_L0C_TO_GM_HPP
+#define FTSELF_CATLASS_GEMM_TILE_COPY_L0C_TO_GM_HPP
 
-#ifndef CATLASS_GEMM_TILE_COPY_L0C_TO_GM_HPP
-#define CATLASS_GEMM_TILE_COPY_L0C_TO_GM_HPP
+#include_next "catlass/gemm/tile/copy_l0c_to_gm.hpp"
 
-#if (defined(CATLASS_ARCH) && CATLASS_ARCH == 2201)
-#include "atlasa2/copy_l0c_to_gm.hpp"
-#endif
-#if (defined(CATLASS_ARCH) && CATLASS_ARCH == 3510)
-#include "ascend950/copy_l0c_to_gm.hpp"
-#endif
+#include "catlass/gemv/helper.hpp"
 
-
-#endif // CATLASS_GEMM_TILE_COPY_L0C_TO_GM_HPP
-
-// self implemented
-#ifndef CUBE_SELF_GEMM_TILE_COPY_L0C_TO_GM_HPP
-#define CUBE_SELF_GEMM_TILE_COPY_L0C_TO_GM_HPP
-#include "../../gemv/helper.hpp"
-
-namespace CubeSelf::Gemm::Tile {
+namespace FTSelf::Gemm::Tile {
 
 using Catlass::Gemm::Tile::CopyL0CToGmQuantMode;
 using Catlass::Gemm::Tile::ScaleGranularity;
@@ -35,7 +14,7 @@ template <
     class ArchTag,
     class ElementAccumulator,
     class L1Type,
-    Vecself::Gemv::helper::FT_L02L1_TYPE CopyType,
+    FTSelf::Gemv::helper::FT_L02L1_TYPE CopyType,
     ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT,
     bool ReluEnable = false
 >
@@ -47,7 +26,7 @@ template <
     class ArchTag,
     class ElementAccumulator,
     class L1Type,
-    Vecself::Gemv::helper::FT_L02L1_TYPE CopyType,
+    FTSelf::Gemv::helper::FT_L02L1_TYPE CopyType,
     ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT,
     bool ReluEnable = false
 >
@@ -60,7 +39,7 @@ template <
 struct CopyL0CToL1<Catlass::Arch::AtlasA2,
                    ElementAccumulator_,
                    Catlass::Gemm::GemmType<ElementDst_, Catlass::layout::zN>,
-                   Vecself::Gemv::helper::FT_L02L1_TYPE::FIX_PIPE,
+                   FTSelf::Gemv::helper::FT_L02L1_TYPE::FIX_PIPE,
                    ScaleGranularity::NO_QUANT,
                    ReluEnable_>
 {
@@ -74,9 +53,9 @@ struct CopyL0CToL1<Catlass::Arch::AtlasA2,
     static constexpr auto reluEn = ReluEnable_;
 
     CATLASS_DEVICE
-    void operator()(AscendC::LocalTensor<ElementDst> const &dst, 
+    void operator()(AscendC::LocalTensor<ElementDst> const &dst,
         AscendC::LocalTensor<ElementSrc> const &src,
-        LayoutDst const &dstLayout, LayoutSrc const &srcLayout, 
+        LayoutDst const &dstLayout, LayoutSrc const &srcLayout,
         uint8_t unitFlag = 0, bool isChannelSplit=false)
     {
 
@@ -100,13 +79,13 @@ struct CopyL0CToL1<Catlass::Arch::AtlasA2,
                                                         取值范围：mSize∈[1, 65535]。
                                                         使能NZ2ND功能
                                                         取值范围：mSize∈[1, 8192]。
-    
+
             srcStride           输入                源NZ矩阵中相邻Z排布的起始地址偏移，
-                                                    取值范围：srcStride∈[0, 65535]， 
+                                                    取值范围：srcStride∈[0, 65535]，
                                                     单位：C0_Size(16*sizeof(T)，T为srcLocal的数据类型)。
-    
+
             dstStride           输入                不使能NZ2ND功能
-                                                    目的NZ矩阵中相邻Z排布的起始地址偏移，取值不为0， 
+                                                    目的NZ矩阵中相邻Z排布的起始地址偏移，取值不为0，
                                                     单位：datablock(32Bytes)。
 
                                                     使能NZ2ND功能
@@ -143,9 +122,9 @@ struct CopyL0CToL1<Catlass::Arch::AtlasA2,
 
             reluEn              输入                是否使能relu的开关，false：不使能relu功能；
                                                     true：使能relu功能。
-    
+
             unitFlag            输入                预留参数，用户无需关心，使用默认值0即可。
-        
+
             isChannelSplit      输入                是否使能通道拆分的功能。默认为false，不使能该功能。
                                                     仅在src和dst都为float时才能使能通道拆分，
                                                     且不能同时使能ChannelSplit和NZ2ND功能。
@@ -166,8 +145,8 @@ struct CopyL0CToL1<Catlass::Arch::AtlasA2,
         /*
         template <typename DstT, typename SrcT,
          const FixpipeConfig& config = CFG_ROW_MAJOR>
-        void Fixpipe(const LocalTensor<DstT>& dstLocal, 
-            const LocalTensor<SrcT>& srcLocal, 
+        void Fixpipe(const LocalTensor<DstT>& dstLocal,
+            const LocalTensor<SrcT>& srcLocal,
             const FixpipeParamsM300& intriParams)
         */
 
@@ -183,7 +162,7 @@ template <
     class ArchTag,
     class ElementAccumulator,
     class L1Type,
-    Vecself::Gemv::helper::FT_L02L1_TYPE CopyType,
+    FTSelf::Gemv::helper::FT_L02L1_TYPE CopyType,
     ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT,
     bool ReluEnable = false
 >
@@ -196,7 +175,7 @@ template <
 struct CopyL0CToL1<Catlass::Arch::AtlasA2,
                    ElementAccumulator_,
                    Catlass::Gemm::GemmType<ElementDst_, Catlass::layout::zN>,
-                   Vecself::Gemv::helper::FT_L02L1_TYPE::CO12DST,
+                   FTSelf::Gemv::helper::FT_L02L1_TYPE::CO12DST,
                    ScaleGranularity::NO_QUANT,
                    ReluEnable_>
 {
@@ -210,9 +189,9 @@ struct CopyL0CToL1<Catlass::Arch::AtlasA2,
     static constexpr auto reluEn = ReluEnable_;
 
     CATLASS_DEVICE
-    void operator()(AscendC::LocalTensor<ElementDst> const &dst, 
+    void operator()(AscendC::LocalTensor<ElementDst> const &dst,
         AscendC::LocalTensor<ElementSrc> const &src,
-        LayoutDst const &dstLayout, LayoutSrc const &srcLayout, 
+        LayoutDst const &dstLayout, LayoutSrc const &srcLayout,
         uint8_t unitFlag = 0, bool isChannelSplit=false,
         uint8_t reluPre=0,float scalar_for_deq=1.0)
     {
@@ -230,9 +209,9 @@ struct CopyL0CToL1<Catlass::Arch::AtlasA2,
         mSize                       srcLocal纵向方向的size大小。
                                     不使能NZ2ND功能，连续传输数据块的大小为
                                     mSize * C0个元素的长度。
-                                    
+
                                     使能NZ2ND功能，NZ/ND矩阵的大小为mSize*nSize。
-        
+
         dstStride                   不使能NZ2ND功能
                                     dstLocal相邻连续数据片段间隔
                                     （前面一个数据块的头与后面数据块的头的间隔），
@@ -241,10 +220,10 @@ struct CopyL0CToL1<Catlass::Arch::AtlasA2,
                                     Atlas 800I A2 推理产品/
                                     A200I A2 Box 异构组件 ，
                                     单位为datablock(32Bytes)。
-                                    
+
                                     针对Atlas A3 训练系列产品/Atlas A3 推理系列产品 ，
                                     单位为datablock(32Bytes)。
-                                    
+
                                     使能NZ2ND功能
                                     dstLocal同一ND矩阵的相邻行的偏移(头与头)，
                                     取值不为0， 单位为元素。
@@ -252,10 +231,10 @@ struct CopyL0CToL1<Catlass::Arch::AtlasA2,
         srcStride                   不使能NZ2ND功能：srcLocal相邻连续数据片段间隔
                                     （前面一个数据块的头与后面数据块的头的间隔），
                                     必须为16的倍数。
-                                    取值范围：srcStride∈[0, 65535]， 
+                                    取值范围：srcStride∈[0, 65535]，
                                     单位：C0_Size(C0*sizeof(U)，
                                     U为srcLocal的数据类型)。
-                                    
+
                                     使能NZ2ND功能
                                     srcLocal同一NZ矩阵的相邻Z排布的偏移（头与头），
                                     必须为16的倍数，取值范围：
@@ -270,7 +249,7 @@ struct CopyL0CToL1<Catlass::Arch::AtlasA2,
                                     设置scalar量化参数；
                                     配置为tensor量化时，
                                     需要调用SetFixPipeConfig来设置tensor量化参数。
-                                    
+
                                     enum QuantMode_t
                                     {
                                     NoQuant, // 不使能量化功能
@@ -286,7 +265,7 @@ struct CopyL0CToL1<Catlass::Arch::AtlasA2,
         reluPre                    用于配置relu操作的模式，类型为uint8_t，取值如下：
                                     0：不使能relu
                                     1：Normal relu
-        
+
         channelSplit                类型为bool，配置是否使能channel切分，
                                     对于float类型的dstLocal生效。
                                     false：不使能
@@ -350,8 +329,8 @@ struct CopyL0CToL1<Catlass::Arch::AtlasA2,
         /*
         template <typename DstT, typename SrcT,
          const FixpipeConfig& config = CFG_ROW_MAJOR>
-        void Fixpipe(const LocalTensor<DstT>& dstLocal, 
-            const LocalTensor<SrcT>& srcLocal, 
+        void Fixpipe(const LocalTensor<DstT>& dstLocal,
+            const LocalTensor<SrcT>& srcLocal,
             const FixpipeParamsM300& intriParams)
         */
 
@@ -360,7 +339,7 @@ struct CopyL0CToL1<Catlass::Arch::AtlasA2,
         /*
         template <typename T, typename U>
         __aicore__ inline void DataCopy(
-            const LocalTensor<T>& dstLocal, 
+            const LocalTensor<T>& dstLocal,
             const LocalTensor<U>& srcLocal,
             const DataCopyCO12DstParams& intriParams);
         */
@@ -369,6 +348,6 @@ struct CopyL0CToL1<Catlass::Arch::AtlasA2,
     }
 };
 
-} // namespace CubeSelf::Gemm::Tile
+} // namespace FTSelf::Gemm::Tile
 
-#endif // CUBE_SELF_GEMM_TILE_COPY_L0C_TO_GM_HPP
+#endif // FTSELF_CATLASS_GEMM_TILE_COPY_L0C_TO_GM_HPP

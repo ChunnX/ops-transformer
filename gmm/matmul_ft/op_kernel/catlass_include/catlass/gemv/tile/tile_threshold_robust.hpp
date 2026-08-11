@@ -1,14 +1,14 @@
 #ifndef CATLASS_GEMV_TILE_TILE_THRESHOLD_MEAN_MAX_STD_FUSED_HPP_ROBUST
 #define CATLASS_GEMV_TILE_TILE_THRESHOLD_MEAN_MAX_STD_FUSED_HPP_ROBUST
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/arch.hpp"
-#include "../../gemm/helper.hpp"
-#include "../helper.hpp"
+#include "catlass/gemm/helper.hpp"
+#include "catlass/gemv/helper.hpp"
 #include "catlass/layout/layout.hpp"
-#include "../../gemm/gemm_type.hpp"
+#include "catlass/gemm/gemm_type.hpp"
 
-namespace Vecself::Gemv::Tile {
+namespace FTSelf::Gemv::Tile {
 
 using namespace Catlass;
 // template <
@@ -30,18 +30,18 @@ template <
     class ElementY
 >
 struct TileThreCalc<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
-                Gemm::GemmType<ElementA, layout::RowMajor>,
-                Gemm::GemmType<ElementX, layout::VectorLayout>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
+                Catlass::Gemm::GemmType<ElementA, layout::RowMajor>,
+                Catlass::Gemm::GemmType<ElementX, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementY);
@@ -51,7 +51,7 @@ struct TileThreCalc<Arch::AtlasA2,
     CATLASS_DEVICE
     TileThreCalc() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -62,7 +62,7 @@ struct TileThreCalc<Arch::AtlasA2,
         ElementY n_ratio_factor, ElementY n_sqrt_ratio_factor,
         ElementY n_square_ratio_factor, ElementY B_slice_meanabs,
         ElementY B_slice_meansquare,
-        ElementY B_slice_var, ElementY B_slice_var_square, 
+        ElementY B_slice_var, ElementY B_slice_var_square,
         ElementY e_max)
     {
 
@@ -88,7 +88,7 @@ struct TileThreCalc<Arch::AtlasA2,
         /*
         template <typename T>
         __aicore__ inline void Abs(
-            const LocalTensor<T>& dstLocal, 
+            const LocalTensor<T>& dstLocal,
             const LocalTensor<T>& srcLocal, const int32_t& calCount)
         */
 
@@ -111,12 +111,12 @@ struct TileThreCalc<Arch::AtlasA2,
             thre_workspace[4 * m_actual],
             srcMeanTensor,
             AscendC::RoundMode::CAST_NONE, m_actual);
-        
+
         /*
         template <typename T, typename U>
-        __aicore__ inline void MulAddDst(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<U>& src0Local, 
-            const LocalTensor<U>& src1Local, 
+        __aicore__ inline void MulAddDst(const LocalTensor<T>& dstLocal,
+            const LocalTensor<U>& src0Local,
+            const LocalTensor<U>& src1Local,
             const int32_t& calCount)
         */
         AscendC::MulAddDst<ElementY, ElementX>(
@@ -124,7 +124,7 @@ struct TileThreCalc<Arch::AtlasA2,
             srcMeanTensor,
             srcMeanTensor,
             m_actual);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         AscendC::SetMaskCount();
@@ -192,13 +192,13 @@ struct TileThreCalc<Arch::AtlasA2,
             thre_workspace[3 * m_actual],
             thre_workspace[2 * m_actual],
             m_actual);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Abs(thre_workspace, thre_workspace, m_actual);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Sqrt(thre_workspace, thre_workspace, m_actual);
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         // AscendC::Add<ElementY, true>(
         //     thre_workspace,
         //     thre_workspace[4 * m_actual],
@@ -228,7 +228,7 @@ struct TileThreCalc<Arch::AtlasA2,
             thre_workspace[m_actual],
             thre_workspace,
             m_actual);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
 
@@ -243,7 +243,7 @@ struct TileThreCalc<Arch::AtlasA2,
             AscendC::UnaryRepeatParams{}
         );
         AscendC::SetMaskNorm();
-        AscendC::ResetMask();          
+        AscendC::ResetMask();
     }
 };
 
@@ -259,21 +259,21 @@ template <
     class ElementA
 >
 struct TileThreCalc<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
-                Gemm::GemmType<ElementA, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
+                Catlass::Gemm::GemmType<ElementA, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementX = float;
     using ElementY = float;
 
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementY);
@@ -283,7 +283,7 @@ struct TileThreCalc<Arch::AtlasA2,
     CATLASS_DEVICE
     TileThreCalc() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -294,7 +294,7 @@ struct TileThreCalc<Arch::AtlasA2,
         ElementY n_ratio_factor, ElementY n_sqrt_ratio_factor,
         ElementY n_square_ratio_factor, ElementY B_slice_meanabs,
         ElementY B_slice_meansquare,
-        ElementY B_slice_var, ElementY B_slice_var_square, 
+        ElementY B_slice_var, ElementY B_slice_var_square,
         ElementY e_max)
     {
 
@@ -320,7 +320,7 @@ struct TileThreCalc<Arch::AtlasA2,
         /*
         template <typename T>
         __aicore__ inline void Abs(
-            const LocalTensor<T>& dstLocal, 
+            const LocalTensor<T>& dstLocal,
             const LocalTensor<T>& srcLocal, const int32_t& calCount)
         */
         AscendC::MulAddDst<ElementY, ElementX>(
@@ -331,12 +331,12 @@ struct TileThreCalc<Arch::AtlasA2,
 
         AscendC::Abs(srcMeanTensor, srcMeanTensor, int32_t(m_actual));
         AscendC::PipeBarrier<PIPE_V>();
- 
+
         /*
         template <typename T, typename U>
-        __aicore__ inline void MulAddDst(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<U>& src0Local, 
-            const LocalTensor<U>& src1Local, 
+        __aicore__ inline void MulAddDst(const LocalTensor<T>& dstLocal,
+            const LocalTensor<U>& src0Local,
+            const LocalTensor<U>& src1Local,
             const int32_t& calCount)
         */
         AscendC::MulAddDst<ElementY, ElementX>(
@@ -344,7 +344,7 @@ struct TileThreCalc<Arch::AtlasA2,
             srcMeanTensor,
             srcMeanTensor,
             m_actual);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         AscendC::SetMaskCount();
@@ -408,26 +408,26 @@ struct TileThreCalc<Arch::AtlasA2,
         //     params);
         /*
         template <typename T>
-        __aicore__ inline void 
-        Add(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, 
+        __aicore__ inline void
+        Add(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local,
             const int32_t& calCount)
         */
         AscendC::Add<ElementY>(
                 thre_workspace,
                 thre_workspace[3 * m_actual],
-                thre_workspace[2 * m_actual], 
+                thre_workspace[2 * m_actual],
                 m_actual);
 
         // AscendC::Abs(thre_workspace, thre_workspace, m_actual);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Abs(thre_workspace, thre_workspace, m_actual);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Sqrt(thre_workspace, thre_workspace, m_actual);
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         // AscendC::Add<ElementY, true>(
         //     thre_workspace,
         //     thre_workspace[4 * m_actual],
@@ -435,11 +435,11 @@ struct TileThreCalc<Arch::AtlasA2,
         //     add_mask,
         //     CeilDiv(m_actual, elem_repeat_size),
         //     params);
-        
+
         AscendC::Add<ElementY>(
                 thre_workspace,
                 thre_workspace[4 * m_actual],
-                thre_workspace, 
+                thre_workspace,
                 m_actual);
 
         AscendC::PipeBarrier<PIPE_V>();
@@ -455,9 +455,9 @@ struct TileThreCalc<Arch::AtlasA2,
         AscendC::Add<ElementY>(
                 thre_workspace,
                 thre_workspace[m_actual],
-                thre_workspace, 
+                thre_workspace,
                 m_actual);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
 
@@ -473,7 +473,7 @@ struct TileThreCalc<Arch::AtlasA2,
         );
         AscendC::SetMaskNorm();
         AscendC::ResetMask();
-        
+
         AscendC::PipeBarrier<PIPE_V>();
     }
 };
@@ -482,21 +482,21 @@ template <
     class ElementA
 >
 struct TileThreCalc<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
-                Gemm::GemmType<ElementA, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
+                Catlass::Gemm::GemmType<ElementA, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementX = half;
     using ElementY = half;
 
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementX, ElementY>::ElementAccumulator;
 
-    using FT_THRESHOLD_ALGORITHM = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM;
+    using FT_THRESHOLD_ALGORITHM = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM;
 
-    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
+    static constexpr FT_THRESHOLD_ALGORITHM ALGO_TYPE = FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST;
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementY);
@@ -506,7 +506,7 @@ struct TileThreCalc<Arch::AtlasA2,
     CATLASS_DEVICE
     TileThreCalc() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -517,7 +517,7 @@ struct TileThreCalc<Arch::AtlasA2,
         ElementY n_ratio_factor, ElementY n_sqrt_ratio_factor,
         ElementY n_square_ratio_factor, ElementY B_slice_meanabs,
         ElementY B_slice_meansquare,
-        ElementY B_slice_var, ElementY B_slice_var_square, 
+        ElementY B_slice_var, ElementY B_slice_var_square,
         ElementY e_max)
     {
 
@@ -543,7 +543,7 @@ struct TileThreCalc<Arch::AtlasA2,
         /*
         template <typename T>
         __aicore__ inline void Abs(
-            const LocalTensor<T>& dstLocal, 
+            const LocalTensor<T>& dstLocal,
             const LocalTensor<T>& srcLocal, const int32_t& calCount)
         */
         AscendC::MulAddDst<ElementY, ElementX>(
@@ -554,12 +554,12 @@ struct TileThreCalc<Arch::AtlasA2,
 
         AscendC::Abs(srcMeanTensor, srcMeanTensor, int32_t(m_actual));
         AscendC::PipeBarrier<PIPE_V>();
- 
+
         /*
         template <typename T, typename U>
-        __aicore__ inline void MulAddDst(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<U>& src0Local, 
-            const LocalTensor<U>& src1Local, 
+        __aicore__ inline void MulAddDst(const LocalTensor<T>& dstLocal,
+            const LocalTensor<U>& src0Local,
+            const LocalTensor<U>& src1Local,
             const int32_t& calCount)
         */
         AscendC::MulAddDst<ElementY, ElementX>(
@@ -567,7 +567,7 @@ struct TileThreCalc<Arch::AtlasA2,
             srcMeanTensor,
             srcMeanTensor,
             m_actual);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         AscendC::SetMaskCount();
@@ -634,13 +634,13 @@ struct TileThreCalc<Arch::AtlasA2,
             thre_workspace[3 * m_actual],
             thre_workspace[2 * m_actual],
             m_actual);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Abs(thre_workspace, thre_workspace, m_actual);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Sqrt(thre_workspace, thre_workspace, m_actual);
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         // AscendC::Add<ElementY, true>(
         //     thre_workspace,
         //     thre_workspace[4 * m_actual],
@@ -670,7 +670,7 @@ struct TileThreCalc<Arch::AtlasA2,
             thre_workspace[m_actual],
             thre_workspace,
             m_actual);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
 
@@ -686,7 +686,7 @@ struct TileThreCalc<Arch::AtlasA2,
         );
         AscendC::SetMaskNorm();
         AscendC::ResetMask();
-            
+
     }
 };
 

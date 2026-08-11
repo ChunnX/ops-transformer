@@ -21,29 +21,29 @@
 #include "matmul_ft_tiling_key.h"
 #include "lib/matmul_intf.h"
 
-#include "catlass_include/catlass/gemm/block/block_mmad.hpp"
-#include "catlass_include/catlass/gemv/block/block_gemv.hpp"
+#include "catlass/gemm/block/block_mmad.hpp"
+#include "catlass/gemv/block/block_gemv.hpp"
 
-#include "catlass_include/catlass/gemm/block/block_swizzle.hpp"
-#include "catlass_include/catlass/gemv/tile/tile_fault_sum.hpp"
-#include "catlass_include/catlass/gemv/block/block_gemv.hpp"
-#include "catlass_include/catlass/gemv/tile/tile_matmul_elem_add.hpp"
-#include "catlass_include/catlass/gemv/tile/tile_threshold.hpp"      // TileThreCalc
-#include "catlass_include/catlass/gemv/tile/tile_std_estimate.hpp"   // TileStdEstRobust
-#include "catlass_include/catlass/gemm_coord.hpp"
-#include "catlass_include/catlass/gemv_coord.hpp"
+#include "catlass/gemm/block/block_swizzle.hpp"
+#include "catlass/gemv/tile/tile_fault_sum.hpp"
+#include "catlass/gemv/block/block_gemv.hpp"
+#include "catlass/gemv/tile/tile_matmul_elem_add.hpp"
+#include "catlass/gemv/tile/tile_threshold.hpp"      // TileThreCalc
+#include "catlass/gemv/tile/tile_std_estimate.hpp"   // TileStdEstRobust
+#include "catlass/gemm_coord.hpp"
+#include "catlass/gemv_coord.hpp"
 #include "catlass/layout/layout.hpp"
-#include "catlass_include/catlass/gemv/helper.hpp"
+#include "catlass/gemv/helper.hpp"
 #include "catlass/arch/arch.hpp"
 
-#include "catlass_include/catlass/gemm/dispatch_policy.hpp"
+#include "catlass/gemm/dispatch_policy.hpp"
 
-#include "catlass_include/catlass/gemm/tile/tile_copy.hpp"
-#include "catlass_include/catlass/gemm/tile/tile_mmad.hpp"
-#include "catlass_include/catlass/gemv/tile/tile_copy.hpp"
+#include "catlass/gemm/tile/tile_copy.hpp"
+#include "catlass/gemm/tile/tile_mmad.hpp"
+#include "catlass/gemv/tile/tile_copy.hpp"
 
-#include "catlass_include/catlass/gemv/tile/tile_vmuls.hpp"
-#include "catlass_include/catlass/gemv/helper.hpp"
+#include "catlass/gemv/tile/tile_vmuls.hpp"
+#include "catlass/gemv/helper.hpp"
 
 using GemmInTypeC = DTYPE_A;
 using GemmInTypeN = DTYPE_A;
@@ -110,26 +110,26 @@ __global__ __aicore__ void matmul_ft(
     using LayoutCCol = Catlass::layout::ColumnMajor;
 
     using LayoutZ = Catlass::layout::VectorLayout;
-    using FT_COMP_TYPE = Vecself::Gemv::helper::FT_COMP_TYPE;
+    using FT_COMP_TYPE = FTSelf::Gemv::helper::FT_COMP_TYPE;
 
 
     using ArchTag = Catlass::Arch::AtlasA2;
-    using FT_REDUCE_TYPE = Vecself::Gemv::helper::FT_REDUCE_TYPE;
+    using FT_REDUCE_TYPE = FTSelf::Gemv::helper::FT_REDUCE_TYPE;
 
     using LayoutMY = Catlass::layout::RowMajor;
     using LayoutMX = Catlass::layout::RowMajor;
 
-    using FT_ENC_TYPE = Vecself::Gemv::helper::FT_ENC_TYPE;
-    using FT_RCE_THRE_TYPE = Vecself::Gemv::helper::FT_RCE_THRE_TYPE;
-    using FT_L02L1_TYPE = Vecself::Gemv::helper::FT_L02L1_TYPE;
-    using FT_AIC_BE_SCHEME = Vecself::Gemv::helper::FT_AIC_BE_SCHEME;
+    using FT_ENC_TYPE = FTSelf::Gemv::helper::FT_ENC_TYPE;
+    using FT_RCE_THRE_TYPE = FTSelf::Gemv::helper::FT_RCE_THRE_TYPE;
+    using FT_L02L1_TYPE = FTSelf::Gemv::helper::FT_L02L1_TYPE;
+    using FT_AIC_BE_SCHEME = FTSelf::Gemv::helper::FT_AIC_BE_SCHEME;
 
     #if (ORIG_DTYPE_A == DT_FLOAT16 || ORIG_DTYPE_A == DT_FLOAT)
         constexpr FT_AIC_BE_SCHEME BlockFTGemvAIC_BE_SCHEME = FT_AIC_BE_SCHEME::ROWCOMPLETE;
-        constexpr Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE BlockFTSum_A_B = Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::A_B_MIXED;
+        constexpr FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE BlockFTSum_A_B = FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::A_B_MIXED;
     #else
         constexpr FT_AIC_BE_SCHEME BlockFTGemvAIC_BE_SCHEME = FT_AIC_BE_SCHEME::ROWCOMPLETE_BF;
-        constexpr Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE BlockFTSum_A_B = Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::A_B_MIXED_BF;
+        constexpr FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE BlockFTSum_A_B = FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::A_B_MIXED_BF;
     #endif
 
 
@@ -161,10 +161,10 @@ __global__ __aicore__ void matmul_ft(
     using COMPDispatchPolicy = Catlass::Gemm::GemvAtlasA2;
     using BeAICDispatchPolicy = Catlass::Gemm::MmadAtlasA2Preload<enableUnitFlag, enableShuffleK>;
     using GEMVAICDispatchPolicy = Catlass::Gemm::MmadAtlasA2Preload<enableUnitFlag, enableShuffleK>;
-    using TileCopyGemvAic = Vecself::Gemv::Tile::TileCopyGemvAic<typename BeAICDispatchPolicy::ArchTag, BType, XTypeAIC, YTypeBEAIC, BiasType>;
+    using TileCopyGemvAic = FTSelf::Gemv::Tile::TileCopyGemvAic<typename BeAICDispatchPolicy::ArchTag, BType, XTypeAIC, YTypeBEAIC, BiasType>;
     using TileMmadGemvAic = Catlass::Gemm::Tile::TileMmad<typename  BeAICDispatchPolicy::ArchTag, XTypeAIC, BType, BiasType>;
 
-    using BlockFTGemvAIC = Vecself::Gemv::Block::BlockFTGemvBe<BeAICDispatchPolicy,
+    using BlockFTGemvAIC = FTSelf::Gemv::Block::BlockFTGemvBe<BeAICDispatchPolicy,
         BlockFTGemvAIC_BE_SCHEME,
         UBBlockShapeBE, L1TileShapeBE, L0TileShapeBE,
         BType, XTypeAIC, YTypeBEAIC, BiasType, TileCopyGemvAic, TileMmadGemvAic>;
@@ -194,19 +194,19 @@ __global__ __aicore__ void matmul_ft(
     using MXType = Catlass::Gemm::GemmType<GemvInTypeNforAB, LayoutMX>;
     using MYType = Catlass::Gemm::GemmType<GemvOutTypeN, LayoutMY>;
 
-    using BlockMmadABe = CubeSelf::Gemm::Block::BlockMmadSpecABeNoSplitKRobust<
+    using BlockMmadABe = FTSelf::Gemm::Block::BlockMmadSpecABeNoSplitKRobust<
         MmadDispatchPolicy,
         L1TileShapeforFT,
         L0TileShapeforFT,
         AType, BType, CType, MXType, MYType, BiasType>;
 
-    using BlockMmadPreload = CubeSelf::Gemm::Block::BlockMmadPreload<
+    using BlockMmadPreload = FTSelf::Gemm::Block::BlockMmadPreload<
         MmadDispatchPolicy, L1TileShape, L0TileShape, AType, BType, CType>;
 
     using BlockSchedulerFirst = typename Catlass::Gemm::Block::GemmIdentityBlockSwizzle<3, 0>;
     using BlockScheduler = typename Catlass::Gemm::Block::GemmIdentityBlockSwizzle<3, 0>;
 
-    using TileFaultCopyRedAiv = Vecself::Gemv::Tile::TileCopyFTRedAiv<ArchTag,
+    using TileFaultCopyRedAiv = FTSelf::Gemv::Tile::TileCopyFTRedAiv<ArchTag,
         AType, BType, YType, ZType>;
 
     using UBTileShapeforB =
@@ -217,11 +217,11 @@ __global__ __aicore__ void matmul_ft(
         Catlass::GemvShape<TilingPolicy::UBTileShapeforA_M, 256>;
 
     using ARedType = Catlass::Gemm::GemmType<GemvInTypeNforCE, LayoutA>;
-    using TileFaultSum = Vecself::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::MAX_MIN, ARedType, ZType>;
+    using TileFaultSum = FTSelf::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::MAX_MIN, ARedType, ZType>;
 
-    using BlockFTSum = Vecself::Gemv::Block::BlockFTSumNoSplitK<
+    using BlockFTSum = FTSelf::Gemv::Block::BlockFTSumNoSplitK<
         GemvDispatchPolicy,
-        Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
+        FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
         BlockFTSum_A_B,
         UBTileShapeforB, UBBlockShapeforB, UBTileShapeforA,
         L1TileShape, AType, BType, YType, ZType, void,
@@ -230,24 +230,24 @@ __global__ __aicore__ void matmul_ft(
     using SliceSumDispatchPolicy = Catlass::Gemm::GemvAtlasA2;
 
     using SliceSumUBTileShape = Catlass::GemvShape<8, 256>;
-    using TileMatrixAddforABEReduce = Vecself::Gemv::Tile::TileMatmulAdd<
+    using TileMatrixAddforABEReduce = FTSelf::Gemv::Tile::TileMatmulAdd<
         typename SliceSumDispatchPolicy::ArchTag, MYType, MYType, void>;
-    using TileCopyMatrixAddforABEReduce = Vecself::Gemv::Tile::TileCopyMatrixAddAiv<
+    using TileCopyMatrixAddforABEReduce = FTSelf::Gemv::Tile::TileCopyMatrixAddAiv<
         typename SliceSumDispatchPolicy::ArchTag, MYType, MYType, void>;
 
-    using BlockSliceSum = Vecself::Gemv::Block::BlockSliceKMNSum<SliceSumDispatchPolicy,
-        Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::ABE_FUSED_THRE,
+    using BlockSliceSum = FTSelf::Gemv::Block::BlockSliceKMNSum<SliceSumDispatchPolicy,
+        FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::ABE_FUSED_THRE,
         SliceSumUBTileShape, MYType, MYType, void, TileCopyMatrixAddforABEReduce, TileMatrixAddforABEReduce>;
 
     using MeanMaxTileVmuls = Catlass::Gemv::Tile::TileVmuls<typename GemvDispatchPolicy::ArchTag, ZType>;
     using UBTileShapeforBRed =
         Catlass::GemvShape<TilingPolicy::UBTileShapeforBRed_M, TilingPolicy::UBTileShapeforBRed_N>;
-    using TileFaultSumBReduce = Vecself::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::SUM_MAX, BRedType, ZType>;
-    using TileFaultCopyBReduce = Vecself::Gemv::Tile::TileCopyGemvAiv<ArchTag, BRedType, YType, ZType>;
+    using TileFaultSumBReduce = FTSelf::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::SUM_MAX, BRedType, ZType>;
+    using TileFaultCopyBReduce = FTSelf::Gemv::Tile::TileCopyGemvAiv<ArchTag, BRedType, YType, ZType>;
 
-    using BlockSliceRed = Vecself::Gemv::Block::BlockSliceKMNSum<
+    using BlockSliceRed = FTSelf::Gemv::Block::BlockSliceKMNSum<
         SliceSumDispatchPolicy,
-        Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::A_B_ROBUST,
+        FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::A_B_ROBUST,
         SliceSumUBTileShape,
         UBTileShapeforBRed,
         MYType, BRedType, ZType,
@@ -262,40 +262,40 @@ __global__ __aicore__ void matmul_ft(
     using UBBlockShapeCE = Catlass::GemvShape<L1TileShape::M, UBTileShapeCE::N>;
 
     using COMPZType = Catlass::Gemm::GemmType<uint8_t, LayoutZ>;
-    using TileFaultCopyCE = Vecself::Gemv::Tile::TileCopyGemvThreCompFusedAiv<ArchTag,
+    using TileFaultCopyCE = FTSelf::Gemv::Tile::TileCopyGemvThreCompFusedAiv<ArchTag,
         CType, CType, XTypeAIV, ZType, COMPZType, void>;
 
     using ThreCalcDispatchPolicy = Catlass::Gemm::GemvAtlasA2;
-    using TileThreCalc = Vecself::Gemv::Tile::TileThreCalc<
+    using TileThreCalc = FTSelf::Gemv::Tile::TileThreCalc<
         typename ThreCalcDispatchPolicy::ArchTag,
-        Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
+        FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
         CType, ZType, ZType, BiasType>;
 
-    using TileStdEst = Vecself::Gemv::Tile::TileStdEstRobust<
+    using TileStdEst = FTSelf::Gemv::Tile::TileStdEstRobust<
         typename ThreCalcDispatchPolicy::ArchTag,
         ZType,
         ZType
     >;
 
-    using TileFaultSumCSum = Vecself::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::SUM, CType, ZType>;
+    using TileFaultSumCSum = FTSelf::Gemv::Tile::TileFaultSum<ArchTag, FT_REDUCE_TYPE::SUM, CType, ZType>;
 
-    using BlockFTGemvAIV = Vecself::Gemv::Block::BlockFTGemvCENoSplitKPreload<
+    using BlockFTGemvAIV = FTSelf::Gemv::Block::BlockFTGemvCENoSplitKPreload<
         GemvDispatchPolicy,
-        Vecself::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
-        Vecself::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::THRE_FUSED,
-        Vecself::Gemv::helper::FT_ENC_TYPE::RCE,
-        Vecself::Gemv::helper::FT_COMP_TYPE::RSUB,
-        Vecself::Gemv::helper::FT_ABE_TYPE::CENTRAL_BLOCK,
+        FTSelf::Gemv::helper::FT_THRESHOLD_ALGORITHM::ASVAR_ROBUST,
+        FTSelf::Gemv::helper::FT_AIV_PIPE_FUSE_TYPE::THRE_FUSED,
+        FTSelf::Gemv::helper::FT_ENC_TYPE::RCE,
+        FTSelf::Gemv::helper::FT_COMP_TYPE::RSUB,
+        FTSelf::Gemv::helper::FT_ABE_TYPE::CENTRAL_BLOCK,
         UBTileShapeCE, UBBlockShapeCE, L1TileShape,
         CType, XTypeAIV, ZType, COMPZType, void,
         TileFaultCopyCE, TileFaultSumCSum,
         TileThreCalc, TileStdEst>;
 
     using UBTileShape = Catlass::GemmShape<L1TileShapeAB::M, L1TileShapeAB::N, L1TileShapeAB::K>;
-    using TileFaultCopy = Vecself::Gemv::Tile::TileCopyGemvAiv<ArchTag, AType, XTypeAIV, ZType>;
-    using TileFaultVmad = Vecself::Gemv::Tile::TileVmad<ArchTag, AType, XTypeAIV, ZType>;
+    using TileFaultCopy = FTSelf::Gemv::Tile::TileCopyGemvAiv<ArchTag, AType, XTypeAIV, ZType>;
+    using TileFaultVmad = FTSelf::Gemv::Tile::TileVmad<ArchTag, AType, XTypeAIV, ZType>;
 
-    using BlockSumGemv = Vecself::Gemv::Block::BlockSumGemv<GemvDispatchPolicy, UBTileShape, AType, XTypeAIV, ZType, void, TileFaultCopy, TileFaultVmad, TileVmuls>;
+    using BlockSumGemv = FTSelf::Gemv::Block::BlockSumGemv<GemvDispatchPolicy, UBTileShape, AType, XTypeAIV, ZType, void, TileFaultCopy, TileFaultVmad, TileVmuls>;
 
     using BlockConfig = MatfulFTKernel::BlockConfig<
         BlockMmadABe, BlockMmadPreload, BlockSchedulerFirst, BlockScheduler,

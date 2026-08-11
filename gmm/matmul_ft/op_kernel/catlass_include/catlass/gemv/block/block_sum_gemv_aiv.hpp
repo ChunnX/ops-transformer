@@ -1,18 +1,18 @@
 #ifndef CATLASS_GEMV_BLOCK_BLOCK_SUM_GEMV_AIV_NOW_HPP
 #define CATLASS_GEMV_BLOCK_BLOCK_SUM_GEMV_AIV_NOW_HPP
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/resource_aiv.hpp"
-#include "../../coord.hpp"
-#include "../../gemv_coord.hpp"
-#include "../helper.hpp"
-#include "../../gemm/helper.hpp"
+#include "catlass/coord.hpp"
+#include "catlass/gemv_coord.hpp"
+#include "catlass/gemv/helper.hpp"
+#include "catlass/gemm/helper.hpp"
 #include "catlass/layout/layout.hpp"
 #include "catlass/detail/alignment.hpp"
-#include "../../gemm/dispatch_policy.hpp"
-#include "../tile/tile_vmad.hpp"
+#include "catlass/gemm/dispatch_policy.hpp"
+#include "catlass/gemv/tile/tile_vmad.hpp"
 
-namespace Vecself::Gemv::Block {
+namespace FTSelf::Gemv::Block {
 
 using namespace Catlass;
 
@@ -27,7 +27,7 @@ template <
     class TileVmuls_
 >
 struct BlockSumGemv <
-    Gemm::GemvAtlasA2,
+    Catlass::Gemm::GemvAtlasA2,
     UBTileShape_,
     AType_,
     XType_,
@@ -39,7 +39,7 @@ struct BlockSumGemv <
 > {
 public:
     // Type Aliases
-    using DispatchPolicy = Gemm::GemvAtlasA2;
+    using DispatchPolicy = Catlass::Gemm::GemvAtlasA2;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using UBTileShape = UBTileShape_;
     using ElementA = typename AType_::Element;
@@ -49,7 +49,7 @@ public:
         std::is_same<LayoutA, Catlass::layout::RowMajor>::value,
         Catlass::layout::ColumnMajor,
         Catlass::layout::RowMajor>::type;
-    using AColType = Gemm::GemmType<ElementA, LayoutACol>;
+    using AColType = Catlass::Gemm::GemmType<ElementA, LayoutACol>;
 
     using ElementX = typename XType_::Element;
     using LayoutX = typename XType_::Layout;
@@ -70,9 +70,9 @@ public:
     using LayoutAInUbCol = typename MatrixCopyGmToUbCol::LayoutDst;
 
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementX>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementX>::ElementAccumulator;
 
-    using UBAlignHelper = Vecself::Gemv::helper::UBAlignHelper<ElementA>;
+    using UBAlignHelper = FTSelf::Gemv::helper::UBAlignHelper<ElementA>;
 
     using TensorCoord = layout::VectorLayout::TensorCoord;
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
@@ -369,6 +369,6 @@ protected:
     VecCopyUbToGmCol vecCopyUbToGmCol;
 };
 
-} // namespace Vecself::Gemv::Block
+} // namespace FTSelf::Gemv::Block
 
 #endif // CATLASS_GEMV_BLOCK_BLOCK_GEMV_AIV_HPP

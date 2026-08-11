@@ -1,13 +1,13 @@
 #ifndef CATLASS_GEMV_TILE_TILE_SLICE_SUM_HPP
 #define CATLASS_GEMV_TILE_TILE_SLICE_SUM_HPP
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/arch.hpp"
-#include "../../gemm/helper.hpp"
+#include "catlass/gemm/helper.hpp"
 #include "catlass/layout/layout.hpp"
-#include "../../gemm/gemm_type.hpp"
+#include "catlass/gemm/gemm_type.hpp"
 
-namespace Vecself::Gemv::Tile {
+namespace FTSelf::Gemv::Tile {
 
 using namespace Catlass;
 template <
@@ -28,12 +28,12 @@ template <
     class ElementY
 >
 struct TileSliceSum<Arch::AtlasA2,
-                Gemm::GemmType<ElementA, layout::RowMajor>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementA, layout::RowMajor>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void,false>
 {
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
@@ -45,7 +45,7 @@ struct TileSliceSum<Arch::AtlasA2,
     CATLASS_DEVICE
     TileSliceSum() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -65,7 +65,7 @@ struct TileSliceSum<Arch::AtlasA2,
 
         uint32_t repeat_num = n_actual / temp_repeat_size;
         uint32_t remain = n_actual % temp_repeat_size;
-        
+
         AscendC::BinaryRepeatParams add_params;
         add_params.dstBlkStride = 1;
         add_params.src0BlkStride = 1;
@@ -84,7 +84,7 @@ struct TileSliceSum<Arch::AtlasA2,
                     add_mask,
                     repeat_num,
                     add_params);
-                
+
                 AscendC::PipeBarrier<PIPE_V>();
             }
         }
@@ -96,19 +96,19 @@ struct TileSliceSum<Arch::AtlasA2,
             {
                 remain = n_actual - col_offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             for (uint32_t i = 1; i < m_actual; i++){
                 uint32_t row_offset = i * n_actual;
                 /*
                 template <typename T>
-                __aicore__ inline void 
-                Add(const LocalTensor<T>& dstLocal, 
-                    const LocalTensor<T>& src0Local, 
+                __aicore__ inline void
+                Add(const LocalTensor<T>& dstLocal,
+                    const LocalTensor<T>& src0Local,
                     const LocalTensor<T>& src1Local,
                     const int32_t& calCount)
                 */
-                AscendC::Add<ElementA>(srcTensor_m[col_offset], 
+                AscendC::Add<ElementA>(srcTensor_m[col_offset],
                     srcTensor_m[row_offset+col_offset], srcTensor_m[col_offset], remain);
                 AscendC::PipeBarrier<PIPE_V>();
             }
@@ -133,8 +133,8 @@ struct TileSliceSum<Arch::AtlasA2,
 
         /*
         template <typename T1, typename T2>
-        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal, 
-            const LocalTensor<T2>& srcLocal, 
+        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal,
+            const LocalTensor<T2>& srcLocal,
             const RoundMode& round_mode, const uint32_t calCount)
 
         (uint64_t)mask, repeattimes, castparams
@@ -147,16 +147,16 @@ struct TileSliceSum<Arch::AtlasA2,
 
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
+        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
             const LocalTensor<T>& srcLocal, const T& scalarValue, const int32_t& calCount)
         */
-        // __aicore__ inline void Max(const LocalTensor<T>& dstLocal, 
-        // const LocalTensor<T>& src0Local, 
+        // __aicore__ inline void Max(const LocalTensor<T>& dstLocal,
+        // const LocalTensor<T>& src0Local,
         // const LocalTensor<T>& src1Local, const int32_t& calCount)
 
         AscendC::Add(dstTensor, dstTensor, dstTensor[dstOffset], n_round);
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         // AscendC::Muls(dstTensor, dstTensor, alpha, m_actual);
         // AscendC::PipeBarrier<PIPE_V>();
     }
@@ -172,14 +172,14 @@ struct TileSliceSum<Arch::AtlasA2,
 
 template <>
 struct TileSliceSum<Arch::AtlasA2,
-                Gemm::GemmType<float, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void,false>
 {
     using ElementAccumulator = float;
     using ElementA = float;
     using ElementY = float;
-        // typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
+        // typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
@@ -191,7 +191,7 @@ struct TileSliceSum<Arch::AtlasA2,
     CATLASS_DEVICE
     TileSliceSum() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<float> dstTensor,
@@ -211,7 +211,7 @@ struct TileSliceSum<Arch::AtlasA2,
 
         uint32_t repeat_num = n_actual / temp_repeat_size;
         uint32_t remain = n_actual % temp_repeat_size;
-        
+
         AscendC::BinaryRepeatParams add_params;
         add_params.dstBlkStride = 1;
         add_params.src0BlkStride = 1;
@@ -230,7 +230,7 @@ struct TileSliceSum<Arch::AtlasA2,
                     add_mask,
                     repeat_num,
                     add_params);
-                
+
                 AscendC::PipeBarrier<PIPE_V>();
             }
         }
@@ -242,19 +242,19 @@ struct TileSliceSum<Arch::AtlasA2,
             {
                 remain = n_actual - col_offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             for (uint32_t i = 1; i < m_actual; i++){
                 uint32_t row_offset = i * n_actual;
                 /*
                 template <typename T>
-                __aicore__ inline void 
-                Add(const LocalTensor<T>& dstLocal, 
-                    const LocalTensor<T>& src0Local, 
+                __aicore__ inline void
+                Add(const LocalTensor<T>& dstLocal,
+                    const LocalTensor<T>& src0Local,
                     const LocalTensor<T>& src1Local,
                     const int32_t& calCount)
                 */
-                AscendC::Add<ElementA>(srcTensor_m[col_offset], 
+                AscendC::Add<ElementA>(srcTensor_m[col_offset],
                     srcTensor_m[row_offset+col_offset], srcTensor_m[col_offset], remain);
                 AscendC::PipeBarrier<PIPE_V>();
             }
@@ -264,7 +264,7 @@ struct TileSliceSum<Arch::AtlasA2,
 
         AscendC::Add(dstTensor, dstTensor, srcTensor_m, n_round);
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         // AscendC::Muls(dstTensor, dstTensor, alpha, m_actual);
         // AscendC::PipeBarrier<PIPE_V>();
     }
@@ -273,12 +273,12 @@ struct TileSliceSum<Arch::AtlasA2,
 
 template <>
 struct TileSliceSum<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void,false>
 {
     using ElementAccumulator = float;
-    // typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
+    // typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
@@ -293,7 +293,7 @@ struct TileSliceSum<Arch::AtlasA2,
     CATLASS_DEVICE
     TileSliceSum() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<float> dstTensor,
@@ -313,7 +313,7 @@ struct TileSliceSum<Arch::AtlasA2,
 
         uint32_t repeat_num = n_actual / temp_repeat_size;
         uint32_t remain = n_actual % temp_repeat_size;
-        
+
         AscendC::BinaryRepeatParams add_params;
         add_params.dstBlkStride = 1;
         add_params.src0BlkStride = 1;
@@ -332,7 +332,7 @@ struct TileSliceSum<Arch::AtlasA2,
                     add_mask,
                     repeat_num,
                     add_params);
-                
+
                 AscendC::PipeBarrier<PIPE_V>();
             }
         }
@@ -344,19 +344,19 @@ struct TileSliceSum<Arch::AtlasA2,
             {
                 remain = n_actual - col_offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             for (uint32_t i = 1; i < m_actual; i++){
                 uint32_t row_offset = i * n_actual;
                 /*
                 template <typename T>
-                __aicore__ inline void 
-                Add(const LocalTensor<T>& dstLocal, 
-                    const LocalTensor<T>& src0Local, 
+                __aicore__ inline void
+                Add(const LocalTensor<T>& dstLocal,
+                    const LocalTensor<T>& src0Local,
                     const LocalTensor<T>& src1Local,
                     const int32_t& calCount)
                 */
-                AscendC::Add<ElementA>(srcTensor_m[col_offset], 
+                AscendC::Add<ElementA>(srcTensor_m[col_offset],
                     srcTensor_m[row_offset+col_offset], srcTensor_m[col_offset], remain);
                 AscendC::PipeBarrier<PIPE_V>();
             }
@@ -381,8 +381,8 @@ struct TileSliceSum<Arch::AtlasA2,
 
         /*
         template <typename T1, typename T2>
-        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal, 
-            const LocalTensor<T2>& srcLocal, 
+        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal,
+            const LocalTensor<T2>& srcLocal,
             const RoundMode& round_mode, const uint32_t calCount)
 
         (uint64_t)mask, repeattimes, castparams
@@ -395,16 +395,16 @@ struct TileSliceSum<Arch::AtlasA2,
 
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal, 
+        __aicore__ inline void Muls(const LocalTensor<T>& dstLocal,
             const LocalTensor<T>& srcLocal, const T& scalarValue, const int32_t& calCount)
         */
-        // __aicore__ inline void Max(const LocalTensor<T>& dstLocal, 
-        // const LocalTensor<T>& src0Local, 
+        // __aicore__ inline void Max(const LocalTensor<T>& dstLocal,
+        // const LocalTensor<T>& src0Local,
         // const LocalTensor<T>& src1Local, const int32_t& calCount)
 
         AscendC::Add(dstTensor, dstTensor, dstTensor[dstOffset], n_round);
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         // AscendC::Muls(dstTensor, dstTensor, alpha, m_actual);
         // AscendC::PipeBarrier<PIPE_V>();
     }
@@ -413,14 +413,14 @@ struct TileSliceSum<Arch::AtlasA2,
 
 template <>
 struct TileSliceSum<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void,false>
 {
     using ElementAccumulator = float;
     using ElementA = half;
     using ElementY = half;
-        // typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
+        // typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
@@ -432,7 +432,7 @@ struct TileSliceSum<Arch::AtlasA2,
     CATLASS_DEVICE
     TileSliceSum() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<half> dstTensor,
@@ -452,7 +452,7 @@ struct TileSliceSum<Arch::AtlasA2,
 
         uint32_t repeat_num = n_actual / temp_repeat_size;
         uint32_t remain = n_actual % temp_repeat_size;
-        
+
         AscendC::BinaryRepeatParams add_params;
         add_params.dstBlkStride = 1;
         add_params.src0BlkStride = 1;
@@ -471,7 +471,7 @@ struct TileSliceSum<Arch::AtlasA2,
                     add_mask,
                     repeat_num,
                     add_params);
-                
+
                 AscendC::PipeBarrier<PIPE_V>();
             }
         }
@@ -483,19 +483,19 @@ struct TileSliceSum<Arch::AtlasA2,
             {
                 remain = n_actual - col_offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             for (uint32_t i = 1; i < m_actual; i++){
                 uint32_t row_offset = i * n_actual;
                 /*
                 template <typename T>
-                __aicore__ inline void 
-                Add(const LocalTensor<T>& dstLocal, 
-                    const LocalTensor<T>& src0Local, 
+                __aicore__ inline void
+                Add(const LocalTensor<T>& dstLocal,
+                    const LocalTensor<T>& src0Local,
                     const LocalTensor<T>& src1Local,
                     const int32_t& calCount)
                 */
-                AscendC::Add<ElementA>(srcTensor_m[col_offset], 
+                AscendC::Add<ElementA>(srcTensor_m[col_offset],
                     srcTensor_m[row_offset+col_offset], srcTensor_m[col_offset], remain);
                 AscendC::PipeBarrier<PIPE_V>();
             }
@@ -505,7 +505,7 @@ struct TileSliceSum<Arch::AtlasA2,
 
         AscendC::Add(dstTensor, dstTensor, srcTensor_m, n_round);
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         // AscendC::Muls(dstTensor, dstTensor, alpha, m_actual);
         // AscendC::PipeBarrier<PIPE_V>();
     }
@@ -517,12 +517,12 @@ template <
     class ElementY
 >
 struct TileSliceSum<Arch::AtlasA2,
-                Gemm::GemmType<ElementA, layout::RowMajor>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<ElementA, layout::RowMajor>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void,true>
 {
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
@@ -534,7 +534,7 @@ struct TileSliceSum<Arch::AtlasA2,
     CATLASS_DEVICE
     TileSliceSum() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementY> dstTensor,
@@ -554,7 +554,7 @@ struct TileSliceSum<Arch::AtlasA2,
 
         uint32_t repeat_num = n_actual / temp_repeat_size;
         uint32_t remain = n_actual % temp_repeat_size;
-        
+
         AscendC::BinaryRepeatParams add_params;
         add_params.dstBlkStride = 1;
         add_params.src0BlkStride = 1;
@@ -582,23 +582,23 @@ struct TileSliceSum<Arch::AtlasA2,
                     srcTensor_m,
                     add_mask,
                     repeat_num,
-                    add_params  
+                    add_params
                 );
 
                 AscendC::PipeBarrier<PIPE_V>();
             }
 
             if(remain > 0){
-                AscendC::Add<ElementA>(srcTensor_m[aligned_offset_remain], 
-                    srcTensor_m[aligned_offset_remain + aligned_offset], 
+                AscendC::Add<ElementA>(srcTensor_m[aligned_offset_remain],
+                    srcTensor_m[aligned_offset_remain + aligned_offset],
                     srcTensor_m[aligned_offset_remain], remain);
                 AscendC::PipeBarrier<PIPE_V>();
             }
 
             if(remain_rows > 0){
                 uint32_t total_remain_size = remain_rows * n_actual;
-                AscendC::Add<ElementA>(srcTensor_m, 
-                    srcTensor_m[aligned_rows * n_actual], 
+                AscendC::Add<ElementA>(srcTensor_m,
+                    srcTensor_m[aligned_rows * n_actual],
                     srcTensor_m, total_remain_size);
                 AscendC::PipeBarrier<PIPE_V>();
             }
@@ -623,8 +623,8 @@ struct TileSliceSum<Arch::AtlasA2,
 
         /*
         template <typename T1, typename T2>
-        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal, 
-            const LocalTensor<T2>& srcLocal, 
+        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal,
+            const LocalTensor<T2>& srcLocal,
             const RoundMode& round_mode, const uint32_t calCount)
 
         (uint64_t)mask, repeattimes, castparams
@@ -637,7 +637,7 @@ struct TileSliceSum<Arch::AtlasA2,
 
         AscendC::Add(dstTensor, dstTensor, dstTensor[dstOffset], n_round);
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         // AscendC::Muls(dstTensor, dstTensor, alpha, m_actual);
         // AscendC::PipeBarrier<PIPE_V>();
     }
@@ -645,15 +645,15 @@ struct TileSliceSum<Arch::AtlasA2,
 
 template <>
 struct TileSliceSum<Arch::AtlasA2,
-                Gemm::GemmType<float, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<float, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void,true>
 {
     using ElementA = float;
     using ElementY = float;
 
     using ElementAccumulator =
-        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
+        typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
@@ -665,7 +665,7 @@ struct TileSliceSum<Arch::AtlasA2,
     CATLASS_DEVICE
     TileSliceSum() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<float> dstTensor,
@@ -685,7 +685,7 @@ struct TileSliceSum<Arch::AtlasA2,
 
         uint32_t repeat_num = n_actual / temp_repeat_size;
         uint32_t remain = n_actual % temp_repeat_size;
-        
+
         AscendC::BinaryRepeatParams add_params;
         add_params.dstBlkStride = 1;
         add_params.src0BlkStride = 1;
@@ -713,23 +713,23 @@ struct TileSliceSum<Arch::AtlasA2,
                     srcTensor_m,
                     add_mask,
                     repeat_num,
-                    add_params  
+                    add_params
                 );
 
                 AscendC::PipeBarrier<PIPE_V>();
             }
 
             if(remain > 0){
-                AscendC::Add<ElementA>(srcTensor_m[aligned_offset_remain], 
-                    srcTensor_m[aligned_offset_remain + aligned_offset], 
+                AscendC::Add<ElementA>(srcTensor_m[aligned_offset_remain],
+                    srcTensor_m[aligned_offset_remain + aligned_offset],
                     srcTensor_m[aligned_offset_remain], remain);
                 AscendC::PipeBarrier<PIPE_V>();
             }
 
             if(remain_rows > 0){
                 uint32_t total_remain_size = remain_rows * n_actual;
-                AscendC::Add<ElementA>(srcTensor_m, 
-                    srcTensor_m[aligned_rows * n_actual], 
+                AscendC::Add<ElementA>(srcTensor_m,
+                    srcTensor_m[aligned_rows * n_actual],
                     srcTensor_m, total_remain_size);
                 AscendC::PipeBarrier<PIPE_V>();
             }
@@ -739,7 +739,7 @@ struct TileSliceSum<Arch::AtlasA2,
 
         AscendC::Add(dstTensor, dstTensor, srcTensor_m, n_round);
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         // AscendC::Muls(dstTensor, dstTensor, alpha, m_actual);
         // AscendC::PipeBarrier<PIPE_V>();
     }
@@ -747,15 +747,15 @@ struct TileSliceSum<Arch::AtlasA2,
 
 template <>
 struct TileSliceSum<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void,true>
 {
     using ElementA = half;
     using ElementY = half;
 
     using ElementAccumulator = float;
-        // typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
+        // typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
@@ -767,7 +767,7 @@ struct TileSliceSum<Arch::AtlasA2,
     CATLASS_DEVICE
     TileSliceSum() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<half> dstTensor,
@@ -787,7 +787,7 @@ struct TileSliceSum<Arch::AtlasA2,
 
         uint32_t repeat_num = n_actual / temp_repeat_size;
         uint32_t remain = n_actual % temp_repeat_size;
-        
+
         AscendC::BinaryRepeatParams add_params;
         add_params.dstBlkStride = 1;
         add_params.src0BlkStride = 1;
@@ -815,23 +815,23 @@ struct TileSliceSum<Arch::AtlasA2,
                     srcTensor_m,
                     add_mask,
                     repeat_num,
-                    add_params  
+                    add_params
                 );
 
                 AscendC::PipeBarrier<PIPE_V>();
             }
 
             if(remain > 0){
-                AscendC::Add<ElementA>(srcTensor_m[aligned_offset_remain], 
-                    srcTensor_m[aligned_offset_remain + aligned_offset], 
+                AscendC::Add<ElementA>(srcTensor_m[aligned_offset_remain],
+                    srcTensor_m[aligned_offset_remain + aligned_offset],
                     srcTensor_m[aligned_offset_remain], remain);
                 AscendC::PipeBarrier<PIPE_V>();
             }
 
             if(remain_rows > 0){
                 uint32_t total_remain_size = remain_rows * n_actual;
-                AscendC::Add<ElementA>(srcTensor_m, 
-                    srcTensor_m[aligned_rows * n_actual], 
+                AscendC::Add<ElementA>(srcTensor_m,
+                    srcTensor_m[aligned_rows * n_actual],
                     srcTensor_m, total_remain_size);
                 AscendC::PipeBarrier<PIPE_V>();
             }
@@ -841,7 +841,7 @@ struct TileSliceSum<Arch::AtlasA2,
 
         AscendC::Add(dstTensor, dstTensor, srcTensor_m, n_round);
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         // AscendC::Muls(dstTensor, dstTensor, alpha, m_actual);
         // AscendC::PipeBarrier<PIPE_V>();
     }
@@ -849,15 +849,15 @@ struct TileSliceSum<Arch::AtlasA2,
 
 template <>
 struct TileSliceSum<Arch::AtlasA2,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void,true>
 {
     using ElementA = half;
     using ElementY = float;
     using ElementAccumulator = float;
-    
-    // typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
+
+    // typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA, ElementY>::ElementAccumulator;
 
     using LayoutDst = layout::RowMajor;
     using LayoutSrc = layout::RowMajor;
@@ -869,7 +869,7 @@ struct TileSliceSum<Arch::AtlasA2,
     CATLASS_DEVICE
     TileSliceSum() {};
 
-    // 
+    //
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<float> dstTensor,
@@ -889,7 +889,7 @@ struct TileSliceSum<Arch::AtlasA2,
 
         uint32_t repeat_num = n_actual / temp_repeat_size;
         uint32_t remain = n_actual % temp_repeat_size;
-        
+
         AscendC::BinaryRepeatParams add_params;
         add_params.dstBlkStride = 1;
         add_params.src0BlkStride = 1;
@@ -917,23 +917,23 @@ struct TileSliceSum<Arch::AtlasA2,
                     srcTensor_m,
                     add_mask,
                     repeat_num,
-                    add_params  
+                    add_params
                 );
 
                 AscendC::PipeBarrier<PIPE_V>();
             }
 
             if(remain > 0){
-                AscendC::Add<ElementA>(srcTensor_m[aligned_offset_remain], 
-                    srcTensor_m[aligned_offset_remain + aligned_offset], 
+                AscendC::Add<ElementA>(srcTensor_m[aligned_offset_remain],
+                    srcTensor_m[aligned_offset_remain + aligned_offset],
                     srcTensor_m[aligned_offset_remain], remain);
                 AscendC::PipeBarrier<PIPE_V>();
             }
 
             if(remain_rows > 0){
                 uint32_t total_remain_size = remain_rows * n_actual;
-                AscendC::Add<ElementA>(srcTensor_m, 
-                    srcTensor_m[aligned_rows * n_actual], 
+                AscendC::Add<ElementA>(srcTensor_m,
+                    srcTensor_m[aligned_rows * n_actual],
                     srcTensor_m, total_remain_size);
                 AscendC::PipeBarrier<PIPE_V>();
             }
@@ -958,8 +958,8 @@ struct TileSliceSum<Arch::AtlasA2,
 
         /*
         template <typename T1, typename T2>
-        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal, 
-            const LocalTensor<T2>& srcLocal, 
+        __aicore__ inline void Cast(const LocalTensor<T1>& dstLocal,
+            const LocalTensor<T2>& srcLocal,
             const RoundMode& round_mode, const uint32_t calCount)
 
         (uint64_t)mask, repeattimes, castparams
@@ -972,7 +972,7 @@ struct TileSliceSum<Arch::AtlasA2,
 
         AscendC::Add(dstTensor, dstTensor, dstTensor[dstOffset], n_round);
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         // AscendC::Muls(dstTensor, dstTensor, alpha, m_actual);
         // AscendC::PipeBarrier<PIPE_V>();
     }

@@ -11,19 +11,19 @@
 #ifndef CATLASS_GEMV_TILE_VEC_COPY_UB_TO_GM_PADDING_HPP
 #define CATLASS_GEMV_TILE_VEC_COPY_UB_TO_GM_PADDING_HPP
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/arch.hpp"
 #include "catlass/layout/layout.hpp"
-#include "../../gemm/gemm_type.hpp"
+#include "catlass/gemm/gemm_type.hpp"
 
-namespace Vecself::Gemv::Tile {
+namespace FTSelf::Gemv::Tile {
 
 using namespace Catlass;
 
 template <
     class ArchTag,
     class GmType,
-    Vecself::Gemv::helper::VEC_PADDING_TYPE PaddingType,
+    FTSelf::Gemv::helper::VEC_PADDING_TYPE PaddingType,
     bool is_atoadd = false
 >
 struct VecCopyUBToGmPadding
@@ -33,9 +33,9 @@ struct VecCopyUBToGmPadding
 
 
 template <class Element>
-struct VecCopyUBToGmPadding<Arch::AtlasA2, 
-    Gemm::GemmType<Element, layout::VectorLayout>, 
-    Vecself::Gemv::helper::VEC_PADDING_TYPE::ALIGNED,
+struct VecCopyUBToGmPadding<Arch::AtlasA2,
+    Catlass::Gemm::GemmType<Element, layout::VectorLayout>,
+    FTSelf::Gemv::helper::VEC_PADDING_TYPE::ALIGNED,
     false>
 {
     using LayoutSrc = layout::VectorLayout;
@@ -61,17 +61,17 @@ struct VecCopyUBToGmPadding<Arch::AtlasA2,
         // params.srcStride = 0;
         // params.dstStride = 0;
         // params.rsv = 0;
-        
+
         /*
         // 支持连续
         template <typename T>
-        __aicore__ inline void DataCopy(const GlobalTensor <T>& dstGlobal, 
+        __aicore__ inline void DataCopy(const GlobalTensor <T>& dstGlobal,
             const LocalTensor <T>& srcLocal, const uint32_t calCount)
 
         // 支持连续和不连续
         template <typename T>
-        __aicore__ inline void DataCopy(const GlobalTensor <T>& dstGlobal, 
-            const LocalTensor <T>& srcLocal, 
+        __aicore__ inline void DataCopy(const GlobalTensor <T>& dstGlobal,
+            const LocalTensor <T>& srcLocal,
             const DataCopyParams& repeatParams)
         */
 
@@ -92,7 +92,7 @@ struct VecCopyUBToGmPadding<Arch::AtlasA2,
                                 数据类型为uint16_t，dstStride不要超出该数据类型的取值范围。
                                 特别的，当dstLocal位于C2PIPE2GM时，单位为128B；当dstLocal位于C2时，单位为64B。
         */
-        
+
         AscendC::DataCopyParams datacopyparams;
         datacopyparams.blockCount = 1;
         // layoutDst.shape(0)
@@ -114,9 +114,9 @@ struct VecCopyUBToGmPadding<Arch::AtlasA2,
 };
 
 template <class Element>
-struct VecCopyUBToGmPadding<Arch::AtlasA2, 
-    Gemm::GemmType<Element, layout::VectorLayout>, 
-    Vecself::Gemv::helper::VEC_PADDING_TYPE::PADDING,
+struct VecCopyUBToGmPadding<Arch::AtlasA2,
+    Catlass::Gemm::GemmType<Element, layout::VectorLayout>,
+    FTSelf::Gemv::helper::VEC_PADDING_TYPE::PADDING,
     false>
 {
     using LayoutSrc = layout::VectorLayout;
@@ -144,8 +144,8 @@ struct VecCopyUBToGmPadding<Arch::AtlasA2,
         params.rsv = 0;
         /*
         template <typename T>
-        __aicore__ inline void DataCopyPad(const GlobalTensor<T> &dstGlobal, 
-            const LocalTensor<T> &srcLocal, 
+        __aicore__ inline void DataCopyPad(const GlobalTensor<T> &dstGlobal,
+            const LocalTensor<T> &srcLocal,
             const DataCopyExtParams &dataCopyParams)
         */
         AscendC::DataCopyPad(
@@ -157,7 +157,7 @@ struct VecCopyUBToGmPadding<Arch::AtlasA2,
 };
 
 template <class Element>
-struct VecCopyUBToGmPadding<Arch::AtlasA2, Gemm::GemmType<Element, layout::VectorLayout>,Vecself::Gemv::helper::VEC_PADDING_TYPE::PADDING,true>
+struct VecCopyUBToGmPadding<Arch::AtlasA2, Catlass::Gemm::GemmType<Element, layout::VectorLayout>,FTSelf::Gemv::helper::VEC_PADDING_TYPE::PADDING,true>
 {
     using LayoutSrc = layout::VectorLayout;
     using LayoutDst = layout::VectorLayout;
@@ -192,6 +192,6 @@ struct VecCopyUBToGmPadding<Arch::AtlasA2, Gemm::GemmType<Element, layout::Vecto
     }
 };
 
-} // namespace Vecself::Gemv::Tile
+} // namespace FTSelf::Gemv::Tile
 
 #endif // CATLASS_GEMV_TILE_VEC_COPY_UB_TO_GM_HPP

@@ -2,18 +2,18 @@
 #ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_PINGPONG_HPP_FT_ABE_SPEC_NO_SPLITK_ROBUST
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_PINGPONG_HPP_FT_ABE_SPEC_NO_SPLITK_ROBUST
 
-# include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/resource_aiv.hpp"
 #include "catlass/arch/cross_core_sync_aiv.hpp"
-# include "../../coord.hpp"
-# include "../../gemm_coord.hpp"
-# include "../dispatch_policy.hpp"
-# include "../helper.hpp"
-# include "../../gemv/helper.hpp"
-# include "../tile/tile_copy.hpp"
-# include "../tile/tile_mmad.hpp"
+#include "catlass/coord.hpp"
+#include "catlass/gemm_coord.hpp"
+#include "catlass/gemm/dispatch_policy.hpp"
+#include "catlass/gemm/helper.hpp"
+#include "catlass/gemv/helper.hpp"
+#include "catlass/gemm/tile/tile_copy.hpp"
+#include "catlass/gemm/tile/tile_mmad.hpp"
 
-namespace CubeSelf::Gemm::Block {
+namespace FTSelf::Gemm::Block {
 template<
     bool ENABLE_UNIT_FLAG_,
     class L1TileShapeforFT_,
@@ -50,7 +50,7 @@ public:
 
     using ElementA = typename AType_::Element;
     using LayoutA = typename AType_::Layout;
-    
+
     using ElementB = typename BType_::Element;
     using LayoutB = typename BType_::Layout;
 
@@ -75,7 +75,7 @@ public:
     using CopyL1ToL0AforFT = typename TileCopyFTABonAic_::CopyL1ToL0AforFT;
     using CopyL0CToGmforABE = typename TileCopyFTABonAic_::CopyL0CToGmforABE;
 
-    using ElementAccumulator = 
+    using ElementAccumulator =
         typename Catlass::Gemm::helper::ElementAccumulatorSelector<ElementA,ElementX>::ElementAccumulator;
 
     using LayoutAInL1 = typename CopyL1ToL0AforFT::LayoutSrc;
@@ -91,7 +91,7 @@ public:
 
     using L1AAlignHelper = Catlass::Gemm::helper::L1AlignHelper<ElementA, LayoutA>;
     using L1BAlignHelper = Catlass::Gemm::helper::L1AlignHelper<ElementA, LayoutA>;
-    using L1XAlignHelper = Vecself::Gemv::helper::L1AlignHelper<ElementX, LayoutVX>;
+    using L1XAlignHelper = FTSelf::Gemv::helper::L1AlignHelper<ElementX, LayoutVX>;
 
     static constexpr bool ENABLE_UNIT_FLAG = DispatchPolicy::ENABLE_UNIT_FLAG;
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
@@ -107,7 +107,7 @@ public:
     static constexpr uint32_t L0B_SIZE = ArchTag::L0B_SIZE;
     // static constexpr uint32_t L0B_SIZE_FOR_B = L0TileShape::K * L0TileShape::N * sizeof(ElementB) * STAGES;
     // static constexpr uint32_t L0B_SIZE_FOR_A = L0TileShape::M * L0TileShape::K * sizeof(ElementA) * STAGES;
-    
+
     static constexpr uint32_t L0C_SIZE = ArchTag::L0C_SIZE;
 
     static constexpr uint32_t L0A_PINGPONG_BUF_SIZE = L0A_SIZE / STAGES;
@@ -117,13 +117,13 @@ public:
     static constexpr uint32_t L0B_PINGPONG_BUF_SIZE = L0B_SIZE / STAGES;
     // static constexpr uint32_t L0B_PINGPONG_BUF_SIZE_FOR_B = L0B_SIZE_FOR_B / STAGES;
     // static constexpr uint32_t L0B_PINGPONG_BUF_SIZE_FOR_A = L0B_SIZE_FOR_A / STAGES;
-    
+
 
     // Check LayoutC
     static_assert(std::is_same_v<LayoutY, Catlass::layout::RowMajor>, "LayoutY only support RowMajor yet!");
 
     // Check L1TileShape: 统一通过 A1 存储传输，所以要相加小于整体size
-    static_assert((L1A_SIZE * STAGES + L1X_SIZE * STAGES + L1VX_SIZE * STAGES) <= ArchTag::L1_SIZE, 
+    static_assert((L1A_SIZE * STAGES + L1X_SIZE * STAGES + L1VX_SIZE * STAGES) <= ArchTag::L1_SIZE,
         "L1TileShape exceeding the L1 space!");
 
     // Check L0TileShape
@@ -136,7 +136,7 @@ public:
     static constexpr uint32_t L0C_SIZE_for_AE = L1XAlignHelper::M_ALIGNED * L0TileShapeforFT::M * sizeof(ElementAccumulator);
 
     static_assert((L0X_TILE_SIZE * STAGES + L0VX_TILE_SIZE * STAGES) <= L0A_SIZE, "L0TileShape exceeding the space of L0A for X!");
-    
+
     static_assert((L0A_TILE_SIZE * STAGES) <= L0B_SIZE, "L0TileShape exceeding the space OF l0B for A!");
 
     static_assert((L0C_SIZE_for_ABE + L0C_SIZE_for_AE) <= L0C_SIZE, "L0TileShape for Ae and ABe exceeding the global L0C space");
@@ -146,21 +146,21 @@ public:
 
     static_assert(L0TileShapeforFT::N >= L1XAlignHelper::M_ALIGNED,
         "The situation where the L0TileShapeforFT::N < 16 is not supported yet");
-    
+
     static_assert((L0TileShapeforFT::N % L1XAlignHelper::M_ALIGNED == 0),
         "The situation where the L0TileShapeforFT::N % 16 != 0 is not supported yet");
-    
+
     /// Construct
     CATLASS_DEVICE
     BlockMmadSpecABeNoSplitKRobust(Catlass::Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0)
-    {   
+    {
         // block 上 L1 Cache 中 A1 和 B1 的起始地址偏移
         uint32_t l1AOffset = l1BufAddrStart;
         uint32_t l1XOffset = l1BufAddrStart + L1A_SIZE * STAGES;
         uint32_t l1VXOffset = l1BufAddrStart + L1A_SIZE * STAGES + L1X_SIZE * STAGES;
 
         uint32_t l0AOffset = 0;
-        
+
         uint32_t l0BOffset = 0;
 
         uint32_t l0COffset = 0;
@@ -191,7 +191,7 @@ public:
 
             l0BEventListforA[i] = i;
             l0AEventListforX[i] = i + STAGES;
-            
+
             // The event id that needs to be set before the loop
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1AEventList[i]);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1XEventList[i]);
@@ -201,7 +201,7 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventListforA[i]);
         }
 
-        l0CTensor = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(l0COffset); 
+        l0CTensor = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(l0COffset);
 
         MMAD_ABE_EVENT_ID1 = 1;
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(MMAD_ABE_EVENT_ID1);
@@ -232,8 +232,8 @@ public:
         AscendC::GlobalTensor<ElementY> const & gmY, LayoutY const &layoutY,
         AscendC::GlobalTensor<ElementY> const & gmVY, LayoutY const &layoutVY,
         Catlass::GemmCoord const &actualShape)
-    {   
-        
+    {
+
         uint32_t mRound = RoundUp<L1AAlignHelper::N_ALIGNED>(actualShape.m());
         // uint32_t nRound = RoundUp<L1BAlignHelper::N_ALIGNED>(actualShape.n());
 
@@ -287,7 +287,7 @@ public:
         {
             // 下一阶段执行的stage id
             uint32_t l1ListIdNext = (l1ListId + 1 < STAGES) ? (l1ListId + 1) : 0;
-            uint32_t kActualNext{0}; 
+            uint32_t kActualNext{0};
 
             // 流水线，提前将下一阶段的数据从 GM 加载到 L1 中与计算overlap
             // preload next tile from GM to L1
@@ -296,7 +296,7 @@ public:
                 // 下一阶段 若非最后一个 loop，那么执行一个L1TileShape::K,否则执行剩余的数据
                 kActualNext = (kLoopIdxNext < kTileCount - 1) ?
                     L1TileShapeforFT::K : (actualShape.k() - kLoopIdxNext * L1TileShapeforFT::K);
-                
+
                 // Get L1 Tensor for next stage
                 auto l1ATensor = l1ATensorList[l1ListIdNext];
                 auto l1XTensor = l1XTensorList[l1ListIdNext];
@@ -334,7 +334,7 @@ public:
             for(int nPartIdx=0; nPartIdx < nPartLoop; nPartIdx++){
                 uint32_t nPartActual = (nPartIdx < nPartLoop - 1) ?
                         L0TileShapeforFT::N : (nRoundforFT - nPartIdx * L0TileShapeforFT::N);
-                
+
                 uint32_t mPartActualforX = nRoundforFT;
 
                 for(int kPartIdx=0; kPartIdx < kPartLoop; kPartIdx++){
@@ -343,34 +343,34 @@ public:
 
                     // Locate the current tile on L0B
                     auto l0ATensorforX = l0ATensorListforX[l0AListIdforX];
-                        
+
                     LayoutXInL0 layoutXInL0Total =
-                        LayoutXInL0::template MakeLayout<ElementX>((nPartActual+L1XAlignHelper::M_ALIGNED), kPartActual); 
-                    
-                    // LayoutXInL0::template MakeLayout<ElementX>(nPartActual, kPartActual); 
-                    LayoutXInL0 layoutXInL0forABe = LayoutXInL0::template MakeLayout<ElementX>(nPartActual, kPartActual); 
+                        LayoutXInL0::template MakeLayout<ElementX>((nPartActual+L1XAlignHelper::M_ALIGNED), kPartActual);
+
+                    // LayoutXInL0::template MakeLayout<ElementX>(nPartActual, kPartActual);
+                    LayoutXInL0 layoutXInL0forABe = LayoutXInL0::template MakeLayout<ElementX>(nPartActual, kPartActual);
                     // layoutXInL0Total.GetTileLayout(Catlass::MakeCoord(nPartActual, kPartActual));
-                    LayoutXInL0 layoutXInL0forAe = LayoutXInL0::template MakeLayout<ElementX>(L1XAlignHelper::M_ALIGNED, kPartActual); 
+                    LayoutXInL0 layoutXInL0forAe = LayoutXInL0::template MakeLayout<ElementX>(L1XAlignHelper::M_ALIGNED, kPartActual);
                     // layoutXInL0Total.GetTileLayout(Catlass::MakeCoord(L1XAlignHelper::M_ALIGNED, kPartActual));
 
                     // Locate the current tile of matrix X for ABe on L0
                     Catlass::MatrixCoord l0XOffsetforABe{nPartIdx * (nPartActual+L1XAlignHelper::M_ALIGNED), 0};
 
                     auto l0XTileforABe = l0ATensorforX[0];
-                        
+
                     // Locate the current tile of matrix X for Ae on L0
-                    Catlass::MatrixCoord l0XOffsetforAe{ 
+                    Catlass::MatrixCoord l0XOffsetforAe{
                             nPartIdx * (nPartActual+L1XAlignHelper::M_ALIGNED) + nPartActual, 0};
-                        
+
                     auto l0XTileforAe = l0ATensorforX[uint32_t(nPartActual) * uint32_t(kPartActual)];
                     // layoutXInL0Total.GetOffset(l0XOffsetforAe)
 
                     // Locate the current tile of matrix X for ABe on L1
                     Catlass::MatrixCoord l1XOffsetforABe{0, kPartIdx * L0TileShapeforFT::K};
                     auto l1XTile = l1XTensor[layoutXInL1.GetOffset(l1XOffsetforABe)];
-                    
+
                     Catlass::MatrixCoord l1VXOffsetforAe{0, kPartIdx * L0TileShapeforFT::K};
-                    auto l1VXTile = l1VXTensor[layoutVXInL1.GetOffset(l1VXOffsetforAe)]; 
+                    auto l1VXTile = l1VXTensor[layoutVXInL1.GetOffset(l1VXOffsetforAe)];
 
                     // If the current tile is the first one on the k&n axis, wait for loading matrix B from GM to L1
                     if((nPartIdx == 0) && (kPartIdx == 0)){
@@ -385,7 +385,7 @@ public:
                     copyL1ToL0X(l0XTileforAe, l1VXTile, layoutXInL0forAe, layoutVXInL1);
 
                     // If the current tile is the last one on the k&n axis, notify to load matrix B from GM to L1
-                    if ((kPartIdx == kPartLoop - 1) && (nPartIdx == nPartLoop - 1)) 
+                    if ((kPartIdx == kPartLoop - 1) && (nPartIdx == nPartLoop - 1))
                     {
                         // 若这是当前stage 最后一次的迭代，则需要设置Flag，
                         // 即当前stage涉及到现有 L0 B的数据的操作已经完成
@@ -396,7 +396,7 @@ public:
                     for(int mPartIdx = 0; mPartIdx < mPartLoop; mPartIdx++){
                         uint32_t mPartActual = (mPartIdx < mPartLoop - 1) ?
                             L0TileShapeforFT::M : (mRound - mPartIdx * L0TileShapeforFT::M);
-                        
+
                         // Locate the current tile on L0A
                         auto l0BTileforA = l0BTensorListforA[l0BListIdforA];
 
@@ -406,7 +406,7 @@ public:
                         Catlass::MatrixCoord l1AOffset{mPartIdx * L0TileShapeforFT::M, kPartIdx * L0TileShapeforFT::K};
 
                         auto l1ATile = l1ATensor[layoutAInL1.GetOffset(l1AOffset)];
-                        
+
                         if((mPartIdx == 0) && (kPartIdx == 0)){
                             // 若为当前stage第一次迭代，需要等待到第一批数据，
                             // 即在当前stage涉及的迭代前已经preload 完的A数据成功preload 到 L1 上才可进行A数据向 L0 上写
@@ -452,7 +452,7 @@ public:
                         // tileMmad(l0CTile, l0ATile, l0BTile, L1XAlignHelper::M_ALIGNED, m_actual_now, nPartActual, initC);
                         tileMmadforABe(l0CTile, l0ATensorforX, l0BTileforA,
                             (nPartActual+L1XAlignHelper::M_ALIGNED), mPartActual, kPartActual, initC, unitFlag);
-                        
+
                         // Notify to move the next L0B tile
                         // 标记计算完成，即当前已经完成了一个l0 tile 的运算，可以加载下一个l0 tile了
                         // 这里最内层为 B 矩阵
@@ -461,7 +461,7 @@ public:
                     }
                     // 交替进行阶段，实现 L1 与 L0 之间数据传输与 MMAD 计算的PING-PANG
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventListforX[l0AListIdforX]);
-                    l0AListIdforX = (l0AListIdforX + 1 < STAGES) ? (l0AListIdforX + 1) : 0;   
+                    l0AListIdforX = (l0AListIdforX + 1 < STAGES) ? (l0AListIdforX + 1) : 0;
                 }
             }
             // 交替进行阶段，实现L1 与 Global 之间数据传输 与 MMAD计算 的PING-PANG
@@ -484,7 +484,7 @@ public:
 
             Catlass::MatrixCoord l0COffsetforABe{uint32_t(0), uint32_t(0)};
             auto l0CTileforABe = l0CTensor[layoutInL0CTotal.GetOffset(l0COffsetforABe)];
-            
+
             Catlass::MatrixCoord l0COffsetforAe{nRoundforFT, uint32_t(0)};
             // 获取当前局部输出
             auto l0CTileforAe = l0CTensor[layoutInL0CTotal.GetOffset(l0COffsetforAe)];
@@ -495,7 +495,7 @@ public:
         } else {
             Catlass::MatrixCoord l0COffsetforABe{uint32_t(0), uint32_t(0)};
             auto l0CTileforABe = l0CTensor[layoutInL0CTotal.GetOffset(l0COffsetforABe)];
-            
+
             Catlass::MatrixCoord l0COffsetforAe{nRoundforFT, uint32_t(0)};
             // 获取当前局部输出
             auto l0CTileforAe = l0CTensor[layoutInL0CTotal.GetOffset(l0COffsetforAe)];
@@ -511,8 +511,8 @@ public:
         AscendC::GlobalTensor<ElementX> const & gmX, LayoutX const &layoutX,
         AscendC::GlobalTensor<ElementY> const & gmY, LayoutY const &layoutY,
         Catlass::GemmCoord const &actualShape)
-    {   
-        
+    {
+
         uint32_t mRound = RoundUp<L1AAlignHelper::N_ALIGNED>(actualShape.m());
         // uint32_t nRound = RoundUp<L1BAlignHelper::N_ALIGNED>(actualShape.n());
 
@@ -555,7 +555,7 @@ public:
         {
             // 下一阶段执行的stage id
             uint32_t l1ListIdNext = (l1ListId + 1 < STAGES) ? (l1ListId + 1) : 0;
-            uint32_t kActualNext{0}; 
+            uint32_t kActualNext{0};
 
             // 流水线，提前将下一阶段的数据从 GM 加载到 L1 中与计算overlap
             // preload next tile from GM to L1
@@ -564,7 +564,7 @@ public:
                 // 下一阶段 若非最后一个 loop，那么执行一个L1TileShape::K,否则执行剩余的数据
                 kActualNext = (kLoopIdxNext < kTileCount - 1) ?
                     L1TileShapeforFT::K : (actualShape.k() - kLoopIdxNext * L1TileShapeforFT::K);
-                
+
                 // Get L1 Tensor for next stage
                 auto l1ATensor = l1ATensorList[l1ListIdNext];
                 auto l1XTensor = l1XTensorList[l1ListIdNext];
@@ -600,7 +600,7 @@ public:
             for(int nPartIdx=0; nPartIdx < nPartLoop; nPartIdx++){
                 uint32_t nPartActual = (nPartIdx < nPartLoop - 1) ?
                         L0TileShapeforFT::N : (nRoundforFT - nPartIdx * L0TileShapeforFT::N);
-                
+
                 uint32_t mPartActualforX = nRoundforFT;
 
                 for(int kPartIdx=0; kPartIdx < kPartLoop; kPartIdx++){
@@ -609,9 +609,9 @@ public:
 
                     // Locate the current tile on L0B
                     auto l0ATensorforX = l0ATensorListforX[l0AListIdforX];
-                    
-                    LayoutXInL0 layoutXInL0forABe = LayoutXInL0::template MakeLayout<ElementX>((nPartActual), kPartActual); 
-                    
+
+                    LayoutXInL0 layoutXInL0forABe = LayoutXInL0::template MakeLayout<ElementX>((nPartActual), kPartActual);
+
 
                     // Locate the current tile of matrix X for ABe on L1
                     Catlass::MatrixCoord l1XOffsetforABe{0, kPartIdx * L0TileShapeforFT::K};
@@ -629,7 +629,7 @@ public:
                     copyL1ToL0X(l0ATensorforX, l1XTile, layoutXInL0forABe, layoutXInL1);
 
                     // If the current tile is the last one on the k&n axis, notify to load matrix B from GM to L1
-                    if ((kPartIdx == kPartLoop - 1) && (nPartIdx == nPartLoop - 1)) 
+                    if ((kPartIdx == kPartLoop - 1) && (nPartIdx == nPartLoop - 1))
                     {
                         // 若这是当前stage 最后一次的迭代，则需要设置Flag，
                         // 即当前stage涉及到现有 L0 B的数据的操作已经完成
@@ -640,7 +640,7 @@ public:
                     for(int mPartIdx = 0; mPartIdx < mPartLoop; mPartIdx++){
                         uint32_t mPartActual = (mPartIdx < mPartLoop - 1) ?
                             L0TileShapeforFT::M : (mRound - mPartIdx * L0TileShapeforFT::M);
-                        
+
                         // Locate the current tile on L0A
                         auto l0BTileforA = l0BTensorListforA[l0BListIdforA];
 
@@ -650,7 +650,7 @@ public:
                         Catlass::MatrixCoord l1AOffset{mPartIdx * L0TileShapeforFT::M, kPartIdx * L0TileShapeforFT::K};
 
                         auto l1ATile = l1ATensor[layoutAInL1.GetOffset(l1AOffset)];
-                        
+
                         if((mPartIdx == 0) && (kPartIdx == 0)){
                             // 若为当前stage第一次迭代，需要等待到第一批数据，
                             // 即在当前stage涉及的迭代前已经preload 完的A数据成功preload 到 L1 上才可进行A数据向 L0 上写
@@ -696,7 +696,7 @@ public:
                         // tileMmad(l0CTile, l0ATile, l0BTile, L1XAlignHelper::M_ALIGNED, m_actual_now, nPartActual, initC);
                         tileMmadforABe(l0CTile, l0ATensorforX, l0BTileforA,
                             nPartActual, mPartActual, kPartActual, initC, unitFlag);
-                        
+
                         // Notify to move the next L0B tile
                         // 标记计算完成，即当前已经完成了一个l0 tile 的运算，可以加载下一个l0 tile了
                         // 这里最内层为 B 矩阵
@@ -705,7 +705,7 @@ public:
                     }
                     // 交替进行阶段，实现 L1 与 L0 之间数据传输与 MMAD 计算的PING-PANG
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventListforX[l0AListIdforX]);
-                    l0AListIdforX = (l0AListIdforX + 1 < STAGES) ? (l0AListIdforX + 1) : 0;   
+                    l0AListIdforX = (l0AListIdforX + 1 < STAGES) ? (l0AListIdforX + 1) : 0;
                 }
             }
             // 交替进行阶段，实现L1 与 Global 之间数据传输 与 MMAD计算 的PING-PANG
@@ -725,7 +725,7 @@ public:
 
             Catlass::MatrixCoord l0COffsetforABe{uint32_t(0), uint32_t(0)};
             auto l0CTileforABe = l0CTensor[layoutInL0CforABe.GetOffset(l0COffsetforABe)];
-            
+
             copyL0CToGmforABE(gmY, l0CTileforABe, layoutBlockforABe, layoutInL0CforABe);
             // 标记数据写入 cGM 已经完成
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(MMAD_ABE_EVENT_ID1);
@@ -777,6 +777,6 @@ protected:
     CopyL1ToL0AforFT copyL1ToL0AforFT;
     CopyL0CToGmforABE copyL0CToGmforABE;
 };
-} // namespace CubeSelf::Gemm::Block
+} // namespace FTSelf::Gemm::Block
 
 #endif // CATLASS_GEMM_BLOCK_BLOCK_MMAD_PINGPONG_HPP

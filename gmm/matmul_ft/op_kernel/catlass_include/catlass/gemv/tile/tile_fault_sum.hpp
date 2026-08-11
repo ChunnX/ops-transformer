@@ -1,21 +1,21 @@
 #ifndef CATLASS_GEMV_TILE_TILE_FAULT_SUM_HPP_SELF
 #define CATLASS_GEMV_TILE_TILE_FAULT_SUM_HPP_SELF
 
-#include "../../catlass.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/arch/arch.hpp"
-#include "../../gemm/helper.hpp"
-#include "../helper.hpp"
+#include "catlass/gemm/helper.hpp"
+#include "catlass/gemv/helper.hpp"
 #include "catlass/layout/layout.hpp"
-#include "../../gemm/gemm_type.hpp"
+#include "catlass/gemm/gemm_type.hpp"
 
-namespace Vecself::Gemv::Tile {
+namespace FTSelf::Gemv::Tile {
 
 using namespace Catlass;
 
 template <
     /// Tag indicating architecture
     class ArchTag,
-    Vecself::Gemv::helper::FT_REDUCE_TYPE REDUCE_TYPE_,
+    FTSelf::Gemv::helper::FT_REDUCE_TYPE REDUCE_TYPE_,
     class AType,
     class YType,
     class BiasType = void
@@ -30,9 +30,9 @@ template <
     class ElementY
 >
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM,
-                Gemm::GemmType<ElementA, layout::RowMajor>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM,
+                Catlass::Gemm::GemmType<ElementA, layout::RowMajor>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
     // using ElementAccumulator = ElementY;
@@ -159,9 +159,9 @@ struct TileFaultSum<Arch::AtlasA2,
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM,
-                Gemm::GemmType<float, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM,
+                Catlass::Gemm::GemmType<float, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = float;
@@ -217,7 +217,7 @@ struct TileFaultSum<Arch::AtlasA2,
         params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         params.src1RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
 
-        
+
 
         // AscendC::Duplicate<ElementAccumulator>(
         //     temp,
@@ -230,14 +230,14 @@ struct TileFaultSum<Arch::AtlasA2,
         //     8 // 相邻赋值迭代间，矢量目的操作数相同datablock地址步长。
         // ); // 总的来说，我们开辟
         // AscendC::PipeBarrier<PIPE_V>();
-        
+
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Add(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& src0Local, 
-        const LocalTensor<T>& src1Local, 
-        uint64_t mask, 
-        const uint8_t repeatTimes, 
+        __aicore__ inline void Add(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& src0Local,
+        const LocalTensor<T>& src1Local,
+        uint64_t mask,
+        const uint8_t repeatTimes,
         const BinaryRepeatParams& repeatParams)
         */
 
@@ -260,7 +260,7 @@ struct TileFaultSum<Arch::AtlasA2,
             {
                 remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Add<ElementA, true>(
                 srcTensor_m,
@@ -270,7 +270,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 params);
         }
-        
+
         uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::WholeReduceSum<ElementA, true>(
@@ -300,9 +300,9 @@ struct TileFaultSum<Arch::AtlasA2,
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::MAX,
-                Gemm::GemmType<float, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::MAX,
+                Catlass::Gemm::GemmType<float, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = float;
@@ -350,7 +350,7 @@ struct TileFaultSum<Arch::AtlasA2,
         同一迭代内datablock的地址步长参数说明请参考dataBlockStride。
         */
 
-        
+
 
         AscendC::BinaryRepeatParams params;
         params.dstBlkStride = 1;
@@ -375,13 +375,13 @@ struct TileFaultSum<Arch::AtlasA2,
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void Max(
-        const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& src0Local, 
-        const LocalTensor<T>& src1Local, 
-        uint64_t mask, const uint8_t repeatTimes, 
+        const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& src0Local,
+        const LocalTensor<T>& src1Local,
+        uint64_t mask, const uint8_t repeatTimes,
         const BinaryRepeatParams& repeatParams)
         */
-        
+
         for (uint32_t i = 1; i < repeat_num; i++) {
             uint32_t offset = i * repeat_size;
             AscendC::Max<ElementA, true>(
@@ -401,7 +401,7 @@ struct TileFaultSum<Arch::AtlasA2,
             {
                 remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
@@ -411,16 +411,16 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 params);
         }
-        
+
         uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
 
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void WholeReduceMax(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& srcLocal, const int32_t mask, 
-        const int32_t repeatTimes, const int32_t dstRepStride, 
-        const int32_t srcBlkStride, const int32_t srcRepStride, 
+        __aicore__ inline void WholeReduceMax(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& srcLocal, const int32_t mask,
+        const int32_t repeatTimes, const int32_t dstRepStride,
+        const int32_t srcBlkStride, const int32_t srcRepStride,
         ReduceOrder order = ReduceOrder::ORDER_VALUE_INDEX)
         */
 
@@ -453,9 +453,9 @@ struct TileFaultSum<Arch::AtlasA2,
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::MAX,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::MAX,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -503,7 +503,7 @@ struct TileFaultSum<Arch::AtlasA2,
         同一迭代内datablock的地址步长参数说明请参考dataBlockStride。
         */
 
-        
+
 
         AscendC::BinaryRepeatParams params;
         params.dstBlkStride = 1;
@@ -528,13 +528,13 @@ struct TileFaultSum<Arch::AtlasA2,
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void Max(
-        const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& src0Local, 
-        const LocalTensor<T>& src1Local, 
-        uint64_t mask, const uint8_t repeatTimes, 
+        const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& src0Local,
+        const LocalTensor<T>& src1Local,
+        uint64_t mask, const uint8_t repeatTimes,
         const BinaryRepeatParams& repeatParams)
         */
-        
+
         for (uint32_t i = 1; i < repeat_num; i++) {
             uint32_t offset = i * repeat_size;
             AscendC::Max<ElementA, true>(
@@ -554,7 +554,7 @@ struct TileFaultSum<Arch::AtlasA2,
             {
                 remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
@@ -564,16 +564,16 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 params);
         }
-        
+
         uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
 
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void WholeReduceMax(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& srcLocal, const int32_t mask, 
-        const int32_t repeatTimes, const int32_t dstRepStride, 
-        const int32_t srcBlkStride, const int32_t srcRepStride, 
+        __aicore__ inline void WholeReduceMax(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& srcLocal, const int32_t mask,
+        const int32_t repeatTimes, const int32_t dstRepStride,
+        const int32_t srcBlkStride, const int32_t srcRepStride,
         ReduceOrder order = ReduceOrder::ORDER_VALUE_INDEX)
         */
 
@@ -606,9 +606,9 @@ struct TileFaultSum<Arch::AtlasA2,
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::MAX,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::MAX,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -666,7 +666,7 @@ struct TileFaultSum<Arch::AtlasA2,
         // params.dstRepStride = RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0;
         // params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         // params.src1RepStride = RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0;
-        
+
         params.dstRepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         params.src1RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
@@ -686,13 +686,13 @@ struct TileFaultSum<Arch::AtlasA2,
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void Max(
-        const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& src0Local, 
-        const LocalTensor<T>& src1Local, 
-        uint64_t mask, const uint8_t repeatTimes, 
+        const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& src0Local,
+        const LocalTensor<T>& src1Local,
+        uint64_t mask, const uint8_t repeatTimes,
         const BinaryRepeatParams& repeatParams)
         */
-        
+
         for (uint32_t i = 1; i < repeat_num; i++) {
             uint32_t offset = i * repeat_size;
             AscendC::Max<ElementA, true>(
@@ -712,7 +712,7 @@ struct TileFaultSum<Arch::AtlasA2,
             {
                 remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
@@ -722,16 +722,16 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 params);
         }
-        
+
         uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
 
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void WholeReduceMax(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& srcLocal, const int32_t mask, 
-        const int32_t repeatTimes, const int32_t dstRepStride, 
-        const int32_t srcBlkStride, const int32_t srcRepStride, 
+        __aicore__ inline void WholeReduceMax(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& srcLocal, const int32_t mask,
+        const int32_t repeatTimes, const int32_t dstRepStride,
+        const int32_t srcBlkStride, const int32_t srcRepStride,
         ReduceOrder order = ReduceOrder::ORDER_VALUE_INDEX)
         */
 
@@ -775,9 +775,9 @@ struct TileFaultSum<Arch::AtlasA2,
 
 // template <>
 // struct TileFaultSum<Arch::AtlasA2,
-//                 Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX_ABE,
-//                 Gemm::GemmType<float, layout::RowMajor>,
-//                 Gemm::GemmType<float, layout::VectorLayout>,
+//                 FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX_ABE,
+//                 Catlass::Gemm::GemmType<float, layout::RowMajor>,
+//                 Catlass::Gemm::GemmType<float, layout::VectorLayout>,
 //                 void>
 // {
 //     using ElementA = float;
@@ -810,7 +810,7 @@ struct TileFaultSum<Arch::AtlasA2,
 //         uint32_t n_actual = layoutSrc.shape(1);
 //         uint32_t m_round = layoutDst.shape(0);
 //         uint32_t n_round = layoutDst.shape(1);
-        
+
 //         uint32_t m_outer_loop = m_actual / m_reduce_single;
 //         uint32_t m_actual_single = m_reduce_single;
 //         uint32_t m_actual_remain = m_actual % m_outer_loop;
@@ -846,7 +846,7 @@ struct TileFaultSum<Arch::AtlasA2,
 //         params.dstRepStride = RoundUp(repeat_size, repeat_size) / (BYTE_PER_C0 / sizeof(ElementAccumulator));
 //         params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
 //         params.src1RepStride = RoundUp(repeat_size, repeat_size) / (BYTE_PER_C0 / sizeof(ElementAccumulator));
-        
+
 //         // params.src1RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
 
 //         for(uint32_t out_i = 0; out_i < m_outer_loop; out_i++){
@@ -863,7 +863,7 @@ struct TileFaultSum<Arch::AtlasA2,
 //                 1, // 单次赋值迭代内，矢量目的操作数不同datablock间地址步长。
 //                 8 // 相邻赋值迭代间，矢量目的操作数相同datablock地址步长。
 //             );
-            
+
 //             AscendC::Duplicate<ElementY>(
 //                 max_workspace,
 //                 (ElementY)0.0,
@@ -876,8 +876,8 @@ struct TileFaultSum<Arch::AtlasA2,
 
 //             /*
 //             template <typename T, bool isSetMask = true>
-//             __aicore__ inline void Add(const LocalTensor<T>& dstLocal, 
-//                 const LocalTensor<T>& src0Local, const LocalTensor<T>& src1Local, 
+//             __aicore__ inline void Add(const LocalTensor<T>& dstLocal,
+//                 const LocalTensor<T>& src0Local, const LocalTensor<T>& src1Local,
 //                 uint64_t mask, const uint8_t repeatTimes, const BinaryRepeatParams& repeatParams)
 //             */
 //             for (uint32_t i = 0; i < repeat_num; i++) {
@@ -889,7 +889,7 @@ struct TileFaultSum<Arch::AtlasA2,
 //                     add_mask,
 //                     m_actual_single,
 //                     params);
-                
+
 //                 AscendC::Max<ElementA, true>(
 //                     max_workspace,
 //                     srcTensor_m[offset],
@@ -910,7 +910,7 @@ struct TileFaultSum<Arch::AtlasA2,
 //                 }
 
 //                 uint32_t offset = matrix_offset + inter_offset;
-//                 // m_actual * 
+//                 // m_actual *
 //                 uint64_t remain_mask = remain;
 //                 AscendC::Max<ElementA, true>(
 //                     max_workspace,
@@ -928,7 +928,7 @@ struct TileFaultSum<Arch::AtlasA2,
 //                     m_actual_single,
 //                     params);
 //             }
-        
+
 //             uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
 //             AscendC::PipeBarrier<PIPE_V>();
 
@@ -950,7 +950,7 @@ struct TileFaultSum<Arch::AtlasA2,
 //                 1,
 //                 1,
 //                 RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0);
-            
+
 //             uint64_t add_final_mask = (m_actual_single < repeat_size) ? m_actual_single : repeat_size;
 //             uint64_t max_final_mask = (m_actual_single < repeat_size) ? m_actual_single : repeat_size;
 
@@ -1004,7 +1004,7 @@ struct TileFaultSum<Arch::AtlasA2,
 //                 1, // 单次赋值迭代内，矢量目的操作数不同datablock间地址步长。
 //                 8 // 相邻赋值迭代间，矢量目的操作数相同datablock地址步长。
 //             );
-            
+
 //             AscendC::Duplicate<ElementY>(
 //                 max_workspace,
 //                 (ElementY)0.0,
@@ -1017,8 +1017,8 @@ struct TileFaultSum<Arch::AtlasA2,
 
 //             /*
 //             template <typename T, bool isSetMask = true>
-//             __aicore__ inline void Add(const LocalTensor<T>& dstLocal, 
-//                 const LocalTensor<T>& src0Local, const LocalTensor<T>& src1Local, 
+//             __aicore__ inline void Add(const LocalTensor<T>& dstLocal,
+//                 const LocalTensor<T>& src0Local, const LocalTensor<T>& src1Local,
 //                 uint64_t mask, const uint8_t repeatTimes, const BinaryRepeatParams& repeatParams)
 //             */
 //             for (uint32_t i = 0; i < repeat_num; i++) {
@@ -1030,7 +1030,7 @@ struct TileFaultSum<Arch::AtlasA2,
 //                     add_mask,
 //                     m_actual_remain,
 //                     params);
-                
+
 //                 AscendC::Max<ElementA, true>(
 //                     max_workspace,
 //                     srcTensor_m[offset],
@@ -1051,16 +1051,16 @@ struct TileFaultSum<Arch::AtlasA2,
 //                 }
 
 //                 uint32_t offset = matrix_offset + inter_offset;
-//                 // m_actual * 
+//                 // m_actual *
 //                 uint64_t remain_mask = remain;
 
 //                 /*
 //                 template <typename T, bool isSetMask = true>
 //                 __aicore__ inline void Max(
-//                     const LocalTensor<T>& dstLocal, 
-//                     const LocalTensor<T>& src0Local, 
-//                     const LocalTensor<T>& src1Local, 
-//                     uint64_t mask, const uint8_t repeatTimes, 
+//                     const LocalTensor<T>& dstLocal,
+//                     const LocalTensor<T>& src0Local,
+//                     const LocalTensor<T>& src1Local,
+//                     uint64_t mask, const uint8_t repeatTimes,
 //                     const BinaryRepeatParams& repeatParams)
 //                 */
 //                 AscendC::Max<ElementA, true>(
@@ -1079,16 +1079,16 @@ struct TileFaultSum<Arch::AtlasA2,
 //                     m_actual_remain,
 //                     params);
 //             }
-        
+
 //             uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
 //             AscendC::PipeBarrier<PIPE_V>();
 
 //             /*
 //             template <typename T, bool isSetMask = true>
-//             __aicore__ inline void WholeReduceMax(const LocalTensor<T>& dstLocal, 
-//                 const LocalTensor<T>& srcLocal, const int32_t mask, 
-//                 const int32_t repeatTimes, const int32_t dstRepStride, 
-//                 const int32_t srcBlkStride, const int32_t srcRepStride, 
+//             __aicore__ inline void WholeReduceMax(const LocalTensor<T>& dstLocal,
+//                 const LocalTensor<T>& srcLocal, const int32_t mask,
+//                 const int32_t repeatTimes, const int32_t dstRepStride,
+//                 const int32_t srcBlkStride, const int32_t srcRepStride,
 //                 ReduceOrder order = ReduceOrder::ORDER_VALUE_INDEX)
 //             */
 
@@ -1112,7 +1112,7 @@ struct TileFaultSum<Arch::AtlasA2,
 //                 1,
 //                 RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0
 //             );
-            
+
 //             uint64_t add_final_mask = (m_actual_remain < repeat_size) ? m_actual_remain : repeat_size;
 //             uint64_t max_final_mask = (m_actual_remain < repeat_size) ? m_actual_remain : repeat_size;
 
@@ -1149,9 +1149,9 @@ struct TileFaultSum<Arch::AtlasA2,
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX_ABE,
-                Gemm::GemmType<float, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX_ABE,
+                Catlass::Gemm::GemmType<float, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = float;
@@ -1175,7 +1175,7 @@ struct TileFaultSum<Arch::AtlasA2,
         AscendC::LocalTensor<ElementY> dstTensorMax,
         AscendC::LocalTensor<ElementA> srcTensor_m,
         AscendC::LocalTensor<ElementA> tmp_workspace,
-        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc, 
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc,
         uint32_t m_reduce_single
     )
     {
@@ -1183,7 +1183,7 @@ struct TileFaultSum<Arch::AtlasA2,
         uint32_t n_actual = layoutSrc.shape(1);
         uint32_t m_round = layoutDst.shape(0);
         uint32_t n_round = layoutDst.shape(1);
-        
+
         uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
         uint32_t mask = repeat_size;
         uint32_t repeat_num = n_actual / repeat_size;
@@ -1212,7 +1212,7 @@ struct TileFaultSum<Arch::AtlasA2,
         max_params.dstRepStride = RoundUp(repeat_size, repeat_size) / (BYTE_PER_C0 / sizeof(ElementAccumulator));
         max_params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         max_params.src1RepStride = RoundUp(repeat_size, repeat_size) / (BYTE_PER_C0 / sizeof(ElementAccumulator));
-        
+
         // params.src1RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
 
         AscendC::Duplicate<ElementY>(
@@ -1248,7 +1248,7 @@ struct TileFaultSum<Arch::AtlasA2,
             }
 
             uint32_t offset = inter_offset;
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Max<ElementA, true>(
                 tmp_workspace,
@@ -1258,7 +1258,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 max_params);
         }
-        
+
         uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
 
@@ -1276,7 +1276,7 @@ struct TileFaultSum<Arch::AtlasA2,
             RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0,
             AscendC::ReduceOrder::ORDER_ONLY_VALUE);
 
-        
+
         uint64_t max_final_mask = (m_actual < repeat_size) ? m_actual : repeat_size;
 
         max_params.dstRepStride = 8;
@@ -1285,7 +1285,7 @@ struct TileFaultSum<Arch::AtlasA2,
 
         AscendC::PipeBarrier<PIPE_V>();
 
-        
+
         AscendC::Max<ElementA, true>(
             dstTensorMax,
             tmp_workspace,
@@ -1325,7 +1325,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 add_mask,
                 m_actual,
                 sum_params);
-                
+
 
             AscendC::PipeBarrier<PIPE_V>();
         }
@@ -1339,7 +1339,7 @@ struct TileFaultSum<Arch::AtlasA2,
             }
 
             uint32_t offset = inter_offset;
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
 
             AscendC::Add<ElementAccumulator, true>(
@@ -1350,7 +1350,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 sum_params);
         }
-        
+
         reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
 
@@ -1362,7 +1362,7 @@ struct TileFaultSum<Arch::AtlasA2,
             1,
             1,
             RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0);
-        
+
         uint64_t add_final_mask = (m_actual < repeat_size) ? m_actual : repeat_size;
 
         sum_params.dstRepStride = 8;
@@ -1385,9 +1385,9 @@ struct TileFaultSum<Arch::AtlasA2,
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX_ABE,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX_ABE,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -1411,7 +1411,7 @@ struct TileFaultSum<Arch::AtlasA2,
         AscendC::LocalTensor<ElementY> dstTensorMax,
         AscendC::LocalTensor<ElementA> srcTensor_m,
         AscendC::LocalTensor<ElementA> tmp_workspace,
-        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc, 
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc,
         uint32_t m_reduce_single
     )
     {
@@ -1419,7 +1419,7 @@ struct TileFaultSum<Arch::AtlasA2,
         uint32_t n_actual = layoutSrc.shape(1);
         uint32_t m_round = layoutDst.shape(0);
         uint32_t n_round = layoutDst.shape(1);
-        
+
         uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
         uint32_t mask = repeat_size;
         uint32_t repeat_num = n_actual / repeat_size;
@@ -1448,7 +1448,7 @@ struct TileFaultSum<Arch::AtlasA2,
         max_params.dstRepStride = RoundUp(repeat_size, repeat_size) / (BYTE_PER_C0 / sizeof(ElementAccumulator));
         max_params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         max_params.src1RepStride = RoundUp(repeat_size, repeat_size) / (BYTE_PER_C0 / sizeof(ElementAccumulator));
-        
+
         // params.src1RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
 
         AscendC::Duplicate<ElementY>(
@@ -1484,7 +1484,7 @@ struct TileFaultSum<Arch::AtlasA2,
             }
 
             uint32_t offset = inter_offset;
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Max<ElementA, true>(
                 tmp_workspace,
@@ -1494,7 +1494,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 max_params);
         }
-        
+
         uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
 
@@ -1512,7 +1512,7 @@ struct TileFaultSum<Arch::AtlasA2,
             RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0,
             AscendC::ReduceOrder::ORDER_ONLY_VALUE);
 
-        
+
         uint64_t max_final_mask = (m_actual < repeat_size) ? m_actual : repeat_size;
 
         max_params.dstRepStride = 8;
@@ -1521,7 +1521,7 @@ struct TileFaultSum<Arch::AtlasA2,
 
         AscendC::PipeBarrier<PIPE_V>();
 
-        
+
         AscendC::Max<ElementA, true>(
             dstTensorMax,
             tmp_workspace,
@@ -1561,7 +1561,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 add_mask,
                 m_actual,
                 sum_params);
-                
+
 
             AscendC::PipeBarrier<PIPE_V>();
         }
@@ -1575,7 +1575,7 @@ struct TileFaultSum<Arch::AtlasA2,
             }
 
             uint32_t offset = inter_offset;
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
 
             AscendC::Add<ElementAccumulator, true>(
@@ -1586,7 +1586,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 sum_params);
         }
-        
+
         reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
 
@@ -1598,7 +1598,7 @@ struct TileFaultSum<Arch::AtlasA2,
             1,
             1,
             RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0);
-        
+
         uint64_t add_final_mask = (m_actual < repeat_size) ? m_actual : repeat_size;
 
         sum_params.dstRepStride = 8;
@@ -1621,9 +1621,9 @@ struct TileFaultSum<Arch::AtlasA2,
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX_ABE,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX_ABE,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -1648,7 +1648,7 @@ struct TileFaultSum<Arch::AtlasA2,
         AscendC::LocalTensor<ElementY> dstTensorMax,
         AscendC::LocalTensor<ElementA> srcTensor_m,
         AscendC::LocalTensor<ElementA> tmp_workspace,
-        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc, 
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc,
         uint32_t m_reduce_single
     )
     {
@@ -1656,7 +1656,7 @@ struct TileFaultSum<Arch::AtlasA2,
         uint32_t n_actual = layoutSrc.shape(1);
         uint32_t m_round = layoutDst.shape(0);
         uint32_t n_round = layoutDst.shape(1);
-        
+
         uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
         uint32_t dst_repeat_size = DST_ELE_NUM_PER_C0 * 8;
         uint32_t mask = repeat_size;
@@ -1688,7 +1688,7 @@ struct TileFaultSum<Arch::AtlasA2,
         max_params.dstRepStride = RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0;
         max_params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         max_params.src1RepStride = RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0;
-        
+
         // params.src1RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
 
         AscendC::Duplicate<ElementA>(
@@ -1724,7 +1724,7 @@ struct TileFaultSum<Arch::AtlasA2,
             }
 
             uint32_t offset = inter_offset;
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Max<ElementA, true>(
                 tmp_workspace,
@@ -1734,7 +1734,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 max_params);
         }
-        
+
         uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
 
@@ -1754,20 +1754,20 @@ struct TileFaultSum<Arch::AtlasA2,
 
         AscendC::PipeBarrier<PIPE_V>();
 
-        
+
         AscendC::Cast<ElementY, ElementA>(
             dstTensorMax[dstOffset],
             tmp_workspace,
             AscendC::RoundMode::CAST_NONE, m_actual);
         AscendC::PipeBarrier<PIPE_V>();
 
-        
+
         uint64_t max_final_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
 
         max_params.dstRepStride = 8;
         max_params.src0RepStride = 8;
         max_params.src1RepStride = 8;
-        
+
         AscendC::Max<ElementY, true>(
             dstTensorMax,
             dstTensorMax[dstOffset],
@@ -1807,7 +1807,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 add_mask,
                 m_actual,
                 sum_params);
-                
+
 
             AscendC::PipeBarrier<PIPE_V>();
         }
@@ -1821,7 +1821,7 @@ struct TileFaultSum<Arch::AtlasA2,
             }
 
             uint32_t offset = inter_offset;
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
 
             AscendC::Add<ElementA, true>(
@@ -1832,7 +1832,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 sum_params);
         }
-        
+
         reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
 
@@ -1852,7 +1852,7 @@ struct TileFaultSum<Arch::AtlasA2,
             tmp_workspace,
             AscendC::RoundMode::CAST_NONE, m_actual);
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         uint64_t add_final_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
 
         sum_params.dstRepStride = 8;
@@ -1875,9 +1875,9 @@ struct TileFaultSum<Arch::AtlasA2,
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX,
-                Gemm::GemmType<float, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX,
+                Catlass::Gemm::GemmType<float, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = float;
@@ -1946,7 +1946,7 @@ struct TileFaultSum<Arch::AtlasA2,
         sum_params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         sum_params.src1RepStride = RoundUp(repeat_size, repeat_size) / (BYTE_PER_C0 / sizeof(ElementAccumulator));
 
-        
+
 
         // AscendC::Duplicate<ElementAccumulator>(
         //     temp,
@@ -1959,14 +1959,14 @@ struct TileFaultSum<Arch::AtlasA2,
         //     8 // 相邻赋值迭代间，矢量目的操作数相同datablock地址步长。
         // ); // 总的来说，我们开辟
         // AscendC::PipeBarrier<PIPE_V>();
-        
+
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Add(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& src0Local, 
-        const LocalTensor<T>& src1Local, 
-        uint64_t mask, 
-        const uint8_t repeatTimes, 
+        __aicore__ inline void Add(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& src0Local,
+        const LocalTensor<T>& src1Local,
+        uint64_t mask,
+        const uint8_t repeatTimes,
         const BinaryRepeatParams& repeatParams)
         */
 
@@ -1981,7 +1981,7 @@ struct TileFaultSum<Arch::AtlasA2,
         );
 
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::Add<ElementAccumulator, true>(
             sum_workspace,
             srcTensor_m,
@@ -1989,7 +1989,7 @@ struct TileFaultSum<Arch::AtlasA2,
             add_mask,
             m_actual,
             sum_params);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         for (uint32_t i = 1; i < repeat_num; i++) {
@@ -2002,7 +2002,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 add_mask,
                 m_actual,
                 sum_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -2010,7 +2010,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 max_mask,
                 m_actual,
                 max_params);
-                
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -2021,7 +2021,7 @@ struct TileFaultSum<Arch::AtlasA2,
             {
                 remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Add<ElementAccumulator, true>(
                 sum_workspace,
@@ -2030,7 +2030,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 sum_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -2039,10 +2039,10 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 max_params);
         }
-        
+
         uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::WholeReduceMax<ElementA, true>(
             srcTensor_m,
             srcTensor_m,
@@ -2091,15 +2091,15 @@ struct TileFaultSum<Arch::AtlasA2,
             max_final_mask,
             CeilDiv(m_round, repeat_size),
             max_params);
-        
+
     }
 };
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX_MIXED,
-                Gemm::GemmType<float, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX_MIXED,
+                Catlass::Gemm::GemmType<float, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = float;
@@ -2168,7 +2168,7 @@ struct TileFaultSum<Arch::AtlasA2,
         sum_params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         sum_params.src1RepStride = RoundUp(repeat_size, repeat_size) / (BYTE_PER_C0 / sizeof(ElementAccumulator));
 
-        
+
 
         // AscendC::Duplicate<ElementAccumulator>(
         //     temp,
@@ -2181,14 +2181,14 @@ struct TileFaultSum<Arch::AtlasA2,
         //     8 // 相邻赋值迭代间，矢量目的操作数相同datablock地址步长。
         // ); // 总的来说，我们开辟
         // AscendC::PipeBarrier<PIPE_V>();
-        
+
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Add(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& src0Local, 
-        const LocalTensor<T>& src1Local, 
-        uint64_t mask, 
-        const uint8_t repeatTimes, 
+        __aicore__ inline void Add(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& src0Local,
+        const LocalTensor<T>& src1Local,
+        uint64_t mask,
+        const uint8_t repeatTimes,
         const BinaryRepeatParams& repeatParams)
         */
 
@@ -2203,7 +2203,7 @@ struct TileFaultSum<Arch::AtlasA2,
         );
 
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::Add<ElementAccumulator, true>(
             sum_workspace,
             srcTensor_m,
@@ -2211,7 +2211,7 @@ struct TileFaultSum<Arch::AtlasA2,
             add_mask,
             m_actual,
             sum_params);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         for (uint32_t i = 1; i < repeat_num; i++) {
@@ -2224,7 +2224,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 add_mask,
                 m_actual,
                 sum_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -2232,7 +2232,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 max_mask,
                 m_actual,
                 max_params);
-                
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -2243,7 +2243,7 @@ struct TileFaultSum<Arch::AtlasA2,
             {
                 remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Add<ElementAccumulator, true>(
                 sum_workspace,
@@ -2252,7 +2252,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 sum_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -2261,10 +2261,10 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 max_params);
         }
-        
+
         uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::WholeReduceMax<ElementA, true>(
             srcTensor_m,
             srcTensor_m,
@@ -2313,238 +2313,16 @@ struct TileFaultSum<Arch::AtlasA2,
             max_final_mask,
             CeilDiv(m_round, repeat_size),
             max_params);
-        
+
     }
 };
 
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
-                void>
-{
-    using ElementA = half;
-    using ElementX = half;
-    using ElementY = half;
-    using ElementAccumulator = ElementY;
-
-    using LayoutDst = layout::RowMajor;
-    using LayoutSrc = layout::RowMajor;
-
-    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementA);
-
-    // Methods
-
-    CATLASS_DEVICE
-    TileFaultSum() {};
-
-    CATLASS_DEVICE
-    void operator()(
-        AscendC::LocalTensor<ElementY> dstTensorSum,
-        AscendC::LocalTensor<ElementY> dstTensorMax,
-        AscendC::LocalTensor<ElementA> srcTensor_m,
-        AscendC::LocalTensor<ElementA> sum_workspace,
-        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc
-    )
-    {
-        uint32_t m_actual = layoutSrc.shape(0);
-        uint32_t n_actual = layoutSrc.shape(1);
-        uint32_t m_round = layoutDst.shape(0);
-        uint32_t n_round = layoutDst.shape(1);
-
-        uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
-        uint32_t mask = repeat_size;
-        uint32_t repeat_num = n_actual / repeat_size;
-        uint32_t remain = n_actual % repeat_size;
-
-        // m_actual *
-        uint64_t add_mask = repeat_size;
-        uint64_t max_mask = repeat_size;
-
-        /*
-        控制操作数地址步长的参数。BinaryRepeatParams类型，
-        包含操作数相邻迭代间相同datablock的地址步长，
-        操作数同一迭代内不同datablock的地址步长等参数。
-
-        相邻迭代间的地址步长参数说明请参考repeatStride；
-        同一迭代内datablock的地址步长参数说明请参考dataBlockStride。
-        */
-
-        AscendC::BinaryRepeatParams max_params;
-        max_params.dstBlkStride = 1;
-        max_params.src0BlkStride = 1;
-        max_params.src1BlkStride = 1;
-        max_params.dstRepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
-        max_params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
-        max_params.src1RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
-
-        AscendC::BinaryRepeatParams sum_params;
-        sum_params.dstBlkStride = 1;
-        sum_params.src0BlkStride = 1;
-        sum_params.src1BlkStride = 1;
-
-        // params.dstRepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
-
-        sum_params.dstRepStride = RoundUp(repeat_size, repeat_size) / (BYTE_PER_C0 / sizeof(ElementAccumulator));
-        sum_params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
-        sum_params.src1RepStride = RoundUp(repeat_size, repeat_size) / (BYTE_PER_C0 / sizeof(ElementAccumulator));
-
-        
-
-        // AscendC::Duplicate<ElementAccumulator>(
-        //     temp,
-        //     (ElementAccumulator)0.0,
-        //     repeat_size, // 每个迭代内部要对256 byte 的元素全部赋值为0，
-        //     // 我们的目标是求行和，所以我们的输出空间是行的倍数，且是datablock的倍数
-        //     // 因此在这里，我们在赋值0时通过每次内部迭代对应一个输出行的局部和存储与accum空间
-        //     CeilDiv(m_actual * repeat_size, repeat_size), // 求行和
-        //     1, // 单次赋值迭代内，矢量目的操作数不同datablock间地址步长。
-        //     8 // 相邻赋值迭代间，矢量目的操作数相同datablock地址步长。
-        // ); // 总的来说，我们开辟
-        // AscendC::PipeBarrier<PIPE_V>();
-        
-        /*
-        template <typename T, bool isSetMask = true>
-        __aicore__ inline void Add(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& src0Local, 
-        const LocalTensor<T>& src1Local, 
-        uint64_t mask, 
-        const uint8_t repeatTimes, 
-        const BinaryRepeatParams& repeatParams)
-        */
-
-
-        AscendC::Duplicate<ElementAccumulator>(
-                sum_workspace,
-                (ElementAccumulator)0.0,
-                repeat_size, // 每个迭代内部要对256 byte 的元素全部赋值为0，
-                CeilDiv(m_actual * repeat_size, repeat_size), // 求行和
-                1, // 单次赋值迭代内，矢量目的操作数不同datablock间地址步长。
-                8 // 相邻赋值迭代间，矢量目的操作数相同datablock地址步长。
-        );
-
-        AscendC::PipeBarrier<PIPE_V>();
-        
-        AscendC::Add<ElementAccumulator, true>(
-            sum_workspace,
-            srcTensor_m,
-            sum_workspace,
-            add_mask,
-            m_actual,
-            sum_params);
-        
-        AscendC::PipeBarrier<PIPE_V>();
-
-        for (uint32_t i = 1; i < repeat_num; i++) {
-            uint32_t offset = i * repeat_size;
-
-            AscendC::Add<ElementAccumulator, true>(
-                sum_workspace,
-                srcTensor_m[offset],
-                sum_workspace,
-                add_mask,
-                m_actual,
-                sum_params);
-            
-            AscendC::Max<ElementA, true>(
-                srcTensor_m,
-                srcTensor_m[offset],
-                srcTensor_m,
-                max_mask,
-                m_actual,
-                max_params);
-                
-            AscendC::PipeBarrier<PIPE_V>();
-        }
-
-        if (remain > 0)
-        {
-            uint32_t offset = repeat_num * repeat_size;
-            if (offset + remain > n_actual)
-            {
-                remain = n_actual - offset;
-            }
-            // m_actual * 
-            uint64_t remain_mask = remain;
-            AscendC::Add<ElementAccumulator, true>(
-                sum_workspace,
-                srcTensor_m[offset],
-                sum_workspace,
-                remain_mask,
-                m_actual,
-                sum_params);
-            
-            AscendC::Max<ElementA, true>(
-                srcTensor_m,
-                srcTensor_m[offset],
-                srcTensor_m,
-                remain_mask,
-                m_actual,
-                max_params);
-        }
-        
-        uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
-        AscendC::PipeBarrier<PIPE_V>();
-        
-        AscendC::WholeReduceMax<ElementA, true>(
-            srcTensor_m,
-            srcTensor_m,
-            reduce_mask,
-            m_actual,
-            1,
-            1,
-            RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0,
-            AscendC::ReduceOrder::ORDER_ONLY_VALUE);
-
-        AscendC::WholeReduceSum<ElementAccumulator, true>(
-            sum_workspace,
-            sum_workspace,
-            reduce_mask,
-            m_actual,
-            1,
-            1,
-            RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0);
-
-
-        uint64_t add_final_mask = (m_actual < repeat_size) ? m_actual : repeat_size;
-        uint64_t max_final_mask = (m_actual < repeat_size) ? m_actual : repeat_size;
-
-        sum_params.dstRepStride = 8;
-        sum_params.src0RepStride = 8;
-        sum_params.src1RepStride = 8;
-
-        max_params.dstRepStride = 8;
-        max_params.src0RepStride = 8;
-        max_params.src1RepStride = 8;
-
-        AscendC::PipeBarrier<PIPE_V>();
-
-        AscendC::Add<ElementA, true>(
-            dstTensorSum,
-            sum_workspace,
-            dstTensorSum,
-            add_final_mask,
-            CeilDiv(m_round, repeat_size),
-            sum_params);
-
-        AscendC::Max<ElementA, true>(
-            dstTensorMax,
-            srcTensor_m,
-            dstTensorMax,
-            max_final_mask,
-            CeilDiv(m_round, repeat_size),
-            max_params);
-        
-    }
-};
-
-template <>
-struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX_MIXED,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -2614,6 +2392,30 @@ struct TileFaultSum<Arch::AtlasA2,
         sum_params.src1RepStride = RoundUp(repeat_size, repeat_size) / (BYTE_PER_C0 / sizeof(ElementAccumulator));
 
 
+
+        // AscendC::Duplicate<ElementAccumulator>(
+        //     temp,
+        //     (ElementAccumulator)0.0,
+        //     repeat_size, // 每个迭代内部要对256 byte 的元素全部赋值为0，
+        //     // 我们的目标是求行和，所以我们的输出空间是行的倍数，且是datablock的倍数
+        //     // 因此在这里，我们在赋值0时通过每次内部迭代对应一个输出行的局部和存储与accum空间
+        //     CeilDiv(m_actual * repeat_size, repeat_size), // 求行和
+        //     1, // 单次赋值迭代内，矢量目的操作数不同datablock间地址步长。
+        //     8 // 相邻赋值迭代间，矢量目的操作数相同datablock地址步长。
+        // ); // 总的来说，我们开辟
+        // AscendC::PipeBarrier<PIPE_V>();
+
+        /*
+        template <typename T, bool isSetMask = true>
+        __aicore__ inline void Add(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& src0Local,
+        const LocalTensor<T>& src1Local,
+        uint64_t mask,
+        const uint8_t repeatTimes,
+        const BinaryRepeatParams& repeatParams)
+        */
+
+
         AscendC::Duplicate<ElementAccumulator>(
                 sum_workspace,
                 (ElementAccumulator)0.0,
@@ -2624,7 +2426,7 @@ struct TileFaultSum<Arch::AtlasA2,
         );
 
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::Add<ElementAccumulator, true>(
             sum_workspace,
             srcTensor_m,
@@ -2632,7 +2434,7 @@ struct TileFaultSum<Arch::AtlasA2,
             add_mask,
             m_actual,
             sum_params);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         for (uint32_t i = 1; i < repeat_num; i++) {
@@ -2645,7 +2447,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 add_mask,
                 m_actual,
                 sum_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -2653,7 +2455,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 max_mask,
                 m_actual,
                 max_params);
-                
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -2664,7 +2466,7 @@ struct TileFaultSum<Arch::AtlasA2,
             {
                 remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Add<ElementAccumulator, true>(
                 sum_workspace,
@@ -2673,7 +2475,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 sum_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -2682,10 +2484,10 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 max_params);
         }
-        
+
         uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::WholeReduceMax<ElementA, true>(
             srcTensor_m,
             srcTensor_m,
@@ -2734,16 +2536,214 @@ struct TileFaultSum<Arch::AtlasA2,
             max_final_mask,
             CeilDiv(m_round, repeat_size),
             max_params);
-        
+
+    }
+};
+
+template <>
+struct TileFaultSum<Arch::AtlasA2,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX_MIXED,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
+                void>
+{
+    using ElementA = half;
+    using ElementX = half;
+    using ElementY = half;
+    using ElementAccumulator = ElementY;
+
+    using LayoutDst = layout::RowMajor;
+    using LayoutSrc = layout::RowMajor;
+
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementA);
+
+    // Methods
+
+    CATLASS_DEVICE
+    TileFaultSum() {};
+
+    CATLASS_DEVICE
+    void operator()(
+        AscendC::LocalTensor<ElementY> dstTensorSum,
+        AscendC::LocalTensor<ElementY> dstTensorMax,
+        AscendC::LocalTensor<ElementA> srcTensor_m,
+        AscendC::LocalTensor<ElementA> sum_workspace,
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc
+    )
+    {
+        uint32_t m_actual = layoutSrc.shape(0);
+        uint32_t n_actual = layoutSrc.shape(1);
+        uint32_t m_round = layoutDst.shape(0);
+        uint32_t n_round = layoutDst.shape(1);
+
+        uint32_t repeat_size = ELE_NUM_PER_C0 * 8;
+        uint32_t mask = repeat_size;
+        uint32_t repeat_num = n_actual / repeat_size;
+        uint32_t remain = n_actual % repeat_size;
+
+        // m_actual *
+        uint64_t add_mask = repeat_size;
+        uint64_t max_mask = repeat_size;
+
+        /*
+        控制操作数地址步长的参数。BinaryRepeatParams类型，
+        包含操作数相邻迭代间相同datablock的地址步长，
+        操作数同一迭代内不同datablock的地址步长等参数。
+
+        相邻迭代间的地址步长参数说明请参考repeatStride；
+        同一迭代内datablock的地址步长参数说明请参考dataBlockStride。
+        */
+
+        AscendC::BinaryRepeatParams max_params;
+        max_params.dstBlkStride = 1;
+        max_params.src0BlkStride = 1;
+        max_params.src1BlkStride = 1;
+        max_params.dstRepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
+        max_params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
+        max_params.src1RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
+
+        AscendC::BinaryRepeatParams sum_params;
+        sum_params.dstBlkStride = 1;
+        sum_params.src0BlkStride = 1;
+        sum_params.src1BlkStride = 1;
+
+        // params.dstRepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
+
+        sum_params.dstRepStride = RoundUp(repeat_size, repeat_size) / (BYTE_PER_C0 / sizeof(ElementAccumulator));
+        sum_params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
+        sum_params.src1RepStride = RoundUp(repeat_size, repeat_size) / (BYTE_PER_C0 / sizeof(ElementAccumulator));
+
+
+        AscendC::Duplicate<ElementAccumulator>(
+                sum_workspace,
+                (ElementAccumulator)0.0,
+                repeat_size, // 每个迭代内部要对256 byte 的元素全部赋值为0，
+                CeilDiv(m_actual * repeat_size, repeat_size), // 求行和
+                1, // 单次赋值迭代内，矢量目的操作数不同datablock间地址步长。
+                8 // 相邻赋值迭代间，矢量目的操作数相同datablock地址步长。
+        );
+
+        AscendC::PipeBarrier<PIPE_V>();
+
+        AscendC::Add<ElementAccumulator, true>(
+            sum_workspace,
+            srcTensor_m,
+            sum_workspace,
+            add_mask,
+            m_actual,
+            sum_params);
+
+        AscendC::PipeBarrier<PIPE_V>();
+
+        for (uint32_t i = 1; i < repeat_num; i++) {
+            uint32_t offset = i * repeat_size;
+
+            AscendC::Add<ElementAccumulator, true>(
+                sum_workspace,
+                srcTensor_m[offset],
+                sum_workspace,
+                add_mask,
+                m_actual,
+                sum_params);
+
+            AscendC::Max<ElementA, true>(
+                srcTensor_m,
+                srcTensor_m[offset],
+                srcTensor_m,
+                max_mask,
+                m_actual,
+                max_params);
+
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+
+        if (remain > 0)
+        {
+            uint32_t offset = repeat_num * repeat_size;
+            if (offset + remain > n_actual)
+            {
+                remain = n_actual - offset;
+            }
+            // m_actual *
+            uint64_t remain_mask = remain;
+            AscendC::Add<ElementAccumulator, true>(
+                sum_workspace,
+                srcTensor_m[offset],
+                sum_workspace,
+                remain_mask,
+                m_actual,
+                sum_params);
+
+            AscendC::Max<ElementA, true>(
+                srcTensor_m,
+                srcTensor_m[offset],
+                srcTensor_m,
+                remain_mask,
+                m_actual,
+                max_params);
+        }
+
+        uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
+        AscendC::PipeBarrier<PIPE_V>();
+
+        AscendC::WholeReduceMax<ElementA, true>(
+            srcTensor_m,
+            srcTensor_m,
+            reduce_mask,
+            m_actual,
+            1,
+            1,
+            RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0,
+            AscendC::ReduceOrder::ORDER_ONLY_VALUE);
+
+        AscendC::WholeReduceSum<ElementAccumulator, true>(
+            sum_workspace,
+            sum_workspace,
+            reduce_mask,
+            m_actual,
+            1,
+            1,
+            RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0);
+
+
+        uint64_t add_final_mask = (m_actual < repeat_size) ? m_actual : repeat_size;
+        uint64_t max_final_mask = (m_actual < repeat_size) ? m_actual : repeat_size;
+
+        sum_params.dstRepStride = 8;
+        sum_params.src0RepStride = 8;
+        sum_params.src1RepStride = 8;
+
+        max_params.dstRepStride = 8;
+        max_params.src0RepStride = 8;
+        max_params.src1RepStride = 8;
+
+        AscendC::PipeBarrier<PIPE_V>();
+
+        AscendC::Add<ElementA, true>(
+            dstTensorSum,
+            sum_workspace,
+            dstTensorSum,
+            add_final_mask,
+            CeilDiv(m_round, repeat_size),
+            sum_params);
+
+        AscendC::Max<ElementA, true>(
+            dstTensorMax,
+            srcTensor_m,
+            dstTensorMax,
+            max_final_mask,
+            CeilDiv(m_round, repeat_size),
+            max_params);
+
     }
 };
 
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -2816,7 +2816,7 @@ struct TileFaultSum<Arch::AtlasA2,
         sum_params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         sum_params.src1RepStride = RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0;
 
-        
+
 
         // AscendC::Duplicate<ElementAccumulator>(
         //     temp,
@@ -2829,14 +2829,14 @@ struct TileFaultSum<Arch::AtlasA2,
         //     8 // 相邻赋值迭代间，矢量目的操作数相同datablock地址步长。
         // ); // 总的来说，我们开辟
         // AscendC::PipeBarrier<PIPE_V>();
-        
+
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Add(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& src0Local, 
-        const LocalTensor<T>& src1Local, 
-        uint64_t mask, 
-        const uint8_t repeatTimes, 
+        __aicore__ inline void Add(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& src0Local,
+        const LocalTensor<T>& src1Local,
+        uint64_t mask,
+        const uint8_t repeatTimes,
         const BinaryRepeatParams& repeatParams)
         */
 
@@ -2851,7 +2851,7 @@ struct TileFaultSum<Arch::AtlasA2,
         );
 
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::Add<ElementA, true>(
             sum_workspace,
             srcTensor_m,
@@ -2859,7 +2859,7 @@ struct TileFaultSum<Arch::AtlasA2,
             add_mask,
             m_actual,
             sum_params);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         for (uint32_t i = 1; i < repeat_num; i++) {
@@ -2872,7 +2872,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 add_mask,
                 m_actual,
                 sum_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -2880,7 +2880,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 max_mask,
                 m_actual,
                 max_params);
-                
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -2891,7 +2891,7 @@ struct TileFaultSum<Arch::AtlasA2,
             {
                 remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Add<ElementA, true>(
                 sum_workspace,
@@ -2900,7 +2900,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 sum_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -2909,10 +2909,10 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 max_params);
         }
-        
+
         uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::WholeReduceMax<ElementA, true>(
             srcTensor_m,
             srcTensor_m,
@@ -2933,7 +2933,7 @@ struct TileFaultSum<Arch::AtlasA2,
             RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0);
 
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::Cast<ElementY, ElementA>(
             dstTensorMax[dstOffset],
             srcTensor_m,
@@ -2943,7 +2943,7 @@ struct TileFaultSum<Arch::AtlasA2,
             dstTensorSum[dstOffset],
             sum_workspace,
             AscendC::RoundMode::CAST_NONE, m_actual);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         uint64_t add_final_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
@@ -2972,16 +2972,16 @@ struct TileFaultSum<Arch::AtlasA2,
             max_final_mask,
             CeilDiv(m_round, dst_repeat_size),
             max_params);
-        
+
     }
 };
 
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX_MIXED,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM_MAX_MIXED,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -3053,14 +3053,14 @@ struct TileFaultSum<Arch::AtlasA2,
         sum_params.dstRepStride = RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0;
         sum_params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         sum_params.src1RepStride = RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0;
-        
+
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Add(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& src0Local, 
-        const LocalTensor<T>& src1Local, 
-        uint64_t mask, 
-        const uint8_t repeatTimes, 
+        __aicore__ inline void Add(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& src0Local,
+        const LocalTensor<T>& src1Local,
+        uint64_t mask,
+        const uint8_t repeatTimes,
         const BinaryRepeatParams& repeatParams)
         */
 
@@ -3075,7 +3075,7 @@ struct TileFaultSum<Arch::AtlasA2,
         );
 
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::Add<ElementA, true>(
             sum_workspace,
             srcTensor_m,
@@ -3083,7 +3083,7 @@ struct TileFaultSum<Arch::AtlasA2,
             add_mask,
             m_actual,
             sum_params);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         for (uint32_t i = 1; i < repeat_num; i++) {
@@ -3096,7 +3096,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 add_mask,
                 m_actual,
                 sum_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -3104,7 +3104,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 max_mask,
                 m_actual,
                 max_params);
-                
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -3115,7 +3115,7 @@ struct TileFaultSum<Arch::AtlasA2,
             {
                 remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Add<ElementA, true>(
                 sum_workspace,
@@ -3124,7 +3124,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 sum_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -3133,10 +3133,10 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 max_params);
         }
-        
+
         uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::WholeReduceMax<ElementA, true>(
             srcTensor_m,
             srcTensor_m,
@@ -3157,7 +3157,7 @@ struct TileFaultSum<Arch::AtlasA2,
             RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0);
 
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         // AscendC::Cast<ElementY, ElementA>(
         //     dstTensorMax[dstOffset],
         //     srcTensor_m,
@@ -3167,7 +3167,7 @@ struct TileFaultSum<Arch::AtlasA2,
             dstTensorSum[dstOffset],
             sum_workspace,
             AscendC::RoundMode::CAST_NONE, m_actual);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         uint64_t add_final_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
@@ -3196,15 +3196,15 @@ struct TileFaultSum<Arch::AtlasA2,
             max_final_mask,
             CeilDiv(m_round, repeat_size),
             max_params);
-        
+
     }
 };
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -3239,7 +3239,7 @@ struct TileFaultSum<Arch::AtlasA2,
         uint32_t repeat_num = n_actual / repeat_size;
         uint32_t remain = n_actual % repeat_size;
 
-        // m_actual * 
+        // m_actual *
         uint64_t add_mask = repeat_size;
         AscendC::BinaryRepeatParams params;
         params.dstBlkStride = 1;
@@ -3267,7 +3267,7 @@ struct TileFaultSum<Arch::AtlasA2,
             {
                 remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Add<ElementA, true>(
                 srcTensor_m,
@@ -3307,9 +3307,9 @@ struct TileFaultSum<Arch::AtlasA2,
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -3346,7 +3346,7 @@ struct TileFaultSum<Arch::AtlasA2,
         uint32_t repeat_num = n_actual / repeat_size;
         uint32_t remain = n_actual % repeat_size;
 
-        // m_actual * 
+        // m_actual *
         uint64_t add_mask = repeat_size;
         AscendC::BinaryRepeatParams params;
         params.dstBlkStride = 1;
@@ -3374,7 +3374,7 @@ struct TileFaultSum<Arch::AtlasA2,
             {
                 remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Add<ElementA, true>(
                 srcTensor_m,
@@ -3412,7 +3412,7 @@ struct TileFaultSum<Arch::AtlasA2,
         params.src0RepStride = 8;
         params.src1RepStride = 8;
 
-        
+
         AscendC::Add<ElementY, true>(
             dstTensor,
             dstTensor[dstOffset],
@@ -3429,9 +3429,9 @@ template <
     class ElementY
 >
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM,
-                Gemm::GemmType<ElementA, layout::ColumnMajor>,
-                Gemm::GemmType<ElementY, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM,
+                Catlass::Gemm::GemmType<ElementA, layout::ColumnMajor>,
+                Catlass::Gemm::GemmType<ElementY, layout::VectorLayout>,
                 void>
 {
     // using ElementAccumulator = ElementY;
@@ -3518,9 +3518,9 @@ struct TileFaultSum<Arch::AtlasA2,
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM,
-                Gemm::GemmType<float, layout::ColumnMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM,
+                Catlass::Gemm::GemmType<float, layout::ColumnMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = float;
@@ -3573,9 +3573,9 @@ struct TileFaultSum<Arch::AtlasA2,
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::SUM,
-                Gemm::GemmType<half, layout::ColumnMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::SUM,
+                Catlass::Gemm::GemmType<half, layout::ColumnMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -3628,9 +3628,9 @@ struct TileFaultSum<Arch::AtlasA2,
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::MAX_MIN,
-                Gemm::GemmType<float, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::MAX_MIN,
+                Catlass::Gemm::GemmType<float, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = float;
@@ -3699,7 +3699,7 @@ struct TileFaultSum<Arch::AtlasA2,
         min_params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         min_params.src1RepStride = RoundUp(repeat_size, repeat_size) / (BYTE_PER_C0 / sizeof(ElementAccumulator));
 
-        
+
 
         // AscendC::Duplicate<ElementAccumulator>(
         //     temp,
@@ -3712,14 +3712,14 @@ struct TileFaultSum<Arch::AtlasA2,
         //     8 // 相邻赋值迭代间，矢量目的操作数相同datablock地址步长。
         // ); // 总的来说，我们开辟
         // AscendC::PipeBarrier<PIPE_V>();
-        
+
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Add(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& src0Local, 
-        const LocalTensor<T>& src1Local, 
-        uint64_t mask, 
-        const uint8_t repeatTimes, 
+        __aicore__ inline void Add(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& src0Local,
+        const LocalTensor<T>& src1Local,
+        uint64_t mask,
+        const uint8_t repeatTimes,
         const BinaryRepeatParams& repeatParams)
         */
 
@@ -3734,14 +3734,14 @@ struct TileFaultSum<Arch::AtlasA2,
         );
 
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         /*
         template <typename T, bool isSetMask = true>
         __aicore__ inline void Min(
-            const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& src0Local, 
-            const LocalTensor<T>& src1Local, uint64_t mask, 
-            const uint8_t repeatTimes, 
+            const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& src0Local,
+            const LocalTensor<T>& src1Local, uint64_t mask,
+            const uint8_t repeatTimes,
             const BinaryRepeatParams& repeatParams)
         */
         AscendC::Min<ElementA, true>(
@@ -3751,7 +3751,7 @@ struct TileFaultSum<Arch::AtlasA2,
             min_mask,
             m_actual,
             min_params);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         for (uint32_t i = 1; i < repeat_num; i++) {
@@ -3764,7 +3764,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 min_mask,
                 m_actual,
                 min_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -3772,7 +3772,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 max_mask,
                 m_actual,
                 max_params);
-                
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -3783,7 +3783,7 @@ struct TileFaultSum<Arch::AtlasA2,
             {
                 remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Min<ElementA, true>(
                 min_workspace,
@@ -3792,7 +3792,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 min_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -3801,10 +3801,10 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 max_params);
         }
-        
+
         uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::WholeReduceMax<ElementA, true>(
             srcTensor_m,
             srcTensor_m,
@@ -3817,8 +3817,8 @@ struct TileFaultSum<Arch::AtlasA2,
 
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void WholeReduceMin(const LocalTensor<T>& dstLocal, 
-            const LocalTensor<T>& srcLocal, 
+        __aicore__ inline void WholeReduceMin(const LocalTensor<T>& dstLocal,
+            const LocalTensor<T>& srcLocal,
             const int32_t mask, const int32_t repeatTimes,
             const int32_t dstRepStride, const int32_t srcBlkStride,
             const int32_t srcRepStride,
@@ -3868,16 +3868,16 @@ struct TileFaultSum<Arch::AtlasA2,
             dstTensorMax,
             max_final_mask,
             CeilDiv(m_round, repeat_size),
-            max_params);   
+            max_params);
     }
 };
 
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::MAX_MIN,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<half, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::MAX_MIN,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<half, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -3946,7 +3946,7 @@ struct TileFaultSum<Arch::AtlasA2,
         min_params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         min_params.src1RepStride = RoundUp(repeat_size, repeat_size) / (BYTE_PER_C0 / sizeof(ElementAccumulator));
 
-        
+
 
         // AscendC::Duplicate<ElementAccumulator>(
         //     temp,
@@ -3959,14 +3959,14 @@ struct TileFaultSum<Arch::AtlasA2,
         //     8 // 相邻赋值迭代间，矢量目的操作数相同datablock地址步长。
         // ); // 总的来说，我们开辟
         // AscendC::PipeBarrier<PIPE_V>();
-        
+
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Add(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& src0Local, 
-        const LocalTensor<T>& src1Local, 
-        uint64_t mask, 
-        const uint8_t repeatTimes, 
+        __aicore__ inline void Add(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& src0Local,
+        const LocalTensor<T>& src1Local,
+        uint64_t mask,
+        const uint8_t repeatTimes,
         const BinaryRepeatParams& repeatParams)
         */
 
@@ -3981,7 +3981,7 @@ struct TileFaultSum<Arch::AtlasA2,
         );
 
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::Min<ElementA, true>(
             min_workspace,
             srcTensor_m,
@@ -3989,7 +3989,7 @@ struct TileFaultSum<Arch::AtlasA2,
             min_mask,
             m_actual,
             min_params);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         for (uint32_t i = 1; i < repeat_num; i++) {
@@ -4002,7 +4002,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 min_mask,
                 m_actual,
                 min_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -4010,7 +4010,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 max_mask,
                 m_actual,
                 max_params);
-                
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -4021,7 +4021,7 @@ struct TileFaultSum<Arch::AtlasA2,
             {
                 remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Min<ElementA, true>(
                 min_workspace,
@@ -4030,7 +4030,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 min_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -4039,10 +4039,10 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 max_params);
         }
-        
+
         uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::WholeReduceMax<ElementA, true>(
             srcTensor_m,
             srcTensor_m,
@@ -4093,15 +4093,15 @@ struct TileFaultSum<Arch::AtlasA2,
             max_final_mask,
             CeilDiv(m_round, repeat_size),
             max_params);
-        
+
     }
 };
 
 template <>
 struct TileFaultSum<Arch::AtlasA2,
-                Vecself::Gemv::helper::FT_REDUCE_TYPE::MAX_MIN,
-                Gemm::GemmType<half, layout::RowMajor>,
-                Gemm::GemmType<float, layout::VectorLayout>,
+                FTSelf::Gemv::helper::FT_REDUCE_TYPE::MAX_MIN,
+                Catlass::Gemm::GemmType<half, layout::RowMajor>,
+                Catlass::Gemm::GemmType<float, layout::VectorLayout>,
                 void>
 {
     using ElementA = half;
@@ -4174,7 +4174,7 @@ struct TileFaultSum<Arch::AtlasA2,
         min_params.src0RepStride = RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0;
         min_params.src1RepStride = RoundUp(repeat_size, repeat_size) / ELE_NUM_PER_C0;
 
-        
+
 
         // AscendC::Duplicate<ElementAccumulator>(
         //     temp,
@@ -4187,14 +4187,14 @@ struct TileFaultSum<Arch::AtlasA2,
         //     8 // 相邻赋值迭代间，矢量目的操作数相同datablock地址步长。
         // ); // 总的来说，我们开辟
         // AscendC::PipeBarrier<PIPE_V>();
-        
+
         /*
         template <typename T, bool isSetMask = true>
-        __aicore__ inline void Add(const LocalTensor<T>& dstLocal, 
-        const LocalTensor<T>& src0Local, 
-        const LocalTensor<T>& src1Local, 
-        uint64_t mask, 
-        const uint8_t repeatTimes, 
+        __aicore__ inline void Add(const LocalTensor<T>& dstLocal,
+        const LocalTensor<T>& src0Local,
+        const LocalTensor<T>& src1Local,
+        uint64_t mask,
+        const uint8_t repeatTimes,
         const BinaryRepeatParams& repeatParams)
         */
 
@@ -4209,7 +4209,7 @@ struct TileFaultSum<Arch::AtlasA2,
         );
 
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::Min<ElementA, true>(
             min_workspace,
             srcTensor_m,
@@ -4217,7 +4217,7 @@ struct TileFaultSum<Arch::AtlasA2,
             min_mask,
             m_actual,
             min_params);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         for (uint32_t i = 1; i < repeat_num; i++) {
@@ -4230,7 +4230,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 min_mask,
                 m_actual,
                 min_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -4238,7 +4238,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 max_mask,
                 m_actual,
                 max_params);
-                
+
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -4249,7 +4249,7 @@ struct TileFaultSum<Arch::AtlasA2,
             {
                 remain = n_actual - offset;
             }
-            // m_actual * 
+            // m_actual *
             uint64_t remain_mask = remain;
             AscendC::Min<ElementA, true>(
                 min_workspace,
@@ -4258,7 +4258,7 @@ struct TileFaultSum<Arch::AtlasA2,
                 remain_mask,
                 m_actual,
                 min_params);
-            
+
             AscendC::Max<ElementA, true>(
                 srcTensor_m,
                 srcTensor_m[offset],
@@ -4267,10 +4267,10 @@ struct TileFaultSum<Arch::AtlasA2,
                 m_actual,
                 max_params);
         }
-        
+
         uint64_t reduce_mask = (repeat_num == 0) ? remain : repeat_size;
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::WholeReduceMax<ElementA, true>(
             srcTensor_m,
             srcTensor_m,
@@ -4280,7 +4280,7 @@ struct TileFaultSum<Arch::AtlasA2,
             1,
             RoundUp(n_round, repeat_size) / ELE_NUM_PER_C0,
             AscendC::ReduceOrder::ORDER_ONLY_VALUE);
-        
+
         AscendC::WholeReduceMin<ElementA, true>(
             min_workspace,
             min_workspace,
@@ -4292,7 +4292,7 @@ struct TileFaultSum<Arch::AtlasA2,
             AscendC::ReduceOrder::ORDER_ONLY_VALUE);
 
         AscendC::PipeBarrier<PIPE_V>();
-        
+
         AscendC::Cast<ElementY, ElementA>(
             dstTensorMax[dstOffset],
             srcTensor_m,
@@ -4302,7 +4302,7 @@ struct TileFaultSum<Arch::AtlasA2,
             dstTensorMin[dstOffset],
             min_workspace,
             AscendC::RoundMode::CAST_NONE, m_actual);
-        
+
         AscendC::PipeBarrier<PIPE_V>();
 
         uint64_t min_final_mask = (m_actual < dst_repeat_size) ? m_actual : dst_repeat_size;
@@ -4331,7 +4331,7 @@ struct TileFaultSum<Arch::AtlasA2,
             max_final_mask,
             CeilDiv(m_round, dst_repeat_size),
             max_params);
-        
+
     }
 };
 
