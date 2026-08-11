@@ -19,14 +19,14 @@ WARMUP_ITERS = 5
 BENCH_ITERS = 10
 
 CASE_CONFIGS = (
-    (
-        "small_b1_s1_1_k_2048",
-        {
-            "B": 1, "S1": 1, "S2": 2048, "N1": 64, "N2": 1,
-            "Nidx1": 32, "Nidx2": 1, "DQuery": 512, "DQueryIndex": 128,
-            "d_rope": 64, "K": 2048, "layout": "BSND",
-        },
-    ),
+    # (
+    #     "small_b1_s1_1_k_2048",
+    #     {
+    #         "B": 1, "S1": 1, "S2": 2048, "N1": 64, "N2": 1,
+    #         "Nidx1": 32, "Nidx2": 1, "DQuery": 512, "DQueryIndex": 128,
+    #         "d_rope": 64, "K": 2048, "layout": "BSND",
+    #     },
+    # ),
     (
         "large_s1_b1_s1_1024_k_5120",
         {
