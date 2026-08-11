@@ -22,6 +22,7 @@
 #include <vector>
 #include <cstdint>
 #include "../../common/op_host/fia_tiling_base.h"
+#include "../../common/op_host/fia_tiling_shape.h"
 
 namespace optiling {
 namespace flash_attn {
@@ -108,16 +109,12 @@ enum class MaskMode : int32_t {
     BAND = 4
 };
 
-enum class FaLayout : uint32_t {
-    BSND = 0,
-    BNSD = 1,
-    TND = 2,
-    PA_BBND = 3,
-    PA_BNBD = 4,
-    PA_NZ = 5,
-    LSE_BNS = 6,
-    LSE_NT = 7
-};
+using FaLayout = FiaLayout;
+using FaAxis = FiaAxis;
+using FaCompareType = FiaCompareType;
+using FaTilingShapeCompareParam = FiaTilingShapeCompareParam;
+using FaTilingShape = FiaTilingShape;
+using FaTilingShapeCompare = FiaTilingShapeCompare;
 
 const std::map<std::string, FaLayout> layoutMap = {{"BSND", FaLayout::BSND},
                                                    {"BNSD", FaLayout::BNSD},
@@ -125,22 +122,6 @@ const std::map<std::string, FaLayout> layoutMap = {{"BSND", FaLayout::BSND},
                                                    {"PA_BBND", FaLayout::PA_BBND},
                                                    {"PA_BNBD", FaLayout::PA_BNBD},
                                                    {"PA_NZ", FaLayout::PA_NZ}};
-
-enum class FaAxis : uint32_t {
-    B = 0,
-    S = 1,
-    N = 2,
-    D = 3,
-    H = 4,
-    T = 5,
-    D1 = 6,
-    D0 = 7,
-    S1 = 8,
-    S2 = 9,
-    Bn = 10,
-    Bs = 11,
-    CONST = 12
-};
 
 enum class FaQuantMode : uint32_t {
     NO_QUANT = 0,
@@ -162,8 +143,6 @@ enum class FaTilingInOutMode : uint32_t {
 // Function declarations
 // ============================================================
 
-std::string LayoutToSerialString(FaLayout layout);
-std::string AxisToSerialString(FaAxis axis);
 std::string QuantModeToSerialString(FaQuantMode faQuantMode);
 
 // ============================================================

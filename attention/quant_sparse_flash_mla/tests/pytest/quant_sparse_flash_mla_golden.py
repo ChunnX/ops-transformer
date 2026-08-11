@@ -594,7 +594,6 @@ class GeneralizedSFAQuant:
                         b_index, n_index, :cur_act_seq, :
                     ]
                 t_start += cur_act_seq
-            output = output.transpose(0, 1).contiguous()
             return output
         else:
             return tensor
@@ -778,6 +777,8 @@ def gen_sparse_indices_bsnd(
     kv_topk_mode,
     topk_length_override=None,
 ):
+    if mask_mode != 0:
+        kv_topk_mode = "no"  # mask_mode != 0时，kv_topk_mode只能为no
     if sparse_indices_mode is None:
         sparse_indices_mode = "full"
     if sparse_indices_mode not in ["full", "random"]:
@@ -863,6 +864,8 @@ def gen_sparse_indices_tnd(
     kv_topk_mode,
     topk_length_override=None,
 ):
+    if mask_mode != 0:
+        kv_topk_mode = "no"  # mask_mode != 0时，kv_topk_mode只能为no
     if sparse_indices_mode is None:
         sparse_indices_mode = "full"
     if sparse_indices_mode not in ["full", "random"]:

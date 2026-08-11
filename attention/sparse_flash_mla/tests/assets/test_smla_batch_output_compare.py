@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from openpyxl import load_workbook
 
 
 SCRIPT = Path(__file__).with_name("compare_batch_outputs.py")
@@ -35,18 +36,26 @@ class FixtureWriter:
         self.case_csv = root / "cases.csv"
         self.result_csv = root / "result.csv"
         self.report = root / "report.json"
+        self.excel = root / "report.xlsx"
 
     @staticmethod
-    def batch_fields(slices, seed):
+    def batch_fields(slices, seed, sequence_slices=None):
+        axes = (0,) if sequence_slices is None else (0, 1)
+        slice_groups = (tuple(slices),)
+        seed_groups = (tuple(seed for _ in slices),)
+        if sequence_slices is not None:
+            slice_groups += (tuple(sequence_slices),)
+            seed_groups += (tuple(seed for _ in sequence_slices),)
         return {
-            "batch_axis": repr(((0,),)),
-            "batch_slice_info": repr((tuple((tuple(slices),)),)),
-            "batch_seed": repr((tuple((tuple(seed for _ in slices),)),)),
+            "batch_axis": repr((axes,)),
+            "batch_slice_info": repr((slice_groups,)),
+            "batch_seed": repr((seed_groups,)),
         }
 
     def case_row(self, testcase_name, batch_size, slices, seed):
         row = {
             "testcase_name": testcase_name,
+            "is_enabled": "True",
             "api_name": API_NAME,
             "tensor_view_shapes": repr((
                 (batch_size, 1, 1, 2), None, None, None,
@@ -63,6 +72,7 @@ class FixtureWriter:
             "attributes": repr({
                 "layout_q": "BSND",
                 "layout_kv": "BSND",
+                "q_datarange": [-1, 1],
                 "seqused_q_values": [1] * batch_size,
             }),
         }
@@ -159,6 +169,7 @@ class FixtureWriter:
             "--result", str(self.result_csv),
             "--dump-dir", str(self.dump_dir),
             "--report", str(self.report),
+            "--excel", str(self.excel),
             "--require-intra-case",
             "--require-cross-case",
         ]
@@ -176,6 +187,14 @@ def test_batch_output_comparator_accepts_same_and_cross_case(tmp_path):
     assert report["group_count"] == 1
     assert report["groups"][0]["case_count"] == 2
     assert report["groups"][0]["sample_count"] == 4
+    workbook = load_workbook(fixture.excel, data_only=True)
+    assert workbook["Summary"]["B2"].value == "PASS"
+    details = workbook["Relations"]
+    assert details.max_row == 5
+    assert "A2:A5" in {str(value) for value in details.merged_cells.ranges}
+    assert "N2:N5" in {str(value) for value in details.merged_cells.ranges}
+    assert details["F2"].value == "PASS"
+    assert details["I2"].value
 
 
 def test_batch_output_comparator_rejects_cross_case_difference(tmp_path):
@@ -235,6 +254,57 @@ def test_batch_output_comparator_rejects_failed_ttk_case(tmp_path):
     assert "precision_status is 'FAIL', expected PASS" in completed.stdout
 
 
+def test_batch_output_comparator_skips_disabled_case_without_result_or_dump(tmp_path):
+    fixture = FixtureWriter(tmp_path)
+    fixture.write_fixture()
+    rows = fixture.read_rows(fixture.case_csv)
+    disabled = fixture.case_row(
+        "CASE_DISABLED", 3, ((0, 1, 1), (2, 3, 1)), 7001
+    )
+    disabled["is_enabled"] = "False"
+    fixture.write_csv(fixture.case_csv, [*rows, disabled])
+
+    completed = subprocess.run(fixture.command(), check=False, capture_output=True, text=True)
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+    report = json.loads(fixture.report.read_text(encoding="utf-8"))
+    assert report["disabled_case_count"] == 1
+    assert report["disabled_cases"] == ["CASE_DISABLED"]
+
+
+def test_batch_output_comparator_keeps_relation_gate_after_disabling_member(tmp_path):
+    fixture = FixtureWriter(tmp_path)
+    fixture.write_fixture()
+    case_rows = fixture.read_rows(fixture.case_csv)
+    case_rows[1]["is_enabled"] = "False"
+    fixture.write_csv(fixture.case_csv, case_rows)
+    fixture.write_csv(fixture.result_csv, fixture.read_rows(fixture.result_csv)[:1])
+    (fixture.dump_dir / "CASE_B3_output_0.bin").unlink()
+
+    completed = subprocess.run(fixture.command(), check=False, capture_output=True, text=True)
+
+    assert completed.returncode == 1
+    assert "result CSV has no matching testcase" not in completed.stdout
+    report = json.loads(fixture.report.read_text(encoding="utf-8"))
+    assert report["disabled_cases"] == ["CASE_B3"]
+    assert "relation appears in fewer than two testcases" in report["groups"][0]["errors"]
+
+
+def test_batch_output_comparator_rejects_non_primary_output(tmp_path):
+    fixture = FixtureWriter(tmp_path)
+    fixture.write_fixture()
+
+    completed = subprocess.run(
+        [*fixture.command(), "--output-index", "1"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 1
+    assert "supports output index 0 only" in completed.stdout
+
+
 def test_batch_output_comparator_requires_ttk_intra_case_result(tmp_path):
     fixture = FixtureWriter(tmp_path)
     fixture.write_fixture()
@@ -287,8 +357,8 @@ def test_batch_output_comparator_requires_cross_case_when_requested(tmp_path):
 def test_batch_output_comparator_accepts_tnd_logical_relations(tmp_path):
     fixture = FixtureWriter(tmp_path)
     fixture.write_csv(fixture.case_csv, [
-        fixture.tnd_case_row("TND_B3", 3, ((0, 2, 1), (4, 6, 1)), 7011),
-        fixture.tnd_case_row("TND_B4", 4, ((0, 2, 1), (6, 8, 1)), 7011),
+        fixture.tnd_case_row("TND_B3", 3, ((0, 1, 1), (2, 3, 1)), 7011),
+        fixture.tnd_case_row("TND_B4", 4, ((0, 1, 1), (3, 4, 1)), 7011),
     ])
     fixture.write_csv(fixture.result_csv, [
         {
@@ -316,10 +386,10 @@ def test_batch_output_comparator_accepts_tnd_logical_relations(tmp_path):
     assert report["groups"][0]["sample_count"] == 4
 
 
-def test_batch_output_comparator_rejects_partial_tnd_batch(tmp_path):
+def test_batch_output_comparator_rejects_out_of_range_tnd_batch(tmp_path):
     fixture = FixtureWriter(tmp_path)
     fixture.write_csv(fixture.case_csv, [
-        fixture.tnd_case_row("TND_BAD", 3, ((1, 3, 1), (4, 6, 1)), 7011),
+        fixture.tnd_case_row("TND_BAD", 3, ((1, 2, 1), (3, 4, 1)), 7011),
     ])
     fixture.write_csv(fixture.result_csv, [{
         "testcase_name": "TND_BAD",
@@ -332,4 +402,33 @@ def test_batch_output_comparator_rejects_partial_tnd_batch(tmp_path):
     completed = subprocess.run(fixture.command(), check=False, capture_output=True, text=True)
 
     assert completed.returncode == 1
-    assert "complete cu_seqlens_q intervals" in completed.stdout
+    assert "logical B slice exceeds B=3" in completed.stdout
+
+
+def test_batch_output_comparator_accepts_tnd_logical_sequence_relations(tmp_path):
+    fixture = FixtureWriter(tmp_path)
+    first = fixture.tnd_case_row("TND_S_A", 3, ((0, 1, 1), (2, 3, 1)), 7021)
+    second = fixture.tnd_case_row("TND_S_B", 3, ((0, 1, 1), (2, 3, 1)), 7021)
+    fields = fixture.batch_fields(
+        ((0, 1, 1), (2, 3, 1)), 7021, ((0, 1, 1), (0, 1, 1))
+    )
+    first.update(fields)
+    second.update(fields)
+    fixture.write_csv(fixture.case_csv, [first, second])
+    fixture.write_csv(fixture.result_csv, [
+        {
+            "testcase_name": name,
+            "precision_status": "PASS",
+            "eager_precision": "100.0%,batch_intra=PASS",
+        }
+        for name in ("TND_S_A", "TND_S_B")
+    ])
+    output = np.zeros((6, 1, 2), dtype=np.float16)
+    output[0] = [1.0, 2.0]
+    output[4] = [1.0, 2.0]
+    for name in ("TND_S_A", "TND_S_B"):
+        (fixture.dump_dir / f"{name}_output_0.bin").write_bytes(output.tobytes())
+
+    completed = subprocess.run(fixture.command(), check=False, capture_output=True, text=True)
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout

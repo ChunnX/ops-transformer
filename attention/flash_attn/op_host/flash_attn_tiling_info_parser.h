@@ -17,7 +17,6 @@
 #define FLASH_ATTN_TILING_INFO_PARSER_H_
 
 #include "fa_tiling_info.h"
-#include "fa_tiling_shape.h"
 
 namespace optiling {
 namespace flash_attn {
