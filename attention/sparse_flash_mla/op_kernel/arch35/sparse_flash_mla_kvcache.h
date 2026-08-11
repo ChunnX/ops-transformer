@@ -137,8 +137,8 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo 
     runParam.gs1LoopStartIdx = gS1StartIdx;
     if (TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
         TEMPLATE_MODE != SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        if constexpr (TEMPLATE_MODE == QSMLATemplateMode::HCA_TEMPLATE_MODE ||
-                      TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE) {
+        if constexpr (TEMPLATE_MODE == SMLATemplateMode::HCA_TEMPLATE_MODE ||
+                      TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
             int64_t skipThreshold = 0;
             if (runParam.nextTokensPerBatchOri < 0 && runParam.nextTokensPerBatchCmp < 0) {
                 skipThreshold = Min(-runParam.nextTokensPerBatchOri, -runParam.nextTokensPerBatchCmp);
@@ -266,8 +266,8 @@ __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &co
 {
     if (TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
         TEMPLATE_MODE != SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        if constexpr (TEMPLATE_MODE == QSMLATemplateMode::HCA_TEMPLATE_MODE ||
-                      TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE) {
+        if constexpr (TEMPLATE_MODE == SMLATemplateMode::HCA_TEMPLATE_MODE ||
+                      TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
             int64_t skipThreshold = 0;
             if (runParam.nextTokensPerBatchOri < 0 && runParam.nextTokensPerBatchCmp < 0) {
                 skipThreshold = Min(-runParam.nextTokensPerBatchOri, -runParam.nextTokensPerBatchCmp);
