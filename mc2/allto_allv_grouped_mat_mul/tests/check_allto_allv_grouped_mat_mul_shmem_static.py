@@ -55,6 +55,16 @@ def check_public_abi() -> None:
     require(impl.count("MC2Aclnn::IsTensorContiguous(") == 3,
             "V2 must reject non-contiguous x/weight/y before SHMEM dispatch")
 
+    fallback = read("op_graph/fallback_allto_allv_grouped_mat_mul.cpp")
+    require("EXEC_OPAPI_CMD(aclnnAlltoAllvGroupedMatMulV2" not in fallback,
+            "legacy HCCL fallback must not call the ABI-incompatible SHMEM V2 interface")
+    require("EXEC_OPAPI_CMD(aclnnAlltoAllvGroupedMatMul," in fallback,
+            "legacy A3 HCCL fallback must route through the V1 interface")
+    fallback_call_begin = fallback.index("EXEC_OPAPI_CMD(aclnnAlltoAllvGroupedMatMul,")
+    fallback_call_end = fallback.index(");", fallback_call_begin)
+    require("commMode" not in fallback[fallback_call_begin:fallback_call_end],
+            "legacy A3 fallback must use the V1 argument list without commMode")
+
 
 def check_registration_and_binary() -> None:
     shmem_def = read("op_host/allto_allv_grouped_mat_mul_shmem_def.cpp")
