@@ -7,6 +7,7 @@ import os
 import time
 import csv
 import sys
+import gc
 import numpy as np
 import pandas as pd
 import copy
@@ -20,6 +21,10 @@ current_case_name = 'Test_FFNtoAttention_16die_ID001'
 
 is_attn2ffn = 0
 is_ffn2attn = 1
+
+# 图模式: 0为单算子，3为aclgraph
+graph_type = 0
+is_graph = (graph_type != 0)
 
 # region 性能检测相关
 is_performance = 0
@@ -111,6 +116,7 @@ def print_setting():
     print(f"{ffn_worker_num=}")
     print(f"{attention_worker_num=}")
     print(f"{expert_num_per_token=}")
+    print(f"{graph_type=}")
     print(f"{is_performance=}")
     print(f"{enable_window=}")
     print(f"{is_full_core=}")
@@ -282,6 +288,80 @@ def get_profiling(loop, path):
     return prof
 
 
+def compile_model(model):
+    if graph_type == 0:
+        print('单算子模式下不应调用compile_model函数')
+        exit(1)
+
+    print(f"------------------graph_type: {graph_type}------------------")
+
+    if graph_type == 3:
+        print('is_aclgraph=1, 测试场景: aclgraph入图模式')
+        options = {"frozen_parameter": True}
+        compiled_model = torch.compile(
+            model,
+            backend="npugraph_ex",
+            fullgraph=True,
+            dynamic=False,
+            options=options)
+
+    return compiled_model
+
+
+def release_memory():
+    torch.npu.synchronize()
+    if graph_type != 0:
+        torch._dynamo.reset()
+    gc.collect()
+    torch.npu.empty_cache()
+
+
+class FFNToAttentionV2GraphModel(torch.nn.Module):
+    """Graph model wrapper for ffn_to_attention_v2, used for aclgraph capture.
+
+    The op itself returns () (no host-visible output; data is sent to peer ranks
+    via the HCCL window). We return the input tensor x as a dummy output so
+    torch.compile(fullgraph=True) can trace the graph.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(
+        self,
+        context,
+        x,
+        session_ids,
+        micro_batch_ids,
+        token_ids,
+        expert_offsets,
+        actual_token_num,
+        group,
+        world_size,
+        token_info_table_shape,
+        token_data_shape,
+        ccl_buffer_size,
+        *,
+        attn_rank_table=None,
+    ):
+        torch.ops.cann_ops_transformer.npu_ffn_to_attention_v2(
+            context,
+            x,
+            session_ids,
+            micro_batch_ids,
+            token_ids,
+            expert_offsets,
+            actual_token_num,
+            group,
+            world_size,
+            token_info_table_shape,
+            token_data_shape,
+            ccl_buffer_size,
+            attn_rank_table=attn_rank_table,
+        )
+        return x
+
+
 def set_device(rank):
     print()
     torch_npu.npu.set_device(rank % rank_per_dev)
@@ -290,7 +370,7 @@ def set_device(rank):
     # else:
     #     torch.npu.set_device_limit(rank % rank_per_dev, cube_num=aic_core_num, vector_num=aiv_core_num)
     #     print(f"当前仅使用: {aic_core_num} aic核, {aiv_core_num} aiv核")
-        
+
     print(f"current device set: {torch_npu.npu.current_device()}")
 
 
@@ -528,17 +608,37 @@ def ffn2attn_run_npu(queue, rank, x, token_ids, actual_token_num, session_ids, m
             torch.npu.set_stream_limit(torch.npu.current_stream(), aic_core_num, aiv_core_num)
             print(f"当前单算子模式仅使用: {aic_core_num} aic核, {aiv_core_num} aiv核")
 
-        if not is_performance:
-            cot.ffn_to_attention_v2(**ffn2attn_kwargs)
+        if graph_type == 0:
+            # 单算子模式
+            if not is_performance:
+                cot.ffn_to_attention_v2(**ffn2attn_kwargs)
+            else:
+                tensor = torch.ones(10000, 10000).to(torch.float16).npu()
+                with get_profiling(loop, ffn2attn_profiling_path) as prof:
+                    for i in range(loop):
+                        _ = cot.ffn_to_attention_v2(**ffn2attn_kwargs)
+                        if i == 1:
+                            for j in range(100):
+                                torch.exp(tensor)
+                        prof.step()
         else:
-            tensor = torch.ones(10000, 10000).to(torch.float16).npu()
-            with get_profiling(loop, ffn2attn_profiling_path) as prof:
-                for i in range(loop):
-                    _ = cot.ffn_to_attention_v2(**ffn2attn_kwargs)
-                    if i == 1:
-                        for j in range(100):
-                            torch.exp(tensor)
-                    prof.step()
+            # 图模式 (aclgraph)
+            graph_model = FFNToAttentionV2GraphModel()
+            compiled_model = compile_model(graph_model)
+
+            if not is_performance:
+                compiled_model(**ffn2attn_kwargs)
+            else:
+                tensor = torch.ones(10000, 10000).to(torch.float16).npu()
+                with get_profiling(loop, ffn2attn_profiling_path) as prof:
+                    for i in range(loop):
+                        compiled_model(**ffn2attn_kwargs)
+                        if i == 1:
+                            for j in range(100):
+                                torch.exp(tensor)
+                        prof.step()
+
+            release_memory()
 
         print(f'****************begin cann_ops_transformer.ffn_to_attention_v2{rank}***********')
     
