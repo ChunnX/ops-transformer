@@ -34,6 +34,14 @@
 
 namespace MoeDistributeCombineTeardownImpl {
 
+// 置 1 打开状态通路调试：打印本核 C_S / 等待的状态槽，并在长时间等不到时 dump 一次实际读到的值。
+// 与 combine_setup 的 COMBINE_SETUP_DEBUG_DST_STATUS 配套使用，用于比对两侧 C_S 是否同步。
+#ifndef COMBINE_TEARDOWN_DEBUG_WAIT
+#define COMBINE_TEARDOWN_DEBUG_WAIT 0
+#endif
+// 轮询多少次还没等到就 dump 一次现场
+#define COMBINE_TEARDOWN_WAIT_DUMP_THRESHOLD 1000000U
+
 using namespace AscendC;
 using namespace Mc2Aclnn;
 
@@ -180,6 +188,14 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(G
 
     epWindowGM_ = GetUrmaAddrByRankId(epRankId_);
     epStatusSpaceGM_ = GetUrmaStateAddrByRankId(epRankId_);
+#if COMBINE_TEARDOWN_DEBUG_WAIT
+    // 与 combine_setup 的 [C_S] 行逐核比对：同一 aiv 上两边的 C_S 必须一致，
+    // 且本卡这里的 statusBank 必须等于对端 setup 打印的 addr 去掉 stateOff 后的基址。
+    AscendC::printf("[C_S] rank=%u aiv=%u C_S=%u statusBank=0x%llx winDataOff=0x%llx totalWin=0x%llx\n", epRankId_,
+                    coreIdx_, dataState_, static_cast<unsigned long long>(static_cast<uint64_t>(epStatusSpaceGM_)),
+                    static_cast<unsigned long long>(winDataSizeOffset_),
+                    static_cast<unsigned long long>(moeDistributeCombineTeardownInfo_->totalWinSize));
+#endif
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(epWindowGM_),
                                    moeDistributeCombineTeardownInfo_->totalWinSize / 4ULL);
@@ -280,6 +296,10 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
 
     // 循环，累加本卡状态区状态
     auto index = static_cast<uint64_t>(startRankId_) * stateOffset_ / static_cast<uint64_t>(sizeof(float));
+#if COMBINE_TEARDOWN_DEBUG_WAIT
+    uint32_t pollCount = 0U;
+    bool dumped = false;
+#endif
     while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
         DataCopy(statusTensor, epStatusSpaceGlobal[index], intriParams);
         AscendC::SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -289,6 +309,23 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
         Sum(statusSumOutTensor, gatherMaskOutTensor, sumParams);
         AscendC::SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
+#if COMBINE_TEARDOWN_DEBUG_WAIT
+        // 卡住时 dump 一次现场：逐槽打印，缺哪个 srcRank 的 flag 一目了然
+        if ((++pollCount >= COMBINE_TEARDOWN_WAIT_DUMP_THRESHOLD) && !dumped) {
+            dumped = true;
+            AscendC::printf("[WAIT] rank=%u aiv=%u C_S=%u startRank=%u num=%u bank=0x%llx sum=%d target=%d\n",
+                            epRankId_, coreIdx_, dataState_, startRankId_, sendRankNum_,
+                            static_cast<unsigned long long>(static_cast<uint64_t>(epStatusSpaceGM_)),
+                            static_cast<int32_t>(sumOfFlag), static_cast<int32_t>(sumTarget));
+            LocalTensor<int32_t> rawStatus = statusTensor.ReinterpretCast<int32_t>();
+            for (uint32_t i = 0U; i < sendRankNum_; ++i) {
+                // 每个槽在 UB 里占一个 32B DataBlock，取其首个 int32
+                AscendC::printf("[WAIT]   srcRank=%u slot=0x%x raw=0x%x\n", startRankId_ + i,
+                                static_cast<uint32_t>((startRankId_ + i) * stateOffset_),
+                                static_cast<uint32_t>(rawStatus.GetValue(i * (UB_ALIGN / sizeof(int32_t)))));
+            }
+        }
+#endif
     }
 
     Duplicate<float>(statusTensor, 0, sendRankNum_ * UB_ALIGN / sizeof(float));

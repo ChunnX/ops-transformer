@@ -38,6 +38,13 @@ namespace MoeDistributeCombineSetupImpl {
 #define TemplateMC2TypeClass typename ExpandXType, typename ExpandIdxType
 #define TemplateMC2TypeFunc ExpandXType, ExpandIdxType
 
+// 置 1 打开状态通路调试：打印本核 C_S / 状态槽地址，并在 Commit+Drain 后回读对端状态槽。
+// 回读天然带 race：对端 combine_teardown 消费状态后会立刻清零该槽，读到 0 不代表状态未送达，
+// 只有"回读非 0"才是状态确实落到对端的正向证据。
+#ifndef COMBINE_SETUP_DEBUG_DST_STATUS
+#define COMBINE_SETUP_DEBUG_DST_STATUS 0
+#endif
+
 using namespace AscendC;
 using namespace Mc2Aclnn;
 
@@ -49,6 +56,7 @@ class MoeDistributeCombineSetup {
     constexpr static uint32_t UB_ALIGN = 32U;             // UB按32字节对齐
     constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;   // 每 aiv 控制块大小（D_S/C_S/flag）
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
+    constexpr static uint64_t COMM_CMD_INFO_BYTES = 64U;    // commCmdInfoOut 每个 (a+rank) 条目 16 * int32
 
 public:
     __aicore__ inline MoeDistributeCombineSetup(){};
@@ -96,6 +104,7 @@ private:
     uint32_t aivId_{0};
     uint32_t epRankId_{0};
 
+    // GM_ADDR commCmdInfoOutGM_;
     GM_ADDR statusDataSpaceGM_;
     GM_ADDR statusFlagGM_; // 本卡状态flag源地址，用于远端WriteNbi
     constexpr static uint64_t HCOMM_INIT_SIZE = 512UL;
@@ -143,6 +152,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
 
+    // commCmdInfoOutGM_ = commCmdInfoOut;
+
     // 获取 win 控制区：本算子只读写 C_S，与 D_S 独立，避免联跑抢乒乓
     GlobalTensor<int32_t> selfDataStatusTensor;
     statusDataSpaceGM_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
@@ -186,6 +197,14 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
 
     epWindowGM_ = GetUrmaAddrByRankId(epRankId_);
     epStatusSpaceGM_ = GetUrmaStateAddrByRankId(epRankId_);
+#if COMBINE_SETUP_DEBUG_DST_STATUS
+    // C_S 是"用本卡本核的值去选对端 bank"，各卡必须严格同步。把本卡视角打出来，
+    // 与对端 combine_teardown 打印的 epStatusSpaceGM_ 逐核比对即可发现乒乓失步。
+    AscendC::printf("[C_S] rank=%u aiv=%u C_S=%u statusBank=0x%llx winDataOff=0x%llx totalWin=0x%llx\n", epRankId_,
+                    aivId_, dataState_, static_cast<unsigned long long>(static_cast<uint64_t>(epStatusSpaceGM_)),
+                    static_cast<unsigned long long>(winDataSizeOffset_),
+                    static_cast<unsigned long long>(moeDistributeCombineSetupInfo_->totalWinSize));
+#endif
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(epWindowGM_),
                                    moeDistributeCombineSetupInfo_->totalWinSize / 4U);
@@ -292,33 +311,70 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             }
             GM_ADDR srcAddr = expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_;
             GM_ADDR dstAddr = GetUrmaAddrByRankId(dstRankId, expertIdx) + epDataOffsetOnWin_;
-            uint32_t length = static_cast<uint32_t>(axisHExpandXTypeSize_) * curTokenNum;
-            hcomm_.WriteNbi<false>(channelId, dstAddr, srcAddr, length);
+            uint64_t lengthU64 = axisHExpandXTypeSize_ * static_cast<uint64_t>(curTokenNum);
+            ascendc_assert(lengthU64 <= 0xFFFFFFFFUL,
+                           "combine_setup data length overflows u32, dst=%u expert=%u tokenNum=%u", dstRankId,
+                           expertIdx, curTokenNum);
+            // 数据与状态在同一 Commit 批次里，状态排在最后：任一数据 WQE 失败都会让队列进 error 态
+            // 并 flush 掉后面的状态 WQE，表现为对端状态恒为 0。所以这里必须查返回值。
+            int32_t dataRet = hcomm_.WriteNbi<false>(channelId, dstAddr, srcAddr, static_cast<uint32_t>(lengthU64));
+            ascendc_assert(dataRet == HCOMM_SUCCESS,
+                           "combine_setup data WriteNbi failed, ret=%d rank=%u dst=%u expert=%u len=%u", dataRet,
+                           epRankId_, dstRankId, expertIdx, static_cast<uint32_t>(lengthU64));
         }
         // 无论token是否为0，都独立下发状态，避免WriteWithNotify在length=0时丢notify
-        hcomm_.WriteNbi<false>(channelId, dstStatusAddr, statusFlagGM_, UB_ALIGN);
-        hcomm_.Commit(channelId);
+        int32_t sendRet = hcomm_.WriteNbi<false>(channelId, dstStatusAddr, statusFlagGM_, UB_ALIGN);
+        ascendc_assert(sendRet == HCOMM_SUCCESS, "combine_setup status WriteNbi failed, ret=%d rank=%u dst=%u", sendRet,
+                       epRankId_, dstRankId);
+        sendRet = hcomm_.Commit(channelId);
+        ascendc_assert(sendRet == HCOMM_SUCCESS, "combine_setup Commit failed, ret=%d rank=%u dst=%u", sendRet,
+                       epRankId_, dstRankId);
         // 回收本核负责的 channel CQ，避免同通信域多轮复用时 SQ/CQ 堆积导致后续卡死
-        hcomm_.Drain(channelId);
+        sendRet = hcomm_.Drain(channelId);
+        ascendc_assert(sendRet == HCOMM_SUCCESS, "combine_setup Drain failed, ret=%d rank=%u dst=%u", sendRet,
+                       epRankId_, dstRankId);
 
-        // 调试对端 dst 槽：改为 1 开启。Drain 后经 channel 映射回读 dstStatusAddr。
-#define COMBINE_SETUP_DEBUG_DST_STATUS 0
 #if COMBINE_SETUP_DEBUG_DST_STATUS
-        GlobalTensor<int32_t> dstStatusTensor;
-        dstStatusTensor.SetGlobalBuffer((__gm__ int32_t *)dstStatusAddr);
-        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(dstStatusTensor);
-        int32_t dstRaw = dstStatusTensor(0);
-        GlobalTensor<int32_t> srcFlagTensor;
-        srcFlagTensor.SetGlobalBuffer((__gm__ int32_t *)statusFlagGM_);
-        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(srcFlagTensor);
-        int32_t srcRaw = srcFlagTensor(0);
-        AscendC::printf(
-            "[DST] srcRank=%u dstRank=%u aiv=%u S=%u stateOff=%u dst=0x%llx srcFlag=0x%x dstRaw=0x%x\n",
-            epRankId_, dstRankId, aivId_, dataState_, static_cast<uint32_t>(epStateOffsetOnWin_),
-            static_cast<unsigned long long>(static_cast<uint64_t>(dstStatusAddr)),
-            static_cast<uint32_t>(srcRaw), static_cast<uint32_t>(dstRaw));
+        // 每个 (aiv, dstRank) 用独立的 32B 落地槽，避免多核多目的互相覆盖。
+        // commCmdInfoOut 为 int32[(a + epWorldSize) * 16]，越界则跳过本次回读。
+        const uint64_t probeSlot =
+            (static_cast<uint64_t>(aivId_) * moeDistributeCombineSetupInfo_->epWorldSize + dstRankId) * UB_ALIGN;
+        const uint64_t probeCapacity = (static_cast<uint64_t>(moeDistributeCombineSetupInfo_->a) +
+                                        moeDistributeCombineSetupInfo_->epWorldSize) * COMM_CMD_INFO_BYTES;
+        if ((commCmdInfoOutGM_ != nullptr) && ((probeSlot + UB_ALIGN) <= probeCapacity)) {
+            GM_ADDR probeGM = commCmdInfoOutGM_ + probeSlot;
+            GlobalTensor<int32_t> probeTensor;
+            probeTensor.SetGlobalBuffer((__gm__ int32_t *)probeGM);
+            probeTensor.SetValue(0, 0);
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(probeTensor);
+
+            // ReadNbi 只是入队，必须 Commit 敲门铃，Drain 不会代为提交
+            int32_t probeRet = hcomm_.ReadNbi<false>(channelId, probeGM, dstStatusAddr, UB_ALIGN);
+            ascendc_assert(probeRet == HCOMM_SUCCESS, "combine_setup probe ReadNbi failed, ret=%d dst=%u", probeRet,
+                           dstRankId);
+            probeRet = hcomm_.Commit(channelId);
+            ascendc_assert(probeRet == HCOMM_SUCCESS, "combine_setup probe Commit failed, ret=%d dst=%u", probeRet,
+                           dstRankId);
+            probeRet = hcomm_.Drain(channelId);
+            ascendc_assert(probeRet == HCOMM_SUCCESS, "combine_setup probe Drain failed, ret=%d dst=%u", probeRet,
+                           dstRankId);
+
+            // 标量写与 NIC 落地打同一条 cacheline，读回前先隔离再失效
+            PipeBarrier<PIPE_ALL>();
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(probeTensor);
+
+            GlobalTensor<int32_t> srcFlagTensor;
+            srcFlagTensor.SetGlobalBuffer((__gm__ int32_t *)statusFlagGM_);
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(srcFlagTensor);
+
+            AscendC::printf(
+                "[DST] rank=%u dst=%u aiv=%u C_S=%u stateOff=%u addr=0x%llx srcFlag=0x%x readBack=0x%x expect=0x%x\n",
+                epRankId_, dstRankId, aivId_, dataState_, static_cast<uint32_t>(epStateOffsetOnWin_),
+                static_cast<unsigned long long>(static_cast<uint64_t>(dstStatusAddr)),
+                static_cast<uint32_t>(srcFlagTensor(0)), static_cast<uint32_t>(probeTensor(0)),
+                static_cast<uint32_t>(STATUS_FLAG_VALUE));
+        }
 #endif
-#undef COMBINE_SETUP_DEBUG_DST_STATUS
     }
 
     assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
