@@ -1,0 +1,22 @@
+2026-08-07 16:11:40,935 - gitcode_mcp - INFO - GitCode MCP服务器模块初始化...
+2026-08-07 16:11:40,935 - gitcode_mcp - INFO - 环境变量已加载
+2026-08-07 16:11:40,939 - gitcode_mcp - INFO - FastMCP实例已创建，名称: GitCode MCP服务器
+2026-08-07 16:11:40,985 - gitcode_mcp - INFO - 正在启动GitCode MCP服务器...
+2026-08-07 16:11:40,985 - gitcode_mcp - INFO - GitCode API客户端已初始化
+2026-08-07 16:11:40,985 - gitcode_mcp - INFO - API客户端已初始化，准备启动服务器...
+2026-08-07 16:11:41,166 - mcp.server.lowlevel.server - INFO - Processing request of type ListToolsRequest
+2026-08-07 16:11:41,212 - mcp.server.lowlevel.server - INFO - Processing request of type ListResourcesRequest
+2026-08-07 16:11:41,213 - mcp.server.lowlevel.server - INFO - Processing request of type ListPromptsRequest
+2026-08-07 16:11:41,228 - mcp.server.lowlevel.server - INFO - Processing request of type GetPromptRequest
+2026-08-07 16:11:41,229 - mcp.server.lowlevel.server - INFO - Processing request of type GetPromptRequest
+2026-08-11 20:08:02,183 - gitcode_mcp - INFO - GitCode MCP服务器模块初始化...
+2026-08-11 20:08:02,183 - gitcode_mcp - INFO - 环境变量已加载
+2026-08-11 20:08:02,188 - gitcode_mcp - INFO - FastMCP实例已创建，名称: GitCode MCP服务器
+2026-08-11 20:08:02,782 - gitcode_mcp - INFO - 正在启动GitCode MCP服务器...
+2026-08-11 20:08:02,782 - gitcode_mcp - INFO - GitCode API客户端已初始化
+2026-08-11 20:08:02,782 - gitcode_mcp - INFO - API客户端已初始化，准备启动服务器...
+2026-08-11 20:08:03,081 - mcp.server.lowlevel.server - INFO - Processing request of type ListToolsRequest
+2026-08-11 20:08:03,478 - mcp.server.lowlevel.server - INFO - Processing request of type ListResourcesRequest
+2026-08-11 20:08:03,480 - mcp.server.lowlevel.server - INFO - Processing request of type ListPromptsRequest
+2026-08-11 20:08:03,785 - mcp.server.lowlevel.server - INFO - Processing request of type GetPromptRequest
+2026-08-11 20:08:03,877 - mcp.server.lowlevel.server - INFO - Processing request of type GetPromptRequest
