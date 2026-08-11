@@ -427,7 +427,8 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     // 检查空tensor
     CHECK_RET(CheckNotEmptyTensor(x1, x2, transposeX2), ACLNN_ERR_PARAM_INVALID);
     // 检查shape
-    CHECK_RET(CheckShapeMMAA("quant_matmul_allto_all", x1, x2, biasOptional, transposeX2, output), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckShapeMMAA("quant_matmul_allto_all", x1, x2, biasOptional, transposeX2, output),
+              ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckScaleShape(x1, x2, x1Scale, x2Scale, x1QuantMode, x2QuantMode, transposeX2),
               ACLNN_ERR_PARAM_INVALID);
     // 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
