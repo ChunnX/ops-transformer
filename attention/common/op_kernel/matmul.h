@@ -514,7 +514,7 @@ __aicore__ inline void MatmulKMx(const LocalTensor<A> &aL1Tensor, const LocalTen
         l0aBuffer.template Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
         LocalTensor<L0ADType> L0ATensor = l0aBuffer.template GetTensor<L0ADType>();
         if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-            LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, k * L1Aoffset, tileK,
+            LoadDataToL0AMx<A, L0ADType, baseK>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, k * L1Aoffset, tileK,
                                          param.singleM); // s2,
         } else if constexpr (IsSameType<L0ADType, fp8_e4m3fn_t>::value) {
             LoadDataToL0A(L0ATensor, aL1Tensor, param, k * L1Aoffset, tileK, param.singleM);
@@ -599,7 +599,7 @@ __aicore__ inline void MatmulMMx(const LocalTensor<A> &aL1Tensor, const LocalTen
         LocalTensor<L0ADType> L0ATensor = l0aBuffer.template GetTensor<L0ADType>();
         uint64_t loopNum = param.isRightTranspose ? mLoops : 1;
         if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-            LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, m * L1Aoffset, tileM,
+            LoadDataToL0AMx<A, L0ADType, baseK>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, m * L1Aoffset, tileM,
                                          param.singleK);
         }
         l0aBuffer.template Set<HardEvent::MTE1_M>();  // mte1搬运完后，通知可以开始matmul
@@ -730,7 +730,7 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTe
     LocalTensor<L0ADType> L0ATensor = l0aBuffer.template GetTensor<L0ADType>();
 #if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 5102))
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-        LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK,
+        LoadDataToL0AMx<A, L0ADType, baseK>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK,
                                      param.singleM); // d,s2
     } else
 #endif
@@ -808,7 +808,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
         LocalTensor<L0ADType> L0ATensor = l0aBuffer.template GetTensor<L0ADType>();
 #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
         if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-            LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, k * L1Aoffset, tileK,
+            LoadDataToL0AMx<A, L0ADType, baseK>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, k * L1Aoffset, tileK,
                                          param.singleM); // s2,
         } else
 #endif
@@ -964,7 +964,7 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTenso
     LocalTensor<L0ADType> L0ATensor = l0aBuffer.template GetTensor<L0ADType>();
 #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-        LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK,
+        LoadDataToL0AMx<A, L0ADType, baseK>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK,
                                      param.singleM); // d,s2
     } else
 #endif
