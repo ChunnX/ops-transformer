@@ -19,6 +19,13 @@ if(NOT EXISTS "${TORCH_NPU_ROOT}/include")
     message(FATAL_ERROR "torch_npu include directory not found: ${TORCH_NPU_ROOT}/include")
 endif()
 
+get_filename_component(OPS_TRANSFORMER_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../.." ABSOLUTE)
+set(OPS_TRANSFORMER_EXTERNAL_INCLUDE_DIR "${OPS_TRANSFORMER_ROOT}/common/include/external")
+if(NOT EXISTS "${OPS_TRANSFORMER_ROOT}/common/include/external/aclnn_util.h")
+    message(FATAL_ERROR
+        "ACLNN API helper header not found: ${OPS_TRANSFORMER_EXTERNAL_INCLUDE_DIR}/aclnn_util.h")
+endif()
+
 if(DEFINED SHMEM_HOME_PATH AND NOT "${SHMEM_HOME_PATH}" STREQUAL "")
     set(SHMEM_INCLUDE_DIRS
         "${SHMEM_HOME_PATH}/shmem/include"
@@ -100,6 +107,7 @@ set_target_properties(allto_allv_grouped_mat_mul_shmem_pta PROPERTIES
 
 target_include_directories(allto_allv_grouped_mat_mul_shmem_pta PRIVATE
     "${CUST_OPAPI_INCLUDE_DIR}"
+    "${OPS_TRANSFORMER_EXTERNAL_INCLUDE_DIR}"
     ${TORCH_INCLUDE_DIRS}
     "${TORCH_NPU_ROOT}/include"
     "${ASCEND_HOME_PATH}/include"

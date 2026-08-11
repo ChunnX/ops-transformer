@@ -206,6 +206,9 @@ def check_pta_build() -> None:
             "PTA CMake must not reuse a stale cached custom op-api include path")
     require("file(READ" in cmake and "shmemContext" in cmake and "commMode" in cmake,
             "PTA CMake must reject a legacy HCCL V2 header before compilation")
+    require("OPS_TRANSFORMER_EXTERNAL_INCLUDE_DIR" in cmake and
+            "common/include/external/aclnn_util.h" in cmake,
+            "PTA CMake must locate the repository ACLNN_API helper used by installed public headers")
     find_begin = cmake.index("find_path(CUST_OPAPI_INCLUDE_DIR")
     find_end = cmake.index("endif()", find_begin)
     require("${ASCEND_HOME_PATH}/include" not in cmake[find_begin:find_end],
@@ -215,6 +218,8 @@ def check_pta_build() -> None:
     includes = cmake[includes_begin:includes_end]
     require(includes.index("${CUST_OPAPI_INCLUDE_DIR}") < includes.index("${ASCEND_HOME_PATH}/include"),
             "custom SHMEM V2 headers must precede built-in CANN headers")
+    require("${OPS_TRANSFORMER_EXTERNAL_INCLUDE_DIR}" in includes,
+            "PTA target must include the directory that provides aclnn_util.h")
 
     build = read("examples/arch35/pta/build_pta.sh")
     for token in (
