@@ -141,7 +141,7 @@ private:
 };
 
 /// CPU 参考：score = Maxpool[(scale·)Q@Kᵀ + atten_mask] + local_mask
-void ComputeGolden(const TestCase &tc, const std::vector<int32_t> &cuSeqQ,
+void ComputeGolden(const TestCase &tc, const std::vector<int32_t> &actualSeqQlen,
                    const std::vector<int32_t> &blockTable, int64_t maxBlocks, int64_t scoreStride,
                    int64_t totalQ, const std::vector<float> &queryF, const std::vector<float> &keyF,
                    const std::vector<float> &deqScale, std::vector<float> &golden)
@@ -150,8 +150,8 @@ void ComputeGolden(const TestCase &tc, const std::vector<int32_t> &cuSeqQ,
     golden.assign(static_cast<size_t>(tc.numQHeads * totalQ * scoreStride), kNegInf);
 
     for (int64_t b = 0; b < batch; ++b) {
-        const int32_t qBegin = cuSeqQ[b];
-        const int32_t qEnd = cuSeqQ[b + 1];
+        const int32_t qBegin = actualSeqQlen[b];
+        const int32_t qEnd = actualSeqQlen[b + 1];
         const int32_t qLen = qEnd - qBegin;
         const int64_t numBlocks = CeilDivI64(tc.kvLen[b], BLOCK_SIZE);
         const int32_t qBlock = tc.startLoc[b];
@@ -223,7 +223,7 @@ void PrintVec(const char *tag, const float *data, int64_t n)
 }
 
 /// 小尺寸用例的 host 侧逐步拆解：Q/K -> DOT/DEQUANT -> MASK -> MAX。
-void PrintTracePipeline(const TestCase &tc, const std::vector<int32_t> &cuSeqQ,
+void PrintTracePipeline(const TestCase &tc, const std::vector<int32_t> &actualSeqQlen,
                         const std::vector<int32_t> &blockTable, int64_t maxBlocks, int64_t scoreStride,
                         int64_t totalQ, const std::vector<float> &queryF, const std::vector<float> &keyF,
                         const std::vector<float> &deqScale, const std::vector<float> &actual)
@@ -269,7 +269,7 @@ void PrintTracePipeline(const TestCase &tc, const std::vector<int32_t> &cuSeqQ,
                     any = true;
                 }
             }
-            const float deviceOut = actual[static_cast<size_t>((h * totalQ + (cuSeqQ[0] + t)) * scoreStride)];
+            const float deviceOut = actual[static_cast<size_t>((h * totalQ + (actualSeqQlen[0] + t)) * scoreStride)];
             (void)printf("  [MAX]=%.6g [OUT]=%.6g\n", static_cast<double>(any ? best : kNegInf),
                          static_cast<double>(deviceOut));
         }
@@ -335,11 +335,11 @@ bool Compare(const std::string &name, const std::vector<float> &actual, const st
 bool RunCase(const TestCase &tc, aclrtStream stream)
 {
     const int64_t batch = static_cast<int64_t>(tc.qLen.size());
-    std::vector<int32_t> cuSeqQ(batch + 1, 0);
+    std::vector<int32_t> actualSeqQlen(batch + 1, 0);
     for (int64_t b = 0; b < batch; ++b) {
-        cuSeqQ[b + 1] = cuSeqQ[b] + tc.qLen[b];
+        actualSeqQlen[b + 1] = actualSeqQlen[b] + tc.qLen[b];
     }
-    const int64_t totalQ = cuSeqQ[batch];
+    const int64_t totalQ = actualSeqQlen[batch];
 
     int64_t maxBlocks = 1;
     for (int64_t b = 0; b < batch; ++b) {
@@ -419,8 +419,8 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     aclTensor *blockTableT = buf.Create(blockTable, {batch, maxBlocks}, ACL_INT32);
     aclTensor *scaleT =
         tc.useInt8Key ? buf.Create(deqScale, {tc.numPages, NUM_KV_HEADS, BLOCK_SIZE}, ACL_FLOAT) : nullptr;
-    aclTensor *cuSeqQT = buf.Create(cuSeqQ, {batch + 1}, ACL_INT32);
-    aclTensor *kvLenT = buf.Create(tc.kvLen, {batch}, ACL_INT32);
+    aclTensor *actualSeqQlenT = buf.Create(actualSeqQlen, {batch + 1}, ACL_INT32);
+    aclTensor *actualSeqKlenT = buf.Create(tc.kvLen, {batch}, ACL_INT32);
     aclTensor *startLocT = buf.Create(tc.startLoc, {batch}, ACL_INT32);
     std::vector<int8_t> attenMaskHost(static_cast<size_t>(kAttenMaskSize * kAttenMaskSize), 0);
     aclTensor *attenMaskT = nullptr;
@@ -432,8 +432,8 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     void *scoreDev = nullptr;
     aclTensor *scoreT = buf.Create(scoreInit, scoreShape, ACL_FLOAT, &scoreDev);
 
-    if (queryT == nullptr || keyT == nullptr || blockTableT == nullptr || cuSeqQT == nullptr ||
-        kvLenT == nullptr || startLocT == nullptr || scoreT == nullptr ||
+    if (queryT == nullptr || keyT == nullptr || blockTableT == nullptr || actualSeqQlenT == nullptr ||
+        actualSeqKlenT == nullptr || startLocT == nullptr || scoreT == nullptr ||
         (tc.sparseMode == 3 && attenMaskT == nullptr)) {
         (void)printf("  [%s] create tensor failed -> FAIL\n", tc.name);
         return false;
@@ -442,7 +442,7 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
-    int ret = aclnnMsaIndexScoreGetWorkspaceSize(queryT, keyT, blockTableT, scaleT, attenMaskT, cuSeqQT, kvLenT,
+    int ret = aclnnMsaIndexScoreGetWorkspaceSize(queryT, keyT, blockTableT, scaleT, attenMaskT, actualSeqQlenT, actualSeqKlenT,
                                                  startLocT, tc.sparseMode, scoreT, &workspaceSize, &executor);
     if (ret != ACL_SUCCESS) {
         (void)printf("  [%s] GetWorkspaceSize failed, ERROR %d -> FAIL\n", tc.name, ret);
@@ -469,9 +469,9 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     }
 
     std::vector<float> golden;
-    ComputeGolden(tc, cuSeqQ, blockTable, maxBlocks, scoreStride, totalQ, queryF, keyF, deqScale, golden);
+    ComputeGolden(tc, actualSeqQlen, blockTable, maxBlocks, scoreStride, totalQ, queryF, keyF, deqScale, golden);
     if (std::strstr(tc.name, "debug-trace") != nullptr) {
-        PrintTracePipeline(tc, cuSeqQ, blockTable, maxBlocks, scoreStride, totalQ, queryF, keyF, deqScale,
+        PrintTracePipeline(tc, actualSeqQlen, blockTable, maxBlocks, scoreStride, totalQ, queryF, keyF, deqScale,
                            actual);
     }
     return Compare(tc.name, actual, golden);

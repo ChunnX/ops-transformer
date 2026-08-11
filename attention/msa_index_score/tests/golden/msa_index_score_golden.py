@@ -13,8 +13,8 @@
 数值路径（与 kernel 对齐）：
   score = Maxpool[ (scale ·) Q @ Kᵀ + atten_mask ] + local_mask
 
-- sparse_mode=0：无因果，仅 kv_len 截断
-- sparse_mode=3：rightDownCausal，visible_end = kv_len - q_len + t_off + 1
+- sparse_mode=0：无因果，仅 actual_seq_klen 截断
+- sparse_mode=3：rightDownCausal，visible_end = actual_seq_klen - q_len + t_off + 1
 - local_mask：由 start_loc（query 所在逻辑 block）+ init/local_blocks 强制高分
 """
 
@@ -34,13 +34,13 @@ def round_up(value, align):
     return (value + align - 1) // align * align
 
 
-def _visible_key_end(sparse_mode, kv_len, q_len, t_off):
+def _visible_key_end(sparse_mode, actual_seq_klen, q_len, t_off):
     if sparse_mode == SPARSE_MODE_RIGHT_DOWN:
-        return int(np.clip(kv_len - q_len + t_off + 1, 0, kv_len))
-    return int(kv_len)
+        return int(np.clip(actual_seq_klen - q_len + t_off + 1, 0, actual_seq_klen))
+    return int(actual_seq_klen)
 
 
-def msa_index_score_golden(query, key, block_table, cu_seq_q, kv_len, start_loc,
+def msa_index_score_golden(query, key, block_table, actual_seq_qlen, actual_seq_klen, start_loc,
                            sparse_mode=SPARSE_MODE_RIGHT_DOWN, block_size=128, scale=None,
                            init_blocks=DEFAULT_INIT_BLOCKS, local_blocks=DEFAULT_LOCAL_BLOCKS):
     """计算 MSA index block score。
@@ -49,14 +49,14 @@ def msa_index_score_golden(query, key, block_table, cu_seq_q, kv_len, start_loc,
         query:       [T1, N1, D]
         key:         [NP, P, N2, D] BBND；非量化与 query 同 dtype；量化为 int8
         block_table: [B, MB]
-        cu_seq_q:    [B+1]
-        kv_len:      [B]
+        actual_seq_qlen:    [B+1]
+        actual_seq_klen:      [B]
         start_loc:   [B]，当前 query 所在逻辑 block 索引（local_mask）
         sparse_mode: 0 或 3
         scale:       int8 时 [NP, N2, P]；非量化为 None
     """
     total_q, num_q_heads, head_dim = query.shape
-    batch = len(kv_len)
+    batch = len(actual_seq_klen)
     max_blocks = block_table.shape[1]
     score_stride = round_up(max_blocks, SCORE_STRIDE_ALIGN)
     num_kv_heads = key.shape[2]
@@ -80,9 +80,9 @@ def msa_index_score_golden(query, key, block_table, cu_seq_q, kv_len, start_loc,
     out = np.full((num_q_heads, total_q, score_stride), NEG_INF, dtype=np.float32)
 
     for b in range(batch):
-        q_begin, q_end = int(cu_seq_q[b]), int(cu_seq_q[b + 1])
+        q_begin, q_end = int(actual_seq_qlen[b]), int(actual_seq_qlen[b + 1])
         q_len = q_end - q_begin
-        kv = int(kv_len[b])
+        kv = int(actual_seq_klen[b])
         num_blocks = (kv + block_size - 1) // block_size
         q_block = int(start_loc[b])
         local_start = max(0, q_block + 1 - int(local_blocks))

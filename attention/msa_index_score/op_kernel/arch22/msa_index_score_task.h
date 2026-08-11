@@ -74,8 +74,8 @@ public:
 
     __aicore__ inline void Init(uint32_t batch, uint32_t numQHeads, uint32_t maxBlocksPerBatch,
                                 uint32_t scoreBlockStride, uint32_t sparseMode, uint32_t initBlocks,
-                                uint32_t localBlocks, const AscendC::GlobalTensor<int32_t> &cuSeqQ,
-                                const AscendC::GlobalTensor<int32_t> &kvLen,
+                                uint32_t localBlocks, const AscendC::GlobalTensor<int32_t> &actualSeqQlen,
+                                const AscendC::GlobalTensor<int32_t> &actualSeqKlen,
                                 const AscendC::GlobalTensor<int32_t> &startLoc)
     {
         batch_ = batch;
@@ -85,13 +85,14 @@ public:
         sparseMode_ = sparseMode;
         initBlocks_ = initBlocks;
         localBlocks_ = localBlocks;
-        gCuSeqQ_ = cuSeqQ;
-        gKvLen_ = kvLen;
+        gActualSeqQlen_ = actualSeqQlen;
+        gActualSeqKlen_ = actualSeqKlen;
         gStartLoc_ = startLoc;
 
         totalTasks_ = 0;
         for (uint32_t b = 0; b < batch_; ++b) {
-            const uint32_t qLen = static_cast<uint32_t>(gCuSeqQ_.GetValue(b + 1) - gCuSeqQ_.GetValue(b));
+            const uint32_t qLen =
+                static_cast<uint32_t>(gActualSeqQlen_.GetValue(b + 1) - gActualSeqQlen_.GetValue(b));
             totalTasks_ += MsaCeilDiv(qLen * numQHeads_, MSA_ROW_TILE_M);
         }
         Reset();
@@ -172,19 +173,19 @@ private:
             startLoc_ = 0;
             return;
         }
-        cuQStart_ = static_cast<uint32_t>(gCuSeqQ_.GetValue(b));
-        qLen_ = static_cast<int32_t>(gCuSeqQ_.GetValue(b + 1)) - static_cast<int32_t>(cuQStart_);
+        cuQStart_ = static_cast<uint32_t>(gActualSeqQlen_.GetValue(b));
+        qLen_ = static_cast<int32_t>(gActualSeqQlen_.GetValue(b + 1)) - static_cast<int32_t>(cuQStart_);
         if (qLen_ < 0) {
             qLen_ = 0;
         }
         curRows_ = static_cast<uint32_t>(qLen_) * numQHeads_;
         curTasks_ = MsaCeilDiv(curRows_, MSA_ROW_TILE_M);
-        kvLen_ = gKvLen_.GetValue(b);
+        kvLen_ = gActualSeqKlen_.GetValue(b);
         startLoc_ = gStartLoc_.GetValue(b);
     }
 
-    AscendC::GlobalTensor<int32_t> gCuSeqQ_;
-    AscendC::GlobalTensor<int32_t> gKvLen_;
+    AscendC::GlobalTensor<int32_t> gActualSeqQlen_;
+    AscendC::GlobalTensor<int32_t> gActualSeqKlen_;
     AscendC::GlobalTensor<int32_t> gStartLoc_;
 
     uint32_t batch_ = 0;

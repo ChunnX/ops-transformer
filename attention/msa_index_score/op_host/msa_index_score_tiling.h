@@ -30,8 +30,8 @@ constexpr uint32_t MSA_IDX_KEY = 1;
 constexpr uint32_t MSA_IDX_BLOCK_TABLE = 2;
 constexpr uint32_t MSA_IDX_SCALE = 3;
 constexpr uint32_t MSA_IDX_ATTEN_MASK = 4;
-constexpr uint32_t MSA_IDX_CU_SEQ_Q = 5;
-constexpr uint32_t MSA_IDX_KV_LEN = 6;
+constexpr uint32_t MSA_IDX_ACTUAL_SEQ_QLEN = 5;
+constexpr uint32_t MSA_IDX_ACTUAL_SEQ_KLEN = 6;
 constexpr uint32_t MSA_IDX_START_LOC = 7;
 
 constexpr uint32_t MSA_ATTR_SPARSE_MODE = 0;

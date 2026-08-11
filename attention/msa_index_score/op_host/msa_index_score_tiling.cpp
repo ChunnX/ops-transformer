@@ -46,11 +46,11 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
     const gert::StorageShape *blockTableShape = context->GetOptionalInputShape(MSA_IDX_BLOCK_TABLE);
     OP_CHECK_IF(blockTableShape == nullptr, OP_LOGE(context, "PageAttention requires block_table."),
                 return ge::GRAPH_FAILED);
-    const gert::StorageShape *cuSeqQShape = context->GetOptionalInputShape(MSA_IDX_CU_SEQ_Q);
-    OP_CHECK_IF(cuSeqQShape == nullptr, OP_LOGE(context, "TND query requires actual_seq_lengths_query."),
+    const gert::StorageShape *actualSeqQlenShape = context->GetOptionalInputShape(MSA_IDX_ACTUAL_SEQ_QLEN);
+    OP_CHECK_IF(actualSeqQlenShape == nullptr, OP_LOGE(context, "TND query requires actual_seq_qlen."),
                 return ge::GRAPH_FAILED);
-    const gert::StorageShape *kvLenShape = context->GetOptionalInputShape(MSA_IDX_KV_LEN);
-    OP_CHECK_IF(kvLenShape == nullptr, OP_LOGE(context, "PageAttention requires actual_seq_lengths_key."),
+    const gert::StorageShape *actualSeqKlenShape = context->GetOptionalInputShape(MSA_IDX_ACTUAL_SEQ_KLEN);
+    OP_CHECK_IF(actualSeqKlenShape == nullptr, OP_LOGE(context, "PageAttention requires actual_seq_klen."),
                 return ge::GRAPH_FAILED);
     const gert::StorageShape *startLocShape = context->GetInputShape(MSA_IDX_START_LOC);
     OP_CHECK_NULL_WITH_CONTEXT(context, startLocShape);

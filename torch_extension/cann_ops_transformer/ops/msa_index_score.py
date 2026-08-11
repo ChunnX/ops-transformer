@@ -32,8 +32,8 @@ class MsaIndexScoreOpBuilder(OpBuilder):
     def schema(self) -> str:
         return (
             "msa_index_score(Tensor query, Tensor key, Tensor? block_table, "
-            "Tensor? scale, Tensor? atten_mask, Tensor? actual_seq_lengths_query, "
-            "Tensor? actual_seq_lengths_key, Tensor start_loc, *, int sparse_mode=3) -> Tensor"
+            "Tensor? scale, Tensor? atten_mask, Tensor? actual_seq_qlen, "
+            "Tensor? actual_seq_klen, Tensor start_loc, *, int sparse_mode=3) -> Tensor"
         )
 
     def register_meta(self):
@@ -44,8 +44,8 @@ class MsaIndexScoreOpBuilder(OpBuilder):
             block_table: Optional[torch.Tensor],
             scale: Optional[torch.Tensor],
             atten_mask: Optional[torch.Tensor],
-            actual_seq_lengths_query: Optional[torch.Tensor],
-            actual_seq_lengths_key: Optional[torch.Tensor],
+            actual_seq_qlen: Optional[torch.Tensor],
+            actual_seq_klen: Optional[torch.Tensor],
             start_loc: torch.Tensor,
             *,
             sparse_mode: int = DEFAULT_SPARSE_MODE,
@@ -82,8 +82,8 @@ def _msa_index_score(
     block_table: Optional[torch.Tensor],
     scale: Optional[torch.Tensor],
     atten_mask: Optional[torch.Tensor],
-    actual_seq_lengths_query: Optional[torch.Tensor],
-    actual_seq_lengths_key: Optional[torch.Tensor],
+    actual_seq_qlen: Optional[torch.Tensor],
+    actual_seq_klen: Optional[torch.Tensor],
     start_loc: torch.Tensor,
     *,
     sparse_mode: int = DEFAULT_SPARSE_MODE,
@@ -94,8 +94,8 @@ def _msa_index_score(
         block_table,
         scale,
         atten_mask,
-        actual_seq_lengths_query,
-        actual_seq_lengths_key,
+        actual_seq_qlen,
+        actual_seq_klen,
         start_loc,
         sparse_mode,
     )
@@ -109,8 +109,8 @@ def msa_index_score(
     block_table: Optional[torch.Tensor] = None,
     scale: Optional[torch.Tensor] = None,
     atten_mask: Optional[torch.Tensor] = None,
-    actual_seq_lengths_query: Optional[torch.Tensor] = None,
-    actual_seq_lengths_key: Optional[torch.Tensor] = None,
+    actual_seq_qlen: Optional[torch.Tensor] = None,
+    actual_seq_klen: Optional[torch.Tensor] = None,
     sparse_mode: int = DEFAULT_SPARSE_MODE,
 ) -> torch.Tensor:
     """MSA Index Branch block score，封装 aclnnMsaIndexScore。
@@ -122,7 +122,7 @@ def msa_index_score(
         block_table: ``[B, MB]``，PA 必选
         scale: int8 反量化 ``[NP, N2, P]``；非量化为 None
         atten_mask: sparse_mode=3 时 ``[2048, 2048]`` int8
-        actual_seq_lengths_query / key: TND/PA 长度元数据
+        actual_seq_qlen / actual_seq_klen: TND/PA 长度元数据
         sparse_mode: 0 或 3
 
     Returns:
@@ -134,8 +134,8 @@ def msa_index_score(
         block_table,
         scale,
         atten_mask,
-        actual_seq_lengths_query,
-        actual_seq_lengths_key,
+        actual_seq_qlen,
+        actual_seq_klen,
         start_loc,
         sparse_mode=sparse_mode,
     )

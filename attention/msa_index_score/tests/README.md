@@ -36,7 +36,7 @@ bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
 
 ```python
 golden = msa_index_score_golden(
-    query, key, block_table, cu_seq_q, kv_len, start_loc,
+    query, key, block_table, actual_seq_qlen, actual_seq_klen, start_loc,
     sparse_mode=3, scale=None)
 ```
 
