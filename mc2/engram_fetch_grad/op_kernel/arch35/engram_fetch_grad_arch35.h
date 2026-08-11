@@ -120,10 +120,6 @@ private:
     uint64_t winSize_{0};
     uint64_t ubSize_{0};
 
-    uint64_t uniqueScatterAddStartCycle_{0};
-    uint64_t uniqueScatterAddEndCycle_{0};
-    uint64_t usaCompanionCycle_{0};
-    uint64_t usaSortCycle_{0};
     uint64_t processStartCycle_{0};
     uint64_t processEndCycle_{0};
 
@@ -674,21 +670,15 @@ __aicore__ inline void EngramFetchGradArch35::UniqueScatterAdd()
         return;
     }
 
-    uint64_t t0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
     InitCompanion(numRecv);
     SyncAll<true>();
-    uint64_t t1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     RunSort(numRecv);
     SyncAll<true>();
-    uint64_t t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     uniqueScatter_.Run(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
                        gradUniqueOutGM_, gradUniqueFp32GM_, recvGradGM_, coreStartGM_, segCountGM_,
                        sortCompanionGM_);
-
-    usaCompanionCycle_ = t1 - t0;
-    usaSortCycle_ = t2 - t1;
 }
 
 __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
@@ -807,23 +797,9 @@ __aicore__ inline void EngramFetchGradArch35::Process()
 
         UnsortGrad();
         ExchangeGrad();
-        uniqueScatterAddStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
         UniqueScatterAdd();
-        uniqueScatterAddEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
         processEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
-
-       
-            uint64_t totalUs = (processEndCycle_ - processStartCycle_) / 1000U;
-            uint64_t usaUs = (uniqueScatterAddEndCycle_ - uniqueScatterAddStartCycle_) / 1000U;
-            uint64_t preUs = (uniqueScatterAddStartCycle_ - processStartCycle_) / 1000U;
-            AscendC::printf("ENGRAM total=%lluu pre=%lluu usa=%lluu | companion=%lluu sort=%lluu zeroCount=%lluu scatterAdd=%lluu cast=%lluu\n",
-                            totalUs, preUs, usaUs,
-                            usaCompanionCycle_ / 1000U, usaSortCycle_ / 1000U,
-                            uniqueScatter_.usaZeroCountCycle_ / 1000U,
-                            uniqueScatter_.usaScatterAddCycle_ / 1000U,
-                            uniqueScatter_.usaCastCycle_ / 1000U);
-        
     }
 }
 
