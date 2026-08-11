@@ -16,6 +16,8 @@
 namespace optiling {
 constexpr uint64_t APPLY_ROPE_GRAD_A_TILING_PRIORITY = 40000;
 constexpr int64_t DOUBLE_BUFFER = 2;
+// D 按 D/2 分两块搬运的拆分系数，与 kernel 侧 HALF_COEF 保持一致
+constexpr int64_t HALF_COEF = 2;
 // 每个输入/输出独立 buffer（全部双缓冲）：
 //   DcosFlag=0: gradQ/gradK/cos/sin/gradQOut/gradKOut 共 6 队列
 //   DcosFlag=1: + query/key/gradCosOut/gradSinOut 共 10 队列
@@ -68,7 +70,9 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassA::SplitCore()
 ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassA::ComputeUbFactor()
 {
     int64_t typeSize = ge::GetSizeByDataType(dtype_);
-    int64_t dSize = Ops::Base::CeilAlign(d_ * typeSize, blockSize_);
+    // 与 kernel InitAllBuffer 严格对应：D 按 D/2 分两块搬运，每个半行独立 32B 对齐落位，
+    // 故每行 UB 占用为 CeilAlign(D/2*typeSize, blockSize) * 2，而非 CeilAlign(D*typeSize, blockSize)。
+    int64_t dSize = Ops::Base::CeilAlign(d_ / HALF_COEF * typeSize, blockSize_) * HALF_COEF;
     int64_t numDAvail = Ops::Base::FloorDiv(static_cast<int64_t>(aicoreParams_.ubSize), DOUBLE_BUFFER * dSize);
     int64_t ubBufNum = (dCosFlag_ == 1) ? UB_BUF_NUM_WITH_DCOS : UB_BUF_NUM_WITHOUT_DCOS;
     OP_CHECK_IF(numDAvail < ubBufNum,
@@ -76,7 +80,7 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassA::ComputeUbFactor()
         return ge::GRAPH_FAILED);
     numDAvail /= ubBufNum;
     ubFactorB_ = std::min(blockFactorB_, numDAvail);
-    ubFactorB_ = std::min(ubFactorB_, MAX_COPY_BLOCK_COUNT);
+    ubFactorB_ = std::min(ubFactorB_, MAX_COPY_BLOCK_COUNT / HALF_COEF);
     return ge::GRAPH_SUCCESS;
 }
 
