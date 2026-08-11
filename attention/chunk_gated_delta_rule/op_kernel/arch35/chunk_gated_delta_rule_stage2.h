@@ -210,8 +210,8 @@ public:
         }
         CalVPrime(sTP_->kCumdecay[mm_offset0], stateForAic, sTP_->vInner[mm_offset1]);
         CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic, sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
-        CrossCoreSetFlag<0x4, PIPE_MTE1>(0x2 + FLAG_ID_MAX);
-        CrossCoreSetFlag<0x4, PIPE_MTE1>(0x2);
+        CrossCoreSetFlag<0x4, PIPE_FIX>(0x2 + FLAG_ID_MAX);
+        CrossCoreSetFlag<0x4, PIPE_FIX>(0x2);
         CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x5 + FLAG_ID_MAX);
         CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x5);
         if constexpr (kIsFp32) {
@@ -221,8 +221,8 @@ public:
             SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
             WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
         }
-        CrossCoreSetFlag<0x4, PIPE_MTE1>(0x4 + FLAG_ID_MAX);
-        CrossCoreSetFlag<0x4, PIPE_MTE1>(0x4);
+        CrossCoreSetFlag<0x4, PIPE_FIX>(0x4 + FLAG_ID_MAX);
+        CrossCoreSetFlag<0x4, PIPE_FIX>(0x4);
     }
 
     __aicore__ inline void CalGCumExpFp32(GlobalTensor<float> gCum)
