@@ -1159,6 +1159,51 @@ def _validate_direct_pa_kv_shapes(key, value, k_descale, v_descale):
     if mismatches:
         raise ValueError("direct PA input shape mismatch; " + "; ".join(mismatches))
 
+    expected_pa_stride = (
+        N_kv * BLOCK_SIZE * D,
+        BLOCK_SIZE * D,
+        D,
+        1,
+    )
+    stride_mismatches = [
+        f"{name}: got {tuple(tensor.stride())}, expected {expected_pa_stride}"
+        for name, tensor in (("K", key), ("V", value))
+        if tuple(tensor.stride()) != expected_pa_stride
+    ]
+    if stride_mismatches:
+        raise ValueError(
+            "direct PA_BNSD input stride mismatch; " + "; ".join(stride_mismatches)
+        )
+
+
+def _materialize_pa_bnsd(tensor):
+    """Copy a rank-4 PA tensor into the exact segmented PA_BNSD strides.
+
+    PyTorch may preserve a non-canonical stride on singleton dimensions after
+    ``permute(...).contiguous()`` because such a tensor is already considered
+    contiguous.  The QBSA kernel validates every stride exactly, including a
+    size-1 N dimension, so allocate the required strides explicitly.
+    """
+    if tensor.dim() != 4:
+        raise ValueError(
+            f"PA_BNSD tensor must be rank 4, got shape {tuple(tensor.shape)}"
+        )
+    _, num_heads, block_size, head_dim = tensor.shape
+    expected_stride = (
+        int(num_heads) * int(block_size) * int(head_dim),
+        int(block_size) * int(head_dim),
+        int(head_dim),
+        1,
+    )
+    materialized = torch.empty_strided(
+        tuple(tensor.shape),
+        expected_stride,
+        dtype=tensor.dtype,
+        device=tensor.device,
+    )
+    materialized.copy_(tensor)
+    return materialized
+
 
 # ==============================================================================
 # 数据生成
@@ -1230,6 +1275,7 @@ def _generate_reference_style_mxfp8_inputs():
     key, k_descale_flat = quantize_mxfp8_qk(
         k_fp32, FP8_DTYPE, QUANT_GROUP_SIZE
     )
+    key = _materialize_pa_bnsd(key)
     k_descale = pack_qk_scale_for_npu(k_descale_flat)
 
     value_bsnd, v_descale_bsgnd = quantize_mxfp8_v(
@@ -1237,7 +1283,7 @@ def _generate_reference_style_mxfp8_inputs():
         FP8_DTYPE,
         QUANT_GROUP_SIZE,
     )
-    value = value_bsnd.permute(0, 2, 1, 3).contiguous()
+    value = _materialize_pa_bnsd(value_bsnd.permute(0, 2, 1, 3))
     v_descale_bnsd = v_descale_bsgnd.permute(0, 2, 1, 3).contiguous()
     v_descale = convert_v_scale_to_pa(
         v_descale_bnsd,
