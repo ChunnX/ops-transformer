@@ -106,25 +106,60 @@ aclnnStatus CheckSingleParamQliV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t 
                                   const std::string &socVersion)
 {
     // num_heads_k 校验
-    CHECK_COND(numHeadsK == 1, ACLNN_ERR_PARAM_INVALID, "num_heads_kv should only be 1, but got %lld", numHeadsK);
+    if (numHeadsK != 1) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "num_heads_kv", std::to_string(numHeadsK),
+            "The value of num_heads_kv should be 1");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // batch_size 非负校验
-    CHECK_COND(batchSize >= 0, ACLNN_ERR_PARAM_INVALID, "batch_size should not be negative, but got %lld", batchSize);
+    if (batchSize < 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "batch_size", std::to_string(batchSize),
+            "The value of batch_size should not be negative");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // max_seqlen_q 校验
-    CHECK_COND(maxSeqlenQ >= -1, ACLNN_ERR_PARAM_INVALID, "max_seqlen_q should be >= -1, but got %lld", maxSeqlenQ);
+    if (maxSeqlenQ < -1) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "max_seqlen_q", std::to_string(maxSeqlenQ),
+            "The value of max_seqlen_q should be >= -1");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // max_seqlen_k 校验
-    CHECK_COND(maxSeqlenK >= -1, ACLNN_ERR_PARAM_INVALID, "max_seqlen_k should be >= -1, but got %lld", maxSeqlenK);
+    if (maxSeqlenK < -1) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "max_seqlen_k", std::to_string(maxSeqlenK),
+            "The value of max_seqlen_k should be >= -1");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // mask_mode 校验
-    CHECK_COND((maskMode == QLI_V2_NO_MASK_MODE) || (maskMode == QLI_V2_CAUSAL_MASK_MODE), ACLNN_ERR_PARAM_INVALID,
-               "mask_mode should be %lld/%lld, but got %lld", QLI_V2_NO_MASK_MODE, QLI_V2_CAUSAL_MASK_MODE, maskMode);
+    if ((maskMode != QLI_V2_NO_MASK_MODE) && (maskMode != QLI_V2_CAUSAL_MASK_MODE)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mask_mode", std::to_string(maskMode),
+            "The value of mask_mode should be " + std::to_string(QLI_V2_NO_MASK_MODE) + " or " +
+            std::to_string(QLI_V2_CAUSAL_MASK_MODE));
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // layout_q 校验
-    CHECK_COND((layoutQOptional != nullptr), ACLNN_ERR_PARAM_INVALID, "layout_q is null!");
-    CHECK_COND((strcmp(layoutQOptional, "TND") == 0) || (strcmp(layoutQOptional, "BSND") == 0), ACLNN_ERR_PARAM_INVALID,
-               "layout_q must be TND or BSND, but got %s", layoutQOptional);
+    if (layoutQOptional == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_q", "Layout_q is null");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if ((strcmp(layoutQOptional, "TND") != 0) && (strcmp(layoutQOptional, "BSND") != 0)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q", layoutQOptional,
+            "The value of layout_q must be TND or BSND");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // layout_k 校验
-    CHECK_COND((layoutKOptional != nullptr), ACLNN_ERR_PARAM_INVALID, "layout_k is null!");
+    if (layoutKOptional == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_k", "Layout_k is null");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     if ((strcmp(layoutKOptional, "PA_BBND") != 0)) {
         CHECK_COND((strcmp(layoutQOptional, layoutKOptional) == 0), ACLNN_ERR_PARAM_INVALID,
                    "For layout_k != PA_BBND, layout_q and layout_k must be the same!");
+    }
+    if ((strcmp(layoutKOptional, "PA_BBND") != 0) && (strcmp(layoutQOptional, layoutKOptional) != 0)) {
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "layout_q and layout_k",
+            layoutQOptional + " and " + layoutKOptional,
+            "For layout_k != PA_BBND, layout_q and layout_k must be the same");
+        return ACLNN_ERR_PARAM_INVALID;
     }
     // 校验 A2/A3 参数
     if (socVersion.find("Ascend950") == std::string::npos) {
