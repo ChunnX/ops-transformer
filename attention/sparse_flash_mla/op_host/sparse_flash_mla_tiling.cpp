@@ -2065,16 +2065,20 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
                                           SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
     uint32_t totalBS1 = (tilingInfo->qLayout == SMLALayout::TND) ?
                         tilingInfo->s1Size : (tilingInfo->bSize * tilingInfo->s1Size);
+    bool isPa = (tilingInfo->kvLayout == SMLALayout::PA_BBND);
     uint32_t oriBlocksizeFlag =
         static_cast<uint32_t>((tilingInfo->oriBlockSize & (tilingInfo->oriBlockSize - 1)) == 0);
     uint32_t cmpBlocksizeFlag =
         static_cast<uint32_t>((tilingInfo->cmpBlockSize & (tilingInfo->cmpBlockSize - 1)) == 0);
-    uint32_t blocksizeFlag = (tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) ?
-                             oriBlocksizeFlag : (oriBlocksizeFlag && cmpBlocksizeFlag);
-    uint64_t cmpUbSize = static_cast<uint64_t>(tilingInfo->cmpMaxBlockNumPerBatch) * sizeof(int32_t) +
+    uint32_t blocksizeFlag = isPa ? ((tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) ?
+                              oriBlocksizeFlag : (oriBlocksizeFlag && cmpBlocksizeFlag)) : 1U;
+    uint64_t paExtraUb = std::max(
+        static_cast<uint64_t>(tilingInfo->oriMaxBlockNumPerBatch) * sizeof(int32_t),
+        static_cast<uint64_t>(tilingInfo->cmpMaxBlockNumPerBatch) * sizeof(int32_t));
+    uint64_t cmpUbSize = (isPa ? paExtraUb : 0U) +
                          static_cast<uint64_t>(alignedCmpSparseBlockCount) * sizeof(int32_t) +
                          static_cast<uint64_t>(alignedCmpSparseBlockCount) * sizeof(int64_t);
-    uint64_t oriUbSize = static_cast<uint64_t>(tilingInfo->oriMaxBlockNumPerBatch) * sizeof(int32_t) +
+    uint64_t oriUbSize = (isPa ? paExtraUb : 0U) +
                          static_cast<uint64_t>(alignedOriSparseBlockCount) * sizeof(int32_t) +
                          static_cast<uint64_t>(alignedOriSparseBlockCount) * sizeof(int64_t);
     uint64_t vectorizeUbSize = std::max(cmpUbSize, oriUbSize);
@@ -2083,7 +2087,6 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
          tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
          tilingInfo->perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
         (vectorizeUbSize <= UB_SIZE) && blocksizeFlag &&
-        (tilingInfo->kvLayout == SMLALayout::PA_BBND) &&
         (tilingInfo->npuArch == NpuArch::DAV_3510));
 
     size_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
