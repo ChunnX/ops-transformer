@@ -8,10 +8,10 @@
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
@@ -40,15 +40,15 @@
   \end{cases}\\
   hMix &= xGamma @ phi^{T}\\
   w &= hMix \odot invRms\\
-  [pPre, pPost, pRes] &= \begin{cases}
-      split(w, [n, n, n^{2}]), & alpha.shape=[3] \\
-      [split(w, [n, n]), 0], & alpha.shape=[2]
+  (pPre, pPost, pRes) &= \begin{cases}
+      split(w, (n, n, n^{2})), & alpha.shape=(3) \\
+      (split(w, (n, n)), 0), & alpha.shape=(2)
   \end{cases}\\
   hPre &= \sigma(pPre \odot alpha0 + bias0) + hcEps\\
   hPost &= 2\sigma(pPost \odot alpha1 + bias1)\\
   hRes &= \begin{cases}
-      pRes \odot alpha2 + bias2, & alpha.shape=[3] \\
-      0, & alpha.shape=[2]
+      pRes \odot alpha2 + bias2, & alpha.shape=(3) \\
+      0, & alpha.shape=(2)
   \end{cases}\\
   hIn_{d} &= \sum_{i=0}^{n-1} hPre_{i} x_{i,d}
   \end{aligned}
@@ -115,50 +115,50 @@ aclnnStatus aclnnMhcPre(
       <td>x</td>
       <td>输入</td>
       <td>待计算数据，表示网络中mHC层的输入数据，对应公式中的x。</td>
-      <td>不能为空Tensor。</td>
+      <td><ul><li>不支持空Tensor。</li><li>shape为(B, S, n, D)或(T, n, D)。</li></ul></td>
       <td>BFLOAT16或FLOAT16</td>
       <td>ND</td>
-      <td>[B,S,n,D] 或 [T,n,D]</td>
+      <td>3-4</td>
       <td>√</td>
   </tr>
   <tr>
       <td>phi</td>
       <td>输入</td>
       <td>mHC的参数矩阵，对应公式中的phi。</td>
-      <td>不能为空Tensor。</td>
+      <td><ul><li>不支持空Tensor。</li><li>shape为(n!+2n, nD)、(n<sup>2</sup>+2n, nD)或(2n, nD)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[n^2+2n, nD]或[2n, nD]</td>
+      <td>2-3</td>
       <td>√</td>
   </tr>
   <tr>
       <td>alpha</td>
       <td>输入</td>
       <td>mHC的缩放参数，对应公式中的alpha。</td>
-      <td>不能为空Tensor。</td>
+      <td><ul><li>不支持空Tensor。</li><li>shape为(3)或(2)。</li></ul></td>
       <td>FLOAT32</td>
-      <td>-</td>
-      <td>[3]或[2]</td>
-      <td>-</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>×</td>
   </tr>
   <tr>
       <td>bias</td>
-          <td>输入</td>
+      <td>输入</td>
       <td>mHC的bias参数，对应公式中的bias。</td>
-      <td>不能为空Tensor。</td>
+      <td><ul><li>不支持空Tensor。</li><li>shape为(n!+2n)、(n<sup>2</sup>+2n)或(2n)。</li></ul></td>
       <td>FLOAT32</td>
-      <td>-</td>
-      <td>[n^2+2n]或[2n]</td>
-      <td>-</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>√</td>
   </tr>
   <tr>
       <td>gammaOptional</td>
       <td>可选输入</td>
       <td>表示进行RmsNorm计算的缩放因子，对应公式中的gamma。</td>
-      <td>对于推理场景，可传空指针。</td>
+      <td>对于推理场景，可传空指针。shape为(n, D)。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[n, D]</td>
+      <td>2</td>
       <td>√</td>
   </tr>
   <tr>
@@ -185,60 +185,60 @@ aclnnStatus aclnnMhcPre(
       <td>hIn</td>
       <td>输出</td>
       <td>输出的h_in作为Attention/MLP层的输入，对应公式中的hIn。</td>
-      <td>不能为空Tensor。</td>
+      <td><ul><li>不支持空Tensor。</li><li>shape为(B, S, D)或(T, D)。</li></ul></td>
       <td>BFLOAT16或FLOAT16</td>
       <td>ND</td>
-      <td>[B,S,D] 或 [T,D]</td>
-      <td>-</td>
+      <td>2-3</td>
+      <td>×</td>
   </tr>
   <tr>
       <td>hPost</td>
       <td>输出</td>
       <td>输出的mHC的h_post变换矩阵，对应公式中的hPost。</td>
-      <td>不能为空Tensor。</td>
+      <td><ul><li>不支持空Tensor。</li><li>shape为(B, S, n)或(T, n)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[B,S,n] 或 [T,n]</td>
-      <td>-</td>
+      <td>2-3</td>
+      <td>×</td>
   </tr>
   <tr>
       <td>hRes</td>
       <td>输出</td>
       <td>输出的mHC的h_res变换矩阵（未做sinkhorn变换），对应公式中的hRes。</td>
-      <td>当alpha=[3]时不能为空Tensor；当alpha=[2]时可传空指针。</td>
+      <td><ul><li>不支持空Tensor。</li><li>当alpha=[2)时可传空指针。</li><li>shape为(B, S, n, n)、(T, n, n)、(B, S, n!)或(T, n!)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[B,S,n,n] 或 [T,n,n]</td>
-      <td>-</td>
+      <td>2-4</td>
+      <td>×</td>
   </tr>
   <tr>
       <td>invRmsOptional</td>
       <td>可选输出</td>
       <td>RmsNorm计算得到的1/r，对应公式中的invRms。</td>
-      <td>-</td>
+      <td><ul><li>不支持空Tensor。</li><li>shape为(B, S)或(T)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[B,S] 或 [T]</td>
-      <td>-</td>
+      <td>1-2</td>
+      <td>×</td>
   </tr>
   <tr>
       <td>hMixOptional</td>
       <td>可选输出</td>
       <td>xGamma与phi矩阵乘的结果，对应公式中的hMix。</td>
-      <td>-</td>
+      <td><ul><li>不支持空Tensor。</li><li>shape为(B, S, n!+2n)、(T, n!+2n)、(B, S, n<sup>2</sup>+2n)、(T, n<sup>2</sup>+2n)、(B, S, 2n)或(T, 2n)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[B,S,n^2+2n] 或 [T,n^2+2n] 或 [B,S,2n] 或 [T, 2n]</td>
+      <td>2-3</td>
       <td>-</td>
   </tr>
   <tr>
       <td>hPreOptional</td>
       <td>可选输出</td>
       <td>做完sigmoid计算之后的h_pre矩阵，对应公式中的hPre。</td>
-      <td>-</td>
+      <td><ul><li>不支持空Tensor。</li><li>shape为(B, S, n)或(T, n)。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[B,S,n] 或 [T,n]</td>
+      <td>2-3</td>
       <td>-</td>
   </tr>
   <tr>
@@ -262,6 +262,14 @@ aclnnStatus aclnnMhcPre(
       <td>-</td>
   </tr>
   </tbody></table>
+
+  <!-- npu="950" id7 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - 参数`phi`的shape仅支持(n<sup>2</sup>+2n, nD)或(2n, nD)。
+    - 参数`bias`的shape仅支持(n<sup>2</sup>+2n)或(2n)。
+    - 参数`hRes`的shape仅支持(B, S, n, n)或(T, n, n)。
+    - 参数`hMixOptional`的shape仅支持(B, S, n<sup>2</sup>+2n)、(T, n<sup>2</sup>+2n)、(B, S, 2n)、(T, 2n)。
+  <!-- end id7 -->
 
 - **返回值**
 
@@ -352,9 +360,21 @@ aclnnStatus aclnnMhcPre(
   - aclnnMhcPre默认确定性实现。
 
 - 规格约束：
-  - n目前支持4、6、8。
-  - D支持1~16384范围以内，需满足D为16对齐。
-  - 当alpha=[3]时，支持hRes输出，必须满足以下条件：输入phi=[n^2+2n, nD],bias=[n^2+2n]，输出hMixOptional=[B,S,n^2+2n] 或 [T,n^2+2n]；当alpha=[2]时，hRes输出为0，必须满足以下条件：输入phi=[2n, nD],bias=[2n]，输出hMixOptional=[B,S,2n] 或 [T,2n]。
+  <!-- npu="950" id7 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - n目前支持4、6、8。
+    - D支持1~16384范围以内，需满足D为16对齐。
+    - 当alpha=(3)时，支持hRes输出，必须满足以下条件：输入phi=(n<sup>2</sup>+2n, nD)，bias=(n<sup>2</sup>+2n)；输出hMixOptional=(B, S, n<sup>2</sup>+2n)或(T, n<sup>2</sup>+2n)；当alpha=(2)时，hRes输出为0，必须满足以下条件：输入phi=(2n, nD),bias=(2n)，输出hMixOptional=(B, S, 2n) 或 (T, 2n)。
+  <!-- end id7 -->
+  <!-- npu="A3,910b" id8 -->
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - n目前支持4。
+    - D支持100000范围以内，需满足D为128对齐。
+    - 当alpha=(3)时，支持hRes输出，必须满足以下条件：
+      - 输入phi=(n<sup>2</sup>+2n, nD)，bias=(n<sup>2</sup>+2n)；输出hMixOptional=(B, S, n<sup>2</sup>+2n)或(T, n<sup>2</sup>+2n)。
+      - 输入phi=(n!+2n, nD)，bias=(n!+2n)；输出hMixOptional=(B, S, n!+2n)或(T, n!+2n)。
+    - 当alpha=(2)时，hRes输出为0，必须满足以下条件：输入phi=(2n, nD),bias=(2n)，输出hMixOptional=(B, S, 2n)或(T, 2n)。
+  <!-- end id8 -->
   - 可选输出 invRmsOptional、hMixOptional、hPreOptional 为互存关系，需同时输出或全部不输出，不支持仅返回其中部分，输出条件：invRmsOptional!=nullptr && hMixOptional!=nullptr && hPreOptional!=nullptr。
 
 ## 调用示例
