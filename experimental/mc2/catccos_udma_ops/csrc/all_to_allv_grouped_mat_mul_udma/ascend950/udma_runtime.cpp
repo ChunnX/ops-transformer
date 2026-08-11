@@ -74,12 +74,6 @@ void UdmaRuntime::Initialize(int32_t rank, int32_t worldSize, const std::string 
                     " bytes of symmetric UDMA workspace");
     }
     fftsAddress_ = shmemx_get_ffts_config();
-    if (fftsAddress_ == 0) {
-        aclshmem_free(workspace_);
-        workspace_ = nullptr;
-        shmem_finalize();
-        TORCH_CHECK(false, "SHMEM returned an invalid FFTS configuration address");
-    }
 
     rank_ = rank;
     worldSize_ = worldSize;

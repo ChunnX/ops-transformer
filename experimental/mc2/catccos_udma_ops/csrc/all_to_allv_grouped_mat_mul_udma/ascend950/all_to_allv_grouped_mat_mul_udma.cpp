@@ -102,8 +102,14 @@ at::Tensor EmptySymmetric(const at::Tensor &deviceAnchor, at::IntArrayRef sizes,
 void LaunchAllToAllVGroupedMatMulUdma(const DeviceOp::Params &params, uint32_t blockDim,
                                       aclrtStream stream, uint64_t fftsAddress)
 {
-    Catccos::DGemm::Device::KernelAdapter<Kernel><<<blockDim, nullptr, stream>>>(
-        params, fftsAddress, nullptr);
+    // Match CatCCOS DeviceDGemm::Run: zero selects the adapter overload that
+    // does not configure an explicit FFTS synchronization base address.
+    if (fftsAddress == 0) {
+        Catccos::DGemm::Device::KernelAdapter<Kernel><<<blockDim, nullptr, stream>>>(params, nullptr);
+    } else {
+        Catccos::DGemm::Device::KernelAdapter<Kernel><<<blockDim, nullptr, stream>>>(
+            params, fftsAddress, nullptr);
+    }
 }
 
 at::Tensor AllToAllVGroupedMatMulUdmaImpl(
