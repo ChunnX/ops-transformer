@@ -24,18 +24,20 @@ _TESTS_DIR = os.path.join(_ASSETS_DIR, "..", "..")
 if _TESTS_DIR not in sys.path:
     sys.path.insert(0, _TESTS_DIR)
 import quant_flash_attn_golden as golden_mod
+import quant_flash_attn_hif8_golden as hif8_golden_mod
 
 logger = logging.getLogger(__name__)
 
 
-def _apply_golden_globals(params):
+def _apply_golden_globals(params, golden_mod=None):
     """把 case 参数注入 golden 模块全局变量 (与 qfa_mxfp8_wrapper 一致).
 
-    prepare_npu_inputs 读 golden_mod 的全局变量 (B/N_q/N_kv/D/ENABLE_PA/...),
+    prepare_npu_inputs 读目标 golden_mod 的全局变量 (B/N_q/N_kv/D/ENABLE_PA/...),
     必须在调 prepare_npu_inputs 前把 csv attributes 全部注入.
     """
+    target = golden_mod if golden_mod is not None else golden_mod
     for k, v in params.items():
-        setattr(golden_mod, k, v)
+        setattr(target, k, v)
 
 
 class QuantFlashAttnAclGraph(torch.nn.Module):
@@ -142,7 +144,8 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
                 "DATA_RANGE_Q": kwargs.get("data_range_q", data_range_q),
                 "DATA_RANGE_K": kwargs.get("data_range_k", data_range_k),
                 "DATA_RANGE_V": kwargs.get("data_range_v", data_range_v),
-            }
+            },
+            golden_mod=hif8_golden_mod if quant_mode == 7 else golden_mod,
         )
 
         # ---- 3. 透传 ----
@@ -175,7 +178,8 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         )
 
         # ---- 4. prepare_npu_inputs ----
-        inputs = golden_mod.prepare_npu_inputs(
+        _graph_golden = hif8_golden_mod if quant_mode == 7 else golden_mod
+        inputs = _graph_golden.prepare_npu_inputs(
             q_fp8,
             k_fp8,
             v_fp8,
