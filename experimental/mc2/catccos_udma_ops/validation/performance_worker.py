@@ -17,10 +17,10 @@ import ops_transformer_catccos_udma as udma
 
 try:
     from .case_schema import read_resolved_cases
-    from .common import write_json
+    from .common import udma_init_method_from_env, write_json
 except ImportError:  # Direct execution keeps the source tree out of package lookup.
     from case_schema import read_resolved_cases
-    from common import write_json
+    from common import udma_init_method_from_env, write_json
 
 
 def _make_tensor(shape, distribution, device, generator):
@@ -55,7 +55,13 @@ def main():
     out = None
     try:
         torch_npu.npu.set_device(local_rank)
-        udma.init_udma_group(rank=rank, world_size=world_size, local_rank=local_rank)
+        init_method = udma_init_method_from_env()
+        if rank == 0:
+            print("UDMA bootstrap: {}".format(init_method), flush=True)
+        udma.init_udma_group(
+            rank=rank, world_size=world_size, local_rank=local_rank,
+            init_method=init_method,
+        )
         initialized_udma = True
         dist.init_process_group("hccl", rank=rank, world_size=world_size)
         initialized_dist = True

@@ -8,6 +8,7 @@ import datetime
 import json
 import os
 import platform
+import socket
 import sys
 from pathlib import Path
 from typing import Any, Dict, Mapping, Sequence, Union
@@ -34,6 +35,25 @@ def write_csv(
         writer = csv.DictWriter(stream, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
+
+
+def udma_init_method_from_env() -> str:
+    """Build the numeric ``IPv4:port`` string accepted by SHMEM."""
+    host = os.environ.get("UDMA_MASTER_ADDR", "127.0.0.1")
+    try:
+        address = socket.gethostbyname(host)
+    except OSError as error:
+        raise RuntimeError(
+            "Unable to resolve UDMA_MASTER_ADDR={!r} to IPv4".format(host)
+        ) from error
+    port = int(
+        os.environ.get(
+            "UDMA_MASTER_PORT", str(int(os.environ.get("MASTER_PORT", "29500")) + 1)
+        )
+    )
+    if port <= 0 or port > 65535:
+        raise RuntimeError("UDMA_MASTER_PORT must be in [1, 65535]")
+    return "{}:{}".format(address, port)
 
 
 def environment_fingerprint() -> Dict[str, Any]:
