@@ -1880,6 +1880,9 @@ def cpu_mxfp8_golden(
                     q_end,
                     head_idx,
                 )
+                q_dequant = q_block * _expand_d_group_scale(q_scale_block, head_dim)
+                q_dequant_wide = None
+
                 m_run = torch.full((nq,), neg_inf, dtype=torch.float32)
                 l_run = torch.zeros((nq,), dtype=torch.float32)
                 acc = torch.zeros((nq, head_dim), dtype=torch.float32)
@@ -1962,15 +1965,32 @@ def cpu_mxfp8_golden(
                         kernel_row_max, kernel_chunk_max
                     )
 
-                    # Kernel max reduction starts from -FLT_MAX.  Therefore a
-                    # NaN or -Inf score does not win the comparison against the
-                    # running max, while +Inf does.  Replace only the former
-                    # two values with the initial sentinel before reducing.
-                    kernel_scores_for_max = torch.where(
-                        torch.isnan(scores) | torch.isneginf(scores),
-                        torch.full_like(scores, EMPTY_LSE),
-                        scores,
-                    )
+                    # Keep the FP32 score above as the Golden output path: its
+                    # NaN propagation matches the kernel.  Only when FP32 has
+                    # already lost the overflow direction, recompute the same
+                    # dequantize-then-matmul formula in FP64 for row-max
+                    # classification.  Casting C1 back to FP32 recovers +Inf
+                    # versus -Inf without changing attention/LSE computation.
+                    kernel_scores_for_max = scores
+                    problematic_scores = valid_mask & ~torch.isfinite(scores)
+                    if bool(problematic_scores.any().item()):
+                        if q_dequant_wide is None:
+                            q_dequant_wide = q_block.to(torch.float64) * (
+                                _expand_d_group_scale(
+                                    q_scale_block, head_dim
+                                ).to(torch.float64)
+                            )
+                        k_dequant_wide = k_mat.to(torch.float64) * (
+                            _expand_d_group_scale(k_scale_mat, head_dim).to(
+                                torch.float64
+                            )
+                        )
+                        kernel_scores_for_max = torch.matmul(
+                            q_dequant_wide, k_dequant_wide.transpose(0, 1)
+                        ).to(torch.float32)
+                        kernel_scores_for_max = (
+                            kernel_scores_for_max * softmax_scale
+                        )
                     kernel_scores = torch.where(
                         valid_mask,
                         kernel_scores_for_max,
@@ -1980,6 +2000,7 @@ def cpu_mxfp8_golden(
                     kernel_row_max = torch.maximum(
                         kernel_row_max, kernel_chunk_max
                     )
+
                     scores = torch.where(
                         valid_mask, scores, torch.full_like(scores, MASK_VALUE)
                     )
