@@ -739,13 +739,17 @@ ge::graphStatus CompressorTiling::CheckRequiredInOutExistence() const
     OP_CHECK_IF(context_->cmpKv.desc == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cmp_kv", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->softmaxScore.shape == nullptr, OP_LOGE(context_->opName, "tensor softmaxScore is nullptr"),
+    OP_CHECK_IF(context_->softmaxScore.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "softmax_score", "shape is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->softmaxScore.desc == nullptr, OP_LOGE(context_->opName, "tensor softmaxScore is nullptr"),
+    OP_CHECK_IF(context_->softmaxScore.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "softmax_score", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->kv.shape == nullptr, OP_LOGE(context_->opName, "tensor kv is nullptr"),
+    OP_CHECK_IF(context_->kv.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "kv", "shape is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->kv.desc == nullptr, OP_LOGE(context_->opName, "tensor kv is nullptr"),
+    OP_CHECK_IF(context_->kv.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "kv", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
     if (context_->layout == LayoutType::LAYOUT_TH) {
         OP_CHECK_IF(context_->cuSeqlens.desc == nullptr,
