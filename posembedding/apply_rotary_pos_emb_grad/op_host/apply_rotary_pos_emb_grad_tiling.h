@@ -28,6 +28,34 @@
 
 namespace optiling {
 
+BEGIN_TILING_DATA_DEF(ApplyRopeGradRegbaseParams)
+TILING_DATA_FIELD_DEF(int64_t, b);
+TILING_DATA_FIELD_DEF(int64_t, s);
+TILING_DATA_FIELD_DEF(int64_t, d);
+TILING_DATA_FIELD_DEF(int64_t, nQ);
+TILING_DATA_FIELD_DEF(int64_t, nK);
+TILING_DATA_FIELD_DEF(int64_t, blockNumB);
+TILING_DATA_FIELD_DEF(int64_t, blockFactorB);
+TILING_DATA_FIELD_DEF(int64_t, blockNumS);
+TILING_DATA_FIELD_DEF(int64_t, blockFactorS);
+TILING_DATA_FIELD_DEF(int64_t, ubFactorS);
+TILING_DATA_FIELD_DEF(int64_t, ubLoopNumN);
+TILING_DATA_FIELD_DEF(int64_t, ubFactorN);
+TILING_DATA_FIELD_DEF(int64_t, ubTailFactorN);
+TILING_DATA_FIELD_DEF(int64_t, usedCoreNum);
+TILING_DATA_FIELD_DEF(int64_t, rotaryMode);
+TILING_DATA_FIELD_DEF(int64_t, layout);
+TILING_DATA_FIELD_DEF(uint32_t, dCosFlag);
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(ApplyRopeGradRegbaseParamsOp, ApplyRopeGradRegbaseParams)
+
+BEGIN_TILING_DATA_DEF(ApplyRotaryPosEmbGradTilingData)
+TILING_DATA_FIELD_DEF_STRUCT(ApplyRopeGradRegbaseParams, ropeGradParams);
+TILING_DATA_FIELD_DEF(uint32_t, dCosFlag);
+TILING_DATA_FIELD_DEF(uint32_t, layout);
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(ApplyRotaryPosEmbGrad, ApplyRotaryPosEmbGradTilingData)
+
 struct ApplyRotaryPosEmbGradCompileInfo {
     int64_t numBlocks;
     uint64_t ubSize;
@@ -113,7 +141,6 @@ protected:
     ge::graphStatus InitTilingData();
     ge::graphStatus TilingReduce();
     ge::graphStatus SetTilingKeyBlockDim(uint32_t dxTilingKey);
-    ge::graphStatus SetRotaryXTilingData();
 
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     const static int64_t MAX_COPY_BLOCK_COUNT = 4095;
