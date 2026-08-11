@@ -103,7 +103,7 @@ struct FiaTilingShapeCompareParam {
     std::map<FiaAxis, FiaCompareType> compareTypeMap = {};
 };
 
-static std::string GetShapeStr(gert::Shape shape)
+[[maybe_unused]] static std::string GetShapeStr(gert::Shape shape)
 {
     std::ostringstream oss;
     oss << "[";
