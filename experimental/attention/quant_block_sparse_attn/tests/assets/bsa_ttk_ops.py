@@ -53,48 +53,6 @@ def _none_if_empty(tensor):
     return None if tensor is None or int(tensor.numel()) == 0 else tensor
 
 
-def _validate_shared_inputs(
-    query,
-    key,
-    sparse_indices,
-    cu_seqlens_q,
-    cu_seqlens_kv,
-    seqused_q,
-    seqused_kv,
-    *,
-    batch_size,
-    num_heads_q,
-    num_heads_kv,
-    head_dim,
-    blocksize,
-    layout_q,
-    quant_mode,
-):
-    if cu_seqlens_kv is not None and int(cu_seqlens_kv.numel()) != 0:
-        raise ValueError("cu_seqlens_kv must be an empty tensor")
-    if seqused_q is not None and int(seqused_q.numel()) != 0:
-        raise ValueError("seqused_q must be an empty tensor")
-    if int(quant_mode) == 2:
-        if layout_q != "TND":
-            raise ValueError(f"MXFP8 requires layout_q='TND', got {layout_q!r}")
-        return
-    if int(sparse_indices.shape[0]) != int(batch_size):
-        raise ValueError("batch_size does not match sparse_indices")
-    query_heads = int(query.shape[0] if layout_q == "NTD" else query.shape[1])
-    if query_heads != int(num_heads_q):
-        raise ValueError("num_heads_q does not match query")
-    if int(key.shape[1]) != int(num_heads_kv):
-        raise ValueError("num_heads_kv does not match key")
-    if int(query.shape[-1]) != int(head_dim):
-        raise ValueError("head_dim does not match query")
-    if int(key.shape[2]) != int(blocksize):
-        raise ValueError("blocksize does not match key")
-    if int(cu_seqlens_q.numel()) != int(batch_size) + 1:
-        raise ValueError("cu_seqlens_q must contain batch_size + 1 values")
-    if int(seqused_kv.numel()) != int(batch_size):
-        raise ValueError("seqused_kv must contain batch_size values")
-
-
 class QuantBlockSparseAttnMetadataBuilder:
     """Derive and create the metadata consumed by the main operator."""
 
@@ -209,33 +167,12 @@ def _prepare_operator_inputs(
     quant_mode,
     softmax_scale,
     mask_mode,
-    blocksize,
     sparse_block_size_q,
     sparse_block_size_kv,
     layout_q,
     layout_kv,
     layout_sparse_indices,
-    batch_size,
-    num_heads_q,
-    num_heads_kv,
-    head_dim,
 ):
-    _validate_shared_inputs(
-        query,
-        key,
-        sparse_indices,
-        cu_seqlens_q,
-        cu_seqlens_kv,
-        seqused_q,
-        seqused_kv,
-        batch_size=batch_size,
-        num_heads_q=num_heads_q,
-        num_heads_kv=num_heads_kv,
-        head_dim=head_dim,
-        blocksize=blocksize,
-        layout_q=layout_q,
-        quant_mode=quant_mode,
-    )
     p_scale = _none_if_empty(p_scale)
     if int(quant_mode) == 1 and p_scale is None:
         raise ValueError("FP8 requires a non-empty p_scale tensor")
@@ -331,16 +268,11 @@ class QuantBlockSparseAttnGraph(torch.nn.Module):
             quant_mode=quant_mode,
             softmax_scale=softmax_scale,
             mask_mode=mask_mode,
-            blocksize=blocksize,
             sparse_block_size_q=sparse_block_size_q,
             sparse_block_size_kv=sparse_block_size_kv,
             layout_q=layout_q,
             layout_kv=layout_kv,
             layout_sparse_indices=layout_sparse_indices,
-            batch_size=batch_size,
-            num_heads_q=num_heads_q,
-            num_heads_kv=num_heads_kv,
-            head_dim=head_dim,
         )
         _synchronize_npu(query)
         for name, tensor in (
@@ -460,16 +392,11 @@ def quant_block_sparse_attn(
         quant_mode=quant_mode,
         softmax_scale=softmax_scale,
         mask_mode=mask_mode,
-        blocksize=blocksize,
         sparse_block_size_q=sparse_block_size_q,
         sparse_block_size_kv=sparse_block_size_kv,
         layout_q=layout_q,
         layout_kv=layout_kv,
         layout_sparse_indices=layout_sparse_indices,
-        batch_size=batch_size,
-        num_heads_q=num_heads_q,
-        num_heads_kv=num_heads_kv,
-        head_dim=head_dim,
     )
     return torch.ops.custom.npu_quant_block_sparse_attn(
         query,
