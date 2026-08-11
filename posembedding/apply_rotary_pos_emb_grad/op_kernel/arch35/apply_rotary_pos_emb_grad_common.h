@@ -12,6 +12,7 @@
  * \file apply_rotary_pos_emb_grad_common.h
  * \brief
  */
+
 #ifndef APPLY_ROTARY_POS_EMB_GRAD_COMMON_H
 #define APPLY_ROTARY_POS_EMB_GRAD_COMMON_H
 
@@ -24,6 +25,12 @@
 #include "../../apply_rotary_pos_emb/arch35/apply_rotary_pos_emb_common.h"
 #else
 #include "../../apply_rotary_pos_emb/op_kernel/arch35/apply_rotary_pos_emb_common.h"
+#endif
+// 复用 rotary_position_embedding_grad 的 common header（含 HalfGradAlignVF 等计算函数）
+#if __has_include("../../rotary_position_embedding_grad/op_kernel/arch35/rotary_position_embedding_grad_common.h")
+#include "../../rotary_position_embedding_grad/op_kernel/arch35/rotary_position_embedding_grad_common.h"
+#else
+#include "../../rotary_position_embedding_grad/arch35/rotary_position_embedding_grad_common.h"
 #endif
 
 using namespace AscendC;
