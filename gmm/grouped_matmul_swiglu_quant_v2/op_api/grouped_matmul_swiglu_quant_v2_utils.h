@@ -540,10 +540,14 @@ protected:
         }
     }
 
-    void CreateMultiWeightScaleTensorListForTranspose(const aclTensorList *tensorList,
+    bool CreateMultiWeightScaleTensorListForTranspose(const aclTensorList *tensorList,
                                                       std::vector<aclTensor *> &newTensorList,
                                                       aclOpExecutor *executor) const
     {
+        if (tensorList == nullptr || executor == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor list or executor is nullptr during transpose preparation.");
+            return false;
+        }
         op::Shape shape;
         for (uint64_t idx = 0; idx < (*tensorList).Size(); idx++) {
             const aclTensor *inputTensor = (*tensorList)[idx];
@@ -557,31 +561,40 @@ protected:
             shape.AppendDim(viewShape.GetDim(0));
             shape.AppendDim(viewShape.GetDim(2));
             aclTensor *tensor = executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset());
+            if (tensor == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for transposed weightScale[%llu] failed.",
+                        static_cast<unsigned long long>(idx));
+                return false;
+            }
             tensor->SetStorageFormat(inputTensor->GetStorageFormat());
             tensor->SetStorageShape(storageShape);
             newTensorList.emplace_back(tensor);
         }
+        return true;
     }
 
-    void PrepareOriginalShapesBeforeContiguous() override
+    aclnnStatus PrepareOriginalShapesBeforeContiguous() override
     {
         weightScaleOriginalShapes_.clear();
         if (!IsMxWeightNzMultiTensorSupported()) {
-            GroupedMatmulSwigluQuantHandler::PrepareOriginalShapesBeforeContiguous();
-            return;
+            return GroupedMatmulSwigluQuantHandler::PrepareOriginalShapesBeforeContiguous();
         }
         if (!gmmDsqParams_.transposeWeight) {
-            GroupedMatmulSwigluQuantHandler::PrepareOriginalShapesBeforeContiguous();
-            return;
+            return GroupedMatmulSwigluQuantHandler::PrepareOriginalShapesBeforeContiguous();
         }
 
         std::vector<aclTensor *> weightTensorList;
         std::vector<aclTensor *> weightScaleTensorList;
-        CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, l0Executor_);
+        CHECK_RET(CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, l0Executor_),
+                  ACLNN_ERR_INNER_NULLPTR);
         gmmDsqParams_.weight = l0Executor_->AllocTensorList(weightTensorList.data(), weightTensorList.size());
-        CreateMultiWeightScaleTensorListForTranspose(gmmDsqParams_.weightScale, weightScaleTensorList, l0Executor_);
+        CHECK_RET(gmmDsqParams_.weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        CHECK_RET(CreateMultiWeightScaleTensorListForTranspose(
+                      gmmDsqParams_.weightScale, weightScaleTensorList, l0Executor_),
+                  ACLNN_ERR_INNER_NULLPTR);
         gmmDsqParams_.weightScale =
             l0Executor_->AllocTensorList(weightScaleTensorList.data(), weightScaleTensorList.size());
+        CHECK_RET(gmmDsqParams_.weightScale != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
         for (size_t i = 0; i < gmmDsqParams_.weight->Size(); ++i) {
             auto *w = (*gmmDsqParams_.weight)[i];
@@ -592,6 +605,7 @@ protected:
         for (size_t i = 0; i < gmmDsqParams_.weightScale->Size(); ++i) {
             weightScaleOriginalShapes_.emplace_back((*gmmDsqParams_.weightScale)[i]->GetViewShape());
         }
+        return ACLNN_SUCCESS;
     }
 
     void RestoreOriginalShapesAfterContiguous() override

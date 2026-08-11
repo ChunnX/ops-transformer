@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
- /*!
+/*!
  * \file test_aclnn_grouped_matmul_swiglu_quant_v2.cpp
  * \brief CSV-driven opapi UT for grouped_matmul_swiglu_quant_v2 (aligned with gmm grouped_matmul opapi UT style).
  */
@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -45,6 +46,74 @@ using ops::ut::BuildAclTensorListDesc;
 using ops::ut::MakeAclTensorDesc;
 
 constexpr size_t kSwigluCsvColumnCount = 45;
+
+template <typename WorkspaceApi>
+void ExpectRequiredInputNullChecks(WorkspaceApi workspaceApi)
+{
+    auto x = TensorDesc({4, 32}, ACL_INT8, ACL_FORMAT_ND).ToAclType();
+    auto weightTensor = TensorDesc({1, 32, 64}, ACL_INT8, ACL_FORMAT_ND).ToAclType();
+    auto weightScaleTensor = TensorDesc({1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ToAclType();
+    auto xScale = TensorDesc({4}, ACL_FLOAT, ACL_FORMAT_ND).ToAclType();
+    auto groupList = TensorDesc({1}, ACL_INT64, ACL_FORMAT_ND).ToAclType();
+    auto output = TensorDesc({4, 32}, ACL_INT8, ACL_FORMAT_ND).ToAclType();
+    auto outputScale = TensorDesc({4}, ACL_FLOAT, ACL_FORMAT_ND).ToAclType();
+
+    const aclTensor *weightItems[] = {weightTensor.get()};
+    const aclTensor *weightScaleItems[] = {weightScaleTensor.get()};
+    aclTensor *nullTensor = nullptr;
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weight(
+        aclCreateTensorList(weightItems, 1), aclDestroyTensorList);
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> weightScale(
+        aclCreateTensorList(weightScaleItems, 1), aclDestroyTensorList);
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> emptyList(
+        aclCreateTensorList(nullptr, 0), aclDestroyTensorList);
+    unique_ptr<aclTensorList, decltype(&aclDestroyTensorList)> nullElementList(
+        aclCreateTensorList(&nullTensor, 1), aclDestroyTensorList);
+
+    auto invoke = [&](const aclTensor *xArg, const aclTensorList *weightArg,
+                      const aclTensorList *weightScaleArg, const aclTensor *xScaleArg,
+                      const aclTensor *groupListArg, aclTensor *outputArg, aclTensor *outputScaleArg) {
+        uint64_t workspaceSize = 0;
+        aclOpExecutor *executor = nullptr;
+        return workspaceApi(xArg, weightArg, weightScaleArg, nullptr, nullptr, xScaleArg, nullptr,
+                            groupListArg, 0, 0, 0, 0, nullptr, outputArg, outputScaleArg,
+                            &workspaceSize, &executor);
+    };
+
+    EXPECT_EQ(invoke(nullptr, weight.get(), weightScale.get(), xScale.get(), groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), nullptr, weightScale.get(), xScale.get(), groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), emptyList.get(), weightScale.get(), xScale.get(), groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(invoke(x.get(), nullElementList.get(), weightScale.get(), xScale.get(), groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), weight.get(), nullptr, xScale.get(), groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), weight.get(), emptyList.get(), xScale.get(), groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(invoke(x.get(), weight.get(), nullElementList.get(), xScale.get(), groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), weight.get(), weightScale.get(), nullptr, groupList.get(),
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), weight.get(), weightScale.get(), xScale.get(), nullptr,
+                     output.get(), outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), weight.get(), weightScale.get(), xScale.get(), groupList.get(),
+                     nullptr, outputScale.get()),
+              ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(invoke(x.get(), weight.get(), weightScale.get(), xScale.get(), groupList.get(),
+                     output.get(), nullptr),
+              ACLNN_ERR_PARAM_NULLPTR);
+}
 
 aclDataType ParseDtype(const string &dtype)
 {
@@ -441,525 +510,513 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, direct_launch_entry_error_
     EXPECT_NE(aclnnGroupedMatmulSwigluQuantWeightNzV2(nullptr, 0, nullptr, nullptr), ACL_SUCCESS);
 }
 
-TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a8_normal_case)
- {
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
-     int64_t quantGroupSize = 256;
-
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight =
-         TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {e, n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight});
-     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-
-
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                               nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 0);
+TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, required_input_nullptr_error_case)
+{
+    ExpectRequiredInputNullChecks(aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize);
+    ExpectRequiredInputNullChecks(aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize);
 }
 
+TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a8_normal_case)
+{
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
+    int64_t quantGroupSize = 256;
+
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight =
+        TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {e, n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight});
+    TensorDesc weight_sacle = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
+                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 0);
+}
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a8_normal_nz_workspace_case)
 {
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
-     int64_t quantGroupSize = 256;
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
+    int64_t quantGroupSize = 256;
 
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight = TensorDesc({e, n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight});
-     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight = TensorDesc({e, n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight});
+    TensorDesc weight_sacle = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                               nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 0);
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
+                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 0);
 }
-
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a8_wrong_nd_case)
 {
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
-     int64_t quantGroupSize = 256;
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
+    int64_t quantGroupSize = 256;
 
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight = TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight});
-     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight = TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight});
+    TensorDesc weight_sacle = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                               nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 161002);
- }
-
-
- TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a8_wrong_nd_no_nz_case)
-{
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
-     int64_t quantGroupSize = 256;
-
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight = TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight});
-     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                               nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 161002);
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
+                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 161002);
 }
 
-
- TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a8_without_weight_assist_matrix_case)
+TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a8_wrong_nd_no_nz_case)
 {
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
-     int64_t quantGroupSize = 256;
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
+    int64_t quantGroupSize = 256;
 
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight =
-         TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {}, 0, {e, n / 64, k / 16, 16, 64}).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight});
-     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight = TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight});
+    TensorDesc weight_sacle = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                               nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 161002);
- }
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
+                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 161002);
+}
 
+TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a8_without_weight_assist_matrix_case)
+{
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
+    int64_t quantGroupSize = 256;
+
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight =
+        TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {}, 0, {e, n / 64, k / 16, 16, 64}).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight});
+    TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
+                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 161002);
+}
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a4_redundant_weight_assist_matrix_case)
 {
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
-     int64_t quantGroupSize = 256;
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
+    int64_t quantGroupSize = 256;
 
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT4, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight =
-         TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {}, 0, {e, n / 64, k / 16, 16, 64}).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight});
-     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
-     TensorDesc weight_assist_matrix = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_assist_matrix_desc = TensorListDesc({weight_assist_matrix});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT4, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight =
+        TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {}, 0, {e, n / 64, k / 16, 16, 64}).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight});
+    TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
+    TensorDesc weight_assist_matrix = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_assist_matrix_desc = TensorListDesc({weight_assist_matrix});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, weight_assist_matrix_desc, nullptr, xScale_desc,
-                               nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 161002);
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, weight_assist_matrix_desc, nullptr, xScale_desc,
+                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 161002);
 }
-
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a4_normal_case)
 {
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
-     int64_t quantGroupSize = 256;
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
+    int64_t quantGroupSize = 256;
 
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT4, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight =
-         TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {}, 0, {e, n / 64, k / 16, 16, 64}).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight});
-     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT4, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight =
+        TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {}, 0, {e, n / 64, k / 16, 16, 64}).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight});
+    TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                               nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 0);
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
+                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 0);
 }
-
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a4_smoothscale_1d_case)
 {
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
 
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT4, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight =
-         TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {}, 0, {e, n / 64, k / 16, 16, 64}).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight});
-     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     TensorDesc smoothScale_desc = TensorDesc({e}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT4, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight =
+        TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {}, 0, {e, n / 64, k / 16, 16, 64}).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight});
+    TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    TensorDesc smoothScale_desc = TensorDesc({e}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                               smoothScale_desc, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 0);
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
+                              smoothScale_desc, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 0);
 }
-
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a4_smoothscale_2d_case)
 {
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
 
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT4, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight =
-         TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {}, 0, {e, n / 64, k / 16, 16, 64}).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight});
-     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     TensorDesc smoothScale_desc = TensorDesc({e, n / 2}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT4, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight =
+        TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {}, 0, {e, n / 64, k / 16, 16, 64}).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight});
+    TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    TensorDesc smoothScale_desc = TensorDesc({e, n / 2}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                               smoothScale_desc, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 0);
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
+                              smoothScale_desc, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 0);
 }
-
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a4_smoothscale_invalid_dim_case)
 {
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
 
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT4, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight =
-         TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {}, 0, {e, n / 64, k / 16, 16, 64}).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight});
-     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     TensorDesc smoothScale_desc = TensorDesc({e, n / 2, 2}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT4, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight =
+        TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {}, 0, {e, n / 64, k / 16, 16, 64}).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight});
+    TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    TensorDesc smoothScale_desc = TensorDesc({e, n / 2, 2}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                               smoothScale_desc, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 161002);
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
+                              smoothScale_desc, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 161002);
 }
-
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a4_smoothscale_wrong_shape_case)
 {
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
 
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT4, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight =
-         TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {}, 0, {e, n / 64, k / 16, 16, 64}).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight});
-     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     TensorDesc smoothScale_desc = TensorDesc({e + 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT4, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight =
+        TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {}, 0, {e, n / 64, k / 16, 16, 64}).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight});
+    TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    TensorDesc smoothScale_desc = TensorDesc({e + 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                               smoothScale_desc, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 161002);
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
+                              smoothScale_desc, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 161002);
 }
-
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w4a4_wtrans_case)
 {
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
-     int64_t quantGroupSize = 256;
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
+    int64_t quantGroupSize = 256;
 
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT4, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight =
-         TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {e, 1, k}, 0, {e, k / 64, n / 16, 16, 64}).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight});
-     TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT4, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight =
+        TensorDesc({e, k, n}, ACL_INT4, ACL_FORMAT_ND, {e, 1, k}, 0, {e, k / 64, n / 16, 16, 64}).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight});
+    TensorDesc weight_sacle = TensorDesc({e, n}, ACL_UINT64, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                               nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 0);
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
+                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 0);
 }
-
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a8_multi_weight_normal_case)
 {
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
-     int64_t quantGroupSize = 256;
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
+    int64_t quantGroupSize = 256;
 
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight0 =
-         TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
-     TensorDesc weight1 =
-         TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
-     TensorDesc weight2 =
-         TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
-     TensorDesc weight3 =
-         TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight0, weight1, weight2, weight3});
-     TensorDesc weight_sacle0 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc weight_sacle1 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc weight_sacle2 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc weight_sacle3 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle0, weight_sacle1, weight_sacle2, weight_sacle3});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight0 =
+        TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
+    TensorDesc weight1 =
+        TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
+    TensorDesc weight2 =
+        TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
+    TensorDesc weight3 =
+        TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight0, weight1, weight2, weight3});
+    TensorDesc weight_sacle0 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc weight_sacle1 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc weight_sacle2 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc weight_sacle3 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle0, weight_sacle1, weight_sacle2, weight_sacle3});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                               nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 0);
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
+                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 0);
 }
-
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a8_multi_weight_normal_nz_case)
 {
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
-     int64_t quantGroupSize = 256;
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
+    int64_t quantGroupSize = 256;
 
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight0 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
-     TensorDesc weight1 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
-     TensorDesc weight2 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
-     TensorDesc weight3 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight0, weight1, weight2, weight3});
-     TensorDesc weight_sacle0 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc weight_sacle1 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc weight_sacle2 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc weight_sacle3 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle0, weight_sacle1, weight_sacle2, weight_sacle3});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight0 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
+    TensorDesc weight1 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
+    TensorDesc weight2 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
+    TensorDesc weight3 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight0, weight1, weight2, weight3});
+    TensorDesc weight_sacle0 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc weight_sacle1 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc weight_sacle2 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc weight_sacle3 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle0, weight_sacle1, weight_sacle2, weight_sacle3});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                               nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 0);
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
+                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 0);
 }
-
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a8_multi_weight_normal_nz_workspace_case)
 {
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
-     int64_t quantGroupSize = 256;
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
+    int64_t quantGroupSize = 256;
 
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight0 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
-     TensorDesc weight1 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
-     TensorDesc weight2 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
-     TensorDesc weight3 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight0, weight1, weight2, weight3});
-     TensorDesc weight_sacle0 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc weight_sacle1 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc weight_sacle2 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc weight_sacle3 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle0, weight_sacle1, weight_sacle2, weight_sacle3});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight0 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
+    TensorDesc weight1 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
+    TensorDesc weight2 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
+    TensorDesc weight3 = TensorDesc({n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight0, weight1, weight2, weight3});
+    TensorDesc weight_sacle0 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc weight_sacle1 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc weight_sacle2 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc weight_sacle3 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle0, weight_sacle1, weight_sacle2, weight_sacle3});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                               nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 0);
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantWeightNzV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
+                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 0);
 }
-
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a8_multi_weight_wrong_nd_no_nz_case)
 {
-     int64_t m = 192;
-     int64_t k = 2048;
-     int64_t n = 2048;
-     int64_t e = 4;
-     int64_t quantGroupSize = 256;
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 2048;
+    int64_t e = 4;
+    int64_t quantGroupSize = 256;
 
-     TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight0 = TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight1 = TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight2 = TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc weight3 = TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorListDesc weight_desc = TensorListDesc({weight0, weight1, weight2, weight3});
-     TensorDesc weight_sacle0 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc weight_sacle1 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc weight_sacle2 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc weight_sacle3 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle0, weight_sacle1, weight_sacle2, weight_sacle3});
-     TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
-     vector<int64_t> tuningConfigVal = { 10 };
-     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-     TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-     TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight0 = TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight1 = TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight2 = TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc weight3 = TensorDesc({k, n}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorListDesc weight_desc = TensorListDesc({weight0, weight1, weight2, weight3});
+    TensorDesc weight_sacle0 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc weight_sacle1 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc weight_sacle2 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc weight_sacle3 = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorListDesc weight_scale_desc = TensorListDesc({weight_sacle0, weight_sacle1, weight_sacle2, weight_sacle3});
+    TensorDesc xScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 64);
+    vector<int64_t> tuningConfigVal = {10};
+    aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    TensorDesc out1_desc = TensorDesc({m, 1024}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out2_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-     auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
-                         INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
-                               nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
-                         OUTPUT(out1_desc, out2_desc));
-     uint64_t workspace_size = 0;
-     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-     EXPECT_EQ(aclRet, 161002);
+    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuantV2,
+                        INPUT(x_desc, weight_desc, weight_scale_desc, nullptr, nullptr, xScale_desc,
+                              nullptr, groupList_desc, 0, 0, 0, 0, tuningConfig),
+                        OUTPUT(out1_desc, out2_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, 161002);
 }
 
 TEST_P(grouped_matmul_swiglu_quant_v2_opapi_csv_test, run_case)
@@ -975,4 +1032,4 @@ INSTANTIATE_TEST_SUITE_P(
         "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_api", __FILE__))),
     BuildCaseName);
 
-}  // namespace
+} // namespace
