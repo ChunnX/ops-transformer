@@ -17,12 +17,13 @@ OPBASE_STANDARD_URL = (
 OPBASE_REVISION = "7a4b727744c443bfa84d0efc12e54fc18100ab83"
 
 _TOLERANCE_TABLE = {
-    "float16": (2 ** -9, 2 ** -9, 0.99, 1e-1, 2 ** -10),
-    "bfloat16": (2 ** -6, 2 ** -6, 0.99, 1e0, 2 ** -7),
-    "float32": (2 ** -10, 2 ** -16, 0.99, 1e-2, 2 ** -23),
-    "hifloat32": (2 ** -9, 2 ** -10, 0.99, 1e-1, 2 ** -24),
-    "float8e4m3": (2 ** -2, 2 ** -4, 0.99, 1e0, 2 ** -3),
-    "float8e5m2": (2 ** -1, 2 ** -3, 0.99, 1e-1, 2 ** -2),
+    # rtol, atol, required ratio, fixed hard limit, mantissa bits, minimum exponent
+    "float16": (2 ** -9, 2 ** -9, 0.99, 1e-1, 10, -14),
+    "bfloat16": (2 ** -6, 2 ** -6, 0.99, 1e0, 7, -126),
+    "float32": (2 ** -10, 2 ** -16, 0.99, 1e-2, 23, -126),
+    "hifloat32": (2 ** -9, 2 ** -10, 0.99, 1e-1, 23, -126),
+    "float8e4m3": (2 ** -2, 2 ** -4, 0.99, 1e0, 3, -6),
+    "float8e5m2": (2 ** -1, 2 ** -3, 0.99, 1e-1, 2, -14),
 }
 
 _QUANTILE_SAMPLE_LIMIT = 1 << 20
@@ -42,8 +43,7 @@ def precision_standard(dtype: Any) -> Dict[str, Any]:
     normalized = _normalize_dtype(dtype)
     if normalized not in _TOLERANCE_TABLE:
         raise ValueError(f"unsupported opbase precision dtype: {dtype}")
-    rtol, atol, required_ratio, fixed_limit, ulp = _TOLERANCE_TABLE[normalized]
-    ulp_limit = 32 * ulp
+    rtol, atol, required_ratio, fixed_limit, mantissa_bits, emin = _TOLERANCE_TABLE[normalized]
     return {
         "name": "opbase_experimental",
         "source": OPBASE_STANDARD_URL,
@@ -53,9 +53,57 @@ def precision_standard(dtype: Any) -> Dict[str, Any]:
         "atol": atol,
         "required_matched_ratio": required_ratio,
         "max_abs_error_limit_fixed": fixed_limit,
-        "max_abs_error_limit_ulp": ulp_limit,
-        "max_abs_error_limit": max(fixed_limit, ulp_limit),
+        "max_abs_error_limit": "max(fixed, 32 * ULP_at_abs_golden)",
+        "max_abs_error_limit_scope": "per_element",
+        "ulp_mantissa_bits": mantissa_bits,
+        "ulp_min_exponent": emin,
     }
+
+
+def _hard_limit_values(golden_abs: Any, standard: Mapping[str, Any]) -> Any:
+    """Compute max(fixed, 32 * ULP) at each Golden magnitude."""
+    import torch
+
+    values = golden_abs.double()
+    exponents = torch.floor(torch.log2(values))
+    exponents = torch.clamp_min(exponents, standard["ulp_min_exponent"])
+    ulp = torch.pow(2.0, exponents - standard["ulp_mantissa_bits"])
+    return torch.clamp_min(32.0 * ulp, standard["max_abs_error_limit_fixed"])
+
+
+def _hard_limit_statistics(
+    abs_error: Any, expected: Any, standard: Mapping[str, Any]
+) -> Tuple[int, Optional[float]]:
+    """Check the per-element hard limit without materializing another full tensor."""
+    import torch
+
+    error_flat = abs_error.flatten()
+    expected_flat = expected.flatten()
+    violations = 0
+    maximum_ratio: Optional[float] = None
+    for start in range(0, error_flat.numel(), _REDUCTION_CHUNK_ELEMENTS):
+        error_chunk = error_flat[start:start + _REDUCTION_CHUNK_ELEMENTS]
+        golden_abs = expected_flat[start:start + _REDUCTION_CHUNK_ELEMENTS].abs()
+        limit = _hard_limit_values(golden_abs, standard)
+        violations += int((~(error_chunk <= limit)).sum().item())
+        ratio = error_chunk / limit
+        finite_ratio = ratio[torch.isfinite(ratio)]
+        if finite_ratio.numel():
+            chunk_max = float(finite_ratio.max().item())
+            maximum_ratio = chunk_max if maximum_ratio is None else max(maximum_ratio, chunk_max)
+    return violations, maximum_ratio
+
+
+def _hard_limit_at_scalar(golden: float, standard: Mapping[str, Any]) -> Tuple[float, float]:
+    golden_abs = abs(golden)
+    if not math.isfinite(golden_abs):
+        return math.nan, math.nan
+    if golden_abs == 0.0:
+        exponent = int(standard["ulp_min_exponent"])
+    else:
+        exponent = max(math.floor(math.log2(golden_abs)), int(standard["ulp_min_exponent"]))
+    ulp = math.ldexp(1.0, exponent - int(standard["ulp_mantissa_bits"]))
+    return ulp, max(float(standard["max_abs_error_limit_fixed"]), 32.0 * ulp)
 
 
 def _safe_float(value: Any) -> Optional[float]:
@@ -257,7 +305,9 @@ def analyze_accuracy(
     abs_error = (actual_cpu - expected_cpu).abs().double()
     threshold = standard["atol"] + standard["rtol"] * expected_cpu.abs().double()
     mismatch = ~(abs_error <= threshold)
-    hard_violation = ~(abs_error <= standard["max_abs_error_limit"])
+    hard_violation_count, maximum_hard_error_ratio = _hard_limit_statistics(
+        abs_error, expected_cpu, standard
+    )
     total = actual_cpu.numel()
     mismatch_count = int(mismatch.sum().item())
     matched_ratio = 1.0 if total == 0 else (total - mismatch_count) / total
@@ -269,7 +319,7 @@ def analyze_accuracy(
     else:
         max_abs_error = math.inf
     ratio_pass = matched_ratio >= standard["required_matched_ratio"]
-    max_error_pass = max_abs_error <= standard["max_abs_error_limit"]
+    max_error_pass = hard_violation_count == 0
     passed = ratio_pass and max_error_pass
 
     tiny = torch.finfo(torch.float64).tiny
@@ -307,6 +357,9 @@ def analyze_accuracy(
         for score_value, flat_index in zip(top_values.tolist(), top_indices.tolist()):
             row, column = divmod(int(flat_index), columns)
             local_expert, source_rank = _segment_for_row(segments, row)
+            expected_value = float(expected_cpu[row, column])
+            ulp, hard_limit = _hard_limit_at_scalar(expected_value, standard)
+            hard_error_ratio = float(score_value) / hard_limit
             top_mismatches.append(
                 {
                     "flat_index": int(flat_index),
@@ -315,12 +368,15 @@ def analyze_accuracy(
                     "local_expert": local_expert,
                     "source_rank": source_rank,
                     "actual": _safe_float(actual_cpu[row, column]),
-                    "expected": _safe_float(expected_cpu[row, column]),
+                    "expected": _safe_float(expected_value),
                     "abs_error": _safe_float(score_value),
                     "rel_error": _safe_float(relative_error[row, column]),
                     "error_ratio": _safe_float(error_ratio[row, column]),
+                    "ulp_at_abs_expected": _safe_float(ulp),
+                    "hard_limit": _safe_float(hard_limit),
+                    "hard_error_ratio": _safe_float(hard_error_ratio),
                     "mixed_tolerance_pass": not bool(mismatch[row, column]),
-                    "hard_limit_pass": not bool(hard_violation[row, column]),
+                    "hard_limit_pass": bool(float(score_value) <= hard_limit),
                 }
             )
 
@@ -342,7 +398,8 @@ def analyze_accuracy(
         "ratio_pass": ratio_pass,
         "max_abs_error": _safe_float(max_abs_error),
         "max_abs_error_pass": max_error_pass,
-        "hard_limit_violation_count": int(hard_violation.sum().item()),
+        "hard_limit_violation_count": hard_violation_count,
+        "maximum_hard_error_ratio": _safe_float(maximum_hard_error_ratio),
         "nan": {
             "actual": int(torch.isnan(actual_cpu).sum().item()),
             "expected": int(torch.isnan(expected_cpu).sum().item()),

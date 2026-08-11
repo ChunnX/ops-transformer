@@ -134,11 +134,13 @@ Pass/fail follows the
 [opbase experimental precision standard](https://gitcode.com/cann/opbase/blob/master/docs/zh/ops_precision_standard/experimental_standard.md)
 for BF16 exactly: mixed
 tolerance `rtol=atol=2^-6` must match at least 99% of meaningful output
-elements, and maximum absolute error must not exceed 1.0. Padded capacity is
-reported separately and is not counted as valid output. Every path/rank writes
-`report.json`, a Top-K error CSV, a downsampled error-ratio heatmap, expert and
-source-rank breakdowns, and a bounded `failure_dump.pt` on failure. The batch
-root contains machine-readable `summary.json` and `summary.csv`.
+elements. Every element must also satisfy the BF16 hard limit
+`abs_error <= max(1.0, 32 * ULP_at_abs_golden)`; the ULP is evaluated at that
+element's Golden magnitude. Padded capacity is reported separately and is not
+counted as valid output. Every path/rank writes `report.json`, a Top-K error CSV
+including the per-element ULP/hard limit, a downsampled error-ratio heatmap,
+expert and source-rank breakdowns, and a bounded `failure_dump.pt` on failure.
+The batch root contains machine-readable `summary.json` and `summary.csv`.
 
 Pass/fail counts and maximum error always use every meaningful output element.
 For tensors larger than 1,048,576 elements, diagnostic median/p90/p99 values use
