@@ -14,13 +14,23 @@
  * \brief
  */
 
+#if ASC_DEVKIT_MAJOR >= 9 && ASC_DEVKIT_MINOR > 0
+#define IS_BLAZE true
+#else
+#define IS_BLAZE false
+#endif
+
 #ifdef __CCE_KT_TEST__
 #include "stub_def.h"
 #include "stub_fun.h"
 #endif
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if IS_BLAZE
+#include "arch35/grouped_matmul_add_tensor_api_kernel.h"
+#else
 #include "arch35/grouped_matmul_add_basic_cgmct.h"
+#endif
 #else
 #include "grouped_matmul_add.h"
 #endif
@@ -31,7 +41,9 @@
 #endif
 
 using namespace AscendC;
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) && IS_BLAZE)
 using namespace matmul;
+#endif
 
 /* pour changement co */
 
@@ -396,7 +408,12 @@ extern "C" __global__ __aicore__ void grouped_matmul_add(GM_ADDR x, GM_ADDR weig
     REGISTER_TILING_DEFAULT(GroupedMatmulAdd::GmmAddTilingDataParams);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
     if (TILING_KEY_IS(10000900009000090001UL)) { // split_k
+#if IS_BLAZE
+        GroupedMatmulAdd::GmmAddTensorApi<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
+            x, weight, groupList, y, tiling);
+#else
         GroupedMatmulAdd::GmmAddCgmct<layout::ColumnMajor, layout::RowMajor>(x, weight, groupList, y, tiling);
+#endif
     }
 #else
 #ifndef __CCE_UT_TEST__

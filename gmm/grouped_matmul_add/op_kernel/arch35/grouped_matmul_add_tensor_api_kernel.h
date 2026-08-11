@@ -1,0 +1,85 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file grouped_matmul_add_tensor_api_kernel.h
+ * \brief Grouped matmul add outer kernel implemented with Tensor API.
+ */
+
+#pragma once
+
+#include "blaze/gemm/block/block_mmad_matmul_basic.h"
+#include "blaze/gemm/block/block_scheduler_gmm_no_quant.h"
+#include "blaze/gemm/kernel/kernel_grouped_matmul_add.h"
+#include "grouped_matmul_add_tiling_data.h"
+
+namespace GroupedMatmulAdd {
+
+template <typename LayoutA, typename LayoutB>
+__aicore__ inline void GmmAddTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR groupList, GM_ADDR y, GM_ADDR tiling)
+{
+    GET_TILING_DATA_MEMBER(GmmAddTilingDataParams, gmmAddParams, gmmAddParams, tiling);
+    GET_TILING_DATA_MEMBER(GmmAddTilingDataParams, mmTilingData, mmTilingData, tiling);
+
+    using AType = DTYPE_X;
+    using BType = DTYPE_X;
+    using CType = DTYPE_Y;
+    using BiasType = CType;
+    using LayoutC = AscendC::Te::NDExtLayoutPtn;
+    using LayoutBias = AscendC::Te::NDExtLayoutPtn;
+    using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using DispatchPolicy = Blaze::Gemm::MatmulMultiBlockBasic<0, 0, Blaze::Gemm::KernelGroupedMmadAdd, 0>;
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
+                                                    BiasType, LayoutBias>;
+    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueEmpty;
+    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmNoQuant;
+    using GroupedMatmulAddKernel = Blaze::Gemm::Kernel::GemmUniversal<
+        ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
+    using Params = typename GroupedMatmulAddKernel::Params;
+    using GMMAddTiling = typename GroupedMatmulAddKernel::GMMAddTiling;
+
+    const uint64_t baseM = static_cast<uint64_t>(mmTilingData.baseM);
+    const uint64_t baseN = static_cast<uint64_t>(mmTilingData.baseN);
+    const uint64_t baseK = static_cast<uint64_t>(mmTilingData.baseK);
+    const uint64_t sharedKStep = Blaze::Gemm::Min(static_cast<uint64_t>(mmTilingData.stepKa),
+                                                  static_cast<uint64_t>(mmTilingData.stepKb));
+    const uint64_t kL1 = baseK * Blaze::Gemm::Max(sharedKStep, static_cast<uint64_t>(1));
+
+    GMMAddTiling gmmParams{static_cast<uint32_t>(gmmAddParams.groupNum),
+                           static_cast<uint32_t>(gmmAddParams.groupListType),
+                           static_cast<uint64_t>(gmmAddParams.mTailCnt),
+                           static_cast<uint64_t>(gmmAddParams.nTailCnt)};
+    typename BlockMmad::Params mmParams{
+        x,
+        weight,
+        y,
+        nullptr,
+        groupList,
+        nullptr,
+        baseM,
+        baseN,
+        kL1,
+        static_cast<uint32_t>(baseM),
+        static_cast<uint32_t>(baseN),
+        static_cast<uint32_t>(baseK),
+        2U,
+        static_cast<uint16_t>(mmTilingData.dbL0C),
+        nullptr};
+
+    ProblemShape problemShape{static_cast<int64_t>(mmTilingData.M),
+                              static_cast<int64_t>(mmTilingData.N),
+                              static_cast<int64_t>(mmTilingData.Ka),
+                              static_cast<int64_t>(1)};
+    Params params{problemShape, mmParams, {}, gmmParams};
+    GroupedMatmulAddKernel kernel;
+    kernel(params);
+}
+
+} // namespace GroupedMatmulAdd
