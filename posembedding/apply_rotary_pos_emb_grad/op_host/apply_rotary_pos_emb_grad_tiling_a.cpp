@@ -12,6 +12,7 @@
  * \brief A template tiling (NO_BROADCAST, DxTilingKey=205)
  */
 #include "apply_rotary_pos_emb_grad_tiling.h"
+#include <algorithm>
 
 namespace optiling {
 constexpr uint64_t APPLY_ROPE_GRAD_A_TILING_PRIORITY = 40000;

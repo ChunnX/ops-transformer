@@ -17,7 +17,6 @@
 #include "arch35/apply_rotary_pos_emb_grad_tiling_key.h"
 #include "arch35/apply_rotary_pos_emb_grad_tiling_data.h"
 #include "arch35/apply_rotary_pos_emb_grad_bab.h"
-#include "arch35/apply_rotary_pos_emb_grad_ab.h"
 #include "arch35/apply_rotary_pos_emb_grad_a.h"
 #include "arch35/apply_rotary_pos_emb_grad_dag.h"
 
@@ -66,12 +65,14 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
         op.Process();
         pipe.Reset();
     } else if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB)) {
+#if 0  // AB template not yet implemented
         ApplyRotaryPosEmbGradAB<DTYPE_GRAD_QUERY_EMBED> op(&pipe, &tilingData.ropeGradABParams);
         op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin,
                 query, key,
                 gradQueryOut, gradKeyOut, gradCosOut, gradSinOut);
         op.Process();
         pipe.Reset();
+#endif
     } else if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
         if constexpr (DcosFlag) {
             // 融合模式：grad_cos/grad_sin 在 Phase 1 内同步累加，grad 只搬一次
@@ -101,7 +102,7 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
         GM_ADDR usrWorkSpace = AscendC::GetUserWorkspace(workspace);
 
         // 单份中间结果大小 = B * S * max(nQ, nK) * D
-        int64_t maxN = std::max(tilingData.ropeGradParams.nQ, tilingData.ropeGradParams.nK);
+        int64_t maxN = max(tilingData.ropeGradParams.nQ, tilingData.ropeGradParams.nK);
         int64_t partSize = tilingData.ropeGradParams.b * tilingData.ropeGradParams.s *
                            maxN * tilingData.ropeGradParams.d;
 

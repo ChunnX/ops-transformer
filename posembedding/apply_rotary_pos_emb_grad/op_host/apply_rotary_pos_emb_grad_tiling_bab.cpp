@@ -14,6 +14,7 @@
  */
 
 #include "apply_rotary_pos_emb_grad_tiling.h"
+#include <algorithm>
 
 namespace optiling {
 constexpr uint64_t APPLY_ROPE_GRAD_BAB_TILING_PRIORITY = 20000;
@@ -213,6 +214,7 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassBAB::PostTiling()
     tilingData_->ropeGradParams.usedCoreNum = usedCoreNum_;
     tilingData_->ropeGradParams.rotaryMode = static_cast<int64_t>(rotaryMode_);
     tilingData_->ropeGradParams.layout = static_cast<int64_t>(layout_);
+    tilingData_->ropeGradParams.dCosFlag = dCosFlag_;
     tilingData_->dCosFlag = dCosFlag_;
     tilingData_->layout = static_cast<uint32_t>(layout_);
     SetTilingKeyBlockDim(static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_BAB));
