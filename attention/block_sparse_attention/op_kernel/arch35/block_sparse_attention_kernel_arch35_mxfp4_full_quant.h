@@ -72,11 +72,15 @@ public:
     static constexpr uint8_t SYNC_MODE_2 = 2;
     static constexpr uint8_t SYNC_MODE_4 = 4;
     static constexpr uint16_t CROSS_CORE_SYNC_V1_C1[2] = {9, 10};
-    static constexpr uint16_t CROSS_CORE_SYNC_GMAX_UB_TO_L1 = 8;
-    static constexpr uint16_t CROSS_CORE_SYNC_GMAX_L1_TO_UB = 7;
-    static constexpr uint16_t CROSS_CORE_SYNC_PSCALE_C2 = 6;
-    static constexpr uint16_t CROSS_CORE_SYNC_C2_V2 = 5;
-    static constexpr uint16_t CROSS_CORE_SYNC_V2_C2 = 4;
+    static constexpr uint16_t CROSS_CORE_SYNC_GMAX_L1_UB_BACK = 8;
+    static constexpr uint16_t CROSS_CORE_SYNC_GMAX_UB_TO_L1_BUF1 = 7;
+    static constexpr uint16_t CROSS_CORE_SYNC_GMAX_UB_TO_L1_BUF0 = 6;
+    static constexpr uint16_t CROSS_CORE_SYNC_GMAX_L1_TO_UB_BUF1 = 5;
+    static constexpr uint16_t CROSS_CORE_SYNC_GMAX_L1_TO_UB_BUF0 = 4;
+    static constexpr uint16_t CROSS_CORE_SYNC_PSCALE_C2_BUF1 = 3;
+    static constexpr uint16_t CROSS_CORE_SYNC_PSCALE_C2_BUF0 = 2;
+    static constexpr uint16_t CROSS_CORE_SYNC_C2_V2 = 1;
+    static constexpr uint16_t CROSS_CORE_SYNC_V2_C2 = 0;
 
     static constexpr uint32_t PV_RE_DELAY_N = 20;
     static constexpr uint32_t DELAY_PSCALE_N = 3;
@@ -246,8 +250,8 @@ public:
             if (coreTileLoop >= PV_RE_DELAY_N && delay20CoreTaskId < coreTaskNum) {
                 if ASCEND_IS_AIC {
                     if (delay20TileInfo.isTileGoupFirstTile) {
-                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_PSCALE_C2);
-                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_PSCALE_C2 + 16);
+                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_PSCALE_C2_BUF0 + delay20TileInfo.pscaleNum);
+                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_PSCALE_C2_BUF0 + delay20TileInfo.pscaleNum + 16);
                     }
                     if (delay20TileInfo.isUpdatePScale) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2);
@@ -319,22 +323,26 @@ public:
                 // delay3TileInfo = tileInfos[(coreTileLoop - DELAY_PSCALE_N) % PRELOAD_TASK_CACHE_SIZE];
                 if (delay3TileInfo.isUpdatePScale) {
                     if ASCEND_IS_AIC {
-                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1);
-                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1 + 16);
+                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1_BUF0 + delay3TileInfo.tileMaxIdx / 2);
+                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1_BUF0 + delay3TileInfo.tileMaxIdx / 2 + 16);
                         auto l1GMaxLayoutTla = tla::MakeLayout<ElementLocalGlobalMax, LayoutLocalGlobalMax>(1, EpMXFP4::KVS_BASE_SIZE);
                         auto l1GMaxTensorTla = tla::MakeTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx], l1GMaxLayoutTla, Arch::PositionUB{});
                         CopyGMaxL1ToUb(delay3TileInfo);
                         blockGMaxL1ToUb(l1GMaxTensorTla, delay3TileInfo);
-                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
-                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB + 16);
+                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB_BUF0 + delay3TileInfo.tileMaxIdx / 2);
+                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB_BUF0 + delay3TileInfo.tileMaxIdx / 2 + 16);
+                        if (delay3TileInfo.tileMaxIdx == 3 || (delay3CoreTaskId == coreTaskNum - 1 && delay3TileInfo.isLastKvsTile)) { // tilemax最后一块 或者 单核上的最后一块
+                            AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_UB_BACK);
+                            AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_UB_BACK + 16);
+                        }
                     } else {
-                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
+                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_GMAX_L1_TO_UB_BUF0 + delay3TileInfo.tileMaxIdx / 2);
                         // UpdatePScale(delay3TileInfo);
                         epilogueComputePScale(
                             l1PScaleTensorTla, 
                             delay3TileInfo);
                         // AscendC::DumpTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx], 168, 128);
-                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2);
+                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2_BUF0 + delay3TileInfo.pscaleNum);
                     }
                 }
             }
@@ -404,13 +412,16 @@ public:
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId]);
                     }
                     if (curTileInfo.isUpdatePScale) {
+                        if (curTileInfo.tileMaxIdx == 0) {
+                            AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_GMAX_L1_UB_BACK);
+                        }
                         auto l1GMaxLayoutTla = tla::MakeLayout<ElementLocalGlobalMax, LayoutLocalGlobalMax>(2, EpMXFP4::QS_BASE_SIZE);
                         auto l1GMaxTensorTla = tla::MakeTensor(l1LocalGlobalMaxTensor[curTileInfo.tileMaxIdx], l1GMaxLayoutTla, Arch::PositionL1{});
                         // CopyGMaxUbToL1(curTileInfo);
                         epilogueCopyGlobalMaxUbToL1(
                             l1GMaxTensorTla, 
                             curTileInfo);
-                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_GMAX_UB_TO_L1);
+                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_GMAX_UB_TO_L1_BUF0 + curTileInfo.tileMaxIdx / 2);
                     }
 #endif
                 }
@@ -835,7 +846,9 @@ public:
         if (info.isFirstKvsTile || info.isTileGoupFirstTile) {
             tileLoopIdx_ = (tileLoopIdx_ + 1) % 2;
             tileMaxIdx_ = (tileMaxIdx_ + 1) % 4;
+            pscaleNum_ = (pscaleNum_ + 1) % 20;
         }
+        info.pscaleNum = static_cast<uint16_t>(pscaleNum_ / 10);
         info.tileBuffIdx = tileLoopIdx_;
         info.tileMaxIdx = tileMaxIdx_;
         info.updateScaleIdx = updateScaleIdx_;
@@ -855,7 +868,8 @@ public:
     void InitSyncFlags()
     {
         if ASCEND_IS_AIC {
-
+            AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_UB_BACK);
+            AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_UB_BACK + 16);
         } else {
             // 核间
             AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[0]);
@@ -892,6 +906,9 @@ public:
             AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[1]);
             AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[1] + 16);
         } else {
+            // 核间
+            AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_GMAX_L1_UB_BACK);
+
             // mask2index
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
@@ -992,6 +1009,7 @@ private:
     uint32_t updateScaleIdx_ = 3;       // C2 Sync 时切换 (循环 0~3)// dm
     uint32_t tileLoopIdx_ = 1;          // 双缓冲索引 (0/1)
     uint32_t tileMaxIdx_ = 3;           // 四缓冲索引 (0~3)
+    uint32_t pscaleNum_ = 19;           // 20缓冲索引 (0~19)
 };
 
 }
