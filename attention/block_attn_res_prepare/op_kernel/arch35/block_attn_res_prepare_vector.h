@@ -40,7 +40,7 @@ public:
             wait_flag(PIPE_V, PIPE_MTE2, static_cast<event_t>(eventIndex));
         }
         for (uint32_t eventIndex = 0; eventIndex < MTE3_MAX_PIPE_ID; ++eventIndex) {
-            set_flag(PIPE_MTE3, PIPE_V, static_cast<event_t>(eventIndex));
+            wait_flag(PIPE_MTE3, PIPE_V, static_cast<event_t>(eventIndex));
         }
     }
 
@@ -101,14 +101,8 @@ public:
         }
         const uint32_t validN = static_cast<uint32_t>(validNValue);
         // validN comes from valid_blocks at runtime. The host only provides
-        // the capacity; choose cache/reload here for the concrete N.  The
-        // V-cache path uses event IDs [qBufferNum, qBufferNum + validN - 1]
-        // for the MTE2->V handshakes, so it is legal only when the eight event
-        // IDs are not exceeded.
-        const bool eventIdRangeAvailable =
-            qBufferNum_ <= MAX_PIPE_ID && validN <= (MAX_PIPE_ID - qBufferNum_);
-        const bool cacheAllV = validNValue <= tilingData_->vCacheRows && baseDAlign_ >= dAlign_ &&
-                               eventIdRangeAvailable;
+        // the capacity; choose cache/reload here for the concrete N.
+        const bool cacheAllV = validNValue <= tilingData_->vCacheRows && baseDAlign_ >= dAlign_;
 
         const uint64_t workStart = static_cast<uint64_t>(blockIdx) * tilingData_->blockFactor +
                                    ((blockIdx < tilingData_->bigCoreNum) ? blockIdx : tilingData_->bigCoreNum);
@@ -121,7 +115,7 @@ public:
 private:
     static constexpr uint64_t FP32_BYTES = sizeof(float);
     static constexpr uint32_t FP32_32B_ALIGN_ELEMS = 8U;
-    static constexpr uint32_t MAX_PIPE_ID = 8U; // valid event IDs are [0, MAX_PIPE_ID - 1]
+    static constexpr uint32_t MAX_PIPE_ID = 8U;
     static constexpr uint32_t MTE3_MAX_PIPE_ID = 4U;
     static constexpr uint64_t MAX_UINT32_VALUE = 0xFFFFFFFFULL;
 
@@ -236,9 +230,9 @@ private:
         return GetUbAddr<float>(byteOffset);
     }
 
-    __aicore__ inline __ubuf__ float *CopyInV(uint64_t vOffset, uint32_t validD, uint64_t vLoop)
+    __aicore__ inline __ubuf__ float *CopyInV(uint64_t vOffset, uint32_t validD, uint64_t vLoop_)
     {
-        const uint32_t bufferIndex = static_cast<uint32_t>(vLoop % tilingData_->vBufferNum);
+        const uint32_t bufferIndex = static_cast<uint32_t>(vLoop_ % tilingData_->vBufferNum);
         const uint64_t byteOffset = vUbOffset_ +
                                     static_cast<uint64_t>(bufferIndex) * baseDAlign_ * FP32_BYTES;
         CopyGmToUb(byteOffset, blockResidualAddr_ + vOffset, validD, baseDAlign_);
@@ -263,7 +257,6 @@ private:
                    statUbOffset_ + static_cast<uint64_t>(BlockAttnResPrepareVF::MAX_OFFSET) * FP32_BYTES, 1, 8);
         CopyUbToGm(softmaxSumAddr_ + statOutputOffset,
                    statUbOffset_ + static_cast<uint64_t>(BlockAttnResPrepareVF::SUM_OFFSET) * FP32_BYTES, 1, 8);
-        WaitMte3ToVector(eventId);
     }
 
     __aicore__ inline void CopyOutO(uint64_t outputOffset, uint32_t validD, uint32_t dLoop)
@@ -274,7 +267,6 @@ private:
         const event_t eventId = GetEvent(bufferIndex);
         WaitVectorToMte3(eventId);
         CopyUbToGm(weightedOutputAddr_ + outputOffset, byteOffset, validD, baseDAlign_);
-        WaitMte3ToVector(eventId);
     }
 
     __aicore__ inline void AccumulateStats(__ubuf__ float *qAddr, __ubuf__ float *vAddr,
@@ -316,7 +308,6 @@ private:
         const uint64_t tIndex = workId / tilingData_->totalS;
         const uint64_t sIndex = workId - tIndex * tilingData_->totalS;
         __ubuf__ float *statAddr = GetUbAddr<float>(statUbOffset_);
-        uint64_t vLoop = 0U;
 
         for (uint32_t dLoop = 0; dLoop < dTileNum_; ++dLoop) {
             const uint32_t dOffset = dLoop * tilingData_->baseD;
@@ -324,7 +315,7 @@ private:
             const uint32_t validD = static_cast<uint32_t>(
                 remainingD < tilingData_->baseD ? remainingD : tilingData_->baseD);
             const uint64_t qOffset = sIndex * tilingData_->totalD + dOffset;
-            wait_flag(PIPE_V, PIPE_MTE2, qCount_ & 1);
+            wait_flag(PIPE_V, PIPE_MTE2, qLoop_ & 1);
             __ubuf__ float *qAddr = CopyInQ(qOffset, validD, dLoop);
 
             for (uint32_t nIndex = 0; nIndex < validN; ++nIndex) {
@@ -336,17 +327,16 @@ private:
                     const uint32_t cacheOffset = nIndex * dAlign_ + dOffset;
                     vAddr = CopyVToCache(vOffset, cacheOffset, validD, nIndex & 1U);
                 } else {
-                    wait_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + vCount_ & 1);
-                    vAddr = CopyInV(vOffset, validD, vLoop++);
+                    wait_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + (vLoop_ & 1));
+                    vAddr = CopyInV(vOffset, validD, vLoop_);
                 }
                 AccumulateStats(qAddr, vAddr, statAddr, dLoop, validD, nIndex);
                 if (!cacheAllV) {
-                    set_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + vCount_ & 1);
-                    vCount_++;
+                    set_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + (vLoop_++ & 1));
                 }
             }
-            set_flag(PIPE_V, PIPE_MTE2, qCount_ & 1);
-            qCount_++;
+            set_flag(PIPE_V, PIPE_MTE2, qLoop_ & 1);
+            qLoop_++;
         }
 
         FinalizeStats(statAddr, validN);
@@ -358,26 +348,25 @@ private:
             const uint64_t remainingD = tilingData_->totalD - dOffset;
             const uint32_t validD = static_cast<uint32_t>(
                 remainingD < tilingData_->baseD ? remainingD : tilingData_->baseD);
-            const uint32_t outputBufferIndex = dLoop % tilingData_->oBufferNum;
+            const uint32_t outputBufferIndex = oLoop_ % tilingData_->oBufferNum;
             const uint64_t outputByteOffset =
                 oUbOffset_ + static_cast<uint64_t>(outputBufferIndex) * baseDAlign_ * FP32_BYTES;
             __ubuf__ float *outputAddr = GetUbAddr<float>(outputByteOffset);
-
+            wait_flag(PIPE_MTE3, PIPE_V, oLoop_ & 1);
             for (uint32_t nIndex = 0; nIndex < validN; ++nIndex) {
                 __ubuf__ float *vAddr;
                 if (cacheAllV) {
                     const uint32_t cacheOffset = nIndex * dAlign_ + dOffset;
                     vAddr = GetUbAddr<float>(vCacheUbOffset_ + static_cast<uint64_t>(cacheOffset) * FP32_BYTES);
                 } else {
-                    wait_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + vCount_ & 1);
+                    wait_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + (vLoop_ & 1));
                     const uint64_t vOffset =
                         (tIndex * tilingData_->totalN + nIndex) * tilingData_->totalD + dOffset;
-                    vAddr = CopyInV(vOffset, validD, vLoop++);
+                    vAddr = CopyInV(vOffset, validD, vLoop_);
                 }
                 AccumulateOutput(vAddr, weightAddr + nIndex, outputAddr, nIndex, validN, validD);
                 if (!cacheAllV) {
-                    set_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + vCount_ & 1);
-                    vCount_++;
+                    set_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + (vLoop_++ & 1));
                 } else {
                     set_flag(PIPE_V, PIPE_MTE2, qBufferNum_ + nIndex);
                 }
@@ -385,7 +374,9 @@ private:
 
             const uint64_t outputOffset =
                 (sIndex * tilingData_->totalT + tIndex) * tilingData_->totalD + dOffset;
-            CopyOutO(outputOffset, validD, dLoop);
+            CopyOutO(outputOffset, validD, oLoop_);
+            set_flag(PIPE_MTE3, PIPE_V, oLoop_++ & 1);
+
         }
     }
 
@@ -400,8 +391,9 @@ private:
     uint32_t baseDAlign_ = 0U;
     uint32_t dAlign_ = 0U;
     uint32_t dTileNum_ = 0U;
-    uint32_t qCount_ = 0;
-    uint32_t vCount_ = 0;
+    uint32_t qLoop_ = 0;
+    uint32_t vLoop_ = 0;
+    uint32_t oLoop_ = 0;
     uint8_t qBufferNum_ = 1;
     uint8_t vBufferNum_ = 1;
 
