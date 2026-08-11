@@ -635,9 +635,11 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::GetPlatformInfo()
     const auto *compileInfoPtr = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
     OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(OP_NAME, "CompileInfo is null"), return ge::GRAPH_FAILED);
     compileInfoPtr_ = compileInfoPtr;
-    OP_LOGI(context_, "Compile info: aicNum(%u) aivNum(%lu) ubSize(%lu) baseM(%lu) baseN(%lu) supportL12BtBf16(%lu).",
-            compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_, compileInfoPtr_->ubSize_, compileInfoPtr_->baseM_,
-            compileInfoPtr_->baseN_, compileInfoPtr_->supportL12BtBf16);
+    OP_LOGI(context_,
+            "Compile info: aicNum(%u) aivNum(%u) ubSize(%llu) baseM(%u) baseN(%u) supportL12BtBf16(%d).",
+            compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_,
+            static_cast<unsigned long long>(compileInfoPtr_->ubSize_), compileInfoPtr_->baseM_,
+            compileInfoPtr_->baseN_, static_cast<int>(compileInfoPtr_->supportL12BtBf16));
 
     if (!CheckCoreNum(context_, compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_)) {
         return ge::GRAPH_FAILED;

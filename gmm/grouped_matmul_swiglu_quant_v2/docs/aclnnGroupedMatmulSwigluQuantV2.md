@@ -510,7 +510,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td>tuningConfig</td>
         <td rowspan="1">可选输入</td>
         <td>用于算子预估M/E的大小，走不同的算子模板，以适配不同场景性能要求。</td>
-        <td>数组，传入的第一个数字表示各个专家处理的token数的预期值，用于优化tiling，A4W4 右矩阵NZ输入时开启，其他输入请传入空指针。</td>
+        <td>数组，传入的第一个数字表示各个专家处理的 token 数的预期值，用于优化 tiling，A4W4 右矩阵 NZ 输入时开启，其他输入请传入空指针。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -565,7 +565,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
       - 支持dequantMode参数：A8W4和A4W4场景支持取值0和1，A8W8场景仅支持取值0。
       - 不支持dequantDtype和quantMode参数。
       - x和weight不支持空Tensor。
-      - weight NZ转置输入时，仅支持单Tensor模式
+      - weight NZ 转置输入时，仅支持单 Tensor 模式。
       - weight、weightScale和weightAssistMatrix支持单Tensor场景（tensorlist长度为1）和多Tensor场景（tensorlist长度大于1）。
     <!-- end id10 -->
     <!-- npu="950" id11 -->

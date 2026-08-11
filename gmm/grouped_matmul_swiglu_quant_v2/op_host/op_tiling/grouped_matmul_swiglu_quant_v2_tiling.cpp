@@ -37,33 +37,33 @@ using namespace Ops::Transformer::OpTiling;
 namespace optiling {
 constexpr int64_t GMMSQ_FUSING_TILING_TEMPLATE = 0;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2FusionTiling,
-    GMMSQ_FUSING_TILING_TEMPLATE);
+                             GMMSQ_FUSING_TILING_TEMPLATE);
 
 constexpr int64_t GMMSQ_BASE_TILING_TEMPLATE = 1;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2BaseTiling,
-    GMMSQ_BASE_TILING_TEMPLATE);
+                             GMMSQ_BASE_TILING_TEMPLATE);
 
 constexpr int64_t GMMSQ_950_TILING_TEMPLATE = 2;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2Tiling950,
-    GMMSQ_950_TILING_TEMPLATE);
+                             GMMSQ_950_TILING_TEMPLATE);
 
 constexpr int64_t GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE = 3;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2WeightQuantTiling,
-    GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE);
+                             GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE);
 
 constexpr int64_t GMMSQ_TENSOR_API_TILING_TEMPLATE = 4;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2BasicApiTiling950,
-    GMMSQ_TENSOR_API_TILING_TEMPLATE);
+                             GMMSQ_TENSOR_API_TILING_TEMPLATE);
 
 static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr,
-            OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulSwigluQuantV2TilingFunc", "Tilingcontext is null"),
-            return ge::GRAPH_FAILED);
+                OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulSwigluQuantV2TilingFunc", "Tilingcontext is null"),
+                return ge::GRAPH_FAILED);
     auto compileInfoPtr = context->GetCompileInfo<GMMSwigluV2CompileInfo>();
     OP_CHECK_IF(compileInfoPtr == nullptr,
-            OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulSwigluQuantV2TilingFunc", "compileInfo is null"),
-            return ge::GRAPH_FAILED);
+                OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulSwigluQuantV2TilingFunc", "compileInfo is null"),
+                return ge::GRAPH_FAILED);
     if (compileInfoPtr->supportL12BtBf16) {
         std::vector<int32_t> registerList = {GMMSQ_950_TILING_TEMPLATE};
         auto xDesc = context->GetInputDesc(GroupedMatmulSwigluQuantV2Tiling::X_INDEX);
@@ -110,9 +110,18 @@ ASCENDC_EXTERN_C graphStatus TilingPrepareForGMMSwigluQuantV2(gert::TilingParseC
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     compileInfoPtr->aicNum_ = ascendcPlatform.GetCoreNumAic();
     compileInfoPtr->aivNum_ = ascendcPlatform.GetCoreNumAiv();
+    OP_CHECK_IF(compileInfoPtr->aicNum_ == 0,
+                OP_LOGE(context->GetNodeName(), "The number of AI Core does not support zero."),
+                return GRAPH_FAILED);
     std::string platformRes;
-    platformInfoPtr->GetPlatformRes("AICoreintrinsicDtypeMap", "Intrinsic_data_move_l12bt", platformRes);
-    compileInfoPtr->supportL12BtBf16 = (platformRes.find("bf16") != std::string::npos);
+    bool getPlatformResSuccess =
+        platformInfoPtr->GetPlatformRes("AICoreintrinsicDtypeMap", "Intrinsic_data_move_l12bt", platformRes);
+    if (!getPlatformResSuccess) {
+        OP_LOGW(context->GetNodeName(),
+                "Failed to query Intrinsic_data_move_l12bt; BF16 L1-to-BT support is disabled.");
+    }
+    compileInfoPtr->supportL12BtBf16 =
+        getPlatformResSuccess && (platformRes.find("bf16") != std::string::npos);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize_);
     OP_LOGD(context->GetNodeName(), "ubSize is %lu, aicNum is %u.", compileInfoPtr->ubSize_, compileInfoPtr->aicNum_);
     return GRAPH_SUCCESS;
