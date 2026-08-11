@@ -549,6 +549,7 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::CalcRunInfo(uint32_t loop,
     runInfo.actS1Size = tempLoopInfo.actS1Size;
     runInfo.actS2Size = tempLoopInfo.actS2Size;
     runInfo.actS2SizeOrig = tempLoopInfo.actS2SizeOrig;
+    runInfo.poolTailK = hasPoolTailK_ ? poolTailKGm_.GetValue(tempLoopInfo.bIdx) : 0;
     // 计算实际基本块size
     runInfo.actMBaseSize = tempLoopInfo.actMBaseSize;
     runInfo.actualSingleProcessSInnerSize = constInfo.s2BaseSize;

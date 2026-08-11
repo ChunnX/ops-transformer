@@ -173,155 +173,177 @@ info.sparseCount = info.topk / info.poolSize;  // 已有
 
 ### 4.1 设计思路
 
-将步骤2 输出的 pool 索引展开为原始 token 索引，并追加尾块有效 token。
+将步骤2 输出的 pool 索引展开为原始 token 索引，并追加尾块有效 token。**无效位置（因果掩码遮挡、尾块不足）统一填 -1。**
 
 ```
-输入(TopK结果): [pool_idx_0, pool_idx_1, ..., pool_idx_{sparseCount-1}]
+输出结构 (总维度 = topk + poolSize - 1):
 
-展开: 每个 pool_idx 展开为 pool_size 个 token 索引
-  pool_idx_j → [j*pool_size, j*pool_size+1, ..., j*pool_size+pool_size-1]
+位置:  [0 ........................ validExpand-1] [validExpand ... topk-1] [topk ... topk+visibleTailK-1] [topk+visibleTailK ... topk+poolSize-2]
+内容:   有效展开的 token 索引                      -1 (无效)              因果可见的尾块 token 索引      -1 (不可见/不足)
 
-追加: 最后追加 pool_tail_k 个尾部 token 索引
-  [L_orig - pool_tail_k, ..., L_orig - 1]
-
-输出: [展开的 topk 个索引] + [pool_tail_k 个尾索引]
-     = topk + pool_tail_k 个索引（最大 topk + pool_size - 1）
+其中:
+  validExpand = validS2Len * poolSize       (因果掩码后的有效 pool 数 × poolSize)
+  topk = sparseCount * poolSize
+  visibleTailK = 因果掩码下可见的尾块 token 数（maskMode=0 时 = poolTailK，maskMode=3 时需计算）
+  尾块无效 = poolSize - 1 - visibleTailK 个
 ```
+
+**关键原则**：先全部初始化为 -1，再覆盖有效部分，无效位置自然保持 -1。
 
 ### 4.2 关键修改点
 
-#### 4.2.1 输出 shape 恢复为规格
-- sparse_indices 最后一维 = `topk + pool_size - 1`
+#### 4.2.1 输出 shape
+- sparse_indices 最后一维 = `topk + pool_size - 1`（规格要求，infershape/tiling 已正确）
 - sparse_values 最后一维 = `topk / pool_size` = sparseCount
 
 #### 4.2.2 arch35 service_vector.h 新增展开逻辑
 
-在 `ProcessTopK` 之后、输出之前，新增 `ExpandAndAppendIndices` 函数。
+在 `ProcessTopK` 之后、DataCopy 输出之前，新增 `ExpandAndAppendIndices` 函数。
 
 **向量化设计核心思路**：
 
-展开操作 `tokenIndices[k*P + p] = poolIndices[k] * P + p` 可分解为三步向量运算：
+展开操作 `tokenIndices[k*P + p] = poolIndices[k] * P + p` 可分解为：
 
 ```
-Step 1: Muls  — baseIndices[k] = poolIndices[k] * poolSize        （1条指令处理 sparseCount 个）
-Step 2: Brcb  — expandedBases[k*P + p] = baseIndices[k]           （1条指令广播，每个元素重复 P 次）
-Step 3: Add   — tokenIndices = expandedBases + cyclicOffset        （1条指令处理 sparseCount*P 个）
+Step 0: Duplicate — tokenIndices 全部填 -1（无效占位）
+Step 1: Muls  — baseIndices[k] = poolIndices[k] * poolSize     （仅处理 validS2Len 个有效索引）
+Step 2: Brcb  — expandedBases[k*P + p] = baseIndices[k]        （广播，每个元素重复 P 次）
+Step 3: Add   — tokenIndices = expandedBases + cyclicOffset     （加循环偏移 [0,1,...,P-1] 循环）
+Step 4: 尾块  — Duplicate 起始值 + Add 偏移模板
 ```
 
-其中 `cyclicOffset` 是 `[0,1,...,P-1, 0,1,...,P-1, ...]` 的循环偏移模式，可预先构造。
+无效位置（validS2Len 之后的展开部分、尾块不足部分）保持 Step 0 填充的 -1。
 
 ```cpp
 __aicore__ void ExpandAndAppendIndices(
-    LocalTensor<int32_t>& poolIndices,   // [sparseCount] TopK 输出的 pool 索引
-    LocalTensor<int32_t>& tokenIndices, // [topk+poolSize-1] 输出 token 索引
-    LocalTensor<int32_t>& workBuf,       // 临时 buffer (>= sparseCount*poolSize + poolSize)
+    LocalTensor<int32_t>& poolIndices,    // [sparseCount] TopK 输出的 pool 索引
+    LocalTensor<int32_t>& tokenIndices,   // [topk+poolSize-1] 输出 token 索引
+    LocalTensor<int32_t>& workBuf,         // 临时 buffer
     uint32_t sparseCount,
     uint32_t poolSize,
+    uint32_t validS2Len,                   // 因果掩码后的有效 pool 数
     int32_t poolTailK,
-    int32_t L_orig)
+    int32_t L_orig,
+    uint32_t curS1Idx,                     // 当前 query 位置（用于因果掩码可见性判断）
+    uint32_t curS1Size)                    // 当前 batch 的 S1 长度
 {
-    uint32_t totalExpand = sparseCount * poolSize;
+    uint32_t topk = sparseCount * poolSize;
+    uint32_t totalOut = topk + poolSize - 1;
+    uint32_t validExpand = validS2Len * poolSize;
 
-    // ---- 1. 构造循环偏移模板 [0, 1, ..., poolSize-1] ----
-    // poolSize <= 128，用标量 SetValue 构造一次即可
-    LocalTensor<int32_t> offsetTpl = workBuf;                    // [0, poolSize)
+    // ---- Step 0: 全部初始化为 -1 ----
+    Duplicate<int32_t>(tokenIndices, -1, AlignUp(totalOut, 8U));
+
+    if (validS2Len == 0) { return; }  // 无有效 pool 索引，全部 -1
+
+    // ---- Step 1: 构造偏移模板 [0, 1, ..., poolSize-1] ----
+    LocalTensor<int32_t> offsetTpl = workBuf;
     for (uint32_t p = 0; p < poolSize; p++) {
         offsetTpl.SetValue(p, static_cast<int32_t>(p));
     }
+    // padding 部分 (poolSize ~ AlignUp(poolSize,8)-1) 保持 0
 
-    // ---- 2. 构造循环偏移模式 [0,1,...,P-1, 0,1,...,P-1, ...] ----
-    // 用 DataCopy 将 offsetTpl 复制 sparseCount 份
-    LocalTensor<int32_t> cyclicOffset = workBuf[poolSize];       // [0, totalExpand)
-    for (uint32_t k = 0; k < sparseCount; k++) {
-        DataCopy(cyclicOffset[k * poolSize], offsetTpl, poolSize);
-    }
-
-    // ---- 3. Muls: base = poolIndices * poolSize ----
-    LocalTensor<int32_t> baseIndices = workBuf[poolSize + totalExpand];
-    Muls(baseIndices, poolIndices, static_cast<int32_t>(poolSize), sparseCount);
-
-    // ---- 4. Brcb: 广播每个 base 重复 poolSize 次 ----
-    // Brcb 将 [b0, b1, ...] 广播为 [b0,b0,..(P次), b1,b1,..(P次), ...]
-    LocalTensor<int32_t> expandedBases = tokenIndices;           // 直接写入输出位置
-    Brcb(expandedBases, baseIndices, poolSize, sparseCount);     // 广播因子 = poolSize
-
-    // ---- 5. Add: expandedBases + cyclicOffset = 最终 token 索引 ----
-    Add(tokenIndices, expandedBases, cyclicOffset, totalExpand);
-
-    // ---- 6. 追加尾块 [L_orig - poolTailK, ..., L_orig - 1] ----
-    if (poolTailK > 0) {
-        uint32_t tailOffset = totalExpand;
-        // Duplicate 填充起始值，Add 偏移
-        LocalTensor<int32_t> tailOffsetTpl = workBuf;            // 复用 offsetTpl 区域
-        for (int32_t t = 0; t < poolTailK; t++) {
-            tailOffsetTpl.SetValue(t, t);
+    if (poolSize % 8 == 0) {
+        // ============ Brcb 路径 (poolSize 是 8 的倍数) ============
+        // 构造循环偏移模式 [0,1,...,P-1, 0,1,...,P-1, ...]
+        LocalTensor<int32_t> cyclicOffset = workBuf[AlignUp(poolSize, 8U)];
+        for (uint32_t k = 0; k < validS2Len; k++) {
+            DataCopy(cyclicOffset[k * poolSize], offsetTpl, poolSize);
         }
-        Duplicate<int32_t>(tokenIndices[tailOffset],
-                           L_orig - poolTailK, poolTailK);
-        Add(tokenIndices[tailOffset], tokenIndices[tailOffset],
-            tailOffsetTpl, poolTailK);
+        // Muls: base = poolIndices * poolSize
+        LocalTensor<int32_t> baseIndices = workBuf[AlignUp(poolSize, 8U) + AlignUp(validExpand, 8U)];
+        Muls<int32_t>(baseIndices, poolIndices,
+                      static_cast<int32_t>(poolSize), AlignUp(validS2Len, 8U));
+        // Brcb: 广播每个 base 重复 poolSize 次
+        Brcb(tokenIndices, baseIndices, poolSize, validS2Len);
+        // Add: 加循环偏移
+        Add<int32_t>(tokenIndices, tokenIndices, cyclicOffset, AlignUp(validExpand, 8U));
+    } else {
+        // ============ Fallback 路径 (poolSize 非 8 的倍数) ============
+        uint32_t alignedPoolSize = AlignUp(poolSize, 8U);
+        uint32_t outOff = 0;
+        for (uint32_t k = 0; k < validS2Len; k++) {
+            int32_t base = poolIndices.GetValue(k) * static_cast<int32_t>(poolSize);
+            // Duplicate 填充 base（alignedPoolSize 个，满足对齐）
+            Duplicate<int32_t>(tokenIndices[outOff], base, alignedPoolSize);
+            // Add 偏移模板（padding 部分 base+0=base，不影响有效结果）
+            Add<int32_t>(tokenIndices[outOff], tokenIndices[outOff], offsetTpl, alignedPoolSize);
+            outOff += poolSize;  // 只前进 poolSize（padding 被下次覆盖或保持 -1）
+        }
+    }
+    // [validExpand, topk) 保持 -1（Step 0 已填充）
+
+    // ---- Step 2: 追加尾块有效部分（受因果掩码约束） ----
+    // pool_tail_k 是物理尾部 token 数（不受因果掩码影响），需判断因果可见性
+    if (poolTailK > 0) {
+        uint32_t tailPos = topk;
+        // 当前 query 位置的全局位置
+        int32_t globalPosQ = L_orig - static_cast<int32_t>(curS1Size)
+                             + static_cast<int32_t>(curS1Idx);
+        // 展开部分的 token 上界 = S2 * poolSize = topk
+        int32_t s2TokenEnd = static_cast<int32_t>(topk);
+        // 可见尾块 token 数
+        int32_t visibleTailK = Max(0, Min(poolTailK, globalPosQ - s2TokenEnd + 1));
+
+        if (visibleTailK > 0) {
+            // 偏移模板 [0, 1, ..., visibleTailK-1]
+            LocalTensor<int32_t> tailOffsetTpl = workBuf;  // 复用 offsetTpl 区域
+            for (int32_t t = 0; t < visibleTailK; t++) {
+                tailOffsetTpl.SetValue(t, t);
+            }
+            // Duplicate 起始值
+            Duplicate<int32_t>(tokenIndices[tailPos],
+                               L_orig - poolTailK, AlignUp(visibleTailK, 8U));
+            // Add 偏移 → [L_orig-poolTailK, ..., L_orig-poolTailK+visibleTailK-1]
+            Add<int32_t>(tokenIndices[tailPos],
+                         tokenIndices[tailPos], tailOffsetTpl, AlignUp(visibleTailK, 8U));
+        }
+        // [topk + visibleTailK, totalOut) 保持 -1（Step 0 已填充）
     }
 }
 ```
 
 **指令开销分析**：
 
-| 步骤 | 指令 | 数量 | 说明 |
-|------|------|------|------|
-| 偏移模板构造 | SetValue | poolSize (≤128) | 一次性，标量 |
-| 循环偏移复制 | DataCopy | sparseCount | 每次复制 poolSize 个 |
-| Muls | Muls | 1 | 批量标量乘 |
-| 广播 | Brcb | 1 | 批量广播 |
-| Add | Add | 1 | 批量向量加 |
-| 尾块 Duplicate | Duplicate | 1 | 填充起始值 |
-| 尾块 Add | Add | 1 | 加偏移 |
+| 步骤 | 指令 | Brcb 路径 | Fallback 路径 |
+|------|------|-----------|--------------|
+| Step 0: 初始化 -1 | Duplicate | 1 | 1 |
+| 偏移模板构造 | SetValue | poolSize (≤128) | poolSize (≤128) |
+| 循环偏移复制 | DataCopy | validS2Len | — |
+| Muls | Muls | 1 | validS2Len/8 批 |
+| 广播 | Brcb | 1 | — |
+| 加偏移 | Add | 1 | validS2Len × 2 (Duplicate+Add) |
+| 尾块 | Duplicate + Add | 2 | 2 |
+| **总计** | | **~6 + validS2Len** | **~3 + validS2Len × 2.25** |
 
-对比标量方案 `O(sparseCount * poolSize)` 次标量操作，向量化方案仅需 `O(sparseCount)` 次 DataCopy + 常数条向量指令。
-
-**Brcb 约束与 Fallback**：
-
-`Brcb` 指令的广播因子需要满足对齐要求（通常为 8 的倍数）。当 `poolSize` 不是 8 的倍数时，使用 Fallback 方案：
-
-```cpp
-// Fallback: 分块处理，每块用 Duplicate + Add 替代 Brcb
-constexpr uint32_t VEC_BLK = 8;  // int32 对齐 32B
-for (uint32_t k = 0; k < sparseCount; k += VEC_BLK) {
-    uint32_t blkLen = Min(VEC_BLK, sparseCount - k);
-    // Muls: base = poolIndices[k:k+blkLen] * poolSize
-    Muls(baseBlk, poolIndices[k], poolSize, blkLen);
-    // 对每个 base 用 Duplicate 填充 + Add 偏移
-    for (uint32_t i = 0; i < blkLen; i++) {
-        Duplicate(tokenIndices[outOff], baseBlk.GetValue(i), poolSize);
-        Add(tokenIndices[outOff], tokenIndices[outOff], offsetTpl, poolSize);
-        outOff += poolSize;
-    }
-}
-```
-
-Fallback 内层仍有标量循环，但每个元素内部是 `Duplicate + Add`（2条向量指令），远优于纯标量逐元素赋值。
+对比标量方案 `O(validS2Len * poolSize)` 次标量赋值，两种向量化方案均显著优于标量。
 
 #### 4.2.3 arch22 同样新增展开逻辑
 - 在 Vector 核的输出阶段执行，逻辑与 arch35 一致
 - arch22 的向量指令 API 与 arch35 略有差异，需适配
+- arch22 的 Brcb 广播因子对齐要求可能不同（16 的倍数），需确认
 
-#### 4.2.4 infershape 修正
+#### 4.2.4 infershape/tiling
 - 当前 infershape 已正确输出 `topk + pool_size - 1` 和 `topk / pool_size`
-- 步骤2 临时改为 sparseCount 的部分需在步骤3 恢复
+- 步骤2 未修改输出维度，步骤3 无需恢复
 
 ### 4.3 验证方法
 - pool_size=2/4/8/16，pool_tail_k=0~pool_size-1
 - 验证输出维度 = topk + pool_size - 1
-- 验证展开索引正确性
+- 验证有效展开索引正确性
+- 验证无效位置填充 -1（因果掩码遮挡 + 尾块不足）
 - 验证尾块追加正确性
-- maskMode=3 时验证因果掩码后的展开
+- maskMode=0/3 均需验证
 - Brcb 路径和 Fallback 路径均需验证（poolSize 为 8 的倍数和非倍数）
+- 退化验证：poolSize=1 时不执行展开，输出 = sparseCount = topk（与步骤2一致）
 
 ### 4.4 风险点
-1. **UB 空间**：workBuf 需容纳 `poolSize + 2*sparseCount*poolSize` 个 int32，最大约 `128 + 2*8192*128 ≈ 2MB`，可能超 UB。需分批处理或复用输出 buffer
+1. **UB 空间**：workBuf 需容纳偏移模板 + 循环偏移 + baseIndices。Brcb 路径最大需 `AlignUp(poolSize,8) + AlignUp(validExpand,8) + AlignUp(validS2Len,8)` 个 int32。Fallback 路径只需偏移模板。需评估最大场景
 2. **Brcb 对齐约束**：广播因子需为 8 的倍数（arch35）或 16 的倍数（arch22），非对齐时走 Fallback
-3. **无效索引填充**：当 sparseCount < topk/pool_size 时（S2 < sparseCount），剩余位置填 -1
-4. **DataCopy 对齐**：输出 int32 索引，需对齐 32B
-5. **int32 向量指令支持**：确认 arch35/arch22 的 `Muls`/`Add`/`Brcb` 对 int32 类型的支持
+3. **validS2Len 传递**：需从 ProcessTopK 的因果掩码计算中获取 validS2Len，传入 ExpandAndAppendIndices
+4. **尾块因果可见性**：pool_tail_k 是物理尾部 token 数（不受因果掩码影响）。步骤3 需根据 `globalPosQ = L_orig - S1 + curS1Idx` 计算可见尾块数 `visibleTailK = Max(0, Min(poolTailK, globalPosQ - topk + 1))`，只追加可见部分。maskMode=0 时 visibleTailK = poolTailK（全部可见）
+5. **Duplicate/Add 对齐**：所有向量指令的元素数需 AlignUp 到 8（int32 的 32B 对齐），padding 部分不影响有效结果
+6. **int32 向量指令支持**：确认 arch35/arch22 的 `Muls`/`Add`/`Brcb`/`Duplicate` 对 int32 类型的支持
 
 ---
 

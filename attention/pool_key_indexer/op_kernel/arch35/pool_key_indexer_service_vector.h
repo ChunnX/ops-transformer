@@ -68,6 +68,15 @@ public:
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
+private:
+    __aicore__ inline void ExpandAndAppendIndices(LocalTensor<int32_t>& poolIndices,
+                                                   LocalTensor<int32_t>& tokenIndices,
+                                                   LocalTensor<int32_t>& workBuf,
+                                                   uint32_t sparseCount, uint32_t poolSize,
+                                                   uint32_t validS2Len, int32_t poolTailK,
+                                                   int32_t L_orig, uint32_t curS1Idx,
+                                                   uint32_t curS1Size);
+
 protected:
     GlobalTensor<SCORE_T> scoreGm;
     GlobalTensor<W_T> weightsGm;
@@ -119,10 +128,14 @@ private:
     TBuf<TPosition::VECCALC> scoreOutBuf_;
     LocalTensor<SCORE_T> scoreOutLocal_;
 
+    TBuf<TPosition::VECCALC> expandOutBuf_;
+    LocalTensor<int32_t> expandOutLocal_;
+    TBuf<TPosition::VECCALC> workBuf_;
+    LocalTensor<int32_t> workLocal_;
+
     TBuf<TPosition::VECCALC> topkSharedTmpBuf_;
     LocalTensor<uint32_t> topkSharedTmpLocal_;
     int32_t blockId_ = -1;
-    // para for vector
     int32_t groupInner_ = 0;
     int32_t globalTopkNum_ = 0;
     int64_t blockS2StartIdx_ = 0;
@@ -135,8 +148,10 @@ private:
     int32_t kCacheBlockSize_ = 0;
     int32_t maxBlockNumPerBatch_ = 0;
     uint32_t topkCount_ = 0;
-    uint32_t topkCountAlign256_ = 0; // topkCount对齐到256(直方图需要)，支持topk泛化
+    uint32_t topkCountAlign256_ = 0;
     uint32_t trunkLen_ = 0;
+    uint32_t poolSize_ = 1;
+    uint32_t outputLen_ = 0;
     bool returnValue = false;
 
     struct PkiCommon::ConstInfo constInfo_;
@@ -168,10 +183,19 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitBuffers(TPipe *pipe
         valueOutLocal_ = mrgValueBuf_.Get<float>(); // returnValue float
     }
 
-    // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
     pipe->InitBuffer(indicesOutBuf_,
                     (topkCountAlign256_ + 64) * sizeof(uint32_t));
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
+
+    if (poolSize_ > 1) {
+        uint32_t expandOutLen = PkiCommon::Align(static_cast<uint64_t>(outputLen_ + 64), (uint64_t)8);
+        pipe->InitBuffer(expandOutBuf_, expandOutLen * sizeof(uint32_t));
+        expandOutLocal_ = expandOutBuf_.Get<int32_t>();
+        uint32_t workSize = PkiCommon::Align(static_cast<uint64_t>(poolSize_ + 64), (uint64_t)8) +
+                            PkiCommon::Align(static_cast<uint64_t>(outputLen_ + 64), (uint64_t)8);
+        pipe->InitBuffer(workBuf_, workSize * sizeof(uint32_t));
+        workLocal_ = workBuf_.Get<int32_t>();
+    }
 
     pipe->InitBuffer(scoreOutBuf_, topkCountAlign256_ * sizeof(SCORE_T));
     scoreOutLocal_ = scoreOutBuf_.Get<SCORE_T>();
@@ -204,7 +228,9 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitParams(const struct
              (constInfo.sparseCount > TOPK_LEN_7K ? TRUNK_LEN_2K : TRUNK_LEN_4K) : TRUNK_LEN_8K;
     topkCount_ = constInfo.sparseCount;
     topkOp_.Init(topkCount_, trunkLen_);
-    topkCountAlign256_ = PkiCommon::Align(constInfo.sparseCount, (uint64_t)256); // topkCount对齐到256
+    topkCountAlign256_ = PkiCommon::Align(constInfo.sparseCount, (uint64_t)256);
+    poolSize_ = static_cast<uint32_t>(constInfo.poolSize);
+    outputLen_ = constInfo.sparseCount * poolSize_ + poolSize_ - 1;
 }
 
 template <typename LIT>
@@ -255,7 +281,7 @@ template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::CleanInvalidOutput(int64_t invalidS1Offset)
 {
     // init -1 and copy to output
-    uint64_t dealSize = constInfo_.sparseCount;
+    uint64_t dealSize = (poolSize_ > 1) ? outputLen_ : constInfo_.sparseCount;
     GlobalTensor<int32_t> indexOutput = indiceOutGm[invalidS1Offset];
     AscendC::InitGlobalMemory(indexOutput, dealSize, constInfo_.INVALID_IDX);
     if (returnValue) {
@@ -272,6 +298,78 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::CleanInvalidOutput(int6
         copyOutValueParams.srcStride = 0;
         copyOutValueParams.dstStride = 0;
         AscendC::DataCopyPad(valueOutGm[invalidS1Offset], valueOutLocal_, copyOutValueParams);
+    }
+}
+
+template <typename LIT>
+__aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
+    LocalTensor<int32_t>& poolIndices,
+    LocalTensor<int32_t>& tokenIndices,
+    LocalTensor<int32_t>& workBuf,
+    uint32_t sparseCount, uint32_t poolSize,
+    uint32_t validS2Len, int32_t poolTailK,
+    int32_t L_orig, uint32_t curS1Idx,
+    uint32_t curS1Size)
+{
+    uint32_t topk = sparseCount * poolSize;
+    uint32_t totalOut = topk + poolSize - 1;
+    uint32_t alignedTotalOut = PkiCommon::Align(totalOut, (uint32_t)8);
+    uint32_t alignedPoolSize = PkiCommon::Align(poolSize, (uint32_t)8);
+
+    Duplicate<int32_t>(tokenIndices, -1, alignedTotalOut);
+    PipeBarrier<PIPE_V>();
+
+    if (validS2Len > 0) {
+        LocalTensor<int32_t> offsetTpl = workBuf;
+        for (uint32_t p = 0; p < poolSize; p++) {
+            offsetTpl.SetValue(p, static_cast<int32_t>(p));
+        }
+
+        uint32_t outOff = 0;
+        for (uint32_t k = 0; k < validS2Len; k++) {
+            int32_t base = poolIndices.GetValue(k) * static_cast<int32_t>(poolSize);
+            Duplicate<int32_t>(tokenIndices[outOff], base, alignedPoolSize);
+            PipeBarrier<PIPE_V>();
+            Add<int32_t>(tokenIndices[outOff], tokenIndices[outOff],
+                          offsetTpl, alignedPoolSize);
+            outOff += poolSize;
+        }
+    }
+
+    uint32_t validExpand = validS2Len * poolSize;
+    if (validExpand < topk) {
+        PipeBarrier<PIPE_V>();
+        Duplicate<int32_t>(tokenIndices[validExpand], -1,
+            PkiCommon::Align(topk - validExpand, (uint32_t)8));
+        PipeBarrier<PIPE_V>();
+    }
+
+    if (poolTailK > 0) {
+        uint32_t tailPos = topk;
+        int32_t visibleTailK;
+        if (constInfo_.maskMode == 0) {
+            visibleTailK = poolTailK;
+        } else {
+            int32_t globalPosQ = L_orig - static_cast<int32_t>(curS1Size)
+                                 + static_cast<int32_t>(curS1Idx);
+            visibleTailK = PkiCommon::Max(0,
+                PkiCommon::Min(poolTailK, globalPosQ - static_cast<int32_t>(topk) + 1));
+        }
+
+        if (visibleTailK > 0) {
+            uint32_t alignedVisibleTailK =
+                PkiCommon::Align(static_cast<uint32_t>(visibleTailK), (uint32_t)8);
+            LocalTensor<int32_t> tailOffsetTpl = workBuf;
+            for (int32_t t = 0; t < visibleTailK; t++) {
+                tailOffsetTpl.SetValue(t, t);
+            }
+            PipeBarrier<PIPE_V>();
+            Duplicate<int32_t>(tokenIndices[tailPos],
+                                L_orig - poolTailK, alignedVisibleTailK);
+            PipeBarrier<PIPE_V>();
+            Add<int32_t>(tokenIndices[tailPos], tokenIndices[tailPos],
+                          tailOffsetTpl, alignedVisibleTailK);
+        }
     }
 }
 
@@ -359,7 +457,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessTopK(const PkiCo
 
     AscendC::DataCopyParams copyOutParams;
     copyOutParams.blockCount = 1;
-    copyOutParams.blockLen = topkCount_ * sizeof(uint32_t); // bytes
+    copyOutParams.blockLen = (poolSize_ > 1 ? outputLen_ : topkCount_) * sizeof(uint32_t);
     copyOutParams.srcStride = 0;
     copyOutParams.dstStride = 0;
 
@@ -380,12 +478,21 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessTopK(const PkiCo
         }
         if (validS2Len <= 0) {
             WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-            Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>(), neg, topkCount_);
-            SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-            WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-            AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_],
-                                                          indicesOutLocal_.ReinterpretCast<int32_t>(),
-                                                          copyOutParams);
+            if (poolSize_ > 1) {
+                Duplicate(expandOutLocal_, neg, PkiCommon::Align(outputLen_, (uint32_t)8));
+                SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+                WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+                AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * outputLen_],
+                                                              expandOutLocal_,
+                                                              copyOutParams);
+            } else {
+                Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>(), neg, topkCount_);
+                SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+                WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+                AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_],
+                                                              indicesOutLocal_.ReinterpretCast<int32_t>(),
+                                                              copyOutParams);
+            }
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             if (returnValue) {
                 WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
@@ -550,11 +657,26 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessTopK(const PkiCo
                                         neg, topkCount_ - (validS2Len / 8 * 8 + 64));
         }
 
+        if (poolSize_ > 1) {
+            PipeBarrier<PIPE_V>();
+            ExpandAndAppendIndices(indicesOutLocal_.ReinterpretCast<int32_t>(),
+                                   expandOutLocal_, workLocal_,
+                                   topkCount_, poolSize_, static_cast<uint32_t>(validS2Len),
+                                   info.poolTailK, static_cast<int32_t>(info.actS2SizeOrig),
+                                   static_cast<uint32_t>(curAivS1Idx + i),
+                                   info.actS1Size);
+        }
+
         SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-        AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_],
-                             indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
+        if (poolSize_ > 1) {
+            AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * outputLen_],
+                                 expandOutLocal_, copyOutParams);
+        } else {
+            AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_],
+                                 indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
+        }
 
 
         // // 是否返回Value值

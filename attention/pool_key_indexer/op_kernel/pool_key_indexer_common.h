@@ -50,7 +50,8 @@ struct RunInfo {
 
     uint32_t actS1Size = 1;
     uint32_t actS2Size = 1;
-    uint32_t actS2SizeOrig = 1;
+    uint32_t actS2SizeOrig = 1;  // L_orig (压缩前 token 总数)
+    int32_t poolTailK = 0;       // 当前 batch 的尾部 token 数
     uint32_t actMBaseSize;
     uint32_t actualSingleProcessSInnerSize;
     uint32_t actualSingleProcessSInnerSizeAlign;
