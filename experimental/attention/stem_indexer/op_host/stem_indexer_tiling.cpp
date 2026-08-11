@@ -375,6 +375,12 @@ ge::graphStatus StemIndexerInfoParser::GetBaseShapeInfo()
                         .c_str(),
                     "The batch, maxQb and maxKb dimensions should be greater than 0"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(bSize_ > BATCH_SIZE_LIMIT,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_, "qflat", Ops::Base::ToString(opParamInfo_.qflat.shape->GetStorageShape()).c_str(),
+                    "The batch dimension of input qflat should be less than or equal to " +
+                        std::to_string(BATCH_SIZE_LIMIT)),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!IsSupportedQHeadNum(qHeadNum_),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     opName_, "qflat", Ops::Base::ToString(opParamInfo_.qflat.shape->GetStorageShape()).c_str(),
