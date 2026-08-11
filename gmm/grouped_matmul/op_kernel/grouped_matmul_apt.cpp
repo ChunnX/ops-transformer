@@ -76,7 +76,11 @@ static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_DYNAMIC = {4, 0};
 #define ORIG_DTYPE_WEIGHT DT_INT4
 #endif
 #else
+#if IS_BLAZE
+#include "arch35/non_quant/grouped_matmul_tensor_api_kernel.h"
+#else
 #include "arch35/non_quant/grouped_matmul_basic_kernel.h"
+#endif
 #include "arch35/non_quant/grouped_matmul_tiling_key.h"
 #endif
 
@@ -462,6 +466,33 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #endif
 #else
     REGISTER_TILING_DEFAULT(GMMNoQuantTilingData);
+#if IS_BLAZE
+    if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) {
+        if constexpr (wFormat == CubeFormat::NZ) {
+            GmmNoQuantTensorApi<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn>(
+                x, weight, bias, groupList, y, tiling);
+        } else {
+            GmmNoQuantTensorApi<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
+                x, weight, bias, groupList, y, tiling);
+        }
+    } else if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_TRANS) { // x transposed
+        if constexpr (wFormat == CubeFormat::NZ) {
+            GmmNoQuantTensorApi<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NZLayoutPtn>(
+                x, weight, bias, groupList, y, tiling);
+        } else {
+            GmmNoQuantTensorApi<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
+                x, weight, bias, groupList, y, tiling);
+        }
+    } else if constexpr (NO_QUANT_B_TRANS == GMM_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) { // weight transposed
+        if constexpr (wFormat == CubeFormat::NZ) {
+            GmmNoQuantTensorApi<AscendC::Te::NDExtLayoutPtn, AscendC::Te::ZNLayoutPtn>(
+                x, weight, bias, groupList, y, tiling);
+        } else {
+            GmmNoQuantTensorApi<AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn>(
+                x, weight, bias, groupList, y, tiling);
+        }
+    }
+#else
     if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) {
         if constexpr (wFormat == CubeFormat::NZ) {
             GmmNoQuantAswt<layout::RowMajor, layout::Nz>(x, weight, bias, groupList, y, tiling);
@@ -486,6 +517,7 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
             GmmNoQuantAswt<layout::RowMajor, layout::ColumnMajor>(x, weight, bias, groupList, y, tiling);
         }
     }
+#endif
 #endif
 #endif
 }

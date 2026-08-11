@@ -31,10 +31,6 @@ __aicore__ inline void GmmNoQuantTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, gmmNoQuantParam, gmmBaseParams, tiling);
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, mmTilingData, mmTilingData, tiling);
 
-    if ASCEND_IS_AIV {
-        return;
-    }
-
     using AType = DTYPE_X;
     using BType = DTYPE_X;
     using CType = DTYPE_Y;
