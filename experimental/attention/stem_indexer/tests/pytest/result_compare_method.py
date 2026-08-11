@@ -150,15 +150,19 @@ def explain_topk_mismatch(
     if not only_in_actual:
         return None
 
-    scores = get_row_scores(case, inputs, b_idx, q_head_idx, q_block_idx)
-    boundary_score = min(float(scores[idx]) for idx in expected_dynamic)
+    raw_scores = get_row_scores(case, inputs, b_idx, q_head_idx, q_block_idx)
+    topk_score_type = stem_indexer_golden.get_golden_topk_score_type(case)
+    compare_scores = stem_indexer_golden.get_topk_sort_scores(
+        raw_scores, topk_score_type
+    )
+    boundary_score = min(float(compare_scores[idx]) for idx in expected_dynamic)
     actual_differences = [
         {
             "idx": idx,
-            "score": float(scores[idx]),
+            "score": float(compare_scores[idx]),
             "boundary_score": boundary_score,
             "relative_error": calculate_relative_error(
-                float(scores[idx]), boundary_score
+                float(compare_scores[idx]), boundary_score
             ),
         }
         for idx in only_in_actual
@@ -166,10 +170,10 @@ def explain_topk_mismatch(
     expected_differences = [
         {
             "idx": idx,
-            "score": float(scores[idx]),
+            "score": float(compare_scores[idx]),
             "boundary_score": boundary_score,
             "relative_error": calculate_relative_error(
-                float(scores[idx]), boundary_score
+                float(compare_scores[idx]), boundary_score
             ),
         }
         for idx in only_in_expected

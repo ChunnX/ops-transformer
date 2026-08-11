@@ -117,6 +117,7 @@ def build_compare_data(compare_context):
         "stem_stride": int(attributes.get("stem_stride", 16)),
         "initial_blocks": int(attributes.get("initial_blocks", 4)),
         "window_size": int(attributes.get("window_size", 4)),
+        "topk_score_precision": int(attributes.get("topk_score_precision", 1)),
         "special_setting": attributes.get("special_setting", ""),
     }
     inputs = {
