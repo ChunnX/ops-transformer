@@ -151,7 +151,7 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t& gammaExist)
                     OP_LOGE(context_->GetNodeName(),
                              "alpha size should be 2 or 3, but is %ld", scaleFirstDim),
                     return ge::GRAPH_FAILED);
-    bool hasResi = (scaleFirstDim == 3);
+    hasResi = (scaleFirstDim == 3);
 
     auto shapeBias = context_->GetInputShape(3);
     int64_t baseFirstDim = shapeBias->GetStorageShape().GetDim(0);
@@ -388,7 +388,6 @@ ge::graphStatus MhcPreMembaseTiling::DoOpTiling()
         return ge::GRAPH_FAILED;
     }
     tilingData_.set_hasGamma(gammaExist);
-    tilingData_.set_hasResi(hasResi ? 1 : 0);
     // 预留参数计算（切K）与stage2计算
     if (CalcOpTiling() == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;

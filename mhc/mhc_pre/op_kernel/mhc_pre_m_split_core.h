@@ -169,10 +169,8 @@ public:
                         LocalTensor<float> xCastLocal = xCastQue.AllocTensor<float>();
                         Cast(xCastLocal, xLocal, RoundMode::CAST_NONE, curBs * curNcSizeAlign);
                         xQue.FreeTensor(xLocal);
-                        xCastQue.EnQue(xCastLocal);
 
                         // 3. 计算 inv_rms (BEFORE gamma, uses original x²)
-                        xCastLocal = xCastQue.DeQue<float>();
                         // 3.1 Square
                         PipeBarrier<PIPE_V>();
                         Mul(squareLocal, xCastLocal, xCastLocal, curBs * curNcSizeAlign);
@@ -199,10 +197,12 @@ public:
                             }
                             PipeBarrier<PIPE_V>();
                             gammaQue.FreeTensor(gammaLocal);
-                            VToMTE3Sync();
                         }
 
                         // 5. CopyOut X_cast to workspace (gamma*x if hasGamma, else original x)
+                        // EnQue after the optional gamma Mul so the VECOUT event covers the final producer.
+                        xCastQue.EnQue(xCastLocal);
+                        xCastLocal = xCastQue.DeQue<float>();
                         int64_t xCastoffset =
                             blockIdx * stage1BsFactor * ncSize +
                             ping4vec * stage1VecCoreNum * stage1BsFactor * ncSize;
