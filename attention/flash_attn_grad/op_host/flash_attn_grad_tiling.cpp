@@ -14,6 +14,21 @@
 
 namespace optiling {
 
+static bool HasAttenMask(gert::TilingContext *context, int64_t maskMode)
+{
+    if (maskMode == 0) {
+        return false;
+    }
+    if (maskMode != 3 && maskMode != 4) {
+        return false;
+    }
+    auto attnMaskShape = context->GetOptionalInputShape(10);
+    if (attnMaskShape == nullptr || attnMaskShape->GetStorageShape().GetDimNum() == 0) {
+        return false;
+    }
+    return true;
+}
+
 static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
 {
     auto platformInfo = context->GetPlatformInfo();
@@ -46,7 +61,27 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     std::string layoutQStr = "BSND";
     int64_t maxSeqlenQ = -1;
     int64_t maxSeqlenKv = -1;
+    int64_t maskMode = 0;
+    int64_t winLeft = -1;
+    int64_t winRight = -1;
+    float scaleValue = 0.0f;
     if (attrs != nullptr) {
+        auto scalePtr = attrs->GetAttrPointer<float>(0);
+        if (scalePtr != nullptr) {
+            scaleValue = *scalePtr;
+        }
+        auto maskModePtr = attrs->GetAttrPointer<int64_t>(1);
+        if (maskModePtr != nullptr) {
+            maskMode = *maskModePtr;
+        }
+        auto winLeftPtr = attrs->GetAttrPointer<int64_t>(2);
+        if (winLeftPtr != nullptr) {
+            winLeft = *winLeftPtr;
+        }
+        auto winRightPtr = attrs->GetAttrPointer<int64_t>(3);
+        if (winRightPtr != nullptr) {
+            winRight = *winRightPtr;
+        }
         auto layoutQPtr = attrs->GetAttrPointer<char>(6);
         if (layoutQPtr != nullptr) {
             layoutQStr = std::string(layoutQPtr);
@@ -61,7 +96,7 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
         }
     }
 
-    int64_t layout = 0; // 0=BSND/BNSD, 1=TND
+    int64_t layout = 0; // 0=BSND, 1=TND
     if (layoutQStr == "TND") {
         layout = 1;
     }
@@ -69,8 +104,9 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     // Extract shape dims
     auto qShape = context->GetInputShape(0);
     auto kShape = context->GetInputShape(1);
-    OP_CHECK_IF(qShape == nullptr || kShape == nullptr,
-                OP_LOGE(context->GetNodeName(), "q or k shape is nullptr."),
+    auto vShape = context->GetInputShape(2);
+    OP_CHECK_IF(qShape == nullptr || kShape == nullptr || vShape == nullptr,
+                OP_LOGE(context->GetNodeName(), "q or k or v shape is nullptr."),
                 return ge::GRAPH_PARAM_INVALID);
 
     int64_t bSize = 0;
@@ -79,6 +115,7 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     int64_t n1Size = 0;
     int64_t n2Size = 0;
     int64_t dSize = 0;
+    int64_t dvSize = 0;
 
     if (layout == 1) {
         // TND: q=(T1, N1, D), k=(T2, N2, D)
@@ -87,6 +124,7 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
         n1Size = qShape->GetStorageShape().GetDim(1);
         n2Size = kShape->GetStorageShape().GetDim(1);
         dSize = qShape->GetStorageShape().GetDim(2);
+        dvSize = vShape->GetStorageShape().GetDim(2);
         // B from cu_seqlens_q (index 6)
         auto cuSeqShape = context->GetOptionalInputShape(6);
         if (cuSeqShape != nullptr && cuSeqShape->GetStorageShape().GetDimNum() > 0) {
@@ -100,6 +138,7 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
         s1Size = qShape->GetStorageShape().GetDim(1);
         n1Size = qShape->GetStorageShape().GetDim(2);
         dSize = qShape->GetStorageShape().GetDim(3);
+        dvSize = vShape->GetStorageShape().GetDim(3);
         s2Size = kShape->GetStorageShape().GetDim(1);
         n2Size = kShape->GetStorageShape().GetDim(2);
     }
@@ -110,10 +149,19 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     tilingData->s1 = s1Size;
     tilingData->s2 = s2Size;
     tilingData->n1 = n1Size;
+    tilingData->n2 = n2Size;
     tilingData->d = dSize;
+    tilingData->dv = dvSize;
+    tilingData->scaleValue = scaleValue == 0.0f ? 1.0f / sqrt(static_cast<float>(dSize)) : scaleValue;
+    tilingData->maskMode = maskMode;
+    tilingData->winLeft = winLeft;
+    tilingData->winRight = winRight;
+    tilingData->maxSeqlenQ = maxSeqlenQ;
+    tilingData->maxSeqlenKv = maxSeqlenKv;
 
-    // TilingKey: bit0=layout (0=BSND/BNSD, 1=TND)
-    uint64_t tilingKey = static_cast<uint64_t>(layout);
+    // TilingKey: bit0=layout (0=BSND/BNSD, 1=TND), bit1=has_atten_mask
+    bool hasAttenMask = HasAttenMask(context, maskMode);
+    uint64_t tilingKey = static_cast<uint64_t>(layout) | (static_cast<uint64_t>(hasAttenMask) << 1);
     context->SetTilingKey(tilingKey);
 
     // Workspace
@@ -122,8 +170,8 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     workSpaces[0] = workspaceSize;
 
     OP_LOGI(context->GetNodeName(),
-            "FlashAttnGrad tiling: blockDim=%u, layout=%ld, B=%ld, S1=%ld, S2=%ld, N1=%ld, D=%ld, tilingKey=%llu, workspaceSize=%zu.",
-            blockDim, layout, bSize, s1Size, s2Size, n1Size, dSize, tilingKey, workspaceSize);
+            "FlashAttnGrad tiling: blockDim=%u, layout=%ld, maskMode=%ld, hasAttenMask=%d, B=%ld, S1=%ld, S2=%ld, N1=%ld, D=%ld, tilingKey=%llu, workspaceSize=%zu.",
+            blockDim, layout, maskMode, hasAttenMask, bSize, s1Size, s2Size, n1Size, dSize, tilingKey, workspaceSize);
 
     return ge::GRAPH_SUCCESS;
 }
