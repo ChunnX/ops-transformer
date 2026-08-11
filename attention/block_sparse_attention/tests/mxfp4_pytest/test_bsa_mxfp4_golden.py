@@ -1067,7 +1067,8 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
             mask_b = mask[bi:bi + 1, :, :cq_b, :ck_b]
             out_b, _ = cpu_block_sparse_attention_bnsd_mxfp4_with_lse(
                 q_list[bi], k_list[bi], v_list[bi], mask_b, block_shape, scale, n2,
-                p_quant=p_quant, s_dtype=s_dtype, dump=dump, out_dtype=out_dtype)
+                p_quant=p_quant, s_dtype=s_dtype, dump=dump, out_dtype=out_dtype,
+                quant_mode=quant_mode, dst_type_max=dst_type_max)
             if input_layout == 'BSND':
                 out_b = out_b.permute(0, 2, 1, 3).contiguous()  # [1,N,act,D] -> [1,act,N,D]
             cpu_chunks.append(out_b)
@@ -1083,9 +1084,13 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
         v_pad = torch.cat([torch.nn.functional.pad(v_list[bi], (0, 0, 0, s2 - v_list[bi].shape[2]))
                            for bi in range(b)], 0).contiguous()
         # 打包 0-padded BNSD(Q/K axis=-1, V axis=-2) + V3 e8m0 重排(复用 uniform 路径)
-        q_packed, q_e8m0 = mxfp4_quantize_pack_last(q_pad, quant_axis=-1)
-        k_packed, k_e8m0 = mxfp4_quantize_pack_last(k_pad, quant_axis=-1)
-        v_packed, v_e8m0 = mxfp4_quantize_pack_last(v_pad, quant_axis=-2)
+        # quant_mode/log2_cx 透传: CX 用 ceil-log2CX 网格, OCP 用 floor-emax(对齐 uniform 路径)
+        q_packed, q_e8m0 = mxfp4_quantize_pack_last(q_pad, quant_axis=-1,
+                                                    quant_mode=quant_mode, log2_cx=log2_cx)
+        k_packed, k_e8m0 = mxfp4_quantize_pack_last(k_pad, quant_axis=-1,
+                                                    quant_mode=quant_mode, log2_cx=log2_cx)
+        v_packed, v_e8m0 = mxfp4_quantize_pack_last(v_pad, quant_axis=-2,
+                                                    quant_mode=quant_mode, log2_cx=log2_cx)
         q_scale = _e8m0_qk_to_v3(q_e8m0)
         k_scale = _e8m0_qk_to_v3(k_e8m0)
         v_scale = _e8m0_v_to_v3(v_e8m0)
