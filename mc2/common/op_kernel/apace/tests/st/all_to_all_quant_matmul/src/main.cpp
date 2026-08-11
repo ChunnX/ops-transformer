@@ -29,9 +29,9 @@
 #include "hccl/hccl_rank_graph.h"
 #include <cstdlib>
 #include "utils.h"
-#include "../../utils/comm_channel_builder.h"
+#include "apace/utils/comm_channel_builder.h"
 #include "../../utils/root_info_exchanger.h"
-#include "apace/tiling/quant_matmul_mx_tiling_swat.h"
+#include "apace/tiling/quant_matmul_tiling_swat.h"
 #include "apace/kernel/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
 #include "kernel_launcher.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
@@ -279,6 +279,9 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
         double avg = sum / (PERF_LOOP_COUNT - 1);
         INFO_LOG("[Rank %d] headMSize=%u tileCnt=%u | per-iter ms: avg=%.3f min=%.3f max=%.3f (excl warmup)",
                  rankId, headMSize, tileCnt, avg, minv, maxv);
+
+        ACL_CHECK(aclrtMemcpy(hostOutput.data(), sizeOutput, deviceOutput, sizeOutput, ACL_MEMCPY_DEVICE_TO_HOST));
+        WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput);
 
         aclrtFree(boostIn);
         aclrtFree(boostOut);
