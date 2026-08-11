@@ -128,7 +128,7 @@ def _normalize_data_range(data_range):
     return radius
 
 
-def _build_mxfp8_case(
+def _assemble_mxfp8_case(
     query,
     key,
     sparse_indices,
@@ -158,28 +158,10 @@ def _build_mxfp8_case(
     data_range_v,
 ):
     batch = int(sparse_indices.shape[0])
-    if layout_q != "TND":
-        raise ValueError(f"MXFP8 requires layout_q='TND', got {layout_q!r}")
-    if batch <= 0:
-        raise ValueError(f"MXFP8 requires a positive batch size, got B={batch}")
     cu_q = [int(value) for value in cu_seqlens_q_value]
     cu_kv = [int(value) for value in cu_seqlens_kv_value]
     seq_q = [int(value) for value in seqused_q_value]
     seq_kv = [int(value) for value in seqused_kv_value]
-    if len(cu_q) != batch + 1 or not cu_q or cu_q[0] != 0:
-        raise ValueError("cu_seqlens_q_value must start with 0 and contain B+1 values")
-    q_lengths = [end - start for start, end in zip(cu_q, cu_q[1:])]
-    if len(seq_kv) != batch:
-        raise ValueError(f"seqused_kv_value must contain B={batch} values")
-    if cu_kv or seq_q:
-        raise ValueError("cu_seqlens_kv_value and seqused_q_value must be empty")
-    if any(length < 0 for length in q_lengths + seq_kv):
-        raise ValueError("MXFP8 sequence lengths must be non-negative")
-    if cu_q[-1] != int(query.shape[0]):
-        raise ValueError(
-            f"cu_seqlens_q_value[-1] must equal query T={int(query.shape[0])}, "
-            f"got {cu_q[-1]}"
-        )
     normalized_blocknum = None if blocknum is None else int(blocknum)
     return {
         "B": batch,
@@ -264,7 +246,7 @@ def _customize_inputs_mxfp8(
     **kwargs,
 ):
     module = _load_mxfp8_golden_module()
-    case = _build_mxfp8_case(
+    case = _assemble_mxfp8_case(
         query,
         key,
         sparse_indices,
@@ -296,27 +278,14 @@ def _customize_inputs_mxfp8(
         data_range_k=data_range_k,
         data_range_v=data_range_v,
     )
-    module.set_active_case(case)
-    data = module._generate_reference_style_mxfp8_inputs()
-
-    physical_block_count = (
-        int(case["blocknum"])
-        if case["blocknum"] is not None and int(case["blocknum"]) > 0
-        else sum(
-            math.ceil(int(seq_len) / int(case["block_size"]))
-            for seq_len in data["kv_lengths"]
-        )
+    # Golden owns MXFP8 validation and all input construction, including the
+    # random block table. TTK only supplies CSV attributes and allocated shapes.
+    data = module.generate_mxfp8_inputs(
+        case, max_block_per_batch=max_block_per_batch
     )
-    if int(key.shape[0]) != physical_block_count:
-        raise ValueError(
-            f"key physical block count {int(key.shape[0])} does not match "
-            f"resolved blocknum {physical_block_count}"
-        )
 
     q_scale = module.fp32_to_e8m0fnu_safe(
-        module.convert_q_scale_tnd_or_ntd_to_layout(
-            data["q_descale"], data["q_lengths"]
-        ),
+        module.pack_q_scale_tnd_for_npu(data["q_descale"], data["q_lengths"]),
         "Q descale",
     )
     # The MXFP8 golden generator now creates the operator-facing physical PA
@@ -778,6 +747,34 @@ def _require_empty_input(value, name):
         raise ValueError(f"{name} must be an empty tensor")
 
 
+def _validate_fp8_sequence_inputs(
+    cu_seqlens_kv,
+    seqused_q,
+    cu_seqlens_q_value,
+    cu_seqlens_kv_value,
+    seqused_q_value,
+    seqused_kv_value,
+):
+    """Keep the existing FP8 sequence contract separate from MXFP8."""
+    _require_empty_input(cu_seqlens_kv, "cu_seqlens_kv")
+    _require_empty_input(seqused_q, "seqused_q")
+    if _list_attr(cu_seqlens_kv_value, "cu_seqlens_kv_value"):
+        raise ValueError("cu_seqlens_kv_value must be empty")
+    if _list_attr(seqused_q_value, "seqused_q_value"):
+        raise ValueError("seqused_q_value must be empty")
+
+    cu_q = _list_attr(cu_seqlens_q_value, "cu_seqlens_q_value")
+    if len(cu_q) < 2 or cu_q[0] != 0:
+        raise ValueError("cu_seqlens_q_value must start with 0 and contain B+1 values")
+    q_lengths = [end - start for start, end in zip(cu_q, cu_q[1:])]
+    kv_lengths = _list_attr(seqused_kv_value, "seqused_kv_value")
+    if len(q_lengths) != len(kv_lengths):
+        raise ValueError("cu_seqlens_q_value and seqused_kv_value must use the same B")
+    if any(length < 0 for length in q_lengths + kv_lengths):
+        raise ValueError("sequence lengths must be non-negative")
+    return cu_q, q_lengths, kv_lengths
+
+
 def _sparse_parameters(sparse_mode, kv_lengths, sparse_block_size_kv):
     max_blocks = math.ceil(max(kv_lengths, default=0) / int(sparse_block_size_kv))
     if sparse_mode == "dense":
@@ -830,28 +827,13 @@ def customize_inputs(
     **kwargs,
 ):
     """Convert the shared CSV attributes into the operator input tensors."""
-    _require_empty_input(cu_seqlens_kv, "cu_seqlens_kv")
-    _require_empty_input(seqused_q, "seqused_q")
     _require_empty_input(metadata, "metadata")
-    if _list_attr(cu_seqlens_kv_value, "cu_seqlens_kv_value"):
-        raise ValueError("cu_seqlens_kv_value must be empty")
-    if _list_attr(seqused_q_value, "seqused_q_value"):
-        raise ValueError("seqused_q_value must be empty")
-
     cu_q = _list_attr(cu_seqlens_q_value, "cu_seqlens_q_value")
-    if len(cu_q) < 2 or cu_q[0] != 0:
-        raise ValueError("cu_seqlens_q_value must start with 0 and contain B+1 values")
-    q_lengths = [end - start for start, end in zip(cu_q, cu_q[1:])]
+    cu_kv_values = _list_attr(cu_seqlens_kv_value, "cu_seqlens_kv_value")
+    seq_q_values = _list_attr(seqused_q_value, "seqused_q_value")
     kv_lengths = _list_attr(seqused_kv_value, "seqused_kv_value")
-    if len(q_lengths) != len(kv_lengths):
-        raise ValueError("cu_seqlens_q_value and seqused_kv_value must use the same B")
-    if any(length < 0 for length in q_lengths + kv_lengths):
-        raise ValueError("sequence lengths must be non-negative")
 
     seed = zlib.crc32(str(testcase_name or "qbsa").encode("utf-8")) & 0x7FFFFFFF
-    sparse_count, sparse_pattern = _sparse_parameters(
-        sparse_mode, kv_lengths, sparse_block_size_kv
-    )
     data_ranges = input_ranges or ()
     data_range_q = data_ranges[0] if len(data_ranges) > 0 else 1.0
     data_range_k = data_ranges[1] if len(data_ranges) > 1 else 1.0
@@ -880,8 +862,8 @@ def customize_inputs(
             return_softmax_lse=return_softmax_lse,
             sparse_mode=sparse_mode,
             cu_seqlens_q_value=cu_q,
-            cu_seqlens_kv_value=cu_seqlens_kv_value,
-            seqused_q_value=seqused_q_value,
+            cu_seqlens_kv_value=cu_kv_values,
+            seqused_q_value=seq_q_values,
             seqused_kv_value=kv_lengths,
             p_scale_value=p_scale_value,
             seed=seed,
@@ -897,6 +879,17 @@ def customize_inputs(
         cached = module._TTK_MXFP8_CACHE[testcase_name or "__default__"]
         block_table_data = cached["data"]["block_table"]
     else:
+        cu_q, q_lengths, kv_lengths = _validate_fp8_sequence_inputs(
+            cu_seqlens_kv,
+            seqused_q,
+            cu_q,
+            cu_kv_values,
+            seq_q_values,
+            kv_lengths,
+        )
+        sparse_count, sparse_pattern = _sparse_parameters(
+            sparse_mode, kv_lengths, sparse_block_size_kv
+        )
         if p_scale_value is None or _numel(p_scale) == 0:
             raise ValueError("FP8 requires p_scale_value and a non-empty p_scale")
         _customize_inputs_fp8(
