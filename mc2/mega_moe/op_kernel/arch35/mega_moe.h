@@ -316,7 +316,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
     rankId_ = mc2Context_->epRankId;
     for (int i = 0; i < worldSize_; i++) {
-        winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
+        winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer_[i];
     }
     params_.aGmAddr = x;
     params_.expertIdxGmAddr = topkIds;

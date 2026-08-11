@@ -53,6 +53,19 @@ struct TokenDispatchScratch {
     uint64_t cumsumRevCntInRank;
 };
 
+struct DispatchShardRange {
+    uint32_t remoteRankIdx;
+    uint32_t rankSegmentDstRowBegin;
+    int32_t matchOrdinalBegin;
+    int32_t matchOrdinalEnd;
+    int32_t dstRowBegin;
+};
+
+struct ExpertTokenCountExportScratch {
+    LocalTensor<int32_t> stridedTensor;
+    LocalTensor<int32_t> compactTensor;
+};
+
 template <typename ActivationType>
 __aicore__ inline LocalTensor<ActivationType> GetDispatchCopyBuffer(
     const TokenDispatchConfig &context, const TokenDispatchScratch<ActivationType> &scratch, int32_t bufferIdx)
@@ -193,14 +206,6 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
         WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
     }
 }
-
-struct DispatchShardRange {
-    uint32_t remoteRankIdx;
-    uint32_t rankSegmentDstRowBegin;
-    int32_t matchOrdinalBegin;
-    int32_t matchOrdinalEnd;
-    int32_t dstRowBegin;
-};
 
 template <typename ActivationType>
 __aicore__ inline DispatchShardRange CalculateDispatchShardRange(
@@ -430,11 +435,6 @@ __aicore__ inline void ExportExpertTokenCounts(const TokenDispatchConfig &contex
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 }
-
-struct ExpertTokenCountExportScratch {
-    LocalTensor<int32_t> stridedTensor;
-    LocalTensor<int32_t> compactTensor;
-};
 
 // 从稳定的物理 workspace 槽导出专家 token 数。
 __aicore__ inline void ExportExpertTokenCountsFromWorkspace(
