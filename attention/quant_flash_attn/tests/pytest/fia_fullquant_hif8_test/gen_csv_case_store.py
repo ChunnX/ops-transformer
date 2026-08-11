@@ -1,0 +1,216 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+"""
+python3 gen_csv_case_store.py [--paramset quant_flash_attn_paramset_func_rdv]
+                              [--output qfa_hif8.csv]
+
+HIF8 版本: descale 为 per-tensor FP32 标量 (1,), 无需 E8M0 转换, 无 PA, 固定 TND layout.
+"""
+
+import argparse
+import csv
+import math
+import os
+import sys
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+API_NAME = "qfa_mxfp8_wrapper.npu_qfa_hif8"
+
+
+def case_to_csv_row(case):
+    name = case["name"]
+    B = case["B"]
+    N_q = case["N_q"]
+    N_kv = case["N_kv"]
+    D = case["D"]
+    cu_seqlens_q = (
+        list(case["cu_seqlens_q"]) if case["cu_seqlens_q"] is not None else []
+    )
+    cu_seqlens_kv = (
+        list(case["cu_seqlens_kv"]) if case["cu_seqlens_kv"] is not None else []
+    )
+    seqused_q = case["seqused_q"]
+    seqused_kv = case["seqused_kv"]
+    max_seqlen_q = case["max_seqlen_q"]
+    max_seqlen_kv = case["max_seqlen_kv"]
+    enable_pa = case.get("enable_pa", False)
+    block_size = case.get("block_size", 0)
+    enable_lse = case["enable_lse"]
+
+    actual_seq_q = (
+        [cu_seqlens_q[i + 1] - cu_seqlens_q[i] for i in range(len(cu_seqlens_q) - 1)]
+        if len(cu_seqlens_q) > 1
+        else [0]
+    )
+    actual_seq_kv = (
+        [cu_seqlens_kv[i + 1] - cu_seqlens_kv[i] for i in range(len(cu_seqlens_kv) - 1)]
+        if len(cu_seqlens_kv) > 1
+        else [0]
+    )
+    max_sq = max(actual_seq_q) if actual_seq_q else D
+    max_skv = max(actual_seq_kv) if actual_seq_kv else D
+
+    max_blocks = (
+        max(math.ceil(s / block_size) for s in actual_seq_kv)
+        if actual_seq_kv and enable_pa and block_size > 0
+        else 0
+    )
+
+    # HIF8: TND layout, Q shape=(T_q, N_q, D), K/V shape=(T_kv, N_kv, D)
+    T_q = sum(actual_seq_q) if actual_seq_q else max_sq
+    T_kv = sum(actual_seq_kv) if actual_seq_kv else max_skv
+    shapes = [
+        f"({T_q},{N_q},{D})",
+        f"({T_kv},{N_kv},{D})",
+        f"({T_kv},{N_kv},{D})",
+        "(1,)",
+        "(1,)",
+        "(1,)",
+        "(1,)",
+        f"({B},{max_blocks})" if enable_pa and max_blocks > 0 else "(0,)",
+    ]
+    tensor_view_shapes = "(" + ",".join(f"({s})" for s in shapes) + ")"
+
+    # HIF8: Q/K/V 用 float8_e4m3fn 作为 slot dtype (TTK 框架兼容)
+    # 实际数据是 hifloat8 编码的 uint8, inputs.py 内部 view 转 uint8
+    dtypes = [
+        "'float8_e4m3fn'",
+        "'float8_e4m3fn'",
+        "'float8_e4m3fn'",
+        "'float32'",
+        "'float32'",
+        "'float32'",
+        "'float32'",
+        "'int32'",
+    ]
+    tensor_dtypes = "(" + ",".join(dtypes) + ")"
+
+    data_range_q = case.get("data_range_q", 1.0)
+    data_range_k = case.get("data_range_k", 1.0)
+    data_range_v = case.get("data_range_v", 1.0)
+
+    attrs = {
+        "B": B,
+        "N_q": N_q,
+        "N_kv": N_kv,
+        "D": D,
+        "cu_seqlens_q": cu_seqlens_q,
+        "cu_seqlens_kv": cu_seqlens_kv,
+        "seqused_q": seqused_q,
+        "seqused_kv": seqused_kv,
+        "max_seqlen_q": max_seqlen_q,
+        "max_seqlen_kv": max_seqlen_kv,
+        "enable_pa": enable_pa,
+        "kv_cache_layout": case.get("kv_cache_layout", "TND"),
+        "block_size": block_size,
+        "mask_mode": case["mask_mode"],
+        "q_scale_layout": case["q_scale_layout"],
+        "quant_mode": case.get("quant_mode", 7),
+        "enable_lse": enable_lse,
+        "graph_path": case.get("graph_path", 0),
+        "input_layout": "TND",
+        "is_contiguous": case.get("is_contiguous", True),
+        "device_id": case.get("device_id", 0),
+        "softmax_scale": case.get("softmax_scale"),
+        "data_range_q": case.get("data_range_q", 1.0),
+        "data_range_k": case.get("data_range_k", 1.0),
+        "data_range_v": case.get("data_range_v", 1.0),
+    }
+    attributes = repr(attrs)
+
+    output_tensor_indexes = ""
+
+    input_data_ranges = (
+        f"(({data_range_q * -1},{data_range_q}),"
+        f"({data_range_k * -1},{data_range_k}),"
+        f"({data_range_v * -1},{data_range_v}))"
+    )
+
+    precision_tolerances = "((0.0078125, 0.0001, 0.005, 0.005, 10),)"
+
+    absolute_precision = "0.0001"
+
+    return [
+        name,
+        API_NAME,
+        tensor_view_shapes,
+        tensor_dtypes,
+        "",
+        attributes,
+        output_tensor_indexes,
+        "",
+        input_data_ranges,
+        precision_tolerances,
+        absolute_precision,
+    ]
+
+
+def main():
+    parser = argparse.ArgumentParser(description="HIF8 paramset -> TTK e2e CSV")
+    parser.add_argument(
+        "--paramset",
+        default="quant_flash_attn_paramset_func_rdv",
+        help="paramset 模块名(不含.py)",
+    )
+    parser.add_argument("--output", default="qfa_hif8.csv", help="输出 CSV 路径")
+    args = parser.parse_args()
+
+    paramset_mod = __import__(args.paramset)
+    skip = getattr(paramset_mod, "SKIP_CASES", set())
+
+    if hasattr(paramset_mod, "CASES") and paramset_mod.CASES is not None:
+        cases = paramset_mod.CASES
+    elif hasattr(paramset_mod, "TEST_PARAMS"):
+        from quant_flash_attn_paramset_common import expand_paramset_to_cases
+
+        cases = expand_paramset_to_cases(paramset_mod.TEST_PARAMS)
+    else:
+        raise ValueError(
+            f"paramset module '{args.paramset}' has neither CASES nor TEST_PARAMS"
+        )
+
+    header = [
+        "testcase_name",
+        "api_name",
+        "tensor_view_shapes",
+        "tensor_dtypes",
+        "tensor_formats",
+        "attributes",
+        "output_tensor_indexes",
+        "golden_api",
+        "input_data_ranges",
+        "precision_tolerances",
+        "absolute_precision",
+    ]
+    out_path = (
+        args.output if os.path.isabs(args.output) else os.path.join(_HERE, args.output)
+    )
+    written = 0
+    skipped = 0
+    with open(out_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        for case in cases:
+            if case["name"] in skip:
+                skipped += 1
+                continue
+            writer.writerow(case_to_csv_row(case))
+            written += 1
+
+    print(f"生成 {written} 个 case (跳过 {skipped} 个 SKIP) -> {out_path}")
+
+
+if __name__ == "__main__":
+    main()
