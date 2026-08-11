@@ -250,6 +250,33 @@ def check_pta_driver() -> None:
             "SHMEM PTA driver must not initialize a torch/HCCL process group")
 
 
+def check_pta_run_and_docs() -> None:
+    run = read("examples/arch35/pta/run_pta_test.sh")
+    for token in (
+        "set -euo pipefail",
+        "PTA_TIMEOUT_SECONDS:-600",
+        "timeout --signal=TERM --kill-after=30",
+        "liballto_allv_grouped_mat_mul_shmem_pta.so",
+        '"$@"',
+    ):
+        require(token in run, f"PTA run script missing contract token: {token}")
+
+    readme = read("examples/arch35/pta/README.md")
+    for token in (
+        "## Prerequisites",
+        "## Build",
+        "## Run",
+        "--world-size 2 --device-ids 0,1 --case all",
+        "## Result interpretation",
+        "## Troubleshooting",
+        "## Offline verification limits",
+        "PTA_TIMEOUT_SECONDS",
+    ):
+        require(token in readme, f"PTA README missing section or command: {token}")
+    for address in re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", run + readme):
+        require(address.startswith("127."), f"PTA artifacts contain a machine-specific IP literal: {address}")
+
+
 def check_cases() -> None:
     precision = load_jsonl("tests/precision/allto_allv_grouped_mat_mul_shmem_precision_cases.jsonl")
     perf = load_jsonl("tests/performance/allto_allv_grouped_mat_mul_shmem_perf_cases.jsonl")
@@ -282,6 +309,7 @@ def main() -> int:
         check_pta_bridge,
         check_pta_build,
         check_pta_driver,
+        check_pta_run_and_docs,
         check_cases,
     ]
     for check in checks:
