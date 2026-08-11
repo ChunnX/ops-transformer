@@ -224,25 +224,27 @@ def moe_init_routing(
 
 ## 约束说明
 
-1. 该接口支持推理场景下使用。
+1. 该接口支持推理场景和训练场景下使用。训练场景下，当`x.requires_grad`为True时支持自动反向，反向算子为[moe\_init\_routing\_grad](./moe_init_routing_grad.md)（封装`aclnnMoeInitRoutingV2Grad`）。
 2. 该接口支持图模式。
-3. `x`和`expert\_idx`必须是2D张量。
-4. `topk\_weight`和`expanded\_topk\_weight`必须同时传入或同时不传入（联动约束）。
-5. `topk\_weight`仅支持`float32` dtype，shape必须为(NUM\_ROWS, K)。
-6. `topk\_weight`不受`quant\_mode`影响，`expanded\_topk\_weight`数据类型始终为`float32`。
-7. `topk\_weight`/`expanded\_topk\_weight`仅<term>Ascend 950PR/Ascend 950DT</term>支持，其他产品不支持该参数。
-8. `expert\_num`必须大于0。
-9. `drop\_pad\_mode=1`时，`expert\_capacity`必须大于0，且具有如下额外约束：`row\_idx\_type`仅支持取值为0（gather索引）；`active\_expert\_range`必须为[0, expert\_num]；`quant\_mode`仅支持-1（非量化）。
-10. `expert\_tokens\_num\_type`仅支持0、1、2。
-11. `row\_idx\_type`仅支持0或1。
-12. quantMode支持情况：
+3. **自动反向（autograd）约束**：自动反向仅在正向退化为V2场景时支持，即不使用V4特有特性。具体要求：`scale`不传入、`offset`不传入、`topk_weight`不传入、`quant_mode=-1`（非量化）、`row_idx_type=0`（gather索引）、`x_dtype`为None、`drop_pad_mode`为0或1。当使用了V4特有特性（量化、`scale`、`offset`、`topk_weight`、`x_dtype`、`row_idx_type`非0等）时，自动反转会抛出`NotImplementedError`。`active_expert_range`不影响反向，不视为V4特有特性。
+4. 自动反向仅对`x`求梯度，`expert_idx`为整数索引张量无梯度，`expanded_row_idx`及其他整数/统计输出无梯度。
+5. `x`和`expert\_idx`必须是2D张量。
+6. `topk\_weight`和`expanded\_topk\_weight`必须同时传入或同时不传入（联动约束）。
+7. `topk\_weight`仅支持`float32` dtype，shape必须为(NUM\_ROWS, K)。
+8. `topk\_weight`不受`quant\_mode`影响，`expanded\_topk\_weight`数据类型始终为`float32`。
+9. `topk\_weight`/`expanded\_topk\_weight`仅<term>Ascend 950PR/Ascend 950DT</term>支持，其他产品不支持该参数。
+10. `expert\_num`必须大于0。
+11. `drop\_pad\_mode=1`时，`expert\_capacity`必须大于0，且具有如下额外约束：`row\_idx\_type`仅支持取值为0（gather索引）；`active\_expert\_range`必须为[0, expert\_num]；`quant\_mode`仅支持-1（非量化）。
+12. `expert\_tokens\_num\_type`仅支持0、1、2。
+13. `row\_idx\_type`仅支持0或1。
+14. quantMode支持情况：
     - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、0、1、2、3、4、5、6、7、8、9、11、12、13、14、15、16、17。
-13. <term>Ascend 950PR/Ascend 950DT</term>仅支持如下参数值：
+15. <term>Ascend 950PR/Ascend 950DT</term>仅支持如下参数值：
     - activeNum仅支持值等于NUM\_ROWS\*K。
     - expertCapacity在Dropless场景下仅校验其值，不使用该参数；在DropPad场景下取值范围为(0, NUM\_ROWS]。
     - expertTokensNumFlag仅支持取值为true。
-14. <term>Ascend 950PR/Ascend 950DT</term>支持quantMode为13的INT4动态量化场景，需同时满足：x数据类型为float32或bfloat16，expanded\_x数据类型为int4；H为偶数；scale不输入或输入shape为(1, H)；offset不输入。
-15. 空tensor处理：当输入的x首个维度的值为0时，DropPadMode必须为0，expanded\_x、expanded\_row\_idx和expanded\_scale为空tensor，expert\_token\_cumsum\_or\_count返回全0的tensor。
+16. <term>Ascend 950PR/Ascend 950DT</term>支持quantMode为13的INT4动态量化场景，需同时满足：x数据类型为float32或bfloat16，expanded\_x数据类型为int4；H为偶数；scale不输入或输入shape为(1, H)；offset不输入。
+17. 空tensor处理：当输入的x首个维度的值为0时，DropPadMode必须为0，expanded\_x、expanded\_row\_idx和expanded\_scale为空tensor，expert\_token\_cumsum\_or\_count返回全0的tensor。
 
 ## 调用示例
 
@@ -346,4 +348,35 @@ def moe_init_routing(
 
     if __name__ == '__main__':
         main()
+    ```
+
+    - 自动反向调用（训练场景，非量化）
+
+    ```python
+    import torch
+    import torch_npu
+    from cann_ops_transformer.ops import moe_init_routing
+
+    torch_npu.npu.set_device(0)
+
+    n = 4
+    h = 8
+    k = 2
+    expert_num = 8
+
+    # x.requires_grad=True 时自动启用autograd
+    x = torch.randn((n, h), dtype=torch.float32, device="npu", requires_grad=True)
+    expert_idx = torch.randint(0, expert_num, (n, k), dtype=torch.int32, device="npu")
+
+    # 正向：非量化场景，不传入scale/offset/topk_weight，row_idx_type=0
+    expanded_x, expanded_row_idx, expert_tokens_count, expanded_scale, expanded_topk_weight = \
+        moe_init_routing(x, expert_idx, active_num=-1, expert_capacity=-1,
+                         expert_num=expert_num, drop_pad_mode=0,
+                         expert_tokens_num_type=1, expert_tokens_num_flag=True,
+                         quant_mode=-1, active_expert_range=[0, 4], row_idx_type=0)
+
+    # 反向自动触发 moe_init_routing_grad
+    loss = expanded_x.sum()
+    loss.backward()
+    print(x.grad.shape)  # torch.Size([4, 8])
     ```
