@@ -626,9 +626,49 @@ TEST_PARAMS = {
         "ori_sparse_indices_mode": ["full"],
         "cmp_sparse_indices_mode": ["full"],
     },
+
+    "mytest": {
+            "testcase_name": ["csa_decode_pa"],
+            "layout_q": ["TND"],
+            "layout_kv": ["PA_BBND"],
+            "q_type": [torch.bfloat16],
+            "ori_kv_type": [torch.bfloat16],
+            "cmp_kv_type": [torch.bfloat16],
+            "B": [1],
+            "S1": [1],
+            "S2": [1024],
+            "T1": [1],
+            "T2": [1024],
+            "N1": [128],
+            "N2": [1],
+            "D": [512],
+            "K": [512],
+            "block_num1": [None],
+            "block_num2": [None],
+            "block_size1": [128],
+            "block_size2": [128],
+            "cu_seqlens_q": [None],
+            "seqused_ori_kv": [None],
+            "seqused_cmp_kv": [None],
+            "cmp_residual_kv": [None],
+            "softmax_scale": [0.04419417],
+            "cmp_ratio": [4],
+            "return_softmax_lse": [False],
+            "ori_mask_mode": [4],
+            "cmp_mask_mode": [3],
+            "ori_win_left": [127],
+            "ori_win_right": [0],
+            "template_mode": ["CSA"],
+            "cmp_kv_topk_mode": ["fullK"],
+            "cmp_sparse_indices_mode": ["full"],
+            # "q_datarange": ["[1, 1]"],
+            # "ori_kv_datarange": ["[1, 1]"],
+            # "cmp_kv_datarange": ["[1, 1]"],
+        },
 }
 
 # 按需选择要启用的测试参数（例如默认启用所有）
 ENABLED_PARAMS = [
-    {**TEST_PARAMS[key], "testcase_name": [key]} for key in TEST_PARAMS.keys()
+    {**TEST_PARAMS["swa_decode"], "testcase_name": [None]}
+    # {**TEST_PARAMS[key], "testcase_name": [key]} for key in TEST_PARAMS.keys()
 ]

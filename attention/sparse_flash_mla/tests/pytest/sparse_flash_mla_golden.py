@@ -1387,6 +1387,8 @@ def resolve_query_actual_lengths(layout_q, batch_size, sequence_length, seqused_
 
 
 def gen_data(params, prepare_device_storage=True):
+    np.random.seed(42)
+    torch.manual_seed(42)
     # 从字典中提取参数
     layout_q = params.get("layout_q")
     layout_kv = params.get("layout_kv")
