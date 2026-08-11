@@ -500,7 +500,37 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalBandDeterInd
                 int64_t k = static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO);
                 int64_t m = this->bandInfo.m;
                 int64_t n = this->bandInfo.n;
-                CalCausalSwizzleIndex(k, m, n, b, j, r, coordinateInfo);
+                uint8_t scheduleMode = this->tilingData->s1s2BNGS1S2BaseParams.deterBandScheduleMode;
+                if (scheduleMode == static_cast<uint8_t>(optiling::fag::DeterBandScheduleMode::CAUSAL)) {
+                    int64_t causalShift = this->bandInfo.q - 1;
+                    int64_t causalSize = m + causalShift;
+                    int64_t causalPairCount = b / NUM_TWO;
+                    int64_t pairedBatch = causalPairCount * NUM_TWO;
+                    int64_t causalK = Min(k, causalSize * causalPairCount);
+                    int64_t pairRound = causalPairCount > 0 ?
+                        Ceil<int64_t>((causalSize + 1) * causalPairCount, causalK) * causalSize : 0;
+                    if ((b & 1) != 0 && r > pairRound) {
+                        CalCausalSingleBatchDeterIndex(
+                            k, causalSize, causalSize, j, r - pairRound, coordinateInfo);
+                        if (coordinateInfo.batchId != -1) {
+                            coordinateInfo.batchId = b;
+                        }
+                    } else {
+                        CalCausalSwizzleIndex(k, causalSize, causalSize, pairedBatch, j, r, coordinateInfo);
+                    }
+                    if (coordinateInfo.batchId != -1) {
+                        coordinateInfo.s1Idx -= causalShift;
+                        if (coordinateInfo.s1Idx < 1 || coordinateInfo.s1Idx > m || coordinateInfo.s2Idx > n) {
+                            coordinateInfo.batchId = -1;
+                        }
+                    }
+                } else if (scheduleMode == static_cast<uint8_t>(optiling::fag::DeterBandScheduleMode::DENSE)) {
+                    CalDenseSwizzleIndex(k, m, n, b, j, r, coordinateInfo);
+                } else if (scheduleMode == static_cast<uint8_t>(optiling::fag::DeterBandScheduleMode::BAND)) {
+                    CalBandHybridIndex(this->bandInfo, j, r, coordinateInfo);
+                } else {
+                    CalCausalSwizzleIndex(k, m, n, b, j, r, coordinateInfo);
+                }
             } else {
                 CalBandIndex(this->bandInfo, j, r, coordinateInfo);
             }
@@ -596,7 +626,10 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
 
     if constexpr (BaseClass::DETER_SPARSE_TYPE == DETER_BAND) {
         if constexpr (BaseClass::IS_N_EQUAL) {
-            if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx)) {
+            uint8_t scheduleMode = this->tilingData->s1s2BNGS1S2BaseParams.deterBandScheduleMode;
+            if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx &&
+                         scheduleMode == static_cast<uint8_t>(optiling::fag::DeterBandScheduleMode::DISABLED) &&
+                         this->constInfo.sparseMode == RIGHT_DOWN_CAUSAL)) {
                 int64_t mNew = 0;
                 int64_t nNew = 0;
                 if (m < n) {
@@ -653,6 +686,32 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
         }
  
         if constexpr(BaseClass::IS_N_EQUAL) {
+            uint8_t scheduleMode = this->tilingData->s1s2BNGS1S2BaseParams.deterBandScheduleMode;
+            // The Host sets a non-DISABLED mode only after DETER_BAND normalization. Keep this mode
+            // authoritative for both hybrid-info initialization and coordinate dispatch.
+            bool isHybridSchedule =
+                scheduleMode >= static_cast<uint8_t>(optiling::fag::DeterBandScheduleMode::CAUSAL) &&
+                scheduleMode <= static_cast<uint8_t>(optiling::fag::DeterBandScheduleMode::BAND);
+            if (unlikely(isHybridSchedule)) {
+                GenBandHybridInfo(k, actualM, actualN, actualP, actualQ, b, this->bandInfo);
+                InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, mOffset, nOffset,
+                                   this->coordinateInfos[0]);
+                InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, mOffset, nOffset,
+                                   this->coordinateInfos[1]);
+                if (scheduleMode == static_cast<uint8_t>(optiling::fag::DeterBandScheduleMode::CAUSAL)) {
+                    // The odd-batch CAUSAL schedule has a paired section followed by a single-batch
+                    // tail. Host serializes the sum of both sections, so use it as the sole bound.
+                    deterLoopMax = this->tilingData->baseDeterParam.deterMaxRound;
+                } else if (scheduleMode == static_cast<uint8_t>(optiling::fag::DeterBandScheduleMode::DENSE)) {
+                    int64_t denseK = Min(k, this->bandInfo.m * b);
+                    deterLoopMax = Ceil<int64_t>(this->bandInfo.n * b, denseK) * this->bandInfo.m;
+                } else {
+                    int64_t colsPerBatch = this->bandInfo.nSeg - this->bandInfo.hybridPairCount;
+                    deterLoopMax = Ceil<int64_t>(b * colsPerBatch, k) *
+                                   (this->bandInfo.p + this->bandInfo.q - 1);
+                }
+                return deterLoopMax;
+            }
             GenBandInfo(k, actualM, actualN, actualP, actualQ, b, this->bandInfo);
             int64_t convertedMaxRound = BaseClass::DETER_TILING_SPLIT_MODE ?
                 this->tilingData->baseDeterParam.deterMaxRound / NUM_TWO :
@@ -780,7 +839,9 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
         }
         
         if (!(runInfos[(taskId + 1) & 1].completed)) {
-            this->vecBlock.ProcessVec1(this->constInfo, runInfos[(taskId + 1) & 1]); // v1: softmaxGrad
+            if (likely(!this->constInfo.enablePreSfmg)) {
+                this->vecBlock.ProcessVec1(this->constInfo, runInfos[(taskId + 1) & 1]); // v1: softmaxGrad
+            }
             // wait mm1 and mm2 result
             if ASCEND_IS_AIV {
                 CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C1_TO_V2_FLAG[(taskId + 1) & 1]);
