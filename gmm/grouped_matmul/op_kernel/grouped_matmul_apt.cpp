@@ -61,7 +61,7 @@ using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTili
 // Keep the JIT source signature in sync with the MX Tensor API adapter. The
 // runtime compiler cache keys the translation unit and does not reliably
 // invalidate on changes in nested project headers.
-#define GMM_MX_TENSOR_API_ADAPTER_REVISION 21
+#define GMM_MX_TENSOR_API_ADAPTER_REVISION 22
 #include "arch35/weight_quant_basic_block/gmm_weight_quant_tensor_api_mx_kernel.h"
 #endif
 using WeightQuantBatchMatmulV2::Arch35::A16MXF4_NZKN;

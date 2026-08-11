@@ -52,10 +52,12 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     const int64_t baseN = static_cast<int64_t>(mmTiling->baseN);
     const int64_t baseK = static_cast<int64_t>(mmTiling->baseK);
     if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
-        AscendC::printf("zzzlog%d shape m=%d n=%d k=%d baseM=%d baseN=%d baseK=%d groups=%d bias=%d ybf16=%d yhalf=%d\n",
+        AscendC::printf("zzzlog%d shape m=%d n=%d k=%d baseM=%d baseN=%d baseK=%d groups=%d "
+            "singleWeight=%d bias=%d ybf16=%d yhalf=%d\n",
             __LINE__, static_cast<int32_t>(m), static_cast<int32_t>(n), static_cast<int32_t>(k),
             static_cast<int32_t>(baseM), static_cast<int32_t>(baseN), static_cast<int32_t>(baseK),
-            static_cast<int32_t>(gmmTiling->groupNum), static_cast<int32_t>(gmmTiling->hasBias),
+            static_cast<int32_t>(gmmTiling->groupNum), static_cast<int32_t>(gmmTiling->singleWeight),
+            static_cast<int32_t>(gmmTiling->hasBias),
             static_cast<int32_t>(AscendC::Std::is_same_v<YType, bfloat16_t>),
             static_cast<int32_t>(AscendC::Std::is_same_v<YType, half>));
     }
@@ -92,7 +94,8 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
           AscendC::Te::MakeShape(baseM, baseN, baseK), L1_BUFFER_NUM, gmmTiling->hasBias != 0U},
          {nullptr, nullptr, kBubSize, static_cast<uint64_t>(baseN)},
          {static_cast<uint64_t>(baseM), static_cast<uint64_t>(baseN), 1U, 1U, 1U, 1U, 0U, 0U}},
-        {gmmTiling->groupNum, gmmTiling->groupListType, gmmTiling->hasBias != 0U},
+        {gmmTiling->groupNum, gmmTiling->groupListType, gmmTiling->hasBias != 0U,
+         gmmTiling->singleWeight != 0U},
         weight, antiquantScale, bias, groupList};
     GroupedKernel kernel;
     if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {

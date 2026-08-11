@@ -2,8 +2,15 @@
 
 ## Scope
 
-This path migrates the pseudo-quantized MX A8W4 single-X/multi-weight/single-Y case on DAV_3510 from CMCT to the
-Blaze tensor API. Older devkit builds keep the existing CMCT controller as a compatibility fallback.
+This path migrates all pseudo-quantized MX A8W4 data flows currently accepted by the DAV_3510 host tiling from
+CMCT to the Blaze tensor API:
+
+- single-X/single-weight/single-Y, where the leading E dimension of weight, weight scale, and optional bias stores
+  all groups contiguously;
+- single-X/multi-weight/single-Y, where weight, weight scale, and optional bias contain one TensorList entry per
+  group.
+
+Older devkit builds keep the existing CMCT controller as a compatibility fallback.
 
 ## Kernel selection
 
@@ -20,9 +27,11 @@ group; a full-load policy would add L1 residency constraints without a stable cr
 ## Group orchestration
 
 The grouped wrapper reads `groupList` in cumulative-offset or count mode. X, per-token scale, and Y are contiguous
-single tensors, so their offsets advance by `M*K`, `M*ceil(K/32)`, and `M*N`. Weight, weight scale, and optional bias
-are tensor lists and are resolved separately for every group. Empty groups are skipped without changing the logical
-offset derived from `groupList`.
+single tensors, so their offsets advance by `M*K`, `M*ceil(K/32)`, and `M*N`. For multi-weight input, weight, weight
+scale, and optional bias are resolved from the corresponding TensorList entry for every group. For single-weight
+input, only TensorList entry zero is decoded; group addresses then advance by `K*N/2` packed-FP4 bytes,
+`N*ceil(K/32)` E8M0 scale elements, and `N` bias elements. Empty groups are skipped without changing the logical
+group index or the offset derived from `groupList`.
 
 The wrapper creates a fresh Blaze kernel invocation for each non-empty group. All AIC/AIV blocks traverse groups in
 the same order, preserving the weight-prologue cross-core flag protocol.
@@ -30,9 +39,8 @@ the same order, preserving the weight-prologue cross-core flag protocol.
 ## Tiling mapping
 
 `baseM/baseN/baseK` come from the existing `TCubeTiling`. The conservative L1 K tile is `baseK`; scale K uses the
-same extent. For NZ weights, the two AIV sub-blocks split that K tile, so `kBubSize` is derived as aligned
-`ceil(baseK/2)` rather than hard-coded. Tail-resplit parameters remain neutral; the scheduler still distributes the
-regular M/N tile grid and handles shape tails.
+same extent. For NZ weights, `kBubSize` keeps one complete, 64-aligned L1 K tile in the prologue UB. Tail-resplit
+parameters remain neutral; the scheduler still distributes the regular M/N tile grid and handles shape tails.
 
 ## Compatibility
 
