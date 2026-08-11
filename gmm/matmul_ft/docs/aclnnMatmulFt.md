@@ -7,7 +7,7 @@
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 
-依赖catlass 81014c2590d0e6e6f73d2acd78e36975b6acad70
+依赖catlass master 分支commit 81014c2590d0e6e6f73d2acd78e36975b6acad70
 
 ## 功能说明
 
