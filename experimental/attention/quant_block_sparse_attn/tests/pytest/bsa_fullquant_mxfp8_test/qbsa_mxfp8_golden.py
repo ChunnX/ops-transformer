@@ -1042,10 +1042,72 @@ def _positions_from_sparse(
     return chunk_positions
 
 
-def _expand_d_group_scale(scale, width):
-    return scale.to(torch.float32).repeat_interleave(QUANT_GROUP_SIZE, dim=-1)[
-        ..., :width
-    ]
+def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale):
+    """Run QK with NPU MXFP8 grouped accumulation and rounding semantics.
+
+    A float32 ``matmul(dequant(Q), dequant(K))`` is mathematically equivalent
+    to MXFP8 quant matmul, but it does not reproduce Cube's grouped
+    accumulation order. A small score difference can cross an E4M3 boundary
+    after ``exp(score - max)`` and become a query-row-wide output gain error
+    while VF uses quantized P for the numerator and unquantized P for the
+    denominator.
+
+    Q scale is per-token and K scale is per-output-column. Every two adjacent
+    D-group e8m0 values are packed together, matching npu_quant_matmul's
+    ``group_sizes=[1, 1, 32]`` MXFP8 interface.
+    """
+    if q_fp8.ndim != 2 or k_fp8.ndim != 2:
+        raise ValueError(
+            f"Q/K must be rank-2, got q={tuple(q_fp8.shape)}, k={tuple(k_fp8.shape)}"
+        )
+    if q_fp8.shape[1] != k_fp8.shape[1]:
+        raise ValueError(
+            f"Q/K head dimensions must match, got {q_fp8.shape[1]} and {k_fp8.shape[1]}"
+        )
+    if q_scale.ndim != 2 or k_scale.ndim != 2:
+        raise ValueError(
+            "Q/K scale must be rank-2, got "
+            f"q_scale={tuple(q_scale.shape)}, k_scale={tuple(k_scale.shape)}"
+        )
+    if q_scale.shape[0] != q_fp8.shape[0] or k_scale.shape[0] != k_fp8.shape[0]:
+        raise ValueError(
+            "Q/K scale row count must match its operand, got "
+            f"q={q_fp8.shape[0]}/{q_scale.shape[0]}, "
+            f"k={k_fp8.shape[0]}/{k_scale.shape[0]}"
+        )
+
+    d_group_count = math.ceil(q_fp8.shape[1] / QUANT_GROUP_SIZE)
+    if q_scale.shape[1] != d_group_count or k_scale.shape[1] != d_group_count:
+        raise ValueError(
+            f"Q/K scale D-group count must be {d_group_count}, got "
+            f"{q_scale.shape[1]} and {k_scale.shape[1]}"
+        )
+    if d_group_count % 2 != 0:
+        raise ValueError(
+            "npu_quant_matmul MXFP8 scale pair packing requires an even "
+            f"D-group count, got {d_group_count}"
+        )
+
+    q_scale_e8m0 = fp32_to_e8m0fnu_safe(q_scale, "Q golden matmul descale")
+    k_scale_e8m0 = fp32_to_e8m0fnu_safe(k_scale, "K golden matmul descale")
+    q_scale_packed = pack_qk_scale_for_npu(q_scale_e8m0).view(torch.int8)
+    k_scale_packed = pack_qk_scale_for_npu(k_scale_e8m0).view(torch.int8)
+
+    q_npu = q_fp8.to(FP8_DTYPE).contiguous().npu()
+    k_npu = k_fp8.to(FP8_DTYPE).contiguous().npu()
+    q_scale_npu = q_scale_packed.contiguous().npu()
+    k_scale_npu = k_scale_packed.contiguous().npu()
+
+    scores_npu = torch_npu.npu_quant_matmul(
+        q_npu,
+        k_npu.transpose(0, 1),
+        k_scale_npu.transpose(0, 1),
+        pertoken_scale=q_scale_npu,
+        output_dtype=torch.float32,
+        scale_dtype=torch_npu.float8_e8m0fnu,
+        group_sizes=[1, 1, QUANT_GROUP_SIZE],
+    )
+    return scores_npu.cpu()
 
 
 def _gather_q_block_and_scale(
@@ -1116,6 +1178,10 @@ def cpu_mxfp8_golden(
     logger.info(
         "[CPU Golden] reference sparse flow: layout_q=%s, OUT=TND, LSE=TN", layout_q
     )
+    logger.info(
+        "[CPU Golden] QK path: npu_quant_matmul, MXFP8 group_size=%d",
+        QUANT_GROUP_SIZE,
+    )
 
     for batch_idx in range(batch):
         q_len = int(q_lengths[batch_idx])
@@ -1160,17 +1226,18 @@ def cpu_mxfp8_golden(
                     q_end,
                     head_idx,
                 )
-                q_dequant = q_block * _expand_d_group_scale(q_scale_block, head_dim)
 
                 k_mat = k_tensor[batch_idx, n2_idx, pos_tensor, :]
                 k_scale_mat = k_scale[batch_idx, n2_idx, pos_tensor, :]
-                k_dequant = k_mat * _expand_d_group_scale(k_scale_mat, head_dim)
 
                 valid_mask = _valid_mask_for_positions(
                     q_indices, positions, q_len, kv_len
                 )
                 scores = (
-                    torch.matmul(q_dequant, k_dequant.transpose(0, 1)) * softmax_scale
+                    _npu_mxfp8_qk_matmul(
+                        q_block, k_mat, q_scale_block, k_scale_mat
+                    )
+                    * softmax_scale
                 )
                 scores = torch.where(
                     valid_mask, scores, torch.full_like(scores, MASK_VALUE)
