@@ -22,6 +22,16 @@ namespace optiling {
 namespace fag {
 constexpr uint32_t MAX_CORE_NUM = 36;
 constexpr uint32_t TND_SWIZZLE_PREFIX_NUM = 129;
+
+// Schedule selected for the non-TND deterministic BAND implementation. isSplitByBlockIdx keeps
+// its original boolean meaning and only controls whether block-index splitting is enabled.
+enum class DeterBandScheduleMode : uint8_t {
+    DISABLED = 0,
+    CAUSAL = 1,
+    DENSE = 2,
+    BAND = 3
+};
+
 class FlashAttentionScoreGradEmptyTensorTilingDataRegbase {
 public:
     uint32_t formerDqNum;
@@ -120,6 +130,7 @@ public:
     bool enablePreSfmg;
     uint64_t s1SinkOuter;
     uint64_t s2SinkOuter;
+    uint8_t deterBandScheduleMode;
 
     int64_t get_coreNum() const {return coreNum;}
     int64_t get_b() const {return b;}
@@ -153,6 +164,7 @@ public:
     uint32_t get_sinkOptional() const {return sinkOptional;}
     uint64_t get_s1SinkOuter() const {return s1SinkOuter;}
     uint64_t get_s2SinkOuter() const {return s2SinkOuter;}
+    uint8_t get_deterBandScheduleMode() const {return deterBandScheduleMode;}
 
     void set_coreNum(int64_t coreNumParam) { this->coreNum = coreNumParam; }
     void set_b(int64_t bParam) { this->b = bParam; }
@@ -189,6 +201,10 @@ public:
     void set_sinkOptional(uint32_t sinkOptionalParam) { this->sinkOptional = sinkOptionalParam; }
     void set_s1SinkOuter(uint64_t s1SinkOuterParam) { this->s1SinkOuter = s1SinkOuterParam; }
     void set_s2SinkOuter(uint64_t s2SinkOuterParam) { this->s2SinkOuter = s2SinkOuterParam; }
+    void set_deterBandScheduleMode(uint8_t deterBandScheduleModeParam)
+    {
+        this->deterBandScheduleMode = deterBandScheduleModeParam;
+    }
 };
 
 class FlashAttentionScoreGradS1S2BNGS1S2SplitCoreParamsRegbase {

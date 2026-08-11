@@ -72,6 +72,7 @@ protected:
 
     ge::graphStatus InitTilingData();
     void DoSplit();
+    void DetermineBlockSchedule();
     ge::graphStatus DoSparse();
     bool DoBn2s2Sparse();
     uint32_t GetDeterSparseTilingKey();
