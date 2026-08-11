@@ -401,8 +401,7 @@ int64_t GetQueryBatchSizeQsmla(const aclTensor *sequsedQOptional, const aclTenso
         return sequsedQOptional->GetViewShape().GetDim(0);
     }
     if (strcmp(layoutQOptional, "TND") == 0) {
-        if (IsTensorExistQsmla(
-                cuSeqlensQOptional)) {
+        if (IsTensorExistQsmla(cuSeqlensQOptional)) {
             *source = "cu_seqlens_q";
             return cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
         }
@@ -882,7 +881,8 @@ aclnnStatus CheckConsistencyQsmla(const aclTensor *cuSeqlensQOptional, const acl
         }
         // 校验 cmp_topk_length 维度一致性
         if (cmpTopk != 0 &&
-            cmpMaskMode == static_cast<int64_t>(SparseModeQsmla::DEFAULT_MASK) && IsTensorExistQsmla(cmpTopkLengthOptional)) {
+            cmpMaskMode == static_cast<int64_t>(SparseModeQsmla::DEFAULT_MASK) &&
+            IsTensorExistQsmla(cmpTopkLengthOptional)) {
             if (strcmp(layoutQOptional, "BSND") == 0) {
                 // 校验 cmp_topk_length 第一个维度
                 aclnnStatus ret = CheckTopkLengthFirstDimQsmla(cmpTopkLengthOptional, "cmp_topk_length",
