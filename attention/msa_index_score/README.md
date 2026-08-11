@@ -46,8 +46,8 @@
 | block_table              | 可选输入       | PageAttention 的逻辑 block → 物理 page 映射表。PA 场景必须传入，二维，第二维长度不能小于 $maxBlockNumPerSeq$；shape 为 $[B, S2/block\_size]$ | INT32                        | ND       |
 | scale                    | 可选输入       | 公式中的 $scale$，反量化系数。非量化必须为空；量化场景必选，shape 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$ | FLOAT                        | ND, NZ   |
 | atten_mask               | 可选输入       | 控制因果可见的 mask。仅在 `sparse_mode=3` 时使用；取值为 1 表示该位不参与计算，为 0 表示参与计算；shape 为 $[2048, 2048]$ | INT8                         | ND       |
-| actual_seq_lengths_query | 可选输入       | 每个 Batch 中 Query 的有效 token 数。query 为 TND 时必须传入，单调不减（前缀和），shape 为 $[B+1]$ | INT32                        | ND       |
-| actual_seq_lengths_key   | 可选输入       | 每个 Batch 中 Key 的有效 token 数。key 为 TND 时必须传入（前缀和）；PageAttention 场景下为各请求可见 $S2$，shape 为 $[B]$ | INT32                        | ND       |
+| actual_seq_qlen | 可选输入       | 每个 Batch 中 Query 的有效 token 数。query 为 TND 时必须传入，单调不减（前缀和），shape 为 $[B+1]$ | INT32                        | ND       |
+| actual_seq_klen   | 可选输入       | 每个 Batch 中 Key 的有效 token 数。key 为 TND 时必须传入（前缀和）；PageAttention 场景下为各请求可见 $S2$，shape 为 $[B]$ | INT32                        | ND       |
 | start_loc                | 输入           | 当前 query 所在 block 在完整 block table 中的索引，用于生成 $local\_mask$；shape 为 $[B]$ | INT32                        | ND       |
 | sparse_mode              | 属性           | sparse 模式。0：defaultMask（`atten_mask` 传空）；3：rightDownCausal（须传入 $[2048, 2048]$ 的 `atten_mask`） | INT64                        | -        |
 | score                    | 输出           | 公式中的 $score$，逐 block 重要性分数；shape 为 $[N1, T1, RoundUp(maxBlockNumPerSeq, 16)]$ | FLOAT                        | ND       |

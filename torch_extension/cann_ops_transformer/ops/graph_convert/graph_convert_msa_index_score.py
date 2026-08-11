@@ -38,8 +38,8 @@ if _TORCHAIR_AVAILABLE:
         block_table: Optional[Tensor],
         scale: Optional[Tensor],
         atten_mask: Optional[Tensor],
-        actual_seq_lengths_query: Optional[Tensor],
-        actual_seq_lengths_key: Optional[Tensor],
+        actual_seq_qlen: Optional[Tensor],
+        actual_seq_klen: Optional[Tensor],
         start_loc: Tensor,
         *,
         sparse_mode: int = 3,
@@ -55,8 +55,8 @@ if _TORCHAIR_AVAILABLE:
             "block_table": block_table,
             "scale": scale,
             "atten_mask": atten_mask,
-            "actual_seq_lengths_query": actual_seq_lengths_query,
-            "actual_seq_lengths_key": actual_seq_lengths_key,
+            "actual_seq_qlen": actual_seq_qlen,
+            "actual_seq_klen": actual_seq_klen,
             "start_loc": start_loc,
         }
         attrs = {
@@ -75,8 +75,8 @@ if _TORCHAIR_AVAILABLE:
             .optional_input("block_table", "DT_INT32")
             .optional_input("scale", "DT_FLOAT")
             .optional_input("atten_mask", "DT_INT8")
-            .optional_input("actual_seq_lengths_query", "DT_INT32")
-            .optional_input("actual_seq_lengths_key", "DT_INT32")
+            .optional_input("actual_seq_qlen", "DT_INT32")
+            .optional_input("actual_seq_klen", "DT_INT32")
             .input("start_loc", "DT_INT32")
             .attr("sparse_mode", attr.Int(3))
             .output("score", "DT_FLOAT"),
@@ -91,8 +91,8 @@ if _TORCHAIR_AVAILABLE:
         block_table: Optional[Tensor],
         scale: Optional[Tensor],
         atten_mask: Optional[Tensor],
-        actual_seq_lengths_query: Optional[Tensor],
-        actual_seq_lengths_key: Optional[Tensor],
+        actual_seq_qlen: Optional[Tensor],
+        actual_seq_klen: Optional[Tensor],
         start_loc: Tensor,
         *,
         sparse_mode: int = 3,
@@ -104,8 +104,8 @@ if _TORCHAIR_AVAILABLE:
             block_table=block_table,
             scale=scale,
             atten_mask=atten_mask,
-            actual_seq_lengths_query=actual_seq_lengths_query,
-            actual_seq_lengths_key=actual_seq_lengths_key,
+            actual_seq_qlen=actual_seq_qlen,
+            actual_seq_klen=actual_seq_klen,
             start_loc=start_loc,
             sparse_mode=sparse_mode,
         )

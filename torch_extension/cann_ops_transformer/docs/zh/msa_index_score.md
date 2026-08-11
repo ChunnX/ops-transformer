@@ -35,8 +35,8 @@ cann_ops_transformer.msa_index_score(
     block_table=None,
     scale=None,
     atten_mask=None,
-    actual_seq_lengths_query=None,
-    actual_seq_lengths_key=None,
+    actual_seq_qlen=None,
+    actual_seq_klen=None,
     sparse_mode=3,
 ) -> Tensor
 ```
@@ -51,8 +51,8 @@ cann_ops_transformer.msa_index_score(
 | block_table | PA 必选 | 逻辑→物理 page | int32 | `[B,MB]` |
 | scale | 量化必选 | 反量化 | float32 | `[NP,N2,P]` |
 | atten_mask | mode=3 必选 | 压缩下三角模板 | int8 | `[2048,2048]` |
-| actual_seq_lengths_query | TND 必选 | query 前缀和 | int32 | `[B+1]` |
-| actual_seq_lengths_key | PA 必选 | 各请求 S2 | int32 | `[B]` |
+| actual_seq_qlen | TND 必选 | query 前缀和 | int32 | `[B+1]` |
+| actual_seq_klen | PA 必选 | 各请求 S2 | int32 | `[B]` |
 | sparse_mode | 可选 | 0 / 3，默认 3 | int | - |
 
 ## 输出
