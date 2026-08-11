@@ -86,7 +86,7 @@ bool BlockAttnResPrepareTiling::IsCapable()
 
 ge::graphStatus BlockAttnResPrepareTiling::GetPlatformInfo()
 {
-    const auto *platformInfo = context_->GetPlatformInfo();
+    auto *platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
         const auto *compileInfo =
             reinterpret_cast<const BlockAttnResPrepareCompileInfo *>(context_->GetCompileInfo());
@@ -146,7 +146,7 @@ ge::graphStatus BlockAttnResPrepareTiling::CheckInputShapes()
     totalD_ = static_cast<uint64_t>(vShape.GetDim(2));
     totalS_ = static_cast<uint64_t>(qShape.GetDim(0));
     OP_CHECK_IF(totalT_ > std::numeric_limits<uint32_t>::max() || totalN_ > std::numeric_limits<uint32_t>::max() ||
-                   totalS_ > std::numeric_limits<uint32_t>::max(),
+                    totalS_ > std::numeric_limits<uint32_t>::max(),
                 OP_LOGE(context_->GetNodeName(), "T/N/S exceed uint32 tiling range"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(totalN_ > SOFTMAX_MAX_N,
                 OP_LOGE(context_->GetNodeName(), "N=%lu exceeds the current single-VReg softmax limit %u", totalN_,
@@ -334,7 +334,7 @@ void BlockAttnResPrepareTiling::DumpTilingInfo()
 bool BlockAttnResPrepareCubeTiling::IsCapable()
 {
     if (totalT_ < CUBE_MIN_T || totalS_ < CUBE_MIN_S || totalD_ < CUBE_MIN_D || aicCoreNum_ == 0U ||
-        l1Size_ <= L1_RESERVED_BYTES || l0ASize_ == 0U || l0BSize_ == 0U || l0CSize_ == 0U) {
+        aivCoreNum_ < 2U || l1Size_ <= L1_RESERVED_BYTES || l0ASize_ == 0U || l0BSize_ == 0U || l0CSize_ == 0U) {
         return false;
     }
     return SelectCubeBaseD();
@@ -354,8 +354,8 @@ bool BlockAttnResPrepareCubeTiling::SelectCubeBaseD()
         totalS_, std::min<uint64_t>(totalS_, 128UL), std::min<uint64_t>(totalS_, 64UL),
         std::min<uint64_t>(totalS_, CUBE_MAX_BASE_S), std::min<uint64_t>(totalS_, CUBE_BLOCK)};
     const std::array<uint64_t, 3> dCandidates = {std::min<uint64_t>(totalD_, 512UL),
-                                                  std::min<uint64_t>(totalD_, 256UL),
-                                                  std::min<uint64_t>(totalD_, 128UL)};
+                                                 std::min<uint64_t>(totalD_, 256UL),
+                                                 std::min<uint64_t>(totalD_, 128UL)};
     uint64_t previousS = 0U;
     for (const uint64_t sCandidate : sCandidates) {
         if (sCandidate == 0U || sCandidate == previousS) {
@@ -397,7 +397,8 @@ bool BlockAttnResPrepareCubeTiling::SelectCubeBaseD()
             const uint64_t mm1L1SlotBytes =
                 (static_cast<uint64_t>(candidateSAlign) + nAlign_) * baseDAlign * FP32_BYTES;
             const uint64_t mm2L1SlotBytes = (static_cast<uint64_t>(candidateSAlign) * nAlign_ +
-                                              static_cast<uint64_t>(nAlign_) * baseDAlign) * FP32_BYTES;
+                                             static_cast<uint64_t>(nAlign_) * baseDAlign) *
+                                            FP32_BYTES;
 
             if (l1Bytes > usableL1Bytes || ubBytes > usableUbBytes || mm1L1SlotBytes > l1Size_ / 4U ||
                 mm2L1SlotBytes > l1Size_ / 4U || mm1L0ABytes > l0ASize_ || mm2L0ABytes > l0ASize_ ||
@@ -439,22 +440,32 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     OP_CHECK_IF(totalWorkUnits > std::numeric_limits<uint32_t>::max(),
                 OP_LOGE(context_->GetNodeName(), "Cube work units exceed uint32 tiling range"),
                 return ge::GRAPH_FAILED);
-    usedCoreNum_ = static_cast<uint32_t>(std::min<uint64_t>(aicCoreNum_, totalWorkUnits));
+    const uint64_t mixedCoreNum = std::min<uint64_t>(aicCoreNum_, aivCoreNum_ / 2U);
+    usedCoreNum_ = static_cast<uint32_t>(std::min<uint64_t>(mixedCoreNum, totalWorkUnits));
     OP_CHECK_IF(usedCoreNum_ == 0U || totalWorkUnits / usedCoreNum_ > std::numeric_limits<uint32_t>::max(),
                 OP_LOGE(context_->GetNodeName(), "invalid Cube work distribution"), return ge::GRAPH_FAILED);
     const uint32_t blockFactor = static_cast<uint32_t>(totalWorkUnits / usedCoreNum_);
     const uint32_t bigCoreNum = static_cast<uint32_t>(totalWorkUnits % usedCoreNum_);
 
-    // MM1/E is laid out with the Cube-aligned N pitch.  Allocate the aligned pitch as
-    // well; using totalN here under-allocates the per-core workspace whenever N is not a
-    // multiple of the Cube block (for example N=8, nAlign=16).
-    workspacePerCoreElems_ = static_cast<uint64_t>(sAlign_) * nAlign_;
+    // MM1 Fixpipe produces a compact [baseS, N] tile. Keep E in a separate
+    // nAlign-pitched tile so the two AIV peers can read dot and write E without
+    // overlapping each other. MM2 uses one contiguous output tile for AIV scatter.
+    const uint64_t dotWorkspaceElems = static_cast<uint64_t>(baseS_) * totalN_;
+    const uint64_t eWorkspaceElems = static_cast<uint64_t>(sAlign_) * nAlign_;
+    const uint64_t mm2WorkspaceElems = static_cast<uint64_t>(sAlign_) * baseDAlign_;
+    OP_CHECK_IF(dotWorkspaceElems > std::numeric_limits<uint64_t>::max() - eWorkspaceElems ||
+                    dotWorkspaceElems + eWorkspaceElems >
+                        std::numeric_limits<uint64_t>::max() - mm2WorkspaceElems,
+                OP_LOGE(context_->GetNodeName(), "Cube per-core workspace size overflows uint64"),
+                return ge::GRAPH_FAILED);
+    workspacePerCoreElems_ = dotWorkspaceElems + eWorkspaceElems + mm2WorkspaceElems;
     OP_CHECK_IF(workspacePerCoreElems_ > std::numeric_limits<uint64_t>::max() / usedCoreNum_ / FP32_BYTES,
                 OP_LOGE(context_->GetNodeName(), "Cube workspace size overflows uint64"), return ge::GRAPH_FAILED);
-    const uint64_t userWorkspaceBytes = workspacePerCoreElems_ * usedCoreNum_ * FP32_BYTES;
-    OP_CHECK_IF(systemWorkspaceSize_ > std::numeric_limits<uint64_t>::max() - userWorkspaceBytes,
-                OP_LOGE(context_->GetNodeName(), "total workspace size overflows uint64"), return ge::GRAPH_FAILED);
-    workspaceSize_ = systemWorkspaceSize_ + userWorkspaceBytes;
+    const uint64_t cubeWorkspaceSize = workspacePerCoreElems_ * usedCoreNum_ * FP32_BYTES;
+    OP_CHECK_IF(systemWorkspaceSize_ > std::numeric_limits<uint64_t>::max() - cubeWorkspaceSize,
+                OP_LOGE(context_->GetNodeName(), "Cube total workspace size overflows uint64"),
+                return ge::GRAPH_FAILED);
+    workspaceSize_ = systemWorkspaceSize_ + cubeWorkspaceSize;
 
     tilingData_.totalT = static_cast<uint32_t>(totalT_);
     tilingData_.totalN = static_cast<uint32_t>(totalN_);
@@ -488,45 +499,13 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     tilingData_.dotUbElems = dotUbElems_;
     tilingData_.reduceUbElems = reduceUbElems_;
     tilingData_.softmaxUbElems = softmaxUbElems_;
-    tilingData_.workspaceOffset = systemWorkspaceSize_;
     tilingData_.workspacePerCoreElems = workspacePerCoreElems_;
     tilingData_.epsilon = epsilon_;
     return ge::GRAPH_SUCCESS;
 }
 
-void BlockAttnResPrepareCubeTiling::FillCubeTiling(TCubeTiling &cubeTiling, uint32_t m, uint32_t n, uint32_t k,
-                                                    uint32_t baseM, uint32_t baseN, uint32_t baseK) const
-{
-    cubeTiling.set_M(m);
-    cubeTiling.set_N(n);
-    cubeTiling.set_Ka(k);
-    cubeTiling.set_Kb(k);
-    cubeTiling.set_usedCoreNum(1U);
-    cubeTiling.set_singleCoreM(m);
-    cubeTiling.set_singleCoreN(n);
-    cubeTiling.set_singleCoreK(k);
-    cubeTiling.set_baseM(baseM);
-    cubeTiling.set_baseN(baseN);
-    cubeTiling.set_baseK(baseK);
-    cubeTiling.set_depthA1(1U);
-    cubeTiling.set_depthB1(1U);
-    cubeTiling.set_stepM(1U);
-    cubeTiling.set_stepN(1U);
-    cubeTiling.set_stepKa(1U);
-    cubeTiling.set_stepKb(1U);
-    cubeTiling.set_isBias(0U);
-    cubeTiling.set_iterateOrder(0U);
-    cubeTiling.set_dbL0A(1U);
-    cubeTiling.set_dbL0B(1U);
-    cubeTiling.set_dbL0C(1U);
-}
-
 ge::graphStatus BlockAttnResPrepareCubeTiling::DoLibApiTiling()
 {
-    const uint32_t mm1BaseK = std::min<uint32_t>(baseD_, 64U);
-    FillCubeTiling(tilingData_.mm1Tiling, sAlign_, nAlign_, static_cast<uint32_t>(totalD_), sAlign_, nAlign_,
-                   mm1BaseK);
-    FillCubeTiling(tilingData_.mm2Tiling, sAlign_, dAlign_, nAlign_, sAlign_, baseDAlign_, nAlign_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -588,7 +567,7 @@ ge::graphStatus TilingPrepareBlockAttnResPrepare(gert::TilingParseContext *conte
     auto *compileInfo = context->GetCompiledInfo<BlockAttnResPrepareCompileInfo>();
     OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(context->GetNodeName(), "compiled info is null"),
                 return ge::GRAPH_FAILED);
-    const auto *platformInfo = context->GetPlatformInfo();
+    auto *platformInfo = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context->GetNodeName(), "platform info is null"),
                 return ge::GRAPH_FAILED);
     const auto platform = platform_ascendc::PlatformAscendC(platformInfo);

@@ -13,8 +13,6 @@
 
 #include <cstdint>
 
-#include "tiling/tiling_api.h"
-
 namespace optiling {
 
 constexpr uint64_t BLOCK_ATTN_RES_PREPARE_VECTOR_KEY = 1000UL;
@@ -63,8 +61,8 @@ struct BlockAttnResPrepareTilingData {
 };
 
 // Cube has an independent data layout because its AIC/AIV work mapping and its L1/UB
-// capacity plan are different from the Vector template.  In particular, workspace and
-// E/dot rows use nAlign rather than the physical N pitch.
+// capacity plan are different from the Vector template. MM1 dot uses compact N rows,
+// while E uses nAlign rows for the second Cube matmul.
 struct BlockAttnResPrepareCubeTilingData {
     // Keep the bounded dimensions/work count compact; D remains uint64_t for
     // the aligned FP32 dimension range.
@@ -103,12 +101,8 @@ struct BlockAttnResPrepareCubeTilingData {
     uint64_t dotUbElems;
     uint64_t reduceUbElems;
     uint64_t softmaxUbElems;
-    uint64_t workspaceOffset;
     uint64_t workspacePerCoreElems;
     float epsilon;
-
-    TCubeTiling mm1Tiling{};
-    TCubeTiling mm2Tiling{};
 };
 
 } // namespace optiling
