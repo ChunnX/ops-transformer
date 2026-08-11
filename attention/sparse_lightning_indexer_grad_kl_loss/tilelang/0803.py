@@ -1,13 +1,15 @@
 ﻿import torch
-from typing import Optional, Tuple
 from dataclasses import dataclass
+from typing import Optional, Tuple
+
 import tilelang
 import tilelang.language as T
+
 tilelang.disable_cache()
-BLOCK_M = 128
+
+# 固定 tile 与流水参数。
 BLOCK_N = 128
 BLOCK_K = 128
-VECTOR_BASEG = 32
 VECTOR_BASEN = 256
 GATHER_CHUNK_SIZE = 16
 V2_SCATTER_BATCH = 16
@@ -30,11 +32,14 @@ V1_PSY_RELAY_FLAGS = (12, 13)
 DQUERY = 512
 DQUERY_INDEX = 128
 
+# JIT kernel、workspace 和辅助张量均按 specialization 缓存。
 _kernel_cache = {}
 _workspace_cache = {}
 _full_valid_aux_cache = {}
 _tail_aux_cache = {}
 _v0_zero_row_cache = {}
+
+
 def _clear_caches():
     global _kernel_cache, _workspace_cache, _full_valid_aux_cache, _tail_aux_cache
     global _v0_zero_row_cache
@@ -46,12 +51,32 @@ def _clear_caches():
 
 pass_configs = {
     # 关闭自动同步后，所有 SetFlag/WaitFlag/PipeBarrier 均由 kernel 显式管理。
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: False, tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: False,
+    tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,
 }
 
 
 def ceil_div(a: int, b: int) -> int:
     return (a + b - 1) // b
+
+
+def _expected_rank(layout_query: str) -> int:
+    return 3 if layout_query == "TND" else 4
+
+
+def _add_batch_dim(*tensors: torch.Tensor) -> tuple[torch.Tensor, ...]:
+    return tuple(tensor.unsqueeze(0) for tensor in tensors)
+
+
+def _length_tensor(
+    lengths: Optional[torch.Tensor], default_length: int,
+) -> torch.Tensor:
+    if lengths is None:
+        return torch.tensor([default_length], dtype=torch.int32)
+    if isinstance(lengths, (list, tuple)):
+        return torch.tensor(lengths, dtype=torch.int32)
+    return lengths.to(dtype=torch.int32)
+
 
 def _get_aicore_count() -> int:
     """读取当前 NPU 的物理 Cube core 数量。"""
@@ -82,24 +107,7 @@ class SparseLightningIndexerGradKLLossTilingData:
     DQueryIndex: int
     K: int
     sparse_mode: int = 3
-    @property
-    def g_size(self) -> int:
-        return self.G
-    @property
-    def n2_size(self) -> int:
-        return self.N2
-    @property
-    def block_num(self) -> int:
-        return self.B * self.N2 * ceil_div(self.S1, BLOCK_M)
-    @property
-    def n_num(self) -> int:
-        return self.K // BLOCK_N
-    @property
-    def d_num_query(self) -> int:
-        return self.DQuery // BLOCK_K
-    @property
-    def d_num_query_index(self) -> int:
-        return self.DQueryIndex // BLOCK_K
+
 
 @dataclass(frozen=True)
 class TaskSchedule:
@@ -107,6 +115,7 @@ class TaskSchedule:
     task_count: int
     launch_core_num: int
     tasks_per_core: int
+
 
 def _make_task_schedule(
     B: int, S1: int, S2: int, K: int, hardware_core_num: int,
@@ -123,24 +132,26 @@ def _make_task_schedule(
         max(task_count, v2_core_need, 1), hardware_core_num,
     )
     return TaskSchedule(
-        task_count=task_count, launch_core_num=active_cores, tasks_per_core=ceil_div(task_count, active_cores),
+        task_count=task_count,
+        launch_core_num=active_cores,
+        tasks_per_core=ceil_div(task_count, active_cores),
     )
+
 
 def check_param_valid(
     query: torch.Tensor, key: torch.Tensor, query_index: torch.Tensor, key_index: torch.Tensor,
     weights: torch.Tensor, sparse_indices: torch.Tensor, softmax_max: torch.Tensor, softmax_sum: torch.Tensor, *,
     sparse_mode: int = 3, layout_query: str = "BSND",
 ) -> SparseLightningIndexerGradKLLossTilingData:
-    if layout_query == "TND":
-        assert query.dim() == 3, f"query dim must be 3 (TND), got {query.dim()}"
-        assert key.dim() == 3, f"key dim must be 3 (TND), got {key.dim()}"
-        assert query_index.dim() == 3, f"queryIndex dim must be 3 (TND), got {query_index.dim()}"
-        assert key_index.dim() == 3, f"keyIndex dim must be 3 (TND), got {key_index.dim()}"
-    else:
-        assert query.dim() == 4, f"query dim must be 4 (BSND), got {query.dim()}"
-        assert key.dim() == 4, f"key dim must be 4 (BSND), got {key.dim()}"
-        assert query_index.dim() == 4, f"queryIndex dim must be 4, got {query_index.dim()}"
-        assert key_index.dim() == 4, f"keyIndex dim must be 4, got {key_index.dim()}"
+    expected_rank = _expected_rank(layout_query)
+    layout_name = "TND" if expected_rank == 3 else "BSND"
+    for name, tensor in (
+        ("query", query), ("key", key),
+        ("queryIndex", query_index), ("keyIndex", key_index),
+    ):
+        assert tensor.dim() == expected_rank, (
+            f"{name} dim must be {expected_rank} ({layout_name}), got {tensor.dim()}"
+        )
     assert query.dtype in (torch.float16, torch.bfloat16), f"query dtype must be float16/bfloat16, got {query.dtype}"
     assert key.dtype == query.dtype, f"key dtype must match query, got {key.dtype}"
     assert query_index.dtype == query.dtype, f"queryIndex dtype must match query, got {query_index.dtype}"
@@ -195,7 +206,6 @@ def tilelang_grad_kl_loss_single_kernel(
     assert sparse_k_stride >= K
     assert 0 < k_scatter_exec <= K
     assert k_scatter_exec % V2_SCATTER_BATCH == 0
-    s1_block = BLOCK_M
     n_block = block_n
     k_block = BLOCK_K
     p_rows_per_chunk = min(N1, 64)
@@ -206,18 +216,12 @@ def tilelang_grad_kl_loss_single_kernel(
     bw_col_block = min(n_block, 64)
     assert n_block % bw_col_block == 0
     bw_col_count = n_block // bw_col_block
-    s1_tile_num = ceil_div(S1, s1_block)
     n_num = K // n_block
-    block_num = B * s1_tile_num * n_num
     d_num_query = DQuery // k_block
     d_num_rope = ceil_div(d_rope, k_block)
-    d_num_total = d_num_query + d_num_rope
     d_num_query_index = DQueryIndex // k_block
     c2_dk_k = max(Nidx1, 16)
-    vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
-    g_num = Nidx1 // vector_baseg
     rows_per_aiv = Nidx1 // 2
-    v3_chunks = Nidx1 // 4
     task_count = B * S1
     launch_core_num = max(launch_core_num, 1)
     tasks_per_core = ceil_div(task_count, launch_core_num)
@@ -1280,6 +1284,11 @@ def tilelang_grad_kl_loss_single_kernel(
                 dQueryIndexAccum, dKeyIndexAccum, dQueryIndex, dKeyIndexOut, LossPartial, LossOut, cid, vid,
             )
     return main
+
+
+# ==============================================================================
+# Host runtime：参数归一化、specialization 选择、workspace 缓存和布局包装。
+# ==============================================================================
 def _host_sequence_lengths(
     sequence_lengths: Optional[torch.Tensor], default_length: int, batch_size: int,
 ) -> Optional[list[int]]:
@@ -1416,17 +1425,12 @@ def sparse_lightning_indexer_grad_kl_loss(
             query_rope=query_rope, key_rope=key_rope, actual_seq_lengths_query=actual_seq_lengths_query,
             actual_seq_lengths_key=actual_seq_lengths_key, sparse_mode=sparse_mode,
         )
-    B = tiling.B
-    S1 = tiling.S1
-    S2 = tiling.S2
-    N1 = tiling.N1
-    N2 = tiling.N2
-    G = tiling.G
-    Nidx1 = tiling.Nidx1
-    Nidx2 = tiling.Nidx2
-    DQuery = tiling.DQuery
-    DQueryIndex = tiling.DQueryIndex
-    K = tiling.K
+    B, S1, S2, N1, N2, G = (
+        tiling.B, tiling.S1, tiling.S2, tiling.N1, tiling.N2, tiling.G,
+    )
+    Nidx1, Nidx2, DQuery, DQueryIndex, K = (
+        tiling.Nidx1, tiling.Nidx2, tiling.DQuery, tiling.DQueryIndex, tiling.K,
+    )
     source_s2 = S2
     sparse_k_stride = K
     input_dtype = query.dtype
@@ -1522,9 +1526,8 @@ def sparse_lightning_indexer_grad_kl_loss(
             DQuery, DQueryIndex, K, sparse_k_stride, k_scatter_exec, core_count, d_rope,
             input_dtype_str, calc_dtype_str, scale_value, block_n, full_valid,
         )
-        if cache_key in _kernel_cache:
-            func = _kernel_cache[cache_key]
-        else:
+        func = _kernel_cache.get(cache_key)
+        if func is None:
             func = tilelang_grad_kl_loss_single_kernel(
                 B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                 core_count, d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
@@ -1535,13 +1538,13 @@ def sparse_lightning_indexer_grad_kl_loss(
             B, S1, S2_pad, N1, Nidx1, K, DQueryIndex, d_rope, input_dtype, query.device, n_num_ws, v2_k_padded,
             loss_partial_size,
         )
-        if ws_key in _workspace_cache:
-            ws = _workspace_cache[ws_key]
+        workspace = _workspace_cache.get(ws_key)
+        if workspace is not None:
             d_query_index_accum, d_key_index_accum, \
                 gather_key_ws, gather_key_rope_ws, gather_key_index_ws, \
                 bmm1_res_ws, bmm2_res_ws, p_reduced_ws, softmax_i_ws, \
                 dk_matmul_partial, relu_grad_out, loss_partial_ws, \
-                c2_zero_pad = ws
+                c2_zero_pad = workspace
         else:
             gather_key_ws = torch.zeros(B, S1, K, DQuery, dtype=input_dtype, device=query.device)
             gather_key_rope_ws = torch.zeros(B, S1, K, d_rope, dtype=input_dtype, device=query.device)
@@ -1569,7 +1572,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 bmm1_res_ws, bmm2_res_ws, p_reduced_ws, softmax_i_ws,
                 dk_matmul_partial, relu_grad_out, loss_partial_ws, c2_zero_pad,
             )
-        results = func(
+        d_query_index, d_key_index_flat, d_weight, loss = func(
             sparse_indices,                             # 0
             k_real_size, valid_k_mask,                  # 1-2
             v0_zero_row,                                # 3
@@ -1584,17 +1587,12 @@ def sparse_lightning_indexer_grad_kl_loss(
             dk_matmul_partial, relu_grad_out,           # 22-23
             loss_partial_ws, c2_zero_pad,               # 24-25
         )
-        d_query_index = results[0]
-        d_key_index_flat = results[1]
-        d_weight = results[2]
-        loss_out = results[3]
         if weights_orig_dtype == torch.float32:
             d_weight = d_weight.float()
         d_key_index = d_key_index_flat.reshape(
             B, S2_pad, Nidx2, DQueryIndex
         )[:, :S2]
-        loss_tensor = loss_out
-        return d_query_index, d_key_index, d_weight, loss_tensor
+        return d_query_index, d_key_index, d_weight, loss
     raise ValueError(f"Unsupported layout_query={layout_query} with sparse_mode={sparse_mode}")
 
 def sparse_lightning_indexer_grad_kl_loss_tnd(
@@ -1605,22 +1603,15 @@ def sparse_lightning_indexer_grad_kl_loss_tnd(
     actual_seq_lengths_query: Optional[torch.Tensor] = None,
     actual_seq_lengths_key: Optional[torch.Tensor] = None, sparse_mode: int = 3,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    query_b = query.unsqueeze(0)
-    key_b = key.unsqueeze(0)
-    query_index_b = query_index.unsqueeze(0)
-    key_index_b = key_index.unsqueeze(0)
-    weights_b = weights.unsqueeze(0)
-    sparse_indices_b = sparse_indices.unsqueeze(0)
-    softmax_max_b = softmax_max.unsqueeze(0)
-    softmax_sum_b = softmax_sum.unsqueeze(0)
-    if actual_seq_lengths_query is not None:
-        actual_q_len = torch.tensor(actual_seq_lengths_query, dtype=torch.int32) if isinstance(actual_seq_lengths_query, list) else actual_seq_lengths_query.to(torch.int32)
-    else:
-        actual_q_len = torch.tensor([query.shape[0]], dtype=torch.int32)
-    if actual_seq_lengths_key is not None:
-        actual_k_len = torch.tensor(actual_seq_lengths_key, dtype=torch.int32) if isinstance(actual_seq_lengths_key, list) else actual_seq_lengths_key.to(torch.int32)
-    else:
-        actual_k_len = torch.tensor([key.shape[0]], dtype=torch.int32)
+    (
+        query_b, key_b, query_index_b, key_index_b, weights_b,
+        sparse_indices_b, softmax_max_b, softmax_sum_b,
+    ) = _add_batch_dim(
+        query, key, query_index, key_index, weights,
+        sparse_indices, softmax_max, softmax_sum,
+    )
+    actual_q_len = _length_tensor(actual_seq_lengths_query, query.shape[0])
+    actual_k_len = _length_tensor(actual_seq_lengths_key, key.shape[0])
     d_qi, d_ki, dw, loss = sparse_lightning_indexer_grad_kl_loss(
         query_b, key_b, query_index_b, key_index_b, weights_b, sparse_indices_b,
         softmax_max_b, softmax_sum_b, scale_value,

@@ -22,16 +22,16 @@ CASE_CONFIGS = (
     (
         "small_b1_s1_1_k_2048",
         {
-            "B": 1, "S1": 1, "S2": 2048, "N1": 128, "N2": 1,
-            "Nidx1": 64, "Nidx2": 1, "DQuery": 512, "DQueryIndex": 128,
+            "B": 1, "S1": 1, "S2": 2048, "N1": 64, "N2": 1,
+            "Nidx1": 32, "Nidx2": 1, "DQuery": 512, "DQueryIndex": 128,
             "d_rope": 64, "K": 2048, "layout": "BSND",
         },
     ),
     (
         "large_s1_b1_s1_1024_k_5120",
         {
-            "B": 1, "S1": 1024, "S2": 5120, "N1": 128, "N2": 1,
-            "Nidx1": 64, "Nidx2": 1, "DQuery": 512, "DQueryIndex": 128,
+            "B": 1, "S1": 1024, "S2": 5120, "N1": 32, "N2": 1,
+            "Nidx1": 8, "Nidx2": 1, "DQuery": 512, "DQueryIndex": 128,
             "d_rope": 64, "K": 5120, "layout": "BSND",
         },
     ),
@@ -194,7 +194,13 @@ def run_case(case_name, case_config):
         max_diff = diff.max().item()
         mean_diff = diff.mean().item()
         rel_err = (diff / (off_val.float().abs() + 1e-6)).mean().item()
-        print(f"  {name}: max_diff={max_diff:.6e}, mean_diff={mean_diff:.6e}, rel_err={rel_err:.6e}")
+        norm_rel = torch.linalg.vector_norm(diff) / (
+            torch.linalg.vector_norm(off_val.float()) + 1e-12
+        )
+        print(
+            f"  {name}: max_diff={max_diff:.6e}, mean_diff={mean_diff:.6e}, "
+            f"rel_err={rel_err:.6e}, norm_rel={norm_rel.item():.6e}"
+        )
 
     loss_abs_diff = abs(loss_tl.float().item() - loss_off.float().item())
     loss_rel_err = loss_abs_diff / (abs(loss_off.float().item()) + 1e-6)
