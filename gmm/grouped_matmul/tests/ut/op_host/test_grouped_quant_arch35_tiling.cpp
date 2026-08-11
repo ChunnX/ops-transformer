@@ -160,6 +160,13 @@ public:
         if (!result) {
             return;
         }
+        if (expectedBaseM != 0U) {
+            ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMQuantBasicApiTilingData))
+                << "prefix=" << prefix;
+            const auto *tilingData = reinterpret_cast<const GroupedMatmulTilingData::GMMQuantBasicApiTilingData *>(
+                tilingInfo.tilingData.get());
+            EXPECT_EQ(tilingData->mmTilingData.baseM, expectedBaseM) << "prefix=" << prefix;
+        }
         if (expectTilingData.empty()) {
             // For some csv cases we only care success/failure path, not exact tiling binary details.
             return;
@@ -205,7 +212,30 @@ public:
     uint64_t expectBlockDim = 0;
     uint64_t expectTilingKey = 0;
     string expectTilingData;
+    uint32_t expectedBaseM = 0U;
 };
+
+GroupedQuantArch35TilingTestParam MakeEvenGroupMCase(int64_t totalM, int64_t groupNum, uint32_t expectedBaseM)
+{
+    GroupedQuantArch35TilingTestParam testCase;
+    testCase.caseName = "even_group_m_" + std::to_string(totalM / groupNum);
+    testCase.prefix = testCase.caseName;
+    testCase.m = totalM;
+    testCase.k = 4096L;
+    testCase.n = 1536L;
+    testCase.groupNum = groupNum;
+    testCase.groupType = 0L;
+    testCase.weightFormat = "NZ";
+    testCase.xDtype = ge::DT_FLOAT8_E4M3FN;
+    testCase.weightDtype = ge::DT_FLOAT8_E4M3FN;
+    testCase.scaleDtype = ge::DT_FLOAT8_E8M0;
+    testCase.perTokenScaleDtype = ge::DT_FLOAT8_E8M0;
+    testCase.biasDtype = ge::DT_FLOAT;
+    testCase.yDtype = ge::DT_BF16;
+    testCase.result = true;
+    testCase.expectedBaseM = expectedBaseM;
+    return testCase;
+}
 
 
 vector<GroupedQuantArch35TilingTestParam> GetParams(const string &socVersion)
@@ -305,6 +335,21 @@ protected:
 TEST_P(TestGroupedQuantArch35Tiling, generalTest)
 {
     GetParam().Test();
+}
+
+TEST(TestGroupedQuantArch35GroupMTiling, balancesGroupM320)
+{
+    MakeEvenGroupMCase(256000L, 800L, 160U).Test();
+}
+
+TEST(TestGroupedQuantArch35GroupMTiling, balancesGroupM640)
+{
+    MakeEvenGroupMCase(512000L, 800L, 224U).Test();
+}
+
+TEST(TestGroupedQuantArch35GroupMTiling, keepsCommonBaseMForUnevenAverage)
+{
+    MakeEvenGroupMCase(256001L, 800L, 256U).Test();
 }
 
 
