@@ -17,6 +17,16 @@ Outputs:
 - `weighted_output`: FP32 `[S, T, D]`.
 - `softmax_sum`: FP32 `[S, T]`.
 
+## ACLNN and PyTorch interfaces
+
+The ACLNN two-stage interface is `aclnnBlockAttnResPrepareGetWorkspaceSize` and
+`aclnnBlockAttnResPrepare`; it is available only on Ascend 950 and validates the required tensor ranks, dtypes,
+output shapes, and positive finite `epsilon` before dispatch.
+
+PyTorch users can import `block_attn_res_prepare` from `cann_ops_transformer`.  The wrapper registers
+`cann_ops_transformer::block_attn_res_prepare` and returns
+`(softmax_max, weighted_output, softmax_sum)` in the same order as the ACLNN/operator interface.
+
 Vector arithmetic is implemented with Ascend 950 VF programming, while tensor creation and GM/UB movement use
 AscendC Tensor APIs. UB is assigned directly from tiling-derived byte offsets; the kernel does not create `TPipe`,
 `TQue`, or `TBuf`. MTE2/V/MTE3 dependencies are protected by explicit paired `set_flag`/`wait_flag` instructions.
