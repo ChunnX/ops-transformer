@@ -73,6 +73,8 @@ private:
         if constexpr (BarrierMode & BARRIER_DEVICE) {
             this->barrier_.CrossDevice();
         }
+        dcci(reinterpret_cast<__gm__ void*>(this->udmaCtx_->commBufferAddrs[this->udmaCtx_->rankId]),
+            static_cast<uint64_t>(CacheLine::ENTIRE_DATA_CACHE), static_cast<uint64_t>(DcciDst::CACHELINE_OUT));
     }
 };
 

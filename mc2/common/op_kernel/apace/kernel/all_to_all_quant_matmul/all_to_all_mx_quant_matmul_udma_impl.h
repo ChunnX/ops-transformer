@@ -229,7 +229,6 @@ __aicore__ inline void AllToAllMxQuantMatmulUdmaImpl<AType, BType, CType, TransA
         CrossCoreSetFlag<0x2, PIPE_MTE3>(tid);
     }
 
-    allToAllScaleA_.Finalize();
     allToAllA_.Finalize();
 }
 
