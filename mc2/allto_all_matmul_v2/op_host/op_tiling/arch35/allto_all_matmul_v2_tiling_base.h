@@ -75,7 +75,9 @@ protected:
         auto *x2Desc = context_->GetInputDesc(IDX_INPUT_X2);
         auto *yDesc = context_->GetOutputDesc(IDX_OUTPUT_Y);
         if (!x1Desc || !x2Desc || !yDesc) {
-            OP_LOGE(opName, "Required input/output tensor descriptors missing.");
+            if (!x1Desc) OP_LOGE(opName, "x1 tensor descriptor is missing.");
+            if (!x2Desc) OP_LOGE(opName, "x2 tensor descriptor is missing.");
+            if (!yDesc)  OP_LOGE(opName, "y output tensor descriptor is missing.");
             return ge::GRAPH_FAILED;
         }
 
@@ -135,7 +137,8 @@ protected:
         auto *x1ScaleDesc = context_->GetOptionalInputDesc(IDX_INPUT_X1_SCALE);
         auto *x2ScaleDesc = context_->GetOptionalInputDesc(IDX_INPUT_X2_SCALE);
         if (!x1ScaleDesc || !x2ScaleDesc) {
-            OP_LOGE(opName, "x1_scale or x2_scale is required but missing.");
+            if (!x1ScaleDesc) OP_LOGE(opName, "x1_scale is required but missing.");
+            if (!x2ScaleDesc) OP_LOGE(opName, "x2_scale is required but missing.");
             return ge::GRAPH_FAILED;
         }
         auto x1ScaleFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleDesc->GetStorageFormat()));

@@ -102,12 +102,14 @@ ge::graphStatus AlltoAllMatmulV2InferShape(gert::InferShapeContext *context)
             int64_t expectedScaleK2 = CeilDiv(kTotal, MX_SCALE_BLOCK_SIZE);
             OPS_CHECK(x1ScaleShape->GetDim(1U) != static_cast<uint64_t>(expectedScaleK1) ||
                           x1ScaleShape->GetDim(2U) != static_cast<uint64_t>(MX_SCALE_LAST_DIM),
-                      OP_LOGE(nodeName, "x1_scale shape mismatch, expected dim1=%ld dim2=%ld",
-                              expectedScaleK1, MX_SCALE_LAST_DIM), return ge::GRAPH_FAILED);
+                      OP_LOGE(nodeName, "x1_scale shape mismatch, expected dim1=%ld dim2=%ld got dim1=%lu dim2=%lu.",
+                              expectedScaleK1, MX_SCALE_LAST_DIM,
+                              x1ScaleShape->GetDim(1U), x1ScaleShape->GetDim(2U)), return ge::GRAPH_FAILED);
             OPS_CHECK(x2ScaleShape->GetDim(1U) != static_cast<uint64_t>(expectedScaleK2) ||
                           x2ScaleShape->GetDim(2U) != static_cast<uint64_t>(MX_SCALE_LAST_DIM),
-                      OP_LOGE(nodeName, "x2_scale shape mismatch, expected dim1=%ld dim2=%ld",
-                              expectedScaleK2, MX_SCALE_LAST_DIM), return ge::GRAPH_FAILED);
+                      OP_LOGE(nodeName, "x2_scale shape mismatch, expected dim1=%ld dim2=%ld got dim1=%lu dim2=%lu.",
+                              expectedScaleK2, MX_SCALE_LAST_DIM,
+                              x2ScaleShape->GetDim(1U), x2ScaleShape->GetDim(2U)), return ge::GRAPH_FAILED);
         }
     }
 
