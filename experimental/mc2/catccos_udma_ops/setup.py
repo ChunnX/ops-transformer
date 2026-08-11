@@ -147,11 +147,22 @@ setup(
     version=VERSION,
     description="Ascend950 CatCCOS UDMA fused operators for PyTorch",
     packages=find_packages(),
-    package_data={PACKAGE_NAME: ["*.so", ".libs/*.so", ".libs/*.so.*"]},
+    package_data={
+        PACKAGE_NAME: ["*.so", ".libs/*.so", ".libs/*.so.*"],
+        "validation": ["cases/*.yaml"],
+    },
     include_package_data=True,
     zip_safe=False,
     python_requires=">=3.8",
     install_requires=["torch", "torch_npu"],
+    extras_require={"validation": ["PyYAML>=6.0", "matplotlib>=3.5"]},
+    entry_points={
+        "console_scripts": [
+            "ops-transformer-udma-accuracy=validation.run_accuracy:main",
+            "ops-transformer-udma-performance=validation.run_performance:main",
+            "ops-transformer-udma-import-baseline=validation.import_msprof_baseline:main",
+        ]
+    },
     distclass=BinaryDistribution,
     cmdclass={"cmake_build": CMakeBuild, "bdist_wheel": ABI3Wheel, "clean": Clean},
 )

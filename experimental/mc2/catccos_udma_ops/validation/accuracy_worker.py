@@ -1,0 +1,224 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+"""One-process-per-NPU accuracy worker for resolved validation cases."""
+
+from __future__ import annotations
+
+import argparse
+import gc
+import json
+import os
+import sys
+from pathlib import Path
+
+import torch
+import torch.distributed as dist
+import torch_npu
+
+import ops_transformer_catccos_udma as udma
+
+try:
+    from .case_schema import read_resolved_cases
+    from .common import write_json
+    from .precision import analyze_accuracy, write_accuracy_artifacts
+except ImportError:  # Direct execution keeps the source tree out of package lookup.
+    from case_schema import read_resolved_cases
+    from common import write_json
+    from precision import analyze_accuracy, write_accuracy_artifacts
+
+
+def _make_tensor(shape, distribution, device, generator):
+    kind = distribution["kind"]
+    if kind == "uniform":
+        result = torch.empty(shape, dtype=torch.float32)
+        result.uniform_(distribution["low"], distribution["high"], generator=generator)
+    elif kind == "normal":
+        result = torch.empty(shape, dtype=torch.float32)
+        result.normal_(distribution["mean"], distribution["std"], generator=generator)
+    else:
+        raise ValueError("unsupported distribution {}".format(kind))
+    return result.to(dtype=torch.bfloat16, device=device)
+
+
+def _golden(x, weight, route_matrix, rank, world_size, expert_num):
+    gathered = [torch.empty_like(x) for _ in range(world_size)]
+    dist.all_gather(gathered, x)
+    local_experts = expert_num // world_size
+    expert_outputs = []
+    for local_expert in range(local_experts):
+        global_expert = rank * local_experts + local_expert
+        pieces = []
+        for source_rank, source_x in enumerate(gathered):
+            counts = route_matrix[source_rank]
+            start = sum(counts[:global_expert])
+            end = start + counts[global_expert]
+            pieces.append(source_x[start:end])
+        expert_input = torch.cat(pieces, dim=0)
+        expert_outputs.append(expert_input.float().matmul(weight[local_expert].float()))
+    return torch.cat(expert_outputs, dim=0).to(torch.bfloat16)
+
+
+def _padding_stats(tensor, valid_rows):
+    padding = tensor[valid_rows:].detach().float()
+    if padding.numel() == 0:
+        return {"elements": 0, "nonzero_count": 0, "max_abs": 0.0}
+    return {
+        "elements": padding.numel(),
+        "nonzero_count": int(torch.count_nonzero(padding).item()),
+        "max_abs": float(padding.abs().max().item()),
+    }
+
+
+def _run_case(case, rank, world_size, device, output_root):
+    shape = case["shape"]
+    m, n, k = shape["m"], shape["n"], shape["k"]
+    expert_num = case["expert_num"]
+    generator = torch.Generator(device="cpu")
+    generator.manual_seed(case["seed"] + rank)
+    x = _make_tensor((m, k), case["input_distribution"], device, generator)
+    weight = _make_tensor(
+        (expert_num // world_size, k, n), case["input_distribution"], device, generator
+    )
+    local_table, global_table = udma.build_rank_route_tensors(
+        m, rank, world_size, expert_num, device
+    )
+    route_matrix = udma.build_global_route_matrix(m, world_size, expert_num)
+    expected = _golden(x, weight, route_matrix, rank, world_size, expert_num)
+    valid_rows = int(global_table.sum().item())
+    if valid_rows != expected.shape[0]:
+        raise RuntimeError("golden rows do not match the global route table")
+
+    candidates = []
+    ordinary = udma.all_to_allv_grouped_mat_mul(
+        x, weight, local_table, global_table,
+        ep_size=world_size, expert_num=expert_num,
+    )
+    torch_npu.npu.synchronize()
+    candidates.append(("ordinary", ordinary.clone(), _padding_stats(ordinary, valid_rows)))
+
+    symmetric_x = udma.to_symmetric(x)
+    reusable_out = torch.zeros_like(ordinary)
+    for repeat in range(case["accuracy"]["repeats"]):
+        reusable_out.zero_()
+        symmetric_actual = udma.all_to_allv_grouped_mat_mul(
+            symmetric_x, weight, local_table, global_table,
+            ep_size=world_size, expert_num=expert_num, out=reusable_out,
+        )
+        torch_npu.npu.synchronize()
+        candidates.append(
+            (
+                "symmetric_repeat_{}".format(repeat),
+                symmetric_actual.clone(),
+                _padding_stats(symmetric_actual, valid_rows),
+            )
+        )
+
+    case_root = output_root / case["id"] / "rank_{}".format(rank)
+    reports = []
+    for name, actual, padding in candidates:
+        report = analyze_accuracy(
+            actual[:valid_rows], expected,
+            global_table=global_table.cpu().tolist(),
+            topk=case["accuracy"]["topk"],
+            heatmap_bins=case["accuracy"]["heatmap_bins"],
+        )
+        report.update(
+            case_id=case["id"], rank=rank, path=name,
+            valid_rows=valid_rows, padding=padding,
+        )
+        dump = None
+        if case["accuracy"]["dump_on_failure"] and not report["passed"]:
+            dump = {
+                "case": case,
+                "rank": rank,
+                "x": x,
+                "weight": weight,
+                "local_table": local_table,
+                "global_table": global_table,
+                "expected": expected,
+                "actual": actual,
+            }
+        write_accuracy_artifacts(case_root / name, report, dump_payload=dump)
+        reports.append(report)
+
+    ordinary_valid = candidates[0][1][:valid_rows]
+    repeat_consistency = []
+    for name, actual, _ in candidates[1:]:
+        different = int(torch.count_nonzero(actual[:valid_rows] != ordinary_valid).item())
+        repeat_consistency.append({"path": name, "different_elements_vs_ordinary": different})
+    summary = {
+        "case_id": case["id"],
+        "rank": rank,
+        "passed": all(item["passed"] for item in reports),
+        "reports": [
+            {
+                "path": item["path"],
+                "passed": item["passed"],
+                "matched_ratio": item["matched_ratio"],
+                "max_abs_error": item["max_abs_error"],
+                "failure_reasons": item["failure_reasons"],
+            }
+            for item in reports
+        ],
+        "repeat_consistency": repeat_consistency,
+    }
+    write_json(case_root / "summary.json", summary)
+    del candidates, ordinary, symmetric_x, reusable_out
+    gc.collect()
+    return summary
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--resolved-cases", required=True)
+    parser.add_argument("--output-dir", required=True)
+    args = parser.parse_args()
+    cases = read_resolved_cases(args.resolved_cases)
+    rank = int(os.environ["RANK"])
+    local_rank = int(os.environ["LOCAL_RANK"])
+    world_size = int(os.environ["WORLD_SIZE"])
+    if any(case["world_size"] != world_size for case in cases):
+        raise ValueError("all resolved cases must match torchrun world size")
+
+    output_root = Path(args.output_dir).resolve()
+    device = "npu:{}".format(local_rank)
+    initialized_dist = False
+    initialized_udma = False
+    all_passed = True
+    try:
+        torch_npu.npu.set_device(local_rank)
+        udma.init_udma_group(rank=rank, world_size=world_size, local_rank=local_rank)
+        initialized_udma = True
+        dist.init_process_group("hccl", rank=rank, world_size=world_size)
+        initialized_dist = True
+        for case in cases:
+            summary = _run_case(case, rank, world_size, device, output_root)
+            dist.barrier()
+            if rank == 0:
+                gathered = [
+                    json.loads(
+                        (output_root / case["id"] / "rank_{}".format(item_rank) / "summary.json").read_text(
+                            encoding="utf-8"
+                        )
+                    )
+                    for item_rank in range(world_size)
+                ]
+                group = {
+                    "case_id": case["id"],
+                    "passed": all(item["passed"] for item in gathered),
+                    "ranks": gathered,
+                }
+                write_json(output_root / case["id"] / "summary.json", group)
+                print(json.dumps(group), flush=True)
+            all_passed = all_passed and summary["passed"]
+            dist.barrier()
+    finally:
+        if initialized_dist:
+            dist.destroy_process_group()
+        gc.collect()
+        if initialized_udma:
+            udma.destroy_udma_group()
+    return 0 if all_passed else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,23 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+
+from pathlib import Path
+
+import pytest
+
+from validation.case_schema import CaseManifestError, load_case_manifest, select_cases
+
+
+CASES = Path(__file__).parents[1] / "validation" / "cases" / "alltoallv_grouped_mat_mul.yaml"
+
+
+def test_default_manifest_resolves_and_selects_modes():
+    cases = load_case_manifest(CASES)
+    assert len(cases) == 3
+    assert len(select_cases(cases, mode="accuracy")) == 3
+    assert len(select_cases(cases, mode="performance")) == 2
+    assert select_cases(cases, mode="accuracy", include_tags=["normal"])[0]["id"].endswith("normal")
+
+
+def test_unknown_case_is_rejected():
+    with pytest.raises(CaseManifestError, match="unknown case"):
+        select_cases(load_case_manifest(CASES), mode="accuracy", case_ids=["missing"])

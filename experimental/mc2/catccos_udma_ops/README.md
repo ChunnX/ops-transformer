@@ -89,24 +89,86 @@ Symmetric allocation is a collective SHMEM operation. Every rank must call
 `empty_symmetric`/`to_symmetric` in the same order with the same allocation
 size. Views with a nonzero storage offset fall back to the safe staging path.
 
-## Validation
+## Accuracy and performance validation
 
-The test reproduces the CatCCOS route algorithm, constructs an HCCL/PyTorch
-golden result, validates both normal and zero-staging paths, then measures the
-same launch-only scope as the original example:
-
-```bash
-NPROC_PER_NODE=2 bash scripts/run_validation.sh \
-  --m 128 --n 256 --k 256 --expert-num 8
-```
-
-To make no-regression gating explicit, pass the original example's latency and
-an allowed ratio (zero by default):
+Install the validation extra together with the Wheel. The tests deliberately
+import the installed package; they do not add the source directory to
+`PYTHONPATH`.
 
 ```bash
-NPROC_PER_NODE=2 bash scripts/run_validation.sh \
-  --reference-us 123.4 --max-regression 0.0
+python3 -m pip install --force-reinstall --no-deps dist/*.whl
+python3 -m pip install 'PyYAML>=6.0' 'matplotlib>=3.5'
 ```
+
+Cases use a versioned YAML manifest at
+`validation/cases/alltoallv_grouped_mat_mul.yaml`. Each case defines `m/n/k`,
+world size, expert count, input distribution, tags, accuracy repeats and
+performance sampling. Run all accuracy cases, one case, or a tag subset with:
+
+```bash
+bash scripts/run_accuracy.sh
+bash scripts/run_accuracy.sh --case-id aligned_m128_n256_k256_ep2_uniform
+bash scripts/run_accuracy.sh --include-tag smoke --output-dir /tmp/udma_accuracy
+```
+
+The installed-Wheel equivalent is `ops-transformer-udma-accuracy`; the
+performance command below is likewise available as
+`ops-transformer-udma-performance`.
+
+The independent Golden uses HCCL only to collect each source rank's packed
+input, reconstructs the destination expert slices from the route matrix, and
+performs FP32 matmul followed by BF16 conversion. HCCL is not used as a Golden
+for the fused communication semantics. Both the ordinary staging path and the
+symmetric-input/reusable-output path are checked.
+
+Pass/fail follows the
+[opbase experimental precision standard](https://gitcode.com/cann/opbase/blob/master/docs/zh/ops_precision_standard/experimental_standard.md)
+for BF16 exactly: mixed
+tolerance `rtol=atol=2^-6` must match at least 99% of meaningful output
+elements, and maximum absolute error must not exceed 1.0. Padded capacity is
+reported separately and is not counted as valid output. Every path/rank writes
+`report.json`, a Top-K error CSV, a downsampled error-ratio heatmap, expert and
+source-rank breakdowns, and a bounded `failure_dump.pt` on failure. The batch
+root contains machine-readable `summary.json` and `summary.csv`.
+
+Performance is collected from exported `msprof` `op_summary` rows, following
+the official [`--task-time` collection definition](https://www.hiascend.com/document/detail/zh/canncommercial/900/devaids/Profiling/atlasprofiling_16_0011.html),
+rather than Python or NPU Event wall time:
+
+```bash
+bash scripts/run_performance.sh
+bash scripts/run_performance.sh --case-id aligned_m128_n256_k256_ep2_uniform \
+  --output-dir /tmp/udma_perf_current
+```
+
+Preprocessing, allocation and HCCL host barriers are outside the selected
+operator rows. Before each measured repeat, all ranks enter a host barrier and
+issue primer launches. For every measured iteration the parser aligns the
+occurrence index across devices, records all device durations, and defines the
+authoritative latency as the p50 of the iteration-wise maximum device duration.
+This prevents the fastest card from hiding time spent by an early card waiting
+inside the fused operator. If p90 cross-rank skew exceeds the case's
+`max_rank_skew_ratio`, the capture is marked invalid and cannot pass regression
+gating; raw per-iteration and per-device data remain in `report.json`.
+
+For an apples-to-apples original-example baseline, run the original binary with
+the same YAML case and the exact warmup/primer/measured launch layout, collect
+CSV `op_summary` with `msprof`, then import it:
+
+```bash
+ops-transformer-udma-import-baseline \
+  --profile-dir /path/to/original/msprof \
+  --case-id aligned_m128_n256_k256_ep2_uniform \
+  --output /tmp/original_baseline.json
+
+bash scripts/run_performance.sh --baseline /tmp/original_baseline.json
+```
+
+The baseline and current performance-workload digest, SoC, CANN, PyTorch and torch_npu
+fingerprints must match. A mismatch is rejected unless explicitly reviewed and
+overridden. The default case threshold permits no positive latency regression.
+The same launch layout is essential: the importer rejects missing or extra
+target-kernel occurrences instead of silently selecting convenient samples.
 
 Current kernel constraints are BF16, TP=1 (`ep_size == world_size`), at most 8
 ranks, at most 64 local experts, contiguous row-major tensors, and the original
