@@ -73,8 +73,9 @@ aclnnStatus aclnnAttentionToFfnV2GetWorkspaceSize(
     const aclTensor *layerId, const aclTensor *expertIds, const aclTensor *expertRankTable,
     const aclTensor *scalesOptional, const aclTensor *activeMaskOptional, const char *group, int64_t worldSize,
     const aclIntArray *ffnTokenInfoTableShape, const aclIntArray *ffnTokenDataShape,
-    const aclIntArray *attnTokenInfoTableShape, int64_t moeExpertNum, int64_t quantMode, int64_t syncFlag,
-    int64_t ffnStartRankId, int64_t cclBufferSize, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclIntArray *attnTokenInfoTableShape, int64_t moeExpertNum, int64_t quantMode, int64_t quantDtype,
+    int64_t syncFlag, int64_t ffnStartRankId, int64_t cclBufferSize, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 
 {
     auto retParam = CheckParams(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group);
@@ -82,7 +83,7 @@ aclnnStatus aclnnAttentionToFfnV2GetWorkspaceSize(
     aclnnStatus ret = aclnnInnerAttentionToFfnV2GetWorkspaceSize(
         context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scalesOptional, activeMaskOptional,
         const_cast<char *>(group), worldSize, ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape,
-        moeExpertNum, quantMode, syncFlag, ffnStartRankId, cclBufferSize, workspaceSize, executor);
+        moeExpertNum, quantMode, quantDtype, syncFlag, ffnStartRankId, cclBufferSize, workspaceSize, executor);
     return ret;
 }
 
