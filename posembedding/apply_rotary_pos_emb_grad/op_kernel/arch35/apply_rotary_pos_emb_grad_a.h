@@ -71,7 +71,7 @@ private:
     // 以下 4 个队列仅 IsDcos=true 时 InitBuffer（分配 UB）并使用，IsDcos=false 时不分配、零占用
     TQue<QuePosition::VECIN, 1> queryInQ_, keyInQ_;
     TQue<QuePosition::VECOUT, 1> gradCosOutQ_, gradSinOutQ_;
-    int64_t blkIdx_, bStart_, bLen_, ubB_, ubN_, D_, dBuffer_;
+    int64_t blkIdx_, bStart_, bLen_, ubB_, ubN_, D_, dHalf_, dBuffer_;
 };
 
 template <typename T, bool IsDcos>
@@ -116,7 +116,11 @@ __aicore__ inline void ApplyRotaryPosEmbGradA<T, IsDcos>::InitAllBuffer()
 {
     ubB_ = tilingData_->ubFactorS; ubN_ = tilingData_->ubFactorN;
     D_ = tilingData_->d;
-    dBuffer_ = Ops::Base::CeilAlign<int64_t>(D_, BLOCK_TYPE_SIZE / sizeof(T));
+    dHalf_ = D_ / HALF_COEF;
+    // D 搬运方式：一次搬 D/2、搬 2 次（blockCount 翻倍）。
+    // 每个半行独立按 32B 对齐落位，因此 dBuffer_ = CeilAlign(D/2, BLOCK/sizeof(T)) * 2，
+    // 半行偏移 dBuffer_/2 天然 32B 对齐，D=100 这类非 16 对齐场景不再触发对齐违例。
+    dBuffer_ = Ops::Base::CeilAlign<int64_t>(dHalf_, BLOCK_TYPE_SIZE / sizeof(T)) * HALF_COEF;
     // 每个输入/输出独立 buffer，全部双缓冲
     pipe_->InitBuffer(gradQInQ_, DOUBLE_BUFFER, ubB_ * ubN_ * dBuffer_ * sizeof(T));
     pipe_->InitBuffer(gradKInQ_, DOUBLE_BUFFER, ubB_ * ubN_ * dBuffer_ * sizeof(T));
@@ -191,7 +195,9 @@ __aicore__ inline void ApplyRotaryPosEmbGradA<T, IsDcos>::CopyAccumOut(
 {
     LocalTensor<T> ac = gradCosOutQ_.DeQue<T>();
     LocalTensor<T> as = gradSinOutQ_.DeQue<T>();
-    DataCopyExtParams ep{1, static_cast<uint32_t>(len * D_ * sizeof(T)), 0, 0, 0};
+    // 一次搬 D/2、搬 len*2 次：UB 中半行按 dBuffer_/2 对齐落位，GM 侧 D 连续
+    DataCopyExtParams ep{static_cast<uint16_t>(len * HALF_COEF),
+                         static_cast<uint32_t>(dHalf_ * sizeof(T)), 0, 0, 0};
     DataCopyPad(ocGm[pos * D_], ac, ep);
     DataCopyPad(osGm[pos * D_], as, ep);
     gradCosOutQ_.FreeTensor(ac);
@@ -203,7 +209,8 @@ __aicore__ inline void ApplyRotaryPosEmbGradA<T, IsDcos>::CopyInCosAndSin(int64_
 {
     LocalTensor<T> cU = cosInQ_.AllocTensor<T>();
     LocalTensor<T> sU = sinInQ_.AllocTensor<T>();
-    DataCopyExtParams ep{1, static_cast<uint32_t>(len * D_ * sizeof(T)), 0, 0, 0};
+    DataCopyExtParams ep{static_cast<uint16_t>(len * HALF_COEF),
+                         static_cast<uint32_t>(dHalf_ * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> pp{false, 0, 0, 0};
     DataCopyPad(cU, cosGm_[pos * D_], ep, pp);
     DataCopyPad(sU, sinGm_[pos * D_], ep, pp);
@@ -215,7 +222,8 @@ __aicore__ inline void ApplyRotaryPosEmbGradA<T, IsDcos>::CopyIn(
     TQue<QuePosition::VECIN, 1>& inQ, GlobalTensor<T>& src, int64_t pos, int64_t len)
 {
     LocalTensor<T> t = inQ.AllocTensor<T>();
-    DataCopyExtParams ep{1, static_cast<uint32_t>(len * D_ * sizeof(T)), 0, 0, 0};
+    DataCopyExtParams ep{static_cast<uint16_t>(len * HALF_COEF),
+                         static_cast<uint32_t>(dHalf_ * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> pp{false, 0, 0, 0};
     DataCopyPad(t, src[pos * D_], ep, pp);
     inQ.EnQue(t);
@@ -226,7 +234,8 @@ __aicore__ inline void ApplyRotaryPosEmbGradA<T, IsDcos>::CopyOut(
     TQue<QuePosition::VECOUT, 1>& outQ, GlobalTensor<T>& dst, int64_t pos, int64_t len)
 {
     LocalTensor<T> s = outQ.DeQue<T>();
-    DataCopyExtParams ep{1, static_cast<uint32_t>(len * D_ * sizeof(T)), 0, 0, 0};
+    DataCopyExtParams ep{static_cast<uint16_t>(len * HALF_COEF),
+                         static_cast<uint32_t>(dHalf_ * sizeof(T)), 0, 0, 0};
     DataCopyPad(dst[pos * D_], s, ep);
     outQ.FreeTensor(s);
 }
@@ -243,11 +252,11 @@ __aicore__ inline void ApplyRotaryPosEmbGradA<T, IsDcos>::Compute(
     BatchHalfGradContiguousVF<T, false>(
         (__local_mem__ T*)in.GetPhyAddr(), (__local_mem__ T*)cU.GetPhyAddr(),
         (__local_mem__ T*)sU.GetPhyAddr(), (__local_mem__ T*)out.GetPhyAddr(),
-        // A 模板 MergeDim 后 B×N×S 已合并为一维行，UB 中 bL 行按 D 连续排布（行 i 位于 i*D）。
-        // VF 内 sIdx 的步长恰为 d，而 bIdx/nIdx 步长为 ubFactorN*ubFactorS*d，
+        // A 模板 MergeDim 后 B×N×S 已合并为一维行，UB 中 bL 行按 dBuffer_ 步长排布（行 i 位于 i*dBuffer_）。
+        // VF 内 sIdx 的步长恰为 dAlign，而 bIdx/nIdx 步长为 ubFactorN*ubFactorS*dAlign，
         // 因此这里必须把行数传给 sLength（最内层轴），bLength/nLength 传 1，
         // 否则 ubFactorS>1 时行间步长会被放大 ubFactorS 倍，越界写坏 UB。
-        bL, 1, nL, D_, ubB_, ubN_);
+        bL, 1, nL, D_, dBuffer_, ubB_, ubN_);
     if constexpr (IsDcos) {
         // 融合：query/key 与 grad 同 pos/len 对齐，Q 路写部分积、K 路累加
         LocalTensor<T> xU = xInQ.DeQue<T>();
@@ -255,12 +264,12 @@ __aicore__ inline void ApplyRotaryPosEmbGradA<T, IsDcos>::Compute(
             AccumDcosDsinVF<T, true>(
                 (__local_mem__ T*)in.GetPhyAddr(), (__local_mem__ T*)xU.GetPhyAddr(),
                 (__local_mem__ T*)gradCos.GetPhyAddr(), (__local_mem__ T*)gradSin.GetPhyAddr(),
-                static_cast<uint16_t>(bL * nL), D_);
+                static_cast<uint16_t>(bL * nL), D_, dBuffer_);
         } else {
             AccumDcosDsinVF<T, false>(
                 (__local_mem__ T*)in.GetPhyAddr(), (__local_mem__ T*)xU.GetPhyAddr(),
                 (__local_mem__ T*)gradCos.GetPhyAddr(), (__local_mem__ T*)gradSin.GetPhyAddr(),
-                static_cast<uint16_t>(bL * nL), D_);
+                static_cast<uint16_t>(bL * nL), D_, dBuffer_);
         }
         xInQ.FreeTensor(xU);
     }

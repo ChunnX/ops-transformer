@@ -93,20 +93,21 @@ __aicore__ inline void HalfGradAlignVF(
 }
 
 // ============================================================================
-// BatchHalfGradContiguousVF — A 模板连续 D 布局 half gradient
-// UB 中每行按完整 D 连续存放，后半段偏移为 D/2，不再使用 D/2 对齐 padding。
+// BatchHalfGradContiguousVF — A 模板 half gradient
+// UB 中每行按 dAlign = CeilAlign(D/2, BLOCK/sizeof(T)) * 2 存放（半行分别 32B 对齐落位），
+// 后半段偏移为 dAlign/2，保证 D 非 16 对齐（如 D=100）时向量 Load/Store 地址仍然对齐。
 // ============================================================================
 template <typename T, bool IsBBoardcast>
 __aicore__ inline void BatchHalfGradContiguousVF(
     __local_mem__ T* in, __local_mem__ T* cos, __local_mem__ T* sin, __local_mem__ T* out, uint16_t sLength,
-    uint16_t bLength, uint16_t nLength, int64_t d, int64_t ubFactorS, int64_t ubFactorN)
+    uint16_t bLength, uint16_t nLength, int64_t d, int64_t dAlign, int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t dHalfSize = d / HALF_COEF;
     uint16_t dLoopCount = (dHalfSize + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
-    uint32_t dHalfOffset = dHalfSize;
+    uint32_t dHalfOffset = dAlign / HALF_COEF;
 
-    int32_t bStepUb = ubFactorN * ubFactorS * d;
-    int32_t nStepUb = ubFactorS * d;
+    int32_t bStepUb = ubFactorN * ubFactorS * dAlign;
+    int32_t nStepUb = ubFactorS * dAlign;
 
     __VEC_SCOPE__
     {
@@ -117,14 +118,14 @@ __aicore__ inline void BatchHalfGradContiguousVF(
             for (uint16_t nIdx = 0; nIdx < nLength; nIdx++) {
                 for (uint16_t sIdx = 0; sIdx < sLength; sIdx++) {
                     uint32_t count = dHalfSize;
-                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * d;
-                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * d;
+                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dAlign;
+                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dAlign;
                     if constexpr (IsBBoardcast) {
-                        currCosUb = cos + sIdx * d;
-                        currSinUb = sin + sIdx * d;
+                        currCosUb = cos + sIdx * dAlign;
+                        currSinUb = sin + sIdx * dAlign;
                     } else {
-                        currCosUb = cos + bIdx * nStepUb + sIdx * d;
-                        currSinUb = sin + bIdx * nStepUb + sIdx * d;
+                        currCosUb = cos + bIdx * nStepUb + sIdx * dAlign;
+                        currSinUb = sin + bIdx * nStepUb + sIdx * dAlign;
                     }
                     for (uint16_t i = 0; i < dLoopCount; i++) {
                         pregLoop = MicroAPI::UpdateMask<float>(count);
@@ -157,30 +158,32 @@ __aicore__ inline void BatchHalfGradContiguousVF(
 // AccumDcosDsinVF — A 模板融合阶段 grad_cos/grad_sin 部分积累加
 // 单路 (grad·x) 的部分积，IsFirst=true 时写入 accumCos/accumSin，
 // IsFirst=false 时累加（用于 Q 路写完、K 路累加）。
+// UB 行步长为 dAlign（半行各自 32B 对齐），半行偏移为 dAlign/2。
 // grad_cos = grad·x（逐元素）
 // grad_sin = -(grad1·x2) + grad2·x1（交叉项，前半取负，对应 rotate(x)=cat(-x2,x1)）
 // ============================================================================
 template <typename T, bool IsFirst>
 __aicore__ inline void AccumDcosDsinVF(__local_mem__ T* gradUb, __local_mem__ T* xUb,
                                        __local_mem__ T* accumCosUb, __local_mem__ T* accumSinUb,
-                                       uint16_t rowNum, int64_t d)
+                                       uint16_t rowNum, int64_t d, int64_t dAlign)
 {
     uint32_t halfD = d / HALF_COEF;
+    uint32_t halfDAlign = dAlign / HALF_COEF;
     uint16_t repeatTimes = (halfD + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<float> g1, g2, x1, x2, c1, c2, s1, s2, t1, t2;
         MicroAPI::MaskReg preg;
         for (uint16_t row = 0; row < rowNum; row++) {
-            __local_mem__ T* currGradUb = gradUb + row * d;
-            __local_mem__ T* currXUb     = xUb + row * d;
-            __local_mem__ T* currCosUb   = accumCosUb + row * d;
-            __local_mem__ T* currSinUb   = accumSinUb + row * d;
+            __local_mem__ T* currGradUb = gradUb + row * dAlign;
+            __local_mem__ T* currXUb     = xUb + row * dAlign;
+            __local_mem__ T* currCosUb   = accumCosUb + row * dAlign;
+            __local_mem__ T* currSinUb   = accumSinUb + row * dAlign;
             uint32_t updateCnt = halfD;
             for (uint16_t i = 0; i < repeatTimes; i++) {
                 preg = MicroAPI::UpdateMask<float>(updateCnt);
                 int32_t offset = i * VL_FLOAT32_SIZE;
-                int32_t halfOffset = offset + halfD;
+                int32_t halfOffset = offset + halfDAlign;
                 ops::LoadTwoTensorForDtypeT<T>(currGradUb, currGradUb, g1, g2, preg, preg, offset, halfOffset);
                 ops::LoadTwoTensorForDtypeT<T>(currXUb, currXUb, x1, x2, preg, preg, offset, halfOffset);
                 // grad_cos = grad·x
