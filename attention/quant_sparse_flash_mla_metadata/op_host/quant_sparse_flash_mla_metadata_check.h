@@ -459,7 +459,7 @@ std::string TopkLengthShapeToStringQsmla(const aclTensor *topkLengthOptional)
 }
 
 aclnnStatus CheckTopkLengthFirstDimQsmla(const aclTensor *topkLengthOptional, const std::string &topkLengthName,
-                                          int64_t queryBatchSize, const std::string &querySource)
+                                         int64_t queryBatchSize, const std::string &querySource)
 {
     if (topkLengthOptional->GetViewShape().GetDim(0) == queryBatchSize) {
         return ACLNN_SUCCESS;
@@ -488,8 +488,8 @@ inline constexpr TopkLengthAxisQsmla QSMLA_TOPK_LENGTH_SECOND_AXIS{1, "second"};
 inline constexpr TopkLengthAxisQsmla QSMLA_TOPK_LENGTH_THIRD_AXIS{2, "third"};
 
 aclnnStatus CheckTopkLengthSingleDimQsmla(const aclTensor *topkLengthOptional, const std::string &topkLengthName,
-                                           TopkLengthAxisQsmla axis, int64_t expectedValue,
-                                           const std::string &expectedDesc, const char *layoutQOptional)
+                                          TopkLengthAxisQsmla axis, int64_t expectedValue,
+                                          const std::string &expectedDesc, const char *layoutQOptional)
 {
     if (topkLengthOptional->GetViewShape().GetDim(axis.index) == expectedValue) {
         return ACLNN_SUCCESS;
@@ -792,29 +792,29 @@ aclnnStatus CheckConsistencyQsmla(const aclTensor *cuSeqlensQOptional, const acl
             if (strcmp(layoutQOptional, "BSND") == 0) {
                 // 校验 ori_topk_length 第一个维度
                 aclnnStatus ret = CheckTopkLengthFirstDimQsmla(oriTopkLengthOptional, "ori_topk_length",
-                                                                queryBatchSize, querySource);
+                                                               queryBatchSize, querySource);
                 if (ret != ACLNN_SUCCESS) {
                     return ret;
                 }
                 // 校验 ori_topk_length 第二个维度
                 ret = CheckTopkLengthSingleDimQsmla(oriTopkLengthOptional, "ori_topk_length",
-                                                     QSMLA_TOPK_LENGTH_SECOND_AXIS, maxSeqlenQ, "max_seqlen_q",
-                                                     layoutQOptional);
+                                                    QSMLA_TOPK_LENGTH_SECOND_AXIS, maxSeqlenQ, "max_seqlen_q",
+                                                    layoutQOptional);
                 if (ret != ACLNN_SUCCESS) {
                     return ret;
                 }
                 // 校验 ori_topk_length 第三个维度
                 ret = CheckTopkLengthSingleDimQsmla(oriTopkLengthOptional, "ori_topk_length",
-                                                     QSMLA_TOPK_LENGTH_THIRD_AXIS, numHeadsKv, "num_heads_kv",
-                                                     layoutQOptional);
+                                                    QSMLA_TOPK_LENGTH_THIRD_AXIS, numHeadsKv, "num_heads_kv",
+                                                    layoutQOptional);
                 if (ret != ACLNN_SUCCESS) {
                     return ret;
                 }
             } else if (strcmp(layoutQOptional, "TND") == 0) {
                 // 校验 ori_topk_length 第二个维度
                 aclnnStatus ret = CheckTopkLengthSingleDimQsmla(oriTopkLengthOptional, "ori_topk_length",
-                                                                 QSMLA_TOPK_LENGTH_SECOND_AXIS, numHeadsKv,
-                                                                 "num_heads_kv", layoutQOptional);
+                                                                QSMLA_TOPK_LENGTH_SECOND_AXIS, numHeadsKv,
+                                                                "num_heads_kv", layoutQOptional);
                 if (ret != ACLNN_SUCCESS) {
                     return ret;
                 }
@@ -886,29 +886,29 @@ aclnnStatus CheckConsistencyQsmla(const aclTensor *cuSeqlensQOptional, const acl
             if (strcmp(layoutQOptional, "BSND") == 0) {
                 // 校验 cmp_topk_length 第一个维度
                 aclnnStatus ret = CheckTopkLengthFirstDimQsmla(cmpTopkLengthOptional, "cmp_topk_length",
-                                                                queryBatchSize, querySource);
+                                                               queryBatchSize, querySource);
                 if (ret != ACLNN_SUCCESS) {
                     return ret;
                 }
                 // 校验 cmp_topk_length 第二个维度
                 ret = CheckTopkLengthSingleDimQsmla(cmpTopkLengthOptional, "cmp_topk_length",
-                                                     QSMLA_TOPK_LENGTH_SECOND_AXIS, maxSeqlenQ, "max_seqlen_q",
-                                                     layoutQOptional);
+                                                    QSMLA_TOPK_LENGTH_SECOND_AXIS, maxSeqlenQ, "max_seqlen_q",
+                                                    layoutQOptional);
                 if (ret != ACLNN_SUCCESS) {
                     return ret;
                 }
                 // 校验 cmp_topk_length 第三个维度
                 ret = CheckTopkLengthSingleDimQsmla(cmpTopkLengthOptional, "cmp_topk_length",
-                                                     QSMLA_TOPK_LENGTH_THIRD_AXIS, numHeadsKv, "num_heads_kv",
-                                                     layoutQOptional);
+                                                    QSMLA_TOPK_LENGTH_THIRD_AXIS, numHeadsKv, "num_heads_kv",
+                                                    layoutQOptional);
                 if (ret != ACLNN_SUCCESS) {
                     return ret;
                 }
             } else if (strcmp(layoutQOptional, "TND") == 0) {
                 // 校验 cmp_topk_length 第二个维度
                 aclnnStatus ret = CheckTopkLengthSingleDimQsmla(cmpTopkLengthOptional, "cmp_topk_length",
-                                                                 QSMLA_TOPK_LENGTH_SECOND_AXIS, numHeadsKv,
-                                                                 "num_heads_kv", layoutQOptional);
+                                                                QSMLA_TOPK_LENGTH_SECOND_AXIS, numHeadsKv,
+                                                                "num_heads_kv", layoutQOptional);
                 if (ret != ACLNN_SUCCESS) {
                     return ret;
                 }
