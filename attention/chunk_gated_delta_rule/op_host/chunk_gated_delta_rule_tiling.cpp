@@ -129,8 +129,8 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     int64_t dv = tilingData_.dv;
     int64_t dk = tilingData_.dk;
     int64_t s = tilingData_.maxGroupLength;
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s;     // gCumExp (FP32)
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kCumDecay (BF16)
+    // R6: gCumExp 不再分配 GM workspace (Stage2/Stage3 从原始 g 重算)
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kCumDecay/kBetaInv (BF16)
     if (tilingData_.stateIsFp32) {
         tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv; // vInner (FP32)
         tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;  // vInnerBf16 (BF16, for stage3)
@@ -149,9 +149,10 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     }
     tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask (FP32)
 
-    // stage1 临时变量空间
-    tilingData_.stageWorkspaceSz =
-        sizeLow * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
+    // R2/R4/R5: stage1 临时变量空间
+    // 删除 queryCon/keyCon/vBeta/gBK，仅保留 kkWs 和 attnWs
+    // kkWs: c*c, attnWs: c*c (共 2 个 c*c)
+    tilingData_.stageWorkspaceSz = sizeLow * c * (STAGE_ONE_TWO * c) * tilingData_.stageOneParaNum;
     tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
 
     PrintTilingData();
