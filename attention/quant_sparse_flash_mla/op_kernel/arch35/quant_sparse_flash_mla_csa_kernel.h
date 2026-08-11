@@ -526,7 +526,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
         runParam.n2oIdx = 0;
         ComputeParamBatch<TEMPLATE_INTF_ARGS>(runParam, this->constInfo, this->cuSeqlensQGm, this->cuSeqlensOriKvGm,
                                               this->cuSeqlensCmpKvGm, this->actualSeqQlenGm, this->actualSeqOriKvlenGm,
-                                              this->actualSeqCmpKvlenGm, this->cmpResidualKvGm, 
+                                              this->actualSeqCmpKvlenGm, this->cmpResidualKvGm,
                                               this->oriTopkLengthGm, this->cmpTopkLengthGm, this->hasCuSeqlensOriKv,
                                               this->hasCuSeqlensCmpKv, this->hasActualSeqQlen,
                                               this->hasActualSeqOriKvlen, this->hasActualSeqCmpKvlen);

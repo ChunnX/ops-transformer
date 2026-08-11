@@ -35,7 +35,7 @@ __aicore__ inline void GetSingleCoreParam(
     RunParamStr &runParam, const ConstInfo &constInfo, GlobalTensor<int32_t> &cuSeqlensQGm,
     GlobalTensor<int32_t> &cuSeqlensOriKvGm, GlobalTensor<int32_t> &cuSeqlensCmpKvGm,
     GlobalTensor<int32_t> &actualSeqQlenGm, GlobalTensor<int32_t> &actualSeqOriKvlenGm,
-    GlobalTensor<int32_t> &actualSeqCmpKvlenGm, GlobalTensor<int32_t> &cmpResidualKvGm, 
+    GlobalTensor<int32_t> &actualSeqCmpKvlenGm, GlobalTensor<int32_t> &cmpResidualKvGm,
     GlobalTensor<int32_t> &oriTopkLengthGm, GlobalTensor<int32_t> &cmpTopkLengthGm, bool hasCuSeqlensOriKv,
     bool hasCuSeqlensCmpKv, bool hasActualSeqQlen, bool hasActualSeqOriKvlen, bool hasActualSeqCmpKvlen)
 {
