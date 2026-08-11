@@ -217,19 +217,18 @@ class LightningIndexerInputAdapter:
             return
         if src is None:
             raise ValueError(f"{name} is present in CSV but pytest generator returned None")
-        src_cpu = src.detach().cpu() if torch.is_tensor(src) else torch.as_tensor(src)
-        if tuple(dst.shape) != tuple(src_cpu.shape):
+        src = src.detach() if torch.is_tensor(src) else torch.as_tensor(src)
+        if tuple(dst.shape) != tuple(src.shape):
             raise ValueError(
                 f"{name} shape mismatch: TTK={tuple(dst.shape)} "
-                f"pytest={tuple(src_cpu.shape)}"
+                f"pytest={tuple(src.shape)}"
             )
-        dst.copy_(src_cpu.to(dtype=dst.dtype, device=dst.device))
+        dst.copy_(src.to(dtype=dst.dtype, device=dst.device))
 
     @staticmethod
     def golden_data(data):
         return {
             "cpu_result": data["cpu_result"].detach().cpu(),
-            "cpu_result_raw": data["cpu_result_raw"].detach().cpu(),
             "score_values": data["score_values"].detach().cpu(),
             "params": data["params"],
             "topk_value": data["topk_value"].detach().cpu(),
