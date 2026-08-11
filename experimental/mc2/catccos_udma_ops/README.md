@@ -15,7 +15,9 @@ UDMA all-to-all-v headers that have not yet landed in that official revision.
 
 ## Build and install
 
-On an Ascend950 build host, source the CANN and torch_npu environments first:
+On an Ascend950 build host, source the CANN and torch_npu environments first.
+The build requires CMake 3.18.4 or newer from `PATH`; a system or Conda
+installation is supported and the PyPI `cmake` package is not required.
 
 ```bash
 cd experimental/mc2/catccos_udma_ops

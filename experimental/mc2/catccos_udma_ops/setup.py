@@ -3,6 +3,7 @@
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 
@@ -13,6 +14,38 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 PACKAGE_NAME = "ops_transformer_catccos_udma"
 VERSION = "0.1.0"
+MINIMUM_CMAKE_VERSION = (3, 18, 4)
+
+
+def find_cmake():
+    cmake = shutil.which("cmake")
+    required = ".".join(str(part) for part in MINIMUM_CMAKE_VERSION)
+    if cmake is None:
+        raise RuntimeError(
+            f"CMake >= {required} is required. Install it in the active Conda "
+            "environment or add it to PATH."
+        )
+
+    try:
+        output = subprocess.check_output(
+            [cmake, "--version"], text=True, stderr=subprocess.STDOUT
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise RuntimeError(f"Failed to execute CMake at {cmake}: {error}") from error
+
+    match = re.search(r"^cmake version (\d+)\.(\d+)\.(\d+)", output, re.MULTILINE)
+    if match is None:
+        raise RuntimeError(
+            f"Unable to determine the version of CMake at {cmake}: {output.strip()}"
+        )
+
+    actual = tuple(int(part) for part in match.groups())
+    if actual < MINIMUM_CMAKE_VERSION:
+        actual_text = ".".join(str(part) for part in actual)
+        raise RuntimeError(
+            f"CMake >= {required} is required, but {cmake} reports {actual_text}."
+        )
+    return cmake
 
 
 class BinaryDistribution(Distribution):
@@ -34,6 +67,8 @@ class CMakeBuild(Command):
         pass
 
     def run(self):
+        cmake = find_cmake()
+
         import torch
         import torch_npu
 
@@ -53,7 +88,7 @@ class CMakeBuild(Command):
             shutil.rmtree(staged_libs)
 
         config = [
-            "cmake", "-S", source_dir, "-B", build_dir,
+            cmake, "-S", source_dir, "-B", build_dir,
             "-DCMAKE_BUILD_TYPE=Release",
             f"-DTorch_DIR={torch_dir}",
             f"-DTORCH_NPU_PATH={torch_npu_path}",
@@ -67,7 +102,7 @@ class CMakeBuild(Command):
 
         subprocess.check_call(config, cwd=source_dir)
         subprocess.check_call(
-            ["cmake", "--build", build_dir, "--config", "Release", "--parallel", jobs],
+            [cmake, "--build", build_dir, "--config", "Release", "--parallel", jobs],
             cwd=source_dir,
         )
 
