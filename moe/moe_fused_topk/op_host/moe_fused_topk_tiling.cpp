@@ -49,6 +49,7 @@ namespace {
     constexpr uint32_t FP32_DTYPE_SIZE = 4U; // float
     constexpr uint32_t INT32_DTYPE_SIZE = 4U; // int32
     constexpr uint32_t FP32_BLOCK_ALIGN_NUM = 8U;
+    constexpr uint32_t FP16_BLOCK_ALIGN_NUM = 16U;
 } // namespace
 
 namespace optiling {
@@ -169,7 +170,9 @@ ge::graphStatus MoeFusedTopkTiling::SplitUb()
     // xInQueue_
     needUbSize += CeilAlign(groupEles_, SORT_UNIT) * groupNum_ * FP32_DTYPE_SIZE;
     // addNumInQueue_
-    needUbSize += CeilAlign(secondDimSize_, FP32_BLOCK_ALIGN_NUM) * FP32_DTYPE_SIZE;
+    // FP16/BF16 paths use the upper half of this FP32 buffer as a staging area before Cast.
+    // Keep the Host-side budget in sync with InitBuffer(addNumInBuf_).
+    needUbSize += CeilAlign(secondDimSize_, FP16_BLOCK_ALIGN_NUM) * FP32_DTYPE_SIZE;
     // yOutQueue_
     needUbSize +=  CeilAlign(topK_, FP32_BLOCK_ALIGN_NUM) * FP32_DTYPE_SIZE;
     // indicesOutQueue_
@@ -186,8 +189,11 @@ ge::graphStatus MoeFusedTopkTiling::SplitUb()
     needUbSize +=  CeilAlign(secondDimSize_, SORT_UNIT) * INT32_DTYPE_SIZE;
     // mappingNumQueue_
     needUbSize +=  CeilAlign(expertNum_ * INT32_DTYPE_SIZE, BYTE_BLOCK);
-    // tempBuf_
-    needUbSize +=  topkMinValue_;
+    // tempBuf_.  The AscendC APIs return both a minimum and a maximum
+    // temporary-space requirement.  The kernel uses this buffer for TopK,
+    // Sigmoid, BroadCast and Sort, so reserve the maximum requirement rather
+    // than the minimum path-specific amount.
+    needUbSize += topkMaxValue_;
 
     OP_CHECK_IF(needUbSize > ubSize_,
             OPS_REPORT_VECTOR_INNER_ERR(tilingContext_->GetNodeName(),
@@ -289,7 +295,6 @@ ge::graphStatus MoeFusedTopkTiling::GetTopKTiling()
 void MoeFusedTopkTiling::GetTmpBuffSize()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingContext_->GetPlatformInfo());
-    uint32_t groupElesAlignSortCount = (groupNum_ + SORT_UNIT - 1) / SORT_UNIT * SORT_UNIT;
     uint32_t maxValue = 0;
     uint32_t minValue = 0;
     std::vector<int64_t> sigmoidVec = {static_cast<int64_t>(secondDimSize_)};
@@ -298,8 +303,10 @@ void MoeFusedTopkTiling::GetTmpBuffSize()
     topkMinValue_ = std::max(topkMinValue_, minValue);
     topkMaxValue_ = std::max(topkMaxValue_, maxValue);
 
-    uint32_t sortTmpSize = AscendC::GetSortTmpSize(ascendcPlatform, groupElesAlignSortCount, FP32_DTYPE_SIZE);
-    topkMinValue_ = std::max(topkMinValue_, sortTmpSize);
+    uint32_t groupSortTmpSize = AscendC::GetSortTmpSize(
+        ascendcPlatform, CeilAlign(groupEles_, SORT_UNIT), FP32_DTYPE_SIZE);
+    topkMinValue_ = std::max(topkMinValue_, groupSortTmpSize);
+    topkMaxValue_ = std::max(topkMaxValue_, groupSortTmpSize);
 
     std::vector<int64_t> srcBroadCastVec = {static_cast<int64_t>(groupNum_), 1};
     std::vector<int64_t> dstBroadCastVec = {static_cast<int64_t>(groupNum_), static_cast<int64_t>(groupEles_)};
@@ -311,8 +318,18 @@ void MoeFusedTopkTiling::GetTmpBuffSize()
     topkMaxValue_ = std::max(topkMaxValue_, maxValue);
 
     uint32_t secondDimSizeAlignSortCount = (secondDimSize_ + SORT_UNIT - 1) / SORT_UNIT * SORT_UNIT;
-    sortTmpSize = AscendC::GetSortTmpSize(ascendcPlatform, secondDimSizeAlignSortCount, FP32_DTYPE_SIZE);
-    topkMinValue_ = std::max(topkMinValue_, sortTmpSize);
+    uint32_t expertSortTmpSize = AscendC::GetSortTmpSize(
+        ascendcPlatform, secondDimSizeAlignSortCount, FP32_DTYPE_SIZE);
+    topkMinValue_ = std::max(topkMinValue_, expertSortTmpSize);
+    topkMaxValue_ = std::max(topkMaxValue_, expertSortTmpSize);
+
+    // The AscendC Sum implementation on Ascend950 reduces each row through a
+    // shared scratch region when topN exceeds one vector.  Its per-row scratch
+    // is the vector-repeat count rounded to a 32-element block.
+    constexpr uint32_t VECTOR_FP32_ELEMS = 256U / FP32_DTYPE_SIZE;
+    uint32_t sumRepeatCount = (topN_ + VECTOR_FP32_ELEMS - 1) / VECTOR_FP32_ELEMS;
+    uint32_t sumTmpSize = CeilAlign(sumRepeatCount, SORT_UNIT) * groupNum_ * FP32_DTYPE_SIZE;
+    topkMaxValue_ = std::max(topkMaxValue_, sumTmpSize);
 
     topkMinValue_ = std::max(topkMinValue_, secondDimSizeAlignSortCount * FP32_DTYPE_SIZE);
     topkMaxValue_ = std::max(topkMaxValue_, topkMinValue_);

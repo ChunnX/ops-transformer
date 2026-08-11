@@ -55,6 +55,7 @@ static const int64_t Y_DIM_NUM = 2;
 static const uint32_t GROUP_NUM_MAX = 256U;
 static const uint32_t EXPERT_NUM_MAX = 1024U;
 static const uint32_t MAX_MAPPING_NUM_MAX = 128U;
+static const uint32_t ACTIVATION_SIGMOID = 0U;
 
 static const std::initializer_list<op::DataType> X_SUPPORT_LIST = {
                                 DataType::DT_FLOAT, DataType::DT_FLOAT16, DataType::DT_BF16};
@@ -101,12 +102,12 @@ static inline bool CheckDtypeValid(const aclTensor* x, const aclTensor* addNum, 
 static inline bool CheckShape(const aclTensor* x, const aclTensor* addNum, const aclTensor* mappingNum, const aclTensor* mappingTable,
     uint32_t groupNum, uint32_t groupTopk, uint32_t topN, uint32_t topK, uint32_t activateType, 
     bool isNorm, float scale, bool enableExpertMapping, const aclTensor* y, const aclTensor* indices) {
-    if (x->IsEmpty()) {
-        return true;
-    }
     OP_CHECK(groupNum > 0 && groupTopk > 0 && topN > 0 && topK > 0,
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "all of groupNum: %u, groupTopk: %u, topN: %u and topK: %u must be greater than 0.",
                                             groupNum, groupTopk, topN, topK),
+        return false);
+    OP_CHECK(activateType == ACTIVATION_SIGMOID,
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "activateType only supports ACTIVATION_SIGMOID(0), but got %u.", activateType),
         return false);
     OP_CHECK(groupNum <= GROUP_NUM_MAX,
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "groupNum must be less than %u, which is %u.",

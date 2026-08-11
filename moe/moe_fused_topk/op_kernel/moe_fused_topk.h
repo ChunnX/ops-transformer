@@ -115,7 +115,6 @@ private:
     uint32_t topkPad_ = 0;
     uint32_t topkMaxValue_ = 0;
     uint32_t topkMinValue_ = 0;
-
     float floatNegativeInf_ = -3.4e38;
 
     GlobalTensor<inputT> mGmX_;
@@ -201,11 +200,15 @@ __aicore__ inline void MoeFusedTopk<inputT, calT, enableExpertMapping>::InitBuff
     pipe_->InitBuffer(indicesOutBuf_, sizeof(int32_t) * topKSortRepeatTimes_ * SORT_UNIT);
     pipe_->InitBuffer(sigmoidBuf_, sizeof(float) * secondAlignBlockCountFp32_);
     pipe_->InitBuffer(sigmoidAddBuf_, sizeof(float) * secondAlignBlockCountFp32_);
-    pipe_->InitBuffer(tempBuf_, topkMinValue_);
+    // The temporary buffer is shared by TopK, Sigmoid, BroadCast and Sort.
+    // It must match the maximum requirement computed by host tiling.
+    pipe_->InitBuffer(tempBuf_, topkMaxValue_);
     pipe_->InitBuffer(sortedBuf_, sizeof(int64_t) * groupNum_ * groupElesAlignSortCount_);
     pipe_->InitBuffer(topkValueBuf_, sizeof(float) * sortRepeatTimes_ * SORT_UNIT);
     pipe_->InitBuffer(assistBuf_, sizeof(uint32_t) * wholeSortNum_);
-    pipe_->InitBuffer(mappingNumBuf_, sizeof(int32_t) * expertNum_);
+    if constexpr (enableExpertMapping) {
+        pipe_->InitBuffer(mappingNumBuf_, sizeof(int32_t) * expertNum_);
+    }
 }
 
 template <typename inputT, typename calT, uint32_t enableExpertMapping>
@@ -215,7 +218,9 @@ __aicore__ inline void MoeFusedTopk<inputT, calT, enableExpertMapping>::CopyInAd
     LocalTensor<int32_t> assistLocal = assistBuf_.Get<int32_t>();
     uint32_t secondDimSizeInputBytes = secondDimSize_ * sizeof(inputT);
 
-    // 初始化assistLocal
+    // Both group and expert Sort consume an explicit index vector.  This is
+    // vector work and avoids the scalar index reconstruction used by the old
+    // Ascend950 workaround.
     ArithProgression(assistLocal, 0, 1, wholeSortNum_);
 
     if constexpr (IsSameType<inputT, float>::value) {
@@ -303,47 +308,22 @@ __aicore__ inline void MoeFusedTopk<inputT, calT, enableExpertMapping>::CopyFrom
     AscendC::PipeBarrier<PIPE_ALL>();
 }
 
-template <typename inputT, typename calT, uint32_t enableExpertMapping>
-__aicore__ inline void MoeFusedTopk<inputT, calT, enableExpertMapping>::GroupReduceSumInternelImpl()
-{
-    LocalTensor<float> xLocal = xInBuf_.Get<float>();
-    LocalTensor<float> sortedTensor = sortedBuf_.Get<float>();
-    LocalTensor<float> topkGroupValue = topkValueBuf_.Get<float>();
-    LocalTensor<uint8_t> tempTensor = tempBuf_.Get<uint8_t>();
-
-    // 不需要输出索引,输入输出索引localTensor只需定义
-    LocalTensor<int32_t> indicesLocal;
-    LocalTensor<bool> finishLocal;
-    AscendC::TopKInfo topkInfo = {static_cast<int32_t>(groupNum_),
-                                    CeilAlign(static_cast<int32_t>(groupEles_), SORT_UNIT), 
-                                    static_cast<int32_t>(groupEles_)};
-    // xLocal shape 需要为outter * inner 即 groupNum_ * CeilAlign(groupEles_, 32)
-    // sortedTensor shape 需要为outter * topnPad 即 groupNum_ * CeilAlign(n_, 32 / sizeof(calT))
-    AscendC::TopK<calT, false, false, false, TopKMode::TOPK_NORMAL>(
-        sortedTensor, indicesLocal, xLocal, indicesLocal, finishLocal, tempTensor, n_, topkTilingData_, topkInfo);
-
-    AscendC::PipeBarrier<PIPE_V>();
-    Duplicate<float>(topkGroupValue, floatNegativeInf_, CeilAlign(groupNum_, SORT_UNIT));
-    AscendC::PipeBarrier<PIPE_V>();
-
-    for (size_t i = 0; i < groupNum_; i++) {
-        ReduceSum<calT>(topkGroupValue[i], sortedTensor[i * topnPad_], tempTensor.template ReinterpretCast<float>(), n_);
-    }
-    AscendC::PipeBarrier<PIPE_V>();
-}
 
 template <typename inputT, typename calT, uint32_t enableExpertMapping>
 __aicore__ inline void MoeFusedTopk<inputT, calT, enableExpertMapping>::GroupTopkImpl()
 {
-    // 选出groupTopk_ 组, 未被选中的设为0
+    // Sort the group scores and retain the hardware ordering for equal and
+    // non-finite scores.  The ATK reference uses the same AscendC TopK/Sort
+    // tie behavior for these non-finite anomaly inputs (notably -inf).
     LocalTensor<uint32_t> assistLocal = assistBuf_.Get<uint32_t>();
     LocalTensor<float> sortedTensor = sortedBuf_.Get<float>();
     LocalTensor<float> topkGroupValue = topkValueBuf_.Get<float>();
     LocalTensor<float> sigmoidAddTensor = sigmoidAddBuf_.Get<float>();
     LocalTensor<float> tempTensor = tempBuf_.Get<float>();
-    LocalTensor<bool> finishLocal;
+    LocalTensor<uint8_t> selectedGroupMask = assistBuf_.Get<uint8_t>();
 
-    Sort<float, true>(sortedTensor, topkGroupValue, assistLocal, tempTensor, CeilDiv(groupNum_, SORT_UNIT));
+    Sort<float, true>(sortedTensor, topkGroupValue, assistLocal, tempTensor,
+                      CeilDiv(groupNum_, SORT_UNIT));
     AscendC::PipeBarrier<PIPE_V>();
 
     LocalTensor<int32_t> dstOffset = sortedTensor.template ReinterpretCast<int32_t>();
@@ -363,11 +343,26 @@ __aicore__ inline void MoeFusedTopk<inputT, calT, enableExpertMapping>::GroupTop
     uint32_t srcShape[BROADCAST_DIM] = {(uint32_t)groupNum_, 1};
     LocalTensor<uint8_t> sharedTmpBuffer = tempBuf_.Get<uint8_t>();
     AscendC::PipeBarrier<PIPE_V>();
-    BroadCast<float, BROADCAST_DIM, BROADCAST_AXIS>(sortedTensor, topkGroupValue, dstShape, srcShape, sharedTmpBuffer);
+    BroadCast<float, BROADCAST_DIM, BROADCAST_AXIS>(sortedTensor, topkGroupValue,
+                                                     dstShape, srcShape, sharedTmpBuffer);
     AscendC::PipeBarrier<PIPE_V>();
-    Duplicate(topkGroupValue, floatNegativeInf_, wholeSortNum_);
+    // Use IEEE -inf for the aligned tail.  Valid -inf scores are clamped to
+    // the finite sentinel below, so padded slots can never enter expert TopK.
+    uint32_t negativeInfinityBits = 0xFF800000;
+    float floatNegativeInfinity = *((float *)&negativeInfinityBits);
+    Duplicate(topkGroupValue, floatNegativeInfinity, wholeSortNum_);
+    // The reference semantics use +0 for a valid but deselected expert;
+    // only the aligned tail must remain -inf.
+    Duplicate(topkGroupValue, float(0), secondDimSize_);
     AscendC::PipeBarrier<PIPE_V>();
-    Mul(topkGroupValue, sigmoidAddTensor, sortedTensor, secondDimSize_);
+    CompareScalar(selectedGroupMask, sortedTensor, float(0), CMPMODE::GT, secondDimSize_);
+    // Clamp only the candidate scores.  The destination remains -inf for
+    // deselected experts and for the aligned tail, while a selected -inf is
+    // represented by the finite sentinel and therefore stays ahead of tail
+    // slots during Sort.
+    Maxs(sigmoidAddTensor, sigmoidAddTensor, floatNegativeInf_, secondDimSize_);
+    Select(topkGroupValue, selectedGroupMask, sigmoidAddTensor, topkGroupValue,
+           SELMODE::VSEL_TENSOR_TENSOR_MODE, secondDimSize_);
     AscendC::PipeBarrier<PIPE_V>();
 }
 
@@ -376,50 +371,25 @@ __aicore__ inline void MoeFusedTopk<inputT, calT, enableExpertMapping>::GatherSi
 {
     LocalTensor<int32_t> indicesLocal = indicesOutBuf_.Get<int32_t>();
     LocalTensor<float> sigmoidTensor = sigmoidBuf_.Get<float>();
-    LocalTensor<uint32_t> assistLocal = assistBuf_.Get<uint32_t>();
     LocalTensor<float> sortedTensor = sortedBuf_.Get<float>();
     LocalTensor<float> groupTopkValue = topkValueBuf_.Get<float>();
     LocalTensor<float> yLocal = yOutBuf_.Get<float>();
+    LocalTensor<uint32_t> assistLocal = assistBuf_.Get<uint32_t>();
+    LocalTensor<int32_t> sortIndexInit = assistBuf_.Get<int32_t>();
     LocalTensor<float> tempTensor = tempBuf_.Get<float>();
 
+    // Sort/Extract stay entirely on vector hardware; no O(topK * expertNum)
+    // scalar tie scan is allowed on the performance path.
+    ArithProgression(sortIndexInit, 0, 1, wholeSortNum_);
+    AscendC::PipeBarrier<PIPE_V>();
     Sort<float, true>(sortedTensor, groupTopkValue, assistLocal, tempTensor, sortRepeatTimes_);
     AscendC::PipeBarrier<PIPE_V>();
-
     Extract(tempTensor, indicesLocal.template ReinterpretCast<uint32_t>(), sortedTensor, topKSortRepeatTimes_);
     AscendC::PipeBarrier<PIPE_V>();
-
     Muls(sortedTensor.template ReinterpretCast<int32_t>(), indicesLocal, FLOAT_BYTES, k_);
     AscendC::PipeBarrier<PIPE_V>();
     Gather(yLocal, sigmoidTensor, sortedTensor.template ReinterpretCast<uint32_t>(), 0, k_);
     AscendC::PipeBarrier<PIPE_V>();
-}
-
-template <typename inputT, typename calT, uint32_t enableExpertMapping>
-__aicore__ inline void MoeFusedTopk<inputT, calT, enableExpertMapping>::NormImpl()
-{
-    LocalTensor<float> yLocal = yOutBuf_.Get<float>();
-    LocalTensor<float> tempTensor = tempBuf_.Get<float>();
-
-    ReduceSum<calT>(tempTensor, yLocal, tempTensor, k_);
-    event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-    SetFlag<HardEvent::V_S>(eventIdVToS);
-    WaitFlag<HardEvent::V_S>(eventIdVToS);
-    float reduceSumValue = 1 / tempTensor.GetValue(0);
-    event_t eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
-    SetFlag<HardEvent::S_V>(eventIdSToV);
-    WaitFlag<HardEvent::S_V>(eventIdSToV);
-    Muls(yLocal, yLocal, reduceSumValue, k_);
-    AscendC::PipeBarrier<PIPE_V>();
-    Muls(yLocal, yLocal, scale_, k_);
-}
-
-template <typename inputT, typename calT, uint32_t enableExpertMapping>
-__aicore__ inline void MoeFusedTopk<inputT, calT, enableExpertMapping>::CopyInMappingNum()
-{
-    LocalTensor<int32_t> mappingNumLocal = mappingNumBuf_.Get<int32_t>();
-    DataCopyPadExtParams<int32_t> padParams{true, 0, 0, 0};
-    DataCopyExtParams copyParams{1, static_cast<uint32_t>(expertNum_ * sizeof(int32_t)), 0, 0, 0};
-    DataCopyPad(mappingNumLocal, mappingNumGm_, copyParams, padParams);
 }
 
 template <typename inputT, typename calT, uint32_t enableExpertMapping>
@@ -480,4 +450,5 @@ __aicore__ inline void MoeFusedTopk<inputT, calT, enableExpertMapping>::Process(
         CopyOut(loop);
     }
 }
+
 #endif // ASCENDC_MOE_FUSED_TOPK_H_

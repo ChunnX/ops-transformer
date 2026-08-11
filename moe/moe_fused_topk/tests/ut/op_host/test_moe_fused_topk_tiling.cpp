@@ -230,6 +230,28 @@ TEST_F(MoeFusedTopkTiling, test_tiling_float16_large_batch)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0, "", expectWorkspaces);
 }
 
+TEST_F(MoeFusedTopkTiling, test_tiling_ascend950_fp16_non_16_aligned_expert_num)
+{
+    // 136 exercises the FP16 staging allocation: it is 32-byte aligned as FP32
+    // but not as FP16.  The Host UB budget must match Kernel::InitBuffer exactly.
+    optiling::MoeFusedTopkCompileInfo compileInfo = {40, 256 * 1024};
+    gert::TilingContextPara tilingContextPara(
+        "MoeFusedTopk",
+        {
+            {{{41, 136}, {41, 136}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{136}, {136}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{41, 8}, {41, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{41, 8}, {41, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        DefaultTopkAttrs(),
+        &compileInfo,
+        "Ascend950");
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024 + 40 * 136 * sizeof(float)};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0, "", expectWorkspaces);
+}
+
 TEST_F(MoeFusedTopkTiling, MoeFusedTopk_tiling_data_field_accessors)
 {
     optiling::MoeFusedTopkTilingData tilingData;
