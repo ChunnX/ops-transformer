@@ -21,9 +21,9 @@ extern "C" {
  * [destination rank, destination local expert], recvCounts as [source rank, local expert], and both contain
  * epWorldSize * E non-negative values. gmmY is BF16 [sum(recvCounts), N].
  *
- * shmemContext is the device context pointer returned by the caller's initialized SHMEM runtime. The descriptor is
- * borrowed for executor construction; ownership remains with the caller. The returned workspace must be allocated
- * from the same symmetric SHMEM heap as gmmX.
+ * shmemContext is the FFTS value returned by the caller's initialized SHMEM runtime. Ascend950 SHMEM returns zero by
+ * design, so nullptr is valid. The public parameter mirrors the source launch contract. The returned workspace must
+ * be allocated from the same symmetric SHMEM heap as gmmX.
  */
 ACLNN_API aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, void *shmemContext, int64_t epWorldSize,

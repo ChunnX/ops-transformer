@@ -24,11 +24,11 @@ using ShmemCType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, bfloat16_t
 using ShmemBiasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, float>;
 
 extern "C" __global__ __aicore__ void allto_allv_grouped_mat_mul_shmem(
-    GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR shmemContextGM, GM_ADDR gmmyGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+    GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gmmyGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    if (gmmxGM == nullptr || gmmweightGM == nullptr || shmemContextGM == nullptr || gmmyGM == nullptr ||
-        workspaceGM == nullptr || tilingGM == nullptr) {
+    if (gmmxGM == nullptr || gmmweightGM == nullptr || gmmyGM == nullptr || workspaceGM == nullptr ||
+        tilingGM == nullptr) {
         return;
     }
 
@@ -38,7 +38,6 @@ extern "C" __global__ __aicore__ void allto_allv_grouped_mat_mul_shmem(
         return;
     }
 
-    AscendC::SetSyncBaseAddr(reinterpret_cast<uint64_t>(shmemContextGM));
     GET_TILING_DATA(tilingData, tilingGM);
     const uint32_t rank = static_cast<uint32_t>(shmem_my_pe());
     const uint32_t peerCount = static_cast<uint32_t>(shmem_n_pes());

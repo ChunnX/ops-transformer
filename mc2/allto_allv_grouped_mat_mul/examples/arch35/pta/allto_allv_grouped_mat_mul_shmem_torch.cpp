@@ -186,7 +186,6 @@ int64_t Init(int64_t rank, int64_t worldSize, int64_t heapBytes, const std::stri
         TORCH_CHECK(shmem_n_pes() == worldSize, "SHMEM world-size mismatch: expected ", worldSize, ", got ",
                     shmem_n_pes());
         void *context = reinterpret_cast<void *>(shmemx_get_ffts_config());
-        TORCH_CHECK(context != nullptr, "shmemx_get_ffts_config returned null on rank ", rank);
 
         state.initialized = true;
         state.rank = rank;

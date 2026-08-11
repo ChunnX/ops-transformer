@@ -128,4 +128,4 @@ recv_counts = transpose_all_rank_routes(all_send_counts, ep, local_experts)
 
 多 rank 执行时每个 rank 使用独立输入和本地专家权重，但使用同一份全局路由
 描述生成互相一致的 send/recv 表。`gmmX` 与执行 workspace 必须来自同一个已
-初始化的 SHMEM heap；`shmemContext` 使用该初始化流程返回的 FFTS 配置地址。
+初始化的 SHMEM heap；`shmemContext` 原样使用该初始化流程返回的 FFTS 配置值，Ascend 950 上允许为 `0`。

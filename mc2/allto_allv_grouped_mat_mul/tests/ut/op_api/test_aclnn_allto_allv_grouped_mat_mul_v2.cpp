@@ -65,6 +65,17 @@ TEST_F(AlltoAllvGroupedMatMulV2Test, ValidSourceCompatibleSignature)
               ACLNN_ERR_PARAM_INVALID);
 }
 
+TEST_F(AlltoAllvGroupedMatMulV2Test, AcceptsSourceZeroFftsValue)
+{
+    TensorDesc gmmX({M, K}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc gmmWeight({LOCAL_EXPERTS, K, N}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc gmmY({M, N}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> counts(EP_WORLD_SIZE * LOCAL_EXPERTS, M / (EP_WORLD_SIZE * LOCAL_EXPERTS));
+
+    EXPECT_NE(RunGetWorkspace(gmmX, gmmWeight, nullptr, EP_WORLD_SIZE, counts, counts, gmmY),
+              ACLNN_ERR_PARAM_NULLPTR);
+}
+
 TEST_F(AlltoAllvGroupedMatMulV2Test, RejectsNullRequiredParameters)
 {
     TensorDesc gmmX({M, K}, ACL_BF16, ACL_FORMAT_ND);
@@ -75,8 +86,6 @@ TEST_F(AlltoAllvGroupedMatMulV2Test, RejectsNullRequiredParameters)
     EXPECT_EQ(RunGetWorkspace(nullptr, gmmWeight, SHMEM_CONTEXT, EP_WORLD_SIZE, counts, counts, gmmY),
               ACLNN_ERR_PARAM_NULLPTR);
     EXPECT_EQ(RunGetWorkspace(gmmX, nullptr, SHMEM_CONTEXT, EP_WORLD_SIZE, counts, counts, gmmY),
-              ACLNN_ERR_PARAM_NULLPTR);
-    EXPECT_EQ(RunGetWorkspace(gmmX, gmmWeight, nullptr, EP_WORLD_SIZE, counts, counts, gmmY),
               ACLNN_ERR_PARAM_NULLPTR);
     EXPECT_EQ(RunGetWorkspace(gmmX, gmmWeight, SHMEM_CONTEXT, EP_WORLD_SIZE, counts, counts, nullptr),
               ACLNN_ERR_PARAM_NULLPTR);

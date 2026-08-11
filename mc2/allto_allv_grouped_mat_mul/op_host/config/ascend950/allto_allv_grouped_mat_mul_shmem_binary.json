@@ -2,7 +2,7 @@
   "op_type": "AlltoAllvGroupedMatMulShmem",
   "op_list": [
     {
-      "bin_filename": "AlltoAllvGroupedMatMulShmem_ND_ND_ND_BF16_BF16_UINT8",
+      "bin_filename": "AlltoAllvGroupedMatMulShmem_ND_ND_BF16_BF16",
       "inputs": [
         {
           "name": "gmm_x",
@@ -17,15 +17,6 @@
           "name": "gmm_weight",
           "index": 1,
           "dtype": "bfloat16",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [-2],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "shmem_context",
-          "index": 2,
-          "dtype": "uint8",
           "format": "ND",
           "paramType": "required",
           "shape": [-2],

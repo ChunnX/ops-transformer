@@ -49,7 +49,10 @@ def check_public_abi() -> None:
 
     impl = read("op_api/aclnn_allto_allv_grouped_mat_mul_v2.cpp")
     require("aclnnInnerAlltoAllvGroupedMatMulShmemGetWorkspaceSize" in impl, "V2 does not dispatch to SHMEM op")
-    require("CreateShmemContextTensor" in impl and "ACL_UINT8" in impl, "context is not wrapped as UINT8 tensor")
+    require("OP_CHECK_NULL(shmemContext" not in impl,
+            "Ascend950 must accept the zero FFTS value returned by shmemx_get_ffts_config")
+    require("CreateShmemContextTensor" not in impl and "ACL_UINT8" not in impl,
+            "Ascend950 FFTS value must not be represented as a required device tensor")
     require("NpuArch::DAV_3510" in impl, "V2 lacks Ascend950 platform guard")
     require("GetStorageFormat() != op::Format::FORMAT_ND" in impl,
             "V2 lacks the source ND storage-format guard")
@@ -83,9 +86,9 @@ def check_registration_and_binary() -> None:
     config = json.loads((config_dir / "allto_allv_grouped_mat_mul_shmem_binary.json").read_text("utf-8"))
     require(config["op_type"] == "AlltoAllvGroupedMatMulShmem", "wrong SHMEM op_type")
     item = config["op_list"][0]
-    require([x["name"] for x in item["inputs"]] == ["gmm_x", "gmm_weight", "shmem_context"],
+    require([x["name"] for x in item["inputs"]] == ["gmm_x", "gmm_weight"],
             "binary input order differs from kernel/internal op")
-    require([x["dtype"] for x in item["inputs"]] == ["bfloat16", "bfloat16", "uint8"],
+    require([x["dtype"] for x in item["inputs"]] == ["bfloat16", "bfloat16"],
             "binary input dtypes differ from source contract")
     require([x["name"] for x in item["outputs"]] == ["gmm_y"], "unexpected SHMEM outputs")
 
@@ -118,8 +121,8 @@ def check_tiling_and_kernel() -> None:
         require(token in tiling, f"missing source tiling invariant: {token}")
     require("uint32_t aicCoreNum, ::TCubeTiling &tiling)" in normalized(tiling),
             "host tiling must use the global TCubeTiling type stored in kernel tiling data")
-    require(tiling.count("GetStorageFormat() != ge::FORMAT_ND") == 4,
-            "tiling must enforce ND for x/weight/context/y")
+    require(tiling.count("GetStorageFormat() != ge::FORMAT_ND") == 3,
+            "tiling must enforce ND for x/weight/y")
 
     cmake = read("op_host/CMakeLists.txt")
     require("ENV{SHMEM_HOME_PATH}" in cmake and "ENV{SHMEM_HOME}" in cmake,
@@ -136,8 +139,10 @@ def check_tiling_and_kernel() -> None:
     kernel = read("op_kernel/allto_allv_grouped_mat_mul_shmem.h")
     require("allto_allv_grouped_mat_mul_shmem" in entry, "dedicated kernel entry is missing")
     require("KERNEL_TYPE_MIX_AIC_1_2" in entry, "kernel is not configured for one AIC/two AIV")
-    require("SetSyncBaseAddr" in entry and "shmem_my_pe" in entry and "shmem_n_pes" in entry,
-            "kernel does not consume the SHMEM context/topology")
+    require("shmemContextGM" not in entry and "SetSyncBaseAddr" not in entry,
+            "Ascend950 zero-FFTS path must use the source kernel overload without a sync-base argument")
+    require("shmem_my_pe" in entry and "shmem_n_pes" in entry,
+            "kernel does not consume the SHMEM topology")
     require("aclshmemx_udma_put_nbi<uint8_t, PIPE_S>" in kernel and
             "if (rows == 1 || (srcStride == columns && dstStride == columns))" in kernel and
             "for (uint32_t row = 0; row < rows; ++row)" in kernel,
@@ -184,7 +189,9 @@ def check_pta_bridge() -> None:
     init_end = bridge.index("int64_t Barrier()", init_begin)
     init_code = bridge[init_begin:init_end]
     require("catch (...)" in init_code and "shmem_finalize()" in init_code,
-            "PTA bridge must finalize SHMEM when post-init topology/context validation fails")
+            "PTA bridge must finalize SHMEM when post-init topology validation fails")
+    require("shmemx_get_ffts_config returned null" not in init_code,
+            "PTA bridge must accept Ascend950's source-compatible zero FFTS value")
 
 
 def check_pta_build() -> None:

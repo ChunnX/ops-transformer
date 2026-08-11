@@ -21,11 +21,6 @@ public:
             .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("shmem_context")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_UINT8})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("gmm_y")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
@@ -46,7 +41,7 @@ public:
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("jitCompile.flag", "static_false");
         this->AICore().AddConfig("ascend950", aicoreConfig);
-        // Deliberately no MC2().HcclGroup(): communication is driven by the borrowed SHMEM context.
+        // Deliberately no MC2().HcclGroup(): communication uses the initialized process-local SHMEM state.
     }
 };
 

@@ -15,7 +15,7 @@ Ascend 950 的 V2 接口已按源算子能力改造，并允许破坏旧 ABI：`
 ## Ascend 950 内存契约
 
 - `gmmX` 与执行 workspace 必须由同一个已初始化 SHMEM 对称堆分配。
-- `shmemContext` 传入 `shmemx_get_ffts_config()` 返回的设备配置地址。
+- `shmemContext` 原样传入 `shmemx_get_ffts_config()` 的返回值；Ascend 950 SHMEM 按设计返回 `0`，因此 `nullptr` 是合法值，kernel 与源实现一致走不设置 FFTS sync base 的入口。
 - 远端通信使用 UDMA PUT，本 rank 自拷贝使用 MTE；kernel 使用两级 workspace stage 覆盖通信与计算。
 - 详细 shape、counts 顺序、输出顺序及生命周期约束见 [V2 接口文档](./docs/aclnnAlltoAllvGroupedMatMulV2.md)。
 

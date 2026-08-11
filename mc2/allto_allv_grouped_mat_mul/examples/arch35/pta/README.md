@@ -105,6 +105,9 @@ Any dynamic-library load error, parameter error, SHMEM/aclnn error, non-finite r
 - `aclshmem_malloc` or `aclshmem_calloc` failure: keep `--heap-bytes` at least 1004 MiB and verify all ranks use identical input byte sizes and allocation order.
 - Collective timeout: inspect the last `rank/case/phase` line for every worker. Increase `PTA_TIMEOUT_SECONDS` only after ruling out rank, device, rendezvous, ABI, and allocation mismatches.
 - Port collision: choose another loopback rendezvous with `--ip-port` or `SHMEM_IP_PORT`.
+- `shmemx_get_ffts_config returned null`: this message comes from an older PTA bridge. Ascend950 SHMEM returns zero
+  by design; update and rebuild both the custom operator package and this PTA bridge. Do not enable FFTS for
+  Ascend950 merely to make this getter nonzero.
 
 The wrapper bounds the whole run with GNU `timeout`. The default is 600 seconds and can be changed explicitly:
 

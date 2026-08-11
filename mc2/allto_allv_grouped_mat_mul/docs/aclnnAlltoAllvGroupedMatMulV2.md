@@ -51,7 +51,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
 |---|---|---|---|
 | `gmmX` | 输入 | `const aclTensor *` | BF16、ND、二维张量，shape 为 `[M, K]`。存储必须由当前 SHMEM 对称堆分配。按目标 rank 分段，同一目标 rank 内按目标本地专家排列。 |
 | `gmmWeight` | 输入 | `const aclTensor *` | BF16、ND、三维张量，shape 为 `[E, K, N]`，其中 `E` 为本卡专家数。权重不转置。 |
-| `shmemContext` | 输入 | `void *` | 已初始化 SHMEM 运行时的设备 FFTS 配置地址，例如 `reinterpret_cast<void *>(shmemx_get_ffts_config())`。接口仅借用该地址，不接管生命周期。 |
+| `shmemContext` | 输入 | `void *` | 原样传入已初始化 SHMEM 运行时的 `reinterpret_cast<void *>(shmemx_get_ffts_config())` 返回值。Ascend 950 SHMEM 未启用 `FFTS_CONFIG`，该返回值按设计为 `0`，所以允许传入 `nullptr`；kernel 与源算子一致走不设置 FFTS sync base 的入口。 |
 | `epWorldSize` | 输入 | `int64_t` | EP rank 数，取值范围 `[1, 8]`，执行时必须等于 `shmem_n_pes()`。 |
 | `sendCounts` | 输入 | `const aclIntArray *` | 长度为 `epWorldSize * E`。展平顺序为 `[目标 rank, 目标本地专家]`，元素为非负 uint32 范围整数，元素之和必须等于 `M`。 |
 | `recvCounts` | 输入 | `const aclIntArray *` | 长度为 `epWorldSize * E`。展平顺序为 `[来源 rank, 本地专家]`，元素为非负 uint32 范围整数。 |
@@ -98,7 +98,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
 - `gmmX` 和第二段接口的 `workspace` 必须来自同一个已初始化 SHMEM 对称堆；普通 `aclrtMalloc` workspace 不满足要求。
 - 算子 user workspace 固定包含 `400 MiB + 4096 B`：前 400 MiB 是双缓冲通信窗口，末尾页面保存跨 rank 信号与对齐空间。第一段返回值还可能包含框架 system workspace，调用方必须按返回的完整字节数进行 SHMEM 分配。
 - 源实现约束 `gmmX` 与固定 user workspace 的总量不超过 1004 MiB。调用方设置的 SHMEM heap 还必须容纳框架附加空间及其他对称分配。
-- `shmemContext`、`gmmX`、workspace 和 SHMEM runtime 的生命周期必须覆盖 executor 构造、kernel 执行及流同步。
+- `gmmX`、workspace 和 SHMEM runtime 的生命周期必须覆盖 executor 构造、kernel 执行及流同步。
 - 各 rank 的 `epWorldSize`、`E`、`K`、`N` 与集合通信调用顺序必须一致；发送表和对端接收表必须全局匹配。
 
 ## 其他约束
@@ -115,14 +115,14 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
 两个接口均返回 `aclnnStatus`：
 
 - `ACLNN_SUCCESS`：接口调用成功。
-- `ACLNN_ERR_PARAM_NULLPTR`：必选 tensor、context、workspace 元数据或 executor 指针为空。
+- `ACLNN_ERR_PARAM_NULLPTR`：必选 tensor、workspace 元数据或 executor 指针为空；Ascend 950 上 `shmemContext == nullptr` 不属于错误。
 - `ACLNN_ERR_PARAM_INVALID`：平台、dtype、shape、EP、counts 或 workspace 不符合约束。
 
 kernel 启动后的 SHMEM/UDMA 异常通过流同步和运行时最近错误信息返回。
 
 ## 调用示例
 
-完整 C++ 示例见 [Ascend 950 SHMEM V2 示例](../examples/arch35/test_aclnn_allto_allv_grouped_mat_mul.cpp)。示例采用“一进程一 rank”，使用 `aclshmem_malloc` 分配 `gmmX`，使用 `aclshmem_calloc` 分配第一段接口返回的完整 workspace，并将 `shmemx_get_ffts_config()` 传入 V2。
+完整 C++ 示例见 [Ascend 950 SHMEM V2 示例](../examples/arch35/test_aclnn_allto_allv_grouped_mat_mul.cpp)。示例采用“一进程一 rank”，使用 `aclshmem_malloc` 分配 `gmmX`，使用 `aclshmem_calloc` 分配第一段接口返回的完整 workspace，并将 `shmemx_get_ffts_config()` 原样传入 V2（Ascend 950 上为 `0`）。
 
 编译支持以下两种 SHMEM SDK 布局：
 

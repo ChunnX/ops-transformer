@@ -22,7 +22,6 @@ using AlltoAllvGmmShmem::AlltoAllvGroupedMatMulShmemTilingData;
 
 constexpr size_t X_INDEX = 0;
 constexpr size_t WEIGHT_INDEX = 1;
-constexpr size_t CONTEXT_INDEX = 2;
 constexpr size_t Y_INDEX = 0;
 constexpr size_t EP_ATTR_INDEX = 0;
 constexpr size_t SEND_ATTR_INDEX = 1;
@@ -77,34 +76,28 @@ ge::graphStatus AlltoAllvGroupedMatMulShmemTilingFunc(gert::TilingContext *conte
                     return ge::GRAPH_FAILED);
     const gert::StorageShape *xShape = context->GetInputShape(X_INDEX);
     const gert::StorageShape *weightShape = context->GetInputShape(WEIGHT_INDEX);
-    const gert::StorageShape *contextShape = context->GetInputShape(CONTEXT_INDEX);
     const gert::StorageShape *yShape = context->GetOutputShape(Y_INDEX);
     const gert::CompileTimeTensorDesc *xDesc = context->GetInputDesc(X_INDEX);
     const gert::CompileTimeTensorDesc *weightDesc = context->GetInputDesc(WEIGHT_INDEX);
-    const gert::CompileTimeTensorDesc *contextDesc = context->GetInputDesc(CONTEXT_INDEX);
     const gert::CompileTimeTensorDesc *yDesc = context->GetOutputDesc(Y_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, xShape);
     OPS_CHECK_NULL_WITH_CONTEXT(context, weightShape);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, contextShape);
     OPS_CHECK_NULL_WITH_CONTEXT(context, yShape);
     OPS_CHECK_NULL_WITH_CONTEXT(context, xDesc);
     OPS_CHECK_NULL_WITH_CONTEXT(context, weightDesc);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, contextDesc);
     OPS_CHECK_NULL_WITH_CONTEXT(context, yDesc);
 
     OP_TILING_CHECK(xDesc->GetDataType() != ge::DT_BF16 || weightDesc->GetDataType() != ge::DT_BF16 ||
-                        yDesc->GetDataType() != ge::DT_BF16 || contextDesc->GetDataType() != ge::DT_UINT8,
-                    OP_LOGE(context->GetNodeName(), "Only BF16 x/weight/y and UINT8 borrowed context are supported."),
+                        yDesc->GetDataType() != ge::DT_BF16,
+                    OP_LOGE(context->GetNodeName(), "Only BF16 x/weight/y are supported."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(xDesc->GetStorageFormat() != ge::FORMAT_ND ||
                         weightDesc->GetStorageFormat() != ge::FORMAT_ND ||
-                        contextDesc->GetStorageFormat() != ge::FORMAT_ND ||
                         yDesc->GetStorageFormat() != ge::FORMAT_ND,
                     OP_LOGE(context->GetNodeName(), "All tensors must use ND storage format."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(xShape->GetStorageShape().GetDimNum() != 2 ||
                         weightShape->GetStorageShape().GetDimNum() != 3 ||
-                        contextShape->GetStorageShape().GetDimNum() != 1 ||
                         yShape->GetStorageShape().GetDimNum() != 2,
                     OP_LOGE(context->GetNodeName(), "Invalid tensor ranks."), return ge::GRAPH_FAILED);
 

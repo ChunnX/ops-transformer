@@ -21,16 +21,14 @@ using namespace op;
 namespace {
 constexpr int64_t MIN_EP_WORLD_SIZE = 1;
 constexpr int64_t MAX_EP_WORLD_SIZE = 8;
-constexpr uint64_t CONTEXT_TENSOR_ELEMENTS = 1;
 constexpr uint64_t DIM_X = 2;
 constexpr uint64_t DIM_WEIGHT = 3;
 
-aclnnStatus CheckRequired(const aclTensor *gmmX, const aclTensor *gmmWeight, void *shmemContext, aclTensor *gmmY,
+aclnnStatus CheckRequired(const aclTensor *gmmX, const aclTensor *gmmWeight, aclTensor *gmmY,
                           uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_CHECK_NULL(gmmX, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(gmmWeight, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(shmemContext, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(gmmY, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(workspaceSize, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(executor, return ACLNN_ERR_PARAM_NULLPTR);
@@ -95,13 +93,6 @@ aclnnStatus CheckCounts(const aclIntArray *sendCounts, const aclIntArray *recvCo
     return ACLNN_SUCCESS;
 }
 
-aclTensor *CreateShmemContextTensor(void *shmemContext)
-{
-    const int64_t shape[1] = {static_cast<int64_t>(CONTEXT_TENSOR_ELEMENTS)};
-    const int64_t strides[1] = {1};
-    // Only the data address is consumed by the A5 kernel; the context memory is owned by the SHMEM runtime.
-    return aclCreateTensor(shape, 1, ACL_UINT8, strides, 0, ACL_FORMAT_ND, shape, 1, shmemContext);
-}
 } // namespace
 
 extern "C" aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(
@@ -109,7 +100,7 @@ extern "C" aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(
     const aclIntArray *sendCounts, const aclIntArray *recvCounts, aclTensor *gmmY, uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    auto ret = CheckRequired(gmmX, gmmWeight, shmemContext, gmmY, workspaceSize, executor);
+    auto ret = CheckRequired(gmmX, gmmWeight, gmmY, workspaceSize, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The SHMEM V2 interface only supports Ascend 950 (DAV_3510).");
@@ -124,13 +115,12 @@ extern "C" aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(
     ret = CheckCounts(sendCounts, recvCounts, epWorldSize, gmmWeight->GetViewShape().GetDim(0));
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    aclTensor *contextTensor = CreateShmemContextTensor(shmemContext);
-    if (contextTensor == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Failed to wrap shmemContext as a borrowed device tensor.");
-        return ACLNN_ERR_INNER_NULLPTR;
-    }
+    // Ascend950 SHMEM is built without FFTS_CONFIG. The source operator therefore receives 0 from
+    // shmemx_get_ffts_config() and launches the kernel overload that does not set an FFTS sync base.
+    // Keep the public ABI parameter so callers can pass the getter result directly, including nullptr.
+    (void)shmemContext;
     ret = aclnnInnerAlltoAllvGroupedMatMulShmemGetWorkspaceSize(
-        gmmX, gmmWeight, contextTensor, epWorldSize, sendCounts, recvCounts, gmmY, workspaceSize, executor);
+        gmmX, gmmWeight, epWorldSize, sendCounts, recvCounts, gmmY, workspaceSize, executor);
     OP_LOGD("AlltoAllvGroupedMatMulV2 SHMEM GetWorkspaceSize returned %d.", ret);
     return ret;
 }
