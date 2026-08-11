@@ -2383,6 +2383,542 @@ class TestBSAMxfp4Golden(TestCase):
                   s1_list=[1, 256], s2_list=[512, 256],
                   quant_mode=2, data_kind='ocp_scale_stride_trap')
 
+    # =====================================================================
+    # qk_d=64 用例系列: 上方全部 case 均 D=128, D=64 路径零覆盖。D=64 自带边界:
+    #   Q/K scale 末维 [D//64=1, 2](每 token 行仅 1 组 e8m0 对, 无跨对配对);
+    #   packed 每行 D//2=32B(GM->L1 搬运最小行宽); Nd2Nz 画布宽 64。
+    # 场景全覆盖: BNSD/BSND/TND uniform/TND varlen × dense/sparse/gap_sparse ×
+    #   MHA/GQA × OCP/CX × actualSeq padded × zero 退化 × scale-stride 陷阱,
+    #   叠加 decode(s1=1)/非对齐尾块/长 KV/大 batch 边界。
+    # =====================================================================
+    # --- BNSD + OCP ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs128_d64(self, device="npu"):
+        """D64 BNSD dense 最小基线: n=1 单头单块(与 ① 的 d128 基线镜像),
+        验证 D=64 打包(行 32B)/scale [1,2] 基本精度。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=128, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_sparse_b1_qn2_kvn2_g1_qs1_kvs31_d64(self, device="npu"):
+        """D64 BNSD sparse decode 极小边界: s1=1 + s2=31(单 kv 块不满, V-scale 单 32-block),
+        最小形状叠加 D=64。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=1, s2=31, qk_d=64,
+                  block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_dense_b2_qn8_kvn2_g4_qs256_kvs512_d64(self, device="npu"):
+        """D64 BNSD GQA dense 常规: b=2 + qn8/kvn2/g4, 头映射与 D=64 行宽叠加。"""
+        self._run(b=2, n1=8, n2=2, g=4, s1=256, s2=512, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b1_qn8_kvn2_g4_qs127_kvs255_d64(self, device="npu"):
+        """D64 BNSD GQA sparse 非对齐边界: s1=127/s2=255 双尾块不满 + 稀疏 gather。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=127, s2=255, qk_d=64,
+                  block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn2_kvn2_g1_qs256_kvs4096_d64(self, device="npu"):
+        """D64 BNSD dense 长 KV: s2=4096(32 kv 块), 跨 chunk rescale × D=64 窄行搬运。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=4096, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b8_qn4_kvn4_g1_qs128_kvs256_d64(self, device="npu"):
+        """D64 BNSD dense 大 batch: b=8, batch 基址(N*S*D 缩半)与 task 切分叠加。"""
+        self._run(b=8, n1=4, n2=4, g=1, s1=128, s2=256, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense')
+
+    # --- BSND + OCP ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d64(self, device="npu"):
+        """D64 BSND dense 基线: token-stride=N*D 缩半(N=2 时 128 元素), BSND 行步长 × D=64。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs129_kvs400_d64(self, device="npu"):
+        """D64 BSND dense 非对齐边界: s1=129(尾块 1 行)/s2=400(尾块 16 行, 400%64=16 非 64 对齐
+        V-scale 末组), 双尾块 × D=64。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=129, s2=400, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_gqa_dense_b2_qn4_kvn2_g2_qs128_kvs512_d64(self, device="npu"):
+        """D64 BSND GQA dense 常规: qn4/kvn2/g2 非对称 headMul + BSND stride × D=64。"""
+        self._run(b=2, n1=4, n2=2, g=2, s1=128, s2=512, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_sparse_b1_qn2_kvn2_g1_qs1_kvs1024_d64(self, device="npu"):
+        """D64 BSND sparse decode: s1=1 单 token + s2=1024 稀疏 gather, BSND 单行 Q × D=64。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=1, s2=1024, qk_d=64,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs127_kvs256_d64_blk64x128(self, device="npu"):
+        """D64 BSND block=[64,128] 边界: 小 Q-block(64) + s1=127 非 64 倍(第 2 块 63 行 Q-pad),
+        Nd2Nz 画布 64x64 方块 × 尾块。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=127, s2=256, qk_d=64,
+                  block_shape=[64, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs32_d64(self, device="npu"):
+        """D64 BSND 最小 KV 边界: s2=32(单 e8m0 32-block, 无 V-scale pad, ceil_kv=1),
+        最小 KV × 最小 D 双边界。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=32, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_gap_sparse_b1_qn2_kvn2_g1_qs128_kvs512_d64(self, device="npu"):
+        """D64 BSND gap-sparse: 仅 attend kv-block 0+末(大 gap 跨块 rescale + 非连续 gather),
+        与 ⑪ d128 版镜像。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=512, qk_d=64,
+                  block_shape=[128, 128], mask_kind='gap_sparse', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d64_zero(self, device="npu"):
+        """D64 BSND 全零退化: data_x=0, scale=1.0/P 均匀/out=0, 验证 D=64 degenerate 路径无 NaN/Inf。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND', data_x=0.0)
+
+    # --- TND uniform + OCP ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs128_d64(self, device="npu"):
+        """D64 TND uniform dense 基线: 3D [T,N,D] 单块, TND 行步长 × D=64。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=128, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_mha_dense_b1_qn2_kvn2_g1_qs1_kvs2048_d64(self, device="npu"):
+        """D64 TND decode 边界: s1=1 + 长 KV s2=2048, 单 token Q × 多轮 K/V 搬运 × D=64。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=1, s2=2048, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_gqa_dense_b1_qn8_kvn2_g4_qs256_kvs1024_d64(self, device="npu"):
+        """D64 TND GQA dense 常规: qn8/kvn2/g4 + s2=1024, TND flatten + GQA stride × D=64。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=1024, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_mha_sparse_b1_qn2_kvn2_g1_qs128_kvs1024_d64(self, device="npu"):
+        """D64 TND sparse 常规: 稀疏 kv 块跳读 × TND 布局 × D=64 窄行。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=1024, qk_d=64,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND')
+
+    # --- TND varlen + OCP ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_128_256_s2_256_128_d64(self, device="npu"):
+        """D64 TND varlen dense 基线: s1=[128,256] s2=[256,128] 混合 s1><s2,
+        per-batch base-offset(T*N*D 缩半)× D=64。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[128, 256], s2_list=[256, 128])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_127_129_s2_255_400_d64(self, device="npu"):
+        """D64 TND varlen 非对齐边界: s1=[127,129] s2=[255,400] 全尾块不满
+        (含 400%64=16 的 V-scale 末组), varlen 累加 × 非对齐 × D=64。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[127, 129], s2_list=[255, 400])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_gqa_dense_b2_qn8_kvn2_g4_s1_1_256_s2_512_256_d64(self, device="npu"):
+        """D64 TND varlen GQA 混批: s1=[1,256](batch0 decode) s2=[512,256],
+        decode/prefill 混批 + 非对称 headMul × D=64。"""
+        self._run(b=2, n1=8, n2=2, g=4, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[1, 256], s2_list=[512, 256])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_sparse_b2_qn2_kvn2_g1_s1_128_256_s2_256_128_d64(self, device="npu"):
+        """D64 TND varlen sparse: per-batch 稀疏 mask + varlen 累加 × D=64。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=64,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND',
+                  s1_list=[128, 256], s2_list=[256, 128])
+
+    # --- CX(quant_mode=3) × D64 ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d64(self, device="npu"):
+        """D64 CX BNSD dense 基线: CX P 量化(默认 dstTypeMax=6.0) × D=64。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bsnd_mha_sparse_b1_qn2_kvn2_g1_qs1_kvs4096_d64(self, device="npu"):
+        """D64 CX BSND sparse decode 长 KV: s1=1 + s2=4096, CX + BSND stride + 稀疏 gather × D=64。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=1, s2=4096, qk_d=64,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='BSND', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_tnd_gqa_dense_b1_qn8_kvn2_g4_qs256_kvs1024_d64(self, device="npu"):
+        """D64 CX TND GQA dense: CX + TND flatten + GQA stride × D=64。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=1024, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_256_64_s2_128_256_d64(self, device="npu"):
+        """D64 CX TND varlen dense 混合 s1><s2: s1=[256,64] s2=[128,256], CX + varlen 累加 × D=64。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[256, 64], s2_list=[128, 256], quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs1024_d64_dstmax88(self, device="npu"):
+        """D64 CX dstTypeMax=8.8 边界: log2≈3.138 跨 ceil 边界(ceil=4) × 长 KV × D=64。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=1024, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3, dst_type_max=8.8)
+
+    # --- actualSeq padded × D64 ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn2_kvn2_g1_actq200_padq256_actkv200_padkv256_d64(self, device="npu"):
+        """D64 BNSD 双 padded: act=200<256(末块 72 行有效), actualSeq task 裁剪 × D=64。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=256, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BNSD',
+                  act_s1=200, act_s2=200)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_actq1_padq128_actkv128_padkv128_d64(self, device="npu"):
+        """D64 BSND decode Q-pad 边界: act_q=1<128(单 token 0-pad), BSND stride + padded × D=64。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=128, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+                  act_s1=1, act_s2=128)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b2_qn2_kvn2_g1_actq200_128_padq256_actkv200_128_padkv256_d64(self, device="npu"):
+        """D64 BSND per-batch 不同 actual: act_q=act_kv=[200,128], per-batch task 切分 × D=64。"""
+        self._run(b=2, n1=2, n2=2, g=1, s1=256, s2=256, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+                  act_s1=[200, 128], act_s2=[200, 128])
+
+    # --- OCP scale-stride 陷阱 × D64(天然边界: D//64=1, 旧 srcDValue 退化为 1) ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_tnd_mha_dense_scale_stride_trap_b1_qn2_kvn2_g1_qs128_kvs128_d64(self, device="npu"):
+        """D64 OCP 陷阱边界: D//64=1(每行仅 1 组 scale 对), 旧 kernel srcDValue=1 vs
+        新 srcDValue=N*1——步长错位恰为 1 组, 与 d128 版错位 2 组互补。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=128, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_bsnd_gqa_dense_scale_stride_trap_b1_qn4_kvn2_g2_qs128_kvs512_d64(self, device="npu"):
+        """D64 OCP 陷阱 BSND GQA: 非对称 headMul(qHeadMul=4/kvHeadMul=2) × D//64=1 最小步长基数。"""
+        self._run(b=1, n1=4, n2=2, g=2, s1=128, s2=512, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_tnd_varlen_mha_dense_scale_stride_trap_b2_qn2_kvn2_g1_s1_128_256_s2_256_129_d64(self, device="npu"):
+        """D64 OCP 陷阱 TND varlen: s2=[256,129](batch1 尾块 1 行), varlen base-offset
+        按 T*N*1 累加 × 陷阱数据。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=64,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[128, 256], s2_list=[256, 129],
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    # =====================================================================
+    # 覆盖缺口补充: 全量盘点后此前未覆盖的组合——
+    #   gap_sparse 仅测过 BSND(缺 BNSD/TND); 非默认 block_shape 仅 BSND×dense
+    #   (缺 BNSD/TND 布局、sparse、[128,256] 跨多 kv 块); uniform s2=1(单 kv token)
+    #   仅 varlen 测过; BSND/TND 的 N=1 头退化零覆盖(非 BNSD case 全 n>=2);
+    #   BSND padded×sparse; varlen/BSND-uniform 的 GQA×sparse; 大 batch varlen(此前 b<=3)。
+    # 不补的项: s_dtype/p_quant/inner_precise(golden 诊断旋钮非场景)、fp16 输出
+    #   (已知 kernel bug, 上方已注释)、CX/陷阱×padded(脚手架限制, 见各分支注释)。
+    # =====================================================================
+    # --- gap_sparse × BNSD/TND 布局 ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_gap_sparse_b1_qn2_kvn2_g1_qs128_kvs512_d128(self, device="npu"):
+        """补 BNSD gap-sparse: 仅 attend kv-block 0+末(跨 3 块 gap 的 alpha rescale),
+        此前 gap_sparse 仅 BSND——补 BNSD 基址(无 N-stride)下的非连续 gather。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=512, qk_d=128,
+                  block_shape=[128, 128], mask_kind='gap_sparse', input_layout='BNSD')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_mha_gap_sparse_b1_qn2_kvn2_g1_qs128_kvs512_d128(self, device="npu"):
+        """补 TND gap-sparse: TND flatten 布局 × kv-block 0+末大 gap gather,
+        非连续块跳读的 base-offset 按 T*N*D 计算。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=512, qk_d=128,
+                  block_shape=[128, 128], mask_kind='gap_sparse', input_layout='TND')
+
+    # --- 非默认 block_shape × 新布局/sparse/跨多 kv 块 ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn2_kvn2_g1_qs127_kvs256_d128_blk64x128(self, device="npu"):
+        """补 BNSD block=[64,128]: 此前 block 变体仅 BSND——补 BNSD 下小 Q-block(64)
+        tiling + s1=127 非 64 倍尾块 Q-pad。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=127, s2=256, qk_d=128,
+                  block_shape=[64, 128], mask_kind='dense', input_layout='BNSD')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs512_d128_blk128x256(self, device="npu"):
+        """补 TND block=[128,256]: 此前 block 变体从未上 TND——KV tile 256 行 × TND
+        行步长, s2=512 恰 2 个大 kv 块(1 chunk 512 行)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=512, qk_d=128,
+                  block_shape=[128, 256], mask_kind='dense', input_layout='TND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs400_d128_blk128x256(self, device="npu"):
+        """补 block=[128,256] 跨多 kv 块 + 非对齐: s2=400 -> ceil_kv=2(末块 144 行不满),
+        现有 blk128x256 case s2=256 恰 1 块, 大 kv 块的尾块裁剪零覆盖。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=400, qk_d=128,
+                  block_shape=[128, 256], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_sparse_b1_qn2_kvn2_g1_qs256_kvs512_d128_blk64x128(self, device="npu"):
+        """补非默认 block × sparse: 此前 block 变体全 dense——[64,128] 小 Q-block(ceil_q=4)
+        × 稀疏 kv 块随机 gather。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=512, qk_d=128,
+                  block_shape=[64, 128], mask_kind='sparse', input_layout='BSND')
+
+    # --- uniform 路径 s2=1(单 kv token) ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs1_d128(self, device="npu"):
+        """补 uniform s2=1 边界: 单 kv token(此前仅 varlen 测过 s2=1)——ceil_kv=1,
+        V-scale ceil(1/32)=1 奇数组 pad(e8m0=127), softmax 单列退化为 P=1。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_mha_dense_b1_qn2_kvn2_g1_qs1_kvs1_d128(self, device="npu"):
+        """补 uniform 双最小边界: s1=1 且 s2=1(Tq=Tkv=1 单 token 对单 token),
+        TND 下全部维度取最小, mask 1x1。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=1, s2=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND')
+
+    # --- BSND/TND 的 N=1 头退化 ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs256_d128(self, device="npu"):
+        """补 BSND N=1 头退化边界: token-stride=N*D 退化为 D(与 BNSD 数值等价但走 BSND
+        stride 分支), 此前非 BNSD case 全 n>=2。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs256_d128(self, device="npu"):
+        """补 TND N=1 头退化边界: [T,1,D] 单头 flatten, 行步长失去 N 因子,
+        scale 行步长 N*(D//64) 退化为 D//64。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND')
+
+    # --- padded × sparse(BSND) + GQA × sparse 缺口 ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_sparse_b1_qn2_kvn2_g1_actq200_padq256_actkv200_padkv256_d128(self, device="npu"):
+        """补 BSND padded × sparse: act=200<256 + 稀疏 mask(BNSD 版已有, BSND token-stride
+        下 actualSeq 裁剪 × 稀疏 gather 叠加缺失)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='BSND',
+                  act_s1=200, act_s2=200)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_gqa_sparse_b1_qn8_kvn2_g4_qs128_kvs512_d128(self, device="npu"):
+        """补 BSND GQA × sparse: 此前 BSND sparse 全 MHA——非对称 headMul(4/2)
+        × 稀疏 kv gather × BSND stride。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=128, s2=512, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_gqa_sparse_b2_qn8_kvn2_g4_s1_128_256_s2_512_256_d128(self, device="npu"):
+        """补 TND varlen GQA × sparse: 此前 varlen sparse 全 MHA——per-batch 稀疏 mask
+        × GQA 头映射 × varlen base-offset 累加。"""
+        self._run(b=2, n1=8, n2=2, g=4, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND',
+                  s1_list=[128, 256], s2_list=[512, 256])
+
+    # --- 大 batch varlen(此前 b<=3) ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_dense_b8_qn2_kvn2_g1_s1_mixed_s2_mixed_d128(self, device="npu"):
+        """补大 batch varlen: b=8 混合 decode/prefill/非对齐(s1 含 1/15/127/129,
+        s2 含 129/255/400), host per-batch task 累加 + base-offset 8 段链式验证。"""
+        self._run(b=8, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[128, 1, 256, 64, 127, 129, 15, 128],
+                  s2_list=[256, 512, 256, 128, 255, 129, 128, 400])
+
+    # =====================================================================
+    # sparse 加密补充: 全脚本 dense(~98):sparse(44) 比例失衡, 且以下系列 sparse 近零——
+    #   陷阱系列 18 例仅 1 sparse; CX dstTypeMax 系列 8 例全 dense; d64 专区 33 例仅 6 sparse;
+    #   padded×sparse 仅 2 例(无 GQA/per-batch); 大 batch varlen 仅 dense。
+    #   sparse mask 为随机生成(每 q-block 随机 attend 1~ceil_kv 块), 多铺 case 即多采样。
+    # =====================================================================
+    # --- 陷阱 × sparse ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_bsnd_mha_sparse_scale_stride_trap_b1_qn2_kvn2_g1_qs128_kvs1024_d128(self, device="npu"):
+        """陷阱 × BSND sparse: 稀疏 kv 块跳读下 K-scale 行基址随块跳变,
+        每次跳块后的行步长都须乘 N(TND sparse 版已有, BSND 版缺)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='BSND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_tnd_varlen_mha_sparse_scale_stride_trap_b2_qn2_kvn2_g1_s1_128_256_s2_512_256_d128(self, device="npu"):
+        """陷阱 × TND varlen sparse: per-batch 稀疏 mask + varlen base-offset 累加
+        + 陷阱数据(varlen 陷阱此前全 dense)。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND',
+                  s1_list=[128, 256], s2_list=[512, 256],
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_ocp_tnd_gqa_sparse_scale_stride_trap_b1_qn8_kvn2_g4_qs128_kvs1024_d64(self, device="npu"):
+        """陷阱 × D64 GQA sparse 三叠加: D//64=1 最小步长基数 + 非对称 headMul(8/2)
+        + 稀疏跳块, 陷阱系列最复合的组合。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=128, s2=1024, qk_d=64,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND',
+                  quant_mode=2, data_kind='ocp_scale_stride_trap')
+
+    # --- CX dstTypeMax × sparse(该系列 8 例此前全 dense) ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_sparse_b1_qn2_kvn2_g1_qs128_kvs1024_d128_dstmax66(self, device="npu"):
+        """CX dstTypeMax=6.6(ceil=3) × sparse: 非整数 log2CX corr 路径
+        × 稀疏 gather 的跨块 rescale。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', quant_mode=3, dst_type_max=6.6)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bsnd_mha_sparse_b1_qn2_kvn2_g1_qs128_kvs1024_d128_dstmax88(self, device="npu"):
+        """CX dstTypeMax=8.8(跨 ceil 边界, ceil=4) × BSND sparse: ceil=4 corr
+        × 稀疏跳块 × BSND stride。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='BSND',
+                  quant_mode=3, dst_type_max=8.8)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_tnd_mha_sparse_b1_qn2_kvn2_g1_qs256_kvs4096_d128_dstmax12(self, device="npu"):
+        """CX dstTypeMax=12.0(上限) × TND sparse 长 KV: ceil=4 + s2=4096 稀疏 gather
+        跨大范围 rescale。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=4096, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND',
+                  quant_mode=3, dst_type_max=12.0)
+
+    # --- d64 × sparse 加密 ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_sparse_b1_qn2_kvn2_g1_qs256_kvs4096_d64(self, device="npu"):
+        """D64 BNSD sparse 长 KV: s2=4096 稀疏跳块 × D=64 窄行搬运(d64 长 KV 此前仅 dense)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=4096, qk_d=64,
+                  block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_gqa_sparse_b1_qn8_kvn2_g4_qs127_kvs511_d64(self, device="npu"):
+        """D64 BSND GQA sparse 非对齐: s1=127/s2=511 双尾块 + 非对称 headMul
+        + 稀疏 gather × D=64。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=127, s2=511, qk_d=64,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_gqa_sparse_b1_qn8_kvn2_g4_qs256_kvs1024_d64(self, device="npu"):
+        """D64 TND GQA sparse: 稀疏跳块 × GQA stride × TND flatten × D=64
+        (d64 TND sparse 此前仅 MHA)。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=1024, qk_d=64,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_tnd_varlen_mha_sparse_b2_qn2_kvn2_g1_s1_128_256_s2_512_256_d64(self, device="npu"):
+        """D64 CX varlen sparse: CX 量化 + per-batch 稀疏 mask + varlen 累加 × D=64
+        (d64 CX 此前无 varlen sparse)。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=64,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND',
+                  s1_list=[128, 256], s2_list=[512, 256], quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_gqa_sparse_b2_qn8_kvn2_g4_s1_1_256_s2_512_256_d64(self, device="npu"):
+        """D64 varlen GQA sparse 混批: s1=[1,256](batch0 decode) + 稀疏 mask
+        + 非对称 headMul × D=64。"""
+        self._run(b=2, n1=8, n2=2, g=4, qk_d=64,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND',
+                  s1_list=[1, 256], s2_list=[512, 256])
+
+    # --- padded × sparse 加密(此前仅 2 例, 无 GQA/per-batch) ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_sparse_b2_qn2_kvn2_g1_actq200_128_padq256_actkv200_128_padkv256_d128(self, device="npu"):
+        """padded × sparse per-batch: b=2 act=[200,128] 各 batch 不同有效长 + 稀疏 mask,
+        per-batch actual task 切分 × 稀疏块选择(padded sparse 此前仅 uniform act)。"""
+        self._run(b=2, n1=2, n2=2, g=1, s1=256, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='BNSD',
+                  act_s1=[200, 128], act_s2=[200, 128])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_gqa_sparse_b1_qn8_kvn2_g4_actq200_padq256_actkv200_padkv256_d128(self, device="npu"):
+        """padded × sparse × GQA: BSND qn8/kvn2/g4 + act=200<256 + 稀疏 mask,
+        三路径叠加(padded sparse 此前全 MHA)。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='BSND',
+                  act_s1=200, act_s2=200)
+
+    # --- 大 batch varlen × sparse(此前仅 dense) ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_sparse_b8_qn2_kvn2_g1_s1_mixed_s2_mixed_d128(self, device="npu"):
+        """大 batch varlen × sparse: b=8 混合 decode/prefill/非对齐 + per-batch 独立
+        稀疏 mask(8 组不同 ceil_kv 的随机采样), base-offset 链 × 稀疏 gather。"""
+        self._run(b=8, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND',
+                  s1_list=[128, 1, 256, 64, 127, 129, 15, 128],
+                  s2_list=[256, 512, 256, 128, 255, 129, 128, 400])
+ 
+    # =====================================================================
+    # 第二轮缺口补充: block_shape 变体与 varlen/CX/TND-小块/d64-大块 的正交组合零覆盖;
+    #   gap_sparse 无长 KV(最大仅 s2=512, gap 2 块)与 CX×TND 组合; 大 batch sparse
+    #   最大仅 b=8; CX dstTypeMax=6.0 显式下界(host 校验 [6,12] 的下边界值)未测。
+    # 仍不可测: gap_sparse×varlen(_build_block_sparse_mask_varlen 仅支持 dense/sparse)。
+    # =====================================================================
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_sparse_b2_qn2_kvn2_g1_s1_128_256_s2_256_512_d128_blk64x128(self, device="npu"):
+        """补 block 变体 × varlen(此前 varlen 全 [128,128]): [64,128] 小 Q-block 下
+        per-batch ceil_q 翻倍(2/4), varlen mask 网格 + base-offset 均按 64 行块重算。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[64, 128], mask_kind='sparse', input_layout='TND',
+                  s1_list=[128, 256], s2_list=[256, 512])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bsnd_mha_sparse_b1_qn2_kvn2_g1_qs128_kvs512_d128_blk128x256(self, device="npu"):
+        """补 block 变体 × CX(此前 CX 全 [128,128]): [128,256] 大 KV-block(ceil_kv=2)
+        × CX P 量化 × 稀疏块选择。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=512, qk_d=128,
+                  block_shape=[128, 256], mask_kind='sparse', input_layout='BSND', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_mha_sparse_b1_qn2_kvn2_g1_qs256_kvs512_d128_blk64x128(self, device="npu"):
+        """补 TND × [64,128](TND block 变体此前仅 [128,256]): 小 Q-block(ceil_q=4)
+        × TND flatten × 稀疏 gather。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=512, qk_d=128,
+                  block_shape=[64, 128], mask_kind='sparse', input_layout='TND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_sparse_b1_qn2_kvn2_g1_qs128_kvs400_d64_blk128x256(self, device="npu"):
+        """补 d64 × [128,256](d64 block 变体此前仅 [64,128]): 大 KV-block 尾块 144 行
+        (400%256) × D=64 窄行 × 稀疏选择。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=400, qk_d=64,
+                  block_shape=[128, 256], mask_kind='sparse', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_gap_sparse_b1_qn2_kvn2_g1_qs128_kvs4096_d128(self, device="npu"):
+        """补 gap_sparse 长 KV 边界(此前最大 s2=512, gap 仅 2 块): s2=4096 -> kv-block 0+末,
+        中间 30 块全跳, 跨超大 gap 的 K_diff rescale + snap_local corr 下溢压力最大化。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=4096, qk_d=128,
+                  block_shape=[128, 128], mask_kind='gap_sparse', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_tnd_mha_gap_sparse_b1_qn2_kvn2_g1_qs128_kvs512_d128(self, device="npu"):
+        """补 CX × TND gap_sparse(CX gap_sparse 此前仅 BSND): CX corr 末尾 shift(-ceil_log2CX)
+        在大 gap rescale 下不下溢 × TND 布局。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=512, qk_d=128,
+                  block_shape=[128, 128], mask_kind='gap_sparse', input_layout='TND', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_sparse_b16_qn2_kvn2_g1_qs128_kvs256_d128(self, device="npu"):
+        """补大 batch × sparse(sparse 此前最大 b=8): b=16 per-batch 独立稀疏采样
+        × BSND stride, 与 b=16 dense 版(line 1793)镜像。"""
+        self._run(b=16, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_sparse_b1_qn2_kvn2_g1_qs128_kvs256_d128_dstmax6(self, device="npu"):
+        """补 CX dstTypeMax=6.0 显式下界: host ValidateAdditionalParams 校验 [6.0,12.0]
+        的下边界值(dstmax0 走的是默认值路径, 显式 6.0 走校验路径), × 稀疏 mask。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', quant_mode=3, dst_type_max=6.0)
+
 
 if __name__ == "__main__":
     run_tests()
