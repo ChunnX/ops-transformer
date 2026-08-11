@@ -692,10 +692,58 @@ ge::graphStatus BlockSparseAttentionTiling::ParseSparsePattern(gert::TilingConte
 ge::graphStatus BlockSparseAttentionTiling::ParseAttenMask(gert::TilingContext *bsaContext)
 {
     const auto *attenMaskTensor = bsaContext->GetOptionalInputTensor(ATTEN_MASK_INDEX);
-    if (attenMaskTensor != nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(), "AttenMask is NOT YET supported.");
+    if (attenMaskTensor == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (socVer_ != SOC_VER_950_CODE) {
+        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) is only supported on chip 950.");
         return ge::GRAPH_FAILED;
     }
+
+    auto attenMaskDtype = attenMaskTensor->GetDataType();
+    if (attenMaskDtype != ge::DT_INT32) {
+        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) must be INT32, but got %s.",
+                DataTypeToString(attenMaskDtype).c_str());
+        return ge::GRAPH_FAILED;
+    }
+    auto &attenMaskShape = attenMaskTensor->GetStorageShape();
+    if (attenMaskShape.GetDimNum() != DIM_NUM_4) {
+        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) must be 4D, but got dimNum %zu.",
+                attenMaskShape.GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+    if (attenMaskShape.GetDim(DIM_3) != 2) {
+        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) last dim must be 2, but got %ld.",
+                attenMaskShape.GetDim(DIM_3));
+        return ge::GRAPH_FAILED;
+    }
+
+    uint32_t attenMaskBatch = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_0));
+    uint32_t attenMaskNumHeads = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_1));
+    uint32_t attenMaskMaxBlockNum = static_cast<uint32_t>(attenMaskShape.GetDim(DIM_2));
+    if (attenMaskBatch != batch_ || attenMaskNumHeads != numHeads_) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "attenMask (blockEffRows) batch/numHeads mismatch: expected (%u, %u), got (%u, %u).",
+                batch_, numHeads_, attenMaskBatch, attenMaskNumHeads);
+        return ge::GRAPH_FAILED;
+    }
+    if (attenMaskNumHeads != kvHeads_) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "attenMask (blockEffRows) requires numHeads == kvHeads (no GQA/MQA), but numHeads=%u, kvHeads=%u.",
+                numHeads_, kvHeads_);
+        return ge::GRAPH_FAILED;
+    }
+
+    uint32_t expectedMaxBlockNum = std::max(maxQBlockNum_, maxKvBlockNum_);
+    if (attenMaskMaxBlockNum < expectedMaxBlockNum) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "attenMask (blockEffRows) dim2 (%u) must be >= max(maxQBlockNum, maxKvBlockNum) = %u.",
+                attenMaskMaxBlockNum, expectedMaxBlockNum);
+        return ge::GRAPH_FAILED;
+    }
+
+    maxBlockNumEff_ = attenMaskMaxBlockNum;
+    enableEffRows_ = true;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1165,6 +1213,8 @@ ge::graphStatus BlockSparseAttentionTiling::FillTilingData(gert::TilingContext *
     tilingData_->set_scaleValue(scaleValue_);
     tilingData_->set_selectNumIdxSize(selectNumIdxSize_);
     tilingData_->set_selectIdxSize(selectIdxSize_);
+    tilingData->set_enableEffRows(enableEffRows_ ? 1 : 0);
+    tilingData->set_maxBlockNumEff(maxBlockNumEff_);
     // fill 950 mask2idx tile info
     tilingData_->BsaMask2IdxTileInfo.set_xBlockNumAligned(xBlockNumAligned_);
     tilingData_->BsaMask2IdxTileInfo.set_yBlockNumAligned(yBlockNumAligned_);
