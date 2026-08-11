@@ -39,25 +39,41 @@ except ImportError:
 DEVICE_ID = 0
 torch_npu.npu.set_device(DEVICE_ID)
 
-DN = 512      # latent(nope) 维度
-DR = 64       # rope 维度
-D = DN + DR   # query 最后一维（含 rope）
+DN = 512  # latent(nope) 维度
+DR = 64  # rope 维度
+D = DN + DR  # query 最后一维（含 rope）
 TILE = 128
 NHEAD = 8
-BLOCK = 128   # PageAttention block size
+BLOCK = 128  # PageAttention block size
 INT64_MAX = 9223372036854775807
 
 # 4bit 码本，升序。相邻中心的中点构成 15 条单调边界，最近邻搜索即"数边界"。
-CENT = np.array([
-    -0.12091285, -0.09111122, -0.07112455, -0.05513602,
-    -0.04132067, -0.02874970, -0.01700489, -0.00568677,
-    0.00547294, 0.01680406, 0.02857605, 0.04108622,
-    0.05492980, 0.07101817, 0.09115373, 0.12037795], dtype=np.float32)
+CENT = np.array(
+    [
+        -0.12091285,
+        -0.09111122,
+        -0.07112455,
+        -0.05513602,
+        -0.04132067,
+        -0.02874970,
+        -0.01700489,
+        -0.00568677,
+        0.00547294,
+        0.01680406,
+        0.02857605,
+        0.04108622,
+        0.05492980,
+        0.07101817,
+        0.09115373,
+        0.12037795,
+    ],
+    dtype=np.float32,
+)
 
 # 规范表格：FLOAT16 -> rtol=atol=2^-9，匹配率 0.99，绝对误差上限 1e-1 或 32*ULP。
 # 输出为 BFLOAT16 时尾数位更少（8 bit vs 11 bit），沿用 FLOAT16 阈值属于偏严的取法。
 TOL = {
-    torch.bfloat16: dict(rtol=2 ** -9, atol=2 ** -9, ratio=0.99, max_abs=1e-1),
+    torch.bfloat16: dict(rtol=2**-9, atol=2**-9, ratio=0.99, max_abs=1e-1),
 }
 
 
@@ -71,16 +87,26 @@ def pack_slot(nope_f32, rope_f32):
     u = nope_f32 / vecnorm[:, None].astype(np.float32)
 
     bnd = ((CENT[:-1] + CENT[1:]) / 2.0).astype(np.float32)
-    nib = np.searchsorted(bnd, u.ravel(), side="right").reshape(ntok, DN).astype(np.uint8)
+    nib = (
+        np.searchsorted(bnd, u.ravel(), side="right").reshape(ntok, DN).astype(np.uint8)
+    )
     yhat = CENT[nib]
-    scale = (vecnorm / np.sqrt((yhat.astype(np.float64) ** 2).sum(1) + 1e-16)).astype(np.float16)
+    scale = (vecnorm / np.sqrt((yhat.astype(np.float64) ** 2).sum(1) + 1e-16)).astype(
+        np.float16
+    )
 
     packed = (nib[:, 0::2] | (nib[:, 1::2] << 4)).astype(np.uint8)  # 低位 = 偶数维
-    rope_b16 = torch.from_numpy(rope_f32).to(torch.bfloat16).contiguous().view(torch.uint8).numpy()
+    rope_b16 = (
+        torch.from_numpy(rope_f32)
+        .to(torch.bfloat16)
+        .contiguous()
+        .view(torch.uint8)
+        .numpy()
+    )
 
     slot = np.zeros((ntok, DN // 2 + DR * 2 + 2), dtype=np.uint8)
     slot[:, : DN // 2] = packed
-    slot[:, DN // 2: DN // 2 + DR * 2] = rope_b16.reshape(ntok, DR * 2)
+    slot[:, DN // 2 : DN // 2 + DR * 2] = rope_b16.reshape(ntok, DR * 2)
     slot[:, -2:] = scale.view(np.uint8).reshape(ntok, 2)
     return slot, yhat.astype(np.float64), scale
 
@@ -127,9 +153,24 @@ def build_case(bsz, s2, topk, seed, q_dtype, dist):
     ask = torch.tensor(np.cumsum([s2] * bsz), dtype=torch.int32).npu()
     ks = torch.ones(nblk, BLOCK, 1, DN // TILE, dtype=torch.float32).npu()
 
-    return dict(q=q, kv=kv, si=si, bt=bt, asq=asq, ask=ask, ks=ks,
-                idx=idx, nvalid=nvalid, blk_per_b=blk_per_b, yhat=yhat, scale=scale, rope=rope,
-                qraw=qraw, q_dtype=q_dtype, scale_value=1.0 / (DN ** 0.5))
+    return dict(
+        q=q,
+        kv=kv,
+        si=si,
+        bt=bt,
+        asq=asq,
+        ask=ask,
+        ks=ks,
+        idx=idx,
+        nvalid=nvalid,
+        blk_per_b=blk_per_b,
+        yhat=yhat,
+        scale=scale,
+        rope=rope,
+        qraw=qraw,
+        q_dtype=q_dtype,
+        scale_value=1.0 / (DN**0.5),
+    )
 
 
 def golden(c):
@@ -140,7 +181,13 @@ def golden(c):
     rope 则固定按 bf16 —— 那是 KV slot 的存储格式，与 query dtype 无关。
     """
     Kn = c["yhat"] * c["scale"].astype(np.float64)[:, None]
-    Kr = torch.from_numpy(c["rope"]).to(torch.bfloat16).float().numpy().astype(np.float64)
+    Kr = (
+        torch.from_numpy(c["rope"])
+        .to(torch.bfloat16)
+        .float()
+        .numpy()
+        .astype(np.float64)
+    )
     q = torch.from_numpy(c["qraw"]).to(c["q_dtype"]).float().numpy().astype(np.float64)
     qn, qr = q[..., :DN], q[..., DN:]
 
@@ -166,8 +213,12 @@ def check(actual, expect, dtype):
     matched = float((err <= tol).mean())
     max_abs = float(err.max())
     ok = matched >= t["ratio"] and max_abs <= t["max_abs"]
-    desc = ("匹配率 %.4f (>=%.2f)  最大绝对误差 %.3e (<=%.1e)"
-            % (matched, t["ratio"], max_abs, t["max_abs"]))
+    desc = "匹配率 %.4f (>=%.2f)  最大绝对误差 %.3e (<=%.1e)" % (
+        matched,
+        t["ratio"],
+        max_abs,
+        t["max_abs"],
+    )
     return ok, desc
 
 
@@ -193,20 +244,40 @@ class TestTurboQuantSparseFlashAttention(TestCase):
     def _run_one(self, bsz, s2, topk, dist, dtype, seed):
         c = build_case(bsz, s2, topk, seed, dtype, dist)
         out, _, _ = torch.ops.cann_ops_transformer.turbo_quant_sparse_flash_attention(
-            c["q"], c["kv"], c["kv"], c["si"],
-            key_dequant_scale=c["ks"], value_dequant_scale=c["ks"],
+            c["q"],
+            c["kv"],
+            c["kv"],
+            c["si"],
+            key_dequant_scale=c["ks"],
+            value_dequant_scale=c["ks"],
             block_table=c["bt"],
-            actual_seq_lengths_query=c["asq"], actual_seq_lengths_kv=c["ask"],
-            scale_value=c["scale_value"], key_quant_mode=3, value_quant_mode=3,
-            sparse_block_size=1, layout_query="TND", layout_kv="PA_BSND",
-            sparse_mode=3, pre_tokens=INT64_MAX, next_tokens=INT64_MAX,
-            attention_mode=2, quant_scale_repo_mode=1,
-            tile_size=TILE, rope_head_dim=DR, return_softmax_lse=False)
+            actual_seq_lengths_query=c["asq"],
+            actual_seq_lengths_kv=c["ask"],
+            scale_value=c["scale_value"],
+            key_quant_mode=3,
+            value_quant_mode=3,
+            sparse_block_size=1,
+            layout_query="TND",
+            layout_kv="PA_BSND",
+            sparse_mode=3,
+            pre_tokens=INT64_MAX,
+            next_tokens=INT64_MAX,
+            attention_mode=2,
+            quant_scale_repo_mode=1,
+            tile_size=TILE,
+            rope_head_dim=DR,
+            return_softmax_lse=False,
+        )
         torch.npu.synchronize()
         actual = out.float().cpu().numpy().reshape(bsz, NHEAD, DN)
         ok, desc = check(actual, golden(c), dtype)
         tag = "bsz=%d s2=%-5d topk=%-4d %-7s %s" % (
-            bsz, s2, topk, dist, str(dtype).split(".")[-1])
+            bsz,
+            s2,
+            topk,
+            dist,
+            str(dtype).split(".")[-1],
+        )
         print("  [%s] %s  %s" % ("PASS" if ok else "FAIL", tag, desc), flush=True)
         self.assertTrue(ok, "%s: %s" % (tag, desc))
 

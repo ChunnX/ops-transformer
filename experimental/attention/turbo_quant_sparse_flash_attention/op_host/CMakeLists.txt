@@ -20,7 +20,7 @@ endif()
 
 add_ops_compile_options(
     OP_NAME TurboQuantSparseFlashAttention
-    OPTIONS --cce-auto-sync=off  
+    OPTIONS --cce-auto-sync=off
             -Wno-deprecated-declarations
             -fpermissive
             -mllvm -cce-vf-remove-membar=false

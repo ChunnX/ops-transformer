@@ -17,12 +17,12 @@
 
 // [TQ4 scale 传递] 复用 kvValidSizeGm_ 的上半区（见 kernel_mla.h 的 SetGlobalBuffer 注释）。
 // 该区按 half 视图寻址：base = TQ4_SCALE_HALF_BASE，布局 slot(loop % 4) × TQ4_SCALE_SLOT_STRIDE。
-static constexpr uint32_t TQ4_SCALE_HALF_BASE = 2048U;   // int32 [1024, 2048) 对应 half [2048, 4096)
-static constexpr uint32_t TQ4_SCALE_SLOT_STRIDE = 512U;  // = s2BaseSize 上界
+static constexpr uint32_t TQ4_SCALE_HALF_BASE = 2048U;  // int32 [1024, 2048) 对应 half [2048, 4096)
+static constexpr uint32_t TQ4_SCALE_SLOT_STRIDE = 512U; // = s2BaseSize 上界
 static_assert(TQ4_SCALE_SLOT_STRIDE * sizeof(uint16_t) <= 1024U,
               "TQ4 half staging exceeds the first 1K of tq4ScaleBuf_");
 // fp32 展开区（float 视图，= half 视图的 2560），供按列 Mul 使用
-static constexpr uint32_t TQ4_SCALE_UB_F32 = 256U;   // 新 buffer 内 byte 1024
+static constexpr uint32_t TQ4_SCALE_UB_F32 = 256U; // 新 buffer 内 byte 1024
 static_assert(TQ4_SCALE_UB_F32 * sizeof(float) >= 1024U,
               "TQ4 fp32 area must start after the half staging area");
 static_assert((TQ4_SCALE_UB_F32 + TQ4_SCALE_SLOT_STRIDE) * sizeof(float) <= 4096U,
@@ -38,7 +38,8 @@ static_assert((TQ4_SCALE_UB_F32 + TQ4_SCALE_SLOT_STRIDE) * sizeof(float) <= 4096
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
-template <typename QSFAT> class QSFAVectorService {
+template <typename QSFAT>
+class QSFAVectorService {
 public:
     // 中间计算数据类型为float，高精度模式
     using T = float;
@@ -49,7 +50,7 @@ public:
     using MM1_OUT_T = float;
     using MM2_OUT_T = float;
 
-    __aicore__ inline QSFAVectorService() {};
+    __aicore__ inline QSFAVectorService(){};
     __aicore__ inline void ProcessVec1L(const RunInfo &info);
     __aicore__ inline void ProcessVec2L(const RunInfo &info);
     __aicore__ inline void InitBuffers(TPipe *pipe);
@@ -154,8 +155,8 @@ private:
     static constexpr uint64_t SYNC_OUTPUT_BUF2_FLAG = 5;
     static constexpr uint32_t INPUT1_BUFFER_OFFSET = ConstInfo::BUFFER_SIZE_BYTE_32K;
     static constexpr uint32_t SOFTMAX_TMP_BUFFER_OFFSET = ConstInfo::BUFFER_SIZE_BYTE_512B / sizeof(T);
-    static constexpr uint32_t BASE_BLOCK_MAX_ELEMENT_NUM = ConstInfo::BUFFER_SIZE_BYTE_32K / sizeof(T);  // 32768/4=8096
-    static constexpr uint32_t BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(T);                                // 32/4=8
+    static constexpr uint32_t BASE_BLOCK_MAX_ELEMENT_NUM = ConstInfo::BUFFER_SIZE_BYTE_32K / sizeof(T); // 32768/4=8096
+    static constexpr uint32_t BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(T);                               // 32/4=8
     static constexpr uint32_t LIMIT_DEAL_ROW = 16U;
     static constexpr T FLOAT_E_SCALAR = 8388608;
     static constexpr T LN2 = 0.6931471805599453094172;
@@ -199,9 +200,9 @@ private:
     TBuf<> outputBuff1; // 32K
     TBuf<> outputBuff2; // 4K
 
-    TBuf<> tmpBuff1;         // 32K
-    TBuf<> tmpBuff2;         // 8K
-    TBuf<> v0ValidSizeBuff;  // 8K
+    TBuf<> tmpBuff1;        // 32K
+    TBuf<> tmpBuff2;        // 8K
+    TBuf<> v0ValidSizeBuff; // 8K
 
     TBuf<> softmaxMaxBuff;        // PRE_LOAD_NUM * 1K
     TBuf<> softmaxExpBuff;        // PRE_LOAD_NUM * 1K
@@ -220,18 +221,19 @@ private:
 
     // [TQ4] persistent centSigned codebook (setup once in InitBuffers); int4b_t HW Cast unpack
     // needs no nibble masks / reorder idx.
-    TBuf<> tq4CentBuf_;    // 16 float (centSigned[k] = _CENT[(k+8)%16])
+    TBuf<> tq4CentBuf_; // 16 float (centSigned[k] = _CENT[(k+8)%16])
     // [O9] scale 批量导出用的索引表：sTIdx[i] = i*32（字节偏移），一次性初始化
-    TBuf<> tq4STIdxBuf_;   // 512B = 128 个 uint32
+    TBuf<> tq4STIdxBuf_; // 512B = 128 个 uint32
     // [TQ4] per-column scale 专用暂存。曾经挤在 v0ValidSizeUb_ 内（手工偏移 4096/5120），
     // 实测 M 分块数>1 时 Cast/Duplicate 必崩 507015，故改为独立 buffer。
     //   half 视图 [0, 512)   : vec1 从 GM 读回的 512 个 s_j
     //   float 视图 [256, 768): 展开成 fp32 供按列 Mul（起始 byte 1024）
-    TBuf<> tq4ScaleBuf_;   // 4K
+    TBuf<> tq4ScaleBuf_; // 4K
     LocalTensor<float> tq4Cent_;
 };
 
-template <typename QSFAT> __aicore__ inline void QSFAVectorService<QSFAT>::InitBuffers(TPipe *pipe)
+template <typename QSFAT>
+__aicore__ inline void QSFAVectorService<QSFAT>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(inputBuff1, ConstInfo::BUFFER_SIZE_BYTE_32K * 2); // 2:pingpong
     pipe->InitBuffer(inputBuff2, ConstInfo::BUFFER_SIZE_BYTE_32K);
@@ -272,14 +274,22 @@ template <typename QSFAT> __aicore__ inline void QSFAVectorService<QSFAT>::InitB
     pipe->InitBuffer(tq4ScaleBuf_, ConstInfo::BUFFER_SIZE_BYTE_4K);
     pipe->InitBuffer(tq4CentBuf_, ConstInfo::BUFFER_SIZE_BYTE_256B);
     tq4Cent_ = tq4CentBuf_.Get<float>();
-    tq4Cent_.SetValue(0,  0.00547294f);  tq4Cent_.SetValue(1,  0.01680406f);   // centSigned[k]=_CENT[(k+8)%16]
-    tq4Cent_.SetValue(2,  0.02857605f);  tq4Cent_.SetValue(3,  0.04108622f);
-    tq4Cent_.SetValue(4,  0.05492980f);  tq4Cent_.SetValue(5,  0.07101817f);
-    tq4Cent_.SetValue(6,  0.09115373f);  tq4Cent_.SetValue(7,  0.12037795f);
-    tq4Cent_.SetValue(8, -0.12091285f);  tq4Cent_.SetValue(9, -0.09111122f);
-    tq4Cent_.SetValue(10, -0.07112455f);  tq4Cent_.SetValue(11, -0.05513602f);
-    tq4Cent_.SetValue(12, -0.04132067f);  tq4Cent_.SetValue(13, -0.02874970f);
-    tq4Cent_.SetValue(14, -0.01700489f);  tq4Cent_.SetValue(15, -0.00568677f);
+    tq4Cent_.SetValue(0, 0.00547294f);
+    tq4Cent_.SetValue(1, 0.01680406f); // centSigned[k]=_CENT[(k+8)%16]
+    tq4Cent_.SetValue(2, 0.02857605f);
+    tq4Cent_.SetValue(3, 0.04108622f);
+    tq4Cent_.SetValue(4, 0.05492980f);
+    tq4Cent_.SetValue(5, 0.07101817f);
+    tq4Cent_.SetValue(6, 0.09115373f);
+    tq4Cent_.SetValue(7, 0.12037795f);
+    tq4Cent_.SetValue(8, -0.12091285f);
+    tq4Cent_.SetValue(9, -0.09111122f);
+    tq4Cent_.SetValue(10, -0.07112455f);
+    tq4Cent_.SetValue(11, -0.05513602f);
+    tq4Cent_.SetValue(12, -0.04132067f);
+    tq4Cent_.SetValue(13, -0.02874970f);
+    tq4Cent_.SetValue(14, -0.01700489f);
+    tq4Cent_.SetValue(15, -0.00568677f);
     // [TQ4] fp32 scale 区一次性初始化为 1.0。目的是保证该区域永不含未初始化数据
     // （否则 NaN 会在掩码之前被乘进 score 并穿透 softmax）。有了它，热路径就不必
     // 再从 qsfaScaleF[validCol] 起补尾部 —— 那是个非 32B 对齐的向量写，会抛 507015。
@@ -348,7 +358,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::InitVec2GlobalTensor(GlobalTens
     this->attentionOutGm = attentionOutGm;
 }
 
-template <typename QSFAT> __aicore__ inline void QSFAVectorService<QSFAT>::AllocEventID()
+template <typename QSFAT>
+__aicore__ inline void QSFAVectorService<QSFAT>::AllocEventID()
 {
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG);
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_PONG_FLAG);
@@ -357,7 +368,8 @@ template <typename QSFAT> __aicore__ inline void QSFAVectorService<QSFAT>::Alloc
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
 }
 
-template <typename QSFAT> __aicore__ inline void QSFAVectorService<QSFAT>::FreeEventID()
+template <typename QSFAT>
+__aicore__ inline void QSFAVectorService<QSFAT>::FreeEventID()
 {
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_PONG_FLAG);
@@ -366,7 +378,8 @@ template <typename QSFAT> __aicore__ inline void QSFAVectorService<QSFAT>::FreeE
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
 }
 
-template <typename QSFAT> __aicore__ inline void QSFAVectorService<QSFAT>::InitSoftmaxDefaultBuffer()
+template <typename QSFAT>
+__aicore__ inline void QSFAVectorService<QSFAT>::InitSoftmaxDefaultBuffer()
 {
     Duplicate(softmaxMaxDefaultUb, SOFTMAX_MIN_NUM, SOFTMAX_TMP_BUFFER_OFFSET);
     Duplicate(softmaxSumDefaultUb, ConstInfo::FLOAT_ZERO, SOFTMAX_TMP_BUFFER_OFFSET);
@@ -374,9 +387,9 @@ template <typename QSFAT> __aicore__ inline void QSFAVectorService<QSFAT>::InitS
 
 template <typename QSFAT>
 __aicore__ inline void QSFAVectorService<QSFAT>::ComputeLogSumExpAndCopyToGm(const RunInfo &info,
-                                                                                         const MSplitInfo &mSplitInfo,
-                                                                                         LocalTensor<T> &softmaxSumUb,
-                                                                                         LocalTensor<T> &softmaxMaxUb)
+                                                                             const MSplitInfo &mSplitInfo,
+                                                                             LocalTensor<T> &softmaxSumUb,
+                                                                             LocalTensor<T> &softmaxMaxUb)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -384,10 +397,10 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ComputeLogSumExpAndCopyToGm(con
     uint64_t qsfaBaseOffset = mSplitInfo.nBufferStartM / 2;
     size_t qsfaSize = mSplitInfo.vecDealM * FP32_BLOCK_ELEMENT_NUM;
     uint64_t qsfaAccumTmpOutNum = CalcAccumOffset(info.bIdx, info.gS1Idx);
-    uint64_t qsfaOffset = (qsfaAccumTmpOutNum * constInfo.kvHeadNum * constInfo.mBaseSize +              // taskoffset
-                       info.tndCoreStartKVSplitPos * constInfo.kvHeadNum * constInfo.mBaseSize + // 份数offset
-                       mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) *
-                       FP32_BLOCK_ELEMENT_NUM; // m轴offset
+    uint64_t qsfaOffset = (qsfaAccumTmpOutNum * constInfo.kvHeadNum * constInfo.mBaseSize +          // taskoffset
+                           info.tndCoreStartKVSplitPos * constInfo.kvHeadNum * constInfo.mBaseSize + // 份数offset
+                           mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) *
+                          FP32_BLOCK_ELEMENT_NUM; // m轴offset
     if (info.actualSingleProcessSInnerSize != 0) {
         LocalTensor<T> qsfaTmp = outputBuff2.Get<T>();
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
@@ -412,7 +425,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ComputeLogSumExpAndCopyToGm(con
 
 template <typename QSFAT>
 __aicore__ inline void QSFAVectorService<QSFAT>::CopyFALseToGm(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                        LocalTensor<T> &softmaxSumUb, LocalTensor<T> &softmaxMaxUb)
+                                                               LocalTensor<T> &softmaxSumUb, LocalTensor<T> &softmaxMaxUb)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -505,8 +518,10 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ElewiseCompute(const RunInfo &i
                         qsfaS2StartCeilAlign >= qsfaS2Mid ? qsfaS2Mid : qsfaS2StartCeilAlign);
             SetMidInf(mmResUb, dealRowCount, columnCount, qsfaS2StartCeilAlign, qsfaS2MidFloorAlign);
             SetInfInBlk(mmResUb, dealRowCount, columnCount,
-                        qsfaS2StartCeilAlign <= qsfaS2MidFloorAlign ? \
-                        qsfaS2MidFloorAlign : qsfaS2StartCeilAlign, qsfaS2Mid);
+                        qsfaS2StartCeilAlign <= qsfaS2MidFloorAlign ?
+                            qsfaS2MidFloorAlign :
+                            qsfaS2StartCeilAlign,
+                        qsfaS2Mid);
         }
         if (unlikely(qsfaS2ValidSizeSecondPart < qsfaS2ProcessSize - qsfaS2Mid)) {
             // 场景一 s2Mid + s2ValidSizeSecondPart > s2ProcessSize + oneBlk
@@ -589,13 +604,13 @@ __aicore__ inline void QSFAVectorService<QSFAT>::SoftmaxFlashV2Compute(
         inMaxTensor = softmaxMaxUb[inIdx * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset];
         inSumTensor = softmaxSumUb[inIdx * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset];
     }
-    if (actualColumnCount !=0) {
+    if (actualColumnCount != 0) {
         SoftMaxShapeInfo srcShape{dealRowCount, columnCount, dealRowCount, actualColumnCount};
         SoftMaxTiling newTiling =
             SoftMaxFlashV2TilingFunc(srcShape, sizeof(T), sizeof(T), softmaxTmpUb.GetSize(), true, false);
         SoftmaxFlashV2<T, true, true, false, false, QSFA_SOFTMAX_FLASHV2_CFG_WITHOUT_BRC>(
-        mmResUb, softmaxSumUb[softmaxOutOffset], softmaxMaxUb[softmaxOutOffset], mmResUb,
-        softmaxExpUb[softmaxOutOffset], inSumTensor, inMaxTensor, softmaxTmpUb, newTiling, srcShape);
+            mmResUb, softmaxSumUb[softmaxOutOffset], softmaxMaxUb[softmaxOutOffset], mmResUb,
+            softmaxExpUb[softmaxOutOffset], inSumTensor, inMaxTensor, softmaxTmpUb, newTiling, srcShape);
     } else {
         DataCopy(softmaxSumUb[softmaxOutOffset], inSumTensor, dealRowCount);
         PipeBarrier<PIPE_V>();
@@ -610,7 +625,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::DealBmm1ResBaseBlock(
 {
     uint32_t qsfaComputeSize = dealRowCount * columnCount;
     uint64_t qsfaInOutGmOffset = (info.loop % constInfo.preLoadNum) * constInfo.mmResUbSize +
-                             (mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow) * columnCount;
+                                 (mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow) * columnCount;
     LocalTensor<MM1_OUT_T> qsfaMmResUb = inputBuff1.Get<MM1_OUT_T>();
     qsfaMmResUb = qsfaMmResUb[pingpongFlag * INPUT1_BUFFER_OFFSET / sizeof(MM1_OUT_T)];
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);
@@ -631,7 +646,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::DealBmm1ResBaseBlock(
     LocalTensor<uint8_t> qsfaSoftmaxTmpUb = qsfaTmpAFloorUb.template ReinterpretCast<uint8_t>();
 
     SoftmaxFlashV2Compute(info, mSplitInfo, qsfaMmResUb, qsfaSoftmaxTmpUb, startRow, dealRowCount, columnCount,
-                            info.actualSingleProcessSInnerSize);
+                          info.actualSingleProcessSInnerSize);
 
     PipeBarrier<PIPE_V>();
     // [TQ4] V 侧：MLA 中 K=V，score 侧已按列乘过 s_j，输出侧还需再乘一次 ——
@@ -659,13 +674,14 @@ __aicore__ inline void QSFAVectorService<QSFAT>::DealBmm1ResBaseBlock(
 
 template <typename QSFAT>
 __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1SingleBuf(const RunInfo &info,
-                                                                                  const MSplitInfo &mSplitInfo)
+                                                                      const MSplitInfo &mSplitInfo)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
     }
     uint32_t qsfaMSplitSize = info.actualSingleProcessSInnerSize == 0 ?
-        16 : (BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign);
+                                  16 :
+                                  (BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign);
     // 1. 向下8对齐是因为UB操作至少32B
     // 2. info.actualSingleProcessSInnerSizeAlign最大512, mSplitSize可以确保最小为16
     qsfaMSplitSize = qsfaMSplitSize >> 3U << 3U;
@@ -697,7 +713,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1SingleBuf(const RunI
             DataCopyPadExtParams<uint16_t> qsfaScalePad{false, 0, 0, 0};
             DataCopyPad(tq4ScaleBuf_.Get<uint16_t>(),
                         tq4ScaleGm_[TQ4_SCALE_HALF_BASE +
-                             info.loop % MERGE_CACHE_GM_BUF_NUM * TQ4_SCALE_SLOT_STRIDE],
+                                    info.loop % MERGE_CACHE_GM_BUF_NUM * TQ4_SCALE_SLOT_STRIDE],
                         qsfaScaleInParams, qsfaScalePad);
             // [TQ4] scale 是 MTE2 刚搬进来的，而下面的 Cast 是向量读 —— 原代码只建立了
             // MTE2->S（它只用标量读 validSize），向量侧没有任何同步。缺这一条在 910B4 上
@@ -730,7 +746,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1SingleBuf(const RunI
             dealSize = qsfaTailSplitSize;
         }
         DealBmm1ResBaseBlock(info, mSplitInfo, qsfaI * qsfaMSplitSize, dealSize,
-            info.actualSingleProcessSInnerSizeAlign, qsfaI);
+                             info.actualSingleProcessSInnerSizeAlign, qsfaI);
         pingpongFlag ^= 1; // pingpong 0 1切换
     }
 }
@@ -760,12 +776,12 @@ __aicore__ inline int64_t QSFAVectorService<QSFAT>::GetKeyBNBOffset(int64_t real
         int64_t blkTableIdx = realS2Idx / constInfo.kvCacheBlockSize;
         int64_t blkTableOffset = realS2Idx % constInfo.kvCacheBlockSize;
         realKeyBNBOffset = blkTableGm_.GetValue(runInfo.bIdx * constInfo.maxBlockNumPerBatch + blkTableIdx) *
-                                static_cast<int64_t>(constInfo.kvCacheBlockSize) *
-                                static_cast<int64_t>(constInfo.kvHeadNum) +
-                                blkTableOffset;
+                               static_cast<int64_t>(constInfo.kvCacheBlockSize) *
+                               static_cast<int64_t>(constInfo.kvHeadNum) +
+                           blkTableOffset;
     } else {
         realKeyBNBOffset = (runInfo.tensorBOffset +
-                           realS2Idx * constInfo.kvHeadNum * constInfo.combineHeadDim) /
+                            realS2Idx * constInfo.kvHeadNum * constInfo.combineHeadDim) /
                            constInfo.combineHeadDim;
     }
     return realKeyBNBOffset;
@@ -781,7 +797,7 @@ QSFAVectorService<QSFAT>::Tq4DequantRows(LocalTensor<KV_T> &srcTensor, LocalTens
 {
     uint32_t HD = constInfo.headDim;
     uint32_t ROW_BYTES = QSFAAlign(static_cast<uint32_t>(tilingData->baseParams.dSizeVInput),
-        static_cast<uint32_t>(BYTE_BLOCK));
+                                   static_cast<uint32_t>(BYTE_BLOCK));
     uint32_t SCALE_BYTE = constInfo.headDim / 2 + constInfo.headDimRope * sizeof(K_ROPE_T);
     constexpr int32_t CHUNK = TQ4_DEQUANT_CHUNK;
     constexpr uint32_t CHUNK_ELEMS = CHUNK * 512;
@@ -813,16 +829,16 @@ QSFAVectorService<QSFAT>::Tq4DequantRows(LocalTensor<KV_T> &srcTensor, LocalTens
 
         for (int32_t rr = 0; rr < cur; ++rr) {
             int32_t r = base + rr;
-            Cast(sHalfBase[rr * HD], srcI4[r * ROW_BYTES * 2], RoundMode::CAST_NONE, HD);  // int4b -> half, -8..7
+            Cast(sHalfBase[rr * HD], srcI4[r * ROW_BYTES * 2], RoundMode::CAST_NONE, HD); // int4b -> half, -8..7
         }
         PipeBarrier<PIPE_V>();
-        Adds(sHalfBase, sHalfBase, static_cast<half>(8.0f), cnt);   // signed nibble +8 -> [0, 15]
+        Adds(sHalfBase, sHalfBase, static_cast<half>(8.0f), cnt); // signed nibble +8 -> [0, 15]
         PipeBarrier<PIPE_V>();
-        Muls(sHalfBase, sHalfBase, static_cast<half>(4.0f), cnt);   // *4 -> byte offset [0, 60]
+        Muls(sHalfBase, sHalfBase, static_cast<half>(4.0f), cnt); // *4 -> byte offset [0, 60]
         PipeBarrier<PIPE_V>();
         Cast(idxI, sHalfBase, RoundMode::CAST_ROUND, cnt);
         PipeBarrier<PIPE_V>();
-        Gather(workBase, centBuf, idxU, 0, cnt);                    // non-negative offsets only (base 0)
+        Gather(workBase, centBuf, idxU, 0, cnt); // non-negative offsets only (base 0)
         PipeBarrier<PIPE_V>();
 
         // per-row 的 s_t 不在此处施加：MLA 里 K=V，缩放 K 的行等价于缩放 score/P 的列，
@@ -866,8 +882,9 @@ QSFAVectorService<QSFAT>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, in
         padParams.leftPadding = 0;
         padParams.rightPadding = combineDimAlign - combineDim;
         padParams.paddingValue = 0;
-        DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T)  + (mte2Size - mte3Size) *
-                combineDimAlign], keyGm_[keyBNBOffset * combineDim], intriParams, padParams);
+        DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) *
+                                                                                           combineDimAlign],
+                    keyGm_[keyBNBOffset * combineDim], intriParams, padParams);
     }
     mte2Size += validS2Count;
 }
@@ -890,13 +907,14 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyInKv(int64_t &mte2Size, int
 
     int64_t sparseBlockSrcStride =
         ((keyBNBOffset1 > keyBNBOffset2 ? (keyBNBOffset1 - keyBNBOffset2) :
-        (keyBNBOffset2 - keyBNBOffset1)) - constInfo.sparseBlockSize);
+                                          (keyBNBOffset2 - keyBNBOffset1)) -
+         constInfo.sparseBlockSize);
     // [TQ4] slot = headDim/2 int4 nope + headDimRope*sizeof(K_ROPE_T) + 2B vecNorm(fp16)
     uint32_t combineBytes = constInfo.headDim / 2 + constInfo.headDimRope * sizeof(K_ROPE_T) + sizeof(half);
     int64_t keySrcStride = sparseBlockSrcStride * combineBytes;
     if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0 ||
-        realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
-        realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit) ||
+                 realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
+                 realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit) ||
         constInfo.sparseBlockSize > 1) {
         // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
         CopyInSingleKv(mte2Size, mte3Size, mergeMte3Idx, realS2Idx1, keyBNBOffset1, s2IdLimit, runInfo);
@@ -923,7 +941,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyInKv(int64_t &mte2Size, int
             padParams.rightPadding = combineDimAlign - combineDim;
             padParams.paddingValue = 0;
             DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) *
-                        combineDimAlign], keyGm_[startGmOffset * combineDim], intriParams, padParams);
+                                                                                               combineDimAlign],
+                        keyGm_[startGmOffset * combineDim], intriParams, padParams);
         }
         mte2Size += ((keyBNBOffset1 > -1) + (keyBNBOffset2 > -1)) * constInfo.sparseBlockSize;
     }
@@ -961,7 +980,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResult(int64_t mte2S
             uint32_t qsfaScaleByteOff = constInfo.headDim / 2 +
                                         constInfo.headDimRope * sizeof(K_ROPE_T);
             uint32_t qsfaSlotRowBlk = QSFAAlign(static_cast<uint32_t>(tilingData->baseParams.dSizeVInput),
-                                                static_cast<uint32_t>(BYTE_BLOCK)) / BYTE_BLOCK;
+                                                static_cast<uint32_t>(BYTE_BLOCK)) /
+                                      BYTE_BLOCK;
             // [O9] 向量化导出：每 token 读 1 个 32B block、跳过 (rowBlk-1) 个 block，
             // 得到 [dealRow, 32B]；再用预置索引 (i*32) Gather 出每行头 2B，凑成连续向量。
             // 两条向量指令替掉 dealRow 次标量读写。
@@ -987,8 +1007,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResult(int64_t mte2S
             qsfaScaleOutParams.srcStride = 0;
             qsfaScaleOutParams.dstStride = 0;
             DataCopyPad(tq4ScaleGm_[TQ4_SCALE_HALF_BASE +
-                             runInfo.loop % MERGE_CACHE_GM_BUF_NUM * TQ4_SCALE_SLOT_STRIDE +
-                             (s2GmStartOffset + mte3Size)],
+                                    runInfo.loop % MERGE_CACHE_GM_BUF_NUM * TQ4_SCALE_SLOT_STRIDE +
+                                    (s2GmStartOffset + mte3Size)],
                         qsfaScaleSrc, qsfaScaleOutParams);
         }
 
@@ -998,7 +1018,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResult(int64_t mte2S
         tq4DataCopyParams.srcStride = 0;
         tq4DataCopyParams.dstStride = (constInfo.combineHeadDim - constInfo.headDim) * sizeof(K_ROPE_T);
         uint64_t tq4GmBase = runInfo.loop % MERGE_CACHE_GM_BUF_NUM * mergeGmStride +
-            (s2GmStartOffset + mte3Size) * constInfo.combineHeadDim;
+                             (s2GmStartOffset + mte3Size) * constInfo.combineHeadDim;
         DataCopyPad(kvMergeGm_[tq4GmBase], antiKvTensorAsB16, tq4DataCopyParams);
 
         LocalTensor<K_ROPE_T> tq4KRopeUb = srcTensor[qsfaRopeByteOff].template ReinterpretCast<K_ROPE_T>();
@@ -1006,7 +1026,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResult(int64_t mte2S
         // DataCopyPad UB-side srcStride is in 32B datablocks, not bytes (cf. sparse_flash_attention
         // CopyOutMrgeResult). The rope row pitch is qsfaRopeRowStrideBlk blocks; subtract blockLen's blocks.
         tq4DataCopyParams.srcStride = static_cast<uint32_t>(qsfaRopeRowStrideBlk) -
-            constInfo.headDimRope * sizeof(K_ROPE_T) / BYTE_BLOCK;
+                                      constInfo.headDimRope * sizeof(K_ROPE_T) / BYTE_BLOCK;
         tq4DataCopyParams.dstStride = (constInfo.combineHeadDim - constInfo.headDimRope) * sizeof(K_ROPE_T);
         DataCopyPad(kvMergeGm_[tq4GmBase + constInfo.headDim], tq4KRopeUb, tq4DataCopyParams);
         return;
@@ -1024,7 +1044,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
     if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
         uint64_t qsfaActualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsQGm.GetValue(runInfo.bIdx - 1);
         topkGmBaseOffset += (qsfaActualSeqQPrefixSum + runInfo.gS1Idx / constInfo.gSize) * constInfo.kvHeadNum *
-                            constInfo.sparseBlockCount + runInfo.n2Idx * constInfo.sparseBlockCount;
+                                constInfo.sparseBlockCount +
+                            runInfo.n2Idx * constInfo.sparseBlockCount;
     } else {
         topkGmBaseOffset += runInfo.bIdx * constInfo.qSeqSize * constInfo.sparseBlockCount +
                             runInfo.gS1Idx / constInfo.gSize * constInfo.sparseBlockCount;
@@ -1038,12 +1059,12 @@ __aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(1);
     int64_t qsfaS2GmStartOffset = GetSubBlockIdx() == 0 ? 0 : CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize;
-    int64_t qsfaS2GmLimit = GetSubBlockIdx() == 0 ? CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize: s2ProcessSize;
+    int64_t qsfaS2GmLimit = GetSubBlockIdx() == 0 ? CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize : s2ProcessSize;
     if (qsfaS2GmLimit > s2ProcessSize) {
         qsfaS2GmLimit = s2ProcessSize;
     }
     for (int64_t s2GmOffsetArray = qsfaS2GmStartOffset; s2GmOffsetArray < qsfaS2GmLimit; s2GmOffsetArray += 2 *
-        constInfo.sparseBlockSize) {
+                                                                                                            constInfo.sparseBlockSize) {
         if (qsfaNeedWaitMte3ToMte2) {
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(qsfaMergeMte3Idx % 2);
             qsfaNeedWaitMte3ToMte2 = false;
@@ -1232,13 +1253,13 @@ __aicore__ inline void QSFAVectorService<QSFAT>::DealBmm2ResBaseBlock(const RunI
         LocalTensor<T> bmm2ResPreUb = inputBuff2.Get<T>();
         WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG);
         uint64_t vecPre2ResGmOffset = ((info.loop - 1) % constInfo.preLoadNum) * constInfo.bmm2ResUbSize +
-            inOutBaseOffset;
+                                      inOutBaseOffset;
         DataCopy(bmm2ResPreUb, vec2ResGm[vecPre2ResGmOffset + batchBase], vec2ComputeSize);
         SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF2_FLAG);
         WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF2_FLAG);
-        LocalTensor<T> softmaxExpBrcb =  tmpBuff2.Get<T>();
+        LocalTensor<T> softmaxExpBrcb = tmpBuff2.Get<T>();
         Brcb(softmaxExpBrcb, softmaxExpUb[(info.loop % constInfo.preLoadNum) * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset],
-            (mSplitInfo.vecDealM + 7) / 8, {1, 8});
+             (mSplitInfo.vecDealM + 7) / 8, {1, 8});
         PipeBarrier<PIPE_V>();
         RowMuls(bmm2ResPreUb, bmm2ResPreUb, softmaxExpBrcb, dealRowCount, columnCount, actualColumnCount);
         PipeBarrier<PIPE_V>();
@@ -1247,9 +1268,9 @@ __aicore__ inline void QSFAVectorService<QSFAT>::DealBmm2ResBaseBlock(const RunI
     }
     // 最后一次输出计算结果，否则将中间结果暂存至workspace
     if (info.s2Idx + 1 == info.curSInnerLoopTimes) {
-        LocalTensor<T> softmaxSumBrcb =  tmpBuff2.Get<T>();
+        LocalTensor<T> softmaxSumBrcb = tmpBuff2.Get<T>();
         Brcb(softmaxSumBrcb, softmaxSumUb[(info.loop % constInfo.preLoadNum) * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset],
-            (mSplitInfo.vecDealM + 7) / 8, {1, 8});
+             (mSplitInfo.vecDealM + 7) / 8, {1, 8});
         PipeBarrier<PIPE_V>();
         RowDivs(bmm2ResUb, bmm2ResUb, softmaxSumBrcb, dealRowCount, columnCount, actualColumnCount);
 
@@ -1269,7 +1290,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::DealBmm2ResBaseBlock(const RunI
     }
 }
 
-template <typename QSFAT> __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2L(const RunInfo &info)
+template <typename QSFAT>
+__aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2L(const RunInfo &info)
 {
     uint32_t qsfaNBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t qsfaNBufferTail = info.actMBaseSize - (qsfaNBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -1280,7 +1302,7 @@ template <typename QSFAT> __aicore__ inline void QSFAVectorService<QSFAT>::Proce
         mSplitInfo.nBufferStartM = qsfaI * constInfo.nBufferMBaseSize;
 
         mSplitInfo.vecDealM = (mSplitInfo.nBufferDealM <= 16) ? mSplitInfo.nBufferDealM :
-            (((mSplitInfo.nBufferDealM + 15) / 16 + 1) / 2 * 16);
+                                                                (((mSplitInfo.nBufferDealM + 15) / 16 + 1) / 2 * 16);
         mSplitInfo.vecStartM = 0;
         if (GetBlockIdx() % 2 == 1) {
             mSplitInfo.vecStartM = mSplitInfo.vecDealM;
@@ -1325,9 +1347,9 @@ QSFAVectorService<QSFAT>::Bmm2FDDataCopyOut(const RunInfo &info, LocalTensor<T> 
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     uint64_t accumTmpOutNum = CalcAccumOffset(info.bIdx, info.gS1Idx);
-    uint64_t offset = accumTmpOutNum * constInfo.kvHeadNum * constInfo.mBaseSize * constInfo.headDim + // taskoffset
-        info.tndCoreStartKVSplitPos * constInfo.kvHeadNum * constInfo.mBaseSize * constInfo.headDim + // 份数offset
-        wsMStart * actualColumnCount; // m轴offset
+    uint64_t offset = accumTmpOutNum * constInfo.kvHeadNum * constInfo.mBaseSize * constInfo.headDim +              // taskoffset
+                      info.tndCoreStartKVSplitPos * constInfo.kvHeadNum * constInfo.mBaseSize * constInfo.headDim + // 份数offset
+                      wsMStart * actualColumnCount;                                                                 // m轴offset
     GlobalTensor<T> dst = accumOutGm[offset];
     if (info.actualSingleProcessSInnerSize == 0) {
         DataCopyExtParams dataCopyParams;
@@ -1427,7 +1449,7 @@ QSFAVectorService<QSFAT>::RowDivs(LocalTensor<float> dstUb, LocalTensor<float> s
         qsfaColumnRepeatParams.dstBlkStride = 1;
         qsfaColumnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
         qsfaColumnRepeatParams.src1RepStride = 0;
-        qsfaColumnRepeatParams.dstRepStride = 8;  // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
+        qsfaColumnRepeatParams.dstRepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
         uint32_t qsfaOffset = 0;
         for (uint32_t qsfaI = 0; qsfaI < dealRowCount; qsfaI++) {
             Div(dstUb[qsfaOffset], src0Ub[qsfaOffset], src1Ub[qsfaI * FP32_BLOCK_ELEMENT_NUM], qsfaDtypeMask,
@@ -1489,7 +1511,7 @@ QSFAVectorService<QSFAT>::RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, L
             qsfaColumnRepeatParams.dstBlkStride = 1;
             qsfaColumnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
             qsfaColumnRepeatParams.src1RepStride = 0;
-            qsfaColumnRepeatParams.dstRepStride = 8;  // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
+            qsfaColumnRepeatParams.dstRepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
             for (uint32_t qsfaI = 0; qsfaI < dealRowCount; qsfaI++) {
                 Mul(dstUb[qsfaI * columnCount], src0Ub[qsfaI * columnCount], src1Ub[qsfaI * qsfaBlockElementNum],
                     qsfaRepeatElementNum, qsfaDLoop, qsfaColumnRepeatParams);

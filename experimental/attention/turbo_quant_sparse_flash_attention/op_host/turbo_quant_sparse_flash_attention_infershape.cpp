@@ -84,7 +84,8 @@ ge::graphStatus InferShapeTurboQuantSparseFlashAttention(gert::InferShapeContext
     if (return_softmax_lse) {
         if (queryShape->GetDimNum() == DIM_NUM_3) {
             int64_t kvHeadDim = (inputLayoutKvPtrStr == "PA_BSND") ?
-                keyShape->GetDim(DIM_INDEX_2) : keyShape->GetDim(DIM_INDEX_1);
+                                    keyShape->GetDim(DIM_INDEX_2) :
+                                    keyShape->GetDim(DIM_INDEX_1);
             softmaxMaxShape->SetDimNum(DIM_NUM_3);
             softmaxMaxShape->SetDim(DIM_INDEX_0, kvHeadDim);
             softmaxMaxShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
@@ -130,4 +131,3 @@ IMPL_OP_INFERSHAPE(TurboQuantSparseFlashAttention)
     .InferShape(InferShapeTurboQuantSparseFlashAttention)
     .InferDataType(InferDataTypeTurboQuantSparseFlashAttention);
 } // namespace ops
-  
