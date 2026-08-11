@@ -31,7 +31,8 @@ constexpr static uint32_t TND = 3;
 
 #if __CCE_AICORE__ == 310
 
-template <uint8_t inputDType, bool isTnd, uint16_t gTemplateType, uint16_t s2TemplateType, uint16_t dTemplateType, bool isRope, bool deterministic>
+template <uint8_t inputDType, bool isTnd, uint16_t gTemplateType, uint16_t s2TemplateType, uint16_t dTemplateType,
+          bool isRope, bool deterministic, bool kvMerge>
 __global__ __aicore__ void
 sparse_flash_attention_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *sparse_indices,
                             __gm__ uint8_t *d_out, __gm__ uint8_t *out,
@@ -43,7 +44,8 @@ sparse_flash_attention_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ u
                             __gm__ uint8_t *workspace, __gm__ uint8_t *tiling_data)
 {
     REGISTER_TILING_DEFAULT(optiling::sfag::SparseFlashAttentionGradTilingDataRegbase);
-    RegbaseSFAG<inputDType, isTnd, gTemplateType, s2TemplateType, dTemplateType, isRope, deterministic>(query, key, value,
+    RegbaseSFAG<inputDType, isTnd, gTemplateType, s2TemplateType, dTemplateType, isRope, deterministic, kvMerge>(
+                                query, key, value,
                                 sparse_indices, d_out, out, 
                                 softmax_max, softmax_sum, 
                                 actual_seq_qlen, actual_seq_kvlen,

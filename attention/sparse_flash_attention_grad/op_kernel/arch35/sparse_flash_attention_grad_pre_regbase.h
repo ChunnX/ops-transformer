@@ -18,7 +18,8 @@
 
 using namespace AscendC;
 
-template <typename T1, typename T2, const uint32_t IS_TND = 0> class FlashAttentionGradPreRegbase {
+template <typename T1, typename T2, const uint32_t IS_TND = 0, const bool KV_MERGE = false>
+class FlashAttentionGradPreRegbase {
 public:
     __aicore__ inline FlashAttentionGradPreRegbase(){};
     __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv,
@@ -80,8 +81,8 @@ public:
     half padValue{1.0};
 };
 
-template <typename T1, typename T2, const uint32_t IS_TND>
-__aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND>::Init(
+template <typename T1, typename T2, const uint32_t IS_TND, const bool KV_MERGE>
+__aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND, KV_MERGE>::Init(
     __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *actual_seq_kvlen,
     __gm__ uint8_t *workspace,
     const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase *orgTilingData, TPipe *pipe_in)
@@ -107,7 +108,9 @@ __aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND>::Init(
 
     dqGm.SetGlobalBuffer((__gm__ T1 *)dq);
     dkGm.SetGlobalBuffer((__gm__ T1 *)dk);
-    dvGm.SetGlobalBuffer((__gm__ T1 *)dv);
+    if constexpr (!KV_MERGE) {
+        dvGm.SetGlobalBuffer((__gm__ T1 *)dv);
+    }
 
     dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + TilingData->postTilingData.dqWorkSpaceOffset / sizeof(T2));
     dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + TilingData->postTilingData.dkWorkSpaceOffset / sizeof(T2));
@@ -121,20 +124,22 @@ __aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND>::Init(
     dvOffset = ((uint64_t)cBlockIdx) * vPreBlockFactor;
 }
 
-template <typename T1, typename T2, const uint32_t IS_TND>
-__aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND>::Process()
+template <typename T1, typename T2, const uint32_t IS_TND, const bool KV_MERGE>
+__aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND, KV_MERGE>::Process()
 {
     // process
     if (g_coreType == AIV) {
         // clear dq dk dv workspace
         InitOutput<float>(dqWorkSpaceGm[dqOffset], initdqSize, 0);
         InitOutput<float>(dkWorkSpaceGm[dkOffset], initdkSize, 0);
-        InitOutput<float>(dvWorkSpaceGm[dvOffset], initdvSize, 0);
+        if constexpr (!KV_MERGE) {
+            InitOutput<float>(dvWorkSpaceGm[dvOffset], initdvSize, 0);
+        }
     }
 }
 
-template <typename T1, typename T2, const uint32_t IS_TND>
-__aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND>::SyncALLCores()
+template <typename T1, typename T2, const uint32_t IS_TND, const bool KV_MERGE>
+__aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND, KV_MERGE>::SyncALLCores()
 {
     SyncAll<false>();
 }

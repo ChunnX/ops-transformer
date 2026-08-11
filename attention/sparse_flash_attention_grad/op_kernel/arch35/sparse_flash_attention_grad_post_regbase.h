@@ -18,7 +18,9 @@
 
 using namespace AscendC;
 
-template <typename T1, typename T2, typename OUTDTYPE=T1, const bool IS_ROPE = false, const bool IS_TND = 0> class SparseFlashAttentionGradPostRegbase {
+template <typename T1, typename T2, typename OUTDTYPE = T1, const bool IS_ROPE = false, const bool IS_TND = 0,
+          const bool KV_MERGE = false>
+class SparseFlashAttentionGradPostRegbase {
 public:
     __aicore__ inline SparseFlashAttentionGradPostRegbase(){};
     __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dqRope,
@@ -48,8 +50,8 @@ public:
     uint32_t qPostTailNum;
 };
 
-template <typename T1, typename T2, typename OUTDTYPE, bool IS_ROPE, const bool IS_TND>
-__aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_ROPE, IS_TND>::Init(
+template <typename T1, typename T2, typename OUTDTYPE, bool IS_ROPE, const bool IS_TND, const bool KV_MERGE>
+__aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_ROPE, IS_TND, KV_MERGE>::Init(
     __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dqRope,
     __gm__ uint8_t *dkRope, __gm__ uint8_t *workspace,
     const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase *__restrict ordTilingData, TPipe *pipe_in)
@@ -60,7 +62,9 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
 
     dqkv[0].SetGlobalBuffer((__gm__ OUTDTYPE *)dq);
     dqkv[1].SetGlobalBuffer((__gm__ OUTDTYPE *)dk);
-    dqkv[2].SetGlobalBuffer((__gm__ OUTDTYPE *)dv);
+    if constexpr (!KV_MERGE) {
+        dqkv[2].SetGlobalBuffer((__gm__ OUTDTYPE *)dv);
+    }
 
     dqkRope[0].SetGlobalBuffer((__gm__ OUTDTYPE *)dqRope);
     dqkRope[1].SetGlobalBuffer((__gm__ OUTDTYPE *)dkRope);
@@ -71,7 +75,9 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
 
     dqkvWorkspace[0].SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dqWorkSpaceOffset / sizeof(T2));
     dqkvWorkspace[1].SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dkWorkSpaceOffset / sizeof(T2));
-    dqkvWorkspace[2].SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dvWorkSpaceOffset / sizeof(T2));
+    if constexpr (!KV_MERGE) {
+        dqkvWorkspace[2].SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dvWorkSpaceOffset / sizeof(T2));
+    }
 
     if constexpr (IS_ROPE) {
         REGBASE_POST_BASE = POST_S_BASE * (ROPE_DIM + VALUE_DIM);
@@ -85,13 +91,14 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
     pipe->InitBuffer(outQueuePong, 1, REGBASE_POST_BASE * sizeof(OUTDTYPE));
 }
 
-template <typename T1, typename T2, typename OUTDTYPE, bool IS_ROPE, const bool IS_TND>
-__aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_ROPE, IS_TND>::Process()
+template <typename T1, typename T2, typename OUTDTYPE, bool IS_ROPE, const bool IS_TND, const bool KV_MERGE>
+__aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_ROPE, IS_TND, KV_MERGE>::Process()
 {
     if (g_coreType != AIV) {
         return;
     }
-    for (int qkvIdx = 0; qkvIdx < 3; qkvIdx++) {
+    constexpr int QKV_NUM = KV_MERGE ? 2 : 3;
+    for (int qkvIdx = 0; qkvIdx < QKV_NUM; qkvIdx++) {
         if (qkvIdx == 1) {
             loop = tilingData->postTilingData.kPostBlockFactor;
             inputTotalSize = tilingData->postTilingData.kPostBlockTotal;

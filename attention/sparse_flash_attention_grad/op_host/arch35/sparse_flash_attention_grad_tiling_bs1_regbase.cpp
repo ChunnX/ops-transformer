@@ -189,11 +189,14 @@ uint64_t SparseFlashAttentionGradBs1Regbase::GetTilingKey() const
     uint64_t tilingKey = 0;
 
     OP_LOGI(context_,
-              "SparseFlashAttentionGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], S2TemplateNum[%ld], DTemplateNum[%ld], IsRope[%d], Deterministic[%d]",
-              inputDtypeSize, isTnd, tmpData.singleM, tmpData.singleN, tmpData.d, static_cast<uint8_t>(tmpData.ropeEnable), static_cast<uint8_t>(tmpData.deterministic));
+              "SparseFlashAttentionGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], S2TemplateNum[%ld], DTemplateNum[%ld], IsRope[%d], Deterministic[%d], KvMerge[%d]",
+              inputDtypeSize, isTnd, tmpData.singleM, tmpData.singleN, tmpData.d,
+              static_cast<uint8_t>(tmpData.ropeEnable), static_cast<uint8_t>(tmpData.deterministic),
+              static_cast<uint8_t>(tmpData.kvMerge));
     // tmpData.singleM 为G方向上固定切分大小 tmpData.singleN为S2方向上固定切分大小 
     tilingKey = GET_TPL_TILING_KEY(static_cast<uint8_t>(inputDtypeSize), static_cast<uint8_t>(isTnd), static_cast<uint16_t>(tmpData.singleM), 
-        static_cast<uint16_t>(tmpData.singleN), static_cast<uint16_t>(tmpData.d), static_cast<uint8_t>(tmpData.ropeEnable), static_cast<uint8_t>(tmpData.deterministic));
+        static_cast<uint16_t>(tmpData.singleN), static_cast<uint16_t>(tmpData.d), static_cast<uint8_t>(tmpData.ropeEnable),
+        static_cast<uint8_t>(tmpData.deterministic), static_cast<uint8_t>(tmpData.kvMerge));
 
     OP_LOGI(context_,
               "SparseFlashAttentionGrad DoTiling success, tilingkey is"
@@ -372,22 +375,24 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::CheckOutShapeInfo(const gert
 ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
 {
     OP_CHECK_IF(((context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY)) == nullptr) ||
-                (context_->GetInputShape(static_cast<size_t>(InputIndex::KEY)) == nullptr) ||
-                (context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE)) == nullptr)),
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "InputShape of query, key or value is nullptr."),
+                (context_->GetInputShape(static_cast<size_t>(InputIndex::KEY)) == nullptr)),
+               OPS_REPORT_VECTOR_INNER_ERR(opName, "InputShape of query or key is nullptr."),
                return ge::GRAPH_FAILED);
     // input
     // TND: query [t1, n1, d]   k [t2, n2, d]  v [t2, n2, d1]   dy/attentionIn [t1, n1, d1]
     // BSND: query [b, s1, n1, d]   k [b, s2, n2, d]  v [b, s2, n2, d1]   dy/attentionIn [b, s1, n1, d1]
     const gert::Shape &queryShape = context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY))->GetStorageShape();
     const gert::Shape &keyShape = context_->GetInputShape(static_cast<size_t>(InputIndex::KEY))->GetStorageShape();
-    const gert::Shape &valueShape = context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE))->GetStorageShape();
+    const gert::StorageShape *valueStorageShape =
+        context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::VALUE));
+    tmpData.kvMerge = (valueStorageShape == nullptr);
+    const gert::Shape &valueShape = tmpData.kvMerge ? keyShape : valueStorageShape->GetStorageShape();
     const gert::Shape &indicesShape = context_->GetInputShape(static_cast<size_t>(InputIndex::TOPK_INDICES))->GetStorageShape();
     auto qRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::Q_ROPE));
     auto kRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::K_ROPE));
     const gert::Shape &dqShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DQ))->GetStorageShape();
     const gert::Shape &dkShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DK))->GetStorageShape();
-    const gert::Shape &dvShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DV))->GetStorageShape();
+    auto dvOutputShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DV));
     tmpData.deterministic = (context_->GetDeterministic() == 1);
     uint32_t dimSize = queryShape.GetDimNum();
     int64_t dimDq = queryShape.GetDim(dimSize - 1);
@@ -444,9 +449,15 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     if (status == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
-    status = CheckOutShapeInfo(valueShape, "value", dvShape, inputLayout);
-    if (status == ge::GRAPH_FAILED) {
-        return ge::GRAPH_FAILED;
+    if (!tmpData.kvMerge) {
+        OP_CHECK_IF(dvOutputShape == nullptr,
+            OPS_REPORT_VECTOR_INNER_ERR(opName, "OutputShape of dv is nullptr."),
+            return ge::GRAPH_FAILED);
+        const gert::Shape &dvShape = dvOutputShape->GetStorageShape();
+        status = CheckOutShapeInfo(valueShape, "value", dvShape, inputLayout);
+        if (status == ge::GRAPH_FAILED) {
+            return ge::GRAPH_FAILED;
+        }
     }
     if (qRopeTensor != nullptr && kRopeTensor != nullptr) {
         OP_LOGD(context_, "SparseFlashAttentionGrad qRope and kRope is not nullptr, rope is enabled.");

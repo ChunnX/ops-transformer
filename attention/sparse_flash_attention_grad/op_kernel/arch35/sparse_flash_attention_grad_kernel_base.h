@@ -249,7 +249,9 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Init
 {
     dqGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dq);
     dkGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dk);
-    dvGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dv);
+    if constexpr (!KV_MERGE) {
+        dvGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dv);
+    }
  
     // init workspace address
     dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
