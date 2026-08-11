@@ -8,6 +8,7 @@
 #define OP_API_INC_ALL_TO_ALLV_GROUPED_MATMUL_V2_
 
 #include "aclnn/aclnn_base.h"
+#include "aclnn_util.h"
 
 #ifdef __cplusplus
 extern "C" {

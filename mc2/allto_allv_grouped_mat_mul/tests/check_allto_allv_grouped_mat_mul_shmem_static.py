@@ -33,6 +33,8 @@ def normalized(text: str) -> str:
 def check_public_abi() -> None:
     header = read("op_api/aclnn_allto_allv_grouped_mat_mul_v2.h")
     flat = normalized(header)
+    require('#include "aclnn_util.h"' in header,
+            "public V2 header must include the ACLNN_API definition")
     signature = (
         "aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize( const aclTensor *gmmX, "
         "const aclTensor *gmmWeight, void *shmemContext, int64_t epWorldSize, "
