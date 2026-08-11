@@ -271,6 +271,37 @@ __aicore__ constexpr inline decltype(auto) Get(T &&value)
     return Get<Second, Rest...>(AscendC::Std::get<First>(AscendC::Std::forward<T>(value)));
 }
 
+__aicore__ inline ExpertLoopState CreateExpertLoopState(const MoeStageCommonConfig &context)
+{
+    ExpertLoopState state;
+    Get<N_VALUE>(state.problemShape) = context.gmm1OutputDim;
+    Get<K_VALUE>(state.problemShape) = context.tokenHiddenDim;
+    return state;
+}
+
+// 按专家顺序推进紧凑 token 行偏移，并用当前专家的 token 数更新 M 维度。
+__aicore__ inline bool UpdateExpertLoopState(ExpertLoopState &state, uint32_t expertIdx, uint64_t expertTokenCount)
+{
+    if (expertIdx != 0U) {
+        state.rowOffset += Get<M_VALUE>(state.problemShape);
+    }
+    Get<M_VALUE>(state.problemShape) = static_cast<int64_t>(expertTokenCount);
+    return expertTokenCount != 0U;
+}
+
+// 从当前 expert/block 的 count 槽读取 token 数后更新专家遍历状态。
+// 调用方须按 expertIdx 递增调用，并在调用前保证当前 count 已发布。
+__aicore__ inline bool UpdateExpertLoopStateFromWorkspace(const WorkspaceInfo &workspace,
+                                                          const BlockWorkspaceContext &countWorkspace,
+                                                          ExpertLoopState &state, uint32_t expertIdx)
+{
+    uint64_t countSlotIndex = static_cast<uint64_t>(expertIdx) * countWorkspace.blockNum + countWorkspace.blockIdx;
+    __gm__ int32_t *expertTokenCountAddr =
+        reinterpret_cast<__gm__ int32_t *>(workspace.expertRevTokenNumsPtr) +
+        countSlotIndex * INT32_PER_256B;
+    return UpdateExpertLoopState(state, expertIdx, AscendC::ReadGmByPassDCache(expertTokenCountAddr));
+}
+
 template <AscendC::HardEvent event, int32_t eventId>
 __aicore__ inline void SyncFuncStatic()
 {

@@ -108,6 +108,7 @@ private:
     Params params_{};
     ExpertWeightTensorListAddrs moeWeightTensorListAddrs_{};
     ExpertWeightTensorListAddrs sharedWeightTensorListAddrs_{};
+    BlockWorkspaceContext countWorkspace_{};
     DispatchPrepareConfig dispatchPrepareConfig_;
     SendMaskConfig sendMaskConfig_;
     ResetWorkspaceConfig resetWorkspaceConfig_;
@@ -239,7 +240,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::InitTokenDispat
     tokenDispatchConfig_ = {
         .common = commonConfig,
         .blockJob = {.jobIndex = blockIdx_, .totalJobs = blockNum_},
-        .countWorkspace = {.blockIdx = blockIdx_, .blockNum = params_.tilingData->aicNum},
         .maxOutputSize = params_.tilingData->maxOutputSize,
         .bufferConfig = params_.tilingData->dispatchBufferConfig,
         .maskAlignSize = sendMaskConfig_.maskAlignSize,
@@ -257,7 +257,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::InitGmm1Config(
     gmm1Config_ = {
         .common = commonConfig,
         .blockJob = {.jobIndex = blockIdx_, .totalJobs = blockNum_},
-        .countWorkspace = {.blockIdx = blockIdx_, .blockNum = params_.tilingData->aicNum},
         .dispatchFlagSlotsPerExpert = dispatchFlagSlotsPerExpert,
         .swigluFlagSlotsPerExpert = dispatchFlagSlotsPerExpert,
         .maxTilesPerExpert = params_.tilingData->maxTilesPerExpert,
@@ -272,7 +271,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::InitGmm2Combine
     gmm2Config_ = {
         .common = commonConfig,
         .blockJob = {.jobIndex = blockIdx_, .totalJobs = blockNum_},
-        .countWorkspace = {.blockIdx = blockIdx_, .blockNum = params_.tilingData->aicNum},
         .swigluFlagSlotsPerExpert = dispatchFlagSlotsPerExpert,
         .dispatchFlagSlotsPerExpert = dispatchFlagSlotsPerExpert,
         .combineSyncSlotCountPerExpert = 0U,
@@ -366,6 +364,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     const int64_t tileM = static_cast<int64_t>(GMM1_TILE_M);
     int32_t dispatchFlagSlotsPerExpert =
         static_cast<int32_t>(Ops::Base::CeilDiv(maxOutput, tileM)) * INT_CACHELINE;
+    countWorkspace_ = {.blockIdx = blockIdx_, .blockNum = tilingData->aicNum};
     InitInputPrepareConfigs(commonConfig);
     InitTokenDispatchConfig(commonConfig, dispatchFlagSlotsPerExpert);
     InitGmm1Config(commonConfig, dispatchFlagSlotsPerExpert);
@@ -769,7 +768,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
     GMMAddrInfo combineAddrInfo{};
-    Gmm1ExpertLoopState gmm1State = CreateGmm1ExpertLoopState(gmm1Config_);
+    ExpertLoopState gmm1State = CreateExpertLoopState(gmm1Config_.common);
     Gmm2ExpertLoopState gmm2State = CreateGmm2ExpertLoopState(gmm2Config_);
     Gmm2ExpertLoopState combineState = CreateGmm2ExpertLoopState(gmm2Config_);
     int32_t vecSetSyncCom = 0;
@@ -797,7 +796,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
                     uint64_t sendCnt = 0U;
                     RunMoeExpertDispatchStage<ActivationType, QuantScaleOutType, false,
                                               GMM1_TILE_M, TopkWeightsPrefetch>(
-                        tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_,
+                        tokenDispatchConfig_, countWorkspace_, params_, winRankAddr_, tokenDispatchScratch_,
                         nextDispatchExpert, sendCnt);
                 }
             }
@@ -809,8 +808,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
                                             ActivationType, QuantScaleOutType, false,
                                             GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch,
                                             GMM1_INTERLEAVED, true>(
-                    gmm1Config_, params_, moeWeightTensorListAddrs_, epilogueOp_, gmm1Scratch_,
-                    gmm1State, gmm1AddrInfo, gmm1RuntimeState, expertIdx, 0U);
+                    gmm1Config_, countWorkspace_, params_, moeWeightTensorListAddrs_, epilogueOp_,
+                    gmm1Scratch_, gmm1State, gmm1AddrInfo, gmm1RuntimeState, expertIdx, 0U);
             }
         } else if (GetSubBlockIdx() == 0U) {
             for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
@@ -818,8 +817,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
                                             ActivationType, QuantScaleOutType, false,
                                             GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch,
                                             GMM1_INTERLEAVED, true>(
-                    gmm1Config_, params_, moeWeightTensorListAddrs_, epilogueOp_, gmm1Scratch_,
-                    gmm1State, gmm1AddrInfo, gmm1RuntimeState, expertIdx, 0U);
+                    gmm1Config_, countWorkspace_, params_, moeWeightTensorListAddrs_, epilogueOp_,
+                    gmm1Scratch_, gmm1State, gmm1AddrInfo, gmm1RuntimeState, expertIdx, 0U);
             }
         }
         const uint32_t gmm1EndCursor = startBlockIdx_;
@@ -831,8 +830,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
             for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
                 if (!PrepareMoeExpertGmm2Stage<ActivationType, ActivationType, QuantScaleOutType,
                                                1U, 1U, 1U, true, false, false>(
-                        gmm2Config_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmm2Scratch_,
-                        gmm2State, gmm2AddrInfo, expertIdx)) {
+                        gmm2Config_, countWorkspace_, params_.workspaceInfo,
+                        moeWeightTensorListAddrs_, gmm2Scratch_, gmm2State, gmm2AddrInfo, expertIdx)) {
                     continue;
                 }
                 RunMoeExpertGmm2Stage<COMBINE_NO_QUANT, QuantOutType, ActivationType,
@@ -845,8 +844,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
             for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
                 if (!PrepareMoeExpertGmm2Stage<ActivationType, ActivationType, QuantScaleOutType,
                                                1U, 1U, 1U, true, false, false>(
-                        gmm2Config_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmm2Scratch_,
-                        gmm2State, gmm2AddrInfo, expertIdx)) {
+                        gmm2Config_, countWorkspace_, params_.workspaceInfo,
+                        moeWeightTensorListAddrs_, gmm2Scratch_, gmm2State, gmm2AddrInfo, expertIdx)) {
                     continue;
                 }
                 RunMoeExpertGmm2Stage<COMBINE_NO_QUANT, QuantOutType, ActivationType,
@@ -870,8 +869,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
                 for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
                     if (!PrepareMoeExpertGmm2Stage<ActivationType, ActivationType, QuantScaleOutType,
                                                    1U, 1U, 1U, true, false, false>(
-                            gmm2Config_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmm2Scratch_,
-                            combineState, combineAddrInfo, expertIdx)) {
+                            gmm2Config_, countWorkspace_, params_.workspaceInfo,
+                            moeWeightTensorListAddrs_, gmm2Scratch_, combineState, combineAddrInfo, expertIdx)) {
                         continue;
                     }
                     RunWaveExpertCombineStage<CombineQuantMode>(
@@ -889,7 +888,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     vecSetSyncCom = 0;
     gmm1PingPongIdx_ = 0;
     ExportExpertTokenCountsFromWorkspace(
-        tokenDispatchConfig_, params_, expertTokenCountExportScratch_);
+        tokenDispatchConfig_, countWorkspace_, params_, expertTokenCountExportScratch_);
 }
 
 template <TemplateMegaMoeWaveTypeClass>
