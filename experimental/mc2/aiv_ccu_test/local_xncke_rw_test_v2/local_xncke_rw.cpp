@@ -11,16 +11,15 @@
 /*!
  * \file local_xncke_rw.cpp
  * \brief 本地读写 XN(64bit)/CKE(16bit) Kernel 入口 + <<<>>> 封装
- *        四个独立 kernel 入口：XN(Scalar) / CKE(Scalar) / Both(Scalar) / XN(DataCopy)
+ *        五个独立 kernel 入口：XN(Scalar) / CKE(Scalar) / Both(Scalar) / XN(DataCopyPad) / CKE(DataCopyPad)
  */
 
 #include "kernel_operator.h"
 #include "./kernel/local_xn_rw_kernel.h"
 #include "./kernel/local_cke_rw_kernel.h"
 #include "./kernel/local_xncke_rw_kernel.h"
-#include "./kernel/local_xn_dc_kernel.h"
 #include "./kernel/local_xn_dcpad_kernel.h"
-#include "./kernel/local_xn_dc_multi_kernel.h"
+#include "./kernel/local_cke_dcpad_kernel.h"
 
 using namespace AscendC;
 
@@ -60,20 +59,7 @@ extern "C" __global__ __aicore__ void Aivccu_COMM_BOTH(uint32_t mode, uint32_t e
     op.Process();
 }
 
-// ==================== XN only (DataCopy: DMA通路对比) ====================
-
-extern "C" __global__ __aicore__ void Aivccu_COMM_XN_DC(uint32_t mode, uint32_t enableWarmup,
-                                                          uint32_t loopCount, uint64_t pattern,
-                                                          GM_ADDR xnAddr, GM_ADDR timeAddr)
-{
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    TPipe pipe;
-    LocalXnDcImpl::LocalXnDc op;
-    op.Init(mode, enableWarmup, loopCount, pattern, xnAddr, timeAddr, &pipe);
-    op.Process();
-}
-
-// ==================== XN only (DataCopyPad: 支持非32B对齐) ====================
+// ==================== XN only (DataCopyPad: DMA通路对比) ====================
 
 extern "C" __global__ __aicore__ void Aivccu_COMM_XN_DCPAD(uint32_t mode, uint32_t enableWarmup,
                                                              uint32_t loopCount, uint64_t pattern,
@@ -86,24 +72,23 @@ extern "C" __global__ __aicore__ void Aivccu_COMM_XN_DCPAD(uint32_t mode, uint32
     op.Process();
 }
 
-// ==================== XN only (DataCopy + 多XN聚合: 满足32B) ====================
+// ==================== CKE only (DataCopyPad: DMA通路对比) ====================
 
-extern "C" __global__ __aicore__ void Aivccu_COMM_XN_DC_MULTI(uint32_t mode, uint32_t enableWarmup,
-                                                                uint32_t loopCount, uint64_t pattern,
-                                                                uint32_t xnNum,
-                                                                GM_ADDR xnAddr, GM_ADDR timeAddr)
+extern "C" __global__ __aicore__ void Aivccu_COMM_CKE_DCPAD(uint32_t mode, uint32_t enableWarmup,
+                                                              uint32_t loopCount, uint64_t pattern,
+                                                              GM_ADDR ckeAddr, GM_ADDR timeAddr)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     TPipe pipe;
-    LocalXnDcMultiImpl::LocalXnDcMulti op;
-    op.Init(mode, enableWarmup, loopCount, pattern, xnNum, xnAddr, timeAddr, &pipe);
+    LocalCkeDcPadImpl::LocalCkeDcPad op;
+    op.Init(mode, enableWarmup, loopCount, pattern, ckeAddr, timeAddr, &pipe);
     op.Process();
 }
 
 // ==================== Host 侧统一封装 ====================
 
 void local_xncke_rw_demo(uint32_t mode, uint32_t resKind, uint32_t enableWarmup, uint32_t loopCount,
-                         uint64_t pattern, uint32_t xnNum, uint32_t blockDim, void *stream,
+                         uint64_t pattern, uint32_t blockDim, void *stream,
                          uint8_t *xnAddr, uint8_t *ckeAddr, uint8_t *timeAddr)
 {
     if (resKind == 0) {
@@ -111,11 +96,9 @@ void local_xncke_rw_demo(uint32_t mode, uint32_t resKind, uint32_t enableWarmup,
     } else if (resKind == 1) {
         Aivccu_COMM_CKE<<<blockDim, nullptr, stream>>>(mode, enableWarmup, loopCount, pattern, ckeAddr, timeAddr);
     } else if (resKind == 3) {
-        Aivccu_COMM_XN_DC<<<blockDim, nullptr, stream>>>(mode, enableWarmup, loopCount, pattern, xnAddr, timeAddr);
-    } else if (resKind == 4) {
         Aivccu_COMM_XN_DCPAD<<<blockDim, nullptr, stream>>>(mode, enableWarmup, loopCount, pattern, xnAddr, timeAddr);
-    } else if (resKind == 5) {
-        Aivccu_COMM_XN_DC_MULTI<<<blockDim, nullptr, stream>>>(mode, enableWarmup, loopCount, pattern, xnNum, xnAddr, timeAddr);
+    } else if (resKind == 4) {
+        Aivccu_COMM_CKE_DCPAD<<<blockDim, nullptr, stream>>>(mode, enableWarmup, loopCount, pattern, ckeAddr, timeAddr);
     } else {
         Aivccu_COMM_BOTH<<<blockDim, nullptr, stream>>>(mode, enableWarmup, loopCount, pattern, xnAddr, ckeAddr, timeAddr);
     }

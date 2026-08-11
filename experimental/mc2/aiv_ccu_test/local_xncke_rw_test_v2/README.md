@@ -36,11 +36,13 @@ HcommCcuInsCreateDefault(nullptr, 0, &ccuInsHandle)
 ```text
 ├── CMakeLists.txt
 ├── kernel/
-│   ├── local_xn_rw_kernel.h        # XN only kernel
-│   ├── local_cke_rw_kernel.h       # CKE only kernel
-│   └── local_xncke_rw_kernel.h     # XN + CKE kernel
+│   ├── local_xn_rw_kernel.h        # XN only kernel (Scalar)
+│   ├── local_cke_rw_kernel.h       # CKE only kernel (Scalar)
+│   ├── local_xncke_rw_kernel.h     # XN + CKE kernel (Scalar)
+│   ├── local_xn_dcpad_kernel.h     # XN only kernel (DataCopyPad)
+│   └── local_cke_dcpad_kernel.h    # CKE only kernel (DataCopyPad)
 ├── local_xncke_rw.h
-├── local_xncke_rw.cpp              # 三个 kernel 入口 + host 侧统一封装
+├── local_xncke_rw.cpp              # 五个 kernel 入口 + host 侧统一封装
 ├── test_local_xncke_rw.cpp         # host 侧测试程序
 ├── run_local_xncke_rw.sh           # 单次编译运行脚本
 ├── batch_run.sh                    # 批量跑 CSV 用例脚本
@@ -106,7 +108,7 @@ mode,res_kind,die_id,warmup_count,loop_count,pattern,rank_id,ranksize
 |------|------|------|
 | id | 用例 ID | 从 0 开始，用于 `-caseid` 指定单跑 |
 | mode | 读写模式 | `write` / `read` / `write_then_read`（或 `wtr`），也支持数字 0/1/2 |
-| res_kind | 资源类型 | `xn` / `cke` / `both` / `xn_dc`，也支持数字 0/1/2/3。`xn_dc` 用 DataCopy(DMA) 读写 XN，其余用 WriteGmByPassDCache(Scalar) |
+| res_kind | 资源类型 | `xn` / `cke` / `both` / `xn_dcpad` / `cke_dcpad`，也支持数字 0/1/2/3/4。`xn_dcpad`/`cke_dcpad` 用 DataCopyPad(DMA) 读写，其余用 WriteGmByPassDCache(Scalar) |
 | die_id | IO Die ID | 0 或 1（单 rank 默认用 1） |
 | warmup_count | 预热次数 | 0=不预热, N=预热 N 轮 |
 | loop_count | 正式打点循环次数 | 正整数 |
@@ -144,7 +146,7 @@ mode,res_kind,...,ranksize,warmup_cycles,start_cycle,end_cycle,avg_cycles,avg_ns
 | `-c` | 是否重新编译 ON/OFF | OFF |
 | `-r` | 是否运行 ON/OFF | OFF |
 | `-m` | mode：0=写, 1=读, 2=先写后读 | 2 |
-| `-k` | res_kind：0=XN, 1=CKE, 2=BOTH | 2 |
+| `-k` | res_kind：0=XN, 1=CKE, 2=BOTH, 3=XN_DCPAD, 4=CKE_DCPAD | 2 |
 | `-w` | warmup 次数：0=不预热, N=预热 N 轮 | 0 |
 | `-i` | die_id：IO Die ID (0 或 1) | 1 |
 | `-x` | xn_num：申请 Variable(XN) 资源数量 | 1 |

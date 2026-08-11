@@ -16,7 +16,7 @@
 #   -c cmake-rebuild   ON=重新编译, OFF=不编译
 #   -r run-test        ON=运行用例, OFF=不运行
 #   -m mode            0=写, 1=读, 2=先写后读, 3=SetValue写常数
-#   -k res_kind        0=XN, 1=CKE, 2=BOTH, 3=XN_DC, 4=XN_DCPAD, 5=XN_DC_MULTI
+#   -k res_kind        0=XN, 1=CKE, 2=BOTH, 3=XN_DCPAD, 4=CKE_DCPAD
 #   -w warmup          0=不预热, 1=正式打点前执行一次相同操作
 #   -i die_id          IO Die ID (0 或 1)
 #   -x xn_num          申请 Variable(XN) 资源数量
@@ -165,7 +165,7 @@ if [[ "$RUN_TEST" == "ON" ]]; then
     export LD_LIBRARY_PATH=${INSTALL_PREFIX}/lib:${INSTALL_PREFIX}/lib64:${_ASCEND_INSTALL_PATH}/lib64:$LD_LIBRARY_PATH
     echo "========== 开始执行本地 XN/CKE 读写测试 (v2, hcomm 4-API) =========="
     echo "mode(WRITE=0/READ=1/WTR=2/SET_VALUE=3):  $MODE"
-    echo "res_kind(XN=0/CKE=1/BOTH=2/XN_DC=3/XN_DCPAD=4/XN_DC_MULTI=5): $RES_KIND"
+    echo "res_kind(XN=0/CKE=1/BOTH=2/XN_DCPAD=3/CKE_DCPAD=4): $RES_KIND"
     echo "warmup(OFF=0/ON=1):                      $WARMUP"
     echo "die_id:                                   $DIE_ID"
     echo "xn_num / xn_index:                        $XN_NUM / $XN_INDEX"

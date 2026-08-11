@@ -57,9 +57,8 @@ enum TestResKind : uint32_t {
     TEST_RES_XN = 0,
     TEST_RES_CKE = 1,
     TEST_RES_BOTH = 2,
-    TEST_RES_XN_DC = 3,
-    TEST_RES_XN_DCPAD = 4,
-    TEST_RES_XN_DC_MULTI = 5,
+    TEST_RES_XN_DCPAD = 3,
+    TEST_RES_CKE_DCPAD = 4,
 };
 
 enum TestMode : uint32_t {
@@ -127,9 +126,8 @@ void GetOption(int argc, char **argv)
                 if (k == "xn" || k == "XN") { g_resKind = TEST_RES_XN; }
                 else if (k == "cke" || k == "CKE") { g_resKind = TEST_RES_CKE; }
                 else if (k == "both" || k == "BOTH") { g_resKind = TEST_RES_BOTH; }
-                else if (k == "xn_dc" || k == "XN_DC" || k == "xn-dc" || k == "XN-DC") { g_resKind = TEST_RES_XN_DC; }
                 else if (k == "xn_dcpad" || k == "XN_DCPAD" || k == "xn-dcpad" || k == "XN-DCPAD") { g_resKind = TEST_RES_XN_DCPAD; }
-                else if (k == "xn_dc_multi" || k == "XN_DC_MULTI" || k == "xn-dc-multi" || k == "XN-DC-MULTI") { g_resKind = TEST_RES_XN_DC_MULTI; }
+                else if (k == "cke_dcpad" || k == "CKE_DCPAD" || k == "cke-dcpad" || k == "CKE-DCPAD") { g_resKind = TEST_RES_CKE_DCPAD; }
                 else { g_resKind = static_cast<uint32_t>(atoi(optarg)); }
                 break;
             }
@@ -188,12 +186,10 @@ const char *GetResKindStr(uint32_t resKind)
             return "CKE";
         case TEST_RES_BOTH:
             return "BOTH";
-        case TEST_RES_XN_DC:
-            return "XN_DC";
         case TEST_RES_XN_DCPAD:
             return "XN_DCPAD";
-        case TEST_RES_XN_DC_MULTI:
-            return "XN_DC_MULTI";
+        case TEST_RES_CKE_DCPAD:
+            return "CKE_DCPAD";
         default:
             return "UNKNOWN";
     }
@@ -201,13 +197,12 @@ const char *GetResKindStr(uint32_t resKind)
 
 bool NeedAccessXn()
 {
-    return g_resKind == TEST_RES_XN || g_resKind == TEST_RES_BOTH || g_resKind == TEST_RES_XN_DC ||
-           g_resKind == TEST_RES_XN_DCPAD || g_resKind == TEST_RES_XN_DC_MULTI;
+    return g_resKind == TEST_RES_XN || g_resKind == TEST_RES_BOTH || g_resKind == TEST_RES_XN_DCPAD;
 }
 
 bool NeedAccessCke()
 {
-    return g_resKind == TEST_RES_CKE || g_resKind == TEST_RES_BOTH;
+    return g_resKind == TEST_RES_CKE || g_resKind == TEST_RES_BOTH || g_resKind == TEST_RES_CKE_DCPAD;
 }
 
 int main(int argc, char *argv[])
@@ -220,7 +215,7 @@ int main(int argc, char *argv[])
               g_xnNum, g_xnIndex, g_ckeNum, g_ckeIndex, g_loopCount, g_pattern);
 
     CHECK_RET(g_mode <= TEST_MODE_SET_VALUE, LOG_PRINT("[ERROR] mode invalid: %u\n", g_mode); return -1);
-    CHECK_RET(g_resKind <= TEST_RES_XN_DC_MULTI, LOG_PRINT("[ERROR] res_kind invalid: %u\n", g_resKind); return -1);
+    CHECK_RET(g_resKind <= TEST_RES_CKE_DCPAD, LOG_PRINT("[ERROR] res_kind invalid: %u\n", g_resKind); return -1);
     CHECK_RET(g_warmupCount <= 1000, LOG_PRINT("[ERROR] warmup invalid: %u (0-1000)\n", g_warmupCount); return -1);
     CHECK_RET(g_loopCount > 0, LOG_PRINT("[ERROR] loop_count must be greater than 0.\n"); return -1);
     CHECK_RET(g_dieId < 2, LOG_PRINT("[ERROR] die_id must be 0 or 1.\n"); return -1);
@@ -303,7 +298,7 @@ int main(int argc, char *argv[])
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc timeGm failed. ret: %d\n", ret); return ret);
 
     LOG_PRINT("[INFO] 启动 Kernel (blockDim=%u)...\n", BLOCK_NUM);
-    local_xncke_rw_demo(g_mode, g_resKind, g_warmupCount, g_loopCount, g_pattern, g_xnNum, BLOCK_NUM, stream,
+    local_xncke_rw_demo(g_mode, g_resKind, g_warmupCount, g_loopCount, g_pattern, BLOCK_NUM, stream,
                         (uint8_t *)xnAddr, (uint8_t *)ckeAddr, (uint8_t *)timeGm);
 
     ret = aclrtSynchronizeStream(stream);

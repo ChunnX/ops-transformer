@@ -1,8 +1,19 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
 /*!
  * \file local_xn_dcpad_kernel.h
  * \brief DataCopyPad 方式读写 CCU Variable(XN 64bit) Kernel 核心逻辑
- *        DataCopy 要求 32B 对齐，单个 XN 仅 8B，改用 DataCopyPad 支持非对齐搬运。
- *        仅测 XN（64bit），CKE 为 16bit 不适合 DataCopy。
+ *        走 DMA 搬运通路（DataCopyPad），与 Scalar 方式（WriteGmByPassDCache）对比。
+ *        单个 XN 仅 8B，不满足 DataCopy 32B 对齐要求，使用 DataCopyPad 支持非对齐搬运。
+ *        仅测 XN（64bit），CKE 为 16bit 见 local_cke_dcpad_kernel.h。
  */
 
 #ifndef LOCAL_XN_DCPAD_KERNEL_H
@@ -43,6 +54,7 @@ public:
     {
         if (aivId_ > 0) { return; }
 
+        // 打点外：准备数据
         dataLocal_.SetValue(0, pattern_);
         PipeBarrier<PIPE_ALL>();
 
@@ -69,6 +81,7 @@ public:
         }
         uint64_t endCycle = GetSystemCycle();
 
+        // 打点外：校验
         if (mode_ == MODE_WRITE_THEN_READ) {
             readBack_ = readLocal_.GetValue(0);
             if (readBack_ != pattern_) { verifyResult_ = 1; }

@@ -20,7 +20,11 @@ id,mode,res_kind,die_id,warmup_count,loop_count,pattern,rank_id,ranksize
 18,read,cke,1,0,1,0x5A5A000000000001,0,1
 19,write,both,1,0,1,0x5A5A000000000001,0,1
 20,read,both,1,0,1,0x5A5A000000000001,0,1
-21,write,xn_dc,1,10,1000,0x5A5A000000000001,0,1
-22,read,xn_dc,1,10,1000,0x5A5A000000000001,0,1
-23,write_then_read,xn_dc,1,10,1000,0x5A5A000000000001,0,1
-24,write_then_read,xn_dc,1,0,1,0x5A5A000000000001,0,1
+21,write,xn_dcpad,1,10,1000,0x5A5A000000000001,0,1
+22,read,xn_dcpad,1,10,1000,0x5A5A000000000001,0,1
+23,write_then_read,xn_dcpad,1,10,1000,0x5A5A000000000001,0,1
+24,write_then_read,xn_dcpad,1,0,1,0x5A5A000000000001,0,1
+25,write,cke_dcpad,1,10,1000,0x5A5A000000000001,0,1
+26,read,cke_dcpad,1,10,1000,0x5A5A000000000001,0,1
+27,write_then_read,cke_dcpad,1,10,1000,0x5A5A000000000001,0,1
+28,write_then_read,cke_dcpad,1,0,1,0x5A5A000000000001,0,1
