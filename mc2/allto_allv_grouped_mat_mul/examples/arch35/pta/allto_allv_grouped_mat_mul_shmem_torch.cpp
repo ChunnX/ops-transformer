@@ -173,18 +173,23 @@ int64_t Init(int64_t rank, int64_t worldSize, int64_t heapBytes, const std::stri
     aclshmemx_uniqueid_t uniqueId{};
     FillShmemAttr(rank, worldSize, heapBytes, ipPort, attr, uniqueId);
     CheckShmem(aclshmemx_init_attr(ACLSHMEMX_INIT_WITH_DEFAULT, &attr), "aclshmemx_init_attr", rank);
+    try {
+        TORCH_CHECK(shmem_my_pe() == rank, "SHMEM rank mismatch: expected ", rank, ", got ", shmem_my_pe());
+        TORCH_CHECK(shmem_n_pes() == worldSize, "SHMEM world-size mismatch: expected ", worldSize, ", got ",
+                    shmem_n_pes());
+        void *context = reinterpret_cast<void *>(shmemx_get_ffts_config());
+        TORCH_CHECK(context != nullptr, "shmemx_get_ffts_config returned null on rank ", rank);
 
-    TORCH_CHECK(shmem_my_pe() == rank, "SHMEM rank mismatch: expected ", rank, ", got ", shmem_my_pe());
-    TORCH_CHECK(shmem_n_pes() == worldSize, "SHMEM world-size mismatch: expected ", worldSize, ", got ", shmem_n_pes());
-    void *context = reinterpret_cast<void *>(shmemx_get_ffts_config());
-    TORCH_CHECK(context != nullptr, "shmemx_get_ffts_config returned null on rank ", rank);
-
-    state.initialized = true;
-    state.rank = rank;
-    state.worldSize = worldSize;
-    state.heapBytes = heapBytes;
-    state.ipPort = ipPort;
-    state.context = context;
+        state.initialized = true;
+        state.rank = rank;
+        state.worldSize = worldSize;
+        state.heapBytes = heapBytes;
+        state.ipPort = ipPort;
+        state.context = context;
+    } catch (...) {
+        (void)shmem_finalize();
+        throw;
+    }
     return 0;
 }
 

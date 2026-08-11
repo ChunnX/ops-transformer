@@ -177,6 +177,11 @@ def check_pta_bridge() -> None:
         require(token in bridge, f"PTA bridge missing contract token: {token}")
     require("init_process_group" not in bridge and "Hccl" not in bridge and "HCCL" not in bridge,
             "PTA bridge must not initialize or call HCCL")
+    init_begin = bridge.index("int64_t Init(")
+    init_end = bridge.index("int64_t Barrier()", init_begin)
+    init_code = bridge[init_begin:init_end]
+    require("catch (...)" in init_code and "shmem_finalize()" in init_code,
+            "PTA bridge must finalize SHMEM when post-init topology/context validation fails")
 
 
 def check_pta_build() -> None:
