@@ -297,10 +297,12 @@ private:
     {
         // key @ key.transpose(-1,-2)
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x9); // 同步0
+            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x9 + FLAG_ID_MAX); // 同步0
+            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x9);               // 同步0
             AICProcess(mmBf16_, keyConGm_[i * ckOffset_], keyConGm_[i * ckOffset_], kkWsGm_[i * ccOffset_],
                        {chunkSize_, chunkSize_, dk_, chunkSize_, chunkSize_, dk_}, true);
-            AscendC::CrossCoreSetFlag<0x4, PIPE_MTE1>(0x8); // 同步1
+            AscendC::CrossCoreSetFlag<0x4, PIPE_MTE1>(0x8 + FLAG_ID_MAX); // 同步1
+            AscendC::CrossCoreSetFlag<0x4, PIPE_MTE1>(0x8);               // 同步1
         }
 
         // query @ key.transpose(-1,-2)   stage1 out
@@ -309,17 +311,20 @@ private:
                        outQkGm_[chunkRowBase_[i] * chunkSize_],
                        {validLenBatch_[i], validLenBatch_[i], dk_, validLenBatch_[i], validLenBatch_[i], dk_}, true);
         }
-        AscendC::CrossCoreSetFlag<0x4, PIPE_MTE1>(0xA); // 同步5
+        AscendC::CrossCoreSetFlag<0x4, PIPE_MTE1>(0xA + FLAG_ID_MAX); // 同步5
+        AscendC::CrossCoreSetFlag<0x4, PIPE_MTE1>(0xA);               // 同步5
 
         // 求逆左下角矩阵
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x7); // 同步2
+            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x7 + FLAG_ID_MAX); // 同步2
+            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x7);               // 同步2
             AttnInverseMMCompute(i * ccOffset_);
         }
 
         // attn @ k_cumdecay
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x6); // 同步3
+            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x6 + FLAG_ID_MAX); // 同步3
+            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x6);               // 同步3
             AICProcess(mmBf16_, attnWsGm_[i * ccOffset_], gBKWsGm_[i * ckOffset_],
                        outKCumdecayGm_[chunkRowBase_[i] * dk_],
                        {chunkSize_, dk_, chunkSize_, chunkSize_, dk_, chunkSize_});
@@ -327,7 +332,8 @@ private:
 
         // attn @ v_beta    stage1 out
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x5); // 同步4
+            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x5 + FLAG_ID_MAX); // 同步4
+            AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x5);               // 同步4
             AICProcess(mmVInner_, attnWsGm_[i * ccOffset_], vBetaWsGm_[i * cvOffset_],
                        outVInnerGm_[chunkRowBase_[i] * dv_],
                        {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_});

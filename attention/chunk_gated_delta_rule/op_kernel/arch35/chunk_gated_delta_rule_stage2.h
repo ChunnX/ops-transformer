@@ -202,6 +202,7 @@ public:
         auto stateOut = sTP_->stateOut[nvId * Dv_ * Dk_];
         GlobalTensor<bfloat16_t> stateForAic;
         if constexpr (kIsFp32) {
+            CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x3 + FLAG_ID_MAX);
             CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x3);
             stateForAic = sTP_->curStateBf16[nvId * Dv_ * Dk_];
         } else {
@@ -209,7 +210,9 @@ public:
         }
         CalVPrime(sTP_->kCumdecay[mm_offset0], stateForAic, sTP_->vInner[mm_offset1]);
         CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic, sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
+        CrossCoreSetFlag<0x4, PIPE_MTE1>(0x2 + FLAG_ID_MAX);
         CrossCoreSetFlag<0x4, PIPE_MTE1>(0x2);
+        CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x5 + FLAG_ID_MAX);
         CrossCoreWaitFlag<0x4, PIPE_MTE1>(0x5);
         if constexpr (kIsFp32) {
             CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->kg[mm_offset0], stateOut);
@@ -218,6 +221,7 @@ public:
             SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
             WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
         }
+        CrossCoreSetFlag<0x4, PIPE_MTE1>(0x4 + FLAG_ID_MAX);
         CrossCoreSetFlag<0x4, PIPE_MTE1>(0x4);
     }
 
