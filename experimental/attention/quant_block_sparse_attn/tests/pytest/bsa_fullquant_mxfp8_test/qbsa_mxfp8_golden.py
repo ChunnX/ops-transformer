@@ -1456,49 +1456,6 @@ def _expand_d_group_scale(scale, width):
     ]
 
 
-def _kernel_mxfp8_scores_for_row_max(
-    q_fp8, k_fp8, q_descale, k_descale, softmax_scale, head_dim
-):
-    """Reproduce the kernel score path used by the softmax max reduction.
-
-    The MXFP8 kernel forms the FP8 dot product by D groups and applies the
-    corresponding Q/K descales afterwards.  Dequantizing Q/K before matmul is
-    retained for the Golden output path because it reproduces the kernel's
-    NaN propagation, but it cannot reproduce the max value that the kernel
-    stores for its ``row_max == -FLT_MAX`` invalid-row rule.
-
-    This helper is therefore used only by the row-max calculation when the
-    regular Golden score is non-finite; it must not replace the output score
-    calculation.
-    """
-    q_values = q_fp8.to(torch.float32)
-    k_values = k_fp8.to(torch.float32)
-    q_scales = q_descale.to(torch.float32).reshape(q_values.shape[0], -1)
-    k_scales = k_descale.to(torch.float32).reshape(k_values.shape[0], -1)
-    group_count = math.ceil(int(head_dim) / int(QUANT_GROUP_SIZE))
-    if q_scales.shape[1] != group_count or k_scales.shape[1] != group_count:
-        raise ValueError(
-            "MXFP8 Q/K descale group count does not match D: "
-            f"q={q_scales.shape[1]}, k={k_scales.shape[1]}, "
-            f"expected={group_count}"
-        )
-
-    padded_dim = group_count * int(QUANT_GROUP_SIZE)
-    if padded_dim != int(head_dim):
-        padding = padded_dim - int(head_dim)
-        q_values = torch.nn.functional.pad(q_values, (0, padding))
-        k_values = torch.nn.functional.pad(k_values, (0, padding))
-    q_groups = q_values.reshape(q_values.shape[0], group_count, QUANT_GROUP_SIZE)
-    k_groups = k_values.reshape(k_values.shape[0], group_count, QUANT_GROUP_SIZE)
-    group_products = torch.einsum("qgd,kgd->qkg", q_groups, k_groups)
-    combined_scales = (
-        q_scales[:, None, :]
-        * k_scales[None, :, :]
-        * float(softmax_scale)
-    )
-    return (group_products * combined_scales).sum(dim=-1)
-
-
 def _gather_q_block_and_scale(
     q_tensor, q_scale, cu_seqlens_q, batch_idx, q_start, q_end, head_idx
 ):
@@ -1663,34 +1620,20 @@ def cpu_mxfp8_golden(
                         torch.matmul(q_dequant, k_dequant.transpose(0, 1))
                         * softmax_scale
                     )
-                    kernel_scores = scores
-                    problematic_scores = valid_mask & (
-                        ~torch.isfinite(scores) | (scores <= EMPTY_LSE)
-                    )
-                    if bool(problematic_scores.any().item()):
-                        # The dequant-before-matmul path can turn both negative
-                        # and positive overflow into NaN.  Recover the kernel
-                        # grouped score only for invalid-row classification.
-                        kernel_scores = _kernel_mxfp8_scores_for_row_max(
-                            q_block,
-                            k_mat,
-                            q_scale_block,
-                            k_scale_mat,
-                            softmax_scale,
-                            head_dim,
-                        )
-                    # The kernel's negative saturation value and mask fill are
-                    # both -FLT_MAX.  Preserve NaN/+Inf as computation results;
-                    # they are not equal to the invalid-row sentinel.
-                    kernel_scores = torch.where(
-                        kernel_scores <= EMPTY_LSE,
-                        torch.full_like(kernel_scores, EMPTY_LSE),
-                        kernel_scores,
+
+                    # Kernel max reduction starts from -FLT_MAX.  Therefore a
+                    # NaN or -Inf score does not win the comparison against the
+                    # running max, while +Inf does.  Replace only the former
+                    # two values with the initial sentinel before reducing.
+                    kernel_scores_for_max = torch.where(
+                        torch.isnan(scores) | torch.isneginf(scores),
+                        torch.full_like(scores, EMPTY_LSE),
+                        scores,
                     )
                     kernel_scores = torch.where(
                         valid_mask,
-                        kernel_scores,
-                        torch.full_like(kernel_scores, EMPTY_LSE),
+                        kernel_scores_for_max,
+                        torch.full_like(scores, EMPTY_LSE),
                     )
                     kernel_chunk_max = kernel_scores.max(dim=-1).values
                     kernel_row_max = torch.maximum(
