@@ -138,7 +138,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                             // bf16VNew (float 路径 v_new 的 bf16 影子)
     tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask
 
-    // stage1 临时变量空间
+    // stage1 workspace for intermediate variables
     tilingData_.stageWorkspaceSz =
         sizeHigh * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
     tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
