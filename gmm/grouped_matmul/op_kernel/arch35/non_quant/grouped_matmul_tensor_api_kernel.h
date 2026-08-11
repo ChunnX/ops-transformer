@@ -16,7 +16,7 @@
 #pragma once
 
 #include "blaze/gemm/block/block_mmad_matmul_basic.h"
-#include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
+#include "blaze/gemm/block/block_scheduler_gmm_no_quant.h"
 #include "blaze/gemm/kernel/kernel_grouped_matmul_no_quant.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 
@@ -43,7 +43,7 @@ __aicore__ inline void GmmNoQuantTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
                                                     BiasType, LayoutBias>;
     using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueEmpty;
-    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
+    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmNoQuant;
     using GroupedMatmulKernel = Blaze::Gemm::Kernel::GemmUniversal<
         ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename GroupedMatmulKernel::Params;
