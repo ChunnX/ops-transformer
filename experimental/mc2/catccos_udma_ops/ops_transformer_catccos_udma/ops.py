@@ -21,6 +21,8 @@ def all_to_allv_grouped_mat_mul(
     """Dispatch tokens with UDMA and apply the destination rank's grouped matmuls.
 
     ``x`` is ordered by global expert according to ``local_tokens_per_expert``.
+    It is a regular contiguous BF16 NPU tensor; UDMA reads it directly as the
+    local source of remote PUT operations, without symmetric-input staging.
     The output has padded capacity ``[world_size * m, n]``; valid rows are packed
     at the beginning and their count is the sum of the global route table.
     """

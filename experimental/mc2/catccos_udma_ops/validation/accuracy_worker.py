@@ -101,20 +101,19 @@ def _run_case(case, rank, world_size, device, output_root):
     torch_npu.npu.synchronize()
     candidates.append(("ordinary", ordinary.clone(), _padding_stats(ordinary, valid_rows)))
 
-    symmetric_x = udma.to_symmetric(x)
     reusable_out = torch.zeros_like(ordinary)
     for repeat in range(case["accuracy"]["repeats"]):
         reusable_out.zero_()
-        symmetric_actual = udma.all_to_allv_grouped_mat_mul(
-            symmetric_x, weight, local_table, global_table,
+        out_actual = udma.all_to_allv_grouped_mat_mul(
+            x, weight, local_table, global_table,
             ep_size=world_size, expert_num=expert_num, out=reusable_out,
         )
         torch_npu.npu.synchronize()
         candidates.append(
             (
-                "symmetric_repeat_{}".format(repeat),
-                symmetric_actual.clone(),
-                _padding_stats(symmetric_actual, valid_rows),
+                "out_repeat_{}".format(repeat),
+                out_actual.clone(),
+                _padding_stats(out_actual, valid_rows),
             )
         )
 
@@ -168,7 +167,7 @@ def _run_case(case, rank, world_size, device, output_root):
         "repeat_consistency": repeat_consistency,
     }
     write_json(case_root / "summary.json", summary)
-    del candidates, ordinary, symmetric_x, reusable_out
+    del candidates, ordinary, reusable_out
     gc.collect()
     return summary
 
@@ -200,7 +199,7 @@ def main():
         initialized_dist = True
         dist.barrier()
         init_method = udma_init_method_from_env()
-        heap_size = validation_udma_heap_size(cases, concurrent_input_buffers=2)
+        heap_size = validation_udma_heap_size()
         if rank == 0:
             print("UDMA bootstrap: {}".format(init_method), flush=True)
             print("UDMA symmetric heap: {} bytes".format(heap_size), flush=True)

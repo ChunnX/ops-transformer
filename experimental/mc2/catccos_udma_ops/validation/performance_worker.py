@@ -51,7 +51,7 @@ def main():
     performance = case["performance"]
     initialized_dist = False
     initialized_udma = False
-    symmetric_x = None
+    x = None
     out = None
     try:
         torch_npu.npu.set_device(local_rank)
@@ -63,7 +63,7 @@ def main():
         initialized_dist = True
         dist.barrier()
         init_method = udma_init_method_from_env()
-        heap_size = validation_udma_heap_size([case], concurrent_input_buffers=1)
+        heap_size = validation_udma_heap_size()
         if rank == 0:
             print("UDMA bootstrap: {}".format(init_method), flush=True)
             print("UDMA symmetric heap: {} bytes".format(heap_size), flush=True)
@@ -82,7 +82,6 @@ def main():
         local_table, global_table = udma.build_rank_route_tensors(
             shape["m"], rank, world_size, case["expert_num"], device
         )
-        symmetric_x = udma.to_symmetric(x)
         out = torch.empty(
             (world_size * shape["m"], shape["n"]),
             dtype=torch.bfloat16, device=device,
@@ -90,7 +89,7 @@ def main():
 
         def launch():
             udma.all_to_allv_grouped_mat_mul(
-                symmetric_x, weight, local_table, global_table,
+                x, weight, local_table, global_table,
                 ep_size=world_size, expert_num=case["expert_num"], out=out,
             )
 
@@ -120,7 +119,7 @@ def main():
     finally:
         if initialized_dist:
             dist.destroy_process_group()
-        del out, symmetric_x
+        del out, x
         gc.collect()
         if initialized_udma:
             udma.destroy_udma_group()

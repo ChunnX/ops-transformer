@@ -87,74 +87,6 @@ void UdmaRuntime::EnsureInitialized() const
     TORCH_CHECK(initialized_, "UDMA runtime is not initialized; call init_udma_group() before the operator");
 }
 
-uint8_t *UdmaRuntime::StageInput(const void *source, size_t bytes, aclrtStream stream)
-{
-    std::lock_guard<std::mutex> lock(mutex_);
-    EnsureInitialized();
-    TORCH_CHECK(bytes <= heapSize_ - kKernelWorkspaceBytes,
-                "input and workspace exceed the configured symmetric heap");
-
-    if (lastStream_ != nullptr && lastStream_ != stream) {
-        const aclError syncStatus = aclrtSynchronizeStream(lastStream_);
-        TORCH_CHECK(syncStatus == ACL_SUCCESS, "failed to synchronize the previous UDMA stream: ", syncStatus);
-    }
-    lastStream_ = stream;
-
-    if (stagingBytes_ < bytes) {
-        if (staging_ != nullptr) {
-            const aclError syncStatus = aclrtSynchronizeStream(stream);
-            TORCH_CHECK(syncStatus == ACL_SUCCESS, "failed to synchronize before resizing UDMA staging: ", syncStatus);
-            aclshmem_free(staging_);
-        }
-        staging_ = static_cast<uint8_t *>(aclshmem_malloc(bytes));
-        TORCH_CHECK(staging_ != nullptr, "failed to allocate ", bytes, " bytes of symmetric input staging");
-        stagingBytes_ = bytes;
-    }
-
-    const aclError copyStatus = aclrtMemcpyAsync(
-        staging_, stagingBytes_, source, bytes, ACL_MEMCPY_DEVICE_TO_DEVICE, stream);
-    TORCH_CHECK(copyStatus == ACL_SUCCESS, "failed to stage the UDMA input tensor: ", copyStatus);
-    return staging_;
-}
-
-void *UdmaRuntime::AllocateSymmetric(size_t bytes)
-{
-    std::lock_guard<std::mutex> lock(mutex_);
-    EnsureInitialized();
-    TORCH_CHECK(bytes > 0, "symmetric allocation size must be positive");
-    void *pointer = aclshmem_malloc(bytes);
-    TORCH_CHECK(pointer != nullptr, "failed to allocate ", bytes, " bytes from the symmetric UDMA heap");
-    externalAllocations_.insert(pointer);
-    return pointer;
-}
-
-void UdmaRuntime::FreeSymmetric(void *pointer)
-{
-    if (pointer == nullptr) {
-        return;
-    }
-    std::lock_guard<std::mutex> lock(mutex_);
-    const auto allocation = externalAllocations_.find(pointer);
-    if (allocation == externalAllocations_.end()) {
-        return;
-    }
-    if (lastStream_ != nullptr) {
-        const aclError syncStatus = aclrtSynchronizeStream(lastStream_);
-        if (syncStatus != ACL_SUCCESS) {
-            TORCH_WARN("failed to synchronize before freeing symmetric memory: ", syncStatus);
-        }
-    }
-    aclshmem_free(pointer);
-    externalAllocations_.erase(allocation);
-}
-
-bool UdmaRuntime::IsSymmetric(const void *pointer) const
-{
-    std::lock_guard<std::mutex> lock(mutex_);
-    EnsureInitialized();
-    return externalAllocations_.find(const_cast<void *>(pointer)) != externalAllocations_.end();
-}
-
 void UdmaRuntime::RecordStream(aclrtStream stream)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -172,15 +104,10 @@ void UdmaRuntime::Finalize(aclrtStream stream)
     if (!initialized_) {
         return;
     }
-    TORCH_CHECK(externalAllocations_.empty(), "cannot finalize UDMA while ", externalAllocations_.size(),
-                " symmetric PyTorch tensor(s) are still alive; delete them before destroy_udma_group()");
     aclrtStream streamToWait = lastStream_ != nullptr ? lastStream_ : stream;
     if (streamToWait != nullptr) {
         const aclError syncStatus = aclrtSynchronizeStream(streamToWait);
         TORCH_CHECK(syncStatus == ACL_SUCCESS, "failed to synchronize UDMA stream during finalization: ", syncStatus);
-    }
-    if (staging_ != nullptr) {
-        aclshmem_free(staging_);
     }
     if (workspace_ != nullptr) {
         aclshmem_free(workspace_);
@@ -193,8 +120,6 @@ void UdmaRuntime::Finalize(aclrtStream stream)
     heapSize_ = 0;
     initMethod_.clear();
     workspace_ = nullptr;
-    staging_ = nullptr;
-    stagingBytes_ = 0;
     lastStream_ = nullptr;
     fftsAddress_ = 0;
     TORCH_CHECK(status == ACLSHMEM_SUCCESS, "shmem_finalize failed: ", status);

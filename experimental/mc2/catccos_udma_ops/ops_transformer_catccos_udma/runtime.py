@@ -104,23 +104,6 @@ def get_udma_config() -> UdmaConfig:
     return _config
 
 
-def empty_symmetric(shape, *, dtype=torch.bfloat16) -> torch.Tensor:
-    """Allocate a reusable NPU tensor directly from the registered SHMEM heap.
-
-    Delete every tensor returned here before calling :func:`destroy_udma_group`.
-    """
-    if _anchor is None:
-        raise RuntimeError("UDMA is not initialized; call init_udma_group() first")
-    return torch.ops.ops_transformer_catccos_udma._empty_symmetric(_anchor, list(shape), dtype)
-
-
-def to_symmetric(tensor: torch.Tensor) -> torch.Tensor:
-    """Copy a tensor once into reusable registered memory for the zero-staging launch path."""
-    result = empty_symmetric(tensor.shape, dtype=tensor.dtype)
-    result.copy_(tensor)
-    return result
-
-
 @contextmanager
 def udma_group(**kwargs) -> Iterator[UdmaConfig]:
     config = init_udma_group(**kwargs)

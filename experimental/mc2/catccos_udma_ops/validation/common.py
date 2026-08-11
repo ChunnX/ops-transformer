@@ -62,38 +62,22 @@ def udma_init_method_from_env() -> str:
     return "tcp://{}:{}".format(address, port)
 
 
-def validation_udma_heap_size(
-    cases: Sequence[Mapping[str, Any]], *, concurrent_input_buffers: int
-) -> int:
-    """Size the SHMEM heap for workspace plus the largest validation input(s)."""
-    if not cases:
-        raise ValueError("at least one validation case is required to size the UDMA heap")
-    if concurrent_input_buffers <= 0:
-        raise ValueError("concurrent_input_buffers must be positive")
-
-    max_input_bytes = max(
-        int(case["shape"]["m"]) * int(case["shape"]["k"]) * 2
-        for case in cases
-    )
-    minimum = (
-        _UDMA_KERNEL_WORKSPACE_BYTES
-        + concurrent_input_buffers * max_input_bytes
-        + _UDMA_HEAP_HEADROOM_BYTES
-    )
-    automatic = max(_DEFAULT_UDMA_HEAP_BYTES, 1 << (minimum - 1).bit_length())
+def validation_udma_heap_size() -> int:
+    """Size SHMEM for the fixed remote-receive workspace and synchronization state."""
+    minimum = _UDMA_KERNEL_WORKSPACE_BYTES + _UDMA_HEAP_HEADROOM_BYTES
 
     configured = os.environ.get("UDMA_HEAP_SIZE")
     if configured is None:
-        return automatic
+        return _DEFAULT_UDMA_HEAP_BYTES
     try:
         requested = int(configured)
     except ValueError as error:
         raise RuntimeError("UDMA_HEAP_SIZE must be an integer number of bytes") from error
     if requested < minimum:
         raise RuntimeError(
-            "UDMA_HEAP_SIZE={} is too small for this validation batch; "
-            "at least {} bytes are required (automatic size: {})".format(
-                requested, minimum, automatic
+            "UDMA_HEAP_SIZE={} is too small for the UDMA remote-receive workspace; "
+            "at least {} bytes are required (default size: {})".format(
+                requested, minimum, _DEFAULT_UDMA_HEAP_BYTES
             )
         )
     return requested

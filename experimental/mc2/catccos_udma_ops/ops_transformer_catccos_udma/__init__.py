@@ -11,10 +11,8 @@ from .routing import (
 from .runtime import (
     UdmaConfig,
     destroy_udma_group,
-    empty_symmetric,
     get_udma_config,
     init_udma_group,
-    to_symmetric,
     udma_group,
 )
 
@@ -25,10 +23,8 @@ __all__ = [
     "build_rank_route_tables",
     "build_rank_route_tensors",
     "destroy_udma_group",
-    "empty_symmetric",
     "get_udma_config",
     "init_udma_group",
-    "to_symmetric",
     "udma_group",
 ]
 

@@ -24,7 +24,6 @@
 #include <cstdint>
 #include <limits>
 #include <string>
-#include <vector>
 
 namespace OpsTransformer::CatccosUdma {
 namespace {
@@ -76,27 +75,6 @@ void FinalizeUdma(const at::Tensor &deviceAnchor)
     const c10::OptionalDeviceGuard guard(deviceAnchor.device());
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
     UdmaRuntime::Instance().Finalize(stream);
-}
-
-at::Tensor EmptySymmetric(const at::Tensor &deviceAnchor, at::IntArrayRef sizes, at::ScalarType dtype)
-{
-    CheckNpuTensor(deviceAnchor, "device_anchor", at::kByte);
-    const c10::OptionalDeviceGuard guard(deviceAnchor.device());
-    TORCH_CHECK(dtype == at::kBFloat16, "the first UDMA operator currently supports only bfloat16 symmetric tensors");
-    int64_t elements = 1;
-    for (int64_t size : sizes) {
-        TORCH_CHECK(size >= 0, "symmetric tensor sizes must be non-negative");
-        TORCH_CHECK(size == 0 || elements <= std::numeric_limits<int64_t>::max() / size,
-                    "symmetric tensor element count overflow");
-        elements *= size;
-    }
-    TORCH_CHECK(elements > 0, "symmetric tensors must contain at least one element");
-    const size_t bytes = static_cast<size_t>(elements) * sizeof(uint16_t);
-    UdmaRuntime &runtime = UdmaRuntime::Instance();
-    void *pointer = runtime.AllocateSymmetric(bytes);
-    auto deleter = [&runtime](void *allocation) { runtime.FreeSymmetric(allocation); };
-    return at::from_blob(pointer, sizes, deleter,
-                         at::TensorOptions().dtype(dtype).device(deviceAnchor.device()));
 }
 
 void LaunchAllToAllVGroupedMatMulUdma(const DeviceOp::Params &params, uint32_t blockDim,
@@ -174,9 +152,6 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     TORCH_CHECK(output.data_ptr() != x.data_ptr() && output.data_ptr() != weight.data_ptr(),
                 "out must not alias x or weight");
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
-    uint8_t *symmetricX = runtime.IsSymmetric(x.data_ptr())
-        ? reinterpret_cast<uint8_t *>(x.data_ptr())
-        : runtime.StageInput(x.data_ptr(), x.numel() * x.element_size(), stream);
     runtime.RecordStream(stream);
 
     Catlass::GemmCoord shape{m, n, k};
@@ -189,7 +164,8 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
         kCommInterval,
         static_cast<uint32_t>(epSize),
         static_cast<uint32_t>(expertNum),
-        symmetricX,
+        // UDMA PUT reads its local source directly from ordinary NPU GM.
+        reinterpret_cast<uint8_t *>(x.data_ptr()),
         reinterpret_cast<uint8_t *>(weight.data_ptr()),
         reinterpret_cast<uint8_t *>(output.data_ptr()),
         reinterpret_cast<uint8_t *>(localTokensPerExpert.data_ptr()),
@@ -278,7 +254,6 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
 {
     m.def("_configure_udma(Tensor device_anchor, int rank, int world_size, str init_method, int heap_size) -> ()");
     m.def("_finalize_udma(Tensor device_anchor) -> ()");
-    m.def("_empty_symmetric(Tensor device_anchor, int[] size, ScalarType dtype) -> Tensor");
     m.def("all_to_allv_grouped_mat_mul_udma(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
           "Tensor global_tokens_per_local_expert, int ep_size, int expert_num) -> Tensor");
     m.def("all_to_allv_grouped_mat_mul_udma_out(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
@@ -290,7 +265,6 @@ TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
 {
     m.impl("_configure_udma", ConfigureUdma);
     m.impl("_finalize_udma", FinalizeUdma);
-    m.impl("_empty_symmetric", EmptySymmetric);
     m.impl("all_to_allv_grouped_mat_mul_udma", AllToAllVGroupedMatMulUdmaNpu);
     m.impl("all_to_allv_grouped_mat_mul_udma_out", AllToAllVGroupedMatMulUdmaOutNpu);
 }

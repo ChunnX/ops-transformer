@@ -77,22 +77,19 @@ udma.destroy_udma_group()
 capacity is `[world_size * m, n]`; valid rows are packed first and their count is
 `global_tokens_per_local_expert.sum()`.
 
-For a performance-critical repeated launch, remove the otherwise necessary
-NPU-to-SHMEM staging copy and output allocation from the timed region:
+`x` is an ordinary contiguous BF16 NPU tensor. The kernel uses it directly as
+the local source of UDMA PUT operations; only the internal remote-receive
+workspace and synchronization state use symmetric SHMEM memory. There is no
+NPU-to-SHMEM input staging copy. For repeated launches, reuse the output to
+avoid output allocation in the timed region:
 
 ```python
-symmetric_x = udma.to_symmetric(x)  # once, or write the producer result here
 out = torch.zeros(world_size * m, n, dtype=torch.bfloat16, device=device)
 output = udma.all_to_allv_grouped_mat_mul(
-    symmetric_x, weight, local_tokens, global_tokens,
+    x, weight, local_tokens, global_tokens,
     ep_size=world_size, expert_num=expert_num, out=out,
 )
-# Synchronize, delete all symmetric tensors, then finalize the group.
 ```
-
-Symmetric allocation is a collective SHMEM operation. Every rank must call
-`empty_symmetric`/`to_symmetric` in the same order with the same allocation
-size. Views with a nonzero storage offset fall back to the safe staging path.
 
 ## Accuracy and performance validation
 
@@ -124,15 +121,14 @@ The validation control plane uses CPU Gloo, keeping HCCL off the device path so
 it cannot contend with ACLSHMEM for UDMA/HDC resources or pollute device-side
 profiling. The independent Golden gathers each source rank's packed input as an
 FP32 CPU tensor, reconstructs destination-expert slices from the route matrix,
-and performs CPU FP32 matmul followed by BF16 conversion. Both the ordinary
-staging path and the symmetric-input/reusable-output path are checked.
+and performs CPU FP32 matmul followed by BF16 conversion. Both automatic-output
+and reusable-output calls use the same ordinary input tensor and are checked.
 
-The validation worker automatically sizes the SHMEM symmetric heap from the
-largest input in each batch. Accuracy reserves room for both the ordinary
-staging buffer and symmetric-input buffer; performance reserves one input
-buffer. The result is rounded up to a power of two with a 1 GiB minimum. Set
-`UDMA_HEAP_SIZE` to an integer byte count only when an explicit larger capacity
-is required; an undersized override is rejected before communication setup.
+The SHMEM heap contains only the fixed remote-receive workspace and
+synchronization state, so its size is independent of `x`. Validation defaults
+to 1 GiB. Set `UDMA_HEAP_SIZE` to an integer byte count only when an explicit
+larger capacity is required; an undersized override is rejected before
+communication setup.
 
 Pass/fail follows the
 [opbase experimental precision standard](https://gitcode.com/cann/opbase/blob/master/docs/zh/ops_precision_standard/experimental_standard.md)
