@@ -10,9 +10,9 @@
 
 include_guard(GLOBAL)
 
-set(CATCCOS_TAG_ID "ee01c5181c50ce2aeb5feb05d603b568eb31a61a" CACHE STRING
+set(CATCCOS_TAG_ID "878c2e0a504be8c49c03b5e1157a7c714a628e29" CACHE STRING
     "Pinned CatCCOS revision used by the Ascend950 UDMA operators")
-set(CATCCOS_GIT_REPOSITORY "https://gitcode.com/zhu-mingzhe71/catccos.git" CACHE STRING
+set(CATCCOS_GIT_REPOSITORY "https://gitcode.com/cann/catccos.git" CACHE STRING
     "CatCCOS git repository")
 
 if(CATCCOS_SOURCE_PATH)

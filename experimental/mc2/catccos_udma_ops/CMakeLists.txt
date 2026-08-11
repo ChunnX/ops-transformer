@@ -65,6 +65,7 @@ if(NOT EXISTS "${SHMEM_HOME_PATH}/shmem/lib/libshmem.so" OR
 endif()
 
 set(INCLUDE_DIRECTORIES
+    ${CMAKE_CURRENT_SOURCE_DIR}/csrc/catccos_overlay/include
     ${Python3_INCLUDE_DIRS}
     ${TORCH_INCLUDE_DIRS}
     ${TORCH_NPU_INCLUDE_PATH}

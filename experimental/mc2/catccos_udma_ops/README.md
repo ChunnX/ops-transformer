@@ -6,9 +6,12 @@ the C++/AscendC extension (`_C.abi3.so`) and the SHMEM shared libraries required
 at runtime. The actual device launch remains a Fast Kernel Launch expression:
 `KernelAdapter<Kernel><<<blockDim, nullptr, stream>>>(...)`.
 
-The CatCCOS dependency is pinned to
-`ee01c5181c50ce2aeb5feb05d603b568eb31a61a`; its own CATLASS and SHMEM gitlinks
+The CatCCOS dependency comes from the official
+`https://gitcode.com/cann/catccos.git` repository and is pinned to
+`878c2e0a504be8c49c03b5e1157a7c714a628e29`; its own CATLASS and SHMEM gitlinks
 are used, so this project does not change the repository-wide CATLASS version.
+The operator-local `csrc/catccos_overlay` directory contains only the
+UDMA all-to-all-v headers that have not yet landed in that official revision.
 
 ## Build and install
 

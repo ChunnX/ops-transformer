@@ -5,7 +5,8 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_DIR=$(cd -- "${SCRIPT_DIR}/.." && pwd)
 REPO_ROOT=$(cd -- "${PROJECT_DIR}/../../.." && pwd)
-CATCCOS_COMMIT=ee01c5181c50ce2aeb5feb05d603b568eb31a61a
+CATCCOS_REPOSITORY=https://gitcode.com/cann/catccos.git
+CATCCOS_COMMIT=878c2e0a504be8c49c03b5e1157a7c714a628e29
 CATCCOS_DIR=${CATCCOS_SOURCE_PATH:-"${REPO_ROOT}/3rdparty/catccos"}
 
 if [[ ! -d "${CATCCOS_DIR}/.git" ]]; then
@@ -13,7 +14,7 @@ if [[ ! -d "${CATCCOS_DIR}/.git" ]]; then
         echo "error: ${CATCCOS_DIR} exists but is not a Git checkout" >&2
         exit 1
     fi
-    git clone https://gitcode.com/zhu-mingzhe71/catccos.git "${CATCCOS_DIR}"
+    git clone "${CATCCOS_REPOSITORY}" "${CATCCOS_DIR}"
     git -C "${CATCCOS_DIR}" checkout --detach "${CATCCOS_COMMIT}"
 else
     ACTUAL_COMMIT=$(git -C "${CATCCOS_DIR}" rev-parse HEAD)
