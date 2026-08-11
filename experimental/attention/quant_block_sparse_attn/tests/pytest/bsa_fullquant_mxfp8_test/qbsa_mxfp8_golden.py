@@ -1528,8 +1528,6 @@ def cpu_mxfp8_golden(
 
     attention_out = torch.zeros((total_q, n1, head_dim), dtype=torch.float32)
     softmax_lse = torch.full((total_q, n1), EMPTY_LSE, dtype=torch.float32)
-    numeric_invalid_row_count = 0
-
     qb_max = math.ceil(max(q_lengths) / SPARSE_BLOCK_SIZE)
     neg_inf = float("-inf")
 
@@ -1574,18 +1572,11 @@ def cpu_mxfp8_golden(
                     head_idx,
                 )
                 q_dequant = q_block * _expand_d_group_scale(q_scale_block, head_dim)
-                q_dequant_wide = None
 
                 m_run = torch.full((nq,), neg_inf, dtype=torch.float32)
                 l_run = torch.zeros((nq,), dtype=torch.float32)
                 acc = torch.zeros((nq, head_dim), dtype=torch.float32)
                 any_valid = torch.zeros((nq,), dtype=torch.bool)
-                # Keep the same invalid-row state as the kernel: the running
-                # softmax max starts at -FLT_MAX and remains there only when
-                # the complete row has no score greater than the sentinel.
-                kernel_row_max = torch.full(
-                    (nq,), EMPTY_LSE, dtype=torch.float32
-                )
 
                 for task_chunks in all_task_chunks:
                     positions = [pos for chunk in task_chunks for pos in chunk]
@@ -1620,42 +1611,6 @@ def cpu_mxfp8_golden(
                     scores = (
                         torch.matmul(q_dequant, k_dequant.transpose(0, 1))
                         * softmax_scale
-                    )
-
-                    # Keep the FP32 score above as the Golden output path: its
-                    # NaN propagation matches the kernel.  Only when FP32 has
-                    # already lost the overflow direction, recompute the same
-                    # dequantize-then-matmul formula in FP64 for row-max
-                    # classification.  Casting C1 back to FP32 recovers +Inf
-                    # versus -Inf without changing attention/LSE computation.
-                    kernel_scores_for_max = scores
-                    problematic_scores = valid_mask & ~torch.isfinite(scores)
-                    if bool(problematic_scores.any().item()):
-                        if q_dequant_wide is None:
-                            q_dequant_wide = q_block.to(torch.float64) * (
-                                _expand_d_group_scale(
-                                    q_scale_block, head_dim
-                                ).to(torch.float64)
-                            )
-                        k_dequant_wide = k_mat.to(torch.float64) * (
-                            _expand_d_group_scale(k_scale_mat, head_dim).to(
-                                torch.float64
-                            )
-                        )
-                        kernel_scores_for_max = torch.matmul(
-                            q_dequant_wide, k_dequant_wide.transpose(0, 1)
-                        ).to(torch.float32)
-                        kernel_scores_for_max = (
-                            kernel_scores_for_max * softmax_scale
-                        )
-                    kernel_scores = torch.where(
-                        valid_mask,
-                        kernel_scores_for_max,
-                        torch.full_like(scores, EMPTY_LSE),
-                    )
-                    kernel_chunk_max = kernel_scores.max(dim=-1).values
-                    kernel_row_max = torch.maximum(
-                        kernel_row_max, kernel_chunk_max
                     )
                     scores = torch.where(
                         valid_mask, scores, torch.full_like(scores, MASK_VALUE)
@@ -1807,15 +1762,15 @@ def cpu_mxfp8_golden(
                 # m_run 已减去 ln_p_scale（对齐 NPU），LSE 需要加回 ln_p_scale 恢复原始语义。
                 lse = torch.log(safe_l) + m_run + ln_p_scale
 
-                # Match the kernel row-invalid rule directly.  The separate
-                # sum==0 guard belongs only to LSE output generation.
-                kernel_invalid = kernel_row_max == EMPTY_LSE
-                lse_invalid = kernel_invalid | (l_run == 0)
-                numeric_invalid = any_valid & kernel_invalid
-                numeric_invalid_row_count += int(numeric_invalid.sum().item())
+                # Only a structurally empty row has the empty-row output.  A
+                # row with valid KV whose direct FP32 dequantize-then-matmul
+                # overflows must retain NaN/Inf propagation from the score
+                # path instead of being reclassified through a shadow matmul.
+                row_invalid = ~any_valid
+                lse_invalid = row_invalid | (l_run == 0)
 
                 for local_idx in range(nq):
-                    if bool(kernel_invalid[local_idx].item()):
+                    if bool(row_invalid[local_idx].item()):
                         continue
                     out_idx = q_base + q_start + local_idx
                     attention_out[out_idx, head_idx] = attn[local_idx].to(
@@ -1829,12 +1784,6 @@ def cpu_mxfp8_golden(
         attention_out.shape,
         softmax_lse.shape,
     )
-    if numeric_invalid_row_count:
-        logger.info(
-            "[CPU Golden] kernel numeric-invalid rows: %d "
-            "(attention=0, lse=EMPTY_LSE)",
-            numeric_invalid_row_count,
-        )
     return attention_out.contiguous(), softmax_lse.contiguous()
 
 
