@@ -402,7 +402,11 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                   ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
 #if IS_BLAZE
         if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
-            AscendC::printf("zzzlog%d path=GmmWeightQuantTensorApiMxKernel is_blaze=1\n", __LINE__);
+            AscendC::printf(
+                "zzzlog%d tensor_api_confirm=1 path=GmmWeightQuantTensorApiMxKernel is_blaze=1 "
+                "scale_storage=uint8 scale_semantic=e8m0 block=%d sub=%d\n",
+                __LINE__, static_cast<int32_t>(AscendC::GetBlockIdx()),
+                static_cast<int32_t>(AscendC::GetSubBlockIdx()));
         }
         INVOKE_GMM_WEIGHT_QUANT_MXA8W4_TENSOR_API_IMPL();
 #else
