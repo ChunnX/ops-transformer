@@ -247,6 +247,7 @@ private:
     void CalcCmpMaskMode();
     ValidSocVersion ProcessSocVersion();
     bool ParamsCheck();
+    int32_t GetSumOfQuerySeq();
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);
     bool GenMetadata(SplitResult &splitRes);
@@ -255,8 +256,10 @@ private:
     uint32_t GetOriS2SeqSize(uint32_t bIdx);
     uint32_t GetCmpS2SeqSize(uint32_t bIdx);
     uint64_t GetRevertS2Size(uint32_t bIdx);
-    uint32_t GetOriTopkLength();
-    uint32_t GetCmpTopkLength();
+    uint32_t GetS1Idx(uint32_t s1Size, uint32_t s1GIdx);
+    uint32_t GetBsStride(uint32_t bIdx, uint32_t s1Idx);
+    uint32_t GetOriTopkLength(uint32_t bsStride);
+    uint32_t GetCmpTopkLength(uint32_t bsStride);
     int64_t CalcOriPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
     int64_t CalcOriNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
     int64_t CalcCmpPreTokenLeftUp(uint32_t s1Size, uint64_t s2Size);
