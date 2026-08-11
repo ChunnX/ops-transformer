@@ -522,7 +522,7 @@ extern "C" aclnnStatus InnerAlltoAllQuantMatmulGetWorkspaceSize(
     char *str_commMode = const_cast<char *>(commMode);
     int64_t worldSize = -1;                 // worldSize的默认值，实际值在建立通信域时获取
     int64_t yDtype = output->GetDataType(); // yDtype根据实际output的类型赋值，图模式需要该参数
-    bool all2AllOutFlag = IsAll2AllOut("allto_all_quant_matmul", alltoAllOutOptional);
+    bool all2AllOutFlag = IsAll2AllOut("allto_all_quant_matmul", all2AllOutOptional);
     // 部分参数根据芯片型号不同，需要设置不同的默认值
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         // ACL和GE的datatype枚举值对undefined定义不同，inner接口进入到算子内部，需要使用GE枚举值
