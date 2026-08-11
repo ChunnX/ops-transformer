@@ -37,9 +37,10 @@ struct BlockCommSchedulerAllToAllVAllGather {
     uint32_t commLoops;
     uint32_t coreLoops;
 
-    uint32_t inputSplitList[MoeConstraints::EP_SIZE_LIMIT]{0};  // 鍙戦€佸埌姣忎釜 EP 鐨?token 鏁伴噺
-    uint64_t inputOffsetList[MoeConstraints::EP_SIZE_LIMIT]{0};  // 鍙戦€佸埌姣忎釜 EP 鐨?token 鏁版嵁璧峰鍦板潃
-    uint32_t outputSplitList[MoeConstraints::RANK_SIZE_LIMIT]{0};  // 姣忎釜 rank 鎺ユ敹鍒扮殑鏁版嵁閲?
+    uint32_t inputSplitList[MoeConstraints::EP_SIZE_LIMIT]{0};  // Tokens sent to each EP
+    uint64_t inputOffsetList[MoeConstraints::EP_SIZE_LIMIT]{0};  // Data offset for each EP
+    uint32_t outputSplitList[MoeConstraints::RANK_SIZE_LIMIT]{0};  // Tokens received from each rank
+
     CATLASS_DEVICE
     BlockCommSchedulerAllToAllVAllGather() = default;
 
@@ -99,7 +100,7 @@ struct BlockCommSchedulerAllToAllVAllGather {
     uint32_t GetCoreLoops(uint32_t commIdx) const
     {
         (void)commIdx;
-        return coreLoops;  // 杩欓噷鍙兘姹備竴涓?coreLoops 鐨勪笂闄愶紝涓斾笌 commIdx 鏃犲叧
+        return coreLoops;  // Upper bound independent of commIdx
     }
 
     CATLASS_DEVICE

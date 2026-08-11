@@ -21,6 +21,7 @@
 #ifdef ENABLE_TIMER
 #include "AscendTimer_device.hpp"
 #endif
+
 namespace Catccos::DGemm::Kernel {
 
 using Catlass::MatrixCoord;
@@ -299,7 +300,8 @@ public:
         auto syncMmadFinish = reinterpret_cast<__gm__ int32_t *>(params.syncMmadFinish);
         auto syncCommFinish = reinterpret_cast<__gm__ int32_t *>(params.syncCommFinish);
 
-        // 閫夋嫨鍞竴鐨?aicore锛屽褰撳墠 rank 鐨勪俊鍙峰湴鍧€杩涜鍒濆鍖?        bool isRootCore = (AscendC::GetBlockIdx() == 0);
+        // Initialize the current rank's signal addresses on one core.
+        bool isRootCore = (AscendC::GetBlockIdx() == 0);
         auto rankIdx = params.problemShape.rankIdx();
         if (isRootCore) {
             aclshmemx_signal_op(syncMmadFinish, 0, ACLSHMEM_SIGNAL_SET, rankIdx);
@@ -314,18 +316,20 @@ public:
             uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
             auto const &gmSymmetric = gmSymmetricList[stageIdx];
 
-            // 棰勮鏈疆杩囧悗锛屽綋鍓?rank 灏嗙疮璁℃敹鍒板灏?token
+            // Accumulate the tokens expected after this communication round.
             receiveAccum += scheduler.GetActualReceiveAccum(commIdx);
             auto remapperSrc = scheduler.GetRemapperSrc(commIdx);
 
-            // 绛夊緟涓婁竴涓绠楄疆娆℃墍鏈?aicore 鐨勮绠楀畬鎴?            if (commIdx >= WORKSPACE_STAGES) {
+            // Wait until all AICs finish the previous compute round.
+            if (commIdx >= WORKSPACE_STAGES) {
                 Catlass::Arch::CrossCoreWaitFlag(flagAicFinishStore[stageIdx]);
                 Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
             }
 #ifdef ENABLE_TIMER
             timer.Tik(AscendTimer::AIV);
 #endif
-            // 閫夋嫨鍞竴鐨?aicore锛屽皢褰撳墠 rank 鐨?syncMmadFinish 璁剧疆涓?commIdx + 1锛岃〃绀轰笂涓€涓€氫俊杞璁＄畻浠诲姟宸插畬鎴?            if (isRootCore) {
+            // Publish completion of the previous compute round.
+            if (isRootCore) {
                 aclshmemx_signal_op(syncMmadFinish, commIdx + 1, ACLSHMEM_SIGNAL_SET, rankIdx);
             }
 
@@ -433,10 +437,11 @@ public:
                 }
             }
 
-            // 绛夊緟褰撳墠 commIdx 涓嬶紝鎵€鏈夊啓鍒板綋鍓?rank symmetric 涓婄殑鏁版嵁閮藉啓瀹?            if (isRootCore) {
+            // Wait until all writes to this rank's symmetric buffer complete.
+            if (isRootCore) {
                 aclshmem_signal_wait_until(syncCommFinish, ACLSHMEM_CMP_EQ, receiveAccum);
             }
-            // 绛夊緟褰撳墠閫氫俊杞涓嬫暟鎹帴鏀跺畬鎴愬悗锛屾墍鏈夌殑 aic 閫氱煡 aiv 寮€濮嬭绠楁湰杞殑
+            // Notify all AICs that this communication round is ready.
             Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
 #ifdef ENABLE_TIMER
             timer.Tok<Overwrite>(AscendTimer::AIV);
