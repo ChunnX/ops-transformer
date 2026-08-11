@@ -130,11 +130,11 @@ def _make_lengths(case):
         cu_seqlens_q_value[index + 1] - cu_seqlens_q_value[index]
         for index in range(batch)
     ]
-    if any(length <= 0 or length > case["S1"] for length in q_lengths):
-        raise ValueError(f"query lengths should be in [1, S1], got {q_lengths}")
+    if any(length < 0 or length > case["S1"] for length in q_lengths):
+        raise ValueError(f"query lengths should be in [0, S1], got {q_lengths}")
     kv_lengths = list(seqused_kv_value)
-    if any(length <= 0 or length > case["S2"] for length in kv_lengths):
-        raise ValueError(f"KV lengths should be in [1, S2], got {kv_lengths}")
+    if any(length < 0 or length > case["S2"] for length in kv_lengths):
+        raise ValueError(f"KV lengths should be in [0, S2], got {kv_lengths}")
     return q_lengths, max(q_lengths), kv_lengths, max(kv_lengths)
 
 
