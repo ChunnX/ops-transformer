@@ -19,12 +19,6 @@ namespace fa_tiling_util {
 
 constexpr int64_t MAX_SEQ_LEN_DEFAULT = 2147483647;
 
-// layout 枚举值，与 FiaLayout 一致，供外部算子使用
-constexpr uint32_t LAYOUT_BSH = 0;
-constexpr uint32_t LAYOUT_BSND = 1;
-constexpr uint32_t LAYOUT_BNSD = 2;
-constexpr uint32_t LAYOUT_TND = 4;
-
 // tiling 切块常量
 constexpr uint32_t SOUTER_32 = 32;
 constexpr uint32_t SOUTER_64 = 64;
@@ -42,7 +36,7 @@ constexpr uint32_t DSIZE_256 = 256;
  * @param maskMode   mask 模式（0/2/4 等）
  * @param winLeft    左侧窗口
  * @param winRight   右侧窗口
- * @param qLayout    Q 的 layout（使用 LAYOUT_BSH / LAYOUT_BSND / LAYOUT_TND 等）
+ * @param qLayout    Q 的 layout
  * @param sOuterFactor [out] sOuter 切块大小
  * @param sInnerFactor [out] sInner 切块大小
  */
