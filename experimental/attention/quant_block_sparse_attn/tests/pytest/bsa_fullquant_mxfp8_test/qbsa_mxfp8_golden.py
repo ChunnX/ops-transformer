@@ -1175,8 +1175,8 @@ def _align_up_to_ln2(value):
     return torch.ceil(value / LN2) * LN2
 
 
-def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale):
-    """Run QK with NPU MXFP8 grouped accumulation and rounding semantics."""
+def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale, score_scale):
+    """Run C1 with the same K x Q^T orientation used by the QBSA cube."""
     if q_fp8.ndim != 2 or k_fp8.ndim != 2:
         raise ValueError(
             f"Q/K must be rank-2, got q={tuple(q_fp8.shape)}, k={tuple(k_fp8.shape)}"
@@ -1278,16 +1278,24 @@ def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale):
 
     e8m0_dtype = torch_npu.float8_e8m0fnu
     try:
+        # QBSA C1 is K[S2,D] x Q^T[D,M], not Q[M,D] x K^T[D,S2].
+        # The two expressions are mathematical transposes, but MXFP8 cube
+        # tiling and accumulation rounding are orientation-dependent.  The
+        # difference becomes visible for the large-range M-tail case 00005.
         scores_npu = torch_npu.npu_quant_matmul(
-            q_npu,
-            k_npu.transpose(0, 1),
-            k_scale_npu.transpose(0, 1),
-            pertoken_scale=q_scale_npu,
+            k_npu,
+            q_npu.transpose(0, 1),
+            q_scale_npu.transpose(0, 1),
+            pertoken_scale=k_scale_npu,
             output_dtype=torch.float32,
             pertoken_scale_dtype=e8m0_dtype,
             scale_dtype=e8m0_dtype,
             group_sizes=[1, 1, QUANT_GROUP_SIZE],
-        )
+        ).transpose(0, 1)
+        # VF applies softmaxScale with an AIV FP32 Muls after C1.  Keep this
+        # multiply on NPU as well so large scores do not take a CPU rounding
+        # path before max/subtract.
+        scores_npu = scores_npu * float(score_scale)
     except TypeError as error:
         if "pertoken_scale_dtype" in str(error):
             raise RuntimeError(
@@ -1296,6 +1304,13 @@ def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale):
             ) from error
         raise
     return scores_npu.cpu()
+
+
+def _npu_exp_sub(lhs, rhs):
+    """Evaluate exp(lhs - rhs) with NPU FP32 subtraction/exp semantics."""
+    lhs_npu = lhs.to(torch.float32).contiguous().npu()
+    rhs_npu = rhs.to(torch.float32).contiguous().npu()
+    return torch.exp(lhs_npu - rhs_npu).cpu()
 
 
 def _npu_mxfp8_pv_matmul(p_fp8, v_fp8, p_scale, v_scale):
@@ -1637,11 +1652,12 @@ def cpu_mxfp8_golden(
                         q_indices, positions, q_len, kv_len
                     )
                     any_valid |= valid_mask.any(dim=-1)
-                    scores = (
-                        _npu_mxfp8_qk_matmul(
-                            q_block, k_mat, q_scale_block, k_scale_mat
-                        )
-                        * softmax_scale
+                    scores = _npu_mxfp8_qk_matmul(
+                        q_block,
+                        k_mat,
+                        q_scale_block,
+                        k_scale_mat,
+                        softmax_scale,
                     )
                     scores = torch.where(
                         valid_mask, scores, torch.full_like(scores, MASK_VALUE)
@@ -1691,15 +1707,8 @@ def cpu_mxfp8_golden(
                             # immediately before FusedExpSub. Therefore the
                             # generated probability is
                             # exp(score - aligned_max + ln(pScale)).
-                            safe_m_subloop = torch.where(
-                                torch.isfinite(m_subloop),
-                                m_subloop,
-                                torch.zeros_like(m_subloop),
-                            )
-                            p_subloop = torch.exp(
-                                s_subloop
-                                - safe_m_subloop.view(nq, 1)
-                                + ln_p_scale
+                            p_subloop = _npu_exp_sub(
+                                s_subloop, m_subloop.view(nq, 1) - ln_p_scale
                             )
                             p_subloop = torch.where(
                                 vm_subloop & subloop_has.view(nq, 1),
@@ -1719,9 +1728,10 @@ def cpu_mxfp8_golden(
 
                         m_new = m_subloop
                         run_started = m_before_round != neg_inf
+                        history_rescale = _npu_exp_sub(m_before_round, m_new)
                         history_rescale = torch.where(
                             run_started & torch.isfinite(m_new),
-                            torch.exp(m_before_round - m_new),
+                            history_rescale,
                             torch.zeros_like(m_new),
                         )
                         history_rescale = torch.where(
@@ -1742,9 +1752,10 @@ def cpu_mxfp8_golden(
                             p_subloop,
                             p_quant_subloop,
                         ) in subloop_results:
+                            subloop_rescale = _npu_exp_sub(subloop_max, m_new)
                             subloop_rescale = torch.where(
                                 torch.isfinite(subloop_max) & torch.isfinite(m_new),
-                                torch.exp(subloop_max - m_new),
+                                subloop_rescale,
                                 torch.zeros_like(m_new),
                             )
                             subloop_rescale = torch.where(
@@ -1830,7 +1841,11 @@ def cpu_mxfp8_golden(
                         l_run = l_run * history_rescale + round_sum
                         m_run = torch.where(round_has, m_new, m_run)
 
-                safe_l = torch.where(l_run > 0, l_run, torch.ones_like(l_run))
+                # Only empty rows use the neutral denominator.  A valid row
+                # with NaN must remain NaN: VF propagates it into LSE, while
+                # the old ``l_run > 0`` guard replaced it by 1 and turned the
+                # 00011 golden LSE into +inf instead of NaN.
+                safe_l = torch.where(any_valid, l_run, torch.ones_like(l_run))
                 attn = acc / safe_l.view(nq, 1)
                 lse = torch.log(safe_l) + m_run
 
