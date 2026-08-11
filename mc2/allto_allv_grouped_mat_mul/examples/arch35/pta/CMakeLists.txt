@@ -49,7 +49,11 @@ if(NOT SHMEM_UTILS_LIBRARY)
 endif()
 
 get_filename_component(CUST_OPAPI_LIBRARY_DIR "${CUST_OPAPI_LIBRARY}" DIRECTORY)
-if(DEFINED CUST_OPAPI_INCLUDE_DIR AND NOT "${CUST_OPAPI_INCLUDE_DIR}" STREQUAL "")
+set(CUST_OPAPI_INCLUDE_DIR_HINT "${CUST_OPAPI_INCLUDE_DIR}")
+unset(CUST_OPAPI_INCLUDE_DIR CACHE)
+unset(CUST_OPAPI_INCLUDE_DIR)
+if(NOT "${CUST_OPAPI_INCLUDE_DIR_HINT}" STREQUAL "")
+    set(CUST_OPAPI_INCLUDE_DIR "${CUST_OPAPI_INCLUDE_DIR_HINT}")
     if(NOT EXISTS "${CUST_OPAPI_INCLUDE_DIR}/aclnnop/aclnn_allto_allv_grouped_mat_mul_v2.h")
         message(FATAL_ERROR
             "V2 aclnn header not found under CUST_OPAPI_INCLUDE_DIR: ${CUST_OPAPI_INCLUDE_DIR}")
@@ -58,7 +62,6 @@ else()
     find_path(CUST_OPAPI_INCLUDE_DIR
         NAMES aclnnop/aclnn_allto_allv_grouped_mat_mul_v2.h
         HINTS
-            "${ASCEND_HOME_PATH}/include"
             "${CUST_OPAPI_LIBRARY_DIR}/../include"
             "${CUST_OPAPI_LIBRARY_DIR}/../../include"
         NO_DEFAULT_PATH)
@@ -66,6 +69,17 @@ else()
         message(FATAL_ERROR
             "aclnnop/aclnn_allto_allv_grouped_mat_mul_v2.h was not found; set CUST_OPAPI_INCLUDE_DIR")
     endif()
+endif()
+set(CUST_OPAPI_V2_HEADER
+    "${CUST_OPAPI_INCLUDE_DIR}/aclnnop/aclnn_allto_allv_grouped_mat_mul_v2.h")
+file(READ "${CUST_OPAPI_V2_HEADER}" CUST_OPAPI_V2_HEADER_CONTENT)
+string(FIND "${CUST_OPAPI_V2_HEADER_CONTENT}" "shmemContext" SHMEM_CONTEXT_INDEX)
+string(FIND "${CUST_OPAPI_V2_HEADER_CONTENT}" "commMode" LEGACY_COMM_MODE_INDEX)
+if(SHMEM_CONTEXT_INDEX EQUAL -1 OR NOT LEGACY_COMM_MODE_INDEX EQUAL -1)
+    message(FATAL_ERROR
+        "PTA bridge requires the SHMEM V2 ABI (shmemContext and no commMode), but selected header is: "
+        "${CUST_OPAPI_V2_HEADER}. Set CUST_OPAPI_INCLUDE_DIR to the include directory installed with "
+        "CUST_OPAPI_LIBRARY.")
 endif()
 
 find_library(TORCH_NPU_LIBRARY NAMES torch_npu HINTS "${TORCH_NPU_ROOT}/lib" NO_DEFAULT_PATH)
@@ -85,10 +99,10 @@ set_target_properties(allto_allv_grouped_mat_mul_shmem_pta PROPERTIES
     BUILD_RPATH "${TORCH_NPU_ROOT}/lib;${ASCEND_HOME_PATH}/lib64;${CUST_OPAPI_LIBRARY_DIR};${SHMEM_LIBRARY_HINTS}")
 
 target_include_directories(allto_allv_grouped_mat_mul_shmem_pta PRIVATE
+    "${CUST_OPAPI_INCLUDE_DIR}"
     ${TORCH_INCLUDE_DIRS}
     "${TORCH_NPU_ROOT}/include"
     "${ASCEND_HOME_PATH}/include"
-    "${CUST_OPAPI_INCLUDE_DIR}"
     ${SHMEM_INCLUDE_DIRS})
 
 separate_arguments(TORCH_CXX_FLAGS_LIST NATIVE_COMMAND "${TORCH_CXX_FLAGS}")

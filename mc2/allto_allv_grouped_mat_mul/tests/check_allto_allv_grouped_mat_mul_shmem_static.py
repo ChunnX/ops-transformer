@@ -177,6 +177,8 @@ def check_pta_bridge() -> None:
         require(token in bridge, f"PTA bridge missing contract token: {token}")
     require("init_process_group" not in bridge and "Hccl" not in bridge and "HCCL" not in bridge,
             "PTA bridge must not initialize or call HCCL")
+    require("c10::DispatchKey::PrivateUse1" in bridge and "torch::kPrivateUse1" not in bridge,
+            "PTA bridge must use the current PyTorch PrivateUse1 dispatch key")
     init_begin = bridge.index("int64_t Init(")
     init_end = bridge.index("int64_t Barrier()", init_begin)
     init_code = bridge[init_begin:init_end]
@@ -200,6 +202,19 @@ def check_pta_build() -> None:
         "LIBRARY_OUTPUT_DIRECTORY",
     ):
         require(token in cmake, f"PTA CMake missing contract token: {token}")
+    require("unset(CUST_OPAPI_INCLUDE_DIR CACHE)" in cmake,
+            "PTA CMake must not reuse a stale cached custom op-api include path")
+    require("file(READ" in cmake and "shmemContext" in cmake and "commMode" in cmake,
+            "PTA CMake must reject a legacy HCCL V2 header before compilation")
+    find_begin = cmake.index("find_path(CUST_OPAPI_INCLUDE_DIR")
+    find_end = cmake.index("endif()", find_begin)
+    require("${ASCEND_HOME_PATH}/include" not in cmake[find_begin:find_end],
+            "PTA CMake must not select CANN's legacy built-in V2 header as the custom ABI")
+    includes_begin = cmake.index("target_include_directories(allto_allv_grouped_mat_mul_shmem_pta")
+    includes_end = cmake.index(")", includes_begin)
+    includes = cmake[includes_begin:includes_end]
+    require(includes.index("${CUST_OPAPI_INCLUDE_DIR}") < includes.index("${ASCEND_HOME_PATH}/include"),
+            "custom SHMEM V2 headers must precede built-in CANN headers")
 
     build = read("examples/arch35/pta/build_pta.sh")
     for token in (

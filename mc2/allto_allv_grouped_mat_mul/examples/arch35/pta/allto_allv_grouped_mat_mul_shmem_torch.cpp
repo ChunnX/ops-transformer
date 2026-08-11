@@ -17,6 +17,7 @@
 
 #include <ATen/ATen.h>
 #include <c10/core/DeviceType.h>
+#include <c10/core/DispatchKey.h>
 #include <torch/library.h>
 #include <torch_npu/csrc/core/npu/NPUFormat.h>
 #include <torch_npu/csrc/core/npu/NPUGuard.h>
@@ -315,7 +316,7 @@ TORCH_LIBRARY(allto_allv_grouped_mat_mul_shmem_pta, m)
     m.def("barrier() -> int");
     m.def("finalize() -> int");
     m.impl("init", &allto_allv_grouped_mat_mul_shmem_pta::Init);
-    m.impl("run", torch::kPrivateUse1, &allto_allv_grouped_mat_mul_shmem_pta::Run);
+    m.impl("run", c10::DispatchKey::PrivateUse1, &allto_allv_grouped_mat_mul_shmem_pta::Run);
     m.impl("barrier", &allto_allv_grouped_mat_mul_shmem_pta::Barrier);
     m.impl("finalize", &allto_allv_grouped_mat_mul_shmem_pta::Finalize);
 }
