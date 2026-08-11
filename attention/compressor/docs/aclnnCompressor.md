@@ -232,7 +232,7 @@ aclnnStatus aclnnCompressor(
   - aclnnCompressor默认确定性实现。
 - x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
 - 输入shape限制：
-    - stateCache输入shape[block_num,block_size,2*coff* D]，要求blockNum>0，cacheMode=2时，需要满足blockSize >= coff * cmp_ratio + S - 1。
+    - stateCache输入shape为[block_num,block_size,2*coff* D]，要求blockNum>0，cacheMode=2时，需要满足blockSize >= coff * cmp_ratio + S - 1。
     - 若x的维度采用BS合轴，即x的输入shape为[T,H]
         - cuSeqlens输入shape必须为[B+1,],该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须位0。
         - cacheMode=1时，state\_block\_table输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+max(cu\_seqlens[n+1] - cu\_seqlens[n])。cacheMode=2时，state\_block\_table支持输入shape[B]。
@@ -291,4 +291,168 @@ aclnnStatus aclnnCompressor(
 
 ## 调用示例
 
-  无
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+
+```c++
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <iostream>
+#include <numeric>
+#include <vector>
+#include "acl/acl.h"
+#include "aclnnop/aclnn_compressor.h"
+#include "opdev/bfloat16.h"
+
+int main()
+{
+    // 1. device/stream 初始化
+    int32_t deviceId = 0;
+    aclrtContext context = nullptr;
+    aclrtStream stream = nullptr;
+    auto ret = Init(deviceId, &context, &stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
+
+    // 场景参数: C4A (D=512, coff=2, cmp_ratio=4, cache_mode=1, BSH layout, BF16)
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t hiddenSize = 4096;
+    int64_t headDim = 512;
+    int64_t coff = 2;
+    int64_t cmpRatio = 4;
+    int64_t cacheMode = 1; // 1: 连续buffer (LINEAR_BUFFER)
+    int64_t blockSize = 128;
+
+    int64_t Smax = S;
+    int64_t maxBlockNumPerBatch = (Smax + blockSize - 1) / blockSize;
+    int64_t blockNum = B * maxBlockNumPerBatch;
+    int64_t coffD = coff * headDim;
+    int64_t stateCacheStrideDim0 = blockSize * 2 * coffD; // state_cache 0轴 stride = dim1 * dim2
+
+    // 2. 构造输入与输出 shape
+    std::vector<int64_t> xShape = {B, S, hiddenSize};
+    std::vector<int64_t> wkvShape = {coffD, hiddenSize};
+    std::vector<int64_t> wgateShape = {coffD, hiddenSize};
+    std::vector<int64_t> stateCacheShape = {blockNum, blockSize, 2 * coffD};
+    std::vector<int64_t> apeShape = {cmpRatio, coffD};
+    std::vector<int64_t> stateBlockTableShape = {B, maxBlockNumPerBatch};
+    std::vector<int64_t> startPosShape = {B};
+    int64_t Sr = (S + cmpRatio - 1) / cmpRatio;
+    std::vector<int64_t> cmpKvShape = {B, Sr, headDim};
+
+    // 3. 构造 host 数据
+    int64_t xSize = GetShapeSize(xShape);
+    int64_t wkvSize = GetShapeSize(wkvShape);
+    int64_t wgateSize = GetShapeSize(wgateShape);
+    int64_t stateCacheSize = GetShapeSize(stateCacheShape);
+    int64_t apeSize = GetShapeSize(apeShape);
+    int64_t cmpKvSize = GetShapeSize(cmpKvShape);
+
+    std::vector<bfloat16> xHostData(xSize, bfloat16(0.1f));
+    std::vector<bfloat16> wkvHostData(wkvSize, bfloat16(0.1f));
+    std::vector<bfloat16> wgateHostData(wgateSize, bfloat16(0.1f));
+    std::vector<float_t> stateCacheHostData(stateCacheSize, 0.1f);
+    std::vector<float_t> apeHostData(apeSize, 0.1f);
+    std::vector<int32_t> stateBlockTableHostData;
+    for (int64_t i = 0; i < B * maxBlockNumPerBatch; i++) {
+        stateBlockTableHostData.push_back(static_cast<int32_t>(i + 1));
+    }
+    std::vector<int32_t> startPosHostData(B, 0);
+    std::vector<bfloat16> cmpKvHostData(cmpKvSize, bfloat16(0.0f));
+
+    // 4. 创建 aclTensor
+    void *xDeviceAddr = nullptr;
+    void *wkvDeviceAddr = nullptr;
+    void *wgateDeviceAddr = nullptr;
+    void *stateCacheDeviceAddr = nullptr;
+    void *apeDeviceAddr = nullptr;
+    void *stateBlockTableDeviceAddr = nullptr;
+    void *startPosDeviceAddr = nullptr;
+    void *cmpKvDeviceAddr = nullptr;
+
+    aclTensor *x = nullptr;
+    aclTensor *wkv = nullptr;
+    aclTensor *wgate = nullptr;
+    aclTensor *stateCacheRef = nullptr;
+    aclTensor *ape = nullptr;
+    aclTensor *stateBlockTable = nullptr;
+    aclTensor *startPos = nullptr;
+    aclTensor *cmpKvOut = nullptr;
+
+    ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(wkvHostData, wkvShape, &wkvDeviceAddr, aclDataType::ACL_BF16, &wkv);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(wgateHostData, wgateShape, &wgateDeviceAddr, aclDataType::ACL_BF16, &wgate);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(stateCacheHostData, stateCacheShape, &stateCacheDeviceAddr, aclDataType::ACL_FLOAT,
+                          &stateCacheRef);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(apeHostData, apeShape, &apeDeviceAddr, aclDataType::ACL_FLOAT, &ape);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(stateBlockTableHostData, stateBlockTableShape, &stateBlockTableDeviceAddr,
+                          aclDataType::ACL_INT32, &stateBlockTable);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(startPosHostData, startPosShape, &startPosDeviceAddr, aclDataType::ACL_INT32, &startPos);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(cmpKvHostData, cmpKvShape, &cmpKvDeviceAddr, aclDataType::ACL_BF16, &cmpKvOut);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+
+    // 5. 调用 aclnnCompressorGetWorkspaceSize
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+
+    ret = aclnnCompressorGetWorkspaceSize(x, wkv, wgate, stateCacheRef, ape, stateBlockTable, nullptr, nullptr,
+                                          startPos, cmpRatio, coff, cacheMode, stateCacheStrideDim0, cmpKvOut,
+                                          &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnCompressorGetWorkspaceSize failed. ERROR: %d\n", ret);
+              return ret);
+
+    // 6. 申请 workspace
+    void *workspaceAddr = nullptr;
+    if (workspaceSize > 0) {
+        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+    }
+
+    // 7. 调用 aclnnCompressor
+    ret = aclnnCompressor(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnCompressor failed. ERROR: %d\n", ret); return ret);
+
+    // 8. 同步等待
+    ret = aclrtSynchronizeStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+
+    // 9. 获取输出
+    LOG_PRINT("Compressor execution succeeded.\n");
+    PrintBf16Result(cmpKvShape, &cmpKvDeviceAddr);
+
+    // 10. 释放资源
+    aclDestroyTensor(x);
+    aclDestroyTensor(wkv);
+    aclDestroyTensor(wgate);
+    aclDestroyTensor(stateCacheRef);
+    aclDestroyTensor(ape);
+    aclDestroyTensor(stateBlockTable);
+    aclDestroyTensor(startPos);
+    aclDestroyTensor(cmpKvOut);
+
+    aclrtFree(xDeviceAddr);
+    aclrtFree(wkvDeviceAddr);
+    aclrtFree(wgateDeviceAddr);
+    aclrtFree(stateCacheDeviceAddr);
+    aclrtFree(apeDeviceAddr);
+    aclrtFree(stateBlockTableDeviceAddr);
+    aclrtFree(startPosDeviceAddr);
+    aclrtFree(cmpKvDeviceAddr);
+    if (workspaceSize > 0) {
+        aclrtFree(workspaceAddr);
+    }
+    aclrtDestroyStream(stream);
+    aclrtDestroyContext(context);
+    aclrtResetDevice(deviceId);
+    aclFinalize();
+
+    return 0;
+}
+```
