@@ -92,6 +92,8 @@ private:
     __aicore__ inline void InitGmm2CombineConfigs(const MoeStageCommonConfig &commonConfig,
                                                   int32_t dispatchFlagSlotsPerExpert);
     __aicore__ inline void InitTokenUnpermuteConfig(const MoeStageCommonConfig &commonConfig);
+
+protected:
     __aicore__ inline SendMaskBufferConfig SendAndQuantBuffInit();
     __aicore__ inline void DispatchBuffInit();
     __aicore__ inline void InitCombineBuffers();
