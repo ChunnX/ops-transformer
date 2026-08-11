@@ -30,7 +30,8 @@ __aicore__ inline void GetSingleCoreParam(
     RunParamStr &runParam, const ConstInfo &constInfo, GlobalTensor<int32_t> &cuSeqlensQGm,
     GlobalTensor<int32_t> &cuSeqlensOriKvGm, GlobalTensor<int32_t> &cuSeqlensCmpKvGm,
     GlobalTensor<int32_t> &actualSeqQlenGm, GlobalTensor<int32_t> &actualSeqOriKvlenGm,
-    GlobalTensor<int32_t> &actualSeqCmpKvlenGm, GlobalTensor<int32_t> &cmpResidualKvGm, bool hasCuSeqlensOriKv,
+    GlobalTensor<int32_t> &actualSeqCmpKvlenGm, GlobalTensor<int32_t> &cmpResidualKvGm,
+    GlobalTensor<int32_t> &oriTopkLengthGm, GlobalTensor<int32_t> &cmpTopkLengthGm, bool hasCuSeqlensOriKv,
     bool hasCuSeqlensCmpKv, bool hasActualSeqQlen, bool hasActualSeqOriKvlen, bool hasActualSeqCmpKvlen)
 {
     int32_t actualS1Size = 0;
@@ -44,29 +45,35 @@ __aicore__ inline void GetSingleCoreParam(
         actualS1Size = (!hasActualSeqQlen) ? constInfo.s1Size : actualSeqQlenGm.GetValue(bIdx);
     }
 
-    if constexpr (KV_LAYOUT_T == QSMLA_LAYOUT::TND) {
-        if (hasActualSeqOriKvlen) {
-            actualS2OriSize = actualSeqOriKvlenGm.GetValue(bIdx);
-        } else {
-            actualS2OriSize = cuSeqlensOriKvGm.GetValue(bIdx + 1) - cuSeqlensOriKvGm.GetValue(bIdx);
-        }
+    if (constInfo.oriMaskMode == 0 && constInfo.hasOriTopkLength) {
+        actualS2OriSize = oriTopkLengthGm.GetValue(bIdx);
     } else {
-        actualS2OriSize = (!hasActualSeqOriKvlen) ? constInfo.s2Size : actualSeqOriKvlenGm.GetValue(bIdx);
+        if constexpr (KV_LAYOUT_T == QSMLA_LAYOUT::TND) {
+            if (hasActualSeqOriKvlen) {
+                actualS2OriSize = actualSeqOriKvlenGm.GetValue(bIdx);
+            } else {
+                actualS2OriSize = cuSeqlensOriKvGm.GetValue(bIdx + 1) - cuSeqlensOriKvGm.GetValue(bIdx);
+            }
+        } else {
+            actualS2OriSize = (!hasActualSeqOriKvlen) ? constInfo.s2Size : actualSeqOriKvlenGm.GetValue(bIdx);
+        }
     }
 
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
-        if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
-            if (hasActualSeqCmpKvlen) {
-                actualS2CmpSize = actualSeqCmpKvlenGm.GetValue(bIdx);
-            } else if (hasCuSeqlensCmpKv) {
-                actualS2CmpSize = cuSeqlensCmpKvGm.GetValue(bIdx + 1) - cuSeqlensCmpKvGm.GetValue(bIdx);
-            } else {
-                actualS2CmpSize = actualS2OriSize / constInfo.cmpRatio;
-            }
+        if (constInfo.cmpMaskMode == 0 && constInfo.hasCmpTopkLength) {
+            actualS2CmpSize = cmpTopkLengthGm.GetValue(bIdx);
         } else {
-            actualS2CmpSize =
-                (!hasActualSeqCmpKvlen) ? (actualS2OriSize / constInfo.cmpRatio) : actualSeqCmpKvlenGm.GetValue(bIdx);
+            if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
+                if (hasActualSeqCmpKvlen) {
+                    actualS2CmpSize = actualSeqCmpKvlenGm.GetValue(bIdx);
+                } else if (hasCuSeqlensCmpKv) {
+                    actualS2CmpSize = cuSeqlensCmpKvGm.GetValue(bIdx + 1) - cuSeqlensCmpKvGm.GetValue(bIdx);
+                }
+            } else {
+                actualS2CmpSize =
+                    (!hasActualSeqCmpKvlen) ? constInfo.cmpS2Size : actualSeqCmpKvlenGm.GetValue(bIdx);
+            }
         }
     }
 
@@ -104,13 +111,14 @@ __aicore__ inline void ComputeParamBatch(
     RunParamStr &runParam, const ConstInfo &constInfo, GlobalTensor<int32_t> &cuSeqlensQGm,
     GlobalTensor<int32_t> &cuSeqlensOriKvGm, GlobalTensor<int32_t> &cuSeqlensCmpKvGm,
     GlobalTensor<int32_t> &actualSeqQlenGm, GlobalTensor<int32_t> &actualSeqOriKvlenGm,
-    GlobalTensor<int32_t> &actualSeqCmpKvlenGm, GlobalTensor<int32_t> &cmpResidualKvGm, bool hasCuSeqlensOriKv,
+    GlobalTensor<int32_t> &actualSeqCmpKvlenGm, GlobalTensor<int32_t> &cmpResidualKvGm,
+    GlobalTensor<int32_t> &oriTopkLengthGm, GlobalTensor<int32_t> &cmpTopkLengthGm, bool hasCuSeqlensOriKv,
     bool hasCuSeqlensCmpKv, bool hasActualSeqQlen, bool hasActualSeqOriKvlen, bool hasActualSeqCmpKvlen)
 {
     GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQGm, cuSeqlensOriKvGm, cuSeqlensCmpKvGm,
                                            actualSeqQlenGm, actualSeqOriKvlenGm, actualSeqCmpKvlenGm, cmpResidualKvGm,
-                                           hasCuSeqlensOriKv, hasCuSeqlensCmpKv, hasActualSeqQlen, hasActualSeqOriKvlen,
-                                           hasActualSeqCmpKvlen);
+                                           oriTopkLengthGm, cmpTopkLengthGm, hasCuSeqlensOriKv, hasCuSeqlensCmpKv,
+                                           hasActualSeqQlen, hasActualSeqOriKvlen, hasActualSeqCmpKvlen);
 }
 
 TEMPLATE_INTF
