@@ -38,10 +38,9 @@ constexpr uint32_t ATTR_FFN_TOKEN_DATA_SHAPE_INDEX = 3U;
 constexpr uint32_t ATTR_ATTN_TOKEN_INFO_SHAPE_INDEX = 4U;
 constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 5U;
 constexpr uint32_t ATTR_QUANT_MODE_INDEX = 6U;
-constexpr uint32_t ATTR_QUANT_DTYPE_INDEX = 7U;
-constexpr uint32_t ATTR_SYNC_FLAG_INDEX = 8U;
-constexpr uint32_t ATTR_FFN_START_RANK_ID_INDEX = 9U;
-constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 10U;
+constexpr uint32_t ATTR_SYNC_FLAG_INDEX = 7U;
+constexpr uint32_t ATTR_FFN_START_RANK_ID_INDEX = 8U;
+constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 9U;
 
 constexpr uint32_t DIM_ONE = 1U;
 constexpr uint32_t DIM_TWO = 2U;
@@ -63,28 +62,8 @@ constexpr uint32_t AlignUp(uint32_t value, uint32_t align)
     return (value + align - 1U) / align * align;
 }
 
-constexpr uint32_t CeilDiv(uint32_t value, uint32_t divisor)
+ge::graphStatus CheckQuantMode(const char *nodeName, uint32_t quantMode, bool isScales)
 {
-    return (value + divisor - 1U) / divisor;
-}
-
-bool IsFp8(uint32_t quantDtype)
-{
-    return quantDtype == static_cast<uint32_t>(AttentionToFfnV2QuantDtype::FP8_E4M3FN) ||
-           quantDtype == static_cast<uint32_t>(AttentionToFfnV2QuantDtype::FP8_E5M2);
-}
-
-bool IsFp4(uint32_t quantDtype)
-{
-    return quantDtype == static_cast<uint32_t>(AttentionToFfnV2QuantDtype::FP4_E2M1) ||
-           quantDtype == static_cast<uint32_t>(AttentionToFfnV2QuantDtype::FP4_E1M2);
-}
-
-ge::graphStatus CheckQuantModeAndDtype(const char *nodeName, uint32_t quantMode, uint32_t quantDtype, bool isScales)
-{
-    OP_TILING_CHECK(quantDtype >= static_cast<uint32_t>(AttentionToFfnV2QuantDtype::BUTT),
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "quant_dtype", std::to_string(quantDtype).c_str(), "[0, 4]"),
-                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(quantMode != ATTN_FFN_TILINGKEY_NO_QUANT &&
                         quantMode != ATTN_FFN_TILINGKEY_PERTOKEN_QUANT &&
                         quantMode != ATTN_FFN_TILINGKEY_PERGROUP_QUANT &&
@@ -93,17 +72,6 @@ ge::graphStatus CheckQuantModeAndDtype(const char *nodeName, uint32_t quantMode,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "quant_mode", std::to_string(quantMode).c_str(),
                                               "0, 2, 3, 4 or 5"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(quantMode == ATTN_FFN_TILINGKEY_NO_QUANT &&
-                        quantDtype != static_cast<uint32_t>(AttentionToFfnV2QuantDtype::INT8),
-                    OP_LOGE(nodeName, "quant_dtype must be 0 when quant_mode is 0"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(quantMode == ATTN_FFN_TILINGKEY_PERTOKEN_QUANT && IsFp4(quantDtype),
-                    OP_LOGE(nodeName, "FP4 only supports MX quant mode"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(quantMode == ATTN_FFN_TILINGKEY_PERGROUP_QUANT && !IsFp8(quantDtype),
-                    OP_LOGE(nodeName, "per-group quant only supports FP8"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(quantMode == ATTN_FFN_TILINGKEY_MX_QUANT && !IsFp8(quantDtype) && !IsFp4(quantDtype),
-                    OP_LOGE(nodeName, "MX quant only supports FP8 or FP4"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(quantMode == ATTN_FFN_TILINGKEY_MX_QUANT_CLIP && !IsFp8(quantDtype),
-                    OP_LOGE(nodeName, "MX-clip quant only supports FP8"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK((quantMode == ATTN_FFN_TILINGKEY_MX_QUANT ||
                      quantMode == ATTN_FFN_TILINGKEY_MX_QUANT_CLIP) &&
                         isScales,
@@ -111,43 +79,10 @@ ge::graphStatus CheckQuantModeAndDtype(const char *nodeName, uint32_t quantMode,
     return ge::GRAPH_SUCCESS;
 }
 
-void SetQuantLayout(AttentionToFfnV2Info &info, uint32_t quantMode, uint32_t quantDtype)
-{
-    info.quantDtype = quantDtype;
-    if (quantMode == ATTN_FFN_TILINGKEY_NO_QUANT) {
-        info.tokenDataBytes = info.H * sizeof(uint16_t);
-        info.scaleOffset = info.tokenDataBytes;
-        info.scaleBytes = 0U;
-        info.tokenStrideBytes = info.HS * sizeof(uint16_t);
-        return;
-    }
-
-    if (quantMode == ATTN_FFN_TILINGKEY_PERTOKEN_QUANT) {
-        info.tokenDataBytes = info.H;
-        info.scaleOffset = AlignUp(info.tokenDataBytes, 32U);
-        info.scaleBytes = sizeof(float);
-        info.tokenStrideBytes = AlignUp(info.scaleOffset + info.scaleBytes, 32U);
-        return;
-    }
-
-    if (quantMode == ATTN_FFN_TILINGKEY_PERGROUP_QUANT) {
-        info.tokenDataBytes = info.H;
-        info.scaleOffset = AlignUp(info.tokenDataBytes, 128U);
-        info.scaleBytes = CeilDiv(info.H, 128U) * sizeof(float);
-        info.tokenStrideBytes = AlignUp(info.scaleOffset + info.scaleBytes, 32U);
-        return;
-    }
-
-    info.tokenDataBytes = IsFp4(quantDtype) ? CeilDiv(info.H, 2U) : info.H;
-    info.scaleOffset = AlignUp(info.tokenDataBytes, 256U);
-    info.scaleBytes = AlignUp(CeilDiv(info.H, 32U), 2U);
-    info.tokenStrideBytes = AlignUp(info.scaleOffset + info.scaleBytes, 32U);
-}
-
 ge::graphStatus SetV2TilingKey(gert::TilingContext *context, const AttentionToFfnV2Info &info)
 {
     const uint64_t tilingKey = GET_TPL_TILING_KEY(
-        info.quantMode, info.quantDtype, info.isScales, info.syncFlag == 1U, info.isActiveMask, TILINGKEY_TPL_A5);
+        info.quantMode, info.isScales, info.syncFlag == 1U, info.isActiveMask, TILINGKEY_TPL_A5);
     context->SetTilingKey(tilingKey);
     OP_LOGD(context->GetNodeName(), "AttentionToFfnV2 cur case tilingKey is %lu", tilingKey);
     return ge::GRAPH_SUCCESS;
@@ -179,7 +114,7 @@ ge::graphStatus SetPlatformAndCommTiling(gert::TilingContext *context, const cha
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantMode, uint32_t quantDtype)
+ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantMode)
 {
     const char *nodeName = context->GetNodeName();
     auto *tilingData = context->GetTilingData<AttentionToFfnV2TilingData>();
@@ -250,8 +185,8 @@ ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantM
     const gert::StorageShape *activeMaskShape = context->GetOptionalInputShape(8U);
     bool isScales = scalesShape != nullptr && scalesShape->GetStorageShape().GetDimNum() != 0U;
     bool isActiveMask = activeMaskShape != nullptr && activeMaskShape->GetStorageShape().GetDimNum() != 0U;
-    OP_TILING_CHECK(CheckQuantModeAndDtype(nodeName, quantMode, quantDtype, isScales) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "quant mode and dtype do not match"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckQuantMode(nodeName, quantMode, isScales) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "quant mode validation failed"), return ge::GRAPH_FAILED);
 
     const int64_t xDim0 = xShape->GetStorageShape().GetDim(0);
     const int64_t bs = xShape->GetStorageShape().GetDim(1);
@@ -331,16 +266,11 @@ ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantM
     info.isScales = isScales;
     info.isActiveMask = isActiveMask;
     info.windowType = 0U;
-    SetQuantLayout(info, quantMode, quantDtype);
-    OP_TILING_CHECK(info.HS != info.tokenStrideBytes,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "ffn_token_data_shape[-1]", std::to_string(info.HS).c_str(),
-                                              std::to_string(info.tokenStrideBytes).c_str()),
-                    return ge::GRAPH_FAILED);
 
     uint64_t tokenInfoBytes = static_cast<uint64_t>(info.attentionWorkerNum) * info.microBatchNum *
                               info.infoTableLastDimNum * sizeof(int32_t);
     uint64_t tokenDataBytes = static_cast<uint64_t>(info.attentionWorkerNum) * info.microBatchNum * info.BS *
-                              (info.K + info.sharedExpertNum) * info.tokenStrideBytes;
+                              (info.K + info.sharedExpertNum) * info.HS;
     uint64_t requiredWindowBytes = tokenInfoBytes + tokenDataBytes;
     uint64_t maxWindowSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
     OP_TILING_CHECK(requiredWindowBytes > maxWindowSize ||
@@ -361,22 +291,19 @@ ge::graphStatus AttentionToFfnV2TilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"),
                     return ge::GRAPH_FAILED);
     auto quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
-    auto quantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_DTYPE_INDEX);
-    OP_TILING_CHECK(quantModePtr == nullptr || quantDtypePtr == nullptr,
-                    OP_LOGE(context->GetNodeName(), "quant_mode or quant_dtype is null"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(quantModePtr == nullptr, OP_LOGE(context->GetNodeName(), "quant_mode is null"),
+                    return ge::GRAPH_FAILED);
     uint32_t quantMode = static_cast<uint32_t>(*quantModePtr);
-    uint32_t quantDtype = static_cast<uint32_t>(*quantDtypePtr);
 
     const gert::StorageShape *scalesShape = context->GetOptionalInputShape(7U);
     bool isScales = scalesShape != nullptr && scalesShape->GetStorageShape().GetDimNum() != 0U;
-    OP_TILING_CHECK(CheckQuantModeAndDtype(context->GetNodeName(), quantMode, quantDtype, isScales) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "quant mode and dtype validation failed"),
+    OP_TILING_CHECK(CheckQuantMode(context->GetNodeName(), quantMode, isScales) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context->GetNodeName(), "quant mode validation failed"),
                     return ge::GRAPH_FAILED);
 
     if (quantMode != ATTN_FFN_TILINGKEY_NO_QUANT &&
         quantMode != ATTN_FFN_TILINGKEY_PERTOKEN_QUANT) {
-        return TilingNewQuantMode(context, quantMode, quantDtype);
+        return TilingNewQuantMode(context, quantMode);
     }
 
     AttentionToFFNTilingConfig config;
@@ -406,19 +333,10 @@ ge::graphStatus AttentionToFfnV2TilingFunc(gert::TilingContext *context)
         return ret;
     }
 
-    // Override V1's A3 key and append V2 quantization layout.
+    // Override V1's A3 key with the V2 A5 key.
     AttentionToFfnV2TilingData *tilingData = context->GetTilingData<AttentionToFfnV2TilingData>();
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "tilingData"),
                     return ge::GRAPH_FAILED);
-    SetQuantLayout(tilingData->attentionToFfnV2Info, quantMode, quantDtype);
-    if (quantDtype != static_cast<uint32_t>(AttentionToFfnV2QuantDtype::INT8)) {
-        OP_TILING_CHECK(tilingData->attentionToFfnV2Info.HS != tilingData->attentionToFfnV2Info.tokenStrideBytes,
-                        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "ffn_token_data_shape[-1]",
-                                                  std::to_string(tilingData->attentionToFfnV2Info.HS).c_str(),
-                                                  std::to_string(tilingData->attentionToFfnV2Info.tokenStrideBytes)
-                                                      .c_str()),
-                        return ge::GRAPH_FAILED);
-    }
     return SetV2TilingKey(context, tilingData->attentionToFfnV2Info);
 }
 

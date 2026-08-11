@@ -72,7 +72,6 @@ public:
         this->Attr("attn_token_info_table_shape").AttrType(REQUIRED).ListInt();
         this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
         this->Attr("quant_mode").AttrType(OPTIONAL).Int();
-        this->Attr("quant_dtype").AttrType(OPTIONAL).Int(0);
         this->Attr("sync_flag").AttrType(OPTIONAL).Int();
         this->Attr("ffn_start_rank_id").AttrType(OPTIONAL).Int();
         this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
