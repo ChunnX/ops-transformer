@@ -60,10 +60,30 @@ ge::graphStatus StemIndexerInfoParser::GetNpuInfo()
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return ge::GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
-    // 当前仅适配 A5（ASCEND950），A2/A3 暂未适配
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
-        OP_LOGE(opName_, "SOC Version[%d] is not support, only ASCEND950 is supported.",
-                static_cast<int32_t>(socVersion_));
+    if (socVersion_ != platform_ascendc::SocVersion::ASCEND950 &&
+        ascendcPlatform.GetCurNpuArch() != NpuArch::DAV_9201 &&
+        ascendcPlatform.GetCurNpuArch() != NpuArch::DAV_9202) {
+        OP_LOGE(opName_, "SOC Version[%d], NpuArch[%d] is not supported.", static_cast<int32_t>(socVersion_),
+                static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()));
+        return ge::GRAPH_FAILED;
+    }
+    if ((ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201 ||
+         ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9202) &&
+        (aicNum != STEM_INDEXER_METADATA_AIC_CORE_NUM_920R1 ||
+         aivNum != STEM_INDEXER_METADATA_AIV_CORE_NUM_920R1)) {
+        OP_LOGE(opName_, "NpuArch[%d] requires 64 AIC and 64 AIV cores, but got %u AIC and %u AIV.",
+                static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()), aicNum, aivNum);
+        return ge::GRAPH_FAILED;
+    }
+    uint64_t ubSize = 0U;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    if ((ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201 ||
+         ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9202) &&
+        ubSize < STEM_INDEXER_920R1_UB_SIZE) {
+        OP_LOGE(opName_, "NpuArch[%d] requires at least %llu bytes UB, but got %llu bytes.",
+                static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()),
+                static_cast<unsigned long long>(STEM_INDEXER_920R1_UB_SIZE),
+                static_cast<unsigned long long>(ubSize));
         return ge::GRAPH_FAILED;
     }
 
@@ -445,7 +465,16 @@ ge::graphStatus StemIndexerInfoParser::ValidateInputShapesMatch()
                         ("[" + std::to_string(bSize_) + "]").c_str()),
                     return ge::GRAPH_FAILED);
     }
-    uint64_t metadataCapacity = CalcStemIndexerMetadataCapacity(bSize_, kvHeadNum_);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
+    uint64_t metadataAicCoreNum = STEM_INDEXER_METADATA_AIC_CORE_NUM;
+    uint64_t metadataAivCoreNum = STEM_INDEXER_METADATA_AIV_CORE_NUM;
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201 ||
+        ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9202) {
+        metadataAicCoreNum = STEM_INDEXER_METADATA_AIC_CORE_NUM_920R1;
+        metadataAivCoreNum = STEM_INDEXER_METADATA_AIV_CORE_NUM_920R1;
+    }
+    uint64_t metadataCapacity =
+        CalcStemIndexerMetadataCapacity(bSize_, kvHeadNum_, metadataAicCoreNum, metadataAivCoreNum);
     OP_CHECK_IF(metadataShape.GetDim(DIM_IDX_ZERO) < static_cast<int64_t>(metadataCapacity),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     opName_, "metadata", Ops::Base::ToString(metadataShape).c_str(),
@@ -536,6 +565,12 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
+    OP_CHECK_IF((ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201 ||
+                 ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9202) &&
+                    blockDim != STEM_INDEXER_METADATA_AIC_CORE_NUM_920R1,
+                OP_LOGE(tilingInfo->opName, "NpuArch[%d] requires blockDim 64, but got %u.",
+                        static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()), blockDim),
+                return ge::GRAPH_FAILED);
     context_->SetBlockDim(blockDim);
 
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
