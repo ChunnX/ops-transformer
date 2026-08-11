@@ -21,6 +21,12 @@ find_package(ASC REQUIRED)
 find_package(AICPU REQUIRED)
 project(OpsTransformerCatccosUdma LANGUAGES ASC AICPU CXX VERSION 0.1.0)
 
+# CMake 3.27+ asks supported linkers to emit a dependency file with
+# --dependency-file. Bisheng's device linker does not implement that option and
+# treats its empty value as an input file, so keep CMake's traditional link
+# dependency tracking for this standalone Bisheng project.
+set(CMAKE_LINK_DEPENDS_USE_LINKER FALSE)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -121,6 +127,7 @@ set(COMPILE_OPTIONS
     -fdiagnostics-color=always
     -Wno-macro-redefined
     -Wno-ignored-attributes
+    -Wno-defaulted-function-deleted
     -DEXTENSION_MODULE_NAME=${EXTENSION_MODULE_NAME}
     -DCATLASS_ARCH=3510
     -DL2_CACHE_HINT
