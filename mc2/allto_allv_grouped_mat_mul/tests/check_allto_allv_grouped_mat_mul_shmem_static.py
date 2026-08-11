@@ -220,6 +220,9 @@ def check_pta_build() -> None:
             "custom SHMEM V2 headers must precede built-in CANN headers")
     require("${OPS_TRANSFORMER_EXTERNAL_INCLUDE_DIR}" in includes,
             "PTA target must include the directory that provides aclnn_util.h")
+    require(includes.index("${SHMEM_INCLUDE_DIRS}") < includes.index("${TORCH_INCLUDE_DIRS}") and
+            includes.index("${SHMEM_INCLUDE_DIRS}") < includes.index("${TORCH_NPU_ROOT}/include"),
+            "selected SHMEM SDK headers must precede Torch/torch_npu bundled SHMEM headers")
 
     build = read("examples/arch35/pta/build_pta.sh")
     for token in (

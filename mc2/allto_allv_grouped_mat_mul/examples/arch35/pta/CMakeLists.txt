@@ -108,10 +108,10 @@ set_target_properties(allto_allv_grouped_mat_mul_shmem_pta PROPERTIES
 target_include_directories(allto_allv_grouped_mat_mul_shmem_pta PRIVATE
     "${CUST_OPAPI_INCLUDE_DIR}"
     "${OPS_TRANSFORMER_EXTERNAL_INCLUDE_DIR}"
+    ${SHMEM_INCLUDE_DIRS}
     ${TORCH_INCLUDE_DIRS}
     "${TORCH_NPU_ROOT}/include"
-    "${ASCEND_HOME_PATH}/include"
-    ${SHMEM_INCLUDE_DIRS})
+    "${ASCEND_HOME_PATH}/include")
 
 separate_arguments(TORCH_CXX_FLAGS_LIST NATIVE_COMMAND "${TORCH_CXX_FLAGS}")
 target_compile_options(allto_allv_grouped_mat_mul_shmem_pta PRIVATE ${TORCH_CXX_FLAGS_LIST})
