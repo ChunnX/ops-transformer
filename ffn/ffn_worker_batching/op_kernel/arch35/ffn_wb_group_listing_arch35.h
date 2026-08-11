@@ -262,6 +262,16 @@ __aicore__ inline void FfnWbGroupListingArch35::expertCountCompute()
     LocalTensor<int32_t> expertCountTempInLocal = sortedExpertIdxInQueue.DeQue<int32_t>();
 
     LocalTensor<int64_t> expertCountOutLocal = expertIdxCountOutQueue.AllocTensor<int64_t>();
+    // 未使用的专家按接口契约必须是 [0, 0](docs/aclnnFfnWorkerBatching.md:181)。
+    // 下面只在最后一个有效专家后补一行 [0,0],而 expertCountCopyOut() 是按 expertNum*2 个
+    // int64 **整块**搬出的 —— 中间不清零的话,尾部行会把 UB 残留(上一阶段的排序数据)写进
+    // group_list。实测 A=17,BS=3,K=11,H=1000,E=1023:第 561 行正确、562 行起全是浮点位模式。
+    // 只在"多核 group_listing(Y 大)+ E 大"同时成立时暴露,故整块预清零。
+    Duplicate(expertCountOutLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
+              static_cast<int32_t>(expertNum * NUM_TWO * NUM_TWO));
+    event_t eventIDVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+    SetFlag<HardEvent::V_S>(eventIDVToS);
+    WaitFlag<HardEvent::V_S>(eventIDVToS);
     event_t eventIDMte2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
     SetFlag<HardEvent::MTE2_S>(eventIDMte2ToS);
     WaitFlag<HardEvent::MTE2_S>(eventIDMte2ToS);
