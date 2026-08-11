@@ -343,7 +343,7 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
     }
 
     uint8_t commModeEnum = 0;
-    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum, "matmul_allto_all");
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
 
     aclnnStatus ret =

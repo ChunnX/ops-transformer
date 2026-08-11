@@ -264,7 +264,7 @@ extern "C" aclnnStatus InnerAlltoAllMatmulGetWorkspaceSize(
     bool all2AllOutFlag = IsAll2AllOut(alltoAllOutOptional);
 
     uint8_t commModeEnum = 0;
-    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum, "allto_all_matmul");
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
     OP_LOGD("AlltoAllMatmul commmode2 is . %s", str_commMode);
 
@@ -331,7 +331,7 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulBaseGetWorkspaceSize(
     }
 
     uint8_t commModeEnum = 0;
-    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum, "allto_all_matmul");
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
 
     aclnnStatus ret = InnerAlltoAllMatmulGetWorkspaceSize(x1, transX2, biasOptional, alltoAllAxesOptional, group,

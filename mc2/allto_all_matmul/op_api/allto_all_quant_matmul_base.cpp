@@ -529,7 +529,7 @@ extern "C" aclnnStatus InnerAlltoAllQuantMatmulGetWorkspaceSize(
     }
 
     uint8_t commModeEnum = 0;
-    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum, "allto_all_quant_matmul");
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
 
     OP_LOGD("AlltoAllQuantMatmul commmode is . %s", str_commMode);
@@ -602,7 +602,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulBaseGetWorkspaceSize(
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 
     uint8_t commModeEnum = 0;
-    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum, "allto_all_quant_matmul");
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
 
     aclnnStatus ret = InnerAlltoAllQuantMatmulGetWorkspaceSize(

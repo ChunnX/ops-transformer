@@ -235,7 +235,7 @@ aclnnStatus CheckX2Valid(const aclTensor *x2)
 }
 
 // 检查commMode参数是否合法，并获取commMode对应枚举值
-aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum)
+aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum, const char *opName)
 {
     const size_t maxLength = 7UL;
     // 获取通信引擎参数
@@ -245,18 +245,18 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
         } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
         } else {
-            OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "commMode", commModeStr, "\"ccu\" or \"ai_cpu\"");
+            OP_LOGE_FOR_INVALID_VALUE(opName, "commMode", commModeStr, "\"ccu\" or \"ai_cpu\"");
             return ACLNN_ERR_PARAM_INVALID;
         }
         OP_LOGD("The commMode is [%s].", commModeStr);
     } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) {
         if (strncmp(commModeStr, "ai_cpu", maxLength) != 0) {
-            OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "commMode", commModeStr, "\"ai_cpu\"");
+            OP_LOGE_FOR_INVALID_VALUE(opName, "commMode", commModeStr, "\"ai_cpu\"");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
         if (strncmp(commModeStr, "aiv", maxLength) != 0) {
-            OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "commMode", commModeStr, "\"aiv\"");
+            OP_LOGE_FOR_INVALID_VALUE(opName, "commMode", commModeStr, "\"aiv\"");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
