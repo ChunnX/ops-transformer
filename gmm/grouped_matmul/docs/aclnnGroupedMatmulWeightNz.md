@@ -702,6 +702,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
     - scaleOptional Nn格式约束：
       - 仅动态量化（mx量化）场景支持，scaleOptional数据类型必须为FLOAT8_E8M0。
+      - 本版本scaleOptional Nn格式暂不支持x或weight为FLOAT4_E2M1/FLOAT4_E1M2的场景。
       - 仅支持weight为FRACTAL_NZ格式的场景；当scaleOptional为Nn格式时，weight也必须为FRACTAL_NZ格式。
       - 仅支持groupType为0，即M轴分组场景；不支持groupType为2的K轴分组场景。
       - 仅支持x为单tensor、out为单tensor的场景，weight支持单tensor和多tensor两种场景。

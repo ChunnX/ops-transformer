@@ -671,6 +671,14 @@ bool GroupedQmmTiling::CheckScaleNnShape(const gert::StorageShape *wScaleStorage
                     inputParams_.opType, "scale", ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype),
                     "scale Nn only supports FLOAT8_E8M0 in mx quant mode"),
                 return false);
+    auto isFp4Dtype = [](ge::DataType dt) { return dt == ge::DT_FLOAT4_E2M1 || dt == ge::DT_FLOAT4_E1M2; };
+    OP_CHECK_IF(isFp4Dtype(inputParams_.aDtype) || isFp4Dtype(inputParams_.bDtype),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                    inputParams_.opType, "x, weight",
+                    ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                 ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                    "scale Nn does not support FLOAT4_E2M1 or FLOAT4_E1M2 in this version"),
+                return false);
     OP_CHECK_IF(inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ,
                 OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
                     inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
