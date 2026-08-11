@@ -18,7 +18,8 @@ using namespace GroupedMatmul;
 using namespace optiling::GmmConstant;
 using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTilingData;
 namespace optiling {
-GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context) : GroupedQmmTiling(context)
+GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context)
+    : GroupedQmmTiling(context)
 {
     Reset();
 }
@@ -93,9 +94,13 @@ bool GroupedQmmBasicApiTiling::CanEnableThreeL1Buffer() const
         return false;
     }
 
-    const uint64_t kAL1 = tilingData_.mmTilingData.kAL1;
-    const uint64_t kBL1 = tilingData_.mmTilingData.kBL1;
-    const uint64_t scaleKL1 = tilingData_.mmTilingData.scaleKAL1;
+    const uint64_t kAL1 = basicTiling_.stepKa * basicTiling_.baseK;
+    const uint64_t kBL1 = basicTiling_.stepKb * basicTiling_.baseK;
+    const uint64_t scaleKL1 = std::min(
+        std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa,
+                 basicTiling_.scaleFactorB * basicTiling_.stepKb) *
+            basicTiling_.baseK,
+        inputParams_.kSize);
     if (kAL1 == 0UL || kBL1 == 0UL || scaleKL1 == 0UL) {
         return false;
     }
@@ -155,8 +160,149 @@ ge::graphStatus GroupedQmmBasicApiTiling::CalL1Depth(uint64_t leftL1Size)
         basicTiling_.depthA1 = depthInit;
         basicTiling_.depthB1 = depthInit;
     }
-    // 用剩余L1空间对内轴ND非对齐场景进行调整depth
+
+    // 仅 NZ weight 通过调整 tiling 优先使能 3-buffer；ND weight 保持原有 tiling 和使能判断逻辑。
+    if (inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ) {
+        ModifyDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
+        return FinalizeStepAndScale();
+    }
+
+    const uint64_t initialDepthA1 = basicTiling_.depthA1;
+    const uint64_t initialDepthB1 = basicTiling_.depthB1;
+
+    // 先使用初始 stepK 判断是否可以开启 3-buffer。初始值不满足时，搜索 depthA1 和 depthB1 的缩小组合。
+    OP_CHECK_IF(FinalizeStepAndScale() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "Finalize initial stepK and scale factor failed"),
+                return ge::GRAPH_FAILED);
+    if (!CanEnableThreeL1Buffer()) {
+        L1SearchResult result;
+        if (SearchReducedThreeBufferTiling(initialDepthA1, initialDepthB1, baseASize, baseBSize, result)) {
+            ApplyThreeBufferSearchResult(result);
+            return ge::GRAPH_SUCCESS;
+        }
+        basicTiling_.depthA1 = initialDepthA1;
+        basicTiling_.depthB1 = initialDepthB1;
+        ModifyDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
+        return FinalizeStepAndScale();
+    }
+
+    basicTiling_.depthA1 = initialDepthA1;
+    basicTiling_.depthB1 = initialDepthB1;
     ModifyDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
+    const uint64_t maxDepthA1 = std::max(basicTiling_.depthA1, initialDepthA1);
+    const uint64_t maxDepthB1 = std::max(basicTiling_.depthB1, initialDepthB1);
+    L1SearchResult result;
+    SearchExpandedThreeBufferTiling(initialDepthA1, initialDepthB1, maxDepthA1, maxDepthB1,
+                                    baseASize, baseBSize, result);
+    ApplyThreeBufferSearchResult(result);
+    return ge::GRAPH_SUCCESS;
+}
+
+bool GroupedQmmBasicApiTiling::SearchReducedThreeBufferTiling(uint64_t initialDepthA1, uint64_t initialDepthB1,
+                                                              uint64_t baseASize, uint64_t baseBSize,
+                                                              L1SearchResult &result)
+{
+    if (!IsMicroScaling() || inputParams_.transA) {
+        return false;
+    }
+
+    uint64_t candidateDepthA1 = initialDepthA1;
+    while (true) {
+        uint64_t candidateDepthB1 = initialDepthB1;
+        while (true) {
+            TryUpdateThreeBufferCandidate(candidateDepthA1, candidateDepthB1, baseASize, baseBSize, result);
+            if (candidateDepthB1 <= DB_SIZE) {
+                break;
+            }
+            candidateDepthB1 =
+                std::max(candidateDepthB1 / POWER_OF_TWO, static_cast<uint64_t>(DB_SIZE));
+        }
+
+        if (candidateDepthA1 <= DB_SIZE) {
+            break;
+        }
+        candidateDepthA1 = std::max(candidateDepthA1 / POWER_OF_TWO, static_cast<uint64_t>(DB_SIZE));
+    }
+
+    return result.found;
+}
+
+void GroupedQmmBasicApiTiling::SearchExpandedThreeBufferTiling(uint64_t initialDepthA1, uint64_t initialDepthB1,
+                                                               uint64_t maxDepthA1, uint64_t maxDepthB1,
+                                                               uint64_t baseASize, uint64_t baseBSize,
+                                                               L1SearchResult &result)
+{
+    uint64_t candidateDepthA1 = initialDepthA1;
+    while (true) {
+        uint64_t candidateDepthB1 = initialDepthB1;
+        while (true) {
+            TryUpdateThreeBufferCandidate(candidateDepthA1, candidateDepthB1, baseASize, baseBSize, result);
+            if (candidateDepthB1 >= maxDepthB1) {
+                break;
+            }
+            candidateDepthB1 = std::min(candidateDepthB1 * POWER_OF_TWO, maxDepthB1);
+        }
+
+        if (candidateDepthA1 >= maxDepthA1) {
+            break;
+        }
+        candidateDepthA1 = std::min(candidateDepthA1 * POWER_OF_TWO, maxDepthA1);
+    }
+}
+
+void GroupedQmmBasicApiTiling::TryUpdateThreeBufferCandidate(uint64_t candidateDepthA1,
+                                                             uint64_t candidateDepthB1, uint64_t baseASize,
+                                                             uint64_t baseBSize, L1SearchResult &result)
+{
+    basicTiling_.depthA1 = candidateDepthA1;
+    basicTiling_.depthB1 = candidateDepthB1;
+    if (FinalizeStepAndScale() != ge::GRAPH_SUCCESS) {
+        return;
+    }
+    if (!CanEnableThreeL1Buffer()) {
+        return;
+    }
+
+    const uint64_t aPayload = basicTiling_.stepKa * baseASize;
+    const uint64_t bPayload = basicTiling_.stepKb * baseBSize;
+    const uint64_t highBwPayload =
+        std::min(aPayload, static_cast<uint64_t>(MTE2_MIN_LOAD_SIZE_V120)) +
+        std::min(bPayload, static_cast<uint64_t>(MTE2_MIN_LOAD_SIZE_V120));
+    const uint64_t totalPayload = aPayload + bPayload;
+    if (!IsBetterThreeBufferCandidate(highBwPayload, totalPayload, result)) {
+        return;
+    }
+
+    result.depthA1 = basicTiling_.depthA1;
+    result.depthB1 = basicTiling_.depthB1;
+    result.stepKa = basicTiling_.stepKa;
+    result.stepKb = basicTiling_.stepKb;
+    result.scaleFactorA = basicTiling_.scaleFactorA;
+    result.scaleFactorB = basicTiling_.scaleFactorB;
+    result.highBwPayload = highBwPayload;
+    result.totalPayload = totalPayload;
+    result.found = true;
+}
+
+bool GroupedQmmBasicApiTiling::IsBetterThreeBufferCandidate(uint64_t highBwPayload, uint64_t totalPayload,
+                                                            const L1SearchResult &result) const
+{
+    return !result.found || highBwPayload > result.highBwPayload ||
+           (highBwPayload == result.highBwPayload && totalPayload > result.totalPayload);
+}
+
+void GroupedQmmBasicApiTiling::ApplyThreeBufferSearchResult(const L1SearchResult &result)
+{
+    basicTiling_.depthA1 = result.depthA1;
+    basicTiling_.depthB1 = result.depthB1;
+    basicTiling_.stepKa = result.stepKa;
+    basicTiling_.stepKb = result.stepKb;
+    basicTiling_.scaleFactorA = result.scaleFactorA;
+    basicTiling_.scaleFactorB = result.scaleFactorB;
+}
+
+ge::graphStatus GroupedQmmBasicApiTiling::FinalizeStepAndScale()
+{
     CalStepKs();
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         return CalScaleFactors();

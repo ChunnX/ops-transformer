@@ -43,7 +43,30 @@ protected:
     ge::graphStatus CalL1Tiling();
 
 private:
+    struct L1SearchResult {
+        uint64_t depthA1 = 0UL;
+        uint64_t depthB1 = 0UL;
+        uint64_t stepKa = 0UL;
+        uint64_t stepKb = 0UL;
+        uint32_t scaleFactorA = 0U;
+        uint32_t scaleFactorB = 0U;
+        uint64_t highBwPayload = 0UL;
+        uint64_t totalPayload = 0UL;
+        bool found = false;
+    };
+
     ge::graphStatus CalL1Depth(uint64_t leftL1Size);
+    bool SearchReducedThreeBufferTiling(uint64_t initialDepthA1, uint64_t initialDepthB1, uint64_t baseASize,
+                                        uint64_t baseBSize, L1SearchResult &result);
+    void SearchExpandedThreeBufferTiling(uint64_t initialDepthA1, uint64_t initialDepthB1,
+                                         uint64_t maxDepthA1, uint64_t maxDepthB1,
+                                         uint64_t baseASize, uint64_t baseBSize, L1SearchResult &result);
+    void TryUpdateThreeBufferCandidate(uint64_t candidateDepthA1, uint64_t candidateDepthB1,
+                                       uint64_t baseASize, uint64_t baseBSize, L1SearchResult &result);
+    bool IsBetterThreeBufferCandidate(uint64_t highBwPayload, uint64_t totalPayload,
+                                      const L1SearchResult &result) const;
+    void ApplyThreeBufferSearchResult(const L1SearchResult &result);
+    ge::graphStatus FinalizeStepAndScale();
     uint64_t GetDepthWithHighBW(uint64_t mnL1) const;
     void ModifyDepthForUnalign(uint64_t leftL1Size, uint64_t baseASize, uint64_t baseBSize, uint64_t baseScaleABSize);
     ge::graphStatus CalScaleFactors();
