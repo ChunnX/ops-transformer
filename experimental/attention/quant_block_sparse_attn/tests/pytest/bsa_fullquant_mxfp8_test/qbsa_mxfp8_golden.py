@@ -1450,10 +1450,41 @@ def _positions_from_sparse(
     return all_task_positions
 
 
-def _expand_d_group_scale(scale, width):
-    return scale.to(torch.float32).repeat_interleave(QUANT_GROUP_SIZE, dim=-1)[
-        ..., :width
-    ]
+def _mxfp8_qk_matmul(
+    q_fp8, k_fp8, q_descale, k_descale, softmax_scale, head_dim
+):
+    """Emulate MX matmul: consume E4M3 data and E8M0 scales by D group.
+
+    The kernel's ``MxMatmulFull`` consumes Q/K and their group scales together.
+    Dequantizing the operands before ``torch.matmul`` changes the FP32 overflow
+    and accumulation order, especially for large but valid data ranges.
+    """
+    q_values = q_fp8.to(torch.float32)
+    k_values = k_fp8.to(torch.float32)
+    q_scales = q_descale.to(torch.float32).reshape(q_values.shape[0], -1)
+    k_scales = k_descale.to(torch.float32).reshape(k_values.shape[0], -1)
+    group_count = math.ceil(int(head_dim) / int(QUANT_GROUP_SIZE))
+    if q_scales.shape[1] != group_count or k_scales.shape[1] != group_count:
+        raise ValueError(
+            "MXFP8 Q/K descale group count does not match D: "
+            f"q={q_scales.shape[1]}, k={k_scales.shape[1]}, expected={group_count}"
+        )
+
+    padded_dim = group_count * int(QUANT_GROUP_SIZE)
+    if padded_dim != int(head_dim):
+        padding = padded_dim - int(head_dim)
+        q_values = torch.nn.functional.pad(q_values, (0, padding))
+        k_values = torch.nn.functional.pad(k_values, (0, padding))
+    q_groups = q_values.reshape(q_values.shape[0], group_count, QUANT_GROUP_SIZE)
+    k_groups = k_values.reshape(k_values.shape[0], group_count, QUANT_GROUP_SIZE)
+    group_products = torch.einsum("qgd,kgd->qkg", q_groups, k_groups)
+    combined_scales = (
+        q_scales[:, None, :]
+        * k_scales[None, :, :]
+        * float(softmax_scale)
+    )
+    group_products = group_products * combined_scales
+    return group_products.sum(dim=-1)
 
 
 def _gather_q_block_and_scale(
@@ -1572,7 +1603,6 @@ def cpu_mxfp8_golden(
                     q_end,
                     head_idx,
                 )
-                q_dequant = q_block * _expand_d_group_scale(q_scale_block, head_dim)
 
                 m_run = torch.full((nq,), neg_inf, dtype=torch.float32)
                 l_run = torch.zeros((nq,), dtype=torch.float32)
@@ -1603,15 +1633,18 @@ def cpu_mxfp8_golden(
                     k_scale_mat = k_scale[
                         physical_blocks, n2_idx, block_offsets, :, :
                     ].flatten(-2)
-                    k_dequant = k_mat * _expand_d_group_scale(k_scale_mat, head_dim)
 
                     valid_mask = _valid_mask_for_positions(
                         q_indices, positions, q_len, kv_len
                     )
                     any_valid |= valid_mask.any(dim=-1)
-                    scores = (
-                        torch.matmul(q_dequant, k_dequant.transpose(0, 1))
-                        * softmax_scale
+                    scores = _mxfp8_qk_matmul(
+                        q_block,
+                        k_mat,
+                        q_scale_block,
+                        k_scale_mat,
+                        softmax_scale,
+                        head_dim,
                     )
                     scores = torch.where(
                         valid_mask, scores, torch.full_like(scores, MASK_VALUE)
