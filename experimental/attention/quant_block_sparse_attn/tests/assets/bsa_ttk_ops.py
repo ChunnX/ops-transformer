@@ -174,8 +174,6 @@ def _prepare_operator_inputs(
     layout_sparse_indices,
 ):
     p_scale = _none_if_empty(p_scale)
-    if int(quant_mode) == 1 and p_scale is None:
-        raise ValueError("FP8 requires a non-empty p_scale tensor")
     if metadata is None or int(metadata.numel()) < 584:
         metadata = QuantBlockSparseAttnMetadataBuilder.build(
             query,
