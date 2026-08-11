@@ -66,6 +66,4 @@ from .dense_lightning_indexer_softmax_lse import (
 )
 from .moe_init_routing import moe_init_routing
 from .all_to_all_quant_matmul import all_to_all_quant_matmul
-from .all_to_all_quant_matmul import all_to_all_quant_matmul
-from .moe_re_routing import moe_re_routing
 from . import graph_convert as _graph_convert
