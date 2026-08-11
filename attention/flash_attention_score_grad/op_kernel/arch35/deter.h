@@ -940,8 +940,102 @@ struct BandInfo {
     int64_t Rm = 0;
     int64_t rm = 0;
     int64_t rm2 = 0;
-    int64_t a = 0;
+    int64_t hybridPairCount = 0;
 };
+
+__aicore__ inline void GenBandHybridInfo(
+    int64_t k, int64_t m, int64_t n, int64_t p, int64_t q, int64_t b, BandInfo &bandInfo)
+{
+    p = Min(p, m);
+    q = Min(q, n);
+    m = Min(m, n + p - 1);
+    n = Min(n, m + q - 1);
+
+    bandInfo.k = k;
+    bandInfo.m = m;
+    bandInfo.n = n;
+    bandInfo.p = p;
+    bandInfo.q = q;
+    bandInfo.b = b;
+    if (p + q <= m) {
+        bandInfo.L1 = q - 1;
+        bandInfo.L2 = Min(n - q + 1, m + NUM_TWO - p - q);
+        bandInfo.L3 = Max(0, Min(p + n - m - 1, p + q - NUM_TWO));
+    } else {
+        bandInfo.L1 = m - p;
+        bandInfo.L2 = p + q - m;
+        bandInfo.L3 = Min(n - q, m - 1);
+    }
+    bandInfo.nSeg = bandInfo.L1 + bandInfo.L2 + bandInfo.L3;
+    bandInfo.hybridPairCount = Max(0, Min(bandInfo.L1, bandInfo.L3 - p + 1));
+}
+
+__aicore__ inline bool SetBandHybridCoordinate(
+    const BandInfo &bandInfo, int64_t w, int64_t y, int64_t localRound, CoordinateInfo &coordinate)
+{
+    int64_t x = y + localRound - bandInfo.q;
+    int64_t xMin = Max(1, y - bandInfo.q + 1);
+    int64_t xMax = Min(bandInfo.m, y + bandInfo.p - 1);
+    if (x < xMin || x > xMax) {
+        return false;
+    }
+    coordinate.batchId = w;
+    coordinate.s1Idx = x;
+    coordinate.s2Idx = y;
+    return true;
+}
+
+__aicore__ inline void CalBandHybridIndex(
+    const BandInfo &bandInfo, int64_t j, int64_t r, CoordinateInfo &coordinate)
+{
+    coordinate.batchId = -1;
+    int64_t slot = bandInfo.p + bandInfo.q - 1;
+    int64_t colsPerBatch = bandInfo.nSeg - bandInfo.hybridPairCount;
+    if (j < 1 || j > bandInfo.k || r < 1 || slot <= 0 || colsPerBatch <= 0) {
+        return;
+    }
+
+    int64_t layer = (r - 1) / slot;
+    int64_t localRound = (r - 1) % slot + 1;
+    int64_t globalColumn = layer * bandInfo.k + j;
+    if (globalColumn > bandInfo.b * colsPerBatch) {
+        return;
+    }
+    int64_t w = (globalColumn - 1) / colsPerBatch + 1;
+    int64_t localColumn = (globalColumn - 1) % colsPerBatch + 1;
+
+    if (localColumn <= bandInfo.hybridPairCount) {
+        int64_t y = localColumn;
+        if (SetBandHybridCoordinate(bandInfo, w, y, localRound, coordinate)) {
+            return;
+        }
+        int64_t seg3Index = bandInfo.p + localColumn - 1;
+        y = bandInfo.L1 + bandInfo.L2 + seg3Index;
+        SetBandHybridCoordinate(bandInfo, w, y, localRound, coordinate);
+        return;
+    }
+
+    if (localColumn <= bandInfo.hybridPairCount + bandInfo.L2) {
+        int64_t y = bandInfo.L1 + localColumn - bandInfo.hybridPairCount;
+        SetBandHybridCoordinate(bandInfo, w, y, localRound, coordinate);
+        return;
+    }
+
+    int64_t singleIndex = localColumn - bandInfo.hybridPairCount - bandInfo.L2;
+    int64_t unpairedSeg1Count = bandInfo.L1 - bandInfo.hybridPairCount;
+    if (singleIndex <= unpairedSeg1Count) {
+        int64_t y = bandInfo.hybridPairCount + singleIndex;
+        SetBandHybridCoordinate(bandInfo, w, y, localRound, coordinate);
+        return;
+    }
+
+    int64_t unpairedSeg3Index = singleIndex - unpairedSeg1Count;
+    int64_t unpairedSeg3Prefix = Min(bandInfo.p - 1, bandInfo.L3);
+    int64_t seg3Index = unpairedSeg3Index <= unpairedSeg3Prefix ?
+                            unpairedSeg3Index : unpairedSeg3Index + bandInfo.hybridPairCount;
+    int64_t y = bandInfo.L1 + bandInfo.L2 + seg3Index;
+    SetBandHybridCoordinate(bandInfo, w, y, localRound, coordinate);
+}
 
 __aicore__ inline void GenBandInfo(int64_t k, int64_t m, int64_t n, int64_t p, int64_t q, int64_t b, BandInfo &bandInfo) {
     bandInfo.k = k;

@@ -22,6 +22,17 @@ namespace optiling {
 namespace fag {
 constexpr uint32_t MAX_CORE_NUM = 36;
 constexpr uint32_t TND_SWIZZLE_PREFIX_NUM = 129;
+
+// isSplitByBlockIdx doubles as the deterministic block schedule contract.  Values greater than
+// LEGACY_SPLIT are only used by the non-TND deterministic BAND implementation.
+enum class DeterBandScheduleMode : uint8_t {
+    DISABLED = 0,
+    LEGACY_SPLIT = 1,
+    CAUSAL = 2,
+    DENSE = 3,
+    BAND = 4
+};
+
 class FlashAttentionScoreGradEmptyTensorTilingDataRegbase {
 public:
     uint32_t formerDqNum;

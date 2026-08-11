@@ -23,6 +23,98 @@ using namespace optiling::fag;
 namespace optiling {
 namespace fag {
 
+namespace {
+struct DeterBandScheduleResult {
+    DeterBandScheduleMode mode = DeterBandScheduleMode::DISABLED;
+    int64_t maxRound = 0;
+    int64_t m = 0;
+    int64_t n = 0;
+    int64_t p = 0;
+    int64_t q = 0;
+};
+
+int64_t PositiveCeilDiv(int64_t dividend, int64_t divisor)
+{
+    return dividend / divisor + static_cast<int64_t>(dividend % divisor != 0);
+}
+
+DeterBandScheduleResult SelectDeterBandSchedule(
+    int64_t k, int64_t m, int64_t n, int64_t p, int64_t q, int64_t b)
+{
+    DeterBandScheduleResult result;
+    if (k <= 0 || m <= 0 || n <= 0 || p <= 0 || q <= 0 || b <= 0) {
+        return result;
+    }
+
+    // Keep this preprocessing identical to GenBandHybridInfo on the kernel side.
+    p = std::min(p, m);
+    q = std::min(q, n);
+    m = std::min(m, n + p - 1);
+    n = std::min(n, m + q - 1);
+
+    int64_t l1 = 0;
+    int64_t l2 = 0;
+    int64_t l3 = 0;
+    int64_t bandBlocks = 0;
+    if (p + q <= m) {
+        l1 = q - 1;
+        l2 = std::min(n - q + 1, m + 2 - p - q);
+        l3 = std::max<int64_t>(0, std::min(p + n - m - 1, p + q - 2));
+        bandBlocks = (2 * p - 2 + q) * l1 / 2 + (p + q - 1) * l2 + (p + q - 2) * l3 -
+                     l3 * (l3 - 1) / 2;
+    } else {
+        l1 = m - p;
+        l2 = p + q - m;
+        l3 = std::min(n - q, m - 1);
+        bandBlocks = (p + m - 1) * l1 / 2 + m * l2 + (2 * m - 1 - l3) * l3 / 2;
+    }
+
+    const int64_t pairCount = std::max<int64_t>(0, std::min(l1, l3 - p + 1));
+    const int64_t colsPerBatch = l1 + l2 + l3 - pairCount;
+    const int64_t bandSlot = p + q - 1;
+    result.mode = DeterBandScheduleMode::BAND;
+    result.maxRound = PositiveCeilDiv(b * colsPerBatch, k) * bandSlot;
+    result.m = m;
+    result.n = n;
+    result.p = p;
+    result.q = q;
+
+    // Dense is a safe superset only when the columns issued to one batch in a round cannot
+    // wrap by m and hit the same row.  This is less restrictive than the old m >= k check.
+    const int64_t denseK = std::min(k, m * b);
+    if (denseK > 0 && std::min(denseK, n) <= m) {
+        const int64_t denseRound = PositiveCeilDiv(n * b, denseK) * m;
+        if (denseRound < result.maxRound) {
+            result.mode = DeterBandScheduleMode::DENSE;
+            result.maxRound = denseRound;
+        }
+    }
+
+    // Embed a near-lower BAND into a square causal triangle.  The kernel maps x back by q - 1;
+    // IsValidForDeter removes the padding and the part truncated by p.  Upper embedding is not used
+    // because transposing Mode03 would break the fixed-core-per-original-column requirement.
+    const int64_t lowerCausalSize = m + q - 1;
+    const int64_t upperCausalSize = n + p - 1;
+    const int64_t lowerWaste = lowerCausalSize * (lowerCausalSize + 1) / 2 - bandBlocks;
+    const int64_t upperWaste = upperCausalSize * (upperCausalSize + 1) / 2 - bandBlocks;
+    bool useLowerCausal =
+        bandBlocks > 0 && lowerWaste >= 0 && lowerWaste <= upperWaste && lowerWaste <= (bandBlocks - 1) / 10;
+    if (useLowerCausal && (b & 1) == 0) {
+        const int64_t causalBatch = b / 2;
+        const int64_t causalK = std::min(k, lowerCausalSize * causalBatch);
+        if (causalK > 0 && causalK <= lowerCausalSize) {
+            const int64_t causalRound =
+                PositiveCeilDiv((lowerCausalSize + 1) * causalBatch, causalK) * lowerCausalSize;
+            if (causalRound < result.maxRound) {
+                result.mode = DeterBandScheduleMode::CAUSAL;
+                result.maxRound = causalRound;
+            }
+        }
+    }
+    return result;
+}
+} // namespace
+
 bool IsSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bShape)
 {
     OP_CHECK_IF((aShape == nullptr) || (bShape == nullptr),
@@ -1871,25 +1963,57 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     s1s2BNGS1S2BaseParams_->set_s1SinkOuter(fBaseParams.s1SinkOuter);
     s1s2BNGS1S2BaseParams_->set_s2SinkOuter(fBaseParams.s2SinkOuter);
 
-    bool isSplitByBlockIdx =
+    bool canSplitByBlockIdx =
         fBaseParams.enableSwizzle && (fBaseParams.layoutType != INPUT_FORMAT_TND) &&
         fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
         (fBaseParams.s1Inner * fBaseParams.s1CvRatio == fBaseParams.s2Inner * fBaseParams.s2CvRatio &&
          fBaseParams.sparseType != static_cast<uint8_t>(SparseType::UNSUPPORTED));
+    DeterBandScheduleMode blockScheduleMode = canSplitByBlockIdx ? DeterBandScheduleMode::LEGACY_SPLIT :
+                                                                  DeterBandScheduleMode::DISABLED;
     // 确定性计算支持swizzle的一些条件
     if (fBaseParams.isDeterministic) {
         bool casualCond = (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL) &&
                            fBaseParams.isS1S2Same);
-        bool bandCond = (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) &&
-                         fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL));
-        isSplitByBlockIdx =
-            (isSplitByBlockIdx && (((fBaseParams.b * fBaseParams.n2) & 1) == 0) && fBaseParams.g == 1 &&
-             fBaseParams.s1 >= fBaseParams.aicNum * static_cast<uint32_t>(ConstAxisTemplateNum::NUM128)) &&
+        bool rightDownBandCond =
+            (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) &&
+             fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL));
+        bool legacySplit =
+            canSplitByBlockIdx && (((fBaseParams.b * fBaseParams.n2) & 1) == 0) && fBaseParams.g == 1 &&
+            fBaseParams.s1 >= fBaseParams.aicNum * static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) &&
             (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) || casualCond ||
-             bandCond);
+             rightDownBandCond);
+        blockScheduleMode = legacySplit ? DeterBandScheduleMode::LEGACY_SPLIT : DeterBandScheduleMode::DISABLED;
+
+        const int64_t actualBatch = (fBaseParams.b - fBaseParams.tailZeroCount) * fBaseParams.n2;
+        bool hybridBandCond =
+            canSplitByBlockIdx && fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) &&
+            fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND) && fBaseParams.g == 1 &&
+            fBaseParams.s1Token >= 0 && fBaseParams.s2Token >= 0 &&
+            fBaseParams.coreNum == fBaseParams.aicNum * NUM_TWO && actualBatch > 0;
+        if (hybridBandCond) {
+            const int64_t cubeBase = fBaseParams.s1Inner * fBaseParams.s1CvRatio;
+            const int64_t serializedS1Token = std::min<int64_t>(fBaseParams.s1Token, INT32_MAX);
+            const int64_t serializedS2Token = std::min<int64_t>(fBaseParams.s2Token, INT32_MAX);
+            const int64_t p = PositiveCeilDiv(serializedS1Token, cubeBase) + 1;
+            const int64_t q = PositiveCeilDiv(serializedS2Token, cubeBase) + 1;
+            DeterBandScheduleResult schedule = SelectDeterBandSchedule(
+                static_cast<int64_t>(fBaseParams.aicNum), fBaseParams.s1Outer, fBaseParams.s2Outer, p, q,
+                actualBatch);
+            if (schedule.mode != DeterBandScheduleMode::DISABLED) {
+                blockScheduleMode = schedule.mode;
+                fBaseParams.deterMaxRound = schedule.maxRound;
+                OP_LOGI(context_,
+                    "Select deterministic BAND schedule, mode=[%u], maxRound=[%ld], k=[%lu], b=[%ld], "
+                    "effective(m,n,p,q)=[%ld,%ld,%ld,%ld]",
+                    static_cast<uint32_t>(schedule.mode), schedule.maxRound, fBaseParams.aicNum, actualBatch,
+                    schedule.m, schedule.n, schedule.p, schedule.q);
+            }
+        }
     }
-    OP_LOGI(context_, "Determine whether to swizzle, get isSplitByBlockIdx=[%d]", static_cast<int>(isSplitByBlockIdx));
-    s1s2BNGS1S2BaseParams_->set_isSplitByBlockIdx(isSplitByBlockIdx);
+    bool isSplitByBlockIdx = blockScheduleMode != DeterBandScheduleMode::DISABLED;
+    OP_LOGI(context_, "Determine whether to swizzle, get isSplitByBlockIdx=[%d], blockScheduleMode=[%u]",
+            static_cast<int>(isSplitByBlockIdx), static_cast<uint32_t>(blockScheduleMode));
+    s1s2BNGS1S2BaseParams_->set_isSplitByBlockIdx(static_cast<uint8_t>(blockScheduleMode));
     if (isSplitByBlockIdx) {
         s1s2BNGS1S2BaseParams_->set_totalPerBatchNum(GetTotalPerBatchNum(fBaseParams, fBaseParams.sparseType));
     }
