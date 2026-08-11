@@ -1,0 +1,355 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1990" viewBox="0 0 2000 1990" role="img"
+     aria-labelledby="title desc">
+  <title id="title">MoeEpDispatch Hybrid 执行、分核、全核同步与内存交互</title>
+  <desc id="desc">中央为执行流程，左侧为 Workspace 物理分区，右侧为通信 Window 物理分区。实线表示写，虚线表示读，箭头表示数据方向。</desc>
+  <defs>
+    <marker id="arrowFlow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L9,3.5 L0,7 Z" fill="#475569"/>
+    </marker>
+    <marker id="arrowWsWrite" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L9,3.5 L0,7 Z" fill="#d97706"/>
+    </marker>
+    <marker id="arrowWsRead" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L9,3.5 L0,7 Z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowWinWrite" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L9,3.5 L0,7 Z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowWinRead" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L9,3.5 L0,7 Z" fill="#0f766e"/>
+    </marker>
+    <style>
+      text { font-family: "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif; fill: #172033; }
+      .title { font-size: 30px; font-weight: 700; }
+      .subtitle { font-size: 15px; fill: #475569; }
+      .panel-title { font-size: 20px; font-weight: 700; fill: #0f172a; }
+      .panel-note { font-size: 13px; fill: #475569; }
+      .block-title { font-size: 15px; font-weight: 700; }
+      .block-text { font-size: 12px; fill: #475569; }
+      .stage-title { font-size: 16px; font-weight: 700; }
+      .stage-core { font-size: 13px; fill: #334155; }
+      .stage-mem { font-size: 12px; fill: #64748b; }
+      .phase { font-size: 14px; font-weight: 700; fill: #1d4ed8; }
+      .sync-text { font-size: 13px; font-weight: 700; fill: #6d28d9; }
+      .legend { font-size: 13px; fill: #334155; }
+      .flow { fill: none; stroke: #475569; stroke-width: 2.2; marker-end: url(#arrowFlow); }
+      .ws-write { fill: none; stroke: #d97706; stroke-width: 2.2; marker-end: url(#arrowWsWrite); }
+      .ws-read { fill: none; stroke: #2563eb; stroke-width: 2.2; stroke-dasharray: 8 6; marker-end: url(#arrowWsRead); }
+      .win-write { fill: none; stroke: #dc2626; stroke-width: 2.2; marker-end: url(#arrowWinWrite); }
+      .win-read { fill: none; stroke: #0f766e; stroke-width: 2.2; stroke-dasharray: 8 6; marker-end: url(#arrowWinRead); }
+      .sync-bar { stroke: #7c3aed; stroke-width: 3; stroke-dasharray: 9 6; }
+      .stage { fill: #f8fafc; stroke: #64748b; stroke-width: 1.8; rx: 7; }
+      .stage-comm { fill: #eff6ff; stroke: #2563eb; stroke-width: 1.8; rx: 7; }
+      .stage-control { fill: #f5f3ff; stroke: #7c3aed; stroke-width: 1.8; rx: 7; }
+      .workspace { fill: #fffbeb; stroke: #d97706; stroke-width: 1.5; }
+      .window { fill: #ecfeff; stroke: #0891b2; stroke-width: 1.5; }
+      .unused { fill: #f1f5f9; stroke: #94a3b8; stroke-width: 1.4; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="2000" height="1990" fill="#ffffff"/>
+  <text class="title" x="1000" y="43" text-anchor="middle">MoeEpDispatch Hybrid 执行、分核、同步与内存交互</text>
+  <text class="subtitle" x="1000" y="70" text-anchor="middle">P=epWorldSize，U=rankSizePerServer，S=numScaleoutRanks，N=numMaxTokensPerRank</text>
+
+  <!-- Legend -->
+  <rect x="435" y="88" width="1130" height="58" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <path class="ws-write" d="M470 110 H535"/><text class="legend" x="548" y="115">写 Workspace</text>
+  <path class="ws-read" d="M690 110 H755"/><text class="legend" x="768" y="115">读 Workspace</text>
+  <path class="win-write" d="M930 110 H995"/><text class="legend" x="1008" y="115">写目标/本地 Window</text>
+  <path class="win-read" d="M1210 110 H1275"/><text class="legend" x="1288" y="115">读本地 Window</text>
+  <line class="sync-bar" x1="1450" y1="110" x2="1510" y2="110"/><text class="legend" x="1522" y="115">全 AIV SyncAll</text>
+  <text class="panel-note" x="1000" y="137" text-anchor="middle">箭头方向就是数据方向；同一分区的多次复用使用不同侧边通道，避免覆盖主流程</text>
+
+  <!-- Phase backgrounds -->
+  <rect x="675" y="168" width="650" height="390" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text class="phase" x="694" y="191">A. Count 准备与交换</text>
+  <rect x="675" y="584" width="650" height="278" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text class="phase" x="694" y="607">B. Route / Slot 与 Payload 构造</text>
+  <rect x="675" y="884" width="650" height="218" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text class="phase" x="694" y="907">C. 初始节点内发送与 Scaleout 发送</text>
+  <rect x="675" y="1120" width="650" height="717" rx="10" fill="#faf5ff" stroke="#ddd6fe"/>
+  <text class="phase" x="694" y="1143">D. 每个远端源超节点重复：接收、Fanout、Ack</text>
+
+  <!-- Workspace panel -->
+  <rect x="25" y="168" width="445" height="1115" rx="8" fill="#fffdf5" stroke="#d97706" stroke-width="2"/>
+  <text class="panel-title" x="247" y="198" text-anchor="middle">Workspace 物理分区</text>
+  <text class="panel-note" x="247" y="220" text-anchor="middle">kernel-visible operator area，offset 从 0 开始</text>
+
+  <rect class="workspace" x="45" y="242" width="405" height="100"/>
+  <text class="block-title" x="60" y="268">W1 scaleupCounter</text>
+  <text class="block-text" x="60" y="291">[AIV][Align512(P * 4B)]</text>
+  <text class="block-text" x="60" y="315">SendPhase counter；Fanout 时复用</text>
+
+  <rect class="workspace" x="45" y="342" width="405" height="95"/>
+  <text class="block-title" x="60" y="368">W2 sendCntPerRank</text>
+  <text class="block-text" x="60" y="391">[P][512B]，前 8B 为 state + count</text>
+  <text class="block-text" x="60" y="414">Count/ready 的 HCOMM 源数据</text>
+
+  <rect class="workspace" x="45" y="437" width="405" height="95"/>
+  <text class="block-title" x="60" y="463">W3 sendCntPerExpert</text>
+  <text class="block-text" x="60" y="486">Align512(P * E_local * 4B)</text>
+  <text class="block-text" x="60" y="509">按目标 rank 连续保存 expert count</text>
+
+  <rect class="workspace" x="45" y="532" width="405" height="145"/>
+  <text class="block-title" x="60" y="558">W4 scaleup staging</text>
+  <text class="block-text" x="60" y="581">[U][N][scaleupSlotBytes]</text>
+  <text class="block-text" x="60" y="604">节点内远端 rank 的 payload 暂存</text>
+  <text class="block-text" x="60" y="627">Fanout 收到 scaleout 后复用</text>
+
+  <rect class="workspace" x="45" y="677" width="405" height="145"/>
+  <text class="block-title" x="60" y="703">W5 scaleout staging</text>
+  <text class="block-text" x="60" y="726">[S][N][scaleoutSlotBytes]</text>
+  <text class="block-text" x="60" y="749">payload + route mask + scaleup slots</text>
+
+  <rect class="workspace" x="45" y="822" width="405" height="105"/>
+  <text class="block-title" x="60" y="848">W6 scaleoutCounter</text>
+  <text class="block-text" x="60" y="871">[AIV][Align512(S * 4B)]</text>
+  <text class="block-text" x="60" y="894">每核 scaleout slot count</text>
+
+  <rect class="workspace" x="45" y="927" width="405" height="100"/>
+  <text class="block-title" x="60" y="953">W7 scaleoutNotify</text>
+  <text class="block-text" x="60" y="976">Align512(S * 8B)</text>
+  <text class="block-text" x="60" y="999">ready + scaleoutSlotCount</text>
+
+  <rect class="workspace" x="45" y="1027" width="405" height="100"/>
+  <text class="block-title" x="60" y="1053">W8 readyStatus</text>
+  <text class="block-text" x="60" y="1076">512B，初始化为 uint64 1</text>
+  <text class="block-text" x="60" y="1099">Final ready / Ack 的 HCOMM 源</text>
+
+  <rect class="unused" x="45" y="1127" width="405" height="76"/>
+  <text class="block-title" x="60" y="1153">W9 globalA tail</text>
+  <text class="block-text" x="60" y="1178">32B；当前 Hybrid kernel 未直接寻址</text>
+  <text class="panel-note" x="247" y="1235" text-anchor="middle">tiling 总 workspace 另加 16MiB system workspace</text>
+  <text class="panel-note" x="247" y="1257" text-anchor="middle">routeWorkspaceBytes 当前为 0</text>
+
+  <!-- Window panel -->
+  <rect x="1530" y="168" width="445" height="1325" rx="8" fill="#f5feff" stroke="#0891b2" stroke-width="2"/>
+  <text class="panel-title" x="1752" y="198" text-anchor="middle">通信 Window 物理分区</text>
+  <text class="panel-note" x="1752" y="220" text-anchor="middle">每个 rank 一份；箭头目标可能是本地或远端 rank</text>
+
+  <rect class="window" x="1550" y="242" width="405" height="95"/>
+  <text class="block-title" x="1565" y="268">N1 Count notify</text>
+  <text class="block-text" x="1565" y="291">[P][512B]，每个源 rank 一项</text>
+  <text class="block-text" x="1565" y="314">state + recv token count</text>
+
+  <rect class="window" x="1550" y="337" width="405" height="100"/>
+  <text class="block-title" x="1565" y="363">N2 Count per expert</text>
+  <text class="block-text" x="1565" y="386">[P][Align512(E_local * 4B)]</text>
+  <text class="block-text" x="1565" y="409">每个源 rank 的 expert count</text>
+
+  <rect class="window" x="1550" y="437" width="405" height="98"/>
+  <text class="block-title" x="1565" y="463">N3 Dispatch final ready</text>
+  <text class="block-text" x="1565" y="486">[P][512B]，slotWinStateOffset</text>
+  <text class="block-text" x="1565" y="509">payload 完成后按源 rank 发布</text>
+
+  <rect class="unused" x="1550" y="535" width="405" height="108"/>
+  <text class="block-title" x="1565" y="561">N4 Combine state</text>
+  <text class="block-text" x="1565" y="584">[N * K][512B] + [P][512B]</text>
+  <text class="block-text" x="1565" y="607">本 Dispatch 流程不访问</text>
+
+  <rect class="window" x="1550" y="643" width="405" height="145"/>
+  <text class="block-title" x="1565" y="669">N5 Scaleout receive data</text>
+  <text class="block-text" x="1565" y="692">[S][N][scaleoutSlotBytes]</text>
+  <text class="block-text" x="1565" y="715">Proxy rank 接收聚合 payload</text>
+  <text class="block-text" x="1565" y="738">按源 server index 定位</text>
+
+  <rect class="window" x="1550" y="788" width="405" height="145"/>
+  <text class="block-title" x="1565" y="814">N6 Scaleup final receive data</text>
+  <text class="block-text" x="1565" y="837">[P][N][scaleupSlotBytes]</text>
+  <text class="block-text" x="1565" y="860">Dispatch/Epilogue 最终消费区</text>
+  <text class="block-text" x="1565" y="883">第一维为源 global rank</text>
+
+  <rect class="window" x="1550" y="933" width="405" height="110"/>
+  <text class="block-title" x="1565" y="959">N7 Scaleout receive status</text>
+  <text class="block-text" x="1565" y="982">[S][N][512B]</text>
+  <text class="block-text" x="1565" y="1005">当前每源 server 使用首项：ready + slotCount</text>
+
+  <rect class="unused" x="1550" y="1043" width="405" height="105"/>
+  <text class="block-title" x="1565" y="1069">N8 Scaleup receive status</text>
+  <text class="block-text" x="1565" y="1092">[P][N][512B]</text>
+  <text class="block-text" x="1565" y="1115">当前 Dispatch 使用 N3 发布 final ready</text>
+
+  <rect class="window" x="1550" y="1148" width="405" height="98"/>
+  <text class="block-title" x="1565" y="1174">N9 Scaleout Ack status</text>
+  <text class="block-text" x="1565" y="1197">[S][512B]</text>
+  <text class="block-text" x="1565" y="1220">目标 Proxy 消费完成后写回源 rank</text>
+
+  <rect class="unused" x="1550" y="1246" width="405" height="110"/>
+  <text class="block-title" x="1565" y="1272">N10 Combine data</text>
+  <text class="block-text" x="1565" y="1295">[N * K][Align512(hidden + meta)]</text>
+  <text class="block-text" x="1565" y="1318">本 Dispatch 流程不访问</text>
+  <text class="panel-note" x="1752" y="1390" text-anchor="middle">灰色分区属于共享 Window 布局，</text>
+  <text class="panel-note" x="1752" y="1412" text-anchor="middle">但当前 Hybrid Dispatch 不直接读写</text>
+
+  <!-- Main execution flow and stages -->
+  <rect class="stage-control" x="700" y="205" width="600" height="58"/>
+  <text class="stage-title" x="1000" y="228" text-anchor="middle">InitReadyStatus</text>
+  <text class="stage-core" x="1000" y="249" text-anchor="middle">仅 AIV[aivNum - 1]；W: W8</text>
+
+  <path class="flow" d="M1000 263 V286"/>
+  <rect class="stage" x="700" y="286" width="600" height="70"/>
+  <text class="stage-title" x="1000" y="310" text-anchor="middle">CalSendCnt</text>
+  <text class="stage-core" x="1000" y="331" text-anchor="middle">前 calRankCoreNum 核按目标 rank；后续核按 expert 分片</text>
+  <text class="stage-mem" x="1000" y="349" text-anchor="middle">W: W2, W3</text>
+
+  <path class="flow" d="M1000 356 V377"/>
+  <line class="sync-bar" x1="705" y1="383" x2="1295" y2="383"/>
+  <text class="sync-text" x="1000" y="378" text-anchor="middle">SyncAll&lt;true&gt; #1：所有 count workspace 写完</text>
+  <path class="flow" d="M1000 389 V410"/>
+
+  <rect class="stage-comm" x="700" y="410" width="600" height="70"/>
+  <text class="stage-title" x="1000" y="434" text-anchor="middle">ExchangeCount</text>
+  <text class="stage-core" x="1000" y="455" text-anchor="middle">全 AIV 按 global dst rank 分片；同一目标 rank 固定通信负责核</text>
+  <text class="stage-mem" x="1000" y="473" text-anchor="middle">R: W2, W3；W: N1, N2</text>
+
+  <path class="flow" d="M1000 480 V505"/>
+  <rect class="stage-control" x="700" y="505" width="600" height="70"/>
+  <text class="stage-title" x="1000" y="529" text-anchor="middle">GetRecvCount</text>
+  <text class="stage-core" x="1000" y="550" text-anchor="middle">AIV0 轮询/归约；其他 AIV 直接进入 slot 预统计，在 #2 汇合</text>
+  <text class="stage-mem" x="1000" y="568" text-anchor="middle">R: N1, N2；W: N1(status clear)</text>
+
+  <path class="flow" d="M1000 575 V610"/>
+  <rect class="stage" x="700" y="610" width="600" height="70"/>
+  <text class="stage-title" x="1000" y="634" text-anchor="middle">CountRouteSlotsForCurrentCore</text>
+  <text class="stage-core" x="1000" y="655" text-anchor="middle">全 AIV 按 token 分片；每核独立统计 scaleup / scaleout slot</text>
+  <text class="stage-mem" x="1000" y="673" text-anchor="middle">W: W1, W6</text>
+
+  <path class="flow" d="M1000 680 V704"/>
+  <line class="sync-bar" x1="705" y1="710" x2="1295" y2="710"/>
+  <text class="sync-text" x="1000" y="705" text-anchor="middle">SyncAll&lt;true&gt; #2：每核 slot counter 对其他核可见</text>
+  <path class="flow" d="M1000 716 V742"/>
+
+  <rect class="stage" x="700" y="742" width="600" height="85"/>
+  <text class="stage-title" x="1000" y="766" text-anchor="middle">GetSlotStartNum + SendPhase token loop</text>
+  <text class="stage-core" x="1000" y="787" text-anchor="middle">全 AIV 延续 token 分片；读前缀后构造本核 payload / route</text>
+  <text class="stage-mem" x="1000" y="805" text-anchor="middle">R: W1, W6；W: W4, W5, N6(self rank)</text>
+  <text class="stage-mem" x="1000" y="821" text-anchor="middle">普通 GM 输入与 handle 输出未在两侧分区图中展开</text>
+
+  <path class="flow" d="M1000 827 V850"/>
+  <line class="sync-bar" x1="705" y1="856" x2="1295" y2="856"/>
+  <text class="sync-text" x="1000" y="851" text-anchor="middle">SyncAll&lt;true&gt; #3：所有 staging / route 输出写完</text>
+  <path class="flow" d="M1000 862 V884"/>
+
+  <rect x="805" y="874" width="390" height="28" rx="14" fill="#e0f2fe" stroke="#0284c7"/>
+  <text class="stage-core" x="1000" y="894" text-anchor="middle">InitPostSendHcomm：每个 AIV 初始化本核 HCOMM 对象</text>
+
+  <rect class="stage-comm" x="700" y="918" width="600" height="70"/>
+  <text class="stage-title" x="1000" y="942" text-anchor="middle">WriteToRemoteWindow</text>
+  <text class="stage-core" x="1000" y="963" text-anchor="middle">global dst rank 分片 ∩ 当前 server rank 区间</text>
+  <text class="stage-mem" x="1000" y="981" text-anchor="middle">R: W2, W4；W: N3, N6</text>
+
+  <path class="flow" d="M1000 988 V1006"/>
+  <rect class="stage-comm" x="700" y="1006" width="600" height="80"/>
+  <text class="stage-title" x="1000" y="1030" text-anchor="middle">SendScaleoutPayloadsToProxy</text>
+  <text class="stage-core" x="1000" y="1051" text-anchor="middle">global dst rank 分片；仅拥有远端 Proxy rank 的 AIV 执行</text>
+  <text class="stage-mem" x="1000" y="1069" text-anchor="middle">R: W5, W6, W7；W: W7, N5, N7</text>
+
+  <path class="flow" d="M1000 1086 V1096"/>
+  <line class="sync-bar" x1="705" y1="1102" x2="1295" y2="1102"/>
+  <text class="sync-text" x="1000" y="1097" text-anchor="middle">SyncAll&lt;true&gt; #4：节点内发送与 scaleout 发布均完成</text>
+  <path class="flow" d="M1000 1108 V1150"/>
+
+  <rect class="stage-control" x="700" y="1150" width="600" height="65"/>
+  <text class="stage-title" x="1000" y="1174" text-anchor="middle">WaitScaleoutPayloadReady</text>
+  <text class="stage-core" x="1000" y="1195" text-anchor="middle">每个远端源 server：仅 AIV0 轮询；R: N7</text>
+
+  <path class="flow" d="M1000 1215 V1227"/>
+  <line class="sync-bar" x1="705" y1="1233" x2="1295" y2="1233"/>
+  <text class="sync-text" x="1000" y="1228" text-anchor="middle">SyncAll&lt;true&gt; #5：控制核已取得 scaleoutSlotCount</text>
+  <path class="flow" d="M1000 1239 V1260"/>
+
+  <rect class="stage" x="700" y="1260" width="600" height="75"/>
+  <text class="stage-title" x="1000" y="1284" text-anchor="middle">StageScaleoutPayloads</text>
+  <text class="stage-core" x="1000" y="1305" text-anchor="middle">全 AIV 按收到的 scaleout slot 分片并解析 route</text>
+  <text class="stage-mem" x="1000" y="1323" text-anchor="middle">R: N5；W: W1(fanout count), W4(fanout staging)</text>
+
+  <path class="flow" d="M1000 1335 V1350"/>
+  <line class="sync-bar" x1="705" y1="1356" x2="1295" y2="1356"/>
+  <text class="sync-text" x="1000" y="1351" text-anchor="middle">SyncAll&lt;true&gt; #6：fanout staging 和每核 count 写完</text>
+  <path class="flow" d="M1000 1362 V1390"/>
+
+  <rect class="stage-comm" x="700" y="1390" width="600" height="80"/>
+  <text class="stage-title" x="1000" y="1414" text-anchor="middle">ReduceFanoutCounts + SendStagedFanoutPayloads</text>
+  <text class="stage-core" x="1000" y="1435" text-anchor="middle">global dst rank 分片 ∩ 当前 server rank 区间</text>
+  <text class="stage-mem" x="1000" y="1453" text-anchor="middle">R: W1, W4, W8；W: N3, N6</text>
+
+  <path class="flow" d="M1000 1470 V1484"/>
+  <line class="sync-bar" x1="705" y1="1490" x2="1295" y2="1490"/>
+  <text class="sync-text" x="1000" y="1485" text-anchor="middle">SyncAll&lt;true&gt; #7：全部目标 rank 的 payload / final ready 完成</text>
+  <path class="flow" d="M1000 1496 V1522"/>
+
+  <rect class="stage-control" x="700" y="1522" width="600" height="65"/>
+  <text class="stage-title" x="1000" y="1546" text-anchor="middle">ClearScaleoutReceiveStatus</text>
+  <text class="stage-core" x="1000" y="1567" text-anchor="middle">仅 AIV0；W: N7(ready 和 slotCount 清零)</text>
+
+  <path class="flow" d="M1000 1587 V1601"/>
+  <line class="sync-bar" x1="705" y1="1607" x2="1295" y2="1607"/>
+  <text class="sync-text" x="1000" y="1602" text-anchor="middle">SyncAll&lt;true&gt; #8：接收状态清理完成后才能 Ack</text>
+  <path class="flow" d="M1000 1613 V1642"/>
+
+  <rect class="stage-comm" x="700" y="1642" width="600" height="65"/>
+  <text class="stage-title" x="1000" y="1666" text-anchor="middle">WriteScaleoutAckToSource</text>
+  <text class="stage-core" x="1000" y="1687" text-anchor="middle">拥有 src global rank 的通信负责核；R: W8；W: N9</text>
+
+  <path class="flow" d="M1000 1707 V1721"/>
+  <line class="sync-bar" x1="705" y1="1727" x2="1295" y2="1727"/>
+  <text class="sync-text" x="1000" y="1722" text-anchor="middle">SyncAll&lt;true&gt; #9：Ack 完成后进入下一个源 server</text>
+  <path class="flow" d="M1000 1733 V1762"/>
+
+  <rect class="stage-control" x="700" y="1762" width="600" height="65"/>
+  <text class="stage-title" x="1000" y="1786" text-anchor="middle">WaitScaleoutAcks</text>
+  <text class="stage-core" x="1000" y="1807" text-anchor="middle">全 AIV 按远端 server ordinal 分片；R/W: N9</text>
+  <path class="flow" d="M1000 1827 V1862"/>
+  <rect x="855" y="1862" width="290" height="42" rx="21" fill="#dcfce7" stroke="#16a34a" stroke-width="1.8"/>
+  <text class="stage-title" x="1000" y="1889" text-anchor="middle">Hybrid Dispatch 完成</text>
+
+  <!-- Workspace access paths; kept entirely left of the central flow -->
+  <path class="ws-write" d="M700 234 H665 V1077 H450"/>
+  <path class="ws-write" d="M700 310 H545 V389 H450"/>
+  <path class="ws-write" d="M700 332 H565 V484 H450"/>
+  <path class="ws-read" d="M450 405 H585 V438 H700"/>
+  <path class="ws-read" d="M450 500 H605 V458 H700"/>
+  <path class="ws-write" d="M700 637 H625 V292 H450"/>
+  <path class="ws-write" d="M700 659 H645 V875 H450"/>
+  <path class="ws-read" d="M450 312 H525 V766 H700"/>
+  <path class="ws-read" d="M450 895 H545 V784 H700"/>
+  <path class="ws-write" d="M700 801 H565 V605 H450"/>
+  <path class="ws-write" d="M700 819 H585 V750 H450"/>
+  <path class="ws-read" d="M450 414 H605 V950 H700"/>
+  <path class="ws-read" d="M450 635 H625 V972 H700"/>
+  <path class="ws-read" d="M450 775 H525 V1030 H700"/>
+  <path class="ws-read" d="M450 905 H545 V1048 H700"/>
+  <path class="ws-write" d="M700 1067 H565 V978 H450"/>
+  <path class="ws-read" d="M450 1005 H585 V1077 H700"/>
+  <path class="ws-write" d="M700 1304 H605 V327 H450"/>
+  <path class="ws-write" d="M700 1322 H625 V665 H450"/>
+  <path class="ws-read" d="M450 337 H525 V1412 H700"/>
+  <path class="ws-read" d="M450 675 H545 V1432 H700"/>
+  <path class="ws-read" d="M450 1110 H565 V1452 H700"/>
+  <path class="ws-read" d="M450 1092 H585 V1675 H700"/>
+
+  <!-- Window access paths; kept entirely right of the central flow -->
+  <path class="win-write" d="M1300 432 H1390 V289 H1550"/>
+  <path class="win-write" d="M1300 454 H1410 V387 H1550"/>
+  <path class="win-read" d="M1550 309 H1430 V529 H1300"/>
+  <path class="win-read" d="M1550 407 H1450 V549 H1300"/>
+  <path class="win-write" d="M1300 568 H1470 V327 H1550"/>
+  <path class="win-write" d="M1300 805 H1490 V861 H1550"/>
+  <path class="win-write" d="M1300 940 H1370 V486 H1550"/>
+  <path class="win-write" d="M1300 970 H1390 V881 H1550"/>
+  <path class="win-write" d="M1300 1028 H1410 V716 H1550"/>
+  <path class="win-write" d="M1300 1067 H1430 V988 H1550"/>
+  <path class="win-read" d="M1550 1008 H1450 V1184 H1300"/>
+  <path class="win-read" d="M1550 744 H1470 V1298 H1300"/>
+  <path class="win-write" d="M1300 1412 H1370 V506 H1550"/>
+  <path class="win-write" d="M1300 1452 H1390 V913 H1550"/>
+  <path class="win-write" d="M1300 1555 H1410 V1025 H1550"/>
+  <path class="win-write" d="M1300 1675 H1430 V1197 H1550"/>
+  <path class="win-read" d="M1550 1177 H1450 V1784 H1300"/>
+  <path class="win-write" d="M1300 1805 H1470 V1217 H1550"/>
+
+  <!-- Footnotes -->
+  <rect x="25" y="1930" width="1950" height="42" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text class="panel-note" x="1000" y="1956" text-anchor="middle">图只展开 Hybrid Dispatch 对 Workspace/Window 的访问；输入 x/topk/scales、handle 输出、debug_out 和 host pinned 输出未画，以控制连线密度。</text>
+</svg>
