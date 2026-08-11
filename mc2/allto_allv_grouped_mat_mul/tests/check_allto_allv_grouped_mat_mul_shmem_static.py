@@ -154,6 +154,30 @@ def check_tiling_and_kernel() -> None:
     require("Hccl" not in entry + kernel and "HCCL" not in entry + kernel, "SHMEM kernel contains HCCL code")
 
 
+def check_pta_bridge() -> None:
+    bridge = read("examples/arch35/pta/allto_allv_grouped_mat_mul_shmem_torch.cpp")
+    for token in (
+        "TORCH_LIBRARY(allto_allv_grouped_mat_mul_shmem_pta, m)",
+        'm.def("init(int rank, int world_size, int heap_bytes, str ip_port) -> int")',
+        'm.def("run(Tensor x, Tensor weight, int[] send_counts, int[] recv_counts) -> Tensor")',
+        'm.def("barrier() -> int")',
+        'm.def("finalize() -> int")',
+        "aclshmemx_init_attr",
+        "shmemx_get_ffts_config",
+        "aclshmem_malloc",
+        "aclshmem_calloc",
+        "aclrtMemcpyAsync",
+        "aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize",
+        "aclnnAlltoAllvGroupedMatMulV2(",
+        "aclrtSynchronizeStream",
+        "aclshmem_barrier_all",
+        "shmem_free",
+    ):
+        require(token in bridge, f"PTA bridge missing contract token: {token}")
+    require("init_process_group" not in bridge and "Hccl" not in bridge and "HCCL" not in bridge,
+            "PTA bridge must not initialize or call HCCL")
+
+
 def check_cases() -> None:
     precision = load_jsonl("tests/precision/allto_allv_grouped_mat_mul_shmem_precision_cases.jsonl")
     perf = load_jsonl("tests/performance/allto_allv_grouped_mat_mul_shmem_perf_cases.jsonl")
@@ -179,7 +203,7 @@ def check_cases() -> None:
 
 
 def main() -> int:
-    checks = [check_public_abi, check_registration_and_binary, check_tiling_and_kernel, check_cases]
+    checks = [check_public_abi, check_registration_and_binary, check_tiling_and_kernel, check_pta_bridge, check_cases]
     for check in checks:
         check()
         print(f"PASS {check.__name__}")
