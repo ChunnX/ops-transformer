@@ -113,6 +113,7 @@ private:
     uint32_t beginIndex_{0};
     uint32_t endIndex_{0};
     uint32_t dataState_{0};
+    uint32_t waitStatusElemNum_{0}; // gatherMaskOutBuf_ 的元素数，已按 32B 对齐取整
     uint64_t stateOffset_{0};
     uint64_t winDataSizeOffset_{0};
     uint64_t expertPerSizeOnWin_{0};
@@ -159,6 +160,8 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(G
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
     dataState_ = selfDataStatusTensor(0); // C_S，本轮仍使用该 bank
+    ascendc_assert(dataState_ <= 1U, "combine_teardown C_S corrupted, rank=%u aiv=%u C_S=%u", epRankId_, coreIdx_,
+                   dataState_);
 
     expertIdsGlobal_.SetGlobalBuffer((__gm__ int32_t *)expertIds);
     expandIdxGlobal_.SetGlobalBuffer((__gm__ ExpandIdxType *)expandIdx);
@@ -191,10 +194,8 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(G
 #if COMBINE_TEARDOWN_DEBUG_WAIT
     // 与 combine_setup 的 [C_S] 行逐核比对：同一 aiv 上两边的 C_S 必须一致，
     // 且本卡这里的 statusBank 必须等于对端 setup 打印的 addr 去掉 stateOff 后的基址。
-    AscendC::printf("[C_S] rank=%u aiv=%u C_S=%u statusBank=0x%llx winDataOff=0x%llx totalWin=0x%llx\n", epRankId_,
-                    coreIdx_, dataState_, static_cast<unsigned long long>(static_cast<uint64_t>(epStatusSpaceGM_)),
-                    static_cast<unsigned long long>(winDataSizeOffset_),
-                    static_cast<unsigned long long>(moeDistributeCombineTeardownInfo_->totalWinSize));
+    printf("[C_S] rank=%u aiv=%u C_S=%u statusBank=0x%llx winDataOff=0x%llx totalWin=0x%llx\n", epRankId_,
+        coreIdx_, dataState_, epStatusSpaceGM_, winDataSizeOffset_, moeDistributeCombineTeardownInfo_->totalWinSize);
 #endif
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(epWindowGM_),
@@ -248,15 +249,21 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::AlltoA
     tpipe_->InitBuffer(expandScalesQueue_, BUFFER_NUM, bsKNum_ * static_cast<uint32_t>(sizeof(float)));
     tpipe_->InitBuffer(moeSumQueue_, BUFFER_NUM, axisHExpandXTypeSize_);
 
-    tpipe_->InitBuffer(statusBuf_, sendRankNum_ * UB_ALIGN); // 等状态需要占用sendRankNum_个DataBlock(32Bytes)
+    // 空闲核 sendRankNum_ 为 0，仍按一个 DataBlock 申请，避免零长度 InitBuffer
+    tpipe_->InitBuffer(statusBuf_, ((sendRankNum_ == 0U) ? 1U : sendRankNum_) * UB_ALIGN);
     tpipe_->InitBuffer(tokenBuf_, static_cast<uint32_t>(axisHExpandXTypeSize_));
     tpipe_->InitBuffer(rowTmpFloatBuf_, static_cast<uint32_t>(axisHFloatSize_));
     tpipe_->InitBuffer(sumFloatBuf_, static_cast<uint32_t>(axisHFloatSize_));
-    tpipe_->InitBuffer(gatherTmpBuf_, static_cast<uint32_t>(sizeof(uint32_t)));
-    tpipe_->InitBuffer(statusSumOutBuf_, static_cast<uint32_t>(sizeof(float)));
+    tpipe_->InitBuffer(gatherTmpBuf_, UB_ALIGN);
+    tpipe_->InitBuffer(statusSumOutBuf_, UB_ALIGN);
 
-    uint32_t waitStatusMaxSize = moeDistributeCombineTeardownInfo_->epWorldSize * static_cast<uint32_t>(sizeof(float));
-    tpipe_->InitBuffer(gatherMaskOutBuf_, waitStatusMaxSize);
+    // Sum 的 inner 会把 sendRankNum_ 个 float 向上取整到 32B，归约实际读满这么多。
+    // 若按 epWorldSize * 4 申请，epWorldSize < 8 时缓冲区不足一个 DataBlock，
+    // 归约会把相邻 buf 的残留值算进 sumOfFlag，导致状态永远等不齐。
+    waitStatusElemNum_ =
+        Ceil(moeDistributeCombineTeardownInfo_->epWorldSize * static_cast<uint32_t>(sizeof(float)), UB_ALIGN) *
+        UB_ALIGN / static_cast<uint32_t>(sizeof(float));
+    tpipe_->InitBuffer(gatherMaskOutBuf_, waitStatusElemNum_ * static_cast<uint32_t>(sizeof(float)));
 }
 
 template <TemplateMC2TypeClass>
@@ -272,6 +279,11 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
     LocalTensor<float> statusSumOutTensor = statusSumOutBuf_.Get<float>();
     GlobalTensor<float> epStatusSpaceGlobal;
     epStatusSpaceGlobal.SetGlobalBuffer((__gm__ float *)epStatusSpaceGM_);
+
+    // GatherMask 每轮只写前 sendRankNum_ 个元素，Sum 却读满对齐后的整块。
+    // 先清零，保证 sumOfFlag 只反映真实收到的 flag，不受 UB 残留影响。
+    Duplicate<float>(gatherMaskOutTensor, 0.0f, waitStatusElemNum_);
+    PipeBarrier<PIPE_V>();
 
     // 计算当前核期望target值
     gatherTmpTensor.SetValue(0, 1);
@@ -310,19 +322,39 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
         AscendC::SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
 #if COMBINE_TEARDOWN_DEBUG_WAIT
-        // 卡住时 dump 一次现场：逐槽打印，缺哪个 srcRank 的 flag 一目了然
+        // 卡住时 dump 一次现场。两个 bank 都直接从 GM 扫，用来区分三种失效：
+        //   flag 出现在 1-C_S 那侧 -> 收发双方 C_S 失步
+        //   两侧都是 0            -> 发送端算出的地址根本没落到本卡状态区
+        //   flag 先有后变 0        -> 被其他算子覆盖（dispatch 状态区溢出）
         if ((++pollCount >= COMBINE_TEARDOWN_WAIT_DUMP_THRESHOLD) && !dumped) {
             dumped = true;
-            AscendC::printf("[WAIT] rank=%u aiv=%u C_S=%u startRank=%u num=%u bank=0x%llx sum=%d target=%d\n",
-                            epRankId_, coreIdx_, dataState_, startRankId_, sendRankNum_,
-                            static_cast<unsigned long long>(static_cast<uint64_t>(epStatusSpaceGM_)),
-                            static_cast<int32_t>(sumOfFlag), static_cast<int32_t>(sumTarget));
-            LocalTensor<int32_t> rawStatus = statusTensor.ReinterpretCast<int32_t>();
+            GM_ADDR statusBankBase = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]) + COMBINE_STATUS_BASE;
+            GM_ADDR ctrlBase = dataStateGM_ - CTRL_COMBINE_STATE_OFFSET;
+            GlobalTensor<int32_t> ctrlDispatchState;
+            GlobalTensor<int32_t> ctrlCombineState;
+            GlobalTensor<int32_t> ctrlCombineFlag;
+            ctrlDispatchState.SetGlobalBuffer((__gm__ int32_t *)(ctrlBase + CTRL_DISPATCH_STATE_OFFSET));
+            ctrlCombineState.SetGlobalBuffer((__gm__ int32_t *)(ctrlBase + CTRL_COMBINE_STATE_OFFSET));
+            ctrlCombineFlag.SetGlobalBuffer((__gm__ int32_t *)(ctrlBase + CTRL_COMBINE_FLAG_OFFSET));
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                ctrlDispatchState);
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(ctrlCombineState);
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(ctrlCombineFlag);
+            printf("[WAIT] rank=%u aiv=%u C_S=%u startRank=%u num=%u sum=%d target=%d\n", epRankId_, coreIdx_,
+                dataState_, startRankId_, sendRankNum_, sumOfFlag, sumTarget);
+            printf("[WAIT]   ctrl D_S=%d C_S=%d flag=0x%x bank0=0x%llx stateOff=%u\n",
+                ctrlDispatchState.GetValue(0), ctrlCombineState.GetValue(0),
+                ctrlCombineFlag.GetValue(0), statusBankBase, stateOffset_);
             for (uint32_t i = 0U; i < sendRankNum_; ++i) {
-                // 每个槽在 UB 里占一个 32B DataBlock，取其首个 int32
-                AscendC::printf("[WAIT]   srcRank=%u slot=0x%x raw=0x%x\n", startRankId_ + i,
-                                static_cast<uint32_t>((startRankId_ + i) * stateOffset_),
-                                static_cast<uint32_t>(rawStatus.GetValue(i * (UB_ALIGN / sizeof(int32_t)))));
+                const uint64_t slotOff = static_cast<uint64_t>(startRankId_ + i) * stateOffset_;
+                GlobalTensor<int32_t> bank0Slot;
+                GlobalTensor<int32_t> bank1Slot;
+                bank0Slot.SetGlobalBuffer((__gm__ int32_t *)(statusBankBase + slotOff));
+                bank1Slot.SetGlobalBuffer((__gm__ int32_t *)(statusBankBase + COMBINE_STATE_BANK_STRIDE + slotOff));
+                DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(bank0Slot);
+                DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(bank1Slot);
+                AscendC::printf("[WAIT]   srcRank=%u slot=0x%x bank0=0x%x bank1=0x%x\n",
+                    startRankId_ + i, slotOff, bank0Slot.GetValue(0), bank1Slot.GetValue(0));
             }
         }
 #endif

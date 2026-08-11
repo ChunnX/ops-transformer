@@ -39,8 +39,10 @@ namespace MoeDistributeCombineSetupImpl {
 #define TemplateMC2TypeFunc ExpandXType, ExpandIdxType
 
 // 置 1 打开状态通路调试：打印本核 C_S / 状态槽地址，并在 Commit+Drain 后回读对端状态槽。
-// 回读天然带 race：对端 combine_teardown 消费状态后会立刻清零该槽，读到 0 不代表状态未送达，
-// 只有"回读非 0"才是状态确实落到对端的正向证据。
+// 正常跑完时回读带 race（对端消费后会清零该槽），读到 0 不能判定未送达；
+// 但在对端卡死的场景下它不会清零，此时回读是无歧义的：
+//   readBack == STATUS_FLAG_VALUE -> 状态确实落到对端，问题在接收侧
+//   readBack == 0                 -> 状态根本没落到对端，问题在发送侧
 #ifndef COMBINE_SETUP_DEBUG_DST_STATUS
 #define COMBINE_SETUP_DEBUG_DST_STATUS 0
 #endif
@@ -104,7 +106,7 @@ private:
     uint32_t aivId_{0};
     uint32_t epRankId_{0};
 
-    // GM_ADDR commCmdInfoOutGM_;
+    GM_ADDR commCmdInfoOutGM_{nullptr}; // 仅调试回读用作落地缓冲
     GM_ADDR statusDataSpaceGM_;
     GM_ADDR statusFlagGM_; // 本卡状态flag源地址，用于远端WriteNbi
     constexpr static uint64_t HCOMM_INIT_SIZE = 512UL;
@@ -143,7 +145,7 @@ private:
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_ADDR context,
     GM_ADDR expandX, GM_ADDR /*expertIds*/, GM_ADDR assistInfoForCombine, GM_ADDR /*quantExpandX*/,
-    GM_ADDR /*commCmdInfoOut*/, GM_ADDR /*workspaceGM*/, TPipe *pipe,
+    GM_ADDR commCmdInfoOut, GM_ADDR /*workspaceGM*/, TPipe *pipe,
     const MoeDistributeCombineSetupTilingData *tilingData, __gm__ void *mc2InitTiling, __gm__ void *mc2CcTiling)
 {
     tpipe_ = pipe;
@@ -152,7 +154,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
 
-    // commCmdInfoOutGM_ = commCmdInfoOut;
+    commCmdInfoOutGM_ = commCmdInfoOut;
 
     // 获取 win 控制区：本算子只读写 C_S，与 D_S 独立，避免联跑抢乒乓
     GlobalTensor<int32_t> selfDataStatusTensor;
@@ -163,6 +165,10 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
     dataState_ = selfDataStatusTensor(0); // C_S：combine 专用 0/1
+    // C_S 直接当 bank 乘数用，非 0/1 时算出的地址仍可能落在 2GB+ 注册段内，
+    // WriteNbi 会正常返回成功，对端却永远等不到。窗口不保证清零，必须校验。
+    ascendc_assert(dataState_ <= 1U, "combine_setup C_S corrupted, rank=%u aiv=%u C_S=%u", epRankId_, aivId_,
+                   dataState_);
 
     // 本卡准备状态 flag 源（控制块 +64），供远端 WriteNbi；与 C_S(+32)/D_S(+0) 错开
     statusFlagGM_ = statusDataSpaceGM_ + STATE_WIN_OFFSET +
@@ -238,13 +244,13 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::BuffInit(
     uint32_t assistInfoQueueSize = Ceil(moeSendNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     uint64_t reservedUbSize = HCOMM_INIT_SIZE + assistInfoQueueSize;
     if(reservedUbSize > totalUbSize) {
-        // printf("UB space is insufficient, reserved=%llu total=%u\n", reservedUbSize, totalUbSize);
+        printf("[ERROR] hcomm_.Init UB space is insufficient, reserved=%llu total=%u\n", reservedUbSize, totalUbSize);
     }
     remain_ub_space = totalUbSize - reservedUbSize;
     tpipe_->Reset();
     if(!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize))
         || !tpipe_->InitBuffer(expertTokenTmpQueue_, 1, static_cast<uint32_t>(remain_ub_space))) {
-        // printf("communication buffers failed\n");
+        printf("[ERROR] hcomm_.Init communication buffers failed\n");
     }
 }
 
@@ -279,7 +285,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
     hcommTensor_ = assistStorage[assistInfoSize];
     int32_t ret = hcomm_.Init(hcommTensor_, static_cast<uint32_t>(HCOMM_INIT_SIZE));
     if(ret != HCOMM_SUCCESS) {
-        // printf("Init hcomm failed, ret=%d\n", ret);
+        printf("[ERROR] hcomm_.Init Init hcomm failed, ret=%d\n", ret);
         assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
         return;
     }
@@ -369,10 +375,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
 
             AscendC::printf(
                 "[DST] rank=%u dst=%u aiv=%u C_S=%u stateOff=%u addr=0x%llx srcFlag=0x%x readBack=0x%x expect=0x%x\n",
-                epRankId_, dstRankId, aivId_, dataState_, static_cast<uint32_t>(epStateOffsetOnWin_),
-                static_cast<unsigned long long>(static_cast<uint64_t>(dstStatusAddr)),
-                static_cast<uint32_t>(srcFlagTensor(0)), static_cast<uint32_t>(probeTensor(0)),
-                static_cast<uint32_t>(STATUS_FLAG_VALUE));
+                epRankId_, dstRankId, aivId_, dataState_, epStateOffsetOnWin_, dstStatusAddr,
+                srcFlagTensor(0), probeTensor(0), STATUS_FLAG_VALUE);
         }
 #endif
     }
