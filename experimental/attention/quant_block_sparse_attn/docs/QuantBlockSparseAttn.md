@@ -555,7 +555,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 | 命名 | 含义 |
 | :---: | :--- |
 | FP8全量化 | `query`、`key`、`value` 为 `FLOAT8_E4M3FN`，`q_descale`、`k_descale`、`v_descale`、`p_scale` 参与反量化/再量化缩放的场景。 |
-| PA_BNSD | Paged Attention KV Cache 排布，逻辑形态为 `[block_num, N2, sparse_kv_block_size, D_v]`。 |
+| PA_BNSD | Paged Attention KV Cache 排布，逻辑形态为 `[block_num, N2, sparse_kv_block_size, D或D_v]`。 |
 | 4D PA 0 轴非连续存储 | 当前支持的 KV Cache 存储形态；接口传入 4D `key`、4D `value` 和 4D `k_descale` BNB1 视图，各视图的 0 轴均为非连续存储，不支持 1D 组合 KV 存储。 |
 | BatchSize | Batch 数，对应 `sparse_indices`、`sparse_seq_len`、`block_table` 的第 1 维。 |
 | QueryTokenNum | 所有 batch 的 Query 有效 token 数之和，对应 `query` 的 T 轴。 |
@@ -652,7 +652,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 一致性约束
 
-  - `sparse_indices` 和 `sparse_seq_len` 的 shape 必须与 `BatchSize`、`N1`、`max_Qb` 语义保持一致；当前主算子 host 默认这两个 Tensor 的 shape 正确，不在 host 中对max_Qb和max_Kb进行拦截校验。
+  - `sparse_indices` 和 `sparse_seq_len` 的 shape 必须与 `BatchSize`、`N1`、`max_Qb` 语义保持一致；当前主算子 host 默认这两个 Tensor 的 shape 正确，不在 host 中对max_Qb和max_Kb的正确性进行校验，输入正确性由用户外部保证。
   - `sparse_seq_len[B,N1,max_Qb]` 表示对应 Query block 的有效 KV block 数；值为 0 时对应稀疏任务输出置零，LSE 置为 `-FLT_MAX`。
   - `sparse_indices` 的有效元素表示逻辑 KV block id。
 

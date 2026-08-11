@@ -462,7 +462,8 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
         if (tilingInfo_.bSize > QBSA_FP8_MAX_BATCH_SIZE) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "sparse_indices batch",
                                                   std::to_string(tilingInfo_.bSize),
-                                                  "Must be in range (0, 65536] in quant_mode=1");
+                                                  "Must be in range (0, " +
+                                                      std::to_string(QBSA_FP8_MAX_BATCH_SIZE) + "] in quant_mode=1");
             return ge::GRAPH_FAILED;
         }
         if (sparseIndicesShape.GetDim(1U) != static_cast<int64_t>(tilingInfo_.n1Size)) {
