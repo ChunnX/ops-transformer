@@ -119,8 +119,8 @@ def turbo_quant_sparse_flash_attention(
     key_quant_mode: int = 3,  # 3: TQ4 码本量化，host 侧唯一合法值
     value_quant_mode: int = 3,
     sparse_block_size: int = 1,
-    layout_query: str = "TND",
-    layout_kv: str = "PA_BSND",
+    layout_query: str = "TND",  # 仅支持 TND：launcher 强制 query 为 3D
+    layout_kv: str = "PA_BSND",  # PageAttention 主路径；非 PA 场景可用 BSND
     sparse_mode: int = 3,
     pre_tokens: int = INT64_MAX,
     next_tokens: int = INT64_MAX,

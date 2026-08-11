@@ -46,11 +46,14 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {ATTEN_OUT_NAME, {ge::DT_BF16}},
     {SPARSE_INDICES_NAME, {ge::DT_INT32}}};
 
+// query 与 attention_out 仅支持 TND：PyTorch launcher 强制 query 为 3D，
+// 且输出固定按 TND 构造，BSND 无对应的 launcher / Meta / 输出 shape 实现。
+// KV 侧保留 PA_BSND（PageAttention 主路径）与 BSND；TND 的 KV 无对应实现。
 const std::map<std::string, std::vector<TQSFALayout>> LAYOUT_SUPPORT_MAP = {
-    {QUERY_NAME, {TQSFALayout::BSND, TQSFALayout::TND}},
-    {KEY_NAME, {TQSFALayout::BSND, TQSFALayout::TND, TQSFALayout::PA_BSND}},
-    {VALUE_NAME, {TQSFALayout::BSND, TQSFALayout::TND, TQSFALayout::PA_BSND}},
-    {ATTEN_OUT_NAME, {TQSFALayout::BSND, TQSFALayout::TND}},
+    {QUERY_NAME, {TQSFALayout::TND}},
+    {KEY_NAME, {TQSFALayout::BSND, TQSFALayout::PA_BSND}},
+    {VALUE_NAME, {TQSFALayout::BSND, TQSFALayout::PA_BSND}},
+    {ATTEN_OUT_NAME, {TQSFALayout::TND}},
 };
 
 const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
@@ -811,6 +814,19 @@ ge::graphStatus TQSFATilingCheck::CheckKV()
                                                    inputKvType_, VALUE_NAME)) {
         return ge::GRAPH_FAILED;
     }
+
+    // MLA 场景下 K 与 V 为同一份 latent，kernel 的 MM2 复用已反量化的合并缓冲，
+    // 不单独读取 value。此处要求两者 shape 完全一致：既是该语义的直接表达，
+    // 也可拦住误传不匹配 value 的调用（原先仅校验 dtype 会放行）。
+    OP_CHECK_IF(valueShapeCmp_.GetDimNum() != keyShapeCmp_.GetDimNum(),
+                OPS_REPORT_VECTOR_INNER_ERR(opName_, "value dim num invalid"),
+                return ge::GRAPH_FAILED);
+    for (size_t i = 0U; i < keyShapeCmp_.GetDimNum(); ++i) {
+        OP_CHECK_IF(valueShapeCmp_.GetDim(i) != keyShapeCmp_.GetDim(i),
+                    OPS_REPORT_VECTOR_INNER_ERR(opName_, "value shape invalid"),
+                    return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 

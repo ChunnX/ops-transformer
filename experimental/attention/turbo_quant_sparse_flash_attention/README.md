@@ -29,7 +29,7 @@
 |-------------|------------|------|-----|-----|
 |query|输入|公式中的 $Q$，layout_query 为 BSND 时 shape 为 [B, S1, N1, D]，为 TND 时 shape 为 [T1, N1, D]|BFLOAT16|ND|
 |key|输入|公式中 $\tilde{K}$ 的 4bit 量化存储，以 INT8 承载打包后的 nibble、rope 与归一化系数|INT8|ND|
-|value|输入|公式中的 $\tilde{V}$。MLA 场景下与 key 为同一份 latent，数据类型跟随 key|INT8|ND|
+|value|输入|公式中的 $\tilde{V}$。MLA 场景下与 key 为同一份 latent，本算子不单独读取该输入，保留是为与 c8 稀疏注意力路径的接口保持一致；调用方传入与 key 相同的张量即可|INT8|ND|
 |sparse_indices|输入|稀疏选取的 KV 索引，标识每个 query 实际参与计算的 KV 位置|INT32|ND|
 |key_dequant_scale|可选输入|key 的反量化系数|FLOAT32|ND|
 |value_dequant_scale|可选输入|value 的反量化系数|FLOAT32|ND|
@@ -57,7 +57,7 @@
 ## 约束说明
 -   该接口支持推理场景下使用。
 -   数据类型支持范围：query 与 attention_out 仅支持 `BFLOAT16`；key 与 value 仅支持 `INT8`；sparse_indices 仅支持 `INT32`。
--   value 的数据类型跟随 key，两者必须一致。
+-   value 的数据类型与 shape 均须与 key 一致。MLA 场景下 K 与 V 为同一份 latent，kernel 的 MM2 复用已反量化的合并缓冲，不单独读取 value。
 -   数据排布支持范围：query 与 attention_out 支持 `BSND`、`TND`；key 与 value 支持 `BSND`、`TND`、`PA_BSND`（PageAttention）。
 -   query 的最后一维包含 rope 分量，attention_out 的最后一维为 query 最后一维减去 `rope_head_dim`，即 $D_{out} = D_{query} - rope\_head\_dim$。
 -   MLA 场景下 key 与 value 指向同一份 latent，"对 K 按行缩放"与"对 score/P 按列缩放"在数学上等价。
