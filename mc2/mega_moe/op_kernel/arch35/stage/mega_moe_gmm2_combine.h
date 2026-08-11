@@ -28,15 +28,101 @@
 #include "../common/mega_moe_mxfp8_utils.h"
 #if __has_include("../../../common/mc2_kernel_utils.h")
 #include "../../../common/mc2_kernel_utils.h"
-#include "../../../moe_distribute_dispatch_v2/quantize_functions.h"
+#include "../../../common/quantize_functions.h"
 #else
 #include "../../../../common/op_kernel/mc2_kernel_utils.h"
-#include "../../../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
+#include "../../../../common/op_kernel/quantize_functions.h"
 #endif
 
 namespace MegaMoeImpl {
 
 using namespace AscendC;
+
+constexpr uint32_t META_INFO_TENSOR_ADDR = 200U * 1024U;
+constexpr int32_t MAX_AICORE_NUM = 36;
+constexpr uint32_t WAVE_COMBINE_NO_QUANT_ROW_BUFFER_NUM = 6U;
+constexpr uint32_t WAVE_COMBINE_QUANT_ROW_BUFFER_NUM = 2U;
+constexpr uint32_t WAVE_COMBINE_UB_BASE = 64U * 1024U;
+constexpr uint32_t WAVE_COMBINE_META_INFO_TOKEN_CAPACITY = 1536U;
+constexpr uint32_t WAVE_GMM2_READY_SCAN_UB_ADDR = 184U * 1024U;
+constexpr uint32_t WAVE_GMM2_READY_MAX_SCAN_BYTES =
+    MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) > ALIGN_512 ?
+        MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) :
+        ALIGN_512;
+constexpr uint32_t WAVE_GMM2_READY_REDUCE_TMP_UB_ADDR =
+    WAVE_GMM2_READY_SCAN_UB_ADDR +
+    ((WAVE_GMM2_READY_MAX_SCAN_BYTES + ALIGN_512 - 1U) / ALIGN_512) * ALIGN_512;
+constexpr uint32_t WAVE_GMM2_READY_SUM_UB_ADDR = WAVE_GMM2_READY_REDUCE_TMP_UB_ADDR + ALIGN_512;
+
+using Gmm2ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
+using Gmm2BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
+                              int64_t, int64_t, int64_t, int64_t, int64_t>;
+
+struct Gmm2ExpertLoopState {
+    Gmm2ProblemShape problemShape;
+    Gmm2BlockOffset baseOffset;
+    uint32_t expertBeforeCnt = 0;
+};
+
+struct Gmm2Config {
+    MoeStageCommonConfig common;
+    BlockJobContext blockJob;
+    BlockWorkspaceContext countWorkspace;
+    int32_t swigluFlagSlotsPerExpert;
+    int32_t dispatchFlagSlotsPerExpert;
+    uint64_t combineSyncSlotCountPerExpert;
+    int32_t groupedMatmulMode;
+    bool isPerExpertWeightTensor;
+};
+
+struct Gmm2Scratch {
+    GlobalTensor<int32_t> expertRevNumsGlobalTensor;
+};
+
+struct Gmm2RuntimeState {
+    uint32_t &startBlockIdx;
+    int32_t &vecSetSyncCom;
+    int32_t &gmTileSequence;
+    uint16_t &pingpongIdx;
+};
+
+struct QuantCombineBufferConfig {
+    int64_t combineUbElementCount;
+    uint32_t quantTokenSizeBytes;
+};
+
+struct QuantCombineConfig {
+    MoeStageCommonConfig common;
+    AivJobContext job;
+    bool participates;
+};
+
+struct QuantCombineTokenRange {
+    uint32_t tokenStart;
+    uint32_t tokenCount;
+    uint64_t metaInfoTokenOffset;
+    uint32_t expertIdx;
+};
+
+struct WaveCombineConfig {
+    MoeStageCommonConfig common;
+    AivJobContext job;
+};
+
+struct WaveCombineBufferConfig {
+    uint32_t rowBytes = 0;
+    uint32_t rowStrideBytes = 0;
+    uint32_t quantRowElements = 0;
+    uint32_t quantRowStorageBytes = 0;
+    uint32_t slotStrideBytes = 0;
+    uint32_t quantTempElements = 0;
+};
+
+struct WaveCombineScratch {
+    LocalTensor<int32_t> metaInfoTensor;
+    LocalTensor<bfloat16_t> rowBufferTensor;
+    LocalTensor<float> quantTempTensor;
+};
 
 namespace CombineImpl {
 
@@ -178,9 +264,10 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
     offset += ubTensorSize * sizeof(T);
 
     uint32_t nScale = Ops::Base::CeilDiv(n, uint32_t(MXFP_SCALE_GROUP_NUM));
-    uint32_t mxScaleNum = Align2(nScale);
+    uint32_t mxScaleNum = Ops::Base::CeilAlign(nScale, 2U);
     uint32_t nAlign32 = Ops::Base::CeilAlign(n, static_cast<uint32_t>(ALIGN_32));
-    uint32_t floatTempSize = Align32(mxScaleNum) + mxScaleNum / 2;
+    uint32_t floatTempSize =
+        Ops::Base::CeilAlign(mxScaleNum, static_cast<uint32_t>(ALIGN_32)) + mxScaleNum / 2;
     LocalTensor<float> floatTemp = LocalTensor<float>(TPosition::VECIN, offset, floatTempSize);
 
     GlobalTensor<T> gmm2OutGm;
@@ -223,59 +310,6 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
 
 } // namespace CombineImpl
 
-constexpr uint32_t META_INFO_TENSOR_ADDR = 200U * 1024U;
-constexpr int32_t MAX_AICORE_NUM = 36;
-
-using Gmm2ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
-using Gmm2BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
-                              int64_t, int64_t, int64_t, int64_t, int64_t>;
-
-struct Gmm2ExpertLoopState {
-    Gmm2ProblemShape problemShape;
-    Gmm2BlockOffset baseOffset;
-    uint32_t expertBeforeCnt = 0;
-};
-
-struct Gmm2Config {
-    MoeStageCommonConfig common;
-    BlockJobContext blockJob;
-    BlockWorkspaceContext countWorkspace;
-    int32_t swigluFlagSlotsPerExpert;
-    int32_t dispatchFlagSlotsPerExpert;
-    uint64_t combineSyncSlotCountPerExpert;
-    int32_t groupedMatmulMode;
-    bool isPerExpertWeightTensor;
-};
-
-struct Gmm2Scratch {
-    GlobalTensor<int32_t> expertRevNumsGlobalTensor;
-};
-
-struct Gmm2RuntimeState {
-    uint32_t &startBlockIdx;
-    int32_t &vecSetSyncCom;
-    int32_t &gmTileSequence;
-    uint16_t &pingpongIdx;
-};
-
-struct QuantCombineBufferConfig {
-    int64_t combineUbElementCount;
-    uint32_t quantTokenSizeBytes;
-};
-
-struct QuantCombineConfig {
-    MoeStageCommonConfig common;
-    AivJobContext job;
-    bool participates;
-};
-
-struct QuantCombineTokenRange {
-    uint32_t tokenStart;
-    uint32_t tokenCount;
-    uint64_t metaInfoTokenOffset;
-    uint32_t expertIdx;
-};
-
 // 加载当前任务负责的 metadata，并完成一段连续 token 的量化 Combine 发送。
 template <uint8_t CombineMode>
 __aicore__ inline void CombineQuantizedTokenRange(
@@ -297,31 +331,6 @@ __aicore__ inline void CombineQuantizedTokenRange(
         context.common.rankId, gmmAddrInfo.gmm2OutGlobal, params, metaInfoTensor,
         bufferConfig.combineUbElementCount, ubOffset, bufferConfig.quantTokenSizeBytes);
 }
-
-struct WaveCombineConfig {
-    MoeStageCommonConfig common;
-    AivJobContext job;
-};
-
-struct WaveCombineBufferConfig {
-    uint32_t rowBytes = 0;
-    uint32_t rowStrideBytes = 0;
-    uint32_t quantRowElements = 0;
-    uint32_t quantRowStorageBytes = 0;
-    uint32_t slotStrideBytes = 0;
-    uint32_t quantTempElements = 0;
-};
-
-struct WaveCombineScratch {
-    LocalTensor<int32_t> metaInfoTensor;
-    LocalTensor<bfloat16_t> rowBufferTensor;
-    LocalTensor<float> quantTempTensor;
-};
-
-constexpr uint32_t WAVE_COMBINE_NO_QUANT_ROW_BUFFER_NUM = 6U;
-constexpr uint32_t WAVE_COMBINE_QUANT_ROW_BUFFER_NUM = 2U;
-constexpr uint32_t WAVE_COMBINE_UB_BASE = 64U * 1024U;
-constexpr uint32_t WAVE_COMBINE_META_INFO_TOKEN_CAPACITY = 1536U;
 
 // 构造 Combine 与 Unpermute 共用的量化 token 记录布局。
 __aicore__ inline QuantCombineBufferConfig CreateQuantCombineBufferConfig(uint32_t tokenHiddenDim)
@@ -1234,16 +1243,6 @@ __aicore__ inline void ScheduleQuantizedMoeExpertCombine(
         CombineQuantizedTokenRange<CombineMode>(context, bufferConfig, params, gmmAddrInfo, tokenRange);
     }
 }
-
-constexpr uint32_t WAVE_GMM2_READY_SCAN_UB_ADDR = 184U * 1024U;
-constexpr uint32_t WAVE_GMM2_READY_MAX_SCAN_BYTES =
-    MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) > ALIGN_512 ?
-        MAX_AICORE_NUM *INT_CACHELINE * sizeof(int32_t) :
-        ALIGN_512;
-constexpr uint32_t WAVE_GMM2_READY_REDUCE_TMP_UB_ADDR =
-    WAVE_GMM2_READY_SCAN_UB_ADDR +
-    ((WAVE_GMM2_READY_MAX_SCAN_BYTES + ALIGN_512 - 1U) / ALIGN_512) * ALIGN_512;
-constexpr uint32_t WAVE_GMM2_READY_SUM_UB_ADDR = WAVE_GMM2_READY_REDUCE_TMP_UB_ADDR + ALIGN_512;
 
 __aicore__ inline uint64_t GetWaveGmm2ReadySlotStride(const WaveCombineConfig &context)
 {
