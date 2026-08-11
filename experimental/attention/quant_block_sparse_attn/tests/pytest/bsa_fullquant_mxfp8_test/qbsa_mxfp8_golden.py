@@ -33,6 +33,8 @@ import time
 
 import torch
 import torch_npu
+import torchair
+from torchair.configs.compiler_config import CompilerConfig
 
 try:
     from . import result_compare_method
@@ -81,11 +83,9 @@ _CASE_INT_FIELDS = {
 }
 _CASE_FLOAT_FIELDS = {
     "p_scale_value",
-    "data_range_q",
-    "data_range_k",
-    "data_range_v",
     "softmax_scale",
 }
+_CASE_RANGE_FIELDS = {"data_range_q", "data_range_k", "data_range_v"}
 _CASE_INT_LIST_FIELDS = {"actual_seq_q", "actual_seq_kv"}
 _CASE_REQUIRED_RUNTIME_FIELDS = {
     "B",
@@ -120,7 +120,6 @@ _CASE_REQUIRED_RUNTIME_FIELDS = {
     "quant_mode",
     "sparse_pattern",
     "block_table_pattern",
-    "p_scale_value",
 }
 
 # 其余列作为用例设计参考信息原样保留，不参与 pytest 计算。CSV 按列名解析，允许继续携带扩展字段。
@@ -216,7 +215,22 @@ def _parse_case_field(field_name, value):
         return _parse_bool(value, field_name)
     if field_name in _CASE_INT_FIELDS:
         return int(value)
+    if field_name in _CASE_RANGE_FIELDS:
+        parsed = (
+            json.loads(value)
+            if isinstance(value, str) and value.startswith("[")
+            else value
+        )
+        if isinstance(parsed, (list, tuple)):
+            if len(parsed) != 2:
+                raise ValueError(
+                    f"{field_name} must contain exactly [min, max], got: {value}"
+                )
+            return [float(parsed[0]), float(parsed[1])]
+        return float(parsed)
     if field_name in _CASE_FLOAT_FIELDS:
+        if isinstance(value, str) and value.strip().lower() == "none":
+            return None
         return float(value)
     if field_name in _CASE_INT_LIST_FIELDS:
         parsed = value if isinstance(value, list) else json.loads(str(value))
@@ -277,20 +291,21 @@ def _validate_case_design_fields(case):
             f"s2_base_size must be 512 for MXFP8, got {case['s2_base_size']}"
         )
 
-    sparse_q = case.get("sparse_q_block_size")
-    sparse_kv = case.get("sparse_kv_block_size")
-    pa_block = case.get("block_size")
-    if sparse_q is not None and sparse_kv is not None and sparse_q != sparse_kv:
-        raise ValueError(
-            f"sparse_q_block_size must equal sparse_kv_block_size, got {sparse_q} vs {sparse_kv}"
-        )
-    if all(v is not None for v in (pa_block, sparse_kv)) and (
-        pa_block < sparse_kv or pa_block % sparse_kv != 0
-    ):
-        raise ValueError(
-            f"block_size must be a positive multiple of sparse_kv_block_size, "
-            f"got block_size={pa_block}, sparse_kv_block_size={sparse_kv}"
-        )
+    block_size = case.get("block_size")
+    sparse_q_block_size = case.get("sparse_q_block_size")
+    sparse_kv_block_size = case.get("sparse_kv_block_size")
+    if sparse_q_block_size is not None and sparse_kv_block_size is not None:
+        if sparse_q_block_size != sparse_kv_block_size:
+            raise ValueError(
+                "sparse_q_block_size must equal sparse_kv_block_size, "
+                f"got {sparse_q_block_size}, {sparse_kv_block_size}"
+            )
+    if block_size is not None and sparse_kv_block_size is not None:
+        if block_size % sparse_kv_block_size != 0:
+            raise ValueError(
+                "block_size must be a multiple of sparse_kv_block_size, "
+                f"got block_size={block_size}, sparse_kv_block_size={sparse_kv_block_size}"
+            )
 
     _get_runtime_seq_lengths(case, "actual_seq_q", "S1")
     _get_runtime_seq_lengths(case, "actual_seq_kv", "S2")
@@ -399,7 +414,7 @@ def set_active_case(case):
         DATA_RANGE_V, \
         DEVICE_ID, \
         SPARSE_BLOCK_SIZE
-    global QUANT_MODE_MXFP8, KEY_LAYOUT, SPARSE_INDICES_LAYOUT, OUT_LAYOUT
+    global QUANT_MODE_MXFP8, KEY_LAYOUT, SPARSE_INDICES_LAYOUT, OUT_LAYOUT, BLOCK_NUM
 
     CASE = dict(case)
     B = CASE["B"]
@@ -426,6 +441,10 @@ def set_active_case(case):
     KEY_LAYOUT = CASE["layout_kv"]
     SPARSE_INDICES_LAYOUT = CASE["layout_sparse_indices"]
     OUT_LAYOUT = CASE["layout_out"]
+    _block_num_raw = CASE.get("blocknum", None)
+    if _block_num_raw is not None and _block_num_raw <= 0:
+        raise ValueError(f"blocknum must be > 0 or None, got {_block_num_raw}")
+    BLOCK_NUM = _block_num_raw if _block_num_raw is not None else -1
 
 
 CASE = _load_initial_case()
@@ -460,10 +479,61 @@ def _prefix(lengths):
     return torch.tensor(values, dtype=torch.int32)
 
 
+def _normalize_data_range(data_range):
+    """将标量或 [最小值, 最大值] 转换为统一的范围描述。"""
+    if isinstance(data_range, (list, tuple)):
+        if len(data_range) != 2:
+            raise ValueError(
+                f"data_range must be a scalar or [min, max], got: {data_range}"
+            )
+        low, high = float(data_range[0]), float(data_range[1])
+        explicit_bounds = True
+    else:
+        radius = float(data_range)
+        if radius < 0:
+            raise ValueError(f"scalar data_range must be non-negative, got: {radius}")
+        low, high = -radius, radius
+        explicit_bounds = False
+
+    if not math.isfinite(low) or not math.isfinite(high):
+        raise ValueError(f"data_range bounds must be finite, got: [{low}, {high}]")
+    if low > high:
+        raise ValueError(f"data_range min must not exceed max, got: [{low}, {high}]")
+    return low, high, explicit_bounds
+
+
 def _rand_float(shape, generator, data_range=1.0):
-    return (
-        torch.rand(shape, dtype=torch.float32, generator=generator) * 2 - 1
-    ) * data_range
+    low, high, explicit_bounds = _normalize_data_range(data_range)
+    if low == high:
+        return torch.full(shape, low, dtype=torch.float32)
+
+    result = (
+        torch.rand(shape, dtype=torch.float32, generator=generator) * (high - low) + low
+    )
+    if explicit_bounds and result.numel() > 0:
+        # 显式 [a, b] 表示闭区间，固定首尾元素以确保两个端点都被覆盖。
+        flattened = result.view(-1)
+        flattened[0] = low
+        if flattened.numel() > 1:
+            flattened[-1] = high
+    return result
+
+
+def _log_tensor_ranges(prefix, **tensors):
+    """将低精度 Tensor 转为 FP32 后打印最大值和最小值。"""
+    ranges = []
+    for name, tensor in tensors.items():
+        if tensor is None:
+            ranges.append(f"{name}=None")
+            continue
+        if tensor.numel() == 0:
+            ranges.append(f"{name}=empty")
+            continue
+        values = tensor.detach().to(dtype=torch.float32)
+        ranges.append(
+            f"{name}=[min={values.min().item():.8g}, max={values.max().item():.8g}]"
+        )
+    logger.info("[INFO] %s: %s", prefix, ", ".join(ranges))
 
 
 def _rand_fp8(shape, generator, data_range=1.0):
@@ -477,46 +547,76 @@ def _validate_fp8_dtype(fp8_dtype):
         )
 
 
-def get_mxfp8_per_token_group_quant_scale(tensor, fp8_dtype, group_size=32):
-    """Vectorized Q/K per-token-group quant_scale."""
+def quantize_mxfp8_qk(tensor_fp32, fp8_dtype, group_size=32):
+    """MXFP8 配套量化 Q/K: per-32-element-group along D axis。
+
+    正确流程: 从 fp32 算 descale → fp8 = clamp(fp32/descale)。
+    保证 fp8 × descale ≈ 原始 fp32，反量化不溢出。
+
+    Input:  (..., D) fp32
+    Output: (fp8 (..., D), descale (..., D//group_size))  -- descale 与 fp8 配套
+    """
     _validate_fp8_dtype(fp8_dtype)
-    emax_elem = _EMAX_MAP[fp8_dtype]
-    tensor = tensor.to(torch.float32)
+    tensor_fp32 = tensor_fp32.to(torch.float32)
 
-    dim1, dim2, dim3, dim4 = tensor.shape
-    num_groups = math.ceil(dim4 / group_size)
-    pad_size = num_groups * group_size - dim4
+    last_dim = tensor_fp32.shape[-1]
+    num_groups = math.ceil(last_dim / group_size)
+    pad_size = num_groups * group_size - last_dim
     if pad_size > 0:
-        tensor = torch.nn.functional.pad(tensor, (0, pad_size))
+        tensor_fp32 = torch.nn.functional.pad(tensor_fp32, (0, pad_size))
 
-    grouped = tensor.reshape(dim1, dim2, dim3, num_groups, group_size)
+    grouped = tensor_fp32.reshape(*tensor_fp32.shape[:-1], num_groups, group_size)
     all_zero_mask = torch.all(grouped == 0, dim=-1)
     max_vals = torch.max(torch.abs(grouped), dim=-1)[0].clamp(min=1e-12)
-    shared_exp = torch.floor(torch.log2(max_vals)) - emax_elem
-    return torch.where(all_zero_mask, torch.ones_like(shared_exp), 2**shared_exp).to(
+    # Choose the smallest power-of-two descale that keeps the whole group in
+    # the finite E4M3 range.  floor(log2(max)) - emax only accounts for the
+    # exponent bits and can still overflow values between 256 and 448.
+    fp8_max = torch.finfo(fp8_dtype).max
+    shared_exp = torch.ceil(torch.log2(max_vals / fp8_max))
+    descale = torch.where(all_zero_mask, torch.ones_like(shared_exp), 2**shared_exp).to(
         torch.float32
     )
 
+    descale_expanded = descale.repeat_interleave(group_size, dim=-1)[..., :last_dim]
+    quantized = (
+        (tensor_fp32[..., :last_dim] / descale_expanded)
+        .clamp(-448.0, 448.0)
+        .to(fp8_dtype)
+    )
+    return quantized, descale
 
-def get_mxfp8_per_channel_group_quant_scale(tensor, fp8_dtype, group_size=32):
-    """Vectorized V per-channel-group quant_scale for BSND value tensor."""
+
+def quantize_mxfp8_v(tensor_fp32, fp8_dtype, group_size=32):
+    """MXFP8 配套量化 V: per-32-element-group along S axis。
+
+    Input:  (B, S, N, D) fp32 = BSND
+    Output: (fp8 (B, S, N, D), descale (B, S//group_size, N, D))  -- descale 与 fp8 配套
+    """
     _validate_fp8_dtype(fp8_dtype)
-    emax_elem = _EMAX_MAP[fp8_dtype]
-    tensor = tensor.to(torch.float32)
+    tensor_fp32 = tensor_fp32.to(torch.float32)
 
-    batch, seq_len, num_heads, head_dim = tensor.shape
+    batch, seq_len, num_heads, head_dim = tensor_fp32.shape
     num_groups = math.ceil(seq_len / group_size)
     pad_size = num_groups * group_size - seq_len
     if pad_size > 0:
-        tensor = torch.nn.functional.pad(tensor, (0, 0, 0, 0, 0, pad_size))
+        tensor_fp32 = torch.nn.functional.pad(tensor_fp32, (0, 0, 0, 0, 0, pad_size))
 
-    grouped = tensor.reshape(batch, num_groups, group_size, num_heads, head_dim)
+    grouped = tensor_fp32.reshape(batch, num_groups, group_size, num_heads, head_dim)
     all_zero_mask = torch.all(grouped == 0, dim=2)
     max_vals = torch.max(torch.abs(grouped), dim=2)[0].clamp(min=1e-12)
-    shared_exp = torch.floor(torch.log2(max_vals)) - emax_elem
-    return torch.where(all_zero_mask, torch.ones_like(shared_exp), 2**shared_exp).to(
+    fp8_max = torch.finfo(fp8_dtype).max
+    shared_exp = torch.ceil(torch.log2(max_vals / fp8_max))
+    descale = torch.where(all_zero_mask, torch.ones_like(shared_exp), 2**shared_exp).to(
         torch.float32
     )
+
+    descale_expanded = descale.repeat_interleave(group_size, dim=1)[:, :seq_len, :, :]
+    quantized = (
+        (tensor_fp32[:, :seq_len, :, :] / descale_expanded)
+        .clamp(-448.0, 448.0)
+        .to(fp8_dtype)
+    )
+    return quantized, descale
 
 
 def _physical_ids(start, count, pattern, rng):
@@ -530,7 +630,17 @@ def _physical_ids(start, count, pattern, rng):
     return ids
 
 
-def _make_reference_block_table(batch, seq_lens, block_size, pattern, rng):
+def _make_reference_block_table(
+    batch,
+    seq_lens,
+    block_size,
+    pattern,
+    rng,
+    physical_block_count=0,
+    sparse_indices=None,
+    sparse_seq_len=None,
+    sparse_block_size=None,
+):
     if isinstance(seq_lens, int):
         seq_lens = [seq_lens] * batch
     block_nums = [math.ceil(int(seq_len) / block_size) for seq_len in seq_lens]
@@ -541,16 +651,51 @@ def _make_reference_block_table(batch, seq_lens, block_size, pattern, rng):
     if total_logical_blocks == 0:
         return block_table
 
-    # 与 common MX 一致：物理页数由实际 KV 序列自动推导，每个逻辑页使用唯一物理页。
-    physical_ids = _physical_ids(0, total_logical_blocks, pattern, rng)
+    # physical_block_count > 0 时用传入的物理页数，否则自动推导。
+    total_physical_blocks = (
+        physical_block_count if physical_block_count > 0 else total_logical_blocks
+    )
 
-    logical_offset = 0
-    for batch_idx, logical_block_num in enumerate(block_nums):
-        block_table[batch_idx, :logical_block_num] = torch.tensor(
-            physical_ids[logical_offset : logical_offset + logical_block_num],
-            dtype=torch.int32,
+    # sparse_indices uses sparse-block IDs, while block_table uses PA-page IDs.
+    # One PA page may contain several sparse blocks, so convert the IDs before
+    # deciding which logical PA pages need a physical mapping.
+    needed_logical_ids = [[] for _ in range(batch)]
+    if sparse_indices is not None and sparse_seq_len is not None:
+        if (
+            sparse_block_size is None
+            or sparse_block_size <= 0
+            or block_size % sparse_block_size != 0
+        ):
+            raise ValueError(
+                "sparse_block_size must be a positive divisor of block_size when "
+                "building a sparse PA block table"
+            )
+        sparse_blocks_per_page = block_size // sparse_block_size
+        for b in range(batch):
+            valid = sparse_indices[b][sparse_seq_len[b] > 0]
+            needed_logical_ids[b] = [
+                int(x)
+                for x in torch.div(
+                    valid[valid >= 0].unique(),
+                    sparse_blocks_per_page,
+                    rounding_mode="floor",
+                ).unique()
+                if x < block_nums[b]
+            ]
+
+    # 给选中的逻辑页分配物理页 ID，范围 [0, total_physical_blocks)
+    # physical_ids 按 pattern 生成物理页 ID 序列（sequential/reverse/random）
+    physical_ids = _physical_ids(0, total_physical_blocks, pattern, rng)
+    next_pid = 0
+    for b in range(batch):
+        needed = (
+            needed_logical_ids[b]
+            if needed_logical_ids[b]
+            else list(range(block_nums[b]))
         )
-        logical_offset += logical_block_num
+        for lid in needed:
+            block_table[b, lid] = physical_ids[next_pid % total_physical_blocks]
+            next_pid += 1
     return block_table
 
 
@@ -759,6 +904,7 @@ def mxfp8_pa_preprocessing(
     group_size=32,
     sparse_indices=None,
     sparse_seq_len=None,
+    physical_block_count=0,
 ):
     """
     MXFP8 PA 预处理: internal K/V BNSD -> PagedAttention KV Cache
@@ -783,9 +929,12 @@ def mxfp8_pa_preprocessing(
         else torch.as_tensor(block_table)
     )
     B, N, S, D = tensor_bnsd.shape
-    physical_block_num = (
-        int(block_table.max().item()) + 1 if block_table.numel() > 0 else 0
-    )
+    if physical_block_count > 0:
+        physical_block_num = physical_block_count
+    else:
+        physical_block_num = (
+            int(block_table.max().item()) + 1 if block_table.numel() > 0 else 0
+        )
 
     if is_scale:
         if is_vscale:
@@ -820,11 +969,11 @@ def mxfp8_pa_preprocessing(
     block_num = [math.ceil(act_s / pack_block_size) for act_s in pack_seq_lens]
     for b in range(B):
         bid_table = block_table[b]
-        # for n_q_idx in range(N_q):
         for blk_idx in range(block_num[b]):
             blockid = int(bid_table[blk_idx])
+            if blockid < 0 or blockid >= physical_block_num:
+                continue
             block_offset = blk_idx * pack_block_size
-            # block_offset = sparse_indices[b,n_q_idx,blk_idx] * pack_block_size
             valid_len = min(pack_block_size, pack_seq_lens[b] - block_offset)
             if valid_len <= 0:
                 continue
@@ -882,7 +1031,11 @@ def convert_v_scale_to_pa(scale_bnsd, seq_lens, group_size=32):
 
 
 def _generate_reference_style_mxfp8_inputs():
-    """Generate test inputs using the same data-generation structure as quant_block_sparse_attn_golden.py."""
+    """Generate test inputs with paired fp8 + descale.
+
+    流程: fp32 随机 → 从 fp32 算 descale → fp8 = clamp(fp32/descale)
+    fp8 和 descale 配套生成，保证 fp8 × descale ≈ 原始 fp32，反量化不溢出。
+    """
     case = dict(CASE)
     rng = random.Random(case["seed"])
     generator = torch.Generator().manual_seed(case["seed"])
@@ -899,35 +1052,55 @@ def _generate_reference_style_mxfp8_inputs():
     head_dim = case["D"]
     layout_q = case["layout_q"]
 
+    # Q: fp32 随机 → MXFP8 配套量化 (per-32-group along D)
     if layout_q == "NTD":
-        query = _rand_fp8((n1, total_q, head_dim), generator, DATA_RANGE_Q)
-        q_descale = get_mxfp8_per_token_group_quant_scale(
-            query.unsqueeze(0), FP8_DTYPE, QUANT_GROUP_SIZE
-        ).squeeze(0)
+        q_fp32 = _rand_float((n1, total_q, head_dim), generator, DATA_RANGE_Q)
+        query, q_descale = quantize_mxfp8_qk(
+            q_fp32.unsqueeze(0), FP8_DTYPE, QUANT_GROUP_SIZE
+        )
+        query = query.squeeze(0)
+        q_descale = q_descale.squeeze(0)
     else:
-        query = _rand_fp8((total_q, n1, head_dim), generator, DATA_RANGE_Q)
-        q_descale = get_mxfp8_per_token_group_quant_scale(
-            query.unsqueeze(0), FP8_DTYPE, QUANT_GROUP_SIZE
-        ).squeeze(0)
+        q_fp32 = _rand_float((total_q, n1, head_dim), generator, DATA_RANGE_Q)
+        query, q_descale = quantize_mxfp8_qk(
+            q_fp32.unsqueeze(0), FP8_DTYPE, QUANT_GROUP_SIZE
+        )
+        query = query.squeeze(0)
+        q_descale = q_descale.squeeze(0)
 
-    # 与 common MX 一致：先生成连续逻辑 K/V 和 scale，再统一做 PA preprocessing。
+    # K/V: BSND fp32 → MXFP8 配套量化 → permute 到 BNSD
     max_kv_len = max(kv_lengths)
-    dense_key = _rand_fp8((batch, max_kv_len, n2, head_dim), generator, DATA_RANGE_K)
-    dense_value = _rand_fp8((batch, max_kv_len, n2, head_dim), generator, DATA_RANGE_V)
-    dense_k_descale = get_mxfp8_per_token_group_quant_scale(
-        dense_key, FP8_DTYPE, QUANT_GROUP_SIZE
+    k_fp32 = _rand_float((batch, max_kv_len, n2, head_dim), generator, DATA_RANGE_K)
+    v_fp32 = _rand_float((batch, max_kv_len, n2, head_dim), generator, DATA_RANGE_V)
+    _log_tensor_ranges(
+        "original FP32 range",
+        q=q_fp32,
+        k=k_fp32,
+        v=v_fp32,
     )
-    dense_v_descale = get_mxfp8_per_channel_group_quant_scale(
-        dense_value, FP8_DTYPE, QUANT_GROUP_SIZE
-    )
-    block_table = _make_reference_block_table(
-        batch, kv_lengths, BLOCK_SIZE, case["block_table_pattern"], rng
-    )
+    dense_key, dense_k_descale = quantize_mxfp8_qk(k_fp32, FP8_DTYPE, QUANT_GROUP_SIZE)
+    dense_value, dense_v_descale = quantize_mxfp8_v(v_fp32, FP8_DTYPE, QUANT_GROUP_SIZE)
 
     sparse_indices, sparse_seq_len = _make_reference_sparse_indices(
         case, q_lengths, kv_lengths, rng
     )
-    p_scale = torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
+    block_table = _make_reference_block_table(
+        batch,
+        kv_lengths,
+        BLOCK_SIZE,
+        case["block_table_pattern"],
+        rng,
+        BLOCK_NUM,
+        sparse_indices,
+        sparse_seq_len,
+        case["sparse_kv_block_size"],
+    )
+    p_scale_value = case.get("p_scale_value")
+    p_scale = (
+        None
+        if p_scale_value is None
+        else torch.tensor([float(p_scale_value)], dtype=torch.float32)
+    )
 
     return {
         "case": case,
@@ -1002,60 +1175,8 @@ def _align_up_to_ln2(value):
     return torch.ceil(value / LN2) * LN2
 
 
-def _positions_from_sparse(
-    sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_len
-):
-    block_count = int(sparse_seq_len[batch_idx, head_idx, qb_idx].item())
-    c1_s2_size = int(CASE["s2_base_size"]) // 2
-    if c1_s2_size % SPARSE_BLOCK_SIZE != 0:
-        raise ValueError(
-            f"C1 S2 size must be divisible by sparse block size, got {c1_s2_size} and {SPARSE_BLOCK_SIZE}"
-        )
-    blocks_per_c1 = c1_s2_size // SPARSE_BLOCK_SIZE
-    blocks_per_task = int(CASE["s2_base_size"]) // SPARSE_BLOCK_SIZE
-    chunk_positions = []
-    task_start = 0
-    while task_start < block_count:
-        task_end = min(task_start + blocks_per_task, block_count)
-        task_raw = []
-        for offset in range(task_end - task_start):
-            block_idx = int(
-                sparse_indices[batch_idx, head_idx, qb_idx, task_start + offset].item()
-            )
-            task_raw.append(block_idx)
-        task_valid = sorted(b for b in task_raw if b >= 0)
-        cursor = 0
-        while cursor < len(task_valid):
-            c1_positions = []
-            for offset in range(blocks_per_c1):
-                if cursor + offset >= len(task_valid):
-                    continue
-                block_idx = task_valid[cursor + offset]
-                start = block_idx * SPARSE_BLOCK_SIZE
-                end = min(start + SPARSE_BLOCK_SIZE, kv_len)
-                if start < kv_len:
-                    c1_positions.extend(range(start, end))
-            if c1_positions:
-                chunk_positions.append(c1_positions)
-            cursor += blocks_per_c1
-        task_start += blocks_per_task
-    return chunk_positions
-
-
 def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale):
-    """Run QK with NPU MXFP8 grouped accumulation and rounding semantics.
-
-    A float32 ``matmul(dequant(Q), dequant(K))`` is mathematically equivalent
-    to MXFP8 quant matmul, but it does not reproduce Cube's grouped
-    accumulation order. A small score difference can cross an E4M3 boundary
-    after ``exp(score - max)`` and become a query-row-wide output gain error
-    while VF uses quantized P for the numerator and unquantized P for the
-    denominator.
-
-    Q scale is per-token and K scale is per-output-column. Every two adjacent
-    D-group e8m0 values are packed together, matching npu_quant_matmul's
-    ``group_sizes=[1, 1, 32]`` MXFP8 interface.
-    """
+    """Run QK with NPU MXFP8 grouped accumulation and rounding semantics."""
     if q_fp8.ndim != 2 or k_fp8.ndim != 2:
         raise ValueError(
             f"Q/K must be rank-2, got q={tuple(q_fp8.shape)}, k={tuple(k_fp8.shape)}"
@@ -1100,7 +1221,7 @@ def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale):
                 f"{scale_name} MXFP8 e8m0 scale values must be exact powers of two"
             )
 
-    d_group_count = math.ceil(q_fp8.shape[1] / QUANT_GROUP_SIZE)
+    d_group_count = q_fp8.shape[1] // QUANT_GROUP_SIZE
     if q_scale.shape[1] != d_group_count or k_scale.shape[1] != d_group_count:
         raise ValueError(
             f"Q/K scale D-group count must be {d_group_count}, got "
@@ -1122,16 +1243,8 @@ def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale):
     q_scale_npu = q_scale_packed.contiguous().npu()
     k_scale_npu = k_scale_packed.contiguous().npu()
 
-    expected_scale_shape_q = (
-        q_fp8.shape[0],
-        d_group_count // 2,
-        2,
-    )
-    expected_scale_shape_k = (
-        k_fp8.shape[0],
-        d_group_count // 2,
-        2,
-    )
+    expected_scale_shape_q = (q_fp8.shape[0], d_group_count // 2, 2)
+    expected_scale_shape_k = (k_fp8.shape[0], d_group_count // 2, 2)
     if q_npu.dtype != FP8_DTYPE or k_npu.dtype != FP8_DTYPE:
         raise TypeError(
             f"npu_quant_matmul Q/K must be {FP8_DTYPE}, got "
@@ -1164,7 +1277,6 @@ def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale):
         )
 
     e8m0_dtype = torch_npu.float8_e8m0fnu
-
     try:
         scores_npu = torch_npu.npu_quant_matmul(
             q_npu,
@@ -1184,6 +1296,51 @@ def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale):
             ) from error
         raise
     return scores_npu.cpu()
+
+
+def _positions_from_sparse(
+    sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_len
+):
+    block_count = int(sparse_seq_len[batch_idx, head_idx, qb_idx].item())
+    c1_s2_size = int(CASE["s2_base_size"]) // 2
+    if c1_s2_size % SPARSE_BLOCK_SIZE != 0:
+        raise ValueError(
+            f"C1 S2 size must be divisible by sparse block size, got {c1_s2_size} and {SPARSE_BLOCK_SIZE}"
+        )
+    blocks_per_c1 = c1_s2_size // SPARSE_BLOCK_SIZE
+    blocks_per_task = int(CASE["s2_base_size"]) // SPARSE_BLOCK_SIZE
+
+    raw_blocks = []
+    for i in range(block_count):
+        idx = int(sparse_indices[batch_idx, head_idx, qb_idx, i].item())
+        raw_blocks.append(idx)
+
+    all_task_positions = []
+    task_start = 0
+    while task_start < block_count:
+        task_end = min(task_start + blocks_per_task, block_count)
+        task_raw = raw_blocks[task_start:task_end]
+        task_valid = sorted(b for b in task_raw if b >= 0)
+
+        chunk_positions = []
+        cursor = 0
+        while cursor < len(task_valid):
+            c1_positions = []
+            for offset in range(blocks_per_c1):
+                if cursor + offset >= len(task_valid):
+                    continue
+                block_idx = task_valid[cursor + offset]
+                start = block_idx * SPARSE_BLOCK_SIZE
+                end = min(start + SPARSE_BLOCK_SIZE, kv_len)
+                if start < kv_len:
+                    c1_positions.extend(range(start, end))
+            if c1_positions:
+                chunk_positions.append(c1_positions)
+            cursor += blocks_per_c1
+        if chunk_positions:
+            all_task_positions.append(chunk_positions)
+        task_start += blocks_per_task
+    return all_task_positions
 
 
 def _gather_q_block_and_scale(
@@ -1225,15 +1382,66 @@ def cpu_mxfp8_golden(
     cu_seqlens_q,
     sparse_indices,
     sparse_seq_len,
+    block_table_torch,
 ):
     """Reference-style CPU golden for MXFP8 block sparse attention."""
     layout_q = canonical_q_input_layout(Q_INPUT_LAYOUT)
     q_tensor = q_fp8
     q_scale = dequant_scale_q
-    k_tensor = k_fp8.to(torch.float32)
-    v_tensor = v_fp8.to(torch.float32)
-    k_scale = dequant_scale_k
-    v_scale = dequant_scale_v
+    if block_table_torch is None:
+        raise ValueError("PA CPU golden requires block_table_torch")
+
+    # CPU golden must observe the same physical-page overwrite semantics as the
+    # NPU.  Reading the original dense K/V here is incorrect when several
+    # logical blocks reuse one physical block: mxfp8_pa_preprocessing writes
+    # the cache in batch/logical-block order, so later writes replace earlier
+    # data.  Build the CPU-side cache with the very same block table and helper
+    # used by npu_mxfp8_fa, then dereference it below for every sparse position.
+    block_table = torch.as_tensor(block_table_torch, dtype=torch.int32)
+    k_tensor = mxfp8_pa_preprocessing(
+        k_fp8,
+        kv_lengths,
+        BLOCK_SIZE,
+        block_table,
+        is_vscale=False,
+        is_scale=False,
+        kv_layout="BnNBsD",
+        group_size=QUANT_GROUP_SIZE,
+        physical_block_count=BLOCK_NUM,
+    ).to(torch.float32)
+    v_tensor = mxfp8_pa_preprocessing(
+        v_fp8,
+        kv_lengths,
+        BLOCK_SIZE,
+        block_table,
+        is_vscale=False,
+        is_scale=False,
+        kv_layout="BnNBsD",
+        group_size=QUANT_GROUP_SIZE,
+        physical_block_count=BLOCK_NUM,
+    ).to(torch.float32)
+    k_scale = mxfp8_pa_preprocessing(
+        dequant_scale_k,
+        kv_lengths,
+        BLOCK_SIZE,
+        block_table,
+        is_vscale=False,
+        is_scale=True,
+        kv_layout="BnNBsD",
+        group_size=QUANT_GROUP_SIZE,
+        physical_block_count=BLOCK_NUM,
+    )
+    v_scale = mxfp8_pa_preprocessing(
+        dequant_scale_v,
+        kv_lengths,
+        BLOCK_SIZE,
+        block_table,
+        is_vscale=True,
+        is_scale=True,
+        kv_layout="BnNBsD",
+        group_size=QUANT_GROUP_SIZE,
+        physical_block_count=BLOCK_NUM,
+    )
 
     total_q = int(cu_seqlens_q[-1].item())
     batch = len(q_lengths)
@@ -1242,8 +1450,12 @@ def cpu_mxfp8_golden(
     group = n1 // n2
     head_dim = D
     softmax_scale = float(CASE["softmax_scale"])
-    p_scale_value = float(torch.as_tensor(p_scale).reshape(-1)[0].item())
-    ln_p_scale = math.log(p_scale_value)
+    p_scale_value = (
+        1.0
+        if p_scale is None
+        else float(torch.as_tensor(p_scale).reshape(-1)[0].item())
+    )
+    ln_p_scale = 0.0 if p_scale_value == 1.0 else math.log(p_scale_value)
 
     attention_out = torch.zeros((total_q, n1, head_dim), dtype=torch.float32)
     softmax_lse = torch.full((total_q, n1), EMPTY_LSE, dtype=torch.float32)
@@ -1280,17 +1492,11 @@ def cpu_mxfp8_golden(
                 #   - blockSize=128 时每个 C1 取 2 块，blockSize=64 时每个 C1 取 4 块。
                 #   - 无效 block id(-1) 或超出 kv_len 的 block 会被跳过，
                 #     所以尾 chunk 可能不足 256 token。
-                chunk_positions = _positions_from_sparse(
+                all_task_chunks = _positions_from_sparse(
                     sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_len
                 )
-                if not chunk_positions:
+                if not all_task_chunks:
                     continue
-
-                # positions 是当前 QB 在 sparse 规则下候选的全部 KV token index。
-                # 注意这里还没有应用 causal/padding mask；逐 Q token 的实际有效性由 valid_mask 决定。
-                positions = [pos for chunk in chunk_positions for pos in chunk]
-                pos_tensor = torch.as_tensor(positions, dtype=torch.long)
-                npos = int(pos_tensor.numel())
 
                 q_block, q_scale_block = _gather_q_block_and_scale(
                     q_tensor,
@@ -1303,146 +1509,199 @@ def cpu_mxfp8_golden(
                     head_idx,
                 )
 
-                k_mat = k_tensor[batch_idx, n2_idx, pos_tensor, :]
-                k_scale_mat = k_scale[batch_idx, n2_idx, pos_tensor, :]
-
-                valid_mask = _valid_mask_for_positions(
-                    q_indices, positions, q_len, kv_len
-                )
-                scores = (
-                    _npu_mxfp8_qk_matmul(
-                        q_block, k_mat, q_scale_block, k_scale_mat
-                    )
-                    * softmax_scale
-                )
-                scores = torch.where(
-                    valid_mask, scores, torch.full_like(scores, MASK_VALUE)
-                )
-
                 m_run = torch.full((nq,), neg_inf, dtype=torch.float32)
                 l_run = torch.zeros((nq,), dtype=torch.float32)
                 acc = torch.zeros((nq, head_dim), dtype=torch.float32)
-                # 把每个 C1V1 chunk 在展平 positions/scores 中的切片范围记录下来。
-                # 后续每轮取连续两个 chunk，模拟 kernel 的 c1v1 + c1v1 -> c2v2 流水。
-                chunk_offsets = []
-                offset = 0
-                for chunk_pos_list in chunk_positions:
-                    next_offset = offset + len(chunk_pos_list)
-                    chunk_offsets.append((offset, next_offset))
-                    offset = next_offset
+                any_valid = torch.zeros((nq,), dtype=torch.bool)
 
-                for round_idx in range(0, len(chunk_offsets), 2):
-                    # 一轮 kernel 流水：
-                    #   C1V1-0: Q(最多 128) x K(最多 256 token)
-                    #   C1V1-1: Q(最多 128) x K(最多 256 token)
-                    #   C2V2:   P(最多 128 x 512) x V(最多 512 x D)
-                    # common MX 的两个 VF 会分别计算并量化各自的 256 列 P；第二个 VF 得到更大的
-                    # aligned max 时，由 C2 的随路 PScale 将前一块重新缩放到最终 max 基准。
-                    subloop_results = []
-                    m_before_round = m_run
-                    m_subloop = m_run
-                    round_has = torch.zeros((nq,), dtype=torch.bool)
-                    round_end_idx = min(round_idx + 2, len(chunk_offsets))
-                    for subloop_idx in range(round_idx, round_end_idx):
-                        subloop_start, subloop_end = chunk_offsets[subloop_idx]
-                        s_subloop = scores[:, subloop_start:subloop_end]
-                        vm_subloop = valid_mask[:, subloop_start:subloop_end]
-                        subloop_has = vm_subloop.any(dim=-1)
-                        round_has |= subloop_has
+                for task_chunks in all_task_chunks:
+                    positions = [pos for chunk in task_chunks for pos in chunk]
+                    pos_tensor = torch.as_tensor(positions, dtype=torch.long)
 
-                        masked_scores = torch.where(
-                            vm_subloop, s_subloop, torch.full_like(s_subloop, neg_inf)
+                    logical_blocks = torch.div(
+                        pos_tensor, BLOCK_SIZE, rounding_mode="floor"
+                    )
+                    block_offsets = torch.remainder(pos_tensor, BLOCK_SIZE)
+                    physical_blocks = block_table[batch_idx, logical_blocks].to(
+                        torch.long
+                    )
+                    if torch.any(physical_blocks < 0) or torch.any(
+                        physical_blocks >= k_tensor.shape[0]
+                    ):
+                        raise ValueError(
+                            "sparse position references an unmapped PA block: "
+                            f"batch={batch_idx}, logical_blocks={logical_blocks.tolist()}, "
+                            f"physical_blocks={physical_blocks.tolist()}"
                         )
-                        local_max = _align_up_to_ln2(masked_scores.max(dim=-1).values)
-                        subloop_started = m_subloop != neg_inf
-                        m_candidate = torch.where(
-                            subloop_started,
-                            torch.maximum(m_subloop, local_max),
-                            local_max,
-                        )
-                        m_candidate = _align_up_to_ln2(m_candidate)
-                        m_subloop = torch.where(subloop_has, m_candidate, m_subloop)
 
-                        # 输入 quantScale1 通过 max-ln(pScale) 进入 exp；P 在当前 256 列的 max
-                        # 基准下立即 cast，保持与 ProcessVec1VfDnMxfp8 的执行顺序一致。
-                        safe_m_subloop = torch.where(
-                            torch.isfinite(m_subloop),
-                            m_subloop,
-                            torch.zeros_like(m_subloop),
+                    k_mat = k_tensor[physical_blocks, n2_idx, block_offsets, :]
+                    k_scale_mat = k_scale[
+                        physical_blocks, n2_idx, block_offsets, :, :
+                    ].flatten(-2)
+
+                    valid_mask = _valid_mask_for_positions(
+                        q_indices, positions, q_len, kv_len
+                    )
+                    any_valid |= valid_mask.any(dim=-1)
+                    scores = (
+                        _npu_mxfp8_qk_matmul(
+                            q_block, k_mat, q_scale_block, k_scale_mat
                         )
-                        p_subloop = torch.exp(
-                            s_subloop - safe_m_subloop.view(nq, 1) + ln_p_scale
-                        )
-                        p_subloop = torch.where(
-                            vm_subloop & subloop_has.view(nq, 1),
-                            p_subloop,
-                            torch.zeros_like(p_subloop),
-                        )
-                        p_quant_subloop = p_subloop.to(FP8_DTYPE).to(torch.float32)
-                        subloop_results.append(
-                            (
-                                subloop_start,
-                                subloop_end,
-                                m_subloop.clone(),
-                                p_subloop,
-                                p_quant_subloop,
+                        * softmax_scale
+                    )
+                    scores = torch.where(
+                        valid_mask, scores, torch.full_like(scores, MASK_VALUE)
+                    )
+
+                    chunk_offsets = []
+                    offset = 0
+                    for chunk_pos_list in task_chunks:
+                        next_offset = offset + len(chunk_pos_list)
+                        chunk_offsets.append((offset, next_offset))
+                        offset = next_offset
+
+                    for round_idx in range(0, len(chunk_offsets), 2):
+                        subloop_results = []
+                        m_before_round = m_run
+                        # VF stores the ln2-aligned score max. ln(pScale) is
+                        # subtracted only from the value consumed by
+                        # FusedExpSub; it is not part of the online max state.
+                        m_subloop = m_run
+                        round_has = torch.zeros((nq,), dtype=torch.bool)
+                        round_end_idx = min(round_idx + 2, len(chunk_offsets))
+                        for subloop_idx in range(round_idx, round_end_idx):
+                            subloop_start, subloop_end = chunk_offsets[subloop_idx]
+                            s_subloop = scores[:, subloop_start:subloop_end]
+                            vm_subloop = valid_mask[:, subloop_start:subloop_end]
+                            subloop_has = vm_subloop.any(dim=-1)
+                            round_has |= subloop_has
+
+                            masked_scores = torch.where(
+                                vm_subloop,
+                                s_subloop,
+                                torch.full_like(s_subloop, neg_inf),
                             )
-                        )
+                            # VF order: score max -> softmax scale -> ceil to
+                            # an ln2 multiple -> merge with the online max.
+                            local_max = masked_scores.max(dim=-1).values
+                            local_max = _align_up_to_ln2(local_max)
+                            subloop_started = m_subloop != neg_inf
+                            m_candidate = torch.where(
+                                subloop_started,
+                                torch.maximum(m_subloop, local_max),
+                                local_max,
+                            )
+                            m_subloop = torch.where(subloop_has, m_candidate, m_subloop)
 
-                    m_new = m_subloop
-                    run_started = m_before_round != neg_inf
-                    history_rescale = torch.where(
-                        run_started & torch.isfinite(m_new),
-                        torch.exp(m_before_round - m_new),
-                        torch.zeros_like(m_new),
-                    )
-                    history_rescale = torch.where(
-                        torch.isfinite(history_rescale),
-                        history_rescale,
-                        torch.zeros_like(history_rescale),
-                    )
+                            # VF subtracts ln(pScale) from the aligned max
+                            # immediately before FusedExpSub. Therefore the
+                            # generated probability is
+                            # exp(score - aligned_max + ln(pScale)).
+                            safe_m_subloop = torch.where(
+                                torch.isfinite(m_subloop),
+                                m_subloop,
+                                torch.zeros_like(m_subloop),
+                            )
+                            p_subloop = torch.exp(
+                                s_subloop
+                                - safe_m_subloop.view(nq, 1)
+                                + ln_p_scale
+                            )
+                            p_subloop = torch.where(
+                                vm_subloop & subloop_has.view(nq, 1),
+                                p_subloop,
+                                torch.zeros_like(p_subloop),
+                            )
+                            p_quant_subloop = p_subloop.to(FP8_DTYPE).to(torch.float32)
+                            subloop_results.append(
+                                (
+                                    subloop_start,
+                                    subloop_end,
+                                    m_subloop.clone(),
+                                    p_subloop,
+                                    p_quant_subloop,
+                                )
+                            )
 
-                    pv = torch.zeros_like(acc)
-                    round_sum = torch.zeros_like(l_run)
-                    for (
-                        subloop_start,
-                        subloop_end,
-                        subloop_max,
-                        p_subloop,
-                        p_quant_subloop,
-                    ) in subloop_results:
-                        subloop_rescale = torch.where(
-                            torch.isfinite(subloop_max) & torch.isfinite(m_new),
-                            torch.exp(subloop_max - m_new),
+                        m_new = m_subloop
+                        run_started = m_before_round != neg_inf
+                        history_rescale = torch.where(
+                            run_started & torch.isfinite(m_new),
+                            torch.exp(m_before_round - m_new),
                             torch.zeros_like(m_new),
                         )
-                        subloop_rescale = torch.where(
-                            torch.isfinite(subloop_rescale),
-                            subloop_rescale,
-                            torch.zeros_like(subloop_rescale),
+                        history_rescale = torch.where(
+                            torch.isfinite(history_rescale),
+                            history_rescale,
+                            torch.zeros_like(history_rescale),
                         )
 
-                        subloop_pos_tensor = pos_tensor[subloop_start:subloop_end]
-                        v_mat = v_tensor[batch_idx, n2_idx, subloop_pos_tensor, :]
-                        v_group_idx = torch.div(
-                            subloop_pos_tensor, QUANT_GROUP_SIZE, rounding_mode="floor"
-                        )
-                        v_scale_mat = v_scale[batch_idx, n2_idx, v_group_idx, :].to(
-                            torch.float32
-                        )
-                        v_dequant = v_mat * v_scale_mat
+                        pv = torch.zeros_like(acc)
+                        round_sum = torch.zeros_like(l_run)
+                        for (
+                            subloop_start,
+                            subloop_end,
+                            subloop_max,
+                            p_subloop,
+                            p_quant_subloop,
+                        ) in subloop_results:
+                            subloop_rescale = torch.where(
+                                torch.isfinite(subloop_max) & torch.isfinite(m_new),
+                                torch.exp(subloop_max - m_new),
+                                torch.zeros_like(m_new),
+                            )
+                            subloop_rescale = torch.where(
+                                torch.isfinite(subloop_rescale),
+                                subloop_rescale,
+                                torch.zeros_like(subloop_rescale),
+                            )
 
-                        # 先 cast(P)，再通过随路 PScale 对齐 max；不能改成 cast(P * PScale)。
-                        pv += torch.matmul(
-                            p_quant_subloop * subloop_rescale.view(nq, 1), v_dequant
-                        )
-                        round_sum += p_subloop.sum(dim=-1) * subloop_rescale
+                            subloop_physical_blocks = physical_blocks[
+                                subloop_start:subloop_end
+                            ]
+                            subloop_block_offsets = block_offsets[
+                                subloop_start:subloop_end
+                            ]
+                            v_mat = v_tensor[
+                                subloop_physical_blocks,
+                                n2_idx,
+                                subloop_block_offsets,
+                                :,
+                            ]
+                            v_group_idx = torch.div(
+                                subloop_block_offsets,
+                                QUANT_GROUP_SIZE * 2,
+                                rounding_mode="floor",
+                            )
+                            v_group_pair = torch.remainder(
+                                torch.div(
+                                    subloop_block_offsets,
+                                    QUANT_GROUP_SIZE,
+                                    rounding_mode="floor",
+                                ),
+                                2,
+                            )
+                            v_scale_mat = v_scale[
+                                subloop_physical_blocks,
+                                n2_idx,
+                                v_group_idx,
+                                :,
+                                v_group_pair,
+                            ].to(torch.float32)
+                            v_dequant = v_mat * v_scale_mat
 
-                    acc = acc * history_rescale.view(nq, 1) + pv
-                    l_run = l_run * history_rescale + round_sum
-                    m_run = torch.where(round_has, m_new, m_run)
+                            pv += torch.matmul(
+                                p_quant_subloop * subloop_rescale.view(nq, 1), v_dequant
+                            )
+                            # The reverted VF accumulates FP32 exp before P is
+                            # cast to E4M3. C2 still consumes the cast P, but
+                            # new_global_sum uses the unquantized P.
+                            round_sum += p_subloop.sum(dim=-1) * subloop_rescale
 
-                any_valid = valid_mask.any(dim=-1)
+                        acc = acc * history_rescale.view(nq, 1) + pv
+                        l_run = l_run * history_rescale + round_sum
+                        m_run = torch.where(round_has, m_new, m_run)
+
                 safe_l = torch.where(l_run > 0, l_run, torch.ones_like(l_run))
                 attn = acc / safe_l.view(nq, 1)
                 lse = torch.log(safe_l) + m_run
@@ -1451,7 +1710,9 @@ def cpu_mxfp8_golden(
                     if not bool(any_valid[local_idx].item()):
                         continue
                     out_idx = q_base + q_start + local_idx
-                    attention_out[out_idx, head_idx] = attn[local_idx]
+                    attention_out[out_idx, head_idx] = attn[local_idx].to(
+                        torch.bfloat16
+                    )
                     softmax_lse[out_idx, head_idx] = lse[local_idx]
 
     logger.info(
@@ -1476,6 +1737,69 @@ def _to_npu(tensor):
     if isinstance(tensor, torch.Tensor):
         return tensor.npu() if tensor.device.type == "cpu" else tensor
     return torch.as_tensor(tensor).npu()
+
+
+def _prepare_npu_metadata(
+    q_lengths,
+    kv_lengths,
+    cu_seqlens_q,
+    cu_seqlens_kv,
+    block_table,
+    q_n,
+    kv_n,
+    layout_q,
+    layout_kv,
+    sparse_indices,
+    sparse_seq_len,
+):
+    """准备 metadata 算子输入，并生成主算子依赖的 metadata。"""
+    if CASE.get("empty_actual_seq", False):
+        seqused_q = torch.empty((0,), dtype=torch.int32)
+        seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
+    else:
+        seqused_q = torch.tensor(q_lengths, dtype=torch.int32)
+        seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
+
+    cu_seqlens_q = _to_npu(cu_seqlens_q)
+    cu_seqlens_kv = _to_npu(cu_seqlens_kv)
+    seqused_q = seqused_q.npu()
+    seqused_kv = seqused_kv.npu()
+    sparse_indices = _to_npu(sparse_indices)
+    sparse_seq_len = _to_npu(sparse_seq_len)
+    block_table = _to_npu(block_table)
+
+    # metadata 算子在主算子及图捕获之外执行。前一次同步保证异步 H2D 输入就绪，
+    # 后一次同步保证 metadata 完成物化；二者对应不同的数据依赖，不能合并。
+    torch_npu.npu.synchronize()
+    metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
+        sparse_seq_len,
+        q_n,
+        kv_n,
+        D,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_kv=None,
+        seqused_q=None,
+        seqused_kv=seqused_kv,
+        batch_size=B,
+        sparse_block_size_q=SPARSE_BLOCK_SIZE,
+        sparse_block_size_k=SPARSE_BLOCK_SIZE,
+        quant_mode=QUANT_MODE_MXFP8,
+        mask_mode=MASK_MODE,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        layout_sparse_indices=SPARSE_INDICES_LAYOUT,
+    )
+    torch_npu.npu.synchronize()
+    return (
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        sparse_indices,
+        sparse_seq_len,
+        block_table,
+        metadata,
+    )
 
 
 def _call_npu_fa_op(
@@ -1504,40 +1828,28 @@ def _call_npu_fa_op(
     _ensure_custom_ops_registered()
     torch_npu.npu.set_device(int(DEVICE_ID))
 
-    if CASE.get("empty_actual_seq", False):
-        seqused_q = torch.empty((0,), dtype=torch.int32)
-        seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
-    else:
-        seqused_q = torch.tensor(q_lengths, dtype=torch.int32)
-        seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
-    cu_seqlens_q = _to_npu(cu_seqlens_q)
-    cu_seqlens_kv = _to_npu(cu_seqlens_kv)
-    seqused_q = seqused_q.npu()
-    seqused_kv = seqused_kv.npu()
-    sparse_indices = _to_npu(sparse_indices)
-    sparse_seq_len = _to_npu(sparse_seq_len)
-    block_table = _to_npu(block_table)
-
-    torch_npu.npu.synchronize()
-    metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
+    (
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        sparse_indices,
         sparse_seq_len,
+        block_table,
+        metadata,
+    ) = _prepare_npu_metadata(
+        q_lengths,
+        kv_lengths,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        block_table,
         q_n,
         kv_n,
-        D,
-        cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_kv=cu_seqlens_kv,
-        seqused_q=seqused_q,
-        seqused_kv=seqused_kv,
-        batch_size=B,
-        sparse_block_size_q=SPARSE_BLOCK_SIZE,
-        sparse_block_size_k=SPARSE_BLOCK_SIZE,
-        quant_mode=QUANT_MODE_MXFP8,
-        mask_mode=MASK_MODE,
-        layout_q=layout_q,
-        layout_kv=layout_kv,
-        layout_sparse_indices=SPARSE_INDICES_LAYOUT,
+        layout_q,
+        layout_kv,
+        sparse_indices,
+        sparse_seq_len,
     )
-    torch_npu.npu.synchronize()
 
     output = torch.ops.custom.npu_quant_block_sparse_attn(
         q,
@@ -1554,8 +1866,8 @@ def _call_npu_fa_op(
         SPARSE_BLOCK_SIZE,
         SPARSE_BLOCK_SIZE,
         cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_kv=cu_seqlens_kv,
-        seqused_q=seqused_q,
+        cu_seqlens_kv=None,
+        seqused_q=None,
         seqused_kv=seqused_kv,
         block_table=block_table,
         metadata=metadata,
@@ -1566,6 +1878,178 @@ def _call_npu_fa_op(
         quant_mode=QUANT_MODE_MXFP8,
         mask_mode=MASK_MODE,
         return_softmax_lse=ENABLE_LSE,
+    )
+    torch_npu.npu.synchronize()
+    atten_out, lse_out = output
+    return atten_out.detach().cpu(), lse_out.detach().cpu()
+
+
+class _QuantBlockSparseAttnGraph(torch.nn.Module):
+    def __init__(self, softmax_scale, layout_q, layout_kv):
+        super().__init__()
+        self.softmax_scale = softmax_scale
+        self.sparse_block_size = SPARSE_BLOCK_SIZE
+        self.layout_q = layout_q
+        self.layout_kv = layout_kv
+        self.layout_sparse_indices = SPARSE_INDICES_LAYOUT
+        self.layout_out = OUT_LAYOUT
+        self.quant_mode = QUANT_MODE_MXFP8
+        self.mask_mode = MASK_MODE
+        self.return_softmax_lse = ENABLE_LSE
+
+    def forward(
+        self,
+        q,
+        k,
+        v,
+        dequant_scale_q,
+        dequant_scale_k,
+        dequant_scale_v,
+        p_scale,
+        sparse_indices,
+        sparse_seq_len,
+        mask,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        block_table,
+        metadata,
+    ):
+        return torch.ops.custom.npu_quant_block_sparse_attn(
+            q,
+            k,
+            v,
+            dequant_scale_q,
+            dequant_scale_k,
+            dequant_scale_v,
+            p_scale,
+            sparse_indices,
+            sparse_seq_len,
+            mask,
+            self.softmax_scale,
+            self.sparse_block_size,
+            self.sparse_block_size,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_kv=cu_seqlens_kv,
+            seqused_q=seqused_q,
+            seqused_kv=seqused_kv,
+            block_table=block_table,
+            metadata=metadata,
+            layout_kv=self.layout_kv,
+            layout_q=self.layout_q,
+            layout_sparse_indices=self.layout_sparse_indices,
+            layout_out=self.layout_out,
+            quant_mode=self.quant_mode,
+            mask_mode=self.mask_mode,
+            return_softmax_lse=self.return_softmax_lse,
+        )
+
+
+def _mark_static_graph_tensors(*tensors):
+    """Freeze QBSA input shapes for ACL graph capture/replay."""
+    for tensor in tensors:
+        if tensor is not None:
+            torch._dynamo.mark_static(tensor)
+
+
+def _call_npu_fa_op_graph(
+    q,
+    k,
+    v,
+    mask,
+    q_lengths,
+    kv_lengths,
+    cu_seqlens_q,
+    cu_seqlens_kv,
+    dequant_scale_q,
+    dequant_scale_k,
+    dequant_scale_v,
+    p_scale,
+    block_table,
+    q_n,
+    kv_n,
+    softmax_scale,
+    layout_q,
+    layout_kv,
+    sparse_indices,
+    sparse_seq_len,
+):
+    """调用 QuantBlockSparseAttn 图模式，入参对齐 custom op schema。"""
+    _ensure_custom_ops_registered()
+    torch_npu.npu.set_device(int(DEVICE_ID))
+
+    (
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        sparse_indices,
+        sparse_seq_len,
+        block_table,
+        metadata,
+    ) = _prepare_npu_metadata(
+        q_lengths,
+        kv_lengths,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        block_table,
+        q_n,
+        kv_n,
+        layout_q,
+        layout_kv,
+        sparse_indices,
+        sparse_seq_len,
+    )
+
+    # 与批量 ACL 图路径保持一致。QBSA 是 AIC/AIV 混合核，图捕获需固定输入 shape，
+    # 同时禁止对 custom op 仍在使用的 Buffer 执行 reinplace。
+    config = CompilerConfig()
+    config.mode = "reduce-overhead"
+    config.debug.aclgraph.disable_reinplace_inplaceable_ops_pass = True
+    npu_backend = torchair.get_npu_backend(compiler_config=config)
+    _mark_static_graph_tensors(
+        q,
+        k,
+        v,
+        dequant_scale_q,
+        dequant_scale_k,
+        dequant_scale_v,
+        p_scale,
+        sparse_indices,
+        sparse_seq_len,
+        mask,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        block_table,
+        metadata,
+    )
+    torch._dynamo.reset()
+    model = torch.compile(
+        _QuantBlockSparseAttnGraph(softmax_scale, layout_q, layout_kv).npu(),
+        fullgraph=True,
+        backend=npu_backend,
+        dynamic=False,
+    )
+    output = model(
+        q,
+        k,
+        v,
+        dequant_scale_q,
+        dequant_scale_k,
+        dequant_scale_v,
+        p_scale,
+        sparse_indices,
+        sparse_seq_len,
+        mask,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        block_table,
+        metadata,
     )
     torch_npu.npu.synchronize()
     atten_out, lse_out = output
@@ -1760,6 +2244,7 @@ def npu_mxfp8_fa(
     block_table_torch=None,
     sparse_indices=None,
     sparse_seq_len=None,
+    graph=False,
 ):
     """调用 QuantBlockSparseAttn NPU 算子。"""
     torch_npu.npu.set_device(int(DEVICE_ID))
@@ -1772,12 +2257,12 @@ def npu_mxfp8_fa(
     softmax_scale = float(CASE["softmax_scale"])
 
     q_layout = canonical_q_input_layout(Q_INPUT_LAYOUT)
-    q_npu = (
+    q_input = (
         convert_q_tnd_or_ntd_to_layout(q_fp8, q_lengths, N_q, q_layout, "Q")
         .contiguous()
         .view(FP8_DTYPE)
-        .npu()
     )
+    q_npu = q_input.npu()
     logger.info("[NPU %s] q=%s", q_layout, q_npu.shape)
 
     q_scale_e8m0 = fp32_to_e8m0fnu_safe(
@@ -1786,11 +2271,15 @@ def npu_mxfp8_fa(
     deq_q_npu = q_scale_e8m0.npu()
     logger.info("[NPU] Q descale layout=TND, shape=%s", q_scale_e8m0.shape)
 
-    p_scale_e8m0 = fp32_to_e8m0fnu_safe(p_scale, "P scale")
-    p_scale_npu = p_scale_e8m0.npu()
-    logger.info(
-        "[NPU] P scale dtype=%s, shape=%s", p_scale_e8m0.dtype, p_scale_e8m0.shape
-    )
+    if p_scale is not None:
+        p_scale_e8m0 = fp32_to_e8m0fnu_safe(p_scale, "P scale")
+        p_scale_npu = p_scale_e8m0.npu()
+        logger.info(
+            "[NPU] P scale dtype=%s, shape=%s", p_scale_e8m0.dtype, p_scale_e8m0.shape
+        )
+    else:
+        p_scale_npu = torch.tensor([], dtype=torch.float8_e8m0fnu).npu()
+        logger.info("[NPU] P scale=empty tensor (shape size 0, default 1.0)")
     mask_arg = _build_causal_mask()
 
     if block_table_torch is None:
@@ -1804,9 +2293,10 @@ def npu_mxfp8_fa(
         is_vscale=False,
         is_scale=False,
         kv_layout=KV_CACHE_LAYOUT,
-        group_size=32,
+        group_size=QUANT_GROUP_SIZE,
         sparse_indices=sparse_indices,
         sparse_seq_len=sparse_seq_len,
+        physical_block_count=BLOCK_NUM,
     )
     v_pa = mxfp8_pa_preprocessing(
         v_fp8,
@@ -1816,12 +2306,15 @@ def npu_mxfp8_fa(
         is_vscale=False,
         is_scale=False,
         kv_layout=KV_CACHE_LAYOUT,
-        group_size=32,
+        group_size=QUANT_GROUP_SIZE,
         sparse_indices=sparse_indices,
         sparse_seq_len=sparse_seq_len,
+        physical_block_count=BLOCK_NUM,
     )
-    k_npu = k_pa.contiguous().view(FP8_DTYPE).npu()
-    v_npu = v_pa.contiguous().view(FP8_DTYPE).npu()
+    k_input = k_pa.contiguous().view(FP8_DTYPE)
+    v_input = v_pa.contiguous().view(FP8_DTYPE)
+    k_npu = k_input.npu()
+    v_npu = v_input.npu()
     if not IS_CONTIGUOUS:
         kv_cache = torch.stack([k_pa, v_pa], dim=2).npu()
         k_npu = kv_cache[:, :, 0]
@@ -1840,9 +2333,10 @@ def npu_mxfp8_fa(
         is_vscale=False,
         is_scale=True,
         kv_layout=KV_CACHE_LAYOUT,
-        group_size=32,
+        group_size=QUANT_GROUP_SIZE,
         sparse_indices=sparse_indices,
         sparse_seq_len=sparse_seq_len,
+        physical_block_count=BLOCK_NUM,
     )
     v_scale_pa = mxfp8_pa_preprocessing(
         dequant_scale_v,
@@ -1852,13 +2346,25 @@ def npu_mxfp8_fa(
         is_vscale=True,
         is_scale=True,
         kv_layout=KV_CACHE_LAYOUT,
-        group_size=32,
+        group_size=QUANT_GROUP_SIZE,
         sparse_indices=sparse_indices,
         sparse_seq_len=sparse_seq_len,
+        physical_block_count=BLOCK_NUM,
     )
 
-    deq_k_npu = fp32_to_e8m0fnu_safe(k_scale_pa, "K PA descale").npu()
-    deq_v_npu = fp32_to_e8m0fnu_safe(v_scale_pa, "V PA descale").npu()
+    k_scale_e8m0 = fp32_to_e8m0fnu_safe(k_scale_pa, "K PA descale")
+    v_scale_e8m0 = fp32_to_e8m0fnu_safe(v_scale_pa, "V PA descale")
+    _log_tensor_ranges(
+        "converted NPU input range",
+        q=q_input,
+        k=k_input,
+        v=v_input,
+        q_descale=q_scale_e8m0,
+        k_descale=k_scale_e8m0,
+        v_descale=v_scale_e8m0,
+    )
+    deq_k_npu = k_scale_e8m0.npu()
+    deq_v_npu = v_scale_e8m0.npu()
     if not IS_CONTIGUOUS:
         fake_kscale_tensor = torch.ones_like(deq_k_npu)
         fake_vscale_tensor = torch.ones_like(deq_v_npu)
@@ -1882,12 +2388,7 @@ def npu_mxfp8_fa(
     layout_q = q_layout
     layout_kv = KEY_LAYOUT
 
-    logger.info(
-        "[NPU] 调用 QuantBlockSparseAttn 单算子, layout_q=%s, layout_kv=%s",
-        layout_q,
-        layout_kv,
-    )
-    atten_out, lse_out = _call_npu_fa_op(
+    npu_call_args = (
         q_npu,
         k_npu,
         v_npu,
@@ -1909,6 +2410,20 @@ def npu_mxfp8_fa(
         sparse_indices,
         sparse_seq_len,
     )
+    if graph:
+        logger.info(
+            "[NPU] 调用 QuantBlockSparseAttn 图模式, layout_q=%s, layout_kv=%s",
+            layout_q,
+            layout_kv,
+        )
+        atten_out, lse_out = _call_npu_fa_op_graph(*npu_call_args)
+    else:
+        logger.info(
+            "[NPU] 调用 QuantBlockSparseAttn 单算子, layout_q=%s, layout_kv=%s",
+            layout_q,
+            layout_kv,
+        )
+        atten_out, lse_out = _call_npu_fa_op(*npu_call_args)
 
     npu_output = atten_out
     npu_lse = lse_out
@@ -2098,6 +2613,7 @@ def run_one_case(
     rdv=False,
     rdv_cache_dir=None,
     debug=False,
+    graph=False,
 ):
     start_time = time.time()
     golden_cache = _load_golden_cache()
@@ -2111,6 +2627,12 @@ def run_one_case(
     logger.info("KV_CACHE_LAYOUT=%s", KV_CACHE_LAYOUT)
     logger.info("B=%d, N_q=%d, N_kv=%d, D=%d", B, N_q, N_kv, D)
     logger.info("ACTUAL_SEQ_Q=%s, ACTUAL_SEQ_KV=%s", ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
+    logger.info(
+        "block_size=%s, sparse_block_size=%s, sparse_count=%s",
+        case.get("block_size"),
+        case.get("sparse_q_block_size"),
+        case.get("sparse_count"),
+    )
 
     if "gen" in mode:
         logger.info("\n[Step 1] 数据生成")
@@ -2214,9 +2736,10 @@ def run_one_case(
             cu_seqlens_q,
             sparse_indices,
             sparse_seq_len,
+            block_table_torch,
         )
         golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cache_dir)
-    else:
+    elif "compare" in mode:
         cpu_out, cpu_lse = golden_cache.load_cpu_output(case_name, cache_dir=cache_dir)
 
     if "cpu" in mode and not (mode & {"npu", "compare"}):
@@ -2242,6 +2765,7 @@ def run_one_case(
             block_table_torch,
             sparse_indices,
             sparse_seq_len,
+            graph=graph,
         )
         golden_cache.save_npu_output(case_name, atten_out, lse_out, cache_dir=cache_dir)
     else:
@@ -2347,6 +2871,23 @@ if __name__ == "__main__":
         help="单 case 调试模式；必须配合 --case_name，输出到 debug/<case_name>/。"
         "含 gen 时数据写入 debug pt 目录；不含 gen 时从 golden_cache 加载(可用 --cache-dir 指定)",
     )
+    parser.add_argument(
+        "--aclgraph",
+        dest="aclgraph",
+        action="store_true",
+        help="使用图模式 (torchair + torch.compile) 执行 NPU 算子调用",
+    )
+    parser.add_argument(
+        "--no_save",
+        action="store_true",
+        help="不保存 input/cpu_output/npu_output 到磁盘，节省空间和时间",
+    )
+    parser.add_argument(
+        "--case_range",
+        default=None,
+        help="只跑 CSV 中指定行范围的用例，格式 start:end (1-based, 含两端)。"
+        "例如 --case_range 100:200 跑第100到200行(含)的用例",
+    )
     args = parser.parse_args()
 
     raw_parts = {m.strip() for m in args.mode.split(",") if m.strip()}
@@ -2391,6 +2932,27 @@ if __name__ == "__main__":
         parser.error(
             "No runnable case selected. Check enable fields or pass --case_name explicitly."
         )
+
+    if args.case_range:
+        try:
+            parts = args.case_range.split(":")
+            range_start = int(parts[0])
+            range_end = int(parts[1]) if len(parts) > 1 else range_start
+            range_start = max(1, range_start)
+            range_end = min(len(run_case_ids), range_end)
+            run_case_ids = run_case_ids[range_start - 1 : range_end]
+            logger.info(
+                "[RANGE] Running cases %d-%d (%d cases)",
+                range_start,
+                range_end,
+                len(run_case_ids),
+            )
+        except (ValueError, IndexError):
+            parser.error(
+                f"Invalid --case_range format: {args.case_range}. Expected start:end (e.g. 100:200)"
+            )
+        if not run_case_ids:
+            parser.error("--case_range resulted in empty selection")
     if args.debug and len(run_case_ids) != 1:
         parser.error(
             "--debug can run exactly one case; pass one name through --case_name"
@@ -2437,6 +2999,7 @@ if __name__ == "__main__":
                         rdv=args.rdv,
                         rdv_cache_dir=args.cache_dir,
                         debug=args.debug,
+                        graph=args.aclgraph,
                     )
                 )
             except Exception as err:  # pylint: disable=broad-except
