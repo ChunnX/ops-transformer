@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef SORT_WITH_INDEX_INT32_H
-#define SORT_WITH_INDEX_INT32_H
+#ifndef ENGRAM_FETCH_GRAD_SORT_INT32_H
+#define ENGRAM_FETCH_GRAD_SORT_INT32_H
 /*
  * Minimal 1D LSD radix sort with index — positive int32 values.
  */
@@ -17,7 +17,7 @@
 #include "kernel_operator.h"
 #include "op_kernel/platform_util.h"
 
-namespace SortWithIndexInt32 {
+namespace EngramFetchGradSortInt32Int32 {
 
 using namespace AscendC;
 
@@ -35,7 +35,10 @@ constexpr uint32_t UB_BLOCK_BYTES = Ops::Base::GetUbBlockSize();
 
 __aicore__ inline uint32_t MinU32(uint32_t a, uint32_t b) { return a < b ? a : b; }
 __aicore__ inline uint32_t CeilDiv(uint32_t a, uint32_t b) { return (a + b - 1U) / b; }
-__aicore__ inline uint32_t AlignUpU32(uint32_t bytes) { return (bytes + UB_BLOCK_BYTES - 1U) / UB_BLOCK_BYTES * UB_BLOCK_BYTES; }
+__aicore__ inline uint32_t AlignUpU32(uint32_t bytes)
+{
+    return (bytes + UB_BLOCK_BYTES - 1U) / UB_BLOCK_BYTES * UB_BLOCK_BYTES;
+}
 
 template <HardEvent evt>
 __aicore__ inline void WaitPipe(TPipe &pipe)
@@ -50,9 +53,9 @@ __aicore__ inline void ComputeTileHistogram(
     __local_mem__ uint16_t *histogramUb, __local_mem__ uint16_t *cumulativeUb,
     __local_mem__ uint8_t *keyUb, __local_mem__ uint32_t *exclusiveUb);
 
-class SortWithIndexKernel {
+class EngramFetchGradSortInt32 {
 public:
-    __aicore__ inline SortWithIndexKernel() = default;
+    __aicore__ inline EngramFetchGradSortInt32() = default;
 
     __aicore__ inline void Init(uint32_t totalElements, uint32_t numCores, uint32_t tileSize,
                                 TPipe &pipe);
@@ -175,10 +178,14 @@ __aicore__ inline void ComputeTileHistogram(
             Reg::RegTensor<uint8_t> b0, b1;
             Reg::DeInterleave(b0, b1, (Reg::RegTensor<uint8_t> &)d0, (Reg::RegTensor<uint8_t> &)d2);
             Reg::DataCopy<uint8_t, Reg::PostLiteral::POST_MODE_UPDATE>(keyUb, b0, VECTOR_LEN_INT8, elemMask);
-            Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0, Reg::HistogramsType::FREQUENCY>(hist0, b0, elemMask);
-            Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN1, Reg::HistogramsType::FREQUENCY>(hist1, b0, elemMask);
-            Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0, Reg::HistogramsType::ACCUMULATE>(cumu0, b0, elemMask);
-            Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN1, Reg::HistogramsType::ACCUMULATE>(cumu1, b0, elemMask);
+            Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0,
+                            Reg::HistogramsType::FREQUENCY>(hist0, b0, elemMask);
+            Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN1,
+                            Reg::HistogramsType::FREQUENCY>(hist1, b0, elemMask);
+            Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0,
+                            Reg::HistogramsType::ACCUMULATE>(cumu0, b0, elemMask);
+            Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN1,
+                            Reg::HistogramsType::ACCUMULATE>(cumu1, b0, elemMask);
         }
         Reg::RegTensor<uint16_t> excl0, excl1, zero;
         Reg::Sub(excl0, cumu0, hist0, mask16);
@@ -206,8 +213,8 @@ __aicore__ inline void ComputeTileHistogram(
     }
 }
 
-__aicore__ inline void SortWithIndexKernel::Init(uint32_t totalElements, uint32_t numCores,
-                                                 uint32_t tileSize, TPipe &pipe)
+__aicore__ inline void EngramFetchGradSortInt32::Init(uint32_t totalElements, uint32_t numCores,
+                                                      uint32_t tileSize, TPipe &pipe)
 {
     elementCount_ = totalElements;
     coreCount_ = numCores;
@@ -227,7 +234,7 @@ __aicore__ inline void SortWithIndexKernel::Init(uint32_t totalElements, uint32_
     pipe.InitBuffer(prefixQueue_, 1, HISTOGRAM_BINS * sizeof(int32_t));
 }
 
-__aicore__ inline void SortWithIndexKernel::SetCount(uint32_t n)
+__aicore__ inline void EngramFetchGradSortInt32::SetCount(uint32_t n)
 {
     elementCount_ = n;
     uint32_t dynTile = CeilDiv(n, coreCount_);
@@ -237,7 +244,7 @@ __aicore__ inline void SortWithIndexKernel::SetCount(uint32_t n)
     tileCount_ = CeilDiv(n, tileElements_);
 }
 
-__aicore__ inline void SortWithIndexKernel::SetMaxValue(uint32_t maxVal)
+__aicore__ inline void EngramFetchGradSortInt32::SetMaxValue(uint32_t maxVal)
 {
     if (maxVal <= 0xFFU) {
         byteRounds_ = 1U;
@@ -250,7 +257,7 @@ __aicore__ inline void SortWithIndexKernel::SetMaxValue(uint32_t maxVal)
     }
 }
 
-__aicore__ inline void SortWithIndexKernel::ComputePrefixAndOffsets(
+__aicore__ inline void EngramFetchGradSortInt32::ComputePrefixAndOffsets(
     uint32_t tc, GlobalTensor<int32_t> &prefixGm, GlobalTensor<int32_t> &tileOffsetsGm,
     GlobalTensor<int32_t> &histGm, TPipe &pipe)
 {
@@ -285,7 +292,7 @@ __aicore__ inline void SortWithIndexKernel::ComputePrefixAndOffsets(
     prefixQueue_.FreeTensor(histogram);
 }
 
-__aicore__ inline GlobalTensor<int32_t> *SortWithIndexKernel::GetSrcValueGm(
+__aicore__ inline GlobalTensor<int32_t> *EngramFetchGradSortInt32::GetSrcValueGm(
     uint32_t byteRound, GlobalTensor<int32_t> &valueGm,
     GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &outputValueGm)
 {
@@ -298,7 +305,7 @@ __aicore__ inline GlobalTensor<int32_t> *SortWithIndexKernel::GetSrcValueGm(
     return &outputValueGm;
 }
 
-__aicore__ inline void SortWithIndexKernel::GetDstBuffers(
+__aicore__ inline void EngramFetchGradSortInt32::GetDstBuffers(
     uint32_t byteRound, GlobalTensor<int32_t> &indexGm,
     GlobalTensor<int32_t> &outputValueGm, GlobalTensor<int32_t> &outputIndexGm,
     GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &tempIndexGm,
@@ -320,7 +327,7 @@ __aicore__ inline void SortWithIndexKernel::GetDstBuffers(
     }
 }
 
-__aicore__ inline void SortWithIndexKernel::ProcessHistStage(
+__aicore__ inline void EngramFetchGradSortInt32::ProcessHistStage(
     uint32_t byteRound, uint32_t batchCount,
     GlobalTensor<int32_t> *srcValueGm, GlobalTensor<int32_t> &histGm, TPipe &pipe)
 {
@@ -333,7 +340,6 @@ __aicore__ inline void SortWithIndexKernel::ProcessHistStage(
         uint32_t firstTile = batch * coreCount_;
         uint32_t batchCores = MinU32(tileCount_ - firstTile, coreCount_);
         uint32_t coreId = GetBlockIdx();
-
         if (coreId < batchCores) {
             uint32_t tileId = firstTile + coreId;
             uint32_t offset = tileId * tileElements_;
@@ -379,7 +385,7 @@ __aicore__ inline void SortWithIndexKernel::ProcessHistStage(
     }
 }
 
-__aicore__ inline void SortWithIndexKernel::ScatterOneBin(
+__aicore__ inline void EngramFetchGradSortInt32::ScatterOneBin(
     uint32_t binStart, uint32_t binCount, int32_t gmPos,
     LocalTensor<int32_t> &gatheredBuf, LocalTensor<int32_t> &valueLocal,
     LocalTensor<int32_t> &indexLocal, LocalTensor<uint32_t> &sortIndices,
@@ -402,7 +408,7 @@ __aicore__ inline void SortWithIndexKernel::ScatterOneBin(
     WaitPipe<HardEvent::MTE3_S>(pipe);
 }
 
-__aicore__ inline void SortWithIndexKernel::ProcessScatterStage(
+__aicore__ inline void EngramFetchGradSortInt32::ProcessScatterStage(
     uint32_t byteRound, uint32_t batchCount,
     GlobalTensor<int32_t> *srcValueGm, GlobalTensor<int32_t> &indexGm,
     GlobalTensor<int32_t> &outputValueGm, GlobalTensor<int32_t> &outputIndexGm,
@@ -420,7 +426,6 @@ __aicore__ inline void SortWithIndexKernel::ProcessScatterStage(
         uint32_t firstTile = batch * coreCount_;
         uint32_t batchCores = MinU32(tileCount_ - firstTile, coreCount_);
         uint32_t coreId = GetBlockIdx();
-
         if (coreId < batchCores) {
             uint32_t tileId = firstTile + coreId;
             uint32_t offset = tileId * tileElements_;
@@ -485,7 +490,7 @@ __aicore__ inline void SortWithIndexKernel::ProcessScatterStage(
     }
 }
 
-__aicore__ inline void SortWithIndexKernel::CopyTempToOutput(
+__aicore__ inline void EngramFetchGradSortInt32::CopyTempToOutput(
     GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &tempIndexGm,
     GlobalTensor<int32_t> &outputValueGm, GlobalTensor<int32_t> &outputIndexGm,
     TPipe &pipe)
@@ -526,7 +531,7 @@ __aicore__ inline void SortWithIndexKernel::CopyTempToOutput(
     SyncAll<true>();
 }
 
-__aicore__ inline void SortWithIndexKernel::ProcessOneByteRound(
+__aicore__ inline void EngramFetchGradSortInt32::ProcessOneByteRound(
     uint32_t byteRound, GlobalTensor<int32_t> &valueGm, GlobalTensor<int32_t> &indexGm,
     GlobalTensor<int32_t> &outputValueGm, GlobalTensor<int32_t> &outputIndexGm,
     GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &tempIndexGm,
@@ -548,7 +553,7 @@ __aicore__ inline void SortWithIndexKernel::ProcessOneByteRound(
                         tileOffsetsGm, pipe);
 }
 
-__aicore__ inline void SortWithIndexKernel::Process(
+__aicore__ inline void EngramFetchGradSortInt32::Process(
     GlobalTensor<int32_t> &valueGm, GlobalTensor<int32_t> &indexGm,
     GlobalTensor<int32_t> &outputValueGm, GlobalTensor<int32_t> &outputIndexGm,
     GlobalTensor<int32_t> &tempValueGm, GlobalTensor<int32_t> &tempIndexGm,
@@ -565,7 +570,7 @@ __aicore__ inline void SortWithIndexKernel::Process(
     }
 }
 
-__aicore__ inline void SortWithIndexKernel::Process(
+__aicore__ inline void EngramFetchGradSortInt32::Process(
     GM_ADDR valueGm, GM_ADDR indexGm,
     GM_ADDR tempValueGm, GM_ADDR tempIndexGm,
     GM_ADDR histGm, GM_ADDR prefixGm, GM_ADDR tileOffsetsGm, TPipe &pipe)
@@ -583,5 +588,5 @@ __aicore__ inline void SortWithIndexKernel::Process(
     Process(valT, idxT, outValT, outIdxT, tmpValT, tmpIdxT, histT, prefixT, offsetsT, pipe);
 }
 
-} // namespace SortWithIndexInt32
+} // namespace EngramFetchGradSortInt32Int32
 #endif
