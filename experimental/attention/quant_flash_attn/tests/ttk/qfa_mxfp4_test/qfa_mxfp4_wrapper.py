@@ -27,10 +27,37 @@ from common import qfa_mxfp4_golden as golden_mod
 logger = logging.getLogger(__name__)
 
 
+# 环境变量 QFA_SKIP_GENERATE=1 时跳过 golden_mod.generate_data(),
+# 直接用 CSV/manual-data 传入的 tensor 拼装 data_dict。
+# manual-data replay (python3 -m ttk e2e --manual-data-dirs ...) 必须打开,
+# 否则 CSV 占位 tensor 是随机数据, 跑出来的结果无意义。
+_SKIP_GENERATE = os.environ.get("QFA_SKIP_GENERATE", "").lower() in ("1", "true", "yes")
+
+
 def _apply_golden_globals(attrs):
     """把 case attributes 注入 golden 模块全局变量 (B, N_q, ...)."""
     for k, v in attrs.items():
         setattr(golden_mod, k, v)
+
+
+def _inject_replay_qkv(q, k, v, q_descale, k_descale, v_descale):
+    """manual-data replay 优化: 把 bin 加载的 6 个 packed tensor 注入 golden_mod
+    的 _REPLAY_QKV_OVERRIDE slot。后续 generate_data() 检测到 slot 非空就跳过
+    FP32 生成 + mxfp4 量化 + rearrange (大 case 几百秒), 直接用 bin 数据;
+    其余字段 (block_table/p_scale/sinks/attn_mask/cu_seqlens/layouts/num_heads/
+    softmax_scale/fp32_bnsd) 仍按原逻辑生成, 保证参数完整性。
+
+    用完必须清空 slot, 否则会污染同进程后续 case。
+    """
+    golden_mod._REPLAY_QKV_OVERRIDE = {
+        "q": q, "k": k, "v": v,
+        "q_descale": q_descale, "k_descale": k_descale, "v_descale": v_descale,
+    }
+
+
+def _clear_replay_qkv():
+    """清空 replay slot, 避免污染同进程后续 case。"""
+    golden_mod._REPLAY_QKV_OVERRIDE = {}
 
 
 def npu_qfa_mxfp4(
@@ -180,15 +207,22 @@ def npu_qfa_mxfp4(
         }
     )
 
-    data_dict = golden_mod.generate_data()
+    if _SKIP_GENERATE:
+        _inject_replay_qkv(q, k, v, q_descale, k_descale, v_descale)
+    try:
+        data_dict = golden_mod.generate_data()
+    finally:
+        if _SKIP_GENERATE:
+            _clear_replay_qkv()
     logger.info(
-        "[WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d",
+        "[WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d, skip_generate=%s",
         graph_path,
         input_layout,
         B,
         N_q,
         N_kv,
         D,
+        _SKIP_GENERATE,
     )
     try:
         atten_out, lse_out = golden_mod.npu_mxfp4_fa(data_dict)
