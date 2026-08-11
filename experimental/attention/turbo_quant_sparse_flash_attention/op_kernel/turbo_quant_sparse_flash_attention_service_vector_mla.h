@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file turbo_quant_sparse_flash_attention_service_vector_mla.h
@@ -17,7 +17,7 @@
 
 // [TQ4 scale 传递] 复用 kvValidSizeGm_ 的上半区（见 kernel_mla.h 的 SetGlobalBuffer 注释）。
 // 该区按 half 视图寻址：base = TQ4_SCALE_HALF_BASE，布局 slot(loop % 4) × TQ4_SCALE_SLOT_STRIDE。
-static constexpr uint32_t TQ4_SCALE_HALF_BASE = 2048U;   // int32 [1024,2048) 对应 half [2048,4096)
+static constexpr uint32_t TQ4_SCALE_HALF_BASE = 2048U;   // int32 [1024, 2048) 对应 half [2048, 4096)
 static constexpr uint32_t TQ4_SCALE_SLOT_STRIDE = 512U;  // = s2BaseSize 上界
 static_assert(TQ4_SCALE_SLOT_STRIDE * sizeof(uint16_t) <= 1024U,
               "TQ4 half staging exceeds the first 1K of tq4ScaleBuf_");
@@ -49,7 +49,7 @@ public:
     using MM1_OUT_T = float;
     using MM2_OUT_T = float;
 
-    __aicore__ inline QSFAVectorService(){};
+    __aicore__ inline QSFAVectorService() {};
     __aicore__ inline void ProcessVec1L(const RunInfo &info);
     __aicore__ inline void ProcessVec2L(const RunInfo &info);
     __aicore__ inline void InitBuffers(TPipe *pipe);
@@ -225,8 +225,8 @@ private:
     TBuf<> tq4STIdxBuf_;   // 512B = 128 个 uint32
     // [TQ4] per-column scale 专用暂存。曾经挤在 v0ValidSizeUb_ 内（手工偏移 4096/5120），
     // 实测 M 分块数>1 时 Cast/Duplicate 必崩 507015，故改为独立 buffer。
-    //   half 视图 [0,512)   : vec1 从 GM 读回的 512 个 s_j
-    //   float 视图 [256,768): 展开成 fp32 供按列 Mul（起始 byte 1024）
+    //   half 视图 [0, 512)   : vec1 从 GM 读回的 512 个 s_j
+    //   float 视图 [256, 768): 展开成 fp32 供按列 Mul（起始 byte 1024）
     TBuf<> tq4ScaleBuf_;   // 4K
     LocalTensor<float> tq4Cent_;
 };
@@ -277,9 +277,9 @@ template <typename QSFAT> __aicore__ inline void QSFAVectorService<QSFAT>::InitB
     tq4Cent_.SetValue(4,  0.05492980f);  tq4Cent_.SetValue(5,  0.07101817f);
     tq4Cent_.SetValue(6,  0.09115373f);  tq4Cent_.SetValue(7,  0.12037795f);
     tq4Cent_.SetValue(8, -0.12091285f);  tq4Cent_.SetValue(9, -0.09111122f);
-    tq4Cent_.SetValue(10,-0.07112455f);  tq4Cent_.SetValue(11,-0.05513602f);
-    tq4Cent_.SetValue(12,-0.04132067f);  tq4Cent_.SetValue(13,-0.02874970f);
-    tq4Cent_.SetValue(14,-0.01700489f);  tq4Cent_.SetValue(15,-0.00568677f);
+    tq4Cent_.SetValue(10, -0.07112455f);  tq4Cent_.SetValue(11, -0.05513602f);
+    tq4Cent_.SetValue(12, -0.04132067f);  tq4Cent_.SetValue(13, -0.02874970f);
+    tq4Cent_.SetValue(14, -0.01700489f);  tq4Cent_.SetValue(15, -0.00568677f);
     // [TQ4] fp32 scale 区一次性初始化为 1.0。目的是保证该区域永不含未初始化数据
     // （否则 NaN 会在掩码之前被乘进 score 并穿透 softmax）。有了它，热路径就不必
     // 再从 qsfaScaleF[validCol] 起补尾部 —— 那是个非 32B 对齐的向量写，会抛 507015。
@@ -816,9 +816,9 @@ QSFAVectorService<QSFAT>::Tq4DequantRows(LocalTensor<KV_T> &srcTensor, LocalTens
             Cast(sHalfBase[rr * HD], srcI4[r * ROW_BYTES * 2], RoundMode::CAST_NONE, HD);  // int4b -> half, -8..7
         }
         PipeBarrier<PIPE_V>();
-        Adds(sHalfBase, sHalfBase, static_cast<half>(8.0f), cnt);   // signed nibble +8 -> [0,15]
+        Adds(sHalfBase, sHalfBase, static_cast<half>(8.0f), cnt);   // signed nibble +8 -> [0, 15]
         PipeBarrier<PIPE_V>();
-        Muls(sHalfBase, sHalfBase, static_cast<half>(4.0f), cnt);   // *4 -> byte offset [0,60]
+        Muls(sHalfBase, sHalfBase, static_cast<half>(4.0f), cnt);   // *4 -> byte offset [0, 60]
         PipeBarrier<PIPE_V>();
         Cast(idxI, sHalfBase, RoundMode::CAST_ROUND, cnt);
         PipeBarrier<PIPE_V>();
@@ -1101,7 +1101,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
             dataCopyParams.srcStride = 0;
             dataCopyParams.dstStride = (constInfo.s2BaseSize - 1) * blockElementNum * sizeof(K_ROPE_T);
             for (int64_t s2GmOffset = qsfaS2GmStartOffset + qsfaMte2Size; s2GmOffset < qsfaS2GmLimit; s2GmOffset++) {
-                DataCopyPad(kvMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * mergeGmStride + s2GmOffset * blockElementNum],
+                DataCopyPad(kvMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * mergeGmStride +
+                                       s2GmOffset * blockElementNum],
                             mergeUb, dataCopyParams);
             }
             dataCopyParams.blockCount = constInfo.headDimRope / blockElementNum;
@@ -1311,7 +1312,6 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2Inner(const RunInfo 
         pingpongFlag ^= 1; // pingpong 0 1切换
     }
 }
-
 
 template <typename QSFAT>
 __aicore__ inline void

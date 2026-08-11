@@ -84,6 +84,5 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> turboquant_sparse_flash_attention
                  softmax_sum);
     return std::tuple<at::Tensor, at::Tensor, at::Tensor>(output, softmax_max, softmax_sum);
 }
-
 } // namespace vllm_ascend
 #endif

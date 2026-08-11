@@ -185,6 +185,9 @@ class TestTurboQuantSparseFlashAttention(TestCase):
         (4, 2047, 512, "uniform"),
         (8, 512, 128, "normal"),
         (8, 511, 128, "uniform"),
+        # T=25：非 2 的幂且为奇数，触及分核尾部；与算子实测采集的 query shape 对齐
+        (25, 1024, 256, "normal"),
+        (25, 1023, 256, "uniform"),
     ]
 
     def _run_one(self, bsz, s2, topk, dist, dtype, seed):

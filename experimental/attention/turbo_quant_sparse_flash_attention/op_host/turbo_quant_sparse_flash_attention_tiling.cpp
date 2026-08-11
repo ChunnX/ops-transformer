@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file turbo_quant_sparse_flash_attention_tiling.cpp
@@ -189,7 +189,6 @@ void TQSFAMlaTiling::GenTilingKey()
 
     tilingKey_ = GET_TPL_TILING_KEY(0U, pageAttention, layoutQuery, layoutKV, \
         perfMode_ == TQSFAPerfMode::V_TEMPLATE_MODE, static_cast<uint32_t>(qsfaInfo_->gSize > 64)); // G大于64时核间切G
-    
 }
 
 void TQSFAMlaTiling::ZeroTensorProcess() const
@@ -1167,17 +1166,21 @@ static uint32_t GetAxisNum(const gert::Shape &shape, const TQSFAAxis &axis, cons
 
 ge::graphStatus TQSFAInfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName_, "Shape of tensor query invalid"),
+    OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
+        OPS_REPORT_VECTOR_INNER_ERR(opName_, "Shape of tensor query invalid"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName_, "Desc of tensor query invalid"),
+    OP_CHECK_IF(opParamInfo_.query.desc == nullptr,
+        OPS_REPORT_VECTOR_INNER_ERR(opName_, "Desc of tensor query invalid"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.key.shape == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName_, "Shape of tensor k invalid"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName_, "Desc of tensor k invalid"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.value.shape == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName_, "Shape of tensor value invalid"),
+    OP_CHECK_IF(opParamInfo_.value.shape == nullptr,
+        OPS_REPORT_VECTOR_INNER_ERR(opName_, "Shape of tensor value invalid"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.value.desc == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName_, "Desc of tensor value invalid"),
+    OP_CHECK_IF(opParamInfo_.value.desc == nullptr,
+        OPS_REPORT_VECTOR_INNER_ERR(opName_, "Desc of tensor value invalid"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.sparseIndices.shape == nullptr,
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "Shape of tensor sparseIndices invalid"),
@@ -1201,7 +1204,8 @@ ge::graphStatus TQSFAInfoParser::CheckRequiredAttrExistence() const
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.layoutKV == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName_, "layoutKV invalid"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.sparseBlockSize == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName_, "sparseBlockSize invalid"),
+    OP_CHECK_IF(opParamInfo_.sparseBlockSize == nullptr,
+               OPS_REPORT_VECTOR_INNER_ERR(opName_, "sparseBlockSize invalid"),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.scaleValue == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName_, "scaleValue invalid"),
                return ge::GRAPH_FAILED);
@@ -1246,7 +1250,6 @@ ge::graphStatus TQSFAInfoParser::GetNpuInfo()
     uint32_t qsfaAicNum = qsfaAscendcPlat.GetCoreNumAic();
     OP_CHECK_IF(qsfaAicNum == 0 || qsfaAivNum == 0,
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
-
 
     qsfaAscendcPlat.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2CacheSize_);
 

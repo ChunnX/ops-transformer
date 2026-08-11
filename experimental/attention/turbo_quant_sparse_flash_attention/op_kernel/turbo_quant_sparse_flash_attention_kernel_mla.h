@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file turbo_quant_sparse_flash_attention_kernel_mla.h
@@ -62,7 +62,7 @@ public:
     using MM1_OUT_T = T;
     using MM2_OUT_T = T;
 
-    __aicore__ inline TurboQuantSparseFlashAttentionMla(){};
+    __aicore__ inline TurboQuantSparseFlashAttentionMla() {};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *sparseIndices, __gm__ uint8_t* keyScale,
                                 __gm__ uint8_t* valueScale, __gm__ uint8_t *blockTable,
@@ -70,7 +70,7 @@ public:
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax,
                                 __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
                                 const TurboQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
-				                __gm__ uint8_t *gmTiling, TPipe *tPipe);
+                                __gm__ uint8_t *gmTiling, TPipe *tPipe);
 
     __aicore__ inline void Process();
 
@@ -485,8 +485,8 @@ __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::Init(__gm__ uin
                                    constInfo.combineHeadDim * 4 * sizeof(K_ROPE_T)));
         qsfaOffset += GetBlockNum() * 512 * constInfo.combineHeadDim * 4 * sizeof(K_ROPE_T);
 
-        // 每核占 2048 个 int32：[0,1024) 为 kvValidSize，[1024,2048) 为 [TQ4] per-column scale
-        // （按 half 视图是 [2048,4096)，布局 slot(loop%4) × s2BaseSize(512)）。
+        // 每核占 2048 个 int32：[0, 1024) 为 kvValidSize，[1024, 2048) 为 [TQ4] per-column scale
+        // （按 half 视图是 [2048, 4096)，布局 slot(loop%4) × s2BaseSize(512)）。
         kvValidSizeGm_.SetGlobalBuffer(
             (__gm__ int32_t *)(workspace + qsfaOffset + (aiCoreIdx * 4) * 128 * 4 * sizeof(int32_t)));
     }
@@ -550,7 +550,7 @@ template <typename QSFAT> __aicore__ inline void TurboQuantSparseFlashAttentionM
     if (aiCoreIdx >= usedCoreNum) {
         return;
     }
-	// 计算当前核的基本块
+    // 计算当前核的基本块
     uint32_t accumBaseNum = 0; // 当前累积的基本块数
     uint32_t targetBaseNum = 0;
     uint32_t lastValidBIdx = 0;
@@ -580,7 +580,7 @@ template <typename QSFAT> __aicore__ inline void TurboQuantSparseFlashAttentionM
                 return;
             }
         }
-	    if ((actBatchS1 > 0) && (actBatchS2 > 0)) {
+        if ((actBatchS1 > 0) && (actBatchS2 > 0)) {
             lastValidactBatchS1 = actBatchS1;
             lastValidBIdx = bIdx;
         }
@@ -590,7 +590,7 @@ template <typename QSFAT> __aicore__ inline void TurboQuantSparseFlashAttentionM
         constInfo.gS1Start = lastValidactBatchS1 - 1;
     }
     if (accumBaseNum < targetBaseNum) {
-		// 更新最后一个核的End分核信息
+        // 更新最后一个核的End分核信息
         constInfo.bN2End = lastValidBIdx;
         constInfo.gS1End = lastValidactBatchS1-1;
         constInfo.s2End = 0;
