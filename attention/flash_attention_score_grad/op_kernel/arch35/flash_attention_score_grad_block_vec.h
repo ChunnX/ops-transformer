@@ -389,7 +389,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::CopyMaxSum(FagConstInfo &cons
                                                               int64_t taskId)
 {
     if (unlikely(constInfo.enablePreSfmg)) {
-        if constexpr (DETER_SPARSE_TYPE == NO_DETER) {
+        if constexpr (DETER_SPARSE_TYPE == NO_DETER || IS_DETER_NEW(DETER_SPARSE_TYPE)) {
             CopyInMaxSumWithSfmg<float, VECTOR_BASEM, IS_ROPE>(constInfo, runInfo, maxSumQue[taskId & 1], softmaxMaxGm,
                                                                softmaxSumGm, sfmgWorkSpaceGm);
         }
