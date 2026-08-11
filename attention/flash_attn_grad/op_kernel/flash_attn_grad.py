@@ -29,6 +29,8 @@ class FlashAttnGradTilingData:
     s2: int
     n1: int
     d: int
+    dv: int
+    scaleValue: float
 
 
 # ================================================================
