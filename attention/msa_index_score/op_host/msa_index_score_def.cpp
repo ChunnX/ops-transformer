@@ -59,13 +59,13 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         // query 长度前缀和 (cumsum), [B+1]；TND 必选
-        this->Input("actual_seq_lengths_query")
+        this->Input("actual_seq_qlen")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         // PA：各请求可见 S2，[B]
-        this->Input("actual_seq_lengths_key")
+        this->Input("actual_seq_klen")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
