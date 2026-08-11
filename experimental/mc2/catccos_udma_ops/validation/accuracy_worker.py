@@ -18,11 +18,11 @@ import ops_transformer_catccos_udma as udma
 
 try:
     from .case_schema import read_resolved_cases
-    from .common import udma_init_method_from_env, write_json
+    from .common import udma_init_method_from_env, validation_udma_heap_size, write_json
     from .precision import analyze_accuracy, write_accuracy_artifacts
 except ImportError:  # Direct execution keeps the source tree out of package lookup.
     from case_schema import read_resolved_cases
-    from common import udma_init_method_from_env, write_json
+    from common import udma_init_method_from_env, validation_udma_heap_size, write_json
     from precision import analyze_accuracy, write_accuracy_artifacts
 
 
@@ -200,11 +200,13 @@ def main():
         initialized_dist = True
         dist.barrier()
         init_method = udma_init_method_from_env()
+        heap_size = validation_udma_heap_size(cases, concurrent_input_buffers=2)
         if rank == 0:
             print("UDMA bootstrap: {}".format(init_method), flush=True)
+            print("UDMA symmetric heap: {} bytes".format(heap_size), flush=True)
         udma.init_udma_group(
             rank=rank, world_size=world_size, local_rank=local_rank,
-            init_method=init_method,
+            init_method=init_method, heap_size=heap_size,
         )
         initialized_udma = True
         for case in cases:

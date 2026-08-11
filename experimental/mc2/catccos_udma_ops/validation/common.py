@@ -14,6 +14,12 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, Sequence, Union
 
 
+_MIB = 1 << 20
+_DEFAULT_UDMA_HEAP_BYTES = 1 << 30
+_UDMA_KERNEL_WORKSPACE_BYTES = 400 * _MIB + 4096
+_UDMA_HEAP_HEADROOM_BYTES = 64 * _MIB
+
+
 def timestamp() -> str:
     return datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
@@ -54,6 +60,43 @@ def udma_init_method_from_env() -> str:
     if port <= 0 or port > 65535:
         raise RuntimeError("UDMA_MASTER_PORT must be in [1, 65535]")
     return "tcp://{}:{}".format(address, port)
+
+
+def validation_udma_heap_size(
+    cases: Sequence[Mapping[str, Any]], *, concurrent_input_buffers: int
+) -> int:
+    """Size the SHMEM heap for workspace plus the largest validation input(s)."""
+    if not cases:
+        raise ValueError("at least one validation case is required to size the UDMA heap")
+    if concurrent_input_buffers <= 0:
+        raise ValueError("concurrent_input_buffers must be positive")
+
+    max_input_bytes = max(
+        int(case["shape"]["m"]) * int(case["shape"]["k"]) * 2
+        for case in cases
+    )
+    minimum = (
+        _UDMA_KERNEL_WORKSPACE_BYTES
+        + concurrent_input_buffers * max_input_bytes
+        + _UDMA_HEAP_HEADROOM_BYTES
+    )
+    automatic = max(_DEFAULT_UDMA_HEAP_BYTES, 1 << (minimum - 1).bit_length())
+
+    configured = os.environ.get("UDMA_HEAP_SIZE")
+    if configured is None:
+        return automatic
+    try:
+        requested = int(configured)
+    except ValueError as error:
+        raise RuntimeError("UDMA_HEAP_SIZE must be an integer number of bytes") from error
+    if requested < minimum:
+        raise RuntimeError(
+            "UDMA_HEAP_SIZE={} is too small for this validation batch; "
+            "at least {} bytes are required (automatic size: {})".format(
+                requested, minimum, automatic
+            )
+        )
+    return requested
 
 
 def environment_fingerprint() -> Dict[str, Any]:

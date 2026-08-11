@@ -127,6 +127,13 @@ FP32 CPU tensor, reconstructs destination-expert slices from the route matrix,
 and performs CPU FP32 matmul followed by BF16 conversion. Both the ordinary
 staging path and the symmetric-input/reusable-output path are checked.
 
+The validation worker automatically sizes the SHMEM symmetric heap from the
+largest input in each batch. Accuracy reserves room for both the ordinary
+staging buffer and symmetric-input buffer; performance reserves one input
+buffer. The result is rounded up to a power of two with a 1 GiB minimum. Set
+`UDMA_HEAP_SIZE` to an integer byte count only when an explicit larger capacity
+is required; an undersized override is rejected before communication setup.
+
 Pass/fail follows the
 [opbase experimental precision standard](https://gitcode.com/cann/opbase/blob/master/docs/zh/ops_precision_standard/experimental_standard.md)
 for BF16 exactly: mixed

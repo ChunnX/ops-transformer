@@ -38,3 +38,17 @@ def test_worker_bootstrap_method_includes_tcp_scheme(monkeypatch):
     monkeypatch.setenv("UDMA_MASTER_PORT", "29610")
     monkeypatch.setattr(common.socket, "gethostbyname", lambda host: "10.20.30.40")
     assert common.udma_init_method_from_env() == "tcp://10.20.30.40:29610"
+
+
+def test_accuracy_heap_auto_scales_for_large_input(monkeypatch):
+    monkeypatch.delenv("UDMA_HEAP_SIZE", raising=False)
+    cases = [{"shape": {"m": 131072, "k": 2048}}]
+    assert common.validation_udma_heap_size(cases, concurrent_input_buffers=2) == 2 << 30
+    assert common.validation_udma_heap_size(cases, concurrent_input_buffers=1) == 1 << 30
+
+
+def test_explicit_heap_rejects_insufficient_capacity(monkeypatch):
+    monkeypatch.setenv("UDMA_HEAP_SIZE", str(1 << 30))
+    cases = [{"shape": {"m": 131072, "k": 2048}}]
+    with pytest.raises(RuntimeError, match="too small"):
+        common.validation_udma_heap_size(cases, concurrent_input_buffers=2)
