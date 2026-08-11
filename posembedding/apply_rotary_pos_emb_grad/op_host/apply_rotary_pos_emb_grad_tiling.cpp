@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 #include <cmath>
 #include <graph/utils/type_utils.h>
 #include "tiling/tiling_api.h"
-#include "posembedding/apply_rotary_pos_emb_grad/op_kernel/arch35/apply_rotary_pos_emb_grad_tiling_key.h"
 #include "apply_rotary_pos_emb_grad_tiling.h"
 
 namespace {
@@ -253,9 +252,7 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::ValidateBroadcastByLayo
         if (gqB == cosB && gqS == cosS) {
             // 所有 dim 都相等 → NO_BROADCAST
             int64_t gqN = gqShape.GetDim(DIM_2);
-            // NO_BROADCAST (A 模板) 还要求 gq/gk 全轴一致（含 N 轴），否则 K 路复用 Q 的行索引访问会错位；
-            // gq/gk 仅 N 轴不同时，cosN=1 在 N 轴广播，回退到 BAB/AB 广播模板处理（不进入 A 模板）
-            if (cosShape.GetDim(DIM_2) == gqN && gkShape == gqShape) {
+            if (cosShape.GetDim(DIM_2) == gqN) {
                 layout_ = ApplyRopeGradLayout::NO_BROADCAST;
             } else {
                 // cos N=1 ≠ gq N, so still broadcast
@@ -761,37 +758,12 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::SetTilingKeyBlockDim(ui
     context_->SetTilingKey(tilingKey_);
     auto workspaces = context_->GetWorkspaceSizes(1);
     auto usrWorkSpaceSize = b_ * s_ * std::max(nQ_, nK_) * d_ * ge::GetSizeByDataType(dtype_) * INPUT_OUTPUT_NUM;
-    if (dCosFlag_ == 1 && layout_ != ApplyRopeGradLayout::NO_BROADCAST) {
-        workspaces[0] = workspaces[0] + usrWorkSpaceSize;
+    workspaces[0] = workspaces[0] + usrWorkSpaceSize;
+    if (dCosFlag_ == 1) {
         context_->SetScheduleMode(1); // batch mode, all cores start simultaneously
-        SetRotaryXTilingData();
     }
     OP_LOGD(context_->GetNodeName(), "workspaces[0] :%ld, usrWorkSpaceSize = %ld.\n",
         workspaces[0], usrWorkSpaceSize);
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::SetRotaryXTilingData()
-{
-    int64_t totalN = nQ_ + nK_;
-    int64_t dSumNum = b_ * s_ * totalN;
-    int64_t blockFactorN = CeilDiv(dSumNum, usedCoreNum_);
-    int64_t rotaryUsedCoreNum = CeilDiv(dSumNum, blockFactorN);
-    int64_t blockTailFactorN = (dSumNum % blockFactorN == 0) ? blockFactorN : (dSumNum % blockFactorN);
-    int64_t dSize = CeilAlign(d_ * GetSizeByDataType(dtype_) / dSplitCoef_, blockSize_) * dSplitCoef_;
-    int64_t numDAvail = FloorDiv(static_cast<int64_t>(aicoreParams_.ubSize), DOUBLE_BUFFER * dSize);
-    int64_t ubFactorN = std::min(blockFactorN, numDAvail / 3);
-
-    tilingData_->rotaryXParams.b = b_;
-    tilingData_->rotaryXParams.s = s_;
-    tilingData_->rotaryXParams.d = d_;
-    tilingData_->rotaryXParams.nQ = nQ_;
-    tilingData_->rotaryXParams.nK = nK_;
-    tilingData_->rotaryXParams.usedCoreNum = rotaryUsedCoreNum;
-    tilingData_->rotaryXParams.blockFactorN = blockFactorN;
-    tilingData_->rotaryXParams.blockTailFactorN = blockTailFactorN;
-    tilingData_->rotaryXParams.ubFactorN = ubFactorN;
-    tilingData_->rotaryXParams.rotaryMode = static_cast<int64_t>(rotaryMode_);
     return ge::GRAPH_SUCCESS;
 }
 
