@@ -13,10 +13,10 @@
 
 #include "kernel_operator.h"
 #include "mega_moe_constants.h"
-#if __has_include("../../../moe_distribute_dispatch_v2/quantize_functions.h")
-#include "../../../moe_distribute_dispatch_v2/quantize_functions.h"
+#if __has_include("../../../common/quantize_functions.h")
+#include "../../../common/quantize_functions.h"
 #else
-#include "../../../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
+#include "../../../../common/op_kernel/quantize_functions.h"
 #endif
 
 namespace MegaMoeImpl {
