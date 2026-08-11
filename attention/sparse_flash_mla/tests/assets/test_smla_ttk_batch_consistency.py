@@ -17,6 +17,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 import torch
 
 
@@ -36,12 +37,12 @@ def batch_kwargs(slices, seed, sequence_slices=None):
     axes = (0,) if sequence_slices is None else (0, 1)
     slice_groups = (tuple(slices),)
     seed_groups = (tuple(seed for _ in slices),)
-    ids = [tuple(f"{seed}_0_{start}_{stop}_{step}"
+    ids = [tuple(f"{seed}_0_{len(range(start, stop, step))}_{step}"
                  for start, stop, step in slices)]
     if sequence_slices is not None:
         slice_groups += (tuple(sequence_slices),)
         seed_groups += (tuple(seed for _ in sequence_slices),)
-        ids.append(tuple(f"{seed}_1_{start}_{stop}_{step}"
+        ids.append(tuple(f"{seed}_1_{len(range(start, stop, step))}_{step}"
                          for start, stop, step in sequence_slices))
     return {
         "batch_consistency_id": (tuple(ids),),
@@ -118,6 +119,24 @@ def test_batch_random_context_repeats_declared_batch_slices():
     assert torch.equal(value[0], value[2])
 
 
+def test_cross_case_changes_background_but_keeps_relation_slice():
+    q = torch.empty((3, 2, 1, 1), dtype=torch.float32)
+    fields = batch_kwargs(((0, 1, 1), (2, 3, 1)), 7001)
+    fields.update({"layout_q": "BSND", "layout_kv": "BSND"})
+
+    fields["testcase_name"] = "SMLA_CASE_A"
+    with INPUTS_MODULE.TorchBatchRandomContext.from_case(q, None, None, fields):
+        first = torch.rand(q.shape)
+
+    fields["testcase_name"] = "SMLA_CASE_B"
+    with INPUTS_MODULE.TorchBatchRandomContext.from_case(q, None, None, fields):
+        second = torch.rand(q.shape)
+
+    assert torch.equal(first[0], first[2])
+    assert torch.equal(second[0], second[2])
+    assert not torch.equal(first[1], second[1])
+
+
 def test_sparse_modes_map_randperm_by_relation_with_nonuniform_batches():
     q = torch.empty((3, 2, 1, 1), dtype=torch.float32)
     fields = batch_kwargs(((0, 1, 1), (2, 3, 1)), 7001)
@@ -160,6 +179,36 @@ def test_bsnd_batch_context_ignores_auxiliary_q_prefix():
 
     assert context.q_prefix is None
     assert context.batch_size == 2
+
+
+def test_bsnd_input_adapter_rejects_prefix_tensor_slot(monkeypatch):
+    q = torch.empty((2, 1, 1, 1), dtype=torch.float32)
+    ori_kv = torch.empty((2, 1, 1, 1), dtype=torch.float32)
+    cmp_kv = torch.empty((2, 1, 1, 1), dtype=torch.float32)
+    prefix_slot = torch.empty((3,), dtype=torch.int32)
+    generated = {
+        "input": {
+            "q": q.clone(),
+            "ori_kv": ori_kv.clone(),
+            "cmp_kv": cmp_kv.clone(),
+        },
+        "metadata_input": {},
+    }
+    monkeypatch.setattr(
+        INPUTS_MODULE.INPUT_ADAPTER,
+        "customize",
+        lambda *_args, **_kwargs: generated,
+    )
+
+    with pytest.raises(ValueError, match="cu_seqlens_q is present in CSV"):
+        INPUTS_MODULE.generate_sparse_flash_mla_inputs(
+            q,
+            ori_kv=ori_kv,
+            cmp_kv=cmp_kv,
+            cu_seqlens_q=prefix_slot,
+            layout_q="BSND",
+            layout_kv="BSND",
+        )
 
 
 def test_tnd_batch_random_context_maps_q_and_kv_token_ranges():
@@ -362,5 +411,8 @@ def test_tnd_pa_input_adapter_preserves_relation_through_block_tables():
         cmp_kv[int(cmp_block_table[2, 0])],
     )
     data = INPUTS_MODULE.INPUT_ADAPTER.load_golden_store().CASE_DATA.get(testcase_name)
+    assert data["cpu_output"] is None
+    assert data["softmax_lse"] is None
+    INPUTS_MODULE.INPUT_ADAPTER.load_golden_store().materialize_golden(data)
     assert torch.equal(data["cpu_output"][0], data["cpu_output"][2])
     assert torch.equal(data["softmax_lse"][0], data["softmax_lse"][2])

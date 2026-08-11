@@ -35,12 +35,12 @@ def batch_kwargs(slices, seed, sequence_slices=None):
     axes = (0,) if sequence_slices is None else (0, 1)
     slice_groups = (tuple(slices),)
     seed_groups = (tuple(seed for _ in slices),)
-    ids = [tuple(f"{seed}_0_{start}_{stop}_{step}"
+    ids = [tuple(f"{seed}_0_{len(range(start, stop, step))}_{step}"
                  for start, stop, step in slices)]
     if sequence_slices is not None:
         slice_groups += (tuple(sequence_slices),)
         seed_groups += (tuple(seed for _ in sequence_slices),)
-        ids.append(tuple(f"{seed}_1_{start}_{stop}_{step}"
+        ids.append(tuple(f"{seed}_1_{len(range(start, stop, step))}_{step}"
                          for start, stop, step in sequence_slices))
     return {
         "batch_consistency_id": (tuple(ids),),
@@ -113,6 +113,26 @@ def test_qsmla_batch_random_context_repeats_declared_batch_slices():
     assert torch.equal(value[0], value[2])
     assert not torch.equal(first_permutation, second_permutation)
     assert torch.equal(first_permutation, third_permutation)
+
+
+def test_cross_case_changes_background_but_keeps_relation_slice():
+    q = torch.empty((3, 2, 1, 1), dtype=torch.float32)
+    fields = batch_kwargs(((0, 1, 1), (2, 3, 1)), 7001)
+    fields.update({"layout_q": "BSND", "layout_kv": "BSND"})
+
+    fields["testcase_name"] = "QSMLA_CASE_A"
+    with INPUTS_MODULE.QuantSparseFlashMlaBatchRandomContext.from_case(
+            q, None, None, fields):
+        first = torch.rand(q.shape)
+
+    fields["testcase_name"] = "QSMLA_CASE_B"
+    with INPUTS_MODULE.QuantSparseFlashMlaBatchRandomContext.from_case(
+            q, None, None, fields):
+        second = torch.rand(q.shape)
+
+    assert torch.equal(first[0], first[2])
+    assert torch.equal(second[0], second[2])
+    assert not torch.equal(first[1], second[1])
 
 
 def test_qsmla_sparse_randperm_maps_nonuniform_batch_call_offsets():
@@ -364,6 +384,11 @@ def test_qsmla_batch_input_adapter_generates_equal_hca_slices():
     assert cmp_residual_kv.tolist() == [0, 0]
     data = INPUTS_MODULE.INPUT_ADAPTER.load_golden_store().CASE_DATA.get(testcase_name)
     assert data is not None
+    assert data["op_input"]["cu_seqlens_q"] is None
+    assert data["op_input"]["cu_seqlens_ori_kv"] is None
+    assert data["op_input"]["cu_seqlens_cmp_kv"] is None
+    assert data["cpu_output"] is None
+    INPUTS_MODULE.INPUT_ADAPTER.load_golden_store().materialize_golden(data)
     assert data["cpu_output"] is not None
 
 

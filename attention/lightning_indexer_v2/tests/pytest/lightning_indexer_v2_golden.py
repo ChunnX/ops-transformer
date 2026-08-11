@@ -638,7 +638,10 @@ def trans_prefix_actseq(self,list):
                 raise ValueError(f'PA场景下act seq 为非递减数列 act_seq ={list}')
         return list_new
 
-def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1size = DEFAULT_S1SIZE):
+def liv2_output_single(
+    params, is_batch=False, split_s1=DEFAULT_SPLIT_S1,
+    s1size=DEFAULT_S1SIZE, generate_golden=True,
+):
     if is_batch:
         params = normalize_liv2_params(params)
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
@@ -794,15 +797,31 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
         if output_idx_offset is not None:
             output_idx_offset = torch.tensor(output_idx_offset).reshape(q_t_size, 1).to(torch.int32)
     blockFusion = None
+    cpu_key = None
+    cpu_block_table = None
     if layout_key == "BSND":
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (batch_size, k_seq, k_head_num, head_dim))).to(qk_dtype)
         block_table = None
-        cpu_result, topk_value, cpu_topk_value = test_liv2.forward(query, key, weights, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, block_table, output_idx_offset)
+        cpu_key = key
+        if generate_golden:
+            cpu_result, topk_value, cpu_topk_value = test_liv2.forward(
+                query, key, weights, cu_seqlens_q, cu_seqlens_k, seqused_q,
+                seqused_k, cmp_residual_k, block_table, output_idx_offset,
+            )
+        else:
+            cpu_result, topk_value, cpu_topk_value = None, None, None
 
     elif layout_key == "TND":
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (k_t_size, k_head_num, head_dim))).to(qk_dtype)
         block_table = None
-        cpu_result, topk_value, cpu_topk_value = test_liv2.forward(query, key, weights, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, block_table, output_idx_offset)
+        cpu_key = key
+        if generate_golden:
+            cpu_result, topk_value, cpu_topk_value = test_liv2.forward(
+                query, key, weights, cu_seqlens_q, cu_seqlens_k, seqused_q,
+                seqused_k, cmp_residual_k, block_table, output_idx_offset,
+            )
+        else:
+            cpu_result, topk_value, cpu_topk_value = None, None, None
 
     elif layout_key == "PA_BBND":
         # 以不同batch中最大seq为标准初始化key(bnsd)
@@ -843,9 +862,9 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
                 else:
                     for i_n in range(k_head_num):
                         key[cur_block_id, :, i_n, :] = key_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size,:]
-        properties = torch.npu.get_device_properties()
+        properties = torch.npu.get_device_properties() if generate_golden else None
         blockFusion = None 
-        if "Ascend950" in properties.name and DISCONTINUOUS_KEYS:
+        if properties is not None and "Ascend950" in properties.name and DISCONTINUOUS_KEYS:
             key_stride = 10  # 0轴非连续增加stride 
             bytes_per_token = head_dim + key_stride # 整个非连续的长度 
             blockFusion = torch.zeros((block_num, block_size * k_head_num * bytes_per_token), dtype=qk_dtype) 
@@ -853,7 +872,19 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
             blockFusion[:, :block_size * k_head_num * head_dim] = key_flat 
             blockFusion = blockFusion
             key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
-        cpu_result, topk_value, cpu_topk_value = test_liv2.forward(query, key_bnsd, weights, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, block_table, output_idx_offset)
+        if generate_golden:
+            cpu_result, topk_value, cpu_topk_value = test_liv2.forward(
+                query, key_bnsd, weights, cu_seqlens_q, cu_seqlens_k,
+                seqused_q, seqused_k, cmp_residual_k, block_table,
+                output_idx_offset,
+            )
+        else:
+            cpu_result, topk_value, cpu_topk_value = None, None, None
+        # The physical PA cache and the logical BNSD key are both needed later:
+        # the former is copied to TTK inputs, while the latter is the exact CPU
+        # reference input produced by pytest before block-table indirection.
+        cpu_key = key_bnsd
+        cpu_block_table = block_table
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32)
     
     if layout_key == "TND":
@@ -884,6 +915,7 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
             "cpu_topk_value": cpu_topk_value,
             "query": query,
             "key": key,
+            "cpu_key": cpu_key,
             "weights": weights,
             "output_idx_offset": output_idx_offset,
             "cu_seqlens_q": cu_seqlens_q,
@@ -892,6 +924,7 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
             "seqused_k": seqused_k,
             "cmp_residual_k_for_npu": cmp_residual_k_for_npu,
             "block_table": block_table,
+            "cpu_block_table": cpu_block_table,
             "max_seqlen_q_meta": max_seqlen_q,
  	        "max_seqlen_k_meta": max_seqlen_k,
             "layout_query": layout_query,
@@ -901,7 +934,9 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
             "topk": topk,
             "mask_mode": mask_mode,
             "cmp_ratio": cmp_ratio,
-            "blockFusion": blockFusion 
+            "blockFusion": blockFusion,
+            "split_s1": split_s1,
+            "s1size": s1size,
         }
         return output_tensors
     else:
@@ -949,6 +984,81 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
         return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value
 
 
-def generate_liv2_test_data(params, split_s1=DEFAULT_SPLIT_S1, s1size=DEFAULT_S1SIZE):
-    """Generate LI_V2 inputs and CPU golden without executing metadata or the main op."""
-    return liv2_output_single(params, is_batch=True, split_s1=split_s1, s1size=s1size)
+def build_liv2_metadata_input(params, tensor_dict):
+    """Return the canonical metadata arguments produced by the pytest case."""
+    return {
+        "num_heads_q": int(params[5]),
+        "num_heads_k": int(params[6]),
+        "head_dim": int(params[7]),
+        "topk": int(tensor_dict["topk"]),
+        "cu_seqlens_q": tensor_dict["cu_seqlens_q"],
+        "cu_seqlens_k": tensor_dict["cu_seqlens_k"],
+        "seqused_q": tensor_dict["seqused_q"],
+        "seqused_k": tensor_dict["seqused_k"],
+        "cmp_residual_k": tensor_dict["cmp_residual_k_for_npu"],
+        "batch_size": int(params[0]),
+        "max_seqlen_q": int(tensor_dict["max_seqlen_q_meta"]),
+        "max_seqlen_k": int(tensor_dict["max_seqlen_k_meta"]),
+        "layout_q": tensor_dict["layout_query"],
+        "layout_k": tensor_dict["layout_key"],
+        "mask_mode": int(tensor_dict["mask_mode"]),
+        "cmp_ratio": int(tensor_dict["cmp_ratio"]),
+    }
+
+
+def generate_liv2_test_data(
+    params, split_s1=DEFAULT_SPLIT_S1, s1size=DEFAULT_S1SIZE,
+    generate_golden=True,
+):
+    """Generate LI_V2 inputs and optionally materialize the CPU Golden."""
+    data = liv2_output_single(
+        params,
+        is_batch=True,
+        split_s1=split_s1,
+        s1size=s1size,
+        generate_golden=generate_golden,
+    )
+    data["metadata_input"] = build_liv2_metadata_input(data["params"], data)
+    return data
+
+
+def generate_cpu_golden(data):
+    """Materialize the CPU reference from the input-stage pytest data only."""
+    if data.get("cpu_result") is not None:
+        return data
+
+    (
+        batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
+        head_dim, block_size, block_num, _qk_dtype, _cu_seqlens_q,
+        _cu_seqlens_k, _seqused_q, _seqused_k, _cmp_residual_k,
+        _output_idx_offset, layout_query, layout_key, topk, mask_mode,
+        _query_datarange, _key_datarange, _weights_datarange, cmp_ratio,
+        return_value, max_seqlen_q,
+    ) = data["params"]
+
+    cpu_key = data.get("cpu_key")
+    if cpu_key is None:
+        if layout_key == "PA_BBND":
+            raise ValueError(
+                "LI_V2 PA pytest state lacks cpu_key; regenerate input data before Golden"
+            )
+        cpu_key = data["key"]
+    model = GeneralizedLIV2(
+        batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
+        head_dim, block_size, block_num, data["query"].dtype,
+        data["cu_seqlens_q"], data["cu_seqlens_k"], data["seqused_q"],
+        data["seqused_k"], data["cmp_residual_k_for_npu"], layout_query,
+        layout_key, topk, max_seqlen_q, mask_mode, cmp_ratio, return_value,
+        split_s1=data.get("split_s1", DEFAULT_SPLIT_S1),
+        s1size=data.get("s1size", DEFAULT_S1SIZE),
+    )
+    cpu_result, topk_value, cpu_topk_value = model.forward(
+        data["query"], cpu_key, data["weights"], data["cu_seqlens_q"],
+        data["cu_seqlens_k"], data["seqused_q"], data["seqused_k"],
+        data["cmp_residual_k_for_npu"], data.get("cpu_block_table"),
+        data["output_idx_offset"],
+    )
+    data["cpu_result"] = cpu_result
+    data["topk_value"] = topk_value
+    data["cpu_topk_value"] = cpu_topk_value
+    return data

@@ -224,8 +224,11 @@ class SparseFlashMlaBatchComparator:
                         raise ValueError("logical B and S slices must use the same seed")
                     seed = seed_value
                     parsed_slices.append((start, stop, step))
+                    # The framework groups matching relations across different
+                    # logical B/S offsets, so only the relation length is stable.
+                    length = len(range(start, stop, step))
                     expected_axes[axis_group].append(
-                        f"{seed}_{axis}_{start}_{stop}_{step}"
+                        f"{seed}_{axis}_{length}_{step}"
                     )
                 if axes == (0, 1) and parsed_slices[0][1] - parsed_slices[0][0] != 1:
                     raise ValueError("logical (B,S) relation requires one B per sample")

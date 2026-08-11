@@ -14,6 +14,7 @@
 
 import csv
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -55,6 +56,7 @@ class FixtureWriter:
     def case_row(self, testcase_name, batch_size, slices, seed):
         row = {
             "testcase_name": testcase_name,
+            "is_enabled": "True",
             "api_name": API_NAME,
             "tensor_view_shapes": repr(((batch_size, 1, 1, 2),)),
             "tensor_dtypes": repr(("float16",)),
@@ -148,18 +150,19 @@ class FixtureWriter:
         ])
         self.write_outputs(second_case_differs)
 
-    def command(self):
-        return [
+    def command(self, include_excel=True):
+        command = [
             sys.executable,
             str(SCRIPT),
             "--csv", str(self.case_csv),
             "--result", str(self.result_csv),
             "--dump-dir", str(self.dump_dir),
             "--report", str(self.report),
-            "--excel", str(self.excel),
-            "--require-intra-case",
-            "--require-cross-case",
         ]
+        if include_excel:
+            command.extend(("--excel", str(self.excel)))
+        command.extend(("--require-intra-case", "--require-cross-case"))
+        return command
 
 
 def test_batch_output_comparator_accepts_same_and_cross_case(tmp_path):
@@ -182,6 +185,31 @@ def test_batch_output_comparator_accepts_same_and_cross_case(tmp_path):
     assert "N2:N5" in {str(value) for value in details.merged_cells.ranges}
     assert details["F2"].value == "PASS"
     assert details["I2"].value
+
+
+def test_json_only_comparison_does_not_import_openpyxl(tmp_path):
+    fixture = FixtureWriter(tmp_path)
+    fixture.write_fixture()
+    (tmp_path / "openpyxl.py").write_text(
+        "raise RuntimeError('openpyxl must not load in JSON-only mode')\n",
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = os.pathsep.join(filter(None, (
+        str(tmp_path), environment.get("PYTHONPATH"),
+    )))
+
+    completed = subprocess.run(
+        fixture.command(include_excel=False),
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+    assert json.loads(fixture.report.read_text(encoding="utf-8"))["status"] == "PASS"
+    assert not fixture.excel.exists()
 
 
 def test_batch_output_comparator_rejects_cross_case_difference(tmp_path):
@@ -239,6 +267,57 @@ def test_batch_output_comparator_rejects_failed_ttk_case(tmp_path):
 
     assert completed.returncode == 1
     assert "precision_status is 'FAIL', expected PASS" in completed.stdout
+
+
+def test_batch_output_comparator_skips_disabled_case_without_result_or_dump(tmp_path):
+    fixture = FixtureWriter(tmp_path)
+    fixture.write_fixture()
+    rows = fixture.read_rows(fixture.case_csv)
+    disabled = fixture.case_row(
+        "CASE_DISABLED", 3, ((0, 1, 1), (2, 3, 1)), 7001
+    )
+    disabled["is_enabled"] = "False"
+    fixture.write_csv(fixture.case_csv, [*rows, disabled])
+
+    completed = subprocess.run(fixture.command(), check=False, capture_output=True, text=True)
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+    report = json.loads(fixture.report.read_text(encoding="utf-8"))
+    assert report["disabled_case_count"] == 1
+    assert report["disabled_cases"] == ["CASE_DISABLED"]
+
+
+def test_batch_output_comparator_keeps_relation_gate_after_disabling_member(tmp_path):
+    fixture = FixtureWriter(tmp_path)
+    fixture.write_fixture()
+    case_rows = fixture.read_rows(fixture.case_csv)
+    case_rows[1]["is_enabled"] = "False"
+    fixture.write_csv(fixture.case_csv, case_rows)
+    fixture.write_csv(fixture.result_csv, fixture.read_rows(fixture.result_csv)[:1])
+    (fixture.dump_dir / "CASE_B3_output_0.bin").unlink()
+
+    completed = subprocess.run(fixture.command(), check=False, capture_output=True, text=True)
+
+    assert completed.returncode == 1
+    assert "result CSV has no matching testcase" not in completed.stdout
+    report = json.loads(fixture.report.read_text(encoding="utf-8"))
+    assert report["disabled_cases"] == ["CASE_B3"]
+    assert "relation appears in fewer than two testcases" in report["groups"][0]["errors"]
+
+
+def test_batch_output_comparator_rejects_non_primary_output(tmp_path):
+    fixture = FixtureWriter(tmp_path)
+    fixture.write_fixture()
+
+    completed = subprocess.run(
+        [*fixture.command(), "--output-index", "1"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 1
+    assert "supports output index 0 only" in completed.stdout
 
 
 def test_batch_output_comparator_requires_ttk_intra_case_result(tmp_path):

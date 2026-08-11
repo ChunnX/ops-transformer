@@ -12,6 +12,7 @@
 
 """Input customization for MixedQuantSparseFlashMla TTK cases."""
 
+import hashlib
 import importlib.util
 import random
 import sys
@@ -69,7 +70,10 @@ class NumpyBatchRandomContext:
                     ),
                     "cmp_kv",
                 )
-        self.base_seed = self.relations[0][2]
+        self.relation_seed = self.relations[0][2]
+        self.base_seed = self.case_seed(
+            kwargs.get("testcase_name"), self.relation_seed
+        )
         self.call_index = 0
         self.randperm_call_index = 0
         self.randperm_batch_offsets = None
@@ -77,6 +81,14 @@ class NumpyBatchRandomContext:
         self.original_numpy_uniform = None
         self.original_python_uniform = None
         self.original_torch_randperm = None
+
+    @classmethod
+    def case_seed(cls, testcase_name, fallback):
+        """Give each case an independent background while keeping relation seed explicit."""
+        if not testcase_name:
+            return int(fallback)
+        digest = hashlib.sha256(str(testcase_name).encode("utf-8")).digest()
+        return int.from_bytes(digest[:8], "big") % cls.SEED_MODULUS
 
     @classmethod
     def from_case(cls, q, ori_kv, cmp_kv, kwargs):
@@ -386,7 +398,13 @@ class NumpyBatchRandomContext:
     def numpy_uniform(self, low=0.0, high=1.0, size=None):
         call_index = self.call_index
         self.call_index += 1
-        rng = np.random.default_rng(self.derive_seed(self.base_seed, call_index))
+        requested_rank = (
+            0 if size is None
+            else 1 if isinstance(size, int)
+            else len(size)
+        )
+        seed = self.base_seed if requested_rank >= 2 else self.relation_seed
+        rng = np.random.default_rng(self.derive_seed(seed, call_index))
         value = rng.uniform(low, high, size)
         if size is None:
             return value
@@ -412,7 +430,7 @@ class NumpyBatchRandomContext:
     def python_uniform(self, low, high):
         call_index = self.call_index
         self.call_index += 1
-        rng = random.Random(self.derive_seed(self.base_seed, call_index))
+        rng = random.Random(self.derive_seed(self.relation_seed, call_index))
         return rng.uniform(low, high)
 
     def torch_randperm(self, n, **kwargs):
@@ -716,39 +734,71 @@ class MixedQuantSparseFlashMlaInputAdapter:
             filled["Testcase_Name"] = params.get("testcase_name")
         pytest_check.check_valid_param(filled)
         if batch_random is None:
-            data = pytest_golden.generate_and_save_testdata(filled, save_pt=False)
+            data = pytest_golden.generate_and_save_testdata(
+                filled, save_pt=False, generate_golden=False
+            )
         else:
             batch_random.validate_params(filled)
             with batch_random:
-                data = pytest_golden.generate_and_save_testdata(filled, save_pt=False)
+                data = pytest_golden.generate_and_save_testdata(
+                    filled, save_pt=False, generate_golden=False
+                )
             batch_random.normalize_block_tables(data)
-        testcase_name = params.get("testcase_name") or filled.get("Testcase_Name")
-        self.load_golden_store().CASE_DATA.put(testcase_name, data)
         return data
 
 
 INPUT_ADAPTER = MixedQuantSparseFlashMlaInputAdapter()
 
 
-def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
-                                                 ori_sparse_indices=None, cmp_sparse_indices=None,
-                                                 ori_block_table=None, cmp_block_table=None,
-                                                 cu_seqlens_q=None, cu_seqlens_ori_kv=None,
-                                                 cu_seqlens_cmp_kv=None, seqused_q=None,
-                                                 seqused_ori_kv=None, seqused_cmp_kv=None,
-                                                 cmp_residual_kv=None, ori_topk_length=None,
-                                                 cmp_topk_length=None, sinks=None, **kwargs):
-    """Reuse the pytest parameter validation and input processing for a TTK case."""
-    batch_random = NumpyBatchRandomContext.from_case(q, ori_kv, cmp_kv, kwargs)
+def zero_metadata(metadata):
+    if metadata is None:
+        return
+    if torch.is_tensor(metadata):
+        metadata.zero_()
+    else:
+        metadata[...] = 0
+
+
+def generate_mixed_quant_sparse_flash_mla_inputs(
+        q, *, ori_kv=None, cmp_kv=None, ori_sparse_indices=None,
+        cmp_sparse_indices=None, ori_block_table=None, cmp_block_table=None,
+        cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None,
+        seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None,
+        cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None,
+        sinks=None, metadata=None, quant_mode=None, rope_head_dim=None,
+        softmax_scale=None, cmp_ratio=None, ori_mask_mode=0,
+        cmp_mask_mode=0, ori_win_left=-1, ori_win_right=-1,
+        layout_q="BSND", layout_kv="BSND", topk_value_mode=1,
+        return_softmax_lse=False, key_dtype=None, value_dtype=None,
+        context=None, **kwargs):
+    """Populate pytest-derived inputs and leave metadata for the pre-NPU stage."""
+    params = dict(kwargs)
+    params.update({
+        "quant_mode": quant_mode,
+        "rope_head_dim": rope_head_dim,
+        "softmax_scale": softmax_scale,
+        "cmp_ratio": cmp_ratio,
+        "ori_mask_mode": ori_mask_mode,
+        "cmp_mask_mode": cmp_mask_mode,
+        "ori_win_left": ori_win_left,
+        "ori_win_right": ori_win_right,
+        "layout_q": layout_q,
+        "layout_kv": layout_kv,
+        "topk_value_mode": topk_value_mode,
+        "return_softmax_lse": return_softmax_lse,
+        "key_dtype": key_dtype,
+        "value_dtype": value_dtype,
+    })
+    batch_random = NumpyBatchRandomContext.from_case(q, ori_kv, cmp_kv, params)
     params = INPUT_ADAPTER.build_case_params(
         q,
         ori_kv,
         cmp_kv,
         ori_sparse_indices,
         cmp_sparse_indices,
-        kwargs.get("layout_q"),
-        kwargs.get("layout_kv"),
-        kwargs,
+        layout_q,
+        layout_kv,
+        params,
     )
     data = INPUT_ADAPTER.generate_case(params, batch_random)
     op_input = data["op_input"]
@@ -772,3 +822,57 @@ def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
         ("sinks", sinks),
     ):
         INPUT_ADAPTER.copy_tensor(tensor, op_input.get(name), name)
+    zero_metadata(metadata)
+    case_data = INPUT_ADAPTER.load_golden_store().CASE_DATA
+    testcase_name = params.get("testcase_name")
+    case_data.put(testcase_name, data)
+    case_data.persist(testcase_name, context)
+    return data
+
+
+def generate_aclnn_mixed_quant_sparse_flash_mla_inputs(
+        q, ori_kv, cmp_kv, ori_sparse_indices, cmp_sparse_indices,
+        ori_block_table, cmp_block_table, cu_seqlens_q,
+        cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
+        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,
+        ori_topk_length, cmp_topk_length, sinks, metadata, quant_mode,
+        rope_head_dim, softmax_scale, cmp_ratio, ori_mask_mode,
+        cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv,
+        topk_value_mode, return_softmax_lse, attn_out, softmax_lse_out,
+        context=None, **kwargs):
+    """Map the ACLNN C signature to the canonical pytest input adapter."""
+    del attn_out, softmax_lse_out
+    return generate_mixed_quant_sparse_flash_mla_inputs(
+        q,
+        ori_kv=ori_kv,
+        cmp_kv=cmp_kv,
+        ori_sparse_indices=ori_sparse_indices,
+        cmp_sparse_indices=cmp_sparse_indices,
+        ori_block_table=ori_block_table,
+        cmp_block_table=cmp_block_table,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+        seqused_q=seqused_q,
+        seqused_ori_kv=seqused_ori_kv,
+        seqused_cmp_kv=seqused_cmp_kv,
+        cmp_residual_kv=cmp_residual_kv,
+        ori_topk_length=ori_topk_length,
+        cmp_topk_length=cmp_topk_length,
+        sinks=sinks,
+        metadata=metadata,
+        quant_mode=quant_mode,
+        rope_head_dim=rope_head_dim,
+        softmax_scale=softmax_scale,
+        cmp_ratio=cmp_ratio,
+        ori_mask_mode=ori_mask_mode,
+        cmp_mask_mode=cmp_mask_mode,
+        ori_win_left=ori_win_left,
+        ori_win_right=ori_win_right,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        topk_value_mode=topk_value_mode,
+        return_softmax_lse=return_softmax_lse,
+        context=context,
+        **kwargs,
+    )
