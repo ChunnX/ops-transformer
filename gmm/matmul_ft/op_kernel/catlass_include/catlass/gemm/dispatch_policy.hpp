@@ -12,7 +12,7 @@
 #define CATLASS_GEMM_DISPATCH_POLICY_HPP
 
 #include "../catlass.hpp"
-#include "../arch/arch.hpp"
+#include "catlass/arch/arch.hpp"
 
 namespace Catlass::Gemm {
 

@@ -12,7 +12,7 @@
 #define CATLASS_GEMV_TILE_TILE_VMAD_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/arch.hpp"
+#include "catlass/arch/arch.hpp"
 #include "../../gemm/helper.hpp"
 #include "../../layout/layout.hpp"
 #include "../../gemm/gemm_type.hpp"

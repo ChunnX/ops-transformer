@@ -12,7 +12,7 @@
 #define CATLASS_GEMM_TILE_ATLASA2_COPY_L0C_TO_GM_HPP
 
 #include "../../../catlass.hpp"
-#include "../../../arch/arch.hpp"
+#include "catlass/arch/arch.hpp"
 #include "../../gemm_type.hpp"
 #include "tla/tensor.hpp"
 

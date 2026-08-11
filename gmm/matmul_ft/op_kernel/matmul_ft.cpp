@@ -34,7 +34,7 @@
 #include "catlass_include/catlass/gemv_coord.hpp"
 #include "catlass_include/catlass/layout/layout.hpp"
 #include "catlass_include/catlass/gemv/helper.hpp"
-#include "catlass_include/catlass/arch/arch.hpp"
+#include "catlass/arch/arch.hpp"
 
 #include "catlass_include/catlass/gemm/dispatch_policy.hpp"
 

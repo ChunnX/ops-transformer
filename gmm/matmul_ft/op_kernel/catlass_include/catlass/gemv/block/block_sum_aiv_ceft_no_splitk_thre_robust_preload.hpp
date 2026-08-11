@@ -12,7 +12,7 @@
 #define CATLASS_GEMV_BLOCK_BLOCK_GEMV_ASVAR_CE_AIV_NO_SPLIT_HPP_SPEC_ROBUST_PRELOAD
 
 #include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../coord.hpp"
 #include "../../gemv_coord.hpp"
 #include "../helper.hpp"
@@ -213,7 +213,7 @@ public:
 
     /// Construct
     CATLASS_DEVICE
-    BlockFTGemvCENoSplitKPreload(Arch::ResourceAIV<ArchTag> &resource, uint32_t UBufAddrStart = 0)
+    BlockFTGemvCENoSplitKPreload(FTSelf::ResourceAIV<ArchTag> &resource, uint32_t UBufAddrStart = 0)
     {
         uint32_t UbCOffset = UBufAddrStart;
         uint32_t UbYOffset = UBufAddrStart + Cbuf_SIZE_;

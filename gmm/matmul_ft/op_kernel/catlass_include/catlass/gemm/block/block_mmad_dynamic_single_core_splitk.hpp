@@ -11,7 +11,7 @@
 #ifndef CATLASS_GEMM_BLOCK_MMAD_DYNAMIC_SINGLE_CORE_SPLITK_HPP
 #define CATLASS_GEMM_BLOCK_MMAD_DYNAMIC_SINGLE_CORE_SPLITK_HPP
 
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../catlass.hpp"
 #include "../../coord.hpp"
 #include "../dispatch_policy.hpp"

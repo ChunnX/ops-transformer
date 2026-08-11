@@ -13,7 +13,7 @@
 #define CATLASS_GEMV_BLOCK_LARGE_LOCAL_COPARE_AIV_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../coord.hpp"
 #include "../../gemv_coord.hpp"
 #include "../helper.hpp"
@@ -154,7 +154,7 @@ public:
 
     /// Construct
     CATLASS_DEVICE
-    BlockCompare(Arch::ResourceAIV<ArchTag> &resource, uint32_t UBufAddrStart = 0)
+    BlockCompare(FTSelf::ResourceAIV<ArchTag> &resource, uint32_t UBufAddrStart = 0)
     {
         uint32_t UbXOffset = UBufAddrStart;
         uint32_t UbYOffset = UBufAddrStart + Xbuf_SIZE_;
@@ -515,7 +515,7 @@ public:
 
     /// Construct
     CATLASS_DEVICE
-    BlockCompare(Arch::ResourceAIV<ArchTag> &resource, uint32_t UBufAddrStart = 0)
+    BlockCompare(FTSelf::ResourceAIV<ArchTag> &resource, uint32_t UBufAddrStart = 0)
     {
         uint32_t UbXOffset = UBufAddrStart;
         uint32_t UbYOffset = UBufAddrStart + Xbuf_SIZE_;

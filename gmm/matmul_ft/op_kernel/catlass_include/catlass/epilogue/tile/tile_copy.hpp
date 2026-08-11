@@ -12,7 +12,7 @@
 #define CATLASS_EPILOGUE_TILE_TILE_COPY_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/arch.hpp"
+#include "catlass/arch/arch.hpp"
 #include "../../detail/tag_to_layout.hpp"
 #include "copy_gm_to_ub.hpp"
 #include "copy_ub_to_gm.hpp"

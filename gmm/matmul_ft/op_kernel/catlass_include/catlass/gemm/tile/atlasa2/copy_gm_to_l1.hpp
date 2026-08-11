@@ -13,7 +13,7 @@
 
 #include "../../../catlass.hpp"
 #include "../../../numeric_size.hpp"
-#include "../../../arch/arch.hpp"
+#include "catlass/arch/arch.hpp"
 #include "../../../layout/layout.hpp"
 #include "../../gemm_type.hpp"
 #include "../tile_copy_tla.hpp"

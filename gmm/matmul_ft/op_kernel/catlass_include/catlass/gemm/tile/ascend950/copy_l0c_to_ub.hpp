@@ -11,7 +11,7 @@
 #ifndef CATLASS_GEMM_TILE_ASCEND950_COPY_L0C_TO_UB_HPP
 #define CATLASS_GEMM_TILE_ASCEND950_COPY_L0C_TO_UB_HPP
 
-#include "../../../arch/arch.hpp"
+#include "catlass/arch/arch.hpp"
 #include "../../../catlass.hpp"
 #include "copy_l0c_to_dst.hpp"
 #include "../../../numeric_size.hpp"

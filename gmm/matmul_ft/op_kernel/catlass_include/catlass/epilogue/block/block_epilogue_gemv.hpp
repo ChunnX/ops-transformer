@@ -12,7 +12,7 @@
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_GEMV_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../dispatch_policy.hpp"
 #include "../../gemm/helper.hpp"
 #include "../../gemv/helper.hpp"

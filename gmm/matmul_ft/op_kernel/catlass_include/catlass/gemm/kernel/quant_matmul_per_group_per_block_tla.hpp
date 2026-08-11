@@ -12,7 +12,7 @@
 #define CATLASS_GEMM_KERNEL_QUANT_MATMUL_PER_GROUP_PER_BLOCK_TLA_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../coord.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"

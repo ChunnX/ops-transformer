@@ -12,7 +12,7 @@
  #define CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_O_NO_SPLIT_ROW_HPP
  
  #include "../../catlass.hpp"
- #include "../../arch/resource.hpp"
+ #include "catlass/arch/resource_aiv.hpp"
  #include "../dispatch_policy.hpp"
  #include "../tile/tile_copy.hpp"
  #include "../../gemm_coord.hpp"

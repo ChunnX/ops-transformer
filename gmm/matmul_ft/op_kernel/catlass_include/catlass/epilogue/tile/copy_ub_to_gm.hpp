@@ -12,7 +12,7 @@
 #define CATLASS_EPILOGUE_TILE_TILE_COPY_UB_TO_GM_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/arch.hpp"
+#include "catlass/arch/arch.hpp"
 #include "../../layout/layout.hpp"
 #include "../../gemm/gemm_type.hpp"
 

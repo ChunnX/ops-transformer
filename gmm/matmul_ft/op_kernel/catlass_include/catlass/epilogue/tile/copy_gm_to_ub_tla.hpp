@@ -12,7 +12,7 @@
 #define CATLASS_EPILOGUE_TILE_COPY_GM_TO_UB_TLA_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/arch.hpp"
+#include "catlass/arch/arch.hpp"
 #include "tla/tensor.hpp"
 #include "tla/layout.hpp"
 

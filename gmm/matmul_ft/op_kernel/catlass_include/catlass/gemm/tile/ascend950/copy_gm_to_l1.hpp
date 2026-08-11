@@ -11,7 +11,7 @@
 #ifndef CATLASS_GEMM_TILE_ASCEND950_COPY_GM_TO_L1_HPP
 #define CATLASS_GEMM_TILE_ASCEND950_COPY_GM_TO_L1_HPP
 
-#include "../../../arch/arch.hpp"
+#include "catlass/arch/arch.hpp"
 #include "../../../catlass.hpp"
 #include "../tile_copy_tla.hpp"
 #include "../../../numeric_size.hpp"

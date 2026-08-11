@@ -12,7 +12,7 @@
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_BLOCK_QUANT_TLA_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../dispatch_policy.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../gemm/gemm_type.hpp"

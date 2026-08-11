@@ -12,7 +12,7 @@
 #define CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_DUAL_LEVEL_QUANT_MX_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../dispatch_policy.hpp"
 #include "../tile/tile_copy_dual_level_quant_mx.hpp"
 #include "../../gemm/gemm_type.hpp"

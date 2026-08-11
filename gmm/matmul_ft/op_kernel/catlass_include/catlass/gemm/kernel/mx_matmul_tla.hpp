@@ -12,7 +12,7 @@
 #ifndef CATLASS_GEMM_KERNEL_MX_MATMUL_TLA_HPP
 #define CATLASS_GEMM_KERNEL_MX_MATMUL_TLA_HPP
 
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../catlass.hpp"
 #include "../../coord.hpp"
 #include "../block/block_scheduler_aswt.hpp"

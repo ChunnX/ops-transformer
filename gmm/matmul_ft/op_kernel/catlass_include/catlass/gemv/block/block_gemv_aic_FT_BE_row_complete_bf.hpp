@@ -2,7 +2,7 @@
 #define CATLASS_GEMV_BLOCK_BLOCK_AIC_FT_BE_ROWCOMPLETE_HPP_BF
 
 #include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../coord.hpp"
 #include "../../gemm/dispatch_policy.hpp"
 #include "../../gemm/tile/tile_copy.hpp"

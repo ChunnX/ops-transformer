@@ -11,8 +11,8 @@
 #ifndef CATLASS_GEMM_KERNEL_DYNAMIC_LOCAL_PADDING_C_PADDING_COMMON_MATMUL_HPP
 #define CATLASS_GEMM_KERNEL_DYNAMIC_LOCAL_PADDING_C_PADDING_COMMON_MATMUL_HPP
 
-#include "../../arch/cross_core_sync.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/cross_core_sync_aiv.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../catlass.hpp"
 #include "../../coord.hpp"
 #include "padding_matmul.hpp"

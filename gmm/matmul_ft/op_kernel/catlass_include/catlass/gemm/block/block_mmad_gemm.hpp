@@ -17,7 +17,7 @@
 #include "../tile/tile_mmad.hpp"
 #include "../../gemm_coord.hpp"
 #include "../dispatch_policy.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 
 namespace Catlass::Gemm::Block{
 

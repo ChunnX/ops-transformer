@@ -12,8 +12,8 @@
 #define CATLASS_GEMM_KERNEL_GEMM_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
-#include "../../arch/cross_core_sync.hpp"
+#include "catlass/arch/resource_aiv.hpp"
+#include "catlass/arch/cross_core_sync_aiv.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
 #include "../../epilogue/tile/copy_gm_to_ub.hpp"

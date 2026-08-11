@@ -2,7 +2,7 @@
 #define CATLASS_GEMV_TILE_TILE_THRESHOLD_MEAN_MAX_STD_FUSED_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/arch.hpp"
+#include "catlass/arch/arch.hpp"
 #include "../../gemm/helper.hpp"
 #include "../helper.hpp"
 #include "../../layout/layout.hpp"

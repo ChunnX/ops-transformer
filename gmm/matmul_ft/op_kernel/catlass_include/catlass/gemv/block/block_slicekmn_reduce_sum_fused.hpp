@@ -12,7 +12,7 @@
 #define CATLASS_GEMV_BLOCK_BLOCK_SLICEKMN_RED_SUM_FUSED_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../coord.hpp"
 #include "../../gemv_coord.hpp"
 #include "../helper.hpp"
@@ -147,7 +147,7 @@ public:
 
     /// Construct
     CATLASS_DEVICE
-    BlockSliceKMNSum(Arch::ResourceAIV<ArchTag> &resource, uint32_t UBufAddrStart = 0)
+    BlockSliceKMNSum(FTSelf::ResourceAIV<ArchTag> &resource, uint32_t UBufAddrStart = 0)
     {
         uint32_t UbAOffset = UBufAddrStart;
         uint32_t UbYOffsetforA = UBufAddrStart + Abuf_SIZE_;

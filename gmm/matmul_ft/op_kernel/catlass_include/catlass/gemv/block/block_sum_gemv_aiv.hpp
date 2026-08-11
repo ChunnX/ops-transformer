@@ -2,7 +2,7 @@
 #define CATLASS_GEMV_BLOCK_BLOCK_SUM_GEMV_AIV_NOW_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../coord.hpp"
 #include "../../gemv_coord.hpp"
 #include "../helper.hpp"
@@ -115,7 +115,7 @@ public:
 
     /// Construct
     CATLASS_DEVICE
-    BlockSumGemv(Arch::ResourceAIV<ArchTag> &resource, uint32_t UBufAddrStart = 0)
+    BlockSumGemv(FTSelf::ResourceAIV<ArchTag> &resource, uint32_t UBufAddrStart = 0)
     {
         uint32_t UbAOffset = UBufAddrStart;
         uint32_t UbXOffset = UBufAddrStart + Abuf_SIZE_;

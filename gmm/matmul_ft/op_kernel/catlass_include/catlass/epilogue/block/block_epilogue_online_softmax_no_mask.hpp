@@ -12,8 +12,8 @@
  #define CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_NO_MASK_HPP
  
  #include "../../catlass.hpp"
- #include "../../arch/cross_core_sync.hpp"
- #include "../../arch/resource.hpp"
+ #include "catlass/arch/cross_core_sync_aiv.hpp"
+ #include "catlass/arch/resource_aiv.hpp"
  #include "../dispatch_policy.hpp"
  #include "../tile/tile_copy.hpp"
  #include "../../gemm_coord.hpp"

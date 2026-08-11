@@ -16,7 +16,7 @@
 #include <kernel_operator_sys_var_intf.h>
 
 #include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../coord.hpp"
 #include "../../detail/tag_to_layout.hpp"
 #include "../../gemm_coord.hpp"

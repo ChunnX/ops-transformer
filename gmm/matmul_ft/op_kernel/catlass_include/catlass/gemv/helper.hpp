@@ -11,7 +11,7 @@
 #ifndef CATLASS_GEMM_HELPER_HPP
 #define CATLASS_GEMM_HELPER_HPP
 
-#include "../arch/arch.hpp"
+#include "catlass/arch/arch.hpp"
 #include "../catlass.hpp"
 #include "../numeric_size.hpp"
 #include "../layout/layout.hpp"

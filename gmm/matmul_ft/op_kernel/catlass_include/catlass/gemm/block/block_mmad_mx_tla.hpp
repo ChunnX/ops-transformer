@@ -12,7 +12,7 @@
 #ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_MX_TLA_HPP
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_MX_TLA_HPP
 
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../catlass.hpp"
 #include "../../coord.hpp"
 #include "../../numeric_size.hpp"

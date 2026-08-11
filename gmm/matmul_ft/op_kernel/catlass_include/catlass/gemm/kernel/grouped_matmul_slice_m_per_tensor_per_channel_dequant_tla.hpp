@@ -12,7 +12,7 @@
 #define CATLASS_GEMM_KERNEL_GROUPED_MATMUL_SLICE_M_PER_TENSOR_PER_CHANNEL_DEQUANT_TLA_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../coord.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"

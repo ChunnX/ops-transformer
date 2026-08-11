@@ -12,7 +12,7 @@
 #ifndef CATLASS_GEMM_KERNEL_DUAL_LEVEL_QUANT_MX_BATCHED_MATMUL_TLA_HPP
 #define CATLASS_GEMM_KERNEL_DUAL_LEVEL_QUANT_MX_BATCHED_MATMUL_TLA_HPP
 
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../catlass.hpp"
 #include "../../coord.hpp"
 #include "../../gemm_coord.hpp"

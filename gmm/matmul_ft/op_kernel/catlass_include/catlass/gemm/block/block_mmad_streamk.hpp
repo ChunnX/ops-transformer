@@ -12,7 +12,7 @@
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_STREAMK_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../coord.hpp"
 #include "../../gemm_coord.hpp"
 #include "../dispatch_policy.hpp"

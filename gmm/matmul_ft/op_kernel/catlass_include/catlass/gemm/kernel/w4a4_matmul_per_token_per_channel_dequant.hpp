@@ -14,8 +14,8 @@
 
 #include <iostream>
 
-#include "../../arch/cross_core_sync.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/cross_core_sync_aiv.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../catlass.hpp"
 #include "../../coord.hpp"
 #include "../../detail/callback.hpp"

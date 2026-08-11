@@ -12,7 +12,7 @@
 #define CATLASS_GEMV_TILE_MATRIX_COPY_GM_TO_UB_HPP_CONTINUE_SIMPLING
 
 #include "../../catlass.hpp"
-#include "../../arch/arch.hpp"
+#include "catlass/arch/arch.hpp"
 #include "../../layout/layout.hpp"
 #include "../../gemm/gemm_type.hpp"
 

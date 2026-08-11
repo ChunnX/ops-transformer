@@ -11,7 +11,7 @@
 #ifndef CATLASS_GEMM_BLOCK_MX_A8W4_PROLOGUE_HPP
 #define CATLASS_GEMM_BLOCK_MX_A8W4_PROLOGUE_HPP
 
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../catlass.hpp"
 #include "../../coord.hpp"
 #include "../../numeric_size.hpp"

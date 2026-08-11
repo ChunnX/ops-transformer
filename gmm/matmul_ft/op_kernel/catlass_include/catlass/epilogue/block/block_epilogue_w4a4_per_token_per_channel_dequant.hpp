@@ -12,7 +12,7 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A4_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A4_HPP
 
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../catlass.hpp"
 #include "../../detail/callback.hpp"
 #include "../dispatch_policy.hpp"

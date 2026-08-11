@@ -13,7 +13,7 @@
 #define CATLASS_GEMM_KERNEL_GROUPED_MX_MATMUL_SLICE_M_TLA_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../coord.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"

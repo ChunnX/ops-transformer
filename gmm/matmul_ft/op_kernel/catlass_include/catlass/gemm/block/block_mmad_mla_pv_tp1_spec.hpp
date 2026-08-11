@@ -12,8 +12,8 @@
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_MLA_PV_TP1_SPEC_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/cross_core_sync.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/cross_core_sync_aiv.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../coord.hpp"
 #include "../dispatch_policy.hpp"
 #include "../helper.hpp"

@@ -2,7 +2,7 @@
 #define CATLASS_GEMV_BLOCK_BLOCK_SUM_AIV_AE_BMAX_MIXED_NOSPLITK_ROBUST_BF_HPP_VERSION_FIRST
 
 #include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../coord.hpp"
 #include "../../gemv_coord.hpp"
 #include "../helper.hpp"
@@ -178,7 +178,7 @@ public:
 
     /// Construct
     CATLASS_DEVICE
-    BlockFTSumNoSplitK(Arch::ResourceAIV<ArchTag> &resource, uint32_t UBufAddrStart = 0)
+    BlockFTSumNoSplitK(FTSelf::ResourceAIV<ArchTag> &resource, uint32_t UBufAddrStart = 0)
     {
         uint32_t UbAOffset = UBufAddrStart;
         uint32_t UbYMinOffsetforA = UBufAddrStart + Abuf_SIZE_;

@@ -12,8 +12,8 @@
 #define CATLASS_GEMM_KERNEL_QUANT_MATMUL_MULTISTAGE_WORKSPACE_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/cross_core_sync.hpp"
-#include "../../arch/resource.hpp"
+#include "catlass/arch/cross_core_sync_aiv.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../coord.hpp"
 #include "../../layout/layout.hpp"
 #include "../../detail/callback.hpp"

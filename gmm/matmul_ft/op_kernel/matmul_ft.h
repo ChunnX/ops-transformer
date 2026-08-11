@@ -5,8 +5,8 @@
 #include "matmul_ft_tiling_data.h"
 
 #include "catlass_include/catlass/catlass.hpp"
-#include "catlass_include/catlass/arch/resource.hpp"
-#include "catlass_include/catlass/arch/cross_core_sync.hpp"
+#include "catlass/arch/resource_aiv.hpp"
+#include "catlass/arch/cross_core_sync_aiv.hpp"
 #include "catlass_include/catlass/layout/layout.hpp"
 #include "catlass_include/catlass/gemm_coord.hpp"
 #include "catlass_include/catlass/matrix_coord.hpp"
@@ -435,18 +435,18 @@ public:
                 BE_split_op_on_AIC(params);
             }
             
-            Catlass::Arch::CrossCoreBarrierAIC<0x0, PIPE_FIX>();
+            FTSelf::CrossCoreBarrierAIC<0x0, PIPE_FIX>();
             
             ABe_spec_on_AIC(params);
-            Catlass::Arch::CrossCoreBarrierAIC<0x0, PIPE_FIX>();
+            FTSelf::CrossCoreBarrierAIC<0x0, PIPE_FIX>();
 
             Catlass::Arch::CrossCoreSetFlagWithReverse<0x2, PIPE_FIX>(flagAicFinishStore);
             AscendC::PipeBarrier<PIPE_ALL>();
 
         } else {
             CE_split_op_fused(params,params.ptrCOMPZRow);
-            Catlass::Arch::CrossCoreBarrierAIV<0x0, PIPE_V>();
-            Catlass::Arch::CrossCoreBarrierAIV<0x0, PIPE_MTE3>();
+            FTSelf::CrossCoreBarrierAIV<0x0, PIPE_V>();
+            FTSelf::CrossCoreBarrierAIV<0x0, PIPE_MTE3>();
         }
     }
 
@@ -1412,8 +1412,8 @@ GM_ADDR ptrOutputCOMP)
 {
     
     AB_red_split_op(params);
-    Catlass::Arch::CrossCoreBarrierAIV<0x0, PIPE_V>();
-    Catlass::Arch::CrossCoreBarrierAIV<0x0, PIPE_MTE3>();
+    FTSelf::CrossCoreBarrierAIV<0x0, PIPE_V>();
+    FTSelf::CrossCoreBarrierAIV<0x0, PIPE_MTE3>();
     
     Catlass::Arch::CrossCoreWaitFlagWithReverse<0x2, PIPE_MTE3>(flagAicFinishStore);
     ABE_B_reduce_fused_op(params);
@@ -1422,8 +1422,8 @@ GM_ADDR ptrOutputCOMP)
     //     ABE_reduce_for_FT_on_AIV(params);
     // }
     
-    Catlass::Arch::CrossCoreBarrierAIV<0x0, PIPE_V>();
-    Catlass::Arch::CrossCoreBarrierAIV<0x0, PIPE_MTE3>();
+    FTSelf::CrossCoreBarrierAIV<0x0, PIPE_V>();
+    FTSelf::CrossCoreBarrierAIV<0x0, PIPE_MTE3>();
 
     // Represent the full gm
     // Get aicore information

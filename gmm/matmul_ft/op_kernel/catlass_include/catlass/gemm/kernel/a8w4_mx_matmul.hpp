@@ -12,7 +12,7 @@
 #ifndef CATLASS_GEMM_KERNEL_A8W4_MX_MATMUL_HPP
 #define CATLASS_GEMM_KERNEL_A8W4_MX_MATMUL_HPP
 
-#include "../../arch/resource.hpp"
+#include "catlass/arch/resource_aiv.hpp"
 #include "../../catlass.hpp"
 #include "../../coord.hpp"
 #include "../../gemm_coord.hpp"
