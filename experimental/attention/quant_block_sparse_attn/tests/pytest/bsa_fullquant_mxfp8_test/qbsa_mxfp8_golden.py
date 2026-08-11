@@ -1168,11 +1168,16 @@ def generate_data():
 
 EMPTY_LSE = -3.4028234663852886e38
 MASK_VALUE = -10000.0
-LN2 = math.log(2.0)
+# Keep the exact FP32 constants and operation order used by the VF.  For
+# large-magnitude negative scores, ``x / log(2)`` and ``x * INV_LN2`` can
+# round to different FP32 values before ceil.
+LN2 = 0.6931471806
+INV_LN2 = 1.4426950409
 
 
 def _align_up_to_ln2(value):
-    return torch.ceil(value / LN2) * LN2
+    value_npu = value.to(torch.float32).contiguous().npu()
+    return (torch.ceil(value_npu * INV_LN2) * LN2).cpu()
 
 
 def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale, score_scale):
