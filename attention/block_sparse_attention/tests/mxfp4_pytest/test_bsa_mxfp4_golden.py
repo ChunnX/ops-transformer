@@ -480,12 +480,15 @@ def _blockwise_snap_local_quantize_p_eff(S: torch.Tensor, m_running, seqk_dim: i
         K_block = torch.clamp(torch.ceil(k_raw), -127.0, 127.0)
         m_block_snap = K_block * LN2_fp16                                             # 无 -2(式19), fp16
     else:
-        # OCP(式8): K_block = floor(Smax/ln2), 全程 fp16 域(对齐 kernel:
+        # OCP(式8): K_block = floor(Smax*INV_LN2), 全程 fp16 域(对齐 kernel:
         #   kernel: Smax(fp16)*dScale*INV_LN2(fp16) -> Truncate<CAST_FLOOR> -> *LN2(fp16) -> -2*LN2(fp16))
-        #   golden: LN2 转 fp16, 与 m_block_raw_safe(fp16) 同精度运算, 避免 fp64 标量混入
+        #   golden: INV_LN2/LN2 都转 fp16, 与 m_block_raw_safe(fp16) 同精度运算, 避免 fp64 标量混入
         #   导致 floor 边界舍入翻转。
-        LN2_fp16 = torch.tensor(LN2, dtype=torch.float16, device=device)              # 对齐 kernel constexpr half LN2
-        K_block = torch.clamp(torch.floor(m_block_raw_safe / LN2_fp16), -127.0, 127.0)  # snap: floor(m/ln2)
+        #   注: 用乘法 Smax*INV_LN2 而非除法 Smax/LN2——fp16 下 1/LN2_fp16 ≠ INV_LN2_fp16
+        #   (差~1.29e-04), 除法在 floor 边界翻转导致 golden≠kernel(OCP 在 Smax≥11.78 有 46 处翻转)。
+        INV_LN2_fp16 = torch.tensor(1.0 / LN2, dtype=torch.float16, device=device)            # 对齐 kernel constexpr half INV_LN2
+        LN2_fp16 = torch.tensor(LN2, dtype=torch.float16, device=device)                      # m_block_snap 用
+        K_block = torch.clamp(torch.floor(m_block_raw_safe * INV_LN2_fp16), -127.0, 127.0)  # snap: floor(m*INV_LN2)
         m_block_snap = (K_block - 2) * LN2_fp16                     # 使 P_local block max ∈ [4,8), fp16
     if _DUMP_ENABLED:
         _dump_tensor(K_block.T, "local_group_max.bin")         # dump: 每 block 的 K(镜像 qfa local_group_max, 对齐转置)
