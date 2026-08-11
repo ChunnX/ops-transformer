@@ -71,14 +71,14 @@ static aclTensor *TransX2Tensor(const aclTensor *x2)
                            storageShapeDimNum, x2->GetTensor()->GetAddr());
 }
 
-extern "C" aclnnStatus aclnnInnerAlltoAllQuantMatmulV3GetWorkspaceSize(
+extern "C" aclnnStatus aclnnInnerAlltoAllMatmulV2GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
     const aclTensor *x1Scale, const aclTensor *x2Scale, char *group, int64_t worldSize, int64_t hcclBufferSize,
     int64_t yDtype, int64_t x1QuantMode, int64_t x2QuantMode, bool transposeX1, bool transposeX2,
     int64_t groupSize, bool alltoallOutFlag, char *commModeOptional, int64_t precisionMode, const aclTensor *yOut,
     const aclTensor *all2allOutOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
-extern "C" aclnnStatus aclnnInnerAlltoAllQuantMatmulV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+extern "C" aclnnStatus aclnnInnerAlltoAllMatmulV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                      aclrtStream stream);
 
 extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
@@ -114,7 +114,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
     constexpr int64_t kDefaultYdtype = 27; // ge::DT_BF16
     constexpr bool kDefaultAlltoallOutFlag = false;
     constexpr bool kDefaultTransposeX1 = false;
-    aclnnStatus ret = aclnnInnerAlltoAllQuantMatmulV3GetWorkspaceSize(
+    aclnnStatus ret = aclnnInnerAlltoAllMatmulV2GetWorkspaceSize(
         context, x1, transX2, biasOptional, x1ScaleOptional, x2ScaleOptional,
         const_cast<char *>(group), worldSize, hcclBufferSize, kDefaultYdtype,
         x1QuantMode, x2QuantMode, kDefaultTransposeX1, transposeX2,
@@ -122,7 +122,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
         alltoAllOutOptional, workspaceSize, executor);
 
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "aclnnInnerAlltoAllQuantMatmulV3GetWorkspaceSize failed, ret=%d", ret);
+        OP_LOGE(ACLNN_ERR_INNER, "aclnnInnerAlltoAllMatmulV2GetWorkspaceSize failed, ret=%d", ret);
     }
 
     OP_LOGD("aclnnAlltoAllQuantMatmulV3GetWorkspaceSize end: workspaceSize=%lu", *workspaceSize);
@@ -135,9 +135,9 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV3(void *workspace, uint64_t work
     OP_LOGD("aclnnAlltoAllQuantMatmulV3 start");
 
     NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-    aclnnStatus ret = aclnnInnerAlltoAllQuantMatmulV3(workspace, workspaceSize, executor, stream);
+    aclnnStatus ret = aclnnInnerAlltoAllMatmulV2(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "aclnnInnerAlltoAllQuantMatmulV3 failed, ret=%d", ret);
+        OP_LOGE(ACLNN_ERR_INNER, "aclnnInnerAlltoAllMatmulV2 failed, ret=%d", ret);
         return ACLNN_ERR_INNER;
     }
 
