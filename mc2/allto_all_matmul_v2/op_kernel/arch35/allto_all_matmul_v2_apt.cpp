@@ -35,8 +35,12 @@ __global__ __aicore__ void allto_all_matmul_v2(GM_ADDR context, GM_ADDR x1, GM_A
     using Impl = AllToAllMxQuantMatmulUrmaImpl<fp8_e5m2_t, fp8_e5m2_t, DTYPE_Y, false, true>;
 #elif (ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN && ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)
     using Impl = AllToAllMxQuantMatmulUrmaImpl<fp8_e4m3fn_t, fp8_e5m2_t, DTYPE_Y, false, true>;
-#else
+#elif (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2 && ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN)
     using Impl = AllToAllMxQuantMatmulUrmaImpl<fp8_e5m2_t, fp8_e4m3fn_t, DTYPE_Y, false, true>;
+#elif (ORIG_DTYPE_X1 == DT_FLOAT4_E2M1 && ORIG_DTYPE_X2 == DT_FLOAT4_E2M1)
+    using Impl = AllToAllMxQuantMatmulUrmaImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, false, true>;
+#else
+    using Impl = AllToAllMxQuantMatmulUrmaImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, false, true>;
 #endif
 
     Impl impl;

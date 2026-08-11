@@ -67,9 +67,9 @@ ge::graphStatus AlltoAllMatmulV2InferShape(gert::InferShapeContext *context)
     auto x1Dtype = context->GetInputDesc(INDEX_IN_X1)->GetDataType();
     auto x2Dtype = context->GetInputDesc(INDEX_IN_X2)->GetDataType();
 
-    if ((x1Dtype != ge::DT_FLOAT8_E4M3FN && x1Dtype != ge::DT_FLOAT8_E5M2) ||
-        (x2Dtype != ge::DT_FLOAT8_E4M3FN && x2Dtype != ge::DT_FLOAT8_E5M2)) {
-        OP_LOGE(nodeName, "Unsupported dtype. Only FP8 supported.");
+    if ((x1Dtype != ge::DT_FLOAT8_E4M3FN && x1Dtype != ge::DT_FLOAT8_E5M2 && x1Dtype != ge::DT_FLOAT4_E2M1) ||
+        (x2Dtype != ge::DT_FLOAT8_E4M3FN && x2Dtype != ge::DT_FLOAT8_E5M2 && x2Dtype != ge::DT_FLOAT4_E2M1)) {
+        OP_LOGE(nodeName, "Unsupported dtype. Only FP8/FP4 supported.");
         return ge::GRAPH_FAILED;
     }
 

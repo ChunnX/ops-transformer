@@ -115,8 +115,8 @@ protected:
 
         auto x1Dtype = x1Desc->GetDataType();
         auto x2Dtype = x2Desc->GetDataType();
-        if ((x1Dtype != ge::DT_FLOAT8_E4M3FN && x1Dtype != ge::DT_FLOAT8_E5M2) ||
-            (x2Dtype != ge::DT_FLOAT8_E4M3FN && x2Dtype != ge::DT_FLOAT8_E5M2)) {
+        if ((x1Dtype != ge::DT_FLOAT8_E4M3FN && x1Dtype != ge::DT_FLOAT8_E5M2 && x1Dtype != ge::DT_FLOAT4_E2M1) ||
+            (x2Dtype != ge::DT_FLOAT8_E4M3FN && x2Dtype != ge::DT_FLOAT8_E5M2 && x2Dtype != ge::DT_FLOAT4_E2M1)) {
             OP_LOGE(opName, "x1 and x2 dtype must be FP8_E4M3 or FP8_E5M2.");
             return ge::GRAPH_FAILED;
         }
