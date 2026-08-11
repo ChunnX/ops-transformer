@@ -20,7 +20,11 @@
 #include "moe_distribute_v2_base.h"
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-#include "quantize_functions.h"
+#if __has_include("../common/quantize_functions.h")
+#include "../common/quantize_functions.h"
+#else
+#include "../../common/op_kernel/quantize_functions.h"
+#endif
 #endif
 
 namespace Mc2Kernel {

@@ -18,7 +18,11 @@
 
 #include "lib/hccl/hccl.h"
 #include "common.h"
-#include "../quantize_functions.h"
+#if __has_include("../../common/quantize_functions.h")
+#include "../../common/quantize_functions.h"
+#else
+#include "../../../common/op_kernel/quantize_functions.h"
+#endif
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else
