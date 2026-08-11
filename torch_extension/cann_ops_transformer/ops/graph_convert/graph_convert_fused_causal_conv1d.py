@@ -154,7 +154,7 @@ if _TORCHAIR_AVAILABLE:
             .output("y", "DT_BF16, DT_FLOAT16"),
         )
 
-    @register_fx_node_ge_converter(torch.ops.npu.npu_fused_causal_conv1d.default)
+    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.fused_causal_conv1d.default)
     def converter_fused_causal_conv1d(
         x: Tensor,
         weight: Tensor,

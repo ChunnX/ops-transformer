@@ -303,8 +303,6 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetAttrInfo()
     const int64_t *maxDraftTokens = attrs->GetAttrPointer<int64_t>(ATTR_MAX_DRAFT_TOKENS_INDEX);
     if (maxDraftTokens != nullptr) {
         maxDraftTokens_ = *maxDraftTokens;
-    } else {
-        maxDraftTokens_ = 7;
     }
 
     // 原地更新开关：由构造时传入的 isInplace_ 决定（拆分后不再从 attr 读取）
