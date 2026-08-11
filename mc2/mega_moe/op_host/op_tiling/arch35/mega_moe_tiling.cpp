@@ -141,8 +141,11 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return);
 
     OP_LOGD(nodeName, "========== MegaMoeTilingData ==========");
-    OP_LOGD(nodeName, "shape: bs=%u, h=%u, hiddenDim=%u, topK=%u, maxOutputSize=%u, isPerExpertWeightTensor=%d",
-            tilingData->bs, tilingData->h, tilingData->hiddenDim, tilingData->topK, tilingData->maxOutputSize,
+    OP_LOGD(nodeName,
+            "shape: bs=%u, numMaxTokensPerRank=%u, h=%u, hiddenDim=%u, topK=%u, maxOutputSize=%u, "
+            "isPerExpertWeightTensor=%d",
+            tilingData->bs, tilingData->numMaxTokensPerRank, tilingData->h, tilingData->hiddenDim, tilingData->topK,
+            tilingData->maxOutputSize,
             tilingData->isPerExpertWeightTensor);
     OP_LOGD(nodeName,
             "topology: moeExpertPerRank=%u, sharedExpertNum=%u, epWorldSize=%u, aicNum=%u, blockAivNum=%u, "
@@ -212,7 +215,7 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     OP_LOGD(nodeName, "========== PeermemInfo ==========");
     int64_t rankSyncInWorldSize = PEERMEM_DATA_OFFSET;
     OP_LOGD(nodeName, "rankSyncInWorldSize: {%ld}\n", rankSyncInWorldSize);
-    int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
+    int64_t sendTotalNum = static_cast<int64_t>(tilingData->numMaxTokensPerRank) * tilingData->topK;
     int64_t compareCount =
         ops::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) / (int64_t)sizeof(int32_t);
     int64_t maskAlignSize = ops::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
@@ -231,7 +234,8 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
         tokenBytes += weightBytes;
     }
     int64_t quantTokenScaleSize =
-        ops::CeilAlign((int64_t)((int64_t)(tilingData->bs) * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
+        ops::CeilAlign((int64_t)((int64_t)(tilingData->numMaxTokensPerRank) * tokenBytes * sizeof(int8_t)),
+                       (int64_t)ALIGN_512);
     OP_LOGD(nodeName, "quantTokenScaleSize: {%ld}\n", quantTokenScaleSize);
     // Non-quantized Combine stores one BF16 value (2 bytes) for each hidden-dimension element.
     int64_t combineTokenBytes = static_cast<int64_t>(tilingData->h) * 2;
@@ -418,6 +422,27 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     ge::DataType yDtype = yDesc->GetDataType();
     int64_t yDtypeSize = ge::GetSizeByDataType(yDtype);
 
+    // 可变 bs：attr 非 0 时表示全卡一致的单卡 token 数上界，本卡 bs 只需不超过它；
+    // 跨卡窗口/容量类公式一律用上界 layoutBs（attr=0 时 layoutBs=bs，逐位退化为原逻辑）。
+    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
+    int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
+    OP_TILING_CHECK(
+        numMaxTokensPerRank < 0 || numMaxTokensPerRank > 0xFFFFFFFFLL ||
+            (numMaxTokensPerRank != 0 && bs > numMaxTokensPerRank),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "numMaxTokensPerRank", std::to_string(numMaxTokensPerRank).c_str(),
+                                  (std::string("should be 0 or in [Bs, UINT32_MAX], Bs is ") + std::to_string(bs).c_str())),
+        return ge::GRAPH_FAILED);
+    // 可变 bs 仅在 MTE 拓扑上适配（URMA/layered 路径仍按均匀 bs 布局），显式拦截防静默错乱。
+    if (numMaxTokensPerRank != 0) {
+        int64_t topoTypeAttr = *attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
+        OP_TILING_CHECK(topoTypeAttr != TOPO_TYPE_MTE,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "numMaxTokensPerRank",
+                                                  std::to_string(numMaxTokensPerRank).c_str(),
+                                                  "variable bs (numMaxTokensPerRank != 0) only supports TOPO_TYPE_MTE"),
+                        return ge::GRAPH_FAILED);
+    }
+    int64_t layoutBs = numMaxTokensPerRank != 0 ? numMaxTokensPerRank : bs;
+
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
     int64_t epWorldSize = static_cast<int64_t>(*epWorldSizePtr);
     OP_TILING_CHECK(epWorldSize < MIN_EP_WORLD_SIZE || epWorldSize > MAX_EP_WORLD_SIZE,
@@ -449,7 +474,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     // maskRecv Size
     int64_t compareCount =
-        ops::CeilAlign((int64_t)(bs * topK * sizeof(int32_t)), (int64_t)(ALIGN_256)) / (int64_t)sizeof(int32_t);
+        ops::CeilAlign((int64_t)(layoutBs * topK * sizeof(int32_t)), (int64_t)(ALIGN_256)) / (int64_t)sizeof(int32_t);
     int64_t maskAlignSize = ops::CeilAlign(compareCount / 8, (int64_t)ALIGN_32); // 8 = block_32 / sizeof(int32_t)
     int64_t maskSlotSize = maskAlignSize + ALIGN_32;                             // mask + 32B count
     int64_t maskRecvSize = ops::CeilAlign(moeExpertPerRank * epWorldSize * maskSlotSize, ALIGN_512);
@@ -464,7 +489,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
             ops::CeilAlign(static_cast<uint32_t>(topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
         tokenBytes = ops::CeilAlign(tokenBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
     }
-    int64_t quantTokenScaleSize = ops::CeilAlign((int64_t)(bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
+    int64_t quantTokenScaleSize = ops::CeilAlign((int64_t)(layoutBs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
     // 必须与 kernel InitCombineBuffers 的 combine record 布局一致。
     int64_t combineTokenBytes = h * yDtypeSize;
     if (GetCombineQuantModeByAttr(context, config) != COMBINE_NO_QUANT) {
@@ -473,7 +498,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         int64_t storedScaleBytes = ops::CeilAlign(scaleCount, static_cast<int64_t>(MXFP_MULTI_BASE_SIZE));
         combineTokenBytes = ops::CeilAlign(tokenStorageBytes + storedScaleBytes, static_cast<int64_t>(ALIGN_32));
     }
-    int64_t combineSendSize = ops::CeilAlign(bs * topK * combineTokenBytes, static_cast<int64_t>(ALIGN_512));
+    int64_t combineSendSize = ops::CeilAlign(layoutBs * topK * combineTokenBytes, static_cast<int64_t>(ALIGN_512));
     int64_t leastCclBufferSize = PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize;
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     int64_t cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
@@ -485,10 +510,10 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
     int64_t maxRecvTokenNum = static_cast<int64_t>(*maxRecvTokenNumPtr);
-    OP_TILING_CHECK(maxRecvTokenNum < 0 || maxRecvTokenNum > bs * epWorldSize * std::min(topK, moeExpertPerRank),
+    OP_TILING_CHECK(maxRecvTokenNum < 0 || maxRecvTokenNum > layoutBs * epWorldSize * std::min(topK, moeExpertPerRank),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(),
                                               (std::string("should in [0, ") +
-                                               std::to_string(bs * epWorldSize * std::min(topK, moeExpertPerRank)) +
+                                               std::to_string(layoutBs * epWorldSize * std::min(topK, moeExpertPerRank)) +
                                                "]")
                                                   .c_str()),
                     return ge::GRAPH_FAILED);
@@ -547,16 +572,6 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr, "not support, need empty string"),
                     return ge::GRAPH_FAILED);
 
-    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
-    int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
-    if (numMaxTokensPerRank != 0) {
-        OP_TILING_CHECK(
-            bs != numMaxTokensPerRank,
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "numMaxTokensPerRank", std::to_string(numMaxTokensPerRank).c_str(),
-                                      (std::string("should be 0 or Bs, Bs is ") + std::to_string(bs).c_str())),
-            return ge::GRAPH_FAILED);
-    }
-
     int64_t sharedExpertNum = GetWeightExpertCount(context, config.sharedWeight1Index, isPerExpertWeightTensor);
     OP_TILING_CHECK(sharedExpertNum > NUM_FOUR,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertNum", std::to_string(sharedExpertNum).c_str(),
@@ -583,12 +598,17 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     auto activationParamsPtr = attrs->GetListFloat(config.attrActivationParamsIndex);
 
     tilingData->epWorldSize = *epWorldSizePtr;
+    // 可变 bs：上界字段落库（attr=0 时取 bs，全部布局/容量公式逐位退化为原逻辑）。
+    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
+    tilingData->numMaxTokensPerRank = *numMaxTokensPerRankPtr != 0 ? static_cast<uint32_t>(*numMaxTokensPerRankPtr) :
+                                                                     tilingData->bs;
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMoeExpertNumIndex));
     int64_t moeExpertNum = static_cast<int64_t>(*moeExpertNumPtr);
     int64_t moeExpertPerRank = moeExpertNum / static_cast<int64_t>(tilingData->epWorldSize);
     tilingData->moeExpertPerRank = static_cast<uint32_t>(moeExpertPerRank);
+    // 接收容量上界须覆盖所有源卡的最坏发送量，用全卡一致的 numMaxTokensPerRank 而非本卡 bs。
     tilingData->maxOutputSize = *maxRecvTokenNumPtr != 0 ? *maxRecvTokenNumPtr :
-                                                           tilingData->bs * tilingData->epWorldSize *
+                                                           tilingData->numMaxTokensPerRank * tilingData->epWorldSize *
                                                                std::min(tilingData->topK,
                                                                         tilingData->moeExpertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
@@ -663,7 +683,8 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
                                                             uint32_t availableUbBytes)
 {
     MegaMoeDispatchBufferConfig bufferConfig{};
-    uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->bs) * tilingData->topK;
+    // 批网格覆盖全卡一致的上界路由数(与 mask 槽几何同基), 本卡真实装载量在 kernel 逐批夹紧。
+    uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->topK;
     uint64_t alignedTotalRouteItems =
         (sendTotalNum + static_cast<uint64_t>(ALIGN_256) - 1U) / static_cast<uint64_t>(ALIGN_256) * ALIGN_256;
 
@@ -741,7 +762,8 @@ static MegaMoeSendMaskBufferConfig CalcSendMaskBufferConfig(const MegaMoeTilingD
                                                             uint32_t availableUbBytes)
 {
     MegaMoeSendMaskBufferConfig bufferConfig{};
-    uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->bs) * tilingData->topK;
+    // 批网格覆盖全卡一致的上界路由数(与 mask 槽几何同基), 本卡真实装载量在 kernel 逐批夹紧。
+    uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->topK;
     uint64_t alignedTotalRouteItems =
         (sendTotalNum + static_cast<uint64_t>(ALIGN_256) - 1U) / static_cast<uint64_t>(ALIGN_256) * ALIGN_256;
 
@@ -895,7 +917,7 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
         logicalCoreCount /= 2U;
     }
     // 同一 token 的 topK expert id 不重复，因此单 expert 从每张卡最多接收 bs 个 token。
-    uint64_t maxTokenCountForOneExpert = static_cast<uint64_t>(tilingData->bs) * tilingData->epWorldSize;
+    uint64_t maxTokenCountForOneExpert = static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->epWorldSize;
     uint64_t maxTokenGroupCountForOneExpert =
         ops::CeilDiv(maxTokenCountForOneExpert, static_cast<uint64_t>(COMBINE_TOKEN_GROUP_SIZE));
     // Workspace 在路由结果产生前分配，因此每个本卡 MoE expert 都按独立最坏情况预留 slot。
