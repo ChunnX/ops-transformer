@@ -223,7 +223,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>scaleOptional（aclTensorList *）</td>
     <td>可选输入</td>
     <td>公式中的<code>scale</code>，代表量化参数中的缩放因子。</td>
-    <td>一般情况下，长度与weight相同。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
+    <td>一般情况下，长度与weight相同。Nn格式仅支持动态量化（mx量化）且weight为FRACTAL_NZ的场景，综合约束请参见<a href="#约束说明">约束说明</a>。</td>
     <td>UINT64、INT64、BFLOAT16、FLOAT32、FLOAT8_E8M0<sup>2</sup></td>
     <td>ND/Nn</td>
     <td>1~5</td>
@@ -700,11 +700,16 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         |0|weight单tensor|每个tensor 4维，当weight转置时，shape为(g, N, ceil(K / 64), 2)；当weight不转置时，shape为(g, ceil(K / 64), N, 2)|
         |0|weight多tensor|每个tensor 3维，当weight转置时，shape为(N, ceil(K / 64), 2)；当weight不转置时，shape为(ceil(K / 64), N, 2)|
 
-    - scaleOptional Nn格式说明：
-      - 仅动态量化（mx量化）场景支持，scaleOptional数据类型为FLOAT8_E8M0，且weight为NZ格式。
-      - Nn格式下，scaleOptional的逻辑shape仍为(g, ceil(K / 64), N, 2)，实际存储shape为(g, ceil(N / 16), ceil(K / 64), 16, 2)。
-      - 无论weight是否转置，scaleOptional的Nn存储shape均为(g, ceil(N / 16), ceil(K / 64), 16, 2)。
-      - weight多tensor场景下，scaleOptional中每个tensor的逻辑shape为(ceil(K / 64), N, 2)，实际存储shape为(ceil(N / 16), ceil(K / 64), 16, 2)。
+    - scaleOptional Nn格式约束：
+      - 仅动态量化（mx量化）场景支持，scaleOptional数据类型必须为FLOAT8_E8M0。
+      - 仅支持weight为FRACTAL_NZ格式的场景；当scaleOptional为Nn格式时，weight也必须为FRACTAL_NZ格式。
+      - 仅支持groupType为0，即M轴分组场景；不支持groupType为2的K轴分组场景。
+      - 仅支持x为单tensor、out为单tensor的场景，weight支持单tensor和多tensor两种场景。
+      - Nn格式仅改变scaleOptional的storage shape，scaleOptional的origin shape仍按原ND逻辑shape表达。
+      - weight单tensor场景下，scaleOptional为单tensor，origin shape为(g, ceil(K / 64), N, 2)，storage shape为(g, ceil(N / 16), ceil(K / 64), 16, 2)。
+      - weight多tensor场景下，scaleOptional为多tensor且长度与weight相同，每个tensor的origin shape为(ceil(K / 64), N, 2)，storage shape为(ceil(N / 16), ceil(K / 64), 16, 2)。
+      - 无论weight是否转置，scaleOptional Nn格式下的origin shape均按(ceil(K / 64), N, 2)解释，storage shape均按(ceil(N / 16), ceil(K / 64), 16, 2)排布，不随weight转置交换KScale与N的位置。
+      - N为当前weight对应的逻辑N维，K为当前weight对应的逻辑K维，ceil(K / 64)表示MX scale的K方向分组数，ceil(N / 16)表示N方向按照16对齐后的分块数。
       - 非Nn格式下，scaleOptional继续使用上表中的原ND shape约束。
 
     - perTokenScaleOptional要满足下表：
