@@ -8,7 +8,8 @@ Inputs:
 
 - `block_residual`: FP32 ND tensor `[T, N, D]`.
 - `effective_query`: FP32 ND tensor `[S, D]`.
-- `valid_blocks`: INT32 ND tensor `[1]`; its value must be in `[1, N]`.
+- `valid_blocks`: INT32 ND tensor `[1]`; values below zero are clipped to zero, zero produces the empty
+  online-softmax state, and values above `N` are clipped to `N`.
 - `epsilon`: optional FP32 attribute, default `1e-6`, and must be greater than zero.
 
 Outputs:

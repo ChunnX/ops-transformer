@@ -36,18 +36,10 @@ constexpr int64_t EFFECTIVE_QUERY_DIM_NUM = 2;
 constexpr int64_t VALID_BLOCKS_DIM_NUM = 1;
 constexpr int64_t STATS_DIM_NUM = 2;
 constexpr int64_t WEIGHTED_OUTPUT_DIM_NUM = 3;
+constexpr int64_t MIN_HEAD_DIM = 1;
+constexpr int64_t MAX_HEAD_DIM = 8192;
+constexpr int64_t MIN_BLOCK_NUM = 1;
 constexpr int64_t MAX_SOFTMAX_N = 64;
-
-bool HasPositiveDims(const aclTensor *tensor)
-{
-    const auto &shape = tensor->GetViewShape();
-    for (size_t index = 0; index < shape.GetDimNum(); ++index) {
-        if (shape.GetDim(index) <= 0) {
-            return false;
-        }
-    }
-    return true;
-}
 
 aclnnStatus CheckNotNull(const aclTensor *blockResidual, const aclTensor *effectiveQuery, const aclTensor *validBlocks,
                          const aclTensor *softmaxMax, const aclTensor *weightedOutput, const aclTensor *softmaxSum,
@@ -92,15 +84,17 @@ aclnnStatus CheckShape(const aclTensor *blockResidual, const aclTensor *effectiv
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResPrepare input or output rank is invalid.");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (!HasPositiveDims(blockResidual) || !HasPositiveDims(effectiveQuery) || vShape.GetDim(1) > MAX_SOFTMAX_N ||
-        validShape.GetDim(0) != 1 || qShape.GetDim(1) != vShape.GetDim(2)) {
+    const int64_t totalT = vShape.GetDim(0);
+    const int64_t totalN = vShape.GetDim(1);
+    const int64_t totalD = vShape.GetDim(2);
+    const int64_t totalS = qShape.GetDim(0);
+    if (totalT < 0 || totalS < 0 || totalN < MIN_BLOCK_NUM || totalN > MAX_SOFTMAX_N ||
+        totalD < MIN_HEAD_DIM || totalD > MAX_HEAD_DIM || validShape.GetDim(0) != 1 ||
+        qShape.GetDim(1) != totalD) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResPrepare input shape is invalid.");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    const int64_t totalT = vShape.GetDim(0);
-    const int64_t totalS = qShape.GetDim(0);
-    const int64_t totalD = vShape.GetDim(2);
     if (maxShape.GetDim(0) != totalS || maxShape.GetDim(1) != totalT || sumShape.GetDim(0) != totalS ||
         sumShape.GetDim(1) != totalT || outputShape.GetDim(0) != totalS || outputShape.GetDim(1) != totalT ||
         outputShape.GetDim(2) != totalD) {

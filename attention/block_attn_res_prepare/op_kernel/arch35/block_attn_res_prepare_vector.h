@@ -92,9 +92,16 @@ public:
         if (blockIdx >= tilingData_->usedCoreNum) {
             return;
         }
+        const uint64_t workStart = static_cast<uint64_t>(blockIdx) * tilingData_->blockFactor +
+                                   ((blockIdx < tilingData_->bigCoreNum) ? blockIdx : tilingData_->bigCoreNum);
+        const uint32_t workCount = tilingData_->blockFactor + ((blockIdx < tilingData_->bigCoreNum) ? 1U : 0U);
         int32_t validNValue = ReadValidBlocks();
-        if (validNValue < 1) {
-            // TODO 狗造相应场景的输出
+        if (validNValue <= 0) {
+            // Section 2.1: values below zero are clipped to zero.  Zero valid
+            // blocks produces the identity state of online softmax.
+            for (uint32_t workOffset = 0; workOffset < workCount; ++workOffset) {
+                ProcessEmptyWork(workStart + workOffset);
+            }
             return;
         } else if (validNValue > tilingData_->totalN) {
             validNValue = static_cast<int32_t>(tilingData_->totalN);
@@ -104,9 +111,6 @@ public:
         // the capacity; choose cache/reload here for the concrete N.
         const bool cacheAllV = validNValue <= tilingData_->vCacheRows && baseDAlign_ >= dAlign_;
 
-        const uint64_t workStart = static_cast<uint64_t>(blockIdx) * tilingData_->blockFactor +
-                                   ((blockIdx < tilingData_->bigCoreNum) ? blockIdx : tilingData_->bigCoreNum);
-        const uint32_t workCount = tilingData_->blockFactor + ((blockIdx < tilingData_->bigCoreNum) ? 1U : 0U);
         for (uint32_t workOffset = 0; workOffset < workCount; ++workOffset) {
             ProcessWork(workStart + workOffset, validN, cacheAllV);
         }
@@ -288,6 +292,33 @@ private:
             BlockAttnResPrepareVF::FinalizeSingleBlock(statAddr, reciprocalD, tilingData_->epsilon);
         } else {
             BlockAttnResPrepareVF::FinalizeSoftmax(statAddr, validN, reciprocalD, tilingData_->epsilon);
+        }
+    }
+
+    __aicore__ inline void ProcessEmptyWork(uint64_t workId)
+    {
+        const uint64_t tIndex = workId / tilingData_->totalS;
+        const uint64_t sIndex = workId - tIndex * tilingData_->totalS;
+        __ubuf__ float *statAddr = GetUbAddr<float>(statUbOffset_);
+        BlockAttnResPrepareVF::InitializeEmptyOnlineSoftmax(statAddr);
+        CopyOutStats(sIndex * tilingData_->totalT + tIndex);
+
+        for (uint32_t dLoop = 0; dLoop < dTileNum_; ++dLoop) {
+            const uint32_t dOffset = dLoop * tilingData_->baseD;
+            const uint64_t remainingD = tilingData_->totalD - dOffset;
+            const uint32_t validD = static_cast<uint32_t>(
+                remainingD < tilingData_->baseD ? remainingD : tilingData_->baseD);
+            const uint32_t outputBufferIndex = oLoop_ % tilingData_->oBufferNum;
+            const uint64_t outputByteOffset =
+                oUbOffset_ + static_cast<uint64_t>(outputBufferIndex) * baseDAlign_ * FP32_BYTES;
+            __ubuf__ float *outputAddr = GetUbAddr<float>(outputByteOffset);
+            wait_flag(PIPE_MTE3, PIPE_V, oLoop_ & 1);
+            BlockAttnResPrepareVF::FillZero(outputAddr, validD);
+
+            const uint64_t outputOffset =
+                (sIndex * tilingData_->totalT + tIndex) * tilingData_->totalD + dOffset;
+            CopyOutO(outputOffset, validD, oLoop_);
+            set_flag(PIPE_MTE3, PIPE_V, oLoop_++ & 1);
         }
     }
 

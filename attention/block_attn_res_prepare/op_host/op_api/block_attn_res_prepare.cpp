@@ -32,6 +32,9 @@ const std::array<const aclTensor *, 3> BlockAttnResPrepare(const aclTensor *bloc
 {
     L0_DFX(BlockAttnResPrepare, blockResidual, effectiveQuery, validBlocks, epsilon);
 
+    // valid_blocks is a device-side control tensor, so the L0 API must not
+    // dereference it.  The kernel normalizes values below zero to the empty
+    // online-softmax state and clamps values above N to N at run time.
     auto softmaxMax = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
     auto weightedOutput = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
     auto softmaxSum = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
@@ -41,6 +44,12 @@ const std::array<const aclTensor *, 3> BlockAttnResPrepare(const aclTensor *bloc
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResPrepare infer shape failed.");
         return {nullptr, nullptr, nullptr};
+    }
+
+    // T == 0 or S == 0 produces correctly shaped empty outputs.  Do not add
+    // an AICore launch for that case: all output elements are already empty.
+    if (blockResidual->IsEmpty() || effectiveQuery->IsEmpty()) {
+        return {softmaxMax, weightedOutput, softmaxSum};
     }
 
     ADD_TO_LAUNCHER_LIST_AICORE(BlockAttnResPrepare, OP_INPUT(blockResidual, effectiveQuery, validBlocks),
