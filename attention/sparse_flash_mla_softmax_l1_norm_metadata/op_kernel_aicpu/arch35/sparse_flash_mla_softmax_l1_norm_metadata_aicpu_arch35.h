@@ -53,10 +53,6 @@ inline int64_t SparseFlashMlaSoftmaxL1NormMetadataCpuKernel::CalcTotalSize() con
 inline bool SparseFlashMlaSoftmaxL1NormMetadataCpuKernel::BuildMetadata()
 {
     int64_t totalNum = CalcTotalSize();
-    if (totalNum <= 0) {
-        KERNEL_LOG_ERROR("totalNum should be larger than 0, but got %ld", totalNum);
-        return false;
-    }
 
     int64_t totalCoreNum = std::min<int64_t>(std::min(totalNum, aicCoreNum_), SMLA_METADATA_MAX_CORE_NUM);
     int64_t formerCoreProcessNum = CeilDiv(totalNum, totalCoreNum);
