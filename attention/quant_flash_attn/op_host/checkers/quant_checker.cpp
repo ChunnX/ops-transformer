@@ -343,7 +343,8 @@ ge::graphStatus QuantChecker::CheckVDescaleShape(const QfaTilingInfo &qfaInfo) c
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD) {
         expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, CeilDivision(qfaInfo.blockSize, mxfp8BlockSize), D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_NZ) {
-        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, D / 16, CeilDivision(qfaInfo.blockSize, mxfp8BlockSize), 16, 2};
+        expected = {
+            qfaInfo.totalBlockNum, qfaInfo.n2Size, D / 16, CeilDivision(qfaInfo.blockSize, mxfp8BlockSize), 16, 2};
     } else {
         OP_LOGE(qfaInfo.opName, "v_descale shape check: kv_layout %s is unsupported.",
                 QfaLayoutToSerialString(qfaInfo.kvLayout).c_str());
