@@ -18,12 +18,12 @@
 #endif
 #if __has_include("../../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2.h")
 #include "../../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2.h"
-#include "../../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_full_mesh.h"
+#include "../../moe_distribute_dispatch_v2/arch22/moe_distribute_dispatch_v2_full_mesh.h"
 #include "../../moe_distribute_dispatch_v2/arch22/moe_distribute_dispatch_v2_tiling_key.h"
 #include "../../moe_distribute_dispatch_v2/moe_distribute_dispatch_tiling.h"
 #else
 #include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2.h"
-#include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2_full_mesh.h"
+#include "../../../moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_dispatch_v2_full_mesh.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_dispatch_v2_tiling_key.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_tiling.h"
 #endif
