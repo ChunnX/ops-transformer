@@ -190,7 +190,10 @@ class QuantFlashAttnOpBuilder(OpBuilder):
                 softmax_out_size = (b_size, n_size, s_size)
 
             if layout_kv == "PA_NZ":
-                d_size = v.size(2) * v.size(4)
+                if q.size(-1) == 72:
+                    d_size = q.size(-1)
+                else:
+                    d_size = v.size(2) * v.size(4)
             elif layout_kv == "TND":
                 d_size = v.size(2)
             else:

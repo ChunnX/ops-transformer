@@ -256,7 +256,7 @@ public:
                     queryGm_, query);
 
         InitQScaleBuffer(constInfo_.bSize, constInfo_.realN2Size, constInfo_.realGSize, constInfo_.s1Size,
-                         constInfo_.dSize / MXFP_GROUP_SIZE, queryScaleGm_, dequantScaleQuery);
+                         dBaseSize / MXFP_GROUP_SIZE, queryScaleGm_, dequantScaleQuery);
 
         keyPtr_ = key;
         valuePtr_ = value;
@@ -265,7 +265,7 @@ public:
         InitKVBuffer(constInfo_.bSize, constInfo_.s2Size, constInfo_.n2Size, constInfo_.blockSize, constInfo_.dSizeV,
                      valueGm_, value);
         InitKScaleBuffer(constInfo_.bSize, constInfo_.s2Size, constInfo_.n2Size, constInfo_.blockSize,
-                         constInfo_.dSize / MXFP_GROUP_SIZE, keyScaleGm_, dequantScaleKey);
+                         dBaseSize / MXFP_GROUP_SIZE, keyScaleGm_, dequantScaleKey);
         InitVScaleBuffer(constInfo_.bSize, constInfo_.s2Size / MXFP_DIVISOR_SIZE, constInfo_.n2Size,
                          constInfo_.blockSize / MXFP_DIVISOR_SIZE, constInfo_.dSizeV * MXFP_MULTI_BASE_SIZE,
                          valueScaleGm_, dequantScaleValue);
@@ -303,7 +303,7 @@ public:
                                              constInfo_.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
             uint32_t d0 = 32 / sizeof(KV_T);
-            uint32_t d1 = headDim / d0;
+            uint32_t d1 = (headDim + d0 -1) / d0;
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm_,
                                              constInfo_.maxBlockNumPerBatch);
         } else if constexpr (KV_NEEDS_WZH) {
@@ -345,7 +345,7 @@ public:
                                                  constInfo_.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<V_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
             uint32_t d0 = 32 / sizeof(KV_T);
-            uint32_t d1 = headDim / d0;
+            uint32_t d1 = (headDim + d0 -1) / d0;
             vScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm_,
                                                  constInfo_.maxBlockNumPerBatch);
         } else if constexpr (KV_NEEDS_WZH) {
@@ -411,7 +411,7 @@ public:
 
     __aicore__ inline void CopyQueryScaleTile(const LocalTensor<SCALE_T> &dstTensor, RunInfoX &runInfo)
     {
-        CopyQueryScaleSlice(dstTensor, 0, constInfo_.dSize / MXFP_GROUP_SIZE, runInfo);
+        CopyQueryScaleSlice(dstTensor, 0, dBaseSize / MXFP_GROUP_SIZE, runInfo);
     }
 
     // copy key with full s2
@@ -463,7 +463,7 @@ public:
                                             uint32_t s2RealSize, uint32_t subLoop)
     {
         uint32_t s2Offset = subLoop % 2 == 0 ? runInfo.s2Idx : runInfo.s2Idx + s2BaseSize / 2;
-        CopyKeyScaleSlice(dstTensor, s2Offset, s2RealSize, 0, constInfo_.dSize / MXFP_GROUP_SIZE, runInfo);
+        CopyKeyScaleSlice(dstTensor, s2Offset, s2RealSize, 0, dBaseSize / MXFP_GROUP_SIZE, runInfo);
     }
 
     // copy key with full s2
@@ -553,11 +553,12 @@ public:
             }
         }
         Buffer<BufferType::L1> mm1A;
-        uint32_t qScaleOffset = ((runInfo.actMSize + 31) >> 5 << 5) * constInfo_.dSize;
+        uint32_t qScaleOffset = ((runInfo.actMSize + 31) >> 5 << 5) * dBaseSize;
         if (unlikely(runInfo.isFirstS2Loop && subLoop == 0)) {
             mm1A = l1QBuffers_.Get();
             mm1A.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
+            InitValueL1BufferNAxis(mm1ATensor, mBaseSize, dBaseSize);
             CopyQueryTile(mm1ATensor, runInfo);
 
             LocalTensor<SCALE_T> mm1AScaleTensor = mm1A.GetTensor<SCALE_T>(qScaleOffset);
@@ -571,9 +572,10 @@ public:
         Buffer<BufferType::L1> mm1B = l1KVBuffers_.Get();
         mm1B.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
+        InitValueL1BufferNAxis(mm1BTensor, s2SplitSize, dBaseSize);
         CopyKeyTile(mm1BTensor, runInfo, s2CurSize, subLoop);
 
-        uint32_t kScaleOffset = ((s2CurSize + 31) >> 5 << 5) * constInfo_.dSize;
+        uint32_t kScaleOffset = ((s2CurSize + 31) >> 5 << 5) * dBaseSize;
         LocalTensor<SCALE_T> mm1BScaleTensor = mm1B.GetTensor<SCALE_T>(kScaleOffset);
         CopyKeyScaleTile(mm1BScaleTensor, runInfo, s2CurSize, subLoop);
         mm1B.Set<HardEvent::MTE2_MTE1>();
@@ -583,7 +585,7 @@ public:
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers_.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
         MMParam param =
-            MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)s2CurSize, (uint32_t)constInfo_.dSize, false, true);
+            MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)s2CurSize, dBaseSize, false, true);
         MatmulFullMX<Q_T, KV_T, T, 128, 256, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType, SCALE_T, SCALE_T,
                      mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
             mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
@@ -660,11 +662,12 @@ public:
             }
         }
         Buffer<BufferType::L1> mm1B;
-        uint32_t qScaleOffset = ((runInfo.actMSize + 31) >> 5 << 5) * constInfo_.dSize;
+        uint32_t qScaleOffset = ((runInfo.actMSize + 31) >> 5 << 5) * dBaseSize;
         if (unlikely(runInfo.isFirstS2Loop && subLoop == 0)) {
             mm1B = l1QBuffers_.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>(); // B矩阵常驻，两次Sub中，只有第一次搬B
             LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
+            InitValueL1BufferNAxis(mm1BTensor, mBaseSize, dBaseSize);
             CopyQueryTile(mm1BTensor, runInfo);
 
             LocalTensor<SCALE_T> mm1BScaleTensor = mm1B.GetTensor<SCALE_T>(qScaleOffset);
@@ -678,9 +681,10 @@ public:
         Buffer<BufferType::L1> mm1A = l1KVBuffers_.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
+        InitValueL1BufferNAxis(mm1ATensor, s2SplitSize, dBaseSize);
         CopyKeyTile(mm1ATensor, runInfo, s2CalcSize, subLoop);
 
-        uint32_t kScaleOffset = ((s2CalcSize + 31) >> 5 << 5) * constInfo_.dSize;
+        uint32_t kScaleOffset = ((s2CalcSize + 31) >> 5 << 5) * dBaseSize;
         LocalTensor<SCALE_T> mm1AScaleTensor = mm1A.GetTensor<SCALE_T>(kScaleOffset);
         CopyKeyScaleTile(mm1AScaleTensor, runInfo, s2CalcSize, subLoop);
         mm1A.Set<HardEvent::MTE2_MTE1>();
@@ -690,7 +694,7 @@ public:
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers_.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
         MMParam param =
-            MakeMMParam((uint32_t)s2CalcSize, (uint32_t)runInfo.actMSize, (uint32_t)constInfo_.dSize, false, true);
+            MakeMMParam((uint32_t)s2CalcSize, (uint32_t)runInfo.actMSize, dBaseSize, false, true);
         MatmulFullMX<Q_T, KV_T, T, 256, 128, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType, SCALE_T, SCALE_T,
                      mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
             mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
@@ -749,8 +753,10 @@ public:
             if (unlikely(runInfo.isLastS2Loop)) {
                 InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo_.dSizeV);
             }
+            InitValueL1BufferNAxis(mm2BTensor, baseK + baseK / MXFP_GROUP_SIZE, dVBaseSize);
             CopyValueSlice(mm2BTensor, runInfo.s2Idx + kIdx * baseK, realK, 0, constInfo_.dSizeV, runInfo);
-            uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * constInfo_.dSizeV; // VScale在mm1B的偏移量（单位：元素）
+            uint32_t dSizeVAlign32 = ((uint32_t)constInfo_.dSizeV + 31) >> 5 << 5;
+            uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * dSizeVAlign32;
             LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
             CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + kIdx * baseK) / MXFP_DIVISOR_SIZE,
                                 (realK + 63) / MXFP_DIVISOR_SIZE, 0, constInfo_.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
@@ -758,7 +764,7 @@ public:
 
             mm2B.Wait<HardEvent::MTE2_MTE1>();
             MMParam param =
-                MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo_.dSizeV,
+                MakeMMParam((uint32_t)mBaseSize, dSizeVAlign32,
                             (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE, false, false, kIdx == 0, kIdx == 0);
             if constexpr (!USE_DN) {
                 param.realM = (uint32_t)runInfo.actMSize;
@@ -836,8 +842,10 @@ public:
             if (unlikely(runInfo.isLastS2Loop)) {
                 InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo_.dSizeV);
             }
+            InitValueL1BufferNAxis(mm2BTensor, baseK + baseK / MXFP_GROUP_SIZE, dVBaseSize);
             CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo_.dSizeV, runInfo);
-            uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * constInfo_.dSizeV; // VScale在mm1B的偏移量（单位：元素）
+            uint32_t dSizeVAlign32 = ((uint32_t)constInfo_.dSizeV + 31) >> 5 << 5;
+            uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * dSizeVAlign32;
             LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
             CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + k * baseK) / MXFP_DIVISOR_SIZE,
                                 (realK + 63) / MXFP_DIVISOR_SIZE, 0, constInfo_.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
@@ -845,7 +853,7 @@ public:
 
             mm2B.Wait<HardEvent::MTE2_MTE1>();
             MMParam param =
-                MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo_.dSizeV,
+                MakeMMParam((uint32_t)mBaseSize, dSizeVAlign32,
                             (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE, USE_DN, false, k == 0, k == 0);
             if constexpr (!USE_DN) {
                 param.realM = (uint32_t)runInfo.actMSize;
@@ -865,6 +873,17 @@ public:
         mm2ResL0C.Set<HardEvent::FIX_M>();
 
         outputBuf.SetCrossCore();
+    }
+
+    __aicore__ inline void InitValueL1BufferNAxis(const LocalTensor<KV_T> &valueL1, const uint32_t K,
+                                                    const uint32_t N)
+    {
+        InitConstValueParams<half> initConstValueParams;
+        initConstValueParams.repeatTimes = N / 32U;
+        initConstValueParams.blockNum = K;
+        initConstValueParams.dstGap = 0;
+        initConstValueParams.initValue = 0;
+        InitConstValue(valueL1.template ReinterpretCast<half>(), initConstValueParams);
     }
 
     __aicore__ inline void InitValueL1BufferNoTrans(const LocalTensor<KV_T> &valueL1, const uint32_t realK,

@@ -419,6 +419,10 @@ ge::graphStatus QfaInfoParser::GetS2Size()
 
 ge::graphStatus QfaInfoParser::GetValueHeadDim()
 {
+    if (layoutKV_ == QfaLayout::PA_NZ) {
+        vHeadDim_ = qkHeadDim_;
+        return ge::GRAPH_SUCCESS;
+    }
     if (valueShape_->CheckHasShapeD(__func__) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }

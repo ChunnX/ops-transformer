@@ -233,7 +233,7 @@ ge::graphStatus QuantChecker::CheckQDescaleShape(const QfaTilingInfo &qfaInfo) c
     }
 
     int64_t D = qfaInfo.qkHeadDim;
-    int64_t DPerGroup = D / 64; // MxFP8 block size = 64
+    int64_t DPerGroup = (D + 63) / 64; // MxFP8 block size = 64
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
 
     std::vector<int64_t> expected;
@@ -289,7 +289,7 @@ ge::graphStatus QuantChecker::CheckKDescaleShape(const QfaTilingInfo &qfaInfo) c
     }
 
     int64_t D = qfaInfo.qkHeadDim;
-    int64_t DPerGroup = D / 64;
+    int64_t DPerGroup = (D + 63) / 64;
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
 
     std::vector<int64_t> expected;
@@ -336,7 +336,7 @@ ge::graphStatus QuantChecker::CheckVDescaleShape(const QfaTilingInfo &qfaInfo) c
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD) {
         expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize / 64, D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_NZ) {
-        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, D / 16, qfaInfo.blockSize / 64, 16, 2};
+        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, (D + 15) / 16, qfaInfo.blockSize / 64, 16, 2};
     } else {
         OP_LOGE(qfaInfo.opName, "v_descale shape check: kv_layout %s is unsupported.",
                 QfaLayoutToSerialString(qfaInfo.kvLayout).c_str());

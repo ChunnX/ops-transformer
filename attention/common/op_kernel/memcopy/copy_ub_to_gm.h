@@ -49,10 +49,40 @@ public:
             DataCopyPad(gmTensor, ubTensor, dataCopyParams);
         }
     }
+
+    // dDealSize非32B对齐(如dSizeV=72,bf16→144B)时，DataCopyExtParams.srcStride(单位32B block)无法
+    // 表达非整除的行间跳步，改用逐行DataCopyPad: 每行单独搬blockLen字节，srcStride=0，
+    // 按字节步长手动推进GM/UB指针。
+    __aicore__ inline void CopyOutRows(GlobalTensor<OUT_T> gmTensor, const LocalTensor<OUT_T> ubTensor,
+                                       uint32_t blockCount, uint32_t blockLenBytes, uint32_t srcStride,
+                                       uint64_t dstStride, uint32_t ubRowBytes, bool strideAligned)
+    {
+        if (strideAligned) {
+            SafeStrideCopy(gmTensor, ubTensor, blockCount, blockLenBytes, srcStride, dstStride);
+        } else {
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = 1;
+            dataCopyParams.blockLen = blockLenBytes;
+            dataCopyParams.srcStride = 0;
+            dataCopyParams.dstStride = 0;
+            uint64_t gmStep = (dstStride + blockLenBytes) / sizeof(OUT_T);
+            uint64_t ubStep = ubRowBytes / sizeof(OUT_T);
+            for (uint32_t i = 0; i < blockCount; i++) {
+                DataCopyPad(gmTensor[i * gmStep], ubTensor[i * ubStep], dataCopyParams);
+            }
+        }
+    }
+
     template <typename FaGmTensorType, bool ROW_PAD = true>
     __aicore__ inline void operator()(FaGmTensorType &dstTensor, FaUbTensor<OUT_T, ROW_PAD> &srcTensor,
                                       GmCoord &gmCoord)
     {
+        // UB行步长(字节)与有效搬运长度(字节)之差若非32B对齐, DataCopyExtParams.srcStride(32B block单位)
+        // 无法整除表达, 需走逐行DataCopyPad(srcStride=0, 手动按字节步长推进指针). 典型场景: dSizeV=72(bf16→144B).
+        uint32_t dBytes = gmCoord.dDealSize * sizeof(OUT_T);
+        uint32_t ubRowBytes = srcTensor.colCount * sizeof(OUT_T);
+        bool srcStrideAligned = ((ubRowBytes - dBytes) % AttentionCommon::BYTE_BLOCK) == 0;
+
         if constexpr (UB_FORMAT == UbFormat::GS1) {
             auto &offsetCalculator = dstTensor.offsetCalculator;
             uint32_t s1Size = 0;
@@ -86,8 +116,8 @@ public:
             uint32_t srcStride =
                 (srcTensor.colCount - gmCoord.dDealSize) / (AttentionCommon::BYTE_BLOCK / sizeof(OUT_T));
             uint64_t dstStride = (offsetCalculator.GetStrideS1() - gmCoord.dDealSize) * sizeof(OUT_T); // 单位为Byte
-            SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen, srcStride,
-                           dstStride);
+            CopyOutRows(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen, srcStride,
+                        dstStride, ubRowBytes, srcStrideAligned);
 
             if (gIdxEnd - gIdxStart >= 1) {
                 // 处理中间块
@@ -95,8 +125,8 @@ public:
                 ubOffset = headS1 * srcTensor.colCount;
                 for (uint32_t i = gIdxStart + 1; i < gIdxEnd; i++) {
                     blockCount = s1Size;
-                    SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
-                                   srcStride, dstStride);
+                    CopyOutRows(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
+                                srcStride, dstStride, ubRowBytes, srcStrideAligned);
                     gmOffset += offsetCalculator.GetStrideG();
                     ubOffset += s1Size * srcTensor.colCount;
                 }
@@ -104,8 +134,8 @@ public:
                 // 处理尾块
                 if (s1IdxEnd > 0) {
                     blockCount = s1IdxEnd;
-                    SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
-                                   srcStride, dstStride);
+                    CopyOutRows(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
+                                srcStride, dstStride, ubRowBytes, srcStrideAligned);
                 }
             }
         } else if constexpr (UB_FORMAT == UbFormat::S1G) {
@@ -131,32 +161,42 @@ public:
             uint64_t ubOffset = 0;
             uint32_t blockCount = headSize;
 
-            SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen, srcStride,
-                           dstStride);
+            CopyOutRows(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen, srcStride,
+                        dstStride, ubRowBytes, srcStrideAligned);
 
             if (s1IdxEnd - s1IdxStart >= 1) {
                 // 处理中间块
                 gmOffset = attenOutGmbaseOffset + offsetCalculator.GetStrideS1();
                 ubOffset = ((uint64_t)headSize) * ((uint64_t)srcTensor.colCount);
                 if constexpr ((!ROW_PAD) && (GM_FORMAT == GmFormat::BSNGD) || (GM_FORMAT == GmFormat::TNGD)) {
-                    if (s1IdxEnd > 1 + s1IdxStart) {
+                    // 仅当UB行32B对齐(无padding, 整行连续)时, 才能合并多S1为一次大DataCopy;
+                    // 否则(dDealSize非32B对齐, 如dSizeV=72,bf16→144B) UB每行只有前dDealSize有效,
+                    // 合并大块会跨越padding区, 必须逐S1搬, 由CopyOutRows内部走逐行DataCopyPad.
+                    if (srcStrideAligned && (s1IdxEnd > 1 + s1IdxStart)) {
                         uint32_t blockCountTmp = s1IdxEnd - s1IdxStart - 1;
                         uint32_t blockLenTmp = gmCoord.dDealSize * sizeof(OUT_T) * offsetCalculator.GetDimG();
                         uint32_t srcStrideTmp = 0;
                         uint64_t dstStrideTmp =
                             offsetCalculator.GetStrideS1() * sizeof(OUT_T) - blockLenTmp; // 单位为Byte
 
-                        // blockCount = offsetCalculator.GetDimG() * (s1IdxEnd - s1IdxStart -1);
-                        SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCountTmp,
-                                       blockLenTmp, srcStrideTmp, dstStrideTmp);
+                        CopyOutRows(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCountTmp,
+                                    blockLenTmp, srcStrideTmp, dstStrideTmp, ubRowBytes, srcStrideAligned);
                         gmOffset += offsetCalculator.GetStrideS1() * blockCountTmp;
                         ubOffset += offsetCalculator.GetDimG() * srcTensor.colCount * blockCountTmp;
+                    } else {
+                        for (uint32_t i = s1IdxStart + 1; i < s1IdxEnd; i++) {
+                            blockCount = offsetCalculator.GetDimG();
+                            CopyOutRows(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
+                                        srcStride, dstStride, ubRowBytes, srcStrideAligned);
+                            gmOffset += offsetCalculator.GetStrideS1();
+                            ubOffset += offsetCalculator.GetDimG() * srcTensor.colCount;
+                        }
                     }
                 } else {
                     for (uint32_t i = s1IdxStart + 1; i < s1IdxEnd; i++) {
                         blockCount = offsetCalculator.GetDimG();
-                        SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
-                                       srcStride, dstStride);
+                        CopyOutRows(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
+                                    srcStride, dstStride, ubRowBytes, srcStrideAligned);
                         gmOffset += offsetCalculator.GetStrideS1();
                         ubOffset += offsetCalculator.GetDimG() * srcTensor.colCount;
                     }
@@ -164,8 +204,8 @@ public:
                 // 处理尾块
                 if (gIdxEnd > 0) {
                     blockCount = gIdxEnd;
-                    SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
-                                   srcStride, dstStride);
+                    CopyOutRows(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
+                                srcStride, dstStride, ubRowBytes, srcStrideAligned);
                 }
             }
         }

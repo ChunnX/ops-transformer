@@ -172,7 +172,7 @@ ge::graphStatus QfaTilingShapeCompare::GetExpectedShape(gert::Shape &shapeExpect
             shapeExpected = gert::Shape({param.Bn, param.N, param.Bs, param.D});
             break;
         case QfaLayout::PA_NZ:
-            shapeExpected = gert::Shape({param.Bn, param.N, param.D / param.D0, param.Bs, param.D0});
+            shapeExpected = gert::Shape({param.Bn, param.N, (param.D  + param.D0 - 1) / param.D0, param.Bs, param.D0});
             break;
         case QfaLayout::LSE_BNS:
             shapeExpected = gert::Shape({param.B, param.N, param.S1});

@@ -26,7 +26,7 @@ import math
 import torch
 import torch.nn as nn
 import torch_npu
-
+import torch.nn.functional as F
 try:
     from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
 
@@ -58,17 +58,17 @@ GRAPH_PATH = int(_os.environ.get("GRAPH_PATH", "0"))
 B = 1
 N_q = 1  # query heads
 N_kv = 1  # kv heads
-D = 128
+D = 72
 
 ENABLE_ROPE = False
 D_rope = 64
 
-CU_SEQLENS_Q = [0, 4]
-CU_SEQLENS_KV = [0, 1024]
-SEQUSED_Q = [4]
-SEQUSED_KV = [1024]
-MAX_SEQLEN_Q = 4
-MAX_SEQLEN_KV = 1024
+CU_SEQLENS_Q = [0, 128]
+CU_SEQLENS_KV = [0, 512]
+SEQUSED_Q = [128]
+SEQUSED_KV = [512]
+MAX_SEQLEN_Q = 128
+MAX_SEQLEN_KV = 512
 
 
 def _derive_seqused(cu_seqlens):
@@ -121,8 +121,6 @@ SEED_KR = 9
 DATA_RANGE_Q = 1.0
 DATA_RANGE_K = 1.0
 DATA_RANGE_V = 1.0
-DATA_RANGE_QR = 1.0
-DATA_RANGE_KR = 1.0
 
 DEVICE_ID = 0
 
@@ -149,7 +147,6 @@ _EMAX_MAP = {
     torch.float8_e5m2: 15,
 }
 
-
 def _validate_fp8_dtype(fp8_dtype):
     if fp8_dtype not in _EMAX_MAP:
         raise ValueError(
@@ -163,7 +160,8 @@ def get_mxfp8_per_token_group_quant_scale(tensor, fp8_dtype, group_size=32):
     emax_elem = _EMAX_MAP[fp8_dtype]
 
     dim1, dim2, dim3, dim4 = tensor.shape
-    num_groups = math.ceil(dim4 / group_size)
+    dim4_align = (dim4 + 63) // 64 * 64
+    num_groups = math.ceil(dim4_align / group_size)
     pad_size = num_groups * group_size - dim4
     if pad_size > 0:
         tensor = torch.nn.functional.pad(tensor, (0, pad_size))
@@ -401,6 +399,7 @@ def pack_v_scale_for_npu(scale_flat):
 def _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens, cu_seqlens=None):
     B, N, _, Dg = scale_bnsd.shape
     Dg_half = Dg // 2
+
     if cu_seqlens is not None:
         T = cu_seqlens[-1]
         result = torch.zeros(
@@ -833,9 +832,9 @@ def generate_data():
     kr_bf16 = None
     if ENABLE_ROPE and D_rope > 0:
         torch.manual_seed(SEED_QR)
-        qr_bf16 = (torch.rand(B, N_q, max_sq, D_rope, dtype=torch.bfloat16) * 2 - 1) * DATA_RANGE_QR
+        qr_bf16 = torch.randn(B, N_q, max_sq, D_rope, dtype=torch.bfloat16)
         torch.manual_seed(SEED_KR)
-        kr_bf16 = (torch.rand(B, N_kv, max_skv, D_rope, dtype=torch.bfloat16) * 2 - 1) * DATA_RANGE_KR
+        kr_bf16 = torch.randn(B, N_kv, max_skv, D_rope, dtype=torch.bfloat16)
 
     logger.info(
         "[INFO] q_fp16=%s, k_fp16=%s, v_fp16=%s",
@@ -1055,10 +1054,10 @@ def cpu_mxfp8_golden(
     # dequant_scale 按 group_size 扩展，用于逐元素反量化
     dequant_scale_q_expanded = dequant_scale_q.repeat_interleave(
         QUANT_GROUP_SIZE, dim=-1
-    )
+    )[:, :, :, :D]
     dequant_scale_k_expanded = dequant_scale_k.repeat_interleave(
         QUANT_GROUP_SIZE, dim=-1
-    )
+    )[:, :, :, :D]
     v_descale_expanded = v_descale.repeat_interleave(QUANT_GROUP_SIZE, dim=2)
 
     logger.info(
@@ -1252,7 +1251,7 @@ def _call_npu_fa_op(
         max_seqlen_q=max_seqlen_q,
         max_seqlen_kv=max_seqlen_kv,
     )
-
+    
     main_kwargs = dict(
         q=q,
         k=k,
