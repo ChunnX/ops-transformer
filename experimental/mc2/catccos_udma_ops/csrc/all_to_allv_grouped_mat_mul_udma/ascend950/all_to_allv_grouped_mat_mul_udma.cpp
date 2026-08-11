@@ -8,17 +8,18 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <ATen/ATen.h>
+#include <c10/core/DeviceGuard.h>
+#include <torch/library.h>
+
+#include "torch_npu/csrc/core/npu/NPUStream.h"
+#include "torch_npu/csrc/framework/OpCommand.h"
+
 #include "all_to_allv_grouped_mat_mul_udma_device.h"
 #include "udma_runtime.h"
 
 #include "catccos/dgemm/device/kernel_adapter.hpp"
 #include "platform/platform_ascendc.h"
-#include "torch_npu/csrc/core/npu/NPUStream.h"
-#include "torch_npu/csrc/framework/OpCommand.h"
-
-#include <ATen/ATen.h>
-#include <c10/core/DeviceGuard.h>
-#include <torch/library.h>
 
 #include <cstdint>
 #include <limits>

@@ -78,9 +78,9 @@ struct AllToAllVGroupedMatMulUdmaConfig {
 };
 
 using AllToAllVGroupedMatMulUdmaDefaultConfig = AllToAllVGroupedMatMulUdmaConfig<
-    AscendC::bfloat16_t, Catlass::layout::RowMajor,
-    AscendC::bfloat16_t, Catlass::layout::RowMajor,
-    AscendC::bfloat16_t, Catlass::layout::RowMajor,
+    bfloat16_t, Catlass::layout::RowMajor,
+    bfloat16_t, Catlass::layout::RowMajor,
+    bfloat16_t, Catlass::layout::RowMajor,
     128, 256, 256>;
 
 } // namespace OpsTransformer::CatccosUdma
