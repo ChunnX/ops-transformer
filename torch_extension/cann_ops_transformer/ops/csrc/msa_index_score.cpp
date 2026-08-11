@@ -39,8 +39,8 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
                            const c10::optional<at::Tensor> &block_table,
                            const c10::optional<at::Tensor> &scale,
                            const c10::optional<at::Tensor> &atten_mask,
-                           const c10::optional<at::Tensor> &actual_seq_lengths_query,
-                           const c10::optional<at::Tensor> &actual_seq_lengths_key,
+                           const c10::optional<at::Tensor> &actual_seq_qlen,
+                           const c10::optional<at::Tensor> &actual_seq_klen,
                            const at::Tensor &start_loc, int64_t sparse_mode)
 {
     TORCH_CHECK(query.defined() && query.numel() > 0, "Tensor query is empty.");
@@ -48,21 +48,21 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
     TORCH_CHECK(start_loc.defined() && start_loc.numel() > 0, "Tensor start_loc is empty.");
     TORCH_CHECK(block_table.has_value() && block_table.value().defined() && block_table.value().numel() > 0,
                 "PageAttention requires block_table.");
-    TORCH_CHECK(actual_seq_lengths_query.has_value() && actual_seq_lengths_query.value().defined(),
-                "TND query requires actual_seq_lengths_query.");
-    TORCH_CHECK(actual_seq_lengths_key.has_value() && actual_seq_lengths_key.value().defined(),
-                "PageAttention requires actual_seq_lengths_key.");
+    TORCH_CHECK(actual_seq_qlen.has_value() && actual_seq_qlen.value().defined(),
+                "TND query requires actual_seq_qlen.");
+    TORCH_CHECK(actual_seq_klen.has_value() && actual_seq_klen.value().defined(),
+                "PageAttention requires actual_seq_klen.");
 
     const at::Tensor &bt = block_table.value();
-    const at::Tensor &cu_q = actual_seq_lengths_query.value();
-    const at::Tensor &kv_len = actual_seq_lengths_key.value();
+    const at::Tensor &cu_q = actual_seq_qlen.value();
+    const at::Tensor &kv_len = actual_seq_klen.value();
 
     TORCH_CHECK(query.dim() == QUERY_DIM, "query must be 3D [T, Hq, D], but got dim=", query.dim());
     TORCH_CHECK(key.dim() == KEY_DIM, "P0 key must be 4D BBND [NP, P, Hkv, D], but got dim=", key.dim());
     TORCH_CHECK(bt.dim() == BLOCK_TABLE_DIM, "block_table must be 2D [B, MB], but got dim=", bt.dim());
-    TORCH_CHECK(cu_q.dim() == SEQ_LEN_Q_DIM, "actual_seq_lengths_query must be 1D [B+1], but got dim=",
+    TORCH_CHECK(cu_q.dim() == SEQ_LEN_Q_DIM, "actual_seq_qlen must be 1D [B+1], but got dim=",
                 cu_q.dim());
-    TORCH_CHECK(kv_len.dim() == SEQ_LEN_K_DIM, "actual_seq_lengths_key must be 1D [B], but got dim=",
+    TORCH_CHECK(kv_len.dim() == SEQ_LEN_K_DIM, "actual_seq_klen must be 1D [B], but got dim=",
                 kv_len.dim());
     TORCH_CHECK(start_loc.dim() == START_LOC_DIM, "start_loc must be 1D [B], but got dim=", start_loc.dim());
 
@@ -96,8 +96,8 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
     }
 
     TORCH_CHECK(bt.scalar_type() == at::kInt, "block_table dtype must be int32.");
-    TORCH_CHECK(cu_q.scalar_type() == at::kInt, "actual_seq_lengths_query dtype must be int32.");
-    TORCH_CHECK(kv_len.scalar_type() == at::kInt, "actual_seq_lengths_key dtype must be int32.");
+    TORCH_CHECK(cu_q.scalar_type() == at::kInt, "actual_seq_qlen dtype must be int32.");
+    TORCH_CHECK(kv_len.scalar_type() == at::kInt, "actual_seq_klen dtype must be int32.");
     TORCH_CHECK(start_loc.scalar_type() == at::kInt, "start_loc dtype must be int32.");
 
     TORCH_CHECK(key.size(1) == SUPPORTED_BLOCK_SIZE, "block_size currently only supports ",
@@ -106,7 +106,7 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
     TORCH_CHECK(query.size(2) == key.size(3), "query/key head_dim mismatch.");
     TORCH_CHECK(query.size(2) > 0 && (query.size(2) % HEAD_DIM_ALIGN) == 0, "head_dim align error.");
     TORCH_CHECK(query.size(2) <= MAX_HEAD_DIM, "head_dim too large.");
-    TORCH_CHECK(cu_q.size(0) == kv_len.size(0) + 1, "cu_seq_q size must be batch+1.");
+    TORCH_CHECK(cu_q.size(0) == kv_len.size(0) + 1, "actual_seq_qlen size must be batch+1.");
     TORCH_CHECK(start_loc.size(0) == kv_len.size(0), "start_loc size must equal batch.");
     TORCH_CHECK(bt.size(0) == kv_len.size(0), "block_table batch must equal batch.");
 
@@ -122,8 +122,8 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
         score = at::empty({num_q_heads, total_q, score_stride}, query.options().dtype(at::kFloat));
     }
 
-    ACLNN_CMD(aclnnMsaIndexScore, query, key, block_table, scale, atten_mask, actual_seq_lengths_query,
-              actual_seq_lengths_key, start_loc, sparse_mode, score);
+    ACLNN_CMD(aclnnMsaIndexScore, query, key, block_table, scale, atten_mask, actual_seq_qlen,
+              actual_seq_klen, start_loc, sparse_mode, score);
     return score;
 }
 

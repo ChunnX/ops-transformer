@@ -74,7 +74,7 @@ public:
     __aicore__ inline MsaIndexScoreKernel() {}
 
     __aicore__ inline void Init(GM_ADDR query, GM_ADDR key, GM_ADDR blockTable, GM_ADDR scale,
-                                GM_ADDR cuSeqLenQ, GM_ADDR kvLen, GM_ADDR startLoc, GM_ADDR score,
+                                GM_ADDR actualSeqQlen, GM_ADDR actualSeqKlen, GM_ADDR startLoc, GM_ADDR score,
                                 GM_ADDR workspace, const MsaIndexScoreTilingData *__restrict tiling)
     {
         tiling_ = tiling;
@@ -88,15 +88,15 @@ public:
         }
         gBlockTable_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(blockTable));
         gScale_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(scale));
-        gCuSeqLenQ_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(cuSeqLenQ));
-        gKvLen_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(kvLen));
+        gActualSeqQlen_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(actualSeqQlen));
+        gActualSeqKlen_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(actualSeqKlen));
         gStartLoc_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(startLoc));
         gScore_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(score));
         gWorkspace_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspace));
 
         scheduler_.Init(tiling_->batch, tiling_->numQHeads, tiling_->maxBlocksPerBatch,
                         tiling_->scoreBlockStride, tiling_->sparseMode, tiling_->initBlocks,
-                        tiling_->localBlocks, gCuSeqLenQ_, gKvLen_, gStartLoc_);
+                        tiling_->localBlocks, gActualSeqQlen_, gActualSeqKlen_, gStartLoc_);
     }
 
     __aicore__ inline void Process()
@@ -309,8 +309,8 @@ private:
     AscendC::GlobalTensor<ElementQ> gKeyScratch_;
     AscendC::GlobalTensor<int32_t> gBlockTable_;
     AscendC::GlobalTensor<float> gScale_;
-    AscendC::GlobalTensor<int32_t> gCuSeqLenQ_;
-    AscendC::GlobalTensor<int32_t> gKvLen_;
+    AscendC::GlobalTensor<int32_t> gActualSeqQlen_;
+    AscendC::GlobalTensor<int32_t> gActualSeqKlen_;
     AscendC::GlobalTensor<int32_t> gStartLoc_;
     AscendC::GlobalTensor<float> gScore_;
     AscendC::GlobalTensor<float> gWorkspace_;

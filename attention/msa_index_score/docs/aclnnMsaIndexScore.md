@@ -1,6 +1,6 @@
 # aclnnMsaIndexScore
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/lightning_indexer)
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/msa_index_score)
 
 ## 产品支持情况
 
@@ -48,8 +48,8 @@ aclnnStatus aclnnMsaIndexScoreGetWorkspaceSize(
     const aclTensor *blockTableOptional,
     const aclTensor *scaleOptional,
     const aclTensor *attenMaskOptional, 
-    const aclTensor *actualSeqLengthsQueryOptional,
-    const aclTensor *actualSeqLengthsKeyOptional,
+    const aclTensor *actualSeqQlenOptional,
+    const aclTensor *actualSeqKlenOptional,
     const aclTensor *startLoc,
     int64_t          sparseMode, 
     const aclTensor *score,
@@ -73,8 +73,8 @@ aclnnStatus aclnnMsaIndexScore(
 | blockTableOptional            | 输入      | 表示当前传入的使用PageAttention存储的block映射表  | PageAttention场景下，blockTableOptional需为2维；第二维长度不能小于 $maxBlockNumPerSeq$ | INT32                        | ND       | 2（$[B, S2/block\_size]$）                                   |
 | scaleOptional                 | 输入      | 公式中的$scale$，反量化系数                       | 非量化场景传入`nullptr`；量化场景时必选，支持的shape为：BNB、BBN | FLOAT                        | ND, NZ   | 3（$[block\_num, N2, block\_size]$、$[block\_num, block\_size, N2]$） |
 | attenMaskOptional             | 输入      | 控制因果可见的mask掩码。                          | 仅在sparseMode=3时使用，作为base mask控制causal可见；取值为1代表该位不参与计算，为0代表该位参与计算 | INT8                         | ND       | 2（$[2048, 2048]$）                                          |
-| actualSeqLengthsQueryOptional | 输入      | 每个Batch中，Query的有效token数                   | 当传入TND时，该入参必须传入，单调不减（前缀和）              | INT32                        | ND       | 1（$[B+1]$）                                                 |
-| actualSeqLengthsKeyOptional   | 输入      | 每个Batch中，Key的有效token数                     | 当传入TND时，该入参必须传入，单调不减（前缀和）；PageAttention场景下为各请求可见 $S2$ | INT32                        | ND       | 1（$[B]$）                                                   |
+| actualSeqQlenOptional | 输入      | 每个Batch中，Query的有效token数                   | 当传入TND时，该入参必须传入，单调不减（前缀和）              | INT32                        | ND       | 1（$[B+1]$）                                                 |
+| actualSeqKlenOptional   | 输入      | 每个Batch中，Key的有效token数                     | 当传入TND时，该入参必须传入，单调不减（前缀和）；PageAttention场景下为各请求可见 $S2$ | INT32                        | ND       | 1（$[B]$）                                                   |
 | startLoc                      | 输入      | 当前 query 所在 block 在完整 block table 中的索引 | 提供 block 在整个 block 序列中的位置信息，生成$local\_mask$，用于设置部分block的score | INT32                        | ND       | 1（$[B]$）                                                   |
 | sparseMode                    | 输入      | 表示sparse的模式                                  | 为0时，代表defaultMask模式；为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。 | INT64                        | -        | -                                                            |
 | score                         | 输出      | 公式中的$score$                                   | 逐block的重要性分数；末维为对齐后的逻辑 block 数             | FLOAT                        | ND       | 3（$[N1, T1, RoundUp(maxBlockNumPerSeq, 16)]$）              |
@@ -201,8 +201,8 @@ struct TensorResources {
   void* keyDeviceAddr = nullptr;
   void* blockTableDeviceAddr = nullptr;
   void* attenMaskDeviceAddr = nullptr;
-  void* actualSeqLengthsQueryDeviceAddr = nullptr;
-  void* actualSeqLengthsKeyDeviceAddr = nullptr;
+  void* actualSeqQlenDeviceAddr = nullptr;
+  void* actualSeqKlenDeviceAddr = nullptr;
   void* startLocDeviceAddr = nullptr;
   void* scoreDeviceAddr = nullptr;
 
@@ -210,8 +210,8 @@ struct TensorResources {
   aclTensor* keyTensor = nullptr;
   aclTensor* blockTableTensor = nullptr;
   aclTensor* attenMaskTensor = nullptr;
-  aclTensor* actualSeqLengthsQueryTensor = nullptr;
-  aclTensor* actualSeqLengthsKeyTensor = nullptr;
+  aclTensor* actualSeqQlenTensor = nullptr;
+  aclTensor* actualSeqKlenTensor = nullptr;
   aclTensor* startLocTensor = nullptr;
   aclTensor* scoreTensor = nullptr;
 };
@@ -233,8 +233,8 @@ int InitializeTensors(TensorResources& resources) {
   std::vector<int64_t> keyShape = {blockNum, blockSize, N2, D};           // BBND
   std::vector<int64_t> blockTableShape = {B, maxBlockNumPerSeq};
   std::vector<int64_t> attenMaskShape = {2048, 2048};
-  std::vector<int64_t> actualSeqLengthsQueryShape = {B + 1};
-  std::vector<int64_t> actualSeqLengthsKeyShape = {B};
+  std::vector<int64_t> actualSeqQlenShape = {B + 1};
+  std::vector<int64_t> actualSeqKlenShape = {B};
   std::vector<int64_t> startLocShape = {B};
   std::vector<int64_t> scoreShape = {N1, T1, scoreStride};
 
@@ -242,8 +242,8 @@ int InitializeTensors(TensorResources& resources) {
   std::vector<uint16_t> keyHostData(GetShapeSize(keyShape), 0x3C00);
   std::vector<int32_t> blockTableHostData = {0, 1};
   std::vector<int8_t> attenMaskHostData(GetShapeSize(attenMaskShape), 0);  // 0: 参与计算
-  std::vector<int32_t> actualSeqLengthsQueryHostData = {0, static_cast<int32_t>(T1)};
-  std::vector<int32_t> actualSeqLengthsKeyHostData = {static_cast<int32_t>(S2)};
+  std::vector<int32_t> actualSeqQlenHostData = {0, static_cast<int32_t>(T1)};
+  std::vector<int32_t> actualSeqKlenHostData = {static_cast<int32_t>(S2)};
   std::vector<int32_t> startLocHostData = {1};  // 当前 query 所在逻辑 block 索引
   std::vector<float> scoreHostData(GetShapeSize(scoreShape), 0.0f);
 
@@ -267,15 +267,15 @@ int InitializeTensors(TensorResources& resources) {
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
     return ret;
   }
-  ret = CreateAclTensor(actualSeqLengthsQueryHostData, actualSeqLengthsQueryShape,
-                        &resources.actualSeqLengthsQueryDeviceAddr, aclDataType::ACL_INT32,
-                        &resources.actualSeqLengthsQueryTensor);
+  ret = CreateAclTensor(actualSeqQlenHostData, actualSeqQlenShape,
+                        &resources.actualSeqQlenDeviceAddr, aclDataType::ACL_INT32,
+                        &resources.actualSeqQlenTensor);
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
     return ret;
   }
-  ret = CreateAclTensor(actualSeqLengthsKeyHostData, actualSeqLengthsKeyShape,
-                        &resources.actualSeqLengthsKeyDeviceAddr, aclDataType::ACL_INT32,
-                        &resources.actualSeqLengthsKeyTensor);
+  ret = CreateAclTensor(actualSeqKlenHostData, actualSeqKlenShape,
+                        &resources.actualSeqKlenDeviceAddr, aclDataType::ACL_INT32,
+                        &resources.actualSeqKlenTensor);
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
     return ret;
   }
@@ -304,8 +304,8 @@ int ExecuteMsaIndexScore(TensorResources& resources, aclrtStream stream,
       resources.blockTableTensor,
       nullptr,  // scaleOptional
       resources.attenMaskTensor,
-      resources.actualSeqLengthsQueryTensor,
-      resources.actualSeqLengthsKeyTensor,
+      resources.actualSeqQlenTensor,
+      resources.actualSeqKlenTensor,
       resources.startLocTensor,
       sparseMode,
       resources.scoreTensor,
@@ -361,11 +361,11 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
   if (resources.attenMaskTensor) {
     aclDestroyTensor(resources.attenMaskTensor);
   }
-  if (resources.actualSeqLengthsQueryTensor) {
-    aclDestroyTensor(resources.actualSeqLengthsQueryTensor);
+  if (resources.actualSeqQlenTensor) {
+    aclDestroyTensor(resources.actualSeqQlenTensor);
   }
-  if (resources.actualSeqLengthsKeyTensor) {
-    aclDestroyTensor(resources.actualSeqLengthsKeyTensor);
+  if (resources.actualSeqKlenTensor) {
+    aclDestroyTensor(resources.actualSeqKlenTensor);
   }
   if (resources.startLocTensor) {
     aclDestroyTensor(resources.startLocTensor);
@@ -386,11 +386,11 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
   if (resources.attenMaskDeviceAddr) {
     aclrtFree(resources.attenMaskDeviceAddr);
   }
-  if (resources.actualSeqLengthsQueryDeviceAddr) {
-    aclrtFree(resources.actualSeqLengthsQueryDeviceAddr);
+  if (resources.actualSeqQlenDeviceAddr) {
+    aclrtFree(resources.actualSeqQlenDeviceAddr);
   }
-  if (resources.actualSeqLengthsKeyDeviceAddr) {
-    aclrtFree(resources.actualSeqLengthsKeyDeviceAddr);
+  if (resources.actualSeqKlenDeviceAddr) {
+    aclrtFree(resources.actualSeqKlenDeviceAddr);
   }
   if (resources.startLocDeviceAddr) {
     aclrtFree(resources.startLocDeviceAddr);
