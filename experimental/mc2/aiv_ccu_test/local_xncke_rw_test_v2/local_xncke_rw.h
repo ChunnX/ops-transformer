@@ -14,7 +14,7 @@
 #include <cstdint>
 
 void local_xncke_rw_demo(uint32_t mode, uint32_t resKind, uint32_t enableWarmup, uint32_t loopCount,
-                         uint64_t pattern, uint32_t blockDim, void *stream, uint8_t *xnAddr, uint8_t *ckeAddr,
-                         uint8_t *timeAddr);
+                         uint64_t pattern, uint32_t xnNum, uint32_t blockDim, void *stream,
+                         uint8_t *xnAddr, uint8_t *ckeAddr, uint8_t *timeAddr);
 
 #endif // LOCAL_XNCKE_RW_H
