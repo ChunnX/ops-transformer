@@ -1298,6 +1298,100 @@ def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale):
     return scores_npu.cpu()
 
 
+def _npu_mxfp8_pv_matmul(p_fp8, v_fp8, p_scale, v_scale):
+    """Run one VF C2 tile with the NPU MXFP8 grouped-matmul semantics.
+
+    ``p_scale`` and ``v_scale`` are logical FP32 scale values with shapes
+    ``[M, K/32]`` and ``[K/32, N]``.  They are packed to the physical E8M0
+    pair layouts consumed by ``npu_quant_matmul``.
+    """
+    if p_fp8.ndim != 2 or v_fp8.ndim != 2:
+        raise ValueError(
+            f"P/V must be rank-2, got p={tuple(p_fp8.shape)}, v={tuple(v_fp8.shape)}"
+        )
+    if p_fp8.shape[1] != v_fp8.shape[0]:
+        raise ValueError(
+            f"P/V K dimensions must match, got {p_fp8.shape[1]} and {v_fp8.shape[0]}"
+        )
+    if p_fp8.numel() == 0 or v_fp8.numel() == 0:
+        raise ValueError("npu_quant_matmul P/V inputs must not be empty")
+    if QUANT_GROUP_SIZE != 32:
+        raise ValueError(
+            "this MXFP8 npu_quant_matmul path requires quant_group_size=32, "
+            f"got {QUANT_GROUP_SIZE}"
+        )
+
+    m_size, k_size = p_fp8.shape
+    n_size = v_fp8.shape[1]
+    if k_size % (2 * QUANT_GROUP_SIZE) != 0:
+        raise ValueError(
+            f"C2 K dimension {k_size} must be 64-token aligned for E8M0 pair packing"
+        )
+    group_count = k_size // QUANT_GROUP_SIZE
+    if tuple(p_scale.shape) != (m_size, group_count):
+        raise ValueError(
+            f"invalid P scale shape: expected {(m_size, group_count)}, "
+            f"got {tuple(p_scale.shape)}"
+        )
+    if tuple(v_scale.shape) != (group_count, n_size):
+        raise ValueError(
+            f"invalid V scale shape: expected {(group_count, n_size)}, "
+            f"got {tuple(v_scale.shape)}"
+        )
+
+    p_scale_fp32 = p_scale.to(torch.float32)
+    if not bool(torch.all(torch.isfinite(p_scale_fp32) & (p_scale_fp32 >= 0)).item()):
+        raise ValueError("P MXFP8 scale must contain only non-negative finite values")
+    v_scale_fp32 = v_scale.to(torch.float32)
+    if not bool(torch.all(torch.isfinite(v_scale_fp32) & (v_scale_fp32 > 0)).item()):
+        raise ValueError("V MXFP8 scale must contain only positive finite values")
+
+    # VF converts the online-max rescale through BF16 before E8M0.  Keep that
+    # conversion point here; otherwise values very close to 2**n can select a
+    # neighbouring E8M0 exponent on the CPU side.
+    p_scale_for_pack = p_scale.to(torch.bfloat16).to(torch.float32)
+    p_scale_e8m0 = fp32_to_e8m0fnu_safe(p_scale_for_pack, "P golden matmul descale")
+    v_scale_e8m0 = fp32_to_e8m0fnu_safe(v_scale, "V golden matmul descale")
+    p_scale_packed = pack_qk_scale_for_npu(p_scale_e8m0).view(torch.int8)
+    v_scale_packed = (
+        v_scale_e8m0.reshape(group_count // 2, 2, n_size)
+        .permute(0, 2, 1)
+        .contiguous()
+        .view(torch.int8)
+    )
+
+    p_npu = p_fp8.to(FP8_DTYPE).contiguous().npu()
+    v_npu = v_fp8.to(FP8_DTYPE).contiguous().npu()
+    p_scale_npu = p_scale_packed.contiguous().npu()
+    v_scale_npu = v_scale_packed.contiguous().npu()
+    if not hasattr(torch_npu, "float8_e8m0fnu"):
+        raise RuntimeError(
+            "the installed torch_npu does not expose float8_e8m0fnu; "
+            "MXFP8 npu_quant_matmul is not supported by this version"
+        )
+
+    e8m0_dtype = torch_npu.float8_e8m0fnu
+    try:
+        result_npu = torch_npu.npu_quant_matmul(
+            p_npu,
+            v_npu,
+            v_scale_npu,
+            pertoken_scale=p_scale_npu,
+            output_dtype=torch.float32,
+            pertoken_scale_dtype=e8m0_dtype,
+            scale_dtype=e8m0_dtype,
+            group_sizes=[1, 1, QUANT_GROUP_SIZE],
+        )
+    except TypeError as error:
+        if "pertoken_scale_dtype" in str(error):
+            raise RuntimeError(
+                "the installed torch_npu.npu_quant_matmul does not support "
+                "pertoken_scale_dtype; an MXFP8-capable torch_npu version is required"
+            ) from error
+        raise
+    return result_npu.cpu()
+
+
 def _positions_from_sparse(
     sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_len
 ):
@@ -1467,7 +1561,7 @@ def cpu_mxfp8_golden(
         "[CPU Golden] reference sparse flow: layout_q=%s, OUT=TND, LSE=TN", layout_q
     )
     logger.info(
-        "[CPU Golden] QK path: npu_quant_matmul, MXFP8 group_size=%d",
+        "[CPU Golden] QK/C2 path: npu_quant_matmul, MXFP8 group_size=%d",
         QUANT_GROUP_SIZE,
     )
 
@@ -1636,7 +1730,10 @@ def cpu_mxfp8_golden(
                             torch.zeros_like(history_rescale),
                         )
 
-                        pv = torch.zeros_like(acc)
+                        p_c2_chunks = []
+                        p_scale_c2_chunks = []
+                        v_c2_chunks = []
+                        v_scale_c2_chunks = []
                         round_sum = torch.zeros_like(l_run)
                         for (
                             subloop_start,
@@ -1688,15 +1785,46 @@ def cpu_mxfp8_golden(
                                 :,
                                 v_group_pair,
                             ].to(torch.float32)
-                            v_dequant = v_mat * v_scale_mat
-
-                            pv += torch.matmul(
-                                p_quant_subloop * subloop_rescale.view(nq, 1), v_dequant
+                            subloop_k = subloop_end - subloop_start
+                            subloop_group_count = math.ceil(
+                                subloop_k / QUANT_GROUP_SIZE
+                            )
+                            p_c2_chunks.append(p_quant_subloop)
+                            p_scale_c2_chunks.append(
+                                subloop_rescale.view(nq, 1).expand(
+                                    nq, subloop_group_count
+                                )
+                            )
+                            v_c2_chunks.append(v_mat)
+                            # v_scale_mat is constant for each 32-token group.
+                            v_scale_c2_chunks.append(
+                                v_scale_mat[::QUANT_GROUP_SIZE]
                             )
                             # The reverted VF accumulates FP32 exp before P is
                             # cast to E4M3. C2 still consumes the cast P, but
                             # new_global_sum uses the unquantized P.
                             round_sum += p_subloop.sum(dim=-1) * subloop_rescale
+
+                        p_c2 = torch.cat(p_c2_chunks, dim=1)
+                        v_c2 = torch.cat(v_c2_chunks, dim=0)
+                        p_scale_c2 = torch.cat(p_scale_c2_chunks, dim=1)
+                        v_scale_c2 = torch.cat(v_scale_c2_chunks, dim=0)
+                        c2_k = p_c2.shape[1]
+                        c2_k_aligned = math.ceil(c2_k / 64) * 64
+                        if c2_k_aligned != c2_k:
+                            pad_k = c2_k_aligned - c2_k
+                            pad_groups = pad_k // QUANT_GROUP_SIZE
+                            p_c2 = torch.nn.functional.pad(p_c2, (0, pad_k))
+                            v_c2 = torch.nn.functional.pad(v_c2, (0, 0, 0, pad_k))
+                            p_scale_c2 = torch.nn.functional.pad(
+                                p_scale_c2, (0, pad_groups), value=1.0
+                            )
+                            v_scale_c2 = torch.nn.functional.pad(
+                                v_scale_c2, (0, 0, 0, pad_groups), value=1.0
+                            )
+                        pv = _npu_mxfp8_pv_matmul(
+                            p_c2, v_c2, p_scale_c2, v_scale_c2
+                        )
 
                         acc = acc * history_rescale.view(nq, 1) + pv
                         l_run = l_run * history_rescale + round_sum
