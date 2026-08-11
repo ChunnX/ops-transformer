@@ -239,16 +239,18 @@ def _cpu_mxfp8_golden(
     sparse_q_block_size,
     sparse_kv_block_size,
     *,
+    cu_seqlens_q=None,
+    cu_seqlens_kv=None,
+    seqused_q=None,
+    seqused_kv=None,
+    block_table=None,
     layout_kv="PA_BNSD",
     layout_q="TND",
     layout_sparse_indices="B_N_Qb_Kb",
     layout_out="TND",
     mask_mode=3,
     return_softmax_lse=False,
-    actual_seq_q=None,
-    actual_seq_kv=None,
-    empty_actual_seq=False,
-    block_table_pattern="sequential",
+    sparse_mode="dense",
     seed=0,
     **kwargs,
 ):
@@ -260,43 +262,27 @@ def _cpu_mxfp8_golden(
 
     if cached is None:
         batch = int(sparse_indices.shape[0])
+        q_prefix = to_list(cu_seqlens_q)
+        q_lengths = lengths_from_prefix(cu_seqlens_q)
+        kv_lengths = to_list(seqused_kv)
         if layout_q != "TND":
             raise ValueError(f"MXFP8 requires layout_q='TND', got {layout_q!r}")
-        if batch <= 0:
-            raise ValueError(f"MXFP8 requires a positive batch size, got B={batch}")
-        if actual_seq_q is None or actual_seq_kv is None:
-            raise ValueError(
-                "MXFP8 requires explicit actual_seq_q and actual_seq_kv values"
-            )
-        q_lengths = [int(item) for item in actual_seq_q]
-        kv_lengths = [int(item) for item in actual_seq_kv]
-        if len(q_lengths) != batch or len(kv_lengths) != batch:
-            raise ValueError(
-                f"actual sequence lengths must match B={batch}, got "
-                f"q={len(q_lengths)}, kv={len(kv_lengths)}"
-            )
-        if any(length < 0 for length in q_lengths + kv_lengths):
-            raise ValueError("MXFP8 sequence lengths must be non-negative")
-        if sum(q_lengths) != int(query.shape[0]):
-            raise ValueError(
-                f"sum(actual_seq_q) must equal query T={int(query.shape[0])}, "
-                f"got {sum(q_lengths)}"
-            )
+        if len(q_prefix) != batch + 1 or len(kv_lengths) != batch:
+            raise ValueError("invalid MXFP8 sequence input shapes")
+        if to_list(cu_seqlens_kv) or to_list(seqused_q):
+            raise ValueError("cu_seqlens_kv and seqused_q must be empty")
         case = {
             "B": batch,
             "N1": int(query.shape[1]),
             "N2": int(key.shape[1]),
             "D": int(query.shape[-1]),
-            "S1": max(q_lengths),
-            "S2": max(kv_lengths),
-            "actual_seq_q": q_lengths,
-            "actual_seq_kv": kv_lengths,
+            "cu_seqlens_q": q_prefix,
+            "cu_seqlens_kv": [],
+            "seqused_q": [],
+            "seqused_kv": kv_lengths,
             "s2_base_size": int(kwargs.get("s2_base_size", 512)),
-            "blocknum": (
-                None
-                if kwargs.get("blocknum") is None
-                else int(kwargs["blocknum"])
-            ),
+            "blocknum": int(key.shape[0]),
+            "max_block_per_batch": int(block_table.shape[1]),
             "block_size": int(key.shape[2]),
             "mask_mode": int(mask_mode),
             "fp8_dtype": torch.float8_e4m3fn,
@@ -315,7 +301,6 @@ def _cpu_mxfp8_golden(
             ),
             "softmax_scale": float(softmax_scale),
             "return_softmax_lse": bool(return_softmax_lse),
-            "empty_actual_seq": bool(empty_actual_seq),
             "seed": int(seed),
             "data_range_q": _normalize_data_range(
                 kwargs.get("data_range_q", 1.0)
@@ -329,13 +314,25 @@ def _cpu_mxfp8_golden(
             "device_id": 0,
             "sparse_q_block_size": int(sparse_q_block_size),
             "sparse_kv_block_size": int(sparse_kv_block_size),
-            "sparse_count": int(kwargs.get("sparse_count", 0)),
-            "sparse_pattern": str(kwargs.get("sparse_pattern", "sequential")),
-            "block_table_pattern": block_table_pattern,
+            "sparse_mode": sparse_mode,
             "quant_mode": 2,
         }
         module.set_active_case(case)
-        data = module._generate_reference_style_mxfp8_inputs()
+        data = {
+            "query": to_cpu(query),
+            "key": to_cpu(key),
+            "value": to_cpu(value),
+            "q_descale": to_cpu(q_descale),
+            "k_descale": to_cpu(k_descale),
+            "v_descale": to_cpu(v_descale),
+            "p_scale": None if p_scale is None else to_cpu(p_scale),
+            "sparse_indices": to_cpu(sparse_indices),
+            "sparse_seq_len": to_cpu(sparse_seq_len),
+            "block_table": to_cpu(block_table),
+            "q_lengths": q_lengths,
+            "kv_lengths": kv_lengths,
+            "cu_seqlens_q": torch.tensor(q_prefix, dtype=torch.int32),
+        }
     else:
         case = cached["case"]
         data = cached["data"]
@@ -416,6 +413,11 @@ def _cpu_quant_block_sparse_attn_impl(
             layout_out=layout_out,
             mask_mode=mask_mode,
             return_softmax_lse=return_softmax_lse,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_kv=cu_seqlens_kv,
+            seqused_q=seqused_q,
+            seqused_kv=seqused_kv,
+            block_table=block_table,
             **kwargs,
         )
 
@@ -578,9 +580,6 @@ def cpu_quant_block_sparse_attn(
     if blocksize and int(key.shape[2]) != int(blocksize):
         raise ValueError("blocksize does not match key")
 
-    q_prefix = to_list(cu_seqlens_q)
-    q_lengths = [end - start for start, end in zip(q_prefix, q_prefix[1:])]
-    kv_lengths = to_list(seqused_kv)
     return _cpu_quant_block_sparse_attn_impl(
         query,
         key,
@@ -596,8 +595,8 @@ def cpu_quant_block_sparse_attn(
         sparse_q_block_size=sparse_block_size_q,
         sparse_kv_block_size=sparse_block_size_kv,
         cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_kv=None,
-        seqused_q=None,
+        cu_seqlens_kv=cu_seqlens_kv,
+        seqused_q=seqused_q,
         seqused_kv=seqused_kv,
         block_table=block_table,
         layout_kv=layout_kv,
@@ -607,7 +606,5 @@ def cpu_quant_block_sparse_attn(
         quant_mode=quant_mode,
         mask_mode=mask_mode,
         return_softmax_lse=return_softmax_lse,
-        actual_seq_q=q_lengths,
-        actual_seq_kv=kv_lengths,
         **kwargs,
     )
