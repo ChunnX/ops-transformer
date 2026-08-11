@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <algorithm>
 #include <iostream>
 #include <vector>
 #include <gtest/gtest.h>
