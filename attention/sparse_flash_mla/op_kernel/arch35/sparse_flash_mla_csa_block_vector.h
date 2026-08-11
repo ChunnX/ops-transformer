@@ -614,6 +614,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CalSparseCalSize(const RunInf
     }
 }
 
+// TODO 删除startPos
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
 CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
@@ -671,7 +672,6 @@ CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_C
             CrossCoreSetFlag<0, PIPE_MTE3>(15);
             CrossCoreWaitFlag<0, PIPE_MTE3>(15);
         }
-        outputL1.SetCrossCore();
         v0ResGm.SetCrossCore();
     }
 }
