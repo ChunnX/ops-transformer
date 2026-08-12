@@ -142,6 +142,7 @@ constexpr int64_t MB_SIZE = 1024LL * 1024LL;
 constexpr int64_t RESERVED_SPACE_SIZE = 10LL * 1024 * 1024;
 constexpr int64_t MAX_EXPERTS_PER_RANK_A2A3 = 128LL;
 constexpr int64_t SYNC_STATE_RESERVED_SIZE = 512LL * 1024;
+constexpr int64_t A5_EXCEPTION_DUMP_REGION_SIZE = 60LL * 1024LL;
 
 int64_t CeilAlign(int64_t val, int64_t align)
 {
@@ -206,7 +207,7 @@ int64_t CalcLeastCclBufferSizeA3(int64_t h, int64_t epWorldSize, bool isQuantRou
     return (offsetTokenPerExpert + offsetTensor + offsetFlag + RESERVED_SPACE_SIZE + MB_SIZE) / MB_SIZE;
 }
 
-// A5 half-buffer minimum size (MB). Ported 1:1 from the original Python implementation.
+// A5 communication-window minimum size (bytes).
 int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_t numMaxTokensPerRank, int64_t numTopk,
                                int64_t hidden, int64_t topkWeightsType)
 {
@@ -234,7 +235,10 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     // combine_send_size
     int64_t combineOut = CeilAlign(numMaxTokensPerRank * hidden * numTopk * 2, 512);
 
-    int64_t totalBytes = peermemDataOffset + maskRecvSize + quantTokenScaleSize + combineOut;
+    // The topology is detected while building the context, after this size is calculated. Reserve the MTE dump
+    // prefix conservatively; an automatically selected URMA path may over-allocate 60KB but keeps its old layout.
+    int64_t totalBytes =
+        A5_EXCEPTION_DUMP_REGION_SIZE + peermemDataOffset + maskRecvSize + quantTokenScaleSize + combineOut;
 
     return totalBytes;
 }
