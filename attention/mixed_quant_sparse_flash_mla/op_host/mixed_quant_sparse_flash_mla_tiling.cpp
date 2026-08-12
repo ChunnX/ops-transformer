@@ -313,14 +313,14 @@ ge::graphStatus MQSMLAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert
 {
     if ((tensor == nullptr)) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, name.c_str(),
-            "When layout_q is " + MQSMLALayoutToSerialString(layout) + ", " + name + " must be provided");
+                                                 "When layout_q is " + MQSMLALayoutToSerialString(layout) + ", " + name + " must be provided");
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = tensor->GetShapeSize();
     if (shapeSize <= 0) {
         OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, name.c_str(),
-            std::to_string(shapeSize).c_str(),
-            "The shape size of " + name + " should be greater than 0");
+                                                  std::to_string(shapeSize).c_str(),
+                                                  "The shape size of " + name + " should be greater than 0");
         return ge::GRAPH_FAILED;
     }
     size = static_cast<uint32_t>(shapeSize);
@@ -333,8 +333,8 @@ ge::graphStatus MQSMLAInfoParser::GetActualSeqLenQSize(uint32_t &size)
         int64_t shapeSize = opParamInfo_.cuSeqLensQ.tensor->GetShapeSize();
         if (shapeSize <= 1) {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "cu_seqlens_q",
-                std::to_string(opParamInfo_.cuSeqLensQ.tensor->GetShapeSize()).c_str(),
-                "The shape size of cu_seqlens_q should be greater than 1");
+                                                      std::to_string(opParamInfo_.cuSeqLensQ.tensor->GetShapeSize()).c_str(),
+                                                      "The shape size of cu_seqlens_q should be greater than 1");
             return ge::GRAPH_FAILED;
         }
         size = static_cast<uint32_t>(shapeSize - 1);
@@ -384,8 +384,7 @@ ge::graphStatus MQSMLAInfoParser::GetMaxBlockNumPerBatch()
         return ge::GRAPH_SUCCESS;
     }
     if (opParamInfo_.oriBlockTable.tensor == nullptr) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "ori_block_table", "The layout_kv is " +
-            MQSMLALayoutToSerialString(kvLayout_) + ", ori_block_table must be provided");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "ori_block_table", "The layout_kv is " + MQSMLALayoutToSerialString(kvLayout_) + ", ori_block_table must be provided");
         return ge::GRAPH_FAILED;
     }
     uint32_t oriDimNum = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDimNum();
@@ -396,8 +395,8 @@ ge::graphStatus MQSMLAInfoParser::GetMaxBlockNumPerBatch()
     }
     if (opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(1) <= 0) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, ORI_BLOCK_TABLE_NAME.c_str(),
-            ToStringRaw(opParamInfo_.oriBlockTable.tensor->GetStorageShape()).c_str(),
-            ORI_BLOCK_TABLE_NAME + "'s second dimension should be greater than 0");
+                                              ToStringRaw(opParamInfo_.oriBlockTable.tensor->GetStorageShape()).c_str(),
+                                              ORI_BLOCK_TABLE_NAME + "'s second dimension should be greater than 0");
         return ge::GRAPH_FAILED;
     }
     oriMaxBlockNumPerBatch_ = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(1);
@@ -411,8 +410,8 @@ ge::graphStatus MQSMLAInfoParser::GetMaxBlockNumPerBatch()
         }
         if (opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(1) <= 0) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, CMP_BLOCK_TABLE_NAME.c_str(),
-                ToStringRaw(opParamInfo_.cmpBlockTable.tensor->GetStorageShape()).c_str(),
-                CMP_BLOCK_TABLE_NAME + "'s second dimension should be greater than 0");
+                                                  ToStringRaw(opParamInfo_.cmpBlockTable.tensor->GetStorageShape()).c_str(),
+                                                  CMP_BLOCK_TABLE_NAME + "'s second dimension should be greater than 0");
             return ge::GRAPH_FAILED;
         }
         cmpMaxBlockNumPerBatch_ = opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(1);
@@ -625,9 +624,9 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
 {
     if (tilingInfo->opParamInfo.cmpKv.tensor == nullptr) {
         OP_CHECK_IF(tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("MixedQuantSparseFlashMla", "cmp_sparse_indices",
-                "Cmp_sparse_indices must be empty when cmpKv is not provided"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("MixedQuantSparseFlashMla", "cmp_sparse_indices",
+                                                             "Cmp_sparse_indices must be empty when cmpKv is not provided"),
+                    return ge::GRAPH_FAILED);
         if (tilingInfo->opParamInfo.oriSparseIndices.tensor != nullptr) {
             perfMode_ = QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE;
         } else {
