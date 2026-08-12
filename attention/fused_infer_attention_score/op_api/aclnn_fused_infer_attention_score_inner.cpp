@@ -296,6 +296,17 @@ bool IsFirstAxisOnlyNonContiguous(const aclTensor *tensor, const char *name)
     return isFirstAxisOnlyNonContiguous;
 }
 
+void SetTensorFormatToND(const aclTensor *tensor)
+{
+    if (tensor == nullptr) {
+        return;
+    }
+    auto mutableTensor = const_cast<aclTensor *>(tensor);
+    mutableTensor->SetStorageFormat(Format::FORMAT_ND);
+    mutableTensor->SetViewFormat(Format::FORMAT_ND);
+    mutableTensor->SetOriginalFormat(Format::FORMAT_ND);
+}
+
 aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const char *name, aclOpExecutor *executor)
 {
     if (tensorList == nullptr) {
@@ -325,18 +336,29 @@ aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const cha
         return ACLNN_ERR_INNER_NULLPTR;
     }
     tensorList = contiguousList;
-    return ACLNN_SUCCESS;
-}
-
-void SetTensorFormatToND(const aclTensor *tensor)
-{
-    if (tensor == nullptr) {
-        return;
+    for (uint64_t i = 0; i < tensorList->Size(); ++i) {
+        auto tensor = (*tensorList)[i];
+        if (tensor != nullptr) {
+            if (tensor->GetStorageFormat() != ge::FORMAT_ND) {
+                printf("====== [FIA][%s] tensorList[%lu] storageFormat is not ND, this format may lead to precision failure.\n", name, i);
+            }
+            if (tensor->GetViewFormat() != ge::FORMAT_ND) {
+                printf("====== [FIA][%s] tensorList[%lu] viewFormat is not ND, this format may lead to precision failure.\n", name, i);
+            }
+            if (tensor->GetOriginalFormat() != ge::FORMAT_ND) {
+                printf("====== [FIA][%s] tensorList[%lu] originalFormat is not ND, this format may lead to precision failure.\n", name, i);
+            }
+        }
     }
-    auto mutableTensor = const_cast<aclTensor *>(tensor);
-    mutableTensor->SetStorageFormat(Format::FORMAT_ND);
-    mutableTensor->SetViewFormat(Format::FORMAT_ND);
-    mutableTensor->SetOriginalFormat(Format::FORMAT_ND);
+
+    for (uint64_t i = 0; i < tensorList->Size(); ++i) {
+        auto tensor = (*tensorList)[i];
+        if (tensor != nullptr) {
+            SetTensorFormatToND(tensor);
+        }
+    }
+
+    return ACLNN_SUCCESS;
 }
 
 aclnnStatus MakeTensorContiguous(const aclTensor *&tensor, const char *name, aclOpExecutor *executor)
@@ -386,7 +408,6 @@ aclnnStatus NormalizeFAICacheTensorList(const aclTensorList *&tensorList, const 
                 return ACLNN_ERR_INNER_NULLPTR;
             }
             const_cast<aclTensor *>(normalizedTensor)->SetStorageShape(tensor->GetViewShape());
-            SetTensorFormatToND(normalizedTensor);
         } else {
             normalizedTensor = l0op::Contiguous(tensor, executor);
             if (normalizedTensor == nullptr) {
@@ -394,6 +415,16 @@ aclnnStatus NormalizeFAICacheTensorList(const aclTensorList *&tensorList, const 
                 return ACLNN_ERR_INNER_NULLPTR;
             }
         }
+        if (normalizedTensor->GetStorageFormat() != ge::FORMAT_ND) {
+            printf("====== [FIA][%s] normalizedTensor[%lu] storageFormat is not ND, this format may lead to precision failure.\n", name, i);
+        }
+        if (normalizedTensor->GetViewFormat() != ge::FORMAT_ND) {
+            printf("====== [FIA][%s] normalizedTensor[%lu] viewFormat is not ND, this format may lead to precision failure.\n", name, i);
+        }
+        if (normalizedTensor->GetOriginalFormat() != ge::FORMAT_ND) {
+            printf("====== [FIA][%s] normalizedTensor[%lu] originalFormat is not ND, this format may lead to precision failure.\n", name, i);
+        }
+        SetTensorFormatToND(normalizedTensor);
         tensors.emplace_back(normalizedTensor);
     }
 
