@@ -239,6 +239,10 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 
     allToAllScaleA_.Finalize();
     allToAllA_.Finalize();
+
+    // 通信接口暂不支持缓存刷新，此处暂作规避
+    dcci(reinterpret_cast<__gm__ void*>(udmaCtx_->commBufferAddrs),
+        static_cast<uint64_t>(CacheLine::ENTIRE_DATA_CACHE), static_cast<uint64_t>(DcciDst::CACHELINE_OUT));
 }
 
 // =================================================================================
