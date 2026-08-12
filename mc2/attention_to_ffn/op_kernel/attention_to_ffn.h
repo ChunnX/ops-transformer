@@ -586,9 +586,9 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SendToken
     GM_ADDR toRankAddr;
     GlobalTensor<int32_t> tokenInfoTableGMTensor;
     DataCopyParams statusCopyParams = {1U, static_cast<uint16_t>(1 * sizeof(int32_t)), 0U, 0U};
-    DataCopyExtParams xCopyParams = {1U, static_cast<uint32_t>(axisH_ * sizeof(XType)), 0U, 0U, 0U};
+    DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     DataCopyExtParams hCommuCopyOutParams = {1U, static_cast<uint32_t>(hCommuSize_), 0U, 0U, 0U};
-    DataCopyPadExtParams<XType> copyPadExtParams{false, 0U, 0U, 0U};
+    DataCopyPadParams copyPadExtParams{false, 0U, 0U, 0U};
 
     uint32_t tokenOffset = aivId_ + (tokenIdx * aivNum_);         // 当前token在BS*(K+1)的偏移
     uint32_t tokenId = tokenOffset / (axisK_ + sharedExpertNum_); // 当前token在BS中的Id
@@ -628,7 +628,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SendToken
         tokenDataGMTensor.SetGlobalBuffer((__gm__ XType *)tokenData);
         xQueue_.EnQue(xInTensor_);
         xInTensor_ = xQueue_.DeQue<XType>();
-        DataCopyPad(tokenDataGMTensor, xInTensor_, xCopyParams);
+        DataCopyPad(tokenDataGMTensor, xInTensor_, xCopyParams, copyPadExtParams);
         xQueue_.FreeTensor<XType>(xInTensor_);
     }
 
