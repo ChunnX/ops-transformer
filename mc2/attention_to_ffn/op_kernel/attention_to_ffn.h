@@ -86,6 +86,9 @@ using namespace AscendC;
 template <TemplateAttentionToFFNTypeClass>
 class AttentionToFFN {
 public:
+    using StorageXOutType = typename std::conditional<
+        (Std::IsSame<XOutType, fp4x2_e2m1_t>::value) || (Std::IsSame<XOutType, fp4x2_e1m2_t>::value),
+        uint8_t, XOutType>::type;
     __aicore__ inline AttentionToFFN(){};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId, GM_ADDR layerId,
                                 GM_ADDR expertIds, GM_ADDR expertRankTable, GM_ADDR scales, GM_ADDR active_mask,
@@ -122,7 +125,7 @@ private:
     LocalTensor<XType> xInTensor_;
     LocalTensor<int32_t> statusTensor_;
     LocalTensor<float> scalesFp32Tensor_;
-    LocalTensor<XOutType> xOutTensor_;
+    LocalTensor<StorageXOutType> xOutTensor_;
     LocalTensor<int32_t> ffnStatusTensor_;
     LocalTensor<int32_t> syncStatusWorkspaceTensor_;
     LocalTensor<int32_t> ffnFlagTensor_;
@@ -596,7 +599,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SendToken
         DataCopyPad(xInTensor_, xGMTensor_[tokenId * axisH_], xCopyParams, copyPadExtParams);
         xInQueue_.EnQue(xInTensor_);
         xInTensor_ = xInQueue_.DeQue<XType>();
-        xOutTensor_ = xOutQueue_.AllocTensor<XOutType>();
+        xOutTensor_ = xOutQueue_.AllocTensor<StorageXOutType>();
         SetExpertAndRank(tokenIdx, tokenId, topkId);
         QuantProcess(dstExpertId_);
         CheckFlagAndSetTableGM(toRankId_, toRankAddr, tokenInfoTableGMTensor);
@@ -607,10 +610,10 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SendToken
                                    sizeof(XOutType));
         tokenDataGMTensor.SetGlobalBuffer((__gm__ uint8_t *)tokenData);
         xOutQueue_.EnQue(xOutTensor_);
-        xOutTensor_ = xOutQueue_.DeQue<XOutType>();
+        xOutTensor_ = xOutQueue_.DeQue<StorageXOutType>();
         auto xOutBytesTensor = xOutTensor_.template ReinterpretCast<uint8_t>();
         DataCopyPad(tokenDataGMTensor, xOutBytesTensor, hCommuCopyOutParams);
-        xOutQueue_.FreeTensor<XOutType>(xOutTensor_);
+        xOutQueue_.FreeTensor<StorageXOutType>(xOutTensor_);
     } else {
         GlobalTensor<XType> tokenDataGMTensor;
         xInTensor_ = xQueue_.AllocTensor<XType>();
