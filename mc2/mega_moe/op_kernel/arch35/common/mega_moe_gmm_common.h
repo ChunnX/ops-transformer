@@ -341,19 +341,19 @@ struct Config {
     }
 };
 
-// 统一描述一次 BlockMmad::Init 真正消费的配置，避免 Context 分散保存并逐字段比较。
+// 统一描述一次 BlockMmad::Init 的可变配置，避免 Context 分散保存并逐字段比较。
+// 通用 MX BlockMmad 的 l1BufNum 始终固定为 2，A8W4 L1Params 则没有该字段，因此不纳入运行时状态。
 struct BlockMmadInitConfig {
     uint32_t problemK = 0U;
     uint32_t tileM = 0U;
     uint32_t tileN = 0U;
     uint64_t kL1 = 0U;
     uint64_t scaleKL1 = 0U;
-    uint64_t l1BufNum = 0U;
 
     __aicore__ inline bool operator!=(const BlockMmadInitConfig &other) const
     {
         return problemK != other.problemK || tileM != other.tileM || tileN != other.tileN || kL1 != other.kL1 ||
-               scaleKL1 != other.scaleKL1 || l1BufNum != other.l1BufNum;
+               scaleKL1 != other.scaleKL1;
     }
 };
 
@@ -376,8 +376,7 @@ __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &
         tilingConfig.tileM,
         tilingConfig.tileN,
         tilingConfig.l1Params.kL1,
-        tilingConfig.l1Params.scaleKL1,
-        tilingConfig.l1Params.l1BufNum};
+        tilingConfig.l1Params.scaleKL1};
     if (!context.initialized || context.initConfig != requestedConfig) {
         typename BlockMmad::BlockShape l0TileShape{tilingConfig.tileM, tilingConfig.tileN, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
