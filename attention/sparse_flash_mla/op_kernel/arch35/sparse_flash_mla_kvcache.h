@@ -68,12 +68,10 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr &runParam, const ConstInfo
                 actualS2CmpSize = actualSeqCmpKvlenGm.GetValue(bIdx);
             } else if (hasCuSeqlensCmpKv) {
                 actualS2CmpSize = cuSeqlensCmpKvGm.GetValue(bIdx + 1) - cuSeqlensCmpKvGm.GetValue(bIdx);
-            } else {
-                actualS2CmpSize = actualS2OriSize / constInfo.cmpRatio;
             }
         } else {
             if (!hasActualSeqCmpKvlen) {
-                actualS2CmpSize = actualS2OriSize / constInfo.cmpRatio;
+                actualS2CmpSize = constInfo.cmpS2Size;
             } else {
                 actualS2CmpSize = actualSeqCmpKvlenGm.GetValue(bIdx);
             }
