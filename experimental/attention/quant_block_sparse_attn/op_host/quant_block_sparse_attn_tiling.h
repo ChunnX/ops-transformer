@@ -28,7 +28,9 @@
 #include "quant_block_sparse_attn_info_parser.h"
 
 namespace optiling {
-constexpr uint32_t QBSA_MAX_CORE_NUM = 36U;
+constexpr uint32_t QBSA_LEGACY_MAX_CORE_NUM = 36U;
+constexpr uint32_t QBSA_V121_MAX_CORE_NUM = 64U;
+constexpr uint32_t QBSA_MAX_CORE_NUM = QBSA_V121_MAX_CORE_NUM;
 constexpr uint32_t QBSA_CORE_SPLIT_NUM = QBSA_MAX_CORE_NUM + 1U;
 constexpr uint32_t QBSA_BLOCK_SIZE = 128U;
 constexpr uint32_t QBSA_D_SIZE = 128U;
@@ -211,6 +213,7 @@ private:
     uint64_t totalTaskNum_ = 0;
     uint64_t tilingKey_ = 0;
     uint64_t workspaceSize_ = 0;
+    bool isV121_ = false;
 };
 
 } // namespace optiling
