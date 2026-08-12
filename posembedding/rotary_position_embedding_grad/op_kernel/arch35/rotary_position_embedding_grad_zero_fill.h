@@ -51,7 +51,9 @@ public:
             int64_t curr = count - offset;
             curr = (curr < UB_ELEMS) ? curr : UB_ELEMS;
             Duplicate<T>(zeroBuf, static_cast<T>(0), static_cast<int32_t>(curr));
-            PipeBarrier<PIPE_V>();
+            // Duplicate(V) -> DataCopyPad(MTE3) 存在跨 pipe 依赖，用 PIPE_ALL 保证写完成后再搬出；
+            // 循环末尾的 PIPE_ALL 同时保证 MTE3 读完后下一轮 Duplicate 再写入
+            PipeBarrier<PIPE_ALL>();
             copyParams.blockLen = static_cast<uint32_t>(curr * sizeof(T));
             DataCopyPad(cosGradGm_[start + offset], zeroBuf, copyParams);
             DataCopyPad(sinGradGm_[start + offset], zeroBuf, copyParams);
