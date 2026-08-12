@@ -628,7 +628,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SendToken
         tokenDataGMTensor.SetGlobalBuffer((__gm__ XType *)tokenData);
         xQueue_.EnQue(xInTensor_);
         xInTensor_ = xQueue_.DeQue<XType>();
-        DataCopyPad(tokenDataGMTensor, xInTensor_, xCopyParams, copyPadExtParams);
+        DataCopyPad(tokenDataGMTensor, xInTensor_, xCopyParams);
         xQueue_.FreeTensor<XType>(xInTensor_);
     }
 
