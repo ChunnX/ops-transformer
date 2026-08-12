@@ -111,12 +111,18 @@ function(pack_built_in)
       ${CANN_CMAKE_DIR}/scripts/install/version_compatiable.inc
       ${CANN_CMAKE_DIR}/scripts/install/check_version_required.awk
   )
+  set(CONF_FILES
+      ${CANN_CMAKE_DIR}/scripts/package/cfg/path.cfg
+  )
   foreach(components ${CANN_VERSION_PACKAGES})
       install(FILES ${CMAKE_BINARY_DIR}/version.${components}.info
           DESTINATION share/info/ops_transformer
           RENAME version.info
       )
   endforeach()
+  install(FILES ${CONF_FILES}
+      DESTINATION ${CMAKE_SYSTEM_PROCESSOR}-linux/conf
+  )
   install(FILES ${PACKAGE_FILES}
       DESTINATION share/info/ops_transformer/script
   )
