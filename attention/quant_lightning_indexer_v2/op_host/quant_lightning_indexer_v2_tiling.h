@@ -23,6 +23,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling/tiling_api.h"
+#include "op_host/tiling_util.h"
 
 namespace optiling {
 // ------------------公共定义--------------------------
@@ -36,11 +37,7 @@ struct TilingOptionalParaInfo {
     const gert::Tensor *tensor;
 };
 
-enum class DataLayout : uint32_t {
-    BSND = 0,
-    TND = 1,
-    PA_BBND = 2
-};
+enum class DataLayout : uint32_t { BSND = 0, TND = 1, PA_BBND = 2 };
 
 // ------------------算子原型索引常量定义----------------
 // Inputs Index
@@ -55,9 +52,10 @@ constexpr uint32_t SEQUSED_Q_INDEX = 7;
 constexpr uint32_t SEQUSED_K_INDEX = 8;
 constexpr uint32_t CMP_RESIDUAL_K_INDEX = 9;
 constexpr uint32_t BLOCK_TABLE_INDEX = 10;
+constexpr uint32_t OUTPUT_IDX_OFFSET_INDEX = 11;
 constexpr uint32_t METADATA_INDEX = 12;
 constexpr uint32_t SPARSE_INDICES_INDEX = 0;
-
+constexpr uint32_t SPARSE_VALUES_INDEX = 1;
 // Attributes Index
 constexpr uint32_t ATTR_TOPK_INDEX = 0;
 constexpr uint32_t ATTR_QUANT_MODE_INDEX = 1;
@@ -80,11 +78,22 @@ constexpr uint32_t DIM_NUM_FOUR = 4;
 // 入参限制常量
 constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_LIMIT = 2048;
+constexpr uint32_t SPARSE_LIMIT_8K = 8192;
 constexpr uint32_t G_SIZE_LIMIT = 64;
+constexpr uint32_t G_SIZE_LIMIT_32_950 = 32;
 constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
 constexpr uint32_t BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t METADATA_LIMIT = 1024;
+constexpr int32_t QUANT_MODE_FP8 = 1;
+constexpr int32_t QUANT_MODE_INT8 = 2;
+constexpr int32_t QUANT_MODE_MXFP8 = 3;
+constexpr int32_t QUANT_MODE_HIFLOAT8 = 4;
+constexpr int32_t QUANT_MODE_MXFP4 = 5;
+constexpr uint32_t MX_SCALE_SHAPE_ALIGN = 64;
+constexpr uint32_t MX_E8M0_SCALE_PACK_NUM = 2; // MX的E8M0 scale形状最后一维打包数为2
+constexpr uint32_t MXFP4_PACK_NUM = 2;         // 每个uint8承载2个FP4 E2M1逻辑元素
+constexpr uint32_t MX_SCALE_GROUP_SIZE = 32;   // MX量化每32个D维元素对应1个E8M0 scale
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(QLIV2TilingData)
@@ -123,6 +132,7 @@ struct QLIV2ParaInfo {
     TilingOptionalParaInfo sequsedK = {nullptr, nullptr};
     TilingOptionalParaInfo cmpResidualK = {nullptr, nullptr};
     TilingOptionalParaInfo blockTable = {nullptr, nullptr};
+    TilingOptionalParaInfo outputIdxOffset = {nullptr, nullptr};
     TilingOptionalParaInfo metadata = {nullptr, nullptr};
     TilingRequiredParaInfo attenOut = {nullptr, nullptr};
     TilingRequiredParaInfo sparseValues = {nullptr, nullptr};
@@ -136,8 +146,6 @@ struct QLIV2ParaInfo {
     const int32_t *sparseCount = nullptr;
     const int32_t *cmpRatio = nullptr;
     const int32_t *returnValue = nullptr;
-    int64_t keyStride0 = 0;
-    int64_t keyDequantScaleStride0 = 0;
 };
 
 // -----------算子Tiling入参信息类---------------
@@ -168,6 +176,8 @@ public:
     bool returnValue = false;
     uint32_t keyStride0 = 0;
     uint32_t keyDequantScaleStride0 = 0;
+    std::vector<uint32_t> keyStridesVec;
+    std::vector<uint32_t> keyDequantScaleStridesVec;
     int32_t maxSeqlenQ = -1;
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
@@ -215,6 +225,7 @@ public:
     ge::graphStatus GetGSize();
     ge::graphStatus GetAttenMaskInfo();
     ge::graphStatus GetActualSeqInfo();
+    ge::graphStatus CheckKeyContiguous() const;
     void GenerateInfo(QLIV2TilingInfo &QLIV2Info);
     ge::graphStatus ParseAndCheck(QLIV2TilingInfo &QLIV2Info);
 
@@ -248,6 +259,9 @@ public:
     ge::DataType blockTableType_ = ge::DT_FLOAT16;
     ge::DataType inputKRopeType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_FLOAT16;
+    ge::DataType valuesOutType_ = ge::DT_BF16;
+    std::vector<uint32_t> keyStridesVec_;
+    std::vector<uint32_t> keyDequantScaleStridesVec_;
 };
 
 // ---------------算子Tiling类---------------
@@ -261,5 +275,5 @@ private:
     QLIV2TilingData tilingData_;
 };
 
-}  // namespace optiling
-#endif  // QUANT_LIGHTNING_INDEXER_V2_TILING_H
+} // namespace optiling
+#endif // QUANT_LIGHTNING_INDEXER_V2_TILING_H

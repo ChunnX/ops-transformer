@@ -22,7 +22,7 @@ namespace optiling {
 namespace Mc2batch_matmul_v3_advanced {
 using namespace strategy;
 MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3AswTiling, DAV_3510, BASE);
-MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3AswTiling, DAV_RESV, BASE); //supportMmadS8S4平台
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatMulV3AswTiling, DAV_RESV, BASE); // supportMmadS8S4平台
 
 ge::graphStatus Mc2BatchMatMulV3AswTiling::DoOpTiling()
 {
@@ -37,15 +37,12 @@ ge::graphStatus Mc2BatchMatMulV3AswTiling::DoOpTiling()
 
 uint64_t Mc2BatchMatMulV3AswTiling::GetTilingKey() const
 {
-    return Mc2MatMulV3TilingKey()
-        .SetTrans(args_.isATrans, args_.isBTrans)
-        .SetModel(aswtModel_)
-        .GetTilingKey();
+    return Mc2MatMulV3TilingKey().SetTrans(args_.isATrans, args_.isBTrans).SetModel(aswtModel_).GetTilingKey();
 }
 
 uint64_t Mc2BatchMatMulV3AswTiling::GetBlockDim() const
 {
     return compileInfo_.aicNum;
 }
-}
-}
+} // namespace Mc2batch_matmul_v3_advanced
+} // namespace optiling

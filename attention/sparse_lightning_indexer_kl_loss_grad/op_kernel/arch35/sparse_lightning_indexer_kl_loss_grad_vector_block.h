@@ -774,15 +774,8 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(SLIGradR
     GlobalTensor<T> scatterAddGm[2] = {scatterAddResGm, scatterAddResGmPong};
     int64_t usedBS1Index = -1;
     int64_t bS1Index = -1;
-    int64_t bS1IndexEnd = tilingData->multiCoreParams.totalSize - 1;
-    if constexpr (HasSequsedQ) {
-        if constexpr (Layout_Q == SLILayout::TND) {
-            bS1IndexEnd = ((__gm__ int32_t *)actualSeqQlenAddr)[constInfo.bSize - 1] +
-                ((__gm__ int32_t *)usedSeqQlenAddr)[constInfo.bSize - 1] - 1;
-        } else {
-            bS1IndexEnd = bS1IndexEnd - constInfo.s1Size + ((__gm__ int32_t *)usedSeqQlenAddr)[constInfo.bSize - 1];
-        }
-    }
+    int64_t usedBS1IndexEnd = constInfo.totalNum - 1;
+
     for (int32_t idx = 0; idx < coreNum; idx++) {
         usedBS1Index = runInfo.taskId * coreNum + idx;
         // 重新获取b和S1的值
@@ -806,7 +799,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(SLIGradR
             if (idx % MODE_NUM_2 == 0) {
                 CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
             }
-            if (idx % MODE_NUM_2 == 1 || bS1Index == bS1IndexEnd) {
+            if (idx % MODE_NUM_2 == 1 || usedBS1Index == usedBS1IndexEnd) {
                 CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
             }
             continue;
@@ -828,7 +821,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(SLIGradR
             if (idx % MODE_NUM_2 == 0) {
                 CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
             }
-            if (idx % MODE_NUM_2 == 1 || bS1Index == bS1IndexEnd) {
+            if (idx % MODE_NUM_2 == 1 || usedBS1Index == usedBS1IndexEnd) {
                 CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
             }
             continue;
@@ -838,7 +831,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(SLIGradR
         GlobalTensor<T> srcGm = mm3DeterResGm[mm3GmBaseOffset +
             (runInfo.taskIdMod2 * constInfo.kSize + vCoreKOffset) * constInfo.dSizeQueryIndex];
         DeterScatterAdd(vRealKSize, srcGm, tmpBuf, vCoreKOffset, runInfo, idx, scatterAddGm[idx % MODE_NUM_2]);
-        if (idx % MODE_NUM_2 == 1 || bS1Index == bS1IndexEnd) {
+        if (idx % MODE_NUM_2 == 1 || usedBS1Index == usedBS1IndexEnd) {
             CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
         }
     }

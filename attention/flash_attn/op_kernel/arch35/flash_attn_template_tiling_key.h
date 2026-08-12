@@ -18,7 +18,6 @@
 
 #include "ascendc/host_api/tiling/template_argument.h"
 #include "../utils/flash_attn_common_def.h"
-#include "../../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h"
 #include "flash_attn_tiling_data.h"
 
 #ifndef ORIG_DTYPE_QUERY
@@ -32,6 +31,11 @@
 #ifndef ORIG_DTYPE_ATTENTION_OUT
 #define ORIG_DTYPE_ATTENTION_OUT (DT_BF16)
 #endif
+
+#define KV_STORAGE_MODE_CONTINUE 0
+#define KV_STORAGE_MODE_PA_BSND 1
+#define KV_STORAGE_MODE_PA_BNSD 2
+#define KV_STORAGE_MODE_PA_NZ 3
 
 ASCENDC_TPL_ARGS_DECL(FlashAttn,
                       // q_out layout (8-bit)

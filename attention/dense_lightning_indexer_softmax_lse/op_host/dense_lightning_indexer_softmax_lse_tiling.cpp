@@ -370,21 +370,75 @@ ge::graphStatus DenseLISoftmaxLseInfoParser::GetHeadDim()
 ge::graphStatus DenseLISoftmaxLseInfoParser::GetS1Size()
 {
     if (layout_ == DataLayout::TND) {
-        s1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ZERO);
+        return GetMaxSeqLenFromTensor(opParamInfo_.actualSeqLengthsQ.tensor, s1Size_, true);
     } else if (layout_ == DataLayout::BSND) {
         s1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
     }
-
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus DenseLISoftmaxLseInfoParser::GetS2Size()
 {
-    // 获取S2基准值
     if (layout_ == DataLayout::TND) {
-        s2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ZERO);
+        return GetMaxSeqLenFromTensor(opParamInfo_.actualSeqLengths.tensor, s2Size_, true);
     } else if (layout_ == DataLayout::BSND) {
         s2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ONE);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DenseLISoftmaxLseInfoParser::CheckSeqLenLimit()
+{
+    OP_CHECK_IF((s1Size_ > MAX_SEQ_LENGTH),
+                OP_LOGE(opName_, "qSeqLen [%lu] exceeds max supported seqLen [%u].", s1Size_, MAX_SEQ_LENGTH),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((s2Size_ > MAX_SEQ_LENGTH),
+                OP_LOGE(opName_, "kvSeqLen [%lu] exceeds max supported seqLen [%u].", s2Size_, MAX_SEQ_LENGTH),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DenseLISoftmaxLseInfoParser::GetStorageSeqSize()
+{
+    if (layout_ == DataLayout::TND) {
+        storageS1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ZERO);
+        storageS2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(DIM_IDX_ZERO);
+    } else {
+        storageS1Size_ = static_cast<uint64_t>(bSize_) * s1Size_;
+        storageS2Size_ = static_cast<uint64_t>(bSize_) * s2Size_;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DenseLISoftmaxLseInfoParser::GetMaxSeqLenFromTensor(const gert::Tensor *tensor, uint64_t &maxSeqLen,
+    bool isAccumSeq)
+{
+    if (tensor == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const int64_t *data = tensor->GetData<int64_t>();
+    if (data == nullptr) {
+        OP_LOGE(opName_, "actualSeqLengths tensor data is nullptr.");
+        return ge::GRAPH_FAILED;
+    }
+    auto shapeSize = tensor->GetShapeSize();
+    if (shapeSize <= 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (isAccumSeq) {
+        maxSeqLen = data[0];
+        for (int64_t i = 1; i < shapeSize; ++i) {
+            int64_t diff = data[i] - data[i - 1];
+            if (diff > static_cast<int64_t>(maxSeqLen)) {
+                maxSeqLen = diff;
+            }
+        }
+    } else {
+        for (int64_t i = 0; i < shapeSize; ++i) {
+            if (data[i] > static_cast<int64_t>(maxSeqLen)) {
+                maxSeqLen = data[i];
+            }
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -490,6 +544,8 @@ void DenseLISoftmaxLseInfoParser::GenerateInfo(DenseLISoftmaxLseTilingInfo &dens
     denseLISoftmaxTilingInfo.n2Size = n2Size_;
     denseLISoftmaxTilingInfo.s1Size = s1Size_;
     denseLISoftmaxTilingInfo.s2Size = s2Size_;
+    denseLISoftmaxTilingInfo.storageS1Size = storageS1Size_;
+    denseLISoftmaxTilingInfo.storageS2Size = storageS2Size_;
     denseLISoftmaxTilingInfo.gSize = gSize_;
 
     denseLISoftmaxTilingInfo.inputQType = inputQType_;
@@ -520,7 +576,8 @@ ge::graphStatus DenseLISoftmaxLseInfoParser::ParseAndCheck(DenseLISoftmaxLseTili
     }
 
     if (ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetS1Size() || ge::GRAPH_SUCCESS != GetHeadDim() ||
-        ge::GRAPH_SUCCESS != GetS2Size()) {
+        ge::GRAPH_SUCCESS != GetS2Size() || ge::GRAPH_SUCCESS != CheckSeqLenLimit() ||
+        ge::GRAPH_SUCCESS != GetStorageSeqSize()) {
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != ValidateInputShapesMatch()) {
@@ -544,8 +601,7 @@ ge::graphStatus DenseLightningIndexerSoftmaxLseTiling::DoTiling(DenseLISoftmaxLs
     // -------------set workspacesize-----------------
     uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     workspaceSize += M_BASE_SIZE * S2_BASE_SIZE * MM1_RES_ELEM_SIZE * DOUBLE_BUFFER * aicNum;
-    uint64_t maxS2Size = tilingInfo->s2Size > MAX_KEY_SEQ_LENGTH ? MAX_KEY_SEQ_LENGTH : tilingInfo->s2Size;
-    uint64_t s2AlignSize = (maxS2Size + S2_BASE_SIZE - 1) / S2_BASE_SIZE * S2_BASE_SIZE;
+    uint64_t s2AlignSize = (tilingInfo->s2Size + S2_BASE_SIZE - 1) / S2_BASE_SIZE * S2_BASE_SIZE;
     workspaceSize += aicNum * S1_BASE_SIZE * s2AlignSize * MM1_RES_ELEM_SIZE;
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
@@ -554,6 +610,8 @@ ge::graphStatus DenseLightningIndexerSoftmaxLseTiling::DoTiling(DenseLISoftmaxLs
     tilingData_.set_bSize(tilingInfo->bSize);
     tilingData_.set_s2Size(tilingInfo->s2Size);
     tilingData_.set_s1Size(tilingInfo->s1Size);
+    tilingData_.set_storageS1Size(tilingInfo->storageS1Size);
+    tilingData_.set_storageS2Size(tilingInfo->storageS2Size);
     tilingData_.set_gSize(tilingInfo->gSize);
     tilingData_.set_sparseMode(tilingInfo->sparseMode);
     tilingData_.set_preTokens(tilingInfo->preTokens);

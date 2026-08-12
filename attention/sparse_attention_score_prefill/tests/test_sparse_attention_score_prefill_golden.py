@@ -193,9 +193,10 @@ def _softmax_p_from_scores_fp32(s_fp32):
   return p_bf16, row_max_fp32, row_sum_fp32
 
 
-def _bf16_block_qk_sm_pv(q_group_bf16, k_bf16, v_bf16, scale_value, q, h, t):
+def _bf16_block_qk_sm_pv(q_group_bf16, k_bf16, v_bf16, scale_value, q, h, t, inner_precise):
   """Single KV block: QK -> SM -> PV. Returns unnormalized O_partial, rowMax, rowSum."""
-  s_fp32 = torch.matmul(q_group_bf16.float(), k_bf16.float().t()) * scale_value
+  s_bf16 = torch.matmul(q_group_bf16.float(), k_bf16.float().t()).to(torch.bfloat16)
+  s_fp32 = (s_bf16 * torch.tensor([scale_value], dtype=torch.bfloat16)).to(torch.float32)
   #if q ==0 and h == 0 and t == 0:
   #  print("s_fp32:", torch.matmul(q_group_bf16.float(), k_bf16.float().t()))
   p_bf16, row_max_fp32, row_sum_fp32 = _softmax_p_from_scores_fp32(s_fp32)
@@ -210,6 +211,8 @@ def _bf16_block_qk_sm_pv(q_group_bf16, k_bf16, v_bf16, scale_value, q, h, t):
   #print("s_fp32:", torch.matmul(q_group_bf16.float(), k_bf16.float().t())[0][:128])
   #print("p_bf16:", p_bf16.shape, p_bf16[0][:128])
   o_unnorm_fp32 = torch.matmul(p_bf16.float(), v_bf16.float())
+  if inner_precise == 1:
+    o_unnorm_fp32 = o_unnorm_fp32.to(torch.bfloat16).to(torch.float32)
   #if q ==0 and h == 0 and t == 0:
   #  print("o_unnorm_fp32:", o_unnorm_fp32)
   row_max_fp32 = torch.where(
@@ -617,7 +620,7 @@ def decode_select_idx_to_prefill_global(select_idx_decode, q_seqlens, kv_seqlens
 def cpu_golden_prefill_phase1(
     query, key, value, k2q_row_ptr, k2q_q_indices, k2q_slot_indices,
     block_table, actual_seq_lengths, actual_seq_lengths_kv,
-    block_size, top_k, scale_value,
+    block_size, top_k, scale_value, inner_precise,
 ):
   """
   Phase1 golden: QK + SM + PV only; write workspace partials (O_partial, max, sum).
@@ -708,7 +711,7 @@ def cpu_golden_prefill_phase1(
         continue
 
       o_partial, row_max, row_sum = _bf16_block_qk_sm_pv(
-          q_row_bf16, k_block[:causal_valid_len], v_block[:causal_valid_len], scale_value, q_token, kv_head_idx, slot_k)
+          q_row_bf16, k_block[:causal_valid_len], v_block[:causal_valid_len], scale_value, q_token, kv_head_idx, slot_k, inner_precise)
 
       ws_o[q_token, kv_head_idx, slot_k] = o_partial
       ws_max[q_token, kv_head_idx, slot_k] = row_max
@@ -844,7 +847,7 @@ def cpu_golden_prefill_qcentric_bf16(
 def cpu_golden_prefill_bf16(
     query, key, value, k2q_row_ptr, k2q_q_indices, k2q_slot_indices,
     block_table, actual_seq_lengths, actual_seq_lengths_kv,
-    block_size, top_k, scale_value
+    block_size, top_k, scale_value, inner_precise=4
 ):
   """Full two-phase prefill golden: Phase1 QK/SM/PV -> workspace; Phase2 IFA combine."""
   kv_heads = key.shape[2]
@@ -853,7 +856,7 @@ def cpu_golden_prefill_bf16(
       query, key, value,
       k2q_row_ptr, k2q_q_indices, k2q_slot_indices,
       block_table, actual_seq_lengths, actual_seq_lengths_kv,
-      block_size, top_k, scale_value)
+      block_size, top_k, scale_value, inner_precise)
 
   group_size = query.shape[1] // kv_heads
   d = query.shape[2]

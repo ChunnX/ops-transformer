@@ -1,12 +1,12 @@
 /**
-* Copyright (c) 2026 Huawei Technologies Co., Ltd.
-* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-* CANN Open Software License Agreement Version 2.0 (the "License").
-* Please refer to the License for details. You may not use this file except in compliance with the License.
-* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-* See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file all_reduce_fit_balance_tiling.cpp
@@ -38,12 +38,13 @@ void MMAllReduceFitBalanceTiling::EstimateMMCommTime()
     ratioCalcComm_ = (std::max(totalTpTime, totalMatmulTime) / std::min(totalTpTime, totalMatmulTime));
 
     uint64_t sizeOfComm = mmInfo_.mValue * mmInfo_.nValue * commPerf_.GetCommDTypeSize() / ONE_MBYTE;
-    OP_LOGD("MatmulAllReduce", "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, sizeOfComm %lu, "
-        "totalMatmulTime %f, totalCommTime %f, minTileSize %lu, mAlignLen %lu, commTimeFactor_ %f, "
-        "rankDim_ %lu, rankTile %lu",
-        mmInfo_.mValue, mmInfo_.nValue, mmInfo_.kValue, matmulPerf_.cubeUtil_, sizeOfComm,
-        totalMatmulTime, totalTpTime, tilingM_.GetMinLen(), tilingM_.GetAlignLength(), commPerf_.commTimeFactor_,
-        rankDim_, rankTileNum_);
+    OP_LOGD("MatmulAllReduce",
+            "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, sizeOfComm %lu, "
+            "totalMatmulTime %f, totalCommTime %f, minTileSize %lu, mAlignLen %lu, commTimeFactor_ %f, "
+            "rankDim_ %lu, rankTile %lu",
+            mmInfo_.mValue, mmInfo_.nValue, mmInfo_.kValue, matmulPerf_.cubeUtil_, sizeOfComm, totalMatmulTime,
+            totalTpTime, tilingM_.GetMinLen(), tilingM_.GetAlignLength(), commPerf_.commTimeFactor_, rankDim_,
+            rankTileNum_);
 }
 
 uint64_t MMAllReduceFitBalanceTiling::Align256(uint64_t value) const
@@ -74,7 +75,7 @@ void MMAllReduceFitBalanceTiling::SetShortTileLen()
     tilingM_.SetMinLenByMax(matmulPerf_.InverseMatmulTime(MM_EXPANSION_TIME, rankTileNum_));
     // Encourage larger cutLen if the matrix size is greater than the L2 cache size
     uint64_t l2UseSize = mmInfo_.mValue * mmInfo_.kValue * mmInfo_.inMatrixADtypeSize +
-        mmInfo_.kValue * mmInfo_.nValue * mmInfo_.inMatrixBDtypeSize;
+                         mmInfo_.kValue * mmInfo_.nValue * mmInfo_.inMatrixBDtypeSize;
     if (l2UseSize > L2_CACHE_SIZE) {
         tilingM_.SetMinLenByMax(tilingM_.GetMinLen() * TWO);
     }
@@ -125,7 +126,8 @@ void MMAllReduceFitBalanceTiling::AlignLongTileLen()
     }
     uint64_t baseM = matmulPerf_.GetBaseM();
     if (baseM == 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MMAllReduceFitBalanceTiling", "baseM", std::to_string(baseM).c_str(), "The value of baseM cannot be 0");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MMAllReduceFitBalanceTiling", "baseM", std::to_string(baseM).c_str(),
+                                              "The value of baseM cannot be 0");
         return;
     }
     if (tilingM_.cutRes.longTileLen % baseM == 0) {
@@ -137,7 +139,7 @@ void MMAllReduceFitBalanceTiling::AlignLongTileLen()
     if (alignedLongLen == 0) {
         alignedLongLen = baseM;
     }
-    
+
     // Redistribute tiles accounting for numLongTile
     tilingM_.cutRes.numLongTile = totalLen / alignedLongLen;
     uint64_t remainLen = totalLen % alignedLongLen;
@@ -150,16 +152,15 @@ void MMAllReduceFitBalanceTiling::AlignLongTileLen()
     }
     tilingM_.cutRes.longTileLen = alignedLongLen;
     tilingM_.cutRes.totalTileCnt = tilingM_.cutRes.numLongTile + tilingM_.cutRes.numShortTile;
-    
+
     // When numLongTile == 1 and shortTileLen >= longTileLen, swap them
-    if (tilingM_.cutRes.numLongTile == 1U &&
-        tilingM_.cutRes.numShortTile == 1U &&
+    if (tilingM_.cutRes.numLongTile == 1U && tilingM_.cutRes.numShortTile == 1U &&
         tilingM_.cutRes.shortTileLen >= tilingM_.cutRes.longTileLen) {
         std::swap(tilingM_.cutRes.shortTileLen, tilingM_.cutRes.longTileLen);
     }
-    
+
     OP_LOGD("MMAllReduceFitBalanceTiling",
             "Final: longTileLen %lu, numLongTile %lu, shortTileLen %lu, numShortTile %lu, baseM %lu",
-            tilingM_.cutRes.longTileLen, tilingM_.cutRes.numLongTile,
-            tilingM_.cutRes.shortTileLen, tilingM_.cutRes.numShortTile, baseM);
+            tilingM_.cutRes.longTileLen, tilingM_.cutRes.numLongTile, tilingM_.cutRes.shortTileLen,
+            tilingM_.cutRes.numShortTile, baseM);
 }

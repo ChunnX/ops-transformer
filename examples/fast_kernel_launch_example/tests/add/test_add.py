@@ -11,8 +11,6 @@
 # ----------------------------------------------------------------------------
 
 import torch
-import torch_npu
-import ascend_ops
 import pytest
 
 
@@ -37,7 +35,9 @@ def test_add_interface_exist():
     # PyTorch operator schema and the C++ signature/registration that can
     # prevent the operator from being visible in torch.ops.ascend_ops.
     print(torch.ops.ascend_ops.add)
-    assert hasattr(torch.ops.ascend_ops, "add"), "The 'add' operator is not registered in the 'torch.ops.ascend_ops' namespace."
+    assert hasattr(torch.ops.ascend_ops, "add"), (
+        "The 'add' operator is not registered in the 'torch.ops.ascend_ops' namespace."
+    )
 
 
 SHAPES = [
@@ -94,12 +94,14 @@ def test_add_operator(shape, dtype):
     result = result_npu.cpu()
 
     if dtype in [torch.int32]:
-        assert torch.equal(result, expected), \
-            f"Add failed for shape {shape}, dtype {dtype}. " \
+        assert torch.equal(result, expected), (
+            f"Add failed for shape {shape}, dtype {dtype}. "
             f"Expected {expected}, but got {result}"
+        )
     else:
-        assert torch.allclose(result, expected, rtol=1e-4, atol=1e-4), \
-            f"Add failed for shape {shape}, dtype {dtype}. " \
+        assert torch.allclose(result, expected, rtol=1e-4, atol=1e-4), (
+            f"Add failed for shape {shape}, dtype {dtype}. "
             f"Max diff: {torch.max(torch.abs(result - expected)):.6f}"
+        )
 
     print(f"✓ Test passed: shape={shape}, dtype={dtype}")

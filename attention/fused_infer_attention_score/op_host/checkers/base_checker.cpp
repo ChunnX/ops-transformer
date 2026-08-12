@@ -32,7 +32,7 @@ ge::graphStatus BaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc
         const auto &it = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(it == DTYPE_SUPPORT_MAP.end(),
                     OP_LOGE("FusedInferAttentionScore",
-                            "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
+                            "%s dtype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
                     return ge::GRAPH_FAILED);
         auto &expectDtypeList = it->second;
         if (std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end()) {
@@ -96,7 +96,7 @@ std::string BaseChecker::DataTypeToSerialString(ge::DataType type) const
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("FusedInferAttentionScore", "datatype %d is not supported", type);
+        OP_LOGE("FusedInferAttentionScore", "dtype %d is not supported", type);
         return "UNDEFINED";
     }
 }

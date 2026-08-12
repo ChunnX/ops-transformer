@@ -40,19 +40,21 @@ constexpr int32_t ANTI_REG_PRIORITY = 8;
 constexpr int32_t ASW_PRIORITY = 9;
 
 REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2TilingSplitK, SPLIT_K_PRIORITY);
-REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2TilingMsdGroup, MSD_GROUP_PRIORITY);
+REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2TilingMsdGroup,
+                             MSD_GROUP_PRIORITY);
 REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2Msd, MSD_PRIORITY);
-REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2CustomNzSplitK, CUSTOM_SPLITK_PRIORITY);
+REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2CustomNzSplitK,
+                             CUSTOM_SPLITK_PRIORITY);
 REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2TilingCustom, CUSTOM_PRIORITY);
 REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2TilingFixpipe, FIXPIPE_PRIORITY);
 REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2WeightNz, WEIGHT_NZ_PRIORITY);
 
-static ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFunc(gert::TilingContext* context)
+static ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFunc(gert::TilingContext *context)
 {
     platform_ascendc::SocVersion socVersion;
     bool supportMmadS8S4 = false;
     OP_LOGE_IF(context == nullptr, ge::GRAPH_FAILED, "Mc2WeightQuantBatchMatmulV2", "tilingContext is null");
-    auto compileInfoPtr = reinterpret_cast<const Mc2WeightQuantBatchMatmulV2CompileInfo*>(context->GetCompileInfo());
+    auto compileInfoPtr = reinterpret_cast<const Mc2WeightQuantBatchMatmulV2CompileInfo *>(context->GetCompileInfo());
     if (compileInfoPtr == nullptr) {
         auto platformInfoPtr = context->GetPlatformInfo();
         OP_LOGE_IF(platformInfoPtr == nullptr, ge::GRAPH_FAILED, context->GetNodeName(), "platformInfoPtr is null");
@@ -73,19 +75,19 @@ static ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFunc(gert::TilingContext
             OP_TILING_CHECK(
                 wqbmmv2Checker.Check() != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "parameters",
-                    std::to_string(static_cast<int>(wqbmmv2Checker.Check())).c_str(),
-                    "The value of parameters must be valid."),
+                                                      std::to_string(static_cast<int>(wqbmmv2Checker.Check())).c_str(),
+                                                      "The value of parameters must be valid."),
                 return ge::GRAPH_FAILED);
             std::vector<int32_t> registerList = {ASW_PRIORITY};
             return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
         } else {
             OP_LOGI(context->GetNodeName(), "Platform not support Intrinsic_mmad s8s4");
-            OP_TILING_CHECK(
-                Mc2CheckPara(context, socVersion) != ge::GRAPH_SUCCESS,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "parameters",
-                    std::to_string(static_cast<int>(Mc2CheckPara(context, socVersion))).c_str(),
-                    "The value of parameters must be valid."),
-                return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(Mc2CheckPara(context, socVersion) != ge::GRAPH_SUCCESS,
+                            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                                context->GetNodeName(), "parameters",
+                                std::to_string(static_cast<int>(Mc2CheckPara(context, socVersion))).c_str(),
+                                "The value of parameters must be valid."),
+                            return ge::GRAPH_FAILED);
             if (socVersion != platform_ascendc::SocVersion::ASCEND910B) {
                 OP_LOGI(context->GetNodeName(), "Platform support Intrinsic_data_move_l12bt bf16");
                 std::vector<int32_t> registerList = {ADAPTIVE_SPLIT_PRIORITY, ANTI_REG_PRIORITY};
@@ -102,7 +104,7 @@ static ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFunc(gert::TilingContext
     }
 }
 
-static ge::graphStatus Mc2TilingParseForWeightQuantBatchMatmulV2(gert::TilingParseContext* context)
+static ge::graphStatus Mc2TilingParseForWeightQuantBatchMatmulV2(gert::TilingParseContext *context)
 {
     OP_LOGE_IF(context == nullptr, ge::GRAPH_FAILED, "Mc2WeightQuantBatchMatmulV2", "tilingParseContext is null");
     auto platformInfoPtr = context->GetPlatformInfo();
@@ -132,5 +134,6 @@ static ge::graphStatus Mc2TilingParseForWeightQuantBatchMatmulV2(gert::TilingPar
 
 IMPL_OP_OPTILING(Mc2WeightQuantBatchMatmulV2)
     .Tiling(Mc2WeightQuantBatchMatmulV2TilingFunc)
-    .TilingParse<Mc2WeightQuantBatchMatmulV2CompileInfo>(Mc2TilingParseForWeightQuantBatchMatmulV2); // 向框架注册入口函数
+    .TilingParse<Mc2WeightQuantBatchMatmulV2CompileInfo>(
+        Mc2TilingParseForWeightQuantBatchMatmulV2); // 向框架注册入口函数
 } // namespace optiling

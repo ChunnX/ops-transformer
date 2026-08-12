@@ -288,14 +288,14 @@ public:
     uint32_t sfmgDyBufferLen;
     uint32_t sfmgYBufferLen;
     uint32_t sfmgOutputBufferLen;
-    int64_t singleLoopNBurstNum;
-    int64_t normalCoreLoopTimes;
-    int64_t tailCoreLoopTimes;
-    int64_t normalCoreLastLoopNBurstNum;
-    int64_t tailCoreLastLoopNBurstNum;
-    int64_t normalCoreNBurstNums;
-    int64_t tailCoreNBurstNums;
-    int64_t normalAxisSize;
+    uint64_t singleLoopNBurstNum;
+    uint64_t normalCoreLoopTimes;
+    uint64_t tailCoreLoopTimes;
+    uint64_t normalCoreLastLoopNBurstNum;
+    uint64_t tailCoreLastLoopNBurstNum;
+    uint64_t normalCoreNBurstNums;
+    uint64_t tailCoreNBurstNums;
+    uint64_t normalAxisSize;
 
     uint64_t get_maskSingleCoreNum() const { return maskSingleCoreNum; }
     uint64_t get_qPreBlockFactor() const { return qPreBlockFactor; }
@@ -326,14 +326,14 @@ public:
     uint32_t get_sfmgDyBufferLen() const {return sfmgDyBufferLen;}
     uint32_t get_sfmgYBufferLen() const {return sfmgYBufferLen;}
     uint32_t get_sfmgOutputBufferLen() const {return sfmgOutputBufferLen;}
-    int64_t get_singleLoopNBurstNum() const {return singleLoopNBurstNum;}
-    int64_t get_normalCoreLoopTimes() const {return normalCoreLoopTimes;}
-    int64_t get_tailCoreLoopTimes() const {return tailCoreLoopTimes;}
-    int64_t get_normalCoreLastLoopNBurstNum() const {return normalCoreLastLoopNBurstNum;}
-    int64_t get_tailCoreLastLoopNBurstNum() const {return tailCoreLastLoopNBurstNum;}
-    int64_t get_normalCoreNBurstNums() const {return normalCoreNBurstNums;}
-    int64_t get_tailCoreNBurstNums() const {return tailCoreNBurstNums;}
-    int64_t get_normalAxisSize() const {return normalAxisSize;}
+    uint64_t get_singleLoopNBurstNum() const {return singleLoopNBurstNum;}
+    uint64_t get_normalCoreLoopTimes() const {return normalCoreLoopTimes;}
+    uint64_t get_tailCoreLoopTimes() const {return tailCoreLoopTimes;}
+    uint64_t get_normalCoreLastLoopNBurstNum() const {return normalCoreLastLoopNBurstNum;}
+    uint64_t get_tailCoreLastLoopNBurstNum() const {return tailCoreLastLoopNBurstNum;}
+    uint64_t get_normalCoreNBurstNums() const {return normalCoreNBurstNums;}
+    uint64_t get_tailCoreNBurstNums() const {return tailCoreNBurstNums;}
+    uint64_t get_normalAxisSize() const {return normalAxisSize;}
 
     void set_maskSingleCoreNum(uint64_t val) { maskSingleCoreNum = val; }
     void set_qPreBlockFactor(uint64_t val) { qPreBlockFactor = val; }
@@ -364,14 +364,14 @@ public:
     void set_sfmgDyBufferLen(uint32_t val) { sfmgDyBufferLen = val; }
     void set_sfmgYBufferLen(uint32_t val) { sfmgYBufferLen = val; }
     void set_sfmgOutputBufferLen(uint32_t val) {sfmgOutputBufferLen = val;}
-    void set_singleLoopNBurstNum(int64_t val) { singleLoopNBurstNum = val; }
-    void set_normalCoreLoopTimes(int64_t val) { normalCoreLoopTimes = val; }
-    void set_tailCoreLoopTimes(int64_t val) { tailCoreLoopTimes = val; }
-    void set_normalCoreLastLoopNBurstNum(int64_t val) { normalCoreLastLoopNBurstNum = val; }
-    void set_tailCoreLastLoopNBurstNum(int64_t val) { tailCoreLastLoopNBurstNum = val; }
-    void set_normalCoreNBurstNums(int64_t val) { normalCoreNBurstNums = val; }
-    void set_tailCoreNBurstNums(int64_t val) { tailCoreNBurstNums = val; }
-    void set_normalAxisSize(int64_t val) { normalAxisSize = val; }
+    void set_singleLoopNBurstNum(uint64_t val) { singleLoopNBurstNum = val; }
+    void set_normalCoreLoopTimes(uint64_t val) { normalCoreLoopTimes = val; }
+    void set_tailCoreLoopTimes(uint64_t val) { tailCoreLoopTimes = val; }
+    void set_normalCoreLastLoopNBurstNum(uint64_t val) { normalCoreLastLoopNBurstNum = val; }
+    void set_tailCoreLastLoopNBurstNum(uint64_t val) { tailCoreLastLoopNBurstNum = val; }
+    void set_normalCoreNBurstNums(uint64_t val) { normalCoreNBurstNums = val; }
+    void set_tailCoreNBurstNums(uint64_t val) { tailCoreNBurstNums = val; }
+    void set_normalAxisSize(uint64_t val) { normalAxisSize = val; }
 };
 
 class PostParamsRegbase {

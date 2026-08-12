@@ -15,8 +15,8 @@
 
 namespace l0op {
 
-bool MmCheckHitV3Shape(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias,
-                       const bool transposeX1, const bool transposeX2, op::Format mat2_format, bool supportSplitK);
+bool MmCheckHitV3Shape(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, const bool transposeX1,
+                       const bool transposeX2, op::Format mat2_format, bool supportSplitK);
 }
 
-#endif  // PTA_NPU_OP_API_INC_LEVEL0_OP_MATMUL_V2TOV3_H_
+#endif // PTA_NPU_OP_API_INC_LEVEL0_OP_MATMUL_V2TOV3_H_

@@ -16,27 +16,27 @@
 - **算子功能**：MoE的permute计算，根据索引indices将tokens广播并排序。
 - **计算公式**：
   - paddedMode为`false`时
-  
+
     $$
-    sortedIndicesFirst=argSort(Indices)
+    sortedIndicesFirst=argSort(indices)
     $$
-  
+
     $$
     sortedIndicesOut=argSort(sortedIndicesFirst)
     $$
-  
+
     $$
     permuteTokens[sortedIndicesFirst[i]]=tokens[i//topK]
     $$
-  
+
   - paddedMode为`true`时
-  
+
     $$
     permuteTokensOut[i]=tokens[Indices[i]]
     $$
-  
+
     $$
-    sortedIndicesOut=Indices
+    sortedIndicesOut=indices
     $$
 
 ## 参数说明
@@ -62,7 +62,7 @@
     <tr>
       <td>indices</td>
       <td>输入</td>
-      <td>输入indices，对应公式中的`Indices`。</td>
+      <td>输入indices，对应公式中的`Indices`。tokens数据类型为INT8时，取值范围为`[0, 10240)`。</td>
       <td>INT32、INT64</td>
       <td>ND</td>
     </tr>
@@ -94,12 +94,14 @@
       <td>INT32</td>
       <td>ND</td>
     </tr>
-    
+
   </tbody></table>
 
 ## 约束说明
 
-- indices要求元素个数小于`16777215`，值大于等于`0`小于`16777215`(单点支持int32或int64的最大或最小值，其余值不在范围内排序结果不正确)。
+- indices要求元素个数小于`16777215`，值大于等于`0`小于`16777215`(单点支持int32或int64的最大或最小值，其余值不在范围内排序结果不正确)。在Ascend 950上调用`aclnnMoeTokenPermute`且tokens数据类型为INT8时，indices表示expert ID，取值范围为`[0, 10240)`。
+- 调用`aclnnMoeTokenPermute`时，tokens必须为2D，indices必须为1D或2D。
+- 调用`aclnnMoeTokenPermuteV2`时，tokens必须为2D，indices必须为1D或2D。
 - 不支持paddedMode为`true`。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK小于等于512。
 - <term>Ascend 950PR/Ascend 950DT</term>：

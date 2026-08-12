@@ -41,47 +41,48 @@ extern "C" {
  * @param [in] quantMode: 计算可选输入，int，量化模式。
  * @param [in] globalBs: 计算可选输入，int。EP域全局的batch size大小。
  * @param [in] expertTokenNumsType: 计算可选输入，int。输出expertTokenNums中的值语义类型。
- * @param [out] expandX: 计算输出，Tensor，必选输出，数据类型支持float16, bfloat16, int8，仅支持2维，数据格式支持ND。根据
-    expertIdx进行扩展过的token特征。
- * @param [out] dynamicScales: 计算输出，Tensor，必选输出，数据类型float32，仅支持1维，数据格式支持ND。quantMode为0时输出为空。
- * @param [out] expandIdx: 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。给同一专家发送的token个数。
- * @param [out] expertTokenNums: 计算输出，Tensor，必选输出，数据类型int64，仅支持1维，数据格式支持ND。每个专家收到的token个数。
- * @param [out] epRecvCounts: 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。表示从各卡接收的token数。
- * @param [out] tpRecvCounts: 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。无tp通信域时输出为空。
- * @param [out] expandScales: 计算输出，Tensor，必选输出，数据类型为float32，仅支持1维，数据格式支持ND。输出的weights，每个
+ * @param [out] expandX: 计算输出，Tensor，必选输出，数据类型支持float16, bfloat16,
+ int8，仅支持2维，数据格式支持ND。根据 expertIdx进行扩展过的token特征。
+ * @param [out] dynamicScales:
+ 计算输出，Tensor，必选输出，数据类型float32，仅支持1维，数据格式支持ND。quantMode为0时输出为空。
+ * @param [out] expandIdx:
+ 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。给同一专家发送的token个数。
+ * @param [out] expertTokenNums:
+ 计算输出，Tensor，必选输出，数据类型int64，仅支持1维，数据格式支持ND。每个专家收到的token个数。
+ * @param [out] epRecvCounts:
+ 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。表示从各卡接收的token数。
+ * @param [out] tpRecvCounts:
+ 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。无tp通信域时输出为空。
+ * @param [out] expandScales:
+ 计算输出，Tensor，必选输出，数据类型为float32，仅支持1维，数据格式支持ND。输出的weights，每个
     输出token附带有topK个weight信息。
  * @param [out] workspaceSize: 出参，返回需要在npu device侧申请的workspace大小。
  * @param [out] executor: 出参，返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回值，返回状态码
  *
  */
-ACLNN_API aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSize(const aclTensor* x, const aclTensor* expertIds,
-    const aclTensor* scales, const aclTensor* xActiveMask,
-    const aclTensor* expertScales,
-    const char* groupEp, int64_t epWorldSize, int64_t epRankId,
-    int64_t moeExpertNum, const char* groupTp, int64_t tpWorldSize,
-    int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, 
-    int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs,
-    int64_t expertTokenNumsType,
-    aclTensor* expandX, aclTensor* dynamicScales,
-    aclTensor* expandIdx, aclTensor* expertTokenNums,
-    aclTensor* epRecvCounts, aclTensor* tpRecvCounts,
-    aclTensor* expandScales, uint64_t* workspaceSize, 
-    aclOpExecutor** executor);
+ACLNN_API aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSize(
+    const aclTensor *x, const aclTensor *expertIds, const aclTensor *scales, const aclTensor *xActiveMask,
+    const aclTensor *expertScales, const char *groupEp, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum,
+    const char *groupTp, int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum,
+    int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs, int64_t expertTokenNumsType, aclTensor *expandX,
+    aclTensor *dynamicScales, aclTensor *expandIdx, aclTensor *expertTokenNums, aclTensor *epRecvCounts,
+    aclTensor *tpRecvCounts, aclTensor *expandScales, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnMoeDistributeDispatch的第二段接口，用于执行计算。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
- * @param [in] workspace_size: 在npu device侧申请的workspace大小，由第一段接口aclnnMoeDistributeDispatchGetWorkspaceSize获取。
+ * @param [in] workspace_size: 在npu
+ * device侧申请的workspace大小，由第一段接口aclnnMoeDistributeDispatchGetWorkspaceSize获取。
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnMoeDistributeDispatch(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+ACLNN_API aclnnStatus aclnnMoeDistributeDispatch(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                  aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_MOE_DISTRIBUTE_DISPATCH_
+#endif // OP_API_INC_MOE_DISTRIBUTE_DISPATCH_

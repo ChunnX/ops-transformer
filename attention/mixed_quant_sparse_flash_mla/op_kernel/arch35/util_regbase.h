@@ -23,15 +23,18 @@ using AscendC::QuePosition;
 
 namespace regbaseutil {
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
+enum class VselrIndexEnum {GT_64_AND_LTE_128_INDEX = 0, GT_0_AND_LTE_64_INDEX = 1};
 
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \
     int64_t s1oIdx; \
     int64_t n2oIdx; \
     int64_t goIdx; \
+    int64_t gSplitSize;            /* split-G模式下当前AIC处理的G轴行数 */ \
     int64_t s2LoopEndIdx;          /* S2方向的循环控制信息 souter层确定 */ \
     int64_t s2LineStartIdx = 0;    /* S2方向按行的起始位置 */ \
     int64_t s2LineOriEndIdx;          /* S2方向按行的结束位置 */ \
+    int64_t s2CmpLineStartIdx = 0; \
     int64_t s2CmpLineEndIdx; \
     int64_t s2LineCmpEndIdx; \
     /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */ \
@@ -69,6 +72,13 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t qSNumInOneBlock;
     int64_t oriKvLoopEndIdx;
     int64_t cmpKvLoopEndIdx;
+    int64_t firstFdDataWorkspaceIdx = 0;
+    bool isCrossCoreSplit = false;
+    int64_t s2SplitIdx = 0;
+    bool isFirstS2SplitCore = true;
+    uint32_t oriSparseBlockCount;
+    uint32_t cmpSparseBlockCount;
+    int64_t baseBlockNumPerReductionBlock = 1; // s2方向一个规约块有几个基本块
 };
 
 #define COMMON_RUN_INFO \
@@ -97,7 +107,6 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t multiCoreInnerIdx = 0; \
     int64_t attentionOutOffset; \
     int32_t actualS1Size; /* 非TND场景=总s1Size, Tnd场景下当前batch对应的s1 */ \
-    int32_t actualS2OriSize; /* ori_kv的真实使用长度 */ \
     int32_t actualS2CmpSize; /* cmp_kv的真实使用长度 */ \
     int32_t cmpResidual; /* cmp的余数，用于mask计算 */ \
     int64_t preTokensPerBatch; /* vector2 左上顶点的pretoken */ \
@@ -110,6 +119,9 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t sOuterOffset; \
     int64_t mOuterOffset; \
     bool    isCmp; \
+    bool    isCrossCoreSplit = false; \
+    int64_t s2SplitIdx = 0; \
+    bool    isFirstS2SplitCore = true; \
 
 struct RunInfo {
     COMMON_RUN_INFO;
@@ -120,6 +132,13 @@ struct RunInfo {
     int64_t qSNumInOneBlock;
     int64_t oriKvLoopEndIdx;
     int64_t cmpKvLoopEndIdx;
+    int64_t firstFdDataWorkspaceIdx = 0;
+    uint32_t oriSparseBlockCount;
+    uint32_t cmpSparseBlockCount;
+    bool isFirstBase = true;
+    bool isLastBase = true;
+    bool needReduce = false;
+    int64_t reduceBlockId = 0;
 };
 
 #define COMMON_CONST_INFO \
@@ -130,7 +149,7 @@ struct RunInfo {
     uint32_t s2BaseSize; \
     int64_t dSize; /* query d 512 */ \
     int64_t dSizeV; /* key d 512 */ \
-    int64_t dSizeVInput; /* key inpue d 640 = rope + nope + scale + pad */ \
+    int64_t dSizeVInput; /* key input Dsize 608 = rope + nope + scale + pad */ \
     int64_t dSizeNope; /* key nope d 448 */ \
     int64_t dSizeRope; /* key rope d 64 */ \
     int64_t tileSize; /* 64 */ \
@@ -139,6 +158,7 @@ struct RunInfo {
     int64_t n2Size; \
     int64_t s1Size; /* s1总大小 */ \
     int64_t s2Size; /* s2总大小 */ \
+    int64_t cmpS2Size; \
     /* 轴的乘积 */ \
     int64_t s1D; \
     int64_t gS1D; \
@@ -192,12 +212,15 @@ struct RunInfo {
     int64_t attentionOutStride; \
     uint32_t aivIdx; \
     uint8_t subBlockIdx;\
+    bool hasOriTopkLength; \
+    bool hasCmpTopkLength; \
 
 #define INFER_CONST_INFO \
     /* 推理 */ \
     bool isActualLenDimsNull; /* 判断是否有actualseq */ \
     bool isSoftmaxLseEnable; \
-    uint32_t sparseBlockCount; \
+    uint32_t oriSparseBlockCount; \
+    uint32_t cmpSparseBlockCount; \
     uint32_t actualSeqLenSize; /* 用户输入的actualseq的长度 */ \
     /* service mm1 mm2 pageAttention */ \
     uint32_t oriBlockSize; \
@@ -212,6 +235,8 @@ struct RunInfo {
     float softmaxScale; \
     uint32_t oriKvStride; \
     uint32_t cmpKvStride; \
+    uint32_t oriMaskMode; \
+    uint32_t cmpMaskMode
 
 struct ConstInfo{
     COMMON_CONST_INFO;

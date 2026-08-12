@@ -25,7 +25,7 @@ constexpr uint32_t FP16_DATASIZE = 2;
 constexpr uint32_t ALIGN32 = 32;
 constexpr uint32_t ALIGN16 = 16;
 constexpr uint32_t ARR_LENGTH = 128;
-constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4;  // 只通信不计算
-}  // namespace optiling
+constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4; // 只通信不计算
+} // namespace optiling
 
 #endif

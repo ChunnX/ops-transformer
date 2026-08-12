@@ -39,8 +39,17 @@ void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
   auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
                          *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
-  for (int64_t i = 0; i < size; i++) {
-    LOG_PRINT("result[%ld] is: %d\n", i, resultData[i]);
+  auto batchKv = shape[0];
+  auto batchSeq = shape[2];
+  // Print by [B, S]
+  uint64_t bIdx = 0;
+  uint64_t sIdx = 0;
+  for (uint64_t i = 0; i < size; i++) {
+    LOG_PRINT("result[%lu] is: %d\n", i, resultData[i]);
+    // Fast diagonal traverse
+    bIdx = (bIdx >= batchKv) ? batchKv : (bIdx + 1);
+    sIdx = (sIdx >= batchSeq) ? batchSeq : (sIdx + 1);
+    i += bIdx * batchKv * batchSeq + sIdx * batchSeq;
   }
 }
 
@@ -87,25 +96,26 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
   // 2. 构造输入与输出，需要根据API的接口定义构造
-  std::vector<int64_t> kvShape = {181,1,1,576};
+  uint32_t batchKv = 32;
+  std::vector<int64_t> kvShape = {batchKv,1,1,576};
   std::vector<int64_t> gammaShape = {512,};
-  std::vector<int64_t> cosShape = {181,1,1,64};
-  std::vector<int64_t> sinShape = {181,1,1,64};
-  std::vector<int64_t> indexShape = {181,1};
-  std::vector<int64_t> kpeCacheShape = {181,1,1,64};
-  std::vector<int64_t> ckvCacheShape = {181,1,1,512};
-  std::vector<int64_t> kRopeShape = {181,1,1,64};
-  std::vector<int64_t> cKvShape = {181,1,1,512};
+  std::vector<int64_t> cosShape = {batchKv,1,1,64};
+  std::vector<int64_t> sinShape = {batchKv,1,1,64};
+  std::vector<int64_t> indexShape = {batchKv,1};
+  std::vector<int64_t> kpeCacheShape = {batchKv,1,1,64};
+  std::vector<int64_t> ckvCacheShape = {batchKv,1,1,512};
+  std::vector<int64_t> kRopeShape = {batchKv,1,1,64};
+  std::vector<int64_t> cKvShape = {batchKv,1,1,512};
 
-  std::vector<int16_t> kvHostData(181*1*1*576,0);
+  std::vector<int16_t> kvHostData(batchKv*1*1*576,0);
   std::vector<int16_t> gammaHostData(512,0);
-  std::vector<int16_t> cosHostData(181*1*1*64,0);
-  std::vector<int16_t> sinHostData(181*1*1*64,0);
-  std::vector<int64_t> indexHostData(181*1,0);
-  std::vector<int16_t> kpeCacheHostData(181*1*1*64,0);
-  std::vector<int16_t> ckvCacheHostData(181*1*1*512,0);
-  std::vector<int16_t> kRopeHostData(181*1*1*64,0);
-  std::vector<int16_t> cKvHostData(181*1*1*512,0);
+  std::vector<int16_t> cosHostData(batchKv*1*1*64,0);
+  std::vector<int16_t> sinHostData(batchKv*1*1*64,0);
+  std::vector<int64_t> indexHostData(batchKv*1,0);
+  std::vector<int16_t> kpeCacheHostData(batchKv*1*1*64,0);
+  std::vector<int16_t> ckvCacheHostData(batchKv*1*1*512,0);
+  std::vector<int16_t> kRopeHostData(batchKv*1*1*64,0);
+  std::vector<int16_t> cKvHostData(batchKv*1*1*512,0);
 
   void* kvDeviceAddr = nullptr;
   void* gammaDeviceAddr = nullptr;

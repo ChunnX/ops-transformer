@@ -34,9 +34,9 @@ public:
     MatmulPerformanceModel bmmPerf;
     HCCLPerformanceModel epCommPerf; // AllToAll
     HCCLPerformanceModel tpCommPerf; // AllGather or ReduceScatter
-    FormPartition tilingC;     // Output parameters
-    CutResult cutE;     // Output parameters
-    CutResult localCutE;     // Output parameters
+    FormPartition tilingC;           // Output parameters
+    CutResult cutE;                  // Output parameters
+    CutResult localCutE;             // Output parameters
     MatmulParameters clusterInfo;
     uint64_t tpDim = ONE;
     uint64_t epDim = ONE;
@@ -46,12 +46,10 @@ public:
     uint64_t minProductEC = ONE;
 
     // Constructor
-    explicit OneCalcTwoCommBase(const mc2tiling::TilingArgs& args, uint64_t inputEpDim, uint64_t inputTpDim,
-        uint64_t batchSize, SocVersion inputSocVersion = SocVersion::SOC910_93)
-        : bmmPerf(args, inputSocVersion),
-        epCommPerf(inputEpDim, KernelType::ALL_TO_ALL, inputSocVersion),
-        tpCommPerf(inputTpDim, KernelType::ALL_GATHER, inputSocVersion),
-        tilingC(args)
+    explicit OneCalcTwoCommBase(const mc2tiling::TilingArgs &args, uint64_t inputEpDim, uint64_t inputTpDim,
+                                uint64_t batchSize, SocVersion inputSocVersion = SocVersion::SOC910_93)
+        : bmmPerf(args, inputSocVersion), epCommPerf(inputEpDim, KernelType::ALL_TO_ALL, inputSocVersion),
+          tpCommPerf(inputTpDim, KernelType::ALL_GATHER, inputSocVersion), tilingC(args)
     {
         epDim = inputEpDim;
         tpDim = inputTpDim;
@@ -71,7 +69,8 @@ public:
     // Wrapper function
     void GetTiling();
 
-    virtual ~OneCalcTwoCommBase(){
+    virtual ~OneCalcTwoCommBase()
+    {
     }
 };
 
@@ -80,48 +79,50 @@ public:
     MatmulPerformanceModel bmmPerf;
     HCCLPerformanceModel epCommPerf; // AllToAll
     HCCLPerformanceModel tpCommPerf; // AllGather or ReduceScatter
-    CutResult cutE;     // Output parameters
-    FormPartition tilingC;     // Output parameters
-    CutResult localCutE;     // Output parameters
+    CutResult cutE;                  // Output parameters
+    FormPartition tilingC;           // Output parameters
+    CutResult localCutE;             // Output parameters
     MatmulParameters clusterInfo;
     uint64_t tpDim = ONE;
     uint64_t epDim = ONE;
-    uint64_t maxLocalCnt = 1; // Try cut local when maxLocalCut > 1
+    uint64_t maxLocalCnt = 1;    // Try cut local when maxLocalCut > 1
     uint64_t maxNonLocalCnt = 1; // Try cut non-local when maxNonLocalCut > 1
 
     // Constructor
-    explicit OneCalcTwoCommShardHBase(const mc2tiling::TilingArgs& args, uint64_t inputEpDim, uint64_t inputTpDim,
-        uint64_t batchSize, SocVersion inputSocVersion = SocVersion::SOC910_93)
-        : bmmPerf(args, inputSocVersion),
-        epCommPerf(inputEpDim, KernelType::ALL_TO_ALL, inputSocVersion),
-        tpCommPerf(inputTpDim, KernelType::ALL_GATHER, inputSocVersion),
-        tilingC(args)
-        {
-            epDim = inputEpDim;
-            epCommPerf.SetFullMeshCommTimeFactor();
+    explicit OneCalcTwoCommShardHBase(const mc2tiling::TilingArgs &args, uint64_t inputEpDim, uint64_t inputTpDim,
+                                      uint64_t batchSize, SocVersion inputSocVersion = SocVersion::SOC910_93)
+        : bmmPerf(args, inputSocVersion), epCommPerf(inputEpDim, KernelType::ALL_TO_ALL, inputSocVersion),
+          tpCommPerf(inputTpDim, KernelType::ALL_GATHER, inputSocVersion), tilingC(args)
+    {
+        epDim = inputEpDim;
+        epCommPerf.SetFullMeshCommTimeFactor();
 
-            tpDim = inputTpDim;
-            bmmPerf.SetBatchSize(batchSize);
-            clusterInfo = bmmPerf.mmShapeInfo_;
+        tpDim = inputTpDim;
+        bmmPerf.SetBatchSize(batchSize);
+        clusterInfo = bmmPerf.mmShapeInfo_;
 
-            InitCutResult(cutE, clusterInfo.batchSize);
-            InitCutResult(localCutE, clusterInfo.batchSize);
-            tilingC.cutRes.shortTileAtBack = true;
-        };
+        InitCutResult(cutE, clusterInfo.batchSize);
+        InitCutResult(localCutE, clusterInfo.batchSize);
+        tilingC.cutRes.shortTileAtBack = true;
+    };
 
-        // TilingMethods
-        void InitCutResult(CutResult& tmpCut, uint64_t totalLen) const;
-        void CutAxisE(CutResult& cutRes, uint64_t maxCutNum, uint64_t minLen, double unbalanceRatio) const;
-        void CutAxisC(uint64_t maxCutNum, uint64_t minLen, double unbalanceRatio);
-        void AsignMaxCutNumForBranches(double totalBMMTime, double totalCommTime);
-        virtual bool SetShortTilePositionFlag([[maybe_unused]] double totalBMMTime, [[maybe_unused]] double totalCommTime){return false;};
-        void TrimCutResult(CutResult& tmpCut, bool setShortFlag) const;
+    // TilingMethods
+    void InitCutResult(CutResult &tmpCut, uint64_t totalLen) const;
+    void CutAxisE(CutResult &cutRes, uint64_t maxCutNum, uint64_t minLen, double unbalanceRatio) const;
+    void CutAxisC(uint64_t maxCutNum, uint64_t minLen, double unbalanceRatio);
+    void AsignMaxCutNumForBranches(double totalBMMTime, double totalCommTime);
+    virtual bool SetShortTilePositionFlag([[maybe_unused]] double totalBMMTime, [[maybe_unused]] double totalCommTime)
+    {
+        return false;
+    };
+    void TrimCutResult(CutResult &tmpCut, bool setShortFlag) const;
 
-        // wrapper function
-        void GetTiling();
+    // wrapper function
+    void GetTiling();
 
-        virtual ~OneCalcTwoCommShardHBase(){
-        }
+    virtual ~OneCalcTwoCommShardHBase()
+    {
+    }
 };
 
 #endif // __ONE_CALC_TWO_COMM_BASE_H__

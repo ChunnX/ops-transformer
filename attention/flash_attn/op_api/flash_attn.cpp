@@ -19,9 +19,7 @@ namespace l0op {
 OP_TYPE_REGISTER(FlashAttn);
 
 const std::array<const aclTensor *, 2> FlashAttn(
-    const aclTensor *q,
-    const aclTensor *k,
-    const aclTensor *v,
+    const aclTensor *q, const aclTensor *k, const aclTensor *v,
     const aclTensor *blockTableOptional,
     const aclTensor *cuSeqlensQOptional,
     const aclTensor *cuSeqlensKvOptional,
@@ -31,14 +29,9 @@ const std::array<const aclTensor *, 2> FlashAttn(
     const aclTensor *attnMaskOptional,
     const aclTensor *metadataOptional,
     double softmaxScale,
-    int32_t maskMode,
-    int32_t winLeft,
-    int32_t winRight,
-    int32_t maxSeqlenQ,
-    int32_t maxSeqlenKV,
-    const char *layoutQ,
-    const char *layoutKv,
-    const char *layoutOut,
+    int32_t maskMode, int32_t winLeft, int32_t winRight,
+    int32_t maxSeqlenQ, int32_t maxSeqlenKV,
+    const char *layoutQ, const char *layoutKv, const char *layoutOut,
     int32_t returnSoftmaxLse,
     aclOpExecutor *executor)
 {

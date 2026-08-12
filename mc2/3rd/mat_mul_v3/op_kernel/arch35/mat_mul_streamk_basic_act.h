@@ -22,8 +22,9 @@ using namespace Act;
 using namespace Act::Gemm;
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class A_LAYOUT, class B_LAYOUT, class C_LAYOUT,
           MatMulL0C2Out MATMUL_L0C2OUT>
-__aicore__ inline void MatMulStreamKActKernel(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM,
-    GM_ADDR cGM, GM_ADDR workspaceGM, const Mc2MatMulV3BasicTilingData& tilingData, int64_t batch = 0)
+__aicore__ inline void MatMulStreamKActKernel(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM,
+                                              GM_ADDR workspaceGM, const Mc2MatMulV3BasicTilingData &tilingData,
+                                              int64_t batch = 0)
 {
     // 定义L1和L0的TileShape
     using L1TileShape = AscendC::Shape<_0, _0, _0>;
@@ -47,9 +48,9 @@ __aicore__ inline void MatMulStreamKActKernel(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR 
     using BlockScheduler = BuiltInStreamKScheduler;
 
     // 定义MMAD类型
-    using BlockMmad = Block::BlockMmadBuilder<
-            AType, LayoutA, BType, LayoutB, OutType, LayoutC, BiasType, LayoutC,
-            L1TileShape, L0TileShape, BlockScheduler, MatmulMultiBlockWithStreamK<MATMUL_L0C2OUT>>;
+    using BlockMmad =
+        Block::BlockMmadBuilder<AType, LayoutA, BType, LayoutB, OutType, LayoutC, BiasType, LayoutC, L1TileShape,
+                                L0TileShape, BlockScheduler, MatmulMultiBlockWithStreamK<MATMUL_L0C2OUT>>;
 
     // 定义Fusion类型
     using FusionOp = Block::DefaultFusion<OutType, OutType>;
@@ -63,12 +64,10 @@ __aicore__ inline void MatMulStreamKActKernel(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR 
     // 定义Kernel类型
     using MatmulKernel = Kernel::KernelMatmulStreamK<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename MatmulKernel::Params;
-    Params params = {
-        {tilingData.m, tilingData.n, tilingData.k, batch}, // shape
-        {aGM, bGM, cGM, biasGM, nullptr, workspaceGM}, // gm addr
-        {cGM, workspaceGM}, // epilogue args
-        {&tilingData}
-    };
+    Params params = {{tilingData.m, tilingData.n, tilingData.k, batch}, // shape
+                     {aGM, bGM, cGM, biasGM, nullptr, workspaceGM},     // gm addr
+                     {cGM, workspaceGM},                                // epilogue args
+                     {&tilingData}};
     MatmulKernel mm;
     mm(params);
 }

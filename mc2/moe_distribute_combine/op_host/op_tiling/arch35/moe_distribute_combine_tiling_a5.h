@@ -24,7 +24,7 @@ public:
     explicit MoeDistributeCombineTilingA5(gert::TilingContext *context) : MoeDistributeCombineTilingBase(context) {};
     ge::graphStatus MoeDistributeCombineA5TilingCheckAttr(gert::TilingContext *context, uint32_t &commQuantMode);
     ge::graphStatus MoeDistributeCombineA5TilingFuncImpl(gert::TilingContext *context);
-    ge::graphStatus MoeDistributeCombineTilingFuncImpl(std::string& socVersion, gert::TilingContext *context) override;
+    ge::graphStatus MoeDistributeCombineTilingFuncImpl(std::string &socVersion, gert::TilingContext *context) override;
     bool CheckEpWorldSize(const char *nodeName, uint32_t epWorldSize) override;
 };
 } // namespace optiling

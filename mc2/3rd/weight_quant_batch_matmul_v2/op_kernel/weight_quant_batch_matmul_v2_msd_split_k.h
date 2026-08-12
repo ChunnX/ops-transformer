@@ -88,140 +88,140 @@ struct UnfoldCMatrixParams {
     uint64_t singleCorerealM;
     uint64_t scaleOffset;
     uint64_t nRepeatTimes;
-    BinaryRepeatParams& repeatParams;
+    BinaryRepeatParams &repeatParams;
 };
 
 static constexpr MatmulConfig MM_CFG_MSD = {true, false, false, 0, 0, 0, false, false, false, false, 0,
                                             0,    0,     0,     0, 0, 0, false, false, false, false, false};
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType = HighPreciseType>
-class Mc2WeightQuantBatchMatmulV2MsdSplitKKernel
-{
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType = HighPreciseType>
+class Mc2WeightQuantBatchMatmulV2MsdSplitKKernel {
 public:
     __aicore__ inline Mc2WeightQuantBatchMatmulV2MsdSplitKKernel()
-    {}
-    __aicore__ inline void Init(
-        GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
-        GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
-        const Mc2WeightQuantBatchMatmulV2MsdTilingData* tilingData, TPipe* tPipe);
+    {
+    }
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
+                                GM_ADDR quantScale, GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
+                                const Mc2WeightQuantBatchMatmulV2MsdTilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void PreProcess();
-    __aicore__ inline void SetPreprocessParams(uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams);
-    __aicore__ inline void CopyInAOrigin(uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams);
+    __aicore__ inline void SetPreprocessParams(uint64_t mIdx, uint64_t kIdx, PreProcessParams &preProcessParams);
+    __aicore__ inline void CopyInAOrigin(uint64_t mIdx, uint64_t kIdx, PreProcessParams &preProcessParams);
 
-    __aicore__ inline void ComputeSumA(
-        uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams);
-    __aicore__ inline void ComputeSumAPerChannel(
-        uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams);
-    __aicore__ inline void GetSumOrMaxAParamPerGroup(BinaryRepeatParams& param);
-    __aicore__ inline void ComputeSumAPerGroup(
-        uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams);
-    __aicore__ inline uint32_t ComputeSumAOnce(
-        LocalTensor<float>& dst, LocalTensor<float>& src, uint32_t numRepeatK, PreProcessParams& preProcessParams);
-    __aicore__ inline void ComputeMaxA(
-        uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams);
-    __aicore__ inline void ComputeMaxAPerChannel(
-        uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams, uint32_t numRepeat);
-    __aicore__ inline void ComputeMaxAPerGroup(
-        uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams);
+    __aicore__ inline void ComputeSumA(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx,
+                                       PreProcessParams &preProcessParams);
+    __aicore__ inline void ComputeSumAPerChannel(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx,
+                                                 PreProcessParams &preProcessParams);
+    __aicore__ inline void GetSumOrMaxAParamPerGroup(BinaryRepeatParams &param);
+    __aicore__ inline void ComputeSumAPerGroup(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx,
+                                               PreProcessParams &preProcessParams);
+    __aicore__ inline uint32_t ComputeSumAOnce(LocalTensor<float> &dst, LocalTensor<float> &src, uint32_t numRepeatK,
+                                               PreProcessParams &preProcessParams);
+    __aicore__ inline void ComputeMaxA(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx,
+                                       PreProcessParams &preProcessParams);
+    __aicore__ inline void ComputeMaxAPerChannel(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx,
+                                                 PreProcessParams &preProcessParams, uint32_t numRepeat);
+    __aicore__ inline void ComputeMaxAPerGroup(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx,
+                                               PreProcessParams &preProcessParams);
 
-    __aicore__ inline uint32_t ComputeMaxAOnce(
-        LocalTensor<float>& dst, LocalTensor<float>& src, uint32_t numRepeatK, PreProcessParams& preProcessParams);
-    __aicore__ inline void UnfoldAMatrix(uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams);
-    __aicore__ inline void LaunchMatmul(
-        uint64_t cubeNLoopIdx, uint64_t singleNOffset, uint64_t taskNSize,
-        const CubeProcessParams<wType>& cubeProcessParams, SyncProcessor<HardEvent::MTE1_MTE2>& al1SyncProcessor,
-        SyncProcessor<HardEvent::MTE1_MTE2>& bl1SyncProcessor);
-    __aicore__ inline void GetCopyInAL1Params(
-        Nd2NzParams& nd2nzParams, uint64_t& kOffset, uint64_t l1BaseKa, uint64_t l1BaseM);
-    __aicore__ inline void CopyInAL1(
-        const CubeProcessParams<wType>& cubeProcessParams, uint64_t kIdx, uint64_t mOffset, uint64_t kOffset,
-        uint64_t l1BaseKa, uint64_t l1BaseM, SyncProcessor<HardEvent::MTE1_MTE2>& al1SyncProcessor);
-    __aicore__ inline void BL1PreLoad(const CubeProcessParams<wType>& cubeProcessParams);
-    __aicore__ inline void BL1DmaCopy(
-        uint64_t kaOffset, uint64_t stepKbOffset, uint64_t l1RealKa, uint64_t singleCoreNOffset, uint64_t l1RealN,
-        const CubeProcessParams<wType>& cubeProcessParamsconst, const MatmulTaskLoopParams& matmulTaskLoopParams);
-    __aicore__ inline void CopyInBL1(
-        const LocalTensor<wType>& bL1Tensor, uint64_t nOffset, uint64_t kOffset, uint64_t l1RealN, uint64_t l1BaseKb);
-    __aicore__ inline void CopyInBL1Nd(
-        const LocalTensor<wType>& bL1Tensor, uint64_t nOffset, uint64_t kOffset, uint64_t l1RealN, uint64_t l1BaseKb);
-    __aicore__ inline void CopyInBL1Nz(
-        const LocalTensor<wType>& bL1Tensor, uint64_t nOffset, uint64_t kOffset, uint64_t l1RealN, uint64_t l1BaseKb);
+    __aicore__ inline uint32_t ComputeMaxAOnce(LocalTensor<float> &dst, LocalTensor<float> &src, uint32_t numRepeatK,
+                                               PreProcessParams &preProcessParams);
+    __aicore__ inline void UnfoldAMatrix(uint64_t mIdx, uint64_t kIdx, PreProcessParams &preProcessParams);
+    __aicore__ inline void LaunchMatmul(uint64_t cubeNLoopIdx, uint64_t singleNOffset, uint64_t taskNSize,
+                                        const CubeProcessParams<wType> &cubeProcessParams,
+                                        SyncProcessor<HardEvent::MTE1_MTE2> &al1SyncProcessor,
+                                        SyncProcessor<HardEvent::MTE1_MTE2> &bl1SyncProcessor);
+    __aicore__ inline void GetCopyInAL1Params(Nd2NzParams &nd2nzParams, uint64_t &kOffset, uint64_t l1BaseKa,
+                                              uint64_t l1BaseM);
+    __aicore__ inline void CopyInAL1(const CubeProcessParams<wType> &cubeProcessParams, uint64_t kIdx, uint64_t mOffset,
+                                     uint64_t kOffset, uint64_t l1BaseKa, uint64_t l1BaseM,
+                                     SyncProcessor<HardEvent::MTE1_MTE2> &al1SyncProcessor);
+    __aicore__ inline void BL1PreLoad(const CubeProcessParams<wType> &cubeProcessParams);
+    __aicore__ inline void BL1DmaCopy(uint64_t kaOffset, uint64_t stepKbOffset, uint64_t l1RealKa,
+                                      uint64_t singleCoreNOffset, uint64_t l1RealN,
+                                      const CubeProcessParams<wType> &cubeProcessParamsconst,
+                                      const MatmulTaskLoopParams &matmulTaskLoopParams);
+    __aicore__ inline void CopyInBL1(const LocalTensor<wType> &bL1Tensor, uint64_t nOffset, uint64_t kOffset,
+                                     uint64_t l1RealN, uint64_t l1BaseKb);
+    __aicore__ inline void CopyInBL1Nd(const LocalTensor<wType> &bL1Tensor, uint64_t nOffset, uint64_t kOffset,
+                                       uint64_t l1RealN, uint64_t l1BaseKb);
+    __aicore__ inline void CopyInBL1Nz(const LocalTensor<wType> &bL1Tensor, uint64_t nOffset, uint64_t kOffset,
+                                       uint64_t l1RealN, uint64_t l1BaseKb);
     __aicore__ inline void SumMaxMul(uint64_t taskSingleCoreNSize, uint64_t realM);
-    __aicore__ inline void ComputeOffsetMn(
-        uint64_t taskSingleCoreNSize, uint64_t taskNSize, uint64_t nOffset, uint64_t baseMOffset,
-        uint64_t singleCorerealM);
-    __aicore__ inline void ProcessC1C2(
-        uint64_t taskSingleCoreNSize, uint64_t nOffset, uint64_t baseMOffset, uint64_t singleCorerealM);
-    __aicore__ inline void ProcessC1C2PerGroup(
-        uint64_t taskSingleCoreNSize, uint64_t nOffset, uint64_t baseMOffset, uint64_t singleCorerealM,
-        uint64_t nRepeatTimes, const BinaryRepeatParams& repeatParams);
-    __aicore__ inline void CopyOutResult(
-        uint64_t taskSingleCoreNSize, uint64_t nOffset, uint64_t baseMOffset, uint64_t singleCorerealM);
+    __aicore__ inline void ComputeOffsetMn(uint64_t taskSingleCoreNSize, uint64_t taskNSize, uint64_t nOffset,
+                                           uint64_t baseMOffset, uint64_t singleCorerealM);
+    __aicore__ inline void ProcessC1C2(uint64_t taskSingleCoreNSize, uint64_t nOffset, uint64_t baseMOffset,
+                                       uint64_t singleCorerealM);
+    __aicore__ inline void ProcessC1C2PerGroup(uint64_t taskSingleCoreNSize, uint64_t nOffset, uint64_t baseMOffset,
+                                               uint64_t singleCorerealM, uint64_t nRepeatTimes,
+                                               const BinaryRepeatParams &repeatParams);
+    __aicore__ inline void CopyOutResult(uint64_t taskSingleCoreNSize, uint64_t nOffset, uint64_t baseMOffset,
+                                         uint64_t singleCorerealM);
     __aicore__ inline void InitBuffer();
-    __aicore__ inline void InitGlobalTensor(
-        GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
-        GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace);
+    __aicore__ inline void InitGlobalTensor(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
+                                            GM_ADDR quantScale, GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y,
+                                            GM_ADDR workspace);
     __aicore__ inline void ComputeParams();
     __aicore__ inline void ComputeRepeatParams();
     __aicore__ inline void ProcessVector();
     __aicore__ inline void PostProcess();
-    __aicore__ inline void PostProcessOneTaskN(
-        uint64_t baseMOffset, uint64_t singleCorerealM, uint64_t baseSingleCoreNOffset, uint64_t taskSingleCoreNSize,
-        uint64_t nLoopCnt, int64_t& aivSetTimes);
+    __aicore__ inline void PostProcessOneTaskN(uint64_t baseMOffset, uint64_t singleCorerealM,
+                                               uint64_t baseSingleCoreNOffset, uint64_t taskSingleCoreNSize,
+                                               uint64_t nLoopCnt, int64_t &aivSetTimes);
     __aicore__ inline void CopyInSumMax(uint64_t baseMOffset, uint64_t singleCorerealM);
     __aicore__ inline void CopyInSumMaxPerGroup(uint64_t baseMOffset, uint64_t singleCorerealM);
     __aicore__ inline void ProcessCube();
-    __aicore__ inline void InitCubeParams(
-        CubeProcessParams<wType>& cubeProcessParams, SyncProcessor<HardEvent::MTE1_MTE2>& al1SyncProcessor,
-        SyncProcessor<HardEvent::MTE1_MTE2>& bl1SyncProcessor);
+    __aicore__ inline void InitCubeParams(CubeProcessParams<wType> &cubeProcessParams,
+                                          SyncProcessor<HardEvent::MTE1_MTE2> &al1SyncProcessor,
+                                          SyncProcessor<HardEvent::MTE1_MTE2> &bl1SyncProcessor);
     __aicore__ inline uint64_t InitMatmulParams();
-    __aicore__ inline void ProcessReduceTail(
-        LocalTensor<float>& dst, LocalTensor<float>& src, uint32_t numRepeatK, uint32_t nextRepeatK,
-        uint32_t numProcessK, PreProcessParams& preProcessParams);
-    __aicore__ inline void SetRepeatParams(
-        BinaryRepeatParams& repeatParams, UnaryRepeatParams& unaryRepeatParams,
-        UnaryRepeatParams& f32ToF16RepeatParams);
-    __aicore__ inline void IterateAllSingleCoreK(
-        uint64_t singleCoreNOffset, uint64_t l1RealM, uint32_t l1RealN, uint64_t mOffset,
-        const CubeProcessParams<wType>& cubeProcessParams, const MatmulTaskLoopParams& matmulTaskLoopParams,
-        SyncProcessor<HardEvent::MTE1_MTE2>& al1SyncProcessor, SyncProcessor<HardEvent::MTE1_MTE2>& bl1SyncProcessor);
-    __aicore__ inline void LaunchMatmul(
-        const CubeProcessParams<wType>& cubeProcessParams, SyncProcessor<HardEvent::MTE1_MTE2>& al1SyncProcessor,
-        SyncProcessor<HardEvent::MTE1_MTE2>& bl1SyncProcessor);
-    __aicore__ inline void ProcessUnfoldCMatrix(
-        const UnfoldCMatrixParams& params, SyncProcessor<HardEvent::V_MTE2>& c1c2SyncProcessor);
-    __aicore__ inline void GetPingPongC1C2Tensor(
-        LocalTensor<int32_t>& c1c2S32Tensor, LocalTensor<float>& c1c2Tensor,
-        SyncProcessor<HardEvent::V_MTE2>& c1c2SyncProcessor);
-    __aicore__ inline void ProcessUnfoldCMatrixPerchannel(
-        uint64_t cMatrixOffset, uint64_t realM, uint64_t taskSingleCoreNSize, float divFactors, uint64_t nRepeatTimes,
-        SyncProcessor<HardEvent::V_MTE2>& c1c2SyncProcessor);
-    __aicore__ inline void ProcessUnfoldCMatrixPergroup(
-        uint64_t cMatrixOffset, uint64_t realM, uint64_t taskSingleCoreNSize, uint64_t nRepeatTimes,
-        SyncProcessor<HardEvent::V_MTE2>& c1c2SyncProcessor);
-    __aicore__ inline void CalculateC1C2Pergroup(
-        uint64_t id, uint64_t cnt, uint64_t loadNum, uint64_t taskSingleCoreNSize, uint64_t realM,
-        uint64_t nRepeatTimes, const BinaryRepeatParams& repeatParams, const event_t& eventIdVToMte2,
-        const event_t& eventIdMte2ToV);
-    __aicore__ inline void ProcessUnfoldCMatrixPergroupFp16(
-        uint64_t gId, uint64_t realM, half divFactorsFp16[], uint64_t repeatTimesAxpyFp32, uint64_t repeatTimesAxpyFp16,
-        const CopyRepeatParams& copyParam, LocalTensor<half>& c1c2S32Tensor);
-    __aicore__ inline void CopyInC1C2TensorPerGroup(
-        uint64_t id, uint64_t loadNum, uint64_t baseMOffset, uint64_t nOffset, uint64_t realM,
-        uint64_t taskSingleCoreNSize, const event_t& eventIdVToMte2, const event_t& eventIdMte2ToV);
-    __aicore__ inline void TransToWType(
-        uint64_t unfoldATimes, uint64_t defaultOffset, uint64_t mainRepeatK, float multiFactors,
-        const BinaryRepeatParams& f32BinaryRepeatParams, const UnaryRepeatParams& f32UnaryRepeatParams,
-        const UnaryRepeatParams& f32ToF16RepeatParams, const PreProcessParams& preProcessParams);
-    __aicore__ inline void TransToWTypeFirstStep(
-        uint64_t defaultOffset, uint64_t mainRepeatK, const BinaryRepeatParams& f32BinaryRepeatParams,
-        const PreProcessParams& preProcessParams);
+    __aicore__ inline void ProcessReduceTail(LocalTensor<float> &dst, LocalTensor<float> &src, uint32_t numRepeatK,
+                                             uint32_t nextRepeatK, uint32_t numProcessK,
+                                             PreProcessParams &preProcessParams);
+    __aicore__ inline void SetRepeatParams(BinaryRepeatParams &repeatParams, UnaryRepeatParams &unaryRepeatParams,
+                                           UnaryRepeatParams &f32ToF16RepeatParams);
+    __aicore__ inline void IterateAllSingleCoreK(uint64_t singleCoreNOffset, uint64_t l1RealM, uint32_t l1RealN,
+                                                 uint64_t mOffset, const CubeProcessParams<wType> &cubeProcessParams,
+                                                 const MatmulTaskLoopParams &matmulTaskLoopParams,
+                                                 SyncProcessor<HardEvent::MTE1_MTE2> &al1SyncProcessor,
+                                                 SyncProcessor<HardEvent::MTE1_MTE2> &bl1SyncProcessor);
+    __aicore__ inline void LaunchMatmul(const CubeProcessParams<wType> &cubeProcessParams,
+                                        SyncProcessor<HardEvent::MTE1_MTE2> &al1SyncProcessor,
+                                        SyncProcessor<HardEvent::MTE1_MTE2> &bl1SyncProcessor);
+    __aicore__ inline void ProcessUnfoldCMatrix(const UnfoldCMatrixParams &params,
+                                                SyncProcessor<HardEvent::V_MTE2> &c1c2SyncProcessor);
+    __aicore__ inline void GetPingPongC1C2Tensor(LocalTensor<int32_t> &c1c2S32Tensor, LocalTensor<float> &c1c2Tensor,
+                                                 SyncProcessor<HardEvent::V_MTE2> &c1c2SyncProcessor);
+    __aicore__ inline void ProcessUnfoldCMatrixPerchannel(uint64_t cMatrixOffset, uint64_t realM,
+                                                          uint64_t taskSingleCoreNSize, float divFactors,
+                                                          uint64_t nRepeatTimes,
+                                                          SyncProcessor<HardEvent::V_MTE2> &c1c2SyncProcessor);
+    __aicore__ inline void ProcessUnfoldCMatrixPergroup(uint64_t cMatrixOffset, uint64_t realM,
+                                                        uint64_t taskSingleCoreNSize, uint64_t nRepeatTimes,
+                                                        SyncProcessor<HardEvent::V_MTE2> &c1c2SyncProcessor);
+    __aicore__ inline void CalculateC1C2Pergroup(uint64_t id, uint64_t cnt, uint64_t loadNum,
+                                                 uint64_t taskSingleCoreNSize, uint64_t realM, uint64_t nRepeatTimes,
+                                                 const BinaryRepeatParams &repeatParams, const event_t &eventIdVToMte2,
+                                                 const event_t &eventIdMte2ToV);
+    __aicore__ inline void ProcessUnfoldCMatrixPergroupFp16(uint64_t gId, uint64_t realM, half divFactorsFp16[],
+                                                            uint64_t repeatTimesAxpyFp32, uint64_t repeatTimesAxpyFp16,
+                                                            const CopyRepeatParams &copyParam,
+                                                            LocalTensor<half> &c1c2S32Tensor);
+    __aicore__ inline void CopyInC1C2TensorPerGroup(uint64_t id, uint64_t loadNum, uint64_t baseMOffset,
+                                                    uint64_t nOffset, uint64_t realM, uint64_t taskSingleCoreNSize,
+                                                    const event_t &eventIdVToMte2, const event_t &eventIdMte2ToV);
+    __aicore__ inline void TransToWType(uint64_t unfoldATimes, uint64_t defaultOffset, uint64_t mainRepeatK,
+                                        float multiFactors, const BinaryRepeatParams &f32BinaryRepeatParams,
+                                        const UnaryRepeatParams &f32UnaryRepeatParams,
+                                        const UnaryRepeatParams &f32ToF16RepeatParams,
+                                        const PreProcessParams &preProcessParams);
+    __aicore__ inline void TransToWTypeFirstStep(uint64_t defaultOffset, uint64_t mainRepeatK,
+                                                 const BinaryRepeatParams &f32BinaryRepeatParams,
+                                                 const PreProcessParams &preProcessParams);
 
     using InputXType = MatmulType<TPosition::A1, CubeFormat::NZ, wType, aTrans>;
     using InputWType = MatmulType<TPosition::B1, CubeFormat::NZ, wType, bTrans>;
@@ -229,8 +229,8 @@ private:
     using InputBiasType = MatmulType<TPosition::GM, CubeFormat::ND, preciseType>;
     MatmulImpl<InputXType, InputWType, OutputYType, InputBiasType, MM_CFG_MSD> mmObj_;
 
-    TPipe* pipe_;
-    const Mc2WeightQuantBatchMatmulV2MsdTilingData* tiling_;
+    TPipe *pipe_;
+    const Mc2WeightQuantBatchMatmulV2MsdTilingData *tiling_;
 
     GlobalTensor<xType> xGlobal_;
     GlobalTensor<int8_t> wGlobal_;
@@ -324,17 +324,14 @@ private:
     float multiFactors_[3] = {1.0f, 1.0f, 1.0f};
 };
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    Init(
-        GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
-        GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
-        const Mc2WeightQuantBatchMatmulV2MsdTilingData* tilingData, TPipe* tPipe)
+    preciseType>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
+                       GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
+                       const Mc2WeightQuantBatchMatmulV2MsdTilingData *tilingData, TPipe *tPipe)
 {
     tiling_ = tilingData;
     curBlockIdx_ = GetBlockIdx();
@@ -354,16 +351,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     InitBuffer();
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    InitGlobalTensor(
-        GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
-        GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace)
+    preciseType>::InitGlobalTensor(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
+                                   GM_ADDR quantScale, GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace)
 {
     uint64_t alignedOffset = 0;
     // 将不同的kIdx的数据合并排布，方便后处理一次搬入kBlockNum组m*8
@@ -372,36 +366,35 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
         kMaxSumCnt = groupNum_;
     }
     uint64_t reduceMaxSumOffset = CeilAlign(tiling_->mSize * ONE_BLK_SIZE * kMaxSumCnt, 512UL);
-    reduceMaxWorkspaceGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(workspace));
+    reduceMaxWorkspaceGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspace));
     alignedOffset += reduceMaxSumOffset;
 
-    reduceSumWorkspaceGm_.SetGlobalBuffer((__gm__ float*)(workspace + alignedOffset));
+    reduceSumWorkspaceGm_.SetGlobalBuffer((__gm__ float *)(workspace + alignedOffset));
     alignedOffset += reduceMaxSumOffset;
 
     uint64_t aUnfoldSize = aUnfoldSizeS8_ * kBlockNum_;
-    aUnfoldGlobal_.SetGlobalBuffer((__gm__ wType*)(workspace + alignedOffset));
-    aUnfoldGlobalInt8_.SetGlobalBuffer((__gm__ int8_t*)(workspace + alignedOffset));
+    aUnfoldGlobal_.SetGlobalBuffer((__gm__ wType *)(workspace + alignedOffset));
+    aUnfoldGlobalInt8_.SetGlobalBuffer((__gm__ int8_t *)(workspace + alignedOffset));
     alignedOffset += aUnfoldSize;
 
-    cUnfoldGlobal_.SetGlobalBuffer((__gm__ preciseType*)(workspace + alignedOffset));
-    xGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType*>(x));
-    wGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(weight));
-    wGlobalWType_.SetGlobalBuffer(reinterpret_cast<__gm__ wType*>(weight));
-    antiQuantScaleGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType*>(antiquantScale), tiling_->nSize);
-    antiQuantOffsetGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType*>(antiquantOffset), tiling_->nSize);
+    cUnfoldGlobal_.SetGlobalBuffer((__gm__ preciseType *)(workspace + alignedOffset));
+    xGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(x));
+    wGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(weight));
+    wGlobalWType_.SetGlobalBuffer(reinterpret_cast<__gm__ wType *>(weight));
+    antiQuantScaleGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(antiquantScale), tiling_->nSize);
+    antiQuantOffsetGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(antiquantOffset), tiling_->nSize);
     if (tiling_->hasBias) {
-        biasGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ biasType*>(bias), tiling_->nSize);
+        biasGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ biasType *>(bias), tiling_->nSize);
     }
-    yGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ yType*>(y), tiling_->mSize * tiling_->nSize);
+    yGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ yType *>(y), tiling_->mSize * tiling_->nSize);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::InitBuffer()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType, weightFormat, preciseType>::InitBuffer()
 {
     // 初始化UB Tbuffer
     pipe_->InitBuffer(tBuf_, 192 * 1024);
@@ -410,7 +403,7 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     aF32TmpTensor_ = tBuf_.Get<float>();                                // 49k 0-49k分配给float的aTmp矩阵
     aOriginTensor_ = tBuf_.Get<xType>()[49 * HALF_DATA_BENCHMARK];      // 24k 49-73k分配给xType的a矩阵
     aFp32ReduceTensor_ = tBuf_.Get<float>()[73 * FLOAT_DATA_BENCHMARK]; // 24k 73-97分配给float的reduce后的a矩阵
-    aFp16Tensor_ = tBuf_.Get<half>()[73 * HALF_DATA_BENCHMARK];         // 24k 73-97k分配给half的a矩阵 空间复用
+    aFp16Tensor_ = tBuf_.Get<half>()[73 * HALF_DATA_BENCHMARK]; // 24k 73-97k分配给half的a矩阵 空间复用
     // 24k 97-121k分配给unfold的a矩阵
     if constexpr (IsSameType<wType, int4b_t>::value) {
         aUnfoldLocalTensor_ = tBuf_.Get<wType>()[97 * INT4_DATA_BENCHMARK];
@@ -431,8 +424,8 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     // computeOffsetMn的buffer分配
     antiquantOffsetF32Tensor_ = tBuf_.Get<float>()[136 * FLOAT_DATA_BENCHMARK]; // 8k 136-144k分配给的fp32的offset矩阵
     scaleOffsetProductTensor_ = tBuf_.Get<float>()[144 * FLOAT_DATA_BENCHMARK]; // 8k 144-152k分配给的fp32的offset矩阵
-    antiquantScaleF16Tensor_ = tBuf_.Get<xType>()[152 * HALF_DATA_BENCHMARK];   // 4k 152-156k分配给的fp16的scale矩阵
-    antiquantOffsetF16Tensor_ = tBuf_.Get<xType>()[156 * HALF_DATA_BENCHMARK];  // 4k 156-160k分配给的fp16的offset矩阵
+    antiquantScaleF16Tensor_ = tBuf_.Get<xType>()[152 * HALF_DATA_BENCHMARK]; // 4k 152-156k分配给的fp16的scale矩阵
+    antiquantOffsetF16Tensor_ = tBuf_.Get<xType>()[156 * HALF_DATA_BENCHMARK]; // 4k 156-160k分配给的fp16的offset矩阵
 
     // processC1C2的buffer分配
     // 默认32*256
@@ -453,7 +446,7 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
 
     // copyOutResult的buffer分配
     if constexpr (IsSameType<biasType, float>::value) {
-        biasTensor_ = tBuf_.Get<biasType>()[72 * FLOAT_DATA_BENCHMARK];  // 7k 72-79k存bias类型的y矩阵
+        biasTensor_ = tBuf_.Get<biasType>()[72 * FLOAT_DATA_BENCHMARK]; // 7k 72-79k存bias类型的y矩阵
         biasFp32Tensor_ = tBuf_.Get<float>()[72 * FLOAT_DATA_BENCHMARK]; // 7k 72-79kfloat类型无需重新申请空间存bias
     } else {
         biasTensor_ = tBuf_.Get<biasType>()[72 * HALF_DATA_BENCHMARK];   // 7k 72-79k存bias类型的y矩阵
@@ -462,13 +455,12 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     cF16ResultTensor_ = tBuf_.Get<yType>()[86 * HALF_DATA_BENCHMARK]; // 32k 86-118k分配给的fp16的cResult矩阵
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::ComputeRepeatParams()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans,
+                                                                  antiQuantType, hasAntiQuantOffset, quantType,
+                                                                  weightFormat, preciseType>::ComputeRepeatParams()
 {
     commonRepeatParams_.dstBlkStride = 1;
     commonRepeatParams_.src0BlkStride = 1;
@@ -488,13 +480,12 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     fp16ToFp32UnaryRepeatParams_.srcRepStride = FP32_MASK_BLK_NUM >> 1;
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::ComputeParams()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType, weightFormat, preciseType>::ComputeParams()
 {
     // pergroup场景kBlockNum_只用于预处理
     kBlockNum_ = CeilDiv(tiling_->kSize, static_cast<uint64_t>(tiling_->v1BaseK));
@@ -544,13 +535,12 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     multiFactors_[2] = multiFactor2;
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::Process()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType, weightFormat, preciseType>::Process()
 {
     if ASCEND_IS_AIV {
         ProcessVector();
@@ -559,13 +549,12 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::ProcessVector()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType, weightFormat, preciseType>::ProcessVector()
 {
     PreProcess();
     SyncAll();
@@ -573,13 +562,12 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     PostProcess();
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::PostProcess()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType, weightFormat, preciseType>::PostProcess()
 {
     uint64_t postProcessNNum = CeilDiv(tiling_->taskNSize, tiling_->taskSingleCoreNSize);
     uint64_t mIdx = curBlockIdx_ / postProcessNNum;
@@ -608,8 +596,8 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
                                            tiling_->taskSingleCoreNSize;
         uint64_t nOffset = curTaskNOffset_ + baseSingleCoreNOffset;
 
-        PostProcessOneTaskN(
-            baseMOffset, singleCorerealM, baseSingleCoreNOffset, taskSingleCoreNSize, nLoopCnt, aivSetTimes);
+        PostProcessOneTaskN(baseMOffset, singleCorerealM, baseSingleCoreNOffset, taskSingleCoreNSize, nLoopCnt,
+                            aivSetTimes);
 
         if (likely(baseSingleCoreNOffset < curTaskNSize_ && baseMOffset < tiling_->mSize)) {
             CopyOutResult(taskSingleCoreNSize, nOffset, baseMOffset, singleCorerealM);
@@ -620,16 +608,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    PostProcessOneTaskN(
-        uint64_t baseMOffset, uint64_t singleCorerealM, uint64_t baseSingleCoreNOffset, uint64_t taskSingleCoreNSize,
-        uint64_t nLoopCnt, int64_t& aivSetTimes)
+    preciseType>::PostProcessOneTaskN(uint64_t baseMOffset, uint64_t singleCorerealM, uint64_t baseSingleCoreNOffset,
+                                      uint64_t taskSingleCoreNSize, uint64_t nLoopCnt, int64_t &aivSetTimes)
 {
     uint64_t nOffset = curTaskNOffset_ + baseSingleCoreNOffset;
     curGroupId_ = 0;
@@ -668,50 +653,44 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::CopyInSumMax(uint64_t baseMOffset, uint64_t singleCorerealM)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType, weightFormat,
+                                           preciseType>::CopyInSumMax(uint64_t baseMOffset, uint64_t singleCorerealM)
 {
     if constexpr (hasAntiQuantOffset) {
-        DataCopyPad2D(
-            aSumComputeOffsetTensor_, reduceSumWorkspaceGm_[baseMOffset * FP32_BLOCK_SIZE], kBlockNum_,
-            singleCorerealM * FP32_BLOCK_SIZE, tiling_->mSize * FP32_BLOCK_SIZE);
+        DataCopyPad2D(aSumComputeOffsetTensor_, reduceSumWorkspaceGm_[baseMOffset * FP32_BLOCK_SIZE], kBlockNum_,
+                      singleCorerealM * FP32_BLOCK_SIZE, tiling_->mSize * FP32_BLOCK_SIZE);
     }
-    DataCopyPad2D(
-        aMaxComputeTensor_, reduceMaxWorkspaceGm_[baseMOffset * FP32_BLOCK_SIZE], kBlockNum_,
-        singleCorerealM * FP32_BLOCK_SIZE, tiling_->mSize * FP32_BLOCK_SIZE);
+    DataCopyPad2D(aMaxComputeTensor_, reduceMaxWorkspaceGm_[baseMOffset * FP32_BLOCK_SIZE], kBlockNum_,
+                  singleCorerealM * FP32_BLOCK_SIZE, tiling_->mSize * FP32_BLOCK_SIZE);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
     preciseType>::CopyInSumMaxPerGroup(uint64_t baseMOffset, uint64_t singleCorerealM)
 {
     uint64_t gmOfffset = baseMOffset * groupNum_ * FP32_BLOCK_SIZE + curGroupId_ * FP32_BLOCK_SIZE;
     if constexpr (hasAntiQuantOffset) {
-        DataCopyPad2D(
-            aSumComputeOffsetTensor_, reduceSumWorkspaceGm_[gmOfffset], singleCorerealM,
-            realGroupPack_ * FP32_BLOCK_SIZE, groupNum_ * FP32_BLOCK_SIZE);
+        DataCopyPad2D(aSumComputeOffsetTensor_, reduceSumWorkspaceGm_[gmOfffset], singleCorerealM,
+                      realGroupPack_ * FP32_BLOCK_SIZE, groupNum_ * FP32_BLOCK_SIZE);
     }
-    DataCopyPad2D(
-        aMaxComputeTensor_, reduceMaxWorkspaceGm_[gmOfffset], singleCorerealM, realGroupPack_ * FP32_BLOCK_SIZE,
-        groupNum_ * FP32_BLOCK_SIZE);
+    DataCopyPad2D(aMaxComputeTensor_, reduceMaxWorkspaceGm_[gmOfffset], singleCorerealM,
+                  realGroupPack_ * FP32_BLOCK_SIZE, groupNum_ * FP32_BLOCK_SIZE);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::ProcessCube()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType, weightFormat, preciseType>::ProcessCube()
 {
     LocalTensor<wType> tensorTmp;
     CubeProcessParams<wType> cubeProcessParams = {0, 0, 0, tensorTmp, tensorTmp, tensorTmp, tensorTmp};
@@ -749,16 +728,14 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     bl1SyncProcessor.Destory();
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    InitCubeParams(
-        CubeProcessParams<wType>& cubeProcessParams, SyncProcessor<HardEvent::MTE1_MTE2>& al1SyncProcessor,
-        SyncProcessor<HardEvent::MTE1_MTE2>& bl1SyncProcessor)
+    preciseType>::InitCubeParams(CubeProcessParams<wType> &cubeProcessParams,
+                                 SyncProcessor<HardEvent::MTE1_MTE2> &al1SyncProcessor,
+                                 SyncProcessor<HardEvent::MTE1_MTE2> &bl1SyncProcessor)
 {
     uint64_t l1Size = 512 * 1024;
     pipe_->InitBuffer(l1TBuf_, l1Size);
@@ -788,13 +765,12 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     bl1SyncProcessor.Init(bL1DbNum);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
-__aicore__ inline uint64_t Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::InitMatmulParams()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
+__aicore__ inline uint64_t
+Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType, weightFormat, preciseType>::InitMatmulParams()
 {
     curTaskNSize_ =
         tiling_->taskNSize + curTaskNOffset_ > tiling_->nSize ? tiling_->nSize - curTaskNOffset_ : tiling_->taskNSize;
@@ -823,13 +799,12 @@ __aicore__ inline uint64_t Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     return kBlockNum;
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::PreProcess()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType, weightFormat, preciseType>::PreProcess()
 {
     uint64_t mBlockNum = CeilDiv(tiling_->mSize, static_cast<uint64_t>(tiling_->v1BaseM));
     uint64_t taskNum = kBlockNum_ * mBlockNum;
@@ -866,13 +841,12 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::SetPreprocessParams(uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams)
+    preciseType>::SetPreprocessParams(uint64_t mIdx, uint64_t kIdx, PreProcessParams &preProcessParams)
 {
     preProcessParams.realProcessM = tiling_->v1BaseM;
     uint64_t mOffset = mIdx * tiling_->v1BaseM;
@@ -890,24 +864,21 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::CopyInAOrigin(uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams)
+    preciseType>::CopyInAOrigin(uint64_t mIdx, uint64_t kIdx, PreProcessParams &preProcessParams)
 {
-    DataCopyPad2D(
-        aOriginTensor_, xGlobal_[mIdx * tiling_->v1BaseM * tiling_->kSize + kIdx * tiling_->v1BaseK],
-        preProcessParams.realProcessM, preProcessParams.realProcessK, tiling_->v1BaseK, tiling_->kSize);
+    DataCopyPad2D(aOriginTensor_, xGlobal_[mIdx * tiling_->v1BaseM * tiling_->kSize + kIdx * tiling_->v1BaseK],
+                  preProcessParams.realProcessM, preProcessParams.realProcessK, tiling_->v1BaseK, tiling_->kSize);
     uint64_t duplicateLength =
         tiling_->v1BaseK > preProcessParams.realProcessK ? tiling_->v1BaseK - preProcessParams.realProcessK : 0;
     if (unlikely(duplicateLength > FP16_BLOCK_SIZE)) {
         for (uint64_t mLoopIdx = 0; mLoopIdx < tiling_->v1BaseM; mLoopIdx++) {
-            Duplicate(
-                aOriginTensor_[mLoopIdx * tiling_->v1BaseK + preProcessParams.realProcessK], static_cast<xType>(0.0f),
-                duplicateLength);
+            Duplicate(aOriginTensor_[mLoopIdx * tiling_->v1BaseK + preProcessParams.realProcessK],
+                      static_cast<xType>(0.0f), duplicateLength);
         }
         PipeBarrier<PIPE_V>();
     }
@@ -923,13 +894,12 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     WaitFlag<HardEvent::V_MTE2>(eventIdVToMTE2);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::ComputeSumA(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams)
+    preciseType>::ComputeSumA(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx, PreProcessParams &preProcessParams)
 {
     SetMaskNorm();
     SetVectorMask<float, MaskMode::NORMAL>(FP32_MAX_MASK_SIZE);
@@ -940,13 +910,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::GetSumOrMaxAParamPerGroup(BinaryRepeatParams& param)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType, weightFormat,
+                                           preciseType>::GetSumOrMaxAParamPerGroup(BinaryRepeatParams &param)
 {
     param.dstBlkStride = 1;
     param.src0BlkStride = 1;
@@ -956,21 +926,20 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     param.src1RepStride = FP32_MASK_BLK_NUM * 2;
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    ComputeSumAPerGroup(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams)
+    preciseType>::ComputeSumAPerGroup(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx,
+                                      PreProcessParams &preProcessParams)
 {
     uint32_t v1GroupNum = preProcessParams.realProcessM * v1BaseKGroupNum_; // tiing保证v1GroupNum小于255
     if (tiling_->groupSize == 128) {
         BinaryRepeatParams param;
         GetSumOrMaxAParamPerGroup(param);
-        AscendC::Add<float, false>(
-            aF32TmpTensor_, aF32Tensor_, aF32Tensor_[FP32_MAX_MASK_SIZE], FP32_MAX_MASK_SIZE, v1GroupNum, param);
+        AscendC::Add<float, false>(aF32TmpTensor_, aF32Tensor_, aF32Tensor_[FP32_MAX_MASK_SIZE], FP32_MAX_MASK_SIZE,
+                                   v1GroupNum, param);
         PipeBarrier<PIPE_V>();
         BlockReduceSum(aF32TmpTensor_, aF32TmpTensor_, v1GroupNum, FP32_MAX_MASK_SIZE, 1, 1, FP32_MASK_BLK_NUM);
     } else {
@@ -978,9 +947,8 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 
     PipeBarrier<PIPE_V>();
-    BlockReduceSum(
-        aF32TmpTensor_, aF32TmpTensor_, CeilDiv(v1GroupNum, FP32_BLOCK_SIZE), FP32_MAX_MASK_SIZE, 1, 1,
-        VEC_REPEAT_MAX_STRIDE);
+    BlockReduceSum(aF32TmpTensor_, aF32TmpTensor_, CeilDiv(v1GroupNum, FP32_BLOCK_SIZE), FP32_MAX_MASK_SIZE, 1, 1,
+                   VEC_REPEAT_MAX_STRIDE);
 
     PipeBarrier<PIPE_V>();
     Brcb(aSumTensor_, aF32TmpTensor_, CeilDiv(v1GroupNum, FP32_BLOCK_SIZE), {1, 8});
@@ -993,19 +961,17 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     // 尾块前面一定是全块所以乘CeilDiv(static_cast<uint64_t>(tiling_->v1BaseK), tiling_->groupSize)
     uint64_t gmOffset = mIdx * tiling_->v1BaseM * groupNum_ * FP32_BLOCK_SIZE +
                         kIdx * CeilDiv(static_cast<uint64_t>(tiling_->v1BaseK), tiling_->groupSize) * FP32_BLOCK_SIZE;
-    DataCopyPad2D(
-        reduceSumWorkspaceGm_[gmOffset], aSumTensor_, preProcessParams.realProcessM, v1BaseKGroupNum_ * FP32_BLOCK_SIZE,
-        groupNum_ * FP32_BLOCK_SIZE);
+    DataCopyPad2D(reduceSumWorkspaceGm_[gmOffset], aSumTensor_, preProcessParams.realProcessM,
+                  v1BaseKGroupNum_ * FP32_BLOCK_SIZE, groupNum_ * FP32_BLOCK_SIZE);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    ComputeSumAPerChannel(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams)
+    preciseType>::ComputeSumAPerChannel(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx,
+                                        PreProcessParams &preProcessParams)
 {
     uint32_t numRepeatK = tiling_->v1BaseK / FP32_MAX_MASK_SIZE;
     LocalTensor<float> sumOnceSrcTensor = aF32Tensor_;
@@ -1027,12 +993,11 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
         PipeBarrier<PIPE_V>();
     }
 
-    BlockReduceSum<float, false>(
-        sumOnceDstTensor, sumOnceDstTensor, preProcessParams.realProcessM, FP32_MAX_MASK_SIZE, 1, 1, FP32_MASK_BLK_NUM);
+    BlockReduceSum<float, false>(sumOnceDstTensor, sumOnceDstTensor, preProcessParams.realProcessM, FP32_MAX_MASK_SIZE,
+                                 1, 1, FP32_MASK_BLK_NUM);
     PipeBarrier<PIPE_V>();
-    BlockReduceSum(
-        sumOnceDstTensor, sumOnceDstTensor, 1, FP32_BLOCK_SIZE * preProcessParams.realProcessM,
-        static_cast<uint16_t>(FP32_MASK_BLK_NUM), 1, FP32_MASK_BLK_NUM);
+    BlockReduceSum(sumOnceDstTensor, sumOnceDstTensor, 1, FP32_BLOCK_SIZE * preProcessParams.realProcessM,
+                   static_cast<uint16_t>(FP32_MASK_BLK_NUM), 1, FP32_MASK_BLK_NUM);
     PipeBarrier<PIPE_V>();
     // brcb一次只能处理8个block
     Brcb(aSumTensor_, sumOnceDstTensor, CeilAlign(preProcessParams.realProcessM, static_cast<uint16_t>(8)), {1, 8});
@@ -1045,15 +1010,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
         aSumTensor_, preProcessParams.realProcessM, FP32_BLOCK_SIZE, FP32_BLOCK_SIZE);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline uint32_t Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    ComputeSumAOnce(
-        LocalTensor<float>& dst, LocalTensor<float>& src, uint32_t numRepeatK, PreProcessParams& preProcessParams)
+    preciseType>::ComputeSumAOnce(LocalTensor<float> &dst, LocalTensor<float> &src, uint32_t numRepeatK,
+                                  PreProcessParams &preProcessParams)
 {
     uint32_t numProcessK = numRepeatK >> 1;
     uint32_t nextRepeatK = numRepeatK - numProcessK;
@@ -1064,31 +1027,30 @@ __aicore__ inline uint32_t Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
         uint32_t reduceKSize = nextRepeatK * FP32_MAX_MASK_SIZE;
         uint32_t fullKSize = numRepeatK * FP32_MAX_MASK_SIZE;
         for (uint16_t mLoopIdx = 1; mLoopIdx < preProcessParams.realProcessM; mLoopIdx++) {
-            AscendC::Add<float, false>(
-                dst[mLoopIdx * reduceKSize], src[mLoopIdx * fullKSize], src[mLoopIdx * fullKSize + offsetPostHalf],
-                FP32_MAX_MASK_SIZE, numProcessK, commonRepeatParams_);
+            AscendC::Add<float, false>(dst[mLoopIdx * reduceKSize], src[mLoopIdx * fullKSize],
+                                       src[mLoopIdx * fullKSize + offsetPostHalf], FP32_MAX_MASK_SIZE, numProcessK,
+                                       commonRepeatParams_);
         }
     }
     ProcessReduceTail(dst, src, numRepeatK, nextRepeatK, numProcessK, preProcessParams);
     return nextRepeatK;
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::ComputeMaxA(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams)
+    preciseType>::ComputeMaxA(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx, PreProcessParams &preProcessParams)
 {
     SetMaskNorm();
     SetVectorMask<float, MaskMode::NORMAL>(FP32_MAX_MASK_SIZE);
     uint32_t numRepeatK = tiling_->v1BaseK / FP32_MAX_MASK_SIZE;
     AscendC::Abs<float, false>(aF32TmpTensor_, aF32Tensor_, FP32_MAX_MASK_SIZE, numRepeatK, commonUnaryRepeatParams_);
     for (uint16_t mLoopIdx = 1; mLoopIdx < preProcessParams.realProcessM; mLoopIdx++) {
-        AscendC::Abs<float, false>(
-            aF32TmpTensor_[mLoopIdx * tiling_->v1BaseK], aF32Tensor_[mLoopIdx * tiling_->v1BaseK], FP32_MAX_MASK_SIZE,
-            numRepeatK, commonUnaryRepeatParams_);
+        AscendC::Abs<float, false>(aF32TmpTensor_[mLoopIdx * tiling_->v1BaseK],
+                                   aF32Tensor_[mLoopIdx * tiling_->v1BaseK], FP32_MAX_MASK_SIZE, numRepeatK,
+                                   commonUnaryRepeatParams_);
     }
 
     PipeBarrier<PIPE_V>();
@@ -1099,29 +1061,27 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    ComputeMaxAPerGroup(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams)
+    preciseType>::ComputeMaxAPerGroup(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx,
+                                      PreProcessParams &preProcessParams)
 {
     uint32_t v1GroupNum = preProcessParams.realProcessM * v1BaseKGroupNum_; // tiing保证v1GroupNum小于255
     if (tiling_->groupSize == 128) {
         BinaryRepeatParams param;
         GetSumOrMaxAParamPerGroup(param);
-        AscendC::Max<float, false>(
-            aF32TmpTensor_, aF32TmpTensor_, aF32TmpTensor_[FP32_MAX_MASK_SIZE], FP32_MAX_MASK_SIZE, v1GroupNum, param);
+        AscendC::Max<float, false>(aF32TmpTensor_, aF32TmpTensor_, aF32TmpTensor_[FP32_MAX_MASK_SIZE],
+                                   FP32_MAX_MASK_SIZE, v1GroupNum, param);
         PipeBarrier<PIPE_V>();
     }
     BlockReduceMax(aF32TmpTensor_, aF32TmpTensor_, v1GroupNum, FP32_MAX_MASK_SIZE, 1, 1, FP32_MASK_BLK_NUM);
 
     PipeBarrier<PIPE_V>();
-    BlockReduceMax(
-        aF32TmpTensor_, aF32TmpTensor_, CeilDiv(v1GroupNum, FP32_BLOCK_SIZE), FP32_MAX_MASK_SIZE, 1, 1,
-        VEC_REPEAT_MAX_STRIDE);
+    BlockReduceMax(aF32TmpTensor_, aF32TmpTensor_, CeilDiv(v1GroupNum, FP32_BLOCK_SIZE), FP32_MAX_MASK_SIZE, 1, 1,
+                   VEC_REPEAT_MAX_STRIDE);
 
     PipeBarrier<PIPE_V>();
     Brcb(aMaxTensor_, aF32TmpTensor_, CeilDiv(v1GroupNum, FP32_BLOCK_SIZE), {1, 8});
@@ -1134,20 +1094,17 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     // 尾快前面一定是全块所以乘CeilDiv(static_cast<uint64_t>(tiling_->v1BaseK), tiling_->groupSize)
     uint64_t gmOffset = mIdx * tiling_->v1BaseM * groupNum_ * FP32_BLOCK_SIZE +
                         kIdx * CeilDiv(static_cast<uint64_t>(tiling_->v1BaseK), tiling_->groupSize) * FP32_BLOCK_SIZE;
-    DataCopyPad2D(
-        reduceMaxWorkspaceGm_[gmOffset], aMaxTensor_, preProcessParams.realProcessM, v1BaseKGroupNum_ * FP32_BLOCK_SIZE,
-        groupNum_ * FP32_BLOCK_SIZE);
+    DataCopyPad2D(reduceMaxWorkspaceGm_[gmOffset], aMaxTensor_, preProcessParams.realProcessM,
+                  v1BaseKGroupNum_ * FP32_BLOCK_SIZE, groupNum_ * FP32_BLOCK_SIZE);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    ComputeMaxAPerChannel(
-        uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams, uint32_t numRepeatK)
+    preciseType>::ComputeMaxAPerChannel(uint64_t taskIdx, uint64_t mIdx, uint64_t kIdx,
+                                        PreProcessParams &preProcessParams, uint32_t numRepeatK)
 {
     uint32_t computeTimes = 0;
 
@@ -1167,12 +1124,11 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
         PipeBarrier<PIPE_V>();
     }
 
-    BlockReduceMax<float, false>(
-        maxOnceDstTensor, maxOnceDstTensor, preProcessParams.realProcessM, FP32_MAX_MASK_SIZE, 1, 1, FP32_MASK_BLK_NUM);
+    BlockReduceMax<float, false>(maxOnceDstTensor, maxOnceDstTensor, preProcessParams.realProcessM, FP32_MAX_MASK_SIZE,
+                                 1, 1, FP32_MASK_BLK_NUM);
     PipeBarrier<PIPE_V>();
-    BlockReduceMax(
-        maxOnceDstTensor, maxOnceDstTensor, 1, FP32_BLOCK_SIZE * preProcessParams.realProcessM, FP32_MASK_BLK_NUM, 1,
-        FP32_MASK_BLK_NUM);
+    BlockReduceMax(maxOnceDstTensor, maxOnceDstTensor, 1, FP32_BLOCK_SIZE * preProcessParams.realProcessM,
+                   FP32_MASK_BLK_NUM, 1, FP32_MASK_BLK_NUM);
     PipeBarrier<PIPE_V>();
     // brcb一次只能处理8个block
     Brcb(aMaxTensor_, maxOnceDstTensor, CeilAlign(preProcessParams.realProcessM, static_cast<uint16_t>(8)), {1, 8});
@@ -1184,15 +1140,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
         aMaxTensor_, preProcessParams.realProcessM, FP32_BLOCK_SIZE, FP32_BLOCK_SIZE);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline uint32_t Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    ComputeMaxAOnce(
-        LocalTensor<float>& dst, LocalTensor<float>& src, uint32_t numRepeatK, PreProcessParams& preProcessParams)
+    preciseType>::ComputeMaxAOnce(LocalTensor<float> &dst, LocalTensor<float> &src, uint32_t numRepeatK,
+                                  PreProcessParams &preProcessParams)
 {
     uint32_t numProcessK = numRepeatK >> 1;
     uint32_t nextRepeatK = numRepeatK - numProcessK;
@@ -1205,24 +1159,21 @@ __aicore__ inline uint32_t Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     uint32_t reduceKSize = nextRepeatK * FP32_MAX_MASK_SIZE;
     uint32_t fullKSize = numRepeatK * FP32_MAX_MASK_SIZE;
     for (uint16_t mLoopIdx = 1; mLoopIdx < preProcessParams.realProcessM; mLoopIdx++) {
-        AscendC::Max<float, false>(
-            dst[mLoopIdx * reduceKSize], src[mLoopIdx * fullKSize], src[mLoopIdx * fullKSize + offsetPostHalf],
-            FP32_MAX_MASK_SIZE, numProcessK, commonRepeatParams_);
+        AscendC::Max<float, false>(dst[mLoopIdx * reduceKSize], src[mLoopIdx * fullKSize],
+                                   src[mLoopIdx * fullKSize + offsetPostHalf], FP32_MAX_MASK_SIZE, numProcessK,
+                                   commonRepeatParams_);
     }
     ProcessReduceTail(dst, src, numRepeatK, nextRepeatK, numProcessK, preProcessParams);
     return nextRepeatK;
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    ProcessReduceTail(
-        LocalTensor<float>& dst, LocalTensor<float>& src, uint32_t numRepeatK, uint32_t nextRepeatK,
-        uint32_t numProcessK, PreProcessParams& preProcessParams)
+    preciseType>::ProcessReduceTail(LocalTensor<float> &dst, LocalTensor<float> &src, uint32_t numRepeatK,
+                                    uint32_t nextRepeatK, uint32_t numProcessK, PreProcessParams &preProcessParams)
 {
     if ((numRepeatK & 1) == 0) {
         return;
@@ -1233,18 +1184,16 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     params.dstStride = 1;
     params.dstRepeatSize = nextRepeatK * FP32_MASK_BLK_NUM;
     params.srcRepeatSize = numRepeatK * FP32_MASK_BLK_NUM;
-    AscendC::Copy<float, false>(
-        dst[numProcessK * FP32_MAX_MASK_SIZE], src[(numProcessK << 1) * FP32_MAX_MASK_SIZE], FP32_MAX_MASK_SIZE,
-        preProcessParams.realProcessM, params);
+    AscendC::Copy<float, false>(dst[numProcessK * FP32_MAX_MASK_SIZE], src[(numProcessK << 1) * FP32_MAX_MASK_SIZE],
+                                FP32_MAX_MASK_SIZE, preProcessParams.realProcessM, params);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::UnfoldAMatrix(uint64_t mIdx, uint64_t kIdx, PreProcessParams& preProcessParams)
+    preciseType>::UnfoldAMatrix(uint64_t mIdx, uint64_t kIdx, PreProcessParams &preProcessParams)
 {
     // 避免bank冲突，tensor使用时每次额外往前偏移一个repeat的数据量
     uint32_t defaultOffset = multiScaleTimes_ * FP32_MAX_MASK_SIZE;
@@ -1256,32 +1205,28 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     float multiFactors[3] = {multiFactors_[0], multiFactors_[1], multiFactors_[2]};
     for (uint64_t unfoldATimes = 0; unfoldATimes < multiScaleTimes_;
          unfoldATimes++, defaultOffset -= FP32_MAX_MASK_SIZE) {
-        TransToWType(
-            unfoldATimes, defaultOffset, mainRepeatK, multiFactors[unfoldATimes], f32BinaryRepeatParams,
-            f32UnaryRepeatParams, f32ToF16RepeatParams, preProcessParams);
+        TransToWType(unfoldATimes, defaultOffset, mainRepeatK, multiFactors[unfoldATimes], f32BinaryRepeatParams,
+                     f32UnaryRepeatParams, f32ToF16RepeatParams, preProcessParams);
 
         event_t eventIdVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
         WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
         uint64_t gmOffset =
             kIdx * aUnfoldSizeWtype_ + (mIdx * tiling_->v1BaseM + unfoldATimes * tiling_->mSize) * tiling_->v1BaseK;
-        DataCopyPad2D(
-            aUnfoldGlobal_[gmOffset],
-            aUnfoldLocalTensor_[unfoldATimes * preProcessParams.realProcessM * tiling_->v1BaseK],
-            preProcessParams.realProcessM, preProcessParams.realProcessK, tiling_->v1BaseK, tiling_->v1BaseK);
+        DataCopyPad2D(aUnfoldGlobal_[gmOffset],
+                      aUnfoldLocalTensor_[unfoldATimes * preProcessParams.realProcessM * tiling_->v1BaseK],
+                      preProcessParams.realProcessM, preProcessParams.realProcessK, tiling_->v1BaseK, tiling_->v1BaseK);
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    TransToWTypeFirstStep(
-        uint64_t defaultOffset, uint64_t mainRepeatK, const BinaryRepeatParams& f32BinaryRepeatParams,
-        const PreProcessParams& preProcessParams)
+    preciseType>::TransToWTypeFirstStep(uint64_t defaultOffset, uint64_t mainRepeatK,
+                                        const BinaryRepeatParams &f32BinaryRepeatParams,
+                                        const PreProcessParams &preProcessParams)
 {
     if constexpr (antiQuantType == Mc2QuantType::PER_CHANNEL) {
         Div(aF32TmpTensor_[defaultOffset], aF32Tensor_, aMaxTensor_, FP32_MAX_MASK_SIZE, mainRepeatK,
@@ -1300,76 +1245,69 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
         repeatParams.dstRepStride = tiling_->groupSize / FP32_MASK_BLK_NUM; // float类型，8个block构成一个repeat
         repeatParams.src0RepStride = repeatParams.dstRepStride;
         repeatParams.src1RepStride = 1;
-        AscendC::Div(
-            aF32TmpTensor_[defaultOffset], aF32Tensor_, aMaxTensor_, FP32_MAX_MASK_SIZE, v1GroupNum, repeatParams);
+        AscendC::Div(aF32TmpTensor_[defaultOffset], aF32Tensor_, aMaxTensor_, FP32_MAX_MASK_SIZE, v1GroupNum,
+                     repeatParams);
         if (tiling_->groupSize == 128) {
-            AscendC::Div(
-                aF32TmpTensor_[defaultOffset + 64], aF32Tensor_[64], aMaxTensor_, FP32_MAX_MASK_SIZE, v1GroupNum,
-                repeatParams);
+            AscendC::Div(aF32TmpTensor_[defaultOffset + 64], aF32Tensor_[64], aMaxTensor_, FP32_MAX_MASK_SIZE,
+                         v1GroupNum, repeatParams);
         }
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    TransToWType(
-        uint64_t unfoldATimes, uint64_t defaultOffset, uint64_t mainRepeatK, float multiFactors,
-        const BinaryRepeatParams& f32BinaryRepeatParams, const UnaryRepeatParams& f32UnaryRepeatParams,
-        const UnaryRepeatParams& f32ToF16RepeatParams, const PreProcessParams& preProcessParams)
+    preciseType>::TransToWType(uint64_t unfoldATimes, uint64_t defaultOffset, uint64_t mainRepeatK, float multiFactors,
+                               const BinaryRepeatParams &f32BinaryRepeatParams,
+                               const UnaryRepeatParams &f32UnaryRepeatParams,
+                               const UnaryRepeatParams &f32ToF16RepeatParams, const PreProcessParams &preProcessParams)
 {
     if (likely(unfoldATimes > 0)) {
         Sub(aF32TmpTensor_[defaultOffset], aF32Tensor_, aF32TmpTensor_[defaultOffset + FP32_MAX_MASK_SIZE],
             FP32_MAX_MASK_SIZE, mainRepeatK, commonRepeatParams_);
         for (uint16_t mLoopIdx = 1; mLoopIdx < preProcessParams.realProcessM; mLoopIdx++) {
-            AscendC::Sub<float, false>(
-                aF32TmpTensor_[defaultOffset + mLoopIdx * tiling_->v1BaseK], aF32Tensor_[mLoopIdx * tiling_->v1BaseK],
-                aF32TmpTensor_[defaultOffset + FP32_MAX_MASK_SIZE + mLoopIdx * tiling_->v1BaseK], FP32_MAX_MASK_SIZE,
-                mainRepeatK, commonRepeatParams_);
+            AscendC::Sub<float, false>(aF32TmpTensor_[defaultOffset + mLoopIdx * tiling_->v1BaseK],
+                                       aF32Tensor_[mLoopIdx * tiling_->v1BaseK],
+                                       aF32TmpTensor_[defaultOffset + FP32_MAX_MASK_SIZE + mLoopIdx * tiling_->v1BaseK],
+                                       FP32_MAX_MASK_SIZE, mainRepeatK, commonRepeatParams_);
         }
     } else {
         TransToWTypeFirstStep(defaultOffset, mainRepeatK, f32BinaryRepeatParams, preProcessParams);
     }
     PipeBarrier<PIPE_V>();
     for (uint16_t mLoopIdx = 0; mLoopIdx < preProcessParams.realProcessM; mLoopIdx++) {
-        Muls<float, false>(
-            aF32Tensor_[mLoopIdx * tiling_->v1BaseK], aF32TmpTensor_[defaultOffset + mLoopIdx * tiling_->v1BaseK],
-            multiFactors, FP32_MAX_MASK_SIZE, mainRepeatK, f32UnaryRepeatParams);
+        Muls<float, false>(aF32Tensor_[mLoopIdx * tiling_->v1BaseK],
+                           aF32TmpTensor_[defaultOffset + mLoopIdx * tiling_->v1BaseK], multiFactors,
+                           FP32_MAX_MASK_SIZE, mainRepeatK, f32UnaryRepeatParams);
     }
     PipeBarrier<PIPE_V>();
 
     for (uint16_t mLoopIdx = 0; mLoopIdx < preProcessParams.realProcessM; mLoopIdx++) {
-        AscendC::Cast<float, float, false>(
-            aF32TmpTensor_[defaultOffset + mLoopIdx * tiling_->v1BaseK], aF32Tensor_[mLoopIdx * tiling_->v1BaseK],
-            RoundMode::CAST_ROUND, FP32_MAX_MASK_SIZE, mainRepeatK, f32UnaryRepeatParams);
+        AscendC::Cast<float, float, false>(aF32TmpTensor_[defaultOffset + mLoopIdx * tiling_->v1BaseK],
+                                           aF32Tensor_[mLoopIdx * tiling_->v1BaseK], RoundMode::CAST_ROUND,
+                                           FP32_MAX_MASK_SIZE, mainRepeatK, f32UnaryRepeatParams);
     }
     PipeBarrier<PIPE_V>();
 
     for (uint16_t mLoopIdx = 0; mLoopIdx < preProcessParams.realProcessM; mLoopIdx++) {
-        AscendC::Cast<half, float, false>(
-            aFp16Tensor_[mLoopIdx * tiling_->v1BaseK], aF32TmpTensor_[defaultOffset + mLoopIdx * tiling_->v1BaseK],
-            RoundMode::CAST_NONE, FP32_MAX_MASK_SIZE, mainRepeatK, f32ToF16RepeatParams);
+        AscendC::Cast<half, float, false>(aFp16Tensor_[mLoopIdx * tiling_->v1BaseK],
+                                          aF32TmpTensor_[defaultOffset + mLoopIdx * tiling_->v1BaseK],
+                                          RoundMode::CAST_NONE, FP32_MAX_MASK_SIZE, mainRepeatK, f32ToF16RepeatParams);
     }
     PipeBarrier<PIPE_V>();
-    Cast(
-        aUnfoldLocalTensor_[unfoldATimes * preProcessParams.realProcessM * tiling_->v1BaseK], aFp16Tensor_,
-        RoundMode::CAST_NONE, preProcessParams.realProcessM * tiling_->v1BaseK);
+    Cast(aUnfoldLocalTensor_[unfoldATimes * preProcessParams.realProcessM * tiling_->v1BaseK], aFp16Tensor_,
+         RoundMode::CAST_NONE, preProcessParams.realProcessM * tiling_->v1BaseK);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    SetRepeatParams(
-        BinaryRepeatParams& repeatParams, UnaryRepeatParams& f32UnaryRepeatParams,
-        UnaryRepeatParams& f32ToF16RepeatParams)
+    preciseType>::SetRepeatParams(BinaryRepeatParams &repeatParams, UnaryRepeatParams &f32UnaryRepeatParams,
+                                  UnaryRepeatParams &f32ToF16RepeatParams)
 {
     repeatParams.dstBlkStride = 1;
     repeatParams.src0BlkStride = 1;
@@ -1389,13 +1327,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     f32ToF16RepeatParams.srcRepStride = FP32_MASK_BLK_NUM;
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::BL1PreLoad(const CubeProcessParams<wType>& cubeProcessParams)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType, weightFormat,
+                                           preciseType>::BL1PreLoad(const CubeProcessParams<wType> &cubeProcessParams)
 {
     uint64_t kBlockNum = InitMatmulParams();
     uint64_t preloadTimes = 0;
@@ -1431,9 +1369,8 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
                 uint64_t realStepKa = CeilDiv(l1RealKa, static_cast<uint64_t>(tiling_->matmulTiling.baseK));
                 for (uint64_t stepKbOffset = 0; stepKbOffset < realStepKa;
                      stepKbOffset += tiling_->matmulTiling.stepKb) {
-                    BL1DmaCopy(
-                        kaOffset, stepKbOffset, l1RealKa, singleCoreNOffset, l1RealN, cubeProcessParams,
-                        matmulTaskLoopParams);
+                    BL1DmaCopy(kaOffset, stepKbOffset, l1RealKa, singleCoreNOffset, l1RealN, cubeProcessParams,
+                               matmulTaskLoopParams);
                     preloadTimes++;
                     // 经验值，预载入次数保持10次即可
                     if (preloadTimes >= 10) {
@@ -1445,16 +1382,14 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    BL1DmaCopy(
-        uint64_t kaOffset, uint64_t stepKbOffset, uint64_t l1RealKa, uint64_t singleCoreNOffset, uint64_t l1RealN,
-        const CubeProcessParams<wType>& cubeProcessParams, const MatmulTaskLoopParams& matmulTaskLoopParams)
+    preciseType>::BL1DmaCopy(uint64_t kaOffset, uint64_t stepKbOffset, uint64_t l1RealKa, uint64_t singleCoreNOffset,
+                             uint64_t l1RealN, const CubeProcessParams<wType> &cubeProcessParams,
+                             const MatmulTaskLoopParams &matmulTaskLoopParams)
 {
     uint64_t singleCoreKbOffset = kaOffset + stepKbOffset * tiling_->matmulTiling.baseK;
     uint64_t l1RealKb = stepKbOffset * tiling_->matmulTiling.baseK + cubeProcessParams.l1BaseKb > l1RealKa ?
@@ -1491,16 +1426,14 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    LaunchMatmul(
-        const CubeProcessParams<wType>& cubeProcessParams, SyncProcessor<HardEvent::MTE1_MTE2>& al1SyncProcessor,
-        SyncProcessor<HardEvent::MTE1_MTE2>& bl1SyncProcessor)
+    preciseType>::LaunchMatmul(const CubeProcessParams<wType> &cubeProcessParams,
+                               SyncProcessor<HardEvent::MTE1_MTE2> &al1SyncProcessor,
+                               SyncProcessor<HardEvent::MTE1_MTE2> &bl1SyncProcessor)
 {
     // msd方案暂时只实现stepKa >= stepKb模板
     uint64_t kBlockNum = InitMatmulParams();
@@ -1534,29 +1467,27 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
                 uint32_t l1RealN = singleCoreNOffset + tiling_->matmulTiling.baseN > singleCoreRealN ?
                                        singleCoreRealN - singleCoreNOffset :
                                        tiling_->matmulTiling.baseN;
-                IterateAllSingleCoreK(
-                    singleCoreNOffset, l1RealM, l1RealN, mOffset, cubeProcessParams, matmulTaskLoopParams,
-                    al1SyncProcessor, bl1SyncProcessor);
+                IterateAllSingleCoreK(singleCoreNOffset, l1RealM, l1RealN, mOffset, cubeProcessParams,
+                                      matmulTaskLoopParams, al1SyncProcessor, bl1SyncProcessor);
             }
         }
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    IterateAllSingleCoreK(
-        uint64_t singleCoreNOffset, uint64_t l1RealM, uint32_t l1RealN, uint64_t mOffset,
-        const CubeProcessParams<wType>& cubeProcessParams, const MatmulTaskLoopParams& matmulTaskLoopParams,
-        SyncProcessor<HardEvent::MTE1_MTE2>& al1SyncProcessor, SyncProcessor<HardEvent::MTE1_MTE2>& bl1SyncProcessor)
+    preciseType>::IterateAllSingleCoreK(uint64_t singleCoreNOffset, uint64_t l1RealM, uint32_t l1RealN,
+                                        uint64_t mOffset, const CubeProcessParams<wType> &cubeProcessParams,
+                                        const MatmulTaskLoopParams &matmulTaskLoopParams,
+                                        SyncProcessor<HardEvent::MTE1_MTE2> &al1SyncProcessor,
+                                        SyncProcessor<HardEvent::MTE1_MTE2> &bl1SyncProcessor)
 {
     uint64_t l1RealMAlign = CeilDiv(l1RealM, static_cast<uint64_t>(BLOCK_CUBE)) * BLOCK_CUBE;
-    mmObj_.SetOrgShape(
-        tiling_->mSize, tiling_->nSize, cubeProcessParams.l1BaseKa, cubeProcessParams.l1BaseKb, curTaskNSize_);
+    mmObj_.SetOrgShape(tiling_->mSize, tiling_->nSize, cubeProcessParams.l1BaseKa, cubeProcessParams.l1BaseKb,
+                       curTaskNSize_);
     // ka方向遍历
     for (uint64_t kaOffset = 0; kaOffset < matmulTaskLoopParams.singleCoreK; kaOffset += cubeProcessParams.l1BaseKa) {
         uint64_t l1RealKa = kaOffset + cubeProcessParams.l1BaseKa > matmulTaskLoopParams.singleCoreK ?
@@ -1574,9 +1505,8 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
             bl1SyncProcessor.WaitSyncFlag();
             LocalTensor<wType> bL1Tensor =
                 bl1SyncProcessor.GetBufferId() == 0 ? cubeProcessParams.bL1TensorPing : cubeProcessParams.bL1TensorPong;
-            CopyInBL1(
-                bL1Tensor, curTaskNOffset_ + singleCoreNOffset + matmulTaskLoopParams.nOffset,
-                matmulTaskLoopParams.kOffset + singleCoreKbOffset, l1RealN, l1RealKb);
+            CopyInBL1(bL1Tensor, curTaskNOffset_ + singleCoreNOffset + matmulTaskLoopParams.nOffset,
+                      matmulTaskLoopParams.kOffset + singleCoreKbOffset, l1RealN, l1RealKb);
 
             TEventID eventIdMte2ToMte1 = GetTPipePtr()->FetchEventID<HardEvent::MTE2_MTE1>();
             SetFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
@@ -1593,16 +1523,14 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
             mmObj_.SetTensorB(bL1Tensor, bTrans);
             mmObj_.SetTail(l1RealM, l1RealN, l1RealKb);
             mmObj_.Iterate(kaOffset != 0 || stepKbOffset != 0);
-            if (unlikely(
-                    kaOffset + cubeProcessParams.l1BaseKa >= matmulTaskLoopParams.singleCoreK &&
-                    stepKbOffset + tiling_->matmulTiling.stepKb >= realStepKa)) {
+            if (unlikely(kaOffset + cubeProcessParams.l1BaseKa >= matmulTaskLoopParams.singleCoreK &&
+                         stepKbOffset + tiling_->matmulTiling.stepKb >= realStepKa)) {
                 // c矩阵的offset计算公式:cube单次循环size * pingpong份数量 + 切kId * matmul一次计算的size + m偏移 * n
                 // +n偏移
                 mmObj_.GetTensorC(
-                    cUnfoldGlobal_
-                        [cUnfoldSize_ * (cubeLoopIdx_ % c1c2CacheNum_) +
-                         matmulTaskLoopParams.kIdx * multiScaleTimes_ * tiling_->mSize * curTaskNSize_ +
-                         mOffset * curTaskNSize_ + singleCoreNOffset + matmulTaskLoopParams.nOffset]);
+                    cUnfoldGlobal_[cUnfoldSize_ * (cubeLoopIdx_ % c1c2CacheNum_) +
+                                   matmulTaskLoopParams.kIdx * multiScaleTimes_ * tiling_->mSize * curTaskNSize_ +
+                                   mOffset * curTaskNSize_ + singleCoreNOffset + matmulTaskLoopParams.nOffset]);
             }
             mmObj_.End();
             bl1SyncProcessor.SetSyncFlag();
@@ -1610,13 +1538,12 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::GetCopyInAL1Params(Nd2NzParams& nd2nzParams, uint64_t& kOffset, uint64_t l1BaseKa, uint64_t l1BaseM)
+    preciseType>::GetCopyInAL1Params(Nd2NzParams &nd2nzParams, uint64_t &kOffset, uint64_t l1BaseKa, uint64_t l1BaseM)
 {
     nd2nzParams.ndNum = 1;
     nd2nzParams.nValue = l1BaseM;
@@ -1635,16 +1562,14 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     nd2nzParams.dstNzMatrixStride = 0;
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    CopyInAL1(
-        const CubeProcessParams<wType>& cubeProcessParams, uint64_t kIdx, uint64_t mOffset, uint64_t kOffset,
-        uint64_t l1BaseKa, uint64_t l1BaseM, SyncProcessor<HardEvent::MTE1_MTE2>& al1SyncProcessor)
+    preciseType>::CopyInAL1(const CubeProcessParams<wType> &cubeProcessParams, uint64_t kIdx, uint64_t mOffset,
+                            uint64_t kOffset, uint64_t l1BaseKa, uint64_t l1BaseM,
+                            SyncProcessor<HardEvent::MTE1_MTE2> &al1SyncProcessor)
 {
     if constexpr (antiQuantType == Mc2QuantType::PER_GROUP) {
         if (taskIdx_ > taskStartIdx_) { // perGroup场景A矩阵按照groupPack维度加载
@@ -1685,15 +1610,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     return;
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    CopyInBL1(
-        const LocalTensor<wType>& bL1Tensor, uint64_t nOffset, uint64_t kOffset, uint64_t l1RealN, uint64_t l1BaseKb)
+    preciseType>::CopyInBL1(const LocalTensor<wType> &bL1Tensor, uint64_t nOffset, uint64_t kOffset, uint64_t l1RealN,
+                            uint64_t l1BaseKb)
 {
     if constexpr (weightFormat != CubeFormat::NZ) {
         CopyInBL1Nd(bL1Tensor, nOffset, kOffset, l1RealN, l1BaseKb);
@@ -1702,15 +1625,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    CopyInBL1Nd(
-        const LocalTensor<wType>& bL1Tensor, uint64_t nOffset, uint64_t kOffset, uint64_t l1RealN, uint64_t l1BaseKb)
+    preciseType>::CopyInBL1Nd(const LocalTensor<wType> &bL1Tensor, uint64_t nOffset, uint64_t kOffset, uint64_t l1RealN,
+                              uint64_t l1BaseKb)
 {
     uint64_t bOffset = 0;
     Nd2NzParams nd2nzParams;
@@ -1752,15 +1673,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     DataCopy(bL1Tensor.template ReinterpretCast<int8_t>(), wGlobal_[bOffset], nd2nzParams);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    CopyInBL1Nz(
-        const LocalTensor<wType>& bL1Tensor, uint64_t nOffset, uint64_t kOffset, uint64_t l1RealN, uint64_t l1BaseKb)
+    preciseType>::CopyInBL1Nz(const LocalTensor<wType> &bL1Tensor, uint64_t nOffset, uint64_t kOffset, uint64_t l1RealN,
+                              uint64_t l1BaseKb)
 {
     uint64_t bOffset = 0;
     DataCopyParams dmaParams;
@@ -1794,13 +1713,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     DataCopy(bL1Tensor.template ReinterpretCast<int8_t>(), wGlobal_[bOffset], dmaParams);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::SumMaxMul(uint64_t taskSingleCoreNSize, uint64_t realM)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType, weightFormat,
+                                           preciseType>::SumMaxMul(uint64_t taskSingleCoreNSize, uint64_t realM)
 {
     uint64_t repeatTimes = tiling_->taskSingleCoreNSize / FP32_MAX_MASK_SIZE;
     BinaryRepeatParams repeatParams;
@@ -1835,27 +1754,24 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    ComputeOffsetMn(
-        uint64_t taskSingleCoreNSize, uint64_t taskNSize, uint64_t nOffset, uint64_t baseMOffset, uint64_t realM)
+    preciseType>::ComputeOffsetMn(uint64_t taskSingleCoreNSize, uint64_t taskNSize, uint64_t nOffset,
+                                  uint64_t baseMOffset, uint64_t realM)
 {
     event_t eventIdVToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
     SetFlag<HardEvent::V_MTE2>(eventIdVToMte2);
     WaitFlag<HardEvent::V_MTE2>(eventIdVToMte2);
 
     uint64_t gmOffset = curGroupId_ * tiling_->nSize + nOffset; // perchannel下curGroupId_为0
-    DataCopyPad2D(
-        antiquantScaleF16Tensor_, antiQuantScaleGlobal_[gmOffset], realGroupPack_, taskSingleCoreNSize, tiling_->nSize);
+    DataCopyPad2D(antiquantScaleF16Tensor_, antiQuantScaleGlobal_[gmOffset], realGroupPack_, taskSingleCoreNSize,
+                  tiling_->nSize);
     if constexpr (hasAntiQuantOffset) {
-        DataCopyPad2D(
-            antiquantOffsetF16Tensor_, antiQuantOffsetGlobal_[gmOffset], realGroupPack_, taskSingleCoreNSize,
-            tiling_->nSize);
+        DataCopyPad2D(antiquantOffsetF16Tensor_, antiQuantOffsetGlobal_[gmOffset], realGroupPack_, taskSingleCoreNSize,
+                      tiling_->nSize);
     }
 
     PipeBarrier<PIPE_V>();
@@ -1863,34 +1779,31 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
     uint64_t repeatTimesGp = CeilDiv(realGroupPack_ * taskSingleCoreNSize, static_cast<uint64_t>(FP32_MAX_MASK_SIZE));
-    AscendC::Cast<float, xType, false>(
-        antiquantScaleF32Tensor_, antiquantScaleF16Tensor_, RoundMode::CAST_NONE, FP32_MAX_MASK_SIZE, repeatTimesGp,
-        fp16ToFp32UnaryRepeatParams_);
+    AscendC::Cast<float, xType, false>(antiquantScaleF32Tensor_, antiquantScaleF16Tensor_, RoundMode::CAST_NONE,
+                                       FP32_MAX_MASK_SIZE, repeatTimesGp, fp16ToFp32UnaryRepeatParams_);
     if constexpr (!hasAntiQuantOffset) {
         return;
     }
 
-    AscendC::Cast<float, xType, false>(
-        antiquantOffsetF32Tensor_, antiquantOffsetF16Tensor_, RoundMode::CAST_NONE, FP32_MAX_MASK_SIZE, repeatTimesGp,
-        fp16ToFp32UnaryRepeatParams_);
+    AscendC::Cast<float, xType, false>(antiquantOffsetF32Tensor_, antiquantOffsetF16Tensor_, RoundMode::CAST_NONE,
+                                       FP32_MAX_MASK_SIZE, repeatTimesGp, fp16ToFp32UnaryRepeatParams_);
     PipeBarrier<PIPE_V>();
 
-    AscendC::Mul<float, false>(
-        scaleOffsetProductTensor_, antiquantScaleF32Tensor_, antiquantOffsetF32Tensor_, FP32_MAX_MASK_SIZE,
-        repeatTimesGp, commonRepeatParams_);
+    AscendC::Mul<float, false>(scaleOffsetProductTensor_, antiquantScaleF32Tensor_, antiquantOffsetF32Tensor_,
+                               FP32_MAX_MASK_SIZE, repeatTimesGp, commonRepeatParams_);
     PipeBarrier<PIPE_V>();
 
     SumMaxMul(taskSingleCoreNSize, realM);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    ProcessC1C2(uint64_t taskSingleCoreNSize, uint64_t nOffset, uint64_t baseMOffset, uint64_t singleCorerealM)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType, weightFormat,
+                                           preciseType>::ProcessC1C2(uint64_t taskSingleCoreNSize, uint64_t nOffset,
+                                                                     uint64_t baseMOffset, uint64_t singleCorerealM)
 {
     event_t eventIdMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
     SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
@@ -1934,14 +1847,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    ProcessUnfoldCMatrix(const UnfoldCMatrixParams& params, SyncProcessor<HardEvent::V_MTE2>& c1c2SyncProcessor)
+    preciseType>::ProcessUnfoldCMatrix(const UnfoldCMatrixParams &params,
+                                       SyncProcessor<HardEvent::V_MTE2> &c1c2SyncProcessor)
 {
     uint64_t kIdx = params.kIdx;
     uint64_t mOffset = params.mOffset;
@@ -1960,9 +1872,8 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
                 ((kIdx * multiScaleTimes_ + unfoldATimes) * tiling_->mSize + mOffset + params.baseMOffset) *
                     curTaskNSize_ +
                 params.nOffset;
-            ProcessUnfoldCMatrixPerchannel(
-                cMatrixOffset, realM, params.taskSingleCoreNSize, divFactors[unfoldATimes], params.nRepeatTimes,
-                c1c2SyncProcessor);
+            ProcessUnfoldCMatrixPerchannel(cMatrixOffset, realM, params.taskSingleCoreNSize, divFactors[unfoldATimes],
+                                           params.nRepeatTimes, c1c2SyncProcessor);
         }
     } else {
         uint64_t repeatTimesDup = (multiScaleTimes_ * realM * tiling_->taskSingleCoreNSize) / FP32_MAX_MASK_SIZE;
@@ -1973,15 +1884,15 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
             cUnfoldSize_ * (cubeLoopIdx_ % c1c2CacheNum_) +
             ((kIdx * multiScaleTimes_) * tiling_->mSize + mOffset + params.baseMOffset) * curTaskNSize_ +
             params.nOffset;
-        ProcessUnfoldCMatrixPergroup(
-            cMatrixOffset, realM, params.taskSingleCoreNSize, params.nRepeatTimes, c1c2SyncProcessor);
+        ProcessUnfoldCMatrixPergroup(cMatrixOffset, realM, params.taskSingleCoreNSize, params.nRepeatTimes,
+                                     c1c2SyncProcessor);
     }
 
     for (uint32_t idxM = 0; idxM < realM; idxM++) {
-        AscendC::Mul<float, false>(
-            c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize],
-            c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize], antiquantScaleF32Tensor_[params.scaleOffset],
-            FP32_MAX_MASK_SIZE, params.nRepeatTimes, commonRepeatParams_);
+        AscendC::Mul<float, false>(c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize],
+                                   c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize],
+                                   antiquantScaleF32Tensor_[params.scaleOffset], FP32_MAX_MASK_SIZE,
+                                   params.nRepeatTimes, commonRepeatParams_);
     }
     PipeBarrier<PIPE_V>();
 
@@ -1992,23 +1903,21 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
         } else {
             maxOffset = idxM * realGroupPack_ * FP32_BLOCK_SIZE + kIdx * FP32_BLOCK_SIZE;
         }
-        AscendC::MulAddDst<float, float, false>(
-            cF32Tensor_[(mOffset + idxM) * tiling_->taskSingleCoreNSize],
-            c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize], aMaxComputeTensor_[maxOffset], FP32_MAX_MASK_SIZE,
-            params.nRepeatTimes, params.repeatParams);
+        AscendC::MulAddDst<float, float, false>(cF32Tensor_[(mOffset + idxM) * tiling_->taskSingleCoreNSize],
+                                                c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize],
+                                                aMaxComputeTensor_[maxOffset], FP32_MAX_MASK_SIZE, params.nRepeatTimes,
+                                                params.repeatParams);
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    ProcessC1C2PerGroup(
-        uint64_t taskSingleCoreNSize, uint64_t nOffset, uint64_t baseMOffset, uint64_t singleCorerealM,
-        uint64_t nRepeatTimes, const BinaryRepeatParams& repeatParams)
+    preciseType>::ProcessC1C2PerGroup(uint64_t taskSingleCoreNSize, uint64_t nOffset, uint64_t baseMOffset,
+                                      uint64_t singleCorerealM, uint64_t nRepeatTimes,
+                                      const BinaryRepeatParams &repeatParams)
 {
     // 16: 32k / 2 c1c2Fp16PingTensor_空间为32k
     uint64_t loadNum = 16 * 1024 / (multiScaleTimes_ * singleCorerealM * taskSingleCoreNSize * sizeof(preciseType));
@@ -2025,19 +1934,16 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     };
 
     int i = 0;
-    CopyInC1C2TensorPerGroup(
-        0, loadNum, baseMOffset, nOffset, singleCorerealM, taskSingleCoreNSize, eventIdsVToMte2[0], eventIdsMte2ToV[0]);
+    CopyInC1C2TensorPerGroup(0, loadNum, baseMOffset, nOffset, singleCorerealM, taskSingleCoreNSize, eventIdsVToMte2[0],
+                             eventIdsMte2ToV[0]);
     for (i = 1; i < cnt; i++) {
-        CopyInC1C2TensorPerGroup(
-            i, loadNum, baseMOffset, nOffset, singleCorerealM, taskSingleCoreNSize, eventIdsVToMte2[i & 1],
-            eventIdsMte2ToV[i & 1]);
-        CalculateC1C2Pergroup(
-            i - 1, cnt, loadNum, taskSingleCoreNSize, singleCorerealM, nRepeatTimes, repeatParams,
-            eventIdsVToMte2[(i - 1) & 1], eventIdsMte2ToV[(i - 1) & 1]);
+        CopyInC1C2TensorPerGroup(i, loadNum, baseMOffset, nOffset, singleCorerealM, taskSingleCoreNSize,
+                                 eventIdsVToMte2[i & 1], eventIdsMte2ToV[i & 1]);
+        CalculateC1C2Pergroup(i - 1, cnt, loadNum, taskSingleCoreNSize, singleCorerealM, nRepeatTimes, repeatParams,
+                              eventIdsVToMte2[(i - 1) & 1], eventIdsMte2ToV[(i - 1) & 1]);
     }
-    CalculateC1C2Pergroup(
-        i - 1, cnt, loadNum, taskSingleCoreNSize, singleCorerealM, nRepeatTimes, repeatParams,
-        eventIdsVToMte2[(i - 1) & 1], eventIdsMte2ToV[(i - 1) & 1]);
+    CalculateC1C2Pergroup(i - 1, cnt, loadNum, taskSingleCoreNSize, singleCorerealM, nRepeatTimes, repeatParams,
+                          eventIdsVToMte2[(i - 1) & 1], eventIdsMte2ToV[(i - 1) & 1]);
 
     GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(eventIdsMte2ToV[0]);
     GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(eventIdsMte2ToV[1]);
@@ -2045,16 +1951,14 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(eventIdsVToMte2[0]);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    CopyInC1C2TensorPerGroup(
-        uint64_t id, uint64_t loadNum, uint64_t baseMOffset, uint64_t nOffset, uint64_t realM,
-        uint64_t taskSingleCoreNSize, const event_t& eventIdVToMte2, const event_t& eventIdMte2ToV)
+    preciseType>::CopyInC1C2TensorPerGroup(uint64_t id, uint64_t loadNum, uint64_t baseMOffset, uint64_t nOffset,
+                                           uint64_t realM, uint64_t taskSingleCoreNSize, const event_t &eventIdVToMte2,
+                                           const event_t &eventIdMte2ToV)
 {
     LocalTensor<half> c1c2S32Tensor;
     if ((id & 1) == 0) { // 使用&对2进行取余比较，运算符优先级需加括号
@@ -2074,65 +1978,58 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
                                  ((kIdx * multiScaleTimes_) * tiling_->mSize + baseMOffset) * curTaskNSize_ + nOffset;
         for (uint32_t i = 0; i < multiScaleTimes_; i++) {
             uint64_t gmOffset = cMatrixOffset + i * realM * curTaskNSize_;
-            DataCopyPad2D(
-                c1c2S32Tensor[(g * realM * multiScaleTimes_ + realM * i) * tiling_->taskSingleCoreNSize],
-                cUnfoldGlobal_[gmOffset], realM, taskSingleCoreNSize, tiling_->taskSingleCoreNSize, curTaskNSize_);
+            DataCopyPad2D(c1c2S32Tensor[(g * realM * multiScaleTimes_ + realM * i) * tiling_->taskSingleCoreNSize],
+                          cUnfoldGlobal_[gmOffset], realM, taskSingleCoreNSize, tiling_->taskSingleCoreNSize,
+                          curTaskNSize_);
         }
     }
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    ProcessUnfoldCMatrixPergroupFp16(
-        uint64_t gId, uint64_t realM, half divFactorsFp16[], uint64_t repeatTimesAxpyFp32, uint64_t repeatTimesAxpyFp16,
-        const CopyRepeatParams& copyParam, LocalTensor<half>& c1c2S32Tensor)
+    preciseType>::ProcessUnfoldCMatrixPergroupFp16(uint64_t gId, uint64_t realM, half divFactorsFp16[],
+                                                   uint64_t repeatTimesAxpyFp32, uint64_t repeatTimesAxpyFp16,
+                                                   const CopyRepeatParams &copyParam, LocalTensor<half> &c1c2S32Tensor)
 {
     SetMaskNorm();
     SetVectorMask<half, MaskMode::NORMAL>(FP16_MASK_SIZE);
     uint64_t c1c2Offset = (gId * realM * multiScaleTimes_) * tiling_->taskSingleCoreNSize;
-    AscendC::Copy<half, false>(
-        c1c2Fp16ComputeTensor_, c1c2S32Tensor[c1c2Offset], FP16_MASK_SIZE, repeatTimesAxpyFp16, copyParam);
+    AscendC::Copy<half, false>(c1c2Fp16ComputeTensor_, c1c2S32Tensor[c1c2Offset], FP16_MASK_SIZE, repeatTimesAxpyFp16,
+                               copyParam);
     PipeBarrier<PIPE_V>();
 
     for (uint16_t unfoldATimes = 1; unfoldATimes < multiScaleTimes_; unfoldATimes++) {
         uint64_t c1c2Offset = (gId * realM * multiScaleTimes_ + realM * unfoldATimes) * tiling_->taskSingleCoreNSize;
-        AscendC::Axpy<half, half, false>(
-            c1c2Fp16ComputeTensor_, c1c2S32Tensor[c1c2Offset], divFactorsFp16[unfoldATimes], FP16_MASK_SIZE,
-            repeatTimesAxpyFp16, commonUnaryRepeatParams_);
+        AscendC::Axpy<half, half, false>(c1c2Fp16ComputeTensor_, c1c2S32Tensor[c1c2Offset],
+                                         divFactorsFp16[unfoldATimes], FP16_MASK_SIZE, repeatTimesAxpyFp16,
+                                         commonUnaryRepeatParams_);
         PipeBarrier<PIPE_V>();
     }
 
     SetVectorMask<float, MaskMode::NORMAL>(FP32_MAX_MASK_SIZE);
     // uint64_t castRepeatTimesHalf = ()
-    AscendC::Cast<float, half, false>(
-        c1c2ComputeTensor_, c1c2Fp16ComputeTensor_, RoundMode::CAST_NONE, FP32_MAX_MASK_SIZE, repeatTimesAxpyFp32,
-        fp16ToFp32UnaryRepeatParams_);
+    AscendC::Cast<float, half, false>(c1c2ComputeTensor_, c1c2Fp16ComputeTensor_, RoundMode::CAST_NONE,
+                                      FP32_MAX_MASK_SIZE, repeatTimesAxpyFp32, fp16ToFp32UnaryRepeatParams_);
     PipeBarrier<PIPE_V>();
-    AscendC::Muls<float, false>(
-        c1c2ComputeTensor_, c1c2ComputeTensor_, divFactors_[0], FP32_MAX_MASK_SIZE, repeatTimesAxpyFp32,
-        commonUnaryRepeatParams_);
+    AscendC::Muls<float, false>(c1c2ComputeTensor_, c1c2ComputeTensor_, divFactors_[0], FP32_MAX_MASK_SIZE,
+                                repeatTimesAxpyFp32, commonUnaryRepeatParams_);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    CalculateC1C2Pergroup(
-        uint64_t id, uint64_t cnt, uint64_t loadNum, uint64_t taskSingleCoreNSize, uint64_t realM,
-        uint64_t nRepeatTimes, const BinaryRepeatParams& repeatParams, const event_t& eventIdVToMte2,
-        const event_t& eventIdMte2ToV)
+    preciseType>::CalculateC1C2Pergroup(uint64_t id, uint64_t cnt, uint64_t loadNum, uint64_t taskSingleCoreNSize,
+                                        uint64_t realM, uint64_t nRepeatTimes, const BinaryRepeatParams &repeatParams,
+                                        const event_t &eventIdVToMte2, const event_t &eventIdMte2ToV)
 {
-    half divFactorsFp16[3] = {
-        static_cast<half>(divFactors_[0]), static_cast<half>(divFactors_[1]), static_cast<half>(divFactors_[2])};
+    half divFactorsFp16[3] = {static_cast<half>(divFactors_[0]), static_cast<half>(divFactors_[1]),
+                              static_cast<half>(divFactors_[2])};
     LocalTensor<half> c1c2S32Tensor;
     if ((id & 1) == 0) {
         c1c2S32Tensor = c1c2Fp16PingTensor_;
@@ -2149,25 +2046,25 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     CopyRepeatParams copyParam = {1, 1, 8, 8};
 
     for (int g = 0; g < realLoadGroupNum; g++, kIdx++) {
-        ProcessUnfoldCMatrixPergroupFp16(
-            g, realM, divFactorsFp16, repeatTimesAxpyFp32, repeatTimesAxpyFp16, copyParam, c1c2S32Tensor);
+        ProcessUnfoldCMatrixPergroupFp16(g, realM, divFactorsFp16, repeatTimesAxpyFp32, repeatTimesAxpyFp16, copyParam,
+                                         c1c2S32Tensor);
         PipeBarrier<PIPE_V>();
 
         uint64_t scaleOffset = kIdx * taskSingleCoreNSize;
         for (uint32_t idxM = 0; idxM < realM; idxM++) {
-            AscendC::Mul<float, false>(
-                c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize],
-                c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize], antiquantScaleF32Tensor_[scaleOffset],
-                FP32_MAX_MASK_SIZE, nRepeatTimes, commonRepeatParams_);
+            AscendC::Mul<float, false>(c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize],
+                                       c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize],
+                                       antiquantScaleF32Tensor_[scaleOffset], FP32_MAX_MASK_SIZE, nRepeatTimes,
+                                       commonRepeatParams_);
         }
         PipeBarrier<PIPE_V>();
 
         for (uint32_t idxM = 0; idxM < realM; idxM++) {
             uint64_t maxOffset = idxM * realGroupPack_ * FP32_BLOCK_SIZE + kIdx * FP32_BLOCK_SIZE;
-            AscendC::MulAddDst<float, float, false>(
-                cF32Tensor_[idxM * tiling_->taskSingleCoreNSize],
-                c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize], aMaxComputeTensor_[maxOffset],
-                FP32_MAX_MASK_SIZE, nRepeatTimes, repeatParams);
+            AscendC::MulAddDst<float, float, false>(cF32Tensor_[idxM * tiling_->taskSingleCoreNSize],
+                                                    c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize],
+                                                    aMaxComputeTensor_[maxOffset], FP32_MAX_MASK_SIZE, nRepeatTimes,
+                                                    repeatParams);
         }
         PipeBarrier<PIPE_V>();
     }
@@ -2176,16 +2073,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    GetPingPongC1C2Tensor(
-        LocalTensor<int32_t>& c1c2S32Tensor, LocalTensor<float>& c1c2Tensor,
-        SyncProcessor<HardEvent::V_MTE2>& c1c2SyncProcessor)
+    preciseType>::GetPingPongC1C2Tensor(LocalTensor<int32_t> &c1c2S32Tensor, LocalTensor<float> &c1c2Tensor,
+                                        SyncProcessor<HardEvent::V_MTE2> &c1c2SyncProcessor)
 {
     if (c1c2SyncProcessor.GetBufferId() == 0) {
         c1c2Tensor = c1c2PingTensor_;
@@ -2196,52 +2090,47 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    ProcessUnfoldCMatrixPerchannel(
-        uint64_t cMatrixOffset, uint64_t realM, uint64_t taskSingleCoreNSize, float divFactors, uint64_t nRepeatTimes,
-        SyncProcessor<HardEvent::V_MTE2>& c1c2SyncProcessor)
+    preciseType>::ProcessUnfoldCMatrixPerchannel(uint64_t cMatrixOffset, uint64_t realM, uint64_t taskSingleCoreNSize,
+                                                 float divFactors, uint64_t nRepeatTimes,
+                                                 SyncProcessor<HardEvent::V_MTE2> &c1c2SyncProcessor)
 {
     LocalTensor<int32_t> c1c2S32Tensor;
     LocalTensor<float> c1c2Tensor;
     GetPingPongC1C2Tensor(c1c2S32Tensor, c1c2Tensor, c1c2SyncProcessor);
     c1c2SyncProcessor.WaitSyncFlag();
 
-    DataCopyPad2D(
-        c1c2S32Tensor, cUnfoldGlobal_[cMatrixOffset], realM, taskSingleCoreNSize, tiling_->taskSingleCoreNSize,
-        curTaskNSize_);
+    DataCopyPad2D(c1c2S32Tensor, cUnfoldGlobal_[cMatrixOffset], realM, taskSingleCoreNSize,
+                  tiling_->taskSingleCoreNSize, curTaskNSize_);
     event_t eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::MTE2_V>());
     SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
     WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
 
     uint64_t castRepeatTimes = (realM * tiling_->taskSingleCoreNSize) / FP32_MAX_MASK_SIZE;
-    AscendC::Cast<float, int32_t, false>(
-        c1c2Tensor, c1c2S32Tensor, RoundMode::CAST_NONE, FP32_MAX_MASK_SIZE, castRepeatTimes, commonUnaryRepeatParams_);
+    AscendC::Cast<float, int32_t, false>(c1c2Tensor, c1c2S32Tensor, RoundMode::CAST_NONE, FP32_MAX_MASK_SIZE,
+                                         castRepeatTimes, commonUnaryRepeatParams_);
     PipeBarrier<PIPE_V>();
     for (uint32_t idxM = 0; idxM < realM; idxM++) {
-        AscendC::Axpy<float, float, false>(
-            c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize], c1c2Tensor[idxM * tiling_->taskSingleCoreNSize],
-            divFactors, FP32_MAX_MASK_SIZE, nRepeatTimes, commonUnaryRepeatParams_);
+        AscendC::Axpy<float, float, false>(c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize],
+                                           c1c2Tensor[idxM * tiling_->taskSingleCoreNSize], divFactors,
+                                           FP32_MAX_MASK_SIZE, nRepeatTimes, commonUnaryRepeatParams_);
     }
     PipeBarrier<PIPE_V>();
     c1c2SyncProcessor.SetSyncFlag();
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    ProcessUnfoldCMatrixPergroup(
-        uint64_t cMatrixOffset, uint64_t realM, uint64_t taskSingleCoreNSize, uint64_t nRepeatTimes,
-        SyncProcessor<HardEvent::V_MTE2>& c1c2SyncProcessor)
+    preciseType>::ProcessUnfoldCMatrixPergroup(uint64_t cMatrixOffset, uint64_t realM, uint64_t taskSingleCoreNSize,
+                                               uint64_t nRepeatTimes,
+                                               SyncProcessor<HardEvent::V_MTE2> &c1c2SyncProcessor)
 {
     float divFactors[3] = {divFactors_[0], divFactors_[1], divFactors_[2]};
     LocalTensor<int32_t> c1c2S32Tensor;
@@ -2251,39 +2140,39 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
 
     for (uint32_t idxM = 0; idxM < realM; idxM++) {
         uint64_t gmOffset = cMatrixOffset + idxM * curTaskNSize_;
-        DataCopyPad2D(
-            c1c2S32Tensor[idxM * multiScaleTimes_ * tiling_->taskSingleCoreNSize], cUnfoldGlobal_[gmOffset],
-            multiScaleTimes_, taskSingleCoreNSize, tiling_->taskSingleCoreNSize, tiling_->mSize * curTaskNSize_);
+        DataCopyPad2D(c1c2S32Tensor[idxM * multiScaleTimes_ * tiling_->taskSingleCoreNSize], cUnfoldGlobal_[gmOffset],
+                      multiScaleTimes_, taskSingleCoreNSize, tiling_->taskSingleCoreNSize,
+                      tiling_->mSize * curTaskNSize_);
     }
     event_t eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::MTE2_V>());
     SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
     WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
 
     uint64_t castRepeatTimes = (multiScaleTimes_ * realM * tiling_->taskSingleCoreNSize) / FP32_MAX_MASK_SIZE;
-    AscendC::Cast<float, int32_t, false>(
-        c1c2Tensor, c1c2S32Tensor, RoundMode::CAST_NONE, FP32_MAX_MASK_SIZE, castRepeatTimes, commonUnaryRepeatParams_);
+    AscendC::Cast<float, int32_t, false>(c1c2Tensor, c1c2S32Tensor, RoundMode::CAST_NONE, FP32_MAX_MASK_SIZE,
+                                         castRepeatTimes, commonUnaryRepeatParams_);
     PipeBarrier<PIPE_V>();
 
     for (uint16_t unfoldATimes = 0; unfoldATimes < multiScaleTimes_; unfoldATimes++) {
         for (uint32_t idxM = 0; idxM < realM; idxM++) {
             uint64_t c1c2Offset = (idxM * multiScaleTimes_ + unfoldATimes) * tiling_->taskSingleCoreNSize;
-            AscendC::Axpy<float, float, false>(
-                c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize], c1c2Tensor[c1c2Offset],
-                divFactors[unfoldATimes], FP32_MAX_MASK_SIZE, nRepeatTimes, commonUnaryRepeatParams_);
+            AscendC::Axpy<float, float, false>(c1c2ComputeTensor_[idxM * tiling_->taskSingleCoreNSize],
+                                               c1c2Tensor[c1c2Offset], divFactors[unfoldATimes], FP32_MAX_MASK_SIZE,
+                                               nRepeatTimes, commonUnaryRepeatParams_);
         }
         PipeBarrier<PIPE_V>();
     }
     c1c2SyncProcessor.SetSyncFlag();
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
-    typename preciseType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType, weightFormat,
-    preciseType>::
-    CopyOutResult(uint64_t taskSingleCoreNSize, uint64_t nOffset, uint64_t baseMOffset, uint64_t singleCorerealM)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType, CubeFormat weightFormat,
+          typename preciseType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType, weightFormat,
+                                           preciseType>::CopyOutResult(uint64_t taskSingleCoreNSize, uint64_t nOffset,
+                                                                       uint64_t baseMOffset, uint64_t singleCorerealM)
 {
     if (tiling_->hasBias) {
         event_t eventIdVToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
@@ -2304,10 +2193,9 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
         uint64_t repeatTimes = tiling_->taskSingleCoreNSize / FP32_MAX_MASK_SIZE;
         Add(cF32Tensor_, cF32Tensor_, biasFp32Tensor_, FP32_MAX_MASK_SIZE, repeatTimes, commonRepeatParams_);
         for (uint64_t mLoopIdx = 1; mLoopIdx < singleCorerealM; mLoopIdx++) {
-            AscendC::Add<float, false>(
-                cF32Tensor_[mLoopIdx * tiling_->taskSingleCoreNSize],
-                cF32Tensor_[mLoopIdx * tiling_->taskSingleCoreNSize], biasFp32Tensor_, FP32_MAX_MASK_SIZE, repeatTimes,
-                commonRepeatParams_);
+            AscendC::Add<float, false>(cF32Tensor_[mLoopIdx * tiling_->taskSingleCoreNSize],
+                                       cF32Tensor_[mLoopIdx * tiling_->taskSingleCoreNSize], biasFp32Tensor_,
+                                       FP32_MAX_MASK_SIZE, repeatTimes, commonRepeatParams_);
         }
     }
     PipeBarrier<PIPE_V>();
@@ -2319,9 +2207,8 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MsdSplitKKernel<
         TEventID eventIdVToMte3 = GetTPipePtr()->FetchEventID<HardEvent::V_MTE3>();
         SetFlag<HardEvent::V_MTE3>(eventIdVToMte3);
         WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3);
-        DataCopyPad2D(
-            yGlobal_[baseMOffset * tiling_->nSize + nOffset], cF16ResultTensor_, singleCorerealM, taskSingleCoreNSize,
-            tiling_->taskSingleCoreNSize, tiling_->nSize);
+        DataCopyPad2D(yGlobal_[baseMOffset * tiling_->nSize + nOffset], cF16ResultTensor_, singleCorerealM,
+                      taskSingleCoreNSize, tiling_->taskSingleCoreNSize, tiling_->nSize);
     }
 }
 } // namespace Mc2WeightQuantBatchMatmulV2

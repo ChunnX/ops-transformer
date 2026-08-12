@@ -18,7 +18,7 @@
 - **接口功能**：MoE的permute计算，根据索引indices将tokens和可选probs广播后排序并按照rangeOptional中范围切片。
 - **计算公式**：
   - paddedMode为`false`时，公式如下。topK表示每个token选择的专家数量。如果Indices为2维，则topK等于Indices最后一维的大小。如果Indices为1维，则topK为1。
-    
+
     $$
     sortedIndicesFirst=argSort(\text{flatten}(Indices))
     $$
@@ -26,7 +26,7 @@
     $$
     sortedIndicesOut=argSort(sortedIndicesFirst)
     $$
-    
+
     当rangeOptional[0] <= sortedIndicesOut[i] < rangeOptional[1]时:
 
     $$
@@ -45,28 +45,28 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenPermuteWithEpGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermuteWithEp”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTokenPermuteWithEpGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermuteWithEp”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeTokenPermuteWithEpGetWorkspaceSize(
-    const aclTensor    *tokens, 
-    const aclTensor    *indices, 
-    const aclTensor    *probsOptional, 
-    const aclIntArray  *rangeOptional, 
-    int64_t             numOutTokens, 
-    bool                paddedMode, 
-    const aclTensor    *permuteTokensOut, 
-    const aclTensor    *sortedIndicesOut, 
-    const aclTensor    *permuteProbsOut, 
-    uint64_t           *workspaceSize, 
+    const aclTensor    *tokens,
+    const aclTensor    *indices,
+    const aclTensor    *probsOptional,
+    const aclIntArray  *rangeOptional,
+    int64_t             numOutTokens,
+    bool                paddedMode,
+    const aclTensor    *permuteTokensOut,
+    const aclTensor    *sortedIndicesOut,
+    const aclTensor    *permuteProbsOut,
+    uint64_t           *workspaceSize,
     aclOpExecutor     **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMoeTokenPermuteWithEp(
-    void            *workspace, 
-    uint64_t         workspaceSize, 
-    aclOpExecutor   *executor, 
+    void            *workspace,
+    uint64_t         workspaceSize,
+    aclOpExecutor   *executor,
     aclrtStream      stream)
 ```
 
@@ -77,10 +77,10 @@ aclnnStatus aclnnMoeTokenPermuteWithEp(
   <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
     <col style="width: 170px">
     <col style="width: 120px">
-    <col style="width: 300px">  
-    <col style="width: 550px">  
-    <col style="width: 212px">  
-    <col style="width: 100px"> 
+    <col style="width: 300px">
+    <col style="width: 550px">
+    <col style="width: 212px">
+    <col style="width: 100px">
     <col style="width: 190px">
     <col style="width: 145px">
     </colgroup>
@@ -210,10 +210,10 @@ aclnnStatus aclnnMoeTokenPermuteWithEp(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   一段接口完成入参校验，出现以下场景时报错：
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
     <colgroup>
       <col style="width: 250px">
       <col style="width: 130px">
@@ -293,8 +293,8 @@ aclnnStatus aclnnMoeTokenPermuteWithEp(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
 ## 约束说明
 
 - 确定性计算：
@@ -302,7 +302,7 @@ aclnnStatus aclnnMoeTokenPermuteWithEp(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include "acl/acl.h"

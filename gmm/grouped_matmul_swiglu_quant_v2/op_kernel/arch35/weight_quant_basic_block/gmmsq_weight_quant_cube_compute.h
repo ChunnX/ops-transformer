@@ -51,9 +51,9 @@ public:
     __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize,
                                         uint64_t kMutilLoadL1Size, const BasicBlockOffsetParam &param);
     __aicore__ inline void WaitMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam,
-                                           uint64_t kbL1RealSize = 0);
-    __aicore__ inline void SetMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam,
                                           uint64_t kbL1RealSize = 0);
+    __aicore__ inline void SetMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam,
+                                         uint64_t kbL1RealSize = 0);
     __aicore__ inline void SetMTE1ToMTE2(const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void SetWeightMTE1ToMTE2(const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void WaitScaleMTE1ToMTE2(uint64_t kbGmOffset);
@@ -209,8 +209,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::SetMTE1ToMTE2(uint64_t kaGmO
         // Condition: current is NOT the last iteration, but the next iteration IS the last,
         // and the last block's K size is not 64-aligned.
         if (kaGmOffset + kbL1RealSize < offsetParam.kSize &&
-            kaGmOffset + kbL1RealSize + kbL1RealSize >= offsetParam.kSize &&
-            offsetParam.kSize % K_ALIGNMENT64 != 0) {
+            kaGmOffset + kbL1RealSize + kbL1RealSize >= offsetParam.kSize && offsetParam.kSize % K_ALIGNMENT64 != 0) {
             SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_WEIGHT_MTE1_TO_MTE2);
         }
     } else {
@@ -229,7 +228,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
     if (kbL1Offset % MX_SCALE_K_L1_SIZE != 0) {
         return;
     }
-    uint64_t nHalfSize = param.nL1Size / 2;  // SwiGLU splits N into swish/gate halves
+    uint64_t nHalfSize = param.nL1Size / 2; // SwiGLU splits N into swish/gate halves
     uint64_t kSizeAligned = CeilAlign(param.kSize, K_ALIGNMENT64);
     uint64_t scaleKGmSize = kSizeAligned / MX_GROUPSIZE;
     uint64_t scaleKL1RealSize = (kbL1Offset + MX_SCALE_K_L1_SIZE) > param.kSize ?

@@ -29,6 +29,7 @@ constexpr uint32_t PING_PONG_BUFFER = 2;
 constexpr uint32_t D_SIZE = 512;
 constexpr uint32_t DROPE_SIZE = 64;
 constexpr uint32_t SELECTED_BLOCK_SIZE = 1;
+static const std::string METADATA_NAME = "metadata";
 
 ge::graphStatus CheckAttentionInShape(gert::TilingContext *context)
 {
@@ -286,7 +287,7 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetWorkspaceSize()
 
     selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * 3;
 
-    int64_t selectBlockCount = 4096;
+    int64_t selectBlockCount = tmpData.deterministic ? 4096 : 128;
 
     int64_t mm4WorkspaceLen = selectBlockCount * tmpData.d * B32;
     int64_t mm5WorkspaceLen = selectBlockCount * tmpData.d1 * B32;
@@ -531,10 +532,16 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::DoCastTiling()
     int64_t qPreBlockTailTmp = allNumQuery % qPreBlockFactor;
     int64_t qPreBlockTail = qPreBlockTailTmp == 0 ? qPreBlockFactor : qPreBlockTailTmp;
 
-    int64_t oriKVPreBlockFactor = (allNumOriKV + usedCoreNum - 1) / usedCoreNum;
-    int64_t oriKVPreBlockTotal = (allNumOriKV + oriKVPreBlockFactor - 1) / oriKVPreBlockFactor;
-    int64_t oriKVPreBlockTailTmp = allNumOriKV % oriKVPreBlockFactor;
-    int64_t oriKVPreBlockTail = oriKVPreBlockTailTmp == 0 ? oriKVPreBlockFactor : oriKVPreBlockTailTmp;
+    int64_t oriKVPreBlockFactor = 0;
+    int64_t oriKVPreBlockTotal = 0;
+    int64_t oriKVPreBlockTailTmp = 0;
+    int64_t oriKVPreBlockTail = 0;
+    if (allNumOriKV != 0) {
+        oriKVPreBlockFactor = (allNumOriKV + usedCoreNum - 1) / usedCoreNum;
+        oriKVPreBlockTotal = (allNumOriKV + oriKVPreBlockFactor - 1) / oriKVPreBlockFactor;
+        oriKVPreBlockTailTmp = allNumOriKV % oriKVPreBlockFactor;
+        oriKVPreBlockTail = oriKVPreBlockTailTmp == 0 ? oriKVPreBlockFactor : oriKVPreBlockTailTmp;
+    }
 
     int64_t cmpKVPreBlockFactor = 0;
     int64_t cmpKVPreBlockTotal = 0;
@@ -874,6 +881,12 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetBaseShapeInfo()
     if (sinks != nullptr) {
         tmpData.sinks = true;
         const gert::Shape &sinksShape = sinks->GetStorageShape();
+    }
+
+    auto metadataTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::METADATA));
+    if (metadataTensor == nullptr) {
+        OP_LOGE(context_, "%s must be provided!", METADATA_NAME.c_str());
+        return ge::GRAPH_FAILED;
     }
 
     auto selected_block_size = SELECTED_BLOCK_SIZE;

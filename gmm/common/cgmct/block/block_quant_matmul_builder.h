@@ -47,9 +47,10 @@ class BlockQuantMatmulBuilder {
 
 template <class AType_, class LayoutA_, class BType_, class LayoutB_, class CType_, class LayoutC_, class L1TileShape_,
           class L0TileShape_, class BlockScheduler_, class BlockMatmulPolicy_>
-class BlockQuantMatmulBuilder<AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_, L1TileShape_, L0TileShape_,
-                              BlockScheduler_, BlockMatmulPolicy_,
-                              AscendC::Std::enable_if_t<AscendC::Std::is_base_of_v<QuantMatmulMultiBlock<>, BlockMatmulPolicy_>>> {
+class BlockQuantMatmulBuilder<
+    AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_, L1TileShape_, L0TileShape_, BlockScheduler_,
+    BlockMatmulPolicy_,
+    AscendC::Std::enable_if_t<AscendC::Std::is_base_of_v<QuantMatmulMultiBlock<>, BlockMatmulPolicy_>>> {
 public:
     using AType = AType_;
     using BType = BType_;
@@ -100,10 +101,13 @@ public:
     // params
     using Params = Arguments;
 
-    __aicore__ inline BlockQuantMatmulBuilder() {}
+    __aicore__ inline BlockQuantMatmulBuilder()
+    {
+    }
 
-    __aicore__ inline ~BlockQuantMatmulBuilder() {}
-
+    __aicore__ inline ~BlockQuantMatmulBuilder()
+    {
+    }
 };
 } // namespace Block
 } // namespace Gemm

@@ -33,28 +33,28 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeInitRoutingQuantGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingQuant”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeInitRoutingQuantGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingQuant”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeInitRoutingQuantGetWorkspaceSize(
-    const aclTensor  *x, 
-    const aclTensor  *rowIdx, 
-    const aclTensor  *expertIdx, 
-    int64_t           activeNum, 
-    double            scale, 
-    double            offset, 
-    const aclTensor  *expandedXOut, 
-    const aclTensor  *expandedRowIdxOut, 
-    const aclTensor  *expandedExpertIdxOut, 
-    uint64_t         *workspaceSize, 
+    const aclTensor  *x,
+    const aclTensor  *rowIdx,
+    const aclTensor  *expertIdx,
+    int64_t           activeNum,
+    double            scale,
+    double            offset,
+    const aclTensor  *expandedXOut,
+    const aclTensor  *expandedRowIdxOut,
+    const aclTensor  *expandedExpertIdxOut,
+    uint64_t         *workspaceSize,
     aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMoeInitRoutingQuant(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     aclrtStream       stream)
 ```
 
@@ -65,10 +65,10 @@ aclnnStatus aclnnMoeInitRoutingQuant(
   <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
     <col style="width: 170px">
     <col style="width: 120px">
-    <col style="width: 300px">  
-    <col style="width: 550px">  
-    <col style="width: 212px">  
-    <col style="width: 100px"> 
+    <col style="width: 300px">
+    <col style="width: 550px">
+    <col style="width: 212px">
+    <col style="width: 100px">
     <col style="width: 190px">
     <col style="width: 145px">
     </colgroup>
@@ -119,10 +119,10 @@ aclnnStatus aclnnMoeInitRoutingQuant(
       <td>输入</td>
       <td>表示总的最大处理row数。</td>
       <td>值范围大于等于0，expandedXOut只有这么多行是有效的。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
+      <td>INT64</td>
+      <td>ND</td>
+      <td>0</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>scale</td>
@@ -198,10 +198,10 @@ aclnnStatus aclnnMoeInitRoutingQuant(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
     <colgroup>
       <col style="width: 250px">
       <col style="width: 130px">
@@ -249,7 +249,7 @@ aclnnStatus aclnnMoeInitRoutingQuant(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
     <colgroup>
       <col style="width: 250px">
       <col style="width: 130px">
@@ -285,11 +285,11 @@ aclnnStatus aclnnMoeInitRoutingQuant(
       </tr>
     </tbody>
   </table>
-    
+
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
 ## 约束说明
 
 - 确定性计算：
@@ -297,7 +297,7 @@ aclnnStatus aclnnMoeInitRoutingQuant(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include "acl/acl.h"

@@ -2,6 +2,12 @@
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
 import math
@@ -28,6 +34,7 @@ TEST_PARAMS = {
         "sparse_mode": [0],
         "attention_mode": [2],
         "return_softmax_lse": [True],
+        "use_sinks": [False],
         "actual_seq_q": [[4]],
         "actual_seq_kv": [[4]],
         "range_query": [[-10.0, 100.0]],
@@ -52,8 +59,79 @@ TEST_PARAMS = {
         "sparse_mode": [3],
         "attention_mode": [2],
         "return_softmax_lse": [True],
-        "actual_seq_q": [[2,5,4,2,6,6,0,6,6,2,2,6,3,4,6,4,5,5,6,4,0,4,3,2,3,0,0,3,3,6,2,3]],
-        "actual_seq_kv": [[2,5,4,2,6,6,0,6,6,2,2,6,3,4,6,4,5,5,6,4,0,4,3,2,3,0,0,3,3,6,2,3]],
+        "use_sinks": [False],
+        "actual_seq_q": [
+            [
+                2,
+                5,
+                4,
+                2,
+                6,
+                6,
+                0,
+                6,
+                6,
+                2,
+                2,
+                6,
+                3,
+                4,
+                6,
+                4,
+                5,
+                5,
+                6,
+                4,
+                0,
+                4,
+                3,
+                2,
+                3,
+                0,
+                0,
+                3,
+                3,
+                6,
+                2,
+                3,
+            ]
+        ],
+        "actual_seq_kv": [
+            [
+                2,
+                5,
+                4,
+                2,
+                6,
+                6,
+                0,
+                6,
+                6,
+                2,
+                2,
+                6,
+                3,
+                4,
+                6,
+                4,
+                5,
+                5,
+                6,
+                4,
+                0,
+                4,
+                3,
+                2,
+                3,
+                0,
+                0,
+                3,
+                3,
+                6,
+                2,
+                3,
+            ]
+        ],
     },
     "pa_bsnd": {
         "Testcase_Prefix": ["sfa_pa_bsnd"],
@@ -74,10 +152,11 @@ TEST_PARAMS = {
         "sparse_mode": [3],
         "attention_mode": [2],
         "return_softmax_lse": [False],
+        "use_sinks": [False],
         "block_size": [256],
         "block_num": [1051],
-        "actual_seq_q": [[18,93]],
-        "actual_seq_kv": [[1024,1024]],
+        "actual_seq_q": [[18, 93]],
+        "actual_seq_kv": [[1024, 1024]],
     },
     "tnd_basic": {
         "Testcase_Prefix": ["sfa_tnd_basic"],
@@ -99,9 +178,10 @@ TEST_PARAMS = {
         "rope_head_dim": [64],
         "sparse_mode": [0],
         "attention_mode": [2],
-        "return_softmax_lse": [True],
-        "actual_seq_q": [[4,8]],
-        "actual_seq_kv": [[1111,3000]],
+        "return_softmax_lse": [False],
+        "use_sinks": [False],
+        "actual_seq_q": [[4, 8]],
+        "actual_seq_kv": [[1111, 3000]],
     },
     "tnd_pa_multi_batch": {
         "Testcase_Prefix": ["sfa_tnd_pa_multi_batch"],
@@ -123,6 +203,7 @@ TEST_PARAMS = {
         "sparse_mode": [3],
         "attention_mode": [2],
         "return_softmax_lse": [False],
+        "use_sinks": [False],
         "block_size": [512],
         "block_num": [74],
         "actual_seq_q": [[2, 6, 11, 15]],
@@ -134,7 +215,7 @@ TEST_PARAMS = {
 ENABLED_PARAMS = [
     TEST_PARAMS["bsnd_basic"],
     TEST_PARAMS["bsnd_multi_batch"],
-    TEST_PARAMS["pa_bsnd"], 
+    TEST_PARAMS["pa_bsnd"],
     TEST_PARAMS["tnd_basic"],
     TEST_PARAMS["tnd_pa_multi_batch"],
 ]

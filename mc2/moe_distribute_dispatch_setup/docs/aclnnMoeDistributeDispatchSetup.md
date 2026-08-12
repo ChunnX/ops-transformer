@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                               |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -84,14 +94,14 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
 ## aclnnMoeDistributeDispatchSetupGetWorkspaceSize
 
 - **参数说明**
-  
+
     <table style="undefined;table-layout: fixed; width: 1550px"> <colgroup>
     <col style="width: 110px">
     <col style="width: 120px">
     <col style="width: 305px">
     <col style="width: 330px">
     <col style="width: 210px">
-    <col style="width: 100px"> 
+    <col style="width: 100px">
     <col style="width: 180px">
     <col style="width: 145px">
     </colgroup>
@@ -312,6 +322,7 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
     </tbody>
     </table>
 
+    <!-- npu="950" id7 -->
     - <term>Ascend 950DT</term>：
         - scalesOptional非量化场景传空指针，动态量化可选择传入有效数据或传入空指针。
         - xActiveMaskOptional可选择传入有效数据或传入空指针，传入空指针时表示所有token都会参与通信。
@@ -322,13 +333,15 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
         - expertShardType当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
         - sharedExpertNum当前取值范围[0, 4]。
         - sharedExpertRankNum取值范围[0, epWorldSize / 2]。
-        - globalBs当每个rank的Bs数一致场景下，globalBs = Bs * epWorldSize或globalBs = 0；当每个rank的Bs数不一致场景下，globalBs = maxBs * epWorldSize，其中maxBs表示单卡Bs最大值。
+        - globalBs当每个rank的Bs数一致场景下，globalBs = Bs *epWorldSize或globalBs = 0；当每个rank的Bs数不一致场景下，globalBs = maxBs* epWorldSize，其中maxBs表示单卡Bs最大值。
         - commType当前仅支持2。
         - commAlg当前版本不支持，传空指针即可。
 
+    <!-- end id7 -->
+
 - **返回值：**
-  
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -407,19 +420,19 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize
 
 - **参数说明**
-  
+
     <table style="undefined;table-layout: fixed; width: 1550px"> <colgroup>
     <col style="width: 110px">
     <col style="width: 120px">
     <col style="width: 305px">
     <col style="width: 330px">
     <col style="width: 210px">
-    <col style="width: 100px"> 
+    <col style="width: 100px">
     <col style="width: 180px">
     <col style="width: 145px">
     </colgroup>
@@ -641,28 +654,28 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
     </table>
 
 - **返回值：**
-  
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 1. 确定性计算：
      - aclnnMoeDistributeDispatchSetup默认确定性实现。
-     
+
 2. aclnnMoeDistributeDispatchSetup接口与aclnnMoeDistributeDispatchTeardown，aclnnMoeDistributeCombineSetup，aclnnMoeDistributeCombineTeardown接口必须配套使用。
 
 3. 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commQuantMode`、`commType`、`commAlg`参数取值所有卡需保持一致，`groupEp`、`epWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commQuantMode`、`commType`、`commAlg`参数取值在网络中不同层中也需保持一致，且和`aclnnMoeDistributeDispatchTeardown`，`aclnnMoeDistributeCombineSetup`，`aclnnMoeDistributeCombineTeardown`对应参数也保持一致。
 
 4. 参数说明里shape格式说明：
     * A：表示本卡可能接收的最大token数量，取值范围如下：
-      
-      * 对于MoE专家，当`globalBs`为0时，要满足A >= `BS` * `epWorldSize` * min(`localExpertNum`, `K`)；当`globalBs`非0时，要满足A >= `globalBs` * min(`localExpertNum`, `K`)。
-      * 对于共享专家，当`globalBs`为0时，要满足A = `BS` * `epWorldSize` * `sharedExpertNum` / `sharedExpertRankNum`；当`globalBs`非0时，要满足A = `globalBs` * `sharedExpertNum` / `sharedExpertRankNum`。
+
+      * 对于MoE专家，当`globalBs`为0时，要满足A >= `BS` *`epWorldSize`* min(`localExpertNum`, `K`)；当`globalBs`非0时，要满足A >= `globalBs` * min(`localExpertNum`, `K`)。
+      * 对于共享专家，当`globalBs`为0时，要满足A = `BS` *`epWorldSize`* `sharedExpertNum` / `sharedExpertRankNum`；当`globalBs`非0时，要满足A = `globalBs` * `sharedExpertNum` / `sharedExpertRankNum`。
     * H：表示hidden size隐藏层大小，取值范围[1024, 8192]。当前仅支持4096、7168。
     * BS：表示batch sequence size，即本卡最终输出的token数量，取值范围为0 < BS ≤ 512。当前仅支持8、16、256。
     * K：表示选取topK个专家，取值范围为0 < `K` ≤ 16同时满足0 < `K` ≤ `moeExpertNum`。当前仅支持6、8。
     * localExpertNum：表示本卡专家数量。
-      
+
       * 对于共享专家卡，localExpertNum = 1
       * 对于MoE专家卡，localExpertNum = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)。moeExpertNum当前仅支持32。
     * tokenMsgSize：表示每个token在数据通信时的维度信息。
@@ -673,27 +686,31 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
 
 5. HCCL_BUFFSIZE：
 
-    调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 4 * (`localExpertNum` * `maxBs` * `epWorldSize` * Align512(Align32(2 * H) + 44) + (`K` + `sharedExpertNum`) * `maxBs` * Align512(2 * `H`))，`localExpertNum`代表使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。
-  
+    调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 4 *(`localExpertNum`* `maxBs` *`epWorldSize`* Align512(Align32(2 *H) + 44) + (`K` + `sharedExpertNum`)* `maxBs` *Align512(2* `H`))，`localExpertNum`代表使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) *512，Align32(x) = ((x + 32 - 1) / 32)* 32。
+
 6. 通信域使用约束：
     * 一个模型中的aclnnMoeDistributeDispatchSetup接口，aclnnMoeDistributeDispatchTeardown接口，aclnnMoeDistributeCombineSetup接口，aclnnMoeDistributeCombineTeardown接口仅支持相同EP通信域，且该通信域中不允许有其他算子。
 
 7. 通信方式约束：
+
+  <!-- npu="950" id8 -->
   - <term>Ascend 950DT</term>：仅支持URMA通信。
+
+  <!-- end id8 -->
 
 ## 调用示例
 
 - 文件准备：
 
     1. 按照下方指导创建rank_table_m2.json文件并修改。
-    
+
     2. 将项目拷贝到两台服务器中，并根据机器的device ip配置rank_table_m2.json文件内容。注意两机rank_table_m2.json文件保持一致。
-    
+
     3. 安装cann包，并根据[算子调用](../../../docs/zh/invocation/quick_op_invocation.md)编译运行。
 
 - 关于rankTable:
 
-    1. 开发者可以通过ranktable文件配置参与集合通信的NPU资源信息，详细配置请参考[《集合通信用户指南》](https://hiascend.com/document/redirect/CannCommercialHcclUg)中“通信功能开发>集群信息配置>ranktable文件配置资源信息”。
+    1. 开发者可以通过ranktable文件配置参与集合通信的NPU资源信息，详细配置请参考[《集合通信用户指南》](https://hiascend.com/document/redirect/CannCommunityHcclUg)中“通信功能开发>集群信息配置>ranktable文件配置资源信息”。
 
     2. 使用`cat /etc/hccn.conf`或者`for i in seq 0 7; do echo "===================> dev$i, NPU$((i+1))"; hccn_tool -i $i -ip -g; done`查询机器的device ip。然后参考集合通信文档填写json文件。
 
@@ -713,21 +730,24 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
 - 机器数量设置：
 
     两机16卡场景中，需将参数MACHINE_NUM设置为2，即
+
     ```Cpp
     const uint32_t MACHINE_NUM = 2;
     ```
+
     单机16卡场景则无需修改。
 
+<!-- npu="950" id9 -->
 - <term>Ascend 950DT</term>：
 
     - 环境变量配置：
-    
+
         ```bash
         # 运行前需设置RANK_TABLE_FILE环境变量
         export RANK_TABLE_FILE=/home/path/to/rank_table_m2.json
         ```
 
-    示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+    示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
     ```cpp
     #include <thread>
@@ -1661,3 +1681,5 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
         return 0;
     }
     ```
+
+<!-- end id9 -->

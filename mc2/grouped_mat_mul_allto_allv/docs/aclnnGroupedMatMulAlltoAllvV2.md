@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                               |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -32,15 +42,19 @@
     $$
     mmY = mmX \times mmWeight
     $$
+
 相较于`aclnnGroupedMatMulAlltoAllv`接口，该接口变更如下：
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
-  - <term>Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI_CPU引擎。
+  <!-- npu="950" id7 -->
+  - <term>Ascend 950DT</term>：支持`ai_cpu`和`ccu`。
+
+  <!-- end id7 -->
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小，再调用`aclnnGroupedMatMulAlltoAllvV2`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小，再调用`aclnnGroupedMatMulAlltoAllvV2`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(
@@ -48,7 +62,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(
     const aclTensor*   gmmWeight,
     const aclTensor*   sendCountsTensorOptional,
     const aclTensor*   recvCountsTensorOptional,
-    const aclTensor*   mmXOptional,            
+    const aclTensor*   mmXOptional,
     const aclTensor*   mmWeightOptional,
     const char*        group,
     const char*        commMode,
@@ -171,7 +185,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
     <td>commMode(char*)</td>
     <td>输入</td>
     <td>指定当前通信类型。</td>
-    <td>支持输入""、"ai_cpu"和"ccu"。</td>
+    <td>支持输入"ai_cpu"和"ccu"。</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>
@@ -271,7 +285,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一阶段接口完成入参校验，出现以下场景报错：
 
@@ -339,15 +353,21 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnGroupedMatMulAlltoAllvV2默认确定性实现。
 - 通信引擎约束：
+
+  <!-- npu="A3" id8 -->
   - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持AI_CPU通信。
+  <!-- end id8 -->
+  <!-- npu="950" id9 -->
   - Ascend 950DT：支持CCU通信和AI_CPU通信，CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
+
+  <!-- end id9 -->
 
 - 参数说明里shape使用的变量：
   - BSK：本卡接收的token数，是recvCounts参数累加之和，取值范围(0, 52428800)。
@@ -361,14 +381,18 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
   - A：本卡发送的token数，是sendCounts参数累加之和。
   - ep通信域内所有卡的A参数的累加和等于所有卡上的BSK参数的累加和。
 
+<!-- npu="A3" id10 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  : 单卡通信量在2MB以下可能存在性能劣化。
+
+<!-- end id10 -->
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
+<!-- npu="950,A3" id11 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950DT</term>：
 
     ```Cpp
@@ -519,7 +543,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
 
         // 调用第一阶段接口
         ret = aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(gmmX, gmmW, sendCountsTensor, recvCountsTensor, mmX, mmW,
-                                                            hcomName, "ccu", EP_WORLD_SIZE, sendCounts, recvCounts, false, false,
+                                                            hcomName, "ai_cpu", EP_WORLD_SIZE, sendCounts, recvCounts, false, false,
                                                             gmmY, mmY, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
                 LOG_PRINT("[ERROR] aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize failed. ret = %d \n", ret);
@@ -630,3 +654,5 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
         return 0;
     }
     ```
+
+<!-- end id11 -->

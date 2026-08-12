@@ -17,7 +17,7 @@
 namespace ops {
 class MhcPreSinkhornBackward : public OpDef {
 public:
-    explicit MhcPreSinkhornBackward(const char* name) : OpDef(name)
+    explicit MhcPreSinkhornBackward(const char *name) : OpDef(name)
     {
         this->Input("grad_hin")
             .ParamType(REQUIRED)
@@ -103,12 +103,12 @@ public:
 
         OpAICoreConfig aicore_Config_910b;
         aicore_Config_910b.DynamicCompileStaticFlag(true)
-                .DynamicFormatFlag(false)
-                .DynamicRankSupportFlag(true)
-                .DynamicShapeSupportFlag(true)
-                .NeedCheckSupportFlag(false)
-                .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-                .ExtendCfgInfo("opFile.value", "mhc_pre_sinkhorn_backward");
+            .DynamicFormatFlag(false)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
+            .ExtendCfgInfo("opFile.value", "mhc_pre_sinkhorn_backward");
         this->AICore().AddConfig("ascend910b", aicore_Config_910b);
         this->AICore().AddConfig("ascend910_93", aicore_Config_910b);
 
@@ -125,4 +125,4 @@ public:
     }
 };
 OP_ADD(MhcPreSinkhornBackward);
-}
+} // namespace ops

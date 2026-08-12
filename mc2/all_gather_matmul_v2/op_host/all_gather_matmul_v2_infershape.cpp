@@ -22,14 +22,13 @@ namespace ops {
 const size_t AMAX_OUT = 2;
 const size_t Y_DTYPE = 10;
 
-static ge::graphStatus InferShapeAllGatherMatmulV2(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeAllGatherMatmulV2(gert::InferShapeContext *context)
 {
-    OP_LOGE_IF(
-        AllGatherMatmulCommonInferShape(context, GATHER_OUT_V2) != GRAPH_SUCCESS, GRAPH_FAILED, context->GetNodeName(),
-        "infer shape excute failed.");
-    const bool* isAmaxOut = context->GetAttrs()->GetAttrPointer<bool>(AG_IS_AMAX_OUT);
+    OP_LOGE_IF(AllGatherMatmulCommonInferShape(context, GATHER_OUT_V2) != GRAPH_SUCCESS, GRAPH_FAILED,
+               context->GetNodeName(), "infer shape excute failed.");
+    const bool *isAmaxOut = context->GetAttrs()->GetAttrPointer<bool>(AG_IS_AMAX_OUT);
     OPS_CHECK_NULL_WITH_CONTEXT(context, isAmaxOut);
-    gert::Shape* amaxOutShape = context->GetOutputShape(2);
+    gert::Shape *amaxOutShape = context->GetOutputShape(2);
     OPS_CHECK_NULL_WITH_CONTEXT(context, amaxOutShape);
     if (*isAmaxOut) {
         amaxOutShape->SetDimNum(1);
@@ -41,7 +40,7 @@ static ge::graphStatus InferShapeAllGatherMatmulV2(gert::InferShapeContext* cont
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeAllGatherMatmulV2(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDataTypeAllGatherMatmulV2(gert::InferDataTypeContext *context)
 {
     // 如果是bf16/fp16 输入和输出保持一致，如果是fp8 则使用y_dtype
     auto d_type = context->GetInputDataType(0);

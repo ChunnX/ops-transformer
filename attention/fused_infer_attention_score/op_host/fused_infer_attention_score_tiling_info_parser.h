@@ -15,7 +15,7 @@
 
 #pragma once
 
-#include "../../common/op_host/fia_tiling_info.h"
+#include "fia_tiling_info.h"
 #include "../../common/op_host/fia_tiling_shape.h"
 
 namespace optiling {
@@ -50,7 +50,8 @@ public:
     ge::graphStatus GetAttrParaInfo();
     ge::graphStatus GetKvCache();
     ge::graphStatus GetTensorListCache(uint32_t index, const std::string &name,
-                                       std::vector<gert::StorageShape *> &cache);
+                                       std::vector<gert::StorageShape *> &cache,
+                                       std::vector<gert::Stride *> &strides);
     ge::graphStatus GetOpParaInfo();
 
     ge::graphStatus GetEmptyTensorFlag();
@@ -67,6 +68,8 @@ public:
     void GetKvStorageMode();
     void GetQuantMode();
     ge::graphStatus GetKvLayout();
+    void GetKvIsContiguous();
+    void GetKvStrideValues();
     void SetFiaShape();
     ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FiaLayout layout,
                                     int64_t &maxActualSeqLen);
@@ -92,7 +95,11 @@ public:
     ge::graphStatus GetAttenMaskInfo();
     void GetPaddingSizeFlag();
     ge::graphStatus GetActualSeqInfo();
+    void ProcessKVActualSeqLoop(const int64_t *actualLenData, uint32_t loop);
+    void ProcessQActualSeqLoop(const int64_t *actualLenQData, uint32_t loop);
     void GetPreNextToken();
+    void UpdatePreNextTokenBySparseMode();
+    void ClampPreNextToken();
     ge::graphStatus GetSystemPrefix();
     ge::graphStatus GetPseShiftFlag();
     ge::graphStatus GetPostQuantInfo();
@@ -139,7 +146,16 @@ public:
     const gert::Stride *kRopeStrides_ = nullptr;
     const gert::Stride *kScaleStrides_ = nullptr;
     const gert::Stride *vScaleStrides_ = nullptr;
-    bool isTensorV1_ = false;
+    bool hasViewStride_ = true;
+    uint64_t keyBnStride_ = 0;
+    uint64_t keyN2Stride_ = 0;
+    uint64_t valueBnStride_ = 0;
+    uint64_t valueN2Stride_ = 0;
+    uint64_t kRopeBnStride_ = 0;
+    uint64_t kRopeN2Stride_ = 0;
+    int32_t keyNonContigDim_ = -1;
+    int32_t valueNonContigDim_ = -1;
+    int32_t keyRopeNonContigDim_ = -1;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     RopeMode ropeMode_ = RopeMode::NO_ROPE;
     MlaMode mlaMode_ = MlaMode::NO_MLA;
@@ -169,6 +185,9 @@ public:
     uint64_t l2CacheSize_ = 0;
     std::vector<gert::StorageShape *> kCache_ = {};
     std::vector<gert::StorageShape *> vCache_ = {};
+    std::vector<gert::Stride *> kStrideCache_ = {};
+    std::vector<gert::Stride *> vStrideCache_ = {};
+
     std::vector<int32_t> qSize_ = {};
     std::vector<int32_t> kvSize_ = {};
 

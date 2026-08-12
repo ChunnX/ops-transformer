@@ -74,7 +74,7 @@ TEST_F(MoeGatingTopKTiling, moe_gating_top_k_tiling_succ_01) {
                                               },
                                               &compileInfo);
     uint64_t expectTilingKey = 0;
-    string expectTilingData = "16 16 1 1 256 1 8 4 8 32 32 1 0 1 0 0 0 1024 ";
+    string expectTilingData = "16 16 1 1 256 1 8 4 8 32 32 1 0 1 0 0 0 1024 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -104,7 +104,7 @@ TEST_F(MoeGatingTopKTiling, moe_gating_top_k_tiling_succ_02) {
                                               },
                                               &compileInfo);
     uint64_t expectTilingKey = 1;
-    string expectTilingData = "16 16 1 1 256 1 8 1 1 256 256 1 0 1 0 0 2178868143328329728 1024 ";
+    string expectTilingData = "16 16 1 1 256 1 8 1 1 256 256 1 0 1 0 0 2178868143328329728 1024 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -134,7 +134,7 @@ TEST_F(MoeGatingTopKTiling, moe_gating_top_k_tiling_succ_03) {
                                               },
                                               &compileInfo);
     uint64_t expectTilingKey = 1;
-    string expectTilingData = "16 16 1 1 64 1 8 8 8 8 32 0 0 0 0 1 2178868142262976512 256 ";
+    string expectTilingData = "16 16 1 1 64 1 8 8 8 8 32 0 0 0 0 1 2178868142262976512 256 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -164,7 +164,7 @@ TEST_F(MoeGatingTopKTiling, moe_gating_top_k_tiling_succ_04) {
                                               },
                                               &compileInfo);
     uint64_t expectTilingKey = 2;
-    string expectTilingData = "16 16 1 1 72 1 8 5 9 8 32 1 0 0 0 1 2178868142262976512 384 ";
+    string expectTilingData = "16 16 1 1 72 1 8 5 9 8 32 1 0 0 0 1 2178868142262976512 384 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -284,7 +284,7 @@ TEST_F(MoeGatingTopKTiling, moe_gating_top_k_tiling_fail_04) {
                                               },
                                               &compileInfo);
     uint64_t expectTilingKey = 2;
-    string expectTilingData = "16 16 1 1 256 1 8 3 8 32 32 1 0 1 0 0 0 1024 ";
+    string expectTilingData = "16 16 1 1 256 1 8 3 8 32 32 1 0 1 0 0 0 1024 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -404,7 +404,7 @@ TEST_F(MoeGatingTopKTiling, moe_gating_top_k_tiling_fail_08) {
                                               },
                                               &compileInfo);
     uint64_t expectTilingKey = 2;
-    string expectTilingData = "16 16 1 1 256 1 8 4 8 32 32 0 0 1 0 0 0 1024 ";
+    string expectTilingData = "16 16 1 1 256 1 8 4 8 32 32 0 0 1 0 0 0 1024 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }

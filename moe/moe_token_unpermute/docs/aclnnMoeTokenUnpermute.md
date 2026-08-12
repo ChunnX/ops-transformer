@@ -16,14 +16,14 @@
 ## 功能说明
 
 - 接口功能: 根据sortedIndices存储的下标，获取permutedTokens中存储的输入数据；如果存在probs数据，permutedTokens会与probs相乘；最后进行累加求和，并输出计算结果。
-- 计算公式： 
+- 计算公式：
 
     - probs非None计算公式如下：
-      
+
       $$
       T[k] = T[S[k]]
       $$
-      
+
       $$
       T[k] = T[k] * P[i][j]
       $$
@@ -31,7 +31,7 @@
       $$
       O[i] = \sum_{k=i*topK}^{(i+1)*topK - 1 } T[k]
       $$
-      
+
       其中$i \in {0,1,...,tokens-1}$；$j \in {0,1,...,topK-1}$；$k \in {0,1,...,tokens*topK-1}$；T表示permutedTokens；S表示sortedIndices；P表示probs；O表示out；topK表示topK\_num；tokens表示tokens_num。
 
     - probs为None时，此时topK\_num=1，计算公式如下：
@@ -48,7 +48,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenUnpermuteGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermute”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTokenUnpermuteGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermute”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
@@ -77,10 +77,10 @@ aclnnStatus aclnnMoeTokenUnpermute(
   <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
     <col style="width: 170px">
     <col style="width: 120px">
-    <col style="width: 300px">  
-    <col style="width: 550px">  
-    <col style="width: 212px">  
-    <col style="width: 100px"> 
+    <col style="width: 300px">
+    <col style="width: 550px">
+    <col style="width: 212px">
+    <col style="width: 100px">
     <col style="width: 190px">
     <col style="width: 145px">
     </colgroup>
@@ -180,7 +180,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -258,7 +258,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -274,13 +274,13 @@ aclnnStatus aclnnMoeTokenUnpermute(
   - paddedMode输入等同于aclnnMoeFinalizeRoutingV2接口的dropPadMode输入。
   - out输出等同于aclnnMoeFinalizeRoutingV2接口的out输出。
 - |<term>Atlas 推理系列产品</term>：
-  - permutedTokens与probsOptional支持的数据类型为FLOAT16、FLOAT32。 
+  - permutedTokens与probsOptional支持的数据类型为FLOAT16、FLOAT32。
   - topK_num <= 512。
   - hidden_size是128的倍数且小于10240。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 

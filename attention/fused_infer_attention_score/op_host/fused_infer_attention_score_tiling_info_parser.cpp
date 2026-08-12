@@ -29,6 +29,31 @@ using namespace ge;
 using namespace AscendC;
 namespace optiling {
 
+namespace {
+// 判断tensor是否连续，逻辑与 BaseChecker::CheckTensorContiguous 一致
+ge::graphStatus CheckTensorContiguousLocal(const uint32_t &tensorDimNum, const gert::Shape &inputShape,
+    const gert::Stride *strides, int32_t &index)
+{
+    if (strides == nullptr || strides->GetDimNum() == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (tensorDimNum == 0 || tensorDimNum == 1) {
+        return ge::GRAPH_SUCCESS;
+    }
+    uint64_t preStride = 1;
+    for (index = tensorDimNum - 1; index >= 0; index--) {
+        if (inputShape.GetDim(index) == 1) {
+            continue;
+        }
+        if (preStride != strides->GetStride(index)) {
+            return ge::GRAPH_FAILED;
+        }
+        preStride *= inputShape.GetDim(index);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+} // namespace
+
 ge::graphStatus FiaInfoParser::CheckRequiredInOutExistence() const
 {
     OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
@@ -226,19 +251,81 @@ ge::graphStatus FiaInfoParser::GetStrides()
 {
     // 用opbase版本判断，老版本opbase为tensorv1
     if (context_->InputIsView(KEY_INDEX) == false) {
-        isTensorV1_ = true;
+        hasViewStride_ = false;
         return ge::GRAPH_SUCCESS;
     }
     keyStrides_ = context_->GetDynamicInputStride(KEY_INDEX, 0);
     valueStrides_ = context_->GetDynamicInputStride(VALUE_INDEX, 0);
     if (opParamInfo_.keyAntiquantScale.tensor != nullptr || opParamInfo_.valueAntiquantScale.tensor != nullptr) {
-        kScaleStrides_ = context_->GetInputStride(KEY_ANTIQUANT_SCALE_INDEX);
-        vScaleStrides_ = context_->GetInputStride(VALUE_ANTIQUANT_SCALE_INDEX);
+        kScaleStrides_ = context_->GetOptionalInputStride(KEY_ANTIQUANT_SCALE_INDEX);
+        vScaleStrides_ = context_->GetOptionalInputStride(VALUE_ANTIQUANT_SCALE_INDEX);
     }
     if (opParamInfo_.keyRope.desc != nullptr) {
-        kRopeStrides_ = context_->GetInputStride(KEY_ROPE_INDEX);
+        kRopeStrides_ = context_->GetOptionalInputStride(KEY_ROPE_INDEX);
     }
     return ge::GRAPH_SUCCESS;
+}
+
+void FiaInfoParser::GetKvIsContiguous()
+{
+    if (!hasViewStride_) {
+        return ;
+    }
+    for (size_t i = 0; i < kStrideCache_.size(); ++i) {
+        int32_t dim = 0;
+        if (CheckTensorContiguousLocal(kCache_[i]->GetStorageShape().GetDimNum(),
+                                       kCache_[i]->GetStorageShape(),
+                                       kStrideCache_[i], dim) != ge::GRAPH_SUCCESS) {
+            keyNonContigDim_ = dim;
+        }
+    }
+    for (size_t i = 0; i < vStrideCache_.size(); ++i) {
+        int32_t dim = 0;
+        if (CheckTensorContiguousLocal(vCache_[i]->GetStorageShape().GetDimNum(),
+                                       vCache_[i]->GetStorageShape(),
+                                       vStrideCache_[i], dim) != ge::GRAPH_SUCCESS) {
+            valueNonContigDim_ = dim;
+        }
+    }
+    if (kRopeStrides_ != nullptr && opParamInfo_.keyRope.tensor != nullptr) {
+        int32_t dim = 0;
+        if (CheckTensorContiguousLocal(opParamInfo_.keyRope.tensor->GetStorageShape().GetDimNum(),
+                                       opParamInfo_.keyRope.tensor->GetStorageShape(),
+                                       kRopeStrides_, dim) != ge::GRAPH_SUCCESS) {
+            keyRopeNonContigDim_ = dim;
+        }
+    }
+}
+
+void FiaInfoParser::GetKvStrideValues()
+{
+    if (!hasViewStride_) {
+        return;
+    }
+    if (kvLayout_ == FiaLayout::BnBsH) {
+        if (keyStrides_ != nullptr) {
+            keyBnStride_ = keyStrides_->GetStride(0);
+        }
+        if (valueStrides_ != nullptr) {
+            valueBnStride_ = valueStrides_->GetStride(0);
+        }
+        if (kRopeStrides_ != nullptr) {
+            kRopeBnStride_ = kRopeStrides_->GetStride(0);
+        }
+    } else if (kvLayout_ == FiaLayout::BnNBsD || kvLayout_ == FiaLayout::NZ) {
+        if (keyStrides_ != nullptr) {
+            keyBnStride_ = keyStrides_->GetStride(0);
+            keyN2Stride_ = keyStrides_->GetStride(1);
+        }
+        if (valueStrides_ != nullptr) {
+            valueBnStride_ = valueStrides_->GetStride(0);
+            valueN2Stride_ = valueStrides_->GetStride(1);
+        }
+        if (kRopeStrides_ != nullptr) {
+            kRopeBnStride_ = kRopeStrides_->GetStride(0);
+            kRopeN2Stride_ = kRopeStrides_->GetStride(1);
+        }
+    }
 }
 
 ge::graphStatus FiaInfoParser::GetNpuInfo()
@@ -440,16 +527,9 @@ void FiaInfoParser::GetUpdateInfo()
     }
 }
 
-void FiaInfoParser::GetPreNextToken()
+void FiaInfoParser::UpdatePreNextTokenBySparseMode()
 {
-    // 从输入读取参数值
-    preToken_ = opParamInfo_.preToken == nullptr ? 0 : *opParamInfo_.preToken;
-    nextToken_ = opParamInfo_.nextToken == nullptr ? 0 : *opParamInfo_.nextToken;
-
-    // 特殊场景下需要更新值
-    sparseMode_ = opParamInfo_.sparseMode == nullptr ? 0 : *opParamInfo_.sparseMode;
     if (sparseMode_ == SPARSE_MODE_NO_MASK) {
-        // sparse_mode=0, 带mask, 启用left padding时, preToken和nextToken参数无效
         if (attenMaskFlag_ && (qPaddingSizeFlag_ || kvPaddingSizeFlag_)) {
             preToken_ = SPARSE_MODE_INT_MAX;
             nextToken_ = SPARSE_MODE_INT_MAX;
@@ -462,8 +542,10 @@ void FiaInfoParser::GetPreNextToken()
         nextToken_ = 0;
         preToken_ = SPARSE_MODE_INT_MAX;
     }
+}
 
-    // 边界场景需要更新值
+void FiaInfoParser::ClampPreNextToken()
+{
     if (preToken_ > SPARSE_MODE_INT_MAX) {
         preToken_ = SPARSE_MODE_INT_MAX;
     } else if (preToken_ < -(SPARSE_MODE_INT_MAX)) {
@@ -474,17 +556,25 @@ void FiaInfoParser::GetPreNextToken()
     } else if (nextToken_ < -(SPARSE_MODE_INT_MAX)) {
         nextToken_ = -(SPARSE_MODE_INT_MAX);
     }
+}
+
+void FiaInfoParser::GetPreNextToken()
+{
+    preToken_ = opParamInfo_.preToken == nullptr ? 0 : *opParamInfo_.preToken;
+    nextToken_ = opParamInfo_.nextToken == nullptr ? 0 : *opParamInfo_.nextToken;
+
+    sparseMode_ = opParamInfo_.sparseMode == nullptr ? 0 : *opParamInfo_.sparseMode;
+    UpdatePreNextTokenBySparseMode();
+    ClampPreNextToken();
 
     if (opParamInfo_.sparseMode != nullptr && sparseMode_ == SPARSE_MODE_NO_MASK) {
         if (!attenMaskFlag_) {
-            // sparse mode need process attention mask when empty tensor scenes as same.
             preToken_ = SPARSE_MODE_INT_MAX;
             nextToken_ = SPARSE_MODE_INT_MAX;
         }
     }
 
     if (sparseMode_ == SPARSE_MODE_NO_MASK && qPaddingSizeFlag_) {
-        // For scenes with sparse mode=0 and left padding, the attention mask part is fully calculated
         preToken_ = SPARSE_MODE_INT_MAX;
         nextToken_ = SPARSE_MODE_INT_MAX;
     }
@@ -496,12 +586,15 @@ void FiaInfoParser::GetPreNextToken()
 }
 
 ge::graphStatus FiaInfoParser::GetTensorListCache(uint32_t index, const std::string &name,
-                                                  std::vector<gert::StorageShape *> &cache)
+                                                  std::vector<gert::StorageShape *> &cache,
+                                                  std::vector<gert::Stride *> &strides)
 {
     cache.clear();
+    strides.clear();
     uint32_t bIdx = 0;
     while ((context_->GetDynamicInputShape(index, bIdx)) != nullptr) {
         cache.push_back(const_cast<gert::StorageShape *>(context_->GetDynamicInputShape(index, bIdx)));
+        strides.push_back(const_cast<gert::Stride *>(context_->GetDynamicInputStride(index, bIdx)));
         bIdx++;
     }
     if (bIdx == 0) {
@@ -509,15 +602,16 @@ ge::graphStatus FiaInfoParser::GetTensorListCache(uint32_t index, const std::str
         return ge::GRAPH_FAILED;
     }
     cache.resize(bIdx);
+    strides.resize(bIdx);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FiaInfoParser::GetKvCache()
 {
-    if (GetTensorListCache(KEY_INDEX, KEY_NAME, kCache_) != ge::GRAPH_SUCCESS) {
+    if (GetTensorListCache(KEY_INDEX, KEY_NAME, kCache_, kStrideCache_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (GetTensorListCache(VALUE_INDEX, VALUE_NAME, vCache_) != ge::GRAPH_SUCCESS) {
+    if (GetTensorListCache(VALUE_INDEX, VALUE_NAME, vCache_, vStrideCache_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -657,6 +751,7 @@ void FiaInfoParser::GetKvStorageMode()
             kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
         }
     }
+    GetKvIsContiguous();
 }
 
 void FiaInfoParser::GetQuantMode()
@@ -1102,6 +1197,7 @@ ge::graphStatus FiaInfoParser::GetAntiQuantInfo()
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "antiquant",
                     std::to_string(tmpAntiquant.GetDimNum()).c_str(),
                     "The shape dim of antiquant must be 5 when per-token-group mode is enabled");
+                return ge::GRAPH_FAILED;
             }
             antiquantParaSeqSize_ = tmpAntiquant.GetDim(3);
         }
@@ -1110,6 +1206,7 @@ ge::graphStatus FiaInfoParser::GetAntiQuantInfo()
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "antiquant",
                 std::to_string(tmpAntiquant.GetDimNum()).c_str(),
                 "The shape dim of antiquant must be 2 or 3 when per-token mode is enabled");
+            return ge::GRAPH_FAILED;
         }
         antiquantParaSeqSize_ = tmpAntiquant.GetDimNum() == 3U ? tmpAntiquant.GetDim(2) : tmpAntiquant.GetDim(1);
     } else if (tmpAntiquantMode == 3) {
@@ -1117,6 +1214,7 @@ ge::graphStatus FiaInfoParser::GetAntiQuantInfo()
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "antiquant",
                 std::to_string(tmpAntiquant.GetDimNum()).c_str(),
                 "The shape dim of antiquant must be 3 when per-token-head mode is enabled");
+            return ge::GRAPH_FAILED;
         }
         antiquantParaSeqSize_ = tmpAntiquant.GetDim(2);
     }
@@ -1262,6 +1360,51 @@ ge::graphStatus FiaInfoParser::GetSystemPrefix()
     return ge::GRAPH_SUCCESS;
 }
 
+void FiaInfoParser::ProcessKVActualSeqLoop(const int64_t *actualLenData, uint32_t loop)
+{
+    int64_t preActualLen = 0;
+    for (uint32_t i = 0; i < loop; i++) {
+        int64_t actLen = actualLenData[i];
+        if (antiQuantFlag_) {
+            if (qLayout_ == FiaLayout::TND && i > 0 && kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
+                actLen -= actualLenData[i - 1];
+            }
+            if (s1Size_ == 1) {
+                needInit_ = needInit_ || (actLen == 0);
+            }
+        } else {
+            if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
+                actLen -= preActualLen;
+                preActualLen = actualLenData[i];
+            }
+            needInit_ = needInit_ || (actLen == 0);
+            if (actLen != s2Size_ && qLayout_ != FiaLayout::TND && qLayout_ != FiaLayout::NTD) {
+                needInit_ = 1;
+            }
+        }
+        maxActualseq_ = maxActualseq_ < actLen ? actLen : maxActualseq_;
+        if (actualLenData[i] != actualLenData[0]) {
+            isSameActualseq_ = false;
+        }
+    }
+}
+
+void FiaInfoParser::ProcessQActualSeqLoop(const int64_t *actualLenQData, uint32_t loop)
+{
+    int64_t preActualLen = 0;
+    for (uint32_t i = 0; i < loop; i++) {
+        int64_t actLen = actualLenQData[i];
+        if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
+            actLen -= preActualLen;
+            preActualLen = actualLenQData[i];
+        }
+        if (actLen != static_cast<int64_t>(s1Size_)) {
+            needInit_ = true;
+            break;
+        }
+    }
+}
+
 ge::graphStatus FiaInfoParser::GetActualSeqInfo()
 {
     maxActualseq_ = 0;
@@ -1278,31 +1421,7 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
             const int64_t *actualLenData = opParamInfo_.actualSeqLengths.tensor->GetData<int64_t>();
             uint32_t loop = ((actualLenDims_ == 1) && (kvListSeqLens_.size() == 1)) ? 1 : bSize_;
             loop = std::min(loop, actualLenDims_);
-            int64_t preActualLen = 0;
-            for (uint32_t i = 0; i < loop; i++) {
-                int64_t actLen = actualLenData[i];
-                if (antiQuantFlag_) {
-                    if (qLayout_ == FiaLayout::TND && i > 0 && kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
-                        actLen -= actualLenData[i - 1];
-                    }
-                    if (s1Size_ == 1) {
-                        needInit_ = needInit_ || (actLen == 0);
-                    }
-                } else {
-                    if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
-                        actLen -= preActualLen;
-                        preActualLen = actualLenData[i];
-                    }
-                    needInit_ = needInit_ || (actLen == 0);
-                    if (actLen != s2Size_ && qLayout_ != FiaLayout::TND && qLayout_ != FiaLayout::NTD) {
-                        needInit_ = 1;
-                    }
-                }
-                maxActualseq_ = maxActualseq_ < actLen ? actLen : maxActualseq_;
-                if (actualLenData[i] != actualLenData[0]) {
-                    isSameActualseq_ = false;
-                }
-            }
+            ProcessKVActualSeqLoop(actualLenData, loop);
         }
     } else {
         maxActualseq_ = s2Size_;
@@ -1315,20 +1434,8 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
             isAccumQSeq_ = true;
         }
         if (opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() != nullptr) {
-            // TND格式needInit_不需要置为1，用else if隔开
             uint32_t loop = std::min(bSize_, actualLenQDims_);
-            int64_t preActualLen = 0;
-            for (uint32_t i = 0; i < loop; i++) {
-                int64_t actLen = actualLenQData[i];
-                if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
-                    actLen -= preActualLen;
-                    preActualLen = actualLenQData[i];
-                }
-                if (actLen != static_cast<int64_t>(s1Size_)) {
-                    needInit_ = true;
-                    break;
-                }
-            }
+            ProcessQActualSeqLoop(actualLenQData, loop);
         }
     }
 
@@ -1358,10 +1465,16 @@ ge::graphStatus FiaInfoParser::GetFullQuantMode()
     if (quantMode_ == FiaQuantMode::FULL_QUANT) {
         if (*opParamInfo_.queryQuantMode == 7 && *opParamInfo_.keyAntiquantMode == 7 &&
             *opParamInfo_.valueAntiquantMode == 7) {
-            fullQuantMode_ = FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT;
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "QuantMode",
+                std::to_string(*opParamInfo_.queryQuantMode).c_str(),
+                "In the fullquant scenario, per-block(QuantMode == 7) is not supported");
+            return ge::GRAPH_FAILED;
         } else if (*opParamInfo_.queryQuantMode == 6 && *opParamInfo_.keyAntiquantMode == 6 &&
                    *opParamInfo_.valueAntiquantMode == 8) {
             fullQuantMode_ = FiaFullQuantMode::QKV_MXFP8_FULL_QUANT;
+        } else if (*opParamInfo_.queryQuantMode == 3 && *opParamInfo_.keyAntiquantMode == 3 &&
+                   *opParamInfo_.valueAntiquantMode == 2) {
+            fullQuantMode_ = FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD;
         } else if (ropeMode_ == RopeMode::ROPE_SPLIT &&
                    (*opParamInfo_.queryQuantMode == 3 && *opParamInfo_.keyAntiquantMode == 0 &&
                     *opParamInfo_.valueAntiquantMode == 0)) {
@@ -1465,6 +1578,11 @@ void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
     GenerateDtypeInfo(fiaInfo);
     fiaInfo.kvStorageMode = kvStorageMode_;
     fiaInfo.batchContinuousFlag = (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS);
+
+    fiaInfo.keyNonContigDim = keyNonContigDim_;
+    fiaInfo.valueNonContigDim = valueNonContigDim_;
+    fiaInfo.keyRopeNonContigDim = keyRopeNonContigDim_;
+
     fiaInfo.ropeMode = ropeMode_;
     fiaInfo.mlaMode = mlaMode_;
     fiaInfo.quantMode = quantMode_;
@@ -1481,7 +1599,13 @@ void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
     fiaInfo.kRopeStrides = kRopeStrides_;
     fiaInfo.kScaleStrides = kScaleStrides_;
     fiaInfo.vScaleStrides = vScaleStrides_;
-    fiaInfo.isTensorV1 = isTensorV1_;
+    fiaInfo.hasViewStride = hasViewStride_;
+    fiaInfo.keyBnStride = keyBnStride_;
+    fiaInfo.keyN2Stride = keyN2Stride_;
+    fiaInfo.valueBnStride = valueBnStride_;
+    fiaInfo.valueN2Stride = valueN2Stride_;
+    fiaInfo.kRopeBnStride = kRopeBnStride_;
+    fiaInfo.kRopeN2Stride = kRopeN2Stride_;
 
     fiaInfo.totalOutputSize = opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize();
 
@@ -1545,6 +1669,9 @@ ge::graphStatus FiaInfoParser::Parse(FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
     GetInOutDataType();
+    if (ge::GRAPH_SUCCESS != GetStrides()) {
+        return ge::GRAPH_FAILED;
+    }
     GetKvStorageMode();
     GetQuantMode();
     if (ge::GRAPH_SUCCESS != GetAntiQuantInfo()) {
@@ -1553,6 +1680,7 @@ ge::graphStatus FiaInfoParser::Parse(FiaTilingInfo &fiaInfo)
     if (ge::GRAPH_SUCCESS != GetQueryAndOutLayout() || ge::GRAPH_SUCCESS != GetKvLayout()) {
         return ge::GRAPH_FAILED;
     }
+    GetKvStrideValues();
     if (ge::GRAPH_SUCCESS != GetEmptyTensorFlag()) {
         return ge::GRAPH_FAILED;
     }
@@ -1589,9 +1717,6 @@ ge::graphStatus FiaInfoParser::ParseAxisInfo()
     }
     GetKeyTSize();
     if (ge::GRAPH_SUCCESS != GetGSize() || ge::GRAPH_SUCCESS != GetS2Size() || ge::GRAPH_SUCCESS != GetRopeHeadDim()) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != GetStrides()) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

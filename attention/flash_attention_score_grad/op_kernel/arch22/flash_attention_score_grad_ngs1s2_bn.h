@@ -1137,7 +1137,7 @@ FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FOR
     } else {
         // NZ copy in
         auto tmpTensor = vecInQue1.AllocTensor<T2>();
-        DataCopy(tmpTensor, matmulOutGm[nCvIndex * oriNIn * g * sQ * sKVAlign], oriNIn * g * sKVAlign * sQ);
+        DataCopy(tmpTensor, matmulOutGm[nCvIndex * oriNIn * g * sQ * sKVAlign], nIn * g * sKVAlign * sQ);
         AscendC::SetFlag<HardEvent::MTE2_V>(mte2WaitV);
         AscendC::WaitFlag<HardEvent::MTE2_V>(mte2WaitV);
 

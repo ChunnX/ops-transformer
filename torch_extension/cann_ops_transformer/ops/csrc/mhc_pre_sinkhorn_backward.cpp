@@ -18,28 +18,26 @@
 
 namespace op_api {
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mhc_pre_sinkhorn_backward(
-    const at::Tensor &gradHin, const at::Tensor &gradHPost, const at::Tensor &gradHRes,
-    const at::Tensor &x, const at::Tensor &phi, const at::Tensor &alpha, const at::Tensor &bias,
-    const at::Tensor &hPre, const at::Tensor &hcBeforeNorm, const at::Tensor &invRms,
-    const at::Tensor &sumOut, const at::Tensor &normOut, double hcEps)
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>
+MhcPreSinkhornBackward(const at::Tensor &gradHin, const at::Tensor &gradHPost, const at::Tensor &gradHRes,
+                       const at::Tensor &x, const at::Tensor &phi, const at::Tensor &alpha, const at::Tensor &bias,
+                       const at::Tensor &hPre, const at::Tensor &hcBeforeNorm, const at::Tensor &invRms,
+                       const at::Tensor &sumOut, const at::Tensor &normOut, double hcEps)
 {
     at::Tensor gradX = at::empty_like(x);
     at::Tensor gradPhi = at::empty_like(phi);
     at::Tensor gradAlpha = at::empty_like(alpha);
     at::Tensor gradBias = at::empty_like(bias);
 
-    ACLNN_CMD(aclnnMhcPreSinkhornBackward, gradHin, gradHPost, gradHRes,
-              x, phi, alpha, bias, hPre, hcBeforeNorm, invRms,
-              sumOut, normOut, hcEps, gradX, gradPhi, gradAlpha, gradBias);
+    ACLNN_CMD(aclnnMhcPreSinkhornBackward, gradHin, gradHPost, gradHRes, x, phi, alpha, bias, hPre, hcBeforeNorm,
+              invRms, sumOut, normOut, hcEps, gradX, gradPhi, gradAlpha, gradBias);
 
-    return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>(
-        gradX, gradPhi, gradAlpha, gradBias);
+    return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>(gradX, gradPhi, gradAlpha, gradBias);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("mhc_pre_sinkhorn_backward", &mhc_pre_sinkhorn_backward, "mhc_pre_sinkhorn_backward");
+    m.def("mhc_pre_sinkhorn_backward", &MhcPreSinkhornBackward, "mhc_pre_sinkhorn_backward");
 }
 
 } // namespace op_api

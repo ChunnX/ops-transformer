@@ -42,7 +42,10 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset, 
     if (runInfo.isLastBasicBlock) {
         totalSel = totalSel - selectedBlockSize + runInfo.lastBlockSize;
     }
-    CopyGmToL1(l1_ds_tensor, dsWorkspaceGm[dsGmOffset], dimG, totalSel, TOTAL_BLOCK_SIZE);
+
+    const bool useNonOptimizedSmallS2Path = !enableOptimizedScatter && runInfo.isSmallS2;
+    int64_t currentDsGmOffset = useNonOptimizedSmallS2Path ? runInfo.mm345GmOffset : dsGmOffset;
+    CopyGmToL1(l1_ds_tensor, dsWorkspaceGm[currentDsGmOffset], dimG, totalSel, TOTAL_BLOCK_SIZE);
     for (int32_t mIdx = blkCntOffset; mIdx < blkCntOffset + selectedCntOffset; mIdx+=blockOffset) {
         int32_t topkIdx = topkIndicesGm[indicesGmOffset].GetValue(mIdx);
         int32_t startS2Idx = topkIdx * selectedBlockSize * dimN2 * dimDTotal;
@@ -62,7 +65,8 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset, 
                 // last block reload query
                 WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
                 current_l1_query_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
-                currentQueryOffset = queryGmOffset + dIdx * perLoopDSize;
+                currentQueryOffset = (useNonOptimizedSmallS2Path ? runInfo.queryGmOffset : queryGmOffset) +
+                    dIdx * perLoopDSize;
                 CopyGmToL1(current_l1_query_tensor, queryGm[currentQueryOffset], dimG, perLoopDSize, dimDqk);
             } else {
                 current_l1_query_tensor = l1_query_tensor[dIdx * dimGAlign * perLoopDSize];                
@@ -70,7 +74,7 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset, 
 
             // l0a复用
             uint32_t l0a_ping_pong_flag = ping_pong_flag_l0a_;
-            if constexpr (IS_DETERMINISTIC) {
+            if (!enableOptimizedScatter) {
                 int64_t currentOutGmOffset = mm4ResOutOffset + dIdx * perLoopDSize;
                 MmadInnerWithSync<T1>(l0cTensor, current_l1_ds_tensor, current_l1_query_tensor,
                         aL0TensorPingPong, bL0TensorPingPong,
@@ -93,7 +97,12 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset, 
         if (unlikely(reloadQuery)) {
             WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
             current_l1_query_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
-            currentQueryOffset = HAS_ROPE ? queryRopeGmOffset : queryGmOffset + (dLoopTimes - 1) * perLoopDSize;
+            if (useNonOptimizedSmallS2Path) {
+                currentQueryOffset = HAS_ROPE ? runInfo.queryRopeGmOffset :
+                    runInfo.queryGmOffset + (dLoopTimes - 1) * perLoopDSize;
+            } else {
+                currentQueryOffset = HAS_ROPE ? queryRopeGmOffset : queryGmOffset + (dLoopTimes - 1) * perLoopDSize;
+            }
             GlobalTensor<T1> srcGm = HAS_ROPE ? queryRopeGm[currentQueryOffset] : queryGm[currentQueryOffset];
             int64_t destStride = HAS_ROPE ? dimRope : dimDqk;
             CopyGmToL1(current_l1_query_tensor, srcGm, dimG, tailLoopDSize, destStride);
@@ -101,7 +110,7 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset, 
             current_l1_query_tensor = l1_query_tensor[(dLoopTimes - 1) * dimGAlign * perLoopDSize];
         }
 
-        if constexpr (IS_DETERMINISTIC) {
+        if (!enableOptimizedScatter) {
             int64_t currentOutGmOffset = mm4ResOutOffset + (dLoopTimes - 1) * perLoopDSize;
             MmadInnerWithSync<T1>(l0cTensor, current_l1_ds_tensor, current_l1_query_tensor,
                     aL0TensorPingPong, bL0TensorPingPong,

@@ -15,20 +15,20 @@
 
 ## 功能说明
 
-- **接口功能**：MoE计算中，最后处理合并MoE FFN的输出结果。
+- **接口功能**：MoE(Mixture of Experts)计算中，最后处理合并MoE(专家混合)FFN(Feed-Forward Network，前馈网络)的输出结果。
 - **计算公式**：
 
   $$
   expertid=expertIdx[i,k]
   $$
-   
+
   $$
   out(i,j)=x1_{i,j}+x2_{i,j}+\sum_{k=0}^{K}(scales_{i,k}*(expandedX_{expandedRowIdx_{i+k*num\_rows},j}+bias_{expertid,j}))
   $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeFinalizeRoutingV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeFinalizeRoutingV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeFinalizeRoutingV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeFinalizeRoutingV2”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
@@ -80,17 +80,17 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
   </tr></thead>
   <tbody>
   <tr>
-        <td>expandedX</td>
-        <td>输入</td>
-        <td>公式中的expandedX ，MoE的FFN输出。</td>
-        <td>-</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>drop less场景：(NUM_ROWS * K, H)，<br>drop pad场景：(E, C, H)。</td>
-        <td>√</td>
+    <td>expandedX(aclTensor*)</td>
+    <td>输入</td>
+    <td>公式中的expandedX ，MoE的FFN输出。</td>
+    <td>-</td>
+    <td>FLOAT16、BFLOAT16、FLOAT32</td>
+    <td>ND</td>
+    <td>drop less场景：(NUM_ROWS * K, H)，<br>drop pad场景：(E, C, H)。</td>
+    <td>√</td>
   </tr>
   <tr>
-    <td>expandedRowIdx</td>
+    <td>expandedRowIdx(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的expandedRowIdx。</td>
     <td>-</td>
@@ -100,7 +100,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>√</td>
   </tr>
   <tr>
-    <td>x1Optional</td>
+    <td>x1Optional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的x1，表示第一个共享专家。</td>
     <td>-</td>
@@ -110,7 +110,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>√</td>
   </tr>
   <tr>
-    <td>x2Optional</td>
+    <td>x2Optional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的x2，表示第二个共享专家。</td>
     <td>-</td>
@@ -120,7 +120,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>√</td>
   </tr>
   <tr>
-    <td>biasOptional</td>
+    <td>biasOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的bias，表示偏置量。</td>
     <td>-</td>
@@ -130,7 +130,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>√</td>
   </tr>
   <tr>
-    <td>scalesOptional</td>
+    <td>scalesOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的scales。</td>
     <td>-</td>
@@ -140,7 +140,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>√</td>
   </tr>
   <tr>
-    <td>expertIdxOptional</td>
+    <td>expertIdxOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的expertIdx。</td>
     <td>Tensor中的值取值范围是[0, E-1]。</td>
@@ -150,7 +150,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>√</td>
   </tr>
   <tr>
-    <td>dropPadMode</td>
+    <td>dropPadMode(int64_t)</td>
     <td>输入</td>
     <td>表示是否支持丢弃模式，expandedRowIdx的排列方式。</td>
     <td>取值范围为[0, 3]。</td>
@@ -160,7 +160,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>-</td>
   </tr>
   <tr>
-    <td>out</td>
+    <td>out(aclTensor*)</td>
     <td>输出</td>
     <td>公式中的输出。</td>
     <td>-</td>
@@ -170,7 +170,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>×</td>
   </tr>
   <tr>
-    <td>workspaceSize</td>
+    <td>workspaceSize(uint64_t)</td>
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
     <td>-</td>
@@ -180,7 +180,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>-</td>
   </tr>
   <tr>
-    <td>executor</td>
+    <td>executor(aclOpExecutor**)</td>
     <td>输出</td>
     <td>返回op执行器，包含了算子计算流程。</td>
     <td>-</td>
@@ -205,7 +205,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -223,18 +223,18 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
   </thead>
   <tbody>
     <tr>
-    <td> ACLNN_ERR_PARAM_NULLPTR </td>
-    <td> 161001 </td>
+    <td>ACLNN_ERR_PARAM_NULLPTR</td>
+    <td>161001</td>
     <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
     </tr>
     <tr>
-    <td> ACLNN_ERR_PARAM_INVALID </td>
-    <td> 161002 </td>
+    <td>ACLNN_ERR_PARAM_INVALID</td>
+    <td>161002</td>
     <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
     </tr>
     <tr>
-    <td rowspan="2"> ACLNN_ERR_INNER_NULLPTR </td>
-    <td rowspan="2"> 561103 </td>
+    <td rowspan="2">ACLNN_ERR_INNER_NULLPTR</td>
+    <td rowspan="2">561103</td>
     <td>多个输入tensor之间的shape信息不匹配。</td>
     </tr>
     <tr>
@@ -282,19 +282,19 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
   </table>
 
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 1. 确定性计算：
     - aclnnMoeFinalizeRoutingV2默认确定性实现。
 
-2. NUM\_ROWS：表示行数；  
-    - K：表示从总的专家E中选出K个专家；  
-    - H：表示hidden size，即每个token序列长度，为列数；  
-    - E：表示expert num，即专家数，E需要大于等于K；  
-    - C：表示expert capacity，即专家处理token数量的能力阈值。  
+2. NUM\_ROWS：表示行数；
+    - K：表示从总的专家E中选出K个专家；
+    - H：表示hidden size，即每个token序列长度，为列数；
+    - E：表示expert num，即专家数，E需要大于等于K；
+    - C：表示expert capacity，即专家处理token数量的能力阈值。
 
 3. expandedRowIdx：当dropPadMode参数值为0、2时，Tensor中的值取值范围是[0,NUM_ROWS * K-1]；当dropPadMode参数值为1、3时，Tensor中的值取值范围是[-1, E \* C - 1]。
 
@@ -310,15 +310,19 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     - 2：drop less场景，expandedRowIdx按**行**排列（与[aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)输出格式对应）。
     - 3：drop pad场景，expandedRowIdx按**行**排列（与[aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)输出格式对应）。
 
+8. 输入不支持空Tensor，不支持标量Tensor。
+
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 #include "acl/acl.h"
 #include "aclnnop/aclnn_moe_finalize_routing_v2.h"
 #include <iostream>
 #include <vector>
+#include <cstdio>
+
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -397,7 +401,7 @@ int main() {
   void* expandedExpertIdxAddr = nullptr;
   void* expandedRowIdxAddr = nullptr;
   void* outDeviceAddr = nullptr;
-  
+
   aclTensor* expandedX = nullptr;
   aclTensor* x1 = nullptr;
   aclTensor* x2Optional = nullptr;
@@ -432,7 +436,7 @@ int main() {
   // 创建totalWeightOut aclTensor
   ret = CreateAclTensor(scalesHostData, scalesShape, &scalesDeviceAddr, aclDataType::ACL_FLOAT, &scales);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
+
   // 创建expandedExpertIdx aclTensor
   ret = CreateAclTensor(expandedExpertIdxHostData, expandedExpertIdxShape, &expandedExpertIdxAddr,
                         aclDataType::ACL_INT32, &expandedExpertIdx);

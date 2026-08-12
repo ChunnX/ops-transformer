@@ -38,8 +38,8 @@ public:
         return Ops::Base::CeilAlign(num1, num2);
     }
 };
-}  // namespace Transformer
-}  // namespace Ops
+} // namespace Transformer
+} // namespace Ops
 
 namespace ops {
 template <typename T>
@@ -65,6 +65,6 @@ static T CeilDiv(T num1, T num2)
 {
     return Ops::Base::CeilDiv(num1, num2);
 }
-}
+} // namespace ops
 
 #endif

@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -23,12 +33,12 @@
 - 计算公式：
 
   $$
-  yRef_i=x_i\times weight_i + y_i
+  yRef_i^{out}=x_i\times weight_i + yRef_i^{in}
   $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulAddV2GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatmulAddV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGroupedMatmulAddV2GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatmulAddV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulAddV2GetWorkspaceSize(
@@ -39,7 +49,7 @@ aclnnStatus aclnnGroupedMatmulAddV2GetWorkspaceSize(
     bool             transposeX,
     bool             transposeWeight,
     int64_t          groupType,
-    int64_t          group_list_type,
+    int64_t          groupListType,
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
@@ -120,16 +130,6 @@ aclnnStatus aclnnGroupedMatmulAddV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>y（aclTensor）</td>
-      <td>输入</td>
-      <td>表示原地累加的输入矩阵，Device侧的aclTensor类型，公式中的y。</td>
-      <td>-</td>
-      <td>FLOAT32</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>transposeX（bool）</td>
       <td>输入</td>
       <td>表示x矩阵是否转置，Host侧的布尔值。</td>
@@ -188,8 +188,8 @@ aclnnStatus aclnnGroupedMatmulAddV2(
     </tr>
     <tr>
       <td>yRef（aclTensor）</td>
-      <td>输出</td>
-      <td>表示原地累加的输入矩阵y的引用（与y完全相同），公式中的yRef</td>
+      <td>输入/输出</td>
+      <td>表示原地累加的输入输出矩阵，Device侧的aclTensor类型，公式中的yRef。</td>
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -220,7 +220,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed;width: 1030px"><colgroup>
@@ -239,18 +239,18 @@ aclnnStatus aclnnGroupedMatmulAddV2(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>传入的x、weight、groupList、y、yRef是空指针。</td>
+      <td>传入的x、weight、groupList、yRef是空指针。</td>
     </tr>
     <tr>
       <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="2">161002</td>
-      <td>x、weight、groupList、y、yRef的数据类型或数据格式不在支持的范围之内。</td>
+      <td>x、weight、groupList、yRef的数据类型或数据格式不在支持的范围之内。</td>
     </tr>
       <td>x与weight的数据类型不一致。</td>
     <tr>
       <td>ACLNN_ERR_INNER_TILING_ERROR</td>
       <td>561002</td>
-      <td>x、weight、y、yRef的shape不满足矩阵乘限制要求。</td>
+      <td>x、weight、yRef的shape不满足矩阵乘限制要求。</td>
     </tr>
   </tbody></table>
 
@@ -271,7 +271,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -279,12 +279,16 @@ aclnnStatus aclnnGroupedMatmulAddV2(
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
 - x和weight中每一组tensor的最后一维大小都应小于65536。$x$的最后一维指当x不转置时$x$的K轴或当x转置时$x$的M轴。$weight$的最后一维指当weight不转置时$weight$的N轴或当weight转置时$weight$的K轴。
 - 支持的输入类型组合为：
-  - x为FLOAT16、weight为FLOAT16、y为FLOAT32。
-  - x为BFLOAT16、weight为BFLOAT16、y为FLOAT32。
+  - x为FLOAT16、weight为FLOAT16、yRef为FLOAT32。
+  - x为BFLOAT16、weight为BFLOAT16、yRef为FLOAT32。
+- groupListType：支持0、1。
+  - groupListType=0：groupList须为非负单调非递减数列（累积和），最后一个值不大于x中tensor的第一维。以K=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
+  - groupListType=1：groupList须为非负数列（各组大小），数值总和不大于x中tensor的第一维。例如：`[64, 0, 128, 64]`
+- groupList第1维最大支持1024，即最多支持1024个group。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -411,7 +415,7 @@ int aclnnGroupedMatmulAddV2Test(int32_t deviceId, aclrtStream &stream) {
     bool transpose_x = true;
     bool transpose_weight = false;
     int group_type = 2;
-    int group_list_type = 0;
+    int groupListType = 0;
 
     // 创建x aclTensorList
     ret = CreateAclTensor<uint16_t>(xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
@@ -441,7 +445,7 @@ int aclnnGroupedMatmulAddV2Test(int32_t deviceId, aclrtStream &stream) {
 
     // 3. 调用CANN算子库API
     // 调用aclnnGroupedMatmulAddV2第一段接口
-    ret = aclnnGroupedMatmulAddV2GetWorkspaceSize(x, weight, groupedList, yRef, transpose_x, transpose_weight, group_type, group_list_type, &workspaceSize, &executor);
+    ret = aclnnGroupedMatmulAddV2GetWorkspaceSize(x, weight, groupedList, yRef, transpose_x, transpose_weight, group_type, groupListType, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulAddV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     void* workspaceAddr = nullptr;

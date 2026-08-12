@@ -212,8 +212,7 @@ static void InitTileInfoInCommonTiling(AlltoAllAllGatherBatchMatMulTilingData *t
 
     tilingData->commonTiling.localTileC.tileCnt = 1;
     if (tilingData->commonTiling.xShardFlag == 1) {
-        tilingData->commonTiling.localTileC.tileLen = tilingData->commonTiling.C /
-                                                       tilingData->commonTiling.tpGroupSize;
+        tilingData->commonTiling.localTileC.tileLen = tilingData->commonTiling.C / tilingData->commonTiling.tpGroupSize;
     } else {
         tilingData->commonTiling.localTileC.tileLen = tilingData->commonTiling.C;
     }
@@ -222,8 +221,8 @@ static void InitTileInfoInCommonTiling(AlltoAllAllGatherBatchMatMulTilingData *t
 
     tilingData->commonTiling.domesticTileC.tileCnt = 1;
     if (tilingData->commonTiling.xShardFlag == 1) {
-        tilingData->commonTiling.domesticTileC.tileLen = tilingData->commonTiling.C /
-                                                          tilingData->commonTiling.tpGroupSize;
+        tilingData->commonTiling.domesticTileC.tileLen =
+            tilingData->commonTiling.C / tilingData->commonTiling.tpGroupSize;
     } else {
         tilingData->commonTiling.domesticTileC.tileLen = tilingData->commonTiling.C;
     }
@@ -231,7 +230,8 @@ static void InitTileInfoInCommonTiling(AlltoAllAllGatherBatchMatMulTilingData *t
     tilingData->commonTiling.domesticTileC.tailLen = 0;
 }
 
-static void UpdateTileInfo(BMM_TileInfo &tileInfo, uint64_t tileCnt, uint64_t tileLen, uint64_t tailCnt, uint64_t tailLen)
+static void UpdateTileInfo(BMM_TileInfo &tileInfo, uint64_t tileCnt, uint64_t tileLen, uint64_t tailCnt,
+                           uint64_t tailLen)
 {
     tileInfo.tailCnt = tailCnt;
     tileInfo.tailLen = tailLen;
@@ -268,9 +268,9 @@ static void CheckTransposeUBAndUpdateTileShard(TransposeConfig &config,
     uint64_t tailCnt = (tailLen == 0UL) ? 0UL : 1UL;
 
     BMM_TileInfo &tileInfo = config.isLocal ? (config.isTail ? tilingData->commonTiling.localTailUbTranspose :
-                                                           tilingData->commonTiling.localUbTranspose) :
-                                          (config.isTail ? tilingData->commonTiling.domesticTailUbTranspose :
-                                                           tilingData->commonTiling.domesticUbTranspose);
+                                                               tilingData->commonTiling.localUbTranspose) :
+                                              (config.isTail ? tilingData->commonTiling.domesticTailUbTranspose :
+                                                               tilingData->commonTiling.domesticUbTranspose);
     UpdateTileInfo(tileInfo, tileCnt, tileLen, tailCnt, tailLen);
     return;
 }
@@ -316,8 +316,7 @@ static void CheckAddActivateUB(ActivationParams &actParams, AlltoAllAllGatherBat
     ubCapacity = (actParams.ubSize - FASTGELU_MINSIZE) / static_cast<uint64_t>(coeff);
     ubCapacity = ubCapacity / ALIGN16 * ALIGN16;
     tilingData->commonTiling.ubCapacityForAddActivate = ubCapacity;
-    tilingData->commonTiling.fastGeluBuffer =
-        std::max(static_cast<uint64_t>(FASTGELU_MINSIZE), fastGelu * ubCapacity);
+    tilingData->commonTiling.fastGeluBuffer = std::max(static_cast<uint64_t>(FASTGELU_MINSIZE), fastGelu * ubCapacity);
 }
 
 static void UpdateTileShard(TileShardParams &params, AlltoAllAllGatherBatchMatMulTilingData *tilingData)
@@ -365,11 +364,15 @@ static uint64_t UpdateTilingKey(AlltoAllAllGatherBatchMatMulTilingData *tilingDa
 
     uint64_t tilingKey = GET_TPL_TILING_KEY(xShardFlag, isWeightTrans, isBias, y2Flag, y3Flag);
 
-    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : xShardFlag is %u.", xShardFlag);
-    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Weight Transpose is %d.", isWeightTrans);
+    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : xShardFlag is %u.",
+            xShardFlag);
+    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Weight Transpose is %d.",
+            isWeightTrans);
     OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Bias is %d.", isBias);
-    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Y2 output need is %d.", y2Flag);
-    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Y3 output need is %d.", y3Flag);
+    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Y2 output need is %d.",
+            y2Flag);
+    OP_LOGD("AlltoAllAllGatherBatchMatMul", "TPL Tiling Key Print : Tiling key parameter : Y3 output need is %d.",
+            y3Flag);
 
     OP_LOGD("AlltoAllAllGatherBatchMatMul", "The final tiling key is %lu.", tilingKey);
     return tilingKey;
@@ -395,8 +398,7 @@ static void GetAlltoAllAllGatherFormulateTileCnt(mc2tiling::TilingArgs &formulai
                                                  AlltoAllAllGatherBatchMatMulTilingData *tilingData)
 {
     All2AllAllGatherBMM formulaicTiling(formulaicArgs, tilingData->commonTiling.epGroupSize,
-                                        tilingData->commonTiling.tpGroupSize,
-                                        tilingData->commonTiling.EOverEp);
+                                        tilingData->commonTiling.tpGroupSize, tilingData->commonTiling.EOverEp);
     formulaicTiling.GetTiling();
 
     tilingData->commonTiling.localTileE.tileCnt = formulaicTiling.localCutE.numLongTile;
@@ -410,11 +412,11 @@ static void GetAlltoAllAllGatherFormulateTileCnt(mc2tiling::TilingArgs &formulai
     tilingData->commonTiling.domesticTileE.tailLen = formulaicTiling.cutE.shortTileLen;
 
     tilingData->commonTiling.domesticTileC.tileCnt = formulaicTiling.tilingC.cutRes.numLongTile;
-    tilingData->commonTiling.domesticTileC.tileLen = formulaicTiling.tilingC.cutRes.longTileLen /
-                                                      tilingData->commonTiling.tpGroupSize;
+    tilingData->commonTiling.domesticTileC.tileLen =
+        formulaicTiling.tilingC.cutRes.longTileLen / tilingData->commonTiling.tpGroupSize;
     tilingData->commonTiling.domesticTileC.tailCnt = formulaicTiling.tilingC.cutRes.numShortTile;
-    tilingData->commonTiling.domesticTileC.tailLen = formulaicTiling.tilingC.cutRes.shortTileLen /
-                                                      tilingData->commonTiling.tpGroupSize;
+    tilingData->commonTiling.domesticTileC.tailLen =
+        formulaicTiling.tilingC.cutRes.shortTileLen / tilingData->commonTiling.tpGroupSize;
 
     return;
 }
@@ -423,8 +425,7 @@ static void GetAlltoAllAllGatherFormulateTileCntShardH(mc2tiling::TilingArgs &fo
                                                        AlltoAllAllGatherBatchMatMulTilingData *tilingData)
 {
     All2AllAllGatherBMMShardH formulaicTiling(formulaicArgs, tilingData->commonTiling.epGroupSize,
-                                              tilingData->commonTiling.tpGroupSize,
-                                              tilingData->commonTiling.EOverEp);
+                                              tilingData->commonTiling.tpGroupSize, tilingData->commonTiling.EOverEp);
     formulaicTiling.GetTiling();
     if (formulaicTiling.localCutE.shortTileAtBack) { // local E短块后置
         tilingData->commonTiling.localTileE.tileCnt = formulaicTiling.localCutE.numLongTile;
@@ -484,17 +485,15 @@ static ge::graphStatus HandleLocalBmmTilingData(gert::TilingContext *context,
     }
     AlltoAllAllGatherBatchMatMulTiling bmmTilingLocalStd(context, tilingData->localTiling.bmmTilingData, bmmV3BatchInfo,
                                                          mmV3ArgsInfo);
-    OP_TILING_CHECK(
-        bmmTilingLocalStd.DoTiling() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "Do BmmV3Tiling failed under local standard section."),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(bmmTilingLocalStd.DoTiling() != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context->GetNodeName(), "Do BmmV3Tiling failed under local standard section."),
+                    return ge::GRAPH_FAILED);
 
     // Local tail slice BMM tiling
     if (tilingData->commonTiling.localTileE.tailLen != 0) {
         if (tilingData->commonTiling.xShardFlag == 1U) {
             CompleteBmmStructs(bmmV3BatchInfo, mmV3ArgsInfo,
-                               tilingData->commonTiling.tpGroupSize *
-                                   tilingData->commonTiling.localTileC.tailLen,
+                               tilingData->commonTiling.tpGroupSize * tilingData->commonTiling.localTileC.tailLen,
                                tilingData->commonTiling.MOverTp, tilingData->commonTiling.H,
                                tilingData->commonTiling.localTileE.tileLen);
         } else {
@@ -504,10 +503,9 @@ static ge::graphStatus HandleLocalBmmTilingData(gert::TilingContext *context,
         }
         AlltoAllAllGatherBatchMatMulTiling bmmTilingLocalTail(context, tilingData->localTailTiling.bmmTilingData,
                                                               bmmV3BatchInfo, mmV3ArgsInfo);
-        OP_TILING_CHECK(
-            bmmTilingLocalTail.DoTiling() != ge::GRAPH_SUCCESS,
-            OP_LOGE(context->GetNodeName(), "Do BmmV3Tiling failed under local tail section."),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(bmmTilingLocalTail.DoTiling() != ge::GRAPH_SUCCESS,
+                        OP_LOGE(context->GetNodeName(), "Do BmmV3Tiling failed under local tail section."),
+                        return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -526,24 +524,21 @@ static ge::graphStatus HandleNoneLocalBmmTilingData(gert::TilingContext *context
                            tilingData->commonTiling.domesticTileE.tileLen);
     } else {
         CompleteBmmStructs(bmmV3BatchInfo, mmV3ArgsInfo,
-                           (tilingData->commonTiling.epGroupSize - 1) *
-                               tilingData->commonTiling.domesticTileC.tileLen,
+                           (tilingData->commonTiling.epGroupSize - 1) * tilingData->commonTiling.domesticTileC.tileLen,
                            tilingData->commonTiling.MOverTp, tilingData->commonTiling.H,
                            tilingData->commonTiling.domesticTileE.tileLen);
     }
     AlltoAllAllGatherBatchMatMulTiling bmmTilingDomesticStd(context, tilingData->domesticTiling.bmmTilingData,
                                                             bmmV3BatchInfo, mmV3ArgsInfo);
     OP_TILING_CHECK(bmmTilingDomesticStd.DoTiling() != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(),
-                                                    "Do BmmV3Tiling failed under domestic standard section."),
+                    OP_LOGE(context->GetNodeName(), "Do BmmV3Tiling failed under domestic standard section."),
                     return ge::GRAPH_FAILED);
 
     // Non-local tail slice BMM tiling
     if (tilingData->commonTiling.domesticTileC.tailLen != 0) {
         if (tilingData->commonTiling.xShardFlag == 1U) {
             CompleteBmmStructs(bmmV3BatchInfo, mmV3ArgsInfo,
-                               (tilingData->commonTiling.epGroupSize - 1) *
-                                   tilingData->commonTiling.tpGroupSize *
+                               (tilingData->commonTiling.epGroupSize - 1) * tilingData->commonTiling.tpGroupSize *
                                    tilingData->commonTiling.domesticTileC.tailLen,
                                tilingData->commonTiling.MOverTp, tilingData->commonTiling.H,
                                tilingData->commonTiling.domesticTileE.tileLen);
@@ -557,8 +552,7 @@ static ge::graphStatus HandleNoneLocalBmmTilingData(gert::TilingContext *context
         AlltoAllAllGatherBatchMatMulTiling bmmTilingDomesticTail(context, tilingData->domesticTailTiling.bmmTilingData,
                                                                  bmmV3BatchInfo, mmV3ArgsInfo);
         OP_TILING_CHECK(bmmTilingDomesticTail.DoTiling() != ge::GRAPH_SUCCESS,
-                        OP_LOGE(context->GetNodeName(),
-                                                        "Do BmmV3Tiling failed under domestic tail section."),
+                        OP_LOGE(context->GetNodeName(), "Do BmmV3Tiling failed under domestic tail section."),
                         return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -578,24 +572,21 @@ static ge::graphStatus SetMatmulTilingAlltoAllAllGatherBatchMatMul(gert::TilingC
     }
 
     OP_TILING_CHECK(HandleLocalBmmTilingData(context, tilingData, BMMV3BatchInfo, MMV3ArgsInfo) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "Handle local bmm tiling data failed."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(HandleNoneLocalBmmTilingData(context, tilingData, BMMV3BatchInfo, MMV3ArgsInfo) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "Handle none local bmm tiling data failed."),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "Handle local bmm tiling data failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        HandleNoneLocalBmmTilingData(context, tilingData, BMMV3BatchInfo, MMV3ArgsInfo) != ge::GRAPH_SUCCESS,
+        OP_LOGE(context->GetNodeName(), "Handle none local bmm tiling data failed."), return ge::GRAPH_FAILED);
 
     // shard-0 Non_local tail E slice BMM tiling
     if ((tilingData->commonTiling.xShardFlag == 0U) &&
         (tilingData->commonTiling.domesticTileC.tileLen == tilingData->commonTiling.C) &&
         (tilingData->commonTiling.domesticTileE.tailLen != 0)) {
         CompleteBmmStructs(BMMV3BatchInfo, MMV3ArgsInfo,
-                           (tilingData->commonTiling.epGroupSize - 1) *
-                               tilingData->commonTiling.domesticTileC.tileLen,
+                           (tilingData->commonTiling.epGroupSize - 1) * tilingData->commonTiling.domesticTileC.tileLen,
                            tilingData->commonTiling.MOverTp, tilingData->commonTiling.H,
                            tilingData->commonTiling.domesticTileE.tailLen);
-        AlltoAllAllGatherBatchMatMulTiling bmmTilingDomesticTailE(context, tilingData->domesticTailETiling.bmmTilingData,
-                                                                  BMMV3BatchInfo, MMV3ArgsInfo);
+        AlltoAllAllGatherBatchMatMulTiling bmmTilingDomesticTailE(
+            context, tilingData->domesticTailETiling.bmmTilingData, BMMV3BatchInfo, MMV3ArgsInfo);
         if (bmmTilingDomesticTailE.DoTiling() != ge::GRAPH_SUCCESS) {
             OP_LOGE(context->GetNodeName(), "Do BmmV3Tiling failed under shard-0 domestic tail C section.");
             return ge::GRAPH_FAILED;
@@ -610,20 +601,23 @@ static bool ActTypeCheck(const char *nodeName, const int64_t actType, const bool
 {
     if (std::find(ops::ACT_TYPE_SUPPORT_VEC.begin(), ops::ACT_TYPE_SUPPORT_VEC.end(), actType) ==
         ops::ACT_TYPE_SUPPORT_VEC.end()) {
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "actType",
-            std::to_string(actType).c_str(),
-            "range [" + std::to_string(static_cast<int64_t>(
-                ops::AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE)) +
-            ", " + std::to_string(static_cast<int64_t>(
-                ops::AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_FASTGELU)) + "]");
+        OP_LOGE_FOR_INVALID_VALUE(
+            nodeName, "actType", std::to_string(actType).c_str(),
+            "range [" +
+                std::to_string(static_cast<int64_t>(
+                    ops::AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE)) +
+                ", " +
+                std::to_string(static_cast<int64_t>(
+                    ops::AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_FASTGELU)) +
+                "]");
         return false;
     }
 
     if (y3Flag &&
         (actType == static_cast<int64_t>(
                         ops::AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE))) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "actType", "none",
-            "The value of actType must be non-none when need_activation_feature is true");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "actType", "none", "The value of actType must be non-none when need_activation_feature is true");
         return false;
     }
 
@@ -635,15 +629,13 @@ static bool CommonCheckTensorShape(const char *nodeName, const gert::Shape *xSha
 {
     // 检查每个维度: x dim C >= 1，dim E H M 会在后面限制, 这里不再做校验
     if (xShape->GetDim(X_DIM_C) < VALUE_C_MIN) {
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x[1]",
-            std::to_string(xShape->GetDim(X_DIM_C)).c_str(),
-            "should not < " + std::to_string(VALUE_C_MIN));
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x[1]", std::to_string(xShape->GetDim(X_DIM_C)).c_str(),
+                                  "should not < " + std::to_string(VALUE_C_MIN));
         return false;
     }
     // x[2]、w[wDimH] 是 H 轴 (reduce 轴)，不能为 0
     if ((xShape->GetDim(X_DIM_H) == 0) || (weightShape->GetDim(wDimH) == 0)) {
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x[H] or weight[H]",
-            "0", "non-zero value is required");
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x[H] or weight[H]", "0", "non-zero value is required");
         return false;
     }
 
@@ -658,21 +650,20 @@ static bool XShardCheckTensorShape(const char *nodeName, const int64_t xShard, c
     // 检查 shape 维度的范围
     // x[DIM_E] = E, value E should = [2, 512]
     if (((xShape->GetDim(DIM_E) < VALUE_E_MIN) || (xShape->GetDim(DIM_E) > VALUE_E_MAX))) {
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "E",
-            std::to_string(xShape->GetDim(DIM_E)).c_str(),
-            "[" + std::to_string(VALUE_E_MIN) + ", " + std::to_string(VALUE_E_MAX) + "]");
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "E", std::to_string(xShape->GetDim(DIM_E)).c_str(),
+                                  "[" + std::to_string(VALUE_E_MIN) + ", " + std::to_string(VALUE_E_MAX) + "]");
         return false;
     }
     // w[wDimM] = M / Tp, its range should same with H, so it meets M / Tp * H <= 65535 * 65535
     if ((weightShape->GetDim(wDimM) < VALUE_H_MIN) || (weightShape->GetDim(wDimM) > VALUE_H_MAX)) {
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "M / Tp",
-            std::to_string(weightShape->GetDim(wDimM)).c_str(),
-            "[" + std::to_string(VALUE_H_MIN) + ", " + std::to_string(VALUE_H_MAX) + "]");
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "M / Tp", std::to_string(weightShape->GetDim(wDimM)).c_str(),
+                                  "[" + std::to_string(VALUE_H_MIN) + ", " + std::to_string(VALUE_H_MAX) + "]");
         return false;
     }
     // x[DIM_E] = E, w[DIM_E] = E / Ep, 所以需要满足 x[DIM_E] = w[DIM_E] * Ep
     if (weightShape->GetDim(DIM_E) * epSize != xShape->GetDim(DIM_E)) {
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(nodeName, "x and weight",
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            nodeName, "x and weight",
             (std::to_string(xShape->GetDim(DIM_E)) + " and " + std::to_string(weightShape->GetDim(DIM_E))).c_str(),
             "The shape of x[0] must equal weight[0] * epSize");
         return false;
@@ -681,31 +672,29 @@ static bool XShardCheckTensorShape(const char *nodeName, const int64_t xShard, c
     if (xShard == 0) {
         // x[X_DIM_H] = H / tp, value H should = [1, 65535]
         if ((xShape->GetDim(X_DIM_H) * tpSize < VALUE_H_MIN) || (xShape->GetDim(X_DIM_H) * tpSize > VALUE_H_MAX)) {
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "H",
-                std::to_string(xShape->GetDim(X_DIM_H) * tpSize).c_str(),
-                "[" + std::to_string(VALUE_H_MIN) + ", " + std::to_string(VALUE_H_MAX) + "]");
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "H", std::to_string(xShape->GetDim(X_DIM_H) * tpSize).c_str(),
+                                      "[" + std::to_string(VALUE_H_MIN) + ", " + std::to_string(VALUE_H_MAX) + "]");
             return false;
         }
         // x[X_DIM_H] = H / tp, w[wDimH] = H, 所以 x[X_DIM_H] * tp 需要等于 w[wDimH]
         if (xShape->GetDim(X_DIM_H) * tpSize != weightShape->GetDim(wDimH)) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x and weight",
-                std::to_string(xShape->GetDim(X_DIM_H) * tpSize).c_str(),
-                "The shape of x[H] * tp must equal weight[H]");
+                                                  std::to_string(xShape->GetDim(X_DIM_H) * tpSize).c_str(),
+                                                  "The shape of x[H] * tp must equal weight[H]");
             return false;
         }
     } else if (xShard == 1) {
         // x[X_DIM_H] = H, value H should = [1, 65535]
         if ((xShape->GetDim(X_DIM_H) < VALUE_H_MIN) || (xShape->GetDim(X_DIM_H) > VALUE_H_MAX)) {
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "H",
-                std::to_string(xShape->GetDim(X_DIM_H)).c_str(),
-                "[" + std::to_string(VALUE_H_MIN) + ", " + std::to_string(VALUE_H_MAX) + "]");
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "H", std::to_string(xShape->GetDim(X_DIM_H)).c_str(),
+                                      "[" + std::to_string(VALUE_H_MIN) + ", " + std::to_string(VALUE_H_MAX) + "]");
             return false;
         }
         // x[X_DIM_H] = H, w[wDimH] = H, 所以 x[X_DIM_H] 需要等于 w[wDimH]
         if (xShape->GetDim(X_DIM_H) != weightShape->GetDim(wDimH)) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x and weight",
-                std::to_string(xShape->GetDim(X_DIM_H)).c_str(),
-                "The shape of x[H] must equal weight[H]");
+                                                  std::to_string(xShape->GetDim(X_DIM_H)).c_str(),
+                                                  "The shape of x[H] must equal weight[H]");
             return false;
         }
     }
@@ -718,25 +707,23 @@ static bool CheckBiasShape(const char *nodeName, const gert::Shape *weightShape,
 {
     // 检查 dimNum
     if ((biasShape->GetDimNum() != SUPPORT_DIM_NUM) && (biasShape->GetDimNum() != BIAS_SUPPORT_DIM_NUM)) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "bias",
-            (std::to_string(biasShape->GetDimNum()) + "D").c_str(), "2D or 3D");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "bias", (std::to_string(biasShape->GetDimNum()) + "D").c_str(),
+                                     "2D or 3D");
         return false;
     }
 
     // 检查 shape
     if (biasShape->GetDim(0) != weightShape->GetDim(0)) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "bias",
-            std::to_string(biasShape->GetDim(0)).c_str(),
-            "The shape of bias[0] must equal weight[0]");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "bias", std::to_string(biasShape->GetDim(0)).c_str(),
+                                              "The shape of bias[0] must equal weight[0]");
         return false;
     }
 
     size_t biasLastDimIdx = 1U; // 默认 bias 是二维，所以最后一维的 index 是 1
     if (biasShape->GetDimNum() == SUPPORT_DIM_NUM) {
         if (biasShape->GetDim(1) != 1) { // 三维时候，中间维度为 1
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "bias",
-                std::to_string(biasShape->GetDim(1)).c_str(),
-                "The second dim of bias must be 1 when dim num is 3");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "bias", std::to_string(biasShape->GetDim(1)).c_str(),
+                                                  "The second dim of bias must be 1 when dim num is 3");
             return false;
         }
         biasLastDimIdx = 2; // 三维时候，bias 的最后一维是 2
@@ -744,8 +731,8 @@ static bool CheckBiasShape(const char *nodeName, const gert::Shape *weightShape,
 
     if (biasShape->GetDim(biasLastDimIdx) != weightShape->GetDim(wDimM)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "bias",
-            std::to_string(biasShape->GetDim(biasLastDimIdx)).c_str(),
-            "The last dim of bias must equal the corresponding dim of weight");
+                                              std::to_string(biasShape->GetDim(biasLastDimIdx)).c_str(),
+                                              "The last dim of bias must equal the corresponding dim of weight");
         return false;
     }
 
@@ -761,30 +748,30 @@ static bool CheckTensorShape(const char *nodeName, const gert::Shape *xShape, co
         return false;
     }
     if (!DimNumCheck(nodeName, xShape, weightShape)) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "x and weight",
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "x and weight",
             (std::to_string(xShape->GetDimNum()) + "D and " + std::to_string(weightShape->GetDimNum()) + "D").c_str(),
             "The shape dims of x and weight must be valid");
         return false;
     }
 
     if (!CommonCheckTensorShape(nodeName, xShape, weightShape, wDimH)) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x and weight",
-            "common", "The shapes of x and weight must be valid");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x and weight", "common",
+                                              "The shapes of x and weight must be valid");
         return false;
     }
 
     if (xShard == 0 || xShard == 1) {
         if (!XShardCheckTensorShape(nodeName, xShard, xShape, weightShape, epSize, tpSize, wDimH, wDimM)) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x and weight",
-                std::to_string(xShard).c_str(), "The shapes of x and weight must be valid for xShard");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x and weight", std::to_string(xShard).c_str(),
+                                                  "The shapes of x and weight must be valid for xShard");
             return false;
         }
     }
 
     if (biasShape != nullptr) {
         if (!(CheckBiasShape(nodeName, weightShape, biasShape, wDimM))) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "bias",
-                "bias", "The shape of bias must be valid");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "bias", "bias", "The shape of bias must be valid");
             return false;
         }
     }
@@ -847,8 +834,8 @@ static bool CheckAttrs(const gert::TilingContext *context, int64_t &epSize, int6
     }
     if (!EpTpSizeCheck(epSize, tpSize)) {
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "tpSize and epSize",
-            (std::to_string(tpSize) + " and " + std::to_string(epSize)).c_str(),
-            "valid tpSize=[2/4/8/16/32], epSize=[2/4/8/16/32]");
+                                  (std::to_string(tpSize) + " and " + std::to_string(epSize)).c_str(),
+                                  "valid tpSize=[2/4/8/16/32], epSize=[2/4/8/16/32]");
         return false;
     }
     if (xShard != 0 && xShard != 1) { // 当前支持 0, 1
@@ -856,8 +843,8 @@ static bool CheckAttrs(const gert::TilingContext *context, int64_t &epSize, int6
         return false;
     }
     if (!ActTypeCheck(nodeName, actType, y3Flag)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "actType",
-            std::to_string(actType).c_str(), "The value of actType must be valid");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "actType", std::to_string(actType).c_str(),
+                                              "The value of actType must be valid");
         return false;
     }
     OP_LOGI(nodeName, "attrs info: groupEp %s, groupTp %s, tpSize %ld, epSize %ld, xShard %ld, y2Flag %d, y3Flag %d.",
@@ -922,8 +909,8 @@ static ge::graphStatus TilingCheckAlltoAllAllGatherBatchMatMul(gert::TilingConte
 
     // tensor shape 检查
     if (!CheckTensorShape(nodeName, xShape, weightShape, biasShape, epSize, tpSize, wDimH, wDimM, xShard)) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x, weight and bias",
-            "invalid", "The shapes of x, weight and bias must be valid");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x, weight and bias", "invalid",
+                                              "The shapes of x, weight and bias must be valid");
         return ge::GRAPH_FAILED;
     }
 
@@ -935,13 +922,12 @@ static uint64_t GetCommOutSize(AlltoAllAllGatherBatchMatMulTilingData *tilingDat
     uint64_t commOut = 0UL;
     if (tilingData->commonTiling.xShardFlag == 0) {
         // (E + E/ep) * C * H + E * C * H
-        commOut = (static_cast<uint64_t>(tilingData->commonTiling.expert) +
-                   static_cast<uint64_t>(tilingData->commonTiling.EOverEp)) *
-                      static_cast<uint64_t>(tilingData->commonTiling.C) *
-                      static_cast<uint64_t>(tilingData->commonTiling.H) +
-                  static_cast<uint64_t>(tilingData->commonTiling.expert) *
-                      static_cast<uint64_t>(tilingData->commonTiling.C) *
-                      static_cast<uint64_t>(tilingData->commonTiling.HOverTp);
+        commOut =
+            (static_cast<uint64_t>(tilingData->commonTiling.expert) +
+             static_cast<uint64_t>(tilingData->commonTiling.EOverEp)) *
+                static_cast<uint64_t>(tilingData->commonTiling.C) * static_cast<uint64_t>(tilingData->commonTiling.H) +
+            static_cast<uint64_t>(tilingData->commonTiling.expert) * static_cast<uint64_t>(tilingData->commonTiling.C) *
+                static_cast<uint64_t>(tilingData->commonTiling.HOverTp);
     } else {
         // (E + E/ep) * C * H + E * C * H/tp
         commOut = (static_cast<uint64_t>(tilingData->commonTiling.expert) +
@@ -1019,18 +1005,17 @@ static ge::graphStatus MC2SetWorkspaceShard(gert::TilingContext *context,
                                             AlltoAllAllGatherBatchMatMulTilingData *tilingData)
 {
     size_t *workspaces = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workspaces == nullptr,
-                    OP_LOGE(context->GetNodeName(), "get workspace failed"),
+    OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context->GetNodeName(), "get workspace failed"),
                     return ge::GRAPH_FAILED);
 
     const uint64_t commOut = GetCommOutSize(tilingData);
 
-    const uint64_t maxLenDomesticTileC = std::max(tilingData->commonTiling.domesticTileC.tileLen,
-                                                  tilingData->commonTiling.domesticTileC.tailLen);
+    const uint64_t maxLenDomesticTileC =
+        std::max(tilingData->commonTiling.domesticTileC.tileLen, tilingData->commonTiling.domesticTileC.tailLen);
     const uint64_t maxLenLocalTileE =
         std::max(tilingData->commonTiling.localTileE.tileLen, tilingData->commonTiling.localTileE.tailLen);
-    const uint64_t maxLenDomesticTileE = std::max(tilingData->commonTiling.domesticTileE.tileLen,
-                                                  tilingData->commonTiling.domesticTileE.tailLen);
+    const uint64_t maxLenDomesticTileE =
+        std::max(tilingData->commonTiling.domesticTileE.tileLen, tilingData->commonTiling.domesticTileE.tailLen);
     const uint64_t transOut = GetTransOutSize(tilingData, maxLenDomesticTileC, maxLenLocalTileE, maxLenDomesticTileE);
     const uint64_t bmmOut = GetBmmOutSize(tilingData, maxLenDomesticTileC, maxLenLocalTileE, maxLenDomesticTileE);
 
@@ -1148,16 +1133,14 @@ static void SetHcclTiling(const gert::TilingContext *context, AlltoAllAllGatherB
     const uint32_t reduceType = 0U;
     ge::DataType outputDataType = context->GetOutputDesc(OUTPUT_Y1_INDEX)->GetDataType();
     ge::DataType inputDataType = context->GetInputDesc(X_INDEX)->GetDataType();
-    OP_TILING_CHECK(
-        mc2tiling::HCCL_DATA_TYPE.find(outputDataType) == mc2tiling::HCCL_DATA_TYPE.end(),
-        OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "y1",
-        Ops::Base::ToString(outputDataType).c_str(), "supported HCCL data type"),
-        return);
-    OP_TILING_CHECK(
-        mc2tiling::HCCL_DATA_TYPE.find(inputDataType) == mc2tiling::HCCL_DATA_TYPE.end(),
-        OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "x",
-        Ops::Base::ToString(inputDataType).c_str(), "supported HCCL data type"),
-        return);
+    OP_TILING_CHECK(mc2tiling::HCCL_DATA_TYPE.find(outputDataType) == mc2tiling::HCCL_DATA_TYPE.end(),
+                    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "y1", Ops::Base::ToString(outputDataType).c_str(),
+                                              "supported HCCL data type"),
+                    return);
+    OP_TILING_CHECK(mc2tiling::HCCL_DATA_TYPE.find(inputDataType) == mc2tiling::HCCL_DATA_TYPE.end(),
+                    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "x", Ops::Base::ToString(inputDataType).c_str(),
+                                              "supported HCCL data type"),
+                    return);
 
     auto dstDataType = static_cast<uint8_t>(mc2tiling::HCCL_DATA_TYPE.find(outputDataType)->second);
     auto srcDataType = static_cast<uint8_t>(mc2tiling::HCCL_DATA_TYPE.find(inputDataType)->second);
@@ -1209,8 +1192,7 @@ static ge::graphStatus SetBatchMatMulTilingData(gert::TilingContext *context, ui
     // 待修改，等BMM tiling提供接口和修改方案
     OP_TILING_CHECK(SetMatmulTilingAlltoAllAllGatherBatchMatMul(context, tilingData, BMMV3BatchInfo, MMV3ArgsInfo,
                                                                 formulaicArgs) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "Set Matmul tiling Failed!"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "Set Matmul tiling Failed!"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1257,17 +1239,17 @@ static void SetUbTilingDataInCommonTiling(const gert::TilingContext *context, ui
     CheckTransposeUBAndUpdateTileShard(config, tilingData);
 
     ActivationParams actParams = {ubSize, xCastFlag, activateType};
-    TileShardParams params = {tilingData->commonTiling.localTileC.tileLen,
-                              tilingData->commonTiling.localTileE.tileLen, mOverTp, true, false};
+    TileShardParams params = {tilingData->commonTiling.localTileC.tileLen, tilingData->commonTiling.localTileE.tileLen,
+                              mOverTp, true, false};
     CheckAddActivateUBAndUpdateTileShard(actParams, params, tilingData);
-    params = {tilingData->commonTiling.localTileC.tailLen, tilingData->commonTiling.localTileE.tailLen,
-              mOverTp, true, true};
+    params = {tilingData->commonTiling.localTileC.tailLen, tilingData->commonTiling.localTileE.tailLen, mOverTp, true,
+              true};
     CheckAddActivateUBAndUpdateTileShard(actParams, params, tilingData);
-    params = {tilingData->commonTiling.domesticTileC.tileLen, tilingData->commonTiling.domesticTileC.tileLen,
-              mOverTp, false, false};
+    params = {tilingData->commonTiling.domesticTileC.tileLen, tilingData->commonTiling.domesticTileC.tileLen, mOverTp,
+              false, false};
     CheckAddActivateUBAndUpdateTileShard(actParams, params, tilingData);
-    params = {tilingData->commonTiling.domesticTileC.tailLen, tilingData->commonTiling.domesticTileC.tailLen,
-              mOverTp, false, true};
+    params = {tilingData->commonTiling.domesticTileC.tailLen, tilingData->commonTiling.domesticTileC.tailLen, mOverTp,
+              false, true};
     CheckAddActivateUBAndUpdateTileShard(actParams, params, tilingData);
 
     return;
@@ -1287,8 +1269,7 @@ ge::graphStatus AlltoAllAllGatherBatchMatMulTilingFunc(gert::TilingContext *cont
 {
     // tiling校验shape
     OP_TILING_CHECK(TilingCheckAlltoAllAllGatherBatchMatMul(context) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "Tiling check shape Failed!"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "Tiling check shape Failed!"), return ge::GRAPH_FAILED);
     AlltoAllAllGatherBatchMatMulTilingData *tilingData =
         context->GetTilingData<AlltoAllAllGatherBatchMatMulTilingData>();
     uint32_t numBlocks = 1U;
@@ -1299,15 +1280,12 @@ ge::graphStatus AlltoAllAllGatherBatchMatMulTilingFunc(gert::TilingContext *cont
 
     SetCommonTilingData(context, ubSize, aivNum, tilingData);
     OP_TILING_CHECK(SetBatchMatMulTilingData(context, aicNum, tilingData) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "Set BatchMatmul tiling failed!"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "Set BatchMatmul tiling failed!"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MC2SetWorkspaceShard(context, tilingData) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "Set workspace Failed!"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "Set workspace Failed!"), return ge::GRAPH_FAILED);
     SetUbTilingDataInCommonTiling(context, ubSize, tilingData);
     OP_TILING_CHECK(SetContextData(context, numBlocks, tilingData) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "Set context data failed!"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "Set context data failed!"), return ge::GRAPH_FAILED);
 
     SetHcclTiling(context, tilingData);
     PrintCommonTilingVariables(tilingData);

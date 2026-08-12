@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     ×    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     ×    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -36,14 +46,13 @@
     activation_mode:（无作用）
     pad_slot_id: 默认值 -1
     run_mode:（无作用）
-    max_query_len:默认值1
     residual_connection: 不做残差: 0,做残差：1
     block_size: 典型值128/256
     conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
     ```
 
     其中cu_seq_len为batch内所有变长序列拼接后的总长度。
-  
+
   - 场景二（prefill和decode混合场景）：
 
     ```Cpp
@@ -62,7 +71,6 @@
     activation_mode:（无作用）
     pad_slot_id: 默认值 -1
     run_mode:（无作用）
-    max_query_len:默认值1
     residual_connection: 不做残差: 0,做残差：1
     block_size: 典型值128/256
     conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
@@ -88,7 +96,6 @@
     activation_mode:（无作用）
     pad_slot_id: 默认值 -1
     run_mode:（无作用）
-    max_query_len:默认值1
     residual_connection: 不做残差: 0,做残差：1
     block_size: 典型值128/256
     conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
@@ -97,7 +104,7 @@
     其中state_len必须大于所有batch中最大的token个数加1。
 
   - 场景四（decode场景 - 固定batch）：
-  
+
     ```Cpp
     x: [batch, m+1, dim]
     weight: [K, dim]，其中K=3
@@ -114,7 +121,6 @@
     activation_mode:（无作用）
     pad_slot_id: 默认值 -1
     run_mode:（无作用）
-    max_query_len:默认值1
     residual_connection: 不做残差: 0,做残差：1
     block_size: 典型值128/256
     conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
@@ -268,7 +274,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnInplaceFusedCausalConv1dGetWorkspaceSize`接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnInplaceFusedCausalConv1d`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnInplaceFusedCausalConv1dGetWorkspaceSize`接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnInplaceFusedCausalConv1d`接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnInplaceFusedCausalConv1dGetWorkspaceSize(
@@ -483,7 +489,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
     <tr>
       <td>maxQueryLen（int64_t）</td>
       <td>属性</td>
-      <td>所有batch中的最大seq_len，支持为-1。</td>
+      <td>所有batch中的最大seq_len，仅decode场景（固定batch）支持为-1。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -544,7 +550,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -621,7 +627,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -635,29 +641,35 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
     - conv_states必须是3维[..., K-1, dim]，第0维大小不固定且大于等于batch，同时大于等于cache_indices总维度大小。
     - query_start_loc必须存在。
     - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G]。
-    - batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
+    - cu_seq_len范围[batch, 1024 *1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64* batch, 4G], batch范围[1, 256]。
+    - maxNumBlocks >= ceiv(max_query_len, block_size)。
+    - max_query_len > 8。
   - prefill和decode混合场景：
     - x支持2维[cu_seq_len, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
     - conv_states必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于batch，同时大于等于cache_indices总维度大小。
     - query_start_loc必须存在。
     - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G]。
-    - batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
+    - cu_seq_len范围[batch, 1024 *1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64* batch, 4G], batch范围[1, 256]。
+    - maxNumBlocks >= ceiv(max_query_len, block_size)。
+    - max_query_len > 8。
   - decode场景（变长序列）：
     - x支持2维[cu_seq_len, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
     - conv_states必须是3维[..., k-1+m, dim]，第0维大小不固定且大于等于batch，同时大于等于cache_indices总维度大小。
     - query_start_loc必须存在。
     - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - cu_seq_len范围[batch, batch*8]，每个batch的seq_len范围为[1, 8]。dim范围[64, 16384]且是16的倍数，batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
+    - cu_seq_len范围[batch, batch*8]，每个batch的seq_len范围为[1, 8]。dim范围[64, 16384]且是16的倍数，batch范围[1, 256]。
+    - maxNumBlocks >= ceiv(max_query_len, block_size)。
+    - max_query_len范围[1, 8]。
   - decode场景（固定batch）：
     - x支持3维[batch, m+1, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
     - conv_states必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于batch，同时大于等于cache_indices总维度大小。
     - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - m范围[0, 7]，dim范围[64, 16384]且是16的倍数，batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
+    - m范围[0, 7]，dim范围[64, 16384]且是16的倍数，batch范围[1, 256]。
+    - maxNumBlocks >= ceiv(max_query_len, block_size)。
+    - max_query_len范围[1, 8]，可为-1。
 
 - 输入值域限制：
   - query_start_loc是累计偏移量，取值范围[0, cu_seq_len]，长度为batch+1，query_start_loc[i]表示第i个序列的起始偏移，query_start_loc[batch+1]表示最后一个序列的结束位置。
@@ -678,7 +690,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1d(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>

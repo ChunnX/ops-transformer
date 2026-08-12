@@ -16,31 +16,32 @@
 
 using namespace std;
 
-using UtPyRunSimpleString = PyObject *(*) (const char *);
+using UtPyRunSimpleString = PyObject *(*)(const char *);
 using UtPyInitialize = void (*)();
 using UtPyIsInitialized = int (*)();
 using UtPyFinalize = void (*)();
-using UtPyImportImportModule = PyObject *(*) (const char *);
-using UtPyObjectCallObject = PyObject *(*) (PyObject *, PyObject *);
-using UtPyTupleNew = PyObject *(*) (Py_ssize_t);
+using UtPyImportImportModule = PyObject *(*)(const char *);
+using UtPyObjectCallObject = PyObject *(*)(PyObject *, PyObject *);
+using UtPyTupleNew = PyObject *(*)(Py_ssize_t);
 using UtPyTupleSetItem = int (*)(PyObject *, Py_ssize_t, PyObject *);
-using UtPyObjectGetAttrString = PyObject *(*) (PyObject *, const char *);
+using UtPyObjectGetAttrString = PyObject *(*)(PyObject *, const char *);
 using UtPyErrPrint = void (*)();
 using UtPyDealloc = void (*)(PyObject *);
 using UtPyCallableCheck = int (*)(PyObject *);
 using UtPyLongAsLong = int (*)(PyObject *);
 using UtPyErrFetch = void (*)(PyObject **, PyObject **, PyObject **);
 using UtPyErrNormalizeException = void (*)(PyObject **, PyObject **, PyObject **);
-using UtPyBuildValue = PyObject *(*) (const char *, ...);
+using UtPyBuildValue = PyObject *(*)(const char *, ...);
 using UtPyGILStateCheck = int (*)();
-using UtPyEvalSaveThread = PyThreadState* (*)();
-using UtPyEvalRestoreThread = void (*) (PyThreadState*);
-using UtPyDECREF = void(*) (PyObject*);
-using UtPyImportCleanup = void(*) ();
+using UtPyEvalSaveThread = PyThreadState *(*)();
+using UtPyEvalRestoreThread = void (*)(PyThreadState *);
+using UtPyDECREF = void (*)(PyObject *);
+using UtPyImportCleanup = void (*)();
 
 class PyHolder {
 public:
-    static PyHolder &GetInstance() {
+    static PyHolder &GetInstance()
+    {
         static PyHolder py_holder;
         return py_holder;
     }
@@ -86,7 +87,8 @@ private:
 
 class PyScripts {
 public:
-    static PyScripts &GetInstance() {
+    static PyScripts &GetInstance()
+    {
         static PyScripts py_scripts;
         return py_scripts;
     }
@@ -99,7 +101,7 @@ public:
 private:
     PyScripts() = default;
     ~PyScripts();
-    int CallFunction(PyObject* pyFunc, PyObject* pyArgs) const;
+    int CallFunction(PyObject *pyFunc, PyObject *pyArgs) const;
 
 private:
     PyObject *PyInputModule = nullptr;

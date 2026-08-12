@@ -16,8 +16,8 @@
 #ifndef MOE_DISTRIBUTE_BASE_H
 #define MOE_DISTRIBUTE_BASE_H
 
-#if __has_include("../common/op_kernel/mc2_kernel_utils.h")
-#include "../common/op_kernel/mc2_kernel_utils.h"
+#if __has_include("../common/mc2_kernel_utils.h")
+#include "../common/mc2_kernel_utils.h"
 #else
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
@@ -97,8 +97,8 @@ constexpr uint32_t SQE_UDF_OFFSET = 9U;
 constexpr uint32_t SQE_WITH_NOTIFY_UDF_OFFSET = SQE_UDF_OFFSET;
 constexpr uint32_t SQE_LENGTH_OFFSET = 12U;
 constexpr uint32_t SQE_WITH_NOTIFY_LENGTH_OFFSET = 20U;
-constexpr uint32_t SQE_TOKEN_ID_OFFSET = 13U; // rsv:12 token_id:20
-constexpr uint32_t SQE_WITH_NOTIFY_TOKEN_ID_OFFSET = 21U; // rsv:12 token_id:20
+constexpr uint32_t SQE_TOKEN_ID_OFFSET = 13U;                    // rsv:12 token_id:20
+constexpr uint32_t SQE_WITH_NOTIFY_TOKEN_ID_OFFSET = 21U;        // rsv:12 token_id:20
 constexpr uint32_t SQE_WITH_NOTIFY_NOTIFY_TOKEN_ID_OFFSET = 12U; // rsv:12 notify_token_id:20
 constexpr uint32_t SQE_WITH_NOTIFY_NOTIFY_TOKEN_VALUE_OFFSET = 13U;
 

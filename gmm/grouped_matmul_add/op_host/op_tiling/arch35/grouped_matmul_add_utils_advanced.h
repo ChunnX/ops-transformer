@@ -17,7 +17,6 @@
 #define __GROUPED_MATMUL_ADD_UTILS_ADVANCED_H
 
 #include <map>
-#include "tiling/platform/platform_ascendc.h"
 
 namespace GroupedMatmulAdd {
 constexpr uint64_t BASIC_BLOCK_SIZE_16 = 16UL;

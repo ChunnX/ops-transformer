@@ -24,8 +24,8 @@ bool CheckCubeMathType(const op::DataType cubeTensorDtype, int8_t cubeMathType);
 bool CheckCubeMathTypeForMm(const op::DataType cubeTensorDtype, int8_t cubeMathType);
 
 // 返回芯片对应支持的数据类型
-const std::initializer_list<op::DataType>& GetDtypeSupportListBySocVersion();
-const std::initializer_list<op::DataType>& GetDtypeSupportListBySocVersion4ConvBackward(bool transposed);
+const std::initializer_list<op::DataType> &GetDtypeSupportListBySocVersion();
+const std::initializer_list<op::DataType> &GetDtypeSupportListBySocVersion4ConvBackward(bool transposed);
 
 // 根据promote type + cubemathtype的组合算出最终算子应用的dtype
 op::DataType CalcPromoteTypeCubemathtype(const op::DataType cubeTensorPromoteType, int8_t cubeMathType);
@@ -39,7 +39,8 @@ op::DataType CalcPromoteTypeCubeMathTypeNew(const op::DataType cubeTensorPromote
 bool NeedCubeGoHF32(const op::DataType cubeTensorPromoteType, int8_t cubeMathType);
 
 // 检查针对x芯片，cube算子是否支持FP32
-inline bool IsCubeSupportFp32() {
+inline bool IsCubeSupportFp32()
+{
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2201 &&
         op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
         return false;
@@ -48,7 +49,8 @@ inline bool IsCubeSupportFp32() {
 }
 
 // 检查针对x芯片，cube算子是否支持HF32
-inline bool IsCubeSupportHf32() {
+inline bool IsCubeSupportHf32()
+{
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2201 &&
         op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
         return false;

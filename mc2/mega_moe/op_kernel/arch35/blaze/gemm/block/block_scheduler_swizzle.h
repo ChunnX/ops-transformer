@@ -34,7 +34,7 @@ public:
         TileShape tileShape;
     };
 
-    __aicore__ inline BlockSchedulerSwizzle(const ProblemShape& shape, const Params& params)
+    __aicore__ inline BlockSchedulerSwizzle(const ProblemShape &shape, const Params &params)
         : problemShape_(shape), tileShape_(params.tileShape)
     {
         if constexpr (SwizzleDirection == 0) {
@@ -53,12 +53,11 @@ public:
         return loopFirst_ * loopSecond_;
     }
 
-    __aicore__ inline BlockShape GetBlockShape(const BlockCoord& blockCoord)
+    __aicore__ inline BlockShape GetBlockShape(const BlockCoord &blockCoord)
     {
-        return {
-            min(Get<IDX_M_IDX>(tileShape_), Get<IDX_M_IDX>(problemShape_) - Get<IDX_M_IDX>(blockCoord)),
-            min(Get<IDX_N_IDX>(tileShape_), Get<IDX_N_IDX>(problemShape_) - Get<IDX_N_IDX>(blockCoord)),
-            Get<IDX_K_IDX>(problemShape_)};
+        return {min(Get<IDX_M_IDX>(tileShape_), Get<IDX_M_IDX>(problemShape_) - Get<IDX_M_IDX>(blockCoord)),
+                min(Get<IDX_N_IDX>(tileShape_), Get<IDX_N_IDX>(problemShape_) - Get<IDX_N_IDX>(blockCoord)),
+                Get<IDX_K_IDX>(problemShape_)};
     }
 
     __aicore__ inline BlockCoord GetBlockCoord(int tileIdx)

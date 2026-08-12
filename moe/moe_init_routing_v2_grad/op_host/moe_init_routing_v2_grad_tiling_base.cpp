@@ -86,9 +86,9 @@ ge::graphStatus MoeInitRoutingV2GradTilingBaseClass::CheckShapeAllPositive(const
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
         OP_CHECK_IF(
             shape.GetDim(i) <= 0,
-            OP_LOGE(
-                context_->GetNodeName(), "Dim %lu of %s expect be positive, but actual %ld.", i, name.c_str(),
-                shape.GetDim(i)),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                context_->GetNodeName(), (name + " dim " + std::to_string(i)).c_str(),
+                std::to_string(shape.GetDim(i)).c_str(), "Shape dim should be positive."),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -111,9 +111,10 @@ ge::graphStatus MoeInitRoutingV2GradTilingBaseClass::CheckShapeValidity(
         for (size_t i = 0; i < xShape.GetDimNum(); i++) {
             OP_CHECK_IF(
                 xShape.GetDim(i) < 0,
-                OP_LOGE(
-                    context_->GetNodeName(), "Dim %lu of x expect not be negtive, but actual %ld.", i,
-                    xShape.GetDim(i)),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), ("grad_expanded_x dim " + std::to_string(i)).c_str(),
+                    std::to_string(xShape.GetDim(i)).c_str(),
+                    "Shape dim should be greater than or equal to 0."),
                 return ge::GRAPH_FAILED);
         }
     }

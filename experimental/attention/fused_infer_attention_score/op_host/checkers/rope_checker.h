@@ -39,6 +39,7 @@ private:
     ge::graphStatus CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckRopeDtype(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckRopeDtypeConsistency(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckKRopeContiguous(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQKAndQKRopeShapeConsistency(const FiaTilingInfo &fiaInfo,
         const gert::Shape shape, const gert::Shape ropeShape, const std::string &inputName);
     ge::graphStatus CheckPAKeyAndKeyRopeShapeConsistency(const FiaTilingInfo &fiaInfo,

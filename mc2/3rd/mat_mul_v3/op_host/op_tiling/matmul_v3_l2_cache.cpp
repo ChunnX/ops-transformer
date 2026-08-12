@@ -95,8 +95,8 @@ void Mc2L2Cache::SetL2CacheFlagMultiCoreSplitK(bool &aEnableL2Cache, bool &bEnab
     }
 }
 
-void Mc2L2Cache::SetL2CacheFlag(bool aEnableL2Cache, bool bEnableL2Cache, bool cEnableL2Cache,
-                             bool biasEnableL2Cache, uint32_t &l2CacheFlag)
+void Mc2L2Cache::SetL2CacheFlag(bool aEnableL2Cache, bool bEnableL2Cache, bool cEnableL2Cache, bool biasEnableL2Cache,
+                                uint32_t &l2CacheFlag)
 {
     if (aEnableL2Cache && bEnableL2Cache && cEnableL2Cache && biasEnableL2Cache) {
         l2CacheFlag |= (1U << ALL_L2_ENABLE_BIT);
@@ -131,19 +131,18 @@ void Mc2L2Cache::SetL2CacheFlag(Mc2TilingEnable tilingEnable, uint64_t l2Size, u
     bool biasEnableL2Cache = true;
     auto &matmulTiling = tilingData_.matmulTiling;
 
-    OP_LOGI(args_.opName, "mValue: %lu nValue: %lu kValue: %lu "
-        "singleCoreM: %d singleCoreN: %d singleCoreK: %d "
-        "baseM: %d baseN: %d baseK: %d "
-        "stepM: %d stepN: %d stepKa: %d stepKb: %d "
-        "depthA1: %d depthB1: %d tilingEnableSplitCore %d tilingEnableFullLoad %d tilingEnableFixOpti %d",
-        args_.mValue, args_.nValue, args_.kValue,
-        matmulTiling.singleCoreM, matmulTiling.singleCoreN, matmulTiling.singleCoreK,
-        matmulTiling.baseM, matmulTiling.baseN, matmulTiling.baseK,
-        matmulTiling.stepM, matmulTiling.stepN, matmulTiling.stepKa, matmulTiling.stepKb,
-        matmulTiling.depthA1, matmulTiling.depthB1,
-        static_cast<int32_t>(tilingEnable.tilingEnableSplitCore),
-        static_cast<int32_t>(tilingEnable.tilingEnableFullLoad),
-        static_cast<int32_t>(tilingEnable.tilingEnableFixOpti));
+    OP_LOGI(args_.opName,
+            "mValue: %lu nValue: %lu kValue: %lu "
+            "singleCoreM: %d singleCoreN: %d singleCoreK: %d "
+            "baseM: %d baseN: %d baseK: %d "
+            "stepM: %d stepN: %d stepKa: %d stepKb: %d "
+            "depthA1: %d depthB1: %d tilingEnableSplitCore %d tilingEnableFullLoad %d tilingEnableFixOpti %d",
+            args_.mValue, args_.nValue, args_.kValue, matmulTiling.singleCoreM, matmulTiling.singleCoreN,
+            matmulTiling.singleCoreK, matmulTiling.baseM, matmulTiling.baseN, matmulTiling.baseK, matmulTiling.stepM,
+            matmulTiling.stepN, matmulTiling.stepKa, matmulTiling.stepKb, matmulTiling.depthA1, matmulTiling.depthB1,
+            static_cast<int32_t>(tilingEnable.tilingEnableSplitCore),
+            static_cast<int32_t>(tilingEnable.tilingEnableFullLoad),
+            static_cast<int32_t>(tilingEnable.tilingEnableFixOpti));
 
     uint64_t sizeC = args_.mValue * args_.nValue * GetSizeByDataType(args_.cType);
     cEnableL2Cache = sizeC <= l2Size;
@@ -167,5 +166,5 @@ void Mc2L2Cache::SetL2CacheFlag(Mc2TilingEnable tilingEnable, uint64_t l2Size, u
     SetL2CacheFlag(aEnableL2Cache, bEnableL2Cache, cEnableL2Cache, biasEnableL2Cache, l2CacheFlag);
 }
 
-}
-}
+} // namespace mc2_matmul_v3
+} // namespace optiling

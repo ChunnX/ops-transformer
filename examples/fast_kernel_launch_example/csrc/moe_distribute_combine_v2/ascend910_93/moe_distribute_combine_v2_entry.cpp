@@ -25,108 +25,87 @@ using namespace Mc2Kernel;
 using namespace AscendC;
 
 /*
-* A3 tilingkey说明
-* 3位的十进制数
-* 第1位（个位）：quantMode:
-*     0: 不量化, 2: 使能量化
-* 第2位（十位）：x输入类型:
-*     0: float16, 1: bfloat16
-* 第3位（百位）：无实际含义
-*/
+ * A3 tilingkey说明
+ * 3位的十进制数
+ * 第1位（个位）：quantMode:
+ *     0: 不量化, 2: 使能量化
+ * 第2位（十位）：x输入类型:
+ *     0: float16, 1: bfloat16
+ * 第3位（百位）：无实际含义
+ */
 
-template<typename ExpandXType, bool IsInt8Quant>
-__attribute__((always_inline)) __aicore__ __inline__ void moe_distribute_combine_v2(
-    GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR residualX,
-    GM_ADDR gamma, GM_ADDR expertScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR oriX,
-    GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR XOut,
-    GM_ADDR workspaceGM, GM_ADDR mc2Context, MoeDistributeCombineV2Info tilingData)
+template <typename ExpandXType, bool IsInt8Quant>
+__attribute__((always_inline)) __aicore__ __inline__ void
+moe_distribute_combine_v2(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR residualX,
+                          GM_ADDR gamma, GM_ADDR expertScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR oriX,
+                          GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV,
+                          GM_ADDR performanceInfo, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR mc2Context,
+                          MoeDistributeCombineV2Info tilingData)
 {
     TPipe pipe;
     MoeDistributeCombineV2<ExpandXType, IsInt8Quant> op;
-    op.Init(mc2Context, expandX, expertIds, expandIdx, epSendCount, residualX, gamma, expertScales,
-    xActiveMask, sharedExpertX, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo,
-    XOut, workspaceGM, tilingData, &pipe);
-        
+    op.Init(mc2Context, expandX, expertIds, expandIdx, epSendCount, residualX, gamma, expertScales, xActiveMask,
+            sharedExpertX, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, XOut, workspaceGM,
+            tilingData, &pipe);
+
     op.Process();
 
     pipe.DestroyWithoutPipeAll();
     return;
 }
 
-__aicore__ inline void moe_combine_switch(
-    int32_t tilingKey,
-    GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR residualX,
-    GM_ADDR gamma, GM_ADDR expertScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR oriX,
-    GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV,
-    GM_ADDR performanceInfo, GM_ADDR XOut,
-    GM_ADDR workspaceGM, GM_ADDR mc2Context,
-    MoeDistributeCombineV2Info tilingData)
+__aicore__ inline void moe_combine_switch(int32_t tilingKey, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx,
+                                          GM_ADDR epSendCount, GM_ADDR residualX, GM_ADDR gamma, GM_ADDR expertScales,
+                                          GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR oriX,
+                                          GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV,
+                                          GM_ADDR performanceInfo, GM_ADDR XOut, GM_ADDR workspaceGM,
+                                          GM_ADDR mc2Context, MoeDistributeCombineV2Info tilingData)
 {
     switch (tilingKey) {
+        case 100:
+            moe_distribute_combine_v2<float16_t, false>(expandX, expertIds, expandIdx, epSendCount, residualX, gamma,
+                                                        expertScales, xActiveMask, sharedExpertX, oriX,
+                                                        constExpertAlpha1, constExpertAlpha2, constExpertV,
+                                                        performanceInfo, XOut, workspaceGM, mc2Context, tilingData);
+            break;
 
-    case 100:
-        moe_distribute_combine_v2<float16_t, false>(
-            expandX, expertIds, expandIdx, epSendCount, residualX,
-            gamma, expertScales, xActiveMask,
-            sharedExpertX, oriX,
-            constExpertAlpha1, constExpertAlpha2, constExpertV,
-            performanceInfo, XOut,
-            workspaceGM, mc2Context, tilingData);
-        break;
+        case 102:
+            moe_distribute_combine_v2<float16_t, true>(expandX, expertIds, expandIdx, epSendCount, residualX, gamma,
+                                                       expertScales, xActiveMask, sharedExpertX, oriX,
+                                                       constExpertAlpha1, constExpertAlpha2, constExpertV,
+                                                       performanceInfo, XOut, workspaceGM, mc2Context, tilingData);
+            break;
 
-    case 102:
-        moe_distribute_combine_v2<float16_t, true>(
-            expandX, expertIds, expandIdx, epSendCount, residualX,
-            gamma, expertScales, xActiveMask,
-            sharedExpertX, oriX,
-            constExpertAlpha1, constExpertAlpha2, constExpertV,
-            performanceInfo, XOut,
-            workspaceGM, mc2Context, tilingData);
-        break;
+        case 110:
+            moe_distribute_combine_v2<bfloat16_t, false>(expandX, expertIds, expandIdx, epSendCount, residualX, gamma,
+                                                         expertScales, xActiveMask, sharedExpertX, oriX,
+                                                         constExpertAlpha1, constExpertAlpha2, constExpertV,
+                                                         performanceInfo, XOut, workspaceGM, mc2Context, tilingData);
+            break;
 
-    case 110:
-        moe_distribute_combine_v2<bfloat16_t, false>(
-            expandX, expertIds, expandIdx, epSendCount, residualX,
-            gamma, expertScales, xActiveMask,
-            sharedExpertX, oriX,
-            constExpertAlpha1, constExpertAlpha2, constExpertV,
-            performanceInfo, XOut,
-            workspaceGM, mc2Context, tilingData);
-        break;
+        case 112:
+            moe_distribute_combine_v2<bfloat16_t, true>(expandX, expertIds, expandIdx, epSendCount, residualX, gamma,
+                                                        expertScales, xActiveMask, sharedExpertX, oriX,
+                                                        constExpertAlpha1, constExpertAlpha2, constExpertV,
+                                                        performanceInfo, XOut, workspaceGM, mc2Context, tilingData);
+            break;
 
-    case 112:
-        moe_distribute_combine_v2<bfloat16_t, true>(
-            expandX, expertIds, expandIdx, epSendCount, residualX,
-            gamma, expertScales, xActiveMask,
-            sharedExpertX, oriX,
-            constExpertAlpha1, constExpertAlpha2, constExpertV,
-            performanceInfo, XOut,
-            workspaceGM, mc2Context, tilingData);
-        break;
-
-    default:
-        AscendC::PRINTF("moe_distribute_combine_v2 Error: invalid tilingKey = %d\n", tilingKey);
-        break;
+        default:
+            AscendC::PRINTF("moe_distribute_combine_v2 Error: invalid tilingKey = %d\n", tilingKey);
+            break;
     }
 }
 
 extern "C" __global__ __aicore__ void moe_distribute_combine_v2_generic(
-    int32_t tilingKey,
-    GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR residualX,
+    int32_t tilingKey, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR residualX,
     GM_ADDR gamma, GM_ADDR expertScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR oriX,
     GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR XOut,
     GM_ADDR workspaceGM, GM_ADDR mc2Context, MoeDistributeCombineV2Info tilingData)
 {
     // 根据不同的数据类型调用不同的模板
-    moe_combine_switch(
-        tilingKey,
-        expandX, expertIds, expandIdx, epSendCount, residualX,
-        gamma, expertScales, xActiveMask,
-        sharedExpertX, oriX,
-        constExpertAlpha1, constExpertAlpha2, constExpertV,
-        performanceInfo, XOut,
-        workspaceGM, mc2Context,
-        tilingData);
+    moe_combine_switch(tilingKey, expandX, expertIds, expandIdx, epSendCount, residualX, gamma, expertScales,
+                       xActiveMask, sharedExpertX, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV,
+                       performanceInfo, XOut, workspaceGM, mc2Context, tilingData);
 }
 
 template <int32_t split_num>
@@ -153,31 +132,25 @@ __sk__ __vector__ void moe_distribute_combine_v2_generic_sk(MoeDistributeCombine
     MoeDistributeCombineV2Info tilingData = args->tilingData;
 
     // 根据不同的数据类型调用不同的模板
-    moe_combine_switch(
-        tilingKey,
-        expandX, expertIds, expandIdx, epSendCount, residualX,
-        gamma, expertScales, xActiveMask,
-        sharedExpertX, oriX,
-        constExpertAlpha1, constExpertAlpha2, constExpertV,
-        performanceInfo, XOut,
-        workspaceGM, mc2Context,
-        tilingData);
+    moe_combine_switch(tilingKey, expandX, expertIds, expandIdx, epSendCount, residualX, gamma, expertScales,
+                       xActiveMask, sharedExpertX, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV,
+                       performanceInfo, XOut, workspaceGM, mc2Context, tilingData);
 }
 
 SK_BIND(moe_distribute_combine_v2_generic, 4, moe_distribute_combine_v2_generic_sk<0>,
-    moe_distribute_combine_v2_generic_sk<1>, moe_distribute_combine_v2_generic_sk<2>,
-    moe_distribute_combine_v2_generic_sk<3>);
+        moe_distribute_combine_v2_generic_sk<1>, moe_distribute_combine_v2_generic_sk<2>,
+        moe_distribute_combine_v2_generic_sk<3>);
 
 // <<<>>>调用函数
-void moe_distribute_combine_v2_entry(int32_t tilingKey, uint32_t blockDim, void* stream, GM_ADDR expandX, GM_ADDR expertIds,
-    GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR residualX,
-    GM_ADDR gamma, GM_ADDR expertScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR oriX,
-    GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR XOut,
-    GM_ADDR workspaceGM, GM_ADDR mc2Context, MoeDistributeCombineV2Info tilingData)
+void moe_distribute_combine_v2_entry(int32_t tilingKey, uint32_t blockDim, void *stream, GM_ADDR expandX,
+                                     GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR residualX,
+                                     GM_ADDR gamma, GM_ADDR expertScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX,
+                                     GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2,
+                                     GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR XOut, GM_ADDR workspaceGM,
+                                     GM_ADDR mc2Context, MoeDistributeCombineV2Info tilingData)
 {
     moe_distribute_combine_v2_generic<<<blockDim, nullptr, stream>>>(
-        tilingKey,
-        expandX, expertIds, expandIdx, epSendCount, residualX, gamma, expertScales, xActiveMask,
-        sharedExpertX, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, XOut,
-        workspaceGM, mc2Context, tilingData);
+        tilingKey, expandX, expertIds, expandIdx, epSendCount, residualX, gamma, expertScales, xActiveMask,
+        sharedExpertX, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, XOut, workspaceGM,
+        mc2Context, tilingData);
 }

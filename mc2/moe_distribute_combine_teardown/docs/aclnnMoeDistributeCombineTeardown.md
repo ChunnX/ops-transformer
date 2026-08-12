@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                               |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -68,7 +78,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
 ## aclnnMoeDistributeCombineTeardownGetWorkspaceSize
 
 - **参数说明**
-  
+
     <table style="undefined;table-layout: fixed; width: 1548px"><colgroup>
     <col style="width: 162px">
     <col style="width: 94px">
@@ -313,6 +323,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
     </tr>
     </tbody></table>
 
+  <!-- npu="950" id7 -->
   - Ascend 950DT：
     - 不支持共享专家场景。
     - epWorldSize当前取值仅支持2、8。
@@ -323,7 +334,8 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
     - commQuantMode当前仅支持传入0，表示不进行量化。
     - commType取值范围[0, 2]，当前仅支持2，表示URMA通路。
     - commAlg当前版本不支持，传空指针即可。
-  
+
+  <!-- end id7 -->
   - Atlas A3训练系列产品/Atlas A3推理系列产品：
     - 不支持共享专家场景。
     - epWorldSize当前取值仅支持2、8。
@@ -336,11 +348,11 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
     - commAlg当前版本不支持，传空指针即可。
 
 - **返回值**
-  
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
-  
+
     <table style="undefined;table-layout: fixed; width: 1000px"><colgroup>
     <col style="width: 300px">
     <col style="width: 150px">
@@ -377,7 +389,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
 ## aclnnMoeDistributeCombineTeardown
 
 - **参数说明：**
-  
+
     <table style="undefined;table-layout: fixed; width: 1000px"><colgroup>
     <col style="width: 200px">
     <col style="width: 130px">
@@ -412,8 +424,8 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
     </table>
 
 - **返回值：**
-  
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -422,7 +434,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
 - aclnnMoeDistributeDispatchSetup接口，aclnnMoeDistributeDispatchTeardown接口，aclnnMoeDistributeCombineSetup接口，aclnnMoeDistributeCombineTeardown接口必须配套使用。
 - 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commQuantMode`、`commType`、`commAlg`参数取值所有卡需保持一致，`groupEp`、`epWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commQuantMode`、`commType`、`commAlg`参数取值在网络中不同层中也需保持一致，且和aclnnMoeDistributeDispatchSetup接口，aclnnMoeDistributeDispatchTeardown接口，aclnnMoeDistributeCombineSetup接口对应参数也保持一致。
 - 参数说明里shape格式说明：
-  
+
   - A：表示本卡需要分发的最大token数量，取值范围如下：
     - 对于共享专家，要满足A = BS \* epWorldSize \* sharedExpertNum / sharedExpertRankNum；当globalBs非0时，要满足A = globalBs\* sharedExpertNum / sharedExpertRankNum。
     - 对于MoE专家，当globalBs为0时，要满足A >= BS \* epWorldSize \* min(localExpertNum, K)；当globalBs非0时，要满足A >= globalBs \* min(localExpertNum, K)。
@@ -437,15 +449,25 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
   - 当前不支持共享专家。sharedExpertNum和sharedExpertRankNum当前仅支持0。
 - HCCL_BUFFSIZE：
   调用本接口前需检查HCCL_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
+
+  <!-- npu="950" id8 -->
   - Ascend 950DT：
     - 要求 >= 2且满足>= 4 \* (localExpertNum \* maxBs \* epWorldSize \* Align512(Align32(2 \* H) + 44) + (K + sharedExpertNum) \* maxBs \* Align512(2 \* H))，localExpertNum需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) \* 512，Align32(x) = ((x + 32 - 1) / 32) \* 32
+  <!-- end id8 -->
   - Atlas A3训练系列产品/Atlas A3推理系列产品：
     - 要求 >= 2且满足>= 2 \* (localExpertNum \* maxBs \* epWorldSize \* Align512(Align32(2 \* H) + 44) + (K + sharedExpertNum) \* maxBs \* Align512(2 \* H))，localExpertNum需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) \* 512，Align32(x) = ((x + 32 - 1) / 32) \* 32
 - 通信域使用约束：
   - 一个模型中的aclnnMoeDistributeDispatchSetup接口，aclnnMoeDistributeDispatchTeardown接口，aclnnMoeDistributeCombineSetup接口，aclnnMoeDistributeCombineTeardown接口仅支持相同EP通信域，且该通信域中不允许有其他算子。
 - 通信方式约束：
+
+    <!-- npu="950" id9 -->
     - <term>Ascend 950DT</term>：仅支持URMA通信。
+
+    <!-- end id9 -->
 
 ## 调用示例
 
+<!-- npu="950" id10 -->
 - Ascend 950DT：aclnnMoeDistributeCombineTeardown必须在aclnnMoeDistributeCombineSetup调用之后调用，请参考[aclnnMoeDistributeCombineSetup](../../moe_distribute_combine_setup/docs/aclnnMoeDistributeCombineSetup.md)中的调用示例。
+
+<!-- end id10 -->

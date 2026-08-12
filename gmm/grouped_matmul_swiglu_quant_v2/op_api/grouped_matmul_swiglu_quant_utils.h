@@ -33,6 +33,7 @@ namespace gmm_dsq {
 using namespace op;
 constexpr int64_t OUTPUT_IDX_0 = 0L;
 constexpr int64_t OUTPUT_IDX_1 = 1L;
+constexpr char GMM_SWIGLU_QUANT_V2_HANDLER_OP_NAME[] = "grouped_matmul_swiglu_quant_v2";
 constexpr size_t WEIGHT_NZ_DIM_LIMIT = 5UL;
 constexpr size_t WEIGHT_ND_DIM_LIMIT = 3UL;
 
@@ -189,8 +190,11 @@ protected:
         OP_CHECK_NULL(tensors, return false);
         if (tensors->Size() == 0) {
             return true;
-        } else if ((tensors->Size() == 1) && ((*tensors)[0] == nullptr)) {
-            return true;
+        }
+        for (size_t i = 0; i < tensors->Size(); i++) {
+            if ((*tensors)[i] == nullptr) {
+                return true;
+            }
         }
 
         return false;
@@ -226,10 +230,19 @@ protected:
 
     virtual bool CheckEmptyTensor(void)
     {
-        if ((*gmmDsqParams_.weight)[0]->IsEmpty() || (*gmmDsqParams_.weightScale)[0]->IsEmpty()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "In op [%s], [%s] must not be an empty container.", opName_.c_str(), "weight or weightScale");
-            return false;
+        for (size_t i = 0; i < gmmDsqParams_.weight->Size(); i++) {
+            if ((*gmmDsqParams_.weight)[i]->IsEmpty()) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                        "In op [%s], weight[%zu] must not be an empty container.", opName_.c_str(), i);
+                return false;
+            }
+        }
+        for (size_t i = 0; i < gmmDsqParams_.weightScale->Size(); i++) {
+            if ((*gmmDsqParams_.weightScale)[i]->IsEmpty()) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                        "In op [%s], weightScale[%zu] must not be an empty container.", opName_.c_str(), i);
+                return false;
+            }
         }
         return true;
     }
@@ -276,18 +289,21 @@ protected:
         }
     }
 
-    void CreateEmptyTensor(const aclDataType dataType, const aclTensorList *&tensorList,
+    aclnnStatus CreateEmptyTensor(const aclDataType dataType, const aclTensorList *&tensorList,
             aclTensorList *&emptyTensorList) const
     {
         if (tensorList != nullptr) {
-            return;
+            return ACLNN_SUCCESS;
         }
 
         FVector<aclTensor*> emptyTensors;
         aclTensor *emptyTensor = l0Executor_->AllocTensor({0}, static_cast<op::DataType>(dataType));
+        CHECK_RET(emptyTensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
         emptyTensors.emplace_back(emptyTensor);
         emptyTensorList = l0Executor_->AllocTensorList(emptyTensors.data(), emptyTensors.size());
+        CHECK_RET(emptyTensorList != nullptr, ACLNN_ERR_INNER_NULLPTR);
         tensorList = emptyTensorList;
+        return ACLNN_SUCCESS;
     }
 
     aclnnStatus DataContiguous(const aclTensorList *&tensors) const
@@ -301,6 +317,7 @@ protected:
             tensorsVec.push_back(contiguousTensor);
         }
         tensors = l0Executor_->AllocTensorList(tensorsVec.data(), tensorsVec.size());
+        CHECK_RET(tensors != nullptr, ACLNN_ERR_INNER_NULLPTR);
         return ACLNN_SUCCESS;
     }
 
@@ -319,6 +336,7 @@ protected:
             }
         }
         tensors = l0Executor_->AllocTensorList(tensorsVec.data(), tensorsVec.size());
+        CHECK_RET(tensors != nullptr, ACLNN_ERR_INNER_NULLPTR);
         return ACLNN_SUCCESS;
     }
 
@@ -326,8 +344,8 @@ protected:
     {
         aclTensorList *emptyWeightAssistMatrixList = nullptr;
         CheckOptionalTensorListEmpty(gmmDsqParams_.weightAssistMatrix);
-        CreateEmptyTensor(aclDataType::ACL_FLOAT, gmmDsqParams_.weightAssistMatrix,
-            emptyWeightAssistMatrixList);
+        CHECK_RET(CreateEmptyTensor(aclDataType::ACL_FLOAT, gmmDsqParams_.weightAssistMatrix,
+            emptyWeightAssistMatrixList) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
 
         CHECK_COND(DataContiguousWeight(gmmDsqParams_.weight) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR,
                     "Contiguous weight failed.");
@@ -348,11 +366,24 @@ protected:
         return ACLNN_SUCCESS;
     }
 
+    virtual void PrepareOriginalShapesBeforeContiguous()
+    {
+        for (size_t i = 0; i < gmmDsqParams_.weight->Size(); i++) {
+            auto *w = (*gmmDsqParams_.weight)[i];
+            if (IsPrivateFormat(w->GetStorageFormat())) {
+                w->SetOriginalShape(w->GetViewShape());
+            }
+        }
+    }
+
+    virtual void RestoreOriginalShapesAfterContiguous() {}
+
 public:
-    void Initialize(const char *opName, GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize,
+    void Initialize(const char *apiName, GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize,
                     aclOpExecutor **executor)
     {
-        opName_ = opName;
+        opName_ = GMM_SWIGLU_QUANT_V2_HANDLER_OP_NAME;
+        apiName_ = apiName;
         gmmDsqParams_ = params;
         workspaceSize_ = workspaceSize;
         executor_ = executor;
@@ -378,12 +409,7 @@ public:
                 return ACLNN_SUCCESS;
             }
         }
-        for (size_t i = 0; i < gmmDsqParams_.weight->Size(); i++) {
-            auto *w = (*gmmDsqParams_.weight)[i];
-            if (IsPrivateFormat(w->GetStorageFormat())) {
-                w->SetOriginalShape(w->GetViewShape());
-            }
-        }
+        PrepareOriginalShapesBeforeContiguous();
 
         // 空Tensor场景
         if (gmmDsqParams_.output->IsEmpty() || gmmDsqParams_.groupList->IsEmpty() || gmmDsqParams_.outputScale->IsEmpty()) {
@@ -394,6 +420,7 @@ public:
 
         ret = CovertDataContiguous();
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        RestoreOriginalShapesAfterContiguous();
         auto ret0 = l0op::GroupedMatmulSwigluQuantV2(gmmDsqParams_.x, gmmDsqParams_.weight, gmmDsqParams_.weightScale,
                                                 gmmDsqParams_.xScale, gmmDsqParams_.weightAssistMatrix,
                                                 gmmDsqParams_.bias,
@@ -419,6 +446,7 @@ public:
 
 protected:
     string opName_;
+    string apiName_;
     GroupedMatmulSwigluQuantParamsBase gmmDsqParams_;
     uint64_t *workspaceSize_;
     aclOpExecutor **executor_;

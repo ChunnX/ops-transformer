@@ -51,22 +51,19 @@ using matmul::MatmulImpl;
 using matmul::MatmulType;
 
 namespace Mc2WeightQuantBatchMatmulV2 {
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
 class Mc2WeightQuantBatchMatmulV2MixSplitKKernel
-    : public Mc2WeightQuantBatchMatmulV2Common<
-          xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>
-{
+    : public Mc2WeightQuantBatchMatmulV2Common<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                               hasAntiQuantOffset, quantType> {
 public:
     __aicore__ inline Mc2WeightQuantBatchMatmulV2MixSplitKKernel(){};
-    __aicore__ inline void Init(
-        GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
-        GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
-        const Mc2WeightQuantBatchMatmulV2TilingData* tilingData, TPipe* tPipe);
-    __aicore__ inline void UpdateGlobalAddr(
-        GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
-        GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace);
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
+                                GM_ADDR quantScale, GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
+                                const Mc2WeightQuantBatchMatmulV2TilingData *tilingData, TPipe *tPipe);
+    __aicore__ inline void UpdateGlobalAddr(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
+                                            GM_ADDR quantScale, GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y,
+                                            GM_ADDR workspace);
     __aicore__ inline void Process();
 
     using inputXType = MatmulType<TPosition::A1, CubeFormat::NZ, xType, aTrans>;
@@ -81,14 +78,14 @@ private:
     __aicore__ inline void ComputeConstexpr();
     __aicore__ inline void ProcessCube();
     __aicore__ inline void ProcessVector();
-    __aicore__ inline void AntiquantWeight(
-        uint64_t singleCoreRealN, uint64_t groupIdx, uint64_t nBaseOffset, uint64_t kBaseOffset);
+    __aicore__ inline void AntiquantWeight(uint64_t singleCoreRealN, uint64_t groupIdx, uint64_t nBaseOffset,
+                                           uint64_t kBaseOffset);
     __aicore__ inline void CopyInAntiquantParams(uint64_t singleCoreRealN, uint64_t groupIdx, uint64_t nBaseOffset);
-    __aicore__ inline void CopyInWeight(
-        uint32_t singleCoreRealK, uint32_t singleCoreRealN, uint64_t kOffset, uint64_t nOffset);
+    __aicore__ inline void CopyInWeight(uint32_t singleCoreRealK, uint32_t singleCoreRealN, uint64_t kOffset,
+                                        uint64_t nOffset);
     __aicore__ inline void ProcessAntiquantParams(uint32_t singleCoreRealN);
-    __aicore__ inline void AntiQuantCompute(
-        uint32_t singleCoreRealK, uint32_t singleCoreRealN, uint64_t kOffset, uint64_t nOffset);
+    __aicore__ inline void AntiQuantCompute(uint32_t singleCoreRealK, uint32_t singleCoreRealN, uint64_t kOffset,
+                                            uint64_t nOffset);
     __aicore__ inline void ProcessMatmulResult();
 
     __aicore__ inline void CopyInAL1(uint64_t realSingleCoreK, uint64_t kOffset);
@@ -114,22 +111,22 @@ protected:
     TBuf<TPosition::A1> a1Tbuf_;
 };
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>::ComputeConstexpr()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType>::ComputeConstexpr()
 {
     this->nF16AlignTo512bSize = this->CeilDiv(this->tiling_->nSize, 256) * 256;
     this->weightCacheSizeAlign_ = this->tiling_->cubeBlockDimK * this->tiling_->groupSize * this->nF16AlignTo512bSize;
     this->weightCacheIdx_ = 0;
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>::InitBuffer()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType>::InitBuffer()
 {
     this->pipe_->InitBuffer(this->scaleComputeTbuf_, 2048);
     this->scaleComputeTensor_ = this->scaleComputeTbuf_.template Get<biasType>();
@@ -147,34 +144,31 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
 
     this->pipe_->InitBuffer(this->weight16Tbuf_, 256 + 32 * 1024);
 
-    this->pipe_->InitBuffer(
-        a1Tbuf_, this->CeilDiv(this->tiling_->mSize, 16UL) * 16UL * this->tiling_->vecSingleK * sizeof(xType));
+    this->pipe_->InitBuffer(a1Tbuf_, this->CeilDiv(this->tiling_->mSize, 16UL) * 16UL * this->tiling_->vecSingleK *
+                                         sizeof(xType));
     this->pipe_->InitBuffer(inQueueBL1_, DOUBLE_BUFFER_NUM, 128 * 1024);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
-    quantType>::InitWorkSpace(GM_ADDR workspace)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType>::InitWorkSpace(GM_ADDR workspace)
 {
     // 当前cv绑核固定，需要四份
     uint64_t weithCacheSize = 4 * this->weightCacheSizeAlign_ * sizeof(xType);
-    this->weightCache_.SetGlobalBuffer(reinterpret_cast<__gm__ xType*>(workspace));
+    this->weightCache_.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(workspace));
 
-    this->matmulAtomicAddResult_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(workspace + weithCacheSize));
+    this->matmulAtomicAddResult_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspace + weithCacheSize));
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>::
-    Init(
-        GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
-        GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
-        const Mc2WeightQuantBatchMatmulV2TilingData* tilingData, TPipe* tPipe)
+    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
+    quantType>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
+                     GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
+                     const Mc2WeightQuantBatchMatmulV2TilingData *tilingData, TPipe *tPipe)
 {
     this->BaseInit(tilingData, tPipe);
     this->InitInput(x, weight, antiquantScale, antiquantOffset, quantScale, quantOffset, bias, y);
@@ -188,24 +182,27 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>::
-    UpdateGlobalAddr(
-        GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
-        GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType>::UpdateGlobalAddr(GM_ADDR x, GM_ADDR weight,
+                                                                                            GM_ADDR antiquantScale,
+                                                                                            GM_ADDR antiquantOffset,
+                                                                                            GM_ADDR quantScale,
+                                                                                            GM_ADDR quantOffset,
+                                                                                            GM_ADDR bias, GM_ADDR y,
+                                                                                            GM_ADDR workspace)
 {
     this->InitInput(x, weight, antiquantScale, antiquantOffset, quantScale, quantOffset, bias, y);
     this->InitWorkSpace(workspace);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>::ProcessVector()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType>::ProcessVector()
 {
     uint64_t initTotalSize = this->tiling_->mSize * this->tiling_->nSize;
     InitAtomicAddr(matmulAtomicAddResult_, initTotalSize, this->curBlockIdx_);
@@ -232,9 +229,8 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
             if (taskId > 3) {
                 CrossCoreWaitFlag(SYNC_AIC_AIV_FLAG);
             }
-            AntiquantWeight(
-                singleCoreRealN, groupIdx + groupStartIdx, singleCoreInnerNOffset,
-                kBaseOffset + groupIdx * this->tiling_->groupSize);
+            AntiquantWeight(singleCoreRealN, groupIdx + groupStartIdx, singleCoreInnerNOffset,
+                            kBaseOffset + groupIdx * this->tiling_->groupSize);
             CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
         }
     }
@@ -249,12 +245,14 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
     ProcessMatmulResult();
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
-    quantType>::AntiquantWeight(uint64_t singleCoreRealN, uint64_t groupIdx, uint64_t nBaseOffset, uint64_t kBaseOffset)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType>::AntiquantWeight(uint64_t singleCoreRealN,
+                                                                                           uint64_t groupIdx,
+                                                                                           uint64_t nBaseOffset,
+                                                                                           uint64_t kBaseOffset)
 {
     if (this->curBlockIdx_ >= this->tiling_->vecBlockDimN * this->tiling_->cubeBlockDimK) {
         return;
@@ -273,14 +271,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
             singleCoreRealK = this->tiling_->groupSize - kOffset;
         }
         CopyInWeight(singleCoreRealK, singleCoreRealN, kBaseOffset + kOffset, nBaseOffset);
-        AntiQuantCompute(
-            singleCoreRealK, singleCoreRealN, kOffset + vecKDimIdx_ * this->tiling_->groupSize, nBaseOffset);
+        AntiQuantCompute(singleCoreRealK, singleCoreRealN, kOffset + vecKDimIdx_ * this->tiling_->groupSize,
+                         nBaseOffset);
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::CopyInAntiquantParams(uint64_t singleCoreRealN, uint64_t groupIdx, uint64_t nBaseOffset)
@@ -296,12 +293,14 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
     this->scaleQueue_.EnQue(scaleInput);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
-    quantType>::CopyInWeight(uint32_t singleCoreRealK, uint32_t singleCoreRealN, uint64_t kOffset, uint64_t nOffset)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType>::CopyInWeight(uint32_t singleCoreRealK,
+                                                                                        uint32_t singleCoreRealN,
+                                                                                        uint64_t kOffset,
+                                                                                        uint64_t nOffset)
 {
     uint64_t wSrcOffset = kOffset * this->tiling_->nSize + nOffset;
     LocalTensor<wType> originWeight = this->originWeightQueue_.template AllocTensor<wType>();
@@ -309,12 +308,12 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
     originWeightQueue_.EnQue(originWeight);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
-    quantType>::ProcessAntiquantParams(uint32_t singleCoreRealN)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType>::ProcessAntiquantParams(uint32_t
+                                                                                                      singleCoreRealN)
 {
     LocalTensor<xType> offsetInput = this->offsetQueue_.template DeQue<xType>();
     LocalTensor<float> offsetTmp = this->offsetTmpBuf_.template Get<float>();
@@ -328,12 +327,14 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
     this->scaleQueue_.FreeTensor(scaleInput);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
-    quantType>::AntiQuantCompute(uint32_t singleCoreRealK, uint32_t singleCoreRealN, uint64_t kOffset, uint64_t nOffset)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType>::AntiQuantCompute(uint32_t singleCoreRealK,
+                                                                                            uint32_t singleCoreRealN,
+                                                                                            uint64_t kOffset,
+                                                                                            uint64_t nOffset)
 {
     LocalTensor<half> weight16 = this->weight16Tbuf_.template Get<half>()[128];
     LocalTensor<wType> originWeight = this->originWeightQueue_.template DeQue<wType>();
@@ -353,9 +354,9 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
     Add(weight16AfterAdd, weight16, this->offsetComputeTensor_, fp16MaskSize, singleCoreRealN / fp16MaskSize,
         repeatParams);
     for (uint64_t kIdx = 1; kIdx < singleCoreRealK; kIdx++) {
-        AscendC::Add<half, false>(
-            weight16AfterAdd[kIdx * singleCoreRealN], weight16[kIdx * singleCoreRealN], this->offsetComputeTensor_,
-            fp16MaskSize, singleCoreRealN / fp16MaskSize, repeatParams);
+        AscendC::Add<half, false>(weight16AfterAdd[kIdx * singleCoreRealN], weight16[kIdx * singleCoreRealN],
+                                  this->offsetComputeTensor_, fp16MaskSize, singleCoreRealN / fp16MaskSize,
+                                  repeatParams);
     }
     PipeBarrier<PIPE_V>();
     LocalTensor<float> weight32 = this->weight32Tbuf_.template Get<float>()[64];
@@ -368,9 +369,9 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
         repeatParams);
 
     for (uint64_t kIdx = 1; kIdx < singleCoreRealK; kIdx++) {
-        AscendC::Mul<float, false>(
-            weight32AfterMul[kIdx * singleCoreRealN], weight32[kIdx * singleCoreRealN], this->scaleComputeTensor_,
-            fp32MaskSize, singleCoreRealN / fp32MaskSize, repeatParams);
+        AscendC::Mul<float, false>(weight32AfterMul[kIdx * singleCoreRealN], weight32[kIdx * singleCoreRealN],
+                                   this->scaleComputeTensor_, fp32MaskSize, singleCoreRealN / fp32MaskSize,
+                                   repeatParams);
     }
 
     PipeBarrier<PIPE_V>();
@@ -386,11 +387,11 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
     this->weightOutputQueue_.FreeTensor(weightOutput);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>::ProcessMatmulResult()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType>::ProcessMatmulResult()
 {
     uint64_t singleCoreN = 256;
     uint64_t singleCoreRealN = 256;
@@ -407,8 +408,8 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
         }
 
         LocalTensor<float> atomicResult = this->weight32Tbuf_.template Get<float>();
-        DataCopyPad2D(
-            atomicResult, matmulAtomicAddResult_[nOffset], this->tiling_->mSize, singleCoreRealN, this->tiling_->nSize);
+        DataCopyPad2D(atomicResult, matmulAtomicAddResult_[nOffset], this->tiling_->mSize, singleCoreRealN,
+                      this->tiling_->nSize);
         event_t eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
         SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
         WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
@@ -418,17 +419,17 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
         weightOutputQueue_.EnQue(finalResult);
         weightOutputQueue_.DeQue<xType>();
 
-        DataCopyPad2D(
-            this->yGlobal_[nOffset], finalResult, this->tiling_->mSize, singleCoreRealN, this->tiling_->nSize);
+        DataCopyPad2D(this->yGlobal_[nOffset], finalResult, this->tiling_->mSize, singleCoreRealN,
+                      this->tiling_->nSize);
         weightOutputQueue_.FreeTensor(finalResult);
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>::ProcessCube()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType>::ProcessCube()
 {
     // mte2 流水
     cubeKDimIdx_ = this->curBlockIdx_ / this->tiling_->cubeBlockDimN;
@@ -455,10 +456,10 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
             }
             CrossCoreWaitFlag(SYNC_AIV_AIC_FLAG);
             if (this->curBlockIdx_ < this->tiling_->cubeBlockDimN * this->tiling_->cubeBlockDimK) {
-                CopyInBL1(
-                    (this->weightCacheIdx_ % 4) * this->weightCacheSizeAlign_ +
-                        (cubeKDimIdx_ * this->tiling_->groupSize) * this->nF16AlignTo512bSize + singleCoreInnerNOffset,
-                    singleCoreRealN);
+                CopyInBL1((this->weightCacheIdx_ % 4) * this->weightCacheSizeAlign_ +
+                              (cubeKDimIdx_ * this->tiling_->groupSize) * this->nF16AlignTo512bSize +
+                              singleCoreInnerNOffset,
+                          singleCoreRealN);
                 LaunchMatmul(singleCoreRealN, singleCoreInnerNOffset, kOffset - kBaseOffset, false);
             }
             CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_AIC_AIV_FLAG);
@@ -471,12 +472,12 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
     CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_AIC_AIV_FLAG);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
-    quantType>::CopyInAL1(uint64_t realSingleCoreK, uint64_t kOffset)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType>::CopyInAL1(uint64_t realSingleCoreK,
+                                                                                     uint64_t kOffset)
 {
     Nd2NzParams nd2nzParams;
     nd2nzParams.ndNum = 1;
@@ -496,12 +497,12 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
     WaitFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
-    quantType>::CopyInBL1(uint64_t wOffset, uint64_t singleCoreRealN)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType>::CopyInBL1(uint64_t wOffset,
+                                                                                     uint64_t singleCoreRealN)
 {
     Nd2NzParams nd2nzParams;
     nd2nzParams.ndNum = 1;
@@ -517,12 +518,13 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
     inQueueBL1_.EnQue(bL1Tensor);
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
-    quantType>::LaunchMatmul(uint64_t singleCoreRealN, uint64_t cOffset, uint64_t kOffset, bool lastLoop)
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType>::LaunchMatmul(uint64_t singleCoreRealN,
+                                                                                        uint64_t cOffset,
+                                                                                        uint64_t kOffset, bool lastLoop)
 {
     LocalTensor<xType> aL1Tensor = a1Tbuf_.template Get<xType>();
     LocalTensor<xType> bL1Tensor = inQueueBL1_.DeQue<xType>();
@@ -531,19 +533,19 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
 
     mmObj.SetTensorB(bL1Tensor, bTrans);
 
-    mmObj.SetOrgShape(
-        this->tiling_->mSize, nF16AlignTo512bSize, this->tiling_->kSize, this->tiling_->kSize, this->tiling_->nSize);
+    mmObj.SetOrgShape(this->tiling_->mSize, nF16AlignTo512bSize, this->tiling_->kSize, this->tiling_->kSize,
+                      this->tiling_->nSize);
     mmObj.SetTail(this->tiling_->mSize, singleCoreRealN, this->tiling_->groupSize);
     mmObj.IterateAll(matmulAtomicAddResult_[cOffset], true);
     inQueueBL1_.FreeTensor(bL1Tensor);
     mmObj.End();
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset, quantType>::Process()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                           hasAntiQuantOffset, quantType>::Process()
 {
     if ASCEND_IS_AIV {
         ProcessVector();

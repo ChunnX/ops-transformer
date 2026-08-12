@@ -15,7 +15,7 @@
 
 - Python 3.8+
 - PyTorch
-- torch_npu
+- TorchNPU
 - npu_ops_transformer
 - pandas, numpy
 
@@ -64,6 +64,7 @@ world_size = server_num * rank_per_dev  # 总 world size
 ```
 
 **云环境配置**：当 `is_cloud = 1` 时，需要设置环境变量：
+
 - `VC_TASK_INDEX`: 当前任务索引
 - `VC_WORKER_HOSTS`: Worker 主机列表
 
@@ -186,7 +187,7 @@ Max bandwidth:  113.33 GB/s
 ==========================================================================================
 Bandwidth Test Summary - All Configurations
 ==========================================================================================
-No.   BS    H          Total Data(KB)   Mean BW(GB/s)    Max BW(GB/s)     Mean Time(us)  
+No.   BS    H          Total Data(KB)   Mean BW(GB/s)    Max BW(GB/s)     Mean Time(us)
 ------------------------------------------------------------------------------------------
 1     1     1024       2.0000           45.23            48.12            88.56
 2     2     1024       4.0000           78.45            82.31            102.34

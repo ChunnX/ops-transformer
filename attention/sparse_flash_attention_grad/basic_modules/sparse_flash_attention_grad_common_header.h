@@ -24,6 +24,7 @@ namespace SFAG_BASIC {
 
 constexpr static uint64_t MAX_CORE_NUM = 24;
 constexpr static uint64_t PER_LOOP_BLOCK_SIZE = 128;
+constexpr static uint64_t PING_PONG_BUFFER = 2;
 constexpr static uint64_t SCATTER_BUFFER_NUM = 3;
 
 #define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))

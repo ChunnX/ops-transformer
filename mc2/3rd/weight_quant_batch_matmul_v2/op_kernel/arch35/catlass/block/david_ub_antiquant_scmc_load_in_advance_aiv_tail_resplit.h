@@ -42,34 +42,32 @@ DEVICE static constexpr Mc2QuantType GetQuantType() // StrideAntiquantScale /*st
 {
     if constexpr (AscendC::Std::tuple_size<StrideAntiquantScale>::value == 1) {
         return Mc2QuantType::PER_TENSOR;
-    } else if constexpr (
-        AscendC::Std::tuple_size<StrideAntiquantScale>::value == 2 &&
-        AscendC::Std::is_same_v<typename AscendC::Std::tuple_element<0, StrideAntiquantScale>::type, _1> &&
-        AscendC::Std::is_same_v<typename AscendC::Std::tuple_element<1, StrideAntiquantScale>::type, _1>) {
+    } else if constexpr (AscendC::Std::tuple_size<StrideAntiquantScale>::value == 2 &&
+                         AscendC::Std::is_same_v<typename AscendC::Std::tuple_element<0, StrideAntiquantScale>::type,
+                                                 _1> &&
+                         AscendC::Std::is_same_v<typename AscendC::Std::tuple_element<1, StrideAntiquantScale>::type,
+                                                 _1>) {
         return Mc2QuantType::PER_CHANNEL;
     } else {
         return Mc2QuantType::PER_GROUP;
     }
 }
 
-template <
-    int Stages, typename TileShapeUb, typename TileShapeReg, int32_t SubBlockNum, uint8_t StageWeightIn,
-    uint8_t StageVfOut, int32_t Kub_, typename KernelSchedule, typename TileShapeL1, typename TileShapeL0,
-    typename DtypeA, typename StrideA, typename DtypeB, typename StrideBOptionalTuple, typename DtypeBias,
-    typename StrideBiasGm, typename DtypeC, typename StrideC>
-struct BlockMmad<
-    MainloopDavidWqbmmUbAntiquantScmc<
-        Stages, TileShapeUb, TileShapeReg, AscendC::AIV, SubBlockNum, StageWeightIn, StageVfOut, Kub_, KernelSchedule>,
-    TileShapeL1, TileShapeL0, DtypeA, StrideA, DtypeB, StrideBOptionalTuple, DtypeBias, StrideBiasGm, DtypeC, StrideC>
-    : public DavidUbAntiquantScmc<
-          Stages, TileShapeUb, TileShapeReg, AscendC::AIV, SubBlockNum, StageWeightIn, StageVfOut, Kub_, KernelSchedule,
-          TileShapeL1, TileShapeL0, DtypeA, StrideA, DtypeB, StrideBOptionalTuple, DtypeBias, StrideBiasGm, DtypeC,
-          StrideC> {
+template <int Stages, typename TileShapeUb, typename TileShapeReg, int32_t SubBlockNum, uint8_t StageWeightIn,
+          uint8_t StageVfOut, int32_t Kub_, typename KernelSchedule, typename TileShapeL1, typename TileShapeL0,
+          typename DtypeA, typename StrideA, typename DtypeB, typename StrideBOptionalTuple, typename DtypeBias,
+          typename StrideBiasGm, typename DtypeC, typename StrideC>
+struct BlockMmad<MainloopDavidWqbmmUbAntiquantScmc<Stages, TileShapeUb, TileShapeReg, AscendC::AIV, SubBlockNum,
+                                                   StageWeightIn, StageVfOut, Kub_, KernelSchedule>,
+                 TileShapeL1, TileShapeL0, DtypeA, StrideA, DtypeB, StrideBOptionalTuple, DtypeBias, StrideBiasGm,
+                 DtypeC, StrideC>
+    : public DavidUbAntiquantScmc<Stages, TileShapeUb, TileShapeReg, AscendC::AIV, SubBlockNum, StageWeightIn,
+                                  StageVfOut, Kub_, KernelSchedule, TileShapeL1, TileShapeL0, DtypeA, StrideA, DtypeB,
+                                  StrideBOptionalTuple, DtypeBias, StrideBiasGm, DtypeC, StrideC> {
 public:
-    using Base = DavidUbAntiquantScmc<
-        Stages, TileShapeUb, TileShapeReg, AscendC::AIV, SubBlockNum, StageWeightIn, StageVfOut, Kub_, KernelSchedule,
-        TileShapeL1, TileShapeL0, DtypeA, StrideA, DtypeB, StrideBOptionalTuple, DtypeBias, StrideBiasGm, DtypeC,
-        StrideC>;
+    using Base = DavidUbAntiquantScmc<Stages, TileShapeUb, TileShapeReg, AscendC::AIV, SubBlockNum, StageWeightIn,
+                                      StageVfOut, Kub_, KernelSchedule, TileShapeL1, TileShapeL0, DtypeA, StrideA,
+                                      DtypeB, StrideBOptionalTuple, DtypeBias, StrideBiasGm, DtypeC, StrideC>;
     using TileShape = TileShapeL1;
     using Arguments = typename Base::Arguments;
     using StrideAntiquantScale = typename Base::StrideAntiquantScale;
@@ -106,12 +104,13 @@ private:
 
 public:
     DEVICE BlockMmad()
-    {}
+    {
+    }
 
     struct Params {
-        __gm__ DtypeB* bGmAddr = nullptr;
-        __gm__ DtypeA* antiquantScaleGmAddr = nullptr;
-        __gm__ DtypeA* antiquantOffsetGmAddr = nullptr;
+        __gm__ DtypeB *bGmAddr = nullptr;
+        __gm__ DtypeA *antiquantScaleGmAddr = nullptr;
+        __gm__ DtypeA *antiquantOffsetGmAddr = nullptr;
         uint64_t groupSize;
 
         TileShapeL1 tileShapeL1;
@@ -140,15 +139,14 @@ public:
     };
 
 public:
-    using PipelineTuple = AscendC::Std::tuple<
-        PipelineStageSingleCoreCopyInAdvance<Hardware::GM, Hardware::UB, StageWeightIn>,
-        PipelineStageSingleCore<Hardware::UB, Hardware::L1, StageVfOut>>;
-    using PipelineStateTuple = AscendC::Std::tuple<
-        PipelineState<StageWeightIn>, // gm->ub weight Load
-        PipelineState<StageWeightIn>, // gm->ub weight Compute
-        PipelineState<StageVfOut>,    // reg->ub weight(ub buffer)
-        PipelineState<2>              // aiv2aic
-        >;
+    using PipelineTuple =
+        AscendC::Std::tuple<PipelineStageSingleCoreCopyInAdvance<Hardware::GM, Hardware::UB, StageWeightIn>,
+                            PipelineStageSingleCore<Hardware::UB, Hardware::L1, StageVfOut>>;
+    using PipelineStateTuple = AscendC::Std::tuple<PipelineState<StageWeightIn>, // gm->ub weight Load
+                                                   PipelineState<StageWeightIn>, // gm->ub weight Compute
+                                                   PipelineState<StageVfOut>,    // reg->ub weight(ub buffer)
+                                                   PipelineState<2>              // aiv2aic
+                                                   >;
 
 private:
     constexpr static uint8_t STAGE_VF_OUT = (StageVfOut + 1) / 2 * 2;
@@ -166,7 +164,7 @@ private:
 
 public:
     template <class ProblemShape, typename TilingData>
-    DEVICE static Params GetParams(ProblemShape& problemShape, Arguments const& args, TilingData const& tiling)
+    DEVICE static Params GetParams(ProblemShape &problemShape, Arguments const &args, TilingData const &tiling)
     {
         decltype(auto) sizeK = get<2>(problemShape);
 
@@ -205,12 +203,11 @@ public:
             .tileShapeReg = AscendC::Std::make_tuple(get<0>(TileShapeReg{}), get<1>(TileShapeReg{})),
 
             .strideWGm = args.strideB,
-            .strideWeightInUb =
-                Base::isTransB ? /*(k1,n1,n0,k0)*/ AscendC::Std::make_tuple(
-                                     CeilAlign(nUb, 16U) * 16, _256{}, _16{}, _1{},
-                                     static_cast<uint32_t>(nUb * kUb)) : /*(n1,k1,k0,n0)*/
-                    AscendC::Std::make_tuple(
-                        CeilAlign(kUb, 16U) * 16, _256{}, _16{}, _1{}, static_cast<uint32_t>(nUb * kUb)),
+            .strideWeightInUb = Base::isTransB ? /*(k1,n1,n0,k0)*/ AscendC::Std::make_tuple(
+                                                     CeilAlign(nUb, 16U) * 16, _256{}, _16{}, _1{},
+                                                     static_cast<uint32_t>(nUb * kUb)) : /*(n1,k1,k0,n0)*/
+                                    AscendC::Std::make_tuple(CeilAlign(kUb, 16U) * 16, _256{}, _16{}, _1{},
+                                                             static_cast<uint32_t>(nUb * kUb)),
             // k,n (n1,k1,k0,n0) NOTE buffer按照bank大小交织
             // .strideWeightOutUb = AscendC::Std::make_tuple(kReg * 16, _256{}, _16{}, _1{}, static_cast<uint32_t>(_256
             // / sizeof(DtypeA))),
@@ -221,19 +218,19 @@ public:
             // aiv (128, 256)                  ( 8, 16, 16, 16)
             //   vf (128, 64)                  ( 8,  4, 16, 16)
             // aiv (128, 256)
-            .strideWeightL1 = AscendC::Std::make_tuple(
-                Min(kbL1, static_cast<uint32_t>(sizeK)) * 16, _256{}, _16{}, _1{}, _0{},
-                static_cast<uint32_t>(512 * 1024 / 2 /*b16*/ - nL1 * kbL1)),
+            .strideWeightL1 =
+                AscendC::Std::make_tuple(Min(kbL1, static_cast<uint32_t>(sizeK)) * 16, _256{}, _16{}, _1{}, _0{},
+                                         static_cast<uint32_t>(512 * 1024 / 2 /*b16*/ - nL1 * kbL1)),
 
             .strideScaleGm = args.strideAntiquantScale,
             // NOTE 只支持Pergroup
             // NOTE tiling需要保证kUb是args.groupSize的倍数，尾块没关系
-            .strideScaleUb = Base::isTransB ? /*(n,gn)*/ AscendC::Std::make_tuple(
-                                                  static_cast<uint32_t>(kUb / args.groupSize), 1U,
-                                                  static_cast<uint32_t>(nUb * kUb / args.groupSize)) : /*(gn,n)*/
-                                 AscendC::Std::make_tuple(
-                                     1U, nUb,
-                                     static_cast<uint32_t>(nUb * kUb / args.groupSize)), // n, k, buffer
+            .strideScaleUb =
+                Base::isTransB ?
+                    /*(n,gn)*/ AscendC::Std::make_tuple(static_cast<uint32_t>(kUb / args.groupSize), 1U,
+                                                        static_cast<uint32_t>(nUb * kUb / args.groupSize)) : /*(gn,n)*/
+                    AscendC::Std::make_tuple(1U, nUb,
+                                             static_cast<uint32_t>(nUb * kUb / args.groupSize)), // n, k, buffer
 
             .matmulTiling = tiling.matmulTiling,
 
@@ -249,11 +246,12 @@ public:
     }
 
     template <class ProblemShape>
-    DEVICE static Params GetParams(ProblemShape& problemShape, Arguments const& args)
-    {}
+    DEVICE static Params GetParams(ProblemShape &problemShape, Arguments const &args)
+    {
+    }
 
     template <class ProblemShape>
-    DEVICE auto Init(ProblemShape const& problemShape, Params const& params)
+    DEVICE auto Init(ProblemShape const &problemShape, Params const &params)
     {
 #if defined(__CCE_KT_TEST__)
         if ASCEND_IS_AIC {
@@ -303,28 +301,26 @@ public:
 
     // 提取的辅助函数：执行权重和反量化数据的拷贝
     template <typename ProblemShape, typename Iterators, typename Params>
-    DEVICE void CopyWeightAndAntiquant(
-        ProblemShape const& problemShape, Iterators const& iters, Params const& params, uint64_t pipelineIndex)
+    DEVICE void CopyWeightAndAntiquant(ProblemShape const &problemShape, Iterators const &iters, Params const &params,
+                                       uint64_t pipelineIndex)
     {
         decltype(auto) sizeN = get<1>(problemShape);
         decltype(auto) sizeK = get<2>(problemShape);
         decltype(auto) iterNLoad = get<1>(iters);
 
-        CopyWeightGmToUb(
-            crd2idx(params.strideWGm, CeilDiv(*iterNLoad, 16UL), CeilDiv(*iterKLoad_, 16UL), _0{}, _0{}),
-            crd2idx(params.strideWeightInUb, _0{}, _0{}, _0{}, _0{}, pipelineIndex), iterNLoad.Size(),
-            iterKLoad_.Size(), sizeN, sizeK, get<0>(params.tileShapeUb), get<1>(params.tileShapeUb));
+        CopyWeightGmToUb(crd2idx(params.strideWGm, CeilDiv(*iterNLoad, 16UL), CeilDiv(*iterKLoad_, 16UL), _0{}, _0{}),
+                         crd2idx(params.strideWeightInUb, _0{}, _0{}, _0{}, _0{}, pipelineIndex), iterNLoad.Size(),
+                         iterKLoad_.Size(), sizeN, sizeK, get<0>(params.tileShapeUb), get<1>(params.tileShapeUb));
 
-        CopyAntiquantGmToUb(
-            crd2idx(params.strideScaleGm, *iterNLoad, *iterKLoad_ / params.groupSize),
-            crd2idx(params.strideScaleUb, _0{}, _0{}, pipelineIndex), iterNLoad.Size(),
-            CeilDiv(iterKLoad_.Size(), params.groupSize), sizeN, sizeK, get<0>(params.tileShapeUb),
-            CeilDiv(static_cast<uint64_t>(get<1>(params.tileShapeUb)), params.groupSize));
+        CopyAntiquantGmToUb(crd2idx(params.strideScaleGm, *iterNLoad, *iterKLoad_ / params.groupSize),
+                            crd2idx(params.strideScaleUb, _0{}, _0{}, pipelineIndex), iterNLoad.Size(),
+                            CeilDiv(iterKLoad_.Size(), params.groupSize), sizeN, sizeK, get<0>(params.tileShapeUb),
+                            CeilDiv(static_cast<uint64_t>(get<1>(params.tileShapeUb)), params.groupSize));
     }
 
     // 提取的辅助函数：更新迭代器状态
     template <typename Iterators>
-    DEVICE void UpdateIteratorState(Iterators& iters)
+    DEVICE void UpdateIteratorState(Iterators &iters)
     {
         decltype(auto) iterMLoad = get<0>(iters);
         decltype(auto) iterNLoad = get<1>(iters);
@@ -342,9 +338,8 @@ public:
 
     // 优化后的LoadInAdvance函数
     template <typename ProblemShape, typename Iterators>
-    DEVICE void LoadInAdvance(
-        ProblemShape const& problemShape, PipelineTuple const& pipelines, PipelineStateTuple& states,
-        Params const& params, Iterators& iters)
+    DEVICE void LoadInAdvance(ProblemShape const &problemShape, PipelineTuple const &pipelines,
+                              PipelineStateTuple &states, Params const &params, Iterators &iters)
     {
 #if defined(__CCE_KT_TEST__)
         if ASCEND_IS_AIC {
@@ -364,9 +359,8 @@ public:
 
     // 优化后的Process函数
     template <typename ProblemShape, typename Iterators>
-    DEVICE void Process(
-        ProblemShape const& problemShape, PipelineTuple const& pipelines, PipelineStateTuple& states,
-        Params const& params, Iterators& itersLoad, Iterators const& itersCompute)
+    DEVICE void Process(ProblemShape const &problemShape, PipelineTuple const &pipelines, PipelineStateTuple &states,
+                        Params const &params, Iterators &itersLoad, Iterators const &itersCompute)
     {
         decltype(auto) sizeK = get<2>(problemShape);
         decltype(auto) iterNCompute = get<1>(itersCompute);
@@ -380,10 +374,10 @@ public:
 
     // 提取的处理单个K迭代的函数
     template <typename ProblemShape, typename Iterators>
-    DEVICE void ProcessSingleKIteration(
-        ProblemShape const& problemShape, PipelineTuple const& pipelines, PipelineStateTuple& states,
-        Params const& params, Iterators& itersLoad, ContinuousIterator<uint64_t> const& iterKCompute,
-        decltype(get<1>(Iterators())) const& iterNCompute)
+    DEVICE void ProcessSingleKIteration(ProblemShape const &problemShape, PipelineTuple const &pipelines,
+                                        PipelineStateTuple &states, Params const &params, Iterators &itersLoad,
+                                        ContinuousIterator<uint64_t> const &iterKCompute,
+                                        decltype(get<1>(Iterators())) const &iterNCompute)
     {
         decltype(auto) pipelineGm2Ub = get<0>(pipelines);
         decltype(auto) pipelineUb2L1 = get<1>(pipelines);
@@ -403,14 +397,13 @@ public:
         ++pipelineStateWeightInLoad;
 
         pipelineGm2Ub.ConsumerWait(pipelineStateWeightInCompute);
-        ConsumeUbInL1(
-            iterKCompute, iterNCompute, params, pipelineStateWeightInCompute, pipelineStateAiv2Aic, pipelineUb2L1,
-            pipelineStateUb2L1);
+        ConsumeUbInL1(iterKCompute, iterNCompute, params, pipelineStateWeightInCompute, pipelineStateAiv2Aic,
+                      pipelineUb2L1, pipelineStateUb2L1);
         pipelineGm2Ub.ConsumerRelease(pipelineStateWeightInCompute);
         ++pipelineStateWeightInCompute;
     }
 
-    DEVICE void ClearPipeline(PipelineTuple const& pipelines, PipelineStateTuple& states)
+    DEVICE void ClearPipeline(PipelineTuple const &pipelines, PipelineStateTuple &states)
     {
         decltype(auto) pipelineGm2Ub = get<0>(pipelines);
         decltype(auto) pipelineUb2L1 = get<1>(pipelines);
@@ -423,10 +416,10 @@ public:
         pipelineGm2Ub.Clear(pipelineStateWeightInLoad);
         pipelineUb2L1.Clear();
     }
+
 private:
-    DEVICE void CopyWeightGmToUb(
-        uint64_t offsetWGm, uint64_t offsetWUb, uint64_t tileSizeN, uint64_t tileSizeK, uint64_t srcSizeN,
-        uint64_t srcSizeK, uint64_t dstSizeN, uint64_t dstSizeK)
+    DEVICE void CopyWeightGmToUb(uint64_t offsetWGm, uint64_t offsetWUb, uint64_t tileSizeN, uint64_t tileSizeK,
+                                 uint64_t srcSizeN, uint64_t srcSizeK, uint64_t dstSizeN, uint64_t dstSizeK)
     {
         if (unlikely(tileSizeN == 0)) {
             return;
@@ -437,48 +430,42 @@ private:
         }
         if constexpr (!Base::isWeightNz) {
             if constexpr (!Base::isTransB) {
-                CopyGmToUbIntervalDataCopy(
-                    tensorWeightInUb[offsetWUb].template ReinterpretCast<DtypeB>(), tensorWGm_[offsetWGm], tileSizeK,
-                    tileSizeN, dstSizeK, srcSizeN);
+                CopyGmToUbIntervalDataCopy(tensorWeightInUb[offsetWUb].template ReinterpretCast<DtypeB>(),
+                                           tensorWGm_[offsetWGm], tileSizeK, tileSizeN, dstSizeK, srcSizeN);
             } else {
-                CopyGmToUbIntervalDataCopy(
-                    tensorWeightInUb[offsetWUb].template ReinterpretCast<DtypeB>(), tensorWGm_[offsetWGm], tileSizeN,
-                    tileSizeK, dstSizeN, srcSizeK);
+                CopyGmToUbIntervalDataCopy(tensorWeightInUb[offsetWUb].template ReinterpretCast<DtypeB>(),
+                                           tensorWGm_[offsetWGm], tileSizeN, tileSizeK, dstSizeN, srcSizeK);
             }
         } else {
             if constexpr (!Base::isTransB) {
                 // (n1, k1, k0, n0)
-                CopyGmToUbIntervalDataCopy(
-                    tensorWeightInUb[offsetWUb].template ReinterpretCast<DtypeB>(), tensorWGm_[offsetWGm],
-                    CeilDiv(tileSizeN, static_cast<uint64_t>(BLOCK_CUBE)),
-                    CeilAlign(tileSizeK, static_cast<uint64_t>(BLOCK_CUBE)) * BLOCK_CUBE, dstSizeK * BLOCK_CUBE,
-                    srcSizeK * BLOCK_CUBE);
+                CopyGmToUbIntervalDataCopy(tensorWeightInUb[offsetWUb].template ReinterpretCast<DtypeB>(),
+                                           tensorWGm_[offsetWGm], CeilDiv(tileSizeN, static_cast<uint64_t>(BLOCK_CUBE)),
+                                           CeilAlign(tileSizeK, static_cast<uint64_t>(BLOCK_CUBE)) * BLOCK_CUBE,
+                                           dstSizeK * BLOCK_CUBE, srcSizeK * BLOCK_CUBE);
             } else {
                 // (k1, n1, n0, k0)
-                CopyGmToUbIntervalDataCopy(
-                    tensorWeightInUb[offsetWUb].template ReinterpretCast<DtypeB>(), tensorWGm_[offsetWGm],
-                    CeilDiv(tileSizeN, static_cast<uint64_t>(BLOCK_CUBE)),
-                    CeilAlign(tileSizeK, static_cast<uint64_t>(BLOCK_CUBE)) * BLOCK_CUBE, dstSizeN * BLOCK_CUBE,
-                    srcSizeN * BLOCK_CUBE);
+                CopyGmToUbIntervalDataCopy(tensorWeightInUb[offsetWUb].template ReinterpretCast<DtypeB>(),
+                                           tensorWGm_[offsetWGm], CeilDiv(tileSizeN, static_cast<uint64_t>(BLOCK_CUBE)),
+                                           CeilAlign(tileSizeK, static_cast<uint64_t>(BLOCK_CUBE)) * BLOCK_CUBE,
+                                           dstSizeN * BLOCK_CUBE, srcSizeN * BLOCK_CUBE);
             }
         }
     }
 
-    DEVICE void CopyAntiquantGmToUb(
-        uint64_t offsetScaleGm, uint64_t offsetScaleUb, uint64_t tileSizeN, uint64_t tileSizeK, uint64_t srcSizeN,
-        uint64_t srcSizeK, uint64_t dstSizeN, uint64_t dstSizeK)
+    DEVICE void CopyAntiquantGmToUb(uint64_t offsetScaleGm, uint64_t offsetScaleUb, uint64_t tileSizeN,
+                                    uint64_t tileSizeK, uint64_t srcSizeN, uint64_t srcSizeK, uint64_t dstSizeN,
+                                    uint64_t dstSizeK)
     {
         if (unlikely(tileSizeN == 0)) {
             return;
         }
         if constexpr (antiQuantType == Mc2QuantType::PER_CHANNEL) {
-            DataCopyPad2D(
-                tensorScaleUb[offsetScaleUb], tensorScaleGm_[offsetScaleGm], 1, tileSizeN,
-                CeilAlign(dstSizeN, static_cast<uint64_t>(VECTOR_REG_WIDTH)), srcSizeN);
+            DataCopyPad2D(tensorScaleUb[offsetScaleUb], tensorScaleGm_[offsetScaleGm], 1, tileSizeN,
+                          CeilAlign(dstSizeN, static_cast<uint64_t>(VECTOR_REG_WIDTH)), srcSizeN);
             if constexpr (Base::hasAntiQuantOffset) {
-                DataCopyPad2D(
-                    tensorOffsetUb[offsetScaleUb], tensorOffsetGm_[offsetScaleGm], 1, tileSizeN,
-                    CeilAlign(dstSizeN, static_cast<uint64_t>(VECTOR_REG_WIDTH)), srcSizeN);
+                DataCopyPad2D(tensorOffsetUb[offsetScaleUb], tensorOffsetGm_[offsetScaleGm], 1, tileSizeN,
+                              CeilAlign(dstSizeN, static_cast<uint64_t>(VECTOR_REG_WIDTH)), srcSizeN);
             }
         } else if constexpr (antiQuantType == Mc2QuantType::PER_TENSOR) {
             scaleValue_ = tensorScaleGm_.GetValue(0);
@@ -495,12 +482,11 @@ private:
             intriParams.blockLen = tileSizeN * sizeof(DtypeA);
             intriParams.srcStride = (srcSizeN - tileSizeN) * sizeof(DtypeA);
             intriParams.dstStride = (dstSizeN - tileSizeN) * sizeof(DtypeA) / BLOCK_SIZE;
-            X_LOG(
-                "DataCopyPad blockCount %d blockLen %d srcStride %d dstStride %d", intriParams.blockCount,
-                intriParams.blockLen, intriParams.srcStride, intriParams.dstStride);
+            X_LOG("DataCopyPad blockCount %d blockLen %d srcStride %d dstStride %d", intriParams.blockCount,
+                  intriParams.blockLen, intriParams.srcStride, intriParams.dstStride);
 #if defined(__CCE_KT_TEST__)
-            ASCENDC_ASSERT(
-                intriParams.blockLen > 0, { X_LOG("blockLen[%d] should be larger than 0.", intriParams.blockLen); });
+            ASCENDC_ASSERT(intriParams.blockLen > 0,
+                           { X_LOG("blockLen[%d] should be larger than 0.", intriParams.blockLen); });
 #endif
             DataCopyPad(tensorScaleUb[offsetScaleUb], tensorScaleGm_[offsetScaleGm], intriParams, padParams);
             if constexpr (Base::hasAntiQuantOffset) {
@@ -510,28 +496,27 @@ private:
     }
 
     template <typename IterN, typename IterK>
-    DEVICE void ConsumeUbInL1(
-        IterK const& iterKUb, IterN const& iterN, Params const& params,
-        PipelineStateWeightInCompute const& pipelineStateWeightIn, PipelineStateAiv2Aic& pipelineStateAiv2Aic,
-        PipelineUb2L1 const& pipelineUb2L1, PipelineStateUb2L1& pipelineStateUb2L1)
+    DEVICE void ConsumeUbInL1(IterK const &iterKUb, IterN const &iterN, Params const &params,
+                              PipelineStateWeightInCompute const &pipelineStateWeightIn,
+                              PipelineStateAiv2Aic &pipelineStateAiv2Aic, PipelineUb2L1 const &pipelineUb2L1,
+                              PipelineStateUb2L1 &pipelineStateUb2L1)
     {
         // ub->l1 k
         for (ContinuousIterator<uint32_t> iterKUb2L1(/*stop*/ iterKUb.Size(), /*step*/ get<3>(params.tileShapeL1));
              !iterKUb2L1.End(); ++iterKUb2L1) {
             PipelineAiv2Aic::ProducerWaitAfterStages(pipelineStateAiv2Aic);
-            ProduceL1InUb(
-                iterKUb2L1, iterN, params, pipelineStateWeightIn, pipelineUb2L1, pipelineStateUb2L1,
-                pipelineStateAiv2Aic);
+            ProduceL1InUb(iterKUb2L1, iterN, params, pipelineStateWeightIn, pipelineUb2L1, pipelineStateUb2L1,
+                          pipelineStateAiv2Aic);
             PipelineAiv2Aic::ProducerRelease();
             ++pipelineStateAiv2Aic;
         }
     }
 
     template <typename IterN, typename IterK>
-    DEVICE void ProduceL1InUb(
-        IterK const& iterKUb2L1, IterN const& iterN, Params const& params,
-        PipelineStateWeightInCompute const& pipelineStateWeightIn, PipelineUb2L1 const& pipelineUb2L1,
-        PipelineStateUb2L1& pipelineStateUb2L1, PipelineStateAiv2Aic const& pipelineStateAiv2Aic)
+    DEVICE void ProduceL1InUb(IterK const &iterKUb2L1, IterN const &iterN, Params const &params,
+                              PipelineStateWeightInCompute const &pipelineStateWeightIn,
+                              PipelineUb2L1 const &pipelineUb2L1, PipelineStateUb2L1 &pipelineStateUb2L1,
+                              PipelineStateAiv2Aic const &pipelineStateAiv2Aic)
     {
         // 两处需要用到
         //   reg2Ub
@@ -543,20 +528,15 @@ private:
                  !iterNReg2L1.End(); ++iterNReg2L1) {
                 pipelineUb2L1.ProducerWait(pipelineStateUb2L1);
                 AntiQuantComputeKNGroupWeightNz<DtypeA, Base::hasAntiQuantOffset, Kub_, STAGE_VF_OUT>(
-                    tensorWeightInUb
-                        [crd2idx(
-                             params.strideWeightInUb, CeilDiv(*iterNReg2L1, 16U), CeilDiv(*iterKReg2L1, 16U), _0{},
-                             _0{}, pipelineStateWeightIn.index()) >>
-                         1],
-                    tensorScaleUb[crd2idx(
-                        params.strideScaleUb, *iterNReg2L1, *iterKReg2L1 / params.groupSize,
-                        pipelineStateWeightIn.index())],
-                    tensorOffsetUb[crd2idx(
-                        params.strideScaleUb, *iterNReg2L1, *iterKReg2L1 / params.groupSize,
-                        pipelineStateWeightIn.index())],
-                    tensorWeightOutUb[crd2idx(
-                        params.strideWeightOutUb, CeilDiv(*iterNReg2L1, 16U), CeilDiv(*iterKReg2L1, 16U), _0{}, _0{},
-                        pipelineStateUb2L1.index())],
+                    tensorWeightInUb[crd2idx(params.strideWeightInUb, CeilDiv(*iterNReg2L1, 16U),
+                                             CeilDiv(*iterKReg2L1, 16U), _0{}, _0{}, pipelineStateWeightIn.index()) >>
+                                     1],
+                    tensorScaleUb[crd2idx(params.strideScaleUb, *iterNReg2L1, *iterKReg2L1 / params.groupSize,
+                                          pipelineStateWeightIn.index())],
+                    tensorOffsetUb[crd2idx(params.strideScaleUb, *iterNReg2L1, *iterKReg2L1 / params.groupSize,
+                                           pipelineStateWeightIn.index())],
+                    tensorWeightOutUb[crd2idx(params.strideWeightOutUb, CeilDiv(*iterNReg2L1, 16U),
+                                              CeilDiv(*iterKReg2L1, 16U), _0{}, _0{}, pipelineStateUb2L1.index())],
                     iterNReg2L1.Size(), iterKReg2L1.Size(), get<0>(params.tileShapeUb), params.groupSize);
                 pipelineUb2L1.ProducerRelease(pipelineStateUb2L1);
 
@@ -568,9 +548,8 @@ private:
                     /*l1 buf stride*/ get<5>(params.strideWeightL1));
                 CopyUbToL1<STAGE_VF_OUT>(
                     crd2idx(params.strideWeightOutUb, _0{}, _0{}, _0{}, _0{}, pipelineStateUb2L1.index()),
-                    crd2idx(
-                        strideWeightL1, CeilDiv(*iterNReg2L1, 16U), CeilDiv(*iterKReg2L1 - *iterKUb2L1, 16U), _0{},
-                        _0{}, AscendC::GetSubBlockIdx(), pipelineStateAiv2Aic.index()),
+                    crd2idx(strideWeightL1, CeilDiv(*iterNReg2L1, 16U), CeilDiv(*iterKReg2L1 - *iterKUb2L1, 16U), _0{},
+                            _0{}, AscendC::GetSubBlockIdx(), pipelineStateAiv2Aic.index()),
                     iterNReg2L1.Size(), iterKReg2L1.Size(), iterKUb2L1.Size(), iterN.Size());
                 pipelineUb2L1.ConsumerRelease(pipelineStateUb2L1);
                 ++pipelineStateUb2L1;
@@ -580,9 +559,8 @@ private:
 
     constexpr static uint64_t WEIGHT_F16_UB_NZ_STRIDE = 65;
     template <uint32_t UB_WEIGHT_OUTPUT_F16BUFFER_NUM>
-    DEVICE void CopyUbToL1(
-        uint64_t offsetWeightUb, uint64_t offsetWeightL1, uint64_t tileSizeN, uint64_t tileSizeK, uint64_t nSize,
-        uint64_t kSize)
+    DEVICE void CopyUbToL1(uint64_t offsetWeightUb, uint64_t offsetWeightL1, uint64_t tileSizeN, uint64_t tileSizeK,
+                           uint64_t nSize, uint64_t kSize)
     {
         static constexpr uint64_t ONE_REG_ELEM = VECTOR_REG_WIDTH / sizeof(DtypeA);
         static constexpr uint64_t ONE_BLOCK_ELEM = BLOCK_CUBE / sizeof(uint8_t);
@@ -602,11 +580,11 @@ private:
             if constexpr (Base::isTransB) {
             } else {
                 // (n1, k1, k0, n0)
-                CopyUbToL1IntervalDataCopy(
-                    weightF16L1_[offsetWeightL1], tensorWeightOutUb[offsetWeightUb],
-                    CeilAlign(tileSizeK, ONE_BLOCK_ELEM) * CeilAlign(tileSizeN, ONE_BLOCK_ELEM) / ONE_REG_ELEM,
-                    ONE_REG_ELEM / ONE_BLOCK_ELEM, 0,
-                    (UB_WEIGHT_OUTPUT_F16BUFFER_NUM - 1) * ONE_REG_ELEM / ONE_BLOCK_ELEM);
+                CopyUbToL1IntervalDataCopy(weightF16L1_[offsetWeightL1], tensorWeightOutUb[offsetWeightUb],
+                                           CeilAlign(tileSizeK, ONE_BLOCK_ELEM) * CeilAlign(tileSizeN, ONE_BLOCK_ELEM) /
+                                               ONE_REG_ELEM,
+                                           ONE_REG_ELEM / ONE_BLOCK_ELEM, 0,
+                                           (UB_WEIGHT_OUTPUT_F16BUFFER_NUM - 1) * ONE_REG_ELEM / ONE_BLOCK_ELEM);
             }
         }
     }

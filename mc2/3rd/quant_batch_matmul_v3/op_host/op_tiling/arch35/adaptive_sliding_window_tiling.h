@@ -21,21 +21,21 @@
 namespace optiling {
 
 struct Mc2AdaptiveSlidingWinow {
-    uint64_t baseM = 0;            // 主窗口基本块大小
-    uint64_t baseN = 0;            // 主窗口基本块大小
+    uint64_t baseM = 0; // 主窗口基本块大小
+    uint64_t baseN = 0; // 主窗口基本块大小
     uint64_t baseK = 0;
-    uint64_t mBlockCnt = 0;        // m方向基本块数量
-    uint64_t nBlockCnt = 0;        // n方向基本块数量
-    uint64_t tatolBlockCnt = 0;    // 基本块总数
-    uint64_t mTail = 0;            // m方向尾块的有效行数
-    uint64_t nTail = 0;            // n方向尾块的有效列数
-    uint64_t singleWinM = 0;       // 主窗口的m边长
-    uint64_t singleWinN = 0;       // 主窗口的n边长
-    uint64_t totalWinCnt = 0;      // 窗口总数，及核执行最大轮数
-    uint64_t mainRow = 0;          // 主窗口行数（以窗口为单位，一个窗口为一行）
-    uint64_t tailWinBlockCnt = 0;  // 尾窗口包含的基本快数量
-    uint64_t mTailTile = 1;        // 尾部窗口基本块m方向重切粒度
-    uint64_t nTailTile = 1;        // 尾部窗口基本块n方向重切粒度
+    uint64_t mBlockCnt = 0;       // m方向基本块数量
+    uint64_t nBlockCnt = 0;       // n方向基本块数量
+    uint64_t tatolBlockCnt = 0;   // 基本块总数
+    uint64_t mTail = 0;           // m方向尾块的有效行数
+    uint64_t nTail = 0;           // n方向尾块的有效列数
+    uint64_t singleWinM = 0;      // 主窗口的m边长
+    uint64_t singleWinN = 0;      // 主窗口的n边长
+    uint64_t totalWinCnt = 0;     // 窗口总数，及核执行最大轮数
+    uint64_t mainRow = 0;         // 主窗口行数（以窗口为单位，一个窗口为一行）
+    uint64_t tailWinBlockCnt = 0; // 尾窗口包含的基本快数量
+    uint64_t mTailTile = 1;       // 尾部窗口基本块m方向重切粒度
+    uint64_t nTailTile = 1;       // 尾部窗口基本块n方向重切粒度
     bool useTailWinLogic = true;  // 是否使用尾窗口处理逻辑
 };
 
@@ -78,7 +78,8 @@ enum class Mc2QMMKernelType : uint32_t {
 class Mc2AdaptiveSlidingWindowTiling : public Mc2QuantBatchMatmulV3TilingBase {
 public:
     explicit Mc2AdaptiveSlidingWindowTiling(gert::TilingContext *context);
-    Mc2AdaptiveSlidingWindowTiling(gert::TilingContext *context, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *out);
+    Mc2AdaptiveSlidingWindowTiling(gert::TilingContext *context,
+                                   DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *out);
     ~Mc2AdaptiveSlidingWindowTiling() override = default;
 
     // 1、获取平台信息比如CoreNum、UB/L1/L0C资源大小
@@ -101,9 +102,8 @@ public:
 protected:
     ge::graphStatus CalcUbTiling() override;
     bool CheckDtype() const override;
-    bool CheckShape(const std::vector<gert::Shape *> &mandatoryShape, const gert::StorageShape* biasShape,
-                    const gert::StorageShape* pertokenShape,
-                    const std::vector<int64_t> &dimValueOfMKN) const override;
+    bool CheckShape(const std::vector<gert::Shape *> &mandatoryShape, const gert::StorageShape *biasShape,
+                    const gert::StorageShape *pertokenShape, const std::vector<int64_t> &dimValueOfMKN) const override;
     void CalL1Tiling();
     bool CheckBiasAndScale(uint64_t baseN, uint64_t dbL0c) const;
     bool AnalyseSlidingWinInfo();
@@ -140,5 +140,5 @@ private:
     bool isAFullLoad_ = false;
     bool isBf16Mix_ = false;
 };
-}  // namespace optiling
-#endif  // ADAPTIVE_SLIDING_WINDOW_TILING_H
+} // namespace optiling
+#endif // ADAPTIVE_SLIDING_WINDOW_TILING_H

@@ -68,14 +68,13 @@ enum class CommType : uint64_t {
 bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
                           [[maybe_unused]] const char *groupTp, aclTensor *expandX,
                           [[maybe_unused]] aclTensor *dynamicScales, aclTensor *assistInfoForCombine,
-                          aclTensor *expertTokensNums, aclTensor *epRecvCounts, aclTensor *tpRecvCounts)
+                          aclTensor *expertTokensNums, aclTensor *epRecvCounts)
 {
     OP_CHECK_NULL(x, return false);
     OP_CHECK_NULL(expertIds, return false);
     OP_CHECK_NULL(expandX, return false);
     OP_CHECK_NULL(assistInfoForCombine, return false);
     OP_CHECK_NULL(expertTokensNums, return false);
-    OP_CHECK_NULL(tpRecvCounts, return false);
     OP_CHECK_NULL(epRecvCounts, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeDispatchV2", "groupEp");
@@ -84,27 +83,38 @@ bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const 
     return true;
 }
 
-aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
-                                const char *groupTp, int64_t quantMode, aclTensor *expandX, aclTensor *dynamicScales,
-                                aclTensor *assistInfoForCombine, aclTensor *expertTokensNums, aclTensor *epRecvCounts,
-                                aclTensor *tpRecvCounts)
+aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, const aclTensor *scalesOptional,
+                                const char *groupEp, const char *groupTp, int64_t quantMode, aclTensor *expandX,
+                                aclTensor *dynamicScales, aclTensor *assistInfoForCombine, aclTensor *expertTokensNums,
+                                aclTensor *epRecvCounts, aclTensor *tpRecvCounts)
 {
     CHECK_RET(DispatchCheckNotNull(x, expertIds, groupEp, groupTp, expandX, dynamicScales, assistInfoForCombine,
-                                   expertTokensNums, epRecvCounts, tpRecvCounts),
+                                   expertTokensNums, epRecvCounts),
               ACLNN_ERR_PARAM_NULLPTR);
+    // groupTp为预留参数(当前版本不支持TP域通信)，nullptr视同空串，避免后续strnlen空指针解引用
+    if (groupTp == nullptr) {
+        groupTp = "";
+    }
 
     if (quantMode == DISPATCH_DYNAMIC_QUANT_MODE) {
         OP_LOGD("quantMode = 2, dynamicScales can't be null");
         CHECK_RET(dynamicScales != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     }
+    if (x->GetDataType() == ACL_INT32) {
+        OP_LOGD("x dtype is INT32, scales and dynamicScales can't be null");
+        CHECK_RET(scalesOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+        CHECK_RET(dynamicScales != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    }
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeDispatchV2", "groupEp",
-            "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX), "groupEp name too long");
+                                              "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX),
+                                              "groupEp name too long");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     if (strnlen(groupTp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeDispatchV2", "groupTp",
-            "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX), "groupTp name too long");
+                                              "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX),
+                                              "groupTp name too long");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     return ACLNN_SUCCESS;
@@ -154,18 +164,16 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     OP_LOGD("enter to the  aclnnMoeDistributeDispatchGetWorkspaceSizeBase\n");
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
-    auto retParam = DispatchCheckParams(x, expertIds, groupEp, groupTp, quantMode, expandXOut, dynamicScalesOut,
-                                        assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut);
+    auto retParam =
+        DispatchCheckParams(x, expertIds, scalesOptional, groupEp, groupTp, quantMode, expandXOut, dynamicScalesOut,
+                            assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 
-    const aclTensor *performanceInfoOptionalDispatchV2Temp = performanceInfoOptional;
     aclTensor *mc2Context = nullptr;
     aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
     const char *groupTpDispatchV2Temp = groupTp;
     if (is910B) {
         groupTpDispatchV2Temp = "";
-    } else if (is950) {
-        performanceInfoOptionalDispatchV2Temp = nullptr;
     }
 
     char groupEpBuf[HCCL_GROUP_NAME_MAX] = {0};
@@ -175,14 +183,22 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     char commAlgBuf[HCCL_GROUP_NAME_MAX] = {0};
     SafeCopyGroupBuf(commAlgBuf, HCCL_GROUP_NAME_MAX, commAlg, HCCL_GROUP_NAME_MAX - 1);
 
+    // ccu暂时不支持performanceInfo
+    if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
+        if (performanceInfoOptional != nullptr) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeDistributeDispatchV2", "performanceInfo", "not nullptr",
+                                                  "performanceInfo not supported in ccu");
+            return ACLNN_ERR_PARAM_NULLPTR;
+        }
+    }
+
     int64_t ydtype = expandXOut->GetDataType();
-    if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持新方案
+    if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持mc2Context
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
             x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
-            performanceInfoOptionalDispatchV2Temp, groupEpBuf, epWorldSize, epRankId, moeExpertNum,
-            groupTpBuf, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-            sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlgBuf, zeroExpertNum,
-            copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
+            performanceInfoOptional, groupEpBuf, epWorldSize, epRankId, moeExpertNum, groupTpBuf, tpWorldSize, tpRankId,
+            expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlgBuf,
+            zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
             expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
     } else {
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
@@ -192,11 +208,10 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
         CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
             mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
-            performanceInfoOptionalDispatchV2Temp, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, tpWorldSize,
-            tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType,
-            commAlgBuf, zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut,
-            dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut,
-            expandScalesOut, workspaceSize, executor);
+            performanceInfoOptional, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, tpWorldSize, tpRankId,
+            expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlgBuf,
+            zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
+            expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
 #endif
     }
     SetCommArgs(is950, is910B, commAlg, executor);
@@ -220,7 +235,6 @@ aclnnStatus aclnnMoeDistributeDispatchBase(void *workspace, uint64_t workspaceSi
 #endif
     return aclnnInnerMoeDistributeDispatchV2(workspace, workspaceSize, executor, stream);
 }
-
 
 #ifdef __cplusplus
 }

@@ -18,7 +18,8 @@
 namespace ops {
 class AttentionToFFN : public OpDef {
 public:
-    explicit AttentionToFFN(const char *name) : OpDef(name) {
+    explicit AttentionToFFN(const char *name) : OpDef(name)
+    {
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
@@ -68,7 +69,7 @@ public:
         this->Attr("quant_mode").AttrType(OPTIONAL).Int();
         this->Attr("sync_flag").AttrType(OPTIONAL).Int();
         this->Attr("ffn_start_rank_id").AttrType(OPTIONAL).Int();
-    
+
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
@@ -85,4 +86,4 @@ public:
 };
 
 OP_ADD(AttentionToFFN);
-}  // namespace ops
+} // namespace ops

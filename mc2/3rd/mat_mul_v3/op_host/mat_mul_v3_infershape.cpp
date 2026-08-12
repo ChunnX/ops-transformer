@@ -25,8 +25,8 @@ constexpr int64_t BLOCK_SIZE = 16;
 constexpr int64_t UNKNOWN_DIM = -1;
 constexpr int64_t UNKNOWN_DIM_NUM = -2;
 
-void InferComplementedInput(
-    Shape& shape_x1_new, Shape& shape_x2_new, bool& shape_x1_reshape_flag, bool& shape_x2_reshape_flag)
+void InferComplementedInput(Shape &shape_x1_new, Shape &shape_x2_new, bool &shape_x1_reshape_flag,
+                            bool &shape_x2_reshape_flag)
 {
     if (shape_x1_new.GetDimNum() == 1 && shape_x1_new.GetDim(0) > 0) {
         shape_x1_reshape_flag = true;
@@ -45,7 +45,7 @@ void InferComplementedInput(
     }
 }
 
-static void InferComplementedOutput(bool shape_x1_reshape_flag, bool shape_x2_reshape_flag, Shape& shape_out)
+static void InferComplementedOutput(bool shape_x1_reshape_flag, bool shape_x2_reshape_flag, Shape &shape_out)
 {
     size_t dim_num = shape_out.GetDimNum();
     if (dim_num >= MATMUL_MIN_SHAPE_SIZE) {
@@ -59,12 +59,12 @@ static void InferComplementedOutput(bool shape_x1_reshape_flag, bool shape_x2_re
     }
 }
 
-bool CheckIsUnknownDimNum(const gert::Shape& shape)
+bool CheckIsUnknownDimNum(const gert::Shape &shape)
 {
     return shape.GetDimNum() == 1 && shape.GetDim(0) == UNKNOWN_DIM_NUM;
 }
 
-void UpdateUnknowDimNumToUnkownRank(gert::Shape& shape)
+void UpdateUnknowDimNumToUnkownRank(gert::Shape &shape)
 {
     if (CheckIsUnknownDimNum(shape)) {
         shape.SetDimNum(MATMUL_MIN_SHAPE_SIZE);
@@ -73,19 +73,18 @@ void UpdateUnknowDimNumToUnkownRank(gert::Shape& shape)
     }
 }
 
-bool UpdateOutputShapeByBias(const std::string& op_name, gert::Shape* shape_out, const gert::Shape* shape_bias)
+bool UpdateOutputShapeByBias(const std::string &op_name, gert::Shape *shape_out, const gert::Shape *shape_bias)
 {
     if (shape_bias != nullptr && shape_bias->GetDimNum() > 0) {
         Shape shape_bias_new(*shape_bias);
         UpdateUnknowDimNumToUnkownRank(shape_bias_new);
         int64_t bias_dim = shape_bias_new.GetDimNum();
         if (shape_bias_new.GetDim(bias_dim - 1) != UNKNOWN_DIM && shape_out->GetDim(1) != UNKNOWN_DIM) {
-            OP_CHECK_IF(
-                shape_bias_new.GetDim(bias_dim - 1) != shape_out->GetDim(1),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(op_name, "bias",
-                    (std::to_string(shape_bias_new.GetDim(bias_dim - 1))).c_str(),
-                    "The shape dim of bias must be the same as the n dimension of output."),
-                return false);
+            OP_CHECK_IF(shape_bias_new.GetDim(bias_dim - 1) != shape_out->GetDim(1),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            op_name, "bias", (std::to_string(shape_bias_new.GetDim(bias_dim - 1))).c_str(),
+                            "The shape dim of bias must be the same as the n dimension of output."),
+                        return false);
         }
         if (shape_bias_new.GetDim(bias_dim - 1) != UNKNOWN_DIM && shape_out->GetDim(1) == UNKNOWN_DIM) {
             shape_out->SetDim(1, shape_bias_new.GetDim(bias_dim - 1));
@@ -94,7 +93,7 @@ bool UpdateOutputShapeByBias(const std::string& op_name, gert::Shape* shape_out,
     return true;
 }
 
-static ge::graphStatus InferShapeForMatMulV3(InferShapeContext* context)
+static ge::graphStatus InferShapeForMatMulV3(InferShapeContext *context)
 {
     auto op_name = context->GetNodeName();
     auto shape_x1 = context->GetInputShape(0);
@@ -111,21 +110,20 @@ static ge::graphStatus InferShapeForMatMulV3(InferShapeContext* context)
         return ge::GRAPH_FAILED;
     }
     auto shape_bias = context->GetOptionalInputShape(MATMUL_BIAS_IDX);
-    if (CheckIsUnknownDimNum(*shape_x1) && CheckIsUnknownDimNum(*shape_x2) && (shape_bias == nullptr || CheckIsUnknownDimNum(*shape_bias))) {
+    if (CheckIsUnknownDimNum(*shape_x1) && CheckIsUnknownDimNum(*shape_x2) &&
+        (shape_bias == nullptr || CheckIsUnknownDimNum(*shape_bias))) {
         shape_out->SetDimNum(1);
         shape_out->SetDim(0, UNKNOWN_DIM_NUM);
         return ge::GRAPH_SUCCESS;
     }
 
-    const bool* trans_a = attrs->GetAttrPointer<bool>(0);
-    const bool* trans_b = attrs->GetAttrPointer<bool>(1);
-    OP_CHECK_IF(
-        trans_a == nullptr || trans_b == nullptr, OP_LOGE_WITH_INVALID_INPUT(op_name, "attrs"),
-        return ge::GRAPH_FAILED);
+    const bool *trans_a = attrs->GetAttrPointer<bool>(0);
+    const bool *trans_b = attrs->GetAttrPointer<bool>(1);
+    OP_CHECK_IF(trans_a == nullptr || trans_b == nullptr, OP_LOGE_WITH_INVALID_INPUT(op_name, "attrs"),
+                return ge::GRAPH_FAILED);
 
-    OP_LOGD(
-        context->GetNodeName(), "x1_shape: %s, x2_shape: %s, transpose_x1: %d, transpose_x2: %d",
-        Ops::Base::ToString(*shape_x1).c_str(), Ops::Base::ToString(*shape_x2).c_str(), *trans_a, *trans_b);
+    OP_LOGD(context->GetNodeName(), "x1_shape: %s, x2_shape: %s, transpose_x1: %d, transpose_x2: %d",
+            Ops::Base::ToString(*shape_x1).c_str(), Ops::Base::ToString(*shape_x2).c_str(), *trans_a, *trans_b);
 
     ge::DataType dtype = tensor_x1->GetDataType();
     if (dtype == ge::DT_FLOAT) {
@@ -154,8 +152,8 @@ static ge::graphStatus InferShapeForMatMulV3(InferShapeContext* context)
 
     OP_LOGD(op_name, "check the input shape length.");
     if (shape_x1_new.GetDimNum() != MATMUL_MIN_SHAPE_SIZE && shape_x1_new.GetDimNum() != MATMUL_MAX_SHAPE_SIZE) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM(op_name, "x1",
-            (std::to_string(shape_x1_new.GetDimNum()) + "D").c_str(), "2D or 4D");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(op_name, "x1", (std::to_string(shape_x1_new.GetDimNum()) + "D").c_str(),
+                                     "2D or 4D");
         return ge::GRAPH_FAILED;
     }
 
@@ -176,9 +174,10 @@ static ge::graphStatus InferShapeForMatMulV3(InferShapeContext* context)
     if (shape_x1_new.GetDim(idx_k_a) != UNKNOWN_DIM && shape_x2_new.GetDim(idx_k_b) != UNKNOWN_DIM) {
         OP_CHECK_IF(
             shape_x1_new.GetDim(idx_k_a) != shape_x2_new.GetDim(idx_k_b),
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(op_name, "x1 and x2",
-                (std::to_string(shape_x1_new.GetDim(idx_k_a)) + " and " +
-                 std::to_string(shape_x2_new.GetDim(idx_k_b))).c_str(),
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                op_name, "x1 and x2",
+                (std::to_string(shape_x1_new.GetDim(idx_k_a)) + " and " + std::to_string(shape_x2_new.GetDim(idx_k_b)))
+                    .c_str(),
                 "The k dimension of x1 must be equal to the k dimension of x2"),
             return ge::GRAPH_FAILED);
     }

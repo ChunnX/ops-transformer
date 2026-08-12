@@ -18,9 +18,14 @@ using namespace AscendC;
 using namespace MoeGatingTopK;
 
 #define TILING_KEY_REGBASE 10000
+#define TILING_KEY_HASH_INT32_INT64 10001
+#define TILING_KEY_HASH_INT32_INT32 10002
+#define TILING_KEY_HASH_INT64_INT64 10003
+#define TILING_KEY_HASH_INT64_INT32 10004
 
-extern "C" __global__ __aicore__ void moe_gating_top_k(GM_ADDR x, GM_ADDR bias, GM_ADDR y, GM_ADDR expertIdx,
-                                                       GM_ADDR out, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void moe_gating_top_k(GM_ADDR x, GM_ADDR bias, GM_ADDR inputIds, GM_ADDR tid2eid,
+                                                       GM_ADDR y, GM_ADDR expertIdx, GM_ADDR out, GM_ADDR workspace,
+                                                       GM_ADDR tiling)
 {
     if (g_coreType == AIC) {
         return;
@@ -38,9 +43,22 @@ extern "C" __global__ __aicore__ void moe_gating_top_k(GM_ADDR x, GM_ADDR bias, 
     GET_TILING_DATA_WITH_STRUCT(MoeGatingTopKRegbaseTilingData, tiling_data_in, tiling);
     const MoeGatingTopKRegbaseTilingData *__restrict tilingData = &tiling_data_in;
     TPipe tPipe;
-    if (TILING_KEY_IS(TILING_KEY_REGBASE)) {
+
+    if (TILING_KEY_IS(TILING_KEY_REGBASE) || TILING_KEY_IS(TILING_KEY_HASH_INT32_INT32)) {
         MoeGatingTopKRegbase<DTYPE_X> op;
-        op.Init(x, bias, y, expertIdx, out, userWS, tilingData, &tPipe);
+        op.Init(x, bias, inputIds, tid2eid, y, expertIdx, out, userWS, tilingData, &tPipe);
+        op.Process();
+    } else if (TILING_KEY_IS(TILING_KEY_HASH_INT32_INT64)) {
+        MoeGatingTopKRegbase<DTYPE_X, int32_t, int64_t> op;
+        op.Init(x, bias, inputIds, tid2eid, y, expertIdx, out, userWS, tilingData, &tPipe);
+        op.Process();
+    } else if (TILING_KEY_IS(TILING_KEY_HASH_INT64_INT64)) {
+        MoeGatingTopKRegbase<DTYPE_X, int64_t, int64_t> op;
+        op.Init(x, bias, inputIds, tid2eid, y, expertIdx, out, userWS, tilingData, &tPipe);
+        op.Process();
+    } else if (TILING_KEY_IS(TILING_KEY_HASH_INT64_INT32)) {
+        MoeGatingTopKRegbase<DTYPE_X, int64_t, int32_t> op;
+        op.Init(x, bias, inputIds, tid2eid, y, expertIdx, out, userWS, tilingData, &tPipe);
         op.Process();
     }
 }

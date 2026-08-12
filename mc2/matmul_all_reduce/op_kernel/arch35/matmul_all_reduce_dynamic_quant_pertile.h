@@ -29,7 +29,7 @@ using namespace AscendC;
 
 constexpr uint32_t OUT_LOOP_TWO = 2;
 
-template<class T, class U = float>
+template <class T, class U = float>
 class MatmulAllReduceDynamicQuantPertile {
 public:
     uint64_t outLoopNum_ = 0;
@@ -45,7 +45,7 @@ public:
     GlobalTensor<T> dequantInputGM_;
     GlobalTensor<U> dequantOutputGM_;
     GlobalTensor<float> scaleGM_;
-    TPipe* pipe_;
+    TPipe *pipe_;
     TQue<QuePosition::VECIN, 1> tilesQ_;
     TQue<QuePosition::VECOUT, 1> outTilesQ_;
     TQue<QuePosition::VECIN, 1> inScalesQ_;
@@ -85,8 +85,8 @@ public:
         }
         this->procRowTileCnt_ = maxProcRows / this->procRows_;
         uint64_t procRowLen = isQuant ?
-                                ((this->procRowTileCnt_ * TILELEN + this->procRowTileCnt_) * sizeof(float)) :
-                                (this->procRowTileCnt_ * TILELEN * sizeof(T) + this->procRowTileCnt_ * sizeof(float));
+                                  ((this->procRowTileCnt_ * TILELEN + this->procRowTileCnt_) * sizeof(float)) :
+                                  (this->procRowTileCnt_ * TILELEN * sizeof(T) + this->procRowTileCnt_ * sizeof(float));
         this->innerLoopNum_ = isQuant ? Ceil((tileN + oneLineScaleCnt) * sizeof(float), procRowLen) :
                                         Ceil(tileN * sizeof(T) + oneLineScaleCnt * sizeof(float), procRowLen);
         this->inputAddr_ = inputAddr;
@@ -190,12 +190,12 @@ public:
             outputOffset = this->procRows_ * tileN * (outerIdx - 1) * coreNum;
             outputOffset += this->procRowsFirstTail_ * tileN * coreNum;
         }
-        dequantInputGM_.SetGlobalBuffer(
-            (__gm__ T*)(this->inputAddr_ + inputBlockLen * GetBlockIdx() + inputOffset), inputBlockSize);
-        dequantOutputGM_.SetGlobalBuffer(
-            (__gm__ U*)this->outputAddr_ + outputBlockSize * GetBlockIdx() + outputOffset, outputBlockSize);
+        dequantInputGM_.SetGlobalBuffer((__gm__ T *)(this->inputAddr_ + inputBlockLen * GetBlockIdx() + inputOffset),
+                                        inputBlockSize);
+        dequantOutputGM_.SetGlobalBuffer((__gm__ U *)this->outputAddr_ + outputBlockSize * GetBlockIdx() + outputOffset,
+                                         outputBlockSize);
         scaleGM_.SetGlobalBuffer(
-            (__gm__ float*)(this->inputAddr_ + inputBlockLen * GetBlockIdx() + inputOffset + tileN * sizeof(T)),
+            (__gm__ float *)(this->inputAddr_ + inputBlockLen * GetBlockIdx() + inputOffset + tileN * sizeof(T)),
             scaleBlockSize);
         pipe_->InitBuffer(tilesQ_, DOUBLE_BUFFER, bufDataCnt * sizeof(T));
         pipe_->InitBuffer(inScalesQ_, DOUBLE_BUFFER,

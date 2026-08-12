@@ -29,7 +29,7 @@ inline ge::graphStatus Mc2GenSimplifiedKey(gert::TilingContext *context, ge::cha
     static const int32_t BIAS_INDEX = 2;
     OP_LOGI(context->GetNodeName(), "Enter genSimplifiedKey.");
     OP_TILING_CHECK(simplifiedKey == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "simplifiedKey"),
-        return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
 
     OPS_CHECK_NULL_WITH_CONTEXT(context, context->GetInputDesc(INPUT0_INDEX));
     OPS_CHECK_NULL_WITH_CONTEXT(context, context->GetInputDesc(INPUT1_INDEX));
@@ -71,10 +71,10 @@ inline ge::graphStatus Mc2GenSimplifiedKey(gert::TilingContext *context, ge::cha
     }
 
     OP_TILING_CHECK(strlen(simplifiedKey) > MAX_LEN_SIMPLIFIED_KEY,
-        OP_LOGE(context->GetNodeName(), "len of simplifiedKey exceeds max length."),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "len of simplifiedKey exceeds max length."),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
-}
+} // namespace optiling
 #endif // __OP_HOST_MATMUL_V3_SIMPILIFIEDKEY_H__

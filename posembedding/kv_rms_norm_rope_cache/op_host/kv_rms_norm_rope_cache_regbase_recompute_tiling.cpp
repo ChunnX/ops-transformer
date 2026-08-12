@@ -35,6 +35,7 @@ constexpr static int64_t CONST_SEVEN = 7;
 constexpr static int64_t CONST_EIGHT = 8;
 constexpr static int64_t CONST_TEN = 10;
 constexpr static int64_t CONST_ELEVEN = 11;
+constexpr static int64_t CONST_TWELVE = 12;
 constexpr static int64_t CONST_SIXTY_THREE = 63;
 
 constexpr static int64_t CONST_BRCFLAG_ZERO = 0;
@@ -44,10 +45,9 @@ constexpr static int64_t BLOCK_SIZE = 32;
 constexpr static int64_t RECOMPUTE_REDUCE_SUM_BUFFER_BTYES = 32;
 constexpr static int64_t RECOMPUTE_BINARY_CACHE_BTYES = 2048;
 
-static const std::vector<std::string> inputNames = {
-    "kv", "gamma", "cos", "sin", "index", "k_cache", "ckv_cache",
-    "k_rope_scale", "c_kv_scale", "k_rope_offset", "c_kv_offset", "v"
-};
+static const std::vector<std::string> inputNames = {"kv",         "gamma",         "cos",         "sin",
+                                                    "index",      "k_cache",       "ckv_cache",   "k_rope_scale",
+                                                    "c_kv_scale", "k_rope_offset", "c_kv_offset", "v"};
 
 using namespace Ops::Base;
 
@@ -56,8 +56,14 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::IsCapable()
     return isRegbase_;
 }
 
-bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckScaleOffsetShape(
-    const gert::StorageShape* inShape, int64_t lastDim, int64_t& brcFlag)
+int64_t KvRmsNormRopeCacheRegbaseRecomputeTiling::GetCacheBlockElemNum(const ge::DataType cacheDtype) const
+{
+    int64_t cacheDtypeSize = static_cast<int64_t>(ge::GetSizeByDataType(cacheDtype));
+    return (cacheDtypeSize > 0) ? (BLOCK_SIZE / cacheDtypeSize) : 0;
+}
+
+bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckScaleOffsetShape(const gert::StorageShape *inShape, int64_t lastDim,
+                                                                     int64_t &brcFlag)
 {
     if (inShape == nullptr) {
         brcFlag = CONST_BRCFLAG_ZERO;
@@ -76,11 +82,11 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckScaleOffsetShape(
     return false;
 }
 
-bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckCacheIsQuant(ge::DataType& cacheDtype)
+bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckCacheIsQuant(ge::DataType &cacheDtype)
 {
     std::vector<ge::DataType> cacheQuantDtypesList = {ge::DataType::DT_INT8, ge::DataType::DT_HIFLOAT8,
                                                       ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2};
-    for (const auto& cacheQuantDtype : cacheQuantDtypesList) {
+    for (const auto &cacheQuantDtype : cacheQuantDtypesList) {
         if (cacheQuantDtype == cacheDtype) {
             return true;
         }
@@ -89,7 +95,8 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckCacheIsQuant(ge::DataType& c
 }
 
 // 输入shape为非空
-ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputShapeIsEmpty(){
+ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputShapeIsEmpty()
+{
     for (int i = KV_INDEX; i <= C_KV_OFFSET_IDX; ++i) {
         if (i >= K_ROPE_SCALE_IDX) {
             auto optionalParamShape = context_->GetOptionalInputShape(i);
@@ -97,11 +104,10 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputShapeIsEmpty
                 std::string reasonMsg = "The shape of input " + inputNames[i] + " can not be an empty tensor";
                 std::string optionalShapeStr = ToString(optionalParamShape->GetStorageShape());
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), inputNames[i].c_str(),
-                    optionalShapeStr.c_str(), reasonMsg.c_str());
+                                                      optionalShapeStr.c_str(), reasonMsg.c_str());
                 return ge::GRAPH_FAILED;
             }
-        }
-        else {
+        } else {
             auto inputParam = context_->GetInputShape(i);
             OP_CHECK_NULL_WITH_CONTEXT(context_, inputParam);
             gert::Shape inputParamShape = inputParam->GetStorageShape();
@@ -109,9 +115,9 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputShapeIsEmpty
                 std::string reasonMsg = "The shape of input " + inputNames[i] + " can not be an empty tensor";
                 std::string inputShapeStr = ToString(inputParamShape);
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), inputNames[i].c_str(),
-                    inputShapeStr.c_str(), reasonMsg.c_str());
+                                                      inputShapeStr.c_str(), reasonMsg.c_str());
                 return ge::GRAPH_FAILED;
-            }           
+            }
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -136,7 +142,7 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputDtype()
     if (gammaDtype != kvDtype) {
         std::string dtypeMsg = ToString(gammaDtype) + " and " + ToString(kvDtype);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "gamma and kv", dtypeMsg.c_str(),
-            "The dtypes of input gamma and input kv should be the same");
+                                               "The dtypes of input gamma and input kv should be the same");
         return false;
     }
 
@@ -150,7 +156,7 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputDtype()
     if ((sinDtype != cosDtype) || (sinDtype != kvDtype)) {
         std::string dtypeMsg = ToString(sinDtype) + ", " + ToString(cosDtype) + " and " + ToString(kvDtype);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "sin, cos and kv", dtypeMsg.c_str(),
-            "The dtypes of input sin, cos and kv should be the same");
+                                               "The dtypes of input sin, cos and kv should be the same");
         return false;
     }
 
@@ -170,7 +176,8 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputDtype()
     ge::DataType kcacheDtype = kcacheDesc->GetDataType();
     if ((kcacheDtype != kvDtype) && (!CheckCacheIsQuant(kcacheDtype))) {
         std::string dtypeMsg = ToString(kcacheDtype);
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "k_cache", dtypeMsg.c_str(),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            context_->GetNodeName(), "k_cache", dtypeMsg.c_str(),
             "The dtype of input k_cache should be INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2, "
             "or the same as the dtype of input kv");
         return false;
@@ -182,7 +189,8 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputDtype()
         ge::DataType kRopeScaleDtype = kRopeScaleDesc->GetDataType();
         if (kRopeScaleDtype != ge::DT_FLOAT) {
             std::string kRopeScaleDtypeStr = ToString(kRopeScaleDtype);
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "k_rope_scale", kRopeScaleDtypeStr.c_str(),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                context_->GetNodeName(), "k_rope_scale", kRopeScaleDtypeStr.c_str(),
                 "The dtype of input k_rope_scale should be FLOAT "
                 "when the dtype of input k_cache is INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2");
             return false;
@@ -193,7 +201,8 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputDtype()
             ge::DataType kRopeOffsetDtype = kRopeOffsetDesc->GetDataType();
             if (kRopeOffsetDtype != ge::DT_FLOAT) {
                 std::string kRopeOffsetDtypeStr = ToString(kRopeOffsetDtype);
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "k_rope_offset", kRopeOffsetDtypeStr.c_str(),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    context_->GetNodeName(), "k_rope_offset", kRopeOffsetDtypeStr.c_str(),
                     "The dtype of input k_rope_offset should be FLOAT "
                     "when the dtype of input k_cache is INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2");
                 return false;
@@ -207,7 +216,8 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputDtype()
     ge::DataType vcacheDtype = vcacheDesc->GetDataType();
     if ((vcacheDtype != kvDtype) && (!CheckCacheIsQuant(vcacheDtype))) {
         std::string dtypeMsg = ToString(vcacheDtype);
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "ckv_cache", dtypeMsg.c_str(),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            context_->GetNodeName(), "ckv_cache", dtypeMsg.c_str(),
             "The dtype of input ckv_cache should be INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2, "
             "or the same as the dtype of input kv");
         return false;
@@ -219,7 +229,8 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputDtype()
         ge::DataType ckvScaleDtype = ckvScaleDesc->GetDataType();
         if (ckvScaleDtype != ge::DT_FLOAT) {
             std::string ckvScaleDtypeStr = ToString(ckvScaleDtype);
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "c_kv_scale", ckvScaleDtypeStr.c_str(),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                context_->GetNodeName(), "c_kv_scale", ckvScaleDtypeStr.c_str(),
                 "The dtype of input c_kv_scale should be FLOAT "
                 "when the dtype of input ckv_cache is INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2");
             return false;
@@ -230,7 +241,8 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputDtype()
             ge::DataType vKvOffsetDtype = vKvOffsetDesc->GetDataType();
             if (vKvOffsetDtype != ge::DT_FLOAT) {
                 std::string vKvOffsetDtypeStr = ToString(vKvOffsetDtype);
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "v_kv_offset", vKvOffsetDtypeStr.c_str(),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    context_->GetNodeName(), "v_kv_offset", vKvOffsetDtypeStr.c_str(),
                     "The dtype of input v_kv_offset should be FLOAT "
                     "when the dtype of input ckv_cache is INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2");
                 return false;
@@ -269,54 +281,47 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
     OP_CHECK_IF(CheckInputShapeIsEmpty() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "The input param can not be empty"), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(
-        !CheckScaleOffsetShape(scale1Shape, dk_, kScaleType_),
-        OP_LOGE(context_->GetNodeName(), "k_rope_scale shape invalid."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        !CheckScaleOffsetShape(scale2Shape, dv_, vScaleType_),
-        OP_LOGE(context_->GetNodeName(), "c_kv_scale shape invalid."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        !CheckScaleOffsetShape(offset1Shape, dk_, kOffsetType_),
-        OP_LOGE(context_->GetNodeName(), "k_rope_offset shape invalid."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        !CheckScaleOffsetShape(offset2Shape, dv_, vOffsetType_),
-        OP_LOGE(context_->GetNodeName(), "c_kv_offset shape invalid."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckScaleOffsetShape(scale1Shape, dk_, kScaleType_),
+                OP_LOGE(context_->GetNodeName(), "k_rope_scale shape invalid."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckScaleOffsetShape(scale2Shape, dv_, vScaleType_),
+                OP_LOGE(context_->GetNodeName(), "c_kv_scale shape invalid."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckScaleOffsetShape(offset1Shape, dk_, kOffsetType_),
+                OP_LOGE(context_->GetNodeName(), "k_rope_offset shape invalid."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckScaleOffsetShape(offset2Shape, dv_, vOffsetType_),
+                OP_LOGE(context_->GetNodeName(), "c_kv_offset shape invalid."), return ge::GRAPH_FAILED);
     if ((dk_ % CONST_TWO) != 0) {
         auto cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
-        std::string reasonMsg = "The D axis of input cos should be even, where D refers to the " +
-            std::to_string(SHAPE_IDX_D) + "th dim";
+        std::string reasonMsg =
+            "The D axis of input cos should be even, where D refers to the " + std::to_string(SHAPE_IDX_D) + "th dim";
         std::string cosShapeStr = ToString(cosShape);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cos",
-            cosShapeStr.c_str(), reasonMsg.c_str());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cos", cosShapeStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     if (numHead != 1) {
         auto kvShape = context_->GetInputShape(KV_INDEX)->GetStorageShape();
-        std::string reasonMsg = "The N axis of input kv should be 1, where N refers to the " +
-            std::to_string(SHAPE_IDX_N) + "th dim";
+        std::string reasonMsg =
+            "The N axis of input kv should be 1, where N refers to the " + std::to_string(SHAPE_IDX_N) + "th dim";
         std::string kvShapeStr = ToString(kvShape);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "kv",
-            kvShapeStr.c_str(), reasonMsg.c_str());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "kv", kvShapeStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF(
-        !CheckInputDtype(), OP_LOGE(context_->GetNodeName(), "kvrmsnormrope dtype is invalid."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckInputDtype(), OP_LOGE(context_->GetNodeName(), "kvrmsnormrope dtype is invalid."),
+                return ge::GRAPH_FAILED);
     if (currentCacheMode_ == CacheMode::Norm) {
-        OP_CHECK_IF(
-            !CheckKCacheValid(context_, batchSize, numHead, cacheLength_, dk_),
-            OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."), return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            !CheckVCacheValid(context_, batchSize, numHead, cacheLength_, dv_),
-            OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(!CheckKCacheValid(context_, batchSize, numHead, cacheLength_, dk_),
+                    OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(!CheckVCacheValid(context_, batchSize, numHead, cacheLength_, dv_),
+                    OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."), return ge::GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(
-            !CheckKCacheValidPA(context_, numHead, dk_), OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            !CheckVCacheValidPA(context_, numHead, dv_), OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(!CheckKCacheValidPA(context_, numHead, dk_),
+                    OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(!CheckVCacheValidPA(context_, numHead, dv_),
+                    OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."), return ge::GRAPH_FAILED);
     }
+    // NZ 下 dk/2 非对齐(dk1 奇数)已由 kernel 逐 dk0 子块写 + back 半区右移 r=dk0/2 重排接管(量化与非量化，
+    // 逐子块且无跨 tile 携带，泛化到任意 dk / 多 tile，见 ScatterKNzOddDk1)，故 tiling 不再对 dk/2 对齐做限制。
+    OP_CHECK_IF(!GetCacheRowLimit(cacheRowLimit_),
+                OP_LOGE(context_->GetNodeName(), "failed to get the row limit of cache."), return ge::GRAPH_FAILED);
 
     // N = 1
     int64_t bs = batchSize * seqLen * numHead;
@@ -336,14 +341,16 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
     tilingData_.set_vScaleType(vScaleType_);
     tilingData_.set_vOffsetType(vOffsetType_);
     tilingData_.set_cacheMode(currentCacheMode_);
+    tilingData_.set_cacheRowLimit(cacheRowLimit_);
 
     int64_t ubFlexible_ = ubSize_ - UB_RESERVED_BYTE - RECOMPUTE_REDUCE_SUM_BUFFER_BTYES - RECOMPUTE_BINARY_CACHE_BTYES;
-    int64_t ubFactor = FloorDiv(ubFlexible_, CONST_ELEVEN * DOUBLE_BUFFER * kvDtypeSize_);
+    // 弹性部分按 ubFactor 的份数记账（1 份 = ubFactor * sizeof(T_KV)）：gamma 2 + cosSin 4 + x 2 + out 4 +
+    // xPow 4(按 float 存两段) + kScaleOffset 4 + vScaleOffset 4 = 24 份 = CONST_TWELVE * DOUBLE_BUFFER 份
+    int64_t ubFactor = FloorDiv(ubFlexible_, CONST_TWELVE * DOUBLE_BUFFER * kvDtypeSize_);
 
-    OP_CHECK_IF(
-        (ubFactor <= 0),
-        OP_LOGI(context_->GetNodeName(), "D recompute template is not capable. dv is %ld, dk is %ld", dv_, dk_),
-        return ge::GRAPH_PARAM_INVALID);
+    OP_CHECK_IF((ubFactor <= 0),
+                OP_LOGI(context_->GetNodeName(), "D recompute template is not capable. dv is %ld, dk is %ld", dv_, dk_),
+                return ge::GRAPH_PARAM_INVALID);
 
     // 1. slice datas along with the A-axis for all vector cores
     int64_t blockFactor = (bs + coreNum_ - 1) / coreNum_;
@@ -368,7 +375,7 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
     tilingData_.set_basicBlockLoop(basicBlockLoop);
     tilingData_.set_mainFoldCount(mainFoldCount);
     tilingData_.set_ubFactorDkTail(ubFactorDkTail);
-    tilingData_.set_ubFactorDkLoopCountCeil(ubFactorDkLoopCountCeil);  
+    tilingData_.set_ubFactorDkLoopCountCeil(ubFactorDkLoopCountCeil);
 
     int64_t outputKvKey = isOutputKv_ == true ? 1 : 0;
     tilingData_.set_isOutputKv(outputKvKey);
@@ -380,12 +387,13 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::PostTiling()
 {
     context_->SetTilingKey(GetTilingKey());
     context_->SetBlockDim(usedCoreNum_);
-    size_t* workspaces = context_->GetWorkspaceSizes(1);
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = DEFAULT_WORKSPACE_SIZE;
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_OPS_TILING_TEMPLATE(KvRmsNormRopeCache, KvRmsNormRopeCacheRegbaseRecomputeTiling, TEMPLATE_D_RECOMPUTE_PRIORITY);
+REGISTER_OPS_TILING_TEMPLATE(KvRmsNormRopeCache, KvRmsNormRopeCacheRegbaseRecomputeTiling,
+                             TEMPLATE_D_RECOMPUTE_PRIORITY);
 } // namespace optiling

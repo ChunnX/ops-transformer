@@ -30,24 +30,24 @@ namespace optiling {
 class AllGatherMatmulTilingBase {
 public:
     ge::graphStatus AllGatherMatmulTilingFunc(gert::TilingContext *context);
-    ge::graphStatus SetMatmulTilingAllGatherMatmul(gert::TilingContext* context,
-                                                   Mc2Tiling::AllGatherMatmulTilingData& tilingData,
-                                                   mc2tiling::TilingArgs& args);
-    ge::graphStatus MCSpliteM(gert::TilingContext* ctx, Mc2Tiling::AllGatherMatmulTilingData& tilingData,
-                              mc2tiling::TilingArgs& args);
-    ge::graphStatus GetAllGatherFormulateTileCnt(const gert::TilingContext* ctx,
-        Mc2Tiling::AllGatherMatmulTilingData& tilingData, mc2tiling::TilingArgs& args);
-    ge::graphStatus InitHcclParam(const gert::TilingContext *context, Mc2Tiling::AllGatherMatmulTilingData* tilingData,
-                                  const char* group);
-    virtual CutResult GetCutResult(Mc2Tiling::AllGatherMatmulTilingData& tilingData,
-                                   mc2tiling::TilingArgs& args) = 0;
-    virtual ge::graphStatus CheckValidRank(Mc2Tiling::AllGatherMatmulTilingData* tilingData,
-        const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK, gert::TilingContext *context,
-        uint32_t rankSize) = 0;
-    virtual void SetSocParam(Mc2Tiling::AllGatherMatmulTilingData* tilingData, const char* group) = 0;
-    virtual std::string GetAlgConfig(Mc2Tiling::AllGatherMatmulTilingData* tilingData) = 0;
+    ge::graphStatus SetMatmulTilingAllGatherMatmul(gert::TilingContext *context,
+                                                   Mc2Tiling::AllGatherMatmulTilingData &tilingData,
+                                                   mc2tiling::TilingArgs &args);
+    ge::graphStatus MCSpliteM(gert::TilingContext *ctx, Mc2Tiling::AllGatherMatmulTilingData &tilingData,
+                              mc2tiling::TilingArgs &args);
+    ge::graphStatus GetAllGatherFormulateTileCnt(const gert::TilingContext *ctx,
+                                                 Mc2Tiling::AllGatherMatmulTilingData &tilingData,
+                                                 mc2tiling::TilingArgs &args);
+    ge::graphStatus InitHcclParam(const gert::TilingContext *context, Mc2Tiling::AllGatherMatmulTilingData *tilingData,
+                                  const char *group);
+    virtual CutResult GetCutResult(Mc2Tiling::AllGatherMatmulTilingData &tilingData, mc2tiling::TilingArgs &args) = 0;
+    virtual ge::graphStatus CheckValidRank(Mc2Tiling::AllGatherMatmulTilingData *tilingData,
+                                           const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK,
+                                           gert::TilingContext *context, uint32_t rankSize) = 0;
+    virtual void SetSocParam(Mc2Tiling::AllGatherMatmulTilingData *tilingData, const char *group) = 0;
+    virtual std::string GetAlgConfig(Mc2Tiling::AllGatherMatmulTilingData *tilingData) = 0;
     virtual ~AllGatherMatmulTilingBase() = default;
 };
-}
+} // namespace optiling
 
 #endif //__ALL_GATHER_MATMUL_TILING_BASE_H__

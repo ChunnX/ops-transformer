@@ -267,6 +267,26 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能输出。</td>
   </tr>
   <tr>
+    <td>attention</td>
+    <td><a href="../../attention/stem_oam_prep_paged_kv/README.md">stem_oam_prep_paged_kv</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>大模型推理动态稀疏注意力机制的前置评分模块，为block-sparse-attention的前置评分模块。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/compressor/README.md">compressor</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>推理场景下SMLA和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。</td>
+  </tr>
+  <tr>
     <td>gmm</td>
     <td><a href="../../gmm/grouped_matmul/README.md">grouped_matmul</a></td>
     <td>✓</td>
@@ -718,6 +738,16 @@ Ascend 950支持的算子分类和算子列表如下：
   </tr>
   <tr>
     <td>moe</td>
+    <td><a href="../../moe/moe_gating_top_k_backward/README.md">moe_gating_top_k_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>MoeGatingTopK的反向算子。</td>
+  </tr>
+  <tr>
+    <td>moe</td>
     <td><a href="../../moe/moe_gating_top_k_softmax/README.md">moe_gating_top_k_softmax</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -875,6 +905,16 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>AI Core</td>
     <td>执行旋转位置编码计算，推理网络为了提升性能，将query和key两路算子融合成一路。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
+    <td><a href="../../posembedding/inplace_partial_rotary_mul_grad/README.md">inplace_partial_rotary_mul_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>执行局部旋转位置编码InplacePartialRotaryMul的反向计算，对输入dy的D维度上切片[start, end)区域执行旋转位置编码梯度计算，结果inplace写回dy。</td>
   </tr>
   <tr>
     <td>posembedding</td>

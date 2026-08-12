@@ -9,18 +9,19 @@
  */
 #ifndef PTA_NPU_OP_API_INC_LEVEL0_OP_ONES_LIKE_OP_H_
 #define PTA_NPU_OP_API_INC_LEVEL0_OP_ONES_LIKE_OP_H_
- 
+
 #include "opdev/op_executor.h"
- 
+
 namespace l0op {
 static const std::initializer_list<op::DataType> AICPU_DTYPE_SUPPORT_LIST = {
-  op::DataType::DT_BOOL, op::DataType::DT_FLOAT, op::DataType::DT_FLOAT16, op::DataType::DT_INT8,
-  op::DataType::DT_INT16, op::DataType::DT_UINT16, op::DataType::DT_UINT8, op::DataType::DT_INT32,
-  op::DataType::DT_INT64, op::DataType::DT_DOUBLE, op::DataType::DT_COMPLEX64, op::DataType::DT_COMPLEX128,
-  op::DataType::DT_BF16};
+    op::DataType::DT_BOOL,  op::DataType::DT_FLOAT,  op::DataType::DT_FLOAT16,   op::DataType::DT_INT8,
+    op::DataType::DT_INT16, op::DataType::DT_UINT16, op::DataType::DT_UINT8,     op::DataType::DT_INT32,
+    op::DataType::DT_INT64, op::DataType::DT_DOUBLE, op::DataType::DT_COMPLEX64, op::DataType::DT_COMPLEX128,
+    op::DataType::DT_BF16};
 const aclTensor *OnesLike(const aclTensor *self, aclOpExecutor *executor);
-inline static bool IsAiCpuSupport(const aclTensor *self) {
-  return op::CheckType(self->GetDataType(), AICPU_DTYPE_SUPPORT_LIST);
+inline static bool IsAiCpuSupport(const aclTensor *self)
+{
+    return op::CheckType(self->GetDataType(), AICPU_DTYPE_SUPPORT_LIST);
 }
 } // namespace l0op
 

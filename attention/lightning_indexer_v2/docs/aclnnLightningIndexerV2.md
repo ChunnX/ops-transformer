@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                     |     ×    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>    |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                              |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -29,7 +39,7 @@
 
 ## 参数说明
 
-算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnLightningIndexerV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnLightningIndexerV2”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnLightningIndexerV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnLightningIndexerV2”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnLightningIndexerV2GetWorkspaceSize(
@@ -50,7 +60,7 @@ aclnnStatus aclnnLightningIndexerV2GetWorkspaceSize(
     char                *layoutK,
     int64_t              maskMode,
     int64_t              cmpRatio,
-    bool                 returnValue,
+    int64_t              returnValue,
     const aclTensor     *sparseIndices,
     const aclTensor     *sparseValues,
     uint64_t            *workspaceSize,
@@ -98,7 +108,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>不支持空tensor。</td>
     <td>BFLOAT16、FLOAT16</td>
     <td>ND</td>
-    <td><ul><li>layout_q为BSND时，shape为(B,S1,N1,D)。</li><li>layout_q为TND时，shape为(T1,N1,D)。</li><li>不支持空tensor。</li></ul></td>
+    <td><ul><li>layoutQ为BSND时，shape为(B,S1,N1,D)。</li><li>layoutQ为TND时，shape为(T1,N1,D)。</li><li>不支持空tensor。</li></ul></td>
     <td>x</td>
     </tr>
     <tr>
@@ -108,7 +118,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td><ul><li>不支持空tensor。</li><li>block_num为PageAttention时block总数，block_size为一个block的token数。</li></ul></td>
     <td>BFLOAT16、FLOAT16</td>
     <td>ND</td>
-    <td><ul><li>layout_k为PA_BBND时，shape为(block_num, block_size, N2, D)。</li><li>layout_k为BSND时，shape为(B, S2, N2, D)。</li><li>layout_k为TND时，shape为(T2, N2, D)。</li></ul>
+    <td><ul><li>layoutK为PA_BBND时，shape为(block_num, block_size, N2, D)。</li><li>layoutK为BSND时，shape为(B, S2, N2, D)。</li><li>layoutK为TND时，shape为(T2, N2, D)。</li></ul>
     </td>
     <td>✓</td>
     </tr>
@@ -119,7 +129,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>不支持空tensor。</td>
     <td>FLOAT</td>
     <td>ND</td>
-    <td><ul><li>layout_q为BSND时，shape为(B,S1,N1)。</li><li>layout_q为TND时，shape为(T1,N1)。</li></ul></td>
+    <td><ul><li>layoutQ为BSND时，shape为(B,S1,N1)。</li><li>layoutQ为TND时，shape为(T1,N1)。</li></ul></td>
     <td>x</td>
     </tr>
     <tr>
@@ -142,7 +152,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>(B+1,)</td>
     <td>x</td>
     </tr>
-	<tr>
+    <tr>
     <td>sequsedQOptional（aclTensor*）</td>
     <td>输入</td>
     <td>不同Batch中q的真实使用长度。</td>
@@ -152,21 +162,21 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>(B,)</td>
     <td>x</td>
     </tr>
-	<tr>
+    <tr>
     <td>sequsedKOptional（aclTensor*）</td>
     <td>输入</td>
     <td>不同Batch中k的真实使用长度。</td>
-    <td><ul><li>shape约束为长度为B的一维tensor。</li><li>不能出现负值。</li></ul></td>
+    <td><ul><li>shape约束为长度为B的一维tensor。</li><li>不能出现负值。</li><li>layoutK为PA_BBND时，该参数必须传入。</li></ul></td>
     <td>INT32</td>
     <td>ND</td>
     <td>(B,)</td>
     <td>x</td>
     </tr>
-	<tr>
+    <tr>
     <td>cmpResidualKOptional（aclTensor*）</td>
     <td>输入</td>
     <td>表示k压缩前token数量除以cmpRatio的余数。</td>
-    <td><ul><li>不支持空tensor。</li><li>需要在maskMode等于3，cmpRatio不等于1的场景下使用。</li></ul></td>
+    <td><ul><li>不支持空tensor。</li><li>需要在maskMode等于3，cmpRatio不等于1的场景下使用。</li><li>该参数每一个元素的值都应小于压缩率cmpRatio。</li></ul></td>
     <td>INT32</td>
     <td>ND</td>
     <td>(B,)</td>
@@ -182,7 +192,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>shape支持(B,S2_max/block_size)</td>
     <td>x</td>
     </tr>
-	<tr>
+    <tr>
     <td>outputIdxOffsetOptional（aclTensor*）</td>
     <td>输入</td>
     <td>表示topK结果输出索引所需要加上的偏移。</td>
@@ -192,136 +202,136 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>(B,)</td>
     <td>x</td>
     </tr>
-	<tr>
-	<td>metadataOptional（aclTensor*）</td>
-	<td>输入</td>
-	<td>QuantLightningIndexerV2Metadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。</td>
-	<td><ul><li>不支持空tensor。</li><li>block_size取值为16的整数倍，最大支持到1024。</li></ul></td>
-	<td>INT32</td>
-	<td>ND</td>
-  <td>shape支持(B,S2_max/block_size)</td>
-	<td>x</td>
-  </tr>
-  <tr>
-  <td>topk（int64_t）</td>
-  <td>输入</td>
-  <td>topK阶段需要保留的block数量。</td>
-  <td><ul><li>当前支持[1, 8192]。</li></ul></td>
-  <td>INT64</td>
-  <td>-</td>
-  <td>-</td>
-  <td>-</td>
-  </tr>
-  <tr>
-  <td>maxSeqlenQ（int64_t）</td>
-  <td>输入</td>
-  <td>q的最大序列长度。</td>
-  <td><ul><li>当前支持[-1]或大于等于[0]。</li><li>-1表示任意可能长度。</li><li>建议值是-1。</li></ul>
-  </td>
-  <td>INT64</td>
-  <td>-</td>
-  <td>-</td>
-  <td>-</td>
-  </tr>
-  <tr>
-  <td>layoutQ（char*）</td>
-  <td>输入</td>
-  <td>用于标识输入q的数据排布格式。</td>
-  <td><ul><li>当前支持BSND、TND。</li><li>建议值是BSND。</li></ul></td>
-  <td>STRING</td>
-  <td>-</td>
-  <td>-</td>
-  <td>-</td>
-  </tr>
-  <tr>
-  <td>layoutK（char*）</td>
-  <td>输入</td>
-  <td>用于标识输入k的数据排布格式。</td>
-  <td><ul><li>当前支持PA_BBND、BSND、TND。</li><li>建议值是BSND。</li></ul></td>
-  <td>STRING</td>
-  <td>-</td>
-  <td>-</td>
-  <td>-</td>
-  </tr>
-  <tr>
-  <td>maskMode（int64_t）</td>
-  <td>输入</td>
-  <td>表示mask的模式。</td>
-  <td><ul><li>mask_mode为0时，代表defaultMask模式。</li><li>mask_mode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</li><li>建议值是0。</li></ul></td>
-  <td>INT64</td>
-  <td>-</td>
-  <td>-</td>
-  <td>-</td>
-  </tr>
-  <tr>
-  <td>cmpRatio（int64_t）</td>
-  <td>输入</td>
-  <td>用于稀疏计算，表示k的压缩倍数。</td>
-  <td><ul><li>支持1/4/128。</li><li>建议值是1。</li></ul></td>
-  <td>INT64</td>
-  <td>-</td>
-  <td>-</td>
-  <td>-</td>
-  </tr>
-  <tr>
-  <td>returnValue（bool）</td>
-  <td>输入</td>
-  <td>代表是否需要返回Indices对应的Values值。</td>
-  <td><ul><li>0代表不返回，1代表返回值。</li><li>建议值是0。</li></ul></td>
-  <td>INT64</td>
-  <td>-</td>
-  <td>-</td>
-  <td>-</td>
-  </tr>
-  <tr>
-  <td>sparseIndices（aclTensor*）</td>
-  <td>输出</td>
-  <td>公式中的Indices输出。</td>
-  <td>不支持空tensor。</td>
-  <td>INT32</td>
-  <td>ND</td>
-  <td><ul><li>layout_query为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>layout_query为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
-  <td>x</td>
-  </tr>
-  <tr>
-  <td>sparseValues（aclTensor*）</td>
-  <td>输出</td>
-  <td>公式中的Indices对应的Values输出。</td>
-  <td>不支持空tensor。</td>
-  <td>INT32</td>
-  <td>ND</td>
-  <td><ul><li>layout_query为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>layout_query为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
-  <td>x</td>
-  </tr>
-  <tr>
-  <td>workspaceSize（uint64_t*）</td>
-  <td>输出</td>
-  <td>返回需要在Device侧申请的workspace大小。</td>
-  <td>-</td>
-  <td>-</td>
-  <td>-</td>
-  <td>-</td>
-  <td>-</td>
-  </tr>
-  <tr>
-  <td>executor（aclOpExecutor**）</td>
-  <td>输出</td>
-  <td>返回op执行器，包含了算子计算流程。</td>
-  <td>-</td>
-  <td>-</td>
-  <td>-</td>
-  <td>-</td>
-  <td>-</td>
-  </tr>
-  </tbody>
-   </table>
+    <tr>
+    <td>metadataOptional（aclTensor*）</td>
+    <td>输入</td>
+    <td>LightningIndexerV2Metadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。</td>
+    <td><ul><li>不支持空tensor。</li></ul></td>
+    <td>INT32</td>
+    <td>ND</td>
+    <td>shape固定为[1024]。</td>
+    <td>x</td>
+    </tr>
+    <tr>
+    <td>topk（int64_t）</td>
+    <td>输入</td>
+    <td>topK阶段需要保留的block数量。</td>
+    <td><ul><li>当前支持[1, 8192]。</li></ul></td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>maxSeqlenQ（int64_t）</td>
+    <td>输入</td>
+    <td>q的最大序列长度。</td>
+    <td><ul><li>当前支持[-1]或大于等于[0]。</li><li>-1表示任意可能长度。</li><li>建议值是-1。</li></ul>
+    </td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>layoutQ（char*）</td>
+    <td>输入</td>
+    <td>用于标识输入q的数据排布格式。</td>
+    <td><ul><li>当前支持BSND、TND。</li><li>建议值是BSND。</li></ul></td>
+    <td>STRING</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>layoutK（char*）</td>
+    <td>输入</td>
+    <td>用于标识输入k的数据排布格式。</td>
+    <td><ul><li>当前支持PA_BBND、BSND、TND。</li><li>建议值是BSND。</li></ul></td>
+    <td>STRING</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>maskMode（int64_t）</td>
+    <td>输入</td>
+    <td>表示mask的模式。</td>
+    <td><ul><li>mask_mode为0时，代表defaultMask模式。</li><li>mask_mode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</li><li>建议值是0。</li></ul></td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>cmpRatio（int64_t）</td>
+    <td>输入</td>
+    <td>用于稀疏计算，表示k的压缩倍数。</td>
+    <td><ul><li>支持[1, 128]。</li></ul></td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>returnValue（int64_t）</td>
+    <td>输入</td>
+    <td>代表是否需要返回Indices对应的Values值。</td>
+    <td><ul><li>0代表不返回，1代表返回值。</li><li>建议值是0。</li></ul></td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>sparseIndices（aclTensor*）</td>
+    <td>输出</td>
+    <td>公式中的Indices输出。</td>
+    <td>不支持空tensor。</td>
+    <td>INT32</td>
+    <td>ND</td>
+    <td><ul><li>layoutQ为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>layoutQ为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
+    <td>x</td>
+    </tr>
+    <tr>
+    <td>sparseValues（aclTensor*）</td>
+    <td>输出</td>
+    <td>公式中的Indices对应的Values输出。</td>
+    <td>不支持空tensor。</td>
+    <td>FLOAT</td>
+    <td>ND</td>
+    <td><ul><li>layoutQ为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>layoutQ为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
+    <td>x</td>
+    </tr>
+    <tr>
+    <td>workspaceSize（uint64_t*）</td>
+    <td>输出</td>
+    <td>返回需要在Device侧申请的workspace大小。</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>executor（aclOpExecutor**）</td>
+    <td>输出</td>
+    <td>返回op执行器，包含了算子计算流程。</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    </tbody>
+    </table>
 
-  - q、k、w、q_descale、k_descale参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
+  - q、k、w参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
   - 使用S1和S2分别表示q和k的输入样本序列长度，N1和N2分别表示q和k对应的多头数，k表示最后选取的索引个数。参数q中的D和参数k中的D值相等为128。T1和T2分别表示q和k的输入样本序列长度的累加和。
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口会完成入参校验，出现以下场景时报错：
 
@@ -352,7 +362,7 @@ aclnnStatus aclnnLightningIndexerV2(
 ## aclnnLightningIndexerV2
 
 - **参数说明：**
-  
+
   <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
     <col style="width: 184px">
     <col style="width: 134px">
@@ -373,7 +383,7 @@ aclnnStatus aclnnLightningIndexerV2(
       <tr>
       <td>workspaceSize</td>
       <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnQuantLightningIndexerV2GetWorkspaceSize获取。</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnLightningIndexerV2GetWorkspaceSize获取。</td>
       </tr>
       <tr>
       <td>executor</td>
@@ -389,8 +399,8 @@ aclnnStatus aclnnLightningIndexerV2(
   </table>
 
 - **返回值：**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -398,17 +408,31 @@ aclnnStatus aclnnLightningIndexerV2(
   - aclnnLightningIndexerV2默认确定性实现。
 - 参数q的N支持1~64，k的N支持1。
 - headdim支持128。
-- pa_kv_cache支持0轴非连续；pa_block_size支持1~1024，满足block大小32B对齐。
+- pa_kv_cache支持0轴非连续；pa_block_size支持1~1024，满足block大小32 Byte对齐。
 - 参数q、k的数据类型应保持一致。
-- sparse_indices无效部分填-1；sparse_values无效部分填-inf。
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:
+- sparseIndices无效部分填-1；sparseValues无效部分填-inf。
+- 传入的cmpResidualKOptional中每一个元素的值都应小于压缩率cmpRatio。
+
+<!-- npu="A3,910b" id7 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - topk取值范围当前仅支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
   - 当前不支持sequsedQOptional、outputIdxOffsetOptional、maxSeqlenQ功能，不建议传入这些参数。
-  - 当layout_k为PA_BBND时，必须传入sequsedKOptional；当layout_k不为PA_BBND时，不支持sequsedKOptional功能，不建议传入该参数。
+  - 当layoutK为PA_BBND时，必须传入sequsedKOptional；当layoutK不为PA_BBND时，不支持sequsedKOptional功能，不建议传入该参数。
+<!-- end id7 -->
+<!-- npu="950" id8 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：
+  - 当传入的参数layoutQ为BSND时，不支持传入cuSeqlensQOptional；当layoutK为BSND或PA_BBND时，不支持传入cuSeqlensKOptional。
+  - 当传入参数outputIdxOffsetOptional时，只支持大于0的索引偏移值；且应满足约束：加上传入的索引偏移值后，得到的sparseIndice值不超过INT32的最大值。
+  - 当参入的参数layoutQ为TND时，必须传入cuSeqlensQOptional，如果也传入sequsedQOptional，应保证由sequsedQOptional传入的各个batch的query长度不超过根据cuSeqlensQOptional计算出的各个batch的q序列长度。当某个batch由sequsedQOptional传入的q序列长度seqlen1小于由cuSeqlensQOptional计算出的query长度seqlen2时，会启用TND Padding功能，将该batch的从seqlen1 + 1到seqlen2的query输出的sparseIndices和sparseValues全部置为无效值。
+  - 当传入的cmpRatio > 1且maskMode = 3时，必须传入cmpResidualKOptional，其余情况不传入。
+  - 当传入的参数layoutK为PA_BBND时，必须传入sequsedKOptional。
+  - 参数metadataOptional必须传入。
+
+<!-- end id8 -->
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>

@@ -21,10 +21,10 @@ namespace DistributeBarrierExtendUT {
 constexpr uint64_t g_mc2TilingDataReservedLen = sizeof(Mc2InitTiling) + sizeof(Mc2CcTiling);
 
 template <typename T>
-static string ToString(void* buf, size_t size, unordered_set<size_t> mask = {})
+static string ToString(void *buf, size_t size, unordered_set<size_t> mask = {})
 {
     string result;
-    const T* data = reinterpret_cast<const T*>(buf);
+    const T *data = reinterpret_cast<const T *>(buf);
     size_t len = size / sizeof(T);
     for (size_t i = 0; i < len; i++) {
         result += mask.find(i) == mask.end() ? std::to_string(data[i]) : "*";
@@ -50,135 +50,153 @@ protected:
 
 TEST_F(DistributeBarrierExtendArch35TilingTest, TestTiling)
 {
-    struct DistributeBarrierExtendCompileInfo {} compileInfo;
+    struct DistributeBarrierExtendCompileInfo {
+    } compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara("DistributeBarrierExtend",
-        {
-            {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND}, },
-        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
-         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+                                              {
+                                                  {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+                                               {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
+                                              &compileInfo, "Ascend950", coreNum, ubSize);
     std::string expectTilingData = "16 0 20 0 * 0 0 0 65536 0 ";
     TilingInfo tilingInfo;
     ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
-    auto tilingDataResult = ToString<uint32_t>(tilingInfo.tilingData.get() + g_mc2TilingDataReservedLen,
-                                                tilingInfo.tilingDataSize - g_mc2TilingDataReservedLen,
-                                                g_barrierTilingDataMask);
+    auto tilingDataResult =
+        ToString<uint32_t>(tilingInfo.tilingData.get() + g_mc2TilingDataReservedLen,
+                           tilingInfo.tilingDataSize - g_mc2TilingDataReservedLen, g_barrierTilingDataMask);
     EXPECT_EQ(expectTilingData, tilingDataResult);
 }
 
 TEST_F(DistributeBarrierExtendArch35TilingTest, TestTilingWorldSize1)
 {
-    struct DistributeBarrierExtendCompileInfo {} compileInfo;
+    struct DistributeBarrierExtendCompileInfo {
+    } compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara("DistributeBarrierExtend",
-        {
-            {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND}, },
-        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
-         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+                                              {
+                                                  {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+                                               {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}},
+                                              &compileInfo, "Ascend950", coreNum, ubSize);
     TilingInfo tilingInfo;
     ASSERT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
 }
 
 TEST_F(DistributeBarrierExtendArch35TilingTest, TestTilingWorldSize1025)
 {
-    struct DistributeBarrierExtendCompileInfo {} compileInfo;
+    struct DistributeBarrierExtendCompileInfo {
+    } compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara("DistributeBarrierExtend",
-        {
-            {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND}, },
-        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
-         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1025)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+                                              {
+                                                  {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+                                               {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1025)}},
+                                              &compileInfo, "Ascend950", coreNum, ubSize);
     TilingInfo tilingInfo;
     ASSERT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
 }
 
 TEST_F(DistributeBarrierExtendArch35TilingTest, TestTilingTimeOut)
 {
-    struct DistributeBarrierExtendCompileInfo {} compileInfo;
+    struct DistributeBarrierExtendCompileInfo {
+    } compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara("DistributeBarrierExtend",
-        {
-            {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND}, },
-        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
-         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+                                              {
+                                                  {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+                                               {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
+                                              &compileInfo, "Ascend950", coreNum, ubSize);
     std::string expectTilingData = "16 0 20 0 * 0 0 0 65537 0 ";
     TilingInfo tilingInfo;
     ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
-    auto tilingDataResult = ToString<uint32_t>(tilingInfo.tilingData.get() + g_mc2TilingDataReservedLen,
-                                                tilingInfo.tilingDataSize - g_mc2TilingDataReservedLen,
-                                                g_barrierTilingDataMask);
+    auto tilingDataResult =
+        ToString<uint32_t>(tilingInfo.tilingData.get() + g_mc2TilingDataReservedLen,
+                           tilingInfo.tilingDataSize - g_mc2TilingDataReservedLen, g_barrierTilingDataMask);
     EXPECT_EQ(expectTilingData, tilingDataResult);
 }
 
 TEST_F(DistributeBarrierExtendArch35TilingTest, TestTilingElasticInfo)
 {
-    struct DistributeBarrierExtendCompileInfo {} compileInfo;
+    struct DistributeBarrierExtendCompileInfo {
+    } compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara("DistributeBarrierExtend",
-        {
-            {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{36}, {36}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND}, },
-        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
-         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+                                              {
+                                                  {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{36}, {36}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+                                               {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
+                                              &compileInfo, "Ascend950", coreNum, ubSize);
     std::string expectTilingData = "16 0 20 0 * 0 0 0 65792 0 ";
     TilingInfo tilingInfo;
     ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
-    auto tilingDataResult = ToString<uint32_t>(tilingInfo.tilingData.get() + g_mc2TilingDataReservedLen,
-                                                tilingInfo.tilingDataSize - g_mc2TilingDataReservedLen,
-                                                g_barrierTilingDataMask);
+    auto tilingDataResult =
+        ToString<uint32_t>(tilingInfo.tilingData.get() + g_mc2TilingDataReservedLen,
+                           tilingInfo.tilingDataSize - g_mc2TilingDataReservedLen, g_barrierTilingDataMask);
     EXPECT_EQ(expectTilingData, tilingDataResult);
 }
 
 TEST_F(DistributeBarrierExtendArch35TilingTest, TestTilingTimeOutElasticInfo)
 {
-    struct DistributeBarrierExtendCompileInfo {} compileInfo;
+    struct DistributeBarrierExtendCompileInfo {
+    } compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara("DistributeBarrierExtend",
-        {
-            {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{36}, {36}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND}, },
-        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
-         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+                                              {
+                                                  {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{36}, {36}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+                                               {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
+                                              &compileInfo, "Ascend950", coreNum, ubSize);
     std::string expectTilingData = "16 0 20 0 * 0 0 0 65793 0 ";
     TilingInfo tilingInfo;
     ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
-    auto tilingDataResult = ToString<uint32_t>(tilingInfo.tilingData.get() + g_mc2TilingDataReservedLen,
-                                                tilingInfo.tilingDataSize - g_mc2TilingDataReservedLen,
-                                                g_barrierTilingDataMask);
+    auto tilingDataResult =
+        ToString<uint32_t>(tilingInfo.tilingData.get() + g_mc2TilingDataReservedLen,
+                           tilingInfo.tilingDataSize - g_mc2TilingDataReservedLen, g_barrierTilingDataMask);
     EXPECT_EQ(expectTilingData, tilingDataResult);
 }
 
-} // namespace
+} // namespace DistributeBarrierExtendUT

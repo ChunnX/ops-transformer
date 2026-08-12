@@ -25,8 +25,8 @@
 namespace smla_ut {
 
 constexpr uint32_t kTndPaBnbdSwaTilingKey = 2U;
-constexpr uint32_t kTndPaBnbdCfaTilingKey = 514U;
-constexpr uint32_t kTndPaBnbdScfaTilingKey = 1026U;
+constexpr uint32_t kTndPaBnbdHcaTilingKey = 514U;
+constexpr uint32_t kTndPaBnbdCsaTilingKey = 1026U;
 
 inline void InitMetadataGm(int32_t *metadata, uint32_t batchSize, uint32_t kvHeadNum)
 {
@@ -68,7 +68,7 @@ inline void InitSwaTilingData(optiling::SparseFlashMlaTilingData &tiling, uint32
     tiling.baseParams.set_s2BaseSize(512U);
 }
 
-inline void InitScfaTilingData(optiling::SparseFlashMlaTilingData &tiling, uint32_t tokenNum, uint32_t kvSeqLen,
+inline void InitCsaTilingData(optiling::SparseFlashMlaTilingData &tiling, uint32_t tokenNum, uint32_t kvSeqLen,
                                uint32_t oriBlockNum, uint32_t cmpBlockNum, uint32_t blockSize)
 {
     InitSwaTilingData(tiling, tokenNum, kvSeqLen, oriBlockNum, blockSize);

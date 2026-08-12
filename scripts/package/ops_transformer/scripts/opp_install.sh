@@ -339,7 +339,7 @@ install_es_whl_package() {
  	  exit 1
  	fi
 }
- 	 
+
 install_es_whl() {
  	local es_whl_path="${OPS_SOURCE_DIR}/es_packages/whl/es_transformer-1.0.0-py3-none-any.whl"
  	local python_es_whl_name="es_transformer"
@@ -402,6 +402,8 @@ install_whl_package() {
       logandprint "[WARNING]: pip not available, copying whl file directly..."
       cp "${whl_file}" "${target_python_dir}/"
     fi
+    chmod -R "${CUSTOM_PERM}" "${target_python_dir}"/cann_ops_transformer 2> /dev/null
+    chmod -R "${CUSTOM_PERM}" "${target_python_dir}"/cann_ops_transformer-*.dist-info 2> /dev/null
 
     logandprint "[INFO]: cann_ops_transformer whl package installed successfully"
   else

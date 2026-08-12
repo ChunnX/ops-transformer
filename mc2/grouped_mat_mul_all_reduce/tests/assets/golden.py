@@ -10,14 +10,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 __golden__ = {
-    "kernel": {
-        "grouped_mat_mul_all_reduce": "grouped_mat_mul_all_reduce_golden"
-    }
+    "kernel": {"grouped_mat_mul_all_reduce": "grouped_mat_mul_all_reduce_golden"}
 }
 
-from typing import List
 import numpy as np
 import torch
+
 
 def grouped_mat_mul_all_reduce_golden(
     x,
@@ -28,11 +26,11 @@ def grouped_mat_mul_all_reduce_golden(
     group: str = "",
     reduceOp: str = "sum",
     commTurn: int = 0,
-    **kwargs
+    **kwargs,
 ):
     """
     GroupedMatMulAllReduce golden function
-    
+
     Args:
         x: Input tensor
         weight: Weight tensor
@@ -44,20 +42,24 @@ def grouped_mat_mul_all_reduce_golden(
         commTurn: Communication turn parameter (default: 0)
         **kwargs: Additional arguments including world_size, rank for distributed
     """
-    world_size = kwargs.get('world_size', 1)
-    
+    world_size = kwargs.get("world_size", 1)
+
     res_list = []
-    
+
     x_dtype = x.dtype if isinstance(x, torch.Tensor) else torch.from_numpy(x).dtype
-    weight_dtype = weight.dtype if isinstance(weight, torch.Tensor) else torch.from_numpy(weight).dtype
-    
+    weight_dtype = (
+        weight.dtype
+        if isinstance(weight, torch.Tensor)
+        else torch.from_numpy(weight).dtype
+    )
+
     if isinstance(x, np.ndarray):
         x = torch.from_numpy(x)
     if isinstance(weight, np.ndarray):
         weight = torch.from_numpy(weight)
-    
+
     x = x.to(torch.float32)
-    
+
     if group_list is None:
         x_list = [x]
         weight_list = [weight]
@@ -73,22 +75,22 @@ def grouped_mat_mul_all_reduce_golden(
                 offset = i
         else:
             x_list = [x]
-        
+
         weight_list = [weight]
-        
+
         if bias is not None:
             if isinstance(bias, np.ndarray):
                 bias = torch.from_numpy(bias)
             bias_list = list(bias) if len(bias.shape) > 1 else [bias]
         else:
             bias_list = None
-    
+
     for i in range(len(x_list)):
         x_tmp = x_list[i].to(torch.float32)
         w_tmp = weight_list[i].to(torch.float32)
-        
+
         mm_tmp = torch.matmul(x_tmp, w_tmp)
-        
+
         if bias_list is not None and i < len(bias_list) and bias_list[i] is not None:
             bias_tmp = bias_list[i]
             if isinstance(bias_tmp, np.ndarray):
@@ -97,11 +99,11 @@ def grouped_mat_mul_all_reduce_golden(
             gmm_output = torch.add(mm_tmp, bias_tmp)
         else:
             gmm_output = mm_tmp
-        
+
         gmm_output = gmm_output * world_size
-        
+
         res_list.append(gmm_output)
-    
+
     output = res_list if len(res_list) > 1 else res_list[0]
-    
+
     return output

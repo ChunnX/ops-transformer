@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                 |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term> |      ×     |
-| <term>Atlas 推理系列产品</term> |      ×     |
-| <term>Atlas 训练系列产品</term> |      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -20,7 +30,7 @@
 - 输入输出支持以下场景：
   - 场景一：
 
-    ```
+    ```python
     key:[batch * seq_len, num_head, k_head_size]
     value:[batch * seq_len, num_head, v_head_size]
     keyCache:[num_blocks, num_head * k_head_size // last_dim_k, block_size, last_dim_k]/[num_blocks, num_head, k_head_size // last_dim_k, block_size, last_dim_k]
@@ -34,11 +44,9 @@
     (v_head_size * sizeof(dtypeValue)) % 32 == 0
     ```
 
-    其中key和value的type可以相同，也可以不同
-
   - 场景二：
 
-    ```
+    ```python
     key:[batch * seq_len, num_head, k_head_size]
     value:[batch * seq_len, num_head, v_head_size]
     keyCache:[num_blocks, block_size, num_head, k_head_size]
@@ -52,7 +60,7 @@
 
   - 场景三：
 
-    ```
+    ```python
     key:[batch, seq_len, num_head, k_head_size]
     value:[batch, seq_len, num_head, v_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -66,7 +74,7 @@
 
   - 场景四：
 
-    ```
+    ```python
     key:[num_tokens, num_head, k_head_size]
     value:[num_tokens, num_head, v_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -80,7 +88,7 @@
 
   - 场景五：
 
-    ```
+    ```python
     key:[num_tokens, num_head, k_head_size]
     value:[num_tokens, num_head, v_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -95,7 +103,7 @@
 
   - 场景六：
 
-    ```
+    ```python
     key:[batch * seq_len, num_head, k_head_size]
     value:[]
     keyCache:[num_blocks, block_size, num_head, k_head_size]
@@ -107,7 +115,7 @@
 
   - 场景七：
 
-    ```
+    ```python
     key:[num_tokens, num_head, k_head_size]
     value:[num_tokens, num_head, v_head_size]
     keyCache:[num_blocks, num_head, block_size, k_head_size]
@@ -118,36 +126,42 @@
     ```
 
 - 上述场景根据构造的参数来区别，符合第一种入参构造走场景一，符合第二种构造走场景二，符合第三种构造走场景三，符合第四种构造走场景四，符合第五种构造走场景五，符合第六种构造走场景六。场景一、场景二、场景六没有compressLensOptional、seqLensOptional、compressSeqOffsetOptional这三个可选参数。场景四没有compressSeqOffsetOptional可选参数。
+
+<!-- npu="A3,910b" id7 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持场景一、二、四、五、六、七。
+<!-- end id7 -->
+<!-- npu="950" id8 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：仅支持场景一、二、三、四、五。
+
+<!-- end id8 -->
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnScatterPaKvCacheGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnScatterPaKvCache”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnScatterPaKvCacheGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnScatterPaKvCache”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnScatterPaKvCacheGetWorkspaceSize(
-  const aclTensor   *key, 
-  aclTensor         *keyCacheRef, 
-  const aclTensor   *slotMapping, 
-  const aclTensor   *value, 
-  aclTensor         *valueCacheRef, 
-  const aclTensor   *compressLensOptional, 
-  const aclTensor   *compressSeqOffsetOptional, 
-  const aclTensor   *seqLensOptional, 
-  char              *cacheModeOptional, 
-  char              *scatterModeOptional, 
-  const aclIntArray *stridesOptional, 
-  const aclIntArray *offsetsOptional, 
-  uint64_t          *workspaceSize, 
+  const aclTensor   *key,
+  aclTensor         *keyCacheRef,
+  const aclTensor   *slotMapping,
+  const aclTensor   *value,
+  aclTensor         *valueCacheRef,
+  const aclTensor   *compressLensOptional,
+  const aclTensor   *compressSeqOffsetOptional,
+  const aclTensor   *seqLensOptional,
+  char              *cacheModeOptional,
+  char              *scatterModeOptional,
+  const aclIntArray *stridesOptional,
+  const aclIntArray *offsetsOptional,
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnScatterPaKvCache(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -181,7 +195,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">key（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">待更新的key值，当前step多个token的key。</td>
-      <td class="tg-0pky">-</td>
+      <td class="tg-0pky">不支持空Tensor。</td>
       <td class="tg-0pky">FLOAT16、FLOAT、BFLOAT16、INT8、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">3-4</td>
@@ -191,7 +205,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">keyCacheRef（aclTensor*）</td>
       <td class="tg-0pky">输入/输出</td>
       <td class="tg-0pky">需要更新的key cache，当前layer的key cache。</td>
-      <td class="tg-0pky">当传空指针或"Norm"时，仅支持ND内存排布格式。<br>当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
+      <td class="tg-0pky">不支持空Tensor。<br>当传空指针或"Norm"时，仅支持ND内存排布格式。<br>当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
       <td class="tg-0pky">与key保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">4-5</td>
@@ -201,7 +215,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">slotMapping（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">每个token key或value在cache中的存储偏移。</td>
-      <td class="tg-0pky">-</td>
+      <td class="tg-0pky">不支持空Tensor。<br></td>
       <td class="tg-0pky">INT32、INT64</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">1</td>
@@ -211,7 +225,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">value（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">待更新的value值，当前step多个token的value。</td>
-      <td class="tg-0pky">非0维下shape与key一致</td>
+      <td class="tg-0pky">不支持空Tensor。<br>非0维下shape与key一致。</td>
       <td class="tg-0pky">与key保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">0、3、4</td>
@@ -221,7 +235,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">valueCacheRef（aclTensor*）</td>
       <td class="tg-0pky">输入/输出</td>
       <td class="tg-0pky">需要更新的value cache，当前layer的value cache。</td>
-      <td class="tg-0pky">非0维下shape与keyCacheRef一致，当传空指针或"Norm"时，仅支持ND内存排布格式。<br>当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
+      <td class="tg-0pky">不支持空Tensor。<br>非0维下shape与keyCacheRef一致，当传空指针或"Norm"时，仅支持ND内存排布格式。<br>当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
       <td class="tg-0pky">与key保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">0、4、5</td>
@@ -271,7 +285,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0lax">scatterModeOptional（char*）</td>
       <td class="tg-0lax">输入</td>
       <td class="tg-0lax">表示更新的key和value的状态。</td>
-      <td class="tg-0lax">当传空指针或"None"时，表示更新的key和value是非压缩状态且连续。<br>当传"Alibi"时，表示更新key和value是基于Alibi结构的压缩状态。<br>当传"Rope"时，表示更新key和value是基于Rope结构的压缩状态。<br>当传"Omni"时，表示更新key和value是基于Omni结构的压缩状态。<br>当传"Nct"时，表示更新的key和value是非压缩状态但非连续。<br>当传"NHSD"时，表示keyCacheRef和keyCacheRef的格式时[num_block, num_head, block_size, head_size]。</td>
+      <td class="tg-0lax">当传空指针或"None"时，表示更新的key和value是非压缩状态且连续。<br>当传"Alibi"时，表示更新key和value是基于Alibi结构的压缩状态。<br>当传"Rope"时，表示更新key和value是基于Rope结构的压缩状态。<br>当传"Omni"时，表示更新key和value是基于Omni结构的压缩状态。<br>当传"Nct"时，表示更新的key和value是非压缩状态但非连续。<br>当传"NHSD"时，表示keyCacheRef和valueCacheRef的格式为[num_block, num_head, block_size, head_size]。</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
@@ -291,7 +305,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0lax">offsetsOptional（aclIntArray*）</td>
       <td class="tg-0lax">输入</td>
       <td class="tg-0lax">key和value在非连续状态下的偏移。</td>
-      <td class="tg-0lax">数组长度为2。其值应该大于0。仅当scatterModeOptional为"Nct"时生效，分别表示offsetK和offsetV。</td>
+      <td class="tg-0lax">数组长度为2。其值应该大于等于0。仅当scatterModeOptional为"Nct"时生效，分别表示offsetK和offsetV。</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
@@ -319,15 +333,20 @@ aclnnStatus aclnnScatterPaKvCache(
     </tr>
   </tbody></table>
 
+  <!-- npu="A3,910b" id9 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
-    - 输入key、keyCacheRef、value、valueCacheRef不支持FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1数据类型。
+    - 输入key、keyCacheRef、value、valueCacheRef仅支持FLOAT16、BFLOAT16、INT8数据类型，不支持FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：仅场景一、场景二scatter_mode为None时支持FLOAT4_E1M2、FLOAT4_E2M1。
+  <!-- end id9 -->
+  <!-- npu="950" id10 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：支持参数表中列出的全部数据类型；其中FLOAT4_E1M2、FLOAT4_E2M1仅场景一、场景二且scatterMode为"None"时支持。
+
+  <!-- end id10 -->
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -349,20 +368,18 @@ aclnnStatus aclnnScatterPaKvCache(
       <td>传入的key、keyCacheRef、slotMapping、value、valueCacheRef是空指针。</td>
     </tr>
     <tr>
-      <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="3">161002</td>
-      <td>参数key、value的数据类型不在支持的范围之内。</td>
+      <td rowspan="4">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="4">161002</td>
+      <td>参数key、value、slotMapping的数据类型不在支持的范围之内。</td>
+    </tr>
+    <tr>
+      <td>key的维数不等于3维或4维，value的维数不等于0维、3维或4维。</td>
     </tr>
     <tr>
       <td>key、keyCacheRef、value、valueCacheRef的数据类型不一致。</td>
     </tr>
     <tr>
       <td>slotMapping、compressLensOptional、compressSeqOffsetOptional、seqLensOptional的数据类型不一致。</td>
-    </tr>
-    <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>561002</td>
-      <td>key的维数不等于3维或4维，value的维数不等于0维、3维或4维。</td>
     </tr>
   </tbody>
   </table>
@@ -408,7 +425,7 @@ aclnnStatus aclnnScatterPaKvCache(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -416,7 +433,7 @@ aclnnStatus aclnnScatterPaKvCache(
   - aclnnScatterPaKvCache默认确定性实现。
 - key、value、keyCacheRef、valueCacheRef的数据类型必须一致；
 - 当cacheModeOptional为“PA_NZ”时key、keyCacheRef和value、valueCacheRef的数据类可以不一致；
-- slotMapping、compressLensOptional、compressSeqOffsetOptional、seqLensOptional的数据类型必须一致（对应场景一；
+- slotMapping、compressLensOptional、compressSeqOffsetOptional、seqLensOptional的数据类型必须一致（对应场景一）；
 - slotMapping的取值范围[0,num_blocks*block_size-1]，且slotMapping内的元素值保证不重复，重复时不保证正确性；
 - 当key和value都是3维，则key和value的前两维shape必须相同；
 - 当key和value都是4维，则key和value的前三维shape必须相同，且keyCacheRef和valueCacheRef的第三维必须是1；
@@ -428,12 +445,14 @@ aclnnStatus aclnnScatterPaKvCache(
 - 当cacheModeOptional为“PA_NZ”时，keyCacheRef和valueCacheRef的倒数第二维必须小于UINT16_MAX（对应场景一）。
 - k_head_size和v_head_size必须32字节对齐（对应场景七）。
 - num_head必须小于4095（对应场景七）。
-- block_size * k_head_size和block_size * v_head_size必须小于UINT32_MAX（对应场景七）。
+- block_size *k_head_size和block_size* v_head_size必须小于UINT32_MAX（对应场景七）。
+- （num_head *k_head_size + num_head* v_head_size） * sizeof(dtype_key)必须小于196608（对应场景七）。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
+<!-- npu="950,A3,910b" id11 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 
   ```c++
@@ -530,9 +549,9 @@ aclnnStatus aclnnScatterPaKvCache(
     char * cacheMode = "PA_NZ";
     char * scatterMode = "None";
 
-    std::vector<int16_t> hostKey(128, 1);
-    std::vector<int16_t> hostValue(128, 1);
-    std::vector<int32_t> hostSlotMapping(2, 1);
+    std::vector<int16_t> hostKey(128, 0);
+    std::vector<int16_t> hostValue(128, 0);
+    std::vector<int32_t> hostSlotMapping = {0, 1};
     std::vector<int16_t> hostKeyCacheRef(2048, 1);
     std::vector<int16_t> hostValueCacheRef(2048, 1);
     std::vector<int64_t> hostStrides(2, 1);
@@ -579,13 +598,22 @@ aclnnStatus aclnnScatterPaKvCache(
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-    auto size = GetShapeSize(keyCacheShape);
-    std::vector<float> resultData(size, 0);
-    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), keyCacheDeviceAddr,
-                      size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t i = 0; i < size; i++) {
-        LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
+    auto keyCacheSize = GetShapeSize(keyCacheShape);
+    std::vector<int16_t> keyCacheResult(keyCacheSize, 0);
+    ret = aclrtMemcpy(keyCacheResult.data(), keyCacheResult.size() * sizeof(int16_t), keyCacheDeviceAddr,
+                      keyCacheSize * sizeof(int16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy keyCache from device to host failed. ERROR: %d\n", ret); return ret);
+    for (int64_t i = 0; i < keyCacheSize; i++) {
+      LOG_PRINT("keyCache[%ld] is: %d\n", i, keyCacheResult[i]);
+    }
+
+    auto valueCacheSize = GetShapeSize(valueCacheShape);
+    std::vector<int16_t> valueCacheResult(valueCacheSize, 0);
+    ret = aclrtMemcpy(valueCacheResult.data(), valueCacheResult.size() * sizeof(int16_t), valueCacheDeviceAddr,
+                      valueCacheSize * sizeof(int16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy valueCache from device to host failed. ERROR: %d\n", ret); return ret);
+    for (int64_t i = 0; i < valueCacheSize; i++) {
+      LOG_PRINT("valueCache[%ld] is: %d\n", i, valueCacheResult[i]);
     }
 
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
@@ -614,3 +642,5 @@ aclnnStatus aclnnScatterPaKvCache(
     return 0;
   }
   ```
+
+<!-- end id11 -->

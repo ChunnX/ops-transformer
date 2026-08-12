@@ -41,7 +41,6 @@ extern "C" __global__ __aicore__ void kv_compress_epilog(
     const KvCompressEpilogTilingData* __restrict__ tilingData = &tilingDataIn;
 
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
-    // Dispatch based on tiling key
     if (TILING_KEY_IS(0)) {
         KvCompressEpilogOps::KvCompressEpilog<DTYPE_X, DTYPE_SLOT_MAPPING, DTYPE_CACHE> op(&pipe);
         op.Init(x, slot_mapping, cache, tilingData);

@@ -30,6 +30,8 @@ COV="false"
 CLANG="false"
 VERBOSE="false"
 OOM="false"
+ENABLE_MSSANITIZER=FALSE
+ENABLE_DUMP_CCE=FALSE
 THREAD_NUM=$(grep -c ^processor /proc/cpuinfo)
 ENABLE_VALGRIND=FALSE
 ENABLE_CREATE_LIB=FALSE
@@ -101,6 +103,7 @@ function help_info() {
                 echo "    --soc=soc_version      Compile for specified Ascend SoC (comma-separated for multiple)"
                 echo "    --vendor_name=name     Specify custom operator package vendor name"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
+                echo "    --module=module1,...   Compile specified modules (comma-separated, supported: mc2,attention,moe,ffn,mhc,posembedding,gmm)"
                 echo "    -j[n]                  Compile thread nums, default is 8, eg: -j8"
                 echo "    -O[n]                  Compile optimization options, support [O0 O1 O2 O3], eg:-O3"
                 echo "    --experimental         Build experimental version"
@@ -111,6 +114,8 @@ function help_info() {
                 echo "    --kernel_template_input=args0,args1"
                 echo "                           Specify kernel template input arguments (comma-separated for multiple)"
                 echo "    --bisheng_flags        Specify bisheng compiler flags (comma-separated for multiple)"
+                echo "    --mssanitizer          Build with mssanitizer mode on the kernel side, with options: '-g --cce-enable-sanitizer'"
+                echo "    --dump_cce             Dump kernel precompiled files"
                 echo $dotted_line
                 echo "Examples:"
                 echo "    bash build.sh --pkg --soc=ascend910b --vendor_name=customize -j16 -O3"
@@ -118,6 +123,7 @@ function help_info() {
                 echo "    bash build.sh --pkg --experimental --soc=ascend910b"
                 echo "    bash build.sh --pkg --experimental --soc=ascend910b --ops=abs --oom"
                 echo "    bash build.sh --pkg --experimental --soc=ascend910b --ops=abs --bisheng_flags=dumc_cce"
+                echo "    bash build.sh --pkg --soc=ascend910b --ops=add_example --opkernel_aicpu -j16"
                 return
                 ;;
             test)
@@ -217,6 +223,21 @@ function help_info() {
                 echo "    bash build.sh --opkernel --soc=ascend310p --ops=add,sub"
                 echo "    bash build.sh --opkernel --soc=ascend310p --ops=add,sub --oom"
                 echo "    bash build.sh --pkg --experimental --soc=ascend910b --ops=abs --bisheng_flags=dumc_cce"
+                return
+                ;;
+            opkernel_aicpu)
+                echo "AICPU Opkernel Build Options:"
+                echo $dotted_line
+                echo "    --opkernel_aicpu       Build AICPU kernel"
+                echo "    --soc=soc_version      Compile for specified Ascend SoC"
+                echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
+                echo "    --build-type=<Type>    Specify build-type (Type options: Release/Debug), Default:Release"
+                echo "    --mssanitizer          Build with mssanitizer mode on the kernel side"
+                echo "    --oom                  Build with oom mode on the kernel side"
+                echo $dotted_line
+                echo "Examples:"
+                echo "    bash build.sh --opkernel_aicpu --soc=ascend910b --ops=add_example"
+                echo "    bash build.sh --opkernel_aicpu --soc=ascend910b --ops=add_example --build-type=Debug"
                 return
                 ;;
             ophost_test)
@@ -323,6 +344,7 @@ function help_info() {
     echo "    --asan Enable asan on the host side"
     echo "    --valgrind run ut with valgrind. This option will disable asan, noexec and run utest by valgrind"
     echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
+    echo "    --module Compile specified module, like: --module=mc2,attention, use ',' to separate different modules (supported: mc2,attention,moe,ffn,mhc,posembedding,gmm)"
     echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend950 use ',' to separate different SoC"
     echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62], A3(--soc=ascend910_93)"
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
@@ -334,6 +356,9 @@ function help_info() {
     echo "    --jit build run package without kernel bin"
     echo "    --pkg build run package with kernel bin"
     echo "    --experimental build experimental version"
+    echo "    --opkernel_aicpu build aicpu kernel"
+    echo "    --mssanitizer Build with mssanitizer mode on the kernel side, with options: '-g --cce-enable-sanitizer'"
+    echo "    --dump_cce Dump kernel precompiled files"
     echo "    --opapi_test build and run opapi unit tests"
     echo "    --ophost_test build and run ophost unit tests"
     echo "    --opgraph_test build and run opgraph unit tests"
@@ -363,7 +388,7 @@ function set_env()
     export BISHENG_REAL_PATH=$(which bisheng || true)
 
     if [ -z "${BISHENG_REAL_PATH}" ];then
-        if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]] && [[ "$ENABLE_AICPU" == "FALSE" ]] ; then 
+        if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]] && [[ "$ENABLE_AICPU" == "FALSE" ]] ; then
             log "Warning: bisheng compilation tool not found, but --jit --noaicpu is enabled, so continue."
             return
         fi
@@ -556,7 +581,7 @@ function build_example()
             files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
         fi
     else
-        # Except for ascend950/ascend950, the examples of other soc units are temporarily shared. 
+        # Except for ascend950/ascend950, the examples of other soc units are temporarily shared.
         # If you need to add independent examples, you can refer to the method of adding a directory for isolation.
         files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
     fi
@@ -624,7 +649,7 @@ function build_example()
             fi
             if [[ "${SIMULATOR}" == "camodel" && "${ASCEND_SOC_UNITS}" == "ascend950" ]]; then
                 cannsim record -s Ascend950 ./test_aclnn_${EXAMPLE_NAME} --gen-report
-            else 
+            else
                 ./test_aclnn_${EXAMPLE_NAME}
             fi
             run_result=$?
@@ -764,7 +789,7 @@ build_static_lib() {
     fi
 
     rm -fr ${BUILD_PATH}/autogen/${unit}
-    python3 "${BASE_PATH}/scripts/util/build_opp_kernel_static.py" GenStaticOpResourceIni -s ${unit} -b ${BUILD_PATH} ${jit_command}   
+    python3 "${BASE_PATH}/scripts/util/build_opp_kernel_static.py" GenStaticOpResourceIni -s ${unit} -b ${BUILD_PATH} ${jit_command}
     python3 "${BASE_PATH}/scripts/util/build_opp_kernel_static.py" StaticCompile -s ${unit} -b ${BUILD_PATH} -n=0 -a=${ARCH_INFO} ${jit_command}
 
     cd "${BUILD_PATH}" && cmake ${CUSTOM_OPTION} .. -DENABLE_STATIC=ON -DASCEND_COMPUTE_UNIT=${unit}
@@ -918,7 +943,7 @@ gen_op() {
   elif command -v python &> /dev/null; then
       python_cmd="python"
   fi
-  
+
   if [ -n "${python_cmd}" ]; then
     ${python_cmd} "${BASE_PATH}/scripts/opgen/opgen_standalone.py" -t ${GENOP_TYPE} -n ${GENOP_NAME} -p ${GENOP_BASE}
     return $?
@@ -1006,7 +1031,7 @@ set_ut_mode() {
     UT_TARGETS+=("${REPOSITORY_NAME}_op_host_ut")
     UT_TARGETS+=("${REPOSITORY_NAME}_op_api_ut")
     return
-  fi 
+  fi
   UT_TEST_ALL=TRUE
   if [[ "$OP_HOST" == "TRUE" ]]; then
     OP_HOST_UT=TRUE
@@ -1094,6 +1119,7 @@ for arg in "$@"; do
             case "$prev_arg" in
             --pkg) SHOW_HELP="package" ;;
             --opkernel) SHOW_HELP="opkernel" ;;
+            --opkernel_aicpu) SHOW_HELP="opkernel_aicpu" ;;
             -u|--test) SHOW_HELP="test" ;;
             --make_clean) SHOW_HELP="clean" ;;
             --valgrind) SHOW_HELP="valgrind" ;;
@@ -1149,12 +1175,13 @@ while [[ $# -gt 0 ]]; do
         ENABLE_BUILT_IN=FALSE
         shift
         ;;
-    --aicpu=*)
+    --module=*)
         OPTARG=$1
+        ascend_module_name=${OPTARG#*=}
         shift
         ;;
-    --aicpu_kernel)
-        ENABLE_AICPU_KERNEL=TRUE
+    --aicpu=*)
+        OPTARG=$1
         shift
         ;;
     --bisheng_flags=*)
@@ -1207,7 +1234,7 @@ while [[ $# -gt 0 ]]; do
         SPECIFIC_EXAMPLE_NAME=${OPTARG#*=}
         shift
         ;;
-    --experimental) 
+    --experimental)
         ENABLE_EXPERIMENTAL=TRUE
         shift
         ;;
@@ -1260,7 +1287,7 @@ while [[ $# -gt 0 ]]; do
             log "Info: No custom packages to build for this PR."
             # ops_names="incre_flash_attention"
             exit 200
-        fi 
+        fi
         ops_names="${ops_names%;}"
         ops_names="${ops_names//;/,}"
         ascend_op_name="$ops_names"
@@ -1316,14 +1343,14 @@ while [[ $# -gt 0 ]]; do
         CLANG="true"
         shift
         ;;
-    --tiling-key|--tiling_key)	 
-        TILING_KEY="$2" 
-        shift 2 
-        ;; 
-    --tiling_key=*) 
-        OPTARG=$1	 
-        TILING_KEY=${OPTARG#*=}	 
-        shift	 
+    --tiling-key|--tiling_key)
+        TILING_KEY="$2"
+        shift 2
+        ;;
+    --tiling_key=*)
+        OPTARG=$1
+        TILING_KEY=${OPTARG#*=}
+        shift
         ;;
     --kernel_template_input=*)
         OPTARG=$1
@@ -1449,6 +1476,18 @@ while [[ $# -gt 0 ]]; do
         CANN_3RD_LIB_PATH="$(realpath ${OPTARG#*=})"
         shift
         ;;
+    --mssanitizer)
+        ENABLE_MSSANITIZER=TRUE
+        shift
+        ;;
+    --dump_cce)
+        ENABLE_DUMP_CCE=TRUE
+        shift
+        ;;
+    --opkernel_aicpu)
+        ENABLE_AICPU_KERNEL=TRUE
+        shift
+        ;;
     --oom)
         OOM="true"
         shift
@@ -1460,6 +1499,30 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 set_ut_mode
+
+if [[ "$ENABLE_MSSANITIZER" == "TRUE" && "$OOM" == "true" ]]; then
+    echo "[ERROR] --mssanitizer cannot be used with --oom"
+    exit 1
+fi
+
+if [[ "$ENABLE_MSSANITIZER" == "TRUE" && "$ENABLE_DUMP_CCE" == "TRUE" ]]; then
+    echo "[ERROR] --mssanitizer cannot be used with --dump_cce"
+    exit 1
+fi
+
+if [ -n "$BISHENG_FLAGS" ]; then
+    if [[ "$ENABLE_MSSANITIZER" == "TRUE" || "$OOM" == "true" || "$ENABLE_DUMP_CCE" == "TRUE" ]]; then
+        echo "[ERROR] --bisheng_flags= cannot be used with --mssanitizer, --oom, --dump_cce"
+        exit 1
+    fi
+fi
+
+if [[ "$BUILD_TYPE" == "Debug" ]]; then
+    if [[ "$ENABLE_MSSANITIZER" == "TRUE" || "$OOM" == "true" || "$ENABLE_DUMP_CCE" == "TRUE" ]]; then
+        echo "[ERROR] --build-type=Debug cannot be used with --mssanitizer, --oom, --dump_cce"
+        exit 1
+    fi
+fi
 
 if [ -n "$KERNEL_TEMPLATE_INPUT" ]; then
     if [[ -z "${ascend_op_name}" || "$ascend_op_name" == *","* ]]; then
@@ -1498,6 +1561,20 @@ if [ -n "${ascend_op_name}" ];then
     if [[ "${ascend_op_name}" != *"fused_infer_attention_score"* ]] && [[ "${ascend_op_name}" != *"incre_flash_attention"* ]]; then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_TILING_SINK=OFF"
     fi
+fi
+
+if [ -n "${ascend_module_name}" ];then
+    if [[ "$ascend_module_name" == *mc2* ]]; then
+        # 避免重复添加
+        if [[ "$ascend_module_name" != *gmm* ]]; then
+            ascend_module_name="${ascend_module_name},gmm"
+        fi
+    fi
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_MODULE_NAME=${ascend_module_name}"
+    if [[ "${ascend_module_name}" != *"attention"* ]]; then
+ 	    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_TILING_SINK=OFF"
+    fi
+
 fi
 
 if [ -n "${op_build_tool}" ];then
@@ -1605,14 +1682,22 @@ if [ "${OOM}" == "true" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_OOM=ON"
 fi
 
+if [[ "$ENABLE_MSSANITIZER" == "TRUE" ]]; then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_MSSANITIZER=TRUE"
+fi
+
+if [[ "$ENABLE_DUMP_CCE" == "TRUE" ]]; then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_DUMP_CCE=TRUE"
+fi
+
 if [ -n "${EXAMPLE}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DTESTS_EXAMPLE_OPS_TEST=${EXAMPLE}"
 
     BUILD=ops_test_example
 fi
 
-if [ -n "${TILING_KEY}" ];then	 
-    CUSTOM_OPTION="${CUSTOM_OPTION} -DTILING_KEY=${TILING_KEY}"	 
+if [ -n "${TILING_KEY}" ];then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DTILING_KEY=${TILING_KEY}"
 fi
 
 if [ -n "${KERNEL_TEMPLATE_INPUT}" ];then
@@ -1661,7 +1746,7 @@ if [[ "$ENABLE_STATIC" == "TRUE" ]]; then
 fi
 
 if [[ "$ENABLE_AICPU" == "FALSE" ]]; then
-    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_AICPU=OFF -DENABLE_TILING_SINK=OFF"
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_AICPU=OFF -DENABLE_TILING_SINK=OFF "
 fi
 
 if [ -n "${ascend_package_path}" ];then
@@ -1680,7 +1765,7 @@ else
 fi
 
 function get_cpu_num() {
-    CPU_NUM=$(($(cat /proc/cpuinfo | grep "^processor" | wc -l)*2)) 
+    CPU_NUM=$(($(cat /proc/cpuinfo | grep "^processor" | wc -l)*2))
     if [ -n "${OPS_CPU_NUMBER}" ]; then
         if [[ "${OPS_CPU_NUMBER}" =~ ^[0-9]+$ ]]; then
             CPU_NUM="${OPS_CPU_NUMBER}"
@@ -1717,19 +1802,19 @@ function set_compute_unit_option() {
 }
 
 # 上面的set_compute_unit_option修改成只能传入一个soc后导致ut有问题，现在复制一份旧的支持多个soc传入，用于ut
-function set_compute_unit_option_ut() {	 
-    IFS=';' read -ra SOC_ARRAY <<< "$ASCEND_SOC_UNITS"  # 分割字符串为数组	 
-    local COMPUTE_UNIT_SHORT=""	 
-    for soc in "${SOC_ARRAY[@]}"; do	 
-    for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do	 
-        lowercase_word=$(echo "$soc" | tr '[:upper:]' '[:lower:]')	 
-        if [[ "$lowercase_word" == *"$support_unit"* ]]; then	 
-        COMPUTE_UNIT_SHORT="$COMPUTE_UNIT_SHORT$support_unit;" 
-        break 
-        fi	 
-    done 
-    done	 
-    CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$COMPUTE_UNIT_SHORT"	 
+function set_compute_unit_option_ut() {
+    IFS=';' read -ra SOC_ARRAY <<< "$ASCEND_SOC_UNITS"  # 分割字符串为数组
+    local COMPUTE_UNIT_SHORT=""
+    for soc in "${SOC_ARRAY[@]}"; do
+    for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do
+        lowercase_word=$(echo "$soc" | tr '[:upper:]' '[:lower:]')
+        if [[ "$lowercase_word" == *"$support_unit"* ]]; then
+        COMPUTE_UNIT_SHORT="$COMPUTE_UNIT_SHORT$support_unit;"
+        break
+        fi
+    done
+    done
+    CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$COMPUTE_UNIT_SHORT"
  }
 
 CUSTOM_OPTION="${CUSTOM_OPTION} -DCUSTOM_ASCEND_CANN_PACKAGE_PATH=${ASCEND_CANN_PACKAGE_PATH} -DCHECK_COMPATIBLE=${CHECK_COMPATIBLE}"
@@ -1787,7 +1872,7 @@ build_ut() {
             fi
             has_valid_target="TRUE"
         else
-            echo "Target $UT_TARGET not found, skipping build." 
+            echo "Target $UT_TARGET not found, skipping build."
         fi
     done
     if [[ "$COV" == "true" && "$ENABLE_UT_EXEC" == "TRUE" && "$has_valid_target" == "TRUE" ]]; then
@@ -1827,7 +1912,7 @@ function build_example_for_ci()
 {
     EXAMPLE_NAME="$1"
     PKG_MODE="cust"
-    
+
     EXAMPLE_MODE="eager"
     local eager_result=0
     build_example || eager_result=$? # 避免函数随build_example一起退出
@@ -1975,6 +2060,10 @@ elif [[ "$ENABLE_STATIC" == "TRUE" ]]; then
 elif [[ "$ENABLE_OPKERNEL" == "TRUE" ]]; then
     set_compute_unit_option
     cmake_config -DENABLE_HOST_TILING=ON
+    build_kernel
+elif [[ "$ENABLE_AICPU_KERNEL" == "TRUE" && "$ENABLE_BUILD_PKG" != "TRUE" && "$ENABLE_BUILT_CUSTOM" != "TRUE" ]]; then
+    set_compute_unit_option
+    cmake_config -DENABLE_HOST_TILING=ON -DENABLE_AICPU_KERNEL=TRUE
     build_kernel
 elif [[ "$ENABLE_BUILT_CUSTOM" == "TRUE" ]]; then      # --ops, --vendor 新命令新使用
     set_compute_unit_option

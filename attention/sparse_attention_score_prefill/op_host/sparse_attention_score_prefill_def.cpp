@@ -26,6 +26,10 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
+        // k2qRowPtr: per-head CSR row pointers [kvHeads, totalKvRows+1], int32. A plain runtime
+        // tensor Input (no const-fold) — the kernel reads csrStart/csrEnd from this GM tensor
+        // (params.k2qRowPtr) via GetValue; host tiling derives totalKvRows from the Input SHAPE
+        // only (no host value-read, so no .tolist / aclIntArray / ConvertToTensor front-end).
         this->Input("k2qRowPtr")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32})

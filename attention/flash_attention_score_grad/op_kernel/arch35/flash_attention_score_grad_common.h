@@ -37,10 +37,13 @@ constexpr uint8_t SYNC_V4_TO_C5_FLAG = 5;
 constexpr uint8_t SYNC_C3_TO_V5_FLAG = 6;
 constexpr uint8_t SYNC_C4_TO_V6_FLAG = 7;
 constexpr uint8_t SYNC_C4_TO_V3_FLAG = 8;
-constexpr uint8_t SYNC_DETER_FIX_FLAG = 9;
-constexpr uint8_t SYNC_C5_TO_V4_FLAG = 10;
+constexpr uint8_t SYNC_C5_TO_V4_FLAG = 9;
+constexpr uint8_t SYNC_DETER_FIX_FLAG = 10;
 constexpr uint8_t SYNC_DK_DETER_FIX_FLAG = 11;
 constexpr uint8_t SYNC_DV_DETER_FIX_FLAG = 12;
+// for small D preload 2 times
+constexpr uint8_t SYNC_V2_TO_C1_FLAG[2] = {10, 11};
+constexpr uint8_t SYNC_V2_TO_C2_FLAG[2] = {12, 13};
 
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;
@@ -80,6 +83,7 @@ constexpr uint16_t QUANT_UB2L1_SRC_OFFSET = 512;
 constexpr uint32_t L0_MAX_SIZE = 64 * 1024;
 constexpr uint32_t L1_MAX_SIZE = 512 * 1024;
 constexpr uint32_t L0C_MAX_SIZE = 256 * 1024;
+constexpr uint32_t PRE_INIT_UB_SIZE = 6 * 1024;
 
 constexpr uint32_t RESERVED_WORKSPACE_SIZE = 64 * 1024;
 constexpr bool INPUT_DISABLE = 0;
@@ -163,6 +167,7 @@ constexpr uint16_t UNROLL_FACTOR = 2;
 constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t NUM_THREE = 3;
 constexpr uint32_t NUM_FOUR = 4;
+constexpr uint32_t NUM_FIVE = 5;
 constexpr uint32_t NUM_EIGHT = 8;
 
 constexpr static bool end = true;
@@ -508,6 +513,7 @@ struct FagRunInfo {
     int32_t halfS2RealSize; // vector侧实际的s2基本块大小，如果Cube基本块=128，那么halfS2RealSize=64
     int32_t
         firstHalfS2RealSize; // 当s2RealSize不是2的整数倍时，v0比v1少计算一行，计算subblock偏移的时候需要使用v0的s2 size
+    int32_t s1AlignedSize;
     uint8_t isS2IdxNoChange;     // s2Idx是否变化
     uint8_t isNextS2IdxNoChange; // 下一个基本块的s2Idx是否变化（是否切换了列）
     // BN2模板使用
