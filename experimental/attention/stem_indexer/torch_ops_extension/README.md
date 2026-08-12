@@ -83,5 +83,8 @@ sparse_indices, sparse_seq_len = torch.ops.custom.npu_stem_indexer(
   C++ 实现内部已按 IR 顺序重排。
 - `qflat` / `kflat` 为 BF16 `[B, N, Qb/Kb, stem_stride*D]`；`vbias` 为 FP32 `[B, kv_heads, Kb]`；
   其余 `q_seq_lens` / `kv_seq_lens` / `num_prompt_tokens` / `metadata` 为 INT32，
-  `metadata` 长度 2048；输出 `sparse_indices` / `sparse_seq_len` 为 INT32。
-- `num_prompt_tokens` / `metadata` 为可选张量（`c10::optional<at::Tensor>`），未提供时内部以空张量兜底。
+  `metadata` 长度按 `16 + B * kv_heads * (36 + 72) * 16` 计算并向上对齐到4096个INT32元素；
+  输出 `sparse_indices` / `sparse_seq_len` 为 INT32。
+- `num_prompt_tokens` / `metadata` 为可选张量（`c10::optional<at::Tensor>`），两条调用通路均将缺省状态传递给
+  OpHost。未提供 `num_prompt_tokens` 时，TilingData记录复用标志，Kernel使用 `kv_seq_lens`；未提供
+  `metadata` 时，OpHost Tiling按当前计算要求返回明确的参数错误。
