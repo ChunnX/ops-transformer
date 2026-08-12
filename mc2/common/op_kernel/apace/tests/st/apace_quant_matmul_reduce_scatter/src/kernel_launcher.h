@@ -1,16 +1,17 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software; you can redistribute it and/or modify it under terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
  * \file kernel_launcher.h
- * \brief ApaceQuantMatmulReduceScatter UDMA kernel launcher 入口（4 个 dtype 变体）
+ * \brief v2 ApaceQuantMatmulReduceScatter UDMA kernel launcher 入口（4 个 dtype 变体）
+ *        v2 新增 workspaceGM 参数（8 参数）
  */
 
 #pragma once
@@ -22,11 +23,12 @@ __global__ __aicore__ void  ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma(
                            GM_ADDR aGM, GM_ADDR scaleAGM,
                            GM_ADDR bGM, GM_ADDR scaleBGM,
                            GM_ADDR cGM,
+                           GM_ADDR workspaceGM,
                            ApaceQuantMatmulReduceScatterTilingData tilingData)
 {
   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
   Apace::ApaceQuantMatmulReduceScatterUdmaImpl<fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t, false, true> impl;
-  impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, &tilingData);
+  impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, workspaceGM, &tilingData);
   impl.Run();
 }
 
@@ -35,11 +37,12 @@ __global__ __aicore__ void  ApaceQuantMatmulReduceScatterKernelE5M2E5M2_Udma(
                            GM_ADDR aGM, GM_ADDR scaleAGM,
                            GM_ADDR bGM, GM_ADDR scaleBGM,
                            GM_ADDR cGM,
+                           GM_ADDR workspaceGM,
                            ApaceQuantMatmulReduceScatterTilingData tilingData)
 {
   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
   Apace::ApaceQuantMatmulReduceScatterUdmaImpl<fp8_e5m2_t, fp8_e5m2_t, bfloat16_t, false, true> impl;
-  impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, &tilingData);
+  impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, workspaceGM, &tilingData);
   impl.Run();
 }
 
@@ -48,11 +51,12 @@ __global__ __aicore__ void  ApaceQuantMatmulReduceScatterKernelE4M3E5M2_Udma(
                            GM_ADDR aGM, GM_ADDR scaleAGM,
                            GM_ADDR bGM, GM_ADDR scaleBGM,
                            GM_ADDR cGM,
+                           GM_ADDR workspaceGM,
                            ApaceQuantMatmulReduceScatterTilingData tilingData)
 {
   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
   Apace::ApaceQuantMatmulReduceScatterUdmaImpl<fp8_e4m3fn_t, fp8_e5m2_t, bfloat16_t, false, true> impl;
-  impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, &tilingData);
+  impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, workspaceGM, &tilingData);
   impl.Run();
 }
 
@@ -61,10 +65,11 @@ __global__ __aicore__ void  ApaceQuantMatmulReduceScatterKernelE5M2E4M3_Udma(
                            GM_ADDR aGM, GM_ADDR scaleAGM,
                            GM_ADDR bGM, GM_ADDR scaleBGM,
                            GM_ADDR cGM,
+                           GM_ADDR workspaceGM,
                            ApaceQuantMatmulReduceScatterTilingData tilingData)
 {
   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
   Apace::ApaceQuantMatmulReduceScatterUdmaImpl<fp8_e5m2_t, fp8_e4m3fn_t, bfloat16_t, false, true> impl;
-  impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, &tilingData);
+  impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, workspaceGM, &tilingData);
   impl.Run();
 }

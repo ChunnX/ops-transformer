@@ -1,0 +1,952 @@
+
+########## v1 case: M=2048 K=4096 N=2048 rank=4 dtype=e4m3e4m3 ##########
+[INFO] Master (PID=1825980) will fork 4 processes (mode=precision, headMSize=512, dtype=e4m3e4m3)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:415 Master (PID=1825980) will fork 4 processes (mode=precision, headMSize=512, dtype=e4m3e4m3)
+[INFO] Forked Rank 0 -> PID 1825994
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 0 -> PID 1825994
+[INFO] Forked Rank 1 -> PID 1825996
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 1 -> PID 1825996
+[INFO] rankNum=4, rankId=0, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=0, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[INFO] Forked Rank 2 -> PID 1825997
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 2 -> PID 1825997
+[INFO] rankNum=4, rankId=1, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=1, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[INFO] Forked Rank 3 -> PID 1825999
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 3 -> PID 1825999
+[INFO] rankNum=4, rankId=2, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=2, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[INFO] rankNum=4, rankId=3, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=3, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+All workers finished. Status: SUCCESS
+
+============================================================
+Verifying outputs for 4 ranks (ReduceScatter)
+Matrix shape: total M=2048, m_local=512, N=2048
+Each rank outputs C_r[512, 2048]
+============================================================
+
+[Rank 0] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.020625e+03, rmse=2.044622e+03
+  rel_err: max=6.896552e-03
+  count(|abs_err| > 0.01): 261280 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[794624., 790528., 749568., 819200.],
+        [770048., 761856., 741376., 802816.],
+        [753664., 753664., 712704., 757760.],
+        [737280., 684032., 708608., 757760.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[794624., 794624., 745472., 819200.],
+        [770048., 761856., 741376., 802816.],
+        [753664., 753664., 712704., 757760.],
+        [733184., 684032., 708608., 757760.]], dtype=torch.bfloat16)
+[PASS] Rank 0: NPU results match CPU golden
+
+[Rank 1] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.025543e+03, rmse=2.049542e+03
+  rel_err: max=6.993007e-03
+  count(|abs_err| > 0.01): 262539 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[770048., 778240., 733184., 802816.],
+        [729088., 704512., 704512., 761856.],
+        [741376., 745472., 724992., 765952.],
+        [720896., 720896., 708608., 761856.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[770048., 778240., 733184., 802816.],
+        [729088., 704512., 704512., 761856.],
+        [741376., 745472., 724992., 761856.],
+        [720896., 720896., 704512., 761856.]], dtype=torch.bfloat16)
+[PASS] Rank 1: NPU results match CPU golden
+
+[Rank 2] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.018234e+03, rmse=2.042226e+03
+  rel_err: max=6.993007e-03
+  count(|abs_err| > 0.01): 260668 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[700416., 679936., 684032., 741376.],
+        [724992., 692224., 692224., 757760.],
+        [786432., 753664., 741376., 774144.],
+        [778240., 770048., 745472., 831488.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[700416., 679936., 684032., 741376.],
+        [724992., 692224., 692224., 761856.],
+        [786432., 753664., 741376., 774144.],
+        [778240., 770048., 745472., 831488.]], dtype=torch.bfloat16)
+[PASS] Rank 2: NPU results match CPU golden
+
+[Rank 3] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.016777e+03, rmse=2.040765e+03
+  rel_err: max=7.407407e-03
+  count(|abs_err| > 0.01): 260295 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[786432., 774144., 761856., 819200.],
+        [737280., 753664., 712704., 765952.],
+        [786432., 765952., 741376., 802816.],
+        [733184., 745472., 720896., 770048.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[786432., 774144., 761856., 819200.],
+        [737280., 753664., 712704., 765952.],
+        [786432., 770048., 745472., 802816.],
+        [733184., 745472., 716800., 770048.]], dtype=torch.bfloat16)
+[PASS] Rank 3: NPU results match CPU golden
+
+============================================================
+Verification Summary:
+============================================================
+  Rank 0: PASS
+  Rank 1: PASS
+  Rank 2: PASS
+  Rank 3: PASS
+
+[ALL PASS] All 4 ranks passed verification!
+
+
+########## v1 case: M=2048 K=4096 N=2048 rank=4 dtype=e5m2e5m2 ##########
+[INFO] Master (PID=1828046) will fork 4 processes (mode=precision, headMSize=512, dtype=e5m2e5m2)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:415 Master (PID=1828046) will fork 4 processes (mode=precision, headMSize=512, dtype=e5m2e5m2)
+[INFO] Forked Rank 0 -> PID 1828050
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 0 -> PID 1828050
+[INFO] Forked Rank 1 -> PID 1828052
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 1 -> PID 1828052
+[INFO] rankNum=4, rankId=0, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e5m2
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=0, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e5m2
+[INFO] Forked Rank 2 -> PID 1828053
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 2 -> PID 1828053
+[INFO] rankNum=4, rankId=1, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e5m2
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=1, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e5m2
+[INFO] Forked Rank 3 -> PID 1828055
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 3 -> PID 1828055
+[INFO] rankNum=4, rankId=2, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e5m2
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=2, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e5m2
+[INFO] rankNum=4, rankId=3, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e5m2
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=3, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e5m2
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+All workers finished. Status: SUCCESS
+
+============================================================
+Verifying outputs for 4 ranks (ReduceScatter)
+Matrix shape: total M=2048, m_local=512, N=2048
+Each rank outputs C_r[512, 2048]
+============================================================
+
+[Rank 0] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.018168e+03, rmse=2.042160e+03
+  rel_err: max=6.896552e-03
+  count(|abs_err| > 0.01): 260651 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[798720., 794624., 749568., 819200.],
+        [774144., 761856., 741376., 806912.],
+        [753664., 753664., 712704., 757760.],
+        [737280., 688128., 708608., 761856.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[798720., 794624., 745472., 819200.],
+        [770048., 761856., 745472., 806912.],
+        [753664., 753664., 712704., 757760.],
+        [737280., 688128., 708608., 761856.]], dtype=torch.bfloat16)
+[PASS] Rank 0: NPU results match CPU golden
+
+[Rank 1] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.025109e+03, rmse=2.049109e+03
+  rel_err: max=7.142857e-03
+  count(|abs_err| > 0.01): 262428 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[770048., 782336., 733184., 802816.],
+        [729088., 704512., 704512., 761856.],
+        [745472., 749568., 724992., 765952.],
+        [720896., 720896., 708608., 761856.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[770048., 782336., 733184., 806912.],
+        [729088., 704512., 704512., 761856.],
+        [745472., 745472., 724992., 770048.],
+        [724992., 720896., 704512., 761856.]], dtype=torch.bfloat16)
+[PASS] Rank 1: NPU results match CPU golden
+
+[Rank 2] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.017949e+03, rmse=2.041940e+03
+  rel_err: max=6.896552e-03
+  count(|abs_err| > 0.01): 260595 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[700416., 679936., 684032., 745472.],
+        [729088., 692224., 692224., 761856.],
+        [790528., 757760., 741376., 778240.],
+        [778240., 774144., 745472., 835584.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[700416., 679936., 684032., 745472.],
+        [729088., 692224., 688128., 761856.],
+        [790528., 757760., 741376., 774144.],
+        [778240., 774144., 745472., 835584.]], dtype=torch.bfloat16)
+[PASS] Rank 2: NPU results match CPU golden
+
+[Rank 3] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.015441e+03, rmse=2.039423e+03
+  rel_err: max=7.407407e-03
+  count(|abs_err| > 0.01): 259953 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[786432., 774144., 761856., 819200.],
+        [737280., 753664., 712704., 765952.],
+        [790528., 765952., 745472., 802816.],
+        [733184., 745472., 720896., 770048.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[786432., 774144., 761856., 819200.],
+        [737280., 753664., 712704., 765952.],
+        [790528., 770048., 741376., 802816.],
+        [733184., 745472., 720896., 770048.]], dtype=torch.bfloat16)
+[PASS] Rank 3: NPU results match CPU golden
+
+============================================================
+Verification Summary:
+============================================================
+  Rank 0: PASS
+  Rank 1: PASS
+  Rank 2: PASS
+  Rank 3: PASS
+
+[ALL PASS] All 4 ranks passed verification!
+
+
+########## v1 case: M=2048 K=4096 N=2048 rank=4 dtype=e4m3e5m2 ##########
+[INFO] Master (PID=1830062) will fork 4 processes (mode=precision, headMSize=512, dtype=e4m3e5m2)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:415 Master (PID=1830062) will fork 4 processes (mode=precision, headMSize=512, dtype=e4m3e5m2)
+[INFO] Forked Rank 0 -> PID 1830065
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 0 -> PID 1830065
+[INFO] Forked Rank 1 -> PID 1830066
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 1 -> PID 1830066
+[INFO] rankNum=4, rankId=0, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e5m2
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=0, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e5m2
+[INFO] Forked Rank 2 -> PID 1830068
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 2 -> PID 1830068
+[INFO] rankNum=4, rankId=1, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e5m2
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=1, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e5m2
+[INFO] Forked Rank 3 -> PID 1830070
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 3 -> PID 1830070
+[INFO] rankNum=4, rankId=2, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e5m2
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=2, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e5m2
+[INFO] rankNum=4, rankId=3, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e5m2
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=3, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e5m2
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+All workers finished. Status: SUCCESS
+
+============================================================
+Verifying outputs for 4 ranks (ReduceScatter)
+Matrix shape: total M=2048, m_local=512, N=2048
+Each rank outputs C_r[512, 2048]
+============================================================
+
+[Rank 0] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.019793e+03, rmse=2.043789e+03
+  rel_err: max=7.042253e-03
+  count(|abs_err| > 0.01): 261067 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[794624., 794624., 749568., 819200.],
+        [774144., 761856., 741376., 806912.],
+        [753664., 753664., 716800., 761856.],
+        [737280., 688128., 708608., 761856.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[794624., 794624., 749568., 819200.],
+        [770048., 761856., 745472., 806912.],
+        [753664., 753664., 716800., 761856.],
+        [737280., 688128., 708608., 757760.]], dtype=torch.bfloat16)
+[PASS] Rank 0: NPU results match CPU golden
+
+[Rank 1] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.025750e+03, rmse=2.049749e+03
+  rel_err: max=7.142857e-03
+  count(|abs_err| > 0.01): 262592 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[770048., 778240., 733184., 802816.],
+        [729088., 704512., 704512., 761856.],
+        [741376., 745472., 724992., 765952.],
+        [720896., 720896., 708608., 761856.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[770048., 778240., 733184., 806912.],
+        [729088., 704512., 704512., 761856.],
+        [745472., 745472., 724992., 770048.],
+        [720896., 720896., 704512., 761856.]], dtype=torch.bfloat16)
+[PASS] Rank 1: NPU results match CPU golden
+
+[Rank 2] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.017895e+03, rmse=2.041885e+03
+  rel_err: max=7.194245e-03
+  count(|abs_err| > 0.01): 260581 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[700416., 679936., 684032., 741376.],
+        [729088., 692224., 692224., 761856.],
+        [786432., 757760., 741376., 774144.],
+        [778240., 770048., 745472., 835584.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[700416., 679936., 688128., 745472.],
+        [724992., 696320., 692224., 761856.],
+        [786432., 757760., 741376., 774144.],
+        [778240., 770048., 745472., 835584.]], dtype=torch.bfloat16)
+[PASS] Rank 2: NPU results match CPU golden
+
+[Rank 3] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.016371e+03, rmse=2.040357e+03
+  rel_err: max=7.407407e-03
+  count(|abs_err| > 0.01): 260191 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[786432., 774144., 761856., 819200.],
+        [741376., 757760., 712704., 765952.],
+        [790528., 765952., 741376., 802816.],
+        [733184., 745472., 720896., 770048.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[786432., 774144., 761856., 819200.],
+        [737280., 753664., 712704., 765952.],
+        [790528., 770048., 741376., 802816.],
+        [733184., 745472., 720896., 770048.]], dtype=torch.bfloat16)
+[PASS] Rank 3: NPU results match CPU golden
+
+============================================================
+Verification Summary:
+============================================================
+  Rank 0: PASS
+  Rank 1: PASS
+  Rank 2: PASS
+  Rank 3: PASS
+
+[ALL PASS] All 4 ranks passed verification!
+
+
+########## v1 case: M=2048 K=4096 N=2048 rank=4 dtype=e5m2e4m3 ##########
+[INFO] Master (PID=1832028) will fork 4 processes (mode=precision, headMSize=512, dtype=e5m2e4m3)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:415 Master (PID=1832028) will fork 4 processes (mode=precision, headMSize=512, dtype=e5m2e4m3)
+[INFO] Forked Rank 0 -> PID 1832039
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 0 -> PID 1832039
+[INFO] Forked Rank 1 -> PID 1832040
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 1 -> PID 1832040
+[INFO] rankNum=4, rankId=0, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=0, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e4m3
+[INFO] Forked Rank 2 -> PID 1832042
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 2 -> PID 1832042
+[INFO] rankNum=4, rankId=1, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=1, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e4m3
+[INFO] Forked Rank 3 -> PID 1832044
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 3 -> PID 1832044
+[INFO] rankNum=4, rankId=2, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=2, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e4m3
+[INFO] rankNum=4, rankId=3, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=3, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e5m2e4m3
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 512
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 160
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 4
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=2048, mLocal=512, K=4096, ka=1024, N=2048, tileCnt=1, headMSize=768, headTileCnt=0, tailMSize=512, localMatmul=1
+All workers finished. Status: SUCCESS
+
+============================================================
+Verifying outputs for 4 ranks (ReduceScatter)
+Matrix shape: total M=2048, m_local=512, N=2048
+Each rank outputs C_r[512, 2048]
+============================================================
+
+[Rank 0] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.022227e+03, rmse=2.046226e+03
+  rel_err: max=6.993007e-03
+  count(|abs_err| > 0.01): 261690 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[798720., 790528., 749568., 819200.],
+        [774144., 761856., 741376., 806912.],
+        [749568., 753664., 712704., 757760.],
+        [733184., 684032., 708608., 757760.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[794624., 794624., 745472., 819200.],
+        [770048., 761856., 741376., 802816.],
+        [753664., 753664., 712704., 757760.],
+        [733184., 688128., 704512., 757760.]], dtype=torch.bfloat16)
+[PASS] Rank 0: NPU results match CPU golden
+
+[Rank 1] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.025266e+03, rmse=2.049265e+03
+  rel_err: max=6.896552e-03
+  count(|abs_err| > 0.01): 262468 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[770048., 778240., 733184., 802816.],
+        [729088., 700416., 704512., 757760.],
+        [741376., 749568., 724992., 765952.],
+        [720896., 720896., 708608., 761856.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[770048., 778240., 733184., 806912.],
+        [729088., 700416., 704512., 761856.],
+        [745472., 745472., 724992., 770048.],
+        [720896., 720896., 704512., 761856.]], dtype=torch.bfloat16)
+[PASS] Rank 1: NPU results match CPU golden
+
+[Rank 2] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.017473e+03, rmse=2.041462e+03
+  rel_err: max=6.993007e-03
+  count(|abs_err| > 0.01): 260473 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[700416., 679936., 684032., 741376.],
+        [724992., 692224., 692224., 761856.],
+        [786432., 757760., 741376., 774144.],
+        [778240., 770048., 745472., 835584.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[700416., 679936., 684032., 745472.],
+        [724992., 692224., 688128., 761856.],
+        [790528., 753664., 741376., 774144.],
+        [778240., 770048., 745472., 835584.]], dtype=torch.bfloat16)
+[PASS] Rank 2: NPU results match CPU golden
+
+[Rank 3] [verify] shape=(512, 2048), elements=1048576 - summary (large matrix, full tensors omitted)
+  abs_err: max=4.096000e+03, mean=1.011793e+03, rmse=2.035756e+03
+  rel_err: max=7.299270e-03
+  count(|abs_err| > 0.01): 259019 / 1048576
+  cpu golden (top-left 4x4):
+tensor([[786432., 774144., 761856., 819200.],
+        [737280., 753664., 712704., 765952.],
+        [786432., 765952., 741376., 802816.],
+        [733184., 745472., 720896., 770048.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[782336., 774144., 761856., 819200.],
+        [737280., 753664., 712704., 765952.],
+        [786432., 770048., 745472., 802816.],
+        [733184., 745472., 720896., 770048.]], dtype=torch.bfloat16)
+[PASS] Rank 3: NPU results match CPU golden
+
+============================================================
+Verification Summary:
+============================================================
+  Rank 0: PASS
+  Rank 1: PASS
+  Rank 2: PASS
+  Rank 3: PASS
+
+[ALL PASS] All 4 ranks passed verification!
+
+
+########## v1 case: M=512 K=1024 N=512 rank=4 dtype=e4m3e4m3 ##########
+[INFO] Master (PID=1833566) will fork 4 processes (mode=precision, headMSize=512, dtype=e4m3e4m3)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:415 Master (PID=1833566) will fork 4 processes (mode=precision, headMSize=512, dtype=e4m3e4m3)
+[INFO] Forked Rank 0 -> PID 1833569
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 0 -> PID 1833569
+[INFO] Forked Rank 1 -> PID 1833571
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 1 -> PID 1833571
+[INFO] rankNum=4, rankId=0, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=0, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[INFO] Forked Rank 2 -> PID 1833572
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 2 -> PID 1833572
+[INFO] rankNum=4, rankId=1, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=1, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[INFO] Forked Rank 3 -> PID 1833574
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:429 Forked Rank 3 -> PID 1833574
+[INFO] rankNum=4, rankId=2, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=2, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[INFO] rankNum=4, rankId=3, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:146 rankNum=4, rankId=3, ipport=tcp://127.0.0.1:8998, mode=precision, headMSize=512, dtype=e4m3e4m3
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 128
+  n                  : 512
+  k                  : 256
+  baseM              : 64
+  baseN              : 48
+  baseK              : 256
+  scaleKL1           : 256
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 1
+  nBufferNum         : 2
+  dbL0c              : 2
+[INFO] ReduceScatter: M=512, mLocal=128, K=1024, ka=256, N=512, tileCnt=1, headMSize=192, headTileCnt=0, tailMSize=128, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=512, mLocal=128, K=1024, ka=256, N=512, tileCnt=1, headMSize=192, headTileCnt=0, tailMSize=128, localMatmul=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 128
+  n                  : 512
+  k                  : 256
+  baseM              : 64
+  baseN              : 48
+  baseK              : 256
+  scaleKL1           : 256
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 1
+  nBufferNum         : 2
+  dbL0c              : 2
+[INFO] ReduceScatter: M=512, mLocal=128, K=1024, ka=256, N=512, tileCnt=1, headMSize=192, headTileCnt=0, tailMSize=128, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=512, mLocal=128, K=1024, ka=256, N=512, tileCnt=1, headMSize=192, headTileCnt=0, tailMSize=128, localMatmul=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 128
+  n                  : 512
+  k                  : 256
+  baseM              : 64
+  baseN              : 48
+  baseK              : 256
+  scaleKL1           : 256
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 1
+  nBufferNum         : 2
+  dbL0c              : 2
+[INFO] ReduceScatter: M=512, mLocal=128, K=1024, ka=256, N=512, tileCnt=1, headMSize=192, headTileCnt=0, tailMSize=128, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=512, mLocal=128, K=1024, ka=256, N=512, tileCnt=1, headMSize=192, headTileCnt=0, tailMSize=128, localMatmul=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 128
+  n                  : 512
+  k                  : 256
+  baseM              : 64
+  baseN              : 48
+  baseK              : 256
+  scaleKL1           : 256
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 1
+  nBufferNum         : 2
+  dbL0c              : 2
+[INFO] ReduceScatter: M=512, mLocal=128, K=1024, ka=256, N=512, tileCnt=1, headMSize=192, headTileCnt=0, tailMSize=128, localMatmul=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter/st/apace_quant_matmul_reduce_scatter/src/main.cpp:196 ReduceScatter: M=512, mLocal=128, K=1024, ka=256, N=512, tileCnt=1, headMSize=192, headTileCnt=0, tailMSize=128, localMatmul=1
+All workers finished. Status: SUCCESS
+
+============================================================
+Verifying outputs for 4 ranks (ReduceScatter)
+Matrix shape: total M=512, m_local=128, N=512
+Each rank outputs C_r[128, 512]
+============================================================
+
+[Rank 0] [verify] shape=(128, 512), elements=65536 - summary (large matrix, full tensors omitted)
+  abs_err: max=2.048000e+03, mean=2.447188e+02, rmse=5.005517e+02
+  rel_err: max=7.751938e-03
+  count(|abs_err| > 0.01): 15670 / 65536
+  cpu golden (top-left 4x4):
+tensor([[153600., 173056., 181248., 198656.],
+        [167936., 164864., 176128., 196608.],
+        [150528., 171008., 187392., 186368.],
+        [172032., 178176., 202752., 211968.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[153600., 173056., 181248., 198656.],
+        [167936., 164864., 176128., 196608.],
+        [150528., 171008., 186368., 186368.],
+        [172032., 178176., 202752., 212992.]], dtype=torch.bfloat16)
+[PASS] Rank 0: NPU results match CPU golden
+
+[Rank 1] [verify] shape=(128, 512), elements=65536 - summary (large matrix, full tensors omitted)
+  abs_err: max=1.024000e+03, mean=2.400391e+02, rmse=4.956006e+02
+  rel_err: max=7.812500e-03
+  count(|abs_err| > 0.01): 15385 / 65536
+  cpu golden (top-left 4x4):
+tensor([[151552., 169984., 189440., 189440.],
+        [180224., 198656., 216064., 225280.],
+        [165888., 178176., 189440., 209920.],
+        [165888., 180224., 215040., 214016.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[151552., 169984., 188416., 188416.],
+        [180224., 198656., 216064., 225280.],
+        [165888., 178176., 189440., 208896.],
+        [165888., 180224., 215040., 214016.]], dtype=torch.bfloat16)
+[PASS] Rank 1: NPU results match CPU golden
+
+[Rank 2] [verify] shape=(128, 512), elements=65536 - summary (large matrix, full tensors omitted)
+  abs_err: max=2.048000e+03, mean=2.483750e+02, rmse=5.043174e+02
+  rel_err: max=7.812500e-03
+  count(|abs_err| > 0.01): 15899 / 65536
+  cpu golden (top-left 4x4):
+tensor([[171008., 167936., 184320., 190464.],
+        [176128., 195584., 206848., 229376.],
+        [181248., 201728., 217088., 230400.],
+        [150528., 158720., 171008., 185344.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[171008., 167936., 184320., 190464.],
+        [176128., 195584., 206848., 229376.],
+        [181248., 201728., 217088., 230400.],
+        [151552., 158720., 171008., 186368.]], dtype=torch.bfloat16)
+[PASS] Rank 2: NPU results match CPU golden
+
+[Rank 3] [verify] shape=(128, 512), elements=65536 - summary (large matrix, full tensors omitted)
+  abs_err: max=2.048000e+03, mean=2.420469e+02, rmse=4.979156e+02
+  rel_err: max=7.751938e-03
+  count(|abs_err| > 0.01): 15495 / 65536
+  cpu golden (top-left 4x4):
+tensor([[146432., 162816., 184320., 182272.],
+        [156672., 173056., 193536., 192512.],
+        [162816., 182272., 204800., 207872.],
+        [165888., 179200., 181248., 192512.]], dtype=torch.bfloat16)
+  npu output (top-left 4x4):
+tensor([[146432., 162816., 183296., 182272.],
+        [155648., 173056., 193536., 193536.],
+        [162816., 182272., 204800., 207872.],
+        [165888., 179200., 180224., 192512.]], dtype=torch.bfloat16)
+[PASS] Rank 3: NPU results match CPU golden
+
+============================================================
+Verification Summary:
+============================================================
+  Rank 0: PASS
+  Rank 1: PASS
+  Rank 2: PASS
+  Rank 3: PASS
+
+[ALL PASS] All 4 ranks passed verification!
+
+
+V1_COMPARE_SUMMARY: PASS=5 FAIL=0

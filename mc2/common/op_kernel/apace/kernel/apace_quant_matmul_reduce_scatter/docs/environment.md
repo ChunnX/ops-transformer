@@ -1,6 +1,6 @@
 # 环境检查报告
 
-**算子**: apace_quant_matmul_reduce_scatter   **状态**: ✅ 通过   **时间**: 2026-08-11T10:00:00+08:00
+**算子**: apace_quant_matmul_reduce_scatter_v2   **状态**: ✅ 通过   **时间**: 2026-08-11T10:00:00+08:00
 
 ## 硬件
 

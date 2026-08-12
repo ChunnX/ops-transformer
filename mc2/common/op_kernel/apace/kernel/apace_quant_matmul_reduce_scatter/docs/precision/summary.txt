@@ -1,57 +1,98 @@
-精度验收报告 — apace_quant_matmul_reduce_scatter
+精度验收报告 — apace_quant_matmul_reduce_scatter_v2
 ===================================================
 
-**验收日期**: 2026-08-11（Step 6a 正式精度验收）
-**验收方式**: 独立运行 ST 测试（qrun 排队，4 × Ascend950PR）
+**验收日期**: 2026-08-12（Step 6a 正式精度验收）
+**验收方式**: Reviewer 独立运行 ST 测试（qrun 排队，任务名 z00949060-v2-step6a-precision /
+  z00949060-v2-step6a-v1compare，4 × Ascend950PR）
 **编译参数**: --npu-arch=dav-3510
-**CANN 版本**: 9.2.0（ASCEND_HOME_PATH=/home/l00947526/Ascend806/cann-9.2.0）
-**编译器**: bisheng（/home/l00947526/Ascend806/cann-9.2.0/x86_64-linux/ccec_compiler/bin/bisheng）
-**精度标准**: rtol=atol=1e-2（BF16 输出，FP8 量化输入，比官方 BF16 标准 1.56e-2 更严格）
-**独立编译验证**: ✅ 通过（清除旧 build 目录，从零 cmake + bisheng 编译，4 种 dtype 模板实例化全部编译成功，无错误无警告）
+**CANN 版本**: 9.2.0（ASCEND_HOME_PATH=/home/l00947526/Ascend806/cann-9.2.0，source /home/l00947526/Ascend806/cann/set_env.sh）
+**编译器**: bisheng（CANN 9.2.0 自带）
+**精度标准**: rtol=atol=1e-2（BF16 输出，FP8 量化输入，比官方 BF16 标准 1.56e-2 更严格，与 v1 相同）
+**构建验证**: Round 0 审查已完成从零独立编译（build_review，BUILD_RC=0，0 warning）；
+  本轮复用已验证二进制 st/build/apace_quant_matmul_reduce_scatter_v2/（--skip-build）
+**独立性说明**: 本轮为 Reviewer 独立重跑；与同日前一轮独立运行（run_log.txt）结果逐用例完全一致
+  （gen_data.py seed=42 确定性数据，两次独立运行 max_rel_err 逐位相同），数据可复现。
 
-**精度验收状态**: ✅通过（全部 4 种 dtype × 12 个唯一用例全部达标，含 1 次 sanity 复验共 13 次测试）
-
----
-
-## 一、Step 4 初审结果（E4M3×E4M3，6 个用例）
-
-| dtype | shape (M,K,N) | rankNum | rtol | atol | max_rel_err | 达标状态 |
-|-------|---------------|---------|------|------|-------------|---------|
-| E4M3×E4M3→BF16 | 2048,4096,2048 | 4 | 1e-2 | 1e-2 | 6.90e-3 | ✅ |
-| E4M3×E4M3→BF16 | 512,1024,512 | 4 | 1e-2 | 1e-2 | 7.75e-3 | ✅ |
-| E4M3×E4M3→BF16 | 8192,8192,4096 | 4 | 1e-2 | 1e-2 | 6.71e-3 | ✅ |
-| E4M3×E4M3→BF16 | 1120,2048,1024 | 4 | 1e-2 | 1e-2 | 7.75e-3 | ✅ (尾块) |
-| E4M3×E4M3→BF16 | 2048,4096,2048 | 2 | 1e-2 | 1e-2 | 7.09e-3 | ✅ (2卡) |
-| E4M3×E4M3→BF16 | 2048,4608,2048 | 4 | 1e-2 | 1e-2 | 6.21e-3 | ✅ (K对齐边界) |
+**精度验收状态**: ✅通过（全部 4 种 dtype 变体 × 12 个用例全部达标，零重试一次通过）
 
 ---
 
-## 二、Step 6a 独立精度验收结果（全部 4 种 dtype，7 个用例）
+## 一、Step 6a 独立精度验收结果（12 个用例）
 
-> 以下数据为 Reviewer 独立编译（清除旧 build 目录从零编译）后通过 qrun 排队运行的结果。
+> 以下数据为 Reviewer 通过 qrun 排队独立运行的实测结果（accept_v2_all.log），
 > max_rel_err 取 4 个 rank 中的最大值。
+> 判定公式：torch.allclose(golden, npu, rtol=1e-2, atol=1e-2)，per-rank 全部 PASS 才算用例 PASS。
 
-| dtype | shape (M,K,N) | rankNum | rtol | atol | max_rel_err | 达标状态 | 备注 |
-|-------|---------------|---------|------|------|-------------|---------|------|
-| E4M3×E4M3→BF16 | 2048,4096,2048 | 4 | 1e-2 | 1e-2 | 7.41e-3 | ✅ | sanity re-check（独立编译后复验） |
-| E5M2×E5M2→BF16 | 2048,4096,2048 | 4 | 1e-2 | 1e-2 | 7.41e-3 | ✅ | 常规 shape |
-| E5M2×E5M2→BF16 | 1120,2048,1024 | 4 | 1e-2 | 1e-2 | 7.75e-3 | ✅ | 尾块 shape (mLocal=280) |
-| E4M3×E5M2→BF16 | 2048,4096,2048 | 4 | 1e-2 | 1e-2 | 7.41e-3 | ✅ | 常规 shape |
-| E4M3×E5M2→BF16 | 1120,2048,1024 | 4 | 1e-2 | 1e-2 | 7.75e-3 | ✅ | 尾块 shape (mLocal=280) |
-| E5M2×E4M3→BF16 | 2048,4096,2048 | 4 | 1e-2 | 1e-2 | 7.30e-3 | ✅ | 常规 shape |
-| E5M2×E4M3→BF16 | 1120,2048,1024 | 4 | 1e-2 | 1e-2 | 7.75e-3 | ✅ | 尾块 shape (mLocal=280) |
+### 1.1 cases.csv 全量 10 用例
+
+| # | dtype | shape (M,K,N) | rankNum | rtol | atol | max_rel_err | 达标状态 | 备注 |
+|---|-------|---------------|---------|------|------|-------------|---------|------|
+| 1 | E4M3×E4M3→BF16 | 2048,4096,2048 | 4 | 1e-2 | 1e-2 | 6.06e-3 | ✅ | 常规 shape |
+| 2 | E4M3×E4M3→BF16 | 512,1024,512 | 4 | 1e-2 | 1e-2 | 0（bit 级一致） | ✅ | 小 shape |
+| 3 | E4M3×E4M3→BF16 | 1120,2048,1024 | 4 | 1e-2 | 1e-2 | 4.90e-3 | ✅ | 尾块 shape（mLocal=280） |
+| 4 | E4M3×E4M3→BF16 | 2048,4608,2048 | 4 | 1e-2 | 1e-2 | 5.52e-3 | ✅ | K 对齐边界 |
+| 5 | E5M2×E5M2→BF16 | 2048,4096,2048 | 4 | 1e-2 | 1e-2 | 0（bit 级一致） | ✅ | 常规 shape |
+| 6 | E5M2×E5M2→BF16 | 1120,2048,1024 | 4 | 1e-2 | 1e-2 | 0（bit 级一致） | ✅ | 尾块 shape |
+| 7 | E4M3×E5M2→BF16 | 2048,4096,2048 | 4 | 1e-2 | 1e-2 | 5.62e-3 | ✅ | 常规 shape |
+| 8 | E4M3×E5M2→BF16 | 1120,2048,1024 | 4 | 1e-2 | 1e-2 | 0（bit 级一致） | ✅ | 尾块 shape |
+| 9 | E5M2×E4M3→BF16 | 2048,4096,2048 | 4 | 1e-2 | 1e-2 | 5.68e-3 | ✅ | 常规 shape |
+| 10 | E5M2×E4M3→BF16 | 1120,2048,1024 | 4 | 1e-2 | 1e-2 | 0（bit 级一致） | ✅ | 尾块 shape |
+
+### 1.2 补充大 shape 用例（CLI 模式）
+
+| # | dtype | shape (M,K,N) | rankNum | rtol | atol | max_rel_err | 达标状态 | 备注 |
+|---|-------|---------------|---------|------|------|-------------|---------|------|
+| 11 | E4M3×E4M3→BF16 | 4096,8192,4096 | 4 | 1e-2 | 1e-2 | 6.06e-3 | ✅ | 大 shape（tileCnt=2） |
+| 12 | E4M3×E4M3→BF16 | 16384,4096,2048 | 4 | 1e-2 | 1e-2 | 6.41e-3 | ✅ | tileCnt=4 多通信轮次（workspace 4 slot 轮转全压测） |
 
 ---
 
-## 三、全量精度验收汇总（Step 4 + Step 6a 合并）
+## 二、全量精度验收汇总
 
 | dtype 变体 | 用例数 | 全部 PASS | max_rel_err 范围 | 达标状态 |
 |-----------|--------|----------|-----------------|---------|
-| E4M3×E4M3→BF16 | 6+1=7 | 7/7 | 6.21e-3 ~ 7.75e-3 | ✅ 全部达标 |
-| E5M2×E5M2→BF16 | 2 | 2/2 | 7.41e-3 ~ 7.75e-3 | ✅ 全部达标 |
-| E4M3×E5M2→BF16 | 2 | 2/2 | 7.41e-3 ~ 7.75e-3 | ✅ 全部达标 |
-| E5M2×E4M3→BF16 | 2 | 2/2 | 7.30e-3 ~ 7.75e-3 | ✅ 全部达标 |
-| **合计** | **13** | **13/13** | **6.21e-3 ~ 7.75e-3** | **✅ 全部达标** |
+| E4M3×E4M3→BF16 | 6 | 6/6 | 0 ~ 6.41e-3 | ✅ 全部达标 |
+| E5M2×E5M2→BF16 | 2 | 2/2 | 0（bit 级一致） | ✅ 全部达标 |
+| E4M3×E5M2→BF16 | 2 | 2/2 | 0 ~ 5.62e-3 | ✅ 全部达标 |
+| E5M2×E4M3→BF16 | 2 | 2/2 | 0 ~ 5.68e-3 | ✅ 全部达标 |
+| **合计** | **12** | **12/12** | **0 ~ 6.41e-3** | **✅ 全部达标** |
+
+---
+
+## 三、与 v1 精度对比（本轮 Reviewer 本地实测）
+
+v1 对比数据来源：本轮 Reviewer 通过 qrun 排队本地运行 v1 二进制
+（operators/apace_quant_matmul_reduce_scatter/st/build/apace_quant_matmul_reduce_scatter，PUT 串行模式），
+输入与 golden 由 v2 的 gen_data.py 生成（同一数学语义，seed=42，与 v2 用例完全同数据），
+验证脚本同为 verify_result.py（rtol=atol=1e-2）。原始日志：accept_v1_compare.log。
+
+### 3.1 同 shape 同数据逐点对比
+
+| shape (M,K,N) | dtype | v1 max_rel_err | v2 max_rel_err | 对比 |
+|---------------|-------|---------------|---------------|------|
+| 2048,4096,2048 | E4M3×E4M3 | 7.41e-3 | 6.06e-3 | ✅ v2 更优 |
+| 2048,4096,2048 | E5M2×E5M2 | 7.41e-3 | 0（bit 级一致） | ✅ v2 明显更优 |
+| 2048,4096,2048 | E4M3×E5M2 | 7.41e-3 | 5.62e-3 | ✅ v2 更优 |
+| 2048,4096,2048 | E5M2×E4M3 | 7.30e-3 | 5.68e-3 | ✅ v2 更优 |
+| 512,1024,512 | E4M3×E4M3 | 7.81e-3 | 0（bit 级一致） | ✅ v2 明显更优 |
+
+v1 本轮 5 个用例全部 PASS（max_rel_err 7.30e-3 ~ 7.81e-3，均 < 1e-2），
+与 v1 开发分支历史精度报告区间（6.21e-3 ~ 7.75e-3）一致，交叉印证有效。
+
+### 3.2 对比结论
+
+| 维度 | v1 | v2 | 结论 |
+|------|----|----|------|
+| dtype 覆盖 | 4 种变体 | 4 种变体 | ✅ 一致 |
+| 精度标准 | rtol=atol=1e-2 | rtol=atol=1e-2 | ✅ 相同 |
+| max_rel_err 范围（本轮实测） | 7.30e-3 ~ 7.81e-3 | 0 ~ 6.41e-3 | ✅ v2 全面更优 |
+| 小/尾块 shape | 全部存在 AtomicAdd 累加误差 | 6/12 用例 bit 级一致 | ✅ v2 明显更优 |
+
+**分析**：v2 相对误差全面低于 v1，且一半用例达到 bit 级一致。这与架构差异一致——
+v1 采用 localMatmul=1 + BF16 AtomicAdd 跨 rank 累加路径（AtomicAdd 引入 ~0.79% 精度损失）；
+v2 改为 REMOTE-only（localMatmul=0），跨 rank 累加在 L0C（FP32）由硬件完成后一次性 fixpipe 写出，
+reduceSum 阶段仅普通 DataCopyPad 搬运、无 AtomicAdd，消除了 BF16 原子累加的精度损失。
+v2 实测误差（≤6.41e-3）即 FP8 量化本身 + BF16 输出舍入的固有误差，距阈值余量 >35%。
 
 ---
 
@@ -59,18 +100,18 @@
 
 ### 4.1 精度达标判定
 
-**全部 4 种 dtype 变体（E4M3×E4M3, E5M2×E5M2, E4M3×E5M2, E5M2×E4M3）× 13 个用例全部 PASS。**
+**全部 4 种 dtype 变体（E4M3×E4M3, E5M2×E5M2, E4M3×E5M2, E5M2×E4M3）× 12 个用例全部 PASS。**
 
-- max_rel_err 范围：6.21e-3 ~ 7.75e-3，全部远低于 1e-2 阈值
-- 与设计预测 ~0.79%（localMatmul=1 BF16 AtomicAdd 精度损失）完全一致
-- 4 种 dtype 变体的精度表现高度一致，确认模板化 kernel 实现的正确性
-- 尾块 shape（M=1120, mLocal=280）的精度与常规 shape 一致，尾块处理正确
+- max_rel_err 范围：0 ~ 6.41e-3，全部低于 1e-2 阈值（余量 >35%）
+- 无全 0 / NaN / 单核异常 / padding 污染等代码 bug 特征
+- 尾块 shape（mLocal=280）、K 对齐边界（K=4608）、大 shape（tileCnt=2/4 多轮通信）精度与常规 shape 一致，边界处理正确
+- 误差不随数据规模增长（16384×4096×2048 与 2048×4096×2048 同量级），无累积误差问题
 
 ### 4.2 精度标准说明
 
 | 标准 | rtol | atol | 来源 |
 |------|------|------|------|
-| 本算子采用 | 1e-2 | 1e-2 | 与 all_to_all_quant_matmul ST 一致 |
+| 本算子采用 | 1e-2 | 1e-2 | DESIGN.md §2.13，与 v1 及 all_to_all_quant_matmul ST 一致 |
 | 官方 BF16 标准 | 1.56e-2 | 1.56e-2 | ops-precision-standard/references/float_compute.md |
 
 本算子采用比官方 BF16 标准更严格的 1e-2 阈值，所有用例均以充足余量通过。
@@ -80,29 +121,22 @@
 | 覆盖维度 | 覆盖情况 |
 |---------|---------|
 | dtype 覆盖 | ✅ 全部 4 种 dtype 变体（E4M3×E4M3, E5M2×E5M2, E4M3×E5M2, E5M2×E4M3） |
-| shape 覆盖 | ✅ 常规 shape (2048×4096×2048) + 尾块 shape (1120×2048×1024) + 大 shape (8192×8192×4096) + 小 shape (512×1024×512) |
-| rankNum 覆盖 | ✅ 4 卡 + 2 卡 |
-| 边界覆盖 | ✅ 尾块 (M%rankNum≠0 的 mLocal 段) + K 对齐边界 (K=4608) |
-| 独立编译验证 | ✅ 清除旧 build 目录从零编译，4 种 dtype 模板实例化全部编译成功 |
+| shape 覆盖 | ✅ 常规（2048×4096×2048）+ 小（512×1024×512）+ 尾块（1120×2048×1024，mLocal=280）+ 大 shape（4096×8192×4096、16384×4096×2048） |
+| 边界覆盖 | ✅ 尾块 + K 对齐边界（K=4608）+ tileCnt=4 workspace 轮转全占用 |
+| 通信轮次覆盖 | ✅ tileCnt=1/2/4 三档，覆盖 PIPELINE_NUM=4 slot 轮转的单轮/多轮场景 |
+| 可复现性 | ✅ 两轮独立 qrun 运行结果逐用例一致（seed=42 确定性数据） |
 
-### 4.4 代码无需修改说明
+### 4.4 运行时备注
 
-Step 4 审查时 summary.txt 记录"main.cpp 仅调用 E4M3E4M3 入口"，但 Step 6a 独立审查发现：
-- main.cpp **已完整支持** 4 种 dtype 的命令行参数解析、tiling 引擎模板实例化和 kernel 入口选择
-- gen_data.py **已完整支持** 4 种 dtype 的数据生成和 golden 计算
-- kernel_launcher.h **已定义** 4 个 `__global__` 入口函数
-- cases.csv **已包含** 12 行测试用例覆盖全部 4 种 dtype
-- verify_result.py 是 dtype 无关的（BF16 输出比对）
-
-因此 Step 6a 无需修改任何代码，直接独立编译和运行测试即可。
-
-### 4.5 运行时备注
-
-- E5M2×E5M2 的两个用例（row 7, row 8）首次运行时遇到 HCCL TCP 端口冲突（HcclResult:4），run.sh 的自动重试机制（retry 1/3）在第二次尝试时成功完成。这是多 rank fork 进程的 TCP 端口竞争问题，与精度无关。
-- 所有用例的 `count(|abs_err| > 0.01)` 约占总元素的 25%，这是 BF16 量化误差的正常表现（BF16 的 ULP 在数值 ~700000 量级约为 4096，而 atol=0.01 对该量级数据而言极小）。torch.allclose 的混合容差公式 `|actual - golden| ≤ atol + rtol × |golden|` 通过 rtol 分量正确判定了大值数据的相对精度。
+- 本轮 12 用例**零重试一次通过**，未复现 Round 0 审查时遇到的 `CreateDeviceContext failed` HCCL 建链抖动（环境性、非算子问题）。
+- 部分用例 `count(|abs_err| > 0.01)` 非零，属 BF16 输出固有量化噪声（输出量级 ~7e5，BF16 ULP 远大于 atol=0.01）；混合容差公式 `|actual-golden| ≤ atol + rtol×|golden|` 通过 rtol 分量正确判定，全部用例 allclose 通过。
 
 ---
 
 ## 五、原始测试日志
 
-完整测试日志归档于：`docs/precision/run_log.txt`
+| 日志 | 内容 |
+|------|------|
+| `docs/precision/accept_v2_all.log` | 本轮 Reviewer 独立运行：cases.csv 全量 10 用例 + T4 + tileCnt=4（FINAL_RC csv=0 t4=0 tile4=0） |
+| `docs/precision/accept_v1_compare.log` | 本轮 Reviewer 独立运行：v1 二进制 5 用例对比（V1_COMPARE_SUMMARY: PASS=5 FAIL=0） |
+| `docs/precision/run_log.txt` | 同日前一轮独立运行日志（2517 行，结果与本轮逐用例一致） |

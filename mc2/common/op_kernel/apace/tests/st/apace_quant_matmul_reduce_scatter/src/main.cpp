@@ -186,14 +186,43 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
     tilingData.commTilingData.splitAxisTailSize = static_cast<uint64_t>(tailMSize);
     tilingData.commTilingData.splitAxisTailCnt = static_cast<uint64_t>(tailTileCnt);
     tilingData.commTilingData.nonSplitAxisSize = ka;
-    // localMatmul=1：LOCAL+REMOTE+AtomicAdd（通算并行是 MC2 核心价值）
-    tilingData.localMatmul = 1;
+    // v2: localMatmul=0（默认不启用，REMOTE-only 流水线）
+    tilingData.localMatmul = 0;
 
     tilingData.scaleCommTilingData = tilingData.commTilingData;
     tilingData.scaleCommTilingData.nonSplitAxisSize = ka / 32;  // MXFP8 scale 压缩比
 
-    INFO_LOG("ReduceScatter: M=%d, mLocal=%u, K=%d, ka=%u, N=%d, tileCnt=%u, headMSize=%u, headTileCnt=%u, tailMSize=%u, localMatmul=%u",
-             m, mLocal, k, ka, n, tileCnt, headMSize, headTileCnt, tailMSize, tilingData.localMatmul);
+    // v2 新增字段填充（DESIGN.md §2.8）
+    uint32_t coreNum = tilingData.tileQbmmTilingData.usedCoreNum;
+    uint32_t baseM = tilingData.tileQbmmTilingData.baseM;
+    uint32_t baseN = tilingData.tileQbmmTilingData.baseN;
+    uint64_t workspaceSize = static_cast<uint64_t>(PIPELINE_NUM) * coreNum * baseM * baseN * sizeof(uint16_t);
+
+    tilingData.pipelineNum = PIPELINE_NUM;
+    tilingData.coreNum = coreNum;
+    tilingData.ubCalSize = baseM * baseN;
+    // totalMmTiles DEPRECATED（DESIGN.md §2.16 Issue 2）：host 填 0，kernel 不消费；
+    // AIV reduceSum 循环由 bsAiv.GetTileIdx() 隐式终止，与 AIC 构造一致
+    tilingData.totalMmTiles = 0;
+    tilingData.workspaceSize = workspaceSize;
+
+    // v2 输入校验：flagId 冲突规避（避开 3、5、[11-14]，可用 flagId = {0,1,2,4,6,7,8,9,10,15} 共 10 个）
+    if (tileCnt > 10) {
+        ERROR_LOG("v2 flagId constraint: headTileCnt+tailTileCnt=%u > 10 (avoid flagId 3/5/[11-14])", tileCnt);
+        return -1;
+    }
+
+    INFO_LOG("v2 ReduceScatter: M=%d, mLocal=%u, K=%d, ka=%u, N=%d, tileCnt=%u, headMSize=%u, headTileCnt=%u, tailMSize=%u, localMatmul=%u, pipelineNum=%u, coreNum=%u, totalMmTiles=%u, workspaceSize=%lu",
+             m, mLocal, k, ka, n, tileCnt, headMSize, headTileCnt, tailMSize, tilingData.localMatmul,
+             tilingData.pipelineNum, tilingData.coreNum, tilingData.totalMmTiles, tilingData.workspaceSize);
+    // DEBUG: 输出 mm tiling 细节（调试 workspace 布局用）
+    INFO_LOG("v2 mmTiling: baseM=%u, baseN=%u, baseK=%u, stepK=%u, mTailTile=%u, nTailTile=%u, mBaseTailSplitCnt=%u, nBaseTailSplitCnt=%u, mTailMain=%u, nTailMain=%u, usedCoreNum=%u, dbL0c=%u",
+             tilingData.tileQbmmTilingData.baseM, tilingData.tileQbmmTilingData.baseN,
+             tilingData.tileQbmmTilingData.baseK, tilingData.tileQbmmTilingData.stepK,
+             tilingData.tileQbmmTilingData.mTailTile, tilingData.tileQbmmTilingData.nTailTile,
+             tilingData.tileQbmmTilingData.mBaseTailSplitCnt, tilingData.tileQbmmTilingData.nBaseTailSplitCnt,
+             tilingData.tileQbmmTilingData.mTailMain, tilingData.tileQbmmTilingData.nTailMain,
+             tilingData.tileQbmmTilingData.usedCoreNum, tilingData.tileQbmmTilingData.dbL0c);
 
     ACL_CHECK(aclInit(nullptr));
     int32_t deviceId = rankId;
@@ -276,36 +305,44 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
     GM_ADDR deviceScaleA = nullptr;
     GM_ADDR deviceScaleB = nullptr;
     GM_ADDR deviceOutput = nullptr;
+    GM_ADDR deviceWorkspace = nullptr;  // v2 新增：workspace GM
 
     ACL_CHECK(aclrtMalloc((void**)&deviceA, sizeA, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void**)&deviceB, sizeB, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void**)&deviceScaleA, sizeScaleA, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void**)&deviceScaleB, sizeScaleB, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void**)&deviceOutput, sizeOutput, ACL_MEM_MALLOC_HUGE_ONLY));
+    // v2: 分配 workspace GM（PIPELINE_NUM × coreNum × baseM × baseN × sizeof(BF16)）
+    ACL_CHECK(aclrtMalloc((void**)&deviceWorkspace, tilingData.workspaceSize, ACL_MEM_MALLOC_HUGE_ONLY));
 
     ACL_CHECK(aclrtMemcpy(deviceA, sizeA, hostA.data(), sizeA, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceB, sizeB, hostB.data(), sizeB, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceScaleA, sizeScaleA, hostScaleA.data(), sizeScaleA, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceScaleB, sizeScaleB, hostScaleB.data(), sizeScaleB, ACL_MEMCPY_HOST_TO_DEVICE));
+    // v2: 不需要 yGm 清零（reduceSum 使用普通 DataCopyPad 覆盖，非 AtomicAdd）
 
     if (mode == "precision") {
-        // 根据 dtype 选择对应的 kernel 入口
+        // 根据 dtype 选择对应的 kernel 入口（v2: 8 参数含 workspace）
         if (dtype == "e4m3e4m3") {
             ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma<<<
                 tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                    devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput, tilingData);
+                    devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
+                    deviceWorkspace, tilingData);
         } else if (dtype == "e5m2e5m2") {
             ApaceQuantMatmulReduceScatterKernelE5M2E5M2_Udma<<<
                 tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                    devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput, tilingData);
+                    devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
+                    deviceWorkspace, tilingData);
         } else if (dtype == "e4m3e5m2") {
             ApaceQuantMatmulReduceScatterKernelE4M3E5M2_Udma<<<
                 tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                    devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput, tilingData);
+                    devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
+                    deviceWorkspace, tilingData);
         } else if (dtype == "e5m2e4m3") {
             ApaceQuantMatmulReduceScatterKernelE5M2E4M3_Udma<<<
                 tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                    devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput, tilingData);
+                    devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
+                    deviceWorkspace, tilingData);
         }
 
         ACL_CHECK(aclrtSynchronizeStream(stream));
@@ -343,23 +380,27 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
             ACL_CHECK(aclrtSynchronizeStream(stream));
             // 2. 跑主 kernel（msprof task-based 采集每个 kernel 独立记录）
             auto t0 = std::chrono::steady_clock::now();
-            // 根据 dtype 选择对应的 kernel 入口
+            // 根据 dtype 选择对应的 kernel 入口（v2: 8 参数含 workspace）
             if (dtype == "e4m3e4m3") {
                 ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma<<<
                     tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                        devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput, tilingData);
+                        devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
+                        deviceWorkspace, tilingData);
             } else if (dtype == "e5m2e5m2") {
                 ApaceQuantMatmulReduceScatterKernelE5M2E5M2_Udma<<<
                     tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                        devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput, tilingData);
+                        devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
+                        deviceWorkspace, tilingData);
             } else if (dtype == "e4m3e5m2") {
                 ApaceQuantMatmulReduceScatterKernelE4M3E5M2_Udma<<<
                     tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                        devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput, tilingData);
+                        devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
+                        deviceWorkspace, tilingData);
             } else if (dtype == "e5m2e4m3") {
                 ApaceQuantMatmulReduceScatterKernelE5M2E4M3_Udma<<<
                     tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
-                        devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput, tilingData);
+                        devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput,
+                        deviceWorkspace, tilingData);
             }
             ACL_CHECK(aclrtSynchronizeStream(stream));
             auto t1 = std::chrono::steady_clock::now();
@@ -375,8 +416,16 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
         double avg = sum / (PERF_LOOP_COUNT - 1);
         INFO_LOG("[Rank %d] mLocal=%u headMSize=%u tileCnt=%u | per-iter ms: avg=%.3f min=%.3f max=%.3f (excl warmup)",
                  rankId, mLocal, headMSize, tileCnt, avg, minv, maxv);
-
         ACL_CHECK(aclrtSynchronizeStream(stream));
+
+        // DEBUG: dump workspace（precision 模式），用于核对 mm 输出布局
+        if (getenv("DUMP_WORKSPACE") != nullptr) {
+            std::vector<uint16_t> hostWs(tilingData.workspaceSize / sizeof(uint16_t), 0);
+            ACL_CHECK(aclrtMemcpy(hostWs.data(), tilingData.workspaceSize, deviceWorkspace,
+                                  tilingData.workspaceSize, ACL_MEMCPY_DEVICE_TO_HOST));
+            WriteFile(outputDir + "/workspace.bin", hostWs.data(), tilingData.workspaceSize);
+        }
+
         ACL_CHECK(aclrtMemcpy(hostOutput.data(), sizeOutput, deviceOutput, sizeOutput, ACL_MEMCPY_DEVICE_TO_HOST));
         WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput);
 
@@ -390,6 +439,7 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
     aclrtFree(deviceB);
     aclrtFree(deviceScaleB);
     aclrtFree(deviceOutput);
+    aclrtFree(deviceWorkspace);  // v2 新增
 
     HcclCommDestroy(comm);
 

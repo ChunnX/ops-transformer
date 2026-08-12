@@ -31,7 +31,7 @@ from statistics import median
 _DEFAULT_PROF = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prof"
 )
-KERNEL_SUBSTR = "ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma"
+KERNEL_SUBSTR = "ApaceQuantMatmulReduceScatterKernel"
 GROUP_THRESHOLD_S = 5
 OUTLIER_FACTOR = 1.2
 WARMUP_SKIP = 3  # 删除前 N 轮数据（冷启动 + 预热）

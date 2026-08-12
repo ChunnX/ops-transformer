@@ -1,143 +1,113 @@
-# apace_quant_matmul_reduce_scatter 算子
+# apace_quant_matmul_reduce_scatter_v2 算子
 
 ## 基本信息
 
-- **算子名称**：apace_quant_matmul_reduce_scatter
-- **算子类别**：MC2 通算融合（Quant MatMul + ReduceScatter 通信）
-- **路线**：APACE MC2（UDMA PUT 直调）
-- **支持数据类型**：A/B = fp8_e4m3fn_t / fp8_e5m2_t（4 种组合），C = bfloat16_t
-- **支持芯片**：Ascend950PR（DAV_3510）
-- **CANN 版本**：9.2.0
-- **多卡拓扑**：4 卡 ReduceScatter（AllToAll PUT + AtomicAdd）
-- **开发状态**：✅ 功能验证通过（ST 6/6 PASS）
+- **算子名称**：apace_quant_matmul_reduce_scatter_v2
+- **算子类别**：MC2 通算融合（Quant MatMul + AllToAll PUT 通信 + reduceSum 搬运，3 级流水线）
+- **数学公式**：C_r = Σ_{i=0}^{R-1} dequant(A_i[r·M/R : (r+1)·M/R]) × dequant(B_i)，R=4（rankSize）
+- **开发状态**：✅ 开发完成（精度全部通过 + 性能达标）
+- **平台**：Ascend 950（`--npu-arch=dav-3510`），`KERNEL_TYPE_MIX_AIC_1_1`
 
-## 数学公式
+## 接口
+
+| 参数 | 方向 | shape (per rank) | dtype | 说明 |
+|------|------|------------------|-------|------|
+| hcommCtx | 输入 | - | CommContext | UDMA 通信上下文（host 建链） |
+| A | 输入 | [M, K/rankSize] | fp8_e4m3fn / fp8_e5m2 | K-split |
+| ScaleA | 输入 | [M, CeilDiv(K/rankSize,64)*2] | fp8_e8m0 | MXFP8 scale |
+| B | 输入 | [K, N] | 同 A | 全量复制（K = rankSize × Ka） |
+| ScaleB | 输入 | [CeilDiv(K,64)*2, N] | fp8_e8m0 | 全量 MXFP8 scale |
+| C | 输出 | [M/rankSize, N] | bfloat16 | ReduceScatter 输出（M-split） |
+| workspace | 输入 | PIPELINE_NUM × coreNum × baseM × baseN | bfloat16 | mm 中间输出（host `aclrtMalloc`） |
+| tiling | 输入 | - | ApaceQuantMatmulReduceScatterV2TilingData | host 推导 |
+
+**输入校验约束**：M%rankSize==0，K%rankSize==0，ka=K/rankSize 且 ka%64==0，通信 tile 数 ≤ 10（flagId 冲突规避）。
+
+## 架构（v2 3 级流水）
 
 ```
-输入:
-  rank i 持有:
-    A_i  - shape [M, K_local],  dtype = fp8_e4m3fn_t / fp8_e5m2_t   (K_local = K / rankSize)
-    ScaleA_i - shape [M, CeilDiv(K_local,64)*2], dtype = fp8_e8m0_t  (MXFP8 scale)
-    B_full - shape [K, N],      dtype = fp8_e4m3fn_t / fp8_e5m2_t   (全量复制)
-    ScaleB_full - shape [CeilDiv(K,64)*2, N], dtype = fp8_e8m0_t    (全量复制)
-
-输出:
-  rank r 获得:
-    C_r - shape [M/rankSize, N], dtype = bfloat16_t                 (ReduceScatter 输出)
-
-数学公式:
-  C_r = Σ_{i=0}^{rankSize-1} dequant(A_i[r*M/R : (r+1)*M/R, :]) × dequant(B_i[:, :])
+AIV (Vector 核, 时分复用)                    AIC (Cube 核)
+─────────────────────────                    ─────────────────
+Phase 1: AllToAll PUT 通信                   RunMatmul():
+  for tid: Commit(scale) + Commit(data)        while BlockScheduler.GetTileIdx():
+    → Wait<BARRIER_DEVICE> → SyncAll              回压 WaitFlag<mode2,M>(3) [cubeNum≥4]
+    → SetFlag<0x2,MTE3>(tid) ──────────→          通信等待 WaitFlag<0x2,MTE2>(tid)
+Phase 2: reduceSum（复用 BlockScheduler，         per-tile gmCWorkspace Tensor
+  与 AIC 同一枚举序，DESIGN.md §2.16）             mm: A[Win]×B → L0C FP32 跨 rank 累加
+  while bsAiv.GetTileIdx():                        → fixpipe → workspace[BF16]
+    WaitFlag<mode2,MTE2>(5) ←────── SetFlag<mode2,FIX>(5)
+    DataCopyPad(workspace→UB, 2D)
+    [event MTE2→MTE3 同步]
+    DataCopyPad(UB→yGm[mPos*N+nPos], 2D)
+    SetFlag<mode2,MTE3>(3) ──────→  [回压: slot 可复用]
 ```
+
+- **PIPELINE_NUM=4** workspace 多 buffer 轮转：AIC mm 可领先 AIV reduceSum 最多 4 个 tile
+- **无 AtomicAdd**：L0C 跨 rank FP32 累加后单次 fixpipe 写 workspace，reduceSum 仅 2D DataCopyPad 搬运，yGm 无需清零
+- **AIV 复用 BlockScheduler**（§2.16 方案 b）：MIX_AIC_1_1 下 AIC/AIV 的 GetBlockIdx()/GetBlockNum()/GetTaskRatio() 一致，同一 problemShape/schParams 枚举同一 tile 序列，mPos/nPos 由 `GetTileCoord` 推导，`outOffset = mPos*N + nPos`
+- **流水同步**：GM→UB(MTE2) 与 UB→GM(MTE3) 之间显式 event 同步（RAW: MTE2_MTE3，WAR: MTE3_MTE2）；UB 行距 64B 对齐 pitch（cpIn/cpOut stride 一致）
+- **flagId 冲突规避**：通信就绪 flagId 避开 3（回压）、5（mm 完成）、[11-14]（SyncAll 硬同步）
 
 ## 目录结构
 
 ```
-apace_quant_matmul_reduce_scatter/
-├── kernel/apace_quant_matmul_reduce_scatter/   # [MODIFY] 3 个头文件
-│   ├── apace_quant_matmul_reduce_scatter_udma_impl.h      # Impl 类 + PipeBarrier 补丁
-│   ├── quant_matmul_mx_kernel.h                           # Blaze matmul 调度
-│   └── apace_quant_matmul_reduce_scatter_tiling_data.h    # tiling 结构体 + CommContext
-├── block/                                      # [REUSE] 共享层（aiv_comm + blaze_ext）
-├── tiling/                                     # [REUSE] 通信+计算 tiling
-├── basic/                                      # [REUSE] fragment_tensor
-├── utils/                                      # [REUSE] comm_channel_builder + constant
-├── apace -> .                                  # 符号链接（使 apace/ 前缀 include 解析）
-├── st/apace_quant_matmul_reduce_scatter/       # [MODIFY] ST 工程
-│   ├── CMakeLists.txt
-│   ├── run.sh
-│   ├── cases.csv
-│   ├── src/
-│   │   ├── main.cpp                           # Host 入口（ReduceScatter tiling 推导）
-│   │   └── kernel_launcher.h                  # 4 个 __global__ 入口函数
-│   └── scripts/
-│       ├── gen_data.py                        # ReduceScatter golden 生成
-│       └── verify_result.py                   # 精度验证（输出 [M/R, N]）
-├── st/utils/                                   # [REUSE] root_info_exchanger + utils
-├── st/CMakeLists.txt                           # 顶层构建
-├── cmake/third_party/ops-tensor.cmake          # ops-tensor FetchContent
-└── docs/                                       # 设计文档
-    ├── DESIGN.md
-    ├── PLAN.md
-    ├── WALKTHROUGH.md
-    └── environment.md
+apace_quant_matmul_reduce_scatter_v2/
+├── kernel/apace_quant_matmul_reduce_scatter_v2/   # 算子层（3 个头文件）
+│   ├── apace_quant_matmul_reduce_scatter_v2_udma_impl.h    # Impl：RunAllToAll/RunReduceSum/RunMatmul
+│   ├── quant_matmul_mx_kernel.h                           # Blaze mm 调度（mm→workspace + flag 编排）
+│   └── apace_quant_matmul_reduce_scatter_v2_tiling_data.h # tiling 结构体 + 流水线常量
+├── block/ tiling/ basic/ utils/                  # [REUSE] 共享层（禁止修改）
+├── st/apace_quant_matmul_reduce_scatter_v2/      # ST 工程（main.cpp + kernel_launcher.h + scripts/）
+├── docs/                                         # DESIGN.md / PLAN.md / environment.md / perf/
+└── cmake/ third_party/                           # 构建辅助 + ops-tensor
 ```
 
-## 关键设计决策
-
-1. **通信模式**：AllToAll PUT + AtomicAdd（UDMA 引擎）。ReduceScatter 语义通过 AllToAll PUT 发送不同 M 段给不同 rank + AtomicAdd 累加部分和实现。
-2. **localMatmul=1**：LOCAL（A_local × B_local → C 首次写入）+ REMOTE（AtomicAdd 累加）。通算并行是 MC2 核心价值，BF16 AtomicAdd 精度损失 ~0.79% 在 FP8 量化容差内。
-3. **PipeBarrier<PIPE_ALL>() 补丁**：localMatmul=1 模式下 RunLocalMatmul 和 RunMatmul 之间必须插入 PipeBarrier，确保 LOCAL fixpipe 排空后再 REMOTE AtomicAdd（否则 MTE 异常 507015）。
-4. **ProblemShape.K = ka（per-rank K）**：PUT 模式硬性不变量，ka = K/rankSize（非全量 K）。
-5. **SetAtomicAdd 由 kernel 内部自动调用**：不显式调用，由 QuantMatmulMxKernel::Run() 内部根据 isAtomicAdd_ 自动调用。
-
-## 编译与运行
-
-### 前置条件
+## 构建与测试
 
 ```bash
-# 设置 CANN 9.2.0 环境
-export ASCEND_HOME_PATH=/home/l00947526/Ascend806/cann-9.2.0
-source $ASCEND_HOME_PATH/set_env.sh
+source /home/l00947526/Ascend806/cann/set_env.sh
+cd st/apace_quant_matmul_reduce_scatter_v2
 
-# NPU 设备可用（4 × Ascend950PR）
-```
+# 编译
+cmake -S .. -B ../build && cmake --build ../build --target apace_quant_matmul_reduce_scatter_v2 -j4
 
-### 编译
+# 精度测试（4 rank，qrun 排队执行）
+bash run.sh 1        # cases.csv 第 1 行（T1: M=2048 K=4096 N=2048 e4m3）
+bash run.sh all      # 全部 10 行
+bash run.sh --cli 4096 8192 4096 4 512 e4m3e4m3   # T4 大 shape
 
-```bash
-cd operators/apace_quant_matmul_reduce_scatter
-cmake -S st -B st/build
-cmake --build st/build --target apace_quant_matmul_reduce_scatter --parallel 4
-```
-
-### 运行测试
-
-```bash
-cd st/apace_quant_matmul_reduce_scatter
-
-# 运行全部用例
-bash run.sh
-
-# 运行指定用例（行号）
-bash run.sh 1 3
-
-# 命令行模式
-bash run.sh --cli 2048 4096 2048 4
-
-# 性能模式
+# 性能采集（msprof + L2 flush）
 bash run.sh --perf 1
+python3 scripts/parse_prof.py --all
 ```
 
-### 精度标准
+## 测试结果（2026-08-12）
 
-- 输出 dtype：bfloat16_t
-- 容差：rtol=atol=1e-2（BF16 输出，FP8 量化）
-- 预期 max_rel_diff：≈ 0.79%（localMatmul=1 的 BF16 AtomicAdd 精度损失）
+| 用例 | shape | dtype | 结果 |
+|------|-------|-------|------|
+| T1 基础精度 | 2048×4096×2048 | e4m3e4m3 | ✅ PASS |
+| T2 基础精度 | 2048×4096×2048 | e5m2e5m2 | ✅ PASS |
+| T3 混合 dtype | 2048×4096×2048 | e4m3e5m2 / e5m2e4m3 | ✅ PASS |
+| T4 大 shape | 4096×8192×4096（tileCnt=2, mTailTile=3 尾块拆分） | e4m3e4m3 | ✅ PASS |
+| T5 小 shape | 512×1024×512（baseN=48 非 64B 对齐） | e4m3e4m3 | ✅ PASS |
+| 非对齐 | 1120×2048×1024（mLocal=280 尾块） | 全 4 种 dtype | ✅ PASS |
+| T6 localMatmul=0 | 默认 REMOTE-only | - | ✅（全部用例均为 localMatmul=0） |
 
-## 测试结果
+精度标准：bfloat16 rtol=atol=1e-2（小 shape 用例实测 max_err=0 bit 级一致；大 shape 用例 max_abs_err 为 bf16 ulp 量级，rel_err 远小于阈值）。
 
-| 编号 | M | K | N | rankNum | 结果 | rel_err max |
-|-----|-----|-----|-----|---------|------|-------------|
-| T1 | 2048 | 4096 | 2048 | 4 | ✅ PASS | ≈0.78% |
-| T2 | 512 | 1024 | 512 | 4 | ✅ PASS | ≈0.78% |
-| T3 | 8192 | 8192 | 4096 | 4 | ✅ PASS | ≈0.78% |
-| T4 | 1120 | 2048 | 1024 | 4 | ✅ PASS | ≈0.78% |
-| T7 | 2048 | 4096 | 2048 | 2 | ✅ PASS | ≈0.78% |
-| T8 | 2048 | 4608 | 2048 | 4 | ✅ PASS | ≈0.78% |
+## 性能（P1: 2048×4096×2048, e4m3, 4 卡）
 
-## APACE 路线约束（红线）
+| 指标 | 值 |
+|------|-----|
+| Task Duration (v2) | **58.0 us**（msprof task-based，4 卡平均） |
+| Task Duration (v1 基线) | 143 us |
+| 加速比 | **≈ 2.47×** |
+| 主导流水 | cube ≈ 91%（通信/reduceSum 已被流水掩盖） |
 
-- ✅ 无 `__schedmode__(1)` / `[[bisheng::core_ratio(1,1)]]`
-- ✅ 有 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1)`（4 个入口函数）
-- ✅ 无 `Hccl::` 高阶 API
-- ✅ 无 `AscendC::Matmul`（Matmul 走 Blaze 模板）
-- ✅ `block/` `tiling/` `basic/` `utils/` 未修改（与官网一致）
-- ✅ localMatmul=1 时有 `PipeBarrier<PIPE_ALL>()`
+数据归档：`docs/perf/round_001/`（summary.txt + parse_output.txt + prof_raw/）
 
 ## 参考资料
 
-- 设计文档：[docs/DESIGN.md](docs/DESIGN.md)
-- 开发计划：[docs/PLAN.md](docs/PLAN.md)
-- 设计串讲：[docs/WALKTHROUGH.md](docs/WALKTHROUGH.md)
-- MC2 最佳实践：`/ascendc-mc2-best-practice` skill
-- Blaze 开发指南：`/ascendc-blaze-best-practice` skill
+- 技术设计：docs/DESIGN.md（§2.16 design_issue 解决记录：AIV 复用 BlockScheduler + totalMmTiles 废除）
+- 开发计划与调试记录：docs/PLAN.md
+- 环境信息：docs/environment.md
