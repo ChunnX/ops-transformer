@@ -174,7 +174,7 @@ def _is_absent_lse(value):
     return array.ndim == 0 or array.size == 0
 
 
-def _compare_outputs(outputs, *, return_softmax_lse=True):
+def _compare_outputs(outputs, *, return_softmax_lse=None):
     if len(outputs) < 2 or len(outputs) % 2 != 0:
         return {
             "pass": False,
@@ -189,6 +189,14 @@ def _compare_outputs(outputs, *, return_softmax_lse=True):
 
     npu_lse = npu_outputs[1] if half > 1 else None
     golden_lse = golden_outputs[1] if half > 1 else None
+
+    # TTK does not guarantee that CSV operator attributes are forwarded to the
+    # custom compare callback.  When the flag is absent, use the Golden output
+    # contract as the source of truth: Golden emits None for LSE-off cases and
+    # a non-empty tensor for LSE-on cases.  An explicitly forwarded flag still
+    # takes precedence.
+    if return_softmax_lse is None:
+        return_softmax_lse = not _is_absent_lse(golden_lse)
 
     # The disabled-LSE contract permits only an absent output or the empty /
     # scalar ABI placeholder used by the fixed two-Tensor operator schema.
@@ -263,7 +271,12 @@ def _compare_outputs(outputs, *, return_softmax_lse=True):
 
 def compare(*outputs, **kwargs):
     """Compare FP8 and MXFP8 outputs with one NumPy precision protocol."""
+    return_softmax_lse = kwargs.get("return_softmax_lse")
     return _compare_outputs(
         outputs,
-        return_softmax_lse=_as_bool(kwargs.get("return_softmax_lse", True)),
+        return_softmax_lse=(
+            None
+            if return_softmax_lse is None
+            else _as_bool(return_softmax_lse)
+        ),
     )
