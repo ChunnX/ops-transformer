@@ -576,7 +576,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
                             totalRecv, tilingData.hiddenDim),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(totalRecv > 0 &&
-                        tilingData.hiddenDim > (INT64_MAX / totalRecv) / static_cast<int64_t>(sizeof(float)),
+                        tilingData.hiddenDim > (INT64_MAX / static_cast<int64_t>(sizeof(float))) / totalRecv,
                     OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenDim=%ld",
                             totalRecv, tilingData.hiddenDim),
                     return ge::GRAPH_FAILED);
