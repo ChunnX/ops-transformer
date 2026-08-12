@@ -332,18 +332,28 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::LoadOriSparseIndicesGmToUb(uint64_
                                                                           uint32_t gmColStart, int32_t loadCount,
                                                                           const LocalTensor<int32_t> &dstUb)
 {
-    int32_t alignedCount = AlignOriSparseIndexLoadCount(loadCount);
-    if (alignedCount <= 0 || constInfo.oriSparseIndexWidth == 0) {
+    if (loadCount <= 0 || constInfo.oriSparseIndexWidth == 0) {
         return;
     }
+    int32_t remain =
+        static_cast<int32_t>(constInfo.oriSparseIndexWidth) - static_cast<int32_t>(gmColStart);
+    int32_t validCount = (remain < loadCount) ? remain : loadCount;
+    if (validCount <= 0) {
+        return;
+    }
+    int32_t alignedCount = AlignOriSparseIndexLoadCount(loadCount);
     uint64_t gmOffset =
         (qTokenOffset * constInfo.kvHeadNum + n2Idx) * constInfo.oriSparseIndexWidth + gmColStart;
     DataCopyExtParams copyParams;
     copyParams.blockCount = 1;
-    copyParams.blockLen = static_cast<uint32_t>(alignedCount) * sizeof(int32_t);
+    copyParams.blockLen = static_cast<uint32_t>(validCount) * sizeof(int32_t);
     copyParams.srcStride = 0;
     copyParams.dstStride = 0;
-    DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+    DataCopyPadExtParams<int32_t> padParams;
+    padParams.isPad = true;
+    padParams.leftPadding = 0;
+    padParams.rightPadding = static_cast<uint8_t>(alignedCount - validCount);
+    padParams.paddingValue = -1;
     DataCopyPad(dstUb, oriSparseIndicesGm[gmOffset], copyParams, padParams);
     event_t mte2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
     SetFlag<HardEvent::MTE2_S>(mte2ToS);

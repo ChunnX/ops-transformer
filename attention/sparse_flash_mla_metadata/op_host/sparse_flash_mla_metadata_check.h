@@ -248,11 +248,12 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
                     return ACLNN_ERR_PARAM_INVALID;
                 }
                 if (oriWinLeft != 127 || oriWinRight != 0) {
-                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_win_left, ori_win_right",
-                                                        std::to_string(oriWinLeft) + ", " + std::to_string(oriWinRight),
-                                                        "When has_ori_kv is true, the value of ori_win_left "
-                                                        "must be 127 and the value of ori_win_right must be 0");
-                        return ACLNN_ERR_PARAM_INVALID;
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_win_left and ori_win_right",
+                                                           std::to_string(oriWinLeft) + " and " +
+                                                               std::to_string(oriWinRight),
+                                                           "When has_ori_kv is true, the value of ori_win_left "
+                                                           "must be 127 and the value of ori_win_right must be 0");
+                    return ACLNN_ERR_PARAM_INVALID;
                 }
             }
         }
@@ -556,9 +557,10 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                                  const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
                                  const aclTensor *sequsedOriKvOptional, const aclTensor *sequsedCmpKvOptional,
                                  const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional,
-                                 const aclTensor *cmpTopkLengthOptional, int64_t batchSize, int64_t oriTopk,
-                                 const char *layoutQOptional, const char *layoutKvOptional, bool hasOriKv,
-                                 bool hasCmpKv, const char *socVersion, const aclTensor *metadata)
+                                 const aclTensor *cmpTopkLengthOptional, int64_t batchSize, const char *layoutQOptional,
+                                 const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, int64_t oriTopk,
+                                 int64_t cmpTopk, int64_t oriMaskMode, int64_t cmpMaskMode, int64_t maxSeqlenQ,
+                                 int64_t numHeadsKv, const char *socVersion, const aclTensor *metadata)
 {
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     int64_t dimNum = -1;
@@ -925,9 +927,10 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
                            oriTopk, cmpTopk, cmpRatio, oriMaskMode, cmpMaskMode, hasOriKv, hasCmpKv, layoutQOptional,
                            layoutKvOptional, socVersion, metaData) == ACLNN_SUCCESS &&
         CheckConsistencySmla(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
-                             sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
-                             cmpTopkLengthOptional, batchSize, oriTopk, layoutQOptional, layoutKvOptional, hasOriKv,
-                             hasCmpKv, socVersion, metaData) == ACLNN_SUCCESS) {
+                            sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
+                            cmpTopkLengthOptional, batchSize, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv,
+                            oriTopk, cmpTopk, oriMaskMode, cmpMaskMode, maxSeqlenQ, numHeadsKv, socVersion,
+                            metaData) == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
         return ACLNN_ERR_PARAM_INVALID;

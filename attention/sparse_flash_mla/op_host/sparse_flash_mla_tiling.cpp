@@ -420,8 +420,8 @@ ge::graphStatus SMLAInfoParser::GetAttrParaInfo()
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.oriMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_MASK_MODE_INDEX);
     opParamInfo_.cmpMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_MASK_MODE_INDEX);
-    opParamInfo_.oriWinLeft = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_WIN_LEFT_INDEX);
-    opParamInfo_.oriWinRight = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_WIN_RIGHT_INDEX);
+    opParamInfo_.oriWinLeft = attrs->GetAttrPointer<int32_t>(ATTR_ORI_WIN_LEFT_INDEX);
+    opParamInfo_.oriWinRight = attrs->GetAttrPointer<int32_t>(ATTR_ORI_WIN_RIGHT_INDEX);
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
     opParamInfo_.layoutKv = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
     opParamInfo_.topkValueMode = attrs->GetAttrPointer<uint32_t>(ATTR_TOPK_VALUE_MODE_INDEX);
@@ -512,14 +512,19 @@ ge::graphStatus SMLAInfoParser::GetSMLATemplateMode(SMLATilingInfo &smlaInfo)
             perfMode_ = SMLATemplateMode::HCA_TEMPLATE_MODE;
         } else if (opParamInfo_.cmpKv.desc == nullptr && opParamInfo_.cmpSparseIndices.tensor == nullptr) {
             if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
-                if (opParamInfo_.oriMaskMode == nullptr || *opParamInfo_.oriMaskMode != 0U) {
-                    OP_LOGE(opName_,
-                            "SWA ori sparse (DSpark) requires oriMaskMode 0, but got %u.",
-                            opParamInfo_.oriMaskMode != nullptr ? *opParamInfo_.oriMaskMode : UINT32_MAX);
-                    return ge::GRAPH_FAILED;
+                // A2A3此处dspark用 SWA_TEMPLATE_MODE+hasOri判断；给A5留ORI_SPARSE_TEMPLATE_MODE分支
+                if (IsA5Arch(npuArch_)) {
+                    perfMode_ = SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE;
+                } else {
+                    // DSpark: oriMaskMode=0 + ori_sparse_indices on SWA kernel path.
+                    if (opParamInfo_.oriMaskMode == nullptr || *opParamInfo_.oriMaskMode != 0U) {
+                        OP_LOGE(opName_,
+                                "SWA ori sparse (DSpark) requires oriMaskMode 0, but got %u.",
+                                opParamInfo_.oriMaskMode != nullptr ? *opParamInfo_.oriMaskMode : UINT32_MAX);
+                        return ge::GRAPH_FAILED;
+                    }
+                    perfMode_ = SMLATemplateMode::SWA_TEMPLATE_MODE;
                 }
-                // DSpark: oriMaskMode=0 + ori_sparse_indices on SWA kernel path.
-                perfMode_ = SMLATemplateMode::SWA_TEMPLATE_MODE;
             } else {
                 perfMode_ = SMLATemplateMode::SWA_TEMPLATE_MODE;
             }
@@ -642,7 +647,8 @@ void SMLAInfoParser::SetSMLAShape()
         hasOriSparseIndices_ = true;
         oriSparseIndexWidth_ = GetAxisNum(oriSparseIndicesShape_, SMLAAxis::K, oriSparseIndicesLayout_);
     }
-    if (perfMode_ == SMLATemplateMode::CSA_TEMPLATE_MODE) {
+    if (perfMode_ == SMLATemplateMode::CSA_TEMPLATE_MODE ||	 
+        perfMode_ == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
             cmpSparseIndicesShape_ = opParamInfo_.cmpSparseIndices.tensor->GetStorageShape();
         } else {
@@ -1382,12 +1388,14 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaOriSparseIndices() const
     if (opParamInfo_.oriSparseIndices.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(smlaInfo_.perfMode != SMLATemplateMode::SWA_TEMPLATE_MODE,
-                OP_LOGE(opName_, "ori_sparse_indices is only supported in SWA mode."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.oriMaskMode == nullptr || *opParamInfo_.oriMaskMode != 0U,
-                OP_LOGE(opName_, "ori_sparse_indices SWA (DSpark) requires oriMaskMode 0."),
-                return ge::GRAPH_FAILED);
+    if (!IsA5Arch(npuArch_)){
+        OP_CHECK_IF(smlaInfo_.perfMode != SMLATemplateMode::SWA_TEMPLATE_MODE,
+            OP_LOGE(opName_, "ori_sparse_indices is only supported in SWA mode."),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(opParamInfo_.oriMaskMode == nullptr || *opParamInfo_.oriMaskMode != 0U,
+                    OP_LOGE(opName_, "ori_sparse_indices SWA (DSpark) requires oriMaskMode 0."),
+                    return ge::GRAPH_FAILED);
+    }
     OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor->GetStorageShape().GetShapeSize() == 0,
                 OP_LOGE(opName_, "ori_sparse_indices cannot be empty tensor."), return ge::GRAPH_FAILED);
     const std::vector<size_t> oriSparseIndicesDimNumList = {DIM_NUM_THREE, DIM_NUM_FOUR};
@@ -1571,14 +1579,20 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpMaskMode() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SMLATilingCheck::CheckSingleParaOriWinLeft() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus SMLATilingCheck::CheckSingleParaOriWinLeft() const	 
+{	 
+    OP_CHECK_IF(oriWinLeft_ < -1, 
+                OP_LOGE(opName_, "oriWinLeft should be -1(unlimited) or non-negative, but got %lld", oriWinLeft_), 
+                return ge::GRAPH_FAILED); 
+    return ge::GRAPH_SUCCESS;	 
+}	 
 
-ge::graphStatus SMLATilingCheck::CheckSingleParaOriWinRight() const
-{
-    return ge::GRAPH_SUCCESS;
+ge::graphStatus SMLATilingCheck::CheckSingleParaOriWinRight() const	 
+{	 
+    OP_CHECK_IF(oriWinRight_ < -1, 
+                OP_LOGE(opName_, "oriWinRight should be -1(unlimited) or non-negative, but got %lld", oriWinRight_), 
+                return ge::GRAPH_FAILED); 
+    return ge::GRAPH_SUCCESS;	 
 }
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaCmpResidualKv() const
