@@ -270,7 +270,6 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     ret = aclrtSynchronizeStreamWithTimeout(args.dispatchV2Stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret);
               return ret);
-
     // 调用combineV2算子第一阶段接口
     ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(
         expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts, nullptr, nullptr, nullptr, nullptr,
