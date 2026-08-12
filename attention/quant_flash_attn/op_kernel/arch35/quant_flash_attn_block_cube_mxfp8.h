@@ -558,7 +558,10 @@ public:
             mm1A = l1QBuffers_.Get();
             mm1A.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
-            InitValueL1BufferNAxis(mm1ATensor, mBaseSize, dBaseSize);
+            if (constInfo_.dSize % 64 != 0) {
+                InitValueL1BufferNAxis(mm1ATensor, mBaseSize, dBaseSize);
+                AscendC::PipeBarrier<PIPE_MTE2>();
+            }
             CopyQueryTile(mm1ATensor, runInfo);
 
             LocalTensor<SCALE_T> mm1AScaleTensor = mm1A.GetTensor<SCALE_T>(qScaleOffset);
@@ -572,7 +575,10 @@ public:
         Buffer<BufferType::L1> mm1B = l1KVBuffers_.Get();
         mm1B.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
-        InitValueL1BufferNAxis(mm1BTensor, s2SplitSize, dBaseSize);
+        if (constInfo_.dSize % 64 != 0) {
+            InitValueL1BufferNAxis(mm1BTensor, s2SplitSize, dBaseSize);
+            AscendC::PipeBarrier<PIPE_MTE2>();
+        }
         CopyKeyTile(mm1BTensor, runInfo, s2CurSize, subLoop);
 
         uint32_t kScaleOffset = ((s2CurSize + 31) >> 5 << 5) * dBaseSize;
@@ -667,7 +673,10 @@ public:
             mm1B = l1QBuffers_.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>(); // B矩阵常驻，两次Sub中，只有第一次搬B
             LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
-            InitValueL1BufferNAxis(mm1BTensor, mBaseSize, dBaseSize);
+            if (constInfo_.dSize % 64 != 0) {
+                InitValueL1BufferNAxis(mm1BTensor, mBaseSize, dBaseSize);
+                AscendC::PipeBarrier<PIPE_MTE2>();
+            }
             CopyQueryTile(mm1BTensor, runInfo);
 
             LocalTensor<SCALE_T> mm1BScaleTensor = mm1B.GetTensor<SCALE_T>(qScaleOffset);
@@ -681,7 +690,10 @@ public:
         Buffer<BufferType::L1> mm1A = l1KVBuffers_.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
-        InitValueL1BufferNAxis(mm1ATensor, s2SplitSize, dBaseSize);
+        if (constInfo_.dSize % 64 != 0) {
+            InitValueL1BufferNAxis(mm1ATensor, s2SplitSize, dBaseSize);
+            AscendC::PipeBarrier<PIPE_MTE2>();
+        }
         CopyKeyTile(mm1ATensor, runInfo, s2CalcSize, subLoop);
 
         uint32_t kScaleOffset = ((s2CalcSize + 31) >> 5 << 5) * dBaseSize;
@@ -753,7 +765,10 @@ public:
             if (unlikely(runInfo.isLastS2Loop)) {
                 InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo_.dSizeV);
             }
-            InitValueL1BufferNAxis(mm2BTensor, baseK + baseK / MXFP_GROUP_SIZE, dVBaseSize);
+            if (constInfo_.dSizeV % 64 != 0) {
+                InitValueL1BufferNAxis(mm2BTensor, baseK + baseK / MXFP_GROUP_SIZE, dVBaseSize);
+                AscendC::PipeBarrier<PIPE_MTE2>();
+            }
             CopyValueSlice(mm2BTensor, runInfo.s2Idx + kIdx * baseK, realK, 0, constInfo_.dSizeV, runInfo);
             uint32_t dSizeVAlign32 = ((uint32_t)constInfo_.dSizeV + 31) >> 5 << 5;
             uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * dSizeVAlign32;
@@ -842,7 +857,10 @@ public:
             if (unlikely(runInfo.isLastS2Loop)) {
                 InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo_.dSizeV);
             }
-            InitValueL1BufferNAxis(mm2BTensor, baseK + baseK / MXFP_GROUP_SIZE, dVBaseSize);
+            if (constInfo_.dSizeV % 64 != 0) {
+                InitValueL1BufferNAxis(mm2BTensor, baseK + baseK / MXFP_GROUP_SIZE, dVBaseSize);
+                AscendC::PipeBarrier<PIPE_MTE2>();
+            }
             CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo_.dSizeV, runInfo);
             uint32_t dSizeVAlign32 = ((uint32_t)constInfo_.dSizeV + 31) >> 5 << 5;
             uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * dSizeVAlign32;
