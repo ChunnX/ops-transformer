@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 import os
 
-pt_dir = os.getenv("SMLA_PT_LOAD_PATH", "./data")
+pt_dir = os.getenv("SMLA_PT_LOAD_PATH", "/home/z00957671/code_cann/0811_smla_syncperf/smla_case")
 result_path = Path(os.getenv("SMLA_RESULT_SAVE_PATH", './result/smla_result.xlsx'))
 batch_test_mode = int(os.environ.get("SMLA_BATCH_TEST_MODE", 0))
 excel_path = os.environ.get("SMLA_EXCEL_PATH", os.path.join(os.path.dirname(__file__), "excel", "example.xlsx"))
