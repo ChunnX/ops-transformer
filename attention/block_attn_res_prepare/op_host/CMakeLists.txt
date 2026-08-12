@@ -11,7 +11,10 @@
 add_op_to_compiled_list()
 
 if(BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnn PRIVATE
+    # The public ACLNN entry points are implemented manually under op_api.
+    # Register only the operator definition here; generating the default ACLNN
+    # wrapper as well would export the same symbols twice in libcust_opapi.so.
+    target_sources(op_host_aclnnExc PRIVATE
         block_attn_res_prepare_def.cpp
     )
     if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
@@ -35,5 +38,5 @@ if(BUILD_OPEN_PROJECT)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE block_attn_res_prepare ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE block_attn_res_prepare ACLNNTYPE aclnn_exclude)
 endif()

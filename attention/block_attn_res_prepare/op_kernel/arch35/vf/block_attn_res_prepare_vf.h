@@ -34,7 +34,7 @@ __simd_vf__ inline void InitializeEmptyOnlineSoftmax(__ubuf__ float *statAddr)
     MicroAPI::Duplicate(sumReg, 1.0F, oneMask);
     MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + MAX_OFFSET, maxReg, oneMask);
     MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + SUM_OFFSET, sumReg, oneMask);
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    MicroAPI::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 }
 
 __simd_vf__ inline void FillZero(__ubuf__ float *outputAddr, uint32_t validD)
@@ -50,7 +50,7 @@ __simd_vf__ inline void FillZero(__ubuf__ float *outputAddr, uint32_t validD)
         const uint32_t offset = static_cast<uint32_t>(loop) * FP32_REG_ELEMS;
         MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM>(outputAddr + offset, zeroReg, validMask);
     }
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    MicroAPI::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 }
 
 // These raw UB arguments are internal static byte offsets. UB offset zero is valid and must not be treated as nullptr.
@@ -104,7 +104,7 @@ __simd_vf__ inline void AccumulateSquareDot(__ubuf__ float *qAddr, __ubuf__ floa
         statAddr + SUM_SQUARE_OFFSET + nIndex, squareReduceReg, oneMask);
     MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
         statAddr + DOT_OFFSET + nIndex, dotReduceReg, oneMask);
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    MicroAPI::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 }
 
 template <bool FIRST_D_TILE>
@@ -138,7 +138,7 @@ __simd_vf__ inline void AccumulateSquare(__ubuf__ float *vAddr, __ubuf__ float *
     }
     MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(sumSquareAddr + nIndex,
                                                                              squareReduceReg, oneMask);
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    MicroAPI::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 }
 
 __simd_vf__ inline void FinalizeSingleBlock(__ubuf__ float *statAddr, float reciprocalD, float epsilon)
@@ -160,7 +160,7 @@ __simd_vf__ inline void FinalizeSingleBlock(__ubuf__ float *statAddr, float reci
 
     MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + MAX_OFFSET, zReg, oneMask);
     MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + SUM_OFFSET, oneReg, oneMask);
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    MicroAPI::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 }
 
 __simd_vf__ inline void FinalizeSoftmax(__ubuf__ float *statAddr, uint32_t validN, float reciprocalD, float epsilon)
@@ -201,7 +201,7 @@ __simd_vf__ inline void FinalizeSoftmax(__ubuf__ float *statAddr, uint32_t valid
     MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + MAX_OFFSET, maxReg, oneMask);
     MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + SUM_OFFSET, expSumReg,
                                                                              oneMask);
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    MicroAPI::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 }
 
 __simd_vf__ inline void FinalizeCubeSoftmax(__ubuf__ float *sumSquareAddr, __ubuf__ float *dotAddr,
@@ -246,7 +246,7 @@ __simd_vf__ inline void FinalizeCubeSoftmax(__ubuf__ float *sumSquareAddr, __ubu
     MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM>(dotAddr, expReg, validMask);
     MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(maxAddr, maxReg, oneMask);
     MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(sumAddr, expSumReg, oneMask);
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    MicroAPI::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 }
 
 template <bool FIRST_BLOCK>
@@ -272,7 +272,7 @@ __simd_vf__ inline void WeightedAccumulate(__ubuf__ float *vAddr, __ubuf__ float
         }
         MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM>(outputAddr + offset, outputReg, validMask);
     }
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    MicroAPI::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 }
 
 __simd_vf__ inline void CopySingleBlock(__ubuf__ float *vAddr, __ubuf__ float *outputAddr, uint32_t validD)
@@ -286,7 +286,7 @@ __simd_vf__ inline void CopySingleBlock(__ubuf__ float *vAddr, __ubuf__ float *o
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vReg, vAddr + offset);
         MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM>(outputAddr + offset, vReg, validMask);
     }
-    MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    MicroAPI::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 }
 
 } // namespace BlockAttnResPrepareVF
