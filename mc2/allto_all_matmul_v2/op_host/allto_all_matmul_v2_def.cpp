@@ -96,8 +96,8 @@ public:
         this->Attr("comm_mode").AttrType(OPTIONAL).String("urma");
         this->Attr("perf_mode").AttrType(OPTIONAL).Int(0);
 
-        OpAICoreConfig aicoreConfig_950;
-        aicoreConfig_950.DynamicCompileStaticFlag(true)
+        OpAICoreConfig aicoreConfig950;
+        aicoreConfig950.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
@@ -107,7 +107,7 @@ public:
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
             .ExtendCfgInfo("opFile.value", "allto_all_matmul_v2_apt");
-        this->AICore().AddConfig("ascend950", aicoreConfig_950);
+        this->AICore().AddConfig("ascend950", aicoreConfig950);
     }
 };
 
