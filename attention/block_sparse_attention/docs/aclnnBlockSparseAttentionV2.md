@@ -344,7 +344,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>qInputLayout（char*）</td>
       <td>输入</td>
       <td>代表输入query的数据排布格式。</td>
-      <td>当前仅支持"TND"和"BNSD"和"BSND"，qInputLayout与kvInputLayout需要保持一致。</td>
+      <td>用于指示query的数据排布格式，算子按该格式解读query的shape。各排布格式下维度的含义参见功能说明，支持的取值及约束详见约束说明。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -354,7 +354,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>kvInputLayout（char*）</td>
       <td>输入</td>
       <td>代表输入key、value的数据排布格式。</td>
-      <td>当前仅支持"TND"和"BNSD"和"BSND"，qInputLayout与kvInputLayout需要保持一致。</td>
+      <td>用于指示key、value的数据排布格式，算子按该格式解读key、value的shape。各排布格式下维度的含义参见功能说明，支持的取值及约束详见约束说明。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
