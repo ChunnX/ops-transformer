@@ -89,6 +89,34 @@ struct RingBuffer {
     }
 };
 
+constexpr uint32_t s1BaseSize = 64;
+constexpr uint32_t s2BaseSize = 128;
+constexpr uint32_t bSize = 1;
+constexpr uint32_t n2Size = 1;
+constexpr uint32_t gSize = 128;
+constexpr uint32_t s1Size = 4096;
+constexpr uint32_t s2Size = 8192;
+constexpr uint32_t dSize = 512;
+constexpr uint32_t dSizeV = 512;
+constexpr uint32_t dSizeVInput = 640;
+constexpr uint32_t dSizeRope = 64;
+constexpr uint32_t dSizeNope = dSize - dSizeRope;
+constexpr int32_t oriWinLeft = 127;
+constexpr int32_t oriWinRight = 0;
+constexpr uint32_t cmpRatio = 4;
+constexpr uint32_t sparseBlockCount = 1024;
+constexpr uint32_t sparseBlockSize = 1;
+constexpr bool isActualLenDimsKVNull = false;
+constexpr uint32_t actualSeqLenSize = bSize + 1;
+constexpr uint32_t actualSeqLenKVSize = bSize;
+constexpr uint32_t oriBlockSize = 128;
+constexpr uint32_t cmpBlockSize = 128;
+constexpr uint32_t oriMaxBlockNumPerBatch = 64;
+constexpr uint32_t cmpMaxBlockNumPerBatch = 64;
+constexpr uint32_t oriKvStride = oriBlockSize * dSizeVInput;
+constexpr uint32_t cmpKvStride = cmpBlockSize * dSizeVInput;
+constexpr float softmaxScale = 0.04419417;
+
 namespace BaseApi {
 __aicore__ constexpr uint64_t Align2Func(uint64_t data) {
     return (data + 1UL) >> 1UL << 1UL; // 向上2对齐, +1移位2
