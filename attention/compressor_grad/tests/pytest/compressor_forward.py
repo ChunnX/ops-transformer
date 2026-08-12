@@ -182,6 +182,9 @@ def compressor_forward(
     seqused: Optional[List[int]] = None,        # 每个 batch 实际使用的序列长度
     return_intermediates: bool = False,          # 是否返回 d_kv, d_score, d_sc2
     return_update_mask: bool = False,            # 是否返回 kv/score state 的写入位置 mask（与 kv_state_out/score_state_out 同 shape）
+    device: str = "cpu",
+    compute_dtype: torch.dtype = torch.float32,
+    matmul_mode: str = "two",
 ) -> Tuple:
     """
     执行 compressor 前向计算。
@@ -191,33 +194,57 @@ def compressor_forward(
       cmp_kv_mask: 同形状 bool 张量，标记有效位置
       kv_state:    更新后的 kv_state
       score_state: 更新后的 score_state
+
+    matmul_mode:
+      "two"（两方，现状）：x/wkv/wgate 提升 compute_dtype 后 FP32 matmul + _QuantGrad 量化模拟；
+      "same"（三方 B）：输入不提升，BF16×BF16 → BF16 出，matmul→vec 前 cast 回 compute_dtype；
+      "high"（三方 C）：全程 compute_dtype（float64），无量化。
     """
     orig_dtype = x.dtype
+    # 统一计算设备（三方 B 在 NPU 上跑 / 两方与三方 C 在 CPU 上跑）
+    dev = x.device if device == "cpu" else device
+    x = x.to(dev)
+    wkv = wkv.to(dev)
+    wgate = wgate.to(dev)
+    kv_state = kv_state.to(dev)
+    score_state = score_state.to(dev)
+    ape = ape.to(dev)
     head_dim = wkv.shape[0] // coff
     B = len(start_pos)
     bs_combine = (cu_seqlens is not None)
 
     # ---- 第一步：matmul ----
-    x_f32 = x.float()
-    wkv_f32 = wkv.float()
-    wgate_f32 = wgate.float()
-    ape_f32 = ape.float()
+    ape_f32 = ape.to(compute_dtype)
+    if matmul_mode == "same":
+        # 三方 B：输入不提升（BF16 进），matmul 输出 BF16
+        x_mm, wkv_mm, wgate_mm = x, wkv, wgate
+    else:
+        # two/high：提升到 compute_dtype
+        x_mm = x.to(compute_dtype)
+        wkv_mm = wkv.to(compute_dtype)
+        wgate_mm = wgate.to(compute_dtype)
 
     if bs_combine:
         # x 形状为 (T, H)，直接做矩阵乘法
-        flat_kv = x_f32 @ wkv_f32.T      # (T, coff*head_dim)
-        flat_score = x_f32 @ wgate_f32.T
+        flat_kv = x_mm @ wkv_mm.T      # (T, coff*head_dim)
+        flat_score = x_mm @ wgate_mm.T
         T = x.shape[0]
     else:
         # x 形状为 (B, S, H)，先展平再乘
         B_in, S_in, H_in = x.shape
-        flat_kv = x_f32.reshape(B_in * S_in, H_in) @ wkv_f32.T
-        flat_score = x_f32.reshape(B_in * S_in, H_in) @ wgate_f32.T
+        flat_kv = x_mm.reshape(B_in * S_in, H_in) @ wkv_mm.T
+        flat_score = x_mm.reshape(B_in * S_in, H_in) @ wgate_mm.T
         T = B_in * S_in
 
-    # 模拟 kernel 反向中间精度：dkv/dsb 梯度经 FP16/BF16 存储（golden 同款量化）
-    flat_kv = _QuantGrad.apply(flat_kv, orig_dtype)
-    flat_score = _QuantGrad.apply(flat_score, orig_dtype)
+    if matmul_mode == "same":
+        # matmul→vec cast：BF16 出 → FP32（vec 侧 +ape/softmax/加权求和需 FP32 输入）
+        flat_kv = flat_kv.to(compute_dtype)
+        flat_score = flat_score.to(compute_dtype)
+    elif matmul_mode == "two":
+        # 模拟 kernel 反向中间精度：dkv/dsb 梯度经 FP16/BF16 存储（golden 同款量化）
+        flat_kv = _QuantGrad.apply(flat_kv, orig_dtype)
+        flat_score = _QuantGrad.apply(flat_score, orig_dtype)
+    # high：保持 compute_dtype（float64）
     # ---- 第二步：全局添加 ape（与 golden 中 in-place 加法等价）----
     ape_add = _build_ape_for_flat_sequence(T, B, start_pos, ape_f32, cmp_ratio, bs_combine, cu_seqlens)
     flat_score = flat_score + ape_add   # (T, coff*head_dim)，ape 已应用
