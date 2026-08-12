@@ -36,6 +36,7 @@ enum class DTemplateType {
     Aligned32 = 32,
     Aligned48 = 48,
     Aligned64 = 64,
+    Aligned72 = 72,
     Aligned80 = 80,
     Aligned96 = 96,
     Aligned128 = 128,

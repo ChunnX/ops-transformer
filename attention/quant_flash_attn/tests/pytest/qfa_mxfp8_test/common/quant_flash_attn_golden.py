@@ -58,17 +58,17 @@ GRAPH_PATH = int(_os.environ.get("GRAPH_PATH", "0"))
 B = 1
 N_q = 1  # query heads
 N_kv = 1  # kv heads
-D = 72
+D = 128
 
 ENABLE_ROPE = False
 D_rope = 64
 
-CU_SEQLENS_Q = [0, 128]
-CU_SEQLENS_KV = [0, 512]
-SEQUSED_Q = [128]
-SEQUSED_KV = [512]
-MAX_SEQLEN_Q = 128
-MAX_SEQLEN_KV = 512
+CU_SEQLENS_Q = [0, 4]	 
+CU_SEQLENS_KV = [0, 1024]	 
+SEQUSED_Q = [4]	 
+SEQUSED_KV = [1024]	 
+MAX_SEQLEN_Q = 4	 
+MAX_SEQLEN_KV = 1024
 
 
 def _derive_seqused(cu_seqlens):
@@ -121,6 +121,8 @@ SEED_KR = 9
 DATA_RANGE_Q = 1.0
 DATA_RANGE_K = 1.0
 DATA_RANGE_V = 1.0
+DATA_RANGE_QR = 1.0 
+DATA_RANGE_KR = 1.0
 
 DEVICE_ID = 0
 
@@ -146,6 +148,7 @@ _EMAX_MAP = {
     torch.float8_e4m3fn: 8,
     torch.float8_e5m2: 15,
 }
+
 
 def _validate_fp8_dtype(fp8_dtype):
     if fp8_dtype not in _EMAX_MAP:
@@ -399,7 +402,6 @@ def pack_v_scale_for_npu(scale_flat):
 def _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens, cu_seqlens=None):
     B, N, _, Dg = scale_bnsd.shape
     Dg_half = Dg // 2
-
     if cu_seqlens is not None:
         T = cu_seqlens[-1]
         result = torch.zeros(
@@ -832,9 +834,9 @@ def generate_data():
     kr_bf16 = None
     if ENABLE_ROPE and D_rope > 0:
         torch.manual_seed(SEED_QR)
-        qr_bf16 = torch.randn(B, N_q, max_sq, D_rope, dtype=torch.bfloat16)
+        qr_bf16 = (torch.rand(B, N_q, max_sq, D_rope, dtype=torch.bfloat16) * 2 - 1) * DATA_RANGE_QR
         torch.manual_seed(SEED_KR)
-        kr_bf16 = torch.randn(B, N_kv, max_skv, D_rope, dtype=torch.bfloat16)
+        kr_bf16 = (torch.rand(B, N_kv, max_skv, D_rope, dtype=torch.bfloat16) * 2 - 1) * DATA_RANGE_KR
 
     logger.info(
         "[INFO] q_fp16=%s, k_fp16=%s, v_fp16=%s",
@@ -1251,7 +1253,6 @@ def _call_npu_fa_op(
         max_seqlen_q=max_seqlen_q,
         max_seqlen_kv=max_seqlen_kv,
     )
-    
     main_kwargs = dict(
         q=q,
         k=k,

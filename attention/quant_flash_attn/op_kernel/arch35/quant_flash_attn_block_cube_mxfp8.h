@@ -90,8 +90,8 @@ public:
 
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
-    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
-    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
+    static constexpr uint32_t dBaseSize = ((uint32_t)dTemplateType + 63) >> 6 << 6;
+    static constexpr uint32_t dVBaseSize = ((uint32_t)dVTemplateType + 63) >> 6 << 6;
     static constexpr uint32_t l1BaseD = 128;
     static constexpr uint32_t s2SplitSize = 256U;
     static constexpr uint32_t MXFP_GROUP_SIZE = 32U;
@@ -303,7 +303,7 @@ public:
                                              constInfo_.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
             uint32_t d0 = 32 / sizeof(KV_T);
-            uint32_t d1 = (headDim + d0 -1) / d0;
+            uint32_t d1 = (headDim + d0 - 1) / d0;
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm_,
                                              constInfo_.maxBlockNumPerBatch);
         } else if constexpr (KV_NEEDS_WZH) {
@@ -345,7 +345,7 @@ public:
                                                  constInfo_.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<V_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
             uint32_t d0 = 32 / sizeof(KV_T);
-            uint32_t d1 = (headDim + d0 -1) / d0;
+            uint32_t d1 = (headDim + d0 - 1) / d0;
             vScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm_,
                                                  constInfo_.maxBlockNumPerBatch);
         } else if constexpr (KV_NEEDS_WZH) {
@@ -558,7 +558,7 @@ public:
             mm1A = l1QBuffers_.Get();
             mm1A.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
-            if (constInfo_.dSize % 64 != 0) {
+            if constexpr (dTemplateType == DTemplateType::Aligned72) {
                 InitValueL1BufferNAxis(mm1ATensor, mBaseSize, dBaseSize);
                 AscendC::PipeBarrier<PIPE_MTE2>();
             }
@@ -575,7 +575,7 @@ public:
         Buffer<BufferType::L1> mm1B = l1KVBuffers_.Get();
         mm1B.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
-        if (constInfo_.dSize % 64 != 0) {
+        if constexpr (dTemplateType == DTemplateType::Aligned72) {
             InitValueL1BufferNAxis(mm1BTensor, s2SplitSize, dBaseSize);
             AscendC::PipeBarrier<PIPE_MTE2>();
         }
@@ -673,7 +673,7 @@ public:
             mm1B = l1QBuffers_.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>(); // B矩阵常驻，两次Sub中，只有第一次搬B
             LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
-            if (constInfo_.dSize % 64 != 0) {
+            if constexpr (dTemplateType == DTemplateType::Aligned72) {
                 InitValueL1BufferNAxis(mm1BTensor, mBaseSize, dBaseSize);
                 AscendC::PipeBarrier<PIPE_MTE2>();
             }
@@ -690,7 +690,7 @@ public:
         Buffer<BufferType::L1> mm1A = l1KVBuffers_.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
-        if (constInfo_.dSize % 64 != 0) {
+        if constexpr (dTemplateType == DTemplateType::Aligned72) {
             InitValueL1BufferNAxis(mm1ATensor, s2SplitSize, dBaseSize);
             AscendC::PipeBarrier<PIPE_MTE2>();
         }
@@ -765,7 +765,7 @@ public:
             if (unlikely(runInfo.isLastS2Loop)) {
                 InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo_.dSizeV);
             }
-            if (constInfo_.dSizeV % 64 != 0) {
+            if constexpr (dVTemplateType == DTemplateType::Aligned72) {
                 InitValueL1BufferNAxis(mm2BTensor, baseK + baseK / MXFP_GROUP_SIZE, dVBaseSize);
                 AscendC::PipeBarrier<PIPE_MTE2>();
             }
@@ -857,7 +857,7 @@ public:
             if (unlikely(runInfo.isLastS2Loop)) {
                 InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo_.dSizeV);
             }
-            if (constInfo_.dSizeV % 64 != 0) {
+            if constexpr (dVTemplateType == DTemplateType::Aligned72) {
                 InitValueL1BufferNAxis(mm2BTensor, baseK + baseK / MXFP_GROUP_SIZE, dVBaseSize);
                 AscendC::PipeBarrier<PIPE_MTE2>();
             }

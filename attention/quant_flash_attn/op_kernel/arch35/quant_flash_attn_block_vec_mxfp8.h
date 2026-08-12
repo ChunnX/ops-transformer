@@ -327,7 +327,7 @@ public:
 
         uint32_t softmaxBufIdx = runInfo.mloop % (PRELOAD_N + 1);
         uint32_t expBufIdx = runInfo.loop % (PRELOAD_N + 1);
-        int64_t stage1Offset = runInfo.loop % DB;
+        int64_t stage1Offset = subLoop % DB;
 
         LocalTensor<float> sumUb = this->softmaxSumBuf_[softmaxBufIdx].template Get<float>()[0];
         LocalTensor<float> maxUb = this->softmaxMaxBuf_[softmaxBufIdx].template Get<float>()[0];
@@ -760,7 +760,7 @@ public:
                                                  uint32_t mDealSize, uint32_t gmDealRowCount)
     {
         LocalTensor<OUTPUT_T> attenOut;
-        int64_t dSizeAligned64 = (int64_t)dVTemplateType;
+        int64_t dSizeAligned64 = (int64_t)dTemplateAlign64;
 
         attenOut.SetAddr(vec2ResUb.address_);
 
