@@ -410,7 +410,7 @@ bool GroupedQmmTiling::AnalyzeDtype()
               scaleShape->GetStorageShape().GetDimNum() == MXFP_SCALE_NN_DIM_NUM) ||
              (scaleShape->GetOriginShape().GetDimNum() == MXFP_TYPE_M_SCALE_DIM_NUM - 1 &&
               scaleShape->GetStorageShape().GetDimNum() == MXFP_SCALE_NN_DIM_NUM - 1));
-        const bool scaleNzFormat = inputParams_.scaleFormat == ge::FORMAT_FRACTAL_NZ_C0_2 || scaleNnStorage;
+        const bool scaleNzFormat = inputParams_.scaleFormat == ge::FORMAT_FRACTAL_NZ || scaleNnStorage;
         inputParams_.scaleNzFlag = IsMicroScaling() && scaleNzFormat && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
     }
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
