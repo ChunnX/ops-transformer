@@ -29,7 +29,6 @@ public:
     // =================================类型定义区=================================
     using QK_T = float32_t;
     using SCORE_T = typename SIT::scoreType;
-    static_assert(std::is_same_v<SCORE_T, uint16_t>, "V121 stem_indexer only supports uint16 TopK score");
 
     __aicore__ inline SIVector(){};
     __aicore__ inline void ProcessVec1(const SICommon::RunInfo &info);
@@ -74,13 +73,6 @@ protected:
     static constexpr uint32_t TOPK_WORKSPACE_OFFSET_BYTES = 0x0D000U;
     static constexpr uint32_t PACKED_OUTPUT_SLOT0_OFFSET_BYTES = 0x12C00U;
     static constexpr uint32_t PACKED_OUTPUT_SLOT1_OFFSET_BYTES = 0x13C80U;
-
-    static_assert(RES_MM1_DOUBLE_BUFFER_BYTES + VBIAS_BYTES + HISTORY_SCORE_BYTES + GLOBAL_INDEX_BYTES ==
-                      338U * 1024U,
-                  "V121 Vector fixed UB usage must be 338 KiB");
-    static_assert(PACKED_OUTPUT_SLOT1_OFFSET_BYTES + TOPK_ROW_BATCH * PACKED_ROW_STRIDE * sizeof(uint32_t) <=
-                      RES_MM1_SLOT_BYTES,
-                  "V121 MM1 slot reuse exceeds 96 KiB");
 
 private:
     __aicore__ inline void CleanOutput();

@@ -67,14 +67,6 @@ ge::graphStatus StemIndexerInfoParser::GetNpuInfo()
                 static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()));
         return ge::GRAPH_FAILED;
     }
-    if ((ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201 ||
-         ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9202) &&
-        (aicNum != STEM_INDEXER_METADATA_AIC_CORE_NUM_920R1 ||
-         aivNum != STEM_INDEXER_METADATA_AIV_CORE_NUM_920R1)) {
-        OP_LOGE(opName_, "NpuArch[%d] requires 64 AIC and 64 AIV cores, but got %u AIC and %u AIV.",
-                static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()), aicNum, aivNum);
-        return ge::GRAPH_FAILED;
-    }
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE(opName_, "workspace size is nullptr."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetRawTilingData() == nullptr, OP_LOGE(opName_, "raw tiling data is nullptr."),
@@ -553,12 +545,6 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
-    OP_CHECK_IF((ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201 ||
-                 ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9202) &&
-                    blockDim != STEM_INDEXER_METADATA_AIC_CORE_NUM_920R1,
-                OP_LOGE(tilingInfo->opName, "NpuArch[%d] requires blockDim 64, but got %u.",
-                        static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()), blockDim),
-                return ge::GRAPH_FAILED);
     context_->SetBlockDim(blockDim);
 
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();

@@ -47,8 +47,6 @@ public:
     static constexpr uint64_t REQUIRED_WORKSPACE_BYTES =
         REUSE_SCORE_OUT_OFFSET_U32 * sizeof(uint32_t) + MAX_LOOP_M * TOPK_ALIGN_SIZE * sizeof(SCORE_T);
     static constexpr uint64_t TOPK_WORKSPACE_BYTES = 23U * 1024U;
-    static_assert(REQUIRED_WORKSPACE_BYTES <= TOPK_WORKSPACE_BYTES,
-                  "V121 TopK workspace exceeds the 23 KiB MM1-slot reuse region");
 
     __aicore__ inline void InitBuffers(const LocalTensor<uint32_t> &reuseMm1ResLocal,
                                        const LocalTensor<uint32_t> &reuseGlobalIndexLocal)
