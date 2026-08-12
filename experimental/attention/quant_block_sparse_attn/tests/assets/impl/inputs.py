@@ -48,9 +48,9 @@ def _quantize_per_token_head(tensor):
         row_max, torch.tensor(SCALE_EPSILON, dtype=torch.float32, device=tensor.device)
     )
     quant_scale = FP8_E4M3_MAX / row_max
-    return _quant_fp32_to_fp8(tensor, quant_scale), (
-        1.0 / quant_scale
-    ).squeeze(-1).contiguous()
+    return _quant_fp32_to_fp8(tensor, quant_scale), (1.0 / quant_scale).squeeze(
+        -1
+    ).contiguous()
 
 
 def _quantize_value_per_head(tensor):
@@ -64,7 +64,9 @@ def _quantize_value_per_head(tensor):
 
 
 def _rand_fullquant_source(shape, amp_low, amp_high, generator, amp_shape=None):
-    base = torch.empty(shape, dtype=torch.float32).uniform_(-1.0, 1.0, generator=generator)
+    base = torch.empty(shape, dtype=torch.float32).uniform_(
+        -1.0, 1.0, generator=generator
+    )
     if amp_shape is None:
         amp_shape = shape[:-1] + (1,)
     log_low = math.log10(max(float(amp_low), SCALE_EPSILON))
@@ -76,7 +78,9 @@ def _rand_fullquant_source(shape, amp_low, amp_high, generator, amp_shape=None):
     return base * amps
 
 
-def _make_block_table(batch, seq_len, block_size, pattern, rng, blocknum=None, q_block_num=1):
+def _make_block_table(
+    batch, seq_len, block_size, pattern, rng, blocknum=None, q_block_num=1
+):
     kv_block_num = math.ceil(seq_len / block_size)
     width = kv_block_num
     needed_block_num = batch * width
@@ -84,11 +88,7 @@ def _make_block_table(batch, seq_len, block_size, pattern, rng, blocknum=None, q
     if blocknum is None or blocknum >= needed_block_num:
         block_table = torch.empty((batch, kv_block_num), dtype=torch.int32)
         for batch_idx in range(batch):
-            ids = list(
-                range(
-                    batch_idx * kv_block_num, (batch_idx + 1) * kv_block_num
-                )
-            )
+            ids = list(range(batch_idx * kv_block_num, (batch_idx + 1) * kv_block_num))
             if pattern == "reverse":
                 ids.reverse()
             elif pattern == "random":
@@ -138,7 +138,9 @@ def _make_block_table(batch, seq_len, block_size, pattern, rng, blocknum=None, q
             next_id += 1
 
     if next_id != blocknum:
-        raise AssertionError(f"block_table generated {next_id} physical blocks, expected {blocknum}")
+        raise AssertionError(
+            f"block_table generated {next_id} physical blocks, expected {blocknum}"
+        )
     return block_table
 
 
@@ -226,7 +228,9 @@ def _make_sparse_indices(
     return sparse_indices, sparse_seq_len
 
 
-def _dense_to_pa(dense_key, dense_value, dense_k_scale, block_table, block_size, num_blocks=None):
+def _dense_to_pa(
+    dense_key, dense_value, dense_k_scale, block_table, block_size, num_blocks=None
+):
     B, S2, N2, D = dense_key.shape
     required = int(block_table.max().item()) + 1
     if num_blocks is not None and num_blocks < required:
@@ -340,9 +344,7 @@ def customize_inputs(
     query_fp8, q_scale = _quantize_per_token_head(query_source)
     query.copy_(query_fp8)
 
-    dense_key_source = _rand_fullquant_source(
-        (B, S2, N2, D), 1.0, amp_high, generator
-    )
+    dense_key_source = _rand_fullquant_source((B, S2, N2, D), 1.0, amp_high, generator)
     dense_value_source = _rand_fullquant_source(
         (B, S2, N2, D), 1.0, amp_high, generator, amp_shape=(B, 1, N2, 1)
     )
