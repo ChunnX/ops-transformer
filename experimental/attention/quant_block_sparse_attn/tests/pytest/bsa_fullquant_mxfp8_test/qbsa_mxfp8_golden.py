@@ -1554,16 +1554,14 @@ def _pv_matmul_cpu(
         spb = physical_blocks[subloop_start:subloop_end]
         sbo = block_offsets[subloop_start:subloop_end]
         v_mat = v_tensor[spb, n2_idx, sbo, :]
-        v_group_idx = torch.div(
-            sbo, QUANT_GROUP_SIZE * 2, rounding_mode="floor"
-        )
+        v_group_idx = torch.div(sbo, QUANT_GROUP_SIZE * 2, rounding_mode="floor")
         v_group_pair = torch.remainder(
             torch.div(sbo, QUANT_GROUP_SIZE, rounding_mode="floor"),
             2,
         )
-        v_scale_mat = v_scale[
-            spb, n2_idx, v_group_idx, :, v_group_pair
-        ].to(torch.float32)
+        v_scale_mat = v_scale[spb, n2_idx, v_group_idx, :, v_group_pair].to(
+            torch.float32
+        )
         v_dequant = v_mat * v_scale_mat
         pv += torch.matmul(p_quant_subloop * subloop_rescale.view(nq, 1), v_dequant)
         round_sum += p_subloop.sum(dim=-1) * subloop_rescale
