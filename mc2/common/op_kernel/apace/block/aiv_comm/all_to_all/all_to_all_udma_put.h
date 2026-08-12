@@ -72,7 +72,11 @@ private:
     }
 
     template<uint8_t BarrierMode>
-    __aicore__ inline void DoFinalize() {}
+    __aicore__ inline void DoFinalize()
+    {
+        dcci(reinterpret_cast<__gm__ void*>(this->udmaCtx_->commBufferAddrs),
+            static_cast<uint64_t>(CacheLine::ENTIRE_DATA_CACHE), static_cast<uint64_t>(DcciDst::CACHELINE_OUT));
+    }
 };
 
 } // namespace AivComm
