@@ -265,9 +265,9 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
             </tr>
             <tr>
                 <td>metadataOptional</td>
-                <td>可选输入</td>
+                <td>输入</td>
                 <td>由aclnnSparseLightningIndexerKLLossGradMetadata生成的分核信息。</td>
-                <td>传入后kernel将使用metadata中的分核切分。</td>
+                <td>必须传入。传入后kernel将使用metadata中的分核切分。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(x,)</td>
@@ -281,7 +281,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>STRING</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>layoutK</td>
@@ -291,7 +291,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>STRING</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>maskMode</td>
@@ -301,7 +301,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>INT64</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>cmpRatio</td>
@@ -311,7 +311,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>INT64</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>deterministic</td>
@@ -373,20 +373,20 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>输出</td>
                 <td>返回用户需要在Device侧申请的workspace大小。</td>
                 <td>-</td>
-                <td>UINT64</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>executor</td>
                 <td>输出</td>
                 <td>op执行器，包含算子计算流程。</td>
                 <td>-</td>
-                <td>aclOpExecutor*</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
         </tbody>
     </table>
@@ -724,7 +724,7 @@ int main() {
   const int64_t headDim = 128;
   const int64_t topk = 512;
   const int64_t maskMode = 3;
-  const int64_t cmpRatio = 4;
+  const int64_t cmpRatio = 1;
 
   std::vector<int64_t> qShape = {t1, numHeadsQ, headDim};
   std::vector<int64_t> kShape = {t2, numHeadsK, headDim};

@@ -65,38 +65,28 @@ const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
 const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 constexpr float DEFAULT_ACTIVATION_CLAMP = std::numeric_limits<float>::max();
 
-constexpr uint32_t GMM1_TILE_M = 256U;
-constexpr uint32_t GMM2_GM_TILE_M = 256U;
 constexpr uint32_t GMM_TILE_N = 256U;
+constexpr uint32_t GMM1_MIN_LOGICAL_TILES_PER_CORE = 4U;
 
-uint32_t CalcExpertsPerBatch(const MegaMoeTilingData *tilingData, uint32_t aicNum)
+uint32_t CalcMGroupsPerWave(const MegaMoeTilingData *tilingData, uint32_t aicNum)
 {
-    uint32_t moeExpertPerRank = tilingData->moeExpertPerRank;
-    if (moeExpertPerRank == 0U || tilingData->h == 0U || aicNum == 0U) {
+    if (tilingData->hiddenDim == 0U || tilingData->h == 0U || aicNum == 0U) {
         return 1U;
     }
 
-    uint64_t expectedTokens =
-        ops::CeilDiv<uint64_t>(
-            static_cast<uint64_t>(tilingData->bs) * static_cast<uint64_t>(tilingData->topK), moeExpertPerRank);
-    uint64_t expectedMWaves =
-        std::max<uint64_t>(1U, ops::CeilDiv<uint64_t>(expectedTokens, GMM1_TILE_M));
-    // One GMM1 scheduler N step covers gate+up, hence 2 * GMM_TILE_N output columns.
-    uint64_t gmm1TilesPerExpert =
-        expectedMWaves *
-        ops::CeilDiv<uint64_t>(tilingData->hiddenDim, static_cast<uint64_t>(GMM_TILE_N) * 2U);
-    uint64_t gmm2TilesPerExpert =
-        ops::CeilDiv<uint64_t>(expectedTokens, GMM2_GM_TILE_M) *
-        ops::CeilDiv<uint64_t>(tilingData->h, GMM_TILE_N);
-    uint64_t limitingTilesPerExpert =
-        std::max<uint64_t>(1U, std::min(gmm1TilesPerExpert, gmm2TilesPerExpert));
-    uint64_t expertsToFillAic = ops::CeilDiv<uint64_t>(aicNum, limitingTilesPerExpert);
-    uint64_t expertsPerBatch =
-        std::max<uint64_t>(1U, std::min<uint64_t>(moeExpertPerRank, expertsToFillAic));
-    // Deepen the wave when GMM1's gate+up width exceeds GMM2's output width.
-    expertsPerBatch *= ops::CeilDiv<uint64_t>(tilingData->hiddenDim, tilingData->h);
-    return static_cast<uint32_t>(
-        std::max<uint64_t>(1U, std::min<uint64_t>(moeExpertPerRank, expertsPerBatch)));
+    /*
+     * hiddenDim 包含 gate/up 两部分。交织模式每核至少调度 4 个独立 N tile；非交织模式
+     * 每个物理任务成对处理 gate/up，原先每核 2 个物理任务同样等价于 4 个逻辑 N tile。
+     * hiddenDim 已校验为 1024 的倍数，因此两种 kernel 编译模式使用同一个 Host 公式。
+     */
+    uint64_t gmm1LogicalTilesPerMGroup =
+        ops::CeilDiv<uint64_t>(tilingData->hiddenDim, GMM_TILE_N);
+    uint64_t gmm2TilesPerMGroup = ops::CeilDiv<uint64_t>(tilingData->h, GMM_TILE_N);
+    uint64_t gmm1RequiredMGroups = ops::CeilDiv<uint64_t>(
+        static_cast<uint64_t>(aicNum) * GMM1_MIN_LOGICAL_TILES_PER_CORE, gmm1LogicalTilesPerMGroup);
+    uint64_t gmm2RequiredMGroups =
+        ops::CeilDiv<uint64_t>(static_cast<uint64_t>(aicNum), gmm2TilesPerMGroup);
+    return static_cast<uint32_t>(std::max(gmm1RequiredMGroups, gmm2RequiredMGroups));
 }
 
 const static uint32_t WEIGHT_MATRIX_ROW_DIM_INDEX = 0U;
@@ -196,18 +186,18 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             unpermuteTailChunkConfig.bf16SlotElementCount, unpermuteTailChunkConfig.fp32SlotElementCount,
             unpermuteTailChunkConfig.topKWeightsBufferBytes, unpermuteTailChunkConfig.topKWeightsConversionBufferBytes);
     OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
-    OP_LOGD(nodeName, "expertsPerBatch is %u", tilingData->expertsPerBatch);
+    OP_LOGD(nodeName, "mGroupsPerWave is %u", tilingData->mGroupsPerWave);
 }
 
 void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
 {
     OP_LOGD(nodeName, "dispatchRevDataPtr:         %ld\n", info->dispatchRevDataPtr);
     OP_LOGD(nodeName, "dispatchRevScalePtr:        %ld\n", info->dispatchRevScalePtr);
-    OP_LOGD(nodeName, "swigluQuantDataPtr:         %ld\n", info->swigluQuantDataPtr);
-    OP_LOGD(nodeName, "swigluQuantScalePtr:        %ld\n", info->swigluQuantScalePtr);
+    OP_LOGD(nodeName, "activationQuantDataPtr:         %ld\n", info->activationQuantDataPtr);
+    OP_LOGD(nodeName, "activationQuantScalePtr:        %ld\n", info->activationQuantScalePtr);
     OP_LOGD(nodeName, "expertRevTokenNumsPtr:      %ld\n", info->expertRevTokenNumsPtr);
     OP_LOGD(nodeName, "metaInfoPtr:                %ld\n", info->metaInfoPtr);
-    OP_LOGD(nodeName, "flagSwiGluToGmm2Ptr:        %ld\n", info->flagSwiGluToGmm2Ptr);
+    OP_LOGD(nodeName, "flagActivationToGmm2Ptr:        %ld\n", info->flagActivationToGmm2Ptr);
     OP_LOGD(nodeName, "flagDispatchToGmm1Ptr:      %ld\n", info->flagDispatchToGmm1Ptr);
     OP_LOGD(nodeName, "flagSendCntCalToUpdParamsPtr:      %ld\n", info->flagSendCntCalToUpdParamsPtr);
     OP_LOGD(nodeName, "flagGmmToEpiloguePtr: %ld\n", info->flagGmmToEpiloguePtr);
@@ -353,27 +343,53 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
     OP_TILING_CHECK(commAlgPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "commAlg"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "numMaxTokensPerRank"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(activationPtr == nullptr || std::strcmp(activationPtr, "swiglu") != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr == nullptr ? "null" : activationPtr,
-                                              "A5 only supports swiglu"),
+    OP_TILING_CHECK(activationPtr == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "activation"), return ge::GRAPH_FAILED);
+    const bool isSwiglu = std::strcmp(activationPtr, "swiglu") == 0;
+    const bool isSituGlu = std::strcmp(activationPtr, "situglu") == 0;
+    OP_TILING_CHECK(!isSwiglu && !isSituGlu,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr,
+                                              "A5 supports 'swiglu' and 'situglu'"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(activationParamsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParams"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(activationParamsPtr->GetSize() > 1U,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize",
-                                              std::to_string(activationParamsPtr->GetSize()).c_str(),
-                                              "should be 0 or 1 for swiglu"),
+    const size_t paramCount = activationParamsPtr->GetSize();
+    const float *activationParams = activationParamsPtr->GetData();
+    OP_TILING_CHECK(activationParams == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParamsData"),
                     return ge::GRAPH_FAILED);
-    if (activationParamsPtr->GetSize() == 1U) {
-        const float *activationParams = activationParamsPtr->GetData();
-        OP_TILING_CHECK(activationParams == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParamsData"),
+    if (isSwiglu) {
+        OP_TILING_CHECK(paramCount > 1U,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize",
+                                                  std::to_string(paramCount).c_str(),
+                                                  "should be 0 or 1 for swiglu"),
                         return ge::GRAPH_FAILED);
-        const float activationClamp = activationParams[0];
-        OP_TILING_CHECK(activationClamp < 0 || std::isnan(activationClamp),
-                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationClamp",
-                                                  std::to_string(activationClamp).c_str(),
-                                                  "should be >= 0 and not NAN"),
+        if (paramCount == 1U) {
+            const float activationClamp = activationParams[0];
+            OP_TILING_CHECK(activationClamp < 0 || std::isnan(activationClamp),
+                            OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationClamp",
+                                                      std::to_string(activationClamp).c_str(),
+                                                      "should be >= 0 and not NAN"),
+                            return ge::GRAPH_FAILED);
+        }
+    } else {
+        OP_TILING_CHECK(paramCount < 1U || paramCount > 2U,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize",
+                                                  std::to_string(paramCount).c_str(),
+                                                  "should be 1 or 2 for situglu"),
                         return ge::GRAPH_FAILED);
+        const float beta = activationParams[0];
+        OP_TILING_CHECK(!std::isfinite(beta) || beta == 0.0f,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "situglu_beta", std::to_string(beta).c_str(),
+                                                  "should be finite and non-zero"),
+                        return ge::GRAPH_FAILED);
+        if (paramCount == 2U) {
+            const float linearBeta = activationParams[1];
+            OP_TILING_CHECK(!std::isfinite(linearBeta) || linearBeta == 0.0f,
+                            OP_LOGE_FOR_INVALID_VALUE(nodeName, "situglu_linear_beta",
+                                                      std::to_string(linearBeta).c_str(),
+                                                      "should be finite and non-zero"),
+                            return ge::GRAPH_FAILED);
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -563,6 +579,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
 
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
+    auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrActivationIndex));
     auto activationParamsPtr = attrs->GetListFloat(config.attrActivationParamsIndex);
 
     tilingData->epWorldSize = *epWorldSizePtr;
@@ -576,12 +593,26 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
                                                                         tilingData->moeExpertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
     tilingData->combineQuantMode = GetCombineQuantModeByAttr(context, config);
-    tilingData->clampLimit = activationParamsPtr->GetSize() == 0U ? DEFAULT_ACTIVATION_CLAMP :
-                                                                    activationParamsPtr->GetData()[0];
-    tilingData->actMode = 0U;    // ACT_MODE_SWIGLU, 功能关闭
-    tilingData->actSubMode = 0U; // ACT_SUB_MODE_DEFAULT
-    tilingData->activationAlpha = 1.0f;
-    tilingData->activationBeta = 1.0f;
+    const float *activationParams = activationParamsPtr->GetData();
+    if (std::strcmp(activationPtr, "situglu") == 0) {
+        tilingData->clampLimit = std::numeric_limits<float>::max();
+        tilingData->actMode = 1U; // ACT_MODE_SITU
+        tilingData->activationBeta = activationParams[0];
+        if (activationParamsPtr->GetSize() == 2U) {
+            tilingData->actSubMode = 1U; // ACT_SUB_MODE_LINEAR
+            tilingData->activationAlpha = activationParams[1];
+        } else {
+            tilingData->actSubMode = 0U; // ACT_SUB_MODE_DEFAULT
+            tilingData->activationAlpha = 0.0f;
+        }
+    } else {
+        tilingData->clampLimit = activationParamsPtr->GetSize() == 0U ? DEFAULT_ACTIVATION_CLAMP :
+                                                                        activationParams[0];
+        tilingData->actMode = 0U;    // ACT_MODE_SWIGLU
+        tilingData->actSubMode = 0U; // ACT_SUB_MODE_DEFAULT
+        tilingData->activationAlpha = 1.0f;
+        tilingData->activationBeta = 1.0f;
+    }
 
     tilingData->sharedExpertNum = static_cast<uint32_t>(
         GetWeightExpertCount(context, config.sharedWeight1Index, tilingData->isPerExpertWeightTensor));
@@ -622,7 +653,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
             static_cast<uint32_t>(ops::CeilAlign(maxTilesM * maxTilesN, static_cast<int64_t>(16)));
     }
 
-    tilingData->expertsPerBatch = CalcExpertsPerBatch(tilingData, aicNum);
+    tilingData->mGroupsPerWave = CalcMGroupsPerWave(tilingData, aicNum);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -881,11 +912,11 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
         (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
     uint64_t maxWavesPerExpert = ops::CeilDiv<uint64_t>(tilingData->maxOutputSize, L1_TILE_M_256);
     uint64_t waveFlagSlotsPerExpert = maxWavesPerExpert * INT_CACHELINE;
-    uint64_t swigluFlagSlotsPerExpert = useMteA8W8Wave ? waveFlagSlotsPerExpert : INT_CACHELINE;
+    uint64_t activationFlagSlotsPerExpert = useMteA8W8Wave ? waveFlagSlotsPerExpert : INT_CACHELINE;
     uint64_t moeExpertCount = tilingData->moeExpertPerRank;
 
     uint64_t flagElementCount =
-        moeExpertCount * (swigluFlagSlotsPerExpert + waveFlagSlotsPerExpert +
+        moeExpertCount * (activationFlagSlotsPerExpert + waveFlagSlotsPerExpert +
                           static_cast<uint64_t>(INT_CACHELINE) * tilingData->aicNum);
     if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
