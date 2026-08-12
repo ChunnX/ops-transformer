@@ -47,6 +47,123 @@ def _torch_dtype(value):
     return value
 
 
+def _fp8_normalize_data_range(data_range):
+    """Normalize a TTK range while retaining pytest's None/default semantics."""
+    if data_range is None:
+        return None
+    if isinstance(data_range, (list, tuple)):
+        if len(data_range) == 0:
+            return None
+        if len(data_range) != 2:
+            raise ValueError(
+                f"data_range must be empty, a scalar, or [min, max], got {data_range}"
+            )
+        low, high = data_range
+        if low is None and high is None:
+            return None
+        return (float(low), float(high))
+    return float(data_range)
+
+
+def _fp8_assemble_case(
+    query,
+    key,
+    sparse_indices,
+    block_table,
+    *,
+    softmax_scale,
+    sparse_q_block_size,
+    sparse_kv_block_size,
+    layout_q,
+    layout_kv,
+    layout_sparse_indices,
+    layout_out,
+    mask_mode,
+    return_softmax_lse,
+    sparse_mode,
+    cu_seqlens_q_value,
+    cu_seqlens_kv_value,
+    seqused_q_value,
+    seqused_kv_value,
+    p_scale_value,
+    seed,
+    blocksize,
+    data_range_q,
+    data_range_k,
+    data_range_v,
+    testcase_name,
+    sparse_pattern="sequential",
+    block_table_pattern="sequential",
+    **kwargs,
+):
+    """Translate the shared 16-tensor TTK case into the pytest FP8 schema."""
+    del kwargs
+    cu_q = [int(value) for value in cu_seqlens_q_value]
+    cu_kv = [int(value) for value in cu_seqlens_kv_value]
+    seq_q = [int(value) for value in seqused_q_value]
+    seq_kv = [int(value) for value in seqused_kv_value]
+    if len(cu_q) < 2 or cu_q[0] != 0:
+        raise ValueError("cu_seqlens_q_value must start with 0 and contain B+1 values")
+
+    q_lengths = [end - start for start, end in zip(cu_q, cu_q[1:])]
+    batch = int(sparse_indices.shape[0])
+    if len(q_lengths) != batch or len(seq_kv) != batch:
+        raise ValueError(
+            "cu_seqlens_q_value and seqused_kv_value must match the sparse batch size"
+        )
+    if cu_kv:
+        raise ValueError("cu_seqlens_kv_value must be empty for FP8 TTK cases")
+    if seq_q:
+        raise ValueError("seqused_q_value must be empty for FP8 TTK cases")
+
+    if layout_q == "NTD":
+        num_heads_q = int(query.shape[0])
+    elif layout_q == "TND":
+        num_heads_q = int(query.shape[1])
+    else:
+        raise ValueError(f"unsupported FP8 layout_q: {layout_q!r}")
+
+    return {
+        "Testcase_Name": testcase_name,
+        "B": batch,
+        "S1": max(q_lengths),
+        "S2": max(seq_kv),
+        "N1": num_heads_q,
+        "N2": int(key.shape[1]),
+        "D": int(query.shape[-1]),
+        "layout_q": layout_q,
+        "layout_kv": layout_kv,
+        "layout_sparse_indices": layout_sparse_indices,
+        "layout_out": layout_out,
+        "output_dtype": torch.bfloat16,
+        "quant_mode": 1,
+        "mask_mode": int(mask_mode),
+        "return_softmax_lse": bool(return_softmax_lse),
+        "softmax_scale": float(softmax_scale),
+        "sparse_q_block_size": int(sparse_q_block_size),
+        "sparse_kv_block_size": int(sparse_kv_block_size),
+        "sparse_mode": sparse_mode,
+        "sparse_pattern": sparse_pattern,
+        "block_table_pattern": block_table_pattern,
+        "block_size": int(blocksize) if int(blocksize) > 0 else int(key.shape[2]),
+        "block_num": int(key.shape[0]),
+        "max_block_per_batch": int(block_table.shape[1]),
+        "cu_seqlens_q_value": cu_q,
+        "cu_seqlens_kv_value": cu_kv,
+        "seqused_q_value": seq_q,
+        "seqused_kv_value": seq_kv,
+        "q_datarange": _fp8_normalize_data_range(data_range_q),
+        "k_datarange": _fp8_normalize_data_range(data_range_k),
+        "v_datarange": _fp8_normalize_data_range(data_range_v),
+        "p_scale_value": (
+            None if p_scale_value is None else float(p_scale_value)
+        ),
+        "pa_block_padding_bytes": 0,
+        "seed": int(seed),
+        "S1EQS2": False,
+    }
+
+
 def _normalize_params(params):
     if not isinstance(params, dict):
         raise ValueError("quant_block_sparse_attn params should be a dict")
