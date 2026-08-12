@@ -362,7 +362,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>phi(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数phi。</td>
-        <td>支持空Tensor。</td>
+        <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(2N+N^2, N*C)</td>
@@ -372,7 +372,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>alpha(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数alpha。</td>
-        <td>支持空Tensor。</td>
+        <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(3)</td>
@@ -382,7 +382,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>bias(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数bias。</td>
-        <td>支持空Tensor。</td>
+        <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(2N+N^2)</td>
@@ -541,7 +541,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
          <tr>
         <td rowspan="4">ACLNN_ERR_INNER_TILING_ERROR</td>
         <td rowspan="4">561002</td>
-        <td>N大于8。</td>
+        <td>N大于8或小于等于0。</td>
       </tr>
       <tr>
         <td>输入或输出tensor的维度(shape)与参数说明不符。</td>
@@ -609,7 +609,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
   | 规格项 | 规格 | 规格说明 |
   | :--- | :--- | :--- |
   | sk_iter_count | 20 | Sinkhorn迭代次数当前仅支持20。 |
-  | N | ≤8 | N维度支持不超过8。 |
+  | N | >0且≤8 | N维度支持大于0且不超过8。 |
   | C | - | 大于0、小于100000且可以被128整除。 |
 
 ## 调用示例

@@ -126,9 +126,8 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::GetShapeAttrsInf
     }
     skIterCount_ = skSumShape.GetDim(ITER_COUNT_IDX) / ITER_COUNT_DIVISOR;
 
-    OP_CHECK_IF(n_ > MAX_N,
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "n must be less than or equal %ld, but got %ld",
-                                            MAX_N, n_),
+    OP_CHECK_IF(n_ <= 0 || n_ > MAX_N,
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "n must be > 0 and <= %ld, but got %ld", MAX_N, n_),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         skIterCount_ != EXPECTED_SK_ITER_COUNT,
