@@ -336,6 +336,23 @@ inline int ProcessArgsForA2(const char *groupName, std::vector<uint8_t> &winBuf)
 inline void *GetPeermemBase(const char *socName, uint64_t argsAddr)
 {
     OP_LOGD(OP_NAME, "GetPeermemBase: argsAddr=0x%lx", argsAddr);
+    if (std::strstr(socName, "Ascend950") != nullptr) {
+        std::vector<uint8_t> hcclArgs(sizeof(Mc2Aclnn::Mc2MoeContext), 0);
+        if (aclrtMemcpy(hcclArgs.data(), sizeof(Mc2Aclnn::Mc2MoeContext), reinterpret_cast<void *>(argsAddr),
+                        sizeof(Mc2Aclnn::Mc2MoeContext), ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "GetPeermemBase: aclrtMemcpy Mc2MoeContext failed");
+            return nullptr;
+        }
+        auto *ctx = reinterpret_cast<Mc2Aclnn::Mc2MoeContext *>(hcclArgs.data());
+        if (ctx->epRankId >= Mc2Aclnn::HCCL_MAX_RANK_SIZE) {
+            OP_LOGE(OP_NAME, "GetPeermemBase: invalid epRankId=%u", ctx->epRankId);
+            return nullptr;
+        }
+        void *winAddr = reinterpret_cast<void *>(ctx->epHcclBuffer_[ctx->epRankId]);
+        OP_LOGD(OP_NAME, "GetPeermemBase: A5 epRankId=%u peermemBase=%p", ctx->epRankId, winAddr);
+        return winAddr;
+    }
+
     std::vector<uint8_t> hcclArgs(sizeof(CommContextForDump), 0);
     if (aclrtMemcpy(hcclArgs.data(), sizeof(CommContextForDump), reinterpret_cast<void *>(argsAddr),
                     sizeof(CommContextForDump), ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
@@ -547,10 +564,11 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
     std::vector<uint8_t> winContent;
     bool isMegaMoe = (std::strstr(op, "MegaMoe") != nullptr);
     bool isA2orA3 = (std::strstr(socName, "Ascend910_93") != nullptr || std::strstr(socName, "Ascend910B") != nullptr);
-    OP_LOGD(OP_NAME, "isMegaMoe=%d isA2orA3=%d", isMegaMoe, isA2orA3);
+    bool isA5 = (std::strstr(socName, "Ascend950") != nullptr);
+    OP_LOGD(OP_NAME, "isMegaMoe=%d isA2orA3=%d isA5=%d", isMegaMoe, isA2orA3, isA5);
 
-    if (isMegaMoe && isA2orA3) {
-        // MegaMoe on A2/A3: 结构化 dump（从 device 按 3 阶段搬运到 host）
+    if (isMegaMoe && (isA2orA3 || isA5)) {
+        // MegaMoe structured dump: copy metadata first, then compact the selected GM regions on host.
         OP_LOGD(OP_NAME, "MegaMoe structured dump: getting peermem base");
         void *peermemBase = GetPeermemBase(socName, argsAddr);
         if (peermemBase == nullptr) {
@@ -558,8 +576,16 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
             return;
         }
         if (ParseStructuredDump(reinterpret_cast<uint64_t>(peermemBase), winContent) != 0) {
-            OP_LOGE(OP_NAME, "Failed to parse structured dump.");
-            return;
+            if (!isA5) {
+                OP_LOGE(OP_NAME, "Failed to parse structured dump.");
+                return;
+            }
+            OP_LOGW(OP_NAME, "A5 structured dump is unavailable; falling back to the raw 1MB window dump.");
+            winContent.assign(WIN_SIZE, 0);
+            if (ProcessArgsForA5(argsAddr, winContent, op) != 0) {
+                OP_LOGE(OP_NAME, "Failed to get raw A5 win content.");
+                return;
+            }
         }
     } else {
         // 其他场景: 原始 1MB raw dump
