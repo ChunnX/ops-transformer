@@ -48,7 +48,7 @@ aclnnStatus aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
     int64_t x2QuantMode,
     int64_t groupSize,
     const char *commMode,
-    int64_t precisionMode,
+    int64_t perfMode,
     const aclTensor *output,
     const aclTensor *alltoAllOutOptional,
     uint64_t *workspaceSize,
@@ -126,8 +126,8 @@ aclnnStatus aclnnAlltoAllQuantMatmulV3(
   <td>commMode（const char*）</td><td>输入</td>
   <td>通信模式，仅支持"urma"。</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
   </tr><tr>
-  <td>precisionMode（int64_t）</td><td>输入</td>
-  <td>精度模式。0=REMOTE，1=LOCAL+REMOTE(atomicAdd)，2=DEFERRED_SYNC。</td><td>建议使用0。</td><td>-</td><td>-</td><td>-</td><td>-</td>
+  <td>perfMode（int64_t）</td><td>输入</td>
+  <td>性能模式。0=REMOTE，1=LOCAL+REMOTE(atomicAdd)，2=DEFERRED_SYNC。</td><td>建议使用0。</td><td>-</td><td>-</td><td>-</td><td>-</td>
   </tr><tr>
   <td>output（aclTensor*）</td><td>输出</td>
   <td>输出结果，对应公式中Y。</td>

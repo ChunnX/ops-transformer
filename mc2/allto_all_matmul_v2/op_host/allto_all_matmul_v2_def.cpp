@@ -18,7 +18,8 @@
 namespace ops {
 class AlltoAllMatmulV2 : public OpDef {
 public:
-    explicit AlltoAllMatmulV2(const char *name) : OpDef(name)
+    explicit AlltoAllMatmulV2(const char *name)
+        : OpDef(name)
     {
         this->Input("context")
             .ParamType(REQUIRED)
@@ -28,19 +29,19 @@ public:
         this->Input("x1")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
-                       ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
+                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
-                       ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1})
+                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,
+                       ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("x2")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
-                       ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
+                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,
+                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
-                       ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1})
+                       ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("bias")
@@ -68,18 +69,19 @@ public:
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Output("y").ParamType(REQUIRED).DataType({ge::DT_BF16,   ge::DT_FLOAT16,
-                                                         ge::DT_BF16,   ge::DT_FLOAT16,
-                                                         ge::DT_BF16,   ge::DT_FLOAT16,
-                                                         ge::DT_BF16,   ge::DT_FLOAT16,
-                                                         ge::DT_BF16,   ge::DT_FLOAT16}).FormatList({ge::FORMAT_ND});
+        this->Output("y").ParamType(REQUIRED).DataType({ge::DT_BF16, ge::DT_FLOAT16,
+                                                        ge::DT_BF16, ge::DT_FLOAT16,
+                                                        ge::DT_BF16, ge::DT_FLOAT16,
+                                                        ge::DT_BF16, ge::DT_FLOAT16,
+                                                        ge::DT_BF16, ge::DT_FLOAT16})
+            .FormatList({ge::FORMAT_ND});
         this->Output("all2all_out")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
-                       ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
+                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
-                       ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1})
+                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,
+                       ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1})
             .FormatList({ge::FORMAT_ND});
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("world_size").AttrType(REQUIRED).Int();
@@ -92,7 +94,7 @@ public:
         this->Attr("group_size").AttrType(OPTIONAL).Int(0);
         this->Attr("alltoall_out_flag").AttrType(OPTIONAL).Bool(false);
         this->Attr("comm_mode").AttrType(OPTIONAL).String("urma");
-        this->Attr("precision_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("perf_mode").AttrType(OPTIONAL).Int(0);
 
         OpAICoreConfig aicoreConfig_950;
         aicoreConfig_950.DynamicCompileStaticFlag(true)

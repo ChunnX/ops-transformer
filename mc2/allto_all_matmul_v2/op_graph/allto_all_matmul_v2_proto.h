@@ -49,7 +49,7 @@ REG_OP(AlltoAllMatmulV2)
     .ATTR(group_size, Int, 0)
     .ATTR(alltoall_out_flag, Bool, false)
     .ATTR(comm_mode, String, "urma")
-    .ATTR(precision_mode, Int, 0)
+    .ATTR(perf_mode, Int, 0)
     .OP_END_FACTORY_REG(AlltoAllMatmulV2)
 } // namespace ge
 

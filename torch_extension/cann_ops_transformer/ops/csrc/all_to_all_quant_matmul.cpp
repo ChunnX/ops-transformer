@@ -54,7 +54,7 @@ std::tuple<at::Tensor, at::Tensor> NpuAlltoAllQuantMatmul(
     const c10::optional<at::Tensor> &x1ScaleOptional, const c10::optional<at::Tensor> &x2ScaleOptional,
     c10::optional<int64_t> x1QuantMode, c10::optional<int64_t> x2QuantMode, c10::IntArrayRef groupSizes,
     c10::optional<int64_t> x1Dtype, c10::optional<int64_t> x2Dtype, c10::optional<int64_t> x1ScaleDtype,
-    c10::optional<int64_t> x2ScaleDtype, c10::optional<int64_t> yDtype, std::string commMode, int64_t precisionMode)
+    c10::optional<int64_t> x2ScaleDtype, c10::optional<int64_t> yDtype, std::string commMode, int64_t perfMode)
 {
     TORCH_CHECK(x1.dim() == DIM_TWO,
                 "The x1 input of alltoallquantmatmul is required to be 2D, but the actual x1 input is ", x1.dim(),
@@ -129,7 +129,7 @@ std::tuple<at::Tensor, at::Tensor> NpuAlltoAllQuantMatmul(
 
     ACLNN_CMD(aclnnAlltoAllQuantMatmulV3, context, x1Wrapper, x2Wrapper, biasOptional, x1ScaleWrapper, x2ScaleWrapper,
               groupPtr, worldSize, hcclBufferSize, x1QuantModeVal, x2QuantModeVal, groupSize,
-              commModePtr, precisionMode, y, alltoallOutWrapper);
+              commModePtr, perfMode, y, alltoallOutWrapper);
 
     return std::make_tuple(y, alltoallOut);
 }

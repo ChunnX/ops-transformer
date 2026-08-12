@@ -40,7 +40,7 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
             "int[] group_sizes=[], "
             "int? x1_dtype=None, int? x2_dtype=None, "
             "int? x1_scale_dtype=None, int? x2_scale_dtype=None, "
-            "int? y_dtype=None, str comm_mode=\"ai_cpu\", int precision_mode=0"
+            "int? y_dtype=None, str comm_mode=\"ai_cpu\", int perf_mode=0"
             ") -> (Tensor, Tensor)"
         )
 
@@ -66,7 +66,7 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
             x2_scale_dtype=None,
             y_dtype=None,
             comm_mode="ai_cpu",
-            precision_mode=0,
+            perf_mode=0,
         ):
             torch._check(
                 world_size > 0,
@@ -119,7 +119,7 @@ def _npu_all_to_all_quant_matmul(
     x2_scale_dtype=None,
     y_dtype=None,
     comm_mode="ai_cpu",
-    precision_mode=0,
+    perf_mode=0,
 ):
     result = _op_module.npu_all_to_all_quant_matmul(
         context,
@@ -141,7 +141,7 @@ def _npu_all_to_all_quant_matmul(
         x2_scale_dtype,
         y_dtype,
         comm_mode,
-        precision_mode,
+        perf_mode,
     )
     return result
 
@@ -164,7 +164,7 @@ def all_to_all_quant_matmul(
     x2_scale_dtype: int = -1,
     y_dtype: int = -1,
     comm_mode: Optional[str] = None,
-    precision_mode: int = 0,
+    perf_mode: int = 0,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """AlltoAll + Matmul fused computation.
 
@@ -193,7 +193,7 @@ def all_to_all_quant_matmul(
         x2_scale_dtype (int): x2_scale dtype enum, -1 means use tensor dtype.
         y_dtype (int): Output dtype enum, -1 means default float32.
         comm_mode (str): Communication engine, e.g. ``"ai_cpu"`` or ``"ccu"``.
-        precision_mode (int): Precision mode, 0 means default.
+        perf_mode (int): Perf mode, 0 means default.
 
     Returns:
         Tuple[Tensor, Tensor]: (y, all2all_out) where y has shape
@@ -235,7 +235,7 @@ def all_to_all_quant_matmul(
         x2_scale_dtype=None if x2_scale_dtype == -1 else x2_scale_dtype,
         y_dtype=None if y_dtype == -1 else y_dtype,
         comm_mode=comm_mode,
-        precision_mode=precision_mode,
+        perf_mode=perf_mode,
     )
     print(f"[all_to_all_quant_matmul] rank={rank_id}, npu_all_to_all_quant_matmul returned", flush=True)
     return result

@@ -67,7 +67,7 @@ protected:
     static constexpr size_t IDX_ATTR_GROUP_SIZE = 8;
     static constexpr size_t IDX_ATTR_ALLTOALL_OUT_FLAG = 9;
     static constexpr size_t IDX_ATTR_COMM_MODE = 10;
-    static constexpr size_t IDX_ATTR_PRECISION_MODE = 11;
+    static constexpr size_t IDX_ATTR_PERF_MODE = 11;
     static constexpr uint64_t MX_SCALE_ALIGN = 64;
     static constexpr uint64_t SCALE_LAST_DIM = 2;
     static constexpr uint64_t SCALE_DIM_NUM = 3;
@@ -483,8 +483,8 @@ protected:
         k_ = x1ss.GetDim(1U); // Ka (per-rank K)
         n_ = x2ss.GetDim(0U); // N (always dim0, x2 shape = [N, K_total])
 
-        auto *pm = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_PRECISION_MODE);
-        precisionMode_ = pm ? static_cast<uint32_t>(*pm) : 0;
+        auto *pm = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_PERF_MODE);
+        perfMode_ = pm ? static_cast<uint32_t>(*pm) : 0;
         return ge::GRAPH_SUCCESS;
     }
 
@@ -532,9 +532,9 @@ protected:
                 td->scaleCommTilingData.splitAxisTailSize, td->scaleCommTilingData.splitAxisTailCnt,
                 td->scaleCommTilingData.nonSplitAxisSize);
 
-        td->localMatmul = precisionMode_;
+        td->localMatmul = perfMode_;
 
-        OP_LOGI(opName, "localMatmul precisionMode=%u", precisionMode_);
+        OP_LOGI(opName, "localMatmul perfMode=%u", perfMode_);
 
         return ge::GRAPH_SUCCESS;
     }
@@ -568,7 +568,7 @@ protected:
 private:
     uint64_t m_{0}, k_{0}, n_{0};
     uint64_t worldSize_{1};
-    uint32_t precisionMode_{0};
+    uint32_t perfMode_{0};
 };
 
 } // namespace MC2Tiling

@@ -76,7 +76,7 @@ extern "C" aclnnStatus aclnnInnerAlltoAllMatmulV2GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
     const aclTensor *x1Scale, const aclTensor *x2Scale, char *group, int64_t worldSize, int64_t hcclBufferSize,
     int64_t yDtype, int64_t x1QuantMode, int64_t x2QuantMode, bool transposeX1, bool transposeX2,
-    int64_t groupSize, bool alltoallOutFlag, char *commModeOptional, int64_t precisionMode, const aclTensor *yOut,
+    int64_t groupSize, bool alltoallOutFlag, char *commModeOptional, int64_t perfMode, const aclTensor *yOut,
     const aclTensor *all2allOutOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern "C" aclnnStatus aclnnInnerAlltoAllMatmulV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
@@ -86,7 +86,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
     const aclTensor *x1ScaleOptional, const aclTensor *x2ScaleOptional, const char *group, int64_t worldSize,
     int64_t hcclBufferSize, int64_t x1QuantMode, int64_t x2QuantMode,
-    int64_t groupSize, const char *commMode, int64_t precisionMode, const aclTensor *output,
+    int64_t groupSize, const char *commMode, int64_t perfMode, const aclTensor *output,
     const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnnAlltoAllQuantMatmulV3GetWorkspaceSize start");
@@ -133,7 +133,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
         context, x1, transX2, biasOptional, x1ScaleOptional, x2ScaleOptional,
         const_cast<char *>(group), worldSize, hcclBufferSize, kDefaultYdtype,
         x1QuantMode, x2QuantMode, kDefaultTransposeX1, transposeX2,
-        groupSize, kDefaultAlltoallOutFlag, const_cast<char *>(commMode ? commMode : "urma"), precisionMode, output,
+        groupSize, kDefaultAlltoallOutFlag, const_cast<char *>(commMode ? commMode : "urma"), perfMode, output,
         alltoAllOutOptional, workspaceSize, executor);
 
     if (ret != ACLNN_SUCCESS) {
