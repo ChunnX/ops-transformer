@@ -502,6 +502,12 @@ def cpu_compressor(
     print(f"cmp_kv.shape: {cmp_kv.shape}")
     cmp_kv_torch = torch.tensor(cmp_kv).to(x_dtype)
     if grad_enabled:
+        if coff == 2:
+            # 中间量输出与 NPU kernel 一致的交错布局（偶行=prev、奇行=cur）：
+            # 顺序布局 [prev 半区; cur 半区] 重排为 [p0,c0,p1,c1,...]，比对侧无需再 interleave
+            half = cmp_ratio
+            softmax = np.stack([softmax[..., :half, :], softmax[..., half:, :]], axis=-2).reshape(softmax.shape)
+            kv = np.stack([kv[..., :half, :], kv[..., half:, :]], axis=-2).reshape(kv.shape)
         softmax = torch.tensor(softmax)
         kv = torch.tensor(kv)
         return cmp_kv_torch, cmp_kv_mask, softmax, kv, mid_result_mask
