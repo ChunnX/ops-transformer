@@ -86,7 +86,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             "Tensor[]? shared_weight1=None, Tensor[]? shared_weight2=None, "
             "Tensor[]? shared_weight_scales1=None, Tensor[]? shared_weight_scales2=None, "
             "Tensor[]? shared_bias1=None, Tensor[]? shared_bias2=None, "
-            "Tensor(a!)? mask_buffer=None, "
+            "Tensor? mask_buffer=None, "
             "int max_recv_token_num=0, "
             "int dispatch_quant_mode=0, int combine_quant_mode=0, "
             'str comm_alg="", int num_max_tokens_per_rank=0, str activation="swiglu", '
@@ -291,18 +291,27 @@ class SymmBuffer:
         self.topk_weights_type = topk_weights_type
         self.topo_type = self._ctx_manager.topo_type
         self.rank_num_per_server = self._ctx_manager.rank_num_per_server
-        self.mask_buffer = torch.zeros(
-            self.ep_world_size, dtype=torch.bool, device=self.context.device
-        )
+        self.mask_buffer = None
+
+    def _create_mask_buffer(self, ep_world_size: int) -> torch.Tensor:
+        return torch.zeros(ep_world_size, dtype=torch.bool, device=self.context.device)
+
+    def _check_mask_buffer_supported(self) -> None:
+        if "Ascend910_93" not in torch.npu.get_device_name():
+            raise RuntimeError("mask_buffer is supported on Atlas A3 only.")
 
     def destroy(self):
         self._ctx_manager.destroy()
 
-    def query_mask_buffer(self) -> torch.Tensor:
+    def query_mask_buffer(self) -> Optional[torch.Tensor]:
         """Return a host-side snapshot of the rank mask."""
+        self._check_mask_buffer_supported()
+        if self.mask_buffer is None:
+            return None
         return self.mask_buffer.detach().cpu().clone()
 
     def update_mask_buffer(self, rank: int, masked: bool) -> None:
+        self._check_mask_buffer_supported()
         if (
             isinstance(rank, bool)
             or not isinstance(rank, int)
@@ -311,6 +320,10 @@ class SymmBuffer:
             raise IndexError(f"rank must be in [0, {self.ep_world_size}), got {rank}.")
         if not isinstance(masked, bool):
             raise TypeError(f"masked must be bool, got {type(masked)}.")
+
+        if self.mask_buffer is None:
+            self.mask_buffer = self._create_mask_buffer(self.ep_world_size)
+
         self.mask_buffer[rank] = masked
 
     def update_group(self, group) -> None:
@@ -359,9 +372,7 @@ class SymmBuffer:
         self.ccl_buffer_size = new_manager.ccl_buffer_size
         self.topo_type = new_manager.topo_type
         self.rank_num_per_server = new_manager.rank_num_per_server
-        self.mask_buffer = torch.zeros(
-            ep_world_size, dtype=torch.bool, device=new_context.device
-        )
+        self.mask_buffer = None
         old_manager.destroy()
 
 
@@ -511,7 +522,7 @@ def mega_moe(
     )
 
 
-def query_mask_buffer(sym_buffer: SymmBuffer) -> torch.Tensor:
+def query_mask_buffer(sym_buffer: SymmBuffer) -> Optional[torch.Tensor]:
     return sym_buffer.query_mask_buffer()
 
 

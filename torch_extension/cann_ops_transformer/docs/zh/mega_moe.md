@@ -629,15 +629,18 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 - A3 弹性扩缩容接口：
 
 ```python
-query_mask_buffer(sym_buffer) -> Tensor
+query_mask_buffer(sym_buffer) -> Optional[Tensor]
 update_mask_buffer(sym_buffer, rank, masked) -> None
 update_group(sym_buffer, group) -> None
 ```
 
-`mask_buffer` 及以上弹性接口当前仅支持 Atlas A3。`SymmBuffer` 会在 NPU 上创建
+`mask_buffer` 及以上弹性接口当前仅支持 Atlas A3。`SymmBuffer` 默认不创建 `mask_buffer`，
+因此各代际默认均不会向算子传入该参数。A3 上第一次集体调用 `update_mask_buffer` 时才会在 NPU 上创建
 shape 为 `[ep_world_size]` 的全 False bool 掩码；置为 True 的 rank 会在后续计算和卡间通信中跳过。
-`query_mask_buffer` 返回其 Host 侧快照，`update_group` 使用新 group 完整重建通信链路，
-并按新 world size 将掩码重新初始化为全 False。
+`query_mask_buffer` 在掩码尚未创建时返回 `None`，创建后返回其 Host 侧快照。
+`update_mask_buffer` 是集合通信接口，当前通信组内所有存活 rank 必须传入相同的
+`(rank, masked)`；接口返回后，各 rank 使用同一份掩码。`update_group` 使用新 group 完整重建通信链路，
+并将 `mask_buffer` 恢复为 `None`。
 
 ## 参数说明
 
