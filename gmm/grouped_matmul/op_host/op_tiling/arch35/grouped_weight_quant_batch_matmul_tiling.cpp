@@ -865,7 +865,15 @@ bool GroupedWeightQuantBatchMatmulTiling::CalcResplitTiling(const gert::TilingCo
                 return false);
 
     cubeNumBlocksN_ = static_cast<uint8_t>(coreNum_);
-    if (nSize_ % (coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N)) == 0UL) {
+    uint64_t nBlockCount = GroupedMatmul::CeilDiv(nSize_, static_cast<uint64_t>(BASIC_BLOCK_BASE_N));
+    bool preferGroupDistributedNBlock =
+        IsMxA8W4() && groupType_ == static_cast<int64_t>(GroupType::SPLIT_M) && groupNum_ > 1 &&
+        nSize_ % static_cast<uint64_t>(BASIC_BLOCK_BASE_N) == 0UL &&
+        nBlockCount >= GroupedMatmul::CeilDiv(static_cast<uint64_t>(coreNum_), static_cast<uint64_t>(groupNum_));
+    if (preferGroupDistributedNBlock) {
+        // MxA8W4 prefers the standard 256x256 weight block when group direction can fill cores.
+        CalcNoFullNumBlocksResplitTiling(c0Size);
+    } else if (nSize_ % (coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N)) == 0UL) {
         resplitParam_.mainBlockSize = BASIC_BLOCK_BASE_N;
         resplitParam_.mainBlockCount = nSize_ / (coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N));
     } else if (nSize_ > coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N_MIN)) {
