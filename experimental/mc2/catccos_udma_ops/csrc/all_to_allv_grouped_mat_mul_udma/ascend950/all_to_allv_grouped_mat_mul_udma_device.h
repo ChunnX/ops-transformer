@@ -83,6 +83,12 @@ using AllToAllVGroupedMatMulUdmaDefaultConfig = AllToAllVGroupedMatMulUdmaConfig
     bfloat16_t, Catlass::layout::RowMajor,
     128, 256, 256>;
 
+using AllToAllVGroupedMatMulUdmaM0_256Config = AllToAllVGroupedMatMulUdmaConfig<
+    bfloat16_t, Catlass::layout::RowMajor,
+    bfloat16_t, Catlass::layout::RowMajor,
+    bfloat16_t, Catlass::layout::RowMajor,
+    256, 128, 256>;
+
 } // namespace OpsTransformer::CatccosUdma
 
 #endif // OPS_TRANSFORMER_ALL_TO_ALLV_GROUPED_MAT_MUL_UDMA_DEVICE_H

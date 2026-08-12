@@ -232,3 +232,19 @@ target-kernel occurrences instead of silently selecting convenient samples.
 Current kernel constraints are BF16, TP=1 (`ep_size == world_size`), at most 8
 ranks, at most 64 local experts, contiguous row-major tensors, and the original
 CatCCOS peer-memory/tiling limit.
+
+## Fixed business-shape tiling
+
+`all_to_allv_grouped_mat_mul` selects the following tuned profiles only when
+`world_size=8`, `expert_num=256`, and `(M, K, N)` matches exactly. All other
+shapes and topologies retain the default profile.
+
+| M | K | N | M0 | N0 | K0 | commInterval | commTileM | commBlockM |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 131072 | 2048 | 1024 | 128 | 256 | 256 | 12 | 128 | 128 |
+| 131072 | 2048 | 512 | 256 | 128 | 256 | 6 | 128 | 128 |
+
+Both tuning records also contain `(commNpuSplit, commDataSplit)=(4,4)`.
+Those are legacy example-host fields: the migrated CatCCOS UDMA
+`DeviceOp::Arguments` and its device schedulers do not consume them, so they are
+retained as profile metadata rather than presented as effective kernel inputs.

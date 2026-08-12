@@ -28,19 +28,54 @@
 namespace OpsTransformer::CatccosUdma {
 namespace {
 
-using Config = AllToAllVGroupedMatMulUdmaDefaultConfig;
-using DeviceOp = Config::Device;
-using Kernel = Config::Kernel;
-
-constexpr uint32_t kM0 = 128;
-constexpr uint32_t kN0 = 256;
-constexpr uint32_t kK0 = 256;
-constexpr uint32_t kCommTileM = 64;
-constexpr uint32_t kCommInterval = 10;
-constexpr uint32_t kCommBlockM = 64;
 constexpr uint32_t kMaxLocalExperts = 64;
 constexpr uint64_t kIpcBufferBytes = 1000UL * 1024 * 1024;
 constexpr uint32_t kMaxBlockCount = 2;
+constexpr uint32_t kMaxK0 = 256;
+
+enum class KernelVariant {
+    kM0_128,
+    kM0_256,
+};
+
+template <class T>
+struct TypeTag {
+    using type = T;
+};
+
+struct TilingProfile {
+    KernelVariant kernelVariant;
+    uint32_t m0;
+    uint32_t n0;
+    uint32_t k0;
+    uint32_t commInterval;
+    uint32_t commTileM;
+    uint32_t commBlockM;
+    // These two values are retained from the tuning record. The migrated
+    // CatCCOS UDMA kernel ABI does not consume either legacy host field.
+    uint32_t commNpuSplit;
+    uint32_t commDataSplit;
+};
+
+constexpr TilingProfile kDefaultTiling{
+    KernelVariant::kM0_128, 128, 256, 256, 10, 64, 64, 1, 16};
+constexpr TilingProfile kM131072K2048N1024Tiling{
+    KernelVariant::kM0_128, 128, 256, 256, 12, 128, 128, 4, 4};
+constexpr TilingProfile kM131072K2048N512Tiling{
+    KernelVariant::kM0_256, 256, 128, 256, 6, 128, 128, 4, 4};
+
+const TilingProfile &SelectTiling(
+    uint32_t m, uint32_t k, uint32_t n, uint32_t worldSize, uint32_t expertNum)
+{
+    const bool isEightRank256ExpertCase = worldSize == 8 && expertNum == 256;
+    if (isEightRank256ExpertCase && m == 131072 && k == 2048 && n == 1024) {
+        return kM131072K2048N1024Tiling;
+    }
+    if (isEightRank256ExpertCase && m == 131072 && k == 2048 && n == 512) {
+        return kM131072K2048N512Tiling;
+    }
+    return kDefaultTiling;
+}
 
 uint32_t RoundUp(uint32_t value, uint32_t alignment)
 {
@@ -77,7 +112,8 @@ void FinalizeUdma(const at::Tensor &deviceAnchor)
     UdmaRuntime::Instance().Finalize(stream);
 }
 
-void LaunchAllToAllVGroupedMatMulUdma(const DeviceOp::Params &params, uint32_t blockDim,
+template <class Kernel, class Params>
+void LaunchAllToAllVGroupedMatMulUdma(const Params &params, uint32_t blockDim,
                                       aclrtStream stream, uint64_t fftsAddress)
 {
     // Match CatCCOS DeviceDGemm::Run: zero selects the adapter overload that
@@ -88,6 +124,58 @@ void LaunchAllToAllVGroupedMatMulUdma(const DeviceOp::Params &params, uint32_t b
         Catccos::DGemm::Device::KernelAdapter<Kernel><<<blockDim, nullptr, stream>>>(
             params, fftsAddress, nullptr);
     }
+}
+
+template <class Config>
+void InitializeAndLaunch(
+    const TilingProfile &tiling,
+    const Catlass::GemmCoord &shape,
+    uint32_t rank,
+    uint32_t worldSize,
+    uint32_t epSize,
+    uint32_t expertNum,
+    uint8_t *x,
+    uint8_t *weight,
+    uint8_t *output,
+    uint8_t *localTokensPerExpert,
+    uint8_t *globalTokensPerLocalExpert,
+    uint8_t *workspace,
+    uint32_t blockDim,
+    aclrtStream stream,
+    uint64_t fftsAddress)
+{
+    using DeviceOp = typename Config::Device;
+    using Kernel = typename Config::Kernel;
+    Catlass::MatrixCoord commBlockShape{tiling.commBlockM, RoundUp(shape.k(), tiling.k0)};
+    Catlass::MatrixCoord commTileShape{tiling.commTileM / 2, tiling.k0};
+    typename DeviceOp::Arguments arguments{
+        shape,
+        rank,
+        worldSize,
+        tiling.commInterval,
+        epSize,
+        expertNum,
+        x,
+        weight,
+        output,
+        localTokensPerExpert,
+        globalTokensPerLocalExpert,
+        workspace,
+        commBlockShape,
+        commTileShape,
+    };
+
+    DeviceOp deviceOp;
+    const Catlass::Status initializeStatus = deviceOp.Initialize(arguments);
+    TORCH_CHECK(initializeStatus == Catlass::Status::kSuccess,
+                "failed to initialize the CatCCOS device operator");
+    const typename DeviceOp::Params params = deviceOp.params();
+    auto launch = [=]() -> int {
+        LaunchAllToAllVGroupedMatMulUdma<Kernel>(
+            params, blockDim, stream, fftsAddress);
+        return 0;
+    };
+    at_npu::native::OpCommand::RunOpApi("AllToAllVGroupedMatMulUdma", launch);
 }
 
 at::Tensor AllToAllVGroupedMatMulUdmaImpl(
@@ -125,7 +213,7 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     const int64_t n64 = weight.size(2);
     TORCH_CHECK(m64 > 0 && k64 > 0 && n64 > 0, "m, k and n must be positive");
     TORCH_CHECK(m64 <= std::numeric_limits<uint32_t>::max() &&
-                k64 <= std::numeric_limits<uint32_t>::max() - (kK0 - 1) &&
+                k64 <= std::numeric_limits<uint32_t>::max() - (kMaxK0 - 1) &&
                 n64 <= std::numeric_limits<uint32_t>::max(), "shape exceeds the kernel's uint32 range");
     TORCH_CHECK(weight.size(0) == localExpertNum && weight.size(1) == k64,
                 "weight must have shape [expert_num / ep_size, k, n]");
@@ -137,9 +225,12 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     const uint32_t m = static_cast<uint32_t>(m64);
     const uint32_t k = static_cast<uint32_t>(k64);
     const uint32_t n = static_cast<uint32_t>(n64);
-    const uint32_t kLoops = (k + kK0 - 1) / kK0;
+    const TilingProfile &tiling = SelectTiling(
+        m, k, n, static_cast<uint32_t>(worldSize), static_cast<uint32_t>(expertNum));
+    const uint32_t kLoops = (k + tiling.k0 - 1) / tiling.k0;
     const uint64_t maxPeerElements = kIpcBufferBytes / sizeof(uint16_t) / worldSize / kMaxBlockCount;
-    TORCH_CHECK(static_cast<uint64_t>(kCommInterval) * kM0 * kK0 * kLoops < maxPeerElements,
+    TORCH_CHECK(static_cast<uint64_t>(tiling.commInterval) * tiling.m0 * tiling.k0 * kLoops <
+                    maxPeerElements,
                 "shape exceeds the CatCCOS UDMA peer-memory constraint");
 
     at::Tensor output = outputOptional.has_value()
@@ -155,40 +246,31 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     runtime.RecordStream(stream);
 
     Catlass::GemmCoord shape{m, n, k};
-    Catlass::MatrixCoord commBlockShape{kCommBlockM, RoundUp(k, kK0)};
-    Catlass::MatrixCoord commTileShape{kCommTileM / 2, kK0};
-    DeviceOp::Arguments arguments{
-        shape,
-        static_cast<uint32_t>(runtime.Rank()),
-        static_cast<uint32_t>(worldSize),
-        kCommInterval,
-        static_cast<uint32_t>(epSize),
-        static_cast<uint32_t>(expertNum),
-        // UDMA PUT reads its local source directly from ordinary NPU GM.
-        reinterpret_cast<uint8_t *>(x.data_ptr()),
-        reinterpret_cast<uint8_t *>(weight.data_ptr()),
-        reinterpret_cast<uint8_t *>(output.data_ptr()),
-        reinterpret_cast<uint8_t *>(localTokensPerExpert.data_ptr()),
-        reinterpret_cast<uint8_t *>(globalTokensPerLocalExpert.data_ptr()),
-        runtime.Workspace(),
-        commBlockShape,
-        commTileShape,
-    };
-
-    DeviceOp deviceOp;
-    const Catlass::Status initializeStatus = deviceOp.Initialize(arguments);
-    TORCH_CHECK(initializeStatus == Catlass::Status::kSuccess, "failed to initialize the CatCCOS device operator");
-    const DeviceOp::Params params = deviceOp.params();
     const uint32_t blockDim =
         platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic();
     TORCH_CHECK(blockDim > 0, "failed to query Ascend AI-core count");
     const uint64_t fftsAddress = runtime.FftsAddress();
-
-    auto launch = [=]() -> int {
-        LaunchAllToAllVGroupedMatMulUdma(params, blockDim, stream, fftsAddress);
-        return 0;
+    auto launchWithConfig = [&](auto configTag) {
+        using SelectedConfig = typename decltype(configTag)::type;
+        InitializeAndLaunch<SelectedConfig>(
+            tiling, shape,
+            static_cast<uint32_t>(runtime.Rank()),
+            static_cast<uint32_t>(worldSize),
+            static_cast<uint32_t>(epSize),
+            static_cast<uint32_t>(expertNum),
+            // UDMA PUT reads its local source directly from ordinary NPU GM.
+            reinterpret_cast<uint8_t *>(x.data_ptr()),
+            reinterpret_cast<uint8_t *>(weight.data_ptr()),
+            reinterpret_cast<uint8_t *>(output.data_ptr()),
+            reinterpret_cast<uint8_t *>(localTokensPerExpert.data_ptr()),
+            reinterpret_cast<uint8_t *>(globalTokensPerLocalExpert.data_ptr()),
+            runtime.Workspace(), blockDim, stream, fftsAddress);
     };
-    at_npu::native::OpCommand::RunOpApi("AllToAllVGroupedMatMulUdma", launch);
+    if (tiling.kernelVariant == KernelVariant::kM0_256) {
+        launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaM0_256Config>{});
+    } else {
+        launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaDefaultConfig>{});
+    }
     return output;
 }
 
