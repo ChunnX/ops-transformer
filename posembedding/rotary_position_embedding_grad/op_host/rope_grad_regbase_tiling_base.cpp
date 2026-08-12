@@ -109,10 +109,10 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckInPutShapeAllPositive(const int
 {
     auto shape = context_->GetInputShape(idx)->GetStorageShape();
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
-        if (shape.GetDim(i) <= 0) {
+        if (shape.GetDim(i) < 0) {
             std::string shapeMsg = ToString(shape);
             std::string reasonMsg = "The shape of input " + inputNames[idx] +
-                " can not be an empty tensor or an invalid tensor with a negative dimension";
+                " can not be an invalid tensor with a negative dimension";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), inputNames[idx].c_str(),
                 shapeMsg.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -125,10 +125,10 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckOutPutShapeAllPositive(const in
 {
     auto shape = context_->GetOutputShape(idx)->GetStorageShape();
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
-        if (shape.GetDim(i) <= 0) {
+        if (shape.GetDim(i) < 0) {
             std::string shapeMsg = ToString(shape);
             std::string reasonMsg = "The shape of output " + outputNames[idx] +
-                " can not be an empty tensor or an invalid tensor with a negative dimension";
+                " can not be an invalid tensor with a negative dimension";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), outputNames[idx].c_str(),
                 shapeMsg.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -516,6 +516,9 @@ ge::graphStatus RopeGradRegBaseTilingClass::GetInputParam(
     auto inputDesc = context_->GetInputDesc(inputIdx);
     OP_CHECK_NULL_WITH_CONTEXT(context_, inputDesc);
     opInput.inputDtype = inputDesc->GetDataType();
+    OP_LOGE(context_->GetNodeName(), "DEBUG GetInputParam: inputIdx=%u dtype=%d, dyNumel=%ld",
+            inputIdx, static_cast<int32_t>(opInput.inputDtype),
+            static_cast<int64_t>(context_->GetInputShape(inputIdx)->GetStorageShape().GetShapeSize()));
     // set opInput shape
     auto dyInput = context_->GetInputTensor(inputIdx);
     OP_CHECK_NULL_WITH_CONTEXT(context_, dyInput);
