@@ -382,8 +382,6 @@ public:
             return;
         }
 
-        static constexpr bool hasDrop = false;
-
         LocalTensor<uint8_t> dropMaskUb;
         LocalTensor<INPUT_T> nonePseUb; // PSE不支持，占位
         LocalTensor<uint8_t> attenMaskUb;
@@ -412,14 +410,14 @@ public:
         if (runInfo.isFirstS2Loop) {
             if (likely(runInfo.actSingleLoopS2Size == 128)) {
                 FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize, EQ_128,
-                                           HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
+                                           HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false, false, false>(
                     stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
                     nonePseUb, dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                     0 /* pseStride */, 0.0f /* slopes */, 0.0f /* posShift */, static_cast<T>(constInfo_.scaleValue),
                     descaleQK, negativeFloatScalar_, 0.0F, queryScaleUb, deSCaleKValue);
             } else if (runInfo.actSingleLoopS2Size <= 64) {
                 FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize,
-                                           GT_0_AND_LTE_64, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false,
+                                           GT_0_AND_LTE_64, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false, false,
                                            false>(
                     stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
                     nonePseUb, dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
@@ -427,7 +425,7 @@ public:
                     descaleQK, negativeFloatScalar_, 0.0F, queryScaleUb, deSCaleKValue);
             } else if (runInfo.actSingleLoopS2Size < 128) {
                 FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize,
-                                           GT_64_AND_LTE_128, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false,
+                                           GT_64_AND_LTE_128, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false, false,
                                            false>(
                     stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
                     nonePseUb, dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
@@ -436,7 +434,7 @@ public:
             } else {
                 if constexpr (s2BaseSize == 256) {
                     FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize,
-                                               GT_128_AND_LTE_256, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, hasDrop>(
+                                               GT_128_AND_LTE_256, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false>(
                         stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
                         nonePseUb, dropMaskUb, vec1ApiTmpBuf_, expUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                         0 /* pseStride */, 0.0f /* slopes */, 0.0f /* posShift */,
@@ -447,14 +445,14 @@ public:
         } else {
             if (likely(runInfo.actSingleLoopS2Size == 128)) {
                 FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, EQ_128,
-                                           HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
+                                           HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false, false, false>(
                     stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
                     nonePseUb, dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                     0 /* pseStride */, 0.0f /* slopes */, 0.0f /* posShift */, static_cast<T>(constInfo_.scaleValue),
                     descaleQK, negativeFloatScalar_, 0.0F, queryScaleUb, deSCaleKValue);
             } else if (runInfo.actSingleLoopS2Size <= 64) {
                 FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize,
-                                           GT_0_AND_LTE_64, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false,
+                                           GT_0_AND_LTE_64, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false, false,
                                            false>(
                     stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
                     nonePseUb, dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
@@ -462,7 +460,7 @@ public:
                     descaleQK, negativeFloatScalar_, 0.0F, queryScaleUb, deSCaleKValue);
             } else if (runInfo.actSingleLoopS2Size < 128) {
                 FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize,
-                                           GT_64_AND_LTE_128, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false,
+                                           GT_64_AND_LTE_128, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false, false,
                                            false>(
                     stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
                     nonePseUb, dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
@@ -471,7 +469,7 @@ public:
             } else {
                 if constexpr (s2BaseSize == 256) {
                     FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize,
-                                               GT_128_AND_LTE_256, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, hasDrop>(
+                                               GT_128_AND_LTE_256, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false>(
                         stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
                         nonePseUb, dropMaskUb, vec1ApiTmpBuf_, expUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                         0 /* pseStride */, 0.0f /* slopes */, 0.0f /* posShift */,
