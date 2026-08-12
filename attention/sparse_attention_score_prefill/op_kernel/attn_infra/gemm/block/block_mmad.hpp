@@ -57,6 +57,8 @@ struct BlockMmadTla {
 #if (__CCE_AICORE__ == 220)
 #include "../../../attn_infra/gemm/block/block_mmad_qk.hpp"
 #include "../../../attn_infra/gemm/block/block_mmad_pv.hpp"
+#include "../../../attn_infra/gemm/block/block_mmad_qk_prefill_a2.hpp"
+#include "../../../attn_infra/gemm/block/block_mmad_pv_prefill_a2.hpp"
 #endif
 #if (__CCE_AICORE__ == 310)
 #include "../../../attn_infra/gemm/block/block_mmad_pv_arch35_ABf16_C_to_UB.hpp"

@@ -29,6 +29,8 @@ class BlockEpilogue {
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_low_prec.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o_low_prec.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_prefill_a2.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o_prefill_a2.hpp"
 #endif
 #if (__CCE_AICORE__ == 310)
 #include "../../../attn_infra/epilogue/block/block_epilogue_mask2idx_arch35.hpp"

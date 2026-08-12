@@ -2,6 +2,11 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
+/*
+ * 本文件声明 SparseAttentionScorePrefill 算子对外暴露的 aclnn C 接口。
+ * 包含两阶段 API：GetWorkspaceSize（规划阶段）与算子执行接口（执行阶段）。
+ */
+
 #ifndef ACLNN_SPARSE_ATTENTION_SCORE_PREFILL_H_
 #define ACLNN_SPARSE_ATTENTION_SCORE_PREFILL_H_
 

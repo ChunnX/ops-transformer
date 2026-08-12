@@ -58,6 +58,16 @@ struct EpilogueRescaleOPrefillArch35 {
     using ArchTag = Arch::AtlasA5;
 };
 
+// For AtlasA2 prefill Phase1 online softmax (mirror A5, ArchTag = AtlasA2)
+struct EpilogueOnlineSoftmaxPrefillA2 {
+    using ArchTag = Arch::AtlasA2;
+};
+
+// For AtlasA2 prefill Phase2 rescale-O combine (mirror A5, ArchTag = AtlasA2)
+struct EpilogueRescaleOPrefillA2 {
+    using ArchTag = Arch::AtlasA2;
+};
+
 }  // namespace NpuArch::Epilogue
 
 #endif  // EPILOGUE_DISPATCH_POLICY_HPP

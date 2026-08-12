@@ -64,6 +64,14 @@ struct MmadAtlasA5PrefillPV : public MmadAtlasA5 {
     static constexpr uint32_t L0_STAGES = 2;
 };
 
+struct MmadAtlasA2PrefillQK : public MmadAtlasA2 {
+    static constexpr uint32_t L0_STAGES = 2;
+};
+
+struct MmadAtlasA2PrefillPV : public MmadAtlasA2 {
+    static constexpr uint32_t L0_STAGES = 2;
+};
+
 }  // namespace NpuArch::Gemm
 
 #endif  // GEMM_DISPATCH_POLICY_HPP

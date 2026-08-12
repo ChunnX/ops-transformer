@@ -14,13 +14,14 @@ and compares against NPU kernel output.
 """
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
 import torch
 import torch_npu
 from torch_npu.testing.testcase import TestCase, run_tests
-torch_npu.npu.set_device("npu:2")
+torch_npu.npu.set_device(os.getenv("NPU_DEVICE", "npu:0"))
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _TORCH_EXT = _REPO_ROOT / "torch_extension"
@@ -87,7 +88,7 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         data["scale_value"],
         block_size,
         top_k,
-        1,
+        0,  # inner_precise=0 → fp32 O_partial path, aligned with golden
     )
 
     npu_out_cpu = npu_out.cpu()
@@ -96,9 +97,6 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
     print(
         f"[npu] batch={batch} q={q_seqlens} kv={kv_seqlens} top_k={top_k} "
         f"kv_centric_vs_npu max_diff={max_diff:.6f} mean_diff={mean_diff:.6f}")
-
-    print("npu_out_cpu:", npu_out_cpu)
-    print("kv_centric:", kv_centric)
 
     self.assertFalse(
         torch.any(torch.isnan(npu_out_cpu.float())),

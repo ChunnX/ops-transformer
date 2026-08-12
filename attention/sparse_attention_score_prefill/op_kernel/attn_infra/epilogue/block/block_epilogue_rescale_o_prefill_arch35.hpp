@@ -30,6 +30,24 @@
  * (MTE2_V EVENT_ID0) and CopyFinalResOut(V_MTE3 EVENT_ID0) stay per-chunk blocking
  * (MTE3 overlap out of scope: production single chunk).
  */
+// =============================================================================
+// 中文导读 (FlashDecode Phase2 combine 流程)
+// =============================================================================
+// 本文件实现 Phase2 的 combine 逻辑 (FlashDecode 路径), 用于将 topK 个 split 的
+// 部分输出 O_partial[k] 加权融合为最终注意力输出 O。
+//
+// 核心公式:
+//   O = Σ scale[k] * (O_partial[k] / rowSum[k])
+// 其中 scale[k] 由各 split 的 rowMax / rowSum 经 softmax 归一化得到 (见
+// ComputeScaleValue)。
+//
+// 与 IFA (Incremental Flash Attention) 库的区别:
+//   - IFA 的 Phase1 阶段已经对 O_partial 做了 /rowSum 归一化, Phase2 只需加权求和。
+//   - 本算子的 Phase1 不做 O/rowSum, 而是将除法推迟到 Phase2 的 CopyAccumOutIn 之后,
+//     由 ReduceFinalRes 中嵌入的 regbase MicroAPI::Div 完成。
+//   - 这样 Phase1 减少一次除法, 但 Phase2 需要额外读取 rowSum 并在归约时做逐行除法。
+// =============================================================================
+
 #ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_O_PREFILL_ARCH35_HPP
 #define EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_O_PREFILL_ARCH35_HPP
 
@@ -83,6 +101,24 @@ public:
 
     __aicore__ inline BlockEpilogue() {}
 
+    // ---------------------------------------------------------------------------
+    // InitFDBuffers: 初始化 FlashDecode 所需的 UB buffer 布局
+    // ---------------------------------------------------------------------------
+    // 从传入的 ubBase 起始地址依次切分以下连续 buffer (无空洞):
+    //   lseMaxBuf       (8K float)  —— 存放 broadcast 后的 rowMax, 布局 [topK, dealRow, 8]
+    //   lseSumBuf       (8K float)  —— 存放 broadcast 后的 rowSum/scale, 布局同上
+    //   dstBuf          (32K slot)  —— 最终融合结果 O 的 UB 暂存 (TwsO 类型)
+    //   broadCastTmpBuf (32K slot)  —— Broadcast scratch + compact lse 暂存区
+    //                                   (lseSumTmpBuf = broadCastTmpBuf_[alignedLseCount])
+    //   castOutBuf      (32K slot)  —— fp32→bf16 out-of-place Cast 的独立输出缓冲
+    //   accumOutBuf[2]  (32K each)  —— O_partial ping-pong 双缓冲, 每个槽存一组 split
+    //
+    // splitsPerBuf_: 每个 ping-pong slot 读取的 split 数 (批量连续读)。
+    //   - 目标是让 topK 个 split 分成约 2 组 (buf-group), 使 2 级 ping-pong
+    //     仍能重叠 MTE2(g+1) || V(g)。
+    //   - cap = 32K / (groupSize * headDimAlignFp32), 即一个 32K 槽最多容纳的 split 数。
+    //   - half = (topK+1)/2, splitsPerBuf_ = min(cap, half), 下限为 1。
+    // ---------------------------------------------------------------------------
     __aicore__ inline
     void InitFDBuffers(AscendC::LocalTensor<T> &ubBase,
                        uint32_t D,
@@ -128,6 +164,20 @@ public:
         }
     }
 
+    // ---------------------------------------------------------------------------
+    // FlashDecodeCompute: Phase2 主入口, 每个 task 处理 1 个 (qToken, kvHeadIdx)
+    // ---------------------------------------------------------------------------
+    // task 编码 (与 IFA 一致):
+    //   qToken    = tmpBlockIdx / kvHeads   (query token 在 totalQ 维的索引)
+    //   kvHeadIdx = tmpBlockIdx % kvHeads   (KV head 在 kvHeads 维的索引)
+    //
+    // attenOutOffset 计算 (GM O 的写入起始偏移):
+    //   = qToken * kvHeads * groupSize * D + kvHeadIdx * groupSize * D
+    // 即在 GM 输出布局 [totalQ, kvHeads, groupSize, D] 中定位到当前 task 对应的
+    // 连续 groupSize*D 区域。后续 CombineSplitKVRes 负责将融合结果写回该偏移处。
+    //
+    // actualCombineLoopSize_ = topK_: 遍历 topK 个 split 做加权融合。
+    // ---------------------------------------------------------------------------
     __aicore__ inline
     void FlashDecodeCompute(uint32_t tmpBlockIdx,
                             uint32_t totalTaskNumP2,
@@ -191,7 +241,27 @@ private:
         return (static_cast<uint64_t>(qToken) * kvHeads_ + kvHeadIdx) * topK_ * groupSize_ * D_;
     }
 
-    // GM max/sum compact [topK, groupSize] -> UB IFA layout [topK, dealRow, 8].
+    // ---------------------------------------------------------------------------
+    // CopyLseIn: 从 GM 读 compact max/sum, Broadcast 展开为 IFA 所需的 [topK, dealRow, 8] 布局
+    // ---------------------------------------------------------------------------
+    // GM 中的 softmaxMax / softmaxSum 是紧凑存储 (compact), 布局 [topK, groupSize],
+    // 每个 split 仅 1 个标量。但后续 ComputeScaleValue_VF 需要 32B 对齐的
+    // [topK, dealRowCount, 8] 布局 (每标量复制 8 份), 因此需要 Broadcast 展开。
+    //
+    // 流程:
+    //   1. DataCopyPad 将 compact max/sum 从 GM 读入 broadCastTmpBuf_ 的前半区
+    //      (lseMaxTmpBuf 和 lseSumTmpBuf, 各 alignedLseCount 个 float)。
+    //   2. MTE2→V 同步 (SetFlag/WaitFlag EVENT_ID0)。
+    //   3. Broadcast 将 compact 数据展开为 [lseCount, 8] 写入 lseMaxBuf_ / lseSumBuf_。
+    //
+    // Reciprocal 优化: 预计算 1/rowSum, 将后续 ReduceFinalRes 中的 Div 转为 Mul。
+    //   - 对 compact lseSumTmpBuf 原地执行 Reciprocal (而非 broadcast 后的 lseSumBuf_)。
+    //   - lseSumBuf_ (8x broadcast) 是独立 buffer, 原始 sum 值不受影响, 仍供
+    //     ComputeScaleValue 计算 scale 使用。
+    //   - 无效 slot 的 rowSum==0 → reciprocal=+inf, 但 combineDone 会在归约到达前跳出,
+    //     永远不会被使用。
+    //   - GM max/sum compact [topK, groupSize] -> UB IFA layout [topK, dealRow, 8].
+    // ---------------------------------------------------------------------------
     __aicore__ inline
     void CopyLseIn(uint32_t qToken,
                    uint32_t kvHeadIdx,
@@ -240,6 +310,20 @@ private:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
+    // ---------------------------------------------------------------------------
+    // ComputeScaleValue: 计算 scale 权重 (各 split 在最终融合中的占比)
+    // ---------------------------------------------------------------------------
+    // 公式:
+    //   scale[k] = rowSum[k] * exp(rowMax[k] - max_global) / Σ scale[j]
+    // 其中 max_global = max(rowMax[0..topK-1]) 是所有 split 的全局最大值。
+    //
+    // softmaxLseFlag = false: 不使用 LSE (log-sum-exp) 路径, 直接用 max/sum 计算。
+    //   - 本算子的 Phase1 存储的是原始 max 和 sum (非 log 域), 故走 false 分支。
+    //   - learnableSinkFlag = false: 不使用可学习 sink (learnable sink) 功能。
+    //
+    // 调用 FaVectorApi::ComputeScaleValue_VF, 结果写回 lseSumLocal (即 lseSumBuf_),
+    // 后续 ReduceFinalRes 读取该 scale 对各 split 的 O_partial 做加权。
+    // ---------------------------------------------------------------------------
     __aicore__ inline
     void ComputeScaleValue(AscendC::LocalTensor<T> &lseMaxLocal,
                            AscendC::LocalTensor<T> &lseSumLocal,
@@ -257,6 +341,22 @@ private:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
+    // ---------------------------------------------------------------------------
+    // CopyAccumOutIn: 批量连续读 nSplits 个 split 的 O_partial 到 UB
+    // ---------------------------------------------------------------------------
+    // GM 布局: accumOut [totalQ, kvHead, topK, groupSize, D], 其中 topK 维连续
+    // (topK 为次慢维, D 为最快维), 因此 [jStart..jStart+nSplits) 范围内的数据在
+    // GM 中是连续存放的, 可以用一次 DataCopyPad 读取 (srcStride=0, 行与行紧挨)。
+    //
+    // 优化点 (E: batched contiguous read):
+    //   - 旧方案: 每个 split 单独发一次 8KB DataCopyPad (topK 次), per-transaction
+    //     开销高, 是 Phase2 MTE2 瓶颈 (占算子 39.5%, 仅 24 GB/s)。
+    //   - 新方案: 一次读取 nSplits * dealRowCount 行 (blockCount = nSplits * dealRowCount),
+    //     事务数从 topK 降至 numGroups = ceil(topK / splitsPerBuf_), 有效带宽提升。
+    //
+    // blockElems: 32B 块对应的元素数 (fp32=8, bf16=16), 用于计算 dstStride 和 rightPadding。
+    // oOffset: 在 GM accumOut 中定位到 [qToken, kvHead, jStart] 的起始偏移。
+    // ---------------------------------------------------------------------------
     __aicore__ inline
     void CopyAccumOutIn(uint32_t qToken,
                         uint32_t kvHeadIdx,
@@ -291,6 +391,34 @@ private:
         AscendC::DataCopyPad(accumOutLocal, gmAccumOut[oOffset], copyInParams, copyInPadParams);
     }
 
+    // ---------------------------------------------------------------------------
+    // ReduceFinalRes: 遍历 topK 个 split, 累加 scale[k] * O_norm[k] 到 dst
+    // ---------------------------------------------------------------------------
+    // 核心逻辑: 对每个 split j, 执行
+    //   dst += scale[j] * (O_partial[j] / rowSum[j])
+    // 其中 O_partial[j] 来自 accumOutBuf (由 CopyAccumOutIn 批量读入 UB),
+    // scale[j] 来自 lseSumBuf_ (由 ComputeScaleValue 计算),
+    // rowSum[j] 来自 broadCastTmpBuf_ 的 compact 区 (由 CopyLseIn 读入并取倒数)。
+    //
+    // 无效 slot 检查 (invalid slot check):
+    //   - lseMaxBuf_[maxOff].GetValue(0) <= NEG_INF_LSE → 该 slot 无效, 跳过。
+    //   - 无效 slot 的 rowMax 被 InitWorkspaceStats 预填为 -FLT_MAX (NEG_INF_LSE)。
+    //   - 有效 slot 是左连续的 (Phase1 只写 slotK=0..valid_k-1), 所以第一个无效
+    //     slot 出现后, 后续全部无效, 直接 break 跳出整个 combine。
+    //
+    // 双缓冲 ping-pong (double-buffered):
+    //   - accumOutBuf[2] 双槽, curId = g % ACCUM_OUT_STAGES。
+    //   - MTE2 加载 group g+1 的数据 与 V 归约 group g 重叠执行:
+    //     Wait<V_MTE2>(g) → CopyAccumOutIn(g) → Set<MTE2_V>(g) → Wait<MTE2_V>(g) → V reduce(g)
+    //   - 每个 buf-group 一次性加载 splitsPerBuf_ 个 split (CopyAccumOutIn),
+    //     然后内层 j 循环逐 split 做 V 归约。
+    //
+    // bf16 vs fp32 路径分发:
+    //   - bf16 路径 (TwsO=bfloat16_t): 调用 ReduceFinalRes_VF_BF16, 在 regbase 中
+    //     融合 Cast bf16→fp32 → fp32 Mul/Add → Cast fp32→bf16, 直接存 bf16 到 dst。
+    //   - fp32 路径 (TwsO=float): 调用 ReduceFinalRes_VF, 全程 fp32 计算。
+    //   - 两条路径的 j==0 初始化 vs 加载已有 dst 的分发在 VF 内部处理。
+    // ---------------------------------------------------------------------------
     __aicore__ inline
     void ReduceFinalRes(uint32_t qToken,
                         uint32_t kvHeadIdx,
@@ -412,6 +540,22 @@ private:
         }
     }
 
+    // ---------------------------------------------------------------------------
+    // CopyFinalResOut: 将最终结果从 UB 写回 GM
+    // ---------------------------------------------------------------------------
+    // 将 ReduceFinalRes 产出的 dst (在 dstBuf_ 中) 写回 GM O 的 attenOutOffset 位置。
+    // 根据中间精度路径分两条:
+    //
+    // bf16 路径 (TwsO=bfloat16_t):
+    //   - dst 已是 bf16 (regbase reduce 直接存 bf16, 无需额外 Cast)。
+    //   - 直接 DataCopyPad 从 dstBuf_ 拷贝到 GM O, 无 Cast, 无 castOutBuf_ 暂存。
+    //
+    // fp32 路径 (TwsO=float):
+    //   - dst 是 fp32, 需要转成 bf16 (ElementO=bfloat16_t) 再写回 GM。
+    //   - 先 Cast fp32→bf16 out-of-place 到 castOutBuf_ (独立 buffer, 避免 aliasing
+    //     dstBuf_ 导致数据损坏), 再 DataCopyPad 从 castOutBuf_ 拷贝到 GM O。
+    //   - V→MTE3 同步 (SetFlag/WaitFlag EVENT_ID0) 确保 Cast 完成后再搬运。
+    // ---------------------------------------------------------------------------
     __aicore__ inline
     void CopyFinalResOut(uint64_t attenOutOffset,
                          AscendC::GlobalTensor<ElementO> &gmO,
@@ -455,6 +599,21 @@ private:
         }
     }
 
+    // ---------------------------------------------------------------------------
+    // CombineSplitKVRes: 组合所有步骤的顶层函数 (Phase2 combine 主流程)
+    // ---------------------------------------------------------------------------
+    // 将 topK 个 split 的部分输出融合为最终 O, 依次执行以下四步:
+    //
+    //   1. CopyLseIn      — 从 GM 读 compact max/sum, Broadcast 展开为 [topK, dealRow, 8],
+    //                        并预计算 1/rowSum (Reciprocal 优化)。
+    //   2. ComputeScaleValue — 计算 scale 权重: scale[k] = rowSum[k]*exp(max[k]-max_global)/Σ
+    //   3. ReduceFinalRes   — 双缓冲 ping-pong 遍历 topK 个 split, 累加
+    //                        scale[k] * (O_partial[k] / rowSum[k]) 到 dst。
+    //   4. CopyFinalResOut  — 将 dst 从 UB 写回 GM O (bf16 直拷 / fp32 先 Cast 再拷)。
+    //
+    // groupSize <= 16 时所有 UB buffer 均可容纳 (lse 8K cap, dst/accumOut/castOut 32K),
+    // topK <= 16, D <= 512, 单次 chunk 即可覆盖整个 group, 无需分块。
+    // ---------------------------------------------------------------------------
     __aicore__ inline
     void CombineSplitKVRes(uint64_t attenOutOffset,
                            uint32_t qToken,

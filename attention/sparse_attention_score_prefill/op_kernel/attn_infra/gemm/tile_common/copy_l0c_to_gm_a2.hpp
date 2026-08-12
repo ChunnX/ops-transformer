@@ -15,6 +15,7 @@
 #include "../../../attn_infra/arch/arch.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l0c_to_dst.hpp"
 #include "../../../attn_infra/gemm/gemm_type.hpp"
+#include "../../../tla/tensor.hpp"
 namespace NpuArch::Gemm::Tile {
 
 template <
@@ -98,6 +99,116 @@ struct CopyL0CToGm<NpuArch::Arch::AtlasA2,
 
         // Call AscendC Fixpipe
         AscendC::Fixpipe<ElementDst, ElementSrc, AscendC::CFG_NZ>(dst, src, intriParams);
+    }
+};
+
+template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
+struct CopyL0CToGmTla<
+    NpuArch::Arch::AtlasA2, TensorSrc_,
+    tla::Tensor<AscendC::GlobalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::GM>,
+    ScaleGranularity::NO_QUANT, ReluEnable_, std::enable_if_t<tla::detail::isRowMajor<LayoutDst_>::value>> {
+    using ArchTag = NpuArch::Arch::AtlasA2;
+    using ElementDst = ElementDst_;
+    using ElementSrc = typename TensorSrc_::Element;
+    static constexpr auto quantPre =
+        CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::NO_QUANT>::VALUE;
+    static constexpr auto reluEn = ReluEnable_;
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline
+    void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor,
+                    uint16_t ndNum = 1, uint16_t srcNdStride = 1, uint32_t dstNdStride = 1,
+                    uint8_t unitFlag = 0)
+    {
+        static_assert(
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::GM,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be GM and RowMajor");
+
+        AscendC::FixpipeParamsV220 intriParams;
+
+        // Fixpipe layout information
+        intriParams.nSize = tla::get<1>(dstTensor.shape());
+        intriParams.mSize = tla::get<0>(dstTensor.shape());
+        // Fixpipe source stride is the distance between adjacent N fractals,
+        // expressed in C0 units.  For an L0C zN tile this is derived from
+        // the layout, not from the logical M extent.  Using ceil(M / 16)
+        // repeats the first 16 score columns across every N fractal.
+        intriParams.srcStride =
+            tla::get<1, 1>(srcTensor.stride()) / NpuArch::C0_NUM_PER_FRACTAL;
+        // NZ2ND interprets dstStride in destination elements.  A tile keeps
+        // the parent destination layout, so use that physical row stride
+        // instead of the 128-column tile width (D can be 256).
+        intriParams.dstStride = tla::get<0>(dstTensor.stride());
+
+        // Fixpipe auxiliary arguments
+        intriParams.quantPre = quantPre;
+        intriParams.reluEn = reluEn;
+        intriParams.unitFlag = unitFlag;
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        // A2 Fixpipe does not support ND multi-batch natively; loop over ND copies
+        for (uint16_t nd = 0; nd < ndNum; ++nd) {
+            AscendC::Fixpipe<ElementDst, ElementSrc, AscendC::CFG_ROW_MAJOR>(
+                dstTensor.data()[dstOffset + static_cast<uint64_t>(nd) * dstNdStride],
+                srcTensor.data()[srcOffset + static_cast<uint64_t>(nd) * srcNdStride],
+                intriParams);
+        }
+    }
+};
+
+template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
+struct CopyL0CToGmTla<
+    NpuArch::Arch::AtlasA2, TensorSrc_,
+    tla::Tensor<AscendC::GlobalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::GM>,
+    ScaleGranularity::NO_QUANT, ReluEnable_, std::enable_if_t<tla::detail::iszN<ElementDst_, LayoutDst_>::value>> {
+    using ArchTag = NpuArch::Arch::AtlasA2;
+    using ElementDst = ElementDst_;
+    using ElementSrc = typename TensorSrc_::Element;
+    static constexpr auto quantPre =
+        CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::NO_QUANT>::VALUE;
+    static constexpr auto reluEn = ReluEnable_;
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline
+    void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor,
+                    uint16_t ndNum = 1, uint16_t srcNdStride = 1, uint32_t dstNdStride = 1,
+                    uint8_t unitFlag = 0)
+    {
+        static_assert(
+            tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::GM,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be GM and zN");
+
+        AscendC::FixpipeParamsV220 intriParams;
+
+        // Fixpipe layout information
+        intriParams.nSize = tla::get<1>(dstTensor.shape());
+        intriParams.mSize = tla::get<0>(dstTensor.shape());
+        intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<1, 0>(srcTensor.shape());
+        intriParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / (BYTE_PER_C0 / sizeof(ElementDst));
+
+        // Fixpipe auxiliary arguments
+        intriParams.quantPre = quantPre;
+        intriParams.reluEn = reluEn;
+        intriParams.unitFlag = unitFlag;
+
+        if constexpr (std::is_same_v<ElementSrc, float> && std::is_same_v<ElementDst, float>) {
+            intriParams.isChannelSplit = true;
+        }
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        // A2 Fixpipe does not support ND multi-batch natively; loop over ND copies
+        for (uint16_t nd = 0; nd < ndNum; ++nd) {
+            AscendC::Fixpipe<ElementDst, ElementSrc, AscendC::CFG_NZ>(
+                dstTensor.data()[dstOffset + static_cast<uint64_t>(nd) * dstNdStride],
+                srcTensor.data()[srcOffset + static_cast<uint64_t>(nd) * srcNdStride],
+                intriParams);
+        }
     }
 };
 

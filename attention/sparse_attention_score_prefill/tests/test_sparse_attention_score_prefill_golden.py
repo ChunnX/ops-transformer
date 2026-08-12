@@ -18,6 +18,7 @@ Based on sparse_attention_score decode bf16 golden helpers, extended with:
 import math
 import unittest
 from math import ceil
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -720,7 +721,49 @@ def cpu_golden_prefill_phase1(
   return ws_o, ws_max, ws_sum
 
 
-def cpu_golden_prefill_phase2(ws_o, ws_max, ws_sum, top_k, kv_heads, group_size, d):
+def _save_phase2_intermediates(ws_o, ws_max, ws_sum, dump_dir):
+  """Save full-shape Phase2 tensors used to compare A2 desc 969-978."""
+  dump_dir = Path(dump_dir)
+  dump_dir.mkdir(parents=True, exist_ok=True)
+
+  valid = torch.isfinite(ws_max) & (ws_sum > 0)
+  safe_max = torch.where(valid, ws_max, torch.full_like(ws_max, -float("inf")))
+  global_max = safe_max.max(dim=2).values
+  delta = torch.where(
+      valid, ws_max - global_max.unsqueeze(2), torch.zeros_like(ws_max))
+  numerator = torch.where(
+      valid, ws_sum * torch.exp(delta), torch.zeros_like(ws_sum))
+  denominator = numerator.sum(dim=2)
+  scale = torch.where(
+      denominator.unsqueeze(2) > 0,
+      numerator / denominator.unsqueeze(2),
+      torch.zeros_like(numerator))
+  inv_row_sum = torch.where(ws_sum > 0, ws_sum.reciprocal(), torch.ones_like(ws_sum))
+  o_normalized = torch.where(
+      valid.unsqueeze(-1), ws_o * inv_row_sum.unsqueeze(-1), torch.zeros_like(ws_o))
+  contribution = scale.unsqueeze(-1) * o_normalized
+  accum_after_split = contribution.cumsum(dim=2)
+  combined = contribution.sum(dim=2)
+
+  tensors = {
+      "golden_phase2_row_max.pt": ws_max,
+      "golden_phase2_row_sum.pt": ws_sum,
+      "golden_phase2_inv_row_sum.pt": inv_row_sum,
+      "golden_phase2_global_max.pt": global_max,
+      "golden_phase2_numerator.pt": numerator,
+      "golden_phase2_denominator.pt": denominator,
+      "golden_phase2_scale.pt": scale,
+      "golden_phase2_o_normalized.pt": o_normalized,
+      "golden_phase2_contribution.pt": contribution,
+      "golden_phase2_accum_after_split.pt": accum_after_split,
+      "golden_phase2_combined_fp32.pt": combined,
+  }
+  for name, tensor in tensors.items():
+    torch.save(tensor, dump_dir / name)
+
+
+def cpu_golden_prefill_phase2(
+    ws_o, ws_max, ws_sum, top_k, kv_heads, group_size, d, dump_dir=None):
   """Phase2: O/rowSum + ComputeScaleValue scale + ReduceFinalRes over topK partials."""
   total_q_tokens = ws_o.shape[0]
   num_q_heads = kv_heads * group_size
@@ -743,6 +786,8 @@ def cpu_golden_prefill_phase2(ws_o, ws_max, ws_sum, top_k, kv_heads, group_size,
       if combined is not None:
         output[q_token, q_head_start + gh, :] = combined.to(torch.bfloat16)
 
+  if dump_dir is not None:
+    _save_phase2_intermediates(ws_o, ws_max, ws_sum, dump_dir)
   return output
 
 

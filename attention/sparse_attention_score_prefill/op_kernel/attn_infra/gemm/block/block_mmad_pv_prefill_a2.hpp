@@ -534,6 +534,11 @@ struct BlockMmadPVPrefillA2 {
                 AscendC::DumpTensor(l0CTensor_[l0CBufId], 980, mAct * nAct);
             }
 #endif
+#if KERNEL_DUMP_OPARTIAL
+            if (bDe == 0U && AscendC::GetBlockIdx() == 0U && mL0Itr == 0U) {
+                AscendC::DumpTensor(l0CTensor_[l0CBufId], 982U + nL0Itr, mAct * nAct);
+            }
+#endif
             uint32_t mFixPAligned8Grp = RoundUp(groupRows, 8U);        // M 维对齐 (Fixpipe 要求 8 对齐)
             uint32_t nFixPAligned8 = RoundUp(nAct, 8U);                // N 维对齐
             // 将 L0C[batchM, nAct] scatter (分散写入) 到每个 qToken 的 GM slot:

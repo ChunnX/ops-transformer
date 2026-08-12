@@ -2,6 +2,14 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  */
 
+/*
+ * 本文件实现 SparseAttentionScorePrefill 算子的两阶段 aclnn API：
+ *   1. aclnnSparseAttentionScorePrefillGetWorkspaceSize（规划阶段）：
+ *      校验参数、创建 executor、计算所需 workspace 大小。
+ *   2. aclnnSparseAttentionScorePrefill（执行阶段）：
+ *      在指定 stream 上启动算子执行。
+ */
+
 #include "aclnn_sparse_attention_score_prefill.h"
 
 #include "sparse_attention_score_prefill.h"
@@ -22,6 +30,9 @@ extern "C" {
 
 namespace {
 
+// MakeContiguous: 确保所有输入 tensor 在内存中连续（contiguous）。
+// 对于非连续的 tensor，会通过 l0op::Contiguous 创建连续副本；
+// 任一输入转换失败（返回 nullptr）则整体返回错误码。
 static aclnnStatus MakeContiguous(const aclTensor *&query,
                                   const aclTensor *&key,
                                   const aclTensor *&value,
@@ -65,6 +76,14 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
 
 } // namespace
 
+// aclnnSparseAttentionScorePrefillGetWorkspaceSize: aclnn 两阶段 API 的第一阶段（规划阶段）。
+// 功能：
+//   1. 校验所有输入/输出指针非空；
+//   2. 创建 executor；
+//   3. 调用 MakeContiguous 保证输入连续；
+//   4. 调用 L0 层 SparseAttentionScorePrefill 构建算子计算图；
+//   5. 通过 ViewCopy 将内部输出拷贝到用户提供的 attentionOut；
+//   6. 计算并返回 workspace 大小，同时输出 executor 供第二阶段使用。
 __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePrefillGetWorkspaceSize(
     const aclTensor *query,
     const aclTensor *key,
@@ -136,6 +155,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
     return ACLNN_SUCCESS;
 }
 
+// aclnnSparseAttentionScorePrefill: aclnn 两阶段 API 的第二阶段（执行阶段）。
+// 功能：在指定的 aclrtStream 上启动算子执行，复用第一阶段生成的 executor 与 workspace。
 __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePrefill(
     void *workspace,
     uint64_t workspaceSize,

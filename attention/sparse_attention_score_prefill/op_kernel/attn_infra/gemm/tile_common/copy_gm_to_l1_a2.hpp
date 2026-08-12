@@ -1061,6 +1061,249 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout, AscendC
 };
 
 
+///////////////////////////////////////////TileCopyTla//////////////////////////////////////////////////////
+/// Partial specialization for CopyGmToL1, AtlasA2, RowMajor in and zN out.
+template <class ElementSrc, class ElementDst, class LayoutSrc, class LayoutDst, class CoordSrc, class CoordDst>
+struct TileCopyTla<
+    Arch::AtlasA2, tla::Tensor<AscendC::GlobalTensor<ElementSrc>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
+    tla::Tensor<AscendC::LocalTensor<ElementDst>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
+    std::enable_if_t<tla::detail::isRowMajor<LayoutSrc>::value && tla::detail::iszN<ElementDst, LayoutDst>::value>> {
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementSrc);
+
+    // Methods
+
+    __aicore__ inline
+    TileCopyTla() {};
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline void operator()(
+        TensorDst const &dstTensor,
+        TensorSrc const &srcTensor,
+        uint32_t ndNum = 1,
+        uint32_t srcNdMatrixStride = 0,
+        uint32_t dstNzMatrixStride = 0
+    )
+    {
+        static_assert(
+            tla::detail::isRowMajor<typename TensorSrc::Layout>::value &&
+                tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::GM && TensorDst::position == AscendC::TPosition::A1,
+            "The input parameters do not match. TensorSrc must be GM and RowMajor, while TensorDst must be L1 and zN");
+
+        const uint32_t nValue = tla::get<0>(srcTensor.shape());
+        const uint32_t dValue = tla::get<1>(srcTensor.shape());
+        const uint32_t srcDValue = tla::get<0>(srcTensor.stride());
+        const uint32_t dstInnerStrideRow = tla::get<0, 0>(dstTensor.stride());
+        const uint32_t dstOuterStrideCol = tla::get<1, 1>(dstTensor.stride());
+
+        AscendC::Nd2NzParams intriParams;
+
+        intriParams.ndNum = ndNum;
+        intriParams.dValue = dValue;
+        intriParams.srcNdMatrixStride = srcNdMatrixStride;
+        intriParams.dstNzC0Stride = dstOuterStrideCol / ELE_NUM_PER_C0;
+        intriParams.dstNzMatrixStride = dstNzMatrixStride;
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        if (srcDValue < STRIDE_LIMIT) {
+            intriParams.nValue = nValue;
+            intriParams.srcDValue = srcDValue;
+            // L1 zN rows are packed by C0. The sliced TLA destination stride
+            // may include an extra row factor for M=1; Nd2Nz expects the
+            // physical C0 stride here, which is one C0 block per source row.
+            intriParams.dstNzNStride = 1;
+            AscendC::DataCopy(dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+        } else {
+            intriParams.nValue = 1;
+            intriParams.srcDValue = 0;
+            intriParams.dstNzNStride = 0;
+            for (uint32_t i = 0; i < nValue; i++) {
+                AscendC::DataCopy(
+                    dstTensor.data()[dstOffset + i * ELE_NUM_PER_C0], srcTensor.data()[srcOffset + i * srcDValue],
+                    intriParams);
+            }
+        }
+    }
+};
+
+/// Partial specialization for CopyGmToL1, AtlasA2, ColumnMajor in and nZ out.
+template <class ElementSrc, class ElementDst, class LayoutSrc, class LayoutDst, class CoordSrc, class CoordDst>
+struct TileCopyTla<
+    Arch::AtlasA2, tla::Tensor<AscendC::GlobalTensor<ElementSrc>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
+    tla::Tensor<AscendC::LocalTensor<ElementDst>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
+    std::enable_if_t<tla::detail::isColumnMajor<LayoutSrc>::value && tla::detail::isnZ<ElementDst, LayoutDst>::value>> {
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementSrc);
+
+    // Methods
+
+    __aicore__ inline
+    TileCopyTla() {};
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline void operator()(
+        TensorDst const &dstTensor,
+        TensorSrc const &srcTensor,
+        uint32_t ndNum = 1,
+        uint32_t srcNdMatrixStride = 0,
+        uint32_t dstNzMatrixStride = 0
+    )
+    {
+        static_assert(
+            tla::detail::isColumnMajor<typename TensorSrc::Layout>::value &&
+                tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::GM && TensorDst::position == AscendC::TPosition::A1,
+            "The input parameters do not match. TensorSrc must be GM and ColumnMajor, "
+            "while TensorDst must be L1 and nZ");
+
+        const uint32_t nValue = tla::get<1>(srcTensor.shape());
+        const uint32_t dValue = tla::get<0>(srcTensor.shape());
+        const uint32_t srcDValue = tla::get<1>(srcTensor.stride());
+        const uint32_t dstInnerStrideRow = tla::get<1, 0>(dstTensor.stride());
+        const uint32_t dstOuterStrideCol = tla::get<0, 1>(dstTensor.stride());
+
+        AscendC::Nd2NzParams intriParams;
+
+        intriParams.ndNum = ndNum;
+        intriParams.dValue = dValue;
+        intriParams.srcNdMatrixStride = srcNdMatrixStride;
+        intriParams.dstNzC0Stride = dstOuterStrideCol / ELE_NUM_PER_C0;
+        intriParams.dstNzMatrixStride = dstNzMatrixStride;
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        if (srcDValue < STRIDE_LIMIT) {
+            intriParams.nValue = nValue;
+            intriParams.srcDValue = srcDValue;
+            intriParams.dstNzNStride = dstInnerStrideRow / ELE_NUM_PER_C0;
+            AscendC::DataCopy(dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+        } else {
+            intriParams.nValue = 1;
+            intriParams.srcDValue = 0;
+            intriParams.dstNzNStride = 0;
+            for (uint32_t i = 0; i < nValue; i++) {
+                AscendC::DataCopy(
+                    dstTensor.data()[dstOffset + i * ELE_NUM_PER_C0], srcTensor.data()[srcOffset + i * srcDValue],
+                    intriParams);
+            }
+        }
+    }
+};
+
+/// Partial specialization for CopyGmToL1, AtlasA2, zN in and zN out.
+template <class ElementSrc, class ElementDst, class LayoutSrc, class LayoutDst, class CoordSrc, class CoordDst>
+struct TileCopyTla<
+    Arch::AtlasA2, tla::Tensor<AscendC::GlobalTensor<ElementSrc>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
+    tla::Tensor<AscendC::LocalTensor<ElementDst>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
+    std::enable_if_t<
+        tla::detail::iszN<ElementSrc, LayoutSrc>::value && tla::detail::iszN<ElementDst, LayoutDst>::value>> {
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementSrc);
+
+    // Methods
+
+    __aicore__ inline
+    TileCopyTla() {};
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline void operator()(
+        TensorDst const &dstTensor,
+        TensorSrc const &srcTensor
+    )
+    {
+        static_assert(
+            tla::detail::iszN<typename TensorSrc::Element, typename TensorSrc::Layout>::value &&
+                tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::GM && TensorDst::position == AscendC::TPosition::A1,
+            "The input parameters do not match. TensorSrc must be GM and zN, while TensorDst must be L1 and zN");
+
+        const uint32_t srcOuterStrideCol = tla::get<1, 1>(srcTensor.stride());
+        const uint32_t dstOuterStrideCol = tla::get<1, 1>(dstTensor.stride());
+
+        uint32_t blockCount = CeilDiv<ELE_NUM_PER_C0>(tla::get<1>(srcTensor.shape()));
+        uint32_t blockLen = tla::get<0>(srcTensor.shape());
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        AscendC::DataCopyParams repeatParams;
+        if (srcOuterStrideCol / ELE_NUM_PER_C0 <= STRIDE_LIMIT) {
+            repeatParams.blockCount = blockCount;
+            repeatParams.blockLen = blockLen;
+            repeatParams.srcStride = srcOuterStrideCol / ELE_NUM_PER_C0 - blockLen;
+            repeatParams.dstStride = dstOuterStrideCol / ELE_NUM_PER_C0 - blockLen;
+            AscendC::DataCopy(dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], repeatParams);
+        } else {
+            repeatParams.blockCount = 1;
+            repeatParams.blockLen = blockLen;
+            repeatParams.srcStride = 0;
+            repeatParams.dstStride = 0;
+            for (uint32_t i = 0; i < blockCount; i++) {
+                AscendC::DataCopy(
+                    dstTensor.data()[dstOffset + i * dstOuterStrideCol],
+                    srcTensor.data()[srcOffset + i * srcOuterStrideCol], repeatParams);
+            }
+        }
+    }
+};
+
+/// Partial specialization for CopyGmToL1, AtlasA2, nZ in and nZ out.
+template <class ElementSrc, class ElementDst, class LayoutSrc, class LayoutDst, class CoordSrc, class CoordDst>
+struct TileCopyTla<
+    Arch::AtlasA2, tla::Tensor<AscendC::GlobalTensor<ElementSrc>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
+    tla::Tensor<AscendC::LocalTensor<ElementDst>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
+    std::enable_if_t<
+        tla::detail::isnZ<ElementSrc, LayoutSrc>::value && tla::detail::isnZ<ElementDst, LayoutDst>::value>> {
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementSrc);
+
+    // Methods
+
+    __aicore__ inline
+    TileCopyTla() {};
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline void operator()(
+        TensorDst const &dstTensor,
+        TensorSrc const &srcTensor
+    )
+    {
+        static_assert(
+            tla::detail::isnZ<typename TensorSrc::Element, typename TensorSrc::Layout>::value &&
+                tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::GM && TensorDst::position == AscendC::TPosition::A1,
+            "The input parameters do not match. TensorSrc must be GM and nZ, while TensorDst must be L1 and nZ");
+
+        const uint32_t srcOuterStrideRow = tla::get<0, 1>(srcTensor.stride());
+        const uint32_t dstOuterStrideRow = tla::get<0, 1>(dstTensor.stride());
+
+        uint32_t blockCount = CeilDiv<ELE_NUM_PER_C0>(tla::get<0>(srcTensor.shape()));
+        uint32_t blockLen = tla::get<1>(srcTensor.shape());
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        AscendC::DataCopyParams repeatParams;
+        if (srcOuterStrideRow / ELE_NUM_PER_C0 <= STRIDE_LIMIT) {
+            repeatParams.blockCount = blockCount;
+            repeatParams.blockLen = blockLen;
+            repeatParams.srcStride = srcOuterStrideRow / ELE_NUM_PER_C0 - blockLen;
+            repeatParams.dstStride = dstOuterStrideRow / ELE_NUM_PER_C0 - blockLen;
+            AscendC::DataCopy(dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], repeatParams);
+        } else {
+            repeatParams.blockCount = 1;
+            repeatParams.blockLen = blockLen;
+            repeatParams.srcStride = 0;
+            repeatParams.dstStride = 0;
+            for (uint32_t i = 0; i < blockCount; i++) {
+                AscendC::DataCopy(
+                    dstTensor.data()[dstOffset + i * dstOuterStrideRow],
+                    srcTensor.data()[srcOffset + i * srcOuterStrideRow], repeatParams);
+            }
+        }
+    }
+};
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 } // namespace NpuArch::Gemm::Tile
