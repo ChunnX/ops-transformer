@@ -119,7 +119,7 @@ STAGE_DESCRIPTIONS = {
     "WAIT_CUMSUM": "WaitCumSumFlag: wait for count prefix sum",
     "FORMAT_OUTPUT": "WaitAndFormatOutput: active cores write expert output",
     "PREPARE_TOKEN_INPUT": "ExpIdsCopyAndMaskCal: prepare token dispatch input",
-    "TRANSFER_TOKENS": "AllToAllDispatchA5: copy token data to remote windows",
+    "TRANSFER_TOKENS": "AllToAllDispatch: copy token data to remote windows",
     "PREPARE_COUNT_INPUT": "ExpIdsCopyAndMaskCal: prepare count calculation input",
     "CLEAR_RECV_STATUS": "WaitDispatchClearStatus: clear received status flags",
     "GATHER_RECV_COUNTS": "GatherSumRecvCnt: sum per-core received counts",
