@@ -189,6 +189,14 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
     rankId_ = commState_.hccl_.GetRankId();
     rankDim_ = commState_.hccl_.GetRankDim();
 
+    if (AscendC::GetBlockIdx() == 0) {
+        AscendC::PRINTF("commTiling.splitAxisTileCnt", commTiling.splitAxisTileCnt);
+        AscendC::PRINTF("commTiling.splitAxisTileSize", commTiling.splitAxisTileSize);
+        AscendC::PRINTF("commTiling.splitAxisTailCnt", commTiling.splitAxisTailCnt);
+        AscendC::PRINTF("commTiling.splitAxisTailSize", commTiling.splitAxisTailSize);
+        AscendC::PRINTF("commTiling.nonSplitAxisSize", commTiling.nonSplitAxisSize);
+    }
+
     uint64_t originalRankForComm = commTiling.nonSplitAxisSize / rankDim_;
     uint64_t rankForComm = originalRankForComm;
     if constexpr (IsMxFp4) {
