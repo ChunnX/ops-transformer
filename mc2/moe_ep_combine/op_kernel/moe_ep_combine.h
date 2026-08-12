@@ -374,14 +374,18 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPrepared
     }
 
     auto batchBuffer = reinterpret_cast<__ubuf__ uint8_t *>(hcommBatchTensor_.GetPhyAddr());
-    int32_t ret = hcomm_.WriteWithNotifyNbiPrepare<CQE_WQE_CONFIG>(
-        activeBatchHandle_, pendingWriteDst_, pendingWriteSrc_, pendingWriteLen_, pendingNotifyAddr_,
-        pendingNotifyValue_, batchBuffer, HCOMM_BATCH_BUFFER_BYTES);
-    ascendc_assert(ret == HCOMM_SUCCESS, "WriteWithNotifyNbiPrepare for the CQE WQE failed, ret=%d", ret);
-    ++preparedWriteCount_;
+    int32_t ret = HCOMM_SUCCESS;
+    if (preparedWriteCount_ != 0) {
+        ret = hcomm_.WriteWithNotifyNbiPrepareEnd<true>(activeBatchHandle_, batchBuffer);
+        ascendc_assert(ret == HCOMM_SUCCESS, "WriteWithNotifyNbiPrepareEnd failed, ret=%d", ret);
+    }
 
-    ret = hcomm_.WriteWithNotifyNbiPrepareEnd<true>(activeBatchHandle_, batchBuffer);
-    ascendc_assert(ret == HCOMM_SUCCESS, "WriteWithNotifyNbiPrepareEnd failed, ret=%d", ret);
+    // The completion sentinel must use the regular write path. A cqe=1 WQE appended through the batch Prepare
+    // path does not provide the completion that Drain waits for.
+    ret = hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, CQE_WQE_CONFIG>(
+        activeBatchHandle_, pendingWriteDst_, pendingWriteSrc_, pendingWriteLen_, pendingNotifyAddr_,
+        pendingNotifyValue_);
+    ascendc_assert(ret == HCOMM_SUCCESS, "Completion WriteWithNotifyNbi failed, ret=%d", ret);
     ret = hcomm_.Drain(activeBatchHandle_);
     ascendc_assert(ret == HCOMM_SUCCESS, "Drain failed, ret=%d", ret);
     activeBatchHandle_ = 0;
