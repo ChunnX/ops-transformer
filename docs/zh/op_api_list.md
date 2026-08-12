@@ -22,9 +22,10 @@
 > **确定性简介**：
 >
 > - 配置说明：因CANN或NPU型号不同等原因，可能无法保证同一个算子多次运行结果一致。在相同条件下（平台、设备、版本号和其他随机性参数等），部分算子接口可通过`aclrtCtxSetSysParamOpt`（参见[《Runtime运行时API》](https://hiascend.com/document/redirect/CannCommunityRuntimeApi)）开启确定性算法，使多次运行结果一致。
-> - 性能说明：同一个算子采用确定性计算通常比非确定性慢，因此模型单次运行性能可能会下降。但在实验、调试和调测等需要保证多次运行结果相同来定位问题的场景，确定性计算可以提升效率。
+> - 性能说明：同一个算子采用确定性计算通常比非确定性慢，因此模型单次运行性能可能会下降。但在实验、调试调测等需要保证多次运行结果相同来定位问题的场景，确定性计算可以提升效率。
 > - 线程说明：同一线程中只能设置一次确定性状态，多次设置以最后一次有效设置为准。有效设置是指设置确定性状态后，真正执行了一次算子任务下发。如果仅设置，没有算子下发，只能是确定性变量开启但未下发给算子，因此不执行算子。
 >   解决方案：暂不推荐一个线程多次设置确定性。该问题在二进制开启和关闭情况下均存在，在后续版本中会解决该问题。
+> - 符号说明：表中"-"符号表示该接口暂不支持当前列产品。
 
 |    接口名   |   说明     | 确定性说明（A2/A3）  | 确定性说明（Ascend 950） |
 | ----------- | ------------------- | ---------  | --------- |
@@ -165,6 +166,7 @@
 |[aclnnMoeInitRouting](../../moe/moe_init_routing/docs/aclnnMoeInitRouting.md)|MoE的routing计算，根据aclnnMoeGatingTopKSoftmax的计算结果做Routing处理。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeInitRoutingV2](../../moe/moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)|该算子对应MoE中的Routing计算，以MoeGatingTopKSoftmax算子的输出x和expert_idx作为输入，并输出Routing矩阵expanded_x等结果供后续计算使用。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeInitRoutingV3](../../moe/moe_init_routing_v3/docs/aclnnMoeInitRoutingV3.md)|MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../../moe/moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持不量化和动态量化模式。|默认确定性实现| 默认确定性实现 |
+|[aclnnMoeInitRoutingV4](../../moe/moe_init_routing_v4/docs/aclnnMoeInitRoutingV4.md)|MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../../moe/moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持非量化、静态量化和动态量化模式。| - | 默认确定性实现 |
 |[aclnnMoeInitRoutingQuant](../../moe/moe_init_routing_quant/docs/aclnnMoeInitRoutingQuant.md)|MoE的Routing计算，根据aclnnMoeGatingTopKSoftmax的计算结果做Routing处理，并对结果进行量化。|默认确定性实现| - |
 |[aclnnMoeInitRoutingQuantV2](../../moe/moe_init_routing_quant_v2/docs/aclnnMoeInitRoutingQuantV2.md)|MoE的Routing计算，根据aclnnMoeGatingTopKSoftmaxV2的计算结果做Routing处理。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeInitRoutingV2Grad](../../moe/moe_init_routing_v2_grad/docs/aclnnMoeInitRoutingV2Grad.md)|[aclnnMoeInitRoutingV2](../../moe/moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)的反向传播，完成Tokens的加权求和。|默认确定性实现| 默认确定性实现 |
@@ -255,6 +257,7 @@
 |[aclnnDenseLightningIndexerKLLossGradMetadata](../../attention/dense_lightning_indexer_kl_loss_grad_metadata/docs/aclnnDenseLightningIndexerKLLossGradMetadata.md)| aclnnDenseLightningIndexerKLLossGrad接口的前置接口，用于计算aclnnDenseLightningIndexerKLLossGrad的负载均衡。| - | 默认确定性实现 |
 |[aclnnSparseFlashMlaSoftmaxL1Norm](../../attention/sparse_flash_mla_softmax_l1_norm/docs/aclnnSparseFlashMlaSoftmaxL1Norm.md)|aclnnDenseLightningIndexerKLLossGradd的前置接口，用于计算attnSoftmaxL1Norm。| - | 默认确定性实现 |
 |[aclnnSparseFlashMlaSoftmaxL1NormMetadata](../../attention/sparse_flash_mla_softmax_l1_norm_metadata/docs/aclnnSparseFlashMlaSoftmaxL1NormMetadata.md)| aclnnSparseFlashMlaSoftmaxL1NormGrad接口的前置接口，用于计算aclnnSparseFlashMlaSoftmaxL1Norm的负载均衡。| - | 默认确定性实现 |
+|[aclnnUndGenQkvRmsNormRopeCache](../../posembedding/und_gen_qkv_rms_norm_rope_cache/docs/aclnnUndGenQkvRmsNormRopeCache.md)|把理解阶段与生成阶段两段QKV输入按catIndices间接寻址拼成一条输出序列，逐token拆分Q/K/V后对Q/K执行RMSNorm和MRoPE，V透传；Q作为独立输出返回，K/V按slotMapping原地写入分页KV Cache。|-|默认确定性实现|
 
 ## 废弃接口
 
