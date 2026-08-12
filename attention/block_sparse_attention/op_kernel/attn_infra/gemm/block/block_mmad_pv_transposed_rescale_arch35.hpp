@@ -393,7 +393,7 @@ public:
         // 首块（含单块）不涉及 rescale
         if (!isFirstKvSTile) {
             // GO^T 由上一块 FixPipe(CFG_NZ→L1) 写入：等 L1 写完成后再读（独立 event id，与 l0C 释放的 FIX_M 区分）
-            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(GO_READY_EVENT_ID);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_MTE1>(GO_READY_EVENT_ID);
             // diag 就绪（双向 token 的 ready 方向）：等 VEC 把本轮 diag(dm/vScale) 写完再读，
             // 避免读到旧一轮或半成品；同一 flag 在 RE 末尾再 set 回 consumed 给 VEC 覆写前 wait
             Arch::CrossCoreFlag diagFlag(6 + l1DiagBufId);
@@ -534,7 +534,7 @@ public:
             copyL0CToL1(l1GoTensorTla, l0CTensorTla, deqScalar);
             // GO^T L1 写完成 → 非首块 RE 读前 wait（只能在此分支 set：末块 NZ2DN→UB 与 GO^T 无关，
             // 若统一在尾部 set，跨 task 时 RE 会 wait 到无关的 UB 写完成而提前通过）
-            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(GO_READY_EVENT_ID);
+            AscendC::SetFlag<AscendC::HardEvent::FIX_MTE1>(GO_READY_EVENT_ID);
         }
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
     }
