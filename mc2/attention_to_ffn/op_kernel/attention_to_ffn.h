@@ -52,13 +52,22 @@ constexpr uint32_t STATUS_REP_STRIDE = 8;        // 32B / sizeof(int32) = 8
 constexpr uint32_t EXPERT_TABLE_REP_STRIDE = 16; // 64B / sizeof(int32) = 16
 constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 128;
 constexpr uint32_t DYNAMIC_QUANT = 2;                   // PERTOKEN + INT8 (legacy)
-constexpr uint32_t MX_E5M2_QUANT = 3;                   // MX + FP8_E5M2
-constexpr uint32_t MX_E4M3_QUANT = 4;                   // MX + FP8_E4M3
-constexpr uint32_t MX_E2M1_QUANT = 5;                   // MX + FP4_E2M1
+constexpr uint32_t MX_QUANT = 3;                        // MX (output dtype from XOutType template param)
+constexpr uint32_t MX_CLIP_QUANT = 4;                   // MX_CLIP (output dtype from XOutType template param)
 
 __aicore__ constexpr bool IsMxQuant(uint32_t qm)
 {
-    return qm == MX_E5M2_QUANT || qm == MX_E4M3_QUANT || qm == MX_E2M1_QUANT;
+    return qm == MX_QUANT;
+}
+
+__aicore__ constexpr bool IsMxClipQuant(uint32_t qm)
+{
+    return qm == MX_CLIP_QUANT;
+}
+
+__aicore__ constexpr bool IsMxOrMxClipQuant(uint32_t qm)
+{
+    return qm == MX_QUANT || qm == MX_CLIP_QUANT;
 }
 
 constexpr uint32_t RANK_OFFSET_STRIDE = 2;              // RankTable第一个为rankCnt，后面两两组合
@@ -211,7 +220,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::QuantInit
         hOutSizeAlign_ = Ceil(axisH_ * sizeof(int8_t), UB_ALIGN) * UB_ALIGN;
         tpipe_->InitBuffer(xInQueue_, BUFFER_NUM, hSize_);
         tpipe_->InitBuffer(xOutQueue_, BUFFER_NUM, hCommuSize_);
-    } else if constexpr (IsMxQuant(QuantMode)) {
+    } else if constexpr (IsMxOrMxClipQuant(QuantMode)) {
         uint32_t outDataBytes;
         if constexpr (Std::IsSame<XOutType, fp4x2_e2m1_t>::value) {
             outDataBytes = Ceil(axisH_, FP4_ELEMS_PER_BYTE);
@@ -451,6 +460,23 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::QuantProc
             Quant::ComputeFp4Data<StorageXInType, XOutType, AscendC::RoundMode::CAST_TRUNC,
                                   AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
         }
+        PipeBarrier<PIPE_V>();
+        xInQueue_.FreeTensor<XType>(xInTensor_);
+    } else if constexpr (IsMxClipQuant(QuantMode)) {
+        uint32_t mxScaleNum = Ceil(Ceil(axisH_, MX_BLOCK_SIZE), 2U) * 2U;
+        LocalTensor<float> receiveDataCastFloat = receiveDataCastFloatBuf_.Get<float>();
+        __ubuf__ StorageXInType *srcAddr = (__ubuf__ StorageXInType *)xInTensor_.GetPhyAddr();
+        __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)receiveDataCastFloat.GetPhyAddr();
+        __ubuf__ uint16_t *halfScaleLocalAddr =
+            (__ubuf__ uint16_t *)receiveDataCastFloat[Ceil(mxScaleNum, 32U) * 32U].GetPhyAddr();
+        __ubuf__ int8_t *outLocalAddr = (__ubuf__ int8_t *)xOutTensor_.GetPhyAddr();
+        __ubuf__ uint16_t *mxScaleLocalAddr =
+            (__ubuf__ uint16_t *)xOutTensor_[axisH_ * 1U].GetPhyAddr();
+        Quant::ComputeMaxExpClip(srcAddr, maxExpAddr, axisH_);
+        Quant::ComputeScaleClip<XOutType, StorageXInType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr,
+                                                           mxScaleNum);
+        Quant::ComputeFp8Data<StorageXInType, XOutType, AscendC::RoundMode::CAST_TRUNC,
+                              AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
         PipeBarrier<PIPE_V>();
         xInQueue_.FreeTensor<XType>(xInTensor_);
     }

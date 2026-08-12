@@ -48,10 +48,8 @@ void NpuAttentionToFfnV2(
     TORCH_CHECK((attnTokenInfoTableShape.size() == 3), "attn_token_info_table_shape should be 3D, current size is: ",
                 attnTokenInfoTableShape.size());
     TORCH_CHECK((moeExpertNum > 0), "The moe_expert_num should be greater than 0, current is: ", moeExpertNum);
-    TORCH_CHECK(((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf) ||
-                 (x.scalar_type() == at::kFloat8_e5m2) || (x.scalar_type() == at::kFloat8_e4m3fn) ||
-                 (x.scalar_type() == at::kFloat4_e2m1) || (x.scalar_type() == at::kFloat4_e1m2)),
-                "dtype of x should be bfloat16, float16, float8_e5m2, float8_e4m3fn, float4_e2m1 or float4_e1m2, but got ", x.scalar_type());
+    TORCH_CHECK(((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf)),
+                "dtype of x should be bfloat16 or float16, but got ", x.scalar_type());
     TORCH_CHECK((sessionId.scalar_type() == at::kInt), "dtype of sessionId should be int32.");
     TORCH_CHECK((microBatchId.scalar_type() == at::kInt), "dtype of microBatchId should be int32.");
     TORCH_CHECK((layerId.scalar_type() == at::kInt), "dtype of layerId should be int32.");

@@ -32,7 +32,7 @@
     <td style="white-space: nowrap">x</td>
     <td style="white-space: nowrap">输入</td>
     <td style="white-space: nowrap">本卡发送的token数据，3D Tensor，shape为 <code>(X, Bs, H)。</code></td>
-    <td style="white-space: nowrap">FLOAT16、BFLOAT16、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2</td>
+    <td style="white-space: nowrap">FLOAT16、BFLOAT16</td>
     <td style="white-space: nowrap">ND</td>
     </tr>
     <tr>
@@ -74,7 +74,7 @@
     <td style="white-space: nowrap">scalesOptional</td>
     <td style="white-space: nowrap">输入</td>
     <td style="white-space: nowrap">可选参数，表示每个专家的量化平滑参数，3D Tensor，shape为 <code>(L, moeExpertNum + sharedExpertNum, H)。</code></td>
-    <td style="white-space: nowrap">FLOAT32、FLOAT8_E8M0</td>
+    <td style="white-space: nowrap">FLOAT32</td>
     <td style="white-space: nowrap">ND</td>
     </tr>
     <tr>
@@ -129,7 +129,7 @@
     <tr>
     <td style="white-space: nowrap">quantMode</td>
     <td style="white-space: nowrap">属性</td>
-    <td style="white-space: nowrap">表示量化模式，值同时编码算法和输出类型。支持0（非量化）、2（PERTOKEN+INT8）、3（MX+FP8_E5M2）、4（MX+FP8_E4M3）、5（MX+FP4_E2M1）。</td>
+    <td style="white-space: nowrap">表示量化模式，值同时编码算法和输出类型。支持0（非量化）、2（PERTOKEN+INT8）、3（MX+FP8_E5M2）、4（MX+FP8_E4M3）、5（MX+FP4_E2M1）、6（MX_CLIP+FP8_E5M2）、7（MX_CLIP+FP8_E4M3）。</td>
     <td style="white-space: nowrap">INT64</td>
     <td style="white-space: nowrap">-</td>
     </tr>
@@ -163,11 +163,15 @@
 
 | quantMode | 算法 | 输出类型 | 说明 |
 | :--------: | :--: | :------: | :---: |
-| 0 | 非量化 | 跟随输入 | FP16/BF16直接传输；FP8/FP4预量化数据直接传输（需提供scales） |
-| 2 | PERTOKEN | INT8 | 每个token动态计算scale并量化为INT8（兼容原有模式） |
+| 0 | 非量化 | 跟随输入 | FP16/BF16直接传输 |
+| 2 | PERTOKEN | INT8 | 每个token动态计算scale并量化为INT8 |
 | 3 | MX | FP8_E5M2 | 每32个元素为一组计算MX scale（E8M0格式），输出FP8_E5M2 |
 | 4 | MX | FP8_E4M3 | 每32个元素为一组计算MX scale（E8M0格式），输出FP8_E4M3 |
 | 5 | MX | FP4_E2M1 | 每32个元素为一组计算MX scale（E8M0格式），输出FP4_E2M1 |
+| 6 | MX_CLIP | FP8_E5M2 | 每32个元素为一组计算MX scale（带1e-4下限clipping），输出FP8_E5M2 |
+| 7 | MX_CLIP | FP8_E4M3 | 每32个元素为一组计算MX scale（带1e-4下限clipping），输出FP8_E4M3 |
+
+> **内部实现说明**：tiling 层将 quantMode 拆分为 tiling key 的两个字段——`QUANT_MODE`（算法：0=NO_QUANT, 2=PERTOKEN, 3=MX, 4=MX_CLIP）和 `OUT_DTYPE`（输出类型：0=INT8, 1=E5M2, 2=E4M3, 3=E2M1）。用户侧无需感知此拆分。
 
 ## 约束说明
 
@@ -185,10 +189,10 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
 
 可通过 `get_attention_to_ffn_v2_ccl_buffer_size` 接口计算所需最小值。
 
-- FP8/FP4量化约束：
-  - MX模式（quantMode 3/4/5）不支持传入scales参数。
-  - 非量化模式（quantMode=0）下传入FP8/FP4 dtype的x时，必须提供scales参数。
+- MX/MX_CLIP量化约束：
+  - MX模式（quantMode 3/4/5）及MX_CLIP模式（quantMode 6/7）不支持传入scales参数。
   - FP4输出（quantMode=5）时H维度需为偶数。
+  - MX_CLIP模式（quantMode 6/7）仅支持FP8输出（E5M2/E4M3），不支持FP4。
 
 - 参数说明里shape格式说明：
     - `X`：表示micro batch sequence size（token组数），当前版本只支持`X` = 1。

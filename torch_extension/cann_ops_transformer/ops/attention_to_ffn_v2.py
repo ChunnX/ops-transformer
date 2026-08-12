@@ -179,7 +179,8 @@ def get_attention_to_ffn_v2_ccl_buffer_size(
         ffn_token_data_shape (List[int]): 5-element list
             [attnWorkerNum, microBatchNum, BS, K+shared, HS].
         quant_mode (int): 0=none, 2=pertoken+INT8, 3=mx+FP8_E5M2,
-            4=mx+FP8_E4M3, 5=mx+FP4_E2M1. Default 0.
+            4=mx+FP8_E4M3, 5=mx+FP4_E2M1, 6=mx_clip+FP8_E5M2,
+            7=mx_clip+FP8_E4M3. Default 0.
 
     Returns:
         int: Required CCL buffer size in bytes, aligned to 2 MB.
@@ -273,8 +274,7 @@ def attention_to_ffn_v2(
     Args:
         context (Tensor): Communication context tensor created by
             ``AttentionToFfnV2Buffer``.
-        x (Tensor): Token data to send, shape (1, BS, H), dtype float16/bfloat16
-            (or float8/float4 for pre-quantized non-quant mode).
+        x (Tensor): Token data to send, shape (1, BS, H), dtype float16/bfloat16.
         session_id (Tensor): Session ID, shape (1,), dtype int32.
         micro_batch_id (Tensor): Micro batch ID, shape (1,), dtype int32.
         layer_id (Tensor): Layer ID, shape (1,), dtype int32.
@@ -288,10 +288,9 @@ def attention_to_ffn_v2(
         ffn_token_data_shape (List[int]): 5-element list [attnWorkerNum, microBatchNum, BS, K+shared, HS].
         attn_token_info_table_shape (List[int]): 3-element list.
         moe_expert_num (int): Number of MOE (routed) experts.
-        quant_mode (int): Quantization mode. The value encodes both the
-            quantization algorithm and the output dtype:
-            0=none, 2=pertoken+INT8, 3=mx+FP8_E5M2, 4=mx+FP8_E4M3,
-            5=mx+FP4_E2M1. Default 0.
+        quant_mode (int): Quantization mode. 0=none, 2=pertoken+INT8,
+            3=mx+FP8_E5M2, 4=mx+FP8_E4M3, 5=mx+FP4_E2M1,
+            6=mx_clip+FP8_E5M2, 7=mx_clip+FP8_E4M3. Default 0.
         sync_flag (int): Sync flag, 0=async, 1=sync. Default 0.
         ffn_start_rank_id (int): Starting rank ID of FFN workers. Default 0.
         scales (Tensor, optional): Smooth scales for quantization,
