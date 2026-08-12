@@ -310,11 +310,32 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
                 // 计算其他卡或专家已经发了多少token
                 preCount = assistInfoForCombineLocal.GetValue(assistInfoIdx - 1U);
             }
+            const uint32_t curCount = assistInfoForCombineLocal.GetValue(assistInfoIdx);
+            // assistInfoForCombine 是上游 dispatch_teardown 产出的前缀和，必须单调不减。它被污染时
+            // 下面的相减会在无符号下回绕成巨大值，而源地址、目的地址、写入长度全由它推导。
+            // 这类错误的恶劣之处在于 WriteNbi 入队时不校验范围、返回成功，等 NIC 真正 DMA 才失败，
+            // 队列进 error 态又会把排在后面的状态 WQE 一并冲掉，最终表现成对端永远等不到状态。
+            // 所以必须在算地址之前就地拦下，这里才是第一现场。
+            ascendc_assert(curCount >= preCount,
+                           "combine_setup assistInfo not monotonic, rank=%u dst=%u expert=%u idx=%u prev=%u cur=%u",
+                           epRankId_, dstRankId, expertIdx, assistInfoIdx, preCount, curCount);
             // 当前要发送的token数量
-            uint32_t curTokenNum = assistInfoForCombineLocal.GetValue(assistInfoIdx) - preCount;
+            uint32_t curTokenNum = curCount - preCount;
             if (curTokenNum == 0U) {
                 continue;
             }
+            // 目的端每个 (专家, 源卡) 槽位只有 expertPerSizeOnWin_ = axisMaxBS_ * axisHExpandXTypeSize_ 字节，
+            // 超了就会越过本槽位侵入下一个专家的区域
+            ascendc_assert(curTokenNum <= axisMaxBS_,
+                           "combine_setup curTokenNum exceeds slot capacity, rank=%u dst=%u expert=%u tokenNum=%u "
+                           "max=%u preCount=%u",
+                           epRankId_, dstRankId, expertIdx, curTokenNum, axisMaxBS_, preCount);
+            // 源端 expandX 只有 a 个 token，RDMA 读的范围必须落在里面（preCount + curTokenNum == curCount）
+            ascendc_assert(curCount <= moeDistributeCombineSetupInfo_->a,
+                           "combine_setup src range exceeds expandX, rank=%u dst=%u expert=%u preCount=%u "
+                           "tokenNum=%u a=%u",
+                           epRankId_, dstRankId, expertIdx, preCount, curTokenNum,
+                           moeDistributeCombineSetupInfo_->a);
             GM_ADDR srcAddr = expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_;
             GM_ADDR dstAddr = GetUrmaAddrByRankId(dstRankId, expertIdx) + epDataOffsetOnWin_;
             uint64_t lengthU64 = axisHExpandXTypeSize_ * static_cast<uint64_t>(curTokenNum);

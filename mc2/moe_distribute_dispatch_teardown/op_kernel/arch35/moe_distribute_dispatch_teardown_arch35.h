@@ -39,6 +39,14 @@ constexpr uint32_t UB_ALIGN = 32U; // UB按32字节对齐
 constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 
+// 置 1 打开等待通路调试：统计 WaitDispatch 的轮询次数，并在清状态后回读校验。
+// 轮询 1 次即退出说明进入循环时状态区就已达标，可能是上一轮残留的 flag 没清干净；
+// 若真如此本核会在对端数据还没落地时就放行，表现为 expandXOut 是垃圾。
+// 清状态后的回读是无歧义的判据：非 0 就说明清理没生效。
+#ifndef DISPATCH_TEARDOWN_DEBUG_WAIT
+#define DISPATCH_TEARDOWN_DEBUG_WAIT 0
+#endif
+
 constexpr uint32_t UNQUANT = 0;
 constexpr uint32_t STATIC_QUANT = 1;
 constexpr uint32_t PERTOKEN_DYNAMIC_QUANT = 2;
@@ -407,6 +415,9 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::WaitD
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1,
                                static_cast<uint16_t>((recvWinBlockNum_ > 512) ? 7 : 15), 0};
     SyncFunc<AscendC::HardEvent::S_V>();
+#if DISPATCH_TEARDOWN_DEBUG_WAIT
+    uint32_t pollCount = 0U;
+#endif
     while (sumOfFlag != compareTarget * 2) {
         DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
                  intriParams);
@@ -414,7 +425,18 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::WaitD
         ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
+#if DISPATCH_TEARDOWN_DEBUG_WAIT
+        ++pollCount;
+#endif
     }
+#if DISPATCH_TEARDOWN_DEBUG_WAIT
+    // 一次就退出：进入时状态区已达标。对端确实早到也会这样，所以要结合下面的清理回读一起判断。
+    if (pollCount <= 1U) {
+        AscendC::printf("[DWAIT] rank=%u aiv=%u D_S=%u startIdx=%u num=%u poll=%u sum=%d target=%d\n", epRankId_,
+                        aivId_, dataState_, startStatusIndex_, recStatusNumPerCore_, pollCount,
+                        static_cast<int32_t>(sumOfFlag), static_cast<int32_t>(compareTarget * 2));
+    }
+#endif
     // 清状态
     SyncFunc<AscendC::HardEvent::MTE3_S>();
     DataCopyParams intriOutParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0,
@@ -427,6 +449,21 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::WaitD
     DataCopy(windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
              cleanStateTensor.ReinterpretCast<float>(), intriOutParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
+
+#if DISPATCH_TEARDOWN_DEBUG_WAIT
+    // 清理必须真正落地：残留下来的 flag 会让下一轮的 WaitDispatch 一次轮询就放行。
+    // 这里回读的是刚写完的同一段，与 [DWAIT] 的 poll=1 配合即可确认是不是残留导致的提前放行。
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+    DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
+             intriParams);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+    ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    float residualFlag = statusSumOutTensor.GetValue(0);
+    ascendc_assert(residualFlag == static_cast<float>(0.0),
+                   "dispatch_teardown status clear ineffective, rank=%u aiv=%u startIdx=%u residual=%d", epRankId_,
+                   aivId_, startStatusIndex_, static_cast<int32_t>(residualFlag));
+#endif
 
     // 核间同步token cnt
     SyncCntOnCore(gatherMaskOutTensor, gatherTmpTensor, statusSumOutTensor);
