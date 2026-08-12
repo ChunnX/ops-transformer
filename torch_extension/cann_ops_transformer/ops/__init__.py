@@ -28,7 +28,6 @@ from .sparse_flash_mla_softmax_l1_norm import (
     sparse_flash_mla_softmax_l1_norm,
     sparse_flash_mla_softmax_l1_norm_metadata,
 )
-from .sparse_lightning_indexer_grad_kl_loss import sparse_lightning_indexer_grad_kl_loss
 from .sparse_lightning_indexer_kl_loss_grad import (
     sparse_lightning_indexer_kl_loss_grad,
     sparse_lightning_indexer_kl_loss_grad_metadata,
