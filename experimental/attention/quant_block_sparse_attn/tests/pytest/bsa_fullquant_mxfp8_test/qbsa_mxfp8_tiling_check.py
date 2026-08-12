@@ -87,14 +87,14 @@ _BASE_CASE = {
 
 
 def _gen_base_data():
-    golden.set_active_case(dict(_BASE_CASE))
+    golden.set_active_case(golden._normalize_case(dict(_BASE_CASE)))
     return golden._generate_reference_style_mxfp8_inputs()
 
 
 def _call_npu(data, case_override=None):
     if case_override is None:
         case_override = dict(_BASE_CASE)
-    golden.set_active_case(case_override)
+    golden.set_active_case(golden._normalize_case(case_override))
     return golden.npu_mxfp8_fa(
         data["query"],
         data["key"],
