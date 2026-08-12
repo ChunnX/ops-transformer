@@ -19,18 +19,54 @@ export PIP_BREAK_SYSTEM_PACKAGES=1
 
 run_pip() { python3 -m pip "$@" || pip3 "$@"; }
 
-# Same as opp_install.sh: root → 755/555, else 750/550
+# Same as opp_install.sh / gen_postinst root elevation: 550→555, 440→444, 750→755
 if [ "${EUID:-0}" -eq 0 ]; then
     CUSTOM_PERM="755"
     BUILTIN_PERM="555"
-    ENTITY_PERM="555"
+    ONLYREAD_PERM="444"
 else
     CUSTOM_PERM="750"
     BUILTIN_PERM="550"
-    ENTITY_PERM="550"
+    ONLYREAD_PERM="440"
 fi
 
-# install es_transformer whl (same as install_es_whl_package)
+elevate_mod() {
+    local mod="$1"
+    if [ "${EUID:-0}" -eq 0 ]; then
+        case "${mod}" in
+            550) echo "555" ;;
+            440) echo "444" ;;
+            750) echo "755" ;;
+            *) echo "${mod}" ;;
+        esac
+    else
+        echo "${mod}"
+    fi
+}
+
+# Mirror run install_common_parser: recursive chmod for every copy_entity in filelist
+# (deb generated postinst only chmods the entity path itself / script files via find -type f).
+apply_copy_entity_perms_from_filelist() {
+    local filelist share_info_dir
+    filelist=$(find "${sourcedir}/share/info" -path '*/script/filelist.csv' 2>/dev/null | head -1)
+    [ -f "${filelist}" ] || return 0
+    share_info_dir=$(dirname "$(dirname "${filelist}")")
+
+    # CSV: module,operation,relative_path_in_pkg,relative_install_path,...,permission,...
+    while IFS=',' read -r _ op _ relpath _ perm _; do
+        [ "${op}" = "copy_entity" ] || continue
+        [ -n "${relpath}" ] && [ "${relpath}" != "NA" ] || continue
+        [ -e "${sourcedir}/${relpath}" ] || continue
+        [ -n "${perm}" ] && [ "${perm}" != "NA" ] || continue
+        chmod -R "$(elevate_mod "${perm}")" "${sourcedir}/${relpath}" 2>/dev/null || true
+    done < <(tail -n +2 "${filelist}")
+
+    # Match run opp_install: scene.info / version.info → ONLYREAD (same share/info package dir)
+    chmod "${ONLYREAD_PERM}" "${share_info_dir}/scene.info" 2>/dev/null || true
+    chmod "${ONLYREAD_PERM}" "${share_info_dir}/version.info" 2>/dev/null || true
+}
+
+# install es_* / cann_ops_* whl (same as install_es_whl_package + install_whl_package)
 whl_dir="${sourcedir}/ops_transformer/es_packages/whl"
 if [ -d "${whl_dir}" ]; then
     chmod u+w "${sourcedir}/python" 2>/dev/null || true
@@ -42,11 +78,11 @@ if [ -d "${whl_dir}" ]; then
                 && rm -f "${whl}" || true
         fi
     done
-    chmod -R "${CUSTOM_PERM}" "${WHL_INSTALL_DIR_PATH}"/es_transformer 2>/dev/null || true
-    chmod -R "${CUSTOM_PERM}" "${WHL_INSTALL_DIR_PATH}"/es_transformer-*.dist-info 2>/dev/null || true
 fi
 
-# Match run install_whl_package: cann_ops_transformer CUSTOM_PERM
+# Match run: CUSTOM_PERM on installed python packages (names follow pip layout, not fixed paths)
+chmod -R "${CUSTOM_PERM}" "${WHL_INSTALL_DIR_PATH}"/es_transformer 2>/dev/null || true
+chmod -R "${CUSTOM_PERM}" "${WHL_INSTALL_DIR_PATH}"/es_transformer-*.dist-info 2>/dev/null || true
 chmod -R "${CUSTOM_PERM}" "${WHL_INSTALL_DIR_PATH}"/cann_ops_transformer 2>/dev/null || true
 chmod -R "${CUSTOM_PERM}" "${WHL_INSTALL_DIR_PATH}"/cann_ops_transformer-*.dist-info 2>/dev/null || true
 
@@ -69,11 +105,7 @@ if [ -d "${built_in_impl_path}" ]; then
     fi
 fi
 
-# Match run copy_entity recursive chmod (XML install_mod=550)
-es_entity_dir="${sourcedir}/${PKG_ARCH_NAME}-linux/include/es/es_transformer"
-if [ -d "${es_entity_dir}" ]; then
-    chmod -R "${ENTITY_PERM}" "${es_entity_dir}" 2>/dev/null || true
-fi
+apply_copy_entity_perms_from_filelist
 
 # Match run:仓内特性 — root 刷 CUSTOM_PERM，非 root 刷 BUILTIN_PERM
 if [ -d "${TARGET_OPP_BUILT_IN}" ]; then
@@ -83,12 +115,3 @@ if [ -d "${TARGET_OPP_BUILT_IN}" ]; then
         chmod "${BUILTIN_PERM}" -R "${TARGET_OPP_BUILT_IN}" 2>/dev/null || true
     fi
 fi
-
-# Match run: scene.info / version.info → ONLYREAD
-if [ "${EUID:-0}" -eq 0 ]; then
-    ONLYREAD_PERM="444"
-else
-    ONLYREAD_PERM="440"
-fi
-chmod "${ONLYREAD_PERM}" "${sourcedir}/share/info/ops_transformer/scene.info" 2>/dev/null || true
-chmod "${ONLYREAD_PERM}" "${sourcedir}/share/info/ops_transformer/version.info" 2>/dev/null || true
