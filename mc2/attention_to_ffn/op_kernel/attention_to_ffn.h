@@ -384,73 +384,73 @@ template <TemplateAttentionToFFNTypeClass>
 __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::QuantProcess(uint32_t expertIndex)
 {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-//     if constexpr (QuantMode == DYNAMIC_QUANT) {
-//         float dynamicScale = 0.0;
-//         LocalTensor<float> floatLocalTemp;
-//         floatLocalTemp = receiveDataCastFloatBuf_.Get<float>();
-//         Cast(floatLocalTemp, xInTensor_, RoundMode::CAST_NONE, axisH_);
-//         PipeBarrier<PIPE_V>();
-//         xInQueue_.FreeTensor<XType>(xInTensor_);
+    if constexpr (QuantMode == DYNAMIC_QUANT) {
+        float dynamicScale = 0.0;
+        LocalTensor<float> floatLocalTemp;
+        floatLocalTemp = receiveDataCastFloatBuf_.Get<float>();
+        Cast(floatLocalTemp, xInTensor_, RoundMode::CAST_NONE, axisH_);
+        PipeBarrier<PIPE_V>();
+        xInQueue_.FreeTensor<XType>(xInTensor_);
 
-//         if (isScales_) {
-//             smoothScalesTensor_ = smoothScalesBuf_.Get<float>();
-//             DataCopyExtParams scalesCopyInParams{1U, static_cast<uint32_t>(axisH_ * sizeof(float)), 0U, 0U, 0U};
-//             DataCopyPadExtParams<float> copyPadExtParams{false, 0U, 0U, 0U};
-//             DataCopyPad(smoothScalesTensor_, scalesGMTensor_[expertIndex * axisH_], scalesCopyInParams,
-//                         copyPadExtParams);
-//             SyncFunc<AscendC::HardEvent::MTE2_V>();
-//             Mul(floatLocalTemp, floatLocalTemp, smoothScalesTensor_, axisH_);
-//             PipeBarrier<PIPE_V>();
-//         }
+        if (isScales_) {
+            smoothScalesTensor_ = smoothScalesBuf_.Get<float>();
+            DataCopyExtParams scalesCopyInParams{1U, static_cast<uint32_t>(axisH_ * sizeof(float)), 0U, 0U, 0U};
+            DataCopyPadExtParams<float> copyPadExtParams{false, 0U, 0U, 0U};
+            DataCopyPad(smoothScalesTensor_, scalesGMTensor_[expertIndex * axisH_], scalesCopyInParams,
+                        copyPadExtParams);
+            SyncFunc<AscendC::HardEvent::MTE2_V>();
+            Mul(floatLocalTemp, floatLocalTemp, smoothScalesTensor_, axisH_);
+            PipeBarrier<PIPE_V>();
+        }
 
-//         LocalTensor<float> floatLocalAbsTemp = smoothScalesBuf_.Get<float>();
-//         Abs(floatLocalAbsTemp, floatLocalTemp, axisH_);
-//         PipeBarrier<PIPE_V>();
-//         ReduceMaxInplace(floatLocalAbsTemp, axisH_);
-//         SyncFunc<AscendC::HardEvent::V_S>();
-//         dynamicScale = float(INT8_MAX_VALUE) / floatLocalAbsTemp.GetValue(0);
-//         SyncFunc<AscendC::HardEvent::S_V>();
-//         Muls(floatLocalTemp, floatLocalTemp, dynamicScale, axisH_);
-//         PipeBarrier<PIPE_V>();
+        LocalTensor<float> floatLocalAbsTemp = smoothScalesBuf_.Get<float>();
+        Abs(floatLocalAbsTemp, floatLocalTemp, axisH_);
+        PipeBarrier<PIPE_V>();
+        ReduceMaxInplace(floatLocalAbsTemp, axisH_);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        dynamicScale = float(INT8_MAX_VALUE) / floatLocalAbsTemp.GetValue(0);
+        SyncFunc<AscendC::HardEvent::S_V>();
+        Muls(floatLocalTemp, floatLocalTemp, dynamicScale, axisH_);
+        PipeBarrier<PIPE_V>();
 
-//         LocalTensor<half> halfLocalTemp = floatLocalTemp.ReinterpretCast<half>();
-//         LocalTensor<int32_t> int32LocalTemp = floatLocalTemp.ReinterpretCast<int32_t>();
-//         Cast(int32LocalTemp, floatLocalTemp, RoundMode::CAST_RINT, axisH_);
-//         PipeBarrier<PIPE_V>();
-//         SetDeqScale((half)1.000000e+00f);
-//         PipeBarrier<PIPE_V>();
-//         Cast(halfLocalTemp, int32LocalTemp, RoundMode::CAST_ROUND, axisH_);
-//         PipeBarrier<PIPE_V>();
-//         Cast(xOutTensor_, halfLocalTemp, RoundMode::CAST_TRUNC, axisH_);
+        LocalTensor<half> halfLocalTemp = floatLocalTemp.ReinterpretCast<half>();
+        LocalTensor<int32_t> int32LocalTemp = floatLocalTemp.ReinterpretCast<int32_t>();
+        Cast(int32LocalTemp, floatLocalTemp, RoundMode::CAST_RINT, axisH_);
+        PipeBarrier<PIPE_V>();
+        SetDeqScale((half)1.000000e+00f);
+        PipeBarrier<PIPE_V>();
+        Cast(halfLocalTemp, int32LocalTemp, RoundMode::CAST_ROUND, axisH_);
+        PipeBarrier<PIPE_V>();
+        Cast(xOutTensor_, halfLocalTemp, RoundMode::CAST_TRUNC, axisH_);
 
-//         floatLocalTemp = xOutTensor_.template ReinterpretCast<float>();
-//         floatLocalTemp.SetValue(hOutSizeAlign_ / sizeof(float), float(1.0) / dynamicScale);
-//     } else if constexpr (IsMxQuant(QuantMode)) {
-//         uint32_t mxScaleNum = Ceil(Ceil(axisH_, MX_BLOCK_SIZE), 2U) * 2U;
-//         LocalTensor<float> receiveDataCastFloat = receiveDataCastFloatBuf_.Get<float>();
-//         __ubuf__ XType *srcAddr = (__ubuf__ XType *)xInTensor_.GetPhyAddr();
-//         __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)receiveDataCastFloat.GetPhyAddr();
-//         __ubuf__ uint16_t *halfScaleLocalAddr =
-//             (__ubuf__ uint16_t *)receiveDataCastFloat[Ceil(mxScaleNum, 32U) * 32U].GetPhyAddr();
-//         __ubuf__ int8_t *outLocalAddr = (__ubuf__ int8_t *)xOutTensor_.GetPhyAddr();
-//         __ubuf__ uint16_t *mxScaleLocalAddr;
-//         if constexpr (Std::IsSame<XOutType, fp4x2_e2m1_t>::value) {
-//             mxScaleLocalAddr = (__ubuf__ uint16_t *)xOutTensor_[Ceil(axisH_, FP4_ELEMS_PER_BYTE) * 1U].GetPhyAddr();
-//         } else {
-//             mxScaleLocalAddr = (__ubuf__ uint16_t *)xOutTensor_[axisH_ * 1U].GetPhyAddr();
-//         }
-//         Quant::ComputeMaxExp(srcAddr, maxExpAddr, axisH_);
-//         Quant::ComputeScale<XOutType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
-//         if constexpr (Std::IsSame<XOutType, fp8_e4m3fn_t>::value || Std::IsSame<XOutType, fp8_e5m2_t>::value) {
-//             Quant::ComputeFp8Data<XType, XOutType, AscendC::RoundMode::CAST_TRUNC,
-//                                   AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
-//         } else {
-//             Quant::ComputeFp4Data<XType, XOutType, AscendC::RoundMode::CAST_TRUNC,
-//                                   AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
-//         }
-//         PipeBarrier<PIPE_V>();
-//         xInQueue_.FreeTensor<XType>(xInTensor_);
-//     }
+        floatLocalTemp = xOutTensor_.template ReinterpretCast<float>();
+        floatLocalTemp.SetValue(hOutSizeAlign_ / sizeof(float), float(1.0) / dynamicScale);
+    } else if constexpr (IsMxQuant(QuantMode)) {
+        uint32_t mxScaleNum = Ceil(Ceil(axisH_, MX_BLOCK_SIZE), 2U) * 2U;
+        LocalTensor<float> receiveDataCastFloat = receiveDataCastFloatBuf_.Get<float>();
+        __ubuf__ XType *srcAddr = (__ubuf__ XType *)xInTensor_.GetPhyAddr();
+        __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)receiveDataCastFloat.GetPhyAddr();
+        __ubuf__ uint16_t *halfScaleLocalAddr =
+            (__ubuf__ uint16_t *)receiveDataCastFloat[Ceil(mxScaleNum, 32U) * 32U].GetPhyAddr();
+        __ubuf__ int8_t *outLocalAddr = (__ubuf__ int8_t *)xOutTensor_.GetPhyAddr();
+        __ubuf__ uint16_t *mxScaleLocalAddr;
+        if constexpr (Std::IsSame<XOutType, fp4x2_e2m1_t>::value) {
+            mxScaleLocalAddr = (__ubuf__ uint16_t *)xOutTensor_[Ceil(axisH_, FP4_ELEMS_PER_BYTE) * 1U].GetPhyAddr();
+        } else {
+            mxScaleLocalAddr = (__ubuf__ uint16_t *)xOutTensor_[axisH_ * 1U].GetPhyAddr();
+        }
+        Quant::ComputeMaxExp(srcAddr, maxExpAddr, axisH_);
+        Quant::ComputeScale<XOutType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
+        if constexpr (Std::IsSame<XOutType, fp8_e4m3fn_t>::value || Std::IsSame<XOutType, fp8_e5m2_t>::value) {
+            Quant::ComputeFp8Data<XType, XOutType, AscendC::RoundMode::CAST_TRUNC,
+                                  AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
+        } else {
+            Quant::ComputeFp4Data<XType, XOutType, AscendC::RoundMode::CAST_TRUNC,
+                                  AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
+        }
+        PipeBarrier<PIPE_V>();
+        xInQueue_.FreeTensor<XType>(xInTensor_);
+    }
 #else
     float dynamicScale = 0.0;
     uint32_t hOutSizeAlign = Ceil(axisH_ * sizeof(int8_t), UB_ALIGN) * UB_ALIGN;
