@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.18.4)
 include(cmake/fetch_cann_cmake.cmake)
 if(DEFINED RULE_LAUNCH AND RULE_LAUNCH)
     set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${RULE_LAUNCH})
@@ -157,7 +157,7 @@ if (ENABLE_TEST)
     set(CMAKE_CXX_COMPILE_OBJECT "<CMAKE_CXX_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
     set(CMAKE_C_COMPILE_OBJECT "<CMAKE_C_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
     add_cann_third_party(gtest)
-    if (TARGET GTest::gtest)
+    if (TARGET GTest::gtest AND NOT TARGET gtest)
         add_library(gtest ALIAS GTest::gtest)
     endif()
 

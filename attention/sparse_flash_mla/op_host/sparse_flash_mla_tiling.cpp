@@ -354,7 +354,8 @@ ge::graphStatus SMLAInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", (int32_t)npuArch_);
         return ge::GRAPH_FAILED;
     }
-    batchConsistency_ = (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL);
+    batchConsistency_ = false;
+    OP_LOGD(opName_, "deterministic_level=%d", context_->GetDeterministicLevel());
 
     return ge::GRAPH_SUCCESS;
 }
