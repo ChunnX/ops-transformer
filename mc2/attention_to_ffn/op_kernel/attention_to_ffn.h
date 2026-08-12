@@ -383,7 +383,7 @@ AttentionToFFN<TemplateAttentionToFFNTypeFunc>::ReduceMaxInplace(const LocalTens
 template <TemplateAttentionToFFNTypeClass>
 __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::QuantProcess(uint32_t expertIndex)
 {
-// #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 //     if constexpr (QuantMode == DYNAMIC_QUANT) {
 //         float dynamicScale = 0.0;
 //         LocalTensor<float> floatLocalTemp;
@@ -451,7 +451,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::QuantProc
 //         PipeBarrier<PIPE_V>();
 //         xInQueue_.FreeTensor<XType>(xInTensor_);
 //     }
-// #else
+#else
     float dynamicScale = 0.0;
     uint32_t hOutSizeAlign = Ceil(axisH_ * sizeof(int8_t), UB_ALIGN) * UB_ALIGN;
     LocalTensor<float> floatLocalTemp;
