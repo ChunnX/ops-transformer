@@ -1205,9 +1205,11 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         - Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品校验时以单个空间 `ccl_buffer_size / 2` 为准，需满足：
 
         $$ccl\_buffer\_size\ /\ 2 \ge \mathrm{offsetTokenPerExpert} + \mathrm{offsetTensor} + \mathrm{offsetFlag} + 10\,\mathrm{MB}$$
-        - Ascend 950PR/Ascend 950DT校验时以单个空间 `ccl_buffer_size ` 为准，需满足：
+        - Ascend 950PR/Ascend 950DT的MTE模板校验时以单个空间 `ccl_buffer_size` 为准，需满足：
 
-        $$ccl\_buffer\_size \ge \mathrm{peermemDataOffset} + \mathrm{maskRecvSize} + \mathrm{quantTokenScaleSize} + \mathrm{combineOut}$$
+        $$ccl\_buffer\_size \ge \mathrm{exceptionDumpRegionSize} + \mathrm{peermemDataOffset} + \mathrm{maskRecvSize} + \mathrm{quantTokenScaleSize} + \mathrm{combineOut}$$
+
+          URMA模板暂未适配结构化异常dump，其kernel布局和tiling校验不包含 `exceptionDumpRegionSize`；自动创建通信窗口时因拓扑尚未探测完成，会保守多分配60KB。
     <!-- npu="910b" id11 -->
      **Atlas A2 训练系列产品/Atlas A2 推理系列产品：**
 
