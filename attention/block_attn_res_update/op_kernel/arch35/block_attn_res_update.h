@@ -984,17 +984,9 @@ private:
             coreTSize_ = 0;
             return;
         }
-        const uint32_t baseTPerCore = tilingData_->baseTPerCore;
-        if (blockIdx_ < tilingData_->extraTCoreNum) {
-            coreTSize_ = baseTPerCore + 1U;
-            coreTStart_ = static_cast<int64_t>(blockIdx_) * static_cast<int64_t>(coreTSize_);
-        } else {
-            coreTSize_ = baseTPerCore;
-            coreTStart_ = static_cast<int64_t>(tilingData_->extraTCoreNum) *
-                              (static_cast<int64_t>(baseTPerCore) + 1) +
-                          static_cast<int64_t>(blockIdx_ - tilingData_->extraTCoreNum) *
-                              static_cast<int64_t>(baseTPerCore);
-        }
+        coreTStart_ = static_cast<int64_t>(blockIdx_) * static_cast<int64_t>(tilingData_->tPerCore);
+        coreTSize_ = (blockIdx_ == tilingData_->usedCoreNum - 1U) ?
+                         tilingData_->lastTPerCore : tilingData_->tPerCore;
     }
 
     __aicore__ inline __attribute__((always_inline)) void InitUbLayout()

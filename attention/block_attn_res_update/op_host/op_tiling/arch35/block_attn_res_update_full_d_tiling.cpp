@@ -52,24 +52,24 @@ bool BlockAttnResUpdateFullDTiling::IsCapable()
 ge::graphStatus BlockAttnResUpdateFullDTiling::DoOpTiling()
 {
     tilingInfo_ = BlockAttnResUpdateFullDTilingInfo{};
-    const uint32_t usedCoreNum = static_cast<uint32_t>(std::min<uint64_t>(tSize_, compileInfo_.aivNum));
-    const uint64_t baseTPerCore = tSize_ / usedCoreNum;
-    const uint32_t extraTCoreNum = static_cast<uint32_t>(tSize_ % usedCoreNum);
-    const uint64_t maxTPerCore = baseTPerCore + (extraTCoreNum == 0 ? 0U : 1U);
-    if (maxTPerCore > std::numeric_limits<uint32_t>::max()) {
-        OP_LOGE(opName_, "T per core exceeds the uint32_t range, T=%lu, cores=%u, maxTPerCore=%lu.",
-                tSize_, usedCoreNum, maxTPerCore);
+    const uint64_t tPerCore = tSize_ / compileInfo_.aivNum + (tSize_ % compileInfo_.aivNum != 0U);
+    const uint32_t usedCoreNum =
+        static_cast<uint32_t>(tSize_ / tPerCore + (tSize_ % tPerCore != 0U));
+    const uint64_t lastTPerCore = tSize_ - static_cast<uint64_t>(usedCoreNum - 1U) * tPerCore;
+    if (tPerCore > std::numeric_limits<uint32_t>::max()) {
+        OP_LOGE(opName_, "T per core exceeds the uint32_t range, T=%lu, cores=%u, tPerCore=%lu.",
+                tSize_, usedCoreNum, tPerCore);
         return ge::GRAPH_FAILED;
     }
 
-    tilingInfo_.baseTPerCore = static_cast<uint32_t>(baseTPerCore);
-    tilingInfo_.extraTCoreNum = extraTCoreNum;
+    tilingInfo_.tPerCore = static_cast<uint32_t>(tPerCore);
+    tilingInfo_.lastTPerCore = static_cast<uint32_t>(lastTPerCore);
     tilingInfo_.usedCoreNum = usedCoreNum;
     tilingInfo_.dAlignFp32 = Ops::Base::CeilAlign(dSize_, FP32_ALIGN_ELEMENTS);
     tilingInfo_.dAlignBf16 = Ops::Base::CeilAlign(dSize_, BF16_ALIGN_ELEMENTS);
     tilingInfo_.dVregNum = (dSize_ + VREG_FP32_ELEMENTS - 1U) >> VREG_FP32_SHIFT;
 
-    const ge::graphStatus ret = SelectUbTiling(maxTPerCore);
+    const ge::graphStatus ret = SelectUbTiling(tPerCore);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
@@ -158,8 +158,8 @@ uint64_t BlockAttnResUpdateFullDTiling::GetTilingKey() const
 void BlockAttnResUpdateFullDTiling::SetTilingData()
 {
     tilingData_ = BlockAttnResUpdateTilingData{};
-    tilingData_.baseTPerCore = tilingInfo_.baseTPerCore;
-    tilingData_.extraTCoreNum = tilingInfo_.extraTCoreNum;
+    tilingData_.tPerCore = tilingInfo_.tPerCore;
+    tilingData_.lastTPerCore = tilingInfo_.lastTPerCore;
     tilingData_.usedCoreNum = tilingInfo_.usedCoreNum;
     tilingData_.dSize = dSize_;
     tilingData_.dAlignFp32 = tilingInfo_.dAlignFp32;

@@ -20,8 +20,8 @@ namespace block_attn_res_update {
 
 // Host-side calculation state. SetTilingData serializes only the fields required by the kernel ABI.
 struct BlockAttnResUpdateFullDTilingInfo {
-    uint32_t baseTPerCore = 0;
-    uint32_t extraTCoreNum = 0;
+    uint32_t tPerCore = 0;
+    uint32_t lastTPerCore = 0;
     uint32_t usedCoreNum = 0;
     uint32_t dAlignFp32 = 0;
     uint32_t dAlignBf16 = 0;

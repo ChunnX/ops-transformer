@@ -20,9 +20,10 @@ enum class BlockAttnResUpdatePhase2Mode : uint8_t {
 
 #pragma pack(push, 8)
 struct alignas(8) BlockAttnResUpdateTilingData {
-    uint32_t baseTPerCore;
-    // Cores [0, extraTCoreNum) process baseTPerCore + 1 T indices.
-    uint32_t extraTCoreNum;
+    // All used cores except the last process tPerCore T indices.
+    uint32_t tPerCore;
+    // The last used core processes the remaining T indices.
+    uint32_t lastTPerCore;
     uint32_t usedCoreNum;
     uint32_t dSize;
     // Aligned D strides in elements for the FP32 and BF16 [T, D] UB views.
