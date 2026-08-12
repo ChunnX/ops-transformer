@@ -216,9 +216,9 @@ ge::graphStatus StemIndexerInfoParser::CheckRequiredInOutExistence() const
     OP_CHECK_IF(opParamInfo_.metadata.tensor == nullptr,
                 OP_LOGE(opName_, "metadata is required but is null!"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.metadata.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "metadata", "metadata desc cannot be empty"),
-                return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(opParamInfo_.metadata.desc == nullptr,
+    //             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "metadata", "metadata desc cannot be empty"),
+    //             return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.sparseIndicesOut.shape == nullptr,
                 OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor sparse_indices"),
                 return ge::GRAPH_FAILED);
