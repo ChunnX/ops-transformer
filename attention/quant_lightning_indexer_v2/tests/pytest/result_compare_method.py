@@ -272,7 +272,7 @@ def compare_topk_valid(
     diff_cpu,
     cur_npu_output_value=None,
     cur_cpu_output_value=None,
-    thres=0.0001,
+    thres=0.001,
     return_value_flag=False,
     output_idx_offset=None,
     layout_query=None,
@@ -560,9 +560,9 @@ def check_result(
     npu_pass = True
     max_error = 0
     max_re = 0
-    thres = 0.0001
+    thres = 0.001
     diff_thd = 0.01
-    pct_thd = 0.05
+    pct_thd = 0.005
     max_diff_hd = 0.1
     rtol = 0.005
     atol = 0.000025
@@ -822,7 +822,7 @@ def check_result_return_value(
     max_re = 0
     thres = 0.0001
     diff_thd = 0.01
-    pct_thd = 0.05
+    pct_thd = 0.005
     max_diff_hd = 0.1
     rtol = 0.005
     atol = 0.000025
