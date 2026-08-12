@@ -5,15 +5,15 @@
 #include "matmul_ft_tiling_data.h"
 
 #include "catlass/catlass.hpp"
-#include "catlass/arch/resource_aiv.hpp"
-#include "catlass/arch/cross_core_sync_aiv.hpp"
+#include "FT_self/arch/resource_aiv.hpp"
+#include "FT_self/arch/cross_core_sync_aiv.hpp"
 #include "catlass/layout/layout.hpp"
 #include "catlass/gemm_coord.hpp"
 #include "catlass/matrix_coord.hpp"
 #include "catlass/epilogue/tile/copy_gm_to_ub.hpp"
 #include "catlass/epilogue/tile/copy_ub_to_gm.hpp"
 #include "catlass/gemm/helper.hpp"
-#include "catlass/gemv/helper.hpp"
+#include "FT_self/gemv/helper.hpp"
 #include "catlass/gemv_coord.hpp"
 #include "catlass/matrix_coord.hpp"
 #include <cmath>

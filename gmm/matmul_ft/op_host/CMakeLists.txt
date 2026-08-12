@@ -18,7 +18,7 @@ endif()
 if (BUILD_OPS_RTY_KERNEL)
     add_ops_compile_options(
         OP_NAME MatmulFt
-        OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/catlass_include
+        OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel
                 -I${PROJECT_SOURCE_DIR}/3rdparty/catlass/include
                 -Wno-deprecated-declarations
                 -Wno-unused-variable
@@ -28,7 +28,7 @@ if (BUILD_OPS_RTY_KERNEL)
 else()
     add_ops_compile_options(
         OP_NAME MatmulFt
-        OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/catlass_include
+        OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel
                 -I${PROJECT_SOURCE_DIR}/3rdparty/catlass/include
     )
     add_modules_sources(OPTYPE matmul_ft ACLNNTYPE aclnn)
