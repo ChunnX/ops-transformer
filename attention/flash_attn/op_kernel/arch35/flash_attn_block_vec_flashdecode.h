@@ -292,20 +292,8 @@ protected:
 
         LocalTensor<T> sinkExpBuf = (cntM & 1) == 0 ? fdLseMaxUbBuf2_ : fdLseMaxUbBuf1_;
         LocalTensor<T> maxLseUb = fdLseUbBuf_;
-        bool learnableSinkFlag = constInfo_.learnableSinkFlag;
-        if (learnableSinkFlag) {
-            auto sinkSrc = sinkGm_.GetValue(taskInfo_.n2Idx * constInfo_.gSize);
-            T sinkValue;
-            if constexpr (IsSameType<INPUT_T, half>::value) {
-                sinkValue = static_cast<T>(sinkSrc);
-            } else {
-                sinkValue = static_cast<T>(Cast(sinkSrc));
-            }
-            Duplicate<T>(sinkExpBuf, sinkValue, dealRowCount * FP32_BLOCK_ELEMENT_NUM);
-            AscendC::PipeBarrier<PIPE_V>();
-        }
-        ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
-                                actualCombineLoopSize, constInfo_.isSoftmaxLseEnable, learnableSinkFlag);
+        ComputeScaleValue_VF_FD<T, T, SinkInjectStage::AT_FA_PROLOGUE>(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb,
+                                lseMaxUb, dealRowCount, actualCombineLoopSize, constInfo_.isSoftmaxLseEnable, false);
     }
 
     __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow,
