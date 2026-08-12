@@ -93,7 +93,7 @@ private:
     int64_t LogPertokenQuantParams();
     bool CheckCoreNum() const override;
     bool CheckWeightNdDtype();
-    bool CheckQuantDtypeByFormat(ge::DataType quantDtype, ge::Format weightFormat);
+    bool CheckQuantDtypeByFormat(ge::DataType quantDtype);
     bool ValidateAttrsCommon();
     bool LoadDescsAndDtypes();
     bool CheckWeightNzDtype(const gert::Shape &xShape, const gert::Shape &wShape, ge::Format weightFormat);
