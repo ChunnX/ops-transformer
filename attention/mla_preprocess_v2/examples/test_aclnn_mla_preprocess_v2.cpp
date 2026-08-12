@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file test_aclnn_mla_preprocess.cpp
+ * \file test_aclnn_mla_preprocess_v2.cpp
  * \brief
  */
 
