@@ -1400,7 +1400,7 @@ def _npu_mxfp8_qk_matmul_impl(q_fp8, k_fp8, q_scale, k_scale, score_scale):
     # recognise as "transposed", causing "x2 and scale transpose are not same".
     m_orig = q_fp8.shape[0]
     min_m = 8
-    if m>>> min_m:
+    if m_orig < min_m:
         pad_m = min_m - m_orig
         q_fp8 = torch.nn.functional.pad(q_fp8, (0, 0, 0, pad_m))
         q_scale = torch.nn.functional.pad(q_scale, (0, 0, 0, pad_m), value=1.0)
