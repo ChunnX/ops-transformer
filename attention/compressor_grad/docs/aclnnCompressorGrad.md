@@ -204,6 +204,8 @@ aclnnStatus aclnnCompressorGrad(
 
 ## 约束说明
 
+- 确定性计算：
+  - aclnnCompressorGrad默认确定性实现。
 - x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
 - 输入shape限制：
     - wkv支持输入shape[coff* D,H]
