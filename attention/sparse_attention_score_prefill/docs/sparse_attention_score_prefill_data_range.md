@@ -2,13 +2,13 @@
 
 ## 1. 概述
 
-本文档描述 `sparse_attention_score_prefill` 算子支持的数据范围，核心约束为 **`Batch × seq_len ≤ 1024K (1,048,576)`**（即 `totalQTokens` 上限）。该限制并非来自单一硬编码校验，而是由 Workspace HBM 容量、uint32_t 溢出风险、GM 地址索引截断等多个因素共同决定。
+本文档描述 `sparse_attention_score_prefill` 算子支持的数据范围。当前 A2 出版范围固定 `D=128`、`blockSize=128`，并以 **`Batch × seq_len ≤ 128K (131,072)`** 作为 `totalQTokens` 上限。该上限已在生产配置 `qHeads=64`、`kvHeads=4`、`topK=16`、`innerPrecise=1` 下完成真机精度验证。
 
 ### 1.1 核心约束摘要
 
 | 约束项 | 限制 | 约束来源 |
 |--------|------|----------|
-| `totalQTokens` (Batch × seq_len) | ≤ 1,048,576 (1024K) | Workspace HBM 容量 |
+| `totalQTokens` (Batch × seq_len) | ≤ 131,072 (128K) | A2 真机验证范围与 Workspace HBM 容量 |
 | `D` (embeddingSize) | 128 (固定) | TilingKey 硬编码路径 |
 | `blockSize` | 128 (默认) | L1 buffer 隐含约束 |
 | `topK` | ≤ 16 | Phase2 UB 容量 |
@@ -56,7 +56,7 @@ workSpaceSize = libapiSize + userWorkspace
 
 | 参数 | 值 |
 |------|-----|
-| totalQTokens | 1,048,576 (1024K) |
+| totalQTokens | 131,072 (128K) |
 | kvHeads | 4 |
 | topK | 16 |
 | groupSize | 16 |
@@ -65,19 +65,19 @@ workSpaceSize = libapiSize + userWorkspace
 
 | 项目 | 元素数 | 字节 |
 |------|--------|------|
-| accumOutSize | 137,438,953,472 | — |
-| lseStatSize | 1,073,741,824 | — |
-| accumOut (fp32) | — | ≈ 512 GB |
-| accumOut (bf16) | — | ≈ 256 GB |
-| lseMax + lseSum | — | ≈ 8 GB |
-| **总 workspace (fp32)** | — | **≈ 520 GB** |
-| **总 workspace (bf16)** | — | **≈ 264 GB** |
+| accumOutSize | 17,179,869,184 | — |
+| lseStatSize | 134,217,728 | — |
+| accumOut (fp32) | — | ≈ 64 GB |
+| accumOut (bf16) | — | ≈ 32 GB |
+| lseMax + lseSum | — | ≈ 1 GB |
+| **总 workspace (fp32)** | — | **≈ 65 GB** |
+| **总 workspace (bf16)** | — | **≈ 33 GB** |
 
 #### 配置 B（中等规模）
 
 | 参数 | 值 |
 |------|-----|
-| totalQTokens | 1,048,576 (1024K) |
+| totalQTokens | 131,072 (128K) |
 | kvHeads | 8 |
 | topK | 8 |
 | groupSize | 8 |
@@ -85,17 +85,17 @@ workSpaceSize = libapiSize + userWorkspace
 
 | 项目 | 字节 |
 |------|------|
-| accumOut (fp32) | ≈ 256 GB |
-| accumOut (bf16) | ≈ 128 GB |
-| lseMax + lseSum | ≈ 4 GB |
-| **总 workspace (fp32)** | **≈ 260 GB** |
-| **总 workspace (bf16)** | **≈ 132 GB** |
+| accumOut (fp32) | ≈ 32 GB |
+| accumOut (bf16) | ≈ 16 GB |
+| lseMax + lseSum | ≈ 0.5 GB |
+| **总 workspace (fp32)** | **≈ 32.5 GB** |
+| **总 workspace (bf16)** | **≈ 16.5 GB** |
 
 #### 配置 C（最小规模，无实际意义）
 
 | 参数 | 值 |
 |------|-----|
-| totalQTokens | 1,048,576 (1024K) |
+| totalQTokens | 131,072 (128K) |
 | kvHeads | 1 |
 | topK | 1 |
 | groupSize | 1 |
@@ -103,11 +103,11 @@ workSpaceSize = libapiSize + userWorkspace
 
 | 项目 | 字节 |
 |------|------|
-| **总 workspace (fp32)** | **≈ 520 MB** |
+| **总 workspace (fp32)** | **≈ 65 MB** |
 
 ### 2.4 实际可用上限
 
-以 Atlas A5/A2 典型 HBM 容量 64 GB 为例，fp32 路径下的 `totalQTokens` 上限：
+以 Atlas A5/A2 典型 HBM 容量 64 GB 为例，`totalQTokens` 的可用上限取决于 workspace dtype 和运行时额外占用：
 
 ```
 totalQTokens_max ≈ HBM_capacity / (kvHeads × topK × groupSize × D × sizeof(float))
@@ -119,7 +119,7 @@ totalQTokens_max ≈ HBM_capacity / (kvHeads × topK × groupSize × D × sizeof
 | kvHeads=8, topK=8, groupSize=8, D=128 | 32 KB | ≈ 2M tokens |
 | kvHeads=1, topK=8, groupSize=8, D=128 | 4 KB | ≈ 16M tokens |
 
-**结论**：在典型 Prefill 配置（大 groupSize + 大 topK）下，Workspace HBM 容量是 `totalQTokens ≤ 1024K` 的首要约束来源。
+**结论**：当前出版范围统一限制为 `totalQTokens ≤ 128K`。生产配置在 `innerPrecise=1` 下的 128K 真机 workspace 为 35,451,895,808 字节（含 libapi 和 A2 staging），已完成精度验证；fp32 路径需要更大 HBM，不属于本次 128K 上限验证配置。
 
 ---
 
@@ -136,10 +136,10 @@ uint32_t totalTaskP2 = totalQTokens_ * kvHeads_;     // Phase2 任务数
 uint32_t k2qNnzUpperBound_ = totalQTokens_ * topK_;  // CSR 数据区上界
 ```
 
-| 表达式 | 溢出条件 (totalQTokens=1024K) | 风险等级 |
+| 表达式 | 溢出条件 (totalQTokens=128K) | 风险等级 |
 |--------|-------------------------------|----------|
-| `totalQTokens × kvHeads` | kvHeads ≥ 4096 (1M×4096=2³²) | 低 |
-| `totalQTokens × topK` | topK ≥ 4096 (1M×4096=2³²) | 低 |
+| `totalQTokens × kvHeads` | kvHeads ≥ 32768 (128K×32768=2³²) | 低 |
+| `totalQTokens × topK` | topK ≥ 32768 (128K×32768=2³²) | 低 |
 | `numKvBlocks × kvHeads` | 极难达到 | 极低 |
 
 ### 3.2 安全的 uint64_t 计算
@@ -182,8 +182,8 @@ dstNdStride = static_cast<int32_t>(nextQ - qTokens[g]) * perQTokenStride
 ### 4.1 totalQTokens (Batch × seq_len)
 
 - **类型**：uint32_t (kernel 侧) / uint32_t (host 侧)
-- **上限**：1,048,576 (1024K)
-- **约束来源**：Workspace HBM 容量
+- **上限**：131,072 (128K)
+- **约束来源**：A2 出版范围、真机精度验证与 Workspace HBM 容量
 - **校验**：无显式校验，由调用方保证
 
 ### 4.2 D (embeddingSize)
@@ -246,9 +246,9 @@ k2qNnzUpperBound = totalQTokens × topK
 
 | totalQTokens | topK | k2qNnzUpperBound | 是否溢出 uint32_t |
 |--------------|------|------------------|-------------------|
-| 1,048,576 (1024K) | 8 | 8,388,608 (8M) | 否 |
-| 1,048,576 (1024K) | 16 | 16,777,216 (16M) | 否 |
-| 1,048,576 (1024K) | 4096 | 4,294,967,296 (4G) | 是 (溢出) |
+| 131,072 (128K) | 8 | 1,048,576 (1M) | 否 |
+| 131,072 (128K) | 16 | 2,097,152 (2M) | 否 |
+| 131,072 (128K) | 32768 | 4,294,967,296 (4G) | 是 (溢出) |
 
 ### 5.3 GM 访问安全
 
@@ -323,13 +323,13 @@ uint64_t tilingKeyVal = (innerPrecise_ == 1U)
 
 | 风险 | 严重程度 | 位置 | 说明 |
 |------|----------|------|------|
-| Workspace 超 HBM 容量 | 高 | tiling.cpp `CalculateWorkSpace` | 1024K tokens + 大配置下 workspace 达数百 GB |
+| Workspace 超 HBM 容量 | 高 | tiling.cpp `CalculateWorkSpace` | 128K 生产配置的 fp32 workspace 已约 65 GB |
 | PV dstNdStride 截断 | 中 | block_mmad_pv fixpipe scatter | uint64_t→uint32_t 截断，大 qToken 差距下可能写错地址 |
-| totalTaskNumP2 溢出 | 低 | tiling.cpp:206 | uint32_t 域乘法，需 kvHeads≥4096 才在 1024K 下溢出 |
-| k2qNnzUpperBound 溢出 | 低 | tiling.cpp:190 | uint32_t 域乘法，需 topK≥4096 才在 1024K 下溢出 |
+| totalTaskNumP2 溢出 | 低 | tiling.cpp:206 | uint32_t 域乘法，需 kvHeads≥32768 才在 128K 下溢出 |
+| k2qNnzUpperBound 溢出 | 低 | tiling.cpp:190 | uint32_t 域乘法，需 topK≥32768 才在 128K 下溢出 |
 
 ### 9.2 建议
 
-1. **Host 侧增加显式校验**：在 `GetTiling` 中检查 `totalQTokens ≤ 1024K` 和 workspace 大小是否超过设备 HBM 容量，超限时返回 `GRAPH_FAILED` 并输出错误日志。
+1. **Host 侧增加显式校验**：在 `GetTiling` 中检查 `totalQTokens ≤ 128K` 和 workspace 大小是否超过设备 HBM 容量，超限时返回 `GRAPH_FAILED` 并输出错误日志。
 2. **PV dstNdStride 改为 uint64_t**：将 `block_mmad_pv` 中 `dstNdStride` 类型从 `uint32_t` 改为 `uint64_t`，消除截断风险（需确认 `Fixpipe` / `SetFixpipeNz2ndFlag` 接口是否接受 64 位 stride）。
 3. **totalTaskNumP2 升级为 uint64_t**：将 `totalTaskNumP2` 字段和计算改为 `uint64_t`，消除大 kvHeads 下的溢出风险。

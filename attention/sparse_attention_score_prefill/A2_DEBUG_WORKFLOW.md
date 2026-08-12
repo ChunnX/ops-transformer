@@ -76,3 +76,42 @@ python tests/test_sparse_attention_score_prefill_vs_decode_perf.py
 8. 失败分类：全 NaN 查 rowMax/rowSum、Phase2 读取和除零；部分 NaN 查 task/core 映射和输出覆盖；数值偏差查 GM staging 行跨度、ND/NZ 布局和 cast；特定长度查 `RoundUp`、尾块 mask 和 `DataCopyPad`；多核失败查 CrossCore/Event 同步。
 
 9. 只有全部用例通过、无 NaN/Inf、无设备异常且误差满足各测试 `prec` 才算完成。每轮记录修改摘要、编译/安装结果、功能结果、最大/平均误差和下一步假设。
+
+## BxS 泛化验证
+
+当前出版范围固定 `D=128`、`block_size=128`，只泛化 `B x S`，上限为
+`131072 (128K)`。prefill 与 decode 必须一起安装，避免参考算子缺失：
+
+```bash
+cd /opt/rrh/code3/ops-transformer
+bash build.sh --pkg --soc=ascend910b \
+  --ops=sparse_attention_score_prefill\;sparse_attention_score
+bash build_out/cann-ops-transformer-custom_linux-aarch64.run \
+  --quiet --force --install-path=/opt/rrh/zhengbao/0708/cann/opp
+```
+
+运行单档用例：
+
+```bash
+export CANN_OPS_TRANSFORMER_LAZY_IMPORT=1
+export NPU_DEVICE=npu:2
+export BATCH_SIZE=8
+export Q_SEQLEN=16384
+export KV_SEQLENS=32768
+timeout -k 5s 180s python -u -m pytest -q -s \
+  tests/test_sparse_attention_score_prefill_vs_decode_perf.py::\
+TestSparseAttentionPrefillVsDecode::test_prefill_vs_decode_sweep
+```
+
+2026-08-12 A2 验证结果（`q_heads=64`、`kv_heads=4`、`topK=16`、
+`innerPrecise=1`）：
+
+| B | S | BxS | KV/Batch | max diff | mean diff | result |
+|---:|---:|---:|---:|---:|---:|:---:|
+| 1 | 1024 | 1K | 2K | 0.000977 | 0.000060 | PASS |
+| 2 | 4096 | 8K | 8K | 0.000977 | 0.000056 | PASS |
+| 4 | 8192 | 32K | 16K | 0.000977 | 0.000056 | PASS |
+| 8 | 8192 | 64K | 16K | 0.000977 | 0.000056 | PASS |
+| 8 | 16384 | 128K | 32K | 0.000977 | 0.000056 | PASS |
+
+每个用例都要求 `nonfinite=0`，且单算子执行超过 180 秒即按卡死处理。
