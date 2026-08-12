@@ -724,6 +724,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyTileHistInWs(uint32_t dstO
         MTE2ToMTE3Sync();
         DataCopyExtParams params{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * dataNum), 0, 0, 0};
         DataCopyPad(tileHistGm_[dstOffset + i * MAX_TILE_NUM_IN_UB], tileHist, params);
+        MTE3ToMTE2Sync();
     }
 }
 
