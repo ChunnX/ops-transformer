@@ -528,7 +528,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
     runInfo.s2TailSize = (runInfo.s2RealSize % constInfo.pKBaseSize == 0) ?
         constInfo.pKBaseSize : (runInfo.s2RealSize % constInfo.pKBaseSize);
     runInfo.s2BaseSize = VEC_P_BASESIZE;
-    runInfo.pScaler = constInfo.pScaler;
+    runInfo.pScaler = 1.0f / static_cast<float>(constInfo.gSizeQuery);
 }
 
 template <typename CubeBlockType, typename VecBlockType>

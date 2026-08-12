@@ -602,33 +602,38 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVectorSink(SLIG
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = 0;
         DataCopyPadExtParams<T> padParams;
-        DataCopyPad(sinkTensor, sinksGm[runInfo.softmaxInputOffset], dataCopyParams, padParams);
+        int32_t offset = constInfo.subBlockIdx == 0 ? 0 : (constInfo.gSizeQuery - runInfo.nVecSize);
+        DataCopyPad(sinkTensor, sinksGm[offset], dataCopyParams, padParams);
         this->sinksInQue.template EnQue(sinkTensor);
         this->sinksInQue.template DeQue<T>();
-
         auto maxTensor = this->maxInQue.template AllocTensor<T>();
         auto sumTensor = this->sumInQue.template AllocTensor<T>();
         auto psinkScalar = this->psinkScalarQue.template AllocTensor<T>();
         ComputePsinkPartial<T>(psinkScalar, sinkTensor, maxTensor, sumTensor, runInfo.nVecSize);
-
         DataCopyExtParams scalarParams = {1, static_cast<uint32_t>(sizeof(T)), 0, 0, 0};
-        CrossCoreWaitFlag<1, PIPE_MTE3>(SYNC_AIV_INNER_FLAG2);
+        event_t eventIDVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3)); 
+        SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3); 
+        WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
         DataCopyPad(psinkSyncGm[constInfo.subBlockIdx], psinkScalar, scalarParams);
-        CrossCoreSetFlag<1, PIPE_MTE3>(SYNC_AIV_INNER_FLAG1);
-        CrossCoreWaitFlag<1, PIPE_S>(SYNC_AIV_INNER_FLAG1);
+        CrossCoreSetFlag<1, PIPE_MTE3>(SYNC_AIV_INNER_FLAG3); 
+        CrossCoreWaitFlag<1, PIPE_MTE3>(SYNC_AIV_INNER_FLAG3); 
+        event_t eventIDMTE3ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_S)); 
+        SetFlag<HardEvent::MTE3_S>(eventIDMTE3ToS); 
+        WaitFlag<HardEvent::MTE3_S>(eventIDMTE3ToS);
+        DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+             psinkSyncGm);
         float myPsink = psinkSyncGm.GetValue(constInfo.subBlockIdx);
-        float peerPsink = psinkSyncGm.GetValue(1 - constInfo.subBlockIdx);
-        CrossCoreSetFlag<1, PIPE_S>(SYNC_AIV_INNER_FLAG2);
+        float peerPsink = psinkSyncGm.GetValue(1 - constInfo.subBlockIdx);   
         float totalPsink = myPsink + peerPsink;
         float gSize = static_cast<float>(constInfo.gSizeQuery);
-        if (totalPsink < gSize) {
-            runInfo.pScaler = 1.0f / (gSize - totalPsink);
-        }
-
+        runInfo.pScaler = 1.0f / (gSize - totalPsink);
         this->sinksInQue.template FreeTensor(sinkTensor);
         this->maxInQue.template FreeTensor(maxTensor);
         this->sumInQue.template FreeTensor(sumTensor);
         this->psinkScalarQue.template FreeTensor(psinkScalar);
+        event_t eventIDSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V)); 
+        SetFlag<HardEvent::S_V>(eventIDSToV); 
+        WaitFlag<HardEvent::S_V>(eventIDSToV);
     }
 }
 
