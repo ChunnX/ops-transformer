@@ -149,6 +149,17 @@ def check_tiling_and_kernel() -> None:
     kernel = read("op_kernel/allto_allv_grouped_mat_mul_shmem.h")
     require('#include "lib/matmul_intf.h"' in entry,
             "kernel entry must include the MatmulType/MatmulImpl/CubeFormat interface")
+    entry_flat = normalized(entry)
+    require(
+        "constexpr MatmulConfig SHMEM_MM_CFG_NO_PRELOAD = "
+        "GetMDLConfig(false, false, 0, false, false, false, true);" in entry_flat,
+        "SHMEM MatMul config must preserve the source no-preload/unit-flag policy",
+    )
+    require(
+        "MatmulImpl<ShmemAType, ShmemBType, ShmemCType, ShmemBiasType, "
+        "SHMEM_MM_CFG_NO_PRELOAD> mm;" in entry_flat,
+        "SHMEM MatMul must use its locally defined Ascend950 config",
+    )
     require("REGISTER_TILING_DEFAULT(AlltoAllvGmmShmem::AlltoAllvGroupedMatMulShmemTilingData);" in entry,
             "kernel entry must register its tiling struct before GET_TILING_DATA")
     require("allto_allv_grouped_mat_mul_shmem" in entry, "dedicated kernel entry is missing")

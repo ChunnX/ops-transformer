@@ -23,6 +23,7 @@ using ShmemAType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, bfloat16_t
 using ShmemBType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, bfloat16_t, false>;
 using ShmemCType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, bfloat16_t>;
 using ShmemBiasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, float>;
+constexpr MatmulConfig SHMEM_MM_CFG_NO_PRELOAD = GetMDLConfig(false, false, 0, false, false, false, true);
 
 extern "C" __global__ __aicore__ void allto_allv_grouped_mat_mul_shmem(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gmmyGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
@@ -54,7 +55,7 @@ extern "C" __global__ __aicore__ void allto_allv_grouped_mat_mul_shmem(
         communicator.Process();
     }
     if ASCEND_IS_AIC {
-        MatmulImpl<ShmemAType, ShmemBType, ShmemCType, ShmemBiasType, MM_CFG_NO_PRELOAD> mm;
+        MatmulImpl<ShmemAType, ShmemBType, ShmemCType, ShmemBiasType, SHMEM_MM_CFG_NO_PRELOAD> mm;
         mm.SetSubBlockIdx(0);
         mm.Init(&tilingData.matmulTiling, &pipe);
         AlltoAllvGmmShmem::RunAicGroupedMatmul(mm, gmmweightGM, gmmyGM, symmetricGM, &tilingData, peerCount);
