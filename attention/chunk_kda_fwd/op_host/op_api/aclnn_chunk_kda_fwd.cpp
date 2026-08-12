@@ -94,7 +94,7 @@ op::Shape MakeShape(std::initializer_list<int64_t> dims)
     return shape;
 }
 
-const aclTensor *Transpose(const aclTensor *input, const std::vector<int64_t> &perm, aclOpExecutor *executor)
+const aclTensor *TransposeView(const aclTensor *input, const std::vector<int64_t> &perm, aclOpExecutor *executor)
 {
     const aclIntArray *permArray = executor->AllocIntArray(perm.data(), perm.size());
     if (permArray == nullptr) {
@@ -118,7 +118,7 @@ const aclTensor *Transpose(const aclTensor *input, const std::vector<int64_t> &p
     return reshaped;
 }
 
-const aclTensor *TransposeLastTwo(const aclTensor *input, aclOpExecutor *executor)
+const aclTensor *TransposeLastTwoView(const aclTensor *input, aclOpExecutor *executor)
 {
     const size_t rank = input->GetViewShape().GetDimNum();
     std::vector<int64_t> perm(rank);
@@ -126,7 +126,7 @@ const aclTensor *TransposeLastTwo(const aclTensor *input, aclOpExecutor *executo
         perm[idx] = static_cast<int64_t>(idx);
     }
     std::swap(perm[rank - 2], perm[rank - 1]);
-    return Transpose(input, perm, executor);
+    return TransposeView(input, perm, executor);
 }
 
 static int64_t Dim(const aclTensor *tensor, size_t idx)
@@ -558,13 +558,13 @@ aclnnStatus aclnnChunkKdaFwdGetWorkspaceSize(
     if (parsedLayout == KdaFwdLayout::BSND) {
         // beta is small and its scalar-per-token rows are not DMA friendly in
         // sequence-major form. Keep only this lightweight transpose.
-        betaHead = Transpose(params.beta, {0, 2, 1}, executorPtr);
+        betaHead = TransposeView(params.beta, {0, 2, 1}, executorPtr);
     } else if (parsedLayout == KdaFwdLayout::TND) {
-        qHead = Transpose(params.q, {1, 0, 2}, executorPtr);
-        kHead = Transpose(params.k, {1, 0, 2}, executorPtr);
-        vHead = Transpose(params.v, {1, 0, 2}, executorPtr);
-        gHead = Transpose(params.g, {1, 0, 2}, executorPtr);
-        betaHead = Transpose(params.beta, {1, 0}, executorPtr);
+        qHead = TransposeView(params.q, {1, 0, 2}, executorPtr);
+        kHead = TransposeView(params.k, {1, 0, 2}, executorPtr);
+        vHead = TransposeView(params.v, {1, 0, 2}, executorPtr);
+        gHead = TransposeView(params.g, {1, 0, 2}, executorPtr);
+        betaHead = TransposeView(params.beta, {1, 0}, executorPtr);
     }
     CHECK_RET(qHead != nullptr && kHead != nullptr && vHead != nullptr &&
                   gHead != nullptr && betaHead != nullptr,
@@ -651,7 +651,7 @@ aclnnStatus aclnnChunkKdaFwdGetWorkspaceSize(
 
     const aclTensor *initialStateCompute = params.initialStateOptional;
     if (params.stateVFirst && initialStateCompute != nullptr) {
-        initialStateCompute = TransposeLastTwo(initialStateCompute, executorPtr);
+        initialStateCompute = TransposeLastTwoView(initialStateCompute, executorPtr);
         CHECK_RET(initialStateCompute != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
     const bool outputFinalState = params.finalStateOut != nullptr;
@@ -682,7 +682,7 @@ aclnnStatus aclnnChunkKdaFwdGetWorkspaceSize(
     if (outputFinalState) {
         const aclTensor *finalStateResult = result[1];
         if (params.stateVFirst) {
-            finalStateResult = TransposeLastTwo(finalStateResult, executorPtr);
+            finalStateResult = TransposeLastTwoView(finalStateResult, executorPtr);
             CHECK_RET(finalStateResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
         }
         CHECK_RET(l0op::ViewCopy(finalStateResult, params.finalStateOut, executorPtr) != nullptr,
@@ -691,7 +691,7 @@ aclnnStatus aclnnChunkKdaFwdGetWorkspaceSize(
     if (hExport != nullptr) {
         const std::vector<int64_t> hPerm =
             params.stateVFirst ? std::vector<int64_t>{0, 2, 1, 4, 3} : std::vector<int64_t>{0, 2, 1, 3, 4};
-        const aclTensor *hResult = Transpose(result[10], hPerm, executorPtr);
+        const aclTensor *hResult = TransposeView(result[10], hPerm, executorPtr);
         CHECK_RET(hResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
         CHECK_RET(l0op::ViewCopy(hResult, hExport, executorPtr) != nullptr,
                   ACLNN_ERR_INNER_NULLPTR);
