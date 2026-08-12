@@ -255,7 +255,7 @@ template <typename T>
 __aicore__ inline void MoeGatingTopKEKFullloadRegbase<T>::SelectTopKExpertIdx()
 {
     LocalTensor<int32_t> expertIdxTensor = expertIdxOutQueue_.AllocTensor<int32_t>();
-    LocalTensor<int32_t> topKGroupIndexTensor = calcTmpBuf_.Get<int32_t>();
+    LocalTensor<int32_t> topKGroupIndexTensor = indexBuf_.Get<int32_t>();
     LocalTensor<float> sortedInGroupTensor = sortedInGroupBuf_.Get<float>();
     LocalTensor<float> sortedExpertTensor = xInQueue_.AllocTensor<float>();
 
@@ -313,13 +313,12 @@ __aicore__ inline void MoeGatingTopKEKFullloadRegbase<T>::SelectTopKExpertScore(
         RegTensor<float> vreg3;
         RegTensor<float> vreg4;
         RegTensor<float> vregOutput;
-        RegTensor<uint32_t> vreg0;
         RegTensor<uint32_t> vreg1;
 
         uint32_t kU32 = static_cast<uint32_t>(k_);
         MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<float>(kU32);
 
-        MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1, expertIdxAddr);
+        MicroAPI::DataCopy(vreg1, expertIdxAddr);
         MicroAPI::DataCopyGather(vreg2, inputAddr, vreg1, preg0);
 
         MicroAPI::ReduceSum(vreg3, vreg2, preg0);
