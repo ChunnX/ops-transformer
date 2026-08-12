@@ -104,10 +104,15 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> Compressor(
     TORCH_CHECK(stateCacheDim == DIM_THREE, "state_cache dim num[", stateCacheDim, "] should be 3");
 
     auto contiguousAxesResult = IsContiguousAxes(stateCache);
+    TORCH_CHECK(contiguousAxesResult[1] && contiguousAxesResult[2],
+                "state_cache must be contiguous on axis 1 and 2, "
+                "only axis 0 non-contiguous is supported. "
+                "strides: ",
+                stateCache.strides());
     int64_t stateCacheStrideDim0 = stateCache.stride(0);
 
     ACLNN_CMD(aclnnCompressor, x, wkv, wgate, stateCache, ape, stateBlockTable, cuSeqlens, seqused, startPos, cmpRatio,
-        coff, cacheMode, stateCacheStrideDim0, gradEnabled, cmpKv, softmaxScore, kv);
+              coff, cacheMode, stateCacheStrideDim0, gradEnabled, cmpKv, softmaxScore, kv);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor>(cmpKv, softmaxScore, kv);
 }
@@ -132,7 +137,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> CompressorBackward(
     TORCH_CHECK(xDim == DIM_TWO || xDim == DIM_THREE, "x dim num[", xDim, "] should be 2 or 3");
 
     TORCH_CHECK(cmpRatio > VALUE_0, "cmp_ratio should be greater than 0");
-    
+
     dxSize = x.sizes().vec();
     dx = at::empty(dxSize, x.options().dtype(x.dtype()));
     dWkvSize = wkv.sizes().vec();
@@ -143,7 +148,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> CompressorBackward(
     dApe = at::empty(dApeSize, kv.options().dtype(kv.dtype()));
 
     ACLNN_CMD(aclnnCompressorGrad, x, wkv, wgate, dCmpKv, softmaxScore, kv, cuSeqlens, seqused,
-        startPos, cmpRatio, coff, dx, dWkv, dWgate, dApe);
+              startPos, cmpRatio, coff, dx, dWkv, dWgate, dApe);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>(dx, dWkv, dWgate, dApe);
 }
