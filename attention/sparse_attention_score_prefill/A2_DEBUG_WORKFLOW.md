@@ -124,3 +124,17 @@ TestSparseAttentionPrefillVsDecode::test_prefill_vs_decode_sweep
 |:---|---:|---:|---:|---:|---:|---:|:---:|
 | random causal | 2 | 4096 | 8K | 8K | 0.017300 | 0.000616 | PASS |
 | heavy-tail | 8 | 16384 | 128K | 32K | 0.024841 | 0.001939 | PASS |
+
+继续验证记录（2026-08-12）：
+
+| 用例 | 日志目录 | dump/对比目录 | 结果 |
+|:---|:---|:---|:---|
+| 旧用例 small (`B=1,Q=4,KV=512,topK=3`) | `/tmp/sasa_a2_runs/continued_20260812/npu_small/kernel.log` | NPU golden 直接比较 | `PASS`, max `0.000488`, mean `0.000055` |
+| 旧用例 medium (`B=1,Q=32,KV=2048,topK=5`) | `/tmp/sasa_a2_runs/continued_20260812/npu_medium/kernel.log` | NPU golden 直接比较 | `PASS`, max `0.000488`, mean `0.000044` |
+| Phase2 debug medium | `/tmp/sasa_a2_runs/continued_20260812/debug_medium/kernel.log` | `/tmp/sasa_a2_runs/continued_20260812/debug_medium/compare_final.json` | `PASS`, nonfinite `0`, mismatches `0` |
+| 128K heavy-tail (`B=8,S=16384`) | `/tmp/sasa_a2_runs/continued_20260812/heavytail_128k/kernel.log` | prefill/decode 结果比较 | `PASS`, max `0.024841`, mean `0.001939` |
+
+其中 Phase2 debug 的 `actual_final.pt` 与 `golden_final.pt` 逐元素比较，
+`max_abs=0.00048828125`、`mean_abs=4.374925993033685e-05`、`atol=0.02`。
+一次 180 秒超时发生在设备初始化（`TsdOpen`/`Starting a subprocess on the device timed out`），
+没有进入算子调用且没有产生 dump；切换到空闲设备后同一 `dual_focus` 用例通过，故不归因于算子同步。
