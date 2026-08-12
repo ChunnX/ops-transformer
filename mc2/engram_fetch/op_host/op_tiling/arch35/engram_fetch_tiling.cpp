@@ -51,6 +51,8 @@ constexpr int32_t HIDDEN_SIZE_ALIGN = 128;
 constexpr int64_t UB_ALIGN = 32;
 constexpr int64_t FLAG_SCRATCH_SIZE = 32;
 constexpr int64_t WORKSPACE_ALIGN_2MB = 2 * 1024 * 1024;
+constexpr uint32_t HCCL_MIN_RANK_SIZE = 2U;
+constexpr int64_t SEND_COUNTS_ALIGN_FACTOR = 8;
 
 static int64_t CeilDiv(int64_t x, int64_t y)
 {
@@ -407,11 +409,27 @@ static ge::graphStatus CheckTrainingParams(const gert::TilingContext *context, i
                         (std::to_string(recvCountsOutShape->GetStorageShape().GetDimNum()) + "D").c_str(),
                         "The shape dim of recvCountsOut must be 1D."),
                     return ge::GRAPH_FAILED);
+    int64_t recvCountsOutDim0 = recvCountsOutShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(
-        recvCountsOutShape->GetStorageShape().GetDim(0) <= 0,
+        recvCountsOutDim0 < static_cast<int64_t>(HCCL_MIN_RANK_SIZE),
         OP_LOGE_FOR_INVALID_VALUE(
             nodeName, "recvCountsOut",
-            (std::string("dim0=") + std::to_string(recvCountsOutShape->GetStorageShape().GetDim(0))).c_str(), "> 0"),
+            (std::string("dim0=") + std::to_string(recvCountsOutDim0)).c_str(),
+            (std::string(">= ") + std::to_string(HCCL_MIN_RANK_SIZE) +
+             " (rankSize must be at least HCCL_MIN_RANK_SIZE)")
+                .c_str()),
+        return ge::GRAPH_FAILED);
+
+    // cross-check: sendCountsOut.dim0 must equal rankSize * SEND_COUNTS_ALIGN_FACTOR (32B padding)
+    int64_t expectedSendCountsDim0 = recvCountsOutDim0 * SEND_COUNTS_ALIGN_FACTOR;
+    OP_TILING_CHECK(
+        sendCountsOutShape->GetStorageShape().GetDim(0) != expectedSendCountsDim0,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName, "sendCountsOut",
+            (std::string("dim0=") + std::to_string(sendCountsOutShape->GetStorageShape().GetDim(0))).c_str(),
+            (std::string("dim0 must equal rankSize * ") + std::to_string(SEND_COUNTS_ALIGN_FACTOR) + " = " +
+             std::to_string(expectedSendCountsDim0) + " (recvCountsOut.dim0 * 8, 32B aligned padding)")
+                .c_str()),
         return ge::GRAPH_FAILED);
 
     const gert::StorageShape *recvLocalEntryOutShape = context->GetOutputShape(RECV_LOCAL_ENTRY_OUT_INDEX);
@@ -424,10 +442,10 @@ static ge::graphStatus CheckTrainingParams(const gert::TilingContext *context, i
                         "The shape dim of recvLocalEntryOut must be 1D."),
                     return ge::GRAPH_FAILED);
     int64_t recvLocalEntryDim0 = recvLocalEntryOutShape->GetStorageShape().GetDim(0);
-    OP_TILING_CHECK(recvLocalEntryDim0 < 0,
+    OP_TILING_CHECK(recvLocalEntryDim0 <= 0,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "recvLocalEntryOut",
                                               (std::string("dim0=") + std::to_string(recvLocalEntryDim0)).c_str(),
-                                              ">= 0"),
+                                              "> 0"),
                     return ge::GRAPH_FAILED);
 
     const gert::StorageShape *numRecvOutShape = context->GetOutputShape(NUM_RECV_OUT_INDEX);
@@ -525,10 +543,10 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchTi
 
     if (isTraining) {
         auto permOutShape = context->GetOutputShape(PERM_OUT_INDEX);
-        auto sendCountsOutShape = context->GetOutputShape(SEND_COUNTS_OUT_INDEX);
+        auto recvCountsOutShape = context->GetOutputShape(RECV_COUNTS_OUT_INDEX);
         auto recvLocalEntryOutShape = context->GetOutputShape(RECV_LOCAL_ENTRY_OUT_INDEX);
-        if (permOutShape != nullptr && sendCountsOutShape != nullptr) {
-            tilingData.rankSize = static_cast<uint32_t>(sendCountsOutShape->GetStorageShape().GetDim(0));
+        if (permOutShape != nullptr && recvCountsOutShape != nullptr) {
+            tilingData.rankSize = static_cast<uint32_t>(recvCountsOutShape->GetStorageShape().GetDim(0));
         }
         if (recvLocalEntryOutShape != nullptr) {
             tilingData.totalRecv = recvLocalEntryOutShape->GetStorageShape().GetDim(0);

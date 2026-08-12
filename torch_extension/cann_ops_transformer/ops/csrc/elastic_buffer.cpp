@@ -1035,6 +1035,23 @@ std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(
     TORCH_CHECK(!destroyed_, "engram_fetch_grad cannot be called after destroy");
     TORCH_CHECK(withGrad_, "engram_fetch_grad requires with_grad=True");
     TORCH_CHECK(engramWriteCalled_, "engram_fetch_grad must be called after at least one engram_write");
+    TORCH_CHECK(gradFetched.scalar_type() == engramDtype_,
+                "grad_fetched dtype (", gradFetched.scalar_type(), ") must match storage dtype (", engramDtype_,
+                "), please ensure grad_fetched is the gradient of the tensor returned by engram_fetch");
+    TORCH_CHECK(perm.scalar_type() == at::kInt, "perm dtype must be int32, got ", perm.scalar_type());
+    TORCH_CHECK(sendCounts.scalar_type() == at::kInt,
+                "send_counts dtype must be int32, got ", sendCounts.scalar_type());
+    TORCH_CHECK(recvCounts.scalar_type() == at::kInt,
+                "recv_counts dtype must be int32, got ", recvCounts.scalar_type());
+    TORCH_CHECK(recvLocalEntry.scalar_type() == at::kInt,
+                "recv_local_entry dtype must be int32, got ", recvLocalEntry.scalar_type());
+    TORCH_CHECK(numRecv.scalar_type() == at::kInt, "num_recv dtype must be int32, got ", numRecv.scalar_type());
+    TORCH_CHECK(perm.size(0) == gradFetched.size(0),
+                "grad_fetched row count (", gradFetched.size(0), ") must match fetched row count (",
+                perm.size(0), "), i.e. perm.dim0");
+    TORCH_CHECK(gradFetched.size(1) == engramHiddenSize_,
+                "grad_fetched hidden size (", gradFetched.size(1), ") must match storage hidden size (",
+                engramHiddenSize_, ")");
 
     int64_t hidden = gradFetched.size(1);
     uint32_t rankSize = engramCommContext_.rankSize;
