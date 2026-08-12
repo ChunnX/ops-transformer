@@ -14,6 +14,7 @@
  */
 
 #include "quant_sparse_flash_mla_check.h"
+#include "checkers/quant_sparse_flash_mla_checker.h"
 #include "../op_kernel/quant_sparse_flash_mla_template_tiling_key.h"
 #include "quant_sparse_flash_mla_tiling.h"
 
@@ -24,6 +25,20 @@ using std::pair;
 using std::pair;
 using std::string;
 namespace optiling {
+
+std::string QSMLALayoutToSerialString(QSMLALayout layout)
+{
+    switch (layout) {
+        case QSMLALayout::BSND:
+            return "BSND";
+        case QSMLALayout::TND:
+            return "TND";
+        case QSMLALayout::PA_BBND:
+            return "PA_BBND";
+        default:
+            return "UNKNOWN";
+    }
+}
 
 struct QSMLACompileInfo {
     int64_t core_num;
@@ -86,6 +101,12 @@ void QSMLAInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.oriKv.desc = context_->GetOptionalInputDesc(ORI_KV_INDEX);
     opParamInfo_.cmpKv.tensor = context_->GetOptionalInputTensor(CMP_KV_INDEX);
     opParamInfo_.cmpKv.desc = context_->GetOptionalInputDesc(CMP_KV_INDEX);
+    opParamInfo_.qDescale.tensor = context_->GetOptionalInputTensor(Q_DESCALE);
+    opParamInfo_.qDescale.desc = context_->GetOptionalInputDesc(Q_DESCALE);
+    opParamInfo_.oriKvDescale.tensor = context_->GetOptionalInputTensor(ORI_KV_DESCALE);
+    opParamInfo_.oriKvDescale.desc = context_->GetOptionalInputDesc(ORI_KV_DESCALE);
+    opParamInfo_.cmpKvDescale.tensor = context_->GetOptionalInputTensor(CMP_KV_DESCALE);
+    opParamInfo_.cmpKvDescale.desc = context_->GetOptionalInputDesc(CMP_KV_DESCALE);
     opParamInfo_.oriSparseIndices.tensor = context_->GetOptionalInputTensor(ORI_SPARSE_INDICES_INDEX);
     opParamInfo_.oriSparseIndices.desc = context_->GetOptionalInputDesc(ORI_SPARSE_INDICES_INDEX);
     opParamInfo_.cmpSparseIndices.tensor = context_->GetOptionalInputTensor(CMP_SPARSE_INDICES_INDEX);
@@ -129,6 +150,8 @@ void QSMLAInfoParser::GetOutputParaInfo()
 {
     opParamInfo_.attnOut.desc = context_->GetOutputDesc(ATTN_OUT_INDEX);
     opParamInfo_.attnOut.shape = context_->GetOutputShape(ATTN_OUT_INDEX);
+    opParamInfo_.softmaxLse.desc = context_->GetOutputDesc(SOFTMAX_LSE_INDEX);
+    opParamInfo_.softmaxLse.shape = context_->GetOutputShape(SOFTMAX_LSE_INDEX);
 }
 
 ge::graphStatus QSMLAInfoParser::GetAttrParaInfo()
@@ -737,7 +760,7 @@ ge::graphStatus TilingQuantSparseFlashMla(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    QSMLATilingCheck qsmlaTilingChecker(qsmlaInfo);
+    QuantSparseFlashMlaChecker qsmlaTilingChecker(qsmlaInfo);
     if (qsmlaTilingChecker.Process() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
