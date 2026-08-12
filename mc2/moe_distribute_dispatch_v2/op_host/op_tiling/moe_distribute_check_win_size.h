@@ -104,6 +104,8 @@ inline ge::graphStatus CheckActualWinSize(const gert::TilingContext *context, co
                         hcclBufferSizeEp / (MB_SIZE * 2), hcclBufferSizeEp / MB_SIZE),
                 return ge::GRAPH_FAILED);
         } else {
+            // 窗口布局按 totalWinSizeEp(=maxWindowSizeEp - epWorldSize*EP_RANK_OFFSET_STEP) 排布
+            actualSize += epWorldSize * EP_RANK_OFFSET_STEP;
             OP_TILING_CHECK((actualSize > maxWindowSizeEp),
                             OP_LOGE(nodeName,
                                     "HCCL_BUFFSIZE_EP is too SMALL, maxBs = %lu, h = %lu, epWorldSize = %lu,"
@@ -111,7 +113,8 @@ inline ge::graphStatus CheckActualWinSize(const gert::TilingContext *context, co
                                     " tokenNeedSizeCombine = %lu,"
                                     " k = %lu, NEEDED_HCCL_BUFFSIZE(((maxBs * tokenNeedSizeDispatch * epWorldSize * "
                                     "localMoeExpertNum) +"
-                                    " (maxBs * tokenNeedSizeCombine * (k + sharedExpertNum))) * 2) = %luMB,"
+                                    " (maxBs * tokenNeedSizeCombine * (k + sharedExpertNum))) * 2"
+                                    " + epWorldSize * 1024) = %luMB,"
                                     " HCCL_BUFFSIZE=%luMB, actual CCL_BUFFSIZE=%luMB.",
                                     maxBs, h, epWorldSize, winSizeData.localMoeExpertNum, sharedExpertNum,
                                     tokenNeedSizeDispatch, tokenNeedSizeCombine, winSizeData.k,
