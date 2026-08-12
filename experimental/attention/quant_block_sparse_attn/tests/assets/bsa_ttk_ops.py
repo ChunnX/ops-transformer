@@ -174,7 +174,7 @@ def _prepare_operator_inputs(
     layout_sparse_indices,
 ):
     p_scale = _none_if_empty(p_scale)
-    if metadata is None or int(metadata.numel()) < 584:
+    if metadata is None or int(metadata.numel()) < 8:
         metadata = QuantBlockSparseAttnMetadataBuilder.build(
             query,
             key,

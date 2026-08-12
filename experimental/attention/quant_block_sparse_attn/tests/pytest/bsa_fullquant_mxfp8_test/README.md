@@ -141,13 +141,19 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 head 组合、11 组可实现的 S1/S2 大小关系与对齐状态、`mask_mode=0/3`、不同稀疏模式、block-table
 顺序以及空 Tensor 场景。
 
-case 不再显式配置 `block_num`。物理页数与 common MX 保持一致，根据每个 batch 的实际 KV 长度自动计算：
+`blocknum` 表示可供 `block_table` 映射的物理页池大小。case 显式传入正数时直接使用该值；未传入或传入
+非正数时，才根据每个 batch 的实际 KV 长度推导默认值：
 
 ```text
-block_num = sum(ceil(actual_seq_kv[b] / block_size))
+blocknum = sum(ceil(seqused_kv[b] / block_size))
 ```
 
-每个逻辑页使用唯一物理页；`block_table_pattern` 只控制这些物理页编号的顺序，不改变物理页数量。
+`block_table` 的宽度为
+`max(max_block_per_batch, max(ceil(seqused_kv[b] / block_size)))`，确保每个 batch 的有效逻辑页都可索引。
+表中每个位置从 `[0, blocknum)` 物理页池中有放回随机采样：一次选中的物理页不会从候选池移除，
+因此同一 batch 内或不同 batch 间的多个逻辑页允许映射到同一个 physical ID，用于覆盖物理页共享场景。
+`blocknum` 不要求等于全部逻辑页数量之和：小于逻辑页总数时可以通过复用完成映射，大于逻辑页总数时
+也允许存在未被引用的物理页。超过各 batch 有效 KV 长度的 `block_table` 填充列不会被 kernel 读取。
 
 以下字段仅用于记录用例设计，统一放在 case 属性末尾，不参与 pytest 的类型转换、校验或计算：
 
