@@ -90,9 +90,6 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
     const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnnAlltoAllQuantMatmulV3GetWorkspaceSize start");
-    (void)biasOptional;
-    (void)alltoAllOutOptional;
-    (void)hcclBufferSize;
 
     if (x1 == nullptr || x2 == nullptr || x1ScaleOptional == nullptr || x2ScaleOptional == nullptr ||
         output == nullptr || workspaceSize == nullptr || executor == nullptr) {
