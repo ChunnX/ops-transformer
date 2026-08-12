@@ -516,6 +516,9 @@ ge::graphStatus RopeGradRegBaseTilingClass::GetShapeAttrsInfo()
         b_ = (b_ <= 0) ? 1 : b_;
         s_ = (s_ <= 0) ? 1 : s_;
         n_ = (n_ <= 0) ? 1 : n_;
+        // D=0 时所有输出均为空（cosShapeSize=0），同样清洗避免下游除零；
+        // 取 dSplitCoef_（mode 0/3=2、mode 2=4、mode 1=1）保证 dAlign_ 等下游计算结果为正
+        d_ = (d_ <= 0) ? dSplitCoef_ : d_;
     }
     return ge::GRAPH_SUCCESS;
 }
