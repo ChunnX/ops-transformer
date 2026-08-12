@@ -121,6 +121,7 @@ constexpr int64_t DROP_PAD_MODE_DROPPAD = 1LL;
 constexpr int64_t EXPERT_CAPACITY_MIN_VALUE = 0LL;
 constexpr int64_t MAX_COLS_ONE_LOOP = 16376LL; // DropPad Tiling计算使用的最大列数
 constexpr int64_t REG_SIZE = 256LL;
+constexpr int64_t FP32_EXACT_INT_MAX = 1LL << 24;
 
 constexpr int64_t TILINGKEY_BASE = 10000000LL;
 constexpr int64_t FULLLOAD_TILINGKEY_BASE = 200000LL; // 全载模版
