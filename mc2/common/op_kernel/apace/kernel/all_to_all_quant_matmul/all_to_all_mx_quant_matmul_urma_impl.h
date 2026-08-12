@@ -237,7 +237,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
         CrossCoreSetFlag<0x2, PIPE_MTE3>(tid);
     }
 
-    allToAllScaleA_.Finalize();
+    allToAllScaleA_.template Finalize<BARRIER_NONE>();
     allToAllA_.Finalize();
 }
 
