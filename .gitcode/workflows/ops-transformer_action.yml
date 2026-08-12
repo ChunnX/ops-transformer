@@ -434,6 +434,18 @@ stages:
               file_path: ${{ steps.process_checkout.outputs.path }}/ci/smoke-conf/smoke-A2.yaml
         if: "${{ default() }}"
         runs-on: ['self-hosted','arch=arm','smoke=204']
+      JOB_UT_Test_harmony-infer-chs-transformer:
+        name: UT_Test_harmony-infer-chs-transformer
+        runs-on: [self-hosted, arch=x64, os=ubuntu, type=chs_phone]
+        steps:
+          - name: Checkout
+            identifier: process_checkout
+            uses: checkout
+            with:
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
+              token: ${{secrets.GIT_TOKEN}}
+          - name: 执行 Kirin UT_Test_harmony-infer-chs-transformer 测试
+            run: bash .gitcode/scripts/kirin_ut_chs.sh
     pre:
     - type: auto
     fail-fast: false
