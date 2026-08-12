@@ -308,14 +308,14 @@ ge::graphStatus MQSMLAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert
 {
     if ((tensor == nullptr)) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, name.c_str(),
-            "When layout_q is " + MQSMLALayoutToSerialString(layout) + ", " + name + " must be provided");
+                                                 "When layout_q is " + MQSMLALayoutToSerialString(layout) + ", " + name + " must be provided");
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = tensor->GetShapeSize();
     if (shapeSize <= 0) {
         OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, name.c_str(),
-            std::to_string(shapeSize).c_str(),
-            "The shape size of " + name + " should be greater than 0");
+                                                  std::to_string(shapeSize).c_str(),
+                                                  "The shape size of " + name + " should be greater than 0");
         return ge::GRAPH_FAILED;
     }
     size = static_cast<uint32_t>(shapeSize);
@@ -328,8 +328,8 @@ ge::graphStatus MQSMLAInfoParser::GetActualSeqLenQSize(uint32_t &size)
         int64_t shapeSize = opParamInfo_.cuSeqLensQ.tensor->GetShapeSize();
         if (shapeSize <= 1) {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "cu_seqlens_q",
-                std::to_string(opParamInfo_.cuSeqLensQ.tensor->GetShapeSize()).c_str(),
-                "The shape size of cu_seqlens_q should be greater than 1");
+                                                      std::to_string(opParamInfo_.cuSeqLensQ.tensor->GetShapeSize()).c_str(),
+                                                      "The shape size of cu_seqlens_q should be greater than 1");
             return ge::GRAPH_FAILED;
         }
         size = static_cast<uint32_t>(shapeSize - 1);
@@ -379,20 +379,19 @@ ge::graphStatus MQSMLAInfoParser::GetMaxBlockNumPerBatch()
         return ge::GRAPH_SUCCESS;
     }
     if (opParamInfo_.oriBlockTable.tensor == nullptr) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "ori_block_table", "The layout_kv is " +
-            MQSMLALayoutToSerialString(kvLayout_) + ", ori_block_table must be provided");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "ori_block_table", "The layout_kv is " + MQSMLALayoutToSerialString(kvLayout_) + ", ori_block_table must be provided");
         return ge::GRAPH_FAILED;
     }
     uint32_t oriDimNum = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDimNum();
     if (oriDimNum != DIM_NUM_TWO) {
         OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "ori_block_table",
-            std::to_string(oriDimNum).c_str(), std::to_string(DIM_NUM_TWO).c_str());
+                                     std::to_string(oriDimNum).c_str(), std::to_string(DIM_NUM_TWO).c_str());
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(1) <= 0) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, ORI_BLOCK_TABLE_NAME.c_str(),
-            ToStringRaw(opParamInfo_.oriBlockTable.tensor->GetStorageShape()).c_str(),
-            ORI_BLOCK_TABLE_NAME + "'s second dimension should be greater than 0");
+                                              ToStringRaw(opParamInfo_.oriBlockTable.tensor->GetStorageShape()).c_str(),
+                                              ORI_BLOCK_TABLE_NAME + "'s second dimension should be greater than 0");
         return ge::GRAPH_FAILED;
     }
     oriMaxBlockNumPerBatch_ = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(1);
@@ -401,13 +400,13 @@ ge::graphStatus MQSMLAInfoParser::GetMaxBlockNumPerBatch()
         uint32_t cmpDimNum = opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDimNum();
         if (cmpDimNum != DIM_NUM_TWO) {
             OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "cmp_block_table",
-                std::to_string(cmpDimNum).c_str(), std::to_string(DIM_NUM_TWO).c_str());
+                                         std::to_string(cmpDimNum).c_str(), std::to_string(DIM_NUM_TWO).c_str());
             return ge::GRAPH_FAILED;
         }
         if (opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(1) <= 0) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, CMP_BLOCK_TABLE_NAME.c_str(),
-                ToStringRaw(opParamInfo_.cmpBlockTable.tensor->GetStorageShape()).c_str(),
-                CMP_BLOCK_TABLE_NAME + "'s second dimension should be greater than 0");
+                                                  ToStringRaw(opParamInfo_.cmpBlockTable.tensor->GetStorageShape()).c_str(),
+                                                  CMP_BLOCK_TABLE_NAME + "'s second dimension should be greater than 0");
             return ge::GRAPH_FAILED;
         }
         cmpMaxBlockNumPerBatch_ = opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(1);
@@ -620,9 +619,9 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
 {
     if (tilingInfo->opParamInfo.cmpKv.tensor == nullptr) {
         OP_CHECK_IF(tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("MixedQuantSparseFlashMla", "cmp_sparse_indices",
-                "Cmp_sparse_indices must be empty when cmpKv is not provided"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("MixedQuantSparseFlashMla", "cmp_sparse_indices",
+                                                             "Cmp_sparse_indices must be empty when cmpKv is not provided"),
+                    return ge::GRAPH_FAILED);
         if (tilingInfo->opParamInfo.oriSparseIndices.tensor != nullptr) {
             perfMode_ = QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE;
         } else {
@@ -647,34 +646,35 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
 
     // -------------set workspacesize-----------------
     constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
-    constexpr uint32_t S2_BASE_SIZE = 128;            // S2轴基本块大小
+    constexpr uint32_t S2_BASE_SIZE = 128; // S2轴基本块大小
     constexpr uint32_t D_SIZE = 512;
-    constexpr uint32_t VEC_RES_ELEM_SIZE = 2; // 2: fp16/bf16字节数
-    constexpr uint32_t TOPK_MAX_SIZE = 2048;  // TopK选取个数
-    constexpr uint32_t MAX_S2_SPLIT_NUM = 2;  // 每核最多S2切分次数
-    constexpr uint32_t FLOAT_ELEM_SIZE = 4;   // sizeof(float)
-    constexpr uint32_t FD_BLOCK_ELEM = 8;     // FD广播份数
+    constexpr uint32_t VEC_RES_ELEM_SIZE = 2;     // 2: fp16/bf16字节数
+    constexpr uint32_t TOPK_MAX_SIZE = 2048;      // TopK选取个数
+    constexpr uint32_t MAX_S2_SPLIT_NUM = 2;      // 每核最多S2切分次数
+    constexpr uint32_t FLOAT_ELEM_SIZE = 4;       // sizeof(float)
+    constexpr uint32_t FD_BLOCK_ELEM = 8;         // FD广播份数
     constexpr uint32_t FD_MAX_SUM_REGION_NUM = 2; // max和sum两个区域
     constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM = 33;
     size_t workspaceSize = static_cast<size_t>(ascendcPlatform.GetLibApiWorkSpaceSize());
     bool isSplitG = tilingInfo->gSize > 64; // gSize超过64时采用Split-G
     if (isSplitG) {
         workspaceSize += static_cast<size_t>(S2_BASE_SIZE) * D_SIZE * VEC_RES_ELEM_SIZE *
-            TRIPLE_BUFFER_NUM * (aicNum >> 1);
+                         TRIPLE_BUFFER_NUM * (aicNum >> 1);
     }
     uint32_t fdStagingMSize = tilingInfo->gSize;
     uint32_t fdStagingSlotNum = isSplitG ? (aicNum >> 1) : aicNum;
     if (tilingInfo->batchConsistency) {
         size_t combineElemSize = static_cast<size_t>(fdStagingMSize) * D_SIZE +
-            static_cast<size_t>(FD_MAX_SUM_REGION_NUM) * fdStagingMSize * FD_BLOCK_ELEM;
+                                 static_cast<size_t>(FD_MAX_SUM_REGION_NUM) * fdStagingMSize * FD_BLOCK_ELEM;
         workspaceSize += 2ULL * fdStagingSlotNum * combineElemSize * FLOAT_ELEM_SIZE;
         workspaceSize += static_cast<size_t>(aicNum) * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM *
-            combineElemSize * FLOAT_ELEM_SIZE;
+                         combineElemSize * FLOAT_ELEM_SIZE;
     } else {
         // 末尾的2对应每个split分别暂存max和sum。
         size_t s2SplitStagingPerSlot = static_cast<size_t>(fdStagingMSize) * D_SIZE * FLOAT_ELEM_SIZE *
-            MAX_S2_SPLIT_NUM + static_cast<size_t>(fdStagingMSize) * FD_BLOCK_ELEM * FLOAT_ELEM_SIZE *
-            MAX_S2_SPLIT_NUM * FD_MAX_SUM_REGION_NUM;
+                                           MAX_S2_SPLIT_NUM +
+                                       static_cast<size_t>(fdStagingMSize) * FD_BLOCK_ELEM * FLOAT_ELEM_SIZE *
+                                           MAX_S2_SPLIT_NUM * FD_MAX_SUM_REGION_NUM;
         workspaceSize += s2SplitStagingPerSlot * fdStagingSlotNum;
     }
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
