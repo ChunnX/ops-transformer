@@ -3,92 +3,76 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
-
 <!-- end id1 -->
-
 <!-- npu="A3" id2 -->
-
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
-
 <!-- end id2 -->
-
 <!-- npu="910b" id3 -->
-
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
-
 <!-- end id3 -->
-
 <!-- npu="310b" id4 -->
-
 - <term>Atlas 200I/500 A2 推理产品</term>：x
-
 <!-- end id4 -->
-
 <!-- npu="310p" id5 -->
-
 - <term>Atlas 推理系列产品</term>：x
-
 <!-- end id5 -->
-
 <!-- npu="910" id6 -->
-
 - <term>Atlas 训练系列产品</term>：x
-
 <!-- end id6 -->
 
 ## 功能说明
 
-- 接口功能：SparseLightningIndexerKLLossGrad算子是LightningIndexer KL Loss的反向计算算子。该接口接收Lightning Indexer分支的q、k、w、sparseIndices，以及由主Attention分支预先计算得到的attnSoftmaxL1Norm，计算并输出dq、dk、dw和softmaxOut。与SparseLightningIndexerGradKLLoss相比，本接口不再在kernel内部重算主Attention的`Q @ K -> softmax -> reduce/l1 norm`，也不再输出loss；主Attention的目标分布由attnSoftmaxL1Norm输入提供，softmaxOut可用于后续loss计算。。
+- 接口功能：SparseLightningIndexerKLLossGrad算子是LightningIndexer KL Loss的反向计算算子。该接口接收Lightning Indexer分支的q、k、w、sparseIndices，以及由主Attention分支预先计算得到的attnSoftmaxL1Norm，计算并输出dq、dk、dw和softmaxOut。与SparseLightningIndexerGradKLLoss相比，本接口不再在kernel内部重算主Attention的`Q @ K -> softmax -> reduce/l1 norm`，也不再输出loss；主Attention的目标分布由attnSoftmaxL1Norm输入提供，softmaxOut可用于后续loss计算。
+
 - 计算公式：
-  用于取Top-k的value的Indexer logits可表示为：
+   用于取Top-k的value的Indexer logits可表示为：
 
-  $$
-  S_{t,:}=q_{t,:}@K_{\operatorname{topk}(t),:}^{T}
-  $$
+   $$
+   S_{t,:}=q_{t,:}@K_{\operatorname{topk}(t),:}^{T}
+   $$
 
-  $$
-  I_{t,:}=W_{t,:}@\mathrm{ReLU}(S_{t,:})
-  $$
+   $$
+   I_{t,:}=W_{t,:}@\mathrm{ReLU}(S_{t,:})
+   $$
 
-  其中，$q$和$K$分别对应本接口的q和k，$W$对应本接口的w，$\operatorname{topk}(t)$由sparseIndices给出。Indexer分支的softmax输出为：
+   其中，$q$和$K$分别对应本接口的q和k，$W$对应本接口的w，$\operatorname{topk}(t)$由sparseIndices给出。Indexer分支的softmax输出为：
 
-  $$
-  y_{t,:}=\operatorname{Softmax}(I_{t,:})
-  $$
+   $$
+   y_{t,:}=\operatorname{Softmax}(I_{t,:})
+   $$
 
-  本接口将$y$写出到softmaxOut。目标分布$p$由attnSoftmaxL1Norm输入提供，等价于旧版kernel内部由main attention score经head求和和L1归一化得到的结果。若后续继续计算KL Loss，其形式与旧版保持一致：
+   本接口将$y$写出到softmaxOut。目标分布$p$由attnSoftmaxL1Norm输入提供，等价于旧版kernel内部由main attention score经head求和和L1归一化得到的结果。若后续继续计算KL Loss，其形式与旧版保持一致：
 
-  $$
-  L(I){=}\sum_tD_{KL}(p_{t,:}||\operatorname{Softmax}(I_{t,:}))
-  $$
+   $$
+   L(I){=}\sum_tD_{KL}(p_{t,:}||\operatorname{Softmax}(I_{t,:}))
+   $$
 
-  $$
-  D_{KL}(a||b){=}\sum_ia_i\mathrm{log}{\left(\frac{a_i}{b_i}\right)}
-  $$
+   $$
+   D_{KL}(a||b){=}\sum_ia_i\mathrm{log}{\left(\frac{a_i}{b_i}\right)}
+   $$
 
-  通过求导可得Loss的梯度表达式：
+   通过求导可得Loss的梯度表达式：
 
-  $$
-  dI_{t,:}=\operatorname{Softmax}(I_{t,:})-p_{t,:}
-  $$
+   $$
+   dI_{t,:}=\operatorname{Softmax}(I_{t,:})-p_{t,:}
+   $$
 
-  利用链式法则可以进行w、q和k矩阵的梯度计算：
+   利用链式法则可以进行w、q和k矩阵的梯度计算：
 
-  $$
-  dW_{t,:}=dI_{t,:}\text{@}\left(\mathrm{ReLU}(S_{t,:})\right)^{T}
-  $$
+   $$
+   dW_{t,:}=dI_{t,:}\text{@}\left(\mathrm{ReLU}(S_{t,:})\right)^{T}
+   $$
 
-  $$
-  dq_{t,:}=dS_{t,:}@K_{\operatorname{topk}(t),:}
-  $$
+   $$
+   dq_{t,:}=dS_{t,:}@K_{\operatorname{topk}(t),:}
+   $$
 
-  $$
-  dK_{\operatorname{topk}(t),:}=\left(dS_{t,:}\right)^{T}@q_{t,:}
-  $$
+   $$
+   dK_{\operatorname{topk}(t),:}=\left(dS_{t,:}\right)^{T}@q_{t,:}
+   $$
 
-  dK写回时会按照sparseIndices指向的key位置做scatter-add，无效top-k位置不参与计算。
+   dK写回时会按照sparseIndices指向的key位置做scatter-add，无效top-k位置不参与计算。
 
 ## 函数原型
 
@@ -131,7 +115,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
 
 - **参数说明:**
 
-  <table style="undefined;table-layout: fixed; width: 1550px">
+    <table style="undefined;table-layout: fixed; width: 1550px">
         <colgroup>
             <col style="width: 220px">
             <col style="width: 120px">
@@ -390,13 +374,14 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
             </tr>
         </tbody>
     </table>
+
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
-  第一段接口完成入参校验，出现以下场景时报错：
+    第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed;width: 1155px">
+    <table style="undefined;table-layout: fixed;width: 1155px">
         <colgroup>
             <col style="width: 319px">
             <col style="width: 144px">
@@ -432,7 +417,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1155px">
+    <table style="undefined;table-layout: fixed; width: 1155px">
         <colgroup>
             <col style="width: 144px">
             <col style="width: 125px">
@@ -468,27 +453,24 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
             </tr>
         </tbody>
     </table>
+
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
 
-  <!-- npu="A3,910b" id8 -->
+    <!-- npu="A3,910b" id8 -->
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+    <!-- end id8 -->
+    <!-- npu="950" id9 -->
+    - <term>Ascend 950PR/Ascend 950DT</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+    <!-- end id9 -->
 
-  <!-- end id8 -->
-
-  <!-- npu="950" id9 -->
-
-  - <term>Ascend 950PR/Ascend 950DT</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
-
-  <!-- end id9 -->
 - 公共约束：
-
   - 参数q、k、dq、dk的数据类型应保持一致，支持FLOAT16和BFLOAT16。
   - 参数w、dw、attnSoftmaxL1Norm、softmaxOut的数据类型应为FLOAT32。
   - 参数sparseIndices、cuSeqLensQOptional、cuSeqLensKOptional、seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional、metadataOptional的数据类型应为INT32。
@@ -560,9 +542,9 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
             </tr>
         </tbody>
     </table>
-- 规格约束：
 
-  <table style="undefined;table-layout: fixed; width: 942px">
+- 规格约束：
+    <table style="undefined;table-layout: fixed; width: 942px">
         <colgroup>
             <col style="width: 100px">
             <col style="width: 300px">
@@ -597,52 +579,36 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
   - 参数B的支持情况:
 
     <!-- npu="A3,910b" id10 -->
-
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：B支持1~256。
-
     <!-- end id10 -->
-
     <!-- npu="950" id11 -->
-
     - <term>Ascend 950PR/Ascend 950DT</term>：B>0。
-
     <!-- end id11 -->
+
   - 参数S1、S2的支持情况:
 
     <!-- npu="A3,910b" id12 -->
-
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：S1支持1~8K，S2支持1~512K。
-
     <!-- end id12 -->
-
     <!-- npu="950" id13 -->
-
     - <term>Ascend 950PR/Ascend 950DT</term>：S1>0，S2>0。
-
     <!-- end id13 -->
+
   - 参数N1的支持情况:
 
     <!-- npu="A3,910b" id14 -->
-
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1支持8、16、32、64。
-
     <!-- end id14 -->
-
     <!-- npu="950" id15 -->
-
     - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1~128。
-
     <!-- end id15 -->
+
   - 参数K的支持情况:
 
     <!-- npu="A3,910b" id16 -->
-
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持512、1024、2048、4096、8192。
-
     <!-- end id16 -->
-
     <!-- npu="950" id17 -->
-
     - <term>Ascend 950PR/Ascend 950DT</term>：K支持1~2048。
 
     <!-- end id17 -->
