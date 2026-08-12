@@ -205,9 +205,7 @@ def _mxfp8_normalize_data_range(data_range):
             )
         low, high = float(data_range[0]), float(data_range[1])
         if not math.isfinite(low) or not math.isfinite(high):
-            raise ValueError(
-                f"data_range bounds must be finite, got: [{low}, {high}]"
-            )
+            raise ValueError(f"data_range bounds must be finite, got: [{low}, {high}]")
         if low > high:
             raise ValueError(
                 f"data_range min must not exceed max, got: [{low}, {high}]"
@@ -347,9 +345,7 @@ def _mxfp8_cpu_golden(
         data["block_table"],
     )
     attention_out = attention_out.to(torch.bfloat16)
-    return _format_golden_outputs(
-        attention_out, softmax_lse, return_softmax_lse
-    )
+    return _format_golden_outputs(attention_out, softmax_lse, return_softmax_lse)
 
 
 # ==================================================================================================
@@ -368,9 +364,7 @@ def _fp8_load_pytest_golden_module():
     module_path = pytest_dir / "quant_block_sparse_attn_golden.py"
     sys.path.insert(0, str(pytest_dir))
     try:
-        spec = importlib.util.spec_from_file_location(
-            _FP8_MODULE_NAME, module_path
-        )
+        spec = importlib.util.spec_from_file_location(_FP8_MODULE_NAME, module_path)
         if spec is None or spec.loader is None:
             raise ImportError(f"cannot load FP8 golden module from {module_path}")
         module = importlib.util.module_from_spec(spec)
@@ -453,7 +447,7 @@ def _fp8_cpu_golden(
             golden["attention_out"],
             golden["softmax_lse"],
             return_softmax_lse,
-    )
+        )
 
     data_ranges = input_ranges or ()
     case = golden_module._fp8_assemble_case(

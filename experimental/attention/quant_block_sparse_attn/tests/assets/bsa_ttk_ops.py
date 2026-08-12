@@ -463,7 +463,11 @@ def _fp8_pack_combined_kv(key, value, k_descale):
     value_view = torch.as_strided(
         fp8_storage, value.shape, (pa_block_stride, block_size * dv, dv, 1), key_seg
     )
-    k_scale_shape = tuple(k_descale.shape) if k_descale.dim() == 4 else tuple(k_descale.shape) + (1,)
+    k_scale_shape = (
+        tuple(k_descale.shape)
+        if k_descale.dim() == 4
+        else tuple(k_descale.shape) + (1,)
+    )
     k_scale_view = torch.as_strided(
         fp32_storage,
         k_scale_shape,

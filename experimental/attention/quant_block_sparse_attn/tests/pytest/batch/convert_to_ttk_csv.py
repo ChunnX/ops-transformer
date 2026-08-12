@@ -115,9 +115,7 @@ class ConversionError(ValueError):
 
 
 def _fail(source_name: str, line_number: int, field: str, detail: str) -> NoReturn:
-    raise ConversionError(
-        f"{source_name}:{line_number}: invalid {field}: {detail}"
-    )
+    raise ConversionError(f"{source_name}:{line_number}: invalid {field}: {detail}")
 
 
 def _required(
@@ -145,7 +143,9 @@ def _parse_int(
     except ValueError:
         _fail(source_name, line_number, field, f"expected integer, got {raw!r}")
     if positive and value <= 0:
-        _fail(source_name, line_number, field, f"expected positive integer, got {value}")
+        _fail(
+            source_name, line_number, field, f"expected positive integer, got {value}"
+        )
     return value
 
 
@@ -197,7 +197,12 @@ def _parse_int_list(
     except (SyntaxError, ValueError) as error:
         _fail(source_name, line_number, field, f"cannot parse integer list: {error}")
     if not isinstance(value, list):
-        _fail(source_name, line_number, field, f"expected list, got {type(value).__name__}")
+        _fail(
+            source_name,
+            line_number,
+            field,
+            f"expected list, got {type(value).__name__}",
+        )
     if any(isinstance(item, bool) or not isinstance(item, int) for item in value):
         _fail(source_name, line_number, field, "list must contain integers only")
     return list(value)
@@ -213,7 +218,9 @@ def _parse_range(
         _fail(source_name, line_number, field, f"cannot parse range: {error}")
     if not isinstance(value, (list, tuple)) or len(value) != 2:
         _fail(source_name, line_number, field, f"expected [min, max], got {value!r}")
-    if any(isinstance(item, bool) or not isinstance(item, (int, float)) for item in value):
+    if any(
+        isinstance(item, bool) or not isinstance(item, (int, float)) for item in value
+    ):
         _fail(source_name, line_number, field, "range bounds must be numeric")
     if value[0] > value[1]:
         _fail(source_name, line_number, field, f"minimum exceeds maximum: {value!r}")
@@ -236,9 +243,7 @@ def _parse_source_record(
         params[field] = _parse_range(record, field, source_name, line_number)
 
     params["enable"] = _parse_bool(record, "enable", source_name, line_number)
-    params["quant_mode"] = _parse_int(
-        record, "quant_mode", source_name, line_number
-    )
+    params["quant_mode"] = _parse_int(record, "quant_mode", source_name, line_number)
     params["mask_mode"] = _parse_int(record, "mask_mode", source_name, line_number)
     params["seed"] = _parse_int(record, "seed", source_name, line_number)
     params["p_scale_value"] = _parse_optional_float(
@@ -333,9 +338,7 @@ def _parse_source_record(
             f"maximum actual KV length {max_kv_length} exceeds S2={params['S2']}",
         )
 
-    required_table_width = math.ceil(
-        max_kv_length / params["sparse_kv_block_size"]
-    )
+    required_table_width = math.ceil(max_kv_length / params["sparse_kv_block_size"])
     if params["max_block_per_batch"] < required_table_width:
         _fail(
             source_name,
@@ -476,9 +479,7 @@ def _input_ranges(params: Dict[str, object]) -> Tuple[object, ...]:
     )
 
 
-def _validate_ttk_row(
-    row: Dict[str, str], source_name: str, line_number: int
-) -> None:
+def _validate_ttk_row(row: Dict[str, str], source_name: str, line_number: int) -> None:
     parsed = {}
     for field in (
         "tensor_view_shapes",
@@ -575,9 +576,7 @@ def write_ttk_csv(destination: Path, rows: List[Dict[str, str]]) -> None:
             suffix=".tmp",
         ) as stream:
             temporary = Path(stream.name)
-            writer = csv.DictWriter(
-                stream, fieldnames=TTK_HEADER, lineterminator="\n"
-            )
+            writer = csv.DictWriter(stream, fieldnames=TTK_HEADER, lineterminator="\n")
             writer.writeheader()
             writer.writerows(rows)
         os.replace(temporary, destination)
