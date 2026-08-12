@@ -117,3 +117,10 @@ TestSparseAttentionPrefillVsDecode::test_prefill_vs_decode_sweep
 | 128 | 1024 | 128K | 2K | 0.001221 | 0.000059 | PASS |
 
 每个用例都要求 `nonfinite=0`，且单算子执行超过 180 秒即按卡死处理。
+上表使用连续 causal blocks；补充稀疏分布回归如下，判定阈值为
+`assertRtolEqual(..., prec=1e-2)`：
+
+| mode | B | S | BxS | KV/Batch | max diff | mean diff | result |
+|:---|---:|---:|---:|---:|---:|---:|:---:|
+| random causal | 2 | 4096 | 8K | 8K | 0.017300 | 0.000616 | PASS |
+| heavy-tail | 8 | 16384 | 128K | 32K | 0.024841 | 0.001939 | PASS |
