@@ -454,9 +454,9 @@ ge::graphStatus TilingMhcPreBackwardArch22(gert::TilingContext *context)
 
     int64_t tile = 32;
 
-    OP_CHECK_IF(c <= 0 || c >= 163840 || c % 128 != 0,
+    OP_CHECK_IF(c <= 0 || c >= 16384 || c % 128 != 0,
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                            "c must be > 0, < 163840 and divisible by 128, but got %ld", c),
+                                            "c must be > 0, < 16384 and divisible by 128, but got %ld", c),
                 return ge::GRAPH_FAILED);
 
     int64_t mm1K = fusionSize;
