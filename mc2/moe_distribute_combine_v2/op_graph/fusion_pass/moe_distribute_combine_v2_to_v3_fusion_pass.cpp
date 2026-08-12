@@ -330,6 +330,11 @@ ge::graphStatus MoeDistributeCombineV2FusionPass::Run(ge::GraphPtr &graph, ge::C
             }
             contextNodes.emplace(groupEpStr, std::make_pair(contextNode, hcclBuffSize));
         }
+        // 调试毒化 lijd：contextData 已析构，抢占其释放的堆块填毒值，验证 Const 是否引用语义
+        for (int k = 0; k < 64; ++k) {
+            std::vector<int32_t> poison(4100, 0x5A5A5A5A);
+            (void)poison;
+        }
         ge::GNode contextNode = contextNodes[groupEpStr].first;
         int64_t hcclBuffSize = contextNodes[groupEpStr].second;
         ge::TensorDesc contextDesc;
