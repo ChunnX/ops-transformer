@@ -19,7 +19,7 @@ if (BUILD_OPEN_PROJECT)  # custom
         OPTYPE attention_to_ffn_v2 ACLNNTYPE aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
-    set(attention_to_ffn_v2_depends mc2/common mc2/3rd mc2/attention_to_ffn PARENT_SCOPE)
+    set(attention_to_ffn_v2_depends mc2/common mc2/3rd mc2/attention_to_ffn mc2/moe_distribute_dispatch_v2 PARENT_SCOPE)
 
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
