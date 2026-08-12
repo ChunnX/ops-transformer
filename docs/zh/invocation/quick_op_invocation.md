@@ -36,7 +36,7 @@
 - 基于**自定义算子包**执行算子样例，命令如下：
 
     ```bash
-    bash build.sh --run_example ${op} ${mode} ${pkg_mode} [--vendor_name=${vendor_name}] [--soc=${soc_version}]
+    bash build.sh --run_example ${op} ${mode} ${pkg_mode} [--example_name=${example_name}] [--vendor_name=${vendor_name}] [--soc=${soc_version}] [--simulator=${simulator}] [--experimental=${experimental}]
     # 以FlashAttentionScore算子example执行为例
     # bash build.sh --run_example flash_attention_score eager cust --vendor_name=custom
     ```
@@ -46,7 +46,7 @@
   - \$\{pkg_mode\}：表示包模式，目前仅支持cust，即自定义算子包。
   - \$\{example_name\}（可选）：表示待执行样例名，名称为各个算子examples文件夹下的文件名称，去掉`test_aclnn_`前缀和`.cpp`后缀。
   - \$\{vendor\_name\}（可选）：与构建的自定义算子包设置一致，默认名为custom。
-  - \$\{soc_version\}（可选）：表示NPU型号，默认"ascend910b"。当设置为"ascend950"时会运行"arch35"目录下的示例文件。
+  - \$\{soc_version\}（可选）：表示NPU型号，默认"ascend910b"。当设置为"ascend950"时会运行"arch35"目录下的示例文件。产品名对应的取值参考[SoC 取值映射表](../../QUICKSTART.md#soc-version-mapping)，请按实际场景传参。
   - \$\{simulator\}（可选）：表示仿真模式，目前仅支持eager（aclnn调用）场景下使用。仿真模式下，会根据soc_version链接对应的仿真库。
   - \$\{experimental\}（可选）：表示执行用户保存在experimental贡献目录下的算子。
 
@@ -62,7 +62,7 @@
 
   - \$\{op\}：表示待执行算子，算子名为小写下划线形式，如flash_attention_score。
   - \$\{mode\}：表示算子执行模式，目前支持eager（aclnn调用）、graph（图模式调用）。
-  - \$\{soc_version\}（可选）：表示NPU型号，默认"ascend910b"。当设置为"ascend950"时会运行"arch35"目录下的示例文件。
+  - \$\{soc_version\}（可选）：表示NPU型号，默认"ascend910b"。当设置为"ascend950"时会运行"arch35"目录下的示例文件。产品名对应的取值参考[SoC 取值映射表](../../QUICKSTART.md#soc-version-mapping)，请按实际场景传参。
 
 - 基于**ops-transformer静态库**执行算子样例：
 
@@ -125,7 +125,7 @@ mean result[1] is: 256.000000
 mean result[2] is: 256.000000
 mean result[3] is: 256.000000
 mean result[4] is: 256.000000
-mean result[4] is: 256.000000
+mean result[5] is: 256.000000
 ...
 mean result[65532] is: 256.000000
 mean result[65533] is: 256.000000
@@ -151,9 +151,9 @@ mean result[65535] is: 256.000000
 
 #### 调用流程
 
-为方便调用算子，Host侧提供算子对应的C语言API（即以aclnn为前缀的API）实现算子调用，无需提供算子IR（Intermediate Representation）定义。aclnn API调用流程如下
+为方便调用算子，Host侧提供算子对应的C语言API（即以aclnn为前缀的API）实现算子调用，无需提供算子IR（Intermediate Representation）定义。aclnn API调用流程如下：
 
-![原理图](../figures/aclnn调用.png)
+![原理图](../figures/aclnn_call_flow.png)
 
 #### 编译运行
 
@@ -257,8 +257,8 @@ int main()
 
 - **调用自定义算子**：依赖自定义算子包
 
-    ```bash
-    cmake_minimum_required(VERSION 3.14)
+    ```cmake
+    cmake_minimum_required(VERSION 3.18.4)
     # 设置工程名
     project(ACLNN_EXAMPLE)
 
@@ -322,8 +322,8 @@ int main()
 
 - **调用标准算子（内置算子）**：依赖ops-transformer整包
 
-    ```bash
-    cmake_minimum_required(VERSION 3.14)
+    ```cmake
+    cmake_minimum_required(VERSION 3.18.4)
     # 设置工程名
     project(ACLNN_EXAMPLE)
 
@@ -410,7 +410,7 @@ int main()
 
 该方式基于算子GE IR（Intermediate Representation）定义，以构图方式调用算子，调用流程如下：
 
-![原理图](../figures/IR调用.png)
+![原理图](../figures/geir_call_flow.png)
 
 #### 编译运行
 
@@ -472,7 +472,7 @@ int main()
    在`${test_geir_op_name}.cpp`同级目录下创建CMakeLists.txt文件，GE图引擎会根据配置好的环境变量自动加载已安装好的算子包（无论是自定义算子包或是标准内置算子包）库文件，无需特意区分。示例如下，仅供参考，请根据实际情况自行修改。
 
     ```bash
-   cmake_minimum_required(VERSION 3.14)
+   cmake_minimum_required(VERSION 3.18.4)
 
    # 设置工程名
    project(GE_IR_EXAMPLE)
