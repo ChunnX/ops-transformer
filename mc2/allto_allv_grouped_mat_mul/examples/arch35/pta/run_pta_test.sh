@@ -6,6 +6,32 @@ PYTHON_BIN=${PYTHON_BIN:-python3}
 PTA_LIBRARY=${PTA_LIBRARY:-$SCRIPT_DIR/build/pta/liballto_allv_grouped_mat_mul_shmem_pta.so}
 PTA_TIMEOUT_SECONDS=${PTA_TIMEOUT_SECONDS:-600}
 
+: "${CUST_OPAPI_LIBRARY:?CUST_OPAPI_LIBRARY must be the absolute path to libcust_opapi.so}"
+CUST_OPAPI_LIBRARY=$(readlink -f "$CUST_OPAPI_LIBRARY")
+if [[ ! -f "$CUST_OPAPI_LIBRARY" ]]; then
+    echo "CUST_OPAPI_LIBRARY does not exist: $CUST_OPAPI_LIBRARY" >&2
+    exit 1
+fi
+VENDOR_DIR=$(dirname "$(dirname "$(dirname "$CUST_OPAPI_LIBRARY")")")
+BINARY_INFO_CONFIG="$VENDOR_DIR/op_impl/ai_core/tbe/kernel/config/ascend950/binary_info_config.json"
+if [[ ! -r "$BINARY_INFO_CONFIG" ]]; then
+    echo "Missing Ascend950 binary_info_config.json: $BINARY_INFO_CONFIG" >&2
+    echo "Rebuild and reinstall the custom package with --soc=ascend950 before running PTA." >&2
+    exit 1
+fi
+if ! grep -q '"AlltoAllvGroupedMatMulShmem"' "$BINARY_INFO_CONFIG"; then
+    echo "AlltoAllvGroupedMatMulShmem is absent from: $BINARY_INFO_CONFIG" >&2
+    echo "The installed custom package does not contain the SHMEM Ascend950 kernel registration." >&2
+    exit 1
+fi
+case ":${ASCEND_CUSTOM_OPP_PATH:-}:" in
+    *":$VENDOR_DIR:"*) ;;
+    *) ASCEND_CUSTOM_OPP_PATH="$VENDOR_DIR${ASCEND_CUSTOM_OPP_PATH:+:$ASCEND_CUSTOM_OPP_PATH}" ;;
+esac
+export ASCEND_CUSTOM_OPP_PATH
+echo "Custom OPP directory: $VENDOR_DIR"
+echo "Ascend950 binary config: $BINARY_INFO_CONFIG"
+
 prepend_runtime_dir() {
     local directory=$1
     if [[ ! -d "$directory" ]]; then

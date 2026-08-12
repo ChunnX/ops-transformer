@@ -299,6 +299,9 @@ def check_pta_run_and_docs() -> None:
         "LD_LIBRARY_PATH",
         "SHMEM_LOG_LEVEL",
         "SHMEM runtime library directory",
+        "ASCEND_CUSTOM_OPP_PATH",
+        "binary_info_config.json",
+        "AlltoAllvGroupedMatMulShmem",
         '"$@"',
     ):
         require(token in run, f"PTA run script missing contract token: {token}")
