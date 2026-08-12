@@ -330,15 +330,300 @@ git submodule update --recursive --init
 bash script/build_and_pack_run.sh --build_mode RELEASE --build_python ON --xpu_type NPU
 ```
 
+## 步骤七：拉起 memcache 后端服务
+
+### 7.1 修改配置文件
+
+```bash
+# 拷贝配置文件到自己的目录
+mkdir -p /home/lsy/layerwise
+cp /usr/local/memcache_hybrid/latest/config/mmc-meta.conf /home/lsy/layerwise/mmc-meta.conf
+cp /usr/local/memcache_hybrid/latest/config/mmc-local.conf /home/lsy/layerwise/mmc-local.conf
+
+# 修改 mmc-local.conf
+# 1. protocol 改为 device_sdma（适合A3）
+sed -i 's/ock.mmc.local_service.protocol = host_rdma/ock.mmc.local_service.protocol = device_sdma/' /home/lsy/layerwise/mmc-local.conf
+
+# 2. dram.size 改为 10GB
+sed -i 's/ock.mmc.local_service.dram.size = 1GB/ock.mmc.local_service.dram.size = 10GB/' /home/lsy/layerwise/mmc-local.conf
+```
+
+### 7.2 拉起 MetaService 服务
+
+```bash
+# 设置环境变量
+source /usr/local/memcache_hybrid/set_env.sh
+source /usr/local/memfabric_hybrid/set_env.sh
+export MMC_META_CONFIG_PATH=/home/lsy/layerwise/mmc-meta.conf
+
+# 方法一：二进制方式拉起（后台运行）
+nohup /usr/local/memcache_hybrid/latest/aarch64-linux/bin/mmc_meta_service > /tmp/mmc_meta_service.log 2>&1 &
+echo $! > /tmp/mmc_meta_pid.txt
+
+# 方法二：Python 方式拉起
+# python3 -c "from memcache_hybrid import MetaService; MetaService.main()"
+```
+
+### 7.3 验证 MetaService 服务
+
+```bash
+# 检查进程
+ps -p $(cat /tmp/mmc_meta_pid.txt) -o pid,stat,etime,args
+
+# 检查端口（5000=MetaService, 6000=ConfigStore, 8000=HTTP）
+cat /proc/net/tcp | awk '{print $2}' | grep -i ":1388"  # port 5000
+cat /proc/net/tcp | awk '{print $2}' | grep -i ":1770"  # port 6000
+
+# 查看日志
+tail -5 /var/log/memcache_hybrid/logs/mmc-meta.log
+```
+
+### 7.4 常见报错
+
+**端口被占用**：
+```
+address in use for bind listen on 127.0.0.1:5000
+```
+解决：修改 mmc-meta.conf 和 mmc-local.conf 中的端口号（如改为 5001）
+
+## 步骤八：版本兼容性修复（关键）
+
+> vllm-ascend 与 vllm 版本必须严格匹配，否则会出现各种 ImportError
+
+### 8.1 版本兼容性问题说明
+
+| vllm 版本 | vllm-ascend 版本 | 兼容性 |
+|-----------|------------------|--------|
+| v0.19.0 | fork main | ❌ 缺少 `_approximate_gcd` |
+| latest main | fork main | ❌ triton 3.5 gluon 不兼容 |
+| v0.20.2 | fork main | ❌ `FusedMoE` 改名为 `FusedMoEFactory` |
+| latest main | 官方 v0.20.2rc | ❌ `Glm47MoeModelToolParser._extract_tool_call_regions` 不存在 |
+| latest main | 官方 v0.20.2rc | ❌ `get_total_cp_world_size` 不存在 |
+| **v0.20.2** | **官方 v0.20.2rc** | ✅ **兼容** |
+
+### 8.2 正确的版本组合安装
+
+```bash
+# 1. 安装 vllm v0.20.2
+cd /home/vllm
+git checkout v0.20.2
+pip uninstall vllm -y
+VLLM_TARGET_DEVICE=empty pip install -v -e .
+
+# 2. 克隆官方 vllm-ascend v0.20.2rc 分支
+cd /home
+git clone -b releases/v0.20.2rc --depth 1 https://github.com/vllm-project/vllm-ascend.git vllm-ascend-official
+
+# 3. 安装 vllm-ascend
+cd /home/vllm-ascend-official
+pip install -v -e .
+
+# 4. 验证
+pip show vllm | grep Version   # 0.20.2+empty
+pip show vllm_ascend | grep Version  # 0.1.dev1+gface36594
+python3 -c "import vllm_ascend; print('OK')"
+```
+
+### 8.3 triton 兼容性修复
+
+triton-ascend 3.2.1 自带 triton 3.2.0，可能缺少 `next_power_of_2` 函数：
+
+```bash
+# 检查
+python3 -c "import triton; print(hasattr(triton, 'next_power_of_2'))"
+
+# 如果缺失，手动添加到 triton __init__.py
+TRITON_INIT=$(python3 -c "import triton; import os; print(os.path.join(os.path.dirname(triton.__file__), '__init__.py'))")
+if ! grep -q "next_power_of_2" "$TRITON_INIT"; then
+    echo '' >> "$TRITON_INIT"
+    echo 'def next_power_of_2(n):' >> "$TRITON_INIT"
+    echo '    if n <= 0:' >> "$TRITON_INIT"
+    echo '        return 1' >> "$TRITON_INIT"
+    echo '    return 1 << (n - 1).bit_length()' >> "$TRITON_INIT"
+fi
+```
+
+### 8.4 vllm-ascend 编译问题修复（TILINGKEY_PAR_COMPILE）
+
+```bash
+# 问题：opc 并行编译冲突 "Another process is using this dir"
+# 修复：限制编译并行度 + 禁用 TILINGKEY_PAR_COMPILE
+
+# 限制编译并行度为1（完全串行）
+sed -i 's/JOB_NUM="-j${CPU_NUM}"/JOB_NUM="-j1"/' /home/vllm-ascend-official/csrc/build.sh
+
+# 禁用 TILINGKEY_PAR_COMPILE
+find /home/vllm-ascend-official/csrc -maxdepth 2 -name 'CMakeLists.txt' -o -name '*.cmake' | \
+    xargs grep -l 'TILINGKEY_PAR_COMPILE' | while read f; do
+    sed -i 's/TILINGKEY_PAR_COMPILE=1/TILINGKEY_PAR_COMPILE=0/g' "$f"
+done
+
+# 清理 build 目录后重新安装
+rm -rf /home/vllm-ascend-official/csrc/build
+cd /home/vllm-ascend-official
+pip install -v -e .
+```
+
+## 步骤九：拉起 vllm 实例
+
+### 9.1 创建 run.sh 脚本
+
+```bash
+cat > /home/lsy/run.sh << 'EOF'
+#!/bin/bash
+rm -rf /root/ascend/log/*
+
+echo "/tmp/core.%p" | tee /proc/sys/kernel/core_pattern
+
+export PYTHONPATH=$PYTHONPATH:/home/vllm
+export PYTHONPATH=$PYTHONPATH:/home/vllm-ascend-official
+
+nic_name="enp189s0f0"
+local_ip="172.28.1.10"
+export HCCL_IF_IP=$local_ip
+export GLOO_SOCKET_IFNAME=$nic_name
+export TP_SOCKET_IFNAME=$nic_name
+export HCCL_SOCKET_IFNAME=$nic_name
+
+export PYTHONHASHSEED=0
+export HCCL_BUFFSIZE=1024
+export HCCL_NPU_SOCKET_PORT_RANGE=20000-25000
+export OMP_PROC_BIND=false
+export OMP_NUM_THREADS=10
+
+export VLLM_USE_V1=1
+export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
+export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/mooncake:$LD_LIBRARY_PATH
+
+export VLLM_VERSION=0.20.2
+
+source /usr/local/memcache_hybrid/set_env.sh
+source /usr/local/memfabric_hybrid/set_env.sh
+
+export MMC_LOCAL_CONFIG_PATH=/home/lsy/layerwise/mmc-local.conf
+
+vllm serve /mnt/sfs_turbo/weights/Qwen3.5-35B-A3B \
+    --host 0.0.0.0 \
+    --port 8004 \
+    --tensor-parallel-size 8 \
+    --enforce-eager \
+    --seed 1024 \
+    --served-model-name qwen3 \
+    --enable-expert-parallel \
+    --max-num-seqs 100 \
+    --max-model-len 70000 \
+    --max-num-batched-tokens 16384 \
+    --trust-remote-code \
+    --no-enable-prefix-caching \
+    --gpu-memory-utilization 0.25 \
+    --additional-config '{"ascend_scheduler_config":{"enabled":false},"torchair_graph_config":{"enabled":false}}' > /home/lsy/log_p.log 2>&1
+EOF
+chmod +x /home/lsy/run.sh
+```
+
+### 9.2 执行 run.sh
+
+```bash
+cd /home/lsy
+bash run.sh
+
+# 查看日志
+tail -f log_p.log
+```
+
+### 9.3 带 memcache KV transfer 的 run.sh（可选）
+
+如果需要使用 memcache 作为 KV transfer backend：
+
+```bash
+vllm serve /mnt/sfs_turbo/weights/Qwen3.5-35B-A3B \
+    --host 0.0.0.0 \
+    --port 8004 \
+    --tensor-parallel-size 8 \
+    --enforce-eager \
+    --seed 1024 \
+    --served-model-name qwen3 \
+    --enable-expert-parallel \
+    --max-num-seqs 100 \
+    --max-model-len 70000 \
+    --max-num-batched-tokens 16384 \
+    --trust-remote-code \
+    --no-enable-prefix-caching \
+    --no-disable-hybrid-kv-cache-manager \
+    --gpu-memory-utilization 0.25 \
+    --additional-config '{"ascend_scheduler_config":{"enabled":false},"torchair_graph_config":{"enabled":false}}' \
+    --kv-transfer-config \
+    '{"kv_connector": "AscendStoreConnector",
+        "kv_role": "kv_both",
+        "kv_connector_extra_config": {"backend": "memcache","use_layerwise": false,"mooncake_rpc_port":"0"}}'
+```
+
+### 9.4 验证服务接口
+
+```bash
+# 新窗口执行
+unset http_proxy
+unset https_proxy
+curl -X POST -s http://127.0.0.1:8004/v1/completions -H "Content-Type: application/json" -d '{
+"model": "qwen3",
+"prompt": "The sun dipped below the horizon painting the sky in hues of orange and purple.",
+"max_tokens": 200,
+"temperature": 0
+}'
+```
+
+### 9.5 常见启动问题排查
+
+**问题1：HCCL 端口冲突**
+```
+Communication_Error_Bind_IP_Port(EI0020): Failed to enable listening for the NPU network adapter socket.
+```
+解决：添加环境变量 `export HCCL_NPU_SOCKET_PORT_RANGE=20000-25000`
+
+**问题2：NPU 显存不足**
+```
+ValueError: Free memory on device (27.62/60.96 GiB) on startup is less than desired GPU memory utilization (0.9, 54.86 GiB).
+```
+解决：降低 `--gpu-memory-utilization`（如 0.25），或释放被其他进程占用的 NPU 显存
+
+**问题3：Hybrid KV cache manager 冲突**
+```
+ValueError: Hybrid KV cache manager is disabled but failed to convert the KV cache specs to one unified type.
+```
+解决：添加 `--no-disable-hybrid-kv-cache-manager` 参数（使用 kv-transfer-config 时需要）
+
+**问题4：triton next_power_of_2 缺失**
+```
+RuntimeError: Worker failed with error 'module 'triton' has no attribute 'next_power_of_2''
+```
+解决：参考步骤 8.3 手动添加 `next_power_of_2` 函数
+
+**问题5：DP=2 + TP=8 设备分配失败**
+```
+set default device id failed, ret:107001
+```
+解决：DP=2 + TP=8 总共需要 16 个 Worker，但只有 8 张 NPU。改为 DP=1 + TP=8
+
 ## 环境信息
 
 - 服务器：121.37.53.41 (SSH端口 10001)
-- NPU：910B3 x 8
+- NPU：910B3 x 8（注意：NPU 1 和 2 被其他进程占用约 37GB 显存）
 - 容器：tyy_b120
 - 基础镜像：quay.io/ascend/vllm-ascend:v0.20.2rc1
 - Python：3.11.15
-- vllm：0.19.0+empty (源码可编辑安装)
-- vllm-ascend：0.1.dev1 (源码可编辑安装)
+- vllm：0.20.2+empty (源码可编辑安装, /home/vllm)
+- vllm-ascend：0.1.dev1+gface36594 (官方 releases/v0.20.2rc 分支, /home/vllm-ascend-official)
 - memfabric_hybrid：1.0.8
 - memcache_hybrid：1.0.4
-- pybind11：3.0.1 (降级以兼容 memfabric 编译)
+- pybind11：3.0.1
+- triton-ascend：3.2.1 (triton 3.2.0 + next_power_of_2 patch)
+- 模型：Qwen3.5-35B-A3B (/mnt/sfs_turbo/weights/Qwen3.5-35B-A3B, bfloat16, 66.97 GiB)
+- MetaService：运行中 (端口 5000/6000/8000)
+
+### 模型加载状态
+
+- ✅ vllm v0.20.2 + vllm-ascend v0.20.2rc 安装成功
+- ✅ MetaService 后端服务运行中
+- ✅ 模型权重加载成功（14/14 shards, 237秒, 每卡 8.36GB）
+- ✅ HCCL 分布式通信初始化成功（8 Worker, world_size=8）
+- ⚠️ KV cache profiling 阶段 Worker 崩溃（显存不足，需释放 NPU 1/2 上的其他进程或降低 max-model-len）
