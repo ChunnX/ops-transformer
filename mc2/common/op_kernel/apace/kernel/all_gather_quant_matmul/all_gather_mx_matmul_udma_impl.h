@@ -257,7 +257,7 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::AllGather
         // round 0 对应 dependTileIdx=1，AIC 侧按 dependTileIdx 等待对应的远端 round 数据。
         CrossCoreSetFlag<0x2, PIPE_MTE3>(round + 1);
     }
-    allGatherScale_.Finalize();
+    allGatherScale_.template Finalize<BARRIER_NONE>();
     allGatherData_.Finalize();
 }
 
