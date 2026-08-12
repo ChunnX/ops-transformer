@@ -288,7 +288,7 @@ def _check_block_size(case, batchSize, seqSize, layoutId, cmpRatio, coff, cacheM
 def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, apeCpu,
                            blockTableCpu, spGolden, sqGolden, cuGolden,
                            cmpRatio, coff, cacheMode, headDim, dataType, ref=None,
-                           compare_mode="2", device="cpu"):
+                           compare_mode="3", device="cpu"):
     """通路 1/5：正向输出（cmp_kv/softmax_score/kv）与小算子拼接参考比对。
 
     参考实现：compressor_forward.compressor_forward（纯 PyTorch 小算子拼接）。
@@ -478,7 +478,7 @@ def _prepare_case(case, device):
     return p, totalValid, cuNpu, sps, sqs, seed
 
 
-def run_forward_direct_case(case, p, b, totalValid, device, compare_mode="2"):
+def run_forward_direct_case(case, p, b, totalValid, device, compare_mode="3"):
     """通路 5：单正向——直调 _compressor_forward（不经 autograd）。
 
     校验：
@@ -1005,7 +1005,7 @@ def run_backward_case(case, device, compare_mode="3"):
         for name, act, b_out, c_out, dt in [
                 ("d_wkv", dWkv.cpu().float(), b_dwkv, c_dwkv, p["dataType"]),
                 ("d_wgate", dWgate.cpu().float(), b_dwgate, c_dwgate, p["dataType"]),
-                ("d_ape", dApe.cpu().float(), b_dape, c_dape, "float32"),
+                ("d_ape", dApe.cpu().float().view(cr, coff * D), b_dape, c_dape, "float32"),
                 ("d_x", dX.cpu().float(), b_dx, c_dx, p["dataType"])]:
             r = three_way_report(name, act, b_out, c_out, dt)
             statuses.append(f"{name}={r['status']}")
