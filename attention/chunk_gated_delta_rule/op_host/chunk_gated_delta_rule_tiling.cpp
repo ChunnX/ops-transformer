@@ -129,8 +129,8 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     int64_t dv = tilingData_.dv;
     int64_t dk = tilingData_.dk;
     int64_t s = tilingData_.maxGroupLength;
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s;     // gCumExp (FP32)
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kCumDecay (BF16)
+    // R6: gCumExp 不再分配 GM workspace (Stage2/Stage3 从原始 g 重算)
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kCumDecay/kBetaInv (BF16)
     if (tilingData_.stateIsFp32) {
         tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv; // vInner (FP32)
         tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;  // vInnerBf16 (BF16, for stage3)
@@ -149,9 +149,9 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     }
     tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask (FP32)
 
-    // stage1 临时变量空间
-    tilingData_.stageWorkspaceSz =
-        sizeLow * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
+    // R2/R4/R5: stage1 临时变量空间
+    // 删除 queryCon/keyCon/vBeta/gBK, 仅保留 kkWs 和 attnWs (各 c*c)
+    tilingData_.stageWorkspaceSz = sizeLow * c * (STAGE_ONE_TWO * c) * tilingData_.stageOneParaNum;
     tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
 
     PrintTilingData();
@@ -392,7 +392,6 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::AnalyzeDtype()
 
     return ge::GRAPH_SUCCESS;
 }
-
 
 // 校验 shape 的维度数是否符合预期
 bool ChunkGatedDeltaRuleTiling::CheckDim(const gert::Shape &shape, const size_t dim, const std::string &dimDesc)
@@ -664,7 +663,6 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::GetOptionalInput()
     tilingData_.hasGamma = (gDesc != nullptr && gTensor != nullptr && gShape != nullptr) ? 1 : 0;
     return ge::GRAPH_SUCCESS;
 }
-
 
 void ChunkGatedDeltaRuleTiling::PrintTilingData()
 {

@@ -30,9 +30,11 @@ using StageThreeMT = matmul::MatmulImpl<aT3, bT3, cT3>;
 
 struct StageThreeParams {
     GlobalTensor<bfloat16_t> qkt; // (Nv, Sp, Dk)
-    GlobalTensor<float> gCumExp;  // (Nv, Sp)
+    GlobalTensor<float> gCumExp;  // (Nv, Sp) — R6: 不再使用, 保留兼容
+    GlobalTensor<float> g;        // (T, Nv) — R6: 原始 g 输入
     GlobalTensor<bfloat16_t> vInner;
     GlobalTensor<float> maskTensor;
+    int64_t cgStartPos; // R6: ChunkGroup 在 T 上的起始位置
     GM_ADDR ws;
     GlobalTensor<bfloat16_t> attnOut;
     StageThreeMT *mm3;
@@ -87,6 +89,8 @@ public:
         tmpBuffer2_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpOffset), buffOffset);
         buffOffset += tmpOffset * sizeof(float);
         maskBuffer_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpOffset), buffOffset);
+        buffOffset += tmpOffset * sizeof(float);
+        gCumBuffer_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpOffset), buffOffset);
 
         // 搬入mask
         DataCopyExtParams inParams{static_cast<uint16_t>(chunkSize_), static_cast<uint32_t>(chunkSize_ * sizeof(float)),
@@ -131,13 +135,29 @@ public:
     {
         // chunkSize 大小进行自动补齐
         if constexpr (gOptional) {
-            AlignedCopyIn(sTP_->gCumExp[nvId * Sp_ + chunkPos], 1, curChunkSize_); // 自动补齐
-            auto g_cum = inQueue_.DeQue<float>();
+            // R6: 从原始 g (T, Nv) 重算 cumsumg
+            int64_t gStart = sTP_->cgStartPos + chunkPos;
+            DataCopyExtParams gInParams{1, static_cast<uint32_t>(curChunkSize_ * sizeof(float)), 0, 0, 0};
+            DataCopyPadExtParams<float> gPadParams{true, 0, 0, 0};
+            auto gLocal = inQueue_.AllocTensor<float>();
+            DataCopyPad(gLocal, sTP_->g[gStart * Nv_ + nvId], gInParams, gPadParams);
+            inQueue_.EnQue(gLocal);
+            gLocal = inQueue_.DeQue<float>();
+            if (curChunkSize_ < chunkSize_) {
+                Duplicate(tmpBuffer1_, 0.0f, chunkSize_ * chunkSize_);
+                PipeBarrier<PIPE_V>();
+            }
+            DataCopy(tmpBuffer1_, gLocal, curChunkSize_);
+            PipeBarrier<PIPE_V>();
+            inQueue_.FreeTensor(gLocal);
+            CumSumInfo cumSumInfo{1, static_cast<uint32_t>(chunkSize_)};
+            CumSum<float>(gCumBuffer_, tmpBuffer1_, tmpBuffer1_, cumSumInfo);
+            PipeBarrier<PIPE_V>();
             const uint32_t srcShape1[] = {static_cast<uint32_t>(chunkSize_), static_cast<uint32_t>(1)};
             const uint32_t srcShape2[] = {static_cast<uint32_t>(1), static_cast<uint32_t>(chunkSize_)};
             const uint32_t dstShape[] = {static_cast<uint32_t>(chunkSize_), static_cast<uint32_t>(chunkSize_)};
-            Broadcast<float, BROADCAST_AXIS, 1>(tmpBuffer1_, g_cum, dstShape, srcShape1);
-            Broadcast<float, BROADCAST_AXIS, 0>(tmpBuffer2_, g_cum, dstShape, srcShape2);
+            Broadcast<float, BROADCAST_AXIS, 1>(tmpBuffer1_, gCumBuffer_, dstShape, srcShape1);
+            Broadcast<float, BROADCAST_AXIS, 0>(tmpBuffer2_, gCumBuffer_, dstShape, srcShape2);
             PipeBarrier<PIPE_V>();
             Sub(tmpBuffer1_, tmpBuffer1_, tmpBuffer2_, curChunkSize_ * chunkSize_);
             PipeBarrier<PIPE_V>();
@@ -145,7 +165,6 @@ public:
             PipeBarrier<PIPE_V>();
             Exp<float, 0, true>(tmpBuffer1_, tmpBuffer1_, curChunkSize_ * chunkSize_);
             PipeBarrier<PIPE_V>();
-            inQueue_.FreeTensor(g_cum);
         } else {
             Duplicate(tmpBuffer1_, static_cast<float>(1.0f), curChunkSize_ * chunkSize_);
             PipeBarrier<PIPE_V>();
@@ -216,6 +235,7 @@ private:
     LocalTensor<float> tmpBuffer1_;
     LocalTensor<float> tmpBuffer2_;
     LocalTensor<float> maskBuffer_;
+    LocalTensor<float> gCumBuffer_; // R6: 重算的 g_cum
     int64_t seqLength_;
     int64_t Sp_;
     int64_t Nv_;
