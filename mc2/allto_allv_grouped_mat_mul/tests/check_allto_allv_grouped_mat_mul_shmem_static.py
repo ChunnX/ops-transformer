@@ -358,6 +358,9 @@ def check_pta_run_and_docs() -> None:
         "LD_LIBRARY_PATH",
         "SHMEM_LOG_LEVEL",
         "SHMEM runtime library directory",
+        "SHMEM runtime was built without Ascend950 UDMA support",
+        "DEVICE UDMA support is not enabled in this build.",
+        "bash scripts/build.sh -soc_type Ascend950",
         "ASCEND_CUSTOM_OPP_PATH",
         "aic-ascend950-ops-info.json",
         "OPS_INFO_CONFIG",
@@ -378,6 +381,8 @@ def check_pta_run_and_docs() -> None:
         "## Troubleshooting",
         "## Offline verification limits",
         "PTA_TIMEOUT_SECONDS",
+        "ACLSHMEM_UDMA_SUPPORT=ON",
+        "bash scripts/build.sh -soc_type Ascend950",
     ):
         require(token in readme, f"PTA README missing section or command: {token}")
     for address in re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", run + readme):

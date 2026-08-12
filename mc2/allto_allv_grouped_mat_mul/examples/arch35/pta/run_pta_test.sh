@@ -95,6 +95,14 @@ if [[ -z "$SHMEM_RUNTIME_LIBRARY_DIR" ]]; then
     echo "SHMEM runtime library directory does not contain libshmem.so; check SHMEM_HOME_PATH/SHMEM_HOME" >&2
     exit 1
 fi
+SHMEM_RUNTIME_LIBRARY="$SHMEM_RUNTIME_LIBRARY_DIR/libshmem.so"
+if grep -aFq "DEVICE UDMA support is not enabled in this build." "$SHMEM_RUNTIME_LIBRARY"; then
+    echo "SHMEM runtime was built without Ascend950 UDMA support: $SHMEM_RUNTIME_LIBRARY" >&2
+    echo "This operator requires ACLSHMEM_DATA_OP_UDMA; a non-UDMA runtime cannot run the source kernel." >&2
+    echo "Rebuild the selected SHMEM source tree with: bash scripts/build.sh -soc_type Ascend950" >&2
+    echo "Verify its CMake cache reports ACLSHMEM_UDMA_SUPPORT=ON, then rebuild the PTA bridge." >&2
+    exit 1
+fi
 echo "SHMEM runtime library directory: $SHMEM_RUNTIME_LIBRARY_DIR"
 echo "SHMEM log level: $SHMEM_LOG_LEVEL"
 

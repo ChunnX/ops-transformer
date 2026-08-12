@@ -102,6 +102,21 @@ Any dynamic-library load error, parameter error, SHMEM/aclnn error, non-finite r
 - Undefined V2 symbol while loading: confirm `CUST_OPAPI_LIBRARY` belongs to this branch's installed operator package and is visible through its RPATH or `LD_LIBRARY_PATH`.
 - V2 header not found: set `CUST_OPAPI_INCLUDE_DIR` to the directory containing the `aclnnop` subdirectory.
 - SHMEM include/library not found: verify the selected `SHMEM_HOME_PATH` or `SHMEM_HOME` layout; do not set both to unrelated SDKs.
+- `DEVICE UDMA support is not enabled in this build` followed by `aclshmemx_init_attr ... ret=-3` means the
+  selected `libshmem.so` was built without the UDMA backend. This operator cannot fall back to a different
+  transport because its source kernel calls the UDMA device API. Rebuild SHMEM for Ascend950 and confirm
+  `ACLSHMEM_UDMA_SUPPORT=ON` in its CMake cache. For the catccos source layout, preserve the old install and
+  rebuild with:
+
+  ```bash
+  cd /path/to/catccos/3rdparty/shmem
+  mv install "install.no-udma.$(date +%Y%m%d-%H%M%S)"
+  bash scripts/build.sh -soc_type Ascend950
+  source install/set_env.sh -soc_type Ascend950
+  grep -E '^(SOC_TYPE|ACLSHMEM_UDMA_SUPPORT)' build/CMakeCache.txt
+  ```
+
+  Re-export `SHMEM_HOME_PATH` from the new `set_env.sh` and rerun `build_pta.sh` before the PTA test.
 - `aclshmem_malloc` or `aclshmem_calloc` failure: keep `--heap-bytes` at least 1004 MiB and verify all ranks use identical input byte sizes and allocation order.
 - Collective timeout: inspect the last `rank/case/phase` line for every worker. Increase `PTA_TIMEOUT_SECONDS` only after ruling out rank, device, rendezvous, ABI, and allocation mismatches.
 - Port collision: choose another loopback rendezvous with `--ip-port` or `SHMEM_IP_PORT`.
