@@ -124,7 +124,7 @@ struct SplitResult {
           gS1End(aicNum),
           s2End(aicNum),
           firstFdDataWorkspaceIdx(aicNum),
-          fdRes(aicNum, aivNum){};
+          fdRes(aicNum, aivNum) {};
 };
 
 // 分核功能模块内部使用：记录切分信息
@@ -382,5 +382,4 @@ private:
     };
 };
 } // namespace aicpu
-
 #endif
