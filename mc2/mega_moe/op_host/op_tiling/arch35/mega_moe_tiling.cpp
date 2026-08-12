@@ -346,10 +346,12 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
     OP_TILING_CHECK(activationPtr == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(nodeName, "activation"), return ge::GRAPH_FAILED);
     const bool isSwiglu = std::strcmp(activationPtr, "swiglu") == 0;
+    const bool isSwigluStep = std::strcmp(activationPtr, "swiglustep") == 0;
+    const bool isSwigluOai = std::strcmp(activationPtr, "swigluoai") == 0;
     const bool isSituGlu = std::strcmp(activationPtr, "situglu") == 0;
-    OP_TILING_CHECK(!isSwiglu && !isSituGlu,
+    OP_TILING_CHECK(!isSwiglu && !isSwigluStep && !isSwigluOai && !isSituGlu,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr,
-                                              "A5 supports 'swiglu' and 'situglu'"),
+                                              "A5 supports 'swiglu', 'swiglustep', 'swigluoai' and 'situglu'"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(activationParamsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParams"),
                     return ge::GRAPH_FAILED);
@@ -357,11 +359,11 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
     const float *activationParams = activationParamsPtr->GetData();
     OP_TILING_CHECK(activationParams == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParamsData"),
                     return ge::GRAPH_FAILED);
-    if (isSwiglu) {
+    if (isSwiglu || isSwigluStep) {
         OP_TILING_CHECK(paramCount > 1U,
                         OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize",
                                                   std::to_string(paramCount).c_str(),
-                                                  "should be 0 or 1 for swiglu"),
+                                                  "should be 0 or 1 for swiglu/swiglustep"),
                         return ge::GRAPH_FAILED);
         if (paramCount == 1U) {
             const float activationClamp = activationParams[0];
@@ -371,6 +373,28 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
                                                       "should be >= 0 and not NAN"),
                             return ge::GRAPH_FAILED);
         }
+    } else if (isSwigluOai) {
+        OP_TILING_CHECK(paramCount != 3U,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize",
+                                                  std::to_string(paramCount).c_str(),
+                                                  "should be 3 for swigluoai [clamp, alpha, beta]"),
+                        return ge::GRAPH_FAILED);
+        const float activationClamp = activationParams[0];
+        OP_TILING_CHECK(activationClamp < 0 || std::isnan(activationClamp),
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationClamp",
+                                                  std::to_string(activationClamp).c_str(),
+                                                  "should be >= 0 and not NAN"),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(!std::isfinite(activationParams[1]),
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationAlpha",
+                                                  std::to_string(activationParams[1]).c_str(),
+                                                  "alpha must be finite"),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(!std::isfinite(activationParams[2]),
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationBeta",
+                                                  std::to_string(activationParams[2]).c_str(),
+                                                  "beta must be finite"),
+                        return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(paramCount < 1U || paramCount > 2U,
                         OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize",
@@ -391,6 +415,13 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
                             return ge::GRAPH_FAILED);
         }
     }
+
+    auto topoTypePtr = attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
+    OP_TILING_CHECK(topoTypePtr != nullptr && *topoTypePtr == TOPO_TYPE_URMA &&
+                    std::strcmp(activationPtr, "swiglu") != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr,
+                                              "URMA topology only supports 'swiglu'"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -605,6 +636,19 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
             tilingData->actSubMode = 0U; // ACT_SUB_MODE_DEFAULT
             tilingData->activationAlpha = 0.0f;
         }
+    } else if (std::strcmp(activationPtr, "swiglustep") == 0) {
+        tilingData->clampLimit = activationParamsPtr->GetSize() == 0U ? DEFAULT_ACTIVATION_CLAMP :
+                                                                        activationParams[0];
+        tilingData->actMode = 2U;    // ACT_MODE_SWIGLU_STEP
+        tilingData->actSubMode = 0U; // ACT_SUB_MODE_DEFAULT
+        tilingData->activationAlpha = 1.0f;
+        tilingData->activationBeta = 1.0f;
+    } else if (std::strcmp(activationPtr, "swigluoai") == 0) {
+        tilingData->clampLimit = activationParams[0];
+        tilingData->actMode = 3U;    // ACT_MODE_SWIGLU_OAI
+        tilingData->actSubMode = 0U; // ACT_SUB_MODE_DEFAULT
+        tilingData->activationAlpha = activationParams[1];
+        tilingData->activationBeta = activationParams[2];
     } else {
         tilingData->clampLimit = activationParamsPtr->GetSize() == 0U ? DEFAULT_ACTIVATION_CLAMP :
                                                                         activationParams[0];
