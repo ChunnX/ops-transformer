@@ -31,7 +31,7 @@ using namespace AscendC;
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tilingDataIn, tiling);                       \
         const tilingdataClass *__restrict tilingData = &tilingDataIn;                             \
         op.Init(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ,  \
-            seqUsedQ, seqUsedKV, sinks, metadata, attentionOut, user, tilingData, &tPipe);        \
+            seqUsedQ, seqUsedKV, sinks, metadata, attentionOut, user, tilingData);                \
         op.Process();                                                                             \
     } while (0)
 
@@ -46,7 +46,7 @@ template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE,
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-    TPipe tPipe;
+    // TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
     if constexpr (KV_DTYPE == DTYPE_FP8_E4M3FN) {

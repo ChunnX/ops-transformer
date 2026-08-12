@@ -54,7 +54,7 @@ public:
     static constexpr uint32_t rightBufTotalSize = rightBufSingleSize * rightBufNum;
 
     __aicore__ inline SCFABlockCube() {};
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, __gm__ uint8_t *query, uint32_t l1BaseAddr);
+    __aicore__ inline void InitCubeBlock(__gm__ uint8_t *query, uint32_t l1BaseAddr);
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo);
     __aicore__ inline void IterateLoadQK(
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
@@ -82,7 +82,6 @@ private:
     __aicore__ inline void IterateBmm2SCFA(StaticBuffer<T> &outputBuf,
         StaticBuffer<Q_T> &l1PBuffer,
         RunInfo &runInfo, ConstInfo &constInfo);
-    TPipe *tPipe;
     /* =====================GM变量==================== */
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
     FaGmTensor<Q_T, Q_FORMAT> queryGm;
@@ -106,10 +105,9 @@ private:
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeBlock(
-    TPipe *pipe, __gm__ uint8_t *query, uint32_t l1BaseAddr)
+    __gm__ uint8_t *query, uint32_t l1BaseAddr)
 {
     if ASCEND_IS_AIC {
-        tPipe = pipe;
         this->queryGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)query);
         InitLocalBuffer(l1BaseAddr);
     }
@@ -369,7 +367,7 @@ TEMPLATES_DEF
 class SCFABlockCubeDummy {
 public:
     __aicore__ inline SCFABlockCubeDummy() {};
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, __gm__ uint8_t *query, uint32_t l1BaseAddr) {}
+    __aicore__ inline void InitCubeBlock(__gm__ uint8_t *query, uint32_t l1BaseAddr) {}
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, const ConstInfo& constInfo) {}
 };
 
