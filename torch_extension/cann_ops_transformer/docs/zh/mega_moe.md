@@ -1260,7 +1260,10 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     ```text
     expertPerRank = moeExpertNum / epWorldSize;
 
-    // 全卡软同步使用 60KB
+    // MTE模板的异常dump元数据独占winIn前60KB；URMA模板暂不预留
+    exceptionDumpRegionSize = (topoType == MTE ? 60LL * 1024LL : 0);
+
+    // 功能区内的全卡软同步使用 60KB
     peermemDataOffset = 60LL * 1024LL;
 
     // mask_recv_size
@@ -1278,9 +1281,10 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     // combine_send_size
     combineOut = CeilAlign(numMaxTokensPerRank * hidden * numTopk * 2, 512);
 
-    totalBytes = peermemDataOffset + maskRecvSize + quantTokenScaleSize + combineOut;
+    totalBytes = exceptionDumpRegionSize + peermemDataOffset
+               + maskRecvSize + quantTokenScaleSize + combineOut;
     ```
-    其中 `ep_world_size` 即通信域大小，$maxExpertPerRank$ 表示每张卡上可能专家数的最大值，$\mathrm{quant}$ 表示是否开启dispatch量化（`dispatch_quant_mode = 2`）。预留空间10 MB为内部元数据对齐与安全余量。
+    MTE模板中，`exceptionDumpRegionSize` 和 `peermemDataOffset` 均为60KB：前者保存异常dump元数据，后者是功能区内的全卡软同步空间，因此mask接收区从原始winIn基址偏移120KB处开始。URMA模板暂未适配结构化异常dump，`exceptionDumpRegionSize` 为0，保持原有winIn布局。
   - 通信域各节点的驱动版本应当相同。
     <!-- end id13 -->
   <!-- npu="910b" id14 -->
@@ -1403,7 +1407,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     - topo_type由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。当前暂不支持URMA通信方式。
     - topk_weights_type取值为0或1，0表示关闭topkWeights前移，1表示开启。当前暂不支持URMA通信方式。
     - num_max_tokens_per_rank为0时自动计算；非0时必须等于num_tokens。
-    - ccl_buffer_size需 >= 全卡软同步预留空间（固定60KB） + mask接收空间 + 量化token缩放因子空间 + combine发送空间。
+    - MTE模板的ccl_buffer_size需 >= 异常dump预留空间（固定60KB） + 全卡软同步预留空间（固定60KB） + mask接收空间 + 量化token缩放因子空间 + combine发送空间；URMA模板暂不增加异常dump预留空间。
     - l1_weights和l2_weights的数据类型必须一致，且仅支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。
     - topk_weights数据类型仅支持BF16或FP32。
 
