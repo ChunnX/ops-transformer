@@ -833,9 +833,13 @@ def generate_data():
     kr_bf16 = None
     if ENABLE_ROPE and D_rope > 0:
         torch.manual_seed(SEED_QR)
-        qr_bf16 = (torch.rand(B, N_q, max_sq, D_rope, dtype=torch.bfloat16) * 2 - 1) * DATA_RANGE_QR
+        qr_bf16 = (
+            torch.rand(B, N_q, max_sq, D_rope, dtype=torch.bfloat16) * 2 - 1
+        ) * DATA_RANGE_QR
         torch.manual_seed(SEED_KR)
-        kr_bf16 = (torch.rand(B, N_kv, max_skv, D_rope, dtype=torch.bfloat16) * 2 - 1) * DATA_RANGE_KR
+        kr_bf16 = (
+            torch.rand(B, N_kv, max_skv, D_rope, dtype=torch.bfloat16) * 2 - 1
+        ) * DATA_RANGE_KR
 
     logger.info(
         "[INFO] q_fp16=%s, k_fp16=%s, v_fp16=%s",

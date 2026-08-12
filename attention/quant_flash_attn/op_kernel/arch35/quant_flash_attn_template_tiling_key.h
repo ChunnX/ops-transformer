@@ -56,7 +56,7 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(
     ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, QFA_MXFP8_FP32_PREFILL, QFA_MXFP8_FP32_DECODE),
     ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
     ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_PA_BBND,
- 	  	                 KvLayoutType_PA_BNBD, KvLayoutType_PA_NZ),
+                         KvLayoutType_PA_BNBD, KvLayoutType_PA_NZ),
     ASCENDC_TPL_BOOL_SEL(IsFd, false),
     ASCENDC_TPL_TILING_STRUCT_SEL(QuantFlashAttnTilingData)));
 
