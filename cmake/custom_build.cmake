@@ -555,15 +555,22 @@ if (BUILD_OPEN_PROJECT)
 
     if(NOT ENABLE_BUILT_IN)
         set(update_proto_srcs)
+        set(seen_proto_header_names "")
         foreach(OP_DIR ${OP_DIR_LIST})
             # copy updated proto cpps to autogen
             file(GLOB OP_PROTO_HEADER ${OP_DIR}/op_graph/*_proto.h)
             foreach(proto_header ${OP_PROTO_HEADER})
+                get_filename_component(proto_header_filename ${proto_header} NAME)
+                # 过滤同名 proto.h
+                if(proto_header_filename IN_LIST seen_proto_header_names)
+                    message(STATUS "Skip duplicate proto header: ${proto_header}")
+                    continue()
+                endif()
+                list(APPEND seen_proto_header_names ${proto_header_filename})
                 message(STATUS "Update proto header path: ${proto_header}")
                 set(TARGET_PROTO_DIR ${generate_proto_dir}/updateproto/)
                 file(MAKE_DIRECTORY ${TARGET_PROTO_DIR})
 
-                get_filename_component(proto_header_filename ${proto_header} NAME)
                 string(REPLACE ".h" ".cpp" proto_cpp_filename ${proto_header_filename})
                 set(proto_cpp ${TARGET_PROTO_DIR}${proto_cpp_filename})
                 set_source_files_properties(${proto_cpp}
@@ -926,11 +933,13 @@ if(generate_proto_srcs AND TARGET cust_proto AND NOT ENABLE_BUILT_IN AND NOT ENA
             message(STATUS "custom Graph Plugin Source to add es to obj")
             add_dependencies(${GRAPH_PLUGIN_NAME}_obj
                 build_es_math
+                build_es_nn
                 build_es_transformer_cust
             )
             target_link_libraries(${GRAPH_PLUGIN_NAME}_obj
                 PRIVATE
                 es_math
+                es_nn
                 es_transformer_cust
             )
         endif()
@@ -938,12 +947,14 @@ if(generate_proto_srcs AND TARGET cust_proto AND NOT ENABLE_BUILT_IN AND NOT ENA
     # directly link es to opsproto
     add_dependencies(cust_proto
         build_es_math
+        build_es_nn
         build_es_transformer_cust
     )
     target_link_libraries(cust_proto
         PRIVATE
         -Wl,--no-as-needed
         es_math
+        es_nn
         es_transformer_cust
         -Wl,--as-needed
     )
