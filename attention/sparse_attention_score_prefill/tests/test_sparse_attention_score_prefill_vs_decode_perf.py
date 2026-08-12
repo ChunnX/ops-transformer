@@ -27,6 +27,7 @@ large-HBM device; if 16K OOMs, lower Q_SEQLEN.
 
 import importlib.util
 import math
+import os
 import sys
 from math import ceil
 from pathlib import Path
@@ -34,6 +35,8 @@ from pathlib import Path
 import torch
 import torch_npu
 from torch_npu.testing.testcase import TestCase, run_tests
+
+torch_npu.npu.set_device(os.getenv("NPU_DEVICE", "npu:0"))
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _TORCH_EXT = _REPO_ROOT / "torch_extension"
@@ -52,17 +55,19 @@ build_k2q_csr_torch_reference = prefill_golden.build_k2q_csr_torch_reference
 
 # ---- config ----
 KV_SEQLENS = [
-    128*1024,
-    #32 * 1024, 64 * 1024, 128 * 1024
-]  # KV cache length sweep
+    int(value.strip())
+    for value in os.getenv("KV_SEQLENS", str(128 * 1024)).split(",")
+    if value.strip()
+]  # Per-batch KV cache length sweep.
 Q_HEADS = 64
 KV_HEADS = 4
 TOP_K = 16
 HEAD_DIM = 128
 BLOCK_SIZE = 128
-Q_SEQLEN = 16*1024        # long prefill q (not chunked); ~8GB prefill workspace
-SEED = 42
-PREC = 1e-2                  # prefill vs decode consistency rtol (different reduction orders)
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", "1"))
+Q_SEQLEN = int(os.getenv("Q_SEQLEN", str(16 * 1024)))  # Per-batch S; B*S is the generalization axis.
+SEED = int(os.getenv("SEED", "42"))
+PREC = float(os.getenv("PREC", "1e-2"))  # Different reduction orders need a loose rtol.
 
 # Production k2q_row_ptr dump (captured on-device): each .pt holds {'k2q_row_ptr': [kv_heads,
 # numKvBlocks+1] int32}. Production config matches this test (q=16K, top_k=16, kv_heads=4,
@@ -363,23 +368,31 @@ def _gen_data_from_production_rowptr(row_ptr, seed):
 
 
 def _gen_data(kv_seqlen, seed, *, random_select=False, bias=None):
-    batch = 1
+    batch = BATCH_SIZE
     q_seqlen = Q_SEQLEN
+    total_q_tokens = batch * q_seqlen
     max_blocks = ceil(kv_seqlen / BLOCK_SIZE)
     total_physical = batch * max_blocks
     torch.manual_seed(seed)
-    query = (torch.rand(q_seqlen, Q_HEADS, HEAD_DIM, dtype=torch.float32) * 2 - 1).to(torch.bfloat16)
+    query = (torch.rand(total_q_tokens, Q_HEADS, HEAD_DIM, dtype=torch.float32) * 2 - 1).to(torch.bfloat16)
     key = (torch.rand(total_physical, BLOCK_SIZE, KV_HEADS, HEAD_DIM, dtype=torch.float32) * 2 - 1).to(torch.bfloat16)
     value = (torch.rand(total_physical, BLOCK_SIZE, KV_HEADS, HEAD_DIM, dtype=torch.float32) * 2 - 1).to(torch.bfloat16)
     block_table = torch.arange(total_physical, dtype=torch.int32).reshape(batch, max_blocks)
 
-    select_idx, select_num = _fast_causal_select_idx(
-        q_seqlen, kv_seqlen, KV_HEADS, BLOCK_SIZE, TOP_K,
-        random_select=random_select, bias=bias, rng_seed=seed)
-    actual_seq_lengths = torch.tensor([q_seqlen], dtype=torch.int32)
-    actual_seq_lengths_kv = torch.tensor([kv_seqlen], dtype=torch.int32)
+    select_idx_parts = []
+    select_num_parts = []
+    for batch_idx in range(batch):
+        select_idx_batch, select_num_batch = _fast_causal_select_idx(
+            q_seqlen, kv_seqlen, KV_HEADS, BLOCK_SIZE, TOP_K,
+            random_select=random_select, bias=bias, rng_seed=seed + batch_idx)
+        select_idx_parts.append(select_idx_batch)
+        select_num_parts.append(select_num_batch)
+    select_idx = torch.cat(select_idx_parts, dim=1)
+    select_num = torch.cat(select_num_parts, dim=1)
+    actual_seq_lengths = torch.full((batch,), q_seqlen, dtype=torch.int32)
+    actual_seq_lengths_kv = torch.full((batch,), kv_seqlen, dtype=torch.int32)
 
-    # batch=1: select_idx is batch-local == q2k; skip the slow global<->local conversion.
+    # select_idx is batch-local, which is the format shared by decode and the CSR builder.
     k2q_row_ptr, k2q_q_indices, k2q_slot_indices = build_k2q_csr_torch_reference(
         select_idx, actual_seq_lengths, actual_seq_lengths_kv, BLOCK_SIZE, q_global_offset=True)
 
@@ -433,11 +446,12 @@ class TestSparseAttentionPrefillVsDecode(TestCase):
         p_out = p_out.cpu()
         d_out = d_out.cpu()
 
-        print("p_out:", p_out)
-        print("d_out:", d_out)
         diff = (p_out.float() - d_out.float()).abs()
-        print(f"[kv={kv_seqlen//1024}K q={Q_SEQLEN//1024}K kvh={KV_HEADS} tk={TOP_K} mode={mode}] "
-              f"max_diff={diff.max().item():.6f} mean={diff.mean().item():.6f}")
+        print(
+            f"[kv={kv_seqlen//1024}K B={BATCH_SIZE} S={Q_SEQLEN} "
+            f"BxS={BATCH_SIZE * Q_SEQLEN} kvh={KV_HEADS} tk={TOP_K} mode={mode}] "
+            f"shape={tuple(p_out.shape)} nonfinite={int((~torch.isfinite(p_out.float())).sum())} "
+            f"max_diff={diff.max().item():.6f} mean={diff.mean().item():.6f}")
 
         # accuracy: prefill vs decode must agree (loose rtol). assertRtolEqual also fails on NaN.
         self.assertRtolEqual(d_out.float().numpy(), p_out.float().numpy(), prec=PREC)
