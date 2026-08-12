@@ -62,15 +62,15 @@ public:
     {
 #if defined(ENABLE_ASCENDC_DUMP)
         uint8_t *ptrDump{nullptr};
-        aclCheck(aclrtMalloc(reinterpret_cast<void **>(&ptrDump), ALL_DUMPSIZE, ACL_MEM_MALLOC_HUGE_FIRST));
+        FTSelf::aclCheck(aclrtMalloc(reinterpret_cast<void **>(&ptrDump), ALL_DUMPSIZE, ACL_MEM_MALLOC_HUGE_FIRST));
         if (fftsAddr == 0) {
             FTSelf::KernelAdapter<GemvKernel><<<blockDim, nullptr, stream>>>(params_, ptrDump);
         } else {
             FTSelf::KernelAdapter<GemvKernel><<<blockDim, nullptr, stream>>>(params_, fftsAddr, ptrDump);
         }
-        aclCheck(aclrtSynchronizeStream(stream));
-        Adx::AdumpPrintWorkSpace(ptrDump, ALL_DUMPSIZE, stream, "device_gemv");
-        aclCheck(aclrtFree(ptrDump));
+        FTSelf::aclCheck(aclrtSynchronizeStream(stream));
+        FTSelf::AdumpPrintWorkSpace(ptrDump, ALL_DUMPSIZE, stream, "device_gemv");
+        FTSelf::aclCheck(aclrtFree(ptrDump));
 #else
         if (fftsAddr == 0) {
             FTSelf::KernelAdapter<GemvKernel><<<blockDim, nullptr, stream>>>(params_);

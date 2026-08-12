@@ -23,6 +23,8 @@
 // 75 is from AscendC host stub
 #define ALL_DUMPSIZE (75 * SINGLE_CORE_DUMPSIZE)
 
+namespace FTSelf {
+
 using LogFuncType = std::function<void(const char *)>;
 inline void aclCheck(aclError status, LogFuncType logFunc = [](const char *logStrPtr) { std::cerr << logStrPtr; })
 {
@@ -33,11 +35,11 @@ inline void aclCheck(aclError status, LogFuncType logFunc = [](const char *logSt
     }
 }
 
-namespace Adx {
 void AdumpPrintWorkSpace(const void *dumpBufferAddr,
                          const size_t dumpBufferSize,
                          aclrtStream stream,
                          const char *opType);
-} // namespace Adx
+
+} // namespace FTSelf
 
 #endif // CATLASS_DEBUG_HPP
