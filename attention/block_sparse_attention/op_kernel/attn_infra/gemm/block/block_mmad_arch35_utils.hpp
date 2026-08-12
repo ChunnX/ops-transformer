@@ -99,13 +99,31 @@ namespace MXFP4 {
 
     static constexpr uint32_t mBaseSize = 128;     // [#9] M 方向基准 tile（对应 QFA mBaseSize），用于 pad 满块判断
 
-    static constexpr uint32_t CONST_32 = 32; 
-    static constexpr uint32_t CONST_64 = 64; 
-    static constexpr uint32_t CONST_128 = 128; 
+    static constexpr uint32_t CONST_32 = 32;
+    static constexpr uint32_t CONST_64 = 64;
+    static constexpr uint32_t CONST_128 = 128;
 
-    static constexpr uint32_t ROW_SUM_PAD_NUM = 16; 
+    static constexpr uint32_t ROW_SUM_PAD_NUM = 16;
+    static constexpr uint32_t ROW_SUM_NUM = 128;
 
-    static constexpr uint32_t ROW_SUM_NUM = 128; 
+    // 硬件 NZ 分形块维度
+    static constexpr uint32_t NZ_C0_ELEMS = 16;    // NZ 分形 C0 维元素个数
+    static constexpr uint32_t FP4_C0_ELEMS = 64;   // fp4 数据类型每个 C0 块元素个数
+
+    // PV mmad M 维（含 rowsum pad）
+    static constexpr uint32_t PV_MMAD_M_DIM = ROW_SUM_NUM + ROW_SUM_PAD_NUM;   // = 144
+
+    // S2 方向 base tile 尺寸
+    static constexpr uint32_t S2_BASE_TILE_SIZE = 256;
+
+    // InitL0BufferForReduceSum seed fill 模式
+    // V data = fp4 4.0 打包，V scale = e8m0 0.25 打包 → 有效值 4.0 × 0.25 = 1.0
+    static constexpr uint16_t SEED_V_DATA_FILL = 0x6666;
+    static constexpr uint16_t SEED_V_SCALE_FILL = 0x7D7D;
+    static constexpr uint16_t ZERO_FILL_PATTERN = 0x0000;
+
+    // GM SetGlobalBuffer 最大长度哨兵值
+    static constexpr uint32_t GM_MAX_BUFFER_LEN = 0x7FFFFFFFu;
 
 }  // namespace MXFP4
 
