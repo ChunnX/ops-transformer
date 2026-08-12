@@ -73,6 +73,7 @@ def check_public_abi() -> None:
 def check_registration_and_binary() -> None:
     shmem_def = read("op_host/allto_allv_grouped_mat_mul_shmem_def.cpp")
     hccl_def = read("op_host/allto_allv_grouped_mat_mul_def.cpp")
+    host_cmake = normalized(read("op_host/CMakeLists.txt"))
     require('AddConfig("ascend950"' in shmem_def, "SHMEM op is not registered for ascend950")
     shmem_code = re.sub(r"//.*", "", shmem_def)
     require(".HcclGroup(" not in shmem_code, "SHMEM op accidentally registers an HCCL group")
@@ -80,6 +81,15 @@ def check_registration_and_binary() -> None:
             "SHMEM op must not replace the symmetric gmm_x address with an implicit contiguous copy")
     require('AddConfig("ascend910_93"' in hccl_def, "A3 HCCL registration is missing")
     require('AddConfig("ascend950"' not in hccl_def, "legacy HCCL op is still registered for ascend950")
+    require(
+        "set(allto_allv_grouped_mat_mul_shmem_dir ${CMAKE_CURRENT_SOURCE_DIR}/.. PARENT_SCOPE)" in host_cmake,
+        "SHMEM op_file is not mapped to its containing operator directory, so kernel compilation is skipped",
+    )
+    require(
+        "set(allto_allv_grouped_mat_mul_shmem_depends mc2/common mc2/3rd "
+        "mc2/allto_allv_quant_grouped_mat_mul PARENT_SCOPE)" in host_cmake,
+        "SHMEM kernel dependencies are not exported under the SHMEM op_file name",
+    )
 
     config_dir = ROOT / "op_host/config/ascend950"
     require(not (config_dir / "allto_allv_grouped_mat_mul_binary.json").exists(), "legacy A5 HCCL binary remains")
