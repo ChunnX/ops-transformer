@@ -89,6 +89,9 @@ public:
     using StorageXOutType = typename std::conditional<
         (Std::IsSame<XOutType, fp4x2_e2m1_t>::value) || (Std::IsSame<XOutType, fp4x2_e1m2_t>::value),
         uint8_t, XOutType>::type;
+    using StorageXInType = typename std::conditional<
+        (Std::IsSame<XType, fp4x2_e2m1_t>::value) || (Std::IsSame<XType, fp4x2_e1m2_t>::value),
+        uint8_t, XType>::type;
     __aicore__ inline AttentionToFFN(){};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId, GM_ADDR layerId,
                                 GM_ADDR expertIds, GM_ADDR expertRankTable, GM_ADDR scales, GM_ADDR active_mask,
@@ -428,7 +431,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::QuantProc
     } else if constexpr (IsMxQuant(QuantMode)) {
         uint32_t mxScaleNum = Ceil(Ceil(axisH_, MX_BLOCK_SIZE), 2U) * 2U;
         LocalTensor<float> receiveDataCastFloat = receiveDataCastFloatBuf_.Get<float>();
-        __ubuf__ XType *srcAddr = (__ubuf__ XType *)xInTensor_.GetPhyAddr();
+        __ubuf__ StorageXInType *srcAddr = (__ubuf__ StorageXInType *)xInTensor_.GetPhyAddr();
         __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)receiveDataCastFloat.GetPhyAddr();
         __ubuf__ uint16_t *halfScaleLocalAddr =
             (__ubuf__ uint16_t *)receiveDataCastFloat[Ceil(mxScaleNum, 32U) * 32U].GetPhyAddr();
@@ -442,10 +445,10 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::QuantProc
         Quant::ComputeMaxExp(srcAddr, maxExpAddr, axisH_);
         Quant::ComputeScale<XOutType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
         if constexpr (Std::IsSame<XOutType, fp8_e4m3fn_t>::value || Std::IsSame<XOutType, fp8_e5m2_t>::value) {
-            Quant::ComputeFp8Data<XType, XOutType, AscendC::RoundMode::CAST_TRUNC,
+            Quant::ComputeFp8Data<StorageXInType, XOutType, AscendC::RoundMode::CAST_TRUNC,
                                   AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
         } else {
-            Quant::ComputeFp4Data<XType, XOutType, AscendC::RoundMode::CAST_TRUNC,
+            Quant::ComputeFp4Data<StorageXInType, XOutType, AscendC::RoundMode::CAST_TRUNC,
                                   AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
         }
         PipeBarrier<PIPE_V>();
