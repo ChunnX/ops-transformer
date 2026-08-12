@@ -57,7 +57,9 @@ class QuantLightningIndexerV2Spec:
         "float8_e4m3fn": {"standard": "stat_rel_err"},
     }
 
-    def compare(*outputs, compare_context=None, context=None, **kwargs):
+    def compare(
+            *outputs, compare_context=None, context: "TtkContext" = None,
+            **kwargs):
         del kwargs
         testcase_name = (
             context.testcase_name if context is not None

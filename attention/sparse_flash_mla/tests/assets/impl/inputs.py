@@ -17,8 +17,12 @@ import importlib.util
 import sys
 from bisect import bisect_right
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
+
+if TYPE_CHECKING:
+    from ttk.test_spec import TtkContext
 
 
 class TorchBatchRandomContext:
@@ -521,6 +525,26 @@ class SparseFlashMlaInputAdapter:
             ) from exc
         return module
 
+    @staticmethod
+    def load_pre_npu_module():
+        name = "smla_ttk_pre_npu"
+        if name in sys.modules:
+            return sys.modules[name]
+        path = Path(__file__).with_name("pre_npu.py")
+        try:
+            spec = importlib.util.spec_from_file_location(name, path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"cannot create import spec for {path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+        except Exception as exc:
+            sys.modules.pop(name, None)
+            raise SparseFlashMlaInputAdapter.module_load_error(
+                "assets pre-NPU state", path, exc
+            ) from exc
+        return module
+
     def load_pytest_module(self, stem, filename):
         if stem in self.pytest_modules:
             return self.pytest_modules[stem]
@@ -764,7 +788,7 @@ def generate_sparse_flash_mla_inputs(
         ori_mask_mode=4, cmp_mask_mode=3, ori_win_left=127,
         ori_win_right=0, layout_q="BSND", layout_kv="BSND",
         topk_value_mode=1, return_softmax_lse=False,
-        context=None, **kwargs):
+        context: "TtkContext" = None, **kwargs):
     """Populate pytest-derived inputs and leave metadata for the pre-NPU stage."""
     params = dict(kwargs)
     params.update({
@@ -824,7 +848,10 @@ def generate_sparse_flash_mla_inputs(
     case_data = INPUT_ADAPTER.load_golden_store().CASE_DATA
     testcase_name = params.get("testcase_name")
     case_data.put(testcase_name, data)
-    case_data.persist(testcase_name, context)
+    metadata_input = case_data.persist(testcase_name, context)
+    INPUT_ADAPTER.load_pre_npu_module().persist_metadata_inputs(
+        testcase_name, metadata_input, context
+    )
     return data
 
 
@@ -837,7 +864,7 @@ def generate_aclnn_sparse_flash_mla_inputs(
         cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left,
         ori_win_right, layout_q, layout_kv, topk_value_mode,
         return_softmax_lse, attn_out, softmax_lse_out,
-        context=None, **kwargs):
+        context: "TtkContext" = None, **kwargs):
     """Map the ACLNN C signature to the canonical pytest input adapter."""
     del attn_out, softmax_lse_out
     return generate_sparse_flash_mla_inputs(
