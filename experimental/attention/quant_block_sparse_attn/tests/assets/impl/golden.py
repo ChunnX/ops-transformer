@@ -14,13 +14,10 @@
 
 import importlib.util
 import math
-import random
 import sys
 from pathlib import Path
 
 import torch
-
-from bsa_ttk_ops import _fp8_make_block_table
 
 PYTEST_GOLDEN_MODULE = None
 PYTEST_MXFP8_GOLDEN_MODULE = None
@@ -155,6 +152,7 @@ def cpu_quant_block_sparse_attn(
         softmax_scale=softmax_scale,
         sparse_q_block_size=sparse_block_size_q,
         sparse_kv_block_size=sparse_block_size_kv,
+        blocksize=blocksize,
         quant_mode=quant_mode,
         **common_kwargs,
     )
@@ -391,90 +389,6 @@ def _fp8_load_pytest_golden_module():
     return module
 
 
-def _fp8_infer_geometry(
-    query,
-    key,
-    sparse_indices,
-    layout_q,
-    cu_seqlens_q,
-    cu_seqlens_kv,
-    seqused_q,
-    seqused_kv,
-    max_seqlen_q=0,
-    max_seqlen_kv=0,
-):
-    D = int(query.shape[-1])
-    N2 = int(key.shape[1]) if key.dim() >= 2 else 1
-
-    if layout_q == "BSND":
-        B, S1, N1 = int(query.shape[0]), int(query.shape[1]), int(query.shape[2])
-        q_lengths = to_list(seqused_q) or [S1] * B
-    else:
-        N1 = int(query.shape[1]) if layout_q == "TND" else int(query.shape[0])
-        T = int(query.shape[0]) if layout_q == "TND" else int(query.shape[1])
-        B = int(sparse_indices.shape[0]) if sparse_indices is not None else 1
-        S1 = max_seqlen_q if max_seqlen_q > 0 else (T // B if B > 0 else T)
-        q_lengths = to_list(seqused_q) or lengths_from_prefix(cu_seqlens_q) or [S1] * B
-
-    kv_lengths = to_list(seqused_kv) or lengths_from_prefix(cu_seqlens_kv)
-    if not kv_lengths:
-        if max_seqlen_kv > 0:
-            S2 = max_seqlen_kv
-        elif key.dim() == 4:
-            num_blocks = int(key.shape[0])
-            block_size = int(key.shape[2])
-            S2 = num_blocks * block_size
-        else:
-            S2 = int(key.shape[0])
-        kv_lengths = [S2] * B if B > 0 else [S2]
-
-    return B, S1, N1, N2, D, q_lengths, kv_lengths
-
-
-def _fp8_lengths_to_prefix(lengths):
-    values = [0]
-    for length in lengths:
-        values.append(values[-1] + int(length))
-    return torch.tensor(values, dtype=torch.int32)
-
-
-def _fp8_auto_block_table(
-    B, S2, block_size, pattern="sequential", seed=0, blocknum=None
-):
-    width = math.ceil(S2 / block_size)
-    needed_block_num = B * width
-    blocknum = needed_block_num if blocknum is None else int(blocknum)
-    return _fp8_make_block_table(
-        B, S2, block_size, blocknum, pattern, seed, torch.device("cpu")
-    )
-
-
-def _fp8_pack_pa_to_combined(
-    key_pa, value_pa, k_scale_pa, block_size, layout_kv
-):
-    """Directly pack separate PA key/value/k_descale into a combined KV storage+meta.
-
-    Same layout as bsa_ttk_ops._fp8_pack_combined_kv, so the reference reads exactly
-    what the kernel reads (no PA->dense->PA round-trip).
-    """
-    golden_module = _fp8_load_pytest_golden_module()
-    block_num = int(key_pa.shape[0])
-    n2 = int(key_pa.shape[1])
-    d_size = int(key_pa.shape[3])
-    dv_size = int(value_pa.shape[3])
-    meta = golden_module.combined_kv_cache.make_combined_kv_meta(
-        block_num, block_size, n2, d_size, dv_size, 0, layout_kv
-    )
-    storage = torch.zeros((block_num * meta["pa_block_stride"],), dtype=torch.uint8)
-    key_view, value_view, k_scale_view = golden_module.combined_kv_cache.make_combined_kv_views(
-        storage, meta
-    )
-    key_view.copy_(key_pa)
-    value_view.copy_(value_pa)
-    k_scale_view.copy_(k_scale_pa if k_scale_pa.dim() == 4 else k_scale_pa.unsqueeze(-1))
-    return storage, meta
-
-
 def _fp8_cpu_golden(
     query,
     key,
@@ -490,152 +404,88 @@ def _fp8_cpu_golden(
     softmax_scale,
     sparse_q_block_size,
     sparse_kv_block_size,
+    p_scale_value=1.0,
+    cu_seqlens_q_value=None,
+    cu_seqlens_kv_value=None,
+    seqused_q_value=None,
+    seqused_kv_value=None,
     cu_seqlens_q=None,
     cu_seqlens_kv=None,
     seqused_q=None,
     seqused_kv=None,
     block_table=None,
-    metadata=None,
-    max_seqlen_q=0,
-    max_seqlen_kv=0,
+    blocksize=0,
     layout_kv="PA_BNSD",
-    layout_q="BSND",
+    layout_q="TND",
     layout_sparse_indices="B_N_Qb_Kb",
     layout_out="TND",
     quant_mode=1,
     mask_mode=3,
     return_softmax_lse=False,
+    sparse_mode=None,
+    seed=None,
+    input_ranges=None,
+    testcase_name=None,
     **kwargs,
 ):
     """CPU reference implementation wrapping the existing pytest golden."""
+    del (
+        value,
+        q_descale,
+        k_descale,
+        v_descale,
+        sparse_seq_len,
+        atten_mask,
+        p_scale,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        quant_mode,
+    )
     golden_module = _fp8_load_pytest_golden_module()
-    testcase_name = kwargs.get("testcase_name") or "__default__"
+    cache_key = testcase_name or "__default__"
     cache = getattr(golden_module, "_TTK_FP8_CACHE", {})
-    cached = cache.pop(testcase_name, None)
+    cached = cache.pop(cache_key, None)
     if cached is not None:
         golden = cached["data"]["golden"]
         return _format_golden_outputs(
             golden["attention_out"],
             golden["softmax_lse"],
             return_softmax_lse,
-        )
-
-    q_cpu = to_cpu(query)
-    key_cpu = to_cpu(key)
-    value_cpu = to_cpu(value)
-    q_descale_cpu = to_cpu(q_descale)
-    k_descale_cpu = to_cpu(k_descale)
-    v_descale_cpu = to_cpu(v_descale)
-    p_scale_cpu = to_cpu(p_scale)
-    sparse_indices_cpu = to_cpu(sparse_indices)
-    sparse_seq_len_cpu = to_cpu(sparse_seq_len)
-    cu_seqlens_q_cpu = to_cpu(cu_seqlens_q) if cu_seqlens_q is not None else None
-    cu_seqlens_kv_cpu = to_cpu(cu_seqlens_kv) if cu_seqlens_kv is not None else None
-    seqused_q_cpu = to_cpu(seqused_q) if seqused_q is not None else None
-    seqused_kv_cpu = to_cpu(seqused_kv) if seqused_kv is not None else None
-    block_table_cpu = to_cpu(block_table) if block_table is not None else None
-
-    B, S1, N1, N2, D, q_lengths, kv_lengths = _fp8_infer_geometry(
-        q_cpu,
-        key_cpu,
-        sparse_indices_cpu,
-        layout_q,
-        cu_seqlens_q_cpu,
-        cu_seqlens_kv_cpu,
-        seqused_q_cpu,
-        seqused_kv_cpu,
-        max_seqlen_q,
-        max_seqlen_kv,
-    )
-    S1 = max(q_lengths, default=S1)
-
-    sparse_q_block_size = int(sparse_q_block_size)
-    sparse_kv_block_size = int(sparse_kv_block_size)
-    max_seqlen_q = int(max_seqlen_q) if max_seqlen_q > 0 else S1
-    max_seqlen_kv = (
-        int(max_seqlen_kv)
-        if max_seqlen_kv > 0
-        else max(kv_lengths)
-        if kv_lengths
-        else S1
-    )
-    S2 = max(kv_lengths) if kv_lengths else max_seqlen_kv
-
-    if key_cpu.dim() != 4:
-        raise ValueError(
-            f"kv_cache-based reference requires 4D PA key, got {tuple(key_cpu.shape)}"
-        )
-    if block_table_cpu is None:
-        block_table_cpu = _fp8_auto_block_table(
-            B,
-            S2,
-            sparse_kv_block_size,
-            str(kwargs.get("block_table_pattern", "sequential")),
-            int(kwargs.get("seed", 0)),
-            blocknum=int(key_cpu.shape[0]),
-        )
-
-    if cu_seqlens_q_cpu is None and layout_q != "BSND":
-        cu_seqlens_q_cpu = _fp8_lengths_to_prefix(q_lengths)
-    if cu_seqlens_kv_cpu is None and layout_q != "BSND":
-        cu_seqlens_kv_cpu = _fp8_lengths_to_prefix(kv_lengths)
-    cu_seqlens_q_inp = cu_seqlens_q_cpu
-
-    v_scale = v_descale_cpu if v_descale_cpu.dim() == 1 else v_descale_cpu.view(-1)
-
-    case = {
-        "B": B,
-        "S1": S1,
-        "S2": S2,
-        "N1": N1,
-        "N2": N2,
-        "D": D,
-        "layout_q": layout_q,
-        "softmax_scale": float(softmax_scale),
-        "sparse_q_block_size": sparse_q_block_size,
-        "sparse_kv_block_size": sparse_kv_block_size,
-        "mask_mode": int(mask_mode),
-        "output_dtype": torch.bfloat16,
-        "actlen_mode": "full",
-        "S1EQS2": False,
-        "seed": int(kwargs.get("seed", 0)),
-        "sparse_mode": str(kwargs.get("sparse_mode") or "random"),
-        "sparse_pattern": str(kwargs.get("sparse_pattern", "sequential")),
-        "block_table_pattern": str(
-            kwargs.get("block_table_pattern", "sequential")
-        ),
-        "sparse_count": int(kwargs.get("sparse_count", 0)),
-        "p_scale_value": (
-            None if p_scale_cpu is None else float(p_scale_cpu[0].item())
-        ),
-        "pa_block_padding_bytes": 0,
-        "layout_kv": layout_kv,
-        "layout_sparse_indices": layout_sparse_indices,
-        "layout_out": layout_out,
-        "quant_mode": int(quant_mode),
-    }
-
-    # 直接从 PA 张量打包组合 kv_cache（布局与 bsa_ttk_ops._fp8_pack_combined_kv 一致），
-    # 保证参考读到的是 kernel 实际读取的同一份缓存，不再做 PA->dense->PA 往返。
-    kv_cache_storage, kv_cache_meta = _fp8_pack_pa_to_combined(
-        key_cpu, value_cpu, k_descale_cpu, int(key_cpu.shape[2]), layout_kv
-    )
-    attention_out, softmax_lse = golden_module._reference_attention(
-        case,
-        q_cpu,
-        kv_cache_storage,
-        kv_cache_meta,
-        block_table_cpu,
-        q_descale_cpu,
-        v_scale,
-        p_scale_cpu,
-        sparse_indices_cpu,
-        sparse_seq_len_cpu,
-        cu_seqlens_q_inp,
-        q_lengths,
-        kv_lengths,
     )
 
+    data_ranges = input_ranges or ()
+    case = golden_module._fp8_assemble_case(
+        query,
+        key,
+        sparse_indices,
+        block_table,
+        softmax_scale=softmax_scale,
+        sparse_q_block_size=sparse_q_block_size,
+        sparse_kv_block_size=sparse_kv_block_size,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        layout_sparse_indices=layout_sparse_indices,
+        layout_out=layout_out,
+        mask_mode=mask_mode,
+        return_softmax_lse=return_softmax_lse,
+        sparse_mode=sparse_mode,
+        cu_seqlens_q_value=cu_seqlens_q_value,
+        cu_seqlens_kv_value=cu_seqlens_kv_value,
+        seqused_q_value=seqused_q_value,
+        seqused_kv_value=seqused_kv_value,
+        p_scale_value=p_scale_value,
+        seed=0 if seed is None else int(seed),
+        blocksize=blocksize,
+        data_range_q=data_ranges[0] if len(data_ranges) > 0 else 1.0,
+        data_range_k=data_ranges[1] if len(data_ranges) > 1 else 1.0,
+        data_range_v=data_ranges[2] if len(data_ranges) > 2 else 1.0,
+        testcase_name=testcase_name,
+        **kwargs,
+    )
+    generated = golden_module.generate_and_save_testdata(case)
+    golden = generated["golden"]
     return _format_golden_outputs(
-        attention_out, softmax_lse, return_softmax_lse
+        golden["attention_out"], golden["softmax_lse"], return_softmax_lse
     )
