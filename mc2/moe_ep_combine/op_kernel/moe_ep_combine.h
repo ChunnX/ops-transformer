@@ -379,15 +379,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
     auto batchBuffer = reinterpret_cast<__ubuf__ uint8_t *>(hcommBatchTensor_.GetPhyAddr());
     int32_t ret = hcomm_.WriteWithNotifyNbiPrepare<NO_CQE_WQE_CONFIG>(
         commHandle, dst, src, len, notifyAddr, notifyValue, batchBuffer, HCOMM_BATCH_BUFFER_BYTES);
-    if (ret == HCOMM_PREPARE_BUFFER_FULL || ret == HCOMM_PREPARE_QUEUE_FULL) {
-        ascendc_assert(preparedWriteCount_ != 0, "WriteWithNotifyNbiPrepare returned full for an empty batch");
-        FlushPreparedWrites();
-        ret = hcomm_.WriteWithNotifyNbiPrepare<NO_CQE_WQE_CONFIG>(
-            commHandle, dst, src, len, notifyAddr, notifyValue, batchBuffer, HCOMM_BATCH_BUFFER_BYTES);
-    }
     ascendc_assert(ret == HCOMM_SUCCESS, "WriteWithNotifyNbiPrepare failed, ret=%d", ret);
     activeBatchHandle_ = commHandle;
     ++preparedWriteCount_;
+    if (preparedWriteCount_ == HCOMM_BATCH_CAPACITY) {
+        FlushPreparedWrites();
+    }
 }
 
 template <TemplateMoeEpCombineTypeClass>
