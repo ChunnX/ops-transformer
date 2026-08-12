@@ -551,33 +551,11 @@ public:
         softmaxLseQueue_.template EnQue(lseUb);
         softmaxLseQueue_.DeQue<float>();
 
-        if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
-            uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
-            uint64_t bN2Offset =
-                prefixBS1 * constInfo_.realN2Size * constInfo_.realGSize + runInfo.realN2Idx * constInfo_.realGSize;
-            DataCopySoftmaxLseTNDArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx,
-                                                                 runInfo.actVecMSize, constInfo_);
-        } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
-            uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
-            uint32_t s1Size = qActSeqLensParser_->GetActualSeqLength(runInfo.bIdx);
-            uint64_t bN2Offset = prefixBS1 * constInfo_.n2Size * constInfo_.gSize + runInfo.n2Idx * constInfo_.gSize;
-            DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
-                                                       constInfo_, s1Size);
-        } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
-            uint64_t bN2Offset = runInfo.bIdx * constInfo_.n2Size * constInfo_.gSize * constInfo_.s1Size +
-                                 runInfo.n2Idx * constInfo_.gSize * constInfo_.s1Size;
-            uint64_t qActSeqLens = qActSeqLensParser_->GetActualSeqLength(runInfo.bIdx);
-            uint64_t s1LeftPaddingSize = 0;
-            DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
-                                                        constInfo_, s1LeftPaddingSize);
-        } else {
-            uint64_t bN2Offset = runInfo.bIdx * constInfo_.n2Size * constInfo_.gSize * constInfo_.s1Size +
-                                 runInfo.n2Idx * constInfo_.gSize * constInfo_.s1Size;
-            uint64_t qActSeqLens = qActSeqLensParser_->GetActualSeqLength(runInfo.bIdx);
-            uint64_t s1LeftPaddingSize = 0;
-            DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
-                                                        constInfo_, qActSeqLens, s1LeftPaddingSize);
-        }
+        uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
+        uint64_t bN2Offset =
+            runInfo.realN2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
+        DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx,
+                                                                     runInfo.actVecMSize, constInfo_);
 
         softmaxLseQueue_.FreeTensor(lseUb);
     }
