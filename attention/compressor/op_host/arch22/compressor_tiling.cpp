@@ -780,8 +780,8 @@ ge::graphStatus CompressorTiling::CheckFeature() const
                     "should be within [" + std::to_string(MIN_BLOCK_SIZE) + ", " +
                     std::to_string(MAX_BLOCK_SIZE) + "]"),
                 return ge::GRAPH_FAILED);
-    // state_cache stride0 must be >= contiguous stride (dim1 * dim2).
-    // Only axis 0 non-contiguous is supported; axis 1/2 must remain contiguous.
+    // state_cache stride0 must be greater than or equal to contiguous stride (dim1 * dim2).
+    // Only axis 0 non-contiguous is supported; axis 1 and 2 must remain contiguous.
     // Full per-axis validation via GetInputStride is in ConvertContext (ascend950)
     // and via IsContiguousAxes in torch_extension csrc.
     uint64_t contiguousStride0 = context_->stateCache.shape->GetShape().GetDim(1) *
@@ -789,7 +789,7 @@ ge::graphStatus CompressorTiling::CheckFeature() const
     OP_CHECK_IF(baseParams_->stateCacheStrideDim0 < contiguousStride0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "state_cache_stride",
                     std::to_string(baseParams_->stateCacheStrideDim0),
-                    "state_cache stride0 must be >= contiguous stride " +
+                    "state_cache stride0 must be greater than or equal to contiguous stride " +
                     std::to_string(contiguousStride0) +
                     ", only axis 0 non-contiguous is supported"),
                 return ge::GRAPH_FAILED);
