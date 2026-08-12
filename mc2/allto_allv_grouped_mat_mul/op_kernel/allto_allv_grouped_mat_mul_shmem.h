@@ -23,15 +23,16 @@ constexpr uint32_t WORKSPACE_STAGE_COUNT = 2;
 constexpr uint32_t LOCAL_COPY_UB_STAGES = 2;
 constexpr uint32_t UDMA_SYNC_ID = 0;
 
-inline uint32_t MinU32(uint32_t lhs, uint32_t rhs)
+__aicore__ inline uint32_t MinU32(uint32_t lhs, uint32_t rhs)
 {
     return lhs < rhs ? lhs : rhs;
 }
 
 class AivShmemCommunicator {
 public:
-    inline void Init(GM_ADDR x, GM_ADDR symmetric, const AlltoAllvGroupedMatMulShmemTilingData *tiling, TPipe *pipe,
-                     uint32_t rank, uint32_t peerCount)
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR symmetric,
+                                const AlltoAllvGroupedMatMulShmemTilingData *tiling, TPipe *pipe,
+                                uint32_t rank, uint32_t peerCount)
     {
         x_ = reinterpret_cast<__gm__ Element *>(x);
         symmetric_ = reinterpret_cast<__gm__ Element *>(symmetric);
@@ -48,7 +49,7 @@ public:
         }
     }
 
-    inline void Process()
+    __aicore__ inline void Process()
     {
         auto syncMmadFinish = reinterpret_cast<__gm__ int32_t *>(
             reinterpret_cast<__gm__ uint8_t *>(symmetric_) + tiling_->syncMmadOffset);
@@ -118,21 +119,21 @@ public:
     }
 
 private:
-    inline uint32_t GetActualRoundRows(const uint32_t *counts, uint32_t peer, uint32_t round) const
+    __aicore__ inline uint32_t GetActualRoundRows(const uint32_t *counts, uint32_t peer, uint32_t round) const
     {
         const uint32_t total = GetPeerTokenCount(counts, peer, tiling_->localExpertNum);
         const uint64_t begin = static_cast<uint64_t>(round) * commRows_;
         return static_cast<uint32_t>(MinU32(commRows_, static_cast<uint32_t>(ClipSubU64(total, begin))));
     }
 
-    inline void AivBarrier() const
+    __aicore__ inline void AivBarrier() const
     {
         CrossCoreSetFlag<0x0, PIPE_MTE3>(AIV_BARRIER_FLAG);
         CrossCoreWaitFlag(AIV_BARRIER_FLAG);
     }
 
-    inline void CopyLocal2D(__gm__ Element *dst, uint32_t dstStride, __gm__ Element *src, uint32_t srcStride,
-                            uint32_t rows, uint32_t columns)
+    __aicore__ inline void CopyLocal2D(__gm__ Element *dst, uint32_t dstStride, __gm__ Element *src,
+                                       uint32_t srcStride, uint32_t rows, uint32_t columns)
     {
         for (uint32_t row = 0; row < rows; row += tiling_->commTileM) {
             const uint32_t tileRows = MinU32(tiling_->commTileM, rows - row);
@@ -166,8 +167,8 @@ private:
         }
     }
 
-    inline void PutRemote2D(__gm__ Element *dst, uint32_t dstStride, __gm__ Element *src, uint32_t srcStride,
-                            uint32_t rows, uint32_t columns, uint32_t peer)
+    __aicore__ inline void PutRemote2D(__gm__ Element *dst, uint32_t dstStride, __gm__ Element *src,
+                                       uint32_t srcStride, uint32_t rows, uint32_t columns, uint32_t peer)
     {
         const uint64_t bytesPerRow = static_cast<uint64_t>(columns) * BF16_BYTES;
         if (rows == 1 || (srcStride == columns && dstStride == columns)) {
@@ -182,7 +183,7 @@ private:
         aclshmemx_udma_quiet(peer);
     }
 
-    inline void SubmitUdma(__gm__ Element *dst, __gm__ Element *src, uint32_t bytes, uint32_t peer)
+    __aicore__ inline void SubmitUdma(__gm__ Element *dst, __gm__ Element *src, uint32_t bytes, uint32_t peer)
     {
         aclshmemx_udma_put_nbi<uint8_t, PIPE_S>(reinterpret_cast<__gm__ uint8_t *>(dst),
                                                 reinterpret_cast<__gm__ uint8_t *>(src),
@@ -203,8 +204,8 @@ private:
 };
 
 template <class Matmul>
-inline void RunAicGroupedMatmul(Matmul &mm, GM_ADDR weight, GM_ADDR output, GM_ADDR symmetric,
-                                const AlltoAllvGroupedMatMulShmemTilingData *tiling, uint32_t peerCount)
+__aicore__ inline void RunAicGroupedMatmul(Matmul &mm, GM_ADDR weight, GM_ADDR output, GM_ADDR symmetric,
+                                           const AlltoAllvGroupedMatMulShmemTilingData *tiling, uint32_t peerCount)
 {
     GlobalTensor<Element> symmetricTensor;
     GlobalTensor<Element> weightTensor;

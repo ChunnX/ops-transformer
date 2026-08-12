@@ -147,6 +147,7 @@ def check_tiling_and_kernel() -> None:
 
     entry = read("op_kernel/allto_allv_grouped_mat_mul_shmem.cpp")
     kernel = read("op_kernel/allto_allv_grouped_mat_mul_shmem.h")
+    schedule = read("op_kernel/allto_allv_grouped_mat_mul_shmem_schedule.h")
     require('#include "lib/matmul_intf.h"' in entry,
             "kernel entry must include the MatmulType/MatmulImpl/CubeFormat interface")
     entry_flat = normalized(entry)
@@ -168,6 +169,39 @@ def check_tiling_and_kernel() -> None:
             "Ascend950 zero-FFTS path must use the source kernel overload without a sync-base argument")
     require("shmem_my_pe" in entry and "shmem_n_pes" in entry,
             "kernel does not consume the SHMEM topology")
+    kernel_flat = normalized(kernel)
+    for token in (
+        "__aicore__ inline uint32_t MinU32(",
+        "__aicore__ inline void Init(",
+        "__aicore__ inline void Process(",
+        "__aicore__ inline uint32_t GetActualRoundRows(",
+        "__aicore__ inline void AivBarrier(",
+        "__aicore__ inline void CopyLocal2D(",
+        "__aicore__ inline void PutRemote2D(",
+        "__aicore__ inline void SubmitUdma(",
+        "__aicore__ inline void RunAicGroupedMatmul(",
+    ):
+        require(token in kernel_flat, f"SHMEM kernel helper is missing its device qualifier: {token}")
+    schedule_flat = normalized(schedule)
+    require("#if defined(__CCE_AICORE__)" in schedule and
+            "#define A2AV_GMM_SHMEM_HOST_DEVICE __aicore__" in schedule and
+            "#define A2AV_GMM_SHMEM_HOST_DEVICE" in schedule,
+            "schedule helpers need a CCE-only device qualifier so host UT remains compilable")
+    for token in (
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint64_t CeilDivU64(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint64_t ClipSubU64(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint64_t AlignUpU64(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline RoundExpertSlice GetRoundExpertSlice(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint64_t GetStagePeerOffset(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint32_t GetCompletedCommBlocks(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint32_t GetPeerTokenCount(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint64_t GetPeerInputOffset(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint64_t GetExpertOutputOffset(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint64_t GetExpertBeginInPeer(",
+    ):
+        require(token in schedule_flat, f"SHMEM schedule helper is missing its host/device qualifier: {token}")
+    require("#undef A2AV_GMM_SHMEM_HOST_DEVICE" in schedule,
+            "schedule helper qualifier macro must not leak into includers")
     require("aclshmemx_udma_put_nbi<uint8_t, PIPE_S>" in kernel and
             "if (rows == 1 || (srcStride == columns && dstStride == columns))" in kernel and
             "for (uint32_t row = 0; row < rows; ++row)" in kernel,
