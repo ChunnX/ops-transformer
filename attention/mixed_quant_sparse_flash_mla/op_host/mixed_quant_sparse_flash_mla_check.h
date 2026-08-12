@@ -369,7 +369,8 @@ public:
 
 class MQSMLAInfoParser {
 public:
-    explicit MQSMLAInfoParser(gert::TilingContext *context) : context_(context)
+    explicit MQSMLAInfoParser(gert::TilingContext *context)
+        : context_(context)
     {
     }
     ~MQSMLAInfoParser() = default;
@@ -479,7 +480,8 @@ public:
 
 class MQSMLATilingCheck {
 public:
-    explicit MQSMLATilingCheck(const MQSMLATilingInfo &qsmlaInfo) : qsmlaInfo_(qsmlaInfo) {};
+    explicit MQSMLATilingCheck(const MQSMLATilingInfo &qsmlaInfo)
+        : qsmlaInfo_(qsmlaInfo) {};
     ~MQSMLATilingCheck() = default;
     virtual ge::graphStatus Process();
 
