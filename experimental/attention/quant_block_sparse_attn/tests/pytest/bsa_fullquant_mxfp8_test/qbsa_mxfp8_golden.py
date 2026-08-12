@@ -1923,9 +1923,7 @@ def cpu_mxfp8_golden(
                         torch.full_like(kernel_scores, EMPTY_LSE),
                     )
                     kernel_chunk_max = kernel_scores.max(dim=-1).values
-                    kernel_row_max = torch.maximum(
-                        kernel_row_max, kernel_chunk_max
-                    )
+                    kernel_row_max = torch.maximum(kernel_row_max, kernel_chunk_max)
                     scores = torch.where(
                         valid_mask, scores, torch.full_like(scores, MASK_VALUE)
                     )
