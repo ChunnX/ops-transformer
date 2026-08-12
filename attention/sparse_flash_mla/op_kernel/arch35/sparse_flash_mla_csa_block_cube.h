@@ -92,17 +92,9 @@ public:
                                          const ConstInfo &constInfo);
 
     // SWA/HCA场景, inputRightBuf是INNER_CORE_SYNC类型
-    __aicore__ inline void IterateLoadQK(Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf,
+    __aicore__ inline void IterateLoadQK(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
                                          RunInfo &runInfo, ConstInfo &constInfo, bool isFirstLoop);
-    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
-                                       Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf,
-                                       bool notLastTwoLoop, RunInfo &runInfoNext,
-                                       RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void
-    IterateBmm2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
-                Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf, const RunInfo &runInfo,
-                const ConstInfo &constInfo);
+
 
     // CSA场景, inputRightBuf是CROSS_CORE_SYNC_FORWARD类型
     __aicore__ inline void IterateLoadQK(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
@@ -366,7 +358,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::LoadKGmToL1(RightBufType &in
 // SWA/HCA场景: K从GM直接搬运
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf,
+CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
                                            RunInfo &runInfo, ConstInfo &constInfo, bool isFirstLoop)
 {
     if (unlikely(isFirstLoop)) {
@@ -416,17 +408,6 @@ CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(Buffer<BufferType::L1, SyncType::CROS
     l1KLoadBufId = (l1KLoadBufId + 1) % 3;
 }
 
-// TODO 两个mm1 mm2可以统一吗
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-CSABlockCube<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                         Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf,
-                                         bool notLastTwoLoop, RunInfo &runInfoNext,
-                                         RunInfo &runInfo, ConstInfo &constInfo)
-{
-    IterateBmm1Impl(outputBuf, inputRightBuf, notLastTwoLoop, runInfoNext, runInfo, constInfo);
-}
-
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
 CSABlockCube<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
@@ -435,16 +416,6 @@ CSABlockCube<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_
                                          RunInfo &runInfo, ConstInfo &constInfo)
 {
     IterateBmm1Impl(outputBuf, inputRightBuf, notLastTwoLoop, runInfoNext, runInfo, constInfo);
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-CSABlockCube<TEMPLATE_ARGS>::IterateBmm2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                         BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
-                                         Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf,
-                                         const RunInfo &runInfo, const ConstInfo &constInfo)
-{
-    IterateBmm2Impl(outputBuf, inputLeftBuffers, inputRightBuf, runInfo, constInfo);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
