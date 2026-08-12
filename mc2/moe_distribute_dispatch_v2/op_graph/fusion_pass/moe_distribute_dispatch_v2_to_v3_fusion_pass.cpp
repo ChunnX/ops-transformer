@@ -53,6 +53,8 @@ const std::vector<std::string> OPTIONAL_STR_ATTRS = {"comm_alg"};
 // 运行时按 ge_compiler 版本决定注册 stage：9.0.0 之前的老 toolkit 没有 kCompatibleInherited 枚举，
 ge::CustomPassStage GetDispatchV2FusionPassStage()
 {
+    // 实验 lijd：强制提前到 kBeforeInferShape，验证 pass 新建 Const 错过 GE 权重上传的假设
+    return ge::CustomPassStage::kBeforeInferShape;
     int32_t version = 0;
     aclsysGetVersionNum("ge_compiler", &version);
     if (version >= GRAPH_FUSION_SUPPORT_VERSION) {
@@ -267,6 +269,7 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::FusionNode(ge::Graph &graph, 
 ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::CustomPassContext &passContext)
 {
     (void)passContext;
+    OPS_LOG_E(FUSION_PASS_NAME.c_str(), "进入fusionpass lijd, stage kBeforeInferShape.");
     if (graph == nullptr) {
         return ge::GRAPH_FAILED;
     }
