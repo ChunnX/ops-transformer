@@ -219,7 +219,7 @@ int runOneRank(int rankNum, int rankId, int mPerRank, int kTotal, int n, const s
     const char *commMode = "";
     uint64_t wsSize = 0;
     aclOpExecutor *exec = nullptr;
-    aclnnStatus ret = aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
+    aclnnStatus ret = AlltoAllMatmulV2GetWorkspaceSize(
         ctxTensor, tX1, tX2, nullptr, tS1, tS2, "", worldSize, 0, 6, 6, 0, commMode, 0, tOut, nullptr, &wsSize, &exec);
     if (ret != 0) {
         ERROR_LOG("rank %d GetWorkspaceSize failed ret=%d", rankId, (int)ret);
@@ -232,7 +232,7 @@ int runOneRank(int rankNum, int rankId, int mPerRank, int kTotal, int n, const s
         aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST);
     }
 
-    ret = aclnnAlltoAllQuantMatmulV3(ws, wsSize, exec, stream);
+    ret = AlltoAllMatmulV2(ws, wsSize, exec, stream);
     if (ret != 0) {
         ERROR_LOG("rank %d Execute failed ret=%d", rankId, (int)ret);
         return -1;
@@ -252,20 +252,20 @@ int runOneRank(int rankNum, int rankId, int mPerRank, int kTotal, int n, const s
     } while (0)
 
         INFO_LOG("--- validation: nullptr checks ---");
-        CHECK_FAIL("x1_null", aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
+        CHECK_FAIL("x1_null", AlltoAllMatmulV2GetWorkspaceSize(
                                   ctxTensor, nullptr, tX2, nullptr, tS1, tS2, "", worldSize,
                                   0, 6, 6, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
-        CHECK_FAIL("x2_null", aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
+        CHECK_FAIL("x2_null", AlltoAllMatmulV2GetWorkspaceSize(
                                   ctxTensor, tX1, nullptr, nullptr, tS1, tS2, "", worldSize,
                                   0, 6, 6, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
-        CHECK_FAIL("s1_null", aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
+        CHECK_FAIL("s1_null", AlltoAllMatmulV2GetWorkspaceSize(
                                   ctxTensor, tX1, tX2, nullptr, nullptr, tS2, "", worldSize,
                                   0, 6, 6, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
-        CHECK_FAIL("s2_null", aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
+        CHECK_FAIL("s2_null", AlltoAllMatmulV2GetWorkspaceSize(
                                   ctxTensor, tX1, tX2, nullptr, tS1, nullptr, "", worldSize,
                                   0, 6, 6, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
         CHECK_FAIL("out_null",
-                   aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(ctxTensor, tX1, tX2, nullptr, tS1, tS2, "", worldSize, 0, 6, 6, 0, commMode, 0, nullptr, nullptr, &_ws, &_ex));
+                   AlltoAllMatmulV2GetWorkspaceSize(ctxTensor, tX1, tX2, nullptr, tS1, tS2, "", worldSize, 0, 6, 6, 0, commMode, 0, nullptr, nullptr, &_ws, &_ex));
 
         INFO_LOG("--- validation: dtype checks ---");
         {
@@ -276,11 +276,11 @@ int runOneRank(int rankNum, int rankId, int mPerRank, int kTotal, int n, const s
             CreateAclTensorFromDevice(dX1B, x1Shape, ACL_FLOAT, &tX1Bad);
             CreateAclTensorFromDevice(dOutB, outShape, ACL_FLOAT, &tOutBad);
             CHECK_FAIL("x1_not_fp8",
-                       aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
+                       AlltoAllMatmulV2GetWorkspaceSize(
                            ctxTensor, tX1Bad, tX2, nullptr, tS1, tS2, "", worldSize, 0,
                            6, 6, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
             CHECK_FAIL("y_not_bf16",
-                       aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
+                       AlltoAllMatmulV2GetWorkspaceSize(
                            ctxTensor, tX1, tX2, nullptr, tS1, tS2, "", worldSize, 0, 6, 6, 0, commMode, 0, tOutBad, nullptr, &_ws, &_ex));
             aclDestroyTensor(tX1Bad);
             aclDestroyTensor(tOutBad);
@@ -290,8 +290,8 @@ int runOneRank(int rankNum, int rankId, int mPerRank, int kTotal, int n, const s
 
         INFO_LOG("--- validation: transpose_x2 must be true ---");
         CHECK_FAIL("transx2_false",
-                   aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(ctxTensor, tX1, tX2, nullptr, tS1, tS2, "", worldSize, 0, 6, 6, 0,
-                                                            commMode, 0, tOut, nullptr, &_ws, &_ex));
+                   AlltoAllMatmulV2GetWorkspaceSize(ctxTensor, tX1, tX2, nullptr, tS1, tS2, "", worldSize, 0, 6, 6, 0,
+                                                    commMode, 0, tOut, nullptr, &_ws, &_ex));
 
         INFO_LOG("--- validation: K dim not divisible by 64 ---");
         {
@@ -302,7 +302,7 @@ int runOneRank(int rankNum, int rankId, int mPerRank, int kTotal, int n, const s
             aclrtMalloc(&dX1K, nX1K, ACL_MEM_MALLOC_HUGE_FIRST);
             CreateAclTensorFromDevice(dX1K, x1kShape, ACL_FLOAT8_E4M3FN, &tX1K);
             CHECK_FAIL("k_not_div64",
-                       aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
+                       AlltoAllMatmulV2GetWorkspaceSize(
                            ctxTensor, tX1K, tX2, nullptr, tS1, tS2, "", worldSize, 0,
                            6, 6, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
             aclDestroyTensor(tX1K);
@@ -318,7 +318,7 @@ int runOneRank(int rankNum, int rankId, int mPerRank, int kTotal, int n, const s
             aclrtMalloc(&dS1B, nS1B, ACL_MEM_MALLOC_HUGE_FIRST);
             CreateAclTensorFromDevice(dS1B, s1BadShape, ACL_FLOAT8_E8M0, &tS1Bad);
             CHECK_FAIL("s1_shape_mismatch",
-                       aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
+                       AlltoAllMatmulV2GetWorkspaceSize(
                            ctxTensor, tX1, tX2, nullptr, tS1Bad, tS2, "", worldSize, 0,
                            6, 6, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
             aclDestroyTensor(tS1Bad);
@@ -334,7 +334,7 @@ int runOneRank(int rankNum, int rankId, int mPerRank, int kTotal, int n, const s
             aclrtMalloc(&dS2B, nS2B, ACL_MEM_MALLOC_HUGE_FIRST);
             CreateAclTensorFromDevice(dS2B, s2BadShape, ACL_FLOAT8_E8M0, &tS2Bad);
             CHECK_FAIL("s2_not_3d",
-                       aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
+                       AlltoAllMatmulV2GetWorkspaceSize(
                            ctxTensor, tX1, tX2, nullptr, tS1, tS2Bad, "", worldSize, 0,
                            6, 6, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
             aclDestroyTensor(tS2Bad);
@@ -348,7 +348,7 @@ int runOneRank(int rankNum, int rankId, int mPerRank, int kTotal, int n, const s
             aclrtMalloc(&dS1D, nS1, ACL_MEM_MALLOC_HUGE_FIRST);
             CreateAclTensorFromDevice(dS1D, s1Shape, ACL_FLOAT, &tS1D);
             CHECK_FAIL("s1_not_e8m0",
-                       aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
+                       AlltoAllMatmulV2GetWorkspaceSize(
                            ctxTensor, tX1, tX2, nullptr, tS1D, tS2, "", worldSize, 0,
                            6, 6, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
             aclDestroyTensor(tS1D);
@@ -366,7 +366,7 @@ int runOneRank(int rankNum, int rankId, int mPerRank, int kTotal, int n, const s
             // transposed x2 + transposeX2=true should succeed
             uint64_t _ws2 = 0;
             aclOpExecutor *_ex2 = nullptr;
-            aclnnStatus _r2 = aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
+            aclnnStatus _r2 = AlltoAllMatmulV2GetWorkspaceSize(
                 ctxTensor, tX1, tX2Trans, nullptr, tS1, tS2, "", worldSize, 0, 6, 6,
                 0, commMode, 0, tOut, nullptr, &_ws2, &_ex2);
             INFO_LOG("  [x2_transposed] ret=%d %s", (int)_r2, (_r2 == 0) ? "PASS" : "FAIL");
@@ -378,7 +378,7 @@ int runOneRank(int rankNum, int rankId, int mPerRank, int kTotal, int n, const s
                                 ACL_FORMAT_ND, storageShapeT.data(), storageShapeT.size(), dX2);
             uint64_t _ws3 = 0;
             aclOpExecutor *_ex3 = nullptr;
-            aclnnStatus _r3 = aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
+            aclnnStatus _r3 = AlltoAllMatmulV2GetWorkspaceSize(
                 ctxTensor, tX1, tX2Trans2, nullptr, tS1, tS2, "", worldSize, 0, 6,
                 6, 0, commMode, 0, tOut, nullptr, &_ws3, &_ex3);
             INFO_LOG("  [x2_transp_autofix] ret=%d %s", (int)_r3, (_r3 == 0) ? "PASS" : "FAIL");

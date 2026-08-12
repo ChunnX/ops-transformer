@@ -1,4 +1,4 @@
-# aclnnAlltoAllQuantMatmulV3
+# AlltoAllMatmulV2
 
 ## 产品支持情况
 
@@ -31,10 +31,10 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用 `aclnnAlltoAllQuantMatmulV3GetWorkspaceSize` 接口获取计算所需 workspace 大小以及包含了算子计算流程的执行器，再调用 `aclnnAlltoAllQuantMatmulV3` 接口执行计算。
+每个算子分为两段式接口，必须先调用 `AlltoAllMatmulV2GetWorkspaceSize` 接口获取计算所需 workspace 大小以及包含了算子计算流程的执行器，再调用 `AlltoAllMatmulV2` 接口执行计算。
 
 ```cpp
-aclnnStatus aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
+aclnnStatus AlltoAllMatmulV2GetWorkspaceSize(
     const aclTensor *context,
     const aclTensor *x1,
     const aclTensor *x2,
@@ -56,14 +56,14 @@ aclnnStatus aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
 ```
 
 ```cpp
-aclnnStatus aclnnAlltoAllQuantMatmulV3(
+aclnnStatus AlltoAllMatmulV2(
     void *workspace,
     uint64_t workspaceSize,
     aclOpExecutor *executor,
     aclrtStream stream)
 ```
 
-## aclnnAlltoAllQuantMatmulV3GetWorkspaceSize
+## AlltoAllMatmulV2GetWorkspaceSize
 
 - **参数说明**
 
@@ -162,7 +162,7 @@ aclnnStatus aclnnAlltoAllQuantMatmulV3(
   <tr><td>CeilDiv(Ka,64)不是偶数。</td></tr>
   </tbody></table>
 
-## aclnnAlltoAllQuantMatmulV3
+## AlltoAllMatmulV2
 
 - **参数说明**
 
@@ -170,7 +170,7 @@ aclnnStatus aclnnAlltoAllQuantMatmulV3(
   <col style="width:180px"><col style="width:120px"><col style="width:700px"></colgroup>
   <thead><tr><th>参数名</th><th>输入/输出</th><th>描述</th></tr></thead><tbody>
   <tr><td>workspace</td><td>输入</td><td>在Device侧申请的workspace内存地址。</td></tr>
-  <tr><td>workspaceSize</td><td>输入</td><td>在Device侧申请的workspace大小，由第一段接口aclnnAlltoAllQuantMatmulV3GetWorkspaceSize获取。</td></tr>
+  <tr><td>workspaceSize</td><td>输入</td><td>在Device侧申请的workspace大小，由第一段接口AlltoAllMatmulV2GetWorkspaceSize获取。</td></tr>
   <tr><td>executor</td><td>输入</td><td>op执行器，包含了算子计算流程。</td></tr>
   <tr><td>stream</td><td>输入</td><td>指定执行任务的Stream。</td></tr>
   </tbody></table>
@@ -181,7 +181,7 @@ aclnnStatus aclnnAlltoAllQuantMatmulV3(
 
 ## 约束说明
 
-- 确定性说明：aclnnAlltoAllQuantMatmulV3默认确定性实现。
+- 确定性说明：AlltoAllMatmulV2默认确定性实现。
 - 仅支持Ascend 950系列产品。
 - 输入数据类型仅支持FP8_E4M3FN和FP8_E5M2。
 - x1的shape[M_total,Ka]需满足：CeilDiv(Ka,64)为偶数。
@@ -214,7 +214,7 @@ HcclCommInitAll(4, devices, comms);
 // 3. 获取workspace大小
 uint64_t wsSize = 0;
 aclOpExecutor *exec = nullptr;
-aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
+AlltoAllMatmulV2GetWorkspaceSize(
     contextTensor, x1Tensor, x2Tensor, nullptr,
     x1ScaleTensor, x2ScaleTensor,
     hcomName, 4, 0, 6, 6, 0, "urma", 0,
@@ -223,6 +223,6 @@ aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
 // 4. 执行计算
 void *ws = nullptr;
 aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST);
-aclnnAlltoAllQuantMatmulV3(ws, wsSize, exec, stream);
+AlltoAllMatmulV2(ws, wsSize, exec, stream);
 aclnrtSynchronizeStream(stream);
 ```

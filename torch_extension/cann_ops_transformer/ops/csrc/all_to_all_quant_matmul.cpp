@@ -127,7 +127,7 @@ std::tuple<at::Tensor, at::Tensor> NpuAlltoAllQuantMatmul(
 
     int64_t groupSize = CheckAndGetGroupSize(groupSizes);
 
-    ACLNN_CMD(aclnnAlltoAllQuantMatmulV3, context, x1Wrapper, x2Wrapper, biasOptional, x1ScaleWrapper, x2ScaleWrapper,
+    ACLNN_CMD(AlltoAllMatmulV2, context, x1Wrapper, x2Wrapper, biasOptional, x1ScaleWrapper, x2ScaleWrapper,
               groupPtr, worldSize, hcclBufferSize, x1QuantModeVal, x2QuantModeVal, groupSize,
               commModePtr, perfMode, y, alltoallOutWrapper);
 
