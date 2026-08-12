@@ -33,25 +33,7 @@ public:
         int32_t numEntriesPerRank, int64_t hiddenDim, int64_t hiddenBytes,
         int32_t inputDtype, int32_t outputDtype, AscendC::TPipe *pipe,
         AscendC::TBuf<> &pingBuf, AscendC::TBuf<> &pongBuf, AscendC::TBuf<> &indicesBuf,
-        AscendC::TBuf<> &tempBuf, AscendC::TBuf<> &statusBuf, AscendC::TBuf<> &gradSumBuf)
-    {
-        aivId_ = aivId;
-        totalBlocks_ = totalBlocks;
-        rankId_ = rankId;
-        numRanks_ = numRanks;
-        numEntriesPerRank_ = numEntriesPerRank;
-        hiddenDim_ = hiddenDim;
-        hiddenBytes_ = hiddenBytes;
-        inputDtype_ = inputDtype;
-        outputDtype_ = outputDtype;
-        pipe_ = pipe;
-        pingBuf_ = &pingBuf;
-        pongBuf_ = &pongBuf;
-        indicesBuf_ = &indicesBuf;
-        tempBuf_ = &tempBuf;
-        statusBuf_ = &statusBuf;
-        gradSumBuf_ = &gradSumBuf;
-    }
+        AscendC::TBuf<> &tempBuf, AscendC::TBuf<> &statusBuf, AscendC::TBuf<> &gradSumBuf);
 
     __aicore__ inline void Run(uint32_t numRecv,
                                GM_ADDR recvLocalEntryOutGM, GM_ADDR uniqueLocalEntryOutGM, GM_ADDR numUniqueOutGM,
@@ -106,6 +88,31 @@ private:
     AscendC::TBuf<> *statusBuf_{nullptr};
     AscendC::TBuf<> *gradSumBuf_{nullptr};
 };
+
+__aicore__ inline void EngramFetchGradUnique::Init(
+    uint32_t aivId, uint32_t totalBlocks, uint32_t rankId, uint32_t numRanks,
+    int32_t numEntriesPerRank, int64_t hiddenDim, int64_t hiddenBytes,
+    int32_t inputDtype, int32_t outputDtype, AscendC::TPipe *pipe,
+    AscendC::TBuf<> &pingBuf, AscendC::TBuf<> &pongBuf, AscendC::TBuf<> &indicesBuf,
+    AscendC::TBuf<> &tempBuf, AscendC::TBuf<> &statusBuf, AscendC::TBuf<> &gradSumBuf)
+{
+    aivId_ = aivId;
+    totalBlocks_ = totalBlocks;
+    rankId_ = rankId;
+    numRanks_ = numRanks;
+    numEntriesPerRank_ = numEntriesPerRank;
+    hiddenDim_ = hiddenDim;
+    hiddenBytes_ = hiddenBytes;
+    inputDtype_ = inputDtype;
+    outputDtype_ = outputDtype;
+    pipe_ = pipe;
+    pingBuf_ = &pingBuf;
+    pongBuf_ = &pongBuf;
+    indicesBuf_ = &indicesBuf;
+    tempBuf_ = &tempBuf;
+    statusBuf_ = &statusBuf;
+    gradSumBuf_ = &gradSumBuf;
+}
 
 __aicore__ inline void EngramFetchGradUnique::Run(
     uint32_t numRecv,
@@ -321,13 +328,16 @@ __aicore__ inline void EngramFetchGradUnique::LoadCoreRange(uint32_t numRecv, GM
 __aicore__ inline int32_t EngramFetchGradUnique::ComputePreCoreOffset(GM_ADDR segCountGM)
 {
     int32_t preCoreOffset = 0;
-    AscendC::GlobalTensor<int32_t> segCountGM_;
-    segCountGM_.SetGlobalBuffer((__gm__ int32_t *)segCountGM);
     if (aivId_ > 0) {
+        AscendC::GlobalTensor<int32_t> segCountGMT;
+        segCountGMT.SetGlobalBuffer((__gm__ int32_t *)segCountGM);
+        AscendC::LocalTensor<int32_t> segCountUb = tempBuf_->Get<int32_t>();
+        AscendC::DataCopyPadExtParams<int32_t> scPad{false, 0, 0, 0};
+        AscendC::DataCopyExtParams scParams{1U, static_cast<uint32_t>(aivId_ * sizeof(int32_t)), 0U, 0U, 0U};
+        AscendC::DataCopyPad(segCountUb, segCountGMT, scParams, scPad);
+        SyncFunc<AscendC::HardEvent::MTE2_S>(*pipe_);
         for (uint32_t core = 0; core < aivId_; core++) {
-            AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-                                              AscendC::DcciDst::CACHELINE_OUT>(segCountGM_[core]);
-            preCoreOffset += segCountGM_.GetValue(core);
+            preCoreOffset += segCountUb.GetValue(core);
         }
     }
     return preCoreOffset;
