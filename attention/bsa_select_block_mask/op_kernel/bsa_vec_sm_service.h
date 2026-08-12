@@ -289,8 +289,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     AscendC::PipeBarrier<PIPE_V>();
 
     // 更新new max
-    uint32_t maxShape[] = { actualQExcuteRow, kChunkSize };
-    bool isSrcInnerPad = (kChunkSize % FLOAT_DATA_BLOCK_NUM == 0);
+    uint32_t maxShape[] = { actualQExcuteRow, kChunkSizeAlign };
+    bool isSrcInnerPad = true;
 
     AscendC::ReduceMax<T, AscendC::Pattern::Reduce::AR, false>(
         tmpMax, scoreUb, reduceSharedTemp, maxShape, isSrcInnerPad);
@@ -339,9 +339,16 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     AscendC::Exp(scoreUb, scoreUb, actualQExcuteRow * kChunkSizeAlign);
     AscendC::PipeBarrier<PIPE_V>();
 
-    uint32_t sumShape[] = { actualQExcuteRow, kChunkSize};
-    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, false>(
-        tmpSum, scoreUb, reduceSharedTemp, sumShape, isSrcInnerPad);
+    uint32_t sumShape[] = { actualQExcuteRow, kChunkSizeAlign};
+    if (kChunkSizeAlign <= FLOAT_REPEAT_NUM) {
+        // Set the mask in the instruction instead of relying on the high-level reuse implementation's mask state.
+        AscendC::WholeReduceSum<T, true>(
+            tmpSum, scoreUb, static_cast<int32_t>(kChunkSizeAlign), static_cast<int32_t>(actualQExcuteRow), 1, 1,
+            static_cast<int32_t>(kChunkSizeAlign / FLOAT_DATA_BLOCK_NUM));
+    } else {
+        AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(
+            tmpSum, scoreUb, reduceSharedTemp, sumShape, isSrcInnerPad);
+    }
     AscendC::PipeBarrier<PIPE_V>();
 
     AscendC::Add(globalSum, tmpSum, globalSum, actualQExcuteRow);
