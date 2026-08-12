@@ -49,7 +49,7 @@ public:
         sessionNumBlockAlign_ = Align(contextInfo_->A, sizeof(int32_t));
         int64_t validGatherIdxLength = contextInfo_->validGatherIdxLength;
 
-        int64_t ubAvailable = contextInfo->ubSize - 
+        int64_t ubAvailable = contextInfo->ubSize -
                             (BUFFER_NUM * PER_LOOP_ROWS * sizeof(int32_t) * VAR_NUM +
                             BUFFER_NUM * PER_LOOP_ROWS * sizeof(int32_t) +
                             sessionNumBlockAlign_ * sizeof(int32_t) * BUFFER_NUM +
@@ -187,7 +187,7 @@ public:
                 for (int64_t hBlock = 0; hBlock < hBlocks_; hBlock++) {
                     int64_t hStart = hBlock * maxBlockSize_;
                     int64_t hSize = (hBlock == hBlocks_ - 1) ? lastHBlockSize_ : maxBlockSize_;
-                    int64_t globalXOffset = sessionIndices * strideSession + 
+                    int64_t globalXOffset = sessionIndices * strideSession +
                                         microbatchIndices * strideMicroBatch +
                                         bsIndices * strideBs + kIndices * strideK + hStart;
 
@@ -248,13 +248,13 @@ private:
         inQueueX_.EnQue(xLocal);
     }
 
-    __aicore__ inline void CopyXOut(int64_t xDstOffset, int64_t curLoopCols) 
+    __aicore__ inline void CopyXOut(int64_t xDstOffset, int64_t curLoopCols)
     {
         LocalTensor<int8_t> xLocal = inQueueX_.DeQue<int8_t>();
 
         DataCopyExtParams copyParams2{1, static_cast<uint32_t>(curLoopCols * tokenDtypeSize_), 0, 0, 0};
         DataCopyPad(yOutGm_[xDstOffset], xLocal, copyParams2);
-        
+
         inQueueX_.FreeTensor(xLocal);
     }
 
