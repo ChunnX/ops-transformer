@@ -282,24 +282,17 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                 return ge::GRAPH_FAILED);
     auto invRmsShape = invRmsShapePtr->GetStorageShape();
     // BSND: invRms=[B,S,1] (3D), TND: invRms=[T,1] (2D)
-    int64_t expectedInvRmsDims = isTND ? 2 : 3;
-    OP_CHECK_IF(invRmsShape.GetDimNum() != static_cast<size_t>(expectedInvRmsDims),
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, invRms must be %ldD, but got %lu dims",
-                                            expectedInvRmsDims, invRmsShape.GetDimNum()),
-                return ge::GRAPH_FAILED);
     if (isTND) {
-        OP_CHECK_IF(
-            invRmsShape.GetDim(0) != totalLength || invRmsShape.GetDim(1) != 1,
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify invRms failed, expected (T=%ld, 1), but got (%ld, %ld)",
-                                        totalLength, invRmsShape.GetDim(0), invRmsShape.GetDim(1)),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(invRmsShape.GetDim(0) != totalLength,
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify invRms failed, expected (T=%ld), but got (%ld)",
+                                                totalLength, invRmsShape.GetDim(0)),
+                    return ge::GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(
-            invRmsShape.GetDim(0) != batchSize || invRmsShape.GetDim(1) != seqLength || invRmsShape.GetDim(2) != 1,
-            OPS_REPORT_VECTOR_INNER_ERR(
-                opName, "ShapeVerify invRms failed, expected (B=%ld, S=%ld, 1), but got (%ld, %ld, %ld)", batchSize,
-                seqLength, invRmsShape.GetDim(0), invRmsShape.GetDim(1), invRmsShape.GetDim(2)),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(invRmsShape.GetDim(0) != batchSize || invRmsShape.GetDim(1) != seqLength,
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        opName, "ShapeVerify invRms failed, expected (B=%ld, S=%ld), but got (%ld, %ld)", batchSize,
+                        seqLength, invRmsShape.GetDim(0), invRmsShape.GetDim(1)),
+                    return ge::GRAPH_FAILED);
     }
 
     auto gradXShapePtr = context->GetOutputShape(GRAD_X_IDX);
