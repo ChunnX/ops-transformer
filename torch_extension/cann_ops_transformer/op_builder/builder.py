@@ -30,6 +30,7 @@ class OpBuilder(ABC):
     _torch_npu_path = None
     _cann_version = None
     _loaded_ops = {}
+    _registered_schemas = set()
 
     def __init__(self, name):
         self.name = name
@@ -57,7 +58,12 @@ class OpBuilder(ABC):
         if isinstance(op_schema, str):
             op_schema = [op_schema]
         for schema in op_schema:
+            # 防止重复注册schema：模块被多次import时，__init__会重复调用register_schema，
+            # 而torch Library.define不允许同一schema注册两次，否则抛RuntimeError。
+            if schema in __class__._registered_schemas:
+                continue
             AS_LIBRARY.define(schema)
+            __class__._registered_schemas.add(schema)
 
     @abstractmethod
     def sources(self): ...
