@@ -402,6 +402,8 @@ install_whl_package() {
       logandprint "[WARNING]: pip not available, copying whl file directly..."
       cp "${whl_file}" "${target_python_dir}/"
     fi
+    chmod -R "${CUSTOM_PERM}" "${target_python_dir}"/cann_ops_transformer 2> /dev/null
+    chmod -R "${CUSTOM_PERM}" "${target_python_dir}"/cann_ops_transformer-*.dist-info 2> /dev/null
 
     logandprint "[INFO]: cann_ops_transformer whl package installed successfully"
   else
@@ -458,6 +460,12 @@ main() {
   chmod "${LOG_PATH_PERM}" "${COMM_LOG_DIR}" 2>/dev/null
   chmod "${LOG_FILE_PERM}" "${COMM_LOGFILE}" 2>/dev/null
   chmod "${LOG_FILE_PERM}" "${COMM_OPERATION_LOGFILE}" 2>/dev/null
+
+  if [ "$(id -u)" = "0" ]; then
+    chmod "${CUSTOM_PERM}" -R "${TARGET_OPP_BUILT_IN}" 2>/dev/null
+  else
+    chmod "${BUILTIN_PERM}" -R "${TARGET_OPP_BUILT_IN}" 2>/dev/null
+  fi
 
   chmod "${ONLYREAD_PERM}" "${TARGET_SHARED_INFO_DIR}/${OPP_PLATFORM_DIR}/scene.info" 2>/dev/null
   chmod "${ONLYREAD_PERM}" "${TARGET_SHARED_INFO_DIR}/${OPP_PLATFORM_DIR}/version.info" 2>/dev/null
