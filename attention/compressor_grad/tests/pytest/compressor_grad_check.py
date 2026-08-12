@@ -76,6 +76,37 @@ def get_pct_thd(data_type):
     return PRECISION[data_type]["pct_thd"]
 
 
+def three_way_report(name, npu_out, golden_out, ref_out, data_type):
+    """三方精度判定：metric_A / max(metric_B, err) < ratio（MARE=10/MERE=2/RMSE=2）。"""
+    ERR_BY_DTYPE = {"float16": 2e-11, "bfloat16": 2e-8, "float32": 2e-14}
+    RATIO = {"MARE": 10.0, "MERE": 2.0, "RMSE": 2.0}
+    err = ERR_BY_DTYPE[data_type]
+    a = npu_out.detach().cpu().float()
+    b = golden_out.detach().cpu().float()
+    c = ref_out.detach().cpu().float()
+    da = (a - c).abs()
+    db = (b - c).abs()
+    denom = c.abs().clamp(min=1e-7)
+    mare_a = (da / denom).max().item()
+    mare_b = (db / denom).max().item()
+    mere_a = (da / denom).mean().item()
+    mere_b = (db / denom).mean().item()
+    rmse_a = da.pow(2).mean().sqrt().item()
+    rmse_b = db.pow(2).mean().sqrt().item()
+    ratios = {
+        "MARE": mare_a / max(mare_b, err),
+        "MERE": mere_a / max(mere_b, err),
+        "RMSE": rmse_a / max(rmse_b, err),
+    }
+    ok = all(ratios[m] < RATIO[m] for m in RATIO)
+    print_log(f"[three-way] {name}: "
+              f"MARE {mare_a:.3e}/{mare_b:.3e} ({ratios['MARE']:.3f}<{RATIO['MARE']:.0f}) "
+              f"MERE {mere_a:.3e}/{mere_b:.3e} ({ratios['MERE']:.3f}<{RATIO['MERE']:.0f}) "
+              f"RMSE {rmse_a:.3e}/{rmse_b:.3e} ({ratios['RMSE']:.3f}<{RATIO['RMSE']:.0f}) "
+              f"[{'PASS' if ok else 'FAIL'}]")
+    return {"status": "PASS" if ok else "FAIL", "ratios": ratios}
+
+
 # ================================================================
 #  日志输出
 # ================================================================
