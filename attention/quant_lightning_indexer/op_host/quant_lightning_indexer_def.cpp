@@ -28,7 +28,7 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT8})
             .Format({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         this->Input("weights")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16})
@@ -43,7 +43,7 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16})
             .Format({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         this->Input("actual_seq_lengths_query")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32})
