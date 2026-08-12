@@ -278,13 +278,13 @@ bool GroupedMatmulSwigluQuantV2Tiling950::ValidateDtypeAndQuantParams(const gert
     const int64_t *quantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
     if (quantDtypePtr != nullptr) {
         ge::DataType quantDtype = static_cast<ge::DataType>(*quantDtypePtr);
-        OP_CHECK_IF(!CheckQuantDtypeByFormat(quantDtype, weightFormat),
+        OP_CHECK_IF(!CheckQuantDtypeByFormat(quantDtype),
                     OP_LOGE(context_->GetNodeName(), "CheckQuantDtypeByFormat failed."), return false);
     }
     return CheckDtype();
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::CheckQuantDtypeByFormat(ge::DataType quantDtype, ge::Format weightFormat)
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckQuantDtypeByFormat(ge::DataType quantDtype)
 {
     if (IsMxFp4WeightNz()) {
         // 仅 NZ+MXFP4 场景：支持 FLOAT4_E1M2
@@ -604,7 +604,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
                             ShapeDimsToString(inputParams_.mSize, expectedKDimValue, MXFP_MULTI_BASE_SIZE)),
                         return false);
         } else {
-            OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, wScaleShape),
+            OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, scaleStorageShape),
                         OP_LOGE(inputParams_.opName, "CheckShapeForMxQuant failed."), return false);
         }
     }
