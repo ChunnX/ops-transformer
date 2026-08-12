@@ -156,9 +156,15 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t& gammaExist)
     auto shapeBias = context_->GetInputShape(3);
     int64_t baseFirstDim = shapeBias->GetStorageShape().GetDim(0);
     int64_t expectedBias = hasResi ? hcMix_ : 2 * hcMult_;
-    OP_CHECK_IF(baseFirstDim != expectedBias,
+    OP_CHECK_IF((!hasResi && hcMix_ != 2 * hcMult_) || (hasResi && hcMix_ == 2 * hcMult_),
                     OP_LOGE(context_->GetNodeName(),
-                             "bias size should be equal with %ld, but is %ld", expectedBias, baseFirstDim),
+                            "phi dim 0 %ld is only valid with alpha size %ld; alpha size is %ld",
+                            hcMix_, hasResi ? 3 : 2, hasResi ? 3 : 2),
+                    return ge::GRAPH_FAILED);
+    OP_CHECK_IF(hasResi && hcMix_ == 2 * hcMult_,
+                    OP_LOGE(context_->GetNodeName(),
+                             "When alpha size is 3, phi dim 0 must include the residual branch, but is %ld",
+                             hcMix_),
                     return ge::GRAPH_FAILED);
     auto shapeGamma = context_->GetOptionalInputShape(4);
     gammaExist = CheckOptionalParamsExisting(shapeGamma);

@@ -314,7 +314,9 @@ public:
         hcBaseGm.SetGlobalBuffer((__gm__ float *)hcBase);
         yGm.SetGlobalBuffer((__gm__ T *)y);
         postGm.SetGlobalBuffer((__gm__ float *)post);
-        hResGm.SetGlobalBuffer((__gm__ float *)hRes);
+        if constexpr (hasResi) {
+            hResGm.SetGlobalBuffer((__gm__ float *)hRes);
+        }
         workspaceGm.SetGlobalBuffer((__gm__ float *)workspace);
 
         if (needGrad_) {
@@ -327,42 +329,48 @@ public:
             int64_t invRmsWsTotalSize = bs * sizeof(float) / sizeof(float);
             hcBeforeNormGm.SetGlobalBuffer((__gm__ float *)workspace + xCastWsTotalSize + invRmsWsTotalSize);
         }
-        // InQue
+
+         // InQue
         int64_t mixesQue01Size = stage2RowFactor * hcMultAlign * NUM_TWO * sizeof(float);
         pipe->InitBuffer(mixesQue01, NUM_TWO, mixesQue01Size);
-        pipe->InitBuffer(mixesQue2, NUM_TWO, stage2RowFactor * hcMult * hcMultAlign * sizeof(float));
         pipe->InitBuffer(squareSumQue, NUM_TWO, stage2RowFactor * SQUARE_SUM_SIZE * sizeof(float));
         int64_t xQueNum2 = stage2RowFactor * hcMult * RoundUp<T>(dFactor);
         pipe->InitBuffer(xQue, NUM_TWO, xQueNum2 * sizeof(T));
-        // OutQue
+
         pipe->InitBuffer(yQue, NUM_TWO, stage2RowFactor * RoundUp<T>(dFactor) * sizeof(T));
         pipe->InitBuffer(postQue, NUM_TWO, stage2RowFactor * hcMultAlign * sizeof(float));
-        pipe->InitBuffer(combFragQue, NUM_TWO, stage2RowFactor * resSize * sizeof(float));
         pipe->InitBuffer(reduceQue, NUM_TWO, stage2RowFactor * hcMultAlign * sizeof(float));
         // TBuf
-        pipe->InitBuffer(combFragBuf, stage2RowFactor * resSize * NUM_TWO * sizeof(float));
         pipe->InitBuffer(hcBaseBuf0, hcMultAlign * sizeof(float));
         pipe->InitBuffer(hcBaseBuf1, hcMultAlign * sizeof(float));
-        pipe->InitBuffer(hcBaseBuf2, resSize * sizeof(float));
         pipe->InitBuffer(rowBrcbBuf0, RoundUp<float>(stage2RowFactor) * BLOCK_SIZE);
         pipe->InitBuffer(hcBrcbBuf1, RoundUp<float>(stage2RowFactor * hcMultAlign * NUM_TWO) * BLOCK_SIZE);
         pipe->InitBuffer(reduceBuf, stage2RowFactor * hcMultAlign * sizeof(float));
         pipe->InitBuffer(mxies01ReduceBuf, stage2RowFactor * hcMultAlign * NUM_TWO * sizeof(float));
-        pipe->InitBuffer(mxies02ReduceBuf, stage2RowFactor * resSize * sizeof(float));
         pipe->InitBuffer(xCastBuf, xQueNum2 * sizeof(float));
         pipe->InitBuffer(yCastBuf, stage2RowFactor * RoundUp<T>(dFactor) * sizeof(float));
 
+        if constexpr (hasResi) {
+            pipe->InitBuffer(mixesQue2, NUM_TWO, stage2RowFactor * hcMult * hcMultAlign * sizeof(float));
+            pipe->InitBuffer(combFragQue, NUM_TWO, stage2RowFactor * resSize * sizeof(float));
+            pipe->InitBuffer(combFragBuf, stage2RowFactor * resSize * NUM_TWO * sizeof(float));
+            pipe->InitBuffer(hcBaseBuf2, resSize * sizeof(float));
+            pipe->InitBuffer(mxies02ReduceBuf, stage2RowFactor * resSize * sizeof(float));
+        }
+
         hcBase0Local = hcBaseBuf0.Get<float>();
         hcBase1Local = hcBaseBuf1.Get<float>();
-        hcBase2Local = hcBaseBuf2.Get<float>();
         rowBrcbLocal0 = rowBrcbBuf0.Get<float>();
         hcBrcbLocal1 = hcBrcbBuf1.Get<float>();
         reduceLocal = reduceBuf.Get<float>();
         mxies01ReduceLocal = mxies01ReduceBuf.Get<float>();
-        mxies02ReduceLocal = mxies02ReduceBuf.Get<float>();
         xCastLocal = xCastBuf.Get<float>();
         yCastLocal = yCastBuf.Get<float>();
-        combFragBufLocal = combFragBuf.Get<float>();
+        if constexpr (hasResi) {
+            hcBase2Local = hcBaseBuf2.Get<float>();
+            mxies02ReduceLocal = mxies02ReduceBuf.Get<float>();
+            combFragBufLocal = combFragBuf.Get<float>();
+        }
     }
 
     __aicore__ inline void InitTilingParams(const MhcPreMembaseTilingData *tilingDataPtr)
