@@ -155,6 +155,8 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
     constInfo.qSeqSize = tilingData->s1Size;
     constInfo.attenMaskFlag = (tilingData->sparseMode == 3);
     constInfo.kCacheBlockSize = tilingData->blockSize;
+    constInfo.keyStride0 = tilingData->keyStride0;
+    constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
     constInfo.maxBlockNumPerBatch = tilingData->maxBlockNumPerBatch;
     constInfo.sparseCount = tilingData->sparseCount;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
