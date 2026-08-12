@@ -47,6 +47,13 @@ __global__ __aicore__ void attention_to_ffn_v2(GM_ADDR mc2Context, GM_ADDR x, GM
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(AttentionToFfnV2TilingData, tilingData, tilingGM);
         const auto *v1TilingData = reinterpret_cast<const AttentionToFFNTilingData *>(&tilingData);
+        // fp8/fp4 inputs are pre-quantized; only pass-through (NO_QUANT) is valid for them.
+        // MX quantization requires half/bf16 input — ComputeFp8Data/ComputeFp4Data use
+        // MicroAPI::Mul which does not support fp8/uint8_t RegTensor.
+        constexpr bool isQuantizedInput =
+            Std::IsSame<DTYPE_X, fp8_e5m2_t>::value || Std::IsSame<DTYPE_X, fp8_e4m3fn_t>::value ||
+            Std::IsSame<DTYPE_X, hifloat8_t>::value || Std::IsSame<DTYPE_X, fp4x2_e2m1_t>::value ||
+            Std::IsSame<DTYPE_X, fp4x2_e1m2_t>::value;
         // QuantMode value uniquely determines XOutType — no separate outDtype parameter needed.
         if constexpr (QuantMode == ATTN_FFN_TILINGKEY_NO_QUANT ||
                       QuantMode == ATTN_FFN_TILINGKEY_PERTOKEN_INT8) {
@@ -55,19 +62,19 @@ __global__ __aicore__ void attention_to_ffn_v2(GM_ADDR mc2Context, GM_ADDR x, GM
             op.Init(mc2Context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, active_mask,
                     workspaceGM, &pipe, v1TilingData);
             op.Process();
-        } else if constexpr (QuantMode == ATTN_FFN_TILINGKEY_MX_E5M2) {
+        } else if constexpr (!isQuantizedInput && QuantMode == ATTN_FFN_TILINGKEY_MX_E5M2) {
             AttentionToFFN<DTYPE_X, fp8_e5m2_t, QuantMode, isSync, isActiveMask,
                            AttentionToFFNContextType::MC2_CONTEXT> op;
             op.Init(mc2Context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, active_mask,
                     workspaceGM, &pipe, v1TilingData);
             op.Process();
-        } else if constexpr (QuantMode == ATTN_FFN_TILINGKEY_MX_E4M3) {
+        } else if constexpr (!isQuantizedInput && QuantMode == ATTN_FFN_TILINGKEY_MX_E4M3) {
             AttentionToFFN<DTYPE_X, fp8_e4m3fn_t, QuantMode, isSync, isActiveMask,
                            AttentionToFFNContextType::MC2_CONTEXT> op;
             op.Init(mc2Context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, active_mask,
                     workspaceGM, &pipe, v1TilingData);
             op.Process();
-        } else if constexpr (QuantMode == ATTN_FFN_TILINGKEY_MX_E2M1) {
+        } else if constexpr (!isQuantizedInput && QuantMode == ATTN_FFN_TILINGKEY_MX_E2M1) {
             AttentionToFFN<DTYPE_X, fp4x2_e2m1_t, QuantMode, isSync, isActiveMask,
                            AttentionToFFNContextType::MC2_CONTEXT> op;
             op.Init(mc2Context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, active_mask,
