@@ -429,30 +429,30 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::QuantProc
         floatLocalTemp = xOutTensor_.template ReinterpretCast<float>();
         floatLocalTemp.SetValue(hOutSizeAlign_ / sizeof(float), float(1.0) / dynamicScale);
     } else if constexpr (IsMxQuant(QuantMode)) {
-        uint32_t mxScaleNum = Ceil(Ceil(axisH_, MX_BLOCK_SIZE), 2U) * 2U;
-        LocalTensor<float> receiveDataCastFloat = receiveDataCastFloatBuf_.Get<float>();
-        __ubuf__ StorageXInType *srcAddr = (__ubuf__ StorageXInType *)xInTensor_.GetPhyAddr();
-        __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)receiveDataCastFloat.GetPhyAddr();
-        __ubuf__ uint16_t *halfScaleLocalAddr =
-            (__ubuf__ uint16_t *)receiveDataCastFloat[Ceil(mxScaleNum, 32U) * 32U].GetPhyAddr();
-        __ubuf__ int8_t *outLocalAddr = (__ubuf__ int8_t *)xOutTensor_.GetPhyAddr();
-        __ubuf__ uint16_t *mxScaleLocalAddr;
-        if constexpr (Std::IsSame<XOutType, fp4x2_e2m1_t>::value) {
-            mxScaleLocalAddr = (__ubuf__ uint16_t *)xOutTensor_[Ceil(axisH_, FP4_ELEMS_PER_BYTE) * 1U].GetPhyAddr();
-        } else {
-            mxScaleLocalAddr = (__ubuf__ uint16_t *)xOutTensor_[axisH_ * 1U].GetPhyAddr();
-        }
-        Quant::ComputeMaxExp(srcAddr, maxExpAddr, axisH_);
-        Quant::ComputeScale<XOutType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
-        if constexpr (Std::IsSame<XOutType, fp8_e4m3fn_t>::value || Std::IsSame<XOutType, fp8_e5m2_t>::value) {
-            Quant::ComputeFp8Data<StorageXInType, XOutType, AscendC::RoundMode::CAST_TRUNC,
-                                  AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
-        } else {
-            Quant::ComputeFp4Data<StorageXInType, XOutType, AscendC::RoundMode::CAST_TRUNC,
-                                  AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
-        }
-        PipeBarrier<PIPE_V>();
-        xInQueue_.FreeTensor<XType>(xInTensor_);
+        // uint32_t mxScaleNum = Ceil(Ceil(axisH_, MX_BLOCK_SIZE), 2U) * 2U;
+        // LocalTensor<float> receiveDataCastFloat = receiveDataCastFloatBuf_.Get<float>();
+        // __ubuf__ StorageXInType *srcAddr = (__ubuf__ StorageXInType *)xInTensor_.GetPhyAddr();
+        // __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)receiveDataCastFloat.GetPhyAddr();
+        // __ubuf__ uint16_t *halfScaleLocalAddr =
+        //     (__ubuf__ uint16_t *)receiveDataCastFloat[Ceil(mxScaleNum, 32U) * 32U].GetPhyAddr();
+        // __ubuf__ int8_t *outLocalAddr = (__ubuf__ int8_t *)xOutTensor_.GetPhyAddr();
+        // __ubuf__ uint16_t *mxScaleLocalAddr;
+        // if constexpr (Std::IsSame<XOutType, fp4x2_e2m1_t>::value) {
+        //     mxScaleLocalAddr = (__ubuf__ uint16_t *)xOutTensor_[Ceil(axisH_, FP4_ELEMS_PER_BYTE) * 1U].GetPhyAddr();
+        // } else {
+        //     mxScaleLocalAddr = (__ubuf__ uint16_t *)xOutTensor_[axisH_ * 1U].GetPhyAddr();
+        // }
+        // Quant::ComputeMaxExp(srcAddr, maxExpAddr, axisH_);
+        // Quant::ComputeScale<XOutType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
+        // if constexpr (Std::IsSame<XOutType, fp8_e4m3fn_t>::value || Std::IsSame<XOutType, fp8_e5m2_t>::value) {
+        //     Quant::ComputeFp8Data<StorageXInType, XOutType, AscendC::RoundMode::CAST_TRUNC,
+        //                           AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
+        // } else {
+        //     Quant::ComputeFp4Data<StorageXInType, XOutType, AscendC::RoundMode::CAST_TRUNC,
+        //                           AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
+        // }
+        // PipeBarrier<PIPE_V>();
+        // xInQueue_.FreeTensor<XType>(xInTensor_);
     }
 #else
     float dynamicScale = 0.0;
