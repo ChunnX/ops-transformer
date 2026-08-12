@@ -30,6 +30,10 @@ constexpr int64_t INVALID_MXFP4_WEIGHT_DIM = 1;
 constexpr size_t MIN_X_ORIGIN_SHAPE_DIM = 2;
 constexpr size_t MIN_WEIGHT_ORIGIN_SHAPE_DIM = 2;
 constexpr size_t MX_MULTI_WEIGHT_SCALE_DIM = 3;
+constexpr size_t PERTOKEN_WEIGHT_ORIGIN_DIM = 3;
+constexpr size_t PERTOKEN_WEIGHT_NZ_STORAGE_DIM = 5;
+constexpr int64_t NZ_INNER_SIZE = 16;
+constexpr int64_t INT8_NZ_C0_SIZE = 32;
 constexpr uint64_t MXFP_BASEK_FACTOR = 64UL;
 constexpr size_t WEIGHT_ORIGIN_LAST_DIM_OFFSET = 1;
 constexpr size_t WEIGHT_ORIGIN_LAST_SECOND_DIM_OFFSET = 2;
@@ -902,6 +906,18 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
                     "the dtypes of x and weight must be within the range FLOAT8, INT8 or HIFLOAT8"),
                 return false);
+    if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_CHECK_IF(!(inputParams_.aDtype == ge::DT_INT8 && inputParams_.bDtype == ge::DT_INT8 &&
+                      inputParams_.outDataDtype == ge::DT_INT8),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                        inputParams_.opType, "x, weight, y",
+                        ListToString(
+                            ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                         ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                            ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype)),
+                        "in per-token mode, FRACTAL_NZ weight only supports INT8 x, weight and y"),
+                    return false);
+    }
     OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT,
                 OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "x_scale",
                                           ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype),
@@ -926,6 +942,33 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
     return true;
 }
 
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckPertokenWeightNzShape(
+    const gert::Shape &wShape, const gert::Shape &wStorageShape) const
+{
+    OP_CHECK_IF(wShape.GetDimNum() != PERTOKEN_WEIGHT_ORIGIN_DIM,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight origin shape",
+                                             std::to_string(wShape.GetDimNum()),
+                                             std::to_string(PERTOKEN_WEIGHT_ORIGIN_DIM)),
+                return false);
+    OP_CHECK_IF(wStorageShape.GetDimNum() != PERTOKEN_WEIGHT_NZ_STORAGE_DIM,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight storage shape",
+                                             std::to_string(wStorageShape.GetDimNum()),
+                                             std::to_string(PERTOKEN_WEIGHT_NZ_STORAGE_DIM)),
+                return false);
+
+    const int64_t groupNum = wShape.GetDim(0);
+    const int64_t n1 = inputParams_.transB ? GroupedMatmul::CeilDiv(inputParams_.kSize, INT8_NZ_C0_SIZE) :
+                                             GroupedMatmul::CeilDiv(inputParams_.nSize, INT8_NZ_C0_SIZE);
+    const int64_t k1 = inputParams_.transB ? GroupedMatmul::CeilDiv(inputParams_.nSize, NZ_INNER_SIZE) :
+                                             GroupedMatmul::CeilDiv(inputParams_.kSize, NZ_INNER_SIZE);
+    const gert::Shape expectedStorageShape{groupNum, n1, k1, NZ_INNER_SIZE, INT8_NZ_C0_SIZE};
+    OP_CHECK_IF(wStorageShape != expectedStorageShape,
+                OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "weight storage shape",
+                                          ShapeToString(wStorageShape), ShapeToString(expectedStorageShape)),
+                return false);
+    return true;
+}
+
 bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputsPertoken()
 {
     auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
@@ -934,6 +977,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputsPertoken()
                                                       "wStorageShape cannot be nullptr"),
                 return false);
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
+    const gert::Shape &wNzStorageShape = wStorageShape->GetStorageShape();
     auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
     OP_CHECK_IF(scaleStorageShape == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight_scale", "nullptr",
@@ -955,6 +999,29 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputsPertoken()
                 OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "x_scale", std::to_string(xScaleDimNum), "1"),
                 return false);
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
+    OP_CHECK_IF(wShape.GetDimNum() != PERTOKEN_WEIGHT_ORIGIN_DIM ||
+                    static_cast<uint64_t>(wShape.GetDim(0)) != inputParams_.groupNum,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opType, "weight", ShapeToString(wShape),
+                                                      "weight first dimension must equal groupList length"),
+                return false);
+    OP_CHECK_IF(static_cast<uint64_t>(wScaleShape.GetDim(0)) != inputParams_.groupNum ||
+                    static_cast<uint64_t>(wScaleShape.GetDim(1)) != inputParams_.nSize,
+                OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "weight_scale", ShapeToString(wScaleShape),
+                                          ShapeDimsToString(inputParams_.groupNum, inputParams_.nSize)),
+                return false);
+    OP_CHECK_IF(static_cast<uint64_t>(xScaleShape.GetDim(0)) != inputParams_.mSize,
+                OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "x_scale", ShapeToString(xScaleShape),
+                                          ShapeDimsToString(inputParams_.mSize)),
+                return false);
+    if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_CHECK_IF(inputParams_.nSize == 0 || inputParams_.nSize % GmmConstant::WEIGHTNZ_64 != 0,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        inputParams_.opType, "weight", ShapeToString(wShape),
+                        "in per-token INT8 mode, N of FRACTAL_NZ weight must be positive and aligned to 64"),
+                    return false);
+        OP_CHECK_IF(!CheckPertokenWeightNzShape(wShape, wNzStorageShape),
+                    OP_LOGE(inputParams_.opName, "CheckPertokenWeightNzShape failed."), return false);
+    }
     OP_CHECK_IF(inputParams_.nSize % GmmConstant::EVEN_FACTOR != 0,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opType, "weight", ShapeToString(wShape),
                                                       "n axis element number of weight must be an even number"),
