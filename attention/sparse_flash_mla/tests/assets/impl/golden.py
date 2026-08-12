@@ -12,82 +12,25 @@
 
 """CPU Golden adapter for SparseFlashMla TTK cases."""
 
-import hashlib
 import importlib.util
-import json
-import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
 
+if TYPE_CHECKING:
+    from ttk.test_spec import TtkContext
+
 
 OPERATOR = "sparse_flash_mla"
-SIDECAR_NAME = "metadata_inputs.pt"
-SIDECAR_VERSION = 1
 DATA_STATE_KEY = f"{OPERATOR}.pytest_data"
-METADATA_STATE_KEY = f"{OPERATOR}.metadata_inputs"
 PYTEST_MODULE_NAME = "smla_pytest_golden"
 PYTEST_MODULE_FILE = "sparse_flash_mla_golden.py"
 
-NON_INPUT_CSV_FIELDS = {
-    "is_enabled",
-    "precision_tolerances",
-    "absolute_precision",
-    "metadata_only",
-}
-
-
-def csv_contract_digest(context):
-    """Bind persisted metadata inputs to the CSV contract that generated them."""
-    fields = getattr(context, "csv_fields", None)
-    if not fields:
-        return None
-    contract = {
-        name: value
-        for name, value in fields.items()
-        if name not in NON_INPUT_CSV_FIELDS
-    }
-    attributes = getattr(context, "attributes", None)
-    if attributes is not None:
-        attributes = dict(attributes)
-        attributes.pop("metadata_only", None)
-        contract["attributes"] = attributes
-    serialized = json.dumps(
-        contract, ensure_ascii=True, sort_keys=True, separators=(",", ":"),
-        default=str,
-    )
-    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-
-
-def clone_metadata_value(value):
-    """Copy only the small pytest metadata arguments into a CPU-only payload."""
-    if torch.is_tensor(value):
-        return value.detach().cpu().clone()
-    if isinstance(value, dict):
-        return {name: clone_metadata_value(item) for name, item in value.items()}
-    if isinstance(value, list):
-        return [clone_metadata_value(item) for item in value]
-    if isinstance(value, tuple):
-        return tuple(clone_metadata_value(item) for item in value)
-    if value is None or isinstance(value, (str, bool, int, float)):
-        return value
-    if hasattr(value, "item"):
-        return value.item()
-    raise TypeError(
-        f"unsupported SparseFlashMla metadata input type: {type(value).__name__}"
-    )
-
-
-def load_pt(path):
-    try:
-        return torch.load(path, map_location="cpu", weights_only=True)
-    except TypeError:
-        return torch.load(path, map_location="cpu")
-
 
 class CaseDataStore:
-    """Share pytest data in-process and persist only metadata API inputs."""
+    """Share pytest data in-process and return compact metadata API inputs."""
 
     def __init__(self):
         self.case_data = {}
@@ -108,22 +51,7 @@ class CaseDataStore:
             raise ValueError("SparseFlashMla pytest data lacks metadata_input")
 
         context.state[DATA_STATE_KEY] = {"testcase_name": name, "data": data}
-        payload = {
-            "version": SIDECAR_VERSION,
-            "operator": OPERATOR,
-            "testcase_name": name,
-            "csv_contract": csv_contract_digest(context),
-            "metadata_input": clone_metadata_value(metadata_input),
-        }
-        context.state[METADATA_STATE_KEY] = payload
-        if context.sidecar_dir is not None:
-            path = context.sidecar_file(SIDECAR_NAME)
-            temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-            try:
-                torch.save(payload, temporary)
-                temporary.replace(path)
-            finally:
-                temporary.unlink(missing_ok=True)
+        return metadata_input
 
     def get(self, testcase_name, context=None):
         if testcase_name is None:
@@ -137,39 +65,6 @@ class CaseDataStore:
         if entry.get("testcase_name") != name:
             raise ValueError("SparseFlashMla context data belongs to a different testcase")
         return entry.get("data")
-
-    def load_metadata_input(self, testcase_name, context):
-        if testcase_name is None or context is None:
-            return None
-        name = str(testcase_name)
-        data = self.get(name, context)
-        if data is not None:
-            return data.get("metadata_input")
-
-        payload = context.state.get(METADATA_STATE_KEY)
-        if payload is None and context.sidecar_dir is not None:
-            path = context.sidecar_file(SIDECAR_NAME)
-            if path.is_file():
-                payload = load_pt(path)
-        if payload is None:
-            return None
-        if (
-            not isinstance(payload, dict)
-            or payload.get("version") != SIDECAR_VERSION
-            or payload.get("operator") != OPERATOR
-            or payload.get("testcase_name") != name
-        ):
-            raise ValueError("SparseFlashMla metadata sidecar has an incompatible schema")
-        if payload.get("csv_contract") != csv_contract_digest(context):
-            raise ValueError(
-                "SparseFlashMla metadata sidecar does not match the current CSV contract"
-            )
-        metadata_input = payload.get("metadata_input")
-        if not isinstance(metadata_input, dict):
-            raise ValueError("SparseFlashMla metadata sidecar lacks metadata_input")
-        context.state[METADATA_STATE_KEY] = payload
-        return metadata_input
-
 
 CASE_DATA = CaseDataStore()
 
@@ -206,15 +101,6 @@ def get_case_data(testcase_name, context=None):
     return CASE_DATA.get(testcase_name, context)
 
 
-def get_metadata_input(testcase_name, context):
-    metadata_input = CASE_DATA.load_metadata_input(testcase_name, context)
-    if metadata_input is None:
-        raise RuntimeError(
-            "SparseFlashMla requires input-stage metadata inputs before pre-NPU"
-        )
-    return metadata_input
-
-
 def materialize_golden(data):
     if data.get("cpu_output") is None:
         load_pytest_golden().generate_cpu_golden(data)
@@ -224,6 +110,11 @@ def materialize_golden(data):
 def activate_case_data(testcase_name, context):
     data = CASE_DATA.get(testcase_name, context)
     if data is None:
+        if context is not None and context.manual_case_dir is not None:
+            raise RuntimeError(
+                "SparseFlashMla cannot generate Golden from replayed input files; "
+                "prepare and replay an in,golden dataset"
+            )
         raise RuntimeError(
             "SparseFlashMla Golden requires pytest data from the input-stage context"
         )
@@ -232,7 +123,7 @@ def activate_case_data(testcase_name, context):
 
 def cpu_sparse_flash_mla(
         q, *, return_softmax_lse=False, testcase_name=None,
-        context=None, **kwargs):
+        context: "TtkContext" = None, **kwargs):
     del q, kwargs
     data = activate_case_data(testcase_name, context)
     lse = data.get("softmax_lse") if bool(return_softmax_lse) else None
@@ -248,7 +139,7 @@ def cpu_aclnn_sparse_flash_mla(
         cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left,
         ori_win_right, layout_q, layout_kv, topk_value_mode,
         return_softmax_lse, attn_out, softmax_lse_out,
-        testcase_name=None, context=None, **kwargs):
+        testcase_name=None, context: "TtkContext" = None, **kwargs):
     """Return the pytest Golden for the ACLNN C API parameter order."""
     del (
         ori_kv,

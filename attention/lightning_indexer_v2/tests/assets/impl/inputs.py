@@ -15,8 +15,12 @@
 import importlib.util
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
+
+if TYPE_CHECKING:
+    from ttk.test_spec import TtkContext
 
 
 class LightningIndexerV2InputAdapter:
@@ -51,6 +55,26 @@ class LightningIndexerV2InputAdapter:
             sys.modules.pop(name, None)
             raise LightningIndexerV2InputAdapter.module_load_error(
                 "assets Golden store", path, exc
+            ) from exc
+        return module
+
+    @staticmethod
+    def load_pre_npu_module():
+        name = "li_v2_ttk_pre_npu"
+        if name in sys.modules:
+            return sys.modules[name]
+        path = Path(__file__).with_name("pre_npu.py")
+        try:
+            spec = importlib.util.spec_from_file_location(name, path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"cannot create import spec for {path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+        except Exception as exc:
+            sys.modules.pop(name, None)
+            raise LightningIndexerV2InputAdapter.module_load_error(
+                "assets pre-NPU state", path, exc
             ) from exc
         return module
 
@@ -380,7 +404,7 @@ def generate_li_v2_inputs(
         seqused_q=None, seqused_k=None, cmp_residual_k=None,
         block_table=None, output_idx_offset=None, metadata=None,
         max_seqlen_q=-1, layout_q="BSND", layout_k="BSND", mask_mode=0,
-        cmp_ratio=1, return_value=0, context=None, **kwargs):
+        cmp_ratio=1, return_value=0, context: "TtkContext" = None, **kwargs):
     """Populate pytest-derived inputs and leave metadata for the pre-NPU stage."""
     if metadata is None:
         raise ValueError("LI_V2 direct API CSV must reserve the metadata tensor slot")
@@ -403,7 +427,10 @@ def generate_li_v2_inputs(
     case_data = INPUT_ADAPTER.load_golden_store().CASE_DATA
     testcase_name = params.get("testcase_name")
     case_data.put(testcase_name, data)
-    case_data.persist(testcase_name, context)
+    metadata_input = case_data.persist(testcase_name, context)
+    INPUT_ADAPTER.load_pre_npu_module().persist_metadata_inputs(
+        testcase_name, metadata_input, context
+    )
 
 
 def zero_metadata(metadata):
@@ -418,7 +445,7 @@ def generate_aclnn_li_v2_inputs(
         cmp_residual_k, block_table, output_idx_offset, metadata, topk,
         max_seqlen_q, layout_q, layout_k, mask_mode, cmp_ratio,
         return_value, sparse_indices_out, sparse_values_out,
-        context=None, **kwargs):
+        context: "TtkContext" = None, **kwargs):
     """Map the ACLNN C signature to the canonical pytest input adapter."""
     del sparse_indices_out, sparse_values_out
     return generate_li_v2_inputs(
