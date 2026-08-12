@@ -26,8 +26,7 @@ template <
     /// GemmType type for B matrix operand
     class BType_,
     /// GemmType type for Bias operand
-    class BiasType_
->
+    class BiasType_>
 struct TileMmad {
     using ElementA = typename AType_::Element;
     using ElementB = typename BType_::Element;
@@ -41,10 +40,10 @@ struct TileMmad {
 
     CATLASS_DEVICE
     void operator()(AscendC::LocalTensor<ElementAccumulator> const &l0CTensor,
-         AscendC::LocalTensor<ElementA> const &l0ATensor,
-         AscendC::LocalTensor<ElementB> const &l0BTensor,
-         uint32_t m, uint32_t n, uint32_t k,
-         bool initC = true, uint8_t unitFlag = 0)
+                    AscendC::LocalTensor<ElementA> const &l0ATensor,
+                    AscendC::LocalTensor<ElementB> const &l0BTensor,
+                    uint32_t m, uint32_t n, uint32_t k,
+                    bool initC = true, uint8_t unitFlag = 0)
     {
         AscendC::MmadParams mmadParams;
         mmadParams.m = m;
@@ -55,12 +54,12 @@ struct TileMmad {
 #if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 2201)
         if constexpr (std::is_same_v<ElementA, float> &&
                       (std::is_same_v<typename AType_::Layout, layout::ColumnMajor> ||
-                          std::is_same_v<typename AType_::Layout, layout::nZ>)) {
+                       std::is_same_v<typename AType_::Layout, layout::nZ>)) {
             mmadParams.kDirectionAlign = true;
         }
 #endif
 #if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510)
-        if constexpr(std::is_same_v<typename AType_::Layout, layout::VectorLayout>) {
+        if constexpr (std::is_same_v<typename AType_::Layout, layout::VectorLayout>) {
             mmadParams.disableGemv = false;
         } else {
             mmadParams.disableGemv = true;
@@ -80,11 +79,11 @@ struct TileMmad {
 
     CATLASS_DEVICE
     void operator()(AscendC::LocalTensor<ElementAccumulator> const &l0CTensor,
-         AscendC::LocalTensor<ElementA> const &l0ATensor,
-         AscendC::LocalTensor<ElementB> const &l0BTensor,
-         AscendC::LocalTensor<ElementAccumulator> const &l0BiasTensor,
-         uint32_t m, uint32_t n, uint32_t k,
-         bool initC = true, uint8_t unitFlag = 0)
+                    AscendC::LocalTensor<ElementA> const &l0ATensor,
+                    AscendC::LocalTensor<ElementB> const &l0BTensor,
+                    AscendC::LocalTensor<ElementAccumulator> const &l0BiasTensor,
+                    uint32_t m, uint32_t n, uint32_t k,
+                    bool initC = true, uint8_t unitFlag = 0)
     {
         AscendC::MmadParams mmadParams;
         mmadParams.m = m;
@@ -92,13 +91,13 @@ struct TileMmad {
         mmadParams.k = k;
         mmadParams.unitFlag = unitFlag;
         mmadParams.cmatrixInitVal = false;
-#if (defined (__NPU_ARCH__) && __NPU_ARCH__ == 2201)
+#if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 2201)
         using LayoutL1A = typename helper::L1ATypeSelector<AType_>::L1AType::Layout;
         if constexpr (std::is_same_v<ElementA, float> && std::is_same_v<LayoutL1A, layout::nZ>) {
             mmadParams.kDirectionAlign = true;
         }
 #endif
-#if (defined (__NPU_ARCH__) && __NPU_ARCH__ == 3510)
+#if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510)
         mmadParams.disableGemv = true;
 #endif
 
@@ -123,8 +122,7 @@ template <
     /// Element for A matrix operand
     class ElementA,
     /// LayoutTag for A matrix operand in L1
-    class LayoutTagL1A
->
+    class LayoutTagL1A>
 struct TileMmadTla {
     // Methods
 
@@ -132,12 +130,11 @@ struct TileMmadTla {
     TileMmadTla() {}
 
     template <class TensorC, class TensorA, class TensorB>
-    CATLASS_DEVICE
-    void operator()(TensorC const &l0CTensor,
-         TensorA const &l0ATensor,
-         TensorB const &l0BTensor,
-         uint32_t m, uint32_t n, uint32_t k,
-         bool initC = true, uint8_t unitFlag = 0)
+    CATLASS_DEVICE void operator()(TensorC const &l0CTensor,
+                                   TensorA const &l0ATensor,
+                                   TensorB const &l0BTensor,
+                                   uint32_t m, uint32_t n, uint32_t k,
+                                   bool initC = true, uint8_t unitFlag = 0)
     {
         AscendC::MmadParams mmadParams;
         mmadParams.m = m;
@@ -145,13 +142,13 @@ struct TileMmadTla {
         mmadParams.k = k;
         mmadParams.unitFlag = unitFlag;
         mmadParams.cmatrixInitVal = initC;
-#if (defined (__NPU_ARCH__) && __NPU_ARCH__ == 2201)
+#if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 2201)
         if constexpr (std::is_same_v<ElementA, float> && std::is_same_v<LayoutTagL1A, layout::nZ>) {
             mmadParams.kDirectionAlign = true;
         }
 #endif
-#if (defined (__NPU_ARCH__) && __NPU_ARCH__ == 3510)
-        if constexpr(std::is_same_v<LayoutTagL1A, layout::VectorLayout>) {
+#if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510)
+        if constexpr (std::is_same_v<LayoutTagL1A, layout::VectorLayout>) {
             mmadParams.disableGemv = false;
         } else {
             mmadParams.disableGemv = true;
@@ -170,13 +167,12 @@ struct TileMmadTla {
     }
 
     template <class TensorC, class TensorA, class TensorB, class TensorBias>
-    CATLASS_DEVICE
-    void operator()(TensorC const &l0CTensor,
-         TensorA const &l0ATensor,
-         TensorB const &l0BTensor,
-         TensorBias const &l0BiasTensor,
-         uint32_t m, uint32_t n, uint32_t k,
-         bool initC = true, uint8_t unitFlag = 0)
+    CATLASS_DEVICE void operator()(TensorC const &l0CTensor,
+                                   TensorA const &l0ATensor,
+                                   TensorB const &l0BTensor,
+                                   TensorBias const &l0BiasTensor,
+                                   uint32_t m, uint32_t n, uint32_t k,
+                                   bool initC = true, uint8_t unitFlag = 0)
     {
         AscendC::MmadParams mmadParams;
         mmadParams.m = m;
@@ -184,12 +180,12 @@ struct TileMmadTla {
         mmadParams.k = k;
         mmadParams.unitFlag = unitFlag;
         mmadParams.cmatrixInitVal = false;
-#if (defined (__NPU_ARCH__) && __NPU_ARCH__ == 2201)
+#if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 2201)
         if constexpr (std::is_same_v<ElementA, float> && std::is_same_v<LayoutTagL1A, layout::nZ>) {
             mmadParams.kDirectionAlign = true;
         }
 #endif
-#if (defined (__NPU_ARCH__) && __NPU_ARCH__ == 3510)
+#if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510)
         mmadParams.disableGemv = true;
 #endif
 
@@ -206,12 +202,11 @@ struct TileMmadTla {
     }
 
     template <class TensorC, class TensorA, class TensorB>
-    CATLASS_DEVICE
-    void operator()(TensorC const &l0CTensor,
-         TensorA const &l0ATensor,
-         TensorB const &l0BTensor,
-         uint32_t m, uint32_t n, uint32_t k,
-         uint32_t l0Batch)
+    CATLASS_DEVICE void operator()(TensorC const &l0CTensor,
+                                   TensorA const &l0ATensor,
+                                   TensorB const &l0BTensor,
+                                   uint32_t m, uint32_t n, uint32_t k,
+                                   uint32_t l0Batch)
     {
         const uint32_t L0AM = tla::get<0, 0>(l0ATensor.shape()) * tla::get<0, 1>(l0ATensor.shape());
         const uint32_t L0AK = tla::get<1, 0>(l0ATensor.shape()) * tla::get<1, 1>(l0ATensor.shape());
@@ -226,40 +221,40 @@ struct TileMmadTla {
         mmadParams.k = k;
         mmadParams.unitFlag = 0;
         mmadParams.cmatrixInitVal = true;
-#if (defined (__NPU_ARCH__) && __NPU_ARCH__ == 3510)
+#if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510)
         mmadParams.disableGemv = true;
 #endif
         for (uint32_t l0BatchIdx = 0; l0BatchIdx < l0Batch; l0BatchIdx++) {
             AscendC::Mmad(l0CTensor.data()[l0BatchIdx * L0CM * L0CN],
-                l0ATensor.data()[l0BatchIdx * L0AM * L0AK],
-                l0BTensor.data()[l0BatchIdx * L0BK * L0BN],
-                mmadParams);
+                          l0ATensor.data()[l0BatchIdx * L0AM * L0AK],
+                          l0BTensor.data()[l0BatchIdx * L0BK * L0BN],
+                          mmadParams);
         }
     }
 
     // automatically extracts actual sizes from tensor originShape
     template <class TensorC, class TensorA, class TensorB>
-    CATLASS_DEVICE
-    void operator()(TensorC const &l0CTensor,
-         TensorA const &l0ATensor,
-         TensorB const &l0BTensor,
-         bool initC = true, uint8_t unitFlag = 0)
+    CATLASS_DEVICE void operator()(TensorC const &l0CTensor,
+                                   TensorA const &l0ATensor,
+                                   TensorB const &l0BTensor,
+                                   bool initC = true, uint8_t unitFlag = 0)
     {
         // Get actual sizes from tensor originShape
         uint32_t m = tla::get<0>(l0CTensor.layout().originShape());
         uint32_t n = tla::get<1>(l0CTensor.layout().originShape());
         uint32_t k = tla::get<1>(l0ATensor.layout().originShape());
         AscendC::MmadParams mmadParams;
-#if (defined (__NPU_ARCH__) && __NPU_ARCH__ == 2201)
+#if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 2201)
         if constexpr (std::is_same_v<ElementA, float> && std::is_same_v<LayoutTagL1A, layout::nZ>) {
             mmadParams.kDirectionAlign = true;
         }
         if constexpr (!std::is_same_v<LayoutTagL1A, layout::VectorLayout>) {
-            if (m == 1) m = 16; // avoid gemv mode
+            if (m == 1)
+                m = 16; // avoid gemv mode
         }
 #endif
-#if (defined (__NPU_ARCH__) && __NPU_ARCH__ == 3510)
-        if constexpr(std::is_same_v<LayoutTagL1A, layout::VectorLayout>) {
+#if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510)
+        if constexpr (std::is_same_v<LayoutTagL1A, layout::VectorLayout>) {
             mmadParams.disableGemv = false;
         } else {
             mmadParams.disableGemv = true;

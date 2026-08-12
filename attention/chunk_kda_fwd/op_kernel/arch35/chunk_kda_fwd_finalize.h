@@ -487,18 +487,17 @@ private:
         constexpr uint64_t blockBytes = 32;
         const uint64_t rowBytes = cols * sizeof(CopyT);
         const uint64_t gapBytes = (dstStride - cols) * sizeof(CopyT);
-        DataCopyParams params
-        {
+        DataCopyParams params{
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
             1,
 #else
             static_cast<uint16_t>(rows),
 #endif
-                static_cast<uint16_t>(rowBytes / blockBytes), 0,
+            static_cast<uint16_t>(rowBytes / blockBytes), 0,
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
-                0
+            0
 #else
-                static_cast<uint16_t>(gapBytes / blockBytes)
+            static_cast<uint16_t>(gapBytes / blockBytes)
 #endif
         };
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310

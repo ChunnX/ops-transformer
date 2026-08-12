@@ -19,8 +19,7 @@ template <
     class ArchTag,
     class TensorSrc,
     class TensorDst,
-    class Enable = void
->
+    class Enable = void>
 struct TileCopyTla {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported TileCopyTla, can not find the specialization.");
 };
@@ -32,8 +31,7 @@ template <
     class TensorSrc,
     class TensorDst,
     class LayoutTagSrc,
-    class LayoutTagDst
->
+    class LayoutTagDst>
 struct TileCopyTlaExt {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported TileCopyTlaExt, can not find the specialization.");
 };
@@ -42,8 +40,7 @@ template <
     class ArchTag,
     class TensorSrc,
     class TensorDst,
-    class Enable = void
->
+    class Enable = void>
 struct TileCopySparseTla {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported TileCopySparseTla, can not find the specialization.");
 };
@@ -54,8 +51,7 @@ template <
     class TensorSrc,
     class TensorDst,
     class TensorIdx,
-    class Enable = void
->
+    class Enable = void>
 struct CopyL1ToL0BSparseTla {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported CopyL1ToL0BSparseTla, can not find the specialization.");
 };
@@ -64,8 +60,7 @@ struct CopyL1ToL0BSparseTla {
 template <
     class ArchTag,
     class TensorSrc,
-    class TensorDst
->
+    class TensorDst>
 struct TileCopyFAQTla {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported TileCopyFAQTla, can not find the specialization.");
 };

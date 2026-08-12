@@ -108,7 +108,8 @@ public:
     // Check LayoutC
     static_assert(tla::detail::isRowMajor<LayoutC>::value ||
                       ((std::is_same_v<ElementC, half> || std::is_same_v<ElementC, bfloat16_t> ||
-                        std::is_same_v<ElementC, float>)&&tla::detail::iszN<ElementC, LayoutC>::value),
+                        std::is_same_v<ElementC, float>) &&
+                       tla::detail::iszN<ElementC, LayoutC>::value),
                   "LayoutC only supports zN in half or bfloat16 or float, RowMajor in all dtype yet!");
 
     // Check L1TileShape

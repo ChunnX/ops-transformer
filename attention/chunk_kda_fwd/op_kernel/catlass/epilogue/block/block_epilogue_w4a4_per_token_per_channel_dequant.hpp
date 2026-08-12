@@ -1,6 +1,5 @@
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -8,7 +7,6 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A4_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A4_HPP
 
@@ -66,31 +64,22 @@ public:
 
     // Check
     static_assert(
-        std::is_same_v<ElementC, half> && std::is_same_v<ElementD, bfloat16_t>
-            && std::is_same_v<ElementPerTokenScale, float>,
+        std::is_same_v<ElementC, half> && std::is_same_v<ElementD, bfloat16_t> && std::is_same_v<ElementPerTokenScale, float>,
         "Accumulator type (`ElementC`) should be half, output type (`ElementD`) should be bfloat16_t while "
-        "perTokenScale type should be float"
-    );
+        "perTokenScale type should be float");
     static_assert(
-        std::is_same_v<LayoutC, layout::RowMajor> && std::is_same_v<LayoutPerTokenScale, layout::VectorLayout>
-            && std::is_same_v<LayoutD, layout::RowMajor>,
-        "The layout template parameters of BlockEpilogue are wrong"
-    );
+        std::is_same_v<LayoutC, layout::RowMajor> && std::is_same_v<LayoutPerTokenScale, layout::VectorLayout> && std::is_same_v<LayoutD, layout::RowMajor>,
+        "The layout template parameters of BlockEpilogue are wrong");
 
     static_assert(
         TileShape::ROW == TileBroadcastOneBlk::COMPUTE_LENGTH,
-        "TileShape must be consistent for all tile compute ops"
-    );
+        "TileShape must be consistent for all tile compute ops");
 
     static_assert(TileShape::ROW % 16 == 0, "Epilogue TileShape::ROW must be divisible by 16");
 
     static_assert(
-        /*ubC*/ TileShape::COUNT * sizeof(ElementC) + /*ubPerTokenScale*/ TileShape::ROW * sizeof(ElementPerTokenScale)
-                + /*ubD*/ TileShape::COUNT * sizeof(ElementD)
-                + /*ubCFp32 & ubPerTokenScaleBrcb*/ 2 * TileShape::COUNT * sizeof(float)
-            <= ArchTag::UB_SIZE,
-        "TileShape is too large to fit in UB"
-    );
+        /*ubC*/ TileShape::COUNT * sizeof(ElementC) + /*ubPerTokenScale*/ TileShape::ROW * sizeof(ElementPerTokenScale) + /*ubD*/ TileShape::COUNT * sizeof(ElementD) + /*ubCFp32 & ubPerTokenScaleBrcb*/ 2 * TileShape::COUNT * sizeof(float) <= ArchTag::UB_SIZE,
+        "TileShape is too large to fit in UB");
 
     struct Params {
         __gm__ ElementPerTokenScale *ptrPerTokenScale{nullptr};
@@ -99,19 +88,18 @@ public:
         LayoutD layoutD{};
 
         CATLASS_DEVICE
-        Params(){};
+        Params() {};
 
         CATLASS_DEVICE
         Params(
             __gm__ ElementPerTokenScale *ptrPerTokenScale_,
             LayoutPerTokenScale const &layoutPerTokenScale_,
             __gm__ ElementD *ptrD_,
-            LayoutD const &layoutD_
-        )
-            : ptrPerTokenScale(ptrPerTokenScale_)
-            , layoutPerTokenScale(layoutPerTokenScale_)
-            , ptrD(ptrD_)
-            , layoutD(layoutD_)
+            LayoutD const &layoutD_)
+            : ptrPerTokenScale(ptrPerTokenScale_),
+              layoutPerTokenScale(layoutPerTokenScale_),
+              ptrD(ptrD_),
+              layoutD(layoutD_)
         {
         }
     };
@@ -159,8 +147,7 @@ public:
         GemmCoord const &actualBlockShapeMNK,
         AscendC::GlobalTensor<ElementC> const &gmBlockC,
         LayoutC const &layoutBlockC,
-        Callback &&callback = Callback{}
-    )
+        Callback &&callback = Callback{})
     {
         if (actualBlockShapeMNK.k() == 0) {
             return;
@@ -208,12 +195,10 @@ public:
             auto layoutGmTilePerTokenScale = params.layoutPerTokenScale.GetTileLayout(perTokenScaleTileShape);
 
             auto layoutUbPerTokenScale = LayoutPerTokenScale::template MakeLayoutInUb<ElementPerTokenScale>(
-                perTokenScaleTileShape
-            );
+                perTokenScaleTileShape);
 
             copyGmToUbPerTokenScale(
-                ubPerTokenScale, gmTilePerTokenScale, layoutUbPerTokenScale, layoutGmTilePerTokenScale
-            );
+                ubPerTokenScale, gmTilePerTokenScale, layoutUbPerTokenScale, layoutGmTilePerTokenScale);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventID);
 
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventID);

@@ -24,14 +24,12 @@ namespace Catlass::Epilogue::Block {
 template <
     class OutputType_,
     class InputType_,
-    class MaskType_
->
-class BlockEpilogue <
+    class MaskType_>
+class BlockEpilogue<
     EpilogueAtlasA2FASoftmax,
     OutputType_,
     InputType_,
-    MaskType_
-> {
+    MaskType_> {
 public:
     // Type aliases
     using DispatchPolicy = EpilogueAtlasA2FASoftmax;
@@ -52,10 +50,10 @@ public:
     static constexpr uint32_t FLOAT_ELENUM_PER_BLK = 8;
     static constexpr uint32_t HALF_ELENUM_PER_VECCALC = 128;
     static constexpr uint32_t FLOAT_ELENUM_PER_VECCALC = 64;
-    static constexpr uint32_t UB_TILE_SIZE = 16384;  // 64 * 128 * 2B
-    static constexpr uint32_t UB_LINE_SIZE = 512;   // 128 * 2 * 2B
-    static constexpr uint32_t HALF_ELENUM_PER_LINE = 256;    // 128 * 2
-    static constexpr uint32_t FLOAT_ELENUM_PER_LINE = 128;   // 128
+    static constexpr uint32_t UB_TILE_SIZE = 16384;        // 64 * 128 * 2B
+    static constexpr uint32_t UB_LINE_SIZE = 512;          // 128 * 2 * 2B
+    static constexpr uint32_t HALF_ELENUM_PER_LINE = 256;  // 128 * 2
+    static constexpr uint32_t FLOAT_ELENUM_PER_LINE = 128; // 128
     static constexpr uint32_t MULTIPLIER = 2;
 
     CATLASS_DEVICE
@@ -315,17 +313,17 @@ public:
                 }
                 if (qkN % FLOAT_ELENUM_PER_VECCALC > 0) {
                     SetMask(qkN % FLOAT_ELENUM_PER_VECCALC);
-                        AscendC::Add<float, false>(
-                            ls32UbTensor,
-                            ls32UbTensor,
-                            ls32UbTensor[qkN / FLOAT_ELENUM_PER_VECCALC * FLOAT_ELENUM_PER_VECCALC],
-                            (uint64_t)0,
-                            subM,
-                            AscendC::BinaryRepeatParams(
-                                1, 1, 1,
-                                qkNRound / FLOAT_ELENUM_PER_BLK,
-                                qkNRound / FLOAT_ELENUM_PER_BLK,
-                                qkNRound / FLOAT_ELENUM_PER_BLK));
+                    AscendC::Add<float, false>(
+                        ls32UbTensor,
+                        ls32UbTensor,
+                        ls32UbTensor[qkN / FLOAT_ELENUM_PER_VECCALC * FLOAT_ELENUM_PER_VECCALC],
+                        (uint64_t)0,
+                        subM,
+                        AscendC::BinaryRepeatParams(
+                            1, 1, 1,
+                            qkNRound / FLOAT_ELENUM_PER_BLK,
+                            qkNRound / FLOAT_ELENUM_PER_BLK,
+                            qkNRound / FLOAT_ELENUM_PER_BLK));
                     AscendC::PipeBarrier<PIPE_V>();
                     AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
                 }
@@ -400,6 +398,6 @@ private:
     CopyUbToGmOutput copyUbToGmOutput;
 };
 
-}  // namespace Catlass::Epilogue::Block
+} // namespace Catlass::Epilogue::Block
 
-#endif  // CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_FA_SOFTMAX_HPP
+#endif // CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_FA_SOFTMAX_HPP

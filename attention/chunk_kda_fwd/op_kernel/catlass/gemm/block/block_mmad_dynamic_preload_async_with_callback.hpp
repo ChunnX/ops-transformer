@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 #ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_DYNAMIC_PRELOAD_ASYNC_WITH_CALLBACK_HPP
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_DYNAMIC_PRELOAD_ASYNC_WITH_CALLBACK_HPP
 
@@ -38,9 +38,8 @@ template <
     class CType_,
     class BiasType_,
     class TileCopy_,
-    class TileMmad_
->
-struct BlockMmad <
+    class TileMmad_>
+struct BlockMmad<
     MmadAtlasA2DynamicPreloadAsyncWithCallback<
         PRELOAD_STAGES_,
         L1_STAGES_,
@@ -48,8 +47,7 @@ struct BlockMmad <
         L0B_STAGES_,
         L0C_STAGES_,
         ENABLE_UNIT_FLAG_,
-        ENABLE_SHUFFLE_K_
-    >,
+        ENABLE_SHUFFLE_K_>,
     L1TileShape_,
     L0TileShape_,
     AType_,
@@ -57,8 +55,7 @@ struct BlockMmad <
     CType_,
     BiasType_,
     TileCopy_,
-    TileMmad_
-> {
+    TileMmad_> {
 public:
     // Type Aliases
     using DispatchPolicy = MmadAtlasA2DynamicPreloadAsyncWithCallback<
@@ -68,8 +65,7 @@ public:
         L0B_STAGES_,
         L0C_STAGES_,
         ENABLE_UNIT_FLAG_,
-        ENABLE_SHUFFLE_K_
-    >;
+        ENABLE_SHUFFLE_K_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementA = typename AType_::Element;
     using LayoutA = typename AType_::Layout;
@@ -108,10 +104,12 @@ public:
 
     CATLASS_DEVICE
     BlockMmad(GemmCoord const &l1TileShape_, GemmCoord const &l0TileShape_, Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0)
-        : l1TileShape(l1TileShape_)
-        , l0TileShape(l0TileShape_)
+        : l1TileShape(l1TileShape_),
+          l0TileShape(l0TileShape_)
     {
-        if ASCEND_IS_AIV { return; }
+        if ASCEND_IS_AIV {
+            return;
+        }
 
         uint32_t l1ASize = l1TileShape.m() * l1TileShape.k() * sizeof(ElementA);
         uint32_t l1BSize = l1TileShape.k() * l1TileShape.n() * sizeof(ElementB);
@@ -153,7 +151,9 @@ public:
     CATLASS_DEVICE
     ~BlockMmad()
     {
-        if ASCEND_IS_AIV { return; }
+        if ASCEND_IS_AIV {
+            return;
+        }
 
         SynchronizeBlock();
         for (uint32_t i = 0; i < L1_STAGES; ++i) {
@@ -177,8 +177,7 @@ public:
         AscendC::GlobalTensor<ElementB> const &gmBlockB, LayoutB const &layoutB,
         AscendC::GlobalTensor<ElementC> const &gmBlockC, LayoutC const &layoutC,
         GemmCoord const &actualShape,
-        Callback const &callbackBeforeFixpipe, Callback const &callbackAfterFixpipe
-    )
+        Callback const &callbackBeforeFixpipe, Callback const &callbackAfterFixpipe)
     {
         uint32_t kTileCount = CeilDiv(actualShape.k(), l1TileShape.k());
 
@@ -192,10 +191,12 @@ public:
 
         for (uint32_t kLoopIdx = 0; kLoopIdx < kTileCount; ++kLoopIdx) {
             uint32_t kTileIdx = (startTileIdx + kLoopIdx < kTileCount) ?
-                (startTileIdx + kLoopIdx) : (startTileIdx + kLoopIdx - kTileCount);
+                                    (startTileIdx + kLoopIdx) :
+                                    (startTileIdx + kLoopIdx - kTileCount);
 
             uint32_t kActual = (kTileIdx < kTileCount - 1) ?
-                l1TileShape.k() : (actualShape.k() - kTileIdx * l1TileShape.k());
+                                   l1TileShape.k() :
+                                   (actualShape.k() - kTileIdx * l1TileShape.k());
 
             // Emission load instruction from GM to L1
             MatrixCoord gmTileAOffset{0, kTileIdx * l1TileShape.k()};
@@ -222,7 +223,8 @@ public:
 
             // Store the current load status
             uint32_t preloadL1TileMmadParamsId = (l1TileMmadParamsId + preloadCount < PRELOAD_STAGES) ?
-                (l1TileMmadParamsId + preloadCount) : (l1TileMmadParamsId + preloadCount - PRELOAD_STAGES);
+                                                     (l1TileMmadParamsId + preloadCount) :
+                                                     (l1TileMmadParamsId + preloadCount - PRELOAD_STAGES);
             auto &l1TileMmadParams = l1TileMmadParamsList[preloadL1TileMmadParamsId];
             l1TileMmadParams.l1ListId = l1ListId;
             l1TileMmadParams.mRound = mRound;
@@ -311,11 +313,13 @@ private:
 
         for (uint32_t mPartIdx = 0; mPartIdx < mPartLoop; ++mPartIdx) {
             uint32_t mPartActual = (mPartIdx < mPartLoop - 1) ?
-                l0TileShape.m() : (params.mRound - mPartIdx * l0TileShape.m());
+                                       l0TileShape.m() :
+                                       (params.mRound - mPartIdx * l0TileShape.m());
 
             for (uint32_t kPartIdx = 0; kPartIdx < kPartLoop; ++kPartIdx) {
                 uint32_t kPartActual = (kPartIdx < kPartLoop - 1) ?
-                    l0TileShape.k() : (params.kActual - kPartIdx * l0TileShape.k());
+                                           l0TileShape.k() :
+                                           (params.kActual - kPartIdx * l0TileShape.k());
 
                 auto &l0ATile = l0ATensorList[l0AListId];
                 auto layoutAInL0 = LayoutAInL0::template MakeLayout<ElementA>(mPartActual, kPartActual);
@@ -334,7 +338,8 @@ private:
 
                 for (uint32_t nPartIdx = 0; nPartIdx < nPartLoop; ++nPartIdx) {
                     uint32_t nPartActual = (nPartIdx < nPartLoop - 1) ?
-                        l0TileShape.n() : (params.nRound - nPartIdx * l0TileShape.n());
+                                               l0TileShape.n() :
+                                               (params.nRound - nPartIdx * l0TileShape.n());
 
                     auto &l0BTile = l0BTensorList[l0BListId];
                     auto layoutBInL0 = LayoutBInL0::template MakeLayout<ElementB>(kPartActual, nPartActual);
@@ -399,7 +404,6 @@ private:
     }
 
 protected:
-
     AscendC::LocalTensor<ElementA> l1ATensorList[L1_STAGES];
     AscendC::LocalTensor<ElementB> l1BTensorList[L1_STAGES];
     int32_t l1AEventList[L1_STAGES];
@@ -432,6 +436,6 @@ protected:
     CopyL0CToGm copyL0CToGm;
 };
 
-}  // namespace Catlass::Gemm::Block
+} // namespace Catlass::Gemm::Block
 
-#endif  // CATLASS_GEMM_BLOCK_BLOCK_MMAD_DYNAMIC_PRELOAD_ASYNC_WITH_CALLBACK_HPP
+#endif // CATLASS_GEMM_BLOCK_BLOCK_MMAD_DYNAMIC_PRELOAD_ASYNC_WITH_CALLBACK_HPP

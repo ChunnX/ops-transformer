@@ -28,7 +28,7 @@ __aicore__ inline void Run(
     const auto addresses = ResolveAddresses(
         finalState, gk, w, u, qg, kg, vNew, h, userWorkspace, tiling);
     RunFrontEnd<SAFE_GATE, T, float, BETA_T, TilingData,
-        COMPILE_BT, COMPILE_K, COMPILE_V>(
+                COMPILE_BT, COMPILE_K, COMPILE_V>(
         q, k, v, g, beta, aLog, dtBias, initialState, cuSeqlens,
         chunkIndices, aqk, akk, addresses, userWorkspace, tiling, pipe);
     if (tiling.useDenseFwdH) {

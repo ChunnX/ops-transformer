@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 #ifndef CATLASS_GEMM_BLOCK_MMAD_QK_TAIL_HPP
 #define CATLASS_GEMM_BLOCK_MMAD_QK_TAIL_HPP
 
@@ -111,7 +111,8 @@ public:
     ~BlockMmad() {}
 
     CATLASS_DEVICE
-    void loadQGM(AscendC::GlobalTensor<ElementA> gA, LayoutA layoutA, uint32_t rowNum, uint32_t &singleGroupHeads, uint32_t &qHeads){
+    void loadQGM(AscendC::GlobalTensor<ElementA> gA, LayoutA layoutA, uint32_t rowNum, uint32_t &singleGroupHeads, uint32_t &qHeads)
+    {
         uint32_t embed = layoutA.shape(1);
         uint32_t rowNumRound = RoundUp<L1AAlignHelper::M_ALIGNED>(rowNum);
         uint32_t tokenNumPerGroup = rowNum / singleGroupHeads;
@@ -124,7 +125,7 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
     }
-    
+
     CATLASS_DEVICE
     void getBlockShape(GemmCoord &actualShape, uint32_t &nowNIdx, uint32_t &kIdx,
                        uint32_t &nLoop, uint32_t &kLoop, uint32_t &kvSeqlen, uint32_t &embed, bool firstBlock, uint32_t maskTailS = 0)
@@ -158,7 +159,7 @@ public:
             kOffset = nowNIdx * KV_SPLIT_SIZE * strideKV + kIdx * EMBED_SPLIT_SIZE;
         }
     }
-    
+
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementA> gA,
                     AscendC::GlobalTensor<ElementB> gB,
@@ -179,7 +180,7 @@ public:
         uint32_t stackTile = 0;
         uint32_t preStackTile = 0;
         for (uint32_t blockStackIdx = 0; (blockStackIdx < UNIT_BLOCK_STACK_NUM) && ((nIdx + blockStackIdx) < nLoop);
-            ++blockStackIdx) {
+             ++blockStackIdx) {
             for (uint32_t kIdx = 0; kIdx < kLoop; kIdx++) {
                 uint32_t nowNIdx = nIdx + blockStackIdx;
                 uint32_t nLoopNextIdx = nkBlockNextIdx / kLoop;
@@ -247,7 +248,7 @@ public:
         }
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag);
         copyL1ToL0A(l0ATensor[l0ABPingPongFlag], l1ATensor, layoutAInL0, layoutAInL1);
-        
+
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1KvPingPongFlag);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag + 2);
         copyL1ToL0B(l0BTensor[l0ABPingPongFlag], l1BTensor[l1KvPingPongFlag], layoutBInL0, layoutBInL1);
@@ -281,7 +282,7 @@ public:
             }
         }
     }
- 
+
 protected:
     /// Data members
     AscendC::LocalTensor<ElementA> l1ATensor;

@@ -17,7 +17,7 @@
 
 namespace Catlass::Gemm::Block {
 
-#if (defined (CATLASS_ARCH) && CATLASS_ARCH == 2201)    
+#if (defined(CATLASS_ARCH) && CATLASS_ARCH == 2201)
 template <
     class DispatchPolicy,
     class L1TileShape,
@@ -27,8 +27,7 @@ template <
     class CType,
     class BiasType = void,
     class TileCopy = Gemm::Tile::TileCopy<typename DispatchPolicy::ArchTag, AType, BType, CType, BiasType>,
-    class TileMmad = Gemm::Tile::TileMmad<typename DispatchPolicy::ArchTag, AType, BType, BiasType>
->
+    class TileMmad = Gemm::Tile::TileMmad<typename DispatchPolicy::ArchTag, AType, BType, BiasType> >
 struct BlockMmad {
     static_assert(DEPENDENT_FALSE<DispatchPolicy>, "BlockMmad is not implemented for this DispatchPolicy");
 };
@@ -43,9 +42,8 @@ template <
     class BType,
     class CType,
     class BiasType = void,
-    class TileCopy = Gemm::Tile::TileCopyGemm<typename DispatchPolicy::ArchTag, AType, BType, CType, BiasType>,  // change the name
-    class TileMmad = Gemm::Tile::TileMmad<typename DispatchPolicy::ArchTag, AType, BType, BiasType>
->
+    class TileCopy = Gemm::Tile::TileCopyGemm<typename DispatchPolicy::ArchTag, AType, BType, CType, BiasType>, // change the name
+    class TileMmad = Gemm::Tile::TileMmad<typename DispatchPolicy::ArchTag, AType, BType, BiasType> >
 struct BlockGemm {
     static_assert(DEPENDENT_FALSE<DispatchPolicy>, "BlockMmad is not implemented for this DispatchPolicy");
 };
@@ -57,12 +55,10 @@ template <
     class CType,
     class BiasType,
     class TileCopy,
-    class TileMmad
->
+    class TileMmad>
 struct BlockMmadAiv {
     static_assert(DEPENDENT_FALSE<DispatchPolicy>, "BlockMmadAiv is not implemented for this DispatchPolicy");
 };
-
 
 template <
     class DispatchPolicy,
@@ -73,8 +69,7 @@ template <
     class ElementC,
     class ElementBias = void,
     class TileCopy = Gemm::Tile::SparseTileCopyTla<typename DispatchPolicy::ArchTag, ElementA, layout::RowMajor,
-        ElementB, layout::ColumnMajor, ElementC, layout::RowMajor>
->
+                                                   ElementB, layout::ColumnMajor, ElementC, layout::RowMajor> >
 struct BlockMmadSparseTla {
     static_assert(DEPENDENT_FALSE<DispatchPolicy>, "BlockMmadSparseTla is not implemented for this DispatchPolicy");
 };
@@ -90,17 +85,16 @@ template <
     class ElementC,
     class ElementBias = void,
     class TileCopy = Gemm::Tile::PackedTileCopyTla<typename DispatchPolicy::ArchTag, ElementA, layout::RowMajor,
-        ElementB, layout::RowMajor, ElementC, layout::RowMajor, ElementBias>,
+                                                   ElementB, layout::RowMajor, ElementC, layout::RowMajor, ElementBias>,
     class TileMmad =
-        Gemm::Tile::TileMmadTla<typename DispatchPolicy::ArchTag, ElementA, typename TileCopy::LayoutTagL1A>
->
+        Gemm::Tile::TileMmadTla<typename DispatchPolicy::ArchTag, ElementA, typename TileCopy::LayoutTagL1A> >
 struct BlockMmadTla {
     static_assert(DEPENDENT_FALSE<DispatchPolicy>, "BlockMmadTla is not implemented for this DispatchPolicy");
 };
 
 } // namespace Catlass::Gemm::Block
 
-#if (defined (CATLASS_ARCH) && CATLASS_ARCH == 2201)
+#if (defined(CATLASS_ARCH) && CATLASS_ARCH == 2201)
 #include "catlass/gemm/block/block_mmad_pingpong.hpp"
 #include "catlass/gemm/block/block_mmad_fa_qk.hpp"
 #include "catlass/gemm/block/block_mmad_fa_pv.hpp"

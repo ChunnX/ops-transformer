@@ -72,7 +72,7 @@ bool HasOutput(gert::TilingContext *context, size_t index)
     }
     const auto outputShape = context->GetOutputShape(instanceInfo->GetInstanceStart());
     return outputShape != nullptr &&
-        outputShape->GetStorageShape().GetShapeSize() != 1;
+           outputShape->GetStorageShape().GetShapeSize() != 1;
 }
 
 struct ShapeInfo {
@@ -215,11 +215,11 @@ ge::graphStatus Tiling4ChunkKdaFwd(gert::TilingContext *context)
     const uint32_t physicalCoreNum =
         std::max<uint32_t>(platform.GetCoreNumAic(), 1);
     const uint64_t fwdHTaskCount = static_cast<uint64_t>(
-        isVarLen ? seqNum : shape.batch) * shape.vHeads;
-    const uint32_t blockDim = isAscend950
-        ? static_cast<uint32_t>(std::min<uint64_t>(
-              physicalCoreNum, std::max<uint64_t>(fwdHTaskCount, 1)))
-        : physicalCoreNum;
+                                       isVarLen ? seqNum : shape.batch) *
+                                   shape.vHeads;
+    const uint32_t blockDim = isAscend950 ? static_cast<uint32_t>(std::min<uint64_t>(
+                                                physicalCoreNum, std::max<uint64_t>(fwdHTaskCount, 1))) :
+                                            physicalCoreNum;
     const bool useChunk64K128V128Template =
         chunkSize == 64 && shape.kDim == 128 && shape.vDim == 128;
     const auto arch35Options = arch35::ConfigureChunkKdaFwdArch35(
@@ -231,38 +231,34 @@ ge::graphStatus Tiling4ChunkKdaFwd(gert::TilingContext *context)
     const uint64_t dataBytes =
         qDesc->GetDataType() == ge::DT_FLOAT ? sizeof(float) : sizeof(uint16_t);
     const uint64_t tokenHeads = static_cast<uint64_t>(shape.batch) *
-        shape.vHeads * shape.seqlen;
+                                shape.vHeads * shape.seqlen;
     const uint64_t kTensorBytes = tokenHeads * shape.kDim * dataBytes;
     const uint64_t vTensorBytes = tokenHeads * shape.vDim * dataBytes;
     const uint64_t gkBytes = tokenHeads * shape.kDim * sizeof(float);
     const uint64_t stateElements = static_cast<uint64_t>(seqNum) *
-        shape.vHeads * shape.kDim * shape.vDim;
-    const uint64_t hChunkCount = isVarLen
-        ? static_cast<uint64_t>(totalChunks)
-        : static_cast<uint64_t>(shape.batch) * totalChunks;
+                                   shape.vHeads * shape.kDim * shape.vDim;
+    const uint64_t hChunkCount = isVarLen ? static_cast<uint64_t>(totalChunks) : static_cast<uint64_t>(shape.batch) * totalChunks;
     const uint64_t hBytes = hChunkCount * shape.vHeads * shape.kDim *
-        shape.vDim * dataBytes;
+                            shape.vDim * dataBytes;
 
     uint64_t cursor = 0;
     const uint64_t gkStorageOffset = storeGk ? 0 : AllocateWorkspace(cursor, gkBytes);
     const uint64_t finalStateStorageOffset = storeFinalState ? 0 :
-        AllocateWorkspace(cursor, stateElements * sizeof(float));
+                                                               AllocateWorkspace(cursor, stateElements * sizeof(float));
     const uint64_t wStorageOffset = storeW ? 0 : AllocateWorkspace(cursor, kTensorBytes);
     const uint64_t uStorageOffset = storeU ? 0 : AllocateWorkspace(cursor, vTensorBytes);
     const uint64_t qgStorageOffset = storeQG ? 0 : AllocateWorkspace(cursor, kTensorBytes);
     const uint64_t kgStorageOffset = storeKg ? 0 : AllocateWorkspace(cursor, kTensorBytes);
     const uint64_t vNewStorageBytes =
-        arch35Options.useDenseFwdH && !storeVNew
-            ? static_cast<uint64_t>(shape.batch) * shape.vHeads * chunkSize *
-                  shape.vDim * dataBytes
-            : vTensorBytes;
+        arch35Options.useDenseFwdH && !storeVNew ? static_cast<uint64_t>(shape.batch) * shape.vHeads * chunkSize *
+                                                       shape.vDim * dataBytes :
+                                                   vTensorBytes;
     const uint64_t vNewStorageOffset = storeVNew ? 0 :
-        AllocateWorkspace(cursor, vNewStorageBytes);
+                                                   AllocateWorkspace(cursor, vNewStorageBytes);
     const uint64_t hStorageBytes =
-        arch35Options.useDenseFwdH && !storeH
-            ? static_cast<uint64_t>(shape.batch) * shape.vHeads * shape.kDim *
-                  shape.vDim * dataBytes
-            : hBytes;
+        arch35Options.useDenseFwdH && !storeH ? static_cast<uint64_t>(shape.batch) * shape.vHeads * shape.kDim *
+                                                    shape.vDim * dataBytes :
+                                                hBytes;
     const uint64_t hStorageOffset = storeH ? 0 : AllocateWorkspace(cursor, hStorageBytes);
     const uint64_t qgScaledOffset = AllocateWorkspace(cursor, kTensorBytes);
 
@@ -272,10 +268,10 @@ ge::graphStatus Tiling4ChunkKdaFwd(gert::TilingContext *context)
     const uint64_t prepareScratchOffset = AlignWorkspace(cursor);
     const uint64_t solveDepth = safeGate ? KDA_SOLVE_PIPELINE_DEPTH : 1;
     const uint64_t solveBytes = static_cast<uint64_t>(blockDim) * solveDepth *
-        KDA_SOLVE_SCRATCH_SLOTS * chunkSize * chunkSize * sizeof(float);
+                                KDA_SOLVE_SCRATCH_SLOTS * chunkSize * chunkSize * sizeof(float);
     const uint64_t scoreBytes = static_cast<uint64_t>(blockDim) *
-        KDA_SCORE_QUEUE_SLOTS * KDA_SCORE_SCRATCH_PLANES * chunkSize *
-        shape.kDim * dataBytes;
+                                KDA_SCORE_QUEUE_SLOTS * KDA_SCORE_SCRATCH_PLANES * chunkSize *
+                                shape.kDim * dataBytes;
     cursor = prepareScratchOffset + AlignWorkspace(solveBytes) + scoreBytes;
 
     const uint64_t postWuScratchOffset = AlignWorkspace(cursor);
@@ -346,7 +342,7 @@ ge::graphStatus Tiling4ChunkKdaFwd(gert::TilingContext *context)
     tiling.set_storeVNew(storeVNew);
     tiling.set_storeH(storeH);
     tiling.set_gateDataType(gDesc->GetDataType() == ge::DT_FLOAT ? 2 :
-        (gDesc->GetDataType() == ge::DT_BF16 ? 1 : 0));
+                                                                   (gDesc->GetDataType() == ge::DT_BF16 ? 1 : 0));
     tiling.set_gateUsedCoreNum(static_cast<int64_t>(blockDim) * 2);
     tiling.set_prepareUsedCoreNum(blockDim);
     tiling.set_postWuUsedCoreNum(blockDim);

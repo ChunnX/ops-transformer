@@ -22,8 +22,7 @@ template <
     class DstType_,
     class SrcType_,
     /// Length of the compute buffer
-    class TileShape_
->
+    class TileShape_>
 struct TileCast {
     using ArchTag = ArchTag_;
     using ElementDst = typename DstType_::Element;
@@ -36,8 +35,7 @@ struct TileCast {
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<ElementDst> const &ubOut,
-        AscendC::LocalTensor<ElementSrc> const &ubIn
-    )
+        AscendC::LocalTensor<ElementSrc> const &ubIn)
     {
         AscendC::Cast(ubOut, ubIn, AscendC::RoundMode::CAST_RINT, TileShape::COUNT);
     }
