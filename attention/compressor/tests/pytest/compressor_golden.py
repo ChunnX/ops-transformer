@@ -34,104 +34,119 @@ def cal_relative_diff_np_isclose(real_data, expect_data, type_str='fp16'):
     result = diff / (np.abs(expect_data) + 10e-10)
     return result
 
-def display_output_np_isclose(real_data, expect_data, start, end, expect_fp32_data=None):
-    def display_inner(idx):
-        j = idx + start
-        diff_rate = cal_relative_diff_np_isclose(
-            real_data[j], expect_data[j])
+# ================================================================
+#  精度对比工具（整改：拆分小函数 + 常量提取 + f-string；判定语义不变）
+# ================================================================
+_ROW_DIVIDER = '-' * 87
+_ERROR_DIVIDER = 'Error Line' + '-' * 77
+_MAX_RE_DIVIDER = 'Max-RE line:' + '-' * 75
+_LOOP_HEADER = 'Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff'
+_LOOP_HEADER_FP32 = 'Loop \t ExpFP32Out \t ExpFP16Out \t NPUOut \tFpDiff(min) \t RateDiff'
 
-        if "inf" in str(expect_data[j]) or "nan" in str(expect_data[j]):
-            diff_abs = "inf" if "inf" in str(expect_data[j]) else "nan"
-            if expect_fp32_data is not None:
-                print_log('%08d \t %-7s \t %-7s \t %-7s \t %-7s \t %-7s' % (
-                    start + idx + 1, expect_fp32_data[j], expect_data[j], real_data[j], diff_abs, diff_rate))
-            else:
-                print_log('%08d \t %-7s \t %-7s \t %-7s \t %-7s' % (
-                    start + idx + 1, expect_data[j], real_data[j], diff_abs, diff_rate))
-        else:
-            diff_abs = abs(np.float64(
-                expect_data[j]) - np.float64(real_data[j]))
-            if expect_fp32_data is not None:
-                print_log('%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f \t %0.7f' % (
-                    start + idx + 1, expect_fp32_data[j], expect_data[j], real_data[j], diff_abs, diff_rate))
-            else:
-                print_log('%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f' % (
-                    start + idx + 1, expect_data[j], real_data[j], diff_abs, diff_rate))
 
-    print_log(
-        '---------------------------------------------------------------------------------------')
-    if expect_fp32_data is not None:
-        print_log(
-            'Loop \t ExpFP32Out \t ExpFP16Out \t NPUOut \tFpDiff(min) \t RateDiff')
-    else:
-        print_log('Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff')
-    print_log(
-        '---------------------------------------------------------------------------------------')
-    split_count = int(end - start)
-    if split_count <= 20:
-        for i in range(split_count + 1):
-            display_inner(i)
-    else:
-        for i in range(10):
-            display_inner(i)
-        print_log('...   \t   ...   \t   ...   \t   ...    \t   ...')
-        for i in range(split_count - 10 + 1, split_count + 1):
-            display_inner(i)
+def _format_loop_row(seq, expect_val, real_val, expect_fp32_val=None):
+    """格式化单行点位：期望值为 inf/nan 时用字符串列，否则用 7 位小数；expect_fp32 存在时输出双列。"""
+    diff_rate = cal_relative_diff_np_isclose(real_val, expect_val)
+    if "inf" in str(expect_val) or "nan" in str(expect_val):
+        diff_abs = "inf" if "inf" in str(expect_val) else "nan"
+        if expect_fp32_val is not None:
+            return f"{seq:08d} \t {expect_fp32_val:<7} \t {expect_val:<7} \t {real_val:<7} \t {diff_abs:<7} \t {diff_rate:<7}"
+        return f"{seq:08d} \t {expect_val:<7} \t {real_val:<7} \t {diff_abs:<7} \t {diff_rate:<7}"
+    diff_abs = abs(np.float64(expect_val) - np.float64(real_val))
+    if expect_fp32_val is not None:
+        return f"{seq:08d} \t {expect_fp32_val:.7f} \t {expect_val:.7f} \t {real_val:.7f} \t {diff_abs:.7f} \t {diff_rate:.7f}"
+    return f"{seq:08d} \t {expect_val:.7f} \t {real_val:.7f} \t {diff_abs:.7f} \t {diff_rate:.7f}"
+
+
+def _format_error_row(seq, expect_val, real_val, diff_rate):
+    """格式化错误点位明细行（7 位小数定点）。"""
+    diff_abs = abs(np.float64(expect_val) - np.float64(real_val))
+    return f"{seq:08d} \t {expect_val:.7f} \t {real_val:.7f} \t {diff_abs:.7f} \t {diff_rate:.7f}"
+
+
+def _display_row_range(real_data, expect_data, start, row_range, expect_fp32_data=None):
+    """打印 [start + lo, start + hi) 区间的点位行（绝对序号 = start + idx + 1）。"""
+    for idx in row_range:
+        seq = start + idx + 1
+        fp32 = expect_fp32_data[idx + start] if expect_fp32_data is not None else None
+        print_log(_format_loop_row(seq, expect_data[idx + start], real_data[idx + start], fp32))
+
 
 def print_log(data=None, level='INFO'):
-    print("[%s] [%s]-%s:%s - %s" % (datetime.datetime.now().strftime(
-        "%Y/%m/%d %H:%M:%S"), level, os.path.basename(sys._getframe().f_back.f_code.co_filename),
-                                    str(sys._getframe().f_back.f_lineno).zfill(4), data))
+    stamp = datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+    caller = sys._getframe().f_back
+    caller_file = os.path.basename(caller.f_code.co_filename)
+    caller_line = str(caller.f_lineno).zfill(4)
+    print(f"[{stamp}] [{level}]-{caller_file}:{caller_line} - {data}")
+
+
+def display_output_np_isclose(real_data, expect_data, start, end, expect_fp32_data=None):
+    """输出每个点位的对比结果（≤20 点位全显示，>20 显示首尾各 10）。"""
+    print_log(_ROW_DIVIDER)
+    print_log(_LOOP_HEADER_FP32 if expect_fp32_data is not None else _LOOP_HEADER)
+    print_log(_ROW_DIVIDER)
+    split_count = int(end - start)
+    if split_count <= 20:
+        _display_row_range(real_data, expect_data, start, range(split_count + 1), expect_fp32_data)
+    else:
+        _display_row_range(real_data, expect_data, start, range(10), expect_fp32_data)
+        print_log('...   \t   ...   \t   ...   \t   ...    \t   ...')
+        _display_row_range(real_data, expect_data, start,
+                           range(split_count - 10 + 1, split_count + 1), expect_fp32_data)
+
 
 def display_error_output(real_data, expect_data, err_idx, relative_diff):
-    print_log(
-        'Error Line-----------------------------------------------------------------------------')
-    print_log('Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff')
-    print_log(
-        '---------------------------------------------------------------------------------------')
+    """输出错误点位明细 + 最大相对误差点位。"""
+    print_log(_ERROR_DIVIDER)
+    print_log(_LOOP_HEADER)
+    print_log(_ROW_DIVIDER)
     count = 0
     len_err = len(err_idx)
     for i in err_idx:
         count += 1
         if count < 10 or (90 < count < 100):
-            print_log('%08d \t %.7f \t %.7f \t %.7f \t %.7f' % (
-                i, expect_data[i], real_data[i], abs(np.float64(
-                    expect_data[i]) - np.float64(real_data[i])),
-                relative_diff[count - 1]))
+            print_log(_format_error_row(i, expect_data[i], real_data[i], relative_diff[count - 1]))
         elif count == 10 or (count == 100 and len_err > 100):
-            dot_3 = '...'
-            print_log('%08s \t %07s \t %07s \t %07s \t %07s' %
-                      (dot_3, dot_3, dot_3, dot_3, dot_3))
+            print_log(f"{'...':>8} \t {'...':>7} \t {'...':>7} \t {'...':>7} \t {'...':>7}")
         elif count > 100:
             break
 
-    print_log(
-        'Max-RE line:---------------------------------------------------------------------------')
+    print_log(_MAX_RE_DIVIDER)
     max_error = max(relative_diff)
     m_idx_list = err_idx[np.where(relative_diff == max_error)]
     m_count = 0
     for m_idx in m_idx_list:
         m_count += 1
         if m_count < 4:
-            print_log('%08d \t %.7f \t %.7f \t %.7f \t %.7f' % (
-                m_idx, expect_data[m_idx], real_data[m_idx],
-                abs(np.float64(expect_data[m_idx]) -
-                    np.float64(real_data[m_idx])),
-                max_error))
+            print_log(_format_error_row(m_idx, expect_data[m_idx], real_data[m_idx], max_error))
         else:
             break
-    print_log(
-        '---------------------------------------------------------------------------------------')
-# fuzz 中precision_method == 1的精度对比方式
+    print_log(_ROW_DIVIDER)
+
+
+def _print_verdict(rtol, atol, pct_thd, fulfill_percent, result_str):
+    """打印 Rtol/Atol/PctThd/PctRlt/Result 汇总表格。"""
+    print_log(_ROW_DIVIDER)
+    print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
+    print_log(_ROW_DIVIDER)
+    print_log(f"{rtol:.4f}    \t {atol:.6f}  \t {pct_thd:.2f}%   \t {fulfill_percent:.6f}%   \t {result_str}")
+
+
 def check_result(expect, result, data_type, pct_thd = 0.005):
+    """fuzz 中 precision_method == 1 的精度对比方式（阈值从 PRECISION 配置取）。"""
+    PRECISION = {
+        "bfloat16": {"diff_thd": 0.005, "max_diff_hd": 10.0, "rtol": 0.0078125, "atol": 0.0001},
+        "float16": {"diff_thd": 0.005, "max_diff_hd": 10.0, "rtol": 0.005, "atol": 0.000025},
+        "float32": {"diff_thd": 0.005, "max_diff_hd": 10.0, "rtol": 0.005, "atol": 0.000025},
+    }
     real_data = result.cpu().numpy()
     data_compe = expect.cpu().numpy()
     real_data = real_data.flatten()
     data_compe = data_compe.flatten()
     if real_data.size == 0 and real_data.size == data_compe.size:
         print_log(
-            'The npu_output is [],and it is same as bm_output, the result of data_compare is \"Pass\"')
-        return  100.0, "Pass"
+            'The npu_output is [],and it is same as bm_output, the result of data_compare is "Pass"')
+        return 100.0, "Pass"
     start = 0
     end = real_data.size - 1
     if end < start:
@@ -145,23 +160,16 @@ def check_result(expect, result, data_type, pct_thd = 0.005):
         return 0.0, result
     overflows_count = data_compe[np.isinf(data_compe)].size + data_compe[np.isnan(data_compe)].size
 
-
     if overflows_count > 0:
         print_log('Overflow,size:%s,benchmark_output:%s, %s' % (
             overflows_count, data_compe[np.isinf(data_compe)][0:10], data_compe[np.isnan(data_compe)][0:10]))
-    
-    if data_type == 'bfloat16':
-        diff_thd=0.005
-        max_diff_hd=10.0
-        rtol=0.0078125
-        atol=0.0001
-        max_error_idx = 10000000
-    else:
-        diff_thd=0.005
-        max_diff_hd=10.0
-        rtol=0.005
-        atol=0.000025
-        max_error_idx = 10000000
+
+    cfg = PRECISION.get(data_type, PRECISION["float16"])
+    diff_thd = cfg["diff_thd"]
+    max_diff_hd = cfg["max_diff_hd"]
+    rtol = cfg["rtol"]
+    atol = cfg["atol"]
+    max_error_idx = 10000000
 
     split_count = int(end - start + 1) if end != start else 1
     print_log('split_count:%s; max_diff_hd:%s;' %
@@ -209,7 +217,7 @@ def check_result(expect, result, data_type, pct_thd = 0.005):
     err_idx = np.where(diff_result != np.array((True,)))[0]
 
     if str(data_compe.dtype) == 'bool':
-        data_compe = data_compe.astype(np.int8)  
+        data_compe = data_compe.astype(np.int8)
         real_data = real_data.astype(np.int8)
     diff_abs = abs(data_compe - real_data)
     b1 = np.maximum(np.abs(real_data), (np.abs(data_compe)))
@@ -219,8 +227,7 @@ def check_result(expect, result, data_type, pct_thd = 0.005):
     err_diff = diff_abs / (b + eps)
     err_diff = err_diff[err_idx]
 
-    fulfill_percent = float(split_count - err_idx.size) / \
-                        float(split_count) * 100.0
+    fulfill_percent = float(split_count - err_idx.size) /                         float(split_count) * 100.0
 
     display_output_np_isclose(real_data, data_compe, start, end)
     pct_thd = (1 - pct_thd) * 100.0
@@ -229,20 +236,16 @@ def check_result(expect, result, data_type, pct_thd = 0.005):
         max_error = max(err_diff[0:max_error_idx])
         if max_error >= max_diff_hd:
             result = "Failed"
-    print_log(
-        '---------------------------------------------------------------------------------------')
-    print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
-    print_log(
-        '---------------------------------------------------------------------------------------')
-    print_log('%.4f    \t %.6f  \t %.2f%%   \t %.6f%%   \t %s' %
-                (rtol, atol, pct_thd, fulfill_percent, result))
+    _print_verdict(rtol, atol, pct_thd, fulfill_percent, result)
     if len(err_diff) > 0:
         print_log('Max-RelativeError is: %s. Threshold is: %s.' %
                     (max_error, max_diff_hd))
     if result == "Failed":
         display_error_output(real_data, data_compe,
-                                err_idx, err_diff[0:max_error_idx])
+                             err_idx, err_diff[0:max_error_idx])
+
     return fulfill_percent, result
+
 
 def get_seq_used_by_batch(batch_idx, S, seqused, cu_seqlens):
     if seqused is not None:
