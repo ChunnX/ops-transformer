@@ -75,18 +75,6 @@ ge::graphStatus StemIndexerInfoParser::GetNpuInfo()
                 static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()), aicNum, aivNum);
         return ge::GRAPH_FAILED;
     }
-    uint64_t ubSize = 0U;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    if ((ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201 ||
-         ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9202) &&
-        ubSize < STEM_INDEXER_920R1_UB_SIZE) {
-        OP_LOGE(opName_, "NpuArch[%d] requires at least %llu bytes UB, but got %llu bytes.",
-                static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()),
-                static_cast<unsigned long long>(STEM_INDEXER_920R1_UB_SIZE),
-                static_cast<unsigned long long>(ubSize));
-        return ge::GRAPH_FAILED;
-    }
-
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE(opName_, "workspace size is nullptr."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetRawTilingData() == nullptr, OP_LOGE(opName_, "raw tiling data is nullptr."),

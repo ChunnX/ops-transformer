@@ -77,7 +77,6 @@ constexpr uint64_t STEM_INDEXER_METADATA_AIV_CORE_NUM = 72U;
 constexpr uint64_t STEM_INDEXER_METADATA_AIC_CORE_NUM_920R1 = 64U;
 constexpr uint64_t STEM_INDEXER_METADATA_AIV_CORE_NUM_920R1 = 64U;
 constexpr uint64_t STEM_INDEXER_METADATA_ALIGN_ELEMS = 4096U;
-constexpr uint64_t STEM_INDEXER_920R1_UB_SIZE = 384U * 1024U;
 constexpr uint32_t Q_HEAD_NUM_32 = 32;
 constexpr uint32_t Q_HEAD_NUM_64 = 64;
 constexpr uint32_t KV_HEAD_NUM_2 = 2;
