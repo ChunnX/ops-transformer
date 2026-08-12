@@ -86,6 +86,12 @@ static constexpr struct UrmaWqeEntry NO_CQE_WQE_CONFIG = {
     .se = 0,
     .cqe = 0,
     .inlineEn = 0};
+static constexpr struct UrmaWqeEntry CQE_WQE_CONFIG = {
+    .odr = 5,
+    .fence = 1,
+    .se = 0,
+    .cqe = 1,
+    .inlineEn = 0};
 
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
@@ -227,6 +233,12 @@ private:
     uint32_t aivId_{0};
     uint64_t activeBatchHandle_{0};
     uint32_t preparedWriteCount_{0};
+    bool pendingWriteValid_{false};
+    GM_ADDR pendingWriteDst_{nullptr};
+    GM_ADDR pendingWriteSrc_{nullptr};
+    uint64_t pendingWriteLen_{0};
+    GM_ADDR pendingNotifyAddr_{nullptr};
+    uint64_t pendingNotifyValue_{0};
 };
 
 template <TemplateMoeEpCombineTypeClass>
@@ -357,34 +369,57 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::CopyTokenFrom
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPreparedWrites()
 {
-    if (preparedWriteCount_ == 0) {
+    if (!pendingWriteValid_) {
         return;
     }
 
     auto batchBuffer = reinterpret_cast<__ubuf__ uint8_t *>(hcommBatchTensor_.GetPhyAddr());
-    int32_t ret = hcomm_.WriteWithNotifyNbiPrepareEnd<true>(activeBatchHandle_, batchBuffer);
+    int32_t ret = hcomm_.WriteWithNotifyNbiPrepare<CQE_WQE_CONFIG>(
+        activeBatchHandle_, pendingWriteDst_, pendingWriteSrc_, pendingWriteLen_, pendingNotifyAddr_,
+        pendingNotifyValue_, batchBuffer, HCOMM_BATCH_BUFFER_BYTES);
+    ascendc_assert(ret == HCOMM_SUCCESS, "WriteWithNotifyNbiPrepare for the CQE WQE failed, ret=%d", ret);
+    ++preparedWriteCount_;
+
+    ret = hcomm_.WriteWithNotifyNbiPrepareEnd<true>(activeBatchHandle_, batchBuffer);
     ascendc_assert(ret == HCOMM_SUCCESS, "WriteWithNotifyNbiPrepareEnd failed, ret=%d", ret);
+    ret = hcomm_.Drain(activeBatchHandle_);
+    ascendc_assert(ret == HCOMM_SUCCESS, "Drain failed, ret=%d", ret);
     activeBatchHandle_ = 0;
     preparedWriteCount_ = 0;
+    pendingWriteValid_ = false;
 }
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteWithNotify(
     uint64_t commHandle, GM_ADDR dst, GM_ADDR src, uint64_t len, GM_ADDR notifyAddr, uint64_t notifyValue)
 {
-    if (preparedWriteCount_ != 0 && activeBatchHandle_ != commHandle) {
+    if (pendingWriteValid_ && activeBatchHandle_ != commHandle) {
         FlushPreparedWrites();
     }
 
-    auto batchBuffer = reinterpret_cast<__ubuf__ uint8_t *>(hcommBatchTensor_.GetPhyAddr());
-    int32_t ret = hcomm_.WriteWithNotifyNbiPrepare<NO_CQE_WQE_CONFIG>(
-        commHandle, dst, src, len, notifyAddr, notifyValue, batchBuffer, HCOMM_BATCH_BUFFER_BYTES);
-    ascendc_assert(ret == HCOMM_SUCCESS, "WriteWithNotifyNbiPrepare failed, ret=%d", ret);
-    activeBatchHandle_ = commHandle;
-    ++preparedWriteCount_;
-    if (preparedWriteCount_ == HCOMM_BATCH_CAPACITY) {
-        FlushPreparedWrites();
+    // Submit full intermediate batches without CQE. Keep the newest request pending so only the final WQE of
+    // this AIV's entire send stream generates a CQE and is waited on by FlushPreparedWrites.
+    if (pendingWriteValid_) {
+        auto batchBuffer = reinterpret_cast<__ubuf__ uint8_t *>(hcommBatchTensor_.GetPhyAddr());
+        int32_t ret = hcomm_.WriteWithNotifyNbiPrepare<NO_CQE_WQE_CONFIG>(
+            activeBatchHandle_, pendingWriteDst_, pendingWriteSrc_, pendingWriteLen_, pendingNotifyAddr_,
+            pendingNotifyValue_, batchBuffer, HCOMM_BATCH_BUFFER_BYTES);
+        ascendc_assert(ret == HCOMM_SUCCESS, "WriteWithNotifyNbiPrepare failed, ret=%d", ret);
+        ++preparedWriteCount_;
+        if (preparedWriteCount_ == HCOMM_BATCH_CAPACITY) {
+            ret = hcomm_.WriteWithNotifyNbiPrepareEnd<true>(activeBatchHandle_, batchBuffer);
+            ascendc_assert(ret == HCOMM_SUCCESS, "WriteWithNotifyNbiPrepareEnd failed, ret=%d", ret);
+            preparedWriteCount_ = 0;
+        }
     }
+
+    activeBatchHandle_ = commHandle;
+    pendingWriteDst_ = dst;
+    pendingWriteSrc_ = src;
+    pendingWriteLen_ = len;
+    pendingNotifyAddr_ = notifyAddr;
+    pendingNotifyValue_ = notifyValue;
+    pendingWriteValid_ = true;
 }
 
 template <TemplateMoeEpCombineTypeClass>
