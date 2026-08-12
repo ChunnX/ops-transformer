@@ -300,7 +300,10 @@ def check_pta_run_and_docs() -> None:
         "SHMEM_LOG_LEVEL",
         "SHMEM runtime library directory",
         "ASCEND_CUSTOM_OPP_PATH",
+        "aic-ascend950-ops-info.json",
+        "OPS_INFO_CONFIG",
         "binary_info_config.json",
+        "KERNEL_BINARY_CONFIG",
         "AlltoAllvGroupedMatMulShmem",
         '"$@"',
     ):

@@ -13,15 +13,28 @@ if [[ ! -f "$CUST_OPAPI_LIBRARY" ]]; then
     exit 1
 fi
 VENDOR_DIR=$(dirname "$(dirname "$(dirname "$CUST_OPAPI_LIBRARY")")")
-BINARY_INFO_CONFIG="$VENDOR_DIR/op_impl/ai_core/tbe/kernel/config/ascend950/binary_info_config.json"
-if [[ ! -r "$BINARY_INFO_CONFIG" ]]; then
-    echo "Missing Ascend950 binary_info_config.json: $BINARY_INFO_CONFIG" >&2
+OPS_INFO_CONFIG="$VENDOR_DIR/op_impl/ai_core/tbe/config/ascend950/aic-ascend950-ops-info.json"
+KERNEL_BINARY_CONFIG="$VENDOR_DIR/op_impl/ai_core/tbe/kernel/config/ascend950/binary_info_config.json"
+if [[ ! -r "$OPS_INFO_CONFIG" ]]; then
+    echo "Missing Ascend950 operator registration: $OPS_INFO_CONFIG" >&2
     echo "Rebuild and reinstall the custom package with --soc=ascend950 before running PTA." >&2
     exit 1
 fi
-if ! grep -q '"AlltoAllvGroupedMatMulShmem"' "$BINARY_INFO_CONFIG"; then
-    echo "AlltoAllvGroupedMatMulShmem is absent from: $BINARY_INFO_CONFIG" >&2
-    echo "The installed custom package does not contain the SHMEM Ascend950 kernel registration." >&2
+if ! grep -q '"AlltoAllvGroupedMatMulShmem"' "$OPS_INFO_CONFIG"; then
+    echo "AlltoAllvGroupedMatMulShmem is absent from: $OPS_INFO_CONFIG" >&2
+    echo "The installed custom package does not register the SHMEM operator for Ascend950." >&2
+    exit 1
+fi
+if [[ ! -r "$KERNEL_BINARY_CONFIG" ]]; then
+    echo "Found Ascend950 operator registration: $OPS_INFO_CONFIG" >&2
+    echo "Missing compiled Ascend950 kernel index: $KERNEL_BINARY_CONFIG" >&2
+    echo "The package contains Host/operator metadata but not the device kernel artifacts." >&2
+    echo "Rebuild with --pkg --soc=ascend950 --ops=allto_allv_grouped_mat_mul and reinstall it." >&2
+    exit 1
+fi
+if ! grep -q '"AlltoAllvGroupedMatMulShmem"' "$KERNEL_BINARY_CONFIG"; then
+    echo "AlltoAllvGroupedMatMulShmem is absent from: $KERNEL_BINARY_CONFIG" >&2
+    echo "The installed custom package does not contain the SHMEM Ascend950 kernel binary registration." >&2
     exit 1
 fi
 case ":${ASCEND_CUSTOM_OPP_PATH:-}:" in
@@ -30,7 +43,8 @@ case ":${ASCEND_CUSTOM_OPP_PATH:-}:" in
 esac
 export ASCEND_CUSTOM_OPP_PATH
 echo "Custom OPP directory: $VENDOR_DIR"
-echo "Ascend950 binary config: $BINARY_INFO_CONFIG"
+echo "Ascend950 operator config: $OPS_INFO_CONFIG"
+echo "Ascend950 kernel binary config: $KERNEL_BINARY_CONFIG"
 
 prepend_runtime_dir() {
     local directory=$1
