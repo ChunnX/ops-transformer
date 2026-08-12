@@ -123,6 +123,7 @@ from compressor_grad_check import (
     print_log,
     get_pct_thd,
     format_case_line,
+    three_way_report,
 )
 
 DEVICE_ID = 0
@@ -472,14 +473,15 @@ def run_forward_direct_case(case, p, b, totalValid, device):
     return result, {"cmp_kv": cmp_kv, "softmax_score": softmax_score, "kv": kv}
 
 
-def run_backward_direct_case(case, p, b, totalValid, device, fwd=None):
+def run_backward_direct_case(case, p, b, totalValid, device, fwd=None, compare_mode="3"):
     """通路 4：单反向——直调 _compressor_backward（不经 autograd）。
 
     中间量（softmax_score/kv）默认来自真实正向：fwd 为 None 时先直调一次
     _compressor_forward（与 golden 一致性原则相同——golden 输入用前向真实输出）；
     通路 1 拼接时由通路 5 传入复用同一份中间量。
 
-    校验反向 4 输出：d_wkv / d_wgate / d_ape / d_x vs compressor_grad_golden。
+    校验反向 4 输出：compare_mode=2 两方（vs compressor_grad_golden iodtype）；
+    compare_mode=3 三方（vs NPU 小算子 native + float64 高精度 exact）。
     """
     batchSize, seqSize, headDim, hiddenSize = p["B"], p["S1"], p["D"], p["H"]
     cmpRatio, coff = p["cr"], p["coff"]
@@ -510,7 +512,7 @@ def run_backward_direct_case(case, p, b, totalValid, device, fwd=None):
         cmp_ratio=cmpRatio, coff=coff)
     torch.npu.synchronize()
 
-    # ── CPU Golden（与通路 1 相同：golden 输入用前向真实输出）──
+    # ── Golden（一份参数化实现：2=两方 iodtype；3=三方 B native + C exact）──
     dcCpu = dcNpu.cpu().float()
     spGolden = spNpu.cpu() if spNpu is not None else None
     sqGolden = sqNpu.cpu() if sqNpu is not None else None
@@ -518,40 +520,67 @@ def run_backward_direct_case(case, p, b, totalValid, device, fwd=None):
     xCpu = inputs["x"].cpu()
     if layoutId == 0:  # BSH
         xCpu = xCpu.view(batchSize, seqSize, hiddenSize)
-    dXGold, dWkvGold, dWgateGold, apeGold = compressor_grad_golden(
-        x=xCpu, wkv=wkvInp.cpu().float(), wgate=wgateInp.cpu().float(),
-        d_cpm_kv=(dcCpu.view(batchSize, -1, headDim) if layoutId == 0 else dcCpu),
-        softmax_score=softmax_score.cpu(),
-        kv=kv.cpu(),
-        cu_seqlens=cuGolden, seqused=sqGolden, start_pos=spGolden,
-        cmp_ratio=cmpRatio, coff=coff,
-    )
+    dcCpuView = dcCpu.view(batchSize, -1, headDim) if layoutId == 0 else dcCpu
+    smCpu = softmax_score.cpu()
+    kvCpu = kv.cpu()
+    if compare_mode == "2":
+        dXGold, dWkvGold, dWgateGold, apeGold = compressor_grad_golden(
+            x=xCpu, wkv=wkvInp.cpu().float(), wgate=wgateInp.cpu().float(),
+            d_cpm_kv=dcCpuView, softmax_score=smCpu, kv=kvCpu,
+            cu_seqlens=cuGolden, seqused=sqGolden, start_pos=spGolden,
+            cmp_ratio=cmpRatio, coff=coff)
+    else:
+        b_ref = compressor_grad_golden(
+            x=xCpu, wkv=wkvInp.cpu(), wgate=wgateInp.cpu(),
+            d_cpm_kv=dcCpuView, softmax_score=smCpu, kv=kvCpu,
+            cu_seqlens=cuGolden, seqused=sqGolden, start_pos=spGolden,
+            cmp_ratio=cmpRatio, coff=coff,
+            device=device, matmul_mode="native")
+        c_ref = compressor_grad_golden(
+            x=xCpu, wkv=wkvInp.cpu(), wgate=wgateInp.cpu(),
+            d_cpm_kv=dcCpuView, softmax_score=smCpu, kv=kvCpu,
+            cu_seqlens=cuGolden, seqused=sqGolden, start_pos=spGolden,
+            cmp_ratio=cmpRatio, coff=coff,
+            device="cpu", compute_dtype=torch.float64, matmul_mode="exact")
 
     # ── 反向 4 输出比对 ──
-    p_pct_thd = get_pct_thd(dataType)
     dWkvNp = d_wkv.cpu().float()
     dWgateNp = d_wgate.cpu().float()
     apeNp = d_ape.cpu().view(cmpRatio, coff * headDim)
     dXNp = d_x.cpu().float()
-    dXGoldF = dXGold.float()
 
     print_log("=" * 80)
     print_log(f"Start precision check for case '{case['testcase_name']}' (validBlocks={totalValid})")
 
-    r_dwkv = check_one_output("d_wkv", dWkvGold.float(), dWkvNp, dataType,
-                              ENABLE_DWKV_CHECK, totalValid, p_pct_thd)
-    r_dwgate = check_one_output("d_wgate", dWgateGold.float(), dWgateNp, dataType,
-                                ENABLE_DWGATE_CHECK, totalValid, p_pct_thd)
-    r_ape = check_one_output("d_ape", apeGold, apeNp, "float32",
-                             ENABLE_APE_CHECK, totalValid, get_pct_thd("float32"))
-    r_dx = check_one_output("d_x", dXGoldF, dXNp, dataType,
-                            ENABLE_DX_CHECK, totalValid, p_pct_thd)
+    if compare_mode == "2":
+        p_pct_thd = get_pct_thd(dataType)
+        dXGoldF = dXGold.float()
+        r_dwkv = check_one_output("d_wkv", dWkvGold.float(), dWkvNp, dataType,
+                                  ENABLE_DWKV_CHECK, totalValid, p_pct_thd)
+        r_dwgate = check_one_output("d_wgate", dWgateGold.float(), dWgateNp, dataType,
+                                    ENABLE_DWGATE_CHECK, totalValid, p_pct_thd)
+        r_ape = check_one_output("d_ape", apeGold, apeNp, "float32",
+                                 ENABLE_APE_CHECK, totalValid, get_pct_thd("float32"))
+        r_dx = check_one_output("d_x", dXGoldF, dXNp, dataType,
+                                ENABLE_DX_CHECK, totalValid, p_pct_thd)
+    else:
+        b_dx, b_dwkv, b_dwgate, b_dape = b_ref
+        c_dx, c_dwkv, c_dwgate, c_dape = c_ref
+        r_dwkv = three_way_report("d_wkv", dWkvNp, b_dwkv, c_dwkv, dataType)
+        r_dwgate = three_way_report("d_wgate", dWgateNp, b_dwgate, c_dwgate, dataType)
+        r_ape = three_way_report("d_ape", apeNp, b_dape.view(cmpRatio, coff * headDim),
+                                 c_dape.view(cmpRatio, coff * headDim), "float32")
+        r_dx = three_way_report("d_x", dXNp, b_dx, c_dx, dataType)
 
     result = dict(
-        dwkvDiff=r_dwkv["diff"], dwkvPct=r_dwkv["pct"], dwkvStatus=r_dwkv["status"],
-        dwgateDiff=r_dwgate["diff"], dwgatePct=r_dwgate["pct"], dwgateStatus=r_dwgate["status"],
-        apeDiff=r_ape["diff"], apePct=r_ape["pct"], apeStatus=r_ape["status"],
-        dxDiff=r_dx["diff"], dxPct=r_dx["pct"], dxStatus=r_dx["status"],
+        dwkvDiff=r_dwkv.get("diff", float("nan")), dwkvPct=r_dwkv.get("pct", float("nan")),
+        dwkvStatus=r_dwkv["status"],
+        dwgateDiff=r_dwgate.get("diff", float("nan")), dwgatePct=r_dwgate.get("pct", float("nan")),
+        dwgateStatus=r_dwgate["status"],
+        apeDiff=r_ape.get("diff", float("nan")), apePct=r_ape.get("pct", float("nan")),
+        apeStatus=r_ape["status"],
+        dxDiff=r_dx.get("diff", float("nan")), dxPct=r_dx.get("pct", float("nan")),
+        dxStatus=r_dx["status"],
     )
     statuses = [r_dwkv["status"], r_dwgate["status"], r_ape["status"], r_dx["status"]]
     result["status"] = "ERROR" if any(s == "ERROR" for s in statuses) else \
@@ -728,7 +757,7 @@ def _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps, state_init
                 cache_mode=cache_mode, scKvRowCount=scKvRowCount)
 
 
-def run_case(case, device):
+def run_case(case, device, compare_mode="3"):
     """通路 1：正反向全链路 = 通路 5（直调正向）+ 通路 4（直调反向）拼接。
 
     共享同一份输入构造（_build_inputs, state 随机初始）与 NPU 真实中间量
@@ -742,7 +771,8 @@ def run_case(case, device):
     # 通路 5：直调正向 + 校验（cmp_kv/sm/kv + state 4 项），返回 NPU 中间量
     fwd_result, fwd_inter = run_forward_direct_case(case, p, b, totalValid, device)
     # 通路 4：直调反向（复用同一份中间量）+ 校验（反向 4 输出）
-    bwd_result = run_backward_direct_case(case, p, b, totalValid, device, fwd=fwd_inter)
+    bwd_result = run_backward_direct_case(case, p, b, totalValid, device, fwd=fwd_inter,
+                                          compare_mode=compare_mode)
 
     result = dict(name=name, totalValid=totalValid,
                   coff=p["coff"], cmpRatio=p["cr"], headDim=p["D"],
@@ -769,7 +799,7 @@ def run_case(case, device):
     return result
 
 
-def run_backward_case(case, device):
+def run_backward_case(case, device, compare_mode="3"):
     """通路 2：单反向——随机构造中间量 → PyPTO 直跑 kernel → golden 比对。
 
     不经 aclnn/custom 包（kernel 运行时 JIT 编译）；TilingData 29 字段
@@ -855,27 +885,39 @@ def run_backward_case(case, device):
     xCpu = xNpu.cpu().view(B, seqSize, H) if layoutId == 0 else xNpu.cpu()
     smCpu = smNpu.cpu().view(B, -1, coff * cr, D) if layoutId == 0 else smNpu.cpu()
     kvCpu = kvNpu.cpu().view(B, -1, coff * cr, D) if layoutId == 0 else kvNpu.cpu()
-    g_dx, g_dwkv, g_dwgate, g_dape = compressor_grad_golden(
-        x=xCpu, wkv=wkvInp.cpu().float(), wgate=wgateInp.cpu().float(),
-        d_cpm_kv=(dcNpu.cpu().view(B, -1, D) if layoutId == 0 else dcNpu.cpu()),
-        softmax_score=smCpu, kv=kvCpu,
+    dcCpu = dcNpu.cpu().view(B, -1, D) if layoutId == 0 else dcNpu.cpu()
+    golden_kw = dict(
+        x=xCpu, wkv=wkvInp.cpu(), wgate=wgateInp.cpu(),
+        d_cpm_kv=dcCpu, softmax_score=smCpu, kv=kvCpu,
         cu_seqlens=cuNpu.cpu() if cuNpu is not None else None,
         seqused=sqNpu.cpu() if sqNpu is not None else None,
         start_pos=spNpu.cpu() if spNpu is not None else None,
         cmp_ratio=cr, coff=coff)
-
-    # ── 四输出比对 ──
-    p_pct_thd = get_pct_thd(p["dataType"])
-    checks = [
-        ("d_wkv", g_dwkv.float(), dWkv.cpu().float(), p["dataType"], p_pct_thd),
-        ("d_wgate", g_dwgate.float(), dWgate.cpu().float(), p["dataType"], p_pct_thd),
-        ("d_ape", g_dape, dApe.cpu().float(), "float32", get_pct_thd("float32")),
-        ("d_x", g_dx.float(), dX.cpu().float(), p["dataType"], p_pct_thd),
-    ]
-    statuses = []
-    for name, exp, act, dt, thd in checks:
-        r = check_one_output(name, exp, act, dt, True, 1, thd)
-        statuses.append(f"{name}={r['status']}")
+    if compare_mode == "2":
+        g_dx, g_dwkv, g_dwgate, g_dape = compressor_grad_golden(**golden_kw)
+        p_pct_thd = get_pct_thd(p["dataType"])
+        checks = [
+            ("d_wkv", g_dwkv.float(), dWkv.cpu().float(), p["dataType"], p_pct_thd),
+            ("d_wgate", g_dwgate.float(), dWgate.cpu().float(), p["dataType"], p_pct_thd),
+            ("d_ape", g_dape, dApe.cpu().float(), "float32", get_pct_thd("float32")),
+            ("d_x", g_dx.float(), dX.cpu().float(), p["dataType"], p_pct_thd),
+        ]
+        statuses = []
+        for name, exp, act, dt, thd in checks:
+            r = check_one_output(name, exp, act, dt, True, 1, thd)
+            statuses.append(f"{name}={r['status']}")
+    else:
+        b_ref = compressor_grad_golden(**golden_kw, device=device, matmul_mode="native")
+        c_ref = compressor_grad_golden(**golden_kw, device="cpu",
+                                       compute_dtype=torch.float64, matmul_mode="exact")
+        statuses = []
+        for i, (name, act, dt) in enumerate([
+                ("d_wkv", dWkv.cpu().float(), p["dataType"]),
+                ("d_wgate", dWgate.cpu().float(), p["dataType"]),
+                ("d_ape", dApe.cpu().float(), "float32"),
+                ("d_x", dX.cpu().float(), p["dataType"])]):
+            r = three_way_report(name, act, b_ref[i], c_ref[i], dt)
+            statuses.append(f"{name}={r['status']}")
     status = "ERROR" if any("ERROR" in s for s in statuses) else \
              "FAIL" if any("FAIL" in s for s in statuses) else "PASS"
     return {"status": status, "detail": "  ".join(statuses)}
@@ -884,6 +926,11 @@ def run_backward_case(case, device):
 def _pathway(request):
     """当前验证通路（--pathway 入参）。"""
     return request.config.getoption("--pathway")
+
+
+def _compare_mode(request):
+    """当前精度比对模式（--compare-mode: 2=两方 3=三方）。"""
+    return request.config.getoption("--compare-mode")
 
 
 @pytest.mark.parametrize(
@@ -901,7 +948,7 @@ def test_compressor_grad(case, request):
         pytest.skip(f"pathway={_pathway(request)}")
     device = f"npu:{DEVICE_ID}"
     torch.npu.set_device(device)
-    result = run_case(case, device)
+    result = run_case(case, device, _compare_mode(request))
     assert result["status"] == "PASS", format_case_line(result)
 
 
@@ -917,7 +964,7 @@ def test_compressor_grad_backward(case, request):
     """
     if _pathway(request) != 2:
         pytest.skip(f"pathway={_pathway(request)}")
-    result = run_backward_case(case, f"npu:{DEVICE_ID}")
+    result = run_backward_case(case, f"npu:{DEVICE_ID}", _compare_mode(request))
     assert result["status"] == "PASS", result["detail"]
 
 
@@ -956,7 +1003,8 @@ def test_compressor_grad_backward_direct(case, request):
     p, totalValid, cuNpu, sps, sqs, seed = _prepare_case(case, device)
     b = _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps,
                       state_init="rand")
-    result = run_backward_direct_case(case, p, b, totalValid, device)
+    result = run_backward_direct_case(case, p, b, totalValid, device,
+                                      compare_mode=_compare_mode(request))
     assert result["status"] == "PASS", format_case_line(result)
 
 
