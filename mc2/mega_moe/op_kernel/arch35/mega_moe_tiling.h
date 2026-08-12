@@ -19,8 +19,6 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
-using namespace AscendC;
-
 // MegaMoe adaptive UB buffer policy shared by host tiling and kernel address binding.
 // 实际 UB 预算由 host tiling 从平台获取，并通过 availableUbBytes 参与以下配置计算。
 
@@ -177,7 +175,7 @@ struct MegaMoeTilingData {
     int64_t topoType;
     uint32_t sharedExpertNum; // 独立 dense 路径的共享专家数，不进入 topK/SendMask expert id 空间
 
-    // 每个 routed MoE expert 固定预留的 GMM2 -> Combine 同步 slot 数。
+    // 每个 MoE 专家固定预留的 GMM2 -> Combine 同步 slot 数。
     uint64_t combineSyncSlotCountPerExpert;
 
     // Dispatch 的分核不改变 UB 布局，所有 AIV core 共用一套配置；对应 kernel DispatchBuffInit。
@@ -192,14 +190,14 @@ struct MegaMoeTilingData {
     MegaMoeUnpermuteBufferConfig unpermuteConfigForFullTokenChunk;
     MegaMoeUnpermuteBufferConfig unpermuteConfigForTailTokenChunk;
     uint32_t unpermuteFullTokenChunkCoreCount;
-    // Keep scheduling extensions at the tail to preserve every existing field offset.
+    // 调度扩展字段统一追加在末尾，保持已有字段偏移不变。
     int32_t topkWeightsPrefetch;
     uint32_t maxTilesPerExpert; // GMM1 tile 状态位区每 expert 的容量，按交织调度的完整 N 上界预留
     uint8_t actMode;            // 激活模式：0=swiglu, 1=situ
     uint8_t actSubMode;         // 激活子选项：situ下 0=默认, 1=linear; swiglu下忽略
     float activationAlpha;      // linear_beta, 默认 1.0
     float activationBeta;       // beta, 默认 1.0
-    uint32_t expertsPerBatch;
+    uint32_t mGroupsPerWave;    // 每个 routed expert Wave 消费的 256-row M 分组数
     // MoE 和共享专家使用相同布局：true 表示每个专家一个二维 tensor，false 表示单个三维堆叠 tensor。
     bool isPerExpertWeightTensor;
 };
