@@ -29,10 +29,6 @@
 
 using namespace op;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 namespace {
 constexpr int64_t MAX_KDA_K_DIM = 256;
 constexpr int64_t MAX_KDA_HEAD_NUM = 128;
@@ -496,6 +492,10 @@ const aclTensor *AsRank4(const aclTensor *tensor, const op::Shape &shape, aclOpE
     return l0op::Reshape(tensor, shape, executor);
 }
 } // namespace
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 aclnnStatus aclnnChunkKdaFwdGetWorkspaceSize(
     const aclTensor *q,
