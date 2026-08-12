@@ -147,6 +147,10 @@ def check_tiling_and_kernel() -> None:
 
     entry = read("op_kernel/allto_allv_grouped_mat_mul_shmem.cpp")
     kernel = read("op_kernel/allto_allv_grouped_mat_mul_shmem.h")
+    require('#include "lib/matmul_intf.h"' in entry,
+            "kernel entry must include the MatmulType/MatmulImpl/CubeFormat interface")
+    require("REGISTER_TILING_DEFAULT(AlltoAllvGmmShmem::AlltoAllvGroupedMatMulShmemTilingData);" in entry,
+            "kernel entry must register its tiling struct before GET_TILING_DATA")
     require("allto_allv_grouped_mat_mul_shmem" in entry, "dedicated kernel entry is missing")
     require("KERNEL_TYPE_MIX_AIC_1_2" in entry, "kernel is not configured for one AIC/two AIV")
     require("shmemContextGM" not in entry and "SetSyncBaseAddr" not in entry,

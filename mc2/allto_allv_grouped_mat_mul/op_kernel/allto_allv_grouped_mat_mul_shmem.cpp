@@ -13,6 +13,7 @@
 #else
 #include "kernel_operator.h"
 #endif
+#include "lib/matmul_intf.h"
 #include "allto_allv_grouped_mat_mul_shmem.h"
 
 using namespace AscendC;
@@ -38,6 +39,7 @@ extern "C" __global__ __aicore__ void allto_allv_grouped_mat_mul_shmem(
         return;
     }
 
+    REGISTER_TILING_DEFAULT(AlltoAllvGmmShmem::AlltoAllvGroupedMatMulShmemTilingData);
     GET_TILING_DATA(tilingData, tilingGM);
     const uint32_t rank = static_cast<uint32_t>(shmem_my_pe());
     const uint32_t peerCount = static_cast<uint32_t>(shmem_n_pes());
