@@ -1230,13 +1230,24 @@ def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale, score_scale):
     if q_scale.shape[1] != d_group_count or k_scale.shape[1] != d_group_count:
         raise ValueError(
             f"Q/K scale D-group count must be {d_group_count}, got "
-            f"{q_scale.shape[1]} and {k_scale.shape[1]}"
+            f"q={q_scale.shape[1]} and k={k_scale.shape[1]}"
         )
     if d_group_count % 2 != 0:
         raise ValueError(
             "npu_quant_matmul MXFP8 scale pair packing requires an even "
             f"D-group count, got {d_group_count}"
         )
+
+    # Pad Q to minimum M so that the 3D scale transpose is detectable by NPU.
+    # When M=1 (e.g. tail Q block), q_scale_packed is [1, Dg//2, 2] and its
+    # transpose [Dg//2, 1, 2] has a degenerate stride pattern that NPU cannot
+    # recognise as "transposed", causing "x2 and scale transpose are not same".
+    m_orig = q_fp8.shape[0]
+    min_m = 8
+    if m_orig < min_m:
+        pad_m = min_m - m_orig
+        q_fp8 = torch.nn.functional.pad(q_fp8, (0, 0, 0, pad_m))
+        q_scale = torch.nn.functional.pad(q_scale, (0, 0, 0, pad_m), value=1.0)
 
     q_scale_e8m0 = fp32_to_e8m0fnu_safe(q_scale, "Q golden matmul descale")
     k_scale_e8m0 = fp32_to_e8m0fnu_safe(k_scale, "K golden matmul descale")
@@ -1301,6 +1312,8 @@ def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale, score_scale):
         # multiply on NPU as well so large scores do not take a CPU rounding
         # path before max/subtract.
         scores_npu = scores_npu * float(score_scale)
+        if m_orig < min_m:
+            scores_npu = scores_npu[:m_orig, :]
     except TypeError as error:
         if "pertoken_scale_dtype" in str(error):
             raise RuntimeError(
