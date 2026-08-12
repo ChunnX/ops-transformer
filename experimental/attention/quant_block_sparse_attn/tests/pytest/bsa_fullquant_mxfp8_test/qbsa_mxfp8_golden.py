@@ -337,16 +337,12 @@ def validate_mxfp8_case(case):
         "none" if case.get("p_scale_value") is None else "value",
     )
     if p_scale_mode not in ("none", "empty", "value"):
-        raise ValueError(
-            f"p_scale_mode must be none/empty/value, got {p_scale_mode!r}"
-        )
+        raise ValueError(f"p_scale_mode must be none/empty/value, got {p_scale_mode!r}")
     if p_scale_mode == "value":
         if case.get("p_scale_value") is None or float(case["p_scale_value"]) <= 0:
             raise ValueError("value p_scale must carry a positive p_scale_value")
     elif case.get("p_scale_value") is not None:
-        raise ValueError(
-            f"p_scale_mode={p_scale_mode!r} requires p_scale_value=None"
-        )
+        raise ValueError(f"p_scale_mode={p_scale_mode!r} requires p_scale_value=None")
 
 
 def _case_list(case, name):
@@ -718,9 +714,7 @@ def make_mxfp8_block_table(
     block_nums = [math.ceil(int(seq_len) / block_size) for seq_len in seq_lens]
     required_width = max(block_nums) if block_nums else 0
     requested_width = (
-        required_width
-        if max_block_per_batch is None
-        else int(max_block_per_batch)
+        required_width if max_block_per_batch is None else int(max_block_per_batch)
     )
     if requested_width < 0:
         raise ValueError("max_block_per_batch must be non-negative")
@@ -738,9 +732,7 @@ def make_mxfp8_block_table(
     # the logical pages that the kernel may read.
     rng = random.Random(int(seed) ^ 0x5A17B10C)
     values = [rng.randrange(physical_block_count) for _ in range(batch * max_block_num)]
-    block_table = torch.tensor(values, dtype=torch.int32).reshape(
-        batch, max_block_num
-    )
+    block_table = torch.tensor(values, dtype=torch.int32).reshape(batch, max_block_num)
     if (
         sparse_indices is not None
         and sparse_seq_len is not None
@@ -798,9 +790,7 @@ def _validate_reference_block_table(
         )
 
     sparse_blocks_per_page = block_size // sparse_block_size
-    for batch_idx, (seq_len, logical_count) in enumerate(
-        zip(seq_lens, logical_counts)
-    ):
+    for batch_idx, (seq_len, logical_count) in enumerate(zip(seq_lens, logical_counts)):
         max_sparse_blocks = math.ceil(seq_len / sparse_block_size)
         for head_idx in range(sparse_indices.shape[1]):
             for qb_idx in range(sparse_indices.shape[2]):
@@ -810,9 +800,9 @@ def _validate_reference_block_table(
                         "invalid sparse_seq_len: "
                         f"B={batch_idx}, N={head_idx}, Qb={qb_idx}, count={count}"
                     )
-                sparse_ids = sparse_indices[
-                    batch_idx, head_idx, qb_idx, :count
-                ].to(torch.long)
+                sparse_ids = sparse_indices[batch_idx, head_idx, qb_idx, :count].to(
+                    torch.long
+                )
                 if sparse_ids.numel() == 0:
                     continue
                 if torch.any(sparse_ids < 0) or torch.any(
@@ -836,7 +826,6 @@ def _validate_reference_block_table(
                         f"logical={logical_ids.tolist()}, "
                         f"physical={physical_ids.tolist()}"
                     )
-
 
 
 def _allowed_blocks(
@@ -1259,21 +1248,15 @@ def generate_mxfp8_inputs(case=None, max_block_per_batch=None):
     #   K/V       [BlockNum, N2, BlockSize, D]
     #   K descale [BlockNum, N2, BlockSize, D/64, 2]
     #   V descale [BlockNum, N2, ceil(BlockSize/64), D, 2]
-    k_fp32 = _rand_float(
-        (BLOCK_NUM, n2, BLOCK_SIZE, head_dim), generator, DATA_RANGE_K
-    )
-    v_fp32 = _rand_float(
-        (BLOCK_NUM, n2, BLOCK_SIZE, head_dim), generator, DATA_RANGE_V
-    )
+    k_fp32 = _rand_float((BLOCK_NUM, n2, BLOCK_SIZE, head_dim), generator, DATA_RANGE_K)
+    v_fp32 = _rand_float((BLOCK_NUM, n2, BLOCK_SIZE, head_dim), generator, DATA_RANGE_V)
     _log_tensor_ranges(
         "original FP32 range",
         q=q_fp32,
         k=k_fp32,
         v=v_fp32,
     )
-    key, k_descale_flat = quantize_mxfp8_qk(
-        k_fp32, FP8_DTYPE, QUANT_GROUP_SIZE
-    )
+    key, k_descale_flat = quantize_mxfp8_qk(k_fp32, FP8_DTYPE, QUANT_GROUP_SIZE)
     key = _materialize_pa_bnsd(key)
     k_descale = pack_qk_scale_for_npu(k_descale_flat)
 
@@ -1493,9 +1476,7 @@ def cpu_mxfp8_golden(
     # logical pages read the same physical data without any packing/overwrite
     # order ambiguity.
     block_table = torch.as_tensor(block_table_torch, dtype=torch.int32)
-    _validate_direct_pa_kv_shapes(
-        k_fp8, v_fp8, dequant_scale_k, dequant_scale_v
-    )
+    _validate_direct_pa_kv_shapes(k_fp8, v_fp8, dequant_scale_k, dequant_scale_v)
     k_tensor = k_fp8.to(torch.float32)
     v_tensor = v_fp8.to(torch.float32)
     k_scale = torch.as_tensor(dequant_scale_k, dtype=torch.float32)
@@ -2104,11 +2085,7 @@ def _call_npu_fa_op_graph(
 def _build_causal_mask():
     if MASK_MODE == 0:
         return torch.empty((0, 0), dtype=torch.uint8).npu()
-    return (
-        torch.tril(torch.ones(2048, 2048, dtype=torch.uint8))
-        .T.contiguous()
-        .npu()
-    )
+    return torch.tril(torch.ones(2048, 2048, dtype=torch.uint8)).T.contiguous().npu()
 
 
 def _calc_cube_compute_amount(q_lengths, kv_lengths, sparse_indices, sparse_seq_len):
@@ -2341,9 +2318,7 @@ def npu_mxfp8_fa(
     if block_table_torch is None:
         raise ValueError("PA KV cache requires block_table_torch")
 
-    _validate_direct_pa_kv_shapes(
-        k_fp8, v_fp8, dequant_scale_k, dequant_scale_v
-    )
+    _validate_direct_pa_kv_shapes(k_fp8, v_fp8, dequant_scale_k, dequant_scale_v)
     k_pa = k_fp8
     v_pa = v_fp8
     k_input = k_pa.contiguous().view(FP8_DTYPE)

@@ -55,7 +55,9 @@ def _inplace_copy(destination, source):
             destination.copy_(source_tensor)
         return
 
-    source_tensor = source.detach().cpu() if isinstance(source, torch.Tensor) else source
+    source_tensor = (
+        source.detach().cpu() if isinstance(source, torch.Tensor) else source
+    )
     if isinstance(source_tensor, torch.Tensor) and "float8" in str(source_tensor.dtype):
         destination_view = (
             destination.view(np.uint8) if destination.dtype.kind == "V" else destination
@@ -242,7 +244,9 @@ def _mxfp8_load_golden_module():
     if _MXFP8_MODULE_NAME in sys.modules:
         return sys.modules[_MXFP8_MODULE_NAME]
 
-    pytest_dir = Path(__file__).resolve().parents[2] / "pytest" / "bsa_fullquant_mxfp8_test"
+    pytest_dir = (
+        Path(__file__).resolve().parents[2] / "pytest" / "bsa_fullquant_mxfp8_test"
+    )
     module_path = pytest_dir / "qbsa_mxfp8_golden.py"
     spec = importlib.util.spec_from_file_location(_MXFP8_MODULE_NAME, module_path)
     if spec is None or spec.loader is None:
@@ -272,9 +276,7 @@ def _mxfp8_normalize_data_range(data_range):
             )
         low, high = float(data_range[0]), float(data_range[1])
         if not math.isfinite(low) or not math.isfinite(high):
-            raise ValueError(
-                f"data_range bounds must be finite, got: [{low}, {high}]"
-            )
+            raise ValueError(f"data_range bounds must be finite, got: [{low}, {high}]")
         if low > high:
             raise ValueError(
                 f"data_range min must not exceed max, got: [{low}, {high}]"
@@ -336,9 +338,7 @@ def _mxfp8_assemble_case(
         "s2_base_size": int(s2_base_size),
         "blocknum": normalized_blocknum,
         "max_block_per_batch": (
-            None
-            if max_block_per_batch is None
-            else int(max_block_per_batch)
+            None if max_block_per_batch is None else int(max_block_per_batch)
         ),
         "block_size": int(key.shape[2]),
         "mask_mode": int(mask_mode),
@@ -351,9 +351,7 @@ def _mxfp8_assemble_case(
         "layout_out": layout_out,
         "kv_cache_layout": "BnNBsD",
         "is_contiguous": True,
-        "p_scale_value": (
-            None if p_scale_value is None else float(p_scale_value)
-        ),
+        "p_scale_value": (None if p_scale_value is None else float(p_scale_value)),
         "softmax_scale": float(softmax_scale),
         "return_softmax_lse": bool(return_softmax_lse),
         "seed": int(seed),
@@ -424,11 +422,7 @@ def _mxfp8_customize_inputs(
         cu_seqlens_kv_value=cu_seqlens_kv_value,
         seqused_q_value=seqused_q_value,
         seqused_kv_value=seqused_kv_value,
-        sparse_mode=(
-            sparse_mode
-            if sparse_mode in ("dense", "random")
-            else "dense"
-        ),
+        sparse_mode=(sparse_mode if sparse_mode in ("dense", "random") else "dense"),
         p_scale_value=p_scale_value,
         seed=seed,
         quant_group_size=quant_group_size,
@@ -441,9 +435,7 @@ def _mxfp8_customize_inputs(
     )
     # Golden owns MXFP8 validation and all input construction, including the
     # random block table. TTK only supplies CSV attributes and allocated shapes.
-    data = module.generate_mxfp8_inputs(
-        case, max_block_per_batch=max_block_per_batch
-    )
+    data = module.generate_mxfp8_inputs(case, max_block_per_batch=max_block_per_batch)
 
     q_scale = module.fp32_to_e8m0fnu_safe(
         module.pack_q_scale_tnd_for_npu(data["q_descale"], data["q_lengths"]),
@@ -471,8 +463,9 @@ def _mxfp8_customize_inputs(
     _inplace_copy(sparse_seq_len, data["sparse_seq_len"])
     _inplace_copy(
         atten_mask,
-        torch.tril(torch.ones(tuple(atten_mask.shape), dtype=torch.uint8))
-        .T.contiguous(),
+        torch.tril(
+            torch.ones(tuple(atten_mask.shape), dtype=torch.uint8)
+        ).T.contiguous(),
     )
 
     cache = getattr(module, "_TTK_MXFP8_CACHE", {})

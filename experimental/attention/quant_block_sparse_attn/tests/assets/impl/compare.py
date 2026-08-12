@@ -87,9 +87,7 @@ def _numpy_compare(npu_out, golden_out, output_name):
     nan_mismatch = np.isnan(npu_f32) ^ np.isnan(golden_f32)
     has_nan_mismatch = bool(np.any(nan_mismatch))
     finite_mismatch = mismatch & np.isfinite(npu_f32) & np.isfinite(golden_f32)
-    nonfinite_mismatch = mismatch & ~(
-        np.isfinite(npu_f32) & np.isfinite(golden_f32)
-    )
+    nonfinite_mismatch = mismatch & ~(np.isfinite(npu_f32) & np.isfinite(golden_f32))
     has_nonfinite_mismatch = bool(np.any(nonfinite_mismatch))
 
     # Calculate error magnitudes only for finite mismatches. NaN/NaN and
@@ -114,9 +112,7 @@ def _numpy_compare(npu_out, golden_out, output_name):
     elif has_nonfinite_mismatch:
         max_abs_diff = float("inf")
     else:
-        max_abs_diff = (
-            float(np.max(finite_abs_diff)) if finite_abs_diff.size else 0.0
-        )
+        max_abs_diff = float(np.max(finite_abs_diff)) if finite_abs_diff.size else 0.0
 
     passed = fail_ratio <= _FAIL_RATIO_LIMIT
     if max_normalized_error >= _MAX_NORMALIZED_ERROR:
@@ -207,9 +203,7 @@ def _compare_outputs(outputs, *, return_softmax_lse=None):
         if not _is_absent_lse(npu_lse):
             unexpected.append(f"NPU shape={tuple(_as_numpy(npu_lse).shape)}")
         if not _is_absent_lse(golden_lse):
-            unexpected.append(
-                f"golden shape={tuple(_as_numpy(golden_lse).shape)}"
-            )
+            unexpected.append(f"golden shape={tuple(_as_numpy(golden_lse).shape)}")
         if unexpected:
             results.append(
                 {
@@ -275,8 +269,6 @@ def compare(*outputs, **kwargs):
     return _compare_outputs(
         outputs,
         return_softmax_lse=(
-            None
-            if return_softmax_lse is None
-            else _as_bool(return_softmax_lse)
+            None if return_softmax_lse is None else _as_bool(return_softmax_lse)
         ),
     )
