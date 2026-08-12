@@ -259,6 +259,10 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::AllGather
     }
     allGatherScale_.Finalize();
     allGatherData_.Finalize();
+
+    // 临时规避：通信接口缓存一致性问题，此处手动补一次缓存刷新
+    dcci(reinterpret_cast<__gm__ void*>(udmaCtx_->commBufferAddrs),
+        static_cast<uint64_t>(CacheLine::ENTIRE_DATA_CACHE), static_cast<uint64_t>(DcciDst::CACHELINE_OUT));
 }
 
 } // namespace AllGatherQuantMatmulImpl

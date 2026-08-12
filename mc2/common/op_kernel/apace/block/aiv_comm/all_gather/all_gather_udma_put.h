@@ -29,11 +29,8 @@ class AllGatherCommPutImpl : public CollectiveCommBase<AllGatherCommPutImpl<Dtyp
 
 private:
     template<uint8_t BarrierMode>
-    __aicore__ inline void PostInit()
-    {
-        if constexpr (BarrierMode & BARRIER_DEVICE) {
-            this->barrier_.CrossDevice();
-        }
+    __aicore__ inline void DoFinalize()
+    {}
         if constexpr (BarrierMode & BARRIER_CORE) {
             this->barrier_.CrossCore();
         }
