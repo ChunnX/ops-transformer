@@ -15,11 +15,13 @@ import os
 import sys
 import torch
 import pytest
-def run_small_ops_case(case, device):
+def run_small_ops_case(case, device, compare_mode="3"):
     """通路 3：小算子拼接通路——CPU 小算子拼接 + 自动反向推导梯度作 golden，
     算子侧经 pta 反向传播串联正反向（与通路 1 相同 NPU 流程）。
 
     ⚠️ loss 只对有效压缩块计算（cmp_mask 过滤），无效 padding 不附加梯度。
+    compare_mode=3 时：B=NPU 小算子（native）、C=float64 高精度（exact），
+    中间量 sm/kv 用 NPU 真实前向输出（与通路 1/4 一致）。
     """
     p = _parse_case(case, device)
     B, S1, H, D = p["B"], p["S1"], p["H"], p["D"]
@@ -91,17 +93,61 @@ def run_small_ops_case(case, device):
 
     # ── 比对：NPU 四梯度 vs CPU 自动反向四梯度 ──
     d_xNpu = npu_result["d_x"].cpu().float().reshape(-1, H)
-    p_pct_thd = get_pct_thd(dataType)
-    checks = [
-        ("d_wkv", g_dwkv.float(), npu_result["d_wkv"].cpu().float(), dataType, p_pct_thd),
-        ("d_wgate", g_dwgate.float(), npu_result["d_wgate"].cpu().float(), dataType, p_pct_thd),
-        ("d_ape", g_dape, npu_result["d_ape"].cpu().float(), "float32", get_pct_thd("float32")),
-        ("d_x", g_dx.float(), d_xNpu, dataType, p_pct_thd),
-    ]
-    statuses = []
-    for name, exp, act, dt, thd in checks:
-        r = check_one_output(name, exp, act, dt, True, 1, thd)
-        statuses.append(f"{name}={r['status']}")
+    if compare_mode == "2":
+        p_pct_thd = get_pct_thd(dataType)
+        checks = [
+            ("d_wkv", g_dwkv.float(), npu_result["d_wkv"].cpu().float(), dataType, p_pct_thd),
+            ("d_wgate", g_dwgate.float(), npu_result["d_wgate"].cpu().float(), dataType, p_pct_thd),
+            ("d_ape", g_dape, npu_result["d_ape"].cpu().float(), "float32", get_pct_thd("float32")),
+            ("d_x", g_dx.float(), d_xNpu, dataType, p_pct_thd),
+        ]
+        statuses = []
+        for name, exp, act, dt, thd in checks:
+            r = check_one_output(name, exp, act, dt, True, 1, thd)
+            statuses.append(f"{name}={r['status']}")
+    else:
+        # 三方：B/C golden 输入用 NPU 真实前向中间量（交错布局，与 kernel 一致）
+        # ⚠️ 直调路径 cu_seqlens/seqused/start_pos 必须转 NPU（CPU 张量 → SVM page fault）
+        cuArg = b["inputs"]["cu_seqlens"]
+        cuArg = cuArg.to(device) if cuArg is not None else None
+        sqArg = b["inputs"]["seqused"]
+        sqArg = sqArg.to(device) if sqArg is not None else None
+        spArg = b["inputs"]["start_pos"]
+        spArg = spArg.to(device) if spArg is not None else None
+        cmp_kv, softmax_score, kv = _compressor_forward(
+            b["inputs"]["x"], b["wkvInp"], b["wgateInp"], b["state_cache_npu"], b["ape_npu"],
+            state_block_table=b["block_table_npu"],
+            cu_seqlens=cuArg, seqused=sqArg, start_pos=spArg,
+            cmp_ratio=cr, coff=coff, cache_mode=b["cache_mode"], grad_enabled=True)
+        torch.npu.synchronize()
+        smCpu = softmax_score.cpu()
+        kvCpu = kv.cpu()
+        dcCpuView = dcCpu.view(B, -1, D) if layoutId == 0 else dcCpu
+        b_ref = compressor_grad_golden(
+            x=xCpu, wkv=b["wkvInp"].cpu(), wgate=b["wgateInp"].cpu(),
+            d_cpm_kv=dcCpuView, softmax_score=smCpu, kv=kvCpu,
+            cu_seqlens=cuNpu.cpu() if cuNpu is not None else None,
+            seqused=torch.tensor(sqs, dtype=torch.int32) if sqs else None,
+            start_pos=torch.tensor(sps, dtype=torch.int32) if sps else None,
+            cmp_ratio=cr, coff=coff, device=device, matmul_mode="native")
+        c_ref = compressor_grad_golden(
+            x=xCpu, wkv=b["wkvInp"].cpu(), wgate=b["wgateInp"].cpu(),
+            d_cpm_kv=dcCpuView, softmax_score=smCpu, kv=kvCpu,
+            cu_seqlens=cuNpu.cpu() if cuNpu is not None else None,
+            seqused=torch.tensor(sqs, dtype=torch.int32) if sqs else None,
+            start_pos=torch.tensor(sps, dtype=torch.int32) if sps else None,
+            cmp_ratio=cr, coff=coff, device="cpu",
+            compute_dtype=torch.float64, matmul_mode="exact")
+        statuses = []
+        b_dx, b_dwkv, b_dwgate, b_dape = b_ref
+        c_dx, c_dwkv, c_dwgate, c_dape = c_ref
+        for name, act, b_out, c_out, dt in [
+                ("d_wkv", npu_result["d_wkv"].cpu().float(), b_dwkv, c_dwkv, dataType),
+                ("d_wgate", npu_result["d_wgate"].cpu().float(), b_dwgate, c_dwgate, dataType),
+                ("d_ape", npu_result["d_ape"].cpu().float(), b_dape, c_dape, "float32"),
+                ("d_x", npu_result["d_x"].cpu().float(), b_dx, c_dx, dataType)]:
+            r = three_way_report(name, act, b_out, c_out, dt)
+            statuses.append(f"{name}={r['status']}")
     status = "ERROR" if any("ERROR" in s for s in statuses) else \
              "FAIL" if any("FAIL" in s for s in statuses) else "PASS"
     return {"status": status, "detail": "  ".join(statuses)}
@@ -910,13 +956,15 @@ def run_backward_case(case, device, compare_mode="3"):
         b_ref = compressor_grad_golden(**golden_kw, device=device, matmul_mode="native")
         c_ref = compressor_grad_golden(**golden_kw, device="cpu",
                                        compute_dtype=torch.float64, matmul_mode="exact")
+        b_dx, b_dwkv, b_dwgate, b_dape = b_ref
+        c_dx, c_dwkv, c_dwgate, c_dape = c_ref
         statuses = []
-        for i, (name, act, dt) in enumerate([
-                ("d_wkv", dWkv.cpu().float(), p["dataType"]),
-                ("d_wgate", dWgate.cpu().float(), p["dataType"]),
-                ("d_ape", dApe.cpu().float(), "float32"),
-                ("d_x", dX.cpu().float(), p["dataType"])]):
-            r = three_way_report(name, act, b_ref[i], c_ref[i], dt)
+        for name, act, b_out, c_out, dt in [
+                ("d_wkv", dWkv.cpu().float(), b_dwkv, c_dwkv, p["dataType"]),
+                ("d_wgate", dWgate.cpu().float(), b_dwgate, c_dwgate, p["dataType"]),
+                ("d_ape", dApe.cpu().float(), b_dape, c_dape, "float32"),
+                ("d_x", dX.cpu().float(), b_dx, c_dx, p["dataType"])]:
+            r = three_way_report(name, act, b_out, c_out, dt)
             statuses.append(f"{name}={r['status']}")
     status = "ERROR" if any("ERROR" in s for s in statuses) else \
              "FAIL" if any("FAIL" in s for s in statuses) else "PASS"
@@ -980,7 +1028,7 @@ def test_compressor_grad_small_ops(case, request):
     """
     if _pathway(request) != 3:
         pytest.skip(f"pathway={_pathway(request)}")
-    result = run_small_ops_case(case, f"npu:{DEVICE_ID}")
+    result = run_small_ops_case(case, f"npu:{DEVICE_ID}", _compare_mode(request))
     assert result["status"] == "PASS", result["detail"]
 
 
