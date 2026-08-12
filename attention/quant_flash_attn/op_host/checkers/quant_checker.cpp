@@ -281,6 +281,7 @@ ge::graphStatus QuantChecker::CheckKDescaleShape(const QfaTilingInfo &qfaInfo) c
 {
     // 文档(k_descale/v_descale shape匹配关系表): MxFP8
     //   TND:      (KV_T, KV_N, D/64, 2)              - 4D
+    //   PA_BBND:  (Bn, Bs, KV_N, D/64, 2)            - 5D
     //   PA_BNBD:  (Bn, KV_N, Bs, D/64, 2)            - 5D
     //   PA_NZ:    (Bn, KV_N, Bs/16, D/64, 16, 2)     - 6D
     const gert::StorageShape *shape = qfaInfo.opParamInfo.kDescale.shape;
@@ -295,6 +296,8 @@ ge::graphStatus QuantChecker::CheckKDescaleShape(const QfaTilingInfo &qfaInfo) c
     std::vector<int64_t> expected;
     if (qfaInfo.kvLayout == QfaLayout::TND) {
         expected = {qfaInfo.kTSize, qfaInfo.n2Size, DPerGroup, 2};
+    } else if (qfaInfo.kvLayout == QfaLayout::PA_BBND) {
+        expected = {qfaInfo.totalBlockNum, qfaInfo.blockSize, qfaInfo.n2Size, DPerGroup, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD) {
         expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize, DPerGroup, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_NZ) {
@@ -317,9 +320,11 @@ ge::graphStatus QuantChecker::CheckVDescaleShape(const QfaTilingInfo &qfaInfo) c
 {
     // 文档(k_descale/v_descale shape匹配关系表): MxFP8
     //   TND:      (KV_T/64, KV_N, D, 2)              - 4D
+    //   PA_BBND:  (Bn, Bs/64, KV_N, D, 2)            - 5D
     //   PA_BNBD:  (Bn, KV_N, Bs/64, D, 2)            - 5D
     //   PA_NZ:    (Bn, KV_N, D/16, Bs/64, 16, 2)     - 6D
     const gert::StorageShape *shape = qfaInfo.opParamInfo.vDescale.shape;
+    const int64_t mxfp8BlockSize = 64;
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
@@ -333,10 +338,13 @@ ge::graphStatus QuantChecker::CheckVDescaleShape(const QfaTilingInfo &qfaInfo) c
         // tiling 阶段 cu_seqlens_kv 为 device tensor, host 侧无法安全读取,
         // 因此 dim0 不做数值校验(用 -1 占位), 仅校验维度数为 4D 及 dim[1..3]。
         expected = {-1, qfaInfo.n2Size, D, 2};
+    } else if (qfaInfo.kvLayout == QfaLayout::PA_BBND) {
+        expected = {qfaInfo.totalBlockNum, CeilDivision(qfaInfo.blockSize, mxfp8BlockSize), qfaInfo.n2Size, D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD) {
-        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize / 64, D, 2};
+        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, CeilDivision(qfaInfo.blockSize, mxfp8BlockSize), D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_NZ) {
-        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, D / 16, qfaInfo.blockSize / 64, 16, 2};
+        expected = {
+            qfaInfo.totalBlockNum, qfaInfo.n2Size, D / 16, CeilDivision(qfaInfo.blockSize, mxfp8BlockSize), 16, 2};
     } else {
         OP_LOGE(qfaInfo.opName, "v_descale shape check: kv_layout %s is unsupported.",
                 QfaLayoutToSerialString(qfaInfo.kvLayout).c_str());
@@ -413,13 +421,14 @@ ge::graphStatus QuantChecker::CheckDescaleDtype(const QfaTilingInfo &qfaInfo) co
 
 // ============================================================================
 // Feature — 非连续 Tensor 支持校验 (文档"特性交叉校验"列)
-// 规则: 仅 PA 场景(layout_kv ∈ {PA_BNBD, PA_NZ})时，k/v/k_descale/v_descale
+// 规则: 仅 PA 场景(layout_kv ∈ {PA_BBND, PA_BNBD, PA_NZ})时，k/v/k_descale/v_descale
 //       仅支持 0 轴和 1 轴非连续，其余轴必须连续；非 PA 场景均不支持非连续。
 // ============================================================================
 
 ge::graphStatus QuantChecker::CheckNonContiguousSupport(const QfaTilingInfo &qfaInfo) const
 {
-    bool isPaLayout = (qfaInfo.kvLayout == QfaLayout::PA_BNBD || qfaInfo.kvLayout == QfaLayout::PA_NZ);
+    bool isPaLayout = (qfaInfo.kvLayout == QfaLayout::PA_BBND || qfaInfo.kvLayout == QfaLayout::PA_BNBD ||
+                       qfaInfo.kvLayout == QfaLayout::PA_NZ);
     if (!isPaLayout) {
         // 非 PA 场景: k/v/k_descale/v_descale 均不支持非连续
         int32_t dimIndex = 0;
@@ -511,7 +520,7 @@ struct QfaLayoutConstraintConfig {
 
 const std::map<QfaQuantMode, QfaLayoutConstraintConfig> QFA_LAYOUT_CONSTRAINT_TABLE = {
     {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-     {{QfaLayout::TND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ}, {QfaLayout::TND}, {QfaLayout::TND, QfaLayout::N2TGD}}},
+     {{QfaLayout::TND, QfaLayout::PA_BBND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ}, {QfaLayout::TND}, {QfaLayout::TND, QfaLayout::N2TGD}}},
 };
 } // namespace
 
@@ -531,7 +540,7 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
                     config.supportedKvLayouts.end(),
                 OP_LOGE(qfaInfo.opName,
                         "When quant_mode is MxFP8 and layout_q is %s, "
-                        "layout_kv must be in {TND, PA_BNBD, PA_NZ}, but got %s",
+                        "layout_kv must be in {TND, PA_BBND, PA_BNBD, PA_NZ}, but got %s",
                         qLayoutStr.c_str(), QfaLayoutToSerialString(qfaInfo.kvLayout).c_str()),
                 return ge::GRAPH_FAILED);
 
@@ -581,15 +590,16 @@ ge::graphStatus QuantChecker::CheckQueryShape(const QfaTilingInfo &qfaInfo) cons
 
 ge::graphStatus QuantChecker::CheckKVShape(const QfaTilingInfo &qfaInfo) const
 {
-    // k/v: TND -> (KV_T, KV_N, D)；PA_BNBD -> (Bn, KV_N, Bs, D)；
-    //      PA_NZ -> (Bn, KV_N, D/32, Bs, 32)
+    // k/v: TND -> (KV_T, KV_N, D)；PA_BBND -> (Bn, Bs, KV_N, D)；
+    //      PA_BNBD -> (Bn, KV_N, Bs, D)；PA_NZ -> (Bn, KV_N, D/32, Bs, 32)
     QfaTilingShapeCompareParam shapeParams;
     shapeParams.N = qfaInfo.n2Size;
     shapeParams.D = qfaInfo.qkHeadDim;
 
     if (qfaInfo.kvLayout == QfaLayout::TND) {
         shapeParams.T = qfaInfo.kTSize;
-    } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD || qfaInfo.kvLayout == QfaLayout::PA_NZ) {
+    } else if (qfaInfo.kvLayout == QfaLayout::PA_BBND || qfaInfo.kvLayout == QfaLayout::PA_BNBD ||
+               qfaInfo.kvLayout == QfaLayout::PA_NZ) {
         shapeParams.Bn = qfaInfo.totalBlockNum;
         shapeParams.Bs = qfaInfo.blockSize;
     }
