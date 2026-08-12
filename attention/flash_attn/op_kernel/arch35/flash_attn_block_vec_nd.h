@@ -253,7 +253,7 @@ public:
         constexpr uint32_t softmaxBufElementCount = UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T);
         LocalTensor<T> sumUb = softmaxSumBuf_[slotIdx * softmaxBufElementCount];
         LocalTensor<T> maxUb = softmaxMaxBuf_[slotIdx * softmaxBufElementCount];
-        if (constInfo_.learnableSinkFlag) {
+        if (constInfo_.learnableSinkFlag && runInfo.faTmpOutWsPos == 0) {
             auto sinkSrc = sinkGm_.GetValue(runInfo.n2Idx * constInfo_.gSize + runInfo.gIdx);
             T sinkValue;
             if constexpr (IsSameType<INPUT_T, half>::value) {
