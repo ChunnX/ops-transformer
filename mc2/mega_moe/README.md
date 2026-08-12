@@ -926,7 +926,7 @@
     - `topoType`由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。当前暂不支持URMA通信方式。
     - `topkWeightsType`取值为0或1，0表示关闭topkWeights前移，1表示开启。当前暂不支持URMA通信方式。
     - `numMaxTokensPerRank`为0时自动计算；非0时必须等于`BS`。
-    - `cclBufferSize`需 >= 全卡软同步预留空间（固定60KB） + mask接收空间 + 量化token缩放因子空间 + combine发送空间。
+    - MTE模板的`cclBufferSize`需 >= 异常dump预留空间（固定60KB） + 全卡软同步预留空间（固定60KB） + mask接收空间 + 量化token缩放因子空间 + combine发送空间；URMA模板暂不增加异常dump预留空间。
     - `weightScales1`和`weightScales2`为必选输入，数据类型必须为FLOAT8_E8M0。
     - `weight1`和`weight2`的数据类型必须一致，且仅支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。
     - `topkWeights`数据类型仅支持BF16或FP32。

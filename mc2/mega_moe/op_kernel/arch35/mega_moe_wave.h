@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -27,6 +27,7 @@
 #include "common/mega_moe_types.h"
 #include "common/mega_moe_workspace.h"
 #include "common/mega_moe_utils.h"
+#include "mega_moe_exception_dump_policy.h"
 #include "blaze/epilogue/block_epilogue_activation_mx_quant.h"
 #include "stage/mega_moe_token_quant.h"
 #include "stage/mega_moe_send_mask.h"
@@ -76,7 +77,8 @@ public:
                                 GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
                                 GM_ADDR scales, GM_ADDR sharedWeight1, GM_ADDR sharedWeight2,
                                 GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2, GM_ADDR yOut,
-                                GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData);
+                                GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData,
+                                GM_ADDR tilingGM);
     __aicore__ inline void Process();
 
 private:
@@ -178,6 +180,8 @@ private:
                                        L1_TILE_M_256, L1_TILE_N, false, GMM1_INTERLEAVED>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
+    void *persistentBlockMmadContext_ = nullptr;
+    MC2MegaMoeA5Dump::ExceptionDumpEngine exceptionDump_;
 };
 
 template <TemplateMegaMoeWaveTypeClass>
@@ -284,7 +288,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
     GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR sharedWeight1,
     GM_ADDR sharedWeight2, GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2, GM_ADDR yOut,
-    GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
+    GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData, GM_ADDR tilingGM)
 {
     k_ = tilingData->h;
     worldSize_ = tilingData->epWorldSize;
@@ -295,8 +299,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     mGroupsPerWave_ = tilingData->mGroupsPerWave == 0U ? 1U : tilingData->mGroupsPerWave;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
     rankId_ = mc2Context_->epRankId;
+    GM_ADDR dumpBase = reinterpret_cast<GM_ADDR>(mc2Context_->epHcclBuffer[rankId_]);
     for (int i = 0; i < worldSize_; i++) {
-        winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
+        winRankAddr_[i] = reinterpret_cast<GM_ADDR>(mc2Context_->epHcclBuffer[i]) + EXCEPTION_DUMP_REGION_SIZE;
     }
     params_.aGmAddr = x;
     params_.expertIdxGmAddr = topkIds;
@@ -339,6 +344,16 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     InitTokenDispatchConfig(commonConfig_);
     InitGmmConfigs(dispatchFlagSlotsPerExpert);
     InitTokenUnpermuteConfig(commonConfig_);
+
+    exceptionDump_.Init(dumpBase, tilingGM);
+    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::INIT);
+    constexpr size_t syncSlotBytes = INT_CACHELINE * sizeof(int32_t);
+    exceptionDump_.Dump(params_.peermemInfo.rankSyncInWorldPtr, worldSize_, sizeof(int32_t), syncSlotBytes);
+    exceptionDump_.Dump(params_.peermemInfo.rankSyncInWorldPtr + 48U * 1024U, blockAivNum_, sizeof(int32_t),
+                        syncSlotBytes);
+    const size_t maskSlotSize = sendMaskConfig_.maskAlignSize + ALIGN_32;
+    exceptionDump_.Dump(params_.peermemInfo.maskRecvPtr + sendMaskConfig_.maskAlignSize,
+                        static_cast<size_t>(moeExpertPerRank_) * worldSize_, sizeof(int32_t), maskSlotSize);
 }
 
 // =================================================================================================
@@ -888,6 +903,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineE
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExpertStages()
 {
+    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::MOE_GMM1_PIPELINE);
     tokenDispatchScratch_.expertRevNumsGlobalTensor.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.expertRevTokenNumsPtr));
     DispatchBuffInit();
@@ -918,6 +934,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     }
 
     while (waveBeginPosition.expertIdx < moeExpertPerRank_) {
+        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::MOE_GMM1_PIPELINE);
         ExpertTokenPosition waveEndPosition = waveBeginPosition;
         const uint32_t waveStartBlockIndex = startBlockIdx_;
 
@@ -934,6 +951,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
 
         int32_t gmm2TileSequence = 0;
         Gmm2RuntimeState gmm2RuntimeState{startBlockIdx_, vecSetSyncCom, gmm2TileSequence, gmm2PingPongIdx_};
+        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::MOE_GMM2_COMBINE);
         ProcessGmm2Wave(gmm2Position, waveEndPosition, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState);
 
         const bool hasNextWave = waveEndPosition.expertIdx < moeExpertPerRank_;
@@ -962,10 +980,12 @@ template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmmPipeline()
 {
     if (sharedExpertNum_ > 0) {
+        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::SHARED_EXPERT_GMM1);
         ProcessSharedExpertGmm1();
     }
 
     // 等待所有 rank 完成本轮输入准备，再读取远端 dispatch 数据。
+    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::CROSS_RANK_SYNC_INPUT);
     CrossRankSyncInWorldSize();
 
     // Dispatch 的全部专家先完成，随后按 GMM wave 执行 GMM1、SwiGLU、GMM2 与 Combine。
@@ -977,6 +997,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmmPipel
     }
 
     if (sharedExpertNum_ > 0) {
+        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::SHARED_EXPERT_GMM2);
         ProcessSharedExpertGmm2();
     }
 }
@@ -990,6 +1011,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Process()
     SendAndQuantBuffInit();
 
     // 阶段 1：AIV 完成本卡输入量化、路由 mask 推送和 flag 清零。
+    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::INPUT_PREPARE);
     QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
         dispatchPrepareConfig_, params_, quantProcessConfig_, quantProcessScratch_);
     GatherAndSendExpertMasks(dispatchPrepareConfig_, params_, winRankAddr_, sendMaskConfig_, sendMaskScratch_);
@@ -1009,7 +1031,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Process()
 
     // 阶段 3：等待所有 rank 的 Combine 发送完成，再执行本卡 Unpermute。
     if constexpr (g_coreType == AIV) {
+        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::CROSS_RANK_SYNC_OUTPUT);
         CrossRankSyncInWorldSize();
+        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::UNPERMUTE);
         UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
             tokenUnpermuteConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
