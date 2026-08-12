@@ -422,6 +422,16 @@ def compressor_forward(
     # TH 和 BSH 都使用预分配缓冲区，无需额外拼接
 
     cmp_kv = cmp_kv.to(orig_dtype)
+    if return_intermediates and coff == 2:
+        # 中间量输出与 NPU kernel 一致的交错布局（偶行=prev、奇行=cur）：
+        # 顺序布局 [prev 半区; cur 半区] 重排为 [p0,c0,p1,c1,...]，比对侧无需再 interleave
+        half = cmp_ratio
+        softmaxScoreIntermediate = torch.stack(
+            [softmaxScoreIntermediate[..., :half, :], softmaxScoreIntermediate[..., half:, :]],
+            dim=-2).reshape(softmaxScoreIntermediate.shape)
+        kvIntermediate = torch.stack(
+            [kvIntermediate[..., :half, :], kvIntermediate[..., half:, :]],
+            dim=-2).reshape(kvIntermediate.shape)
     if return_intermediates and return_update_mask:
         return (cmp_kv, cmp_mask, kv_state_out, score_state_out,
                 softmaxScoreIntermediate, kvIntermediate,

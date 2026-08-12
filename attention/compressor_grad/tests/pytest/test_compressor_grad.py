@@ -15,7 +15,7 @@ import os
 import sys
 import torch
 import pytest
-def run_small_ops_case(case, device, compare_mode="3"):
+def run_small_ops_case(case, device, compare_mode=3):
     """通路 3：小算子拼接通路——CPU 小算子拼接 + 自动反向推导梯度作 golden，
     算子侧经 pta 反向传播串联正反向（与通路 1 相同 NPU 流程）。
 
@@ -93,7 +93,7 @@ def run_small_ops_case(case, device, compare_mode="3"):
 
     # ── 比对：NPU 四梯度 vs CPU 自动反向四梯度 ──
     d_xNpu = npu_result["d_x"].cpu().float().reshape(-1, H)
-    if compare_mode == "2":
+    if compare_mode == 2:
         p_pct_thd = get_pct_thd(dataType)
         checks = [
             ("d_wkv", g_dwkv.float(), npu_result["d_wkv"].cpu().float(), dataType, p_pct_thd),
@@ -288,7 +288,7 @@ def _check_block_size(case, batchSize, seqSize, layoutId, cmpRatio, coff, cacheM
 def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, apeCpu,
                            blockTableCpu, spGolden, sqGolden, cuGolden,
                            cmpRatio, coff, cacheMode, headDim, dataType, ref=None,
-                           compare_mode="3", device="cpu"):
+                           compare_mode=3, device="cpu"):
     """通路 1/5：正向输出（cmp_kv/softmax_score/kv）与小算子拼接参考比对。
 
     参考实现：compressor_forward.compressor_forward（纯 PyTorch 小算子拼接）。
@@ -313,17 +313,6 @@ def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, ape
 
     valid = ref_mask.any(dim=-1)  # (B, blocks) 或 (rows,)
 
-    def interleave(t):
-        # 参考为顺序布局 (prev|cur)；NPU 正向输出为交错布局
-        # (偶行=prev、奇行=cur)——比对前重排参考。
-        # coff=1 时无 prev/cur 之分，参考即顺序布局，直接返回（对半分会导致
-        # 偶数错位 / 奇数崩溃）。
-        if coff == 1:
-            return t
-        n = t.shape[-2]
-        half = n // 2
-        return torch.stack([t[..., :half, :], t[..., half:, :]], dim=-2).reshape(t.shape)
-
     def gather(t):
         t = t.detach().cpu().float()  # npu 侧输出/参考输入可能带 requires_grad（autograd 图）
         return t[valid]
@@ -333,7 +322,7 @@ def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, ape
         "softmax_score": ("smPct",    "smStatus"),
         "kv":            ("kvPct",    "kvStatus"),
     }
-    if compare_mode == "3":
+    if compare_mode == 3:
         b_fwd = compressor_forward.compressor_forward(
             xCpu, wkvCpu, wgateCpu, kv_state, score_state, apeCpu, blockTableCpu,
             [int(v) for v in spGolden] if spGolden is not None else None,
@@ -355,8 +344,8 @@ def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, ape
         for name, npu_t, b_t, c_t, dt in (
             ("cmp_kv", npu_result["cmp_kv"], b_fwd[0], c_fwd[0], dataType),
             ("softmax_score", npu_result["softmax_score"],
-             interleave(b_fwd[4]), interleave(c_fwd[4]), "float32"),
-            ("kv", npu_result["kv"], interleave(b_fwd[5]), interleave(c_fwd[5]), "float32"),
+             b_fwd[4], c_fwd[4], "float32"),
+            ("kv", npu_result["kv"], b_fwd[5], c_fwd[5], "float32"),
         ):
             r = three_way_report(name, gather(npu_t), gather(b_t), gather(c_t), dt)
             r["name"] = name
@@ -374,8 +363,8 @@ def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, ape
     per = {}
     for name, ref_t, npu_t, dt in (
         ("cmp_kv", ref_cmp, npu_result["cmp_kv"], dataType),
-        ("softmax_score", interleave(ref_sm), npu_result["softmax_score"], "float32"),
-        ("kv", interleave(ref_kv), npu_result["kv"], "float32"),
+        ("softmax_score", ref_sm, npu_result["softmax_score"], "float32"),
+        ("kv", ref_kv, npu_result["kv"], "float32"),
     ):
         # 与反向 4 输出同一检查函数（check_one_output）：
         # 输出块格式（check <名> / Loop 明细 / Rtol-Atol 汇总 / 错误值打印）完全一致
@@ -478,7 +467,7 @@ def _prepare_case(case, device):
     return p, totalValid, cuNpu, sps, sqs, seed
 
 
-def run_forward_direct_case(case, p, b, totalValid, device, compare_mode="3"):
+def run_forward_direct_case(case, p, b, totalValid, device, compare_mode=3):
     """通路 5：单正向——直调 _compressor_forward（不经 autograd）。
 
     校验：
@@ -561,7 +550,7 @@ def run_forward_direct_case(case, p, b, totalValid, device, compare_mode="3"):
     return result, {"cmp_kv": cmp_kv, "softmax_score": softmax_score, "kv": kv}
 
 
-def run_backward_direct_case(case, p, b, totalValid, device, fwd=None, compare_mode="3"):
+def run_backward_direct_case(case, p, b, totalValid, device, fwd=None, compare_mode=3):
     """通路 4：单反向——直调 _compressor_backward（不经 autograd）。
 
     中间量（softmax_score/kv）默认来自真实正向：fwd 为 None 时先直调一次
@@ -611,7 +600,7 @@ def run_backward_direct_case(case, p, b, totalValid, device, fwd=None, compare_m
     dcCpuView = dcCpu.view(batchSize, -1, headDim) if layoutId == 0 else dcCpu
     smCpu = softmax_score.cpu()
     kvCpu = kv.cpu()
-    if compare_mode == "2":
+    if compare_mode == 2:
         dXGold, dWkvGold, dWgateGold, apeGold = compressor_grad_golden(
             x=xCpu, wkv=wkvInp.cpu().float(), wgate=wgateInp.cpu().float(),
             d_cpm_kv=dcCpuView, softmax_score=smCpu, kv=kvCpu,
@@ -640,7 +629,7 @@ def run_backward_direct_case(case, p, b, totalValid, device, fwd=None, compare_m
     print_log("=" * 80)
     print_log(f"Start precision check for case '{case['testcase_name']}' (validBlocks={totalValid})")
 
-    if compare_mode == "2":
+    if compare_mode == 2:
         p_pct_thd = get_pct_thd(dataType)
         dXGoldF = dXGold.float()
         r_dwkv = check_one_output("d_wkv", dWkvGold.float(), dWkvNp, dataType,
@@ -845,7 +834,7 @@ def _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps, state_init
                 cache_mode=cache_mode, scKvRowCount=scKvRowCount)
 
 
-def run_case(case, device, compare_mode="3"):
+def run_case(case, device, compare_mode=3):
     """通路 1：正反向全链路 = 通路 5（直调正向）+ 通路 4（直调反向）拼接。
 
     共享同一份输入构造（_build_inputs, state 随机初始）与 NPU 真实中间量
@@ -888,7 +877,7 @@ def run_case(case, device, compare_mode="3"):
     return result
 
 
-def run_backward_case(case, device, compare_mode="3"):
+def run_backward_case(case, device, compare_mode=3):
     """通路 2：单反向——随机构造中间量 → PyPTO 直跑 kernel → golden 比对。
 
     不经 aclnn/custom 包（kernel 运行时 JIT 编译）；TilingData 29 字段
@@ -982,7 +971,7 @@ def run_backward_case(case, device, compare_mode="3"):
         seqused=sqNpu.cpu() if sqNpu is not None else None,
         start_pos=spNpu.cpu() if spNpu is not None else None,
         cmp_ratio=cr, coff=coff)
-    if compare_mode == "2":
+    if compare_mode == 2:
         g_dx, g_dwkv, g_dwgate, g_dape = compressor_grad_golden(**golden_kw)
         p_pct_thd = get_pct_thd(p["dataType"])
         checks = [
