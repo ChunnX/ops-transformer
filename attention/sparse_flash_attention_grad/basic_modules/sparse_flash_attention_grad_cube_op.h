@@ -331,7 +331,7 @@ CubeOp<SFAGT>::cube12Process(const RunInfo &runInfo,
 {
     selectedCntOffset = runInfo.actualSelCntOffset;
     cube1Process(runInfo.queryGmOffset, runInfo.queryRopeGmOffset, runInfo.selectedKGmOffset, runInfo.indicesGmOffset, runInfo.mm12GmOffset, blkCntOffset, mmPingPongIdx, runInfo);
-    cube2Process(runInfo.dyGmOffset, runInfo.selectedVGmOffset, runInfo.indicesGmOffset, runInfo.mm12GmOffset, blkCntOffset, mmPingPongIdx, runInfo);
+    cube2Process(runInfo.dyGmOffset, runInfo.selectedKGmOffset, runInfo.indicesGmOffset, runInfo.mm12GmOffset, blkCntOffset, mmPingPongIdx, runInfo);
 }
 
 template <typename SFAGT>
