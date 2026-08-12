@@ -197,7 +197,7 @@ private:
                           false, false, GMM1_INTERLEAVED, true>;
     template <bool IsWeightNz>
     using WaveBlockMmadContext =
-        GmmKernel::PersistentBlockMmadContext<typename WaveGmmConfig<IsWeightNz>::BlockMmad>;
+        GmmKernel::BlockMmadContext<typename WaveGmmConfig<IsWeightNz>::BlockMmad>;
 
     using BlockEpilogue =
         BlockEpilogueActivationMxQuant<ActivationType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
@@ -207,7 +207,7 @@ private:
                                        L1_TILE_M_256, L1_TILE_N, false, GMM1_INTERLEAVED>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
-    void *persistentBlockMmadContext_ = nullptr;
+    void *blockMmadContext_ = nullptr;
 };
 
 template <TemplateMegaMoeWaveTypeClass>
@@ -684,7 +684,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
                                            QuantScaleOutType, false, GMM1_TILE_M,
                                            GMM1_INTERLEAVED, true>(
             gmm1Config_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape,
-            runtimeState, sharedExpertIdx, persistentBlockMmadContext_, true);
+            runtimeState, sharedExpertIdx, blockMmadContext_, true);
     }
     EndSync<GMM1_INTERLEAVED>(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
     vecSetSyncCom = 0;
@@ -706,7 +706,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
                                  QuantScaleOutType, false, false, GMM1_TILE_M,
                                  TopkWeightsPrefetch, GMM1_INTERLEAVED, true>(
             gmm2Config_, params_, sharedWeightTensorListAddrs_, state, gmmAddrInfo,
-            runtimeState, sharedExpertIdx, persistentBlockMmadContext_, true);
+            runtimeState, sharedExpertIdx, blockMmadContext_, true);
     }
 }
 
@@ -942,7 +942,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(
                                 false, GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch,
                                 GMM1_INTERLEAVED, true>(
             gmm1Config_, params_, epilogueOp_, gmm1AddrInfo, gmm1ProblemState,
-            runtimeState, gmm1WaveCursor.expertIdx, persistentBlockMmadContext_, isWholeExpert);
+            runtimeState, gmm1WaveCursor.expertIdx, blockMmadContext_, isWholeExpert);
 
         processedMGroupCount += GetMGroupCountForRows(waveRowCount, GMM1_TILE_M);
         gmm1WaveCursor.rowOffsetInExpert = waveEndRowOffsetInExpert;
@@ -1001,7 +1001,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
                               GMM1_TILE_M, TopkWeightsPrefetch,
                               GMM1_INTERLEAVED, true>(
             gmm2Config_, params_, gmm2AddrInfo, gmm2ProblemState, runtimeState,
-            persistentBlockMmadContext_, isWholeExpert);
+            blockMmadContext_, isWholeExpert);
 
         gmm2WaveCursor.rowOffsetInExpert = waveEndRowOffsetInExpert;
         if (gmm2WaveCursor.rowOffsetInExpert >= expertRowCount) {
@@ -1181,14 +1181,14 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Process()
             params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
         if (useWeightNz) {
             WaveBlockMmadContext<true> blockMmadContext;
-            persistentBlockMmadContext_ = &blockMmadContext;
+            blockMmadContext_ = &blockMmadContext;
             ProcessGmmPipeline();
         } else {
             WaveBlockMmadContext<false> blockMmadContext;
-            persistentBlockMmadContext_ = &blockMmadContext;
+            blockMmadContext_ = &blockMmadContext;
             ProcessGmmPipeline();
         }
-        persistentBlockMmadContext_ = nullptr;
+        blockMmadContext_ = nullptr;
     } else {
         ProcessGmmPipeline();
     }

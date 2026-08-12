@@ -197,16 +197,16 @@ struct Config {
 };
 
 // Wave 流程可持有同一个 BlockMmad，避免在 wave 边界反复构造和析构。
-template <typename T>
-struct PersistentBlockMmadContext {
-    T blockMmad;
+template <typename BlockMmad>
+struct BlockMmadContext {
+    BlockMmad blockMmad;
     uint32_t initializedK = 0U;
     bool initialized = false;
 };
 
 // GMM1 与 GMM2 的逻辑 K 可能不同；仅在首次使用或 K 改变时刷新 Generic 配置。
-template <typename PersistentContext, typename ProblemConfig>
-__aicore__ inline void InitBlockMmad(PersistentContext &context, const ProblemConfig &config)
+template <typename MmadContext, typename ProblemConfig>
+__aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &config)
 {
     using BlockMmad = decltype(context.blockMmad);
     if (!context.initialized || context.initializedK != config.k) {
