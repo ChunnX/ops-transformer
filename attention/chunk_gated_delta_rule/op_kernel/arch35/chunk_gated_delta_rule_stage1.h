@@ -524,19 +524,9 @@ private:
         PipeBarrier<PIPE_V>();
 
         Muls(inverseRes_, attnUbFloat_, static_cast<float>(-1.0), curVecLen);
-        Duplicate(inverseBuffer_, static_cast<float>(0.0), INVERSE_SHAPE * chunkSize_);
         PipeBarrier<PIPE_V>();
-        int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::V_S));
-        SetFlag<HardEvent::V_S>(eventID);
-        WaitFlag<HardEvent::V_S>(eventID);
-        for (uint32_t j = 0; j < INVERSE_SHAPE; ++j) {
-            inverseBuffer_.SetValue(j * chunkSize_ + j, static_cast<float>(1.0));
-        }
-        eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
-        SetFlag<HardEvent::S_V>(eventID);
-        WaitFlag<HardEvent::S_V>(eventID);
 
-        InverseAIVVF<INVERSE_SHAPE>(attnUbFloat_, inverseRes_, inverseBuffer_, subOffset_, chunkSize_);
+        InverseAIVVF<INVERSE_SHAPE>(attnUbFloat_, inverseRes_, subOffset_, chunkSize_);
         PipeBarrier<PIPE_V>();
         auto tmp = outQueue_.AllocTensor<bfloat16_t>();
         Cast(tmp, inverseRes_, RoundMode::CAST_RINT, curVecLen);
