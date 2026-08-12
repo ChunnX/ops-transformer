@@ -40,8 +40,7 @@ struct TileRowBroadcastAdd {
         AscendC::LocalTensor<ElementCompute> const &ubOut,
         AscendC::LocalTensor<ElementCompute> const &ubIn0,
         AscendC::LocalTensor<ElementCompute> const &ubIn1,
-        MatrixCoord const &actualTileShape
-    )
+        MatrixCoord const &actualTileShape)
     {
         constexpr uint32_t maxRepeatTimes = 255;
         constexpr uint32_t eleNumPerBlk = BYTE_PER_BLK / sizeof(ElementCompute);
@@ -65,8 +64,7 @@ struct TileRowBroadcastAdd {
                 uint64_t mask = (residueN > colNumPerCompute) ? colNumPerCompute : residueN;
                 AscendC::Add(
                     ubOut[rowOffset * TileShape::COLUMN + colOffset], ubIn0[rowOffset * TileShape::COLUMN + colOffset],
-                    ubIn1[colOffset], mask, repeatTimes, repeatParams
-                );
+                    ubIn1[colOffset], mask, repeatTimes, repeatParams);
             }
         }
     }

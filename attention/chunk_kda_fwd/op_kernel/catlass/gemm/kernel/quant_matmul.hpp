@@ -25,8 +25,7 @@ namespace Catlass::Gemm::Kernel {
 template <
     class BlockMmad_,
     class BlockEpilogue_,
-    class BlockScheduler_
->
+    class BlockScheduler_>
 class QuantMatmul {
 public:
     using BlockMmad = BlockMmad_;
@@ -106,15 +105,20 @@ public:
             GM_ADDR ptrScale_, LayoutScale layoutScale_,
             GM_ADDR ptrPerTokenScale_, LayoutPerTokenScale layoutPerTokenScale_,
             GM_ADDR ptrD_, LayoutD layoutD_,
-            GM_ADDR ptrWorkspace_
-        ) : problemShape(problemShape_),
-            ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)), layoutA(layoutA_),
-            ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)), layoutB(layoutB_),
-            ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)), layoutScale(layoutScale_),
-            ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale *>(ptrPerTokenScale_)),
-            layoutPerTokenScale(layoutPerTokenScale_),
-            ptrD(reinterpret_cast<__gm__ ElementD *>(ptrD_)), layoutD(layoutD_),
-            ptrWorkspace(ptrWorkspace_) {}
+            GM_ADDR ptrWorkspace_)
+            : problemShape(problemShape_),
+              ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)),
+              layoutA(layoutA_),
+              ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)),
+              layoutB(layoutB_),
+              ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)),
+              layoutScale(layoutScale_),
+              ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale *>(ptrPerTokenScale_)),
+              layoutPerTokenScale(layoutPerTokenScale_),
+              ptrD(reinterpret_cast<__gm__ ElementD *>(ptrD_)),
+              layoutD(layoutD_),
+              ptrWorkspace(ptrWorkspace_)
+        {}
     };
 
     // Methods
@@ -122,13 +126,11 @@ public:
     QuantMatmul() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     /// Executes matmul
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         BlockScheduler blockScheduler;
         blockScheduler.Update(params.problemShape, MakeCoord(L1TileShape::M, L1TileShape::N));
@@ -169,15 +171,13 @@ public:
                     gmA[gmOffsetA], params.layoutA,
                     gmB[gmOffsetB], params.layoutB,
                     gmC[gmOffsetC], layoutC,
-                    actualBlockShape, MakeCallback(&aicFinishSync)
-                );
+                    actualBlockShape, MakeCallback(&aicFinishSync));
             } else {
                 blockMmad(
                     gmA[gmOffsetA], params.layoutA,
                     gmB[gmOffsetB], params.layoutB,
                     gmC[gmOffsetC], layoutC,
-                    actualBlockShape
-                );
+                    actualBlockShape);
                 aicFinishSync();
             }
         }
@@ -190,8 +190,7 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         BlockScheduler blockScheduler;
         BlockEpilogue blockEpilogue(resource);
@@ -214,8 +213,7 @@ public:
         EpilogueParams epilogueParams{
             params.ptrScale, layoutScale,
             params.ptrPerTokenScale, layoutPerTokenScale,
-            params.ptrD, layoutD
-        };
+            params.ptrD, layoutD};
 
         blockScheduler.Update(params.problemShape, L1TileShape::ToCoordMN());
         blockEpilogue.UpdateParams(epilogueParams);
@@ -230,10 +228,9 @@ public:
             auto layoutBlockC = layoutC.GetTileLayout(actualBlockShapeMNK.GetCoordMN());
 
             blockEpilogue(
-                    blockShapeMNK, blockCoordMNK,
-                    actualBlockShapeMNK, gmBlockC,
-                    layoutBlockC, MakeCallback(&aicFinishSync)
-                );
+                blockShapeMNK, blockCoordMNK,
+                actualBlockShapeMNK, gmBlockC,
+                layoutBlockC, MakeCallback(&aicFinishSync));
         }
 
         AscendC::PipeBarrier<PIPE_ALL>();

@@ -105,14 +105,14 @@ public:
             l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(L0B_PINGPONG_BUF_SIZE * i);
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(L0C_PINGPONG_BUF_SIZE * i);
             l1BTensor[i] =
-            resource.l1Buf.template GetBufferByByte<ElementB>(l1BufAddrStart + L1A_SIZE * 2 * 2 + L1B_SIZE * i);
+                resource.l1Buf.template GetBufferByByte<ElementB>(l1BufAddrStart + L1A_SIZE * 2 * 2 + L1B_SIZE * i);
         }
     }
 
     /// Destructor
     CATLASS_DEVICE
     ~BlockMmad() {}
-    
+
     CATLASS_DEVICE
     void getBlockShape(GemmCoord &actualShape, uint32_t &nowNIdx, uint32_t &kIdx,
                        uint32_t &nLoop, uint32_t &kLoop, uint32_t &kvSeqlen, uint32_t &embed, bool firstBlock, uint32_t maskTailS = 0)
@@ -147,7 +147,6 @@ public:
         }
     }
 
-
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementA> gA,
                     AscendC::GlobalTensor<ElementB> gB,
@@ -163,7 +162,7 @@ public:
         uint32_t blockN = layoutA.shape(1);
         GemmCoord actualShape{rowNum, 0, 0};
         GemmCoord actualNextShape{rowNum, 0, 0};
-        uint32_t nkBlockLoop = (nLoop + LOAB_BLOCK - 1) / LOAB_BLOCK * kLoop; // gap
+        uint32_t nkBlockLoop = (nLoop + LOAB_BLOCK - 1) / LOAB_BLOCK * kLoop;       // gap
         uint32_t nkBlockNextIdx = (nIdx + LOAB_BLOCK - 1) / LOAB_BLOCK * kLoop + 1; // gap
         uint32_t gBOffset = 0;
         uint32_t gBNextOffset = 0;
@@ -282,7 +281,7 @@ public:
             }
         }
     }
- 
+
 protected:
     /// Data members
     AscendC::LocalTensor<ElementA> l1ATensor;

@@ -33,7 +33,7 @@ __aicore__ inline void DispatchGeneric(
     GM_ADDR userWorkspace, const TilingData &tiling)
 {
     RunGeneric<SAFE_GATE, T, BETA_T, TilingData,
-        COMPILE_BT, COMPILE_K, COMPILE_V>(
+               COMPILE_BT, COMPILE_K, COMPILE_V>(
         q, k, v, g, beta, aLog, dtBias, initialState, cuSeqlens,
         chunkIndices, attnOut, finalState, gk, aqk, akk, w, u, qg, kg,
         vNew, h, userWorkspace, tiling);
@@ -53,13 +53,13 @@ __aicore__ inline void DispatchArch35SafeGate(
     AscendC::TPipe pipe;
     if (tiling.safeGate) {
         arch35::Run<true, T, BETA_T, TilingData,
-            COMPILE_BT, COMPILE_K, COMPILE_V>(
+                    COMPILE_BT, COMPILE_K, COMPILE_V>(
             q, k, v, g, beta, aLog, dtBias, initialState, cuSeqlens,
             chunkIndices, attnOut, finalState, gk, aqk, akk, w, u, qg,
             kg, vNew, h, userWorkspace, tiling, pipe);
     } else {
         arch35::Run<false, T, BETA_T, TilingData,
-            COMPILE_BT, COMPILE_K, COMPILE_V>(
+                    COMPILE_BT, COMPILE_K, COMPILE_V>(
             q, k, v, g, beta, aLog, dtBias, initialState, cuSeqlens,
             chunkIndices, attnOut, finalState, gk, aqk, akk, w, u, qg,
             kg, vNew, h, userWorkspace, tiling, pipe);
@@ -92,13 +92,13 @@ __aicore__ inline void DispatchGenericSafeGate(
 {
     if (tiling.safeGate) {
         DispatchGeneric<true, T, BETA_T, TilingData,
-            COMPILE_BT, COMPILE_K, COMPILE_V>(
+                        COMPILE_BT, COMPILE_K, COMPILE_V>(
             q, k, v, g, beta, aLog, dtBias, initialState, cuSeqlens,
             chunkIndices, attnOut, finalState, gk, aqk, akk, w, u, qg,
             kg, vNew, h, userWorkspace, tiling);
     } else {
         DispatchGeneric<false, T, BETA_T, TilingData,
-            COMPILE_BT, COMPILE_K, COMPILE_V>(
+                        COMPILE_BT, COMPILE_K, COMPILE_V>(
             q, k, v, g, beta, aLog, dtBias, initialState, cuSeqlens,
             chunkIndices, attnOut, finalState, gk, aqk, akk, w, u, qg,
             kg, vNew, h, userWorkspace, tiling);
@@ -122,17 +122,17 @@ extern "C" __global__ __aicore__ void chunk_kda_fwd(
     GET_TILING_DATA_WITH_STRUCT(ChunkKdaFwdTilingData, tilingData, tiling);
     if (TILING_KEY_IS(1)) {
         KdaForward::DispatchGenericSafeGate<DTYPE_Q, DTYPE_BETA,
-            ChunkKdaFwdTilingData, 0, 0, 0>(
+                                            ChunkKdaFwdTilingData, 0, 0, 0>(
             q, k, v, g, beta, a_log, dt_bias, initial_state, cu_seqlens,
             chunk_indices, attn_out, final_state, gk, aqk, akk, w, u, qg,
             kg, v_new, h, userWorkspace, tilingData);
     } else if (TILING_KEY_IS(2)) {
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
         KdaForward::DispatchArch35SafeGate<DTYPE_Q, DTYPE_BETA,
-            ChunkKdaFwdTilingData, 64, 128, 128>(
+                                           ChunkKdaFwdTilingData, 64, 128, 128>(
 #else
         KdaForward::DispatchGenericSafeGate<DTYPE_Q, DTYPE_BETA,
-            ChunkKdaFwdTilingData, 64, 128, 128>(
+                                            ChunkKdaFwdTilingData, 64, 128, 128>(
 #endif
             q, k, v, g, beta, a_log, dt_bias, initial_state, cu_seqlens,
             chunk_indices, attn_out, final_state, gk, aqk, akk, w, u, qg,

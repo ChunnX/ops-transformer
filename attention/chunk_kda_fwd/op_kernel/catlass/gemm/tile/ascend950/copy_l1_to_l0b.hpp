@@ -44,12 +44,9 @@ struct TileCopyTla<
     {
         static_assert(
             !AscendC::Std::is_one_of_v<typename TensorSrc::Element, int8_t, float8_e4m3_t, float8_e5m2_t> &&
-            !AscendC::Std::is_one_of_v<typename TensorDst::Element, int8_t, float8_e4m3_t, float8_e5m2_t> &&
-            tla::detail::iszN<typename TensorSrc::Element, typename TensorSrc::Layout>::value
-                && tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value
-                && TensorSrc::position == AscendC::TPosition::A1 && TensorDst::position == AscendC::TPosition::B2,
-            "The input parameters do not match. TensorSrc must be L1 and zN, while TensorDst must be L0B and nZ"
-        );
+                !AscendC::Std::is_one_of_v<typename TensorDst::Element, int8_t, float8_e4m3_t, float8_e5m2_t> &&
+                tla::detail::iszN<typename TensorSrc::Element, typename TensorSrc::Layout>::value && tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::A1 && TensorDst::position == AscendC::TPosition::B2,
+            "The input parameters do not match. TensorSrc must be L1 and zN, while TensorDst must be L0B and nZ");
 
         const uint32_t L0KOrigin = tla::get<0>(dstTensor.originShape());
         const uint32_t L0NOrigin = tla::get<1>(dstTensor.originShape());
@@ -78,12 +75,9 @@ struct TileCopyTla<
     {
         static_assert(
             !AscendC::Std::is_one_of_v<typename TensorSrc::Element, int8_t, float8_e4m3_t, float8_e5m2_t> &&
-            !AscendC::Std::is_one_of_v<typename TensorDst::Element, int8_t, float8_e4m3_t, float8_e5m2_t> &&
-            tla::detail::iszN<typename TensorSrc::Element, typename TensorSrc::Layout>::value
-                && tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value
-                && TensorSrc::position == AscendC::TPosition::A1 && TensorDst::position == AscendC::TPosition::B2,
-            "The input parameters do not match. TensorSrc must be L1 and zN, while TensorDst must be L0B and nZ"
-        );
+                !AscendC::Std::is_one_of_v<typename TensorDst::Element, int8_t, float8_e4m3_t, float8_e5m2_t> &&
+                tla::detail::iszN<typename TensorSrc::Element, typename TensorSrc::Layout>::value && tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::A1 && TensorDst::position == AscendC::TPosition::B2,
+            "The input parameters do not match. TensorSrc must be L1 and zN, while TensorDst must be L0B and nZ");
 
         const uint32_t L1K = tla::get<0, 0>(srcTensor.shape()) * tla::get<0, 1>(srcTensor.shape());
         const uint32_t L1N = tla::get<1, 0>(srcTensor.shape()) * tla::get<1, 1>(srcTensor.shape());
@@ -108,8 +102,7 @@ struct TileCopyTla<
 
         for (uint32_t l0BatchIdx = 0; l0BatchIdx < l0Batch; l0BatchIdx++) {
             AscendC::LoadData(
-                dstTensor.data()[l0BatchIdx * L0N * L0K], srcTensor.data()[l0BatchIdx * L1N * L1K], loadDataParams
-            );
+                dstTensor.data()[l0BatchIdx * L0N * L0K], srcTensor.data()[l0BatchIdx * L1N * L1K], loadDataParams);
         }
     }
 };
@@ -137,12 +130,9 @@ struct TileCopyTla<
     {
         static_assert(
             AscendC::Std::is_one_of_v<typename TensorSrc::Element, int8_t, float8_e4m3_t, float8_e5m2_t> &&
-            AscendC::Std::is_one_of_v<typename TensorDst::Element, int8_t, float8_e4m3_t, float8_e5m2_t> &&
-            tla::detail::iszN<typename TensorSrc::Element, typename TensorSrc::Layout>::value
-                && tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value
-                && TensorSrc::position == AscendC::TPosition::A1 && TensorDst::position == AscendC::TPosition::B2,
-            "The input parameters do not match. TensorSrc must be L1 and zN, while TensorDst must be L0B and nZ"
-        );
+                AscendC::Std::is_one_of_v<typename TensorDst::Element, int8_t, float8_e4m3_t, float8_e5m2_t> &&
+                tla::detail::iszN<typename TensorSrc::Element, typename TensorSrc::Layout>::value && tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::A1 && TensorDst::position == AscendC::TPosition::B2,
+            "The input parameters do not match. TensorSrc must be L1 and zN, while TensorDst must be L0B and nZ");
 
         const uint32_t L0NPadded = tla::get<1, 0>(dstTensor.shape()) * tla::get<1, 1>(dstTensor.shape());
         const uint32_t L0KOrigin = tla::get<0>(dstTensor.originShape());
@@ -175,8 +165,7 @@ struct TileCopyTla<
 
                 auto dstOffset = dstTensor.layout()(dstTensor.coord());
                 AscendC::LoadData(
-                    dstTensor.data()[dstOffset + kIdx * L0NPadded * ELE_NUM_PER_C0], srcTensor.data(), loadDataParams
-                );
+                    dstTensor.data()[dstOffset + kIdx * L0NPadded * ELE_NUM_PER_C0], srcTensor.data(), loadDataParams);
             }
         }
     }
@@ -186,12 +175,9 @@ struct TileCopyTla<
     {
         static_assert(
             AscendC::Std::is_one_of_v<typename TensorSrc::Element, int8_t, float8_e4m3_t, float8_e5m2_t> &&
-            AscendC::Std::is_one_of_v<typename TensorDst::Element, int8_t, float8_e4m3_t, float8_e5m2_t> &&
-            tla::detail::iszN<typename TensorSrc::Element, typename TensorSrc::Layout>::value
-                && tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value
-                && TensorSrc::position == AscendC::TPosition::A1 && TensorDst::position == AscendC::TPosition::B2,
-            "The input parameters do not match. TensorSrc must be L1 and zN, while TensorDst must be L0B and nZ"
-        );
+                AscendC::Std::is_one_of_v<typename TensorDst::Element, int8_t, float8_e4m3_t, float8_e5m2_t> &&
+                tla::detail::iszN<typename TensorSrc::Element, typename TensorSrc::Layout>::value && tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::A1 && TensorDst::position == AscendC::TPosition::B2,
+            "The input parameters do not match. TensorSrc must be L1 and zN, while TensorDst must be L0B and nZ");
 
         const uint32_t L1K = tla::get<0, 0>(srcTensor.shape()) * tla::get<0, 1>(srcTensor.shape());
         const uint32_t L1N = tla::get<1, 0>(srcTensor.shape()) * tla::get<1, 1>(srcTensor.shape());
@@ -214,8 +200,7 @@ struct TileCopyTla<
 
             for (uint32_t l0BatchIdx = 0; l0BatchIdx < l0Batch; l0BatchIdx++) {
                 AscendC::LoadData(
-                    dstTensor.data()[l0BatchIdx * L0N * L0K], srcTensor.data()[l0BatchIdx * L1N * L1K], loadDataParams
-                );
+                    dstTensor.data()[l0BatchIdx * L0N * L0K], srcTensor.data()[l0BatchIdx * L1N * L1K], loadDataParams);
             }
         } else {
             loadDataParams.mStartPosition = 0;
@@ -229,8 +214,7 @@ struct TileCopyTla<
                 for (uint32_t kIdx = 0; kIdx < CeilDiv<ELE_NUM_PER_C0>(L0KOrigin); kIdx++) {
                     AscendC::LoadData(
                         dstTensor.data()[l0BatchIdx * L0N * L0K + kIdx * L0N * ELE_NUM_PER_C0],
-                        srcTensor.data()[l0BatchIdx * L1N * L1K + kIdx * ELE_NUM_PER_FRACTAL * 2], loadDataParams
-                    );
+                        srcTensor.data()[l0BatchIdx * L1N * L1K + kIdx * ELE_NUM_PER_FRACTAL * 2], loadDataParams);
                 }
             }
         }
@@ -256,11 +240,8 @@ struct TileCopyTla<
     CATLASS_DEVICE void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor)
     {
         static_assert(
-            tla::detail::isnZ<typename TensorSrc::Element, typename TensorSrc::Layout>::value
-                && tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value
-                && TensorSrc::position == AscendC::TPosition::A1 && TensorDst::position == AscendC::TPosition::B2,
-            "The input parameters do not match. TensorSrc must be L1 and nZ, while TensorDst must be L0B and nZ"
-        );
+            tla::detail::isnZ<typename TensorSrc::Element, typename TensorSrc::Layout>::value && tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::A1 && TensorDst::position == AscendC::TPosition::B2,
+            "The input parameters do not match. TensorSrc must be L1 and nZ, while TensorDst must be L0B and nZ");
 
         const uint32_t dstOuterShapeRow = CeilDiv(tla::get<0>(dstTensor.originShape()), tla::get<0, 0>(dstTensor.shape()));
         const uint32_t dstOuterShapeCol = CeilDiv(tla::get<1>(dstTensor.originShape()), tla::get<1, 0>(dstTensor.shape()));
@@ -285,11 +266,8 @@ struct TileCopyTla<
     CATLASS_DEVICE void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint32_t l0Batch)
     {
         static_assert(
-            tla::detail::isnZ<typename TensorSrc::Element, typename TensorSrc::Layout>::value
-                && tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value
-                && TensorSrc::position == AscendC::TPosition::A1 && TensorDst::position == AscendC::TPosition::B2,
-            "The input parameters do not match. TensorSrc must be L1 and nZ, while TensorDst must be L0B and nZ"
-        );
+            tla::detail::isnZ<typename TensorSrc::Element, typename TensorSrc::Layout>::value && tla::detail::isnZ<typename TensorDst::Element, typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::A1 && TensorDst::position == AscendC::TPosition::B2,
+            "The input parameters do not match. TensorSrc must be L1 and nZ, while TensorDst must be L0B and nZ");
 
         const uint32_t dstOuterShapeRow = CeilDiv(tla::get<0>(dstTensor.originShape()), tla::get<0, 0>(dstTensor.shape()));
         const uint32_t dstOuterShapeCol = CeilDiv(tla::get<1>(dstTensor.originShape()), tla::get<1, 0>(dstTensor.shape()));
@@ -314,8 +292,7 @@ template <
     class ArchTag,
     class L1Type,
     class L0Type = void,
-    class Enable = void
->
+    class Enable = void>
 struct CopyL1ToL0B {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy l1 to l0, can not find the specialization.");
 };
@@ -361,8 +338,8 @@ struct CopyL1ToL0B<Arch::Ascend950, Gemm::GemmType<Element, layout::nZ, AscendC:
 /// Partial specialization for CopyL1ToL0B, AtlasA5, not B8 or B4, zN in and nZ out.
 template <class Element>
 struct CopyL1ToL0B<Arch::Ascend950, Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>, void,
-    std::enable_if_t<
-        !AscendC::Std::is_one_of_v<Element, int8_t, float8_e4m3_t, float8_e5m2_t, float4_e2m1x2_t, float4_e1m2x2_t>>> {
+                   std::enable_if_t<
+                       !AscendC::Std::is_one_of_v<Element, int8_t, float8_e4m3_t, float8_e5m2_t, float4_e2m1x2_t, float4_e1m2x2_t>>> {
     using LayoutDst = layout::nZ;
     using LayoutSrc = layout::zN;
 
@@ -401,8 +378,8 @@ struct CopyL1ToL0B<Arch::Ascend950, Gemm::GemmType<Element, layout::zN, AscendC:
 /// Partial specialization for CopyL1ToL0B, AtlasA5, B8 or B4, zN in and nZ out.
 template <class Element>
 struct CopyL1ToL0B<Arch::Ascend950, Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>, void,
-    std::enable_if_t<
-        AscendC::Std::is_one_of_v<Element, int8_t, float8_e4m3_t, float8_e5m2_t, float4_e2m1x2_t, float4_e1m2x2_t>>> {
+                   std::enable_if_t<
+                       AscendC::Std::is_one_of_v<Element, int8_t, float8_e4m3_t, float8_e5m2_t, float4_e2m1x2_t, float4_e1m2x2_t>>> {
     using LayoutDst = layout::nZ;
     using LayoutSrc = layout::zN;
 
@@ -447,8 +424,7 @@ struct CopyL1ToL0B<Arch::Ascend950, Gemm::GemmType<Element, layout::zN, AscendC:
                 loadDataParams.ifTranspose = true;
 
                 AscendC::LoadData(
-                    dstTensor[kIdx * L0N * ELE_NUM_PER_C0], srcTensor, loadDataParams
-                );
+                    dstTensor[kIdx * L0N * ELE_NUM_PER_C0], srcTensor, loadDataParams);
             }
         }
     }

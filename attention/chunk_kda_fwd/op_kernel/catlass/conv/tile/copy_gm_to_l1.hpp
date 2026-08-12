@@ -37,15 +37,14 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::NC1HWC0, AscendC::TPo
     // Methods
 
     CATLASS_DEVICE
-    CopyGmToL1(){};
+    CopyGmToL1() {};
 
     CATLASS_DEVICE
     void operator()( // {Cin1, Hi, Wi, C0}
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
         LayoutDst const &layoutDst,
-        LayoutSrc const &layoutSrc
-    )
+        LayoutSrc const &layoutSrc)
     {
         uint32_t cin1Actual = layoutSrc.shape(1);
         uint32_t hiActual = layoutSrc.shape(2);
@@ -60,16 +59,14 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::NC1HWC0, AscendC::TPo
             AscendC::DataCopy(
                 dstTensor[l1Offset], srcTensor[gmOffset],
                 {
-                    static_cast<uint16_t>(hiActual), // blockCount 连续传输数据块个数
+                    static_cast<uint16_t>(hiActual),                                         // blockCount 连续传输数据块个数
                     static_cast<uint16_t>(wiActual * ELE_NUM_PER_C0 * sizeof(Element) / 32), // blockLen
                                                                                              // 每个连续传输数据块长度
                                                                                              // 单位为datablock(32Bytes)
                     static_cast<uint16_t>(
-                        (Wi - wiActual) * ELE_NUM_PER_C0 * sizeof(Element) / 32
-                    ), // srcStride 相邻连续数据块的间隔 单位为datablock(32Bytes)
-                    0  // dstStride 相邻连续数据块间的间隔 单位为datablock(32Bytes)
-                }
-            );
+                        (Wi - wiActual) * ELE_NUM_PER_C0 * sizeof(Element) / 32), // srcStride 相邻连续数据块的间隔 单位为datablock(32Bytes)
+                    0                                                             // dstStride 相邻连续数据块间的间隔 单位为datablock(32Bytes)
+                });
         }
     }
 };
@@ -85,15 +82,14 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::CI1KHKWCOCI0, AscendC
     // Methods
 
     CATLASS_DEVICE
-    CopyGmToL1(){};
+    CopyGmToL1() {};
 
     CATLASS_DEVICE
     void operator()( // {Cin1, Kh, Kw, Cout, C0}
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::GlobalTensor<Element> const &srcTensor,
         LayoutDst const &layoutDst,
-        LayoutSrc const &layoutSrc
-    )
+        LayoutSrc const &layoutSrc)
     {
         uint32_t cin1Actual = layoutSrc.shape(0);
         uint32_t KhKw = layoutSrc.shape(1) * layoutSrc.shape(2);
@@ -105,14 +101,11 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::CI1KHKWCOCI0, AscendC
         AscendC::DataCopy(
             dstTensor, srcTensor,
             AscendC::DataCopyParams(
-                cin1Actual * KhKw,                                  // blockCount 连续传输数据块个数
-                coutActual * ELE_NUM_PER_C0 * sizeof(Element) / 32, // blockLen 每个连续传输数据块长度
-                (Cout - coutActual) * ELE_NUM_PER_C0 * sizeof(Element)
-                    / 32, // 源操作数，相邻连续数据块的间隔（前面一个数据块的尾与后面数据块的头的间隔），单位为datablock(32Bytes)
-                (coutRound - coutActual) * ELE_NUM_PER_C0 * sizeof(Element)
-                    / 32 // 目的操作数，相邻连续数据块间的间隔（前面一个数据块的尾与后面数据块的头的间隔），单位为datablock(32Bytes)
-            )
-        );
+                cin1Actual * KhKw,                                               // blockCount 连续传输数据块个数
+                coutActual * ELE_NUM_PER_C0 * sizeof(Element) / 32,              // blockLen 每个连续传输数据块长度
+                (Cout - coutActual) * ELE_NUM_PER_C0 * sizeof(Element) / 32,     // 源操作数，相邻连续数据块的间隔（前面一个数据块的尾与后面数据块的头的间隔），单位为datablock(32Bytes)
+                (coutRound - coutActual) * ELE_NUM_PER_C0 * sizeof(Element) / 32 // 目的操作数，相邻连续数据块间的间隔（前面一个数据块的尾与后面数据块的头的间隔），单位为datablock(32Bytes)
+                ));
     }
 };
 

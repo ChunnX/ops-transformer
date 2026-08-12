@@ -43,8 +43,7 @@ struct StreamkReduceAdd {
         AscendC::GlobalTensor<ElementOut> const &dst,
         AscendC::GlobalTensor<ElementAccumulator> const &src,
         BlockScheduler &matmulBlockScheduler,
-        LocalLayout layoutDst
-    )
+        LocalLayout layoutDst)
     {
         constexpr uint32_t ELE_NUM_ALIGN = BYTE_PER_BLK / sizeof(ElementOut);
 
@@ -107,8 +106,7 @@ struct StreamkReduceAdd {
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
                 AscendC::DataCopyExtParams dataCopyParamsIn(
                     tilesActual, tileLen * sizeof(ElementAccumulator), (l1TileN - tileLen) * sizeof(ElementAccumulator),
-                    (RoundUp(tileLen, ELE_NUM_ALIGN) - tileLen) * sizeof(ElementAccumulator) / BYTE_PER_BLK, 0
-                );
+                    (RoundUp(tileLen, ELE_NUM_ALIGN) - tileLen) * sizeof(ElementAccumulator) / BYTE_PER_BLK, 0);
                 AscendC::DataCopyPadExtParams<ElementAccumulator> padParams(false, 0, 0, 0);
                 if (isHeadCross) {
                     uint64_t skBlockOffset = (startCoreIdx * 2 + 1) * l1TileM * l1TileN;
@@ -130,8 +128,7 @@ struct StreamkReduceAdd {
 
                 for (uint32_t sliceIdx = 1; sliceIdx < splitkSliceNum; ++sliceIdx) {
                     AscendC::Add(
-                        accumulatorBuffer, accumulatorBuffer, accumulatorBuffer[computeNum * sliceIdx], computeNum
-                    );
+                        accumulatorBuffer, accumulatorBuffer, accumulatorBuffer[computeNum * sliceIdx], computeNum);
                     AscendC::PipeBarrier<PIPE_V>();
                 }
 
@@ -148,14 +145,11 @@ struct StreamkReduceAdd {
 
                 // layoutDst can only be RowMajor
                 uint64_t dstStride = layoutDst.stride(0);
-                uint64_t dstOffset = (static_cast<uint64_t>(blockCoord.m()) * l1TileM + loopIdx * tilePerCore)
-                                         * dstStride
-                                     + static_cast<uint64_t>(blockCoord.n()) * l1TileN;
+                uint64_t dstOffset = (static_cast<uint64_t>(blockCoord.m()) * l1TileM + loopIdx * tilePerCore) * dstStride + static_cast<uint64_t>(blockCoord.n()) * l1TileN;
                 AscendC::DataCopyExtParams dataCopyParamsOut(
                     tilesActual, tileLen * sizeof(ElementOut),
                     (RoundUp(tileLen, ELE_NUM_ALIGN) - tileLen) / ELE_NUM_ALIGN,
-                    (dstStride - tileLen) * sizeof(ElementOut), 0
-                );
+                    (dstStride - tileLen) * sizeof(ElementOut), 0);
                 AscendC::DataCopyPad(dst[dstOffset], outputBuffer, dataCopyParamsOut);
 
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -242,21 +236,20 @@ public:
             GM_ADDR ptrWB_,
             GM_ADDR ptrReduceW_,
             uint32_t swizzleOffset_,
-            uint32_t swizzleDirection_
-        )
-            : problemShape(problemShape_)
-            , l1TileShape(l1TileShape_)
-            , ptrA(ptrA_)
-            , layoutA(layoutA_)
-            , ptrB(ptrB_)
-            , layoutB(layoutB_)
-            , ptrC(ptrC_)
-            , layoutC(layoutC_)
-            , ptrWA(ptrWA_)
-            , ptrWB(ptrWB_)
-            , ptrReduceW(ptrReduceW_)
-            , swizzleOffset(swizzleOffset_)
-            , swizzleDirection(swizzleDirection_)
+            uint32_t swizzleDirection_)
+            : problemShape(problemShape_),
+              l1TileShape(l1TileShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              ptrWA(ptrWA_),
+              ptrWB(ptrWB_),
+              ptrReduceW(ptrReduceW_),
+              swizzleOffset(swizzleOffset_),
+              swizzleDirection(swizzleDirection_)
         {
         }
     };
@@ -325,8 +318,7 @@ public:
         ReduceAdd reduceAdd(resource);
         BlockScheduler matmulBlockScheduler(
             params.problemShape, params.l1TileShape, AscendC::GetBlockNum(), params.swizzleOffset,
-            params.swizzleDirection
-        );
+            params.swizzleDirection);
         reduceAdd(gmC, gmReduceW, matmulBlockScheduler, params.layoutC);
 
         AscendC::PipeBarrier<PIPE_ALL>();
@@ -344,8 +336,7 @@ public:
         uint32_t blockIdx = AscendC::GetBlockIdx();
 
         BlockScheduler matmulBlockScheduler(
-            params.problemShape, params.l1TileShape, blockDim, params.swizzleOffset, params.swizzleDirection
-        );
+            params.problemShape, params.l1TileShape, blockDim, params.swizzleOffset, params.swizzleDirection);
         uint32_t coreLoops = matmulBlockScheduler.GetCoreLoops();
 
         typename BlockMmad::LayoutA layoutA;
@@ -397,7 +388,6 @@ public:
         }
 
         for (uint32_t loopIdx = blockIdx; loopIdx < coreLoops; loopIdx += blockDim) {
-
             uint32_t actualLoopIdx = loopIdx;
             if (loopIdx == normalBlockNum - blockDim + blockIdx && blockIdx < streamkCores && normalBlockNum > 0) {
                 actualLoopIdx = normalBlockNum + blockIdx;
@@ -405,8 +395,7 @@ public:
                 actualLoopIdx = normalBlockNum - blockDim + blockIdx;
             }
             uint32_t actualNextLoopIdx = loopIdx + blockDim;
-            if ((loopIdx + blockDim) == normalBlockNum - blockDim + blockIdx && blockIdx < streamkCores
-                && normalBlockNum > 0) {
+            if ((loopIdx + blockDim) == normalBlockNum - blockDim + blockIdx && blockIdx < streamkCores && normalBlockNum > 0) {
                 actualNextLoopIdx = normalBlockNum + blockIdx;
             } else if ((loopIdx + blockDim) >= normalBlockNum && normalBlockNum > 0) {
                 actualNextLoopIdx = normalBlockNum - blockDim + blockIdx;
@@ -428,66 +417,55 @@ public:
             // Compute initial location in logical coordinates
             MatrixCoord coordA{
                 streamkBlockDec.blockCoord.m() * params.l1TileShape.m(),
-                streamkBlockDec.blockCoord.k() * params.l1TileShape.k()
-            };
+                streamkBlockDec.blockCoord.k() * params.l1TileShape.k()};
             MatrixCoord coordB{
                 streamkBlockDec.blockCoord.k() * params.l1TileShape.k(),
-                streamkBlockDec.blockCoord.n() * params.l1TileShape.n()
-            };
+                streamkBlockDec.blockCoord.n() * params.l1TileShape.n()};
             MatrixCoord coordC{
                 streamkBlockDec.blockCoord.m() * params.l1TileShape.m(),
-                streamkBlockDec.blockCoord.n() * params.l1TileShape.n()
-            };
+                streamkBlockDec.blockCoord.n() * params.l1TileShape.n()};
             int64_t gmOffsetA = layoutA.GetOffset(coordA);
             int64_t gmOffsetB = layoutB.GetOffset(coordB);
             int64_t gmOffsetC = params.layoutC.GetOffset(coordC);
             MatrixCoord coordNextA{
                 nextStreamkBlockDec.blockCoord.m() * params.l1TileShape.m(),
-                nextStreamkBlockDec.blockCoord.k() * params.l1TileShape.k()
-            };
+                nextStreamkBlockDec.blockCoord.k() * params.l1TileShape.k()};
             MatrixCoord coordNextB{
                 nextStreamkBlockDec.blockCoord.k() * params.l1TileShape.k(),
-                nextStreamkBlockDec.blockCoord.n() * params.l1TileShape.n()
-            };
+                nextStreamkBlockDec.blockCoord.n() * params.l1TileShape.n()};
             int64_t gmOffsetNextA = layoutA.GetOffset(coordNextA);
             int64_t gmOffsetNextB = layoutB.GetOffset(coordNextB);
 
             int64_t gmOffsetW = params.l1TileShape.m() * params.l1TileShape.n() * 2 * blockIdx;
             LayoutC layoutW = LayoutC{
-                streamkBlockDec.actualBlockShape.m(), streamkBlockDec.actualBlockShape.n(), params.l1TileShape.n()
-            };
+                streamkBlockDec.actualBlockShape.m(), streamkBlockDec.actualBlockShape.n(), params.l1TileShape.n()};
 
             // Compute block-scoped matrix multiply-add
             blockMmad(
                 gmA[gmOffsetA], layoutA, gmB[gmOffsetB], layoutB, gmC[gmOffsetC], params.layoutC, gmW[gmOffsetW],
                 layoutW, gmA[gmOffsetNextA], gmB[gmOffsetNextB], streamkBlockDec.actualBlockShape,
                 nextStreamkBlockDec.actualBlockShape, isFirstBlock, hasNextBlock && (!streamkBlockDec.isCrossBlock),
-                streamkBlockDec.isStreamkBlock
-            );
+                streamkBlockDec.isStreamkBlock);
             // If the current block is a cross block-meaning it consists partly of the tail k portion of
             // current block and partly of head k portion of the next block-then a second blockmmad
             // computation must be invoked to process the head k segment of the next block.
             if (streamkBlockDec.isCrossBlock) {
                 MatrixCoord coordA{
                     streamkBlockDec.streamkBlockCoord.m() * params.l1TileShape.m(),
-                    streamkBlockDec.streamkBlockCoord.k() * params.l1TileShape.k()
-                };
+                    streamkBlockDec.streamkBlockCoord.k() * params.l1TileShape.k()};
                 MatrixCoord coordB{
                     streamkBlockDec.streamkBlockCoord.k() * params.l1TileShape.k(),
-                    streamkBlockDec.streamkBlockCoord.n() * params.l1TileShape.n()
-                };
+                    streamkBlockDec.streamkBlockCoord.n() * params.l1TileShape.n()};
                 int64_t gmOffsetA = layoutA.GetOffset(coordA);
                 int64_t gmOffsetB = layoutB.GetOffset(coordB);
                 int64_t gmOffsetW = params.l1TileShape.m() * params.l1TileShape.n() * (2 * blockIdx + 1);
                 LayoutC layoutW = LayoutC{
                     streamkBlockDec.streamkActualBlockShape.m(), streamkBlockDec.streamkActualBlockShape.n(),
-                    params.l1TileShape.n()
-                };
+                    params.l1TileShape.n()};
                 blockMmad(
                     gmA[gmOffsetA], layoutA, gmB[gmOffsetB], layoutB, gmC[gmOffsetC], params.layoutC, gmW[gmOffsetW],
                     layoutW, gmA[gmOffsetNextA], gmB[gmOffsetNextB], streamkBlockDec.streamkActualBlockShape,
-                    nextStreamkBlockDec.actualBlockShape, true, hasNextBlock, streamkBlockDec.isStreamkBlock
-                );
+                    nextStreamkBlockDec.actualBlockShape, true, hasNextBlock, streamkBlockDec.isStreamkBlock);
             }
 
             if (loopIdx == normalBlockNum - blockDim + blockIdx && blockIdx < streamkCores && normalBlockNum > 0) {

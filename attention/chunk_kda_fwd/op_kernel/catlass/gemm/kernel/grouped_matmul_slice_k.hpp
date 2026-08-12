@@ -19,10 +19,9 @@
 
 namespace Catlass::Gemm::Kernel {
 
-template<
+template <
     class ArchTag_,
-    class Element_
->
+    class Element_>
 struct MemFill {
 public:
     using ArchTag = ArchTag_;
@@ -53,15 +52,15 @@ public:
         if (batchCount > 0) {
             for (int index = 0; index < batchCount; ++index) {
                 AscendC::DataCopyPad(dst[currentOffset], ubBuffer,
-                    AscendC::DataCopyExtParams(1, static_cast<uint32_t>(ubBufferSize * sizeof(Element)), 0, 0, 0));
+                                     AscendC::DataCopyExtParams(1, static_cast<uint32_t>(ubBufferSize * sizeof(Element)), 0, 0, 0));
                 currentOffset += ubBufferSize;
             }
         }
-        
+
         // fill the tail block by datacopy
         if (tailElements != 0) {
             AscendC::DataCopyPad(dst[currentOffset], ubBuffer,
-                AscendC::DataCopyExtParams(1, static_cast<uint32_t>(tailElements * sizeof(Element)), 0, 0, 0));
+                                 AscendC::DataCopyExtParams(1, static_cast<uint32_t>(tailElements * sizeof(Element)), 0, 0, 0));
         }
     }
 
@@ -78,8 +77,7 @@ template <
     class BlockMmad_,
     class BlockEpilogue_,
     class BlockScheduler_,
-    class ElementGroupList_
->
+    class ElementGroupList_>
 class GroupedMatmulSliceK {
 public:
     using BlockMmad = BlockMmad_;
@@ -119,17 +117,21 @@ public:
             GemmCoord const &problemShape_, uint32_t problemCount_, GM_ADDR ptrGroupList_,
             GM_ADDR ptrA_, LayoutA const &layoutA_,
             GM_ADDR ptrB_, LayoutB const &layoutB_,
-            GM_ADDR ptrC_, LayoutC const &layoutC_
-        ) : problemShape(problemShape_),
-            problemCount(problemCount_), ptrGroupList(reinterpret_cast<__gm__ ElementGroupList *>(ptrGroupList_)),
-            ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)), layoutA(layoutA_),
-            ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)), layoutB(layoutB_),
-            ptrC(reinterpret_cast<__gm__ ElementC *>(ptrC_)), layoutC(layoutC_)
+            GM_ADDR ptrC_, LayoutC const &layoutC_)
+            : problemShape(problemShape_),
+              problemCount(problemCount_),
+              ptrGroupList(reinterpret_cast<__gm__ ElementGroupList *>(ptrGroupList_)),
+              ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)),
+              layoutA(layoutA_),
+              ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)),
+              layoutB(layoutB_),
+              ptrC(reinterpret_cast<__gm__ ElementC *>(ptrC_)),
+              layoutC(layoutC_)
         {
         }
     };
 
-    struct Arguments{
+    struct Arguments {
         GemmCoord problemShape;
         uint32_t problemCount;
         uint8_t *ptrGroupList;
@@ -145,7 +147,7 @@ public:
     {
         return 0;
     }
-    static Params ToUnderlyingArguments(const Arguments &args, void* workspace)
+    static Params ToUnderlyingArguments(const Arguments &args, void *workspace)
     {
         uint32_t m = args.problemShape.m();
         uint32_t n = args.problemShape.n();
@@ -154,9 +156,9 @@ public:
         LayoutB layoutB{k, n};
         LayoutC layoutC{m, n};
         Params params{args.problemShape, args.problemCount, args.ptrGroupList,
-            args.ptrA, layoutA,
-            args.ptrB, layoutB,
-            args.ptrC, layoutC};
+                      args.ptrA, layoutA,
+                      args.ptrB, layoutB,
+                      args.ptrC, layoutC};
         return params;
     }
 
@@ -168,13 +170,11 @@ public:
     ~GroupedMatmulSliceK() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     /// Executes matmul
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         BlockScheduler blockScheduler;
         BlockMmad blockMmad(resource);
@@ -198,7 +198,7 @@ public:
         uint32_t startCoreIdx = 0;
         for (uint32_t groupIdx = 0; groupIdx < params.problemCount; ++groupIdx) {
             uint32_t currentK = (groupIdx == 0) ? groupList.GetValue(groupIdx) :
-                (groupList.GetValue(groupIdx) - groupList.GetValue(groupIdx - 1));
+                                                  (groupList.GetValue(groupIdx) - groupList.GetValue(groupIdx - 1));
             GemmCoord problemShape{params.problemShape.m(), params.problemShape.n(), currentK};
 
             if (currentK == 0) {
@@ -259,8 +259,7 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         MemFill0 memFill0(resource);
         AscendC::GlobalTensor<ElementC> gmC;
@@ -272,7 +271,7 @@ public:
 
         for (uint32_t groupIdx = 0; groupIdx < params.problemCount; ++groupIdx) {
             uint32_t currentK = (groupIdx == 0) ? groupList.GetValue(groupIdx) :
-                (groupList.GetValue(groupIdx) - groupList.GetValue(groupIdx - 1));
+                                                  (groupList.GetValue(groupIdx) - groupList.GetValue(groupIdx - 1));
             GemmCoord problemShape{params.problemShape.m(), params.problemShape.n(), currentK};
 
             if (currentK == 0) {

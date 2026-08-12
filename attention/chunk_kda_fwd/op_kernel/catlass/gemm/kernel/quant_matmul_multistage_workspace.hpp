@@ -26,8 +26,7 @@ template <
     class BlockMmad_,
     class BlockEpilogue_,
     class BlockScheduler_,
-    uint32_t WORKSPACE_STAGES_
->
+    uint32_t WORKSPACE_STAGES_>
 class QuantMatmulMultiStageWorkspace {
 public:
     using BlockMmad = BlockMmad_;
@@ -81,15 +80,19 @@ public:
             GM_ADDR ptrScale_, LayoutScale layoutScale_,
             GM_ADDR ptrPerTokenScale_, LayoutPerTokenScale layoutPerTokenScale_,
             GM_ADDR ptrD_, LayoutD layoutD_,
-            GM_ADDR ptrWorkspace_
-        ) : problemShape(problemShape_),
-            ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)), layoutA(layoutA_),
-            ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)), layoutB(layoutB_),
-            ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)), layoutScale(layoutScale_),
-            ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale *>(ptrPerTokenScale_)),
-            layoutPerTokenScale(layoutPerTokenScale_),
-            ptrD(reinterpret_cast<__gm__ ElementD *>(ptrD_)), layoutD(layoutD_),
-            ptrWorkspace(ptrWorkspace_)
+            GM_ADDR ptrWorkspace_)
+            : problemShape(problemShape_),
+              ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)),
+              layoutA(layoutA_),
+              ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)),
+              layoutB(layoutB_),
+              ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)),
+              layoutScale(layoutScale_),
+              ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale *>(ptrPerTokenScale_)),
+              layoutPerTokenScale(layoutPerTokenScale_),
+              ptrD(reinterpret_cast<__gm__ ElementD *>(ptrD_)),
+              layoutD(layoutD_),
+              ptrWorkspace(ptrWorkspace_)
         {
         }
     };
@@ -112,7 +115,7 @@ public:
     static size_t GetWorkspaceSize(const Arguments &args)
     {
         size_t lenWorkspace = static_cast<size_t>(L1TileShape::M) * L1TileShape::N *
-            args.aicCoreNum * WORKSPACE_STAGES;
+                              args.aicCoreNum * WORKSPACE_STAGES;
         size_t sizeWorkspace = lenWorkspace * sizeof(uint32_t);
         return sizeWorkspace;
     }
@@ -128,11 +131,11 @@ public:
         LayoutPerTokenScale layoutPerTokenScale{m};
         LayoutD layoutD{m, n};
         Params params{args.problemShape,
-            args.ptrA, layoutA,
-            args.ptrB, layoutB,
-            args.ptrScale, layoutScale,
-            args.ptrPerTokenScale, layoutPerTokenScale,
-            args.ptrD, layoutD, workspace};
+                      args.ptrA, layoutA,
+                      args.ptrB, layoutB,
+                      args.ptrScale, layoutScale,
+                      args.ptrPerTokenScale, layoutPerTokenScale,
+                      args.ptrD, layoutD, workspace};
         return params;
     }
 
@@ -150,12 +153,10 @@ public:
     }
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         BlockScheduler blockScheduler;
         blockScheduler.Update(params.problemShape, MakeCoord(L1TileShape::M, L1TileShape::N));
@@ -208,16 +209,14 @@ public:
                     gmB[gmOffsetB], params.layoutB,
                     gmC[gmOffsetC], layoutC,
                     actualBlockShape,
-                    callbackBeforeFixpipe, callbackAfterFixpipe
-                );
+                    callbackBeforeFixpipe, callbackAfterFixpipe);
             } else {
                 callbackBeforeFixpipe();
                 blockMmad(
                     gmA[gmOffsetA], params.layoutA,
                     gmB[gmOffsetB], params.layoutB,
                     gmC[gmOffsetC], layoutC,
-                    actualBlockShape
-                );
+                    actualBlockShape);
                 callbackAfterFixpipe();
             }
 
@@ -230,7 +229,8 @@ public:
 
         while (stageUsed > 0) {
             uint32_t aivComputeStageId = (stageId >= stageUsed) ?
-                (stageId - stageUsed) : (stageId + WORKSPACE_STAGES - stageUsed);
+                                             (stageId - stageUsed) :
+                                             (stageId + WORKSPACE_STAGES - stageUsed);
             Arch::CrossCoreWaitFlag(flagAivFinishComputeList[aivComputeStageId]);
             --stageUsed;
         }
@@ -239,8 +239,7 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         BlockScheduler blockScheduler;
         BlockEpilogue blockEpilogue(resource);
@@ -262,8 +261,7 @@ public:
         EpilogueParams epilogueParams{
             params.ptrScale, layoutScale,
             params.ptrPerTokenScale, layoutPerTokenScale,
-            params.ptrD, layoutD
-        };
+            params.ptrD, layoutD};
 
         blockScheduler.Update(params.problemShape, L1TileShape::ToCoordMN());
         blockEpilogue.UpdateParams(epilogueParams);
@@ -295,7 +293,7 @@ private:
 
     struct AicWaitFunc {
         using MatmulKernel = QuantMatmulMultiStageWorkspace<BlockMmad, BlockEpilogue, BlockScheduler,
-            WORKSPACE_STAGES>;
+                                                            WORKSPACE_STAGES>;
 
         CATLASS_DEVICE
         AicWaitFunc() = default;
@@ -312,7 +310,7 @@ private:
 
     struct AicSetFunc {
         using MatmulKernel = QuantMatmulMultiStageWorkspace<BlockMmad, BlockEpilogue, BlockScheduler,
-            WORKSPACE_STAGES>;
+                                                            WORKSPACE_STAGES>;
 
         CATLASS_DEVICE
         AicSetFunc() = default;

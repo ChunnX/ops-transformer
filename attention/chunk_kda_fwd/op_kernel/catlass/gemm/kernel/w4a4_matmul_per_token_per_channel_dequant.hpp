@@ -61,8 +61,7 @@ public:
     using EpilogueTileShape = typename BlockEpilogue::TileShape;
     static_assert(
         L1TileShape::N == EpilogueTileShape::COLUMN,
-        "l1TileShape::N must be equal to EpilogueTileShape::COLUMN"
-    );
+        "l1TileShape::N must be equal to EpilogueTileShape::COLUMN");
 
     static constexpr uint32_t WORKSPACE_STAGES = WORKSPACE_STAGES_;
 
@@ -101,20 +100,19 @@ public:
             LayoutPerTokenScale layoutPerTokenScale_,
             GM_ADDR ptrD_,
             LayoutD layoutD_,
-            GM_ADDR ptrWorkspace_
-        )
-            : problemShape(problemShape_)
-            , ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_))
-            , layoutA(layoutA_)
-            , ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_))
-            , layoutB(layoutB_)
-            , ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_))
-            , layoutScale(layoutScale_)
-            , ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale *>(ptrPerTokenScale_))
-            , layoutPerTokenScale(layoutPerTokenScale_)
-            , ptrD(reinterpret_cast<__gm__ ElementD *>(ptrD_))
-            , layoutD(layoutD_)
-            , ptrWorkspace(ptrWorkspace_)
+            GM_ADDR ptrWorkspace_)
+            : problemShape(problemShape_),
+              ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)),
+              layoutA(layoutA_),
+              ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)),
+              layoutB(layoutB_),
+              ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)),
+              layoutScale(layoutScale_),
+              ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale *>(ptrPerTokenScale_)),
+              layoutPerTokenScale(layoutPerTokenScale_),
+              ptrD(reinterpret_cast<__gm__ ElementD *>(ptrD_)),
+              layoutD(layoutD_),
+              ptrWorkspace(ptrWorkspace_)
         {
         }
     };
@@ -264,14 +262,12 @@ public:
             if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
                 blockMmad(
                     gmScale[gmOffsetScale], layoutScale, gmA[gmOffsetA], layoutA, gmB[gmOffsetB], layoutB,
-                    gmC[gmOffsetC], layoutC, actualBlockShape, callbackBeforeFixpipe, callbackAfterFixpipe
-                );
+                    gmC[gmOffsetC], layoutC, actualBlockShape, callbackBeforeFixpipe, callbackAfterFixpipe);
             } else {
                 callbackBeforeFixpipe();
                 blockMmad(
                     gmScale[gmOffsetScale], layoutScale, gmA[gmOffsetA], layoutA, gmB[gmOffsetB], layoutB,
-                    gmC[gmOffsetC], layoutC, actualBlockShape
-                );
+                    gmC[gmOffsetC], layoutC, actualBlockShape);
                 callbackAfterFixpipe();
             }
 
@@ -283,8 +279,7 @@ public:
         }
 
         while (stageUsed > 0) {
-            uint32_t aivComputeStageId = (stageId >= stageUsed) ? (stageId - stageUsed)
-                                                                : (stageId + WORKSPACE_STAGES - stageUsed);
+            uint32_t aivComputeStageId = (stageId >= stageUsed) ? (stageId - stageUsed) : (stageId + WORKSPACE_STAGES - stageUsed);
             Arch::CrossCoreWaitFlag(flagAivFinishComputeList[aivComputeStageId]);
             --stageUsed;
         }
@@ -311,8 +306,7 @@ public:
         GemmCoord problemShape{params.problemShape.m(), params.problemShape.n(), params.problemShape.k()};
 
         LayoutPerTokenScale layoutPerTokenScale = params.layoutPerTokenScale.GetTileLayout(
-            problemShape.template GetCoordByAxis<0>()
-        );
+            problemShape.template GetCoordByAxis<0>());
         LayoutD layoutD = params.layoutD.GetTileLayout(problemShape.GetCoordMN());
 
         EpilogueParams epilogueParams{params.ptrPerTokenScale, layoutPerTokenScale, params.ptrD, layoutD};

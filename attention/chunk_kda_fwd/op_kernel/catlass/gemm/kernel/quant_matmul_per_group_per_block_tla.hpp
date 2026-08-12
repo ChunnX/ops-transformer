@@ -27,23 +27,22 @@ template <
     class ProblemShape_,
     class BlockMmad_,
     class BlockEpilogue_,
-    class BlockScheduler_
->
+    class BlockScheduler_>
 class QuantMatmulPerGroupPerBlockTla {
 public:
     CATLASS_DEVICE QuantMatmulPerGroupPerBlockTla()
     {
         if ASCEND_IS_AIV {
-            AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE_4, PIPE_V>(AIV_SYNC_AIC_FLAG);      // ping
-            AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE_4, PIPE_V>(AIV_SYNC_AIC_FLAG + 1);  // pong
+            AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE_4, PIPE_V>(AIV_SYNC_AIC_FLAG);     // ping
+            AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE_4, PIPE_V>(AIV_SYNC_AIC_FLAG + 1); // pong
         }
     }
     CATLASS_DEVICE ~QuantMatmulPerGroupPerBlockTla()
     {
         if ASCEND_IS_AIC {
-            AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG);                    // ping
-            AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + 1);                // pong
-            AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + FLAG_ID_MAX);  
+            AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG);     // ping
+            AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + 1); // pong
+            AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + FLAG_ID_MAX);
             AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + FLAG_ID_MAX + 1);
         }
     }
@@ -70,7 +69,7 @@ public:
     using BlockEpilogueParams = typename BlockEpilogue::Params;
 
     static constexpr bool transA = tla::detail::isColumnMajor<LayoutA>::value;
- 	static constexpr bool transB = tla::detail::isColumnMajor<LayoutB>::value;
+    static constexpr bool transB = tla::detail::isColumnMajor<LayoutB>::value;
 
     static constexpr uint32_t L1_TILE_M = tla::get<0>(L1TileShape{});
     static constexpr uint32_t L1_TILE_N = tla::get<1>(L1TileShape{});
@@ -88,7 +87,7 @@ public:
         LayoutC layoutC;
         GM_ADDR ptrBias;
         BlockEpilogueParams epilogueParams;
-        
+
         // Methods
         CATLASS_HOST_DEVICE
         Params() {}
@@ -97,16 +96,26 @@ public:
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_,
                LayoutB layoutB_, GM_ADDR ptrC_, LayoutC layoutC_, GM_ADDR ptrBias_,
                BlockEpilogueParams epilogueParams_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              ptrC(ptrC_), layoutC(layoutC_), ptrBias(ptrBias_), epilogueParams(epilogueParams_) {}
-
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              ptrBias(ptrBias_),
+              epilogueParams(epilogueParams_)
+        {}
     };
 
     struct Arguments {
         GemmCoord problemShape;
-        uint8_t *ptrA; LayoutA layoutA;
-        uint8_t *ptrB; LayoutB layoutB;
-        uint8_t *ptrC; LayoutC layoutC;
+        uint8_t *ptrA;
+        LayoutA layoutA;
+        uint8_t *ptrB;
+        LayoutB layoutB;
+        uint8_t *ptrC;
+        LayoutC layoutC;
         uint8_t *ptrBias{nullptr};
         BlockEpilogueParams epilogueParams;
     };
@@ -124,13 +133,12 @@ public:
     static Params ToUnderlyingArguments(const Arguments &args, uint8_t *workspace)
     {
         Params params{args.problemShape,
-            args.ptrA, args.layoutA,
-            args.ptrB, args.layoutB,
-            args.ptrC, args.layoutC,
-            args.ptrBias, args.epilogueParams};
+                      args.ptrA, args.layoutA,
+                      args.ptrB, args.layoutB,
+                      args.ptrC, args.layoutC,
+                      args.ptrBias, args.epilogueParams};
         return params;
     }
-
 
     CATLASS_DEVICE void UpdateMMGlobalAddr()
     {
@@ -144,7 +152,7 @@ public:
         }
     }
 
-    CATLASS_DEVICE void Init(const Params& params)
+    CATLASS_DEVICE void Init(const Params &params)
     {
         isPergroup_ = params.epilogueParams.groupSizeM == 1;
         constexpr uint32_t elems = UB_TWO_BANK_ELEMS_B32 * PER_BLOCK_SIZE;
@@ -156,8 +164,8 @@ public:
             epilogueOp_.UpdateParamsForNextProblem(problemShape_);
         }
     }
-    
-    CATLASS_DEVICE void operator()(const Params& params)
+
+    CATLASS_DEVICE void operator()(const Params &params)
     {
         int64_t curBlockIdx = AscendC::GetBlockIdx();
         int64_t blockNum = AscendC::GetBlockNum();
@@ -169,7 +177,7 @@ public:
         if ASCEND_IS_AIV {
             curBlockIdx /= AscendC::GetTaskRation();
         }
-        
+
         GemmCoord problemShape{params.problemShape.m(), params.problemShape.n(), params.problemShape.k()};
         BlockMmad blockMmad(problemShape);
         BlockScheduler bs(curBlockIdx, blockNum, problemShape);
@@ -211,7 +219,7 @@ public:
 
             auto blockShape = bs.GetBlockShape();
             auto blockCoord = bs.GetBlockCoord();
-            
+
             uint32_t mCoord = blockCoord.m();
             uint32_t nCoord = blockCoord.n();
             uint32_t kCoord = blockCoord.k();
@@ -220,12 +228,12 @@ public:
             uint32_t blockN = blockShape.n();
             uint32_t blockK = blockShape.k();
 
- 	        auto ubLayout = tla::MakeLayout<ElementC, LayoutTagC>(blockM, blockN);
+            auto ubLayout = tla::MakeLayout<ElementC, LayoutTagC>(blockM, blockN);
             auto tensorC = tla::MakeTensor(mmResUb_, ubLayout, Arch::PositionUB{});
 
             if ASCEND_IS_AIC {
                 // Make tiled views
-                auto tensorBlockA = GetTile(tensorA, 
+                auto tensorBlockA = GetTile(tensorA,
                                             tla::MakeCoord(mCoord, kCoord),
                                             tla::MakeShape(blockM, blockK));
                 auto tensorBlockB = GetTile(tensorB,
@@ -239,8 +247,8 @@ public:
             }
             if ASCEND_IS_AIV {
                 auto tensorBlockEpiolgue = GetTile(tensorC,
-                                               tla::MakeCoord(mCoord, nCoord),
-                                               tla::MakeShape(blockM, blockN));
+                                                   tla::MakeCoord(mCoord, nCoord),
+                                                   tla::MakeShape(blockM, blockN));
                 epilogueOp_(tensorBlockEpiolgue);
             }
         }

@@ -55,11 +55,19 @@ public:
         {}
 
         CATLASS_HOST_DEVICE
-        Params(GemmCoord const &problemShape_, GemmCoord const &l1TileShape_, GM_ADDR ptrA_, LayoutA& layoutA_,
-            GM_ADDR ptrB_, LayoutB& layoutB_, GM_ADDR ptrC_, LayoutC& layoutC_, uint32_t swizzleOffset_, 
-            uint32_t swizzleDirection_) : problemShape(problemShape_), l1TileShape(l1TileShape_), ptrA(ptrA_), 
-            layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrC(ptrC_), layoutC(layoutC_), 
-            swizzleOffset(swizzleOffset_), swizzleDirection(swizzleDirection_)
+        Params(GemmCoord const &problemShape_, GemmCoord const &l1TileShape_, GM_ADDR ptrA_, LayoutA &layoutA_,
+               GM_ADDR ptrB_, LayoutB &layoutB_, GM_ADDR ptrC_, LayoutC &layoutC_, uint32_t swizzleOffset_,
+               uint32_t swizzleDirection_)
+            : problemShape(problemShape_),
+              l1TileShape(l1TileShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              swizzleOffset(swizzleOffset_),
+              swizzleDirection(swizzleDirection_)
         {}
     };
 
@@ -72,7 +80,7 @@ public:
     CATLASS_DEVICE void operator()(Params const &params, Catlass::Arch::Resource<ArchTag> &resource)
     {
         BlockScheduler matmulBlockScheduler(params.problemShape,
-            MakeCoord(params.l1TileShape.m(), params.l1TileShape.n()), params.swizzleOffset, params.swizzleDirection);
+                                            MakeCoord(params.l1TileShape.m(), params.l1TileShape.n()), params.swizzleOffset, params.swizzleDirection);
         uint32_t coreLoops = matmulBlockScheduler.GetCoreLoops();
 
         // Represent the full gm
@@ -91,7 +99,6 @@ public:
         GemmCoord nextActualBlockShape;
 
         for (uint32_t loopIdx = AscendC::GetBlockIdx(); loopIdx < coreLoops; loopIdx += AscendC::GetBlockNum()) {
-
             bool isFirstBlock = (loopIdx == AscendC::GetBlockIdx());
             if (isFirstBlock) {
                 blockCoord = matmulBlockScheduler.GetBlockCoord(loopIdx);
@@ -125,22 +132,22 @@ public:
 
             // Compute block-scoped matrix multiply-add
             blockMmad(gmA[gmOffsetA],
-                params.layoutA,
-                gmB[gmOffsetB],
-                params.layoutB,
-                gmC[gmOffsetC],
-                params.layoutC,
-                gmA[gmOffsetNextA],
-                gmB[gmOffsetNextB],
-                actualBlockShape,
-                nextActualBlockShape,
-                isFirstBlock,
-                hasNextBlock);
+                      params.layoutA,
+                      gmB[gmOffsetB],
+                      params.layoutB,
+                      gmC[gmOffsetC],
+                      params.layoutC,
+                      gmA[gmOffsetNextA],
+                      gmB[gmOffsetNextB],
+                      actualBlockShape,
+                      nextActualBlockShape,
+                      isFirstBlock,
+                      hasNextBlock);
         }
         AscendC::PipeBarrier<PIPE_ALL>();
     }
 };
 
-}  // namespace Catlass::Gemm::Kernel
+} // namespace Catlass::Gemm::Kernel
 
-#endif  // CATLASS_GEMM_KERNEL_DYNAMIC_COMMON_MATMUL_HPP
+#endif // CATLASS_GEMM_KERNEL_DYNAMIC_COMMON_MATMUL_HPP

@@ -126,24 +126,16 @@ ChunkKdaFwdResult ChunkKdaFwd(
     const int64_t seqNum = cuSeqlens.has_value() ? static_cast<int64_t>(cuSeqlens->size()) - 1 : batch;
     TORCH_CHECK(seqNum <= MAX_SEQUENCES, "chunk_kda_fwd: at most 1024 sequences are supported.");
     const int64_t totalChunks = GetTotalChunks(seqlen, chunkSize, cuSeqlens, chunkIndices);
-    const std::vector<int64_t> attnShape = rank3 ? std::vector<int64_t>{seqlen, vHeads, vDim}
-                                                 : std::vector<int64_t>{batch, seqlen, vHeads, vDim};
-    const std::vector<int64_t> matrixShape = rank3 ? std::vector<int64_t>{vHeads, seqlen, chunkSize}
-                                                   : std::vector<int64_t>{batch, vHeads, seqlen, chunkSize};
-    const std::vector<int64_t> kShape = rank3 ? std::vector<int64_t>{vHeads, seqlen, kDim}
-                                              : std::vector<int64_t>{batch, vHeads, seqlen, kDim};
-    const std::vector<int64_t> vShape = rank3 ? std::vector<int64_t>{vHeads, seqlen, vDim}
-                                              : std::vector<int64_t>{batch, vHeads, seqlen, vDim};
-    const std::vector<int64_t> stateShape = stateVFirst
-        ? std::vector<int64_t>{seqNum, vHeads, vDim, kDim}
-        : std::vector<int64_t>{seqNum, vHeads, kDim, vDim};
+    const std::vector<int64_t> attnShape = rank3 ? std::vector<int64_t>{seqlen, vHeads, vDim} : std::vector<int64_t>{batch, seqlen, vHeads, vDim};
+    const std::vector<int64_t> matrixShape = rank3 ? std::vector<int64_t>{vHeads, seqlen, chunkSize} : std::vector<int64_t>{batch, vHeads, seqlen, chunkSize};
+    const std::vector<int64_t> kShape = rank3 ? std::vector<int64_t>{vHeads, seqlen, kDim} : std::vector<int64_t>{batch, vHeads, seqlen, kDim};
+    const std::vector<int64_t> vShape = rank3 ? std::vector<int64_t>{vHeads, seqlen, vDim} : std::vector<int64_t>{batch, vHeads, seqlen, vDim};
+    const std::vector<int64_t> stateShape = stateVFirst ? std::vector<int64_t>{seqNum, vHeads, vDim, kDim} : std::vector<int64_t>{seqNum, vHeads, kDim, vDim};
     std::vector<int64_t> hShape;
     if (rank3) {
-        hShape = stateVFirst ? std::vector<int64_t>{totalChunks, vHeads, vDim, kDim}
-                             : std::vector<int64_t>{totalChunks, vHeads, kDim, vDim};
+        hShape = stateVFirst ? std::vector<int64_t>{totalChunks, vHeads, vDim, kDim} : std::vector<int64_t>{totalChunks, vHeads, kDim, vDim};
     } else {
-        hShape = stateVFirst ? std::vector<int64_t>{batch, totalChunks, vHeads, vDim, kDim}
-                             : std::vector<int64_t>{batch, totalChunks, vHeads, kDim, vDim};
+        hShape = stateVFirst ? std::vector<int64_t>{batch, totalChunks, vHeads, vDim, kDim} : std::vector<int64_t>{batch, totalChunks, vHeads, kDim, vDim};
     }
 
     at::Tensor attnOut;
@@ -161,8 +153,7 @@ ChunkKdaFwdResult ChunkKdaFwd(
         const c10::OptionalDeviceGuard deviceGuard(c10::Device(q.device()));
         attnOut = at::empty(attnShape, v.options());
         finalState = outputFinalState ? at::empty(stateShape, q.options().dtype(at::kFloat)) : UndefinedTensor();
-        gkOut = (!useGateInKernel || disableRecompute)
-            ? at::empty(kShape, q.options().dtype(at::kFloat)) : UndefinedTensor();
+        gkOut = (!useGateInKernel || disableRecompute) ? at::empty(kShape, q.options().dtype(at::kFloat)) : UndefinedTensor();
         aqk = at::empty(matrixShape, q.options());
         akk = at::empty(matrixShape, q.options());
         w = disableRecompute ? at::empty(kShape, q.options()) : UndefinedTensor();

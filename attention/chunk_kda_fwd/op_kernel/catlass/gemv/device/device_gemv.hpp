@@ -29,14 +29,16 @@ public:
     using Arguments = typename GemvKernel::Arguments;
     /// Argument structure: Kernel API
     using Params = typename GemvKernel::Params;
+
 private:
     /// kernel API parameters object
     Params params_;
+
 public:
     DeviceGemv() {}
     ~DeviceGemv() {}
 
-    ///Access the Params structure
+    /// Access the Params structure
     Params const &params() const
     {
         return params_;

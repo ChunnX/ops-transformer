@@ -59,12 +59,20 @@ public:
         {}
 
         CATLASS_HOST_DEVICE
-        Params(GemmCoord const &problemShape_, GemmCoord const &l1TileShape_, GemmCoord const &l0TileShape_, 
-            GM_ADDR ptrA_, LayoutA& layoutA_, GM_ADDR ptrB_, LayoutB& layoutB_, GM_ADDR ptrC_, LayoutC& layoutC_,
-            uint32_t swizzleOffset_, uint32_t swizzleDirection_)
-            : problemShape(problemShape_), l1TileShape(l1TileShape_), l0TileShape(l0TileShape_), ptrA(ptrA_),
-            layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrC(ptrC_), layoutC(layoutC_),
-            swizzleOffset(swizzleOffset_), swizzleDirection(swizzleDirection_)
+        Params(GemmCoord const &problemShape_, GemmCoord const &l1TileShape_, GemmCoord const &l0TileShape_,
+               GM_ADDR ptrA_, LayoutA &layoutA_, GM_ADDR ptrB_, LayoutB &layoutB_, GM_ADDR ptrC_, LayoutC &layoutC_,
+               uint32_t swizzleOffset_, uint32_t swizzleDirection_)
+            : problemShape(problemShape_),
+              l1TileShape(l1TileShape_),
+              l0TileShape(l0TileShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              swizzleOffset(swizzleOffset_),
+              swizzleDirection(swizzleDirection_)
         {}
     };
 
@@ -94,7 +102,6 @@ public:
         GemmCoord nextActualBlockShape;
 
         for (uint32_t loopIdx = 0; loopIdx < coreLoops; loopIdx++) {
-
             bool isFirstBlock = (loopIdx == 0);
             if (isFirstBlock) {
                 blockCoord = matmulBlockScheduler.GetBlockCoord(loopIdx);
@@ -131,18 +138,18 @@ public:
 
             // Compute block-scoped matrix multiply-add
             blockMmad(gmA[gmOffsetA],
-                params.layoutA,
-                gmB[gmOffsetB],
-                params.layoutB,
-                gmC[gmOffsetC],
-                params.layoutC,
-                gmA[gmOffsetNextA],
-                gmB[gmOffsetNextB],
-                actualBlockShape,
-                nextActualBlockShape,
-                needLoadNextA,
-                needLoadNextB,
-                false);
+                      params.layoutA,
+                      gmB[gmOffsetB],
+                      params.layoutB,
+                      gmC[gmOffsetC],
+                      params.layoutC,
+                      gmA[gmOffsetNextA],
+                      gmB[gmOffsetNextB],
+                      actualBlockShape,
+                      nextActualBlockShape,
+                      needLoadNextA,
+                      needLoadNextB,
+                      false);
         }
 
         AscendC::PipeBarrier<PIPE_ALL>();
@@ -150,8 +157,8 @@ public:
 };
 
 // padding version of SingleCoreSplitkForSmallK
-template <class PrologueA_, class PrologueB_, class BlockMmad_, 
-    class BlockEpilogue_, class BlockScheduler_, class RemovePaddingC_>
+template <class PrologueA_, class PrologueB_, class BlockMmad_,
+          class BlockEpilogue_, class BlockScheduler_, class RemovePaddingC_>
 class DynamicPaddingSingleCoreSplitkForSmallKMatmul {
 public:
     using PrologueA = PrologueA_;
@@ -166,11 +173,11 @@ public:
 
     using LayoutC = typename BlockMmad::LayoutC;
 
-    template<class T>
+    template <class T>
     struct LayoutHelper {
         using type = typename T::LayoutIn;
     };
-    template<>
+    template <>
     struct LayoutHelper<void> {
         using type = void;
     };
@@ -206,12 +213,23 @@ public:
         {}
 
         CATLASS_HOST_DEVICE
-        Params(GemmCoord const &problemShape_, GemmCoord const &l1TileShape_, GemmCoord const &l0TileShape_, 
-            GM_ADDR ptrA_, LayoutA& layoutA_, GM_ADDR ptrB_, LayoutB& layoutB_, GM_ADDR ptrC_, LayoutC& layoutC_,
-            GM_ADDR ptrWA_, GM_ADDR ptrWB_, GM_ADDR ptrWC_, uint32_t swizzleOffset_, uint32_t swizzleDirection_)
-            : problemShape(problemShape_), l1TileShape(l1TileShape_), l0TileShape(l0TileShape_), ptrA(ptrA_),
-            layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrC(ptrC_), layoutC(layoutC_), ptrWA(ptrWA_),
-            ptrWB(ptrWB_), ptrWC(ptrWC_), swizzleOffset(swizzleOffset_), swizzleDirection(swizzleDirection_)
+        Params(GemmCoord const &problemShape_, GemmCoord const &l1TileShape_, GemmCoord const &l0TileShape_,
+               GM_ADDR ptrA_, LayoutA &layoutA_, GM_ADDR ptrB_, LayoutB &layoutB_, GM_ADDR ptrC_, LayoutC &layoutC_,
+               GM_ADDR ptrWA_, GM_ADDR ptrWB_, GM_ADDR ptrWC_, uint32_t swizzleOffset_, uint32_t swizzleDirection_)
+            : problemShape(problemShape_),
+              l1TileShape(l1TileShape_),
+              l0TileShape(l0TileShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              ptrWA(ptrWA_),
+              ptrWB(ptrWB_),
+              ptrWC(ptrWC_),
+              swizzleOffset(swizzleOffset_),
+              swizzleDirection(swizzleDirection_)
         {}
     };
 
@@ -220,14 +238,12 @@ public:
     DynamicPaddingSingleCoreSplitkForSmallKMatmul() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params, Catlass::Arch::Resource<ArchTag> &resource);
+    CATLASS_DEVICE void operator()(Params const &params, Catlass::Arch::Resource<ArchTag> &resource);
 
-    template<>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params, Catlass::Arch::Resource<ArchTag> &resource)
+    template <>
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params, Catlass::Arch::Resource<ArchTag> &resource)
     {
-         if constexpr (!std::is_void_v<PrologueA>) {
+        if constexpr (!std::is_void_v<PrologueA>) {
             AscendC::GlobalTensor<ElementA> gmA;
             AscendC::GlobalTensor<ElementA> gmWA;
             gmA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(params.ptrA));
@@ -282,7 +298,7 @@ public:
     }
 
     /// Executes matmul
-    template<>
+    template <>
     CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params, Catlass::Arch::Resource<ArchTag> &resource)
     {
         if constexpr (!std::is_void_v<PrologueA> || !std::is_void_v<PrologueB>) {
@@ -342,7 +358,6 @@ public:
         GemmCoord nextActualBlockShape;
 
         for (uint32_t loopIdx = 0; loopIdx < coreLoops; loopIdx++) {
-
             bool isFirstBlock = (loopIdx == 0);
             if (isFirstBlock) {
                 blockCoord = matmulBlockScheduler.GetBlockCoord(loopIdx);
@@ -379,24 +394,25 @@ public:
 
             // Compute block-scoped matrix multiply-add
             blockMmad(gmA[gmOffsetA],
-                layoutA,
-                gmB[gmOffsetB],
-                layoutB,
-                gmC[gmOffsetC],
-                layoutC,
-                gmA[gmOffsetNextA],
-                gmB[gmOffsetNextB],
-                actualBlockShape,
-                nextActualBlockShape,
-                needLoadNextA,
-                needLoadNextB,
-                false);
+                      layoutA,
+                      gmB[gmOffsetB],
+                      layoutB,
+                      gmC[gmOffsetC],
+                      layoutC,
+                      gmA[gmOffsetNextA],
+                      gmB[gmOffsetNextB],
+                      actualBlockShape,
+                      nextActualBlockShape,
+                      needLoadNextA,
+                      needLoadNextB,
+                      false);
         }
         if constexpr (!std::is_void_v<RemovePaddingC>) {
             Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(flagAicFinish);
         }
         AscendC::PipeBarrier<PIPE_ALL>();
     }
+
 private:
     static constexpr Arch::FlagID FLAG_AIV_FINISH_STORE = 0;
     Arch::CrossCoreFlag flagAivFinishPadding{FLAG_AIV_FINISH_STORE};
@@ -404,8 +420,8 @@ private:
     Arch::CrossCoreFlag flagAicFinish{FLAG_AIC_FINISH};
 };
 
-template <class PrologueA_, class PrologueB_, class BlockMmad_, 
-    class BlockEpilogue_, class BlockScheduler_, class RemovePaddingNDAndCastC_>
+template <class PrologueA_, class PrologueB_, class BlockMmad_,
+          class BlockEpilogue_, class BlockScheduler_, class RemovePaddingNDAndCastC_>
 class DynamicPaddingSingleCoreSplitkKLoopOuterMatmul {
 public:
     using PrologueA = PrologueA_;
@@ -417,11 +433,11 @@ public:
     using ElementA = typename BlockMmad::ElementA;
     using ElementB = typename BlockMmad::ElementB;
 
-    template<class T>
+    template <class T>
     struct LayoutHelper {
         using type = typename T::LayoutIn;
     };
-    template<>
+    template <>
     struct LayoutHelper<void> {
         using type = void;
     };
@@ -431,11 +447,11 @@ public:
     using LayoutB = std::conditional_t<
         std::is_void_v<PrologueB>, typename BlockMmad::LayoutB, typename LayoutHelper<PrologueB>::type>;
 
-    template<class T>
+    template <class T>
     struct ElementHelper {
         using ElementC = typename T::ElementOut;
     };
-    template<>
+    template <>
     struct ElementHelper<void> {
         using ElementC = typename BlockMmad::ElementC;
     };
@@ -469,12 +485,23 @@ public:
         {}
 
         CATLASS_HOST_DEVICE
-        Params(GemmCoord const &problemShape_, GemmCoord const &l1TileShape_, GemmCoord const &l0TileShape_, 
-            GM_ADDR ptrA_, LayoutA& layoutA_, GM_ADDR ptrB_, LayoutB& layoutB_, GM_ADDR ptrC_, LayoutC& layoutC_,
-            GM_ADDR ptrWA_, GM_ADDR ptrWB_, GM_ADDR ptrWC_, uint32_t swizzleOffset_, uint32_t swizzleDirection_)
-            : problemShape(problemShape_), l1TileShape(l1TileShape_), l0TileShape(l0TileShape_), ptrA(ptrA_),
-            layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrC(ptrC_), layoutC(layoutC_), ptrWA(ptrWA_),
-            ptrWB(ptrWB_), ptrWC(ptrWC_), swizzleOffset(swizzleOffset_), swizzleDirection(swizzleDirection_)
+        Params(GemmCoord const &problemShape_, GemmCoord const &l1TileShape_, GemmCoord const &l0TileShape_,
+               GM_ADDR ptrA_, LayoutA &layoutA_, GM_ADDR ptrB_, LayoutB &layoutB_, GM_ADDR ptrC_, LayoutC &layoutC_,
+               GM_ADDR ptrWA_, GM_ADDR ptrWB_, GM_ADDR ptrWC_, uint32_t swizzleOffset_, uint32_t swizzleDirection_)
+            : problemShape(problemShape_),
+              l1TileShape(l1TileShape_),
+              l0TileShape(l0TileShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              ptrWA(ptrWA_),
+              ptrWB(ptrWB_),
+              ptrWC(ptrWC_),
+              swizzleOffset(swizzleOffset_),
+              swizzleDirection(swizzleDirection_)
         {}
     };
 
@@ -483,14 +510,12 @@ public:
     DynamicPaddingSingleCoreSplitkKLoopOuterMatmul() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params, Catlass::Arch::Resource<ArchTag> &resource);
+    CATLASS_DEVICE void operator()(Params const &params, Catlass::Arch::Resource<ArchTag> &resource);
 
-    template<>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params, Catlass::Arch::Resource<ArchTag> &resource)
+    template <>
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params, Catlass::Arch::Resource<ArchTag> &resource)
     {
-         if constexpr (!std::is_void_v<PrologueA>) {
+        if constexpr (!std::is_void_v<PrologueA>) {
             AscendC::GlobalTensor<ElementA> gmA;
             AscendC::GlobalTensor<ElementA> gmWA;
             gmA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(params.ptrA));
@@ -550,7 +575,7 @@ public:
     }
 
     /// Executes matmul
-    template<>
+    template <>
     CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params, Catlass::Arch::Resource<ArchTag> &resource)
     {
         if constexpr (!std::is_void_v<PrologueA> || !std::is_void_v<PrologueB>) {
@@ -614,7 +639,6 @@ public:
         GemmCoord nextActualBlockShape;
 
         for (uint32_t loopIdx = 0; loopIdx < coreLoops; loopIdx++) {
-
             bool isFirstBlock = (loopIdx == 0);
             if (isFirstBlock) {
                 blockCoord = matmulBlockScheduler.GetBlockCoord(loopIdx);
@@ -651,18 +675,18 @@ public:
 
             // Compute block-scoped matrix multiply-add
             blockMmad(gmA[gmOffsetA],
-                layoutA,
-                gmB[gmOffsetB],
-                layoutB,
-                gmC[gmOffsetC],
-                layoutC,
-                gmA[gmOffsetNextA],
-                gmB[gmOffsetNextB],
-                actualBlockShape,
-                nextActualBlockShape,
-                needLoadNextA,
-                needLoadNextB,
-                matmulBlockScheduler.IsAtomicAdd(loopIdx));
+                      layoutA,
+                      gmB[gmOffsetB],
+                      layoutB,
+                      gmC[gmOffsetC],
+                      layoutC,
+                      gmA[gmOffsetNextA],
+                      gmB[gmOffsetNextB],
+                      actualBlockShape,
+                      nextActualBlockShape,
+                      needLoadNextA,
+                      needLoadNextB,
+                      matmulBlockScheduler.IsAtomicAdd(loopIdx));
         }
         if constexpr (!std::is_void_v<RemovePaddingNDAndCastC>) {
             Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(flagAicFinish);
@@ -670,6 +694,7 @@ public:
         AscendC::SetAtomicNone();
         AscendC::PipeBarrier<PIPE_ALL>();
     }
+
 private:
     static constexpr Arch::FlagID FLAG_AIV_FINISH_STORE = 0;
     Arch::CrossCoreFlag flagAivFinishPadding{FLAG_AIV_FINISH_STORE};
@@ -695,11 +720,11 @@ public:
     using ElementA = typename BlockMmad::ElementA;
     using ElementB = typename BlockMmad::ElementB;
 
-    template<class T>
+    template <class T>
     struct LayoutHelper {
         using type = typename T::LayoutIn;
     };
-    template<>
+    template <>
     struct LayoutHelper<void> {
         using type = void;
     };
@@ -709,11 +734,11 @@ public:
     using LayoutB = std::conditional_t<
         std::is_void_v<PrologueB>, typename BlockMmad::LayoutB, typename LayoutHelper<PrologueB>::type>;
 
-    template<class T>
+    template <class T>
     struct ElementHelper {
         using ElementC = typename T::ElementOut;
     };
-    template<>
+    template <>
     struct ElementHelper<void> {
         using ElementC = typename BlockMmad::ElementC;
     };
@@ -749,14 +774,26 @@ public:
         {}
 
         CATLASS_HOST_DEVICE
-        Params(GemmCoord const &problemShape_, GemmCoord const &l1TileShape_, GemmCoord const &l0TileShape_, 
-            GM_ADDR ptrA_, LayoutA& layoutA_, GM_ADDR ptrB_, LayoutB& layoutB_, GM_ADDR ptrC_, LayoutC& layoutC_,
-            GM_ADDR ptrWA_, GM_ADDR ptrWB_, GM_ADDR ptrWC_, uint32_t swizzleOffset_, uint32_t swizzleDirection_,
-            uint32_t m1Factor_, uint32_t n1Factor_)
-            : problemShape(problemShape_), l1TileShape(l1TileShape_), l0TileShape(l0TileShape_), ptrA(ptrA_),
-            layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrC(ptrC_), layoutC(layoutC_), ptrWA(ptrWA_),
-            ptrWB(ptrWB_), ptrWC(ptrWC_), swizzleOffset(swizzleOffset_), swizzleDirection(swizzleDirection_),
-            m1Factor(m1Factor_), n1Factor(n1Factor_)
+        Params(GemmCoord const &problemShape_, GemmCoord const &l1TileShape_, GemmCoord const &l0TileShape_,
+               GM_ADDR ptrA_, LayoutA &layoutA_, GM_ADDR ptrB_, LayoutB &layoutB_, GM_ADDR ptrC_, LayoutC &layoutC_,
+               GM_ADDR ptrWA_, GM_ADDR ptrWB_, GM_ADDR ptrWC_, uint32_t swizzleOffset_, uint32_t swizzleDirection_,
+               uint32_t m1Factor_, uint32_t n1Factor_)
+            : problemShape(problemShape_),
+              l1TileShape(l1TileShape_),
+              l0TileShape(l0TileShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              ptrWA(ptrWA_),
+              ptrWB(ptrWB_),
+              ptrWC(ptrWC_),
+              swizzleOffset(swizzleOffset_),
+              swizzleDirection(swizzleDirection_),
+              m1Factor(m1Factor_),
+              n1Factor(n1Factor_)
         {}
     };
 
@@ -765,8 +802,7 @@ public:
     DynamicPaddingSingleCoreSplitkKLoopMiddleMatmul() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params, Catlass::Arch::Resource<ArchTag> &resource)
+    CATLASS_DEVICE void operator()(Params const &params, Catlass::Arch::Resource<ArchTag> &resource)
     {
         uint32_t aiCoreIdx;
         if ASCEND_IS_AIC {
@@ -896,7 +932,7 @@ public:
                 Catlass::Arch::CrossCoreWaitFlag(flagAivFinishMoveGmcIds[flagAivFinishMoveGmcBufId]);
 
                 GemmCoord innerCoord;
-                GemmCoord blockCoord, nextBlockCoord; // actual blockCoord for mmad
+                GemmCoord blockCoord, nextBlockCoord;             // actual blockCoord for mmad
                 GemmCoord actualBlockShape, nextActualBlockShape; // actual blockShape for mmad
 
                 bool reuseL1A = (params.m1Factor <= params.n1Factor);
@@ -911,17 +947,20 @@ public:
                         kIdx = (innerLoopIdx / innerLoopsMNK.m()) % innerLoopsMNK.k();
                         nIdx = innerLoopIdx / (innerLoopsMNK.m() * innerLoopsMNK.k());
                     }
-                    return GemmCoord {mIdx, nIdx, kIdx};
+                    return GemmCoord{mIdx, nIdx, kIdx};
                 };
                 // Get actual block shape for mmad
                 auto GetActualBlockShape = [](const GemmCoord &problemShape, const GemmCoord &l1TileShape, const GemmCoord &blockCoord) {
                     GemmCoord loopsMNK = CeilDiv(problemShape, l1TileShape);
-                    uint32_t mActual = (blockCoord.m() == (loopsMNK.m() - 1)) ? 
-                        (problemShape.m() - blockCoord.m() * l1TileShape.m()) : l1TileShape.m();
-                    uint32_t nActual = (blockCoord.n() == (loopsMNK.n() - 1)) ? 
-                        (problemShape.n() - blockCoord.n() * l1TileShape.n()) : l1TileShape.n();
-                    uint32_t kActual = (blockCoord.k() == (loopsMNK.k() - 1)) ? 
-                        (problemShape.k() - blockCoord.k() * l1TileShape.k()) : l1TileShape.k();
+                    uint32_t mActual = (blockCoord.m() == (loopsMNK.m() - 1)) ?
+                                           (problemShape.m() - blockCoord.m() * l1TileShape.m()) :
+                                           l1TileShape.m();
+                    uint32_t nActual = (blockCoord.n() == (loopsMNK.n() - 1)) ?
+                                           (problemShape.n() - blockCoord.n() * l1TileShape.n()) :
+                                           l1TileShape.n();
+                    uint32_t kActual = (blockCoord.k() == (loopsMNK.k() - 1)) ?
+                                           (problemShape.k() - blockCoord.k() * l1TileShape.k()) :
+                                           l1TileShape.k();
                     return GemmCoord{mActual, nActual, kActual};
                 };
 
@@ -964,18 +1003,18 @@ public:
 
                     // Compute block-scoped matrix multiply-add
                     blockMmad(gmA[gmOffsetA],
-                        layoutA,
-                        gmB[gmOffsetB],
-                        layoutB,
-                        gmWC[gmOffsetC],
-                        layoutWC,
-                        gmA[gmOffsetNextA],
-                        gmB[gmOffsetNextB],
-                        actualBlockShape,
-                        nextActualBlockShape,
-                        needLoadNextA,
-                        needLoadNextB,
-                        isAtomicAdd);
+                              layoutA,
+                              gmB[gmOffsetB],
+                              layoutB,
+                              gmWC[gmOffsetC],
+                              layoutWC,
+                              gmA[gmOffsetNextA],
+                              gmB[gmOffsetNextB],
+                              actualBlockShape,
+                              nextActualBlockShape,
+                              needLoadNextA,
+                              needLoadNextB,
+                              isAtomicAdd);
                 } // end inner loop
 
                 Catlass::Arch::CrossCoreSetFlag<0x02, PIPE_FIX>(flagAicFinish);
@@ -1013,6 +1052,6 @@ private:
     Arch::CrossCoreFlag flagAivFinishMoveGmcIds[GMWC_BUFFER_NUM] = {Arch::FlagID{2}, Arch::FlagID{3}};
 };
 
-}  // namespace Catlass::Gemm::Kernel
+} // namespace Catlass::Gemm::Kernel
 
-#endif  // CATLASS_GEMM_KERNEL_DYNAMIC_SINGLE_CORE_SPLITK_MATMUL_HPP
+#endif // CATLASS_GEMM_KERNEL_DYNAMIC_SINGLE_CORE_SPLITK_MATMUL_HPP

@@ -23,8 +23,7 @@ namespace Catlass::Conv::Kernel {
 template <
     class BlockConv_,
     class BlockEpilogue_,
-    class BlockScheduler_
->
+    class BlockScheduler_>
 class ConvBias {
 public:
     using BlockConv = BlockConv_;
@@ -44,7 +43,7 @@ public:
     using BlockScheduler = BlockScheduler_;
 
     struct Params {
-        //Data members
+        // Data members
         Conv3dParams problemShape;
         GM_ADDR ptrFmap;
         LayoutFmap layoutFmap;
@@ -54,7 +53,7 @@ public:
         LayoutOut layoutOut;
         GM_ADDR ptrBias;
 
-        //Methods
+        // Methods
         CATLASS_HOST_DEVICE
         Params() {}
 
@@ -64,9 +63,16 @@ public:
             GM_ADDR ptrFmap_, LayoutFmap const &layoutFmap_,
             GM_ADDR ptrFilter_, LayoutFilter const &layoutFilter_,
             GM_ADDR ptrOut_, LayoutOut const &layoutOut_,
-            GM_ADDR ptrBias_
-        ) : problemShape(problemShape_), ptrFmap(ptrFmap_), layoutFmap(layoutFmap_), ptrFilter(ptrFilter_), layoutFilter(layoutFilter_),
-            ptrOut(ptrOut_), layoutOut(layoutOut_), ptrBias(ptrBias_) {}
+            GM_ADDR ptrBias_)
+            : problemShape(problemShape_),
+              ptrFmap(ptrFmap_),
+              layoutFmap(layoutFmap_),
+              ptrFilter(ptrFilter_),
+              layoutFilter(layoutFilter_),
+              ptrOut(ptrOut_),
+              layoutOut(layoutOut_),
+              ptrBias(ptrBias_)
+        {}
     };
 
     struct Arguments {
@@ -110,18 +116,17 @@ public:
 
     template <int32_t CORE_TYPE = g_coreType>
     CATLASS_DEVICE
-    ConvBias() {}
+    ConvBias()
+    {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         BlockScheduler convBlockScheduler(Conv3d6HdCoord{params.problemShape.batch(), params.problemShape.dout(),
-                                          params.problemShape.cout1(), params.problemShape.howo()},
+                                                         params.problemShape.cout1(), params.problemShape.howo()},
                                           Conv3d6HdCoord{CoreTileShape::noCnt, CoreTileShape::doCnt,
                                                          CoreTileShape::co1Cnt, CoreTileShape::howoCnt});
         uint32_t coreLoops = convBlockScheduler.GetCoreLoops();
@@ -146,8 +151,9 @@ public:
 
             uint32_t diIdxStart = Max(dimStartCoord.d() * params.problemShape.sD(), params.problemShape.padhead(), 0);
             uint32_t hiwiIdxStart = Max((dimStartCoord.hw() / params.problemShape.wo()) * params.problemShape.sH(),
-                                         params.problemShape.padtop(), 0) * params.problemShape.wi();
-            
+                                        params.problemShape.padtop(), 0) *
+                                    params.problemShape.wi();
+
             // Compute initial location in logical coordinates
             Conv3d6HdCoord offsetFmap{dimStartCoord.n(), diIdxStart, 0, hiwiIdxStart};
             Conv3dFracZ3dCoord offsetFilter{0, dimStartCoord.c1() * params.problemShape.cout0()};
@@ -170,8 +176,8 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params) {}
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
+    {}
 
     __aicore__ inline uint32_t Max(uint32_t a, uint32_t b, uint32_t c)
     {
@@ -183,5 +189,5 @@ public:
     }
 };
 
-}  // namespace Catlass::Conv::Kernel
+} // namespace Catlass::Conv::Kernel
 #endif // CATLASS_CONV_KERNEL_BASIC_CONV3D_HPP

@@ -83,7 +83,11 @@ def _total_chunks(seqlen, shape_spec):
 
 def _shape_contract(q, v, layout, shape_spec, state_v_first):
     dims = _layout_dimensions(q, v, layout)
-    seq_num = len(shape_spec.cu_seqlens) - 1 if shape_spec.cu_seqlens is not None else dims.batch
+    seq_num = (
+        len(shape_spec.cu_seqlens) - 1
+        if shape_spec.cu_seqlens is not None
+        else dims.batch
+    )
     total_chunks = _total_chunks(dims.seqlen, shape_spec)
     attn_shape = (
         (dims.seqlen, dims.v_heads, dims.v_dim)
@@ -112,7 +116,9 @@ def _shape_contract(q, v, layout, shape_spec, state_v_first):
         if dims.rank3
         else (dims.batch, total_chunks, dims.v_heads, *state_tail)
     )
-    return _OutputShapes(attn_shape, matrix_shape, k_shape, v_shape, state_shape, h_shape)
+    return _OutputShapes(
+        attn_shape, matrix_shape, k_shape, v_shape, state_shape, h_shape
+    )
 
 
 class ChunkKdaFwdOpBuilder(OpBuilder):
@@ -138,11 +144,26 @@ class ChunkKdaFwdOpBuilder(OpBuilder):
         # pylint: disable=huawei-too-many-arguments,huawei-invalid-name,too-many-return-values
         @impl(AS_LIBRARY, self.name, "Meta")
         def chunk_kda_fwd_meta(
-            q, k, v, g, beta, scale, initial_state=None, output_final_state=False,
-            cu_seqlens=None, chunk_indices=None, safe_gate=False, lower_bound=-5.0,
-            use_gate_in_kernel=False, A_log=None, dt_bias=None, chunk_size=64,
-            disable_recompute=False, return_intermediate_states=False,
-            state_v_first=False, layout="BSND",
+            q,
+            k,
+            v,
+            g,
+            beta,
+            scale,
+            initial_state=None,
+            output_final_state=False,
+            cu_seqlens=None,
+            chunk_indices=None,
+            safe_gate=False,
+            lower_bound=-5.0,
+            use_gate_in_kernel=False,
+            A_log=None,
+            dt_bias=None,
+            chunk_size=64,
+            disable_recompute=False,
+            return_intermediate_states=False,
+            state_v_first=False,
+            layout="BSND",
         ):
             del k, g, beta, scale, safe_gate, lower_bound, A_log, dt_bias
             shapes = _shape_contract(
@@ -154,7 +175,11 @@ class ChunkKdaFwdOpBuilder(OpBuilder):
             )
             attn_shape, matrix_shape, k_shape, v_shape, state_shape, h_shape = shapes
             attn_out = torch.empty(attn_shape, dtype=v.dtype, device="meta")
-            final_state = torch.empty(state_shape, dtype=torch.float32, device="meta") if output_final_state else None
+            final_state = (
+                torch.empty(state_shape, dtype=torch.float32, device="meta")
+                if output_final_state
+                else None
+            )
             gk = (
                 torch.empty(k_shape, dtype=torch.float32, device="meta")
                 if not use_gate_in_kernel or disable_recompute
@@ -162,17 +187,51 @@ class ChunkKdaFwdOpBuilder(OpBuilder):
             )
             aqk = torch.empty(matrix_shape, dtype=q.dtype, device="meta")
             akk = torch.empty(matrix_shape, dtype=q.dtype, device="meta")
-            w = torch.empty(k_shape, dtype=q.dtype, device="meta") if disable_recompute else None
-            u = torch.empty(v_shape, dtype=v.dtype, device="meta") if disable_recompute else None
-            qg = torch.empty(k_shape, dtype=q.dtype, device="meta") if disable_recompute else None
-            kg = torch.empty(k_shape, dtype=q.dtype, device="meta") if disable_recompute else None
-            v_new = torch.empty(v_shape, dtype=v.dtype, device="meta") if disable_recompute else None
+            w = (
+                torch.empty(k_shape, dtype=q.dtype, device="meta")
+                if disable_recompute
+                else None
+            )
+            u = (
+                torch.empty(v_shape, dtype=v.dtype, device="meta")
+                if disable_recompute
+                else None
+            )
+            qg = (
+                torch.empty(k_shape, dtype=q.dtype, device="meta")
+                if disable_recompute
+                else None
+            )
+            kg = (
+                torch.empty(k_shape, dtype=q.dtype, device="meta")
+                if disable_recompute
+                else None
+            )
+            v_new = (
+                torch.empty(v_shape, dtype=v.dtype, device="meta")
+                if disable_recompute
+                else None
+            )
             h = (
                 torch.empty(h_shape, dtype=q.dtype, device="meta")
                 if disable_recompute or return_intermediate_states
                 else None
             )
-            return attn_out, final_state, gk, aqk, akk, w, u, qg, kg, v_new, h, initial_state
+            return (
+                attn_out,
+                final_state,
+                gk,
+                aqk,
+                akk,
+                w,
+                u,
+                qg,
+                kg,
+                v_new,
+                h,
+                initial_state,
+            )
+
         # pylint: enable=huawei-too-many-arguments,huawei-invalid-name,too-many-return-values
 
 
@@ -183,19 +242,52 @@ _chunk_kda_fwd_op_builder = ChunkKdaFwdOpBuilder()
 # pylint: disable=huawei-too-many-arguments,huawei-invalid-name
 @impl(AS_LIBRARY, _chunk_kda_fwd_op_builder.name, "PrivateUse1")
 def _chunk_kda_fwd(
-    q, k, v, g, beta, scale, initial_state=None, output_final_state=False,
-    cu_seqlens=None, chunk_indices=None, safe_gate=False, lower_bound=-5.0,
-    use_gate_in_kernel=False, A_log=None, dt_bias=None, chunk_size=64,
-    disable_recompute=False, return_intermediate_states=False,
-    state_v_first=False, layout="BSND",
+    q,
+    k,
+    v,
+    g,
+    beta,
+    scale,
+    initial_state=None,
+    output_final_state=False,
+    cu_seqlens=None,
+    chunk_indices=None,
+    safe_gate=False,
+    lower_bound=-5.0,
+    use_gate_in_kernel=False,
+    A_log=None,
+    dt_bias=None,
+    chunk_size=64,
+    disable_recompute=False,
+    return_intermediate_states=False,
+    state_v_first=False,
+    layout="BSND",
 ):
     module = _chunk_kda_fwd_op_builder.load()
     return module.chunk_kda_fwd(
-        q, k, v, g, beta, scale, initial_state, output_final_state,
-        cu_seqlens, chunk_indices, safe_gate, lower_bound, use_gate_in_kernel,
-        A_log, dt_bias, chunk_size, disable_recompute,
-        return_intermediate_states, state_v_first, layout,
+        q,
+        k,
+        v,
+        g,
+        beta,
+        scale,
+        initial_state,
+        output_final_state,
+        cu_seqlens,
+        chunk_indices,
+        safe_gate,
+        lower_bound,
+        use_gate_in_kernel,
+        A_log,
+        dt_bias,
+        chunk_size,
+        disable_recompute,
+        return_intermediate_states,
+        state_v_first,
+        layout,
     )
+
+
 # pylint: enable=huawei-too-many-arguments,huawei-invalid-name
 
 
@@ -246,15 +338,32 @@ def chunk_kda_fwd(
             dt_bias = dt_bias.float()
             converted_gate_params.append(dt_bias)
     outputs = torch.ops.cann_ops_transformer.chunk_kda_fwd(
-        q, k, v, g, beta, float(scale), initial_state, output_final_state,
-        cu_seqlens, chunk_indices, safe_gate,
-        -5.0 if lower_bound is None else float(lower_bound), use_gate_in_kernel,
-        A_log, dt_bias, chunk_size, disable_recompute,
-        return_intermediate_states, state_v_first, layout,
+        q,
+        k,
+        v,
+        g,
+        beta,
+        float(scale),
+        initial_state,
+        output_final_state,
+        cu_seqlens,
+        chunk_indices,
+        safe_gate,
+        -5.0 if lower_bound is None else float(lower_bound),
+        use_gate_in_kernel,
+        A_log,
+        dt_bias,
+        chunk_size,
+        disable_recompute,
+        return_intermediate_states,
+        state_v_first,
+        layout,
     )
     if converted_gate_params:
         current_stream = torch.npu.current_stream(q.device)
         for tensor in converted_gate_params:
             tensor.record_stream(current_stream)
     return outputs
+
+
 # pylint: enable=huawei-too-many-arguments,huawei-invalid-name

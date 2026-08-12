@@ -54,9 +54,15 @@ public:
 
         CATLASS_HOST_DEVICE
         Params(GemmCoord const &problemShape_, GemmCoord const &l1TileShape_, GM_ADDR ptrA_, LayoutA &layoutA_,
-            GM_ADDR ptrB_, LayoutB &layoutB_, GM_ADDR ptrC_, LayoutC &layoutC_)
-            : problemShape(problemShape_), l1TileShape(l1TileShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_),
-              layoutB(layoutB_), ptrC(ptrC_), layoutC(layoutC_)
+               GM_ADDR ptrB_, LayoutB &layoutB_, GM_ADDR ptrC_, LayoutC &layoutC_)
+            : problemShape(problemShape_),
+              l1TileShape(l1TileShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_)
         {}
     };
 
@@ -68,7 +74,6 @@ public:
     /// Executes matmul
     CATLASS_DEVICE void operator()(Params const &params, Catlass::Arch::Resource<ArchTag> &resource)
     {
-
         // Represent the full gm
         AscendC::GlobalTensor<ElementA> gmA;
         gmA.SetGlobalBuffer((__gm__ ElementA *)params.ptrA);
@@ -87,12 +92,8 @@ public:
         uint32_t loopIdx = AscendC::GetBlockIdx();
         // Compute block location
         GemmCoord blockCoord{loopIdx / nLoops, loopIdx % nLoops, 0};
-        uint32_t mActual = (blockCoord.m() == (mLoops - 1))
-                               ? (params.problemShape.m() - blockCoord.m() * params.l1TileShape.m())
-                               : params.l1TileShape.m();
-        uint32_t nActual = (blockCoord.n() == (nLoops - 1))
-                               ? (params.problemShape.n() - blockCoord.n() * params.l1TileShape.n())
-                               : params.l1TileShape.n();
+        uint32_t mActual = (blockCoord.m() == (mLoops - 1)) ? (params.problemShape.m() - blockCoord.m() * params.l1TileShape.m()) : params.l1TileShape.m();
+        uint32_t nActual = (blockCoord.n() == (nLoops - 1)) ? (params.problemShape.n() - blockCoord.n() * params.l1TileShape.n()) : params.l1TileShape.n();
         GemmCoord actualBlockShape{mActual, nActual, params.problemShape.k()};
 
         // Compute initial location in logical coordinates
@@ -105,17 +106,17 @@ public:
 
         // Compute block-scoped matrix multiply-add
         blockMmad(gmA[gmOffsetA],
-            params.layoutA,
-            gmB[gmOffsetB],
-            params.layoutB,
-            gmC[gmOffsetC],
-            params.layoutC,
-            actualBlockShape);
+                  params.layoutA,
+                  gmB[gmOffsetB],
+                  params.layoutB,
+                  gmC[gmOffsetC],
+                  params.layoutC,
+                  actualBlockShape);
 
         AscendC::PipeBarrier<PIPE_ALL>();
     }
 };
 
-}  // namespace Catlass::Gemm::Kernel
+} // namespace Catlass::Gemm::Kernel
 
-#endif  // CATLASS_GEMM_KERNEL_DYNAMIC_SMALL_MATMUL_HPP
+#endif // CATLASS_GEMM_KERNEL_DYNAMIC_SMALL_MATMUL_HPP

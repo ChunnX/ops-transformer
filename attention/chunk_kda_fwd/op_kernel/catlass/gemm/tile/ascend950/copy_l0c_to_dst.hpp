@@ -30,8 +30,7 @@ template <
     class ArchTag,
     class ElementSrc,
     class ElementDst,
-    ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT
->
+    ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT>
 struct CopyL0CToDstQuantMode {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy l0c to dst quant mode, can not find the specialization.");
 };
@@ -41,8 +40,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     float, float,
-    ScaleGranularity::NO_QUANT
-> {
+    ScaleGranularity::NO_QUANT> {
     static constexpr auto VALUE = QuantMode_t::NoQuant;
 };
 
@@ -51,8 +49,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     float, half,
-    ScaleGranularity::NO_QUANT
-> {
+    ScaleGranularity::NO_QUANT> {
     static constexpr auto VALUE = QuantMode_t::F322F16;
 };
 
@@ -61,8 +58,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     float, bfloat16_t,
-    ScaleGranularity::NO_QUANT
-> {
+    ScaleGranularity::NO_QUANT> {
     static constexpr auto VALUE = QuantMode_t::F322BF16;
 };
 
@@ -71,8 +67,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     float, uint8_t,
-    ScaleGranularity::PER_TENSOR
-> {
+    ScaleGranularity::PER_TENSOR> {
     static constexpr auto VALUE = QuantMode_t::QF322B8_PRE;
 };
 
@@ -80,8 +75,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     float, uint8_t,
-    ScaleGranularity::PER_CHANNEL
-> {
+    ScaleGranularity::PER_CHANNEL> {
     static constexpr auto VALUE = QuantMode_t::VQF322B8_PRE;
 };
 
@@ -89,8 +83,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     float, int8_t,
-    ScaleGranularity::PER_TENSOR
-> {
+    ScaleGranularity::PER_TENSOR> {
     static constexpr auto VALUE = QuantMode_t::QF322B8_PRE;
 };
 
@@ -98,8 +91,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     float, int8_t,
-    ScaleGranularity::PER_CHANNEL
-> {
+    ScaleGranularity::PER_CHANNEL> {
     static constexpr auto VALUE = QuantMode_t::VQF322B8_PRE;
 };
 
@@ -108,8 +100,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     int32_t, int32_t,
-    ScaleGranularity::NO_QUANT
-> {
+    ScaleGranularity::NO_QUANT> {
     static constexpr auto VALUE = QuantMode_t::NoQuant;
 };
 
@@ -118,8 +109,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     int32_t, half,
-    ScaleGranularity::PER_TENSOR
-> {
+    ScaleGranularity::PER_TENSOR> {
     static constexpr auto VALUE = QuantMode_t::DEQF16;
 };
 
@@ -127,8 +117,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     int32_t, half,
-    ScaleGranularity::PER_CHANNEL
-> {
+    ScaleGranularity::PER_CHANNEL> {
     static constexpr auto VALUE = QuantMode_t::VDEQF16;
 };
 
@@ -137,8 +126,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     int32_t, uint8_t,
-    ScaleGranularity::PER_TENSOR
-> {
+    ScaleGranularity::PER_TENSOR> {
     static constexpr auto VALUE = QuantMode_t::REQ8;
 };
 
@@ -146,8 +134,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     int32_t, uint8_t,
-    ScaleGranularity::PER_CHANNEL
-> {
+    ScaleGranularity::PER_CHANNEL> {
     static constexpr auto VALUE = QuantMode_t::VREQ8;
 };
 
@@ -155,8 +142,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     int32_t, int8_t,
-    ScaleGranularity::PER_TENSOR
-> {
+    ScaleGranularity::PER_TENSOR> {
     static constexpr auto VALUE = QuantMode_t::REQ8;
 };
 
@@ -164,8 +150,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     int32_t, int8_t,
-    ScaleGranularity::PER_CHANNEL
-> {
+    ScaleGranularity::PER_CHANNEL> {
     static constexpr auto VALUE = QuantMode_t::VREQ8;
 };
 
@@ -174,8 +159,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     int32_t, bfloat16_t,
-    ScaleGranularity::PER_TENSOR
-> {
+    ScaleGranularity::PER_TENSOR> {
     static constexpr auto VALUE = QuantMode_t::QS322BF16_PRE;
 };
 
@@ -183,8 +167,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     int32_t, bfloat16_t,
-    ScaleGranularity::PER_CHANNEL
-> {
+    ScaleGranularity::PER_CHANNEL> {
     static constexpr auto VALUE = QuantMode_t::VQS322BF16_PRE;
 };
 
@@ -193,8 +176,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     float, half,
-    ScaleGranularity::PER_TENSOR
-> {
+    ScaleGranularity::PER_TENSOR> {
     static constexpr auto VALUE = QuantMode_t::QF322F16_PRE;
 };
 
@@ -202,8 +184,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     float, half,
-    ScaleGranularity::PER_CHANNEL
-> {
+    ScaleGranularity::PER_CHANNEL> {
     static constexpr auto VALUE = QuantMode_t::VQF322F16_PRE;
 };
 
@@ -212,8 +193,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     float, bfloat16_t,
-    ScaleGranularity::PER_TENSOR
-> {
+    ScaleGranularity::PER_TENSOR> {
     static constexpr auto VALUE = QuantMode_t::QF322BF16_PRE;
 };
 
@@ -221,8 +201,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     float, bfloat16_t,
-    ScaleGranularity::PER_CHANNEL
-> {
+    ScaleGranularity::PER_CHANNEL> {
     static constexpr auto VALUE = QuantMode_t::VQF322BF16_PRE;
 };
 
@@ -231,8 +210,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     float, float,
-    ScaleGranularity::PER_TENSOR
-> {
+    ScaleGranularity::PER_TENSOR> {
     static constexpr auto VALUE = QuantMode_t::QF322F32_PRE;
 };
 
@@ -240,8 +218,7 @@ template <>
 struct CopyL0CToDstQuantMode<
     Arch::Ascend950,
     float, float,
-    ScaleGranularity::PER_CHANNEL
-> {
+    ScaleGranularity::PER_CHANNEL> {
     static constexpr auto VALUE = QuantMode_t::VQF322F32_PRE;
 };
 
@@ -250,8 +227,7 @@ template <
     class ElementAccumulator,
     class GmType,
     ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT,
-    bool ReluEnable = false
->
+    bool ReluEnable = false>
 struct CopyL0CToGm {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy l0c to gm, can not find the specialization.");
 };
@@ -267,8 +243,7 @@ template <
     class TensorDst,
     ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT,
     bool ReluEnable = false,
-    class Enable = void
->
+    class Enable = void>
 struct CopyL0CToGmTla {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy l0c to gm, can not find the specialization.");
 };
@@ -289,12 +264,11 @@ template <
     CopyL0CToUBMode CopyMode = CopyL0CToUBMode::NO_SPLIT,
     ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT,
     bool ReluEnable = false,
-    class Enable = void
->
+    class Enable = void>
 struct CopyL0CToUBTla {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy l0c to ub, can not find the specialization.");
 };
 
-}  // namespace Catlass::Gemm::Tile
+} // namespace Catlass::Gemm::Tile
 
 #endif // CATLASS_GEMM_TILE_ASCEND950_COPY_L0C_TO_DST_HPP

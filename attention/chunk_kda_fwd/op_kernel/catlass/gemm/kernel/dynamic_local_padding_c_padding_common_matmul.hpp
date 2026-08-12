@@ -99,23 +99,22 @@ public:
             uint32_t swizzleOffset_,
             uint32_t swizzleDirection_,
             uint32_t m1Factor_,
-            uint32_t n1Factor_
-        )
-            : problemShape(problemShape_)
-            , l1TileShape(l1TileShape_)
-            , ptrA(ptrA_)
-            , layoutA(layoutA_)
-            , ptrB(ptrB_)
-            , layoutB(layoutB_)
-            , ptrC(ptrC_)
-            , layoutC(layoutC_)
-            , ptrWA(ptrWA_)
-            , ptrWB(ptrWB_)
-            , ptrWC(ptrWC_)
-            , swizzleOffset(swizzleOffset_)
-            , swizzleDirection(swizzleDirection_)
-            , m1Factor(m1Factor_)
-            , n1Factor(n1Factor_)
+            uint32_t n1Factor_)
+            : problemShape(problemShape_),
+              l1TileShape(l1TileShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              ptrWA(ptrWA_),
+              ptrWB(ptrWB_),
+              ptrWC(ptrWC_),
+              swizzleOffset(swizzleOffset_),
+              swizzleDirection(swizzleDirection_),
+              m1Factor(m1Factor_),
+              n1Factor(n1Factor_)
         {
         }
     };
@@ -179,8 +178,7 @@ public:
             MatrixCoord gmTileShape(params.l1TileShape.m() * params.m1Factor, params.l1TileShape.n() * params.n1Factor);
 
             BlockScheduler matmulBlockScheduler(
-                params.problemShape, gmTileShape, params.swizzleOffset, params.swizzleDirection
-            );
+                params.problemShape, gmTileShape, params.swizzleOffset, params.swizzleDirection);
             AscendC::GlobalTensor<ElementC> gmC;
             gmC.SetGlobalBuffer((__gm__ ElementC *)params.ptrC);
             AscendC::GlobalTensor<ElementC> gmWC;
@@ -194,8 +192,7 @@ public:
                 // Compute initial location in logical coordinates
                 GemmCoord blockCoord = matmulBlockScheduler.GetBlockCoord(loopIdx);
                 GemmCoord actualBlockShape = matmulBlockScheduler.GetActualBlockShape(blockCoord);
-                uint64_t gmOffsetWC = static_cast<size_t>(aiCoreIdx * GMWC_BUFFER_NUM + cvSyncId) * gmTileShape.row()
-                                      * gmTileShape.column();
+                uint64_t gmOffsetWC = static_cast<size_t>(aiCoreIdx * GMWC_BUFFER_NUM + cvSyncId) * gmTileShape.row() * gmTileShape.column();
                 LayoutC layoutWC = LayoutC{actualBlockShape.m(), actualBlockShape.n(), gmTileShape.column()};
                 MatrixCoord coordC{blockCoord.m() * gmTileShape.row(), blockCoord.n() * gmTileShape.column()};
                 int64_t gmOffsetC = params.layoutC.GetOffset(coordC);
@@ -261,8 +258,7 @@ public:
         MatrixCoord gmTileShape(params.l1TileShape.m() * params.m1Factor, params.l1TileShape.n() * params.n1Factor);
 
         BlockScheduler matmulBlockScheduler(
-            params.problemShape, gmTileShape, params.swizzleOffset, params.swizzleDirection
-        );
+            params.problemShape, gmTileShape, params.swizzleOffset, params.swizzleDirection);
         uint32_t coreLoops = matmulBlockScheduler.GetCoreLoops();
 
         BlockMmad blockMmad(params.l1TileShape, resource);
@@ -276,7 +272,6 @@ public:
         uint32_t aiCoreNum = AscendC::GetBlockNum();
 
         for (uint32_t loopIdx = AscendC::GetBlockIdx(); loopIdx < coreLoops; loopIdx += AscendC::GetBlockNum()) {
-
             if constexpr (!std::is_void_v<RemovePaddingC>) {
                 Catlass::Arch::CrossCoreWaitFlag(cvSyncFlagList[cvSyncId]);
             }
@@ -301,8 +296,7 @@ public:
 
             MatrixCoord innerLoopsMN = CeilDiv(
                 MakeCoord(gmActualBlockShape.m(), gmActualBlockShape.n()),
-                MakeCoord(params.l1TileShape.m(), params.l1TileShape.n())
-            );
+                MakeCoord(params.l1TileShape.m(), params.l1TileShape.n()));
             uint32_t innerLoops = innerLoopsMN.row() * innerLoopsMN.column();
 
             GemmCoord blockCoord;
@@ -320,12 +314,8 @@ public:
             auto GetActualBlockShape = [](const GemmCoord &problemShape, const GemmCoord &l1TileShape,
                                           const GemmCoord &blockCoord) {
                 GemmCoord loopsMNK = CeilDiv(problemShape, l1TileShape);
-                uint32_t mActual = (blockCoord.m() == (loopsMNK.m() - 1))
-                                       ? (problemShape.m() - blockCoord.m() * l1TileShape.m())
-                                       : l1TileShape.m();
-                uint32_t nActual = (blockCoord.n() == (loopsMNK.n() - 1))
-                                       ? (problemShape.n() - blockCoord.n() * l1TileShape.n())
-                                       : l1TileShape.n();
+                uint32_t mActual = (blockCoord.m() == (loopsMNK.m() - 1)) ? (problemShape.m() - blockCoord.m() * l1TileShape.m()) : l1TileShape.m();
+                uint32_t nActual = (blockCoord.n() == (loopsMNK.n() - 1)) ? (problemShape.n() - blockCoord.n() * l1TileShape.n()) : l1TileShape.n();
                 return GemmCoord{mActual, nActual, problemShape.k()};
             };
 
@@ -346,11 +336,9 @@ public:
                 }
 
                 if (innerLoopIdx + 1 < innerLoops) {
-                    nextBlockCoord = gmBlockCoord
-                                     + GemmCoord(
-                                         (innerLoopIdx + 1) / innerLoopsMN.column(),
-                                         (innerLoopIdx + 1) % innerLoopsMN.column(), 0
-                                     );
+                    nextBlockCoord = gmBlockCoord + GemmCoord(
+                                                        (innerLoopIdx + 1) / innerLoopsMN.column(),
+                                                        (innerLoopIdx + 1) % innerLoopsMN.column(), 0);
 
                 } else if (hasGmNextBlock) {
                     nextBlockCoord = gmNextBlockCoord;
@@ -364,22 +352,17 @@ public:
                 actualBlockShape = GetActualBlockShape(params.problemShape, params.l1TileShape, blockCoord);
 
                 MatrixCoord coordNextA{
-                    nextBlockCoord.m() * params.l1TileShape.m(), nextBlockCoord.k() * params.l1TileShape.k()
-                };
+                    nextBlockCoord.m() * params.l1TileShape.m(), nextBlockCoord.k() * params.l1TileShape.k()};
                 MatrixCoord coordNextB{
-                    nextBlockCoord.k() * params.l1TileShape.k(), nextBlockCoord.n() * params.l1TileShape.n()
-                };
+                    nextBlockCoord.k() * params.l1TileShape.k(), nextBlockCoord.n() * params.l1TileShape.n()};
                 int64_t gmOffsetNextA = layoutA.GetOffset(coordNextA);
                 int64_t gmOffsetNextB = layoutB.GetOffset(coordNextB);
                 nextActualBlockShape = GetActualBlockShape(params.problemShape, params.l1TileShape, nextBlockCoord);
 
                 int64_t gmOffsetC{0};
                 if constexpr (!std::is_void_v<RemovePaddingC>) {
-                    gmOffsetC = static_cast<size_t>(aiCoreIdx * GMWC_BUFFER_NUM + cvSyncId) * gmTileShape.row()
-                                    * gmTileShape.column()
-                                + layoutC.GetOffset(
-                                    MakeCoord(mIdx * params.l1TileShape.m(), nIdx * params.l1TileShape.n())
-                                );
+                    gmOffsetC = static_cast<size_t>(aiCoreIdx * GMWC_BUFFER_NUM + cvSyncId) * gmTileShape.row() * gmTileShape.column() + layoutC.GetOffset(
+                                                                                                                                             MakeCoord(mIdx * params.l1TileShape.m(), nIdx * params.l1TileShape.n()));
                 } else {
                     gmOffsetC = layoutC.GetOffset(coordC);
                 }
@@ -387,8 +370,7 @@ public:
                 // Compute block-scoped matrix multiply-add
                 blockMmad(
                     gmA[gmOffsetA], layoutA, gmB[gmOffsetB], layoutB, gmC[gmOffsetC], layoutC, gmA[gmOffsetNextA],
-                    gmB[gmOffsetNextB], actualBlockShape, nextActualBlockShape, isFirstBlock, hasNextBlock
-                );
+                    gmB[gmOffsetNextB], actualBlockShape, nextActualBlockShape, isFirstBlock, hasNextBlock);
             }
 
             if constexpr (!std::is_void_v<RemovePaddingC>) {

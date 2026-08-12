@@ -24,8 +24,7 @@ namespace Catlass::Gemm::Kernel {
 template <
     class BlockMmad_,
     class BlockEpilogue_,
-    class BlockScheduler_
->
+    class BlockScheduler_>
 class MatmulActivation {
 public:
     // BlockMmad的内核
@@ -48,8 +47,8 @@ public:
     using BlockScheduler = BlockScheduler_;
 
     static_assert(std::is_same_v<typename BlockEpilogue::ElementC, ElementC> &&
-        std::is_same_v<typename BlockEpilogue::LayoutC, LayoutC>,
-        "The CType of Mmad and Epilogue should be consistent.");
+                      std::is_same_v<typename BlockEpilogue::LayoutC, LayoutC>,
+                  "The CType of Mmad and Epilogue should be consistent.");
 
     /// Parameters structure
     struct Params {
@@ -71,9 +70,15 @@ public:
             GemmCoord const &problemShape_,
             GM_ADDR ptrA_, LayoutA const &layoutA_,
             GM_ADDR ptrB_, LayoutB const &layoutB_,
-            GM_ADDR ptrWorkspace_, EpilogueParams const &epilogueParams_
-        ) : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-            ptrWorkspace(ptrWorkspace_), epilogueParams(epilogueParams_) {}
+            GM_ADDR ptrWorkspace_, EpilogueParams const &epilogueParams_)
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrWorkspace(ptrWorkspace_),
+              epilogueParams(epilogueParams_)
+        {}
     };
 
     struct Arguments {
@@ -106,10 +111,10 @@ public:
         // 传出
         typename BlockEpilogue::Params epilogueParams{workspace, layoutC, args.ptrD, layoutC};
         Params params{problemShape,
-            args.ptrA, layoutA, // A矩阵
-            args.ptrB, layoutB, // B矩阵
-            workspace,
-            epilogueParams};
+                      args.ptrA, layoutA, // A矩阵
+                      args.ptrB, layoutB, // B矩阵
+                      workspace,
+                      epilogueParams};
         return params;
     }
 
@@ -118,12 +123,10 @@ public:
     MatmulActivation() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         BlockScheduler matmulBlockScheduler(params.problemShape, MakeCoord(L1TileShape::M, L1TileShape::N));
         uint32_t coreLoops = matmulBlockScheduler.GetCoreLoops();
@@ -166,8 +169,7 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         BlockScheduler matmulBlockScheduler(params.problemShape, MakeCoord(L1TileShape::M, L1TileShape::N));
         uint32_t coreLoops = matmulBlockScheduler.GetCoreLoops();

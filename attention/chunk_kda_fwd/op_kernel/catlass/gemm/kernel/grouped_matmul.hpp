@@ -22,22 +22,20 @@ namespace Catlass::Gemm::Kernel {
 namespace detail {
 
 template <class T>
-CATLASS_DEVICE
-void UnpackListParam(T *const dst, GM_ADDR src, uint32_t len)
+CATLASS_DEVICE void UnpackListParam(T *const dst, GM_ADDR src, uint32_t len)
 {
     for (uint32_t i = 0; i * sizeof(uint64_t) < len * sizeof(T); ++i) {
         reinterpret_cast<uint64_t *>(dst)[i] = reinterpret_cast<__gm__ uint64_t *>(src)[i];
     }
 }
 
-}  // namespace detail
+} // namespace detail
 
 // Template for grouped matmul kernel. Compute grouped C = A * B
 template <
     class BlockMmad_,
     class BlockEpilogue_,
-    class BlockScheduler_
->
+    class BlockScheduler_>
 class GroupedMatmul {
 public:
     using BlockMmad = BlockMmad_;
@@ -75,16 +73,20 @@ public:
             uint32_t problemCount_, GM_ADDR ptrProblemShape_,
             GM_ADDR ptrA_, GM_ADDR ptrLayoutA_,
             GM_ADDR ptrB_, GM_ADDR ptrLayoutB_,
-            GM_ADDR ptrC_, GM_ADDR ptrLayoutC_
-        ) : problemCount(problemCount_), ptrProblemShape(ptrProblemShape_),
-            ptrA(ptrA_), ptrLayoutA(ptrLayoutA_),
-            ptrB(ptrB_), ptrLayoutB(ptrLayoutB_),
-            ptrC(ptrC_), ptrLayoutC(ptrLayoutC_)
+            GM_ADDR ptrC_, GM_ADDR ptrLayoutC_)
+            : problemCount(problemCount_),
+              ptrProblemShape(ptrProblemShape_),
+              ptrA(ptrA_),
+              ptrLayoutA(ptrLayoutA_),
+              ptrB(ptrB_),
+              ptrLayoutB(ptrLayoutB_),
+              ptrC(ptrC_),
+              ptrLayoutC(ptrLayoutC_)
         {
         }
     };
 
-    struct Arguments{
+    struct Arguments {
         uint32_t problemCount;
         uint8_t *ptrProblemShape;
         uint8_t *ptrA;
@@ -102,7 +104,7 @@ public:
     {
         return 0;
     }
-    static Params ToUnderlyingArguments(const Arguments &args, void* workspace)
+    static Params ToUnderlyingArguments(const Arguments &args, void *workspace)
     {
         Params params{
             args.problemCount,
@@ -120,13 +122,11 @@ public:
     ~GroupedMatmul() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     /// Executes matmul
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         GemmCoord problemShapeList[MAX_TENSOR_COUNT];
         LayoutA layoutAList[MAX_TENSOR_COUNT];
@@ -211,8 +211,8 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params) {}
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
+    {}
 };
 
 } // namespace Catlass::Gemm::Kernel

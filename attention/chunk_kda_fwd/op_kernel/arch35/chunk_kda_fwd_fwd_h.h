@@ -186,7 +186,8 @@ private:
         uint64_t b, uint64_t hv, uint64_t chunk, uint64_t row = 0) const
     {
         return ((b * heads_ + hv) * seqlen_ +
-                chunk * KDA_FWD_H_CHUNK + row) * KDA_FWD_H_DIM;
+                chunk * KDA_FWD_H_CHUNK + row) *
+               KDA_FWD_H_DIM;
     }
 
     __aicore__ inline uint64_t ScoreOffset(uint64_t b, uint64_t hv, uint64_t t) const
@@ -198,7 +199,8 @@ private:
         uint64_t b, uint64_t hv, uint64_t chunk) const
     {
         return ((b * heads_ + hv) * seqlen_ +
-                chunk * KDA_FWD_H_CHUNK) * KDA_FWD_H_CHUNK;
+                chunk * KDA_FWD_H_CHUNK) *
+               KDA_FWD_H_CHUNK;
     }
 
     __aicore__ inline uint64_t StateOffset(uint64_t b, uint64_t hv) const
@@ -878,8 +880,7 @@ private:
         CrossCoreSetFlag<0x2, PIPE_V>(KDA_FWD_H_DIRECT_FREE_FLAG);
 
         CrossCoreWaitFlag(KDA_FWD_H_DIRECT_READY_FLAG);
-        DataCopy(gate, gk_[ChunkMatrixOffset(b, hv, chunk, KDA_FWD_H_CHUNK - 1) +
-                           stateRowBegin], KDA_FWD_H_SUB_DIM);
+        DataCopy(gate, gk_[ChunkMatrixOffset(b, hv, chunk, KDA_FWD_H_CHUNK - 1) + stateRowBegin], KDA_FWD_H_SUB_DIM);
         SetFlag<HardEvent::MTE2_V>(aivMte2ToVEvent_);
         WaitFlag<HardEvent::MTE2_V>(aivMte2ToVEvent_);
         Muls(gate, gate, 0.6931471805599453f, KDA_FWD_H_SUB_DIM);
@@ -949,7 +950,7 @@ private:
                 SetFlag<HardEvent::V_MTE3>(aivVToMte3Event_);
                 WaitFlag<HardEvent::V_MTE3>(aivVToMte3Event_);
                 DataCopy(finalState_[StateOffset(b, hv) +
-                         stateRowBegin * KDA_FWD_H_DIM],
+                                     stateRowBegin * KDA_FWD_H_DIM],
                          state, KDA_FWD_H_STATE_SUB_ELEMS);
                 SetFlag<HardEvent::MTE3_V>(aivMte3ToVEvent_);
                 WaitFlag<HardEvent::MTE3_V>(aivMte3ToVEvent_);

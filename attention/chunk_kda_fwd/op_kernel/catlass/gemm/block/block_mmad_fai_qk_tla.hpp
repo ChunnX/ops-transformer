@@ -36,9 +36,8 @@ template <
     class ElementC_,
     class ElementBias_,
     class TileCopy_,
-    class TileMmad_
->
-struct BlockMmadTla <
+    class TileMmad_>
+struct BlockMmadTla<
     MmadFAIQK<Arch::Ascend950, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_>,
     L1TileShape_,
     L0TileShape_,
@@ -47,8 +46,7 @@ struct BlockMmadTla <
     ElementC_,
     ElementBias_,
     TileCopy_,
-    TileMmad_
-> {
+    TileMmad_> {
 public:
     using DispatchPolicy = MmadFAIQK<Arch::Ascend950, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
@@ -59,12 +57,12 @@ public:
 
     using ElementA = ElementA_;
     using ElementB = ElementB_;
-    using ElementC = ElementC_;   
+    using ElementC = ElementC_;
     using ElementAccumulator = typename TileCopy::ElementAccumulator;
 
     using CopyL1ToL0A = typename TileCopy::CopyL1ToL0A;
     using CopyL1ToL0B = typename TileCopy::CopyL1ToL0B;
-    
+
     using LayoutTagA = typename TileCopy::LayoutTagA;
     using LayoutTagB = typename TileCopy::LayoutTagB;
     using LayoutTagC = typename TileCopy::LayoutTagC;
@@ -96,14 +94,14 @@ public:
 
     // Check L1/L0TileShape
     static_assert(L1_TILE_M == L0_TILE_M && L1_TILE_N == L0_TILE_N && L1_TILE_K == L0_TILE_K,
-            "The situation where the basic blocks of L1 and L0 differ on the m, n, k axes is not supported yet");
+                  "The situation where the basic blocks of L1 and L0 differ on the m, n, k axes is not supported yet");
     static_assert(L0A_TILE_SIZE * STAGES <= ArchTag::L0A_SIZE, "L0TileShape exceeding the L0A space!");
     static_assert(L0B_TILE_SIZE * STAGES <= ArchTag::L0B_SIZE, "L0TileShape exceeding the L0B space!");
 
 public:
     /// Construct
     CATLASS_DEVICE
-    BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t& l1BufAddrStart, uint32_t& l0CBufAddrStart)
+    BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t &l1BufAddrStart, uint32_t &l0CBufAddrStart)
     {
         uint32_t l1AOffset = l1BufAddrStart;
         uint32_t l1BOffset = l1AOffset + L1A_TILE_SIZE * STAGES;
@@ -150,15 +148,14 @@ public:
     }
 
 public:
-    template<class TensorA, class TensorB, class TensorC, class Shape>
-    CATLASS_DEVICE
-    void operator()(
-        TensorA& tensorA,
-        TensorB& tensorB,
-        TensorC& tensorC,
-        AscendC::GlobalTensor<int32_t>& blockTable,
-        Shape& actualShape,
-        int64_t taskId, int32_t blockSize, 
+    template <class TensorA, class TensorB, class TensorC, class Shape>
+    CATLASS_DEVICE void operator()(
+        TensorA &tensorA,
+        TensorB &tensorB,
+        TensorC &tensorC,
+        AscendC::GlobalTensor<int32_t> &blockTable,
+        Shape &actualShape,
+        int64_t taskId, int32_t blockSize,
         bool isFirstLoop = false, bool isLastLoop = false)
     {
         int32_t blockM = tla::get<0>(actualShape);
@@ -206,22 +203,20 @@ public:
             auto tensorL1TileA = GetTile(
                 tensorL1A,
                 tla::MakeCoord(0, kIdx * L0_TILE_K),
-                tla::MakeShape(blockM, tileK)
-            );
+                tla::MakeShape(blockM, tileK));
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventList_[l0ListId_]);
             copyL1ToL0A(tensorL0A, tensorL1TileA);
-            
+
             // load matrix B tile from L1 to L0B
             auto layoutBInL0 = tla::MakeLayout<ElementB, LayoutTagL0B>(tileK, blockN);
             auto tensorL0B = tla::MakeTensor(l0BTensorList_[l0ListId_], layoutBInL0, Arch::PositionL0B{});
             auto tensorL1TileB = GetTile(
                 tensorL1B,
                 tla::MakeCoord(0, 0),
-                tla::MakeShape(tileK, blockN)
-            );
+                tla::MakeShape(tileK, blockN));
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventList_[l0ListId_]);
             copyL1ToL0B(tensorL0B, tensorL1TileB);
-            
+
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0CEventList_[l0CListId_]);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0CEventList_[l0CListId_]);
 
@@ -246,7 +241,7 @@ public:
 
         AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventList_[l0CListId_]);
         AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventList_[l0CListId_]);
-    
+
         AscendC::CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(MM1_RES_INTRA_EVENT[taskId]);
         AscendC::CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + MM1_RES_INTRA_EVENT[taskId]);
 
@@ -256,45 +251,41 @@ public:
         copyL0CToDst(tensorC, tensorL0C);
 
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventList_[l0CListId_]);
-        l0CListId_ = (l0CListId_ + 1 < STAGES) ? (l0CListId_ + 1) : 0; 
+        l0CListId_ = (l0CListId_ + 1 < STAGES) ? (l0CListId_ + 1) : 0;
     }
 
 private:
-    template<class TensorL1A, class TensorA>
-    CATLASS_DEVICE
-    void CopyInL1A(TensorL1A& tensorL1A, TensorA& tensorA, int32_t tileM, int32_t tileK, int32_t kOffset)
+    template <class TensorL1A, class TensorA>
+    CATLASS_DEVICE void CopyInL1A(TensorL1A &tensorL1A, TensorA &tensorA, int32_t tileM, int32_t tileK, int32_t kOffset)
     {
-        using CopyGmToL1A = typename TileCopy::template CopyGmToL1A<TensorA>;        
+        using CopyGmToL1A = typename TileCopy::template CopyGmToL1A<TensorA>;
         CopyGmToL1A copyGmToL1A;
 
         auto tensorTileA = GetTile(
             tensorA,
             tla::MakeCoord(0, kOffset),
-            tla::MakeShape(tileM, tileK)
-        );
+            tla::MakeShape(tileM, tileK));
 
         auto tensorL1TileA = GetTile(
             tensorL1A,
             tla::MakeCoord(0, kOffset),
-            tla::MakeShape(tileM, tileK)
-        );
+            tla::MakeShape(tileM, tileK));
 
         copyGmToL1A(tensorL1TileA, tensorTileA);
     }
 
-    template<class TensorL1B, class TensorB>
-    CATLASS_DEVICE
-    void CopyInL1B(
-        TensorL1B& tensorL1B, 
-        TensorB& tensorB, 
-        AscendC::GlobalTensor<int32_t>& blockTable,
-        int32_t tileK, int32_t tileN, 
+    template <class TensorL1B, class TensorB>
+    CATLASS_DEVICE void CopyInL1B(
+        TensorL1B &tensorL1B,
+        TensorB &tensorB,
+        AscendC::GlobalTensor<int32_t> &blockTable,
+        int32_t tileK, int32_t tileN,
         int32_t kOffset, int32_t blockSize)
     {
-        using CopyGmToL1B = typename TileCopy::template CopyGmToL1B<TensorB>;        
+        using CopyGmToL1B = typename TileCopy::template CopyGmToL1B<TensorB>;
         CopyGmToL1B copyGmToL1B;
 
-        if constexpr(PAGED_CACHE_FLAG_) {
+        if constexpr (PAGED_CACHE_FLAG_) {
             int32_t copyColCnt = 0;
             int32_t blockLoops = (tileN + blockSize - 1) / blockSize;
 
@@ -305,14 +296,12 @@ private:
                 auto tensorL1TileB = GetTile(
                     tensorL1B,
                     tla::MakeCoord(0, copyColCnt),
-                    tla::MakeShape(tileK, curCopyCol)
-                );
+                    tla::MakeShape(tileK, curCopyCol));
 
                 auto tensorTileB = GetTile(
                     tensorB,
                     tla::MakeCoord(kOffset, idInBlockTable * blockSize),
-                    tla::MakeShape(tileK, curCopyCol)
-                );
+                    tla::MakeShape(tileK, curCopyCol));
 
                 copyGmToL1B(tensorL1TileB, tensorTileB);
                 copyColCnt += curCopyCol;
@@ -321,18 +310,16 @@ private:
             auto tensorTileB = GetTile(
                 tensorB,
                 tla::MakeCoord(kOffset, 0),
-                tla::MakeShape(tileK, tileN)
-            );
+                tla::MakeShape(tileK, tileN));
 
             copyGmToL1B(tensorL1B, tensorTileB);
         }
-        
     }
 
 private:
     static constexpr uint16_t M_ALIGN = 16;
-    static constexpr uint32_t SYNC_MODE = 4;  
-    static constexpr uint32_t MM1_RES_INTRA_EVENT[2] = {9, 10};  
+    static constexpr uint32_t SYNC_MODE = 4;
+    static constexpr uint32_t MM1_RES_INTRA_EVENT[2] = {9, 10};
     static constexpr uint32_t BLOCK_EVENT_ID = 0;
 
     // Multi-stage tensors list
@@ -358,5 +345,5 @@ private:
     CopyL1ToL0B copyL1ToL0B;
     TileMmad tileMmad;
 };
-}
+} // namespace Catlass::Gemm::Block
 #endif

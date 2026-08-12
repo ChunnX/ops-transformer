@@ -22,13 +22,11 @@
 
 namespace Catlass::Gemm::Kernel {
 
-
 template <
     class ProblemShape_,
     class BlockMmad_,
     class BlockEpilogue_,
-    class BlockScheduler_
->
+    class BlockScheduler_>
 class KernelSparseMatmul {
 public:
     CATLASS_DEVICE
@@ -68,16 +66,16 @@ public:
      * @brief Kernel arguments for the host side
      */
     struct BlockMmadArguments {
-        GM_ADDR aGmAddr{nullptr};       ///< The global memory address of matrix A
-        GM_ADDR bGmAddr{nullptr};       ///< The global memory address of matrix B
-        GM_ADDR cGmAddr{nullptr};       ///< The global memory address of matrix C
-        GM_ADDR biasGmAddr{nullptr};    ///< The global memory address of bias
-        GM_ADDR indexGmAddr{nullptr};   ///< The global memory address of index
+        GM_ADDR aGmAddr{nullptr};     ///< The global memory address of matrix A
+        GM_ADDR bGmAddr{nullptr};     ///< The global memory address of matrix B
+        GM_ADDR cGmAddr{nullptr};     ///< The global memory address of matrix C
+        GM_ADDR biasGmAddr{nullptr};  ///< The global memory address of bias
+        GM_ADDR indexGmAddr{nullptr}; ///< The global memory address of index
         LayoutA layoutA;
         LayoutB layoutB;
         LayoutC layoutC;
     };
-    
+
     /**
      * @struct BlockSchedulerArguments
      * @brief Kernel arguments for the host side
@@ -107,17 +105,17 @@ public:
     using BGlobalTensorType = AscendC::GlobalTensor<BType>;
     using CGlobalTensorType = AscendC::GlobalTensor<CType>;
     using ATlaTensor = tla::Tensor<AGlobalTensorType, LayoutA, tla::Coord<tla::_0, tla::_0>,
-                                AscendC::TPosition::GM>;
+                                   AscendC::TPosition::GM>;
     using BTlaTensor = tla::Tensor<BGlobalTensorType, LayoutB, tla::Coord<tla::_0, tla::_0>,
-                                AscendC::TPosition::GM>;
+                                   AscendC::TPosition::GM>;
     using CTlaTensor = tla::Tensor<CGlobalTensorType, LayoutC, tla::Coord<tla::_0, tla::_0>,
-                                AscendC::TPosition::GM>;
+                                   AscendC::TPosition::GM>;
 
     // NZ layout for index (B transpose)
     using BIndexLayout = tla::Layout<
-        tla::Shape<tla::Shape<tla::Int<8>, int64_t>, tla::Shape<tla::Int<16>, int64_t> >, // 8 = 32 / (sizeof(uint8) * 4)
-        tla::Stride<tla::Stride<tla::Int<1>, int64_t>, tla::Stride<tla::Int<8>, tla::_128>>   // 128 = 16 * 8
-    >;
+        tla::Shape<tla::Shape<tla::Int<8>, int64_t>, tla::Shape<tla::Int<16>, int64_t>>,    // 8 = 32 / (sizeof(uint8) * 4)
+        tla::Stride<tla::Stride<tla::Int<1>, int64_t>, tla::Stride<tla::Int<8>, tla::_128>> // 128 = 16 * 8
+        >;
 
     using IndexGlobalTensorType = AscendC::GlobalTensor<IndexType>;
     using IndexTensor = tla::Tensor<IndexGlobalTensorType, BIndexLayout, tla::Coord<tla::_0, tla::_0>,
@@ -143,10 +141,10 @@ public:
      * @brief Structure to hold arguments for the problem
      */
     struct Arguments {
-        ProblemShape problemShape;              ///< Problem shape
-        BlockMmadArguments mmadArgs;            ///< MMAD parameters
-        BlockSchedulerArguments schedulerArgs;  ///< Scheduler parameters
-        Arguments() = default;                  ///< Default constructor
+        ProblemShape problemShape;             ///< Problem shape
+        BlockMmadArguments mmadArgs;           ///< MMAD parameters
+        BlockSchedulerArguments schedulerArgs; ///< Scheduler parameters
+        Arguments() = default;                 ///< Default constructor
     };
 
     /**
@@ -154,10 +152,10 @@ public:
      * @brief Structure to hold parameters for the problem
      */
     struct Params {
-        ProblemShape problemShape;              ///< Problem shape
-        BlockMmadParams mmadParams;             ///< MMAD parameters
-        BlockSchedulerParams schedulerParams;   ///< Scheduler parameters
-        Params() = default;                     ///< Default constructor
+        ProblemShape problemShape;            ///< Problem shape
+        BlockMmadParams mmadParams;           ///< MMAD parameters
+        BlockSchedulerParams schedulerParams; ///< Scheduler parameters
+        Params() = default;                   ///< Default constructor
     };
 
     /**
@@ -166,7 +164,7 @@ public:
      * @return TupleShape representation of the input ProblemShape
      */
     CATLASS_DEVICE
-    static TupleShape ToShapeTuple(ProblemShape const& shape)
+    static TupleShape ToShapeTuple(ProblemShape const &shape)
     {
         return {shape.m, shape.n, shape.k, shape.b};
     }
@@ -176,7 +174,7 @@ public:
      * @param [in] params: parameters to be initialized
      */
     CATLASS_DEVICE
-    void Init(Params const& params)
+    void Init(Params const &params)
     {
         problemShape_ = ToShapeTuple(params.problemShape);
         blockMmadParams_ = params.mmadParams;
@@ -184,16 +182,15 @@ public:
         int64_t n = tla::get<1>(problemShape_);
         int64_t k = tla::get<2>(problemShape_);
         // Init Tensor
-        aGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ AType*>(blockMmadParams_.aGmAddr), m * k);
+        aGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ AType *>(blockMmadParams_.aGmAddr), m * k);
         aTlaTensor_ = tla::MakeTensor(aGlobal_, blockMmadParams_.layoutA, Arch::PositionGM{});
 
-        bGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ BType*>(blockMmadParams_.bGmAddr), (k / DENSE_MATRIX_B_OFFSET) * n);
+        bGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ BType *>(blockMmadParams_.bGmAddr), (k / DENSE_MATRIX_B_OFFSET) * n);
         bTlaTensor_ = tla::MakeTensor(bGlobal_, blockMmadParams_.layoutB, Arch::PositionGM{});
 
-        cGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ CType*>(blockMmadParams_.cGmAddr), m * n);
+        cGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(blockMmadParams_.cGmAddr), m * n);
         cTlaTensor_ = tla::MakeTensor(cGlobal_, blockMmadParams_.layoutC, Arch::PositionGM{});
 
-        
         BIndexLayout indexLayout = tla::MakeLayout(
             tla::MakeShape(tla::MakeShape(tla::Int<INDEX_MATRIX_OFFSET>{},
                                           CeilDiv<int64_t>(k / INDEX_MATRIX_OFFSET, INDEX_MATRIX_OFFSET)),
@@ -201,8 +198,8 @@ public:
                                           CeilDiv<int64_t>(n, C0_NUM_PER_FRACTAL))),
             tla::MakeStride(tla::MakeStride(tla::Int<1>{}, RoundUp<int64_t>(n, C0_NUM_PER_FRACTAL) * INDEX_MATRIX_OFFSET),
                             tla::MakeStride(tla::Int<INDEX_MATRIX_OFFSET>{}, tla::Int<INDEX_MATRIX_OFFSET * C0_NUM_PER_FRACTAL>{})));
-        indexGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ IndexType*>(blockMmadParams_.indexGmAddr),
-                                    n * k / INDEX_MATRIX_OFFSET);
+        indexGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ IndexType *>(blockMmadParams_.indexGmAddr),
+                                     n * k / INDEX_MATRIX_OFFSET);
         indexTlaTensor_ = tla::MakeTensor(indexGlobal_, indexLayout, Arch::PositionGM{});
     }
 
@@ -214,7 +211,8 @@ public:
      */
     template <class BlockCoord>
     CATLASS_DEVICE
-    tla::Coord<int64_t, int64_t, int64_t, int64_t> GetOffset(const BlockCoord& blockCoord)
+        tla::Coord<int64_t, int64_t, int64_t, int64_t>
+        GetOffset(const BlockCoord &blockCoord)
     {
         int64_t m = tla::get<0>(problemShape_);
         int64_t n = tla::get<1>(problemShape_);
@@ -239,7 +237,7 @@ public:
      * @return Status of the check
      */
     CATLASS_HOST_DEVICE
-    static Status CheckShape(ProblemShape const& shape)
+    static Status CheckShape(ProblemShape const &shape)
     {
         uint32_t m = shape.m;
         uint32_t n = shape.n;
@@ -275,7 +273,7 @@ public:
      * @return Status of the check
      */
     CATLASS_HOST_DEVICE
-    static bool CanImplement(Arguments const& args)
+    static bool CanImplement(Arguments const &args)
     {
         // Check mmad args
         Status BlockMmadCanImplement;
@@ -310,11 +308,11 @@ public:
      * @return Initialized parameters
      */
     CATLASS_HOST_DEVICE
-    static Params ToUnderlyingArguments(Arguments const& args, GM_ADDR workspace)
+    static Params ToUnderlyingArguments(Arguments const &args, GM_ADDR workspace)
     {
         BlockMmadParams mmadParams = {args.mmadArgs.aGmAddr, args.mmadArgs.bGmAddr,
-                                    args.mmadArgs.cGmAddr, args.mmadArgs.biasGmAddr, args.mmadArgs.indexGmAddr,
-                                    args.mmadArgs.layoutA, args.mmadArgs.layoutB, args.mmadArgs.layoutC};
+                                      args.mmadArgs.cGmAddr, args.mmadArgs.biasGmAddr, args.mmadArgs.indexGmAddr,
+                                      args.mmadArgs.layoutA, args.mmadArgs.layoutB, args.mmadArgs.layoutC};
         // mmad params with epiligue takes workspaceGm as output
         Params params = {args.problemShape, mmadParams, args.schedulerArgs};
         return params;
@@ -325,7 +323,7 @@ public:
      * @param [in] params: parameters for the problem
      */
     CATLASS_DEVICE
-    void operator()(Params const& params)
+    void operator()(Params const &params)
     {
         if ASCEND_IS_AIV {
             return;

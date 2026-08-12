@@ -25,8 +25,7 @@ namespace Catlass::Gemm::Kernel {
 template <
     class BlockMmad_,
     class BlockEpilogue_,
-    class BlockScheduler_
->
+    class BlockScheduler_>
 class StridedBatchedMatmulTla {
 public:
     using BlockMmad = BlockMmad_;
@@ -68,18 +67,26 @@ public:
                GM_ADDR ptrA_, LayoutA layoutA_,
                GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrC_, LayoutC layoutC_)
-            : batchCount(batchCount_), problemShape(problemShape_),
-              ptrA(ptrA_), layoutA(layoutA_),
-              ptrB(ptrB_), layoutB(layoutB_),
-              ptrC(ptrC_), layoutC(layoutC_) {}
+            : batchCount(batchCount_),
+              problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_)
+        {}
     };
 
     struct Arguments {
         uint32_t batchCount;
         GemmCoord problemShape;
-        uint8_t *ptrA; LayoutA layoutA;
-        uint8_t *ptrB; LayoutB layoutB;
-        uint8_t *ptrC; LayoutC layoutC;
+        uint8_t *ptrA;
+        LayoutA layoutA;
+        uint8_t *ptrB;
+        LayoutB layoutB;
+        uint8_t *ptrC;
+        LayoutC layoutC;
     };
 
     static bool CanImplement(const Arguments &args)
@@ -105,12 +112,11 @@ public:
     StridedBatchedMatmulTla() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params) {
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
+    {
         BlockScheduler matmulBlockScheduler(params.problemShape, MakeCoord(L1_TILE_M, L1_TILE_N));
         uint32_t coreLoops = params.batchCount * matmulBlockScheduler.GetCoreLoops();
 
@@ -140,18 +146,15 @@ public:
             auto tensorBlockA = tla::TileView(
                 tensorA,
                 tla::MakeCoord(blockCoord.m(), 0u),
-                tla::MakeShape(L1_TILE_M, params.problemShape.k())
-            );
+                tla::MakeShape(L1_TILE_M, params.problemShape.k()));
             auto tensorBlockB = tla::TileView(
                 tensorB,
                 tla::MakeCoord(0u, blockCoord.n()),
-                tla::MakeShape(params.problemShape.k(), L1_TILE_N)
-            );
+                tla::MakeShape(params.problemShape.k(), L1_TILE_N));
             auto tensorBlockC = tla::TileView(
                 tensorC,
                 tla::MakeCoord(blockCoord.m(), blockCoord.n()),
-                tla::MakeShape(L1_TILE_M, L1_TILE_N)
-            );
+                tla::MakeShape(L1_TILE_M, L1_TILE_N));
 
             blockMmad(tensorBlockA, tensorBlockB, tensorBlockC);
         }
@@ -160,8 +163,8 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params) {}
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
+    {}
 };
 
 } // namespace Catlass::Gemm::Kernel

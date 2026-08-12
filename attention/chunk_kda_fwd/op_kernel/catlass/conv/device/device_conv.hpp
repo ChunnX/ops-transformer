@@ -29,9 +29,11 @@ public:
     using Arguments = typename ConvKernel::Arguments;
     /// Argument structure: Kernel API
     using Params = typename ConvKernel::Params;
+
 private:
     /// kernel API parameters object
     Params params_;
+
 public:
     DeviceConv() {}
     ~DeviceConv() {}
@@ -106,5 +108,5 @@ public:
 };
 ///////////////////////////////////////////////////////////////////////////////////
 
-} // namespace Catlass::Gemm::Device
+} // namespace Catlass::Conv::Device
 #endif

@@ -26,8 +26,7 @@ template <
     class ElementScale_,
     class ElementPerToken_,
     class ElementDst_,
-    class TileShape_
->
+    class TileShape_>
 struct TilePerTokenDequant {
     using ArchTag = ArchTag_;
     using ElementSrc = ElementSrc_;
@@ -37,12 +36,11 @@ struct TilePerTokenDequant {
     using TileShape = TileShape_;
 
     static_assert(
-        std::is_same_v<ArchTag, Arch::Ascend950> && std::is_same_v<ElementSrc, int32_t> && 
-        (std::is_same_v<ElementDst, half> || std::is_same_v<ElementDst, bfloat16_t> || std::is_same_v<ElementDst, float>) &&
-        (std::is_same_v<ElementScale, half> || std::is_same_v<ElementScale, bfloat16_t> || std::is_same_v<ElementScale, float>) &&
-        (std::is_same_v<ElementPerToken, half> || std::is_same_v<ElementPerToken, bfloat16_t> || std::is_same_v<ElementPerToken, float>),
-        "The element type template parameters of TilePerTokenDequant are wrong"
-    );
+        std::is_same_v<ArchTag, Arch::Ascend950> && std::is_same_v<ElementSrc, int32_t> &&
+            (std::is_same_v<ElementDst, half> || std::is_same_v<ElementDst, bfloat16_t> || std::is_same_v<ElementDst, float>) &&
+            (std::is_same_v<ElementScale, half> || std::is_same_v<ElementScale, bfloat16_t> || std::is_same_v<ElementScale, float>) &&
+            (std::is_same_v<ElementPerToken, half> || std::is_same_v<ElementPerToken, bfloat16_t> || std::is_same_v<ElementPerToken, float>),
+        "The element type template parameters of TilePerTokenDequant are wrong");
 
     CATLASS_DEVICE
     TilePerTokenDequant() {}
@@ -53,26 +51,23 @@ struct TilePerTokenDequant {
 
     static constexpr CastTrait ctInt322Fp32 = {
         RegLayout::UNKNOWN, SatMode::UNKNOWN,
-        MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT
-    };
+        MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
     static constexpr CastTrait ctFp322Half = {
         RegLayout::ZERO, SatMode::NO_SAT,
-        MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT
-    };
+        MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
     static constexpr CastTrait ctHalf2Fp32Zero = {
         RegLayout::ZERO, SatMode::UNKNOWN,
-        MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN
-    };
+        MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
     static constexpr CastTrait ctHalf2Fp32One = {
         RegLayout::ONE, SatMode::UNKNOWN,
-        MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN
-    };
+        MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
     template <class T, LoadDist Dist = LoadDist::DIST_NORM>
-    __simd_callee__ inline void LoadIn(RegTensor<float>& dstVreg, __ubuf__ T*  srcUb, MaskReg& mask, MaskReg& maskB16){
+    __simd_callee__ inline void LoadIn(RegTensor<float> &dstVreg, __ubuf__ T *srcUb, MaskReg &mask, MaskReg &maskB16)
+    {
         if constexpr (AscendC::IsSameType<T, float>::value) {
             LoadAlign<T, Dist>(dstVreg, srcUb);
-        } else if constexpr(AscendC::IsSameType<T, int32_t>::value) {
+        } else if constexpr (AscendC::IsSameType<T, int32_t>::value) {
             RegTensor<T> srcVreg;
             LoadAlign<T, Dist>(srcVreg, srcUb);
             Cast<float, T, ctInt322Fp32>(dstVreg, srcVreg, mask);
@@ -87,7 +82,8 @@ struct TilePerTokenDequant {
     }
 
     template <class T>
-    __simd_callee__ inline void StoreOut(__ubuf__ T* dstUb, RegTensor<float>& srcVreg, MaskReg& mask){
+    __simd_callee__ inline void StoreOut(__ubuf__ T *dstUb, RegTensor<float> &srcVreg, MaskReg &mask)
+    {
         if constexpr (AscendC::IsSameType<T, float>::value) {
             StoreAlign<T, StoreDist::DIST_NORM_B32>(dstUb, srcVreg, mask);
         } else {
@@ -98,9 +94,8 @@ struct TilePerTokenDequant {
     }
 
     __simd_vf__ void perTokenScaleDequant(
-        __ubuf__ ElementDst* dstUb, __ubuf__ ElementSrc* srcUb, __ubuf__ ElementScale* scaleUb,
-        __ubuf__ ElementPerToken* perTokenUb, uint16_t m, uint16_t nLoops, uint32_t tailN
-    )
+        __ubuf__ ElementDst *dstUb, __ubuf__ ElementSrc *srcUb, __ubuf__ ElementScale *scaleUb,
+        __ubuf__ ElementPerToken *perTokenUb, uint16_t m, uint16_t nLoops, uint32_t tailN)
     {
         RegTensor<float> perTokenVreg;
         RegTensor<float> scaleVreg;
@@ -112,7 +107,7 @@ struct TilePerTokenDequant {
         uint32_t tailNB16 = tailN;
         MaskReg pregTailN = UpdateMask<float>(tailN);
         MaskReg pregTailNB16 = UpdateMask<bfloat16_t>(tailNB16);
-        
+
         for (uint16_t i = 0; i < m; i++) {
             if constexpr (AscendC::IsSameType<ElementPerToken, float>::value) {
                 LoadIn<ElementPerToken, LoadDist::DIST_BRC_B32>(perTokenVreg, perTokenUb + i, pregFull, pregFullB16);
@@ -135,35 +130,32 @@ struct TilePerTokenDequant {
     }
 
     template <class TensorDst, class TensorSrc, class TensorScale, class TensorPerToken>
-    CATLASS_DEVICE
-    void operator()(
+    CATLASS_DEVICE void operator()(
         TensorDst const &ubOut,
         TensorSrc const &ubIn,
         TensorScale const &ubScale,
-        TensorPerToken const &ubPerToken
-    )
+        TensorPerToken const &ubPerToken)
     {
         static_assert(tla::detail::isRowMajor<typename TensorSrc::Layout>::value &&
-                      tla::detail::isRowMajor<typename TensorDst::Layout>::value &&
-                      tla::detail::isVector<typename TensorScale::Layout>::value &&
-                      tla::detail::isVector<typename TensorPerToken::Layout>::value &&
-                      TensorSrc::position == AscendC::TPosition::VECCALC &&
-                      TensorDst::position == AscendC::TPosition::VECCALC &&
-                      TensorScale::position == AscendC::TPosition::VECCALC &&
-                      TensorPerToken::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be UB and RowMajor, "
-            "TensorDst must be UB and RowMajor, TensorScale must be UB and VectorLayout, "
-            "TensorPerToken must be UB and VectorLayout."
-        );
+                          tla::detail::isRowMajor<typename TensorDst::Layout>::value &&
+                          tla::detail::isVector<typename TensorScale::Layout>::value &&
+                          tla::detail::isVector<typename TensorPerToken::Layout>::value &&
+                          TensorSrc::position == AscendC::TPosition::VECCALC &&
+                          TensorDst::position == AscendC::TPosition::VECCALC &&
+                          TensorScale::position == AscendC::TPosition::VECCALC &&
+                          TensorPerToken::position == AscendC::TPosition::VECCALC,
+                      "The input parameters do not match. TensorSrc must be UB and RowMajor, "
+                      "TensorDst must be UB and RowMajor, TensorScale must be UB and VectorLayout, "
+                      "TensorPerToken must be UB and VectorLayout.");
         uint32_t m = tla::get<0>(ubIn.shape());
         uint32_t n = tla::get<1>(ubIn.shape());
         constexpr int16_t vlSize = static_cast<int16_t>(AscendC::GetVecLen() / sizeof(ElementSrc));
         uint16_t nLoops = AscendC::CeilDivision(n, vlSize) - 1;
         uint16_t tailN = n - nLoops * vlSize;
-        __ubuf__ ElementDst* dstUbAddr = (__ubuf__ ElementDst*)ubOut.data().GetPhyAddr();
-        __ubuf__ ElementSrc* srcUbAddr = (__ubuf__ ElementSrc*)ubIn.data().GetPhyAddr();
-        __ubuf__ ElementScale* scaleUbAddr = (__ubuf__ ElementScale*)ubScale.data().GetPhyAddr();
-        __ubuf__ ElementPerToken* perTokenUbAddr = (__ubuf__ ElementPerToken*)ubPerToken.data().GetPhyAddr();
+        __ubuf__ ElementDst *dstUbAddr = (__ubuf__ ElementDst *)ubOut.data().GetPhyAddr();
+        __ubuf__ ElementSrc *srcUbAddr = (__ubuf__ ElementSrc *)ubIn.data().GetPhyAddr();
+        __ubuf__ ElementScale *scaleUbAddr = (__ubuf__ ElementScale *)ubScale.data().GetPhyAddr();
+        __ubuf__ ElementPerToken *perTokenUbAddr = (__ubuf__ ElementPerToken *)ubPerToken.data().GetPhyAddr();
         perTokenScaleDequant(dstUbAddr, srcUbAddr, scaleUbAddr, perTokenUbAddr, m, nLoops, tailN);
     }
 #endif
@@ -171,4 +163,4 @@ struct TilePerTokenDequant {
 
 } // namespace Catlass::Epilogue::Tile
 
-#endif //CATLASS_EPILOGUE_TILE_TILE_PERTOKEN_DEQUANT_HPP
+#endif // CATLASS_EPILOGUE_TILE_TILE_PERTOKEN_DEQUANT_HPP

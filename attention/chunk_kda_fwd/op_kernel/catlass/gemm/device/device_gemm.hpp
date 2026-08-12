@@ -30,9 +30,11 @@ public:
     using Arguments = typename GemmKernel::Arguments;
     /// Argument structure: Kernel API
     using Params = typename GemmKernel::Params;
+
 private:
     /// kernel API parameters object
     Params params_;
+
 public:
     DeviceGemm() {}
     ~DeviceGemm() {}
@@ -85,13 +87,13 @@ public:
         Adx::AdumpPrintWorkSpace(ptrDump, ALL_DUMPSIZE, stream, "device_gemm");
         aclCheck(aclrtFree(ptrDump));
 #else
-#if (defined (CATLASS_ARCH) && CATLASS_ARCH == 2201)
+#if (defined(CATLASS_ARCH) && CATLASS_ARCH == 2201)
         if (fftsAddr == 0) {
             Catlass::KernelAdapter<GemmKernel><<<blockDim, nullptr, stream>>>(params_);
         } else {
             Catlass::KernelAdapter<GemmKernel><<<blockDim, nullptr, stream>>>(params_, fftsAddr);
         }
-#elif (defined (CATLASS_ARCH) && CATLASS_ARCH == 3510)
+#elif (defined(CATLASS_ARCH) && CATLASS_ARCH == 3510)
         Catlass::KernelAdapter<GemmKernel><<<blockDim, nullptr, stream>>>(params_);
 #endif
 #endif

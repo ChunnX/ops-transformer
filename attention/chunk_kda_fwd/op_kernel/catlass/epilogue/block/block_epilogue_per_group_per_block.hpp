@@ -21,11 +21,11 @@
 
 namespace Catlass::Epilogue::Block {
 
-#define QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS                                              \
-    template <                                                                                      \
+#define QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS \
+    template < \
         class L0TileShape_, class DataTypeOut_, class DataTypeIn_, class DataTypeBias_, \
         class DataTypeX1Scale_, class DataTypeX2Scale_, class LayoutX1Scale_, class LayoutX2Scale_>
-#define QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS                                                           \
+#define QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS \
     BlockEpiloguePertile, L0TileShape_, DataTypeOut_, DataTypeIn_, DataTypeBias_, DataTypeX1Scale_, DataTypeX2Scale_, LayoutX1Scale_, \
         LayoutX2Scale_
 
@@ -37,8 +37,7 @@ template <
     class DataTypeX1Scale_,
     class DataTypeX2Scale_,
     class LayoutX1Scale_,
-    class LayoutX2Scale_
->
+    class LayoutX2Scale_>
 class BlockEpilogue<
     BlockEpiloguePertile,
     L0TileShape_,
@@ -48,8 +47,7 @@ class BlockEpilogue<
     DataTypeX1Scale_,
     DataTypeX2Scale_,
     LayoutX1Scale_,
-    LayoutX2Scale_
-> {
+    LayoutX2Scale_> {
 public:
     using DispatchPolicy = BlockEpiloguePertile;
     using ArchTag = typename DispatchPolicy::ArchTag;
@@ -139,46 +137,46 @@ public:
     };
 
 public:
-    CATLASS_DEVICE void Init(const Params* params);
+    CATLASS_DEVICE void Init(const Params *params);
     template <class TensorUb>
-    CATLASS_DEVICE void operator()(const TensorUb& tensorUbPing);
-    CATLASS_DEVICE void UpdateGlobalAddr(const BlockCoord& baseOffset);
-    CATLASS_DEVICE void UpdateParamsForNextProblem(const GemmCoord& problemShape);
+    CATLASS_DEVICE void operator()(const TensorUb &tensorUbPing);
+    CATLASS_DEVICE void UpdateGlobalAddr(const BlockCoord &baseOffset);
+    CATLASS_DEVICE void UpdateParamsForNextProblem(const GemmCoord &problemShape);
     CATLASS_DEVICE auto GetL0c2UbPingTensor();
     CATLASS_DEVICE auto GetL0c2UbPongTensor();
 
 private:
     CATLASS_DEVICE void ProcessAivSingleKPertile(int64_t x1ScaleOffset,
-                                                    __gm__ X2ScaleType* x2ScaleAddr[UB_SUB_BANK_NUM]);
+                                                 __gm__ X2ScaleType *x2ScaleAddr[UB_SUB_BANK_NUM]);
 
     CATLASS_DEVICE void ProcessAivSingleKPerblock(int64_t x1ScaleOffset,
-                                                     __gm__ X2ScaleType* x2ScaleAddr[UB_SUB_BANK_NUM]);
+                                                  __gm__ X2ScaleType *x2ScaleAddr[UB_SUB_BANK_NUM]);
     CATLASS_DEVICE void CopyInBias();
     template <class T>
-    CATLASS_DEVICE __ubuf__ T* CopyInX1Scale(uint64_t srcOffset, uint64_t m, uint64_t k);
+    CATLASS_DEVICE __ubuf__ T *CopyInX1Scale(uint64_t srcOffset, uint64_t m, uint64_t k);
     template <class T>
-    CATLASS_DEVICE T CopyInX1ScalePertile(__gm__ T* src, uint64_t offset);
+    CATLASS_DEVICE T CopyInX1ScalePertile(__gm__ T *src, uint64_t offset);
     template <class T>
-    CATLASS_DEVICE void CopyInX2Scale(T x2Scale[UB_SUB_BANK_NUM], __gm__ T* src[UB_SUB_BANK_NUM], uint64_t offset);
+    CATLASS_DEVICE void CopyInX2Scale(T x2Scale[UB_SUB_BANK_NUM], __gm__ T *src[UB_SUB_BANK_NUM], uint64_t offset);
     CATLASS_DEVICE int64_t CalcX1OffsetPerGroup();
     CATLASS_DEVICE void CalcX2OffsetPerGroup(int64_t x2ScaleOffset[UB_SUB_BANK_NUM]);
     template <class T>
-    CATLASS_DEVICE __ubuf__ T* GetX1ScaleUbAddrPerGroup(int64_t x1ScaleOffset, uint64_t kOffset, uint64_t kElem);
+    CATLASS_DEVICE __ubuf__ T *GetX1ScaleUbAddrPerGroup(int64_t x1ScaleOffset, uint64_t kOffset, uint64_t kElem);
     template <bool isFirstKLoop, uint32_t ndNum>
-    __simd_vf__ void AivPerTensor(__ubuf__ CalcType* dst, __ubuf__ CType* l0cOut, __ubuf__ X1ScaleType* x1Scale,
-                                        uint16_t mSize, uint32_t nSize0, uint32_t nSize1, uint16_t kSize,
-                                        X2ScaleType x2Scale0, X2ScaleType x2Scale1, uint64_t x1ScaleKIdxInCache);
+    __simd_vf__ void AivPerTensor(__ubuf__ CalcType *dst, __ubuf__ CType *l0cOut, __ubuf__ X1ScaleType *x1Scale,
+                                  uint16_t mSize, uint32_t nSize0, uint32_t nSize1, uint16_t kSize,
+                                  X2ScaleType x2Scale0, X2ScaleType x2Scale1, uint64_t x1ScaleKIdxInCache);
     template <bool isFirstKLoop, uint32_t ndNum>
-    __simd_vf__ void AivPerTensor(__ubuf__ CType* dst, __ubuf__ CType* l0cOut, X1ScaleType x1Scale,
-                                        uint16_t mSize, uint32_t nSize0, uint32_t nSize1, X2ScaleType x2Scale0,
-                                        X2ScaleType x2Scale1);
+    __simd_vf__ void AivPerTensor(__ubuf__ CType *dst, __ubuf__ CType *l0cOut, X1ScaleType x1Scale,
+                                  uint16_t mSize, uint32_t nSize0, uint32_t nSize1, X2ScaleType x2Scale0,
+                                  X2ScaleType x2Scale1);
     template <uint32_t ndNum>
     __simd_vf__ void AddBias(
-        __ubuf__ CalcType* mmAdd, __ubuf__ BiasType* bias, uint16_t mSize, uint32_t nSize0, uint32_t nSize1);
-    CATLASS_DEVICE void AivPostProcess(const AscendC::LocalTensor<CalcType>& mmAddUb);
-    CATLASS_DEVICE void CopyOut(const AscendC::LocalTensor<YType>& ubRes, uint16_t eventId, uint16_t blkCount,
-                                   uint32_t blkLen, uint32_t srcStride, uint32_t dstStride, uint64_t yOffset);
-    CATLASS_DEVICE void CastAndCopyOut(const AscendC::LocalTensor<CalcType>& mmAddUb);
+        __ubuf__ CalcType *mmAdd, __ubuf__ BiasType *bias, uint16_t mSize, uint32_t nSize0, uint32_t nSize1);
+    CATLASS_DEVICE void AivPostProcess(const AscendC::LocalTensor<CalcType> &mmAddUb);
+    CATLASS_DEVICE void CopyOut(const AscendC::LocalTensor<YType> &ubRes, uint16_t eventId, uint16_t blkCount,
+                                uint32_t blkLen, uint32_t srcStride, uint32_t dstStride, uint64_t yOffset);
+    CATLASS_DEVICE void CastAndCopyOut(const AscendC::LocalTensor<CalcType> &mmAddUb);
     CATLASS_DEVICE void UpdatePertileUBValidMN();
     CATLASS_DEVICE void UpdatePertileUBParam();
     CATLASS_DEVICE void WaitForCube(uint16_t crossPingPongID)
@@ -193,8 +191,8 @@ private:
     AscendC::GlobalTensor<BiasType> biasGlobal_;
     AscendC::GlobalTensor<YType> cGlobal_;
     AscendC::GlobalTensor<X1ScaleType> x1ScaleGlobal_;
-    __gm__ X1ScaleType* x1ScaleGlobalPerblock_;
-    __gm__ X2ScaleType* x2ScaleGlobal_;
+    __gm__ X1ScaleType *x1ScaleGlobalPerblock_;
+    __gm__ X2ScaleType *x2ScaleGlobal_;
     AscendC::LocalTensor<CType> mmResPing_;
     AscendC::LocalTensor<CType> mmResPong_;
     AscendC::LocalTensor<YType> ubResPing_;
@@ -206,7 +204,7 @@ private:
     AscendC::LocalTensor<BiasType> biasUbPong_;
 
 private:
-    const Params* params_;
+    const Params *params_;
     PertileUBParam ubParams_;
     GemmCoord problemShape_{};
     GemmCoord actualSingleShape_{};
@@ -226,7 +224,7 @@ private:
 };
 
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
-CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::Init(const Params* params)
+CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::Init(const Params *params)
 {
     if ASCEND_IS_AIC {
         return;
@@ -269,7 +267,7 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
 
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::UpdateParamsForNextProblem(
-    const GemmCoord& problemShape)
+    const GemmCoord &problemShape)
 {
     problemShape_ = problemShape;
 
@@ -280,14 +278,14 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
 
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(
-    const BlockCoord& baseOffset)
+    const BlockCoord &baseOffset)
 {
     if ASCEND_IS_AIV {
-        x1ScaleGlobal_.SetGlobalBuffer((__gm__ X1ScaleType*)params_->x1ScaleGmAddr + tla::get<X1SCALE_IDX>(baseOffset));
-        x1ScaleGlobalPerblock_ = (__gm__ X1ScaleType*)params_->x1ScaleGmAddr + tla::get<X1SCALE_IDX>(baseOffset);
-        x2ScaleGlobal_ = (__gm__ X2ScaleType*)params_->x2ScaleGmAddr + tla::get<X2SCALE_IDX>(baseOffset);
-        cGlobal_.SetGlobalBuffer((__gm__ YType*)params_->outGmAddr + tla::get<Y_IDX>(baseOffset));
-        biasGlobal_.SetGlobalBuffer((__gm__ BiasType*)params_->biasGmAddr + tla::get<BIAS_IDX>(baseOffset));
+        x1ScaleGlobal_.SetGlobalBuffer((__gm__ X1ScaleType *)params_->x1ScaleGmAddr + tla::get<X1SCALE_IDX>(baseOffset));
+        x1ScaleGlobalPerblock_ = (__gm__ X1ScaleType *)params_->x1ScaleGmAddr + tla::get<X1SCALE_IDX>(baseOffset);
+        x2ScaleGlobal_ = (__gm__ X2ScaleType *)params_->x2ScaleGmAddr + tla::get<X2SCALE_IDX>(baseOffset);
+        cGlobal_.SetGlobalBuffer((__gm__ YType *)params_->outGmAddr + tla::get<Y_IDX>(baseOffset));
+        biasGlobal_.SetGlobalBuffer((__gm__ BiasType *)params_->biasGmAddr + tla::get<BIAS_IDX>(baseOffset));
     }
 }
 
@@ -311,7 +309,7 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
 
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 template <class T>
-CATLASS_DEVICE __ubuf__ T* BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::CopyInX1Scale(
+CATLASS_DEVICE __ubuf__ T *BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::CopyInX1Scale(
     uint64_t srcOffset, uint64_t m, uint64_t k)
 {
     AscendC::DataCopyExtParams x1ScaleGm2UbParams;
@@ -325,7 +323,7 @@ CATLASS_DEVICE __ubuf__ T* BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_
     AscendC::DataCopyPad(*x1ScaleUb, x1ScaleGlobal_[srcOffset], x1ScaleGm2UbParams, padParams);
     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(x1ScalePingPongID_);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(x1ScalePingPongID_);
-    return reinterpret_cast<__ubuf__ T*>(x1ScaleUb->GetPhyAddr());
+    return reinterpret_cast<__ubuf__ T *>(x1ScaleUb->GetPhyAddr());
 }
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::CopyInBias()
@@ -356,7 +354,7 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 template <class T>
 CATLASS_DEVICE T BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::CopyInX1ScalePertile(
-    __gm__ T* src, uint64_t offset)
+    __gm__ T *src, uint64_t offset)
 {
     return src[offset];
 }
@@ -364,7 +362,7 @@ CATLASS_DEVICE T BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::C
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 template <class T>
 CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::CopyInX2Scale(
-    T x2Scale[UB_SUB_BANK_NUM], __gm__ T* src[UB_SUB_BANK_NUM], uint64_t offset)
+    T x2Scale[UB_SUB_BANK_NUM], __gm__ T *src[UB_SUB_BANK_NUM], uint64_t offset)
 {
     x2Scale[0] = src[0][offset * scaleN_];
     x2Scale[1] = src[1][offset * scaleN_];
@@ -416,12 +414,12 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
         ubParams_.singleN = fixpipeN;
         ubParams_.singleM = CeilDiv(actualSingleShape_.m(), AscendC::GetTaskRation());
     }
-    
+
     UpdatePertileUBValidMN();
     int64_t offsetM = 0;
     int64_t offsetN0 = 0;
     int64_t offsetN1 = 0;
-    
+
     if (ubParams_.CopyOutWithSplitN) {
         offsetN0 = ubParams_.validN[0] == 0 ? 0 : AscendC::GetSubBlockIdx() * ubParams_.singleN;
         offsetN1 = ubParams_.validN[1] == 0 ? offsetN0 : offsetN0 + UB_SUB_BANK_NUM * ubParams_.singleN;
@@ -431,7 +429,7 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
         }
         offsetN1 = ubParams_.validN[1] == 0 ? 0 : ubParams_.singleN;
     }
-    
+
     ubParams_.offsetScaleM = offsetM / params_->groupSizeM;
     ubParams_.offsetScaleN[0] = offsetN0 / params_->groupSizeN;
     ubParams_.offsetScaleN[1] = offsetN1 / params_->groupSizeN;
@@ -444,7 +442,7 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 template <class TensorUb>
 CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::operator()(
-    const TensorUb& tensorUb)
+    const TensorUb &tensorUb)
 {
     actualSingleShape_ = GemmCoord{tla::get<0>(tensorUb.shape()),
                                    tla::get<1>(tensorUb.shape()),
@@ -460,7 +458,7 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
     int64_t x1ScaleOffset = CalcX1OffsetPerGroup(); // one block same x1Scale
     int64_t x2ScaleOffset[UB_SUB_BANK_NUM] = {0};   // maybe 2 different x2Scale
     CalcX2OffsetPerGroup(x2ScaleOffset);
-    __gm__ X2ScaleType* x2ScaleAddr[UB_SUB_BANK_NUM] = {x2ScaleGlobal_ + x2ScaleOffset[0],
+    __gm__ X2ScaleType *x2ScaleAddr[UB_SUB_BANK_NUM] = {x2ScaleGlobal_ + x2ScaleOffset[0],
                                                         x2ScaleGlobal_ + x2ScaleOffset[1]};
 
     if (isPergroup_) {
@@ -472,7 +470,7 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
 
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 template <class T>
-CATLASS_DEVICE __ubuf__ T*
+CATLASS_DEVICE __ubuf__ T *
 BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::GetX1ScaleUbAddrPerGroup(
     int64_t x1ScaleOffset, uint64_t kOffset, uint64_t kElem)
 {
@@ -483,14 +481,14 @@ BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::GetX1ScaleUbAddrPe
 
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::ProcessAivSingleKPertile(
-    int64_t x1ScaleOffset, __gm__ X2ScaleType* x2ScaleAddr[UB_SUB_BANK_NUM])
+    int64_t x1ScaleOffset, __gm__ X2ScaleType *x2ScaleAddr[UB_SUB_BANK_NUM])
 {
-    auto mmAddUbAddr = reinterpret_cast<__ubuf__ CType*>(mmAddUb_.GetPhyAddr());
+    auto mmAddUbAddr = reinterpret_cast<__ubuf__ CType *>(mmAddUb_.GetPhyAddr());
     const uint16_t x1ScaleKElem = Min(QBMM_MAX_STEP_SCALEA_K, scaleK_);
     uint64_t kElem;
-    __ubuf__ X1ScaleType* x1ScaleUbAddr;
+    __ubuf__ X1ScaleType *x1ScaleUbAddr;
     X2ScaleType x2Scale[UB_SUB_BANK_NUM];
-    
+
     for (uint64_t kb = 0, kOffset = 0; kb < problemShape_.k(); kb += params_->baseK, kOffset++) {
         CopyInX2Scale<X2ScaleType>(x2Scale, x2ScaleAddr, kOffset);
         uint64_t x1ScaleKRem = kOffset % x1ScaleKElem;
@@ -504,21 +502,21 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
                                                      reinterpret_cast<uint64_t>(mmResPong_.GetPhyAddr());
         if (kb == 0) {
             if (ubParams_.ndNum == 1) {
-                AivPerTensor<true, 1U>((__ubuf__ CalcType*)mmAddUbAddr, (__ubuf__ CType*)mmUbInputAddr, x1ScaleUbAddr,
+                AivPerTensor<true, 1U>((__ubuf__ CalcType *)mmAddUbAddr, (__ubuf__ CType *)mmUbInputAddr, x1ScaleUbAddr,
                                        ubParams_.validM, ubParams_.validN[0], ubParams_.validN[1], kElem, x2Scale[0],
                                        x2Scale[1], x1ScaleKRem);
             } else {
-                AivPerTensor<true, 2U>((__ubuf__ CalcType*)mmAddUbAddr, (__ubuf__ CType*)mmUbInputAddr, x1ScaleUbAddr,
+                AivPerTensor<true, 2U>((__ubuf__ CalcType *)mmAddUbAddr, (__ubuf__ CType *)mmUbInputAddr, x1ScaleUbAddr,
                                        ubParams_.validM, ubParams_.validN[0], ubParams_.validN[1], kElem, x2Scale[0],
                                        x2Scale[1], x1ScaleKRem);
             }
         } else {
             if (ubParams_.ndNum == 1) {
-                AivPerTensor<false, 1U>((__ubuf__ CalcType*)mmAddUbAddr, (__ubuf__ CType*)mmUbInputAddr, x1ScaleUbAddr,
+                AivPerTensor<false, 1U>((__ubuf__ CalcType *)mmAddUbAddr, (__ubuf__ CType *)mmUbInputAddr, x1ScaleUbAddr,
                                         ubParams_.validM, ubParams_.validN[0], ubParams_.validN[1], kElem, x2Scale[0],
                                         x2Scale[1], x1ScaleKRem);
             } else {
-                AivPerTensor<false, 2U>((__ubuf__ CalcType*)mmAddUbAddr, (__ubuf__ CType*)mmUbInputAddr, x1ScaleUbAddr,
+                AivPerTensor<false, 2U>((__ubuf__ CalcType *)mmAddUbAddr, (__ubuf__ CType *)mmUbInputAddr, x1ScaleUbAddr,
                                         ubParams_.validM, ubParams_.validN[0], ubParams_.validN[1], kElem, x2Scale[0],
                                         x2Scale[1], x1ScaleKRem);
             }
@@ -539,9 +537,9 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
 
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::ProcessAivSingleKPerblock(
-    int64_t x1ScaleOffset, __gm__ X2ScaleType* x2ScaleAddr[UB_SUB_BANK_NUM])
+    int64_t x1ScaleOffset, __gm__ X2ScaleType *x2ScaleAddr[UB_SUB_BANK_NUM])
 {
-    auto mmAddUbAddr = reinterpret_cast<__ubuf__ CType*>(mmAddUb_.GetPhyAddr());
+    auto mmAddUbAddr = reinterpret_cast<__ubuf__ CType *>(mmAddUb_.GetPhyAddr());
     auto x1ScaleAddr = x1ScaleGlobalPerblock_ + x1ScaleOffset;
     X2ScaleType x2Scale[UB_SUB_BANK_NUM];
     for (uint64_t kb = 0, kOffset = 0; kb < problemShape_.k(); kb += params_->baseK, kOffset++) {
@@ -552,21 +550,21 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
                                                      reinterpret_cast<uint64_t>(mmResPong_.GetPhyAddr());
         if (kb == 0) {
             if (ubParams_.ndNum == 1) {
-                AivPerTensor<true, 1U>((__ubuf__ CType*)mmAddUbAddr, (__ubuf__ CType*)mmUbInputAddr, x1Scale,
+                AivPerTensor<true, 1U>((__ubuf__ CType *)mmAddUbAddr, (__ubuf__ CType *)mmUbInputAddr, x1Scale,
                                        ubParams_.validM, ubParams_.validN[0], ubParams_.validN[1], x2Scale[0],
                                        x2Scale[1]);
             } else {
-                AivPerTensor<true, 2U>((__ubuf__ CType*)mmAddUbAddr, (__ubuf__ CType*)mmUbInputAddr, x1Scale,
+                AivPerTensor<true, 2U>((__ubuf__ CType *)mmAddUbAddr, (__ubuf__ CType *)mmUbInputAddr, x1Scale,
                                        ubParams_.validM, ubParams_.validN[0], ubParams_.validN[1], x2Scale[0],
                                        x2Scale[1]);
             }
         } else {
             if (ubParams_.ndNum == 1) {
-                AivPerTensor<false, 1U>((__ubuf__ CType*)mmAddUbAddr, (__ubuf__ CType*)mmUbInputAddr, x1Scale,
+                AivPerTensor<false, 1U>((__ubuf__ CType *)mmAddUbAddr, (__ubuf__ CType *)mmUbInputAddr, x1Scale,
                                         ubParams_.validM, ubParams_.validN[0], ubParams_.validN[1], x2Scale[0],
                                         x2Scale[1]);
             } else {
-                AivPerTensor<false, 2U>((__ubuf__ CType*)mmAddUbAddr, (__ubuf__ CType*)mmUbInputAddr, x1Scale,
+                AivPerTensor<false, 2U>((__ubuf__ CType *)mmAddUbAddr, (__ubuf__ CType *)mmUbInputAddr, x1Scale,
                                         ubParams_.validM, ubParams_.validN[0], ubParams_.validN[1], x2Scale[0],
                                         x2Scale[1]);
             }
@@ -580,7 +578,7 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 template <bool isFirstKLoop, uint32_t ndNum>
 __simd_vf__ void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::AivPerTensor(
-    __ubuf__ CalcType* dst, __ubuf__ CType* l0cOut, __ubuf__ X1ScaleType* x1Scale, uint16_t mSize, uint32_t nSize0,
+    __ubuf__ CalcType *dst, __ubuf__ CType *l0cOut, __ubuf__ X1ScaleType *x1Scale, uint16_t mSize, uint32_t nSize0,
     uint32_t nSize1, uint16_t kSize, X2ScaleType x2Scale0, X2ScaleType x2Scale1, uint64_t x1ScaleKIdxInCache)
 {
     uint16_t alignM = RoundUp(mSize, QBMM_UB_ALIGN_SIZE / sizeof(X1ScaleType));
@@ -590,13 +588,13 @@ __simd_vf__ void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::A
     AscendC::MicroAPI::RegTensor<CalcType> addReg;
     AscendC::MicroAPI::RegTensor<CalcType> ResReg, mulScaleOutReg;
     constexpr static AscendC::MicroAPI::CastTrait ctInt322Fp32 = {
-                     AscendC::MicroAPI::RegLayout::UNKNOWN, AscendC::MicroAPI::SatMode::UNKNOWN,
-                     AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+        AscendC::MicroAPI::RegLayout::UNKNOWN, AscendC::MicroAPI::SatMode::UNKNOWN,
+        AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
     {
         for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
             AscendC::MicroAPI::LoadAlign<X1ScaleType, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
                 x1ScaleReg, x1Scale + mIdx * alignK + x1ScaleKIdxInCache);
-            
+
             // 1 ND
             uint32_t elementNum = nSize0;
             AscendC::MicroAPI::MaskReg maskN = AscendC::MicroAPI::UpdateMask<CType>(elementNum);
@@ -616,13 +614,13 @@ __simd_vf__ void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::A
             uint32_t dstUbOffset = offset;
             if constexpr (isFirstKLoop) {
                 AscendC::MicroAPI::StoreAlign<CalcType, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
-                                                                                                mulScaleOutReg, maskN);
+                                                                                                     mulScaleOutReg, maskN);
             } else {
                 AscendC::MicroAPI::LoadAlign(addReg, dst + dstUbOffset);
                 AscendC::MicroAPI::Add(ResReg, mulScaleOutReg, addReg, maskN);
                 // copy out from register to ub
                 AscendC::MicroAPI::StoreAlign<CalcType, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
-                                                                                                ResReg, maskN);
+                                                                                                     ResReg, maskN);
             }
             // 2 ND
             if constexpr (ndNum == 1) {
@@ -645,13 +643,13 @@ __simd_vf__ void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::A
             dstUbOffset = offset + nSize0;
             if constexpr (isFirstKLoop) {
                 AscendC::MicroAPI::StoreAlign<CalcType, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
-                                                                                                mulScaleOutReg, maskN);
+                                                                                                     mulScaleOutReg, maskN);
             } else {
                 AscendC::MicroAPI::LoadAlign(addReg, dst + dstUbOffset);
                 AscendC::MicroAPI::Add(ResReg, mulScaleOutReg, addReg, maskN);
                 // copy out from register to ub
                 AscendC::MicroAPI::StoreAlign<CalcType, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
-                                                                                                ResReg, maskN);
+                                                                                                     ResReg, maskN);
             }
         }
     }
@@ -660,7 +658,7 @@ __simd_vf__ void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::A
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 template <bool isFirstKLoop, uint32_t ndNum>
 __simd_vf__ void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::AivPerTensor(
-    __ubuf__ CType* dst, __ubuf__ CType* l0cOut, X1ScaleType x1Scale, uint16_t mSize, uint32_t nSize0, uint32_t nSize1,
+    __ubuf__ CType *dst, __ubuf__ CType *l0cOut, X1ScaleType x1Scale, uint16_t mSize, uint32_t nSize0, uint32_t nSize1,
     X2ScaleType x2Scale0, X2ScaleType x2Scale1)
 {
     {
@@ -681,13 +679,13 @@ __simd_vf__ void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::A
             uint32_t dstUbOffset = offset;
             if constexpr (isFirstKLoop) {
                 AscendC::MicroAPI::StoreAlign<CType, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
-                                                                                                mulScaleOutReg, maskN);
+                                                                                                  mulScaleOutReg, maskN);
             } else {
                 AscendC::MicroAPI::LoadAlign(addReg, dst + dstUbOffset);
                 AscendC::MicroAPI::Add(ResReg, mulScaleOutReg, addReg, maskN);
                 // copy out from register to ub
                 AscendC::MicroAPI::StoreAlign<CType, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
-                                                                                                ResReg, maskN);
+                                                                                                  ResReg, maskN);
             }
             // 2 ND
             if constexpr (ndNum == 1) {
@@ -704,13 +702,13 @@ __simd_vf__ void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::A
             dstUbOffset = offset + nSize0;
             if constexpr (isFirstKLoop) {
                 AscendC::MicroAPI::StoreAlign<CType, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
-                                                                                                mulScaleOutReg, maskN);
+                                                                                                  mulScaleOutReg, maskN);
             } else {
                 AscendC::MicroAPI::LoadAlign(addReg, dst + dstUbOffset);
                 AscendC::MicroAPI::Add(ResReg, mulScaleOutReg, addReg, maskN);
                 // copy out from register to ub
                 AscendC::MicroAPI::StoreAlign<CType, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
-                                                                                                ResReg, maskN);
+                                                                                                  ResReg, maskN);
             }
         }
     }
@@ -719,7 +717,7 @@ __simd_vf__ void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::A
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 template <uint32_t ndNum>
 __simd_vf__ void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::AddBias(
-    __ubuf__ CalcType* mmAdd, __ubuf__ BiasType* bias, uint16_t mSize, uint32_t nSize0, uint32_t nSize1)
+    __ubuf__ CalcType *mmAdd, __ubuf__ BiasType *bias, uint16_t mSize, uint32_t nSize0, uint32_t nSize1)
 {
     {
         uint32_t mmAddOffset{};
@@ -751,7 +749,7 @@ __simd_vf__ void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::A
 
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::AivPostProcess(
-    const AscendC::LocalTensor<CalcType>& mmAddUb)
+    const AscendC::LocalTensor<CalcType> &mmAddUb)
 {
     if (ubParams_.validM == 0) {
         return;
@@ -760,15 +758,15 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
         if (isBias_) {
             auto biasUb = biasPingPongID_ == 2 ? biasUbPing_ : biasUbPong_;
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(biasPingPongID_);
-            auto mmAddUbAddr = reinterpret_cast<__ubuf__ CalcType*>(mmAddUb.GetPhyAddr());
-            auto biasUbAddr = reinterpret_cast<__ubuf__ BiasType*>(biasUb.GetPhyAddr());
+            auto mmAddUbAddr = reinterpret_cast<__ubuf__ CalcType *>(mmAddUb.GetPhyAddr());
+            auto biasUbAddr = reinterpret_cast<__ubuf__ BiasType *>(biasUb.GetPhyAddr());
             if (ubParams_.ndNum == 1) {
                 AddBias<1U>(
-                    (__ubuf__ CalcType*)mmAddUbAddr, (__ubuf__ BiasType*)biasUbAddr, ubParams_.validM,
+                    (__ubuf__ CalcType *)mmAddUbAddr, (__ubuf__ BiasType *)biasUbAddr, ubParams_.validM,
                     ubParams_.validN[0], ubParams_.validN[1]);
             } else if (ubParams_.ndNum == 2) {
                 AddBias<2U>(
-                    (__ubuf__ CalcType*)mmAddUbAddr, (__ubuf__ BiasType*)biasUbAddr, ubParams_.validM,
+                    (__ubuf__ CalcType *)mmAddUbAddr, (__ubuf__ BiasType *)biasUbAddr, ubParams_.validM,
                     ubParams_.validN[0], ubParams_.validN[1]);
             }
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(biasPingPongID_);
@@ -802,7 +800,7 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
 
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::CopyOut(
-    const AscendC::LocalTensor<YType>& ubRes, uint16_t eventId, uint16_t blkCount, uint32_t blkLen, uint32_t srcStride,
+    const AscendC::LocalTensor<YType> &ubRes, uint16_t eventId, uint16_t blkCount, uint32_t blkLen, uint32_t srcStride,
     uint32_t dstStride, uint64_t yOffset)
 {
     AscendC::DataCopyExtParams copyParams{
@@ -814,7 +812,7 @@ CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>
 
 QBMM_BLOCK_EPILOGUE_PERTILE_CLASS_LOCAL_PARAMS
 CATLASS_DEVICE void BlockEpilogue<QBMM_BLOCK_EPILOGUE_PERTILE_FUNC_LOCAL_PARAMS>::CastAndCopyOut(
-    const AscendC::LocalTensor<CalcType>& mmAddUb)
+    const AscendC::LocalTensor<CalcType> &mmAddUb)
 {
     if (ubParams_.ndNum == 2 && !ubParams_.CopyOutWithSplitN) { // 2: 2ND, opt branch with splitM
         uint32_t sumN = ubParams_.validN[0] + ubParams_.validN[1];

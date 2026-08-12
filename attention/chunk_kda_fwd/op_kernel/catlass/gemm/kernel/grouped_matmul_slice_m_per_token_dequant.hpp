@@ -25,8 +25,7 @@ template <
     class BlockMmad_,
     class BlockEpilogue_,
     class BlockScheduler_,
-    class ElementGroupList_
->
+    class ElementGroupList_>
 class GroupedMatmulSliceMPerTokenDequant {
 public:
     using BlockMmad = BlockMmad_;
@@ -110,21 +109,26 @@ public:
             GM_ADDR ptrScale_, LayoutScale layoutScale_,
             GM_ADDR ptrPerTokenScale_, LayoutPerTokenScale layoutPerTokenScale_,
             GM_ADDR ptrD_, LayoutD layoutD_,
-            GM_ADDR ptrWorkspace_
-        ) : problemShape(problemShape_),
-            problemCount(problemCount_), ptrGroupList(reinterpret_cast<__gm__ ElementGroupList *>(ptrGroupList_)),
-            ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)), layoutA(layoutA_),
-            ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)), layoutB(layoutB_),
-            ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)), layoutScale(layoutScale_),
-            ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale *>(ptrPerTokenScale_)),
-            layoutPerTokenScale(layoutPerTokenScale_),
-            ptrD(reinterpret_cast<__gm__ ElementD *>(ptrD_)), layoutD(layoutD_),
-            ptrWorkspace(ptrWorkspace_)
+            GM_ADDR ptrWorkspace_)
+            : problemShape(problemShape_),
+              problemCount(problemCount_),
+              ptrGroupList(reinterpret_cast<__gm__ ElementGroupList *>(ptrGroupList_)),
+              ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)),
+              layoutA(layoutA_),
+              ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)),
+              layoutB(layoutB_),
+              ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)),
+              layoutScale(layoutScale_),
+              ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale *>(ptrPerTokenScale_)),
+              layoutPerTokenScale(layoutPerTokenScale_),
+              ptrD(reinterpret_cast<__gm__ ElementD *>(ptrD_)),
+              layoutD(layoutD_),
+              ptrWorkspace(ptrWorkspace_)
         {
         }
     };
 
-    struct Arguments{
+    struct Arguments {
         //
         // Data members
         //
@@ -150,7 +154,7 @@ public:
         size_t sizeWorkspace = lenWorkspace * sizeof(ElementGroupList);
         return sizeWorkspace;
     }
-    static Params ToUnderlyingArguments(const Arguments &args, uint8_t* workspace)
+    static Params ToUnderlyingArguments(const Arguments &args, uint8_t *workspace)
     {
         uint32_t m = args.problemShape.m();
         uint32_t n = args.problemShape.n();
@@ -163,11 +167,11 @@ public:
         LayoutD layoutD{m, n};
 
         Params params{args.problemShape, args.problemCount, args.ptrGroupList,
-            args.ptrA, layoutA,
-            args.ptrB, layoutB,
-            args.ptrScale, layoutScale,
-            args.ptrPerTokenScale, layoutPerTokenScale,
-            args.ptrD, layoutD, workspace};
+                      args.ptrA, layoutA,
+                      args.ptrB, layoutB,
+                      args.ptrScale, layoutScale,
+                      args.ptrPerTokenScale, layoutPerTokenScale,
+                      args.ptrD, layoutD, workspace};
         return params;
     }
 
@@ -176,15 +180,13 @@ public:
     GroupedMatmulSliceMPerTokenDequant() {}
 
     CATLASS_DEVICE
-    ~GroupedMatmulSliceMPerTokenDequant(){}
+    ~GroupedMatmulSliceMPerTokenDequant() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         BlockScheduler blockScheduler;
         BlockMmad blockMmad(resource);
@@ -209,7 +211,7 @@ public:
         uint32_t startCoreIdx = 0;
         for (uint32_t groupIdx = 0; groupIdx < params.problemCount; ++groupIdx) {
             uint32_t currentM = (groupIdx == 0) ? groupList.GetValue(groupIdx) :
-                (groupList.GetValue(groupIdx) - groupList.GetValue(groupIdx - 1));
+                                                  (groupList.GetValue(groupIdx) - groupList.GetValue(groupIdx - 1));
             GemmCoord inGroupProblemShape{currentM, params.problemShape.n(), params.problemShape.k()};
 
             LayoutA layoutA = params.layoutA.GetTileLayout(inGroupProblemShape.GetCoordMK());
@@ -241,15 +243,13 @@ public:
                         gmA[gmGroupOffsetA + gmOffsetA], layoutA,
                         gmB[gmGroupOffsetB + gmOffsetB], layoutB,
                         gmC[gmGroupOffsetC + gmOffsetC], layoutC,
-                        actualBlockShape, MakeCallback(&aicFinishSync)
-                    );
+                        actualBlockShape, MakeCallback(&aicFinishSync));
                 } else {
                     blockMmad(
                         gmA[gmGroupOffsetA + gmOffsetA], layoutA,
                         gmB[gmGroupOffsetB + gmOffsetB], layoutB,
                         gmC[gmGroupOffsetC + gmOffsetC], layoutC,
-                        actualBlockShape
-                    );
+                        actualBlockShape);
                     aicFinishSync();
                 }
             }
@@ -269,8 +269,7 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         BlockScheduler blockScheduler;
         BlockEpilogue blockEpilogue(resource);
@@ -291,7 +290,7 @@ public:
         uint32_t startCoreIdx = 0;
         for (uint32_t groupIdx = 0; groupIdx < params.problemCount; ++groupIdx) {
             uint32_t currentM = (groupIdx == 0) ? groupList.GetValue(groupIdx) :
-                (groupList.GetValue(groupIdx) - groupList.GetValue(groupIdx - 1));
+                                                  (groupList.GetValue(groupIdx) - groupList.GetValue(groupIdx - 1));
             GemmCoord inGroupProblemShape{currentM, params.problemShape.n(), params.problemShape.k()};
 
             LayoutC layoutC = LayoutC(inGroupProblemShape.m(), inGroupProblemShape.n());
@@ -303,8 +302,7 @@ public:
             EpilogueParams epilogueParams{
                 params.ptrScale + gmGroupOffsetScale, layoutScale,
                 params.ptrPerTokenScale + gmGroupOffsetPerTokenScale, layoutPerTokenScale,
-                params.ptrD + gmGroupOffsetD, layoutD
-            };
+                params.ptrD + gmGroupOffsetD, layoutD};
 
             blockScheduler.Update(inGroupProblemShape, L1TileShape::ToCoordMN());
             blockEpilogue.UpdateParams(epilogueParams);
@@ -323,8 +321,7 @@ public:
                 blockEpilogue(
                     blockShapeMNK, blockCoordMNK,
                     actualBlockShapeMNK, gmBlockC,
-                    layoutBlockC, MakeCallback(&aicFinishSync)
-                );
+                    layoutBlockC, MakeCallback(&aicFinishSync));
             }
 
             gmGroupOffsetC += inGroupProblemShape.m() * inGroupProblemShape.n();

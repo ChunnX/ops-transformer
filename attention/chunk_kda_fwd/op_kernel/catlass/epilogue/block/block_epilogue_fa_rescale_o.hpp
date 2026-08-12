@@ -22,13 +22,11 @@ namespace Catlass::Epilogue::Block {
 
 template <
     class OutputType_,
-    class InputType_
->
-class BlockEpilogue <
+    class InputType_>
+class BlockEpilogue<
     EpilogueAtlasA2FARescaleO,
     OutputType_,
-    InputType_
-> {
+    InputType_> {
 public:
     // Type aliases
     using DispatchPolicy = EpilogueAtlasA2FARescaleO;
@@ -46,10 +44,10 @@ public:
     static constexpr uint32_t FLOAT_ELENUM_PER_BLK = 8;
     static constexpr uint32_t HALF_ELENUM_PER_VECCALC = 128;
     static constexpr uint32_t FLOAT_ELENUM_PER_VECCALC = 64;
-    static constexpr uint32_t UB_TILE_SIZE = 16384;  // 64 * 128 * 2B
-    static constexpr uint32_t UB_LINE_SIZE = 512;   // 128 * 2 * 2B
-    static constexpr uint32_t HALF_ELENUM_PER_LINE = 256;    // 128 * 2
-    static constexpr uint32_t FLOAT_ELENUM_PER_LINE = 128;   // 128
+    static constexpr uint32_t UB_TILE_SIZE = 16384;        // 64 * 128 * 2B
+    static constexpr uint32_t UB_LINE_SIZE = 512;          // 128 * 2 * 2B
+    static constexpr uint32_t HALF_ELENUM_PER_LINE = 256;  // 128 * 2
+    static constexpr uint32_t FLOAT_ELENUM_PER_LINE = 128; // 128
     static constexpr uint32_t MULTIPLIER = 2;
 
     CATLASS_DEVICE
@@ -216,14 +214,14 @@ public:
             } else {
                 // gl = ll
                 AscendC::DataCopy(glUbTensor, llUbTensor[nIdx % MULTIPLIER * FLOAT_ELENUM_PER_LINE],
-                    AscendC::DataCopyParams(1, subMRound / FLOAT_ELENUM_PER_BLK, 0, 0));
+                                  AscendC::DataCopyParams(1, subMRound / FLOAT_ELENUM_PER_BLK, 0, 0));
                 AscendC::PipeBarrier<PIPE_V>();
                 if (goFlag == 1) {
                     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
                     goFlag = 0;
                 }
                 AscendC::DataCopy(goUbTensor, loUbTensor,
-                    AscendC::DataCopyParams(1, subM * kRound / FLOAT_ELENUM_PER_BLK, 0, 0));
+                                  AscendC::DataCopyParams(1, subM * kRound / FLOAT_ELENUM_PER_BLK, 0, 0));
                 AscendC::PipeBarrier<PIPE_V>();
             }
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
@@ -334,6 +332,6 @@ private:
     CopyUbToGmOutput copyUbToGmOutput;
 };
 
-}  // namespace Catlass::Epilogue::Block
+} // namespace Catlass::Epilogue::Block
 
-#endif  // CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_FA_RESCALE_O_HPP
+#endif // CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_FA_RESCALE_O_HPP

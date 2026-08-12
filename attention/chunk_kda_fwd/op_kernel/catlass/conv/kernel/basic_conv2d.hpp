@@ -61,15 +61,14 @@ public:
             GM_ADDR ptrFilter_,
             LayoutFilter layoutFilter_,
             GM_ADDR ptrOutput_,
-            LayoutOutput layoutOutput_
-        )
-            : problemShape(problemShape_)
-            , ptrFmap(ptrFmap_)
-            , layoutFmap(layoutFmap_)
-            , ptrFilter(ptrFilter_)
-            , layoutFilter(layoutFilter_)
-            , ptrOutput(ptrOutput_)
-            , layoutOutput(layoutOutput_)
+            LayoutOutput layoutOutput_)
+            : problemShape(problemShape_),
+              ptrFmap(ptrFmap_),
+              layoutFmap(layoutFmap_),
+              ptrFilter(ptrFilter_),
+              layoutFilter(layoutFilter_),
+              ptrOutput(ptrOutput_),
+              layoutOutput(layoutOutput_)
         {
         }
     };
@@ -102,8 +101,8 @@ public:
         LayoutOutput layoutOutput{
             args.problemShape.batch(), args.problemShape.cout1(), args.problemShape.ho(), args.problemShape.wo(),
             args.problemShape.C0};
-        Params params{args.problemShape, args.ptrFmap,   layoutFmap,  args.ptrFilter,
-                      layoutFilter,      args.ptrOutput, layoutOutput};
+        Params params{args.problemShape, args.ptrFmap, layoutFmap, args.ptrFilter,
+                      layoutFilter, args.ptrOutput, layoutOutput};
         return params;
     }
 
@@ -122,8 +121,7 @@ public:
     {
         BlockScheduler conv2dBlockScheduler(
             params.problemShape.getPostIm2colShape(),
-            MakeCoord(FmapL1TileShape::Ho, FmapL1TileShape::Wo, FilterL1TileShape::Cout)
-        );
+            MakeCoord(FmapL1TileShape::Ho, FmapL1TileShape::Wo, FilterL1TileShape::Cout));
         uint32_t loops = conv2dBlockScheduler.GetLoops();
 
         Arch::Resource<ArchTag> resource;
@@ -147,8 +145,7 @@ public:
             // Compute indices of hi
             uint32_t hoStart = blockCoord.h() * FmapL1TileShape::Ho;
             int32_t hiStart = hoStart * params.problemShape.strideH() - params.problemShape.padTop();
-            int32_t hiEnd = hiStart + (actualBlockShape.h() - 1) * params.problemShape.strideH()
-                            + (params.problemShape.kh() - 1) * params.problemShape.dilationH();
+            int32_t hiEnd = hiStart + (actualBlockShape.h() - 1) * params.problemShape.strideH() + (params.problemShape.kh() - 1) * params.problemShape.dilationH();
             if (hiStart < 0) {
                 blockPadTop = 0 - hiStart;
                 hiStart = 0;
@@ -162,8 +159,7 @@ public:
             // Compute indexes of wi
             uint32_t woStart = blockCoord.w() * FmapL1TileShape::Wo;
             int32_t wiStart = woStart * params.problemShape.strideW() - params.problemShape.padLeft();
-            int32_t wiEnd = wiStart + (actualBlockShape.w() - 1) * params.problemShape.strideW()
-                            + (params.problemShape.kw() - 1) * params.problemShape.dilationW();
+            int32_t wiEnd = wiStart + (actualBlockShape.w() - 1) * params.problemShape.strideW() + (params.problemShape.kw() - 1) * params.problemShape.dilationW();
             if (wiStart < 0) {
                 blockPadLeft = 0 - wiStart;
                 wiStart = 0;
@@ -180,8 +176,8 @@ public:
             // Compute initial location in logical coordinates
             Conv2dFmapCoord offsetFmap{blockCoord.batch(), 0, (uint32_t)hiStart, (uint32_t)wiStart, 0}; // (Batch, Cin1,
                                                                                                         // Hi, Wi, C0)
-            Conv2dFilterCoord offsetFilter{0, 0, 0, blockCoord.cout() * FilterL1TileShape::Cout, 0}; // (Cin1, Kw, Kh,
-                                                                                                     // Cout, C0)
+            Conv2dFilterCoord offsetFilter{0, 0, 0, blockCoord.cout() * FilterL1TileShape::Cout, 0};    // (Cin1, Kw, Kh,
+                                                                                                        // Cout, C0)
             Conv2dFmapCoord offsetOutput{
                 blockCoord.batch(), blockCoord.cout() * FilterL1TileShape::Cout / C0, hoStart, woStart,
                 0}; // (Batch, Cout1, Ho, Wo, C0)
@@ -192,8 +188,7 @@ public:
             // Compute block-scoped matrix multiply-add
             blockConv2d(
                 gmFmap[gmOffsetFmap], params.layoutFmap, gmFilter[gmOffsetFilter], params.layoutFilter,
-                gmOutput[gmOffsetOutput], params.layoutOutput, actualConv2dBlockShape, blockPadList
-            );
+                gmOutput[gmOffsetOutput], params.layoutOutput, actualConv2dBlockShape, blockPadList);
         }
         AscendC::PipeBarrier<PIPE_ALL>();
     }

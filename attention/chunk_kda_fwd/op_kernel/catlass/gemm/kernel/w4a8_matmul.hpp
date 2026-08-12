@@ -26,8 +26,7 @@ namespace Catlass::Gemm::Kernel {
 template <
     class BlockMmad_,
     class BlockEpilogue_,
-    class BlockScheduler_
->
+    class BlockScheduler_>
 class W4A8Matmul {
 public:
     using BlockMmad = BlockMmad_;
@@ -73,13 +72,17 @@ public:
             GM_ADDR ptrPrologueB_, LayoutPrologueB const &layoutPrologueB_,
             GM_ADDR ptrC_, LayoutC const &layoutC_,
             MmadParams const &mmadParams_,
-            GM_ADDR ptrWorkspace_
-        ):  problemShape(problemShape_),
-            ptrA(ptrA_), layoutA(layoutA_),
-            ptrPrologueB(ptrPrologueB_), layoutPrologueB(layoutPrologueB_),
-            ptrC(ptrC_), layoutC(layoutC_),
-            mmadParams(mmadParams_),
-            ptrWorkspace(ptrWorkspace_) {}
+            GM_ADDR ptrWorkspace_)
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrPrologueB(ptrPrologueB_),
+              layoutPrologueB(layoutPrologueB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              mmadParams(mmadParams_),
+              ptrWorkspace(ptrWorkspace_)
+        {}
     };
 
     struct Arguments {
@@ -108,12 +111,14 @@ public:
     {
         Params params{
             args.problemShape,
-            args.deviceA, args.layoutA,
-            args.devicePrologueB, args.layoutPrologueB,
-            args.deviceC, args.layoutC,
+            args.deviceA,
+            args.layoutA,
+            args.devicePrologueB,
+            args.layoutPrologueB,
+            args.deviceC,
+            args.layoutC,
             {{}, {}, {args.scalar}},
-            workspace
-        };
+            workspace};
         return params;
     }
 
@@ -122,13 +127,11 @@ public:
     W4A8Matmul() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     /// Executes matmul
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         auto aicoreNum = AscendC::GetBlockNum();
         auto aicoreIdx = AscendC::GetBlockIdx();
@@ -165,14 +168,12 @@ public:
                 gmBlockA, layoutBlockA,
                 gmBlockB, layoutBlockB,
                 gmBlockC, layoutBlockC,
-                actualBlockShape
-            );
+                actualBlockShape);
         }
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         auto aicoreNum = AscendC::GetBlockNum();
         auto aicoreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
@@ -202,8 +203,7 @@ public:
             blockMmad.Prologue(
                 gmBlockPrologueB, layoutBlockPrologueB,
                 gmBlockB, layoutBlockB,
-                actualBlockShape
-            );
+                actualBlockShape);
         }
     }
 

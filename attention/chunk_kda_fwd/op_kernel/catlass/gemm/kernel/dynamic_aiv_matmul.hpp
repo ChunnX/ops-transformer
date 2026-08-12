@@ -19,7 +19,6 @@
 #include "catlass/gemm_coord.hpp"
 #include "catlass/matrix_coord.hpp"
 
-
 namespace Catlass::Gemm::Kernel {
 
 template <class PrologueA_, class PrologueB_, class BlockMmad_, class BlockEpilogue_, class BlockScheduler_>
@@ -63,16 +62,15 @@ public:
             GM_ADDR ptrB_,
             LayoutB layoutB_,
             GM_ADDR ptrC_,
-            LayoutC layoutC_
-        )
-            : problemShape(problemShape_)
-            , taskTileShape(taskTileShape_)
-            , ptrA(ptrA_)
-            , layoutA(layoutA_)
-            , ptrB(ptrB_)
-            , layoutB(layoutB_)
-            , ptrC(ptrC_)
-            , layoutC(layoutC_)
+            LayoutC layoutC_)
+            : problemShape(problemShape_),
+              taskTileShape(taskTileShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_)
         {
         }
     };
@@ -101,7 +99,7 @@ public:
         LayoutB layoutB{args.problemShape.n()};
         LayoutC layoutC{args.problemShape.m(), args.problemShape.n()};
         Params params{args.problemShape, args.taskTileShape, args.ptrA, layoutA, args.ptrB,
-                      layoutB,           args.ptrC,          layoutC};
+                      layoutB, args.ptrC, layoutC};
         return params;
     }
 
@@ -143,16 +141,14 @@ public:
             TensorCoord coordA{blockCoord.m() * params.taskTileShape.row()};
             TensorCoord coordB{blockCoord.n() * params.taskTileShape.column()};
             MatrixCoord coordC{
-                blockCoord.m() * params.taskTileShape.row(), blockCoord.n() * params.taskTileShape.column()
-            };
+                blockCoord.m() * params.taskTileShape.row(), blockCoord.n() * params.taskTileShape.column()};
             int64_t gmOffsetA = params.layoutA.GetOffset(coordA);
             int64_t gmOffsetB = params.layoutB.GetOffset(coordB);
             int64_t gmOffsetC = params.layoutC.GetOffset(coordC);
             // Compute block-scoped matrix multiply-add
             blockMmad(
                 gmA[gmOffsetA], params.layoutA, gmB[gmOffsetB], params.layoutB, gmC[gmOffsetC], params.layoutC,
-                actualBlockShape
-            );
+                actualBlockShape);
         }
     }
 };

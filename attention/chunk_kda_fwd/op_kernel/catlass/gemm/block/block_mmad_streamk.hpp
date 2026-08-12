@@ -32,9 +32,8 @@ template <
     class CType_,
     class BiasType_,
     class TileCopy_,
-    class TileMmad_
->
-struct BlockMmad <
+    class TileMmad_>
+struct BlockMmad<
     MmadAtlasA2Streamk<ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
     L1TileShape_,
     L0TileShape_,
@@ -43,8 +42,7 @@ struct BlockMmad <
     CType_,
     BiasType_,
     TileCopy_,
-    TileMmad_
-> {
+    TileMmad_> {
 public:
     // Type Aliases
     using DispatchPolicy = MmadAtlasA2Streamk<ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>;
@@ -101,20 +99,20 @@ public:
     static_assert(L0C_TILE_SIZE <= L0C_SIZE, "L0TileShape exceeding the L0C space!");
 
     static_assert(L1TileShape::M == L0TileShape::M && L1TileShape::N == L0TileShape::N,
-        "The situation where the basic blocks of L1 and L0 differ on the m and n axes is not supported yet");
+                  "The situation where the basic blocks of L1 and L0 differ on the m and n axes is not supported yet");
     static_assert(L0TileShape::K <= L1TileShape::K, "L0TileShape::K cannot exceed L1TileShape::K");
     // 32B (256b) aligned
-    static_assert(Gemm::helper::TileShapeAlignChecker<L1TileShape, L0TileShape, ElementA, ElementB>::_ALIGN == 256, 
-        "Tile shape must be 32B aligned.");
-    
+    static_assert(Gemm::helper::TileShapeAlignChecker<L1TileShape, L0TileShape, ElementA, ElementB>::_ALIGN == 256,
+                  "Tile shape must be 32B aligned.");
+
     /// Construct
     CATLASS_DEVICE
     BlockMmad(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0)
     {
         kPartLenMax = min(L0A_PINGPONG_BUF_SIZE / sizeof(ElementA) / L1TileShape::M / L1AAlignHelper::ELE_NUM_PER_C0 *
                               L1AAlignHelper::ELE_NUM_PER_C0,
-            L0B_PINGPONG_BUF_SIZE / sizeof(ElementB) / L1TileShape::N / L1BAlignHelper::ELE_NUM_PER_C0 *
-                L1BAlignHelper::ELE_NUM_PER_C0);
+                          L0B_PINGPONG_BUF_SIZE / sizeof(ElementB) / L1TileShape::N / L1BAlignHelper::ELE_NUM_PER_C0 *
+                              L1BAlignHelper::ELE_NUM_PER_C0);
 
         if constexpr (std::is_same_v<ElementA, float> && std::is_same_v<ElementB, float>) {
             kPartLenMax = RoundDown<C0_NUM_PER_FRACTAL>(kPartLenMax);
@@ -223,8 +221,7 @@ public:
                 auto l1ATensor = l1ATensorList[l1ListIdNext];
                 auto l1BTensor = l1BTensorList[l1ListIdNext];
                 // Get GM tensor for next stage
-                kActualNext = (shuffleKIdxNext < kTileCount - 1) ? L1TileShape::K
-                                                                 : (actualShape.k() - shuffleKIdxNext * L1TileShape::K);
+                kActualNext = (shuffleKIdxNext < kTileCount - 1) ? L1TileShape::K : (actualShape.k() - shuffleKIdxNext * L1TileShape::K);
                 MatrixCoord gmTileACoord{0, shuffleKIdxNext * L1TileShape::K};
                 MatrixCoord gmTileBCoord{shuffleKIdxNext * L1TileShape::K, 0};
                 auto gmTileA = gmBlockA[layoutA.GetOffset(gmTileACoord)];
@@ -249,9 +246,7 @@ public:
                 auto l1ATensor = l1ATensorList[l1ListIdNext];
                 auto l1BTensor = l1BTensorList[l1ListIdNext];
                 // Get GM tensor for next stage
-                kActualNext = (firstTileIdx < kTileCount - 1)
-                                  ? L1TileShape::K
-                                  : (actualShapeNext.k() - firstTileIdx * L1TileShape::K);
+                kActualNext = (firstTileIdx < kTileCount - 1) ? L1TileShape::K : (actualShapeNext.k() - firstTileIdx * L1TileShape::K);
                 MatrixCoord gmTileACoord{0, firstTileIdx * L1TileShape::K};
                 MatrixCoord gmTileBCoord{firstTileIdx * L1TileShape::K, 0};
                 auto gmTileA = gmNextBlockA[layoutA.GetOffset(gmTileACoord)];
@@ -351,7 +346,7 @@ public:
                 AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventList[l0BBufId]);
 
                 l0BBufId = (l0BBufId + 1 < STAGES) ? (l0BBufId + 1) : 0;
-                
+
                 AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventList[l0ABufId]);
                 l0ABufId = (l0ABufId + 1 < STAGES) ? (l0ABufId + 1) : 0;
             }
@@ -380,6 +375,7 @@ public:
             }
         }
     }
+
 protected:
     /// Data members
     AscendC::LocalTensor<ElementA> l1ATensorList[STAGES];
@@ -401,10 +397,10 @@ protected:
     CopyGmToL1B copyGmToL1B;
     CopyL1ToL0A copyL1ToL0A;
     CopyL1ToL0B copyL1ToL0B;
-    CopyL0CToGmNormalBlock copyL0CToGmNormalBlock; 
+    CopyL0CToGmNormalBlock copyL0CToGmNormalBlock;
     CopyL0CToGmStreamkBlock copyL0CToGmStreamkBlock;
 };
 
-}  // namespace Catlass::Gemm::Block
+} // namespace Catlass::Gemm::Block
 
-#endif  // CATLASS_GEMM_BLOCK_BLOCK_MMAD_STREAMK_HPP
+#endif // CATLASS_GEMM_BLOCK_BLOCK_MMAD_STREAMK_HPP

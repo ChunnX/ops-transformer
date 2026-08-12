@@ -24,8 +24,7 @@ namespace Catlass::Gemv::Kernel {
 // tmeplate for gemv kernle, Compute z = αAx + βy
 template <
     class BlockGemv_,
-    class BlockEpilogue_
->
+    class BlockEpilogue_>
 class KernelGemvAic {
 public:
     using BlockGemv = BlockGemv_;
@@ -65,9 +64,15 @@ public:
 
         CATLASS_HOST_DEVICE
         Params(GemvCoord const &problemShape_, GM_ADDR ptrX_, LayoutX layoutX_, GM_ADDR ptrA_, LayoutA layoutA_,
-            GM_ADDR ptrWorkspace_, EpilogueParams const &epilogueParams_)
-            : problemShape(problemShape_), ptrX(ptrX_), layoutX(layoutX_), ptrA(ptrA_), layoutA(layoutA_),
-              ptrWorkspace(ptrWorkspace_), epilogueParams(epilogueParams_) {}
+               GM_ADDR ptrWorkspace_, EpilogueParams const &epilogueParams_)
+            : problemShape(problemShape_),
+              ptrX(ptrX_),
+              layoutX(layoutX_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrWorkspace(ptrWorkspace_),
+              epilogueParams(epilogueParams_)
+        {}
     };
 
     struct Arguments {
@@ -109,12 +114,10 @@ public:
     KernelGemvAic() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const& params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const& params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         BlockGemv blockGemv(resource);
         // Represent the full gm
@@ -142,7 +145,7 @@ public:
         static constexpr uint32_t L0C_TILE_SIZE = L0TileShape::M * L0TileShape::N;
         static constexpr uint32_t L0C_TILE_NUM = L0C_SIZE / L0C_TILE_SIZE / sizeof(ElementAccumulator);
 
-        #pragma unroll
+#pragma unroll
         for (uint32_t i = 0; i < L0C_TILE_NUM; i++) {
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>((event_t)i);
         }
@@ -217,7 +220,7 @@ public:
             singleIdx++;
         }
 
-        #pragma unroll
+#pragma unroll
         for (uint32_t i = 0; i < L0C_TILE_NUM; i++) {
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>((event_t)i);
         }
@@ -226,8 +229,7 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const& params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         BlockEpilogue blockEpilogue(resource, params.epilogueParams);
 
@@ -285,6 +287,6 @@ private:
     Arch::CrossCoreFlag flagAivFinishPadding{FLAG_AIV_FINISH_STORE};
 };
 
-}  // namespace Catlass::Gemv::kernel
+} // namespace Catlass::Gemv::Kernel
 
-#endif  // CATLASS_GEMV_KERNLE_GEMV_EPILOGUE_HPP
+#endif // CATLASS_GEMV_KERNLE_GEMV_EPILOGUE_HPP

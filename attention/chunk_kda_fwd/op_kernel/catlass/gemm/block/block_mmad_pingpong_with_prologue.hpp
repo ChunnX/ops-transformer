@@ -31,9 +31,8 @@ template <
     class CType_,
     class BiasType_,
     class TileCopy_,
-    class TileMmad_
->
-struct BlockMmad <
+    class TileMmad_>
+struct BlockMmad<
     MmadAtlasA2PingPongWithPrologue<ENABLE_UNIT_FLAG_>,
     L1TileShape_,
     L0TileShape_,
@@ -42,8 +41,7 @@ struct BlockMmad <
     CType_,
     BiasType_,
     TileCopy_,
-    TileMmad_
-> {
+    TileMmad_> {
 public:
     // Type Aliases
     using DispatchPolicy = MmadAtlasA2PingPongWithPrologue<ENABLE_UNIT_FLAG_>;
@@ -93,26 +91,26 @@ public:
 
     // Check L1TileShape
     static_assert((L1A_SIZE * STAGES + L1B_SIZE * STAGES) <= ArchTag::L1_SIZE,
-        "L1TileShape exceeding the L1 space!");
+                  "L1TileShape exceeding the L1 space!");
 
     // Check L0TileShape
     static constexpr uint32_t L0A_TILE_SIZE = L0TileShape::M * L0TileShape::K * sizeof(ElementA);
     static constexpr uint32_t L0B_TILE_SIZE = L0TileShape::K * L0TileShape::N * sizeof(ElementB);
     static constexpr uint32_t L0C_TILE_SIZE = L0TileShape::M * L0TileShape::N * sizeof(ElementAccumulator);
     static_assert((L0A_TILE_SIZE * STAGES) <= L0A_SIZE,
-        "L0TileShape exceeding the L0A space!");
+                  "L0TileShape exceeding the L0A space!");
     static_assert((L0B_TILE_SIZE * STAGES) <= L0B_SIZE,
-        "L0TileShape exceeding the L0B space!");
+                  "L0TileShape exceeding the L0B space!");
     static_assert(L0C_TILE_SIZE <= L0C_SIZE, "L0TileShape exceeding the L0C space!");
 
     static_assert(L1TileShape::M == L0TileShape::M && L1TileShape::N == L0TileShape::N,
-        "The situation where the basic blocks of L1 and L0 differ on the m and n axes is not supported yet");
+                  "The situation where the basic blocks of L1 and L0 differ on the m and n axes is not supported yet");
     static_assert(L0TileShape::K <= L1TileShape::K, "L0TileShape::K cannot exceed L1TileShape::K");
-    
+
     // 32B (256b) aligned
-    static_assert(Gemm::helper::TileShapeAlignChecker<L1TileShape, L0TileShape, ElementA, ElementB>::_ALIGN == 256, 
-        "Tile shape must be 32B aligned.");
-    
+    static_assert(Gemm::helper::TileShapeAlignChecker<L1TileShape, L0TileShape, ElementA, ElementB>::_ALIGN == 256,
+                  "Tile shape must be 32B aligned.");
+
     struct Params {
         typename Tile::PrologueTraits<PrologueA>::Params prologueA{};
         typename Tile::PrologueTraits<PrologueB>::Params prologueB{};
@@ -121,9 +119,11 @@ public:
 
     /// Construct
     CATLASS_DEVICE
-    BlockMmad(Arch::Resource<ArchTag> const &resource, Params const &params_ = {}) :
-        params(params_), prologueA(resource, params_.prologueA), prologueB(resource, params_.prologueB),
-        copyL0CToGm(params_.copyL0CToGm)
+    BlockMmad(Arch::Resource<ArchTag> const &resource, Params const &params_ = {})
+        : params(params_),
+          prologueA(resource, params_.prologueA),
+          prologueB(resource, params_.prologueB),
+          copyL0CToGm(params_.copyL0CToGm)
     {
         Arch::FlagID flagId = 0;
         for (uint32_t i = 0; i < STAGES; ++i) {
@@ -198,49 +198,46 @@ public:
 
     template <class T = PrologueA, class U = PrologueB>
     CATLASS_DEVICE
-    std::enable_if_t<!std::is_void_v<T> && !std::is_void_v<U>, void> Prologue(
-        AscendC::GlobalTensor<typename T::ElementSrc> const &gmSrcA, typename T::LayoutSrc const &layoutSrcA,
-        AscendC::GlobalTensor<typename T::ElementDst> const &gmDstA, typename T::LayoutDst const &layoutDstA,
-        AscendC::GlobalTensor<typename U::ElementSrc> const &gmSrcB, typename U::LayoutSrc const &layoutSrcB,
-        AscendC::GlobalTensor<typename U::ElementDst> const &gmDstB, typename U::LayoutDst const &layoutDstB,
-        GemmCoord const &actualBlockShape
-    )
+        std::enable_if_t<!std::is_void_v<T> && !std::is_void_v<U>, void>
+        Prologue(
+            AscendC::GlobalTensor<typename T::ElementSrc> const &gmSrcA, typename T::LayoutSrc const &layoutSrcA,
+            AscendC::GlobalTensor<typename T::ElementDst> const &gmDstA, typename T::LayoutDst const &layoutDstA,
+            AscendC::GlobalTensor<typename U::ElementSrc> const &gmSrcB, typename U::LayoutSrc const &layoutSrcB,
+            AscendC::GlobalTensor<typename U::ElementDst> const &gmDstB, typename U::LayoutDst const &layoutDstB,
+            GemmCoord const &actualBlockShape)
     {
         PrologueImpl(
             gmSrcA, layoutSrcA, gmDstA, layoutDstA,
             gmSrcB, layoutSrcB, gmDstB, layoutDstB,
-            actualBlockShape
-        );
+            actualBlockShape);
     }
 
     template <class T = PrologueA, class U = PrologueB>
     CATLASS_DEVICE
-    std::enable_if_t<!std::is_void_v<T> && std::is_void_v<U>, void> Prologue(
-        AscendC::GlobalTensor<typename T::ElementSrc> const &gmSrcA, typename T::LayoutSrc const &layoutSrcA,
-        AscendC::GlobalTensor<typename T::ElementDst> const &gmDstA, typename T::LayoutDst const &layoutDstA,
-        GemmCoord const &actualBlockShape
-    )
+        std::enable_if_t<!std::is_void_v<T> && std::is_void_v<U>, void>
+        Prologue(
+            AscendC::GlobalTensor<typename T::ElementSrc> const &gmSrcA, typename T::LayoutSrc const &layoutSrcA,
+            AscendC::GlobalTensor<typename T::ElementDst> const &gmDstA, typename T::LayoutDst const &layoutDstA,
+            GemmCoord const &actualBlockShape)
     {
         PrologueImpl(
             gmSrcA, layoutSrcA, gmDstA, layoutDstA,
             {}, {}, {}, {},
-            actualBlockShape
-        );
+            actualBlockShape);
     }
 
     template <class T = PrologueA, class U = PrologueB>
     CATLASS_DEVICE
-    std::enable_if_t<std::is_void_v<T> && !std::is_void_v<U>, void> Prologue(
-        AscendC::GlobalTensor<typename U::ElementSrc> const &gmSrcB, typename U::LayoutSrc const &layoutSrcB,
-        AscendC::GlobalTensor<typename U::ElementDst> const &gmDstB, typename U::LayoutDst const &layoutDstB,
-        GemmCoord const &actualBlockShape
-    )
+        std::enable_if_t<std::is_void_v<T> && !std::is_void_v<U>, void>
+        Prologue(
+            AscendC::GlobalTensor<typename U::ElementSrc> const &gmSrcB, typename U::LayoutSrc const &layoutSrcB,
+            AscendC::GlobalTensor<typename U::ElementDst> const &gmDstB, typename U::LayoutDst const &layoutDstB,
+            GemmCoord const &actualBlockShape)
     {
         PrologueImpl(
             {}, {}, {}, {},
             gmSrcB, layoutSrcB, gmDstB, layoutDstB,
-            actualBlockShape
-        );
+            actualBlockShape);
     }
 
     /// Perform a block-scoped matrix multiply-accumulate
@@ -249,8 +246,7 @@ public:
         AscendC::GlobalTensor<ElementA> const &gmA, LayoutA const &layoutA,
         AscendC::GlobalTensor<ElementB> const &gmB, LayoutB const &layoutB,
         AscendC::GlobalTensor<ElementC> const &gmC, LayoutC const &layoutC,
-        GemmCoord const &actualShape
-    )
+        GemmCoord const &actualShape)
     {
         uint32_t mRound = RoundUp<L1AAlignHelper::M_ALIGNED>(actualShape.m());
         uint32_t nRound = RoundUp<L1BAlignHelper::N_ALIGNED>(actualShape.n());
@@ -303,7 +299,8 @@ public:
             if (kLoopIdx < kTileCount - 1) {
                 uint32_t kLoopIdxNext = kLoopIdx + 1;
                 kActualNext = (kLoopIdxNext < kTileCount - 1) ?
-                    L1TileShape::K : (actualShape.k() - kLoopIdxNext * L1TileShape::K);
+                                  L1TileShape::K :
+                                  (actualShape.k() - kLoopIdxNext * L1TileShape::K);
 
                 // Get L1 tensor for next stage
                 auto l1ATensor = l1ATensorList[l1ListIdNext];
@@ -349,11 +346,13 @@ public:
 
             for (int mPartIdx = 0; mPartIdx < mPartLoop; mPartIdx++) {
                 uint32_t mPartActual = (mPartIdx < mPartLoop - 1) ?
-                    L0TileShape::M : (mRound - mPartIdx * L0TileShape::M);
+                                           L0TileShape::M :
+                                           (mRound - mPartIdx * L0TileShape::M);
 
                 for (int kPartIdx = 0; kPartIdx < kPartLoop; kPartIdx++) {
                     uint32_t kPartActual = (kPartIdx < kPartLoop - 1) ?
-                    L0TileShape::K : (kActual - kPartIdx * L0TileShape::K);
+                                               L0TileShape::K :
+                                               (kActual - kPartIdx * L0TileShape::K);
 
                     // Locate the current tile on L0A
                     auto l0ATile = l0ATensorList[l0AListId];
@@ -376,7 +375,8 @@ public:
 
                     for (int nPartIdx = 0; nPartIdx < nPartLoop; nPartIdx++) {
                         uint32_t nPartActual = (nPartIdx < nPartLoop - 1) ?
-                            L0TileShape::N : (nRound - nPartIdx * L0TileShape::N);
+                                                   L0TileShape::N :
+                                                   (nRound - nPartIdx * L0TileShape::N);
 
                         // Locate the current tile on L0B
                         auto l0BTile = l0BTensorList[l0BListId];
@@ -461,8 +461,8 @@ protected:
         typename Tile::PrologueTraits<PrologueB>::LayoutSrc const &layoutSrcB,
         typename Tile::PrologueTraits<PrologueB>::TensorDst const &gmDstB,
         typename Tile::PrologueTraits<PrologueB>::LayoutDst const &layoutDstB,
-        GemmCoord const &actualShape
-    ) {
+        GemmCoord const &actualShape)
+    {
         uint32_t kTileCount = CeilDiv<L1TileShape::K>(actualShape.k());
         for (uint32_t kLoopIdx = 0; kLoopIdx < kTileCount; kLoopIdx++) {
             uint32_t kOffset = kLoopIdx * L1TileShape::K;

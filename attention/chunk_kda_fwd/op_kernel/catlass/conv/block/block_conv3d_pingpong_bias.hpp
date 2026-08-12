@@ -38,17 +38,15 @@ template <
     class OutType_,
     class BiasType_,
     class TileCopy_,
-    class TileMmad_
->
-struct BlockConv <
+    class TileMmad_>
+struct BlockConv<
     ConvAtlasA2Pingpong<
         L1A_STAGES_,
         L1B_STAGES_,
         L0A_STAGES_,
         L0B_STAGES_,
         L0C_STAGES_,
-        ENABLE_UNIT_FLAG_
-    >,
+        ENABLE_UNIT_FLAG_>,
     CoreTileShape_,
     FmapL1TileShape_,
     FilterL1TileShape_,
@@ -58,8 +56,7 @@ struct BlockConv <
     OutType_,
     BiasType_,
     TileCopy_,
-    TileMmad_
-> {
+    TileMmad_> {
 public:
     // Type Aliases
     using DispatchPolicy = ConvAtlasA2Pingpong<
@@ -68,8 +65,7 @@ public:
         L0A_STAGES_,
         L0B_STAGES_,
         L0C_STAGES_,
-        ENABLE_UNIT_FLAG_
-    >;
+        ENABLE_UNIT_FLAG_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using CoreTileShape = CoreTileShape_;
     using FmapL1TileShape = FmapL1TileShape_;
@@ -145,11 +141,11 @@ public:
                                                    conv3dParams.dW(), conv3dParams.dH());
         uint64_t bl1Spacesize = FilterL1TileShape::Kd * FilterL1TileShape::Ci1 *
                                 conv3dParams.khkwcin0() * FilterL1TileShape::nBL1 * sizeof(ElementFilter);
-        uint64_t hoAL1Max = FmapL1TileShape::mAL1  / conv3dParams.wo() + 2;
+        uint64_t hoAL1Max = FmapL1TileShape::mAL1 / conv3dParams.wo() + 2;
         uint64_t hiAL1Max = (hoAL1Max - 1) * conv3dParams.sH() + conv3dParams.dilatedKernelH();
         hiAL1Max = hiAL1Max > conv3dParams.hi() ? conv3dParams.hi() : hiAL1Max;
         uint64_t al1Spacesize = FmapL1TileShape::Kd * FmapL1TileShape::Ci1 * hiAL1Max *
-                                conv3dParams.wicin0()  * sizeof(ElementFmap);
+                                conv3dParams.wicin0() * sizeof(ElementFmap);
 
         for (uint32_t i = 0; i < L0A_STAGES; i++) {
             l0ATensorList[i] = resource.l0ABuf.template GetBufferByByte<ElementFmap>(L0A_PINGPONG_BUF_SIZE * i);
@@ -222,11 +218,11 @@ public:
         InitKLoopParams();
         // Loop parameters in the M/Cout/D direction
         InitOutLoopParams(actualBlockShape);
-        
+
         // The starting position of the input
         iterParams.diStartPos = actualIdxStartFmap.d();
         iterParams.hwStartPos = actualIdxStartFmap.hw();
-        
+
         // Start the batch iterate
         for (uint32_t batchIter = 0; batchIter < actualBlockShape.n(); ++batchIter) {
             auto gmBatchFmap = fmapGm[batchIter * conv3dParams.fmapOneBatchSize()];
@@ -251,18 +247,14 @@ public:
                     break;
                 }
                 // Refresh the cycle round
-                iterParams.l12l0LoopM = iterParams.mAL1Iter == iterParams.maxMAL1Iter
-                    ? CeilDiv(iterParams.mAL1Tail, L0TileShape::mL0)
-                    : iterParams.mAL1DivmL0;
+                iterParams.l12l0LoopM = iterParams.mAL1Iter == iterParams.maxMAL1Iter ? CeilDiv(iterParams.mAL1Tail, L0TileShape::mL0) : iterParams.mAL1DivmL0;
                 iterParams.maxML0Iter = iterParams.l12l0LoopM - 1;
-                iterParams.l12l0LoopN = iterParams.nBL1Iter == iterParams.maxNBL1Iter
-                    ? CeilDiv(iterParams.nBL1Tail, L0TileShape::nL0)
-                    : iterParams.nBL1DivnL0;
+                iterParams.l12l0LoopN = iterParams.nBL1Iter == iterParams.maxNBL1Iter ? CeilDiv(iterParams.nBL1Tail, L0TileShape::nL0) : iterParams.nBL1DivnL0;
                 iterParams.maxNL0Iter = iterParams.l12l0LoopN - 1;
                 // Start the K-axis iterate
                 uint32_t n = (iterParams.nBL1Iter == iterParams.maxNBL1Iter && iterParams.nBL0Iter == iterParams.maxNL0Iter) ? iterParams.nL0Tail : L0TileShape::nL0;
                 uint32_t m = (iterParams.mAL1Iter == iterParams.maxMAL1Iter && iterParams.mAL0Iter == iterParams.maxML0Iter) ? iterParams.mAL0Tail : L0TileShape::mL0;
-                
+
                 tileParams.l0CurrentM = CeilDiv(m, BLOCK_L0_M) * BLOCK_L0_M;
                 tileParams.l0CurrentN = CeilDiv(n, BLOCK_L0_N) * BLOCK_L0_N;
 
@@ -315,6 +307,7 @@ public:
             iterParams.nBL1Iter = 0;
         }
     }
+
 protected:
     struct IterParams {
         uint8_t isFirstIterate = true;
@@ -330,7 +323,7 @@ protected:
         uint8_t mL0IsDivisibleByWo = false;
 
         uint8_t isGroupOptDimTail = false;
-        
+
         uint32_t kAL1Iter = 0;
         uint32_t kBL1Iter = 0;
         uint32_t mAL1Iter = 0;
@@ -359,7 +352,7 @@ protected:
         uint32_t ddr2l1LoopD = 0;
         uint32_t l12l0LoopM = 0;
         uint32_t ddr2l0LoopK = 0;
-        
+
         uint32_t kL0Tail = 0;
         uint32_t kAL1Tail = 0;
         uint32_t kBL1Tail = 0;
@@ -456,11 +449,11 @@ protected:
         uint32_t kAL1TailCheck = conv3dParams.alignCinKhKwKd() % kAL1;
         iterParams.kAL1Tail = kAL1TailCheck == 0 ? kAL1 : kAL1TailCheck;
         uint8_t L0ASet2dFlag = conv3dParams.padhead() != 0 || conv3dParams.padtail() != 0 ||
-                conv3dParams.padtop() >= conv3dParams.kh() || conv3dParams.padbottom() >= conv3dParams.kh();
+                               conv3dParams.padtop() >= conv3dParams.kh() || conv3dParams.padbottom() >= conv3dParams.kh();
         bool kAL1TailCase = iterParams.kAL1Tail != kAL1;
         iterParams.preloadAL1DbFlag = L1A_STAGES == 2 && !iterParams.kAL1fullload && !L0ASet2dFlag && !kAL1TailCase;
         iterParams.preloadABL1DbFlag = L1A_STAGES == 2 && L1B_STAGES == 2 && !iterParams.kAL1fullload &&
-                                         !iterParams.kBL1fullload && !L0ASet2dFlag && !kAL1TailCase;
+                                       !iterParams.kBL1fullload && !L0ASet2dFlag && !kAL1TailCase;
     }
 
     CATLASS_DEVICE
@@ -555,7 +548,7 @@ protected:
 
     CATLASS_DEVICE
     void ReduceKPreloadDbFmap(AscendC::GlobalTensor<ElementFmap> const &gmBatchFmap, LayoutFmap const &layoutFmap,
-                             AscendC::GlobalTensor<ElementFilter> const &filterGm, LayoutFilter const &layoutFilter)
+                              AscendC::GlobalTensor<ElementFilter> const &filterGm, LayoutFilter const &layoutFilter)
     {
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1AEventList[l1AListId]);
         LoadAL1Process(gmBatchFmap, 0, layoutFmap, l1AListId);
@@ -728,11 +721,8 @@ protected:
         }
 
         uint32_t diStartWithPad = iterParams.diStartPos + iterParams.dOutIter * conv3dParams.sD() + kdL1Idx * conv3dParams.dD();
-        uint32_t diEndWithPad = cin1LoadL1 <= conv3dParams.cin1()
-                                    ? diStartWithPad + 1
-                                    : diStartWithPad + (cin1LoadL1 / conv3dParams.cin1() - 1) * conv3dParams.dD() + 1;
-        uint32_t diIdx = iterParams.diStartPos <= conv3dParams.padhead() ? diStartWithPad - conv3dParams.padhead()
-                                                            : diStartWithPad - iterParams.diStartPos;
+        uint32_t diEndWithPad = cin1LoadL1 <= conv3dParams.cin1() ? diStartWithPad + 1 : diStartWithPad + (cin1LoadL1 / conv3dParams.cin1() - 1) * conv3dParams.dD() + 1;
+        uint32_t diIdx = iterParams.diStartPos <= conv3dParams.padhead() ? diStartWithPad - conv3dParams.padhead() : diStartWithPad - iterParams.diStartPos;
         uint32_t diWithPad = conv3dParams.di() + conv3dParams.padhead();
         uint32_t cin1LoadL1PadHead = 0;
         uint32_t cin1LoadL1PadTail = 0;
@@ -780,12 +770,12 @@ protected:
             Conv3d6HdCoord gmTileFmapOffset{0, diIdx, cin1L1Idx, hiIdx * conv3dParams.wi()};
             auto layoutTileFmap = layoutFmap.GetTileLayout(MakeCoord((uint32_t)1, conv3dParams.dD(), conv3dParams.cin1(), conv3dParams.hi(), conv3dParams.wi(), conv3dParams.cin0()));
             auto gmTileFmap = gmBatchFmap[layoutTileFmap.GetOffset(gmTileFmapOffset)];
-            layoutFmapInL1 = LayoutFmapInL1::MakeLayout(1, 1, cin1LoadL1, iterParams.hiLoadL1, conv3dParams.wi() ,conv3dParams.cin0());
+            layoutFmapInL1 = LayoutFmapInL1::MakeLayout(1, 1, cin1LoadL1, iterParams.hiLoadL1, conv3dParams.wi(), conv3dParams.cin0());
 
             copyGmToL1A(l1ATensorList[l1ListId][aL1Offset], gmTileFmap, layoutFmapInL1, layoutTileFmap);
 
             if (set2dFlagDTail) {
-                aL1Offset += cin1LoadL1 * iterParams.hiLoadL1 * conv3dParams.wi()* conv3dParams.cin0();
+                aL1Offset += cin1LoadL1 * iterParams.hiLoadL1 * conv3dParams.wi() * conv3dParams.cin0();
                 AscendC::InitConstValueParams<ElementFmap> initConstValueParams;
                 initConstValueParams.repeatTimes = cin1LoadL1PadTail / conv3dParams.cin1();
                 initConstValueParams.blockNum = conv3dParams.cin1() * iterParams.hiLoadL1 * conv3dParams.wi();
@@ -795,7 +785,7 @@ protected:
                 set2dFlagDTail = false;
             }
         }
-        layoutFmapInL1 = LayoutFmapInL1::MakeLayout(1, 1, orgCin1LoadL1, orgHiLoadL1, conv3dParams.wi() ,conv3dParams.cin0());
+        layoutFmapInL1 = LayoutFmapInL1::MakeLayout(1, 1, orgCin1LoadL1, orgHiLoadL1, conv3dParams.wi(), conv3dParams.cin0());
     }
 
     CATLASS_DEVICE
@@ -812,7 +802,8 @@ protected:
     }
 
     CATLASS_DEVICE
-    void ReduceKL0AL0BPingPong(const uint16_t& l0abFlag, uint32_t l1aListId, uint32_t l1bListId) {
+    void ReduceKL0AL0BPingPong(const uint16_t &l0abFlag, uint32_t l1aListId, uint32_t l1bListId)
+    {
         auto l0ATile = l0ATensorList[l0abFlag];
         auto l0BTile = l0BTensorList[l0abFlag];
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventList[l0abFlag]);
@@ -826,8 +817,8 @@ protected:
         } else {
             uint32_t kStartPt = iterParams.kAL0Iter * L0TileShape::kL0;
             uint32_t mStartPt = iterParams.mL0IsDivisibleByWo ?
-                iterParams.mAL0Iter * L0TileShape::mL0 + iterParams.hwStartPos % conv3dParams.wo() :
-                iterParams.mAL0Iter * L0TileShape::mL0 + (iterParams.hwStartPos + iterParams.mAL1Iter * FmapL1TileShape::mAL1) % conv3dParams.wo();
+                                    iterParams.mAL0Iter * L0TileShape::mL0 + iterParams.hwStartPos % conv3dParams.wo() :
+                                    iterParams.mAL0Iter * L0TileShape::mL0 + (iterParams.hwStartPos + iterParams.mAL1Iter * FmapL1TileShape::mAL1) % conv3dParams.wo();
             LayoutAInL0 layoutAInL0 = LayoutAInL0::template MakeLayout<ElementFilter>(tileParams.l0CurrentM, currentKL0);
             copyL1ToL0A(l0ATile, l1ATensorList[l1aListId], layoutAInL0, layoutFmapInL1, kStartPt, mStartPt, iterParams.hiLoadL1, conv3dParams.wi(), iterParams.padList);
         }
@@ -860,6 +851,6 @@ protected:
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventList[l0abFlag]);
     }
 };
-}  // namespace Catlass::Conv::Block
+} // namespace Catlass::Conv::Block
 
 #endif // CATLASS_CONV_BLOCK_BLOCK_CONV3D_PINGPONG_BIAS_HPP

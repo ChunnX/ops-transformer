@@ -10,7 +10,14 @@
 import pytest
 import torch
 
-from common import assert_binary_equal, assert_close, make_inputs, run, set_device, synchronize
+from common import (
+    assert_binary_equal,
+    assert_close,
+    make_inputs,
+    run,
+    set_device,
+    synchronize,
+)
 
 
 @pytest.fixture(scope="module", autouse=True)

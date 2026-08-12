@@ -65,8 +65,7 @@ def main():
             f"min/mean/max={minimum:.3f}/{mean:.3f}/{maximum:.3f} ms"
         )
     print(
-        f"end_to_end_device_max={maximum_total:.3f} ms "
-        f"hard_limit={args.max_ms:.3f} ms"
+        f"end_to_end_device_max={maximum_total:.3f} ms hard_limit={args.max_ms:.3f} ms"
     )
     if maximum_total > args.max_ms:
         raise SystemExit(

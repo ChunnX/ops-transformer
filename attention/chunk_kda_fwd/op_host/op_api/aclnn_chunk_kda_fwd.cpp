@@ -315,9 +315,7 @@ aclnnStatus ResolveShapeInfo(const ChunkKdaFwdParams &params, KdaFwdLayout layou
                    ACLNN_ERR_PARAM_INVALID,
                    "BNSD expects v/g/beta as [B,HV,T,V], [B,HV,T,K], [B,HV,T].");
     }
-    info.seqNum = params.cuSeqlensOptional == nullptr
-                      ? info.batch
-                      : static_cast<int64_t>(params.cuSeqlensOptional->Size()) - 1;
+    info.seqNum = params.cuSeqlensOptional == nullptr ? info.batch : static_cast<int64_t>(params.cuSeqlensOptional->Size()) - 1;
     info.totalChunks = CountChunks(params.cuSeqlensOptional, info.seqlen, params.chunkSize);
     return ACLNN_SUCCESS;
 }
@@ -354,9 +352,7 @@ aclnnStatus CheckStateShape(const aclTensor *state, const char *name, const KdaS
     if (state == nullptr) {
         return ACLNN_SUCCESS;
     }
-    const bool valid = stateVFirst
-                           ? HasShape(state, {info.seqNum, info.hvNum, info.vDim, info.kDim})
-                           : HasShape(state, {info.seqNum, info.hvNum, info.kDim, info.vDim});
+    const bool valid = stateVFirst ? HasShape(state, {info.seqNum, info.hvNum, info.vDim, info.kDim}) : HasShape(state, {info.seqNum, info.hvNum, info.kDim, info.vDim});
     CHECK_COND(valid, ACLNN_ERR_PARAM_INVALID,
                "%s must be [N,HV,K,V] when stateVFirst=false and [N,HV,V,K] otherwise.", name);
     return ACLNN_SUCCESS;
@@ -365,27 +361,18 @@ aclnnStatus CheckStateShape(const aclTensor *state, const char *name, const KdaS
 aclnnStatus CheckOutputShapes(const ChunkKdaFwdParams &params, const KdaShapeInfo &info)
 {
     const DataType dataType = params.q->GetDataType();
-    const bool attnShapeValid = info.isRank3
-                                    ? HasShape(params.attnOut, {info.seqlen, info.hvNum, info.vDim})
-                                    : HasShape(params.attnOut,
-                                               {info.batch, info.seqlen, info.hvNum, info.vDim});
+    const bool attnShapeValid = info.isRank3 ? HasShape(params.attnOut, {info.seqlen, info.hvNum, info.vDim}) : HasShape(params.attnOut, {info.batch, info.seqlen, info.hvNum, info.vDim});
     CHECK_COND(attnShapeValid && params.attnOut->GetDataType() == dataType,
                ACLNN_ERR_PARAM_INVALID,
                "attnOut must match q dtype and use fixed sequence-major TND/BSND layout.");
     if (params.gkOut != nullptr) {
-        const bool valid = info.isRank3
-                               ? HasShape(params.gkOut, {info.hvNum, info.seqlen, info.kDim})
-                               : HasShape(params.gkOut,
-                                          {info.batch, info.hvNum, info.seqlen, info.kDim});
+        const bool valid = info.isRank3 ? HasShape(params.gkOut, {info.hvNum, info.seqlen, info.kDim}) : HasShape(params.gkOut, {info.batch, info.hvNum, info.seqlen, info.kDim});
         CHECK_COND(valid && params.gkOut->GetDataType() == DataType::DT_FLOAT,
                    ACLNN_ERR_PARAM_INVALID, "gkOut must be float32 in fixed head-major NTD/BNSD layout.");
     }
     const aclTensor *matrixOutputs[] = {params.aqkOut, params.akkOut};
     for (const aclTensor *output : matrixOutputs) {
-        const bool valid = info.isRank3
-                               ? HasShape(output, {info.hvNum, info.seqlen, params.chunkSize})
-                               : HasShape(output,
-                                          {info.batch, info.hvNum, info.seqlen, params.chunkSize});
+        const bool valid = info.isRank3 ? HasShape(output, {info.hvNum, info.seqlen, params.chunkSize}) : HasShape(output, {info.batch, info.hvNum, info.seqlen, params.chunkSize});
         CHECK_COND(valid && output->GetDataType() == dataType, ACLNN_ERR_PARAM_INVALID,
                    "Aqk/Akk must match q dtype and use fixed head-major NTD/BNSD layout.");
     }
@@ -394,10 +381,7 @@ aclnnStatus CheckOutputShapes(const ChunkKdaFwdParams &params, const KdaShapeInf
         if (output == nullptr) {
             continue;
         }
-        const bool valid = info.isRank3
-                               ? HasShape(output, {info.hvNum, info.seqlen, info.kDim})
-                               : HasShape(output,
-                                          {info.batch, info.hvNum, info.seqlen, info.kDim});
+        const bool valid = info.isRank3 ? HasShape(output, {info.hvNum, info.seqlen, info.kDim}) : HasShape(output, {info.batch, info.hvNum, info.seqlen, info.kDim});
         CHECK_COND(valid && output->GetDataType() == dataType, ACLNN_ERR_PARAM_INVALID,
                    "w/qg/kg must match q dtype and use fixed head-major NTD/BNSD layout.");
     }
@@ -406,27 +390,21 @@ aclnnStatus CheckOutputShapes(const ChunkKdaFwdParams &params, const KdaShapeInf
         if (output == nullptr) {
             continue;
         }
-        const bool valid = info.isRank3
-                               ? HasShape(output, {info.hvNum, info.seqlen, info.vDim})
-                               : HasShape(output,
-                                          {info.batch, info.hvNum, info.seqlen, info.vDim});
+        const bool valid = info.isRank3 ? HasShape(output, {info.hvNum, info.seqlen, info.vDim}) : HasShape(output, {info.batch, info.hvNum, info.seqlen, info.vDim});
         CHECK_COND(valid && output->GetDataType() == dataType, ACLNN_ERR_PARAM_INVALID,
                    "u/vNew must match q dtype and use fixed head-major NTD/BNSD layout.");
     }
     if (params.hOut != nullptr) {
-        const bool valid = params.stateVFirst
-                               ? (info.isRank3
-                                      ? HasShape(params.hOut,
-                                                 {info.totalChunks, info.hvNum, info.vDim, info.kDim})
-                                      : HasShape(params.hOut,
-                                                 {info.batch, info.totalChunks, info.hvNum,
-                                                  info.vDim, info.kDim}))
-                               : (info.isRank3
-                                      ? HasShape(params.hOut,
-                                                 {info.totalChunks, info.hvNum, info.kDim, info.vDim})
-                                      : HasShape(params.hOut,
-                                                 {info.batch, info.totalChunks, info.hvNum,
-                                                  info.kDim, info.vDim}));
+        const bool valid = params.stateVFirst ? (info.isRank3 ? HasShape(params.hOut,
+                                                                         {info.totalChunks, info.hvNum, info.vDim, info.kDim}) :
+                                                                HasShape(params.hOut,
+                                                                         {info.batch, info.totalChunks, info.hvNum,
+                                                                          info.vDim, info.kDim})) :
+                                                (info.isRank3 ? HasShape(params.hOut,
+                                                                         {info.totalChunks, info.hvNum, info.kDim, info.vDim}) :
+                                                                HasShape(params.hOut,
+                                                                         {info.batch, info.totalChunks, info.hvNum,
+                                                                          info.kDim, info.vDim}));
         CHECK_COND(valid && params.hOut->GetDataType() == dataType, ACLNN_ERR_PARAM_INVALID,
                    "hOut must match q dtype, use fixed sequence-major layout, and follow stateVFirst.");
     }
@@ -611,9 +589,7 @@ aclnnStatus aclnnChunkKdaFwdGetWorkspaceSize(
     const op::Shape hShape5 =
         MakeShape({info.batch, info.hvNum, info.totalChunks, info.kDim, info.vDim});
     const op::Shape hExportShape5 =
-        params.stateVFirst
-            ? MakeShape({info.batch, info.totalChunks, info.hvNum, info.vDim, info.kDim})
-            : MakeShape({info.batch, info.totalChunks, info.hvNum, info.kDim, info.vDim});
+        params.stateVFirst ? MakeShape({info.batch, info.totalChunks, info.hvNum, info.vDim, info.kDim}) : MakeShape({info.batch, info.totalChunks, info.hvNum, info.kDim, info.vDim});
     const op::Shape stateShape4 =
         MakeShape({info.seqNum, info.hvNum, info.kDim, info.vDim});
     const op::Shape placeholderShape = MakeShape({1});
@@ -660,21 +636,11 @@ aclnnStatus aclnnChunkKdaFwdGetWorkspaceSize(
     if (akkCompute == nullptr) {
         akkCompute = AllocTensor(executorPtr, matrixShape4, params.q->GetDataType());
     }
-    const aclTensor *wCompute = wExport == nullptr
-        ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType())
-        : wExport;
-    const aclTensor *uCompute = uExport == nullptr
-        ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType())
-        : uExport;
-    const aclTensor *qgCompute = qgExport == nullptr
-        ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType())
-        : qgExport;
-    const aclTensor *kgCompute = kgExport == nullptr
-        ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType())
-        : kgExport;
-    const aclTensor *vNewCompute = vNewExport == nullptr
-        ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType())
-        : vNewExport;
+    const aclTensor *wCompute = wExport == nullptr ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType()) : wExport;
+    const aclTensor *uCompute = uExport == nullptr ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType()) : uExport;
+    const aclTensor *qgCompute = qgExport == nullptr ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType()) : qgExport;
+    const aclTensor *kgCompute = kgExport == nullptr ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType()) : kgExport;
+    const aclTensor *vNewCompute = vNewExport == nullptr ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType()) : vNewExport;
     const aclTensor *hCompute = AllocTensor(
         executorPtr, hExport == nullptr ? placeholderShape : hShape5,
         params.q->GetDataType());
@@ -724,8 +690,7 @@ aclnnStatus aclnnChunkKdaFwdGetWorkspaceSize(
     }
     if (hExport != nullptr) {
         const std::vector<int64_t> hPerm =
-            params.stateVFirst ? std::vector<int64_t>{0, 2, 1, 4, 3}
-                               : std::vector<int64_t>{0, 2, 1, 3, 4};
+            params.stateVFirst ? std::vector<int64_t>{0, 2, 1, 4, 3} : std::vector<int64_t>{0, 2, 1, 3, 4};
         const aclTensor *hResult = Transpose(result[10], hPerm, executorPtr);
         CHECK_RET(hResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
         CHECK_RET(l0op::ViewCopy(hResult, hExport, executorPtr) != nullptr,

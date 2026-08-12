@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 #ifndef CATLASS_GEMV_BLOCK_BLOCK_GEMV_AIV_HPP
 #define CATLASS_GEMV_BLOCK_BLOCK_GEMV_AIV_HPP
 
@@ -31,9 +31,8 @@ template <
     class BiasType_,
     class TileCopy_,
     class TileVmad_,
-    class TileVmuls_
->
-struct BlockGemv <
+    class TileVmuls_>
+struct BlockGemv<
     Gemm::GemvAtlasA2,
     UBTileShape_,
     AType_,
@@ -42,8 +41,7 @@ struct BlockGemv <
     BiasType_,
     TileCopy_,
     TileVmad_,
-    TileVmuls_
-> {
+    TileVmuls_> {
 public:
     // Type Aliases
     using DispatchPolicy = Gemm::GemvAtlasA2;
@@ -183,11 +181,11 @@ public:
             auto layoutComputeInUb = layoutA.GetTileLayout(MakeCoord(TileMRound, TileNRound));
             auto layoutTileCompute = layoutA.GetTileLayout(MakeCoord(m_actual, n_actual));
             tileVmad(UbYTensorList[UbOutListId],
-                UbXTensorList[UbInListId],
-                UbATensorList[UbInListId],
-                UbWTensorList[UbInListId],
-                layoutComputeInUb,
-                layoutTileCompute);
+                     UbXTensorList[UbInListId],
+                     UbATensorList[UbInListId],
+                     UbWTensorList[UbInListId],
+                     layoutComputeInUb,
+                     layoutTileCompute);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>((event_t)(UbInAEventList[UbInListId]));
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>((event_t)(UbInXEventList[UbInListId]));
             UbInListId = UbInListIdNext;

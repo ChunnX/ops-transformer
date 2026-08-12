@@ -25,8 +25,7 @@ namespace Catlass::Gemm::Kernel {
 template <
     class BlockMmad_,
     class BlockEpilogue_,
-    class BlockScheduler_
->
+    class BlockScheduler_>
 class BasicMatmulTla {
 public:
     using BlockMmad = BlockMmad_;
@@ -66,15 +65,25 @@ public:
         CATLASS_HOST_DEVICE
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_,
                LayoutB layoutB_, GM_ADDR ptrC_, LayoutC layoutC_, GM_ADDR ptrBias_ = nullptr)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              ptrC(ptrC_), layoutC(layoutC_), ptrBias(ptrBias_) {}
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              ptrBias(ptrBias_)
+        {}
     };
 
     struct Arguments {
         GemmCoord problemShape;
-        uint8_t *ptrA; LayoutA layoutA;
-        uint8_t *ptrB; LayoutB layoutB;
-        uint8_t *ptrC; LayoutC layoutC;
+        uint8_t *ptrA;
+        LayoutA layoutA;
+        uint8_t *ptrB;
+        LayoutB layoutB;
+        uint8_t *ptrC;
+        LayoutC layoutC;
         uint8_t *ptrBias{nullptr};
     };
 
@@ -91,10 +100,10 @@ public:
     static Params ToUnderlyingArguments(const Arguments &args, uint8_t *workspace)
     {
         Params params{args.problemShape,
-            args.ptrA, args.layoutA,
-            args.ptrB, args.layoutB,
-            args.ptrC, args.layoutC,
-            args.ptrBias};
+                      args.ptrA, args.layoutA,
+                      args.ptrB, args.layoutB,
+                      args.ptrC, args.layoutC,
+                      args.ptrBias};
         return params;
     }
 
@@ -103,13 +112,11 @@ public:
     BasicMatmulTla() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     /// Executes one Matmul
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         BlockScheduler matmulBlockScheduler(params.problemShape, MakeCoord(L1_TILE_M, L1_TILE_N));
         uint32_t coreLoops = matmulBlockScheduler.GetCoreLoops();
@@ -146,7 +153,7 @@ public:
         auto tensorA = tla::MakeTensor(gmA, params.layoutA, Arch::PositionGM{});
         auto tensorB = tla::MakeTensor(gmB, params.layoutB, Arch::PositionGM{});
         auto tensorC = tla::MakeTensor(gmC, params.layoutC, Arch::PositionGM{});
-        auto tensorBias = tla::MakeTensor(gmBias, layoutBias, Arch::PositionGM{});        
+        auto tensorBias = tla::MakeTensor(gmBias, layoutBias, Arch::PositionGM{});
 
         for (uint32_t loopIdx = AscendC::GetBlockIdx(); loopIdx < coreLoops; loopIdx += AscendC::GetBlockNum()) {
             // Compute block location
@@ -155,7 +162,7 @@ public:
 
             // Make tiled views
             auto tensorBlockA = GetTileA(tensorA, blockCoord.m() * L1_TILE_M, blockCoord.k() * L1_TILE_K,
-                                        actualBlockShape.m(), actualBlockShape.k());
+                                         actualBlockShape.m(), actualBlockShape.k());
             auto tensorBlockB = GetTile(tensorB,
                                         tla::MakeCoord(blockCoord.k() * L1_TILE_K, blockCoord.n() * L1_TILE_N),
                                         tla::MakeShape(actualBlockShape.k(), actualBlockShape.n()));
@@ -168,8 +175,7 @@ public:
                 blockMmad(tensorBlockA, tensorBlockB, tensorBlockC, actualBlockShape);
             } else {
                 auto tensorBlockBias = GetTile(
-                    tensorBias, tla::MakeCoord(blockCoord.n() * L1_TILE_N), tla::MakeShape(actualBlockShape.n())
-                );
+                    tensorBias, tla::MakeCoord(blockCoord.n() * L1_TILE_N), tla::MakeShape(actualBlockShape.n()));
                 blockMmad(tensorBlockA, tensorBlockB, tensorBlockC, actualBlockShape, tensorBlockBias);
             }
         }
@@ -182,13 +188,14 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params) {}
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
+    {}
+
 private:
-    template<class TensorA>
+    template <class TensorA>
     CATLASS_DEVICE auto GetTileA(TensorA &tensorA, uint32_t mIndex, uint32_t kIndex, uint32_t mSize, uint32_t kSize)
     {
-        if constexpr(tla::detail::isVector<LayoutA>::value) {
+        if constexpr (tla::detail::isVector<LayoutA>::value) {
             return GetTile(tensorA, tla::MakeCoord(kIndex), tla::MakeShape(kSize));
         } else {
             return GetTile(tensorA, tla::MakeCoord(mIndex, kIndex), tla::MakeShape(mSize, kSize));

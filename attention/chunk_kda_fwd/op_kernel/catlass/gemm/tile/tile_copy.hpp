@@ -370,10 +370,10 @@ struct PackedTileCopyTla {
         AscendC::TPosition::C2>;
     using TensorL1Quant = std::conditional_t<
         HAS_QUANT_TENSOR,
-        tla::Tensor<AscendC::LocalTensor<uint64_t>, 
-            detail::TagToLayout_t<uint64_t, layout::VectorLayout>,            
-            tla::Coord<tla::_0>, 
-            AscendC::TPosition::A1>,
+        tla::Tensor<AscendC::LocalTensor<uint64_t>,
+                    detail::TagToLayout_t<uint64_t, layout::VectorLayout>,
+                    tla::Coord<tla::_0>,
+                    AscendC::TPosition::A1>,
         EmptyClass>;
 
     using L1AAlignHelper = Gemm::helper::L1AlignHelper<ElementA, LayoutTagA>;
@@ -390,7 +390,7 @@ struct PackedTileCopyTla {
         std::conditional_t<HAS_BIAS, Gemm::Tile::TileCopyTla<ArchTag, TensorBias, TensorL1Bias>, EmptyClass>;
 
     template <class TensorQuant>
-    using CopyGmToL1Scale = 
+    using CopyGmToL1Scale =
         std::conditional_t<HAS_QUANT_TENSOR, Gemm::Tile::TileCopyTla<ArchTag, TensorQuant, TensorL1Quant>, EmptyClass>;
 
     using CopyL1ToL0A = Gemm::Tile::TileCopyTla<ArchTag, TensorL1A, TensorL0A>;
@@ -424,12 +424,10 @@ template <
 struct PaddingPackedTileCopyTla {
     static_assert(
         std::is_same_v<LayoutTagA, layout::RowMajor> || std::is_same_v<LayoutTagA, layout::ColumnMajor>,
-        "Unsupported layout, only can be RowMajor and ColumnMajor"
-    );
+        "Unsupported layout, only can be RowMajor and ColumnMajor");
     static_assert(
         std::is_same_v<LayoutTagB, layout::RowMajor> || std::is_same_v<LayoutTagB, layout::ColumnMajor>,
-        "Unsupported layout, only can be RowMajor and ColumnMajor"
-    );
+        "Unsupported layout, only can be RowMajor and ColumnMajor");
     using ElementA = typename TensorA::Element;
     using ElementB = typename TensorB::Element;
     using ElementAccumulator = typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementB>::ElementAccumulator;

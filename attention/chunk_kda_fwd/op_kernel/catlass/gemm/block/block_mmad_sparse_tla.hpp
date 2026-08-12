@@ -32,9 +32,8 @@ template <
     class ElementB_,
     class ElementC_,
     class ElementBias_,
-    class TileCopy_
->
-struct BlockMmadSparseTla <
+    class TileCopy_>
+struct BlockMmadSparseTla<
     SparseMatmulMultiBlockOnKAxis<ArchTag_, ENABLE_UNIT_FLAG_>,
     L1TileShape_,
     L0TileShape_,
@@ -42,8 +41,7 @@ struct BlockMmadSparseTla <
     ElementB_,
     ElementC_,
     ElementBias_,
-    TileCopy_
-> {
+    TileCopy_> {
 public:
     using DispatchPolicy = SparseMatmulMultiBlockOnKAxis<ArchTag_, ENABLE_UNIT_FLAG_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
@@ -69,9 +67,9 @@ public:
     using L0IdxLayout = detail::TagToLayout_t<uint8_t, layout::nZ>;
 
     using L1ATlaTensor = tla::Tensor<AscendC::LocalTensor<ElementA>, L1ALayout,
-                                    tla::Coord<tla::_0, tla::_0>, AscendC::TPosition::GM>;
+                                     tla::Coord<tla::_0, tla::_0>, AscendC::TPosition::GM>;
     using L1BTlaTensor = tla::Tensor<AscendC::LocalTensor<ElementB>, L1BLayout,
-                                    tla::Coord<tla::_0, tla::_0>, AscendC::TPosition::GM>;
+                                     tla::Coord<tla::_0, tla::_0>, AscendC::TPosition::GM>;
 
     static constexpr uint16_t LIMIT_MNSIZE = 10;
     static constexpr uint16_t ALIGN_NUM = 16;
@@ -106,7 +104,7 @@ public:
 
     // Check L1TileShape
     static_assert((L1A_TILE_SIZE + L1B_TILE_SIZE + L1B_IDX_TILE_SIZE) * STAGES <= ArchTag::L1_SIZE,
-        "L1TileShape exceeding the L1 space!");
+                  "L1TileShape exceeding the L1 space!");
 
     // Check L0TileShape
     static_assert(L0A_TILE_SIZE <= ArchTag::L0A_SIZE, "L0TileShape exceeding the L0A space!");
@@ -114,11 +112,12 @@ public:
     static_assert(L0C_TILE_SIZE <= ArchTag::L0C_SIZE, "L0TileShape exceeding the L0C space!");
 
     static_assert(L1_M == L0_M && L1_N == L0_N,
-        "The situation where the basic blocks of L1 and L0 differ on the m and n axes is not supported yet");
+                  "The situation where the basic blocks of L1 and L0 differ on the m and n axes is not supported yet");
     static_assert(L0_K <= L1_K, "L0TileShape::K cannot exceed L1TileShape::K");
 
     static_assert((std::is_same_v<ElementA, int8_t> && std::is_same_v<ElementB, int8_t> &&
-                std::is_same_v<ElementC, int32_t>), "Unsupported dtype");
+                   std::is_same_v<ElementC, int32_t>),
+                  "Unsupported dtype");
     static_assert(tla::detail::isColumnMajor<LayoutB>::value, "Only support MatrixB transpose");
 
     CATLASS_DEVICE
@@ -134,10 +133,10 @@ public:
     }
 
     /**
- * @brief Initialization function
- * 
- * This function initializes the buffers and parameters required for matrix multiplication operations
- */
+     * @brief Initialization function
+     *
+     * This function initializes the buffers and parameters required for matrix multiplication operations
+     */
     CATLASS_DEVICE
     void Init()
     {
@@ -177,27 +176,26 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventList_[i]);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventList_[i]);
         }
-        l0CTensor_ =  l0CBuf_.template ReinterpretCast<ElementAccumulator>();
+        l0CTensor_ = l0CBuf_.template ReinterpretCast<ElementAccumulator>();
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
     }
 
     /**
- * @brief Perform the matrix multiplication operations
- * @param [in] DstTensor: destination tensor type
- * @param [in] SrcATensor: matrix A source tensor type
- * @param [in] SrcBTensor: matrix B source tensor type
- * @param [in] SparseIdxTensor: the type of the sparse index tensor
- * @param [in] Shape: shape type
- * @param [in] c: destination tensor
- * @param [in] a: matrix A source tensor
- * @param [in] b: matrix B source tensor
- * @param [in] sparseIdx: the sparse index tensor
- * @param [in] actualShape: actual shape
- */
+     * @brief Perform the matrix multiplication operations
+     * @param [in] DstTensor: destination tensor type
+     * @param [in] SrcATensor: matrix A source tensor type
+     * @param [in] SrcBTensor: matrix B source tensor type
+     * @param [in] SparseIdxTensor: the type of the sparse index tensor
+     * @param [in] Shape: shape type
+     * @param [in] c: destination tensor
+     * @param [in] a: matrix A source tensor
+     * @param [in] b: matrix B source tensor
+     * @param [in] sparseIdx: the sparse index tensor
+     * @param [in] actualShape: actual shape
+     */
     template <class DstTensor, class SrcATensor, class SrcBTensor, class SparseIdxTensor, class Shape>
-    CATLASS_DEVICE
-    void operator()(DstTensor& c, const SrcATensor& a, const SrcBTensor& b,
-                                    const SparseIdxTensor& sparseIdx, const Shape& actualShape)
+    CATLASS_DEVICE void operator()(DstTensor &c, const SrcATensor &a, const SrcBTensor &b,
+                                   const SparseIdxTensor &sparseIdx, const Shape &actualShape)
     {
         using CopyL0CToGm = typename TileCopy_::template CopyL0CToGm<DstTensor>;
         CopyL0CToGm copyL0CToGm;
@@ -233,12 +231,12 @@ public:
 
                     auto l1ATensor = tla::MakeTensor(l1ATensorList_[l1ListIdNext], l1ALayout, Arch::PositionL1{});
                     auto SrcATlaTensor = tla::MakeTensor(a.data(), a.layout(),
-                                                        tla::MakeCoord(aL1Row * L0_M,
+                                                         tla::MakeCoord(aL1Row * L0_M,
                                                                         aL1Col * L1_K),
-                                                        Arch::PositionGM{});
+                                                         Arch::PositionGM{});
                     CopyGmToL1A copyGmToL1A;
                     copyGmToL1A(l1ATensor, SrcATlaTensor);
-                    
+
                     AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1AEventList_[l1ListIdNext]);
 
                     auto bTileHeight = l1K;
@@ -256,7 +254,7 @@ public:
 
                     auto l1BTensor = tla::MakeTensor(l1BTensorList_[l1ListIdNext], l1BLayout, Arch::PositionL1{});
                     auto srcBTlaTensor = GetTile(b, tla::MakeCoord(bL1Row * L1_K / DENSE_MATRIX_B_OFFSET, bL1Col * L0_N),
-                            tla::MakeShape(l1K / DENSE_MATRIX_B_OFFSET, nPartActual));
+                                                 tla::MakeShape(l1K / DENSE_MATRIX_B_OFFSET, nPartActual));
 
                     auto l1BIndexLayout =
                         tla::MakeLayout<int32_t, L1IdxLayout>(bTileHeight / INDEX_MATRIX_OFFSET, bTileWidth);
@@ -264,8 +262,8 @@ public:
 
                     auto l1BIdxTensor = tla::MakeTensor(l1BIdxTensorList_[l1ListIdNext], l1BIndexLayout, Arch::PositionL1{});
                     auto sparseIdxTlaTensor = tla::MakeTensor(sparseIdx.data(), sparseIdx.layout(),
-                                                            tla::MakeCoord(bL1Row * L1_K / INDEX_MATRIX_OFFSET, bL1Col * L0_N),
-                                                            Arch::PositionGM{});
+                                                              tla::MakeCoord(bL1Row * L1_K / INDEX_MATRIX_OFFSET, bL1Col * L0_N),
+                                                              Arch::PositionGM{});
 
                     copyGmToL1B(l1BTensor, srcBTlaTensor);
 
@@ -294,9 +292,9 @@ public:
                         auto l0ATensor = tla::MakeTensor(l0ATensorList_[l0AListId], l0ALayout, Arch::PositionL0A{});
 
                         auto l1ATileTensor = tla::MakeTensor(l1ATensor.data(), l1ATensor.layout(),
-                                                        tla::MakeCoord(aL0Row * 0,
-                                                                        aL0Col * L0_K),
-                                                        Arch::PositionL1{});
+                                                             tla::MakeCoord(aL0Row * 0,
+                                                                            aL0Col * L0_K),
+                                                             Arch::PositionL1{});
                         copyL1ToL0A_(l0ATensor, l1ATileTensor);
 
                         auto bBaseHeight = baseK;
@@ -304,12 +302,12 @@ public:
                         auto bL0Row = kInnerIndex;
                         auto bL0Col = nIndex;
                         auto l0BLayout = tla::MakeLayout<ElementB, layout::nZ>(
-                                        bBaseHeight / DENSE_MATRIX_B_OFFSET, bBaseWidth);
+                            bBaseHeight / DENSE_MATRIX_B_OFFSET, bBaseWidth);
 
                         auto l0BTensor = tla::MakeTensor(l0BTensorList_[l0BListId], l0BLayout, Arch::PositionL0B{});
                         auto l1BTileTensor = tla::MakeTensor(l1BTensor.data(), l1BTensor.layout(),
-                                                        tla::MakeCoord(bL0Row * L0_K / DENSE_MATRIX_B_OFFSET, 0),
-                                                        Arch::PositionL1{});
+                                                             tla::MakeCoord(bL0Row * L0_K / DENSE_MATRIX_B_OFFSET, 0),
+                                                             Arch::PositionL1{});
 
                         copyL1ToL0B_(l0BTensor, l1BTileTensor, l1BIdxTensor);
 
@@ -341,8 +339,8 @@ public:
                 AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(EVENT_ID0);
                 // -----------------Step4: L0C -> GM-----------------
                 auto l0CSrcTensor = tla::MakeTensor(l0CTlaTensor.data(), l0CTlaTensor.layout(),
-                                    tla::MakeCoord(mIndex * L0_M, nIndex * L0_N),
-                                    Arch::PositionL0C{});
+                                                    tla::MakeCoord(mIndex * L0_M, nIndex * L0_N),
+                                                    Arch::PositionL0C{});
                 copyL0CToGm(c, l0CSrcTensor);
 
                 AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
@@ -371,10 +369,10 @@ private:
     CopyL1ToL0A copyL1ToL0A_;
     CopyL1ToL0B copyL1ToL0B_;
 
-    AscendC::LocalTensor<uint8_t> l1Buf_{AscendC::LocalTensor<uint8_t>(AscendC::TPosition::A1, 0 , ArchTag::L1_SIZE)};
-    AscendC::LocalTensor<uint8_t> l0ABuf_{AscendC::LocalTensor<uint8_t>(AscendC::TPosition::A2, 0 , ArchTag::L0A_SIZE)};
-    AscendC::LocalTensor<uint8_t> l0BBuf_{AscendC::LocalTensor<uint8_t>(AscendC::TPosition::B2, 0 , ArchTag::L0B_SIZE)};
-    AscendC::LocalTensor<uint8_t> l0CBuf_{AscendC::LocalTensor<uint8_t>(AscendC::TPosition::CO1, 0 , ArchTag::L0C_SIZE)};
+    AscendC::LocalTensor<uint8_t> l1Buf_{AscendC::LocalTensor<uint8_t>(AscendC::TPosition::A1, 0, ArchTag::L1_SIZE)};
+    AscendC::LocalTensor<uint8_t> l0ABuf_{AscendC::LocalTensor<uint8_t>(AscendC::TPosition::A2, 0, ArchTag::L0A_SIZE)};
+    AscendC::LocalTensor<uint8_t> l0BBuf_{AscendC::LocalTensor<uint8_t>(AscendC::TPosition::B2, 0, ArchTag::L0B_SIZE)};
+    AscendC::LocalTensor<uint8_t> l0CBuf_{AscendC::LocalTensor<uint8_t>(AscendC::TPosition::CO1, 0, ArchTag::L0C_SIZE)};
     AscendC::LocalTensor<ElementA> l1ATensorList_[STAGES];
     AscendC::LocalTensor<ElementB> l1BTensorList_[STAGES];
     AscendC::LocalTensor<ElementSparseIndex> l1BIdxTensorList_[STAGES];

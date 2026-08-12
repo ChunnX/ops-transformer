@@ -72,8 +72,7 @@ struct CopyL0CToGm<
         AscendC::GlobalTensor<ElementDst> const &dst,
         AscendC::LocalTensor<ElementSrc> const &src,
         LayoutDst const &dstLayout,
-        uint8_t unitFlag = 0
-    ) // (Batch, Cout1, Ho, Wo, C0)
+        uint8_t unitFlag = 0) // (Batch, Cout1, Ho, Wo, C0)
     {
         // compute sizes
         uint32_t cout1Actual = dstLayout.shape(1);
@@ -95,8 +94,7 @@ struct CopyL0CToGm<
                 woActual,  // mSize
                 howoRound, // srcStride
                 HoWo,      // dstStride
-                reluEn
-            );
+                reluEn);
             fixPipeParams.quantPre = quantPre;
             AscendC::Fixpipe<ElementDst, ElementSrc, AscendC::CFG_NZ>(dst[gmOffset], src[l0Offset], fixPipeParams);
         }

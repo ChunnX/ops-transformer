@@ -21,8 +21,7 @@ template <
     /// Compute data type
     class ComputeType_,
     /// Length of the compute buffer
-    class TileShape_
->
+    class TileShape_>
 struct TileBroadcastInplaceByColumn {
     using ArchTag = ArchTag_;
     using ElementCompute = typename ComputeType_::Element;
@@ -33,8 +32,7 @@ struct TileBroadcastInplaceByColumn {
 
     CATLASS_DEVICE
     void operator()(
-        AscendC::LocalTensor<ElementCompute> const &ubInOut
-    )
+        AscendC::LocalTensor<ElementCompute> const &ubInOut)
     {
         constexpr uint32_t eleNumPerBlk = BYTE_PER_BLK / sizeof(ElementCompute);
         constexpr uint32_t blkNumPerRow = TileShape::COLUMN / eleNumPerBlk;
@@ -56,8 +54,7 @@ struct TileBroadcastInplaceByColumn {
                 AscendC::Copy(
                     ubInOut[rowOffset * TileShape::COLUMN + colOffset],
                     ubInOut[rowOffset * TileShape::COLUMN],
-                    mask, 1, repeatParams
-                );
+                    mask, 1, repeatParams);
             }
         }
     }

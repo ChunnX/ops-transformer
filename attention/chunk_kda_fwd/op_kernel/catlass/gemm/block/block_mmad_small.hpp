@@ -33,9 +33,8 @@ template <
     class CType_,
     class BiasType_,
     class TileCopy_,
-    class TileMmad_
->
-struct BlockMmad <
+    class TileMmad_>
+struct BlockMmad<
     MmadAtlasA2Small<STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
     L1TileShape_,
     L0TileShape_,
@@ -44,8 +43,7 @@ struct BlockMmad <
     CType_,
     BiasType_,
     TileCopy_,
-    TileMmad_
-> {
+    TileMmad_> {
 public:
     // Type Aliases
     using DispatchPolicy = MmadAtlasA2Small<STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>;
@@ -101,12 +99,12 @@ public:
     static_assert(L0C_TILE_SIZE <= L0C_SIZE, "L0TileShape exceeding the L0C space!");
 
     static_assert(L1TileShape::M == L0TileShape::M && L1TileShape::N == L0TileShape::N,
-        "The situation where the basic blocks of L1 and L0 differ on the m and n axes is not supported yet");
+                  "The situation where the basic blocks of L1 and L0 differ on the m and n axes is not supported yet");
     static_assert(L0TileShape::K <= L1TileShape::K, "L0TileShape::K cannot exceed L1TileShape::K");
     // 32B (256b) aligned
-    static_assert(Gemm::helper::TileShapeAlignChecker<L1TileShape, L0TileShape, ElementA, ElementB>::_ALIGN == 256, 
-        "Tile shape must be 32B aligned.");
-    
+    static_assert(Gemm::helper::TileShapeAlignChecker<L1TileShape, L0TileShape, ElementA, ElementB>::_ALIGN == 256,
+                  "Tile shape must be 32B aligned.");
+
     /// Construct
     CATLASS_DEVICE
     BlockMmad(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0)
@@ -200,7 +198,8 @@ public:
 
             for (int kPartIdx = 0; kPartIdx < kPartLoop; kPartIdx++) {
                 uint32_t kPartActual = (kPartIdx < kPartLoop - 1) ?
-                    L0TileShape::K : (kActual - kPartIdx * L0TileShape::K);
+                                           L0TileShape::K :
+                                           (kActual - kPartIdx * L0TileShape::K);
 
                 // Locate the current tile on L0A
                 auto l0ATile = l0ATensorList[l0AListId];
@@ -269,7 +268,7 @@ public:
                 // Notify to move the next L0B tile
                 AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventList[l0BListId]);
                 l0BListId = (l0BListId + 1 < STAGES) ? (l0BListId + 1) : 0;
-                
+
                 AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventList[l0AListId]);
                 l0AListId = (l0AListId + 1 < STAGES) ? (l0AListId + 1) : 0;
             }

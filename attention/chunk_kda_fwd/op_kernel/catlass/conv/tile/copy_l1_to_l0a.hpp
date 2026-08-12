@@ -34,17 +34,16 @@ struct CopyL1ToL0A<ArchTag, Catlass::Gemm::GemmType<Element, layout::NC1HWC0, As
 
     CATLASS_DEVICE
     CopyL1ToL0A(const Conv2dFilterParams &params_)
-        : params(params_){};
+        : params(params_) {};
 
     CATLASS_DEVICE
     void operator()(
         AscendC::LocalTensor<Element> dstTensor, // (ho, wo, cin1, Kh, Kw, C0)
         AscendC::LocalTensor<Element> srcTensor, // (cin1, hi, wi, C0)
-        LayoutDst const &layoutDst, // {mPartRound, kPartActual} rowsInFractal, rowsByFractal, colsInFractal,
-                                    // colsByFractal
-        LayoutSrc const &layoutSrc, // {1, FmapL1TileShape::Cin1, hiActual, wiActual, ELE_NUM_A_PER_C0}
-        uint8_t *blockPadList
-    )
+        LayoutDst const &layoutDst,              // {mPartRound, kPartActual} rowsInFractal, rowsByFractal, colsInFractal,
+                                                 // colsByFractal
+        LayoutSrc const &layoutSrc,              // {1, FmapL1TileShape::Cin1, hiActual, wiActual, ELE_NUM_A_PER_C0}
+        uint8_t *blockPadList)
     {
         uint32_t hiActual = layoutSrc.shape(2);
         uint32_t wiActual = layoutSrc.shape(3);
@@ -61,16 +60,15 @@ struct CopyL1ToL0A<ArchTag, Catlass::Gemm::GemmType<Element, layout::NC1HWC0, As
                 static_cast<uint16_t>(wiActual),                      // 源操作数 width
                 static_cast<uint16_t>(cin1L0Actual * ELE_NUM_PER_C0), // 源操作数的通道数(channelSize为 4, 8, N*16,
                                                                       // N*16+4, N*16+8)
-                static_cast<uint16_t>(kPartActual), // 目的操作数Width维度的传输长度(16的倍数)
-                static_cast<uint16_t>(mPartRound),  // 目的操作数height维度的传输长度(16的倍数)
-                0,                                  // 目的操作数Width维度的起点
-                0,                                  // 目的操作数height维度的起点
+                static_cast<uint16_t>(kPartActual),                   // 目的操作数Width维度的传输长度(16的倍数)
+                static_cast<uint16_t>(mPartRound),                    // 目的操作数height维度的传输长度(16的倍数)
+                0,                                                    // 目的操作数Width维度的起点
+                0,                                                    // 目的操作数height维度的起点
                 params.strideW(), params.strideH(), params.kw(), params.kh(), params.dilationW(), params.dilationH(),
                 false,    // 是否启用转置
                 false,    // 是否使能small k特性
                 (half)(0) // Pad填充值的数值
-            }
-        );
+            });
     }
 };
 

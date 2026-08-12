@@ -54,7 +54,8 @@ struct BlockSchedulerL2MisplaceCore {
 
     CATLASS_DEVICE
     BlockSchedulerL2MisplaceCore(GemmCoord const &problemShape_, MatrixCoord const &tileMN_)
-        : problemShape(problemShape_), tileMN(tileMN_)
+        : problemShape(problemShape_),
+          tileMN(tileMN_)
     {
         loopsMN = CeilDiv(MatrixCoord(problemShape.GetCoordMN()), tileMN);
         mTileNum_ = loopsMN.row();
@@ -65,8 +66,11 @@ struct BlockSchedulerL2MisplaceCore {
 
     CATLASS_DEVICE
     BlockSchedulerL2MisplaceCore(GemmCoord const &problemShape_, MatrixCoord const &tileMN_,
-        MatrixCoord const &loopsMN_)
-        : problemShape(problemShape_), tileMN(tileMN_), loopsMN(loopsMN_) {}
+                                 MatrixCoord const &loopsMN_)
+        : problemShape(problemShape_),
+          tileMN(tileMN_),
+          loopsMN(loopsMN_)
+    {}
 
     CATLASS_DEVICE
     uint32_t GetTotalSize(uint32_t mL2, uint32_t nL2, uint32_t kL2)
@@ -242,11 +246,11 @@ struct BlockSchedulerL2MisplaceCore {
     }
 
     CATLASS_DEVICE bool IsNTail(uint32_t nTileIdx, uint32_t nTileNum)
-    {  
-        return nTileIdx == (nTileNum - 1);  
+    {
+        return nTileIdx == (nTileNum - 1);
     }
 };
 
-}  // namespace Catlass::Gemm::Block
+} // namespace Catlass::Gemm::Block
 
-#endif  // CATLASS_GEMM_BLOCK_BLOCK_SCHEDULER_L2_MISPLACE_CORE_HPP
+#endif // CATLASS_GEMM_BLOCK_BLOCK_SCHEDULER_L2_MISPLACE_CORE_HPP

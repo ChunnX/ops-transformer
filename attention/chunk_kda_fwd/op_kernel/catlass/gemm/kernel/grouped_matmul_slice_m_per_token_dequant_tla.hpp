@@ -24,8 +24,7 @@ template <
     class BlockMmadTla_,
     class BlockEpilogue_,
     class BlockScheduler_,
-    class ElementGroupList_
->
+    class ElementGroupList_>
 class GroupedMatmulSliceMPerTokenTla {
 public:
     using BlockMmadTla = BlockMmadTla_;
@@ -72,25 +71,25 @@ public:
         CATLASS_HOST_DEVICE
         Params(
             GemmCoord problemShape_,
-            uint32_t problemCount_, 
+            uint32_t problemCount_,
             GM_ADDR ptrGroupList_,
-            GM_ADDR ptrA_, 
+            GM_ADDR ptrA_,
             GM_ADDR ptrB_,
-            GM_ADDR ptrScale_, 
-            GM_ADDR ptrPerToken_, 
-            GM_ADDR ptrDequant_
-        ) : problemShape(problemShape_),
-            problemCount(problemCount_),
-            ptrGroupList(reinterpret_cast<__gm__ ElementGroupList *>(ptrGroupList_)),
-            ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)),
-            ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)),
-            ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)),
-            ptrPerToken(reinterpret_cast<__gm__ ElementPerToken *>(ptrPerToken_)),
-            ptrDequant(reinterpret_cast<__gm__ ElementDequant *>(ptrDequant_))
+            GM_ADDR ptrScale_,
+            GM_ADDR ptrPerToken_,
+            GM_ADDR ptrDequant_)
+            : problemShape(problemShape_),
+              problemCount(problemCount_),
+              ptrGroupList(reinterpret_cast<__gm__ ElementGroupList *>(ptrGroupList_)),
+              ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)),
+              ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)),
+              ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)),
+              ptrPerToken(reinterpret_cast<__gm__ ElementPerToken *>(ptrPerToken_)),
+              ptrDequant(reinterpret_cast<__gm__ ElementDequant *>(ptrDequant_))
         {
         }
     };
-    struct Arguments{
+    struct Arguments {
         GemmCoord problemShape;
         uint32_t problemCount;
         uint8_t *ptrGroupList;
@@ -108,34 +107,35 @@ public:
     {
         return 0;
     }
-    static Params ToUnderlyingArguments(const Arguments &args, void* workspace)
+    static Params ToUnderlyingArguments(const Arguments &args, void *workspace)
     {
         Params params{
-            args.problemShape, 
-            args.problemCount, 
+            args.problemShape,
+            args.problemCount,
             args.ptrGroupList,
             args.ptrA,
             args.ptrB,
             args.ptrScale,
             args.ptrPerToken,
-            args.ptrDequant
-        };
+            args.ptrDequant};
         return params;
     }
-    
+
     CATLASS_HOST_DEVICE
-    GroupedMatmulSliceMPerTokenTla() {
+    GroupedMatmulSliceMPerTokenTla()
+    {
 #ifdef __DAV_VEC__
-        for(int ubListId = 0; ubListId < UB_STAGES; ubListId++){
+        for (int ubListId = 0; ubListId < UB_STAGES; ubListId++) {
             AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE_4, PIPE_MTE3>(AIV_SYNC_AIC_FLAG + ubListId);
         }
 #endif
     }
 
     CATLASS_HOST_DEVICE
-    ~GroupedMatmulSliceMPerTokenTla(){
+    ~GroupedMatmulSliceMPerTokenTla()
+    {
 #ifdef __DAV_CUBE__
-        for(int ubListId = 0; ubListId < UB_STAGES; ubListId++){
+        for (int ubListId = 0; ubListId < UB_STAGES; ubListId++) {
             AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + ubListId);
             AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + FLAG_ID_MAX + ubListId);
         }
@@ -167,30 +167,30 @@ public:
 
         auto layoutA = tla::MakeLayout<ElementA, LayoutA>(m, k);
         auto gmATensor = tla::MakeTensor(gmA, layoutA, Arch::PositionGM{});
-        
+
         auto layoutB = tla::MakeLayout<ElementB, LayoutB>(k * params.problemCount, n);
         auto gmBTensor = tla::MakeTensor(gmB, layoutB, Arch::PositionGM{});
-        
+
         Arch::Resource<ArchTag> resource;
         BlockMmadTla blockMmadTla(resource);
 #endif
-        
+
 #ifdef __DAV_VEC__
         int64_t subBlockIdx = AscendC::GetSubBlockIdx();
         int64_t curBlockIdx = AscendC::GetBlockIdx() >> 1;
 
         auto layoutScale = tla::MakeLayout<ElementScale>(n * params.problemCount);
         auto gmScaleVector = tla::MakeTensor(gmScale, layoutScale, Arch::PositionGM{});
-        
+
         auto layoutPerToken = tla::MakeLayout<ElementPerToken>(m);
         auto gmPerTokenVector = tla::MakeTensor(gmPerToken, layoutPerToken, Arch::PositionGM{});
 
-        auto layoutDequant= tla::MakeLayout<ElementDequant, LayoutDequant>(m, n);
+        auto layoutDequant = tla::MakeLayout<ElementDequant, LayoutDequant>(m, n);
         auto gmDequantTensor = tla::MakeTensor(gmDequant, layoutDequant, Arch::PositionGM{});
-        
+
         Arch::Resource<ArchTag> resource;
         uint32_t ubOffset = 0;
-        for(int i = 0; i < UB_STAGES; i++){
+        for (int i = 0; i < UB_STAGES; i++) {
             ubGmmResList[i] = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
             ubOffset += TileShape::COUNT / BlockEpilogue::CV_RATIO * sizeof(ElementC);
         }
@@ -204,7 +204,7 @@ public:
         BlockScheduler blockScheduler(curBlockIdx, blockNum);
         for (uint32_t groupIdx = 0; groupIdx < params.problemCount; ++groupIdx) {
             uint32_t currentM = (groupIdx == 0) ? groupList.GetValue(groupIdx) :
-                (groupList.GetValue(groupIdx) - groupList.GetValue(groupIdx - 1));
+                                                  (groupList.GetValue(groupIdx) - groupList.GetValue(groupIdx - 1));
             GemmCoord inGroupProblemShape{currentM, n, k};
             blockScheduler.UpdateGroupParams(inGroupProblemShape);
             if (groupIdx == params.problemCount - 1 && (blockScheduler.GetEndBlockIdx() + 1) <= blockNum / 2) {
@@ -213,7 +213,7 @@ public:
             uint32_t coreLoops = blockScheduler.round_;
             for (uint32_t loopIdx = 0; loopIdx < coreLoops; ++loopIdx) {
                 bool isLastGroupRound = groupIdx == params.problemCount - 1 && loopIdx == blockScheduler.round_ - 1 &&
-                    curBlockIdx <= blockScheduler.GetEndBlockIdx();
+                                        curBlockIdx <= blockScheduler.GetEndBlockIdx();
                 blockScheduler.UpdateMNTileIdx(loopIdx, isLastGroupRound);
                 blockScheduler.UpdateBlockShape(loopIdx, isLastGroupRound);
                 auto blockShape = blockScheduler.GetBlockShape();
@@ -227,25 +227,21 @@ public:
                 uint32_t kCoord = blockCoord.k();
                 uint32_t blockK = blockShape.k();
                 auto gmATile = GetTile(gmATensor,
-                                            tla::MakeCoord(totalM + mCoord, kCoord),
-                                            tla::MakeShape(blockM, blockK)
-                                    );
+                                       tla::MakeCoord(totalM + mCoord, kCoord),
+                                       tla::MakeShape(blockM, blockK));
                 auto gmBTile = GetTile(gmBTensor,
-                                            tla::MakeCoord(totalK + kCoord, nCoord),
-                                            tla::MakeShape(blockK, blockN)
-                                    );
+                                       tla::MakeCoord(totalK + kCoord, nCoord),
+                                       tla::MakeShape(blockK, blockN));
                 auto layoutGmm = tla::MakeLayout(
                     tla::MakeShape(blockM, blockN),
-                    tla::MakeStride(TileShape::COLUMN, tla::Int<1>{})
-                );
+                    tla::MakeStride(TileShape::COLUMN, tla::Int<1>{}));
                 auto ubGmmTensor = tla::MakeTensor(ubGmmResList[ubListId], layoutGmm, Arch::PositionUB{});
 
                 AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + ubListId);
                 AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIV_SYNC_AIC_FLAG + FLAG_ID_MAX + ubListId);
                 blockMmadTla(
                     gmATile, gmBTile, ubGmmTensor,
-                    blockShape
-                );
+                    blockShape);
                 AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIC_SYNC_AIV_FLAG + ubListId);
                 AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE_4, PIPE_FIX>(AIC_SYNC_AIV_FLAG + FLAG_ID_MAX + ubListId);
 #endif
@@ -253,21 +249,17 @@ public:
                 int64_t firstHalfBlockM = (blockM + 1) >> 1;
                 int64_t halfBlockM = subBlockIdx ? (blockM - firstHalfBlockM) : firstHalfBlockM;
                 auto gmScaleTile = GetTile(gmScaleVector,
-                                        tla::MakeCoord(totalN + nCoord),
-                                        tla::MakeShape(blockN)
-                                    );
+                                           tla::MakeCoord(totalN + nCoord),
+                                           tla::MakeShape(blockN));
                 auto gmPerTokenTile = GetTile(gmPerTokenVector,
-                                        tla::MakeCoord(totalM + mCoord + firstHalfBlockM * subBlockIdx),
-                                        tla::MakeShape(halfBlockM)
-                                    );
+                                              tla::MakeCoord(totalM + mCoord + firstHalfBlockM * subBlockIdx),
+                                              tla::MakeShape(halfBlockM));
                 auto gmDequantTile = GetTile(gmDequantTensor,
-                                        tla::MakeCoord(totalM + mCoord + firstHalfBlockM * subBlockIdx, nCoord),
-                                        tla::MakeShape(halfBlockM, blockN)
-                                    );
+                                             tla::MakeCoord(totalM + mCoord + firstHalfBlockM * subBlockIdx, nCoord),
+                                             tla::MakeShape(halfBlockM, blockN));
                 auto layoutGmm = tla::MakeLayout(
                     tla::MakeShape(halfBlockM, blockN),
-                    tla::MakeStride(TileShape::COLUMN, tla::Int<1>{})
-                );
+                    tla::MakeStride(TileShape::COLUMN, tla::Int<1>{}));
                 auto ubGmmTensor = tla::MakeTensor(ubGmmResList[ubListId], layoutGmm, Arch::PositionUB{});
                 AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE_4, PIPE_V>(AIC_SYNC_AIV_FLAG + ubListId);
                 blockEpilogue(
@@ -275,8 +267,7 @@ public:
                     ubGmmTensor,
                     gmScaleTile,
                     gmPerTokenTile,
-                    ubListId
-                );
+                    ubListId);
                 AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE_4, PIPE_MTE3>(AIV_SYNC_AIC_FLAG + ubListId);
 #endif
                 ubListId = (ubListId + 1 < UB_STAGES) ? (ubListId + 1) : 0;
@@ -288,6 +279,7 @@ public:
 
         AscendC::PipeBarrier<PIPE_ALL>();
     }
+
 private:
     AscendC::LocalTensor<ElementC> ubGmmResList[UB_STAGES];
     constexpr static uint16_t AIC_SYNC_AIV_MODE_4 = 4;

@@ -26,9 +26,8 @@ namespace Catlass::Gemm::Kernel {
 template <
     class BlockMmad_,
     class BlockEpilogue_,
-    class BlockScheduler_, 
-    uint32_t WORKSPACE_STAGES_
->
+    class BlockScheduler_,
+    uint32_t WORKSPACE_STAGES_>
 class QuantMatmulFullLoadATla {
 public:
     using BlockMmad = BlockMmad_;
@@ -63,11 +62,11 @@ public:
      * @brief Kernel arguments for the host side
      */
     struct BlockMmadArguments {
-        GM_ADDR ptrA{nullptr};          ///< The global memory address of matrix A
+        GM_ADDR ptrA{nullptr}; ///< The global memory address of matrix A
         LayoutA layoutA;
-        GM_ADDR ptrB{nullptr};          ///< The global memory address of matrix B
+        GM_ADDR ptrB{nullptr}; ///< The global memory address of matrix B
         LayoutB layoutB;
-        GM_ADDR ptrBias{nullptr};          ///< The global memory address of bias
+        GM_ADDR ptrBias{nullptr}; ///< The global memory address of bias
     };
 
     using BlockMmadParams = BlockMmadArguments;
@@ -113,19 +112,19 @@ public:
     static Params ToUnderlyingArguments(const Arguments &args, uint8_t *workspace)
     {
         BlockMmadParams mmadParams = {args.mmadArgs.ptrA, args.mmadArgs.layoutA,
-                                      args.mmadArgs.ptrB, args.mmadArgs.layoutB, 
+                                      args.mmadArgs.ptrB, args.mmadArgs.layoutB,
                                       args.mmadArgs.ptrBias};
         EpilogueParams epiParams = {args.epiArgs.ptrScale, args.epiArgs.layoutScale,
                                     args.epiArgs.ptrPerTokenScale, args.epiArgs.layoutPerTokenScale,
                                     args.epiArgs.ptrD, args.epiArgs.layoutD};
         // mmad params with epilogue takes workspaceGm as output
- 	    Params params = {args.problemShape, args.aicCoreNum, mmadParams, epiParams, workspace};
+        Params params = {args.problemShape, args.aicCoreNum, mmadParams, epiParams, workspace};
         return params;
     }
 
     // Methods
     CATLASS_DEVICE
-    QuantMatmulFullLoadATla() 
+    QuantMatmulFullLoadATla()
     {
         Arch::FlagID flagId = 0;
         for (uint32_t stageId = 0; stageId < WORKSPACE_STAGES; ++stageId) {
@@ -137,13 +136,11 @@ public:
     }
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     /// Executes one Matmul
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         BlockScheduler matmulBlockScheduler(params.problemShape, MakeCoord(L1_TILE_M, L1_TILE_N));
         uint32_t coreLoops = matmulBlockScheduler.GetCoreLoops();
@@ -203,7 +200,7 @@ public:
 
             // Make tiled views
             auto tensorBlockA = GetTileA(tensorA, blockCoord.m() * L1_TILE_M, blockCoord.k() * L1_TILE_K,
-                                        actualBlockShape.m(), actualBlockShape.k());
+                                         actualBlockShape.m(), actualBlockShape.k());
             auto tensorBlockB = GetTile(tensorB,
                                         tla::MakeCoord(blockCoord.k() * L1_TILE_K, blockCoord.n() * L1_TILE_N),
                                         tla::MakeShape(actualBlockShape.k(), actualBlockShape.n()));
@@ -233,8 +230,7 @@ public:
                 callbackAfterFixpipe();
             } else {
                 auto tensorBlockBias = GetTile(
-                    tensorBias, tla::MakeCoord(blockCoord.n() * L1_TILE_N), tla::MakeShape(actualBlockShape.n())
-                );
+                    tensorBias, tla::MakeCoord(blockCoord.n() * L1_TILE_N), tla::MakeShape(actualBlockShape.n()));
                 callbackBeforeFixpipe();
                 blockMmad(tensorBlockA, tensorBlockB, tensorBlockC, actualBlockShape, needLoadL1, tensorBlockBias);
                 callbackAfterFixpipe();
@@ -248,7 +244,8 @@ public:
 
         while (stageUsed > 0) {
             uint32_t aivComputeStageId = (stageId >= stageUsed) ?
-                (stageId - stageUsed) : (stageId + WORKSPACE_STAGES - stageUsed);
+                                             (stageId - stageUsed) :
+                                             (stageId + WORKSPACE_STAGES - stageUsed);
             Arch::CrossCoreWaitFlag(flagAivFinishComputeList[aivComputeStageId]);
             --stageUsed;
         }
@@ -257,8 +254,7 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params) 
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         AscendC::GlobalTensor<ElementA> gmA;
         gmA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(params.mmadParams.ptrA));
@@ -303,27 +299,23 @@ public:
 
             auto tensorBlockC = GetTile(
                 tensorC, tla::MakeCoord((stageId * coreNum + coreIdx) * L1_TILE_M, 0),
-                tla::MakeShape(actualBlockShapeMNK.m(), actualBlockShapeMNK.n())
-            );
-            
+                tla::MakeShape(actualBlockShapeMNK.m(), actualBlockShapeMNK.n()));
+
             auto tensorBlockScale = GetTile(
                 tensorScale, tla::MakeCoord(0, blockCoord.n() * L1_TILE_N),
-                tla::MakeShape(tla::Int<1>{}, actualBlockShapeMNK.n())
-            );
-            
+                tla::MakeShape(tla::Int<1>{}, actualBlockShapeMNK.n()));
+
             auto tensorBlockPerTokenScaleScale = GetTile(
                 tensorPerTokenScale, tla::MakeCoord(0, blockCoord.m() * L1_TILE_M),
-                tla::MakeShape(tla::Int<1>{}, actualBlockShapeMNK.m())
-            );
-            
+                tla::MakeShape(tla::Int<1>{}, actualBlockShapeMNK.m()));
+
             auto tensorBlockD = GetTile(
                 tensorD, tla::MakeCoord(blockCoord.m() * L1_TILE_M, blockCoord.n() * L1_TILE_N),
-                tla::MakeShape(actualBlockShapeMNK.m(), actualBlockShapeMNK.n())
-            );
+                tla::MakeShape(actualBlockShapeMNK.m(), actualBlockShapeMNK.n()));
 
             Arch::CrossCoreWaitFlag(flagAicFinishStoreList[stageId]);
             blockEpilogue(tensorBlockC, tensorBlockScale, tensorBlockPerTokenScaleScale,
-                        tensorBlockD, actualBlockShapeMNK);
+                          tensorBlockD, actualBlockShapeMNK);
             Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagAivFinishComputeList[stageId]);
 
             stageId = (stageId + 1 < WORKSPACE_STAGES) ? (stageId + 1) : 0;
@@ -377,11 +369,11 @@ private:
     static constexpr Arch::FlagID FLAG_AIV_FINISH_STORE = 4;
     Arch::CrossCoreFlag flagAivFinishPadding{FLAG_AIV_FINISH_STORE};
     Arch::Resource<ArchTag> resource;
-    
-    template<class TensorA>
+
+    template <class TensorA>
     CATLASS_DEVICE auto GetTileA(TensorA &tensorA, uint32_t mIndex, uint32_t kIndex, uint32_t mSize, uint32_t kSize)
     {
-        if constexpr(tla::detail::isVector<LayoutA>::value) {
+        if constexpr (tla::detail::isVector<LayoutA>::value) {
             return GetTile(tensorA, tla::MakeCoord(kIndex), tla::MakeShape(kSize));
         } else {
             return GetTile(tensorA, tla::MakeCoord(mIndex, kIndex), tla::MakeShape(mSize, kSize));

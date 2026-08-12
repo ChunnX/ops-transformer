@@ -22,7 +22,7 @@
 namespace Catlass::Gemm::Kernel {
 
 template <class BlockMmad_, class BlockEpilogue_, class BlockScheduler_, uint32_t mScalar, uint32_t nScalar,
-    uint32_t splitkLength>
+          uint32_t splitkLength>
 class FP8Matmul {
 public:
     using BlockMmad = BlockMmad_;
@@ -30,7 +30,7 @@ public:
     using L1TileShape = typename BlockMmad::L1TileShape;
     using ElementA = typename BlockMmad::ElementA;
     using ElementA_ = typename std::conditional_t<
-        std::is_same_v<typename BlockMmad::PrologueA, void>, 
+        std::is_same_v<typename BlockMmad::PrologueA, void>,
         ElementA,
         typename BlockMmad::PrologueA::ElementSrc>;
     using LayoutA = typename BlockMmad::LayoutA;
@@ -47,7 +47,7 @@ public:
     using LayoutB_ = typename std::conditional_t<
         std::is_same_v<typename BlockMmad::PrologueB, void>,
         LayoutB,
-        typename BlockMmad::PrologueB::LayoutSrc>; 
+        typename BlockMmad::PrologueB::LayoutSrc>;
     using ElementC = typename BlockMmad::ElementC;
     using LayoutC = typename BlockMmad::LayoutC;
     using ElementAccumulator = typename BlockMmad::ElementAccumulator;
@@ -81,18 +81,23 @@ public:
 
         CATLASS_HOST_DEVICE
         Params(
-            GemmCoord const &problemShape_, 
-            GM_ADDR ptrA_, LayoutA layoutA_, 
+            GemmCoord const &problemShape_,
+            GM_ADDR ptrA_, LayoutA layoutA_,
             GM_ADDR ptrB_, LayoutB layoutB_,
-            GM_ADDR ptrC_, LayoutC layoutC_, 
-            GM_ADDR ptrWA_, GM_ADDR ptrWB_, GM_ADDR ptrWC_, 
+            GM_ADDR ptrC_, LayoutC layoutC_,
+            GM_ADDR ptrWA_, GM_ADDR ptrWB_, GM_ADDR ptrWC_,
             MmadParams mmadParams_)
-            : problemShape(problemShape_), 
-              ptrA(ptrA_), layoutA(layoutA_), 
-              ptrB(ptrB_), layoutB(layoutB_), 
-              ptrC(ptrC_), layoutC(layoutC_), 
-              ptrWA(ptrWA_), ptrWB(ptrWB_), 
-              ptrWC(ptrWC_), mmadParams(mmadParams_)
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              ptrWA(ptrWA_),
+              ptrWB(ptrWB_),
+              ptrWC(ptrWC_),
+              mmadParams(mmadParams_)
         {}
     };
 
@@ -133,17 +138,20 @@ public:
         gmWC = workspace;
 
         Params params{args.problemShape,
-            args.ptrA,
-            layoutA,
-            args.ptrB,
-            layoutB,
-            args.ptrC,
-            layoutC,
-            gmWA,
-            gmWB,
-            gmWC,
-            {{args.scalar, args.zeroPoint}, 
-            {args.scalar, args.zeroPoint}, mScalar, nScalar, splitkLength} };
+                      args.ptrA,
+                      layoutA,
+                      args.ptrB,
+                      layoutB,
+                      args.ptrC,
+                      layoutC,
+                      gmWA,
+                      gmWB,
+                      gmWC,
+                      {{args.scalar, args.zeroPoint},
+                       {args.scalar, args.zeroPoint},
+                       mScalar,
+                       nScalar,
+                       splitkLength}};
         return params;
     }
 
@@ -158,11 +166,11 @@ public:
     /// Executes one GEMM
     template <int32_t CORE_TYPE = g_coreType>
     CATLASS_DEVICE
-    __attribute__((always_inline)) void operator()(Params const &params);
+        __attribute__((always_inline)) void
+        operator()(Params const &params);
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         BlockMmad blockMmad(resource, params.mmadParams);
         BlockScheduler blockScheduler(
@@ -185,7 +193,7 @@ public:
 
         uint32_t coreLoops = blockScheduler.GetCoreLoops();
         for (uint32_t loopIdx = AscendC::GetBlockIdx() / AIVPERCORE; loopIdx < coreLoops;
-             loopIdx += AscendC::GetBlockNum()) {  // 一次for循环完成两个行块或者两个列块的反量化
+             loopIdx += AscendC::GetBlockNum()) { // 一次for循环完成两个行块或者两个列块的反量化
             // 当前任务块信息
             GemmCoord blockCoord = blockScheduler.GetBlockCoord(loopIdx);
             GemmCoord actualBlockShape = blockScheduler.GetActualBlockShape(blockCoord);
@@ -199,24 +207,21 @@ public:
                 nextBlockCoord = blockScheduler.GetBlockCoord(loopIdx + AscendC::GetBlockNum());
                 nextActualBlockShape = blockScheduler.GetActualBlockShape(nextBlockCoord);
             }
-            
+
             blockMmad.Prologue(
                 gmWA, gmA, params.layoutA,
-                gmWB, gmB, params.layoutB, 
+                gmWB, gmB, params.layoutB,
                 gmC, gmWC, params.layoutC,
                 blockCoord, nextBlockCoord,
                 actualBlockShape, nextActualBlockShape,
                 params.problemShape,
                 isFirstBlock, hasNextBlock,
-                bufferIndex
-            );
-            
+                bufferIndex);
         }
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         BlockMmad blockMmad(resource, params.mmadParams);
         BlockScheduler blockScheduler(
@@ -231,7 +236,7 @@ public:
 
         uint32_t coreLoops = blockScheduler.GetCoreLoops();
         for (uint32_t loopIdx = AscendC::GetBlockIdx(); loopIdx < coreLoops;
-             loopIdx += AscendC::GetBlockNum()) {  // 一次for循环完成一个大基本结果块(256,512)
+             loopIdx += AscendC::GetBlockNum()) { // 一次for循环完成一个大基本结果块(256,512)
             // Compute block location
             // 获取当前大基本结果块的左上角坐标以及实际大小
             GemmCoord blockCoord = blockScheduler.GetBlockCoord(loopIdx);
@@ -242,19 +247,19 @@ public:
     }
 
 protected:
-    static size_t GetSizeWA(const uint32_t aicCoreNum) 
+    static size_t GetSizeWA(const uint32_t aicCoreNum)
     {
         size_t lenWA = static_cast<size_t>(splitkLength) * 128 * mScalar;
         return aicCoreNum * lenWA * sizeof(ElementA) * 2; // 双缓冲
     }
 
-    static size_t GetSizeWB(const uint32_t aicCoreNum) 
+    static size_t GetSizeWB(const uint32_t aicCoreNum)
     {
         size_t lenWB = static_cast<size_t>(splitkLength) * 256 * nScalar;
         return aicCoreNum * lenWB * sizeof(ElementB) * 2; // 双缓冲
     }
 
-    static size_t GetSizeWC(const uint32_t aicCoreNum) 
+    static size_t GetSizeWC(const uint32_t aicCoreNum)
     {
         size_t lenWC = static_cast<size_t>(128 * mScalar) * 256 * nScalar;
         return aicCoreNum * lenWC * sizeof(ElementC);
@@ -271,9 +276,8 @@ protected:
 
     Arch::CrossCoreFlag flag0[STAGES];
     uint32_t bufferIndex{0};
-    
 };
 
-}  // namespace Catlass::Gemm::Kernel
+} // namespace Catlass::Gemm::Kernel
 
-#endif  // CATLASS_GEMM_KERNEL_FP8_MATMUL_HPP
+#endif // CATLASS_GEMM_KERNEL_FP8_MATMUL_HPP
