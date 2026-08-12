@@ -28,7 +28,7 @@ def compressor_grad_golden(
     coff: int = 1,
     device: str = "cpu",
     compute_dtype: torch.dtype = torch.float32,
-    matmul_mode: str = "iodtype",
+    matmul_mode: str = "two",
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compressor 算子的反向传播。
@@ -94,10 +94,10 @@ def compressor_grad_golden(
     d_cpm_kv = d_cpm_kv.to(dev)
     softmax_score = softmax_score.to(dev)
     kv = kv.to(dev)
-    # matmul 输入：iodtype/exact 口径提升到 compute_dtype；native 口径保持 io_dtype 不提升
-    x_f32 = x.to(compute_dtype) if matmul_mode != "native" else x
-    wkv_f32 = wkv.to(compute_dtype) if matmul_mode != "native" else wkv
-    wgate_f32 = wgate.to(compute_dtype) if matmul_mode != "native" else wgate
+    # matmul 输入：two/high 口径提升到 compute_dtype；same 口径保持 io_dtype 不提升
+    x_f32 = x.to(compute_dtype) if matmul_mode != "same" else x
+    wkv_f32 = wkv.to(compute_dtype) if matmul_mode != "same" else wkv
+    wgate_f32 = wgate.to(compute_dtype) if matmul_mode != "same" else wgate
 
     # 确定总 token 数和 batch/seq 维度（仅 BSH 布局需要保留 shape 信息用于最后 reshape）
     if is_th_layout:
@@ -327,20 +327,20 @@ def compressor_grad_golden(
 
     x_flat = x_f32 if is_th_layout else x_f32.reshape(total_tokens, x.shape[-1])  # (T, H)
     iodtype = x.dtype
-    if matmul_mode == "iodtype":
+    if matmul_mode == "two":
         # 两方口径（现状）：d_new_kv 量化到 iodtype 后提升回 compute_dtype（模拟 kernel
         # 中间量 FP16/BF16 存储）；wkv/wgate/x 已提升 compute_dtype → FP32 matmul
         d_new_kv_q = d_new_kv.to(iodtype).to(compute_dtype)
         d_new_score_q = d_new_score.to(iodtype).to(compute_dtype)
-    elif matmul_mode == "native":
-        # 三方 B 口径：仅量化到 iodtype（模拟中间存储），权重不提升 → BF16 进 BF16 出
+    elif matmul_mode == "same":
+        # 三方 B 口径（same）：仅量化到 iodtype（模拟中间存储），权重不提升 → BF16 进 BF16 出
         d_new_kv_q = d_new_kv.to(iodtype)
         d_new_score_q = d_new_score.to(iodtype)
-    else:  # "exact"
+    else:  # "high"
         # 三方 C 口径：全程 compute_dtype（float64），无量化、无提升
         d_new_kv_q = d_new_kv
         d_new_score_q = d_new_score
-    if matmul_mode == "native":
+    if matmul_mode == "same":
         # BF16 进 BF16 出（torch: bf16@bf16 → bf16），golden 内不再 cast，输出即 io_dtype
         d_x_flat = d_new_kv_q @ wkv + d_new_score_q @ wgate  # (T, H)
         d_wkv = d_new_kv_q.T @ x_flat                         # (C, H)

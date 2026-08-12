@@ -20,7 +20,7 @@ def run_small_ops_case(case, device, compare_mode="3"):
     算子侧经 pta 反向传播串联正反向（与通路 1 相同 NPU 流程）。
 
     ⚠️ loss 只对有效压缩块计算（cmp_mask 过滤），无效 padding 不附加梯度。
-    compare_mode=3 时：B=NPU 小算子（native）、C=float64 高精度（exact），
+    compare_mode=3 时：B=NPU 小算子（same）、C=float64 高精度（high），
     中间量 sm/kv 用 NPU 真实前向输出（与通路 1/4 一致）。
     """
     p = _parse_case(case, device)
@@ -129,7 +129,7 @@ def run_small_ops_case(case, device, compare_mode="3"):
             cu_seqlens=cuNpu.cpu() if cuNpu is not None else None,
             seqused=torch.tensor(sqs, dtype=torch.int32) if sqs else None,
             start_pos=torch.tensor(sps, dtype=torch.int32) if sps else None,
-            cmp_ratio=cr, coff=coff, device=device, matmul_mode="native")
+            cmp_ratio=cr, coff=coff, device=device, matmul_mode="same")
         c_ref = compressor_grad_golden(
             x=xCpu, wkv=b["wkvInp"].cpu(), wgate=b["wgateInp"].cpu(),
             d_cpm_kv=dcCpuView, softmax_score=smCpu, kv=kvCpu,
@@ -137,7 +137,7 @@ def run_small_ops_case(case, device, compare_mode="3"):
             seqused=torch.tensor(sqs, dtype=torch.int32) if sqs else None,
             start_pos=torch.tensor(sps, dtype=torch.int32) if sps else None,
             cmp_ratio=cr, coff=coff, device="cpu",
-            compute_dtype=torch.float64, matmul_mode="exact")
+            compute_dtype=torch.float64, matmul_mode="high")
         statuses = []
         b_dx, b_dwkv, b_dwgate, b_dape = b_ref
         c_dx, c_dwkv, c_dwgate, c_dape = c_ref
@@ -287,13 +287,16 @@ def _check_block_size(case, batchSize, seqSize, layoutId, cmpRatio, coff, cacheM
 
 def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, apeCpu,
                            blockTableCpu, spGolden, sqGolden, cuGolden,
-                           cmpRatio, coff, cacheMode, headDim, dataType, ref=None):
+                           cmpRatio, coff, cacheMode, headDim, dataType, ref=None,
+                           compare_mode="2", device="cpu"):
     """通路 1/5：正向输出（cmp_kv/softmax_score/kv）与小算子拼接参考比对。
 
     参考实现：compressor_forward.compressor_forward（纯 PyTorch 小算子拼接）。
     仅比对有效压缩块行（padding 行参考为 0、NPU 不保证写）。
     ref: 可选预计算参考（return_intermediates=True 的 6/8 元组），避免重复计算；
          为 None 时内部调用 compressor_forward。
+    compare_mode=3 时：cmp_kv/sm/kv 与三方参考比对（B=NPU 小算子 same，
+    C=float64 高精度 high）；state 校验仍由调用方用两方 ref 完成。
     """
     coffD = coff * headDim
     kv_state = stateCacheCpu[..., :coffD]
@@ -322,16 +325,53 @@ def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, ape
         return torch.stack([t[..., :half, :], t[..., half:, :]], dim=-2).reshape(t.shape)
 
     def gather(t):
-        t = t.detach().float()  # npu 侧输出/参考输入可能带 requires_grad（autograd 图）
+        t = t.detach().cpu().float()  # npu 侧输出/参考输入可能带 requires_grad（autograd 图）
         return t[valid]
 
-    results = []
-    per = {}
     fwd_key_map = {
         "cmp_kv":        ("cmpkvPct", "cmpkvStatus"),
         "softmax_score": ("smPct",    "smStatus"),
         "kv":            ("kvPct",    "kvStatus"),
     }
+    if compare_mode == "3":
+        b_fwd = compressor_forward.compressor_forward(
+            xCpu, wkvCpu, wgateCpu, kv_state, score_state, apeCpu, blockTableCpu,
+            [int(v) for v in spGolden] if spGolden is not None else None,
+            cmp_ratio=cmpRatio, coff=coff, cache_mode=cacheMode,
+            cu_seqlens=cuGolden,
+            seqused=[int(v) for v in sqGolden] if sqGolden is not None else None,
+            return_intermediates=True,
+            device=device, matmul_mode="same")
+        c_fwd = compressor_forward.compressor_forward(
+            xCpu, wkvCpu, wgateCpu, kv_state, score_state, apeCpu, blockTableCpu,
+            [int(v) for v in spGolden] if spGolden is not None else None,
+            cmp_ratio=cmpRatio, coff=coff, cache_mode=cacheMode,
+            cu_seqlens=cuGolden,
+            seqused=[int(v) for v in sqGolden] if sqGolden is not None else None,
+            return_intermediates=True,
+            device="cpu", compute_dtype=torch.float64, matmul_mode="high")
+        results = []
+        per = {}
+        for name, npu_t, b_t, c_t, dt in (
+            ("cmp_kv", npu_result["cmp_kv"], b_fwd[0], c_fwd[0], dataType),
+            ("softmax_score", npu_result["softmax_score"],
+             interleave(b_fwd[4]), interleave(c_fwd[4]), "float32"),
+            ("kv", npu_result["kv"], interleave(b_fwd[5]), interleave(c_fwd[5]), "float32"),
+        ):
+            r = three_way_report(name, gather(npu_t), gather(b_t), gather(c_t), dt)
+            r["name"] = name
+            results.append(r)
+            pk, sk = fwd_key_map[name]
+            per[pk] = r.get("pct", float("nan"))
+            per[sk] = r["status"]
+        detail = "  ".join(f"{r['name']}={r['status']}" for r in results)
+        ok = all(r["status"] == "PASS" for r in results)
+        d = {"status": "PASS" if ok else "FAIL", "detail": detail}
+        d.update(per)
+        return d
+
+    results = []
+    per = {}
     for name, ref_t, npu_t, dt in (
         ("cmp_kv", ref_cmp, npu_result["cmp_kv"], dataType),
         ("softmax_score", interleave(ref_sm), npu_result["softmax_score"], "float32"),
@@ -438,11 +478,12 @@ def _prepare_case(case, device):
     return p, totalValid, cuNpu, sps, sqs, seed
 
 
-def run_forward_direct_case(case, p, b, totalValid, device):
+def run_forward_direct_case(case, p, b, totalValid, device, compare_mode="2"):
     """通路 5：单正向——直调 _compressor_forward（不经 autograd）。
 
     校验：
       - 正向 3 输出：cmp_kv / softmax_score / kv vs compressor_forward 参考（check_forward_outputs）；
+        compare_mode=3 时与三方参考比对（B=NPU 小算子 same、C=float64 高精度 high）；
       - state_cache 4 项：kv_state_update / score_state_update / kv_state_origin /
         score_state_origin（check_state_outputs，与正向 pytest 一致；origin 严格相等）。
 
@@ -499,7 +540,8 @@ def run_forward_direct_case(case, p, b, totalValid, device):
     fwd = check_forward_outputs(npu_result, xCpu, wkvInp.cpu(), wgateInp.cpu(),
                                 state_cpu_initial, ape_npu.cpu(), block_table_npu.cpu(),
                                 sps, sqs, cuGolden,
-                                cmpRatio, coff, cache_mode, headDim, dataType, ref=ref)
+                                cmpRatio, coff, cache_mode, headDim, dataType, ref=ref,
+                                compare_mode=compare_mode, device=device)
     state = check_state_outputs(npu_state_updated, ref[2], ref[3], ref[6], ref[7],
                                 coff, headDim, dataType, totalValid)
     print_log(f"Forward check: {fwd['detail']}")
@@ -526,8 +568,8 @@ def run_backward_direct_case(case, p, b, totalValid, device, fwd=None, compare_m
     _compressor_forward（与 golden 一致性原则相同——golden 输入用前向真实输出）；
     通路 1 拼接时由通路 5 传入复用同一份中间量。
 
-    校验反向 4 输出：compare_mode=2 两方（vs compressor_grad_golden iodtype）；
-    compare_mode=3 三方（vs NPU 小算子 native + float64 高精度 exact）。
+    校验反向 4 输出：compare_mode=2 两方（vs compressor_grad_golden two）；
+    compare_mode=3 三方（vs NPU 小算子 same + float64 高精度 high）。
     """
     batchSize, seqSize, headDim, hiddenSize = p["B"], p["S1"], p["D"], p["H"]
     cmpRatio, coff = p["cr"], p["coff"]
@@ -558,7 +600,7 @@ def run_backward_direct_case(case, p, b, totalValid, device, fwd=None, compare_m
         cmp_ratio=cmpRatio, coff=coff)
     torch.npu.synchronize()
 
-    # ── Golden（一份参数化实现：2=两方 iodtype；3=三方 B native + C exact）──
+    # ── Golden（一份参数化实现：2=两方 two；3=三方 B same + C high）──
     dcCpu = dcNpu.cpu().float()
     spGolden = spNpu.cpu() if spNpu is not None else None
     sqGolden = sqNpu.cpu() if sqNpu is not None else None
@@ -581,13 +623,13 @@ def run_backward_direct_case(case, p, b, totalValid, device, fwd=None, compare_m
             d_cpm_kv=dcCpuView, softmax_score=smCpu, kv=kvCpu,
             cu_seqlens=cuGolden, seqused=sqGolden, start_pos=spGolden,
             cmp_ratio=cmpRatio, coff=coff,
-            device=device, matmul_mode="native")
+            device=device, matmul_mode="same")
         c_ref = compressor_grad_golden(
             x=xCpu, wkv=wkvInp.cpu(), wgate=wgateInp.cpu(),
             d_cpm_kv=dcCpuView, softmax_score=smCpu, kv=kvCpu,
             cu_seqlens=cuGolden, seqused=sqGolden, start_pos=spGolden,
             cmp_ratio=cmpRatio, coff=coff,
-            device="cpu", compute_dtype=torch.float64, matmul_mode="exact")
+            device="cpu", compute_dtype=torch.float64, matmul_mode="high")
 
     # ── 反向 4 输出比对 ──
     dWkvNp = d_wkv.cpu().float()
@@ -815,7 +857,8 @@ def run_case(case, device, compare_mode="3"):
                       state_init="rand")
 
     # 通路 5：直调正向 + 校验（cmp_kv/sm/kv + state 4 项），返回 NPU 中间量
-    fwd_result, fwd_inter = run_forward_direct_case(case, p, b, totalValid, device)
+    fwd_result, fwd_inter = run_forward_direct_case(case, p, b, totalValid, device,
+                                                    compare_mode=compare_mode)
     # 通路 4：直调反向（复用同一份中间量）+ 校验（反向 4 输出）
     bwd_result = run_backward_direct_case(case, p, b, totalValid, device, fwd=fwd_inter,
                                           compare_mode=compare_mode)
@@ -953,9 +996,9 @@ def run_backward_case(case, device, compare_mode="3"):
             r = check_one_output(name, exp, act, dt, True, 1, thd)
             statuses.append(f"{name}={r['status']}")
     else:
-        b_ref = compressor_grad_golden(**golden_kw, device=device, matmul_mode="native")
+        b_ref = compressor_grad_golden(**golden_kw, device=device, matmul_mode="same")
         c_ref = compressor_grad_golden(**golden_kw, device="cpu",
-                                       compute_dtype=torch.float64, matmul_mode="exact")
+                                       compute_dtype=torch.float64, matmul_mode="high")
         b_dx, b_dwkv, b_dwgate, b_dape = b_ref
         c_dx, c_dwkv, c_dwgate, c_dape = c_ref
         statuses = []
@@ -1077,5 +1120,6 @@ def test_compressor_grad_forward_direct(case, request):
     p, totalValid, cuNpu, sps, sqs, seed = _prepare_case(case, device)
     b = _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps,
                       state_init="rand")
-    result, _ = run_forward_direct_case(case, p, b, totalValid, device)
+    result, _ = run_forward_direct_case(case, p, b, totalValid, device,
+                                        compare_mode=_compare_mode(request))
     assert result["status"] == "PASS", format_case_line(result)
