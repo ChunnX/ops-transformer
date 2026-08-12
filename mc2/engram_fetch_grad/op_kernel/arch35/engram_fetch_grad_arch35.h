@@ -145,13 +145,7 @@ private:
     GM_ADDR flagScratchGM_{0};
     GM_ADDR segCountGM_{0};
     GM_ADDR coreStartGM_{0};
-
-    GM_ADDR sortTempValGM_{0};
-    GM_ADDR sortTempIdxGM_{0};
     GM_ADDR sortCompanionGM_{0};
-    GM_ADDR sortHistGm_{0};
-    GM_ADDR sortPrefixGm_{0};
-    GM_ADDR sortOffsetsGm_{0};
     GM_ADDR gradUniqueFp32GM_{0};
 
     TBuf<> pingBuf_;
@@ -400,30 +394,18 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     wsOffset += static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t);
 
     uint32_t maxSortCount = static_cast<uint32_t>(totalRecv_);
-    uint32_t sortTileCountByCore = static_cast<uint32_t>(totalBlocks_);
-    constexpr uint32_t defaultTile = EngramFetchGradSortInt32::DEFAULT_TILE_SIZE;
-    uint32_t sortTileCountByDefault = (maxSortCount + defaultTile - 1U) / defaultTile;
-    uint32_t sortTileCount = (sortTileCountByCore > sortTileCountByDefault) ?
-                                 sortTileCountByCore :
-                                 sortTileCountByDefault;
-    uint64_t sortTempSize = Ceil(static_cast<uint64_t>(maxSortCount) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    sortTempValGM_ = workspaceGM_ + wsOffset;
-    wsOffset += sortTempSize;
-    sortTempIdxGM_ = workspaceGM_ + wsOffset;
-    wsOffset += sortTempSize;
+    uint64_t sortCompanionSize = Ceil(static_cast<uint64_t>(maxSortCount) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     sortCompanionGM_ = workspaceGM_ + wsOffset;
-    wsOffset += sortTempSize;
-    sortHistGm_ = workspaceGM_ + wsOffset;
-    wsOffset += static_cast<uint64_t>(sortTileCount) * EngramFetchGradSortInt32::HISTOGRAM_BINS * sizeof(int32_t);
-    sortPrefixGm_ = workspaceGM_ + wsOffset;
-    wsOffset += EngramFetchGradSortInt32::HISTOGRAM_BINS * sizeof(int32_t);
-    sortOffsetsGm_ = workspaceGM_ + wsOffset;
-    wsOffset += static_cast<uint64_t>(sortTileCount) * EngramFetchGradSortInt32::HISTOGRAM_BINS * sizeof(int32_t);
+    wsOffset += sortCompanionSize;
+    uint64_t sortWorkspaceSize = EngramFetchGradSortInt32::EngramFetchGradSortInt32::GetWorkspaceSize(
+        maxSortCount, totalBlocks_);
+
+    sorter_.Init(maxSortCount, totalBlocks_, recvLocalEntryOutGM_, sortCompanionGM_,
+                 workspaceGM_ + wsOffset, *tpipe_);
+    wsOffset += sortWorkspaceSize;
 
     gradUniqueFp32GM_ = workspaceGM_ + wsOffset;
     wsOffset += static_cast<uint64_t>(totalRecv_) * static_cast<uint64_t>(hiddenDim_) * sizeof(float);
-
-    sorter_.Init(maxSortCount, totalBlocks_, EngramFetchGradSortInt32::DEFAULT_TILE_SIZE, *tpipe_);
 
     uint32_t statusBufSize = Ceil(numRanks_ * STATE_OFFSET, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
@@ -655,10 +637,8 @@ __aicore__ inline void EngramFetchGradArch35::InitCompanion(uint32_t numRecv)
 
 __aicore__ inline void EngramFetchGradArch35::RunSort(uint32_t numRecv)
 {
-    sorter_.SetCount(numRecv);
     sorter_.SetMaxValue(static_cast<uint32_t>(numRanks_) * static_cast<uint32_t>(numEntriesPerRank_));
-    sorter_.Process(recvLocalEntryOutGM_, sortCompanionGM_, sortTempValGM_, sortTempIdxGM_,
-                    sortHistGm_, sortPrefixGm_, sortOffsetsGm_, *tpipe_);
+    sorter_.Process(numRecv, *tpipe_);
 }
 
 __aicore__ inline void EngramFetchGradArch35::UniqueScatterAdd()
