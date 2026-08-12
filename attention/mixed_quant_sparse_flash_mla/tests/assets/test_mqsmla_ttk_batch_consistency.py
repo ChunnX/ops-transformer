@@ -395,6 +395,10 @@ def test_quant_mode_two_uses_pytest_logical_pa_key_without_assets_rebuild():
     )
     assert data["metadata_input"]["quant_mode"] == 2
     assert data["metadata_input"]["rope_head_dim"] == 64
+    assert data["metadata_input"]["cu_seqlens_ori_kv"] is None
+    assert data["metadata_input"]["cu_seqlens_cmp_kv"] is None
+    assert data["metadata_input"]["ori_topk_length"] is None
+    assert data["metadata_input"]["cmp_topk_length"] is None
     assert torch.equal(
         ori_kv.contiguous().view(torch.uint8),
         data["op_input"]["ori_kv"].contiguous().view(torch.uint8),
@@ -468,6 +472,10 @@ def test_batch_input_adapter_generates_equal_full_case_slices():
     assert data["op_input"]["cu_seqlens_q"] is None
     assert data["op_input"]["cu_seqlens_ori_kv"] is None
     assert data["op_input"]["cu_seqlens_cmp_kv"] is None
+    assert data["metadata_input"]["cu_seqlens_ori_kv"] is None
+    assert data["metadata_input"]["cu_seqlens_cmp_kv"] is None
+    assert data["metadata_input"]["ori_topk_length"] is None
+    assert data["metadata_input"]["cmp_topk_length"] is None
     assert data["cpu_output"] is None
     INPUTS_MODULE.INPUT_ADAPTER.load_golden_store().materialize_golden(data)
     assert data["cpu_output"] is not None

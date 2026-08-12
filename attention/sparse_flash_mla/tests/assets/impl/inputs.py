@@ -598,6 +598,18 @@ class SparseFlashMlaInputAdapter:
             return None
         return repr(list(value))
 
+    @staticmethod
+    def select_topk_override(name, tensor, mask_mode, context):
+        """Distinguish explicit CSV values from TTK's generated destination tensor."""
+        if context is None:
+            return tensor
+        attributes = getattr(context, "attributes", None) or {}
+        if name in attributes:
+            return attributes[name]
+        if mask_mode != 0:
+            return tensor
+        return None
+
     @classmethod
     def select_template_mode(cls, kwargs):
         mode = kwargs.get("template_run_mode") or kwargs.get("template_mode")
@@ -802,8 +814,12 @@ def generate_sparse_flash_mla_inputs(
         "layout_kv": layout_kv,
         "topk_value_mode": topk_value_mode,
         "return_softmax_lse": return_softmax_lse,
-        "ori_topk_length": ori_topk_length,
-        "cmp_topk_length": cmp_topk_length,
+        "ori_topk_length": INPUT_ADAPTER.select_topk_override(
+            "ori_topk_length", ori_topk_length, ori_mask_mode, context
+        ),
+        "cmp_topk_length": INPUT_ADAPTER.select_topk_override(
+            "cmp_topk_length", cmp_topk_length, cmp_mask_mode, context
+        ),
     })
     batch_random = TorchBatchRandomContext.from_case(q, ori_kv, cmp_kv, params)
     data = INPUT_ADAPTER.customize(

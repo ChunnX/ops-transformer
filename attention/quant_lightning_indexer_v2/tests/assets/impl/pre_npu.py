@@ -32,6 +32,8 @@ OPERATOR = "quant_lightning_indexer_v2"
 METADATA_INPUTS_FILE = "metadata_inputs.pt"
 METADATA_INPUTS_VERSION = 1
 METADATA_INPUTS_STATE_KEY = f"{OPERATOR}.metadata_inputs"
+QUANT_MODE_MXFP8 = 3
+QUANT_MODE_MXFP4 = 5
 METADATA_RESULT_FIELDS = (
     "recorded_at",
     "testcase_name",
@@ -209,6 +211,35 @@ def is_materialized(metadata):
     if torch.is_tensor(metadata):
         return bool(torch.count_nonzero(metadata).item())
     return bool(np.count_nonzero(metadata))
+
+
+def restore_main_api_mx_dtypes(tensors, quant_mode):
+    """Restore logical MX dtypes on the tensors consumed by the installed API."""
+    quant_mode = int(quant_mode)
+    if quant_mode == QUANT_MODE_MXFP8:
+        qk_dtype = getattr(torch, "float8_e4m3fn", None)
+    elif quant_mode == QUANT_MODE_MXFP4:
+        qk_dtype = getattr(torch, "float4_e2m1fn_x2", None)
+    else:
+        return
+    scale_dtype = getattr(torch, "float8_e8m0fnu", None)
+    if qk_dtype is None or scale_dtype is None:
+        raise RuntimeError("current PyTorch does not provide the requested MX dtype")
+    if len(tensors) < 5:
+        raise ValueError("QLI_V2 MX input requires query, key, and two scale tensors")
+
+    for index, dtype in ((0, qk_dtype), (1, qk_dtype), (3, scale_dtype), (4, scale_dtype)):
+        tensor = tensors[index]
+        if not torch.is_tensor(tensor):
+            raise TypeError(f"QLI_V2 MX tensor slot {index} must be a torch.Tensor")
+        if tensor.dtype == dtype:
+            continue
+        if tensor.dtype != torch.uint8:
+            raise TypeError(
+                f"QLI_V2 MX tensor slot {index} must use uint8 packed storage, "
+                f"got {tensor.dtype}"
+            )
+        tensor.data = tensor.data.view(dtype)
 
 
 def to_npu(value):
@@ -411,6 +442,10 @@ def run(*args, context: TtkContext = None, **kwargs):
             raise ValueError("QLI_V2 CSV must reserve tensor slot 12 for metadata")
         metadata = tensors[METADATA_INDEX]
         if stop_after_stage is None and is_materialized(metadata):
+            if context.case_type == "e2e":
+                restore_main_api_mx_dtypes(
+                    tensors, context.attributes.get("quant_mode", 1)
+                )
             return None
 
         arguments = metadata_arguments(context)
@@ -426,6 +461,10 @@ def run(*args, context: TtkContext = None, **kwargs):
         # flows are the paths that publish metadata back to replay storage.
         if stop_after_stage is not False:
             persist_metadata(context, metadata)
+        if stop_after_stage is not True and context.case_type == "e2e":
+            restore_main_api_mx_dtypes(
+                tensors, context.attributes.get("quant_mode", 1)
+            )
     except Exception as error:
         if stop_after_stage is not None:
             try:
