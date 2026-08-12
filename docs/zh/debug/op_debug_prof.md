@@ -15,7 +15,7 @@
     $HOME/ascend/log/debug/plog/plog-pid_*.log
     ```
 
-    开启环境变量ASCEND_SLOG_PRINT_TO_STDOUT可以将log日志直接打屏显示(1:开启打屏，0：关闭打屏)，配置示例如下：
+   开启环境变量ASCEND_SLOG_PRINT_TO_STDOUT可以将log日志直接打屏显示(1：开启打屏，0：关闭打屏)，配置示例如下：
 
     ```bash
     export ASCEND_SLOG_PRINT_TO_STDOUT=1
@@ -27,15 +27,15 @@
 
     通过aclGetRecentErrMsg接口（参见[《Runtime运行时API》](https://hiascend.com/document/redirect/CannCommunityRuntimeApi)）获取aclnn接口调用过程中的异常信息，使用方法如下：
 
-    ```cpp
-    printf(aclGetRecentErrMsg());
-    ```
+   ```cpp
+   printf("%s",aclGetRecentErrMsg());
+   ```
 
     打印错误信息样例如下：
 
-    ```text
-    [PID:646612] 2026-01-24-11:53:44.671.727 AclNN_Parameter_Error(EZ1001): Expected a proper Tensor but got null for argument addmmTennsor.self.
-    ```
+   ```text
+   [PID:646612] 2026-01-24-11:53:44.671.727 AclNN_Parameter_Error(EZ1001): Expected a proper Tensor but got null for argument addmmTensor.self.
+   ```
 
 ### 2. Kernel调试
 
@@ -199,21 +199,21 @@
 
     完成算子开发和编译后，假设采用aclnn接口方式调用，生成的算子可执行文件（test_aclnn_add_example）所在目录为本项目`examples/add_example/examples/build/bin/`。
 
-* **针对Ascend 950PR，可使用[CANN Simulator](./cann_sim.md)仿真工具，执行仿真命令，生成仿真数据**
+* **针对Ascend 950PR，可使用[NPU Simulator](./npu_sim.md)仿真工具，执行仿真命令，生成仿真数据**
 
     执行仿真命令，生成仿真数据
 
     ```bash
-    cannsim record ./test_aclnn_add_example -s Ascend950 --gen-report
+    npusim record ./test_aclnn_add_example -s Ascend950 --gen-report
     ```
 
-    仿真结果在本项目`examples/add_example/examples/build/bin/cannsim_*/report/results/kernel_*/core_*`目录，流水相关文件为：
+    仿真结果在本项目`examples/add_example/examples/build/bin/npusim_*/report/results/kernel_*/core_*`目录，流水相关文件为：
 
     ```bash
     trace_core0.json
     ```
 
-    在Chrome浏览器中输入“chrome://tracing”地址，并将生成的指令流水图文件（trace_core0.json）拖到空白处打开，具体参数介绍参考CANN Simulator中[“仿真结果解析”](./cann_sim.md#仿真结果解析说明)章节。
+    在Chrome浏览器中输入“chrome://tracing”地址，并将生成的指令流水图文件（trace_core0.json）拖到空白处打开，具体参数介绍参考NPU Simulator中[“仿真结果解析”](./npu_sim.md#仿真结果解析说明)章节。
 
 * **针对Atlas A2/A3系列产品，可使用[msProf](https://www.hiascend.com/document/redirect/CannCommunityToolMsprof)工具，执行仿真命令，生成仿真数据**
 
@@ -231,5 +231,5 @@
     msprof op simulator --output=$PWD/pipeline_auto --kernel-name "AddExample" ./test_aclnn_add_example
     ```
 
-    采集结果在本项目`$PWD/pipeline_auto/OPPROF_**`目录中。
-    其中流水相关文件路径为`OPPROF**/simulator/visualize_data.bin`，可以借助[MindStudio Insight](https://www.hiascend.com/document/redirect/MindStudioInsight)工具中“基础操作 > 导入数据”章节查看如何导入流水数据。
+      采集结果在本项目`$PWD/pipeline_auto/OPPROF_**`目录中。
+      其中流水相关文件路径为`OPPROF_*/simulator/visualize_data.bin`，可以借助[MindStudio Insight](https://www.hiascend.com/document/redirect/MindStudioInsight)工具中“基础操作 > 导入数据”章节查看如何导入流水数据。

@@ -84,15 +84,16 @@ public:
             if constexpr (HAS_LSE) {
                 softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
             }
-            GlobalTensor<uint8_t> pScaleGm;
-            pScaleGm.SetGlobalBuffer((__gm__ uint8_t *)pScale);
+            if (pScale != nullptr) {
+                GlobalTensor<uint8_t> pScaleGm;
+                pScaleGm.SetGlobalBuffer((__gm__ uint8_t *)pScale);
+                pScaleValue_ = DecodeE8M0Scale(pScaleGm.GetValue(0));
+            }
             if constexpr (HAS_ATTEN) {
                 attenMaskGm_.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
                 attenMaskS2Size_ = attenMaskS2Size;
             }
             negativeFloatScalar_ = *((const MM_T *)&NEGATIVE_MIN_VALUE_FP32);
-            // 输入 quantScale1 为 [1] e8m0；VF 另行生成 C2 使用的 PScale。
-            pScaleValue_ = DecodeE8M0Scale(pScaleGm.GetValue(0));
         }
     }
 
@@ -314,8 +315,11 @@ private:
 
     __aicore__ inline float DecodeE8M0Scale(uint8_t scale) const
     {
-        // e8m0 字节对应 fp32 的 exponent bits[30:23]。
-        uint32_t bits = static_cast<uint32_t>(scale) << 23;
+        // E8M0 code 0 is 2^-127 (an FP32 subnormal), not FP32 zero.
+        // Code 255 is the format's NaN encoding; all other codes map directly
+        // to the FP32 exponent field.
+        uint32_t bits = scale == 0U ? 0x00400000U :
+                                      (scale == 0xFFU ? 0x7FC00000U : static_cast<uint32_t>(scale) << 23);
         return *((float *)&bits);
     }
 

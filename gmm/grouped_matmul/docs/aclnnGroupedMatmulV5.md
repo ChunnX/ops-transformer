@@ -312,10 +312,11 @@ aclnnGroupedMatmulV5默认确定性实现。
 
 - groupType：支持M轴分组（0）和不分组（-1）。非量化/全量化额外支持K轴分组（2）。
 - groupListType：支持0、1、2。
-  - groupListType=0：须为非负单调非递减数列（累积和），groupList中最后一个值不大于x中tensor的第一维。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
-  - groupListType=1：须为非负数列（各组大小），groupList中数值总和不大于x中tensor的第一维。例如：`[64, 0, 128, 64]`
-  - groupListType=2：仅全量化且groupType=0场景下支持，须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置，groupList第二列的数值总和不大于x中tensor的第一维。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
-- tuningConfigOptional：不支持。
+  - groupListType=0：groupList须为非负单调非递减数列（累积和），最后一个值不大于x中tensor的第一维。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
+  - groupListType=1：groupList须为非负数列（各组大小），数值总和不大于x中tensor的第一维。例如：`[64, 0, 128, 64]`
+  - groupListType=2：仅全量化且groupType=0场景下支持，groupList须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置，第二列的数值总和不大于x中tensor的第一维。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
+- tuningConfigOptional：可选参数，数组中的第一个值表示各个专家处理的token数的预期值。当前仅S8S4场景支持，详见[S8S4场景约束](#ascend950-s8s4场景约束)。如不使用该参数不传即可。
+  - `[1]`：是否开启weight亲和格式（先转置再NZ），适用场景：[S8S4](#ascend950-s8s4场景约束)。
 - actType（0~5）：
   - 非量化/伪量化仅支持 0。
   - 全量化下x、weight数据类型为INT8且out数据类型为BFLOAT16/FLOAT16，静态T-C或动态K-C、scale数据类型为FLOAT32/BFLOAT16时支持0/1/2/4/5（注意3不支持）；其余场景仅支持0。
@@ -328,11 +329,11 @@ aclnnGroupedMatmulV5默认确定性实现。
 | groupType | x | weight | y | splitItem | groupListOptional | 转置 | 其余场景限制 |
 |:---:|:---:|:---:|:---:|:---:|:---|:---|:---|
 | -1 | 多 | 多 | 多 | 0/1 | 必须传空 | x不转置；weight可转置（统一） | 1）非量化x，out中tensor需为2维，shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；伪量化场景x中tensor要求维度一致，支持2-6维，y中tensor维度和x保持一致；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>2）仅支持非量化和伪量化<br>3）仅支持ND进ND出 |
-| 0 | 单 | 单 | 单 | 2/3 | 必须传 | x不转置；weight可转置 | 1）weight中tensor需为3维，shape为（$g$, $N$, $K$）或（$g$, $K$, $N$）；x，out中tensor需为2维，shape分别为（$M$, $K$）和（$M$, $N$）；bias中tensor需为2维，shape为（$g$, $N$）<br>2）仅支持ND进ND出 |
-| 0 | 单 | 多 | 单 | 2/3 | 必须传（长度 ≤1024） | x不转置；weight可转置（统一） | 1）x，out中tensor需为2维，shape分别为（$M$, $K$）和（$M$, $N$）；weight中tensor需为2维，shape为（$N$, $K$）或（$K$, $N$）；bias中tensor需为1维，shape为（$N$）<br>2）weight中每个tensor的N轴必须相等<br>3）仅支持非量化<br>4）仅支持ND进ND出 |
-| 0 | 多 | 多 | 单 | 2 | 可选 | x不转置；weight可转置（统一） | 1）x，out中tensor需为2维，shape分别为（$M$, $K$）和（$M$, $N$）；weight中tensor需为2维，shape为（$N$, $K$）或（$K$, $N$）；bias中tensor需为1维，shape为（$N$）<br>2）weight中每个tensor的N轴必须相等<br>3）仅支持非量化<br>4）仅支持ND进ND出 |
-| 2 | 单 | 单 | 单 | 2/3 | 必须传 | x必须转置；weight不转置 | 1）x，weight中tensor需为2维，shape分别为（$K$, $M$）和（$K$, $N$）；out中tensor需为3维，shape为（$g$, $M$, $N$）<br>2）仅支持非量化和量化<br>3）不支持bias<br>4）仅支持ND进ND出 |
-| 2 | 单 | 多 | 多 | 0/1 | 可选 | x必须转置；weight不转置 | 1）x，weight中tensor需为2维，shape分别为（$K$, $M$）和（$K$, $N$）；y中tensor需为2维，shape为（$M$, $N$）<br>2）仅支持ND进ND出<br>3）不支持bias<br>4）仅支持非量化 |
+| 0 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；最大 1024 组 | x不转置；weight可转置 | 1）weight中tensor需为3维，shape为（$g$, $N$, $K$）或（$g$, $K$, $N$）；x，out中tensor需为2维，shape分别为（$M$, $K$）和（$M$, $N$）；bias中tensor需为2维，shape为（$g$, $N$）<br>2）仅支持ND进ND出 |
+| 0 | 单 | 多 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；最大 128 组 | x不转置；weight可转置（统一） | 1）x，out中tensor需为2维，shape分别为（$M$, $K$）和（$M$, $N$）；weight中tensor需为2维，shape为（$N$, $K$）或（$K$, $N$）；bias中tensor需为1维，shape为（$N$）<br>2）weight中每个tensor的N轴必须相等<br>3）仅支持非量化<br>4）仅支持ND进ND出 |
+| 0 | 多 | 多 | 单 | 2 | 可选,若传则需满足：groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；最大 128 组 | x不转置；weight可转置（统一） | 1）x，out中tensor需为2维，shape分别为（$M$, $K$）和（$M$, $N$）；weight中tensor需为2维，shape为（$N$, $K$）或（$K$, $N$）；bias中tensor需为1维，shape为（$N$）<br>2）weight中每个tensor的N轴必须相等<br>3）仅支持非量化<br>4）仅支持ND进ND出 |
+| 2 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；最大 1024 组 | x必须转置；weight不转置 | 1）x，weight中tensor需为2维，shape分别为（$K$, $M$）和（$K$, $N$）；out中tensor需为3维，shape为（$g$, $M$, $N$）<br>2）仅支持非量化和量化<br>3）不支持bias<br>4）仅支持ND进ND出 |
+| 2 | 单 | 多 | 多 | 0/1 | 可选，若传则需满足：groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；最大 128 组 | x必须转置；weight不转置 | 1）x，weight中tensor需为2维，shape分别为（$K$, $M$）和（$K$, $N$）；y中tensor需为2维，shape为（$M$, $N$）<br>2）仅支持ND进ND出<br>3）不支持bias<br>4）仅支持非量化 |
 
 #### 场景速查表
 
@@ -345,6 +346,8 @@ aclnnGroupedMatmulV5默认确定性实现。
 | 动态量化（T-T/T-C/K-T/K-C） | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | BFLOAT16/FLOAT16/FLOAT32 | [动态量化（T-T/T-C/K-T/K-C）场景约束](#ascend950-动态量化-ttck) |
 | 动态量化（<abbr title="pergroup-pergroup（G-G）量化模式，量化参数类型为FLOAT8_E8M0，group size为32的特例">MX</abbr>） | FLOAT8_E5M2/FLOAT8_E4M3FN / FLOAT4_E2M1 | FLOAT8_E5M2/FLOAT8_E4M3FN / FLOAT4_E2M1 | BFLOAT16/FLOAT16/FLOAT32 | [动态量化（MX）场景约束](#ascend950-动态量化-mx) |
 | 动态量化（<abbr title="左矩阵pergroup，右矩阵perblock">G-B</abbr>） | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | BFLOAT16/FLOAT16/FLOAT32 | [动态量化（G-B）场景约束](#ascend950-动态量化-gb) |
+| 全量化-S4S4 | INT4 | INT4 | BFLOAT16/FLOAT16 | [S4S4场景约束](#ascend950-s4s4场景约束) |
+| 伪量化-S8S4 | INT8 | INT4 | BFLOAT16/FLOAT16 | [伪量化场景约束](#ascend950-伪量化场景约束) |
 | <abbr title="对右矩阵权重进行量化的模式，包括perchannel量化模式">伪量化</abbr> | FLOAT16 / BFLOAT16 | INT8/INT4 | FLOAT16 / BFLOAT16 | [伪量化场景约束](#ascend950-伪量化场景约束) |
 | <abbr title="对右矩阵权重进行量化的模式，包括perchannel量化模式">伪量化</abbr> | FLOAT16 / BFLOAT16 | FLOAT8_E5M2/FLOAT8_E4M3FN/HIFLOAT8 | FLOAT16 / BFLOAT16 | [伪量化场景约束](#ascend950-伪量化场景约束) |
 
@@ -495,11 +498,69 @@ aclnnGroupedMatmulV5默认确定性实现。
 
 </details>
 
+<a id="ascend950-s4s4场景约束"></a>
+
+<details>
+<summary>S4S4 场景约束</summary>
+
+**数据类型要求：**
+
+| x | weight | bias | scale | perTokenScale | out |
+|:---|:---|:---|:---|:---|:---|
+| INT4 | INT4 (ND/NZ) | null | UINT64 | FLOAT/null | FLOAT16/BFLOAT16 |
+
+> 以下参数须传空：offset、antiquantScale、antiquantOffset、activationInput、activationQuantScale、activationQuantOffset。
+
+- **约束说明**
+
+  除平台约束外，S4S4场景其余约束如下：
+  - 仅支持groupType=0（M轴分组），actType=0，groupListType=0/1/2
+  - 当前仅支持x、weight、out均为长度为1的TensorList
+  - x不支持转置，weight为NZ格式时，支持转置。ND格式仅支持非转置。
+  - x仅支持2维Tensor，Shape为（M，K）
+  - weight仅支持3维Tensor，Shape为（E，K，N）
+  - weight的数据格式为ND时，要求n为8的整数倍。
+  - 支持perchannel和pergroup量化。perchannel场景的scale的shape需为 $[E, N]$，pergroup场景需为 $[E, G, N]$。
+  - pergroup场景下，$G$必须要能整除$K$，且$k/G$需为偶数。
+  - 开启右矩阵NZ转置后，$K/G$必须按照64对齐， K按照64对齐， N按照16对齐。
+
+</details>
+
 <a id="ascend950-伪量化场景约束"></a>
 
 <details>
 <summary>伪量化场景约束</summary>
 
+<a id="ascend950-s8s4场景约束"></a>
+
+**S8S4场景：**
+
+**数据类型要求：**
+
+| x | weight | bias | scale | offset | antiquantScale | antiquantOffset | perTokenScale | groupList | activationInput | activationQuantScale | activationQuantOffset | out |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | null | null | null | FLOAT | INT64 | null | null | null | BFLOAT16 |
+| INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | FLOAT/null | null | null | FLOAT | INT64 | null | null | null | FLOAT16 |
+
+**约束说明：**
+
+除平台约束外，S8S4场景其余约束如下：
+
+- 仅支持groupType=0（M轴分组）、splitItem=2/3、actType=0，groupListType仅支持1（count）。
+- 当前仅支持x、weight、biasOptional、scaleOptional、offsetOptional、perTokenScaleOptional和out均为长度1的TensorList。
+- x和weight均不支持转置；x仅支持2维Tensor，shape为`[M,K]`；weight默认支持3维Tensor，shape为`[E,K,N]`。
+- perTokenScaleOptional的shape为`[M]`。
+- biasOptional为必选输入，shape为`[E,N]`。该输入是INT4权重离线转换的校正量，按`8 × weight × scale`沿K轴规约得到。
+- 当weight传入数据类型为INT32时，会将每个INT32视为8个INT4。
+- offsetOptional为空时：
+  - K不大于18432且必须是256的整数倍。
+  - scaleOptional为per-group与per-channel离线融合后的结果，shape为`[E,K/256,N]`。
+- offsetOptional不为空时：
+  - 仅支持per-channel，scaleOptional的shape为`[E,1,N]`。
+  - offsetOptional为非对称量化离线计算的辅助结果，即`antiquantOffset × scale`，shape为`[E,1,N]`，数据类型为FLOAT32。
+- S8S4 offsetOptional不为空的per-channel场景下，tuningConfigOptional数组第二个元素可置1。此时weight需按`[E,N,K]`排布并转换为NZ，仅支持长度为1的weight TensorList。
+
+**其他伪量化场景：**
 - 以下入参为空：scaleOptional、offsetOptional、perTokenScaleOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional
 - 不为空的参数支持的数据类型组合要满足下表：
 
@@ -784,4 +845,5 @@ aclnnGroupedMatmulV5默认确定性实现。
 | MX量化 | Ascend 950 | [arch35/test_aclnn_grouped_matmul_mx_quant.cpp](../examples/arch35/test_aclnn_grouped_matmul_mx_quant.cpp) | Ascend 950 MX量化示例 |
 | 全量化（动态 K-C） | Ascend 950 | [arch35/test_aclnn_grouped_matmul_quant_dynamic.cpp](../examples/arch35/test_aclnn_grouped_matmul_quant_dynamic.cpp) | x=INT8, weight=INT8, scale=FLOAT32, perTokenScale=FLOAT |
 | G-B量化 | Ascend 950 | [arch35/test_aclnn_grouped_matmul_quant_gb.cpp](../examples/arch35/test_aclnn_grouped_matmul_quant_gb.cpp) | x/w=FLOAT8_E5M2, scale=FLOAT32 (3维), perTokenScale=FLOAT32 (2维) |
+| 全量化S8S4 | Ascend 950 | [arch35/test_aclnn_grouped_matmul_v5_s8s4.cpp](../examples/arch35/test_aclnn_grouped_matmul_v5_s8s4.cpp) | x=INT8, weight=INT4, offset非空的per-channel量化 |
 | 全量化A8W8 | Atlas A3/A2  | [arch22/test_aclnn_grouped_matmul_a8w8.cpp](../examples/arch22/test_aclnn_grouped_matmul_a8w8.cpp) | x=INT8, weight=INT8, scale=UINT64, out=BF16 |
