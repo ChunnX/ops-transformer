@@ -32,6 +32,7 @@ constexpr uint32_t SOURCE_M0_LARGE = 256;
 constexpr uint32_t SOURCE_N0_SMALL = 128;
 constexpr uint32_t SOURCE_K0 = 256;
 constexpr uint32_t SOURCE_L0_K = 64;
+constexpr uint32_t CUBE_K_ALIGNMENT = 16;
 constexpr uint32_t SOURCE_COMM_INTERVAL = 10;
 constexpr uint32_t SOURCE_COMM_TILE_M = 32;
 constexpr uint32_t SOURCE_COMM_BLOCK_M = 64;
@@ -61,11 +62,15 @@ ge::graphStatus BuildMatmulTiling(const gert::TilingContext *context, uint32_t m
     mm.SetShape(m0, n0, k);
     mm.SetOrgShape(m0, n0, k);
     mm.SetBufferSpace(512 * 1024, -1, -1);
-    OP_TILING_CHECK(mm.SetFixSplit(m0, n0, SOURCE_L0_K) != 0,
-                    OP_LOGE(context->GetNodeName(), "SetFixSplit(%u,%u,%u) failed.", m0, n0, SOURCE_L0_K),
+    const uint64_t alignedK = (static_cast<uint64_t>(k) + CUBE_K_ALIGNMENT - 1) /
+                              CUBE_K_ALIGNMENT * CUBE_K_ALIGNMENT;
+    const uint32_t baseK = static_cast<uint32_t>(std::min<uint64_t>(SOURCE_L0_K, alignedK));
+    OP_TILING_CHECK(mm.SetFixSplit(m0, n0, baseK) != 0,
+                    OP_LOGE(context->GetNodeName(), "SetFixSplit(%u,%u,%u) failed.", m0, n0, baseK),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mm.GetTiling(tiling) == -1,
-                    OP_LOGE(context->GetNodeName(), "BF16 matmul tiling failed for [%u,%u,%u].", m0, n0, k),
+                    OP_LOGE(context->GetNodeName(), "BF16 matmul tiling failed for [%u,%u,%u], baseK=%u.",
+                            m0, n0, k, baseK),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

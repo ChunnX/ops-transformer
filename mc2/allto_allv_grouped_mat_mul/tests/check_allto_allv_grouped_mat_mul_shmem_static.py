@@ -122,6 +122,7 @@ def check_tiling_and_kernel() -> None:
         "SOURCE_M0_LARGE = 256",
         "SOURCE_N0_SMALL = 128",
         "SOURCE_K0 = 256",
+        "CUBE_K_ALIGNMENT = 16",
         "SOURCE_COMM_INTERVAL = 10",
         "SOURCE_COMM_TILE_M = 32",
         "SOURCE_COMM_BLOCK_M = 64",
@@ -131,6 +132,19 @@ def check_tiling_and_kernel() -> None:
         require(token in tiling, f"missing source tiling invariant: {token}")
     require("uint32_t aicCoreNum, ::TCubeTiling &tiling)" in normalized(tiling),
             "host tiling must use the global TCubeTiling type stored in kernel tiling data")
+    tiling_flat = normalized(tiling)
+    require(
+        "const uint64_t alignedK = (static_cast<uint64_t>(k) + CUBE_K_ALIGNMENT - 1) / "
+        "CUBE_K_ALIGNMENT * CUBE_K_ALIGNMENT;" in tiling_flat,
+        "small-K MatMul tiling must align the actual K to the BF16 Cube granularity",
+    )
+    require(
+        "const uint32_t baseK = static_cast<uint32_t>(std::min<uint64_t>(SOURCE_L0_K, alignedK));"
+        in tiling_flat,
+        "MatMul baseK must shrink for small K without exceeding the source L0 K tile",
+    )
+    require("mm.SetFixSplit(m0, n0, baseK)" in tiling,
+            "MatMul tiling must use the effective small-K baseK")
     require(tiling.count("GetStorageFormat() != ge::FORMAT_ND") == 3,
             "tiling must enforce ND for x/weight/y")
 
