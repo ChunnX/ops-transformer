@@ -63,7 +63,8 @@ public:
         // masks tail elements during arithmetic.
         const uint64_t baseDAlign =
             ((static_cast<uint64_t>(tilingData_->baseD) + FP32_32B_ALIGN_ELEMS - 1U) /
-             FP32_32B_ALIGN_ELEMS) * FP32_32B_ALIGN_ELEMS;
+             FP32_32B_ALIGN_ELEMS) *
+            FP32_32B_ALIGN_ELEMS;
         if (baseDAlign > MAX_UINT32_VALUE) {
             return false;
         }
@@ -395,7 +396,6 @@ private:
                 (sIndex * tilingData_->totalT + tIndex) * tilingData_->totalD + dOffset;
             CopyOutO(outputOffset, validD, oLoop_);
             set_flag(PIPE_MTE3, PIPE_V, oLoop_++ & 1);
-
         }
     }
 

@@ -22,8 +22,8 @@
 namespace op_api {
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor> block_attn_res_prepare(const at::Tensor &blockResidual,
-                                                                        const at::Tensor &effectiveQuery,
-                                                                        const at::Tensor &validBlocks, double epsilon)
+                                                                      const at::Tensor &effectiveQuery,
+                                                                      const at::Tensor &validBlocks, double epsilon)
 {
     TORCH_CHECK(blockResidual.dim() == 3, "block_residual must be a 3D tensor, but got ", blockResidual.dim(), "D");
     TORCH_CHECK(effectiveQuery.dim() == 2, "effective_query must be a 2D tensor, but got ", effectiveQuery.dim(), "D");

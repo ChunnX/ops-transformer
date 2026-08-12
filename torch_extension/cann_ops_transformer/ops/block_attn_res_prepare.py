@@ -32,7 +32,9 @@ class BlockAttnResPrepareOpBuilder(OpBuilder):
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def block_attn_res_prepare_meta(block_residual, effective_query, valid_blocks, *, epsilon=1e-6):
+        def block_attn_res_prepare_meta(
+            block_residual, effective_query, valid_blocks, *, epsilon=1e-6
+        ):
             total_t = block_residual.size(0)
             total_s = effective_query.size(0)
             total_d = block_residual.size(2)
@@ -68,4 +70,6 @@ def block_attn_res_prepare(
         ``[S, T]``, ``[S, T, D]``, and ``[S, T]`` respectively; all outputs are FP32.
     """
     op_module = block_attn_res_prepare_op_builder.load()
-    return op_module.block_attn_res_prepare(block_residual, effective_query, valid_blocks, epsilon)
+    return op_module.block_attn_res_prepare(
+        block_residual, effective_query, valid_blocks, epsilon
+    )
