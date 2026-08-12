@@ -216,6 +216,6 @@ protected:
 
 ////////////////////////////////////////////////////////////////////
 
-} // namespace Catlass::Gemm::block
+} // namespace Catlass::Gemm::Block
 
 #endif // CATLASS_GEMM_BLOCK_BLOCK_MMAD_MLA_PV_TP1_SPEC_HPP

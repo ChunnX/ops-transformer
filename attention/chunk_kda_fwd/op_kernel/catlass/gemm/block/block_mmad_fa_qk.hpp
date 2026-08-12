@@ -34,7 +34,7 @@ template <
     class BiasType_,
     class TileCopy_,
     class TileMmad_>
-struct BlockMmad <
+struct BlockMmad<
     MmadAtlasA2FAQK,
     L1TileShape_,
     L0TileShape_,
@@ -43,8 +43,7 @@ struct BlockMmad <
     CType_,
     BiasType_,
     TileCopy_,
-    TileMmad_>
-{
+    TileMmad_> {
 public:
     // Type Aliases
     using DispatchPolicy = MmadAtlasA2FAQK;
@@ -195,6 +194,6 @@ protected:
 
 ////////////////////////////////////////////////////////////////////
 
-}  // namespace Catlass::Gemm::Block
+} // namespace Catlass::Gemm::Block
 
-#endif  // CATLASS_GEMM_BLOCK_BLOCK_MMAD_FA_QK_HPP
+#endif // CATLASS_GEMM_BLOCK_BLOCK_MMAD_FA_QK_HPP

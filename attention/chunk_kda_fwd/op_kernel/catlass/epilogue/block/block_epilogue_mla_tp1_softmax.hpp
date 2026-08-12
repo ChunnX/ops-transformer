@@ -29,8 +29,7 @@ class BlockEpilogue<
     EpilogueAtlasA2MLATP1Softmax,
     OutputType_,
     InputType_,
-    MaskType_>
-{
+    MaskType_> {
 public:
     // Type aliases
     using DispatchPolicy = EpilogueAtlasA2MLATP1Softmax;

@@ -41,8 +41,7 @@ struct Callback {
 };
 
 template <typename Func>
-CATLASS_DEVICE
-void FuncWrapper(void const *func)
+CATLASS_DEVICE void FuncWrapper(void const *func)
 {
     (*static_cast<Func const *>(func))();
 }
@@ -50,7 +49,8 @@ void FuncWrapper(void const *func)
 // Use this to make a callback
 template <typename Func>
 CATLASS_DEVICE
-Callback MakeCallback(Func *func)
+    Callback
+    MakeCallback(Func *func)
 {
     Callback callback;
     callback.func = func;

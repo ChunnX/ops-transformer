@@ -1,6 +1,5 @@
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -8,7 +7,6 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-
 #ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_W4A4_HPP
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_W4A4_HPP
 
@@ -121,8 +119,7 @@ public:
     // Check L1TileShape
     static_assert(
         (L1A_TILE_SIZE + L1B_TILE_SIZE + SCALE_KTILE_SIZE) * L1_STAGES <= ArchTag::L1_SIZE,
-        "L1TileShape exceeding the L1 space!"
-    );
+        "L1TileShape exceeding the L1 space!");
 
     // Check L0TileShape
     static_assert(L0A_TILE_SIZE * L0A_STAGES <= ArchTag::L0A_SIZE, "L0TileShape exceeding the L0A space!");
@@ -131,8 +128,7 @@ public:
 
     static_assert(
         L1TileShape::M == L0TileShape::M && L1TileShape::N == L0TileShape::N,
-        "The situation where the basic blocks of L1 and L0 differ on the m and n axes is not supported yet"
-    );
+        "The situation where the basic blocks of L1 and L0 differ on the m and n axes is not supported yet");
     static_assert(L0TileShape::K <= L1TileShape::K, "L0TileShape::K cannot exceed L1TileShape::K");
 
     static constexpr auto L1A_LAYOUT = LayoutAInL1::template MakeLayout<ElementA>(L1TileShape::M, L1TileShape::K);
@@ -179,8 +175,7 @@ public:
         LayoutC const &layoutC,
         GemmCoord const &actualShape,
         Callback const &callbackBeforeFixpipe,
-        Callback const &callbackAfterFixpipe
-    )
+        Callback const &callbackAfterFixpipe)
     {
         uint32_t kTileCount = CeilDiv<L1TileShape::K>(actualShape.k());
 
@@ -200,11 +195,9 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_FIX>(l1ScaleEventList[l1ScaleListId]);
 
         for (uint32_t kLoopIdx = 0; kLoopIdx < kTileCount; ++kLoopIdx) {
-            uint32_t kTileIdx = (startTileIdx + kLoopIdx < kTileCount) ? (startTileIdx + kLoopIdx)
-                                                                       : (startTileIdx + kLoopIdx - kTileCount);
+            uint32_t kTileIdx = (startTileIdx + kLoopIdx < kTileCount) ? (startTileIdx + kLoopIdx) : (startTileIdx + kLoopIdx - kTileCount);
 
-            uint32_t kActual = (kTileIdx < kTileCount - 1) ? L1TileShape::K
-                                                           : (actualShape.k() - kTileIdx * L1TileShape::K);
+            uint32_t kActual = (kTileIdx < kTileCount - 1) ? L1TileShape::K : (actualShape.k() - kTileIdx * L1TileShape::K);
 
             // Emission load instruction from GM to L1
             MatrixCoord gmTileAOffset{0, kTileIdx * L1TileShape::K};
@@ -228,9 +221,7 @@ public:
             }
 
             // Store the current load status
-            uint32_t preloadL1TileMmadParamsId = (l1TileMmadParamsId + preloadCount < PRELOAD_STAGES)
-                                                     ? (l1TileMmadParamsId + preloadCount)
-                                                     : (l1TileMmadParamsId + preloadCount - PRELOAD_STAGES);
+            uint32_t preloadL1TileMmadParamsId = (l1TileMmadParamsId + preloadCount < PRELOAD_STAGES) ? (l1TileMmadParamsId + preloadCount) : (l1TileMmadParamsId + preloadCount - PRELOAD_STAGES);
             auto &l1TileMmadParams = l1TileMmadParamsList[preloadL1TileMmadParamsId];
             l1TileMmadParams.l1ListId = l1ListId;
             l1TileMmadParams.mRound = mRound;
@@ -362,12 +353,10 @@ private:
         }
 
         for (uint32_t mPartIdx = 0; mPartIdx < mPartLoop; ++mPartIdx) {
-            uint32_t mPartActual = (mPartIdx < mPartLoop - 1) ? L0TileShape::M
-                                                              : (params.mRound - mPartIdx * L0TileShape::M);
+            uint32_t mPartActual = (mPartIdx < mPartLoop - 1) ? L0TileShape::M : (params.mRound - mPartIdx * L0TileShape::M);
 
             for (uint32_t kPartIdx = 0; kPartIdx < kPartLoop; ++kPartIdx) {
-                uint32_t kPartActual = (kPartIdx < kPartLoop - 1) ? L0TileShape::K
-                                                                  : (params.kActual - kPartIdx * L0TileShape::K);
+                uint32_t kPartActual = (kPartIdx < kPartLoop - 1) ? L0TileShape::K : (params.kActual - kPartIdx * L0TileShape::K);
 
                 auto &l0ATile = l0ATensorList[l0AListId];
                 auto layoutAInL0 = LayoutAInL0::template MakeLayout<ElementA>(mPartActual, kPartActual);
@@ -384,8 +373,7 @@ private:
                 }
 
                 for (uint32_t nPartIdx = 0; nPartIdx < nPartLoop; ++nPartIdx) {
-                    uint32_t nPartActual = (nPartIdx < nPartLoop - 1) ? L0TileShape::N
-                                                                      : (params.nRound - nPartIdx * L0TileShape::N);
+                    uint32_t nPartActual = (nPartIdx < nPartLoop - 1) ? L0TileShape::N : (params.nRound - nPartIdx * L0TileShape::N);
 
                     auto &l0BTile = l0BTensorList[l0BListId];
                     auto layoutBInL0 = LayoutBInL0::template MakeLayout<ElementB>(kPartActual, nPartActual);
@@ -412,8 +400,7 @@ private:
                     // If the unit flag is enabled, the unit flag is set according to the calculation progress
                     uint8_t unitFlag = 0b00;
                     if constexpr (ENABLE_UNIT_FLAG) {
-                        if (params.isKLoopLast && (mPartIdx == mPartLoop - 1) && (kPartIdx == kPartLoop - 1)
-                            && (nPartIdx == nPartLoop - 1)) {
+                        if (params.isKLoopLast && (mPartIdx == mPartLoop - 1) && (kPartIdx == kPartLoop - 1) && (nPartIdx == nPartLoop - 1)) {
                             unitFlag = 0b11;
                         } else {
                             unitFlag = 0b10;

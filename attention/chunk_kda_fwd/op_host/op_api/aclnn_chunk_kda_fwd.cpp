@@ -29,10 +29,6 @@
 
 using namespace op;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 namespace {
 constexpr int64_t MAX_KDA_K_DIM = 256;
 constexpr int64_t MAX_KDA_HEAD_NUM = 128;
@@ -98,7 +94,7 @@ op::Shape MakeShape(std::initializer_list<int64_t> dims)
     return shape;
 }
 
-const aclTensor *Transpose(const aclTensor *input, const std::vector<int64_t> &perm, aclOpExecutor *executor)
+const aclTensor *TransposeView(const aclTensor *input, const std::vector<int64_t> &perm, aclOpExecutor *executor)
 {
     const aclIntArray *permArray = executor->AllocIntArray(perm.data(), perm.size());
     if (permArray == nullptr) {
@@ -122,7 +118,7 @@ const aclTensor *Transpose(const aclTensor *input, const std::vector<int64_t> &p
     return reshaped;
 }
 
-const aclTensor *TransposeLastTwo(const aclTensor *input, aclOpExecutor *executor)
+const aclTensor *TransposeLastTwoView(const aclTensor *input, aclOpExecutor *executor)
 {
     const size_t rank = input->GetViewShape().GetDimNum();
     std::vector<int64_t> perm(rank);
@@ -130,7 +126,7 @@ const aclTensor *TransposeLastTwo(const aclTensor *input, aclOpExecutor *executo
         perm[idx] = static_cast<int64_t>(idx);
     }
     std::swap(perm[rank - 2], perm[rank - 1]);
-    return Transpose(input, perm, executor);
+    return TransposeView(input, perm, executor);
 }
 
 static int64_t Dim(const aclTensor *tensor, size_t idx)
@@ -315,9 +311,7 @@ aclnnStatus ResolveShapeInfo(const ChunkKdaFwdParams &params, KdaFwdLayout layou
                    ACLNN_ERR_PARAM_INVALID,
                    "BNSD expects v/g/beta as [B,HV,T,V], [B,HV,T,K], [B,HV,T].");
     }
-    info.seqNum = params.cuSeqlensOptional == nullptr
-                      ? info.batch
-                      : static_cast<int64_t>(params.cuSeqlensOptional->Size()) - 1;
+    info.seqNum = params.cuSeqlensOptional == nullptr ? info.batch : static_cast<int64_t>(params.cuSeqlensOptional->Size()) - 1;
     info.totalChunks = CountChunks(params.cuSeqlensOptional, info.seqlen, params.chunkSize);
     return ACLNN_SUCCESS;
 }
@@ -354,9 +348,7 @@ aclnnStatus CheckStateShape(const aclTensor *state, const char *name, const KdaS
     if (state == nullptr) {
         return ACLNN_SUCCESS;
     }
-    const bool valid = stateVFirst
-                           ? HasShape(state, {info.seqNum, info.hvNum, info.vDim, info.kDim})
-                           : HasShape(state, {info.seqNum, info.hvNum, info.kDim, info.vDim});
+    const bool valid = stateVFirst ? HasShape(state, {info.seqNum, info.hvNum, info.vDim, info.kDim}) : HasShape(state, {info.seqNum, info.hvNum, info.kDim, info.vDim});
     CHECK_COND(valid, ACLNN_ERR_PARAM_INVALID,
                "%s must be [N,HV,K,V] when stateVFirst=false and [N,HV,V,K] otherwise.", name);
     return ACLNN_SUCCESS;
@@ -365,27 +357,18 @@ aclnnStatus CheckStateShape(const aclTensor *state, const char *name, const KdaS
 aclnnStatus CheckOutputShapes(const ChunkKdaFwdParams &params, const KdaShapeInfo &info)
 {
     const DataType dataType = params.q->GetDataType();
-    const bool attnShapeValid = info.isRank3
-                                    ? HasShape(params.attnOut, {info.seqlen, info.hvNum, info.vDim})
-                                    : HasShape(params.attnOut,
-                                               {info.batch, info.seqlen, info.hvNum, info.vDim});
+    const bool attnShapeValid = info.isRank3 ? HasShape(params.attnOut, {info.seqlen, info.hvNum, info.vDim}) : HasShape(params.attnOut, {info.batch, info.seqlen, info.hvNum, info.vDim});
     CHECK_COND(attnShapeValid && params.attnOut->GetDataType() == dataType,
                ACLNN_ERR_PARAM_INVALID,
                "attnOut must match q dtype and use fixed sequence-major TND/BSND layout.");
     if (params.gkOut != nullptr) {
-        const bool valid = info.isRank3
-                               ? HasShape(params.gkOut, {info.hvNum, info.seqlen, info.kDim})
-                               : HasShape(params.gkOut,
-                                          {info.batch, info.hvNum, info.seqlen, info.kDim});
+        const bool valid = info.isRank3 ? HasShape(params.gkOut, {info.hvNum, info.seqlen, info.kDim}) : HasShape(params.gkOut, {info.batch, info.hvNum, info.seqlen, info.kDim});
         CHECK_COND(valid && params.gkOut->GetDataType() == DataType::DT_FLOAT,
                    ACLNN_ERR_PARAM_INVALID, "gkOut must be float32 in fixed head-major NTD/BNSD layout.");
     }
     const aclTensor *matrixOutputs[] = {params.aqkOut, params.akkOut};
     for (const aclTensor *output : matrixOutputs) {
-        const bool valid = info.isRank3
-                               ? HasShape(output, {info.hvNum, info.seqlen, params.chunkSize})
-                               : HasShape(output,
-                                          {info.batch, info.hvNum, info.seqlen, params.chunkSize});
+        const bool valid = info.isRank3 ? HasShape(output, {info.hvNum, info.seqlen, params.chunkSize}) : HasShape(output, {info.batch, info.hvNum, info.seqlen, params.chunkSize});
         CHECK_COND(valid && output->GetDataType() == dataType, ACLNN_ERR_PARAM_INVALID,
                    "Aqk/Akk must match q dtype and use fixed head-major NTD/BNSD layout.");
     }
@@ -394,10 +377,7 @@ aclnnStatus CheckOutputShapes(const ChunkKdaFwdParams &params, const KdaShapeInf
         if (output == nullptr) {
             continue;
         }
-        const bool valid = info.isRank3
-                               ? HasShape(output, {info.hvNum, info.seqlen, info.kDim})
-                               : HasShape(output,
-                                          {info.batch, info.hvNum, info.seqlen, info.kDim});
+        const bool valid = info.isRank3 ? HasShape(output, {info.hvNum, info.seqlen, info.kDim}) : HasShape(output, {info.batch, info.hvNum, info.seqlen, info.kDim});
         CHECK_COND(valid && output->GetDataType() == dataType, ACLNN_ERR_PARAM_INVALID,
                    "w/qg/kg must match q dtype and use fixed head-major NTD/BNSD layout.");
     }
@@ -406,27 +386,21 @@ aclnnStatus CheckOutputShapes(const ChunkKdaFwdParams &params, const KdaShapeInf
         if (output == nullptr) {
             continue;
         }
-        const bool valid = info.isRank3
-                               ? HasShape(output, {info.hvNum, info.seqlen, info.vDim})
-                               : HasShape(output,
-                                          {info.batch, info.hvNum, info.seqlen, info.vDim});
+        const bool valid = info.isRank3 ? HasShape(output, {info.hvNum, info.seqlen, info.vDim}) : HasShape(output, {info.batch, info.hvNum, info.seqlen, info.vDim});
         CHECK_COND(valid && output->GetDataType() == dataType, ACLNN_ERR_PARAM_INVALID,
                    "u/vNew must match q dtype and use fixed head-major NTD/BNSD layout.");
     }
     if (params.hOut != nullptr) {
-        const bool valid = params.stateVFirst
-                               ? (info.isRank3
-                                      ? HasShape(params.hOut,
-                                                 {info.totalChunks, info.hvNum, info.vDim, info.kDim})
-                                      : HasShape(params.hOut,
-                                                 {info.batch, info.totalChunks, info.hvNum,
-                                                  info.vDim, info.kDim}))
-                               : (info.isRank3
-                                      ? HasShape(params.hOut,
-                                                 {info.totalChunks, info.hvNum, info.kDim, info.vDim})
-                                      : HasShape(params.hOut,
-                                                 {info.batch, info.totalChunks, info.hvNum,
-                                                  info.kDim, info.vDim}));
+        const bool valid = params.stateVFirst ? (info.isRank3 ? HasShape(params.hOut,
+                                                                         {info.totalChunks, info.hvNum, info.vDim, info.kDim}) :
+                                                                HasShape(params.hOut,
+                                                                         {info.batch, info.totalChunks, info.hvNum,
+                                                                          info.vDim, info.kDim})) :
+                                                (info.isRank3 ? HasShape(params.hOut,
+                                                                         {info.totalChunks, info.hvNum, info.kDim, info.vDim}) :
+                                                                HasShape(params.hOut,
+                                                                         {info.batch, info.totalChunks, info.hvNum,
+                                                                          info.kDim, info.vDim}));
         CHECK_COND(valid && params.hOut->GetDataType() == dataType, ACLNN_ERR_PARAM_INVALID,
                    "hOut must match q dtype, use fixed sequence-major layout, and follow stateVFirst.");
     }
@@ -519,6 +493,10 @@ const aclTensor *AsRank4(const aclTensor *tensor, const op::Shape &shape, aclOpE
 }
 } // namespace
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 aclnnStatus aclnnChunkKdaFwdGetWorkspaceSize(
     const aclTensor *q,
     const aclTensor *k,
@@ -580,13 +558,13 @@ aclnnStatus aclnnChunkKdaFwdGetWorkspaceSize(
     if (parsedLayout == KdaFwdLayout::BSND) {
         // beta is small and its scalar-per-token rows are not DMA friendly in
         // sequence-major form. Keep only this lightweight transpose.
-        betaHead = Transpose(params.beta, {0, 2, 1}, executorPtr);
+        betaHead = TransposeView(params.beta, {0, 2, 1}, executorPtr);
     } else if (parsedLayout == KdaFwdLayout::TND) {
-        qHead = Transpose(params.q, {1, 0, 2}, executorPtr);
-        kHead = Transpose(params.k, {1, 0, 2}, executorPtr);
-        vHead = Transpose(params.v, {1, 0, 2}, executorPtr);
-        gHead = Transpose(params.g, {1, 0, 2}, executorPtr);
-        betaHead = Transpose(params.beta, {1, 0}, executorPtr);
+        qHead = TransposeView(params.q, {1, 0, 2}, executorPtr);
+        kHead = TransposeView(params.k, {1, 0, 2}, executorPtr);
+        vHead = TransposeView(params.v, {1, 0, 2}, executorPtr);
+        gHead = TransposeView(params.g, {1, 0, 2}, executorPtr);
+        betaHead = TransposeView(params.beta, {1, 0}, executorPtr);
     }
     CHECK_RET(qHead != nullptr && kHead != nullptr && vHead != nullptr &&
                   gHead != nullptr && betaHead != nullptr,
@@ -611,9 +589,7 @@ aclnnStatus aclnnChunkKdaFwdGetWorkspaceSize(
     const op::Shape hShape5 =
         MakeShape({info.batch, info.hvNum, info.totalChunks, info.kDim, info.vDim});
     const op::Shape hExportShape5 =
-        params.stateVFirst
-            ? MakeShape({info.batch, info.totalChunks, info.hvNum, info.vDim, info.kDim})
-            : MakeShape({info.batch, info.totalChunks, info.hvNum, info.kDim, info.vDim});
+        params.stateVFirst ? MakeShape({info.batch, info.totalChunks, info.hvNum, info.vDim, info.kDim}) : MakeShape({info.batch, info.totalChunks, info.hvNum, info.kDim, info.vDim});
     const op::Shape stateShape4 =
         MakeShape({info.seqNum, info.hvNum, info.kDim, info.vDim});
     const op::Shape placeholderShape = MakeShape({1});
@@ -660,21 +636,11 @@ aclnnStatus aclnnChunkKdaFwdGetWorkspaceSize(
     if (akkCompute == nullptr) {
         akkCompute = AllocTensor(executorPtr, matrixShape4, params.q->GetDataType());
     }
-    const aclTensor *wCompute = wExport == nullptr
-        ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType())
-        : wExport;
-    const aclTensor *uCompute = uExport == nullptr
-        ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType())
-        : uExport;
-    const aclTensor *qgCompute = qgExport == nullptr
-        ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType())
-        : qgExport;
-    const aclTensor *kgCompute = kgExport == nullptr
-        ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType())
-        : kgExport;
-    const aclTensor *vNewCompute = vNewExport == nullptr
-        ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType())
-        : vNewExport;
+    const aclTensor *wCompute = wExport == nullptr ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType()) : wExport;
+    const aclTensor *uCompute = uExport == nullptr ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType()) : uExport;
+    const aclTensor *qgCompute = qgExport == nullptr ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType()) : qgExport;
+    const aclTensor *kgCompute = kgExport == nullptr ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType()) : kgExport;
+    const aclTensor *vNewCompute = vNewExport == nullptr ? AllocTensor(executorPtr, placeholderShape, params.q->GetDataType()) : vNewExport;
     const aclTensor *hCompute = AllocTensor(
         executorPtr, hExport == nullptr ? placeholderShape : hShape5,
         params.q->GetDataType());
@@ -685,7 +651,7 @@ aclnnStatus aclnnChunkKdaFwdGetWorkspaceSize(
 
     const aclTensor *initialStateCompute = params.initialStateOptional;
     if (params.stateVFirst && initialStateCompute != nullptr) {
-        initialStateCompute = TransposeLastTwo(initialStateCompute, executorPtr);
+        initialStateCompute = TransposeLastTwoView(initialStateCompute, executorPtr);
         CHECK_RET(initialStateCompute != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
     const bool outputFinalState = params.finalStateOut != nullptr;
@@ -716,7 +682,7 @@ aclnnStatus aclnnChunkKdaFwdGetWorkspaceSize(
     if (outputFinalState) {
         const aclTensor *finalStateResult = result[1];
         if (params.stateVFirst) {
-            finalStateResult = TransposeLastTwo(finalStateResult, executorPtr);
+            finalStateResult = TransposeLastTwoView(finalStateResult, executorPtr);
             CHECK_RET(finalStateResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
         }
         CHECK_RET(l0op::ViewCopy(finalStateResult, params.finalStateOut, executorPtr) != nullptr,
@@ -724,9 +690,8 @@ aclnnStatus aclnnChunkKdaFwdGetWorkspaceSize(
     }
     if (hExport != nullptr) {
         const std::vector<int64_t> hPerm =
-            params.stateVFirst ? std::vector<int64_t>{0, 2, 1, 4, 3}
-                               : std::vector<int64_t>{0, 2, 1, 3, 4};
-        const aclTensor *hResult = Transpose(result[10], hPerm, executorPtr);
+            params.stateVFirst ? std::vector<int64_t>{0, 2, 1, 4, 3} : std::vector<int64_t>{0, 2, 1, 3, 4};
+        const aclTensor *hResult = TransposeView(result[10], hPerm, executorPtr);
         CHECK_RET(hResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
         CHECK_RET(l0op::ViewCopy(hResult, hExport, executorPtr) != nullptr,
                   ACLNN_ERR_INNER_NULLPTR);

@@ -34,9 +34,8 @@ template <
     class ElementC_,
     class ElementBias_,
     class TileCopy_,
-    class TileMmad_
-> 
-struct BlockMmadTla <
+    class TileMmad_>
+struct BlockMmadTla<
     MmadPingpongPertile<ArchTag_, ENABLE_UNIT_FLAG_>,
     L1TileShape_,
     L0TileShape_,
@@ -45,8 +44,7 @@ struct BlockMmadTla <
     ElementC_,
     ElementBias_,
     TileCopy_,
-    TileMmad_
-> { 
+    TileMmad_> {
 public:
     struct Arguments {
         GM_ADDR aGmAddr{nullptr};
@@ -57,7 +55,7 @@ public:
 
     using Params = Arguments;
 
-    using DispatchPolicy =  MmadPingpongPertile<ArchTag_, ENABLE_UNIT_FLAG_>;
+    using DispatchPolicy = MmadPingpongPertile<ArchTag_, ENABLE_UNIT_FLAG_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
 
     using TileCopy = TileCopy_;
@@ -93,7 +91,7 @@ public:
     uint64_t n_{1};
     uint64_t k_{1};
 
-    constexpr static uint64_t STAGES = DispatchPolicy::STAGES; 
+    constexpr static uint64_t STAGES = DispatchPolicy::STAGES;
 
     constexpr static uint64_t ML1_ = tla::get<0>(L1TileShape{});
     constexpr static uint64_t NL1_ = tla::get<1>(L1TileShape{});
@@ -166,11 +164,10 @@ public:
 
 public:
     template <class DstTensor, class SrcATensor, class SrcBTensor>
-    CATLASS_DEVICE
-    void operator()(
-        DstTensor& cTensor,
-        SrcATensor& aTensor, 
-        SrcBTensor& bTensor,
+    CATLASS_DEVICE void operator()(
+        DstTensor &cTensor,
+        SrcATensor &aTensor,
+        SrcBTensor &bTensor,
         GemmCoord tileShape)
     {
         using CopyL0CToOut = typename TileCopy::template CopyL0CToDst<DstTensor>;
@@ -192,10 +189,9 @@ public:
             auto l1ATensor = tla::MakeTensor(l1ATensorList_[l1ListId_], l1ALayout, Arch::PositionL1{});
 
             auto aTileTensor = GetTile(
-                aTensor, 
+                aTensor,
                 tla::MakeCoord(0, kL1OffsetLength),
-                tla::MakeShape(curML0, curKL1)
-            );
+                tla::MakeShape(curML0, curKL1));
 
             using CopyGmToL1A = typename TileCopy::template CopyGmToL1A<SrcATensor>;
             CopyGmToL1A copyGmToL1A;
@@ -209,10 +205,9 @@ public:
             auto l1BLayout = tla::MakeLayout<ElementB, LayoutTagL1B>(curKL1, curNL0);
             auto l1BTensor = tla::MakeTensor(l1BTensorList_[l1ListId_], l1BLayout, Arch::PositionL1{});
             auto bTileTensor = GetTile(
-                bTensor, 
+                bTensor,
                 tla::MakeCoord(kL1OffsetLength, 0),
-                tla::MakeShape(curKL1, curNL0)
-            );
+                tla::MakeShape(curKL1, curNL0));
 
             using CopyGmToL1B = typename TileCopy::template CopyGmToL1B<SrcBTensor>;
             CopyGmToL1B copyGmToL1B;
@@ -235,22 +230,20 @@ public:
                 auto l1ATileTensor = GetTile(
                     l1ATensor,
                     tla::MakeCoord(0, kL0Idx * KL0_),
-                    tla::MakeShape(curML0, curKL0)
-                );
+                    tla::MakeShape(curML0, curKL0));
 
                 copyL1ToL0A(l0ATensor, l1ATileTensor);
 
                 AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventList_[l0ListId_]);
-                
+
                 auto l0BLayout = tla::MakeLayout<ElementB, LayoutTagL0B>(curKL0, curNL0);
                 auto l0BTensor = tla::MakeTensor(l0BTensorList_[l0ListId_], l0BLayout, Arch::PositionL0B{});
                 auto l1BTileTensor = GetTile(
                     l1BTensor,
                     tla::MakeCoord(kL0Idx * KL0_, 0),
-                    tla::MakeShape(curKL0, curNL0)
-                );
+                    tla::MakeShape(curKL0, curNL0));
 
-                copyL1ToL0B(l0BTensor, l1BTileTensor); 
+                copyL1ToL0B(l0BTensor, l1BTileTensor);
 
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventList_[l0CListId_]);
                 auto l0CTensor = tla::MakeTensor(l0CTensorList_[l0CListId_], l0CLayout, Arch::PositionL0C{});
@@ -262,7 +255,7 @@ public:
                 bool initC = (kL1Idx == 0) && (kL0Idx == 0);
                 curML0 = (curML0 == 1 ? M_ALIGN : curML0);
                 tileMmad(l0CTensor, l0ATensor, l0BTensor, curML0, curNL0, curKL0, true);
-                
+
                 AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventList_[l0ListId_]);
                 AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventList_[l0ListId_]);
                 l0ListId_ = (l0ListId_ + 1 < STAGES) ? (l0ListId_ + 1) : 0;
@@ -275,11 +268,10 @@ public:
                                                  cTensor.layout(), Arch::PositionUB{});
                 copyL0CToOut(outTensor, l0CTensor);
                 NotifyVector(crossPingPongID_);
-                
+
                 AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventList_[l0CListId_]);
                 l0CListId_ = (l0CListId_ + 1 < STAGES) ? (l0CListId_ + 1) : 0;
                 crossPingPongID_ = (crossPingPongID_ + 1 < STAGES) ? (crossPingPongID_ + 1) : 0;
-
             }
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1AEventList_[l1ListId_]);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventList_[l1ListId_]);
@@ -300,7 +292,7 @@ private:
     CopyL1ToL0A copyL1ToL0A;
     CopyL1ToL0B copyL1ToL0B;
     TileMmad tileMmad;
-    
+
     AscendC::LocalTensor<uint8_t> l1Buf_{AscendC::LocalTensor<uint8_t>(AscendC::TPosition::A1, 0, ArchTag::L1_SIZE)};
     AscendC::LocalTensor<uint8_t> l0ABuf_{AscendC::LocalTensor<uint8_t>(AscendC::TPosition::A2, 0, ArchTag::L0A_SIZE)};
     AscendC::LocalTensor<uint8_t> l0BBuf_{AscendC::LocalTensor<uint8_t>(AscendC::TPosition::B2, 0, ArchTag::L0B_SIZE)};
@@ -323,6 +315,6 @@ private:
     uint32_t l0CListId_{0};
     uint32_t crossPingPongID_{0};
 };
-}  // namespace Catlass::Gemm::Block
+} // namespace Catlass::Gemm::Block
 
-#endif  // CATLASS_GEMM_BLOCK_BLOCK_MMAD_PINGPONG_PER_GROUP_PER_BLOCK_TLA_HPP
+#endif // CATLASS_GEMM_BLOCK_BLOCK_MMAD_PINGPONG_PER_GROUP_PER_BLOCK_TLA_HPP

@@ -27,8 +27,7 @@ template <
 class BlockEpilogue<
     EpilogueAtlasA2MLAFDRescaleO<ComputeEleNum_>,
     OutputType_,
-    InputType_>
-{
+    InputType_> {
 public:
     // Type aliases
     using DispatchPolicy = EpilogueAtlasA2MLAFDRescaleO<ComputeEleNum_>;
@@ -124,8 +123,8 @@ public:
                 (KV_SPLIT_MAX - kvSplitCoreNum) / FLOAT_BLOCK_SIZE, 0),
             AscendC::DataCopyPadExtParams<ElementInput>(false, 0, 0, 0));
 
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID2);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID2);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID2);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID2);
 
         SetMask(kvSplitCoreNum);
         AscendC::WholeReduceMax<float, false>(

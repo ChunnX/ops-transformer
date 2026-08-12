@@ -231,7 +231,7 @@ public:
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
                 AscendC::DataCopyPad(gl, tvUbTensor,
-                    AscendC::DataCopyExtParams(curRowNum, 4, 0, (kvSplitCoreNum - 1) * 4, 0));
+                                     AscendC::DataCopyExtParams(curRowNum, 4, 0, (kvSplitCoreNum - 1) * 4, 0));
 
                 if (glFlag == 0) {
                     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
@@ -239,7 +239,7 @@ public:
                 }
                 uint32_t srcGap = ((embed % 16 <= 8) && (embed % 16 > 0)) ? 1 : 0;
                 AscendC::DataCopyPad(gOCoreTmp, goUbTensor32[oUbOffset],
-                    AscendC::DataCopyExtParams(curRowNum, embed * 4, srcGap, (kvSplitCoreNum - 1) * embed * 4, 0));
+                                     AscendC::DataCopyExtParams(curRowNum, embed * 4, srcGap, (kvSplitCoreNum - 1) * embed * 4, 0));
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);

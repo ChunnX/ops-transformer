@@ -1,6 +1,5 @@
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -8,7 +7,6 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-
 #ifndef CATLASS_LAYOUT_TENSOR_HPP
 #define CATLASS_LAYOUT_TENSOR_HPP
 
@@ -59,17 +57,16 @@ public:
         LongIndex strideC1,
         LongIndex strideH,
         LongIndex strideW,
-        LongIndex strideC0
-    )
-        : shape_(MakeCoord(batch, c1, h, w, c0))
-        , stride_(MakeCoord(strideBatch, strideC1, strideH, strideW, strideC0))
+        LongIndex strideC0)
+        : shape_(MakeCoord(batch, c1, h, w, c0)),
+          stride_(MakeCoord(strideBatch, strideC1, strideH, strideW, strideC0))
     {
     }
 
     CATLASS_HOST_DEVICE
     NC1HWC0(Shape shape, Stride stride)
-        : shape_(shape)
-        , stride_(stride)
+        : shape_(shape),
+          stride_(stride)
     {
     }
 
@@ -85,9 +82,7 @@ public:
     CATLASS_HOST_DEVICE
     LongIndex GetOffset(Conv2dFmapCoord const &coord) const
     {
-        return LongIndex(coord.batch()) * stride_[0] + LongIndex(coord.c1()) * stride_[1]
-               + LongIndex(coord.h()) * stride_[2] + LongIndex(coord.w()) * stride_[3]
-               + LongIndex(coord.c0()) * stride_[4];
+        return LongIndex(coord.batch()) * stride_[0] + LongIndex(coord.c1()) * stride_[1] + LongIndex(coord.h()) * stride_[2] + LongIndex(coord.w()) * stride_[3] + LongIndex(coord.c0()) * stride_[4];
     }
 
     /// Returns the layout of a tile.
@@ -209,17 +204,16 @@ public:
         LongIndex strideKh,
         LongIndex strideKw,
         LongIndex strideCout,
-        LongIndex strideC0
-    )
-        : shape_(MakeCoord(cin1, kh, kw, cout, c0))
-        , stride_(MakeCoord(strideCin1, strideKh, strideKw, strideCout, strideC0))
+        LongIndex strideC0)
+        : shape_(MakeCoord(cin1, kh, kw, cout, c0)),
+          stride_(MakeCoord(strideCin1, strideKh, strideKw, strideCout, strideC0))
     {
     }
 
     CATLASS_HOST_DEVICE
     CI1KHKWCOCI0(Shape shape, Stride stride)
-        : shape_(shape)
-        , stride_(stride)
+        : shape_(shape),
+          stride_(stride)
     {
     }
 
@@ -235,9 +229,7 @@ public:
     CATLASS_HOST_DEVICE
     LongIndex GetOffset(Conv2dFilterCoord const &coord) const
     {
-        return LongIndex(coord.cin1()) * stride_[0] + LongIndex(coord.kh()) * stride_[1]
-               + LongIndex(coord.kw()) * stride_[2] + LongIndex(coord.cout()) * stride_[3]
-               + LongIndex(coord.c0()) * stride_[4];
+        return LongIndex(coord.cin1()) * stride_[0] + LongIndex(coord.kh()) * stride_[1] + LongIndex(coord.kw()) * stride_[2] + LongIndex(coord.cout()) * stride_[3] + LongIndex(coord.c0()) * stride_[4];
     }
 
     /// Returns the layout of a tile.

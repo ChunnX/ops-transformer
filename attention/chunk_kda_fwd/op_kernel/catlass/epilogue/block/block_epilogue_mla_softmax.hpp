@@ -29,8 +29,7 @@ class BlockEpilogue<
     EpilogueAtlasA2MLASoftmax,
     OutputType_,
     InputType_,
-    MaskType_>
-{
+    MaskType_> {
 public:
     // Type aliases
     using DispatchPolicy = EpilogueAtlasA2MLASoftmax;
@@ -211,8 +210,7 @@ public:
                 dst, src, (int32_t)0, curRowNum, 1, 1,
                 kSeqTileRound / FLOAT_BLOCK_SIZE, AscendC::ReduceOrder::ORDER_ONLY_VALUE);
         } else {
-            AscendC::DataCopy(tempTensor, src, AscendC::DataCopyParams(curRowNum, HALF_VECTOR_SIZE / BLOCK_SIZE,
-                (kSeqTileRound - FLOAT_VECTOR_SIZE) / FLOAT_BLOCK_SIZE, 0));
+            AscendC::DataCopy(tempTensor, src, AscendC::DataCopyParams(curRowNum, HALF_VECTOR_SIZE / BLOCK_SIZE, (kSeqTileRound - FLOAT_VECTOR_SIZE) / FLOAT_BLOCK_SIZE, 0));
             AscendC::PipeBarrier<PIPE_V>();
             for (uint32_t rowmaxIdx = 1; rowmaxIdx < kSeqTile / FLOAT_VECTOR_SIZE; ++rowmaxIdx) {
                 AscendC::Max<float, false>(

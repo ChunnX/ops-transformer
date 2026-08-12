@@ -25,58 +25,52 @@ namespace tla {
 namespace detail {
 
 template <class T, class F, int... I>
-CATLASS_HOST_DEVICE constexpr
-auto apply(T&& t, F&& f, seq<I...>)
+CATLASS_HOST_DEVICE constexpr auto apply(T &&t, F &&f, seq<I...>)
 {
-    return f(get<I>(static_cast<T&&>(t))...);
+    return f(get<I>(static_cast<T &&>(t))...);
 }
 
 template <class T, class F, class G, int... I>
-CATLASS_HOST_DEVICE constexpr
-auto tapply(T&& t, F&& f, G&& g, seq<I...>)
+CATLASS_HOST_DEVICE constexpr auto tapply(T &&t, F &&f, G &&g, seq<I...>)
 {
-    return g(f(get<I>(static_cast<T&&>(t)))...);
+    return g(f(get<I>(static_cast<T &&>(t)))...);
 }
 
 template <class T0, class T1, class F, class G, int... I>
-CATLASS_HOST_DEVICE constexpr
-auto tapply(T0&& t0, T1&& t1, F&& f, G&& g, seq<I...>)
+CATLASS_HOST_DEVICE constexpr auto tapply(T0 &&t0, T1 &&t1, F &&f, G &&g, seq<I...>)
 {
-    return g(f(get<I>(static_cast<T0&&>(t0)),
-               get<I>(static_cast<T1&&>(t1)))...);
+    return g(f(get<I>(static_cast<T0 &&>(t0)),
+               get<I>(static_cast<T1 &&>(t1)))...);
 }
 
 } // end namespace detail
 
 template <class T, class F>
-CATLASS_HOST_DEVICE constexpr
-auto apply(T&& t, F&& f)
+CATLASS_HOST_DEVICE constexpr auto apply(T &&t, F &&f)
 {
-    return detail::apply(static_cast<T&&>(t), f, tuple_seq<T>{});
+    return detail::apply(static_cast<T &&>(t), f, tuple_seq<T>{});
 }
 
 template <class T, class F, class G>
-CATLASS_HOST_DEVICE constexpr
-auto transform_apply(T&& t, F&& f, G&& g)
+CATLASS_HOST_DEVICE constexpr auto transform_apply(T &&t, F &&f, G &&g)
 {
     if constexpr (is_tuple<remove_cvref_t<T>>::value) {
-        return detail::tapply(static_cast<T&&>(t), f, g, tuple_seq<T>{});
+        return detail::tapply(static_cast<T &&>(t), f, g, tuple_seq<T>{});
     } else {
-        return g(f(static_cast<T&&>(t)));
+        return g(f(static_cast<T &&>(t)));
     }
 }
 
 struct UnpackedMakeTuple {
     template <class... T>
-    CATLASS_HOST_DEVICE constexpr
-    auto operator()(T const&... a) const {
+    CATLASS_HOST_DEVICE constexpr auto operator()(T const &...a) const
+    {
         return tla::MakeTuple(a...);
     }
 };
 
 template <class T0, class T1, class F>
-CATLASS_HOST_DEVICE constexpr
-auto transform(T0 const& t0, T1 const& t1, F&& f)
+CATLASS_HOST_DEVICE constexpr auto transform(T0 const &t0, T1 const &t1, F &&f)
 {
     if constexpr (is_tuple<T0>::value) {
         static_assert(tuple_size<T0>::value == tuple_size<T1>::value, "Mismatched tuple_size");
@@ -88,36 +82,32 @@ auto transform(T0 const& t0, T1 const& t1, F&& f)
 
 template <size_t I, class T,
           TLA_REQUIRES(tla::is_integral<tla::remove_cvref_t<T>>::value)>
-CATLASS_HOST_DEVICE constexpr
-decltype(auto) get(T&& t) noexcept
+CATLASS_HOST_DEVICE constexpr decltype(auto) get(T &&t) noexcept
 {
     static_assert(I == 0, "Index out of range");
-    return static_cast<T&&>(t);
+    return static_cast<T &&>(t);
 }
 
 template <size_t I0, size_t I1, size_t... Is, class T>
-CATLASS_HOST_DEVICE constexpr
-decltype(auto) get(T&& t) noexcept
+CATLASS_HOST_DEVICE constexpr decltype(auto) get(T &&t) noexcept
 {
-    return get<I1, Is...>(get<I0>(static_cast<T&&>(t)));
+    return get<I1, Is...>(get<I0>(static_cast<T &&>(t)));
 }
 
 // max
 template <class T0, class... Ts>
-CATLASS_HOST_DEVICE constexpr
-auto max(T0 const& t0, Ts const&... ts);
+CATLASS_HOST_DEVICE constexpr auto max(T0 const &t0, Ts const &...ts);
 
 struct UnpackedMax {
     template <class... T>
-    CATLASS_HOST_DEVICE constexpr
-    auto operator()(T const&... v) const {
+    CATLASS_HOST_DEVICE constexpr auto operator()(T const &...v) const
+    {
         return tla::max(v...);
     }
 };
 
 template <class T0, class... Ts>
-CATLASS_HOST_DEVICE constexpr
-auto max(T0 const& t0, Ts const&... ts)
+CATLASS_HOST_DEVICE constexpr auto max(T0 const &t0, Ts const &...ts)
 {
     if constexpr (is_tuple<T0>::value) {
         return tla::max(tla::apply(t0, UnpackedMax{}), ts...);
@@ -130,8 +120,7 @@ auto max(T0 const& t0, Ts const&... ts)
 
 // rank
 template <int... Is, class Tuple>
-CATLASS_HOST_DEVICE constexpr
-auto rank(Tuple const& t)
+CATLASS_HOST_DEVICE constexpr auto rank(Tuple const &t)
 {
     if constexpr (sizeof...(Is) == 0) {
         if constexpr (is_tuple<Tuple>::value) {
@@ -152,20 +141,18 @@ constexpr auto rank_v = rank_t<Tuple>::value;
 
 // depth
 template <int... Is, class Tuple>
-CATLASS_HOST_DEVICE constexpr
-auto depth(Tuple const& t);
+CATLASS_HOST_DEVICE constexpr auto depth(Tuple const &t);
 
 struct UnpackedDepth {
     template <class... T>
-    CATLASS_HOST_DEVICE constexpr
-    auto operator()(T const&... v) const {
+    CATLASS_HOST_DEVICE constexpr auto operator()(T const &...v) const
+    {
         return tla::max(depth(v)...);
     }
 };
 
 template <int... Is, class Tuple>
-CATLASS_HOST_DEVICE constexpr
-auto depth(Tuple const& t)
+CATLASS_HOST_DEVICE constexpr auto depth(Tuple const &t)
 {
     if constexpr (sizeof...(Is) == 0) {
         if constexpr (is_tuple<Tuple>::value) {
@@ -186,8 +173,8 @@ constexpr auto depth_v = depth_t<Tuple>::value;
 
 struct MultipliesUnaryLfold {
     template <class... T>
-    CATLASS_HOST_DEVICE constexpr
-    auto operator()(T const&... v) const {
+    CATLASS_HOST_DEVICE constexpr auto operator()(T const &...v) const
+    {
         return (... * v);
     }
 };
@@ -195,8 +182,7 @@ struct MultipliesUnaryLfold {
 // Implementation of product as a function object
 struct Product {
     template <class IntTuple>
-    CATLASS_HOST_DEVICE constexpr
-    auto operator()(IntTuple const& a) const
+    CATLASS_HOST_DEVICE constexpr auto operator()(IntTuple const &a) const
     {
         if constexpr (is_tuple<IntTuple>::value) {
             if constexpr (tuple_size<IntTuple>::value == 0) {
@@ -217,7 +203,7 @@ struct MakeZeroTupleImpl;
 
 template <size_t N, size_t... Is>
 struct MakeZeroTupleImpl<N, tla::index_sequence<Is...>> {
-    using type = tla::tuple<tla::Int<Is*0>...>;
+    using type = tla::tuple<tla::Int<Is * 0>...>;
 };
 
 template <size_t N>
@@ -227,20 +213,18 @@ using MakeZeroTuple = typename MakeZeroTupleImpl<N, tla::make_index_sequence<N>>
 
 // Add
 template <class IntTupleA, class IntTupleB>
-CATLASS_HOST_DEVICE constexpr
-auto Add(IntTupleA const& a, IntTupleB const& b);
+CATLASS_HOST_DEVICE constexpr auto Add(IntTupleA const &a, IntTupleB const &b);
 
 struct UnpackedAdd {
     template <class IntTupleA, class IntTupleB>
-    CATLASS_HOST_DEVICE constexpr
-    auto operator()(IntTupleA const& x, IntTupleB const& y) const {
+    CATLASS_HOST_DEVICE constexpr auto operator()(IntTupleA const &x, IntTupleB const &y) const
+    {
         return Add(x, y);
     }
 };
 
 template <class IntTupleA, class IntTupleB>
-CATLASS_HOST_DEVICE constexpr
-auto Add(IntTupleA const& a, IntTupleB const& b)
+CATLASS_HOST_DEVICE constexpr auto Add(IntTupleA const &a, IntTupleB const &b)
 {
     if constexpr (is_tuple<IntTupleA>::value && is_tuple<IntTupleB>::value) {
         static_assert(tuple_size<IntTupleA>::value == tuple_size<IntTupleB>::value, "Mismatched ranks");

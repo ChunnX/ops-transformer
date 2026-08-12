@@ -24,14 +24,12 @@ namespace Catlass::Epilogue::Block {
 template <
     class L1TileShape_,
     class OType_,
-    class OTmpType_
->
+    class OTmpType_>
 class BlockEpilogue<
     EpilogueAscend950FARescaleO,
     L1TileShape_,
     OType_,
-    OTmpType_
-> {
+    OTmpType_> {
 public:
     using DispatchPolicy = EpilogueAscend950FARescaleO;
     using ArchTag = typename DispatchPolicy::ArchTag;
@@ -55,7 +53,8 @@ public:
     }
 
     CATLASS_DEVICE
-    ~BlockEpilogue(){
+    ~BlockEpilogue()
+    {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventOMTE3V);
     }
 
@@ -67,8 +66,7 @@ public:
         TensorSrc &bmm2Res,
         bool isFirstLoop,
         bool isLastUpdate,
-        uint64_t MM2_RES_INTRA_EVENT
-    )
+        uint64_t MM2_RES_INTRA_EVENT)
     {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventOMTE3V);
         uint32_t m = tla::get<0>(bmm2Res.shape());
@@ -103,8 +101,7 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventOVMTE3);
             auto layoutUb = tla::MakeLayout(
                 tla::MakeShape(m, n),
-                tla::MakeStride(D_BASE_SIZE, tla::Int<1>{})
-            );
+                tla::MakeStride(D_BASE_SIZE, tla::Int<1>{}));
             auto attenOutUb = tla::MakeTensor(attenOut, layoutUb, Arch::PositionUB{});
             using CopyUbToGmO = Tile::CopyUb2GmTla<ArchTag, decltype(attenOutUb), TensorDst>;
             CopyUbToGmO copyUbToGmO;
@@ -121,8 +118,8 @@ private:
     static constexpr int32_t eventOMTE3V = 3;
 
     template <class T, uint16_t DBaseSize>
-    __simd_vf__ inline void FlashUpdateNew(__ubuf__ T *updateUb,  __ubuf__ T *curUb, __ubuf__ T *expMaxUb,
-        uint16_t m, uint16_t nLoops, uint32_t tailN)
+    __simd_vf__ inline void FlashUpdateNew(__ubuf__ T *updateUb, __ubuf__ T *curUb, __ubuf__ T *expMaxUb,
+                                           uint16_t m, uint16_t nLoops, uint32_t tailN)
     {
         using namespace AscendC::MicroAPI;
         RegTensor<float> expMaxVreg;
@@ -154,7 +151,7 @@ private:
     }
     template <class T, uint16_t DBaseSize>
     __simd_vf__ inline void FlashUpdateLastNew(__ubuf__ T *updateUb, __ubuf__ T *curUb, __ubuf__ T *expMaxUb,
-        __ubuf__ T *expSumUb, uint16_t m, uint16_t nLoops, uint32_t tailN)
+                                               __ubuf__ T *expSumUb, uint16_t m, uint16_t nLoops, uint32_t tailN)
     {
         using namespace AscendC::MicroAPI;
         RegTensor<float> expMaxVreg;
@@ -190,8 +187,8 @@ private:
         }
     }
     template <class T, uint16_t DBaseSize>
-    __simd_vf__ inline void LastDivNew(__ubuf__ T *updateUb,  __ubuf__ T *curUb, __ubuf__ T *expSumUb,
-        uint16_t m, uint16_t nLoops, uint32_t tailN)
+    __simd_vf__ inline void LastDivNew(__ubuf__ T *updateUb, __ubuf__ T *curUb, __ubuf__ T *expSumUb,
+                                       uint16_t m, uint16_t nLoops, uint32_t tailN)
     {
         using namespace AscendC::MicroAPI;
         RegTensor<float> curSrcVreg;

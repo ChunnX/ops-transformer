@@ -112,7 +112,7 @@ struct EpilogueAscend950PerTokenDequantTla {
 };
 
 // For Ascend950, perGroup + perBlock dequant
-struct BlockEpiloguePertile{
+struct BlockEpiloguePertile {
     using ArchTag = Arch::Ascend950;
 };
 
@@ -138,6 +138,6 @@ struct EpilogueAscend950Fixpipe {
     using ArchTag = Arch::Ascend950;
     static constexpr bool SPLIT_M = SPLIT_M_;
 };
-}  // namespace Catlass::Epilogue
+} // namespace Catlass::Epilogue
 
-#endif  // CATLASS_EPILOGUE_DISPATCH_POLICY_HPP
+#endif // CATLASS_EPILOGUE_DISPATCH_POLICY_HPP

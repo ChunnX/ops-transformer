@@ -78,9 +78,9 @@ public:
     using L1BAlignHelper = typename TileCopy_::L1BAlignHelper;
 
     static_assert(tla::is_tuple<L1TileShape>::value && tla::is_static<L1TileShape>::value,
-        "L1TileShape must be tla::tuple and static!");
+                  "L1TileShape must be tla::tuple and static!");
     static_assert(tla::is_tuple<L0TileShape>::value && tla::is_static<L0TileShape>::value,
-        "L0TileShape must be tla::tuple and static!");
+                  "L0TileShape must be tla::tuple and static!");
 
     static constexpr bool ENABLE_UNIT_FLAG = DispatchPolicy::ENABLE_UNIT_FLAG;
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
@@ -105,12 +105,13 @@ public:
     // Check LayoutC
     static_assert(tla::detail::isRowMajor<LayoutC>::value ||
                       ((std::is_same_v<ElementC, half> || std::is_same_v<ElementC, bfloat16_t> ||
-                          std::is_same_v<ElementC, float>) && tla::detail::iszN<ElementC, LayoutC>::value),
-        "LayoutC only supports zN in half or bfloat16 or float, RowMajor in all dtype yet!");
-    
+                        std::is_same_v<ElementC, float>) &&
+                       tla::detail::iszN<ElementC, LayoutC>::value),
+                  "LayoutC only supports zN in half or bfloat16 or float, RowMajor in all dtype yet!");
+
     // Check L1TileShape
     static_assert(L1A_TILE_SIZE + L1B_TILE_SIZE * STAGES <= ArchTag::L1_SIZE,
-        "L1TileShape exceeding the L1 space!");
+                  "L1TileShape exceeding the L1 space!");
 
     // Check L0TileShape
     static_assert(L0A_TILE_SIZE * STAGES <= ArchTag::L0A_SIZE, "L0TileShape exceeding the L0A space!");
@@ -141,8 +142,8 @@ public:
     ~BlockMmadTla() {}
 
     template <class TensorA>
-    CATLASS_DEVICE
-    void loadQGM(TensorA &tensorA){
+    CATLASS_DEVICE void loadQGM(TensorA &tensorA)
+    {
         using CopyGmToL1A = Gemm::Tile::TileCopyFAQTla<ArchTag, TensorA, typename TileCopy_::TensorL1A>;
         CopyGmToL1A copyGmToL1A;
 
@@ -154,7 +155,7 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
     }
-    
+
     CATLASS_DEVICE
     void getBlockShape(GemmCoord &actualShape, uint32_t &nowNIdx, uint32_t &kIdx,
                        uint32_t &nLoop, uint32_t &kLoop, uint32_t &kvSeqlen, uint32_t &embed, bool firstBlock, uint32_t maskTailS = 0)
@@ -191,10 +192,9 @@ public:
     }
 
     template <class TensorA, class TensorB>
-    CATLASS_DEVICE
-    void operator()(TensorA &tensorA, TensorB &tensorB, AscendC::GlobalTensor<ElementC> gC, 
-                    AscendC::GlobalTensor<int32_t> gBlockTable, GemmCoord actualOriShape,
-                    uint32_t &nIdx, uint32_t &nLoop, uint32_t &blockSize, uint32_t kvSeqlen, uint32_t strideKV)
+    CATLASS_DEVICE void operator()(TensorA &tensorA, TensorB &tensorB, AscendC::GlobalTensor<ElementC> gC,
+                                   AscendC::GlobalTensor<int32_t> gBlockTable, GemmCoord actualOriShape,
+                                   uint32_t &nIdx, uint32_t &nLoop, uint32_t &blockSize, uint32_t kvSeqlen, uint32_t strideKV)
     {
         uint32_t rowNum = actualOriShape[0];
         uint32_t embed = actualOriShape[2];
@@ -207,7 +207,7 @@ public:
         uint32_t gBNextOffset = 0;
         uint32_t stackTile = 0;
         for (uint32_t blockStackIdx = 0; (blockStackIdx < UNIT_BLOCK_STACK_NUM) && ((nIdx + blockStackIdx) < nLoop);
-            ++blockStackIdx) {
+             ++blockStackIdx) {
             for (uint32_t kIdx = 0; kIdx < kLoop; kIdx++) {
                 uint32_t nowNIdx = nIdx + blockStackIdx;
                 uint32_t nLoopNextIdx = nkBlockNextIdx / kLoop;
@@ -226,7 +226,7 @@ public:
                 stackTile += actualShape[1];
                 auto layoutS = tla::MakeLayout(tla::MakeShape(rowNum, stackTile), tla::MakeStride(Int<512>{}, Int<1>{}));
                 auto tensorCOffset = tla::MakeTensor(gC[gCOffset], layoutS, Arch::PositionGM{});
-                computeQK(tensorA, tensorB, tensorCOffset, gBOffset, gBNextOffset, 
+                computeQK(tensorA, tensorB, tensorCOffset, gBOffset, gBNextOffset,
                           actualShape, actualNextShape, blockStackIdx, nkBlockNextIdx, nkBlockLoop, strideKV, firstItr, endItr, initMmad, firstQtr, endQItr);
                 ++nkBlockNextIdx;
                 if (endItr) {
@@ -238,7 +238,7 @@ public:
 
     template <class TensorA, class TensorB, class TensorC>
     CATLASS_DEVICE void computeQK(
-        TensorA &tensorA, TensorB &tensorB, TensorC &tensorC, uint32_t gBOffset, uint32_t gBNextOffset, 
+        TensorA &tensorA, TensorB &tensorB, TensorC &tensorC, uint32_t gBOffset, uint32_t gBNextOffset,
         GemmCoord actualShape, GemmCoord actualNextShape, uint32_t nowIdx, uint32_t &nkblockIdx,
         uint32_t &nkblockLoop, uint32_t strideKV, bool firstItr, bool endItr, bool initMmad, bool firstQItr, bool endQItr)
     {
@@ -280,12 +280,12 @@ public:
             copyGmToL1B(tensorL1BNext, tensorTileBNext);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(1 - l1KvPingPongFlag);
         }
-        if(firstQItr) {
+        if (firstQItr) {
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(1);
             copyL1ToL0A(tensorL0A, tensorL1A);
         }
-        
+
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1KvPingPongFlag);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag + 2);
         copyL1ToL0B(tensorL0B, tensorL1B);
@@ -305,7 +305,7 @@ public:
         auto layoutCTileInL0 = tla::MakeLayoutL0C(mRound, nActual);
         auto tensorL0CTile = tla::MakeTensor(l0CTensor[locPingPongFlag * mRound * 128], layoutCTileInL0, Arch::PositionL0C{});
         tileMmad(
-            tensorL0CTile, tensorL0A, tensorL0B, 
+            tensorL0CTile, tensorL0A, tensorL0B,
             mRound, nActual, kActual, initMmad, unitFlag);
         if (endQItr) {
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
@@ -326,7 +326,7 @@ public:
             }
         }
     }
- 
+
 protected:
     /// Data members
     AscendC::LocalTensor<ElementA> l1ATensor;

@@ -20,7 +20,7 @@
 #include "catlass/epilogue/tile/copy_ub_to_gm_tla.hpp"
 #include "tla/tensor.hpp"
 
-#if (defined (CATLASS_ARCH) && CATLASS_ARCH == 3510)
+#if (defined(CATLASS_ARCH) && CATLASS_ARCH == 3510)
 #include "catlass/epilogue/tile/copy_ub_to_l1_tla.hpp"
 #endif
 
@@ -29,8 +29,7 @@ namespace Catlass::Epilogue::Tile {
 template <
     /// Tag indicating architecture
     class ArchTag,
-    class... Args
->
+    class... Args>
 struct TileCopy {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported tile copy, can not find the specialization.");
 };
@@ -40,8 +39,7 @@ template <
     /// GemmType for C matrix operand
     class CType,
     /// GemmType for D matrix operand
-    class DType
->
+    class DType>
 struct TileCopy<ArchTag, CType, DType> {
     using ElementC = typename CType::Element;
     using ElementD = typename DType::Element;
@@ -57,8 +55,7 @@ template <
     /// GemmType for X matrix operand
     class XType,
     /// GemmType for D matrix operand
-    class DType
->
+    class DType>
 struct TileCopy<ArchTag, CType, XType, DType> {
     using ElementC = typename CType::Element;
     using ElementX = typename XType::Element;
@@ -74,8 +71,7 @@ template <
     class CType,
     class XType,
     class YType,
-    class DType
->
+    class DType>
 struct TileCopy<ArchTag, CType, XType, YType, DType> {
     using ElementC = typename CType::Element;
     using ElementX = typename XType::Element;
@@ -93,8 +89,7 @@ template <
     class CType,
     class XType,
     class YType,
-    class DType
->
+    class DType>
 struct TileCopyBf16 {
     using ElementC = typename CType::Element;
     using ElementX = bfloat16_t;
@@ -112,8 +107,7 @@ template <
     class CType,
     class ScaleType,
     class PerTokenScaleType,
-    class DType
->
+    class DType>
 struct TileCopyPerTokenDequant {
     using ElementC = typename CType::Element;
     using ElementScale = typename ScaleType::Element;
@@ -130,8 +124,7 @@ template <
     class ArchTag,
     class CType,
     class PerTokenScaleType,
-    class DType
->
+    class DType>
 struct TileCopyW4A4Gemm {
     using ElementC = typename CType::Element;
     using ElementPerTokenScale = typename PerTokenScaleType::Element;
@@ -155,8 +148,7 @@ template <
     class LayoutTagY_,
     /// GemmType for D matrix operand
     class ElementD_,
-    class LayoutTagD_
->
+    class LayoutTagD_>
 struct TileCopyDequantTla {
     using ElementC = ElementC_;
     using LayoutTagC = LayoutTagC_;
@@ -197,4 +189,4 @@ struct TileCopyDequantTla {
 
 } // namespace Catlass::Epilogue::Tile
 
-#endif  // CATLASS_EPILOGUE_TILE_TILE_COPY_HPP
+#endif // CATLASS_EPILOGUE_TILE_TILE_COPY_HPP

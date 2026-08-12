@@ -1,6 +1,5 @@
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -8,7 +7,6 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-
 #ifndef CATLASS_GEMM_TILE_TILE_MULS_HPP
 #define CATLASS_GEMM_TILE_TILE_MULS_HPP
 
@@ -35,14 +33,12 @@ struct TileMuls {
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::LocalTensor<Element> srcTensor,
         Element scalar,
-        uint32_t len
-    )
+        uint32_t len)
     {
         AscendC::SetMaskCount();
         AscendC::SetVectorMask<Element, AscendC::MaskMode::COUNTER>(len);
         AscendC::Muls<Element, false>(
-            dstTensor, srcTensor, scalar, AscendC::MASK_PLACEHOLDER, 1, AscendC::UnaryRepeatParams{}
-        );
+            dstTensor, srcTensor, scalar, AscendC::MASK_PLACEHOLDER, 1, AscendC::UnaryRepeatParams{});
         AscendC::SetMaskNorm();
         AscendC::ResetMask();
     }

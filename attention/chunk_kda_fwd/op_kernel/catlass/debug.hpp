@@ -41,8 +41,7 @@ using LogFuncType = std::function<void(const char *)>;
  */
 inline void aclCheck(
     aclError status,
-    LogFuncType logFunc = [](const char *logStrPtr) { std::cerr << logStrPtr; }
-)
+    LogFuncType logFunc = [](const char *logStrPtr) { std::cerr << logStrPtr; })
 {
     if (status != ACL_SUCCESS) {
         std::stringstream ss;
@@ -58,8 +57,7 @@ inline void aclCheck(
  */
 inline void rtCheck(
     int status,
-    LogFuncType logFunc = [](const char *logStrPtr) { std::cerr << logStrPtr; }
-)
+    LogFuncType logFunc = [](const char *logStrPtr) { std::cerr << logStrPtr; })
 {
     if (status != 0) {
         std::stringstream ss;

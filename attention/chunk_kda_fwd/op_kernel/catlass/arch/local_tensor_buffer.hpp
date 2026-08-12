@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 #ifndef INCLUDE_CATLASS_ARCH_MEMORY_H
 #define INCLUDE_CATLASS_ARCH_MEMORY_H
 
@@ -20,7 +20,8 @@ struct LocalTensorBufferBase {
 public:
     template <class Element = half>
     CATLASS_DEVICE
-    AscendC::LocalTensor<Element> GetBufferByByte(const uint32_t offset) const
+        AscendC::LocalTensor<Element>
+        GetBufferByByte(const uint32_t offset) const
     {
         return tensor[offset].template ReinterpretCast<Element>();
     }
@@ -34,8 +35,7 @@ protected:
 
 template <
     class ArchTag,
-    AscendC::TPosition Position
->
+    AscendC::TPosition Position>
 struct LocalTensorBuffer {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported local tensor buffer, can not find the specialization.");
 };
@@ -225,6 +225,6 @@ public:
     }
 };
 
-}  // namespace Catlass::Arch
+} // namespace Catlass::Arch
 
-#endif  // INCLUDE_CATLASS_ARCH_MEMORY_H
+#endif // INCLUDE_CATLASS_ARCH_MEMORY_H
