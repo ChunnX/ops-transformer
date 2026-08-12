@@ -127,6 +127,7 @@ private:
     std::string socVersion_ = "";
     int32_t aicCoreNum_ = 36;
     int32_t aivCoreNum_ = 72;
+    optiling::MetadataSlotConfig metadataSlotConfig_ {optiling::LEGACY_AIC_CORE_NUM, optiling::AIV_CORE_NUM};
 
     // SplitParams
     uint32_t sparseSeqLenDimNum_ = 0;

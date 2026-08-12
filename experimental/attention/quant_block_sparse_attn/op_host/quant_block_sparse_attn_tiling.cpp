@@ -39,15 +39,26 @@ constexpr uint32_t QBSA_ATTEN_MASK_DEFAULT_S1_SIZE = 2048U;
 constexpr uint32_t QBSA_ATTEN_MASK_DEFAULT_S2_SIZE = 2048U;
 constexpr uint32_t QBSA_MXFP8_VALUE_SCALE_LAST_DIM = 2U;
 
-uint32_t GetAicCoreNum(gert::TilingContext *context)
+bool IsV121(gert::TilingContext *context)
 {
     auto platformInfo = context->GetPlatformInfo();
     if (platformInfo == nullptr) {
-        return QBSA_MAX_CORE_NUM;
+        return false;
+    }
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    return ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_5102;
+}
+
+uint32_t GetAicCoreNum(gert::TilingContext *context, bool isV121)
+{
+    const uint32_t maxCoreNum = isV121 ? QBSA_V121_MAX_CORE_NUM : QBSA_LEGACY_MAX_CORE_NUM;
+    auto platformInfo = context->GetPlatformInfo();
+    if (platformInfo == nullptr) {
+        return maxCoreNum;
     }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     const uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    return aicNum == 0U ? QBSA_MAX_CORE_NUM : std::min<uint32_t>(aicNum, QBSA_MAX_CORE_NUM);
+    return aicNum == 0U ? maxCoreNum : std::min<uint32_t>(aicNum, maxCoreNum);
 }
 
 uint32_t CalcMxScaleDSize(uint32_t dSize)
@@ -148,8 +159,8 @@ void QuantBlockSparseAttnTiling::FillInitOutputParams()
     auto &initOutputParams = tilingData_.initOutputParams;
     const int64_t totalOutputSize = static_cast<int64_t>(info.qTokenNum) * info.n1Size * QBSA_D_SIZE;
     const int64_t totalSoftmaxLseSize = static_cast<int64_t>(info.qTokenNum) * info.n1Size;
-    initOutputParams.set_singleCoreSize((totalOutputSize + static_cast<int64_t>(usedCoreNum_) * 2 - 1) /
-                                        (static_cast<int64_t>(usedCoreNum_) * 2));
+    const int64_t vectorCoreNum = static_cast<int64_t>(usedCoreNum_) * (isV121_ ? 1 : 2);
+    initOutputParams.set_singleCoreSize((totalOutputSize + vectorCoreNum - 1) / vectorCoreNum);
     initOutputParams.set_needInit(1);
     initOutputParams.set_totalOutputSize(totalOutputSize);
     initOutputParams.set_totalSoftMaxLseOutputSize(totalSoftmaxLseSize);
@@ -269,9 +280,11 @@ void QuantBlockSparseAttnTiling::CalcTilingKey()
                                         info.maskModeVal, info.returnSoftmaxLseVal ? 1U : 0U,
                                         Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128, MXFullQuantMode);
     } else {
+        const uint32_t fp8Config = isV121_ ? Config_S1Aligned64_S2Aligned512_DAligned128_DVAligned128
+                                          : Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128;
         tilingKey_ = GET_TPL_TILING_KEY(QBSA_DTYPE_FP8_E4M3FN, info.layoutQValue, QBSA_KV_LAYOUT_PA_BNSD,
                                         info.maskModeVal, info.returnSoftmaxLseVal ? 1U : 0U,
-                                        Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128, FP8QuantMode);
+                                        fp8Config, FP8QuantMode);
     }
 }
 
@@ -454,6 +467,7 @@ ge::graphStatus QuantBlockSparseAttnTiling::DoOpTiling(QuantBlockSparseAttnTilin
         return ge::GRAPH_FAILED;
     }
     tilingInfo_ = tilingInfo;
+    isV121_ = IsV121(context_) && tilingInfo_->quantModeVal == QBSA_QUANT_MODE_FP8;
 
     const uint64_t bnCount = tilingInfo_->bSize * tilingInfo_->n1Size;
     totalTaskNum_ = bnCount * tilingInfo_->gS1OuterSize;
@@ -464,7 +478,7 @@ ge::graphStatus QuantBlockSparseAttnTiling::DoOpTiling(QuantBlockSparseAttnTilin
         return ge::GRAPH_FAILED;
     }
 
-    const uint32_t maxAicCoreNum = GetAicCoreNum(context_);
+    const uint32_t maxAicCoreNum = GetAicCoreNum(context_, isV121_);
     usedCoreNum_ = static_cast<uint32_t>(std::min<uint64_t>(static_cast<uint64_t>(maxAicCoreNum), totalTaskNum_));
 
     if (tilingInfo_->quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
