@@ -591,7 +591,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SendToken
     uint32_t tokenId = tokenOffset / (axisK_ + sharedExpertNum_); // 当前token在BS中的Id
     uint32_t topkId = tokenOffset % (axisK_ + sharedExpertNum_);  // 当前token的第几个topk
     if constexpr (QuantMode != 0) {
-        GlobalTensor<int8_t> tokenDataGMTensor;
+        GlobalTensor<uint8_t> tokenDataGMTensor;
         xInTensor_ = xInQueue_.AllocTensor<XType>();
         DataCopyPad(xInTensor_, xGMTensor_[tokenId * axisH_], xCopyParams, copyPadExtParams);
         xInQueue_.EnQue(xInTensor_);
@@ -605,10 +605,11 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SendToken
                                (winTokenDataOffset_ + (tokenId * (axisK_ + sharedExpertNum_) * axisHS_) +
                                 (topkId * axisHS_)) *
                                    sizeof(XOutType));
-        tokenDataGMTensor.SetGlobalBuffer((__gm__ int8_t *)tokenData);
+        tokenDataGMTensor.SetGlobalBuffer((__gm__ uint8_t *)tokenData);
         xOutQueue_.EnQue(xOutTensor_);
         xOutTensor_ = xOutQueue_.DeQue<XOutType>();
-        DataCopyPad(tokenDataGMTensor, xOutTensor_, hCommuCopyOutParams);
+        auto xOutBytesTensor = xOutTensor_.template ReinterpretCast<uint8_t>();
+        DataCopyPad(tokenDataGMTensor, xOutBytesTensor, hCommuCopyOutParams);
         xOutQueue_.FreeTensor<XOutType>(xOutTensor_);
     } else {
         GlobalTensor<XType> tokenDataGMTensor;
