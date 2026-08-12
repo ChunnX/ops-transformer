@@ -614,19 +614,21 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::WriteToCacheState(co
     uint32_t curSeqIdx = startSeqIdx;
     uint32_t copyFinishRowCnt = 0;
     uint32_t seqCnt = endSeqIdx - startSeqIdx;
+    uint64_t stateCacheStrideDim0 = constInfo_.stateCacheStrideDim0;
+    uint32_t blockSize = constInfo_.blockSize;
+    uint32_t headDim = constInfo_.headDim;
     while (copyFinishRowCnt < seqCnt) {
-        uint64_t blockIdOffset = curSeqIdx / constInfo_.blockSize;
-        uint64_t remainRowCnt = curSeqIdx % constInfo_.blockSize;
+        uint64_t blockIdOffset = curSeqIdx / blockSize;
+        uint64_t remainRowCnt = curSeqIdx % blockSize;
         uint64_t idInBlockTable = blockTableGm.GetValue(blockTablebaseOffset + blockIdOffset);
-        uint32_t copyRowCount = constInfo_.blockSize - remainRowCnt;
+        uint32_t copyRowCount = blockSize - remainRowCnt;
         if (copyFinishRowCnt + copyRowCount > seqCnt) {
             copyRowCount = seqCnt - copyFinishRowCnt;
         }
-        // copyRowCount *= coff_;
-        if (idInBlockTable != 0) { // 32
+        if (idInBlockTable != 0) {
             uint64_t stateOffset =
-                idInBlockTable * constInfo_.stateCacheStrideDim0 +
-                remainRowCnt * 2 * coff_ * constInfo_.headDim +
+                idInBlockTable * stateCacheStrideDim0 +
+                remainRowCnt * 2 * coff_ * headDim +
                 stateIdx * coff_ * constInfo_.headDim;
             uint64_t ubOffset = copyFinishRowCnt * coff_ * dBaseSize;
             DataCopyWithOutputQue(state[stateOffset], input[ubOffset], copyRowCount, dDealSize, coff_ * dBaseSize,
@@ -649,16 +651,19 @@ CompressorBlockVectorFullLoad<COMP>::ReadFromCacheState(const LocalTensor<T> &ou
     uint32_t curSeqIdx = startSeqIdx;
     uint32_t copyFinishRowCnt = 0;
     uint32_t seqCnt = endSeqIdx - startSeqIdx;
+    uint64_t stateCacheStrideDim0 = constInfo_.stateCacheStrideDim0;
+    uint32_t blockSize = constInfo_.blockSize;
+    uint32_t headDim = constInfo_.headDim;
     while (copyFinishRowCnt < seqCnt) {
-        uint64_t blockIdOffset = curSeqIdx / constInfo_.blockSize;
-        uint64_t remainRowCnt = curSeqIdx % constInfo_.blockSize;
+        uint64_t blockIdOffset = curSeqIdx / blockSize;
+        uint64_t remainRowCnt = curSeqIdx % blockSize;
         uint64_t idInBlockTable = blockTableGm.GetValue(blockTablebaseOffset + blockIdOffset);
-        uint32_t copyRowCount = constInfo_.blockSize - remainRowCnt;
+        uint32_t copyRowCount = blockSize - remainRowCnt;
         if (copyFinishRowCnt + copyRowCount > seqCnt) {
             copyRowCount = seqCnt - copyFinishRowCnt;
         }
-        uint64_t stateOffset = idInBlockTable * constInfo_.stateCacheStrideDim0 +
-                               remainRowCnt * 2 * coff_ * constInfo_.headDim + stateIdx * coff_ * constInfo_.headDim +
+        uint64_t stateOffset = idInBlockTable * stateCacheStrideDim0 +
+                               remainRowCnt * 2 * coff_ * headDim + stateIdx * coff_ * headDim +
                                dStartIdx;
 
         DataCopyWithInputQue(output[copyFinishRowCnt * coff_ * dDealSize], state[stateOffset], copyRowCount, dDealSize,
