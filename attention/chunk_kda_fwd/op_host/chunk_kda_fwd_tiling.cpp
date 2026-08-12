@@ -15,6 +15,7 @@
 #include <cstring>
 #include <register/op_impl_registry.h>
 #include "arch35/chunk_kda_fwd_tiling_impl.h"
+#include "platform/soc_spec.h"
 #include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
@@ -210,8 +211,11 @@ ge::graphStatus Tiling4ChunkKdaFwd(gert::TilingContext *context)
     const bool storeH = HasOutput(context, OUTPUT_H_IDX);
 
     const auto platform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    const bool isAscend950 =
-        platform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND950;
+    // Detect the Ascend950 SoC by NPU arch (DAV_3510) instead of the SoC version
+    // enum. The arch enum is stable across CANN releases, whereas the version
+    // enum only gained ASCEND950 in newer toolkits (CANN 8.5.2 only has
+    // ASCEND910_95), which would break host compilation on older CANN.
+    const bool isAscend950 = platform.GetCurNpuArch() == NpuArch::DAV_3510;
     const uint32_t physicalCoreNum =
         std::max<uint32_t>(platform.GetCoreNumAic(), 1);
     const uint64_t fwdHTaskCount = static_cast<uint64_t>(
