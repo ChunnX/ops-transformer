@@ -56,7 +56,7 @@ constexpr uint32_t MX_E5M2_QUANT = 3;                   // MX + FP8_E5M2
 constexpr uint32_t MX_E4M3_QUANT = 4;                   // MX + FP8_E4M3
 constexpr uint32_t MX_E2M1_QUANT = 5;                   // MX + FP4_E2M1
 
-constexpr bool IsMxQuant(uint32_t qm)
+__aicore__ constexpr bool IsMxQuant(uint32_t qm)
 {
     return qm == MX_E5M2_QUANT || qm == MX_E4M3_QUANT || qm == MX_E2M1_QUANT;
 }
@@ -424,10 +424,11 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::QuantProc
         floatLocalTemp.SetValue(hOutSizeAlign_ / sizeof(float), float(1.0) / dynamicScale);
     } else if constexpr (IsMxQuant(QuantMode)) {
         uint32_t mxScaleNum = Ceil(Ceil(axisH_, MX_BLOCK_SIZE), 2U) * 2U;
+        LocalTensor<float> receiveDataCastFloat = receiveDataCastFloatBuf_.Get<float>();
         __ubuf__ XType *srcAddr = (__ubuf__ XType *)xInTensor_.GetPhyAddr();
-        __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)receiveDataCastFloatBuf_.GetPhyAddr();
+        __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)receiveDataCastFloat.GetPhyAddr();
         __ubuf__ uint16_t *halfScaleLocalAddr =
-            (__ubuf__ uint16_t *)receiveDataCastFloatBuf_[Ceil(mxScaleNum, 32U) * 32U].GetPhyAddr();
+            (__ubuf__ uint16_t *)receiveDataCastFloat[Ceil(mxScaleNum, 32U) * 32U].GetPhyAddr();
         __ubuf__ int8_t *outLocalAddr = (__ubuf__ int8_t *)xOutTensor_.GetPhyAddr();
         __ubuf__ uint16_t *mxScaleLocalAddr;
         if constexpr (Std::IsSame<XOutType, fp4x2_e2m1_t>::value) {
