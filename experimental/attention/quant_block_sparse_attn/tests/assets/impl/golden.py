@@ -146,12 +146,14 @@ def _pack_pa_to_combined(key_pa, value_pa, k_scale_pa, block_size, layout_kv):
         block_num, block_size, n2, d_size, dv_size, 0, layout_kv
     )
     storage = torch.zeros((block_num * meta["pa_block_stride"],), dtype=torch.uint8)
-    key_view, value_view, k_scale_view = golden_module.combined_kv_cache.make_combined_kv_views(
-        storage, meta
+    key_view, value_view, k_scale_view = (
+        golden_module.combined_kv_cache.make_combined_kv_views(storage, meta)
     )
     key_view.copy_(key_pa)
     value_view.copy_(value_pa)
-    k_scale_view.copy_(k_scale_pa if k_scale_pa.dim() == 4 else k_scale_pa.unsqueeze(-1))
+    k_scale_view.copy_(
+        k_scale_pa if k_scale_pa.dim() == 4 else k_scale_pa.unsqueeze(-1)
+    )
     return storage, meta
 
 
