@@ -371,6 +371,7 @@ aclnnStatus aclnnMhcPreV2(
 
 - 确定性计算：
   - aclnnMhcPreV2默认确定性实现。
+  - Batch一致性说明：设置确定性等级为3时开启Batch一致性开关。
 
 - 规格约束：
   - n目前支持4、6、8。
