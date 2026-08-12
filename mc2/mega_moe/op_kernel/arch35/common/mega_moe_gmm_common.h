@@ -107,14 +107,21 @@ struct Config {
     using BlockPrologue =
         Std::conditional_t<IsA8W4, Blaze::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>, void>;
 
+    static __aicore__ inline typename BlockMmad::L1Params MakeL1Params(uint64_t kL1, uint64_t scaleKL1)
+    {
+        if constexpr (IsA8W4) {
+            return typename BlockMmad::L1Params{.kL1 = kL1, .scaleKL1 = scaleKL1};
+        } else {
+            return typename BlockMmad::L1Params{.kL1 = kL1, .scaleKL1 = scaleKL1, .l1BufNum = 2};
+        }
+    }
+
     static __aicore__ inline typename BlockMmad::L1Params DefaultL1Params()
     {
         if constexpr (IsA8W4) {
-            return typename BlockMmad::L1Params{
-                .kL1 = L1_TILE_K, .scaleKL1 = Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE};
+            return MakeL1Params(L1_TILE_K, Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE);
         } else {
-            return typename BlockMmad::L1Params{
-                .kL1 = L1_TILE_K, .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE, .l1BufNum = 2};
+            return MakeL1Params(L1_TILE_K, L1_TILE_K * SCALE_K_L1_RATE);
         }
     }
 
@@ -208,7 +215,7 @@ struct Config {
         scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByB);
         scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByK);
         scaleFactor = Blaze::Gemm::Min(scaleFactor, maxScaleFactor);
-        return typename BlockMmad::L1Params{.kL1 = kL1, .scaleKL1 = scaleFactor * kL1, .l1BufNum = 2};
+        return MakeL1Params(kL1, scaleFactor * kL1);
     }
 
     static __aicore__ inline BlockMmadTilingConfig MakeAdaptiveBlockMmadTilingConfig(uint32_t m, uint32_t k)
