@@ -15,11 +15,11 @@ endif()
 
 add_modules_sources(OPTYPE chunk_kda_fwd ACLNNTYPE aclnn_exclude)
 
-set(CHUNK_KDA_CATLASS_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/3rdparty/catlass/include")
+set(CHUNK_KDA_CATLASS_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel")
 if(NOT EXISTS "${CHUNK_KDA_CATLASS_INCLUDE_DIR}/tla/tensor.hpp")
     message(FATAL_ERROR
-        "ChunkKdaFwd requires the Catlass submodule. Run: "
-        "git submodule update --init --recursive 3rdparty/catlass")
+        "ChunkKdaFwd requires the vendored Catlass source under "
+        "op_kernel/catlass and op_kernel/tla. Please make sure the directories are complete.")
 endif()
 
 add_ops_compile_options(
