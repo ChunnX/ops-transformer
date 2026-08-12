@@ -77,6 +77,8 @@ _CASE_INT_FIELDS = {
     "sparse_q_block_size",
     "sparse_kv_block_size",
     "quant_mode",
+    "blocknum",
+    "s1_base_size",
     "s2_base_size",
     "max_block_per_batch",
 }
@@ -282,6 +284,18 @@ def _resolve_dtype(value, field_name):
     return _DTYPE_MAP[value]
 
 
+def _resolve_sparse_mode(case):
+    """Validate the shared dense/random sparse mode."""
+    resolved = dict(case)
+    sparse_mode = resolved.get("sparse_mode")
+    if sparse_mode not in ("dense", "random"):
+        raise ValueError(
+            f"sparse_mode must be 'dense' or 'random', got {sparse_mode!r}"
+        )
+    resolved["sparse_mode"] = sparse_mode
+    return resolved
+
+
 def validate_mxfp8_case(case):
     """只校验实际参与运行的字段；参考字段允许由外部泛化表自由扩展。"""
     if str(case.get("layout_q", "")).upper() != "TND":
@@ -399,12 +413,7 @@ def _normalize_case(case):
     sequence_inputs = _get_sequence_inputs(case)
     for name in ("cu_seqlens_q", "cu_seqlens_kv", "seqused_q", "seqused_kv"):
         case[name] = sequence_inputs[name].tolist()
-    sparse_mode = case.get("sparse_mode")
-    if sparse_mode not in ("dense", "random"):
-        raise ValueError(
-            f"sparse_mode must be 'dense' or 'random', got {sparse_mode!r}"
-        )
-    case["sparse_mode"] = sparse_mode
+    case = _resolve_sparse_mode(case)
     validate_mxfp8_case(case)
     return case
 
@@ -855,7 +864,7 @@ def _select_blocks(blocks, sparse_mode, rng):
     if sparse_mode == "random":
         selected = blocks[:]
         rng.shuffle(selected)
-        random_count = rng.randint(1, len(selected))
+        random_count = rng.randint(0, len(selected))
         return selected[:random_count]
     if sparse_mode == "dense":
         return blocks[:]
@@ -896,18 +905,6 @@ def _make_reference_sparse_indices(case, q_lengths, kv_lengths, rng):
     return sparse_indices, sparse_seq_len
 
 
-def _resolve_sparse_mode(case):
-    """Validate the shared dense/random sparse mode."""
-    resolved = dict(case)
-    sparse_mode = resolved.get("sparse_mode")
-    if sparse_mode not in ("dense", "random"):
-        raise ValueError(
-            f"sparse_mode must be 'dense' or 'random', got {sparse_mode!r}"
-        )
-    resolved["sparse_mode"] = sparse_mode
-    return resolved
-
-
 def _make_reference_sparse_for_lengths(q_lengths, kv_lengths):
     case = _resolve_sparse_mode(CASE)
     return _make_reference_sparse_indices(
@@ -922,13 +919,6 @@ def _make_reference_sparse_for_lengths(q_lengths, kv_lengths):
 # Layout 转换函数 - 数据
 # MXFP8 Q/QDescale 公共输入只接受 TND；BNSD 仅作为 K/V 和 PA KV cache 的内部布局。
 # ==============================================================================
-
-
-def canonical_q_input_layout(layout=None):
-    layout = (layout or Q_INPUT_LAYOUT).upper()
-    if layout != "TND":
-        raise ValueError(f"MXFP8 Q input layout must be TND, got {layout}")
-    return "TND"
 
 
 def require_q_tnd(tensor, seq_lens, num_heads, name="Q"):
@@ -1257,8 +1247,6 @@ def generate_mxfp8_inputs(case=None, max_block_per_batch=None):
     n1 = case["N1"]
     n2 = case["N2"]
     head_dim = case["D"]
-    canonical_q_input_layout(case["layout_q"])
-
     # Q: fp32 随机 → MXFP8 配套量化 (per-32-group along D)
     q_fp32 = _rand_float((total_q, n1, head_dim), generator, DATA_RANGE_Q)
     query, q_descale = quantize_mxfp8_qk(
@@ -1758,16 +1746,12 @@ def _expand_d_group_scale(scale, width):
 
 
 def _gather_q_block_and_scale(
-    q_tensor, q_scale, layout_q, cu_seqlens_q, batch_idx, q_start, q_end, head_idx
+    q_tensor, q_scale, cu_seqlens_q, batch_idx, q_start, q_end, head_idx
 ):
-    if layout_q == "NTD":
-        base = int(cu_seqlens_q[batch_idx].item())
-        q_block = q_tensor[head_idx, base + q_start : base + q_end]
-        q_scale_block = q_scale[head_idx, base + q_start : base + q_end]
-    else:
-        base = int(cu_seqlens_q[batch_idx].item())
-        q_block = q_tensor[base + q_start : base + q_end, head_idx]
-        q_scale_block = q_scale[base + q_start : base + q_end, head_idx]
+    """Gather one Q block from the only supported MXFP8 Q layout, TND."""
+    base = int(cu_seqlens_q[batch_idx].item())
+    q_block = q_tensor[base + q_start : base + q_end, head_idx]
+    q_scale_block = q_scale[base + q_start : base + q_end, head_idx]
     return q_block.to(torch.float32), q_scale_block.to(torch.float32)
 
 
@@ -1800,7 +1784,7 @@ def cpu_mxfp8_golden(
     use_quant_matmul=True,
 ):
     """Reference-style CPU golden for MXFP8 block sparse attention."""
-    layout_q = canonical_q_input_layout(Q_INPUT_LAYOUT)
+    layout_q = "TND"
     q_tensor = q_fp8
     q_scale = dequant_scale_q
     if block_table_torch is None:
@@ -1878,7 +1862,6 @@ def cpu_mxfp8_golden(
                 q_block, q_scale_block = _gather_q_block_and_scale(
                     q_tensor,
                     q_scale,
-                    layout_q,
                     cu_seqlens_q,
                     batch_idx,
                     q_start,
@@ -2624,7 +2607,7 @@ def npu_mxfp8_fa(
 
     softmax_scale = float(CASE["softmax_scale"])
 
-    q_layout = canonical_q_input_layout(Q_INPUT_LAYOUT)
+    q_layout = "TND"
     q_input = require_q_tnd(q_fp8, q_lengths, N_q, "Q").view(FP8_DTYPE)
     q_npu = q_input.npu()
     logger.info("[NPU %s] q=%s", q_layout, q_npu.shape)
