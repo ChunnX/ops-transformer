@@ -110,7 +110,8 @@ struct Config {
     static __aicore__ inline typename BlockMmad::L1Params DefaultL1Params()
     {
         if constexpr (IsA8W4) {
-            return typename BlockMmad::L1Params{.kL1 = L1_TILE_K, .scaleKL1 = 4096};
+            return typename BlockMmad::L1Params{
+                .kL1 = L1_TILE_K, .scaleKL1 = Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE};
         } else {
             return typename BlockMmad::L1Params{
                 .kL1 = L1_TILE_K, .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE, .l1BufNum = 2};
@@ -202,10 +203,11 @@ struct Config {
         const uint64_t scaleFactorByA = scaleTransferBytes / scaleABytes;
         const uint64_t scaleFactorByB = scaleTransferBytes / scaleBBytes;
         const uint64_t scaleFactorByK = Ops::Base::CeilDiv(static_cast<uint64_t>(k), kL1);
-        scaleFactor = scaleFactor < scaleFactorByA ? scaleFactor : scaleFactorByA;
-        scaleFactor = scaleFactor < scaleFactorByB ? scaleFactor : scaleFactorByB;
-        scaleFactor = scaleFactor < scaleFactorByK ? scaleFactor : scaleFactorByK;
-        scaleFactor = scaleFactor < maxScaleFactor ? scaleFactor : maxScaleFactor;
+        // 取 L1 容量、A/B 搬运上限、实际 K 覆盖范围及字段宽度共同允许的最小值。
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByA);
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByB);
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByK);
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, maxScaleFactor);
         return typename BlockMmad::L1Params{.kL1 = kL1, .scaleKL1 = scaleFactor * kL1, .l1BufNum = 2};
     }
 
@@ -217,21 +219,27 @@ struct Config {
         return BlockMmadTilingConfig{blockM, L1_TILE_N, CalcAdaptiveL1Params(blockM, L1_TILE_N, k)};
     }
 
-    static __aicore__ inline BlockMmadTilingConfig SelectBlockMmadTilingConfig(uint32_t m, uint32_t n, uint32_t k,
+    static __aicore__ inline BlockMmadTilingConfig SelectBlockMmadTilingConfig(uint32_t m, uint32_t k,
                                                                                uint32_t tileM)
     {
         BlockMmadTilingConfig baselineConfig = MakeBaselineBlockMmadTilingConfig(tileM);
-        if (m == 0U || n == 0U || k == 0U || m >= tileM) {
+        if (m == 0U || m >= tileM) {
             return baselineConfig;
         }
 
         if constexpr (IsA8W4) {
-            // A8W4 BlockMmad 与 AIV prologue 约定 kL1=0：按实际 tile M/N 自动选择 kaL1/kbL1。
+            /*
+             * kL1=0 让 BlockMmad 与 AIV prologue 按相同规则、基于实际 tile M/N 自动选择 kbL1；
+             * BlockMmad 还会独立按 A buffer 容量选择 kaL1。scale 使用专用实现固定的 4096K 窗口。
+             */
             return BlockMmadTilingConfig{
                 tileM,
                 L1_TILE_N,
-                typename BlockMmad::L1Params{.kL1 = 0U, .scaleKL1 = 4096U}};
-        } else if constexpr (g_coreType == AscendC::AIC) {
+                typename BlockMmad::L1Params{
+                    .kL1 = 0U, .scaleKL1 = Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE}};
+        }
+
+        if constexpr (g_coreType == AscendC::AIC) {
             // K<=256 时所有配置都只搬运一轮，保留基线可避免无收益的 Init。
             if (k <= L1_TILE_K) {
                 return baselineConfig;
@@ -287,8 +295,7 @@ struct Config {
         config.blockIdx = blockJob.jobIndex;
         config.scaleK = CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         config.activationTileM = TopkWeightsPrefetch ? L1_TILE_M_128 : gmm1TileM;
-        config.blockMmadTiling =
-            SelectBlockMmadTilingConfig(config.m, config.schedulerN, config.k, config.tileM);
+        config.blockMmadTiling = SelectBlockMmadTilingConfig(config.m, config.k, config.tileM);
     }
 
     __aicore__ static inline ProblemConfig BuildGmm1ProblemConfig(const ProblemShape &problemShape,
@@ -334,16 +341,27 @@ struct Config {
     }
 };
 
-// Wave 流程可持有同一个 BlockMmad；普通路径也复用该结构完成一致的初始化。
-template <typename BlockMmad>
-struct BlockMmadContext {
-    BlockMmad blockMmad;
+// 统一描述一次 BlockMmad::Init 真正消费的配置，避免 Context 分散保存并逐字段比较。
+struct BlockMmadInitConfig {
     uint32_t problemK = 0U;
     uint32_t tileM = 0U;
     uint32_t tileN = 0U;
     uint64_t kL1 = 0U;
     uint64_t scaleKL1 = 0U;
     uint64_t l1BufNum = 0U;
+
+    __aicore__ inline bool operator!=(const BlockMmadInitConfig &other) const
+    {
+        return problemK != other.problemK || tileM != other.tileM || tileN != other.tileN || kL1 != other.kL1 ||
+               scaleKL1 != other.scaleKL1 || l1BufNum != other.l1BufNum;
+    }
+};
+
+// Wave 流程可持有同一个 BlockMmad；普通路径也复用该结构完成一致的初始化。
+template <typename BlockMmad>
+struct BlockMmadContext {
+    BlockMmad blockMmad;
+    BlockMmadInitConfig initConfig{};
     bool initialized = false;
 };
 
@@ -353,21 +371,19 @@ __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &
 {
     using BlockMmad = decltype(context.blockMmad);
     const auto &tilingConfig = config.blockMmadTiling;
-    bool configChanged = context.problemK != config.k || context.tileM != tilingConfig.tileM ||
-                         context.tileN != tilingConfig.tileN || context.kL1 != tilingConfig.l1Params.kL1 ||
-                         context.scaleKL1 != tilingConfig.l1Params.scaleKL1 ||
-                         context.l1BufNum != tilingConfig.l1Params.l1BufNum;
-    if (!context.initialized || configChanged) {
+    const BlockMmadInitConfig requestedConfig{
+        config.k,
+        tilingConfig.tileM,
+        tilingConfig.tileN,
+        tilingConfig.l1Params.kL1,
+        tilingConfig.l1Params.scaleKL1,
+        tilingConfig.l1Params.l1BufNum};
+    if (!context.initialized || context.initConfig != requestedConfig) {
         typename BlockMmad::BlockShape l0TileShape{tilingConfig.tileM, tilingConfig.tileN, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
         constexpr bool enableL0CPingPong = false;
         context.blockMmad.Init(matmulShape, l0TileShape, tilingConfig.l1Params, false, enableL0CPingPong);
-        context.problemK = config.k;
-        context.tileM = tilingConfig.tileM;
-        context.tileN = tilingConfig.tileN;
-        context.kL1 = tilingConfig.l1Params.kL1;
-        context.scaleKL1 = tilingConfig.l1Params.scaleKL1;
-        context.l1BufNum = tilingConfig.l1Params.l1BufNum;
+        context.initConfig = requestedConfig;
         context.initialized = true;
     }
 }
