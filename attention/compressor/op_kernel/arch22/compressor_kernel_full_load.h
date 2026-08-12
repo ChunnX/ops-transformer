@@ -169,6 +169,7 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::InitTilingData()
     constInfo.blockNum = tilingData_->pageAttentionParams.blockNum;
     constInfo.blockSize = tilingData_->pageAttentionParams.blockSize;
     constInfo.maxBlockNumPerBatch = tilingData_->pageAttentionParams.maxBlockNumPerBatch;
+    constInfo.stateCacheStrideDim0 = tilingData_->baseParams.stateCacheStrideDim0;
 
     constInfo.nSize = tilingData_->baseParams.nSize;
     constInfo.vec1TailCacheSize = tilingData_->workspaceParams.vec1TailCacheSize;

@@ -104,6 +104,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> Compressor(
     TORCH_CHECK(stateCacheDim == DIM_THREE, "state_cache dim num[", stateCacheDim, "] should be 3");
 
     auto contiguousAxesResult = IsContiguousAxes(stateCache);
+    TORCH_CHECK(contiguousAxesResult[1] && contiguousAxesResult[2],
+                "state_cache must be contiguous on axis 1 and 2, "
+                "only axis 0 non-contiguous is supported. "
+                "strides: ", stateCache.strides());
     int64_t stateCacheStrideDim0 = stateCache.stride(0);
 
     ACLNN_CMD(aclnnCompressor, x, wkv, wgate, stateCache, ape, stateBlockTable, cuSeqlens, seqused, startPos, cmpRatio,
