@@ -39,14 +39,6 @@ constexpr uint32_t UB_ALIGN = 32U; // UB按32字节对齐
 constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 
-// 置 1 打开等待通路调试：统计 WaitDispatch 的轮询次数，并在清状态后回读校验。
-// 轮询 1 次即退出说明进入循环时状态区就已达标，可能是上一轮残留的 flag 没清干净；
-// 若真如此本核会在对端数据还没落地时就放行，表现为 expandXOut 是垃圾。
-// 清状态后的回读是无歧义的判据：非 0 就说明清理没生效。
-#ifndef DISPATCH_TEARDOWN_DEBUG_WAIT
-#define DISPATCH_TEARDOWN_DEBUG_WAIT 0
-#endif
-
 constexpr uint32_t UNQUANT = 0;
 constexpr uint32_t STATIC_QUANT = 1;
 constexpr uint32_t PERTOKEN_DYNAMIC_QUANT = 2;
@@ -59,6 +51,63 @@ constexpr uint32_t MX_QUANT = 4;
 
 using namespace AscendC;
 using namespace Mc2Aclnn;
+
+// ============================ 输入/输出打印 ============================
+// Init 开头打印全部输入，Process 结束打印全部输出。只在 aiv0 上打印，避免多核刷屏；
+// 输出打印前会 SyncAll，所以 aiv0 看到的是全核写完之后的结果。
+// 每个张量只打印头部若干元素，要看更多改大这个上限即可。
+constexpr uint32_t IO_DUMP_MAX_ELEM = 16U;
+
+__aicore__ inline void IoDumpHex32(const char *tag, GM_ADDR addr, uint32_t wordCnt)
+{
+    if (addr == nullptr) {
+        printf("    %s: null\n", tag);
+        return;
+    }
+    GlobalTensor<int32_t> t;
+    t.SetGlobalBuffer((__gm__ int32_t *)addr);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+    printf("    %s: addr=0x%llx words=%u\n", tag,
+           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), wordCnt);
+    const uint32_t n = (wordCnt < IO_DUMP_MAX_ELEM) ? wordCnt : IO_DUMP_MAX_ELEM;
+    for (uint32_t i = 0U; i < n; ++i) {
+        printf("      [%u]=0x%08x\n", i, static_cast<uint32_t>(t.GetValue(i)));
+    }
+}
+
+__aicore__ inline void IoDumpI32(const char *tag, GM_ADDR addr, uint32_t elemCnt)
+{
+    if (addr == nullptr) {
+        printf("    %s: null\n", tag);
+        return;
+    }
+    GlobalTensor<int32_t> t;
+    t.SetGlobalBuffer((__gm__ int32_t *)addr);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+    printf("    %s: addr=0x%llx count=%u\n", tag,
+           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), elemCnt);
+    const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
+    for (uint32_t i = 0U; i < n; ++i) {
+        printf("      [%u]=%d\n", i, t.GetValue(i));
+    }
+}
+
+__aicore__ inline void IoDumpI64(const char *tag, GM_ADDR addr, uint32_t elemCnt)
+{
+    if (addr == nullptr) {
+        printf("    %s: null\n", tag);
+        return;
+    }
+    GlobalTensor<int64_t> t;
+    t.SetGlobalBuffer((__gm__ int64_t *)addr);
+    DataCacheCleanAndInvalid<int64_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+    printf("    %s: addr=0x%llx count=%u\n", tag,
+           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), elemCnt);
+    const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
+    for (uint32_t i = 0U; i < n; ++i) {
+        printf("      [%u]=%lld\n", i, static_cast<long long>(t.GetValue(i)));
+    }
+}
 
 template <TemplateMC2TypeClass>
 class MoeDistributeDispatchTeardown {
@@ -85,6 +134,8 @@ private:
     __aicore__ inline void SyncCntOnCore(LocalTensor<float> &gatherMaskOutTensor,
                                          LocalTensor<uint32_t> &gatherTmpTensor,
                                          LocalTensor<float> &statusSumOutTensor);
+    __aicore__ inline void DumpInputs(GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADDR commCmdInfo);
+    __aicore__ inline void DumpOutputs();
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
         return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_);
@@ -132,6 +183,8 @@ private:
 
     GM_ADDR expandXOutGM_;
     GM_ADDR sendCountsOutGM_;
+    GM_ADDR dynamicScalesOutGM_{nullptr};   // 仅用于结束时打印输出
+    GM_ADDR expertTokenNumsOutGM_{nullptr}; // 仅用于结束时打印输出
     GM_ADDR statusSpaceGm_;
     GM_ADDR windowGM_;
     GM_ADDR recvCntWorkspaceGM_;
@@ -226,7 +279,11 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
     expertTokenNumsOutGMTensor_.SetGlobalBuffer((__gm__ int64_t *)expertTokenNumsOut);
     expandXOutGM_ = expandXOut;
     sendCountsOutGM_ = assistInfoForCombineOut; // 无GlobalTensor
+    dynamicScalesOutGM_ = dynamicScalesOut;
+    expertTokenNumsOutGM_ = expertTokenNumsOut;
     recvCntWorkspaceGM_ = workspaceGM;
+
+    DumpInputs(x, y, expertIds, commCmdInfo);
 
     uint32_t hSize = axisH_ * sizeof(XType);
     hOutSize_ = axisH_ * sizeof(ExpandXOutType);
@@ -415,9 +472,6 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::WaitD
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1,
                                static_cast<uint16_t>((recvWinBlockNum_ > 512) ? 7 : 15), 0};
     SyncFunc<AscendC::HardEvent::S_V>();
-#if DISPATCH_TEARDOWN_DEBUG_WAIT
-    uint32_t pollCount = 0U;
-#endif
     while (sumOfFlag != compareTarget * 2) {
         DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
                  intriParams);
@@ -425,18 +479,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::WaitD
         ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
-#if DISPATCH_TEARDOWN_DEBUG_WAIT
-        ++pollCount;
-#endif
     }
-#if DISPATCH_TEARDOWN_DEBUG_WAIT
-    // 一次就退出：进入时状态区已达标。对端确实早到也会这样，所以要结合下面的清理回读一起判断。
-    if (pollCount <= 1U) {
-        AscendC::printf("[DWAIT] rank=%u aiv=%u D_S=%u startIdx=%u num=%u poll=%u sum=%d target=%d\n", epRankId_,
-                        aivId_, dataState_, startStatusIndex_, recStatusNumPerCore_, pollCount,
-                        static_cast<int32_t>(sumOfFlag), static_cast<int32_t>(compareTarget * 2));
-    }
-#endif
     // 清状态
     SyncFunc<AscendC::HardEvent::MTE3_S>();
     DataCopyParams intriOutParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0,
@@ -449,21 +492,6 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::WaitD
     DataCopy(windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
              cleanStateTensor.ReinterpretCast<float>(), intriOutParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
-
-#if DISPATCH_TEARDOWN_DEBUG_WAIT
-    // 清理必须真正落地：残留下来的 flag 会让下一轮的 WaitDispatch 一次轮询就放行。
-    // 这里回读的是刚写完的同一段，与 [DWAIT] 的 poll=1 配合即可确认是不是残留导致的提前放行。
-    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-    DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
-             intriParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
-    SyncFunc<AscendC::HardEvent::V_S>();
-    float residualFlag = statusSumOutTensor.GetValue(0);
-    ascendc_assert(residualFlag == static_cast<float>(0.0),
-                   "dispatch_teardown status clear ineffective, rank=%u aiv=%u startIdx=%u residual=%d", epRankId_,
-                   aivId_, startStatusIndex_, static_cast<int32_t>(residualFlag));
-#endif
 
     // 核间同步token cnt
     SyncCntOnCore(gatherMaskOutTensor, gatherTmpTensor, statusSumOutTensor);
@@ -639,6 +667,42 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Updat
 }
 
 template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::DumpInputs(GM_ADDR x, GM_ADDR y,
+    GM_ADDR expertIds, GM_ADDR commCmdInfo)
+{
+    if (aivId_ != 0U) {
+        return;
+    }
+    printf("[IN][dispatch_teardown] rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
+           "moeExpertNumPerRank=%u globalBs=%u bs=%u k=%u h=%u aivNum=%u quantMode=%u expertTokenNumsType=%u "
+           "totalWinSize=%llu\n",
+           epRankId_, epWorldSize_, sharedExpertNum_, sharedExpertRankNum_, moeExpertNum_, moeExpertNumPerRank_,
+           axisMaxBS_ * epWorldSize_, axisBS_, axisK_, axisH_, aivNum_, static_cast<uint32_t>(QuantMode),
+           expertTokenNumsType_, static_cast<unsigned long long>(tempTotalWinSize_));
+    // x 是 [bs, h] 的 XType，按 32bit 字打印原始位，不做类型转换
+    IoDumpHex32("x", x, static_cast<uint32_t>(static_cast<uint64_t>(axisBS_) * axisH_ * sizeof(XType) /
+                                              sizeof(int32_t)));
+    IoDumpHex32("y", y, IO_DUMP_MAX_ELEM);
+    IoDumpI32("expertIds", expertIds, axisBS_ * axisK_);
+    IoDumpI32("commCmdInfo", commCmdInfo, IO_DUMP_MAX_ELEM);
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::DumpOutputs()
+{
+    if (aivId_ != 0U) {
+        return;
+    }
+    printf("[OUT][dispatch_teardown] rank=%u\n", epRankId_);
+    // expandXOut 的 dim0 由实际收到的 token 数决定，不在 tiling 里，只打头部
+    IoDumpHex32("expandXOut", expandXOutGM_, IO_DUMP_MAX_ELEM);
+    IoDumpHex32("dynamicScalesOut", dynamicScalesOutGM_, IO_DUMP_MAX_ELEM);
+    // assistInfoForCombineOut 就是下游 combine_setup 读的前缀和，整段都要能看到
+    IoDumpI32("assistInfoForCombineOut", sendCountsOutGM_, epWorldSize_ * moeExpertNumPerRank_);
+    IoDumpI64("expertTokenNumsOut", expertTokenNumsOutGM_, moeExpertNumPerRank_);
+}
+
+template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
@@ -647,6 +711,9 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Proce
         SyncAll<true>();
         LocalWindowCopy();
         UpdateTokenNumsOut();
+
+        SyncAll<true>(); // 等全核写完，aiv0 打印的输出才是完整的
+        DumpOutputs();
     }
 }
 

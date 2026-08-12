@@ -34,19 +34,68 @@
 
 namespace MoeDistributeCombineTeardownImpl {
 
-// 置 1 打开状态通路调试：打印本核 C_S / 等待的状态槽，并在长时间等不到时 dump 一次实际读到的值。
-// 与 combine_setup 的 COMBINE_SETUP_DEBUG_DST_STATUS 配套使用，用于比对两侧 C_S 是否同步。
-#ifndef COMBINE_TEARDOWN_DEBUG_WAIT
-#define COMBINE_TEARDOWN_DEBUG_WAIT 0
-#endif
-// 轮询多少次还没等到就 dump 一次现场
-#define COMBINE_TEARDOWN_WAIT_DUMP_THRESHOLD 1000000U
-
 using namespace AscendC;
 using namespace Mc2Aclnn;
 
 #define TemplateMC2TypeClass typename ExpandXType, typename ExpandIdxType
 #define TemplateMC2TypeFunc ExpandXType, ExpandIdxType
+
+// ============================ 输入/输出打印 ============================
+// Init 开头打印全部输入，Process 结束打印全部输出。只在 aiv0 上打印，避免多核刷屏；
+// 输出打印前会 SyncAll，所以 aiv0 看到的是全核写完之后的结果。
+// 每个张量只打印头部若干元素，要看更多改大这个上限即可。
+constexpr uint32_t IO_DUMP_MAX_ELEM = 16U;
+
+__aicore__ inline void IoDumpHex32(const char *tag, GM_ADDR addr, uint32_t wordCnt)
+{
+    if (addr == nullptr) {
+        printf("    %s: null\n", tag);
+        return;
+    }
+    GlobalTensor<int32_t> t;
+    t.SetGlobalBuffer((__gm__ int32_t *)addr);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+    printf("    %s: addr=0x%llx words=%u\n", tag,
+           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), wordCnt);
+    const uint32_t n = (wordCnt < IO_DUMP_MAX_ELEM) ? wordCnt : IO_DUMP_MAX_ELEM;
+    for (uint32_t i = 0U; i < n; ++i) {
+        printf("      [%u]=0x%08x\n", i, static_cast<uint32_t>(t.GetValue(i)));
+    }
+}
+
+__aicore__ inline void IoDumpI32(const char *tag, GM_ADDR addr, uint32_t elemCnt)
+{
+    if (addr == nullptr) {
+        printf("    %s: null\n", tag);
+        return;
+    }
+    GlobalTensor<int32_t> t;
+    t.SetGlobalBuffer((__gm__ int32_t *)addr);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+    printf("    %s: addr=0x%llx count=%u\n", tag,
+           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), elemCnt);
+    const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
+    for (uint32_t i = 0U; i < n; ++i) {
+        printf("      [%u]=%d\n", i, t.GetValue(i));
+    }
+}
+
+__aicore__ inline void IoDumpF32(const char *tag, GM_ADDR addr, uint32_t elemCnt)
+{
+    if (addr == nullptr) {
+        printf("    %s: null\n", tag);
+        return;
+    }
+    GlobalTensor<float> t;
+    t.SetGlobalBuffer((__gm__ float *)addr);
+    DataCacheCleanAndInvalid<float, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+    printf("    %s: addr=0x%llx count=%u\n", tag,
+           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), elemCnt);
+    const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
+    for (uint32_t i = 0U; i < n; ++i) {
+        printf("      [%u]=%f\n", i, t.GetValue(i));
+    }
+}
 
 template <TemplateMC2TypeClass>
 class MoeDistributeCombineTeardown {
@@ -73,6 +122,9 @@ private:
     __aicore__ inline void TokenSplitCoreCal();
     __aicore__ inline void WaitDispatch();
     __aicore__ inline void FlipDataState();
+    __aicore__ inline void DumpInputs(GM_ADDR expandX, GM_ADDR quantExpandX, GM_ADDR expertIds, GM_ADDR expandIdx,
+        GM_ADDR expertScales, GM_ADDR commCmdInfo, GM_ADDR xActiveMask, GM_ADDR sharedExpertX);
+    __aicore__ inline void DumpOutputs();
 
     __aicore__ GM_ADDR GetUrmaAddrByRankId(const int32_t rankId, const uint8_t expertLocalId = 0U)
     {
@@ -120,6 +172,7 @@ private:
     uint64_t sharedExpertDataSizeOffset_{0};
     uint32_t epRankId_{0};
     GM_ADDR dataStateGM_{nullptr}; // 本核 dataState 0/1 标识地址，WaitDispatch 成功后再翻转
+    GM_ADDR xOutGM_{nullptr};      // 仅用于结束时打印输出
 
     TQue<QuePosition::VECIN, 1> moeSumQueue_;
     TQue<QuePosition::VECIN, 1> expertIdsQueue_;
@@ -139,8 +192,8 @@ private:
 
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(GM_ADDR context,
-    GM_ADDR /*expandX*/, GM_ADDR /*quantExpandX*/, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR expertScales,
-    GM_ADDR /*commCmdInfo*/, GM_ADDR /*xActiveMask*/, GM_ADDR /*sharedExpertX*/, GM_ADDR XOut, GM_ADDR /*workspaceGM*/,
+    GM_ADDR expandX, GM_ADDR quantExpandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR expertScales,
+    GM_ADDR commCmdInfo, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR XOut, GM_ADDR /*workspaceGM*/,
     TPipe *pipe, const MoeDistributeCombineTeardownTilingData *tilingData)
 {
     tpipe_ = pipe;
@@ -148,6 +201,9 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(G
     moeDistributeCombineTeardownInfo_ = &(tilingData->moeDistributeCombineTeardownInfo);
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
+
+    DumpInputs(expandX, quantExpandX, expertIds, expandIdx, expertScales, commCmdInfo, xActiveMask, sharedExpertX);
+    xOutGM_ = XOut;
 
     // 获取win状态区地址，并保证数据一致
     // 在1M中选择512K偏移后的1.5k空间记录本卡历史状态
@@ -191,12 +247,6 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(G
 
     epWindowGM_ = GetUrmaAddrByRankId(epRankId_);
     epStatusSpaceGM_ = GetUrmaStateAddrByRankId(epRankId_);
-#if COMBINE_TEARDOWN_DEBUG_WAIT
-    // 与 combine_setup 的 [C_S] 行逐核比对：同一 aiv 上两边的 C_S 必须一致，
-    // 且本卡这里的 statusBank 必须等于对端 setup 打印的 addr 去掉 stateOff 后的基址。
-    printf("[C_S] rank=%u aiv=%u C_S=%u statusBank=0x%llx winDataOff=0x%llx totalWin=0x%llx\n", epRankId_,
-        coreIdx_, dataState_, epStatusSpaceGM_, winDataSizeOffset_, moeDistributeCombineTeardownInfo_->totalWinSize);
-#endif
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(epWindowGM_),
                                    moeDistributeCombineTeardownInfo_->totalWinSize / 4ULL);
@@ -308,10 +358,6 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
 
     // 循环，累加本卡状态区状态
     auto index = static_cast<uint64_t>(startRankId_) * stateOffset_ / static_cast<uint64_t>(sizeof(float));
-#if COMBINE_TEARDOWN_DEBUG_WAIT
-    uint32_t pollCount = 0U;
-    bool dumped = false;
-#endif
     while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
         DataCopy(statusTensor, epStatusSpaceGlobal[index], intriParams);
         AscendC::SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -321,43 +367,6 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
         Sum(statusSumOutTensor, gatherMaskOutTensor, sumParams);
         AscendC::SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
-#if COMBINE_TEARDOWN_DEBUG_WAIT
-        // 卡住时 dump 一次现场。两个 bank 都直接从 GM 扫，用来区分三种失效：
-        //   flag 出现在 1-C_S 那侧 -> 收发双方 C_S 失步
-        //   两侧都是 0            -> 发送端算出的地址根本没落到本卡状态区
-        //   flag 先有后变 0        -> 被其他算子覆盖（dispatch 状态区溢出）
-        if ((++pollCount >= COMBINE_TEARDOWN_WAIT_DUMP_THRESHOLD) && !dumped) {
-            dumped = true;
-            GM_ADDR statusBankBase = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]) + COMBINE_STATUS_BASE;
-            GM_ADDR ctrlBase = dataStateGM_ - CTRL_COMBINE_STATE_OFFSET;
-            GlobalTensor<int32_t> ctrlDispatchState;
-            GlobalTensor<int32_t> ctrlCombineState;
-            GlobalTensor<int32_t> ctrlCombineFlag;
-            ctrlDispatchState.SetGlobalBuffer((__gm__ int32_t *)(ctrlBase + CTRL_DISPATCH_STATE_OFFSET));
-            ctrlCombineState.SetGlobalBuffer((__gm__ int32_t *)(ctrlBase + CTRL_COMBINE_STATE_OFFSET));
-            ctrlCombineFlag.SetGlobalBuffer((__gm__ int32_t *)(ctrlBase + CTRL_COMBINE_FLAG_OFFSET));
-            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-                ctrlDispatchState);
-            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(ctrlCombineState);
-            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(ctrlCombineFlag);
-            printf("[WAIT] rank=%u aiv=%u C_S=%u startRank=%u num=%u sum=%d target=%d\n", epRankId_, coreIdx_,
-                dataState_, startRankId_, sendRankNum_, sumOfFlag, sumTarget);
-            printf("[WAIT]   ctrl D_S=%d C_S=%d flag=0x%x bank0=0x%llx stateOff=%u\n",
-                ctrlDispatchState.GetValue(0), ctrlCombineState.GetValue(0),
-                ctrlCombineFlag.GetValue(0), statusBankBase, stateOffset_);
-            for (uint32_t i = 0U; i < sendRankNum_; ++i) {
-                const uint64_t slotOff = static_cast<uint64_t>(startRankId_ + i) * stateOffset_;
-                GlobalTensor<int32_t> bank0Slot;
-                GlobalTensor<int32_t> bank1Slot;
-                bank0Slot.SetGlobalBuffer((__gm__ int32_t *)(statusBankBase + slotOff));
-                bank1Slot.SetGlobalBuffer((__gm__ int32_t *)(statusBankBase + COMBINE_STATE_BANK_STRIDE + slotOff));
-                DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(bank0Slot);
-                DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(bank1Slot);
-                AscendC::printf("[WAIT]   srcRank=%u slot=0x%x bank0=0x%x bank1=0x%x\n",
-                    startRankId_ + i, slotOff, bank0Slot.GetValue(0), bank1Slot.GetValue(0));
-            }
-        }
-#endif
     }
 
     Duplicate<float>(statusTensor, 0, sendRankNum_ * UB_ALIGN / sizeof(float));
@@ -459,6 +468,46 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::LocalW
 }
 
 template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::DumpInputs(GM_ADDR expandX,
+    GM_ADDR quantExpandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR expertScales, GM_ADDR commCmdInfo,
+    GM_ADDR xActiveMask, GM_ADDR sharedExpertX)
+{
+    if (coreIdx_ != 0U) {
+        return;
+    }
+    const MoeDistributeCombineTeardownInfo *t = moeDistributeCombineTeardownInfo_;
+    printf("[IN][combine_teardown] rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
+           "moeExpertPerRankNum=%u globalBs=%u bs=%u k=%u h=%u aivNum=%u isActiveMask=%d hasSharedExpertX=%d "
+           "totalUbSize=%llu totalWinSize=%llu\n",
+           epRankId_, t->epWorldSize, t->sharedExpertNum, t->sharedExpertRankNum, t->moeExpertNum,
+           t->moeExpertPerRankNum, t->globalBs, t->bs, t->k, t->h, t->aivNum, static_cast<int32_t>(t->isActiveMask),
+           static_cast<int32_t>(t->hasSharedExpertX), static_cast<unsigned long long>(t->totalUbSize),
+           static_cast<unsigned long long>(t->totalWinSize));
+    // expandX / quantExpandX / sharedExpertX 的 dim0 不在 tiling 里，只打头部
+    IoDumpHex32("expandX", expandX, IO_DUMP_MAX_ELEM);
+    IoDumpHex32("quantExpandX", quantExpandX, IO_DUMP_MAX_ELEM);
+    IoDumpI32("expertIds", expertIds, t->bs * t->k);
+    IoDumpI32("expandIdx", expandIdx, t->bs * t->k);
+    IoDumpF32("expertScales", expertScales, t->bs * t->k);
+    IoDumpI32("commCmdInfo", commCmdInfo, IO_DUMP_MAX_ELEM);
+    IoDumpHex32("xActiveMask", xActiveMask, IO_DUMP_MAX_ELEM);
+    IoDumpHex32("sharedExpertX", sharedExpertX, IO_DUMP_MAX_ELEM);
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::DumpOutputs()
+{
+    if (coreIdx_ != 0U) {
+        return;
+    }
+    printf("[OUT][combine_teardown] rank=%u\n", epRankId_);
+    // XOut 是 [bs, h] 的 ExpandXType，按 32bit 字打印原始位，不做类型转换
+    IoDumpHex32("XOut", xOutGM_,
+                static_cast<uint32_t>(static_cast<uint64_t>(moeDistributeCombineTeardownInfo_->bs) *
+                                      moeDistributeCombineTeardownInfo_->h * sizeof(ExpandXType) / sizeof(int32_t)));
+}
+
+template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理{
@@ -469,6 +518,9 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Proces
 
         CopyIn();
         LocalWindowCopy(); // 拷出数据
+
+        SyncAll<true>(); // 等全核写完，aiv0 打印的输出才是完整的
+        DumpOutputs();
     }
 }
 

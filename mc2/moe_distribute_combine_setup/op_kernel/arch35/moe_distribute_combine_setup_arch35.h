@@ -38,17 +38,48 @@ namespace MoeDistributeCombineSetupImpl {
 #define TemplateMC2TypeClass typename ExpandXType, typename ExpandIdxType
 #define TemplateMC2TypeFunc ExpandXType, ExpandIdxType
 
-// 置 1 打开状态通路调试：打印本核 C_S / 状态槽地址，并在 Commit+Drain 后回读对端状态槽。
-// 正常跑完时回读带 race（对端消费后会清零该槽），读到 0 不能判定未送达；
-// 但在对端卡死的场景下它不会清零，此时回读是无歧义的：
-//   readBack == STATUS_FLAG_VALUE -> 状态确实落到对端，问题在接收侧
-//   readBack == 0                 -> 状态根本没落到对端，问题在发送侧
-#ifndef COMBINE_SETUP_DEBUG_DST_STATUS
-#define COMBINE_SETUP_DEBUG_DST_STATUS 0
-#endif
-
 using namespace AscendC;
 using namespace Mc2Aclnn;
+
+// ============================ 输入/输出打印 ============================
+// Init 开头打印全部输入，Process 结束打印全部输出。只在 aiv0 上打印，避免多核刷屏；
+// 输出打印前会 SyncAll，所以 aiv0 看到的是全核写完之后的结果。
+// 每个张量只打印头部若干元素，要看更多改大这个上限即可。
+constexpr uint32_t IO_DUMP_MAX_ELEM = 16U;
+
+__aicore__ inline void IoDumpHex32(const char *tag, GM_ADDR addr, uint32_t wordCnt)
+{
+    if (addr == nullptr) {
+        printf("    %s: null\n", tag);
+        return;
+    }
+    GlobalTensor<int32_t> t;
+    t.SetGlobalBuffer((__gm__ int32_t *)addr);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+    printf("    %s: addr=0x%llx words=%u\n", tag,
+           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), wordCnt);
+    const uint32_t n = (wordCnt < IO_DUMP_MAX_ELEM) ? wordCnt : IO_DUMP_MAX_ELEM;
+    for (uint32_t i = 0U; i < n; ++i) {
+        printf("      [%u]=0x%08x\n", i, static_cast<uint32_t>(t.GetValue(i)));
+    }
+}
+
+__aicore__ inline void IoDumpI32(const char *tag, GM_ADDR addr, uint32_t elemCnt)
+{
+    if (addr == nullptr) {
+        printf("    %s: null\n", tag);
+        return;
+    }
+    GlobalTensor<int32_t> t;
+    t.SetGlobalBuffer((__gm__ int32_t *)addr);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+    printf("    %s: addr=0x%llx count=%u\n", tag,
+           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), elemCnt);
+    const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
+    for (uint32_t i = 0U; i < n; ++i) {
+        printf("      [%u]=%d\n", i, t.GetValue(i));
+    }
+}
 
 template <TemplateMC2TypeClass>
 class MoeDistributeCombineSetup {
@@ -75,6 +106,8 @@ private:
     __aicore__ inline void Communication();
     __aicore__ inline void BuffInit();
     __aicore__ inline void AssistInfoLocalCopy();
+    __aicore__ inline void DumpInputs(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine);
+    __aicore__ inline void DumpOutputs();
 
     TPipe *tpipe_{nullptr};
     GlobalTensor<int32_t> assistInfoForCombineGlobal_;
@@ -106,7 +139,8 @@ private:
     uint32_t aivId_{0};
     uint32_t epRankId_{0};
 
-    GM_ADDR commCmdInfoOutGM_{nullptr}; // 仅调试回读用作落地缓冲
+    GM_ADDR quantExpandXGM_{nullptr};   // 仅用于结束时打印输出
+    GM_ADDR commCmdInfoOutGM_{nullptr}; // 仅用于结束时打印输出
     GM_ADDR statusDataSpaceGM_;
     GM_ADDR statusFlagGM_; // 本卡状态flag源地址，用于远端WriteNbi
     constexpr static uint64_t HCOMM_INIT_SIZE = 512UL;
@@ -144,7 +178,7 @@ private:
 
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_ADDR context,
-    GM_ADDR expandX, GM_ADDR /*expertIds*/, GM_ADDR assistInfoForCombine, GM_ADDR /*quantExpandX*/,
+    GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine, GM_ADDR quantExpandX,
     GM_ADDR commCmdInfoOut, GM_ADDR /*workspaceGM*/, TPipe *pipe,
     const MoeDistributeCombineSetupTilingData *tilingData, __gm__ void *mc2InitTiling, __gm__ void *mc2CcTiling)
 {
@@ -154,6 +188,9 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
 
+    DumpInputs(expandX, expertIds, assistInfoForCombine);
+
+    quantExpandXGM_ = quantExpandX;
     commCmdInfoOutGM_ = commCmdInfoOut;
 
     // 获取 win 控制区：本算子只读写 C_S，与 D_S 独立，避免联跑抢乒乓
@@ -203,14 +240,6 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
 
     epWindowGM_ = GetUrmaAddrByRankId(epRankId_);
     epStatusSpaceGM_ = GetUrmaStateAddrByRankId(epRankId_);
-#if COMBINE_SETUP_DEBUG_DST_STATUS
-    // C_S 是"用本卡本核的值去选对端 bank"，各卡必须严格同步。把本卡视角打出来，
-    // 与对端 combine_teardown 打印的 epStatusSpaceGM_ 逐核比对即可发现乒乓失步。
-    AscendC::printf("[C_S] rank=%u aiv=%u C_S=%u statusBank=0x%llx winDataOff=0x%llx totalWin=0x%llx\n", epRankId_,
-                    aivId_, dataState_, static_cast<unsigned long long>(static_cast<uint64_t>(epStatusSpaceGM_)),
-                    static_cast<unsigned long long>(winDataSizeOffset_),
-                    static_cast<unsigned long long>(moeDistributeCombineSetupInfo_->totalWinSize));
-#endif
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(epWindowGM_),
                                    moeDistributeCombineSetupInfo_->totalWinSize / 4U);
@@ -360,46 +389,6 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         sendRet = hcomm_.Drain(channelId);
         ascendc_assert(sendRet == HCOMM_SUCCESS, "combine_setup Drain failed, ret=%d rank=%u dst=%u", sendRet,
                        epRankId_, dstRankId);
-
-#if COMBINE_SETUP_DEBUG_DST_STATUS
-        // 每个 (aiv, dstRank) 用独立的 32B 落地槽，避免多核多目的互相覆盖。
-        // commCmdInfoOut 为 int32[(a + epWorldSize) * 16]，越界则跳过本次回读。
-        const uint64_t probeSlot =
-            (static_cast<uint64_t>(aivId_) * moeDistributeCombineSetupInfo_->epWorldSize + dstRankId) * UB_ALIGN;
-        const uint64_t probeCapacity = (static_cast<uint64_t>(moeDistributeCombineSetupInfo_->a) +
-                                        moeDistributeCombineSetupInfo_->epWorldSize) * COMM_CMD_INFO_BYTES;
-        if ((commCmdInfoOutGM_ != nullptr) && ((probeSlot + UB_ALIGN) <= probeCapacity)) {
-            GM_ADDR probeGM = commCmdInfoOutGM_ + probeSlot;
-            GlobalTensor<int32_t> probeTensor;
-            probeTensor.SetGlobalBuffer((__gm__ int32_t *)probeGM);
-            probeTensor.SetValue(0, 0);
-            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(probeTensor);
-
-            // ReadNbi 只是入队，必须 Commit 敲门铃，Drain 不会代为提交
-            int32_t probeRet = hcomm_.ReadNbi<false>(channelId, probeGM, dstStatusAddr, UB_ALIGN);
-            ascendc_assert(probeRet == HCOMM_SUCCESS, "combine_setup probe ReadNbi failed, ret=%d dst=%u", probeRet,
-                           dstRankId);
-            probeRet = hcomm_.Commit(channelId);
-            ascendc_assert(probeRet == HCOMM_SUCCESS, "combine_setup probe Commit failed, ret=%d dst=%u", probeRet,
-                           dstRankId);
-            probeRet = hcomm_.Drain(channelId);
-            ascendc_assert(probeRet == HCOMM_SUCCESS, "combine_setup probe Drain failed, ret=%d dst=%u", probeRet,
-                           dstRankId);
-
-            // 标量写与 NIC 落地打同一条 cacheline，读回前先隔离再失效
-            PipeBarrier<PIPE_ALL>();
-            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(probeTensor);
-
-            GlobalTensor<int32_t> srcFlagTensor;
-            srcFlagTensor.SetGlobalBuffer((__gm__ int32_t *)statusFlagGM_);
-            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(srcFlagTensor);
-
-            AscendC::printf(
-                "[DST] rank=%u dst=%u aiv=%u C_S=%u stateOff=%u addr=0x%llx srcFlag=0x%x readBack=0x%x expect=0x%x\n",
-                epRankId_, dstRankId, aivId_, dataState_, epStateOffsetOnWin_, dstStatusAddr,
-                srcFlagTensor(0), probeTensor(0), STATUS_FLAG_VALUE);
-        }
-#endif
     }
 
     assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
@@ -471,15 +460,51 @@ MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(
 }
 
 template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::DumpInputs(GM_ADDR expandX, GM_ADDR expertIds,
+    GM_ADDR assistInfoForCombine)
+{
+    if (aivId_ != 0U) {
+        return;
+    }
+    const MoeDistributeCombineSetupInfo *t = moeDistributeCombineSetupInfo_;
+    printf("[IN][combine_setup] rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
+           "moeExpertPerRankNum=%u commQuantMode=%u globalBs=%u bs=%u k=%u h=%u a=%u aivNum=%u totalUbSize=%llu "
+           "totalWinSize=%llu\n",
+           epRankId_, t->epWorldSize, t->sharedExpertNum, t->sharedExpertRankNum, t->moeExpertNum,
+           t->moeExpertPerRankNum, t->commQuantMode, t->globalBs, t->bs, t->k, t->h, t->a, t->aivNum,
+           static_cast<unsigned long long>(t->totalUbSize), static_cast<unsigned long long>(t->totalWinSize));
+    // expandX 是 [a, h] 的 ExpandXType，按 32bit 字打印原始位，不做类型转换
+    IoDumpHex32("expandX", expandX,
+                static_cast<uint32_t>(static_cast<uint64_t>(t->a) * t->h * sizeof(ExpandXType) / sizeof(int32_t)));
+    IoDumpI32("expertIds", expertIds, t->bs * t->k);
+    IoDumpI32("assistInfoForCombine", assistInfoForCombine, t->epWorldSize * t->moeExpertPerRankNum);
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::DumpOutputs()
+{
+    if (aivId_ != 0U) {
+        return;
+    }
+    printf("[OUT][combine_setup] rank=%u\n", epRankId_);
+    IoDumpHex32("quantExpandX", quantExpandXGM_, IO_DUMP_MAX_ELEM);
+    IoDumpI32("commCmdInfoOut", commCmdInfoOutGM_,
+              static_cast<uint32_t>((static_cast<uint64_t>(moeDistributeCombineSetupInfo_->a) +
+                                     moeDistributeCombineSetupInfo_->epWorldSize) *
+                                    COMM_CMD_INFO_BYTES / sizeof(int32_t)));
+}
+
+template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
-        if (startRankId_ >= moeDistributeCombineSetupInfo_->epWorldSize) {
-            // 空闲核，直接返回
-            return;
+        // 空闲核不参与通信，但仍要走到下面的 SyncAll，否则其他核会等不到它
+        if (startRankId_ < moeDistributeCombineSetupInfo_->epWorldSize) {
+            BuffInit();
+            Communication();
         }
-        BuffInit();
-        Communication();
+        SyncAll<true>(); // 等全核写完，aiv0 打印的输出才是完整的
+        DumpOutputs();
     }
 }
 } // namespace MoeDistributeCombineSetupImpl

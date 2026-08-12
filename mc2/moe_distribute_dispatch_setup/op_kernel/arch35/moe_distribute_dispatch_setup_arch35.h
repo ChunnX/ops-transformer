@@ -72,6 +72,63 @@ struct BatchWriteItem {
 using namespace AscendC;
 using namespace Mc2Aclnn;
 
+// ============================ 输入/输出打印 ============================
+// Init 开头打印全部输入，Process 结束打印全部输出。只在 aiv0 上打印，避免多核刷屏；
+// 输出打印前会 SyncAll，所以 aiv0 看到的是全核写完之后的结果。
+// 每个张量只打印头部若干元素，要看更多改大这个上限即可。
+constexpr uint32_t IO_DUMP_MAX_ELEM = 16U;
+
+__aicore__ inline void IoDumpHex32(const char *tag, GM_ADDR addr, uint32_t wordCnt)
+{
+    if (addr == nullptr) {
+        printf("    %s: null\n", tag);
+        return;
+    }
+    GlobalTensor<int32_t> t;
+    t.SetGlobalBuffer((__gm__ int32_t *)addr);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+    printf("    %s: addr=0x%llx words=%u\n", tag,
+           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), wordCnt);
+    const uint32_t n = (wordCnt < IO_DUMP_MAX_ELEM) ? wordCnt : IO_DUMP_MAX_ELEM;
+    for (uint32_t i = 0U; i < n; ++i) {
+        printf("      [%u]=0x%08x\n", i, static_cast<uint32_t>(t.GetValue(i)));
+    }
+}
+
+__aicore__ inline void IoDumpI32(const char *tag, GM_ADDR addr, uint32_t elemCnt)
+{
+    if (addr == nullptr) {
+        printf("    %s: null\n", tag);
+        return;
+    }
+    GlobalTensor<int32_t> t;
+    t.SetGlobalBuffer((__gm__ int32_t *)addr);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+    printf("    %s: addr=0x%llx count=%u\n", tag,
+           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), elemCnt);
+    const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
+    for (uint32_t i = 0U; i < n; ++i) {
+        printf("      [%u]=%d\n", i, t.GetValue(i));
+    }
+}
+
+__aicore__ inline void IoDumpF32(const char *tag, GM_ADDR addr, uint32_t elemCnt)
+{
+    if (addr == nullptr) {
+        printf("    %s: null\n", tag);
+        return;
+    }
+    GlobalTensor<float> t;
+    t.SetGlobalBuffer((__gm__ float *)addr);
+    DataCacheCleanAndInvalid<float, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+    printf("    %s: addr=0x%llx count=%u\n", tag,
+           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), elemCnt);
+    const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
+    for (uint32_t i = 0U; i < n; ++i) {
+        printf("      [%u]=%f\n", i, t.GetValue(i));
+    }
+}
+
 template <TemplateMC2TypeClass>
 class MoeDistributeDispatchSetup {
 public:
@@ -102,6 +159,8 @@ private:
                                                 uint32_t expertIndex);
     __aicore__ inline void QuantDynamicMxFp8(LocalTensor<YOutType> &outLocal, LocalTensor<XType> &inLocal);
     __aicore__ inline void SetStatus();
+    __aicore__ inline void DumpInputs(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask);
+    __aicore__ inline void DumpOutputs();
     __aicore__ inline void QuantInit();
     __aicore__ inline void SplitToCore(
         uint32_t curSendCnt_, uint32_t curUseAivNum, uint32_t& startTokenId_, uint32_t& endTokenId_,
@@ -164,6 +223,7 @@ private:
 
     GM_ADDR yOutGM_;
     GM_ADDR expandIdxOutGM_;
+    GM_ADDR commCmdInfoOutGM_{nullptr}; // 仅用于结束时打印输出
     GM_ADDR statusSpaceGm_;
     GM_ADDR windowGM_;
     GM_ADDR workspaceGM_;
@@ -196,6 +256,7 @@ private:
     uint32_t hOutSizeAlign_{0};
     uint32_t hAlignSize_{0};
     uint32_t scalesCount_{0};
+    uint64_t totalWinSize_{0};
     uint32_t startStatusIndex_{0};
     uint32_t axisHCommu{0};
     uint32_t sdmaUsedStreamPerCore_{0};
@@ -309,6 +370,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(GM_
     isInputActiveMaskFlag_ = tilingData->moeDistributeDispatchSetupInfo.isActiveMask;
     axisK_ = tilingData->moeDistributeDispatchSetupInfo.k;
     scalesCount_ = tilingData->moeDistributeDispatchSetupInfo.scalesCount;
+    totalWinSize_ = tilingData->moeDistributeDispatchSetupInfo.totalWinSize;
 
     xGMTensor_.SetGlobalBuffer((__gm__ XType *)x);
     xActiveMaskGMTensor_.SetGlobalBuffer((__gm__ bool *)xActiveMask);
@@ -319,6 +381,9 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(GM_
     }
     yOutGM_ = YOut;
     expandIdxOutGM_ = expandIdxOut;
+    commCmdInfoOutGM_ = commCmdInfoOut;
+
+    DumpInputs(x, expertIds, scales, xActiveMask);
     hOutSize_ = axisH_ * sizeof(YOutType);
     QuantInit();
     hAlignWinSize_ = Ceil(hOutSizeAlign_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // win区token起始地址对齐512
@@ -1079,6 +1144,41 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
 }
 
 template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::DumpInputs(GM_ADDR x, GM_ADDR expertIds,
+    GM_ADDR scales, GM_ADDR xActiveMask)
+{
+    if (aivId_ != 0U) {
+        return;
+    }
+    printf("[IN][dispatch_setup] rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
+           "moeExpertNumPerRank=%u globalBs=%u bs=%u k=%u h=%u aivNum=%u quantMode=%u isActiveMask=%d "
+           "scalesCount=%llu totalWinSize=%llu\n",
+           epRankId_, epWorldSize_, sharedExpertNum_, sharedExpertRankNum_, moeExpertNum_, moeExpertNumPerRank_,
+           axisMaxBS_ * epWorldSize_, axisBS_, axisK_, axisH_, aivNum_, static_cast<uint32_t>(QuantMode),
+           static_cast<int32_t>(isInputActiveMaskFlag_), static_cast<unsigned long long>(scalesCount_),
+           static_cast<unsigned long long>(totalWinSize_));
+    // x 是 [bs, h] 的 XType，按 32bit 字打印原始位，不做类型转换
+    IoDumpHex32("x", x, static_cast<uint32_t>(static_cast<uint64_t>(axisBS_) * axisH_ * sizeof(XType) /
+                                              sizeof(int32_t)));
+    IoDumpI32("expertIds", expertIds, axisBS_ * axisK_);
+    IoDumpF32("scales", scales, static_cast<uint32_t>(scalesCount_));
+    IoDumpHex32("xActiveMask", xActiveMask, IO_DUMP_MAX_ELEM);
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::DumpOutputs()
+{
+    if (aivId_ != 0U) {
+        return;
+    }
+    printf("[OUT][dispatch_setup] rank=%u\n", epRankId_);
+    // YOut 的 dim0 由分发结果决定，不在 tiling 里，只打头部
+    IoDumpHex32("YOut", yOutGM_, IO_DUMP_MAX_ELEM);
+    IoDumpI32("expandIdxOut", expandIdxOutGM_, axisBS_ * axisK_);
+    IoDumpI32("commCmdInfoOut", commCmdInfoOutGM_, IO_DUMP_MAX_ELEM);
+}
+
+template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
@@ -1087,6 +1187,9 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Process(
         SetStatus();
         SyncAll<true>();
         Communication();
+
+        SyncAll<true>(); // 等全核写完，aiv0 打印的输出才是完整的
+        DumpOutputs();
     }
 }
 
