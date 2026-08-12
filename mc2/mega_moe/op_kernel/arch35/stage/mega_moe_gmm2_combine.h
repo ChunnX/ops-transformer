@@ -707,7 +707,8 @@ __aicore__ inline void Gmm2Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Schedu
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         auto mL1Size = Get<M_VALUE>(actualShape);
         auto nL1Size = Get<N_VALUE>(actualShape);
-        blockPrologue(gmB, mL1Size, config.k, nL1Size, nLoc, config.n, config.l1Params.kL1);
+        blockPrologue(gmB, mL1Size, config.k, nL1Size, nLoc, config.n,
+                      config.blockMmadTiling.l1Params.kL1);
     }
 }
 
@@ -802,9 +803,13 @@ __aicore__ inline void Gmm2ExecA8W4(
 
     if constexpr (g_coreType == AscendC::AIC) {
         BlockMmad blockMmad{};
-        typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
+        typename BlockMmad::BlockShape l0TileShape{
+            config.blockMmadTiling.tileM,
+            config.blockMmadTiling.tileN,
+            L0_TILE_K,
+            0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
-        blockMmad.Init(matmulShape, l0TileShape, config.l1Params);
+        blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params);
         Gmm2AicMmadA8W4<CombineQuantMode, IsShared, IsLayered, BlockMmad, decltype(workSet.scheduler),
                         decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
                         std::remove_reference_t<decltype(workSet.gmC)>, Config>(

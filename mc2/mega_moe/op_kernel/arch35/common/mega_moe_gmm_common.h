@@ -107,20 +107,160 @@ struct Config {
     using BlockPrologue =
         Std::conditional_t<IsA8W4, Blaze::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>, void>;
 
+    static __aicore__ inline typename BlockMmad::L1Params DefaultL1Params()
+    {
+        if constexpr (IsA8W4) {
+            return typename BlockMmad::L1Params{.kL1 = L1_TILE_K, .scaleKL1 = 4096};
+        } else {
+            return typename BlockMmad::L1Params{
+                .kL1 = L1_TILE_K, .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE, .l1BufNum = 2};
+        }
+    }
+
+    // 外层 scheduler 继续使用固定的 256 x 256 分块；该配置只控制 BlockMmad 内部基本块和 L1 搬运窗口。
+    struct BlockMmadTilingConfig {
+        uint32_t tileM;
+        uint32_t tileN;
+        typename BlockMmad::L1Params l1Params;
+    };
+
+    static __aicore__ inline BlockMmadTilingConfig MakeBaselineBlockMmadTilingConfig(uint32_t tileM)
+    {
+        return BlockMmadTilingConfig{tileM, L1_TILE_N, DefaultL1Params()};
+    }
+
+    static __aicore__ inline uint64_t CalcAdaptiveScaleKL1(uint32_t blockM, uint32_t blockN, uint64_t kL1,
+                                                           uint32_t k)
+    {
+        constexpr uint64_t halfL1Size = AscendC::TOTAL_L1_SIZE / 2U;
+        constexpr uint64_t scaleGroupK = 64U;
+        constexpr uint64_t scaleBytesPerGroup = MXFP_MULTI_BASE_SIZE;
+        constexpr uint64_t scaleTransferBytes = 64U * 1024U;
+        constexpr uint64_t maxScaleFactor = 127U;
+        constexpr uint64_t aElementsPerByte = Blaze::Gemm::IsFp4<ElementA>() ? 2U : 1U;
+        constexpr uint64_t bElementsPerByte = Blaze::Gemm::IsFp4<ElementB>() ? 2U : 1U;
+
+        const uint64_t blockM64 = blockM;
+        const uint64_t blockN64 = blockN;
+        const uint64_t dataBytes = Ops::Base::CeilDiv(blockM64 * kL1, aElementsPerByte) +
+                                   Ops::Base::CeilDiv(blockN64 * kL1, bElementsPerByte);
+        const uint64_t scaleKBytes = Ops::Base::CeilDiv(kL1, scaleGroupK) * scaleBytesPerGroup;
+        const uint64_t scaleABytes = blockM64 * scaleKBytes;
+        const uint64_t scaleBBytes = blockN64 * scaleKBytes;
+        const uint64_t scaleBytes = scaleABytes + scaleBBytes;
+        if (dataBytes >= halfL1Size || scaleBytes == 0U) {
+            return 0U;
+        }
+
+        uint64_t scaleFactor = (halfL1Size - dataBytes) / scaleBytes;
+        const uint64_t scaleFactorByA = scaleABytes == 0U ? maxScaleFactor : scaleTransferBytes / scaleABytes;
+        const uint64_t scaleFactorByB = scaleBBytes == 0U ? maxScaleFactor : scaleTransferBytes / scaleBBytes;
+        const uint64_t scaleFactorByK = Ops::Base::CeilDiv(static_cast<uint64_t>(k), kL1);
+        scaleFactor = scaleFactor < scaleFactorByA ? scaleFactor : scaleFactorByA;
+        scaleFactor = scaleFactor < scaleFactorByB ? scaleFactor : scaleFactorByB;
+        scaleFactor = scaleFactor < scaleFactorByK ? scaleFactor : scaleFactorByK;
+        scaleFactor = scaleFactor < maxScaleFactor ? scaleFactor : maxScaleFactor;
+        return scaleFactor * kL1;
+    }
+
+    static __aicore__ inline BlockMmadTilingConfig MakeAdaptiveBlockMmadTilingConfig(uint32_t m, uint32_t k,
+                                                                                     uint32_t tileM, uint64_t kL1)
+    {
+        constexpr uint32_t blockMAlign = 16U;
+        const uint32_t currentTileM = m < tileM ? m : tileM;
+        const uint32_t blockM = Ops::Base::CeilAlign(currentTileM, blockMAlign);
+        const uint64_t scaleKL1 = CalcAdaptiveScaleKL1(blockM, L1_TILE_N, kL1, k);
+        return BlockMmadTilingConfig{
+            blockM,
+            L1_TILE_N,
+            typename BlockMmad::L1Params{.kL1 = kL1, .scaleKL1 = scaleKL1, .l1BufNum = 2}};
+    }
+
+    // BlockMmad 的双 buffer 分置在 L1 的前后两半，候选配置必须能在半片 L1 中容纳 A、B 及 MX scale。
+    static __aicore__ inline bool CanFitDoubleBufferL1(const BlockMmadTilingConfig &tilingConfig)
+    {
+        constexpr uint64_t halfL1Size = AscendC::TOTAL_L1_SIZE / 2U;
+        constexpr uint64_t scaleGroupK = 64U;
+        constexpr uint64_t scaleBytesPerGroup = MXFP_MULTI_BASE_SIZE;
+        constexpr uint64_t aElementsPerByte = Blaze::Gemm::IsFp4<ElementA>() ? 2U : 1U;
+        constexpr uint64_t bElementsPerByte = Blaze::Gemm::IsFp4<ElementB>() ? 2U : 1U;
+        const uint64_t blockM = tilingConfig.tileM;
+        const uint64_t blockN = tilingConfig.tileN;
+        const uint64_t dataBytes = Ops::Base::CeilDiv(blockM * tilingConfig.l1Params.kL1, aElementsPerByte) +
+                                   Ops::Base::CeilDiv(blockN * tilingConfig.l1Params.kL1, bElementsPerByte);
+        const uint64_t scaleBytes =
+            (blockM + blockN) * Ops::Base::CeilDiv(tilingConfig.l1Params.scaleKL1, scaleGroupK) * scaleBytesPerGroup;
+        return dataBytes + scaleBytes <= halfL1Size;
+    }
+
+    static __aicore__ inline bool IsValidAdaptiveBlockMmadTilingConfig(
+        const BlockMmadTilingConfig &tilingConfig, uint32_t currentTileM)
+    {
+        constexpr uint32_t blockMAlign = 16U;
+        const uint64_t kL1 = tilingConfig.l1Params.kL1;
+        const uint64_t scaleKL1 = tilingConfig.l1Params.scaleKL1;
+        return tilingConfig.tileM >= currentTileM && tilingConfig.tileM % blockMAlign == 0U && kL1 != 0U &&
+               kL1 % L0_TILE_K == 0U && scaleKL1 >= kL1 && scaleKL1 % kL1 == 0U &&
+               CanFitDoubleBufferL1(tilingConfig);
+    }
+
+    static __aicore__ inline bool IsBetterBlockMmadTilingConfig(const BlockMmadTilingConfig &candidate,
+                                                                const BlockMmadTilingConfig &current, uint32_t k)
+    {
+        const uint64_t candidateKLoops =
+            Ops::Base::CeilDiv(static_cast<uint64_t>(k), candidate.l1Params.kL1);
+        const uint64_t currentKLoops = Ops::Base::CeilDiv(static_cast<uint64_t>(k), current.l1Params.kL1);
+        if (candidateKLoops != currentKLoops) {
+            return candidateKLoops < currentKLoops;
+        }
+
+        const uint64_t candidateScaleLoops =
+            Ops::Base::CeilDiv(static_cast<uint64_t>(k), candidate.l1Params.scaleKL1);
+        const uint64_t currentScaleLoops =
+            Ops::Base::CeilDiv(static_cast<uint64_t>(k), current.l1Params.scaleKL1);
+        return candidateScaleLoops < currentScaleLoops;
+    }
+
+    static __aicore__ inline BlockMmadTilingConfig SelectBlockMmadTilingConfig(uint32_t m, uint32_t n, uint32_t k,
+                                                                               uint32_t tileM)
+    {
+        BlockMmadTilingConfig baselineConfig = MakeBaselineBlockMmadTilingConfig(tileM);
+        if (m == 0U || n == 0U || k == 0U || m >= tileM) {
+            return baselineConfig;
+        }
+
+        if constexpr (IsA8W4) {
+            // A8W4 BlockMmad 与 AIV prologue 约定 kL1=0：按实际 tile M/N 自动选择 kaL1/kbL1。
+            return BlockMmadTilingConfig{
+                tileM,
+                L1_TILE_N,
+                typename BlockMmad::L1Params{.kL1 = 0U, .scaleKL1 = 4096U}};
+        } else {
+            if constexpr (g_coreType == AscendC::AIC) {
+                BlockMmadTilingConfig bestConfig = baselineConfig;
+                BlockMmadTilingConfig adaptive256KConfig =
+                    MakeAdaptiveBlockMmadTilingConfig(m, k, tileM, L1_TILE_K);
+                if (IsValidAdaptiveBlockMmadTilingConfig(adaptive256KConfig, m) &&
+                    IsBetterBlockMmadTilingConfig(adaptive256KConfig, bestConfig, k)) {
+                    bestConfig = adaptive256KConfig;
+                }
+
+                BlockMmadTilingConfig adaptive512KConfig =
+                    MakeAdaptiveBlockMmadTilingConfig(m, k, tileM, L1_TILE_K * 2U);
+                if (IsValidAdaptiveBlockMmadTilingConfig(adaptive512KConfig, m) &&
+                    IsBetterBlockMmadTilingConfig(adaptive512KConfig, bestConfig, k)) {
+                    bestConfig = adaptive512KConfig;
+                }
+                return bestConfig;
+            }
+        }
+        return baselineConfig;
+    }
+
     struct ProblemConfig {
         using KernelConfig = Config;
         static constexpr bool SOURCE_GMM1_INTERLEAVED = IsGmm1Interleaved;
         static constexpr bool IS_WAVE_FLAG_GRAINED = IsWaveFlagGrained;
-
-        static __aicore__ inline typename BlockMmad::L1Params DefaultL1Params()
-        {
-            if constexpr (IsA8W4) {
-                return typename BlockMmad::L1Params{.kL1 = L1_TILE_K, .scaleKL1 = 4096};
-            } else {
-                return typename BlockMmad::L1Params{
-                    .kL1 = L1_TILE_K, .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE, .l1BufNum = 2};
-            }
-        }
 
         uint32_t m = 0;
         uint32_t n = 0;
@@ -132,7 +272,7 @@ struct Config {
         uint32_t scaleK = 0;
         uint32_t tileM = 0;
         uint32_t swigluTileM = L1_TILE_M_256;
-        typename BlockMmad::L1Params l1Params = DefaultL1Params();
+        BlockMmadTilingConfig blockMmadTiling{};
     };
 
     struct LayoutBundle {
@@ -151,6 +291,8 @@ struct Config {
         config.blockIdx = blockJob.jobIndex;
         config.scaleK = CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         config.swigluTileM = TopkWeightsPrefetch ? L1_TILE_M_128 : gmm1TileM;
+        config.blockMmadTiling =
+            SelectBlockMmadTilingConfig(config.m, config.schedulerN, config.k, config.tileM);
     }
 
     __aicore__ static inline ProblemConfig BuildGmm1ProblemConfig(const ProblemShape &problemShape,
@@ -196,25 +338,40 @@ struct Config {
     }
 };
 
-// Wave 流程可持有同一个 BlockMmad，避免在 wave 边界反复构造和析构。
+// Wave 流程可持有同一个 BlockMmad；普通路径也复用该结构完成一致的初始化。
 template <typename BlockMmad>
 struct BlockMmadContext {
     BlockMmad blockMmad;
-    uint32_t initializedK = 0U;
+    uint32_t problemK = 0U;
+    uint32_t tileM = 0U;
+    uint32_t tileN = 0U;
+    uint64_t kL1 = 0U;
+    uint64_t scaleKL1 = 0U;
+    uint64_t l1BufNum = 0U;
     bool initialized = false;
 };
 
-// GMM1 与 GMM2 的逻辑 K 可能不同；仅在首次使用或 K 改变时刷新 Generic 配置。
+// 仅当 BlockMmad::Init 消费的配置发生变化时刷新，problem 的实际 M/N 由每次 MMAD 调用传入。
 template <typename MmadContext, typename ProblemConfig>
 __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &config)
 {
     using BlockMmad = decltype(context.blockMmad);
-    if (!context.initialized || context.initializedK != config.k) {
-        typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
+    const auto &tilingConfig = config.blockMmadTiling;
+    bool configChanged = context.problemK != config.k || context.tileM != tilingConfig.tileM ||
+                         context.tileN != tilingConfig.tileN || context.kL1 != tilingConfig.l1Params.kL1 ||
+                         context.scaleKL1 != tilingConfig.l1Params.scaleKL1 ||
+                         context.l1BufNum != tilingConfig.l1Params.l1BufNum;
+    if (!context.initialized || configChanged) {
+        typename BlockMmad::BlockShape l0TileShape{tilingConfig.tileM, tilingConfig.tileN, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
         constexpr bool enableL0CPingPong = false;
-        context.blockMmad.Init(matmulShape, l0TileShape, config.l1Params, false, enableL0CPingPong);
-        context.initializedK = config.k;
+        context.blockMmad.Init(matmulShape, l0TileShape, tilingConfig.l1Params, false, enableL0CPingPong);
+        context.problemK = config.k;
+        context.tileM = tilingConfig.tileM;
+        context.tileN = tilingConfig.tileN;
+        context.kL1 = tilingConfig.l1Params.kL1;
+        context.scaleKL1 = tilingConfig.l1Params.scaleKL1;
+        context.l1BufNum = tilingConfig.l1Params.l1BufNum;
         context.initialized = true;
     }
 }

@@ -320,9 +320,13 @@ __aicore__ inline void Gmm1AicMmadA8W4(
     uint32_t startLoopIdx, uint32_t tileNum, int32_t &gmTileSequence, uint32_t expertIdx)
 {
     BlockMmad blockMmad{};
-    typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
+    typename BlockMmad::BlockShape l0TileShape{
+        config.blockMmadTiling.tileM,
+        config.blockMmadTiling.tileN,
+        L0_TILE_K,
+        0};
     typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
-    blockMmad.Init(matmulShape, l0TileShape, config.l1Params);
+    blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params);
 
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
@@ -639,7 +643,8 @@ __aicore__ inline void Gmm1Aiv0PrologueA8W4(Scheduler &scheduler, TensorB &gmB, 
 
         for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
             auto nOffset = nLoc + weightBlock * config.outputN;
-            blockPrologue(gmB, mL1Size, config.k, nL1Size, nOffset, config.n, config.l1Params.kL1);
+            blockPrologue(
+                gmB, mL1Size, config.k, nL1Size, nOffset, config.n, config.blockMmadTiling.l1Params.kL1);
         }
     }
 }
