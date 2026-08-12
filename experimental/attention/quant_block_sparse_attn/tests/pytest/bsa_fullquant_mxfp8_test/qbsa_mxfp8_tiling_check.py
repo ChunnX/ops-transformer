@@ -87,14 +87,14 @@ _BASE_CASE = {
 
 
 def _gen_base_data():
-    golden.set_active_case(dict(_BASE_CASE))
+    golden.set_active_case(golden._normalize_case(dict(_BASE_CASE)))
     return golden._generate_reference_style_mxfp8_inputs()
 
 
 def _call_npu(data, case_override=None):
     if case_override is None:
         case_override = dict(_BASE_CASE)
-    golden.set_active_case(case_override)
+    golden.set_active_case(golden._normalize_case(case_override))
     return golden.npu_mxfp8_fa(
         data["query"],
         data["key"],
@@ -288,6 +288,25 @@ TILING_CHECK_CASES = [
 ]
 
 
+def _log_constructed_case(name, data, case_override):
+    logger.info("[CASE] %s", name)
+    for key in ["query", "key", "value", "q_descale", "k_descale", "v_descale",
+                "p_scale", "sparse_indices", "sparse_seq_len", "block_table",
+                "cu_seqlens_q", "cu_seqlens_kv"]:
+        val = data.get(key)
+        if val is None:
+            logger.info("  %-18s = None", key)
+        elif hasattr(val, "shape"):
+            logger.info("  %-18s = shape=%s dtype=%s", key, tuple(val.shape), val.dtype)
+        else:
+            logger.info("  %-18s = %s", key, val)
+    diff = {k: v for k, v in case_override.items() if _BASE_CASE.get(k) != v}
+    if diff:
+        logger.info("  [attr overrides]")
+        for k, v in diff.items():
+            logger.info("    %-18s = %s", k, v)
+
+
 def run_one_tiling_check(name, mutate_fn, case_fn, idx, total):
     start = time.time()
     logger.info("")
@@ -299,6 +318,7 @@ def run_one_tiling_check(name, mutate_fn, case_fn, idx, total):
         data = _gen_base_data()
         mutate_fn(data)
         case_override = case_fn()
+        _log_constructed_case(name, data, case_override)
         _call_npu(data, case_override)
         elapsed = time.time() - start
         logger.info("[RESULT] %s -> UNEXPECTED PASS (算子未拦截)", name)
