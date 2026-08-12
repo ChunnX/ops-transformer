@@ -40,7 +40,6 @@ struct CGDRInitParams {
     GM_ADDR finalState;
 };
 
-
 template <typename lowType, typename highType, typename stateType = lowType, bool gOptional = false>
 class CGDR {
 public:
@@ -128,8 +127,7 @@ public:
         actualSeqLens_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(initParams.seqlens), tiling_->b);
 
         uint64_t offset = 0;
-        gCum_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
-        offset += sizeof(highType) * tiling_->nv * tiling_->maxGroupLength;
+        // R6: gCum_ 不再分配 GM workspace (Stage2/Stage3 从原始 g 重算)
 
         kCumDecay_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
@@ -210,9 +208,9 @@ public:
 private:
     __aicore__ inline void RunStage1(const ChunkGroup &cg)
     {
-        GDRStageOneInitParams<vInnerType> initStageOneParams{query_, key_,         value_,        beta_,   g_,
-                                                             gCum_,  kCumDecay_,   vInner_,       qPrime_, kg_,
-                                                             qkt_,   stageWsAddr_, stageOneMask_, cg};
+        GDRStageOneInitParams<vInnerType> initStageOneParams{query_, key_, value_, beta_, g_,
+                                                             gCum_, kCumDecay_, vInner_, qPrime_, kg_,
+                                                             qkt_, stageWsAddr_, stageOneMask_, cg};
         stageOneOp_.Init(initStageOneParams, pipe_, tiling_);
         stageOneOp_.Process();
         pipe_->Reset();
@@ -229,7 +227,8 @@ private:
         if constexpr (std::is_same_v<sType, float>) {
             initStageTwoParams.vInnerBf16 = vInnerBf16_;
         }
-        initStageTwoParams.gCum = gCum_;
+        initStageTwoParams.gCum = gCum_; // R6: 不再使用, 保留兼容
+        initStageTwoParams.g = g_;       // R6: 传原始 g 给 Stage2 重算
         initStageTwoParams.kCumdecay = kCumDecay_;
         initStageTwoParams.kg = kg_;
         initStageTwoParams.out = out_[cg.startPos * tiling_->nv * tiling_->dv];
@@ -238,6 +237,7 @@ private:
         initStageTwoParams.mm1Fp32 = &stage2MmFp32_;
         initStageTwoParams.pipe = pipe_;
         initStageTwoParams.cg = &cg;
+        initStageTwoParams.cgStartPos = cg.startPos; // R6
         initStageTwoParams.Nv = tiling_->nv;
         initStageTwoParams.Nk = tiling_->nk;
         initStageTwoParams.Dv = tiling_->dv;
@@ -270,13 +270,15 @@ private:
         }
         Stage3<gOptional> stageThreeOp;
         StageThreeParams initStageThreeParams{
-            qkt_,         gCum_,
-            vInnerBf16,   stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
-            stageWsAddr_, out_[cg.startPos * tiling_->nv * tiling_->dv],
-            &stage3Mm_,   pipe_,
-            &cg,          tiling_->scale,
-            tiling_->nv,  tiling_->nk,
-            tiling_->dv,  tiling_->dk};
+            qkt_, gCum_,
+            g_, vInnerBf16,
+            stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
+            cg.startPos, stageWsAddr_,
+            out_[cg.startPos * tiling_->nv * tiling_->dv],
+            &stage3Mm_, pipe_,
+            &cg, tiling_->scale,
+            tiling_->nv, tiling_->nk,
+            tiling_->dv, tiling_->dk};
         stageThreeOp.Init(&initStageThreeParams, tiling_->aiCoreNum);
         stageThreeOp.Process();
         pipe_->Reset();
