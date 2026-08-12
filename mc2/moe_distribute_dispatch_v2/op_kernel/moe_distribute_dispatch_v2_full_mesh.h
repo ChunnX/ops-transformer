@@ -161,7 +161,13 @@ private:
     __aicore__ inline void RecordRankCommDuration(LocalTensor<int32_t> &performanceInfoTensor, uint64_t startTime);
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         return ctx_.GetWindAddrByRankId(rankId, epRankIdOriginal_) + winDataSizeOffset_;
+#else
+        // 基址错峰：rankId×WIN_ADDR_ALIGN(512B) 使各源 rank 写址散列到不同 HCCS 端口，缓解端口 hash 极化；
+        return ctx_.GetWindAddrByRankId(rankId, epRankIdOriginal_) + winDataSizeOffset_ +
+               static_cast<uint64_t>(rankId) * WIN_ADDR_ALIGN;
+#endif
     }
 
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
