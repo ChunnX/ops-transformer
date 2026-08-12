@@ -259,6 +259,11 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::AllGather
     }
     allGatherScale_.Finalize();
     allGatherData_.Finalize();
+
+    // 通信接口使用了 channel 内的字段，需要刷新 GM 地址保证跨 kernel launch 的 GM 状态与 aiCore cache 一致
+    // 后续通信接口会内置刷 cache 机制，届时可移除此处调用
+    dcci(reinterpret_cast<__gm__ void*>(udmaCtx_->commBufferAddrs),
+        static_cast<uint64_t>(CacheLine::ENTIRE_DATA_CACHE), static_cast<uint64_t>(DcciDst::CACHELINE_OUT));
 }
 
 } // namespace AllGatherQuantMatmulImpl
