@@ -206,7 +206,10 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
                     m_index,
                     expect_data[m_index],
                     real_data[m_index],
-                    abs(np.float64(expect_data[m_index]) - np.float64(real_data[m_index])),
+                    abs(
+                        np.float64(expect_data[m_index])
+                        - np.float64(real_data[m_index])
+                    ),
                     max_error,
                 )
             )
@@ -450,9 +453,7 @@ def _batch_consistency_check(npu_cmp_kv, kwargs):
                     if headSize == cmp_ratio
                     else (start + headSize + cmp_ratio - 1) // cmp_ratio
                 )
-                slice_output = npu_np[
-                    bidx, start_idx : (start_idx + compare_len), :
-                ]
+                slice_output = npu_np[bidx, start_idx : (start_idx + compare_len), :]
             else:
                 slice_output = npu_np[start:stop, 1:, :]
 
@@ -560,12 +561,8 @@ def compare(*outputs, **kwargs):
             cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][~update_score]
         )
     else:
-        npu_sub_outputs.append(
-            npu_state_cache[:, :, : npu_state_cache.shape[2] // 2]
-        )
-        npu_sub_outputs.append(
-            npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :]
-        )
+        npu_sub_outputs.append(npu_state_cache[:, :, : npu_state_cache.shape[2] // 2])
+        npu_sub_outputs.append(npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :])
         npu_sub_outputs.append(None)
         npu_sub_outputs.append(None)
 
@@ -600,15 +597,16 @@ def compare(*outputs, **kwargs):
 
     return results
 
+
 def _to_torch(val):
     if val is None:
         return None
     if torch.is_tensor(val):
         return val
     if isinstance(val, np.ndarray):
-        if val.dtype == np.dtype('hifloat8'):
+        if val.dtype == np.dtype("hifloat8"):
             return torch.from_numpy(val.view(np.uint8))
-        if val.dtype.itemsize == 2 and str(val.dtype) == 'bfloat16':
+        if val.dtype.itemsize == 2 and str(val.dtype) == "bfloat16":
             return torch.from_numpy(val.view(np.uint16)).view(torch.bfloat16)
         return torch.from_numpy(val)
     return val
@@ -632,7 +630,9 @@ def compare_aclnn(*outputs, **kwargs):
     if len(npu_outputs) == 1:
         results = [
             _tensor_compare(
-                npu_outputs[0][cmp_kv_mask].to(torch.float32), golden_outputs[1][cmp_kv_mask].to(torch.float32), "cmp_kv"
+                npu_outputs[0][cmp_kv_mask].to(torch.float32),
+                golden_outputs[1][cmp_kv_mask].to(torch.float32),
+                "cmp_kv",
             )
         ]
         for i in range(1, len(golden_outputs)):
@@ -689,12 +689,8 @@ def compare_aclnn(*outputs, **kwargs):
             cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][~update_score]
         )
     else:
-        npu_sub_outputs.append(
-            npu_state_cache[:, :, : npu_state_cache.shape[2] // 2]
-        )
-        npu_sub_outputs.append(
-            npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :]
-        )
+        npu_sub_outputs.append(npu_state_cache[:, :, : npu_state_cache.shape[2] // 2])
+        npu_sub_outputs.append(npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :])
         npu_sub_outputs.append(None)
         npu_sub_outputs.append(None)
 

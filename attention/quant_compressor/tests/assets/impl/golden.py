@@ -53,7 +53,9 @@ def load_pytest_golden_module():
         cann_stub = types.ModuleType("cann_ops_transformer")
         ops_stub = types.ModuleType("cann_ops_transformer.ops")
         quant_stub = types.ModuleType("cann_ops_transformer.ops.quant_compressor")
-        quant_stub.CacheMode = type("CacheMode", (), {"LINEAR_BUFFER": 1, "RING_BUFFER": 2})
+        quant_stub.CacheMode = type(
+            "CacheMode", (), {"LINEAR_BUFFER": 1, "RING_BUFFER": 2}
+        )
         quant_stub.QuantMode = type(
             "QuantMode", (), {"A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL": 1}
         )
@@ -88,7 +90,7 @@ def ttk_to_cpu(tensor):
     if torch.is_tensor(tensor):
         return tensor.detach().cpu()
     if isinstance(tensor, np.ndarray):
-        if tensor.dtype == np.dtype('hifloat8'):
+        if tensor.dtype == np.dtype("hifloat8"):
             return torch.from_numpy(tensor.view(np.uint8))
         return torch.from_numpy(tensor)
     return tensor
@@ -458,38 +460,71 @@ def rebuild_golden_context_from_compare_context(compare_context, api_kind="e2e")
             # x, wkv, wgate, stateCacheRef, ape, xDescale, wkvDescale, wgateDescale,
             # stateBlockTable, cuSeqlens, seqused, startPos, ..., cmpKvOut
             rebuild_golden_context(
-                _t(0), _t(1), _t(2), _t(3), _t(4),
-                quant_mode, cmp_ratio,
-                x_descale=_t(5), wkv_descale=_t(6), wgate_descale=_t(7),
-                state_block_table=_t(8), cu_seqlens=_t(9),
-                seqused=_t(10), start_pos=_t(11),
-                coff=coff, cache_mode=cache_mode,
+                _t(0),
+                _t(1),
+                _t(2),
+                _t(3),
+                _t(4),
+                quant_mode,
+                cmp_ratio,
+                x_descale=_t(5),
+                wkv_descale=_t(6),
+                wgate_descale=_t(7),
+                state_block_table=_t(8),
+                cu_seqlens=_t(9),
+                seqused=_t(10),
+                start_pos=_t(11),
+                coff=coff,
+                cache_mode=cache_mode,
             )
         else:
             # e2e / kernel signature:
             # x, wkv, wgate, state_cache, ape, x_descale, wkv_descale, wgate_descale,
             # state_block_table, cu_seqlens, seqused, start_pos
             rebuild_golden_context(
-                _t(0), _t(1), _t(2), _t(3), _t(4),
-                quant_mode, cmp_ratio,
-                x_descale=_t(5), wkv_descale=_t(6), wgate_descale=_t(7),
-                state_block_table=_t(8), cu_seqlens=_t(9),
-                seqused=_t(10), start_pos=_t(11),
-                coff=coff, cache_mode=cache_mode,
+                _t(0),
+                _t(1),
+                _t(2),
+                _t(3),
+                _t(4),
+                quant_mode,
+                cmp_ratio,
+                x_descale=_t(5),
+                wkv_descale=_t(6),
+                wgate_descale=_t(7),
+                state_block_table=_t(8),
+                cu_seqlens=_t(9),
+                seqused=_t(10),
+                start_pos=_t(11),
+                coff=coff,
+                cache_mode=cache_mode,
             )
     except Exception:
         pass
 
 
 def kernel_quant_compressor_golden(
-    x, wkv, wgate, state_cache, ape,
-    x_descale=None, wkv_descale=None, wgate_descale=None,
-    state_block_table=None, cu_seqlens=None, seqused=None, start_pos=None,
+    x,
+    wkv,
+    wgate,
+    state_cache,
+    ape,
+    x_descale=None,
+    wkv_descale=None,
+    wgate_descale=None,
+    state_block_table=None,
+    cu_seqlens=None,
+    seqused=None,
+    start_pos=None,
     **kwargs,
 ):
     """Golden for kernel mode: 12 tensors positionally + attributes as kwargs."""
     return cpu_quant_compressor(
-        x, wkv, wgate, state_cache, ape,
+        x,
+        wkv,
+        wgate,
+        state_cache,
+        ape,
         kwargs.get("quant_mode", 1),
         kwargs.get("cmp_ratio", 4),
         x_descale=x_descale,
@@ -501,8 +536,18 @@ def kernel_quant_compressor_golden(
         start_pos=start_pos,
         coff=kwargs.get("coff", 1),
         cache_mode=kwargs.get("cache_mode", 1),
-        **{k: v for k, v in kwargs.items()
-           if k not in ("quant_mode", "cmp_ratio", "coff", "cache_mode",
-                        "state_cache_stride_dim0", "full_soc_version",
-                        "short_soc_version")},
+        **{
+            k: v
+            for k, v in kwargs.items()
+            if k
+            not in (
+                "quant_mode",
+                "cmp_ratio",
+                "coff",
+                "cache_mode",
+                "state_cache_stride_dim0",
+                "full_soc_version",
+                "short_soc_version",
+            )
+        },
     )

@@ -18,7 +18,7 @@ import numpy as np
 def _try_hifloat8_dtype():
     """Return numpy hifloat8 dtype if available (en_dtypes installed), else None."""
     try:
-        return np.dtype('hifloat8')
+        return np.dtype("hifloat8")
     except TypeError:
         return None
 
@@ -37,7 +37,7 @@ def _ensure_torch(tensor):
         itemsize = tensor.dtype.itemsize
         if _HIF8_DTYPE is not None and tensor.dtype == _HIF8_DTYPE:
             return torch.from_numpy(tensor.view(np.uint8))
-        if itemsize == 2 and str(tensor.dtype) == 'bfloat16':
+        if itemsize == 2 and str(tensor.dtype) == "bfloat16":
             return torch.from_numpy(tensor.view(np.uint16)).view(torch.bfloat16)
         return torch.from_numpy(tensor)
     return tensor
@@ -342,13 +342,17 @@ def apply_batch_slice_seeded(
                                 slice_idx += 1
                             sliced_shape[0] = 1
                             sliced_shape[axis_pos] = length
-                            data = _gen_slice_data(rng, lo, hi, sliced_shape, tensor.dtype)
+                            data = _gen_slice_data(
+                                rng, lo, hi, sliced_shape, tensor.dtype
+                            )
                             tensor[bidx, start:end, :] = torch.from_numpy(data).to(
                                 tensor.dtype
                             )
                         else:
                             sliced_shape[axis_pos] = length
-                            data = _gen_slice_data(rng, lo, hi, sliced_shape, tensor.dtype)
+                            data = _gen_slice_data(
+                                rng, lo, hi, sliced_shape, tensor.dtype
+                            )
                             tensor[start:end, :, :] = torch.from_numpy(data).to(
                                 tensor.dtype
                             )
@@ -362,9 +366,9 @@ def apply_batch_slice_seeded(
                                     cache_lo, cache_hi, size=tuple(cache_shape)
                                 ).astype(np.float32)
                                 block_id = state_block_table[start]
-                                state_cache[block_id:(block_id + length), :, :] = torch.from_numpy(
-                                    cache_data
-                                ).to(state_cache.dtype)
+                                state_cache[block_id : (block_id + length), :, :] = (
+                                    torch.from_numpy(cache_data).to(state_cache.dtype)
+                                )
                             else:
                                 cache_shape = list(state_cache.shape)
                                 cache_shape[0] = length * state_block_table.shape[1]
@@ -398,13 +402,17 @@ def apply_batch_slice_seeded(
                                 slice_idx += 1
                             sliced_shape[0] = 1
                             sliced_shape[axis_pos] = length + cmp_ratio
-                            data = _gen_slice_data(rng, lo, hi, sliced_shape, tensor.dtype)
-                            tensor[bidx, (start - cmp_ratio) : end, :] = torch.from_numpy(
-                                data
-                            ).to(tensor.dtype)
+                            data = _gen_slice_data(
+                                rng, lo, hi, sliced_shape, tensor.dtype
+                            )
+                            tensor[bidx, (start - cmp_ratio) : end, :] = (
+                                torch.from_numpy(data).to(tensor.dtype)
+                            )
                         else:
                             sliced_shape[axis_pos] = length
-                            data = _gen_slice_data(rng, lo, hi, sliced_shape, tensor.dtype)
+                            data = _gen_slice_data(
+                                rng, lo, hi, sliced_shape, tensor.dtype
+                            )
                             tensor[start:end, :, :] = torch.from_numpy(data).to(
                                 tensor.dtype
                             )
@@ -418,9 +426,9 @@ def apply_batch_slice_seeded(
                                     cache_lo, cache_hi, size=tuple(cache_shape)
                                 ).astype(np.float32)
                                 block_id = state_block_table[start]
-                                state_cache[block_id:(block_id + length), :, :] = torch.from_numpy(
-                                    cache_data
-                                ).to(state_cache.dtype)
+                                state_cache[block_id : (block_id + length), :, :] = (
+                                    torch.from_numpy(cache_data).to(state_cache.dtype)
+                                )
                             else:
                                 cache_shape = list(state_cache.shape)
                                 cache_shape[0] = length * state_block_table.shape[1]
@@ -602,9 +610,18 @@ def aclnn_quant_compressor_input(
 
 
 def kernel_quant_compressor_input(
-    x, wkv, wgate, state_cache, ape,
-    x_descale=None, wkv_descale=None, wgate_descale=None,
-    state_block_table=None, cu_seqlens=None, seqused=None, start_pos=None,
+    x,
+    wkv,
+    wgate,
+    state_cache,
+    ape,
+    x_descale=None,
+    wkv_descale=None,
+    wgate_descale=None,
+    state_block_table=None,
+    cu_seqlens=None,
+    seqused=None,
+    start_pos=None,
     **kwargs,
 ):
     """Customize inputs for kernel mode.
@@ -620,10 +637,22 @@ def kernel_quant_compressor_input(
     # non-torch-native dtypes (hifloat8) after customize_inputs runs.
     _hif8 = _HIF8_DTYPE
     original_dtypes = []
-    for t in (x, wkv, wgate, state_cache, ape, x_descale, wkv_descale,
-              wgate_descale, state_block_table, cu_seqlens, seqused, start_pos):
+    for t in (
+        x,
+        wkv,
+        wgate,
+        state_cache,
+        ape,
+        x_descale,
+        wkv_descale,
+        wgate_descale,
+        state_block_table,
+        cu_seqlens,
+        seqused,
+        start_pos,
+    ):
         if isinstance(t, np.ndarray) and _hif8 is not None and t.dtype == _hif8:
-            original_dtypes.append('hifloat8')
+            original_dtypes.append("hifloat8")
         else:
             original_dtypes.append(None)
 
@@ -641,7 +670,11 @@ def kernel_quant_compressor_input(
     start_pos = _ensure_torch(start_pos)
 
     generate_quant_compressor_inputs(
-        x, wkv, wgate, state_cache, ape,
+        x,
+        wkv,
+        wgate,
+        state_cache,
+        ape,
         kwargs.get("quant_mode", 1),
         kwargs.get("cmp_ratio", 4),
         x_descale=x_descale,
@@ -653,10 +686,20 @@ def kernel_quant_compressor_input(
         start_pos=start_pos,
         coff=kwargs.get("coff", 1),
         cache_mode=kwargs.get("cache_mode", 1),
-        **{k: v for k, v in kwargs.items()
-           if k not in ("quant_mode", "cmp_ratio", "coff", "cache_mode",
-                        "state_cache_stride_dim0", "full_soc_version",
-                        "short_soc_version")},
+        **{
+            k: v
+            for k, v in kwargs.items()
+            if k
+            not in (
+                "quant_mode",
+                "cmp_ratio",
+                "coff",
+                "cache_mode",
+                "state_cache_stride_dim0",
+                "full_soc_version",
+                "short_soc_version",
+            )
+        },
     )
 
     def _back_to_numpy(t, restore_dtype=None):
@@ -666,13 +709,24 @@ def kernel_quant_compressor_input(
             arr = t.detach().cpu().numpy()
         else:
             arr = t
-        if restore_dtype == 'hifloat8' and _hif8 is not None and arr.dtype == np.uint8:
+        if restore_dtype == "hifloat8" and _hif8 is not None and arr.dtype == np.uint8:
             arr = arr.view(_hif8)
         return arr
 
-    tensors = (x, wkv, wgate, state_cache, ape,
-               x_descale, wkv_descale, wgate_descale,
-               state_block_table, cu_seqlens, seqused, start_pos)
+    tensors = (
+        x,
+        wkv,
+        wgate,
+        state_cache,
+        ape,
+        x_descale,
+        wkv_descale,
+        wgate_descale,
+        state_block_table,
+        cu_seqlens,
+        seqused,
+        start_pos,
+    )
     return tuple(
         _back_to_numpy(t, restore_dtype=original_dtypes[i])
         for i, t in enumerate(tensors)
