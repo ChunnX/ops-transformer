@@ -262,9 +262,7 @@ public:
     CATLASS_DEVICE void operator()(TensorA &tensorA, TensorB &tensorB, TensorC &tensorC, GemmCoord const &actualShape)
     {
         using CopyGmToL1A = typename TileCopy_::template CopyGmToL1A<TensorA>;
-        // using CopyGmToL1B = typename TileCopy_::template CopyGmToL1B<TensorB>;
         CopyGmToL1A copyGmToL1A;
-        // CopyGmToL1B copyGmToL1B;
 #if (defined(CATLASS_ARCH) && CATLASS_ARCH == 2201)
         using CopyL0CToGm = typename TileCopy_::template CopyL0CToGm<TensorC>;
         CopyL0CToGm copyL0CToDst;
@@ -301,9 +299,6 @@ public:
 
         // load first matrix B tile from GM to L1
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventList[l1BListId]);
-        // auto tensorL1B = tla::MakeTensor(l1BTensorList[l1BListId], L1B_LAYOUT, Arch::PositionL1{});
-        // auto tensorTileB = GetTile(tensorB, tla::MakeCoord(0, 0), tla::MakeShape(kL1Actual, nBlockActual));
-        // copyGmToL1B(tensorL1B, tensorTileB);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventList[l1BListId]);
 
         if constexpr (!ENABLE_UNIT_FLAG) {
@@ -347,9 +342,7 @@ public:
 
             // Get L1 tensor for current stage
             auto l1ATensor = l1ATensorList[l1AListId];
-            // auto l1BTensor = l1BTensorList[l1BListId];
             tensorL1A = tla::MakeTensor(l1ATensor, L1A_LAYOUT, Arch::PositionL1{});
-            // tensorL1B = tla::MakeTensor(l1BTensor, L1B_LAYOUT, Arch::PositionL1{});
             // Get the loop nums on L0
             uint32_t kL0Loop = CeilDiv<L0_TILE_K>(kL1Actual);
 
@@ -388,9 +381,6 @@ public:
                         auto layoutBInL0 = tla::MakeLayout<ElementB, LayoutTagL0B>(kL0Actual, nL0Actual);
                         auto tensorL0B = tla::MakeTensor(l0BTile, layoutBInL0, Arch::PositionL0B{});
                         // Locate the current tile of matrix B on L1
-                        // auto tensorTileL1B = GetTile(tensorL1B,
-                        //                              tla::MakeCoord(kL0Idx * L0_TILE_K, nL0Idx * L0_TILE_N),
-                        //                              tla::MakeShape(kL0Actual, nL0Actual));
                         auto tensorTileL1B = GetTile(tensorB, tla::MakeCoord(kL0Idx * L0_TILE_K, nL0Idx * L0_TILE_N),
                                                      tla::MakeShape(kL0Actual, nL0Actual));
 
