@@ -477,7 +477,7 @@ def _blockwise_snap_local_quantize_p_eff(S: torch.Tensor, m_running, seqk_dim: i
         LN2_fp16 = torch.tensor(LN2, dtype=torch.float16, device=device)                      # m_block_snap 用
         neg_log2_cx_fp16 = torch.tensor(neg_log2_cx, dtype=torch.float16, device=device)  # 对齐 kernel NEG_LOG2_CX
         k_raw = m_block_raw_safe * INV_LN2_fp16 + neg_log2_cx_fp16                       # 全 fp16 乘法(对齐 kernel)
-        K_block = torch.clamp(torch.ceil(k_raw), -127.0, 127.0)
+        K_block = torch.ceil(k_raw)
         m_block_snap = K_block * LN2_fp16                                             # 无 -2(式19), fp16
     else:
         # OCP(式8): K_block = floor(Smax*INV_LN2), 全程 fp16 域(对齐 kernel:
@@ -488,7 +488,7 @@ def _blockwise_snap_local_quantize_p_eff(S: torch.Tensor, m_running, seqk_dim: i
         #   (差~1.29e-04), 除法在 floor 边界翻转导致 golden≠kernel(OCP 在 Smax≥11.78 有 46 处翻转)。
         INV_LN2_fp16 = torch.tensor(1.0 / LN2, dtype=torch.float16, device=device)            # 对齐 kernel constexpr half INV_LN2
         LN2_fp16 = torch.tensor(LN2, dtype=torch.float16, device=device)                      # m_block_snap 用
-        K_block = torch.clamp(torch.floor(m_block_raw_safe * INV_LN2_fp16), -127.0, 127.0)  # snap: floor(m*INV_LN2)
+        K_block = torch.floor(m_block_raw_safe * INV_LN2_fp16)  # snap: floor(m*INV_LN2)
         m_block_snap = (K_block - 2) * LN2_fp16                     # 使 P_local block max ∈ [4,8), fp16
     if _DUMP_ENABLED:
         _dump_tensor(K_block.T, "local_group_max.bin")         # dump: 每 block 的 K(镜像 qfa local_group_max, 对齐转置)
@@ -895,7 +895,7 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
                         p_quant='snap_local', s_dtype='fp16',
                         dump=False, device_id=0,
                         s1_list=None, s2_list=None,
-                        data_x=1.0, dst_type_max=0.0, act_s1=None, act_s2=None, 
+                        data_x=10.0, dst_type_max=0.0, act_s1=None, act_s2=None, 
                         data_kind='default'):
     """qfa 风格: fp32 造数据 -> mxfp4 打包 -> CPU golden -> NPU -> check_result.
        p_quant: 'snap_local'|'none'; s_dtype: 'fp16'(默认)|'bf16'|'fp32'; dump: 落盘中间结果。
@@ -2930,6 +2930,39 @@ class TestBSAMxfp4Golden(TestCase):
         self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
                   block_shape=[128, 128], mask_kind='sparse', quant_mode=3, dst_type_max=6.0)
 
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_128_256_s2_256_128_d128_ceshi(self, device="npu"):
+        """CX TND varlen dense """
+        self._run(b=15, n1=28, n2=28, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[128, 128,128,128,128,128,128,128,128,128,128,128,128,128,128], s2_list=[256,256,256,256,256,256,5000,256,256,256,256,256,5000,256,256], quant_mode=3,  dst_type_max=6.6)
 
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_varlen_mha_dense_b15_qn28_kvn28_g1_actq128_padq128_actkv4096_padkv4096_d128_ceshi(self, device="npu"):
+        """CX BNSD varlen dense: b=15, n1=n2=28(MHA), per-batch actualSeq 用 list 形式传入。
+        act_s1 全 128(pad_q=128 满), act_s2 含 512 大 KV,
+        验证 BNSD padded 路径(per-batch actual 独立 kernel 路径) + CX 量化。先走通流程, 不比精度。"""
+        self._run(b=15, n1=28, n2=28, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BNSD',
+                  s1=128, s2=5000,
+                  act_s1=[128]*15,
+                  act_s2=[256,256,256,256,256,256,5000,256,256,256,256,256,5000,256,256],
+                  quant_mode=3, dst_type_max=6.6)
+    
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_varlen_mha_dense_hhhhhhhhhhhhhhhhhh_d128_ceshi(self, device="npu"):
+        """CSV: Prefill_FP4_E2M1_FP4_E2M1_BF16_L0_fuzz_2_10_10_131072_1792_128_128_BNSD_000077
+        B=2, N_q=N_kv=10(MHA, G=1), D=128, S_q=131072(prefill 大序列), S_kv=1792(pad 到 max),
+        act_seq_lens_kv=[1792, 202](per-batch KV 变长), Q 满 s1(=act_seq_lens_q 空CSV语义)。
+        input_layout=BNSD, dense, OCP 量化(CSV q_quant_mode=5 映射为 OCP=2), out=bf16。
+        scale=1/sqrt(128)≈0.08838834764831843(框架默认 1/sqrt(qk_d) 一致, 无需显式传)。
+        data_range 按 CSV: q[-0.5,0] k/v[0.01,1](当前框架仅支持单一 data_x, 用默认 1.0 走通流程)。"""
+        self._run(b=2, n1=10, n2=10, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BNSD',
+                  s1=131072, s2=1792,
+                  act_s1=[131072, 131072],
+                  act_s2=[1792, 202],
+                  quant_mode=2, out_dtype='bfloat16')
+                  
 if __name__ == "__main__":
     run_tests()
