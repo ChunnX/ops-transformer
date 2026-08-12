@@ -141,7 +141,6 @@ class ChunkKdaFwdOpBuilder(OpBuilder):
 
     def register_meta(self):
         # The dispatcher implementation must preserve the published operator schema.
-        # pylint: disable=huawei-too-many-arguments,huawei-invalid-name,too-many-return-values
         @impl(AS_LIBRARY, self.name, "Meta")
         def chunk_kda_fwd_meta(
             q,
@@ -232,14 +231,11 @@ class ChunkKdaFwdOpBuilder(OpBuilder):
                 initial_state,
             )
 
-        # pylint: enable=huawei-too-many-arguments,huawei-invalid-name,too-many-return-values
-
 
 _chunk_kda_fwd_op_builder = ChunkKdaFwdOpBuilder()
 
 
 # The dispatcher implementation must preserve the published operator schema.
-# pylint: disable=huawei-too-many-arguments,huawei-invalid-name
 @impl(AS_LIBRARY, _chunk_kda_fwd_op_builder.name, "PrivateUse1")
 def _chunk_kda_fwd(
     q,
@@ -288,11 +284,7 @@ def _chunk_kda_fwd(
     )
 
 
-# pylint: enable=huawei-too-many-arguments,huawei-invalid-name
-
-
 # This public signature intentionally follows the upstream chunk_kda_fwd API.
-# pylint: disable=huawei-too-many-arguments,huawei-invalid-name
 def chunk_kda_fwd(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -364,6 +356,3 @@ def chunk_kda_fwd(
         for tensor in converted_gate_params:
             tensor.record_stream(current_stream)
     return outputs
-
-
-# pylint: enable=huawei-too-many-arguments,huawei-invalid-name
