@@ -15,6 +15,7 @@
 #ifndef MATMUL_H
 #define MATMUL_H
 #include "buffers_policy.h"
+#include "../kv_quant_sparse_attn_sharedkv_common_arch35.h"
 using namespace AscendC;
 namespace fa_base_matmul {
 
@@ -753,6 +754,100 @@ __aicore__ inline void LoadDataToL0B(LocalTensor<T>& bL0Tensor, const LocalTenso
                 LoadData(bL0Tensor[loop * l0Offset], bL1Tensor[loop * l1Offset], loadData2DParams);
             }
         }
+    }
+}
+
+// ===== Static tensor + Lock/Unlock + RingBuffer 版本 =====
+// MatmulK1Static: 切K, L0A/L0B 通过 RingBuffer 管理, MutexID 由 buf.idx 推导
+template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN,
+          uint32_t baseK, ABLayout AL, ABLayout BL, typename L0AType, typename L0BType>
+__aicore__ inline void MatmulK1Static(
+    const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
+    RingBuffer<L0AType> &l0A, RingBuffer<L0BType> &l0B,
+    const LocalTensor<C> &cL0Tensor, const MMParam &param)
+{
+    uint32_t kLoops = (param.singleK + baseK - 1) / baseK;
+    uint32_t tailSize = param.singleK % baseK;
+    uint32_t tailK = tailSize ? tailSize : baseK;
+    uint64_t l1Aoffset = param.isLeftTranspose ? baseK << 4 : ((param.singleM + 15) >> 4 << 4) * baseK;
+    uint64_t l1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK : baseK << 4;
+    for (uint32_t k = 0; k < kLoops; k++) {
+        uint32_t tileK = (k == (kLoops - 1)) ? tailK : baseK;
+
+        StaticBuffer<L0AType> &aBuf = l0A.GetNext();
+        StaticBuffer<L0BType> &bBuf = l0B.GetNext();
+
+        Mutex::Lock<PIPE_MTE1>(INNERCORE_L0AB(aBuf.idx));
+        LoadDataToL0A(aBuf.tensor, aL1Tensor, param, k * l1Aoffset, tileK, param.singleM);
+
+        uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
+        LoadDataToL0B(bBuf.tensor, bL1Tensor, param, k * l1Boffset, tileK, param.singleN, loopNum);
+        Mutex::Unlock<PIPE_MTE1>(INNERCORE_L0AB(aBuf.idx));
+
+        Mutex::Lock<PIPE_M>(INNERCORE_L0AB(aBuf.idx));
+
+        MmadParams mmadParams;
+        mmadParams.m = param.singleM;
+        if (param.realM != 0) { mmadParams.m = param.realM; }
+        mmadParams.n = param.singleN;
+        mmadParams.k = tileK;
+        if (mmadParams.m == 1) { mmadParams.m = 16; }
+        mmadParams.cmatrixInitVal = param.isOutKFisrt && (k == 0);
+        mmadParams.cmatrixSource = false;
+        if (param.unitFlag != 0) {
+            mmadParams.unitFlag = (param.unitFlag == UNITFLAG_EN_OUTER_LAST) && (k == kLoops - 1) ?
+                                  UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE;
+        }
+        Mmad(cL0Tensor, aBuf.tensor, bBuf.tensor, mmadParams);
+
+        Mutex::Unlock<PIPE_M>(INNERCORE_L0AB(aBuf.idx));
+    }
+}
+
+// MatmulN1Static: 切N, L0A/L0B 通过 RingBuffer 管理
+template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN,
+          uint32_t baseK, ABLayout AL, ABLayout BL, typename L0AType, typename L0BType>
+__aicore__ inline void MatmulN1Static(
+    const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
+    RingBuffer<L0AType> &l0A, RingBuffer<L0BType> &l0B,
+    const LocalTensor<C> &cL0Tensor, const MMParam &param)
+{
+    uint32_t nLoops = (param.singleN + baseN - 1) / baseN;
+    uint32_t tailSize = param.singleN % baseN;
+    uint32_t tailN = tailSize ? tailSize : baseN;
+    uint64_t l1BOffset = param.isRightTranspose ? (baseN << 4) : ((param.singleK + 15) >> 4 << 4) * baseN;
+    uint64_t l0COffset = ((param.singleM + 15) >> 4 << 4) * baseN;
+    if (param.realM != 0) {
+        l0COffset = ((param.realM + 15) >> 4 << 4) * baseN;
+    }
+
+    MmadParams mmadParams;
+    mmadParams.m = param.singleM;
+    if (param.realM != 0) { mmadParams.m = param.realM; }
+    mmadParams.k = param.singleK;
+    if (mmadParams.m == 1) { mmadParams.m = 16; }
+    mmadParams.cmatrixInitVal = param.isOutKFisrt;
+    mmadParams.cmatrixSource = false;
+    mmadParams.unitFlag = param.unitFlag;
+
+    for (uint32_t n = 0; n < nLoops; n++) {
+        uint32_t tileN = (n == (nLoops - 1)) ? tailN : baseN;
+        mmadParams.n = tileN;
+
+        StaticBuffer<L0AType> &aBuf = l0A.GetNext();
+        StaticBuffer<L0BType> &bBuf = l0B.GetNext();
+
+        Mutex::Lock<PIPE_MTE1>(INNERCORE_L0AB(aBuf.idx));
+        if (n == 0 || n == 1) {
+            LoadDataToL0A(aBuf.tensor, aL1Tensor, param, 0, param.singleK, param.singleM);
+        }
+        uint64_t loopNum = param.isRightTranspose ? nLoops : 1;
+        LoadDataToL0B(bBuf.tensor, bL1Tensor, param, n * l1BOffset, param.singleK, tileN, loopNum);
+        Mutex::Unlock<PIPE_MTE1>(INNERCORE_L0AB(aBuf.idx));
+
+        Mutex::Lock<PIPE_M>(INNERCORE_L0AB(aBuf.idx));
+        Mmad(cL0Tensor[n * l0COffset], aBuf.tensor, bBuf.tensor, mmadParams);
+        Mutex::Unlock<PIPE_M>(INNERCORE_L0AB(aBuf.idx));
     }
 }
 }
