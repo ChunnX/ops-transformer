@@ -273,6 +273,7 @@ protected:
     uint32_t dCosFlag_{0};
     bool is1snd_ = false;
     bool isTndLayout_ = false;
+    bool isEmptyDy_ = false; // dy/x 为空 tensor（空进空出），kernel 仅对 dcos/dsin 清零
 };
 
 } // namespace optiling

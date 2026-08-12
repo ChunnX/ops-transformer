@@ -109,6 +109,7 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckInPutShapeAllPositive(const int
 {
     auto shape = context_->GetInputShape(idx)->GetStorageShape();
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
+        // 只拦截负维度；0 维(empty tensor)放行，由空进空出逻辑处理
         if (shape.GetDim(i) < 0) {
             std::string shapeMsg = ToString(shape);
             std::string reasonMsg = "The shape of input " + inputNames[idx] +
@@ -125,6 +126,7 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckOutPutShapeAllPositive(const in
 {
     auto shape = context_->GetOutputShape(idx)->GetStorageShape();
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
+        // 只拦截负维度；0 维(empty tensor)放行，由空进空出逻辑处理
         if (shape.GetDim(i) < 0) {
             std::string shapeMsg = ToString(shape);
             std::string reasonMsg = "The shape of output " + outputNames[idx] +
@@ -152,28 +154,29 @@ bool RopeGradRegBaseTilingClass::IsRotaryPosEmbeddingMode(const int32_t mode) co
 
 ge::graphStatus RopeGradRegBaseTilingClass::CheckShapeAllPositive() const
 {
+    // 所有输入/输出均放行 0 维（空进空出）；"dy 非空仅 cos/sin 空"由广播约束/D 维校验天然拦截，无需在此拦截
     OP_CHECK_IF(
         CheckInPutShapeAllPositive(DY_INDEX) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_, "dy has non positive shape."), return ge::GRAPH_FAILED);
+        OP_LOGE(context_, "dy has negative shape."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         CheckInPutShapeAllPositive(COS_INDEX) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_, "cos has non positive shape."), return ge::GRAPH_FAILED);
+        OP_LOGE(context_, "cos has negative shape."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         CheckInPutShapeAllPositive(SIN_INDEX) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_, "sin has non positive shape."), return ge::GRAPH_FAILED);
+        OP_LOGE(context_, "sin has negative shape."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         CheckOutPutShapeAllPositive(DX_INDEX) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_, "dx has non positive shape."), return ge::GRAPH_FAILED);
+        OP_LOGE(context_, "dx has negative shape."), return ge::GRAPH_FAILED);
     if (context_->GetInputShape(X_INDEX) != nullptr) {
         OP_CHECK_IF(
             CheckInPutShapeAllPositive(X_INDEX) != ge::GRAPH_SUCCESS,
-            OP_LOGE(context_, "x has non positive shape."), return ge::GRAPH_FAILED);
+            OP_LOGE(context_, "x has negative shape."), return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             CheckOutPutShapeAllPositive(DCOS_INDEX) != ge::GRAPH_SUCCESS,
-            OP_LOGE(context_, "dcos has non positive shape."), return ge::GRAPH_FAILED);
+            OP_LOGE(context_, "dcos has negative shape."), return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             CheckOutPutShapeAllPositive(DSIN_INDEX) != ge::GRAPH_SUCCESS,
-            OP_LOGE(context_, "dsin has non positive shape."), return ge::GRAPH_FAILED);
+            OP_LOGE(context_, "dsin has negative shape."), return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -506,6 +509,14 @@ ge::graphStatus RopeGradRegBaseTilingClass::GetShapeAttrsInfo()
         cosb_ = cosShape_.GetDim(DIM_1);
         n_ = dyShape_.GetDim(DIM_2);
     }
+    // dy/x 为空 tensor 时（空进空出），后续分核/规约的 host 计算按维度 1 处理，
+    // kernel 侧依据 isEmptyDy 跳过全部有效计算，仅对 dcos/dsin 清零
+    isEmptyDy_ = (dyShape_.GetShapeSize() == 0);
+    if (isEmptyDy_) {
+        b_ = (b_ <= 0) ? 1 : b_;
+        s_ = (s_ <= 0) ? 1 : s_;
+        n_ = (n_ <= 0) ? 1 : n_;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -516,9 +527,6 @@ ge::graphStatus RopeGradRegBaseTilingClass::GetInputParam(
     auto inputDesc = context_->GetInputDesc(inputIdx);
     OP_CHECK_NULL_WITH_CONTEXT(context_, inputDesc);
     opInput.inputDtype = inputDesc->GetDataType();
-    OP_LOGE(context_->GetNodeName(), "DEBUG GetInputParam: inputIdx=%u dtype=%d, dyNumel=%ld",
-            inputIdx, static_cast<int32_t>(opInput.inputDtype),
-            static_cast<int64_t>(context_->GetInputShape(inputIdx)->GetStorageShape().GetShapeSize()));
     // set opInput shape
     auto dyInput = context_->GetInputTensor(inputIdx);
     OP_CHECK_NULL_WITH_CONTEXT(context_, dyInput);
@@ -539,6 +547,13 @@ ge::graphStatus RopeGradRegBaseTilingClass::GetInputParam(
             opInput.axes.push_back(i);
         }
     }
+    if (isEmptyDy_) {
+        // 空 tensor 时规约轴维度按 1 处理，使 reduce tiling 按正常配置走通并生成标准 tilingKey；
+        // axes 仍按真实 shape 计算，保证 key 与非空等价配置一致
+        for (size_t i = 0; i < shapeSize; i++) {
+            opInput.shape[i] = (opInput.shape[i] <= 0) ? 1 : opInput.shape[i];
+        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -554,6 +569,9 @@ ge::graphStatus RopeGradRegBaseTilingClass::InitTilingData()
     OP_CHECK_IF(
         (memset_s(tilingData_, sizeof(RopeGradTilingData), 0, sizeof(RopeGradTilingData)) != EOK),
         OP_LOGE(context_->GetNodeName(), "memset tilingdata failed"), return ge::GRAPH_FAILED);
+    // 空进空出标记：kernel 据此跳过全部有效计算，仅将 dcos/dsin 清零（cosShapeSize 个元素）
+    tilingData_->isEmptyDy = isEmptyDy_ ? 1U : 0U;
+    tilingData_->cosShapeSize = cosShape_.GetShapeSize();
     return ge::GRAPH_SUCCESS;
 }
 

@@ -23,6 +23,7 @@
 #include "arch35/rotary_position_embedding_grad_a_and_b.h"
 #include "arch35/rotary_position_embedding_grad_rotary_x.h"
 #include "arch35/rotary_position_embedding_grad_a_dcos_dsin.h"
+#include "arch35/rotary_position_embedding_grad_zero_fill.h"
 
 enum class ropeGradTilingKey : uint32_t
 {
@@ -51,6 +52,15 @@ __global__ __aicore__ void rotary_position_embedding_grad(
     REGISTER_TILING_DEFAULT(RopeGradTilingData);
     GET_TILING_DATA_WITH_STRUCT(RopeGradTilingData, tilingData, tiling);
     TPipe pipe;
+    if (tilingData.isEmptyDy == 1) {
+        // dy/x 为空 tensor：空进空出，不做任何有效计算；dcos/dsin 为空集求和，输出全 0
+        if constexpr (DcosFlag) {
+            RotaryPositionEmbeddingGrad::RopeGradZeroFill<DTYPE_DY> zeroFill(&pipe);
+            zeroFill.Init(cosGrad, sinGrad, tilingData.cosShapeSize);
+            zeroFill.Process();
+        }
+        return;
+    }
     if constexpr (DxTilingKey == static_cast<uint32_t>(ropeGradTilingKey::TILING_KEY_ABA)) {
         RotaryPositionEmbeddingGrad::RotaryPositionEmbeddingGradABAAndBA<DTYPE_DY, false> op(
             &pipe, &tilingData.ropeGradParams);
