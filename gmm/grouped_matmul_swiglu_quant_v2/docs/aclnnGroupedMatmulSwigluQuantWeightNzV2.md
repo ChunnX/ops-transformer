@@ -213,6 +213,7 @@
     <summary>A8W8 per-token量化场景：</summary>
 
       - 输入`x`和`weight`的数据类型为INT8，`weight`使用FRACTAL_NZ格式；`xScale`按token缩放，`weightScale`按channel缩放。
+      - `weight`支持非转置和转置输入：非转置逻辑shape为(E, K, N)，转置逻辑shape为(E, N, K)。
       - 对每个group计算$C_i=(X_i\cdot W_i)\odot xScale_i\odot weightScale_i$，沿N轴等分后执行SwiGLU，再将结果按token量化为INT8。
       - `output`的shape为(M, N/2)，`outputScale`的shape为(M,)。
     </details>
@@ -781,7 +782,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
     - groupList第1维最大支持1024，即最多支持1024个group。
     - A8W8 per-token量化场景需满足以下约束条件：
         - x、weight和output的数据类型为INT8；xScale和outputScale的数据类型为FLOAT；weightScale的数据类型支持FLOAT、FLOAT16或BFLOAT16。
-        - x shape为(M, K)，weight逻辑shape为(E, K, N)，weight FRACTAL_NZ storage shape为(E, ceil(N/32), ceil(K/16), 16, 32)。
+        - x shape为(M, K)。weight支持非转置和转置：非转置逻辑shape为(E, K, N)，FRACTAL_NZ storage shape为(E, ceil(N/32), ceil(K/16), 16, 32)；转置逻辑shape为(E, N, K)，FRACTAL_NZ storage shape为(E, ceil(K/32), ceil(N/16), 16, 32)。
+        - x仅支持非转置；weight转置输入时，算子内部`transposeWeight`属性为true，并使用ZN模板处理FRACTAL_NZ数据。
         - weightScale shape为(E, N)，xScale和outputScale shape为(M,)，output shape为(M, N/2)。
         - dequantMode和quantMode均为0；dequantDtype支持0、1、27。
         - N必须大于0且为64的整数倍。

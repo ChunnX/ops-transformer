@@ -397,9 +397,8 @@ protected:
                 apiName_.c_str(), "dequantMode and quantMode",
                 "dequantMode=" + std::to_string(gmmDsqParams_.dequantMode) +
                     ", quantMode=" + std::to_string(gmmDsqParams_.quantMode),
-                "when the format of weight is ND, the values of dequantMode and quantMode must be 0 (pertoken) or "
-                "2 (mx), and they must be equal; when the format of weight is NZ, the values of dequantMode and "
-                "quantMode must be 2 (mx), and they must be equal");
+                "the values of dequantMode and quantMode must be 0 (pertoken) or 2 (mx), and they must be equal; "
+                "FRACTAL_NZ weight supports pertoken mode for INT8 x and weight");
             return false;
         }
         ge::DataType dequantDtype = static_cast<ge::DataType>(gmmDsqParams_.dequantDtype);
@@ -607,20 +606,22 @@ protected:
 
         if (transposeWeight) {
             gmmDsqParams_.transposeWeight = true;
-            auto uniqueExecutor = CREATE_EXECUTOR();
-            CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-            aclOpExecutor *executorPtr = uniqueExecutor.get();
-            CHECK_RET(executorPtr != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-            std::vector<aclTensor *> weightTensorList;
-            if (!CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr)) {
-                return false;
+            if (!op::IsPrivateFormat((*gmmDsqParams_.weight)[0]->GetStorageFormat())) {
+                auto uniqueExecutor = CREATE_EXECUTOR();
+                CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+                aclOpExecutor *executorPtr = uniqueExecutor.get();
+                CHECK_RET(executorPtr != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+                std::vector<aclTensor *> weightTensorList;
+                if (!CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr)) {
+                    return false;
+                }
+                gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
+                if (gmmDsqParams_.weight == nullptr) {
+                    OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weight failed.");
+                    return false;
+                }
+                uniqueExecutor.ReleaseTo(executor_);
             }
-            gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
-            if (gmmDsqParams_.weight == nullptr) {
-                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weight failed.");
-                return false;
-            }
-            uniqueExecutor.ReleaseTo(executor_);
         }
         if ((gmmDsqParams_.x->GetViewShape().GetDim(0) == 1 && gmmDsqParams_.x->GetViewShape().GetDim(1) == 1) ||
             (gmmDsqParams_.xScale->GetViewShape().GetDim(0) == 1 &&
@@ -1080,16 +1081,19 @@ protected:
                                                        "], axis K of x must be a positive number");
             return false;
         }
-        auto weightDimNum = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
-        auto weightKIndex = weightDimNum - LAST_SECOND_DIM_INDEX;
-        auto weightNDim = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightDimNum - 1);
-        if (((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightKIndex) <= 0) {
-            std::string gotStr = BuildLogValue("K", ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightKIndex));
+        const aclTensor *weight = (*gmmDsqParams_.weight)[0];
+        auto weightDimNum = weight->GetViewShape().GetDimNum();
+        bool transposeWeight = IsTransposeLastTwoDims(weight);
+        auto weightKIndex = transposeWeight ? weightDimNum - 1 : weightDimNum - LAST_SECOND_DIM_INDEX;
+        auto weightNIndex = transposeWeight ? weightDimNum - LAST_SECOND_DIM_INDEX : weightDimNum - 1;
+        auto weightNDim = weight->GetViewShape().GetDim(weightNIndex);
+        if (weight->GetViewShape().GetDim(weightKIndex) <= 0) {
+            std::string gotStr = BuildLogValue("K", weight->GetViewShape().GetDim(weightKIndex));
             std::ostringstream constraint;
             constraint << "K must be positive when " << GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_);
             std::string constraintStr = constraint.str();
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(apiName_.c_str(), "weight",
-                                                   ViewShapeToString((*gmmDsqParams_.weight)[0]),
+                                                   ViewShapeToString(weight),
                                                    "when the value of N is not 0 [N=" + std::to_string(weightNDim) +
                                                        "], axis K of weight must be a positive number");
             return false;
@@ -1200,7 +1204,11 @@ protected:
             auto weightViewDimNum = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
             kInWeight = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightViewDimNum - LAST_SECOND_DIM_INDEX);
         } else {
-            kInWeight = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
+            const aclTensor *weight = (*gmmDsqParams_.weight)[0];
+            auto weightViewDimNum = weight->GetViewShape().GetDimNum();
+            bool transposeWeight = IsTransposeLastTwoDims(weight);
+            auto weightKIndex = transposeWeight ? weightViewDimNum - 1 : weightViewDimNum - LAST_SECOND_DIM_INDEX;
+            kInWeight = weight->GetViewShape().GetDim(weightKIndex);
         }
         if (kInX != kInWeight) {
             std::ostringstream reason;
