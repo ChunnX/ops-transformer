@@ -3034,7 +3034,7 @@ TEST_PARAMS = {
         "p_scale": [1.0],
         "enable_lse": [False],
     },
-    "PA_BnBsND_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0": {
+    "PA_BnBsND_B1_QS15_KVS128_Nq20_Nkv4_D128_SP0": {
         "B": [1],
         "N_q": [20],
         "N_kv": [4],
@@ -3042,9 +3042,9 @@ TEST_PARAMS = {
         "cu_seqlens_q": [[0, 15]],
         "cu_seqlens_kv": [None],
         "seqused_q": [[15]],
-        "seqused_kv": [[0]],
+        "seqused_kv": [[128]],
         "max_seqlen_q": [15],
-        "max_seqlen_kv": [0],
+        "max_seqlen_kv": [128],
         "enable_pa": [True],
         "kv_cache_layout": ["BnBsND"],
         "block_size": [512],
