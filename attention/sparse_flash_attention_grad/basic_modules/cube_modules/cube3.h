@@ -55,9 +55,26 @@ CubeOp<T1>::cube3ProcessSparse(const int64_t dsGmOffset, const int64_t keyGmOffs
             WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
             current_l1_ds_tensor = l1_ds_tensors[ping_pong_flag_l1_ds_][l1Offset];
             l1_key_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
-            int64_t currentKeyOffset = keyGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDtotal + dIdx * perLoopDSize;
-            
-            CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleK, mmParam.singleN, dimDTotal);
+            int64_t currentKeyOffset;
+            int64_t srcDstride;
+            if constexpr (HAS_ROPE) {
+                if (dIdx == dLoopTimes - 1) {
+                    currentKeyOffset = keyGmOffset + PER_LOOP_BLOCK_SIZE * dimDqk +
+                        (nIdx - blkCntOffset) * selectedBlockSizeDrope;
+                    srcDstride = dimRope;
+                } else {
+                    currentKeyOffset = keyGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDqk +
+                        dIdx * perLoopDSize;
+                    srcDstride = dimDqk;
+                }
+            } else {
+                currentKeyOffset = keyGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDqk +
+                    dIdx * perLoopDSize;
+                srcDstride = dimDqk;
+            }
+
+            CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleK,
+                mmParam.singleN, srcDstride);
 
             mmParam.isOutKFisrt = isFirstLoop;
             mmParam.isFixOut = isLastLoop;

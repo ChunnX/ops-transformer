@@ -52,9 +52,11 @@ CubeOp<T1>::cube1ProcessSparse(const int64_t queryGmOffset, const int64_t queryR
             current_l1_query_tensor = l1_query_tensor[dIdx * dimGAlign * perLoopDSize];
             l1_key_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
 
-            currentKeyOffset = keyGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDtotal + dIdx * K_SPLIT_SIZE;
+            currentKeyOffset = keyGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDqk +
+                dIdx * K_SPLIT_SIZE;
 
-            CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
+            CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN,
+                K_SPLIT_SIZE, dimDqk);
 
             MmadInnerWithSync<T1>(l0cTensor, current_l1_query_tensor, l1_key_tensor,
                         aL0TensorPingPong, bL0TensorPingPong,
@@ -72,9 +74,18 @@ CubeOp<T1>::cube1ProcessSparse(const int64_t queryGmOffset, const int64_t queryR
         current_l1_query_tensor = l1_query_tensor[(dLoopTimes - 1) * dimGAlign * perLoopDSize];
         l1_key_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
         
-        currentKeyOffset = keyGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDtotal + (dLoopTimes - 1) * K_SPLIT_SIZE;
-        int64_t srcDstride = HAS_ROPE ? tailLoopDSize : dimDTotal;
-        CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN, tailLoopDSize, dimDTotal);
+        int64_t srcDstride;
+        if constexpr (HAS_ROPE) {
+            currentKeyOffset = keyGmOffset + PER_LOOP_BLOCK_SIZE * dimDqk +
+                (nIdx - blkCntOffset) * selectedBlockSizeDrope;
+            srcDstride = dimRope;
+        } else {
+            currentKeyOffset = keyGmOffset + (nIdx - blkCntOffset) * selectedBlockSizeDqk +
+                (dLoopTimes - 1) * K_SPLIT_SIZE;
+            srcDstride = dimDqk;
+        }
+        CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleN,
+            tailLoopDSize, srcDstride);
 
         MmadInnerWithSync<T1>(l0cTensor, current_l1_query_tensor, l1_key_tensor,
                 aL0TensorPingPong, bL0TensorPingPong,
