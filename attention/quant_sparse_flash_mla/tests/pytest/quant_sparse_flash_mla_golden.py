@@ -1606,6 +1606,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path="", generate_gol
             "seqused_ori_kv": seqused_ori_kv,
             "seqused_cmp_kv": seqused_cmp_kv,
             "cmp_residual_kv": cmp_residual_kv,
+            "ori_topk_length": ori_topk_length,
+            "cmp_topk_length": cmp_topk_length,
             "batch_size": B,
             "max_seqlen_q": max_seqlen_q,
             "max_seqlen_ori_kv": max_seqlen_ori_kv,

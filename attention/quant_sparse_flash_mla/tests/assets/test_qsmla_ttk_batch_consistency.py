@@ -387,6 +387,8 @@ def test_qsmla_batch_input_adapter_generates_equal_hca_slices():
     assert data["op_input"]["cu_seqlens_q"] is None
     assert data["op_input"]["cu_seqlens_ori_kv"] is None
     assert data["op_input"]["cu_seqlens_cmp_kv"] is None
+    assert data["metadata_input"]["ori_topk_length"] is None
+    assert data["metadata_input"]["cmp_topk_length"] is None
     assert data["cpu_output"] is None
     INPUTS_MODULE.INPUT_ADAPTER.load_golden_store().materialize_golden(data)
     assert data["cpu_output"] is not None

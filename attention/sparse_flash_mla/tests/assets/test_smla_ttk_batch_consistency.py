@@ -211,6 +211,63 @@ def test_bsnd_input_adapter_rejects_prefix_tensor_slot(monkeypatch):
         )
 
 
+def test_topk_override_preserves_csv_values_and_masked_legacy_slots():
+    tensor = torch.full((2, 1), 7, dtype=torch.int32)
+    explicit = [[3], [4]]
+    generated_context = SimpleNamespace(attributes={})
+    explicit_context = SimpleNamespace(attributes={"ori_topk_length": explicit})
+
+    assert INPUTS_MODULE.INPUT_ADAPTER.select_topk_override(
+        "ori_topk_length", tensor, 0, None
+    ) is tensor
+    assert INPUTS_MODULE.INPUT_ADAPTER.select_topk_override(
+        "ori_topk_length", tensor, 0, generated_context
+    ) is None
+    assert INPUTS_MODULE.INPUT_ADAPTER.select_topk_override(
+        "ori_topk_length", tensor, 0, explicit_context
+    ) == explicit
+    assert INPUTS_MODULE.INPUT_ADAPTER.select_topk_override(
+        "ori_topk_length", tensor, 3, None
+    ) is tensor
+
+
+def test_mask_zero_topk_is_generated_then_copied_to_ttk_tensor(monkeypatch):
+    q = torch.zeros((1, 2, 1, 4), dtype=torch.float32)
+    ori_kv = torch.zeros((1, 4, 1, 4), dtype=torch.float32)
+    ori_sparse_indices = torch.zeros((1, 2, 1, 4), dtype=torch.int32)
+    ori_topk_length = torch.full((1, 2, 1), 99, dtype=torch.int32)
+    generated_topk = torch.tensor([[[4], [3]]], dtype=torch.int32)
+    captured = {}
+
+    def capture_customize(*args):
+        captured["params"] = args[7]
+        return {
+            "input": {
+                "q": q.clone(),
+                "ori_kv": ori_kv.clone(),
+                "ori_sparse_indices": ori_sparse_indices.clone(),
+                "ori_topk_length": generated_topk,
+            },
+            "metadata_input": {"ori_topk_length": generated_topk},
+        }
+
+    monkeypatch.setattr(INPUTS_MODULE.INPUT_ADAPTER, "customize", capture_customize)
+
+    INPUTS_MODULE.generate_sparse_flash_mla_inputs(
+        q,
+        ori_kv=ori_kv,
+        ori_sparse_indices=ori_sparse_indices,
+        ori_topk_length=ori_topk_length,
+        ori_mask_mode=0,
+        layout_q="BSND",
+        layout_kv="BSND",
+        context=SimpleNamespace(attributes={}),
+    )
+
+    assert captured["params"]["ori_topk_length"] is None
+    assert torch.equal(ori_topk_length, generated_topk)
+
+
 def test_tnd_batch_random_context_maps_q_and_kv_token_ranges():
     q = torch.empty((8, 1, 1), dtype=torch.float32)
     ori_kv = torch.empty((12, 1, 1), dtype=torch.float32)
