@@ -18,8 +18,12 @@
 #include "quant_block_sparse_attn_template_tiling_key.h"
 #include "quant_block_sparse_attn_common.h"
 #include "quant_block_sparse_attn_mx_tiling_data.h"
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+#include "arch-920r1/quant_block_sparse_attn_kernel.h"
+#else
 #include "arch35/quant_block_sparse_attn_kernel.h"
 #include "arch35/quant_block_sparse_attn_mx_kernel.h"
+#endif
 
 using namespace AscendC;
 using namespace optiling;
@@ -80,7 +84,11 @@ __global__ __aicore__ void quant_block_sparse_attn(
     __gm__ uint8_t *blockTable, __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
     __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+#else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#endif
 
     // mask 模式 / softmaxLse 使能同时进入 tilingKey 与 tilingData；LSE 已改为编译期模板参数。
     TPipe tPipe;
@@ -92,6 +100,14 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr bool bsaIsPa = true;
     constexpr bool bsaUseDn = BaseApi::IsDn();
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+    static_assert(QUANT_MODE == FP8QuantMode, "V121 only instantiates the QBSA FP8 kernel");
+    static_assert(Config == Config_S1Aligned64_S2Aligned512_DAligned128_DVAligned128,
+                  "V121 FP8QuantMode must use S1=64, S2=512, D=128, DV=128 config");
+    QBSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned64,
+                 S2TemplateType::Aligned512, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
+                 RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
+#else
     if constexpr (QUANT_MODE == MXFullQuantMode) {
         // MX 当前支持 TND + PA BNBD，S2 logical tile 为 512。
         static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
@@ -106,4 +122,5 @@ __global__ __aicore__ void quant_block_sparse_attn(
                     S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
                     RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
     }
+#endif
 }

@@ -88,66 +88,75 @@ static aclnnStatus CheckSingleParamQbsa(int64_t batchSize, int64_t numHeadsQ, in
 static aclnnStatus CheckExistenceQbsa(const aclTensor *sparseSeqLen, const aclTensor *cuSeqlensQOptional,
                                       const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
                                       const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t numHeadsQ,
-                                      uint32_t aicCoreNum, uint32_t aivCoreNum, const char *socVersion,
-                                      const aclTensor *metadata)
-{
-    if (sparseSeqLen == nullptr) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen is nullptr");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (sparseSeqLen->GetViewShape().GetDimNum() != 2 && sparseSeqLen->GetViewShape().GetDimNum() != 3) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen must be 2D or 3D tensor");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (sparseSeqLen->GetDataType() != ACL_INT32) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen dtype must be INT32");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    // metadata
-    if (metadata == nullptr) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata must not be null");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (metadata->GetViewShape().GetDimNum() != 1) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata must be 1D tensor, but got %ld dims",
-                metadata->GetViewShape().GetDimNum());
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    uint64_t minMetaSize = optiling::QBSA_HEAD_METADATA_SIZE +
-                           static_cast<uint64_t>(batchSize) * static_cast<uint64_t>(numHeadsQ) *
-                               optiling::AIC_CORE_NUM * optiling::QBSA_METADATA_SIZE +
-                           static_cast<uint64_t>(optiling::AIV_CORE_NUM) * optiling::FD_METADATA_SIZE;
-    if (metadata->GetViewShape().GetDim(0) < static_cast<int64_t>(minMetaSize)) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata shape too small, need at least %llu int32, but got %ld",
-                static_cast<unsigned long long>(minMetaSize), metadata->GetViewShape().GetDim(0));
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (metadata->GetDataType() != ACL_INT32) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata dtype must be INT32");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    // platform
-    if (aicCoreNum <= 0) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "aicCoreNum must be > 0, but got %u", aicCoreNum);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (aivCoreNum <= 0) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "aivCoreNum must be > 0, but got %u", aivCoreNum);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    return ACLNN_SUCCESS;
+                                      int64_t quantMode, uint32_t aicCoreNum, uint32_t aivCoreNum,
+                                      const char *socVersion, const aclTensor *metadata) {
+  if (sparseSeqLen == nullptr) {
+    OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen is nullptr");
+    return ACLNN_ERR_PARAM_INVALID;
+  }
+  if (sparseSeqLen->GetViewShape().GetDimNum() != 2 && sparseSeqLen->GetViewShape().GetDimNum() != 3) {
+    OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen must be 2D or 3D tensor");
+    return ACLNN_ERR_PARAM_INVALID;
+  }
+  if (sparseSeqLen->GetDataType() != ACL_INT32) {
+    OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen dtype must be INT32");
+    return ACLNN_ERR_PARAM_INVALID;
+  }
+  // metadata
+  if (metadata == nullptr) {
+    OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata must not be null");
+    return ACLNN_ERR_PARAM_INVALID;
+  }
+  if (metadata->GetViewShape().GetDimNum() != 1) {
+    OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata must be 1D tensor, but got %ld dims",
+            metadata->GetViewShape().GetDimNum());
+    return ACLNN_ERR_PARAM_INVALID;
+  }
+  const optiling::MetadataSlotConfig slotConfig =
+      optiling::GetMetadataSlotConfig(socVersion, static_cast<int32_t>(quantMode));
+  uint64_t minMetaSize = optiling::QBSA_HEAD_METADATA_SIZE +
+                         static_cast<uint64_t>(batchSize) * static_cast<uint64_t>(numHeadsQ) * slotConfig.aicSlots *
+                             optiling::QBSA_METADATA_SIZE +
+                         static_cast<uint64_t>(slotConfig.aivSlots) * optiling::FD_METADATA_SIZE;
+  if (metadata->GetViewShape().GetDim(0) < static_cast<int64_t>(minMetaSize)) {
+    OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata shape too small, need at least %llu int32, but got %ld",
+            static_cast<unsigned long long>(minMetaSize), metadata->GetViewShape().GetDim(0));
+    return ACLNN_ERR_PARAM_INVALID;
+  }
+  if (metadata->GetDataType() != ACL_INT32) {
+    OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata dtype must be INT32");
+    return ACLNN_ERR_PARAM_INVALID;
+  }
+  // platform
+  if (aicCoreNum <= 0) {
+    OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "aicCoreNum must be > 0, but got %u", aicCoreNum);
+    return ACLNN_ERR_PARAM_INVALID;
+  }
+  if (aicCoreNum > slotConfig.aicSlots) {
+    OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "aicCoreNum exceeds metadata capacity, got %u, capacity %u", aicCoreNum,
+            slotConfig.aicSlots);
+    return ACLNN_ERR_PARAM_INVALID;
+  }
+  if (aivCoreNum <= 0) {
+    OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "aivCoreNum must be > 0, but got %u", aivCoreNum);
+    return ACLNN_ERR_PARAM_INVALID;
+  }
+  if (aivCoreNum > slotConfig.aivSlots) {
+    OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "aivCoreNum exceeds metadata capacity, got %u, capacity %u", aivCoreNum,
+            slotConfig.aivSlots);
+    return ACLNN_ERR_PARAM_INVALID;
+  }
+  return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckConsistencyQbsa(int64_t numHeadsQ, int64_t numHeadsKv)
-{
-    if (numHeadsKv != 0 && numHeadsQ % numHeadsKv != 0) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
-                "numHeadsQ must be divisible by numHeadsKv, but got numHeadsQ=%ld, numHeadsKv=%ld", numHeadsQ,
-                numHeadsKv);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    // TODO: validate Q/KV batch consistency
-    return ACLNN_SUCCESS;
+static aclnnStatus CheckConsistencyQbsa(int64_t numHeadsQ, int64_t numHeadsKv) {
+  if (numHeadsKv != 0 && numHeadsQ % numHeadsKv != 0) {
+    OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "numHeadsQ must be divisible by numHeadsKv, but got numHeadsQ=%ld, numHeadsKv=%ld",
+            numHeadsQ, numHeadsKv);
+    return ACLNN_ERR_PARAM_INVALID;
+  }
+  // TODO: validate Q/KV batch consistency
+  return ACLNN_SUCCESS;
 }
 
 static aclnnStatus ParamsCheck(const aclTensor *sparseSeqLen, const aclTensor *cuSeqlensQOptional,
@@ -164,7 +173,7 @@ static aclnnStatus ParamsCheck(const aclTensor *sparseSeqLen, const aclTensor *c
                              maskMode, layoutSparseIndicesOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckExistenceQbsa(sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
-                             batchSize, numHeadsQ, aicCoreNum, aivCoreNum, socVersion, metadata);
+                             batchSize, numHeadsQ, quantMode, aicCoreNum, aivCoreNum, socVersion, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckConsistencyQbsa(numHeadsQ, numHeadsKv);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
