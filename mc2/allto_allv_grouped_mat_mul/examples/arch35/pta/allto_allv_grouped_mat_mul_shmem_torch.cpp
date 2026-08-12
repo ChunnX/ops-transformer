@@ -63,7 +63,12 @@ aclrtStream GetCurrentStream()
 
 void CheckAcl(int32_t status, const char *api, int64_t rank)
 {
-    TORCH_CHECK(status == ACL_SUCCESS, api, " failed on rank ", rank, ", ret=", status);
+    if (status == ACL_SUCCESS) {
+        return;
+    }
+    const char *detail = aclGetRecentErrMsg();
+    TORCH_CHECK(false, api, " failed on rank ", rank, ", ret=", status,
+                ", detail=", detail == nullptr ? "<none>" : detail);
 }
 
 void CheckShmem(int64_t status, const char *api, int64_t rank)

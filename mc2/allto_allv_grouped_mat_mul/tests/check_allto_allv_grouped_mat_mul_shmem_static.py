@@ -174,6 +174,7 @@ def check_pta_bridge() -> None:
         "aclshmem_malloc",
         "aclshmem_calloc",
         "aclrtMemcpyAsync",
+        "aclGetRecentErrMsg",
         "aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize",
         "aclnnAlltoAllvGroupedMatMulV2(",
         "aclrtSynchronizeStream",
