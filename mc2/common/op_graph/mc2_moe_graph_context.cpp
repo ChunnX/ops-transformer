@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <dlfcn.h>
+#include <mutex>
 #include "mc2_common_log.h"
 #include "mc2_moe_context.h"
 #include "graph/operator_factory.h"
@@ -362,6 +363,10 @@ bool Mc2MoeGraphContext::GetContextData(const std::string &groupEp, std::vector<
         OPS_LOG_E(CONTEXT_NAME, "groupEp is empty.");
         return false;
     }
+    // GE 多线程并行编译时多个 pass 会并发走到这里，静态缓存必须加锁，
+    // 否则并发 find/emplace 导致 map 损坏，拷进 Const 的就是堆垃圾（偶发 AIC trap 的嫌疑点）
+    static std::mutex cacheMutex;
+    std::lock_guard<std::mutex> lock(cacheMutex);
     Mc2MoeGraphContext &manager = GetInstance();
     auto iter = manager.contextCache_.find(groupEp);
     if (iter != manager.contextCache_.end()) {
@@ -391,7 +396,9 @@ ge::graphStatus Mc2MoeGraphContext::CreateContextConstNode(ge::Graph &graph, con
     const size_t dataLen = contextData.size() * sizeof(int32_t);
     ge::Shape shape({static_cast<int64_t>(contextData.size())});
     ge::TensorDesc tensorDesc(shape, ge::FORMAT_ND, ge::DT_INT32);
-    ge::Tensor tensorValue(tensorDesc, reinterpret_cast<const uint8_t *>(contextData.data()), dataLen);
+    // 移动构造让 Tensor 持有数据所有权，避免依赖调用方 vector 生命周期
+    std::vector<uint8_t> tensorData(reinterpret_cast<const uint8_t *>(contextData.data()),
+                                    reinterpret_cast<const uint8_t *>(contextData.data()) + dataLen);
 
     auto constOp = ge::OperatorFactory::CreateOperator(constName, "Const");
     if (constOp.IsEmpty()) {
@@ -399,14 +406,14 @@ ge::graphStatus Mc2MoeGraphContext::CreateContextConstNode(ge::Graph &graph, con
         return ge::GRAPH_FAILED;
     }
     constOp.UpdateOutputDesc(0U, tensorDesc);
-    constOp.SetAttr("value", tensorValue);
+    constOp.SetAttr("value", ge::Tensor(std::move(tensorDesc), std::move(tensorData)));
 
     constNode = graph.AddNodeByOp(constOp);
     OPS_LOG_I(CONTEXT_NAME, "Context Const node %s added, data len %zu.", constName.c_str(), dataLen);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::GNode Mc2MoeGraphContext::FindContextConstNode(ge::Graph &graph, const std::string &groupEp)
+bool Mc2MoeGraphContext::FindContextConstNode(ge::Graph &graph, const std::string &groupEp, ge::GNode &constNode)
 {
     const std::string constName = kContextConstNamePrefix + groupEp;
     for (auto &gNode : graph.GetDirectNode()) {
@@ -415,10 +422,11 @@ ge::GNode Mc2MoeGraphContext::FindContextConstNode(ge::Graph &graph, const std::
         if (gNode.GetName(name) == ge::GRAPH_SUCCESS && name.GetString() != nullptr &&
             constName == name.GetString() && gNode.GetType(type) == ge::GRAPH_SUCCESS &&
             type.GetString() != nullptr && std::string(type.GetString()) == "Const") {
-            return gNode;
+            constNode = gNode;
+            return true;
         }
     }
-    return ge::GNode();
+    return false;
 }
 } // namespace ops
 #endif // HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION

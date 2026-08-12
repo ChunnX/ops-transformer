@@ -46,7 +46,7 @@ public:
                                                   const std::vector<int32_t> &contextData, ge::GNode &constNode);
 
     // 按 groupEp 在图中查找已存在的 context Const 节点（dispatch/combine 两个 pass 共享同一个）
-    static ge::GNode FindContextConstNode(ge::Graph &graph, const std::string &groupEp);
+    static bool FindContextConstNode(ge::Graph &graph, const std::string &groupEp, ge::GNode &constNode);
 
 private:
     static constexpr const char *kContextConstNamePrefix = "mc2_moe_context_";

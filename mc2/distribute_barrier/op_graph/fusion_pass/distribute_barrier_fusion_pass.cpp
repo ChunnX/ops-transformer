@@ -232,6 +232,9 @@ ge::graphStatus DistributeBarrierFusionPass::Run(ge::GraphPtr &graph, ge::Custom
     if (graph == nullptr) {
         return ge::GRAPH_FAILED;
     }
+    // 暂时禁用：barrier V1 图模式走 GetHcclContext 本就可工作，转 Extend 的编译期 Const context 存在 device 数据不可靠问题
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "pass disabled temporarily, barrier node kept as-is.");
+    return ge::GRAPH_SUCCESS;
     // 9.0.0 版本前运行降级空跑
     int32_t geCompilerVersion = 0;
     aclsysGetVersionNum("ge_compiler", &geCompilerVersion);
@@ -265,9 +268,8 @@ ge::graphStatus DistributeBarrierFusionPass::Run(ge::GraphPtr &graph, ge::Custom
                 continue;
             }
             // 先按名查重：D&C 的 pass 可能已为本通信域创建过 context Const
-            ge::GNode contextNode = ops::Mc2MoeGraphContext::FindContextConstNode(*graph, groupStr);
-            ge::AscendString tmpType;
-            if (contextNode.GetType(tmpType) != ge::GRAPH_SUCCESS) {
+            ge::GNode contextNode;
+            if (!ops::Mc2MoeGraphContext::FindContextConstNode(*graph, groupStr, contextNode)) {
                 if (ops::Mc2MoeGraphContext::CreateContextConstNode(*graph, groupStr, contextData, contextNode) !=
                     ge::GRAPH_SUCCESS) {
                     continue;
