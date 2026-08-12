@@ -246,7 +246,12 @@ private:
     void CalcOriMaskMode();
     void CalcCmpMaskMode();
     ValidSocVersion ProcessSocVersion();
+    // paramsCheck
     bool ParamsCheck();
+    bool CheckCuSeqLen(int32_t batchSize);
+    bool CheckSeqLen(int32_t batchSize);
+    bool CheckTopkLength(int32_t batchSize);
+    bool CheckFeature(int32_t batchSize);
     int32_t GetSumOfQuerySeq();
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);

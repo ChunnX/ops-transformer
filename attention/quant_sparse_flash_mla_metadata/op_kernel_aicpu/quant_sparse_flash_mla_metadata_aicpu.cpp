@@ -88,6 +88,14 @@ bool QuantSparseFlashMlaMetadataCpuKernel::ParamsCheck()
         return false;
     }
     int32_t batchSize = GetQueryBatchSize();
+    return (CheckSeqLen(batchSize) &&
+            CheckCuSeqLen(batchSize) &&
+            CheckTopkLength(batchSize) &&
+            CheckFeature(batchSize));
+}
+
+bool QuantSparseFlashMlaMetadataCpuKernel::CheckCuSeqLen(int32_t batchSize)
+{
     // 校验 cu_seqlens_q 元素
     if (layoutQ_ == "TND") {
         if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
@@ -106,18 +114,6 @@ bool QuantSparseFlashMlaMetadataCpuKernel::ParamsCheck()
                                      i - 1, cuSeqlensQPtr[i - 1], i, cuSeqlensQPtr[i]);
                     return false;
                 }
-            }
-        }
-    }
-    // 校验 seqused_q 元素
-    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-        const int32_t *sequsedQPtr = static_cast<const int32_t *>(sequsedQ_->GetData());
-        for (int i = 0; i < batchSize; i++) {
-            // 校验 seqused_q 元素非负
-            if (sequsedQPtr[i] < 0) {
-                KERNEL_LOG_ERROR("The elements in seqused_q should be >= 0, but got seqused_q[%d] = %d", i,
-                                 sequsedQPtr[i]);
-                return false;
             }
         }
     }
@@ -141,42 +137,6 @@ bool QuantSparseFlashMlaMetadataCpuKernel::ParamsCheck()
                                          i - 1, cuSeqlensOriKvPtr[i - 1], i, cuSeqlensOriKvPtr[i]);
                         return false;
                     }
-                }
-            }
-        }
-        // 校验 seqused_ori_kv 元素
-        if (sequsedOriKv_ != nullptr && sequsedOriKv_->GetData() != nullptr) {
-            const int32_t *sequsedOriKvPtr = static_cast<const int32_t *>(sequsedOriKv_->GetData());
-            for (int i = 0; i < batchSize; i++) {
-                // 校验 seqused_ori_kv 元素非负
-                if (sequsedOriKvPtr[i] < 0) {
-                    KERNEL_LOG_ERROR("The elements in seqused_ori_kv should be >= 0, but got seqused_ori_kv[%d] = %d",
-                                     i, sequsedOriKvPtr[i]);
-                    return false;
-                }
-            }
-        }
-        // 校验 ori_topk_length 元素
-        if (oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
-            // 校验 ori_topk_length 元素数量
-            int32_t sumOfQuerySeq = GetSumOfQuerySeq();
-            const int32_t *oriTopkLengthPtr = static_cast<const int32_t*>(oriTopkLength_->GetData());
-            auto oriTopkLengthShape = oriTopkLength_->GetTensorShape();
-            int32_t oriTopkLengthSize = layoutQ_ == "TND" ?
-                oriTopkLengthShape->GetDimSize(0) * oriTopkLengthShape->GetDimSize(1) :
-                oriTopkLengthShape->GetDimSize(0) * oriTopkLengthShape->GetDimSize(1) *
-                    oriTopkLengthShape->GetDimSize(2);
-            if (oriTopkLengthSize < sumOfQuerySeq) {
-                KERNEL_LOG_ERROR("The size of ori_topk_length %d should not be smaller than "
-                    "the sum of query sequence %d!", oriTopkLengthSize, sumOfQuerySeq);
-                return false;
-            }
-            // 校验 ori_topk_length 元素非负
-            for (int i = 0; i < oriTopkLengthSize; i++) {
-                if (oriTopkLengthPtr[i] < 0) {
-                    KERNEL_LOG_ERROR("The elements in ori_topk_length should be >= 0, but got ori_topk_length[%d] = %d",
-                        i, oriTopkLengthPtr[i]);
-                    return false;
                 }
             }
         }
@@ -204,6 +164,39 @@ bool QuantSparseFlashMlaMetadataCpuKernel::ParamsCheck()
                 }
             }
         }
+    }
+    return true;
+}
+
+bool QuantSparseFlashMlaMetadataCpuKernel::CheckSeqLen(int32_t batchSize)
+{
+    // 校验 seqused_q 元素
+    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
+        const int32_t *sequsedQPtr = static_cast<const int32_t *>(sequsedQ_->GetData());
+        for (int i = 0; i < batchSize; i++) {
+            // 校验 seqused_q 元素非负
+            if (sequsedQPtr[i] < 0) {
+                KERNEL_LOG_ERROR("The elements in seqused_q should be >= 0, but got seqused_q[%d] = %d", i,
+                                 sequsedQPtr[i]);
+                return false;
+            }
+        }
+    }
+    if (hasOriKv_) {
+        // 校验 seqused_ori_kv 元素
+        if (sequsedOriKv_ != nullptr && sequsedOriKv_->GetData() != nullptr) {
+            const int32_t *sequsedOriKvPtr = static_cast<const int32_t *>(sequsedOriKv_->GetData());
+            for (int i = 0; i < batchSize; i++) {
+                // 校验 seqused_ori_kv 元素非负
+                if (sequsedOriKvPtr[i] < 0) {
+                    KERNEL_LOG_ERROR("The elements in seqused_ori_kv should be >= 0, but got seqused_ori_kv[%d] = %d",
+                                     i, sequsedOriKvPtr[i]);
+                    return false;
+                }
+            }
+        }
+    }
+    if (hasCmpKv_) {
         // 校验 seqused_cmp_kv 元素
         if (sequsedCmpKv_ != nullptr && sequsedCmpKv_->GetData() != nullptr) {
             const int32_t *sequsedCmpKvPtr = static_cast<const int32_t *>(sequsedCmpKv_->GetData());
@@ -216,18 +209,39 @@ bool QuantSparseFlashMlaMetadataCpuKernel::ParamsCheck()
                 }
             }
         }
-        // 校验 cmp_residual_kv 元素
-        if (cmpResidualKv_ != nullptr && cmpResidualKv_->GetData() != nullptr) {
-            const int32_t *cmpResidualKvPtr = static_cast<const int32_t *>(cmpResidualKv_->GetData());
-            for (int i = 0; i < batchSize; i++) {
-                // 校验 cmp_residual_kv 元素非负
-                if (cmpResidualKvPtr[i] < 0 || cmpResidualKvPtr[i] >= cmpRatio_) {
-                    KERNEL_LOG_ERROR("The elements in cmp_residual_kv should be in [0, cmpRatio_), but got "
-                        "cmp_residual_kv[%d] = %d", i, cmpResidualKvPtr[i]);
+    }
+    return true;
+}
+
+bool QuantSparseFlashMlaMetadataCpuKernel::CheckTopkLength(int32_t batchSize)
+{
+    if (hasOriKv_) {
+        // 校验 ori_topk_length 元素
+        if (oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
+            // 校验 ori_topk_length 元素数量
+            int32_t sumOfQuerySeq = GetSumOfQuerySeq();
+            const int32_t *oriTopkLengthPtr = static_cast<const int32_t*>(oriTopkLength_->GetData());
+            auto oriTopkLengthShape = oriTopkLength_->GetTensorShape();
+            int32_t oriTopkLengthSize = layoutQ_ == "TND" ?
+                oriTopkLengthShape->GetDimSize(0) * oriTopkLengthShape->GetDimSize(1) :
+                oriTopkLengthShape->GetDimSize(0) * oriTopkLengthShape->GetDimSize(1) *
+                    oriTopkLengthShape->GetDimSize(2);
+            if (oriTopkLengthSize < sumOfQuerySeq) {
+                KERNEL_LOG_ERROR("The size of ori_topk_length %d should not be smaller than "
+                    "the sum of query sequence %d!", oriTopkLengthSize, sumOfQuerySeq);
+                return false;
+            }
+            // 校验 ori_topk_length 元素非负
+            for (int i = 0; i < oriTopkLengthSize; i++) {
+                if (oriTopkLengthPtr[i] < 0) {
+                    KERNEL_LOG_ERROR("The elements in ori_topk_length should be >= 0, but got ori_topk_length[%d] = %d",
+                        i, oriTopkLengthPtr[i]);
                     return false;
                 }
             }
         }
+    }
+    if (hasCmpKv_) {
         // 校验 cmp_topk_length 元素
         if (cmpTopkLength_ != nullptr && cmpTopkLength_->GetData() != nullptr) {
             // 校验 cmp_topk_length 元素数量
@@ -250,6 +264,23 @@ bool QuantSparseFlashMlaMetadataCpuKernel::ParamsCheck()
                         i, cmpTopkLengthPtr[i]);
                     return false;
                 }
+            }
+        }
+    }
+    return true;
+}
+
+bool QuantSparseFlashMlaMetadataCpuKernel::CheckFeature(int32_t batchSize)
+{
+    // 校验 cmp_residual_kv 元素
+    if (cmpResidualKv_ != nullptr && cmpResidualKv_->GetData() != nullptr) {
+        const int32_t *cmpResidualKvPtr = static_cast<const int32_t *>(cmpResidualKv_->GetData());
+        for (int i = 0; i < batchSize; i++) {
+            // 校验 cmp_residual_kv 元素非负
+            if (cmpResidualKvPtr[i] < 0 || cmpResidualKvPtr[i] >= cmpRatio_) {
+                KERNEL_LOG_ERROR("The elements in cmp_residual_kv should be in [0, cmpRatio_), but got "
+                    "cmp_residual_kv[%d] = %d", i, cmpResidualKvPtr[i]);
+                return false;
             }
         }
     }
