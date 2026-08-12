@@ -55,19 +55,19 @@ def _numpy_compare(npu_out, golden_out, output_name):
     npu = _as_numpy(npu_out)
     golden = _as_numpy(golden_out)
 
-    if npu.size == 0 and golden.size == 0:
-        return {"pass": True, "precision": 100.0}
-
-    if npu.size != golden.size:
+    if npu.shape != golden.shape:
         return {
             "pass": False,
-            "precision": "size_mismatch",
+            "precision": "shape_mismatch",
             "error_info": (
-                f"{output_name} size mismatch: npu={npu.size}, "
-                f"golden={golden.size}, npu_shape={tuple(npu.shape)}, "
+                f"{output_name} shape mismatch: "
+                f"npu_shape={tuple(npu.shape)}, "
                 f"golden_shape={tuple(golden.shape)}"
             ),
         }
+
+    if npu.size == 0:
+        return {"pass": True, "precision": 100.0}
 
     rtol, atol = _compare_tolerance(npu_out, golden_out)
     npu_f32 = npu.astype(np.float32, copy=False).reshape(-1)
