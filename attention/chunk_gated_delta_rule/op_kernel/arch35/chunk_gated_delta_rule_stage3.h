@@ -114,15 +114,17 @@ public:
                 if (GetSubBlockIdx() == 0) {
                     CalMaskedQKT(tmpGM_[coreId_ * chunkSize_ * chunkSize_], nvId, chunkPos);
                 }
-                CrossCoreSetFlag<0x2, PIPE_MTE3>(0x4);
-                CrossCoreWaitFlag(0x3);
+                CrossCoreSetFlag<0x4, PIPE_MTE3>(0x4);
+                CrossCoreWaitFlag<0x4, PIPE_S>(0x3);
             }
 
             if ASCEND_IS_AIC {
-                CrossCoreWaitFlag(0x4);
+                CrossCoreWaitFlag<0x4, PIPE_S>(0x4 + FLAG_ID_MAX);
+                CrossCoreWaitFlag<0x4, PIPE_S>(0x4);
                 AICProcess(tmpGM_[coreId_ * chunkSize_ * chunkSize_], sTP_->vInner[nvId * Sp_ * Dv_ + chunkPos * Dv_],
                            sTP_->attnOut[nvId * Dv_ + chunkPos * Nv_ * Dv_]);
-                CrossCoreSetFlag<0x2, PIPE_FIX>(0x3);
+                CrossCoreSetFlag<0x4, PIPE_FIX>(0x3 + FLAG_ID_MAX);
+                CrossCoreSetFlag<0x4, PIPE_FIX>(0x3);
             }
         }
     }

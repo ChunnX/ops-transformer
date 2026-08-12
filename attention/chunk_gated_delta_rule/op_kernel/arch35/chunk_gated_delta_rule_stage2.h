@@ -168,15 +168,15 @@ public:
             outQueue_.EnQue(fp32Local);
             CopyOut<float>(sTP_->stateOut[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
         }
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
-        CrossCoreWaitFlag(0x2);
+        CrossCoreSetFlag<0x4, PIPE_MTE3>(0x3);
+        CrossCoreWaitFlag<0x4, PIPE_S>(0x2);
         if (GetSubBlockIdx() == 0) {
             PipeBarrier<PIPE_MTE3>();
             uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
             CastGmToGm<float, bfloat16_t>(sTP_->vInner[mm_offset1], sTP_->vInnerBf16[mm_offset1], curChunkSize_ * Dv_);
         }
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
-        CrossCoreWaitFlag(0x4);
+        CrossCoreSetFlag<0x4, PIPE_MTE3>(0x5);
+        CrossCoreWaitFlag<0x4, PIPE_S>(0x4);
     }
 
     __aicore__ inline void ProcessAivBf16(int64_t nvId, int64_t cId, int64_t length)
@@ -187,12 +187,12 @@ public:
             CopyIn(curState, Dv_, Dk_);
             CalGCumExpBf16(sTP_->gCum[nvId * Sp_ + length]);
         }
-        CrossCoreWaitFlag(0x2);
+        CrossCoreWaitFlag<0x4, PIPE_S>(0x2);
         if (GetSubBlockIdx() == 0) {
             CopyOutState(finalState);
         }
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
-        CrossCoreWaitFlag(0x4);
+        CrossCoreSetFlag<0x4, PIPE_MTE3>(0x5);
+        CrossCoreWaitFlag<0x4, PIPE_S>(0x4);
     }
 
     __aicore__ inline void ProcessAic(int64_t nvId, int64_t cId, int64_t length)
@@ -202,15 +202,18 @@ public:
         auto stateOut = sTP_->stateOut[nvId * Dv_ * Dk_];
         GlobalTensor<bfloat16_t> stateForAic;
         if constexpr (kIsFp32) {
-            CrossCoreWaitFlag(0x3);
+            CrossCoreWaitFlag<0x4, PIPE_S>(0x3 + FLAG_ID_MAX);
+            CrossCoreWaitFlag<0x4, PIPE_S>(0x3);
             stateForAic = sTP_->curStateBf16[nvId * Dv_ * Dk_];
         } else {
             stateForAic = (cId == 0) ? sTP_->curStateBf16[nvId * stateStride1_] : sTP_->stateOut[nvId * Dv_ * Dk_];
         }
         CalVPrime(sTP_->kCumdecay[mm_offset0], stateForAic, sTP_->vInner[mm_offset1]);
         CalAttnInter(sTP_->qPrime[mm_offset0], stateForAic, sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
-        CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
-        CrossCoreWaitFlag(0x5);
+        CrossCoreSetFlag<0x4, PIPE_FIX>(0x2 + FLAG_ID_MAX);
+        CrossCoreSetFlag<0x4, PIPE_FIX>(0x2);
+        CrossCoreWaitFlag<0x4, PIPE_S>(0x5 + FLAG_ID_MAX);
+        CrossCoreWaitFlag<0x4, PIPE_S>(0x5);
         if constexpr (kIsFp32) {
             CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->kg[mm_offset0], stateOut);
         } else {
@@ -218,7 +221,8 @@ public:
             SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
             WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
         }
-        CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
+        CrossCoreSetFlag<0x4, PIPE_FIX>(0x4 + FLAG_ID_MAX);
+        CrossCoreSetFlag<0x4, PIPE_FIX>(0x4);
     }
 
     __aicore__ inline void CalGCumExpFp32(GlobalTensor<float> gCum)
@@ -232,6 +236,8 @@ public:
         SetFlag<HardEvent::S_V>(S_V_EVENT);
         WaitFlag<HardEvent::S_V>(S_V_EVENT);
         Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
+        SetFlag<HardEvent::V_S>(V_S_EVENT);
+        WaitFlag<HardEvent::V_S>(V_S_EVENT);
         float tmpFloat = lastGCum_.GetValue(0);
         SetFlag<HardEvent::S_V>(S_V_EVENT);
         WaitFlag<HardEvent::S_V>(S_V_EVENT);
@@ -249,6 +255,8 @@ public:
             SetFlag<HardEvent::S_V>(S_V_EVENT);
             WaitFlag<HardEvent::S_V>(S_V_EVENT);
             Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
+            SetFlag<HardEvent::V_S>(V_S_EVENT);
+            WaitFlag<HardEvent::V_S>(V_S_EVENT);
         } else {
             lastGCum_.SetValue(0, 1.0f);
         }

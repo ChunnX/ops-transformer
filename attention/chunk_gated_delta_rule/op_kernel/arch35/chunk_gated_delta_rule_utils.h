@@ -33,6 +33,8 @@ constexpr uint64_t FIX_MTE2_EVENT = 6;
 constexpr uint64_t S_MTE3_EVENT = 6;
 constexpr uint64_t V_MTE2_EVENT = 7;
 
+constexpr uint64_t FLAG_ID_MAX = 16;
+
 constexpr uint64_t NUM_ONE = 1;
 constexpr uint64_t BUFFER_NUM_ONE = 1;
 constexpr uint64_t BUFFER_NUM_TWO = 2;
