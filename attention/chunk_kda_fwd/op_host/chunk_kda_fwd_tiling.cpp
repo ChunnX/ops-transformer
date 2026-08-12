@@ -210,8 +210,12 @@ ge::graphStatus Tiling4ChunkKdaFwd(gert::TilingContext *context)
     const bool storeH = HasOutput(context, OUTPUT_H_IDX);
 
     const auto platform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    // ASCEND910_95 is the legacy name of the Ascend950 SoC. It is the only name
+    // present in both CANN 8.5.2 and later releases (ASCEND950 was introduced as
+    // an alias in newer versions), so using it keeps the host code compilable on
+    // CANN 8.5.2 while remaining functionally equivalent on newer toolkits.
     const bool isAscend950 =
-        platform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND950;
+        platform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910_95;
     const uint32_t physicalCoreNum =
         std::max<uint32_t>(platform.GetCoreNumAic(), 1);
     const uint64_t fwdHTaskCount = static_cast<uint64_t>(
