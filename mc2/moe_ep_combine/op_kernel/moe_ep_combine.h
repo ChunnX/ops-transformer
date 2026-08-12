@@ -79,8 +79,9 @@ static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {
     .odr = 5,
     .fence = 1,
     .se = 0,
-    .cqe = 1,
-    .inlineEn = 0};
+    .cqe = 0,
+    .inlineEn = 0
+};
 
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
@@ -366,7 +367,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendSlot(
         hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DEFAULT_WQE_CONFIG>(
             commHandle, remoteRankWinAddr + sendTokenOffset, tokenAddr, axisH_ * sizeof(XType),
             remoteRankStateAddr + recvStateOffset, notifyValue);
-        hcomm_.Drain(commHandle);
     } else {
         CopyTokenToQueue(tokenIndex);
         CopyTokenFromQueue(remoteRankWinAddr + sendTokenOffset);
