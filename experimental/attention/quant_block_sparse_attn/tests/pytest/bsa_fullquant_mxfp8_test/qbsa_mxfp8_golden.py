@@ -52,6 +52,7 @@ _CUSTOM_OPS_IMPORTED = False
 _DEFAULT_CASE_FILE = "qbsa_mxfp8_test_cases"
 _DEFAULT_CASE_CSV = "qbsa_mxfp8_test_cases.csv"
 _CASE_LOG_WIDTH = 100
+
 _DTYPE_MAP = {
     "float8_e4m3fn": torch.float8_e4m3fn,
     "float8_e8m0fnu": torch.float8_e8m0fnu,
@@ -1180,12 +1181,15 @@ def _align_up_to_ln2(value):
     return (torch.ceil(value_npu * INV_LN2) * LN2).cpu()
 
 
-def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale, score_scale):
-    """Run C1 with the same K x Q^T orientation used by the QBSA cube."""
-    for scale_name, scale_tensor in (("Q", q_scale), ("K", k_scale)):
-        scale_fp32 = scale_tensor.to(torch.float32)
-        valid_scale = torch.isfinite(scale_fp32) & (scale_fp32 > 0)
-        scale_exponent = torch.log2(scale_fp32)
+def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax_scale):
+    """CPU torch.matmul path: FP32 dequant + matmul."""
+    q_dequant = q_block * _expand_d_group_scale(q_scale_block, head_dim)
+    k_dequant = k_mat * _expand_d_group_scale(k_scale_mat, head_dim)
+    return torch.matmul(q_dequant, k_dequant.transpose(0, 1)) * softmax_scale
+
+
+def _npu_mxfp8_qk_matmul_impl(q_fp8, k_fp8, q_scale, k_scale, score_scale):
+    """C1 QK matmul via npu_quant_matmul (K x Q^T orientation matching cube)."""
 
     d_group_count = q_fp8.shape[1] // QUANT_GROUP_SIZE
 
@@ -1213,7 +1217,7 @@ def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale, score_scale):
     expected_scale_shape_q = (q_fp8.shape[0], d_group_count // 2, 2)
     expected_scale_shape_k = (k_fp8.shape[0], d_group_count // 2, 2)
     e8m0_dtype = torch_npu.float8_e8m0fnu
-    
+
     # QBSA C1 is K[S2,D] x Q^T[D,M], not Q[M,D] x K^T[D,S2].
     # The two expressions are mathematical transposes, but MXFP8 cube
     # tiling and accumulation rounding are orientation-dependent.  The
@@ -1234,8 +1238,32 @@ def _npu_mxfp8_qk_matmul(q_fp8, k_fp8, q_scale, k_scale, score_scale):
     scores_npu = scores_npu * float(score_scale)
     if m_orig < min_m:
         scores_npu = scores_npu[:m_orig, :]
-    
+
     return scores_npu.cpu()
+
+
+def _qk_matmul_npu(q_block, k_mat, q_scale_block, k_scale_mat, softmax_scale):
+    """NPU npu_quant_matmul path for C1 QK."""
+    return _npu_mxfp8_qk_matmul_impl(
+        q_block, k_mat, q_scale_block, k_scale_mat, softmax_scale
+    )
+
+
+def _qk_matmul(
+    q_block,
+    q_scale_block,
+    k_mat,
+    k_scale_mat,
+    head_dim,
+    softmax_scale,
+    use_quant_matmul,
+):
+    """Dispatch C1 QK matmul to CPU or NPU path."""
+    if use_quant_matmul:
+        return _qk_matmul_npu(q_block, k_mat, q_scale_block, k_scale_mat, softmax_scale)
+    return _qk_matmul_cpu(
+        q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax_scale
+    )
 
 
 def _npu_exp_sub(lhs, rhs):
@@ -1245,14 +1273,8 @@ def _npu_exp_sub(lhs, rhs):
     return torch.exp(lhs_npu - rhs_npu).cpu()
 
 
-def _npu_mxfp8_pv_matmul(p_fp8, v_fp8, p_scale, v_scale):
-    """Run one VF C2 tile with the NPU MXFP8 grouped-matmul semantics.
-
-    ``p_scale`` and ``v_scale`` are logical FP32 scale values with shapes
-    ``[M, K/32]`` and ``[K/32, N]``.  They are packed to the physical E8M0
-    pair layouts consumed by ``npu_quant_matmul``.
-    """
-    
+def _npu_mxfp8_pv_matmul_impl(p_fp8, v_fp8, p_scale, v_scale):
+    """C2 PV matmul via npu_quant_matmul."""
 
     m_size, k_size = p_fp8.shape
     n_size = v_fp8.shape[1]
@@ -1281,7 +1303,7 @@ def _npu_mxfp8_pv_matmul(p_fp8, v_fp8, p_scale, v_scale):
     v_scale_npu = v_scale_packed.contiguous().npu()
 
     e8m0_dtype = torch_npu.float8_e8m0fnu
-    
+
     result_npu = torch_npu.npu_quant_matmul(
         p_npu,
         v_npu,
@@ -1294,6 +1316,164 @@ def _npu_mxfp8_pv_matmul(p_fp8, v_fp8, p_scale, v_scale):
     )
 
     return result_npu.cpu()
+
+
+def _pv_matmul_cpu(
+    subloop_results,
+    m_new,
+    v_tensor,
+    v_scale,
+    physical_blocks,
+    block_offsets,
+    n2_idx,
+    nq,
+    head_dim,
+    l_run,
+):
+    """CPU torch.matmul path for C2 PV accumulation."""
+    pv = torch.zeros((nq, head_dim), dtype=torch.float32)
+    round_sum = torch.zeros_like(l_run)
+    for (
+        subloop_start,
+        subloop_end,
+        subloop_max,
+        p_subloop,
+        p_quant_subloop,
+    ) in subloop_results:
+        subloop_rescale = torch.where(
+            torch.isfinite(subloop_max) & torch.isfinite(m_new),
+            torch.exp(subloop_max - m_new),
+            torch.zeros_like(m_new),
+        )
+        subloop_rescale = torch.where(
+            torch.isfinite(subloop_rescale),
+            subloop_rescale,
+            torch.zeros_like(subloop_rescale),
+        )
+        spb = physical_blocks[subloop_start:subloop_end]
+        sbo = block_offsets[subloop_start:subloop_end]
+        v_mat = v_tensor[spb, n2_idx, sbo, :]
+        v_group_idx = torch.div(sbo, QUANT_GROUP_SIZE, rounding_mode="floor")
+        v_scale_mat = v_scale[spb, n2_idx, v_group_idx, :].to(torch.float32)
+        v_dequant = v_mat * v_scale_mat
+        pv += torch.matmul(p_quant_subloop * subloop_rescale.view(nq, 1), v_dequant)
+        round_sum += p_subloop.sum(dim=-1) * subloop_rescale
+    return pv, round_sum
+
+
+def _pv_matmul_npu(
+    subloop_results,
+    m_new,
+    v_tensor,
+    v_scale,
+    physical_blocks,
+    block_offsets,
+    n2_idx,
+    nq,
+    l_run,
+):
+    """NPU npu_quant_matmul path for C2 PV accumulation."""
+    p_c2_chunks = []
+    p_scale_c2_chunks = []
+    v_c2_chunks = []
+    v_scale_c2_chunks = []
+    round_sum = torch.zeros_like(l_run)
+    for (
+        subloop_start,
+        subloop_end,
+        subloop_max,
+        p_subloop,
+        p_quant_subloop,
+    ) in subloop_results:
+        subloop_rescale = _npu_exp_sub(subloop_max, m_new)
+        subloop_rescale = torch.where(
+            torch.isfinite(subloop_max) & torch.isfinite(m_new),
+            subloop_rescale,
+            torch.zeros_like(m_new),
+        )
+        subloop_rescale = torch.where(
+            torch.isfinite(subloop_rescale),
+            subloop_rescale,
+            torch.zeros_like(subloop_rescale),
+        )
+        spb = physical_blocks[subloop_start:subloop_end]
+        sbo = block_offsets[subloop_start:subloop_end]
+        v_mat = v_tensor[spb, n2_idx, sbo, :]
+        v_group_idx = torch.div(sbo, QUANT_GROUP_SIZE * 2, rounding_mode="floor")
+        v_group_pair = torch.remainder(
+            torch.div(sbo, QUANT_GROUP_SIZE, rounding_mode="floor"),
+            2,
+        )
+        v_scale_mat = v_scale[spb, n2_idx, v_group_idx, :, v_group_pair].to(
+            torch.float32
+        )
+        subloop_k = subloop_end - subloop_start
+        subloop_group_count = math.ceil(subloop_k / QUANT_GROUP_SIZE)
+        p_c2_chunks.append(p_quant_subloop)
+        p_scale_c2_chunks.append(
+            subloop_rescale.view(nq, 1).expand(nq, subloop_group_count)
+        )
+        v_c2_chunks.append(v_mat)
+        v_scale_c2_chunks.append(v_scale_mat[::QUANT_GROUP_SIZE])
+        round_sum += p_subloop.sum(dim=-1) * subloop_rescale
+
+    p_c2 = torch.cat(p_c2_chunks, dim=1)
+    v_c2 = torch.cat(v_c2_chunks, dim=0)
+    p_scale_c2 = torch.cat(p_scale_c2_chunks, dim=1)
+    v_scale_c2 = torch.cat(v_scale_c2_chunks, dim=0)
+    c2_k = p_c2.shape[1]
+    c2_k_aligned = math.ceil(c2_k / 64) * 64
+    if c2_k_aligned != c2_k:
+        pad_k = c2_k_aligned - c2_k
+        pad_groups = pad_k // QUANT_GROUP_SIZE
+        p_c2 = torch.nn.functional.pad(p_c2, (0, pad_k))
+        v_c2 = torch.nn.functional.pad(v_c2, (0, 0, 0, pad_k))
+        p_scale_c2 = torch.nn.functional.pad(p_scale_c2, (0, pad_groups), value=1.0)
+        v_scale_c2 = torch.nn.functional.pad(
+            v_scale_c2, (0, 0, 0, pad_groups), value=1.0
+        )
+    pv = _npu_mxfp8_pv_matmul_impl(p_c2, v_c2, p_scale_c2, v_scale_c2)
+    return pv, round_sum
+
+
+def _pv_matmul(
+    subloop_results,
+    m_new,
+    v_tensor,
+    v_scale,
+    physical_blocks,
+    block_offsets,
+    n2_idx,
+    nq,
+    l_run,
+    head_dim,
+    use_quant_matmul,
+):
+    """Dispatch C2 PV matmul to CPU or NPU path."""
+    if use_quant_matmul:
+        return _pv_matmul_npu(
+            subloop_results,
+            m_new,
+            v_tensor,
+            v_scale,
+            physical_blocks,
+            block_offsets,
+            n2_idx,
+            nq,
+            l_run,
+        )
+    return _pv_matmul_cpu(
+        subloop_results,
+        m_new,
+        v_tensor,
+        v_scale,
+        physical_blocks,
+        block_offsets,
+        n2_idx,
+        nq,
+        head_dim,
+        l_run,
+    )
 
 
 def _positions_from_sparse(
@@ -1381,6 +1561,7 @@ def cpu_mxfp8_golden(
     sparse_indices,
     sparse_seq_len,
     block_table_torch,
+    use_quant_matmul=True,
 ):
     """Reference-style CPU golden for MXFP8 block sparse attention."""
     layout_q = canonical_q_input_layout(Q_INPUT_LAYOUT)
@@ -1465,7 +1646,8 @@ def cpu_mxfp8_golden(
         "[CPU Golden] reference sparse flow: layout_q=%s, OUT=TND, LSE=TN", layout_q
     )
     logger.info(
-        "[CPU Golden] QK/C2 path: npu_quant_matmul, MXFP8 group_size=%d",
+        "[CPU Golden] QK/C2 path: %s, MXFP8 group_size=%d",
+        "npu_quant_matmul" if use_quant_matmul else "torch.matmul (CPU)",
         QUANT_GROUP_SIZE,
     )
 
@@ -1541,12 +1723,14 @@ def cpu_mxfp8_golden(
                         q_indices, positions, q_len, kv_len
                     )
                     any_valid |= valid_mask.any(dim=-1)
-                    scores = _npu_mxfp8_qk_matmul(
+                    scores = _qk_matmul(
                         q_block,
-                        k_mat,
                         q_scale_block,
+                        k_mat,
                         k_scale_mat,
+                        head_dim,
                         softmax_scale,
+                        use_quant_matmul,
                     )
                     scores = torch.where(
                         valid_mask, scores, torch.full_like(scores, MASK_VALUE)
@@ -1629,101 +1813,18 @@ def cpu_mxfp8_golden(
                             torch.zeros_like(history_rescale),
                         )
 
-                        p_c2_chunks = []
-                        p_scale_c2_chunks = []
-                        v_c2_chunks = []
-                        v_scale_c2_chunks = []
-                        round_sum = torch.zeros_like(l_run)
-                        for (
-                            subloop_start,
-                            subloop_end,
-                            subloop_max,
-                            p_subloop,
-                            p_quant_subloop,
-                        ) in subloop_results:
-                            subloop_rescale = _npu_exp_sub(subloop_max, m_new)
-                            subloop_rescale = torch.where(
-                                torch.isfinite(subloop_max) & torch.isfinite(m_new),
-                                subloop_rescale,
-                                torch.zeros_like(m_new),
-                            )
-                            subloop_rescale = torch.where(
-                                torch.isfinite(subloop_rescale),
-                                subloop_rescale,
-                                torch.zeros_like(subloop_rescale),
-                            )
-
-                            subloop_physical_blocks = physical_blocks[
-                                subloop_start:subloop_end
-                            ]
-                            subloop_block_offsets = block_offsets[
-                                subloop_start:subloop_end
-                            ]
-                            v_mat = v_tensor[
-                                subloop_physical_blocks,
-                                n2_idx,
-                                subloop_block_offsets,
-                                :,
-                            ]
-                            v_group_idx = torch.div(
-                                subloop_block_offsets,
-                                QUANT_GROUP_SIZE * 2,
-                                rounding_mode="floor",
-                            )
-                            v_group_pair = torch.remainder(
-                                torch.div(
-                                    subloop_block_offsets,
-                                    QUANT_GROUP_SIZE,
-                                    rounding_mode="floor",
-                                ),
-                                2,
-                            )
-                            v_scale_mat = v_scale[
-                                subloop_physical_blocks,
-                                n2_idx,
-                                v_group_idx,
-                                :,
-                                v_group_pair,
-                            ].to(torch.float32)
-                            subloop_k = subloop_end - subloop_start
-                            subloop_group_count = math.ceil(
-                                subloop_k / QUANT_GROUP_SIZE
-                            )
-                            p_c2_chunks.append(p_quant_subloop)
-                            p_scale_c2_chunks.append(
-                                subloop_rescale.view(nq, 1).expand(
-                                    nq, subloop_group_count
-                                )
-                            )
-                            v_c2_chunks.append(v_mat)
-                            # v_scale_mat is constant for each 32-token group.
-                            v_scale_c2_chunks.append(
-                                v_scale_mat[::QUANT_GROUP_SIZE]
-                            )
-                            # The reverted VF accumulates FP32 exp before P is
-                            # cast to E4M3. C2 still consumes the cast P, but
-                            # new_global_sum uses the unquantized P.
-                            round_sum += p_subloop.sum(dim=-1) * subloop_rescale
-
-                        p_c2 = torch.cat(p_c2_chunks, dim=1)
-                        v_c2 = torch.cat(v_c2_chunks, dim=0)
-                        p_scale_c2 = torch.cat(p_scale_c2_chunks, dim=1)
-                        v_scale_c2 = torch.cat(v_scale_c2_chunks, dim=0)
-                        c2_k = p_c2.shape[1]
-                        c2_k_aligned = math.ceil(c2_k / 64) * 64
-                        if c2_k_aligned != c2_k:
-                            pad_k = c2_k_aligned - c2_k
-                            pad_groups = pad_k // QUANT_GROUP_SIZE
-                            p_c2 = torch.nn.functional.pad(p_c2, (0, pad_k))
-                            v_c2 = torch.nn.functional.pad(v_c2, (0, 0, 0, pad_k))
-                            p_scale_c2 = torch.nn.functional.pad(
-                                p_scale_c2, (0, pad_groups), value=1.0
-                            )
-                            v_scale_c2 = torch.nn.functional.pad(
-                                v_scale_c2, (0, 0, 0, pad_groups), value=1.0
-                            )
-                        pv = _npu_mxfp8_pv_matmul(
-                            p_c2, v_c2, p_scale_c2, v_scale_c2
+                        pv, round_sum = _pv_matmul(
+                            subloop_results,
+                            m_new,
+                            v_tensor,
+                            v_scale,
+                            physical_blocks,
+                            block_offsets,
+                            n2_idx,
+                            nq,
+                            l_run,
+                            head_dim,
+                            use_quant_matmul,
                         )
 
                         acc = acc * history_rescale.view(nq, 1) + pv
@@ -2646,6 +2747,7 @@ def run_one_case(
     rdv_cache_dir=None,
     debug=False,
     graph=False,
+    use_quant_matmul=True,
 ):
     start_time = time.time()
     golden_cache = _load_golden_cache()
@@ -2769,6 +2871,7 @@ def run_one_case(
             sparse_indices,
             sparse_seq_len,
             block_table_torch,
+            use_quant_matmul=use_quant_matmul,
         )
         golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cache_dir)
     elif "compare" in mode:
@@ -2920,7 +3023,18 @@ if __name__ == "__main__":
         help="只跑 CSV 中指定行范围的用例，格式 start:end (1-based, 含两端)。"
         "例如 --case_range 100:200 跑第100到200行(含)的用例",
     )
+    parser.add_argument(
+        "--matmul",
+        action="store_true",
+        help="使用 CPU torch.matmul 而非 npu_quant_matmul 做 QK/PV 计算",
+    )
     args = parser.parse_args()
+
+    use_quant_matmul = not args.matmul
+    logger.info(
+        "[Config] matmul backend: %s",
+        "torch.matmul (CPU)" if args.matmul else "npu_quant_matmul",
+    )
 
     raw_parts = {m.strip() for m in args.mode.split(",") if m.strip()}
     invalid = raw_parts - _VALID_MODES
@@ -3032,6 +3146,7 @@ if __name__ == "__main__":
                         rdv_cache_dir=args.cache_dir,
                         debug=args.debug,
                         graph=args.aclgraph,
+                        use_quant_matmul=use_quant_matmul,
                     )
                 )
             except Exception as err:  # pylint: disable=broad-except
