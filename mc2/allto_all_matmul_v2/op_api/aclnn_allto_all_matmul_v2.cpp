@@ -20,6 +20,7 @@
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "opdev/op_executor.h"
+#include "mc2_log_compat.h"
 
 using namespace op;
 
@@ -79,7 +80,7 @@ extern "C" aclnnStatus aclnnInnerAlltoAllMatmulV2GetWorkspaceSize(
     const aclTensor *all2allOutOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern "C" aclnnStatus aclnnInnerAlltoAllMatmulV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                     aclrtStream stream);
+                                                  aclrtStream stream);
 
 extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
@@ -95,7 +96,20 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
 
     if (x1 == nullptr || x2 == nullptr || x1ScaleOptional == nullptr || x2ScaleOptional == nullptr ||
         output == nullptr || workspaceSize == nullptr || executor == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "aclnnAlltoAllQuantMatmulV3: null pointer in input parameters.");
+        if (x1 == nullptr)
+            OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllQuantMatmulV3", "x1");
+        if (x2 == nullptr)
+            OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllQuantMatmulV3", "x2");
+        if (x1ScaleOptional == nullptr)
+            OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllQuantMatmulV3", "x1Scale");
+        if (x2ScaleOptional == nullptr)
+            OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllQuantMatmulV3", "x2Scale");
+        if (output == nullptr)
+            OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllQuantMatmulV3", "output");
+        if (workspaceSize == nullptr)
+            OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllQuantMatmulV3", "workspaceSize");
+        if (executor == nullptr)
+            OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllQuantMatmulV3", "executor");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
 
@@ -106,6 +120,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
         if (notContiguous) {
             transX2 = TransX2Tensor(x2);
             if (transX2 == nullptr) {
+                OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllQuantMatmulV3", "transX2");
                 return ACLNN_ERR_INNER_NULLPTR;
             }
         }
@@ -130,7 +145,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV3GetWorkspaceSize(
 }
 
 extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                aclrtStream stream)
+                                                  aclrtStream stream)
 {
     OP_LOGD("aclnnAlltoAllQuantMatmulV3 start");
 
