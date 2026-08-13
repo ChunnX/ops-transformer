@@ -138,7 +138,6 @@ int main()
     std::vector<int64_t> startPosShape = {B};
     int64_t Sr = (S + cmpRatio - 1) / cmpRatio;
     std::vector<int64_t> cmpKvShape = {B, Sr, headDim};
-    // gradEnabled 中间量输出（softmax_score/kv），shape 与 cmpKv 同批次结构、多 coff*cmpRatio 维
     std::vector<int64_t> softmaxScoreShape = {B, Sr, coff * cmpRatio, headDim};
     std::vector<int64_t> kvShape = {B, Sr, coff * cmpRatio, headDim};
 
@@ -217,7 +216,7 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
-    bool gradEnabled = false; // 不导出 softmax_score/kv 中间量（A3 场景 gradEnabled 不支持 true）
+    bool gradEnabled = false;
 
     ret = aclnnCompressorGetWorkspaceSize(x, wkv, wgate, stateCacheRef, ape, stateBlockTable, nullptr, nullptr,
                                           startPos, cmpRatio, coff, cacheMode, stateCacheStrideDim0, gradEnabled,
