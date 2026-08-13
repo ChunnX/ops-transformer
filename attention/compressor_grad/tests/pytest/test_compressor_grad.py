@@ -17,13 +17,88 @@ import torch
 import pytest
 
 
+def _small_ops_golden(
+    x,
+    wkv,
+    wgate,
+    kv_state,
+    score_state,
+    ape,
+    block_table,
+    sps,
+    cr,
+    coff,
+    cache_mode,
+    cu_seqlens,
+    seqused,
+    dc,
+    device,
+    matmul_mode,
+    compute_dtype,
+):
+    """通路 3：小算子拼接 + 自动反向推导四梯度（loss 只对有效压缩块，mask 过滤）。
+
+    matmul_mode/compute_dtype 决定精度口径（与 compressor_forward 对齐）：
+      two:  CPU f32 提升 + 中间量量化（两方 golden）
+      same: 输入不提升，bf16 进 bf16 出（三方 B，模拟 kernel 同精度）
+      high: float64 全程（三方 C，高精度真值）
+    """
+    dev = x.device if device == "cpu" else device
+    x_in = x.detach().requires_grad_(True)
+    wkv_in = wkv.detach().requires_grad_(True)
+    wgate_in = wgate.detach().requires_grad_(True)
+    ape_in = ape.detach().requires_grad_(True)
+    if cu_seqlens is not None:
+        cu_seqlens = cu_seqlens.to(dev)
+    ref_cmp, ref_mask, _, _, _, _ = compressor_forward.compressor_forward(
+        x_in,
+        wkv_in,
+        wgate_in,
+        kv_state,
+        score_state,
+        ape_in,
+        block_table,
+        sps,
+        cmp_ratio=cr,
+        coff=coff,
+        cache_mode=cache_mode,
+        cu_seqlens=cu_seqlens,
+        seqused=seqused,
+        return_intermediates=True,
+        device=device,
+        matmul_mode=matmul_mode,
+        compute_dtype=compute_dtype,
+    )
+    dc = dc.to(dev)
+    if ref_cmp.requires_grad:
+        # ⚠️ loss 只对有效压缩块：mask 过滤，无效 padding 不附加梯度
+        loss = (ref_cmp * dc * ref_mask.float()).sum()
+        loss.backward()
+        g_dx = x_in.grad.reshape(-1, x_in.shape[-1]) if x_in.dim() == 3 else x_in.grad
+        g_dwkv = wkv_in.grad
+        g_dwgate = wgate_in.grad
+        g_dape = ape_in.grad
+    else:
+        # 无有效压缩块（totalValid=0）：cmp_kv 为纯 zeros 无梯度图，golden 梯度全 0
+        g_dx = (
+            torch.zeros_like(x_in).reshape(-1, x_in.shape[-1])
+            if x_in.dim() == 3
+            else torch.zeros_like(x_in)
+        )
+        g_dwkv = torch.zeros_like(wkv_in)
+        g_dwgate = torch.zeros_like(wgate_in)
+        g_dape = torch.zeros_like(ape_in)
+    return g_dx, g_dwkv, g_dwgate, g_dape
+
+
 def run_small_ops_case(case, device, compare_mode=3):
-    """通路 3：小算子拼接通路——CPU 小算子拼接 + 自动反向推导梯度作 golden，
+    """通路 3：小算子拼接通路——小算子拼接 + 自动反向推导梯度作 golden，
     算子侧经 pta 反向传播串联正反向（与通路 1 相同 NPU 流程）。
 
     ⚠️ loss 只对有效压缩块计算（cmp_mask 过滤），无效 padding 不附加梯度。
-    compare_mode=3 时：B=NPU 小算子（same）、C=float64 高精度（high），
-    中间量 sm/kv 用 NPU 真实前向输出（与通路 1/4 一致）。
+    golden 全部来自小算子自动反向（不调手写 compressor_grad_golden）：
+    compare_mode=2 时用 CPU 小算子 two 口径；compare_mode=3 时
+    B=NPU 小算子 same（bf16 进 bf16 出）、C=CPU 小算子 high（float64）。
     """
     p = _parse_case(case, device)
     B, S1, H, D = p["B"], p["S1"], p["H"], p["D"]
@@ -66,57 +141,43 @@ def run_small_ops_case(case, device, compare_mode=3):
 
     # ── NPU 侧：pta 反向传播串联正反向（与通路 1 相同的输入构造 + compute）──
     b = _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps)
+    # 初始 state 必须在 NPU 前向之前保留副本（_compressor_forward 原地更新 state_cache）：
+    # CPU golden 重放与 compare_mode=3 直调 forward 均以初始 state 为输入，与 autograd
+    # 前向一致——对齐通路 1/5 run_forward_direct_case 的 state_cpu_initial 处理
+    # （coff=2 读 cache 历史场景，防更新后 state 污染读值）
+    state_initial_npu = b["state_cache_npu"].clone()
     backend = NPUBackend(device_id=DEVICE_ID)
     npu_result = backend.compute(inputs=b["inputs"])
     torch.npu.synchronize()
 
-    # ── CPU 侧：小算子拼接 + 自动反向推导梯度（golden）──
+    # ── Golden：小算子拼接 + 自动反向推导四梯度（不调手写 compressor_grad_golden）──
     coffD = coff * D
-    stateCpu = b["state_cache_npu"].cpu()
+    stateCpu = state_initial_npu.cpu()
     xCpu = b["xNpu"].cpu().view(B, seqSize, H) if layoutId == 0 else b["xNpu"].cpu()
-    xIn = xCpu.detach().requires_grad_(True)
-    wkvIn = b["wkvInp"].cpu().detach().requires_grad_(True)
-    wgateIn = b["wgateInp"].cpu().detach().requires_grad_(True)
-    apeIn = b["ape_npu"].cpu().detach().requires_grad_(True)
-    ref_cmp, ref_mask, _, _, _, _ = compressor_forward.compressor_forward(
-        xIn,
-        wkvIn,
-        wgateIn,
-        stateCpu[..., :coffD].detach(),
-        stateCpu[..., coffD:].detach(),
-        apeIn,
-        b["block_table_npu"].cpu(),
-        sps,
-        cmp_ratio=cr,
+    dcCpu = b["dcNpu"].cpu().float()
+    golden_kw = dict(
+        x=xCpu,
+        wkv=b["wkvInp"].cpu(),
+        wgate=b["wgateInp"].cpu(),
+        kv_state=stateCpu[..., :coffD],
+        score_state=stateCpu[..., coffD:],
+        ape=b["ape_npu"].cpu(),
+        block_table=b["block_table_npu"].cpu(),
+        sps=sps,
+        cr=cr,
         coff=coff,
         cache_mode=b["cache_mode"],
         cu_seqlens=cuNpu.cpu() if cuNpu is not None else None,
         seqused=sqs,
-        return_intermediates=True,
+        dc=dcCpu.view(B, -1, D) if layoutId == 0 else dcCpu,
     )
-    # ⚠️ loss 只对有效压缩块：mask 过滤，无效 padding 不附加梯度
-    dcCpu = b["dcNpu"].cpu().float()
-    if ref_cmp.requires_grad:
-        loss = (ref_cmp * dcCpu * ref_mask.float()).sum()
-        loss.backward()
-        g_dx = xIn.grad.reshape(-1, H) if layoutId == 0 else xIn.grad
-        g_dwkv = wkvIn.grad
-        g_dwgate = wgateIn.grad
-        g_dape = apeIn.grad
-    else:
-        # 无有效压缩块（totalValid=0）：cmp_kv 为纯 zeros 无梯度图，golden 梯度全 0
-        g_dx = (
-            torch.zeros_like(xIn).reshape(-1, H)
-            if layoutId == 0
-            else torch.zeros_like(xIn)
-        )
-        g_dwkv = torch.zeros_like(wkvIn)
-        g_dwgate = torch.zeros_like(wgateIn)
-        g_dape = torch.zeros_like(apeIn)
 
-    # ── 比对：NPU 四梯度 vs CPU 自动反向四梯度 ──
+    # ── 比对：NPU 四梯度 vs 小算子自动反向四梯度 ──
     d_xNpu = npu_result["d_x"].cpu().float().reshape(-1, H)
     if compare_mode == 2:
+        g_dx, g_dwkv, g_dwgate, g_dape = _small_ops_golden(
+            device="cpu", matmul_mode="two", compute_dtype=torch.float32, **golden_kw
+        )
         p_pct_thd = get_pct_thd(dataType)
         checks = [
             (
@@ -147,78 +208,38 @@ def run_small_ops_case(case, device, compare_mode=3):
             r = check_one_output(name, exp, act, dt, True, 1, thd)
             statuses.append(f"{name}={r['status']}")
     else:
-        # 三方：B/C golden 输入用 NPU 真实前向中间量（交错布局，与 kernel 一致）
-        # ⚠️ 直调路径 cu_seqlens/seqused/start_pos 必须转 NPU（CPU 张量 → SVM page fault）
-        cuArg = b["inputs"]["cu_seqlens"]
-        cuArg = cuArg.to(device) if cuArg is not None else None
-        sqArg = b["inputs"]["seqused"]
-        sqArg = sqArg.to(device) if sqArg is not None else None
-        spArg = b["inputs"]["start_pos"]
-        spArg = spArg.to(device) if spArg is not None else None
-        cmp_kv, softmax_score, kv = _compressor_forward(
-            b["inputs"]["x"],
-            b["wkvInp"],
-            b["wgateInp"],
-            b["state_cache_npu"],
-            b["ape_npu"],
-            state_block_table=b["block_table_npu"],
-            cu_seqlens=cuArg,
-            seqused=sqArg,
-            start_pos=spArg,
-            cmp_ratio=cr,
-            coff=coff,
-            cache_mode=b["cache_mode"],
-            grad_enabled=True,
+        # 三方：B=NPU 小算子 same（bf16 进 bf16 出，模拟 kernel 同精度）、
+        #      C=CPU 小算子 high（float64 高精度真值）——均来自自动反向推导
+        b_dx, b_dwkv, b_dwgate, b_dape = _small_ops_golden(
+            device=device, matmul_mode="same", compute_dtype=torch.float32, **golden_kw
         )
-        torch.npu.synchronize()
-        smCpu = softmax_score.cpu()
-        kvCpu = kv.cpu()
-        dcCpuView = dcCpu.view(B, -1, D) if layoutId == 0 else dcCpu
-        b_ref = compressor_grad_golden(
-            x=xCpu,
-            wkv=b["wkvInp"].cpu(),
-            wgate=b["wgateInp"].cpu(),
-            d_cpm_kv=dcCpuView,
-            softmax_score=smCpu,
-            kv=kvCpu,
-            cu_seqlens=cuNpu.cpu() if cuNpu is not None else None,
-            seqused=torch.tensor(sqs, dtype=torch.int32) if sqs else None,
-            start_pos=torch.tensor(sps, dtype=torch.int32) if sps else None,
-            cmp_ratio=cr,
-            coff=coff,
-            device=device,
-            matmul_mode="same",
-        )
-        c_ref = compressor_grad_golden(
-            x=xCpu,
-            wkv=b["wkvInp"].cpu(),
-            wgate=b["wgateInp"].cpu(),
-            d_cpm_kv=dcCpuView,
-            softmax_score=smCpu,
-            kv=kvCpu,
-            cu_seqlens=cuNpu.cpu() if cuNpu is not None else None,
-            seqused=torch.tensor(sqs, dtype=torch.int32) if sqs else None,
-            start_pos=torch.tensor(sps, dtype=torch.int32) if sps else None,
-            cmp_ratio=cr,
-            coff=coff,
-            device="cpu",
-            compute_dtype=torch.float64,
-            matmul_mode="high",
+        c_dx, c_dwkv, c_dwgate, c_dape = _small_ops_golden(
+            device="cpu", matmul_mode="high", compute_dtype=torch.float64, **golden_kw
         )
         statuses = []
-        b_dx, b_dwkv, b_dwgate, b_dape = b_ref
-        c_dx, c_dwkv, c_dwgate, c_dape = c_ref
         for name, act, b_out, c_out, dt in [
-            ("d_wkv", npu_result["d_wkv"].cpu().float(), b_dwkv, c_dwkv, dataType),
+            (
+                "d_wkv",
+                npu_result["d_wkv"].cpu().float(),
+                b_dwkv.float().cpu(),
+                c_dwkv.float().cpu(),
+                dataType,
+            ),
             (
                 "d_wgate",
                 npu_result["d_wgate"].cpu().float(),
-                b_dwgate,
-                c_dwgate,
+                b_dwgate.float().cpu(),
+                c_dwgate.float().cpu(),
                 dataType,
             ),
-            ("d_ape", npu_result["d_ape"].cpu().float(), b_dape, c_dape, "float32"),
-            ("d_x", npu_result["d_x"].cpu().float(), b_dx, c_dx, dataType),
+            (
+                "d_ape",
+                npu_result["d_ape"].cpu().float(),
+                b_dape.float().cpu(),
+                c_dape.float().cpu(),
+                "float32",
+            ),
+            ("d_x", d_xNpu, b_dx.float().cpu(), c_dx.float().cpu(), dataType),
         ]:
             r = three_way_report(name, act, b_out, c_out, dt)
             statuses.append(f"{name}={r['status']}")

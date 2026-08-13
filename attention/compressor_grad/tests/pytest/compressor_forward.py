@@ -175,7 +175,7 @@ def _build_ape_for_flat_sequence(
         L = fe - fs
         if L <= 0:
             continue
-        idx = (torch.arange(sp, sp + L) % cmp_ratio).long()
+        idx = (torch.arange(sp, sp + L, device=ape.device) % cmp_ratio).long()
         ape_out[fs:fe, :] = ape[idx, :]
     return ape_out
 
