@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 
 #include "../../../op_host/fused_gdn_gating_tiling.h"
+#include "../../../op_kernel/fused_gdn_gating_tiling_data.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 
@@ -74,12 +75,12 @@ TEST_F(FusedGdnGatingTilingTest, Bf16FloatTilingKey)
     TilingInfo tilingInfo;
     ExecuteTiling(tilingContextPara, tilingInfo);
     EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
-    auto tilingData = reinterpret_cast<FusedGdnGatingTilingData *>(tilingInfo.tilingData.get());
+    auto tilingData = reinterpret_cast<FusedGdnGating::FusedGdnGatingTilingData *>(tilingInfo.tilingData.get());
     ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(tilingData->get_numHeads(), static_cast<uint32_t>(numHeads));
-    EXPECT_EQ(tilingData->get_numBatches(), static_cast<uint32_t>(batch));
-    EXPECT_FLOAT_EQ(tilingData->get_beta(), 1.0f);
-    EXPECT_FLOAT_EQ(tilingData->get_threshold(), 20.0f);
+    EXPECT_EQ(tilingData->numHeads, static_cast<uint32_t>(numHeads));
+    EXPECT_EQ(tilingData->numBatches, static_cast<uint32_t>(batch));
+    EXPECT_FLOAT_EQ(tilingData->beta, 1.0f);
+    EXPECT_FLOAT_EQ(tilingData->threshold, 20.0f);
 }
 
 TEST_F(FusedGdnGatingTilingTest, Fp16FloatTilingKey)
@@ -118,9 +119,9 @@ TEST_F(FusedGdnGatingTilingTest, Fp16FloatTilingKey)
     TilingInfo tilingInfo;
     ExecuteTiling(tilingContextPara, tilingInfo);
     EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
-    auto tilingData = reinterpret_cast<FusedGdnGatingTilingData *>(tilingInfo.tilingData.get());
+    auto tilingData = reinterpret_cast<FusedGdnGating::FusedGdnGatingTilingData *>(tilingInfo.tilingData.get());
     ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(tilingData->get_numHeads(), static_cast<uint32_t>(numHeads));
+    EXPECT_EQ(tilingData->numHeads, static_cast<uint32_t>(numHeads));
 }
 
 TEST_F(FusedGdnGatingTilingTest, Bf16Bf16TilingKey)
@@ -303,16 +304,16 @@ TEST_F(FusedGdnGatingTilingTest, Ascend310PTilingKey)
     TilingInfo tilingInfo;
     ExecuteTiling(tilingContextPara, tilingInfo);
     EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
-    auto tilingData = reinterpret_cast<FusedGdnGatingTilingData *>(tilingInfo.tilingData.get());
+    auto tilingData = reinterpret_cast<FusedGdnGating::FusedGdnGatingTilingData *>(tilingInfo.tilingData.get());
     ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(tilingData->get_numHeads(), static_cast<uint32_t>(numHeads));
-    EXPECT_EQ(tilingData->get_beta(), 1.0f);
-    EXPECT_EQ(tilingData->get_threshold(), 20.0f);
-    EXPECT_GT(tilingData->get_usedCoreNum(), 0u);
-    EXPECT_GT(tilingData->get_alignedLength(), 0u);
-    EXPECT_GT(tilingData->get_tailLength(), 0u);
-    EXPECT_GT(tilingData->get_tileRows(), 0u);
-    EXPECT_FLOAT_EQ(tilingData->get_inv_beta(), 1.0f);
+    EXPECT_EQ(tilingData->numHeads, static_cast<uint32_t>(numHeads));
+    EXPECT_EQ(tilingData->beta, 1.0f);
+    EXPECT_EQ(tilingData->threshold, 20.0f);
+    EXPECT_GT(tilingData->usedCoreNum, 0u);
+    EXPECT_GT(tilingData->alignedLength, 0u);
+    EXPECT_GT(tilingData->tailLength, 0u);
+    EXPECT_GT(tilingData->tileRows, 0u);
+    EXPECT_FLOAT_EQ(tilingData->inv_beta, 1.0f);
 }
 
 TEST_F(FusedGdnGatingTilingTest, Ascend310PLargeBatch)
@@ -352,9 +353,9 @@ TEST_F(FusedGdnGatingTilingTest, Ascend310PLargeBatch)
     TilingInfo tilingInfo;
     ExecuteTiling(tilingContextPara, tilingInfo);
     EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
-    auto tilingData = reinterpret_cast<FusedGdnGatingTilingData *>(tilingInfo.tilingData.get());
+    auto tilingData = reinterpret_cast<FusedGdnGating::FusedGdnGatingTilingData *>(tilingInfo.tilingData.get());
     ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(tilingData->get_numHeads(), static_cast<uint32_t>(numHeads));
-    EXPECT_GT(tilingData->get_usedCoreNum(), 0u);
-    EXPECT_GT(tilingData->get_tileRows(), 0u);
+    EXPECT_EQ(tilingData->numHeads, static_cast<uint32_t>(numHeads));
+    EXPECT_GT(tilingData->usedCoreNum, 0u);
+    EXPECT_GT(tilingData->tileRows, 0u);
 }
