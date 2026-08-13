@@ -73,13 +73,13 @@ public:
 
     // 核间同步ID
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
-    static constexpr uint32_t CC_MM_0 = 0U;
-    static constexpr uint32_t CC_MM_1 = 1U;
-    static constexpr uint32_t CC_MM_2 = 2U;
-    static constexpr uint32_t CC_MM_3 = 3U;
-    static constexpr uint32_t CC_L1P_0 = 5U;
-    static constexpr uint32_t CC_L1P_1 = 6U;
-    static constexpr uint32_t CC_L1P_2 = 7U;
+    static constexpr uint32_t CROSSCORE_MM_0 = 0U;
+    static constexpr uint32_t CROSSCORE_MM_1 = 1U;
+    static constexpr uint32_t CROSSCORE_MM_2 = 2U;
+    static constexpr uint32_t CROSSCORE_MM_3 = 3U;
+    static constexpr uint32_t CROSSCORE_L1P_0 = 5U;
+    static constexpr uint32_t CROSSCORE_L1P_1 = 6U;
+    static constexpr uint32_t CROSSCORE_L1P_2 = 7U;
 
     // 核内同步ID
     // MTE3<->V, 输出buffer
@@ -201,9 +201,9 @@ public:
 
         /*--------------------------------------------UB--------------------------------------------*/
         struct UbLayout {
-            uint8_t mmResBuffers[UB_MM_RES_BUFCNT][UB_MM_RES_BUF_BYTES];             // 2 * max(mm1,mm2), CV通信BUF
-            uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES];                 // 2 * 8K = 16K, 输入BUF: MASK拷入
-            uint8_t vec2Res[UB_VEC2_RES_BUF_BYTES];                                  // 输出BUF: attn_out拷出
+            uint8_t mmResBuffers[UB_MM_RES_BUFCNT][UB_MM_RES_BUF_BYTES]; // 2 * max(mm1,mm2), CV通信BUF
+            uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES];      // 2 * 8K = 16K, 输入BUF: MASK拷入
+            uint8_t vec2Res[UB_VEC2_RES_BUF_BYTES];                      // 输出BUF: attn_out拷出
             uint8_t vec1ResBuffers[UB_VEC1_RES_BUFCNT]
                                   [UB_VEC1_RES_BUF_BYTES];                           // softmax结果拷至L1
             uint8_t softmaxSumBuf_[UB_SOFTMAX_SUM_BUFCNT][UB_SOFTMAX_SUM_BUF_BYTES]; // 3 * 0.25K = 0.75K, sum常驻BUF
@@ -216,7 +216,7 @@ public:
         };
         static_assert(sizeof(UbLayout) <= 248 * 1024, "UB buffer too large");
         ubMmResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, mmResBuffers),
-                                                SIZE_OF_MEMBER(UbLayout, mmResBuffers));
+                                               SIZE_OF_MEMBER(UbLayout, mmResBuffers));
         ubMaskBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, maskBuffers),
                                               SIZE_OF_MEMBER(UbLayout, maskBuffers));
         ubVec2Res_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, vec2Res),
@@ -251,11 +251,11 @@ public:
 
     __aicore__ inline void InitCrossCoreSync()
     {
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_0);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_1);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_MM_0);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_MM_1);
         if constexpr (dBaseSize <= 128) {
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_2);
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_3);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_MM_2);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_MM_3);
         }
     }
 
@@ -276,8 +276,8 @@ public:
         uint32_t mmResUbBufId = mmResBufId_;
         mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
         uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
-        uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
-        uint32_t v1c2CrossCoreSyncIdx = CC_L1P_0 + pL1BufId;
+        uint32_t mmSyncIdx = CROSSCORE_MM_0 + mmResUbBufId;
+        uint32_t v1c2CrossCoreSyncIdx = CROSSCORE_L1P_0 + pL1BufId;
         LocalTensor<INPUT_T> pL1Tensor = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES].template ReinterpretCast<INPUT_T>();
         auto mm1ResUbTensor = ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<T>();
 
@@ -625,7 +625,7 @@ public:
     {
         uint32_t mmResUbBufId = mmResBufId_;
         mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
-        uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
+        uint32_t mmSyncIdx = CROSSCORE_MM_0 + mmResUbBufId;
         if (unlikely(runInfo.actVecMSize == 0)) {
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
             CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
