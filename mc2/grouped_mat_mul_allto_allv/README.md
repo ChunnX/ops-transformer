@@ -151,12 +151,9 @@
 ## 约束说明
 
 - 通信引擎约束：
-  <!-- npu="A3" id1 -->
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AI_CPU通信。
-  <!-- end id1 -->
-  <!-- npu="950" id2 -->
   - <term>Ascend 950DT</term>：支持CCU通信和AI_CPU通信，CCCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
-  <!-- end id2 -->
+
 
 - 参数说明里shape使用的变量：
   - BSK：本卡接收的token数，是recvCounts参数累加之和，取值范围(0, 52428800)。
@@ -170,9 +167,8 @@
   - A：本卡发送的token数，是sendCounts参数累加之和。
   - ep通信域内所有卡的A参数的累加和等于所有卡上的BSK参数的累加和。
 
-<!-- npu="A3" id3 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  : 单卡通信量在2MB以下可能存在性能劣化。
-<!-- end id3 -->
+
 
 ## 调用说明
 
