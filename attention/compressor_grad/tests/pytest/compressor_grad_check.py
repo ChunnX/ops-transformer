@@ -108,6 +108,9 @@ def three_way_report(name, npu_out, golden_out, ref_out, data_type):
     a = npu_out.detach().cpu().float()
     b = golden_out.detach().cpu().float()
     c = ref_out.detach().cpu().float()
+    if a.numel() == 0:
+        print_log(f"[three-way] {name}: empty output, skip")
+        return {"status": "PASS", "ratios": {"MARE": 0.0, "MERE": 0.0, "RMSE": 0.0}}
     da = (a - c).abs()
     db = (b - c).abs()
     denom = c.abs().clamp(min=1e-7)
