@@ -26,7 +26,8 @@ using namespace ge;
 namespace optiling {
 
 const std::unordered_map<ge::DataType, uint32_t> DTYPE_TO_SIZE{
-    {ge::DT_BF16, 2}, {ge::DT_FLOAT16, 2}, {ge::DT_INT8, 1}, {ge::DT_FLOAT8_E4M3FN, 1}, {ge::DT_FLOAT8_E8M0, 1}, {ge::DT_HIFLOAT8, 1}, {ge::DT_INT32, 4}, {ge::DT_FLOAT, 4}};
+    {ge::DT_BF16, 2},        {ge::DT_FLOAT16, 2},  {ge::DT_INT8, 1},  {ge::DT_FLOAT8_E4M3FN, 1},
+    {ge::DT_FLOAT8_E8M0, 1}, {ge::DT_HIFLOAT8, 1}, {ge::DT_INT32, 4}, {ge::DT_FLOAT, 4}};
 
 const std::unordered_map<ge::DataType, matmul_tiling::DataType> GE_TO_MM_DTYPE{
     {ge::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16},
@@ -731,7 +732,7 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
         mlaPrologContext.tileSize = nullptr;
         mlaPrologContext.qcQrScale = nullptr;
         mlaPrologContext.kcScale = nullptr;
-        // 非 V3/V4：RoPE 始终开启
+        // 非 V4：RoPE 始终开启（rope 为必选输入）
         mlaPrologContext.doRopeValue = true;
         mlaPrologContext.doRope = nullptr;
     }
