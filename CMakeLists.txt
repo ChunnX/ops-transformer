@@ -53,14 +53,20 @@ set(ASCEND_OP_NAME                "ALL"                           CACHE   STRING
 set(ASCEND_MODULE_NAME            "ALL"                           CACHE   STRING   "modules that need to be compiled")
 set(ARCH_DIRECTORY                ""                           CACHE   STRING   "arch directory that need to be compiled")
 set(VENDOR_NAME                   "custom"                     CACHE   STRING   "vendor name")
-set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;mc62;kirinx90;kirin9030" CACHE STRING "all soc list")
+set(ASCEND_ALL_COMPUTE_UNIT       "ascend910;ascend910b;ascend910_93;ascend950;mc62;kirinx90;kirin9030" CACHE STRING "all soc list")
 set(ASCEND_ALL_MODULE_NAME        "mc2;attention;moe;ffn;mhc;posembedding;gmm;mamba" CACHE STRING "all module list")
 
-#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910b:arch22,ascend910_93:arch22,ascend950:arch35,mc62:arch38,kirinx90:arch22,kirin9030:arch22
-set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62 kirinx90 kirin9030)
-set(ARCH_DIRECTORY_LIST arch20 arch22 arch22 arch35 arch38 arch22 arch22)
+#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910:arch20,ascend910b:arch22,ascend910_93:arch22,ascend950:arch35,mc62:arch38,kirinx90:arch22,kirin9030:arch22
+set(SOC_VERSION_LIST ascend310p ascend910 ascend910b ascend910_93 ascend950 mc62 kirinx90 kirin9030)
+set(ARCH_DIRECTORY_LIST arch20 arch20 arch22 arch22 arch35 arch38 arch22 arch22)
 set(BISHENG_FLAGS "" CACHE STRING "bisheng compiler flags")
 set(ENABLE_AICPU_KERNEL FALSE CACHE BOOL "Enable AICPU Kernel")
+set(PACKAGE_TYPE "run" CACHE STRING "package type: run/rpm/deb/all")
+set_property(CACHE PACKAGE_TYPE PROPERTY STRINGS run rpm deb all)
+set(SUPPORTED_PACKAGE_TYPES run rpm deb all)
+if(NOT PACKAGE_TYPE IN_LIST SUPPORTED_PACKAGE_TYPES)
+  message(FATAL_ERROR "PACKAGE_TYPE only supports run/rpm/deb/all, got: ${PACKAGE_TYPE}")
+endif()
 
 # 获取基础 CANN 路径
 if (CUSTOM_ASCEND_CANN_PACKAGE_PATH)
@@ -103,7 +109,7 @@ foreach(SOC_VERSION ${ASCEND_COMPUTE_UNIT})
     list(GET ARCH_DIRECTORY_LIST ${INDEX} VAL)
     list(APPEND ARCH_DIRECTORY ${VAL})
   else()
-    message(STATUS "unsupport chip type")
+    message(STATUS "unsupported chip type")
     if ((NOT BUILD_OPS_RTY_KERNEL) AND (BUILD_OPEN_PROJECT))
       include(cmake/build_empty_package.cmake)
       cpack_empty_package()
