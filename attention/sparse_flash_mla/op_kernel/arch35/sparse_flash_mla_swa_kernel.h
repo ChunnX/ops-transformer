@@ -385,17 +385,17 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
     constexpr uint32_t FD_MAX_SUM_REGION_NUM = 2U;
     uint32_t gSize = static_cast<uint32_t>(constInfo.gSize);
     uint32_t combineElemSize = gSize * constInfo.dSize + FD_MAX_SUM_REGION_NUM * gSize *
-        static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW);
+                                                             static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW);
     if constexpr (IS_BATCH_CONSISTENCY) {
         uint32_t intraCoreSlotNum = IS_SPLIT_G ? GetBlockNum() : (GetBlockNum() << 1U);
         uint32_t intraCoreCombineSize = intraCoreSlotNum * combineElemSize * sizeof(float);
         uint32_t crossCoreCombineSize = GetBlockNum() * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM *
-            combineElemSize * sizeof(float);
+                                        combineElemSize * sizeof(float);
         intraCoreCombineBuffer.Init(fdStagingBufferManager, intraCoreCombineSize);
         crossCoreCombineBuffer.Init(fdStagingBufferManager, crossCoreCombineSize);
     } else {
         uint32_t fdSlotCount = static_cast<uint32_t>(AttentionCommon::FD_MAX_S2_SPLIT_NUM) *
-            (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
+                               (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
         fdStagingBuffer.Init(fdStagingBufferManager, fdSlotCount * combineElemSize * sizeof(float));
     }
 }
@@ -567,7 +567,8 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if constexpr (IS_BATCH_CONSISTENCY) {
                     int64_t safeBaseBlockNum = runParam.baseBlockNumPerReductionBlock > 0 ?
-                        runParam.baseBlockNumPerReductionBlock : 1LL;
+                                                   runParam.baseBlockNumPerReductionBlock :
+                                                   1LL;
                     if (runParam.isCrossCoreSplit && s2LoopCount % safeBaseBlockNum == 0) {
                         runParam.s2SplitIdx = s2SplitIdxCounter++;
                     }
@@ -660,12 +661,13 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Set
     runInfo.s2SplitIdx = runParam.s2SplitIdx;
     runInfo.isFirstS2SplitCore = runParam.isFirstS2SplitCore;
     int64_t safeBaseBlockNum = runParam.baseBlockNumPerReductionBlock > 0 ?
-        runParam.baseBlockNumPerReductionBlock : 1LL;
+                                   runParam.baseBlockNumPerReductionBlock :
+                                   1LL;
     int64_t baseBlockIdInReduceBlock = s2LoopCount % safeBaseBlockNum;
     runInfo.reduceBlockId = s2LoopCount / safeBaseBlockNum;
     runInfo.isFirstBase = baseBlockIdInReduceBlock == 0;
     runInfo.isLastBase = baseBlockIdInReduceBlock == safeBaseBlockNum - 1LL ||
-        s2LoopCount == s2LoopLimit;
+                         s2LoopCount == s2LoopLimit;
     runInfo.needReduce = runInfo.reduceBlockId > 0;
     this->ComputeBmm1Tail(runInfo, runParam);
     InitUniqueRunInfo(runParam, runInfo);

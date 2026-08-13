@@ -83,6 +83,10 @@ public:
     static constexpr uint32_t rightBufNum = 3;
     static constexpr uint32_t rightBufSingleSize = s2BaseSize * dBaseSize;
     static constexpr uint32_t rightBufTotalSize = rightBufSingleSize * rightBufNum;
+    static constexpr uint32_t l1QBufNum = 3;       // L1 Q 三缓冲
+    static constexpr uint32_t l1KBufNum = 3;        // L1 K 三缓冲
+    static constexpr uint32_t qHalfNum = 2;          // Q 沿 d 轴切半
+    static constexpr uint32_t crossCoreMte2SyncFlagId = 15; // IS_SPLIT_G 核间 MTE2 同步 flag ID
 
     __aicore__ inline CSABlockCube(){};
     __aicore__ inline void InitCubeBlock(TPipe *pipe, __gm__ uint8_t *query);
@@ -151,8 +155,8 @@ private:
     uint32_t l1KLoadBufId = 0;
     uint32_t l1KMatmul1BufId = 0;
     uint32_t l1KMatmul2BufId = 0;
-    uint32_t l0CFixToMFlagId = 0; // {0, 1}, 用于L0C
-    uint32_t l0CMToFixFlagId = 0; // {0, 1}, 用于L0C
+    uint32_t l0CFixToMFlagId = 0;     // {0, 1}, 用于L0C
+    uint32_t l0CMToFixFlagId = 0;     // {0, 1}, 用于L0C
     uint32_t l1QMte1ToMte2FlagId = 0; // {0, 1, 2}, 用于l1Q
     uint32_t l1QMte2ToMte1FlagId = 0; // {0, 1, 2}, 用于l1Q
     uint32_t l1KMte1ToMte2FlagId = 3; // {3, 4, 5}, 用于l1K
@@ -307,14 +311,14 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CopyQGmToL1(RunInfo &runInfo, ConstInfo &constInfo)
 {
     uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
-        runInfo.s1oIdx * runInfo.qSNumInOneBlock, 0);
-    for (uint32_t i = 0; i < 2; i++) {
-        uint32_t curL1QBufId = (l1QBufId + i) % 3;
+                                                                 runInfo.s1oIdx * runInfo.qSNumInOneBlock, 0);
+    for (uint32_t i = 0; i < qHalfNum; i++) {
+        uint32_t curL1QBufId = (l1QBufId + i) % l1QBufNum;
         WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + curL1QBufId);
         uint64_t curGmOffset = gmOffset + i * (constInfo.dSize >> 1);
         CopyToL1Nd2Nz<Q_T>(l1QTensor[curL1QBufId * BUFFER_SIZE_16K],
-            this->queryGm.gmTensor[curGmOffset], runInfo.mRealSize, constInfo.dSize >> 1,
-            constInfo.mm1Ka);
+                           this->queryGm.gmTensor[curGmOffset], runInfo.mRealSize, constInfo.dSize >> 1,
+                           constInfo.mm1Ka);
         SetFlag<HardEvent::MTE2_MTE1>(l1QMte2ToMte1FlagId + curL1QBufId);
     }
 }
@@ -362,7 +366,7 @@ CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(RunInfo &runInfo, ConstInfo &constInf
     LocalTensor<KV_T> dst = l1RightTensor[runInfo.taskIdMod3 * rightBufSingleSize];
     LoadKGmToL1(dst, runInfo, constInfo);
     SetFlag<HardEvent::MTE2_MTE1>(l1KMte2ToMte1FlagId + l1KLoadBufId);
-    l1KLoadBufId = (l1KLoadBufId + 1) % 3;
+    l1KLoadBufId = (l1KLoadBufId + 1) % l1KBufNum;
 }
 
 // CSA场景: K来源取决于isSparse
@@ -388,8 +392,8 @@ CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(Buffer<BufferType::GM, SyncType::CROS
     LocalTensor<Q_T> dst = l1RightTensor[runInfo.taskIdMod3 * rightBufSingleSize];
     if (!isSparse) {
         if constexpr (IS_SPLIT_G) {
-            CrossCoreSetFlag<0, PIPE_MTE2>(15);
-            CrossCoreWaitFlag<0, PIPE_MTE2>(15);
+            CrossCoreSetFlag<0, PIPE_MTE2>(crossCoreMte2SyncFlagId);
+            CrossCoreWaitFlag<0, PIPE_MTE2>(crossCoreMte2SyncFlagId);
         }
         // cube直接从kv cache搬运K
         CalcS2Coord(runInfo, constInfo);
@@ -397,14 +401,14 @@ CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(Buffer<BufferType::GM, SyncType::CROS
     } else {
         v0ResGm.WaitCrossCore();
         if constexpr (IS_SPLIT_G) {
-            CrossCoreSetFlag<0, PIPE_MTE2>(15);
-            CrossCoreWaitFlag<0, PIPE_MTE2>(15);
+            CrossCoreSetFlag<0, PIPE_MTE2>(crossCoreMte2SyncFlagId);
+            CrossCoreWaitFlag<0, PIPE_MTE2>(crossCoreMte2SyncFlagId);
         }
         GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
         CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
     }
     SetFlag<HardEvent::MTE2_MTE1>(l1KMte2ToMte1FlagId + l1KLoadBufId);
-    l1KLoadBufId = (l1KLoadBufId + 1) % 3;
+    l1KLoadBufId = (l1KLoadBufId + 1) % l1KBufNum;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -433,15 +437,16 @@ CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(Buffer<BufferType::UB, SyncType::CR
 {
     LocalTensor<Q_T> curL1RightTensor = l1RightTensor[runInfo.taskIdMod3 * rightBufSingleSize];
     WaitFlag<HardEvent::MTE2_MTE1>(l1KMte2ToMte1FlagId + l1KMatmul1BufId);
-    l1KMatmul1BufId = (l1KMatmul1BufId + 1) % 3;
+    l1KMatmul1BufId = (l1KMatmul1BufId + 1) % l1KBufNum;
     WaitFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
 
-    MMParam param = {static_cast<uint32_t>(runInfo.mRealSize),     // singleM
-                     static_cast<uint32_t>(runInfo.s2RealSize),  // singleN
-                     static_cast<uint32_t>(constInfo.dSize >> 1),   // singleK
-                     0,    // isLeftTranspose
-                     1     // isRightTranspose
-                    };
+    MMParam param = {
+        static_cast<uint32_t>(runInfo.mRealSize),    // singleM
+        static_cast<uint32_t>(runInfo.s2RealSize),   // singleN
+        static_cast<uint32_t>(constInfo.dSize >> 1), // singleK
+        0,                                           // isLeftTranspose
+        1                                            // isRightTranspose
+    };
     uint32_t curL1QBufId = l1QBufId;
     if (unlikely(runInfo.s2LoopCount == 0)) {
         WaitFlag<HardEvent::MTE2_MTE1>(l1QMte2ToMte1FlagId + curL1QBufId);
@@ -455,7 +460,7 @@ CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(Buffer<BufferType::UB, SyncType::CR
         mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
         param);
 
-    curL1QBufId = (curL1QBufId + 1) % 3;
+    curL1QBufId = (curL1QBufId + 1) % l1QBufNum;
     if (unlikely(runInfo.s2LoopCount == 0)) {
         WaitFlag<HardEvent::MTE2_MTE1>(l1QMte2ToMte1FlagId + curL1QBufId);
     }
@@ -473,7 +478,7 @@ CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(Buffer<BufferType::UB, SyncType::CR
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + l1QBufId);
         SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + curL1QBufId);
-        l1QBufId = (l1QBufId + 2) % 3;
+        l1QBufId = (l1QBufId + qHalfNum) % l1QBufNum;
         if (notLastTwoLoop) {
             CopyQGmToL1(runInfoNext, constInfo);
         }
@@ -501,7 +506,7 @@ CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(Buffer<BufferType::UB, SyncType::CR
 
     // 将matmul结果从L0C搬运到UB
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(),
-        mmL0CTensor[BUFFER_SIZE_32K * l0CBufId], fixpipeParams);
+                                        mmL0CTensor[BUFFER_SIZE_32K * l0CBufId], fixpipeParams);
     SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
     l0CBufId ^= 1;
     outputBuf.SetCrossCore();
@@ -519,12 +524,13 @@ CSABlockCube<TEMPLATE_ARGS>::IterateBmm2Impl(Buffer<BufferType::UB, SyncType::CR
     l1PBuffer.WaitCrossCore();
 
     WaitFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
-    MMParam param = {static_cast<uint32_t>(runInfo.mRealSize), // singleM
-                     static_cast<uint32_t>(constInfo.dSizeV), // singleN 512
-                     static_cast<uint32_t>(runInfo.s2RealSize), // singleK 128
-                     0,    // isLeftTranspose
-                     0     // isRightTranspose
-                     };
+    MMParam param = {
+        static_cast<uint32_t>(runInfo.mRealSize),  // singleM
+        static_cast<uint32_t>(constInfo.dSizeV),   // singleN 512
+        static_cast<uint32_t>(runInfo.s2RealSize), // singleK 128
+        0,                                         // isLeftTranspose
+        0                                          // isRightTranspose
+    };
     MatmulN<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
         l1PBuffer.template GetTensor<Q_T>(),
         curL1RightTensor,
@@ -535,9 +541,9 @@ CSABlockCube<TEMPLATE_ARGS>::IterateBmm2Impl(Buffer<BufferType::UB, SyncType::CR
     SetFlag<HardEvent::M_FIX>(l0CMToFixFlagId + l0CBufId);
     WaitFlag<HardEvent::M_FIX>(l0CMToFixFlagId + l0CBufId);
     SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + l1KMatmul2BufId);
-    l1KMatmul2BufId = (l1KMatmul2BufId + 1) % 3;
+    l1KMatmul2BufId = (l1KMatmul2BufId + 1) % l1KBufNum;
 
-    outputBuf.WaitCrossCore(); //占用
+    outputBuf.WaitCrossCore(); // 占用
     // L0C→UB;FixpipeParamsM300:L0C→UB
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
     // L0C上的bmm1结果矩阵N方向的size大小, 分档计算且vector2中通过mask筛选出实际有效值
@@ -552,7 +558,7 @@ CSABlockCube<TEMPLATE_ARGS>::IterateBmm2Impl(Buffer<BufferType::UB, SyncType::CR
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(),
-        mmL0CTensor[BUFFER_SIZE_32K * l0CBufId], fixpipeParams); // 将matmul结果从L0C搬运到UB
+                                        mmL0CTensor[BUFFER_SIZE_32K * l0CBufId], fixpipeParams); // 将matmul结果从L0C搬运到UB
     SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
     l0CBufId ^= 1;
 
@@ -581,11 +587,11 @@ struct CubeBlockTraits; // 声明
 #define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
 
-#define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS)                                                                     \
-    TEMPLATES_DEF_NO_DEFAULT                                                                                           \
-    struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> {                                                          \
-        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE)                                                                  \
-        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST)                                                                \
+#define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
+    TEMPLATES_DEF_NO_DEFAULT \
+    struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
+        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE) \
+        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
     }
 
 DEFINE_CUBE_BLOCK_TRAITS(CSABlockCube);
@@ -594,8 +600,8 @@ DEFINE_CUBE_BLOCK_TRAITS(CSABlockCubeDummy);
 // /* 生成Arg Traits, kernel中只需要调用ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
 #define GEN_ARGS_TYPE(name, ...) using name = typename CubeBlockTraits<CubeBlockType>::name##_TRAITS;
 #define GEN_ARGS_CONST(name, type, ...) static constexpr type name = CubeBlockTraits<CubeBlockType>::name##Traits;
-#define ARGS_TRAITS                                                                                                    \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE)                                                                       \
+#define ARGS_TRAITS \
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE) \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST)
 } // namespace SMLAKernel
 #endif // FLASH_ATTENTION_SCORE_BLOCK_CUBE_H_

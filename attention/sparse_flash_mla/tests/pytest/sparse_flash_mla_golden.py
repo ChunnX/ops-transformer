@@ -726,34 +726,38 @@ class GeneralizedSFA:
 
         cmp_sparse_indices_bnsd = None
         if template_idx == 2 or template_idx == 4:
-            cmp_sparse_indices_bnsd, cmp_sparse_indices_bnsd_shape = self.trans_shape_to_bnsd(
-                                                                            cmp_sparse_indices,
-                                                                            cmp_sparse_indices.shape,
-                                                                            self.layout_q,
-                                                                            cu_seqlens_q,
-                                                                            seqused_q,
-                                                                            )
+            cmp_sparse_indices_bnsd, cmp_sparse_indices_bnsd_shape = (
+                self.trans_shape_to_bnsd(
+                    cmp_sparse_indices,
+                    cmp_sparse_indices.shape,
+                    self.layout_q,
+                    cu_seqlens_q,
+                    seqused_q,
+                )
+            )
 
         ori_sparse_indices_bnsd = None
         if template_idx == 3 or template_idx == 4:
-            ori_sparse_indices_bnsd, ori_sparse_indices_bnsd_shape = self.trans_shape_to_bnsd(
-                                                                            ori_sparse_indices,
-                                                                            ori_sparse_indices.shape,
-                                                                            self.layout_q,
-                                                                            cu_seqlens_q,
-                                                                            seqused_q,
-                                                                            )
+            ori_sparse_indices_bnsd, ori_sparse_indices_bnsd_shape = (
+                self.trans_shape_to_bnsd(
+                    ori_sparse_indices,
+                    ori_sparse_indices.shape,
+                    self.layout_q,
+                    cu_seqlens_q,
+                    seqused_q,
+                )
+            )
         ori_topk_length_bnsd = None
         if (template_idx == 3 or template_idx == 4) and ori_topk_length is not None:
             ori_topk_length_bnsd, _ = self.trans_topk_length_shape_to_bnsd(
-                                        ori_topk_length, ori_topk_length.shape, self.layout_q, cu_seqlens_q)
+                ori_topk_length, ori_topk_length.shape, self.layout_q, cu_seqlens_q
+            )
 
         cmp_topk_length_bnsd = None
         if (template_idx == 2 or template_idx == 4) and cmp_topk_length is not None:
             cmp_topk_length_bnsd, _ = self.trans_topk_length_shape_to_bnsd(
-                                        cmp_topk_length, cmp_topk_length.shape, self.layout_q, cu_seqlens_q)
-
-
+                cmp_topk_length, cmp_topk_length.shape, self.layout_q, cu_seqlens_q
+            )
 
         attn_out, softmax_lse = self.calculate_by_bnsd(
             q_bnsd,
@@ -1363,9 +1367,7 @@ def resolve_compressed_actual_lengths(
     if seqused_ori_kv is None or cmp_ratio is None:
         return seqused_cmp_kv, cmp_residual_kv
     if cmp_ratio < 1:
-        raise ValueError(
-            f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}"
-        )
+        raise ValueError(f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}")
     if seqused_cmp_kv is None:
         if torch.is_tensor(seqused_ori_kv):
             seqused_cmp_kv = seqused_ori_kv // cmp_ratio
@@ -1779,13 +1781,13 @@ def gen_data(params, prepare_device_storage=True):
     if seqused_ori_kv is not None:
         max_seqlen_ori_kv = seqused_ori_kv.max().item()
     elif cu_seqlens_ori_kv is not None:
-            max_seqlen_ori_kv = get_max_adjacent_diff(cu_seqlens_ori_kv)
+        max_seqlen_ori_kv = get_max_adjacent_diff(cu_seqlens_ori_kv)
 
     max_seqlen_cmp_kv = 0
     if seqused_cmp_kv is not None:
         max_seqlen_cmp_kv = seqused_cmp_kv.max().item()
     elif cu_seqlens_cmp_kv is not None:
-            max_seqlen_cmp_kv = get_max_adjacent_diff(cu_seqlens_cmp_kv)
+        max_seqlen_cmp_kv = get_max_adjacent_diff(cu_seqlens_cmp_kv)
 
     # ORI_SPARSE/ORI_CMP_SPARSE: seqused (actualLength) not passed to op, determined by sparse_indices and topkLength
     # cu_seqlens still passed for TND kv layout (needed for data addressing in kernel)
