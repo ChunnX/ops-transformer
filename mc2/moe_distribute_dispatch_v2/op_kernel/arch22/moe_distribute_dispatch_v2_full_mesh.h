@@ -141,6 +141,7 @@ private:
     __aicore__ inline void TokenToExpert(GlobalTensor<XOutType> dstWinGMTensor, TQue<QuePosition::VECIN, 1> inQueue,
                                          uint32_t srcTokenIndex, uint32_t toExpertIndex);
     __aicore__ inline void RecordRankCommDuration(LocalTensor<int32_t> &performanceInfoTensor, uint64_t startTime);
+    __aicore__ inline GM_ADDR GetExpertWinAddr(uint32_t dstExpertId, uint32_t tokenOffset);
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
         return ctx_.GetWindAddrByRankId(rankId, epRankIdOriginal_) + winDataSizeOffset_;
@@ -688,15 +689,8 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SendToMoeExpert(TQ
                 }
                 int32_t topKIndex = calExpertIdsIdx % axisK_;
                 int32_t srcTokenIndex = calExpertIdsIdx / axisK_;
-                int32_t toRankId = dstExpertId / moeExpertNumPerRank_ + sharedExpertRankNum_;
-                if (isScalingDownFlag_) {
-                    toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
-                }
-                GM_ADDR rankGM = (__gm__ uint8_t *)(GetWindAddrByRankId(toRankId) +
-                                                    (expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_ +
-                                                                            dstExpertId % moeExpertNumPerRank_)) +
-                                                    hCommuSize_ * dstTokenPreCnt); // 计算地址偏移
-                dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)rankGM);
+                // 旋转源rank槽 (epRankId_+toRankId)%W；弹性回退非旋转，封装见 GetExpertWinAddr
+                dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)GetExpertWinAddr(dstExpertId, dstTokenPreCnt));
                 if constexpr ((QuantMode > UNQUANT) ||
                               (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
                     uint32_t quantExpertIdx = dstExpertId + sharedExpertNum_;
@@ -801,16 +795,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
                 CalTokenSendExpertCnt(dstExpertId, flatIdx, curExpertCnt);
             }
 
-            int32_t toRankId = dstExpertId / moeExpertNumPerRank_ + sharedExpertRankNum_;
-            if (isScalingDownFlag_) {
-                toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
-            }
-
-            GM_ADDR rankGM = (__gm__ uint8_t *)(GetWindAddrByRankId(toRankId) +
-                                                expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_ +
-                                                                       dstExpertId % moeExpertNumPerRank_) +
-                                                hCommuSize_ * curExpertCnt);
-            dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)rankGM);
+            // 旋转源rank槽 (epRankId_+toRankId)%W；弹性回退非旋转，封装见 GetExpertWinAddr
+            dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)GetExpertWinAddr(dstExpertId, curExpertCnt));
 
             // Copy stride: srcTensor → outTensor_[slot]，slot 在批次内循环复用
             uint32_t slotOffInt32 = (ki - batchStart) * hCommuSize_ / sizeof(int32_t);
@@ -1536,11 +1522,33 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 }
 
 template <TemplateMC2TypeFullmeshClass>
+__aicore__ inline GM_ADDR
+MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GetExpertWinAddr(uint32_t dstExpertId,
+                                                                               uint32_t tokenOffset)
+{
+    int32_t toRankId = dstExpertId / moeExpertNumPerRank_ + sharedExpertRankNum_;
+    if (isScalingDownFlag_) {
+        toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
+    }
+    // 旋转源rank槽 (epRankId_+toRankId)%W；弹性回退非旋转，与读回 GetLocalWindowSrcDataBlockIdx 守卫对称
+    uint32_t rankTerm = (epRankId_ + toRankId) % epWorldSize_;
+    if (hasElasticInfoFlag_) {
+        rankTerm = epRankId_;
+    }
+    uint32_t slot = rankTerm * moeExpertNumPerRank_ + dstExpertId % moeExpertNumPerRank_;
+    return (__gm__ uint8_t *)(GetWindAddrByRankId(toRankId) + expertPerSizeOnWin_ * slot + hCommuSize_ * tokenOffset);
+}
+
+template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline uint32_t
 MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::GetLocalWindowSrcDataBlockIdx(
     uint32_t srcExpertId, uint32_t localExpertNum)
 {
+    // 旋转源rank槽位：与写侧寻址配对
     uint32_t srcDataBlockIdx = srcExpertId % epWorldSize_ * localExpertNum + srcExpertId / epWorldSize_;
+    if (!(isShareExpertRankFlag_ || hasElasticInfoFlag_)) {
+        srcDataBlockIdx = (srcExpertId + epRankId_) % epWorldSize_ * localExpertNum + srcExpertId / epWorldSize_;
+    }
     return srcDataBlockIdx;
 }
 
