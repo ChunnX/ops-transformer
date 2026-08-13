@@ -20,6 +20,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "bsa_select_block_mask_common.h"
 #include "bsa_select_block_mask_tiling_data.h"
+#include "bsa_vec_sm_vf.h"
 
 
 template <typename BSAT>
@@ -109,17 +110,21 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitBuffers(TBuf<>* uBuf_)
     ubOffset += chunkSize * sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
+#if !BSA_ENABLE_SOFTMAX_FIRST_PASS_VF
     globalMaxBroc = uBuf_->GetWithOffset<T>(chunkSize * FLOAT_DATA_BLOCK_NUM, ubOffset);
     ubOffset += chunkSize * FLOAT_DATA_BLOCK_NUM * sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
+#endif
 
     globalSum = uBuf_->GetWithOffset<T>(chunkSize, ubOffset);
     ubOffset += chunkSize * sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
+#if !BSA_ENABLE_SOFTMAX_SECOND_PASS_VF
     globalSumBroc = uBuf_->GetWithOffset<T>(chunkSize * FLOAT_DATA_BLOCK_NUM, ubOffset);
     ubOffset += chunkSize * FLOAT_DATA_BLOCK_NUM * sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
+#endif
 
     tmpMax = uBuf_->GetWithOffset<T>(chunkSize, ubOffset);
     ubOffset += chunkSize * sizeof(T);
@@ -183,8 +188,8 @@ void SubBroadcast(
         }
         AscendC::Sub(
             ubOut[i * countEachRepeat], ubIn0[i * countEachRepeat], ubIn1[0], mask, repeatTimes, repeatParams);
-        AscendC::PipeBarrier<PIPE_V>();
     }
+    AscendC::PipeBarrier<PIPE_V>();
 }
 
 __aicore__ inline
@@ -215,8 +220,8 @@ void DivBroadcast(
         }
         AscendC::Div(
             ubOut[i * countEachRepeat], ubIn0[i * countEachRepeat], ubIn1[0], mask, repeatTimes, repeatParams);
-        AscendC::PipeBarrier<PIPE_V>();
     }
+    AscendC::PipeBarrier<PIPE_V>();
 }
 
 /**
@@ -328,15 +333,19 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     // t5 = torch.exp(t4)
     // t6 = t5.sum(dim=1)
     // global_sum = t3 + t6
+#if !BSA_ENABLE_SOFTMAX_FIRST_PASS_VF
     uint8_t repeatimes = BSACeilDiv(actualQExcuteRow, BROC_BASE_NUM);
     Brcb(globalMaxBroc, tmpMax, repeatimes, {1, 8});
     AscendC::PipeBarrier<PIPE_V>();
 
     SubBroadcast(scoreUb, scoreUb, globalMaxBroc, actualQExcuteRow, kChunkSizeAlign);
-    AscendC::PipeBarrier<PIPE_V>();
 
     AscendC::Exp(scoreUb, scoreUb, actualQExcuteRow * kChunkSizeAlign);
     AscendC::PipeBarrier<PIPE_V>();
+#else
+    BSASelectBlockMaskVF::DoSoftmaxFirstPassExpFp32VfWrapper(
+        scoreUb, tmpMax, actualQExcuteRow, kChunkSizeAlign);
+#endif
 
     uint32_t sumShape[] = { actualQExcuteRow, kChunkSizeAlign};
     AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(
@@ -347,10 +356,13 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     AscendC::PipeBarrier<PIPE_V>();
 
     // 最后一次k循环第二轮循环存储sumbroc
+#if !BSA_ENABLE_SOFTMAX_SECOND_PASS_VF
+    uint8_t repeatimes = BSACeilDiv(actualQExcuteRow, BROC_BASE_NUM);
     if (kChunkStart + kChunkSize >= validYBlocks) {
         Brcb(globalSumBroc, globalSum, repeatimes, {1, 8});
         AscendC::PipeBarrier<PIPE_V>();
     }
+#endif
 
     // 更新globalMax
     AscendC::Max(globalMax, tmpMax, globalMax, actualQExcuteRow);
@@ -412,17 +424,20 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
     SetFlag<HardEvent::MTE2_V>(eventSft);
     WaitFlag<HardEvent::MTE2_V>(eventSft);
 
+#if BSA_ENABLE_SOFTMAX_SECOND_PASS_VF
+    BSASelectBlockMaskVF::DoSoftmaxSecondPassFp32VfWrapper(
+        scoreUb, globalMax, globalSum, static_cast<float>(constInfo.scaleValue), actualQExcuteRow, kChunkSizeAlign16);
+#else
     Muls(scoreUb, scoreUb, (float)(constInfo.scaleValue), actualQExcuteRow * kChunkSizeAlign);
     AscendC::PipeBarrier<PIPE_V>();
 
     SubBroadcast(scoreUb, scoreUb, globalMaxBroc, actualQExcuteRow, kChunkSizeAlign16);
-    AscendC::PipeBarrier<PIPE_V>();
 
     AscendC::Exp(scoreUb, scoreUb, actualQExcuteRow * kChunkSizeAlign16);
     AscendC::PipeBarrier<PIPE_V>();
 
     DivBroadcast(scoreUb, scoreUb, globalSumBroc, actualQExcuteRow, kChunkSizeAlign16);
-    AscendC::PipeBarrier<PIPE_V>();
+#endif
 
     AscendC::Cast(scoreFp16Ub, scoreUb, AscendC::RoundMode::CAST_ROUND, actualQExcuteRow * kChunkSizeAlign16);
     AscendC::PipeBarrier<PIPE_V>();

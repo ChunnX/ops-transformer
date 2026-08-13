@@ -381,7 +381,9 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
         uint32_t validYBlocks = BSACeilDiv(curBatchSkv, static_cast<uint32_t>(constInfo.blockShapeY));
 
         if ASCEND_IS_AIV {
-            radixTopKService.UpdateRuntimeParams(validXBlocks, validYBlocks);
+            if (tilingData->baseParams.useActualSeqLenQ || tilingData->baseParams.useActualSeqLenK) {
+                radixTopKService.UpdateRuntimeParams(validXBlocks, validYBlocks);
+            }
         }
 
         // D2: dynamic partition by validXBlocks

@@ -30,7 +30,6 @@ public:
     using OUT_T = typename BSAT::outputT;
     static constexpr BSALayout LAYOUT_Q = BSAT::layoutQ;
     static constexpr BSALayout LAYOUT_KV = BSAT::layoutKV;
-    static constexpr bool IS_VARLEN = true;
     static constexpr uint64_t COMPARES_ALIGN_LEN = REPEAT_SIZE / sizeof(SCORE_T);
 
     __aicore__ inline BSARadixTopKService(){};
@@ -144,6 +143,7 @@ private:
     uint64_t kValue_;
     uint64_t maxTileLen_;
     uint64_t maxTileLenScoreAlign_;
+    bool useCompactTopKMapping_;
     uint32_t validXBlocks_;
     uint32_t validYBlocks_;
     uint32_t round_;
@@ -181,6 +181,8 @@ BSARadixTopKService<BSAT>::InitParams(const BSAConstInfo &constInfo,
     this->round_ = RADIX_ROUNDS_FP16;
     this->validXBlocks_ = constInfo.xBlocks;
     this->validYBlocks_ = constInfo.yBlocks;
+    this->useCompactTopKMapping_ =
+        tilingData->baseParams.useActualSeqLenQ && tilingData->baseParams.useActualSeqLenK;
 
     uint64_t maxSortLen = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks;
     ConfigureTopKParams(maxSortLen, constInfo.topKValue);
@@ -194,7 +196,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ConfigureTopKParams(uint64_t s
     this->sortLen_ = sortLen;
     this->kValue_ = kValue;
     this->tileLen_ = BSAMin(static_cast<uint64_t>(7168), BSAMax(static_cast<uint64_t>(128), sortLen_));
-    this->tileLenScoreAlign_ = BSAAlignTo(tileLen_, static_cast<uint64_t>(UB_BLOCK_SIZE / sizeof(SCORE_T)));
+    this->tileLenScoreAlign_ = BSAAlignTo(tileLen_, COMPARES_ALIGN_LEN);
     this->totalTileNum_ = (sortLen_ + tileLen_ - 1) / tileLen_;
     this->tileNum_ = totalTileNum_;
     this->tileNumAlign_ = BSACeilDiv(tileNum_, static_cast<uint64_t>(8)) * 8;
@@ -446,7 +448,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::NegateDataForLargest(TBuf<TPos
     if (constInfo.sparsityMode == BSASparseMode::BottomK) {
         LocalTensor<SCORE_T> xLocal = xBuf.Get<SCORE_T>();
         int32_t ubOffset = (sizeof(SCORE_T) == 2) ? tileLenScoreAlign_ : 0;
-        uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
+        uint64_t alignLen = BSAAlignTo(curTileLen, COMPARES_ALIGN_LEN);
         if constexpr (IsSameType<SCORE_T, bfloat16_t>::value) {
             Muls(xLocal[ubOffset].template ReinterpretCast<half>(), xLocal[ubOffset].template ReinterpretCast<half>(),
                  (half)-1, alignLen);
@@ -469,12 +471,12 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(TBuf<TPosition::V
     LocalTensor<int16_t> signMaskTensor = outValueBuf_.Get<int16_t>();
     LocalTensor<int16_t> tempTensor = outIndexBuf_.Get<int16_t>();
 
-    uint64_t calcLen = curTileLen * (sizeof(SCORE_T) / sizeof(int16_t));
-    uint64_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint64_t>(UB_BLOCK_SIZE / sizeof(int16_t)));
+    uint64_t curTileLenAlign = BSAAlignTo(curTileLen, COMPARES_ALIGN_LEN);
+    uint64_t calcLen = curTileLenAlign * (sizeof(SCORE_T) / sizeof(int16_t));
     LocalTensor<int16_t> temp1 = tempTensor[curTileLenAlign];
 
-    ShiftRight(tempTensor, xLocalInt16, (int16_t)15, curTileLen);
-    Duplicate<int16_t>(signMaskTensor, XOR_OP_VALUE_16, curTileLen);
+    ShiftRight(tempTensor, xLocalInt16, (int16_t)15, curTileLenAlign);
+    Duplicate<int16_t>(signMaskTensor, XOR_OP_VALUE_16, curTileLenAlign);
     PipeBarrier<PIPE_V>();
     Or(tempTensor, tempTensor, signMaskTensor, calcLen);
     PipeBarrier<PIPE_V>();
@@ -491,10 +493,11 @@ template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::DoAndMask(TBuf<TPosition::VECIN> &xBuf, uint64_t curTileLen)
 {
     LocalTensor<int16_t> xLocalInt16 = xBuf.Get<int16_t>();
-    uint64_t calcLen = curTileLen * (sizeof(SCORE_T) / sizeof(int16_t));
+    uint64_t curTileLenAlign = BSAAlignTo(curTileLen, COMPARES_ALIGN_LEN);
+    uint64_t calcLen = curTileLenAlign * (sizeof(SCORE_T) / sizeof(int16_t));
     LocalTensor<int32_t> maskTensor = outValueBuf_.Get<int32_t>();
 
-    Duplicate<int16_t>(maskTensor.ReinterpretCast<int16_t>(), andMask16_, curTileLen);
+    Duplicate<int16_t>(maskTensor.ReinterpretCast<int16_t>(), andMask16_, curTileLenAlign);
     PipeBarrier<PIPE_V>();
     And(xLocalInt16[tileLenScoreAlign_], xLocalInt16[tileLenScoreAlign_], maskTensor.ReinterpretCast<int16_t>(),
         calcLen);
@@ -721,6 +724,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyTileHistInWs(uint32_t dstO
         MTE2ToMTE3Sync();
         DataCopyExtParams params{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * dataNum), 0, 0, 0};
         DataCopyPad(tileHistGm_[dstOffset + i * MAX_TILE_NUM_IN_UB], tileHist, params);
+        MTE3ToMTE2Sync();
     }
 }
 
@@ -1418,7 +1422,7 @@ template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, uint32_t headIdx)
 {
     LocalTensor<int32_t> tileTopK = tileHistAndTopKBuf_.Get<int32_t>();
-    uint64_t outputStride = IS_VARLEN ? static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks : sortLen_;
+    uint64_t outputStride = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks;
     uint64_t outputOffset = (static_cast<uint64_t>(batchIdx) * constInfo.numHeads + headIdx) * outputStride;
 
     // Restore boundary value (twiddle inverse transform)
@@ -1473,7 +1477,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
             LocalTensor<half> xLocal = curBuf.template Get<half>()[tileLenScoreAlign_].template ReinterpretCast<half>();
 
-            if constexpr (IS_VARLEN) {
+            if (useCompactTopKMapping_) {
                 SubTopKAndWriteMaskGTTnd(xLocal, boundaryHalf, curTileLen, tileGmOffset, outputOffset, curTileK);
             } else {
                 SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, outputGmOffset, curTileK);
@@ -1481,7 +1485,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
 
             if (curTileK > 0) {
-                if constexpr (IS_VARLEN) {
+                if (useCompactTopKMapping_) {
                     SubTopKAndWriteMaskEQTnd(xLocal, boundaryHalf, curTileLen, tileGmOffset, outputOffset, curTileK);
                 } else {
                     SubTopKAndWriteMaskEQ(xLocal, boundaryHalf, curTileLen, outputGmOffset, curTileK);

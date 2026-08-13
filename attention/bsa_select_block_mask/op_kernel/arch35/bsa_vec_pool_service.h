@@ -386,8 +386,6 @@ BSAVecPoolService<BSAT>::PoolingLen256Impl(GlobalTensor<IN_T> &srcGm, GlobalTens
 
     SetFlag<HardEvent::MTE3_MTE2>(eventPing);
     WaitFlag<HardEvent::MTE3_MTE2>(eventPing);
-    SetFlag<HardEvent::MTE3_MTE2>(eventPong);
-    WaitFlag<HardEvent::MTE3_MTE2>(eventPong);
 
     // Step 1: DataCopyPad GM→UB，搬入 actualLen × D 个 IN_T 元素到 poolInputUb[bufferId]
     DataCopyExtParams copyInParams;
