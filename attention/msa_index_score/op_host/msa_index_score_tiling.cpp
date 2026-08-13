@@ -221,7 +221,10 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
 
-    context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aicNum, aicNum, aivNum));
+    // MIX 1AIC:2AIV：CalcTschBlockDim 的 sliceNum 按 AIV 计数，内部再 / (aiv/aic)。
+    // 传入 aicNum 会再除一次得到 blockDim=aic/2（910B3: 20→10），只能打一半 Cube。
+    // 与 LightningIndexer 等 MIX 算子一致：sliceNum = aivNum → 910B3 blockDim=20。
+    context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum));
 
     size_t *workspaces = context->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);
