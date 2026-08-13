@@ -62,7 +62,9 @@ public:
 
     __aicore__ inline MlaPrologVecS1CubS2(TPipe *pipe, const optiling::MlaPrologTilingData *__restrict tilingData,
                                           const optiling::MlaPrologBaseParams *__restrict baseParams)
-        : pipe_(pipe), tilingData_(tilingData), baseParams_(baseParams)
+        : pipe_(pipe),
+          tilingData_(tilingData),
+          baseParams_(baseParams)
     {
     }
 
@@ -289,7 +291,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
     __gm__ uint8_t *workspace)
 {
     cvRatio_ = GetSubBlockNum(); // CV1:2场景返回2，其他场景返回1
-    blockIdx_ = GetBlockIdx(); // cube:0-23  vec:0-47
+    blockIdx_ = GetBlockIdx();   // cube:0-23  vec:0-47
     if ASCEND_IS_AIC {
         cubeBlockIdx_ = blockIdx_;
     } else {
@@ -1339,7 +1341,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::CopyGlobalParams()
     }
 }
 
-
 /**
  * @brief RmsNormCq流程，融合了dynamicquant
           内部所需空间约为 curVecToken(128) * 8*4 + 8*4 + (4*vectorRow_*baseParams_->headSizeCq + 8)*4 = 28.0625K
@@ -1614,7 +1615,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndQuantizeCkv(LocalTe
     }
     PipeBarrier<PIPE_V>();
 }
-
 
 template <typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ScatterCkv(LocalTensor<kvCacheType> &outputLocal,
@@ -2011,7 +2011,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::CastQcQrSplitN(const CastQcQr
         static_cast<uint16_t>(row), static_cast<uint16_t>(colQcSingle * sizeof(mmQnInputType) / ALIGN_BLOCK_SIZE), 0,
         static_cast<uint16_t>(castQcQrSplitN.dstStride * sizeof(mmQnInputType) / ALIGN_BLOCK_SIZE)};
 
-
     GlobalTensor<mmQcQrOutputType> inputGm = mmQcQrResGm_[castQcQrSplitN.mmQnPreCastOffset];
     GlobalTensor<mmQnInputType> outputGm = mmQcQrResDequantGm_[castQcQrSplitN.mmQnPreCastResOffset];
 
@@ -2047,7 +2046,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcQrSplitN(const Dequa
     DataCopyParams outputCopyParams{
         static_cast<uint16_t>(row), static_cast<uint16_t>(colQcSingle * sizeof(mmQnInputType) / ALIGN_BLOCK_SIZE), 0,
         static_cast<uint16_t>(dequantQcQrSplitN.dstStride * sizeof(mmQnInputType) / ALIGN_BLOCK_SIZE)};
-
 
     GlobalTensor<mmQcQrOutputType> inputGm = mmQcQrResGm_[dequantQcQrSplitN.mmQnPreDequantOffset];
     GlobalTensor<float> scale1Gm = deqScaleQcQrW_[dequantQcQrSplitN.mmQnPreDequantOffset];
@@ -2337,7 +2335,6 @@ MlaPrologVecS1CubS2<MLAPT>::DynamicQuantQnAndMulQrSyncMMQn(int64_t batchOffset, 
     int64_t qrPostProcessResOffset = batchOffset * static_cast<int64_t>(baseParams_->headSizeQr) +
                                      numHeadOffset * static_cast<int64_t>(baseParams_->dimHeadRope) +
                                      blockBatchOffset * static_cast<int64_t>(baseParams_->headSizeQr);
-
 
     LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
 

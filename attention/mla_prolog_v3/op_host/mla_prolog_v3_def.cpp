@@ -13,7 +13,8 @@
 namespace ops {
 class MlaPrologV3 : public OpDef {
 public:
-    explicit MlaPrologV3(const char *name) : OpDef(name)
+    explicit MlaPrologV3(const char *name)
+        : OpDef(name)
     {
         this->Input("token_x")
             .ParamType(REQUIRED)
@@ -167,7 +168,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");   // set value of aclnn support
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn"); // set value of aclnn support
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
 
