@@ -766,24 +766,6 @@ __aicore__ inline void RunMoeExpertDispatchStage(
     }
 }
 
-// 仅准备一个专家的接收行数和前缀和。Wave 调度需要先用实际行数判断当前
-// Dispatch wave 能否继续合并下一个小专家，因此 count 计算与真正的数据搬运
-// 必须能够分开执行；否则在发现下一个专家放不进当前 wave 后，会重复搬运它。
-template <typename ActivationType, bool EnableA8W4, bool TopkWeightsPrefetch>
-__aicore__ inline void PrepareMoeExpertDispatchStage(
-    const TokenDispatchConfig &context, const Params &params,
-    TokenDispatchScratch<ActivationType> &scratch, uint32_t expertIdx, uint64_t &sendCnt)
-{
-    sendCnt = 0U;
-    if constexpr (g_coreType == AIV) {
-        if (GetSubBlockIdx() != 1U) {
-            return;
-        }
-        ComputeExpertTokenCountAndNotify<ActivationType, EnableA8W4, TopkWeightsPrefetch>(
-            context, params, scratch, expertIdx, sendCnt);
-    }
-}
-
 } // namespace MegaMoeImpl
 
 #endif // MEGA_MOE_TOKEN_DISPATCH_H

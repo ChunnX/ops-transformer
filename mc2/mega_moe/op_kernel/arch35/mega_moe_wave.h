@@ -814,7 +814,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
             while (waveEndExpert < moeExpertPerRank_) {
                 uint32_t expertIdx = waveEndExpert;
                 if (!hasPreparedExpert || preparedExpertIdx != expertIdx) {
-                    PrepareMoeExpertDispatchStage<ActivationType, false, TopkWeightsPrefetch>(
+                    ComputeExpertTokenCountAndNotify<ActivationType, false, TopkWeightsPrefetch>(
                         tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx, dispatchExpertRowCount);
                     preparedExpertIdx = expertIdx;
                     hasPreparedExpert = true;
