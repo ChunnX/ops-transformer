@@ -32,6 +32,8 @@ enum RwMode : uint32_t {
     MODE_READ_WRITE = 2,
     MODE_WRITE_THEN_READ = 3,
     MODE_DUAL_CORE_RW = 4,
+    MODE_GM_WRITE = 5,
+    MODE_GM_READ = 6,
 };
 
 template <typename T>
@@ -127,6 +129,12 @@ __aicore__ inline void LocalMsRw<T>::Init(uint32_t mode0, uint32_t enableWarmup,
             pipe->InitBuffer(dataBuf_, dataSize);
             dataLocal_ = dataBuf_.Get<T>();
         } else if (mode0_ == MODE_READ) {
+            pipe->InitBuffer(readBuf_, dataSize);
+            readLocal_ = readBuf_.Get<T>();
+        } else if (mode0_ == MODE_GM_WRITE) {
+            pipe->InitBuffer(dataBuf_, dataSize);
+            dataLocal_ = dataBuf_.Get<T>();
+        } else if (mode0_ == MODE_GM_READ) {
             pipe->InitBuffer(readBuf_, dataSize);
             readLocal_ = readBuf_.Get<T>();
         }
@@ -363,7 +371,7 @@ __aicore__ inline void LocalMsRw<T>::Process()
     // 打点外：填充数据
     if (mode0_ == MODE_WRITE_THEN_READ) {
         FillData();
-    } else if (mode0_ == MODE_WRITE || mode0_ == MODE_READ_WRITE) {
+    } else if (mode0_ == MODE_WRITE || mode0_ == MODE_READ_WRITE || mode0_ == MODE_GM_WRITE) {
         Duplicate<T>(dataLocal_, (T)2, totalElem_);
     }
 
@@ -383,6 +391,12 @@ __aicore__ inline void LocalMsRw<T>::Process()
                 break;
             case MODE_WRITE_THEN_READ:
                 WriteThenReadWarmup();
+                break;
+            case MODE_GM_WRITE:
+                WriteWarmup();
+                break;
+            case MODE_GM_READ:
+                ReadWarmup();
                 break;
             default:
                 break;
@@ -407,6 +421,12 @@ __aicore__ inline void LocalMsRw<T>::Process()
             break;
         case MODE_WRITE_THEN_READ:
             WriteThenReadMode();
+            break;
+        case MODE_GM_WRITE:
+            WriteMode();
+            break;
+        case MODE_GM_READ:
+            ReadMode();
             break;
         default:
             break;
