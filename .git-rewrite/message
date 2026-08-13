@@ -1,0 +1,43 @@
+enable moe_finalize_routing_v2 example validation
+
+Co-authored-by: weixin_43383780<wuyushu2@huawei.com>
+
+
+
+# message auto-generated for no-merge-commit merge:
+!5327 merge enable-moe-finalize-routing-v2-example into master
+
+enable moe_finalize_routing_v2 example validation
+
+Created-by: weixin_43383780
+Commit-by: weixin_43383780
+Merged-by: cann-robot
+Description: ## 描述
+example配置开关打开
+
+## 关联的Issue
+https://gitcode.com/cann/ops-transformer/issues/2438
+
+## 测试
+![image.png](https://raw.gitcode.com/user-images/assets/7673863/511cc69d-e92f-4dc4-8354-5607df09e5e1/image.png 'image.png')
+
+## 文档更新
+
+## 类型标签
+<!--  [x] 表示选中 -->
+- [ ] 🐛 Bug 修复
+- [ ] ✨ 新特性
+- [ ] ⚡ 性能优化
+- [ ] ♻️ 重构
+- [ ] 🧪 测试
+- [ ] 📦 构建/CI
+- [ ] 🔧 配置变更
+- [ ] 📝 文档更新
+- [ ] ⬆️ 依赖升级
+- [ ] 🔒 安全修复
+- [ ] 🧹 代码清理
+- [ ] ❓ 其他，请描述：
+
+
+
+See merge request: cann/ops-transformer!5327

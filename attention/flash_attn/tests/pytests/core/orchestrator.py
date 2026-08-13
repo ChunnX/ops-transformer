@@ -18,7 +18,7 @@ import torch
 
 from core.data import InputSpec, flash_attn_inputs
 from core.backends.base import Backend
-from utils.compare import check_result, get_tolerance
+from utils.compare import check_result, get_tolerance, get_fail_ratio_limit
 from utils.data import trans_bnsd_to_layout, make_noncontiguous
 
 
@@ -93,7 +93,9 @@ def run_case(params: dict,
     layout = params.get("input_layout", params.get("layout_q", "BNSD"))
     out_layout = params.get("layout_out", layout)
     output_dtype = params.get("Dtype", "fp16")
-    atol, rtol = get_tolerance(output_dtype)
+    keep_prob = params.get("keep_prob", 1.0)
+    atol, rtol = get_tolerance(output_dtype, keep_prob)
+    fail_ratio_limit = get_fail_ratio_limit(keep_prob, output_dtype)
 
     if compare_dir and case_name:
         safe_name = case_name.replace("/", "_")
@@ -228,14 +230,14 @@ def run_case(params: dict,
                                         cpu_out, dev_out.float(),
                                         except_label="CPU", comp_label=primary.name,
                                         verbose_diff=verbose_diff,
-                                        atol=atol, rtol=rtol)
+                                        atol=atol, rtol=rtol, fail_ratio_limit=fail_ratio_limit)
     else:
         print(f"  [compare] CPU vs {primary.name}")
         attn_result = check_result(f"CPU_vs_{primary.name}",
                                     cpu_out, dev_out.float(),
                                     except_label="CPU", comp_label=primary.name,
                                     verbose_diff=verbose_diff,
-                                    atol=atol, rtol=rtol)
+                                    atol=atol, rtol=rtol, fail_ratio_limit=fail_ratio_limit)
 
     lse_result = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
                   "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
