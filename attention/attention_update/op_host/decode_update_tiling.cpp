@@ -32,7 +32,7 @@ namespace {
     constexpr uint64_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024UL;
     constexpr uint32_t LSE_TOTAL_LENGTH_DIM = 0;
     constexpr uint32_t IN_HD_DIM = 1;
-    constexpr uint32_t LOCAL_OUT_IDNEX = 1;
+    constexpr uint32_t LOCAL_OUT_INDEX = 1;
     constexpr uint32_t ATTR_UPDATETYPE_INDEX = 0;
     constexpr uint32_t ATTR_SP_INDEX = 1;
 
@@ -72,7 +72,7 @@ ge::graphStatus DecodeUpdateTiling(gert::TilingContext *context) {
     auto updateType = *updateTypePtr;
     auto sp = *spPtr;
 
-    ge::DataType goType_ = context->GetInputDesc(LOCAL_OUT_IDNEX * sp)->GetDataType();
+    ge::DataType goType_ = context->GetInputDesc(LOCAL_OUT_INDEX * sp)->GetDataType();
     auto tilingKey = GetTilingKey(sp, goType_);
     context->SetTilingKey(tilingKey);
 

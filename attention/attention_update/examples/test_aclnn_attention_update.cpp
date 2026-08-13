@@ -9,7 +9,7 @@
  */
 
 /**
- * @file test_nsa_attention_update.cpp
+ * @file test_aclnn_attention_update.cpp
  */
 
 #include "acl/acl.h"
