@@ -11,6 +11,7 @@ import torch
 import torch_npu
 import torchair
 from cann_ops_transformer.ops import compressor
+from cann_ops_transformer.ops.compressor import _compressor_forward
 import numpy as np
 import torch.nn as nn
 from torch_npu.testing.testcase import TestCase, run_tests
@@ -1036,7 +1037,9 @@ def run_compressor_eager(
         (cpu_score_state.shape[0], cpu_score_state.shape[1], cpu_score_state.shape[2]),
         dtype=torch.bool,
     )
-    cpu_out, cmp_kv_mask = cpu_compressor(
+    # grad_enabled=True：cpu_compressor 返回 5 元组（cmp_kv, mask, softmax, kv, mid_result_mask），
+    # 与 39321f448 引入的中间量输出接口对齐（f5e0dc95e interleave 后比对侧无需再 interleave）
+    cpu_out, cmp_kv_mask, cpu_softmax, cpu_kv, mid_result_mask = cpu_compressor(
         x,
         wkv,
         wgate,
@@ -1052,6 +1055,7 @@ def run_compressor_eager(
         cmp_ratio=cmp_ratio,
         coff=coff,
         cache_mode=cache_mode,
+        grad_enabled=True,
     )
     # ======================== execute cpu finish ================================
 
@@ -1127,8 +1131,8 @@ def run_compressor_eager(
     if seqused is not None:
         seqused = torch.tensor(seqused).to(torch.int32).to("npu:%s" % DEVICE_ID)
     # ======================== execute npu finish ================================
-    # start run custom ops
-    npu_out = compressor(
+    # start run custom ops（grad_enabled=True 导出 softmax_score/kv 中间量，供 interleave 比对）
+    npu_out, npu_softmax, npu_kv = _compressor_forward(
         x,
         wkv,
         wgate,
@@ -1141,6 +1145,7 @@ def run_compressor_eager(
         start_pos=start_pos if exist_start_pos else None,
         coff=coff,
         cache_mode=cache_mode,
+        grad_enabled=True,
     )
     print(f"x: shape {x.shape}, dtype: {x.dtype}")
     print(f"wkv: shape {wkv.shape}, dtype: {wkv.dtype}")
@@ -1204,6 +1209,22 @@ def run_compressor_eager(
         .to(torch.float32),
         data_type,
         0.0,
+    )
+    print(
+        "--------------------------------------------------------------check softmax_score-------------------------------------------------------------"
+    )
+    _, results["softmax_score"] = check_result(
+        cpu_softmax[mid_result_mask].to(torch.float32),
+        npu_softmax.cpu()[mid_result_mask].to(torch.float32),
+        "float32",
+    )
+    print(
+        "--------------------------------------------------------------check kv-------------------------------------------------------------"
+    )
+    _, results["kv"] = check_result(
+        cpu_kv[mid_result_mask].to(torch.float32),
+        npu_kv.cpu()[mid_result_mask].to(torch.float32),
+        "float32",
     )
     print("\n============================== SUMMARY ==============================")
     failed = [k for k, v in results.items() if v != "Pass"]
