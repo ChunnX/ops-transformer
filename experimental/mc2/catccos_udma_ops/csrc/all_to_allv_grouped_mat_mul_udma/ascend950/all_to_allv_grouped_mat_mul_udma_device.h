@@ -37,7 +37,7 @@
 namespace OpsTransformer::CatccosUdma {
 
 template <class ElementA, class LayoutA, class ElementB, class LayoutB, class ElementC, class LayoutC,
-          uint32_t M0, uint32_t N0, uint32_t K0>
+          uint32_t M0, uint32_t N0, uint32_t K0, bool ExportAllToAllV = false>
 struct AllToAllVGroupedMatMulUdmaConfig {
     using ArchTag = Catlass::Arch::Ascend950;
     using MmadDispatchPolicy = Catlass::Gemm::MmadPingpong<ArchTag, true>;
@@ -57,6 +57,9 @@ struct AllToAllVGroupedMatMulUdmaConfig {
     using TileLocalCopy = Catccos::Comm::Tile::TileRemoteCopy<
         ArchTag, kIsDynamic, AType, AType, void, Catccos::detail::CopyDirect::Put,
         Catccos::detail::CopyTransport::Mte>;
+    using TileExportCopy = Catccos::Comm::Tile::TileRemoteCopy<
+        ArchTag, kIsDynamic, AType, AType, void, Catccos::detail::CopyDirect::Put,
+        Catccos::detail::CopyTransport::Mte>;
     using TileRemoteCopy = Catccos::Comm::Tile::TileRemoteCopyUdma2D<
         ArchTag, AType, AType, Catccos::detail::CopyDirect::Put>;
     using TileScheduler = Catlass::Epilogue::Tile::EpilogueIdentityTileSwizzle;
@@ -67,13 +70,17 @@ struct AllToAllVGroupedMatMulUdmaConfig {
     using BlockRemoteComm = Catccos::Comm::Block::CommBlock<
         RemoteDispatch, AType, AType, TileRemoteCopy>;
     using BlockComm = Catccos::Comm::Block::CommBlockMteUdma<BlockLocalComm, BlockRemoteComm>;
+    using ExportDispatch = Catccos::Comm::AtlasCommLocalCopy<ArchTag, kUbStages, kIsDynamic>;
+    using BlockExport = Catccos::Comm::Block::CommBlock<
+        ExportDispatch, AType, AType, void, TileExportCopy, TileScheduler>;
 
     using MoeConstraints = Catccos::DGemm::MoeConstraints<1, 8, 64>;
     using BlockMmadScheduler = Catccos::DGemm::Block::BlockMmadSchedulerAllToAllVAllGather<MoeConstraints>;
     using BlockScheduler = Catccos::Comm::Block::BlockCommSchedulerAllToAllVAllGather<MoeConstraints>;
     using ProblemShape = Catccos::DGemm::AllToAllVAllGatherProblemShape;
     using Kernel = Catccos::DGemm::Kernel::Ascend950AllToAllVGroupedMatmul<
-        ProblemShape, BlockMmad, BlockComm, BlockMmadScheduler, BlockScheduler, kWorkspaceStages, true>;
+        ProblemShape, BlockMmad, BlockComm, BlockMmadScheduler, BlockScheduler,
+        kWorkspaceStages, true, ExportAllToAllV, BlockExport>;
     using Device = Catccos::DGemm::Device::DeviceDGemm<Kernel>;
 };
 
@@ -88,6 +95,18 @@ using AllToAllVGroupedMatMulUdmaM0_256Config = AllToAllVGroupedMatMulUdmaConfig<
     bfloat16_t, Catlass::layout::RowMajor,
     bfloat16_t, Catlass::layout::RowMajor,
     256, 128, 256>;
+
+using AllToAllVGroupedMatMulUdmaDefaultExportConfig = AllToAllVGroupedMatMulUdmaConfig<
+    bfloat16_t, Catlass::layout::RowMajor,
+    bfloat16_t, Catlass::layout::RowMajor,
+    bfloat16_t, Catlass::layout::RowMajor,
+    128, 256, 256, true>;
+
+using AllToAllVGroupedMatMulUdmaM0_256ExportConfig = AllToAllVGroupedMatMulUdmaConfig<
+    bfloat16_t, Catlass::layout::RowMajor,
+    bfloat16_t, Catlass::layout::RowMajor,
+    bfloat16_t, Catlass::layout::RowMajor,
+    256, 128, 256, true>;
 
 } // namespace OpsTransformer::CatccosUdma
 

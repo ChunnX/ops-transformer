@@ -106,8 +106,8 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     const c10::OptionalDeviceGuard guard(x.device());
     CheckNpuTensor(x, "x", at::kBFloat16);
     CheckNpuTensor(weight, "weight", at::kBFloat16);
-    CheckNpuTensor(localTokensPerExpert, "local_tokens_per_expert", at::kInt);
-    CheckNpuTensor(globalTokensPerLocalExpert, "global_tokens_per_local_expert", at::kInt);
+    CheckNpuTensor(localTokensPerExpert, "local_tokens_per_expert", at::kLong);
+    CheckNpuTensor(globalTokensPerLocalExpert, "global_tokens_per_local_expert", at::kLong);
     TORCH_CHECK(weight.device() == x.device(), "weight and x must be on the same NPU");
     TORCH_CHECK(localTokensPerExpert.device() == x.device() &&
                     globalTokensPerLocalExpert.device() == x.device(),

@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <tuple>
 
 namespace OpsTransformer::CatccosUdma {
 namespace {
@@ -140,6 +141,7 @@ void InitializeAndLaunch(
     uint8_t *localTokensPerExpert,
     uint8_t *globalTokensPerLocalExpert,
     uint8_t *workspace,
+    uint8_t *allToAllVOutput,
     uint32_t blockDim,
     aclrtStream stream,
     uint64_t fftsAddress)
@@ -163,6 +165,7 @@ void InitializeAndLaunch(
         workspace,
         commBlockShape,
         commTileShape,
+        allToAllVOutput,
     };
 
     DeviceOp deviceOp;
@@ -185,13 +188,14 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     const at::Tensor &globalTokensPerLocalExpert,
     int64_t epSize,
     int64_t expertNum,
-    const c10::optional<at::Tensor> &outputOptional)
+    const c10::optional<at::Tensor> &outputOptional,
+    const c10::optional<at::Tensor> &allToAllVOutputOptional)
 {
     const c10::OptionalDeviceGuard guard(x.device());
     CheckNpuTensor(x, "x", at::kBFloat16);
     CheckNpuTensor(weight, "weight", at::kBFloat16);
-    CheckNpuTensor(localTokensPerExpert, "local_tokens_per_expert", at::kInt);
-    CheckNpuTensor(globalTokensPerLocalExpert, "global_tokens_per_local_expert", at::kInt);
+    CheckNpuTensor(localTokensPerExpert, "local_tokens_per_expert", at::kLong);
+    CheckNpuTensor(globalTokensPerLocalExpert, "global_tokens_per_local_expert", at::kLong);
     TORCH_CHECK(weight.device() == x.device(), "weight and x must be on the same NPU");
     TORCH_CHECK(localTokensPerExpert.device() == x.device() && globalTokensPerLocalExpert.device() == x.device(),
                 "routing tables and x must be on the same NPU");
@@ -242,6 +246,22 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
                 "out must have shape [world_size * m, n]");
     TORCH_CHECK(output.data_ptr() != x.data_ptr() && output.data_ptr() != weight.data_ptr(),
                 "out must not alias x or weight");
+
+    at::Tensor allToAllVOutput;
+    if (allToAllVOutputOptional.has_value()) {
+        allToAllVOutput = allToAllVOutputOptional.value();
+        CheckNpuTensor(allToAllVOutput, "all_to_allv_out", at::kBFloat16);
+        TORCH_CHECK(allToAllVOutput.device() == x.device(),
+                    "all_to_allv_out and x must be on the same NPU");
+        TORCH_CHECK(allToAllVOutput.dim() == 2 &&
+                        allToAllVOutput.size(0) <= worldSize * m64 &&
+                        allToAllVOutput.size(1) == k64,
+                    "all_to_allv_out must have shape [received_rows, k]");
+        TORCH_CHECK(allToAllVOutput.data_ptr() != x.data_ptr() &&
+                        allToAllVOutput.data_ptr() != weight.data_ptr() &&
+                        allToAllVOutput.data_ptr() != output.data_ptr(),
+                    "all_to_allv_out must not alias x, weight, or out");
+    }
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
     runtime.RecordStream(stream);
 
@@ -264,10 +284,18 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
             reinterpret_cast<uint8_t *>(output.data_ptr()),
             reinterpret_cast<uint8_t *>(localTokensPerExpert.data_ptr()),
             reinterpret_cast<uint8_t *>(globalTokensPerLocalExpert.data_ptr()),
-            runtime.Workspace(), blockDim, stream, fftsAddress);
+            runtime.Workspace(),
+            allToAllVOutputOptional.has_value()
+                ? reinterpret_cast<uint8_t *>(allToAllVOutput.data_ptr())
+                : nullptr,
+            blockDim, stream, fftsAddress);
     };
-    if (tiling.kernelVariant == KernelVariant::kM0_256) {
+    if (tiling.kernelVariant == KernelVariant::kM0_256 && allToAllVOutputOptional.has_value()) {
+        launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaM0_256ExportConfig>{});
+    } else if (tiling.kernelVariant == KernelVariant::kM0_256) {
         launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaM0_256Config>{});
+    } else if (allToAllVOutputOptional.has_value()) {
+        launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaDefaultExportConfig>{});
     } else {
         launchWithConfig(TypeTag<AllToAllVGroupedMatMulUdmaDefaultConfig>{});
     }
@@ -284,7 +312,7 @@ at::Tensor AllToAllVGroupedMatMulUdmaNpu(
 {
     return AllToAllVGroupedMatMulUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
-        epSize, expertNum, c10::nullopt);
+        epSize, expertNum, c10::nullopt, c10::nullopt);
 }
 
 at::Tensor AllToAllVGroupedMatMulUdmaOutNpu(
@@ -298,7 +326,38 @@ at::Tensor AllToAllVGroupedMatMulUdmaOutNpu(
 {
     return AllToAllVGroupedMatMulUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
-        epSize, expertNum, output);
+        epSize, expertNum, output, c10::nullopt);
+}
+
+std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaExportNpu(
+    const at::Tensor &x,
+    const at::Tensor &weight,
+    const at::Tensor &localTokensPerExpert,
+    const at::Tensor &globalTokensPerLocalExpert,
+    int64_t epSize,
+    int64_t expertNum,
+    const at::Tensor &allToAllVOutput)
+{
+    at::Tensor output = AllToAllVGroupedMatMulUdmaImpl(
+        x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
+        epSize, expertNum, c10::nullopt, allToAllVOutput);
+    return {output, allToAllVOutput};
+}
+
+std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaOutExportNpu(
+    const at::Tensor &x,
+    const at::Tensor &weight,
+    const at::Tensor &localTokensPerExpert,
+    const at::Tensor &globalTokensPerLocalExpert,
+    int64_t epSize,
+    int64_t expertNum,
+    const at::Tensor &output,
+    const at::Tensor &allToAllVOutput)
+{
+    AllToAllVGroupedMatMulUdmaImpl(
+        x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
+        epSize, expertNum, output, allToAllVOutput);
+    return {output, allToAllVOutput};
 }
 
 at::Tensor AllToAllVGroupedMatMulUdmaMeta(
@@ -330,6 +389,39 @@ at::Tensor AllToAllVGroupedMatMulUdmaOutMeta(
     return output;
 }
 
+std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaExportMeta(
+    const at::Tensor &x,
+    const at::Tensor &weight,
+    const at::Tensor &,
+    const at::Tensor &,
+    int64_t epSize,
+    int64_t expertNum,
+    const at::Tensor &allToAllVOutput)
+{
+    TORCH_CHECK(allToAllVOutput.dim() == 2 && allToAllVOutput.size(1) == x.size(1),
+                "invalid all_to_allv_out shape");
+    return {at::empty({epSize * x.size(0), weight.size(2)}, x.options()), allToAllVOutput};
+}
+
+std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaOutExportMeta(
+    const at::Tensor &x,
+    const at::Tensor &weight,
+    const at::Tensor &,
+    const at::Tensor &,
+    int64_t epSize,
+    int64_t expertNum,
+    const at::Tensor &output,
+    const at::Tensor &allToAllVOutput)
+{
+    TORCH_CHECK(x.dim() == 2 && weight.dim() == 3, "expected x[m,k] and weight[e,k,n]");
+    TORCH_CHECK(epSize > 0 && expertNum > 0 && expertNum % epSize == 0, "invalid expert topology");
+    TORCH_CHECK(output.dim() == 2 && output.size(0) == epSize * x.size(0) &&
+                output.size(1) == weight.size(2), "invalid out shape");
+    TORCH_CHECK(allToAllVOutput.dim() == 2 && allToAllVOutput.size(1) == x.size(1),
+                "invalid all_to_allv_out shape");
+    return {output, allToAllVOutput};
+}
+
 } // namespace
 
 TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
@@ -341,6 +433,12 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
     m.def("all_to_allv_grouped_mat_mul_udma_out(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
           "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, "
           "Tensor(a!) out) -> Tensor(a!)");
+    m.def("all_to_allv_grouped_mat_mul_udma_export(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
+          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, "
+          "Tensor(a!) all_to_allv_out) -> (Tensor, Tensor(a!))");
+    m.def("all_to_allv_grouped_mat_mul_udma_out_export(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
+          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, "
+          "Tensor(a!) out, Tensor(b!) all_to_allv_out) -> (Tensor(a!), Tensor(b!))");
 }
 
 TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
@@ -349,12 +447,16 @@ TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
     m.impl("_finalize_udma", FinalizeUdma);
     m.impl("all_to_allv_grouped_mat_mul_udma", AllToAllVGroupedMatMulUdmaNpu);
     m.impl("all_to_allv_grouped_mat_mul_udma_out", AllToAllVGroupedMatMulUdmaOutNpu);
+    m.impl("all_to_allv_grouped_mat_mul_udma_export", AllToAllVGroupedMatMulUdmaExportNpu);
+    m.impl("all_to_allv_grouped_mat_mul_udma_out_export", AllToAllVGroupedMatMulUdmaOutExportNpu);
 }
 
 TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, Meta, m)
 {
     m.impl("all_to_allv_grouped_mat_mul_udma", AllToAllVGroupedMatMulUdmaMeta);
     m.impl("all_to_allv_grouped_mat_mul_udma_out", AllToAllVGroupedMatMulUdmaOutMeta);
+    m.impl("all_to_allv_grouped_mat_mul_udma_export", AllToAllVGroupedMatMulUdmaExportMeta);
+    m.impl("all_to_allv_grouped_mat_mul_udma_out_export", AllToAllVGroupedMatMulUdmaOutExportMeta);
 }
 
 } // namespace OpsTransformer::CatccosUdma

@@ -44,6 +44,24 @@ def test_kernel_configuration_matches_bf16_udma_get_example():
     assert "200UL * 1024 * 1024 * sizeof(uint16_t)" in source
 
 
+def test_kernel_applies_upstream_non_comm_core_deadlock_fix():
+    source = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "grouped_matmul_alltoallv_tla.hpp"
+    ).read_text(encoding="utf-8")
+    assert "if (isCommCore)" in source
+    assert "aclshmem_ptr(params.syncMmadFinish, srcRankIdx)" in source
+    assert source.index("if (isCommCore)") < source.index(
+        "aclshmem_ptr(params.syncMmadFinish, srcRankIdx)"
+    )
+
+
 def test_python_facade_dispatches_both_allocation_modes():
     source = (PROJECT_ROOT / "ops_transformer_catccos_udma" / "ops.py").read_text(
         encoding="utf-8"

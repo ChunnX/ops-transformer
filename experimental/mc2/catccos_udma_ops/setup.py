@@ -13,7 +13,7 @@ from wheel.bdist_wheel import bdist_wheel
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 PACKAGE_NAME = "ops_transformer_catccos_udma"
-VERSION = "0.2.0"
+VERSION = "0.3.1"
 MINIMUM_CMAKE_VERSION = (3, 18, 4)
 
 
@@ -97,6 +97,8 @@ class CMakeBuild(Command):
         ]
         if os.environ.get("CATCCOS_SOURCE_PATH"):
             config.append(f"-DCATCCOS_SOURCE_PATH={os.environ['CATCCOS_SOURCE_PATH']}")
+        if os.environ.get("SHMEM_SOURCE_PATH"):
+            config.append(f"-DSHMEM_SOURCE_PATH={os.environ['SHMEM_SOURCE_PATH']}")
         if os.environ.get("SHMEM_HOME_PATH"):
             config.append(f"-DSHMEM_HOME_PATH={os.environ['SHMEM_HOME_PATH']}")
 

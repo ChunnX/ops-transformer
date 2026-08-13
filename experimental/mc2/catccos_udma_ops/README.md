@@ -9,8 +9,12 @@ remains a Fast Kernel Launch expression:
 
 The CatCCOS dependency comes from the official
 `https://gitcode.com/cann/catccos.git` repository and is pinned to
-`878c2e0a504be8c49c03b5e1157a7c714a628e29`; its own CATLASS and SHMEM gitlinks
-are used, so this project does not change the repository-wide CATLASS version.
+`878c2e0a504be8c49c03b5e1157a7c714a628e29`; its CATLASS gitlink is used, so
+this project does not change the repository-wide CATLASS version. SHMEM is
+independently pinned to the official `cann/shmem` v1.6.0 commit
+`aee374a396b389626f68fab74ec8c555e18978a7`. This version contains the official
+rootinfo fixes for the 2048-byte capacity limit and incorrect POD/Server EID
+port generation.
 The operator-local `csrc/catccos_overlay` directory contains only the
 UDMA all-to-all-v headers that have not yet landed in that official revision.
 The GroupedMatMul-AllToAllV configuration is migrated from CatCCOS commit
@@ -27,14 +31,18 @@ installation is supported and the PyPI `cmake` package is not required.
 cd experimental/mc2/catccos_udma_ops
 bash scripts/prepare_dependencies.sh
 export CATCCOS_SOURCE_PATH="$PWD/../../../3rdparty/catccos"
-export SHMEM_HOME_PATH="$CATCCOS_SOURCE_PATH/3rdparty/shmem/install"
+export SHMEM_SOURCE_PATH="$PWD/../../../3rdparty/shmem"
+export SHMEM_HOME_PATH="$SHMEM_SOURCE_PATH/install"
 bash scripts/build_wheel.sh
 python3 -m pip install --force-reinstall --no-deps dist/*.whl
 ```
 
-`prepare_dependencies.sh` refuses an existing CatCCOS checkout at another
-revision. SHMEM is built with `-soc_type Ascend950` and the same C++ ABI setting
-as the active PyTorch installation.
+`prepare_dependencies.sh` refuses an existing CatCCOS or SHMEM checkout at
+another revision. SHMEM is built with `-soc_type Ascend950` and the same C++
+ABI setting as the active PyTorch installation. Both the extension's device
+headers and its bundled user-space SHMEM libraries therefore come from v1.6.0.
+The target host only installs the Wheel; it does not need either source checkout,
+`SHMEM_HOME_PATH`, or a manually generated rootinfo file.
 
 ## PyTorch API
 
@@ -80,6 +88,28 @@ udma.destroy_udma_group()
 `local_tokens_per_expert`. `weight` is `[local_expert_num, k, n]`. The returned
 capacity is `[world_size * m, n]`; valid rows are packed first and their count is
 `global_tokens_per_local_expert.sum()`.
+Both route tensors must be contiguous `torch.int64` NPU tensors. Their values
+must be non-negative and fit in the kernel's existing `uint32` shape range.
+
+A directly runnable multi-process example is available at
+`examples/run_all_to_allv_grouped_mat_mul.py`. It constructs balanced test
+routing and accepts `--m`, `--k`, `--n`, and `--expert-num`; model integration
+should replace the generated route tables with the router's real count tensors.
+
+```bash
+UDMA_MASTER_ADDR=127.0.0.1 UDMA_MASTER_PORT=29601 \
+python3 -m torch.distributed.run \
+  --master-addr=127.0.0.1 --master-port=29500 --nproc-per-node=8 \
+  examples/run_all_to_allv_grouped_mat_mul.py \
+  --m 131072 --k 2048 --n 1024 --expert-num 256
+```
+
+To test coexistence with an already initialized HCCL communicator, use
+`examples/run_hccl_then_all_to_allv_grouped_mat_mul.py`. It validates one HCCL
+all-gather first, keeps that process group alive, and then initializes UDMA and
+calls AllToAllV-GroupedMatMul. Its shape can also be supplied through
+`A2AV_GMM_M`, `A2AV_GMM_K`, `A2AV_GMM_N`, and `A2AV_GMM_EXPERT_NUM`; this avoids
+the ambiguous `--m` abbreviation in some `torch.distributed.run` versions.
 
 `x` is an ordinary contiguous BF16 NPU tensor. The kernel uses it directly as
 the local source of UDMA PUT operations; only the internal remote-receive
@@ -94,6 +124,29 @@ output = udma.all_to_allv_grouped_mat_mul(
     ep_size=world_size, expert_num=expert_num, out=out,
 )
 ```
+
+`local_tokens` and `global_tokens` are both contiguous one-dimensional
+`torch.int64` tensors with shape `[expert_num]`. The global table is flattened
+in `[source_rank][local_expert]` order, matching the kernel's linear read ABI.
+The public Python operators apply a zero-copy `view(-1)` before dispatch, so an
+existing contiguous two-dimensional global table is normalized automatically.
+
+To additionally obtain the AllToAllV activation consumed by grouped matmul,
+enable the optional export path:
+
+```python
+output, all_to_allv_output = udma.all_to_allv_grouped_mat_mul(
+    x, weight, local_tokens, global_tokens,
+    ep_size=world_size, expert_num=expert_num,
+    output_all_to_allv=True,
+)
+```
+
+`all_to_allv_output` is an ordinary BF16 NPU tensor with shape
+`[global_tokens.sum(), k]`. Its rows are ordered by local expert first and
+source rank second. When `output_all_to_allv` is omitted or false, the original
+compile-time kernel variant is used and no export allocation or copy is issued.
+For repeated calls, pass preallocated `out=` and `all_to_allv_out=` tensors.
 
 `grouped_mat_mul_all_to_allv` performs the inverse order: local grouped
 matmuls followed by UDMA AllToAllV. Its `x` and `weight` inputs remain ordinary

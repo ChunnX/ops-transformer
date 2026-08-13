@@ -19,7 +19,7 @@ endif()
 
 find_package(ASC REQUIRED)
 find_package(AICPU REQUIRED)
-project(OpsTransformerCatccosUdma LANGUAGES ASC AICPU CXX VERSION 0.2.0)
+project(OpsTransformerCatccosUdma LANGUAGES ASC AICPU CXX VERSION 0.3.1)
 
 # CMake 3.27+ asks supported linkers to emit a dependency file with
 # --dependency-file. Bisheng's device linker does not implement that option and
@@ -53,21 +53,63 @@ if(DEFINED ENV{ASCEND_HOME_PATH})
 else()
     set(ASCEND_HOME "/usr/local/Ascend/latest" CACHE PATH "Ascend installation path")
 endif()
+set(SHMEM_TAG_ID "aee374a396b389626f68fab74ec8c555e18978a7" CACHE STRING
+    "Pinned official SHMEM v1.6.0 revision")
+if(SHMEM_SOURCE_PATH)
+    get_filename_component(SHMEM_SOURCE_PATH "${SHMEM_SOURCE_PATH}" REALPATH)
+elseif(DEFINED ENV{SHMEM_SOURCE_PATH} AND IS_DIRECTORY "$ENV{SHMEM_SOURCE_PATH}")
+    get_filename_component(SHMEM_SOURCE_PATH "$ENV{SHMEM_SOURCE_PATH}" REALPATH)
+elseif(IS_DIRECTORY "${OPS_TRANSFORMER_ROOT}/3rdparty/shmem")
+    get_filename_component(SHMEM_SOURCE_PATH "${OPS_TRANSFORMER_ROOT}/3rdparty/shmem" REALPATH)
+else()
+    message(FATAL_ERROR
+        "The pinned official SHMEM v1.6.0 checkout was not found. "
+        "Run scripts/prepare_dependencies.sh first.")
+endif()
+if(NOT EXISTS "${SHMEM_SOURCE_PATH}/include/shmem.h")
+    message(FATAL_ERROR "Invalid SHMEM_SOURCE_PATH=${SHMEM_SOURCE_PATH}: include/shmem.h was not found")
+endif()
+find_package(Git REQUIRED)
+execute_process(
+    COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD
+    WORKING_DIRECTORY "${SHMEM_SOURCE_PATH}"
+    OUTPUT_VARIABLE SHMEM_ACTUAL_REVISION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE SHMEM_REVISION_STATUS
+)
+if(NOT SHMEM_REVISION_STATUS EQUAL 0 OR NOT SHMEM_ACTUAL_REVISION STREQUAL SHMEM_TAG_ID)
+    message(FATAL_ERROR
+        "SHMEM revision mismatch: expected official v1.6.0 ${SHMEM_TAG_ID}, "
+        "got ${SHMEM_ACTUAL_REVISION}")
+endif()
 if(SHMEM_HOME_PATH)
     get_filename_component(SHMEM_HOME_PATH "${SHMEM_HOME_PATH}" REALPATH)
 elseif(DEFINED ENV{SHMEM_HOME_PATH} AND IS_DIRECTORY "$ENV{SHMEM_HOME_PATH}")
     get_filename_component(SHMEM_HOME_PATH "$ENV{SHMEM_HOME_PATH}" REALPATH)
-elseif(IS_DIRECTORY "${CATCCOS_SHMEM_SOURCE_DIR}/install")
-    get_filename_component(SHMEM_HOME_PATH "${CATCCOS_SHMEM_SOURCE_DIR}/install" REALPATH)
+elseif(IS_DIRECTORY "${SHMEM_SOURCE_PATH}/install")
+    get_filename_component(SHMEM_HOME_PATH "${SHMEM_SOURCE_PATH}/install" REALPATH)
 else()
     message(FATAL_ERROR
-        "SHMEM_HOME_PATH is not set and ${CATCCOS_SHMEM_SOURCE_DIR}/install does not exist. "
-        "Build the CatCCOS-pinned SHMEM first with scripts/prepare_dependencies.sh.")
+        "SHMEM_HOME_PATH is not set and ${SHMEM_SOURCE_PATH}/install does not exist. "
+        "Build the pinned official SHMEM first with scripts/prepare_dependencies.sh.")
 endif()
 if(NOT EXISTS "${SHMEM_HOME_PATH}/shmem/lib/libshmem.so" OR
    NOT EXISTS "${SHMEM_HOME_PATH}/shmem/lib/libshmem_utils.so")
     message(FATAL_ERROR
         "SHMEM_HOME_PATH=${SHMEM_HOME_PATH} does not contain the Ascend950 UDMA SHMEM libraries")
+endif()
+set(SHMEM_REVISION_FILE "${SHMEM_HOME_PATH}/shmem/.ops_transformer_source_commit")
+if(NOT EXISTS "${SHMEM_REVISION_FILE}")
+    message(FATAL_ERROR
+        "SHMEM_HOME_PATH=${SHMEM_HOME_PATH} has no build provenance marker. "
+        "Rebuild it with scripts/prepare_dependencies.sh.")
+endif()
+file(READ "${SHMEM_REVISION_FILE}" SHMEM_BUILT_REVISION)
+string(STRIP "${SHMEM_BUILT_REVISION}" SHMEM_BUILT_REVISION)
+if(NOT SHMEM_BUILT_REVISION STREQUAL SHMEM_TAG_ID)
+    message(FATAL_ERROR
+        "SHMEM library revision mismatch: expected ${SHMEM_TAG_ID}, "
+        "got ${SHMEM_BUILT_REVISION}")
 endif()
 
 set(INCLUDE_DIRECTORIES
@@ -80,9 +122,9 @@ set(INCLUDE_DIRECTORIES
     ${CATCCOS_CATLASS_INCLUDE_DIR}
     ${CATCCOS_TOOLS_INCLUDE_DIR}
     ${CATCCOS_UTILS_INCLUDE_DIR}
-    ${CATCCOS_SHMEM_SOURCE_DIR}/include
-    ${CATCCOS_SHMEM_SOURCE_DIR}/src
-    ${CATCCOS_SHMEM_SOURCE_DIR}/src/device
+    ${SHMEM_SOURCE_PATH}/include
+    ${SHMEM_SOURCE_PATH}/src
+    ${SHMEM_SOURCE_PATH}/src/device
     ${SHMEM_HOME_PATH}/shmem/include
     ${SHMEM_HOME_PATH}/shmem/src
     ${SHMEM_HOME_PATH}/shmem/src/device

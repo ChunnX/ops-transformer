@@ -33,3 +33,27 @@ def test_rank_tables_match_global_matrix_projection():
         assert global_for_local == [
             matrix[src][rank * 4 + expert] for src in range(4) for expert in range(4)
         ]
+
+
+def test_rank_route_tensors_use_int64(monkeypatch):
+    calls = []
+
+    class FakeTensor:
+        pass
+
+    class FakeTorch:
+        int64 = "int64"
+
+        @staticmethod
+        def tensor(values, *, dtype, device):
+            calls.append((values, dtype, device))
+            return FakeTensor()
+
+    monkeypatch.setitem(__import__("sys").modules, "torch", FakeTorch)
+    local, global_for_local = routing.build_rank_route_tensors(16, 0, 2, 4, "npu:0")
+    assert len(calls) == 2
+    assert all(dtype == "int64" for _, dtype, _ in calls)
+    assert isinstance(local, FakeTensor)
+    assert isinstance(global_for_local, FakeTensor)
+    assert len(calls[0][0]) == 4
+    assert len(calls[1][0]) == 4

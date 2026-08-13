@@ -63,6 +63,22 @@ def _golden(x, weight, route_matrix, rank, world_size, expert_num):
     return torch.cat(expert_outputs, dim=0).to(dtype=torch.bfloat16, device=x.device)
 
 
+def _all_to_allv_golden(x, route_matrix, rank, world_size, expert_num):
+    """Return the activation rows consumed by local experts."""
+    x_cpu = x.detach().float().cpu()
+    gathered = [torch.empty_like(x_cpu) for _ in range(world_size)]
+    dist.all_gather(gathered, x_cpu)
+    local_experts = expert_num // world_size
+    pieces = []
+    for local_expert in range(local_experts):
+        global_expert = rank * local_experts + local_expert
+        for source_rank, source_x in enumerate(gathered):
+            counts = route_matrix[source_rank]
+            start = sum(counts[:global_expert])
+            pieces.append(source_x[start:start + counts[global_expert]])
+    return torch.cat(pieces, dim=0).to(dtype=torch.bfloat16, device=x.device)
+
+
 def _grouped_mat_mul_all_to_allv_golden(
     x, weight, route_matrix, rank, world_size, expert_num
 ):
@@ -147,6 +163,7 @@ def _run_case(case, rank, world_size, device, output_root):
     route_matrix = udma.build_global_route_matrix(m, world_size, expert_num)
     candidates = []
     segments_override = None
+    additional_reports = []
     if case["operator"] == "grouped_mat_mul_all_to_allv":
         expected = _grouped_mat_mul_all_to_allv_golden(
             x, weight, route_matrix, rank, world_size, expert_num
@@ -179,6 +196,9 @@ def _run_case(case, rank, world_size, device, output_root):
         gc.collect()
     else:
         expected = _golden(x, weight, route_matrix, rank, world_size, expert_num)
+        expected_all_to_allv = _all_to_allv_golden(
+            x, route_matrix, rank, world_size, expert_num
+        )
         valid_rows = int(global_table.sum().item())
         if valid_rows != expected.shape[0]:
             raise RuntimeError("golden rows do not match the global route table")
@@ -188,6 +208,28 @@ def _run_case(case, rank, world_size, device, output_root):
         )
         torch_npu.npu.synchronize()
         candidates.append(("ordinary", ordinary.clone(), _padding_stats(ordinary, valid_rows)))
+
+        exported_output, exported_all_to_allv = udma.all_to_allv_grouped_mat_mul(
+            x, weight, local_table, global_table,
+            ep_size=world_size, expert_num=expert_num,
+            output_all_to_allv=True,
+        )
+        torch_npu.npu.synchronize()
+        candidates.append((
+            "export_output", exported_output.clone(),
+            _padding_stats(exported_output, valid_rows),
+        ))
+        export_report = analyze_accuracy(
+            exported_all_to_allv, expected_all_to_allv,
+            topk=case["accuracy"]["topk"],
+            heatmap_bins=case["accuracy"]["heatmap_bins"],
+        )
+        export_report.update(
+            case_id=case["id"], rank=rank, path="all_to_allv_export",
+            valid_rows=expected_all_to_allv.shape[0],
+            padding={"elements": 0, "nonzero_count": 0, "max_abs": 0.0},
+        )
+        additional_reports.append(("all_to_allv_export", export_report))
 
         reusable_out = torch.zeros_like(ordinary)
         for repeat in range(case["accuracy"]["repeats"]):
@@ -204,13 +246,18 @@ def _run_case(case, rank, world_size, device, output_root):
 
     case_root = output_root / case["id"] / "rank_{}".format(rank)
     reports = []
+    for name, report in additional_reports:
+        write_accuracy_artifacts(case_root / name, report)
+        reports.append(report)
     for name, actual, padding in candidates:
         analyze_arguments = {
             "topk": case["accuracy"]["topk"],
             "heatmap_bins": case["accuracy"]["heatmap_bins"],
         }
         if segments_override is None:
-            analyze_arguments["global_table"] = global_table.cpu().tolist()
+            analyze_arguments["global_table"] = (
+                global_table.view(world_size, expert_num // world_size).cpu().tolist()
+            )
         else:
             analyze_arguments["segments_override"] = segments_override
         report = analyze_accuracy(actual[:valid_rows], expected, **analyze_arguments)

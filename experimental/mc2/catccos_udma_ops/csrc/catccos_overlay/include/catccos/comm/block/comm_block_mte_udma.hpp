@@ -35,7 +35,7 @@ public:
     template <class ArchTag>
     CATLASS_DEVICE
     CommBlockMteUdma(Catlass::Arch::Resource<ArchTag> &resource, Params const &params)
-        : localComm(resource, params)
+        : localComm(resource, params), remoteComm(resource, params)
     {
     }
 
@@ -43,11 +43,15 @@ public:
     void InitBlockLoop()
     {
         localComm.InitBlockLoop();
+        remoteComm.InitBlockLoop();
     }
 
     CATLASS_DEVICE
     void FinalizeBlockLoop()
     {
+        // Complete every deferred UDMA request before the caller publishes its
+        // remote-completion signal for this communication round.
+        remoteComm.FinalizeBlockLoop();
         localComm.FinalizeBlockLoop();
     }
 

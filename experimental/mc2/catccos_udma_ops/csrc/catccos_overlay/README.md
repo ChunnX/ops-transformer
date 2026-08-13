@@ -8,3 +8,9 @@ required by this operator and are placed before the official CatCCOS include
 directory. They preserve the validated UDMA peer-serial scheduling and
 layout-aware two-dimensional copy path while all other CatCCOS, CATLASS, and
 SHMEM sources continue to come from the official third-party checkout.
+
+The overlay also carries the follow-up UDMA MoE delta from CatCCOS commit
+`1d96ae736f1054a28b0ddf3cbb96cd0c64c81a21`: the optional AllToAllV export
+variant and the GroupedMatmul-AllToAllV non-communication-core deadlock fix.
+The overlaid problem-shape ABI reads both route-count tables from contiguous
+signed 64-bit storage, matching the public PyTorch `torch.int64` interface.

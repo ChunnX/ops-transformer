@@ -72,14 +72,11 @@ def build_rank_route_tables(
 
 
 def build_rank_route_tensors(m: int, rank: int, ep_size: int, expert_num: int, device):
-    """Build contiguous int32 NPU route tensors accepted by the operator."""
+    """Build flat contiguous int64 NPU route tensors accepted by the operator."""
     import torch
 
     local, global_for_local = build_rank_route_tables(m, rank, ep_size, expert_num)
-    local_expert_num = expert_num // ep_size
     return (
-        torch.tensor(local, dtype=torch.int32, device=device),
-        torch.tensor(global_for_local, dtype=torch.int32, device=device).reshape(
-            ep_size, local_expert_num
-        ),
+        torch.tensor(local, dtype=torch.int64, device=device),
+        torch.tensor(global_for_local, dtype=torch.int64, device=device),
     )

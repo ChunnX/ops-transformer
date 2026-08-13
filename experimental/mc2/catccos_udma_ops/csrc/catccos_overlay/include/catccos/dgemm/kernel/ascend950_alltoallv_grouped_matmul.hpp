@@ -11,6 +11,8 @@
 #ifndef CATCCOS_DGEMM_KERNEL_ASCEND950_ALLTOALLV_GROUPED_MATMUL_HPP
 #define CATCCOS_DGEMM_KERNEL_ASCEND950_ALLTOALLV_GROUPED_MATMUL_HPP
 
+#include <type_traits>
+
 #include "catlass/arch/resource.hpp"
 #include "catlass/arch/cross_core_sync.hpp"
 #include "catlass/gemm_coord.hpp"
@@ -27,6 +29,23 @@ namespace Catccos::DGemm::Kernel {
 using Catlass::MatrixCoord;
 using Catlass::GemmCoord;
 
+template <bool EXPORT_ALLTOALLV_, class ElementA_>
+struct AllToAllVExportParams {
+    CATLASS_HOST_DEVICE
+    AllToAllVExportParams(GM_ADDR = nullptr) {}
+};
+
+template <class ElementA_>
+struct AllToAllVExportParams<true, ElementA_> {
+    __gm__ ElementA_ *ptrAllToAllVOutput;
+
+    CATLASS_HOST_DEVICE
+    AllToAllVExportParams(GM_ADDR ptrAllToAllVOutput_ = nullptr) :
+        ptrAllToAllVOutput(reinterpret_cast<__gm__ ElementA_ *>(ptrAllToAllVOutput_))
+    {
+    }
+};
+
 template <
     class ProblemShape_,
     class BlockMmad_,
@@ -34,7 +53,9 @@ template <
     class BlockMmadScheduler_,
     class BlockCommScheduler_,
     uint32_t WORKSPACE_STAGES_,
-    bool USE_UDMA_PEER_SERIAL_SCHEDULE_ = false
+    bool USE_UDMA_PEER_SERIAL_SCHEDULE_ = false,
+    bool EXPORT_ALLTOALLV_ = false,
+    class BlockExport_ = void
 >
 class Ascend950AllToAllVGroupedMatmul {
 public:
@@ -58,14 +79,17 @@ public:
 
     using BlockMmadScheduler = BlockMmadScheduler_;
     using BlockCommScheduler = BlockCommScheduler_;
-
+    using BlockExport = BlockExport_;
     static constexpr uint32_t WORKSPACE_STAGES = WORKSPACE_STAGES_;
     static constexpr bool USE_UDMA_PEER_SERIAL_SCHEDULE = USE_UDMA_PEER_SERIAL_SCHEDULE_;
+    static constexpr bool EXPORT_ALLTOALLV = EXPORT_ALLTOALLV_;
     static constexpr uint32_t L1_TILE_M = tla::get<0>(L1TileShape{});
     static constexpr uint32_t L1_TILE_N = tla::get<1>(L1TileShape{});
     static constexpr uint32_t L1_TILE_K = tla::get<2>(L1TileShape{});
 
-    struct Params {
+    using ExportParams = AllToAllVExportParams<EXPORT_ALLTOALLV, ElementA>;
+
+    struct Params : ExportParams {
         ProblemShape problemShape;
         uint32_t commInterval;
         __gm__ ElementA *ptrA;
@@ -93,8 +117,9 @@ public:
             GM_ADDR ptrC_, LayoutC const &layoutC_,
             LayoutTagA layoutTagA_, LayoutTagB layoutTagB_,
             GM_ADDR ptrSymmetric_, GM_ADDR syncMmadFinish_, GM_ADDR syncCommFinish_,
-            BlockCommParams const &allToAllVGmmParams_
-        ) : problemShape(problemShape_),
+            BlockCommParams const &allToAllVGmmParams_,
+            GM_ADDR ptrAllToAllVOutput_ = nullptr
+        ) : ExportParams(ptrAllToAllVOutput_), problemShape(problemShape_),
             commInterval(commInterval_),
             ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)), layoutA(layoutA_),
             ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)), layoutB(layoutB_),
@@ -122,6 +147,7 @@ public:
         GM_ADDR ptrSymmetric;
         Catlass::MatrixCoord commBlockShape;
         Catlass::MatrixCoord commTileShape;
+        GM_ADDR ptrAllToAllVOutput{nullptr};
     };
 
     static Params ToUnderlyingArguments(Arguments const &args, uint8_t *workspace = nullptr) {
@@ -158,7 +184,8 @@ public:
             args.ptrC, layoutC,
             tagA, tagB,
             gmSymmetric, syncMmadFinish, syncCommFinish,
-            blockCommParams
+            blockCommParams,
+            args.ptrAllToAllVOutput
         );
     }
 
@@ -300,7 +327,7 @@ public:
         auto syncMmadFinish = reinterpret_cast<__gm__ int32_t *>(params.syncMmadFinish);
         auto syncCommFinish = reinterpret_cast<__gm__ int32_t *>(params.syncCommFinish);
 
-        // Initialize the current rank's signal addresses on one core.
+        // 闁瀚ㄩ崬顖欑閻?aicore閿涘苯顕ぐ鎾冲 rank 閻ㄥ嫪淇婇崣宄版勾閸р偓鏉╂稖顢戦崚婵嗩潗閸?
         bool isRootCore = (AscendC::GetBlockIdx() == 0);
         auto rankIdx = params.problemShape.rankIdx();
         if (isRootCore) {
@@ -312,15 +339,18 @@ public:
         uint32_t receiveAccum = 0;
         auto commLoops = scheduler.GetCommLoops();
         blockRemoteCopy.InitBlockLoop();
+        if constexpr (EXPORT_ALLTOALLV) {
+            static_assert(!std::is_void_v<BlockExport>,
+                "The AllToAllV export kernel requires a local GM copy block");
+        }
         for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
             uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
             auto const &gmSymmetric = gmSymmetricList[stageIdx];
 
-            // Accumulate the tokens expected after this communication round.
+            // 妫板嫯顓搁張顒冪枂鏉╁洤鎮楅敍灞界秼閸?rank 鐏忓棛鐤拋鈩冩暪閸掓澘顦跨亸?token
             receiveAccum += scheduler.GetActualReceiveAccum(commIdx);
             auto remapperSrc = scheduler.GetRemapperSrc(commIdx);
-
-            // Wait until all AICs finish the previous compute round.
+            // 缁涘绶熸稉濠佺娑擃亣顓哥粻妤勭枂濞嗏剝澧嶉張?aicore 閻ㄥ嫯顓哥粻妤€鐣幋?
             if (commIdx >= WORKSPACE_STAGES) {
                 Catlass::Arch::CrossCoreWaitFlag(flagAicFinishStore[stageIdx]);
                 Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
@@ -328,7 +358,7 @@ public:
 #ifdef ENABLE_TIMER
             timer.Tik(AscendTimer::AIV);
 #endif
-            // Publish completion of the previous compute round.
+            // 闁瀚ㄩ崬顖欑閻?aicore閿涘苯鐨㈣ぐ鎾冲 rank 閻?syncMmadFinish 鐠佸墽鐤嗘稉?commIdx + 1閿涘矁銆冪粈杞扮瑐娑撯偓娑擃亪鈧矮淇婃潪顔筋偧鐠侊紕鐣绘禒璇插瀹告彃鐣幋?
             if (isRootCore) {
                 aclshmemx_signal_op(syncMmadFinish, commIdx + 1, ACLSHMEM_SIGNAL_SET, rankIdx);
             }
@@ -346,44 +376,45 @@ public:
                     bool ownsPeer = (isLocalCopy && subcoreIdx == 0) ||
                                     (!isLocalCopy && subcoreIdx == 1);
                     if (ownsPeer) {
-                        // Wait once, then submit this destination's blocks serially.
-                        auto remoteSyncMmadFinish =
-                            static_cast<__gm__ int32_t *>(shmem_ptr(syncMmadFinish, dstRankIdx));
-                        aclshmem_signal_wait_until(remoteSyncMmadFinish, ACLSHMEM_CMP_EQ, commIdx + 1);
+                        auto commOffset = scheduler.GetBlockOffset(0, dstRankIdx);
+                        auto actualCommShape = remapperSrc.GetResidueShape(commOffset);
+                        if (Numel(actualCommShape) != 0) {
+                            // Uneven AllToAllV routes can give ranks different communication-loop counts.
+                            // Wait only when this loop has payload for the destination peer.
+                            auto remoteSyncMmadFinish =
+                                static_cast<__gm__ int32_t *>(shmem_ptr(syncMmadFinish, dstRankIdx));
+                            aclshmem_signal_wait_until(remoteSyncMmadFinish, ACLSHMEM_CMP_EQ, commIdx + 1);
 
-                        if (isLocalCopy) {
-                            // The MTE path stages data through a bounded UB tile, so
-                            // retain the regular communication-block granularity.
-                            for (uint32_t blockIdx = 0; blockIdx < scheduler.GetBlockCount(); ++blockIdx) {
-                                auto blockOffset = scheduler.GetBlockOffset(blockIdx, dstRankIdx);
-                                auto blockOffsetSrc = remapperSrc(blockOffset);
-                                auto blockOffsetDst = blockOffset.GetLocalCoord();
-                                auto actualBlockShape = scheduler.RemapActualBlockShape(blockOffset, remapperSrc);
-                                if (Numel(actualBlockShape) == 0) {
-                                    continue;
+                            if (isLocalCopy) {
+                                // The MTE path stages data through a bounded UB tile, so
+                                // retain the regular communication-block granularity.
+                                for (uint32_t blockIdx = 0; blockIdx < scheduler.GetBlockCount(); ++blockIdx) {
+                                    auto blockOffset = scheduler.GetBlockOffset(blockIdx, dstRankIdx);
+                                    auto blockOffsetSrc = remapperSrc(blockOffset);
+                                    auto blockOffsetDst = blockOffset.GetLocalCoord();
+                                    auto actualBlockShape = scheduler.RemapActualBlockShape(blockOffset, remapperSrc);
+                                    if (Numel(actualBlockShape) == 0) {
+                                        continue;
+                                    }
+
+                                    auto gmBlockSrc = gmA[layoutA.GetOffset(blockOffsetSrc)];
+                                    auto gmBlockDst = gmSymmetric[layoutTagSymmetric.GetOffset(blockOffsetDst)];
+                                    auto layoutBlockSrc = layoutA.GetTileLayout(actualBlockShape);
+                                    auto layoutBlockDst = layoutTagSymmetric.GetTileLayout(actualBlockShape);
+
+                                    blockRemoteCopy(
+                                        gmBlockSrc, layoutBlockSrc,
+                                        gmBlockDst, layoutBlockDst,
+                                        actualBlockShape, dstRankIdx
+                                    );
+                                    aclshmem_fence();
+                                    aclshmemx_signal_op(syncCommFinish, 1, ACLSHMEM_SIGNAL_ADD, dstRankIdx);
                                 }
-
-                                auto gmBlockSrc = gmA[layoutA.GetOffset(blockOffsetSrc)];
-                                auto gmBlockDst = gmSymmetric[layoutTagSymmetric.GetOffset(blockOffsetDst)];
-                                auto layoutBlockSrc = layoutA.GetTileLayout(actualBlockShape);
-                                auto layoutBlockDst = layoutTagSymmetric.GetTileLayout(actualBlockShape);
-
-                                blockRemoteCopy(
-                                    gmBlockSrc, layoutBlockSrc,
-                                    gmBlockDst, layoutBlockDst,
-                                    actualBlockShape, dstRankIdx
-                                );
-                                aclshmem_fence();
-                                aclshmemx_signal_op(syncCommFinish, 1, ACLSHMEM_SIGNAL_ADD, dstRankIdx);
-                            }
-                        } else {
-                            // UDMA does not need the MTE communication block. Submit
-                            // the whole contiguous slice once, matching the proven
-                            // Ascend950 UDMA AllGather schedule. Besides reducing WQE
-                            // pressure, quiet now observes the complete peer slice.
-                            auto commOffset = scheduler.GetBlockOffset(0, dstRankIdx);
-                            auto actualCommShape = remapperSrc.GetResidueShape(commOffset);
-                            if (Numel(actualCommShape) != 0) {
+                            } else {
+                                // UDMA does not need the MTE communication block. Submit
+                                // the whole contiguous slice once, matching the proven
+                                // Ascend950 UDMA AllGather schedule. Besides reducing WQE
+                                // pressure, quiet now observes the complete peer slice.
                                 auto commOffsetSrc = remapperSrc(commOffset);
                                 auto commOffsetDst = commOffset.GetLocalCoord();
                                 auto gmCommSrc = gmA[layoutA.GetOffset(commOffsetSrc)];
@@ -437,21 +468,130 @@ public:
                 }
             }
 
-            // Wait until all writes to this rank's symmetric buffer complete.
+            // 缁涘绶熻ぐ鎾冲 commIdx 娑撳绱濋幍鈧張澶婂晸閸掓澘缍嬮崜?rank symmetric 娑撳﹦娈戦弫鐗堝祦闁棄鍟撶€?
             if (isRootCore) {
                 aclshmem_signal_wait_until(syncCommFinish, ACLSHMEM_CMP_EQ, receiveAccum);
             }
-            // Notify all AICs that this communication round is ready.
-            Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
+            // 缁涘绶熻ぐ鎾冲闁矮淇婃潪顔筋偧娑撳鏆熼幑顔藉复閺€璺虹暚閹存劕鎮楅敍灞惧閺堝娈?aic 闁氨鐓?aiv 瀵偓婵顓哥粻妤佹拱鏉烆喚娈?            Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
+            if constexpr (EXPORT_ALLTOALLV) {
+                // The receive counters cover remote UDMA completion, while a
+                // self copy can still be in the local MTE pipeline. The export
+                // variant must drain both before either AIC or the export copy
+                // consumes this staging buffer.
+                blockRemoteCopy.FinalizeBlockLoop();
+                Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
+            }
 #ifdef ENABLE_TIMER
             timer.Tok<Overwrite>(AscendTimer::AIV);
 #endif
             Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagAivFinishComm[stageIdx]);
+
+            if constexpr (EXPORT_ALLTOALLV) {
+                // The communication block and export block deliberately share
+                // the same UB tiles and event IDs. Use a direct local-GM
+                // copier; ordinary output GM must never pass through
+                // shmem_ptr(). The two dynamic parameter classes are distinct
+                // C++ types, so reconstruct the export parameters explicitly.
+                typename BlockExport::TileRemoteCopy::Params exportTileParams{
+                    params.blockCommParams.TileShape()};
+                typename BlockExport::Params exportParams{
+                    params.blockCommParams.BlockShape(), exportTileParams};
+                BlockExport blockExport{resource, exportParams};
+                blockExport.InitBlockLoop();
+                ExportCurrentStage(params, commIdx, commShapeM,
+                    gmSymmetric, layoutTagSymmetric, blockExport);
+                blockExport.FinalizeBlockLoop();
+                Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
+                blockRemoteCopy.InitBlockLoop();
+            }
         }
         blockRemoteCopy.FinalizeBlockLoop();
     }
 
 private:
+    template <class ExportCopy>
+    CATLASS_DEVICE
+    void ExportCurrentStage(
+        Params const &params,
+        uint32_t commIdx,
+        uint32_t commShapeM,
+        AscendC::GlobalTensor<ElementA> const &gmSymmetric,
+        layout::DistRowMajor const &layoutTagSymmetric,
+        ExportCopy &blockExport)
+    {
+        static_assert(EXPORT_ALLTOALLV, "AllToAllV export is only available in the export kernel variant");
+
+        AscendC::GlobalTensor<ElementA> gmOutput;
+        gmOutput.SetGlobalBuffer(params.ptrAllToAllVOutput);
+        Catlass::layout::RowMajor layoutOutput{
+            tla::get<0>(params.layoutC.shape()),
+            params.problemShape.k()};
+
+        auto blockShape = params.blockCommParams.BlockShape();
+        uint32_t aivSubcoreCount = AscendC::GetSubBlockNum();
+        uint32_t coreIdx = AscendC::GetBlockIdx() / aivSubcoreCount;
+        // GetBlockNum() is already the number of physical AI cores for this
+        // mixed AIC/AIV launch; only GetBlockIdx() contains the subcore index.
+        uint32_t coreCount = AscendC::GetBlockNum();
+        if (AscendC::GetSubBlockIdx() != 0 || coreCount == 0) {
+            return;
+        }
+
+        uint64_t sourceOffsets[
+            BlockMmadScheduler::MoeConstraints::RANK_SIZE_LIMIT]{0};
+        uint64_t outputOffset = 0;
+        uint64_t windowStart = static_cast<uint64_t>(commIdx) * commShapeM;
+        uint64_t windowEnd = windowStart + commShapeM;
+        uint32_t taskIdx = 0;
+        for (uint32_t localExpertIdx = 0;
+             localExpertIdx < params.problemShape.localExpertNum(); ++localExpertIdx) {
+            for (uint32_t srcRankIdx = 0;
+                 srcRankIdx < params.problemShape.rankSize(); ++srcRankIdx) {
+                uint64_t sourceOffset = sourceOffsets[srcRankIdx];
+                uint64_t tokenCount = params.problemShape.globalTokensPerLocalExpert(
+                    srcRankIdx, localExpertIdx);
+                uint64_t copyBegin = Max(sourceOffset, windowStart);
+                uint64_t copyEnd = Min(sourceOffset + tokenCount, windowEnd);
+                copyEnd = Max(copyBegin, copyEnd);
+                uint32_t rows = static_cast<uint32_t>(copyEnd - copyBegin);
+                uint64_t stageTokenOffset = copyBegin - windowStart;
+                uint64_t outputTokenOffset = outputOffset + copyBegin - sourceOffset;
+                MatrixCoord segmentShape{rows, params.problemShape.k()};
+                MatrixCoord blockGrid = CeilDiv(segmentShape, blockShape);
+                uint32_t segmentTasks = Numel(blockGrid);
+                for (uint32_t segmentTask = 0; segmentTask < segmentTasks;
+                     ++segmentTask, ++taskIdx) {
+                    if (taskIdx % coreCount != coreIdx) {
+                        continue;
+                    }
+                    MatrixCoord blockCoord{
+                        segmentTask / blockGrid.column(),
+                        segmentTask % blockGrid.column()};
+                    MatrixCoord blockOffset = blockCoord * blockShape;
+                    MatrixCoord actualBlockShape = Min(
+                        blockShape, ClipSub(segmentShape, blockOffset));
+
+                    DistMatrixCoord srcOffset{
+                        static_cast<uint32_t>(stageTokenOffset) + blockOffset.row(),
+                        blockOffset.column(), srcRankIdx};
+                    MatrixCoord dstOffset{
+                        static_cast<uint32_t>(outputTokenOffset) + blockOffset.row(),
+                        blockOffset.column()};
+
+                    auto gmSrc = gmSymmetric[layoutTagSymmetric.GetOffset(srcOffset)];
+                    auto gmDst = gmOutput[layoutOutput.GetOffset(dstOffset)];
+                    auto layoutSrc = layoutTagSymmetric.GetTileLayout(actualBlockShape);
+                    auto layoutDst = layoutOutput.GetTileLayout(actualBlockShape);
+                    blockExport(
+                        gmSrc, layoutSrc, gmDst, layoutDst,
+                        actualBlockShape);
+                }
+                sourceOffsets[srcRankIdx] += tokenCount;
+                outputOffset += tokenCount;
+            }
+        }
+    }
+
     Catlass::Arch::CrossCoreFlag flagAicFinishStore[WORKSPACE_STAGES];
     Catlass::Arch::CrossCoreFlag flagAivFinishComm[WORKSPACE_STAGES];
     Catlass::Arch::Resource<ArchTag> resource;

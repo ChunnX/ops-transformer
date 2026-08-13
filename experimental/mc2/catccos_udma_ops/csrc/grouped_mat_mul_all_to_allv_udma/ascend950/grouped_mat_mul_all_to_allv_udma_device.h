@@ -32,52 +32,6 @@
 
 namespace OpsTransformer::CatccosUdma {
 
-// The delivery source commit makes the symmetric data-window size a kernel
-// template argument. The pinned official CatCCOS base still hard-codes the
-// legacy 1000 MiB sync offset, so this thin derived kernel reproduces that
-// ToUnderlyingArguments change without patching the third-party checkout.
-template <class BaseKernel, uint64_t SymmetricDataBytes>
-class CompactGroupedMatMulAllToAllVKernel : public BaseKernel {
-public:
-    using Arguments = typename BaseKernel::Arguments;
-    using Params = typename BaseKernel::Params;
-    using ProblemShape = typename BaseKernel::ProblemShape;
-    using LayoutTagA = typename BaseKernel::LayoutTagA;
-    using LayoutTagB = typename BaseKernel::LayoutTagB;
-    using LayoutTagC = typename BaseKernel::LayoutTagC;
-    using BlockComm = typename BaseKernel::BlockComm;
-    using BlockCommParams = typename BaseKernel::BlockCommParams;
-    using BlockCommSchedulerParams = typename BaseKernel::BlockCommSchedulerParams;
-
-    static Params ToUnderlyingArguments(Arguments const &arguments, uint8_t *workspace = nullptr)
-    {
-        (void)workspace;
-        LayoutTagA layoutTagA{arguments.gemmShape.m(), arguments.gemmShape.k()};
-        LayoutTagB layoutTagB{arguments.gemmShape.k(), arguments.gemmShape.n()};
-        LayoutTagC layoutTagC{arguments.gemmShape.m(), arguments.gemmShape.n()};
-        ProblemShape problemShape{
-            arguments.gemmShape, arguments.rankSize, arguments.rankIdx,
-            arguments.epSize, arguments.expertNum,
-            arguments.ptrLocalTokensPerExpert,
-            arguments.ptrGlobalTokensPerLocalExpert};
-        auto layoutA = tla::MakeLayoutFromTag(layoutTagA);
-        auto layoutB = tla::MakeLayoutFromTag(layoutTagB);
-        auto layoutC = tla::MakeLayoutFromTag(layoutTagC);
-        auto gmSymmetric = arguments.ptrSymmetric;
-        auto syncMmadFinish = arguments.ptrSymmetric + SymmetricDataBytes;
-        auto syncCommFinish = syncMmadFinish + SYNC_UNIT_SIZE;
-        typename BlockComm::TileRemoteCopy::Params tileParams{arguments.commTileShape};
-        BlockCommParams blockCommParams{arguments.commBlockShape, tileParams};
-        BlockCommSchedulerParams blockCommSchedulerParams{arguments.commCoreSplit};
-        return Params(
-            problemShape, arguments.commInterval, layoutTagC,
-            arguments.ptrA, layoutA, arguments.ptrB, layoutB,
-            arguments.ptrC, layoutC, gmSymmetric,
-            syncMmadFinish, syncCommFinish,
-            blockCommParams, blockCommSchedulerParams);
-    }
-};
-
 template <class ElementA, class LayoutA, class ElementB, class LayoutB,
           class ElementC, class LayoutC, uint32_t M0, uint32_t N0, uint32_t K0>
 struct GroupedMatMulAllToAllVUdmaConfig {
@@ -118,10 +72,9 @@ struct GroupedMatMulAllToAllVUdmaConfig {
     using BlockComm = Catccos::Comm::Block::CommBlockMteUdma<BlockLocalComm, BlockRemoteComm>;
 
     using ProblemShape = Catccos::DGemm::AllToAllVAllGatherProblemShape;
-    using BaseKernel = Catccos::DGemm::Kernel::GroupedMatmulAllToAllVTla<
+    using Kernel = Catccos::DGemm::Kernel::GroupedMatmulAllToAllVTla<
         ProblemShape, BlockMmad, BlockComm, BlockMmadScheduler,
-        BlockCommScheduler, kWorkspaceStages>;
-    using Kernel = CompactGroupedMatMulAllToAllVKernel<BaseKernel, kSymmetricDataBytes>;
+        BlockCommScheduler, kWorkspaceStages, kSymmetricDataBytes>;
     using Device = Catccos::DGemm::Device::DeviceDGemm<Kernel>;
 };
 
