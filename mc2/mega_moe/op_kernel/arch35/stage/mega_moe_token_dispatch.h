@@ -347,7 +347,7 @@ __aicore__ inline void PublishDispatchWaveReady(
 
 // 扫描一个 source-rank 段的 route mask，搬运本 core 负责的 token 并发布完成 flag。
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
-__aicore__ inline void DispatchExpertRankSegment(
+__aicore__ inline void DispatchRankTokenRange(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
     int32_t expertGlobalRowBegin, uint32_t remoteRankIdx,
@@ -416,7 +416,7 @@ __aicore__ inline void DispatchExpertRankSegment(
 
 // 遍历覆盖当前 core 行区间的 source-rank 段，并逐段完成 token 搬运与 flag 发布。
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
-__aicore__ inline void DispatchExpertRankSegments(
+__aicore__ inline void DispatchExpertRowsByRank(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
     const DispatchExpertWaveRange &expertRange, const DispatchExpertRankRange &rankRange,
@@ -445,7 +445,7 @@ __aicore__ inline void DispatchExpertRankSegments(
             continue;
         }
 
-        DispatchExpertRankSegment<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+        DispatchRankTokenRange<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, params, winRankAddr, scratch, localExpertId,
             expertRange.expertGlobalRowBegin, static_cast<uint32_t>(remoteRankIdx),
             rankSegmentRowBegin, segmentMatchOrdinalBegin, segmentMatchOrdinalEnd,
@@ -598,7 +598,7 @@ __aicore__ inline void DispatchExpertWaveTokens(
             continue;
         }
 
-        DispatchExpertRankSegments<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+        DispatchExpertRowsByRank<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, params, winRankAddr, scratch, localExpertId, expertRange, rankRange,
             dispatchWaveRowCount);
 
