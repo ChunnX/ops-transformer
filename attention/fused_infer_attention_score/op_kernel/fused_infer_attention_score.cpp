@@ -23,8 +23,6 @@
 // ifa must include before pfa
 #define FIA_ENABLE_MLA
 
-#include "arch22/fused_infer_attention_score_tilingkey.h"
-
 #if (__NPU_ARCH__ == 5102)
 #ifdef NOT_DYNAMIC_COMPILE
 #if __has_include("../../prompt_flash_attention/op_kernel/arch38/prompt_flash_attention_entry_regbase.h")
