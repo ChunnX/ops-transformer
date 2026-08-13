@@ -332,7 +332,7 @@ __aicore__ inline void EngramFetchTrainArch35::InitWinLayout()
     indicesDataOffset_ = sendCountOffset_ + counterRegionSize;
     tokenDataOffset_ = indicesDataOffset_ + indicesArea;
 
-    indicesSlotSize_ = indicesArea / numRanks_ / totalSlots_;
+    indicesSlotSize_ = indicesArea / numRanks_ / NUM_SLOTS;
     tokenSlotSize_ = tokenArea / numRanks_ / totalSlots_;
     maxIndicesPerSlot_ = static_cast<uint32_t>(indicesSlotSize_ / sizeof(int32_t));
     maxTokensPerSlot_ = static_cast<uint64_t>(tokenSlotSize_) >= static_cast<uint64_t>(hiddenBytes_) ?
@@ -349,7 +349,7 @@ __aicore__ inline void EngramFetchTrainArch35::InitCoreRoles()
         numSendCores_ = 1U;
     }
     if (totalBlocks_ > 1U) {
-        numRecvCores_ = totalBlocks_ - numSendCores_ - 1U;
+        numRecvCores_ = totalBlocks_ - numSendCores_;
     } else {
         numRecvCores_ = 1U;
     }
@@ -357,8 +357,8 @@ __aicore__ inline void EngramFetchTrainArch35::InitCoreRoles()
         numRecvCores_ = 1U;
     }
     isSender_ = (aivId_ < numSendCores_) || (totalBlocks_ <= 1U);
-    isReceiver_ = (aivId_ >= numSendCores_ && aivId_ < totalBlocks_ - 1U) || (totalBlocks_ <= 1U);
-    isFlagCore_ = (aivId_ == totalBlocks_ - 1U);
+    isReceiver_ = (aivId_ >= numSendCores_) || (totalBlocks_ <= 1U);
+    isFlagCore_ = (aivId_ == totalBlocks_ - 1U) && (totalBlocks_ > 1U);
 
     ascendc_assert(channelsPerRank_ == groupSize_ + 1U,
                    "channelsPerRank mismatch: kernel groupSize=%u, expected channels=%u, got channels=%u "
@@ -732,15 +732,12 @@ __aicore__ inline void EngramFetchTrainArch35::SendIndicesToPeers()
     LoadInt64ArrayToUb(sdisplsGM_);
     LocalTensor<int64_t> sdisplsUb = tempBuf_.Get<int64_t>();
 
-    uint32_t subIdx = aivId_ / numRanks_;
-    for (uint32_t dstRank = aivId_ % numRanks_; dstRank < numRanks_; dstRank += numSendCores_) {
+    for (uint32_t dstRank = aivId_; dstRank < numRanks_; dstRank += numSendCores_) {
         int32_t sendCount = sendCountsUb.GetValue(dstRank * UB_ALIGN / sizeof(int32_t));
         int64_t sdispl = sdisplsUb.GetValue(dstRank);
 
         if (dstRank == rankId_) {
-            if (subIdx == 0U) {
-                SendIndicesLocal(sendCount, sdispl, localWinBase);
-            }
+            SendIndicesLocal(sendCount, sdispl, localWinBase);
             continue;
         }
         SendIndicesRemote(dstRank, sendCount, sdispl, localWinBase);
@@ -762,47 +759,34 @@ __aicore__ inline void EngramFetchTrainArch35::SendIndicesLocal(int32_t sendCoun
 }
 
 __aicore__ inline void EngramFetchTrainArch35::SendIndicesRemote(uint32_t dstRank, int32_t sendCount, int64_t sdispl,
-                                                                  GM_ADDR localWinBase)
+                                                                   GM_ADDR localWinBase)
 {
-    uint32_t subIdx = aivId_ / numRanks_;
-    uint32_t myShare = (static_cast<uint32_t>(sendCount) + groupSize_ - 1U) / groupSize_;
-    uint32_t myStart = subIdx * myShare;
-    if (myStart >= static_cast<uint32_t>(sendCount)) {
-        return;
-    }
-    uint32_t myEnd = myStart + myShare;
-    if (subIdx == groupSize_ - 1U || myEnd > static_cast<uint32_t>(sendCount)) {
-        myEnd = static_cast<uint32_t>(sendCount);
-    }
-    uint32_t myCount = myEnd - myStart;
-
     uint64_t handle = GetCommHandle(dstRank);
     uint32_t totalSent = 0;
     uint32_t localWriteCnt = 0;
 
-    while (totalSent < myCount) {
+    while (totalSent < static_cast<uint32_t>(sendCount)) {
         if (totalBlocks_ > 1U) {
             uint64_t startTime = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_CYCLES_PER_US;
-            int32_t remoteReadCnt = ReadLocalCounter(localWinBase, indicesReadOffset_, dstRank, subIdx);
+            int32_t remoteReadCnt = ReadLocalCounter(localWinBase, indicesReadOffset_, dstRank);
             while (localWriteCnt >= static_cast<uint32_t>(remoteReadCnt) &&
                    localWriteCnt - static_cast<uint32_t>(remoteReadCnt) >= NUM_SLOTS) {
-                remoteReadCnt = ReadLocalCounter(localWinBase, indicesReadOffset_, dstRank, subIdx);
+                remoteReadCnt = ReadLocalCounter(localWinBase, indicesReadOffset_, dstRank);
                 TimeoutCheck(startTime);
             }
         }
 
-        uint32_t remaining = myCount - totalSent;
+        uint32_t remaining = static_cast<uint32_t>(sendCount) - totalSent;
         uint32_t chunkLen = (remaining > maxIndicesPerSlot_) ? maxIndicesPerSlot_ : remaining;
         ascendc_assert(chunkLen != 0U, "ExchangeIndices chunkLen is 0");
 
-        uint32_t slotIdx = subIdx + localWriteCnt * groupSize_;
-        uint64_t slotOffset = indicesDataOffset_ + rankId_ * totalSlots_ * indicesSlotSize_ +
-                              (slotIdx % totalSlots_) * indicesSlotSize_;
+        uint64_t slotOffset = indicesDataOffset_ + rankId_ * NUM_SLOTS * indicesSlotSize_ +
+                              (localWriteCnt % NUM_SLOTS) * indicesSlotSize_;
         GM_ADDR remoteSlotAddr = GetRemoteWinAddr(dstRank, slotOffset);
-        GM_ADDR srcAddr = sortedIndicesGM_ + (sdispl + myStart + totalSent) * sizeof(int32_t);
+        GM_ADDR srcAddr = sortedIndicesGM_ + (sdispl + totalSent) * sizeof(int32_t);
 
         GM_ADDR remoteCounterAddr = GetRemoteWinAddr(dstRank, indicesWriteOffset_) +
-                                    rankId_ * STATE_OFFSET * groupSize_ + subIdx * STATE_OFFSET;
+                                    rankId_ * STATE_OFFSET * groupSize_;
         int32_t ret = hcomm_.WriteWithNotifyNbi(handle, remoteSlotAddr, srcAddr, chunkLen * sizeof(int32_t),
                                                 remoteCounterAddr, static_cast<uint64_t>(localWriteCnt + 1));
         ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=ExIdx_data, rankId=%u, dstRank=%u", ret,
@@ -837,57 +821,42 @@ __aicore__ inline void EngramFetchTrainArch35::RecvIndicesFromPeers()
             continue;
         }
 
-        uint32_t totalRecvU32 = static_cast<uint32_t>(recvCount);
-        uint32_t subShare = (totalRecvU32 + groupSize_ - 1U) / groupSize_;
-        uint32_t localReadCntArr[MAX_GROUP_SIZE] = {0};
-        uint32_t subReceived[MAX_GROUP_SIZE] = {0};
-        uint32_t subExpected[MAX_GROUP_SIZE] = {0};
-        for (uint32_t s = 0; s < groupSize_; s++) {
-            uint32_t start = s * subShare;
-            if (start < totalRecvU32) {
-                uint32_t end = (s == groupSize_ - 1U) ? totalRecvU32 : (start + subShare);
-                if (end > totalRecvU32) {
-                    end = totalRecvU32;
-                }
-                subExpected[s] = end - start;
-            }
-        }
-
         uint32_t totalReceived = 0;
-        uint64_t startTime = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_CYCLES_PER_US;
+        uint32_t localReadCnt = 0;
 
-        while (totalReceived < totalRecvU32) {
-            for (uint32_t subIdx = 0; subIdx < groupSize_; subIdx++) {
-                if (subReceived[subIdx] >= subExpected[subIdx]) {
-                    continue;
-                }
-
-                int32_t remoteWriteCnt = ReadLocalCounter(localWinBase, indicesWriteOffset_, srcRank, subIdx);
-                if (remoteWriteCnt <= 0 || static_cast<uint32_t>(remoteWriteCnt) <= localReadCntArr[subIdx]) {
-                    continue;
-                }
-
-                uint32_t subRemaining = subExpected[subIdx] - subReceived[subIdx];
-                uint32_t readItems = (subRemaining > maxIndicesPerSlot_) ? maxIndicesPerSlot_ : subRemaining;
-                ascendc_assert(readItems != 0U, "RecvIndices readItems is 0");
-
-                uint32_t slotIdx = subIdx + localReadCntArr[subIdx] * groupSize_;
-                uint64_t slotOffset = indicesDataOffset_ + srcRank * totalSlots_ * indicesSlotSize_ +
-                                      (slotIdx % totalSlots_) * indicesSlotSize_;
-                GM_ADDR localSlotAddr = localWinBase + slotOffset;
-                uint64_t dataBytes = static_cast<uint64_t>(readItems) * sizeof(int32_t);
-
-                LocalCopySlice(recvLocalEntryOutGM_ +
-                               static_cast<uint64_t>(rdispl + subIdx * subShare + subReceived[subIdx]) *
-                                   sizeof(int32_t),
-                               localSlotAddr, dataBytes);
-
-                localReadCntArr[subIdx]++;
-                subReceived[subIdx] += readItems;
-                totalReceived += readItems;
-                WriteRemoteCounter(srcRank, indicesReadOffset_, static_cast<int32_t>(localReadCntArr[subIdx]), subIdx);
+        while (totalReceived < static_cast<uint32_t>(recvCount)) {
+            uint64_t startTime = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_CYCLES_PER_US;
+            int32_t remoteWriteCnt = ReadLocalCounter(localWinBase, indicesWriteOffset_, srcRank);
+            while (remoteWriteCnt <= 0 || static_cast<uint32_t>(remoteWriteCnt) <= localReadCnt) {
+                remoteWriteCnt = ReadLocalCounter(localWinBase, indicesWriteOffset_, srcRank);
+                TimeoutCheck(startTime);
             }
-            TimeoutCheck(startTime);
+
+            uint32_t availableSlots = static_cast<uint32_t>(remoteWriteCnt) - localReadCnt;
+            if (availableSlots > NUM_SLOTS) {
+                availableSlots = NUM_SLOTS;
+            }
+            uint32_t slotIdxStart = localReadCnt % NUM_SLOTS;
+            uint32_t contiguousSlots = NUM_SLOTS - slotIdxStart;
+            if (contiguousSlots > availableSlots) {
+                contiguousSlots = availableSlots;
+            }
+            uint32_t remaining = static_cast<uint32_t>(recvCount) - totalReceived;
+            uint32_t availableItems = contiguousSlots * maxIndicesPerSlot_;
+            uint32_t readItems = (remaining < availableItems) ? remaining : availableItems;
+
+            uint64_t slotOffset = indicesDataOffset_ + srcRank * NUM_SLOTS * indicesSlotSize_ +
+                                  slotIdxStart * indicesSlotSize_;
+            GM_ADDR localSlotAddr = localWinBase + slotOffset;
+            uint64_t dataBytes = static_cast<uint64_t>(readItems) * sizeof(int32_t);
+
+            LocalCopySlice(recvLocalEntryOutGM_ + static_cast<uint64_t>(rdispl + totalReceived) * sizeof(int32_t),
+                           localSlotAddr, dataBytes);
+
+            uint32_t readSlots = (readItems + maxIndicesPerSlot_ - 1U) / maxIndicesPerSlot_;
+            localReadCnt += readSlots;
+            totalReceived += readItems;
+            WriteRemoteCounter(srcRank, indicesReadOffset_, static_cast<int32_t>(localReadCnt));
         }
         ClearCountersAfterRecv(localWinBase, srcRank, indicesWriteOffset_, indicesReadOffset_);
     }
