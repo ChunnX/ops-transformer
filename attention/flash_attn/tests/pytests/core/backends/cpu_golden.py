@@ -95,7 +95,11 @@ def _should_fix_invalid_rows(mask_mode, win_left, win_right, act_q_len, act_kv_l
     if mask_mode == 3:
         return act_q_len > act_kv_len
     if mask_mode == 4:
-        return win_left < 0 or win_right + act_kv_len < act_q_len
+        # -1表示该侧窗口无限大(算子侧转为INT_MAX), 不会产生整行被mask的行
+        # 右侧整行失效: nextLeftUp<0 ⟺ win_right+act_kv_len<act_q_len
+        # 左侧整行失效: win_left为真正的负窗口(非-1哨兵)时, i≥act_q_len+win_left的行全失效
+        return (win_right != -1 and win_right + act_kv_len < act_q_len) or \
+               (win_left != -1 and win_left < 0)
     return False
 
 

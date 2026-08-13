@@ -19,9 +19,10 @@ def generate_cpu_mask(b, s1, s2, mask_mode, win_left, win_right, prefix=None, in
     elif mask_mode == 3:
         mask = torch.triu(torch.ones(s1, s2), diagonal=s2 - s1 + 1).bool()
     elif mask_mode == 4:
-        # -1 means infinity (no mask on that side)
-        effective_win_right = s2 if win_right == -1 else win_right
-        effective_win_left = s1 if win_left == -1 else win_left
+        # -1 means infinity (no mask on that side). BAND窗口按j-i=s2-s1对齐(末尾对齐),
+        # 右窗无限需 effective_win_right > s1-2(算子侧clamp到S1), 左窗无限需 effective_win_left > s2-2(算子侧clamp到S2)
+        effective_win_right = s1 if win_right == -1 else win_right
+        effective_win_left = s2 if win_left == -1 else win_left
         atten_mask_u = torch.triu(torch.ones(s1, s2), diagonal=effective_win_right + 1 + s2 - s1)
         atten_mask_l = torch.tril(torch.ones(s1, s2), diagonal=-effective_win_left - 1 + s2 - s1)
         mask = (atten_mask_u + atten_mask_l).bool()
