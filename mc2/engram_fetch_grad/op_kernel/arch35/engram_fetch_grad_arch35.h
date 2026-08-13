@@ -172,6 +172,7 @@ __aicore__ inline void EngramFetchGradArch35::WriteNbiChecked(uint64_t handle, G
 __aicore__ inline void EngramFetchGradArch35::DrainChecked(uint64_t handle)
 {
     int32_t ret = hcomm_.Drain(handle);
+    // ascendc_assert(ret == 0, "Drain failed, ret=%d, rankId=%u, aivId=%u", ret, rankId_, aivId_);
 }
 
 __aicore__ inline void EngramFetchGradArch35::TimeoutCheck(uint64_t startTime)
@@ -389,9 +390,9 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     flagScratchGM_ = workspaceGM_ + wsOffset;
     wsOffset += UB_ALIGN;
     segCountGM_ = workspaceGM_ + wsOffset;
-    wsOffset += static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t);
+    wsOffset += Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     coreStartGM_ = workspaceGM_ + wsOffset;
-    wsOffset += static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t);
+    wsOffset += Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
 
     uint32_t maxSortCount = static_cast<uint32_t>(totalRecv_);
     uint64_t sortCompanionSize = Ceil(static_cast<uint64_t>(maxSortCount) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
@@ -409,7 +410,16 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
 
     uint32_t statusBufSize = Ceil(numRanks_ * STATE_OFFSET, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
-    tpipe_->InitBuffer(tempBuf_, statusBufSize);
+    uint32_t tempBufSize = statusBufSize;
+    uint32_t entryBatchBytes = ENTRY_BATCH_CAP * sizeof(int32_t);
+    if (tempBufSize < entryBatchBytes) {
+        tempBufSize = entryBatchBytes;
+    }
+    uint32_t coreArrayBytes = Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    if (tempBufSize < coreArrayBytes) {
+        tempBufSize = coreArrayBytes;
+    }
+    tpipe_->InitBuffer(tempBuf_, tempBufSize);
     uint32_t gradSumBufSize = Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) *
                                        GRAD_SUB_BATCH,
                                    UB_ALIGN) *
