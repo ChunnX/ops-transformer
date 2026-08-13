@@ -313,7 +313,7 @@ public:
 // -----------算子Tiling入参信息解析及Check类---------------
 class SMLATilingCheck {
 public:
-    explicit SMLATilingCheck(const SMLATilingInfo &smlaInfo) : smlaInfo_(smlaInfo) {};
+    explicit SMLATilingCheck(const SMLATilingInfo &smlaInfo): smlaInfo_(smlaInfo) {};
     ~SMLATilingCheck() = default;
     virtual ge::graphStatus Process();
 
@@ -455,7 +455,7 @@ inline T Align(T num, T rnd)
 
 class SMLAInfoParser {
 public:
-    explicit SMLAInfoParser(gert::TilingContext *context) : context_(context)
+    explicit SMLAInfoParser(gert::TilingContext *context): context_(context)
     {
     }
     ~SMLAInfoParser() = default;
@@ -589,7 +589,7 @@ public:
 // ---------------算子Tiling类---------------
 class SparseFlashMlaTiling {
 public:
-    explicit SparseFlashMlaTiling(gert::TilingContext *context) : context_(context) {};
+    explicit SparseFlashMlaTiling(gert::TilingContext *context): context_(context) {};
     ge::graphStatus DoOpTiling(SMLATilingInfo *tilingInfo);
 
 private:
