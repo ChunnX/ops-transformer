@@ -382,7 +382,7 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam)
 {
     // GS1合轴, 不切G, 只切S1
-    runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
+    // runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
     if constexpr (IS_SPLIT_G) {
         runParam.goIdx = (aicIdx % 2 == 0) ? 0 : 64;
     } else {
@@ -404,7 +404,7 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     }
     runInfo.s2LoopCount = s2LoopCount;
     runInfo.s2LoopLimit = s2LoopLimit;
-    runInfo.s1oIdx = runParam.s1oIdx;
+    // runInfo.s1oIdx = runParam.s1oIdx;
     runInfo.attentionOutOffset = runParam.attentionOutOffset;
     runInfo.oriKvLoopEndIdx = runParam.oriKvLoopEndIdx;
     runInfo.taskIdMod2 = taskId & 1;
