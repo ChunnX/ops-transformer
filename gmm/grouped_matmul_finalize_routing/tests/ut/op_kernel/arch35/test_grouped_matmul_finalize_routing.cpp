@@ -26,16 +26,20 @@ TEST_F(GroupedMatmulFinalizeRoutingArch35Test, NoSharedInputDoesNotAccessResidua
 {
     constexpr uint32_t blockDim = 24;
     constexpr size_t outputSize = 16 * sizeof(bfloat16_t);
+    constexpr size_t dummyGmSize = 4096;
     std::array<uint8_t, outputSize> expectedOutput{};
     expectedOutput.fill(0x5A);
 
     auto *yGm = static_cast<uint8_t *>(AscendC::GmAlloc(outputSize));
     auto *tilingGm = static_cast<uint8_t *>(AscendC::GmAlloc(sizeof(GMMFinalizeRoutingTilingData)));
+    auto *dummyGm = static_cast<uint8_t *>(AscendC::GmAlloc(dummyGmSize));
     ASSERT_NE(yGm, nullptr);
     ASSERT_NE(tilingGm, nullptr);
+    ASSERT_NE(dummyGm, nullptr);
 
     std::memcpy(yGm, expectedOutput.data(), outputSize);
     std::memset(tilingGm, 0, sizeof(GMMFinalizeRoutingTilingData));
+    std::memset(dummyGm, 0, dummyGmSize);
 
     auto *tiling = reinterpret_cast<GMMFinalizeRoutingTilingData *>(tilingGm);
     tiling->gmmFinalizeRoutingDataParams.groupNum = 0;
@@ -53,15 +57,18 @@ TEST_F(GroupedMatmulFinalizeRoutingArch35Test, NoSharedInputDoesNotAccessResidua
 
     // The null share_input pointer is intentional. With sharedInputLen == 0,
     // the prologue must return before CopyInShareInput dereferences residualGm_.
+    // Other inputs use valid dummy GM addresses so a failure can be attributed
+    // specifically to an unexpected residual access.
     ICPU_SET_TILING_KEY(0UL);
     ICPU_RUN_KF((grouped_matmul_finalize_routing<0, 0, 0, 0>), blockDim,
-                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                nullptr, nullptr, nullptr, nullptr, yGm, nullptr, tilingGm);
+                dummyGm, dummyGm, dummyGm, dummyGm, dummyGm, dummyGm,
+                nullptr, dummyGm, dummyGm, dummyGm, yGm, dummyGm, tilingGm);
 
     EXPECT_EQ(std::memcmp(yGm, expectedOutput.data(), outputSize), 0);
 
     AscendC::GmFree(yGm);
     AscendC::GmFree(tilingGm);
+    AscendC::GmFree(dummyGm);
 }
 
 } // namespace
