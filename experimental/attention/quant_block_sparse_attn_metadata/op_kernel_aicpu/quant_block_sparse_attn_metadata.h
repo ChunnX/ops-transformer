@@ -20,17 +20,13 @@
 #ifndef __CCE_AICORE__
 #include <cassert>
 #include <cstddef>
-#include <cstring>
 #endif
 
 namespace optiling {
 
-constexpr uint32_t LEGACY_AIC_CORE_NUM = 36U;
-constexpr uint32_t V121_AIC_CORE_NUM = 72U;
+constexpr uint32_t AIC_CORE_NUM = 72U;
 constexpr uint32_t AIV_CORE_NUM = 72U;
-constexpr uint32_t AIC_CORE_NUM = LEGACY_AIC_CORE_NUM;
 constexpr uint32_t QBSA_META_SIZE = 2048U;
-constexpr int32_t QBSA_FP8_QUANT_MODE = 1;
 using QBSA_METADATA_T = uint32_t;
 
 constexpr uint32_t QBSA_HEAD_METADATA_SIZE = 8U;
@@ -55,24 +51,15 @@ struct MetadataSlotConfig {
     uint32_t aivSlots;
 };
 
-inline bool IsV121SocVersion(const char *socVersion)
+inline MetadataSlotConfig GetMetadataSlotConfig()
 {
-    return socVersion != nullptr &&
-           (std::strstr(socVersion, "Ascend950") != nullptr || std::strstr(socVersion, "ascend950") != nullptr ||
-            std::strstr(socVersion, "V121") != nullptr || std::strstr(socVersion, "v121") != nullptr ||
-            std::strstr(socVersion, "5102") != nullptr);
-}
-
-inline MetadataSlotConfig GetMetadataSlotConfig(const char *socVersion, int32_t quantMode)
-{
-    const bool useV121Slots = quantMode == QBSA_FP8_QUANT_MODE && IsV121SocVersion(socVersion);
-    return {useV121Slots ? V121_AIC_CORE_NUM : LEGACY_AIC_CORE_NUM, AIV_CORE_NUM};
+    return {AIC_CORE_NUM, AIV_CORE_NUM};
 }
 
 namespace detail {
 struct qbsaMetaData {
     uint32_t sectionNum { 0U };
-    uint32_t aicCoreSlots { LEGACY_AIC_CORE_NUM };
+    uint32_t aicCoreSlots { AIC_CORE_NUM };
     uint32_t aivCoreSlots { AIV_CORE_NUM };
     QBSA_METADATA_T *headMetadata; // [QBSA_HEAD_METADATA_SIZE];
     QBSA_METADATA_T *qbsaMetadata; // [sectionNum][AIC_CORE_NUM][QBSA_METADATA_SIZE];

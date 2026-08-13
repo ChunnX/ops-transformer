@@ -26,7 +26,7 @@
 // metadata获取: head[8] + qbsa[sectionNum][AIC_CORE_NUM][8] + fd[AIV_CORE_NUM][8]
 constexpr uint32_t QBSA_FA_HEAD_METADATA_SIZE = 8U;
 constexpr uint32_t QBSA_FA_HEAD_SECTION_NUM_INDEX = 0U;
-constexpr uint32_t QBSA_FA_AIC_CORE_NUM = 36U;
+constexpr uint32_t QBSA_FA_AIC_CORE_NUM = 72U;
 constexpr uint32_t QBSA_FA_AIV_CORE_NUM = 72U;
 constexpr uint32_t QBSA_FA_METADATA_SIZE = 8U;
 constexpr uint32_t QBSA_FA_FD_METADATA_SIZE = 8U;

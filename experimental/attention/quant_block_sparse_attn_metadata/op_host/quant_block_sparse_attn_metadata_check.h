@@ -88,8 +88,7 @@ static aclnnStatus CheckSingleParamQbsa(int64_t batchSize, int64_t numHeadsQ, in
 static aclnnStatus CheckExistenceQbsa(const aclTensor *sparseSeqLen, const aclTensor *cuSeqlensQOptional,
                                       const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
                                       const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t numHeadsQ,
-                                      int64_t quantMode, uint32_t aicCoreNum, uint32_t aivCoreNum,
-                                      const char *socVersion, const aclTensor *metadata) {
+                                      uint32_t aicCoreNum, uint32_t aivCoreNum, const aclTensor *metadata) {
   if (sparseSeqLen == nullptr) {
     OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen is nullptr");
     return ACLNN_ERR_PARAM_INVALID;
@@ -112,8 +111,7 @@ static aclnnStatus CheckExistenceQbsa(const aclTensor *sparseSeqLen, const aclTe
             metadata->GetViewShape().GetDimNum());
     return ACLNN_ERR_PARAM_INVALID;
   }
-  const optiling::MetadataSlotConfig slotConfig =
-      optiling::GetMetadataSlotConfig(socVersion, static_cast<int32_t>(quantMode));
+  const optiling::MetadataSlotConfig slotConfig = optiling::GetMetadataSlotConfig();
   uint64_t minMetaSize = optiling::QBSA_HEAD_METADATA_SIZE +
                          static_cast<uint64_t>(batchSize) * static_cast<uint64_t>(numHeadsQ) * slotConfig.aicSlots *
                              optiling::QBSA_METADATA_SIZE +
@@ -166,14 +164,14 @@ static aclnnStatus ParamsCheck(const aclTensor *sparseSeqLen, const aclTensor *c
                                int64_t quantMode, int64_t maskMode, const char *layoutQOptional,
                                const char *layoutKvOptional,
                                const char *layoutSparseIndicesOptional, uint32_t aicCoreNum, uint32_t aivCoreNum,
-                               const char *socVersion, const aclTensor *metadata)
+                               const aclTensor *metadata)
 {
     aclnnStatus ret =
         CheckSingleParamQbsa(batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeK, quantMode,
                              maskMode, layoutSparseIndicesOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckExistenceQbsa(sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
-                             batchSize, numHeadsQ, quantMode, aicCoreNum, aivCoreNum, socVersion, metadata);
+                             batchSize, numHeadsQ, aicCoreNum, aivCoreNum, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckConsistencyQbsa(numHeadsQ, numHeadsKv);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);

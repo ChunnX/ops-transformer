@@ -54,12 +54,11 @@ aclnnStatus aclnnQuantBlockSparseAttnMetadataGetWorkspaceSize(
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
     uint32_t aicCoreNum = npuInfo.GetCubeCoreNum();
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
-    const char *socVersion = npuInfo.GetSocLongVersion().c_str();
 
     auto ret = ParamsCheck(sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
                            batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeK, quantMode,
                            maskMode, layoutQOptional, layoutKvOptional, layoutSparseIndicesOptional, aicCoreNum,
-                           aivCoreNum, socVersion, metadata);
+                           aivCoreNum, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     // Contiguous conversion - INPUT_TENSOR_ROWS order
@@ -105,7 +104,7 @@ aclnnStatus aclnnQuantBlockSparseAttnMetadataGetWorkspaceSize(
         sparseSeqLenContiguous, cuSeqlensQOptionalContiguous, cuSeqlensKvOptionalContiguous,
         sequsedQOptionalContiguous, sequsedKvOptionalContiguous, batchSize, numHeadsQ, numHeadsKv, headDim,
         sparseBlockSizeQ, sparseBlockSizeK, quantMode, maskMode, layoutQOptional, layoutKvOptional,
-        layoutSparseIndicesOptional, socVersion, aicCoreNum, aivCoreNum, metadata, uniqueExecutor.get());
+        layoutSparseIndicesOptional, aicCoreNum, aivCoreNum, metadata, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
