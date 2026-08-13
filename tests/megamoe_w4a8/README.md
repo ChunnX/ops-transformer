@@ -56,17 +56,17 @@ MEGAMOE_ENABLE_TIMER=0 bash tests/megamoe_w4a8/run.sh
 tests/megamoe_w4a8/timer/w4a8_ep<EP>_bs<BS>_h<H>_n<N>_topk<K>_local<E>/rank_<rank>_npu_time.csv
 ```
 
-以默认 2 卡 case 为例：
+默认会使用上述打点根目录，并自动选择最近一次产生数据的 case，因此目录参数不是必需的。以默认 2 卡为例：
 
 ```bash
-CASE_DIR=tests/megamoe_w4a8/timer/w4a8_ep2_bs1_h4096_n1024_topk6_local48
-
 python3 tests/megamoe_timer/parse_timer_csv.py \
-  --dir "${CASE_DIR}" --rank-start 0 --rank-end 1
+  --rank-start 0 --rank-end 1
 
 python3 tests/megamoe_timer/trace_parser.py \
-  --timer-dir "${CASE_DIR}" --rank-start 0 --rank-end 1
+  --rank-start 0 --rank-end 1
 ```
+
+只有需要解析指定 case 时，才传入 `--dir <case目录>` 和 `--timer-dir <case目录>`。若运行测试时设置了 `MEGAMOE_TIMER_DIR` 或 `MEGAMOE_CASE_NAME`，解析脚本也会读取相同的环境变量。
 
 生成的 `all_rank_trace.json` 可用 Perfetto 或 `chrome://tracing` 打开。计时仅接入 Arch35 W4A8 路径，`mega_moe_wave.h` 路径未修改。
 

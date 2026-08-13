@@ -3,6 +3,8 @@ import csv
 import json
 from pathlib import Path
 
+from timer_path import resolve_timer_dir
+
 
 CYCLES_PER_US = 1000.0
 
@@ -46,18 +48,30 @@ def load_events(path: Path, rank: int):
 
 def main():
     parser = argparse.ArgumentParser(description="Create Chrome Trace JSON from parsed MegaMoe timers")
-    parser.add_argument("--timer-dir", default="timer")
-    parser.add_argument("--output", default="timer/all_rank_trace.json")
+    parser.add_argument(
+        "--timer-dir",
+        default=None,
+        help=(
+            "Timer case directory or timer root. By default, use "
+            "tests/megamoe_w4a8/timer and select its latest parsed case."
+        ),
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Output JSON path. Defaults to all_rank_trace.json in the selected timer case.",
+    )
     parser.add_argument("--rank-start", type=int, default=0)
     parser.add_argument("--rank-end", type=int, default=7)
     args = parser.parse_args()
-    timer_dir = Path(args.timer_dir)
+    timer_dir = resolve_timer_dir(args.timer_dir, "rank_*_npu_time_parsed.csv")
+    print(f"[INFO] timer directory: {timer_dir}")
     events = []
     for rank in range(args.rank_start, args.rank_end + 1):
         path = timer_dir / f"rank_{rank}_npu_time_parsed.csv"
         if path.exists():
             events.extend(load_events(path, rank))
-    output = Path(args.output)
+    output = Path(args.output) if args.output else timer_dir / "all_rank_trace.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(events, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"[OK] {len(events)} events -> {output}")

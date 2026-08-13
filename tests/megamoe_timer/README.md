@@ -20,9 +20,11 @@ Allocate a fresh zeroed timer for every measured invocation. After all ranks
 finish, parse the raw buffers and create a Chrome Trace file:
 
 ```bash
-python3 tests/megamoe_timer/parse_timer_csv.py --dir timer --rank-start 0 --rank-end 7
-python3 tests/megamoe_timer/trace_parser.py --timer-dir timer --rank-start 0 --rank-end 7
+python3 tests/megamoe_timer/parse_timer_csv.py --rank-start 0 --rank-end 7
+python3 tests/megamoe_timer/trace_parser.py --rank-start 0 --rank-end 7
 ```
 
-Open `timer/all_rank_trace.json` with `chrome://tracing` or Perfetto.
+The directory options are optional. By default, both scripts use
+`tests/megamoe_w4a8/timer` and select the latest matching case. Open the
+generated `all_rank_trace.json` with `chrome://tracing` or Perfetto.
 The timer uses 96 logical cores and supports up to 1024 local experts.

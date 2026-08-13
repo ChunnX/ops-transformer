@@ -2,6 +2,8 @@ import argparse
 import csv
 from pathlib import Path
 
+from timer_path import resolve_timer_dir
+
 
 FIXED_NAMES = [
     "KERNEL_TIMING",
@@ -92,11 +94,19 @@ def parse_file(input_path: Path, output_path: Path):
 
 def main():
     parser = argparse.ArgumentParser(description="Parse MegaMoe AscendTimerV2 CSV files")
-    parser.add_argument("--dir", default="timer")
+    parser.add_argument(
+        "--dir",
+        default=None,
+        help=(
+            "Timer case directory or timer root. By default, use "
+            "tests/megamoe_w4a8/timer and select its latest case."
+        ),
+    )
     parser.add_argument("--rank-start", type=int, default=0)
     parser.add_argument("--rank-end", type=int, default=7)
     args = parser.parse_args()
-    timer_dir = Path(args.dir)
+    timer_dir = resolve_timer_dir(args.dir, "rank_*_npu_time.csv")
+    print(f"[INFO] timer directory: {timer_dir}")
     for rank in range(args.rank_start, args.rank_end + 1):
         src = timer_dir / f"rank_{rank}_npu_time.csv"
         if not src.exists():
