@@ -12,7 +12,7 @@
  * \file main.cpp
  * \brief ApaceQuantMatmulReduceScatter ST host 入口
  *
- * ReduceScatter via AllToAll PUT + AtomicAdd:
+ * ReduceScatter via AllToAll PUT + workspace 槽位独占（无回压）:
  *   - 每 rank 持有 A_i[M × Ka], ScaleA_i, B_full[K × N], ScaleB_full
  *   - 输出 C_r[M/rankSize × N] = Σ_i A_i[r*M/R:(r+1)*M/R] × B_i
  *
@@ -21,7 +21,11 @@
  *   ka     = K / rankSize           // per-rank K
  *   GetTilingData(mLocal, N, ka, ...)  // m=M/rankSize, k=per-rank K
  *   commTilingData 基于 mLocal 切分（而非 M）
- *   localMatmul = 1                 // LOCAL+REMOTE+AtomicAdd
+ *   localMatmul = 0                 // REMOTE-only
+ *
+ * 关键设计（DESIGN.md §1.1）：
+ *   C7 workspace = maxTilesPerCore × coreNum × baseM × baseN × sizeof(BF16)
+ *   C8 host 校验 maxTilesPerCore ≤ 15（flagId=5 计数器上界，tiling 后 / aclrtMalloc 前执行）
  */
 
 #include <cmath>
@@ -186,19 +190,40 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
     tilingData.commTilingData.splitAxisTailSize = static_cast<uint64_t>(tailMSize);
     tilingData.commTilingData.splitAxisTailCnt = static_cast<uint64_t>(tailTileCnt);
     tilingData.commTilingData.nonSplitAxisSize = ka;
-    // v2: localMatmul=0（默认不启用，REMOTE-only 流水线）
+    // localMatmul=0（默认不启用，REMOTE-only 流水线）
     tilingData.localMatmul = 0;
 
     tilingData.scaleCommTilingData = tilingData.commTilingData;
     tilingData.scaleCommTilingData.nonSplitAxisSize = ka / 32;  // MXFP8 scale 压缩比
 
-    // v2 新增字段填充（DESIGN.md §2.8）
+    // 字段填充（DESIGN.md §1.1 + §2.1）
+    // maxTilesPerCore 的四个输入（m、n、baseM、baseN、usedCoreNum）全部取自 SWAT tiling 最终输出
+    // tileQbmmTilingData（取值来源约束），不使用 raw M/rankNum 或 baseM 候选默认值
     uint32_t coreNum = tilingData.tileQbmmTilingData.usedCoreNum;
     uint32_t baseM = tilingData.tileQbmmTilingData.baseM;
     uint32_t baseN = tilingData.tileQbmmTilingData.baseN;
-    uint64_t workspaceSize = static_cast<uint64_t>(PIPELINE_NUM) * coreNum * baseM * baseN * sizeof(uint16_t);
+    uint32_t mFinal = tilingData.tileQbmmTilingData.m;
+    uint32_t nFinal = tilingData.tileQbmmTilingData.n;
+    uint32_t blockDimM = static_cast<uint32_t>(CeilDiv(mFinal, baseM));
+    uint32_t blockDimN = static_cast<uint32_t>(CeilDiv(nFinal, baseN));
+    uint32_t blockNums = blockDimM * blockDimN;
+    // 严格上界（无 +1，DESIGN §2.2 Blaze 源码 4 项证据）：maxTilesPerCore = CeilDiv(blockNums, coreNum)
+    uint32_t maxTilesPerCore = static_cast<uint32_t>(CeilDiv(blockNums, coreNum));
 
-    tilingData.pipelineNum = PIPELINE_NUM;
+    // maxTilesPerCore ≤ 15 校验（flagId=5 计数器 0-15 上界保护）。
+    // 执行顺序约束：SWAT tiling 完成之后、workspace aclrtMalloc 之前（此处远早于 aclInit/aclrtMalloc）。
+    if (maxTilesPerCore > 15) {
+        ERROR_LOG("maxTilesPerCore constraint: maxTilesPerCore=%u > 15 "
+                  "(blockDimM=%u x blockDimN=%u = blockNums=%u, coreNum=%u, baseM=%u, baseN=%u). "
+                  "flagId=5 counter (0-15) would overflow. Shape exceeds supported range (workspace slot-exclusive mode); reduce shape.",
+                  maxTilesPerCore, blockDimM, blockDimN, blockNums, coreNum, baseM, baseN);
+        return -1;
+    }
+
+    // workspace 公式（每 tile 独占槽位，无轮转）
+    uint64_t workspaceSize = static_cast<uint64_t>(maxTilesPerCore) * coreNum * baseM * baseN * sizeof(uint16_t);
+
+    tilingData.maxTilesPerCore = maxTilesPerCore;
     tilingData.coreNum = coreNum;
     tilingData.ubCalSize = baseM * baseN;
     // totalMmTiles DEPRECATED（DESIGN.md §2.16 Issue 2）：host 填 0，kernel 不消费；
@@ -206,17 +231,17 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
     tilingData.totalMmTiles = 0;
     tilingData.workspaceSize = workspaceSize;
 
-    // v2 输入校验：flagId 冲突规避（避开 3、5、[11-14]，可用 flagId = {0,1,2,4,6,7,8,9,10,15} 共 10 个）
+    // flagId 冲突规避（通道 1 可用 flagId = {0,1,2,4,6,7,8,9,10,15} 共 10 个）
     if (tileCnt > 10) {
-        ERROR_LOG("v2 flagId constraint: headTileCnt+tailTileCnt=%u > 10 (avoid flagId 3/5/[11-14])", tileCnt);
+        ERROR_LOG("flagId constraint: headTileCnt+tailTileCnt=%u > 10 (avoid flagId 3/5/[11-14])", tileCnt);
         return -1;
     }
 
-    INFO_LOG("v2 ReduceScatter: M=%d, mLocal=%u, K=%d, ka=%u, N=%d, tileCnt=%u, headMSize=%u, headTileCnt=%u, tailMSize=%u, localMatmul=%u, pipelineNum=%u, coreNum=%u, totalMmTiles=%u, workspaceSize=%lu",
+    INFO_LOG("ReduceScatter: M=%d, mLocal=%u, K=%d, ka=%u, N=%d, tileCnt=%u, headMSize=%u, headTileCnt=%u, tailMSize=%u, localMatmul=%u, maxTilesPerCore=%u, coreNum=%u, totalMmTiles=%u, workspaceSize=%lu",
              m, mLocal, k, ka, n, tileCnt, headMSize, headTileCnt, tailMSize, tilingData.localMatmul,
-             tilingData.pipelineNum, tilingData.coreNum, tilingData.totalMmTiles, tilingData.workspaceSize);
+             tilingData.maxTilesPerCore, tilingData.coreNum, tilingData.totalMmTiles, tilingData.workspaceSize);
     // DEBUG: 输出 mm tiling 细节（调试 workspace 布局用）
-    INFO_LOG("v2 mmTiling: baseM=%u, baseN=%u, baseK=%u, stepK=%u, mTailTile=%u, nTailTile=%u, mBaseTailSplitCnt=%u, nBaseTailSplitCnt=%u, mTailMain=%u, nTailMain=%u, usedCoreNum=%u, dbL0c=%u",
+    INFO_LOG("mmTiling: baseM=%u, baseN=%u, baseK=%u, stepK=%u, mTailTile=%u, nTailTile=%u, mBaseTailSplitCnt=%u, nBaseTailSplitCnt=%u, mTailMain=%u, nTailMain=%u, usedCoreNum=%u, dbL0c=%u",
              tilingData.tileQbmmTilingData.baseM, tilingData.tileQbmmTilingData.baseN,
              tilingData.tileQbmmTilingData.baseK, tilingData.tileQbmmTilingData.stepK,
              tilingData.tileQbmmTilingData.mTailTile, tilingData.tileQbmmTilingData.nTailTile,
@@ -305,24 +330,24 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
     GM_ADDR deviceScaleA = nullptr;
     GM_ADDR deviceScaleB = nullptr;
     GM_ADDR deviceOutput = nullptr;
-    GM_ADDR deviceWorkspace = nullptr;  // v2 新增：workspace GM
+    GM_ADDR deviceWorkspace = nullptr;  // workspace GM
 
     ACL_CHECK(aclrtMalloc((void**)&deviceA, sizeA, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void**)&deviceB, sizeB, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void**)&deviceScaleA, sizeScaleA, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void**)&deviceScaleB, sizeScaleB, ACL_MEM_MALLOC_HUGE_ONLY));
     ACL_CHECK(aclrtMalloc((void**)&deviceOutput, sizeOutput, ACL_MEM_MALLOC_HUGE_ONLY));
-    // v2: 分配 workspace GM（PIPELINE_NUM × coreNum × baseM × baseN × sizeof(BF16)）
+    // 分配 workspace GM（maxTilesPerCore × coreNum × baseM × baseN × sizeof(BF16)）
     ACL_CHECK(aclrtMalloc((void**)&deviceWorkspace, tilingData.workspaceSize, ACL_MEM_MALLOC_HUGE_ONLY));
 
     ACL_CHECK(aclrtMemcpy(deviceA, sizeA, hostA.data(), sizeA, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceB, sizeB, hostB.data(), sizeB, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceScaleA, sizeScaleA, hostScaleA.data(), sizeScaleA, ACL_MEMCPY_HOST_TO_DEVICE));
     ACL_CHECK(aclrtMemcpy(deviceScaleB, sizeScaleB, hostScaleB.data(), sizeScaleB, ACL_MEMCPY_HOST_TO_DEVICE));
-    // v2: 不需要 yGm 清零（reduceSum 使用普通 DataCopyPad 覆盖，非 AtomicAdd）
+    // 不需要 yGm 清零（reduceSum 使用普通 DataCopyPad 覆盖，非 AtomicAdd）
 
     if (mode == "precision") {
-        // 根据 dtype 选择对应的 kernel 入口（v2: 8 参数含 workspace）
+        // 根据 dtype 选择对应的 kernel 入口（8 参数含 workspace）
         if (dtype == "e4m3e4m3") {
             ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma<<<
                 tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
@@ -380,7 +405,7 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
             ACL_CHECK(aclrtSynchronizeStream(stream));
             // 2. 跑主 kernel（msprof task-based 采集每个 kernel 独立记录）
             auto t0 = std::chrono::steady_clock::now();
-            // 根据 dtype 选择对应的 kernel 入口（v2: 8 参数含 workspace）
+            // 根据 dtype 选择对应的 kernel 入口（8 参数含 workspace）
             if (dtype == "e4m3e4m3") {
                 ApaceQuantMatmulReduceScatterKernelE4M3E4M3_Udma<<<
                     tilingData.tileQbmmTilingData.usedCoreNum, nullptr, stream>>>(
@@ -439,7 +464,7 @@ int runReduceScatterMatmul(int rankNum, int rankId, int m, int k, int n, const s
     aclrtFree(deviceB);
     aclrtFree(deviceScaleB);
     aclrtFree(deviceOutput);
-    aclrtFree(deviceWorkspace);  // v2 新增
+    aclrtFree(deviceWorkspace);
 
     HcclCommDestroy(comm);
 

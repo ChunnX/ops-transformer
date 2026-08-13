@@ -1,33 +1,25 @@
-# 性能采集总结 — round_001（2026-08-12）
+# v3 性能验收 summary（round_001，2026-08-12）
 
-## 用例
+- 采集方式：msprof task-based（MC2 多 rank 算子专用参数，run.sh --perf），4 × Ascend950PR，每用例 10 迭代（3 warmup），4 卡平均
+- qrun 任务：z00949060-v3-perf
+- 原始数据：parse_v3.txt / parse_v2.txt / v3_perf_*.log / v2_perf_*.log（本目录）
 
-| 项 | 值 |
-|----|----|
-| 用例 | P1：M=2048 K=4096 N=2048 rank=4 headM=512 dtype=e4m3e4m3（localMatmul=0） |
-| tiling | m=512 n=2048 k=1024 baseM=256 baseN=160 usedCoreNum=28 tileCnt=1 |
-| 采集方式 | msprof task-based + L2 flush（heavy_add_kernel 256MB），10 iter 去 warmup |
-| 数据目录 | docs/perf/round_001/prof/（4 rank × 2 轮 PROF） |
+## 结果对比（v3 vs v2 同 shape）
 
-## 结果
+| 用例 | shape (M,K,N) | T=maxTilesPerCore | v3 latency | v2 latency | Δ | 判定 |
+|------|---------------|-------------------|-----------|-----------|-----|------|
+| 主用例 | 2048,4096,2048 | 1 | 57.559 us | 57.626 us（同日复测；v2 round_001 基线 57.6us） | -0.1% | ✅ 持平（符合预期：T=1 回压本不触发） |
+| T11 | 16384,4096,2048 | 5 | 198.444 us | 199.223 us | -0.4% | ✅ 持平微优（T=5 仅轻微触发回压） |
+| **T12（重点）** | 16384,4096,4096 | **10** | **263.561 us** | **291.446 us** | **-9.6%（-27.9us）** | ✅ **回压消除收益显著** |
 
-| 指标 | 值 |
-|------|-----|
-| Task Duration (v2) | **57.626 us**（4 卡均值之均值；单卡 avg 区间 56.7~59.7 us） |
-| Task Duration (v1 基线) | 143 us（开发历史数据，串行模式） |
-| 加速比 | **~2.48×** |
-| Block Dim | 28（MIX_AIC_1_1，AIC+AIV 各 28） |
-| 主导流水 | cube（AIC cube 利用率 ~91%） |
-| 精度 | PASS（perf 模式同步 verify，rtol=atol=1e-2） |
+## 分析
 
-## 达标判定：✅ 达标
+- **T12（tiles/core=10>4）**：v2 中 AIC 在 cubeNum≥4 后每 tile 硬等待 AIV reduceSum 释放槽位（通道 3 回压）；v3 删除回压后 AIC 可连续完成全部 10 个 tile，实测收益 27.9us（9.6%），直接验证 v3 核心优化目标达成。
+- **T11（T=5）**：回压仅在后 1 个 tile 触发，收益 0.8us（0.4%），量级与回压触发次数吻合。
+- **主用例（T=1）**：与 v2 持平（57.6us 档），无回归；省去的 PostCompute drain 在小 shape 下收益淹没在噪声内。
+- **cube 占比**：T12 v3 cube=95.5~95.7%（计算主导流水），主用例 cube≈86.5%；mm 计算仍是主导流水，与 DESIGN §5 预期一致（L2 驻留红利损失被流水掩盖，净收益为正）。
+- **精度**：3 个 perf 用例在 msprof 采集同时完成 verify，全部 PASS。
 
-- v2 3 级流水（mm→comm→reduceSum，PIPELINE_NUM=4 workspace 轮转）相比 v1 串行模式
-  取得 ~2.48× 加速（143us → 57.6us），达到设计目标（DESIGN.md §1.3/§2.11：通过
-  workspace 多 buffer 轮转提升通算并行度）。
-- AIC cube 利用率 ~91%，mm 主导，通信与 reduceSum 基本被流水掩盖。
+## 达标判定
 
-## 备注
-
-- per-rank PROF 目录命名见 prof/；case_info.txt / case_precision.txt 已写入各目录。
-- 两轮采集（10:35 / 10:47）结果一致（58.0 / 57.6 us），数据可复现。
+✅ **达标**：T12 重点用例 v3 显著优于 v2（-9.6%），主用例与 T11 无回归，符合 DESIGN §8 性能验收预期（「T12 预期 v3 < v2；T1-T10 预期持平」）。

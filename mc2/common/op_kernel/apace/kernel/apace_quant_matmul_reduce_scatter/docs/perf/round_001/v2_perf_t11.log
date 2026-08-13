@@ -1,0 +1,255 @@
+
+==========================================
+apace ApaceQuantMatmulReduceScatter ST
+  M=16384 K=4096 N=2048 rankNum=4 headMSize=512 dtype=e4m3e4m3
+==========================================
+[1/4] Generate CPU golden + input data...
+[2/4] Skip build (--skip-build)
+[3/4] NPU run (4 ranks)...
+  [msprof] Running /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/build/apace_quant_matmul_reduce_scatter_v2/apace_quant_matmul_reduce_scatter_v2 16384 4096 2048 4 perf 512 e4m3e4m3 ...
+[INFO] Start profiling....
+[INFO] Master (PID=658737) will fork 4 processes (mode=perf, headMSize=512, dtype=e4m3e4m3)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:465 Master (PID=658737) will fork 4 processes (mode=perf, headMSize=512, dtype=e4m3e4m3)
+[INFO] Forked Rank 0 -> PID 658745
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:479 Forked Rank 0 -> PID 658745
+[INFO] Forked Rank 1 -> PID 658746
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:479 Forked Rank 1 -> PID 658746
+[INFO] rankNum=4, rankId=0, ipport=tcp://127.0.0.1:8998, mode=perf, headMSize=512, dtype=e4m3e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:146 rankNum=4, rankId=0, ipport=tcp://127.0.0.1:8998, mode=perf, headMSize=512, dtype=e4m3e4m3
+[INFO] Forked Rank 2 -> PID 658748
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:479 Forked Rank 2 -> PID 658748
+[INFO] rankNum=4, rankId=1, ipport=tcp://127.0.0.1:8998, mode=perf, headMSize=512, dtype=e4m3e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:146 rankNum=4, rankId=1, ipport=tcp://127.0.0.1:8998, mode=perf, headMSize=512, dtype=e4m3e4m3
+[INFO] Forked Rank 3 -> PID 658751
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:479 Forked Rank 3 -> PID 658751
+[INFO] rankNum=4, rankId=2, ipport=tcp://127.0.0.1:8998, mode=perf, headMSize=512, dtype=e4m3e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:146 rankNum=4, rankId=2, ipport=tcp://127.0.0.1:8998, mode=perf, headMSize=512, dtype=e4m3e4m3
+[INFO] rankNum=4, rankId=3, ipport=tcp://127.0.0.1:8998, mode=perf, headMSize=512, dtype=e4m3e4m3
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:146 rankNum=4, rankId=3, ipport=tcp://127.0.0.1:8998, mode=perf, headMSize=512, dtype=e4m3e4m3
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 4096
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 256
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 2
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] v2 ReduceScatter: M=16384, mLocal=4096, K=4096, ka=1024, N=2048, tileCnt=4, headMSize=1024, headTileCnt=4, tailMSize=0, localMatmul=0, pipelineNum=4, coreNum=28, totalMmTiles=0, workspaceSize=14680064
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:217 v2 ReduceScatter: M=16384, mLocal=4096, K=4096, ka=1024, N=2048, tileCnt=4, headMSize=1024, headTileCnt=4, tailMSize=0, localMatmul=0, pipelineNum=4, coreNum=28, totalMmTiles=0, workspaceSize=14680064
+[INFO] v2 mmTiling: baseM=256, baseN=256, baseK=128, stepK=2, mTailTile=1, nTailTile=1, mBaseTailSplitCnt=1, nBaseTailSplitCnt=1, mTailMain=0, nTailMain=0, usedCoreNum=28, dbL0c=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:225 v2 mmTiling: baseM=256, baseN=256, baseK=128, stepK=2, mTailTile=1, nTailTile=1, mBaseTailSplitCnt=1, nBaseTailSplitCnt=1, mTailMain=0, nTailMain=0, usedCoreNum=28, dbL0c=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 4096
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 256
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 2
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] v2 ReduceScatter: M=16384, mLocal=4096, K=4096, ka=1024, N=2048, tileCnt=4, headMSize=1024, headTileCnt=4, tailMSize=0, localMatmul=0, pipelineNum=4, coreNum=28, totalMmTiles=0, workspaceSize=14680064
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:217 v2 ReduceScatter: M=16384, mLocal=4096, K=4096, ka=1024, N=2048, tileCnt=4, headMSize=1024, headTileCnt=4, tailMSize=0, localMatmul=0, pipelineNum=4, coreNum=28, totalMmTiles=0, workspaceSize=14680064
+[INFO] v2 mmTiling: baseM=256, baseN=256, baseK=128, stepK=2, mTailTile=1, nTailTile=1, mBaseTailSplitCnt=1, nBaseTailSplitCnt=1, mTailMain=0, nTailMain=0, usedCoreNum=28, dbL0c=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:225 v2 mmTiling: baseM=256, baseN=256, baseK=128, stepK=2, mTailTile=1, nTailTile=1, mBaseTailSplitCnt=1, nBaseTailSplitCnt=1, mTailMain=0, nTailMain=0, usedCoreNum=28, dbL0c=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 4096
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 256
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 2
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] v2 ReduceScatter: M=16384, mLocal=4096, K=4096, ka=1024, N=2048, tileCnt=4, headMSize=1024, headTileCnt=4, tailMSize=0, localMatmul=0, pipelineNum=4, coreNum=28, totalMmTiles=0, workspaceSize=14680064
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:217 v2 ReduceScatter: M=16384, mLocal=4096, K=4096, ka=1024, N=2048, tileCnt=4, headMSize=1024, headTileCnt=4, tailMSize=0, localMatmul=0, pipelineNum=4, coreNum=28, totalMmTiles=0, workspaceSize=14680064
+[INFO] v2 mmTiling: baseM=256, baseN=256, baseK=128, stepK=2, mTailTile=1, nTailTile=1, mBaseTailSplitCnt=1, nBaseTailSplitCnt=1, mTailMain=0, nTailMain=0, usedCoreNum=28, dbL0c=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:225 v2 mmTiling: baseM=256, baseN=256, baseK=128, stepK=2, mTailTile=1, nTailTile=1, mBaseTailSplitCnt=1, nBaseTailSplitCnt=1, mTailMain=0, nTailMain=0, usedCoreNum=28, dbL0c=1
+[QuantMatmul Strategy]
+  strategy           : swat
+[QuantMatmul Tiling Data]
+  usedCoreNum        : 28
+  m                  : 4096
+  n                  : 2048
+  k                  : 1024
+  baseM              : 256
+  baseN              : 256
+  baseK              : 128
+  scaleKL1           : 1024
+  mTailTile          : 1
+  nTailTile          : 1
+  mBaseTailSplitCnt  : 1
+  nBaseTailSplitCnt  : 1
+  mTailMain          : 0
+  nTailMain          : 0
+  stepK              : 2
+  nBufferNum         : 2
+  dbL0c              : 1
+[INFO] v2 ReduceScatter: M=16384, mLocal=4096, K=4096, ka=1024, N=2048, tileCnt=4, headMSize=1024, headTileCnt=4, tailMSize=0, localMatmul=0, pipelineNum=4, coreNum=28, totalMmTiles=0, workspaceSize=14680064
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:217 v2 ReduceScatter: M=16384, mLocal=4096, K=4096, ka=1024, N=2048, tileCnt=4, headMSize=1024, headTileCnt=4, tailMSize=0, localMatmul=0, pipelineNum=4, coreNum=28, totalMmTiles=0, workspaceSize=14680064
+[INFO] v2 mmTiling: baseM=256, baseN=256, baseK=128, stepK=2, mTailTile=1, nTailTile=1, mBaseTailSplitCnt=1, nBaseTailSplitCnt=1, mTailMain=0, nTailMain=0, usedCoreNum=28, dbL0c=1
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:225 v2 mmTiling: baseM=256, baseN=256, baseK=128, stepK=2, mTailTile=1, nTailTile=1, mBaseTailSplitCnt=1, nBaseTailSplitCnt=1, mTailMain=0, nTailMain=0, usedCoreNum=28, dbL0c=1
+[INFO] [Rank 2] mLocal=4096 headMSize=1024 tileCnt=4 | per-iter ms: avg=0.208 min=0.203 max=0.213 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:418 [Rank 2] mLocal=4096 headMSize=1024 tileCnt=4 | per-iter ms: avg=0.208 min=0.203 max=0.213 (excl warmup)
+[INFO] [Rank 3] mLocal=4096 headMSize=1024 tileCnt=4 | per-iter ms: avg=0.213 min=0.203 max=0.254 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:418 [Rank 3] mLocal=4096 headMSize=1024 tileCnt=4 | per-iter ms: avg=0.213 min=0.203 max=0.254 (excl warmup)
+[INFO] [Rank 0] mLocal=4096 headMSize=1024 tileCnt=4 | per-iter ms: avg=0.212 min=0.203 max=0.254 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:418 [Rank 0] mLocal=4096 headMSize=1024 tileCnt=4 | per-iter ms: avg=0.212 min=0.203 max=0.254 (excl warmup)
+[INFO] [Rank 1] mLocal=4096 headMSize=1024 tileCnt=4 | per-iter ms: avg=0.207 min=0.200 max=0.216 (excl warmup)
+[INFO] /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/src/main.cpp:418 [Rank 1] mLocal=4096 headMSize=1024 tileCnt=4 | per-iter ms: avg=0.207 min=0.200 max=0.216 (excl warmup)
+All workers finished. Status: SUCCESS
+[INFO] Start export data in PROF_000001_20260812172725904_00658745IIMKPHOF.
+Wed 12 Aug 2026 17:27:37 [WARNING] [MSVP] [662252] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Wed 12 Aug 2026 17:27:37 [INFO] [MSVP] [662257] msprof_common.py: Start analyzing data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658745IIMKPHOF/host" ...
+Wed 12 Aug 2026 17:27:37 [INFO] [MSVP] [662257] msprof_common.py: It may take few minutes, please be patient ...
+Wed 12 Aug 2026 17:27:37 [INFO] [MSVP] [662257] msprof_common.py: Analysis data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658745IIMKPHOF/host" finished.
+Wed 12 Aug 2026 17:27:37 [INFO] [MSVP] [662257] msprof_common.py: Start analyzing data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658745IIMKPHOF/device_0" ...
+Wed 12 Aug 2026 17:27:37 [INFO] [MSVP] [662257] msprof_common.py: It may take few minutes, please be patient ...
+Wed 12 Aug 2026 17:27:38 [INFO] [MSVP] [662257] msprof_common.py: Analysis data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658745IIMKPHOF/device_0" finished.
+Wed 12 Aug 2026 17:27:38 [INFO] [MSVP] [662257] msprof_export.py: All collected data will be exported, path is: /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658745IIMKPHOF/device_0.
+Wed 12 Aug 2026 17:27:38 [WARNING] [MSVP] [662510] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Wed 12 Aug 2026 17:27:38 [INFO] [MSVP] [662516] msprof_export.py: The data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658745IIMKPHOF/host" has been analyzed. Parsing phase will be skipped.
+Wed 12 Aug 2026 17:27:38 [INFO] [MSVP] [662516] msprof_export.py: The data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658745IIMKPHOF/device_0" has been analyzed. Parsing phase will be skipped.
+Wed 12 Aug 2026 17:27:38 [INFO] [MSVP] [662516] msprof_export.py: All collected data will be exported, path is: /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658745IIMKPHOF/device_0.
+Wed 12 Aug 2026 17:27:38 [INFO] [MSVP] [662516] msprof_export.py: There is no summary data to export for "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658745IIMKPHOF/host"
+Wed 12 Aug 2026 17:27:38 [INFO] [MSVP] [662516] msprof_export.py: All collected data will be exported, path is: /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658745IIMKPHOF/device_0.
+Wed 12 Aug 2026 17:27:39 [INFO] [MSVP] [662516] msprof_export.py: There is no summary data to export for "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658745IIMKPHOF/device_0"
+Wed 12 Aug 2026 17:27:39 [INFO] [MSVP] [662516] msprof_common.py: Start exporting summary output_file.
+Wed 12 Aug 2026 17:27:39 [INFO] [MSVP] [662516] msprof_common.py: End exporting summary output_file.The file is stored in the /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658745IIMKPHOF/mindstudio_profiler_output path.
+[INFO] Export all data in PROF_000001_20260812172725904_00658745IIMKPHOF done.
+[INFO] Start query data in PROF_000001_20260812172725904_00658745IIMKPHOF.
+Wed 12 Aug 2026 17:27:39 [WARNING] [MSVP] [662712] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Job Info	Device ID	Dir Name	Collection Time           	Model ID	Iteration Number	Top Time Iteration	Rank ID	
+
+NA      	         	host    	2026-08-12 17:27:27.970261	N/A     	N/A             	N/A               	-1     	
+
+NA      	0        	device_0	2026-08-12 17:27:27.973682	N/A     	N/A             	N/A               	-1     	
+
+[INFO] Query all data in PROF_000001_20260812172725904_00658745IIMKPHOF done.
+[INFO] Start export data in PROF_000001_20260812172725904_00658746JAMQKADM.
+Wed 12 Aug 2026 17:27:40 [WARNING] [MSVP] [662775] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Wed 12 Aug 2026 17:27:40 [INFO] [MSVP] [662800] msprof_common.py: Start analyzing data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658746JAMQKADM/host" ...
+Wed 12 Aug 2026 17:27:40 [INFO] [MSVP] [662800] msprof_common.py: It may take few minutes, please be patient ...
+Wed 12 Aug 2026 17:27:40 [INFO] [MSVP] [662800] msprof_common.py: Analysis data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658746JAMQKADM/host" finished.
+Wed 12 Aug 2026 17:27:40 [INFO] [MSVP] [662800] msprof_common.py: Start analyzing data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658746JAMQKADM/device_1" ...
+Wed 12 Aug 2026 17:27:40 [INFO] [MSVP] [662800] msprof_common.py: It may take few minutes, please be patient ...
+Wed 12 Aug 2026 17:27:41 [INFO] [MSVP] [662800] msprof_common.py: Analysis data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658746JAMQKADM/device_1" finished.
+Wed 12 Aug 2026 17:27:41 [INFO] [MSVP] [662800] msprof_export.py: All collected data will be exported, path is: /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658746JAMQKADM/device_1.
+Wed 12 Aug 2026 17:27:41 [WARNING] [MSVP] [663072] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Wed 12 Aug 2026 17:27:41 [INFO] [MSVP] [663074] msprof_export.py: The data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658746JAMQKADM/host" has been analyzed. Parsing phase will be skipped.
+Wed 12 Aug 2026 17:27:41 [INFO] [MSVP] [663074] msprof_export.py: The data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658746JAMQKADM/device_1" has been analyzed. Parsing phase will be skipped.
+Wed 12 Aug 2026 17:27:41 [INFO] [MSVP] [663074] msprof_export.py: All collected data will be exported, path is: /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658746JAMQKADM/device_1.
+Wed 12 Aug 2026 17:27:41 [INFO] [MSVP] [663074] msprof_export.py: There is no summary data to export for "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658746JAMQKADM/host"
+Wed 12 Aug 2026 17:27:41 [INFO] [MSVP] [663074] msprof_export.py: All collected data will be exported, path is: /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658746JAMQKADM/device_1.
+Wed 12 Aug 2026 17:27:41 [INFO] [MSVP] [663074] msprof_export.py: There is no summary data to export for "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658746JAMQKADM/device_1"
+Wed 12 Aug 2026 17:27:41 [INFO] [MSVP] [663074] msprof_common.py: Start exporting summary output_file.
+Wed 12 Aug 2026 17:27:41 [INFO] [MSVP] [663074] msprof_common.py: End exporting summary output_file.The file is stored in the /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658746JAMQKADM/mindstudio_profiler_output path.
+[INFO] Export all data in PROF_000001_20260812172725904_00658746JAMQKADM done.
+[INFO] Start query data in PROF_000001_20260812172725904_00658746JAMQKADM.
+Wed 12 Aug 2026 17:27:42 [WARNING] [MSVP] [663235] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Job Info	Device ID	Dir Name	Collection Time           	Model ID	Iteration Number	Top Time Iteration	Rank ID	
+
+NA      	         	host    	2026-08-12 17:27:27.349538	N/A     	N/A             	N/A               	-1     	
+
+NA      	1        	device_1	2026-08-12 17:27:27.352352	N/A     	N/A             	N/A               	-1     	
+
+[INFO] Query all data in PROF_000001_20260812172725904_00658746JAMQKADM done.
+[INFO] Start export data in PROF_000001_20260812172725904_00658748MOROFALC.
+Wed 12 Aug 2026 17:27:43 [WARNING] [MSVP] [663425] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Wed 12 Aug 2026 17:27:43 [INFO] [MSVP] [663452] msprof_common.py: Start analyzing data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658748MOROFALC/host" ...
+Wed 12 Aug 2026 17:27:43 [INFO] [MSVP] [663452] msprof_common.py: It may take few minutes, please be patient ...
+Wed 12 Aug 2026 17:27:43 [INFO] [MSVP] [663452] msprof_common.py: Analysis data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658748MOROFALC/host" finished.
+Wed 12 Aug 2026 17:27:43 [INFO] [MSVP] [663452] msprof_common.py: Start analyzing data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658748MOROFALC/device_2" ...
+Wed 12 Aug 2026 17:27:43 [INFO] [MSVP] [663452] msprof_common.py: It may take few minutes, please be patient ...
+Wed 12 Aug 2026 17:27:44 [INFO] [MSVP] [663452] msprof_common.py: Analysis data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658748MOROFALC/device_2" finished.
+Wed 12 Aug 2026 17:27:44 [INFO] [MSVP] [663452] msprof_export.py: All collected data will be exported, path is: /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658748MOROFALC/device_2.
+Wed 12 Aug 2026 17:27:44 [WARNING] [MSVP] [663724] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Wed 12 Aug 2026 17:27:44 [INFO] [MSVP] [663727] msprof_export.py: The data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658748MOROFALC/host" has been analyzed. Parsing phase will be skipped.
+Wed 12 Aug 2026 17:27:44 [INFO] [MSVP] [663727] msprof_export.py: The data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658748MOROFALC/device_2" has been analyzed. Parsing phase will be skipped.
+Wed 12 Aug 2026 17:27:44 [INFO] [MSVP] [663727] msprof_export.py: All collected data will be exported, path is: /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658748MOROFALC/device_2.
+Wed 12 Aug 2026 17:27:44 [INFO] [MSVP] [663727] msprof_export.py: There is no summary data to export for "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658748MOROFALC/host"
+Wed 12 Aug 2026 17:27:44 [INFO] [MSVP] [663727] msprof_export.py: All collected data will be exported, path is: /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658748MOROFALC/device_2.
+Wed 12 Aug 2026 17:27:45 [INFO] [MSVP] [663727] msprof_export.py: There is no summary data to export for "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658748MOROFALC/device_2"
+Wed 12 Aug 2026 17:27:45 [INFO] [MSVP] [663727] msprof_common.py: Start exporting summary output_file.
+Wed 12 Aug 2026 17:27:45 [INFO] [MSVP] [663727] msprof_common.py: End exporting summary output_file.The file is stored in the /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658748MOROFALC/mindstudio_profiler_output path.
+[INFO] Export all data in PROF_000001_20260812172725904_00658748MOROFALC done.
+[INFO] Start query data in PROF_000001_20260812172725904_00658748MOROFALC.
+Wed 12 Aug 2026 17:27:45 [WARNING] [MSVP] [663827] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Job Info	Device ID	Dir Name	Collection Time           	Model ID	Iteration Number	Top Time Iteration	Rank ID	
+
+NA      	         	host    	2026-08-12 17:27:27.456093	N/A     	N/A             	N/A               	-1     	
+
+NA      	2        	device_2	2026-08-12 17:27:27.459088	N/A     	N/A             	N/A               	-1     	
+
+[INFO] Query all data in PROF_000001_20260812172725904_00658748MOROFALC done.
+[INFO] Start export data in PROF_000001_20260812172725904_00658751NCRFMHEH.
+Wed 12 Aug 2026 17:27:46 [WARNING] [MSVP] [663973] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Wed 12 Aug 2026 17:27:46 [INFO] [MSVP] [663982] msprof_common.py: Start analyzing data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658751NCRFMHEH/host" ...
+Wed 12 Aug 2026 17:27:46 [INFO] [MSVP] [663982] msprof_common.py: It may take few minutes, please be patient ...
+Wed 12 Aug 2026 17:27:47 [INFO] [MSVP] [663982] msprof_common.py: Analysis data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658751NCRFMHEH/host" finished.
+Wed 12 Aug 2026 17:27:47 [INFO] [MSVP] [663982] msprof_common.py: Start analyzing data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658751NCRFMHEH/device_3" ...
+Wed 12 Aug 2026 17:27:47 [INFO] [MSVP] [663982] msprof_common.py: It may take few minutes, please be patient ...
+Wed 12 Aug 2026 17:27:47 [INFO] [MSVP] [663982] msprof_common.py: Analysis data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658751NCRFMHEH/device_3" finished.
+Wed 12 Aug 2026 17:27:47 [INFO] [MSVP] [663982] msprof_export.py: All collected data will be exported, path is: /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658751NCRFMHEH/device_3.
+Wed 12 Aug 2026 17:27:47 [WARNING] [MSVP] [664188] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Wed 12 Aug 2026 17:27:47 [INFO] [MSVP] [664194] msprof_export.py: The data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658751NCRFMHEH/host" has been analyzed. Parsing phase will be skipped.
+Wed 12 Aug 2026 17:27:47 [INFO] [MSVP] [664194] msprof_export.py: The data in "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658751NCRFMHEH/device_3" has been analyzed. Parsing phase will be skipped.
+Wed 12 Aug 2026 17:27:47 [INFO] [MSVP] [664194] msprof_export.py: All collected data will be exported, path is: /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658751NCRFMHEH/device_3.
+Wed 12 Aug 2026 17:27:47 [INFO] [MSVP] [664194] msprof_export.py: There is no summary data to export for "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658751NCRFMHEH/host"
+Wed 12 Aug 2026 17:27:48 [INFO] [MSVP] [664194] msprof_export.py: All collected data will be exported, path is: /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658751NCRFMHEH/device_3.
+Wed 12 Aug 2026 17:27:48 [INFO] [MSVP] [664194] msprof_export.py: There is no summary data to export for "/home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658751NCRFMHEH/device_3"
+Wed 12 Aug 2026 17:27:48 [INFO] [MSVP] [664194] msprof_common.py: Start exporting summary output_file.
+Wed 12 Aug 2026 17:27:48 [INFO] [MSVP] [664194] msprof_common.py: End exporting summary output_file.The file is stored in the /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658751NCRFMHEH/mindstudio_profiler_output path.
+[INFO] Export all data in PROF_000001_20260812172725904_00658751NCRFMHEH done.
+[INFO] Start query data in PROF_000001_20260812172725904_00658751NCRFMHEH.
+Wed 12 Aug 2026 17:27:48 [WARNING] [MSVP] [664410] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Job Info	Device ID	Dir Name	Collection Time           	Model ID	Iteration Number	Top Time Iteration	Rank ID	
+
+NA      	         	host    	2026-08-12 17:27:27.161602	N/A     	N/A             	N/A               	-1     	
+
+NA      	3        	device_3	2026-08-12 17:27:27.164841	N/A     	N/A             	N/A               	-1     	
+
+[INFO] Query all data in PROF_000001_20260812172725904_00658751NCRFMHEH done.
+[INFO] Profiling finished.
+[INFO] Process profiling data complete. Data is saved in /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof/PROF_000001_20260812172725904_00658751NCRFMHEH
+  [msprof] latency=199.223us
+  [OK] msprof done, precision=PASS, dirs=PROF_000001_20260812172725904_00658745IIMKPHOF PROF_000001_20260812172725904_00658746JAMQKADM PROF_000001_20260812172725904_00658748MOROFALC PROF_000001_20260812172725904_00658751NCRFMHEH
+[4/4] Verify (done in perf loop)
+
+==========================================
+Performance data saved to: /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof
+Parse with: python3 scripts/parse_prof.py --all
+==========================================

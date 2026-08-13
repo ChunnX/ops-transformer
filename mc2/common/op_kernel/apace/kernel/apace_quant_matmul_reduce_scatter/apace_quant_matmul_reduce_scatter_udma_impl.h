@@ -10,19 +10,19 @@
 
 /*!
  * \file apace_quant_matmul_reduce_scatter_udma_impl.h
- * \brief v2: 3 级流水 ReduceScatter (AllToAll PUT + workspace 轮转)
+ * \brief 3 级流水 ReduceScatter (AllToAll PUT + workspace 槽位独占，无回压)
  *
- * v2 架构改造（相比 v1）：
- *   1. 3 级流水：AIC mm → AIV aivComm → AIV reduceSum，PIPELINE_NUM=4 多 buffer workspace 轮转
- *   2. workspace 入参：mm 输出写 workspace，reduceSum 从 workspace 读取
- *   3. 无 AtomicAdd：L0C 跨 rank FP32 累加后单次 fixpipe 写 workspace，reduceSum 仅 DataCopyPad 搬运
- *   4. AIV 时分复用：先 AllToAll PUT 通信，后 reduceSum
- *   5. 3 通道 CrossCore flag 编排（通信就绪 + mm 完成 + 回压）
- *   6. localMatmul 默认 0（REMOTE-only），可选 1（DEFERRED_SYNC）
+ * 架构：
+ *   1. 3 级流水：AIC mm → AIV aivComm → AIV reduceSum
+ *   2. workspace 每 tile 独占槽位（寻址无取模，无轮转）
+ *   3. 无回压 flag：AIC 永不等待槽位释放
+ *   4. workspace = maxTilesPerCore × coreNum × baseM × baseN × sizeof(BF16)（host 分配）
+ *   5. host 校验 maxTilesPerCore ≤ 15（flagId=5 计数器 0-15 上界保护）
+ *   6. 2 通道 CrossCore flag 编排（通信就绪 + mm 完成），localMatmul 默认 0（REMOTE-only）
  *
  * Run():
  *   AIV: RunAllToAll() → RunReduceSum()  (时分复用：先通信后 reduceSum)
- *   AIC: RunMatmul()   (mm → L0C 跨 rank 累加 → fixpipe → workspace)
+ *   AIC: RunMatmul()   (mm → L0C 跨 rank 累加 → fixpipe → workspace 独占槽位)
  */
 
 #pragma once
@@ -52,10 +52,11 @@ using namespace Blaze::Gemm;
 using AscendC::Te::Get;
 using namespace Apace::AivComm;
 
-// 通信就绪 flagId 映射（DESIGN.md §2.6）：避开 3（回压）、5（mm 完成）、[11-14]（SyncAll 硬同步占用）
+// 通信就绪 flagId 映射
+// 避开 3（保留避让，更强约束零风险）、5（mm 完成）、[11-14]（SyncAll 保守避让；
+// 3510 下 SyncAll<true> 实际仅占 AIV flagId 14）。
 // 可用集 {0,1,2,4,6,7,8,9,10,15} 共 10 个，host 侧已约束 tileCnt ≤ 10。
-// 注：DESIGN 表格公式 "(tid<3)?tid:(tid<5)?tid+1:tid+2" 在 tid=4 处会映射到 5（与 mm 完成通道冲突），
-// 此处按可用集修正：tid 0,1,2→0,1,2；tid=3→4；tid=4..8→tid+2；tid=9→15。
+// 映射：tid 0,1,2→0,1,2；tid=3→4；tid=4..8→tid+2；tid=9→15。
 __aicore__ inline uint64_t CommFlagIdMapped(uint32_t tid)
 {
     uint64_t fid = (tid < 3) ? tid : ((tid == 3) ? 4 : (tid + 2));
@@ -77,17 +78,17 @@ struct UdmaCommWaitPolicy {
 using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 
 /**
- * @brief v2 ReduceScatter (AllToAll PUT + workspace 流水线) MX 量化 Matmul 核心实现类
+ * @brief ReduceScatter (AllToAll PUT + workspace 槽位独占) MX 量化 Matmul 核心实现类
  *
  * 3 级流水架构：
- * 1. AIC: Blaze QuantMatmul → L0C FP32 跨 rank 累加 → fixpipe → workspace[BF16]
+ * 1. AIC: Blaze QuantMatmul → L0C FP32 跨 rank 累加 → fixpipe → workspace[BF16] 独占槽位
  * 2. AIV Phase 1: AllToAll PUT 通信（发送 A 数据到各 rank Win 区）
  * 3. AIV Phase 2: reduceSum（DataCopyPad workspace→UB→yGm，无 AtomicAdd）
  *
- * CrossCore flag 三通道编排（950PR 模板参数生效，modeId=2）：
+ * CrossCore flag 双通道编排（950PR 模板参数生效，modeId=2；无回压通道）：
  *   通道 1（通信就绪）：AIV SetFlag<0x2, PIPE_MTE3>(tid) → AIC WaitFlag<0x2, PIPE_MTE2>(tid)
  *   通道 2（mm 完成）：AIC SetFlag<SYNC_MODE2, PIPE_FIX>(5) → AIV WaitFlag<SYNC_MODE2, PIPE_MTE2>(5)
- *   通道 3（回压）：AIV SetFlag<SYNC_MODE2, PIPE_MTE3>(3) → AIC WaitFlag<SYNC_MODE2, PIPE_M>(3)
+ *   计数器保护：flagId=5 计数器峰值 = 每核 tile 数 T ≤ maxTilesPerCore ≤ 15（host 校验）
  */
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
 class ApaceQuantMatmulReduceScatterUdmaImpl {
@@ -96,7 +97,7 @@ public:
     __aicore__ inline ~ApaceQuantMatmulReduceScatterUdmaImpl() {}
 
     /**
-     * @brief 初始化算子状态和参数（v2 新增 workspaceGM）
+     * @brief 初始化算子状态和参数（含 workspaceGM）
      */
     __aicore__ inline void Init(__gm__ CommContext *hcommCtx,
                     GM_ADDR aGM, GM_ADDR scaleAGM,
@@ -149,7 +150,7 @@ public:
     using QBMMTiling = typename QuantMatmulKernelImpl::QBMMTiling;
     using MatmulMode = typename QuantMatmulKernelImpl::MatmulMode;
 
-    // v2: BlockScheduler 调度相关类型（从 QuantMatmulKernelImpl 透传）
+    // BlockScheduler 调度相关类型（从 QuantMatmulKernelImpl 透传）
     using BlockShape = typename QuantMatmulKernelImpl::BlockShape;
     using BlockCoord = typename QuantMatmulKernelImpl::BlockCoord;
     static constexpr bool weightNz = QuantMatmulKernelImpl::weightNz;
@@ -165,15 +166,15 @@ private:
         CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier> allToAllScaleA_;
     TeamBarrier teamBarrier_;
 
-    // v2 reduceSum UB buffer（DataCopyPad 暂存）
-    TPipe pipe_;  // v2: AIV 侧 UB 管理
+    // reduceSum UB buffer（DataCopyPad 暂存）
+    TPipe pipe_;  // AIV 侧 UB 管理
     TBuf<TPosition::VECCALC> reduceSumBuf_;
-    // v2 reduceSum 流水同步事件（MTE2→MTE3 RAW、MTE3→MTE2 WAR）
+    // reduceSum 流水同步事件（MTE2→MTE3 RAW、MTE3→MTE2 WAR）
     AscendC::TEventID evtMte2ToMte3_;
     AscendC::TEventID evtMte3ToMte2_;
-    __gm__ CType* workspaceGm_{nullptr};  // v2 workspace 基址
-    GlobalTensor<CType> yGm_;             // v2 输出 yGm（reduceSum 写入目标）
-    GlobalTensor<CType> workspaceGmGlobal_;  // v2 workspace GlobalTensor（reduceSum 读取源）
+    __gm__ CType* workspaceGm_{nullptr};  // workspace 基址
+    GlobalTensor<CType> yGm_;             // 输出 yGm（reduceSum 写入目标）
+    GlobalTensor<CType> workspaceGmGlobal_;  // workspace GlobalTensor（reduceSum 读取源）
 
     struct BaseParams {
         GM_ADDR selfWinAddr{nullptr}; // 通信窗口地址
@@ -182,7 +183,7 @@ private:
         GM_ADDR bGm{nullptr};
         GM_ADDR scaleBGm{nullptr};
         GM_ADDR cGm{nullptr};
-        GM_ADDR workspaceGm{nullptr};  // v2 新增：workspace 基址
+        GM_ADDR workspaceGm{nullptr};  // workspace 基址
 
         uint32_t rankId{0};
         int32_t  commTurn{0};     // 总流水步数
@@ -193,8 +194,7 @@ private:
         uint64_t headMSize{0};   // 长块 M 大小
         uint64_t scaleKaSize{0};   // Scale 的 K 轴字节长度
         uint64_t rankDataBytes{0};
-        // v2 新增字段
-        uint32_t pipelineNum{PIPELINE_NUM};  // PIPELINE_NUM=4
+        // 槽位独占寻址（无取模，无需 pipelineNum）
         uint32_t coreNum{0};                    // AIC 核数
         // totalMmTiles 已废除（DESIGN.md §2.16 Issue 2）：AIV 循环由 bsAiv.GetTileIdx() 隐式终止
         uint32_t baseM{0};                      // mm tile baseM
@@ -228,10 +228,10 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
     baseParams_.bGm = bGM;
     baseParams_.scaleBGm = scaleBGM;
     baseParams_.cGm = cGM;
-    baseParams_.workspaceGm = workspaceGM;  // v2 新增
+    baseParams_.workspaceGm = workspaceGM;
     workspaceGm_ = reinterpret_cast<__gm__ CType*>(workspaceGM);
-    yGm_.SetGlobalBuffer((__gm__ CType*)cGM);  // v2 输出 yGm
-    workspaceGmGlobal_.SetGlobalBuffer(workspaceGm_);  // v2 workspace GlobalTensor
+    yGm_.SetGlobalBuffer((__gm__ CType*)cGM);  // 输出 yGm
+    workspaceGmGlobal_.SetGlobalBuffer(workspaceGm_);  // workspace GlobalTensor
 
     syncBuffer_ = &(hcommCtx->ubmemCtx);
     udmaCtx_ = &(hcommCtx->udmaCtx);
@@ -256,7 +256,7 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
         commScaleBuf.Get(), baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()),
         baseParams_.rankSize * baseParams_.rankDataBytes);
 
-    // v2: AIV 侧初始化 reduceSum UB buffer
+    // AIV 侧初始化 reduceSum UB buffer
     // UB 行距按 64B（32 元素）对齐取安全上界（GM→UB 2D 搬运 dstStride 公式为 64B 对齐，
     // 见 DESIGN.md §2.16 DataCopyPad 参数修正；baseN 32 对齐时与原 baseM×baseN×2B 相同）
     if ASCEND_IS_AIV {
@@ -282,7 +282,7 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
 }
 
 // =================================================================================
-// AIV Phase 1: 通信实现 (与 v1 相同)
+// AIV Phase 1: 通信实现
 // =================================================================================
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -306,13 +306,13 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
 }
 
 // =================================================================================
-// AIV Phase 2: reduceSum 实现 (v2 新增)
+// AIV Phase 2: reduceSum 实现
 // =================================================================================
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::RunReduceSum()
 {
-    // v2 reduceSum：AIV 复用 BlockScheduler（DESIGN.md §2.16 方案 b）
+    // reduceSum：AIV 复用 BlockScheduler（DESIGN.md §2.16 方案 b）
     // 与 AIC ProcessSingleBatch 完全相同的 problemShape/schParams 构造调度器、完全相同的调用序列
     // 枚举 tile，mPos/nPos/curBaseM/curBaseN 由调度器推导，循环由 bsAiv.GetTileIdx() 隐式终止
     // （与 AIC SetFlag(5) 次数构造一致，不需要 totalMmTiles）
@@ -323,7 +323,7 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
     // 复刻项 6：coreIdx = GetBlockIdx()（MIX_AIC_1_1 下 AIV 与配对 AIC 一致）
     uint32_t coreIdx = static_cast<uint32_t>(GetBlockIdx());
     uint32_t coreNum = baseParams_.coreNum;
-    uint32_t pipelineNum = baseParams_.pipelineNum;
+    // 槽位独占寻址（无取模，无需 pipelineNum）
     uint32_t baseM = baseParams_.baseM;
     uint32_t baseN = baseParams_.baseN;
     uint64_t N = baseParams_.axisN;
@@ -338,7 +338,7 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
     }
 
     LocalTensor<CType> reduceSumLocal = reduceSumBuf_.Get<CType>();
-    uint32_t cubeNum = 0;  // 复刻项 5：仅在实际处理的 tile 上自增（SetFlag(3) 之后）
+    uint32_t cubeNum = 0;  // 复刻项 5：仅在实际处理的 tile 上自增（循环末尾自增，用于槽位寻址）
     BlockCoord blockIdx;
     int64_t mPos = 0L;
     int64_t nPos = 0L;
@@ -358,9 +358,10 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
         // 通道 2：等 AIC mm 完成（flagId=5，阻塞 MTE2 流水）
         CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_MM_DONE_FLAG);
 
-        // workSpaceOffset 与 AIC 侧一致（coreIdx 两侧相同，cubeNum 序列构造一致）
+        // workSpaceOffset 无取模（与 AIC 侧公式逐字一致；
+        // coreIdx 两侧相同，cubeNum 序列由同一 BlockScheduler 复刻保证一致）
         uint64_t workSpaceOffset = static_cast<uint64_t>(baseM) * baseN *
-            (coreIdx + (cubeNum % pipelineNum) * coreNum);
+            (coreIdx + cubeNum * coreNum);
 
         // GM→UB 2D 搬运（DESIGN.md §2.16 DataCopyPad 参数修正）：
         // slot 内数据为 fixpipe 按 MakeLayoutC(curBaseM, curBaseN) 写入的紧密排列（行距=curBaseN），srcStride=0；
@@ -396,14 +397,13 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
         // WAR 标记：供下一轮 GM→UB 等待
         AscendC::SetFlag<HardEvent::MTE3_MTE2>(evtMte3ToMte2_);
 
-        // 通道 3：通知 AIC workspace 可复用（flagId=3，每核每 tile 一次，与 AIC 回压 Wait 配对）
-        CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
+        // 槽位独占无需回压；cubeNum 自增保留（用于槽位寻址）。
         cubeNum++;
     }
 }
 
 // =================================================================================
-// AIC: mm 计算实现 (v2 改造：mm 输出写 workspace)
+// AIC: mm 计算实现（mm 输出写 workspace）
 // =================================================================================
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -417,8 +417,7 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
     baseParams_.axisM = tilingData->tileQbmmTilingData.m;
     baseParams_.axisN = tilingData->tileQbmmTilingData.n;
     baseParams_.axisKa = tilingData->tileQbmmTilingData.k;
-    // v2 新增字段
-    baseParams_.pipelineNum = tilingData->pipelineNum;
+    // 槽位独占寻址（无 pipelineNum）
     baseParams_.coreNum = tilingData->coreNum;
     // totalMmTiles 已废除（DESIGN.md §2.16 Issue 2）：kernel 不消费该字段
     baseParams_.baseM = tilingData->tileQbmmTilingData.baseM;
@@ -438,7 +437,6 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
 {
     ProblemShape problemShape{mmTile->m, mmTile->n, mmTile->k, 1UL};
     BlockMmadParams mmadParams;
-    // v2: localParams 新增 workspaceGmAddr/pipelineNum/coreNum
     LocalParams localParams;
     localParams.rankId = baseParams_.rankId;
     localParams.rankSize = baseParams_.rankSize;
@@ -448,15 +446,14 @@ __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType
     localParams.localMatmul = tilingData_->localMatmul;
     localParams.matmulMode = matmulMode;
     localParams.headTileSize = static_cast<uint32_t>(baseParams_.headMSize);
-    // v2 新增
+    // workspace 基址 + coreNum
     localParams.workspaceGmAddr = baseParams_.workspaceGm;
-    localParams.pipelineNum = baseParams_.pipelineNum;
     localParams.coreNum = baseParams_.coreNum;
 
     L1Params l1Params{static_cast<uint64_t>(mmTile->stepK) * mmTile->baseK, mmTile->scaleKL1,
         mmTile->nBufferNum};
 
-    // v2: mm 输出到 workspace（不再到 yGm）
+    // mm 输出到 workspace（不再到 yGm）
     // localMatmul=0（默认）: REMOTE-only，splitKNum=rankSize
     // localMatmul=1（可选）: DEFERRED_SYNC，splitKNum=rankSize
     localParams.splitKNum = baseParams_.rankSize;
@@ -479,13 +476,13 @@ template<typename AType, typename BType, typename CType, bool TransA, bool Trans
 __aicore__ inline void ApaceQuantMatmulReduceScatterUdmaImpl<AType, BType, CType, TransA, TransB>::RunMatmul()
 {
     Params params;
-    // v2: localMatmul=0 → REMOTE-only；localMatmul=1 → DEFERRED_SYNC
+    // localMatmul=0 → REMOTE-only；localMatmul=1 → DEFERRED_SYNC
     MatmulMode mode = (tilingData_->localMatmul == 1) ? MatmulMode::DEFERRED_SYNC : MatmulMode::REMOTE;
     SetupParams(&tilingData_->tileQbmmTilingData, params, mode);
-    // A 从 Win 区读取（与 v1 相同）
+    // A 从 Win 区读取
     params.mmadParams.aGmAddr = baseParams_.selfWinAddr;
     params.mmadParams.scaleAGmAddr = baseParams_.selfWinAddr + baseParams_.rankSize * baseParams_.rankDataBytes;
-    // v2 改造：mm 输出到 workspace（不再到 yGm）
+    // mm 输出到 workspace（不再到 yGm）
     params.mmadParams.cGmAddr = baseParams_.workspaceGm;
     params.localParams.localAGmAddr = baseParams_.aGm;
     params.localParams.localScaleAGmAddr = baseParams_.scaleAGm;

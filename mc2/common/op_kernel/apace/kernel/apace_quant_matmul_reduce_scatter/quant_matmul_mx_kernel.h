@@ -27,13 +27,12 @@
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 
-// v2 流水线常量（与 tiling_data.h 中定义一致，此处前向定义避免 include 循环）
+// 流水线常量（与 tiling_data.h 中定义一致，此处前向定义避免 include 循环）
+// 仅保留 mm 完成通道与模式常量（无回压通道）
 #ifndef SYNC_MODE2_DEFINED
 #define SYNC_MODE2_DEFINED
 constexpr uint64_t SYNC_MODE2 = 2;
-constexpr uint64_t SYNC_AIV_AIC_FLAG = 3;
 constexpr uint64_t SYNC_MM_DONE_FLAG = 5;
-constexpr uint32_t PIPELINE_NUM = 4;
 #endif
 
 namespace Blaze {
@@ -131,9 +130,8 @@ public:
         uint32_t splitKNum;
         MatmulMode matmulMode; // REMOTE / LOCAL / DEFERRED_SYNC
         uint32_t headTileSize;
-        // v2 新增：workspace 流水线参数
+        // workspace 参数（每 tile 独占槽位，无轮转）
         GM_ADDR  workspaceGmAddr;  // workspace 基址（mm 输出目标）
-        uint32_t pipelineNum;       // PIPELINE_NUM=4
         uint32_t coreNum;           // AIC 核数
     };
 
@@ -163,7 +161,7 @@ private:
     __aicore__ inline void ResetGmAddr(const Params &params);
     __aicore__ inline void ProcessSingleBatch(const Params &params, BlockScheduler& bs,
                             uint64_t restBatch, bool isTailRound);
-    __aicore__ inline void PostCompute();  // v2 新增：drain 剩余回压 flag
+    // 无回压通道，无 PostCompute drain
     __aicore__ inline int32_t CalcDependTileIdx(int64_t mPos, uint32_t headTileSize, uint32_t totalTiles) const;
 
     template <typename TensorB, typename TensorScaleB, typename TensorC>
@@ -182,19 +180,18 @@ private:
     __gm__ AType *aGmAddr_;               // 远程数据基址（通信缓冲区）
     __gm__ AType *localAGmAddr_;          // 本地数据基址
     __gm__ BType *bGmAddr_;
-    __gm__ CType *cGmAddr_;               // 输出基址（v2: = workspaceGmAddr_）
+    __gm__ CType *cGmAddr_;               // 输出基址（= workspaceGmAddr_）
     __gm__ BiasType *biasGmAddr_ = nullptr;
     __gm__ ::fp8_e8m0_t *scaleAGmAddr_;     // 远程 Scale 基址
     __gm__ ::fp8_e8m0_t *localScaleAGmAddr_;
     __gm__ ::fp8_e8m0_t *scaleBGmAddr_;
 
-    // v2 新增：workspace 流水线参数
-    __gm__ CType *workspaceGmAddr_{nullptr};  // v2 workspace 基址
-    uint32_t pipelineNum_{4};                   // PIPELINE_NUM=4
+    // workspace 参数（槽位独占，coreNum 用于寻址）
+    __gm__ CType *workspaceGmAddr_{nullptr};  // workspace 基址
     uint32_t coreNum_{0};                       // AIC 核数
-    uint32_t cubeNum_{0};                       // mm tile 完成计数
+    uint32_t cubeNum_{0};                       // mm tile 完成计数（兼作槽位序号，无取模）
 
-    bool isAtomicAdd_{false}; // v2: 恒为 false（无 AtomicAdd，mm 输出到 workspace）
+    bool isAtomicAdd_{false}; // 恒为 false（无 AtomicAdd，mm 输出到 workspace）
     bool isBias_{false};
     bool needUpdateTail_{false};
 };
@@ -204,7 +201,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Run(
 {
     Init(params);
 
-    // v2: 无 AtomicAdd（mm 输出到 workspace，reduceSum 仅 DataCopyPad 搬运）
+    // 无 AtomicAdd（mm 输出到 workspace，reduceSum 仅 DataCopyPad 搬运）
     BlockScheduler bs(params.problemShape, params.schParams);
 
     BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN, params.qbmmParams.baseK, 0};
@@ -213,8 +210,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Run(
 
     ProcessSingleBatch(params, bs, 0, true);
 
-    // v2: drain 剩余回压 flag（等待 AIV reduceSum 消费完所有 workspace slot）
-    PostCompute();
+    // 无回压通道，无需 PostCompute drain（AIC 处理完全部 tile 即退出）
 }
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
@@ -289,12 +285,11 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Init
         isBias_ = true;
     }
 
-    // v2: isAtomicAdd_ 恒为 false（mm 输出到 workspace，reduceSum 仅 DataCopyPad 无 AtomicAdd）
+    // isAtomicAdd_ 恒为 false（mm 输出到 workspace，reduceSum 仅 DataCopyPad 无 AtomicAdd）
     isAtomicAdd_ = false;
     needUpdateTail_ = false;
     cubeNum_ = 0;
-    // v2 新增参数初始化
-    pipelineNum_ = params.localParams.pipelineNum;
+    // 参数初始化
     coreNum_ = params.localParams.coreNum;
     ResetGmAddr(params);
 }
@@ -312,7 +307,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Rese
     localScaleAGmAddr_ = reinterpret_cast<__gm__ ::fp8_e8m0_t*>(params.localParams.localScaleAGmAddr);
     scaleAGmAddr_ = reinterpret_cast<__gm__ ::fp8_e8m0_t*>(params.mmadParams.scaleAGmAddr);
     scaleBGmAddr_ = reinterpret_cast<__gm__ ::fp8_e8m0_t*>(params.mmadParams.scaleBGmAddr);
-    // v2: 绑定 workspace 基址（mm 输出目标）
+    // 绑定 workspace 基址（mm 输出目标）
     workspaceGmAddr_ = reinterpret_cast<__gm__ CType*>(params.localParams.workspaceGmAddr);
     if (isBias_) {
         biasGmAddr_ = reinterpret_cast<__gm__ BiasType*>(params.mmadParams.biasGmAddr);
@@ -337,7 +332,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
     auto rankId = params.localParams.rankId;
     auto rankSize = params.localParams.rankSize;
     auto oriM = params.localParams.originalM;
-    // v2: localFirst 不再使用（v2 不支持 LOCAL 模式，localMatmul=1 映射 DEFERRED_SYNC）
+    // localFirst 不再使用（不支持 LOCAL 模式，localMatmul=1 映射 DEFERRED_SYNC）
     // DEFERRED_SYNC: per-tile 内 local 先算驻留 L0C → wait_flag → remote 累加 → 单次 fixpipe。
     bool deferredSync = (params.localParams.matmulMode == MatmulMode::DEFERRED_SYNC);
     auto scaleKLen =
@@ -352,7 +347,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
     auto layoutB = MakeLayoutB{}(rankSize * Te::Get<MNK_K>(params.problemShape), Te::Get<MNK_N>(params.problemShape));
     auto layoutScaleB = MakeLayoutScaleB{}(rankSize * scaleKLen, Te::Get<MNK_N>(params.problemShape));
     auto layoutBias = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Te::Get<MNK_N>(params.problemShape));
-    // v2: gmC 指向 workspace（cGmAddr_ 已在 RunMatmul 中设置为 workspaceGm）
+    // gmC 指向 workspace（cGmAddr_ 已在 RunMatmul 中设置为 workspaceGm）
     auto layoutC = MakeLayoutC{}(Te::Get<MNK_M>(params.problemShape), Te::Get<MNK_N>(params.problemShape));
 
     // 创建 Tensor 句柄
@@ -366,7 +361,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
     auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(bGmAddr_), layoutB);
     auto gmScaleB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(scaleBGmAddr_), layoutScaleB);
     auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasGmAddr_), layoutBias);
-    // v2: gmC 指向 workspace 基址（用于 SetL2Cache，实际 mm 输出用 per-tile gmCWorkspace）
+    // gmC 指向 workspace 基址（用于 SetL2Cache，实际 mm 输出用 per-tile gmCWorkspace）
     auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(cGmAddr_), layoutC);
 
     // 尾块更新逻辑
@@ -400,12 +395,9 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
 
         bs.GetTileCoord(blockIdx, mPos, nPos);
 
-        // v2 通道 3：回压——当 cubeNum >= PIPELINE_NUM 时，等 AIV reduceSum 释放 workspace slot
-        if (cubeNum_ >= pipelineNum_) {
-            CrossCoreWaitFlag<SYNC_MODE2, PIPE_M>(SYNC_AIV_AIC_FLAG);
-        }
+        // 每 tile 独占槽位，无回压通道，AIC 永不等待槽位释放。
 
-        // 通信等待逻辑（与 v1 相同：等 AIV 通信完成，去重）
+        // 通信等待逻辑（通道 1：等 AIV 通信完成，去重）
         int64_t blockM = Te::Get<IDX_M_TILEIDX>(singleShape);
         int32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, params.localParams.headTileSize, totalTiles);
         while (readyTileIdx < dependTileIdx) {
@@ -413,10 +405,11 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
             commPolicy_.WaitTile(readyTileIdx);
         }
 
-        // ★ v2 改造点：per-tile 创建 workspace Tensor（不再用循环外的 gmC.Slice）
+        // 槽位寻址无取模——每 tile 独占槽位
         // workspace slot = baseM×baseN 的整块，workSpaceOffset 以元素个数为单位
+        // 槽位上限由 host 校验 maxTilesPerCore ≤ 15 保证不越界（DESIGN §2/§4.3）
         uint64_t workSpaceOffset = static_cast<uint64_t>(params.qbmmParams.baseM) * params.qbmmParams.baseN *
-            (coreIdx + (cubeNum_ % pipelineNum_) * coreNum_);
+            (coreIdx + cubeNum_ * coreNum_);
         auto layoutCTile = MakeLayoutC{}(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape));
         auto gmCWorkspace = Te::MakeTensor(
             Te::MakeMemPtr<Te::Location::GM>(workspaceGmAddr_ + workSpaceOffset),
@@ -462,7 +455,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
                 remoteRankCnt++;
             }
         } else {
-            // REMOTE 模式（v2 默认）：遍历所有 rank 的 A×B → L0C 跨 rank 累加 → fixpipe → workspace
+            // REMOTE 模式（默认）：遍历所有 rank 的 A×B → L0C 跨 rank 累加 → fixpipe → workspace
             auto remoteRankCnt = 0UL;
             for (uint64_t rank = 0; rank < rankSize; rank++) {
                 auto actualMPos = rank * oriM + mPos;
@@ -492,31 +485,20 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
             }
         }
 
-        // v2 通道 2：通知 AIV mm 完成（flagId=5，AIV 侧阻塞 MTE2 流水）
+        // 通道 2：通知 AIV mm 完成（flagId=5，AIV 侧阻塞 MTE2 流水）
         CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_MM_DONE_FLAG);
         cubeNum_++;
     }
 
-    // 存在尾核没用满核，所以这里要等 flag 兜底
+    // 存在尾核没用满核，所以这里要等 flag 兜底（通道 1 drain）
     while (readyTileIdx < totalTiles - 1) {
         readyTileIdx++;
         commPolicy_.WaitTile(readyTileIdx);
     }
 }
 
-// v2 PostCompute：drain 剩余回压 flag（等待 AIV reduceSum 消费完所有 workspace slot）
-QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::PostCompute()
-{
-    if ASCEND_IS_AIV {
-        return;
-    }
-    // drain Min(cubeNum_, pipelineNum_) 个回压 flag
-    uint32_t drainCnt = (cubeNum_ < pipelineNum_) ? cubeNum_ : pipelineNum_;
-    for (uint32_t idx = 0; idx < drainCnt; ++idx) {
-        CrossCoreWaitFlag<SYNC_MODE2, PIPE_M>(SYNC_AIV_AIC_FLAG);
-    }
-}
+// 无回压通道，无 PostCompute——
+// 通道 3 的 Set/Wait 全部移除后无残留可 drain；kernel 完成以全部核退出为准（host 侧同步等待）。
 } // namespace Kernel
 } // namespace Gemm
 } // namespace Blaze

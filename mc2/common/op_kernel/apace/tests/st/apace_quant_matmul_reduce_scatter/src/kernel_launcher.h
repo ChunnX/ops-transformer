@@ -10,8 +10,8 @@
 
 /*!
  * \file kernel_launcher.h
- * \brief v2 ApaceQuantMatmulReduceScatter UDMA kernel launcher 入口（4 个 dtype 变体）
- *        v2 新增 workspaceGM 参数（8 参数）
+ * \brief ApaceQuantMatmulReduceScatter UDMA kernel launcher 入口（4 个 dtype 变体）
+ *        含 workspaceGM 参数（8 参数，槽位独占无回压）
  */
 
 #pragma once

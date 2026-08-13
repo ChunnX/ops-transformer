@@ -1,0 +1,172 @@
+Found 4 case(s) in /home/y00845930/cann_skills/plugins-official/ops-direct-invoke/operators/apace_quant_matmul_reduce_scatter_v2/st/apace_quant_matmul_reduce_scatter_v2/prof
+
+================================================================
+AllToAllQuantMatmul — Per-Card Latency (avg, outliers > 2x min excluded)
+================================================================
+  [Case 1]  (4 ranks, PROF_000001_20260812103552787_01045048MRKEMEID)
+    [M=2048 K=4096 N=2048 headM=512 dtype=e4m3e4m3]
+  ----------------------------------------------------------
+    Rank 0    | 10 total, 3 warmup skipped, 7 remaining, 2 valid (5 filtered) | avg=57.962 us | min=55.588 us | max=137.830 us | cube=92.0%
+                 iter[ 0] = 55.588 us
+                 iter[ 1] = 60.335 us
+                 iter[ 2] = 129.631 us *outlier*
+                 iter[ 3] = 131.259 us *outlier*
+                 iter[ 4] = 134.221 us *outlier*
+                 iter[ 5] = 135.218 us *outlier*
+                 iter[ 6] = 137.830 us *outlier*
+    Rank 1    | 10 total, 3 warmup skipped, 7 remaining, 2 valid (5 filtered) | avg=57.687 us | min=54.814 us | max=130.938 us | cube=91.9%
+                 iter[ 0] = 54.814 us
+                 iter[ 1] = 60.560 us
+                 iter[ 2] = 124.159 us *outlier*
+                 iter[ 3] = 124.560 us *outlier*
+                 iter[ 4] = 126.013 us *outlier*
+                 iter[ 5] = 128.592 us *outlier*
+                 iter[ 6] = 130.938 us *outlier*
+    Rank 2    | 10 total, 3 warmup skipped, 7 remaining, 7 valid (0 filtered) | avg=56.673 us | min=54.816 us | max=60.979 us | cube=90.9%
+                 iter[ 0] = 54.816 us
+                 iter[ 1] = 54.937 us
+                 iter[ 2] = 55.110 us
+                 iter[ 3] = 55.198 us
+                 iter[ 4] = 55.291 us
+                 iter[ 5] = 60.380 us
+                 iter[ 6] = 60.979 us
+    Rank 3    | 10 total, 3 warmup skipped, 7 remaining, 2 valid (5 filtered) | avg=59.689 us | min=55.867 us | max=136.977 us | cube=91.9%
+                 iter[ 0] = 55.867 us
+                 iter[ 1] = 63.511 us
+                 iter[ 2] = 131.234 us *outlier*
+                 iter[ 3] = 131.362 us *outlier*
+                 iter[ 4] = 131.434 us *outlier*
+                 iter[ 5] = 133.404 us *outlier*
+                 iter[ 6] = 136.977 us *outlier*
+  ----------------------------------------------------------
+    Overall latency (avg of card avgs): 58.003 us  (4 cards)
+    Precision: PASS
+
+  [Case 2]  (4 ranks, PROF_000001_20260812104721494_01110185IJIAJCJO)
+    [M=2048 K=4096 N=2048 headM=512 dtype=e4m3e4m3]
+  ----------------------------------------------------------
+    Rank 0    | 10 total, 3 warmup skipped, 7 remaining, 7 valid (0 filtered) | avg=57.794 us | min=54.568 us | max=61.031 us | cube=91.0%
+                 iter[ 0] = 54.568 us
+                 iter[ 1] = 54.995 us
+                 iter[ 2] = 55.840 us
+                 iter[ 3] = 58.488 us
+                 iter[ 4] = 59.771 us
+                 iter[ 5] = 59.868 us
+                 iter[ 6] = 61.031 us
+    Rank 1    | 10 total, 3 warmup skipped, 7 remaining, 7 valid (0 filtered) | avg=55.755 us | min=54.683 us | max=57.639 us | cube=90.9%
+                 iter[ 0] = 54.683 us
+                 iter[ 1] = 54.754 us
+                 iter[ 2] = 55.176 us
+                 iter[ 3] = 55.394 us
+                 iter[ 4] = 55.603 us
+                 iter[ 5] = 57.037 us
+                 iter[ 6] = 57.639 us
+    Rank 2    | 10 total, 3 warmup skipped, 7 remaining, 7 valid (0 filtered) | avg=57.729 us | min=54.794 us | max=62.253 us | cube=91.0%
+                 iter[ 0] = 54.794 us
+                 iter[ 1] = 55.720 us
+                 iter[ 2] = 55.951 us
+                 iter[ 3] = 56.324 us
+                 iter[ 4] = 59.468 us
+                 iter[ 5] = 59.596 us
+                 iter[ 6] = 62.253 us
+    Rank 3    | 10 total, 3 warmup skipped, 7 remaining, 7 valid (0 filtered) | avg=59.226 us | min=55.499 us | max=62.213 us | cube=90.9%
+                 iter[ 0] = 55.499 us
+                 iter[ 1] = 56.695 us
+                 iter[ 2] = 59.075 us
+                 iter[ 3] = 59.570 us
+                 iter[ 4] = 60.487 us
+                 iter[ 5] = 61.045 us
+                 iter[ 6] = 62.213 us
+  ----------------------------------------------------------
+    Overall latency (avg of card avgs): 57.626 us  (4 cards)
+    Precision: PASS
+
+  [Case 3]  (4 ranks, PROF_000001_20260812172602011_00644433JRPQMJKM)
+    [M=16384 K=4096 N=4096 headM=512 dtype=e4m3e4m3]
+  ----------------------------------------------------------
+    Rank 0    | 10 total, 3 warmup skipped, 7 remaining, 6 valid (1 filtered) | avg=289.956 us | min=285.529 us | max=2258.872 us | cube=98.6%
+                 iter[ 0] = 285.529 us
+                 iter[ 1] = 289.557 us
+                 iter[ 2] = 289.900 us
+                 iter[ 3] = 290.171 us
+                 iter[ 4] = 291.345 us
+                 iter[ 5] = 293.236 us
+                 iter[ 6] = 2258.872 us *outlier*
+    Rank 1    | 10 total, 3 warmup skipped, 7 remaining, 6 valid (1 filtered) | avg=289.025 us | min=282.549 us | max=2261.698 us | cube=98.6%
+                 iter[ 0] = 282.549 us
+                 iter[ 1] = 283.706 us
+                 iter[ 2] = 284.119 us
+                 iter[ 3] = 285.808 us
+                 iter[ 4] = 293.072 us
+                 iter[ 5] = 304.898 us
+                 iter[ 6] = 2261.698 us *outlier*
+    Rank 2    | 10 total, 3 warmup skipped, 7 remaining, 7 valid (0 filtered) | avg=291.187 us | min=282.121 us | max=305.920 us | cube=98.6%
+                 iter[ 0] = 282.121 us
+                 iter[ 1] = 282.944 us
+                 iter[ 2] = 283.360 us
+                 iter[ 3] = 287.499 us
+                 iter[ 4] = 293.338 us
+                 iter[ 5] = 303.127 us
+                 iter[ 6] = 305.920 us
+    Rank 3    | 10 total, 3 warmup skipped, 7 remaining, 6 valid (1 filtered) | avg=295.614 us | min=286.233 us | max=2259.387 us | cube=98.5%
+                 iter[ 0] = 286.233 us
+                 iter[ 1] = 286.558 us
+                 iter[ 2] = 288.306 us
+                 iter[ 3] = 302.005 us
+                 iter[ 4] = 303.752 us
+                 iter[ 5] = 306.831 us
+                 iter[ 6] = 2259.387 us *outlier*
+  ----------------------------------------------------------
+    Overall latency (avg of card avgs): 291.446 us  (4 cards)
+    Precision: PASS
+
+  [Case 4]  (4 ranks, PROF_000001_20260812172725904_00658745IIMKPHOF)
+    [M=16384 K=4096 N=2048 headM=512 dtype=e4m3e4m3]
+  ----------------------------------------------------------
+    Rank 0    | 10 total, 3 warmup skipped, 7 remaining, 7 valid (0 filtered) | avg=197.426 us | min=194.919 us | max=201.346 us | cube=91.1%
+                 iter[ 0] = 194.919 us
+                 iter[ 1] = 195.261 us
+                 iter[ 2] = 196.040 us
+                 iter[ 3] = 196.313 us
+                 iter[ 4] = 198.793 us
+                 iter[ 5] = 199.310 us
+                 iter[ 6] = 201.346 us
+    Rank 1    | 10 total, 3 warmup skipped, 7 remaining, 7 valid (0 filtered) | avg=198.072 us | min=193.537 us | max=205.231 us | cube=90.9%
+                 iter[ 0] = 193.537 us
+                 iter[ 1] = 194.467 us
+                 iter[ 2] = 195.504 us
+                 iter[ 3] = 197.663 us
+                 iter[ 4] = 198.722 us
+                 iter[ 5] = 201.378 us
+                 iter[ 6] = 205.231 us
+    Rank 2    | 10 total, 3 warmup skipped, 7 remaining, 7 valid (0 filtered) | avg=200.643 us | min=196.135 us | max=205.243 us | cube=91.0%
+                 iter[ 0] = 196.135 us
+                 iter[ 1] = 196.763 us
+                 iter[ 2] = 198.577 us
+                 iter[ 3] = 199.723 us
+                 iter[ 4] = 203.942 us
+                 iter[ 5] = 204.115 us
+                 iter[ 6] = 205.243 us
+    Rank 3    | 10 total, 3 warmup skipped, 7 remaining, 7 valid (0 filtered) | avg=200.750 us | min=196.732 us | max=206.789 us | cube=90.9%
+                 iter[ 0] = 196.732 us
+                 iter[ 1] = 198.780 us
+                 iter[ 2] = 199.471 us
+                 iter[ 3] = 199.659 us
+                 iter[ 4] = 200.326 us
+                 iter[ 5] = 203.493 us
+                 iter[ 6] = 206.789 us
+  ----------------------------------------------------------
+    Overall latency (avg of card avgs): 199.223 us  (4 cards)
+    Precision: PASS
+
+
+========================================================================
+Summary
+========================================================================
+  Case      M      K      N   Latency(us)  Precision
+  --------------------------------------------------
+     1   2048   4096   2048        58.003  PASS    
+     2   2048   4096   2048        57.626  PASS    
+     3  16384   4096   4096       291.446  PASS    
+     4  16384   4096   2048       199.223  PASS    
+

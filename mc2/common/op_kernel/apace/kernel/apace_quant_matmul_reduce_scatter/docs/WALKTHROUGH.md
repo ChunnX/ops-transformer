@@ -1,521 +1,227 @@
-# apace_quant_matmul_reduce_scatter_v2 设计串讲质疑清单
+# apace_quant_matmul_reduce_scatter_v3 设计串讲质疑清单
 
 > **审查者**：Design Reviewer（独立审查）
-> **审查对象**：DESIGN.md（§1 算子设计 + §2 架构设计）
-> **审查依据**：asc-devkit API 文档、apace MC2 skill references（fusion.md/communication.md/architecture.md）、ops-nn `quant_matmul_reduce_sum` 参考实现、v1 分支 `feat/apace-quant-matmul-reduce-scatter` 完整代码
+> **审查对象**：`docs/DESIGN.md`（v3 = v2 + 取消 workspace 轮转回压）
+> **审查方法**：API 文档原文核实（`asc-devkit/docs/zh/api/SIMD-API/basic_api/sync_control/`）、Blaze 源码逐行核对（`v2/third_party/ops-tensor/include/blaze/gemm/block/block_scheduler_qbmm.h`）、v2 kernel 代码行号比对（`v2/kernel/apace_quant_matmul_reduce_scatter_v2/`）
 
 ---
 
 ## 设计串讲
 
 ### 审查结论
+
 - [ ] 设计可直接开发（无阻塞问题）
-- [x] 设计需要修改后开发（有阻塞/讨论问题）
+- [x] 设计需要修改后开发（有阻塞/讨论问题）—— **2 项需讨论，6 项建议，无阻塞**
 - [ ] 设计存在严重问题，无法开发
 
-**总体评价**：v2 的 3 级流水架构（mm→aivComm→reduceSum + workspace 轮转）设计思路清晰，API 验证较为完备，与 ops-nn `quant_matmul_reduce_sum` 的流水线模式有良好的对应关系。但存在 4 个需讨论级问题（flagId 冲突风险、WaitFlag 模板参数、Blaze mm per-tile 输出地址、AIV reduceSum 循环配对）需 Architect 回应后方可进入开发。
+**总体评价**：v3 的核心论证链（§2 上界公式、§4.3 flagId=5 计数器风险、§4.5/4.6 无死锁/无越界）经独立复核**全部成立**：官方文档确认计数器 0-15 上限属实且每 flagId 独立计数；Blaze 源码四项证据行号与语义属实；v2 变更点行号引用（C1-C5/C9）全部吻合；槽位寻址去取模后 AIC/AIV 两侧公式一致；删除回压后无新增 WAR 竞争（槽位独占 + 通道 2 per-tile 先写后读保证充分）。2 项需讨论问题均不影响架构正确性，但影响测试计划可达性与用户约束符合性，需 Architect 回应。
 
 ---
 
 ### 质疑清单
 
-#### 问题 1：commFlagId 映射函数未避开 SyncAll 硬同步占用的 flagId [11-14]
+#### 问题 1：T11/T12 重点用例的可行性依赖未经验证的 usedCoreNum=32 假设
 
-- **类别**：API 可行性 / 多核策略
+- **类别**：多核策略 / 内存规划
 - **严重程度**：需讨论
-- **设计文档位置**：DESIGN.md §2.6 flagId 分配策略、§2.8 输入校验
-- **问题描述**：
-  v2 的 commFlagId 映射函数 `(tid < 3) ? tid : (tid < 5) ? tid+1 : tid+2` 只避开了 flagId 3（回压）和 5（mm 完成），但未避开 SyncAll 硬同步内部占用的 flagId [11-14]。逐项展开映射结果：
-  ```
-  tid=0  → commFlagId=0   ✓
-  tid=1  → commFlagId=1   ✓
-  tid=2  → commFlagId=2   ✓
-  tid=3  → commFlagId=4   ✓ (避开 3)
-  tid=4  → commFlagId=6   ✓ (避开 5)
-  tid=5  → commFlagId=7   ✓
-  tid=6  → commFlagId=8   ✓
-  tid=7  → commFlagId=9   ✓
-  tid=8  → commFlagId=10  ✓
-  tid=9  → commFlagId=11  ✗ 命中 SyncAll [11-14]
-  tid=10 → commFlagId=12  ✗ 命中 SyncAll [11-14]
-  tid=11 → commFlagId=13  ✗ 命中 SyncAll [11-14]
-  tid=12 → commFlagId=14  ✗ 命中 SyncAll [11-14]
-  tid=13 → commFlagId=15  ✓
-  ```
-  v2 的输入校验约束为 `headTileCnt + tailTileCnt <= 14`（§2.8），这仅保证 commFlagId 不绕回（不超过 15），但当 tile 总数 ≥ 10 时 commFlagId 会命中 [11-14]。
+- **设计文档位置**：DESIGN.md §3.1-3.2（估算表注「coreNum = min(32, blockNums)」）、§4.3（覆盖性评估）
+- **问题描述**：§3.2 估算表和 §4.3「覆盖全部目标 shape」的结论都假设 SWAT tiling 对 M=16384 大 shape 会选择 `usedCoreNum=32`。但 `usedCoreNum` 由 QuantMatmulTilingSwat 运行时推导，无设计级保证。反例：T12（M=16384, N=4096, blockNums=256）若 SWAT 选择 `usedCoreNum ≤ 17`，则 `T = CeilDiv(256, 17) = 16 > 15`，host 校验（C8）将**拒绝 launch 这个用于验证回压消除收益的核心用例**，v3 的价值验证落空。注：950PR PCIE 28 核场景 `CeilDiv(256, 28) = 10` 仍安全，风险仅在 usedCoreNum ≤ 17 时触发，概率不高但无证据排除。
+- **审查者视角**：host 校验本身是正确设计（宁可拒绝不可出错），但设计的测试计划把「T12 精度+性能双验证」作为核心验收项，其可达性建立在一个未验证的 tiling 行为假设上。开发到 Step 6 才发现用例被拒将造成返工。
+- **建议方案**：开发早期（框架搭建阶段）先用 v2 工程对 T11/T12 shape 打印 SWAT tiling 日志确认 `usedCoreNum` 实际值；若 < 32，在 PLAN 中预设备选 shape 或调整 baseM/baseN 候选使 T ≤ 15 成立。同时建议在 §3.2 明确标注「表中 coreNum=32 为假设值，以运行时 tiling 日志为准」的验证责任归属。
 
-- **审查者视角**：
-  依据 asc-devkit API 文档 `CrossCoreSetFlag_ISASI.md` 约束说明及 apace skill `fusion.md` §3.3 flagId 选择规则：**SyncAll 硬同步内部占用 flagId [11-14]**，官方不建议同时使用 CrossCoreSetFlag 与 SyncAll 硬同步。v2 每轮通信后都调用 `SyncAll<true>()`（§2.5 Phase 1），同时使用 `CrossCoreSetFlag<0x2, PIPE_MTE3>(commFlagId)` 通信就绪 flag——当 `commFlagId ∈ [11,14]` 时存在与 SyncAll 内部 flag 冲突的理论风险。虽然官网两个 PUT 算子（`all_to_all_quant_matmul`、`all_gather_quant_matmul`）也组合使用了 SyncAll + CrossCoreSetFlag 且直接用 tid 作 flagId（不避开 [11-14]），但 skill 文档明确标注这是"理论风险，移植到新平台需重新确认"。v2 额外占用了 flagId 3 和 5（用于 mm 完成/回压计数信号量），映射函数已做避让，但遗漏了 [11-14] 区间。
-- **建议方案**：
-  方案 A（推荐）：将输入校验收紧为 `headTileCnt + tailTileCnt <= 10`（完全避开 3、5、[11-14]），可用 flagId = {0,1,2,4,6,7,8,9,10,15} 共 10 个。
-  方案 B：保持 ≤ 14 约束，但在 DESIGN.md 中显式标注"tid 9-12 的 commFlagId 命中 SyncAll [11-14]，已在 950PR 上验证无冲突"（需 Developer 在实现时做实际验证）。
-  方案 C：如果 tile 总数确实需要 > 10，考虑将 mm 完成/回压通道从固定 flagId（3/5）改为 per-tile flagId，释放固定 flagId 占用——但这会大幅增加 flag 编排复杂度，不推荐。
+#### 问题 2：大 shape workspace 37.7MB 超出用户「~18MB 可接受」口径
 
----
+- **类别**：内存规划
+- **严重程度**：需讨论
+- **设计文档位置**：DESIGN.md §3.2（估算表末两行 18.9MB / 37.7MB，结论「符合用户『~18MB 可接受』约束」）
+- **问题描述**：用户约束原文为「大 shape workspace 增大到 ~18MB 可接受」。估算表中 128×256 tiling 配置为 18.9MB（吻合），但 256×256 配置下 M=16384,N=2048 为 21.0MB、N=4096 为 **37.7MB**——后者已达用户口径的 2 倍。DESIGN §3.2 结论将 19~38MB 整体判定为「符合约束」，属于对用户约束的扩大解释。
+- **审查者视角**：用户约束同时声明「不考虑 buffer 复用（workspace 足够大）」，可能 38MB 确实可接受，但这是用户的决定而非 Architect 的推断。审查者不能代替用户放行 2 倍偏差。
+- **建议方案**：向用户确认 38MB 量级是否可接受；或在 DESIGN 中补充约束派生规则（如「workspace ≤ 40MB 硬上限，超出时 host 报错」），使用户约束可执行、可测试。
 
-#### 问题 2：CrossCoreWaitFlag 调用未指定模板参数 modeId 和 pipe，950PR 上模板参数生效可能不工作
+#### 问题 3：maxTilesPerCore 上界公式可证明更紧（+1 非必需），且 host 校验边界过保守 1 档
+
+- **类别**：内存规划 / API 可行性
+- **严重程度**：建议
+- **设计文档位置**：DESIGN.md §2.1-2.2（公式 `CeilDiv(blockNums, coreNum) + 1`）、§4.3（校验 `maxTilesPerCore ≤ 15`）
+- **问题描述**：独立推导 Blaze 源码可得**严格上界为 `T ≤ CeilDiv(blockNums_, coreNums_)`，不需要 +1**：
+  - 初始 `roundNums_ = CeilDiv(blockNums_, coreNums_)`（L63），`blockIdx_ > endBlockIdx_` 的核 `-1`（L64-66）；
+  - `UpdateTailTile` 的 `+1` 条件为 `blockIdx_ > endBlockIdx_ && blockIdx_ <= newEndBlockIdx`（L92）——**而 `roundNums_ = CeilDiv` 的核恰是 `blockIdx_ ≤ endBlockIdx_` 的核，永远不满足 +1 条件**；`blockIdx_ > endBlockIdx_` 的核从 `CeilDiv-1` 起跳，+1 后至多回到 `CeilDiv`；
+  - 因此 max(roundNums_) = CeilDiv，与是否尾块拆分无关。
+  
+  推论：(a) 设计公式 `CeilDiv+1` 宽松 1 槽，每核多分配 `baseM×baseN×2B`（32 核 256×256 时约 4MB），方向安全但非 tight；(b) host 校验 `maxTilesPerCore ≤ 15` 实际门控的是 `CeilDiv ≤ 14`，即合法计数器峰值 15（T=15）的 shape 会被误拒——校验边界比硬件能力保守 1 档。
+- **审查者视角**：宽松方向不引入正确性风险，且 §2.2 可选加固段落表明 Architect 有意保留余量对抗 Blaze 未来行为变化，工程上可接受。但 §2.2 自称「可证明安全」的论证链（证据 3「影响至多为 +1」→ 结论 `CeilDiv+1`）掩盖了更紧的真实上界，论证精度有提升空间；校验边界差 1 档会使 T=15 的边界 shape 失去本可合法运行的机会。
+- **建议方案**：二选一——(a) 保持公式与校验不变，在 §2.2 补注「真实上界为 CeilDiv，+1 为主动保留的防御余量」；(b) 公式收紧为 `CeilDiv`、校验收紧为 `CeilDiv ≤ 15`（等价 `maxTilesPerCore ≤ 16`），同时在 T13 增补 T=15 恰好放行的边界用例。倾向 (a)，改动最小。
+
+#### 问题 4：SyncAll flagId 占用引用不精确（3510 下 `SyncAll<true>` 实际仅占 AIV flagId 14）
 
 - **类别**：API 可行性
-- **严重程度**：需讨论
-- **设计文档位置**：DESIGN.md §1.4 伪代码、§2.5 AIC/AIV 分工设计、§2.6 flag 编排模式图
-- **问题描述**：
-  v2 伪代码中 AIV 侧和 AIC 侧的计数信号量 WaitFlag 调用均未指定模板参数：
-  ```cpp
-  // AIV 侧（§1.4 伪代码）
-  CrossCoreWaitFlag(SYNC_AIC_AIV_FLAG=5)   // 等 AIC mm 完成
-  // AIC 侧（§1.4 伪代码）
-  CrossCoreWaitFlag(SYNC_AIV_AIC_FLAG=3)   // 回压
-  ```
-  而 CrossCoreWaitFlag 的函数原型为 `template <uint8_t modeId = 0, pipe_t pipe = PIPE_S> void CrossCoreWaitFlag(uint16_t flagId)`，默认 modeId=0、pipe=PIPE_S。
-- **审查者视角**：
-  依据 asc-devkit API 文档 `CrossCoreWaitFlag_ISASI.md`：
-  - 950PR 上模板参数 modeId 和 pipe **生效**（阻塞指定流水的后续指令）
-  - 模式 0/1/2 **不支持** PIPE_S（文档原文："不支持的流水类型为 PIPE_ALL、PIPE_S"）
-  - SetFlag 侧使用了 `CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(5)`（modeId=2, pipe=PIPE_FIX）和 `CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(3)`（modeId=2, pipe=PIPE_MTE2）
-
-  如果 WaitFlag 使用默认 modeId=0、pipe=PIPE_S，与 SetFlag 的 modeId=2 不匹配（Set/Wait 的 modeId 控制同步范围，不一致可能导致计数器不配对），且 PIPE_S 在模式 0/1/2 下不被支持。
-
-  对比 ops-nn 参考实现（`quant_matmul_reduce_sum_mixcore.h`）：ops-nn 的 `CrossCoreWaitFlag(SYNC_AIC_AIV_FLAG)` 同样不带模板参数，但 ops-nn 运行在 910b 上（文档明确："针对 A2/A3 产品，模板参数 modeId 和 pipe **不生效**，此时 CrossCoreWaitFlag 会阻塞全部流水的后续指令"），所以 ops-nn 在 910b 上无此问题。v2 运行在 950PR 上，模板参数生效，此问题需要正视。
-
-  v2 DESIGN.md §1.2 API 语义验证详情表中已确认"950PR 模板参数生效"，但伪代码中 WaitFlag 却使用了默认参数，存在自相矛盾。
-- **建议方案**：
-  在伪代码和同步点表（§2.5）中明确 WaitFlag 的模板参数，与 SetFlag 配对：
-  - AIV 等 AIC mm 完成：`CrossCoreWaitFlag<SYNC_MODE2, PIPE_S>(5)` 或选择合适的 pipe（AIV 侧阻塞后续 reduceSum 指令，可用 PIPE_V 或 PIPE_MTE3）
-  - AIC 等 AIV 回压：`CrossCoreWaitFlag<SYNC_MODE2, PIPE_M>(3)` 或 `CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(3)`（AIC 侧阻塞后续 mm 指令）
-  注意：pipe 参数应选择能阻塞后续相关指令的流水类型。Developer 需在 950PR 上验证 modeId=2 + 选择的 pipe 是否正常工作。
-
----
-
-#### 问题 3：Blaze QuantMatmulMxKernel 的 mm 输出地址 per-tile 动态修改实现方式未明确
-
-- **类别**：伪代码可实现性
-- **严重程度**：需讨论
-- **设计文档位置**：DESIGN.md §1.4 伪代码 `mm.cGmAddr = workspace + workSpaceOffset`、§2.5 AIC Run() 流程
-- **问题描述**：
-  v2 伪代码在 AIC 的 mm 循环内动态设置 mm 输出地址：
-  ```cpp
-  workSpaceOffset = baseM * baseN * (coreIdx + (cubeNum % PIPELINE_NUM) * coreNum)
-  mm.cGmAddr = workspace + workSpaceOffset
-  mm(A[Win] × B → workspace[BF16])
-  ```
-  但审查 v1 的 `quant_matmul_mx_kernel.h` 实际实现发现：`cGmAddr_` 在 `ResetGmAddr()` 中设置一次，`ProcessSingleBatch()` 中 `gmC` Tensor 基于 `cGmAddr_` 创建一次，per-tile 循环内通过 `gmC.Slice(mPos, nPos)` 切片——**不存在 per-tile 动态修改 cGmAddr_ 的机制**。
-- **审查者视角**：
-  v1 的 `ProcessSingleBatch` while 循环结构：
-  ```cpp
-  auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(cGmAddr_), layoutC);  // 循环外创建一次
-  while (bs.GetTileIdx(blockIdx)) {
-      auto gmBlockC = gmC.Slice(Te::MakeCoord(mPos, nPos), ...);  // per-tile 切片
-      mmadOp_(..., gmBlockC, singleShape, remoteRankCnt);
-  }
-  ```
-  v2 需要在 while 循环内、mmad 调用前，根据 `cubeNum` 动态更新 gmC 的基地址为 `workspace + workSpaceOffset`。这不是简单的成员变量赋值（`mm.cGmAddr = ...`），而是需要：
-  1. 在 while 循环内重新创建 gmC Tensor（或修改 gmBlockC 的地址指针）
-  2. 同时新增 cubeNum 计数、回压 flag Wait/Set、mm 完成 flag Set 等逻辑
-
-  对比 ops-nn 参考实现（`quant_matmul_reduce_sum_mixcore.h` `MMCompute`）：ops-nn 使用 AscendC::Matmul 的 `mm.GetTensorC(mmOutGm[workSpaceOffset], 0, sequentialWrite)` 在 `mm.Iterate()` 循环内动态指定输出地址——AscendC::Matmul 原生支持 per-tile 输出地址。但 v2 使用 Blaze BlockMmad，其输出地址通过 Tensor Slice 控制，实现方式不同。
-
-  v2 DESIGN.md §2.15 标注 `quant_matmul_mx_kernel.h` 为 [MODIFY] 文件，说明 Architect 预期会修改此文件。但伪代码 `mm.cGmAddr = workspace + workSpaceOffset` 的写法过于简化，Developer 可能误以为只需设置成员变量即可，实际需要改造 `ProcessSingleBatch` 的循环结构。
-- **建议方案**：
-  1. 在 DESIGN.md §1.4 或 §2.5 中补充 `ProcessSingleBatch` 改造的具体方式说明，例如：
-     ```cpp
-     // while (bs.GetTileIdx(blockIdx)) 循环内，mmad 调用前：
-     if (cubeNum >= PIPELINE_NUM) {
-         CrossCoreWaitFlag<SYNC_MODE2, PIPE_M>(SYNC_AIV_AIC_FLAG);  // 回压
-     }
-     uint64_t workSpaceOffset = baseM * baseN * (coreIdx + (cubeNum % PIPELINE_NUM) * coreNum);
-     auto gmCWorkspace = Te::MakeTensor(
-         Te::MakeMemPtr<Te::Location::GM>(workspaceGmAddr_ + workSpaceOffset * sizeof(CType)), layoutCTile);
-     // mmad 输出到 gmCWorkspace（不再 Slice，因为 workspace slot 就是 baseM×baseN 的整块）
-     mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmCWorkspace, singleShape, remoteRankCnt);
-     CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_AIC_AIV_FLAG);  // mm 完成
-     cubeNum++;
-     ```
-  2. 明确 workspace slot 的内存布局：每个 slot 是 baseM×baseN 的连续块（无 stride），gmCWorkspace 不需要 Slice。
-  3. 注意 v1 的 REMOTE 模式会遍历所有 rank 的 A×B 累加到同一块 L0C，最后一次 fixpipe 写出。v2 的 mm 输出到 workspace 时，fixpipe 只写一次（splitKNum 个 rank 累加后），workSpaceOffset 应在 fixpipe 时生效——需确认 Blaze BlockMmad 的 fixpipe 输出地址是否就是传入的 gmBlockC 地址。
-
----
-
-#### 问题 4：AIV reduceSum 循环次数需与 AIC mm tile 总数严格配对，但伪代码未明确循环次数推导
-
-- **类别**：多核策略 / 伪代码可实现性
-- **严重程度**：需讨论
-- **设计文档位置**：DESIGN.md §1.4 伪代码 AIV Phase 2 `for each tile`、§2.5 AIV Run() Phase 2
-- **问题描述**：
-  v2 的 flagId 3（回压）和 5（mm 完成）作为计数信号量使用——AIC 每完成一个 mm tile SetFlag(5) 一次，AIV 每做一次 reduceSum WaitFlag(5) 一次；AIV 每做一次 reduceSum SetFlag(3) 一次，AIC 当 cubeNum ≥ 4 时 WaitFlag(3) 一次。Set/Wait 必须严格配对，否则计数器不归零会导致后续 WaitFlag 永久阻塞（死锁）。
-
-  v2 伪代码 AIV Phase 2 写的是 `for each tile:`，但未明确这个 "each tile" 的循环次数如何推导。AIC 侧的 mm tile 总数由 `BlockScheduler::GetTileIdx()` 调度推导，AIV 侧无法直接知道 AIC 的 tile 总数。
-- **审查者视角**：
-  对比 ops-nn 参考实现（`quant_matmul_reduce_sum.h` `Process()`）：ops-nn 的 AIC 和 AIV 在同一个 `Process()` 循环中——`computeOp.MMCompute()` 和 `computeOp.VectorCompute()` 交替调用，两者的 tile 数由相同的 `blockDimM × blockDimN` 推导，天然配对。
-
-  v2 的 AIV 侧不在 BlockScheduler 调度循环内（AIV 做 reduceSum 时 AIC 还在循环内做 mm）。AIV 的 reduceSum 循环次数需要 = AIC 的 mm tile 总数 × rankSize（因为每个 rank 的 mm 输出都需要 reduceSum）？还是 = AIC 的 mm tile 总数（rankSize 个 rank 的部分和已在 workspace 中，reduceSum 只需做一次 AtomicAdd 累加）？
-
-  从 v2 的数学公式看：`C_r = Σ_{i=0}^{rankSize-1} mm(A_i × B_i)`。每个 rank 的 AIC 做 mm 写自己的 workspace，然后所有 rank 的 workspace 需要累加到 yGm。但 AllToAll PUT 是把 A 发送到各 rank，每个 rank 的 AIC 从 Win 区读所有 rank 的 A 做 mm——所以每个 rank 的 AIC 已经在 mm 中累加了所有 rank 的部分和（L0C FP32 累加 + fixpipe 写 workspace）。reduceSum 只需要把 workspace 的 BF16 结果 AtomicAdd 到 yGm。
-
-  但 ReduceScatter 语义是"输出按 M 轴切分"——rank r 只需要 C 的第 r 个 M/rankSize 段。所以：
-  - 每个 rank 的 AIC 做 mm 输出到 workspace（全量 M × N 的部分和？还是只有 my_M_seg？）
-
-  从 v2 §1.1 数学公式：`C_r = Σ_i dequant(A_i[r*M/R:(r+1)*M/R]) × dequant(B_i)`。每个 rank 的 AIC 计算 `A_i[my_M_seg] × B_i` 的部分和，然后跨 rank 累加。
-
-  但 v2 的 AllToAll PUT 是发送 A 的 M/rankSize 段给各 rank——每个 rank 的 Win 区收到所有 rank 的 A 的 my_M_seg 段。AIC 从 Win 读所有 rank 的 A[my_M_seg] × B → workspace。所以 workspace 中已经是累加后的结果（L0C FP32 累加所有 rank，fixpipe 写 workspace BF16）。
-
-  那 reduceSum 做什么？从 workspace 读 BF16 → AtomicAdd 到 yGm。但 workspace 中已经是累加后的结果，为什么还需要 AtomicAdd？
-
-  **关键疑问**：如果每个 rank 的 AIC 已经在 L0C 中累加了所有 rank 的部分和并 fixpipe 写 workspace，那 workspace 中的结果就是最终结果，reduceSum 只需要 DataCopyPad(workspace → yGm)，不需要 AtomicAdd。
-
-  但 v2 设计用了 AtomicAdd——这意味着 workspace 中的结果不是最终结果，还需要跨 rank 累加？或者多个 AIC 核的 workspace 结果需要累加到 yGm 的同一位置？
-
-  从 v2 §1.3 数据流看：`输出: rank r 获得 C_r[M/rankSize × N] = Σ_i reduceSum(workspace_i[my_M_seg])`。这里的 `Σ_i` 表示跨 rank 累加？但 AllToAll PUT 已经把 A 发送到各 rank，每个 rank 的 AIC 从 Win 读所有 rank 的 A 做 mm——workspace 中的结果已经是 Σ_i mm(A_i × B_i)。
-
-  除非：v2 的 AIC mm 没有在 L0C 中累加所有 rank 的部分和，而是每个 rank 的 A 分别做 mm 写不同的 workspace slot，然后 reduceSum 跨 slot 累加。但这与 v1 的 REMOTE 模式（L0C 累加所有 rank）不同。
-
-  或者：v2 的 AtomicAdd 是为了处理多核场景——不同 AIC 核可能计算 yGm 同一位置的部分结果，需要 AtomicAdd 累加。但 v2 的多核切分是按 M×N 轴切分，不同核计算不同的 M×N tile，不应有位置重叠。
-
-  **这是一个设计逻辑不清的问题**——reduceSum 的 AtomicAdd 累加对象不明确。如果 workspace 中已经是最终结果，reduceSum 只需 DataCopyPad 不需要 AtomicAdd；如果需要跨核/跨 slot 累加，需要明确累加来源。
-- **建议方案**：
-  1. Architect 需在 DESIGN.md 中明确：reduceSum 的 AtomicAdd 累加对象是什么？（跨 rank？跨核？跨 workspace slot？）
-  2. 如果 workspace 中已经是 L0C 累加后的最终结果（v1 REMOTE 模式语义），reduceSum 可简化为 `DataCopyPad(workspace → yGm)`，无需 AtomicAdd，yGm 也无需清零——这能简化设计并消除精度风险。
-  3. 如果确实需要 AtomicAdd（例如 AIC mm 没有跨 rank L0C 累加，而是每个 rank 的 mm 写不同 workspace slot），需在 §1.3 数据流和 §1.4 伪代码中补充 slot 间的累加逻辑。
-  4. AIV reduceSum 循环次数需在伪代码中明确推导公式（如 `= AIC mm tile 总数`），确保 flag Set/Wait 严格配对。
-
----
-
-#### 问题 5：AIV 时分复用（先通信后 reduceSum）在通信轮次较多时可能导致 AIC 长时间阻塞，降低流水线效率
-
-- **类别**：多核策略
 - **严重程度**：建议
-- **设计文档位置**：DESIGN.md §2.5 AIV 时分复用设计、§2.11 核分工总结
-- **问题描述**：
-  v2 的 AIV 时分复用设计：每个 AIV 核先完成所有通信轮次（Phase 1，`for tid in 0..commTurn-1`），然后切换到 reduceSum（Phase 2）。AIC 在 AIV 通信期间持续做 mm 写 workspace，但当 `cubeNum >= PIPELINE_NUM=4` 时，AIC 会阻塞在 `CrossCoreWaitFlag(3)`（回压 flag），等待 AIV 完成 Phase 1 并切换到 Phase 2 执行 reduceSum 释放回压。
-- **审查者视角**：
-  如果 `commTurn`（通信轮次）较大（例如 10+），AIC 在完成 4 个 mm tile 后就会阻塞，等待 AIV 完成全部通信并切换到 reduceSum。这意味着 AIC 的 mm 计算能力在 AIV 通信期间被浪费（只有前 4 个 tile 能做）。
+- **设计文档位置**：DESIGN.md §4.1（「SyncAll [11-14] 硬同步内部占用」）、§4.4（C9「只需避开 5 和 [11-14]」）
+- **问题描述**：经核实官方文档 `SyncAll.md` 表 3（NPU 架构版本 3510）：`isAIVOnly=true` 时占用**仅 AIV flagId 14**；`isAIVOnly=false + __mix__(1,1)` 才占 AIC 11/12/13 + AIV 12/13。v2/v3 代码实际调用为 `SyncAll<true>()`（v2 udma_impl.h L299，AIV-only 路径），故真实占用只有 flagId 14，DESIGN 的「[11-14]」沿用了更保守的历史口径。
+- **审查者视角**：保守方向零风险——v2 的 CommFlagIdV2 映射和 C9 的可选简化映射都避开 [11-14]，功能完全正确。但 DESIGN 将「避开 [11-14]」作为事实陈述而非保守选择，且 C9 的「可用集 11 个」推理若基于真实占用（仅 14 + 5）还可再多 3 个。文档准确性问题，不影响实现。
+- **建议方案**：在 §4.1/4.4 将表述修正为「SyncAll<true> 在 3510 架构下实际占用 AIV flagId 14（SyncAll.md 表 3）；本设计保守避开 [11-14]」，并注明若未来改用 `SyncAll<false>` 需重新评估 AIC 侧 11/12/13 冲突。
 
-  v2 的 3 级流水架构目标是"通过 workspace 多 buffer 轮转提升通算并行度"（PLAN.md §7），但如果 AIC 在 AIV 通信期间长时间阻塞，实际通算并行度可能不如 v1 的串行模式（v1 的 AIC localMatmul 与 AIV PUT 并行）。
-
-  这不是死锁（AIV 完成通信后会切换到 reduceSum 释放回压），但可能影响性能达标。
-- **建议方案**：
-  1. 在 DESIGN.md §2.5 或 §2.11 中补充流水线效率分析：评估 commTurn 与 PIPELINE_NUM 的关系对 AIC 阻塞时间的影响。
-  2. 考虑替代方案：AIV 通信和 reduceSum 交替执行（每轮通信后做 1 个 tile 的 reduceSum），而不是先完成所有通信再切换。但这需要更复杂的 flag 编排（通信就绪和 mm 完成通道交替使用）。
-  3. 如果性能不达标，可回退到 v1 的串行模式（localMatmul=1 + AtomicAdd 直写 yGm），v1 的开发历史数据为 143us。
-
----
-
-#### 问题 6：reduceSum 的 DataCopyPad 2D 搬运参数设置未在伪代码中说明
+#### 问题 5：C6 字段替换的 plumbing 清理范围未列全，存在半迁移风险
 
 - **类别**：伪代码可实现性
 - **严重程度**：建议
-- **设计文档位置**：DESIGN.md §1.4 伪代码 `DataCopyPad(workspace→UB)` / `DataCopyPad(UB→yGm)`、§1.2 API 映射表
-- **问题描述**：
-  v2 伪代码 reduceSum 部分仅写了 `DataCopyPad(workspace[workSpaceOffset] → UB)` 和 `DataCopyPad(UB → yGm[outOffset])`，未说明 DataCopyExtParams 参数（blockCount、blockLen、srcStride、dstStride）的设置。
-- **审查者视角**：
-  reduceSum 涉及 2 次数据搬运：
-  1. **workspace → UB**：workspace 中每个 slot 是 baseM×baseN 的连续块（无 stride）。如果 baseN × sizeof(bfloat16_t) 是 32 字节对齐的（baseN=128 → 256B ✓），可用 `blockCount=1, blockLen=baseM*baseN*sizeof(BF16)`。但如果 baseN 不对齐，需要按行搬运（blockCount=baseM, blockLen=baseN*sizeof(BF16), srcStride=0, dstStride=...）。
-  2. **UB → yGm (AtomicAdd)**：yGm 是 C[M/rankSize × N] 的二维矩阵，每个 tile 写入 yGm 的 [mPos:mPos+baseM, nPos:nPos+baseN] 区域。需要 2D 搬运：`blockCount=baseM, blockLen=baseN*sizeof(BF16), srcStride=对齐填充, dstStride=(N-baseN)*sizeof(BF16)`。
+- **设计文档位置**：DESIGN.md §1.1 C6（仅列 `tiling_data.h`）、§7（文件清单）
+- **问题描述**：`pipelineNum` 在 v2 中的完整 plumbing 链为：`tiling_data.h` 字段 → `main.cpp` 赋值（L201）→ `InitBaseParams`（udma_impl.h L421）→ `baseParams_.pipelineNum`（L197）→ `SetupParams` → `LocalParams.pipelineNum`（kernel L136）→ kernel 成员 `pipelineNum_`（L193）→ 消费点（kernel L419、udma_impl L363，即 C2/C4）。C6 只声明替换 `tiling_data.h` 字段，未声明中间各环节（`LocalParams.pipelineNum`、`baseParams_.pipelineNum`、kernel 成员 `pipelineNum_`、两处赋值代码）是删除还是保留为死字段。C2/C4 去取模后这些字段已无消费者。
+- **审查者视角**：保留死字段可编译通过，但「kernel 槽位寻址不消费该字段」（C6 语）与字段仍存在于 LocalParams 之间会产生误导——后续维护者可能误以为寻址仍受 pipelineNum 约束。v3 定位是「外科手术式优化」，变更清单的完整性是其核心价值。
+- **建议方案**：在 C6 或 §7 明确处置决策：建议全链删除（tiling_data 字段、main.cpp 赋值、baseParams_、LocalParams、kernel 成员、SetupParams 赋值），或显式标注「保留字段但标记 deprecated/未使用」。
 
-  对比 ops-nn 参考实现（`quant_matmul_reduce_sum.h` `DataCopyPad2D` 和 `quant_matmul_reduce_sum_mixcore.h` `DataCopyOut`）：ops-nn 明确设置了 2D 搬运参数，包括 srcStride（UB 侧对齐填充）和 dstStride（GM 侧行间距）。v2 的伪代码缺少这些细节，Developer 需要自行推导。
-
-  另外，DataCopyPad UB→GM 的 dstStride 在 950PR 上数据类型为 int64_t，取值范围 [0, 2^40-1]（依据 `DataCopyPad_UBToGM.md`），与 910b 的 uint32_t 不同，Developer 需注意类型匹配。
-- **建议方案**：
-  在 DESIGN.md §1.4 或 §2.5 中补充 reduceSum 的 DataCopyPad 参数设置伪代码，参考 ops-nn 的 `DataCopyPad2D` 和 `DataCopyOut` 实现：
-  ```cpp
-  // workspace → UB（连续块，1D 搬运）
-  DataCopyExtParams cpIn{1, baseM * baseN * sizeof(BF16), 0, 0, 0};
-  DataCopyPadExtParams<BF16> padIn{false, 0, 0, 0};
-  DataCopyPad(reduceSumBuf, workspaceGm[workSpaceOffset], cpIn, padIn);
-
-  // UB → yGm（2D 搬运，AtomicAdd）
-  DataCopyExtParams cpOut{baseM, baseN * sizeof(BF16), 
-      (AlignUp(baseN, 16) - baseN) * sizeof(BF16) / 32,  // srcStride (UB 侧)
-      (N - baseN) * sizeof(BF16), 0};                      // dstStride (GM 侧)
-  SetAtomicAdd<bfloat16_t>();
-  DataCopyPad(yGm[outOffset], reduceSumBuf, cpOut);
-  SetAtomicNone();
-  ```
-
----
-
-#### 问题 7：host 侧 aclrtMemset 清零 yGm 后的同步保证未说明
+#### 问题 6：AIC 零形状早退跳过通道 1 兜底 drain，残留计数跨 launch 生命周期未论证
 
 - **类别**：多核策略
 - **严重程度**：建议
-- **设计文档位置**：DESIGN.md §1.4 要点 6、§2.8 Host 侧 yGm 清零、§2.13 精度策略
-- **问题描述**：
-  v2 设计用 host 侧 `aclrtMemset(deviceOutput, 0, mLocal * n * sizeof(bfloat16_t))` 清零 yGm（AtomicAdd 前提条件），但未说明 aclrtMemset 与 kernel launch 之间的同步保证。
-- **审查者视角**：
-  aclrtMemset 是异步 API（在 device 侧异步执行）。如果在 aclrtMemset 完成前 launch kernel，kernel 中的 AtomicAdd 可能读到未清零的 yGm 旧值，导致结果错误。
+- **设计文档位置**：DESIGN.md §1.2（通道 1「含 readyTileIdx 兜底 drain，完全不变」）、§4.5（无死锁论证）
+- **问题描述**：v2 kernel L397-398：尾块拆分轮中 `GetBlockShape` 返回零形状时 AIC 直接 `return`，**跳过 L501-504 的通道 1 兜底 drain 循环**。此时 AIV Phase 1 已无条件 Set 全部 commFlagId，未被 Wait 的 fid 计数器在 kernel 退出时残留为 1。v3 保持该行为不变（§1.2）。若计数器状态跨 kernel launch 持久，则下一次 launch 同 fid 的 Wait 会被残留计数提前解除，破坏通道 1 的通信就绪时序（AIC 可能在本次通信完成前读 Win 区）。
+- **审查者视角**：此为 **v2 已有行为**（非 v3 回归），且 v2 12/12 精度 PASS 表明在实际 ST 场景（每用例独立进程/launch）未触发问题——大概率硬件在每次 kernel launch 时初始化调度模块计数器。但 DESIGN §4.5 的无死锁/配平论证以「每个 fid Set 1 次 / Wait ≤1 次（去重 + 兜底 drain 配平）」为前提，未覆盖早退跳过 drain 的分支，论证存在小缺口。T14（尾块拆分用例）恰好会走这条路径。
+- **建议方案**：在 §4.5 补充说明：早退分支下通道 1 残留计数 ≤ commTurn ≤ 10（不超 0-15 上限，无溢出风险）；残留计数是否跨 launch 持久以官方行为为准——v2 实证未暴露问题，v3 不引入变化，记录为已知行为即可。无需代码改动。
 
-  通常情况下，aclrtMemset 和 kernel launch 在同一个 stream 上时，stream 内操作顺序执行，aclrtMemset 完成后才会执行 kernel。但 v2 是多卡场景（4 rank），每个 rank 的 host 侧独立执行 aclrtMemset 和 kernel launch。如果不同 rank 的 stream 不同步，可能出现 rank A 的 kernel 已开始执行而 rank B 的 aclrtMemset 还未完成的情况。
+#### 问题 7：C8 校验的执行顺序与取值来源未明确规定
 
-  对比 ops-nn 参考实现（`quant_matmul_reduce_sum_init_output.h`）：ops-nn 使用 kernel 侧 InitOutput（一个独立的 kernel task），通过 `WaitPreTaskEnd()` / `SetNextTaskStart()` 串行化 InitOutput kernel 和主计算 kernel。v2 的 PLAN.md §5 决策记录说明"直调场景用 host 侧 aclrtMemset，不用 ops-nn 的 kernel-side InitOutput（WaitPreTaskEnd/SetNextTaskStart 仅适用 SuperKernel）"——这个决策是合理的，但需补充同步保证说明。
-- **建议方案**：
-  在 DESIGN.md §2.8 中补充：`aclrtMemset` 与 kernel launch 必须在同一个 stream 上执行（默认行为），或显式调用 `aclrtSynchronizeStream()` 确保清零完成后再 launch kernel。多卡场景下，各 rank 的 host 侧应在 `CreateDeviceContext` 后的跨 rank barrier 之前完成 aclrtMemset（因为 barrier 之后才 launch kernel）。
+- **类别**：伪代码可实现性
+- **严重程度**：建议
+- **设计文档位置**：DESIGN.md §1.1 C7/C8、§8 T13
+- **问题描述**：两处实现细节未规定：
+  (a) **校验顺序**：T13 构造的 shape（M=32768, N=8192）`maxTilesPerCore=33`，若 host 先按公式 `aclrtMalloc` workspace（33×32×256×256×2B ≈ 138MB）再校验，大 shape 下分配本身可能失败或浪费，报错信息将偏离「maxTilesPerCore 超限」的本意；
+  (b) **取值来源**：`maxTilesPerCore` 必须基于 SWAT tiling **最终输出**（`tilingData.tileQbmmTilingData.{m, n, baseM, baseN, usedCoreNum}`，v2 main.cpp L196-198 已有此先例），而非 raw `M/4` 或 baseM 候选默认值 256——SWAT 可能对 m/n 做对齐 padding 或细化 baseM/baseN，用错来源会导致校验与 kernel 实际行为脱节。
+- **审查者视角**：v2 main.cpp 已从 tilingData 取数计算 workspace，顺延实现 C7/C8 没有障碍，属于「设计未写明但显然如此」的缺口。但 T13 是验收用例，校验顺序直接决定其报错行为是否符合预期（「不 launch、报错信息清晰」）。
+- **建议方案**：在 C8 补充两句：校验在 SWAT tiling 完成之后、workspace `aclrtMalloc` 之前执行；`maxTilesPerCore` 的四个输入全部取自 `tileQbmmTilingData` 最终值。
 
----
+#### 问题 8：CANN 路径在 environment.md 与 DESIGN/PLAN 之间不一致
 
-## 审查依据汇总
-
-| # | 依据来源 | 验证内容 |
-|---|---------|---------|
-| 1 | asc-devkit `CrossCoreSetFlag_ISASI.md` | 950PR 支持模式 0/1/2/4；模式 2 支持 PIPE_V/M/MTE1/MTE2/MTE3/FIX；flagId 0-15 截断低 4bit；SyncAll 占用 [11-14] |
-| 2 | asc-devkit `CrossCoreWaitFlag_ISASI.md` | 950PR 模板参数生效；默认 modeId=0, pipe=PIPE_S；模式 0/1/2 不支持 PIPE_S |
-| 3 | asc-devkit `SetAtomicAdd.md` | 950PR 支持 bfloat16_t；数据通路 UB/L0C→GM；执行前不自动清零 GM |
-| 4 | asc-devkit `DataCopyPad_GMToUB.md` | 950PR 支持 bfloat16_t（含 mode 模板参数原型）；dstStride 950PR 为 int64_t |
-| 5 | asc-devkit `DataCopyPad_UBToGM.md` | 950PR 支持 bfloat16_t（含 mode 模板参数原型）；dstStride 950PR 为 int64_t [0, 2^40-1] |
-| 6 | apace skill `fusion.md` §3.3 | SyncAll 硬同步占用 flagId [11-14]；PUT 模式组合使用 SyncAll + CrossCoreSetFlag 有理论风险 |
-| 7 | apace skill `fusion.md` §5.4 | localMatmul=1 需 PipeBarrier<PIPE_ALL>() 修复 MTE 异常（v2 默认 0，不涉及） |
-| 8 | apace skill `communication.md` §4.2 | flagId 选择规则：Matmul 高阶 API 占用 [0,2N-1]；SyncAll 占用 [11-14] |
-| 9 | ops-nn `quant_matmul_reduce_sum_mixcore.h` | PIPELINE_NUM=4；workSpaceOffset 计算；flag 编排（AIC SetFlag<SYNC_MODE2, PIPE_FIX>(5) / AIV SetFlag<SYNC_MODE2, PIPE_MTE2>(3)）；PostCompute drain |
-| 10 | ops-nn `quant_matmul_reduce_sum_utils.h` | flag 常量定义：SYNC_AIV_AIC_FLAG=3, SYNC_AIC_AIV_FLAG=5, SYNC_MODE2=2 |
-| 11 | ops-nn `quant_matmul_reduce_sum_init_output.h` | kernel 侧 InitOutput 实现（WaitPreTaskEnd/SetNextTaskStart 串行化） |
-| 12 | v1 `apace_quant_matmul_reduce_scatter_udma_impl.h` | v1 通信编排（RunAllToAll）；localMatmul=1 + PipeBarrier；mm 输出直写 cGm |
-| 13 | v1 `quant_matmul_mx_kernel.h` | v1 ProcessSingleBatch 实现；cGmAddr 循环外设置一次；REMOTE 模式遍历所有 rank L0C 累加；无 per-tile 动态输出地址机制 |
+- **类别**：伪代码可实现性（工程一致性）
+- **严重程度**：建议
+- **设计文档位置**：DESIGN.md §0.1（`/home/l00947526/Ascend806/cann`）、PLAN.md §6.1（同左） vs environment.md（`/home/l00947526/Ascend806/cann-9.2.0`）
+- **问题描述**：environment.md 记录的 ASCEND_HOME_PATH 为 `cann-9.2.0`，DESIGN/PLAN 要求 source 的 `set_env.sh` 路径为 `cann`。若两者非同一目录（软链接），编译/运行环境可能与环境检查结论不符。
+- **审查者视角**：大概率是软链接或笔误，但环境路径是 Step 1 门禁的产物，应与设计文档严格一致。
+- **建议方案**：Developer 框架搭建阶段核实 `cann` 是否为 `cann-9.2.0` 的软链接；若是，统一文档写法；若不是，以 environment.md 为准修正 DESIGN/PLAN。
 
 ---
 
-## Architect 回应
+### 已核实通过项（无需修改，供串讲确认）
 
-> **回应模式**：串讲回应
-> **回应原则**：接受=更新 DESIGN.md；保留原设计=附文档依据；部分修改=更新受影响章节
+| # | 核实项 | 证据 |
+|---|--------|------|
+| V1 | flagId 计数器 0-15 上限**属实** | `CrossCoreWaitFlag_ISASI.md` 约束说明原文：「flagId对应的计数器计数范围为0-15。如果计数器的值超出该范围，则会异常报错，中断流程」；「每个flagId都对应一个计数器」（独立计数，§4.2 前提成立） |
+| V2 | 模式 2 在 950PR 生效且支持 `__mix__(1,1)` / KERNEL_TYPE_MIX_AIC_1_1 | `CrossCoreSetFlag_ISASI.md` 表 3 +「950PR 模板参数 modeId/pipe 生效」（WaitFlag 文档） |
+| V3 | Blaze 源码四项证据行号与语义全部属实 | 构造函数 L51-66（roundNums_ ≤ CeilDiv）、UpdateTailTile L85-101（+1 唯一增量）、GetTileIdx L190-235（迭代数 = roundNums_）、零形状早退 L168-170；另核实 `UpdateNextBatchBlockRoundParams`（L176-188）本算子不触及、kernel 侧 `needUpdateTail_` 保护单次调用（v2 kernel L375-380） |
+| V4 | v2 变更点行号引用全部吻合 | C1: kernel L404-406（设计写 403-405，含注释行，实质一致）；C2: L418-419；C3: 调用 L217 + 本体 L507-519；C4: udma_impl L362-363；C5: L399-401；C9: CommFlagIdV2 L59-66 |
+| V5 | 通道 2 配对平衡（含早退分支） | AIC `return` 早退在 Set(5) 之前（L397-398 vs L496-497），AIV `break` 在 Wait(5) 之前（L350-352 vs L359），两侧同一确定性调度器序列 → Set/Wait 次数严格相等，kernel 退出时 flagId=5 计数器归 0 |
+| V6 | 删除 PostCompute 语义完整 | v2 PostCompute 仅 drain 残留 flag 3（L507-519）；v3 删除全部 Set(3) 后无残留可 drain；其附带的「AIC 等 AIV 消费完」收尾屏障非正确性必需（kernel 完成以全部核退出为准，host 侧同步等待） |
+| V7 | 槽位寻址去取模后两侧一致 + 无越界 | AIC/AIV 公式逐字一致（baseM×baseN×(coreIdx + cubeNum×coreNum)），coreIdx=GetBlockIdx() 两侧配对（MIX_AIC_1_1）；最大写偏移 coreNum×T×baseM×baseN×2B < workspaceSize 成立（即使按问题 3 的更紧上界） |
+| V8 | 无新增 WAR/精度风险 | 槽位独占 → 每槽位写 1 次读 1 次；通道 2（Set PIPE_FIX → Wait PIPE_MTE2）保证先写后读且 fixpipe 数据对 AIV MTE2 可见；AIC 写 slot k 与 AIV 读 slot j (j≠k) 地址不相交；数值路径零变更 |
+| V9 | Blaze 组件不占 CrossCore flagId | `block_mmad_qbmm_mx.h` 仅用核内 `SetFlag<HardEvent::*>`；third_party 中使用 CrossCore 的 kernel（qbmm_streamk/qgmm_swiglu_mx）非本算子组件；亦无 Matmul 高阶 API 占用 [0, 2N-1] 的问题 |
+| V10 | host 侧 maxTilesPerCore 可实现 | v2 main.cpp L196-198 已有 `usedCoreNum/baseM/baseN` 取值先例，`m/n` 同在 tileQbmmTilingData；blockDim=usedCoreNum（<<<>>> 启动参数）与 scheduler `GetBlockNum()` 一致 |
+| V11 | flagId=5 峰值上界推导独立复核通过 | 模式 2 AIC→AIV 方向每次 Set(5) 使 AIV 侧计数器 +1；AIC 每 tile Set 恰好 1 次，全程至多 T 次；峰值 ≤ T ≤ CeilDiv ≤ 14（在校验 maxTilesPerCore ≤ 15 下），距 15 上限有 ≥1 余量，**校验充分** |
+| V12 | 无新死锁环 | AIC 唯一等待源=通道 1，AIV Phase 1 不依赖 AIC 任何状态且全核执行 SyncAll<true>；AIV Phase 2 唯一等待源=通道 2 且配对平衡；跨卡 TeamBarrier/AllToAll 逻辑未动 |
 
-### 回应概要
+### 审查方法附录
 
-| 问题 | 严重程度 | 回应类别 | 是否更新 DESIGN.md |
-|------|---------|---------|-------------------|
-| 问题 1（flagId 映射未避开 [11-14]） | 需讨论 | **接受** | ✅ 更新 §2.6/§2.8 |
-| 问题 2（WaitFlag 模板参数未指定） | 需讨论 | **接受** | ✅ 更新 §1.4/§2.5/§2.6 |
-| 问题 3（Blaze mm per-tile 动态输出地址） | 需讨论 | **接受** | ✅ 更新 §1.4/§2.5 |
-| 问题 4（reduceSum AtomicAdd 累加对象） | 需讨论 | **接受**（重大修正） | ✅ 更新 §1.1/§1.2/§1.3/§1.4/§2.5/§2.8/§2.13/§2.14 |
-| 问题 5（AIV 时分复用效率） | 建议 | **部分修改** | ✅ 补充 §2.11 流水线效率分析 |
-| 问题 6（DataCopyPad 2D 参数未说明） | 建议 | **接受** | ✅ 更新 §1.4 |
-| 问题 7（aclrtMemset 同步保证） | 建议 | **自动消解**（问题 4 修正后 yGm 无需清零） | ✅ 删除 §2.8 清零逻辑 |
-
-**统计**：接受 5 个，部分修改 1 个，自动消解 1 个，保留原设计 0 个。DESIGN.md 有更新。
-
----
-
-### 问题 1 回应：接受
-
-**回应类别**：接受（采纳方案 A）
-
-**理由**：
-apace skill `fusion.md` §3.3 和 `communication.md` §4.2 均明确说明："SyncAll 硬同步内部占用 flagId [11-14]，官方不建议同时使用 CrossCoreSetFlag 与 SyncAll 硬同步——PUT 模式组合使用两者，当 `tid % 16 ∈ [11,14]` 时存在与 SyncAll 内部 flag 冲突的理论风险，移植到新平台需重新确认。"
-
-v2 运行在 950PR（DAV_3510），每轮通信后都调用 `SyncAll<true>()`，同时使用 `CrossCoreSetFlag<0x2, PIPE_MTE3>(commFlagId)`。虽然官网两个 PUT 算子也组合使用 SyncAll + CrossCoreSetFlag 且不避开 [11-14]，但 skill 文档明确标注这是"理论风险，移植到新平台需重新确认"。v2 作为新算子开发，应采取保守策略。
-
-**采纳方案 A**：将输入校验收紧为 `headTileCnt + tailTileCnt <= 10`。可用 flagId = {0,1,2,4,6,7,8,9,10,15} 共 10 个（避开 3、5、[11-14]）。
-
-**DESIGN.md 更新**：§2.6 flagId 分配策略和 §2.8 输入校验已更新。
+- **API 文档**：`asc-devkit/docs/zh/api/SIMD-API/basic_api/sync_control/inter_core_sync/{CrossCoreSetFlag_ISASI,CrossCoreWaitFlag_ISASI,SyncAll}.md`（全文通读，含约束说明与 flagId 占用表）
+- **Blaze 源码**：`operators/apace_quant_matmul_reduce_scatter_v2/third_party/ops-tensor/include/blaze/gemm/block/block_scheduler_qbmm.h`（335 行全文）、`block_mmad_qbmm_mx.h`（flag 使用检索）
+- **v2 代码**：`quant_matmul_mx_kernel.h`（522 行全文）、`apace_quant_matmul_reduce_scatter_v2_udma_impl.h`（495 行全文）、`st/.../main.cpp`（workspace/tiling 取值检索）
 
 ---
 
-### 问题 2 回应：接受
+### Architect 回应
 
-**回应类别**：接受
+> **回应者**：Architect（串讲回应模式）
+> **总体处理**：2 项需讨论问题中，问题 1 接受（补充验证责任与备选预案）、问题 2 接受收紧重算但**数值仍超用户口径，提交用户确认**；6 项建议全部接受。DESIGN.md 已同步更新（§0.1/§1.1 C6·C8/§2.1-2.2/§3.1-3.2/§4.1/§4.2/§4.3/§4.4/§4.5/§5/§6/§7/§8/§9）。
 
-**理由**：
-`api-crosscore-sync.md` §4 平台生效性差异表明确说明："950（DAV_3510）上 modeId/pipe 模板参数生效；模式 0/1/2 **不支持 `PIPE_S`/`PIPE_ALL`**；`PIPE_S` 仅模式 4 支持。"
+#### 问题 1（usedCoreNum=32 假设）— 接受
 
-v2 运行在 950PR 上，CrossCoreWaitFlag 的默认模板参数（modeId=0, pipe=PIPE_S）违反官方约束：
-1. modeId=0 与 SetFlag 的 modeId=2（SYNC_MODE2）不匹配
-2. pipe=PIPE_S 在模式 0/1/2 下不被支持
+- 认可质疑：T11/T12 的可达性确实建立在未验证的 tiling 行为假设上，且审查者指出的反例（T12 若 `usedCoreNum ≤ 17` 则 `CeilDiv(256,17)=16 > 15` 被 C8 拒绝）成立。
+- 处理（已落入 DESIGN.md）：
+  1. §3.2 表头与表下加注「**coreNum=32 为假设值，以运行时 SWAT tiling 日志为准**」；
+  2. §8 新增 **T0 前置用例**：框架搭建阶段先用 v2 工程对 T11/T12 shape 打印 SWAT tiling 日志确认实际 `usedCoreNum`；
+  3. 预设备选方案：若实测 `usedCoreNum ≤ 17` 导致 T12 被拒，调整 shape 或 baseM/baseN 候选使 `CeilDiv ≤ 15` 成立后再执行 T12，避免开发到 Step 6 才返工。
+- 补充说明：采纳问题 3 的收紧上界后，T12 的放行条件从「`CeilDiv ≤ 14`」放宽为「`CeilDiv ≤ 15`」（即 usedCoreNum ≥ 18 即可），被误拒的窗口收窄了 1 档。
 
-ops-nn 的 `CrossCoreWaitFlag(SYNC_AIC_AIV_FLAG)` 不带模板参数能工作，是因为 ops-nn 运行在 910b（DAV_2201）上，模板参数不生效（§4："A3/910b 上不生效——CrossCoreWaitFlag 阻塞全部流水"）。v2 运行在 950PR 上，必须显式指定模板参数。
+#### 问题 2（workspace 37.7MB 超用户 ~18MB 口径）— 接受收紧重算，数值提交用户确认
 
-**采纳建议方案**：
-- AIV 等 AIC mm 完成：`CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(5)`（阻塞 reduceSum 的 DataCopyPad workspace→UB，MTE2 流水）
-- AIC 等 AIV 回压：`CrossCoreWaitFlag<SYNC_MODE2, PIPE_M>(3)`（阻塞 mm 计算，M 流水）
+- 已按问题 3 证明的严格上界 `T = CeilDiv(blockNums, coreNum)`（无 +1）重算 §3.2 全部 shape：
 
-参考 `api-crosscore-sync.md` §5.1 示例："AIC 侧：复用前等待回压 `CrossCoreWaitFlag<0x2, PIPE_M>(flagId); // PIPE_M = MAD/Cube 主流水"。
+  | shape (M,K,N) | tiling 配置 | T=CeilDiv | 收紧前（+1） | **收紧后** |
+  |---|---|---|---|---|
+  | 512,1024,512 | 128×256 | 1 | 0.26 MB | 0.13 MB |
+  | 1120,2048,1024 | 256×256 | 1 | 2.1 MB | 1.0 MB |
+  | 2048,4096,2048 | 256×256 | 1 | 4.2 MB | 2.1 MB |
+  | 16384,4096,2048 | 256×256 | 4 | 21.0 MB | **16.8 MB** ✅ |
+  | 16384,4096,2048 | 128×256 | 8 | 18.9 MB | **16.8 MB** ✅ |
+  | 16384,4096,4096 | 256×256 | 8 | 37.7 MB | **32.0 MB** ⚠️ |
 
-**DESIGN.md 更新**：§1.4 伪代码、§2.5 同步点表、§2.6 flag 编排模式图已更新。
+- 结论：收紧后 M=16384,N=2048 两种配置均降至 16.8MB（符合 ~18MB 口径）；但 **M=16384,N=4096 最大配置仍为 32.0MB，超出用户口径约 1.8 倍（>25MB）**，Architect 不代替用户放行。
+- **提交 CANNBot 向用户确认**：M=16384,N=4096 shape 的 32.0MB workspace 是否可接受；若不可接受，备选方案为对该 shape 启用 §2.2 之外的约束（如限定该 shape 走 128×256 之外的更低 blockNums 配置，或回退 v2 轮转方案）。
+- DESIGN.md §3.2 结论、§8 T12 备注已更新为上述数值，并显式标注「32.0MB 待用户确认」，不再做「整体符合约束」的扩大解释。
 
----
+#### 问题 3（上界公式可证明更紧）— 接受（采纳方案 (b) 的公式收紧 + 方案 (a) 的论证补注）
 
-### 问题 3 回应：接受
+- 认可审查者的独立推导：`roundNums_ = CeilDiv` 的核（`blockIdx_ ≤ endBlockIdx_`）永不满足 `UpdateTailTile` 的 +1 条件，满足 +1 条件的核从 `CeilDiv-1` 起跳至多回到 CeilDiv，**严格上界为 CeilDiv，无需 +1**。
+- 处理（已落入 DESIGN.md）：
+  1. §2.1 公式收紧为 `maxTilesPerCore = CeilDiv(blockNums, coreNum)`；
+  2. §2.2 证据 3 补充「+1 核与 CeilDiv 核互斥」的关键点 1，「综上」改为严格上界表述；保留「可选加固：host 按 +1 分配」的防御性注释（默认不启用）；
+  3. §4.3 校验语义同步收紧：`maxTilesPerCore ≤ 15` 现在门控 `CeilDiv ≤ 15`，**T=15 边界 shape 可合法放行**，消除原校验保守 1 档的误拒；
+  4. §8 T13 增补「`CeilDiv = 15` 恰好放行」的边界用例；
+  5. §3.2 按收紧公式重算（见问题 2 回应表），每核节省 1 槽（32 核 256×256 时约 4MB）。
+- 选择 (b) 而非审查者倾向的 (a) 的理由：公式收紧直接服务问题 2 的用户约束符合性（37.7→32.0MB），且严格上界已由双方独立推导交叉验证，无正确性风险；防御余量以注释形式保留。
 
-**回应类别**：接受
+#### 问题 4（SyncAll flagId 占用引用不精确）— 接受
 
-**理由**：
-审查 v1 `quant_matmul_mx_kernel.h` 的 `ProcessSingleBatch` 实现确认：
-- `cGmAddr_` 在 `ResetGmAddr()` 中设置一次（基于 `params.mmadParams.cGmAddr`）
-- `gmC` Tensor 在 `ProcessSingleBatch()` 循环外创建一次：`auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(cGmAddr_), layoutC);`
-- per-tile 通过 `gmC.Slice(Te::MakeCoord(mPos, nPos), Te::MakeShape(...))` 切片
-- **不存在 `mm.cGmAddr = ...` 这样的成员变量赋值 API**
+- 认可核实结果：`SyncAll.md` 表 3（3510 架构）`isAIVOnly=true` 仅占 AIV flagId 14；v2/v3 实际调用 `SyncAll<true>()`（v2 udma_impl.h L299），真实占用只有 14。
+- 处理（已落入 DESIGN.md）：§4.1 表格、§4.2 flagId 空间独立条目、§4.4 开头均修正为「实际占用 AIV flagId 14（SyncAll.md 表 3 已核实）；本设计**保守避开 [11-14]**」，并注明「若未来改用 `SyncAll<false>`（`__mix__(1,1)`）需重新评估 AIC 侧 11/12/13 冲突」。保守方向维持不变，仅修正事实陈述。
 
-伪代码 `mm.cGmAddr = workspace + workSpaceOffset` 的写法过于简化，Developer 可能误以为只需设置成员变量。实际需要改造 `ProcessSingleBatch` 的循环结构。
+#### 问题 5（C6 plumbing 清理范围未列全）— 接受
 
-ops-nn 的 `AscendC::Matmul` 用 `mm.GetTensorC(mmOutGm[workSpaceOffset], 0, sequentialWrite)` 在 `mm.Iterate()` 循环内动态指定输出地址——这是 AscendC::Matmul 原生支持的。但 v2 使用 Blaze BlockMmad，其输出地址通过 Tensor 句柄控制，实现方式不同。
+- 认可质疑：变更清单完整性是 v3「外科手术式优化」的核心价值，半迁移会误导后续维护者。
+- 处理（已落入 DESIGN.md）：§1.1 C6 明确决策为**全链删除**（非保留死字段），完整列出链路：`tiling_data.h` 字段 → `main.cpp` 赋值（v2 L201）→ `InitBaseParams`（udma_impl.h L421）→ `baseParams_.pipelineNum`（L197）→ `SetupParams` → `LocalParams.pipelineNum`（kernel L136）→ kernel 成员 `pipelineNum_`（L193）及两处赋值代码；§7 文件清单 tiling_data.h 条目同步标注全链清理。
 
-**改造方式**（已写入 DESIGN.md §1.4/§2.5）：
+#### 问题 6（AIC 零形状早退跳过通道 1 兜底 drain）— 接受（补充论证，无代码改动）
 
-```cpp
-// ProcessSingleBatch while 循环内，mmad 调用前：
-if (cubeNum >= PIPELINE_NUM) {
-    CrossCoreWaitFlag<SYNC_MODE2, PIPE_M>(SYNC_AIV_AIC_FLAG);  // 回压
-}
-// ... 通信等待逻辑（与 v1 相同）...
+- 认可质疑：§4.5 的配平论证前提未覆盖早退分支，存在论证缺口；同时确认此为 **v2 已有行为、非 v3 回归**。
+- 处理（已落入 DESIGN.md §4.5 新增条目）：
+  1. 早退分支下通道 1 残留计数 ≤ commTurn ≤ 10，不超 0-15 上限，**无溢出风险**；
+  2. 残留计数是否跨 launch 持久以硬件行为为准——v2 12/12 精度 PASS（每用例独立进程/launch）实证未暴露问题，大概率硬件每次 kernel launch 初始化调度模块计数器；
+  3. v3 保持行为完全不变，记录为**已知行为**，无需代码改动；§8 T14 标注其覆盖该早退分支。
 
-// ★ v2 改造点：per-tile 动态创建 workspace Tensor（不再用循环外的 gmC.Slice）
-uint64_t workSpaceOffset = baseM * baseN * (coreIdx + (cubeNum % PIPELINE_NUM) * coreNum);
-auto layoutCTile = MakeLayoutC{}(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape));
-auto gmCWorkspace = Te::MakeTensor(
-    Te::MakeMemPtr<Te::Location::GM>(
-        workspaceGmAddr_ + workSpaceOffset * sizeof(CType)),
-    layoutCTile);
+#### 问题 7（C8 校验顺序与取值来源）— 接受
 
-// mmad 输出到 gmCWorkspace（不再 Slice，workspace slot 就是 baseM×baseN 的整块）
-mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias,
-        gmCWorkspace, singleShape, remoteRankCnt);
+- 认可质疑：两点均属「设计未写明但显然如此」的缺口，且 T13 是验收用例，校验顺序直接决定其报错行为。
+- 处理（已落入 DESIGN.md §1.1 C8）：
+  1. **执行顺序**：校验在 SWAT tiling 完成之后、workspace `aclrtMalloc` **之前**执行（避免大 shape 先分配 ~138MB 再拒绝，报错偏离本意）；
+  2. **取值来源**：`maxTilesPerCore` 的四个输入（m、n、baseM、baseN、usedCoreNum）全部取自 SWAT tiling 最终输出 `tilingData.tileQbmmTilingData`（v2 main.cpp L196-198 已有取数先例），不使用 raw `M/4` 或 baseM 候选默认值 256。
 
-CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_AIC_AIV_FLAG);  // mm 完成
-cubeNum++;
-```
+#### 问题 8（CANN 路径不一致）— 接受，已核实为软链接
 
-**关键改造点**：
-1. `workspaceGmAddr_` 作为新成员变量，在 `ResetGmAddr()` 中从 `params.mmadParams.cGmAddr` 绑定（host 侧传入 workspace 地址）
-2. while 循环内 per-tile 创建 `gmCWorkspace` Tensor（基于 workspace 基址 + workSpaceOffset）
-3. `gmCWorkspace` 不需要 Slice（workspace slot 就是 baseM×baseN 的连续块，无 stride）
-4. A/B 的切片逻辑不变（仍基于 mPos/nPos 从 gmA/gmB Slice）
-5. Blaze `Te::MakeTensor` 是常规函数，可在循环内任意位置调用，无 API 约束
+- 已实际核实：`/home/l00947526/Ascend806/cann` 是指向 `/home/l00947526/Ascend806/cann-9.2.0` 的**软链接**（`readlink -f` 解析一致），二者等价，无环境不一致风险。
+- 处理（已落入 DESIGN.md §0.1）：CANN 路径统一写为 `cann-9.2.0`，并注明 `cann` 为已核实软链接；建议 PLAN.md 同步统一（Developer 框架搭建阶段执行）。
 
-**workspace slot 内存布局**：每个 slot 是 `baseM × baseN × sizeof(bfloat16_t)` 的连续块，无行间距 stride。`workSpaceOffset` 以元素个数为单位（非字节），`Te::MakeMemPtr` 构造时乘以 `sizeof(CType)` 转为字节偏移。
+#### 回应统计
 
-**DESIGN.md 更新**：§1.4 伪代码和 §2.5 AIC Run() 流程已补充改造说明。
+| 类别 | 数量 | 问题编号 |
+|------|------|----------|
+| 接受（文档/设计已更新） | 7 | 1、3、4、5、6、7、8 |
+| 接受重算 + 提交用户确认 | 1 | 2（32.0MB > ~18MB 口径，待用户裁决） |
+| 保留原设计 | 0 | — |
 
----
+**遗留事项**：
+1. 【用户确认】M=16384,N=4096 workspace 32.0MB 是否可接受（问题 2）；
+2. 【开发期验证】T0 前置用例确认 T11/T12 实际 usedCoreNum（问题 1）；
+3. 【PLAN 同步】CANN 路径统一写法（问题 8，软链接已核实，仅文档一致性）。
 
-### 问题 4 回应：接受（重大设计修正）
+## 设计串讲仲裁
 
-**回应类别**：接受
+**仲裁日期**：2026-08-12
+**仲裁人**：CANNBot（提交用户裁决）
 
-**这是本次串讲最重要的发现。** 经详细分析 v1 代码和 ops-nn 参考实现，确认 v2 原设计的 AtomicAdd 是冗余的。
+### 遗留事项 1：workspace 32.0MB 超出口径（问题 2）
 
-**分析过程**：
+- **裁决**：✅ **用户接受 32.0MB，但标记为遗留风险**
+- **裁决依据**：用户明确选择「接受但标记遗留」——M=16384,N=4096 大 shape workspace 32.0MB 可用，后续版本再优化 workspace 复用
+- **执行要求**：PLAN.md 遗留事项中记录该风险；后续版本（local 后置/fragmentTensor 优化版）需重新评估 workspace 复用策略
 
-1. **v1 REMOTE 模式的 L0C 累加语义**（v1 `quant_matmul_mx_kernel.h` `ProcessSingleBatch` REMOTE 分支）：
-   ```cpp
-   for (uint64_t rank = 0; rank < rankSize; rank++) {
-       // 从 Win 区读各 rank 的 A，切片
-       auto gmBlockA = gmA.Slice(Te::MakeCoord(actualMPos, kPos), ...);
-       // ...
-       mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC,
-           singleShape, remoteRankCnt);
-       remoteRankCnt++;
-   }
-   ```
-   `mmadOp_` 的最后一个参数 `remoteRankCnt` 控制 L0C 累加：`0` = reset，递增 = 累加，计满 `splitKNum` 触发单次 fixpipe。v1 `SetupParams` 中 `localMatmul==0` 时 `splitKNum = rankSize`（=4），所以 REMOTE 模式遍历 4 个 rank，L0C FP32 累加 4 次，最后一次触发 fixpipe 写 gmBlockC。
-
-2. **v2 的 AIC mm 组件与 v1 完全相同**（DESIGN.md §2.2："Blaze 组件不变，仅 mm 输出地址从 yGm 改为 workspace"）。v2 默认 `localMatmul=0`，所以 v2 的 AIC mm 同样在 L0C 中跨 rank 累加所有 4 个 rank 的 A×B 部分和，最后一次 fixpipe 写 workspace。
-
-3. **workspace 中已经是最终结果**：`workspace[slot] = Σ_{i=0}^{rankSize-1} mm(A_i[my_M_seg] × B_i)`，这是 L0C FP32 全精度累加后截断为 BF16 的结果。
-
-4. **v2 多核切分无位置重叠**：不同 AIC 核计算不同的 M×N tile，写到 workspace 的不同 slot（`workSpaceOffset = baseM * baseN * (coreIdx + (cubeNum % PIPELINE_NUM) * coreNum)`）。reduceSum 从 workspace 读 → 写 yGm 的 `[mPos:mPos+baseM, nPos:nPos+baseN]` 区域，不同 AIV 核写 yGm 不同位置，无重叠。
-
-**结论**：v2 的 reduceSum **不需要 AtomicAdd**，只需 `DataCopyPad(workspace → yGm)`。原设计中的 AtomicAdd 是基于错误假设——误以为 workspace 中是 per-rank 的部分和，需要 reduceSum 跨 rank 累加。实际上 AIC mm 已经在 L0C 中完成了跨 rank 累加。
-
-**设计修正**：
-1. reduceSum 简化为 `DataCopyPad(workspace→UB) + DataCopyPad(UB→yGm)`，去掉 `SetAtomicAdd/SetAtomicNone`
-2. yGm 不需要 host 侧 `aclrtMemset` 清零（AtomicAdd 前提条件不再适用）→ **问题 7 自动消解**
-3. 消除 AtomicAdd 的 BF16 read-modify-write 精度风险
-4. 简化 flag 编排（mm 完成 + 回压通道仍需保留，但 yGm 清零同步保证不再需要）
-5. AIV reduceSum 循环次数 = AIC mm tile 总数（通过 tilingData 传入），Set/Wait 严格配对
-
-**localMatmul 模式调整**：
-- `localMatmul=0`（默认）：REMOTE-only，L0C 跨 rank 累加 + 单次 fixpipe → workspace，reduceSum = DataCopyPad
-- `localMatmul=1`（可选）：改为映射 `MatmulMode::DEFERRED_SYNC`（per-tile 内 local A×B → L0C reset → wait_flag → remote A×B → L0C 累加 → 单次 fixpipe → workspace），reduceSum 仍 = DataCopyPad
-- **不再支持 v1 的 localMatmul=1（LOCAL+REMOTE+AtomicAdd to yGm）**，因为 v2 的 mm 输出到 workspace 而非 yGm，AtomicAdd to yGm 的语义不适用
-
-**文档依据**：
-- apace skill `fusion.md` §5.1 三模式定义表：mode 0（REMOTE-only）"L0C 累加 → 单次 fixpipe → C"，不需要 AtomicAdd
-- apace skill `fusion.md` §5.3 L0C 容量约束："所有模式下，单个 tile 内各 rank 的部分和都累加进同一块 L0C FP32 累加器"
-- v1 `quant_matmul_mx_kernel.h` REMOTE 分支：for rank 循环 + mmadOp_(..., remoteRankCnt) L0C 累加
-- v1 `apace_quant_matmul_reduce_scatter_udma_impl.h` `SetupParams`：`localMatmul==0` → `splitKNum = rankSize`
-
-**DESIGN.md 更新**：§1.1 数学公式、§1.2 API 映射（去掉 SetAtomicAdd）、§1.3 数据流、§1.4 伪代码、§2.5 同步点表、§2.8 Host 侧（去掉 yGm 清零）、§2.13 精度策略、§2.14 差异对比表均已更新。
-
----
-
-### 问题 5 回应：部分修改
-
-**回应类别**：部分修改（保留时分复用设计 + 补充效率分析）
-
-**理由**：
-时分复用设计（先通信后 reduceSum）是 v2 3 级流水架构的核心特征，简化了 flag 编排（避免了通信和 reduceSum 交替执行时的 flag 通道复用复杂性）。AIC 在 AIV 通信期间可完成 PIPELINE_NUM=4 个 mm tile，之后阻塞等待 AIV 切换到 reduceSum 释放回压。
-
-**流水线效率分析**（已补充到 DESIGN.md §2.11）：
-- AIC 阻塞条件：`cubeNum >= PIPELINE_NUM=4` 时 WaitFlag(3) 回压
-- AIC 阻塞持续时间 = AIV 完成剩余通信轮次的时间 + AIV 切换到 reduceSum 的时间
-- 最坏情况：commTurn 较大时，AIC 在前 4 个 tile 后阻塞，直到 AIV 完成全部 commTurn 轮通信
-- 缓解因素：AIV 通信每轮耗时较短（UDMA PUT + SyncAll），且 AIC mm 单 tile 耗时通常 ≥ 通信单轮耗时
-- 回退路径：如果性能不达标，可回退到 v1 串行模式（localMatmul=1 + AtomicAdd 直写 yGm，开发历史数据 143us）
-
-**保留时分复用设计的理由**：
-1. 简化 flag 编排——通信就绪通道用 per-tile flagId，mm 完成/回压通道用计数信号量，三通道独立
-2. 如果改为交替执行（每轮通信后做 1 个 tile reduceSum），需要通信就绪和 mm 完成通道交替使用同一 flagId，大幅增加编排复杂度
-3. v2 的目标是验证 3 级流水架构的可行性，性能不达标可回退 v1
-
-**DESIGN.md 更新**：§2.11 已补充流水线效率分析。
-
----
-
-### 问题 6 回应：接受
-
-**回应类别**：接受
-
-**理由**：
-reduceSum 的 DataCopyPad 参数确实需要在伪代码中明确，Developer 不应自行推导。结合问题 4 的修正（reduceSum 不需要 AtomicAdd），DataCopyPad 参数设置如下（已写入 DESIGN.md §1.4）：
-
-```cpp
-// workspace → UB（连续块，1D 搬运）
-// workspace slot 是 baseM×baseN 的连续块，无 stride
-DataCopyExtParams cpIn{1, baseM * baseN * sizeof(BF16), 0, 0, 0};
-DataCopyPadExtParams<bfloat16_t> padIn{false, 0, 0, 0};
-DataCopyPad(reduceSumBuf, workspaceGm[workSpaceOffset], cpIn, padIn);
-
-// UB → yGm（2D 搬运，无 AtomicAdd）
-// yGm 是 C[M/rankSize × N] 的二维矩阵，每个 tile 写入 [mPos:mPos+baseM, nPos:nPos+baseN]
-DataCopyExtParams cpOut{
-    baseM,                                          // blockCount = baseM（按行搬运）
-    baseN * sizeof(bfloat16_t),                     // blockLen = 每行字节数
-    (AlignUp(baseN, 16) - baseN) * sizeof(bfloat16_t) / 32,  // srcStride (UB 侧对齐填充)
-    (N - baseN) * sizeof(bfloat16_t),               // dstStride (GM 侧行间距)
-    0
-};
-DataCopyPad(yGm[outOffset], reduceSumBuf, cpOut);
-// 无 SetAtomicAdd/SetAtomicNone（问题 4 修正后不需要）
-```
-
-参考 ops-nn `quant_matmul_reduce_sum.h` `DataCopyPad2D` 和 `quant_matmul_reduce_sum_mixcore.h` `DataCopyOut` 的参数设置。注意 950PR 上 `dstStride` 类型为 `int64_t`（依据 `DataCopyPad_UBToGM.md`）。
-
-**DESIGN.md 更新**：§1.4 伪代码已补充 DataCopyPad 参数。
-
----
-
-### 问题 7 回应：自动消解
-
-**回应类别**：自动消解（问题 4 修正后 yGm 无需清零）
-
-**理由**：
-问题 4 的修正（reduceSum 不需要 AtomicAdd）直接消解了本问题。yGm 不再需要 `aclrtMemset` 清零，因为：
-1. reduceSum 使用普通 `DataCopyPad(UB → yGm)`（非 AtomicAdd），直接覆盖 yGm 旧值
-2. 多核切分无位置重叠，不同 AIV 核写 yGm 不同区域
-3. 无需 `aclrtMemset` 与 kernel launch 的同步保证
-
-**DESIGN.md 更新**：§2.8 Host 侧已删除 yGm 清零逻辑，§2.13 精度策略已更新（去掉 yGm 清零前提条件）。
-
----
-
-### 回应总结
-
-本次串讲共回应 7 个问题：
-- **接受 5 个**（问题 1、2、3、4、6）：均已更新 DESIGN.md 对应章节
-- **部分修改 1 个**（问题 5）：补充流水线效率分析，保留时分复用设计
-- **自动消解 1 个**（问题 7）：问题 4 修正后 yGm 无需清零
-- **保留原设计 0 个**
-
-**最重要的修正**：问题 4 的 AtomicAdd 冗余发现。v2 的 AIC mm（Blaze QuantMatmul REMOTE 模式）已在 L0C 中跨 rank FP32 累加，workspace 中是最终结果，reduceSum 只需 DataCopyPad 不需 AtomicAdd。这一修正：
-1. 简化了 reduceSum 实现（去掉 SetAtomicAdd/SetAtomicNone）
-2. 消除了 yGm 清零需求（去掉 aclrtMemset 及其同步保证）
-3. 消除了 AtomicAdd 的 BF16 read-modify-write 精度风险
-4. 简化了 flag 编排（mm 完成 + 回压通道不变，但 yGm 清零同步不再需要）
-
-DESIGN.md 已根据以上回应更新。
+### 遗留事项 2/3
+- T0 前置用例验证 usedCoreNum：由 Developer 在开发早期执行
+- CANN 路径写法同步：由 Developer 在实现时统一
