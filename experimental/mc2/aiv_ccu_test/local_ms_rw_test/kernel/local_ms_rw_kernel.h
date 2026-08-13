@@ -100,6 +100,7 @@ __aicore__ inline void LocalMsRw<T>::Init(uint32_t mode0, uint32_t enableWarmup,
 
     for (uint32_t i = 0; i < CCUA_NUM; i++) {
         msGm_[i].SetGlobalBuffer((__gm__ T *)msAddrs[i]);
+        msGm_[i].SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     }
     timeGm_.SetGlobalBuffer((__gm__ uint64_t *)timeAddr);
     if (mode0_ == MODE_DUAL_CORE_RW) {
