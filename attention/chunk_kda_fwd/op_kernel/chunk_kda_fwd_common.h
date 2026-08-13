@@ -199,12 +199,10 @@ __aicore__ inline void RunFrontEnd(
     if (!tiling.computeGateInPrepare) {
         SyncAll<false>();
     }
-    GM_ADDR uSeed = (tiling.fusePostWu || tiling.fusePostWuIntoFwdH)
-        ? addresses.u
-        : addresses.uSeed;
+    GM_ADDR uSeed = (tiling.fusePostWu || tiling.fusePostWuIntoFwdH) ? addresses.u : addresses.uSeed;
 
     KdaPrepare::RunChunkKdaPrepare<SAFE_GATE, T, GK_T, BETA_T,
-        TilingData, COMPILE_BT, COMPILE_K, COMPILE_V>(
+                                   TilingData, COMPILE_BT, COMPILE_K, COMPILE_V>(
         q, k, v, addresses.gk, g, aLog, dtBias, beta, initialState,
         cuSeqlens, chunkIndices, aqk, akk, addresses.qg,
         addresses.qgScaled, addresses.w, uSeed, addresses.kg,
@@ -303,7 +301,7 @@ __aicore__ inline void RunGeneric(
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
     TPipe pipe;
     RunFrontEnd<SAFE_GATE, T, float, BETA_T, TilingData,
-        COMPILE_BT, COMPILE_K, COMPILE_V>(
+                COMPILE_BT, COMPILE_K, COMPILE_V>(
         q, k, v, g, beta, aLog, dtBias, initialState, cuSeqlens,
         chunkIndices, aqk, akk, addresses, userWorkspace, tiling, pipe);
     if (!tiling.isVarLen && tiling.seqlen % tiling.chunkSize == 0) {
@@ -320,7 +318,7 @@ __aicore__ inline void RunGeneric(
     {
         TPipe pipe;
         RunFrontEnd<SAFE_GATE, T, float, BETA_T, TilingData,
-            COMPILE_BT, COMPILE_K, COMPILE_V>(
+                    COMPILE_BT, COMPILE_K, COMPILE_V>(
             q, k, v, g, beta, aLog, dtBias, initialState, cuSeqlens,
             chunkIndices, aqk, akk, addresses, userWorkspace, tiling, pipe);
     }

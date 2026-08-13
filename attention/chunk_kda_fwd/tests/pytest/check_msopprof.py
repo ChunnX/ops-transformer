@@ -6,6 +6,7 @@
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import argparse
 import csv
@@ -64,8 +65,7 @@ def main():
             f"min/mean/max={minimum:.3f}/{mean:.3f}/{maximum:.3f} ms"
         )
     print(
-        f"end_to_end_device_max={maximum_total:.3f} ms "
-        f"hard_limit={args.max_ms:.3f} ms"
+        f"end_to_end_device_max={maximum_total:.3f} ms hard_limit={args.max_ms:.3f} ms"
     )
     if maximum_total > args.max_ms:
         raise SystemExit(
