@@ -57,6 +57,7 @@ protected:
     static constexpr size_t IDX_INPUT_X1_SCALE = 4;
     static constexpr size_t IDX_INPUT_X2_SCALE = 5;
     static constexpr size_t IDX_OUTPUT_Y = 0;
+    static constexpr size_t IDX_ATTR_GROUP = 0;
     static constexpr size_t IDX_ATTR_WORLD_SIZE = 1;
     static constexpr size_t IDX_ATTR_Y_DTYPE = 3;
     static constexpr size_t IDX_ATTR_X1_QUANT_MODE = 4;
@@ -79,12 +80,14 @@ protected:
     static constexpr uint64_t MX_GROUP_K = 32;
     static constexpr uint64_t MIN_WORLD_SIZE = 2;
     static constexpr uint64_t MAX_WORLD_SIZE = 16;
+    static constexpr uint64_t MAX_GROUP_NAME_LEN = 128;
 
     ge::graphStatus CheckTensorAttrs()
     {
         const char *opName = context_->GetNodeName();
-        if (!CheckInputDescs(opName) || !CheckWorldSizeAttr(opName) || !CheckTensorFormats(opName) ||
-            !CheckTensorDtypes(opName) || !CheckQuantAndYDtypeAttr(opName) || !CheckOtherAttrs(opName)) {
+        if (!CheckInputDescs(opName) || !CheckWorldSizeAttr(opName) || !CheckGroupAttr(opName) ||
+            !CheckTensorFormats(opName) || !CheckTensorDtypes(opName) || !CheckQuantAndYDtypeAttr(opName) ||
+            !CheckOtherAttrs(opName)) {
             return ge::GRAPH_FAILED;
         }
         return ge::GRAPH_SUCCESS;
@@ -122,6 +125,22 @@ protected:
         bool isPowerOfTwo = (worldSize & (worldSize - 1)) == 0;
         if (worldSize < MIN_WORLD_SIZE || worldSize > MAX_WORLD_SIZE || !isPowerOfTwo) {
             OP_LOGE_WITH_INVALID_ATTR(opName, "world_size", std::to_string(worldSize).c_str(), "2/4/8/16");
+            return false;
+        }
+        return true;
+    }
+
+    bool CheckGroupAttr(const char *opName)
+    {
+        auto *groupPtr = context_->GetAttrs()->GetAttrPointer<char>(IDX_ATTR_GROUP);
+        if (!groupPtr) {
+            OP_LOGE_WITH_INVALID_INPUT(opName, "group");
+            return false;
+        }
+        size_t groupLen = std::strlen(groupPtr);
+        if (groupLen > MAX_GROUP_NAME_LEN) {
+            OP_LOGE_WITH_INVALID_ATTR(opName, "group", std::to_string(groupLen).c_str(),
+                                      ("length in [0, " + std::to_string(MAX_GROUP_NAME_LEN) + "]").c_str());
             return false;
         }
         return true;
