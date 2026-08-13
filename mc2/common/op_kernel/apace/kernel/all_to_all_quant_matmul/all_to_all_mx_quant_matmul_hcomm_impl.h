@@ -90,7 +90,7 @@ class AllToAllMxQuantMatmulHcommImpl {
 public:
     __aicore__ inline AllToAllMxQuantMatmulHcommImpl(AlltoAllMatmulTilingDataType *tilingData,
                                                  AscendC::TPipe *tPipe)
-        : tilingData_(tilingData), tPipe_(tPipe) {}
+        : tilingData_(tilingData) {}
 
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out,
                                 GM_ADDR x1_scale, GM_ADDR x2_scale, GM_ADDR workspaceGM);
@@ -127,7 +127,6 @@ public:
 
 private:
     AlltoAllMatmulTilingDataType *tilingData_;
-    AscendC::TPipe *tPipe_;
 
     GM_ADDR x1_;
     GM_ADDR x2_;
@@ -188,14 +187,6 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
     commState_.hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(AlltoAllMatmulTilingDataType, mc2CcTiling)));
     rankId_ = commState_.hccl_.GetRankId();
     rankDim_ = commState_.hccl_.GetRankDim();
-
-    if (AscendC::GetBlockIdx() == 0) {
-        AscendC::PRINTF("commTiling.splitAxisTileCnt is %u, ", commTiling.splitAxisTileCnt);
-        AscendC::PRINTF("commTiling.splitAxisTileSize is %u, ", commTiling.splitAxisTileSize);
-        AscendC::PRINTF("commTiling.splitAxisTailCnt is %u, ", commTiling.splitAxisTailCnt);
-        AscendC::PRINTF("commTiling.splitAxisTailSize is %u, ", commTiling.splitAxisTailSize);
-        AscendC::PRINTF("commTiling.nonSplitAxisSize is %u\n", commTiling.nonSplitAxisSize);
-    }
 
     uint64_t originalRankForComm = commTiling.nonSplitAxisSize / rankDim_;
     uint64_t rankForComm = originalRankForComm;
@@ -285,8 +276,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
         mmTile.baseM, mmTile.baseN, mmTile.mTailTile, mmTile.nTailTile,
         mmTile.mBaseTailSplitCnt, mmTile.nBaseTailSplitCnt, mmTile.mTailMain, mmTile.nTailMain};
 
-    QBMMTiling qbmmParams{mmTile.baseM, mmTile.baseN, mmTile.baseK, mmTile.dbL0c,
-                           isBias_ ? QBMMTiling::BIAS_ENABLED : QBMMTiling::BIAS_DISABLED};
+    QBMMTiling qbmmParams{mmTile.baseM, mmTile.baseN, mmTile.baseK, mmTile.dbL0c, isBias_};
 
     out = {problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, localParams};
 }
