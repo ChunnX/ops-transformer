@@ -41,6 +41,7 @@
 #include "../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
 #endif
 
+#define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace AttentionToFFNImpl {
 constexpr uint8_t BUFFER_NUM = 2; // 多Buf
 constexpr uint32_t UB_ALIGN = 32; // UB按32字节对齐
