@@ -514,6 +514,7 @@ void FiaTilingNonQuant::FillTilingBaseParams()
     tilingData_.kvStrideParams.set_keyBnStride(0);
     tilingData_.kvStrideParams.set_valueBnStride(0);
     tilingData_.kvStrideParams.set_keyRopeBnStride(0);
+    tilingData_.baseParams.set_needInit(fiaInfo_->needInit);
 }
 
 void FiaTilingNonQuant::FillTilingPageAttenParams()
