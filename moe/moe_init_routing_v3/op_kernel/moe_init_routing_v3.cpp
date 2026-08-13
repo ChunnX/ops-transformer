@@ -12,29 +12,28 @@
  * \file moe_init_routing_v3.cpp
  * \brief
  */
-#include "moe_v3_mrgsort_out.h"
-#include "moe_v3_mrgsort.h"
-#include "moe_v3_sort_one_core.h"
-#include "moe_v3_sort_multi_core.h"
+#include "moe_v3_mrgsort_out_kernel.h"
+#include "moe_v3_mrgsort_kernel.h"
+#include "moe_v3_sort_one_core_kernel.h"
+#include "moe_v3_sort_multi_core_kernel.h"
 #include "moe_v3_gather_sort_multi_core.h"
-#include "moe_v3_expert_tokens_count.h"
-#include "moe_v3_row_idx_gather.h"
-#include "moe_v3_gather_out.h"
-#include "moe_v3_gather_dynamic_quant.h"
-#include "moe_v3_gather_static_quant.h"
+#include "moe_v3_expert_tokens_count_kernel.h"
+#include "moe_v3_row_idx_gather_kernel.h"
+#include "moe_v3_gather_out_kernel.h"
+#include "moe_v3_gather_dynamic_quant_kernel.h"
+#include "moe_v3_gather_static_quant_kernel.h"
 #include "moe_v3_full_load.h"
-#include "moe_v3_full_load_dynamic_quant.h"
-#include "moe_v3_full_load_static_quant.h"
-#include "moe_v3_full_load_unquantized.h"
+#include "moe_v3_full_load_dynamic_quant_kernel.h"
+#include "moe_v3_full_load_static_quant_kernel.h"
+#include "moe_v3_full_load_unquantized_kernel.h"
 #include "moe_v3_sort_actual_expert.h"
 #include "moe_v3_sort_multi_core_performance.h"
 #include "moe_v3_row_idx_gather_droppad_dynamic.h"
-#include "moe_v3_row_idx_gather_droppad.h"
-#include "moe_v3_gather_out_droppad.h"
+#include "moe_v3_row_idx_gather_droppad_kernel.h"
+#include "moe_v3_gather_out_droppad_kernel.h"
 #include "moe_v3_gather_droppad_static_quant.h"
 #include "moe_v3_full_load_cut_origin_t.h"
 #include "moe_v3_cut_origin_t.h"
-
 
 /*
  * 高性能模板, 全在模板

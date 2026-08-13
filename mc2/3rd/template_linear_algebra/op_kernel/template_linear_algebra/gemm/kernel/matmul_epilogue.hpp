@@ -13,7 +13,7 @@
 
 #include "../../catlass.hpp"
 #include "../../arch/resource.hpp"
-#include "../../arch/cross_core_sync.hpp"
+#include "../../arch/third_cross_core_sync.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
 
@@ -64,8 +64,13 @@ public:
         CATLASS_DEVICE
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA const &layoutA_, GM_ADDR ptrB_,
                LayoutB const &layoutB_, GM_ADDR ptrWorkspace_, EpilogueParams const &epilogueParams_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              ptrWorkspace(ptrWorkspace_), epilogueParams(epilogueParams_)
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrWorkspace(ptrWorkspace_),
+              epilogueParams(epilogueParams_)
         {
         }
     };

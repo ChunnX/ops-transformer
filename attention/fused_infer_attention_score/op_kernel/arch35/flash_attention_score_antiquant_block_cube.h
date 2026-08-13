@@ -15,7 +15,7 @@
 
 #ifndef FLASH_ATTENTION_SCORE_ANTIQUANT_BLOCK_CUBE_H_
 #define FLASH_ATTENTION_SCORE_ANTIQUANT_BLOCK_CUBE_H_
-#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
+#include "../../../common/op_kernel/arch35/common_flash_attention_score_tiling_regbase_arch35.h"
 using namespace regbaseutil;
 using namespace optiling;
 namespace BaseApi {
@@ -112,9 +112,9 @@ ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitLocalBuffer()
 {
     mm1AL1Buffers.Init((*l1BufferManagerPtr), mm1LeftSize);
-    l0aBufferManager.Init(this->tPipe, L0A_SIZE * KB_TO_BYTES); // 初始化l0a的总内存为64K
-    l0bBufferManager.Init(this->tPipe, L0B_SIZE * KB_TO_BYTES); // 初始化l0b的总内存为64K
-    l0cBufferManager.Init(this->tPipe, L0C_SIZE * KB_TO_BYTES); // 初始化l0c的总内存为256K
+    l0aBufferManager.Init(this->tPipe, L0A_SIZE * KB_TO_BYTES);                        // 初始化l0a的总内存为64K
+    l0bBufferManager.Init(this->tPipe, L0B_SIZE * KB_TO_BYTES);                        // 初始化l0b的总内存为64K
+    l0cBufferManager.Init(this->tPipe, L0C_SIZE * KB_TO_BYTES);                        // 初始化l0c的总内存为256K
     mmL0ABuffers.Init(l0aBufferManager, (L0A_SIZE / DOUBLE_BUFFER_NUM) * KB_TO_BYTES); // 双缓冲 l0a内存大小为32K
     mmL0BBuffers.Init(l0bBufferManager, (L0B_SIZE / DOUBLE_BUFFER_NUM) * KB_TO_BYTES); // 双缓冲 l0b内存大小32K
     mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / DOUBLE_BUFFER_NUM) * KB_TO_BYTES); // 双缓冲 l0c内存大小128K
@@ -136,14 +136,14 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::CopyToL1Nd
 {
     Nd2NzParams gm2L1Nd2NzParams;
 
-    gm2L1Nd2NzParams.ndNum = ndNum;                         // ND矩阵的个数
-    gm2L1Nd2NzParams.nValue = nValue;                       // 单个ND矩阵的实际行数，单位为元素个数
-    gm2L1Nd2NzParams.dValue = dValue;                       // 单个ND矩阵的实际列数，单位为元素个数
-    gm2L1Nd2NzParams.srcNdMatrixStride = srcNdMatrixStride; // 相邻ND矩阵起始地址之间的偏移， 单位为元素个数
-    gm2L1Nd2NzParams.srcDValue = srcDValue; // 同一个ND矩阵中相邻行起始地址之间的偏移， 单位为元素个数
+    gm2L1Nd2NzParams.ndNum = ndNum;                                  // ND矩阵的个数
+    gm2L1Nd2NzParams.nValue = nValue;                                // 单个ND矩阵的实际行数，单位为元素个数
+    gm2L1Nd2NzParams.dValue = dValue;                                // 单个ND矩阵的实际列数，单位为元素个数
+    gm2L1Nd2NzParams.srcNdMatrixStride = srcNdMatrixStride;          // 相邻ND矩阵起始地址之间的偏移， 单位为元素个数
+    gm2L1Nd2NzParams.srcDValue = srcDValue;                          // 同一个ND矩阵中相邻行起始地址之间的偏移， 单位为元素个数
     gm2L1Nd2NzParams.dstNzC0Stride = (dstNzC0Stride + 15) >> 4 << 4; // 15 >> 4 << 4: 16位对齐
-    gm2L1Nd2NzParams.dstNzNStride = 1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
-    gm2L1Nd2NzParams.dstNzMatrixStride = dstNzMatrixStride; // 两个NZ矩阵，起始地址之间的偏移，单位为元素数量
+    gm2L1Nd2NzParams.dstNzNStride = 1;                               // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
+    gm2L1Nd2NzParams.dstNzMatrixStride = dstNzMatrixStride;          // 两个NZ矩阵，起始地址之间的偏移，单位为元素数量
 
     DataCopy(l1Tensor, gmTensor, gm2L1Nd2NzParams);
 }
@@ -211,9 +211,9 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::IterateBmm
     CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM1RES_EVENT[runInfo.taskIdMod2]);
     CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + VC_MM1RES_EVENT[runInfo.taskIdMod2]); // 16 is Vec num
 
-    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C->UB
-    fixpipeParams.nSize = (runInfo.s2RealSize + 7) >> 3 << 3; // 7 >> 3 <<3: 8位对齐
-    fixpipeParams.mSize = (runInfo.s1RealSize + 1) >> 1 << 1; // 1 >> 1 << 1: 2位对齐，L0C上的bmm1结果矩阵M方向的size大小必须是偶数
+    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;            // L0C->UB
+    fixpipeParams.nSize = (runInfo.s2RealSize + 7) >> 3 << 3;         // 7 >> 3 <<3: 8位对齐
+    fixpipeParams.mSize = (runInfo.s1RealSize + 1) >> 1 << 1;         // 1 >> 1 << 1: 2位对齐，L0C上的bmm1结果矩阵M方向的size大小必须是偶数
     fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // 15 / 16 / 16: L0C上matmul结果相邻连续数据片断间隔，单位为16
     fixpipeParams.dstStride = s2BaseSize;
     fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
@@ -277,7 +277,7 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::IterateBmm
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;  // L0C->UB
     fixpipeParams.nSize = (constInfo.dSizeV + 7) >> 3 << 3; // 7 >> 3 << 3: 8位对齐
     fixpipeParams.mSize = s1BaseSize;
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // 15 / 16 / 16: 16位对齐
+    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;    // 15 / 16 / 16: 16位对齐
     fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4; // 15 >> 4 << 4: 16位对齐
     fixpipeParams.dualDstCtl = 1;
     fixpipeParams.params.ndNum = 1;
@@ -291,7 +291,6 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::IterateBmm
     CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(
         16 + CV_MM2RES_EVENT[runInfo.taskIdMod2]); // fixpip将结果搬运到UB后，设置SYNC_C1_V1_FLAG, 16 is aiv num
 }
-
 
 ANTIQUANT_TEMPLATES_DEF
 class FABlockCubeAntiquantDummy {
@@ -322,22 +321,22 @@ struct CubeBlockTraitsAntiquant;
 #define GEN_TRAIT_TYPE_ANTIQUANT(name, ...) using name##_TRAITS = name;
 #define GEN_TRAIT_CONST_ANTIQAUNT(name, type, ...) static constexpr type name##Traits = name;
 
-#define DEFINE_CUBE_BLOCK_TRAITS_ANTIQUANT(CUBE_BLOCK_CLASS_ANTIQUANT)                                                 \
-    ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT                                                                                 \
-    struct CubeBlockTraitsAntiquant<CUBE_BLOCK_CLASS_ANTIQUANT<ANTIQUANT_TEMPLATE_ARGS>> {                             \
-        ANTIQUANT_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE_ANTIQUANT)                                              \
-        ANTIQUANT_CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST_ANTIQAUNT)                                            \
+#define DEFINE_CUBE_BLOCK_TRAITS_ANTIQUANT(CUBE_BLOCK_CLASS_ANTIQUANT) \
+    ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT \
+    struct CubeBlockTraitsAntiquant<CUBE_BLOCK_CLASS_ANTIQUANT<ANTIQUANT_TEMPLATE_ARGS>> { \
+        ANTIQUANT_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE_ANTIQUANT) \
+        ANTIQUANT_CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST_ANTIQAUNT) \
     }
 
 DEFINE_CUBE_BLOCK_TRAITS_ANTIQUANT(FABlockCubeAntiquant);
 DEFINE_CUBE_BLOCK_TRAITS_ANTIQUANT(FABlockCubeAntiquantDummy);
 
-#define GEN_ARGS_TYPE_ANTIQUANT(name, ...)                                                                             \
+#define GEN_ARGS_TYPE_ANTIQUANT(name, ...) \
     using name = typename CubeBlockTraitsAntiquant<AntiquantCubeBlockType>::name##_TRAITS;
-#define GEN_ARGS_CONST_ANTIQUANT(name, type, ...)                                                                      \
+#define GEN_ARGS_CONST_ANTIQUANT(name, type, ...) \
     static constexpr type name = CubeBlockTraitsAntiquant<AntiquantCubeBlockType>::name##Traits;
-#define ARGS_TRAITS_ANTIQUANT                                                                                          \
-    ANTIQUANT_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE_ANTIQUANT)                                                   \
+#define ARGS_TRAITS_ANTIQUANT \
+    ANTIQUANT_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE_ANTIQUANT) \
     ANTIQUANT_CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST_ANTIQUANT)
 } // namespace BaseApi
 #endif

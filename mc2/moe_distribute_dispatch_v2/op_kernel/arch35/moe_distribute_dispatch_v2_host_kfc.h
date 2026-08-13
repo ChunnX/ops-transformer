@@ -31,10 +31,10 @@
 
 #include "moe_distribute_v2_base.h"
 #include "check_winsize.h"
-#if __has_include("../../common/moe_distribute_base.h")
-#include "../../common/moe_distribute_base.h"
+#if __has_include("../../common/common_moe_distribute_base.h")
+#include "../../common/common_moe_distribute_base.h"
 #else
-#include "../../../common/op_kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/common_moe_distribute_base.h"
 #endif
 
 namespace MoeDistributeDispatchV2HostKfcImpl {
@@ -330,7 +330,7 @@ private:
     uint32_t startMoeExpertId_{0};     // 当前server的起始moe专家id 全局编号
     uint32_t startRankId_{0};          // 当前server的起始卡号 全局编号
     uint32_t shareRankNumInServer_{0}; // 当前server中共享专家卡数
-    uint32_t expertNumInServer_{0}; // 当前server中共享专家副本数 + moe专家数 totalExpertNum_ -> expertNumInServer_
+    uint32_t expertNumInServer_{0};    // 当前server中共享专家副本数 + moe专家数 totalExpertNum_ -> expertNumInServer_
     uint32_t hOutSize_{0};
     uint32_t hAlignWinSize_{0};
     uint32_t hOutAlignUbSize_{0};
@@ -429,7 +429,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     // 检查hcclwinsize是否越界
     totalWinSizeEp_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeEp);
-
 
     serverNum_ = 1;
     rankSizePerServer_ = 2;
@@ -566,7 +565,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     moeListAlign_ = moeListSizeAlign / sizeof(int32_t);
 
     uint32_t moeCntSizeAlign = moeListSizeAlign + Ceil(axisK_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN; // moeCntList偏移
-    moeCntAlign_ = moeCntSizeAlign / sizeof(int16_t); // 注意这里的offsetCnt是int16_t
+    moeCntAlign_ = moeCntSizeAlign / sizeof(int16_t);                                                  // 注意这里的offsetCnt是int16_t
 
     uint32_t moeExpertScaleSizeAlign =
         moeCntSizeAlign + Ceil(axisK_ * sizeof(int16_t), UB_ALIGN) * UB_ALIGN; // moe expertscales
@@ -712,7 +711,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> expertIdsCntCopyPadParams{false, 0U, 0U, 0U};
     DataCopyPad(expertIdsTensor_, expertIdsGMTensor_, expertIdsCntParams, expertIdsCntCopyPadParams); // copy expertid
-    SyncFunc<AscendC::HardEvent::MTE2_V>(); // 后续全部都需要依赖此数据，在这里全部一起等待
+    SyncFunc<AscendC::HardEvent::MTE2_V>();                                                           // 后续全部都需要依赖此数据，在这里全部一起等待
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -838,7 +837,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t mask = isTokenMaskFlag_ ? (activeMaskBsCnt_ * axisK_) : expertIdsCnt_;
 
     compareCount = Ceil(mask * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int32_t); // 一共多少元素
-    maskNumPerExpert = compareCount / BITS_PER_BYTE / sizeof(int32_t); // 为了匹配CompareScalar接口1bit一共8位
+    maskNumPerExpert = compareCount / BITS_PER_BYTE / sizeof(int32_t);                                // 为了匹配CompareScalar接口1bit一共8位
     LocalTensor<uint8_t> expertMaskTensorU8 = subExpBuf_.Get<uint8_t>();
     LocalTensor<uint32_t> expertMaskTensorU32 = subExpBuf_.Get<uint32_t>();
     LocalTensor<int32_t> gatherTempTensor = gatherMaskTBuf_.Get<int32_t>();
@@ -914,7 +913,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     tpipe_->InitBuffer(statusBuf_, statusBufCntAlign_ * UB_ALIGN);
     flagRecvTensor_ = flagRecvBuf.Get<float32_t>();
     statusBufCntAlign_ = Ceil(expertNumInServer_ * serverNum_, 8) * 8; // 8 = UB_ALIGN / sizeof(int32_t)
-    statusTensor_ = statusBuf_.Get<int32_t>(); // 保存发送数据量及flag，同时用于计算windows中的偏移
+    statusTensor_ = statusBuf_.Get<int32_t>();                         // 保存发送数据量及flag，同时用于计算windows中的偏移
     Duplicate<int32_t>(statusTensor_, 0, statusBufCntAlign_ * 8);
     Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, statusBufCntAlign_ / 8, 1, 8); // 0x3F800000是float的1
 }
@@ -1375,7 +1374,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
 }
 
-
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalServerSplitCore(
     uint32_t serverNum, uint32_t startAivId, uint32_t useAivNum, uint32_t &startServerId, uint32_t &endServerId,
@@ -1492,7 +1490,6 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteDataToWinOut(L
     DataCopyPad(flagDstWinGMTensor[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)], commFlagTensor_, flagCopyOutParams);
 }
 
-
 template <TemplateDispatchKFCTypeClass>
 template <typename T>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteDataToWinOut(
@@ -1530,7 +1527,6 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::IsInSameServer(uint
 {
     return targetRankId / rankSizePerServer_ == serverId_;
 }
-
 
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void
@@ -1645,7 +1641,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0U};
     DataCopyPad(xoutTfloat32[moeExpertScalesAlign_], expertScalesGMTensor_[tokenIndex * axisK_], copyParams,
                 expertScalePadParams); // 专家scale填充
-    if (isExpertMaskFlag_) { // 如果有二维mask,需要把不用发送的专家的ID设置为一个无效值
+    if (isExpertMaskFlag_) {           // 如果有二维mask,需要把不用发送的专家的ID设置为一个无效值
         SyncFunc<AscendC::HardEvent::MTE2_S>();
         for (uint32_t index = 0; index < axisK_; index++) {
             uint32_t expertPos = moeListAlign_ + index;
@@ -1672,7 +1668,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     WriteDataToWinOut(sendTokenTensor, rankGM, blockCntPerToken_); // 将数据写入对应的发送区，等待接收server搬运
 }
 
-
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ScatterToken(uint32_t startIndex,
                                                                                                  uint32_t endIndex,
@@ -1698,7 +1693,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     if (startTokenId >= endTokenId || sendTokenNum == 0) {
         return;
     }
-    CalExpertOffset(startTokenId, endTokenId); // 计算专家偏移量，即当前token是发送给当前专家的第几个token
+    CalExpertOffset(startTokenId, endTokenId);           // 计算专家偏移量，即当前token是发送给当前专家的第几个token
     ScatterToken(startTokenId, endTokenId, serverIndex); // 将数据写入对应的发送区，等待接收server搬运
 }
 
@@ -1890,7 +1885,6 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CleanTokenFlag(uint
     DataCopyPad(cleanGlobal, statusCleanFp32Tensor_, cleanUpParams);
 }
 
-
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::GatherTokenFrRemote()
 {
@@ -1908,7 +1902,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         }
         uint32_t tokenCnt;
         WaitStatusFlag(serverIndex, serverFlagBuf, tokenCnt); // 等待其他server的token数量
-        if (tokenCnt == 0) { // 如果没有token到达，直接跳过，在发送时Token为0时，也必须发送cnt总数
+        if (tokenCnt == 0) {                                  // 如果没有token到达，直接跳过，在发送时Token为0时，也必须发送cnt总数
             continue;
         }
         SplitToCore(tokenCnt, firstAivId, useAivPerServer, startTokenId, endTokenId, sendTokenNum);

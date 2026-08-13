@@ -32,7 +32,8 @@ using namespace Ops::Transformer::OpTiling;
 
 class MaskedCausalConv1dTilingArch35 : public TilingBaseClass {
 public:
-    explicit MaskedCausalConv1dTilingArch35(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit MaskedCausalConv1dTilingArch35(gert::TilingContext *context)
+        : TilingBaseClass(context)
     {
     }
 

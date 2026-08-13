@@ -19,7 +19,7 @@
 #include "log/log.h"
 #include "register/op_def_registry.h"
 #include "../fused_infer_attention_score_tiling_constants.h"
-#include "paged_attention_checker.h"
+#include "fused_infer_attention_score_paged_attention_checker.h"
 
 namespace optiling {
 using std::map;
@@ -647,8 +647,8 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
         // mxfp8 仅支持blocksize等于64、128、256、512或1024
         if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT &&
             (fiaInfo.blockSize != BLOCK_SIZE_64_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_128_FOR_MXFP8 &&
-            fiaInfo.blockSize != BLOCK_SIZE_256_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_512_FOR_MXFP8 &&
-            fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8)) {
+             fiaInfo.blockSize != BLOCK_SIZE_256_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_512_FOR_MXFP8 &&
+             fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
                 "In MXFP8 fullquant scenario, when page attention is enabled, "
@@ -760,7 +760,6 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
 
     return ge::GRAPH_SUCCESS;
 }
-
 
 ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInfo) const
 {

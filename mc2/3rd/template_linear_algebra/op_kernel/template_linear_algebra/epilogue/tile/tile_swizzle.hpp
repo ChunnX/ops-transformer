@@ -12,7 +12,7 @@
 #define CATLASS_EPILOGUE_TILE_TILE_SWIZZLE_HPP
 
 #include "../../catlass.hpp"
-#include "../../detail/alignment.hpp"
+#include "../../detail/third_alignment.hpp"
 #include "../../matrix_coord.hpp"
 
 namespace Catlass::Epilogue::Tile {
@@ -27,7 +27,8 @@ struct EpilogueIdentityTileSwizzle {
 
     CATLASS_DEVICE
     EpilogueIdentityTileSwizzle(MatrixCoord const &blockShape, MatrixCoord const &tileShape)
-        : blockShape(blockShape), tileShape(tileShape)
+        : blockShape(blockShape),
+          tileShape(tileShape)
     {
         loopsMN = CeilDiv(blockShape, tileShape);
     }
@@ -61,7 +62,8 @@ struct EpilogueHorizontalTileSwizzle {
 
     CATLASS_DEVICE
     EpilogueHorizontalTileSwizzle(MatrixCoord const &blockShape, MatrixCoord const &tileShape)
-        : blockShape(blockShape), tileShape(tileShape)
+        : blockShape(blockShape),
+          tileShape(tileShape)
     {
         loopsMN = CeilDiv(blockShape, tileShape);
     }

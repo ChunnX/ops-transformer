@@ -42,7 +42,7 @@
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_copy.hpp"
 
-#include "matmul.hpp"
+#include "allto_all_matmul_matmul_arch22.hpp"
 
 using namespace AscendC;
 using namespace Catlass;
@@ -50,10 +50,10 @@ using namespace Catlass;
 namespace Mc2Kernel {
 
 // A2AMM : AlltoAllMatmul
-#define TemplateA2AMMClass                                                                                             \
+#define TemplateA2AMMClass \
     typename AType, typename BType, typename BiasType, typename PerTokenScaleType, typename ScaleType, typename CType, \
         typename AllToAllResultType, bool hasBias, bool transB, int32_t QuantType
-#define TemplateA2AMMFunc                                                                                              \
+#define TemplateA2AMMFunc \
     AType, BType, BiasType, PerTokenScaleType, ScaleType, CType, AllToAllResultType, hasBias, transB, QuantType
 
 using namespace AscendC;
@@ -114,7 +114,6 @@ private:
 
     Catlass::Arch::Resource<Catlass::Arch::AtlasA2> resource;
 };
-
 
 template <TemplateA2AMMClass>
 __aicore__ inline void
@@ -381,7 +380,7 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantToken(__gm__ ATyp
 
     /* 用于存储计算quantScale的token取abs的结果 */
     int32_t absOffset = Block32B<float>::AlignUp(
-        ubTokenAlignedPingPongSize); /* 从GM拷贝的数据用abs_offset_a大小空间，case为float后用abs_offset大小的空间 */
+        ubTokenAlignedPingPongSize);                          /* 从GM拷贝的数据用abs_offset_a大小空间，case为float后用abs_offset大小的空间 */
     int32_t castOffset = Block32B<AType>::AlignUp(absOffset); // 换成AType可能不一定32B对齐
     LocalTensor<float> absTensor0 = copyTensor0[absOffset];
     LocalTensor<float> absTensor1 = copyTensor1[absOffset];
@@ -579,7 +578,7 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantTokenSegment(__gm
     LocalTensor<float> copyTensor1 = copyTensor0[ub_offset];
 
     int32_t absOffset = Block32B<float>::AlignUp(
-        copyTensorSize); /* 从GM拷贝的数据用abs_offset_a大小空间，case为float后用abs_offset大小的空间 */
+        copyTensorSize);                                      /* 从GM拷贝的数据用abs_offset_a大小空间，case为float后用abs_offset大小的空间 */
     int32_t castOffset = Block32B<AType>::AlignUp(absOffset); // 换成AType可能不一定32B对齐
     LocalTensor<float> absTensor0 = copyTensor0[absOffset];
     LocalTensor<float> absTensor1 = copyTensor1[absOffset];
@@ -757,9 +756,9 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::Dequant()
 
         using EpilogueParams = typename QuantBlockEpilogue::Params;
         EpilogueParams epilogueParams{
-            scaleGM_,  layoutScale,
+            scaleGM_, layoutScale,
             x1ScaleGM, layoutPerTokenScale.GetTileLayout(problemShape.template GetCoordByAxis<0>()),
-            biasGM_,   layoutBias};
+            biasGM_, layoutBias};
         blockEpilogue.UpdateParams(epilogueParams);
 
         blockEpilogue(coreOffset, actualBlockShape, gmC[gmOffsetC], layoutC, gmD[gmOffsetC], layoutC);
@@ -783,9 +782,9 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::Dequant()
 
         using EpilogueParams = typename QuantBlockEpilogue::Params;
         EpilogueParams epilogueParams{
-            scaleGM_,  layoutScale,
+            scaleGM_, layoutScale,
             x1ScaleGM, layoutPerTokenScale.GetTileLayout(problemShape.template GetCoordByAxis<0>()),
-            biasGM_,   layoutBias};
+            biasGM_, layoutBias};
         blockEpilogue.UpdateParams(epilogueParams);
 
         blockEpilogue(coreOffset, actualBlockShape, gmC[gmOffsetC], layoutC, gmD[gmOffsetC], layoutC);

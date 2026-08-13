@@ -12,13 +12,13 @@
 #define CATLASS_GEMM_KERNEL_OPTIMIZED_MATMUL_TLA_HPP
 
 #include "../../catlass.hpp"
-#include "../../coord.hpp"
+#include "../../third_coord.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
 #include "../../arch/resource.hpp"
-#include "../../arch/cross_core_sync.hpp"
+#include "../../arch/third_cross_core_sync.hpp"
 #include "../../../tla/layout.hpp"
-#include "../../../tla/tensor.hpp"
+#include "../../../tla/mega_moe_tensor_arch22.hpp"
 namespace Catlass::Gemm::Kernel {
 
 template <class ArchTag_, class TensorIn_, class TensorOut_, uint32_t COMPUTE_LENGTH>
@@ -260,8 +260,17 @@ public:
         CATLASS_DEVICE
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrC_, LayoutC layoutC_, GM_ADDR ptrWA_, LayoutWA layoutWA_, GM_ADDR ptrWB_, LayoutWB layoutWB_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrC(ptrC_),
-              layoutC(layoutC_), ptrWA(ptrWA_), layoutWA(layoutWA_), ptrWB(ptrWB_), layoutWB(layoutWB_)
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              ptrWA(ptrWA_),
+              layoutWA(layoutWA_),
+              ptrWB(ptrWB_),
+              layoutWB(layoutWB_)
         {
         }
     };

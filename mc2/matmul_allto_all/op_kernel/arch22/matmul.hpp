@@ -17,11 +17,11 @@
 #define CATLASS_GEMM_KERNEL_MATMUL_ALLTOALL_HPP
 
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/mega_moe_coord_arch22.hpp"
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/mega_moe_cross_core_sync_arch22.hpp"
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_ub_to_gm.hpp"
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/padding_matmul.hpp"
@@ -92,9 +92,18 @@ public:
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrBias_, GM_ADDR ptrC_, LayoutC layoutC_, int32_t pValue_, int32_t rankSize_,
                int32_t pipeDepth_, bool transB_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              ptrBias(ptrBias_), ptrC(ptrC_), layoutC(layoutC_), pValue(pValue_), rankSize(rankSize_),
-              pipeDepth(pipeDepth_), transB(transB_)
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrBias(ptrBias_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              pValue(pValue_),
+              rankSize(rankSize_),
+              pipeDepth(pipeDepth_),
+              transB(transB_)
         {
         }
     };
@@ -191,17 +200,17 @@ public:
                     (static_cast<int64_t>(blockIdxCoord.n() / nLoopPerRank) *
                          (params.problemShape.n() / params.rankSize) +
                      static_cast<int64_t>(blockIdxCoord.n() % nLoopPerRank) * L1TileShape::N) *
-                                    (params.transB ? params.problemShape.k() : 1);
+                    (params.transB ? params.problemShape.k() : 1);
 
                 int64_t rankOffset = gmAPingpongSize / params.rankSize;
                 int64_t rankIdx = blockIdxCoord.n() / nLoopPerRank;
                 int64_t rankOffsetInRank = blockIdxCoord.n() % nLoopPerRank;
                 int64_t gmOffsetC =
                     static_cast<int64_t>(flagIdx) * L1TileShape::M * params.pValue * params.problemShape.n() +
-                                    rankIdx * rankOffset +
-                                    static_cast<int64_t>(blockIdxCoord.m()) * L1TileShape::M *
-                                        (params.problemShape.n() / params.rankSize) +
-                                    blockIdxCoord.n() % nLoopPerRank * L1TileShape::N;
+                    rankIdx * rankOffset +
+                    static_cast<int64_t>(blockIdxCoord.m()) * L1TileShape::M *
+                        (params.problemShape.n() / params.rankSize) +
+                    blockIdxCoord.n() % nLoopPerRank * L1TileShape::N;
 
                 if constexpr (HasBias) {
                     int64_t gmOffsetBias =

@@ -72,7 +72,7 @@ ge::graphStatus PostQuantChecker::CheckFeatureAttenOut(const FiaTilingInfo &fiaI
         ge::DataType outputType = fiaInfo.opParamInfo.attenOut.desc->GetDataType();
         OP_CHECK_IF(outputType != ge::DT_INT8 && outputType != ge::DT_FLOAT8_E4M3FN && outputType != ge::DT_HIFLOAT8,
                     OP_LOGE(fiaInfo.opName,
-                    "The quantScale2 exists, output data type only supports int8/fp8_e4m3fn/hifloat8!"),
+                            "The quantScale2 exists, output data type only supports int8/fp8_e4m3fn/hifloat8!"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -252,7 +252,7 @@ ge::graphStatus PostQuantChecker::CheckAntiquantNotSupport(const FiaTilingInfo &
     }
     if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
         OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_FLOAT8_E4M3FN &&
-                    (fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16)),
+                     (fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16)),
                     OP_LOGE(fiaInfo.opName,
                             "When keyAntiquantMode and valueAntiquantMode is 1"
                             "if data type of key/value is FLOAT8_E4M3FN, post quant is not supported."),
@@ -261,7 +261,7 @@ ge::graphStatus PostQuantChecker::CheckAntiquantNotSupport(const FiaTilingInfo &
 
     if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
         OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_FLOAT8_E4M3FN &&
-                    (fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16)),
+                     (fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16)),
                     OP_LOGE(fiaInfo.opName,
                             "When keyAntiquantMode and valueAntiquantMode is 4"
                             "if data type of key/value is FLOAT8_E4M3FN, post quant is not supported."),
@@ -325,7 +325,7 @@ ge::graphStatus PostQuantChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo
         }
         if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) {
             if (ge::GRAPH_SUCCESS != CheckFeatureRowValid(fiaInfo)) {
-                 return ge::GRAPH_FAILED;
+                return ge::GRAPH_FAILED;
             }
         }
     } else if (enableAntiQuant_) {
@@ -345,4 +345,4 @@ ge::graphStatus PostQuantChecker::CheckMultiParaConsistency(const FiaTilingInfo 
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+} // namespace optiling

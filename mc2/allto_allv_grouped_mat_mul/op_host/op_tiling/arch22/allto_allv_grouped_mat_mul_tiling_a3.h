@@ -20,7 +20,8 @@
 namespace optiling {
 class AlltoAllvGmmTilingA3 : public AlltoAllvGmmTiling {
 public:
-    explicit AlltoAllvGmmTilingA3(gert::TilingContext *context) : AlltoAllvGmmTiling(context)
+    explicit AlltoAllvGmmTilingA3(gert::TilingContext *context)
+        : AlltoAllvGmmTiling(context)
     {
     }
     std::vector<int64_t> GetEpWorldSizeOptional() const override;
@@ -34,7 +35,8 @@ public:
 
 class AlltoAllvGmmTilingStructA3 : public AlltoAllvGmmTilingStruct {
 public:
-    explicit AlltoAllvGmmTilingStructA3(gert::TilingContext *context) : AlltoAllvGmmTilingStruct(context) {};
+    explicit AlltoAllvGmmTilingStructA3(gert::TilingContext *context)
+        : AlltoAllvGmmTilingStruct(context) {};
 
 protected:
     ge::graphStatus DoOpTiling() override;

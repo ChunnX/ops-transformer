@@ -25,7 +25,7 @@ template <typename OriT, typename CmpT>
 class RotateHalfRopeFullLoadXd : public RotateHalfBase<OriT, CmpT> {
 public:
     __aicore__ inline RotateHalfRopeFullLoadXd(){};
-    
+
     __aicore__ inline void Init(
         GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y, const RotaryPositionEmbeddingTilingData &tilingData);
     __aicore__ inline void Process();
@@ -163,7 +163,6 @@ __aicore__ inline void RotateHalfRopeFullLoadXd<OriT, CmpT>::CopyInX()
     }
 }
 
-
 // ============================================================================
 // Perform broadcast multiplication: x *= cos and rotL *= sin
 // ============================================================================
@@ -298,7 +297,7 @@ __aicore__ inline void RotateHalfRopeFullLoadXd<OriT, CmpT>::Process()
 
     // STEP 2: Load x → xBufFp32
     CopyInX();
-    
+
     if constexpr (IsSameType<OriT, CmpT>::value) {
         SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
     }
@@ -329,5 +328,5 @@ __aicore__ inline void RotateHalfRopeFullLoadXd<OriT, CmpT>::Process()
     CopyOut(rotL);
 }
 
-}  // namespace RotateHalfN
-#endif  // ROTATE_HALF_ROPE_FULLLOAD_XD_H
+} // namespace RotateHalfN
+#endif // ROTATE_HALF_ROPE_FULLLOAD_XD_H

@@ -12,7 +12,7 @@
 #define CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_MLA_TP1_SOFTMAX_HPP
 
 #include "catlass/catlass.hpp"
-#include "catlass/arch/cross_core_sync.hpp"
+#include "catlass/arch/third_cross_core_sync.hpp"
 #include "catlass/arch/resource.hpp"
 #include "catlass/gemm_coord.hpp"
 #include "catlass/matrix_coord.hpp"
@@ -29,8 +29,7 @@ class BlockEpilogue<
     EpilogueAtlasA2MLATP1Softmax,
     OutputType_,
     InputType_,
-    MaskType_>
-{
+    MaskType_> {
 public:
     // Type aliases
     using ElementOutput = typename OutputType_::Element;
@@ -142,7 +141,7 @@ public:
         }
         uint64_t subMask = ((uint64_t)1 << len) - 1;
         uint64_t maskValue = subMask;
-        for (int i = 1; i < VECTOR_MASK_WIDTH / VECTOR_OPERAND_WIDTH; i++){
+        for (int i = 1; i < VECTOR_MASK_WIDTH / VECTOR_OPERAND_WIDTH; i++) {
             maskValue += subMask << (i * VECTOR_OPERAND_WIDTH);
         }
 
@@ -427,7 +426,7 @@ public:
         AscendC::Exp<float, false>(lsUbTensor[sUbOffset], lsUbTensor[sUbOffset], (uint64_t)0,
                                    (m * nStride + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE,
                                    AscendC::UnaryRepeatParams(1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8));
-        
+
         AscendC::PipeBarrier<PIPE_V>();
         // *** ll = rowsum(ls32)
         if (nReal == SPEC_TILE_512) {

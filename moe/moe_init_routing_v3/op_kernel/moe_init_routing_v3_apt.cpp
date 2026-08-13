@@ -12,15 +12,15 @@
  * \file moe_init_routing_v3_apt.cpp
  * \brief
  */
-#include "arch35/moe_v3_mrgsort_out.h"
-#include "arch35/moe_v3_mrgsort.h"
-#include "arch35/moe_v3_sort_one_core.h"
-#include "arch35/moe_v3_sort_multi_core.h"
-#include "arch35/moe_v3_expert_tokens_count.h"
-#include "arch35/moe_v3_row_idx_gather.h"
-#include "arch35/moe_v3_gather_out.h"
-#include "arch35/moe_v3_gather_static_quant.h"
-#include "arch35/moe_v3_gather_dynamic_quant.h"
+#include "arch35/moe_v3_mrgsort_out_arch35.h"
+#include "arch35/moe_v3_mrgsort_arch35.h"
+#include "arch35/moe_v3_sort_one_core_arch35.h"
+#include "arch35/moe_v3_sort_multi_core_arch35.h"
+#include "arch35/moe_v3_expert_tokens_count_arch35.h"
+#include "arch35/moe_v3_row_idx_gather_arch35.h"
+#include "arch35/moe_v3_gather_out_arch35.h"
+#include "arch35/moe_v3_gather_static_quant_arch35.h"
+#include "arch35/moe_v3_gather_dynamic_quant_arch35.h"
 #include "arch35/moe_v3_gather_mxfp8_quant.h"
 #include "arch35/moe_v3_gather_fp8_perblock_quant.h"
 #include "arch35/moe_v3_gather_fp8_group_quant.h"
@@ -30,11 +30,11 @@
 #include "arch35/moe_v3_gather_out_mxfp8.h"
 #include "arch35/moe_v3_gather_out_mxfp4.h"
 #include "arch35/moe_v3_gather_mxfp4_quant.h"
-#include "arch35/moe_v3_full_load_unquantized.h"
-#include "arch35/moe_v3_full_load_dynamic_quant.h"
-#include "arch35/moe_v3_full_load_static_quant.h"
-#include "arch35/moe_v3_row_idx_gather_droppad.h"
-#include "arch35/moe_v3_gather_out_droppad.h"
+#include "arch35/moe_v3_full_load_unquantized_arch35.h"
+#include "arch35/moe_v3_full_load_dynamic_quant_arch35.h"
+#include "arch35/moe_v3_full_load_static_quant_arch35.h"
+#include "arch35/moe_v3_row_idx_gather_droppad_arch35.h"
+#include "arch35/moe_v3_gather_out_droppad_arch35.h"
 #include "arch35/moe_v3_topk_weight_out.h"
 
 /*
@@ -77,9 +77,9 @@
 /*
  * FP8 PerGroup量化
  */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_GATHER 10050000 // 单核排序、FP8 PerGroup量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_SCATTER 10051000 // 单核排序、FP8 PerGroup量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_GATHER 11050000 // 多核排序、FP8 PerGroup量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_GATHER 10050000    // 单核排序、FP8 PerGroup量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_SCATTER 10051000   // 单核排序、FP8 PerGroup量化、SCATTER索引
+#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_GATHER 11050000  // 多核排序、FP8 PerGroup量化、GATHER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_SCATTER 11051000 // 多核排序、FP8 PerGroup量化、SCATTER索引
 
 /*
@@ -132,9 +132,9 @@
 /*
  * FP8 PerBlock量化
  */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_GATHER 10120000 // 单核排序、FP8 PerBlock量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_SCATTER 10121000 // 单核排序、FP8 PerBlock量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER 11120000 // 多核排序、FP8 PerBlock量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_GATHER 10120000    // 单核排序、FP8 PerBlock量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_SCATTER 10121000   // 单核排序、FP8 PerBlock量化、SCATTER索引
+#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER 11120000  // 多核排序、FP8 PerBlock量化、GATHER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_SCATTER 11121000 // 多核排序、FP8 PerBlock量化、SCATTER索引
 
 /*
@@ -488,7 +488,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             gatherOp.Process();
             gatherPipe.Destroy();
         }
-    // 5.直接搬运或是搬运的过程中对x进行量化
+        // 5.直接搬运或是搬运的过程中对x进行量化
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP)) {
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||

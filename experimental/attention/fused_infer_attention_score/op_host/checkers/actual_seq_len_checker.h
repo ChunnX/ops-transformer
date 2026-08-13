@@ -19,14 +19,15 @@
 #include <map>
 #include <numeric>
 #include "tiling/tiling_api.h"
-#include "base_checker.h"
+#include "fused_infer_attention_score_base_checker.h"
 
 namespace optiling {
 
 class ActualSeqLenChecker : public BaseChecker {
 public:
-    ActualSeqLenChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    ActualSeqLenChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant)
+    {}
     ~ActualSeqLenChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;

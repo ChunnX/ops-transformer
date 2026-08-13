@@ -12,7 +12,7 @@
 #define CATLASS_GEMM_TILE_COPY_L1_TO_L0A_HPP
 
 #include "../../../template_linear_algebra_v2/catlass.hpp"
-#include "../../../template_linear_algebra_v2/numeric_size.hpp"
+#include "../../../template_linear_algebra_v2/mega_moe_numeric_size_arch22.hpp"
 #include "../../../template_linear_algebra_v2/arch/arch.hpp"
 #include "../../../template_linear_algebra_v2/layout/layout.hpp"
 #include "../../../template_linear_algebra_v2/gemm/gemm_type.hpp"
@@ -245,7 +245,6 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<Element, layout::zN, AscendC::TPositi
         }
     }
 };
-
 
 /// Partial specialization for float, zN in and zZ out.
 template <class ArchTag>

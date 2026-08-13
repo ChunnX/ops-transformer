@@ -18,7 +18,7 @@
 
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/reduce/sum.h"
-#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/common_moe_distribute_base.h"
 
 namespace QuantMTECommImpl {
 
@@ -28,9 +28,9 @@ constexpr static uint32_t UB_ALIGN_BYTES = 32U;    // UB按32B对齐
 constexpr uint32_t FLOAT_UB_ALIGN_NUM = 8U;        // float格式下32B对齐需要 32/4 =8个
 constexpr uint32_t BUFFER_NUM = 2U;                // 用于double buffer
 constexpr static uint32_t SCALE_BLCOK_BYTES = 32U; // 一个scale数据块固定32B，搬运要求32B对齐
-constexpr static uint32_t X_BLOCK_BYTES = 1024U; // 当前一个x数据块固定1024B = 128 * 8(PT) = 32 * 32(MX)，为穿刺取值
+constexpr static uint32_t X_BLOCK_BYTES = 1024U;   // 当前一个x数据块固定1024B = 128 * 8(PT) = 32 * 32(MX)，为穿刺取值
 constexpr static uint64_t STATE_WIN_SIZE =
-    1024UL * 1024UL; // Win区前1MB作为状态区相关，状态0区(462KB) + 状态1区(462KB) + 标志位区(100KB)
+    1024UL * 1024UL;                                                 // Win区前1MB作为状态区相关，状态0区(462KB) + 状态1区(462KB) + 标志位区(100KB)
 constexpr static uint64_t SINGLE_STATE_REGION_SIZE = 462UL * 1024UL; // 0/1分区单个状态区大小
 constexpr static uint32_t ZERONE_STATE_POS = 0U;                     // 0/1分区标志位的index
 constexpr static uint64_t WIN_ADDR_ALIGN = 512UL;                    // 每个核的标志位间512B对齐
@@ -113,8 +113,8 @@ __aicore__ inline void MTECommunication<TemplateType>::InitParams()
         aivId_ < tailBlockNums_ ? round_ + 1 : round_; // 当前核分配到的数据块数量，顺序分核，序号小的核多搬一轮
     uint64_t blockIdx =
         aivId_ * round_ + (aivId_ < tailBlockNums_ ? aivId_ : tailBlockNums_); // 计算当前核分派到的首个数据块序列号
-    xOffset_ = blockIdx * xNumPerBlock_;          // 块数 * 一块有多少数据，得到要搬第几个x数据
-    scaleOffset_ = blockIdx * scaleNumsPerBlock_; // 计算要搬第几个 scale
+    xOffset_ = blockIdx * xNumPerBlock_;                                       // 块数 * 一块有多少数据，得到要搬第几个x数据
+    scaleOffset_ = blockIdx * scaleNumsPerBlock_;                              // 计算要搬第几个 scale
 }
 
 template <TemplateTypeClass>

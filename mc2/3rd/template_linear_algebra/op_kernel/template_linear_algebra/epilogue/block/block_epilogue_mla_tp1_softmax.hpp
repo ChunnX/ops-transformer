@@ -12,7 +12,7 @@
 #define CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_MLA_TP1_SOFTMAX_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/cross_core_sync.hpp"
+#include "../../arch/third_cross_core_sync.hpp"
 #include "../../arch/resource.hpp"
 #include "../../epilogue/dispatch_policy.hpp"
 #include "../../epilogue/tile/tile_copy.hpp"

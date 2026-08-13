@@ -15,7 +15,7 @@
 #ifndef MC2_MATMUL_REDUCE_SCATTER_TILING_A2A3_H
 #define MC2_MATMUL_REDUCE_SCATTER_TILING_A2A3_H
 
-#include "../matmul_reduce_scatter_tiling_base.h"
+#include "../matmul_reduce_scatter_matmul_reduce_scatter_tiling_base.h"
 namespace optiling {
 class MatmulReduceScatterTilingFuncA2A3 : public MatmulReduceScatterTilingFuncBase {
 public:

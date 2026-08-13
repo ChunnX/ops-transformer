@@ -13,8 +13,8 @@
  * \brief
  */
 #include "kernel_operator.h"
-#include "arch35/moe_token_unpermute_with_routing_map_grad_prob_not_none_drop_pad_true.h"
-#include "arch35/moe_token_unpermute_with_routing_map_grad_prob_not_none_drop_pad_false.h"
+#include "arch35/moe_token_unpermute_with_routing_map_grad_prob_not_none_drop_pad_true_arch35.h"
+#include "arch35/moe_token_unpermute_with_routing_map_grad_prob_not_none_drop_pad_false_arch35.h"
 #include "arch35/moe_token_unpermute_with_routing_map_grad_prob_none_drop_pad_true.h"
 #include "arch35/moe_token_unpermute_with_routing_map_grad_prob_none_drop_pad_false.h"
 

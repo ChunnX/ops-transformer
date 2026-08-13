@@ -14,7 +14,7 @@
  */
 #ifndef __ALL_GATHER_MATMUL_TILING_A2A3_H__
 #define __ALL_GATHER_MATMUL_TILING_A2A3_H__
-#include "../all_gather_matmul_tiling_base.h"
+#include "../all_gather_matmul_all_gather_matmul_tiling_base.h"
 
 namespace optiling {
 class AllGatherMatmulTilingA2A3 : public AllGatherMatmulTilingBase {

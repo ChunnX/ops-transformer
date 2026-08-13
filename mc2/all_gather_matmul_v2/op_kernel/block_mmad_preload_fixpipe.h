@@ -15,14 +15,14 @@
 #ifndef BLOCK_MMAD_PRELOAD_FIXPIPE_H
 #define BLOCK_MMAD_PRELOAD_FIXPIPE_H
 
-#include "copy_gm_to_l1.h"
+#include "third_copy_gm_to_l1_arch35.h"
 #include "copy_l0c_to_gm.h"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/third_coord.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/dispatch_policy.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/helper.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/third_helper.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_copy.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_mmad.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/copy_gm_to_l1.hpp"

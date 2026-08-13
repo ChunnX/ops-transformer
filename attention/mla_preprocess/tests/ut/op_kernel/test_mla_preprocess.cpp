@@ -20,7 +20,6 @@
 
 using namespace std;
 
-
 extern "C" __global__ __aicore__ void
 mla_preprocess(GM_ADDR hiddenStateGm, GM_ADDR gamma1Gm, GM_ADDR beta1Gm, GM_ADDR quantScale1Gm, GM_ADDR quantOffset1Gm,
                GM_ADDR wdqkvGm, GM_ADDR descale1Gm, GM_ADDR bias1Gm, GM_ADDR gamma2Gm, GM_ADDR beta2Gm,
@@ -33,11 +32,13 @@ class mla_preprocess_test : public testing::TestWithParam<bool> {
 protected:
     static void SetUpTestCase()
     {
-        cout << "mla_preprocess_test SetUp\n" << endl;
+        cout << "mla_preprocess_test SetUp\n"
+             << endl;
     }
     static void TearDownTestCase()
     {
-        cout << "mla_preprocess_test TearDown\n" << endl;
+        cout << "mla_preprocess_test TearDown\n"
+             << endl;
     }
 };
 

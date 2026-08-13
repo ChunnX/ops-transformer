@@ -15,7 +15,7 @@
 #ifndef ALL_GATHER_MATMUL_FULL_MESH_H
 #define ALL_GATHER_MATMUL_FULL_MESH_H
 
-#include "all_gather_matmul_base.h"
+#include "all_gather_matmul_all_gather_matmul_base.h"
 #include "adv_api/hccl/hccl.h"
 
 namespace AscendC {

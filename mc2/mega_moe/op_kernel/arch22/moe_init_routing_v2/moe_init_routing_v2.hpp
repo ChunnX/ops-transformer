@@ -17,31 +17,30 @@
 #define MC2_MOE_INIT_ROUTING_V2_HPP
 
 #ifdef __DAV_C310__
-#include "arch35/moe_v2_mrgsort_out.h"
-#include "arch35/moe_v2_mrgsort.h"
-#include "arch35/moe_v2_sort_multi_core.h"
-#include "arch35/moe_v2_sort_one_core.h"
+#include "arch35/mega_moe_moe_v2_mrgsort_out_arch22_v2.h"
+#include "arch35/mega_moe_moe_v2_mrgsort_arch22_v2.h"
+#include "arch35/mega_moe_moe_v2_sort_multi_core_arch22_v2.h"
+#include "arch35/mega_moe_moe_v2_sort_one_core_arch22_v2.h"
 #include "arch35/moe_v2_expert_token_out_regbase.h"
-#include "arch35/moe_v2_expert_token_out_simt.h"
-#include "arch35/moe_v2_src_to_dst_op_simt.h"
-#include "arch35/moe_v2_src_to_dst_with_capacity_simt.h"
+#include "arch35/moe_init_routing_v2_moe_v2_expert_token_out_simt_arch35.h"
+#include "arch35/mega_moe_moe_v2_src_to_dst_op_simt_arch22.h"
+#include "arch35/moe_init_routing_v2_moe_v2_src_to_dst_with_capacity_simt_arch35.h"
 #include "arch35/moe_v2_gather_out_for_simt.h"
 #else
-#include "moe_v2_mrgsort_out.h"
-#include "moe_v2_mrgsort.h"
-#include "moe_v2_sort_multi_core.h"
-#include "moe_v2_sort_one_core.h"
-#include "moe_v2_expert_token_out.h"
-#include "moe_v2_src_to_dst_op.h"
-#include "moe_v2_src_to_dst_with_capacity.h"
-#include "moe_v2_gather_out.h"
-#include "moe_v2_init_routing_fullload.h"
+#include "mega_moe_moe_v2_mrgsort_out_arch22_v2.h"
+#include "mega_moe_moe_v2_mrgsort_arch22_v2.h"
+#include "mega_moe_moe_v2_sort_multi_core_arch22_v2.h"
+#include "mega_moe_moe_v2_sort_one_core_arch22_v2.h"
+#include "mega_moe_moe_v2_expert_token_out_arch22_v2.h"
+#include "mega_moe_moe_v2_src_to_dst_op_arch22_v2.h"
+#include "mega_moe_moe_v2_src_to_dst_with_capacity_arch22_v2.h"
+#include "mega_moe_moe_v2_gather_out_arch22_v2.h"
+#include "mega_moe_moe_v2_init_routing_fullload_arch22_v2.h"
 #endif
 
 using namespace AscendC;
 using namespace MoeInitRoutingV2;
 using namespace Mc2Tiling;
-
 
 template <class DTYPE_X = bfloat16_t>
 __aicore__ inline void moe_init_routing_v2(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expandedX, GM_ADDR expandedRowIdx,

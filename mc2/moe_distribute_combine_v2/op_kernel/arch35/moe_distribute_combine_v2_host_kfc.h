@@ -22,12 +22,12 @@
 #endif
 #include "adv_api/reduce/sum.h"
 #include "../moe_distribute_combine_v2_tiling.h"
-#if __has_include("../../common/moe_distribute_base.h")
-#include "../../common/moe_distribute_base.h"
+#if __has_include("../../common/common_moe_distribute_base.h")
+#include "../../common/common_moe_distribute_base.h"
 #include "../../moe_distribute_dispatch_v2/check_winsize.h"
 #include "../../moe_distribute_dispatch_v2/moe_distribute_v2_base.h"
 #else
-#include "../../../common/op_kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/common_moe_distribute_base.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/check_winsize.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
 #endif
@@ -76,7 +76,7 @@ constexpr uint32_t TOKEN_META_BYTES = 12U;    // scale(float)+originRankId(u32)+
 constexpr uint32_t TOKEN_ONE_META_BYTES = 4U; // originTokenId(u32)
 constexpr uint32_t FLAG_CNT_U64 = 2;          // flag + cnt 数量为2
 constexpr size_t TARGET_CNT_CALC_NEED_WORKSPACE = 10UL * 1024UL;
-constexpr uint32_t BLOCK_COPY_BYTES_FIRST = 256U; // 第一个copy chunk的字节数 8*32B
+constexpr uint32_t BLOCK_COPY_BYTES_FIRST = 256U;                                       // 第一个copy chunk的字节数 8*32B
 constexpr uint32_t BLOCK_COPY_BYTES_SECOND = SPLIT_BLOCK_SIZE - BLOCK_COPY_BYTES_FIRST; // 第二个copy chunk的字节数
 constexpr uint32_t MIN_AVAIL_UB_SIZE = 8192U;                                           // 单位字节
 constexpr uint32_t SCALE_FACTOR_CONSTANT = 4U;                                          // 单位字节

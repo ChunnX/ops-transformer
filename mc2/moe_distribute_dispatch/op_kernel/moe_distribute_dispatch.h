@@ -22,12 +22,12 @@
 #include "kernel_operator.h"
 #endif
 #include "adv_api/reduce/sum.h"
-#if __has_include("../common/moe_distribute_base.h")
-#include "../common/moe_distribute_base.h"
+#if __has_include("../common/common_moe_distribute_base.h")
+#include "../common/common_moe_distribute_base.h"
 #include "../common/mc2_kernel_utils.h"
 #include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_tiling.h"
 #else
-#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/common_moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_tiling.h"
 #endif
@@ -45,8 +45,7 @@ constexpr uint32_t GATHER_NUM_PER_TIME = 6;
 constexpr uint64_t WIN_STATE_OFFSET = 512 * 1024;
 constexpr uint64_t STATUS_DATA_OFFSET = 900 * 1024;
 
-
-#define TemplateDispatchTypeClass                                                                                      \
+#define TemplateDispatchTypeClass \
     typename XType, typename ExpandXOutType, bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist
 #define TemplateDispatchTypeFunc XType, ExpandXOutType, StaticQuant, DynamicQuant, IsSmoothScaleExist
 
@@ -283,13 +282,13 @@ __aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::Init(
     int32_t state = selfStatusTensor(aivId_ * STATE_ALIGN);
     stateOffset_ = (recvWinBlockNum_ > 512) ? (STATE_OFFSET / 2) : STATE_OFFSET;
     tpipe_->InitBuffer(statusBuf_, Ceil(recvWinBlockNum_, 8) * 8 * UB_ALIGN); // Ceil(expertNum, 8) * 8 * 32B
-    statusTensor_ = statusBuf_.Get<int32_t>(); // 保存发送数据量及flag，同时用于计算windows中的偏移
-    Duplicate<int32_t>(statusTensor_, 0, recvWinBlockNum_ * 8); // 8 = UB_ALIGN / sizeof(int32_t)
+    statusTensor_ = statusBuf_.Get<int32_t>();                                // 保存发送数据量及flag，同时用于计算windows中的偏移
+    Duplicate<int32_t>(statusTensor_, 0, recvWinBlockNum_ * 8);               // 8 = UB_ALIGN / sizeof(int32_t)
     if (state == 0) {
         sumTarget_ = (float)1.0;
         // sumTarget_ = epWorldSize_ - (float)0.0;
         selfStatusTensor(aivId_ * STATE_ALIGN) = 0x3F800000;
-        uint64_t mask[2] = {0x101010101010101, 0}; // 一次性操作256字节，也是64个int32_t，每8个数将首个设置为0x3F800000
+        uint64_t mask[2] = {0x101010101010101, 0};                                            // 一次性操作256字节，也是64个int32_t，每8个数将首个设置为0x3F800000
         Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, Ceil(recvWinBlockNum_, 8), 1, 8); // 0x3F800000是float的1
     } else {
         sumTarget_ = 0.0;
@@ -848,7 +847,7 @@ __aicore__ inline void MoeDistributeDispatch<TemplateDispatchTypeFunc>::InitBuff
     tpipe_->InitBuffer(gatherMaskOutBuf_, gatherMaskOutSize);
     // worldsize * 单卡moe专家数 * 4B
     tpipe_->InitBuffer(getTotalBuf_, epWorldSize_ * moeExpertNumPerRank_ * sizeof(int32_t));
-    tpipe_->InitBuffer(scalarBuf_, UB_ALIGN * 2); // 这里的2 gatherTmpTensor使用UB_ALIGN，statusSumOutTensor使用UB_ALIGN
+    tpipe_->InitBuffer(scalarBuf_, UB_ALIGN * 2);                     // 这里的2 gatherTmpTensor使用UB_ALIGN，statusSumOutTensor使用UB_ALIGN
     tpipe_->InitBuffer(gatherTmpBuf_, Ceil(recvWinBlockNum_, 4) * 4); // 4B对齐防止epWorldSize为2时空间不足
     statusTensor_ = statusBuf_.Get<int32_t>();
     workLocalTensor_ = workLocalBuf_.Get<float>();

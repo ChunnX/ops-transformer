@@ -12,15 +12,15 @@
  * \file moe_init_routing.cpp
  * \brief
  */
-#include "moe_gather_out.h"
-#include "moe_mrgsort_out.h"
-#include "moe_mrgsort.h"
-#include "moe_sort_multi_core.h"
-#include "moe_sort_one_core.h"
-#include "moe_src_to_dst_op.h"
-#include "moe_gather_out.h"
-#include "moe_gather_out_small_activate_row.h"
-#include "moe_init_routing_fullload.h"
+#include "moe_gather_out_kernel.h"
+#include "moe_init_routing_moe_mrgsort_out.h"
+#include "moe_init_routing_moe_mrgsort.h"
+#include "moe_init_routing_moe_sort_multi_core.h"
+#include "moe_init_routing_moe_sort_one_core.h"
+#include "moe_src_to_dst_op_kernel.h"
+#include "moe_gather_out_kernel.h"
+#include "moe_gather_out_small_activate_row_kernel.h"
+#include "moe_init_routing_fullload_kernel.h"
 
 using namespace AscendC;
 using namespace MoeInitRouting;
@@ -28,7 +28,7 @@ extern "C" __global__ __aicore__ void moe_init_routing(
     GM_ADDR x, GM_ADDR rowIdx, GM_ADDR expertIdx, GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR expandedExpertIdx,
     GM_ADDR workspace, GM_ADDR tiling)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);  
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
     if (g_coreType == AIC) {
         return;
     }

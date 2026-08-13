@@ -17,7 +17,7 @@
 
 #include "quant_block_sch.h"
 #include "quant_utils.h"
-#include "../../grouped_matmul_utils.h"
+#include "../../grouped_matmul_grouped_matmul_utils.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 using GMMQuantParams = GroupedMatmulTilingData::GMMQuantParams;
 
@@ -201,27 +201,24 @@ __aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMNK(uint32_t
     int32_t splitValue =
         QuantUtils::GetSplitValueFromGroupList(loopIdx, preOffset_, groupType_, groupListType_, groupListGlobal_);
     switch (groupType_) {
-        case (QuantUtils::SPLIT_M):
-            {
-                mSize = splitValue;
-                uint32_t valueIdx = gmmQuantParams_->singleW == 1 ? 0 : groupIdx;
-                kSize = kListGm_[valueIdx];
-                nSize = nListGm_[valueIdx];
-                break;
-            }
-        case (QuantUtils::SPLIT_K):
-            {
-                mSize = gmmQuantParams_->singleX == 1 ? mListGm_[0] : mListGm_[groupIdx];
-                kSize = splitValue;
-                nSize = gmmQuantParams_->singleW == 1 ? nListGm_[0] : nListGm_[groupIdx];
-                break;
-            }
-        default:
-            {
-                mSize = mListGm_[groupIdx];
-                kSize = kListGm_[groupIdx];
-                nSize = nListGm_[groupIdx];
-            }
+        case (QuantUtils::SPLIT_M): {
+            mSize = splitValue;
+            uint32_t valueIdx = gmmQuantParams_->singleW == 1 ? 0 : groupIdx;
+            kSize = kListGm_[valueIdx];
+            nSize = nListGm_[valueIdx];
+            break;
+        }
+        case (QuantUtils::SPLIT_K): {
+            mSize = gmmQuantParams_->singleX == 1 ? mListGm_[0] : mListGm_[groupIdx];
+            kSize = splitValue;
+            nSize = gmmQuantParams_->singleW == 1 ? nListGm_[0] : nListGm_[groupIdx];
+            break;
+        }
+        default: {
+            mSize = mListGm_[groupIdx];
+            kSize = kListGm_[groupIdx];
+            nSize = nListGm_[groupIdx];
+        }
     }
     return;
 }

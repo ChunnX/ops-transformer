@@ -889,7 +889,6 @@ ge::graphStatus SMLAInfoParser::GetValueHeadDim()
     return ge::GRAPH_SUCCESS;
 }
 
-
 ge::graphStatus SMLAInfoParser::GetSparseBlockCount()
 {
     if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
@@ -1990,7 +1989,7 @@ void SparseFlashMlaTiling::CalcUbBmm(SMLATilingInfo *tilingInfo)
         cubeMSize = maxMSize;
     }
     mmResUbSize_ = sInnerSizeAlign_ * Align(cubeMSize, 16U); // kernel按照16对齐写出，tiling按照这个原则分配内存
-    bmm2ResUbSize_ = headDimAlign_ * Align(cubeMSize, 16U); // kernel按照16对齐写出，tiling按照这个原则分配内存
+    bmm2ResUbSize_ = headDimAlign_ * Align(cubeMSize, 16U);  // kernel按照16对齐写出，tiling按照这个原则分配内存
 }
 
 void SparseFlashMlaTiling::SplitBalanced(SMLATilingInfo *tilingInfo)

@@ -22,10 +22,10 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 
-#if __has_include("../../common/moe_distribute_base.h")
-#include "../../common/moe_distribute_base.h"
+#if __has_include("../../common/common_moe_distribute_base.h")
+#include "../../common/common_moe_distribute_base.h"
 #else
-#include "../../../common/op_kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/common_moe_distribute_base.h"
 #endif
 #include "moe_distribute_a2_constant.h"
 namespace MoeDistributeA2Base {
@@ -156,7 +156,7 @@ protected:
     constexpr static uint32_t SERVER_RANK_SIZE = 8;
     constexpr static uint32_t UB_32B_ALIGN = 32U;
     constexpr static uint32_t B32_PER_BLOCK = UB_32B_ALIGN / sizeof(int32_t); // 8
-    constexpr static uint32_t EXTRA_TOKEN_INFO_NUM = 4U; // 专家信息 权重信息 量化Scale 到达标志位
+    constexpr static uint32_t EXTRA_TOKEN_INFO_NUM = 4U;                      // 专家信息 权重信息 量化Scale 到达标志位
     constexpr static uint64_t IPC_MAGIC_OFFSET =
         2 * 1024 * 1024UL - 128 * 32UL; // 理论为2 * 1024 * 1024UL - aivNum * 32UL
     constexpr static uint64_t IPC_DISPATCH_FLAG_OFFSET = 1 * 1024 * 1024UL;

@@ -22,14 +22,14 @@
 #include "../moe_distribute_v2_base.h"
 #include "../check_winsize.h"
 
-#if __has_include("../../common/moe_distribute_base.h")
-#include "../../common/moe_distribute_base.h"
+#if __has_include("../../common/common_moe_distribute_base.h")
+#include "../../common/common_moe_distribute_base.h"
 #else
-#include "../../../common/op_kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/common_moe_distribute_base.h"
 #endif
 
 namespace Mc2Kernel {
-#define TemplateMC2TypeV2LayeredClass                                                                                  \
+#define TemplateMC2TypeV2LayeredClass \
     typename XType, typename ExpandXOutType, bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist
 #define TemplateMC2TypeV2LayeredFunc XType, ExpandXOutType, StaticQuant, DynamicQuant, IsSmoothScaleExist
 
@@ -626,12 +626,12 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     uint32_t localRankId = rankId_ % SERVER_RANK_SIZE;
     GlobalTensor<int32_t> flagIpcGt;
     flagIpcGt.SetGlobalBuffer((__gm__ int32_t *)(shareIPCAddrsGM_[rankId_ % SERVER_RANK_SIZE]));
-    uint32_t curExpIdx = aivId_ / coresPerExp;            // 当前核处理的专家是本卡第几个localMoe
-    uint32_t localAivId = aivId_ % coresPerExp;           // 处理本专家的同一批Core中，本Core的Idx
-    uint32_t srCntPerExp = serverNum_ * SERVER_RANK_SIZE; // 每个exp对应worldSize行[s0r0 s0r1 s1r0 s1r1 ...]
-    uint32_t srCntPerCore = srCntPerExp / coresPerExp;    // 平均每个核处理多少rank
-    uint32_t srCntRemain = srCntPerExp % coresPerExp;     // 平分后还剩多少rank
-    uint32_t srCntPreRemain = (localAivId < srCntRemain) ? localAivId : srCntRemain; // 前面的核共分到了多少剩余rank
+    uint32_t curExpIdx = aivId_ / coresPerExp;                                              // 当前核处理的专家是本卡第几个localMoe
+    uint32_t localAivId = aivId_ % coresPerExp;                                             // 处理本专家的同一批Core中，本Core的Idx
+    uint32_t srCntPerExp = serverNum_ * SERVER_RANK_SIZE;                                   // 每个exp对应worldSize行[s0r0 s0r1 s1r0 s1r1 ...]
+    uint32_t srCntPerCore = srCntPerExp / coresPerExp;                                      // 平均每个核处理多少rank
+    uint32_t srCntRemain = srCntPerExp % coresPerExp;                                       // 平分后还剩多少rank
+    uint32_t srCntPreRemain = (localAivId < srCntRemain) ? localAivId : srCntRemain;        // 前面的核共分到了多少剩余rank
     uint32_t srCntCurCore = (localAivId < srCntRemain) ? (srCntPerCore + 1) : srCntPerCore; // 当前核分到多少rank
 
     GlobalTensor<int32_t> tokenCntIpcGt;
@@ -1436,10 +1436,10 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         }
 
         // 本核需要发送
-        uint32_t targetExpOffset = (targetExpId % localMoeExpertNum_) * worldSize_ * rankSizeOnIpc_; // 第几个Exp段
-        uint32_t targetServerOffset = formServerId * SERVER_RANK_SIZE * rankSizeOnIpc_; // 第几个Server段
-        uint32_t targetRankOffset = (rankId_ % SERVER_RANK_SIZE) * rankSizeOnIpc_;      // 第几个Rank段
-        uint32_t targetTokenOffset = tokenStructLen_ * targetTokenIdx;                  // 第几个Token位
+        uint32_t targetExpOffset = (targetExpId % localMoeExpertNum_) * worldSize_ * rankSizeOnIpc_;         // 第几个Exp段
+        uint32_t targetServerOffset = formServerId * SERVER_RANK_SIZE * rankSizeOnIpc_;                      // 第几个Server段
+        uint32_t targetRankOffset = (rankId_ % SERVER_RANK_SIZE) * rankSizeOnIpc_;                           // 第几个Rank段
+        uint32_t targetTokenOffset = tokenStructLen_ * targetTokenIdx;                                       // 第几个Token位
         uint32_t targetOffset = targetExpOffset + targetServerOffset + targetRankOffset + targetTokenOffset; // 总偏移
         targetTokenIpcGt.SetGlobalBuffer(
             (__gm__ uint8_t *)(shareIPCAddrsGM_[targetRankId % SERVER_RANK_SIZE] + IPC_DATA_OFFSET + targetOffset));

@@ -16,29 +16,29 @@
 
 #if (__CCE_AICORE__ == 310)
 #pragma message("[BSASelectBlockMask] compiling arch35 kernel path")
-#include "arch35/bsa_select_block_mask_base.h"
-#include "arch35/bsa_select_block_mask_common.h"
+#include "arch35/bsa_select_block_mask_base_arch35.h"
+#include "arch35/bsa_select_block_mask_common_arch35.h"
 #else
-#include "bsa_select_block_mask_base.h"
-#include "bsa_select_block_mask_common.h"
+#include "bsa_select_block_mask_base_kernel.h"
+#include "bsa_select_block_mask_common_kernel.h"
 #endif
 
 using namespace AscendC;
 
-#define BSA_OP_IMPL(templateClass, tilingdataClass, ...)                                          \
-    do {                                                                                          \
-        templateClass<BSAType<__VA_ARGS__>> op;                                                   \
-        GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                     \
-        const tilingdataClass *__restrict tiling_data = &tiling_data_in;                          \
-        op.Init(query, key, blockShape, postBlockShape,                                           \
-                actualSeqLensQ, actualSeqLensKV,                                                  \
-                actualBlockLenQ, actualBlockLenKV,                                                \
-                maskOut,                                                                    \
-                user, tiling_data, &tPipe);                                              \
-        op.Process();                                                                             \
+#define BSA_OP_IMPL(templateClass, tilingdataClass, ...) \
+    do { \
+        templateClass<BSAType<__VA_ARGS__>> op; \
+        GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling); \
+        const tilingdataClass *__restrict tiling_data = &tiling_data_in; \
+        op.Init(query, key, blockShape, postBlockShape, \
+                actualSeqLensQ, actualSeqLensKV, \
+                actualBlockLenQ, actualBlockLenKV, \
+                maskOut, \
+                user, tiling_data, &tPipe); \
+        op.Process(); \
     } while (0)
 
-template<int LayoutQ, int LayoutKV>
+template <int LayoutQ, int LayoutKV>
 __global__ __aicore__ void bsa_select_block_mask(
     __gm__ uint8_t *query, __gm__ uint8_t *key,
     __gm__ uint8_t *blockShape, __gm__ uint8_t *postBlockShape,

@@ -16,7 +16,7 @@
 #ifndef COMPRESSOR_BLOCK_VEC_FULL_LOAD_H
 #define COMPRESSOR_BLOCK_VEC_FULL_LOAD_H
 
-#include "compressor_comm.h"
+#include "compressor_comm_arch22.h"
 #include "compressor_tools.h"
 #include "compressor_vector_comm.h"
 #include "soft_max.h"
@@ -743,7 +743,8 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ReadState(
                                        Trunc(sliceInfo.bStartPos + sliceInfo.sIdx, (uint64_t)cmpRatio_) - cmpRatio_;
             uint64_t endSeqIdx =
                 min(Trunc(sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.validSeqCnt, (uint64_t)cmpRatio_) -
-                cmpRatio_, sliceInfo.bStartPos);
+                        cmpRatio_,
+                    sliceInfo.bStartPos);
             uint64_t dstBaseOffset = sliceInfo.compressoredScCnt * cmpRatio_ * coff_ * dDealSize;
             if (isFirst) {
                 dstBaseOffset += cmpRatio_ * coff_ * dDealSize;
@@ -905,8 +906,8 @@ CompressorBlockVectorFullLoad<COMP>::KvMulReduceScore(const LocalTensor<T> &kvLo
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutput(const LocalTensor<T> &comperssoredUb,
-                                                            const Vec1SliceInfo &sliceInfo, uint32_t compressTcSize,
-                                                            uint32_t dStartIdx, uint32_t dDealSize)
+                                                                                   const Vec1SliceInfo &sliceInfo, uint32_t compressTcSize,
+                                                                                   uint32_t dStartIdx, uint32_t dDealSize)
 {
     LocalTensor<X_T> outputUb = outputQue1.AllocTensor<X_T>();
     Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, compressTcSize * dDealSize);
@@ -934,7 +935,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutp
             sIdx = 0;
         }
     } else {
-
         uint64_t outGmOffset = compressedCnt_ * constInfo_.headDim + dStartIdx;
         DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, compressTcSize, dDealSize, dDealSize,
                             constInfo_.headDim);

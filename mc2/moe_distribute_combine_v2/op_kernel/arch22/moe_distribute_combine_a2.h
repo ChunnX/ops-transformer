@@ -22,7 +22,7 @@
 #include "adv_api/reduce/sum.h"
 #include "utils/std/algorithm.h"
 #include "../moe_distribute_combine_tiling.h"
-#include "../../../common/op_kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/common_moe_distribute_base.h"
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_a2_adump.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_a2_constant.h"
@@ -41,8 +41,8 @@ constexpr uint32_t REPEAT_BYTES = 256;                            // REPEAT字�
 constexpr uint64_t MB_SIZE = 1024 * 1024;                         // MB大小
 
 // batchWrite接口相关常量
-constexpr uint32_t BATCH_WRITE_ITEM_OFFSET = 8 * 1024; // batchWriteInfo结构体地址相对于windowOut最后1M的偏移
-constexpr uint32_t BATCH_WRITE_ITEM_SIZE = 32;         // BatchWriteItem结构体大小
+constexpr uint32_t BATCH_WRITE_ITEM_OFFSET = 8 * 1024;                      // batchWriteInfo结构体地址相对于windowOut最后1M的偏移
+constexpr uint32_t BATCH_WRITE_ITEM_SIZE = 32;                              // BatchWriteItem结构体大小
 constexpr uint32_t U64_PER_ITEM = BATCH_WRITE_ITEM_SIZE / sizeof(uint64_t); // BatchWriteItem结构体占64位整数数量
 constexpr uint32_t U32_PER_ITEM = BATCH_WRITE_ITEM_SIZE / sizeof(uint32_t); // BatchWriteItem结构体占32位整数数量
 
@@ -580,7 +580,6 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::CalRecvCou
               worldSizeTaskInfo_.taskNum * localMoeExpertNum_);
     SyncAll<true>();
 }
-
 
 template <TemplateMC2TypeA2Class>
 __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::CopyStatusToADump()

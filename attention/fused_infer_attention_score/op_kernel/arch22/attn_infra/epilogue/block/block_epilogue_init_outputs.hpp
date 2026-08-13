@@ -28,8 +28,7 @@ template <
 class BlockEpilogue<
     EpilogueAtlasA2InitOutWhenZero<LSE_MODE_>,
     AttnOutType_,
-    LseOutType_>
-{
+    LseOutType_> {
 public:
     using DispatchPolicy = EpilogueAtlasA2InitOutWhenZero<LSE_MODE_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
@@ -49,11 +48,9 @@ public:
     static constexpr uint32_t FLOAT_ELEM_NUM_PER_RPT = 64;
     static constexpr uint32_t UB_UINT8_BLOCK_SIZE = 16384;
 
-    __aicore__ inline
-    BlockEpilogue() {}
+    __aicore__ inline BlockEpilogue() {}
 
-    __aicore__ inline
-    void init(Arch::Resource<ArchTag> &resource)
+    __aicore__ inline void init(Arch::Resource<ArchTag> &resource)
     {
         // Allocate UB space
         constexpr uint32_t ATTN_OUT_INIT_UB_TENSOR_OFFSET = 0;
@@ -63,8 +60,7 @@ public:
         lseOutUbTensor = resource.ubBuf.template GetBufferByByte<ElementLseOut>(LSE_OUT_INIT_UB_TENSOR_OFFSET);
     }
 
-    __aicore__ inline
-    void SubCoreCompute(
+    __aicore__ inline void SubCoreCompute(
         AscendC::GlobalTensor<ElementAttnOut> gOutput,
         AscendC::GlobalTensor<ElementLseOut> gLse,
         const LayoutAttnOut &layoutOutput,
@@ -109,8 +105,7 @@ public:
         AscendC::PipeBarrier<PIPE_ALL>();
     }
 
-    __aicore__ inline
-    void operator()(
+    __aicore__ inline void operator()(
         AscendC::GlobalTensor<ElementAttnOut> gOutput,
         AscendC::GlobalTensor<ElementLseOut> gLse,
         const LayoutAttnOut &layoutOutput,
@@ -126,8 +121,8 @@ public:
         uint32_t subBlockNum = AscendC::GetSubBlockNum();
 
         uint32_t qNSplitSubBlock = qNBlockSize / subBlockNum;
-        uint32_t qNThisSubBlock = (qNBlockSize == 1U) ? 1
-            : (subBlockIdx == 1U) ? (qNBlockSize - qNSplitSubBlock) : qNSplitSubBlock;
+        uint32_t qNThisSubBlock = (qNBlockSize == 1U) ? 1 : (subBlockIdx == 1U) ? (qNBlockSize - qNSplitSubBlock) :
+                                                                                  qNSplitSubBlock;
         uint32_t rowSplitSubBlock =
             (qNBlockSize == 1U) ? (qSBlockSize / subBlockNum) : (qSBlockSize * qNSplitSubBlock);
         uint32_t rowActualSubBlock = (subBlockIdx == 1U) ? (rowNum - rowSplitSubBlock) : rowSplitSubBlock;
@@ -141,9 +136,11 @@ public:
         auto layoutOutputSubBlock = layoutOutput;
 
         uint32_t outLseRowOffsetSubBlock = (qNBlockSize == 1U) ?
-            rowOffsetSubBlock : 0;
+                                               rowOffsetSubBlock :
+                                               0;
         uint32_t outLseColOffsetSubBlock = (qNBlockSize == 1U) ?
-            0 : subBlockIdx * qNSplitSubBlock;
+                                               0 :
+                                               subBlockIdx * qNSplitSubBlock;
         int64_t lseOffsetSubBlock =
             layoutLse.GetOffset(MatrixCoord(outLseRowOffsetSubBlock, outLseColOffsetSubBlock));
         auto gLseThisSubBlock = gLse[lseOffsetSubBlock];
@@ -156,9 +153,10 @@ public:
                 qSThisSubBlock, qNThisSubBlock);
         }
     }
+
 private:
     AscendC::LocalTensor<ElementAttnOut> attnOutUbTensor;
     AscendC::LocalTensor<ElementLseOut> lseOutUbTensor;
 };
-}
+} // namespace NpuArch::Epilogue::Block
 #endif // EPILOGUE_BLOCK_BLOCK_EPILOGUE_INIT_OUTPUTS_HPP

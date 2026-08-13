@@ -106,6 +106,6 @@ REG_OP(IncreFlashAttention)
     .ATTR(block_size, Int, 0)
     .ATTR(inner_precise, Int, 1)
     .OP_END_FACTORY_REG(IncreFlashAttention)
-}  // namespace ge
+} // namespace ge
 
 #endif // OPS_OP_PROTO_INC_INCRE_FLASH_ATTENTION_OPS_H_

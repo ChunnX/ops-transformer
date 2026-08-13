@@ -12,7 +12,7 @@
 #define CATLASS_GEMM_TILE_TILE_MULS_HPP
 
 #include "../../../template_linear_algebra_v2/catlass.hpp"
-#include "../../../template_linear_algebra_v2/gemm/helper.hpp"
+#include "../../../template_linear_algebra_v2/gemm/mega_moe_helper_arch22.hpp"
 namespace Catlass::Gemm::Tile {
 
 ///////////////////////////////////////////////////////

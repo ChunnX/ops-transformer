@@ -12,8 +12,8 @@
  * \file moe_token_unpermute_grad.cpp
  * \brief
  */
-#include "moe_token_unpermute_grad_prob_none.h"
-#include "moe_token_unpermute_grad_prob_not_none.h"
+#include "moe_token_unpermute_grad_moe_token_unpermute_grad_prob_none.h"
+#include "moe_token_unpermute_grad_moe_token_unpermute_grad_prob_not_none.h"
 using namespace AscendC;
 using namespace MoeTokenUnpermuteGrad;
 

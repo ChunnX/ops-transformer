@@ -12,7 +12,7 @@
  * \file moe_masked_scatter.cpp
  * \brief
  */
-#include "moe_masked_scatter.h"
+#include "third_moe_masked_scatter.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/op_def.h"
 #include "opdev/op_executor.h"
@@ -30,22 +30,22 @@ OP_TYPE_REGISTER(MaskedScatter);
 OP_TYPE_REGISTER(MoeMaskedScatter);
 static const std::initializer_list<op::DataType> AICORE_DTYPE_SUPPORT_LIST = {
     op::DataType::DT_FLOAT, op::DataType::DT_FLOAT16, op::DataType::DT_UINT8, op::DataType::DT_INT8,
-    op::DataType::DT_INT32, op::DataType::DT_INT16,   op::DataType::DT_INT64, op::DataType::DT_BF16};
+    op::DataType::DT_INT32, op::DataType::DT_INT16, op::DataType::DT_INT64, op::DataType::DT_BF16};
 static const std::initializer_list<op::DataType> AICORE_DTYPE_SUPPORT_LIST_950 = {
     op::DataType::DT_FLOAT, op::DataType::DT_FLOAT16, op::DataType::DT_DOUBLE, op::DataType::DT_UINT8,
-    op::DataType::DT_INT8,  op::DataType::DT_INT16,   op::DataType::DT_INT32,  op::DataType::DT_INT64,
-    op::DataType::DT_BOOL,  op::DataType::DT_BF16};
+    op::DataType::DT_INT8, op::DataType::DT_INT16, op::DataType::DT_INT32, op::DataType::DT_INT64,
+    op::DataType::DT_BOOL, op::DataType::DT_BF16};
 
-static bool CheckShapeLimit(const aclTensor* self, const aclTensor* mask)
+static bool CheckShapeLimit(const aclTensor *self, const aclTensor *mask)
 {
     return self->GetViewShape() == mask->GetViewShape();
 }
 
 // 根据芯片类型、dtype判断算子是否支持走aicore
-static bool IsAiCoreSupport(const aclTensor* self, const aclTensor* mask)
+static bool IsAiCoreSupport(const aclTensor *self, const aclTensor *mask)
 {
     // 只需要判断dtype
-    auto supportList = op::GetCurrentPlatformInfo().GetCurNpuArch()  == NpuArch::DAV_3510 ?
+    auto supportList = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 ?
                            AICORE_DTYPE_SUPPORT_LIST_950 :
                            AICORE_DTYPE_SUPPORT_LIST;
     bool result = CheckType(self->GetDataType(), supportList);
@@ -55,14 +55,14 @@ static bool IsAiCoreSupport(const aclTensor* self, const aclTensor* mask)
 }
 
 // AICORE算子kernel
-static const aclTensor* MoeMaskedScatterAiCore(
-    const aclTensor* self, const aclTensor* mask, const aclTensor* source, aclTensor* output, aclOpExecutor* executor)
+static const aclTensor *MoeMaskedScatterAiCore(
+    const aclTensor *self, const aclTensor *mask, const aclTensor *source, aclTensor *output, aclOpExecutor *executor)
 {
     L0_DFX(MoeMaskedScatterAiCore, self, mask, source, output);
     auto ret = ACLNN_SUCCESS;
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch()  == NpuArch::DAV_3510)
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510)
         ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeMaskedScatter, OP_INPUT(self, mask, source), OP_OUTPUT(output));
-    else{
+    else {
         ret = ADD_TO_LAUNCHER_LIST_AICORE(MaskedScatter, OP_INPUT(self, mask, source), OP_OUTPUT(output));
     }
     OP_CHECK(
@@ -71,9 +71,8 @@ static const aclTensor* MoeMaskedScatterAiCore(
     return output;
 }
 
-
-const aclTensor* MoeMaskedScatter(
-    const aclTensor* self, const aclTensor* mask, const aclTensor* source, aclOpExecutor* executor)
+const aclTensor *MoeMaskedScatter(
+    const aclTensor *self, const aclTensor *mask, const aclTensor *source, aclOpExecutor *executor)
 {
     L0_DFX(MoeMaskedScatter, self, mask, source);
     auto maskedScatterOut = executor->AllocTensor(self->GetViewShape(), self->GetDataType());

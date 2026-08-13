@@ -88,8 +88,8 @@ int64_t CalcCost(uint32_t basicM, uint32_t basicS2)
 {
     uint32_t alignCoefM = 16U;
     uint32_t alignCoefS2 = 64U;
-    uint32_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U; // 按alignCoefM对齐，向上取整，4：移位操作实现除16
-    uint32_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U; // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
+    uint32_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U;            // 按alignCoefM对齐，向上取整，4：移位操作实现除16
+    uint32_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U;         // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
     return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2); // 6：M轴系数，10：S2轴系数
 }
 
@@ -650,7 +650,7 @@ void SplitFD(FAMetaData &result)
         uint32_t curAvgMSize = (fdRes.mSize[i] + curFDVectorNum - 1U) /
                                curFDVectorNum; // 计算当前归约任务每个核的行数，向上取整，避免行数为0
         curFDVectorNum =
-            (fdRes.mSize[i] + curAvgMSize - 1U) / curAvgMSize; // 重新计算正确的核数，避免因为向上取整导致有核为空
+            (fdRes.mSize[i] + curAvgMSize - 1U) / curAvgMSize;          // 重新计算正确的核数，避免因为向上取整导致有核为空
         curFDVectorNum = std::min(curFDVectorNum, emptyVectorNum + 1U); // 1: Fd任务自身带一个核
         for (uint32_t vid = 0; vid < curFDVectorNum; vid++) {
             fdRes.taskIdx[curCoreIndex] = i;

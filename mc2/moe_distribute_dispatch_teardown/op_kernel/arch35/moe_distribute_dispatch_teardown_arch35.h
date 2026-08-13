@@ -20,11 +20,11 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_dispatch_teardown_tiling.h"
 #if __has_include("../../common/mc2_kernel_utils.h")
-#include "../../moe_distribute_dispatch_setup/moe_distribute_base.h"
+#include "../../moe_distribute_dispatch_setup/common_moe_distribute_base.h"
 #include "../../moe_distribute_dispatch_setup/common.h"
 #include "../../common/mc2_kernel_utils.h"
 #else
-#include "../../../moe_distribute_dispatch_setup/op_kernel/moe_distribute_base.h"
+#include "../../../moe_distribute_dispatch_setup/op_kernel/common_moe_distribute_base.h"
 #include "../../../moe_distribute_dispatch_setup/op_kernel/common.h"
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 #endif
@@ -43,7 +43,7 @@ constexpr uint32_t PERTOKEN_DYNAMIC_QUANT = 2;
 constexpr uint32_t PERGROUP_DYNAMIC_QUANT = 3;
 constexpr uint32_t MX_QUANT = 4;
 
-#define TemplateMC2TypeClass                                                                                           \
+#define TemplateMC2TypeClass \
     typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, bool IsShareExpertRank
 #define TemplateMC2TypeFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsShareExpertRank
 
@@ -595,7 +595,6 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Proce
         UpdateTokenNumsOut();
     }
 }
-
 
 } // namespace Mc2Kernel
 #endif // MOE_DISTRIBUTE_DISPATCH_TEARDOWN_H

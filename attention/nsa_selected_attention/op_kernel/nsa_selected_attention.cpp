@@ -14,43 +14,43 @@
  */
 
 #include "kernel_operator.h"
-#include "nsa_selected_attention.h"
+#include "nsa_selected_attention_kernel.h"
 
 using namespace AscendC;
 
 #ifdef __DAV_C220_CUBE__ // CUBE 实现
 
-#define COPY_TILING_DATA(tiling)                                                                                       \
-    GET_TILING_DATA_MEMBER(NsaSelectedAttentionTilingData, bmm1TilingData, bmm1TilingDataVar, tiling);                 \
-    GET_TILING_DATA_MEMBER(NsaSelectedAttentionTilingData, bmm2TilingData, bmm2TilingDataVar, tiling);                 \
-    const NsaSelectedAttentionTilingData *__restrict tilingData = nullptr;                                             \
-    const TCubeTiling *__restrict bmm1tiling = &bmm1TilingDataVar;                                                     \
+#define COPY_TILING_DATA(tiling) \
+    GET_TILING_DATA_MEMBER(NsaSelectedAttentionTilingData, bmm1TilingData, bmm1TilingDataVar, tiling); \
+    GET_TILING_DATA_MEMBER(NsaSelectedAttentionTilingData, bmm2TilingData, bmm2TilingDataVar, tiling); \
+    const NsaSelectedAttentionTilingData *__restrict tilingData = nullptr; \
+    const TCubeTiling *__restrict bmm1tiling = &bmm1TilingDataVar; \
     const TCubeTiling *__restrict bmm2tiling = &bmm2TilingDataVar;
 
-#define INVOKE_NSA_SELECTED_ATTENTION_GENERAL_OP_IMPL(templateClass, ...)                                              \
-    do {                                                                                                               \
-        templateClass<__VA_ARGS__> op;                                                                                 \
-        COPY_TILING_DATA(tiling);                                                                                      \
-        REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.bmm1, bmm1tiling, op.bmm2, bmm2tiling);                     \
+#define INVOKE_NSA_SELECTED_ATTENTION_GENERAL_OP_IMPL(templateClass, ...) \
+    do { \
+        templateClass<__VA_ARGS__> op; \
+        COPY_TILING_DATA(tiling); \
+        REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.bmm1, bmm1tiling, op.bmm2, bmm2tiling); \
     } while (0)
 
 #else // VECTOR 实现
 
-#define COPY_TILING_DATA(tiling)                                                                                       \
-    GET_TILING_DATA_WITH_STRUCT(NsaSelectedAttentionTilingData, tilingDataIn, tiling);                                 \
-    const NsaSelectedAttentionTilingData *__restrict tilingData = &tilingDataIn;                                       \
-    const TCubeTiling *__restrict bmm1tiling = &(tilingData->bmm1TilingData);                                          \
+#define COPY_TILING_DATA(tiling) \
+    GET_TILING_DATA_WITH_STRUCT(NsaSelectedAttentionTilingData, tilingDataIn, tiling); \
+    const NsaSelectedAttentionTilingData *__restrict tilingData = &tilingDataIn; \
+    const TCubeTiling *__restrict bmm1tiling = &(tilingData->bmm1TilingData); \
     const TCubeTiling *__restrict bmm2tiling = &(tilingData->bmm2TilingData);
 
-#define INVOKE_NSA_SELECTED_ATTENTION_GENERAL_OP_IMPL(templateClass, ...)                                              \
-    do {                                                                                                               \
-        __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                            \
-        COPY_TILING_DATA(tiling);                                                                                      \
-        templateClass<__VA_ARGS__> op;                                                                                 \
-        REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.bmm1, bmm1tiling, op.bmm2, bmm2tiling);                     \
-        op.Init(query, key, value, topkIndices, attenMask, actualSeqQLen,                                              \
-    actualSeqKvLen, softmaxMax, softmaxSum, attentionOut, workspace, tilingData, &tPipe);                              \
-        op.Process();                                                                                                  \
+#define INVOKE_NSA_SELECTED_ATTENTION_GENERAL_OP_IMPL(templateClass, ...) \
+    do { \
+        __gm__ uint8_t *user = GetUserWorkspace(workspace); \
+        COPY_TILING_DATA(tiling); \
+        templateClass<__VA_ARGS__> op; \
+        REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.bmm1, bmm1tiling, op.bmm2, bmm2tiling); \
+        op.Init(query, key, value, topkIndices, attenMask, actualSeqQLen, \
+                actualSeqKvLen, softmaxMax, softmaxSum, attentionOut, workspace, tilingData, &tPipe); \
+        op.Process(); \
     } while (0)
 
 #endif
@@ -66,7 +66,7 @@ extern "C" __global__ __aicore__ void nsa_selected_attention(
     if (TILING_KEY_IS(0)) {
         INVOKE_NSA_SELECTED_ATTENTION_GENERAL_OP_IMPL(NsaSelectedAttention, half);
         return;
-    } else if (TILING_KEY_IS(1)) {  // enable mask
+    } else if (TILING_KEY_IS(1)) { // enable mask
         INVOKE_NSA_SELECTED_ATTENTION_GENERAL_OP_IMPL(NsaSelectedAttention, half, true);
         return;
     }
@@ -75,7 +75,7 @@ extern "C" __global__ __aicore__ void nsa_selected_attention(
     if (TILING_KEY_IS(0)) {
         INVOKE_NSA_SELECTED_ATTENTION_GENERAL_OP_IMPL(NsaSelectedAttention, bfloat16_t);
         return;
-    } else if (TILING_KEY_IS(1)) {  // enable mask
+    } else if (TILING_KEY_IS(1)) { // enable mask
         INVOKE_NSA_SELECTED_ATTENTION_GENERAL_OP_IMPL(NsaSelectedAttention, bfloat16_t, true);
         return;
     }

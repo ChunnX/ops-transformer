@@ -12,12 +12,12 @@
 #define CATLASS_GROUPGEMM_KERNEL_GROUPGEMM_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/cross_core_sync.hpp"
+#include "../../arch/third_cross_core_sync.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
 #include "../../epilogue/tile/copy_gm_to_ub.hpp"
 #include "../../epilogue/tile/copy_ub_to_gm.hpp"
-#include "../../gemm/helper.hpp"
+#include "../../gemm/third_helper.hpp"
 
 namespace Catlass::Gemm::Kernel {
 
@@ -32,7 +32,6 @@ CATLASS_DEVICE void UnpackListParam(T *const dst, GM_ADDR src, uint32_t len)
 }
 
 } // namespace detail
-
 
 template <class ArchTag_, class Element_, class Layout_, uint32_t COMPUTE_LENGTH>
 struct PaddingMatrix {
@@ -165,7 +164,6 @@ private:
     static_assert(BUFFER_NUM * COMPUTE_LENGTH * sizeof(Element) <= ArchTag::UB_SIZE, "Excedding the UB space!");
 };
 
-
 template <class BlockGemm_, class BlockEpilogue_, class BlockScheduler_ = void>
 class KernelGroupGemm {
 public:
@@ -221,7 +219,6 @@ public:
         GM_ADDR ptrX;
         GM_ADDR ptrD;
 
-
         // Methods
         CATLASS_HOST_DEVICE
         Params()
@@ -233,10 +230,22 @@ public:
                GM_ADDR ptrLayoutA_, GM_ADDR ptrB_, GM_ADDR ptrLayoutB_, GM_ADDR ptrWorkspace_,
                GM_ADDR ptrLayoutWorkspace_, GM_ADDR ptrWA_, GM_ADDR ptrLayoutWA_, GM_ADDR ptrWB_, GM_ADDR ptrLayoutWB_,
                GM_ADDR ptrX_, GM_ADDR ptrD_)
-            : problemCount(problemCount_), ptrProblemShape(ptrProblemShape_), alpha(alpha_), beta(beta_), ptrA(ptrA_),
-              ptrLayoutA(ptrLayoutA_), ptrB(ptrB_), ptrLayoutB(ptrLayoutB_), ptrWorkspace(ptrWorkspace_),
-              ptrLayoutWorkspace(ptrLayoutWorkspace_), ptrWA(ptrWA_), ptrLayoutWA(ptrLayoutWA_), ptrWB(ptrWB_),
-              ptrLayoutWB(ptrLayoutWB_), ptrX(ptrX_), ptrD(ptrD_)
+            : problemCount(problemCount_),
+              ptrProblemShape(ptrProblemShape_),
+              alpha(alpha_),
+              beta(beta_),
+              ptrA(ptrA_),
+              ptrLayoutA(ptrLayoutA_),
+              ptrB(ptrB_),
+              ptrLayoutB(ptrLayoutB_),
+              ptrWorkspace(ptrWorkspace_),
+              ptrLayoutWorkspace(ptrLayoutWorkspace_),
+              ptrWA(ptrWA_),
+              ptrLayoutWA(ptrLayoutWA_),
+              ptrWB(ptrWB_),
+              ptrLayoutWB(ptrLayoutWB_),
+              ptrX(ptrX_),
+              ptrD(ptrD_)
         {
         }
     };

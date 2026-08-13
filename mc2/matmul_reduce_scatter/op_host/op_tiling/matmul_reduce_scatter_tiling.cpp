@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "matmul_reduce_scatter_tiling_base.h"
+#include "matmul_reduce_scatter_matmul_reduce_scatter_tiling_base.h"
 
 using namespace AscendC;
 using namespace ge;

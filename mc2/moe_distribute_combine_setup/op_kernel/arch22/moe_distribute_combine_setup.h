@@ -21,10 +21,10 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_tiling/kernel_tiling.h"
-#if __has_include("../../common/moe_distribute_base.h")
-#include "../../common/moe_distribute_base.h"
+#if __has_include("../../common/common_moe_distribute_base.h")
+#include "../../common/common_moe_distribute_base.h"
 #else
-#include "../../../common/op_kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/common_moe_distribute_base.h"
 #endif
 #include "moe_distribute_combine_setup_tiling.h"
 
@@ -231,8 +231,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::BuffInit(
     tpipe_->Reset();
     tpipe_->InitBuffer(readStateBuf_, UB_ALIGN);                                      // 32
     uint32_t sendNumAlign = Ceil(moeSendNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN; // 32B向上取整
-    tpipe_->InitBuffer(sendCountBuf_, sendNumAlign); // worldSize_ * moeExpertPerRankNum_ * 4，且32B向上取整
-    tpipe_->InitBuffer(gmTpSendCountQueue_, BUFFER_NUM, axisHExpandXTypeSize_); // 28K
+    tpipe_->InitBuffer(sendCountBuf_, sendNumAlign);                                  // worldSize_ * moeExpertPerRankNum_ * 4，且32B向上取整
+    tpipe_->InitBuffer(gmTpSendCountQueue_, BUFFER_NUM, axisHExpandXTypeSize_);       // 28K
     assistInfoForCombineLocal_ = sendCountBuf_.Get<int32_t>();
     tpipe_->InitBuffer(batchItemInfoBuf_, 2 * sizeof(BatchWriteItem));
 }

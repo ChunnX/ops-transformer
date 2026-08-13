@@ -16,10 +16,9 @@
 #ifndef GQMM_TENSOR_API_MX_KERNEL_H
 #define GQMM_TENSOR_API_MX_KERNEL_H
 
-
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
 #include "blaze/gemm/kernel/kernel_qgmm_mx.h"
-#include "../../grouped_matmul_utils.h"
+#include "../../grouped_matmul_grouped_matmul_utils.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 
 using GMMQuantParams = GroupedMatmulTilingData::GMMQuantParams;

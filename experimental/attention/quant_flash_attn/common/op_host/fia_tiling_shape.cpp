@@ -17,7 +17,6 @@
 #include <algorithm>
 #include "fia_tiling_shape.h"
 
-
 namespace optiling {
 static const std::map<FiaLayout, std::vector<FiaAxis>> FIA_LAYOUT_AXIS_MAP = {
     {FiaLayout::BSH, {FiaAxis::B, FiaAxis::S, FiaAxis::H}},
@@ -106,13 +105,7 @@ const std::map<FiaCompareType, CompareFunc<int64_t>> FiaTilingShapeCompare::comp
 std::string LayoutToSerialString(FiaLayout layout)
 {
     const std::map<FiaLayout, std::string> layout2Str = {
-        {FiaLayout::BSH, "BSH"},       {FiaLayout::BSND, "BSND"},     {FiaLayout::BNSD, "BNSD"},
-        {FiaLayout::NZ, "NZ"},         {FiaLayout::TND, "TND"},       {FiaLayout::NBSD, "NBSD"},
-        {FiaLayout::NTD, "NTD"},       {FiaLayout::S1S2, "S1S2"},     {FiaLayout::BS2, "BS2"},
-        {FiaLayout::BnBsH, "BnBsH"},   {FiaLayout::BnNBsD, "BnNBsD"}, {FiaLayout::BNS1S2, "BNS1S2"},
-        {FiaLayout::INS1S2, "1NS1S2"}, {FiaLayout::BNS11, "BNS11"},   {FiaLayout::TN1, "TN1"},
-        {FiaLayout::BS1S2, "BS1S2"},   {FiaLayout::B1S1S2, "B1S1S2"}, {FiaLayout::IS1S2, "1S1S2"},
-        {FiaLayout::I1S1S2, "11S1S2"}};
+        {FiaLayout::BSH, "BSH"}, {FiaLayout::BSND, "BSND"}, {FiaLayout::BNSD, "BNSD"}, {FiaLayout::NZ, "NZ"}, {FiaLayout::TND, "TND"}, {FiaLayout::NBSD, "NBSD"}, {FiaLayout::NTD, "NTD"}, {FiaLayout::S1S2, "S1S2"}, {FiaLayout::BS2, "BS2"}, {FiaLayout::BnBsH, "BnBsH"}, {FiaLayout::BnNBsD, "BnNBsD"}, {FiaLayout::BNS1S2, "BNS1S2"}, {FiaLayout::INS1S2, "1NS1S2"}, {FiaLayout::BNS11, "BNS11"}, {FiaLayout::TN1, "TN1"}, {FiaLayout::BS1S2, "BS1S2"}, {FiaLayout::B1S1S2, "B1S1S2"}, {FiaLayout::IS1S2, "1S1S2"}, {FiaLayout::I1S1S2, "11S1S2"}};
 
     if (layout2Str.find(layout) != layout2Str.end()) {
         return layout2Str.at(layout);
@@ -120,7 +113,7 @@ std::string LayoutToSerialString(FiaLayout layout)
     return "UNKNOWN";
 }
 
-static const std::string AXIS_SERIAL_STRINGS[] = {"B",  "S",  "N",  "D",  "H",  "T",    "D1",
+static const std::string AXIS_SERIAL_STRINGS[] = {"B", "S", "N", "D", "H", "T", "D1",
                                                   "D0", "S1", "S2", "Bn", "Bs", "CONST"};
 
 std::string AxisToSerialString(FiaAxis axis)

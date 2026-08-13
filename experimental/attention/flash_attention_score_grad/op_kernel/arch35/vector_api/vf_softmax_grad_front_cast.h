@@ -18,7 +18,7 @@
 #include "vf_softmax_grad_front_cast_aligned512_f32.h"
 #include "vf_softmax_grad_front_cast_aligned768_f32.h"
 #include "vf_softmax_grad_front_cast_aligned256_f16.h"
-#include "vf_softmax_grad_front_cast_aligned512_f16.h"
+#include "flash_attention_score_grad_vf_softmax_grad_front_cast_aligned512_f16_arch35.h"
 #include "vf_softmax_grad_front_cast_aligned768_f16.h"
 
 namespace AscendC {
@@ -55,7 +55,7 @@ __aicore__ inline void MySoftmaxGradFrontCast(const LocalTensor<T> &dstTensor, c
             MySoftmaxGradFrontCastAligned768F16<T1, T, srcN, HEAD_DIM_ALIGN>(dstTensor, gradTensor, srcTensor, srcM, realN);
         }
     }
-}                                         
+}
 #else
 template <typename T1, typename T, uint32_t srcN, uint32_t HEAD_DIM_ALIGN>
 __aicore__ inline void MySoftmaxGradFrontCast(const LocalTensor<T> &dstTensor, const LocalTensor<T1> &gradTensor,
@@ -64,6 +64,5 @@ __aicore__ inline void MySoftmaxGradFrontCast(const LocalTensor<T> &dstTensor, c
 }
 #endif
 } // namespace AscendC
- 
+
 #endif // MY_SOFTMAX_GRAD_CAST_INTERFACE_H
- 

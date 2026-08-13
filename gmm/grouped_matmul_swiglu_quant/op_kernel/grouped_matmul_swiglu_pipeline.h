@@ -14,12 +14,12 @@
  */
 #ifndef ASCENDC_GROUPED_MATMUL_SWIGLU_QUANT_PIPELINE_H
 #define ASCENDC_GROUPED_MATMUL_SWIGLU_QUANT_PIPELINE_H
-#include "grouped_matmul_swiglu_quant.h"
+#include "grouped_matmul_swiglu_quant_kernel.h"
 #include <typeinfo>
 #include "grouped_matmul_swiglu_quant_a8w4_msd_pre.h"
 #include "grouped_matmul_swiglu_quant_a8w4_msd_mid.h"
 #include "grouped_matmul_swiglu_quant_a8w4_msd_post.h"
-#include "grouped_matmul_swiglu_quant_utils.h"
+#include "grouped_matmul_swiglu_quant_utils_kernel.h"
 using namespace AscendC;
 using namespace matmul;
 #ifdef GMM_SWIGLU_QUANT_A8W4_MSD
@@ -54,7 +54,11 @@ public:
     __aicore__ inline GMMSwigluQuantPipelineSchedule(typename mmType::MT &mm_,
                                                      const GMMSwigluBaseParams *__restrict gmmBaseParamsIN,
                                                      const GMMSwiglu *__restrict gmmSwigluIN, TPipe *tPipeIN)
-        : mm(mm_), midProcess(mm), gmmBaseParams(gmmBaseParamsIN), gmmSwiglu(gmmSwigluIN), pipe(tPipeIN)
+        : mm(mm_),
+          midProcess(mm),
+          gmmBaseParams(gmmBaseParamsIN),
+          gmmSwiglu(gmmSwigluIN),
+          pipe(tPipeIN)
     {
     }
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,

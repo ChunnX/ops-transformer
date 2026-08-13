@@ -13,7 +13,7 @@
 
 #include "../../../attn_infra/bsa_base_defs.hpp"
 #include "../../../attn_infra/gemm/bsa_helper.hpp"
-#include "../../../tla/tensor.hpp"
+#include "../../../tla/block_sparse_attention_tensor.hpp"
 namespace NpuArch::Gemm::Tile {
 
 ///////////////////////////////////////////////////////////

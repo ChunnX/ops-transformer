@@ -12,7 +12,7 @@
 #define CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_FA_SOFTMAX_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/cross_core_sync.hpp"
+#include "../../arch/third_cross_core_sync.hpp"
 #include "../../arch/resource.hpp"
 #include "../../epilogue/dispatch_policy.hpp"
 #include "../../gemm_coord.hpp"

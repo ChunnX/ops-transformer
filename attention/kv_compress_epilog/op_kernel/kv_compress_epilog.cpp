@@ -13,7 +13,7 @@
  * \brief KV compress epilog kernel implementation
  */
 
-#include "kv_compress_epilog.h"
+#include "kv_compress_epilog_kernel.h"
 
 using namespace AscendC;
 
@@ -38,7 +38,7 @@ extern "C" __global__ __aicore__ void kv_compress_epilog(
 
     // Get tiling data
     GET_TILING_DATA_WITH_STRUCT(KvCompressEpilogTilingData, tilingDataIn, tiling);
-    const KvCompressEpilogTilingData* __restrict__ tilingData = &tilingDataIn;
+    const KvCompressEpilogTilingData *__restrict__ tilingData = &tilingDataIn;
 
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
     if (TILING_KEY_IS(0)) {

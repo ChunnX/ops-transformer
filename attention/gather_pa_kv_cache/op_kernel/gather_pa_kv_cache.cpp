@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "gather_pa_kv_cache_nd.h"
+#include "gather_pa_kv_cache_nd_kernel.h"
 #include "gather_pa_kv_cache_nz.h"
 #include "kernel_operator.h"
 using namespace AscendC;

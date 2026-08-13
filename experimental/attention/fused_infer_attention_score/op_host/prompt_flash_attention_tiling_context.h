@@ -46,7 +46,7 @@ struct ContextParamsForPFATiling {
     const gert::Tensor *valueAntiquantScale = nullptr;
     const gert::Tensor *KeyAntiquantOffset = nullptr;
     const gert::Tensor *valueAntiquantOffset = nullptr;
-    const gert::Tensor *dequantScaleQuery =nullptr;
+    const gert::Tensor *dequantScaleQuery = nullptr;
 
     const gert::Tensor *qStartIdx = nullptr;
     const gert::Tensor *kvStartIdx = nullptr;
@@ -90,7 +90,7 @@ struct ContextParamsForPFATiling {
     const gert::StorageShape *queryRope = nullptr;
     const gert::StorageShape *keyRope = nullptr;
     const gert::StorageShape *learnableSinkShape = nullptr;
-    ge::DataType dequantScaleQueryType = ge::DataType::DT_FLOAT16;   
+    ge::DataType dequantScaleQueryType = ge::DataType::DT_FLOAT16;
     ge::DataType KeyAntiquantScaleType = ge::DataType::DT_FLOAT16;
     ge::DataType valueAntiquantScaleType = ge::DataType::DT_FLOAT16;
     ge::DataType KeyAntiquantOffsetType = ge::DataType::DT_FLOAT16;

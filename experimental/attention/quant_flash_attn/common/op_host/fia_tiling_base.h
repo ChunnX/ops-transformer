@@ -44,7 +44,8 @@ class FiaTilingBase {
 public:
     FiaTilingBase() = default;
 
-    explicit FiaTilingBase(gert::TilingContext *context) : context_(context)
+    explicit FiaTilingBase(gert::TilingContext *context)
+        : context_(context)
     {
     }
 

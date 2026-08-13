@@ -21,7 +21,8 @@
 namespace optiling {
 class FiaInfoParser {
 public:
-    explicit FiaInfoParser(const gert::TilingContext *context) : context_(context)
+    explicit FiaInfoParser(const gert::TilingContext *context)
+        : context_(context)
     {
     }
     ~FiaInfoParser() = default;

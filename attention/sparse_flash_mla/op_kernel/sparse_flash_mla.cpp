@@ -17,15 +17,15 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "sparse_flash_mla_template_tiling_key.h"
-#include "arch35/sparse_flash_mla_csa_kernel.h"
-#include "arch35/sparse_flash_mla_swa_kernel.h"
+#include "arch35/sparse_flash_mla_csa_kernel_arch35.h"
+#include "arch35/sparse_flash_mla_swa_kernel_arch35.h"
 #include "sparse_flash_mla_metadata.h"
 #else
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "sparse_flash_mla_template_tiling_key.h"
-#include "arch22/sparse_flash_mla_csa_kernel.h"
-#include "arch22/sparse_flash_mla_swa_kernel.h"
+#include "arch22/sparse_flash_mla_csa_kernel_arch22.h"
+#include "arch22/sparse_flash_mla_swa_kernel_arch22.h"
 #include "arch22/sparse_flash_mla_metadata.h"
 #endif
 
@@ -34,32 +34,32 @@ using namespace optiling::detail;
 using namespace SMLAKernel;
 
 #if (__CCE_AICORE__ == 310)
-#define SMLA_OP_IMPL(templateClass, tilingdataClass, ...)                                                              \
-    do {                                                                                                               \
-        using CubeBlockType =                                                                                          \
-            typename std::conditional<g_coreType == AscendC::AIC, SMLAKernel::CSABlockCube<__VA_ARGS__>,               \
-                                      SMLAKernel::CSABlockCubeDummy<__VA_ARGS__>>::type;                               \
-        using VecBlockType =                                                                                           \
-            typename std::conditional<g_coreType == AscendC::AIC, SMLAKernel::CSABlockVecDummy<__VA_ARGS__>,           \
-                                      SMLAKernel::CSABlockVec<__VA_ARGS__>>::type;                                     \
-        templateClass<CubeBlockType, VecBlockType> op;                                                                 \
-        GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tilingDataIn, tiling);                                            \
-        const tilingdataClass *__restrict tilingData = &tilingDataIn;                                                  \
-        op.Init(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ,     \
-                cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV, oriTopkLength,    \
-                cmpTopkLength, sinks, metadata, attentionOut, softmaxLse, user, tilingData, &tPipe);                   \
-        op.Process();                                                                                                  \
+#define SMLA_OP_IMPL(templateClass, tilingdataClass, ...) \
+    do { \
+        using CubeBlockType = \
+            typename std::conditional<g_coreType == AscendC::AIC, SMLAKernel::CSABlockCube<__VA_ARGS__>, \
+                                      SMLAKernel::CSABlockCubeDummy<__VA_ARGS__>>::type; \
+        using VecBlockType = \
+            typename std::conditional<g_coreType == AscendC::AIC, SMLAKernel::CSABlockVecDummy<__VA_ARGS__>, \
+                                      SMLAKernel::CSABlockVec<__VA_ARGS__>>::type; \
+        templateClass<CubeBlockType, VecBlockType> op; \
+        GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tilingDataIn, tiling); \
+        const tilingdataClass *__restrict tilingData = &tilingDataIn; \
+        op.Init(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ, \
+                cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV, oriTopkLength, \
+                cmpTopkLength, sinks, metadata, attentionOut, softmaxLse, user, tilingData, &tPipe); \
+        op.Process(); \
     } while (0)
 #else
-#define SMLA_OP_IMPL(templateClass, tilingdataClass, ...)                                                              \
-    do {                                                                                                               \
-        templateClass<SMLAType<__VA_ARGS__>> op;                                                                       \
-        GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                                          \
-        const tilingdataClass *__restrict tiling_data = &tiling_data_in;                                               \
-        op.Init(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv,       \
-                cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV, sinks, metadata, attentionOut,    \
-                softmaxLse, user, tiling_data, tiling, &tPipe);                                                        \
-        op.Process();                                                                                                  \
+#define SMLA_OP_IMPL(templateClass, tilingdataClass, ...) \
+    do { \
+        templateClass<SMLAType<__VA_ARGS__>> op; \
+        GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling); \
+        const tilingdataClass *__restrict tiling_data = &tiling_data_in; \
+        op.Init(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, \
+                cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV, sinks, metadata, attentionOut, \
+                softmaxLse, user, tiling_data, tiling, &tPipe); \
+        op.Process(); \
     } while (0)
 #endif
 
