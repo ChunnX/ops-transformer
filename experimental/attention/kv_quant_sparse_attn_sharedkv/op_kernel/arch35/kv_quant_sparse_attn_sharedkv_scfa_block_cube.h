@@ -51,7 +51,7 @@ public:
     static constexpr uint32_t rightBufSingleSize = s2BaseSize * dBaseSize;
     static constexpr uint32_t rightBufTotalSize = rightBufSingleSize * rightBufNum;
     static constexpr uint32_t kQSNumInOneBlock = 1;
-    static constexpr uint32_t kMRealSize = gSize;
+    static constexpr uint32_t kMRealSize = 64;
 
     __aicore__ inline SCFABlockCube() {};
     __aicore__ inline void InitLocalBuffer(uint32_t l1Addr, uint32_t goIdx);

@@ -50,14 +50,16 @@ public:
     static constexpr uint32_t blkTableBufId = 0;
     static constexpr uint32_t sparseIdxBufId = 1;
     static constexpr uint32_t kvPhyAddrBufId = 2;
-    static constexpr uint32_t kMRealSize = gSize;
-    static constexpr uint32_t kHalfMRealSize = (gSize + 1) >> 1;
-    static constexpr uint32_t kVec2MBaseSize = kHalfMRealSize;
+    static constexpr uint32_t kMRealSize = 64;
+    // static constexpr uint32_t kHalfMRealSize = (gSize + 1) >> 1;
+    // static constexpr uint32_t kVec2MBaseSize = kHalfMRealSize;
     static constexpr int32_t kActualS1Size = s1Size;
+    uint32_t kHalfMRealSize;
+    uint32_t kVec2MBaseSize;
 
     // ==================== Functions ======================
     __aicore__ inline SCFABlockVec() {};
-    __aicore__ inline void InitLocalBuffer(uint32_t ubBaseAddr);
+    __aicore__ inline void InitLocalBuffer(uint32_t ubBaseAddr, uint8_t subBlockIdx);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
         __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv,
         __gm__ uint8_t *sinks, __gm__ uint8_t *attentionOut);
@@ -1341,8 +1343,10 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitSinksBuffer()
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(uint32_t ubBaseAddr)
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(uint32_t ubBaseAddr, uint8_t subBlockIdx)
 {
+    kHalfMRealSize = (subBlockIdx == 0) ? ((kMRealSize + 1) >> 1) : (kMRealSize >> 1);
+    kVec2MBaseSize = kHalfMRealSize;
     uint32_t ubAddr = ubBaseAddr;
 
     dequantScaleUb = {
@@ -1396,7 +1400,7 @@ public:
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
         __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv,
         __gm__ uint8_t *sinks, __gm__ uint8_t *attentionOut) {}
-    __aicore__ inline void InitLocalBuffer(uint32_t ubBaseAddr) {}
+    __aicore__ inline void InitLocalBuffer(uint32_t ubBaseAddr, uint8_t subBlockIdx) {}
     __aicore__ inline void ProcessVec1(StaticBuffer<Q_T> &outputBuf,
         StaticBuffer<T> &bmm1ResBuf, uint8_t subBlockIdx, uint32_t aivIdx,
         int64_t s2LoopCount, int32_t s2RealSize, uint8_t taskIdMod2, uint8_t multiCoreIdxMod2) {}

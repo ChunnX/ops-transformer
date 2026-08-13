@@ -212,7 +212,7 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::InitLocalBuffer(uint32_t goIdx)
 {
     cubeBlock.InitLocalBuffer(l1CubeBase, goIdx);
-    vecBlock.InitLocalBuffer(vUbBase);
+    vecBlock.InitLocalBuffer(vUbBase, this->subBlockIdx);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
