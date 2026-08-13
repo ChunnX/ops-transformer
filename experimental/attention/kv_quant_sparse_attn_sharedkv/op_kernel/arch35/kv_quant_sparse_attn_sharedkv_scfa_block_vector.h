@@ -57,11 +57,16 @@ public:
     static constexpr uint32_t sparseCopyTokenNum = 8;
     static constexpr float R0 = 1.0f;
 
-    // buffer ID 是 get_buf/rls_buf 使用的同步槽。主流程固定分配为：stage0 输入 0/1、stage0 输出
-    // 2/3、stage1 输出 4/5、stage2 输出 6、sinks 7。Init 复用对应的物理 UB，必须沿用相同同步槽。
-    static constexpr uint32_t blkTableBufId = 2;   // blkTableBuf 复用 stage0OutBuf[0]。
-    static constexpr uint32_t sparseIdxBufId = 3;  // sparseIdxBuf 复用 stage0OutBuf[1]。
+    // buffer ID 是 get_buf/rls_buf 使用的同步槽，不是 TBuf 数组下标。同步槽与物理 UB 的映射为：
+    //   0/1: stage0InBuf[0/1]    2/3: stage0OutBuf[0/1]
+    //   4/5: stage1OutBuf[0/1]  6:   stage2OutBuf       7: sinksBuf
+    // ping-pong 下标只能是 0/1，叠加对应基址后得到该物理 UB 唯一的同步槽。
+    static constexpr uint32_t stage0InBufBaseId = 0;
+    static constexpr uint32_t stage0OutBufBaseId = 2;
+    static constexpr uint32_t stage1OutBufBaseId = 4;
     static constexpr uint32_t stage2OutBufBufId = 6; // stage2OutBuf 的主流程同步槽。
+    static constexpr uint32_t blkTableBufId = stage0OutBufBaseId; // blkTableBuf 复用 stage0OutBuf[0]。
+    static constexpr uint32_t sparseIdxBufId = stage0OutBufBaseId + 1; // sparseIdxBuf 复用 stage0OutBuf[1]。
     static constexpr uint32_t kvPhyAddrBufId = stage2OutBufBufId; // kvPhyAddrBuf 复用 stage2OutBuf。
     static constexpr uint32_t syncSinksBufId = 7; // sinksBuf 使用独立同步槽，避免与流水缓冲区冲突。
 
@@ -538,8 +543,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessNotSparseKv(
         }
 
         const uint32_t pp = pingPongV0;
-        const uint32_t stage0InId = pp;
-        const uint32_t stage0OutId = pp + 2; // 输入ping-pong占用ID 0/1，输出使用独立的ID 2/3
+        const uint32_t stage0InId = stage0InBufBaseId + pp;
+        const uint32_t stage0OutId = stage0OutBufBaseId + pp;
         get_buf(PIPE_MTE2, stage0InId, false);
         rls_buf(PIPE_MTE2, stage0InId, false);
         LocalTensor<KV_T> kvInUb = stage0InBuf[pp].Get<KV_T>();
@@ -728,8 +733,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
     while ((s2 < procS2EndLocal) && !meetEnd) { // 拷贝到s2End或者遇到-1
         int64_t dealRow = 0;
         const uint32_t pp = pingPongV0;
-        const uint32_t stage0InId = pp;
-        const uint32_t stage0OutId = pp + 2; // 输入ping-pong占用ID 0/1，输出使用独立的ID 2/3
+        const uint32_t stage0InId = stage0InBufBaseId + pp;
+        const uint32_t stage0OutId = stage0OutBufBaseId + pp;
         // 1、copy kv in, gm ->ub
         get_buf(PIPE_MTE2, stage0InId, false);
         rls_buf(PIPE_MTE2, stage0InId, false);
@@ -798,7 +803,9 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     LocalTensor<float> sumUb = this->softmaxSumBuf[softmaxOffset].template Get<float>();
     LocalTensor<float> maxUb = this->softmaxMaxBuf[softmaxOffset].template Get<float>();
     const uint32_t stage1Offset = runInfo.taskIdMod2;
-    const uint32_t stage1BufId = stage1Offset + 4;
+    // SetRunInfo 将 taskIdMod2 设为 taskId & 1，因此 stage1Offset 只会是0/1；叠加基址后，
+    // stage1OutBuf[0/1] 分别使用同步槽4/5。
+    const uint32_t stage1BufId = stage1OutBufBaseId + stage1Offset;
     LocalTensor<float> expUb = this->softmaxExpBuf[stage1Offset].template Get<T>();
     get_buf(PIPE_V, stage1BufId, false);
     rls_buf(PIPE_V, stage1BufId, false);
