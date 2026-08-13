@@ -142,7 +142,7 @@ if _TORCHAIR_AVAILABLE:
             activation_mode=activation_mode,
             null_block_id=null_block_id,
         )
-        return y
+        return conv_states_out, y
 
     @register_fx_node_ge_converter(
         torch.ops.cann_ops_transformer.causal_conv1d_update.default
@@ -176,7 +176,7 @@ if _TORCHAIR_AVAILABLE:
             activation_mode=activation_mode,
             null_block_id=null_block_id,
         )
-        return y
+        return conv_states_out, y
 
 else:
 

@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ---------------------------------------------------------------------------
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 from torch.library import impl
@@ -28,7 +28,7 @@ class CausalConv1dFnOpBuilder(OpBuilder):
         return (
             "causal_conv1d_fn("
             "Tensor x, Tensor weight, Tensor? bias, "
-            "Tensor conv_states, "
+            "Tensor(a!) conv_states, "
             "Tensor query_start_loc, "
             "*, "
             "Tensor? cache_indices=None, "
@@ -41,7 +41,7 @@ class CausalConv1dFnOpBuilder(OpBuilder):
             "Tensor? initial_state_idx=None, "
             "Tensor? num_computed_tokens=None, "
             "int block_size_to_align=0"
-            ") -> Tensor"
+            ") -> (Tensor(a!), Tensor)"
         )
 
     def register_meta(self):
@@ -65,9 +65,9 @@ class CausalConv1dFnOpBuilder(OpBuilder):
             initial_state_idx: Optional[torch.Tensor] = None,
             num_computed_tokens: Optional[torch.Tensor] = None,
             block_size_to_align: int = 0,
-        ) -> torch.Tensor:
+        ) -> Tuple[torch.Tensor, torch.Tensor]:
             y = torch.empty_like(x)
-            return y
+            return conv_states, y
 
 
 _causal_conv1d_fn_op_builder = CausalConv1dFnOpBuilder()
@@ -91,7 +91,7 @@ def _causal_conv1d_fn(
     initial_state_idx: Optional[torch.Tensor] = None,
     num_computed_tokens: Optional[torch.Tensor] = None,
     block_size_to_align: int = 0,
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     _op_module = _causal_conv1d_fn_op_builder.load()
     return _op_module.causal_conv1d_fn(
         x,
@@ -160,8 +160,9 @@ def causal_conv1d_fn(
 
     Returns:
         Tensor: 卷积输出 y，shape 与 x 一致，dtype 与 x 一致。
+        conv_states 在原地更新（与 schema 中的 Tensor(a!) 别名一致）。
     """
-    return _causal_conv1d_fn(
+    _, y = _causal_conv1d_fn(
         x,
         weight,
         bias,
@@ -178,3 +179,4 @@ def causal_conv1d_fn(
         num_computed_tokens=num_computed_tokens,
         block_size_to_align=block_size_to_align,
     )
+    return y

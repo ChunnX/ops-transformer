@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ---------------------------------------------------------------------------
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 from torch.library import impl
@@ -27,10 +27,10 @@ class CausalConv1dUpdateOpBuilder(OpBuilder):
         """PyTorch operator schema."""
         return (
             "causal_conv1d_update("
-            "Tensor x, Tensor conv_state, Tensor weight, "
+            "Tensor x, Tensor(a!) conv_state, Tensor weight, "
             "*, "
             "Tensor? bias=None, "
-            "str activation=\"silu\", "
+            'str activation="silu", '
             "Tensor? conv_state_indices=None, "
             "Tensor? num_accepted_tokens=None, "
             "Tensor? query_start_loc=None, "
@@ -38,7 +38,7 @@ class CausalConv1dUpdateOpBuilder(OpBuilder):
             "int null_block_id=0, "
             "Tensor? block_idx_last_scheduled_token=None, "
             "Tensor? initial_state_idx=None"
-            ") -> Tensor"
+            ") -> (Tensor(a!), Tensor)"
         )
 
     def register_meta(self):
@@ -59,9 +59,9 @@ class CausalConv1dUpdateOpBuilder(OpBuilder):
             null_block_id: int = 0,
             block_idx_last_scheduled_token: Optional[torch.Tensor] = None,
             initial_state_idx: Optional[torch.Tensor] = None,
-        ) -> torch.Tensor:
+        ) -> Tuple[torch.Tensor, torch.Tensor]:
             y = torch.empty_like(x)
-            return y
+            return conv_state, y
 
 
 _causal_conv1d_update_op_builder = CausalConv1dUpdateOpBuilder()
@@ -82,7 +82,7 @@ def _causal_conv1d_update(
     null_block_id: int = 0,
     block_idx_last_scheduled_token: Optional[torch.Tensor] = None,
     initial_state_idx: Optional[torch.Tensor] = None,
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     _op_module = _causal_conv1d_update_op_builder.load()
     return _op_module.causal_conv1d_update(
         x,
@@ -141,8 +141,9 @@ def causal_conv1d_update(
 
     Returns:
         Tensor: 卷积输出 y，shape 与 x 一致，dtype 与 x 一致。
+        conv_state 在原地更新（与 schema 中的 Tensor(a!) 别名一致）。
     """
-    return _causal_conv1d_update(
+    _, y = _causal_conv1d_update(
         x,
         conv_state,
         weight,
@@ -156,3 +157,4 @@ def causal_conv1d_update(
         block_idx_last_scheduled_token=block_idx_last_scheduled_token,
         initial_state_idx=initial_state_idx,
     )
+    return y
