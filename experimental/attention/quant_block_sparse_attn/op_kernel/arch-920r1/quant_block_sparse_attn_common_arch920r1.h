@@ -24,6 +24,7 @@
 #include "lib/matmul_intf.h"
 #include "stdarg.h"
 #include "common/util_regbase.h"
+#include "common.h"
 #include "quant_block_sparse_attn_metadata.h"
 
 using matmul::MatmulType;
@@ -44,7 +45,6 @@ constexpr int64_t attenMaskBS1S2 = 1;
 constexpr uint16_t SHIFT_NUM_6 = 6;
 constexpr uint16_t ADD_NUM_63 = 63;
 
-constexpr uint32_t CV_RATIO = 1;
 constexpr uint32_t QBSA_V121_S1_BASE_SIZE = 64U;
 constexpr uint32_t QBSA_V121_S2_BASE_SIZE = 512U;
 constexpr uint32_t QBSA_V121_ROUND_S2_SIZE = 256U;
