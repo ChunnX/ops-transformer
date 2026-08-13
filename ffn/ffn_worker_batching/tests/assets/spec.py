@@ -122,19 +122,24 @@ class AclnnFfnWorkerBatchingTestSpec:
                 results.append({
                     "pass": passed,
                     "precision": precision,
-                    "error_info": None if passed else f"{diff} mismatches in first {n} elements",
+                    "error_info": None if passed else f"{diff} mismatches in first {n} elements [idx={idx}]",
                 })
             else:
                 npu_flat = npu.flatten()
                 gold_flat = gold.flatten()
-                diff = int(np.sum(npu_flat != gold_flat))
-                total = npu_flat.size
+                if npu_flat.size != gold_flat.size:
+                    n = min(npu_flat.size, gold_flat.size)
+                    diff = int(np.sum(npu_flat[:n] != gold_flat[:n]))
+                    total = n
+                else:
+                    diff = int(np.sum(npu_flat != gold_flat))
+                    total = npu_flat.size
                 passed = (diff == 0)
                 precision = f"{(total - diff) / total * 100}%" if total > 0 else "100%"
                 results.append({
                     "pass": passed,
                     "precision": precision,
-                    "error_info": None if passed else f"{diff} mismatches",
+                    "error_info": None if passed else f"{diff} mismatches [idx={idx}]",
                 })
         return results
 
