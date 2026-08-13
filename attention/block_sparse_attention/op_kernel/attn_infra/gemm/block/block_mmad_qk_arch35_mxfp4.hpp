@@ -178,90 +178,72 @@ public:
                                0, 0, qHeadMul);
     }
 
-    // K 数据稀疏 gather：按 gSparseBlockIdx 逐段搬 GM → L1
+    // K 数据 + K-scale 融合稀疏 gather：按 gSparseBlockIdx 逐段搬 GM → L1。
+    // 两者的分段边界必然一致，故只遍历一遍 index，每段发 K(Nd2Nz) / K-scale(Dn2Nz) 两条 copy。
+    // ori 连续递增即代表 GM 上物理相邻，向前偷看合并成单条 copy。
+    // 段推进天然落在 y-block 边界上（仅首段 innerStart 可能非 0），故循环内无除法/取模。
+    // firstYBlockIdx / firstOriYBlockIdx 由调用方提前预取，避免首个 index 的阻塞访存落在此处。
     template <class TensorK, class TensorL1K>
     __aicore__ inline
-    void SparseKBaseTileL1FullLoad(
+    void SparseKFusedBaseTileL1FullLoad(
         TensorK gKTensorTla,
         TensorL1K l1KTensorTla,
-        AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
-        uint32_t gatheredKvSTileIdx, int64_t kvSeqlen,
-        uint32_t kvSBaseTile, uint32_t blockShapeY,
-        uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
-        uint32_t kvsActBaseTile, uint32_t embed)
-    {
-        uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile;
-        uint32_t baseTileEndOffset   = baseTileStartOffset + kvsActBaseTile;
-        uint32_t gatheredStartOffset = baseTileStartOffset;
-        uint32_t gatheredYBlockIdx   = gatheredStartOffset / blockShapeY;
-        uint32_t yBlockInnerStart    = gatheredStartOffset % blockShapeY;
-        uint32_t oriYBlockIdx   = gSparseBlockIdx.GetValue(gatheredYBlockIdx);
-        uint32_t oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStart;
-        uint32_t dealtLenAccum  = 0;
-        using CopyGmToL1K = Tile::TileCopyTla<ArchTag, decltype(gKTensorTla), decltype(l1KTensorTla)>;
-        CopyGmToL1K copyGmToL1K;
-
-        while (dealtLenAccum < kvsActBaseTile &&
-               gatheredYBlockIdx < yBlockNumRsvd &&
-               oriYBlockIdx < yBlockNumAval &&
-               oriStartOffset < static_cast<uint32_t>(kvSeqlen)) {
-            uint32_t curYBlockSize = (oriYBlockIdx == yBlockNumAval - 1)
-                                     ? static_cast<uint32_t>(kvSeqlen - oriYBlockIdx * blockShapeY)
-                                     : blockShapeY;
-            uint32_t gatheredEndOffset = MinU32(gatheredYBlockIdx * blockShapeY + curYBlockSize,
-                                                baseTileEndOffset);
-            uint32_t curDealtLen = gatheredEndOffset - gatheredStartOffset;
-            if (curDealtLen == 0) { break; }
-
-            auto gKTile = GetTile(
-                gKTensorTla, tla::MakeCoord(oriStartOffset, 0), tla::MakeShape(curDealtLen, embed));
-            auto l1KTile = GetTile(
-                l1KTensorTla, tla::MakeCoord(dealtLenAccum, 0), tla::MakeShape(curDealtLen, embed));
-            copyGmToL1K(l1KTile, gKTile);
-
-            dealtLenAccum += curDealtLen;
-            gatheredStartOffset += curDealtLen;
-            gatheredYBlockIdx = gatheredStartOffset / blockShapeY;
-            yBlockInnerStart   = gatheredStartOffset % blockShapeY;
-            if (dealtLenAccum < kvsActBaseTile) {
-                oriYBlockIdx   = gSparseBlockIdx.GetValue(gatheredYBlockIdx);
-                oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStart;
-            }
-        }
-    }
-
-    // K-scale 稀疏 gather：按 gSparseBlockIdx 逐段搬 GM → L1（Host 沿 D Dn2Nz）
-    __aicore__ inline
-    void SparseKScaleBaseTileL1FullLoad(
         AscendC::GlobalTensor<uint8_t> gKScale,
         AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
         uint32_t gatheredKvSTileIdx, int64_t kvSeqlen,
         uint32_t kvSBaseTile, uint32_t blockShapeY,
         uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
         uint32_t kvsActBaseTile, uint32_t embed,
-        uint32_t kBufId, uint32_t kvHeadMul)
+        uint32_t kBufId, uint32_t kvHeadMul,
+        uint32_t firstYBlockIdx, uint32_t firstOriYBlockIdx)
     {
+        using CopyGmToL1K = Tile::TileCopyTla<ArchTag, decltype(gKTensorTla), decltype(l1KTensorTla)>;
+        CopyGmToL1K copyGmToL1K;
+
         uint32_t scaleK = CeilDivision(embed, MXFP4::FP4_C0_ELEMS) * 2;
         uint32_t scaleRowHalf = scaleK / 2;
 
-        uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile;
-        uint32_t baseTileEndOffset   = baseTileStartOffset + kvsActBaseTile;
-        uint32_t gatheredStartOffset = baseTileStartOffset;
-        uint32_t gatheredYBlockIdx   = gatheredStartOffset / blockShapeY;
-        uint32_t yBlockInnerStart    = gatheredStartOffset % blockShapeY;
-        uint32_t oriYBlockIdx   = gSparseBlockIdx.GetValue(gatheredYBlockIdx);
-        uint32_t oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStart;
-        uint32_t dealtLenAccum  = 0;
+        const uint32_t kvSeqlenU = static_cast<uint32_t>(kvSeqlen);
+        uint32_t gatheredYBlockIdx = firstYBlockIdx;
+        uint32_t yBlockInnerStart  = gatheredKvSTileIdx * kvSBaseTile - firstYBlockIdx * blockShapeY;
+        uint32_t oriYBlockIdx  = firstOriYBlockIdx;
+        uint32_t dealtLenAccum = 0;
 
         while (dealtLenAccum < kvsActBaseTile && gatheredYBlockIdx < yBlockNumRsvd &&
-               oriYBlockIdx < yBlockNumAval && oriStartOffset < static_cast<uint32_t>(kvSeqlen)) {
+               oriYBlockIdx < yBlockNumAval) {
+            uint32_t oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStart;
+            if (oriStartOffset >= kvSeqlenU) { break; }
+
             uint32_t curYBlockSize = (oriYBlockIdx == yBlockNumAval - 1)
-                                     ? static_cast<uint32_t>(kvSeqlen - oriYBlockIdx * blockShapeY)
+                                     ? (kvSeqlenU - oriYBlockIdx * blockShapeY)
                                      : blockShapeY;
-            uint32_t gatheredEndOffset = MinU32(gatheredYBlockIdx * blockShapeY + curYBlockSize,
-                                                baseTileEndOffset);
-            uint32_t curDealtLen = gatheredEndOffset - gatheredStartOffset;
-            if (curDealtLen == 0) { break; }
+            if (curYBlockSize <= yBlockInnerStart) { break; }
+            uint32_t availLen = curYBlockSize - yBlockInnerStart;
+            // 尾部不满块之后 gather 流即终止（与原实现的 curDealtLen==0 退出等价）
+            bool runEndsShort = (curYBlockSize < blockShapeY);
+
+            // 向前偷看：ori 连续则 GM 地址连续，拼进同一条 copy
+            uint32_t peekYBlockIdx = gatheredYBlockIdx + 1;
+            uint32_t peekOriIdx    = oriYBlockIdx + 1;
+            while (!runEndsShort && dealtLenAccum + availLen < kvsActBaseTile &&
+                   peekYBlockIdx < yBlockNumRsvd && peekOriIdx < yBlockNumAval &&
+                   static_cast<uint32_t>(gSparseBlockIdx.GetValue(peekYBlockIdx)) == peekOriIdx) {
+                uint32_t peekBlockSize = (peekOriIdx == yBlockNumAval - 1)
+                                         ? (kvSeqlenU - peekOriIdx * blockShapeY)
+                                         : blockShapeY;
+                availLen += peekBlockSize;
+                runEndsShort = (peekBlockSize < blockShapeY);
+                ++peekYBlockIdx;
+                ++peekOriIdx;
+            }
+
+            uint32_t curDealtLen = MinU32(availLen, kvsActBaseTile - dealtLenAccum);
+
+            auto gKTile = GetTile(
+                gKTensorTla, tla::MakeCoord(oriStartOffset, 0), tla::MakeShape(curDealtLen, embed));
+            auto l1KTile = GetTile(
+                l1KTensorTla, tla::MakeCoord(dealtLenAccum, 0), tla::MakeShape(curDealtLen, embed));
+            copyGmToL1K(l1KTile, gKTile);
 
             uint32_t srcB16Off = oriStartOffset * kvHeadMul * scaleRowHalf;
             uint32_t dstB16Off = dealtLenAccum * scaleRowHalf;
@@ -270,12 +252,12 @@ public:
                 kvHeadMul);
 
             dealtLenAccum += curDealtLen;
-            gatheredStartOffset += curDealtLen;
-            gatheredYBlockIdx = gatheredStartOffset / blockShapeY;
-            yBlockInnerStart   = gatheredStartOffset % blockShapeY;
+            if (runEndsShort) { break; }
+            // 未退出循环时必有 curDealtLen == availLen，偷看过的块已全部消费
+            gatheredYBlockIdx = peekYBlockIdx;
+            yBlockInnerStart  = 0;
             if (dealtLenAccum < kvsActBaseTile) {
-                oriYBlockIdx   = gSparseBlockIdx.GetValue(gatheredYBlockIdx);
-                oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStart;
+                oriYBlockIdx = gSparseBlockIdx.GetValue(gatheredYBlockIdx);
             }
         }
     }
@@ -377,6 +359,12 @@ public:
         uint32_t l1KEventId = MXFP4::KV_EVENT0 + kBufId;
         uint32_t l1QEventId = Q_EVENT0 + qBufId;
 
+        // [预取] 首个 sparse index 是阻塞式 GM 标量读，且 gather 的第一条 copy 地址依赖它。
+        //   在此提前发起，把访存延迟藏进后面的 Q 搬运 / WaitFlag，
+        //   并让标量单元能继续往前排 MTE2 指令。
+        uint32_t firstYBlockIdx = (gatheredKvSTileIdx * kvSBaseTile) / blockShapeY;
+        uint32_t firstOriYBlockIdx = static_cast<uint32_t>(gSparseBlockIdx.GetValue(firstYBlockIdx));
+
         // Q/QScale 仅在 task 首 KV tile 搬 GM → L1，后续 tile 复用
         if (isFirstKvsTile) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1QEventId);
@@ -392,12 +380,11 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
         auto l1KLayout = tla::MakeLayout<ElementA, layout::zN>(kvsActBaseTile, embed);
         auto l1KTensorTla = tla::MakeTensor(l1ATensor[kBufId], l1KLayout, Arch::PositionL1{});
-        SparseKBaseTileL1FullLoad(
-            gKTensorTla, l1KTensorTla, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
-            yBlockNumAval, yBlockNumRsvd, kvsActBaseTile, embed);
-        SparseKScaleBaseTileL1FullLoad(
-            gKDequantScale, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
-            yBlockNumAval, yBlockNumRsvd, kvsActBaseTile, embed, kBufId, kvHeadMul);
+        SparseKFusedBaseTileL1FullLoad(
+            gKTensorTla, l1KTensorTla, gKDequantScale, gSparseBlockIdx,
+            gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
+            yBlockNumAval, yBlockNumRsvd, kvsActBaseTile, embed, kBufId, kvHeadMul,
+            firstYBlockIdx, firstOriYBlockIdx);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
 
