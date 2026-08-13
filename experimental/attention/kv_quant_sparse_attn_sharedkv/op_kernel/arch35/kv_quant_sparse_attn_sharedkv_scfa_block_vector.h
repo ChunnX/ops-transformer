@@ -56,11 +56,14 @@ public:
         ((combineKvInputBytes + BUFFER_SIZE_BYTE_32B - 1) / BUFFER_SIZE_BYTE_32B) * BUFFER_SIZE_BYTE_32B;
     static constexpr uint32_t sparseCopyTokenNum = 8;
     static constexpr float R0 = 1.0f;
-    static constexpr uint32_t blkTableBufId = 2;
-    static constexpr uint32_t sparseIdxBufId = 3;
-    static constexpr uint32_t kvPhyAddrBufId = 6;
-    static constexpr uint32_t syncSinksBufId = 7;
-    static constexpr uint32_t stage2OutBufBufId = 6;
+
+    // buffer ID 是 get_buf/rls_buf 使用的同步槽。主流程固定分配为：stage0 输入 0/1、stage0 输出
+    // 2/3、stage1 输出 4/5、stage2 输出 6、sinks 7。Init 复用对应的物理 UB，必须沿用相同同步槽。
+    static constexpr uint32_t blkTableBufId = 2;   // blkTableBuf 复用 stage0OutBuf[0]。
+    static constexpr uint32_t sparseIdxBufId = 3;  // sparseIdxBuf 复用 stage0OutBuf[1]。
+    static constexpr uint32_t stage2OutBufBufId = 6; // stage2OutBuf 的主流程同步槽。
+    static constexpr uint32_t kvPhyAddrBufId = stage2OutBufBufId; // kvPhyAddrBuf 复用 stage2OutBuf。
+    static constexpr uint32_t syncSinksBufId = 7; // sinksBuf 使用独立同步槽，避免与流水缓冲区冲突。
 
     // ==================== Functions ======================
     __aicore__ inline SCFABlockVec() {};
