@@ -48,6 +48,9 @@ public:
     // 按 groupEp 在图中查找已存在的 context Const 节点（dispatch/combine 两个 pass 共享同一个）
     static ge::GNode FindContextConstNode(ge::Graph &graph, const std::string &groupEp);
 
+    // 调试：回读图中 context Const 的 value 并打印关键字段，用于分辨内容在 pass 结束时是否仍正确
+    static void VerifyContextConstNode(ge::Graph &graph, const std::string &groupEp);
+
 private:
     static constexpr const char *kContextConstNamePrefix = "mc2_moe_context_";
     Mc2MoeGraphContext() = default;

@@ -376,6 +376,12 @@ bool Mc2MoeGraphContext::GetContextData(const std::string &groupEp, std::vector<
     if (!builder.BuildContextData(groupEp, contextData, hcclBuffSize)) {
         return false;
     }
+    // 源头真值：构建完成时刻打印关键字段，与 pass 结束回读（verify lijd）、kernel dump 三点对比
+    OPS_LOG_E(CONTEXT_NAME,
+              "create lijd: groupEp %s, epRankId %d, rankSizePerServer %d, hcclBuffSize %ld, data[2..5] %08x %08x "
+              "%08x %08x.",
+              groupEp.c_str(), contextData[0], contextData[1], hcclBuffSize, contextData[2], contextData[3],
+              contextData[4], contextData[5]);
     manager.contextCache_.emplace(groupEp, std::make_pair(contextData, hcclBuffSize));
     return true;
 }
@@ -419,6 +425,37 @@ ge::GNode Mc2MoeGraphContext::FindContextConstNode(ge::Graph &graph, const std::
         }
     }
     return ge::GNode();
+}
+
+void Mc2MoeGraphContext::VerifyContextConstNode(ge::Graph &graph, const std::string &groupEp)
+{
+    const std::string constName = kContextConstNamePrefix + groupEp;
+    for (auto &gNode : graph.GetDirectNode()) {
+        ge::AscendString name;
+        ge::AscendString type;
+        if (gNode.GetName(name) != ge::GRAPH_SUCCESS || name.GetString() == nullptr ||
+            constName != name.GetString() || gNode.GetType(type) != ge::GRAPH_SUCCESS ||
+            type.GetString() == nullptr || std::string(type.GetString()) != "Const") {
+            continue;
+        }
+        ge::Tensor value;
+        if (gNode.GetAttr(ge::AscendString("value"), value) != ge::GRAPH_SUCCESS) {
+            OPS_LOG_E(CONTEXT_NAME, "verify lijd: get value attr failed, Const %s.", constName.c_str());
+            return;
+        }
+        if (value.GetData() == nullptr || value.GetSize() < 2 * sizeof(int32_t)) {
+            OPS_LOG_E(CONTEXT_NAME, "verify lijd: value invalid, Const %s, size %zu.", constName.c_str(),
+                      value.GetSize());
+            return;
+        }
+        const int32_t *data = reinterpret_cast<const int32_t *>(value.GetData());
+        OPS_LOG_E(CONTEXT_NAME,
+                  "verify lijd: Const %s, epRankId %d, rankSizePerServer %d, value size %zu, data[2..5] %08x %08x "
+                  "%08x %08x.",
+                  constName.c_str(), data[0], data[1], value.GetSize(), data[2], data[3], data[4], data[5]);
+        return;
+    }
+    OPS_LOG_E(CONTEXT_NAME, "verify lijd: Const %s not found in graph.", constName.c_str());
 }
 } // namespace ops
 #endif // HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION

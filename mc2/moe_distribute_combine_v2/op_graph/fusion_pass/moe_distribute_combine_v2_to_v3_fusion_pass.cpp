@@ -349,6 +349,10 @@ ge::graphStatus MoeDistributeCombineV2FusionPass::Run(ge::GraphPtr &graph, ge::C
         continue;
 #endif
     }
+    // 回读校验：确认 pass 结束时 Const 内容仍正确
+    for (const auto &entry : contextNodes) {
+        ops::Mc2MoeGraphContext::VerifyContextConstNode(*graph, entry.first);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
