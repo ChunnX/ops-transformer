@@ -250,6 +250,7 @@ def run_small_ops_case(case, device, compare_mode=3):
         if any("FAIL" in s for s in statuses)
         else "PASS"
     )
+    print_log(f"Grad check: {'  '.join(statuses)}")
     return {"status": status, "detail": "  ".join(statuses)}
 
 
@@ -1003,6 +1004,7 @@ def run_backward_direct_case(case, p, b, totalValid, device, fwd=None, compare_m
         if all(s == "SKIP" for s in statuses)
         else "PASS"
     )
+    print_log("Grad check: d_wkv=%s  d_wgate=%s  d_ape=%s  d_x=%s" % tuple(statuses))
     return result
 
 
@@ -1476,6 +1478,7 @@ def run_backward_case(case, device, compare_mode=3):
         if any("FAIL" in s for s in statuses)
         else "PASS"
     )
+    print_log(f"Grad check: {'  '.join(statuses)}")
     return {"status": status, "detail": "  ".join(statuses)}
 
 
