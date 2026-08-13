@@ -150,8 +150,9 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask (FP32)
 
     // R2/R4/R5: stage1 临时变量空间
-    // 删除 queryCon/keyCon/vBeta/gBK, 仅保留 kkWs 和 attnWs (各 c*c)
-    tilingData_.stageWorkspaceSz = sizeLow * c * (STAGE_ONE_TWO * c) * tilingData_.stageOneParaNum;
+    // kkWs(c*c) + attnWs(c*c, A_beta) + attnWsNeg(c*c, A_beta_neg_gamma) = 3 个 c*c
+    constexpr uint32_t STAGE_ONE_WS_COUNT = 3;
+    tilingData_.stageWorkspaceSz = sizeLow * c * (STAGE_ONE_WS_COUNT * c) * tilingData_.stageOneParaNum;
     tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
 
     PrintTilingData();
