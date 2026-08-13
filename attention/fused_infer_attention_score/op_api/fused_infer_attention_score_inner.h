@@ -51,7 +51,6 @@ ACLNN_API aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
 ACLNN_API aclnnStatus InnerFusedInferAttentionScore(
     void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream);
 
-
 #ifdef __cplusplus
 }
 #endif

@@ -112,7 +112,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetMaxWorkspaceSize(
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc fake actualSharedPrefixLenOptional failed");
         aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
         aclDestroyTensor(fakeActualSeqLengthsKvOptional);
-       return ret;
+        return ret;
     }
 
     const aclTensor *placeHolder = nullptr;

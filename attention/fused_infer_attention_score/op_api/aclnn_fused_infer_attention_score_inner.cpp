@@ -32,7 +32,8 @@ const uint64_t INT4_NUMS_IN_INT32 = 8;
 // The weak symbol is available when opbase supports TensorV2 view strides.
 bool NnopbaseSupportTensorV2() __attribute__((weak));
 
-void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *&tensorListValue) {
+void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *&tensorListValue)
+{
     if (tensorListKey == nullptr) {
         OP_LOGD("TensorListKey is nullptr,TensorPreProcess exit.");
         return;
@@ -78,8 +79,8 @@ void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *
     OP_LOGD("The conversion of kv from int32 to int4 is completed.");
 }
 
-
-void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tensorValue) {
+void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tensorValue)
+{
     if (tensorKey == nullptr) {
         OP_LOGD("TensorListKey is nullptr,TensorPreProcess exit.");
         return;
@@ -113,7 +114,8 @@ void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tenso
     OP_LOGD("The conversion of kvPrefix from int32 to int4 is completed.");
 }
 
-aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outTensor) {
+aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outTensor)
+{
     OP_LOGD("start fake tensor");
     if (inArray != nullptr) {
         OP_LOGD("input array is not nullptr");
@@ -137,7 +139,7 @@ void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTen
         std::vector<int64_t> shape = {0};
         int64_t addr = 0xff;
         tempTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0, ACL_FORMAT_ND,
-                                     shape.data(), shape.size(), static_cast<void*>(&addr));
+                                     shape.data(), shape.size(), static_cast<void *>(&addr));
         placeHolder = tempTensor;
     } else {
         placeHolder = softmaxLse;
@@ -193,7 +195,7 @@ bool IsFAIRoutingCandidate(
     const bool sparseModeSupported = sparseMode == 0 || sparseMode == 3 || sparseMode == 4;
     const bool isMha = numKeyValueHeads == 0 || numHeads == numKeyValueHeads;
     const bool mhaConditions = isMha && !(queryDtype == DataType::DT_BF16 && innerPrecise == 1) &&
-        !(sparseMode == 0 && attenMaskOptional != nullptr);
+                               !(sparseMode == 0 && attenMaskOptional != nullptr);
     const bool nonMhaConditions = !isMha && innerPrecise == 0;
     if (inputLayoutStr != "TND" || !learnableSinkSupported || isRopeSplitMla || !sparseModeSupported ||
         (!mhaConditions && !nonMhaConditions)) {
@@ -207,7 +209,7 @@ bool IsFAIRoutingCandidate(
         const int64_t keyHeadDim = keyShape.GetDim(2);
         const int64_t valueHeadDim = valueShape.GetDim(2);
         return queryHeadDim <= MAX_HEAD_DIM && keyHeadDim <= MAX_HEAD_DIM && valueHeadDim <= MAX_HEAD_DIM &&
-            queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim;
+               queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim;
     }
     if (keyShape.GetDimNum() == 3) {
         if (valueShape.GetDimNum() <= 2 || numKeyValueHeads == 0) {
@@ -217,8 +219,8 @@ bool IsFAIRoutingCandidate(
         const int64_t keyHeadDim = keyShape.GetDim(2) / numKeyValueHeads;
         const int64_t valueHeadDim = valueShape.GetDim(2) / numKeyValueHeads;
         return queryHeadDim <= MAX_HEAD_DIM && keyHeadDim <= MAX_HEAD_DIM && valueHeadDim <= MAX_HEAD_DIM &&
-            queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim &&
-            blockSize % BLOCK_SIZE_ALIGNMENT == 0 && blockSize <= MAX_BLOCK_SIZE;
+               queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim &&
+               blockSize % BLOCK_SIZE_ALIGNMENT == 0 && blockSize <= MAX_BLOCK_SIZE;
     }
     if (keyShape.GetDimNum() == 5) {
         if (valueShape.GetDimNum() <= 3) {
@@ -228,8 +230,8 @@ bool IsFAIRoutingCandidate(
         const int64_t keyHeadDim = keyShape.GetDim(2) * NZ_INNER_BLOCK;
         const int64_t valueHeadDim = valueShape.GetDim(2) * NZ_INNER_BLOCK;
         const bool headDimSupported = queryHeadDim <= MAX_HEAD_DIM && keyHeadDim <= MAX_HEAD_DIM &&
-            valueHeadDim <= MAX_HEAD_DIM && queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim &&
-            queryHeadDim != 64 && queryHeadDim != 128;
+                                      valueHeadDim <= MAX_HEAD_DIM && queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim &&
+                                      queryHeadDim != 64 && queryHeadDim != 128;
         return headDimSupported && blockSize % BLOCK_SIZE_ALIGNMENT == 0 && blockSize <= MAX_BLOCK_SIZE;
     }
     return false;

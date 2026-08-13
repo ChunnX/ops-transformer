@@ -140,36 +140,36 @@ std::tuple<const aclTensor *, const aclTensor *> FusedInferAttentionScore(
         return {nullptr, nullptr};
     }
     auto ret = INFER_SHAPE(FusedInferAttentionScore,
-        OP_INPUT(query, key, value, pseShiftOptional, attenMaskOptional, actualSeqLengthsTensor,
-                 actualSeqLengthsKvTensor, deqScale1Optional, quantScale1Optional, deqScale2Optional,
-                 quantScale2Optional, quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional,
-                 blockTableOptional, queryPaddingSizeOptional, kvPaddingSizeOptional, keyAntiquantScaleOptional,
-                 keyAntiquantOffsetOptional, valueAntiquantScaleOptional, valueAntiquantOffsetOptional,
-                 keySharedPrefixOptional, valueSharedPrefixOptional, actualSharedPrefixLenTensor,
-                 queryRopeOptional, keyRopeOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional,
-                 learnableSinkOptional, qStartIdxTensor, kvStartIdxTensor),
-        OP_OUTPUT(attentionOutOut, softmaxLseOut),
-        OP_ATTR(numHeads, static_cast<float>(scaleValue), preTokens, nextTokens, inputLayout, numKeyValueHeads,
-                sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode,
-                valueAntiquantMode, queryQuantMode, pseType, outDtype));
+                           OP_INPUT(query, key, value, pseShiftOptional, attenMaskOptional, actualSeqLengthsTensor,
+                                    actualSeqLengthsKvTensor, deqScale1Optional, quantScale1Optional, deqScale2Optional,
+                                    quantScale2Optional, quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional,
+                                    blockTableOptional, queryPaddingSizeOptional, kvPaddingSizeOptional, keyAntiquantScaleOptional,
+                                    keyAntiquantOffsetOptional, valueAntiquantScaleOptional, valueAntiquantOffsetOptional,
+                                    keySharedPrefixOptional, valueSharedPrefixOptional, actualSharedPrefixLenTensor,
+                                    queryRopeOptional, keyRopeOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional,
+                                    learnableSinkOptional, qStartIdxTensor, kvStartIdxTensor),
+                           OP_OUTPUT(attentionOutOut, softmaxLseOut),
+                           OP_ATTR(numHeads, static_cast<float>(scaleValue), preTokens, nextTokens, inputLayout, numKeyValueHeads,
+                                   sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode,
+                                   valueAntiquantMode, queryQuantMode, pseType, outDtype));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FusedInferAttentionScore InferShape failed.");
         return {nullptr, nullptr};
     }
 
     ret = ADD_TO_LAUNCHER_LIST_AICORE(FusedInferAttentionScore,
-        OP_INPUT(query, key, value, pseShiftOptional, attenMaskOptional, actualSeqLengthsTensor,
-                 actualSeqLengthsKvTensor, deqScale1Optional, quantScale1Optional, deqScale2Optional,
-                 quantScale2Optional, quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional,
-                 blockTableOptional, queryPaddingSizeOptional, kvPaddingSizeOptional, keyAntiquantScaleOptional,
-                 keyAntiquantOffsetOptional, valueAntiquantScaleOptional, valueAntiquantOffsetOptional,
-                 keySharedPrefixOptional, valueSharedPrefixOptional, actualSharedPrefixLenTensor,
-                 queryRopeOptional, keyRopeOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional,
-                 learnableSinkOptional, qStartIdxTensor, kvStartIdxTensor),
-        OP_OUTPUT(attentionOutOut, softmaxLseOut),
-        OP_ATTR(numHeads, static_cast<float>(scaleValue), preTokens, nextTokens, inputLayout, numKeyValueHeads,
-                sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode,
-                valueAntiquantMode, queryQuantMode, pseType, outDtype));
+                                      OP_INPUT(query, key, value, pseShiftOptional, attenMaskOptional, actualSeqLengthsTensor,
+                                               actualSeqLengthsKvTensor, deqScale1Optional, quantScale1Optional, deqScale2Optional,
+                                               quantScale2Optional, quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional,
+                                               blockTableOptional, queryPaddingSizeOptional, kvPaddingSizeOptional, keyAntiquantScaleOptional,
+                                               keyAntiquantOffsetOptional, valueAntiquantScaleOptional, valueAntiquantOffsetOptional,
+                                               keySharedPrefixOptional, valueSharedPrefixOptional, actualSharedPrefixLenTensor,
+                                               queryRopeOptional, keyRopeOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional,
+                                               learnableSinkOptional, qStartIdxTensor, kvStartIdxTensor),
+                                      OP_OUTPUT(attentionOutOut, softmaxLseOut),
+                                      OP_ATTR(numHeads, static_cast<float>(scaleValue), preTokens, nextTokens, inputLayout, numKeyValueHeads,
+                                              sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode,
+                                              valueAntiquantMode, queryQuantMode, pseType, outDtype));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FusedInferAttentionScore LaunchAicore failed.");
         return {nullptr, nullptr};

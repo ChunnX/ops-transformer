@@ -60,7 +60,8 @@ struct FiaActualSeqOutTensors {
     aclTensor *actualSharedPrefixLenOptional = nullptr;
 };
 
-aclnnStatus FakeFiaActualSeqArrays(const FiaActualSeqInArrays &inArrays,  FiaActualSeqOutTensors &outTensors) {
+aclnnStatus FakeFiaActualSeqArrays(const FiaActualSeqInArrays &inArrays, FiaActualSeqOutTensors &outTensors)
+{
     // nullptr不处理， nullptr是空指针，这样不会影响原来就不传入actual seq length为空的逻辑
     aclnnStatus ret = FakeArray(inArrays.actualSeqLengthsOptional, outTensors.actualSeqLengthsOptional);
     CHECK_RET_CODE(ret, "Try alloc fake actualSeqLengthsOptional failed");

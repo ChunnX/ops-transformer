@@ -28,7 +28,7 @@ namespace {
 __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScoreV2GetMaxWorkspaceSize(
     const aclTensor *query, const aclTensorList *tensorListKey, const aclTensorList *tensorListValue, const aclTensor *pseShiftOptional,
     const aclTensor *attenMaskOptional, const aclIntArray *actualSeqLengthsOptional,
-    const aclIntArray *actualSeqLengthsKvOptional,const aclTensor *deqScale1Optional,
+    const aclIntArray *actualSeqLengthsKvOptional, const aclTensor *deqScale1Optional,
     const aclTensor *quantScale1Optional, const aclTensor *deqScale2Optional, const aclTensor *quantScale2Optional,
     const aclTensor *quantOffset2Optional, const aclTensor *antiquantScaleOptional,
     const aclTensor *antiquantOffsetOptional, const aclTensor *blockTableOptional,
@@ -100,7 +100,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2GetMaxWorkspaceSize(
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc fake actualSharedPrefixLenOptional failed");
         aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
         aclDestroyTensor(fakeActualSeqLengthsKvOptional);
-       return ret;
+        return ret;
     }
 
     const aclTensor *placeHolder = nullptr;
