@@ -51,7 +51,7 @@ def check_valid_param(params):
     if isinstance(sparse_mode, str):
         sparse_mode = sparse_mode.strip().lower()
         params["sparse_mode"] = sparse_mode
-    if sparse_mode not in ("full", "random"):
+    if sparse_mode not in ("dense", "random"):
         raise ValueError(f"unsupported sparse_mode: {sparse_mode}")
     params["softmax_scale"] = params.get("softmax_scale") or (1.0 / math.sqrt(params["D"]))
     for key in ("quant_mode", "mask_mode"):
