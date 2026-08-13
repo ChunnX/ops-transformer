@@ -578,16 +578,8 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
             return;
         }
         if (ParseStructuredDump(reinterpret_cast<uint64_t>(peermemBase), winContent) != 0) {
-            if (!isA5) {
-                OP_LOGE(OP_NAME, "Failed to parse structured dump.");
-                return;
-            }
-            OP_LOGW(OP_NAME, "A5 structured dump is unavailable; falling back to the raw 1MB window dump.");
-            winContent.assign(WIN_SIZE, 0);
-            if (ProcessArgsForA5(argsAddr, winContent, op) != 0) {
-                OP_LOGE(OP_NAME, "Failed to get raw A5 win content.");
-                return;
-            }
+            OP_LOGE(OP_NAME, "Failed to parse structured dump.");
+            return;
         }
     } else {
         // 其他场景: 原始 1MB raw dump
