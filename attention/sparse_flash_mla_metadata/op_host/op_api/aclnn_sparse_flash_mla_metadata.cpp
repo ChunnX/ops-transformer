@@ -77,6 +77,7 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     if (aclRet != ACL_SUCCESS) {
         OP_LOGW("aclnnSparseFlashMlaMetadata unable to get system param batch consistency level.");
     }
+    OP_LOGD("deterministic_level=%lld", batchConsistencyLevel);
     bool isBatchConsistency = (batchConsistencyLevel == BATCH_CONSISTENCY_LEVEL);
     auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                            sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
@@ -168,7 +169,7 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
         socVersion, aicCoreNum, aivCoreNum, isBatchConsistency, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    *workspaceSize = 0;
+    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
     return ACLNN_SUCCESS;
 }

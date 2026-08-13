@@ -332,7 +332,7 @@ cann_ops_transformer.quant_flash_attn(
                     <li>65536 > B > 0</li>
                     <li>Q_S ≥ 0；KV_S ≥ 0</li>
                     <li>Q_T ≥ 0、KV_T ≥ 0</li>
-                    <li>D仅支持64或128</li>
+                    <li>D仅支持64、128或256</li>
                     <li>Q_N % KV_N == 0且Q_N / KV_N > 0</li>
                     <li>Q_N ≤ 256；KV_N ≤ 256</li>
                 </ul>
@@ -907,7 +907,7 @@ mask_mode参数解释
                 <ul>
                     <li>PagedAttention开启情况下，必须传入seqused_kv</li>
                     <li>Paged Attention开启情况下，block_table必须不为空</li>
-                    <li>MxFP8仅支持Bs为512或1024</li>
+                    <li>MxFP8仅支持Bs为64、128、256、512或1024</li>
                 </ul>
             </td>
         </tr>

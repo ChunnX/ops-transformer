@@ -1,4 +1,16 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
+# coding=utf-8
+
+# ----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------------------------------------
+
 """Parse msprof op_summary CSVs and compute operator latency.
 
 Groups PROF_* directories by collection timestamp into separate cases.
@@ -21,6 +33,14 @@ _DEFAULT_PROF = os.path.join(
 )
 KERNEL_SUBSTR = "AllGatherQuantMatmulKernel"
 GROUP_THRESHOLD_S = 5
+OUTLIER_FACTOR = 1.2
+WARMUP_SKIP = 3  # 删除前 N 轮数据（冷启动 + 预热）
+
+
+def filter_outliers(durs, factor=OUTLIER_FACTOR):
+    min_val = min(durs)
+    threshold = min_val * factor
+    return [d for d in durs if d <= threshold]
 
 _TS_RE = re.compile(r"PROF_\d+_(\d{17})_")
 
@@ -132,34 +152,39 @@ def report_case(prof_base, case_dirs, case_idx, mkn_str=None):
         print(f"  {info_line}")
     print("  " + "-" * 58)
     for dev in sorted(all_devices.keys(), key=lambda x: int(x)):
-        durs = sorted(all_devices[dev])
-        med = median(durs)
-        medians.append(med)
+        raw_durs = all_devices[dev]
+        total_cnt = len(raw_durs)
+        warmup_cnt = min(WARMUP_SKIP, total_cnt)
+        remaining = raw_durs[warmup_cnt:] if total_cnt > WARMUP_SKIP else raw_durs
+        durs = sorted(remaining)
+        filtered = filter_outliers(durs)
+        rank_avg = sum(filtered) / len(filtered)
+        medians.append(rank_avg)
         cube_vals = all_cubes.get(dev, [0.0])
         cube_med = median(cube_vals)
         cube_medians.append(cube_med)
         print(
-            f"    Rank {dev:4s} | {len(durs):3d} iters | "
-            f"median={med:.3f} us | min={durs[0]:.3f} us | max={durs[-1]:.3f} us | "
+            f"    Rank {dev:4s} | {total_cnt} total, {warmup_cnt} warmup skipped, "
+            f"{len(remaining)} remaining, {len(filtered)} valid ({len(remaining) - len(filtered)} filtered) | "
+            f"avg={rank_avg:.3f} us | min={durs[0]:.3f} us | max={durs[-1]:.3f} us | "
             f"cube={cube_med:.1f}%"
         )
         for i, d in enumerate(durs):
-            print(f"                 iter[{i:2d}] = {d:.3f} us")
+            tag = " *outlier*" if d > min(durs) * OUTLIER_FACTOR else ""
+            print(f"                 iter[{i:2d}] = {d:.3f} us{tag}")
 
     avg = sum(medians) / len(medians)
-    cube_avg = sum(cube_medians) / len(cube_medians) if cube_medians else 0.0
     print("  " + "-" * 58)
     print(
-        f"    Overall latency (avg of card medians): "
+        f"    Overall latency (avg of card avgs): "
         f"{avg:.3f} us  ({len(medians)} cards)"
     )
-    print(f"    Cube utilization (avg of card medians): {cube_avg:.1f}%")
 
     precision = read_case_precision(prof_base, case_dirs)
     if precision:
         print(f"    Precision: {precision}")
     print()
-    return avg, info, precision, cube_avg
+    return avg, info, precision
 
 
 def print_summary(results):
@@ -167,10 +192,10 @@ def print_summary(results):
     print("=" * 72)
     print("Summary")
     print("=" * 72)
-    header = f"  {'Case':>4s}  {'M':>5s}  {'K':>5s}  {'N':>5s}  {'Latency(us)':>12s}  {'Cube(%)':>7s}  {'Precision':<8s}"
+    header = f"  {'Case':>4s}  {'M':>5s}  {'K':>5s}  {'N':>5s}  {'Latency(us)':>12s}  {'Precision':<8s}"
     print(header)
     print("  " + "-" * (len(header) - 2))
-    for case_idx, info, avg, precision, cube_avg in results:
+    for case_idx, info, avg, precision in results:
         parts = dict()
         if info:
             for kv in info.split():
@@ -181,7 +206,7 @@ def print_summary(results):
         k = parts.get("K", "N/A")
         n = parts.get("N", "N/A")
         prec = precision if precision else "N/A"
-        print(f"  {case_idx:4d}  {m:>5s}  {k:>5s}  {n:>5s}  {avg:12.3f}  {cube_avg:7.1f}  {prec:<8s}")
+        print(f"  {case_idx:4d}  {m:>5s}  {k:>5s}  {n:>5s}  {avg:12.3f}  {prec:<8s}")
     print()
 
 
@@ -215,7 +240,7 @@ def main():
         idx = len(cases)
         ret = report_case(prof_base, cases[-1], idx, args.mkn)
         if ret:
-            avg, info, precision, cube_avg = ret
+            avg, info, precision = ret
             print(f"{avg:.3f}")
             if avg <= args.check_latest_threshold:
                 return 0
@@ -226,7 +251,7 @@ def main():
     print(f"Found {len(cases)} case(s) in {prof_base}\n")
 
     print("=" * 64)
-    print("AllGatherQuantMatmul — Per-Card Latency (median of iterations)")
+    print("AllGatherQuantMatmul — Per-Card Latency (avg, outliers > 2x min excluded)")
     print("=" * 64)
 
     results = []
@@ -234,8 +259,8 @@ def main():
         for i, case_dirs in enumerate(cases, 1):
             ret = report_case(prof_base, case_dirs, i, args.mkn)
             if ret:
-                avg, info, precision, cube_avg = ret
-                results.append((i, info, avg, precision, cube_avg))
+                avg, info, precision = ret
+                results.append((i, info, avg, precision))
     elif args.case is not None:
         if args.case < 1 or args.case > len(cases):
             print(f"--case {args.case} out of range (1..{len(cases)})",
@@ -243,14 +268,14 @@ def main():
             return 1
         ret = report_case(prof_base, cases[args.case - 1], args.case, args.mkn)
         if ret:
-            avg, info, precision, cube_avg = ret
-            results.append((args.case, info, avg, precision, cube_avg))
+            avg, info, precision = ret
+            results.append((args.case, info, avg, precision))
     else:
         idx = len(cases)
         ret = report_case(prof_base, cases[-1], idx, args.mkn)
         if ret:
-            avg, info, precision, cube_avg = ret
-            results.append((idx, info, avg, precision, cube_avg))
+            avg, info, precision = ret
+            results.append((idx, info, avg, precision))
 
     if results:
         print_summary(results)
