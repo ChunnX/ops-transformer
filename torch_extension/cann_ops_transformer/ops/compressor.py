@@ -35,7 +35,6 @@ class CompressorOpBuilder(OpBuilder):
 
 
 compressor_op_builder = CompressorOpBuilder()
-op_module = compressor_op_builder.load()
 
 
 # ===========================================================================
@@ -57,6 +56,7 @@ def _compressor_forward(
     cache_mode: Optional[int] = 1,
     grad_enabled: Optional[bool] = False
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    op_module = compressor_op_builder.load()
     return op_module.compressor(
         x,
         wkv,
@@ -132,6 +132,7 @@ def _compressor_backward(
     cmp_ratio: int = 4,
     coff: Optional[int] = 1,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    op_module = compressor_op_builder.load()
     d_x = torch.empty_like(x)
     d_wkv = torch.empty_like(wkv)
     d_wgate = torch.empty_like(wgate)

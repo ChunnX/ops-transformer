@@ -330,7 +330,6 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
 
 
 _moe_init_routing_op_builder = _MoeInitRoutingOpBuilder()
-_op_module = _moe_init_routing_op_builder.load()
 
 
 @impl(AS_LIBRARY, _moe_init_routing_op_builder.name, "PrivateUse1")
@@ -338,6 +337,7 @@ def _moe_init_routing(x, expert_idx, scale=None, offset=None, topk_weight=None,
                       active_num=-1, expert_capacity=-1, expert_num=-1,
                       drop_pad_mode=0, expert_tokens_num_type=0, expert_tokens_num_flag=False,
                       quant_mode=-1, active_expert_range=None, row_idx_type=0, x_dtype=None):
+    _op_module = _moe_init_routing_op_builder.load()
     return _op_module.moe_init_routing(x, expert_idx, scale, offset, topk_weight,
                                        active_num, expert_capacity, expert_num, drop_pad_mode,
                                        expert_tokens_num_type, expert_tokens_num_flag, quant_mode,

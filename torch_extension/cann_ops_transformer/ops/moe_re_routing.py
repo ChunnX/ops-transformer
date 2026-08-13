@@ -91,13 +91,13 @@ class _MoeReRoutingOpBuilder(OpBuilder):
 
 
 _moe_re_routing_op_builder = _MoeReRoutingOpBuilder()
-_op_module = _moe_re_routing_op_builder.load()
 
 
 @impl(AS_LIBRARY, _moe_re_routing_op_builder.name, "PrivateUse1")
 def _moe_re_routing(tokens, expert_token_num_per_rank,
                          per_token_scales=None, expert_topk_weight=None,
                          expert_token_num_type=1, idx_type=0, tokens_dtype=None):
+    _op_module = _moe_re_routing_op_builder.load()
     return _op_module.moe_re_routing(tokens, expert_token_num_per_rank, per_token_scales,
                                           expert_topk_weight, expert_token_num_type, idx_type, tokens_dtype)
 
