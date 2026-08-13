@@ -46,7 +46,8 @@ bool IsV121(gert::TilingContext *context)
         return false;
     }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    return ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_5102;
+    const auto npuArch = ascendcPlatform.GetCurNpuArch();
+    return npuArch == NpuArch::DAV_9201 || npuArch == NpuArch::DAV_9202;
 }
 
 uint32_t GetAicCoreNum(gert::TilingContext *context, bool isV121)
