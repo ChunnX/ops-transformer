@@ -317,9 +317,8 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::
                 continue;
             }
             // 先按名查重：另一个 pass（dispatch/combine 互为对端）可能已为本通信域创建过 context Const
-            ge::GNode contextNode = ops::Mc2MoeGraphContext::FindContextConstNode(*graph, groupEpStr);
-            ge::AscendString tmpType;
-            if (contextNode.GetType(tmpType) != ge::GRAPH_SUCCESS) {
+            ge::GNode contextNode;
+            if (!ops::Mc2MoeGraphContext::FindContextConstNode(*graph, groupEpStr, contextNode)) {
                 if (ops::Mc2MoeGraphContext::CreateContextConstNode(*graph, groupEpStr, contextData, contextNode) !=
                     ge::GRAPH_SUCCESS) {
                     continue;
@@ -345,6 +344,10 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "hccl version not support mc2 context, V2 node kept as-is.");
         continue;
 #endif
+    }
+    // 回读校验：确认 pass 结束时 Const 内容仍正确
+    for (const auto &entry : contextNodes) {
+        ops::Mc2MoeGraphContext::VerifyContextConstNode(*graph, entry.first);
     }
     return ge::GRAPH_SUCCESS;
 }

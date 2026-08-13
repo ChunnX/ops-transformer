@@ -29,6 +29,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <mutex>
 #include "hccl/hccl_rank_graph.h"
 #include "graph/graph.h"
 
@@ -45,8 +46,12 @@ public:
     static ge::graphStatus CreateContextConstNode(ge::Graph &graph, const std::string &groupEp,
                                                   const std::vector<int32_t> &contextData, ge::GNode &constNode);
 
-    // 按 groupEp 在图中查找已存在的 context Const 节点（dispatch/combine 两个 pass 共享同一个）
-    static ge::GNode FindContextConstNode(ge::Graph &graph, const std::string &groupEp);
+    // 按 groupEp 在图中查找已存在的 context Const 节点（dispatch/combine 两个 pass 共享同一个）。
+    // 找到返回 true 并回填 constNode；未找到返回 false，避免调用方对空 GNode 判空（GetType 行为无保证）。
+    static bool FindContextConstNode(ge::Graph &graph, const std::string &groupEp, ge::GNode &constNode);
+
+    // 调试：回读图中 context Const 的 value 并打印关键字段，用于分辨内容在 pass 结束时是否仍正确
+    static void VerifyContextConstNode(ge::Graph &graph, const std::string &groupEp);
 
 private:
     static constexpr const char *kContextConstNamePrefix = "mc2_moe_context_";
@@ -55,6 +60,8 @@ private:
     static Mc2MoeGraphContext &GetInstance();
 
     bool BuildContextData(const std::string &groupEp, std::vector<int32_t> &contextData, int64_t &hcclBuffSize);
+    // 校验缓存 context 中本卡 window buffer 地址是否仍是 HCCL 当前值（多图/长跑场景 HCCL 可能重建 buffer）
+    bool IsContextCacheValid(const std::string &groupEp, const std::vector<int32_t> &contextData);
     bool LoadHcclSymbols();
     bool GetCommHandle(const char *groupEp, HcclComm &hcclHandle);
     bool GetHcclCommLink(const HcclComm &hcclHandle, uint32_t netLayerId, uint32_t srcRankId, uint32_t dstRankId,
@@ -78,6 +85,7 @@ private:
     uint32_t epRankSize_ = 0;
     uint32_t rankSizePerServer_ = 0;
     std::unordered_map<uint32_t, uint32_t> layerMap; // 记录本卡与其他卡的通信层数，key为其他卡的rankId，value为通信层数
+    std::mutex contextMutex_;                        // 多线程编译（多图并发）下保护 contextCache_
 
     HcclResult (*HcomGetCommHandleByGroup)(const char *, HcclComm *) = nullptr;
     HcclResult (*HcclRankGraphGetLinks)(HcclComm, uint32_t, uint32_t, uint32_t, CommLink **, uint32_t *) = nullptr;
