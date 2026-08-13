@@ -50,6 +50,7 @@ public:
     static constexpr FA_LAYOUT LAYOUT_KV = FA_T::kvLayout;
     static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
     static constexpr bool HAS_MASK = FA_T::hasMask;
+    static constexpr bool HAS_DROP = FA_T::hasDrop;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     // task ring buffer 至少需要 PRELOAD_N+1(=3) 个slot；为了用位掩码(loop & MASK)代替取模(loop % SIZE)，
@@ -199,6 +200,13 @@ public:
         }
         // LSE
         constInfo_.isSoftmaxLseEnable = tilingData_->flashAttnBaseParams.isSoftMaxLseEnable;
+
+        // DropMask
+        constInfo_.hasDropFlag = (tilingData_->flashAttnDropMaskParams.keepProb < 1.0f);
+        constInfo_.keepProb = tilingData_->flashAttnDropMaskParams.keepProb;
+        constInfo_.keepProbUint8 = tilingData_->flashAttnDropMaskParams.keepProbUint8;
+        constInfo_.seed = tilingData_->flashAttnDropMaskParams.seed;
+        constInfo_.offset = tilingData_->flashAttnDropMaskParams.offset;
 
         constInfo_.dBasicBlock = Align64Func((uint16_t)constInfo_.dSizeV);
     }

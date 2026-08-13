@@ -32,7 +32,6 @@ static constexpr size_t ATTR_IDX_LAYOUT_Q           = 6;
 static constexpr size_t ATTR_IDX_LAYOUT_KV          = 7;
 static constexpr size_t ATTR_IDX_LAYOUT_OUT         = 8;
 static constexpr size_t ATTR_IDX_RETURN_SOFTMAX_LSE = 9;
-static constexpr size_t ATTR_IDX_DETERMINISTIC      = 10;
 
 // 输入索引
 static constexpr size_t INPUT_IDX_Q               = 0;

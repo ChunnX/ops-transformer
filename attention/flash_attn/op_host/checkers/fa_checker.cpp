@@ -41,6 +41,7 @@ void FAChecker::RegisterCheckers()
     checkers_.push_back(std::make_unique<PagedAttentionChecker>());
     checkers_.push_back(std::make_unique<MaskChecker>());
     checkers_.push_back(std::make_unique<SinksChecker>());
+    checkers_.push_back(std::make_unique<DropMaskChecker>());
     checkers_.push_back(std::make_unique<MetadataChecker>());
     checkers_.push_back(std::make_unique<SoftmaxLSEChecker>());
 }

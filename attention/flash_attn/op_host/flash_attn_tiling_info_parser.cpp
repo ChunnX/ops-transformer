@@ -248,6 +248,11 @@ ge::graphStatus FaInfoParser::GetAttrParaInfo()
     // 索引9: return_softmax_lse (Int)
     opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<int64_t>(ATTR_RETURN_LSE_INDEX);
 
+    // 索引10-12: seed/offset/keep_prob
+    opParamInfo_.seed = attrs->GetAttrPointer<int64_t>(ATTR_SEED_INDEX);
+    opParamInfo_.offset = attrs->GetAttrPointer<int64_t>(ATTR_OFFSET_INDEX);
+    opParamInfo_.keepProb = attrs->GetAttrPointer<float>(ATTR_KEEP_PROB_INDEX);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -596,6 +601,9 @@ void FaInfoParser::GenerateInfo(FaTilingInfo &faInfo)
     faInfo.totalOutputSize = opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize();
     faInfo.totalBlockNum = blockNum_;
     faInfo.softmaxScale = softmaxScale_;
+    faInfo.seed = seed_;
+    faInfo.offset = offset_;
+    faInfo.keepProb = keepProb_;
     faInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
 
     faInfo.keyBnStride = keyBnStride_;
@@ -712,6 +720,9 @@ ge::graphStatus FaInfoParser::ParseFeatureInfo()
     softmaxLseFlag_ = (returnSoftmaxLse_ != 0);
 
     softmaxScale_ = (opParamInfo_.softmaxScale == nullptr) ? 1.0f : *opParamInfo_.softmaxScale;
+    seed_ = (opParamInfo_.seed == nullptr) ? 0 : *opParamInfo_.seed;
+    offset_ = (opParamInfo_.offset == nullptr) ? 0 : *opParamInfo_.offset;
+    keepProb_ = (opParamInfo_.keepProb == nullptr) ? 1.0f : *opParamInfo_.keepProb;
     maxSeqQ_ = (opParamInfo_.maxSeqlenQ == nullptr) ? -1 : *opParamInfo_.maxSeqlenQ;
     maxSeqKv_ = (opParamInfo_.maxSeqlenKV == nullptr) ? -1 : *opParamInfo_.maxSeqlenKV;
 

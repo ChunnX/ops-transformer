@@ -11,7 +11,7 @@
 
 import torch
 import math
-from utils.data import generate_cpu_mask
+from utils.data import generate_cpu_mask, gen_dropmask, gen_dropmask_tnd, gen_dropmask_gs1
 
 
 def tsoftmax(x):
@@ -35,7 +35,7 @@ def _fix_invalid_rows(softmax_res, x_max, x_sum):
     return softmax_res, x_max, x_sum
 
 
-def _attend(q, k, v, atten_mask, scale, need_fix_invalid):
+def _attend(q, k, v, atten_mask, scale, need_fix_invalid, drop_mask=None, keep_prob=1.0):
     q = q.float()
     k = k.float()
     v = v.float()
@@ -47,19 +47,20 @@ def _attend(q, k, v, atten_mask, scale, need_fix_invalid):
     if qk.shape[-1] == 0:
         b, n, sq, _ = qk.shape
         softmax_res = torch.zeros((b, n, sq, 0), dtype=qk.dtype)
-        x_max       = torch.zeros(b, n, sq, 1)  # torch.finfo(torch.float).min
-        x_sum       = torch.zeros(b, n, sq, 1)  # torch.finfo(torch.float).max
+        x_max       = torch.zeros(b, n, sq, 1)
+        x_sum       = torch.zeros(b, n, sq, 1)
     else:
         softmax_res, x_max, x_sum = tsoftmax(qk)
-
-    # softmax_res, x_max, x_sum = tsoftmax(qk)
 
     if need_fix_invalid:
         softmax_res, x_max, x_sum = _fix_invalid_rows(softmax_res, x_max, x_sum)
 
-    out = torch.matmul(softmax_res, v)
-    x_max = x_max
-    x_sum = x_sum
+    if drop_mask is not None:
+        drop_res = softmax_res * drop_mask * (1.0 / keep_prob)
+    else:
+        drop_res = softmax_res
+
+    out = torch.matmul(drop_res, v)
     return out, x_max, x_sum
 
 
@@ -122,10 +123,21 @@ def tforward_tnd(q, k, v, **kwargs):
 
     scale = kwargs.get("scale", 1 / (d ** 0.5))
 
+    keep_prob = kwargs.get("keep_prob", 1.0)
+    seed = kwargs.get("seed", 0)
+    offset = kwargs.get("offset", 0)
+
     band_index = 0
 
     qk_size = [int(seqused_q[i] * math.ceil(seqused_kv[i] / 16) * 16) for i in range(b)]
     qk_pointer = get_cu_seqlens(qk_size).to(torch.int64)
+
+    drop_mask = None
+    if abs(1 - keep_prob) >= 2e-14:
+        g_size = n1 // n2 if n2 > 0 else 1
+        max_kv = max(seqused_kv) if isinstance(seqused_kv, list) else seqused_kv
+        layout_q = kwargs.get("layout_q", kwargs.get("input_layout", "BSND"))
+        drop_mask = gen_dropmask_gs1(b, n2, g_size, max(seqused_q), max_kv, keep_prob, seed, offset, layout_q)
 
     out_golden = torch.zeros([1, n1, s1_total, d_v], dtype=q.dtype)
     x_max = torch.zeros([n1, s1_total], dtype=torch.float32)
@@ -154,7 +166,12 @@ def tforward_tnd(q, k, v, **kwargs):
 
         need_fix = _should_fix_invalid_rows(mask_mode, win_left, win_right, act_q_len, act_kv_len, prefix)
 
-        outi, x_maxi, x_sumi = _attend(qi, ki, vi, atten_maski, scale, need_fix)
+        drop_maski = None
+        if drop_mask is not None:
+            s2_aligned = math.ceil(act_kv_len / 16) * 16
+            drop_maski = drop_mask[i, :, :act_q_len, :s2_aligned][:, :, :act_kv_len]
+
+        outi, x_maxi, x_sumi = _attend(qi, ki, vi, atten_maski, scale, need_fix, drop_maski, keep_prob)
         out_golden[:, :, q_start:q_start + act_q_len] = outi
         x_max[:, q_start:q_start + act_q_len] = x_maxi.squeeze(0).squeeze(-1)	 
         x_sum[:, q_start:q_start + act_q_len] = x_sumi.squeeze(0).squeeze(-1)

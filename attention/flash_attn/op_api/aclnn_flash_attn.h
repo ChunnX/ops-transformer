@@ -64,6 +64,10 @@ extern "C" {
  * @param layoutOut           [IN]  ATTR可选。输出的数据布局，支持"BSND"/"BNSD"/"TND"（大小写不敏感）。
  * @param returnSoftmaxLse    [IN]  ATTR可选。是否输出softmax_lse。INT类型，1表示输出，0表示不输出。
  *                                  训练正向传播时置1，推理时置0。
+ * @param seed                [IN]  ATTR可选。dropout随机种子。INT类型，默认0。
+ * @param offset              [IN]  ATTR可选。dropout随机偏移。INT类型，默认0。
+ * @param keepProb            [IN]  ATTR可选。dropout保留概率。DOUBLE类型，默认1.0（不dropout）。
+ *                                  keepProb<1.0时启用dropmask，<1.0时强制走Nd路径。
  * @param attnOut        [OUT] 必选输出。attention计算结果，数据类型与q一致，layout由layoutOut决定。
  * @param softmaxLseOptional  [OUT] 可选输出。softmax的log-sum-exp值，FLOAT32类型。
  *                                  returnSoftmaxLse=1时有效，shape取决于layout和序列长度：
@@ -78,7 +82,8 @@ aclnnStatus aclnnFlashAttnGetWorkspaceSize(
     const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
     const aclTensor *metadataOptional, double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
     int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv, const char *layoutOut,
-    int64_t returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
+    int64_t returnSoftmaxLse, int64_t seed, int64_t offset, double keepProb,
+    const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**

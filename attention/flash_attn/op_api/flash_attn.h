@@ -68,6 +68,9 @@ const std::array<const aclTensor *, 2> FlashAttn(
     const char *layoutKv,
     const char *layoutOut,
     int32_t returnSoftmaxLse,
+    int64_t seed,
+    int64_t offset,
+    double keepProb,
     aclOpExecutor *executor);
 
 }  // namespace l0op

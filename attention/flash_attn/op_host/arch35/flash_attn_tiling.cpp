@@ -182,18 +182,21 @@ void FlashAttnTilingImpl::UpdateTilingKeyInfo()
     UpdateTilingKeyConfig();
     UpdateTilingKeyKvLayout();
     tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) ? 0 : 1;
+    tilingKeyInfo_.hasDropMask = (faInfo_->keepProb < 1.0f) ? 1 : 0;
 }
 
 void FlashAttnTilingImpl::GenTilingKey()
 {
     UpdateTilingKeyInfo();
     tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType,
-                                    tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.config);
+                                    tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasDropMask,
+                                    tilingKeyInfo_.config);
     OP_LOGI(faInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(faInfo_->opName,
-            "The tilingkey param is inOutLayoutType: %llu, kvLayoutType: %llu, hasAttenMask: %llu, config: %llu.",
+            "The tilingkey param is inOutLayoutType: %llu, kvLayoutType: %llu, hasAttenMask: %llu, "
+            "hasDropMask: %llu, config: %llu.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.hasAttenMask,
-            tilingKeyInfo_.config);
+            tilingKeyInfo_.hasDropMask, tilingKeyInfo_.config);
 }
 
 void FlashAttnTilingImpl::CalcNumBlocks(uint32_t aicNum)
@@ -312,6 +315,11 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.iscuSeqLengthsNull = !cuSeqLenQFlag_;
     tilingData_.baseTiling.flashAttnBaseParams.iscuSeqLengthsKVNull = !cuSeqLenKVFlag_;
     tilingData_.baseTiling.flashAttnBaseParams.coreNum = numBlocks_;
+
+    tilingData_.baseTiling.flashAttnDropMaskParams.seed = static_cast<uint64_t>(faInfo_->seed);
+    tilingData_.baseTiling.flashAttnDropMaskParams.offset = static_cast<uint64_t>(faInfo_->offset);
+    tilingData_.baseTiling.flashAttnDropMaskParams.keepProb = faInfo_->keepProb;
+    tilingData_.baseTiling.flashAttnDropMaskParams.keepProbUint8 = static_cast<uint8_t>(faInfo_->keepProb * 255);
 
     tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = faInfo_->winLeft;
     tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = faInfo_->winRight;

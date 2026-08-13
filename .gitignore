@@ -52,3 +52,6 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+extra-info/
+.git-rewrite/
+attention/flash_attn/tests/pytests/attention/flash_attn/tests/pytests/result.csv

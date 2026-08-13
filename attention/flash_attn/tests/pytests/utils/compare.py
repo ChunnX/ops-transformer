@@ -18,6 +18,15 @@ RATIO_THRESHOLD = 0.005
 FAIL_RATIO_LIMIT = 0.005
 
 
+def get_fail_ratio_limit(keep_prob=1.0, dtype="fp16"):
+    # dropmask: inverted dropout 缩放增加方差，放宽 FailRatio 上限
+    if keep_prob < 1.0:
+        if dtype == "bf16":
+            return 0.08  # 8% for bf16 dropmask (lower precision)
+        return 0.01  # 1% for fp16 dropmask
+    return FAIL_RATIO_LIMIT
+
+
 def print_log(data=None, level='INFO'):
     print("[%s] [%s]-%s:%s - %s" % (datetime.datetime.now().strftime(
         "%Y/%m/%d %H:%M:%S"), level, os.path.basename(sys._getframe().f_back.f_code.co_filename),
@@ -359,14 +368,16 @@ def data_compare_benchmark_new(params, npu_output, cpu_output, cpu_golden, outpu
     return str1, str2, data
 
 
-def get_tolerance(output_dtype):
+def get_tolerance(output_dtype, keep_prob=1.0):
     # bf16: atol=0.0001, rtol=0.0078125;  fp16(默认): atol=0.000025, rtol=0.005
+    # dropmask: atol 按 1/keep_prob 放大（inverted dropout 缩放放大误差）
+    scale = 1.0 / keep_prob if keep_prob < 1.0 else 1.0
     if output_dtype == "bf16":
-        return 0.0001, 0.0078125
-    return 0.000025, 0.005
+        return 0.0001 * scale, 0.0078125
+    return 0.000025 * scale, 0.005
 
 
-def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU", verbose_diff=False, atol=0.000025, rtol=0.005):
+def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU", verbose_diff=False, atol=0.000025, rtol=0.005, fail_ratio_limit=None):
     SEP = "─" * 64
     print(f"\n┌{SEP}┐")
     print(f"│  精度报告: {test_name}  ({except_label} vs {comp_label})")
@@ -388,14 +399,16 @@ def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU"
     fail_cnt  = int(fail_mask.sum().item())
     total     = expect.numel()
     fail_ratio = fail_cnt / total
-    passed    = fail_ratio <= FAIL_RATIO_LIMIT
+    if fail_ratio_limit is None:
+        fail_ratio_limit = FAIL_RATIO_LIMIT
+    passed    = fail_ratio <= fail_ratio_limit
     print(f"│  Shape       : {tuple(expect.shape)}")
     print(f"│  MaxAbsErr   : {max_abs:.8f}")
     print(f"│  MeanAbsErr  : {mean_abs:.8f}")
     print(f"│  MaxRelErr   : {max_rel:.8f}")
     print(f"│  MeanRelErr  : {mean_rel:.8f}")
     print(f"│  FailElems   : {fail_cnt} / {total}  ({fail_ratio*100:.4f}%)")
-    print(f"│  Threshold   : atol={atol}  rtol={rtol*100:.2f}%  failRatio≤{FAIL_RATIO_LIMIT*100:.2f}%")
+    print(f"│  Threshold   : atol={atol}  rtol={rtol*100:.2f}%  failRatio≤{fail_ratio_limit*100:.2f}%")
     print(f"│  结论        : {'✓ PASS' if passed else '✗ FAIL'}")
     if fail_cnt > 0:
         print(f"├{SEP}┤")

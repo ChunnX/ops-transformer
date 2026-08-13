@@ -147,6 +147,9 @@ public:
 
     // 其他属性信息
     float softmaxScale_ = 1.0;
+    int64_t seed_ = 0;
+    int64_t offset_ = 0;
+    float keepProb_ = 1.0f;
 
     // seqLen信息
     int64_t seqLenQDims_ = 0;

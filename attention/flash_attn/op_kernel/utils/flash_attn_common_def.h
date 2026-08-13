@@ -364,6 +364,14 @@ struct SinkConstInfo {
     bool learnableSinkFlag = false;
 };
 
+struct DropMaskConstInfo {
+    bool hasDropFlag = false;
+    float keepProb = 1.0f;
+    uint8_t keepProbUint8 = 255;
+    uint64_t seed = 0;
+    uint64_t offset = 0;
+};
+
 struct PseConstInfo {
     uint32_t pseShiftByBatch;
     int64_t pseS1Size;
@@ -405,6 +413,7 @@ struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
                                               PAConstInfo,
                                               LseConstInfo,
                                               SinkConstInfo,
+                                              DropMaskConstInfo,
                                               PseConstInfo,
                                               TensorListConstInfo,
                                               PostQuantConstInfo,

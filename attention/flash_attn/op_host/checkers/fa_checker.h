@@ -28,6 +28,7 @@
 #include "./metadata_checker.h"
 #include "./paged_attention_checker.h"
 #include "./sinks_checker.h"
+#include "./dropmask_checker.h"
 #include "./softmax_lse_checker.h"
 
 namespace optiling {
