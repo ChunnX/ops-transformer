@@ -239,6 +239,10 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
 
     // 本卡准备状态 flag 源，供远端 WriteNbi。源只被本卡读、不被对端访问，无需占用注册窗口，
     // 放在 workspace 上；每 aiv 独占 STATE_SIZE_PER_CORE 字节，避免与相邻核共享 cacheline。
+    // workspace 只按 tiling 的 aivNum 分块，越界就写到本算子 workspace 之外，必须先拦下。
+    ascendc_assert(aivId_ < moeDistributeCombineSetupInfo_->aivNum,
+                   "combine_setup aivId out of range, aivId=%u aivNum=%u", aivId_,
+                   moeDistributeCombineSetupInfo_->aivNum);
     statusDataSpaceGM_ = workspaceGM;
     statusFlagGM_ = statusDataSpaceGM_ + STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_);
     GlobalTensor<int32_t> statusFlagTensor;
