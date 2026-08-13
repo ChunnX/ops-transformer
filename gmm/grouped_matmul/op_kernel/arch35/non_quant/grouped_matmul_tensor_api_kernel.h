@@ -92,8 +92,24 @@ __aicore__ inline void GmmNoQuantTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
         static_cast<uint32_t>(baseN),
         static_cast<uint32_t>(baseK),
         2U,
-        static_cast<uint16_t>(mmTilingData.dbL0C),
-        nullptr};
+        static_cast<uint16_t>(mmTilingData.dbL0C)};
+
+    // typename BlockMmad::Params mmParams{
+    //     x,
+    //     weight,
+    //     y,
+    //     gmmBaseParams.hasBias == 0 ? nullptr : bias,
+    //     groupList,
+    //     nullptr,
+    //     baseM,
+    //     baseN,
+    //     kL1,
+    //     static_cast<uint32_t>(baseM),
+    //     static_cast<uint32_t>(baseN),
+    //     static_cast<uint32_t>(baseK),
+    //     2U,
+    //     static_cast<uint16_t>(mmTilingData.dbL0C),
+    //     nullptr};
 
     ProblemShape problemShape{static_cast<int64_t>(mmTilingData.M),
                               static_cast<int64_t>(mmTilingData.N),
