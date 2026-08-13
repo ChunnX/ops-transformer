@@ -105,12 +105,12 @@ bool FiaTilingNonQuantMlaArch35::IsCapableSparseLayoutCheckMla()
 
 bool FiaTilingNonQuantMlaArch35::IsCapable()
 {
+    if (!IsCapableBasicCheckMla()) {
+        return false;
+    }
     if (fiaInfo_->n1Size >= 1 && fiaInfo_->n1Size <= NUM_128 &&
         (fiaInfo_->n1Size & (fiaInfo_->n1Size - 1)) != 0) {
         return true;
-    }
-    if (!IsCapableBasicCheckMla()) {
-        return false;
     }
     if (!IsCapableFeatureCheckMla()) {
         return false;
