@@ -194,24 +194,24 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
     }
 }
 
-struct DispatchExpertWaveRange {
+struct DispatchExpertRange {
     int32_t expertGlobalRowBegin;
-    int32_t expertWaveLocalRowEnd;
+    int32_t expertDispatchRowEnd;
     int32_t coreExpertRowBegin;
     int32_t coreExpertRowEnd;
     bool hasRows;
     bool isBeyondOutput;
 };
 
-// 计算当前专家在 wave-local 行坐标和本 core 行区间中的交集。
+// 计算当前专家在完整 Dispatch 行空间和本 core 行区间中的交集。
 template <typename ActivationType>
-__aicore__ inline DispatchExpertWaveRange CalculateDispatchExpertWaveRange(
+__aicore__ inline DispatchExpertRange CalculateDispatchExpertRange(
     const TokenDispatchConfig &context, const TokenDispatchScratch<ActivationType> &scratch,
-    uint32_t localExpertId, int32_t coreWaveRowBegin, int32_t coreWaveRowEnd,
-    int32_t expertWaveLocalRowBegin)
+    uint32_t localExpertId, int32_t coreDispatchRowBegin, int32_t coreDispatchRowEnd,
+    int32_t expertDispatchRowBegin)
 {
-    DispatchExpertWaveRange range{};
-    range.expertWaveLocalRowEnd = expertWaveLocalRowBegin;
+    DispatchExpertRange range{};
+    range.expertDispatchRowEnd = expertDispatchRowBegin;
     range.expertGlobalRowBegin = localExpertId == 0U ? 0 :
         scratch.cumsumInfoTensor.GetValue(localExpertId * context.common.worldSize - 1U);
     if (static_cast<uint64_t>(range.expertGlobalRowBegin) >= context.maxOutputSize) {
@@ -230,10 +230,10 @@ __aicore__ inline DispatchExpertWaveRange CalculateDispatchExpertWaveRange(
         return range;
     }
 
-    range.expertWaveLocalRowEnd = expertWaveLocalRowBegin + expertRowCount;
-    range.coreExpertRowBegin = coreWaveRowBegin > expertWaveLocalRowBegin ?
-        coreWaveRowBegin - expertWaveLocalRowBegin : 0;
-    range.coreExpertRowEnd = coreWaveRowEnd - expertWaveLocalRowBegin;
+    range.expertDispatchRowEnd = expertDispatchRowBegin + expertRowCount;
+    range.coreExpertRowBegin = coreDispatchRowBegin > expertDispatchRowBegin ?
+        coreDispatchRowBegin - expertDispatchRowBegin : 0;
+    range.coreExpertRowEnd = coreDispatchRowEnd - expertDispatchRowBegin;
     if (range.coreExpertRowEnd > expertRowCount) {
         range.coreExpertRowEnd = expertRowCount;
     }
@@ -273,27 +273,27 @@ __aicore__ inline DispatchExpertRankRange FindDispatchExpertRankRange(
     return range;
 }
 
-// 发布一个 source-rank 段覆盖到的 GMM1 256-row flag。
-__aicore__ inline void PublishDispatchWaveReady(
+// 发布一个 source-rank 段覆盖到的 GMM1 tile ready 计数。
+__aicore__ inline void PublishGmm1TileReady(
     const TokenDispatchConfig &context, const Params &params, uint32_t localExpertId,
-    int32_t dispatchWaveRowCount, int32_t segmentExpertRowBegin, int32_t segmentExpertRowEnd)
+    int32_t gmm1TileRowCount, int32_t segmentExpertRowBegin, int32_t segmentExpertRowEnd)
 {
     if (segmentExpertRowBegin >= segmentExpertRowEnd) {
         return;
     }
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
-    __gm__ int32_t *dispatchWaveReadyCount =
+    __gm__ int32_t *gmm1TileReadyCount =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
         static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
-    int32_t firstWaveIdx = segmentExpertRowBegin / dispatchWaveRowCount;
-    int32_t lastWaveIdx = (segmentExpertRowEnd - 1) / dispatchWaveRowCount;
-    for (int32_t waveIdx = firstWaveIdx; waveIdx <= lastWaveIdx; ++waveIdx) {
-        int32_t waveExpertRowBegin = waveIdx * dispatchWaveRowCount;
-        int32_t waveExpertRowEnd = waveExpertRowBegin + dispatchWaveRowCount;
+    int32_t firstTileIdx = segmentExpertRowBegin / gmm1TileRowCount;
+    int32_t lastTileIdx = (segmentExpertRowEnd - 1) / gmm1TileRowCount;
+    for (int32_t tileIdx = firstTileIdx; tileIdx <= lastTileIdx; ++tileIdx) {
+        int32_t tileExpertRowBegin = tileIdx * gmm1TileRowCount;
+        int32_t tileExpertRowEnd = tileExpertRowBegin + gmm1TileRowCount;
         int32_t overlapRowBegin =
-            segmentExpertRowBegin > waveExpertRowBegin ? segmentExpertRowBegin : waveExpertRowBegin;
-        int32_t overlapRowEnd = segmentExpertRowEnd < waveExpertRowEnd ? segmentExpertRowEnd : waveExpertRowEnd;
-        AtomicAdd(dispatchWaveReadyCount + static_cast<int64_t>(waveIdx) * INT_CACHELINE,
+            segmentExpertRowBegin > tileExpertRowBegin ? segmentExpertRowBegin : tileExpertRowBegin;
+        int32_t overlapRowEnd = segmentExpertRowEnd < tileExpertRowEnd ? segmentExpertRowEnd : tileExpertRowEnd;
+        AtomicAdd(gmm1TileReadyCount + static_cast<int64_t>(tileIdx) * INT_CACHELINE,
                   overlapRowEnd - overlapRowBegin);
     }
 }
@@ -306,7 +306,7 @@ __aicore__ inline void DispatchRankTokenRange(
     int32_t expertGlobalRowBegin, uint32_t remoteRankIdx,
     int32_t rankSegmentRowBegin,
     int32_t segmentMatchOrdinalBegin, int32_t segmentMatchOrdinalEnd,
-    int32_t dispatchWaveRowCount)
+    int32_t gmm1TileRowCount)
 {
     const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
     uint32_t maskSlotSize = context.maskAlignSize + static_cast<uint32_t>(ALIGN_32);
@@ -362,8 +362,8 @@ __aicore__ inline void DispatchRankTokenRange(
     if (dispatchedRowCount > 0) {
         int32_t segmentExpertRowBegin = rankSegmentRowBegin + segmentMatchOrdinalBegin;
         int32_t segmentExpertRowEnd = segmentExpertRowBegin + dispatchedRowCount;
-        PublishDispatchWaveReady(context, params, localExpertId, dispatchWaveRowCount,
-                                 segmentExpertRowBegin, segmentExpertRowEnd);
+        PublishGmm1TileReady(context, params, localExpertId, gmm1TileRowCount,
+                             segmentExpertRowBegin, segmentExpertRowEnd);
     }
 }
 
@@ -372,8 +372,8 @@ template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPref
 __aicore__ inline void DispatchExpertRowsByRank(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
-    const DispatchExpertWaveRange &expertRange, const DispatchExpertRankRange &rankRange,
-    int32_t dispatchWaveRowCount)
+    const DispatchExpertRange &expertRange, const DispatchExpertRankRange &rankRange,
+    int32_t gmm1TileRowCount)
 {
     int32_t rankSegmentRowBegin = rankRange.firstSegmentRowBegin - expertRange.expertGlobalRowBegin;
     int32_t rankSegmentRowEnd = 0;
@@ -402,47 +402,48 @@ __aicore__ inline void DispatchExpertRowsByRank(
             context, params, winRankAddr, scratch, localExpertId,
             expertRange.expertGlobalRowBegin, static_cast<uint32_t>(remoteRankIdx),
             rankSegmentRowBegin, segmentMatchOrdinalBegin, segmentMatchOrdinalEnd,
-            dispatchWaveRowCount);
+            gmm1TileRowCount);
     }
 }
 
-// 基线 Dispatch wave 的分核实现：先按当前 wave 的总接收行数给所有 Dispatch
-// core 分配连续的 wave-local 区间，再沿专家和 source rank 求交集。这里保留
+// 全量 Dispatch 的分核实现：按所有专家的总接收行数给所有 Dispatch core 分配连续
+// 行区间，再沿专家和 source rank 求交集。这里保留
 // source rank 的原有顺序扫描，不改变二层路由，只把多个小专家合并到同一个
 // Dispatch pass，避免每个小专家都单独占用一轮核分配。
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchExpertTokens(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
-    TokenDispatchScratch<ActivationType> &scratch, uint32_t waveBeginExpert,
-    uint32_t waveEndExpert, uint32_t waveRowCount)
+    TokenDispatchScratch<ActivationType> &scratch, uint32_t firstExpert,
+    uint32_t endExpert, uint32_t totalDispatchRowCount)
 {
-    if (waveRowCount == 0U || waveBeginExpert >= waveEndExpert) {
+    if (totalDispatchRowCount == 0U || firstExpert >= endExpert) {
         return;
     }
 
-    constexpr int32_t dispatchWaveRowCount = static_cast<int32_t>(PipelineTileM);
+    constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
     uint32_t dispatchCoreCount = context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs;
     int32_t rowsPerCore = Ops::Base::CeilDiv(
-        static_cast<int32_t>(waveRowCount), static_cast<int32_t>(dispatchCoreCount));
-    int32_t coreWaveRowBegin = static_cast<int32_t>(context.blockJob.jobIndex) * rowsPerCore;
-    int32_t coreWaveRowEnd = coreWaveRowBegin + rowsPerCore;
-    if (coreWaveRowEnd > static_cast<int32_t>(waveRowCount)) {
-        coreWaveRowEnd = static_cast<int32_t>(waveRowCount);
+        static_cast<int32_t>(totalDispatchRowCount), static_cast<int32_t>(dispatchCoreCount));
+    int32_t coreDispatchRowBegin = static_cast<int32_t>(context.blockJob.jobIndex) * rowsPerCore;
+    int32_t coreDispatchRowEnd = coreDispatchRowBegin + rowsPerCore;
+    if (coreDispatchRowEnd > static_cast<int32_t>(totalDispatchRowCount)) {
+        coreDispatchRowEnd = static_cast<int32_t>(totalDispatchRowCount);
     }
-    if (coreWaveRowBegin >= coreWaveRowEnd) {
+    if (coreDispatchRowBegin >= coreDispatchRowEnd) {
         return;
     }
 
-    int32_t expertWaveLocalRowBegin = 0;
-    for (uint32_t localExpertId = waveBeginExpert; localExpertId < waveEndExpert; ++localExpertId) {
-        DispatchExpertWaveRange expertRange = CalculateDispatchExpertWaveRange(
-            context, scratch, localExpertId, coreWaveRowBegin, coreWaveRowEnd, expertWaveLocalRowBegin);
+    int32_t expertDispatchRowBegin = 0;
+    for (uint32_t localExpertId = firstExpert; localExpertId < endExpert; ++localExpertId) {
+        DispatchExpertRange expertRange = CalculateDispatchExpertRange(
+            context, scratch, localExpertId, coreDispatchRowBegin, coreDispatchRowEnd,
+            expertDispatchRowBegin);
         if (expertRange.isBeyondOutput) {
             continue;
         }
-        expertWaveLocalRowBegin = expertRange.expertWaveLocalRowEnd;
+        expertDispatchRowBegin = expertRange.expertDispatchRowEnd;
         if (!expertRange.hasRows) {
-            if (coreWaveRowEnd <= expertRange.expertWaveLocalRowEnd) {
+            if (coreDispatchRowEnd <= expertRange.expertDispatchRowEnd) {
                 break;
             }
             continue;
@@ -459,9 +460,9 @@ __aicore__ inline void DispatchExpertTokens(
 
         DispatchExpertRowsByRank<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, params, winRankAddr, scratch, localExpertId, expertRange, rankRange,
-            dispatchWaveRowCount);
+            gmm1TileRowCount);
 
-        if (coreWaveRowEnd <= expertRange.expertWaveLocalRowEnd) {
+        if (coreDispatchRowEnd <= expertRange.expertDispatchRowEnd) {
             break;
         }
     }

@@ -107,8 +107,9 @@ private:
     __aicore__ inline void ProcessMoeExpertStages();
     __aicore__ inline void ProcessSharedExpertGmm2();
     __aicore__ inline void ProcessGmmPipeline();
-    __aicore__ inline ExpertRowCursor DispatchWaveAndGetEndCursor(
-        ExpertRowCursor &dispatchWaveCursor, uint64_t &dispatchExpertRowCount);
+    __aicore__ inline void DispatchAllExpertTokens();
+    __aicore__ inline ExpertRowCursor AdvanceGmmWaveCursor(
+        ExpertRowCursor &gmmWaveCursor);
     __aicore__ inline void SetGmm1ProblemState(
         Gmm1ExpertLoopState &problemState, const Gmm1ExpertLoopState &expertState,
         uint32_t problemStartRowOffset, uint32_t problemEndRowOffset);
@@ -150,7 +151,7 @@ private:
     uint32_t worldSize_ = 0;
     uint32_t gmm1TilesPerMGroup_ = 1U;
     uint32_t mGroupsPerWave_ = 1U;
-    // Dispatch wave 按实际接收行数合并小专家；GMM wave 仍按 mGroupsPerWave_ 独立推进。
+    // Dispatch 一次完成全部专家；GMM wave 仍按 mGroupsPerWave_ 独立推进。
     uint16_t gmm1PingPongIdx_ = 0;
     uint32_t startBlockIdx_ = 0;
     uint32_t blockNum_ = GetBlockNum();
@@ -166,7 +167,7 @@ private:
 
     /*
      * AIV1 上 Dispatch 与 Combine 分阶段复用 UB，进入 Combine 前 Dispatch 的动态 ring 已经排空：
-     *   [0, 64 KiB)       Dispatch 的 cumsum 等跨 wave 常驻状态；MoE 流水结束后复用其中最多 36 KiB，
+     *   [0, 64 KiB)       Dispatch 的 cumsum 等全流程常驻状态；MoE 流水结束后复用其中最多 36 KiB，
      *                     从 GM 恢复并压紧最多 1024 个专家的 token count；
      *   [64, 160 KiB)     非量化 Combine 的 6 个 BF16 row buffer（H 最大 8 KiB）；
      *                     量化 Combine 使用 2 个 [BF16 row | FP8 data + scale] 槽及共享量化 scratch；
@@ -793,76 +794,71 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::CrossRankSyncIn
 }
 
 template <TemplateMegaMoeWaveTypeClass>
-__aicore__ inline typename MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ExpertRowCursor
-MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
-    ExpertRowCursor &dispatchWaveCursor, uint64_t &dispatchExpertRowCount)
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchAllExpertTokens()
 {
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() != 1U) {
-            return dispatchWaveCursor;
+            return;
         }
-        // 保留 full_port 的阶段顺序：一次调用完成全部路由专家 Dispatch，随后才由
-        // AIC/AIV0 按 GMM wave 进入 GMM1/GMM2。这里的内部 wave 只是 Dispatch 分核
-        // 的批次，不是跨阶段流水边界。
-        const uint32_t dispatchWaveRowBudget = mGroupsPerWave_ * GMM1_TILE_M;
-        bool hasPreparedExpert = false;
-        uint32_t preparedExpertIdx = 0U;
-        uint32_t waveBeginExpert = dispatchWaveCursor.expertIdx;
-        while (waveBeginExpert < moeExpertPerRank_) {
-            uint32_t waveEndExpert = waveBeginExpert;
-            uint32_t plannedDispatchRowCount = 0U;
-            while (waveEndExpert < moeExpertPerRank_) {
-                uint32_t expertIdx = waveEndExpert;
-                if (!hasPreparedExpert || preparedExpertIdx != expertIdx) {
-                    ComputeExpertTokenCountAndNotify<ActivationType, false, TopkWeightsPrefetch>(
-                        tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx, dispatchExpertRowCount);
-                    preparedExpertIdx = expertIdx;
-                    hasPreparedExpert = true;
-                }
-                uint64_t expertGlobalRowBegin = expertIdx == 0U ? 0U :
-                    static_cast<uint64_t>(tokenDispatchScratch_.cumsumInfoTensor.GetValue(
-                        expertIdx * tokenDispatchConfig_.common.worldSize - 1U));
-                uint64_t dispatchRowCount = 0U;
-                if (expertGlobalRowBegin < tokenDispatchConfig_.maxOutputSize) {
-                    uint64_t remainingWorkspaceRowCount =
-                        tokenDispatchConfig_.maxOutputSize - expertGlobalRowBegin;
-                    dispatchRowCount = dispatchExpertRowCount < remainingWorkspaceRowCount ?
-                        dispatchExpertRowCount : remainingWorkspaceRowCount;
-                }
-                if (dispatchRowCount == 0U) {
-                    hasPreparedExpert = false;
-                    ++waveEndExpert;
-                    continue;
-                }
-
-                // Dispatch wave 按实际行数合并小专家，不把每个专家的尾块强制放大为
-                // 一个 GMM MGroup。若下一个专家放不进当前 wave，只保留 count，
-                // 下一轮内部 Dispatch wave 复用该 count。
-                if (plannedDispatchRowCount != 0U &&
-                    plannedDispatchRowCount + dispatchRowCount > dispatchWaveRowBudget) {
-                    break;
-                }
-                plannedDispatchRowCount += static_cast<uint32_t>(dispatchRowCount);
-                hasPreparedExpert = false;
-                ++waveEndExpert;
-
-                // 热点大专家允许独占一个 Dispatch wave，不按 GMM 的 256-row 边界重复进入。
-                if (plannedDispatchRowCount >= dispatchWaveRowBudget) {
-                    break;
-                }
+        uint64_t totalDispatchRowCount = 0U;
+        for (uint32_t expertIdx = 0U; expertIdx < moeExpertPerRank_; ++expertIdx) {
+            uint64_t expertTokenCount = 0U;
+            ComputeExpertTokenCountAndNotify<ActivationType, false, TopkWeightsPrefetch>(
+                tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx, expertTokenCount);
+            uint64_t expertGlobalRowBegin = expertIdx == 0U ? 0U :
+                static_cast<uint64_t>(tokenDispatchScratch_.cumsumInfoTensor.GetValue(
+                    expertIdx * tokenDispatchConfig_.common.worldSize - 1U));
+            if (expertGlobalRowBegin < tokenDispatchConfig_.maxOutputSize) {
+                uint64_t remainingWorkspaceRowCount =
+                    tokenDispatchConfig_.maxOutputSize - expertGlobalRowBegin;
+                totalDispatchRowCount += expertTokenCount < remainingWorkspaceRowCount ?
+                    expertTokenCount : remainingWorkspaceRowCount;
             }
-
-            if (plannedDispatchRowCount != 0U) {
-                DispatchExpertTokens<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-                    tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_,
-                    waveBeginExpert, waveEndExpert, plannedDispatchRowCount);
-            }
-            waveBeginExpert = waveEndExpert;
         }
-        dispatchWaveCursor.expertIdx = waveBeginExpert;
-        dispatchWaveCursor.rowOffsetInExpert = 0U;
+        if (totalDispatchRowCount != 0U) {
+            DispatchExpertTokens<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+                tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_,
+                0U, moeExpertPerRank_, static_cast<uint32_t>(totalDispatchRowCount));
+        }
     }
-    return dispatchWaveCursor;
+}
+
+template <TemplateMegaMoeWaveTypeClass>
+__aicore__ inline typename MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ExpertRowCursor
+MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::AdvanceGmmWaveCursor(
+    ExpertRowCursor &gmmWaveCursor)
+{
+    uint32_t processedMGroupCount = 0U;
+    while (gmmWaveCursor.expertIdx < moeExpertPerRank_ &&
+           processedMGroupCount < mGroupsPerWave_) {
+        uint32_t expertIdx = gmmWaveCursor.expertIdx;
+        uint64_t expertGlobalRowBegin = expertIdx == 0U ? 0U :
+            static_cast<uint64_t>(tokenDispatchScratch_.cumsumInfoTensor.GetValue(
+                expertIdx * tokenDispatchConfig_.common.worldSize - 1U));
+        uint64_t expertGlobalRowEnd = static_cast<uint64_t>(
+            tokenDispatchScratch_.cumsumInfoTensor.GetValue(
+                expertIdx * tokenDispatchConfig_.common.worldSize +
+                tokenDispatchConfig_.common.worldSize - 1U));
+        uint64_t expertRowCount = expertGlobalRowEnd - expertGlobalRowBegin;
+        if (expertRowCount == 0U || gmmWaveCursor.rowOffsetInExpert >= expertRowCount) {
+            ++gmmWaveCursor.expertIdx;
+            gmmWaveCursor.rowOffsetInExpert = 0U;
+            continue;
+        }
+
+        uint32_t remainingMGroupCount = mGroupsPerWave_ - processedMGroupCount;
+        uint32_t waveEndRowOffsetInExpert = GetWaveEndRowOffsetInExpert(
+            expertRowCount, gmmWaveCursor.rowOffsetInExpert,
+            remainingMGroupCount, GMM1_TILE_M);
+        uint32_t waveRowCount = waveEndRowOffsetInExpert - gmmWaveCursor.rowOffsetInExpert;
+        processedMGroupCount += GetMGroupCountForRows(waveRowCount, GMM1_TILE_M);
+        gmmWaveCursor.rowOffsetInExpert = waveEndRowOffsetInExpert;
+        if (gmmWaveCursor.rowOffsetInExpert >= expertRowCount) {
+            ++gmmWaveCursor.expertIdx;
+            gmmWaveCursor.rowOffsetInExpert = 0U;
+        }
+    }
+    return gmmWaveCursor;
 }
 
 template <TemplateMegaMoeWaveTypeClass>
@@ -1096,17 +1092,13 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
         startBlockIdx_, vecSetSyncCom, gmm1TileSequence, gmm1PingPongIdx_};
 
     ExpertRowCursor waveBeginCursor{};
-    ExpertRowCursor dispatchWaveCursor{};
     ExpertRowCursor gmm1WaveCursor{};
     ExpertRowCursor gmm2WaveCursor{};
-    uint64_t dispatchExpertRowCount = 0U;
     uint32_t combineBeginExpertIndex = 0U;
-    ExpertRowCursor dispatchEndCursor{};
 
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
-            dispatchEndCursor = DispatchWaveAndGetEndCursor(
-                dispatchWaveCursor, dispatchExpertRowCount);
+            DispatchAllExpertTokens();
         }
     }
 
@@ -1116,7 +1108,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
 
         if constexpr (g_coreType == AIV) {
             if (GetSubBlockIdx() == 1U) {
-                waveEndCursor = dispatchEndCursor;
+                waveEndCursor = AdvanceGmmWaveCursor(gmm1WaveCursor);
             } else {
                 waveEndCursor = ProcessGmm1Wave(
                     gmm1WaveCursor, gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState);
@@ -1168,7 +1160,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmmPipel
     // 等待所有 rank 完成本轮输入准备，再读取远端 dispatch 数据。
     CrossRankSyncInWorldSize();
 
-    // 按 wave 执行 MoE 专家 Dispatch、GMM1、SwiGLU、GMM2 与 Combine。
+    // Dispatch 先一次完成全部专家，随后按 GMM wave 执行 GMM1、SwiGLU、GMM2 与 Combine。
     ProcessMoeExpertStages();
 
     if constexpr (g_coreType == AIV) {
