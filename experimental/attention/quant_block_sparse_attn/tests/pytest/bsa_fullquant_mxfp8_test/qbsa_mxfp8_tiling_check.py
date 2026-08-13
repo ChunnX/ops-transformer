@@ -12,9 +12,8 @@
 """
 QBSA MXFP8 Tiling 拦截校验测试脚本
 
-用合法 base case 生成数据，然后在调 NPU 前篡改张量/参数，
-直接调用 torch.ops.custom.npu_quant_block_sparse_attn（跳过 golden 的预处理），
-触发 op_host tiling check 拦截。
+用合法 base case 生成数据，然后在调 NPU 前篡改张量/参数，触发 tiling check 拦截。
+不跑 CPU golden，只调 NPU 接口。
 
 用法:
   python qbsa_mxfp8_tiling_check.py
@@ -29,7 +28,6 @@ import sys
 import time
 
 import torch
-import torch_npu
 
 if not hasattr(torch, "float8_e4m3fn"):
     torch.float8_e4m3fn = torch.float8_e4m3
@@ -87,186 +85,39 @@ _BASE_CASE = {
     "quant_mode": 2,
 }
 
-DEVICE_ID = 0
-SPARSE_BLOCK_SIZE = 128
-
 
 def _gen_base_data():
     golden.set_active_case(golden._normalize_case(dict(_BASE_CASE)))
     return golden._generate_reference_style_mxfp8_inputs()
 
 
-def _to_npu(tensor):
-    if tensor is None:
-        return None
-    if isinstance(tensor, torch.Tensor):
-        return tensor.npu() if tensor.device.type == "cpu" else tensor
-    return torch.as_tensor(tensor).npu()
-
-
-def _build_metadata(sparse_seq_len, cu_seqlens_q, kv_lengths, case):
-    """用合法的 sparse_seq_len/cu_seqlens_q + case 的 attr 构造 metadata。
-    张量输入必须是未篡改的原始值，attr 用 case_override 以保证 metadata 与
-    主算子收到的 attr 一致。"""
-    golden._ensure_custom_ops_registered()
-    seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32).npu()
-    cu_seqlens_q_npu = _to_npu(cu_seqlens_q)
-    sparse_seq_len_npu = _to_npu(sparse_seq_len)
-    torch_npu.npu.synchronize()
-    metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
-        sparse_seq_len_npu,
-        case["N1"],
-        case["N2"],
-        case["D"],
-        cu_seqlens_q=cu_seqlens_q_npu,
-        cu_seqlens_kv=None,
-        seqused_q=None,
-        seqused_kv=seqused_kv,
-        batch_size=case["B"],
-        sparse_block_size_q=case["sparse_q_block_size"],
-        sparse_block_size_k=case["sparse_kv_block_size"],
-        quant_mode=case["quant_mode"],
-        mask_mode=case["mask_mode"],
-        layout_q=case["layout_q"],
-        layout_kv=case["layout_kv"],
-        layout_sparse_indices=case["layout_sparse_indices"],
-    )
-    torch_npu.npu.synchronize()
-    return metadata, seqused_kv
-
-
-def _preprocess_to_npu(data):
-    """用 golden 的 PA 预处理把 dense 数据转成 NPU op 要求的格式。
-
-    替换 data dict 中的张量为 NPU-ready 版本：
-    - query: view(FP8_DTYPE)
-    - key/value: mxfp8_pa_preprocessing(is_scale=False) → PA_BNSD 4D + view(FP8_DTYPE)
-    - q_descale: convert_q_scale + pair packing → 4D (T,N,D//64,2) + e8m0fnu
-    - k_descale: mxfp8_pa_preprocessing(is_scale=True) → 5D (BlockNum,N,Bs,D//64,2) + e8m0fnu
-    - v_descale: mxfp8_pa_preprocessing(is_scale=True,is_vscale=True) → 5D + e8m0fnu
-    - p_scale: fp32_to_e8m0fnu_safe
-    - mask: _build_causal_mask()
-
-    须在 golden.set_active_case(_BASE_CASE) 之后调用（_gen_base_data 已设置）。
-    """
-    kv_lengths = data["kv_lengths"]
-    q_lengths = data["q_lengths"]
-    block_table = data["block_table"]
-    sparse_indices = data["sparse_indices"]
-    sparse_seq_len = data["sparse_seq_len"]
-
-    pa_kwargs = dict(
-        seq_lens=kv_lengths,
-        block_size=golden.BLOCK_SIZE,
-        block_table=block_table,
-        kv_layout=golden.KV_CACHE_LAYOUT,
-        group_size=golden.QUANT_GROUP_SIZE,
-        sparse_indices=sparse_indices,
-        sparse_seq_len=sparse_seq_len,
-        physical_block_count=golden.BLOCK_NUM,
+def _call_npu(data, case_override=None):
+    if case_override is None:
+        case_override = dict(_BASE_CASE)
+    golden.set_active_case(golden._normalize_case(case_override))
+    return golden.npu_mxfp8_fa(
+        data["query"],
+        data["key"],
+        data["value"],
+        data["q_descale"],
+        data["k_descale"],
+        data["v_descale"],
+        data["p_scale"],
+        data["q_lengths"],
+        data["kv_lengths"],
+        data["cu_seqlens_q"],
+        data["cu_seqlens_kv"],
+        block_table_torch=data["block_table"],
+        sparse_indices=data["sparse_indices"],
+        sparse_seq_len=data["sparse_seq_len"],
     )
 
-    data["query"] = golden.convert_q_tnd_or_ntd_to_layout(
-        data["query"], q_lengths, golden.N_q, golden.Q_INPUT_LAYOUT, "Q"
-    ).contiguous().view(golden.FP8_DTYPE)
 
-    data["key"] = golden.mxfp8_pa_preprocessing(
-        data["key"], is_vscale=False, is_scale=False, **pa_kwargs
-    ).contiguous().view(golden.FP8_DTYPE)
-
-    data["value"] = golden.mxfp8_pa_preprocessing(
-        data["value"], is_vscale=False, is_scale=False, **pa_kwargs
-    ).contiguous().view(golden.FP8_DTYPE)
-
-    q_scale_packed = golden.convert_q_scale_tnd_or_ntd_to_layout(data["q_descale"], q_lengths)
-    data["q_descale"] = golden.fp32_to_e8m0fnu_safe(q_scale_packed, "Q descale")
-
-    k_scale_pa = golden.mxfp8_pa_preprocessing(
-        data["k_descale"], is_vscale=False, is_scale=True, **pa_kwargs
-    )
-    data["k_descale"] = golden.fp32_to_e8m0fnu_safe(k_scale_pa, "K PA descale")
-
-    v_scale_pa = golden.mxfp8_pa_preprocessing(
-        data["v_descale"], is_vscale=True, is_scale=True, **pa_kwargs
-    )
-    data["v_descale"] = golden.fp32_to_e8m0fnu_safe(v_scale_pa, "V PA descale")
-
-    if data.get("p_scale") is not None:
-        data["p_scale"] = golden.fp32_to_e8m0fnu_safe(data["p_scale"], "P scale")
-
-    data["mask"] = golden._build_causal_mask()
-
-    data["cu_seqlens_kv"] = None
-    data["seqused_q"] = None
-
-    if block_table is not None and not isinstance(block_table, torch.Tensor):
-        data["block_table"] = torch.as_tensor(block_table, dtype=torch.int32)
-    if sparse_indices is not None and not isinstance(sparse_indices, torch.Tensor):
-        data["sparse_indices"] = torch.as_tensor(sparse_indices, dtype=torch.int32)
-    if data.get("cu_seqlens_q") is not None and not isinstance(data["cu_seqlens_q"], torch.Tensor):
-        data["cu_seqlens_q"] = torch.as_tensor(data["cu_seqlens_q"], dtype=torch.int32)
-
-
-def _call_op_direct(data, case, metadata=None, seqused_kv=None):
-    """直接调用主算子。metadata 由外部用合法 base 数据预构造，
-    避免篡改后的输入在 metadata 算子阶段被提前拦截。"""
-    torch_npu.npu.set_device(int(case.get("device_id", DEVICE_ID)))
-
-    q = _to_npu(data["query"])
-    k = _to_npu(data["key"])
-    v = _to_npu(data["value"])
-    q_descale = _to_npu(data["q_descale"])
-    k_descale = _to_npu(data["k_descale"])
-    v_descale = _to_npu(data["v_descale"])
-    p_scale = _to_npu(data["p_scale"])
-    if p_scale is None:
-        p_scale = torch.tensor([], dtype=torch.float8_e8m0fnu).npu()
-    sparse_indices = _to_npu(data["sparse_indices"])
-    sparse_seq_len = _to_npu(data["sparse_seq_len"])
-    block_table = _to_npu(data["block_table"])
-    cu_seqlens_q = _to_npu(data["cu_seqlens_q"])
-
-    mask = _to_npu(data.get("mask"))
-    if mask is None:
-        mask = torch.tensor([], dtype=torch.uint8).npu()
-
-    if seqused_kv is None:
-        seqused_kv = torch.tensor(data["kv_lengths"], dtype=torch.int32).npu()
-
-    cu_seqlens_kv = _to_npu(data.get("cu_seqlens_kv"))
-    seqused_q = _to_npu(data.get("seqused_q"))
-
-    output = torch.ops.custom.npu_quant_block_sparse_attn(
-        q,
-        k,
-        v,
-        q_descale,
-        k_descale,
-        v_descale,
-        p_scale,
-        sparse_indices,
-        sparse_seq_len,
-        mask,
-        float(case["softmax_scale"]),
-        int(case["sparse_q_block_size"]),
-        int(case["sparse_kv_block_size"]),
-        cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_kv=cu_seqlens_kv,
-        seqused_q=seqused_q,
-        seqused_kv=seqused_kv,
-        block_table=block_table,
-        metadata=metadata,
-        layout_kv=case["layout_kv"],
-        layout_q=case["layout_q"],
-        layout_sparse_indices=case["layout_sparse_indices"],
-        layout_out=case["layout_out"],
-        quant_mode=int(case["quant_mode"]),
-        mask_mode=int(case["mask_mode"]),
-        return_softmax_lse=bool(case["return_softmax_lse"]),
-    )
-    torch_npu.npu.synchronize()
-    return output
-
+# ============================================================================
+# 拦截用例定义：每条 = (name, mutate_fn, case_override_fn)
+#   mutate_fn(data): 篡改生成好的 data dict 中的张量
+#   case_override_fn(): 返回覆盖后的 case dict（改 attr 值，不改影响数据生成的字段）
+# ============================================================================
 
 def _noop(data):
     pass
@@ -275,19 +126,13 @@ def _base_case():
     return dict(_BASE_CASE)
 
 
-# ============================================================================
-# 拦截用例定义：每条 = (name, mutate_fn, case_override_fn)
-#   mutate_fn(data): 篡改生成好的 data dict 中的张量
-#   case_override_fn(): 返回覆盖后的 case dict（改 attr 值）
-# ============================================================================
-
 TILING_CHECK_CASES = [
     # --- 一、存在性 ---
     ("TC_EXIST_01_block_table_none",
      lambda d: d.__setitem__("block_table", None), _base_case),
 
-    ("TC_EXIST_02_cu_seqlens_q_empty",
-     lambda d: d.__setitem__("cu_seqlens_q", torch.tensor([], dtype=torch.int32)), _base_case),
+    ("TC_EXIST_02_cu_seqlens_q_none",
+     lambda d: d.__setitem__("cu_seqlens_q", None), _base_case),
 
     ("TC_EXIST_03_p_scale_none",
      lambda d: d.__setitem__("p_scale", None), _base_case),
@@ -302,8 +147,8 @@ TILING_CHECK_CASES = [
     ("TC_SHAPE_02_query_N_minus1",
      lambda d: d.__setitem__("query", d["query"][:, :7]), _base_case),
 
-    ("TC_SHAPE_03_query_D_anomaly",
-     _noop, lambda: {**_BASE_CASE, "D": 129}),
+    ("TC_SHAPE_03_query_D_plus1",
+     lambda d: d.__setitem__("query", torch.cat([d["query"], torch.zeros(d["query"].shape[0], d["query"].shape[1], 1, dtype=d["query"].dtype)], dim=2)), _base_case),
 
     ("TC_SHAPE_04_key_blocknum_minus1",
      lambda d: d.__setitem__("key", d["key"][:-1]), _base_case),
@@ -462,6 +307,42 @@ def _log_constructed_case(name, data, case_override):
             logger.info("    %-18s = %s", k, v)
 
 
+_PLOG_DIR = os.path.expanduser("~/ascend/log/debug/plog")
+
+
+def _find_latest_plog():
+    if not os.path.isdir(_PLOG_DIR):
+        return None
+    files = [f for f in os.listdir(_PLOG_DIR) if f.startswith("plog-")]
+    if not files:
+        return None
+    files.sort(key=lambda fn: os.path.getmtime(os.path.join(_PLOG_DIR, fn)), reverse=True)
+    return os.path.join(_PLOG_DIR, files[0])
+
+
+def _extract_check_error(plog_path, offset):
+    """从 plog offset 之后的内容中提取 QuantBlockSparseAttn tiling check 的拦截信息。
+
+    op_host 的 OP_LOGE_* 宏会写入 [ERROR] 行，包含 kOpName="QuantBlockSparseAttn"。
+    """
+    if plog_path is None or not os.path.isfile(plog_path):
+        return ""
+    try:
+        with open(plog_path, "r", encoding="utf-8", errors="ignore") as f:
+            f.seek(offset)
+            new_content = f.read()
+    except Exception:
+        return ""
+    keywords = ("QuantBlockSparseAttn", "quant_block_sparse_attn")
+    hits = []
+    for line in new_content.splitlines():
+        if "[ERROR]" not in line:
+            continue
+        if any(kw in line for kw in keywords):
+            hits.append(line.strip())
+    return "\n".join(hits[:5])[:300]
+
+
 def run_one_tiling_check(name, mutate_fn, case_fn, idx, total):
     start = time.time()
     logger.info("")
@@ -469,27 +350,30 @@ def run_one_tiling_check(name, mutate_fn, case_fn, idx, total):
     logger.info("[TILING CHECK %d/%d] %s", idx, total, name)
     logger.info("=" * 80)
 
+    plog_path = _find_latest_plog()
+    plog_offset = os.path.getsize(plog_path) if plog_path and os.path.isfile(plog_path) else 0
+
     try:
         data = _gen_base_data()
-        orig_sparse_seq_len = data["sparse_seq_len"]
-        orig_cu_seqlens_q = data["cu_seqlens_q"]
-        orig_kv_lengths = data["kv_lengths"]
-        _preprocess_to_npu(data)
         mutate_fn(data)
         case_override = case_fn()
-        metadata, seqused_kv = _build_metadata(
-            orig_sparse_seq_len, orig_cu_seqlens_q, orig_kv_lengths, case_override
-        )
         _log_constructed_case(name, data, case_override)
-        _call_op_direct(data, case_override, metadata, seqused_kv)
+        _call_npu(data, case_override)
         elapsed = time.time() - start
         logger.info("[RESULT] %s -> UNEXPECTED PASS (算子未拦截)", name)
         return {"case": name, "status": "UnexpectedPass", "time": elapsed, "error": ""}
     except Exception as err:
         elapsed = time.time() - start
         err_msg = str(err).strip().replace("\n", " ")[:200]
-        logger.info("[RESULT] %s -> BLOCKED (%.2fs) %s", name, elapsed, err_msg)
-        return {"case": name, "status": "Blocked", "time": elapsed, "error": err_msg}
+        check_err = _extract_check_error(plog_path, plog_offset)
+        if check_err:
+            logger.info("[RESULT] %s -> BLOCKED (%.2fs) tiling check 拦截:", name, elapsed)
+            for line in check_err.split("\n"):
+                logger.info("  %s", line)
+            return {"case": name, "status": "Blocked", "time": elapsed, "error": check_err}
+        else:
+            logger.info("[RESULT] %s -> BLOCKED (%.2fs) %s", name, elapsed, err_msg)
+            return {"case": name, "status": "Blocked", "time": elapsed, "error": err_msg}
 
 
 def _print_summary(results):
