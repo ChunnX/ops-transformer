@@ -134,7 +134,8 @@ private:
     TBuf<> fdLseUbBuf;
 
 public:
-    __aicore__ inline FiaBlockVecFlashDecodeMla(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FiaBlockVecFlashDecodeMla(ConstInfoX &constInfo)
+        : constInfo(constInfo){};
 
     __aicore__ inline void InitGlobalTensor(GlobalTensor<float> lseMaxFdGm, GlobalTensor<float> lseSumFdGm,
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm,

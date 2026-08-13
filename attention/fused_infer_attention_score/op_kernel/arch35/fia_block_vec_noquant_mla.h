@@ -60,7 +60,7 @@ public:
     static constexpr bool FLASH_DECODE = isFd;
     static constexpr bool HAS_DROP = false;                             // 不支持drop mask
     static constexpr PseTypeEnum PSE_MODE = PseTypeEnum::PSE_NONE_TYPE; // 不支持PSE
-    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+    static constexpr uint32_t initOutputEventId = 0U;                   // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr MaskFormat MASK_LAYOUT =
@@ -113,7 +113,8 @@ public:
     int64_t vec2SubBlockOffset = 0;
 
     // ==================== Functions ======================
-    __aicore__ inline FANoQuantMlaBlockVec(ConstInfoNoQuant &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FANoQuantMlaBlockVec(ConstInfoNoQuant &constInfo)
+        : constInfo(constInfo){};
 
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *actualSeqQlenAddr,
                                         __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *attenMask,
@@ -391,7 +392,7 @@ public:
 
         if (likely(runInfo.actVecMSize != 0)) {
             DataCopy(mm2AL1Tensor[s2BaseSize * dVBaseSize +
-                         runInfo.vecMbaseIdx * (AttentionCommon::BYTE_BLOCK / sizeof(INPUT_T))],
+                                  runInfo.vecMbaseIdx * (AttentionCommon::BYTE_BLOCK / sizeof(INPUT_T))],
                      stage1CastTensor,
                      {s2BaseSize / 16, (uint16_t)runInfo.actVecMSize, (uint16_t)(vec1Srcstride - runInfo.actVecMSize),
                       (uint16_t)(mBaseSize - runInfo.actVecMSize)});
@@ -794,7 +795,6 @@ public:
         }
     }
 };
-
 
 template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,

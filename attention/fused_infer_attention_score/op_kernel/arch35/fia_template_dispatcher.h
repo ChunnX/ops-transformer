@@ -75,11 +75,11 @@ inline __aicore__ void run_fia_noquant_gqa_kernel(__gm__ uint8_t *query, __gm__ 
 template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint16_t config, bool hasAttenMask,
           uint8_t KvLayoutType, bool isFd, bool emptyTensor, bool enableS1OutSplit>
 inline __aicore__ void run_fia_noquant_mla_kernel(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                                   __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
-                                                   __gm__ uint8_t *actualSeqLengthsKV, __gm__ uint8_t *blocktable,
-                                                   __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-                                                   __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-                                                   __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+                                                  __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
+                                                  __gm__ uint8_t *actualSeqLengthsKV, __gm__ uint8_t *blocktable,
+                                                  __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+                                                  __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
+                                                  __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     PARSE_PARAMS_NoQuant(inOutLayoutType, config, 9, ...); // 9: None
 
@@ -125,8 +125,8 @@ inline __aicore__ void run_fia_noquant_mla_kernel(__gm__ uint8_t *query, __gm__ 
 }
 
 template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode,
-           uint8_t quantMode, bool hasAttenMask, bool hasRope, uint8_t KvLayoutType, bool isFd, bool emptyTensor,
-           bool enableKVPrefix, bool enableS1OutSplit>
+          uint8_t quantMode, bool hasAttenMask, bool hasRope, uint8_t KvLayoutType, bool isFd, bool emptyTensor,
+          bool enableKVPrefix, bool enableS1OutSplit>
 inline __aicore__ void run_fia_fullquant_mx_kernel(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
     __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKV,

@@ -90,23 +90,29 @@ def gen_cases(num_cases, max_mem_gb, seed=2026):
         act_kv = _gen_act_kv(b, s2_max, variance, rng)
         act_kv = [min(v, s2_max) for v in act_kv]
 
-        cases.append({
-            "id": f"case_{i+1:03d}",
-            "b": b, "n1": n1, "n2": n2, "s1": s1, "s2": s2_max,
-            "layout": layout,
-            "act_kv": act_kv,
-            "variance": variance,
-        })
+        cases.append(
+            {
+                "id": f"case_{i + 1:03d}",
+                "b": b,
+                "n1": n1,
+                "n2": n2,
+                "s1": s1,
+                "s2": s2_max,
+                "layout": layout,
+                "act_kv": act_kv,
+                "variance": variance,
+            }
+        )
     return cases
 
 
 def write_cases_file(cases, output_path):
     lines = [
-        '#!/usr/bin/python',
-        '# -*- coding: utf-8 -*-',
+        "#!/usr/bin/python",
+        "# -*- coding: utf-8 -*-",
         '"""Auto-generated MLA D512 non-quant test cases."""',
-        '',
-        'BASE = {',
+        "",
+        "BASE = {",
         '    "B": [1],',
         '    "N1": [2],',
         '    "N2": [1],',
@@ -126,9 +132,9 @@ def write_cases_file(cases, output_path):
         '    "k_range": [(-5.0, 5.0)],',
         '    "v_range": [(-5.0, 5.0)],',
         '    "kv_reused": [True],',
-        '}',
-        '',
-        'TestCases = {',
+        "}",
+        "",
+        "TestCases = {",
     ]
     for c in cases:
         act_kv_str = "[" + ",".join(str(v) for v in c["act_kv"]) + "]"
@@ -139,14 +145,18 @@ def write_cases_file(cases, output_path):
             f' "act_kv": [{act_kv_str}],'
             f' "variance": ["{c["variance"]}"]}},'
         )
-    lines.append('}')
-    lines.append('')
-    with open(output_path, 'w') as f:
-        f.write('\n'.join(lines))
+    lines.append("}")
+    lines.append("")
+    with open(output_path, "w") as f:
+        f.write("\n".join(lines))
     print(f"Generated {len(cases)} cases -> {output_path}")
-    max_mem = max(est_mem_bytes(c["b"], c["n1"], c["n2"], c["s1"], c["s2"], BS, QK_D, ROPE_D, V_D) for c in cases)
+    max_mem = max(
+        est_mem_bytes(c["b"], c["n1"], c["n2"], c["s1"], c["s2"], BS, QK_D, ROPE_D, V_D)
+        for c in cases
+    )
     print(f"Max single-case memory: {max_mem / 1024**3:.2f} GB")
     from collections import Counter
+
     var_counts = Counter(c["variance"] for c in cases)
     layout_counts = Counter(c["layout"] for c in cases)
     print(f"Variance profiles: {dict(var_counts)}")
@@ -154,12 +164,22 @@ def write_cases_file(cases, output_path):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate MLA D512 non-quant test cases")
-    parser.add_argument("--num", type=int, default=100, help="Number of cases to generate")
-    parser.add_argument("--max_mem_gb", type=float, default=25, help="Max single-case memory in GB")
+    parser = argparse.ArgumentParser(
+        description="Generate MLA D512 non-quant test cases"
+    )
+    parser.add_argument(
+        "--num", type=int, default=100, help="Number of cases to generate"
+    )
+    parser.add_argument(
+        "--max_mem_gb", type=float, default=25, help="Max single-case memory in GB"
+    )
     parser.add_argument("--seed", type=int, default=2026, help="Random seed")
-    parser.add_argument("--output", type=str, default="mla_d512_noquant_gen.py",
-                        help="Output test_cases file path")
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="mla_d512_noquant_gen.py",
+        help="Output test_cases file path",
+    )
     args = parser.parse_args()
 
     cases = gen_cases(args.num, args.max_mem_gb, args.seed)

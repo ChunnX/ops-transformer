@@ -25,8 +25,44 @@ BASE = {
 }
 
 TestCases = {
-    "case_001": {**BASE, "B": [3], "N1": [8], "S1": [4], "S2": [384], "layout_kv": ["PA_BBH"], "act_kv": [[384, 384, 384]], "variance": ["extreme"]},
-    "case_002": {**BASE, "B": [3], "N1": [8], "S1": [4], "S2": [256], "layout_kv": ["PA_BBH"], "act_kv": [[256, 256, 256]], "variance": ["extreme"]},
-    "case_003": {**BASE, "B": [3], "N1": [8], "S1": [4], "S2": [2048], "layout_kv": ["PA_BBH"], "act_kv": [[2048, 2048, 2048]], "variance": ["extreme"]},
-    "case_004": {**BASE, "B": [3], "N1": [8], "S1": [4], "S2": [409600], "layout_kv": ["PA_BBH"], "act_kv": [[409600, 409600, 409600]], "variance": ["extreme"]},
+    "case_001": {
+        **BASE,
+        "B": [3],
+        "N1": [8],
+        "S1": [4],
+        "S2": [384],
+        "layout_kv": ["PA_BBH"],
+        "act_kv": [[384, 384, 384]],
+        "variance": ["extreme"],
+    },
+    "case_002": {
+        **BASE,
+        "B": [3],
+        "N1": [8],
+        "S1": [4],
+        "S2": [256],
+        "layout_kv": ["PA_BBH"],
+        "act_kv": [[256, 256, 256]],
+        "variance": ["extreme"],
+    },
+    "case_003": {
+        **BASE,
+        "B": [3],
+        "N1": [8],
+        "S1": [4],
+        "S2": [2048],
+        "layout_kv": ["PA_BBH"],
+        "act_kv": [[2048, 2048, 2048]],
+        "variance": ["extreme"],
+    },
+    "case_004": {
+        **BASE,
+        "B": [3],
+        "N1": [8],
+        "S1": [4],
+        "S2": [409600],
+        "layout_kv": ["PA_BBH"],
+        "act_kv": [[409600, 409600, 409600]],
+        "variance": ["extreme"],
+    },
 }

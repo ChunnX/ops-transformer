@@ -80,7 +80,9 @@ class FusedInferAttentionScoreGolden:
         if device_mode not in ("cpu", "npu"):
             raise ValueError(f"device_mode must be 'cpu' or 'npu', got {device_mode}")
         if compute_mode not in ("auto", "tiled", "full"):
-            raise ValueError(f"compute_mode must be 'auto', 'tiled' or 'full', got {compute_mode}")
+            raise ValueError(
+                f"compute_mode must be 'auto', 'tiled' or 'full', got {compute_mode}"
+            )
 
         if device_mode == "npu":
             for name, t in [("q", q), ("k", k), ("v", v)]:
@@ -145,15 +147,30 @@ class FusedInferAttentionScoreGolden:
                 max_sq = q.shape[2] if layout_q == "BNSD" else q.shape[1]
                 max_skv = k.shape[2] if layout_kv == "BNSD" else k.shape[1]
                 max_product = max_sq * max_skv
-            compute_mode = "tiled" if (max_sq >= self._tile_size and
-                                       max_product > self.TILED_CROSSOVER) else "full"
+            compute_mode = (
+                "tiled"
+                if (max_sq >= self._tile_size and max_product > self.TILED_CROSSOVER)
+                else "full"
+            )
 
         # 3. Compute attention — per-batch to avoid OOM on large TND inputs
         out_f32, lse_f32 = self._compute_per_batch(
-            q, k, v, q_lens, kv_lens,
-            layout_q, layout_kv, cu_seqlens_q, cu_seqlens_kv,
-            block_table, seqused_kv,
-            sparse_mode, atten_mask, scale, sinks, compute_mode,
+            q,
+            k,
+            v,
+            q_lens,
+            kv_lens,
+            layout_q,
+            layout_kv,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            block_table,
+            seqused_kv,
+            sparse_mode,
+            atten_mask,
+            scale,
+            sinks,
+            compute_mode,
             key_rope,
         )
 
@@ -251,12 +268,14 @@ class FusedInferAttentionScoreGolden:
                 kv_lens = [k.shape[1]] * B
 
         # For TND output, write directly to TND to avoid large BNSD allocation
-        is_tnd_out = (layout_q == "TND")
+        is_tnd_out = layout_q == "TND"
         if is_tnd_out:
             # TND 输出 T 与输入 q 行数一致 (cu_seqlens_q[-1]), 含 padding 行;
             # 写入偏移用 cu_q[b], 末尾 batch 不会越界。
             total_q = q.shape[0]
-            out_tnd = torch.zeros(total_q, N_q, dv, dtype=torch.float32, device=q.device)
+            out_tnd = torch.zeros(
+                total_q, N_q, dv, dtype=torch.float32, device=q.device
+            )
             lse_tnd = torch.zeros(total_q, N_q, dtype=torch.float32, device=q.device)
             out = None
             lse = None
@@ -275,8 +294,18 @@ class FusedInferAttentionScoreGolden:
 
             # Extract per-batch q/k/v and convert to BNSD fp32
             q_b, k_b, v_b = self._extract_batch_bnsd_f32(
-                q, k, v, b, sq, skv, layout_q, layout_kv,
-                cu_seqlens_q, cu_seqlens_kv, block_table, seqused_kv,
+                q,
+                k,
+                v,
+                b,
+                sq,
+                skv,
+                layout_q,
+                layout_kv,
+                cu_seqlens_q,
+                cu_seqlens_kv,
+                block_table,
+                seqused_kv,
                 key_rope,
             )
 
@@ -284,7 +313,11 @@ class FusedInferAttentionScoreGolden:
             mask_b = self._build_batch_mask(sq, skv, sparse_mode, atten_mask, q.device)
 
             # Compute per head
-            compute_fn = self._compute_tiled_single if compute_mode == "tiled" else self._compute_full_single
+            compute_fn = (
+                self._compute_tiled_single
+                if compute_mode == "tiled"
+                else self._compute_full_single
+            )
             delta = skv - sq
             for kv_h in range(N_kv):
                 k_bh = k_b[0, kv_h, :skv, :]
@@ -294,13 +327,15 @@ class FusedInferAttentionScoreGolden:
                     q_bh = q_b[0, qh, :sq, :]
                     sink = sinks[qh] if sinks is not None else None
                     if compute_mode == "tiled":
-                        o, l = compute_fn(q_bh, k_bh, v_bh, mask_b, scale, sink, sparse_mode, delta)
+                        o, l = compute_fn(
+                            q_bh, k_bh, v_bh, mask_b, scale, sink, sparse_mode, delta
+                        )
                     else:
                         o, l = compute_fn(q_bh, k_bh, v_bh, mask_b, scale, sink)
                     if is_tnd_out:
                         q_start = cu_q[b]
-                        out_tnd[q_start:q_start + sq, qh, :] = o
-                        lse_tnd[q_start:q_start + sq, qh] = l
+                        out_tnd[q_start : q_start + sq, qh, :] = o
+                        lse_tnd[q_start : q_start + sq, qh] = l
                     else:
                         out[b, qh, :sq, :] = o
                         lse[b, qh, :sq] = l
@@ -332,9 +367,9 @@ class FusedInferAttentionScoreGolden:
         """
         # Q
         if layout_q == "BNSD":
-            q_b = q[b:b+1, :, :sq, :].float()
+            q_b = q[b : b + 1, :, :sq, :].float()
         elif layout_q == "BSND":
-            q_b = q[b:b+1, :sq, :, :].permute(0, 2, 1, 3).contiguous().float()
+            q_b = q[b : b + 1, :sq, :, :].permute(0, 2, 1, 3).contiguous().float()
         elif layout_q == "TND":
             cu_q = cu_seqlens_q.to(torch.int64).tolist()
             s, e = cu_q[b], cu_q[b + 1]
@@ -344,11 +379,11 @@ class FusedInferAttentionScoreGolden:
 
         # K, V
         if layout_kv == "BNSD":
-            k_b = k[b:b+1, :, :skv, :].float()
-            v_b = v[b:b+1, :, :skv, :].float()
+            k_b = k[b : b + 1, :, :skv, :].float()
+            v_b = v[b : b + 1, :, :skv, :].float()
         elif layout_kv == "BSND":
-            k_b = k[b:b+1, :skv, :, :].permute(0, 2, 1, 3).contiguous().float()
-            v_b = v[b:b+1, :skv, :, :].permute(0, 2, 1, 3).contiguous().float()
+            k_b = k[b : b + 1, :skv, :, :].permute(0, 2, 1, 3).contiguous().float()
+            v_b = v[b : b + 1, :skv, :, :].permute(0, 2, 1, 3).contiguous().float()
         elif layout_kv == "TND":
             cu_kv = cu_seqlens_kv.to(torch.int64).tolist()
             s, e = cu_kv[b], cu_kv[b + 1]
@@ -370,11 +405,19 @@ class FusedInferAttentionScoreGolden:
                 if valid <= 0:
                     continue
                 if layout_kv == "PA_BBND":
-                    k_b[0, :, offset:offset + valid, :] = k[block_id, :valid, :, :].permute(1, 0, 2).float()
-                    v_b[0, :, offset:offset + valid, :] = v[block_id, :valid, :, :].permute(1, 0, 2).float()
+                    k_b[0, :, offset : offset + valid, :] = (
+                        k[block_id, :valid, :, :].permute(1, 0, 2).float()
+                    )
+                    v_b[0, :, offset : offset + valid, :] = (
+                        v[block_id, :valid, :, :].permute(1, 0, 2).float()
+                    )
                 else:
-                    k_b[0, :, offset:offset + valid, :] = k[block_id, :, :valid, :].float()
-                    v_b[0, :, offset:offset + valid, :] = v[block_id, :, :valid, :].float()
+                    k_b[0, :, offset : offset + valid, :] = k[
+                        block_id, :, :valid, :
+                    ].float()
+                    v_b[0, :, offset : offset + valid, :] = v[
+                        block_id, :, :valid, :
+                    ].float()
         elif layout_kv == "PA_BBH":
             N_kv = 1
             D = k.shape[-1]
@@ -390,8 +433,8 @@ class FusedInferAttentionScoreGolden:
                 valid = min(bs, skv - offset)
                 if valid <= 0:
                     continue
-                k_b[0, 0, offset:offset + valid, :] = k[block_id, :valid, :].float()
-                v_b[0, 0, offset:offset + valid, :] = v[block_id, :valid, :].float()
+                k_b[0, 0, offset : offset + valid, :] = k[block_id, :valid, :].float()
+                v_b[0, 0, offset : offset + valid, :] = v[block_id, :valid, :].float()
         elif layout_kv == "PA_NZ":
             N_kv = k.shape[1]
             D = k.shape[2] * k.shape[4]
@@ -407,17 +450,31 @@ class FusedInferAttentionScoreGolden:
                 valid = min(bs, skv - offset)
                 if valid <= 0:
                     continue
-                k_blk = k[block_id, :, :, :valid, :].permute(0, 2, 1, 3).contiguous().reshape(N_kv, valid, D)
-                v_blk = v[block_id, :, :, :valid, :].permute(0, 2, 1, 3).contiguous().reshape(N_kv, valid, dv)
-                k_b[0, :, offset:offset + valid, :] = k_blk.float()
-                v_b[0, :, offset:offset + valid, :] = v_blk.float()
+                k_blk = (
+                    k[block_id, :, :, :valid, :]
+                    .permute(0, 2, 1, 3)
+                    .contiguous()
+                    .reshape(N_kv, valid, D)
+                )
+                v_blk = (
+                    v[block_id, :, :, :valid, :]
+                    .permute(0, 2, 1, 3)
+                    .contiguous()
+                    .reshape(N_kv, valid, dv)
+                )
+                k_b[0, :, offset : offset + valid, :] = k_blk.float()
+                v_b[0, :, offset : offset + valid, :] = v_blk.float()
         else:
             raise ValueError(f"Unsupported layout_kv: {layout_kv}")
 
         # Concatenate key_rope to K per-batch (MLA support)
         if key_rope is not None:
             kr_b = FusedInferAttentionScoreGolden._extract_key_rope_batch(
-                key_rope, b, skv, layout_kv, block_table,
+                key_rope,
+                b,
+                skv,
+                layout_kv,
+                block_table,
             )
             k_b = torch.cat([k_b, kr_b], dim=-1)
 
@@ -434,15 +491,27 @@ class FusedInferAttentionScoreGolden:
         """Extract single batch key_rope as (1, N_kv, S, rope_d) float32."""
         if layout_kv in ("BNSD", "BSND", "TND"):
             return FusedInferAttentionScoreGolden._extract_batch_bnsd_f32(
-                key_rope, key_rope, key_rope, b, skv, skv, layout_kv, layout_kv,
-                None, None, None, None,
+                key_rope,
+                key_rope,
+                key_rope,
+                b,
+                skv,
+                skv,
+                layout_kv,
+                layout_kv,
+                None,
+                None,
+                None,
+                None,
             )[1]
 
         if layout_kv in ("PA_BBND", "PA_BNBD"):
             N_kv = key_rope.shape[1] if layout_kv == "PA_BNBD" else key_rope.shape[2]
             rope_d = key_rope.shape[-1]
             bs = key_rope.shape[2] if layout_kv == "PA_BNBD" else key_rope.shape[1]
-            kr_b = torch.zeros(1, N_kv, skv, rope_d, dtype=torch.float32, device=key_rope.device)
+            kr_b = torch.zeros(
+                1, N_kv, skv, rope_d, dtype=torch.float32, device=key_rope.device
+            )
             bt = block_table.to(torch.int64)
             num_blocks_b = (skv + bs - 1) // bs
             for blk in range(num_blocks_b):
@@ -452,15 +521,21 @@ class FusedInferAttentionScoreGolden:
                 if valid <= 0:
                     continue
                 if layout_kv == "PA_BBND":
-                    kr_b[0, :, offset:offset + valid, :] = key_rope[block_id, :valid, :, :].permute(1, 0, 2).float()
+                    kr_b[0, :, offset : offset + valid, :] = (
+                        key_rope[block_id, :valid, :, :].permute(1, 0, 2).float()
+                    )
                 else:
-                    kr_b[0, :, offset:offset + valid, :] = key_rope[block_id, :, :valid, :].float()
+                    kr_b[0, :, offset : offset + valid, :] = key_rope[
+                        block_id, :, :valid, :
+                    ].float()
             return kr_b
 
         if layout_kv == "PA_BBH":
             rope_d = key_rope.shape[-1]
             bs = key_rope.shape[1]
-            kr_b = torch.zeros(1, 1, skv, rope_d, dtype=torch.float32, device=key_rope.device)
+            kr_b = torch.zeros(
+                1, 1, skv, rope_d, dtype=torch.float32, device=key_rope.device
+            )
             bt = block_table.to(torch.int64)
             num_blocks_b = (skv + bs - 1) // bs
             for blk in range(num_blocks_b):
@@ -469,14 +544,18 @@ class FusedInferAttentionScoreGolden:
                 valid = min(bs, skv - offset)
                 if valid <= 0:
                     continue
-                kr_b[0, 0, offset:offset + valid, :] = key_rope[block_id, :valid, :].float()
+                kr_b[0, 0, offset : offset + valid, :] = key_rope[
+                    block_id, :valid, :
+                ].float()
             return kr_b
 
         if layout_kv == "PA_NZ":
             N_kv = key_rope.shape[1]
             rope_d = key_rope.shape[2] * key_rope.shape[4]
             bs = key_rope.shape[3]
-            kr_b = torch.zeros(1, N_kv, skv, rope_d, dtype=torch.float32, device=key_rope.device)
+            kr_b = torch.zeros(
+                1, N_kv, skv, rope_d, dtype=torch.float32, device=key_rope.device
+            )
             bt = block_table.to(torch.int64)
             num_blocks_b = (skv + bs - 1) // bs
             for blk in range(num_blocks_b):
@@ -485,8 +564,13 @@ class FusedInferAttentionScoreGolden:
                 valid = min(bs, skv - offset)
                 if valid <= 0:
                     continue
-                kr_blk = key_rope[block_id, :, :, :valid, :].permute(0, 2, 1, 3).contiguous().reshape(N_kv, valid, rope_d)
-                kr_b[0, :, offset:offset + valid, :] = kr_blk.float()
+                kr_blk = (
+                    key_rope[block_id, :, :, :valid, :]
+                    .permute(0, 2, 1, 3)
+                    .contiguous()
+                    .reshape(N_kv, valid, rope_d)
+                )
+                kr_b[0, :, offset : offset + valid, :] = kr_blk.float()
             return kr_b
 
         raise ValueError(f"Unsupported layout_kv for key_rope: {layout_kv}")
@@ -497,9 +581,9 @@ class FusedInferAttentionScoreGolden:
 
     def _compute_tiled_single(
         self,
-        q: torch.Tensor,       # (Sq, D) float32
-        k: torch.Tensor,       # (Skv, D) float32
-        v: torch.Tensor,       # (Skv, D) float32
+        q: torch.Tensor,  # (Sq, D) float32
+        k: torch.Tensor,  # (Skv, D) float32
+        v: torch.Tensor,  # (Skv, D) float32
         mask: Optional[torch.Tensor],  # (Sq, Skv) bool, True=mask out
         scale: float,
         sink: Optional[float],
@@ -527,8 +611,10 @@ class FusedInferAttentionScoreGolden:
         out = torch.zeros(Sq, dv, dtype=torch.float32, device=q.device)
         o_sum = torch.zeros(Sq, 1, dtype=torch.float32, device=q.device)
         o_max = torch.full(
-            (Sq, 1), torch.finfo(torch.float32).min,
-            dtype=torch.float32, device=q.device,
+            (Sq, 1),
+            torch.finfo(torch.float32).min,
+            dtype=torch.float32,
+            device=q.device,
         )
 
         Q_BLOCKS = list(torch.split(q, BS, dim=0))
@@ -547,8 +633,8 @@ class FusedInferAttentionScoreGolden:
             for j in range(TILES_KV):
                 oi, si, mi = o_BLOCKS[i], s_BLOCKS[i], m_BLOCKS[i]
 
-                Kj = K_BLOCKS[j]   # (Bk, D)
-                Vj = V_BLOCKS[j]   # (Bv, D)
+                Kj = K_BLOCKS[j]  # (Bk, D)
+                Vj = V_BLOCKS[j]  # (Bv, D)
                 Sk_start = j * BS
                 Sk_end = min(Sk_start + BS, Skv)
                 Bk = Sk_end - Sk_start
@@ -577,7 +663,7 @@ class FusedInferAttentionScoreGolden:
 
                 # Rescale old accumulators and accumulate new P@V
                 update_old = torch.exp(mi - m_new)
-                P_V = torch.matmul(P_ij, Vj[:Kj.shape[0], :])
+                P_V = torch.matmul(P_ij, Vj[: Kj.shape[0], :])
 
                 o_BLOCKS[i] = update_old * oi + P_V
                 s_BLOCKS[i] = update_old * si + s_block
@@ -599,9 +685,9 @@ class FusedInferAttentionScoreGolden:
 
     def _compute_full_single(
         self,
-        q: torch.Tensor,       # (Sq, D) float32
-        k: torch.Tensor,       # (Skv, D) float32
-        v: torch.Tensor,       # (Skv, D) float32
+        q: torch.Tensor,  # (Sq, D) float32
+        k: torch.Tensor,  # (Skv, D) float32
+        v: torch.Tensor,  # (Skv, D) float32
         mask: Optional[torch.Tensor],  # (Sq, Skv) bool
         scale: float,
         sink: Optional[float],
@@ -696,7 +782,9 @@ class FusedInferAttentionScoreGolden:
         elif layout_q == "BSND":
             q_bnsd = q.permute(0, 2, 1, 3).contiguous()
         elif layout_q == "TND":
-            q_bnsd = self._tnd_to_bnsd(q, cu_seqlens_q, self._num_heads_q, self._head_dim)
+            q_bnsd = self._tnd_to_bnsd(
+                q, cu_seqlens_q, self._num_heads_q, self._head_dim
+            )
         else:
             raise ValueError(f"Unsupported layout_q: {layout_q}")
 
@@ -709,8 +797,12 @@ class FusedInferAttentionScoreGolden:
                 k_bnsd = k.permute(0, 2, 1, 3).contiguous()
                 v_bnsd = v.permute(0, 2, 1, 3).contiguous()
         elif layout_kv == "TND":
-            k_bnsd = self._tnd_to_bnsd(k, cu_seqlens_kv, self._num_heads_kv, self._head_dim)
-            v_bnsd = self._tnd_to_bnsd(v, cu_seqlens_kv, self._num_heads_kv, self._head_dim)
+            k_bnsd = self._tnd_to_bnsd(
+                k, cu_seqlens_kv, self._num_heads_kv, self._head_dim
+            )
+            v_bnsd = self._tnd_to_bnsd(
+                v, cu_seqlens_kv, self._num_heads_kv, self._head_dim
+            )
         elif layout_kv in ("PA_BBND", "PA_BNBD"):
             kv_lens = self._get_kv_lens(seqused_kv, cu_seqlens_kv, block_table)
             k_bnsd = self._reconstruct_pa_kv(k, block_table, kv_lens, layout_kv)
@@ -781,10 +873,14 @@ class FusedInferAttentionScoreGolden:
                     continue
                 if kv_layout == "PA_BBND":
                     # kv_cache[block_id, :valid, :, :] is (valid, KV_N, D) -> permute to (KV_N, valid, D)
-                    bnsd[b, :, offset:offset + valid, :] = kv_cache[block_id, :valid, :, :].permute(1, 0, 2)
+                    bnsd[b, :, offset : offset + valid, :] = kv_cache[
+                        block_id, :valid, :, :
+                    ].permute(1, 0, 2)
                 else:
                     # PA_BNBD: kv_cache[block_id, :, :valid, :] is already (KV_N, valid, D)
-                    bnsd[b, :, offset:offset + valid, :] = kv_cache[block_id, :, :valid, :]
+                    bnsd[b, :, offset : offset + valid, :] = kv_cache[
+                        block_id, :, :valid, :
+                    ]
         return bnsd
 
     @staticmethod
@@ -909,7 +1005,9 @@ class FusedInferAttentionScore(nn.Module):
         import cann_ops_transformer
 
         attn_out, softmax_lse = cann_ops_transformer.ops.flash_attn(
-            q, k, v,
+            q,
+            k,
+            v,
             block_table=block_table,
             cu_seqlens_q=cu_seqlens_q,
             cu_seqlens_kv=cu_seqlens_kv,
@@ -964,7 +1062,9 @@ class FusedInferAttentionScore(nn.Module):
             tile_size=tile_size,
         )
         return golden.forward_golden(
-            q, k, v,
+            q,
+            k,
+            v,
             query_rope=query_rope,
             key_rope=key_rope,
             block_table=block_table,
