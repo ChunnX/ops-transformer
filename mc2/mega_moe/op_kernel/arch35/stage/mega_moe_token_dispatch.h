@@ -30,7 +30,6 @@ struct TokenDispatchConfig {
     uint32_t quantTokenAlignBytes;
     uint32_t quantScaleAlignBytes;
     uint32_t quantTokenScaleAlignBytes;
-    int32_t dispatchFlagSlotsPerExpert;
 };
 
 template <typename ActivationType>
@@ -246,7 +245,7 @@ __aicore__ inline DispatchExpertRankRange FindDispatchExpertRankRange(
 
 // 发布一个 source-rank 段覆盖到的 GMM1 tile ready 计数。
 __aicore__ inline void PublishGmm1TileReady(
-    const TokenDispatchConfig &context, const Params &params, uint32_t localExpertId,
+    const MoeSyncWorkspaceLayout &syncLayout, const Params &params, uint32_t localExpertId,
     int32_t gmm1TileRowCount, int32_t segmentExpertRowBegin, int32_t segmentExpertRowEnd)
 {
     if (segmentExpertRowBegin >= segmentExpertRowEnd) {
@@ -255,7 +254,7 @@ __aicore__ inline void PublishGmm1TileReady(
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
     __gm__ int32_t *gmm1TileReadyCount =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
-        static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
+        static_cast<uint64_t>(localExpertId) * syncLayout.dispatchFlagSlotCountPerExpert;
     int32_t firstTileIdx = segmentExpertRowBegin / gmm1TileRowCount;
     int32_t lastTileIdx = (segmentExpertRowEnd - 1) / gmm1TileRowCount;
     for (int32_t tileIdx = firstTileIdx; tileIdx <= lastTileIdx; ++tileIdx) {
@@ -275,7 +274,8 @@ __aicore__ inline void PublishGmm1TileReady(
  */
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchRankTokens(
-    const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
+    const TokenDispatchConfig &context, const MoeSyncWorkspaceLayout &syncLayout,
+    const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
     int32_t expertGlobalRowBegin, uint32_t remoteRankIdx,
     int32_t rankSegmentRowBegin,
@@ -336,7 +336,7 @@ __aicore__ inline void DispatchRankTokens(
     if (dispatchedRowCount > 0) {
         int32_t segmentExpertRowBegin = rankSegmentRowBegin + segmentMatchOrdinalBegin;
         int32_t segmentExpertRowEnd = segmentExpertRowBegin + dispatchedRowCount;
-        PublishGmm1TileReady(context, params, localExpertId, gmm1TileRowCount,
+        PublishGmm1TileReady(syncLayout, params, localExpertId, gmm1TileRowCount,
                              segmentExpertRowBegin, segmentExpertRowEnd);
     }
 }
@@ -347,7 +347,8 @@ __aicore__ inline void DispatchRankTokens(
  */
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchExpertTokensByRank(
-    const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
+    const TokenDispatchConfig &context, const MoeSyncWorkspaceLayout &syncLayout,
+    const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
     int32_t expertGlobalRowBegin, const DispatchExpertRange &expertRange,
     const DispatchExpertRankRange &rankRange,
@@ -378,7 +379,7 @@ __aicore__ inline void DispatchExpertTokensByRank(
         }
 
         DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-            context, params, winRankAddr, scratch, localExpertId,
+            context, syncLayout, params, winRankAddr, scratch, localExpertId,
             expertGlobalRowBegin, static_cast<uint32_t>(remoteRankIdx),
             rankSegmentRowBegin, segmentMatchOrdinalBegin, segmentMatchOrdinalEnd,
             gmm1TileRowCount);
@@ -388,7 +389,8 @@ __aicore__ inline void DispatchExpertTokensByRank(
 /** Dispatch one expert with the rank-shard partition required by A8W4 dynamic waves. */
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchExpertTokensByRankShard(
-    const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
+    const TokenDispatchConfig &context, const MoeSyncWorkspaceLayout &syncLayout,
+    const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId)
 {
     constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
@@ -430,7 +432,7 @@ __aicore__ inline void DispatchExpertTokensByRankShard(
         }
 
         DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-            context, params, winRankAddr, scratch, localExpertId, expertGlobalRowBegin,
+            context, syncLayout, params, winRankAddr, scratch, localExpertId, expertGlobalRowBegin,
             remoteRankIdx, static_cast<int32_t>(rankSegmentDstRowBegin) - expertGlobalRowBegin,
             rankShardRowBegin, rankShardRowBegin + dispatchRowCount, gmm1TileRowCount);
     }
@@ -442,7 +444,8 @@ __aicore__ inline void DispatchExpertTokensByRankShard(
  */
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchExpertTokensByRows(
-    const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
+    const TokenDispatchConfig &context, const MoeSyncWorkspaceLayout &syncLayout,
+    const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
     int32_t expertGlobalRowBegin, uint32_t dispatchRowCount)
 {
@@ -472,7 +475,7 @@ __aicore__ inline void DispatchExpertTokensByRows(
     }
 
     DispatchExpertTokensByRank<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-        context, params, winRankAddr, scratch, localExpertId, expertGlobalRowBegin,
+        context, syncLayout, params, winRankAddr, scratch, localExpertId, expertGlobalRowBegin,
         expertRange, rankRange, gmm1TileRowCount);
 }
 
@@ -612,7 +615,8 @@ __aicore__ inline void ExportExpertTokenCountsFromWorkspace(
 template <typename ActivationType, typename QuantScaleType, bool EnableA8W4, uint32_t Gmm1TileM,
           bool TopkWeightsPrefetch>
 __aicore__ inline void RunMoeExpertDispatchStage(
-    const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
+    const TokenDispatchConfig &context, const MoeSyncWorkspaceLayout &syncLayout,
+    const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t expertIdx, uint64_t &sendCnt)
 {
     sendCnt = 0U;
@@ -634,10 +638,10 @@ __aicore__ inline void RunMoeExpertDispatchStage(
             }
             if constexpr (EnableA8W4) {
                 DispatchExpertTokensByRankShard<ActivationType, QuantScaleType, Gmm1TileM, TopkWeightsPrefetch>(
-                    context, params, winRankAddr, scratch, expertIdx);
+                    context, syncLayout, params, winRankAddr, scratch, expertIdx);
             } else {
                 DispatchExpertTokensByRows<ActivationType, QuantScaleType, Gmm1TileM, TopkWeightsPrefetch>(
-                    context, params, winRankAddr, scratch, expertIdx,
+                    context, syncLayout, params, winRankAddr, scratch, expertIdx,
                     static_cast<int32_t>(expertGlobalRowBegin), static_cast<uint32_t>(dispatchRowCount));
             }
         }
