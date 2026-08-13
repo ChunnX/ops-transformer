@@ -457,9 +457,7 @@ bool QuantSparseFlashMlaMetadataCpuKernel::ParamsInit()
     if (hasCmpKv_ && cmpTopK_ != 0) {
         isSparseCmpKv_ = true;
     }
-    if (isBatchConsistency_) {
-        supportFd_ = true;
-    }
+    supportFd_ = true;
     ValidSocVersion validSocVersion = ProcessSocVersion();
     if (validSocVersion == ValidSocVersion::ASCEND950) {
         if (groupSize_ > 64U) {
@@ -1006,9 +1004,11 @@ void QuantSparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const S
     if (isBatchConsistency_) {
         // 计算规约级切分大小
         uint64_t actTotalS2Size = s1GCache.actOriS2Size + s1GCache.actCmpS2Size;
+        uint64_t rawReductionBlockSize =
+            (actTotalS2Size + BATCH_CONSISTENCY_MAX_REDUCTION_PARTS - 1U) /
+            BATCH_CONSISTENCY_MAX_REDUCTION_PARTS;
         s1GCache.reductionBlockSize =
-            (actTotalS2Size / BATCH_CONSISTENCY_MAX_REDUCTION_PARTS + s2BaseSize_ - 1U) /
-            s2BaseSize_ * s2BaseSize_;
+            (rawReductionBlockSize + s2BaseSize_ - 1U) / s2BaseSize_ * s2BaseSize_;
         s1GCache.reductionBlockSize =
             s1GCache.reductionBlockSize == 0U ? s2BaseSize_ : s1GCache.reductionBlockSize;
         // 使用规约级切分大小对基本块进行重新划分
@@ -1406,13 +1406,14 @@ void QuantSparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitContext
     result.maxS2LoopNum = std::max(assignContext.coreCache.s2Loop, result.maxS2LoopNum);
     // 对之前的归约信息进行记录并清理
     if (IsNeedRecordFDInfo(assignContext, result)) {
-        if (isBatchConsistency_) { // batch一致性场景
-            // curKvSplitPart补充最后一个规约切分的规约块数量
+        if (isBatchConsistency_ && remainedBlockNum_ > 0U) { // batch一致性场景
+            // curKvSplitPart已为完成当前行的 core 预留一个 slot。
             assignContext.curKvSplitPart += remainedBlockNum_ - 1U;
         }
         RecordFDInfo(splitContext, assignContext, result);
         assignContext.preFdDataNum += assignContext.curKvSplitPart;
         assignContext.curKvSplitPart = 1U;
+        remainedBlockNum_ = 0U;
     }
     // 更新S2切分信息
     if (assignContext.curS2Idx > assignContext.s1GCache.s2Start &&

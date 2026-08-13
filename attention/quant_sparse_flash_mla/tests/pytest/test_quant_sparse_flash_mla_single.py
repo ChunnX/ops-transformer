@@ -22,9 +22,13 @@ from pathlib import Path
 import utils
 import logging
 import os
+from test_quant_sparse_flash_mla_batch_consistency import (
+    batch_consistency_level,
+    run_batch_consistency_case,
+)
 
 pt_save_path = "qsmla_testcase"
-device_id = 0
+device_id = int(os.environ.get("QSMLA_DEVICE_ID", 0))
 save_pt = os.environ.get("SAVE_PT", "0") == "1"
 result_path = Path(os.environ.get("QSMLA_RESULT_SAVE_PATH", "result.xlsx"))
 is_run_graph = os.environ.get("RUN_GRAPH", "0") == "1"
@@ -75,6 +79,7 @@ for params in ENABLED_PARAMS:
         "actlen_mode": params.get("actlen_mode"),
         "S1EQS2": params.get("S1EQS2", [False]),
         "isSink": params.get("isSink", [True]),
+        "topk_value_mode": params.get("topk_value_mode", [1]),
         "K1": params.get("K1", [None]),
         "ori_kv_topk_mode": params.get("ori_kv_topk_mode", [None]),
         "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", [None]),
@@ -98,7 +103,7 @@ for params in ENABLED_PARAMS:
 case_id = 0
 
 
-def qsmla(param_combinations):
+def qsmla(param_combinations, consistency_config=None):
     global case_id
 
     # 填充None参数的默认值
@@ -123,6 +128,14 @@ def qsmla(param_combinations):
     test_data = quant_sparse_flash_mla_golden.generate_and_save_testdata(
         params, save_pt=save_pt, save_path=pt_save_path
     )
+
+    if consistency_config is not None:
+        if int(test_data["metadata_input"]["batch_size"]) < 2:
+            pytest.skip("batch consistency requires B >= 2")
+        with batch_consistency_level(device_id):
+            run_batch_consistency_case(test_data, **consistency_config)
+        case_id += 1
+        return
 
     # 获得cpu结果(真值)和算子结果（测试值）
     try:
@@ -197,5 +210,13 @@ testcase_ids = [_gen_testcase_id(p, i) for i, p in enumerate(param_combinations)
 
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations, ids=testcase_ids)
-def test_quant_sparse_flash_mla(param_combinations):
-    qsmla(param_combinations)
+def test_quant_sparse_flash_mla(param_combinations, pytestconfig):
+    consistency_config = None
+    if pytestconfig.getoption("single_batch_consistency"):
+        consistency_config = {
+            "mode": pytestconfig.getoption("consistency_mode"),
+            "seed": pytestconfig.getoption("consistency_seed"),
+            "split_count": pytestconfig.getoption("split_count"),
+            "raw_groups": pytestconfig.getoption("batch_groups"),
+        }
+    qsmla(param_combinations, consistency_config)

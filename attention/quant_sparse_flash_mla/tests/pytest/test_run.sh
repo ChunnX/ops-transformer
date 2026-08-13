@@ -12,6 +12,7 @@
 # 脚本路径
 QSMLA_PT_SAVE_SCRIPT="./batch/test_quant_sparse_flash_mla_pt_save.py"
 TEST_QSMLA_PT_BATCH_SCRIPT="test_quant_sparse_flash_mla_batch.py"
+TEST_QSMLA_BATCH_CONSISTENCY_SCRIPT="test_quant_sparse_flash_mla_batch_consistency.py"
 TEST_QSMLA_SINGLE_SCRIPT="test_quant_sparse_flash_mla_single.py"
 RUN_GRAPH=0
 # 默认参数
@@ -19,6 +20,12 @@ PT_SAVE_DIR="qsmla_testcase"
 EXCEL_FILE="./excel/example.xlsx"
 SHEET_NAME="decode"
 KEEP_PT=false
+DEVICE_ID=0
+CONSISTENCY_MODE="all"
+CONSISTENCY_SEED=20260806
+SPLIT_COUNT=2
+BATCH_GROUPS=""
+SINGLE_BATCH_CONSISTENCY=false
 
 # ====================== 执行区 ======================
 
@@ -26,7 +33,22 @@ KEEP_PT=false
 run_single() {
     echo "===== 执行单用例算子调测 ====="
     export RUN_GRAPH="$RUN_GRAPH"
-    python3 -m pytest -rA -s $TEST_QSMLA_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning --show-capture=no
+    export QSMLA_DEVICE_ID="$DEVICE_ID"
+    single_args=()
+    if [ "$SINGLE_BATCH_CONSISTENCY" = true ]; then
+        single_args=(
+            --single-batch-consistency
+            --consistency-mode "$CONSISTENCY_MODE"
+            --consistency-seed "$CONSISTENCY_SEED"
+            --split-count "$SPLIT_COUNT"
+        )
+        if [ -n "$BATCH_GROUPS" ]; then
+            single_args+=(--batch-groups "$BATCH_GROUPS")
+        fi
+    fi
+    python3 -m pytest -rA -s $TEST_QSMLA_SINGLE_SCRIPT -v -m ci \
+        "${single_args[@]}" \
+        -W ignore::UserWarning -W ignore::DeprecationWarning --show-capture=no
 }
 
 # 批量从excel读取用例、golden计算并保存pt文件
@@ -73,6 +95,32 @@ run_batch_exec() {
     echo -e "\n===== batch_exec 完成！====="
 }
 
+run_batch_consistency() {
+    echo "===== 执行batch_consistency：验证batch重排和拆分一致性 ====="
+    if [ ! -d "$PT_SAVE_DIR" ]; then
+        echo "错误: pt文件目录不存在: $PT_SAVE_DIR"
+        exit 1
+    fi
+    pt_count=$(find "$PT_SAVE_DIR" -maxdepth 1 -name '*.pt' | wc -l)
+    if [ "$pt_count" -eq 0 ]; then
+        echo "错误: 目录中没有找到.pt文件: $PT_SAVE_DIR"
+        exit 1
+    fi
+    export QSMLA_PT_DIR="$PT_SAVE_DIR"
+    export QSMLA_DEVICE_ID="$DEVICE_ID"
+    consistency_args=(
+        --consistency-mode "$CONSISTENCY_MODE"
+        --consistency-seed "$CONSISTENCY_SEED"
+        --split-count "$SPLIT_COUNT"
+    )
+    if [ -n "$BATCH_GROUPS" ]; then
+        consistency_args+=(--batch-groups "$BATCH_GROUPS")
+    fi
+    python3 -m pytest -rA -s $TEST_QSMLA_BATCH_CONSISTENCY_SCRIPT \
+        -v -m batch_consistency "${consistency_args[@]}" \
+        -W ignore::UserWarning -W ignore::DeprecationWarning --show-capture=no
+}
+
 # 批量从excel读取用例、生成pt文件并执行NPU测试
 run_batch() {
     echo "===== 执行batch：从excel批量生成pt并执行NPU测试 ====="
@@ -109,6 +157,7 @@ show_help() {
     echo "  single       执行单算子用例调测"
     echo "  batch_save   从excel读取用例，golden计算并保存pt文件"
     echo "  batch_exec   批量读取pt文件并执行NPU测试"
+    echo "  batch_consistency  验证batch顺序打乱和拆分后的逐字节一致性"
     echo "  batch        全流程：从excel生成pt + NPU测试"
     echo "  help         显示本帮助信息"
     echo ""
@@ -118,6 +167,12 @@ show_help() {
     echo "  --pt-dir <目录>   指定pt文件保存/读取目录（默认: qsmla_testcase）"
     echo "  --keep-pt         执行完成后保留pt文件（默认清理，仅batch命令）"
     echo "  --run-graph       执行aclgraph模式（默认不开启）"
+    echo "  --device-id <id>  指定NPU设备ID（默认: 0）"
+    echo "  --batch-consistency             single模式启用batch一致性测试"
+    echo "  --consistency-mode <1|2|all>    1=换序, 2=拆分, all=两者"
+    echo "  --consistency-seed <整数>       换序/拆分随机种子"
+    echo "  --split-count <n>               随机拆分组数（默认: 2）"
+    echo "  --batch-groups <JSON>           显式拆分分组"
     echo ""
     echo "示例："
     echo "  $0 single                              # eager模式下执行single模式"
@@ -126,6 +181,8 @@ show_help() {
     echo "  $0 batch_save --excel my.xlsx --sheet prefill --pt-dir my_pt"
     echo "  $0 batch_exec                          # 用默认pt目录执行NPU测试"
     echo "  $0 batch_exec --pt-dir my_pt           # 从指定目录读取pt文件"
+    echo "  $0 batch_consistency --pt-dir my_pt --consistency-mode all"
+    echo "  $0 single --batch-consistency --consistency-mode all"
     echo "  $0 batch                               # 全流程，完成后清理pt文件"
     echo "  $0 batch --keep-pt                     # 全流程，完成后保留pt文件"
     echo "  $0 batch --excel my.xlsx --sheet prefill --pt-dir my_pt --keep-pt"
@@ -144,7 +201,7 @@ COMMAND="$1"
 shift
 
 # 解析选项（batch_save/batch_exec/batch 共用）
-if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND" = "batch" ]; then
+if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND" = "batch_consistency" ] || [ "$COMMAND" = "batch" ]; then
     while [ $# -gt 0 ]; do
         case "$1" in
             --excel)
@@ -169,6 +226,26 @@ if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND
                     exit 1
                 fi
                 PT_SAVE_DIR="$2"
+                shift 2
+                ;;
+            --device-id)
+                DEVICE_ID="$2"
+                shift 2
+                ;;
+            --consistency-mode)
+                CONSISTENCY_MODE="$2"
+                shift 2
+                ;;
+            --consistency-seed)
+                CONSISTENCY_SEED="$2"
+                shift 2
+                ;;
+            --split-count)
+                SPLIT_COUNT="$2"
+                shift 2
+                ;;
+            --batch-groups)
+                BATCH_GROUPS="$2"
                 shift 2
                 ;;
             --keep-pt)
@@ -204,6 +281,34 @@ if [ "$COMMAND" = "single" ] ; then
                 RUN_GRAPH=1
                 shift
                 ;;
+            --device-id)
+                DEVICE_ID="$2"
+                shift 2
+                ;;
+            --batch-consistency)
+                SINGLE_BATCH_CONSISTENCY=true
+                shift
+                ;;
+            --consistency-mode)
+                SINGLE_BATCH_CONSISTENCY=true
+                CONSISTENCY_MODE="$2"
+                shift 2
+                ;;
+            --consistency-seed)
+                SINGLE_BATCH_CONSISTENCY=true
+                CONSISTENCY_SEED="$2"
+                shift 2
+                ;;
+            --split-count)
+                SINGLE_BATCH_CONSISTENCY=true
+                SPLIT_COUNT="$2"
+                shift 2
+                ;;
+            --batch-groups)
+                SINGLE_BATCH_CONSISTENCY=true
+                BATCH_GROUPS="$2"
+                shift 2
+                ;;
             *)
                 echo "错误：未知选项 '$1'"
                 show_help
@@ -223,6 +328,10 @@ case "$COMMAND" in
         ;;
     batch_exec)
         run_batch_exec
+        ;;
+    batch_consistency)
+        run_batch_consistency
+        exit $?
         ;;
     batch)
         run_batch

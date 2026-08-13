@@ -27,6 +27,8 @@ using std::pair;
 using std::string;
 namespace optiling {
 
+constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
+
 std::string QSMLALayoutToSerialString(QSMLALayout layout)
 {
     switch (layout) {
@@ -91,6 +93,7 @@ ge::graphStatus QSMLAInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
+    batchConsistency_ = (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL);
     OP_LOGD(opName_, "deterministic_level=%d", context_->GetDeterministicLevel());
 
     return ge::GRAPH_SUCCESS;
