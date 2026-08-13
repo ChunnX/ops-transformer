@@ -123,6 +123,7 @@ public:
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
         this->AICore().AddConfig("ascend950", aicoreConfig);
+        this->AICore().AddConfig("ascend910_96", aicoreConfig);
     }
 };
 OP_ADD(QuantBlockSparseAttn);
