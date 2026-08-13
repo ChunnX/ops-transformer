@@ -320,28 +320,28 @@ public:
         auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
             if (likely(runInfo.actSingleLoopS2Size == 128)) {
-                ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize, EQ_128, hasAtten, PSE_MODE,
-                              false, false, false>(
+                ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize, EQ_128,
+                              hasAtten, PSE_MODE, false, false, false>(
                     stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
                     apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes,
                     posShift, constInfo.scaleValue, // constInfo.scaleValue 已是 T float类型
                     descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
             } else if (runInfo.actSingleLoopS2Size <= 64) {
-                ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize, GT_0_AND_LTE_64, hasAtten,
-                              PSE_MODE, false, false, false>(
+                ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize, GT_0_AND_LTE_64,
+                              hasAtten, PSE_MODE, false, false, false>(
                     stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
                     apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes,
                     posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
             } else if (runInfo.actSingleLoopS2Size < 128) {
-                ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize, GT_64_AND_LTE_128, hasAtten,
-                              PSE_MODE, false, false, false>(
+                ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize, GT_64_AND_LTE_128,
+                              hasAtten, PSE_MODE, false, false, false>(
                     stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
                     apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes,
                     posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
             } else {
                 if constexpr (s2BaseSize == 256) {
-                    ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize, GT_128_AND_LTE_256, hasAtten,
-                                  PSE_MODE, false>(
+                    ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, false, mBaseSize, s2BaseSize, GT_128_AND_LTE_256,
+                                  hasAtten, PSE_MODE, false>(
                         stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb,
                         dropMaskUb, apiTmpBuffer, expUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride,
                         slopes, posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F);
@@ -349,27 +349,27 @@ public:
             }
         } else {
             if (likely(runInfo.actSingleLoopS2Size == 128)) {
-                ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, EQ_128, hasAtten, PSE_MODE,
-                              false, false, false>(
+                ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, EQ_128,
+                              hasAtten, PSE_MODE, false, false, false>(
                     stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
                     apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes,
                     posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
             } else if (runInfo.actSingleLoopS2Size <= 64) {
-                ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, GT_0_AND_LTE_64, hasAtten,
-                              PSE_MODE, false, false, false>(
+                ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, GT_0_AND_LTE_64,
+                              hasAtten, PSE_MODE, false, false, false>(
                     stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
                     apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes,
                     posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
             } else if (runInfo.actSingleLoopS2Size < 128) {
-                ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, GT_64_AND_LTE_128, hasAtten,
-                              PSE_MODE, false, false, false>(
+                ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, GT_64_AND_LTE_128,
+                              hasAtten, PSE_MODE, false, false, false>(
                     stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
                     apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes,
                     posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
             } else {
                 if constexpr (s2BaseSize == 256) {
-                    ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, GT_128_AND_LTE_256, hasAtten,
-                                  PSE_MODE, false>(
+                    ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, GT_128_AND_LTE_256,
+                                  hasAtten, PSE_MODE, false>(
                         stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb,
                         dropMaskUb, apiTmpBuffer, expUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride,
                         slopes, posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F);
