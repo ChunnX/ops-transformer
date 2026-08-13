@@ -52,7 +52,7 @@ private:
         __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
         __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks,
         __gm__ uint8_t *attentionOut);
-    __aicore__ inline void InitLocalBuffer(uint32_t goIdx);
+    __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *workspace);
     __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount,
                                       int64_t s2LoopLimit, int64_t multiCoreInnerIdx);
@@ -139,11 +139,12 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
         }
     }
     InitMMResBuf(workspace);
-    uint32_t goIdx = 0;
     if constexpr (IS_SPLIT_G) {
-        goIdx = (aicIdx % 2 == 0) ? 0 : 64;
+        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : 64;
+    } else {
+        runParam.goIdx = 0;
     }
-    this->InitLocalBuffer(goIdx);
+    this->InitLocalBuffer();
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -209,9 +210,9 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
 }
  
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::InitLocalBuffer(uint32_t goIdx)
+__aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::InitLocalBuffer()
 {
-    cubeBlock.InitLocalBuffer(l1CubeBase, goIdx);
+    cubeBlock.InitLocalBuffer(l1CubeBase, runParam.goIdx);
     vecBlock.InitLocalBuffer(vUbBase, this->subBlockIdx);
 }
 
@@ -281,7 +282,7 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                 }
             }
             if (notLastThreeLoop) {
-                this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, runParam);
+                // this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, runParam);
                 bool s1NoNeedCalc = ComputeParamS1<TEMPLATE_INTF_ARGS>(
                     runParam, this->subBlockIdx, gS1Index, this->cuSeqlensQAddr);
                 bool s2NoNeedCalc =
@@ -404,7 +405,7 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     }
     runInfo.s2LoopCount = s2LoopCount;
     runInfo.s2LoopLimit = s2LoopLimit;
-    runInfo.s1oIdx = runParam.s1oIdx;
+    // runInfo.s1oIdx = runParam.s1oIdx;
     runInfo.attentionOutOffset = runParam.attentionOutOffset;
     runInfo.oriKvLoopEndIdx = runParam.oriKvLoopEndIdx;
     runInfo.taskIdMod2 = taskId & 1;
