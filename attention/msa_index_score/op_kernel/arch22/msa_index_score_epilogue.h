@@ -124,6 +124,11 @@ private:
 #endif
 
         if (!allInvalid) {
+            // 短 M-tile 只拷了部分行；SegRowMax 固定按 16 行归约，未写入区域必须是 -inf。
+            AscendC::Duplicate(ubS_, MSA_FILL_VALUE, MSA_ROWS_PER_PASS * STILE_WIDTH);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
 #if MSA_INDEX_SCORE_DEBUG
             uint32_t sDumpN = MSA_DEBUG_DUMP_ELEMS;
             if (task.kvLen > 0 && task.kvLen <= 8) {
@@ -145,7 +150,7 @@ private:
 #endif
 
             if (isQuant_) {
-                ApplyDequantScale(task, blkBase, rows);
+                ApplyDequantScale(task, blkBase, MSA_ROWS_PER_PASS);
 #if MSA_INDEX_SCORE_DEBUG
                 if (dumpDebug) {
                     AscendC::printf("[MSA_DBG][AIV] S_after_dequant:");
@@ -354,9 +359,12 @@ private:
     }
 
     /// 把 ubS_[base + validCount, base + MSA_BLOCK_SIZE) 置为 -inf。
-    /// 拆成"整 repeat 尾段"+"单 repeat 内的位掩码"两步，保证每次访问都是 32B 对齐的。
+    /// 拆成「整 64-fp32 repeat 尾段」+「单 repeat 内的位掩码」两步，保证每次 Duplicate 都是 256B 对齐。
     __aicore__ inline void FillBlockTail(uint32_t base, uint32_t validCount)
     {
+        if (validCount >= MSA_BLOCK_SIZE) {
+            return;
+        }
         const uint32_t alignedStart = MsaCeilDiv(validCount, MSA_FP32_PER_REPEAT) * MSA_FP32_PER_REPEAT;
         if (alignedStart < MSA_BLOCK_SIZE) {
             AscendC::Duplicate(ubS_[base + alignedStart], MSA_FILL_VALUE, MSA_BLOCK_SIZE - alignedStart);
@@ -366,7 +374,8 @@ private:
             const uint32_t lane = validCount % MSA_FP32_PER_REPEAT;
             uint64_t bits = (lane == 0) ? ~0ULL : (~0ULL << lane);
             uint64_t mask[2] = {bits, 0};
-            AscendC::Duplicate<float>(ubS_[repeatBase], MSA_FILL_VALUE, mask, 1, 1, 8);
+            AscendC::Duplicate<float>(ubS_[repeatBase], MSA_FILL_VALUE, mask, 1, 1,
+                                      MSA_FP32_PER_REPEAT / MSA_FP32_PER_BLOCK);
         }
     }
 
@@ -380,8 +389,10 @@ private:
                 break;
             }
             const int32_t page = gBlockTable_.GetValue(task.batchIdx * maxBlocksPerBatch_ + blk);
-            // Hkv==1：取 scale[page, 0, :]
             const uint64_t scaleOff = static_cast<uint64_t>(page) * strideScalePage_;
+            // 上一轮 Mul 占用 ubDeqScale_，必须等 V 完成后再 MTE2 覆盖。
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
             AscendC::DataCopy(ubDeqScale_, gScale_[scaleOff], MSA_BLOCK_SIZE);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);

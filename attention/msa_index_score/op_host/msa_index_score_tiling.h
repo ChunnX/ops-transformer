@@ -35,6 +35,8 @@ constexpr uint32_t MSA_IDX_ACTUAL_SEQ_KLEN = 6;
 constexpr uint32_t MSA_IDX_START_LOC = 7;
 
 constexpr uint32_t MSA_ATTR_SPARSE_MODE = 0;
+constexpr uint32_t MSA_ATTR_INIT_BLOCKS = 1;
+constexpr uint32_t MSA_ATTR_LOCAL_BLOCKS = 2;
 
 BEGIN_TILING_DATA_DEF(MsaIndexScoreTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, batch)
