@@ -275,6 +275,10 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
 template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
 __aicore__ inline bool FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, FdBlockType>::IsInitAttentionOutGm()
 {
+    // 存在空batch时需要全局预清零
+    if (tilingData->baseParams.needInit) {
+        return true;
+    }
     // TND、NTD场景且无attentionMask,不需要初始化
     if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::NTD) {
         if (tilingData->maskParams.attenMaskFlag == 0) {
@@ -720,38 +724,7 @@ template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename
 __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, FdBlockType>::DealZeroActSeqLen(
     uint32_t &bN2Cur, uint32_t &gS1Cur, uint32_t &s2Cur)
 {
-    // 对整个batch的结果置0
-    if constexpr (POST_QUANT) { // out int8
-    } else {
-        uint32_t n2Idx = GetN2Idx(bN2Cur);
-        uint32_t bIdx = GetBIdx(bN2Cur);
-        if (constInfo.outputLayout == FIA_LAYOUT::BSND || constInfo.outputLayout == FIA_LAYOUT::BSH) {
-            OffsetCalculator<GmFormat::BSNGD> offsetCalculator;
-            offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize, constInfo.qSeqSize,
-                                  constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims);
-            DealActSeqLenIsZero<GmFormat::BSNGD, OUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
-            OffsetCalculator<GmFormat::NGTD> offsetCalculator;
-            offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim, actualSeqLengthsGmQ,
-                                  constInfo.actualLenQDims);
-            DealActSeqLenIsZero<GmFormat::NGTD, OUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
-            OffsetCalculator<GmFormat::TNGD> offsetCalculator;
-            offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim, actualSeqLengthsGmQ,
-                                  constInfo.actualLenQDims);
-            DealActSeqLenIsZero<GmFormat::TNGD, OUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
-            OffsetCalculator<GmFormat::BNGSD> offsetCalculator;
-            offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize, constInfo.qSeqSize,
-                                  constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims);
-            DealActSeqLenIsZero<GmFormat::BNGSD, OUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::NBSD) {
-            OffsetCalculator<GmFormat::NGBSD> offsetCalculator;
-            offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize, constInfo.qSeqSize,
-                                  constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims);
-            DealActSeqLenIsZero<GmFormat::NGBSD, OUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-        }
-    }
+    // 全局预清零已覆盖空batch清零，无需逐batch刷零
 }
 
 template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
@@ -859,7 +832,7 @@ FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, FdBlockType>::GetTaskDea
         if (gS1Cur == 0 && s2Cur == 0) {
             return TASK_DEAL_MODE::DEAL_ZERO;
         }
-        return TASK_DEAL_MODE::SKIP;
+        return TASK_DEAL_MODE::SKIP_ZERO;
     }
 
     if (isFirstTask || bN2Cur != prevBN2Idx || gS1Cur != prevGS1Idx) {
@@ -1015,10 +988,9 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
                 createdTaskCount++;
                 UpdateAxisInfo(bN2Cur, gS1Cur, s2Cur);
             } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
-                DealZeroActSeqLen(bN2Cur, gS1Cur, s2Cur);
                 UpdateAxisInfo(bN2Cur, gS1Cur, s2Cur);
                 continue;
-            } else if (taskDealMode == TASK_DEAL_MODE::SKIP) {
+            } else if (taskDealMode == TASK_DEAL_MODE::SKIP || taskDealMode == TASK_DEAL_MODE::SKIP_ZERO) {
                 UpdateAxisInfo(bN2Cur, gS1Cur, s2Cur);
                 continue;
             }
