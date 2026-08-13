@@ -2161,6 +2161,21 @@ ge::graphStatus SFAInfoParser::CheckContiguous() const
     if (!isA5_) {
         return ge::GRAPH_SUCCESS;
     }
+    printf("CheckContiguous =============start==================\n");
+    OP_LOGE("SparseFlashAttention", "CheckContiguous start!!!!!!!!!!!!!!!!!!!!");
+
+    std::vector<uint32_t> keyStrideVec_;
+    auto tempkeyStrides = context_->GetDynamicInputStride(KEY_INPUT_INDEX, 0);
+    if (tempkeyStrides != nullptr && tempkeyStrides->GetDimNum() > 0) {
+        for (size_t i = 0; i < tempkeyStrides->GetDimNum(); i++) {
+            keyStrideVec_.push_back(tempkeyStrides->GetStride(i));
+            printf("CheckContiguous =========keyStrideVec_[%d] is %d=========\n", i, keyStrideVec_[i]);
+            OP_LOGE("SparseFlashAttention", "keyStrideVec_[%d] is %d", i, keyStrideVec_[i]);
+        }
+    }
+
+    printf("CheckContiguous =========keyShape_.GetDim is [%d,%d,%d,%d]========\n", keyShape_.GetDim(0), keyShape_.GetDim(1), keyShape_.GetDim(2), keyShape_.GetDim(3));
+    OP_LOGE("SparseFlashAttention", "keyShape_.GetDim is [%d,%d,%d,%d]", keyShape_.GetDim(0), keyShape_.GetDim(1), keyShape_.GetDim(2), keyShape_.GetDim(3));
 
     bool keyNonContiguous = false;
     if (keyStride0_ != 0 && keyShape_.GetDimNum() > 0) {
@@ -2168,16 +2183,23 @@ ge::graphStatus SFAInfoParser::CheckContiguous() const
         uint64_t shapeSize = 0;
 
         if (kvLayout_ == SFALayout::PA_BSND) {
+            printf("CheckContiguous =============skvLayout_ == SFALayout::PA_BSND==================\n");
+            OP_LOGE("SparseFlashAttention", "kvLayout_ == SFALayout::PA_BSND");
             totalElements = keyStride1_ * static_cast<uint64_t>(keyShape_.GetDim(1));
             shapeSize = static_cast<uint64_t>(keyShape_.GetDim(1)) *
                         static_cast<uint64_t>(keyShape_.GetDim(2)) *
                         static_cast<uint64_t>(keyShape_.GetDim(3));
         } else {
+            printf("CheckContiguous =============skvLayout_ != SFALayout::PA_BSND==================\n");
+            OP_LOGE("SparseFlashAttention", "kvLayout_ != SFALayout::PA_BSND");
             totalElements = keyStride0_ * static_cast<uint64_t>(keyShape_.GetDim(0));
             shapeSize = context_->GetOptionalInputTensor(KEY_INPUT_INDEX)->GetShapeSize();
         }
         keyNonContiguous = (shapeSize != totalElements);
+        printf("CheckContiguous =========totalElements is [%d], shapeSize is %d=========\n", totalElements, shapeSize);
+        OP_LOGE("SparseFlashAttention", "totalElements is [%d], shapeSize is %d=", totalElements, shapeSize);
     }
+
 
     OP_CHECK_IF(keyNonContiguous,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key",
@@ -2299,7 +2321,8 @@ ge::graphStatus SFAInfoParser::Parse(SFATilingInfo &sfaInfo)
     if (ge::GRAPH_SUCCESS != CheckContiguous()) {
         return ge::GRAPH_FAILED;
     }
-
+    printf("CheckContiguous =============end==================\n");
+    OP_LOGE("SparseFlashAttention", "CheckContiguous end!!!!!!!!!!!!!!!!!!!!");
     GenerateInfo(sfaInfo);
     return ge::GRAPH_SUCCESS;
 }
