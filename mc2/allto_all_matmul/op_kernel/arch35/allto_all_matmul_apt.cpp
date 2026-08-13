@@ -134,7 +134,7 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
         GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
         Apace::AllToAllMxQuantMatmulHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_X1,
             hcommAllToAllMatmulTilingData, hcclServerType, false>
-            op(&tilingData, &pipe);
+            op(&tilingData);
         op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM);
         op.Run();
     } else {
@@ -150,7 +150,7 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
         GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
         Apace::AllToAllMxQuantMatmulHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_X1,
             hcommAllToAllMatmulTilingData, hcclServerType, true>
-            op(&tilingData, &pipe);
+            op(&tilingData);
         op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM);
         op.Run();
     } else {

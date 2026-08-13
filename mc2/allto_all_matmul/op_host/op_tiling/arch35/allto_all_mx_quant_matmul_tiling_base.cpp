@@ -890,11 +890,14 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoHcommMxQuantMMTiling()
     uint64_t nValue = contextInfo_.args_.nValue;
     bool transB = contextInfo_.args_.isBTrans;
 
+    fe::PlatFormInfos *platformInfo = context_->GetPlatformInfo();
     if (isMxFp4_) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
+        tilingSwat.SetPlatformInfo(platformInfo);
         tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
     } else {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
+        tilingSwat.SetPlatformInfo(platformInfo);
         tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
     }
     hcommTilingData_.localMatmul = 0;

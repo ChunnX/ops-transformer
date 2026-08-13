@@ -55,6 +55,7 @@ public:
 
     void SetOptimizeEnable(bool enable) { isOpenOptimize_ = enable; }
     void SetMTailAlignEnable(bool enable) { enableMTailAlign_ = enable; }
+    void SetPlatformInfo(const fe::PlatFormInfos *platformInfo) { platformInfoPtr_ = platformInfo; }
 
 protected:
     QuantMatmulArgs args_{};
@@ -69,6 +70,8 @@ protected:
     virtual void DoOpTiling(QuantMatmulTilingData& tilingData) = 0;
 
 private:
+    const fe::PlatFormInfos *platformInfoPtr_ = nullptr;
+
     void PrintTilingData(const QuantMatmulTilingData& tilingData) const
     {
         printf("[QuantMatmul Strategy]\n");
@@ -95,8 +98,20 @@ private:
 
     void InitCompileInfo()
     {
-        // Query the platform once per tiling request so later decisions can
-        // use the real cache sizes and core count of the current device.
+        if (platformInfoPtr_ != nullptr) {
+            platform_ascendc::PlatformAscendC ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr_);
+            platformInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
+            platformInfo_.aivNum = ascendcPlatform.GetCoreNumAiv();
+            platformInfo_.socVersion = ascendcPlatform.GetSocVersion();
+            ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, platformInfo_.ubSize);
+            ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, platformInfo_.l1Size);
+            ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, platformInfo_.l0aSize);
+            ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, platformInfo_.l0bSize);
+            ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, platformInfo_.l0cSize);
+            ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, platformInfo_.l2Size);
+            ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::BT, platformInfo_.btSize);
+            return;
+        }
         auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
         platformInfo_.aicNum = ascendcPlatform->GetCoreNumAic();
         platformInfo_.aivNum = ascendcPlatform->GetCoreNumAiv();
