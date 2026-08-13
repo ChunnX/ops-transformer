@@ -305,5 +305,121 @@ TEST_PARAMS = {
     },
 }
 
+# MQSMLA reference coverage mapped to QSMLA's HIF8 input and fixed D=512.
+# Keep these cases individually selectable so the default smoke case stays small.
+TEST_PARAMS["mq_ref_csa_g25_tnd"] = {
+    **TEST_PARAMS["csa_small_prefill"],
+    "Testcase_Name": ["mq_ref_csa_g25_tnd"],
+    "B": [5],
+    "S1": [3],
+    "S2": [1248],
+    "N1": [25],
+    "K": [64],
+    "seqused_q": [[3, 2, 1, 3, 2]],
+    "seqused_ori_kv": [[1248, 1119, 1000, 777, 513]],
+}
+
+TEST_PARAMS["mq_ref_hca_ratio8_bsnd"] = {
+    **TEST_PARAMS["decode_first"],
+    "Testcase_Name": ["mq_ref_hca_ratio8_bsnd"],
+    "layout_q": ["BSND"],
+    "B": [3],
+    "S1": [4],
+    "S2": [1056],
+    "N1": [128],
+    "K": [0],
+    "seqused_q": [[4, 3, 2]],
+    "seqused_ori_kv": [[1056, 1001, 513]],
+    "cmp_ratio": [8],
+    "ori_win_left": [255],
+    "ori_win_right": [7],
+    "template_run_mode": ["HCA"],
+}
+
+TEST_PARAMS["mq_ref_ori_cmp_sparse_tnd"] = {
+    **TEST_PARAMS["ori_cmp_sparse_tnd_pa"],
+    "Testcase_Name": ["mq_ref_ori_cmp_sparse_tnd"],
+    "B": [4],
+    "S1": [6],
+    "S2": [4128],
+    "N1": [32],
+    "K": [256],
+    "K1": [1024],
+    "seqused_q": [[6, 5, 4, 3]],
+    "seqused_ori_kv": [[4128, 3073, 2049, 1025]],
+    "return_softmax_lse": [True],
+}
+
+TEST_PARAMS["mq_ref_ori_sparse_long_tail_tnd"] = {
+    "Testcase_Name": ["mq_ref_ori_sparse_long_tail_tnd"],
+    "layout_q": ["TND"],
+    "layout_kv": ["PA_BBND"],
+    "q_type": [torch.uint8],
+    "ori_kv_type": [torch.uint8],
+    "cmp_kv_type": [None],
+    "B": [4],
+    "S1": [3],
+    "S2": [8192],
+    "N1": [128],
+    "N2": [1],
+    "D": [512],
+    "K": [0],
+    "K1": [1024],
+    "block_num1": [120],
+    "block_num2": [0],
+    "block_size1": [128],
+    "block_size2": [128],
+    "seqused_q": [[3, 2, 1, 3]],
+    "cu_seqlens_q": [[0, 3, 5, 6, 9]],
+    "seqused_ori_kv": [[8192, 4096, 2048, 1024]],
+    "seqused_cmp_kv": [None],
+    "cu_seqlens_ori_kv": [[0, 8192, 12288, 14336, 15360]],
+    "cu_seqlens_cmp_kv": [None],
+    "cmp_residual_kv": [None],
+    "softmax_scale": [0.04419417],
+    "cmp_ratio": [1],
+    "ori_mask_mode": [0],
+    "cmp_mask_mode": [0],
+    "ori_win_left": [None],
+    "ori_win_right": [None],
+    "quant_mode": [1],
+    "template_run_mode": ["ORI_SPARSE"],
+    "actlen_mode": ["full"],
+    "S1EQS2": [False],
+    "isSink": [True],
+    "topk_value_mode": [1],
+    "ori_kv_topk_mode": ["fullK"],
+    "cmp_kv_topk_mode": ["fullK"],
+    "ori_sparse_indices_mode": ["full"],
+    "cmp_sparse_indices_mode": ["full"],
+    "ori_topk_length": [None],
+    "cmp_topk_length": [None],
+    "return_softmax_lse": [True],
+    "q_datarange": [[-5, 5]],
+    "ori_kv_datarange": [[-5, 5]],
+    "cmp_kv_datarange": [[-5, 5]],
+}
+
+TEST_PARAMS["mq_ref_ori_sparse_many_rows_tnd"] = {
+    **TEST_PARAMS["ori_sparse_tnd_pa"],
+    "Testcase_Name": ["mq_ref_ori_sparse_many_rows_tnd"],
+    "B": [12],
+    "S1": [7],
+    "S2": [1024],
+    "N1": [8],
+    "K1": [512],
+    "seqused_q": [[7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7]],
+    "seqused_ori_kv": [[1024, 1001, 977, 953, 929, 905, 881, 857, 833, 809, 785, 761]],
+    "return_softmax_lse": [True],
+}
+
+MQSMLA_REFERENCE_CASE_NAMES = (
+    "mq_ref_csa_g25_tnd",
+    "mq_ref_hca_ratio8_bsnd",
+    "mq_ref_ori_cmp_sparse_tnd",
+    "mq_ref_ori_sparse_long_tail_tnd",
+    "mq_ref_ori_sparse_many_rows_tnd",
+)
+
 ENABLED_PARAMS = [TEST_PARAMS["decode_first"]]
 # ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]

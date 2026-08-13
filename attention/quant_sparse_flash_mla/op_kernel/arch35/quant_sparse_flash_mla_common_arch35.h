@@ -32,6 +32,7 @@ constexpr uint32_t BUFFER_SIZE_256K = 262144; // 262144表示256 * 1024
 
 constexpr uint32_t CV_RATIO = 2;
 constexpr uint64_t SYNC_MODE = 4;
+constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM = 33U;
 
 namespace BaseApi {
 __aicore__ constexpr uint64_t Align2Func(uint64_t data)
