@@ -26,7 +26,7 @@ import math
 import torch
 import torch.nn as nn
 import torch_npu
-import torch.nn.functional as F
+
 try:
     from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
 
