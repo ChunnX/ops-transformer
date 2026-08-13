@@ -363,7 +363,8 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
     uint32_t tailK = tailSize ? tailSize : baseK;
     uint64_t L1Aoffset = param.isLeftTranspose ? baseK << 4 : ((param.singleM + 15) >> 4 << 4) * baseK;
     uint64_t L1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK : baseK << 4;
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || \
+    (defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 9201) || (__NPU_ARCH__ == 9202)))
     if constexpr (IsSameType<A, fp8_e5m2_t>::value || IsSameType<A, fp8_e4m3fn_t>::value ||
                   IsSameType<A, hifloat8_t>::value || IsSameType<A, int8_t>::value) {
         L1Aoffset = ((param.singleM + 31) >> 5 << 5) * baseK;
@@ -425,7 +426,8 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTenso
     uint32_t tailSize = param.singleN % baseN;
     uint32_t tailN = tailSize ? tailSize : baseN;
     uint64_t L1Boffset = param.isRightTranspose ? (baseN << 4) : ((param.singleK + 15) >> 4 << 4) * baseN;
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || \
+    (defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 9201) || (__NPU_ARCH__ == 9202)))
     if constexpr (IsSameType<A, fp8_e5m2_t>::value || IsSameType<A, fp8_e4m3fn_t>::value ||
                   IsSameType<A, hifloat8_t>::value || IsSameType<A, int8_t>::value) {
         L1Boffset = ((param.singleK + 31) >> 5 << 5) * baseN;
