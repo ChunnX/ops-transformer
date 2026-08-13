@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+聽* Copyright (c) 2025 Huawei Technologies Co., Ltd.
+聽* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+聽* CANN Open Software License Agreement Version 2.0 (the "License").
+聽* Please refer to the License for details. You may not use this file except in compliance with the License.
+聽* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+聽* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+聽* See LICENSE in the root of the software repository for the full text of the License.
+聽*/
 
 /*!
  * \file sparse_flash_mla_grad_entry_regbase.h
@@ -31,7 +31,7 @@
                                                       isCmpKVSparse, isDeter) \
     do { \
         SparseFlashMlaGradPreRegbase<INPUT_TYPE, float, IS_TND, isOriKVExist, isCmpKVExist, isOriKVSparse, \
-                                     isCmpKVSparse> \
+                                     isCmpKVSparse, isDeter> \
             opPre; \
         opPre.Init(user, dsinks, ori_softmax_l1, cmp_softmax_l1, tilingData, &pipeIn); \
         opPre.Process(); \
@@ -61,7 +61,9 @@
             op.SyncALLCores(); \
             pipeBase.Destroy(); \
             TPipe pipePost; \
-            SparseFlashMlaGradPostRegbase<INPUT_TYPE, float, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist> opPost; \
+            SparseFlashMlaGradPostRegbase<INPUT_TYPE, float, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist, \
+                                          isOriKVSparse, isCmpKVSparse, isDeter> \
+                opPost; \
             opPost.Init(dq, dori_kv, dcmp_kv, dsinks, user, tilingData, &pipePost); \
             opPost.Process(); \
         } else { \

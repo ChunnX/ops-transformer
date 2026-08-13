@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+聽* Copyright (c) 2025 Huawei Technologies Co., Ltd.
+聽* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+聽* CANN Open Software License Agreement Version 2.0 (the "License").
+聽* Please refer to the License for details. You may not use this file except in compliance with the License.
+聽* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+聽* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+聽* See LICENSE in the root of the software repository for the full text of the License.
+聽*/
 
 /*!
  * \file sparse_flash_mla_grad_pre_regbase.h
@@ -19,7 +19,7 @@
 using namespace AscendC;
 
 template <typename T1, typename T2, const uint32_t IS_TND = 0, const bool isOriKVExist = 0, const bool isCmpKVExist = 0,
-          const bool IsOriKVSparse = 0, const bool IsCmpKVSparse = 0>
+          const bool IsOriKVSparse = 0, const bool IsCmpKVSparse = 0, const bool IsDETER = 0>
 class SparseFlashMlaGradPreRegbase {
 public:
     __aicore__ inline SparseFlashMlaGradPreRegbase(){};
@@ -37,6 +37,7 @@ public:
     TQue<QuePosition::VECOUT, 1> outQue;
 
     GlobalTensor<float> dqWorkSpaceGm, dorikvWorkSpaceGm, dcmpkvWorkSpaceGm, dsinkWorkSpaceGm;
+    GlobalTensor<float> dOriVWorkSpaceGm, dCmpVWorkSpaceGm;
     GlobalTensor<float> dsinkGm, orisoftmaxl1Gm, cmpsoftmaxl1Gm;
 
     const optiling::smlag::SparseFlashMlaGradTilingDataRegbase *TilingData;
@@ -78,9 +79,9 @@ public:
 };
 
 template <typename T1, typename T2, const uint32_t IS_TND, const bool isOriKVExist, const bool isCmpKVExist,
-          const bool IsOriKVSparse, const bool IsCmpKVSparse>
+          const bool IsOriKVSparse, const bool IsCmpKVSparse, const bool IsDETER>
 __aicore__ inline void
-SparseFlashMlaGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, IsOriKVSparse, IsCmpKVSparse>::Init(
+SparseFlashMlaGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, IsOriKVSparse, IsCmpKVSparse, IsDETER>::Init(
     __gm__ uint8_t *workspace, __gm__ uint8_t *dsinks, __gm__ uint8_t *ori_softmax_l1, __gm__ uint8_t *cmp_softmax_l1,
     const optiling::smlag::SparseFlashMlaGradTilingDataRegbase *orgTilingData, TPipe *pipe_in)
 {
@@ -114,10 +115,18 @@ SparseFlashMlaGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, IsOriKV
     if constexpr (isOriKVExist) {
         dorikvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                                           TilingData->postTilingData.dOriKVWorkSpaceOffset / sizeof(T2));
+        if constexpr (!IsOriKVSparse && !IsDETER) {
+            dOriVWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                             TilingData->postTilingData.dOriVWorkSpaceOffset / sizeof(T2));
+        }
     }
     if constexpr (isCmpKVExist) {
         dcmpkvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                                           TilingData->postTilingData.dCmpKVWorkSpaceOffset / sizeof(T2));
+        if constexpr (!IsCmpKVSparse && !IsDETER) {
+            dCmpVWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                             TilingData->postTilingData.dCmpVWorkSpaceOffset / sizeof(T2));
+        }
     }
     if (TilingData->baseParams.isSink) {
         dsinkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
@@ -148,9 +157,9 @@ SparseFlashMlaGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, IsOriKV
 }
 
 template <typename T1, typename T2, const uint32_t IS_TND, const bool isOriKVExist, const bool isCmpKVExist,
-          const bool IsOriKVSparse, const bool IsCmpKVSparse>
-__aicore__ inline void
-SparseFlashMlaGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, IsOriKVSparse, IsCmpKVSparse>::Process()
+          const bool IsOriKVSparse, const bool IsCmpKVSparse, const bool IsDETER>
+__aicore__ inline void SparseFlashMlaGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, IsOriKVSparse,
+                                                    IsCmpKVSparse, IsDETER>::Process()
 {
     // process
     if (g_coreType == AIV) {
@@ -158,9 +167,15 @@ SparseFlashMlaGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, IsOriKV
         InitOutput<float>(dqWorkSpaceGm[dqOffset], initdqSize, 0);
         if constexpr (isOriKVExist) {
             InitOutput<float>(dorikvWorkSpaceGm[dorikvOffset], initdorikvSize, 0);
+            if constexpr (!IsOriKVSparse && !IsDETER) {
+                InitOutput<float>(dOriVWorkSpaceGm[dorikvOffset], initdorikvSize, 0);
+            }
         }
         if constexpr (isCmpKVExist) {
             InitOutput<float>(dcmpkvWorkSpaceGm[dcmpkvOffset], initdcmpkvSize, 0);
+            if constexpr (!IsCmpKVSparse && !IsDETER) {
+                InitOutput<float>(dCmpVWorkSpaceGm[dcmpkvOffset], initdcmpkvSize, 0);
+            }
         }
         if (TilingData->baseParams.isSink) {
             InitOutput<float>(dsinkWorkSpaceGm[dsinkOffset], initdsinkSize, 0);
@@ -176,9 +191,9 @@ SparseFlashMlaGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, IsOriKV
 }
 
 template <typename T1, typename T2, const uint32_t IS_TND, const bool isOriKVExist, const bool isCmpKVExist,
-          const bool IsOriKVSparse, const bool IsCmpKVSparse>
-__aicore__ inline void
-SparseFlashMlaGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, IsOriKVSparse, IsCmpKVSparse>::SyncALLCores()
+          const bool IsOriKVSparse, const bool IsCmpKVSparse, const bool IsDETER>
+__aicore__ inline void SparseFlashMlaGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, IsOriKVSparse,
+                                                    IsCmpKVSparse, IsDETER>::SyncALLCores()
 {
     SyncAll<false>();
 }
