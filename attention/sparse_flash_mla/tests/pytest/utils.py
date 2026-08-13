@@ -231,9 +231,9 @@ def save_result(
 
     # ---------- 新增：固定最后两列 ----------
     # 取出除 result 和 fulfill_percent 外的所有列（保持原有顺序）
-    other_cols = [col for col in df.columns if col not in ('result', 'fulfill_percent')]
+    other_cols = [col for col in df.columns if col not in ("result", "fulfill_percent")]
     # 重新排列：其他列在前，最后两列固定
-    df = df[other_cols + ['result', 'fulfill_percent']]
+    df = df[other_cols + ["result", "fulfill_percent"]]
     # -------------------------------------
     # 保存到Excel
     df.to_excel(result_path, index=False)
