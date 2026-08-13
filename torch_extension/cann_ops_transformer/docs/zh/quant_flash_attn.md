@@ -28,7 +28,7 @@
   `quant_flash_attn`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`QuantFlashAttn`算子完成FP8量化场景下的全量化注意力计算，训练推理归一化。当前支持两类量化场景：
 
   - **MxFP8场景**（`quant_mode=1`）：Q/K/V 均采用 MXFP8（per-block group 量化），P 采用 FP8_E4M3 per-tensor，Softmax 在 FP32 下计算；
-  - **FP8全量化场景**（`quant_mode=6`，又称GQA FP8全量化）：Q/K 采用 FP8_E4M3 per-token-head 量化，V 采用 FP8_E4M3 per-head 量化，P 采用 FP8_E4M3 per-tensor 量化，Softmax 在 FP32 下计算。
+  - **FP8场景**（`quant_mode=6`）：Q/K 采用 FP8_E4M3 per-token-head 量化，V 采用 FP8_E4M3 per-head 量化，P 采用 FP8_E4M3 per-tensor 量化，Softmax 在 FP32 下计算。
 
   `quant_flash_attn_metadata`是`quant_flash_attn`的元数据生成接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子可选择传入该metadata以优化调度。典型调用流程如下：
 
@@ -559,7 +559,7 @@ cann_ops_transformer.quant_flash_attn(
         </thead>
         <tbody>
             <tr>
-                <td rowspan="3">MxFP8（quant_mode=1）</td>
+                <td rowspan="3">1</td>
                 <td>q_descale</td>
                 <td>float8_e8m0</td>
             </tr>
@@ -572,7 +572,7 @@ cann_ops_transformer.quant_flash_attn(
                 <td>float8_e8m0</td>
             </tr>
             <tr>
-                <td rowspan="3">FP8（quant_mode=6）</td>
+                <td rowspan="3">6</td>
                 <td>q_descale</td>
                 <td>float32</td>
             </tr>
@@ -606,7 +606,7 @@ cann_ops_transformer.quant_flash_attn(
         </thead>
         <tbody>
             <tr>
-                <td rowspan="2">MxFP8（quant_mode=1）</td>
+                <td rowspan="2">1</td>
                 <td rowspan="2">q_descale</td>
                 <td>TND</td>
                 <td>(Q_T, Q_N, D/64, 2)<br>用于Prefill场景，仅支持G*Q_S > 80时传入</td>
@@ -643,7 +643,7 @@ cann_ops_transformer.quant_flash_attn(
         </thead>
         <tbody>
             <tr>
-                <td rowspan="6">MxFP8（quant_mode=1）</td>
+                <td rowspan="6">1</td>
                 <td rowspan="3">k_descale</td>
                 <td>TND</td>
                 <td>(KV_T, KV_N, D/64, 2)</td>
@@ -670,7 +670,7 @@ cann_ops_transformer.quant_flash_attn(
                 <td>(Bn, KV_N, D/16, Bs/64, 16, 2)</td>
             </tr>
             <tr>
-                <td rowspan="2">FP8（quant_mode=6）</td>
+                <td rowspan="2">6</td>
                 <td>k_descale</td>
                 <td>PA_BNBD</td>
                 <td>(Bn, KV_N, Bs)<br>per-token-head 量化，强制 PA_BNBD</td>
@@ -706,7 +706,7 @@ cann_ops_transformer.quant_flash_attn(
         </thead>
         <tbody>
             <tr>
-                <td rowspan="5">MxFP8（quant_mode=1）</td>
+                <td rowspan="5">1</td>
                 <td>q</td>
                 <td>TND</td>
                 <td>(Q_T, Q_N, D)</td>
@@ -730,7 +730,7 @@ cann_ops_transformer.quant_flash_attn(
                 <td>(Q_T, Q_N, D)</td>
             </tr>
             <tr>
-                <td rowspan="3">FP8（quant_mode=6）</td>
+                <td rowspan="3">6</td>
                 <td>q</td>
                 <td>NTD</td>
                 <td>(Q_N, Q_T, D)</td>
