@@ -146,6 +146,17 @@ def _npu_all_to_all_quant_matmul(
     return result
 
 
+def _prepare_comm_context(group, rank_id):
+    world_size = torch.distributed.get_world_size(group)
+    if world_size <= 0:
+        world_size = torch.distributed.get_world_size()  # fallback to default group
+    group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank_id)
+    channel_builder = CommChannelBuilderManager(group_name)
+    context = channel_builder.create_context(group_name + "allto_all_matmul")
+    hccl_buffer_size = channel_builder.get_hccl_buffer_size()
+    return world_size, group_name, context, hccl_buffer_size
+
+
 def all_to_all_quant_matmul(
     x1: torch.Tensor,
     x2: torch.Tensor,
@@ -201,20 +212,8 @@ def all_to_all_quant_matmul(
         ``(BS/world_size, H*world_size)``.
     """
     rank_id = torch.distributed.get_rank(group)
-    world_size = torch.distributed.get_world_size(group)
-    if world_size <= 0:
-        world_size = torch.distributed.get_world_size()  # fallback to default group
-    group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(
-        rank_id
-    )
+    world_size, group_name, context, hccl_buffer_size = _prepare_comm_context(group, rank_id)
 
-    channel_builder = CommChannelBuilderManager(group_name)
-    ctx_tag = group_name + "allto_all_matmul"
-    context = channel_builder.create_context(ctx_tag)
-    hccl_buffer_size = channel_builder.get_hccl_buffer_size()
-
-    print(f"[all_to_all_quant_matmul] rank={rank_id}, world_size={world_size}, comm_mode={comm_mode}, "
-          f"calling npu_all_to_all_quant_matmul ...", flush=True)
     result = torch.ops.cann_ops_transformer.npu_all_to_all_quant_matmul(
         context,
         x1,
@@ -237,5 +236,4 @@ def all_to_all_quant_matmul(
         comm_mode=comm_mode,
         perf_mode=perf_mode,
     )
-    print(f"[all_to_all_quant_matmul] rank={rank_id}, npu_all_to_all_quant_matmul returned", flush=True)
     return result

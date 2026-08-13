@@ -26,6 +26,7 @@
 #include <cstdint>
 #include "comm_tiling_data.h"
 #include "quant_matmul_tiling_data.h"
+#include "../utils/constant.h"
 
 namespace apace {
 
@@ -61,7 +62,7 @@ public:
         dataTiling.nonSplitAxisSize = ka;
 
         scaleTiling = dataTiling;
-        scaleTiling.nonSplitAxisSize = ka / 32;
+        scaleTiling.nonSplitAxisSize = ka / MX_GROUP_SIZE;
     }
 };
 

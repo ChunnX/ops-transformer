@@ -39,6 +39,97 @@ constexpr int64_t MX_SCALE_BLOCK_SIZE = 64;
 constexpr int64_t MX_SCALE_LAST_DIM = 2;
 constexpr int64_t DIM_MINUS_ONE = -1;
 
+bool ValidateInferDtypes(gert::InferShapeContext *context, const char *nodeName)
+{
+    auto x1Dtype = context->GetInputDesc(INDEX_IN_X1)->GetDataType();
+    auto x2Dtype = context->GetInputDesc(INDEX_IN_X2)->GetDataType();
+    if ((x1Dtype != ge::DT_FLOAT8_E4M3FN && x1Dtype != ge::DT_FLOAT8_E5M2 && x1Dtype != ge::DT_FLOAT4_E2M1) ||
+        (x2Dtype != ge::DT_FLOAT8_E4M3FN && x2Dtype != ge::DT_FLOAT8_E5M2 && x2Dtype != ge::DT_FLOAT4_E2M1)) {
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            nodeName, "x1,x2",
+            (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
+            "x1/x2 dtype must be FP8_E4M3/FP8_E5M2/FP4_E2M1");
+        return false;
+    }
+    return true;
+}
+
+bool ValidateInferKCrossCheck(const char *nodeName, int64_t ka, int64_t kTotal, int64_t worldSize)
+{
+    if (kTotal != ka * worldSize) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "x2 K_total",
+            std::to_string(kTotal).c_str(),
+            ("K_total must equal x1.Ka * world_size = " + std::to_string(ka * worldSize) + ".").c_str());
+        return false;
+    }
+    return true;
+}
+
+bool ValidateInferScaleShapes(gert::InferShapeContext *context, const char *nodeName, int64_t ka, int64_t kTotal,
+                              int64_t m, int64_t n)
+{
+    if (m == DIM_MINUS_ONE || ka == DIM_MINUS_ONE || n == DIM_MINUS_ONE) {
+        return true;
+    }
+    int64_t ceilDivKa = CeilDiv(ka, MX_SCALE_BLOCK_SIZE);
+    if (ceilDivKa % 2 != 0) {
+        std::string scaleBlock = std::to_string(MX_SCALE_BLOCK_SIZE);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, ("CeilDiv(Ka, " + scaleBlock + ")").c_str(), std::to_string(ceilDivKa).c_str(),
+            ("CeilDiv(Ka, " + scaleBlock + ") must be even").c_str());
+        return false;
+    }
+
+    auto x1ScaleShape = context->GetInputShape(INDEX_IN_X1_SCALE);
+    auto x2ScaleShape = context->GetInputShape(INDEX_IN_X2_SCALE);
+    if (x1ScaleShape == nullptr || x2ScaleShape == nullptr) {
+        return true;
+    }
+    int64_t expectedScaleK1 = CeilDiv(ka, MX_SCALE_BLOCK_SIZE);
+    int64_t expectedScaleK2 = CeilDiv(kTotal, MX_SCALE_BLOCK_SIZE);
+    if (x1ScaleShape->GetDim(1U) != static_cast<uint64_t>(expectedScaleK1) ||
+        x1ScaleShape->GetDim(2U) != static_cast<uint64_t>(MX_SCALE_LAST_DIM)) {
+        OP_LOGE_FOR_INVALID_SHAPE(
+            nodeName, "x1_scale",
+            ("[dim1=" + std::to_string(x1ScaleShape->GetDim(1U)) + ",dim2=" +
+             std::to_string(x1ScaleShape->GetDim(2U)) + "]")
+                .c_str(),
+            ("[dim1=" + std::to_string(expectedScaleK1) + ",dim2=" + std::to_string(MX_SCALE_LAST_DIM) + "]").c_str());
+        return false;
+    }
+    if (x2ScaleShape->GetDim(1U) != static_cast<uint64_t>(expectedScaleK2) ||
+        x2ScaleShape->GetDim(2U) != static_cast<uint64_t>(MX_SCALE_LAST_DIM)) {
+        OP_LOGE_FOR_INVALID_SHAPE(
+            nodeName, "x2_scale",
+            ("[dim1=" + std::to_string(x2ScaleShape->GetDim(1U)) + ",dim2=" +
+             std::to_string(x2ScaleShape->GetDim(2U)) + "]")
+                .c_str(),
+            ("[dim1=" + std::to_string(expectedScaleK2) + ",dim2=" + std::to_string(MX_SCALE_LAST_DIM) + "]").c_str());
+        return false;
+    }
+    return true;
+}
+
+bool ValidateInferYDtype(gert::InferShapeContext *context, const char *nodeName)
+{
+    auto outDtype = context->GetOutputDesc(INDEX_OUT_Y)->GetDataType();
+    const int64_t *yDtypePtr = context->GetAttrs()->GetAttrPointer<int64_t>(INDEX_ATTR_Y_DTYPE);
+    if (yDtypePtr == nullptr) {
+        return true;
+    }
+    if (*yDtypePtr != static_cast<int64_t>(ge::DT_BF16) && *yDtypePtr != static_cast<int64_t>(ge::DT_FLOAT16)) {
+        OP_LOGE_WITH_INVALID_ATTR(nodeName, "y_dtype", std::to_string(*yDtypePtr).c_str(), "BF16/FP16");
+        return false;
+    }
+    if (outDtype != static_cast<ge::DataType>(*yDtypePtr)) {
+        OP_LOGE_WITH_INVALID_ATTR(nodeName, "y_dtype", Ops::Base::ToString(outDtype).c_str(),
+                                  Ops::Base::ToString(static_cast<ge::DataType>(*yDtypePtr)).c_str());
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 ge::graphStatus AlltoAllMatmulV2InferShape(gert::InferShapeContext *context)
@@ -70,15 +161,7 @@ ge::graphStatus AlltoAllMatmulV2InferShape(gert::InferShapeContext *context)
     OP_LOGD(nodeName, "InferShape: x1[%ld,%ld] x2[%ld,%ld]", m, ka, n, kTotal);
 
     // ---- Validate dtypes ------------------------------------------------
-    auto x1Dtype = context->GetInputDesc(INDEX_IN_X1)->GetDataType();
-    auto x2Dtype = context->GetInputDesc(INDEX_IN_X2)->GetDataType();
-
-    if ((x1Dtype != ge::DT_FLOAT8_E4M3FN && x1Dtype != ge::DT_FLOAT8_E5M2 && x1Dtype != ge::DT_FLOAT4_E2M1) ||
-        (x2Dtype != ge::DT_FLOAT8_E4M3FN && x2Dtype != ge::DT_FLOAT8_E5M2 && x2Dtype != ge::DT_FLOAT4_E2M1)) {
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-            nodeName, "x1,x2",
-            (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
-            "x1/x2 dtype must be FP8_E4M3/FP8_E5M2/FP4_E2M1");
+    if (!ValidateInferDtypes(context, nodeName)) {
         return ge::GRAPH_FAILED;
     }
 
@@ -91,56 +174,10 @@ ge::graphStatus AlltoAllMatmulV2InferShape(gert::InferShapeContext *context)
     }
     int64_t worldSize = *wsPtr;
 
-    // ---- Validate K dimension cross-check --------------------------------
-    // x1 dim1 = Ka (per-rank K), x2 dim1 = K_total, must satisfy K_total == Ka * worldSize
-    if (kTotal != ka * worldSize) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            nodeName, "x2 K_total",
-            std::to_string(kTotal).c_str(),
-            ("K_total must equal x1.Ka * world_size = " + std::to_string(ka * worldSize) + ".").c_str());
+    // ---- Validate K dimension cross-check and scale constraints ---------
+    if (!ValidateInferKCrossCheck(nodeName, ka, kTotal, worldSize) ||
+        !ValidateInferScaleShapes(context, nodeName, ka, kTotal, m, n)) {
         return ge::GRAPH_FAILED;
-    }
-
-    // ---- Validate constraints (skip if dynamic shape) -------------------
-    if (m != DIM_MINUS_ONE && ka != DIM_MINUS_ONE && n != DIM_MINUS_ONE) {
-        int64_t ceilDivKa = CeilDiv(ka, MX_SCALE_BLOCK_SIZE);
-        if (ceilDivKa % 2 != 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "CeilDiv(Ka, 64)",
-                                                  std::to_string(ceilDivKa).c_str(), "CeilDiv(Ka, 64) must be even");
-            return ge::GRAPH_FAILED;
-        }
-
-        // Validate scale shapes: x1_scale uses Ka, x2_scale uses K_total
-        auto x1ScaleShape = context->GetInputShape(INDEX_IN_X1_SCALE);
-        auto x2ScaleShape = context->GetInputShape(INDEX_IN_X2_SCALE);
-        if (x1ScaleShape != nullptr && x2ScaleShape != nullptr) {
-            int64_t expectedScaleK1 = CeilDiv(ka, MX_SCALE_BLOCK_SIZE);
-            int64_t expectedScaleK2 = CeilDiv(kTotal, MX_SCALE_BLOCK_SIZE);
-            if (x1ScaleShape->GetDim(1U) != static_cast<uint64_t>(expectedScaleK1) ||
-                x1ScaleShape->GetDim(2U) != static_cast<uint64_t>(MX_SCALE_LAST_DIM)) {
-                OP_LOGE_FOR_INVALID_SHAPE(
-                    nodeName, "x1_scale",
-                    ("[dim1=" + std::to_string(x1ScaleShape->GetDim(1U)) + ",dim2=" +
-                     std::to_string(x1ScaleShape->GetDim(2U)) + "]")
-                        .c_str(),
-                    ("[dim1=" + std::to_string(expectedScaleK1) + ",dim2=" + std::to_string(MX_SCALE_LAST_DIM) +
-                     "]")
-                        .c_str());
-                return ge::GRAPH_FAILED;
-            }
-            if (x2ScaleShape->GetDim(1U) != static_cast<uint64_t>(expectedScaleK2) ||
-                x2ScaleShape->GetDim(2U) != static_cast<uint64_t>(MX_SCALE_LAST_DIM)) {
-                OP_LOGE_FOR_INVALID_SHAPE(
-                    nodeName, "x2_scale",
-                    ("[dim1=" + std::to_string(x2ScaleShape->GetDim(1U)) + ",dim2=" +
-                     std::to_string(x2ScaleShape->GetDim(2U)) + "]")
-                        .c_str(),
-                    ("[dim1=" + std::to_string(expectedScaleK2) + ",dim2=" + std::to_string(MX_SCALE_LAST_DIM) +
-                     "]")
-                        .c_str());
-                return ge::GRAPH_FAILED;
-            }
-        }
     }
 
     // ---- Derive output shape: y = [M_total / world_size, N] ------------
@@ -157,18 +194,8 @@ ge::graphStatus AlltoAllMatmulV2InferShape(gert::InferShapeContext *context)
     }
 
     // ---- Validate y_dtype consistency -----------------------------------
-    auto outDtype = context->GetOutputDesc(INDEX_OUT_Y)->GetDataType();
-    const int64_t *yDtypePtr = context->GetAttrs()->GetAttrPointer<int64_t>(INDEX_ATTR_Y_DTYPE);
-    if (yDtypePtr != nullptr) {
-        if (*yDtypePtr != static_cast<int64_t>(ge::DT_BF16) && *yDtypePtr != static_cast<int64_t>(ge::DT_FLOAT16)) {
-            OP_LOGE_WITH_INVALID_ATTR(nodeName, "y_dtype", std::to_string(*yDtypePtr).c_str(), "BF16/FP16");
-            return ge::GRAPH_FAILED;
-        }
-        if (outDtype != static_cast<ge::DataType>(*yDtypePtr)) {
-            OP_LOGE_WITH_INVALID_ATTR(nodeName, "y_dtype", Ops::Base::ToString(outDtype).c_str(),
-                                      Ops::Base::ToString(static_cast<ge::DataType>(*yDtypePtr)).c_str());
-            return ge::GRAPH_FAILED;
-        }
+    if (!ValidateInferYDtype(context, nodeName)) {
+        return ge::GRAPH_FAILED;
     }
 
     // Dtype and format are inferred from the proto definition

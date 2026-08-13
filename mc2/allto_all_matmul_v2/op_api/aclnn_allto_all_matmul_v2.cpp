@@ -72,15 +72,10 @@ static aclTensor *TransX2Tensor(const aclTensor *x2)
                            storageShapeDimNum, x2->GetTensor()->GetAddr());
 }
 
-extern "C" aclnnStatus AlltoAllMatmulV2GetWorkspaceSize(
-    const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-    const aclTensor *x1ScaleOptional, const aclTensor *x2ScaleOptional, const char *group, int64_t worldSize,
-    int64_t hcclBufferSize, int64_t x1QuantMode, int64_t x2QuantMode,
-    int64_t groupSize, const char *commMode, int64_t perfMode, const aclTensor *output,
-    const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+static bool CheckNullParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1ScaleOptional,
+                            const aclTensor *x2ScaleOptional, const aclTensor *output, uint64_t *workspaceSize,
+                            aclOpExecutor **executor)
 {
-    OP_LOGD("AlltoAllMatmulV2GetWorkspaceSize start");
-
     if (x1 == nullptr || x2 == nullptr || x1ScaleOptional == nullptr || x2ScaleOptional == nullptr ||
         output == nullptr || workspaceSize == nullptr || executor == nullptr) {
         if (x1 == nullptr)
@@ -97,6 +92,21 @@ extern "C" aclnnStatus AlltoAllMatmulV2GetWorkspaceSize(
             OP_LOGE_WITH_INVALID_INPUT("AlltoAllMatmulV2", "workspaceSize");
         if (executor == nullptr)
             OP_LOGE_WITH_INVALID_INPUT("AlltoAllMatmulV2", "executor");
+        return false;
+    }
+    return true;
+}
+
+extern "C" aclnnStatus AlltoAllMatmulV2GetWorkspaceSize(
+    const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+    const aclTensor *x1ScaleOptional, const aclTensor *x2ScaleOptional, const char *group, int64_t worldSize,
+    int64_t hcclBufferSize, int64_t x1QuantMode, int64_t x2QuantMode,
+    int64_t groupSize, const char *commMode, int64_t perfMode, const aclTensor *output,
+    const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+{
+    OP_LOGD("AlltoAllMatmulV2GetWorkspaceSize start");
+
+    if (!CheckNullParams(x1, x2, x1ScaleOptional, x2ScaleOptional, output, workspaceSize, executor)) {
         return ACLNN_ERR_PARAM_NULLPTR;
     }
 

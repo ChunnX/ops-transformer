@@ -28,8 +28,6 @@ namespace MC2Tiling {
 
 using namespace Ops::Transformer::OpTiling;
 
-constexpr uint64_t WS_BYTES = 4096;
-
 class AlltoAllMatmulV2TilingClass : public TilingBaseClass {
 public:
     explicit AlltoAllMatmulV2TilingClass(gert::TilingContext *context)
@@ -79,11 +77,21 @@ protected:
     static constexpr uint64_t MX_GROUP_M = 1;
     static constexpr uint64_t MX_GROUP_N = 1;
     static constexpr uint64_t MX_GROUP_K = 32;
+    static constexpr uint64_t MIN_WORLD_SIZE = 2;
+    static constexpr uint64_t MAX_WORLD_SIZE = 16;
 
     ge::graphStatus CheckTensorAttrs()
     {
         const char *opName = context_->GetNodeName();
+        if (!CheckInputDescs(opName) || !CheckWorldSizeAttr(opName) || !CheckTensorFormats(opName) ||
+            !CheckTensorDtypes(opName) || !CheckQuantAndYDtypeAttr(opName) || !CheckOtherAttrs(opName)) {
+            return ge::GRAPH_FAILED;
+        }
+        return ge::GRAPH_SUCCESS;
+    }
 
+    bool CheckInputDescs(const char *opName)
+    {
         auto *x1Desc = context_->GetInputDesc(IDX_INPUT_X1);
         auto *x2Desc = context_->GetInputDesc(IDX_INPUT_X2);
         auto *yDesc = context_->GetOutputDesc(IDX_OUTPUT_Y);
@@ -94,27 +102,36 @@ protected:
                 OP_LOGE_WITH_INVALID_INPUT(opName, "x2");
             if (!yDesc)
                 OP_LOGE_WITH_INVALID_INPUT(opName, "y");
-            return ge::GRAPH_FAILED;
+            return false;
         }
+        return true;
+    }
 
-        // ---- world_size validation ----
+    bool CheckWorldSizeAttr(const char *opName)
+    {
         auto *wsPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_WORLD_SIZE);
         if (!wsPtr) {
             OP_LOGE_WITH_INVALID_INPUT(opName, "world_size");
-            return ge::GRAPH_FAILED;
+            return false;
         }
         if (*wsPtr <= 0) {
             OP_LOGE_WITH_INVALID_ATTR(opName, "world_size", std::to_string(*wsPtr).c_str(), "positive");
-            return ge::GRAPH_FAILED;
+            return false;
         }
         uint64_t worldSize = static_cast<uint64_t>(*wsPtr);
         bool isPowerOfTwo = (worldSize & (worldSize - 1)) == 0;
-        if (worldSize < 2 || worldSize > 16 || !isPowerOfTwo) {
+        if (worldSize < MIN_WORLD_SIZE || worldSize > MAX_WORLD_SIZE || !isPowerOfTwo) {
             OP_LOGE_WITH_INVALID_ATTR(opName, "world_size", std::to_string(worldSize).c_str(), "2/4/8/16");
-            return ge::GRAPH_FAILED;
+            return false;
         }
+        return true;
+    }
 
-        // ---- format checks ----
+    bool CheckTensorFormats(const char *opName)
+    {
+        auto *x1Desc = context_->GetInputDesc(IDX_INPUT_X1);
+        auto *x2Desc = context_->GetInputDesc(IDX_INPUT_X2);
+        auto *yDesc = context_->GetOutputDesc(IDX_OUTPUT_Y);
         auto x1Fmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x1Desc->GetStorageFormat()));
         auto x2Fmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x2Desc->GetStorageFormat()));
         auto yFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(yDesc->GetStorageFormat()));
@@ -123,14 +140,20 @@ protected:
                 opName, "x1,x2",
                 (Ops::Base::ToString(x1Fmt) + "," + Ops::Base::ToString(x2Fmt)).c_str(),
                 "x1 and x2 format must be ND");
-            return ge::GRAPH_FAILED;
+            return false;
         }
         if (yFmt != ge::FORMAT_ND) {
             OP_LOGE_FOR_INVALID_FORMAT(opName, "y", Ops::Base::ToString(yFmt).c_str(), "ND");
-            return ge::GRAPH_FAILED;
+            return false;
         }
+        return true;
+    }
 
-        // ---- x1/x2 dtype checks ----
+    bool CheckTensorDtypes(const char *opName)
+    {
+        auto *x1Desc = context_->GetInputDesc(IDX_INPUT_X1);
+        auto *x2Desc = context_->GetInputDesc(IDX_INPUT_X2);
+        auto *yDesc = context_->GetOutputDesc(IDX_OUTPUT_Y);
         auto x1Dtype = x1Desc->GetDataType();
         auto x2Dtype = x2Desc->GetDataType();
         if ((x1Dtype != ge::DT_FLOAT8_E4M3FN && x1Dtype != ge::DT_FLOAT8_E5M2 && x1Dtype != ge::DT_FLOAT4_E2M1) ||
@@ -139,24 +162,25 @@ protected:
                 opName, "x1,x2",
                 (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
                 "x1/x2 dtype must be FP8_E4M3/FP8_E5M2/FP4_E2M1");
-            return ge::GRAPH_FAILED;
+            return false;
         }
         if ((x1Dtype == ge::DT_FLOAT4_E2M1) != (x2Dtype == ge::DT_FLOAT4_E2M1)) {
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                 opName, "x1,x2",
                 (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
                 "FP4 requires both x1 and x2 to be FP4_E2M1");
-            return ge::GRAPH_FAILED;
+            return false;
         }
-
-        // ---- y output dtype ----
         auto yDtype = yDesc->GetDataType();
         if (yDtype != ge::DT_BF16 && yDtype != ge::DT_FLOAT16) {
             OP_LOGE_FOR_INVALID_DTYPE(opName, "y", Ops::Base::ToString(yDtype).c_str(), "BF16/FP16");
-            return ge::GRAPH_FAILED;
+            return false;
         }
+        return CheckScaleDesc(opName) && CheckBiasDesc(opName);
+    }
 
-        // ---- scale checks ----
+    bool CheckScaleDesc(const char *opName)
+    {
         auto *x1ScaleDesc = context_->GetOptionalInputDesc(IDX_INPUT_X1_SCALE);
         auto *x2ScaleDesc = context_->GetOptionalInputDesc(IDX_INPUT_X2_SCALE);
         if (!x1ScaleDesc || !x2ScaleDesc) {
@@ -164,7 +188,7 @@ protected:
                 OP_LOGE_WITH_INVALID_INPUT(opName, "x1_scale");
             if (!x2ScaleDesc)
                 OP_LOGE_WITH_INVALID_INPUT(opName, "x2_scale");
-            return ge::GRAPH_FAILED;
+            return false;
         }
         auto x1ScaleFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleDesc->GetStorageFormat()));
         auto x2ScaleFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleDesc->GetStorageFormat()));
@@ -173,7 +197,7 @@ protected:
                 opName, "x1_scale,x2_scale",
                 (Ops::Base::ToString(x1ScaleFmt) + "," + Ops::Base::ToString(x2ScaleFmt)).c_str(),
                 "x1_scale and x2_scale format must be ND");
-            return ge::GRAPH_FAILED;
+            return false;
         }
         auto x1ScaleDtype = x1ScaleDesc->GetDataType();
         auto x2ScaleDtype = x2ScaleDesc->GetDataType();
@@ -182,25 +206,32 @@ protected:
                 opName, "x1_scale,x2_scale",
                 (Ops::Base::ToString(x1ScaleDtype) + "," + Ops::Base::ToString(x2ScaleDtype)).c_str(),
                 "x1_scale and x2_scale must be FP8_E8M0");
-            return ge::GRAPH_FAILED;
+            return false;
         }
+        return true;
+    }
 
-        // ---- bias checks ----
+    bool CheckBiasDesc(const char *opName)
+    {
         auto *biasDesc = context_->GetOptionalInputDesc(IDX_INPUT_BIAS);
-        if (biasDesc != nullptr) {
-            auto biasDtype = biasDesc->GetDataType();
-            if (biasDtype != ge::DT_FLOAT) {
-                OP_LOGE_FOR_INVALID_DTYPE(opName, "bias", Ops::Base::ToString(biasDtype).c_str(), "FLOAT");
-                return ge::GRAPH_FAILED;
-            }
-            auto biasFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(biasDesc->GetStorageFormat()));
-            if (biasFmt != ge::FORMAT_ND) {
-                OP_LOGE_FOR_INVALID_FORMAT(opName, "bias", Ops::Base::ToString(biasFmt).c_str(), "ND");
-                return ge::GRAPH_FAILED;
-            }
+        if (biasDesc == nullptr) {
+            return true;
         }
+        auto biasDtype = biasDesc->GetDataType();
+        if (biasDtype != ge::DT_FLOAT) {
+            OP_LOGE_FOR_INVALID_DTYPE(opName, "bias", Ops::Base::ToString(biasDtype).c_str(), "FLOAT");
+            return false;
+        }
+        auto biasFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(biasDesc->GetStorageFormat()));
+        if (biasFmt != ge::FORMAT_ND) {
+            OP_LOGE_FOR_INVALID_FORMAT(opName, "bias", Ops::Base::ToString(biasFmt).c_str(), "ND");
+            return false;
+        }
+        return true;
+    }
 
-        // ---- quant mode validation (MX quant only) ----
+    bool CheckQuantAndYDtypeAttr(const char *opName)
+    {
         auto *x1QmPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_X1_QUANT_MODE);
         auto *x2QmPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_X2_QUANT_MODE);
         int64_t x1QuantMode = x1QmPtr ? *x1QmPtr : static_cast<int64_t>(MX_QUANT_MODE);
@@ -210,66 +241,67 @@ protected:
                 opName, "x1_quant_mode,x2_quant_mode",
                 (std::to_string(x1QuantMode) + "," + std::to_string(x2QuantMode)).c_str(),
                 "x1_quant_mode and x2_quant_mode must be MX_QUANT(6)");
-            return ge::GRAPH_FAILED;
+            return false;
         }
-
-        // ---- y_dtype attr validation ----
         auto *yDtypePtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_Y_DTYPE);
         if (yDtypePtr != nullptr && *yDtypePtr != static_cast<int64_t>(ge::DT_BF16) &&
             *yDtypePtr != static_cast<int64_t>(ge::DT_FLOAT16)) {
             OP_LOGE_WITH_INVALID_ATTR(opName, "y_dtype", std::to_string(*yDtypePtr).c_str(), "BF16/FP16");
-            return ge::GRAPH_FAILED;
+            return false;
         }
+        return true;
+    }
 
-        // ---- attr checks ----
+    bool CheckOtherAttrs(const char *opName)
+    {
         auto *tx2 = context_->GetAttrs()->GetAttrPointer<bool>(IDX_ATTR_TRANSPOSE_X2);
         if (!tx2 || !(*tx2)) {
             OP_LOGE_WITH_INVALID_ATTR(opName, "transpose_x2",
                                       tx2 ? std::to_string(static_cast<int>(*tx2)).c_str() : "nil", "true");
-            return ge::GRAPH_FAILED;
+            return false;
         }
-
         auto *commModePtr = context_->GetAttrs()->GetAttrPointer<char>(IDX_ATTR_COMM_MODE);
         if (!commModePtr) {
             OP_LOGE_WITH_INVALID_INPUT(opName, "comm_mode");
-            return ge::GRAPH_FAILED;
+            return false;
         }
         if (std::strcmp(commModePtr, "urma") != 0) {
             OP_LOGE_WITH_INVALID_ATTR(opName, "comm_mode", commModePtr, "urma");
-            return ge::GRAPH_FAILED;
+            return false;
         }
-
         auto *a2aFlag = context_->GetAttrs()->GetAttrPointer<bool>(IDX_ATTR_ALLTOALL_OUT_FLAG);
         if (!a2aFlag) {
             OP_LOGE_WITH_INVALID_INPUT(opName, "alltoall_out_flag");
-            return ge::GRAPH_FAILED;
+            return false;
         }
         if (*a2aFlag) {
             OP_LOGE_WITH_INVALID_ATTR(opName, "alltoall_out_flag", "true", "false");
-            return ge::GRAPH_FAILED;
+            return false;
         }
+        return CheckGroupSizeAttr(opName);
+    }
 
-        // ---- group_size validation (MX quant: [1,1,32]) ----
+    bool CheckGroupSizeAttr(const char *opName)
+    {
         auto *gsPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_GROUP_SIZE);
-        if (gsPtr) {
-            uint64_t gs = static_cast<uint64_t>(*gsPtr);
-            uint64_t gsK = gs & GROUP_MNK_BIT_SIZE;
-            uint64_t gsN = (gs >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
-            uint64_t gsM = (gs >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
-            if (gsM != MX_GROUP_M || gsN != MX_GROUP_N || gsK != MX_GROUP_K) {
-                OP_LOGE_WITH_INVALID_ATTR(
-                    opName, "group_size",
-                    ("[M=" + std::to_string(gsM) + ",N=" + std::to_string(gsN) + ",K=" + std::to_string(gsK) +
-                     "]")
-                        .c_str(),
-                    ("[M=" + std::to_string(MX_GROUP_M) + ",N=" + std::to_string(MX_GROUP_N) + ",K=" +
-                     std::to_string(MX_GROUP_K) + "]")
-                        .c_str());
-                return ge::GRAPH_FAILED;
-            }
+        if (!gsPtr) {
+            return true;
         }
-
-        return ge::GRAPH_SUCCESS;
+        uint64_t gs = static_cast<uint64_t>(*gsPtr);
+        uint64_t gsK = gs & GROUP_MNK_BIT_SIZE;
+        uint64_t gsN = (gs >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
+        uint64_t gsM = (gs >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
+        if (gsM != MX_GROUP_M || gsN != MX_GROUP_N || gsK != MX_GROUP_K) {
+            OP_LOGE_WITH_INVALID_ATTR(
+                opName, "group_size",
+                ("[M=" + std::to_string(gsM) + ",N=" + std::to_string(gsN) + ",K=" + std::to_string(gsK) + "]")
+                    .c_str(),
+                ("[M=" + std::to_string(MX_GROUP_M) + ",N=" + std::to_string(MX_GROUP_N) + ",K=" +
+                 std::to_string(MX_GROUP_K) + "]")
+                    .c_str());
+            return false;
+        }
+        return true;
     }
 
     ge::graphStatus CheckTensorShapes()
@@ -289,6 +321,18 @@ protected:
             return ge::GRAPH_FAILED;
         }
 
+        if (!CheckMatmulDimsAndBounds(opName) || !CheckMatmulDivisibility(opName) || !CheckBiasShape(opName) ||
+            !CheckScaleShapes(opName)) {
+            return ge::GRAPH_FAILED;
+        }
+        return ge::GRAPH_SUCCESS;
+    }
+
+    bool CheckMatmulDimsAndBounds(const char *opName)
+    {
+        auto *x1Shape = context_->GetInputShape(IDX_INPUT_X1);
+        auto *x2Shape = context_->GetInputShape(IDX_INPUT_X2);
+        auto *yShape = context_->GetOutputShape(IDX_OUTPUT_Y);
         uint64_t x1DimNum = x1Shape->GetStorageShape().GetDimNum();
         uint64_t x2DimNum = x2Shape->GetStorageShape().GetDimNum();
         uint64_t yDimNum = yShape->GetStorageShape().GetDimNum();
@@ -297,13 +341,49 @@ protected:
                 opName, "x1,x2",
                 (std::to_string(x1DimNum) + "D," + std::to_string(x2DimNum) + "D").c_str(),
                 "x1 and x2 must be 2D");
-            return ge::GRAPH_FAILED;
+            return false;
         }
         if (yDimNum != 2) {
             OP_LOGE_FOR_INVALID_SHAPEDIM(opName, "y", std::to_string(yDimNum).c_str(), "2D");
-            return ge::GRAPH_FAILED;
+            return false;
         }
 
+        uint64_t x1M = x1Shape->GetStorageShape().GetDim(0U);
+        uint64_t x1K = x1Shape->GetStorageShape().GetDim(1U);
+        uint64_t x2N = x2Shape->GetStorageShape().GetDim(0U);
+        uint64_t x2K = x2Shape->GetStorageShape().GetDim(1U);
+
+        if (x1M == 0 || x1K == 0 || x2N == 0 || x2K == 0) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName, "x1, x2",
+                ("x1=[" + std::to_string(x1M) + "," + std::to_string(x1K) + "], x2=[" + std::to_string(x2N) + "," +
+                 std::to_string(x2K) + "]")
+                    .c_str(),
+                "The dimensions of x1 and x2 must be non-zero.");
+            return false;
+        }
+        if (x1M > static_cast<uint64_t>(MAX_INT32_VAL) || x2N > static_cast<uint64_t>(MAX_INT32_VAL)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName, "x1 dim0, x2 dim0",
+                ("M=" + std::to_string(x1M) + ", N=" + std::to_string(x2N)).c_str(),
+                "The dim0 of x1 and dim0 of x2 must not exceed INT32_MAX.");
+            return false;
+        }
+        if (x1K > K_MAX_VAL || x2K > K_MAX_VAL) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName, "x1_k, x2_k",
+                ("x1_k=" + std::to_string(x1K) + ", x2_k=" + std::to_string(x2K)).c_str(),
+                ("The K dimension must not exceed " + std::to_string(K_MAX_VAL) + ".").c_str());
+            return false;
+        }
+        return true;
+    }
+
+    bool CheckMatmulDivisibility(const char *opName)
+    {
+        auto *x1Shape = context_->GetInputShape(IDX_INPUT_X1);
+        auto *x2Shape = context_->GetInputShape(IDX_INPUT_X2);
+        auto *yShape = context_->GetOutputShape(IDX_OUTPUT_Y);
         auto *wsPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_WORLD_SIZE);
         uint64_t worldSize = static_cast<uint64_t>(wsPtr ? *wsPtr : 1);
 
@@ -314,79 +394,62 @@ protected:
         uint64_t yM = yShape->GetStorageShape().GetDim(0U);
         uint64_t yN = yShape->GetStorageShape().GetDim(1U);
 
-        if (x1M == 0 || x1K == 0 || x2N == 0 || x2K == 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName, "x1, x2",
-                ("x1=[" + std::to_string(x1M) + "," + std::to_string(x1K) + "], x2=[" + std::to_string(x2N) + "," +
-                 std::to_string(x2K) + "]")
-                    .c_str(),
-                "The dimensions of x1 and x2 must be non-zero.");
-            return ge::GRAPH_FAILED;
-        }
-        if (x1M > static_cast<uint64_t>(MAX_INT32_VAL) || x2N > static_cast<uint64_t>(MAX_INT32_VAL)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName, "x1 dim0, x2 dim0",
-                ("M=" + std::to_string(x1M) + ", N=" + std::to_string(x2N)).c_str(),
-                "The dim0 of x1 and dim0 of x2 must not exceed INT32_MAX.");
-            return ge::GRAPH_FAILED;
-        }
-        if (x1K > K_MAX_VAL || x2K > K_MAX_VAL) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName, "x1_k, x2_k",
-                ("x1_k=" + std::to_string(x1K) + ", x2_k=" + std::to_string(x2K)).c_str(),
-                ("The K dimension must not exceed " + std::to_string(K_MAX_VAL) + ".").c_str());
-            return ge::GRAPH_FAILED;
-        }
-
         if (x1M % worldSize != 0) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 opName, "x1 dim0",
                 ("M=" + std::to_string(x1M)).c_str(),
                 "The dim0 of x1 must be divisible by world_size.");
-            return ge::GRAPH_FAILED;
+            return false;
         }
         if (x1K % MX_SCALE_ALIGN != 0 || x2K % MX_SCALE_ALIGN != 0) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 opName, "x1_k, x2_k",
                 ("x1_k=" + std::to_string(x1K) + ", x2_k=" + std::to_string(x2K)).c_str(),
                 ("The K dimension must be divisible by " + std::to_string(MX_SCALE_ALIGN) + ".").c_str());
-            return ge::GRAPH_FAILED;
+            return false;
         }
         if (x2K != x1K * worldSize) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 opName, "x2_k",
                 std::to_string(x2K).c_str(),
                 ("x2.K must equal x1.K * world_size = " + std::to_string(x1K * worldSize) + ".").c_str());
-            return ge::GRAPH_FAILED;
+            return false;
         }
-
         if (yM != x1M / worldSize || yN != x2N) {
             OP_LOGE_FOR_INVALID_SHAPE(
                 opName, "y",
                 ("[" + std::to_string(yM) + "," + std::to_string(yN) + "]").c_str(),
                 ("[" + std::to_string(x1M / worldSize) + "," + std::to_string(x2N) + "]").c_str());
-            return ge::GRAPH_FAILED;
+            return false;
         }
+        return true;
+    }
 
-        // ---- bias shape ----
+    bool CheckBiasShape(const char *opName)
+    {
         auto *biasShape = context_->GetOptionalInputShape(IDX_INPUT_BIAS);
-        if (biasShape != nullptr) {
-            if (biasShape->GetStorageShape().GetDimNum() != 1) {
-                OP_LOGE_FOR_INVALID_SHAPEDIM(opName, "bias",
-                                             std::to_string(biasShape->GetStorageShape().GetDimNum()).c_str(), "1D");
-                return ge::GRAPH_FAILED;
-            }
-            uint64_t biasDim0 = biasShape->GetStorageShape().GetDim(0U);
-            if (biasDim0 != x2N) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    opName, "bias dim0",
-                    std::to_string(biasDim0).c_str(),
-                    ("bias dim0 must equal N = " + std::to_string(x2N) + ".").c_str());
-                return ge::GRAPH_FAILED;
-            }
+        if (biasShape == nullptr) {
+            return true;
         }
+        if (biasShape->GetStorageShape().GetDimNum() != 1) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM(opName, "bias",
+                                         std::to_string(biasShape->GetStorageShape().GetDimNum()).c_str(), "1D");
+            return false;
+        }
+        uint64_t biasDim0 = biasShape->GetStorageShape().GetDim(0U);
+        uint64_t x2N = context_->GetInputShape(IDX_INPUT_X2)->GetStorageShape().GetDim(0U);
+        if (biasDim0 != x2N) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName, "bias dim0",
+                std::to_string(biasDim0).c_str(),
+                ("bias dim0 must equal N = " + std::to_string(x2N) + ".").c_str());
+            return false;
+        }
+        return true;
+    }
 
-        // ---- scale shapes ----
+    bool CheckScaleShapes(const char *opName)
+    {
         auto *x1ScaleShape = context_->GetOptionalInputShape(IDX_INPUT_X1_SCALE);
         auto *x2ScaleShape = context_->GetOptionalInputShape(IDX_INPUT_X2_SCALE);
         if (!x1ScaleShape || !x2ScaleShape) {
@@ -394,7 +457,7 @@ protected:
                 OP_LOGE_WITH_INVALID_INPUT(opName, "x1_scale");
             if (!x2ScaleShape)
                 OP_LOGE_WITH_INVALID_INPUT(opName, "x2_scale");
-            return ge::GRAPH_FAILED;
+            return false;
         }
 
         uint64_t x1ScaleDimNum = x1ScaleShape->GetStorageShape().GetDimNum();
@@ -404,7 +467,7 @@ protected:
                 opName, "x1_scale,x2_scale",
                 (std::to_string(x1ScaleDimNum) + "D," + std::to_string(x2ScaleDimNum) + "D").c_str(),
                 "x1_scale and x2_scale must be 3D");
-            return ge::GRAPH_FAILED;
+            return false;
         }
 
         uint64_t x1ScaleM = x1ScaleShape->GetStorageShape().GetDim(0U);
@@ -413,6 +476,11 @@ protected:
         uint64_t x2ScaleN = x2ScaleShape->GetStorageShape().GetDim(0U);
         uint64_t x2ScaleK = x2ScaleShape->GetStorageShape().GetDim(1U);
         uint64_t x2ScaleLast = x2ScaleShape->GetStorageShape().GetDim(2U);
+
+        uint64_t x1M = context_->GetInputShape(IDX_INPUT_X1)->GetStorageShape().GetDim(0U);
+        uint64_t x1K = context_->GetInputShape(IDX_INPUT_X1)->GetStorageShape().GetDim(1U);
+        uint64_t x2N = context_->GetInputShape(IDX_INPUT_X2)->GetStorageShape().GetDim(0U);
+        uint64_t x2K = context_->GetInputShape(IDX_INPUT_X2)->GetStorageShape().GetDim(1U);
 
         if (x1ScaleM != x1M || x1ScaleK != x1K / MX_SCALE_ALIGN || x1ScaleLast != SCALE_LAST_DIM) {
             OP_LOGE_FOR_INVALID_SHAPE(
@@ -423,7 +491,7 @@ protected:
                 ("[m=" + std::to_string(x1M) + ",k=" + std::to_string(x1K / MX_SCALE_ALIGN) + ",last=" +
                  std::to_string(SCALE_LAST_DIM) + "]")
                     .c_str());
-            return ge::GRAPH_FAILED;
+            return false;
         }
         if (x2ScaleN != x2N || x2ScaleK != x2K / MX_SCALE_ALIGN || x2ScaleLast != SCALE_LAST_DIM) {
             OP_LOGE_FOR_INVALID_SHAPE(
@@ -434,10 +502,9 @@ protected:
                 ("[n=" + std::to_string(x2N) + ",k=" + std::to_string(x2K / MX_SCALE_ALIGN) + ",last=" +
                  std::to_string(SCALE_LAST_DIM) + "]")
                     .c_str());
-            return ge::GRAPH_FAILED;
+            return false;
         }
-
-        return ge::GRAPH_SUCCESS;
+        return true;
     }
 
     ge::graphStatus CheckOpInputInfo()
