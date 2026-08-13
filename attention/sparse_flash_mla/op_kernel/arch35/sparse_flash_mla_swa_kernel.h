@@ -27,6 +27,9 @@
 #else
 #include "../common/matmul.h"
 #endif
+#if __has_include("common/buffers_policy_3buff_sfa.h")
+#include "common/buffers_policy_3buff_sfa.h"
+#endif
 #if __has_include("../../common/op_kernel/FixpipeOut.h")
 #include "../../common/op_kernel/FixpipeOut.h"
 #else
@@ -116,7 +119,6 @@ private:
     // mm2左矩阵P
     BufferManager<BufferType::L1> l1BufferManager;
     BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1RightBuffers;
     /* GM信息 */
     GlobalTensor<uint32_t> metadataGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
@@ -191,7 +193,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
     } else {
         vecBlock.InitS2SplitStaging(fdStagingBuffer.Get());
     }
-    cubeBlock.InitCubeBlock(pipe, l1BufferManager, query);
+    cubeBlock.InitCubeBlock(pipe, query);
     this->ComputeConstexpr();
     this->InitGlobalBuffer(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable,
                            cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, seqUsedOriKv, seqUsedCmpKv,
@@ -344,8 +346,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
     uint32_t mm1ResultSize = constInfo.s1BaseSize / CV_RATIO * constInfo.s2BaseSize * sizeof(T);
     uint32_t mm2ResultSize = constInfo.s1BaseSize / CV_RATIO * 512 * sizeof(T);
     uint32_t mm2LeftSize = constInfo.s1BaseSize * constInfo.s2BaseSize * sizeof(Q_T);
-    uint32_t mm1RightSize = constInfo.s2BaseSize * 512 * sizeof(Q_T);
-    l1BufferManager.Init(pipe, 416 * 1024); // L1P+L1Right总计416k, 其余96k给L1Q使用
+    l1BufferManager.Init(pipe, mm2LeftSize * 2);
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
     l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
@@ -353,7 +354,6 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
     l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
     if ASCEND_IS_AIC {
-        l1RightBuffers.Init(l1BufferManager, mm1RightSize);
         l1PBuffers.Get().SetCrossCore();
         l1PBuffers.Get().SetCrossCore();
     }
@@ -576,8 +576,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
                     RunInfo &runInfo1 = runInfo[taskId % 3];
                     this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
                     if ASCEND_IS_AIC {
-                        this->cubeBlock.IterateLoadQK(this->l1RightBuffers.Get(runInfo1.taskIdMod3),
-                                                      runInfo1, this->constInfo, isFirstLoop);
+                        this->cubeBlock.IterateLoadQK(runInfo1, this->constInfo, isFirstLoop);
                         isFirstLoop = false;
                     }
                 }
@@ -589,7 +588,6 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
                     } else {
                         RunInfo &runInfoNext = runInfo[taskId % 3];
                         this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(),
-                                                    this->l1RightBuffers.Get(runInfo2.taskIdMod3),
                                                     notLastTwoLoop, runInfoNext, runInfo2, this->constInfo);
                     }
                 }
@@ -599,7 +597,6 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Pro
                         this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
                     } else {
                         this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers,
-                                                    this->l1RightBuffers.Get(runInfo3.taskIdMod3),
                                                     runInfo3, this->constInfo);
                     }
                 }
