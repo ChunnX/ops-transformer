@@ -10,14 +10,13 @@
 
 /*!
  * \file test_aclnn_fused_gdn_gating.cpp
- * \brief Standalone aclnn example for FusedGdnGating on 910B (BF16_FLOAT) and 310P (FP16).
+ * \brief Standalone aclnn example for FusedGdnGating (FP16 inputs, FP32 g output, FP16 betaOutput).
  */
 
 #include <iostream>
 #include <vector>
 #include <cstdint>
 #include <cstring>
-#include <cmath>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_fused_gdn_gating.h"
 
@@ -41,7 +40,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   return shapeSize;
 }
 
-void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
+void PrintOutResult(std::vector<int64_t>& shape, void** deviceAddr) {
   auto size = GetShapeSize(shape);
   std::vector<float> resultData(size, 0);
   auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
@@ -52,7 +51,7 @@ void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
   }
 }
 
-void PrintOutHalfResult(std::vector<int64_t> &shape, void** deviceAddr) {
+void PrintOutHalfResult(std::vector<int64_t>& shape, void** deviceAddr) {
   auto size = GetShapeSize(shape);
   std::vector<uint16_t> resultData(size, 0);
   auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
@@ -101,35 +100,14 @@ uint16_t FloatToHalf(float f) {
   return sign | (exp << 10) | (mantissa >> 13);
 }
 
-int DoFusedGdnGating(aclrtStream stream, aclTensor* aLog, aclTensor* a, aclTensor* b,
-                     aclTensor* dtBias, float beta, float threshold,
-                     aclTensor* g, aclTensor* betaOutput) {
-  uint64_t workspaceSize = 0;
-  aclOpExecutor* executor;
-  auto ret = aclnnFusedGdnGatingGetWorkspaceSize(aLog, a, b, dtBias, beta, threshold,
-                                                  g, betaOutput, &workspaceSize, &executor);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedGdnGatingGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+int main() {
+  // 1. Init device and stream
+  int32_t deviceId = 0;
+  aclrtStream stream;
+  auto ret = Init(deviceId, &stream);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-  void* workspaceAddr = nullptr;
-  if (workspaceSize > 0) {
-    ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
-  }
-
-  ret = aclnnFusedGdnGating(workspaceAddr, workspaceSize, executor, stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedGdnGating failed. ERROR: %d\n", ret); return ret);
-
-  ret = aclrtSynchronizeStream(stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-
-  if (workspaceSize > 0) {
-    aclrtFree(workspaceAddr);
-  }
-  return 0;
-}
-
-int test_910b_bf16_float(aclrtStream stream) {
-  LOG_PRINT("=== Running 910B BF16_FLOAT test ===\n");
+  // 2. Construct input and output tensors
   int64_t batch = 4;
   int64_t numHeads = 8;
 
@@ -154,84 +132,14 @@ int test_910b_bf16_float(aclrtStream stream) {
   aclTensor* g = nullptr;
   aclTensor* betaOutput = nullptr;
 
-  std::vector<float> aLogHostData(numHeads, 0.5);
-  std::vector<uint16_t> aHostData(batch * numHeads, 0);
-  std::vector<uint16_t> bHostData(batch * numHeads, 0);
-  std::vector<float> dtBiasHostData(numHeads, 0.1);
+  std::vector<uint16_t> aLogHostData(numHeads, FloatToHalf(0.5f));
+  std::vector<uint16_t> aHostData(batch * numHeads, FloatToHalf(0.3f));
+  std::vector<uint16_t> bHostData(batch * numHeads, FloatToHalf(0.2f));
+  std::vector<uint16_t> dtBiasHostData(numHeads, FloatToHalf(0.1f));
   std::vector<float> gHostData(batch * numHeads, 0);
   std::vector<uint16_t> betaOutputHostData(batch * numHeads, 0);
 
-  auto ret = CreateAclTensor(aLogHostData, aLogShape, &aLogDeviceAddr, aclDataType::ACL_FLOAT, &aLog);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(aHostData, aShape, &aDeviceAddr, aclDataType::ACL_BF16, &a);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(bHostData, bShape, &bDeviceAddr, aclDataType::ACL_BF16, &b);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(dtBiasHostData, dtBiasShape, &dtBiasDeviceAddr, aclDataType::ACL_FLOAT, &dtBias);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(gHostData, gShape, &gDeviceAddr, aclDataType::ACL_FLOAT, &g);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(betaOutputHostData, betaOutputShape, &betaOutputDeviceAddr, aclDataType::ACL_BF16, &betaOutput);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-  ret = DoFusedGdnGating(stream, aLog, a, b, dtBias, 1.0f, 20.0f, g, betaOutput);
-  if (ret != 0) {
-    LOG_PRINT("910B BF16_FLOAT test failed, SOC may not be 910B.\n");
-  } else {
-    LOG_PRINT("g output:\n");
-    PrintOutResult(gShape, &gDeviceAddr);
-    LOG_PRINT("910B BF16_FLOAT test passed.\n");
-  }
-
-  aclDestroyTensor(aLog);
-  aclDestroyTensor(a);
-  aclDestroyTensor(b);
-  aclDestroyTensor(dtBias);
-  aclDestroyTensor(g);
-  aclDestroyTensor(betaOutput);
-  aclrtFree(aLogDeviceAddr);
-  aclrtFree(aDeviceAddr);
-  aclrtFree(bDeviceAddr);
-  aclrtFree(dtBiasDeviceAddr);
-  aclrtFree(gDeviceAddr);
-  aclrtFree(betaOutputDeviceAddr);
-  return ret;
-}
-
-int test_310p_fp16(aclrtStream stream) {
-  LOG_PRINT("=== Running 310P FP16 test ===\n");
-  int64_t batch = 4;
-  int64_t numHeads = 8;
-
-  std::vector<int64_t> aLogShape = {numHeads};
-  std::vector<int64_t> aShape = {batch, numHeads};
-  std::vector<int64_t> bShape = {batch, numHeads};
-  std::vector<int64_t> dtBiasShape = {numHeads};
-  std::vector<int64_t> gShape = {1, batch, numHeads};
-  std::vector<int64_t> betaOutputShape = {1, batch, numHeads};
-
-  void* aLogDeviceAddr = nullptr;
-  void* aDeviceAddr = nullptr;
-  void* bDeviceAddr = nullptr;
-  void* dtBiasDeviceAddr = nullptr;
-  void* gDeviceAddr = nullptr;
-  void* betaOutputDeviceAddr = nullptr;
-
-  aclTensor* aLog = nullptr;
-  aclTensor* a = nullptr;
-  aclTensor* b = nullptr;
-  aclTensor* dtBias = nullptr;
-  aclTensor* g = nullptr;
-  aclTensor* betaOutput = nullptr;
-
-  std::vector<uint16_t> aLogHostData(numHeads, FloatToHalf(0.5));
-  std::vector<uint16_t> aHostData(batch * numHeads, FloatToHalf(0.3));
-  std::vector<uint16_t> bHostData(batch * numHeads, FloatToHalf(0.2));
-  std::vector<uint16_t> dtBiasHostData(numHeads, FloatToHalf(0.1));
-  std::vector<float> gHostData(batch * numHeads, 0);
-  std::vector<uint16_t> betaOutputHostData(batch * numHeads, 0);
-
-  auto ret = CreateAclTensor(aLogHostData, aLogShape, &aLogDeviceAddr, aclDataType::ACL_FLOAT16, &aLog);
+  ret = CreateAclTensor(aLogHostData, aLogShape, &aLogDeviceAddr, aclDataType::ACL_FLOAT16, &aLog);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(aHostData, aShape, &aDeviceAddr, aclDataType::ACL_FLOAT16, &a);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -244,55 +152,55 @@ int test_310p_fp16(aclrtStream stream) {
   ret = CreateAclTensor(betaOutputHostData, betaOutputShape, &betaOutputDeviceAddr, aclDataType::ACL_FLOAT16, &betaOutput);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-  ret = DoFusedGdnGating(stream, aLog, a, b, dtBias, 1.0f, 20.0f, g, betaOutput);
-  if (ret != 0) {
-    LOG_PRINT("310P FP16 test failed.\n");
-  } else {
-    LOG_PRINT("g output:\n");
-    PrintOutResult(gShape, &gDeviceAddr);
-    LOG_PRINT("betaOutput output:\n");
-    PrintOutHalfResult(betaOutputShape, &betaOutputDeviceAddr);
-    LOG_PRINT("310P FP16 test passed.\n");
+  // 3. Call aclnnFusedGdnGatingGetWorkspaceSize
+  uint64_t workspaceSize = 0;
+  aclOpExecutor* executor;
+  ret = aclnnFusedGdnGatingGetWorkspaceSize(aLog, a, b, dtBias, 1.0f, 20.0f,
+                                            g, betaOutput, &workspaceSize, &executor);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedGdnGatingGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+
+  // 4. Allocate workspace
+  void* workspaceAddr = nullptr;
+  if (workspaceSize > 0) {
+    ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
   }
 
+  // 5. Call aclnnFusedGdnGating
+  ret = aclnnFusedGdnGating(workspaceAddr, workspaceSize, executor, stream);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedGdnGating failed. ERROR: %d\n", ret); return ret);
+
+  // 6. Synchronize stream
+  ret = aclrtSynchronizeStream(stream);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+
+  // 7. Print results
+  LOG_PRINT("g output:\n");
+  PrintOutResult(gShape, &gDeviceAddr);
+  LOG_PRINT("betaOutput output:\n");
+  PrintOutHalfResult(betaOutputShape, &betaOutputDeviceAddr);
+
+  // 8. Destroy tensors
   aclDestroyTensor(aLog);
   aclDestroyTensor(a);
   aclDestroyTensor(b);
   aclDestroyTensor(dtBias);
   aclDestroyTensor(g);
   aclDestroyTensor(betaOutput);
+
+  // 9. Free device memory and cleanup
   aclrtFree(aLogDeviceAddr);
   aclrtFree(aDeviceAddr);
   aclrtFree(bDeviceAddr);
   aclrtFree(dtBiasDeviceAddr);
   aclrtFree(gDeviceAddr);
   aclrtFree(betaOutputDeviceAddr);
-  return ret;
-}
-
-int main() {
-  int32_t deviceId = 0;
-  aclrtStream stream;
-  auto ret = Init(deviceId, &stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
-
-  const char *socEnv = getenv("ASCEND_SOC_UNITS");
-  if (socEnv != nullptr && strstr(socEnv, "310p") != nullptr) {
-    LOG_PRINT("SOC=%s, running 310P FP16 test.\n", socEnv);
-    test_310p_fp16(stream);
-  } else if (socEnv != nullptr && strstr(socEnv, "910b") != nullptr) {
-    LOG_PRINT("SOC=%s, running 910B BF16_FLOAT test.\n", socEnv);
-    test_910b_bf16_float(stream);
-  } else {
-    ret = test_910b_bf16_float(stream);
-    if (ret != 0) {
-      LOG_PRINT("910B test failed or not supported, falling back to 310P FP16 test.\n");
-      test_310p_fp16(stream);
-    }
+  if (workspaceSize > 0) {
+    aclrtFree(workspaceAddr);
   }
-
   aclrtDestroyStream(stream);
   aclrtResetDevice(deviceId);
   aclFinalize();
+
   return 0;
 }
