@@ -181,10 +181,31 @@
     <td>-</td>
   </tr>
   <tr>
+    <td>grad_enabled</td>
+    <td>可选属性</td>
+    <td>是否导出softmax_score/kv中间结果（供反向CompressorGrad使用）。true时导出，false时不导出。默认值为false。</td>
+    <td>BOOL</td>
+    <td>-</td>
+  </tr>
+  <tr>
     <td>cmp_kv</td>
     <td>输出</td>
     <td>表示压缩后的数据。</td>
     <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>softmax_score</td>
+    <td>输出</td>
+    <td>压缩块的softmax权重中间结果。仅在grad_enabled为true时输出有效。</td>
+    <td>FLOAT</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>kv</td>
+    <td>输出</td>
+    <td>softmax权重与kv_state的Hadamard乘积中间结果。仅在grad_enabled为true时输出有效。</td>
+    <td>FLOAT</td>
     <td>ND</td>
   </tr>
 </tbody>
