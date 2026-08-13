@@ -374,27 +374,6 @@ public:
         CopyQuerySlice(dstTensor, 0, constInfo.dSize, runInfo);
     }
 
-    // copy query scale with full s1g
-    __aicore__ inline void CopyQueryScaleSlice(const LocalTensor<SCALE_T> &dstTensor, uint32_t dOffset,
-                                               uint32_t dRealSize, RunInfoX &runInfo)
-    {
-        uint32_t dstStride = (runInfo.actMSize + 31) >> 5 << 5;
-        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
-
-        GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                        .n2Idx = runInfo.realN2Idx,
-                        .gS1Idx = runInfo.gS1Idx,
-                        .dIdx = dOffset,
-                        .gS1DealSize = runInfo.actMSize,
-                        .dDealSize = dRealSize};
-        copyQueryScaleGmToL1(l1Tensor, queryScaleGm, gmCoord);
-    }
-
-    __aicore__ inline void CopyQueryScaleTile(const LocalTensor<SCALE_T> &dstTensor, RunInfoX &runInfo)
-    {
-        CopyQueryScaleSlice(dstTensor, 0, constInfo.dSize / MXFP_GROUP_SIZE, runInfo);
-    }
-
     // copy key with full s2
     __aicore__ inline void CopyKeySlice(const LocalTensor<KV_T> &dstTensor, uint32_t s2Offset, uint32_t s2RealSize,
                                         uint32_t dOffset, uint32_t dRealSize, RunInfoX &runInfo)
@@ -439,31 +418,6 @@ public:
         CopyKeySlice(dstTensor, s2Offset, s2RealSize, 0, constInfo.dSize, runInfo);
     }
 
-    // copy key scale with full s2
-    __aicore__ inline void CopyKeyScaleSlice(const LocalTensor<SCALE_T> &dstTensor, uint32_t s2Offset,
-                                             uint32_t s2RealSize, uint32_t dOffset, uint32_t dRealSize,
-                                             RunInfoX &runInfo)
-    {
-        uint32_t dstStride = (s2RealSize + 31) >> 5 << 5;
-        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
-
-        GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
-                          .n2Idx = runInfo.n2Idx,
-                          .s2Idx = s2Offset,
-                          .dIdx = dOffset,
-                          .s2DealSize = s2RealSize,
-                          .dDealSize = dRealSize};
-        copyKeyScaleGmToL1(l1Tensor, keyScaleGm, gmCoord);
-    }
-
-    // 全量拷贝
-    __aicore__ inline void CopyKeyScaleTile(const LocalTensor<SCALE_T> &dstTensor, RunInfoX &runInfo,
-                                            uint32_t s2RealSize)
-    {
-        uint32_t s2Offset = runInfo.s2Idx;
-        CopyKeyScaleSlice(dstTensor, s2Offset, s2RealSize, 0, constInfo.dSize / MXFP_GROUP_SIZE, runInfo);
-    }
-
     // copy key with full s2
     __aicore__ inline void CopyValueSlice(const LocalTensor<KV_T> &dstTensor, uint32_t s2Offset, uint32_t s2RealSize,
                                           uint32_t dOffset, uint32_t dRealSize, RunInfoX &runInfo)
@@ -478,33 +432,6 @@ public:
                           .s2DealSize = s2RealSize,
                           .dDealSize = dRealSize};
         copyKvGmToL1(l1Tensor, valueGm, gmCoord);
-    }
-
-    __aicore__ inline void CopyValueTile(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo)
-    {
-        CopyValueSlice(dstTensor, runInfo.s2Idx, runInfo.actSingleLoopS2Size, 0, constInfo.dSizeV, runInfo);
-    }
-
-    // copy key with full s2
-    __aicore__ inline void CopyValueScaleSlice(const LocalTensor<SCALE_T> &dstTensor, uint32_t s2Offset,
-                                               uint32_t s2RealSize, uint32_t dOffset, uint32_t dRealSize,
-                                               RunInfoX &runInfo)
-    {
-        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = s2RealSize};
-
-        GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
-                          .n2Idx = runInfo.n2Idx,
-                          .s2Idx = s2Offset,
-                          .dIdx = dOffset,
-                          .s2DealSize = s2RealSize,
-                          .dDealSize = dRealSize};
-        copyValueScaleGmToL1(l1Tensor, valueScaleGm, gmCoord);
-    }
-
-    __aicore__ inline void CopyValueScaleTile(const LocalTensor<SCALE_T> &dstTensor, RunInfoX &runInfo)
-    {
-        CopyValueScaleSlice(dstTensor, runInfo.s2Idx, runInfo.actSingleLoopS2Size / MXFP_DIVISOR_SIZE, 0,
-                            constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
     }
 
     __aicore__ inline void UpdateKey(uint32_t bIdx)
