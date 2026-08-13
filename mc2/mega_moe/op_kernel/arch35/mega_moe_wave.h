@@ -813,54 +813,54 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
         // 的批次，不是跨阶段流水边界。
         uint32_t waveBeginExpert = dispatchWaveCursor.expertIdx;
         while (waveBeginExpert < moeExpertPerRank_) {
-        uint32_t waveEndExpert = waveBeginExpert;
-        uint32_t plannedDispatchRowCount = 0U;
-        while (waveEndExpert < moeExpertPerRank_) {
-            uint32_t expertIdx = waveEndExpert;
-            if (!dispatchHasPreparedExpert_ || dispatchPreparedExpertIdx_ != expertIdx) {
-                PrepareMoeExpertDispatchStage<ActivationType, false, TopkWeightsPrefetch>(
-                    tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx, dispatchExpertRowCount);
-                dispatchPreparedExpertIdx_ = expertIdx;
-                dispatchHasPreparedExpert_ = true;
-            }
-            if (dispatchExpertRowCount == 0U) {
+            uint32_t waveEndExpert = waveBeginExpert;
+            uint32_t plannedDispatchRowCount = 0U;
+            while (waveEndExpert < moeExpertPerRank_) {
+                uint32_t expertIdx = waveEndExpert;
+                if (!dispatchHasPreparedExpert_ || dispatchPreparedExpertIdx_ != expertIdx) {
+                    PrepareMoeExpertDispatchStage<ActivationType, false, TopkWeightsPrefetch>(
+                        tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx, dispatchExpertRowCount);
+                    dispatchPreparedExpertIdx_ = expertIdx;
+                    dispatchHasPreparedExpert_ = true;
+                }
+                if (dispatchExpertRowCount == 0U) {
+                    dispatchHasPreparedExpert_ = false;
+                    ++waveEndExpert;
+                    continue;
+                }
+
+                uint64_t expertGlobalRowBegin = expertIdx == 0U ? 0U :
+                    static_cast<uint64_t>(tokenDispatchScratch_.cumsumInfoTensor.GetValue(
+                        expertIdx * tokenDispatchConfig_.common.worldSize - 1U));
+                uint64_t dispatchRowCount = 0U;
+                if (expertGlobalRowBegin < tokenDispatchConfig_.maxOutputSize) {
+                    uint64_t remainingWorkspaceRowCount =
+                        tokenDispatchConfig_.maxOutputSize - expertGlobalRowBegin;
+                    dispatchRowCount = dispatchExpertRowCount < remainingWorkspaceRowCount ?
+                        dispatchExpertRowCount : remainingWorkspaceRowCount;
+                }
+                if (dispatchRowCount == 0U) {
+                    dispatchHasPreparedExpert_ = false;
+                    ++waveEndExpert;
+                    continue;
+                }
+
+                // Dispatch wave 按实际行数合并小专家，不把每个专家的尾块强制放大为
+                // 一个 GMM MGroup。若下一个专家放不进当前 wave，只保留 count，
+                // 下一轮内部 Dispatch wave 复用该 count。
+                if (plannedDispatchRowCount != 0U &&
+                    plannedDispatchRowCount + dispatchRowCount > dispatchWaveRowBudget_) {
+                    break;
+                }
+                plannedDispatchRowCount += static_cast<uint32_t>(dispatchRowCount);
                 dispatchHasPreparedExpert_ = false;
                 ++waveEndExpert;
-                continue;
-            }
 
-            uint64_t expertGlobalRowBegin = expertIdx == 0U ? 0U :
-                static_cast<uint64_t>(tokenDispatchScratch_.cumsumInfoTensor.GetValue(
-                    expertIdx * tokenDispatchConfig_.common.worldSize - 1U));
-            uint64_t dispatchRowCount = 0U;
-            if (expertGlobalRowBegin < tokenDispatchConfig_.maxOutputSize) {
-                uint64_t remainingWorkspaceRowCount =
-                    tokenDispatchConfig_.maxOutputSize - expertGlobalRowBegin;
-                dispatchRowCount = dispatchExpertRowCount < remainingWorkspaceRowCount ?
-                    dispatchExpertRowCount : remainingWorkspaceRowCount;
+                // 热点大专家允许独占一个 Dispatch wave，不按 GMM 的 256-row 边界重复进入。
+                if (plannedDispatchRowCount >= dispatchWaveRowBudget_) {
+                    break;
+                }
             }
-            if (dispatchRowCount == 0U) {
-                dispatchHasPreparedExpert_ = false;
-                ++waveEndExpert;
-                continue;
-            }
-
-            // Dispatch wave 按实际行数合并小专家，不把每个专家的尾块强制放大为
-            // 一个 GMM MGroup。若下一个专家放不进当前 wave，只保留 count，
-            // 下一轮内部 Dispatch wave 复用该 count。
-            if (plannedDispatchRowCount != 0U &&
-                plannedDispatchRowCount + dispatchRowCount > dispatchWaveRowBudget_) {
-                break;
-            }
-            plannedDispatchRowCount += static_cast<uint32_t>(dispatchRowCount);
-            dispatchHasPreparedExpert_ = false;
-            ++waveEndExpert;
-
-            // 热点大专家允许独占一个 Dispatch wave，不按 GMM 的 256-row 边界重复进入。
-            if (plannedDispatchRowCount >= dispatchWaveRowBudget_) {
-                break;
-            }
-        }
 
             if (plannedDispatchRowCount != 0U) {
                 DispatchExpertWaveTokens<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
