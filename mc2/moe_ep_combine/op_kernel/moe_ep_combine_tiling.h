@@ -28,6 +28,7 @@ struct MoeEpCommonTilingData {
     uint32_t scalesBytes;
     uint32_t perSlotBytes;
     uint32_t expertAlignment;
+    uint32_t actualA;
 };
 
 struct MoeEpCombineInfo {
