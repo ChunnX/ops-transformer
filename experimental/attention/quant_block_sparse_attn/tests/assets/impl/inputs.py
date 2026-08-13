@@ -461,12 +461,13 @@ def _mxfp8_customize_inputs(
         )
     _inplace_copy(sparse_indices, data["sparse_indices"])
     _inplace_copy(sparse_seq_len, data["sparse_seq_len"])
-    _inplace_copy(
-        atten_mask,
-        torch.tril(
-            torch.ones(tuple(atten_mask.shape), dtype=torch.uint8)
-        ).T.contiguous(),
-    )
+    if atten_mask is not None and _numel(atten_mask) > 0:
+        _inplace_copy(
+            atten_mask,
+            torch.tril(
+                torch.ones(tuple(atten_mask.shape), dtype=torch.uint8)
+            ).T.contiguous(),
+        )
 
     cache = getattr(module, "_TTK_MXFP8_CACHE", {})
     cache[testcase_name or "__default__"] = {"case": case, "data": data}
