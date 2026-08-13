@@ -271,6 +271,35 @@ TestCases = {
     #               "mask_mode": [4],
     #               "win_left": [0, 63, 64, 90, 128],
     #               "win_right": [0, 15, 64]}, # 14条，其中0 0为无效用例
+    # mask_mode=4 + win_right=-1(右窗无限) + PA_NZ, 覆盖 s1>s2 / s1<s2 混合batch
+    # (golden 曾在此场景多mask, 见 generate_cpu_mask 中 -1 哨兵的 s1/s2 修正)
+    'Prefill_FP16_FP16_FP16_Unquant_L1_fuzz_4_26_1_256_256_128_128_BNSD_PA_LSE_Mask_000050': {
+        'B': [4],
+        'N1': [26],
+        'N2': [1],
+        'S1': [256],
+        'S2': [256],
+        'D': [128],
+        'layout_q': ['BNSD'],
+        'layout_kv': ['PA_NZ'],
+        'layout_out': ['BNSD'],
+        'Dtype': ['fp16'],
+        'mask_mode': [4],
+        'win_left': [71],
+        'win_right': [-1],
+        'q_range': [(-1000.0, 1000.0)],
+        'k_range': [(-1000.0, -10.0)],
+        'v_range': [(-1000.0, -10.0)],
+        'scale': [0.08838834764831843],
+        'return_softmax_lse': [True],
+        'max_seqlen_q': [-1],
+        'max_seqlen_kv': [256],
+        'seqused_q': [[256, 128, 125, 119]],
+        'seqused_kv': [[47, 47, 47, 256]],
+        'cu_seqlens_q': [[None]],
+        'cu_seqlens_kv': [[None]],
+        'enable_learnable_sink': [False],
+    },
 
     # Base cases
     'TND_MIXED_SEQUSED_01': {
