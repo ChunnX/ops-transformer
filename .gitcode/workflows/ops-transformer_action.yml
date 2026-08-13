@@ -24,7 +24,7 @@ env:
   MERGE_ID: ${{ atomgit.event.pull_request.number }}
   TARGET_BRANCH: ${{ atomgit.base_ref }}
   SOURCE_BRANCH: ${{ atomgit.head_ref }}
-  obs_path: "${{ vars.OBS_PATH }}/${{ env.MERGE_ID }}"
+  obs_path: "${{ env.org_name }}/${{ env.repo_name }}/ci/package/${{ env.MERGE_ID }}"
   obs_smoke_path: "${{ env.obs_path }}/presmoke/2" 
   online: ${{ vars.APPLY_LABEL }}
 
