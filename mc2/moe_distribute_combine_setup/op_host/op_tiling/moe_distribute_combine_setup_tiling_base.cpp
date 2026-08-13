@@ -74,7 +74,8 @@ constexpr int64_t ALIGN_512 = 512UL;
 constexpr uint32_t AICPUNUM = 4U;
 
 constexpr size_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
-// 状态 flag 源已从 win 控制区迁到 workspace，每个 aiv 独占一块，避免跨核共享 cacheline
+// 状态 flag 源已从 win 控制区迁到 workspace，每个 aiv 独占一块，避免跨核共享 cacheline。
+// 须与 kernel 侧 MoeDistributeCombineSetup::STATE_SIZE_PER_CORE 保持一致，否则末核越界
 constexpr size_t STATUS_FLAG_SIZE_PER_CORE = 512U;
 constexpr int64_t COMM_CMD_INFO_SIZE = 16;
 constexpr uint64_t MIN_AVAILABLE_BUFF_SIZE = 2;

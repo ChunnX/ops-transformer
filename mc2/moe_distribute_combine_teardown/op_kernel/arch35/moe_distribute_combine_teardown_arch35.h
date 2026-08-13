@@ -52,7 +52,7 @@ class MoeDistributeCombineTeardown {
     constexpr static uint64_t STATE_OFFSET = 512U;        // 状态空间偏移地址
     constexpr static uint32_t STATE_SIZE = 1024U * 1024;  // 1M
     constexpr static uint32_t UB_ALIGN = 32U;             // UB按32字节对齐
-    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U; // 每 aiv 控制块大小（D_S/C_S/flag）
+    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U; // 每 aiv 控制块大小（D_S/C_S）
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
 
 public:

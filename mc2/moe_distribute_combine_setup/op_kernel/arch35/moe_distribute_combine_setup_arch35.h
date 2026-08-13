@@ -53,7 +53,9 @@ class MoeDistributeCombineSetup {
     constexpr static uint64_t STATE_OFFSET = 512U;        // 状态空间偏移地址
     constexpr static uint32_t STATE_SIZE = 1024U * 1024U; // 1M
     constexpr static uint32_t UB_ALIGN = 32U;             // UB按32字节对齐
-    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;   // 每 aiv 控制块大小（D_S/C_S/flag）
+    // 每 aiv 控制块大小（win 上的 D_S/C_S），同时用作 workspace 上 flag 源的每核步长，
+    // 须与 tiling 侧 STATUS_FLAG_SIZE_PER_CORE 保持一致
+    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
     constexpr static uint64_t COMM_CMD_INFO_BYTES = 64U;    // commCmdInfoOut 每个 (a+rank) 条目 16 * int32
 
