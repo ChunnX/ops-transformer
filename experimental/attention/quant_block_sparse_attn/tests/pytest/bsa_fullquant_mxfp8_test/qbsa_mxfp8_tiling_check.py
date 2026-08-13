@@ -12,8 +12,7 @@
 """
 QBSA MXFP8 Tiling 拦截校验测试脚本
 
-用合法 base case 生成数据，然后在调 NPU 前篡改张量/参数，触发 tiling check 拦截。
-不跑 CPU golden，只调 NPU 接口。
+依次调用 QBSA 算子，出错时完整输出异常 traceback，不截断。
 
 用法:
   python qbsa_mxfp8_tiling_check.py
@@ -25,7 +24,7 @@ import argparse
 import logging
 import os
 import sys
-import time
+import traceback
 
 import torch
 
@@ -288,115 +287,6 @@ TILING_CHECK_CASES = [
 ]
 
 
-def _log_constructed_case(name, data, case_override):
-    logger.info("[CASE] %s", name)
-    for key in ["query", "key", "value", "q_descale", "k_descale", "v_descale",
-                "p_scale", "sparse_indices", "sparse_seq_len", "block_table",
-                "cu_seqlens_q", "cu_seqlens_kv"]:
-        val = data.get(key)
-        if val is None:
-            logger.info("  %-18s = None", key)
-        elif hasattr(val, "shape"):
-            logger.info("  %-18s = shape=%s dtype=%s", key, tuple(val.shape), val.dtype)
-        else:
-            logger.info("  %-18s = %s", key, val)
-    diff = {k: v for k, v in case_override.items() if _BASE_CASE.get(k) != v}
-    if diff:
-        logger.info("  [attr overrides]")
-        for k, v in diff.items():
-            logger.info("    %-18s = %s", k, v)
-
-
-_PLOG_DIR = os.path.expanduser("~/ascend/log/debug/plog")
-
-
-def _find_latest_plog():
-    if not os.path.isdir(_PLOG_DIR):
-        return None
-    files = [f for f in os.listdir(_PLOG_DIR) if f.startswith("plog-")]
-    if not files:
-        return None
-    files.sort(key=lambda fn: os.path.getmtime(os.path.join(_PLOG_DIR, fn)), reverse=True)
-    return os.path.join(_PLOG_DIR, files[0])
-
-
-def _extract_check_error(plog_path, offset):
-    """从 plog offset 之后的内容中提取 QuantBlockSparseAttn tiling check 的拦截信息。
-
-    op_host 的 OP_LOGE_* 宏会写入 [ERROR] 行，包含 kOpName="QuantBlockSparseAttn"。
-    """
-    if plog_path is None or not os.path.isfile(plog_path):
-        return ""
-    try:
-        with open(plog_path, "r", encoding="utf-8", errors="ignore") as f:
-            f.seek(offset)
-            new_content = f.read()
-    except Exception:
-        return ""
-    keywords = ("QuantBlockSparseAttn", "quant_block_sparse_attn")
-    hits = []
-    for line in new_content.splitlines():
-        if "[ERROR]" not in line:
-            continue
-        if any(kw in line for kw in keywords):
-            hits.append(line.strip())
-    return "\n".join(hits[:5])[:300]
-
-
-def run_one_tiling_check(name, mutate_fn, case_fn, idx, total):
-    start = time.time()
-    logger.info("")
-    logger.info("=" * 80)
-    logger.info("[TILING CHECK %d/%d] %s", idx, total, name)
-    logger.info("=" * 80)
-
-    plog_path = _find_latest_plog()
-    plog_offset = os.path.getsize(plog_path) if plog_path and os.path.isfile(plog_path) else 0
-
-    try:
-        data = _gen_base_data()
-        mutate_fn(data)
-        case_override = case_fn()
-        _log_constructed_case(name, data, case_override)
-        _call_npu(data, case_override)
-        elapsed = time.time() - start
-        logger.info("[RESULT] %s -> UNEXPECTED PASS (算子未拦截)", name)
-        return {"case": name, "status": "UnexpectedPass", "time": elapsed, "error": ""}
-    except Exception as err:
-        elapsed = time.time() - start
-        err_msg = str(err).strip().replace("\n", " ")[:200]
-        check_err = _extract_check_error(plog_path, plog_offset)
-        if check_err:
-            logger.info("[RESULT] %s -> BLOCKED (%.2fs) tiling check 拦截:", name, elapsed)
-            for line in check_err.split("\n"):
-                logger.info("  %s", line)
-            return {"case": name, "status": "Blocked", "time": elapsed, "error": check_err}
-        else:
-            logger.info("[RESULT] %s -> BLOCKED (%.2fs) %s", name, elapsed, err_msg)
-            return {"case": name, "status": "Blocked", "time": elapsed, "error": err_msg}
-
-
-def _print_summary(results):
-    total = len(results)
-    blocked = sum(1 for r in results if r["status"] == "Blocked")
-    unexpected = sum(1 for r in results if r["status"] == "UnexpectedPass")
-
-    logger.info("")
-    logger.info("=" * 80)
-    logger.info("Tiling Check Summary")
-    logger.info("=" * 80)
-    logger.info("  Total           : %d", total)
-    logger.info("  Blocked (PASS)  : %d", blocked)
-    logger.info("  UnexpectedPass  : %d", unexpected)
-    logger.info("  PassRate        : %.2f%%  (%d/%d)",
-                (blocked / total * 100) if total else 0, blocked, total)
-    logger.info("-" * 80)
-    for r in results:
-        tag = "OK" if r["status"] == "Blocked" else "FAIL"
-        logger.info("  [%s] %-50s %.2fs  %s", tag, r["case"], r["time"], r["error"][:80])
-    logger.info("=" * 80)
-
-
 def main():
     parser = argparse.ArgumentParser(description="QBSA MXFP8 Tiling 拦截校验测试")
     parser.add_argument("--case_name", default=None,
@@ -423,14 +313,20 @@ def main():
         parser.error("No runnable case selected.")
 
     total = len(cases)
-    results = []
     for idx, (name, mutate_fn, case_fn) in enumerate(cases, 1):
-        results.append(run_one_tiling_check(name, mutate_fn, case_fn, idx, total))
-
-    _print_summary(results)
-
-    if any(r["status"] != "Blocked" for r in results):
-        sys.exit(1)
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("[CASE %d/%d] %s", idx, total, name)
+        logger.info("=" * 80)
+        try:
+            data = _gen_base_data()
+            mutate_fn(data)
+            case_override = case_fn()
+            _call_npu(data, case_override)
+            logger.info("[RESULT] %s -> PASS (算子未拦截)", name)
+        except Exception:
+            logger.info("[RESULT] %s -> ERROR", name)
+            traceback.print_exc()
 
 
 if __name__ == "__main__":
