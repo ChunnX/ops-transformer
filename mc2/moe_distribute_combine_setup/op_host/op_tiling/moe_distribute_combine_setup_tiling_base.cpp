@@ -74,6 +74,8 @@ constexpr int64_t ALIGN_512 = 512UL;
 constexpr uint32_t AICPUNUM = 4U;
 
 constexpr size_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
+// 状态 flag 源已从 win 控制区迁到 workspace，每个 aiv 独占一块，避免跨核共享 cacheline
+constexpr size_t STATUS_FLAG_SIZE_PER_CORE = 512U;
 constexpr int64_t COMM_CMD_INFO_SIZE = 16;
 constexpr uint64_t MIN_AVAILABLE_BUFF_SIZE = 2;
 constexpr int64_t HCCL_BUFFER_SIZE = 44;
@@ -774,8 +776,12 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::SetWorkspace()
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     size_t libApiWorkSpaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    workspace[0] = libApiWorkSpaceSize;
-    OP_LOGD(nodeName_, "workspace[0] size is %lu", workspace[0]);
+    // kernel 侧用 GetUserWorkspace 跳过系统区后，取每 aiv 一块存放本卡状态 flag 源
+    const size_t statusFlagSize =
+        static_cast<size_t>(tilingData_->moeDistributeCombineSetupInfo.aivNum) * STATUS_FLAG_SIZE_PER_CORE;
+    workspace[0] = libApiWorkSpaceSize + statusFlagSize;
+    OP_LOGD(nodeName_, "workspace[0] size is %lu, libApi %lu, statusFlag %lu", workspace[0], libApiWorkSpaceSize,
+            statusFlagSize);
     return ge::GRAPH_SUCCESS;
 }
 

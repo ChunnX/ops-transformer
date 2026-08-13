@@ -33,6 +33,8 @@ __global__ __aicore__ void moe_distribute_combine_setup(GM_ADDR context, GM_ADDR
                                                         GM_ADDR assistInfoForCombine, GM_ADDR quantExpandX,
                                                         GM_ADDR commCmdInfoOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    SetSysWorkspace(workspaceGM);
+    GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     REGISTER_TILING_DEFAULT(MoeDistributeCombineSetupTilingData);
     auto tiling = (__gm__ MoeDistributeCombineSetupTilingData *)tilingGM;
@@ -44,7 +46,7 @@ __global__ __aicore__ void moe_distribute_combine_setup(GM_ADDR context, GM_ADDR
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineSetupTilingData, tilingData, tilingGM);
         MoeDistributeCombineSetup<DTYPE_EXPAND_X, int32_t> op;
         op.Init(context, expandX, expertIds, assistInfoForCombine, quantExpandX,
-                commCmdInfoOut, workspaceGM, &pipe, &tilingData, mc2InitTiling, mc2CcTiling);
+                commCmdInfoOut, userWorkspace, &pipe, &tilingData, mc2InitTiling, mc2CcTiling);
         op.Process();
     }
 #endif

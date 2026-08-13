@@ -105,8 +105,8 @@ private:
 
     GM_ADDR quantExpandXGM_{nullptr};   // 仅用于结束时打印输出
     GM_ADDR commCmdInfoOutGM_{nullptr}; // 仅用于结束时打印输出
-    GM_ADDR statusDataSpaceGM_;
-    GM_ADDR statusFlagGM_; // 本卡状态flag源地址，用于远端WriteNbi
+    GM_ADDR statusDataSpaceGM_; // 状态flag源所在的workspace基址
+    GM_ADDR statusFlagGM_;      // 本卡状态flag源地址，用于远端WriteNbi
     constexpr static uint64_t HCOMM_INIT_SIZE = 512UL;
     constexpr static uint32_t STATUS_FLAG_VALUE = 0x3f800000U; // float 1.0
 
@@ -208,7 +208,7 @@ private:
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_ADDR context,
     GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine, GM_ADDR quantExpandX,
-    GM_ADDR commCmdInfoOut, GM_ADDR /*workspaceGM*/, TPipe *pipe,
+    GM_ADDR commCmdInfoOut, GM_ADDR workspaceGM, TPipe *pipe,
     const MoeDistributeCombineSetupTilingData *tilingData, __gm__ void *mc2InitTiling, __gm__ void *mc2CcTiling)
 {
     tpipe_ = pipe;
@@ -224,9 +224,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
 
     // 获取 win 控制区：本算子只读写 C_S，与 D_S 独立，避免联跑抢乒乓
     GlobalTensor<int32_t> selfDataStatusTensor;
-    statusDataSpaceGM_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
-    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGM_ + STATE_WIN_OFFSET +
-        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_) + CTRL_COMBINE_STATE_OFFSET));
+    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)((GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]) +
+        STATE_WIN_OFFSET + STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_) + CTRL_COMBINE_STATE_OFFSET));
 
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
@@ -236,9 +235,10 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     ascendc_assert(dataState_ <= 1U, "combine_setup C_S corrupted, rank=%u aiv=%u C_S=%u", epRankId_, aivId_,
                    dataState_);
 
-    // 本卡准备状态 flag 源（控制块 +64），供远端 WriteNbi；与 C_S(+32)/D_S(+0) 错开
-    statusFlagGM_ = statusDataSpaceGM_ + STATE_WIN_OFFSET +
-        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_) + CTRL_COMBINE_FLAG_OFFSET;
+    // 本卡准备状态 flag 源，供远端 WriteNbi。源只被本卡读、不被对端访问，无需占用注册窗口，
+    // 放在 workspace 上；每 aiv 独占 STATE_SIZE_PER_CORE 字节，避免与相邻核共享 cacheline。
+    statusDataSpaceGM_ = workspaceGM;
+    statusFlagGM_ = statusDataSpaceGM_ + STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_);
     GlobalTensor<int32_t> statusFlagTensor;
     statusFlagTensor.SetGlobalBuffer((__gm__ int32_t *)statusFlagGM_);
     statusFlagTensor.SetValue(0, static_cast<int32_t>(STATUS_FLAG_VALUE));
