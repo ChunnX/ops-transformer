@@ -549,7 +549,9 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
     if ((std::strstr(socName, "Ascend910_93") != nullptr) && (std::strstr(op, "MoeDistributeDispatchV3") != nullptr)) {
         argsOffset = sizeof(uint64_t);
     }
-    if (std::strstr(op, "MegaMoe") != nullptr) {
+    // Preserve the existing A2/A3 argument offset. On A5, context is the
+    // first kernel argument, so no offset is needed.
+    if ((std::strstr(op, "MegaMoe") != nullptr) && (std::strstr(socName, "Ascend950") == nullptr)) {
         argsOffset = sizeof(uint64_t);
     }
     ret =
