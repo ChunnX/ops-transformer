@@ -422,9 +422,8 @@ def analyze_arch35_int32_slots(
         return
     value_count = len(raw) // 4
     values = np.frombuffer(raw[: value_count * 4], dtype="<i4")
-    show_count = min(value_count, 64)
     logging.info("  %s: %d int32 slots", name, value_count)
-    for index, value in enumerate(values[:show_count]):
+    for index, value in enumerate(values):
         if name == "cross_rank_sync":
             slot_label = f"rank[{index}]"
         elif name == "aiv_sync_count":
@@ -438,8 +437,6 @@ def analyze_arch35_int32_slots(
         logging.info(
             "    %s: %d (0x%08x)", slot_label, value, int(value) & 0xFFFFFFFF
         )
-    if value_count > show_count:
-        logging.info("    ... (%d more slots)", value_count - show_count)
 
 
 def analyze_token_per_expert(raw: np.ndarray, dp: dict):
