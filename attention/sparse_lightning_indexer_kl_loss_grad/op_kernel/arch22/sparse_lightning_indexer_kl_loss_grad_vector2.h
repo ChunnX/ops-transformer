@@ -48,7 +48,7 @@ public:
 
     __aicore__ inline SLIKLLossVector2Service(){};
     __aicore__ inline void InitParams(const struct SLIKLLossGradConstInfo &vecConstInfo,
-        const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData);
+                                      const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -75,10 +75,10 @@ private:
     scatterAddGmType scatterAddResGmBanks[SLI_DETER_SCATTER_BANK_NUM];
 
     // local tensor
-    TBuf<> mm3TBuf;         // 64K, 64 * 128 * 4 * 2(DB)
+    TBuf<> mm3TBuf; // 64K, 64 * 128 * 4 * 2(DB)
     TBuf<> scatterAddPongTBuf;
-    TBuf<> topKTBuf;        // 16KB, 2048 * 4 * 2(DB)
-    TBuf<> castOutTBuf;     // 32KB, 64 * 128 * 4 * 2(DB)
+    TBuf<> topKTBuf;    // 16KB, 2048 * 4 * 2(DB)
+    TBuf<> castOutTBuf; // 32KB, 64 * 128 * 4 * 2(DB)
     LocalTensor<MM3_OUT_T> mm3ResUb;
     LocalTensor<MM3_OUT_T> scatterAddPongUb;
     LocalTensor<int32_t> topKUb;
@@ -91,7 +91,7 @@ private:
 
 template <typename SLIT>
 __aicore__ inline void SLIKLLossVector2Service<SLIT>::InitParams(const struct SLIKLLossGradConstInfo &vecConstInfo,
-    const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData)
+                                                                 const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData)
 {
     this->constInfo = vecConstInfo;
     this->tilingData = tilingData;
@@ -119,11 +119,11 @@ template <typename SLIT>
 __aicore__ inline void SLIKLLossVector2Service<SLIT>::InitBuffers(TPipe *pipe)
 {
     pipe->Reset();
-    pipe->InitBuffer(mm3TBuf, SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_32K * 2);  // 2:pingpong
+    pipe->InitBuffer(mm3TBuf, SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_32K * 2); // 2:pingpong
     if constexpr (deterministic) {
         pipe->InitBuffer(scatterAddPongTBuf, SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_32K * 2);
     }
-    pipe->InitBuffer(castOutTBuf, SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_16K * 2);  // 2:pingpong
+    pipe->InitBuffer(castOutTBuf, SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_16K * 2); // 2:pingpong
 
     mm3ResUb = mm3TBuf.Get<MM3_OUT_T>();
     if constexpr (deterministic) {
@@ -132,7 +132,8 @@ __aicore__ inline void SLIKLLossVector2Service<SLIT>::InitBuffers(TPipe *pipe)
     castOutUb = castOutTBuf.Get<OUT_T>();
 }
 
-template <typename SLIT> __aicore__ inline void SLIKLLossVector2Service<SLIT>::AllocEventID()
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVector2Service<SLIT>::AllocEventID()
 {
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_SCATTER_BUF_FLAG);
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_SCATTER_BUF_PONG_FLAG);
@@ -140,7 +141,8 @@ template <typename SLIT> __aicore__ inline void SLIKLLossVector2Service<SLIT>::A
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_SCATTER_BUF_PONG_FLAG);
 }
 
-template <typename SLIT> __aicore__ inline void SLIKLLossVector2Service<SLIT>::FreeEventID()
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVector2Service<SLIT>::FreeEventID()
 {
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SCATTER_BUF_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SCATTER_BUF_PONG_FLAG);
@@ -209,13 +211,13 @@ __aicore__ inline void SLIKLLossVector2Service<SLIT>::ProcessVector2()
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_SCATTER_BUF_FLAG + pingPongIdx);
         copyOutUb = castOutUb[pingPongIdx * (UB_ROW_SIZE * constInfo.dSizeQueryIndex)];
         Cast(copyOutUb, copyInUb, RoundMode::CAST_ROUND, t2ProcessSize * constInfo.dSizeQueryIndex);
-        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_SCATTER_BUF_FLAG + pingPongIdx);       // 释放copyInUb
+        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_SCATTER_BUF_FLAG + pingPongIdx); // 释放copyInUb
 
         SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_SCATTER_BUF_FLAG + pingPongIdx);
         WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_SCATTER_BUF_FLAG + pingPongIdx);
 
         DataCopy(dKeyIndexGm[t2Idx * constInfo.dSizeQueryIndex], copyOutUb, t2ProcessSize * constInfo.dSizeQueryIndex);
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_SCATTER_BUF_FLAG + pingPongIdx);       // 释放copyOutUb
+        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_SCATTER_BUF_FLAG + pingPongIdx); // 释放copyOutUb
 
         pingPongIdx = 1 - pingPongIdx;
     }

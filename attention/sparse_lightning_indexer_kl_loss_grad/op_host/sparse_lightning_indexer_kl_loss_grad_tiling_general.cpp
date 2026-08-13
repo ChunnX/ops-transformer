@@ -254,7 +254,7 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetPlatformInfo()
     if (platformInfoPtr == nullptr) {
         auto compileInfoPtr = reinterpret_cast<const SparseLightningIndexerKLLossGradCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(opName, "compileInfoPtr is null."),
-                   return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
         aivNum = compileInfoPtr->aivNum;
         aicNum = compileInfoPtr->aicNum;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
@@ -271,7 +271,7 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetPlatformInfo()
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2CacheSize);
     }
     OP_LOGI(context_, "get platform from compileInfo.aivNum(%u) aicNum(%u) ubSize(%lu) l1Size(%lu) l0cSize(%lu).",
-              aivNum, aicNum, aicoreParams_.ubSize, aicoreParams_.l1Size, aicoreParams_.l0cSize);
+            aivNum, aicNum, aicoreParams_.ubSize, aicoreParams_.l1Size, aicoreParams_.l0cSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -282,7 +282,7 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetShapeAttrsInfo()
     OP_CHECK_IF(CheckContext() != ge::GRAPH_SUCCESS, OP_LOGE(opName, "invalid context."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!AnalyzeAttrs() || !AnalyzeDtype() || !AnalyzeLayout(),
-               OP_LOGE(opName, "fail to analyze context info."), return ge::GRAPH_FAILED);
+                OP_LOGE(opName, "fail to analyze context info."), return ge::GRAPH_FAILED);
 
     sliGradkllossBaseParams_->set_bSize(bSize);
     sliGradkllossBaseParams_->set_n2Size(n2Size);
@@ -383,8 +383,8 @@ uint64_t SparseLightningIndexerKLLossGradTilingBase::GetTilingKey() const
     LayoutType qLayout = (tilingKeyLayout == LayoutType::LAYOUT_TND) ? LayoutType::LAYOUT_TND : LayoutType::LAYOUT_BSND;
     LayoutType kLayout = (keyLayout != nullptr && keyLayout[0] == 'T') ? LayoutType::LAYOUT_TND : LayoutType::LAYOUT_BSND;
     return GET_TPL_TILING_KEY(static_cast<uint8_t>(false), static_cast<uint32_t>(topkSize),
-        static_cast<uint8_t>(qLayout), static_cast<uint8_t>(kLayout),
-        static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(deterministic));
+                              static_cast<uint8_t>(qLayout), static_cast<uint8_t>(kLayout),
+                              static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(deterministic));
 }
 
 ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetWorkspaceSize()
@@ -398,11 +398,11 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetWorkspaceSize()
     int64_t psySyncSize = (static_cast<int64_t>(kSize) * 2 + 32 / sizeof(float)) * sizeof(float);
     int64_t bmm3Size = static_cast<int64_t>(kSize) * dSizeQueryIndex * sizeof(float);
     int64_t scatterAddOutSize = (tilingKeyLayout == LayoutType::LAYOUT_TND) ?
-        accumS2 * dSizeQueryIndex * sizeof(float) :
-        static_cast<int64_t>(bSize) * s2Size * dSizeQueryIndex * sizeof(float);
+                                    accumS2 * dSizeQueryIndex * sizeof(float) :
+                                    static_cast<int64_t>(bSize) * s2Size * dSizeQueryIndex * sizeof(float);
 
     int64_t singleCoreTotalSize = PING_PONG_VALUE *
-        (pSize + bmm1Size + bmm2Size + reluGradSize + sySize + psySyncSize + bmm3Size);
+                                  (pSize + bmm1Size + bmm2Size + reluGradSize + sySize + psySyncSize + bmm3Size);
     int64_t multiCoreTotalSize = 0;
     if (deterministic) {
         multiCoreTotalSize = singleCoreTotalSize * static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum()) + scatterAddOutSize * static_cast<int64_t>(SLI_DETER_SCATTER_BANK_NUM);
