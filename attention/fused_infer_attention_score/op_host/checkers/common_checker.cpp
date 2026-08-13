@@ -636,6 +636,13 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
                     "The value of axis G must be in the range of [1, 128] in the Decode MLA scenario");
                 return ge::GRAPH_FAILED;
             }
+            if ((fiaInfo.n1Size & (fiaInfo.n1Size - 1)) != 0 &&
+                fiaInfo.sparseMode == SPARSE_MODE_NO_MASK && fiaInfo.attenMaskFlag) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
+                    std::to_string(fiaInfo.n1Size).c_str(),
+                    "When num_heads is not a power of 2, sparse_mode 0 with atten_mask is not supported in the Decode MLA scenario");
+                return ge::GRAPH_FAILED;
+            }
         } else {
             if (SUPPORT_G_IN_IFAMLA.find(fiaInfo.gSize) == SUPPORT_G_IN_IFAMLA.end()) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis G",
@@ -645,13 +652,6 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
                 return ge::GRAPH_FAILED;
             }
         }
-    }
-    if ((fiaInfo.n1Size & (fiaInfo.n1Size - 1)) != 0 &&
-        fiaInfo.sparseMode == SPARSE_MODE_NO_MASK && fiaInfo.attenMaskFlag) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
-            std::to_string(fiaInfo.n1Size).c_str(),
-            "When num_heads is not a power of 2, sparse_mode 0 with atten_mask is not supported in the Decode MLA scenario");
-        return ge::GRAPH_FAILED;
     }
     OP_LOGI(fiaInfo.opName, "The axis B(%u), qkD(%u), vD(%u), G(%u), qT(%u), kT(%u).",
             fiaInfo.bSize, fiaInfo.qkHeadDim, fiaInfo.vHeadDim, fiaInfo.gSize, fiaInfo.qTSize, fiaInfo.kTSize);
