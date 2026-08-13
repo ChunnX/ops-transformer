@@ -61,8 +61,8 @@ ge::graphStatus InferShapeFlashAttentionScore(gert::InferShapeContext *context)
     }
     if (inputLayoutStr != "BSH" && inputLayoutStr != "BSND" && inputLayoutStr != "SBH" &&  inputLayoutStr != "BNSD" &&
         inputLayoutStr != "TND") {
-        OP_LOGE(context, "The inputLayout should be BSH/SBH/BSND/BNSD/TND(case-insensitive), but got %s.",
-                  inputLayoutStr.c_str());
+        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "input_layout",
+            inputLayoutStr.c_str(), "BSH, SBH, BSND, BNSD or TND");
         return GRAPH_FAILED;
     }
 
@@ -135,6 +135,12 @@ ge::graphStatus InferShapeFlashAttentionScore(gert::InferShapeContext *context)
         auto shapeD2 = valueShape->GetDim(3);
         attentionOutShape->SetDim(3, shapeD2);
     } else if (inputLayoutStr == "BSH" || inputLayoutStr == "SBH" ) {
+        // 动态图场景: query/key/value 的 H 维为 -1 时, 输出 H 置为 -1
+        if (queryShape->GetDim(DIM_NUM_2) == -1 || keyShape->GetDim(DIM_NUM_2) == -1 ||
+            valueShape->GetDim(DIM_NUM_2) == -1) {
+            attentionOutShape->SetDim(DIM_NUM_2, -1);
+            return GRAPH_SUCCESS;
+        }
         auto N1 = *headNum;
         if (N1 == 0) {
             attentionOutShape->SetDim(DIM_NUM_2, 0);

@@ -37,18 +37,18 @@
 
 namespace GROUPED_MATMUL {
 
-constexpr uint32_t thresholdBlockNum = 8;   // 8 is obtained by tests, indicating the threshold of basic block numbers
-                                            // in both directions when assigning data blocks to cube cores when using
-                                            // diagnal strategy
+constexpr uint32_t thresholdBlockNum = 8; // 8 is obtained by tests, indicating the threshold of basic block numbers
+                                          // in both directions when assigning data blocks to cube cores when using
+                                          // diagnal strategy
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 200
-constexpr uint32_t thresholdDimM = 1;       // not needs any special strategies
+constexpr uint32_t thresholdDimM = 1; // not needs any special strategies
 #else
-constexpr uint32_t thresholdDimM = 5;       // 5 is obtained by tests, indicating the threshold for distinguishing
-                                            // strategies for large/small shapes
+constexpr uint32_t thresholdDimM = 5; // 5 is obtained by tests, indicating the threshold for distinguishing
+                                      // strategies for large/small shapes
 #endif
 
 /*@brief store variables for core split configuration
-*/
+ */
 struct MNConfig {
     uint32_t m = 0;
     uint32_t k = 0;
@@ -57,14 +57,14 @@ struct MNConfig {
     uint32_t baseN = 0;
     uint32_t mIdx = 0;
     uint32_t nIdx = 0;
-    uint32_t vecNIdx = 0;  // for A8W4 MSD NEW
+    uint32_t vecNIdx = 0; // for A8W4 MSD NEW
     uint32_t blockDimM = 0;
     uint32_t blockDimN = 0;
-    uint32_t vecBlockDimN = 0;  // for A8W4 MSD NEW
+    uint32_t vecBlockDimN = 0; // for A8W4 MSD NEW
     uint32_t singleM = 0;
     uint32_t singleN = 0;
-    uint32_t vecSingleN = 0;  // for A8W4 MSD NEW
-    uint32_t offsetM = 0;  // for A8W4 MSD
+    uint32_t vecSingleN = 0; // for A8W4 MSD NEW
+    uint32_t offsetM = 0;    // for A8W4 MSD
     uint64_t wBaseOffset = 0;
     uint64_t nAxisBaseOffset = 0;
     uint64_t mAxisBaseOffset = 0;
@@ -75,36 +75,40 @@ struct MNConfig {
     int64_t scaleIndex = -1;
 };
 
-__aicore__ inline void MNBlockIdxCompute(MNConfig &mnConfig, const uint32_t curBlock,
-    const uint32_t count, const uint32_t thresholdM_dimN) {
+__aicore__ inline void MNBlockIdxCompute(MNConfig &mnConfig, const uint32_t curBlock, const uint32_t count,
+                                         const uint32_t thresholdM_dimN)
+{
     if (mnConfig.blockDimM <= thresholdDimM || thresholdDimM == 1) {
         mnConfig.mIdx = (curBlock - count) / mnConfig.blockDimN;
         mnConfig.nIdx = (curBlock - count) % mnConfig.blockDimN;
     } else {
         uint32_t relativeBlock = curBlock - count;
         uint32_t curThresholdM = relativeBlock >= AlignDown(mnConfig.blockDimM * mnConfig.blockDimN, thresholdM_dimN) ?
-            mnConfig.blockDimM % thresholdBlockNum : thresholdBlockNum;
+                                     mnConfig.blockDimM % thresholdBlockNum :
+                                     thresholdBlockNum;
         uint32_t curThresholdM_thresholdN = curThresholdM * thresholdBlockNum;
-        uint32_t curThresholdN = relativeBlock % thresholdM_dimN >= AlignDown(curThresholdM * mnConfig.blockDimN,
-            curThresholdM_thresholdN) ? mnConfig.blockDimN % thresholdBlockNum : thresholdBlockNum;
+        uint32_t curThresholdN =
+            relativeBlock % thresholdM_dimN >= AlignDown(curThresholdM * mnConfig.blockDimN, curThresholdM_thresholdN) ?
+                mnConfig.blockDimN % thresholdBlockNum :
+                thresholdBlockNum;
 
         uint32_t localRelativeBlock = relativeBlock % thresholdM_dimN % curThresholdM_thresholdN;
         mnConfig.mIdx = localRelativeBlock % curThresholdM + relativeBlock / thresholdM_dimN * thresholdBlockNum;
-        mnConfig.nIdx = (localRelativeBlock + localRelativeBlock /
-            LeastCommonMultiple(curThresholdM, curThresholdN)) % curThresholdN + relativeBlock %
-            thresholdM_dimN / curThresholdM_thresholdN * thresholdBlockNum;
+        mnConfig.nIdx = (localRelativeBlock + localRelativeBlock / LeastCommonMultiple(curThresholdM, curThresholdN)) %
+                            curThresholdN +
+                        relativeBlock % thresholdM_dimN / curThresholdM_thresholdN * thresholdBlockNum;
     }
 }
 
 /** @brief GroupMatmul operator Class
-*/
+ */
 template <typename ComputeType>
 class GMMProcess {
- protected:
+protected:
     using B = typename ComputeType::B;
-    ComputeType& computeOp;   // inernal computation operator
-    const GMMBaseParams* __restrict gmmBaseParams;
-    const TCubeTiling* __restrict mmTilingData;
+    ComputeType &computeOp; // inernal computation operator
+    const GMMBaseParams *__restrict gmmBaseParams;
+    const TCubeTiling *__restrict mmTilingData;
 
     uint32_t blockIdx;
     uint32_t coreIdx;
@@ -112,23 +116,25 @@ class GMMProcess {
     int32_t preOffset = 0;
     GM_ADDR groupListPtr;
     GlobalTensor<int64_t> groupListGm;
-    int32_t* mListGm;
-    int32_t* kListGm;
-    int32_t* nListGm;
+    int32_t *mListGm;
+    int32_t *kListGm;
+    int32_t *nListGm;
     uint32_t baseM_ = 0;
     uint32_t baseN_ = 0;
 
- public:
+public:
     /** @brief constructor */
-    __aicore__ inline GMMProcess(ComputeType& computeOp_) : computeOp(computeOp_) {}
+    __aicore__ inline GMMProcess(ComputeType &computeOp_) : computeOp(computeOp_)
+    {
+    }
 
-    __aicore__ inline void Init(const GMMBaseParams* __restrict gmmBaseParamsIn,
-                                const TCubeTiling* __restrict mmTilingDataIn, int32_t* gmmArrayAddrIn,
+    __aicore__ inline void Init(const GMMBaseParams *__restrict gmmBaseParamsIn,
+                                const TCubeTiling *__restrict mmTilingDataIn, int32_t *gmmArrayAddrIn,
                                 GM_ADDR groupList);
 
     __aicore__ inline void Process();
 
- protected:
+protected:
     __aicore__ inline void SetMNConfig(const int32_t splitValue, const uint32_t groupIdx, MNConfig &mnConfig);
 
     __aicore__ inline void SetMKN(const int32_t splitValue, const uint32_t groupIdx, MNConfig &mnConfig);
@@ -137,8 +143,10 @@ class GMMProcess {
 };
 
 template <typename ComputeType>
-__aicore__ inline void GMMProcess<ComputeType>::Init(const GMMBaseParams* __restrict gmmBaseParamsIn,
-    const TCubeTiling* __restrict mmTilingDataIn, int32_t* gmmArrayAddrIn, GM_ADDR groupList) {
+__aicore__ inline void GMMProcess<ComputeType>::Init(const GMMBaseParams *__restrict gmmBaseParamsIn,
+                                                     const TCubeTiling *__restrict mmTilingDataIn,
+                                                     int32_t *gmmArrayAddrIn, GM_ADDR groupList)
+{
     blockIdx = GetBlockIdx();
     coreIdx = blockIdx;
     int64_t coreRation = GetTaskRation();
@@ -150,7 +158,7 @@ __aicore__ inline void GMMProcess<ComputeType>::Init(const GMMBaseParams* __rest
     groupNum = gmmBaseParams->groupNum;
     groupListPtr = groupList;
     if (groupListPtr != nullptr) {
-        groupListGm.SetGlobalBuffer((__gm__ int64_t*)groupList);
+        groupListGm.SetGlobalBuffer((__gm__ int64_t *)groupList);
     }
     mListGm = gmmArrayAddrIn;
     kListGm = gmmArrayAddrIn + MKN_LIST_LEN;
@@ -158,7 +166,9 @@ __aicore__ inline void GMMProcess<ComputeType>::Init(const GMMBaseParams* __rest
 }
 
 template <typename ComputeType>
-__aicore__ inline void GMMProcess<ComputeType>::SetMNConfig(const int32_t splitValue, const uint32_t groupIdx, MNConfig &mnConfig) {
+__aicore__ inline void GMMProcess<ComputeType>::SetMNConfig(const int32_t splitValue, const uint32_t groupIdx,
+                                                            MNConfig &mnConfig)
+{
     SetMKN(splitValue, groupIdx, mnConfig);
     if (mmTilingData != nullptr) {
         mnConfig.baseM = mmTilingData->baseM;
@@ -173,7 +183,8 @@ __aicore__ inline void GMMProcess<ComputeType>::SetMNConfig(const int32_t splitV
 
 template <typename ComputeType>
 __aicore__ inline void GMMProcess<ComputeType>::SetMKN(const int32_t splitValue, const uint32_t groupIdx,
-                                                       MNConfig &mnConfig) {
+                                                       MNConfig &mnConfig)
+{
     uint32_t singleWeight = gmmBaseParams->singleWeight;
     uint32_t singleX = gmmBaseParams->singleX;
     uint32_t singleY = gmmBaseParams->singleY;
@@ -207,9 +218,10 @@ __aicore__ inline void GMMProcess<ComputeType>::SetMKN(const int32_t splitValue,
 }
 
 template <typename ComputeType>
-__aicore__ inline void GMMProcess<ComputeType>::UpdateMnConfig(MNConfig &mnConfig) {
+__aicore__ inline void GMMProcess<ComputeType>::UpdateMnConfig(MNConfig &mnConfig)
+{
     if constexpr (B::format == CubeFormat::NZ) {
-        mnConfig.wBaseOffset += AlignUp<16>(mnConfig.k) * AlignUp<16>(mnConfig.n);  // 16: nz format last two dim size
+        mnConfig.wBaseOffset += AlignUp<16>(mnConfig.k) * AlignUp<16>(mnConfig.n); // 16: nz format last two dim size
     } else {
         mnConfig.wBaseOffset += mnConfig.k * mnConfig.n;
     }
@@ -221,9 +233,10 @@ __aicore__ inline void GMMProcess<ComputeType>::UpdateMnConfig(MNConfig &mnConfi
 }
 
 template <typename ComputeType>
-__aicore__ inline void GMMProcess<ComputeType>::Process() {
+__aicore__ inline void GMMProcess<ComputeType>::Process()
+{
     MNConfig mnConfig;
-    if (gmmBaseParams->groupType != -1) {  // -1: no split
+    if (gmmBaseParams->groupType != -1) { // -1: no split
         if (unlikely(groupListPtr == nullptr)) {
             return;
         }
@@ -256,10 +269,10 @@ __aicore__ inline void GMMProcess<ComputeType>::Process() {
 }
 
 /** @brief intenal computation class
-*/
+ */
 template <class mmType, bool sync = false>
 class GMMCompute {
- public:
+public:
     using AT = typename mmType::AT::T;
     using BT = typename mmType::BT::T;
     using B = typename mmType::BT;
@@ -270,24 +283,28 @@ class GMMCompute {
     constexpr static bool transposeW = mmType::BT::isTrans;
 
     /** @brief constructor */
-    __aicore__ inline GMMCompute(typename mmType::MT& mm_) : mm(mm_) {}
+    __aicore__ inline GMMCompute(typename mmType::MT &mm_) : mm(mm_)
+    {
+    }
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR offset,
                                 GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR groupList,
                                 GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace,
-                                const GMMBaseParams* __restrict gmmBaseParams,
-                                const TCubeTiling* __restrict mmTilingData, TPipe* tPipe);
+                                const GMMBaseParams *__restrict gmmBaseParams,
+                                const TCubeTiling *__restrict mmTilingData, TPipe *tPipe);
 
-    __aicore__ inline void MMCompute(uint32_t groupIdx, MNConfig& mnConfig, uint32_t coreIdx);
-    __aicore__ inline void VectorCompute(MNConfig& mnConfig) {}
+    __aicore__ inline void MMCompute(uint32_t groupIdx, MNConfig &mnConfig, uint32_t coreIdx);
+    __aicore__ inline void VectorCompute(MNConfig &mnConfig)
+    {
+    }
 
-    __aicore__ inline GlobalTensor<BT> SetGlobalBufferW(uint32_t groupIdx, uint32_t tailN, MNConfig& mnConfig);
+    __aicore__ inline GlobalTensor<BT> SetGlobalBufferW(uint32_t groupIdx, uint32_t tailN, MNConfig &mnConfig);
 
     __aicore__ inline uint64_t SetWOffset(uint32_t tailN, uint32_t k);
 
- protected:
-    TPipe* pipe;
-    typename mmType::MT& mm;  // matmul operator
+protected:
+    TPipe *pipe;
+    typename mmType::MT &mm; // matmul operator
     bool hasBias = false;
     GM_ADDR xTensorPtr;
     GM_ADDR weightTensorPtr;
@@ -314,9 +331,9 @@ template <typename mmType, bool sync>
 __aicore__ inline void GMMCompute<mmType, sync>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale,
                                                       GM_ADDR offset, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
                                                       GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR y,
-                                                      GM_ADDR workspace, const GMMBaseParams* __restrict gmmBaseParams,
-                                                      const TCubeTiling* __restrict mmTilingData,
-                                                      TPipe* tPipe) {
+                                                      GM_ADDR workspace, const GMMBaseParams *__restrict gmmBaseParams,
+                                                      const TCubeTiling *__restrict mmTilingData, TPipe *tPipe)
+{
     xTensorPtr = x;
     weightTensorPtr = weight;
     biasTensorPtr = bias;
@@ -349,12 +366,13 @@ __aicore__ inline void GMMCompute<mmType, sync>::Init(GM_ADDR x, GM_ADDR weight,
 }
 
 template <typename mmType, bool sync>
-__aicore__ inline uint64_t GMMCompute<mmType, sync>::SetWOffset(uint32_t tailN, uint32_t k) {
+__aicore__ inline uint64_t GMMCompute<mmType, sync>::SetWOffset(uint32_t tailN, uint32_t k)
+{
     uint64_t wOffset = 0;
     if constexpr (mmType::BT::format == CubeFormat::NZ && transposeW) {
-        wOffset = tailN * (UB_BLOCK_UNIT_SIZE / sizeof(BT));  // 32: quant is 32, float16 is 16
+        wOffset = tailN * (UB_BLOCK_UNIT_SIZE / sizeof(BT)); // 32: quant is 32, float16 is 16
     } else if constexpr (mmType::BT::format == CubeFormat::NZ) {
-        wOffset = tailN * AlignUp<16>(k);  // 16: nz format last two dim size
+        wOffset = tailN * AlignUp<16>(k); // 16: nz format last two dim size
     } else if constexpr (transposeW) {
         wOffset = tailN * k;
     } else {
@@ -364,31 +382,32 @@ __aicore__ inline uint64_t GMMCompute<mmType, sync>::SetWOffset(uint32_t tailN, 
 }
 
 template <typename mmType, bool sync>
-__aicore__ inline GlobalTensor<typename mmType::BT::T> GMMCompute<mmType, sync>::SetGlobalBufferW(
-        uint32_t groupIdx, uint32_t tailN, MNConfig& mnConfig) {
+__aicore__ inline GlobalTensor<typename mmType::BT::T>
+GMMCompute<mmType, sync>::SetGlobalBufferW(uint32_t groupIdx, uint32_t tailN, MNConfig &mnConfig)
+{
     uint64_t wOffset = SetWOffset(tailN, mnConfig.k);
 
     GlobalTensor<BT> weightGmLocal;
     weightGmLocal.SetGlobalBuffer((__gm__ bfloat16_t *)weightTensorPtr + mnConfig.wBaseOffset + wOffset);
     return weightGmLocal;
-
 }
 
 template <typename mmType, bool sync>
-__aicore__ inline void GMMCompute<mmType, sync>::MMCompute(uint32_t groupIdx, MNConfig& mnConfig, uint32_t coreIdx) {
+__aicore__ inline void GMMCompute<mmType, sync>::MMCompute(uint32_t groupIdx, MNConfig &mnConfig, uint32_t coreIdx)
+{
     if (subBlockIdx != 0) {
         return;
     }
     uint32_t tailN = mnConfig.nIdx * mnConfig.singleN;
     uint32_t curSingleN = mnConfig.nIdx < mnConfig.blockDimN - 1 ? mnConfig.singleN : mnConfig.n - tailN;
-    uint32_t curSingleM = mnConfig.mIdx < mnConfig.blockDimM - 1 ? mnConfig.singleM
-                                                                 : mnConfig.m - mnConfig.mIdx * mnConfig.singleM;
+    uint32_t curSingleM =
+        mnConfig.mIdx < mnConfig.blockDimM - 1 ? mnConfig.singleM : mnConfig.m - mnConfig.mIdx * mnConfig.singleM;
     uint64_t xOffset = mnConfig.mIdx * mnConfig.singleM * mnConfig.k;
     if constexpr (transposeX) {
         xOffset = mnConfig.mIdx * mnConfig.singleM;
     }
     uint64_t outOffset = mnConfig.mIdx * mnConfig.singleM * mnConfig.n + tailN;
-    xGm.SetGlobalBuffer((__gm__ bfloat16_t *) xTensorPtr);
+    xGm.SetGlobalBuffer((__gm__ bfloat16_t *)xTensorPtr);
     GlobalTensor<BT> weightGmLocal = SetGlobalBufferW(groupIdx, tailN, mnConfig);
     mm.SetOrgShape(mnConfig.m, mnConfig.n, mnConfig.k);
     mm.SetSingleShape(curSingleM, curSingleN, mnConfig.k);
@@ -399,5 +418,5 @@ __aicore__ inline void GMMCompute<mmType, sync>::MMCompute(uint32_t groupIdx, MN
     mm.template IterateAll<sync>(yGm[outOffset], 0);
 }
 
-}  // namespace GROUPED_MATMUL
-#endif  // ASCEND_OPS_GROUPED_MATMUL_H
+} // namespace GROUPED_MATMUL
+#endif // ASCEND_OPS_GROUPED_MATMUL_H

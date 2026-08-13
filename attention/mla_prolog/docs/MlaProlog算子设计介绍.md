@@ -8,9 +8,9 @@
 
 ## 实现原理
 
-图1 计算流程图：
+图1计算流程图：
 
-![MlaProlog计算流程图](../../../docs/zh/figures/MlaProlog计算流程.png)
+![MlaProlog计算流程图](../../../docs/zh/figures/mla_prolog_compute_flow.png)
 
 按照Multi-Head Latent Attention定义的计算流程实现，整体计算流程如下：
 
@@ -47,9 +47,9 @@ MlaProlog算子有多个Matmul运算：
 MlaProlog融合算子包含了Vector计算和Cube计算，Vector侧和Cube侧的计算存在依赖关系，因此需要进行CV流水设计，
 否则C侧和V侧很有可能是串行流水的效果，不能达到并行计算的目的，无法使得融合算子性能达到最优：
 
-图2 流水控制图：
+图2流水控制图：
 
-![MlaProlog流水控制图](../../../docs/zh/figures/MlaProlog流水控制.png)
+![MlaProlog流水控制图](../../../docs/zh/figures/mla_prolog_pipeline_control.png)
 
 1、MatmulCq计算的时候，对Hcq进行了分核，单核没有计算一个完整的token，所以在RmsNormCq计算前，
 需要做AIC与AIV之间的同步控制（SYNC_MMCQ_NOMRCQ）
@@ -61,7 +61,7 @@ MlaProlog融合算子包含了Vector计算和Cube计算，Vector侧和Cube侧的
 
 4、由于和RopeQr的分核策略不同，因此RopeQr计算前，也需要AIC和AIV之间的同步控制（SYNC_MMQCQR_ROPEQR）
 
-5、由于MatmulQcQr和MatmulQn的分核策略不同，MatmulQn依赖于MatmulQcQr的输出 ,因此需要做cube的全核同步（SYNC_ALL_CUBE）
+5、由于MatmulQcQr和MatmulQn的分核策略不同，MatmulQn依赖于MatmulQcQr的输出，因此需要做cube的全核同步（SYNC_ALL_CUBE）
 
 6、Vector核运算前，需要做vector的全核同步（SYNC_ALL_VECTOR），确保数据流水搬运
 
@@ -74,7 +74,7 @@ TilingKey为uint64类型，每个模板参数对应TilingKey中的一到数个�
 |0-3|CACHE_MODE|KVCache的存储格式|0-BNSD(预留)，1-PA_BSND，2-PA_NZ|
 |4-5|SCENARIO|输入场景|0-FP16(预留)，1-非量化场景，2-量化场景|
 |6-9|QUANT_MODE|量化场景|0-MMQcQr量化，1-MMQcQr量化+KVCache量化|
-|10|ENABLE_DEQUANT_OPTIONAL|反量化使能，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
+|10|ENABLE_DEQUANT_OPTIONAL|反量化开启，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
 |11|ENABLE_GROUP_COMPUTE_OPTIONAL|量化的算力分组优化，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
 |12-13|EMPTY_TENSOR_MODE|空tensor场景，用于输入tensor维度为0的情况|0-无空tensor，1-KVCache为空和KRCache为空， 2-Query为空|
 
@@ -86,28 +86,28 @@ void Process() {
     loops = compute_step_this_core(); //计算当前core的循环次数
     // 
     for (i = 0; i < loops; i++) {
-        updateCurrentStepSize(i, stepSize, allTokenSize); 	//刷新当前轮的计算的M轴大小
+        updateCurrentStepSize(i, stepSize, allTokenSize);  //刷新当前轮的计算的M轴大小
   
         if ASCEND_IS_AIC {
       
             MatmulCq(tokenXOffset, weightDqOffset, cqResOffset);
-            CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMCQ_NORMSCQ_FLG);     	//cube与vector同步
+            CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMCQ_NORMSCQ_FLG);      //cube与vector同步
 
             MatmulCkvKr(tokenXOffset, weightDkvKrOffset, ckvKrResOffset);
-            CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMCKVKR_NORMROPE_FLG);	 	//cube与vector同步
+            CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMCKVKR_NORMROPE_FLG);   //cube与vector同步
 
-            CrossCoreWaitFlag(SYNC_MMCQ_NORMSCQ_FLG);                  		// MatmulQcQr依赖RmsNormCq的输出，需要插入CV核间同步
+            CrossCoreWaitFlag(SYNC_MMCQ_NORMSCQ_FLG);                    // MatmulQcQr依赖RmsNormCq的输出，需要插入CV核间同步
       
             MatmulQcQr(weightUqQrOffset, qcQrResOffset);
-            CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMQCQR_ROPEQR_FLG);		//cube与vector同步
+            CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMQCQR_ROPEQR_FLG);  //cube与vector同步
 
 
-            // 由于 MatmulQn 和 MatmulQcQr的分核策略不一样，MatmulQn又依赖MatmulQcQr的输出
+            // 由于MatmulQn和MatmulQcQr的分核策略不一样，MatmulQn又依赖MatmulQcQr的输出
             // 需要等所有cube核上的MatmulQcQr执行完后才能启动MatmulQn
             CrossCoreSetFlag<0x0, PIPE_FIX>(SYNC_ALL_CUBE_FLG);
             CrossCoreWaitFlag(SYNC_ALL_CUBE_FLG);
       
-            MatmulQn(qcOffset, weightUkOffset, qnResOffset, mmQnLoopTime);  // MatmulQn的结果直接输出到 queryOut, qnOffset需要按Batch轴偏移
+            MatmulQn(qcOffset, weightUkOffset, qnResOffset, mmQnLoopTime);  // MatmulQn的结果直接输出到queryOut, qnOffset需要按Batch轴偏移
 
       }
     
@@ -115,9 +115,9 @@ void Process() {
       
             GetSinCos(tokenIndex);
 
-      CrossCoreWaitFlag(SYNC_MMCQ_NORMSCQ_FLG);								// wait MatmulCq
+      CrossCoreWaitFlag(SYNC_MMCQ_NORMSCQ_FLG);        // wait MatmulCq
       
-      CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);				
+      CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);    
       CrossCoreWaitFlag(SYNC_ALL_VECTOR_FLG);
       
             RmsNormCq(rmsNormCqOffset);
@@ -127,20 +127,20 @@ void Process() {
       CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);
       CrossCoreWaitFlag(SYNC_ALL_VECTOR_FLG);
 
-      CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNC_MMCQ_NORMSCQ_FLG);				// 保障MatmulQcQr等RmsNormCq
+      CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNC_MMCQ_NORMSCQ_FLG);    // 保障MatmulQcQr等RmsNormCq
 
 
-      CrossCoreWaitFlag(SYNC_MMCKVKR_NORMROPE_FLG);							    // wait MatmulCkvKr
+      CrossCoreWaitFlag(SYNC_MMCKVKR_NORMROPE_FLG);           // wait MatmulCkvKr
 
-      CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);				
+      CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);    
       CrossCoreWaitFlag(SYNC_ALL_VECTOR_FLG);
       RmsNormRopeScatterCkvKr(tokenIndex, rmsNormCkvOffset, ropeKrOffset);
 
-      CrossCoreWaitFlag(SYNC_MMQCQR_ROPEQR_FLG);								// wait MatmulQcQr
+      CrossCoreWaitFlag(SYNC_MMQCQR_ROPEQR_FLG);        // wait MatmulQcQr
 
-      CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);				
+      CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);    
       CrossCoreWaitFlag(SYNC_ALL_VECTOR_FLG);
-      RopeQr(ropeQrOffset, ropeQrResOffset);				 
+      RopeQr(ropeQrOffset, ropeQrResOffset);     
         }
     }
 }
@@ -233,7 +233,7 @@ RMSNorm的计算参考公式（3）-（4）。
     $$
     smooth是指将数据变得“平滑”一些，容易对数据进行量化，如下图所示：
 
-    ![smooth概念](../../../docs/zh/figures/smooth概念.png)
+    ![smooth概念](../../../docs/zh/figures/smooth_concept.png)
 
   - 静态量化：当前仅支持Perchannel量化，该量化是指按列量化，对输入tensor的每一列用一个scale进行量化。
 
@@ -419,8 +419,7 @@ PA场景
   - 假设Query中Token/序列长度为S1，cacheIndex中第二维的某个具体数值代表了本轮计算得到的KVCache要更新到KVCache的第几行；如图中的11代表要更新到第11行的位置，该位置位于Block2。
   - 图3 KVCacheScatter操作（PA场景-ND格式）
   ![KVCacheScatter_PA_ND](../../../docs/zh/figures/KVCacheScatter_PA_ND.jpg)
-- KVCache使用NZ格式存储，其更新流程如图4所示。数据分形格式的介绍可以参考官网指南-[数据排布格式
-](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha003/devguide/opdevg/ascendcopdevg/atlas_ascendc_10_0104.html)。
+- KVCache使用NZ格式存储，其更新流程如图4所示。数据分形格式的介绍可以参考官网指南-[数据排布格式](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha003/devguide/opdevg/ascendcopdevg/atlas_ascendc_10_0104.html)。
   - 当前按NZ格式存储KVCache时，是将整个Block存储成NZ格式；小块内是以行为主(Row Major)的排布，形状如Z字型；块与块之间是以列为主的排布，形状如N字形。将完整的H(Hidden States)按32B长度的小块进行分块后，在ND格式下连续存储的小块，在NZ格式下需要跳$32B * BlockSize$存储，即需要设置stride为$32B * BlockSize$。
   - 图4 KVCacheScatter操作（PA场景-NZ格式）
   ![PA_NZ](../../../docs/zh/figures/PA_NZ.jpg)

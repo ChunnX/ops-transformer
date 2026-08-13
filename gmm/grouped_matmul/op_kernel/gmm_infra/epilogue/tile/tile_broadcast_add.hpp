@@ -9,11 +9,11 @@
  */
 
 
-#ifndef CATLASS_EPILOGUE_TILE_TILE_BROADCAST_ADD_HPP
-#define CATLASS_EPILOGUE_TILE_TILE_BROADCAST_ADD_HPP
+#ifndef GMM_EPILOGUE_TILE_TILE_BROADCAST_ADD_HPP
+#define GMM_EPILOGUE_TILE_TILE_BROADCAST_ADD_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
-#include "../../../gmm_infra/matrix_coord.hpp"
+#include "../../../gmm_infra/gmm_matrix_coord.hpp"
 
 namespace Catlass::Epilogue::Tile {
 

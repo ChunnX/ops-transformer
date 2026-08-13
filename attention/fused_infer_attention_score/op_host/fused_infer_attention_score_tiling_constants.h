@@ -16,7 +16,7 @@
 #ifndef FUSED_INFER_ATTENTION_SCORE_TILING_CONSTANTS_H
 #define FUSED_INFER_ATTENTION_SCORE_TILING_CONSTANTS_H
 
-#include "../../common/op_host/fia_tiling_info.h"
+#include "fia_tiling_info.h"
 
 namespace optiling {
 namespace arch35FIA {
@@ -45,7 +45,11 @@ constexpr uint32_t DIM_NUM_5 = 5;
 // PA
 constexpr uint32_t BLOCK_SIZE_MAX = 512;
 constexpr uint32_t BLOCK_SIZE_MAX_FOR_NO_QUANT = 1024;
-constexpr uint32_t BLOCK_SIZE_FOR_MXFP8 = 512;
+constexpr uint32_t BLOCK_SIZE_64_FOR_MXFP8 = 64;
+constexpr uint32_t BLOCK_SIZE_128_FOR_MXFP8 = 128;
+constexpr uint32_t BLOCK_SIZE_256_FOR_MXFP8 = 256;
+constexpr uint32_t BLOCK_SIZE_512_FOR_MXFP8 = 512;
+constexpr uint32_t BLOCK_SIZE_1024_FOR_MXFP8 = 1024;
 constexpr uint32_t BLOCK_SIZE_ALIGN_SIZE_16 = 16;
 constexpr uint32_t BLOCK_SIZE_ALIGN_SIZE_128 = 128;
 
@@ -163,7 +167,8 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_UINT2, "DT_UINT2"},
     {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},
     {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},
-    {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"}
+    {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"},
+    {ge::DT_FLOAT8_E8M0, "DT_FLOAT8_E8M0"}
 };
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {

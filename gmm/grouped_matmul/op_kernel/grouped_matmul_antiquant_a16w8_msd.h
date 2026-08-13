@@ -27,6 +27,7 @@ static constexpr uint32_t A16W8_MSD_PREPROCESS_MAX_GROUP = 12;
 static constexpr uint32_t FACTOR_FOR_FLOAT_ALIGN_TO_32 = 8;
 static constexpr uint32_t ALIGN_UB_BASE_K = 128;
 static constexpr uint32_t POST_SKIP_ITER_NUM = 3;
+static constexpr uint32_t NZ_B16_LAST_DIM_16 = 16;
 
 struct PreMNConfig {
     uint32_t m = 0;
@@ -52,7 +53,17 @@ struct PreBaseMNConfig {
 */
 template <typename ComputeType>
 class GMMA16W8MSDProcess{
- protected:
+public:
+    /** @brief constructor */
+    __aicore__ inline GMMA16W8MSDProcess(ComputeType& computeOp_) : computeOp(computeOp_) {}
+
+    __aicore__ inline void Init(const GMMBaseParams* __restrict gmmBaseParamsIn,
+                                const TCubeTiling* __restrict mmTilingDataIn, TILING_TYPE* gmmArrayAddrIn,
+                                GM_ADDR groupList, GM_ADDR tiling);
+
+    __aicore__ inline void Process();
+
+protected:
     using B = typename ComputeType::B;
     ComputeType& computeOp;   // internal computation operator
     const GMMBaseParams* __restrict gmmBaseParams;
@@ -70,17 +81,6 @@ class GMMA16W8MSDProcess{
     TILING_TYPE* kListGm;
     TILING_TYPE* nListGm;
 
- public:
-    /** @brief constructor */
-    __aicore__ inline GMMA16W8MSDProcess(ComputeType& computeOp_) : computeOp(computeOp_) {}
-
-    __aicore__ inline void Init(const GMMBaseParams* __restrict gmmBaseParamsIn,
-                                const TCubeTiling* __restrict mmTilingDataIn, TILING_TYPE* gmmArrayAddrIn,
-                                GM_ADDR groupList, GM_ADDR tiling);
-
-    __aicore__ inline void Process();
-
- private:
     __aicore__ inline void PreProcess(PreBaseMNConfig &preBaseMNConfig, MNConfig &mnConfig,
                                       uint32_t &preGroupIdx, uint32_t &preCoreCount, bool &isPreRequired);
 
@@ -89,6 +89,8 @@ class GMMA16W8MSDProcess{
     __aicore__ inline void SetMNConfigs(PreBaseMNConfig &preBaseMNConfig, MNConfig &mnConfig);
 
     __aicore__ inline void UpdateMnConfig(MNConfig &mnConfig);
+    __aicore__ inline void ProcessCommon(
+        MNConfig &mnConfig, uint32_t &count, uint32_t &curCount, uint32_t &curBlock, uint32_t &secondHalfIterCount);
 };
 
 template <typename ComputeType>
@@ -135,16 +137,19 @@ __aicore__ inline void GMMA16W8MSDProcess<ComputeType>::SetMNConfigs(
 }
 
 template <typename ComputeType>
-__aicore__ inline void GMMA16W8MSDProcess<ComputeType>::UpdateMnConfig(MNConfig &mnConfig) {
+__aicore__ inline void GMMA16W8MSDProcess<ComputeType>::UpdateMnConfig(MNConfig &mnConfig)
+{
     if constexpr (B::format == CubeFormat::NZ) {
-        mnConfig.wBaseOffset += AlignUp<16>(mnConfig.k) * AlignUp<16>(mnConfig.n);  // 16: nz format last two dim size
+        mnConfig.wBaseOffset +=
+            static_cast<uint64_t>(AlignUp<NZ_B16_LAST_DIM_16>(mnConfig.k)) *
+            AlignUp<NZ_B16_LAST_DIM_16>(mnConfig.n);
     } else {
-        mnConfig.wBaseOffset += mnConfig.k * mnConfig.n;
+        mnConfig.wBaseOffset += static_cast<uint64_t>(mnConfig.k) * mnConfig.n;
     }
     mnConfig.mAxisBaseOffset += mnConfig.m;
     mnConfig.nAxisBaseOffset += mnConfig.n;
-    mnConfig.xBaseOffset += mnConfig.m * mnConfig.k;
-    mnConfig.yBaseOffset += mnConfig.m * mnConfig.n;
+    mnConfig.xBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.k;
+    mnConfig.yBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.n;
 }
 
 template <typename ComputeType>
@@ -153,10 +158,14 @@ __aicore__ inline void GMMA16W8MSDProcess<ComputeType>::PreProcess(
     bool &isPreRequired) {
     PreBaseMNConfig preBaseMNConfigs[A16W8_MSD_PREPROCESS_MAX_GROUP];
     uint32_t preValidGroupCount = 0;
-    while (preCoreCount < coreNum && preValidGroupCount < A16W8_MSD_PREPROCESS_MAX_GROUP && preGroupIdx < groupNum) {
+    // 2: groupList shape: [e, 2]; 1: groupList shape: [e]
+    uint32_t groupListInnerShape = gmmBaseParams->groupListType == GROUP_LIST_TYPE_SPARSE ? 2 : 1;
+    uint32_t groupListShapeSize = groupNum * groupListInnerShape;
+    while (preCoreCount < coreNum &&
+        preValidGroupCount < A16W8_MSD_PREPROCESS_MAX_GROUP && preGroupIdx < groupListShapeSize) {
         preBaseMNConfig.mAxisBaseOffset += preBaseMNConfig.m;
         preBaseMNConfig.m = GetSplitValueFromGroupList(preGroupIdx, preOffsetPre, gmmBaseParams, groupListGm);
-        preGroupIdx++;
+        preGroupIdx += groupListInnerShape;
         if (preBaseMNConfig.m <= 0) {
             continue;
         }
@@ -216,21 +225,28 @@ __aicore__ inline void GMMA16W8MSDProcess<ComputeType>::Process() {
         if (mnConfig.m <= 0) {
             continue;
         }
-        mnConfig.blockDimM = Ceil(A16W8_MSD_STEP * mnConfig.m, mnConfig.singleM);
-        mnConfig.blockDimN = Ceil(mnConfig.n, mnConfig.singleN);
-        curCount = count + mnConfig.blockDimM * mnConfig.blockDimN;
-        curBlock = coreIdx >= count ? coreIdx : coreIdx + coreNum;
-        while (curBlock < curCount) {
-            mnConfig.mIdx = (curBlock - count) / mnConfig.blockDimN;
-            mnConfig.nIdx = (curBlock - count) % mnConfig.blockDimN;
-            computeOp.MMCompute(mnConfig);
-            computeOp.PostProcess(mnConfig, false, secondHalfIterCount);
-            secondHalfIterCount++;
-            curBlock += coreNum;
-        }
-        count = curCount % coreNum;
+        ProcessCommon(mnConfig, count, curCount, curBlock, secondHalfIterCount);
     }
     TailProcess(mnConfig, secondHalfIterCount);
+}
+
+template <typename ComputeType>
+__aicore__ inline void GMMA16W8MSDProcess<ComputeType>::ProcessCommon(
+    MNConfig &mnConfig, uint32_t &count, uint32_t &curCount, uint32_t &curBlock, uint32_t &secondHalfIterCount)
+{
+    mnConfig.blockDimM = Ceil(A16W8_MSD_STEP * mnConfig.m, mnConfig.singleM);
+    mnConfig.blockDimN = Ceil(mnConfig.n, mnConfig.singleN);
+    curCount = count + mnConfig.blockDimM * mnConfig.blockDimN;
+    curBlock = coreIdx >= count ? coreIdx : coreIdx + coreNum;
+    while (curBlock < curCount) {
+        mnConfig.mIdx = (curBlock - count) / mnConfig.blockDimN;
+        mnConfig.nIdx = (curBlock - count) % mnConfig.blockDimN;
+        computeOp.MMCompute(mnConfig);
+        computeOp.PostProcess(mnConfig, false, secondHalfIterCount);
+        secondHalfIterCount++;
+        curBlock += coreNum;
+    }
+    count = curCount % coreNum;
 }
 
 /** @brief intenal computation class
@@ -441,7 +457,7 @@ __aicore__ inline uint64_t GMMA16W8MSDCompute<mmType, sync>::SetWOffset(uint32_t
     if constexpr (mmType::BT::format == CubeFormat::NZ && transposeW) {
         wOffset = tailN * (UB_BLOCK_UNIT_SIZE / sizeof(BT));  // 32: quant is 32, float16 is 16
     } else if constexpr (mmType::BT::format == CubeFormat::NZ) {
-        wOffset = tailN * AlignUp<16>(k);  // 16: nz format last two dim size
+        wOffset = tailN * AlignUp<NZ_B16_LAST_DIM_16>(k);
     } else if constexpr (transposeW) {
         wOffset = k * tailN;
     } else {
@@ -944,6 +960,77 @@ __aicore__ inline void GMMA16W8MSDCompute<mmType, sync>::CopyOutFinalResult(
     vecOutQueue.FreeTensor(output);
 }
 
+
+template <typename ComputeType>
+class GMMA16W8MSDMSparseProcess : public GMMA16W8MSDProcess<ComputeType> {
+public:
+    /** @brief constructor */
+    __aicore__ inline GMMA16W8MSDMSparseProcess(ComputeType& computeOp_)
+        : GMMA16W8MSDProcess<ComputeType>(computeOp_) {}
+    __aicore__ inline void Process();
+private:
+    __aicore__ inline void UpdateMnConfigForGroupListMSparse(
+        MNConfig &mnConfig, uint32_t splitValue, uint32_t expertIdx, uint32_t groupIdx);
+};
+
+template <typename ComputeType>
+__aicore__ inline void GMMA16W8MSDMSparseProcess<ComputeType>::Process()
+{
+    PreBaseMNConfig preBaseMNConfig;
+    MNConfig mnConfig;
+    uint32_t preValidGroupCount = 0;
+    uint32_t preGroupIdx = 0;
+    bool isPreRequired = false;
+    uint32_t secondHalfIterCount = 0;
+    this->SetMNConfigs(preBaseMNConfig, mnConfig);
+    if (mnConfig.k <= 0 || mnConfig.n <= 0) {
+        return;
+    }
+
+    uint32_t groupListSplitValueOffset = 1;
+    uint32_t groupListInnerShape = 2u; // groupList shape: [e, 2]
+    uint32_t groupListShapeSize = this->groupNum * groupListInnerShape;
+    for (uint32_t loop(0), count(0), curBlock(0), curCount(0), preCoreCount(0);
+        loop < groupListShapeSize; loop += groupListInnerShape) {
+        isPreRequired = preGroupIdx == loop; // loop groupNum
+        if (isPreRequired) {
+            this->PreProcess(preBaseMNConfig, mnConfig, preGroupIdx, preCoreCount, isPreRequired);
+        }
+
+        uint32_t splitValue = static_cast<int32_t>(this->groupListGm.GetValue(loop + groupListSplitValueOffset));
+        if (splitValue <= 0) { break; }
+        uint32_t expertIdx = static_cast<uint32_t>(this->groupListGm.GetValue(loop));
+        UpdateMnConfigForGroupListMSparse(mnConfig, splitValue, expertIdx, loop);
+
+        if ASCEND_IS_AIC {
+            if (isPreRequired) {
+                CrossCoreWaitFlag(SYNC_AIV_AIC_FLAG);
+            }
+        }
+        this->ProcessCommon(mnConfig, count, curCount, curBlock, secondHalfIterCount);
+    }
+    this->TailProcess(mnConfig, secondHalfIterCount);
+}
+
+template <typename ComputeType>
+__aicore__ inline void GMMA16W8MSDMSparseProcess<ComputeType>::UpdateMnConfigForGroupListMSparse(
+    MNConfig &mnConfig, uint32_t splitValue, uint32_t expertIdx, uint32_t groupIdx)
+{
+    if (groupIdx > 0) {
+        mnConfig.mAxisBaseOffset += mnConfig.m;
+        mnConfig.xBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.k;
+        mnConfig.yBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.n;
+    }
+
+    mnConfig.nAxisBaseOffset = static_cast<uint64_t>(expertIdx) * mnConfig.n;
+    if constexpr (GMMA16W8MSDProcess<ComputeType>::B::format == CubeFormat::NZ) {
+        mnConfig.wBaseOffset = static_cast<uint64_t>(AlignUp<NZ_B16_LAST_DIM_16>(mnConfig.k)) *
+            AlignUp<NZ_B16_LAST_DIM_16>(mnConfig.nAxisBaseOffset);
+    } else {
+        mnConfig.wBaseOffset = static_cast<uint64_t>(mnConfig.k) * mnConfig.nAxisBaseOffset;
+    }
+    mnConfig.m = splitValue;
+}
 }  // namespace GROUPED_MATMUL
 
 #endif

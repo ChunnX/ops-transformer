@@ -76,7 +76,7 @@ BEGIN_TILING_DATA_DEF(GMMSwigluQuantParams)
 TILING_DATA_FIELD_DEF(uint32_t, groupNum);
 TILING_DATA_FIELD_DEF(uint8_t, groupListType);
 TILING_DATA_FIELD_DEF(uint8_t, quantDtype);
-TILING_DATA_FIELD_DEF(uint8_t, reserved1);
+TILING_DATA_FIELD_DEF(uint8_t, isMxWeightNzMultiTensor);
 TILING_DATA_FIELD_DEF(uint8_t, dequantDtype);
 TILING_DATA_FIELD_DEF(uint32_t, rowLen);
 TILING_DATA_FIELD_DEF(uint32_t, ubAvail);
@@ -88,8 +88,48 @@ TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantParams, gmmSwigluQuantParams);
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData);
 END_TILING_DATA_DEF;
 
+BEGIN_TILING_DATA_DEF(GMMSwigluQuantV2TensorApiQuantParams)
+TILING_DATA_FIELD_DEF(uint32_t, groupNum);
+TILING_DATA_FIELD_DEF(uint32_t, activeType);
+TILING_DATA_FIELD_DEF(uint32_t, aQuantMode);
+TILING_DATA_FIELD_DEF(uint32_t, bQuantMode);
+TILING_DATA_FIELD_DEF(uint8_t, singleX);
+TILING_DATA_FIELD_DEF(uint8_t, singleW);
+TILING_DATA_FIELD_DEF(uint8_t, singleY);
+TILING_DATA_FIELD_DEF(int8_t, groupType);
+TILING_DATA_FIELD_DEF(uint8_t, groupListType);
+TILING_DATA_FIELD_DEF(uint8_t, hasBias);
+TILING_DATA_FIELD_DEF(uint16_t, reserved);
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(GMMSwigluQuantV2TensorApiQuantParamsOp, GMMSwigluQuantV2TensorApiQuantParams)
+
+BEGIN_TILING_DATA_DEF(GMMSwigluQuantV2TensorApiMMTiling)
+TILING_DATA_FIELD_DEF(uint32_t, m);
+TILING_DATA_FIELD_DEF(uint32_t, n);
+TILING_DATA_FIELD_DEF(uint32_t, k);
+TILING_DATA_FIELD_DEF(uint32_t, baseM);
+TILING_DATA_FIELD_DEF(uint32_t, baseN);
+TILING_DATA_FIELD_DEF(uint32_t, baseK);
+TILING_DATA_FIELD_DEF(uint32_t, kAL1);
+TILING_DATA_FIELD_DEF(uint32_t, kBL1);
+TILING_DATA_FIELD_DEF(uint32_t, scaleKAL1);
+TILING_DATA_FIELD_DEF(uint32_t, scaleKBL1);
+TILING_DATA_FIELD_DEF(uint8_t, isBias);
+TILING_DATA_FIELD_DEF(uint8_t, dbL0C);
+TILING_DATA_FIELD_DEF(uint16_t, reserved1);
+TILING_DATA_FIELD_DEF(uint32_t, reserved2);
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(GMMSwigluQuantV2TensorApiMMTilingOp, GMMSwigluQuantV2TensorApiMMTiling)
+
+BEGIN_TILING_DATA_DEF(GMMSwigluQuantV2TensorApiTilingData)
+TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantV2TensorApiQuantParams, gmmQuantParams);
+TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantV2TensorApiMMTiling, mmTilingData);
+END_TILING_DATA_DEF;
+
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_0, GMMSwigluQuantTilingDataParams)
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_1, GMMSwigluQuantTilingDataParams)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_16, GMMSwigluQuantV2TensorApiTilingData)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_17, GMMSwigluQuantV2TensorApiTilingData)
 
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2, GMMSwigluQuantV2TilingData)
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_3, GMMSwigluQuantV2TilingFusionData)
@@ -105,15 +145,23 @@ struct GMMSwigluV2CompileInfo {
 
 namespace GroupedMatmulSwigluQuantV2Tiling {
 constexpr uint32_t X_INDEX = 0;
+constexpr uint32_t X_SCALE_INDEX = 1;
+constexpr uint32_t GROUPLIST_INDEX = 2;
 constexpr uint32_t WEIGHT_INDEX = 3;
 constexpr uint32_t WEIGHT_SCALE_INDEX = 4;
-constexpr uint32_t GROUPLIST_INDEX = 2;
+constexpr uint32_t WEIGHT_ASSIST_MATRIX_INDEX = 5;
+constexpr uint32_t BIAS_INDEX = 6;
 constexpr uint32_t SMOOTH_SCALE_INDEX = 7;
+constexpr uint32_t Y_INDEX = 0;
+constexpr uint32_t Y_SCALE_INDEX = 1;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 constexpr uint32_t ATTR_INDEX_DEQUANT_MODE = 0;
+constexpr uint32_t ATTR_INDEX_DEQUANT_DTYPE = 1;
+constexpr uint32_t ATTR_INDEX_QUANT_MODE = 2;
+constexpr uint32_t ATTR_INDEX_QUANT_DTYPE = 3;
+constexpr uint32_t ATTR_INDEX_TRANSPOSE_WEIGHT = 4;
 constexpr uint32_t ATTR_INDEX_GROUPLIST_TYPE = 5;
 constexpr uint32_t ATTR_INDEX_TUNING_CONFIG = 6;
-constexpr uint32_t ATTR_INDEX_TRANSPOSE_WEIGHT = 4;
 constexpr uint32_t DIM_0 = 0;
 constexpr uint32_t DIM_1 = 1;
 constexpr uint32_t DIM_2 = 2;

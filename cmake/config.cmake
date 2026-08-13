@@ -38,6 +38,7 @@ get_filename_component(OPS_ADV_DIR                  "${CMAKE_CURRENT_SOURCE_DIR}
 get_filename_component(OPS_ADV_CMAKE_DIR            "${OPS_ADV_DIR}/cmake"                  REALPATH)
 get_filename_component(OPS_ADV_UTILS_KERNEL_INC     "${OPS_ADV_DIR}/common/include/op_kernel"   REALPATH)
 get_filename_component(OPS_CGMCT                    "${OPS_ADV_DIR}/gmm/common/cgmct"       REALPATH)
+get_filename_component(OPS_GMM_COMMON_KERNEL_INC    "${OPS_ADV_DIR}/gmm/common/op_kernel"   REALPATH)
 
 
 #   构建树相关路径
@@ -253,6 +254,7 @@ if (BUILD_OPEN_PROJECT)
                 --enable_tiling_sink ${ENABLE_TILING_SINK}
                 --enable_aicpu ${ENABLE_AICPU}
                 --enable_aicpu_kernel ${ENABLE_AICPU_KERNEL}
+                --module ${ASCEND_MODULE_NAME}
                 RESULT_VARIABLE result
                 OUTPUT_STRIP_TRAILING_WHITESPACE
                 OUTPUT_VARIABLE PREPARE_BUILD_OUTPUT_VARIABLE)

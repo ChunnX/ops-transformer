@@ -19,33 +19,31 @@
 #include "weight_quant_batch_matmul_v2_weight_nz_performance_base.h"
 
 namespace Mc2WeightQuantBatchMatmulV2 {
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
 class Mc2WeightQuantBatchMatmulV2WeightNzPerformanceKernel
-    : public Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<
-          xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>
-{
+    : public Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans,
+                                                                      antiQuantType, hasAntiQuantOffset> {
 public:
     __aicore__ inline Mc2WeightQuantBatchMatmulV2WeightNzPerformanceKernel(){};
     __aicore__ inline void Process();
     __aicore__ inline void OneProcess();
 };
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzPerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::Process()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzPerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                     hasAntiQuantOffset>::Process()
 {
     OneProcess();
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzPerformanceKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::OneProcess()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void
+Mc2WeightQuantBatchMatmulV2WeightNzPerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans, antiQuantType,
+                                                     hasAntiQuantOffset>::OneProcess()
 {
     LocalTensor<xType> bL1Local = this->InBufBL1_.template Get<xType>();
     LocalTensor<xType> aL1Local = this->InBufAL1_.template Get<xType>();
@@ -109,13 +107,11 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzPerformanceKernel<
     }
 }
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
 class Mc2WeightQuantBatchMatmulV2WeightNzKernel
-    : public Mc2WeightQuantBatchMatmulV2WeightNzPerformanceKernel<
-          xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>
-{
+    : public Mc2WeightQuantBatchMatmulV2WeightNzPerformanceKernel<xType, wType, biasType, yType, aTrans, bTrans,
+                                                                  antiQuantType, hasAntiQuantOffset> {
 public:
     __aicore__ inline Mc2WeightQuantBatchMatmulV2WeightNzKernel(){};
     __aicore__ inline void Process();
@@ -125,11 +121,10 @@ protected:
     static constexpr int32_t NZ_N = 32;
 };
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset>::Process()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          Mc2QuantType antiQuantType, bool hasAntiQuantOffset>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzKernel<xType, wType, biasType, yType, aTrans, bTrans,
+                                                                 antiQuantType, hasAntiQuantOffset>::Process()
 {
     uint64_t xSize = this->tiling_->mSize * this->tiling_->kSize;
     uint64_t weightSize =
@@ -172,15 +167,15 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzKernel<
                     uint64_t xIndex = indexX0 + indexX1 + indexX2 + indexX3;
                     uint64_t weightIndex = indexWeight0 + indexWeight1 + indexWeight2 + indexWeight3;
                     uint64_t yIndex = indexY0 + indexY1 + indexY2 + batchY3Index;
-                    this->xGlobal_.SetGlobalBuffer(
-                        reinterpret_cast<__gm__ xType*>(this->xGM_ + offsetX * xIndex), xSize);
+                    this->xGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(this->xGM_ + offsetX * xIndex),
+                                                   xSize);
                     this->wGlobal_.SetGlobalBuffer(
-                        reinterpret_cast<__gm__ wType*>(this->weightGM_ + offsetWeight * weightIndex), weightSize);
-                    this->yGlobal_.SetGlobalBuffer(
-                        reinterpret_cast<__gm__ yType*>(this->yGM_ + offsetY * yIndex), ySize);
+                        reinterpret_cast<__gm__ wType *>(this->weightGM_ + offsetWeight * weightIndex), weightSize);
+                    this->yGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ yType *>(this->yGM_ + offsetY * yIndex),
+                                                   ySize);
                     if (this->tiling_->biasWithBatch && this->biasFlag_) {
                         this->biasGlobal_.SetGlobalBuffer(
-                            reinterpret_cast<__gm__ biasType*>(this->biasGM_ + offsetBias * yIndex),
+                            reinterpret_cast<__gm__ biasType *>(this->biasGM_ + offsetBias * yIndex),
                             this->tiling_->nSize);
                     }
                     this->OneProcess();

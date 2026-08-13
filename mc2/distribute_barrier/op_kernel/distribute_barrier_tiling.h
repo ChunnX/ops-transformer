@@ -20,11 +20,13 @@
 struct DistributeBarrierInfo {
     uint32_t worldSize;
     uint32_t rankId;
-    uint32_t aivNum;                     // aivNum
+    uint32_t aivNum; // aivNum
     uint64_t totalUbSize;
     uint64_t totalWinSize;
     bool isInputTimeOut;
     bool isInputElasticInfo;
+    bool isMc2Context;
+    bool reserved1;
 };
 
 struct DistributeBarrierTilingData {

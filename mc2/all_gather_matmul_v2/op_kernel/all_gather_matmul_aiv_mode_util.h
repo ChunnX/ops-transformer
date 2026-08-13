@@ -24,7 +24,8 @@ using namespace AscendC;
 #define FORCE_INLINE_AICORE __attribute__((always_inline)) inline __aicore__
 
 constexpr static int32_t AIC_WAIT_AIV_FINISH_ALIGN_FLAG_ID = 12;
-template <typename T, size_t SIZE> struct BaseBlock {
+template <typename T, size_t SIZE>
+struct BaseBlock {
     static_assert((SIZE & (SIZE - 1)) == 0, "Invalid block size");
     static constexpr size_t size = Catlass::BytesToBits(SIZE) / Catlass::SizeOfBits<T>::value;
 
@@ -49,11 +50,14 @@ template <typename T, size_t SIZE> struct BaseBlock {
     }
 };
 
-template <typename T> using Block32B = BaseBlock<T, 32>;
+template <typename T>
+using Block32B = BaseBlock<T, 32>;
 
-template <typename T> using Block256B = BaseBlock<T, 256>;
+template <typename T>
+using Block256B = BaseBlock<T, 256>;
 
-template <typename T> using Block512B = BaseBlock<T, 512>;
+template <typename T>
+using Block512B = BaseBlock<T, 512>;
 
 inline __aicore__ void AlignJudge(bool trans_a, bool trans_b, int32_t m, int32_t k, int32_t n, int32_t m_align,
                                   int32_t k_align, int32_t n_align, int32_t &aligned_a, int32_t &aligned_b)
@@ -91,9 +95,9 @@ FORCE_INLINE_AICORE void CopyUbufToGm(__gm__ T *dst, LocalTensor<T> ubTensor, ui
                                       uint16_t srcStride, uint16_t dstStride)
 {
     DataCopyParams dataCopyParams(nBurst,    // blockCount
-                              lenBurst,  // blockLen
-                              srcStride, // srcStride
-                              dstStride  // dstStride
+                                  lenBurst,  // blockLen
+                                  srcStride, // srcStride
+                                  dstStride  // dstStride
     );
     GlobalTensor<T> gmTensor;
     gmTensor.SetGlobalBuffer(dst);
@@ -161,6 +165,8 @@ FORCE_INLINE_AICORE void CheckBuffFlag(__gm__ int32_t *buff, TBuf<AscendC::TPosi
 
 FORCE_INLINE_AICORE void SetBuffFlag(__gm__ int32_t *buff, TBuf<AscendC::TPosition::VECCALC> uBuf_, int32_t flag)
 {
+    SetFlag<HardEvent::MTE3_S>(EVENT_ID2);
+    WaitFlag<HardEvent::MTE3_S>(EVENT_ID2);
     LocalTensor<int32_t> ubTensor = uBuf_.AllocTensor<int32_t>();
     ubTensor(0) = flag;
     SetFlag<HardEvent::S_MTE3>(EVENT_ID2);

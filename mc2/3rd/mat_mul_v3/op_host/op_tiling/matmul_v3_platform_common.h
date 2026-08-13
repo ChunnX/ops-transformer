@@ -21,25 +21,25 @@
 #include "mc2_log.h"
 #include "platform/soc_spec.h"
 namespace optiling {
-const std::initializer_list<NpuArch> Mc2AdvancedSocVersion = {
-    NpuArch::DAV_3510,
-    NpuArch::DAV_RESV};  // supportMmadS8S4平台
+const std::initializer_list<NpuArch> Mc2AdvancedSocVersion = {NpuArch::DAV_3510,
+                                                              NpuArch::DAV_RESV}; // supportMmadS8S4平台
 
 template <typename T>
 inline typename std::enable_if<
     std::is_same<T, gert::TilingParseContext>::value || std::is_same<T, gert::TilingContext>::value, bool>::type
-Mc2IsAdvancedSocVersion(T *context) {
-    OP_TILING_CHECK(context == nullptr, CUBE_INNER_ERR_REPORT("Mc2MatMulV3", "context is null"), return ge::GRAPH_FAILED);
+Mc2IsAdvancedSocVersion(T *context)
+{
+    OP_TILING_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("Mc2MatMulV3", "context"), return ge::GRAPH_FAILED);
     fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfo == nullptr, CUBE_INNER_ERR_REPORT(context->GetNodeName(), "platformInfoPtr is null"),
+    OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "platformInfo"),
                     return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     std::string mmad;
     bool res = platformInfo->GetPlatformRes("AICoreintrinsicDtypeMap", "Intrinsic_mmad", mmad);
     bool supportMmadS8S4 = res && mmad.find("s8s4") != std::string::npos;
-    NpuArch npuArch =
-        supportMmadS8S4 ? NpuArch::DAV_RESV : ascendcPlatform.GetCurNpuArch();
-    return std::find(Mc2AdvancedSocVersion.begin(), Mc2AdvancedSocVersion.end(), npuArch) != Mc2AdvancedSocVersion.end();
+    NpuArch npuArch = supportMmadS8S4 ? NpuArch::DAV_RESV : ascendcPlatform.GetCurNpuArch();
+    return std::find(Mc2AdvancedSocVersion.begin(), Mc2AdvancedSocVersion.end(), npuArch) !=
+           Mc2AdvancedSocVersion.end();
 }
-}
+} // namespace optiling
 #endif // __OP_HOST_MATMUL_V3_PLATFORM_COMMON_H__

@@ -26,6 +26,7 @@ function(add_opapi_modules)
       PRIVATE
       -Dgoogle=ascend_private
       -DACLNN_LOG_FMT_CHECK
+      -DOP_LOG_LIBOPAPI_ONLY
     )
     target_compile_definitions(${OPHOST_NAME}_opapi_obj
       PRIVATE
@@ -70,7 +71,7 @@ function(add_aicpu_cust_kernel_modules target_name)
       PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
               $<BUILD_INTERFACE:dlog_headers>
               -Wl,--no-whole-archive
-              Eigen3::EigenTransformer
+              Eigen3::Eigen
       )
     if (NOT ${target_name} IN_LIST AICPU_CUST_OBJ_TARGETS)
       set(AICPU_CUST_OBJ_TARGETS ${AICPU_CUST_OBJ_TARGETS} ${target_name} CACHE INTERNAL "All aicpu cust obj targets")
@@ -246,7 +247,7 @@ macro(add_mc2_modules_sources)
 
   cmake_parse_arguments(MODULE "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
   set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-  
+
    # 获取父目录和祖父目录路径
   get_filename_component(CMAKE_PARENT_DIR ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
   get_filename_component(CMAKE_GRANDPARENT_DIR ${CMAKE_PARENT_DIR} DIRECTORY)

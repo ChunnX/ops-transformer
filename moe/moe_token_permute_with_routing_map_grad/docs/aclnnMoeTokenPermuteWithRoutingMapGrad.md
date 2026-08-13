@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -27,35 +37,35 @@
     $$
 
     - probs不为None：
-    
+
     $$
     probsGradOutOptional = zeros(tokens_num, numExperts)
     $$
-    
+
     - dropPaddedMode为true时
-    
+
     $$
     probsGradOutOptional [sortedIndices[i], i/capacity] = permutedProbsOutputGradOptional[i]
     $$
-    
+
     - dropPaddedMode为false时
-    
+
     $$
     probsGradOutOptional = maskedscatter(probsGradOutOptional,routingMapOptional, permutedProbsOutputGradOptional)
     $$
     - probs为None：
-    
+
     $$
-    tokensGradOut= zeros(restoreShapeOptional, dtype=permutedTokens.dtype, device=permutedTokens.device)
+    tokenGradOut= zeros(restoreShapeOptional, dtype=permutedTokens.dtype, device=permutedTokens.device)
     $$
-    
+
     $$
-    tokensGradOut[permuteTokenId[i]] += permutedTokens[outIndex[i]]
+    tokenGradOut[permuteTokenId[i]] += permutedTokens[outIndex[i]]
     $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermuteWithRoutingMapGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermuteWithRoutingMapGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGradGetWorkspaceSize(
@@ -109,12 +119,12 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
       <td>permutedTokensOutputGrad</td>
       <td>输入</td>
       <td>表示正向输出permutedTokens的梯度。</td>
-      <td>shape支持2D维度，不支持空tensor，topK_num表示每个token选中的专家数量，capacity表示每个专家选中的token数量。</td>
+      <td>shape支持2D维度，不支持空tensor，topK_num表示每个token最多被选中的专家数量上限，capacity表示每个专家选中的token数量。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>
       • 非dropAndPad模式:（tokens_num * topK_num, hidden_size）<br>
-      • dropAndPad模式: （experts_num * capacity, hidden_size）</td>
+      • dropAndPad模式:（experts_num * capacity, hidden_size）</td>
       <td>√</td>
   </tr>
   <tr>
@@ -123,32 +133,32 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
       <td>正向输出permutedProbs的梯度。</td>
       <td>
       •  不传则表示不需要计算probsGradOutOptional；<br>
-      • shape为一个1D维度，topK_num表示每个token选中的专家数量，capacity表示每个专家选中的token数量;<br>
+      • shape为一个1D维度，topK_num表示每个token最多被选中的专家数量上限，capacity表示每个专家选中的token数量。<br>
       • 数据类型与permutedTokensOutputGrad一致或者当permutedTokensOutputGrad是BFLOAT16时支持FLOAT。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>
       • 非dropAndPad模式:（tokens_num * topK_num）<br>
-      • dropAndPad模式: （experts_num * capacity）</td>
+      • dropAndPad模式:（experts_num * capacity）</td>
       <td>√</td>
   </tr>
   <tr>
       <td>sortedIndices</td>
       <td>输入</td>
       <td>排序的索引值。</td>
-      <td>非dropAndPad模式索引取值范围[0, tokens_num * topK_num - 1]， dropAndPad模式索引取值范围[0, experts_num * capacity - 1]，topK_num表示每个token选中的专家数量，capacity表示每个专家选中的token数量。</td>
+      <td>非dropAndPad模式索引取值范围[0, tokens_num * topK_num - 1]或-1，-1表示无效槽位不参与计算，topK_num表示每个token选中的专家数量的上限；dropAndPad模式索引取值范围[0, experts_num * capacity - 1]，capacity表示每个专家选中的token数量。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>
-      • 非dropAndPad模式:（tokens_num * topK_num, ）<br>
-      • dropAndPad模式: （experts_num * capacity）</td>
+      • 非dropAndPad模式:（tokens_num * topK_num,）<br>
+      • dropAndPad模式:（experts_num * capacity）</td>
       <td>√</td>
   </tr>
   <tr>
       <td>routingMapOptional</td>
       <td>可选输入</td>
       <td>代表token到expert的映射关系。</td>
-      <td>要求shape为一个2D的tensor，非dropAndPad模式要求每行中包含topK个true 或 1。</td>
+      <td>要求shape为一个2D的tensor，非dropAndPad模式要求每行中包含不超过topK个true或1。</td>
       <td>INT8、bool(当数据类型为INT8，取值支持0、1，当数据类型为bool，取值支持true、false)</td>
       <td>ND</td>
       <td>（tokens_num, experts_num）</td>
@@ -185,7 +195,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
       <td>-</td>
   </tr>
   <tr>
-      <td>tokensGradOut</td>
+      <td>tokenGradOut</td>
       <td>输出</td>
       <td>输入permutedTokens的梯度</td>
       <td>要求为一个维度为2D的Tensor。</td>
@@ -227,8 +237,8 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
   </tbody></table>
 
 - **返回值：**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -302,18 +312,18 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
-  - aclnnMoeTokenPermuteWithRoutingMapGrad默认确定性实现。
+  - aclnnMoeTokenPermuteWithRoutingMapGrad默认非确定性实现，支持通过alcrtCtxSetSysParamOpt开启确定性。
 
-- 非dropPaddedMode 场景topK_num <= 512
+- 非dropPaddedMode场景topK_num <= 512
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include "aclnnop/aclnn_moe_token_permute_with_routing_map_grad.h"
@@ -420,7 +430,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 int main()
 {
 
-    // 1. （固定写法）device/stream初始化，参考acl API手册
+    // 1.（固定写法）device/stream初始化，参考acl API手册
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -508,7 +518,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenPermuteWithRoutingMapGrad failed. ERROR: %d\n", ret);
               return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

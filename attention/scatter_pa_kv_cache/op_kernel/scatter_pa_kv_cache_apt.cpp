@@ -23,6 +23,8 @@
 #include "arch35/scatter_pa_kv_cache_omni_not_fully_load.h"
 #include "arch35/scatter_pa_kv_cache_nz_fully_load.h"
 #include "arch35/scatter_pa_kv_cache_nz_not_fully_load.h"
+#include "arch35/scatter_pa_kv_cache_norm_non_contiguous.h"
+#include "arch35/scatter_pa_kv_cache_nz_non_contiguous.h"
 #include "arch35/common.h"
 
 #define NORMAL_INT32_FULLY_LOAD 141
@@ -51,6 +53,10 @@
 
 #define NCT_FULLY_LOAD 601
 #define NCT_NOT_FULLY_LOAD 600
+
+#define NORMAL_NON_CONTIGUOUS 700
+#define NZ_NON_CONTIGUOUS 800
+#define NZ_NON_CONTIGUOUS_FIVE_DIM 900
 
 using namespace ScatterPaKvCache;
 
@@ -96,6 +102,11 @@ extern "C" __global__ __aicore__ void scatter_pa_kv_cache(GM_ADDR key, GM_ADDR k
         op.Init(key, key_cache_in, slot_mapping, value, value_cache_in, compress_lens, compress_seq_offset,
                 seq_lens, key_cache_out, value_cache_out);
         op.Process();
+    } else if TILING_KEY_IS(NORMAL_NON_CONTIGUOUS) {
+        ScatterPaKvCache::ScatterPaKvCacheNormNonContiguous<keyType, DTYPE_SLOT_MAPPING, DUAL_IN_OUT> op(
+            &pipe, &tilingData);
+        op.Init(key, slot_mapping, value, key_cache_out, value_cache_out);
+        op.Process();
     } else if TILING_KEY_IS(NZ_FULLY_LOAD) {
         ScatterPaKvCache::ScatterPaKvCacheNzFullyLoad<keyType, valueType, DTYPE_SLOT_MAPPING, DUAL_IN_OUT> op(
             &pipe, &tilingData);
@@ -103,6 +114,16 @@ extern "C" __global__ __aicore__ void scatter_pa_kv_cache(GM_ADDR key, GM_ADDR k
         op.Process();
     } else if TILING_KEY_IS(NZ_NOT_FULLY_LOAD) {
         ScatterPaKvCache::ScatterPaKvCacheNzNotFullyLoad<keyType, valueType, DTYPE_SLOT_MAPPING, DUAL_IN_OUT> op(
+            &pipe, &tilingData);
+        op.Init(key, slot_mapping, value, key_cache_out, value_cache_out);
+        op.Process();
+    } else if TILING_KEY_IS(NZ_NON_CONTIGUOUS) {
+        ScatterPaKvCache::ScatterPaKvCacheNzNonContiguous<keyType, valueType, DTYPE_SLOT_MAPPING, DUAL_IN_OUT> op(
+            &pipe, &tilingData);
+        op.Init(key, slot_mapping, value, key_cache_out, value_cache_out);
+        op.Process();
+    }  else if TILING_KEY_IS(NZ_NON_CONTIGUOUS_FIVE_DIM) {
+        ScatterPaKvCache::ScatterPaKvCacheNzNonContiguous<keyType, valueType, DTYPE_SLOT_MAPPING, DUAL_IN_OUT, true> op(
             &pipe, &tilingData);
         op.Init(key, slot_mapping, value, key_cache_out, value_cache_out);
         op.Process();

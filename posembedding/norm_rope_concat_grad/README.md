@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：（多模态）transfomer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）融合算子功能反向推导。
+- 算子功能：（多模态）transformer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）融合算子功能反向推导。
 
 - 计算公式：
   - **LayerNorm反向推导：**
@@ -47,7 +47,7 @@
         \frac{\partial L}{\partial x} = \frac{\partial L}{\partial y} \cdot \text{cos} + Half({\frac{\partial L}{\partial y} \cdot \text{sin}}) \odot  \text{negMask}
     $$
 
-  - **其中Interleave()表示headDim维度奇数与偶数位置交替重组，Half()表示headDim维度后半和前一半元素交替重组，例如x = [0,1,2,3,4,5,6,7], 则Interleave(x) = [1,0,3,2,5,4,7,6]，Half(x)=[4,0,5,1,6,2,7,3]；negMask为headDim长度，偶数位为1， 奇数位为-1，即(1, -1, 1, -1, 1, ...)**
+  - **其中Interleave()表示headDim维度奇数与偶数位置交替重组，Half()表示headDim维度后半和前一半元素交替重组，例如x = [0,1,2,3,4,5,6,7],则Interleave(x) = [1,0,3,2,5,4,7,6]，Half(x)=[4,0,5,1,6,2,7,3]；negMask为headDim长度，偶数位为1，奇数位为-1，即(1, -1, 1, -1, 1, ...)**
 
 - **参数说明：**
     <table style="undefined;table-layout: fixed; width: 1300px"><colgroup>

@@ -27,7 +27,7 @@
 #include "lib/hccl/hccl.h"
 #endif
 #include "../common.h"
-#include "../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_bf16.h"
+#include "../../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_bf16.h"
 #include "matmul_all_reduce_add_x3.h"
 #include "matmul_all_reduce_quant_perchannel.h"
 #include "matmul_all_reduce_quant_reduce_sum.h"
@@ -198,24 +198,24 @@ __aicore__ inline void MatmulAllReduceQuantBF16CommInt8<xType, wType, fFormat, w
                                                         aTrans, bTrans>::PrepareInit()
 {
     auto &&mc2Tiling = tilingData_->param;
-    uint32_t rankNum = mc2Tiling.rankDim;
+    uint32_t rankDimVal = mc2Tiling.rankDim;
     uint32_t tileM = tilingData_->tilematmulTiling.matmulTiling.M; // 头块 pad 大小更新
     tilePadM_ = tileM;
-    if ((tileM % rankNum) != 0) { // 按照 M 来 pad
-        tilePadM_ += rankNum - (tileM % rankNum);
+    if ((tileM % rankDimVal) != 0) { // 按照 M 来 pad
+        tilePadM_ += rankDimVal - (tileM % rankDimVal);
     }
     uint32_t tailM = tilingData_->tailmatmulTiling.matmulTiling.M;
     tailPadM_ = tailM;
-    if ((tailM % rankNum) != 0) {
-        tailPadM_ += rankNum - (tailM % rankNum);
+    if ((tailM % rankDimVal) != 0) {
+        tailPadM_ += rankDimVal - (tailM % rankDimVal);
     }
 
     tilePadDataCnt_ = tilePadM_ * tilingData_->tilematmulTiling.matmulTiling.N;
     tailPadDataCnt_ = tailPadM_ * tilingData_->tailmatmulTiling.matmulTiling.N;
     const uint64_t tempBufOffsetTilePad = tilePadDataCnt_ * sizeof(int8_t); // 偏移计算
     const uint64_t tempBufOffsetTailPad = tailPadDataCnt_ * sizeof(int8_t);
-    const uint64_t tempBufOffsetTilePadSingle = tempBufOffsetTilePad / rankNum;
-    const uint64_t tempBufOffsetTailPadSingle = tempBufOffsetTailPad / rankNum;
+    const uint64_t tempBufOffsetTilePadSingle = tempBufOffsetTilePad / rankDimVal;
+    const uint64_t tempBufOffsetTailPadSingle = tempBufOffsetTailPad / rankDimVal;
 
     for (uint32_t i = 0U; i < mc2Tiling.tileCnt; ++i) { // 头块偏移
         const uint64_t indexOffsetTile = i * tempBufOffsetTilePad;
@@ -317,12 +317,12 @@ MatmulAllReduceQuantBF16CommInt8<xType, wType, fFormat, wFormat, scaleType, yTyp
         all2AllWaitIdx_++;
     }
 
-    const uint64_t outGmTileOffset =
-        static_cast<uint64_t>(tilingData_->tilematmulTiling.matmulTiling.M) * \
-        static_cast<uint64_t>(tilingData_->tilematmulTiling.matmulTiling.N) * sizeof(yType);
-    const uint64_t outGmTailOffset =
-        static_cast<uint64_t>(tilingData_->tailmatmulTiling.matmulTiling.M) * \
-        static_cast<uint64_t>(tilingData_->tailmatmulTiling.matmulTiling.N) * sizeof(yType);
+    const uint64_t outGmTileOffset = static_cast<uint64_t>(tilingData_->tilematmulTiling.matmulTiling.M) *
+                                     static_cast<uint64_t>(tilingData_->tilematmulTiling.matmulTiling.N) *
+                                     sizeof(yType);
+    const uint64_t outGmTailOffset = static_cast<uint64_t>(tilingData_->tailmatmulTiling.matmulTiling.M) *
+                                     static_cast<uint64_t>(tilingData_->tailmatmulTiling.matmulTiling.N) *
+                                     sizeof(yType);
     for (uint32_t i = 0U; i < (mc2Tiling.tileCnt + mc2Tiling.tailCnt); ++i) { // 尾块偏移
         if (GetBlockIdx() == 0) {
             hccl_.Wait(allGatherHandleId_[i]);

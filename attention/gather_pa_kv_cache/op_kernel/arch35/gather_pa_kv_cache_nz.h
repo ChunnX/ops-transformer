@@ -110,6 +110,13 @@ private:
     uint32_t seqLenAccumSize_;
     bool isSmallShape;
 
+    // 非连续支持
+    uint32_t nonContiguousFlag_;
+    int64_t kCacheStride0_;
+    int64_t vCacheStride0_;
+    int64_t keyOutStride0_;
+    int64_t valueOutStride0_;
+
 private:
     __aicore__ inline void InitParams()
     {
@@ -127,8 +134,18 @@ private:
         numBlocks_ = tl_->numBlocks;
         seqLenAccumSize_ = tl_->seqLenAccumSize;
 
+        // 非连续支持
+        nonContiguousFlag_ = tl_->nonContiguousFlag;
+        kCacheStride0_ = tl_->kCacheStride0;
+        vCacheStride0_ = tl_->vCacheStride0;
+        keyOutStride0_ = tl_->keyOutStride0;
+        valueOutStride0_ = tl_->valueOutStride0;
+
         isSmallShape =
-            (maxUbHiddenSizeK_ >= blockSize_ * hiddenSizeK_) && (maxUbHiddenSizeV_ >= blockSize_ * hiddenSizeV_);
+            (maxUbHiddenSizeK_ >= blockSize_ * hiddenSizeK_) && (maxUbHiddenSizeV_ >= blockSize_ * hiddenSizeV_) &&
+            // 输出非连续(ref dim0非连续)时不走small-shape的DataCopyFromeCache(它整block连续写, 无法按token散写),
+            // 改走RestoreFromCache逐token循环按keyOutStride0散写。bit2:keyOut非连续, bit3:valueOut非连续。
+            ((nonContiguousFlag_ & ((1U << 2) | (1U << 3))) == 0);
     }
 
 public:
@@ -147,8 +164,9 @@ public:
             coreOffset_ = CalcKvCoreOffset(batchStart); // 计算累加和
         }
 
-        uint32_t keyCacheOffset = 0;
-        uint32_t valueCacheOffset = 0;
+        // 偏移量用64位: 大hiddenSize且token多时, 字节偏移可超过uint32上限(4GB)导致回绕写错地址。
+        uint64_t keyCacheOffset = 0;
+        uint64_t valueCacheOffset = 0;
         for (uint32_t i = batchStart; i < batchEnd; i++) {
             T_INDEX seqLen;
             uint32_t batchOffset, accumSeqLen;
@@ -185,7 +203,9 @@ public:
             uint32_t blockCount = CeilDivision(seqLen, blockSize_);
 
             // 搬运key
-            uint32_t keyOffset = batchOffset * hiddenSizeK_;
+            uint64_t keyOffset = (nonContiguousFlag_ & (1 << 2)) ?
+                (batchOffset * keyOutStride0_ * sizeof(DTYPE_KEY)) :
+                (batchOffset * hiddenSizeK_);
             for (int j = 0; j < blockCount; j++) {
                 uint32_t curLen = blockSize_; // 4
                 if (j == blockCount - 1) {
@@ -202,21 +222,35 @@ public:
                 } else {
                     isFulledWithZero = false;
                     blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + seqOffset + j);
+                    // blockId数值越界时填零, 与golden对齐(非连续view场景numBlocks_为view dim0)。
+                    if (blockId >= numBlocks_ || blockId < 0) {
+                        isFulledWithZero = true;
+                        blockId = 0;
+                    }
                 }
-                keyCacheOffset = blockId * blockSize_ * hiddenSizeK_;
+                keyCacheOffset = (nonContiguousFlag_ & 1) ?
+                    (blockId * kCacheStride0_ * sizeof(DTYPE_KEY)) :
+                    (blockId * blockSize_ * hiddenSizeK_);
 
                 if (isSmallShape) {
                     DataCopyFromeCache(curLen, keyCacheOffset, keyOffset, isFulledWithZero, true);
                 } else {
+                    // ref dim0非连续(bit2)时token间按keyOutStride0散写; 连续时token紧密排列(=hiddenSizeK_)
                     RestoreFromCache(outKeyGm_[keyOffset], keyCacheGm_[keyCacheOffset], hiddenSizeK_, curLen,
-                                     isFulledWithZero);
+                                     isFulledWithZero,
+                                     (nonContiguousFlag_ & (1 << 2)) ?
+                                         (keyOutStride0_ * sizeof(DTYPE_KEY)) : hiddenSizeK_);
                 }
 
-                keyOffset += curLen * hiddenSizeK_;
+                keyOffset += (nonContiguousFlag_ & (1 << 2)) ?
+                    (curLen * keyOutStride0_ * sizeof(DTYPE_KEY)) :
+                    (curLen * hiddenSizeK_);
             }
 
             // 搬运value
-            uint32_t valueOffset = batchOffset * hiddenSizeV_;
+            uint64_t valueOffset = (nonContiguousFlag_ & (1 << 3)) ?
+                (batchOffset * valueOutStride0_ * sizeof(DTYPE_VALUE)) :
+                (batchOffset * hiddenSizeV_);
 
             for (int j = 0; j < blockCount; j++) {
                 uint32_t curLen = blockSize_;
@@ -233,17 +267,29 @@ public:
                 } else {
                     isFulledWithZero = false;
                     blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + seqOffset + j);
+                    // blockId数值越界时填零, 与golden对齐(非连续view场景numBlocks_为view dim0)。
+                    if (blockId >= numBlocks_ || blockId < 0) {
+                        isFulledWithZero = true;
+                        blockId = 0;
+                    }
                 }
-                valueCacheOffset = blockId * blockSize_ * hiddenSizeV_;
+                valueCacheOffset = (nonContiguousFlag_ & 2) ?
+                    (blockId * vCacheStride0_ * sizeof(DTYPE_VALUE)) :
+                    (blockId * blockSize_ * hiddenSizeV_);
                 
                 if (isSmallShape) {
                     DataCopyFromeCache(curLen, valueCacheOffset, valueOffset, isFulledWithZero, false);
                 } else {
+                    // ref dim0非连续(bit3)时token间按valueOutStride0散写; 连续时token紧密排列(=hiddenSizeV_)
                     RestoreFromCache(outValueGm_[valueOffset], valueCacheGm_[valueCacheOffset], hiddenSizeV_, curLen,
-                                     isFulledWithZero);
+                                     isFulledWithZero,
+                                     (nonContiguousFlag_ & (1 << 3)) ?
+                                         (valueOutStride0_ * sizeof(DTYPE_VALUE)) : hiddenSizeV_);
                 }
 
-                valueOffset += curLen * hiddenSizeV_;
+                valueOffset += (nonContiguousFlag_ & (1 << 3)) ?
+                    (curLen * valueOutStride0_ * sizeof(DTYPE_VALUE)) :
+                    (curLen * hiddenSizeV_);
             }
         }
     }
@@ -285,7 +331,7 @@ private:
         return coreOffset;
     }
 
-    __aicore__ inline void DataCopyFromeCache(uint32_t curLen, uint32_t scrOffset, uint32_t dstOffset,
+    __aicore__ inline void DataCopyFromeCache(uint32_t curLen, uint64_t scrOffset, uint64_t dstOffset,
                                               bool isFulledWithZero, bool isKey)
     {
         // 小shape情况
@@ -339,24 +385,33 @@ private:
         cacheQueue_.FreeTensor(cacheLocal);
     }
 
+    // dstTokenStrideBytes: 输出端相邻token间步长(字节)。输出连续时=hiddenSize; ref dim0非连续时=keyOutStride0*元素宽,
+    // 使block内每个token按stride散写到原ref内存(否则按hiddenSize稠密写会错位)。
     __aicore__ inline void RestoreFromCache(GlobalTensor<T> dstGm, GlobalTensor<T> scrGm, uint64_t hiddenSize,
-                                            uint32_t curblockSize, bool isFulledWithZero)
+                                            uint32_t curblockSize, bool isFulledWithZero, uint64_t dstTokenStrideBytes)
     {
         uint32_t fracBlockSize = hiddenSize / eleNumPerBlk;
+        // 每轮最多搬运的32B块数: 既受UB buffer容量(maxUbHiddenSize_/BLOCK_SIZE)约束, 也受硬件
+        // blockCount字段上限(MAX_BLOCK_CNT)约束。大hiddenSize时若仅按MAX_BLOCK_CNT切, 单次
+        // DataCopy(inBlkCnt*32B)会超过UB buffer导致越界, 故取二者较小值。
+        uint32_t maxBlkPerLoop = static_cast<uint32_t>(maxUbHiddenSize_ / BLOCK_SIZE);
+        if (maxBlkPerLoop > MAX_BLOCK_CNT) {
+            maxBlkPerLoop = MAX_BLOCK_CNT;
+        }
         uint16_t inBlkCnt = 0;
         uint16_t inSrcStride = blockSize_ - 1;
         DataCopyParams seqLensCopyParams = {inBlkCnt, 1, inSrcStride, 0};
         DataCopyParams lensCopyParams = {1, inBlkCnt, 0, 0};
 
         for (int i = 0; i < curblockSize; i++) {
-            uint32_t scroffset = i * eleNumPerBlk;
-            uint32_t dstoffset = i * hiddenSize;
+            uint64_t scroffset = i * eleNumPerBlk;
+            uint64_t dstoffset = i * dstTokenStrideBytes;
 
-            uint32_t ubLoops = CeilDivision(fracBlockSize, MAX_BLOCK_CNT);
+            uint32_t ubLoops = CeilDivision(fracBlockSize, maxBlkPerLoop);
             for (int j = 0; j < ubLoops; j++) {
-                inBlkCnt = MAX_BLOCK_CNT;
+                inBlkCnt = maxBlkPerLoop;
                 if (j == (ubLoops - 1)) {
-                    inBlkCnt = fracBlockSize - MAX_BLOCK_CNT * j;
+                    inBlkCnt = fracBlockSize - maxBlkPerLoop * j;
                 }
 
                 seqLensCopyParams.blockCount = inBlkCnt;

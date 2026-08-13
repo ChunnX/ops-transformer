@@ -1,8 +1,8 @@
-# mamba2_rmsnormgated 算子说明
+# mamba2_rmsnormgated算子说明
 
 ### 功能和实现说明
 
-基于状态空间模型（SSM）的因果卷积，实现 MambaV2 Prefill 阶段的因果卷积计算。计算流程包含 kernel_size=4 的 depthwise conv1d 和 SiLU 激活。本算子采用纯 Vector 实现 conv1d，并融合 bias 和 SiLU 运算以提升性能。
+基于 RMSNorm 和 SiLU 门控的融合算子，实现 MambaV2 Prefill 阶段的 RMSNorm + Gating 计算。计算流程为输入 x 经 SiLU(z) 门控激活后，进行分组 RMSNorm 归一化，再乘以权重 w。
 
 **计算流**  
 
@@ -42,7 +42,7 @@ out = torch.ops.npu_ops_transformer_ext.mamba2_rmsnormgated(x, z, w, G, E)
 
 **测试方法**
 
-见当前目录 tests/
+见当前目录tests/
 
 ```
 python test_rmsnormgated.py

@@ -39,4 +39,4 @@
     __gm__ int32_t *(var) = (__gm__ int32_t *)((tiling) + (offset##var));
 #endif
 
-#endif  // QGMM_INPLACE_ADD_UTILS_H
+#endif // QGMM_INPLACE_ADD_UTILS_H

@@ -30,7 +30,8 @@ class MoeV3FullLoadStaticQuant : public MoeV3FullLoadBase<T> {
 public:
     __aicore__ inline MoeV3FullLoadStaticQuant(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-                                GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale, GM_ADDR workspace,
+                                GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale,
+                                GM_ADDR topkWeight, GM_ADDR expandedTopkWeight, GM_ADDR workspace,
                                 GM_ADDR offset, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
@@ -55,7 +56,7 @@ private:
     float offset_;
 
     constexpr static MicroAPI::CastTrait castTraitF32ToF16 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
-                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
+                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
     constexpr static MicroAPI::CastTrait castTraitF16ToI8 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 };
@@ -63,11 +64,14 @@ private:
 template <typename T>
 __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX,
                                                          GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum,
-                                                         GM_ADDR expandedScale, GM_ADDR workspace, GM_ADDR offset,
+                                                         GM_ADDR expandedScale,
+                                                         GM_ADDR topkWeight, GM_ADDR expandedTopkWeight,
+                                                         GM_ADDR workspace, GM_ADDR offset,
                                                          const MoeInitRoutingV3Arch35TilingData *tilingData,
                                                          TPipe *tPipe)
 {
-    MoeV3FullLoadBase<T>::Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, workspace, tilingData, tPipe);
+    MoeV3FullLoadBase<T>::Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum,
+                                topkWeight, expandedTopkWeight, workspace, tilingData, tPipe);
 
     colsAlign_ = Align(this->cols_, sizeof(T));
     inFactor_ = Align(this->cols_, sizeof(int8_t));
@@ -119,9 +123,9 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Compute(int64_t rowLength)
             } else {
                 MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
             }
-            MicroAPI::Muls(inReg, inReg, scale_, maskRegInLoop);
-            MicroAPI::Adds(inReg, inReg, offset_, maskRegInLoop);
             MicroAPI::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
+            MicroAPI::Muls(outRegF16, outRegF16, static_cast<half>(scale_), maskRegInLoop);
+            MicroAPI::Adds(outRegF16, outRegF16, static_cast<half>(offset_), maskRegInLoop);
             MicroAPI::Cast<int8_t, half, castTraitF16ToI8>(outRegI8, outRegF16, maskRegInLoop);
             MicroAPI::DataCopy<int8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH,
                                                                             outRegI8, maskRegInLoop);
@@ -140,11 +144,12 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::ScatterOutXStaticQuant()
 
     int64_t startRowIdx = this->blockIdx_ * this->perCoreIndicesElements_;
     int64_t endRowIdx = startRowIdx + this->coreIndicesElements_;
+    int64_t outputRows = Min(this->actualExpertIdxNum_, this->activeNum_);
 
     DataCopyExtParams copyInParams{1, static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
     DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(this->cols_ * sizeof(int8_t)), 0, 0, 0};
 
-    for (int64_t i = startRowIdx; i < endRowIdx && i < this->activeNum_; i++) {
+    for (int64_t i = startRowIdx; i < endRowIdx && i < outputRows; i++) {
         int32_t curExpertId = sortedExpertIdx.GetValue(i);
         if (curExpertId < this->expertStart_ || curExpertId >= this->expertEnd_) {
             break;
@@ -180,6 +185,7 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::GatherOutXStaticQuant()
 
     int64_t startRowIdx = this->blockIdx_ * this->perCoreIndicesElements_;
     int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
+    int64_t outputRows = Min(this->actualExpertIdxNum_, this->activeNum_);
 
     uint32_t dstStride = (inFactor_ * sizeof(T) - AlignBytes(this->cols_, sizeof(T))) / BLOCK_BYTES;
     DataCopyExtParams dataXCopyParams{static_cast<uint16_t>(rowLength), static_cast<uint32_t>(this->cols_ * sizeof(T)),
@@ -205,7 +211,7 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::GatherOutXStaticQuant()
     for (int64_t i = this->startXRow_; i <= this->endXRow_; i++) {
         for (; k < this->coreIndicesElements_ && curIndex / this->k_ == i; curIndex++, k++) {
             int32_t outIndex = expandedRowIdx.GetValue(curIndex);
-            if (outIndex < this->activeNum_) {
+            if (outIndex >= 0 && outIndex < outputRows) {
                 DataCopyPad(expandedXGm_[outIndex * this->cols_], outLocal[(i - this->startXRow_) * inFactor_],
                             copyOutParams);
             }
@@ -233,8 +239,14 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Process()
         }
 
         if (this->epFullload_) {
+            if (this->isInputTopkWeight_) {
+                this->TopkWeightScatterOut();
+            }
             ScatterOutXStaticQuant();
         } else {
+            if (this->isInputTopkWeight_) {
+                this->TopkWeightGatherOut();
+            }
             GatherOutXStaticQuant();
         }
 

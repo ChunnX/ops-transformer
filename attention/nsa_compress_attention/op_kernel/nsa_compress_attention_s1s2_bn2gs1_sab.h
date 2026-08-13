@@ -281,14 +281,17 @@ NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten, hasTopkMask, INPUT_T,
 
     // impScore
     int64_t totalAicNum = AscendC::GetBlockNum();
-    int64_t impScoreOffset = totalOffset * totalAicNum;
-    int64_t perCoreOffset = (NSA_BASE_S1G_SIZE / this->tilingData->inputParams.gSize)
-                            * (this->tilingData->inputParams.alignedS2 / this->tilingData->importanceScoreParams.isM)
-                            * sizeof(float) * GM_DOUBLE_BUFFER;
+    uint64_t impScoreOffsetU64 = static_cast<uint64_t>(totalOffset) * static_cast<uint64_t>(totalAicNum);
+    uint64_t baseS1G =
+        static_cast<uint64_t>(NSA_BASE_S1G_SIZE) / static_cast<uint64_t>(this->tilingData->inputParams.gSize);
+    uint64_t alignedS2Div = static_cast<uint64_t>(this->tilingData->inputParams.alignedS2) /
+        static_cast<uint64_t>(this->tilingData->importanceScoreParams.isM);
+    uint64_t perCoreOffsetU64 = baseS1G * alignedS2Div * sizeof(float) * GM_DOUBLE_BUFFER;
     this->impScoreRes[0].SetGlobalBuffer(
-        (__gm__ T *)(workspace + impScoreOffset + perCoreOffset * this->cubeBlockIdx));
+        (__gm__ T *)(workspace + impScoreOffsetU64 + perCoreOffsetU64 * static_cast<uint64_t>(this->cubeBlockIdx)));
     this->impScoreRes[1].SetGlobalBuffer(
-        (__gm__ T *)(workspace + impScoreOffset + perCoreOffset * this->cubeBlockIdx + perCoreOffset / 2));
+        (__gm__ T *)(workspace + impScoreOffsetU64 + perCoreOffsetU64 *
+        static_cast<uint64_t>(this->cubeBlockIdx) + perCoreOffsetU64 / 2));
 
     GetExtremeValue(this->negativeFloatScalar, this->positiveFloatScalar);
 }
@@ -424,9 +427,16 @@ NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten, hasTopkMask, INPUT_T,
     int64_t n2Offset = 0;
 
     if constexpr (layOutType == LayOutTypeEnum::LAYOUT_TND) {
-        n2Offset = extraInfo.n2oIdx * this->s1TotalSize * this->gSize * this->dSize;
-        bOffset = extraInfo.s1SizeAcc * this->gSize * this->dSize;
-        s1gOffset = extraInfo.s1oIdx * this->tilingData->coreParams.s1BaseSize * this->gSize * this->dSize;
+        uint64_t n2OffsetU64 = static_cast<uint64_t>(extraInfo.n2oIdx) * static_cast<uint64_t>(this->s1TotalSize);
+        n2OffsetU64 = n2OffsetU64 * static_cast<uint64_t>(this->gSize) * static_cast<uint64_t>(this->dSize);
+        uint64_t bOffsetU64 = static_cast<uint64_t>(extraInfo.s1SizeAcc) *
+            static_cast<uint64_t>(this->gSize) * static_cast<uint64_t>(this->dSize);
+        uint64_t s1gOffsetU64 =
+            static_cast<uint64_t>(extraInfo.s1oIdx) * static_cast<uint64_t>(this->tilingData->coreParams.s1BaseSize);
+        s1gOffsetU64 = s1gOffsetU64 * static_cast<uint64_t>(this->gSize) * static_cast<uint64_t>(this->dSize);
+        n2Offset = static_cast<int64_t>(n2OffsetU64);
+        bOffset = static_cast<int64_t>(bOffsetU64);
+        s1gOffset = static_cast<int64_t>(s1gOffsetU64);
     }
     this->qCoreOffset = n2Offset + bOffset + s1gOffset;
     extraInfo.qCoreOffset = this->qCoreOffset;
@@ -626,8 +636,11 @@ NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten, hasTopkMask, INPUT_T,
         AscendC::SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
         if constexpr (hasTopkMask == true) {
             uint64_t maskOffset = isInfo.outerLoop * loopIdx;
-            uint64_t maskGmOffset = (extraInfo.s1oIdx * this->cubeS1BaseSize + extraInfo.vecCoreOffset / this->gSize)
-                                    * CeilDiv(this->tilingData->inputParams.s2Size, isInfo.isM);
+            uint64_t s1Offset = static_cast<uint64_t>(extraInfo.s1oIdx) * static_cast<uint64_t>(this->cubeS1BaseSize);
+            uint64_t vecOffset = static_cast<uint64_t>(extraInfo.vecCoreOffset) / static_cast<uint64_t>(this->gSize);
+            uint64_t totalSeqOffset = s1Offset + vecOffset;
+            uint64_t s2Div = CeilDiv(static_cast<uint64_t>(this->tilingData->inputParams.s2Size), isInfo.isM);
+            uint64_t maskGmOffset = totalSeqOffset * s2Div;
             uint64_t maskPad = maskLenAligned32B - scoreLoop;
             uint32_t maskSrcStride = static_cast<uint32_t>((this->s2Aligned64B - this->scoreLoop) / 32);
             if (loopIdx == this->s2Loop - 1) {
@@ -800,7 +813,8 @@ NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten, hasTopkMask, INPUT_T,
     uint32_t k_pad = (k + 8 - 1) / 8 * 8; //float数据类型对齐，暂时不考虑其他
     uint32_t S2sizeAlign32 = (S2sizeTopK + blockLength - 1) / blockLength * blockLength;
     uint32_t S2sizeAlign8 = (S2sizeTopK + 8 - 1) / 8 * 8;
-    uint32_t maxTopkBase = (190 * 1024 - 20 * S2sizeAlign32) / (4 * S2sizeAlign32 + 8 * k_pad);
+    uint32_t tmpUbSize = this->tilingData->importanceScoreParams.tmpUbSize;
+    uint32_t maxTopkBase = (190 * 1024 - tmpUbSize) / (4 * S2sizeAlign32 + 8 * k_pad);
     maxTopkBase = maxTopkBase > 0 ? maxTopkBase : 1;
     uint32_t topkBase = maxTopkBase > S1Base ? S1Base : maxTopkBase;
     AscendC::DataCopyExtParams copyInParamsV1, copyInParamsPad;
@@ -819,7 +833,7 @@ NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten, hasTopkMask, INPUT_T,
     addrOffset = addrOffset + topkBase * k_pad * sizeof(int32_t);
     topKValueLocal = allUbBuffer.GetWithOffset<T>(topkBase * k_pad, addrOffset);
     addrOffset = addrOffset + topkBase * k_pad * sizeof(float);
-    topKTmpLocal = allUbBuffer.GetWithOffset<uint8_t>(20 * S2sizeTopK, addrOffset);
+    topKTmpLocal = allUbBuffer.GetWithOffset<uint8_t>(tmpUbSize, addrOffset);
 
     int64_t bOffset = 0;
     int64_t n2Offset = 0;
@@ -827,9 +841,17 @@ NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten, hasTopkMask, INPUT_T,
     int64_t s1gOffset = 0;
 
     if constexpr (layOutType == LayOutTypeEnum::LAYOUT_TND) {
-        n2Offset = extraInfo.n2oIdx * this->s1TotalSize * k;
-        bOffset = extraInfo.s1SizeAcc * k;
-        s1gOffset = (extraInfo.s1oIdx * this->tilingData->coreParams.s1BaseSize + this->cubeSubIdx * ((extraInfo.cubeS1RealSize + 1) / 2)) * k;
+        uint64_t n2OffsetU64 = static_cast<uint64_t>(extraInfo.n2oIdx) *
+            static_cast<uint64_t>(this->s1TotalSize) * static_cast<uint64_t>(k);
+        uint64_t bOffsetU64 = static_cast<uint64_t>(extraInfo.s1SizeAcc) * static_cast<uint64_t>(k);
+        uint64_t s1Base =
+            static_cast<uint64_t>(extraInfo.s1oIdx) * static_cast<uint64_t>(this->tilingData->coreParams.s1BaseSize);
+        uint64_t cubeOffset =
+            static_cast<uint64_t>(this->cubeSubIdx) * ((static_cast<uint64_t>(extraInfo.cubeS1RealSize) + 1) / 2);
+        uint64_t s1gOffsetU64 = (s1Base + cubeOffset) * static_cast<uint64_t>(k);
+        n2Offset = static_cast<int64_t>(n2OffsetU64);
+        bOffset = static_cast<int64_t>(bOffsetU64);
+        s1gOffset = static_cast<int64_t>(s1gOffsetU64);
     }
     int64_t TopkOutCoreOffset = n2Offset + bOffset + s1gOffset;
 
@@ -1036,8 +1058,11 @@ __aicore__ inline void NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten
 
     if constexpr (layOutType == LayOutTypeEnum::LAYOUT_TND) {
         // b,s2,n2,d
-        bOffset = extraInfo.s2SizeAcc * this->tilingData->inputParams.n2Size * this->d2Size;
-        n2Offset = extraInfo.n2oIdx * this->d2Size;
+        uint64_t bOffsetU64 = static_cast<uint64_t>(extraInfo.s2SizeAcc) *
+            static_cast<uint64_t>(this->tilingData->inputParams.n2Size) * static_cast<uint64_t>(this->d2Size);
+        uint64_t n2OffsetU64 = static_cast<uint64_t>(extraInfo.n2oIdx) * static_cast<uint64_t>(this->d2Size);
+        bOffset = static_cast<int64_t>(bOffsetU64);
+        n2Offset = static_cast<int64_t>(n2OffsetU64);
     }
 
     int64_t vCoreOffset = n2Offset + bOffset + s2Offset;
@@ -1047,9 +1072,16 @@ __aicore__ inline void NsaCompressAttentionS1s2Bn2gs1SameAB<layOutType, hasAtten
     bmm2.SetTensorB(this->valueGm[vCoreOffset]);
 
     if constexpr (layOutType == LayOutTypeEnum::LAYOUT_TND) {
-        n2Offset = extraInfo.n2oIdx * this->s1TotalSize * this->gSize * this->d2Size;
-        bOffset = extraInfo.s1SizeAcc * this->gSize * this->d2Size;
-        s1gOffset = extraInfo.s1oIdx * this->tilingData->coreParams.s1BaseSize * this->gSize * this->d2Size;
+        uint64_t n2OffsetU64 = static_cast<uint64_t>(extraInfo.n2oIdx) * static_cast<uint64_t>(this->s1TotalSize);
+        n2OffsetU64 = n2OffsetU64 * static_cast<uint64_t>(this->gSize) * static_cast<uint64_t>(this->d2Size);
+        uint64_t bOffsetU64 = static_cast<uint64_t>(extraInfo.s1SizeAcc) *
+            static_cast<uint64_t>(this->gSize) * static_cast<uint64_t>(this->d2Size);
+        uint64_t s1gOffsetU64 =
+            static_cast<uint64_t>(extraInfo.s1oIdx) * static_cast<uint64_t>(this->tilingData->coreParams.s1BaseSize);
+        s1gOffsetU64 = s1gOffsetU64 * static_cast<uint64_t>(this->gSize) * static_cast<uint64_t>(this->d2Size);
+        n2Offset = static_cast<int64_t>(n2OffsetU64);
+        bOffset = static_cast<int64_t>(bOffsetU64);
+        s1gOffset = static_cast<int64_t>(s1gOffsetU64);
     }
     int64_t outCoreOffset = n2Offset + bOffset + s1gOffset;
 

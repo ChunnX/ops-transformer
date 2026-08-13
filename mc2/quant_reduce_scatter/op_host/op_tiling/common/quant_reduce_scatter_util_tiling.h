@@ -13,7 +13,6 @@
 
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "util/math_util.h"
-#include "mc2_log.h"
 
 namespace MC2Tiling {
 
@@ -76,10 +75,10 @@ enum OpType : size_t {
 
 // 封装参数
 struct TilingRunInfo {
-    const char *groupPtr;  // group指针
-    std::string group;  // group属性
-    uint32_t quantMode; // 量化方式
-    int64_t rankSize;  // rank大小
+    const char *groupPtr; // group指针
+    std::string group;    // group属性
+    uint32_t quantMode;   // 量化方式
+    int64_t rankSize;     // rank大小
 };
 
 class QuantReduceScatterUtilTiling {

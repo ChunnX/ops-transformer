@@ -45,8 +45,7 @@ struct TilingParams {
     std::string groupTp{"groupTp"};
 };
 
-class MoeDistributeCombineAddRmsNormArch22TilingTest : public testing::TestWithParam<TestParam>
-{
+class MoeDistributeCombineAddRmsNormArch22TilingTest : public testing::TestWithParam<TestParam> {
 protected:
     static void SetUpTestCase()
     {
@@ -59,16 +58,16 @@ protected:
     }
 };
 
-std::unordered_map<string, std::function<void(TilingParams& tilingParams, const string& valueStr)>>
+std::unordered_map<string, std::function<void(TilingParams &tilingParams, const string &valueStr)>>
     g_tilingParamsStrHandlers = {
-        {"BSK", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.BSK = std::stoi(valueStr); }}};
+        {"BSK", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.BSK = std::stoi(valueStr); }}};
 
 TEST_P(MoeDistributeCombineAddRmsNormArch22TilingTest, CommonTest)
 {
     auto testParam = GetParam();
     auto tilingParams = TilingParams{};
 
-    for (auto& kv : testParam.tilingParamsStrPair) {
+    for (auto &kv : testParam.tilingParamsStrPair) {
         if (g_tilingParamsStrHandlers.count(kv.first) != 0) {
             g_tilingParamsStrHandlers[kv.first](tilingParams, kv.second);
         }
@@ -124,7 +123,7 @@ TEST_P(MoeDistributeCombineAddRmsNormArch22TilingTest, CommonTest)
     if (testParam.status == ge::GRAPH_FAILED) {
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
     } else {
-        uint64_t expectTilingKey = 32UL;
+        uint64_t expectTilingKey = 16UL;
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
     }
 }

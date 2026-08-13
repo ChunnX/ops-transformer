@@ -14,9 +14,7 @@
  */
 #include "matmul_reduce_scatter_tiling_a2a3.h"
 #include "vector"
-#include "ops_utils.h"
 #include "graph/utils/type_utils.h"
-#include "mc2_log.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "mc2_hcom_topo_info.h"
@@ -27,54 +25,56 @@
 #include "../../../op_kernel/matmul_reduce_scatter_tiling.h"
 
 namespace optiling {
-    CutResult MatmulReduceScatterTilingFuncA2A3::GetCutResult(MatmulReduceScatterTilingData& tilingData,
-        mc2tiling::TilingArgs& args)
-    {
-        SocVersion inputSocVersion = (tilingData.socParam.isA3 == 0) ? SocVersion::SOC910_B : SocVersion::SOC910_93;
-        bool commDeterministic = (inputSocVersion == SocVersion::SOC910_B) ? IsDeterministic() : false;
-        MMPlusReduceScatter scatterTilingHccl(args, args.rankDim, KernelType::REDUCE_SCATTER,
-            inputSocVersion, commDeterministic);
-        scatterTilingHccl.GetTiling();
+CutResult MatmulReduceScatterTilingFuncA2A3::GetCutResult(MatmulReduceScatterTilingData &tilingData,
+                                                          mc2tiling::TilingArgs &args)
+{
+    SocVersion inputSocVersion = (tilingData.socParam.isA3 == 0) ? SocVersion::SOC910_B : SocVersion::SOC910_93;
+    bool commDeterministic = (inputSocVersion == SocVersion::SOC910_B) ? IsDeterministic() : false;
+    MMPlusReduceScatter scatterTilingHccl(args, args.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion,
+                                          commDeterministic);
+    scatterTilingHccl.GetTiling();
 
-        return scatterTilingHccl.tilingM_.cutRes;
-    }
+    return scatterTilingHccl.tilingM_.cutRes;
+}
 
-    ge::graphStatus MatmulReduceScatterTilingFuncA2A3::CheckValidRank(
-        const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK,
-        MatmulReduceScatterTilingData* tilingData, gert::TilingContext* context, uint32_t rankSize)
-    {
+ge::graphStatus
+MatmulReduceScatterTilingFuncA2A3::CheckValidRank(const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK,
+                                                  MatmulReduceScatterTilingData *tilingData,
+                                                  gert::TilingContext *context, uint32_t rankSize)
+{
     // distinguish between 910A2 and 910A3
     auto it = std::find(VALID_RANK.at(tilingData->socParam.isA3).begin(),
                         VALID_RANK.at(tilingData->socParam.isA3).end(), rankSize);
-    OP_TILING_CHECK(
-        it == VALID_RANK.at(tilingData->socParam.isA3).end(),
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "world_size value is %u, which is illegal.", rankSize),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(it == VALID_RANK.at(tilingData->socParam.isA3).end(),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "world_size",
+                                                          std::to_string(rankSize).c_str(),
+                                                          "The value of world_size is illegal"),
+                    return ge::GRAPH_FAILED);
 
-        return ge::GRAPH_SUCCESS;
-    }
-
-    std::string MatmulReduceScatterTilingFuncA2A3::GetRsConfig(MatmulReduceScatterTilingData& tilingData)
-    {
-        std::string rsConfig = (tilingData.socParam.isA3 == 0) ?
-	    "ReduceScatter=level0:fullmesh" : "ReduceScatter=level0:doublering";
-        return rsConfig;
-    }
-
-    static ge::graphStatus MatmulReduceScatterTilingImplFuncA2A3(gert::TilingContext* context)
-    {
-        MatmulReduceScatterTilingFuncA2A3 impl;
-        return impl.MatmulReduceScatterTilingFunc(context);
-    }
-
-    struct MatmulReduceScatterCompileInfo {};
-    static ge::graphStatus TilingParseForMatmulReduceScatter(gert::TilingParseContext *context)
-    {
-        (void)context;
-        return ge::GRAPH_SUCCESS;
-    }
-
-    IMPL_OP_OPTILING(MatmulReduceScatter)
-        .Tiling(MatmulReduceScatterTilingImplFuncA2A3)
-        .TilingParse<MatmulReduceScatterCompileInfo>(TilingParseForMatmulReduceScatter);
+    return ge::GRAPH_SUCCESS;
 }
+
+std::string MatmulReduceScatterTilingFuncA2A3::GetRsConfig(MatmulReduceScatterTilingData &tilingData)
+{
+    std::string rsConfig =
+        (tilingData.socParam.isA3 == 0) ? "ReduceScatter=level0:fullmesh" : "ReduceScatter=level0:doublering";
+    return rsConfig;
+}
+
+static ge::graphStatus MatmulReduceScatterTilingImplFuncA2A3(gert::TilingContext *context)
+{
+    MatmulReduceScatterTilingFuncA2A3 impl;
+    return impl.MatmulReduceScatterTilingFunc(context);
+}
+
+struct MatmulReduceScatterCompileInfo {};
+static ge::graphStatus TilingParseForMatmulReduceScatter(gert::TilingParseContext *context)
+{
+    (void)context;
+    return ge::GRAPH_SUCCESS;
+}
+
+IMPL_OP_OPTILING(MatmulReduceScatter)
+    .Tiling(MatmulReduceScatterTilingImplFuncA2A3)
+    .TilingParse<MatmulReduceScatterCompileInfo>(TilingParseForMatmulReduceScatter);
+} // namespace optiling

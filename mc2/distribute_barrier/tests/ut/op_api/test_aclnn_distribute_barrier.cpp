@@ -43,11 +43,9 @@ TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierFirstApi)
 
     int64_t worldSize = 16;
 
-    auto ut = OP_API_UT(aclnnDistributeBarrier,
-                        INPUT(xRef, "test_distribute_barrier", worldSize),
-                        OUTPUT());
+    auto ut = OP_API_UT(aclnnDistributeBarrier, INPUT(xRef, "test_distribute_barrier", worldSize), OUTPUT());
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -58,11 +56,9 @@ TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierFirstApiNullptrGr
 
     int64_t worldSize = 16;
 
-    auto ut = OP_API_UT(aclnnDistributeBarrier,
-                        INPUT(xRef, nullptr, worldSize),
-                        OUTPUT());
+    auto ut = OP_API_UT(aclnnDistributeBarrier, INPUT(xRef, nullptr, worldSize), OUTPUT());
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
@@ -73,11 +69,9 @@ TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierFirstApiGroupMin)
 
     int64_t worldSize = 16;
 
-    auto ut = OP_API_UT(aclnnDistributeBarrier,
-                        INPUT(xRef, "", worldSize),
-                        OUTPUT());
+    auto ut = OP_API_UT(aclnnDistributeBarrier, INPUT(xRef, "", worldSize), OUTPUT());
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -88,11 +82,10 @@ TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2FirstApi)
 
     int64_t worldSize = 16;
 
-    auto ut = OP_API_UT(aclnnDistributeBarrierV2,
-                        INPUT(xRef, nullptr, nullptr, "test_distribute_barrier", worldSize),
+    auto ut = OP_API_UT(aclnnDistributeBarrierV2, INPUT(xRef, nullptr, nullptr, "test_distribute_barrier", worldSize),
                         OUTPUT());
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -103,11 +96,9 @@ TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2FirstApiNullptr
 
     int64_t worldSize = 16;
 
-    auto ut = OP_API_UT(aclnnDistributeBarrierV2,
-                        INPUT(xRef, nullptr, nullptr, nullptr, worldSize),
-                        OUTPUT());
+    auto ut = OP_API_UT(aclnnDistributeBarrierV2, INPUT(xRef, nullptr, nullptr, nullptr, worldSize), OUTPUT());
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
@@ -118,11 +109,9 @@ TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2FirstApiGroupMi
 
     int64_t worldSize = 16;
 
-    auto ut = OP_API_UT(aclnnDistributeBarrierV2,
-                        INPUT(xRef, nullptr, nullptr, "", worldSize),
-                        OUTPUT());
+    auto ut = OP_API_UT(aclnnDistributeBarrierV2, INPUT(xRef, nullptr, nullptr, "", worldSize), OUTPUT());
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -134,11 +123,10 @@ TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2FirstApiTimeOut
 
     int64_t worldSize = 16;
 
-    auto ut = OP_API_UT(aclnnDistributeBarrierV2,
-                        INPUT(xRef, timeOut, nullptr, "test_distribute_barrier", worldSize),
+    auto ut = OP_API_UT(aclnnDistributeBarrierV2, INPUT(xRef, timeOut, nullptr, "test_distribute_barrier", worldSize),
                         OUTPUT());
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -244,4 +232,77 @@ TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierSecondApiTimeOutA
     if (aclRet == ACLNN_SUCCESS && executor != nullptr) {
         aclRet = aclnnDistributeBarrierV2(nullptr, workspaceSize, executor, nullptr);
     }
+}
+
+// ========== 新增测试用例：直接调用第二段接口覆盖未覆盖代码 ==========
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierSecondApiDirect)
+{
+    // 直接调用第二段接口，覆盖 aclnnDistributeBarrier 和 aclnnDistributeBarrierBase 函数体
+    aclnnStatus aclRet = aclnnDistributeBarrier(nullptr, 0, nullptr, nullptr);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2SecondApiDirect)
+{
+    // 直接调用第二段接口，覆盖 aclnnDistributeBarrierV2 和 aclnnDistributeBarrierBase 函数体
+    aclnnStatus aclRet = aclnnDistributeBarrierV2(nullptr, 0, nullptr, nullptr);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+}
+
+// ========== 参数校验测试用例 ==========
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierNullptrXRef)
+{
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnDistributeBarrierGetWorkspaceSize(nullptr, "test_group", 16, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2NullptrXRef)
+{
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnDistributeBarrierV2GetWorkspaceSize(nullptr, nullptr, nullptr, "test_group", 16,
+                                                                  &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+// ========== dtype 测试用例 ==========
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierDtypeFloat32)
+{
+    TensorDesc xRefDesc = TensorDesc({3, 4}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto xRefPtr = xRefDesc.ToAclType();
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnDistributeBarrierGetWorkspaceSize(xRefPtr.get(), "test_distribute_barrier", 16, &workspaceSize, &executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierDtypeBfloat16)
+{
+    TensorDesc xRefDesc = TensorDesc({3, 4}, ACL_BF16, ACL_FORMAT_ND);
+    auto xRefPtr = xRefDesc.ToAclType();
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnDistributeBarrierGetWorkspaceSize(xRefPtr.get(), "test_distribute_barrier", 16, &workspaceSize, &executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierDtypeInt32)
+{
+    TensorDesc xRefDesc = TensorDesc({3, 4}, ACL_INT32, ACL_FORMAT_ND);
+    auto xRefPtr = xRefDesc.ToAclType();
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnDistributeBarrierGetWorkspaceSize(xRefPtr.get(), "test_distribute_barrier", 16, &workspaceSize, &executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }

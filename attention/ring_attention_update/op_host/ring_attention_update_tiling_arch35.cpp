@@ -947,6 +947,8 @@ static int64_t GetTndSoftmaxLayout(gert::TilingContext* context) {
     } else if (inputSoftmaxLayoutStr == "" || inputSoftmaxLayoutStr == "SBH") {
         tndSoftmaxLayout = 0;
     } else {
+        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "input_softmax_layout",
+            inputSoftmaxLayoutStr.c_str(), "empty string, TND or SBH");
         tndSoftmaxLayout = -1;
     }
   }

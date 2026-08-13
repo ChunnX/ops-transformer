@@ -129,11 +129,11 @@ protected:
                                      const uint32_t headSizeQkRound, const uint32_t actualKvHeadIdx,
                                      const uint32_t l1qPingPongFlag);
     __aicore__ inline void CopyKToL1(const uint32_t kvSeqTile, const uint32_t kvSeqTileRound,
-                                     const uint32_t strideK, const uint32_t kCoreOffset,
+                                     const uint32_t strideK, const uint64_t kCoreOffset,
                                      const uint32_t l1kPingPongFlag);
     __aicore__ inline void CopyPVToL1(const uint32_t pRowNum, const uint32_t pRowNumRound, const int64_t curSeqlen,
                                       const uint32_t kvSeqTile, const uint32_t kvSeqTileRound, const uint32_t strideV,
-                                      const uint64_t pCoreOffset, const uint32_t vCoreOffset,
+                                      const uint64_t pCoreOffset, const uint64_t vCoreOffset,
                                       const uint32_t l0abPingPongFlag, const uint32_t l1pvPingPongFlag);
     __aicore__ inline void LoadQKToL0(const uint32_t qRowNum, const uint32_t qRowNumRound,
                                       const uint32_t headSizeQkRound, const uint32_t kvSeqTileRound,
@@ -262,7 +262,7 @@ template <typename NCAIType>
 __aicore__ inline void NsaCompressAttentionInferAic<NCAIType>::CopyKToL1(const uint32_t kvSeqTile,
                                                                          const uint32_t kvSeqTileRound,
                                                                          const uint32_t strideK,
-                                                                         const uint32_t kCoreOffset,
+                                                                         const uint64_t kCoreOffset,
                                                                          const uint32_t l1kPingPongFlag)
 {
     AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1kPingPongFlag);
@@ -287,7 +287,7 @@ __aicore__ inline void NsaCompressAttentionInferAic<NCAIType>::CopyPVToL1(const 
                                                                           const uint32_t kvSeqTileRound,
                                                                           const uint32_t strideV,
                                                                           const uint64_t pCoreOffset,
-                                                                          const uint32_t vCoreOffset,
+                                                                          const uint64_t vCoreOffset,
                                                                           const uint32_t l0abPingPongFlag,
                                                                           const uint32_t l1pvPingPongFlag)
 {
@@ -542,9 +542,9 @@ __aicore__ inline void NsaCompressAttentionInferAic<NCAIType>::ProcessMm1(const 
             uint32_t kvSeqTileRound = AlignUp(kvSeqTile, 16U);
             uint32_t blockTableOffset = maxBlockNumPerBatch * bIdx + sIdx;
             uint32_t blockIdx = blockTableGm.GetValue(blockTableOffset);
-            uint32_t kBlockOffset = blockIdx * blockSize * strideK;
-            uint32_t kHiddenOffset = actualKvHeadIdx * headSizeQk;
-            uint32_t kCoreOffset = kBlockOffset + kHiddenOffset;
+            uint64_t kBlockOffset = static_cast<uint64_t>(blockIdx) * blockSize * strideK;
+            uint64_t kHiddenOffset = static_cast<uint64_t>(actualKvHeadIdx) * headSizeQk;
+            uint64_t kCoreOffset = kBlockOffset + kHiddenOffset;
 
             CopyKToL1(kvSeqTile, kvSeqTileRound, strideK, kCoreOffset, l1kPingPongFlag);
 
@@ -592,9 +592,9 @@ __aicore__ inline void NsaCompressAttentionInferAic<NCAIType>::ProcessMm2(const 
                                     sIdx * blockSize;
                 uint32_t blockTableOffset = maxBlockNumPerBatch * bIdx + sIdx;
                 uint32_t blockIdx = blockTableGm.GetValue(blockTableOffset);
-                uint32_t vBlockOffset = blockIdx * blockSize * strideV;
-                uint32_t vHiddenOffset = actualKvHeadIdx * headSizeVo;
-                uint32_t vCoreOffset = vBlockOffset + vHiddenOffset;
+                uint64_t vBlockOffset = static_cast<uint64_t>(blockIdx) * blockSize * strideV;
+                uint64_t vHiddenOffset = static_cast<uint64_t>(actualKvHeadIdx) * headSizeVo;
+                uint64_t vCoreOffset = vBlockOffset + vHiddenOffset;
 
                 CopyPVToL1(pRowNum, pRowNumRound, curSeqlen, kvSeqTile, kvSeqTileRound, strideV,
                         pCoreOffset, vCoreOffset, l0abPingPongFlag, l1pvPingPongFlag);
@@ -951,9 +951,9 @@ __aicore__ inline void NsaCompressAttentionInferAiv<NCAIType>::PreProcess(const 
 
     // 设置softmax buffer
     const uint32_t softmaxInputbufOffset = 0;
-    const uint32_t softmaxOut32bufOffset = softmaxTileLength * sizeof(float);
-    const uint32_t softmaxOut16bufOffset = 2 * softmaxTileLength * sizeof(float);
-    const uint32_t softmaxbufOffset = 3 * softmaxTileLength * sizeof(float);
+    const uint32_t softmaxOut32bufOffset = softmaxInputbufOffset + softmaxTileLength * sizeof(float);
+    const uint32_t softmaxOut16bufOffset = softmaxOut32bufOffset + softmaxTileLength * sizeof(float);
+    const uint32_t softmaxbufOffset = softmaxOut16bufOffset + softmaxTileLength * sizeof(float);
     softmaxInputbufTensor = buf.GetBuffer<BufferType::ASCEND_UB, float>(softmaxInputbufOffset);
     softmaxOut32bufTensor = buf.GetBuffer<BufferType::ASCEND_UB, float>(softmaxOut32bufOffset);
     softmaxOut16bufTensor = buf.GetBuffer<BufferType::ASCEND_UB, Q_T>(softmaxOut16bufOffset);
@@ -963,10 +963,10 @@ __aicore__ inline void NsaCompressAttentionInferAiv<NCAIType>::PreProcess(const 
 
     // 设置topk buffer
     const uint32_t topkInputbufOffset = 0;
-    const uint32_t topkOutvaluebufOffset = BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
-    const uint32_t topkOutindexbufOffset = 2 * BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
-    const uint32_t arithbufferoffset = 3 * BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
-    const uint32_t topktempbufOffset = 4 * BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
+    const uint32_t topkOutvaluebufOffset = topkInputbufOffset + BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
+    const uint32_t topkOutindexbufOffset = topkOutvaluebufOffset + BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
+    const uint32_t arithbufferoffset = topkOutindexbufOffset + BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
+    const uint32_t topktempbufOffset = arithbufferoffset + BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
     topkInputbufTensor = buf.GetBuffer<BufferType::ASCEND_UB, float>(topkInputbufOffset);
     topkoutvalueLocal = buf.GetBuffer<BufferType::ASCEND_UB, float>(topkOutvaluebufOffset);
     topkoutindexLocal = buf.GetBuffer<BufferType::ASCEND_UB, int32_t>(topkOutindexbufOffset);
@@ -1248,9 +1248,9 @@ __aicore__ inline void NsaCompressAttentionInferAiv<NCAIType>::SoftmaxCompute(ui
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0); // softmax搬入等待softmax计算结束
     PipeBarrier<PIPE_V>();
     if (std::is_same<OUT_T, __bf16>::value) {
-        AscendC::Cast(softmaxOut16bufTensor, softmaxOut32bufTensor, AscendC::RoundMode::CAST_RINT, softmaxOut32bufTensor.GetSize());
+        AscendC::Cast(softmaxOut16bufTensor, softmaxOut32bufTensor, AscendC::RoundMode::CAST_RINT, softmaxTileLength);
     } else {
-        AscendC::Cast(softmaxOut16bufTensor, softmaxOut32bufTensor, AscendC::RoundMode::CAST_NONE, softmaxOut32bufTensor.GetSize());
+        AscendC::Cast(softmaxOut16bufTensor, softmaxOut32bufTensor, AscendC::RoundMode::CAST_NONE, softmaxTileLength);
     }
     PipeBarrier<PIPE_V>();
 }
@@ -1500,9 +1500,11 @@ __aicore__ inline void NsaCompressAttentionInferAiv<NCAIType>::ProcessTopK()
         uint32_t kvHeadIdxInSplit = actualRowIdx / qSeqLenCurProcess;
         uint32_t qIdxInSplit = actualRowIdx % qSeqLenCurProcess;
 
-        topkOutputGmOffset = qSeqLenCumSum * kvHeadNum * selectNum +
-                                qSeqLenOffset * kvHeadNum * selectNum + qIdxInSplit * kvHeadNum * selectNum +
-                                kvHeadOffset * selectNum + kvHeadIdxInSplit * selectNum;
+        topkOutputGmOffset = static_cast<uint64_t>(qSeqLenCumSum) * kvHeadNum * selectNum +
+                                static_cast<uint64_t>(qSeqLenOffset) * kvHeadNum * selectNum +
+                                static_cast<uint64_t>(qIdxInSplit) * kvHeadNum * selectNum +
+                                static_cast<uint64_t>(kvHeadOffset) * selectNum +
+                                static_cast<uint64_t>(kvHeadIdxInSplit) * selectNum;
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(5); // topk搬入等待topk搬出结束
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(2); // topk搬入等待topk计算结束

@@ -21,9 +21,11 @@
 
 namespace Mc2QuantBatchMatmulV3 {
 
-class Mc2QuantBmmAswBlockNonContiguous: public Mc2QuantBmmAswBlock {
+class Mc2QuantBmmAswBlockNonContiguous : public Mc2QuantBmmAswBlock {
 public:
-    __aicore__ inline Mc2QuantBmmAswBlockNonContiguous() {}
+    __aicore__ inline Mc2QuantBmmAswBlockNonContiguous()
+    {
+    }
     template <bool aTrans, bool bTrans, class x1Type, class scaleType, CubeFormat formatX2>
     __aicore__ inline void CalcGMOffset(const uint32_t strideCount, const uint32_t *batchWeight);
 };
@@ -34,7 +36,7 @@ __aicore__ inline void Mc2QuantBmmAswBlockNonContiguous::CalcGMOffset(const uint
 {
     uint64_t mOffset = params_.mIndex * tilingData_->matmulTiling.baseM + params_.mSplitAddrOffset;
     uint64_t nOffset = params_.nIndex * tilingData_->matmulTiling.baseN + params_.nSplitAddrOffset;
- 
+
     // Currently only supports aTrans being false. To support aTrans being true, 'offsetA' must be recalculated.
     uint32_t idx = static_cast<uint32_t>(offset_.batchAOffset);
     offset_.offsetA = mOffset * tilingData_->matmulTiling.Ka;
@@ -57,5 +59,5 @@ __aicore__ inline void Mc2QuantBmmAswBlockNonContiguous::CalcGMOffset(const uint
     // Perblock mode do not support bias now, if need to support, "offsetBias" must be recalculated.
 }
 
-}  // namespace Mc2QuantBatchMatmulV3
+} // namespace Mc2QuantBatchMatmulV3
 #endif // MC2_QBMM_ASW_BLOCK_NONCONTIGUOUS_H

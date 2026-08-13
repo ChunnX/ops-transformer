@@ -45,6 +45,8 @@ void PrintTilingDate(gert::TilingContext *context, GatherPaKvCacheTilingData *ti
     OP_LOGD(context, "typeByte is %u", tilingDataPtr->get_typeByte());
     OP_LOGD(context, "hasSeqStarts is %u", tilingDataPtr->get_hasSeqStarts());
     OP_LOGD(context, "isSeqLensCumsum is %u", tilingDataPtr->get_isSeqLensCumsum());
+    OP_LOGD(context, "kCacheBlockStride is %ld", tilingDataPtr->get_kCacheBlockStride());
+    OP_LOGD(context, "vCacheBlockStride is %ld", tilingDataPtr->get_vCacheBlockStride());
     OP_LOGD(context, "------------------------------------------");
     OP_LOGD(context, "------------------------------------------");
     OP_LOGD(context, "End GatherPaKvCacheTilingData priting");
@@ -71,7 +73,7 @@ uint32_t GatherPaKvCacheGetBlockDim(gert::TilingContext *context)
     uint32_t blockDim = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAiv());
     auto attrs = context->GetAttrs();
     const char *mode = attrs->GetAttrPointer<char>(CACHE_MODE_INDEX);
-    if (strcmp(mode, "PA_NZ") == 0) {
+    if (mode != nullptr && strcmp(mode, "PA_NZ") == 0) {
         return sumContextLens < blockDim ? sumContextLens : blockDim;
     }
     return blockDim;
@@ -86,6 +88,9 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     auto vShape = context->GetOutputShape(DIM_1);
     auto attrs = context->GetAttrs();
     const char *mode = attrs->GetAttrPointer<char>(CACHE_MODE_INDEX);
+    if (mode == nullptr || mode[0] == '\0') {
+        mode = "Norm";
+    }
     OP_CHECK_IF((strcmp(mode, "PA_NZ") != 0 && strcmp(mode, "Norm") != 0),
                 OP_LOGE(context, "%s is not supported", mode), return ge::GRAPH_FAILED);
     int32_t blockSize;
@@ -131,7 +136,27 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     auto seqStartsTensor = context->GetOptionalInputTensor(DIM_6);
     seqStartsTensor == nullptr ? hasSeqStarts = 0 : hasSeqStarts = 1;
 
-    auto isSeqLensCumsum = attrs->GetAttrPointer<bool>(IS_SEQ_LENS_CUNSUM_INDEX);
+    const bool *isSeqLensCumsumPtr = attrs->GetAttrPointer<bool>(IS_SEQ_LENS_CUNSUM_INDEX);
+    bool isSeqLensCumsum = (isSeqLensCumsumPtr == nullptr) ? true : *isSeqLensCumsumPtr;
+    int64_t kCacheBlockStride = 0;
+    int64_t vCacheBlockStride = 0;
+    bool isViewKCache = context->InputIsView(DIM_0);
+    bool isViewVCache = context->InputIsView(DIM_1);
+    if (isViewKCache) {
+        auto *kCacheStride = context->GetInputStride(DIM_0);
+        if (kCacheStride != nullptr) {
+            kCacheBlockStride = kCacheStride->GetStride(DIM_0);
+        }
+    }
+    if (isViewVCache) {
+        auto *VCacheStride = context->GetInputStride(DIM_1);
+        if (VCacheStride != nullptr) {
+            vCacheBlockStride = VCacheStride->GetStride(DIM_0);
+        }
+    }
+
+    tilingData.set_kCacheBlockStride(kCacheBlockStride);
+    tilingData.set_vCacheBlockStride(vCacheBlockStride);
     tilingData.set_blockSize(blockSize);
     tilingData.set_numTokens(numTokens);
     tilingData.set_numblkTabCol(numblkTabCol);
@@ -139,7 +164,7 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     tilingData.set_tokenSizeV(tokenSizeV);
     tilingData.set_typeByte(typeByte);
     tilingData.set_hasSeqStarts(hasSeqStarts);
-    tilingData.set_isSeqLensCumsum(*isSeqLensCumsum);
+    tilingData.set_isSeqLensCumsum(isSeqLensCumsum);
     size_t *workspaceSize = context->GetWorkspaceSizes(1);
     *workspaceSize = ASCENDC_TOOLS_WORKSPACE;
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());

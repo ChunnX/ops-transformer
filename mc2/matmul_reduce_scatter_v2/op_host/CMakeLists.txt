@@ -13,13 +13,12 @@ if (BUILD_OPEN_PROJECT)  # custom
         matmul_reduce_scatter_v2_def.cpp
     )
     add_modules_sources_with_soc(
-        OP_API_INDEPENDENT ON 
-        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
-        OP_MC2_ENABLE ON 
+        OP_API_INDEPENDENT ON
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+        OP_MC2_ENABLE ON
         OPTYPE matmul_reduce_scatter_v2 matmul_reduce_scatter_v2 ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
-    set(SUB_MC2_COMPILE TRUE PARENT_SCOPE) 
     set(matmul_reduce_scatter_v2_depends mc2/common mc2/3rd PARENT_SCOPE)
     set(matmul_reduce_scatter_v2_apt_depends mc2/common mc2/3rd PARENT_SCOPE)
 

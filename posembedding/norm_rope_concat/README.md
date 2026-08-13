@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能:（多模态）transfomer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）：
+- 算子功能:（多模态）transformer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）：
 
     - 归一化（Norm）当前支持层归一化（LayerNorm）、带仿射变换参数层归一化（AFFINE LayerNorm）、均方根归一化（RmsNorm）和带仿射变换参数均方根归一化（AFFINE RmsNorm）类型。
     - 旋转位置编码（Rope）支持Interleave和Half类型。
@@ -241,14 +241,14 @@
     <tr>
       <td>ropeType</td>
       <td>属性</td>
-      <td>表示RoPE的模式,int64类型，0: 不做RoPE，1: Interleave, 2: Half</td>
+      <td>表示RoPE的模式，int64类型，0: 不做RoPE，1: Interleave, 2: Half</td>
       <td>int64</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>concatOrder</td>
       <td>属性</td>
-      <td>表示拼接的顺序,int64类型，0: query在前，1: query在后</td>
+      <td>表示拼接的顺序，int64类型，0: query在前，1: query在后</td>
       <td>int64</td>
       <td>ND</td>
     </tr>

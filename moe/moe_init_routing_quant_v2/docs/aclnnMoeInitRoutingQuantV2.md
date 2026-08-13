@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         |  是否支持   |
-| :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×    |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -26,7 +36,7 @@
 - **计算公式**：
 
     1.将输入shape为[NUM_ROWS, K]的expertIdx展平为一行做排序，其中NUM_ROWS为输入token个数，K为token选择的专家个数，得出排序后的结果sortedExpertIdx和对应的序号sortedRowIdx：
-    
+
     $$
     sortedExpertIdx, sortedRowIdx=keyValueSort(\text{flatten}(expertIdx))
     $$
@@ -85,35 +95,35 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeInitRoutingQuantV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingQuantV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeInitRoutingQuantV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingQuantV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeInitRoutingQuantV2GetWorkspaceSize(
-    const aclTensor  *x, 
-    const aclTensor  *expertIdx, 
-    const aclTensor  *scaleOptional, 
-    const aclTensor  *offsetOptional, 
-    int64_t           activeNum, 
-    int64_t           expertCapacity, 
-    int64_t           expertNum, 
-    int64_t           dropPadMode, 
-    int64_t           expertTokensCountOrCumsumFlag, 
-    bool              expertTokensBeforeCapacityFlag, 
-    int64_t           quantMode, 
-    const aclTensor  *expandedXOut, 
-    const aclTensor  *expandedRowIdxOut, 
-    const aclTensor  *expertTokensCountOrCumsumOutOptional, 
-    const aclTensor  *expertTokensBeforeCapacityOutOptional, 
-    const aclTensor  *dynamicQuantScaleOutOptional, 
-    uint64_t         *workspaceSize, 
+    const aclTensor  *x,
+    const aclTensor  *expertIdx,
+    const aclTensor  *scaleOptional,
+    const aclTensor  *offsetOptional,
+    int64_t           activeNum,
+    int64_t           expertCapacity,
+    int64_t           expertNum,
+    int64_t           dropPadMode,
+    int64_t           expertTokensCountOrCumsumFlag,
+    bool              expertTokensBeforeCapacityFlag,
+    int64_t           quantMode,
+    const aclTensor  *expandedXOut,
+    const aclTensor  *expandedRowIdxOut,
+    const aclTensor  *expertTokensCountOrCumsumOutOptional,
+    const aclTensor  *expertTokensBeforeCapacityOutOptional,
+    const aclTensor  *dynamicQuantScaleOutOptional,
+    uint64_t         *workspaceSize,
     aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMoeInitRoutingQuantV2(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     aclrtStream       stream)
 ```
 
@@ -124,10 +134,10 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
   <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
     <col style="width: 350px">
     <col style="width: 120px">
-    <col style="width: 300px">  
-    <col style="width: 550px">  
-    <col style="width: 212px">  
-    <col style="width: 100px"> 
+    <col style="width: 300px">
+    <col style="width: 550px">
+    <col style="width: 212px">
+    <col style="width: 100px">
     <col style="width: 190px">
     <col style="width: 145px">
     </colgroup>
@@ -197,7 +207,7 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
       <td>expertCapacity</td>
       <td>输入</td>
       <td>表示每个专家能够处理的tokens数。</td>
-      <td>值范围大于等于0；Drop/Pad场景下值域范围(0, NUM_ROWS]，此时各专家将超过capacity的tokens drop掉，不够capacity阈值时则pad全0 tokens；其他场景不关心该属性值。</td>
+      <td>值范围大于等于0；Drop/Pad场景下值域范围(0, NUM_ROWS]，即必须大于0且不超过NUM_ROWS；其他场景不关心该属性值。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -324,14 +334,18 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
       <td>-</td>
     </tr>
   </tbody></table>
-  -   <term>Ascend 950PR/Ascend 950DT</term>：输出expandedXOut数据类型仅支持INT8。
+
+  <!-- npu="950" id7 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：输出expandedXOut数据类型仅支持INT8。
+
+  <!-- end id7 -->
 
 - **返回值：**
 
-  `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn返回码.md">aclnn 返回码</a>。
+  `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn_return_code.md">aclnn返回码</a>。
 
   一段接口完成入参校验，出现以下场景时报错：
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
     <colgroup>
       <col style="width: 250px">
       <col style="width: 130px">
@@ -382,7 +396,7 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
   <colgroup>
     <col style="width: 250px">
     <col style="width: 130px">
@@ -421,8 +435,8 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
 ## 约束说明
 
 - 确定性计算：
@@ -430,7 +444,7 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include "acl/acl.h"
@@ -485,7 +499,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     return 0;
 }
 int main() {
-    // 1. 固定写法，device/stream初始化, 参考acl对外接口列表
+    // 1. 固定写法，device/stream初始化，参考acl对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;

@@ -274,7 +274,7 @@ void FfnWorkerSchedulerKernel::CopyAndResetSessions(uint32_t micro_batch_id,
     auto set_ret = memset_s(expert_id_buf, expert_id_buf_len, 0x7F, expert_id_buf_len);
     if (set_ret != EOK) {
       KERNEL_LOG_ERROR("memset_s expert_ids failed, set_ret=%d, expert id buf len=%zu",
-                       cpy_ret, expert_id_buf_len);
+                       set_ret, expert_id_buf_len);
       return;
     }
     moe_data_desc->flag = kInvalidFlag;

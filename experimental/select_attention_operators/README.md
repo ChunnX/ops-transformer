@@ -24,7 +24,7 @@ Tested to work with:
 - Ascend910B2, Ascend910B4
 - CANN versions 8.0.RC3.beta1, 8.2.RC2, 8.3.RC1
 - Python 3.11.10
-- torch-npu version 2.4.0, 2.5.1.post1
+- TorchNPU version 2.4.0, 2.5.1.post1
 - see [requirements.txt](requirements.txt) for all other requirements
 
 ## Creating conda environment
@@ -60,7 +60,7 @@ The kernels are deployed with a very neat built in documentation:
 
 ```python
 import torch_npu
-from select_attn_decoding_ops import quest_block_select_paged_in_out_w
+from select_attn_ops import quest_block_select_paged_in_out_w
 help(quest_block_select_paged_in_out_w)
 ```
 

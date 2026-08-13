@@ -22,24 +22,24 @@
 #include "aclnnop/aclnn_npu_format_cast.h"
 #include "aclnnop/aclnn_trans_matmul_weight.h"
 
-#define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define CHECK_FREE_RET(cond, return_expr) \
-    do {                                  \
-        if (!(cond)) {                    \
-            Finalize(deviceId, stream);   \
-            return_expr;                  \
-        }                                 \
+#define CHECK_FREE_RET(cond, return_expr)                                                                              \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            Finalize(deviceId, stream);                                                                                \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
-        printf(message, ##__VA_ARGS__); \
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -345,7 +345,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
                           ACL_MEMCPY_DEVICE_TO_HOST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                   return ret);
-        for (int64_t j = 0; j < size; j++) {
+        for (int64_t j = 0; j < 10; j++) {
             LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
         }
     }

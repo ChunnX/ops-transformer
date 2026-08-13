@@ -22,7 +22,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #endif
-#include "tool.h"
+#include "weight_quant_tool.h"
 
 namespace MicroAPI = AscendC::MicroAPI;
 using AscendC::MicroAPI::RegTensor;
@@ -62,8 +62,8 @@ __aicore__ inline void AntiQuantYB32(LocalAddressYParam<yType> &localAddressPara
         uint32_t nRealL0Temp = nRealL0Size;
         for (uint16_t nId = 0; nId < ubLoopN; nId++) {
             if constexpr (hasBias) {
-                MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_NORM>(
-                    biasVreg, localAddressParam.biasPhyAddr + nId * nRealVRegSize);
+                MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_NORM>(biasVreg, localAddressParam.biasPhyAddr +
+                                                                                       nId * nRealVRegSize);
             }
             MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_NORM>(
                 antiQuantCScaleVreg, localAddressParam.cScalePhyAddr + nId * nRealVRegSize);
@@ -92,5 +92,5 @@ __aicore__ inline void AntiQuantYB32(LocalAddressYParam<yType> &localAddressPara
         }
     }
 }
-}  // namespace WeightQuantBatchMatmulV2::Arch35
-#endif  // GROUPED_MATMUL_ANTI_QUANT_Y_VF_H
+} // namespace WeightQuantBatchMatmulV2::Arch35
+#endif // GROUPED_MATMUL_ANTI_QUANT_Y_VF_H

@@ -24,20 +24,21 @@ using namespace AscendC;
 using namespace MoeUpdateExpertNamespace;
 using namespace Mc2Tiling;
 
-#define INVOKE_MOE_UPDATE_EXPERT_OP_IMPL()                                                                      \
-    do {                                                                                                        \
-        op.Init(                                                                                                \
-            expertIdsGM, eplbTableGM, expertScalesGM, pruningThresholdGM, activeMaskGM, balancedExpertIdsOutGM, \
-            balancedActiveMaskOutGM, workspaceGM, &tilingData, &pipe);                                          \
-        op.Process();                                                                                           \
+#define INVOKE_MOE_UPDATE_EXPERT_OP_IMPL()                                                                             \
+    do {                                                                                                               \
+        op.Init(expertIdsGM, eplbTableGM, expertScalesGM, pruningThresholdGM, activeMaskGM, balancedExpertIdsOutGM,    \
+                balancedActiveMaskOutGM, workspaceGM, &tilingData, &pipe);                                             \
+        op.Process();                                                                                                  \
     } while (0)
 
-template<int BalanceMode, int ExpertScalesDataType> __global__ __aicore__ void moe_update_expert(
-    GM_ADDR expertIdsGM, GM_ADDR eplbTableGM, GM_ADDR expertScalesGM, GM_ADDR pruningThresholdGM, GM_ADDR activeMaskGM,
-    GM_ADDR balancedExpertIdsOutGM, GM_ADDR balancedActiveMaskOutGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+template <int BalanceMode, int ExpertScalesDataType>
+__global__ __aicore__ void moe_update_expert(GM_ADDR expertIdsGM, GM_ADDR eplbTableGM, GM_ADDR expertScalesGM,
+                                             GM_ADDR pruningThresholdGM, GM_ADDR activeMaskGM,
+                                             GM_ADDR balancedExpertIdsOutGM, GM_ADDR balancedActiveMaskOutGM,
+                                             GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeUpdateExpertTilingData);
-    auto tiling = (__gm__ MoeUpdateExpertTilingData*)tilingGM;
+    auto tiling = (__gm__ MoeUpdateExpertTilingData *)tilingGM;
     GET_TILING_DATA(tilingData, tilingGM);
 
     TPipe pipe;
@@ -48,10 +49,10 @@ template<int BalanceMode, int ExpertScalesDataType> __global__ __aicore__ void m
             MoeUpdateExpert<DTYPE_EXPERT_IDS, float, false> op;
             INVOKE_MOE_UPDATE_EXPERT_OP_IMPL();
         } else if constexpr (BalanceMode == TOKEN_ID_BALANCING_MODE) {
-        // 使能专家裁剪，按token_id负载均衡，expert_scales 参数类型 float
+            // 使能专家裁剪，按token_id负载均衡，expert_scales 参数类型 float
             MoeUpdateExpert<DTYPE_EXPERT_IDS, float, true> op;
             INVOKE_MOE_UPDATE_EXPERT_OP_IMPL();
-        } 
+        }
     } else if constexpr (ExpertScalesDataType == TILINGKEY_HALF) {
         // 使能专家裁剪，按token_id负载均衡，expert_scales 参数类型 half
         MoeUpdateExpert<DTYPE_EXPERT_IDS, half, true> op;

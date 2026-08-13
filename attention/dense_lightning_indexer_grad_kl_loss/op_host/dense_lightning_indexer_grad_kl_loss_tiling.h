@@ -110,7 +110,7 @@ protected:
     void GetActualSeqLenData(int64_t inputIdx, std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &res, int64_t &actualLen) const;
     int64_t CalcTotalSize();
     void SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum);
-    void SetSparseParamsRegbase(int64_t maxCoreNum);
+    bool SetSparseParamsRegbase();
     void InitOutputSplit();
 
     // deter 相关
@@ -119,7 +119,7 @@ protected:
                             int32_t actualSeqLensK, int32_t sparseMode);
     int32_t GetActualSeqLens(int32_t bIdx, int32_t defaultLens,
                                 std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &actualSeqLenData,
-                                LayoutType layout, int64_t &accumLen);
+                                LayoutType layout);
     int64_t FindBIndex(int64_t bIndex, int64_t curBs1Index, int64_t &accumulateLen);
     void CalcMultiCoreOffset(int64_t &bStartIdx, int64_t &s1StartIdx, int64_t &bEndIdx, int64_t &s1EndIdx, int64_t &aicIdx);
     int64_t GetEndS1Etx(int32_t bIdx, int32_t defaultLens, std::array<int64_t,
@@ -132,7 +132,7 @@ protected:
                      std::vector<int64_t> &sparseStartIdx);
     bool Balance4DLoad(std::vector<int64_t> &tmpSparseValue, const std::vector<int64_t> sparseValidArray, 
                        const int64_t balanceNum);
-    bool SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray, int64_t maxCoreNum);
+    bool SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray);
     bool InitSparseValidArray(std::vector<int64_t> &sparseValidArray);
 
     // 基础输入参数

@@ -17,7 +17,7 @@
 #include <vector>
 #include <map>
 #include "kernel_tiling/kernel_tiling.h"
-namespace matmulReduceScatterV2_aivmode_tiling{
+namespace matmulReduceScatterV2_aivmode_tiling {
 
 enum class DequantType : int {
     DEQUANT_TYPE_UNDEFINED = -1,
@@ -73,8 +73,10 @@ struct MatmulReduceScatterV2AivModeTilingValue {
     int32_t value = -1;
     std::map<int, std::vector<std::vector<int>>> conditionMap = {};
     explicit MatmulReduceScatterV2AivModeTilingValue(int32_t v = -1,
-        std::map<int, std::vector<std::vector<int>>> m = {})
-        : value(v), conditionMap(std::move(m)) {}
+                                                     std::map<int, std::vector<std::vector<int>>> m = {})
+        : value(v), conditionMap(std::move(m))
+    {
+    }
 };
 
 constexpr int32_t REDUCESCATTER_M0_DEFAULT = 128;
@@ -123,5 +125,5 @@ constexpr int32_t MATMUL_REDUCESCATTER_A3_EIGHT_RANK_INT8_CODE_DEFAULT = 4677263
 constexpr int32_t MATMUL_REDUCESCATTER_A3_EIGHT_RANK_FP16_CODE_DEFAULT = 468754480;
 constexpr int32_t MATMUL_REDUCESCATTER_A3_FOUR_RANK_INT8_CODE_DEFAULT = 467726384;
 constexpr int32_t MATMUL_REDUCESCATTER_A3_FOUR_RANK_FP16_CODE_DEFAULT = 200339504;
-} // namespace
+} // namespace matmulReduceScatterV2_aivmode_tiling
 #endif

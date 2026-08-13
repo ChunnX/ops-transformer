@@ -4,23 +4,35 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
 - 接口功能：对经过aclnnMoeTokenPermuteWithRoutingMap处理的permutedTokens，累加回原unpermutedTokens。根据sortedIndices存储的下标，获取permutedTokens中存储的输入数据；如果存在probs数据，permutedTokens会与probs相乘，最后进行累加求和，并输出计算结果。
 - 计算公式：
-  
+
   $$
   topK\_num= permutedTokens.size(0) // routingMapOptional.size(0)
   $$
+
+  其中`topK_num`表示每个token预留的最大专家槽位数。`paddedMode`为false时，每个token实际选择的专家数可以小于等于`topK_num`；未使用的槽位在`sortedIndices`中以`-1`表示，计算时跳过该槽位。
 
   $$
   numExperts = probs.size(1)
@@ -71,7 +83,8 @@
   $$
 
   $$
-  unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]]
+  if sortedIndices[i] >= 0:
+      unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]] * permuteProbs[i]
   $$
 
   （3）probs为None，paddedMode为true时：
@@ -87,12 +100,13 @@
   （4）probs为None，paddedMode为false时：
 
   $$
-  unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]]
+  if sortedIndices[i] >= 0:
+      unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]]
   $$
 
 ## 函数原型
-  
-  每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithRoutingMap”接口执行计算。
+
+  每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithRoutingMap”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(
@@ -117,11 +131,11 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
-  
+
 ## aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize
-  
+
 - **参数说明**
-      
+
   <table style="undefined;table-layout: fixed; width: 1595px"><colgroup>
   <col style="width: 220px">
   <col style="width: 120px">
@@ -218,7 +232,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
       <td>outIndex（aclTensor*）</td>
       <td>输出</td>
       <td>表示输出的索引值，计算公式中的outIndex。</td>
-      <td>当paddedMode为false时，索引取值范围[0，tokens_num * topK_num - 1]。<br>当paddedMode为true时，索引取值范围[0，experts_num* capacity- 1]。</td>
+      <td>当paddedMode为false时，outIndex表示槽位索引，取值范围[0，tokens_num * topK_num - 1]。sortedIndices中的-1仅表示无效输入槽位，不改变outIndex的槽位索引范围。<br>当paddedMode为true时，索引取值范围[0，experts_num* capacity- 1]。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>paddedMode为false：(tokens_num * topK_num)<br>paddedMode为true：(experts_num* capacity)</td>
@@ -268,10 +282,10 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
-  
+
   <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
   <col style="width: 320px">
   <col style="width: 140px">
@@ -344,15 +358,15 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
   </table>
 
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
-  - aclnnMoeTokenUnpermuteWithRoutingMap默认确定性实现。
+  - aclnnMoeTokenUnpermuteWithRoutingMap默认非确定性实现，支持通过alcrtCtxSetSysParamOpt开启确定性。
 
-- topK_num <= 512, paddedMode为false时routingMap中每行为1或true的个数固定且小于`512`。
+- topK_num <= 512。paddedMode为false时，每个token最多预留topK_num个专家槽位，routingMap中每行为1或true的个数小于等于topK_num；sortedIndices中允许使用-1表示无效槽位。
 
 - 以下场景后续版本会拦截，如果提示warning，建议整改：
   - paddedMode为true，且topK_num > experts_num。
@@ -362,7 +376,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include "acl/acl.h"
@@ -418,7 +432,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     return 0;
 }
 int main() {
-    // 1. 固定写法，device/stream初始化, 参考acl对外接口列表
+    // 1. 固定写法，device/stream初始化，参考acl对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -461,7 +475,7 @@ int main() {
     std::vector<int> sortedIndicesHostData = {1, 1};
     std::vector<char> routingMapOptionalHostData = {1, 1, 1, 1};
     std::vector<float> probsHostData = {1, 1, 1, 1};
-    
+
     std::vector<float> unpermutedTokensHostData = {0, 0, 0, 0};
     std::vector<int> outIndexHostData = {0, 0};
     std::vector<int> permuteTokenIdHostData = {0, 0};
@@ -488,7 +502,7 @@ int main() {
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
     // 调用aclnnMoeTokenUnpermuteWithRoutingMap第一段接口
-    ret = aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(permutedTokens, sortedIndices, routingMapOptional, probs, paddedMode, restoreShapeOptional, 
+    ret = aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(permutedTokens, sortedIndices, routingMapOptional, probs, paddedMode, restoreShapeOptional,
                                                                unpermutedTokens, outIndex, permuteTokenId, permuteProbs, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存

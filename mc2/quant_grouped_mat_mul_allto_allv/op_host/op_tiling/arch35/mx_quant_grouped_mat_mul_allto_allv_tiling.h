@@ -17,7 +17,7 @@
 #define MX_QUANT_GROUPED_MAT_MUL_ALLTO_ALLV_TILING_H
 
 #pragma once
-#include "quant_grouped_mat_mul_allto_allv_tiling_common.h"
+#include "../quant_grouped_mat_mul_allto_allv_tiling_common.h"
 
 namespace Mc2Tiling {
 namespace Mc2GroupedMatmul {
@@ -40,6 +40,7 @@ public:
         TilingBaseClass::Reset(context);
     }
     ~MxQuantGroupedMatmulAllToAllvTiling() override = default;
+
 protected:
     void Reset();
     bool IsCapable() override;
@@ -63,5 +64,5 @@ private:
 };
 
 } // namespace Mc2GroupedMatmul
-}
+} // namespace Mc2Tiling
 #endif

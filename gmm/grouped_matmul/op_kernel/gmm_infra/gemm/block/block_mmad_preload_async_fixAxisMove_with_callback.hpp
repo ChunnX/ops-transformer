@@ -8,16 +8,16 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_FIXAXISMOVE_WITH_CALLBACK_HPP
-#define CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_FIXAXISMOVE_WITH_CALLBACK_HPP
+#ifndef GMM_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_FIXAXISMOVE_WITH_CALLBACK_HPP
+#define GMM_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_FIXAXISMOVE_WITH_CALLBACK_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
-#include "../../../gmm_infra/arch/resource.hpp"
-#include "../../../gmm_infra/coord.hpp"
-#include "../../../gmm_infra/detail/callback.hpp"
-#include "../../../gmm_infra/gemm_coord.hpp"
-#include "../../../gmm_infra/gemm/dispatch_policy.hpp"
-#include "../../../gmm_infra/gemm/helper.hpp"
+#include "../../../gmm_infra/arch/gmm_resource.hpp"
+#include "../../../gmm_infra/gmm_coord.hpp"
+#include "../../../gmm_infra/detail/gmm_callback.hpp"
+#include "../../../gmm_infra/gmm_gemm_coord.hpp"
+#include "../../../gmm_infra/gemm/gmm_gemm_dispatch_policy.hpp"
+#include "../../../gmm_infra/gemm/gmm_helper.hpp"
 
 namespace Catlass::Gemm::Block {
 
@@ -492,4 +492,4 @@ private:
 
 } // namespace Catlass::Gemm::Block
 
-#endif // CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_FIXAXISMOVE_WITH_CALLBACK_HPP
+#endif // GMM_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_ASYNC_FIXAXISMOVE_WITH_CALLBACK_HPP

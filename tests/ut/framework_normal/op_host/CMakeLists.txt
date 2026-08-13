@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.18.4)
 
 if(UT_TEST_ALL OR OP_HOST_UT)
   ## set variables
@@ -43,6 +43,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       # relaxation further on this toolchain.
       -Wl,--allow-multiple-definition
       $<$<TARGET_EXISTS:softmax_tiling_ut_stub>:softmax_tiling_ut_stub>
+      $<$<TARGET_EXISTS:mc2_tiling_ut_stub>:mc2_tiling_ut_stub>
       -Wl,--whole-archive
           rt2_registry_static
       -Wl,--no-whole-archive

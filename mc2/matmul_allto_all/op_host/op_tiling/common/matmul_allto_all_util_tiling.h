@@ -26,6 +26,7 @@ constexpr uint64_t K_MAX_VALUE = 65535UL;
 constexpr uint64_t MAX_INT32_VALUE = 2147483647UL;
 constexpr size_t MAX_GROUP_NAME_LEN = 127;
 constexpr int64_t RANK_DEFAULT_NUM = -1;
+constexpr uint32_t MAX_CCU_RANKSIZE = 8;
 // FOR NON_QUANT
 const std::vector<uint32_t> NON_QUANT_X_DTYPE_LIST = {ge::DT_BF16, ge::DT_FLOAT16};
 // FOR QUANT
@@ -65,13 +66,15 @@ constexpr size_t ATTR_COMMON_QUANTDTYPE_INDEX = 7;
 constexpr size_t ATTR_X1_TRANSPOSE_INDEX = 8;
 constexpr size_t ATTR_X2_TRANSPOSE_INDEX = 9;
 constexpr size_t ATTR_GROUP_SIZE_INDEX = 10;
+constexpr size_t ATTR_COMM_MODE_INDEX = 11;
 // AlltoAllMatmul的差异的Attr
 constexpr size_t ALLTOALLMATMUL_ATTR_X1_QUANTDTYPE_INDEX = 7;
 constexpr size_t ALLTOALLMATMUL_ATTR_COMMON_QUANTDTYPE_INDEX = 8;
 constexpr size_t ALLTOALLMATMUL_ATTR_X1_TRANSPOSE_INDEX = 9;
 constexpr size_t ALLTOALLMATMUL_ATTR_X2_TRANSPOSE_INDEX = 10;
 constexpr size_t ALLTOALLMATMUL_ATTR_GROUP_SIZE_INDEX = 11;
-constexpr size_t ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX = 12;
+constexpr size_t ALLTOALLMATMUL_ATTR_COMM_MODE_INDEX = 12;
+constexpr size_t ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX = 13;
 
 // 用来存放MatmulAlltoAll和AllToAllMatmul错位的属性信息的处理，
 // 比如说MatmulAllToAll存放x1转置(ATTR_X1_TRANSPOSE_INDEX)的位置是8，
@@ -79,14 +82,17 @@ constexpr size_t ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX = 12;
 struct OpAttrIndexSchema {
     size_t x1Transpose;
     size_t x2Transpose;
+    size_t commMode;
     // 可以继续添加其他错位属性索引
 };
 
 // 上面结构体的实例化
-const OpAttrIndexSchema MATMUL_ALLTOALL_INDEX_SCHEMA = {ATTR_X1_TRANSPOSE_INDEX, ATTR_X2_TRANSPOSE_INDEX};
+const OpAttrIndexSchema MATMUL_ALLTOALL_INDEX_SCHEMA = {ATTR_X1_TRANSPOSE_INDEX, ATTR_X2_TRANSPOSE_INDEX,
+                                                        ATTR_COMM_MODE_INDEX};
 
 const OpAttrIndexSchema ALLTOALL_MATMUL_INDEX_SCHEMA = {ALLTOALLMATMUL_ATTR_X1_TRANSPOSE_INDEX,
-                                                        ALLTOALLMATMUL_ATTR_X2_TRANSPOSE_INDEX};
+                                                        ALLTOALLMATMUL_ATTR_X2_TRANSPOSE_INDEX,
+                                                        ALLTOALLMATMUL_ATTR_COMM_MODE_INDEX};
 
 // 维护一个输入输出shape的维度的结构体，仅支持x1,x2,output都是二维的情况
 struct Matrix2DShapes {
@@ -106,7 +112,7 @@ enum class QuantMode : uint8_t {
     NON_QUANT = 0, // 非量化模式
     KC_QUANT = 1,  // K量化模式,对应x1, x2分别为perToken量化与perchannel量化
     MX_QUANT = 2,
-    ERROR = 255    // 特殊设置，表示不支持的类型组合
+    ERROR = 255 // 特殊设置，表示不支持的类型组合
 };
 
 // 封装输入参数，主要为输入获取得到的参数
@@ -123,14 +129,14 @@ struct TilingContextInfo {
 // 封装Tiling过程中推导得到的参数
 struct TilingInferredInfo {
     uint64_t mmResultLen =
-        0UL;                // 存储计算MM的地址大小，仅对于MatmulAlltoAll，因为先执行完Matmul之后需要有空间存放计算地址
+        0UL; // 存储计算MM的地址大小，仅对于MatmulAlltoAll，因为先执行完Matmul之后需要有空间存放计算地址
     uint64_t commLen = 0UL; // 存储通信结果的临时空间，仅对于AlltoAllMatmul，需要有空间存放重排的地址（和kernel侧约定）
     uint64_t permuteLen =
         0UL; // 重排空间大小,对于AlltoAllMatmul来说，当alltoAllout存在时，就有一个额外的alltoall地址传递给kernel侧，不需要额外分配
     uint64_t x1ScaleOptionalLen = 0UL; // 存储x1ScaleOptional的地址大小
     uint64_t quantOutLen = 0UL;        // 存储quantOut的空间
-    uint64_t commScaleLen = 0UL;      // 存储Scale通信的空间
-    uint64_t permuteScaleLen = 0UL;   // 存储Scale重排的空间
+    uint64_t commScaleLen = 0UL;       // 存储Scale通信的空间
+    uint64_t permuteScaleLen = 0UL;    // 存储Scale重排的空间
     uint32_t biasLen = 0UL;            // 存储偏移的地址大小
     uint32_t tileM = 0UL;              // 头块大小
     uint32_t tileCnt = 0UL;            // 头块数量
@@ -144,13 +150,16 @@ public:
     static QuantMode GetQuantMode(const gert::TilingContext *context, const char *opName);
     static ge::graphStatus GetAndValidateRankSize(const gert::TilingContext *context, const char *opName,
                                                   const char *group, int64_t &rankDim);
+    static ge::graphStatus GetAndConvertCommMode(const gert::TilingContext *context, const char *opName,
+                                                 const TilingContextInfo &contextInfo,
+                                                 const OpAttrIndexSchema &indexSchema, uint8_t &commMode);
     static void GetMatrix2DShapes(const gert::TilingContext *context, Matrix2DShapes &shapes);
     static ge::graphStatus CheckAttrsInfo(const gert::TilingContext *context, const char *opName,
                                           const OpAttrIndexSchema &indexSchema);
     static ge::graphStatus CheckShapeInfo(const gert::TilingContext *context, const char *opName,
                                           const OpAttrIndexSchema &indexSchema);
     static ge::graphStatus CheckKcQuantShapeInfo(const gert::TilingContext *context, const char *opName,
-                                          const OpAttrIndexSchema &indexSchema);
+                                                 const OpAttrIndexSchema &indexSchema);
     static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context, const char *opName);
     static ge::graphStatus CheckNonQuantTensorDataType(const gert::TilingContext *context, const char *opName);
     static ge::graphStatus CheckKcQuantTensorDataType(const gert::TilingContext *context, const char *opName);

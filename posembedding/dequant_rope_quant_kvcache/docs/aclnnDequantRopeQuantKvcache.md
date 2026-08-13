@@ -4,105 +4,115 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
 - 算子功能：对输入张量（x）进行dequant（可选）后，按`sizeSplits`（为切分的长度）对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，生成qOut和kOut，之后对kOut和vOut进行量化并按照`indices`更新到kCacheRef和vCacheRef上。
 
 - 计算公式：
-  
+
   $$
   dequantX = Dequant(x,weightScaleOptional,activationScaleOptional,biasOptional)
   $$
-  
+
   $$
   q,k,vOut = SplitTensor(dequantX,dim=-1,`sizeSplits`)
   $$
-  
+
   $$
   qOut,kOut = ApplyRotaryPosEmb(q,k,cos,sin)
   $$
-  
+
   $$
   quantK = Quant(kOut,scaleK,offsetKOptional)
   $$
-  
+
   $$
   quantV = Quant(vOut,scaleV,offsetVOptional)
   $$
-  
+
   如果cacheModeOptional为contiguous则：
-  
+
   $$
   kCacheRef[i][indice[i]]=quantK[i]
   $$
-  
+
   $$
   vCacheRef[i][indice[i]]=quantV[i]
   $$
-  
+
   如果cacheModeOptional为page则：
-  
+
   $$
   kCacheRefView=kCacheRef.view(-1,kCacheRef[-2],kCacheRef[-1])
   $$
-  
+
   $$
   vCacheRefView=vCacheRef.view(-1,vCacheRef[-2],vCacheRef[-1])
   $$
-  
+
   $$
   kCacheRefView[indices[i]]=quantK[i]
   $$
-  
+
   $$
   vCacheRefView[indices[i]]=quantV[i]
   $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnDequantRopeQuantKvcacheGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnDequantRopeQuantKvcache”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnDequantRopeQuantKvcacheGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnDequantRopeQuantKvcache”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnDequantRopeQuantKvcacheGetWorkspaceSize(
-  const aclTensor   *x, 
-  const aclTensor   *cos, 
-  const aclTensor   *sin, 
-  aclTensor         *kCacheRef, 
-  aclTensor         *vCacheRef, 
-  const aclTensor   *indices, 
-  const aclTensor   *scaleK, 
-  const aclTensor   *scaleV, 
-  const aclTensor   *offsetKOptional, 
-  const aclTensor   *offsetVOptional, 
-  const aclTensor   *weightScaleOptional, 
-  const aclTensor   *activationScaleOptional, 
-  const aclTensor   *biasOptional, 
-  const aclIntArray *sizeSplits, 
-  char              *quantModeOptional, 
-  char              *layoutOptional, 
-  bool               kvOutput, 
-  char              *cacheModeOptional, 
-  const aclTensor   *qOut, 
-  const aclTensor   *kOut, 
-  const aclTensor   *vOut, 
-  uint64_t          *workspaceSize, 
+  const aclTensor   *x,
+  const aclTensor   *cos,
+  const aclTensor   *sin,
+  aclTensor         *kCacheRef,
+  aclTensor         *vCacheRef,
+  const aclTensor   *indices,
+  const aclTensor   *scaleK,
+  const aclTensor   *scaleV,
+  const aclTensor   *offsetKOptional,
+  const aclTensor   *offsetVOptional,
+  const aclTensor   *weightScaleOptional,
+  const aclTensor   *activationScaleOptional,
+  const aclTensor   *biasOptional,
+  const aclIntArray *sizeSplits,
+  char              *quantModeOptional,
+  char              *layoutOptional,
+  bool               kvOutput,
+  char              *cacheModeOptional,
+  const aclTensor   *qOut,
+  const aclTensor   *kOut,
+  const aclTensor   *vOut,
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnDequantRopeQuantKvcache(
-  void*          workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor* executor, 
+  void*          workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor* executor,
   aclrtStream    stream)
 ```
 
@@ -111,14 +121,14 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
 - **参数说明：**
 
     <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-    <col style="width: 187px">
-    <col style="width: 121px">
-    <col style="width: 287px">
-    <col style="width: 387px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 146px">
+    <col style="width: 170px">
+    <col style="width: 120px">
+    <col style="width: 300px">
+    <col style="width: 550px">
+    <col style="width: 212px">
+    <col style="width: 100px">
+    <col style="width: 190px">
+    <col style="width: 145px">
     </colgroup>
     <thead>
     <tr>
@@ -295,8 +305,8 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
     <tr>
         <td>kvOutput</td>
         <td>输入</td>
-        <td>表示支持的数据格式。</td>
-        <td>目前仅支持“BSND”。</td>
+        <td>Host侧布尔值。表示是否输出kOut和vOut。</td>
+        <td>为true时输出有效shape的kOut和vOut；为false时kOut和vOut的shape为空。</td>
         <td>BOOL</td>
         <td>-</td>
         <td>-</td>
@@ -311,6 +321,36 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
         <td>-</td>
         <td>-</td>
         <td>-</td>
+    </tr>
+    <tr>
+        <td>qOut</td>
+        <td>输出</td>
+        <td>公式中经旋转位置编码后的q。</td>
+        <td>x为3维时shape为[B, S, Nq, D]，x为2维时shape为[B, Nq, D]。数据类型与cos、sin保持一致。</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td>3-4</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>kOut</td>
+        <td>输出</td>
+        <td>公式中经旋转位置编码后的k。</td>
+        <td>kvOutput为true时，x为3维时shape为[B, S, Nkv, D]，x为2维时shape为[B, Nkv, D]；kvOutput为false时shape为空。数据类型与cos、sin保持一致。</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td>1-4</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>vOut</td>
+        <td>输出</td>
+        <td>公式中切分得到的v。</td>
+        <td>kvOutput为true时，x为3维时shape为[B, S, Nkv, D]，x为2维时shape为[B, Nkv, D]；kvOutput为false时shape为空。数据类型与cos、sin保持一致。</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td>1-4</td>
+        <td>×</td>
     </tr>
     <tr>
       <td>workspaceSize</td>
@@ -335,9 +375,9 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
     </tbody></table>
 
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
 
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
@@ -368,7 +408,7 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
 ## aclnnDequantRopeQuantKvcache
 
 - **参数说明**
-  
+
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
   <col style="width: 128px">
@@ -405,8 +445,8 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
   </table>
 
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -414,14 +454,14 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
      - aclnnDequantRopeQuantKvcache默认确定性实现。
 
 2. cacheModeOptional为contiguous时：kCacheRef的第0维大于x的第0维，indices数据值大于等于0且小于等于vCacheRef的第1维([b，s，n，d]格式中的s)减x的第1维。
-3. cacheModeOptional为page时：indices 数据值大于等于0，小于kCacheRef的第0维*第1维且不重复。
+3. cacheModeOptional为page时：indices数据值大于等于0，小于kCacheRef的第0维*第1维且不重复。
 4. 输入x不为INT32时，x、cos、sin与输出qOut、kOut、vOut的数据类型保持一致，此时activationScaleOptional，weightScaleOptional、biasOptional不生效。
 5. 输入x为INT32时，cos、sin与输出qOut、kOut、vOut的数据类型保持一致，此时weightScaleOptional必选，activationScaleOptional、biasOptional可选（biasOptional不需要与其他输入类型一致）。
 6. x的尾轴小于等于4096，且按64对齐。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -495,7 +535,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. 固定写法，device/stream初始化, 参考acl API手册
+  // 1. 固定写法，device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -647,7 +687,7 @@ int main() {
   aclDestroyTensor(input);
   aclDestroyTensor(q);
 
-  // 7. 释放device 资源
+  // 7. 释放device资源
   aclrtFree(inputDeviceAddr);
   aclrtFree(qDeviceAddr);
   if (workspaceSize > 0) {

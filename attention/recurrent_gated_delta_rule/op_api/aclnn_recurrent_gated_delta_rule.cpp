@@ -23,6 +23,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
+#include "opdev/tensor_view_utils.h"
 
 #include "aclnn_kernels/transdata.h"
 #include "aclnn_kernels/transpose.h"
@@ -44,26 +45,27 @@ constexpr size_t STATE_DIM_NUM = 4;
 
 struct RecurrentGatedDeltaRuleParams {
     // madatory
-    const aclTensor *query {nullptr};
-    const aclTensor *key {nullptr};
-    const aclTensor *value {nullptr};
-    const aclTensor *beta {nullptr};
-    const aclTensor *state {nullptr};
-    const aclTensor *actual_seq_lengths {nullptr};
-    const aclTensor *ssm_state_indices {nullptr};
+    const aclTensor *query{nullptr};
+    const aclTensor *key{nullptr};
+    const aclTensor *value{nullptr};
+    const aclTensor *beta{nullptr};
+    const aclTensor *state{nullptr};
+    const aclTensor *actual_seq_lengths{nullptr};
+    const aclTensor *ssm_state_indices{nullptr};
     // optional
-    const aclTensor *g {nullptr};
-    const aclTensor *gk {nullptr};
-    const aclTensor *num_accepted_tokens {nullptr};
+    const aclTensor *g{nullptr};
+    const aclTensor *gk{nullptr};
+    const aclTensor *num_accepted_tokens{nullptr};
     // attrs
-    float scale {1.0f};
-    //output
-    const aclTensor *out {nullptr};
+    float scale{1.0f};
+    // output
+    const aclTensor *out{nullptr};
 };
 
 // support dtype
 static const std::initializer_list<op::DataType> QKV_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> STATE_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> STATE_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16,
+                                                                            op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> BETA_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
 static const std::initializer_list<op::DataType> SEQ_LENS_TYPE_SUPPORT_LIST = {op::DataType::DT_INT32};
 static const std::initializer_list<op::DataType> SSM_TYPE_SUPPORT_LIST = {op::DataType::DT_INT32};
@@ -152,7 +154,9 @@ aclnnStatus aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(const aclTensor *query,
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    RecurrentGatedDeltaRuleParams params {query, key, value, beta, stateRef, actualSeqLengths, ssmStateIndices, g, gk, numAcceptedTokens,scaleValue, out};
+    RecurrentGatedDeltaRuleParams params{
+        query,      key, value, beta, stateRef, actualSeqLengths, ssmStateIndices, g, gk, numAcceptedTokens,
+        scaleValue, out};
 
     CHECK_RET(CheckNotNull(params), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckParams(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -175,7 +179,11 @@ aclnnStatus aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(const aclTensor *query,
         numAcceptedTokens = l0op::Contiguous(numAcceptedTokens, uniqueExecutor.get());
     }
 
-    auto out_ = l0op::Contiguous(out, uniqueExecutor.get());
+    // stateRef非连续，使用CreateView将设置gert::TensorV2的stride信息
+    if (!IsContiguous(stateRef)) {
+        stateRef = uniqueExecutor.get()->CreateView(stateRef, stateRef->GetViewShape(), stateRef->GetStorageShape(),
+                                                    stateRef->GetViewStrides(), stateRef->GetViewOffset());
+    }
 
     // 调用l0接口
     auto outRet =
@@ -185,7 +193,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(const aclTensor *query,
         return ACLNN_ERR_INNER_NULLPTR;
     }
 
-    auto ViewCopyResult = l0op::ViewCopy(outRet, out_, uniqueExecutor.get());
+    auto ViewCopyResult = l0op::ViewCopy(outRet, out, uniqueExecutor.get());
     if (ViewCopyResult == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
     }

@@ -17,12 +17,11 @@
 
 #include <sstream>
 #include <graph/utils/type_utils.h>
-#include <exe_graph/runtime/tiling_context.h>
 #include <tiling/platform/platform_ascendc.h>
+#include <exe_graph/runtime/tiling_context.h>
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "platform/soc_spec.h"
-
 namespace optiling {
 // ------------------算子原型索引常量定义----------------
 // Inputs Index
@@ -35,6 +34,7 @@ constexpr uint32_t VALUE_DEQUANT_SCALE_INPUT_INDEX = 3;
 constexpr uint32_t BLOCK_TABLE_INPUT_INDEX = 6;
 constexpr uint32_t ACT_SEQ_LEN_Q_INPUT_INDEX = 7;
 constexpr uint32_t ACT_SEQ_LEN_KV_INPUT_INDEX = 8;
+constexpr uint32_t SINKS_INPUT_INDEX = 9;
 // Outputs Index
 constexpr uint32_t OUTPUT_INDEX = 0;
 // Attributes Index
@@ -52,6 +52,7 @@ constexpr uint32_t QUANT_SCALE_REPO_MODE_ATTR_INDEX = 10;
 constexpr uint32_t TILE_SIZE_ATTR_INDEX = 11;
 constexpr uint32_t ROPE_HEAD_DIM_ATTR_INDEX = 12;
 // Dim Num
+constexpr size_t DIM_NUM_ONE = 1;
 constexpr size_t DIM_NUM_TWO = 2;
 constexpr size_t DIM_NUM_THREE = 3;
 constexpr size_t DIM_NUM_FOUR = 4;
@@ -65,11 +66,7 @@ constexpr uint32_t BYTE_BLOCK = 32;
 const uint32_t QSFA_MAX_AIC_CORE_NUM = 26; // 25 + 1 保证数组8字节对齐
 
 // ------------------公共定义--------------------------
-enum class QSFALayout : uint32_t {
-    BSND = 0,
-    TND = 1,
-    PA_BSND = 2
-};
+enum class QSFALayout : uint32_t { BSND = 0, TND = 1, PA_BSND = 2 };
 
 struct QSFATilingShapeCompareParam {
     int64_t B = 1;
@@ -82,22 +79,16 @@ struct QSFATilingShapeCompareParam {
     int64_t Bn = 1;
 };
 
-enum class KvStorageMode : uint32_t {
-    BATCH_CONTINUOUS = 0,
-    PAGE_ATTENTION = 1
-};
+enum class KvStorageMode : uint32_t { BATCH_CONTINUOUS = 0, PAGE_ATTENTION = 1 };
 
-enum class QSFAPerfMode : uint32_t {
-    C_TEMPLATE_MODE = 0,
-    V_TEMPLATE_MODE
-};
+enum class QSFAPerfMode : uint32_t { C_TEMPLATE_MODE = 0, V_TEMPLATE_MODE };
 
 enum class QSFAAxis : uint32_t {
     B = 0,
     S = 1,
     N = 2,
     D = 3,
-    K = 3,  // sparse_indices的K和key的D枚举值相同，表达相同位置, 最后一维
+    K = 3, // sparse_indices的K和key的D枚举值相同，表达相同位置, 最后一维
     T = 5,
     Bn = 6, // block number
     Bs = 7, // block size
@@ -126,6 +117,7 @@ struct QSFAParaInfo {
     QSFAOptionalParaInfo keyRope = {nullptr, nullptr};
     QSFAOptionalParaInfo keyDequantScale = {nullptr, nullptr};
     QSFAOptionalParaInfo valueDequantScale = {nullptr, nullptr};
+    QSFAOptionalParaInfo sinks = {nullptr, nullptr};
     QSFARequiredParaInfo attenOut = {nullptr, nullptr};
 
     const char *layoutQuery = nullptr;
@@ -157,10 +149,10 @@ TILING_DATA_FIELD_DEF(uint32_t, seqSize)
 TILING_DATA_FIELD_DEF(uint32_t, qSeqSize)
 TILING_DATA_FIELD_DEF(int64_t, blockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
-TILING_DATA_FIELD_DEF(float, scaleValue)
-TILING_DATA_FIELD_DEF(uint32_t, nNumOfQInOneGroup)
 TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsQ)
 TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsKV)
+TILING_DATA_FIELD_DEF(float, scaleValue)
+TILING_DATA_FIELD_DEF(uint32_t, nNumOfQInOneGroup)
 TILING_DATA_FIELD_DEF(uint32_t, outputLayout)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
@@ -168,6 +160,7 @@ TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)
 TILING_DATA_FIELD_DEF(int64_t, dSizeVInput)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsNull)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsKVNull)
+TILING_DATA_FIELD_DEF(uint32_t, keyStride0) // PA mode non-contiguous stride
 END_TILING_DATA_DEF
 
 REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionBaseParamsMlaOp, KvQuantSparseFlashAttentionBaseParamsMla)
@@ -176,30 +169,28 @@ BEGIN_TILING_DATA_DEF(KvQuantSparseFlashAttentionSingleCoreParamsMla)
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionSingleCoreParamsMlaOp,
-    KvQuantSparseFlashAttentionSingleCoreParamsMla)
+                           KvQuantSparseFlashAttentionSingleCoreParamsMla)
 
 BEGIN_TILING_DATA_DEF(KvQuantSparseFlashAttentionSingleCoreTensorSizeMla)
 TILING_DATA_FIELD_DEF(uint32_t, mmResUbSize);
 TILING_DATA_FIELD_DEF(uint32_t, bmm2ResUbSize);
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionSingleCoreTensorSizeMlaOp,
-    KvQuantSparseFlashAttentionSingleCoreTensorSizeMla)
+                           KvQuantSparseFlashAttentionSingleCoreTensorSizeMla)
 
 BEGIN_TILING_DATA_DEF(KvQuantSparseFlashAttentionSplitKVParamsMla)
-TILING_DATA_FIELD_DEF(uint32_t, s2)             // S2切分份数
-TILING_DATA_FIELD_DEF(uint32_t, accumOutSize)   // FD workspace
-TILING_DATA_FIELD_DEF(uint32_t, logSumExpSize)  // FD workspace
+TILING_DATA_FIELD_DEF(uint32_t, s2)            // S2切分份数
+TILING_DATA_FIELD_DEF(uint32_t, accumOutSize)  // FD workspace
+TILING_DATA_FIELD_DEF(uint32_t, logSumExpSize) // FD workspace
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionSplitKVParamsMlaOp,
-    KvQuantSparseFlashAttentionSplitKVParamsMla)
+REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionSplitKVParamsMlaOp, KvQuantSparseFlashAttentionSplitKVParamsMla)
 
 // 内切基本块参数
 BEGIN_TILING_DATA_DEF(KvQuantSparseFlashAttentionInnerSplitParams)
 TILING_DATA_FIELD_DEF(uint32_t, mBaseSize)
 TILING_DATA_FIELD_DEF(uint32_t, s2BaseSize)
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionInnerSplitParamsOp,
-    KvQuantSparseFlashAttentionInnerSplitParams)
+REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionInnerSplitParamsOp, KvQuantSparseFlashAttentionInnerSplitParams)
 
 BEGIN_TILING_DATA_DEF(KvQuantSparseFlashAttentionTilingDataMla)
 TILING_DATA_FIELD_DEF_STRUCT(KvQuantSparseFlashAttentionBaseParamsMla, baseParams);
@@ -210,27 +201,12 @@ TILING_DATA_FIELD_DEF_STRUCT(KvQuantSparseFlashAttentionInnerSplitParams, innerS
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttention, KvQuantSparseFlashAttentionTilingDataMla)
 
-template <typename T> inline T Align(T num, T rnd)
-{
-    return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
-}
-
 template <typename T>
-std::string QSFAShape2String(const T &shape)
+inline T Align(T num, T rnd)
 {
-    std::ostringstream oss;
-    oss << "[";
-    if (shape.GetDimNum() > 0) {
-        for (size_t i = 0; i < shape.GetDimNum() - 1; ++i) {
-            oss << shape.GetDim(i) << ", ";
-        }
-        oss << shape.GetDim(shape.GetDimNum() - 1);
-    }
-    oss << "]";
-    return oss.str();
+    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
-static std::string GetShapeStr(gert::Shape shape);
 static std::string QSFADataTypeToSerialString(ge::DataType type);
 std::string QSFATensorDesc2String(const gert::StorageShape *shape, const gert::CompileTimeTensorDesc *tensor);
 std::string QSFADebugTilingContext(const gert::TilingContext *context);
@@ -255,7 +231,7 @@ struct QSFATilingInfo {
     uint32_t vHeadDim = 0;
     uint32_t gSize = 0;
     uint32_t ropeHeadDim = 0;
-    uint32_t qTSize = 0; // 仅TND时生效
+    uint32_t qTSize = 0;  // 仅TND时生效
     uint32_t kvTSize = 0; // 仅TND时生效
     float scaleValue = 0;
     uint32_t innerPrecise = 0;
@@ -277,7 +253,7 @@ struct QSFATilingInfo {
     bool isSameSeqAllKVTensor = true;
     bool isSameActualseq = true;
     uint32_t actualLenDimsKV = 0;
-    std::vector<int64_t> kvListSeqLens {};
+    std::vector<int64_t> kvListSeqLens{};
 
     uint32_t sparseMode = 0;
 
@@ -305,6 +281,8 @@ struct QSFATilingInfo {
 
     uint64_t l2CacheSize = 0;
     int64_t dSizeVInput = 0;
+
+    uint32_t keyStride0 = 0; // PA mode non-contiguous stride on 0-axis
 };
 
 // ---------------算子Tiling类---------------
@@ -330,7 +308,7 @@ private:
     bool IsBalanceSplitCore();
 
     void SplitBalanced();
-    void CalcInnerSize(uint32_t s2Size);
+    void CalcInnerSize(uint32_t qsfaS2Size);
 
     bool IsFlashDecode(uint32_t coreNum);
 
@@ -350,8 +328,6 @@ private:
     uint32_t CalcBalanceFDParamNums(const uint32_t actCoreNum) const;
 
     void CalcBlockDim();
-
-    uint32_t GetTypeSize(ge::DataType dtype) const;
 
     bool balanceModeFlag_ = false;
     bool splitKVFlag_ = false;
@@ -394,26 +370,28 @@ public:
     explicit QSFATilingCheck(const QSFATilingInfo &qsfaInfo) : qsfaInfo_(qsfaInfo) {};
     ~QSFATilingCheck() = default;
     ge::graphStatus Process();
+
 private:
     void Init();
-    void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
-        const ge::DataType &actualDtype, const std::string &name) const;
-    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
-        const std::string &name) const;
-    template <typename T> void LogErrorNumberSupport(const std::vector<T> &expectNumberList,
-        const T &actualValue, const std::string &name, const std::string subName) const;
-    template <typename T> void LogErrorDimNumSupport(const std::vector<T> &expectNumberList,
-        const T &actualValue, const std::string &name) const;
-    ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape,
-        const std::vector<size_t> &expectDimNumList, const std::string &name) const;
-    ge::graphStatus CheckDimNumInLayoutSupport(const QSFALayout &layout,
-        const gert::StorageShape *shape, const std::string &name) const;
-    void LogErrorLayoutSupport(const std::vector<QSFALayout> &expectLayoutList,
-        const QSFALayout &actualLayout, const std::string &name) const;
-    ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected,
-    const QSFATilingShapeCompareParam &param, const QSFALayout &layout) const;
-    ge::graphStatus CompareShape(QSFATilingShapeCompareParam &param,
-        const gert::Shape &shape, const QSFALayout &layout, const std::string &name) const;
+    void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList, const ge::DataType &actualDtype,
+                              const std::string &name) const;
+    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *qsfaDesc, const std::string &name) const;
+    template <typename T>
+    void LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue, const std::string &name,
+                               const std::string subName) const;
+    template <typename T>
+    void LogErrorDimNumSupport(const std::vector<T> &expectNumberList, const T &actualValue,
+                               const std::string &name) const;
+    ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape, const std::vector<size_t> &qsfaExpectDimNumList,
+                                       const std::string &name) const;
+    ge::graphStatus CheckDimNumInLayoutSupport(const QSFALayout &layout, const gert::StorageShape *shape,
+                                               const std::string &name) const;
+    void LogErrorLayoutSupport(const std::vector<QSFALayout> &expectLayoutList, const QSFALayout &actualLayout,
+                               const std::string &name) const;
+    ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected, const QSFATilingShapeCompareParam &param,
+                                     const QSFALayout &layout) const;
+    ge::graphStatus CompareShape(QSFATilingShapeCompareParam &param, const gert::Shape &shape, const QSFALayout &layout,
+                                 const std::string &name) const;
     ge::graphStatus CheckLayoutSupport(const QSFALayout &actualLayout, const std::string &name) const;
     ge::graphStatus CheckSingleParaQuery() const;
     ge::graphStatus CheckSingleParaKey() const;
@@ -425,17 +403,16 @@ private:
     ge::graphStatus CheckSingleParaSparseMode() const;
     ge::graphStatus CheckSingleParaSparseBlockSize() const;
     ge::graphStatus CheckSingleParaSparseIndices() const;
+    ge::graphStatus CheckSingleParaSinks() const;
     ge::graphStatus CheckSinglePara() const;
     ge::graphStatus CheckMultiParaConsistency() const;
     ge::graphStatus CheckDequantScaleNotExistence();
-    template <typename T> ge::graphStatus CheckAttrValueByMap(
-        std::map<std::string, std::pair<const T *, T>> &attrMap) const;
+    template <typename T>
+    ge::graphStatus CheckAttrValueByMap(std::map<std::string, std::pair<const T *, T>> &attrMap) const;
     ge::graphStatus CheckParaExistenceMlaAntiquant() const;
     ge::graphStatus CheckParaExistenceGqaAntiquant() const;
     ge::graphStatus CheckParaExistenceMla() const;
     ge::graphStatus CheckParaExistence();
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-        const QSFALayout &layout, const std::string &name) const;
     void SetQSFAShapeCompare();
     ge::graphStatus CheckKVDType();
     ge::graphStatus CheckKVShapeForBatchContinuous();
@@ -445,8 +422,8 @@ private:
     ge::graphStatus CheckTopK();
     ge::graphStatus CheckTopkShape();
     ge::graphStatus CheckBlockTable() const;
-    ge::graphStatus CheckDTypeConsistency(const ge::DataType &actualDtype,
-    const ge::DataType &expectDtype, const std::string &name) const;
+    ge::graphStatus CheckDTypeConsistency(const ge::DataType &actualDtype, const ge::DataType &expectDtype,
+                                          const std::string &name) const;
 
     ge::graphStatus CheckAttenOut();
     ge::graphStatus CheckAttenOutShape();
@@ -459,6 +436,8 @@ private:
     ge::graphStatus CheckMultiParaConsistency();
 
     ge::graphStatus CheckFeatureMlaAntiquantShape() const;
+    ge::graphStatus CheckFeatureMlaAntiquantShapeSizes() const;
+    ge::graphStatus CheckFeatureMlaAntiquantShapeSparseAndHeadDim() const;
     ge::graphStatus CheckFeatureMlaAntiquantLayout() const;
     ge::graphStatus CheckFeatureMlaAntiquantDtype() const;
     ge::graphStatus CheckFeatureMlaAntiquantAttr() const;
@@ -482,7 +461,7 @@ private:
     uint32_t qHeadDim_ = 0;
     uint32_t kHeadDim_ = 0;
     uint32_t vHeadDim_ = 0;
-    uint32_t qTSize_ = 0; // 仅TND时生效
+    uint32_t qTSize_ = 0;  // 仅TND时生效
     uint32_t kvTSize_ = 0; // 仅TND时生效
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     uint32_t sparseBlockCount_ = 0;
@@ -527,24 +506,24 @@ public:
     ~QSFAInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
+    ge::graphStatus CheckTensorShapes() const;
+    ge::graphStatus CheckTensorDescriptions() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
 
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-        QSFALayout &layout, const std::string &name) const;
     ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
-    ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
+    ge::graphStatus GetOpName();
     void GetOptionalInputParaInfo();
     void GetInputParaInfo();
     void GetOutputParaInfo();
     ge::graphStatus GetAttrParaInfo();
-    ge::graphStatus GetKvCache();
     ge::graphStatus GetOpParaInfo();
+    ge::graphStatus GetKvCache();
 
     ge::graphStatus GetInOutDataType();
-    ge::graphStatus GetBatchSize();
     ge::graphStatus GetQTSize();
+    ge::graphStatus GetBatchSize();
     ge::graphStatus GetKVTSize();
     ge::graphStatus GetQHeadDim();
     ge::graphStatus GetKHeadDim();
@@ -567,20 +546,17 @@ public:
     ge::graphStatus GetGSize();
     ge::graphStatus GetSparseBlockCount();
     ge::graphStatus GetActualseqInfo();
+    ge::graphStatus GetShapeAndSizeInfo();
     void GenerateInfo(QSFATilingInfo &qsfaInfo);
+    void FillTilingInfoAttrsAndLayouts(QSFATilingInfo &qsfaInfo);
     ge::graphStatus Parse(QSFATilingInfo &qsfaInfo);
-
-public:
-    bool HasAxis(const QSFAAxis &axis, const QSFALayout &layout, const gert::Shape &shape) const;
-    size_t GetAxisIdx(const QSFAAxis &axis, const QSFALayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const QSFAAxis &axis, const QSFALayout &layout) const;
+    ge::graphStatus CheckContiguous() const;
 
     const gert::TilingContext *context_ = nullptr;
 
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
     QSFAParaInfo opParamInfo_;
-    static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     uint32_t bSize_ = 0;
     uint32_t n1Size_ = 0;
@@ -593,7 +569,7 @@ public:
     uint32_t vHeadDim_ = 0;
     int32_t ropeHeadDim_ = 0;
     int64_t dSizeKV_ = 0;
-    uint32_t qTSize_ = 0; // 仅TND时生效
+    uint32_t qTSize_ = 0;  // 仅TND时生效
     uint32_t kvTSize_ = 0; // 仅TND时生效
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     uint32_t sparseBlockCount_ = 0;
@@ -626,6 +602,9 @@ public:
     gert::Shape keyShape_{};
     gert::Shape valueShape_{};
     gert::Shape sparseIndicesShape_{};
+
+    uint32_t keyStride0_ = 0;
+    uint32_t keyStride1_ = 0;
 };
 } // namespace optiling
 #endif // KV_QUANT_SPARSE_FLASH_ATTENTION_TILING_H

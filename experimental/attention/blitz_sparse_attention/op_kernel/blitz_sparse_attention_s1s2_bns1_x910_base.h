@@ -70,18 +70,6 @@ struct GetMatmulConfig<MatMulType::MM_MDL> {
 };
 
 template <>
-struct GetMatmulConfig<MatMulType::MM_NORM> {
-    static constexpr MatmulConfig mmcfg_value = CFG_NORM;
-    static constexpr bool ibshare_value = false;
-};
-
-template <>
-struct GetMatmulConfig<MatMulType::MM_IBSHARE_NORM> {
-    static constexpr MatmulConfig mmcfg_value = CFG_IBSHARE_NORM;
-    static constexpr bool ibshare_value = true;
-};
-
-template <>
 struct GetMatmulConfig<MatMulType::MM_PA> {
     static constexpr MatmulConfig mmcfg_value = GetNormalConfig(false, false, false, BatchMode::BATCH_LESS_THAN_L1, false);
     static constexpr bool ibshare_value = false;
@@ -129,6 +117,13 @@ struct PFAComputeParam {
     bool isFirstComputedIter = false;
     bool isSecondComputedIter = false;
     bool isLastComputedIter = false;
+    // True sub-tile gather. Each queue entry carries up to 4 kept sabi entries
+    // (each kvBlockSize tokens wide). The cube tile is built by issuing one
+    // narrow N = kvBlockSize matmul per kept entry, writing the i-th slice at
+    // column offset i * kvBlockSize of the bmm1 result buffer. When the kept
+    // entries are K-contiguous a single wide matmul covers them all instead.
+    uint16_t packedSabi[4] = {0, 0, 0, 0};
+    uint8_t  packedCount = 0;
 
     bool isInnerTail;
     bool useMask;
@@ -155,6 +150,13 @@ struct PFAComputeParam {
     uint32_t pseShiftInnerTailAlign;
     uint32_t pseShiftInnerPrefixTailAlign;
     uint32_t mm1SingleCoreN;
+    // bmm2's V-load K dimension. The sparse path narrows it to totalColsActual
+    // rounded UP to 8 fp32 lanes (= 1 fp32 BLOCK = 32 B). Decoupled from
+    // `singleProcessSInnerBmmTail` (= softmax srcK) so softmax's fast-path
+    // stays on the 64-aligned `totalCols` while bmm2's V load reaches at most
+    // 7 V tokens past `actualSeqLengthKVPerBatch` per (Q-tile × head). The
+    // dense path keeps this equal to `singleProcessSInnerBmmTail`.
+    uint32_t bmm2K;
     uint32_t mm2SingleKAlign;
     int64_t tensorAOffset;
     int64_t tensorBOffset;
@@ -185,7 +187,7 @@ struct PFAComputeParam {
     // MSD
     uint64_t antiqParamOffsetPerToken = 0ULL;    
 };
-constexpr int32_t PFA_PARAMS_QUEUE_CAPBABILITY = 4;
+constexpr int32_t PFA_PARAMS_QUEUE_CAPBABILITY = 8;
 constexpr uint32_t SPARSE_ATTENTION_MASK_SIZE = 2048;
 constexpr event_t NULL_EVENT = static_cast<event_t>(INVALID_TEVENTID);
 constexpr uint32_t MAX_SUBSOUTER_NUM = 64; // Souter maximum is 512，softmax cut into 8 blocks, not exceeding 64.
@@ -1326,42 +1328,13 @@ protected:
     }
 
     __aicore__ inline void ComputeAttenMaskOffset(int64_t sInnerOffsetDataSize) {
-        int64_t delta;
-        if (attentionMaskType == 2 || attentionMaskType == 3 || attentionMaskType == 4) { // 2:leftUp mode of sparseMode, 3:rightdown mode of sparseMode, 4:band mode of sparseMode
-            if (attentionMaskType == 2) {
-                delta = this->tailParams->sOuterOffset - \
-                    sInnerOffsetDataSize + tilingData->promptAttentionBaseParams.nextTokens;
-            } else {
-                delta = this->tailParams->sOuterOffset - \
-                    sInnerOffsetDataSize + this->tailParams->nextTokensPerBatch;
-            }
-
-            if (delta < 0) {
-                this->tailParams->attenMaskOffset = ((int32_t)singleProcessSOuterSizeWhole + delta) > 0
-                    ? (-delta) : singleProcessSOuterSizeWhole;
-            }
-            else {
-                this->tailParams->attenMaskOffset = (((int32_t)this->tailParams->singleProcessSInnerSize - delta) > 0
-                    ? delta : this->tailParams->singleProcessSInnerSize) * attentionMaskStride;
-            }
-        } else {
-            this->tailParams->attenMaskOffset = attenMaskCoreOffset + (uint64_t)sInnerOffsetDataSize;
-        }
+        // T2.A: BSA supports attentionMaskType ∈ {0, 1} only.
+        this->tailParams->attenMaskOffset = attenMaskCoreOffset + (uint64_t)sInnerOffsetDataSize;
     }
 
     __aicore__ inline void ComputeAttenMaskOffsetPre(int64_t sInnerOffsetDataSize) {
-        if (attentionMaskType == 0 || attentionMaskType == 1) {
-            return;
-        }
-        int64_t delta = this->tailParams->sOuterOffset - sInnerOffsetDataSize - this->tailParams->preTokensPerBatch - 1;
-        if (delta < 0) {
-            this->tailParams->attenMaskOffsetPre = ((int32_t)singleProcessSOuterSizeWhole + delta) > 0
-                ? (-delta) : singleProcessSOuterSizeWhole;
-        }
-        else {
-            this->tailParams->attenMaskOffsetPre = (((int32_t)this->tailParams->singleProcessSInnerSize - delta) > 0
-                ? delta : this->tailParams->singleProcessSInnerSize) * attentionMaskStride;
-        }
+        // T2.A: attentionMaskType ∈ {0, 1} → early-return path.
+        return;
     }
 
     __aicore__ inline void initOffset();
@@ -2183,36 +2156,20 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910Base<PFAT>::GetSingleCore
     MultiHeadQ = tilingData->promptAttentionBaseParams.headSize * tilingData->promptAttentionBaseParams.headNumSize;
     MultiHeadKV = MultiHeadQ / headNumRatio;
 
-    if (attentionMaskType != 4) {
-        this->tailParams->preTokensPerBatch = (int64_t)tilingData->promptAttentionBaseParams.preTokens;
-        this->tailParams->nextTokensPerBatch = (int64_t)tilingData->promptAttentionBaseParams.nextTokens;
-        if (isKvContinuous == 1) {
-            actualSeqLengthPerBatch = ((int64_t)actualSeqLengthPerBatch >
-                                    (int64_t)actualSeqLengthKVPerBatch + actualKVPrefixLen +
-                                    (int64_t)tilingData->promptAttentionBaseParams.preTokens) && (attentionMaskType != 4)?
-                                    (int64_t)actualSeqLengthKVPerBatch + actualKVPrefixLen + (int64_t)tilingData->promptAttentionBaseParams.preTokens :
-                                    actualSeqLengthPerBatch;
-        } else {
-            actualSeqLengthPerBatch = ((int64_t)actualSeqLengthPerBatch >
-                                    (int64_t)s2InCurrentBatch + (int64_t)tilingData->promptAttentionBaseParams.preTokens) && (attentionMaskType != 4)?
-                                    (int64_t)s2InCurrentBatch + (int64_t)tilingData->promptAttentionBaseParams.preTokens :
-                                    actualSeqLengthPerBatch;
-        }
+    // T2.A: attentionMaskType ∈ {0, 1} only — band (==4) branch removed.
+    this->tailParams->preTokensPerBatch = (int64_t)tilingData->promptAttentionBaseParams.preTokens;
+    this->tailParams->nextTokensPerBatch = (int64_t)tilingData->promptAttentionBaseParams.nextTokens;
+    if (isKvContinuous == 1) {
+        int64_t kvBudget = (int64_t)actualSeqLengthKVPerBatch + actualKVPrefixLen +
+                           (int64_t)tilingData->promptAttentionBaseParams.preTokens;
+        actualSeqLengthPerBatch = ((int64_t)actualSeqLengthPerBatch > kvBudget)
+                                      ? kvBudget
+                                      : actualSeqLengthPerBatch;
     } else {
-        this->tailParams->preTokensPerBatch = (int64_t)tilingData->promptAttentionBaseParams.preTokens - actualSeqLengthKVPerBatch - actualKVPrefixLen + actualSeqLengthPerBatch;
-        this->tailParams->nextTokensPerBatch = (int64_t)tilingData->promptAttentionBaseParams.nextTokens + actualSeqLengthKVPerBatch + actualKVPrefixLen - actualSeqLengthPerBatch;
-        if (isKvContinuous == 1) {
-            actualSeqLengthPerBatch = ((int64_t)actualSeqLengthPerBatch >
-                                    (int64_t)actualSeqLengthKVPerBatch + actualKVPrefixLen +
-                                    (int64_t)this->tailParams->preTokensPerBatch) ?
-                                    (int64_t)actualSeqLengthKVPerBatch + actualKVPrefixLen + (int64_t)this->tailParams->preTokensPerBatch :
-                                    actualSeqLengthPerBatch;
-        } else {
-            actualSeqLengthPerBatch = ((int64_t)actualSeqLengthPerBatch >
-                                    (int64_t)s2InCurrentBatch + (int64_t)this->tailParams->preTokensPerBatch) ?
-                                    (int64_t)s2InCurrentBatch + (int64_t)this->tailParams->preTokensPerBatch :
-                                    actualSeqLengthPerBatch;
-        }
+        actualSeqLengthPerBatch = ((int64_t)actualSeqLengthPerBatch >
+                                (int64_t)s2InCurrentBatch + (int64_t)tilingData->promptAttentionBaseParams.preTokens) ?
+                                (int64_t)s2InCurrentBatch + (int64_t)tilingData->promptAttentionBaseParams.preTokens :
+                                actualSeqLengthPerBatch;
     }
 
     singleProcessSOuterSizeTail = (actualSeqLengthPerBatch % singleProcessSOuterSizeWhole != 0) ?
@@ -2259,31 +2216,7 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910Base<PFAT>::GetSingleCore
 
 template<typename PFAT>
 __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910Base<PFAT>::GetSparseParam(int64_t* preTokens, int64_t* nextTokens, int sIdx, PFAComputeParam *&params) {
-    if (attentionMaskType == 3) {
-        *preTokens = 214748647;
-        *nextTokens = params->actualSeqLengthKVPerBatch + actualKVPrefixLen - params->actualSeqLengthPerBatch;
-    }
-    if (attentionMaskType == 4) {
-        int64_t actualSeqLengthPerBatchUser = 0;
-        int64_t actualSeqLengthKVPerBatchUser = 0;
-        int64_t actualSeqQMin = 1;
-        int64_t actualSeqKVmin = 1;
-        if (isActualLenDimsNull){
-            actualSeqLengthPerBatchUser = tilingData->promptAttentionBaseParams.seqSize;
-        } else {
-            actualSeqLengthPerBatchUser = (tilingData->promptAttentionBaseParams.actualSeqLengthsSize == actualSeqQMin) ? actualSeqLengthsGm.GetValue(0) :
-                                          actualSeqLengthsGm.GetValue(sIdx);
-        }
-        if (isActualLenDimsKVNull){
-            actualSeqLengthKVPerBatchUser = (isKvContinuous == 1) ? tilingData->promptAttentionBaseParams.seqInnerSize :
-                                        s2InCurrentBatch;
-        } else {
-            actualSeqLengthKVPerBatchUser = (tilingData->promptAttentionBaseParams.actualSeqLengthsKVSize == actualSeqKVmin) ? actualSeqLengthsKVGm.GetValue(0) :
-                                            actualSeqLengthsKVGm.GetValue(sIdx);
-        }
-        *preTokens = (int64_t)tilingData->promptAttentionBaseParams.preTokens - actualSeqLengthKVPerBatchUser - actualKVPrefixLen + actualSeqLengthPerBatchUser;
-        *nextTokens = (int64_t)tilingData->promptAttentionBaseParams.nextTokens + actualSeqLengthKVPerBatchUser + actualKVPrefixLen - actualSeqLengthPerBatchUser;
-    }
+    // T2.A: attentionMaskType ∈ {0, 1} only — band (==4) and rightDown (==3) branches removed.
     params->preTokensPerBatch = *preTokens;
     params->nextTokensPerBatch = *nextTokens;
 }

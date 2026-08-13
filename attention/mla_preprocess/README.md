@@ -57,6 +57,8 @@
     k^R = Cache(ROPE(RmsNormQuant(x)))
     $$
 
+    ACLNN接口的`cos`和`sin`同时传入空指针时跳过Q-RoPE和K-RoPE数学运算，输出和Cache仍按原布局写入未经旋转的Q-rope和K-rope分量；二者均为非空Tensor时保持原RoPE行为，禁止仅传入一个空指针。
+
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1427px"><colgroup>
@@ -190,14 +192,14 @@
   <tr>
     <td>cos</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，表示用于计算旋转位置编码的正弦参数矩阵，shape为[tokenNum,64]</td>
+    <td>Device侧的aclTensor，表示用于计算旋转位置编码的余弦参数矩阵，启用RoPE时shape为[tokenNum,64]，其中tokenNum等于input的第0维；与sin同时传入空指针时关闭RoPE。</td>
     <td>FLOAT16, BFLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>sin</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，表示用于计算旋转位置编码的余弦参数矩阵，shape为[tokenNum,64]</td>
+    <td>Device侧的aclTensor，表示用于计算旋转位置编码的正弦参数矩阵，启用RoPE时shape为[tokenNum,64]，其中tokenNum等于input的第0维；与cos同时传入空指针时关闭RoPE。</td>
     <td>FLOAT16, BFLOAT16</td>
     <td>ND</td>
   </tr>
@@ -211,14 +213,14 @@
   <tr>
     <td>kvCache</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，与输出的kvCacheOut为同一tensor，输入格式随cacheMode变化。<br><br>cacheMode为0：shape为[blockNum,blockSize,1,576]<br>cacheMode为1：shape为[blockNum,blockSize,1,512]<br>cacheMode为2：shape为[blockNum,headNum*512/32,block_size,32]<br>cacheMode为3：shape为[blockNum,headNum*512/16,block_size,16]</td>
+    <td>Device侧的aclTensor，与输出的kvCacheOut为同一tensor，输入格式随cacheMode变化。<br><br>cacheMode为0：shape为[blockNum,blockSize,1,576]<br>cacheMode为1：shape为[blockNum,blockSize,1,512]<br>cacheMode为2：shape为[blockNum,16,block_size,32]<br>cacheMode为3：shape为[blockNum,32,block_size,16]</td>
     <td>cacheMode为0：与input一致<br>cacheMode为1：与input一致<br>cacheMode为2：INT8<br>cacheMode为3：与input一致</td>
     <td>ND<br>ND<br>NZ<br>NZ</td>
   </tr>
   <tr>
     <td>kvCacheRope</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，可选参数，支出传入空指针。与输出的krCacheOut为同一tensor，输入格式随cacheMode变化。<br><br>cacheMode为0：不传入。<br>cacheMode为1：shape为[blockNum,blockSize,1,64]<br>cacheMode为2或3：shape为[blockNum, headNum*64 / 16 ,block_size, 16]</td>
+    <td>Device侧的aclTensor，可选参数，支出传入空指针。与输出的krCacheOut为同一tensor，输入格式随cacheMode变化。<br><br>cacheMode为0：不传入。<br>cacheMode为1：shape为[blockNum,blockSize,1,64]<br>cacheMode为2或3：shape为[blockNum, 4 ,block_size, 16]</td>
     <td>与input一致</td>
     <td><br>ND<br>NZ</td>
   </tr>
@@ -344,7 +346,7 @@
   <tr>
     <td>kvCacheOut</td>
     <td>输出</td>
-    <td>表示Key经过ReshapeAndCache后的输出，shape和dtype随cacheMode变化<br><br>cacheMode为0：shape为[blockNum, blockSize, 1, 576]<br>cacheMode为1：shape为[blockNum, blockSize, 1, 512]<br>cacheMode为2：shape为[blockNum, headNum*512/32, block_size, 32]<br>cacheMode为3：shape为[blockNum, headNum*512/16, block_size, 16]</td>
+    <td>表示Key经过ReshapeAndCache后的输出，shape和dtype随cacheMode变化<br><br>cacheMode为0：shape为[blockNum, blockSize, 1, 576]<br>cacheMode为1：shape为[blockNum, blockSize, 1, 512]<br>cacheMode为2：shape为[blockNum, 16, block_size, 32]<br>cacheMode为3：shape为[blockNum, 32, block_size, 16]</td>
     <td>cacheMode为0：与input一致<br>cacheMode为1：与input一致<br>cacheMode为2：INT8<br>cacheMode为3：与input一致</td>
     <td>ND<br>ND<br>NZ<br>NZ</td>
   </tr>
@@ -358,7 +360,7 @@
   <tr>
     <td>krCacheOut</td>
     <td>输出</td>
-    <td>表示Key经过ROPE和ReshapeAndCache后的输出，shape和dtype随cacheMode变化，<br><br>cacheMode为0：不输出<br>cacheMode为1：shape为[blockNum, blockSize, 1, 64]<br>cacheMode为2或3：shape为[blockNum, headNum*64 / 16 ,block_size, 16]</td>
+    <td>表示Key经过ROPE和ReshapeAndCache后的输出，shape和dtype随cacheMode变化，<br><br>cacheMode为0：不输出<br>cacheMode为1：shape为[blockNum, blockSize, 1, 64]<br>cacheMode为2或3：shape为[blockNum, 4 ,block_size, 16]</td>
     <td><br>cacheMode为1：与input一致<br>cacheMode为2或3：与input一致</td>
     <td><br>ND<br>NZ</td>
   </tr>
@@ -367,8 +369,8 @@
 ## 约束说明
 
 - shape格式字段含义及约束
-    - tokenNum：tokenNum 表示输入样本批量大小，取值范围：0~256
-    - hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048~10240，为256的倍数
+    - tokenNum：tokenNum表示输入样本批量大小，取值范围：0~256
+    - hiddenSize：hiddenSize表示隐藏层的大小，取值固定为：2048~10240，为256的倍数
     - headNum：表示多头数，取值范围：1~128
     - blockNum：PagedAttention场景下的块数，取值范围：192
     - blockSize：PagedAttention场景下的块大小，取值范围：128
@@ -377,4 +379,4 @@
     - qRopeDim：表示Q矩阵中旋转编码部分的维度，取值固定为：64
     - qNoRopeDim：表示Q矩阵中无旋转编码部分的维度，取值范围：16~256，为16的倍数
 - rope模式约束
-    - mla_preprocess 算子中的 Rotary Embedding（RoPE）操作采用 half 模式，暂不支持 interleave 模式
+    - mla_preprocess算子中的Rotary Embedding（RoPE）操作采用half模式，暂不支持interleave模式

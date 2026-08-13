@@ -124,9 +124,9 @@ __aicore__ inline void QLIVector<QLIT>::GetKeyScale(const QLICommon::RunInfo &ru
         int32_t startBlockTableIdx = startS2 / kCacheBlockSize_;
         int32_t startBlockTableOffset = startS2 % kCacheBlockSize_;
         int32_t blockTableBatchOffset = batchId * maxBlockNumPerBatch_;
-        copyInParams.blockCount = 1;
         copyInParams.srcStride = 0;
         copyInParams.dstStride = 0;
+        copyInParams.blockCount = 1;
         copyInParams.rsv = 0;
         int32_t resUbBaseOffset = 0;
         if (startBlockTableOffset > 0) {
@@ -215,8 +215,8 @@ __aicore__ inline void QLIVector<QLIT>::InitParams(const struct QLICommon::Const
     gSize_ = constInfo.gSize;
     kSeqSize_ = constInfo.kSeqSize;
     // define N2 para
-    kHeadNum_ = constInfo.kHeadNum;
     qHeadNum_ = constInfo.qHeadNum;
+    kHeadNum_ = constInfo.kHeadNum;
     // define MMBase para
     s1BaseSize_ = constInfo.s1BaseSize;  // 4
     s2BaseSize_ = constInfo.s2BaseSize;  // 2048

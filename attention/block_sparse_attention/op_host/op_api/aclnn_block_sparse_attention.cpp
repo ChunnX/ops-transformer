@@ -8,20 +8,19 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "aclnn_block_sparse_attention.h"
-
-#include "block_sparse_attention.h"
-#include "aclnn_kernels/contiguous.h"
-#include "opdev/make_op_executor.h"
-#include "opdev/op_dfx.h"
-#include "opdev/tensor_view_utils.h"
+#include <algorithm>
+#include <string>
+#include <unordered_map>
+#include <acl/acl.h>
 #include "opdev/common_types.h"
 #include "opdev/op_errno.h"
 #include "opdev/op_executor.h"
-#include <acl/acl.h>
-#include <algorithm>
-#include <unordered_map>
-#include <string>
+#include "opdev/make_op_executor.h"
+#include "opdev/op_dfx.h"
+#include "opdev/tensor_view_utils.h"
+#include "aclnn_kernels/contiguous.h"
+#include "block_sparse_attention.h"
+#include "aclnn_block_sparse_attention.h"
 
 using namespace op;
 
@@ -74,26 +73,24 @@ static aclnnStatus CheckMandatoryTensors(const aclTensor *query,
 
 static aclnnStatus ParseblockShapeOptional(const aclIntArray *blockShapeOptional)
 {
-    if (blockShapeOptional == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "blockShapeOptional is null.");
-        return ACLNN_ERR_PARAM_NULLPTR;
-    }
+    if (blockShapeOptional != nullptr) {
+        uint64_t size = blockShapeOptional->Size();
+        if (size != 2) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional must contain two elements [x, y].");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
 
-    uint64_t size = blockShapeOptional->Size();
-    if (size < 2) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional must contain at least two elements [x, y].");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
+        const int64_t *data = blockShapeOptional->GetData();
+        if (data == nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional data is null.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
 
-    const int64_t *data = blockShapeOptional->GetData();
-    if (data == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional data is null.");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-
-    if (data[0] <= 0 || data[1] <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional values must be positive, got [%ld, %ld].", data[0], data[1]);
-        return ACLNN_ERR_PARAM_INVALID;
+        if (data[0] <= 0 || data[1] <= 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional values must be positive, got [%ld, %ld].", data[0],
+                    data[1]);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
 
     return ACLNN_SUCCESS;
@@ -119,26 +116,25 @@ static aclnnStatus ValidateParams(const aclTensor *query,
     }
     std::string qLayout(qInputLayout);
     std::string kvLayout(kvInputLayout);
-    
+
     // 验证Q layout
-    if (qLayout != "TND" && qLayout != "BNSD") {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qInputLayout only supports TND or BNSD, got %s.", qLayout.c_str());
+    if (qLayout != "TND" && qLayout != "BNSD" && qLayout != "BSND") {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qInputLayout only supports TND, BNSD or BSND, got %s.", qLayout.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
-    
+
     // 验证KV layout
-    if (kvLayout != "TND" && kvLayout != "BNSD") {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kvInputLayout only supports TND or BNSD, got %s.", kvLayout.c_str());
+    if (kvLayout != "TND" && kvLayout != "BNSD" && qLayout != "BSND") {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kvInputLayout only supports TND, BNSD or BSND, got %s.", kvLayout.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
-    
-    // 验证Q和KV格式一致性：如果其中一个是BNSD，另一个也必须是BNSD
-    bool qIsBNSD = (qLayout == "BNSD");
-    bool kvIsBNSD = (kvLayout == "BNSD");
-    if (qIsBNSD != kvIsBNSD) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
-                "Q and KV layouts must match: if one is BNSD, the other must also be BNSD. "
-                "Q layout: %s, KV layout: %s", qLayout.c_str(), kvLayout.c_str());
+
+    // 验证Q和KV格式一致性：两者必须相同
+    if (qLayout != kvLayout) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "The parameters qInputLayout and kvInputLayout must be consistent, but currently qInputLayout is %s "
+                "and kvInputLayout is %s.",
+                qLayout.c_str(), kvLayout.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -161,17 +157,15 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
 
     value = l0op::Contiguous(value, executor);
     CHECK_RET(value != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    //新增blockSparseMaskOptional非空校验且必须为四维
-    if (blockSparseMaskOptional != nullptr) {  
-        blockSparseMaskOptional = l0op::Contiguous(blockSparseMaskOptional, executor);  
-        CHECK_RET(blockSparseMaskOptional != nullptr, ACLNN_ERR_INNER_NULLPTR); 
+    // 新增blockSparseMaskOptional非空校验且必须为四维
+    if (blockSparseMaskOptional != nullptr) {
+        blockSparseMaskOptional = l0op::Contiguous(blockSparseMaskOptional, executor);
+        CHECK_RET(blockSparseMaskOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
         if (blockSparseMaskOptional->GetStorageShape().GetDimNum() != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
-                "blockSparseMask must be 4D tensor");
-        return ACLNN_ERR_PARAM_INVALID;
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockSparseMask must be 4D tensor");
+            return ACLNN_ERR_PARAM_INVALID;
         }
-       //CHECK_RET(blockSparseMaskOptional->GetStorageShape().GetDim() == 4, "blockSparseMask must be 4D tensor");
-    } 
+    }
 
     if (attenMaskOptional != nullptr) {
         attenMaskOptional = l0op::Contiguous(attenMaskOptional, executor);
@@ -246,17 +240,17 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-    //去掉了idx ,idxnums
+    // 去掉了idx ,idxnums
     L2_DFX_PHASE_1(aclnnBlockSparseAttention,
                    DFX_IN(query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
-                          actualSeqLengthsKvOptional, blockTableOptional, qInputLayout, qInputLayout, numKeyValueHeads,
+                          actualSeqLengthsKvOptional, blockTableOptional, qInputLayout, kvInputLayout, numKeyValueHeads,
                           maskType, scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag),
                    DFX_OUT(attentionOut, softmaxLseOptional));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto *executorImpl = uniqueExecutor.get();
-    //新增blockSparseMaskOptional参数
+    // 新增blockSparseMaskOptional参数
     ret = MakeContiguous(query, key, value, blockSparseMask, attenMaskOptional, blockTableOptional,
                          executorImpl);
     if (ret != ACLNN_SUCCESS) {
@@ -265,12 +259,12 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     
     string qInputLayoutStr = ConvertLayoutString(qInputLayout);
     string kvInputLayoutStr = ConvertLayoutString(kvInputLayout);
-    //新增blockSparseMaskOptional参数
-    auto outputs = l0op::BlockSparseAttention(query, key, value,
-                                             blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional, 
-                                             actualSeqLengthsKvOptional, blockTableOptional,
-                                             qInputLayoutStr.c_str(), kvInputLayoutStr.c_str(), numKeyValueHeads,
-                                             maskType, scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag, executorImpl);
+    // 新增blockSparseMaskOptional参数
+    auto outputs = l0op::BlockSparseAttention(
+        query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
+        actualSeqLengthsKvOptional, blockTableOptional, nullptr, nullptr, nullptr, qInputLayoutStr.c_str(),
+        kvInputLayoutStr.c_str(), numKeyValueHeads, maskType, scaleValue, innerPrecise, blockSize, preTokens,
+        nextTokens, softmaxLseFlag, attentionOut, executorImpl);
     if (outputs[0] == nullptr || outputs[1] == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockSparseAttention returned nullptr outputs.");
         return ACLNN_ERR_INNER_NULLPTR;

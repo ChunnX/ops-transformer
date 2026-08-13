@@ -36,9 +36,9 @@ expert_capacity, H).
 * @li bias: An optional 2D Tensor, represents the bias of expanded_x. Type is:BFloat16, Float16 or Float32.The data type
 requirement of A is consistent with expandedX.Shape support(E, H). E is the total number of experts, and H is the number
 of columns.
-* @li scales: An optional 2D Tensor, represents the scale of expanded_x. Type is:BFloat16, Float16 or Float32.The data
+ * @li scales: An optional 2D Tensor, represents the scale of expanded_x. Type is:BFloat16, Float16 or Float32.The data
 type requirement of A is consistent with expandedX except in Ascend 950 AI Processor. Shape support(NUM\_ROWS, K),
-When scales is null, K is 1.
+When scales is null, K is determined by the attribute k (default 1).
 * @li expert_idx: An optional 2D Tensor, represents the indexes of bias. Type is Int32.Shape support(NUM\_ROWS,
 K).Values in Tensor are [0, E-1], if bias exists, expert_idx must exist.
 * @li x: An optional 2D Tensor, needed for copy or constant expert. Type is:BFloat16, Float16 or Float32.The data type
@@ -65,6 +65,7 @@ arrangement).
 * @li constant_expert_range:  Optional parameter. Type is:ListInt. Like [constant_expert_start, constant_expert_end].
       constant_expert_start must be greater than or equal to 0, constant_expert_end must be less than or equal to 10240,
       constant_expert_start must be less than constant_expert_end. Default: {}.
+* @li k:  Optional parameter. Type is Int. Represents the number of top-K experts selected per token. Default: 1.
 */
 REG_OP(MoeFinalizeRoutingV2)
     .INPUT(expanded_x, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
@@ -83,6 +84,7 @@ REG_OP(MoeFinalizeRoutingV2)
     .ATTR(zero_expert_range, ListInt, {})
     .ATTR(copy_expert_range, ListInt, {})
     .ATTR(constant_expert_range, ListInt, {})
+    .ATTR(k, Int, 1)
     .OP_END_FACTORY_REG(MoeFinalizeRoutingV2)
 
 } // namespace ge

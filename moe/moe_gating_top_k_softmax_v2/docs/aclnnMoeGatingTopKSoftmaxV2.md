@@ -4,63 +4,73 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>               |      √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
-- 接口功能：MoE计算中，如果renorm=0，先对x的输出做Softmax计算，再取topK操作；如果renorm=1，先对x的输出做topK操作，再进行Softmax操作。其中yOut为softmax的topK结果；expertIdxOut为topK的值的索引结果，即对应的专家序号；如果对应的行finished为True，则专家序号直接填num\_expert值（即x的最后一个轴大小）。
+- 接口功能：MoE计算中，如果renorm=0，先对x的输出做Softmax计算，再取topK操作；如果renorm=1，先对x的输出做topK操作，再进行Softmax操作。yOut：当renorm=0时，对x做Softmax后取的topK值；当renorm=1时，对x先取topK再进行Softmax，得到的结果。expertIdxOut为topK的值的索引结果，即对应的专家序号；如果对应的行finished为True，则专家序号直接填num\_expert值（即x的最后一个轴大小）。
 - 计算公式：
 
 1. renorm = 0,
 
-  $$
-  softmaxResultOutOptional=softmax(x,axis=-1)
-  $$
+    $$
+    softmaxResultOutOptional=softmax(x,axis=-1)
+    $$
 
-  $$
-  yOut,expertIdxOut=topK(softmaxResultOutOptional,k=k)
-  $$
+    $$
+    yOut,expertIdxOut=topK(softmaxResultOutOptional,k=k)
+    $$
 
 2. renorm = 1
 
-  $$
-  topkOut,expertIdxOut=topK(x, k=k)
-  $$
+    $$
+    topkOut,expertIdxOut=topK(x, k=k)
+    $$
 
-  $$
-  yOut = softmax(topkOut,axis=-1)
-  $$
+    $$
+    yOut = softmax(topkOut,axis=-1)
+    $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeGatingTopKSoftmaxV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeGatingTopKSoftmaxV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeGatingTopKSoftmaxV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeGatingTopKSoftmaxV2”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeGatingTopKSoftmaxV2GetWorkspaceSize(
-    const aclTensor *x, 
-    const aclTensor *finishedOptional, 
-    int64_t          k, 
-    int64_t          renorm, 
-    bool             outputSoftmaxResultFlag, 
-    const aclTensor *yOut, 
-    const aclTensor *expertIdxOut, 
+    const aclTensor *x,
+    const aclTensor *finishedOptional,
+    int64_t          k,
+    int64_t          renorm,
+    bool             outputSoftmaxResultFlag,
+    const aclTensor *yOut,
+    const aclTensor *expertIdxOut,
     const aclTensor *softmaxResultOutOptional,
-    uint64_t        *workspaceSize, 
+    uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
 
 ```c++
 aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     aclrtStream    stream)
 ```
 
@@ -194,7 +204,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -265,8 +275,8 @@ aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
   </table>
 
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -275,7 +285,7 @@ aclnnStatus aclnnMoeGatingTopKSoftmaxV2(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include "acl/acl.h"
@@ -335,7 +345,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化, 参考AscendCL对外接口列表
+  // 1.（固定写法）device/stream初始化，参考AscendCL对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -394,7 +404,7 @@ int main() {
   ret = aclnnMoeGatingTopKSoftmaxV2(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeGatingTopKSoftmaxV2 failed. ERROR: %d\n", ret); return ret);
 
-  // 4.（ 固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

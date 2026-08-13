@@ -41,6 +41,10 @@ public:
     }
 
 protected:
+    const char *GetOpType() const override
+    {
+        return "QuantGroupedMatmulInplaceAdd";
+    }
     // 2、获取INPUT/OUTPUT/ATTR信息
     ge::graphStatus GetShapeAttrsInfo() override;
     // 3、计算数据切分TilingData
@@ -57,7 +61,7 @@ private:
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
     bool AnalyzeInputs() override;
-    void PrintQuantParams() override;
+    int64_t LogQuantParams() const;
     bool SetQuantModeForQGmmInplaceAdd();
     bool CheckCoreNum() const override;
     QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams tilingData_;

@@ -23,9 +23,10 @@ using namespace QuantAllReduceImpl;
 
 #define MTE_ONE_SHOT 1
 
-template<uint32_t quantAllReduceCommMode, typename DTYPE_X, typename DTYPE_SCALES, typename DTYPE_OUT_PUT>
-__attribute__((always_inline)) __aicore__ __inline__ void quant_all_reduce_with_mc2context(GM_ADDR x, GM_ADDR scales, GM_ADDR output, GM_ADDR workspaceGM,
-                                                        GM_ADDR mc2Context, GM_ADDR tilingGM)
+template <uint32_t quantAllReduceCommMode, typename DTYPE_X, typename DTYPE_SCALES, typename DTYPE_OUT_PUT>
+__attribute__((always_inline)) __aicore__ __inline__ void
+quant_all_reduce_with_mc2context(GM_ADDR x, GM_ADDR scales, GM_ADDR output, GM_ADDR workspaceGM, GM_ADDR mc2Context,
+                                 GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     TPipe pipe;
@@ -36,22 +37,21 @@ __attribute__((always_inline)) __aicore__ __inline__ void quant_all_reduce_with_
     }
 }
 // 核函数入口实现
-extern "C" __global__ __aicore__ void QuantAllReduce_MTE_ONE_SHOT_Generic(
-    int8_t type,
-    GM_ADDR x, GM_ADDR scales, GM_ADDR output, 
-    GM_ADDR workspaceGM, GM_ADDR mc2Context, GM_ADDR tilingGM)
+extern "C" __global__ __aicore__ void QuantAllReduce_MTE_ONE_SHOT_Generic(int8_t type, GM_ADDR x, GM_ADDR scales,
+                                                                          GM_ADDR output, GM_ADDR workspaceGM,
+                                                                          GM_ADDR mc2Context, GM_ADDR tilingGM)
 {
     // 根据不同的数据类型调用不同的模板
     switch (type) {
-        case 1: 
-            quant_all_reduce_with_mc2context<MTE_ONE_SHOT, int8_t, float32_t, float16_t>(
-                x, scales, output, workspaceGM, mc2Context, tilingGM);
+        case 1:
+            quant_all_reduce_with_mc2context<MTE_ONE_SHOT, int8_t, float32_t, float16_t>(x, scales, output, workspaceGM,
+                                                                                         mc2Context, tilingGM);
             break;
-        case 2: 
+        case 2:
             quant_all_reduce_with_mc2context<MTE_ONE_SHOT, fp8_e5m2_t, fp8_e8m0_t, bfloat16_t>(
                 x, scales, output, workspaceGM, mc2Context, tilingGM);
             break;
-        case 3: 
+        case 3:
             quant_all_reduce_with_mc2context<MTE_ONE_SHOT, fp8_e5m2_t, fp8_e8m0_t, float16_t>(
                 x, scales, output, workspaceGM, mc2Context, tilingGM);
             break;
@@ -61,10 +61,9 @@ extern "C" __global__ __aicore__ void QuantAllReduce_MTE_ONE_SHOT_Generic(
     }
 }
 // <<<>>>调用函数
-void quant_all_reduce_demo(int8_t type, uint32_t blockDim, void* stream, uint8_t* x, uint8_t* scales, uint8_t* output, 
-                           uint8_t* workspaceGM, uint8_t* mc2Context, uint8_t* tilingGM) {
-    QuantAllReduce_MTE_ONE_SHOT_Generic<<<blockDim, nullptr, stream>>>(
-        type, 
-        x, scales, output, workspaceGM, mc2Context, tilingGM
-    );
+void quant_all_reduce_demo(int8_t type, uint32_t blockDim, void *stream, uint8_t *x, uint8_t *scales, uint8_t *output,
+                           uint8_t *workspaceGM, uint8_t *mc2Context, uint8_t *tilingGM)
+{
+    QuantAllReduce_MTE_ONE_SHOT_Generic<<<blockDim, nullptr, stream>>>(type, x, scales, output, workspaceGM, mc2Context,
+                                                                       tilingGM);
 }

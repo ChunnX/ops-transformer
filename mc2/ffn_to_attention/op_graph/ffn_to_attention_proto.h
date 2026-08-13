@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
- /*!
+/*!
  * \file ffn_to_attention_proto.h
  * \brief
  */
@@ -20,39 +20,39 @@
 namespace ge {
 /**
  * @brief Fusion op FFNToAttention.
- 
+
  * @par Inputs:
  * @li x:
- * @li session_ids: 
- * @li micro_batch_ids: 
+ * @li session_ids:
+ * @li micro_batch_ids:
  * @li token_ids:
  * @li expert_offsets:
  * @li attn_rank_table:
- 
+
  * @par Attributes:
  * @li group:
  * @li world_size:
  * @li quant_mode:
  * @li expert_tokens_cnt_flag_len:
- 
+
  * @attention Constraints:
  */
 REG_OP(FFNToAttention)
-      .INPUT(x, TensorType({DT_FLOAT16, DT_BF16}))
-      .INPUT(session_ids, TensorType({DT_INT32}))
-      .INPUT(micro_batch_ids, TensorType({DT_INT32}))
-      .INPUT(token_ids, TensorType({DT_INT32}))
-      .INPUT(expert_offsets, TensorType({DT_INT32}))
-      .INPUT(actual_token_num, TensorType({DT_INT64}))
-      .OPTIONAL_INPUT(attn_rank_table, TensorType({DT_INT32}))
-      .REQUIRED_ATTR(group, String)
-      .REQUIRED_ATTR(world_size, Int)
-      .REQUIRED_ATTR(token_info_table_shape, ListInt)
-      .REQUIRED_ATTR(token_data_shape, ListInt)
-      .OP_END_FACTORY_REG(FFNToAttention)
-      
-
-}  // namespace ge
+    .INPUT(x, TensorType({DT_FLOAT16, DT_BF16}))
+    .INPUT(session_ids, TensorType({DT_INT32}))
+    .INPUT(micro_batch_ids, TensorType({DT_INT32}))
+    .INPUT(token_ids, TensorType({DT_INT32}))
+    .INPUT(expert_offsets, TensorType({DT_INT32}))
+    .INPUT(actual_token_num, TensorType({DT_INT64}))
+    .OPTIONAL_INPUT(attn_rank_table, TensorType({DT_INT32}))
+    .REQUIRED_ATTR(group, String)
+    .REQUIRED_ATTR(world_size, Int)
+    .REQUIRED_ATTR(token_info_table_shape, ListInt)
+    .REQUIRED_ATTR(token_data_shape, ListInt)
+    .OP_END_FACTORY_REG(FFNToAttention)
 
 
-#endif  // FFN_TO_ATTENTION_PROTO_H_
+} // namespace ge
+
+
+#endif // FFN_TO_ATTENTION_PROTO_H_

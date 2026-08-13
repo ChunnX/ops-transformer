@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     x      |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：x
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -29,7 +39,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnNsaSelectedAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnNsaSelectedAttention”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnNsaSelectedAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnNsaSelectedAttention”接口执行计算。
 
 ```c++
 aclnnStatus aclnnNsaSelectedAttentionGetWorkspaceSize(
@@ -123,7 +133,7 @@ aclnnStatus aclnnNsaSelectedAttention(
         <td>topkIndices</td>
         <td>输入</td>
         <td>公式中的topk_indices。</td>
-        <td>shape需为[T_q, N_kv, selected_block_count], 表示所选数据的索引。</td>
+        <td>shape需为[T_q, N_kv, selected_block_count],表示所选数据的索引。</td>
         <td>INT32</td>
         <td>ND</td>
         <td>3</td>
@@ -279,7 +289,7 @@ aclnnStatus aclnnNsaSelectedAttention(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口会完成入参校验，出现以下场景时报错：
 
@@ -353,7 +363,7 @@ aclnnStatus aclnnNsaSelectedAttention(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -366,13 +376,13 @@ aclnnStatus aclnnNsaSelectedAttention(
 - 输入query、key、value的inputLayout必须一致。
 - sparseMode目前支持0和2。
 - selectedBlockSize支持<=128且满足16的整数倍。
-- selectedBlockCount：支持[1~128]。 总计选择的大小`selectedBlockCount * selectedBlockSize` < 128*64(8K)
+- selectedBlockCount：支持[1~128]。总计选择的大小`selectedBlockCount * selectedBlockSize` < 128*64(8K)
 - Layout为TND时，每个Batch的S2都要大于总计选择的大小`selectedBlockCount * selectedBlockSize`
 - inputLayout目前仅支持TND。
 - 支持输入query的N和key/value的N不相等，但必须成比例关系，即N_q / N_kv必须是非0整数，称为G（group），且需满足G <= 32。
 - 当attenMaskOptional输入为nullptr时，sparseMode参数不生效，固定为全计算。
 - 关于数据shape的约束，以inputLayout的TND举例（注：T等于各batch S的长度累加和。当各batch的S相等时，T=B*S）。其中：
-  
+
   - B（Batchsize）：取值范围为1\~1024。
   - N（Head-Num）：取值范围为1\~128。
   - G（Group）：取值范围为1\~32。
@@ -381,7 +391,7 @@ aclnnStatus aclnnNsaSelectedAttention(
 
 ## 调用示例
 
-通过aclnn单算子调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+通过aclnn单算子调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -531,7 +541,7 @@ void FreeResource(aclTensor *q, aclTensor *k, aclTensor *v, aclTensor *attention
 
 int main()
 {
-    // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+    // 1.（固定写法）device/context/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtContext context;
@@ -540,7 +550,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
     // 2. 构造输入与输出，需要根据API的接口自定义构造
-    // 如果需要修改shape值，需要同步修改../scripts/fa_generate_data.py中 test_nsa_selected_attention 分支下生成
+    // 如果需要修改shape值，需要同步修改../scripts/fa_generate_data.py中test_nsa_selected_attention分支下生成
     // query、key、value对应的shape值，并重新gen data，再执行
     int64_t batch = 2;
     int64_t s1 = 512;
@@ -556,7 +566,7 @@ int main()
     std::vector<int64_t> attentionOutShape = {batch * s1, n2 * g, d2};
     std::vector<int64_t> softmaxMaxShape = {batch * s1, n2 * g, 8};
     std::vector<int64_t> softmaxSumShape = {batch * s1, n2 * g, 8};
-    
+
     double scaleValue = 1.0;
     int64_t headNum = 16;
     int64_t selectedBlockSize = 64;
@@ -675,7 +685,7 @@ int main()
                   deviceId, &context, &stream);
               return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
               FreeResource(q, k, v, attentionOut, softmaxMax, softmaxSum, qDeviceAddr, kDeviceAddr, vDeviceAddr,
@@ -688,7 +698,7 @@ int main()
     CopyOutResult<float>(1, softmaxSumShape, &softmaxSumDeviceAddr);
     CopyOutResult<aclFloat16>(2, attentionOutShape, &attentionOutDeviceAddr);
 
-    // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改; 释放device资源
+    // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改;释放device资源
     FreeResource(q, k, v, attentionOut, softmaxMax, softmaxSum, qDeviceAddr, kDeviceAddr, vDeviceAddr,
         attentionOutDeviceAddr, softmaxMaxDeviceAddr, softmaxSumDeviceAddr, workspaceSize, workspaceAddr,
         deviceId, &context, &stream);

@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file aclnn_allto_all_matmul.h
+ * \file aclnn_quant_matmul_allto_all.h
  * \brief
  */
 #ifndef OP_API_INC_QUANT_MATMUL_ALL_TO_ALL_
@@ -36,7 +36,8 @@ extern "C" {
  * @param [in] x1OffsetOptional: 可选输入，左矩阵的量化偏置，暂不支持。
  * @param [in] x2OffsetOptional: 可选输入，右矩阵的量化偏置，暂不支持。
  * @param [in] group: 通信域名，字符串长度要求（0，128）。
- * @param [in] alltoAllAxesOptional: 可选输入，AlltoAll和Permute数据交换的方向，支持配置空或[-2,-1]，传入空时默认按[-2,-1]处理。
+ * @param [in] alltoAllAxesOptional:
+ * 可选输入，AlltoAll和Permute数据交换的方向，支持配置空或[-2,-1]，传入空时默认按[-2,-1]处理。
  * @param [in] x1QuantMode: 左矩阵的量化模式，支持以下模式：
  *        - 0：无量化
  *        - 1：PerTensor量化
@@ -59,15 +60,11 @@ extern "C" {
  * @return aclnnStatus: 执行状态，返回0表示成功，其他值表示错误。
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnQuantMatmulAlltoAllGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
-    const aclTensor* x1Scale, const aclTensor* x2Scale,
-    const aclTensor* commScaleOptional,
-    const aclTensor* x1OffsetOptional, const aclTensor* x2OffsetOptional,
-    const aclIntArray* alltoAllAxesOptional, const char* group,
-    int64_t x1QuantMode, int64_t x2QuantMode,
-    int64_t commQuantMode, int64_t commQuantDtype, int64_t groupSize,
-    bool transposeX1, bool transposeX2, const aclTensor* output,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, const aclTensor *x1Scale,
+    const aclTensor *x2Scale, const aclTensor *commScaleOptional, const aclTensor *x1OffsetOptional,
+    const aclTensor *x2OffsetOptional, const aclIntArray *alltoAllAxesOptional, const char *group, int64_t x1QuantMode,
+    int64_t x2QuantMode, int64_t commQuantMode, int64_t commQuantDtype, int64_t groupSize, bool transposeX1,
+    bool transposeX2, const aclTensor *output, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief 执行全连接（All-to-All）矩阵乘法计算。
@@ -80,8 +77,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQuantMatmulAlltoAllGetWo
  * @param [in] stream: 指定执行任务的Stream。
  * @return aclnnStatus: 返回状态码
  */
-__attribute__((visibility("default"))) aclnnStatus aclnnQuantMatmulAlltoAll(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnQuantMatmulAlltoAll(void *workspace, uint64_t workspaceSize,
+                                                                            aclOpExecutor *executor,
+                                                                            aclrtStream stream);
 
 
 #ifdef __cplusplus

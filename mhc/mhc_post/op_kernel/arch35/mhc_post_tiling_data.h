@@ -15,7 +15,7 @@
 
 #ifndef __MHC_POST_TILLING_DATA_H__
 #define __MHC_POST_TILLING_DATA_H__
- 
+
 struct MhcPostTilingData {
     int64_t n;
     int64_t d;
@@ -29,6 +29,21 @@ struct MhcPostTilingData {
     int64_t dOuter;
     int64_t dTail;
     int64_t dTailAlign;
+};
+
+struct MhcPostRegbaseTilingData {
+    int64_t n;
+    int64_t d;
+    int64_t usedCoreNum;
+    int64_t bsInner;
+    int64_t bsOuter;
+    int64_t bsTail;
+    int64_t nInner;
+    int64_t nOuter;
+    int64_t nTail;
+    int64_t dInner;
+    int64_t dOuter;
+    int64_t dTail;
 };
 
 #endif

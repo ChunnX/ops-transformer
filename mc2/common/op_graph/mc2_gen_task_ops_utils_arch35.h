@@ -48,7 +48,7 @@ const std::string ATTR_NAME_GROUP_EP = "group_ep";
 const int32_t MAX_GROUP_CNT = 16;
 
 struct GroupInfo {
-    int32_t groupCnt = -1;                         // 算子通信域数量
+    int32_t groupCnt = -1;                        // 算子通信域数量
     std::vector<std::string> groupAttrNames = {}; // 算子通信域属性名
 };
 
@@ -72,7 +72,6 @@ static const std::map<const std::string, const GroupInfo> GROUP_INFO_MAP_ARCH35{
 };
 
 class Mc2Arch35GenTaskOpsUtils {
-
 public:
     static ge::Status CreateCCUFusionTask(const gert::ExeResGenerationContext *context,
                                           std::vector<std::vector<uint8_t>> &tasks);
@@ -104,7 +103,7 @@ public:
             OPS_LOG_E("Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack", "Failed to get context.");
             return ge::GRAPH_FAILED;
         }
-        
+
         if (tasks.size() == 0U) {
             OPS_LOG_E(context->GetNodeName(), "Empty task vector when generating task.");
             return ge::GRAPH_FAILED;
@@ -142,7 +141,6 @@ private:
         OPS_LOG_D(context->GetNodeName(), "Op [%s] get group [%d] success.", opType, cnt);
         return true;
     }
-
 };
 } // namespace ops
 

@@ -26,6 +26,7 @@
 #endif
 
 #include "kernel_operator.h"
+#include "simt_api/asc_simt.h"
 
 #ifdef __DAV_FPGA__
 constexpr uint32_t THREAD_NUM_LAUNCH_BOUND_TWO_DIM = 512;
@@ -60,7 +61,7 @@ private:
     GlobalTensor<INDICES_T> indicesGm_;
     GlobalTensor<X_T> yGm_;
     const IndexCopyComputeRMTilingData *tilingData_ = nullptr;
-    int32_t blockIdx = 0;
+    int32_t blockIdxVal = 0;
     int32_t needCoreNum = 0;
     uint32_t threadNum = 0;
     INDEX_SIZE_T innerSize = 0;
@@ -79,8 +80,8 @@ LAUNCH_BOUND(THREAD_NUM_LAUNCH_BOUND_TWO_DIM) inline void Gatherv2SimtTwoDim<X_T
     const INDEX_SIZE_T yIndexBase, INDEX_SIZE_T currentCoreElements, INDEX_SIZE_T m0, INDEX_SIZE_T shift0,
     INDEX_SIZE_T innerSize, __gm__ X_T *x, __gm__ INDICES_T *indices, __gm__ volatile X_T *y)
 {
-    for (INDEX_SIZE_T index = static_cast<INDEX_SIZE_T>(Simt::GetThreadIdx()); index < currentCoreElements;
-         index += static_cast<INDEX_SIZE_T>(Simt::GetThreadNum())) {
+    for (INDEX_SIZE_T index = static_cast<INDEX_SIZE_T>(threadIdx.x); index < currentCoreElements;
+         index += static_cast<INDEX_SIZE_T>(blockDim.x)) {
         INDEX_SIZE_T yIndex = yIndexBase + index;
         INDEX_SIZE_T gatherI = Simt::UintDiv(yIndex, m0, shift0);
         INDEX_SIZE_T innerI = yIndex - gatherI * innerSize;
@@ -100,8 +101,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM_LAUNCH_BOUND_TWO_DIM) inline void
                                                   INDEX_SIZE_T m0, INDEX_SIZE_T shift0, INDEX_SIZE_T tokenNum,
                                                   __gm__ X_T *x, __gm__ INDICES_T *indices, __gm__ volatile X_T *y)
 {
-    for (INDEX_SIZE_T index = static_cast<INDEX_SIZE_T>(Simt::GetThreadIdx()); index < currentCoreElements;
-         index += static_cast<INDEX_SIZE_T>(Simt::GetThreadNum())) {
+    for (INDEX_SIZE_T index = static_cast<INDEX_SIZE_T>(threadIdx.x); index < currentCoreElements;
+         index += static_cast<INDEX_SIZE_T>(blockDim.x)) {
         INDEX_SIZE_T yIndex = yIndexBase + index;
         INDEX_SIZE_T expertId = Simt::UintDiv(yIndex, m0, shift0);
         INDEX_SIZE_T expertStartI = expertId * tokenNum;
@@ -123,14 +124,14 @@ __aicore__ inline void Gatherv2SimtTwoDim<X_T, INDICES_T, INDEX_SIZE_T>::Init(
     xGm_.SetGlobalBuffer((__gm__ X_T *)x);
     indicesGm_.SetGlobalBuffer((__gm__ INDICES_T *)indices);
     yGm_.SetGlobalBuffer((__gm__ X_T *)y);
-    blockIdx = static_cast<int32_t>(GetBlockIdx());
+    blockIdxVal = static_cast<int32_t>(GetBlockIdx());
     if (isprob) {
         needCoreNum = static_cast<int32_t>(tilingData_->frontCoreNum);
         threadNum = static_cast<uint32_t>(tilingData_->onceIndices);
         innerSize = 1;
         currentCoreElements = static_cast<INDEX_SIZE_T>(tilingData_->frontCoreLoop);
         CoreElements = currentCoreElements;
-        if (blockIdx == needCoreNum - 1) {
+        if (blockIdxVal == needCoreNum - 1) {
             currentCoreElements = static_cast<INDEX_SIZE_T>(tilingData_->tailCoreLoop);
         }
         capacity = static_cast<INDEX_SIZE_T>(tilingData->capacity);
@@ -144,7 +145,7 @@ __aicore__ inline void Gatherv2SimtTwoDim<X_T, INDICES_T, INDEX_SIZE_T>::Init(
         innerSize = static_cast<INDEX_SIZE_T>(tilingData_->onceUbTokenNums);
         currentCoreElements = static_cast<INDEX_SIZE_T>(tilingData_->coreCalcNum);
         CoreElements = currentCoreElements;
-        if (blockIdx == needCoreNum - 1) {
+        if (blockIdxVal == needCoreNum - 1) {
             currentCoreElements = static_cast<INDEX_SIZE_T>(tilingData_->tailCoreNum);
         }
         // fast division
@@ -155,10 +156,10 @@ __aicore__ inline void Gatherv2SimtTwoDim<X_T, INDICES_T, INDEX_SIZE_T>::Init(
 template <typename X_T, typename INDICES_T, typename INDEX_SIZE_T>
 __aicore__ inline void Gatherv2SimtTwoDim<X_T, INDICES_T, INDEX_SIZE_T>::Process()
 {
-    if (blockIdx < needCoreNum) {
-        INDEX_SIZE_T yIndexBase = blockIdx * CoreElements;
+    if (blockIdxVal < needCoreNum) {
+        INDEX_SIZE_T yIndexBase = blockIdxVal * CoreElements;
 
-        AscendC::Simt::VF_CALL<GatherSimt<false>>(Simt::Dim3(threadNum), yIndexBase, currentCoreElements, m0, shift0,
+        asc_vf_call<GatherSimt<false>>(dim3(threadNum), yIndexBase, currentCoreElements, m0, shift0,
                                                   innerSize, (__gm__ X_T *)(xGm_.GetPhyAddr()),
                                                   (__gm__ INDICES_T *)(indicesGm_.GetPhyAddr()),
                                                   (__gm__ volatile X_T *)(yGm_.GetPhyAddr()));
@@ -168,10 +169,10 @@ __aicore__ inline void Gatherv2SimtTwoDim<X_T, INDICES_T, INDEX_SIZE_T>::Process
 template <typename X_T, typename INDICES_T, typename INDEX_SIZE_T>
 __aicore__ inline void Gatherv2SimtTwoDim<X_T, INDICES_T, INDEX_SIZE_T>::ProbProcess()
 {
-    if (blockIdx < needCoreNum) {
-        INDEX_SIZE_T yIndexBase = blockIdx * CoreElements;
+    if (blockIdxVal < needCoreNum) {
+        INDEX_SIZE_T yIndexBase = blockIdxVal * CoreElements;
 
-        AscendC::Simt::VF_CALL<GatherSimtProb<false>>(Simt::Dim3(threadNum), yIndexBase, currentCoreElements, m0,
+        asc_vf_call<GatherSimtProb<false>>(dim3(threadNum), yIndexBase, currentCoreElements, m0,
                                                       shift0, tokenNum, (__gm__ X_T *)(xGm_.GetPhyAddr()),
                                                       (__gm__ INDICES_T *)(indicesGm_.GetPhyAddr()),
                                                       (__gm__ volatile X_T *)(yGm_.GetPhyAddr()));

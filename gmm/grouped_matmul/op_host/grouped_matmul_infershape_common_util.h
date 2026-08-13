@@ -70,6 +70,8 @@ constexpr int64_t MXFP_DIVISOR_SIZE = 64;
 constexpr int64_t MXFP_MULTI_BASE_SIZE = 2;
 constexpr int64_t MXFP_TYPEM_SCALE_DIM_NUM = 4;
 constexpr int64_t MXFP_TYPEK_SCALE_DIM_NUM = 3;
+constexpr int64_t GROUP_LIST_SPARSE = 2;
+constexpr int64_t GROUP_LIST_SPARSE_OFFSET = 1;
 struct GMMAttrs {
     int64_t splitItem;
     int64_t outputDtype;

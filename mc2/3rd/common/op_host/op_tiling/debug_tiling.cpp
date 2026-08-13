@@ -16,7 +16,7 @@
 #include "debug_tiling.h"
 #include <sstream>
 #include "graph/utils/type_utils.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 namespace Ops {
 namespace Transformer {
@@ -68,5 +68,5 @@ std::string DebugTilingData(gert::TilingContext *context)
 
     return oss.str();
 }
-}  // namespace Transformer
-}  // namespace Ops
+} // namespace Transformer
+} // namespace Ops

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <cstdlib>
 #include <string>
 #include <vector>
 #include <gtest/gtest.h>
@@ -29,12 +30,12 @@ protected:
     }
 };
 
-TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
+struct AllGatherMatmulV2CompileInfo {};
+
+gert::TilingContextPara BuildTilingContextParam(const AllGatherMatmulV2TilingUtParam &param,
+                                                AllGatherMatmulV2CompileInfo *compileInfo)
 {
-    auto param = GetParam();
-    struct AllGatherMatmulV2CompileInfo {};
-    AllGatherMatmulV2CompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara(
+    return gert::TilingContextPara(
         "AllGatherMatmulV2",
         {
             param.x1,
@@ -49,36 +50,45 @@ TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
             param.gather_out,
             param.amax_out,
         },
-        {
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
-            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_a)},
-            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_b)},
-            {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.gather_index)},
-            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_turn)},
-            {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.rank_size)},
-            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.block_size)},
-            {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
-            {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_gather_out)},
-            {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_amax_out)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.y_dtype)},
-            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.comm_mode)}
-        },
-        param.inputInstance, param.outputInstance,
-        &compileInfo,
-        param.soc, param.coreNum, param.ubsize
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", param.rank_size}
-    };
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
+         {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_a)},
+         {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_b)},
+         {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.gather_index)},
+         {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_turn)},
+         {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.rank_size)},
+         {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.block_size)},
+         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
+         {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_gather_out)},
+         {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_amax_out)},
+         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.y_dtype)},
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.comm_mode)}},
+        param.inputInstance, param.outputInstance, compileInfo, param.soc, param.coreNum, param.ubsize);
+}
+
+TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
+{
+    auto param = GetParam();
+    constexpr char kAscendMc2DebugMode[] = "ASCEND_MC2_DEBUG_MODE";
+    bool debugModeEnvSet = false;
+    constexpr const char kUtMc2Debug4Prefix[] = "ut_mc2_debug4_";
+    if (param.case_name.compare(0, std::size(kUtMc2Debug4Prefix) - 1, kUtMc2Debug4Prefix) == 0) {
+        (void)setenv(kAscendMc2DebugMode, "4", 1);
+        debugModeEnvSet = true;
+    }
+    AllGatherMatmulV2CompileInfo compileInfo;
+    gert::TilingContextPara tilingContextPara = BuildTilingContextParam(param, &compileInfo);
+
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.rank_size}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.expectResult, param.expectTilingKey,
-        param.expectTilingDataHash, {}, MC2_TILING_DATA_RESERVED_LEN, true);
+                       param.expectTilingDataHash, {}, MC2_TILING_DATA_RESERVED_LEN, true);
+    if (debugModeEnvSet) {
+        (void)unsetenv(kAscendMc2DebugMode);
+    }
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    AllGatherMatmulV2,
-    AllGatherMatmulV2Arch35TilingTest,
+    AllGatherMatmulV2, AllGatherMatmulV2Arch35TilingTest,
     testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulV2TilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-    GetCaseInfoString<AllGatherMatmulV2TilingUtParam>
-);
+    GetCaseInfoString<AllGatherMatmulV2TilingUtParam>);
 
 } // namespace all_gather_matmul_v2_ut

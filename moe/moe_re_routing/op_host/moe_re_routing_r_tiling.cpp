@@ -21,6 +21,7 @@
 
 namespace optiling {
 constexpr int64_t NUM_TWO = 2;
+constexpr int64_t BYTE_LENGTH_FOUR = 4;
 constexpr int64_t RESERVE_UB_GAP = 32;
 constexpr uint64_t MOE_RE_ROUTING_R_WITHOUT_SCALE = 210000;
 constexpr uint64_t MOE_RE_ROUTING_R_WITH_SCALE_FLOAT = 210100;
@@ -51,19 +52,27 @@ ge::graphStatus MoeReRoutingRTiling::SplitUb()
 {
     // 切分ub
     int64_t reserveUbSize = INDEX_UB_SIZE * DOUBLE_BUFFER * ge::GetSizeByDataType(expertDtype_);
+    if (hasTopkWeight_) {
+        reserveUbSize += INDEX_UB_SIZE * DOUBLE_BUFFER * sizeof(float);
+    }
     int64_t canUseUbSize = (ubSize_ - reserveUbSize) / DOUBLE_BUFFER;
-    canUseUbSize -= RESERVE_UB_GAP;
+    if (hasTopkWeight_) {
+        canUseUbSize -= RESERVE_UB_GAP;
+    }
     ubFactor_ = Ops::Base::CeilAlign(canUseUbSize, static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_)));
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MoeReRoutingRTiling::DoOpTiling()
 {
-    OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "check param fail."),
+    OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "CheckParam()", "GRAPH_FAILED", "check param fail."),
                 return ge::GRAPH_FAILED);
     SplitCore();
     if (SplitUb() != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context_->GetNodeName(), "SplitUb Failed.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "SplitUb()", "GRAPH_FAILED", "SplitUb failed.");
         return ge::GRAPH_FAILED;
     }
     if (hasScale_) {
@@ -92,10 +101,11 @@ void MoeReRoutingRTiling::PrintTilingData()
     OP_LOGI(context_->GetNodeName(),
             "MoeReRoutingRTiling tilingData: tokenSize is %ld, scaleSize is %ld, rankNum is %ld,"
             "expertNum is %ld, blockNum = %ld, blockFactor = %ld, ubFactor is %ld idxType_ = %ld, "
-            "tokenSizeOrigin is %ld, tilingKey is %ld",
+            "tokenSizeOrigin is %ld, hasTopkWeight is %ld, tilingKey is %ld",
             tilingData_.get_tokenSize(), tilingData_.get_scaleSize(), tilingData_.get_rankNum(),
             tilingData_.get_expertNum(), tilingData_.get_coreNum(), tilingData_.get_blockFactor(),
-            tilingData_.get_ubFactor(), tilingData_.get_idxType(), tilingData_.get_tokenSizeOrigin(), tilingKey_);
+            tilingData_.get_ubFactor(), tilingData_.get_idxType(), tilingData_.get_tokenSizeOrigin(),
+            tilingData_.get_hasTopkWeight(), tilingKey_);
     return;
 }
 
@@ -109,7 +119,7 @@ ge::graphStatus MoeReRoutingRTiling::PostTiling()
     if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2 || tokenDtype_ == ge::DT_HIFLOAT8 ||
          tokenDtype_ == ge::DT_FLOAT4_E2M1 || tokenDtype_ == ge::DT_FLOAT4_E1M2) &&
         scaleDtype_ == ge::DT_FLOAT) {
-        tilingData_.set_scaleSize(scaleSize_ * 4);
+        tilingData_.set_scaleSize(scaleSize_ * BYTE_LENGTH_FOUR);
     } else {
         tilingData_.set_scaleSize(scaleSize_);
     }
@@ -121,6 +131,7 @@ ge::graphStatus MoeReRoutingRTiling::PostTiling()
     tilingData_.set_idxType(idxType_);
     tilingData_.set_tokenSizeOrigin(
         (tokenDtype_ == ge::DT_FLOAT4_E2M1 || tokenDtype_ == ge::DT_FLOAT4_E1M2) ? tokenSize_ : 0);
+    tilingData_.set_hasTopkWeight(hasTopkWeight_ ? 1 : 0);
 
     context_->SetBlockDim(blockNum_);
     context_->SetTilingKey(GetTilingKey());

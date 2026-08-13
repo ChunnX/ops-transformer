@@ -15,7 +15,7 @@
 
 #include "platform/platform_info.h"
 #include "mc2_common_log.h"
-#include "runtime/runtime/base.h"
+#include "runtime/rt_external_base.h"
 
 namespace ops {
 constexpr uint32_t VERSION_SIZE = 32;
@@ -41,11 +41,11 @@ bool IsTargetPlatformSocVersion(const char *nodeName, const std::set<std::string
 bool IsTargetPlatformNpuArch(const char *nodeName, const std::set<std::string> &targetPlatform)
 {
     char versionValNpuArch[VERSION_SIZE];
- 	if (rtGetSocSpec("version", "NpuArch", versionValNpuArch, VERSION_SIZE) != RT_ERROR_NONE) {
- 	    OPS_LOG_E(nodeName, "Cannot get npuArch info!");
- 	    return false;
- 	}
- 	OPS_LOG_D(nodeName, "Get Platform NpuArch %s", versionValNpuArch);
- 	return (targetPlatform.count(versionValNpuArch) > 0);
+    if (rtGetSocSpec("version", "NpuArch", versionValNpuArch, VERSION_SIZE) != RT_ERROR_NONE) {
+        OPS_LOG_E(nodeName, "Cannot get npuArch info!");
+        return false;
+    }
+    OPS_LOG_D(nodeName, "Get Platform NpuArch %s", versionValNpuArch);
+    return (targetPlatform.count(versionValNpuArch) > 0);
 }
 } // namespace ops

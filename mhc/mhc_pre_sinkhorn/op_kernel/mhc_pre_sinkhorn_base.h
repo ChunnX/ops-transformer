@@ -38,6 +38,8 @@ constexpr uint64_t NUM_EIGHT = 8;
 constexpr uint64_t NUM_SIXTEEN = 16;
 constexpr uint64_t SQUARE_SUM_SIZE = 16;
 constexpr uint64_t MM_CACHE_LINE_BYTES = 512;
+constexpr uint64_t MAX_BS_PER_LOOP = 32;
+constexpr uint64_t ELEMENTS_SIZE_PER_BLOCK = BLOCK_SIZE / sizeof(float);
 
 __aicore__ inline int32_t CeilDiv(int32_t a, int32_t b)
 {
@@ -171,12 +173,10 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
                                              const int32_t curRowNum, const int32_t curColNum, const int32_t numN)
 {
     uint32_t elemInOneBlock = BLOCK_SIZE / sizeof(T);
-
     if constexpr (needBrc) {
         uint32_t repeatTimes = CeilDiv(curRowNum * CeilDiv(elemInOneBlock, numN), ONE_REPEAT_BLOCK_NUMS);
-        Brcb(tmpBuffer, input1, repeatTimes, {DEFAULT_BLOCK_STRIDE, DEFAULT_REPEAT_STRIDE});
+        Brcb(tmpBuffer, input1, repeatTimes, {DEFAULT_BLOCK_STRIDE, DEFAULT_REPEAT_STRIDE}); // n-> n c
     }
-
 
     PipeBarrier<PIPE_V>();
     uint32_t elemInOneRepeat = REPEAT_SIZE / sizeof(T);
@@ -216,7 +216,6 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
                 }
             }
         }
-
         if (numRemainPerLine > 0) {
             if (dstRepStridePerLine > MAX_REPEAT_STRIDE) {
                 instrParams.dstBlkStride = 1;
@@ -227,8 +226,9 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
                 instrParams.src1RepStride = 0;
                 for (uint32_t i = 0; i < curRowNum; i++) {
                     Mul(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
-                        input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
-                        numRemainPerLine, 1, instrParams);
+                        input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
+                        tmpBuffer[(i / numN * elemInOneBlock + i % numN) * elemInOneBlock], numRemainPerLine, 1,
+                        instrParams);
                 }
             } else {
                 instrParams.dstBlkStride = 1;
@@ -236,7 +236,7 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
                 instrParams.src1BlkStride = 0;
                 instrParams.dstRepStride = dstRepStridePerLine;
                 instrParams.src0RepStride = dstRepStridePerLine;
-                instrParams.src1RepStride = 0;
+                instrParams.src1RepStride = 1;
                 Mul(output[numRepeatPerLine * elemInOneRepeat], input0[numRepeatPerLine * elemInOneRepeat], tmpBuffer,
                     numRemainPerLine, curRowNum, instrParams);
             }
@@ -567,7 +567,7 @@ __aicore__ inline void CastTwoDim(const LocalTensor<T0> &output, const LocalTens
 {
     uint32_t dim1AlignT0 = RoundUp<T0>(dim1);
     uint32_t dim1AlignT1 = RoundUp<T1>(dim1);
-    if constexpr (IsSameType<T1, bfloat16_t>::value && IsSameType<T0, float>::value) {
+    if constexpr ((IsSameType<T1, bfloat16_t>::value || IsSameType<T1, half>::value) && IsSameType<T0, float>::value) {
         for (uint32_t i = 0; i < dim0; i++) {
             Cast(output[i * dim1AlignT0], input[i * dim1AlignT1], AscendC::RoundMode::CAST_NONE, dim1);
         }
@@ -579,7 +579,7 @@ __aicore__ inline void CastTwoDim(const LocalTensor<T0> &output, const LocalTens
     PipeBarrier<PIPE_V>();
 }
 
-
+// dim0:bs dim1:n dim2:c
 template <typename T>
 __aicore__ void inline ProcessY(const LocalTensor<T> &yLocal, const LocalTensor<T> &xLocal,
                                 const LocalTensor<float> &mix01Local, const LocalTensor<float> &hcBrcbLocal1,

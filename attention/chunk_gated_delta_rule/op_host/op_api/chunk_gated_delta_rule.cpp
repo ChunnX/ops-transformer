@@ -35,9 +35,10 @@ ChunkGatedDeltaRule(const aclTensor *query, const aclTensor *key, const aclTenso
     L0_DFX(ChunkGatedDeltaRule, query, key, value, beta, initialState, actualSeqLengths, gOptional, scaleValue);
 
     DataType outType = value->GetDataType();
+    DataType stateType = initialState->GetDataType();
     Format format = Format::FORMAT_ND;
     auto out = executor->AllocTensor(outType, format, format);
-    auto finalState = executor->AllocTensor(outType, format, format);
+    auto finalState = executor->AllocTensor(stateType, format, format);
 
     auto ret =
         INFER_SHAPE(ChunkGatedDeltaRule, OP_INPUT(query, key, value, beta, initialState, actualSeqLengths, gOptional),

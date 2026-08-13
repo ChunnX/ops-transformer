@@ -4,22 +4,32 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
 - 接口功能：对输入张量（kv）的尾轴，拆分出左半边用于rms_norm计算，右半边用于RoPE计算，再将计算结果分别scatter到两块cache中。
 
 - 计算公式：
-  
-  (1) interleaveRope:
+
+  (1) interleaveRope：
 
   $$
   x=kv[...,Dv:]
@@ -45,7 +55,7 @@
   y=x\_part1*cos+x\_part2*sin
   $$
 
-  (2) rmsNorm:
+  (2) rmsNorm：
 
   $$
   x=kv[...,:Dv]
@@ -69,35 +79,35 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnKvRmsNormRopeCacheGetWorkspaceSize”接口获得入参并根据流程计算所需workspace大小，再调用“aclnnKvRmsNormRopeCache”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnKvRmsNormRopeCacheGetWorkspaceSize”接口获得入参并根据流程计算所需workspace大小，再调用“aclnnKvRmsNormRopeCache”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnKvRmsNormRopeCacheGetWorkspaceSize(
-  const aclTensor* kv, 
-  const aclTensor* gamma, 
-  const aclTensor* cos, 
-  const aclTensor* sin, 
-  const aclTensor* index, 
-  aclTensor*       kCacheRef, 
-  aclTensor*       ckvCacheRef, 
-  const aclTensor* kRopeScaleOptional, 
-  const aclTensor* cKvScaleOptional, 
-  const aclTensor* kRopeOffsetOptional, 
-  const aclTensor* cKvOffsetOptional, 
-  double           epsilon, 
-  char*            cacheModeOptional, 
-  bool             isOutputKv, 
-  const aclTensor* kRopeOut, 
+  const aclTensor* kv,
+  const aclTensor* gamma,
+  const aclTensor* cos,
+  const aclTensor* sin,
+  const aclTensor* index,
+  aclTensor*       kCacheRef,
+  aclTensor*       ckvCacheRef,
+  const aclTensor* kRopeScaleOptional,
+  const aclTensor* cKvScaleOptional,
+  const aclTensor* kRopeOffsetOptional,
+  const aclTensor* cKvOffsetOptional,
+  double           epsilon,
+  char*            cacheModeOptional,
+  bool             isOutputKv,
+  const aclTensor* kRopeOut,
   const aclTensor* cKvOut,
-  uint64_t*        workspaceSize, 
+  uint64_t*        workspaceSize,
   aclOpExecutor**  executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnKvRmsNormRopeCache(
-  void*          workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor* executor, 
+  void*          workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor* executor,
   aclrtStream    stream)
 ```
 
@@ -142,7 +152,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>gamma</td>
       <td>输入</td>
       <td>公式中用于rms_norm计算的输入数据。</td>
-      <td><ul><li>与 kv 数据类型一致，shape为1维[Dv,]。</li><li>不支持空Tensor。</li></ul></td>
+      <td><ul><li>与kv数据类型一致，shape为1维[Dv,]。</li><li>不支持空Tensor。</li></ul></td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>1</td>
@@ -152,7 +162,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>cos</td>
       <td>输入</td>
       <td>公式中用于RoPE计算的输入数据，对输入张量Dk进行余弦变换</td>
-      <td><ul><li>与 kv 数据类型一致，shape为4维[Bkv,1,Skv,Dk]或[Bkv,1,1,Dk]。</li><li>不支持空Tensor。</li></ul></td>
+      <td><ul><li>与kv数据类型一致，shape为4维[Bkv,1,Skv,Dk]或[Bkv,1,1,Dk]。</li><li>不支持空Tensor。</li></ul></td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>4</td>
@@ -162,7 +172,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>sin</td>
       <td>可选输入</td>
       <td>公式中用于RoPE计算的输入数据，对输入张量Dk进行正弦变换。</td>
-      <td><ul><li>与 kv 数据类型一致，shape为4维[Bkv,1,Skv,Dk]或[Bkv,1,1,Dk]，与cos的shape保持一致。</li><li>不支持空Tensor。</li></ul></td>
+      <td><ul><li>与kv数据类型一致，shape为4维[Bkv,1,Skv,Dk]或[Bkv,1,1,Dk]，与cos的shape保持一致。</li><li>不支持空Tensor。</li></ul></td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>4</td>
@@ -182,7 +192,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>kCacheRef</td>
       <td>输入/输出</td>
       <td>提前申请的cache，输入输出同地址复用。</td>
-      <td><ul><li>非量化场景下，数据类型与输入 kv 一致。</li><li>量化场景下，数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。</li><li>当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dk]。</li><li>当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dk]。</li><li>不支持空Tensor。</li></ul></td>
+      <td><ul><li>非量化场景下，数据类型与输入kv一致。</li><li>量化场景下，数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。</li><li>当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dk]。</li><li>当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dk]。</li><li>不支持空Tensor。</li></ul></td>
       <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN</td>
       <td>ND</td>
       <td>4</td>
@@ -192,7 +202,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>ckvCacheRef</td>
       <td>输入/输出</td>
       <td>提前申请的cache，输入输出同地址复用。</td>
-      <td><ul><li>非量化场景下，数据类型与输入 kv 一致。</li><li>量化场景下，数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。</li><li>当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dv]。</li><li>当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dv]。</li><li>不支持空Tensor。</li></ul></td>
+      <td><ul><li>非量化场景下，数据类型与输入kv一致。</li><li>量化场景下，数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。</li><li>当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dv]。</li><li>当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dv]。</li><li>不支持空Tensor。</li></ul></td>
       <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN</td>
       <td>ND</td>
       <td>4</td>
@@ -271,7 +281,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
     <tr>
       <td>kRopeOut</td>
       <td>输出</td>
-      <td>由isOutputKv控制，当isOutputKv为true时，需输出。数据类型与输入kv一致。</td>
+      <td>由isOutputKv控制，对应interleaveRope计算公式中的`y`。<br>当isOutputKv为true时，需输出。数据类型与输入kv一致。</td>
       <td>shape为4维[Bkv,N,Skv,Dk]。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -281,7 +291,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
     <tr>
       <td>cKvOut</td>
       <td>输出</td>
-      <td>由isOutputKv控制，当isOutputKv为true时，需输出。数据类型与输入kv一致。</td>
+      <td>由isOutputKv控制，对应rmsNorm计算公式中的`y`。<br>当isOutputKv为true时，需输出。数据类型与输入kv一致。</td>
       <td>shape为4维[Bkv,N,Skv,Dv]。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -313,7 +323,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -359,7 +369,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
 ## aclnnKvRmsNormRopeCache
 
 - **参数说明**
-  
+
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
   <col style="width: 128px">
@@ -396,31 +406,48 @@ aclnnStatus aclnnKvRmsNormRopeCache(
   </table>
 
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
+  * 本算子默认确定性实现。
   * 参数说明里shape格式说明：
-      * Bkv为输入kv的batch size，Skv为输入kv的sequence length，大小由用户输入场景决定，无明确限制。 
+
+      * Bkv为输入kv的batch size，Skv为输入kv的sequence length，大小由用户输入场景决定，无明确限制。
       * N为输入kv的head number。此算子与DeepSeekV3网络结构强相关，仅支持N=1的场景，不存在N非1的场景。
       * D为输入kv的head dim。rms_norm计算所需数据Dv和RoPE计算所需数据Dk由输入kv的D切分而来。故Dk、Dv大小需满足Dk+Dv=D。同时，Dk需满足rope规则。根据rope规则，Dk为偶数。若cacheModeOptional为NZ场景（cacheModeOptional为PA_NZ、PA_BLK_NZ），Dk、Dv需32B对齐。
       * 若cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ），BlockSize需32B对齐。
       * 关于上述32B对齐的情形，对齐值由cache的数据类型决定。以BlockSize为例，若cache的数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN，则需BlockSize%32=0；若cache的数据类型为float16或bfloat16，则需BlockSize%16=0；若kCacheRef与ckvCacheRef参数的dtype不一致，BlockSize需同时满足BlockSize%32=0和BlockSize%16=0。
-      * Bcache为输入cache的batch size，Scache为输入cache的sequence length，大小由用户输入场景决定，无明确限制。 
-      * BlockNum为写入cache的内存块数，大小由用户输入场景决定，无明确限制。 
+      * Bcache为输入cache的batch size，Scache为输入cache的sequence length，大小由用户输入场景决定，无明确限制。
+      * BlockNum为写入cache的内存块数，大小由用户输入场景决定，无明确限制。
+      * 输入张量均不支持空Tensor。
+      * 所有输入均不支持无效值，包括且不限于：±inf，nan。
+
   * index相关约束：
+
       * 当cacheModeOptional为Norm时，shape为2维[Bkv,Skv]，要求index的value值范围为[-1,Scache)。不同的Bkv下，value数值可以重复。
-      * 当cacheModeOptional为PA_BNSD、PA_NZ时，shape为1维[Bkv * Skv]，要求index的value值范围为[-1,BlockNum * BlockSize)。value数值不能重复。
-      * 当cacheModeOptional为PA_BLK_BNSD、PA_BLK_NZ时，shape为1维[Bkv * ceil_div(Skv,BlockSize)]，要求index的value的数值范围为[-1,BlockNum * BlockSize)。value/BlockSize的值不能重复。
+      * 当cacheModeOptional为PA_BNSD、PA_NZ时，shape为1维[Bkv *Skv]，要求index的value值范围为[-1,BlockNum* BlockSize)。value数值不能重复。
+      * 当cacheModeOptional为PA_BLK_BNSD、PA_BLK_NZ时，shape为1维[Bkv *ceil_div(Skv,BlockSize)]，要求index的value的数值范围为[-1,BlockNum* BlockSize)。value/BlockSize的值不能重复。
+
   * 量化场景的相关约束：
+
       * 量化场景支持的情况1：kCacheRef的数据类型为FLOAT16或BFLOAT16，ckvCacheRef的数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
       * 量化场景支持的情况2：ckvCacheRef的数据类型为FLOAT16或BFLOAT16，kCacheRef的数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
       * 量化场景支持的情况3：kCacheRef与ckvCacheRef的数据类型一致，为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
 
+  * cache的数据类型支持：
+
+    * 非量化模式：cache类型必须与kv保持一致。
+      * <term>Ascend 950PR/Ascend 950DT</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：可支持BFLOAT16、FLOAT16。
+      * <term>Kirin X90/Kirin 9030 处理器系列产品</term>：仅支持FLOAT16。
+    * 量化模式：
+      * <term>Ascend 950PR/Ascend 950DT</term>：可支持INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
+      * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Kirin X90/Kirin 9030 处理器系列产品</term>：仅支持INT8。
+
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -450,12 +477,12 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
 
 void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
   auto size = GetShapeSize(shape);
-  std::vector<int8_t> resultData(size, 0);
+  std::vector<aclFloat16> resultData(size, aclFloatToFloat16(0.0f));
   auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
                          *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
   for (int64_t i = 0; i < size; i++) {
-    LOG_PRINT("result[%ld] is: %d\n", i, resultData[i]);
+    LOG_PRINT("result[%ld] is: %f\n", i, aclFloat16ToFloat(resultData[i]));
   }
 }
 
@@ -494,7 +521,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. 固定写法，device/stream初始化, 参考acl API手册
+  // 1. 固定写法，device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -511,7 +538,7 @@ int main() {
   std::vector<int64_t> ckvCacheShape = {181,1,1,512};
   std::vector<int64_t> kRopeShape = {181,1,1,64};
   std::vector<int64_t> cKvShape = {181,1,1,512};
-  
+
   std::vector<int16_t> kvHostData(181*1*1*576,0);
   std::vector<int16_t> gammaHostData(512,0);
   std::vector<int16_t> cosHostData(181*1*1*64,0);
@@ -521,7 +548,7 @@ int main() {
   std::vector<int16_t> ckvCacheHostData(181*1*1*512,0);
   std::vector<int16_t> kRopeHostData(181*1*1*64,0);
   std::vector<int16_t> cKvHostData(181*1*1*512,0);
-  
+
   void* kvDeviceAddr = nullptr;
   void* gammaDeviceAddr = nullptr;
   void* cosDeviceAddr = nullptr;
@@ -531,7 +558,7 @@ int main() {
   void* ckvCacheDeviceAddr = nullptr;
   void* kRopeDeviceAddr = nullptr;
   void* cKvDeviceAddr = nullptr;
- 
+
   aclTensor* kv = nullptr;
   aclTensor* gamma = nullptr;
   aclTensor* cos = nullptr;
@@ -541,7 +568,7 @@ int main() {
   aclTensor* ckvCache = nullptr;
   aclTensor* kRope = nullptr;
   aclTensor* cKv = nullptr;
- 
+
 
   double epsilon = 1e-5;
   char cacheMode[] = "Norm";
@@ -571,7 +598,7 @@ int main() {
   aclOpExecutor* executor;
 
   // 调用aclnnKvRmsNormRopeCache第一段接口
-  ret = aclnnKvRmsNormRopeCacheGetWorkspaceSize(kv,gamma,cos,sin,index, 
+  ret = aclnnKvRmsNormRopeCacheGetWorkspaceSize(kv,gamma,cos,sin,index,
                                                 kpeCache,ckvCache,nullptr,nullptr,nullptr,nullptr,epsilon,cacheMode,isOutputKv,kRope,cKv,&workspaceSize,&executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnKvRmsNormRopeCacheGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
@@ -605,7 +632,7 @@ int main() {
   aclDestroyTensor(kRope);
   aclDestroyTensor(cKv);
 
-  // 7. 释放device 资源
+  // 7. 释放device资源
   aclrtFree(kvDeviceAddr);
   aclrtFree(gammaDeviceAddr);
   aclrtFree(cosDeviceAddr);

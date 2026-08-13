@@ -15,40 +15,44 @@
 #ifndef MATMUL_REDUCE_SCATTER_AIV_MODE_DEQUANT_H
 #define MATMUL_REDUCE_SCATTER_AIV_MODE_DEQUANT_H
 
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/callback.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/callback.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
 #include "matmul_reduce_scatter_aiv_mode_block_epilogue_dequant.h"
 #include "matmul_reduce_scatter_aiv_mode_util.h"
+#include "tile_broadcast_add.hpp"
 
 using namespace matmulReduceScatterV2_util;
 namespace dequant {
-template <typename OutputType>
+template <typename BiasType, typename OutputType>
 class DequantRunner {
 public:
     using ArchTag = Arch::AtlasA2;
     using ScaleType = Gemm::GemmType<float, layout::VectorLayout>;
     using PerTokenScaleType = Gemm::GemmType<float, layout::VectorLayout>;
+    using BiasGType = Gemm::GemmType<BiasType, layout::VectorLayout>;
     using CType = Gemm::GemmType<int32_t, layout::RowMajor>;
     using DType = Gemm::GemmType<OutputType, layout::RowMajor>;
     using RowBroadcastMulType = Gemm::GemmType<float, layout::RowMajor>;
     using BroadcastOneBlkType = Gemm::GemmType<float, layout::RowMajor>;
     using OneBlkColumnBroadcastMulType = Gemm::GemmType<float, layout::RowMajor>;
+    using RowBroadcastAddType = Gemm::GemmType<float, layout::RowMajor>;
 
     using EpilogueTileShape = MatrixShape<TILE_SHAPE_64, TILE_SHAPE_128>;
     using TileRowBroadcastMul = Epilogue::Tile::TileRowBroadcastMul<ArchTag, RowBroadcastMulType, EpilogueTileShape>;
+    using TileRowBroadcastAdd = Epilogue::Tile::TileRowBroadcastAdd<ArchTag, RowBroadcastAddType, EpilogueTileShape>;
     using TileBroadcastOneBlk =
         Epilogue::Tile::TileBroadcastOneBlk<ArchTag, BroadcastOneBlkType, EpilogueTileShape::ROW>;
     using TileOneBlkColumnBroadcastMul =
@@ -56,9 +60,9 @@ public:
     using TileCopy = Epilogue::Tile::TileCopy<ArchTag, CType, ScaleType, PerTokenScaleType, DType>;
     using TileScheduler = Epilogue::Tile::EpilogueHorizontalTileSwizzle;
 
-    using BlockEpilogue =
-        Epilogue::Block::BlockEpilogue<ArchTag, CType, ScaleType, PerTokenScaleType, DType, TileRowBroadcastMul,
-                                       TileBroadcastOneBlk, TileOneBlkColumnBroadcastMul, TileCopy, TileScheduler>;
+    using BlockEpilogue = Epilogue::Block::BlockEpilogue<ArchTag, CType, ScaleType, PerTokenScaleType, BiasGType, DType,
+                                                         TileRowBroadcastMul, TileRowBroadcastAdd, TileBroadcastOneBlk,
+                                                         TileOneBlkColumnBroadcastMul, TileCopy, TileScheduler>;
 
     uint32_t DefaultSwizzleDirect = 0;
     uint32_t DefaultSwizzleCount = 3;
@@ -108,6 +112,7 @@ public:
         layout::RowMajor layoutOutput{finalM, finalN};
         __gm__ OutputType *gmPeerMem = reinterpret_cast<__gm__ OutputType *>(peerMem);
         __gm__ OutputType *gmOutput = reinterpret_cast<__gm__ OutputType *>(output);
+        __gm__ BiasType *gmbias = reinterpret_cast<__gm__ BiasType *>(biasptr);
         for (int32_t p = 0; p < pValue; p++) {
             int32_t loopIdx = loopSt + p * coreNum + coreIdx;
             if (loopIdx >= totalLoop) {
@@ -120,6 +125,7 @@ public:
             GemmCoord blockSizeCoord = GetBlockSizeCoord(blockIdxCoord, blockLocCoord, mLoop, finalM, nLoop, finalN, 0);
 
             layout::VectorLayout layoutPerChannelScale{blockSizeCoord.n()};
+            layout::VectorLayout layoutBias{blockSizeCoord.n()};
             layout::VectorLayout layoutPerTokenScale{blockSizeCoord.m()};
             uint32_t dataBlockOffset = dstRankIdx * peerMemBlockSize + (loopIdx - loopSt) / rankSize * blockSize;
             layout::RowMajor layoutDst = layoutBlock;
@@ -129,21 +135,18 @@ public:
                 layoutDst = layoutOutput;
                 gmDst = gmOutput + layoutOutput.GetOffset(offsetC);
             }
+            __gm__ BiasType *gmBiasOffset = (gmbias != nullptr) ? (gmbias + blockLocCoord.n()) : nullptr;
             if (needPerChannel && needPerToken) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
                               perTokenScale + dstRankIdx * finalM + blockLocCoord.m(), layoutPerTokenScale,
-                              workspace + dataBlockOffset, layoutBlock,
-                              gmDst, layoutDst,
+                              gmBiasOffset, layoutBias, workspace + dataBlockOffset, layoutBlock, gmDst, layoutDst,
                               blockSizeCoord);
             } else if (needPerChannel) {
-                blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
-                              workspace + dataBlockOffset, layoutBlock,
-                              gmDst, layoutDst,
-                              blockSizeCoord);
+                blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale, gmBiasOffset, layoutBias,
+                              workspace + dataBlockOffset, layoutBlock, gmDst, layoutDst, blockSizeCoord);
             } else if (needPerToken) {
                 blockEpilogue(perTokenScale + dstRankIdx * finalM + blockLocCoord.m(), layoutPerTokenScale,
-                              gmPeerMem + dataBlockOffset, layoutBlock,
-                              gmDst, layoutDst,
+                              gmBiasOffset, layoutBias, gmPeerMem + dataBlockOffset, layoutBlock, gmDst, layoutDst,
                               blockSizeCoord);
             }
         }

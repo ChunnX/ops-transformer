@@ -55,12 +55,13 @@ graphStatus InferShape4MoeReRouting(gert::InferShapeContext *context)
     *permuteTokensShape = *tokensInputShape;  // [A, H]
     size_t tokensDim = tokensInputShape->GetDimNum();
     OP_CHECK_IF(!Ops::Base::IsUnknownRank(*tokensInputShape) && tokensDim != DIM_NUM,
-        OP_LOGE(context, "tokens shape must be 2D, but is %lu", tokensDim),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "tokens", std::to_string(tokensDim).c_str(), "2D"),
         return ge::GRAPH_FAILED);
     const auto &tokensInputShapeDims = tokensInputShape->GetDim(IDX_ZERO);  // 取A
     size_t expertDim = expertTokenNumPerRankInputShape->GetDimNum();
     OP_CHECK_IF(!Ops::Base::IsUnknownRank(*expertTokenNumPerRankInputShape) && expertDim != DIM_NUM,
-        OP_LOGE(context, "expert token num shape must be 2D, but is %lu", expertDim),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            context->GetNodeName(), "expert_token_num_per_rank_dim", std::to_string(expertDim).c_str(), "2D"),
         return ge::GRAPH_FAILED);
     if (perTokenScaleShape) {
         *permutePerTokenScalesShape = *perTokenScaleShape;

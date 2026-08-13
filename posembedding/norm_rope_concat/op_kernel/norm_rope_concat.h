@@ -191,10 +191,13 @@ __aicore__ inline void NormOperationForward<isTraining>::Prepare(GM_ADDR x, GM_A
         return;
     }
     // if affine, copy weight & bias
+    DataCopyExtParams copyParams{1, static_cast<uint32_t>(this->normDim_ * sizeof(DTYPE_QUERY)), 0, 0, 0};
+    DataCopyPadExtParams<DTYPE_QUERY> padParams{true, 0,
+        static_cast<uint8_t>(this->alignedNormDim_ - this->normDim_), 0};
     if constexpr (normType == NormType::LAYER_NORM_AFFINE || normType == NormType::LAYER_NORM_AFFINE_ACROSS_HEADS) {
         LocalTensor<DTYPE_QUERY> norm = normQue_.AllocTensor<DTYPE_QUERY>();
-        DataCopy(norm, this->weightGm_, this->alignedNormDim_);
-        DataCopy(norm[this->alignedNormDim_], this->biasGm_, this->alignedNormDim_);
+        DataCopyPad(norm, this->weightGm_, copyParams, padParams);
+        DataCopyPad(norm[this->alignedNormDim_], this->biasGm_, copyParams, padParams);
         normQue_.EnQue(norm);
         LocalTensor<DTYPE_QUERY> deQue = normQue_.DeQue<DTYPE_QUERY>();
         if constexpr (sizeof(DTYPE_QUERY) == sizeof(float)) {
@@ -207,7 +210,7 @@ __aicore__ inline void NormOperationForward<isTraining>::Prepare(GM_ADDR x, GM_A
     
     if constexpr (normType == NormType::RMS_NORM_AFFINE) {
         LocalTensor<DTYPE_QUERY> norm = normQue_.AllocTensor<DTYPE_QUERY>();
-        DataCopy(norm, this->weightGm_, this->alignedNormDim_);
+        DataCopyPad(norm, this->weightGm_, copyParams, padParams);
         normQue_.EnQue(norm);
         LocalTensor<DTYPE_QUERY> deQue = normQue_.DeQue<DTYPE_QUERY>();
         if constexpr (sizeof(DTYPE_QUERY) == sizeof(float)) {
@@ -646,22 +649,23 @@ __aicore__ inline void NormRopeConcat<normType, addedNormType, ropeType, concatO
         for (uint32_t s = startSeq; s < endSeq; ++s) {
             ropeOp.template PreProcess<actualRopeType>(outputSeq + s);
             for (uint32_t b = 0; b < batch_; ++b) {
-                uint32_t inOffset = (b * xSeq + s) * headNum_ * headDim_;
-                uint32_t normOffset = (b * xSeq + s) * headNum_;
-                uint32_t ropeOffset = (b * headNum_ * totalSeq + outputSeq + s) * headDim_;
+                uint64_t inOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_ * headDim_;
+                uint64_t normOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_;
+                uint64_t ropeOffset = static_cast<uint64_t>(b) * headNum_ * totalSeq * headDim_ +
+                                      static_cast<uint64_t>(outputSeq + s) * headDim_;
                 for (uint32_t n = 0; n < splitHeadNum_ - 1; ++n) {
                     LocalTensor<float> buf = buf_.Get<float>();
                     normOp.template Process<actualNormType>(buf, inOffset, normOffset, avgHeads_);
                     ropeOp.template Process<actualRopeType>(buf, ropeOffset, avgHeads_);
-                    inOffset += avgHeads_ * headDim_;
+                    inOffset += static_cast<uint64_t>(avgHeads_) * headDim_;
                     normOffset += avgHeads_;
-                    ropeOffset += avgHeads_ * totalSeq * headDim_;
+                    ropeOffset += static_cast<uint64_t>(avgHeads_) * totalSeq * headDim_;
                 }
                 // tail
                 LocalTensor<float> buf = buf_.Get<float>();
                 normOp.template Process<actualNormType>(buf, inOffset, normOffset, tailHeads_);
                 ropeOp.template Process<actualRopeType>(buf, ropeOffset, tailHeads_);
-                inOffset += tailHeads_ * headDim_;
+                inOffset += static_cast<uint64_t>(tailHeads_) * headDim_;
                 normOffset += tailHeads_;
             }
         }

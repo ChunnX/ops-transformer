@@ -51,14 +51,14 @@ ge::graphStatus InferShapeKvQuantSparseFlashAttention(gert::InferShapeContext *c
         attentionOutShape->SetDim(DIM_INDEX_0, queryShape->GetDim(DIM_INDEX_0));
         attentionOutShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_1));
         attentionOutShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_2)); // 2:dim2
-        if(queryShape->GetDim(DIM_INDEX_3) != -1){
+        if (queryShape->GetDim(DIM_INDEX_3) != -1) {
             attentionOutShape->SetDim(DIM_INDEX_3, queryShape->GetDim(DIM_INDEX_3) - ropeHeadDim); // 3:dim3
         }
     } else { // TND
         attentionOutShape->SetDimNum(DIM_NUM_3);
         attentionOutShape->SetDim(DIM_INDEX_0, queryShape->GetDim(DIM_INDEX_0));
         attentionOutShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_1));
-        if(queryShape->GetDim(DIM_INDEX_2) != -1){
+        if (queryShape->GetDim(DIM_INDEX_2) != -1) {
             attentionOutShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_2) - ropeHeadDim); // 2:dim2
         }
     }
@@ -78,4 +78,3 @@ IMPL_OP_INFERSHAPE(KvQuantSparseFlashAttention)
     .InferShape(InferShapeKvQuantSparseFlashAttention)
     .InferDataType(InferDataTypeKvQuantSparseFlashAttention);
 } // namespace ops
-  

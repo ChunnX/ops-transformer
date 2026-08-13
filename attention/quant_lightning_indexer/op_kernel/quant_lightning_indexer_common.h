@@ -26,7 +26,8 @@ enum class LI_LAYOUT : uint32_t {
 
 template <typename Q_T, typename K_T, typename OUT_T, const bool PAGE_ATTENTION = false,
           LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BSND, 
-          typename W_T = half, typename SCALE_T = half, typename QK_T = int32_t, typename... Args>
+          typename W_T = half, typename SCALE_T = half, typename QK_T = int32_t, typename SCORE_T = uint16_t,
+          typename... Args>
 struct QLIType {
     using queryType = Q_T;
     using keyType = K_T;
@@ -35,6 +36,7 @@ struct QLIType {
     static constexpr bool pageAttention = PAGE_ATTENTION;
     static constexpr LI_LAYOUT layout = Q_LAYOUT_T;
     static constexpr LI_LAYOUT keyLayout = K_LAYOUT_T;
+    using scoreType = SCORE_T;
     using weightType = W_T;
     using scaleType = SCALE_T;
 };
@@ -46,6 +48,10 @@ struct RunInfo {
     uint32_t n2Idx = 0;
     uint32_t gS1Idx;
     uint32_t s2Idx;
+    uint32_t s2Start;  // S2的起始位置
+    uint32_t validS2Len;
+    uint32_t qScaleLoop;
+    uint32_t kScaleLoop;
 
     uint32_t actS1Size = 1;
     uint32_t actS2Size = 1;
@@ -99,6 +105,7 @@ struct ConstInfo {
     uint32_t s2BaseSize = 1ULL;
 
     uint64_t batchSize = 0ULL;
+    uint64_t tSize = 0ULL;
     uint64_t gSize = 0ULL;
     uint64_t qHeadNum = 0ULL;
     uint64_t kHeadNum;
@@ -112,7 +119,8 @@ struct ConstInfo {
     uint32_t maxBlockNumPerBatch = 0;  // PA场景的最大单batch block number
     LI_LAYOUT outputLayout;            // 输出的格式
     bool attenMaskFlag = false;
-
+    bool setL2DisableFlag = false;
+    
     uint32_t actualLenQDims = 0U;  // query的actualSeqLength 的维度
     uint32_t actualLenDims = 0U;   // KV 的actualSeqLength 的维度
     bool isAccumSeqS1 = false;     // 是否累加模式
