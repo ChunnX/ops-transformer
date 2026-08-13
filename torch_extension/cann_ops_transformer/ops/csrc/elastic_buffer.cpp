@@ -398,7 +398,7 @@ private:
         if (groupSize == 0U) {
             groupSize = 1U;
         }
-        uint32_t channelsPerPeer = groupSize + 1U;
+        uint32_t channelsPerPeer = groupSize * 2U;
         resources.context.channelsPerRank = channelsPerPeer;
 
         std::vector<ChannelHandle> handlesByRank(rankSize * channelsPerPeer);
