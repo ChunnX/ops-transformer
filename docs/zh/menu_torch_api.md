@@ -3,7 +3,6 @@
 - [Transformer类torch接口列表](torch_api_list.md)
 - [causal_conv1d_fn](../../torch_extension/cann_ops_transformer/docs/zh/causal_conv1d_fn.md)
 - [causal_conv1d_update](../../torch_extension/cann_ops_transformer/docs/zh/causal_conv1d_update.md)
-- [chunk_kda_fwd](../../torch_extension/cann_ops_transformer/docs/zh/chunk_kda_fwd.md)
 - [compressor](../../torch_extension/cann_ops_transformer/docs/zh/compressor.md)
 - [ElasticBuffer](../../torch_extension/cann_ops_transformer/docs/zh/ElasticBuffer.md)
 - [flash_attn](../../torch_extension/cann_ops_transformer/docs/zh/flash_attn.md)

@@ -188,44 +188,6 @@ aclnn接口不接收`output_final_state`、`disable_recompute`或`return_interme
 | 调用方式 | 样例代码 | 说明 |
 | :--- | :--- | :--- |
 | aclnn接口 | [aclnnChunkKdaFwd](./docs/aclnnChunkKdaFwd.md) | 通过`aclnnChunkKdaFwdGetWorkspaceSize`和`aclnnChunkKdaFwd`调用。 |
-| PyTorch API | [chunk_kda_fwd](../../torch_extension/cann_ops_transformer/docs/zh/chunk_kda_fwd.md) | 通过`cann_ops_transformer.ops.chunk_kda_fwd`调用。 |
 | pytest | [ChunkKdaFwd测试框架](./tests/pytest/README.md) | 覆盖功能、跨布局一致性、确定性和性能验证。 |
-
-### 调用示例
-
-以下示例通过`cann_ops_transformer.ops.chunk_kda_fwd`完成一次BSND布局的BF16正向计算：
-
-```python
-import math
-
-import torch
-import torch_npu
-from cann_ops_transformer.ops import chunk_kda_fwd
-
-torch.npu.set_device(0)
-
-B, S, H, HV, K, V = 1, 64, 2, 2, 128, 128
-q = (torch.randn(B, S, H, K) * 0.05).to(torch.bfloat16).npu()
-k = (torch.randn(B, S, H, K) * 0.05).to(torch.bfloat16).npu()
-v = (torch.randn(B, S, HV, V) * 0.05).to(torch.bfloat16).npu()
-g = (torch.randn(B, S, HV, K) * 0.02 - 0.5).float().npu()
-beta = torch.sigmoid(torch.randn(B, S, HV)).to(torch.bfloat16).npu()
-a_log = torch.linspace(-0.5, 0.5, HV, dtype=torch.float32).npu()
-dt_bias = torch.linspace(-0.1, 0.1, HV * K, dtype=torch.float32).npu()
-
-attn_out, final_state, gk, Aqk, Akk, w, u, qg, kg, v_new, h, initial_state = chunk_kda_fwd(
-    q, k, v, g, beta,
-    scale=1.0 / math.sqrt(K),
-    output_final_state=True,
-    safe_gate=True,
-    lower_bound=-5.0,
-    use_gate_in_kernel=True,
-    A_log=a_log,
-    dt_bias=dt_bias,
-    chunk_size=64,
-    layout="BSND",
-)
-print(attn_out.shape, final_state.shape, Aqk.shape, Akk.shape)
-```
 
 阶段划分、平台模板和流水设计见[ChunkKdaFwd算子设计介绍](./docs/ChunkKdaFwd算子设计介绍.md)。
