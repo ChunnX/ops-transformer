@@ -336,20 +336,6 @@ aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const cha
         return ACLNN_ERR_INNER_NULLPTR;
     }
     tensorList = contiguousList;
-    for (uint64_t i = 0; i < tensorList->Size(); ++i) {
-        auto tensor = (*tensorList)[i];
-        if (tensor != nullptr) {
-            if (tensor->GetStorageFormat() != ge::FORMAT_ND) {
-                printf("====== [FIA][%s] tensorList[%lu] storageFormat is not ND, this format may lead to precision failure.\n", name, i);
-            }
-            if (tensor->GetViewFormat() != ge::FORMAT_ND) {
-                printf("====== [FIA][%s] tensorList[%lu] viewFormat is not ND, this format may lead to precision failure.\n", name, i);
-            }
-            if (tensor->GetOriginalFormat() != ge::FORMAT_ND) {
-                printf("====== [FIA][%s] tensorList[%lu] originalFormat is not ND, this format may lead to precision failure.\n", name, i);
-            }
-        }
-    }
 
     for (uint64_t i = 0; i < tensorList->Size(); ++i) {
         auto tensor = (*tensorList)[i];
@@ -414,15 +400,6 @@ aclnnStatus NormalizeFAICacheTensorList(const aclTensorList *&tensorList, const 
                 OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try make %s contiguous failed.", itemName.c_str());
                 return ACLNN_ERR_INNER_NULLPTR;
             }
-        }
-        if (normalizedTensor->GetStorageFormat() != ge::FORMAT_ND) {
-            printf("====== [FIA][%s] normalizedTensor[%lu] storageFormat is not ND, this format may lead to precision failure.\n", name, i);
-        }
-        if (normalizedTensor->GetViewFormat() != ge::FORMAT_ND) {
-            printf("====== [FIA][%s] normalizedTensor[%lu] viewFormat is not ND, this format may lead to precision failure.\n", name, i);
-        }
-        if (normalizedTensor->GetOriginalFormat() != ge::FORMAT_ND) {
-            printf("====== [FIA][%s] normalizedTensor[%lu] originalFormat is not ND, this format may lead to precision failure.\n", name, i);
         }
         SetTensorFormatToND(normalizedTensor);
         tensors.emplace_back(normalizedTensor);
