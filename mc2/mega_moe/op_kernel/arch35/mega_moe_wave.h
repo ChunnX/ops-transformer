@@ -819,12 +819,6 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
                     preparedExpertIdx = expertIdx;
                     hasPreparedExpert = true;
                 }
-                if (dispatchExpertRowCount == 0U) {
-                    hasPreparedExpert = false;
-                    ++waveEndExpert;
-                    continue;
-                }
-
                 uint64_t expertGlobalRowBegin = expertIdx == 0U ? 0U :
                     static_cast<uint64_t>(tokenDispatchScratch_.cumsumInfoTensor.GetValue(
                         expertIdx * tokenDispatchConfig_.common.worldSize - 1U));
