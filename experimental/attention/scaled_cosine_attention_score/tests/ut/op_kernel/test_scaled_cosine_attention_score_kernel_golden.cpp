@@ -25,7 +25,8 @@ extern "C" __global__ __aicore__ void scaled_cosine_attention_score(GM_ADDR quer
 namespace {
 class GmBuffer {
 public:
-    explicit GmBuffer(size_t bytes) : ptr_(reinterpret_cast<uint8_t *>(AscendC::GmAlloc(bytes)))
+    explicit GmBuffer(size_t bytes)
+        : ptr_(reinterpret_cast<uint8_t *>(AscendC::GmAlloc(bytes)))
     {
         if (ptr_ != nullptr)
             std::memset(ptr_, 0, bytes);

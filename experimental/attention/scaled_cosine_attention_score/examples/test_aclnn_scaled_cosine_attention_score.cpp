@@ -17,13 +17,13 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_scaled_cosine_attention_score.h"
 
-#define CHECK_ACL(expr)                                                                                                \
-    do {                                                                                                               \
-        const auto status = (expr);                                                                                    \
-        if (status != ACL_SUCCESS) {                                                                                   \
-            std::printf("%s failed: %d\n", #expr, static_cast<int>(status));                                           \
-            return status;                                                                                             \
-        }                                                                                                              \
+#define CHECK_ACL(expr) \
+    do { \
+        const auto status = (expr); \
+        if (status != ACL_SUCCESS) { \
+            std::printf("%s failed: %d\n", #expr, static_cast<int>(status)); \
+            return status; \
+        } \
     } while (0)
 
 namespace {
