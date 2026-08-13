@@ -226,13 +226,18 @@ int main(int argc, char *argv[])
     void *timeGm = nullptr;
     ret = aclrtMalloc(&timeGm, RESULT_WORDS * sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc timeGm failed. ret: %d\n", ret); return ret);
+    void *timeGm2 = nullptr;
+    if (g_mode0 == 4) {
+        ret = aclrtMalloc(&timeGm2, RESULT_WORDS * sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc timeGm2 failed. ret: %d\n", ret); return ret);
+    }
 
     // ========== <<<>>> 调用 Kernel ==========
     uint32_t blockDim = (g_mode0 == 4) ? 2 : (uint32_t)BLOCK_NUM;
     LOG_PRINT("[INFO] 启动 Kernel (blockDim=%u)...\n", blockDim);
     local_ms_rw_demo(g_mode0, g_enableWarmup, g_msId, g_loopCount, g_dataSize, blockDim, stream,
                      (uint8_t *)msAddrs[0], (uint8_t *)msAddrs[1], (uint8_t *)msAddrs[2], (uint8_t *)msAddrs[3],
-                     (uint8_t *)timeGm);
+                     (uint8_t *)timeGm, (uint8_t *)timeGm2);
 
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStream failed. ret: %d\n", ret); return ret);
@@ -243,13 +248,19 @@ int main(int argc, char *argv[])
     ret = aclrtMemcpy(timeHost, sizeof(timeHost), timeGm, sizeof(timeHost), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy timeGm failed. ret: %d\n", ret); return ret);
 
+    uint64_t timeHost2[RESULT_WORDS] = {0};
+    if (g_mode0 == 4) {
+        ret = aclrtMemcpy(timeHost2, sizeof(timeHost2), timeGm2, sizeof(timeHost2), ACL_MEMCPY_DEVICE_TO_HOST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy timeGm2 failed. ret: %d\n", ret); return ret);
+    }
+
     uint64_t startCycle = timeHost[0];
     uint64_t endCycle = timeHost[1];
     uint64_t verifyResult = timeHost[2];
     uint64_t warmupCycles = timeHost[3];
-    uint64_t startCycle2 = timeHost[4];
-    uint64_t endCycle2 = timeHost[5];
-    uint64_t warmupCycles2 = timeHost[6];
+    uint64_t startCycle2 = (g_mode0 == 4) ? timeHost2[0] : 0;
+    uint64_t endCycle2 = (g_mode0 == 4) ? timeHost2[1] : 0;
+    uint64_t warmupCycles2 = (g_mode0 == 4) ? timeHost2[2] : 0;
     uint64_t elapsedCycles = endCycle - startCycle;
     double elapsedNs = (double)elapsedCycles * NS_PER_CYCLE;
     double avgNs = elapsedNs / static_cast<double>(g_loopCount);
@@ -302,6 +313,9 @@ int main(int argc, char *argv[])
     LOG_PRINT("=======================\n");
 
     // ========== 释放资源 ==========
+    if (timeGm2 != nullptr) {
+        aclrtFree(timeGm2);
+    }
     aclrtFree(timeGm);
     if (ccuHandle != nullptr) {
         CcuPutTlvHandle(ccuHandle);

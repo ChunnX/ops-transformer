@@ -130,11 +130,11 @@ id,mode0,warmup,ms_id,loop_count,data_size,rank_id,ranksize
 | 字段 | 含义 | 取值 |
 |------|------|------|
 | id | 用例 ID | 从 0 开始，用于 `-caseid` 指定单跑 |
-| mode0 | 读写模式 | `write` / `read` / `read_write` / `write_then_read`（也支持数字 0/1/2/3） |
-| warmup | 预热 | 0=不预热, 1=预热一次 |
-| ms_id | MS 编号 | 0..3 |
+| mode0 | 读写模式 | `write` / `read` / `read_write` / `write_then_read` / `dual_core_rw`（也支持数字 0/1/2/3/4） |
+| warmup | 预热次数 | 0=不预热, N=预热 N 轮 |
+| ms_id | MS 编号 | 0..3；mode0=4 时 0=同地址, 1=非同地址 |
 | loop_count | 正式打点循环次数 | 正整数 |
-| data_size | 数据量（字节） | 32B ~ 1.5MB（1572864），需 32B 对齐；WTR 模式上限 120KB |
+| data_size | 数据量（字节） | 32B 对齐；WRITE/READ 上限 240KB，READ_WRITE/WTR/DUAL_CORE_RW 上限 120KB |
 | rank_id | rank ID | 默认 0 |
 | ranksize | 卡数 | 默认 1 |
 
@@ -143,18 +143,22 @@ id,mode0,warmup,ms_id,loop_count,data_size,rank_id,ranksize
 在输入列后追加结果列，自动回写：
 
 ```csv
-id,mode0,warmup,ms_id,loop_count,data_size,rank_id,ranksize,warmup_cycles,start_cycle,end_cycle,avg_cycles,avg_ns,bandwidth_gbs,verify_result,status
-3,0,1,0,1000,4096,0,1,1234,5678,6789,11.11,11.11,40.96,N/A,OK
+id,mode0,warmup,ms_id,loop_count,data_size,rank_id,ranksize,warmup_cycles,start_cycle,end_cycle,avg_cycles,avg_ns,bandwidth_gbs,warmup_cycles2,start_cycle2,end_cycle2,avg_ns2,bandwidth_gbs2,verify_result,status
 ```
 
 | 追加字段 | 含义 |
 |----------|------|
-| warmup_cycles | 预热耗时（cycle） |
-| start_cycle | 打点起始 cycle |
-| end_cycle | 打点结束 cycle |
-| avg_cycles | 平均每轮 cycle 数 |
-| avg_ns | 平均每轮耗时（ns） |
-| bandwidth_gbs | 带宽（GB/s） |
+| warmup_cycles | 写核预热耗时（cycle） |
+| start_cycle | 写核打点起始 cycle |
+| end_cycle | 写核打点结束 cycle |
+| avg_cycles | 写核平均每轮 cycle 数 |
+| avg_ns | 写核平均每轮耗时（ns） |
+| bandwidth_gbs | 写核带宽（GB/s） |
+| warmup_cycles2 | 读核预热耗时（cycle），仅 mode0=4 |
+| start_cycle2 | 读核打点起始 cycle，仅 mode0=4 |
+| end_cycle2 | 读核打点结束 cycle，仅 mode0=4 |
+| avg_ns2 | 读核平均每轮耗时（ns），仅 mode0=4 |
+| bandwidth_gbs2 | 读核带宽（GB/s），仅 mode0=4 |
 | verify_result | 校验结果（PASS/FAIL/N/A，仅 mode0=3 有） |
 | status | 执行状态（OK/ERROR） |
 
@@ -164,10 +168,49 @@ id,mode0,warmup,ms_id,loop_count,data_size,rank_id,ranksize,warmup_cycles,start_
 
 | 值 | 名称 | 说明 |
 |----|------|------|
-| 0 | WRITE | 纯写：UB → MS，4KB 分块循环搬运（支持 32B ~ 1.5MB） |
-| 1 | READ | 纯读：MS → UB，4KB 分块循环搬运（支持 32B ~ 1.5MB） |
-| 2 | READ_WRITE | 读写混合：每块先读后写，4KB 分块 |
+| 0 | WRITE | 纯写：UB → MS，一次 DataCopy（支持 32B ~ 240KB） |
+| 1 | READ | 纯读：MS → UB，一次 DataCopy（支持 32B ~ 240KB） |
+| 2 | READ_WRITE | 读写混合：同一核先读后写，一次 DataCopy（上限 120KB） |
 | 3 | WRITE_THEN_READ | 先写后读：一次写全部 → Barrier → 一次读全部，打点外校验（上限 120KB） |
+| 4 | DUAL_CORE_RW | 双核混合读写：核0写 + 核1读，并行执行，各自打点（上限 120KB） |
+
+### mode0=4 双核混合读写 (DUAL_CORE_RW)
+
+双核并行测试 MS 读写性能，核0专职写、核1专职读，通过核间同步确保同时开始。
+
+- **blockDim=2**，Host 侧自动设置
+- 固定操作 MS1
+- `ms_id` 区分两个子场景：
+
+| ms_id | 场景 | 核0（写） | 核1（读） |
+|-------|------|----------|----------|
+| 0 | 同地址 | MS1[0] | MS1[0]（同一地址） |
+| 1 | 非同地址 | MS1[0] | MS1[totalElem]（偏移一段距离） |
+
+#### 核间同步流程
+
+```
+核0: SetFlag(1) ──────────── WaitFlag(2) → 打点写 → WaitFlag(3) → 写结果[0-3]
+核1:              WaitFlag(1) → SetFlag(2) → 打点读 → SetFlag(3) → 写结果[4-7]
+```
+
+#### 输出
+
+两组独立结果：
+
+```
+===== MS 测试结果 =====
+  --- 写核 (core 0) ---
+  startCycle:   1234567890
+  endCycle:     1234567990
+  带宽:         40.9600 GB/s
+  --- 读核 (core 1) ---
+  startCycle2:  1234567895
+  endCycle2:    1234567995
+  带宽:         40.9600 GB/s
+```
+
+CSV 输出额外包含读核列：`warmup_cycles2,start_cycle2,end_cycle2,avg_ns2,bandwidth_gbs2`
 
 ## WriteThenRead 模式详解 (mode0=3)
 

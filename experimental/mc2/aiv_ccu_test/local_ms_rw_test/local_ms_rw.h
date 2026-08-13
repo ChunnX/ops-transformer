@@ -15,6 +15,6 @@
 
 void local_ms_rw_demo(uint32_t mode0, uint32_t enableWarmup, uint32_t msId, uint32_t loopCount,
                       uint64_t dataSize, uint32_t blockDim, void *stream, uint8_t *msAddr0, uint8_t *msAddr1,
-                      uint8_t *msAddr2, uint8_t *msAddr3, uint8_t *timeAddr);
+                      uint8_t *msAddr2, uint8_t *msAddr3, uint8_t *timeAddr, uint8_t *timeAddr2);
 
 #endif // LOCAL_MS_RW_H

@@ -40,7 +40,8 @@ public:
     __aicore__ inline LocalMsRw(){};
     __aicore__ inline void Init(uint32_t mode0, uint32_t enableWarmup, uint32_t msId,
                                 uint32_t loopCount, uint64_t dataSize,
-                                GM_ADDR msAddrs[4], GM_ADDR timeAddr, uint32_t blockDim, TPipe *pipe);
+                                GM_ADDR msAddrs[4], GM_ADDR timeAddr, GM_ADDR timeAddr2,
+                                uint32_t blockDim, TPipe *pipe);
 
     __aicore__ inline void Process();
 
@@ -68,7 +69,8 @@ private:
     uint32_t aivId_;
 
     GlobalTensor<T> msGm_[4];
-    GlobalTensor<uint64_t> timeGm_;
+    GlobalTensor<uint64_t> timeGm_;       // 核0用 [0-3]
+    GlobalTensor<uint64_t> timeGm2_;      // 核1用 [0-3]，独立地址
 
     TBuf<TPosition::VECCALC> dataBuf_;
     TBuf<TPosition::VECCALC> readBuf_;
@@ -83,7 +85,8 @@ private:
 template <typename T>
 __aicore__ inline void LocalMsRw<T>::Init(uint32_t mode0, uint32_t enableWarmup, uint32_t msId,
                                           uint32_t loopCount, uint64_t dataSize,
-                                          GM_ADDR msAddrs[4], GM_ADDR timeAddr, uint32_t blockDim, TPipe *pipe)
+                                          GM_ADDR msAddrs[4], GM_ADDR timeAddr, GM_ADDR timeAddr2,
+                                          uint32_t blockDim, TPipe *pipe)
 {
     mode0_ = mode0;
     enableWarmup_ = enableWarmup;
@@ -97,6 +100,9 @@ __aicore__ inline void LocalMsRw<T>::Init(uint32_t mode0, uint32_t enableWarmup,
         msGm_[i].SetGlobalBuffer((__gm__ T *)msAddrs[i]);
     }
     timeGm_.SetGlobalBuffer((__gm__ uint64_t *)timeAddr);
+    if (mode0_ == MODE_DUAL_CORE_RW) {
+        timeGm2_.SetGlobalBuffer((__gm__ uint64_t *)timeAddr2);
+    }
 
     if (mode0_ == MODE_DUAL_CORE_RW) {
         sameAddr_ = (msId_ == 0);
@@ -297,21 +303,22 @@ __aicore__ inline void LocalMsRw<T>::Process()
             uint64_t warmupCycles = 0;
             if (enableWarmup_ != 0) {
                 uint64_t warmupStart = GetSystemCycle();
+                constexpr uint32_t DUAL_MS_ID = 1;
                 for (uint32_t w = 0; w < enableWarmup_; w++) {
-                    DualCoreWriteMode();
+                    DataCopy(msGm_[DUAL_MS_ID], dataLocal_, totalElem_);
+                    PipeBarrier<PIPE_ALL>();
                 }
                 uint64_t warmupEnd = GetSystemCycle();
                 warmupCycles = warmupEnd - warmupStart;
             }
 
+            // 同步点1：核0通知核1就绪
             CrossCoreSetFlag<0x0, PIPE_ALL>(1);
-            CrossCoreWaitFlag<0x0>(2);
+            CrossCoreWaitFlag<0x0, PIPE_ALL>(2);
 
             uint64_t startCycle = GetSystemCycle();
             DualCoreWriteMode();
             uint64_t endCycle = GetSystemCycle();
-
-            CrossCoreWaitFlag<0x0>(3);
 
             timeGm_.SetValue(0, startCycle);
             timeGm_.SetValue(1, endCycle);
@@ -322,27 +329,29 @@ __aicore__ inline void LocalMsRw<T>::Process()
             uint64_t warmupCycles = 0;
             if (enableWarmup_ != 0) {
                 uint64_t warmupStart = GetSystemCycle();
+                constexpr uint32_t DUAL_MS_ID = 1;
+                uint64_t readOffset = sameAddr_ ? 0 : totalElem_;
                 for (uint32_t w = 0; w < enableWarmup_; w++) {
-                    DualCoreReadMode();
+                    DataCopy(readLocal_, msGm_[DUAL_MS_ID][readOffset], totalElem_);
+                    PipeBarrier<PIPE_ALL>();
                 }
                 uint64_t warmupEnd = GetSystemCycle();
                 warmupCycles = warmupEnd - warmupStart;
             }
 
-            CrossCoreWaitFlag<0x0>(1);
+            // 同步点1：核1等待核0就绪，然后通知核0
+            CrossCoreWaitFlag<0x0, PIPE_ALL>(1);
             CrossCoreSetFlag<0x0, PIPE_ALL>(2);
 
             uint64_t startCycle = GetSystemCycle();
             DualCoreReadMode();
             uint64_t endCycle = GetSystemCycle();
 
-            CrossCoreSetFlag<0x0, PIPE_ALL>(3);
-
-            timeGm_.SetValue(4, startCycle);
-            timeGm_.SetValue(5, endCycle);
-            timeGm_.SetValue(6, warmupCycles);
-            timeGm_.SetValue(7, 0);
-            DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(timeGm_);
+            timeGm2_.SetValue(0, startCycle);
+            timeGm2_.SetValue(1, endCycle);
+            timeGm2_.SetValue(2, warmupCycles);
+            timeGm2_.SetValue(3, 0);
+            DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(timeGm2_);
         }
         return;
     }
