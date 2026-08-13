@@ -67,7 +67,7 @@ void FusedCausalConv1dV2(
               initial_state_idx,
               activation_value, pad_slot_id_value, run_mode_value,
               max_query_len_value, residual_connection_value,
-              block_size_value, conv_mode_value, max_draft_tokens);
+              block_size_value, conv_mode_value, max_draft_tokens_value);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
