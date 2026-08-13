@@ -817,7 +817,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchAllExpe
             if (dispatchRowCount == 0U) {
                 continue;
             }
-            DispatchExpertTokens<ActivationType, QuantScaleOutType, false, GMM1_TILE_M, TopkWeightsPrefetch>(
+            DispatchExpertTokensByRows<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
                 tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_,
                 expertIdx, expertIdx + 1U, static_cast<uint32_t>(dispatchRowCount));
         }
