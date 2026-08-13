@@ -193,7 +193,7 @@ bool IsFAIRoutingCandidate(
     const bool sparseModeSupported = sparseMode == 0 || sparseMode == 3 || sparseMode == 4;
     const bool isMha = numKeyValueHeads == 0 || numHeads == numKeyValueHeads;
     const bool mhaConditions = isMha && !(queryDtype == DataType::DT_BF16 && innerPrecise == 1) &&
-        !(sparseMode == 0 && attenMaskOptional != nullptr);
+                               !(sparseMode == 0 && attenMaskOptional != nullptr);
     const bool nonMhaConditions = !isMha && innerPrecise == 0;
     if (inputLayoutStr != "TND" || !learnableSinkSupported || isRopeSplitMla || !sparseModeSupported ||
         (!mhaConditions && !nonMhaConditions)) {
@@ -207,7 +207,7 @@ bool IsFAIRoutingCandidate(
         const int64_t keyHeadDim = keyShape.GetDim(2);
         const int64_t valueHeadDim = valueShape.GetDim(2);
         return queryHeadDim <= MAX_HEAD_DIM && keyHeadDim <= MAX_HEAD_DIM && valueHeadDim <= MAX_HEAD_DIM &&
-            queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim;
+               queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim;
     }
     if (keyShape.GetDimNum() == 3) {
         if (valueShape.GetDimNum() <= 2 || numKeyValueHeads == 0) {
@@ -217,8 +217,8 @@ bool IsFAIRoutingCandidate(
         const int64_t keyHeadDim = keyShape.GetDim(2) / numKeyValueHeads;
         const int64_t valueHeadDim = valueShape.GetDim(2) / numKeyValueHeads;
         return queryHeadDim <= MAX_HEAD_DIM && keyHeadDim <= MAX_HEAD_DIM && valueHeadDim <= MAX_HEAD_DIM &&
-            queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim &&
-            blockSize % BLOCK_SIZE_ALIGNMENT == 0 && blockSize <= MAX_BLOCK_SIZE;
+               queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim &&
+               blockSize % BLOCK_SIZE_ALIGNMENT == 0 && blockSize <= MAX_BLOCK_SIZE;
     }
     if (keyShape.GetDimNum() == 5) {
         if (valueShape.GetDimNum() <= 3) {
@@ -228,8 +228,8 @@ bool IsFAIRoutingCandidate(
         const int64_t keyHeadDim = keyShape.GetDim(2) * NZ_INNER_BLOCK;
         const int64_t valueHeadDim = valueShape.GetDim(2) * NZ_INNER_BLOCK;
         const bool headDimSupported = queryHeadDim <= MAX_HEAD_DIM && keyHeadDim <= MAX_HEAD_DIM &&
-            valueHeadDim <= MAX_HEAD_DIM && queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim &&
-            queryHeadDim != 64 && queryHeadDim != 128;
+                                      valueHeadDim <= MAX_HEAD_DIM && queryHeadDim == keyHeadDim && queryHeadDim == valueHeadDim &&
+                                      queryHeadDim != 64 && queryHeadDim != 128;
         return headDimSupported && blockSize % BLOCK_SIZE_ALIGNMENT == 0 && blockSize <= MAX_BLOCK_SIZE;
     }
     return false;
