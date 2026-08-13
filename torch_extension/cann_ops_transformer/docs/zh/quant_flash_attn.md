@@ -616,7 +616,7 @@ cann_ops_transformer.quant_flash_attn(
                 <td>(KV_N, Q_T, G, D/64, 2)<br>用于Decode场景，仅支持G*Q_S <= 80时传入</td>
             </tr>
             <tr>
-                <td>FP8全量化（quant_mode=6）</td>
+                <td>6</td>
                 <td>q_descale</td>
                 <td>NT</td>
                 <td>(Q_N, Q_T)<br>per-token-head 量化，layout_q 为 NTD</td>
