@@ -32,7 +32,8 @@ extern aclnnStatus aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(
 extern aclnnStatus aclnnInnerSparseFlashAttentionGrad(void *workspace, uint64_t workspaceSize,
                                                       aclOpExecutor *executor, aclrtStream stream);
 
-// 【新增 V2】oss-sink 接口：sinks 与 dSinks 必须成对出现。
+// 【新增 V2】oss-sink 接口：sinks 传了则必须给 dSinks 输出（传了 sinks 却无 dSinks 会拒绝）；
+// 不传 sinks（无 sink 路径）时 dSinks 可为 nullptr 或空占位 tensor。
 // 位置参数顺序与 V1 商发兼容签名完全一致，仅在 softmaxSum 后插 sinks、dKeyRopeOutOptional 后插
 // dSinksOptional。复用同一 OpDef 与同一 inner aclnn。
 aclnnStatus aclnnSparseFlashAttentionGradV2GetWorkspaceSize(
@@ -44,7 +45,7 @@ aclnnStatus aclnnSparseFlashAttentionGradV2GetWorkspaceSize(
     const aclTensor *out,
     const aclTensor *softmaxMax,
     const aclTensor *softmaxSum,
-    const aclTensor *sinks,                    // oss-sink 输入 [N1] FP32，OPTIONAL；与 dSinks 成对出现
+    const aclTensor *sinks,                    // oss-sink 输入 [N1] FP32，OPTIONAL；传了则必须给 dSinks
     const aclTensor *actualSeqLengthsQueryOptional,
     const aclTensor *actualSeqLengthsKvOptional,
     const aclTensor *queryRopeOptional,
@@ -61,13 +62,17 @@ aclnnStatus aclnnSparseFlashAttentionGradV2GetWorkspaceSize(
     const aclTensor *dValueOut,
     const aclTensor *dQueryRopeOutOptional,
     const aclTensor *dKeyRopeOutOptional,
-    const aclTensor *dSinksOptional,           // sink 梯度 [N1] FP32，OPTIONAL；与 sinks 成对出现
+    const aclTensor *dSinksOptional,           // sink 梯度 [N1] FP32，OPTIONAL；sinks 为空时可空占位
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    if ((sinks == nullptr) != (dSinksOptional == nullptr)) {
+    // 【V2 no-sink】不强制 sinks/dSinks 严格成对：host tiling 已把 nullptr/空 shape 的 sinks
+    // 统一识别为 hasSinks=false（sparse_flash_attention_grad_tiling_bs1_regbase.cpp），此时内核
+    // 走无 sink 路径、不写 dSinks，故 dSinks 允许为 nullptr 或空占位 tensor（shape {0}，PTA 无
+    // sink 时返回的占位输出）。仅保留危险方向校验：传了 sinks 却没给 dSinks 输出 buffer。
+    if (sinks != nullptr && dSinksOptional == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The sinks and dSinks of aclnnSparseFlashAttentionGradV2 must be provided in pairs.");
+                "The sinks input of aclnnSparseFlashAttentionGradV2 requires a corresponding dSinks output.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (sinks != nullptr && op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {

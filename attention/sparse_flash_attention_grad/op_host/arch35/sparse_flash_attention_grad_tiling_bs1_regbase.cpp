@@ -399,8 +399,15 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     auto qRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::Q_ROPE));
     auto kRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::K_ROPE));
     // 【新增】sinks 输入（OPTIONAL, FP32, [N1]）：判空只在这一处，编入 tiling key bit35 HasSinks
+    // 空 tensor（shape [0]）与 nullptr 等价，均视为无 sink（对应文档"为空时 sink 路径编译期消除"），
+    // 否则空 sinks 会因 shape [0] != [N1] 在校验处被拒。仅用于支持无 sink 性能/执行路径。
     auto sinksTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::SINKS));
-    tmpData.hasSinks = (sinksTensor != nullptr);
+    bool sinksEmpty = false;
+    if (sinksTensor != nullptr) {
+        const gert::Shape &sinksShape = sinksTensor->GetStorageShape();
+        sinksEmpty = (sinksShape.GetDimNum() == 1 && sinksShape.GetDim(0) == 0);
+    }
+    tmpData.hasSinks = (sinksTensor != nullptr) && !sinksEmpty;
     const gert::Shape &dqShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DQ))->GetStorageShape();
     const gert::Shape &dkShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DK))->GetStorageShape();
     const gert::Shape &dvShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DV))->GetStorageShape();
