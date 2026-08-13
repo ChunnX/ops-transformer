@@ -176,17 +176,17 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
             LocalTensor<float> level1Temp = binaryAddCache[CACHE_LEVEL2_IDX];
             CacheReduceSum(level1Temp, binaryAddCache[CACHE_LEVEL1_IDX], 0);
             CacheReduceSum(gradScalesUb, binaryAddCache[CACHE_LEVEL0_IDX], 0);
-            __local_mem__ float *dstAddr = (__local_mem__ float *)gradScalesUb.GetPhyAddr();
-            __local_mem__ float *srcAddr = (__local_mem__ float *)level1Temp.GetPhyAddr();
+            __ubuf__ float *dstAddr = (__ubuf__ float *)gradScalesUb.GetPhyAddr();
+            __ubuf__ float *srcAddr = (__ubuf__ float *)level1Temp.GetPhyAddr();
             __VEC_SCOPE__
             {
                 MicroAPI::RegTensor<float> vregLevel1;
                 MicroAPI::RegTensor<float> vregLevel0;
                 MicroAPI::MaskReg preg = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
-                DataCopy(vregLevel1, srcAddr);
-                DataCopy(vregLevel0, dstAddr);
+                LoadAlign(vregLevel1, srcAddr);
+                LoadAlign(vregLevel0, dstAddr);
                 Add(vregLevel0, vregLevel0, vregLevel1, preg);
-                DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr, vregLevel0, preg);
+                StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr, vregLevel0, preg);
             }
         } else {
             int64_t level2Count = level1Count / CACHE_BUFF_SIZE;
@@ -195,21 +195,21 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
             CacheReduceSum(level2Temp, binaryAddCache[CACHE_LEVEL2_IDX], 0);
             CacheReduceSum(level1Temp, binaryAddCache[CACHE_LEVEL1_IDX], 0);
             CacheReduceSum(gradScalesUb, binaryAddCache[CACHE_LEVEL0_IDX], 0);
-            __local_mem__ float *dstAddr = (__local_mem__ float *)gradScalesUb.GetPhyAddr();
-            __local_mem__ float *level1Addr = (__local_mem__ float *)level1Temp.GetPhyAddr();
-            __local_mem__ float *level2Addr = (__local_mem__ float *)level2Temp.GetPhyAddr();
+            __ubuf__ float *dstAddr = (__ubuf__ float *)gradScalesUb.GetPhyAddr();
+            __ubuf__ float *level1Addr = (__ubuf__ float *)level1Temp.GetPhyAddr();
+            __ubuf__ float *level2Addr = (__ubuf__ float *)level2Temp.GetPhyAddr();
             __VEC_SCOPE__
             {
                 MicroAPI::RegTensor<float> vregLevel2;
                 MicroAPI::RegTensor<float> vregLevel1;
                 MicroAPI::RegTensor<float> vregLevel0;
                 MicroAPI::MaskReg preg = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
-                DataCopy(vregLevel2, level2Addr);
-                DataCopy(vregLevel1, level1Addr);
-                DataCopy(vregLevel0, dstAddr);
+                LoadAlign(vregLevel2, level2Addr);
+                LoadAlign(vregLevel1, level1Addr);
+                LoadAlign(vregLevel0, dstAddr);
                 Add(vregLevel0, vregLevel0, vregLevel2, preg);
                 Add(vregLevel0, vregLevel0, vregLevel1, preg);
-                DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr, vregLevel0, preg);
+                StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr, vregLevel0, preg);
             }
         }
 
@@ -540,8 +540,8 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
     const LocalTensor<T1>& gradYUb, int64_t mainLen, int64_t foldLen, int64_t mainOutOffset, int64_t foldOutOffset)
 {
     LocalTensor<T1> gradExpandedXUb = this->gradExpandedXOutQueue_.template AllocTensor<T1>();
-    __local_mem__ T1* gradExpandedXMem = (__local_mem__ T1*)gradExpandedXUb.GetPhyAddr();
-    __local_mem__ T1* gradYMem = (__local_mem__ T1*)gradYUb.GetPhyAddr();
+    __ubuf__ T1* gradExpandedXMem = (__ubuf__ T1*)gradExpandedXUb.GetPhyAddr();
+    __ubuf__ T1* gradYMem = (__ubuf__ T1*)gradYUb.GetPhyAddr();
     uint32_t count = mainLen + foldLen;
     uint16_t loopCount = (count + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
     __VEC_SCOPE__
@@ -609,8 +609,8 @@ template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::CacheReduceSum(
     const LocalTensor<float>& dstTensor, const LocalTensor<float>& srcTensor, const uint32_t idx)
 {
-    __local_mem__ float* dst = (__local_mem__ float*)dstTensor.GetPhyAddr();
-    __local_mem__ float* src = (__local_mem__ float*)srcTensor.GetPhyAddr();
+    __ubuf__ float* dst = (__ubuf__ float*)dstTensor.GetPhyAddr();
+    __ubuf__ float* src = (__ubuf__ float*)srcTensor.GetPhyAddr();
 
     __VEC_SCOPE__
     {
@@ -624,16 +624,16 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
         MicroAPI::RegTensor<float> vlSum;
 
         MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
-        DataCopy(x1, src + 0 * VL_FLOAT32_SIZE);
-        DataCopy(x2, src + 1 * VL_FLOAT32_SIZE);
-        DataCopy(x3, src + 2 * VL_FLOAT32_SIZE);
-        DataCopy(x4, src + 3 * VL_FLOAT32_SIZE);
+        LoadAlign(x1, src + 0 * VL_FLOAT32_SIZE);
+        LoadAlign(x2, src + 1 * VL_FLOAT32_SIZE);
+        LoadAlign(x3, src + 2 * VL_FLOAT32_SIZE);
+        LoadAlign(x4, src + 3 * VL_FLOAT32_SIZE);
         Add(sum1, x1, x3, pregAll);
         Add(sum2, x2, x4, pregAll);
         Add(sum12, sum1, sum2, pregAll);
-        ReduceSum(vlSum, sum12, pregAll);
+        Reduce<ReduceType::SUM>(vlSum, sum12, pregAll);
         MicroAPI::MaskReg pregMerge = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
-        DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(dst + idx, vlSum, pregMerge);
+        StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(dst + idx, vlSum, pregMerge);
     }
 }
 
@@ -642,8 +642,8 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
 {
     LocalTensor<float> gradScalesUb = this->gradScalesOutQueue_.template DeQue<float>();
     LocalTensor<T3> tempBuf = this->binaryAddSumBuf_.template Get<T3>(); // 复用binaryAddSumBuf_ 临时空间
-    __local_mem__ float* srcAddr = (__local_mem__ float*)gradScalesUb.GetPhyAddr();
-    __local_mem__ T3* dstAddr = (__local_mem__ T3*)tempBuf.GetPhyAddr();
+    __ubuf__ float* srcAddr = (__ubuf__ float*)gradScalesUb.GetPhyAddr();
+    __ubuf__ T3* dstAddr = (__ubuf__ T3*)tempBuf.GetPhyAddr();
 
     __VEC_SCOPE__
     {
@@ -653,9 +653,9 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
         if constexpr (!IsSameType<T3, float>::value) {
             MicroAPI::RegTensor<T3> vregB16;
             MicroAPI::RegTensor<float> vregF32;
-            DataCopy(vregF32, srcAddr);
+            LoadAlign(vregF32, srcAddr);
             Cast<T3, float, castTraitB322B16>(vregB16, vregF32, preg);
-            DataCopy<T3, MicroAPI::StoreDist::DIST_PACK_B32>(dstAddr, vregB16, preg);
+            StoreAlign<T3, MicroAPI::StoreDist::DIST_PACK_B32>(dstAddr, vregB16, preg);
         }
     }
     DataCopyExtParams copyExtParams{1, 1, 0, 0, 0};

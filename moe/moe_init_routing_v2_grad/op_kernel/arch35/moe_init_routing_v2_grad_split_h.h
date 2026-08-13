@@ -123,8 +123,8 @@ private:
     {
         LocalTensor<T> inputUb = inputQueue.template DeQue<T>();
         LocalTensor<T> outputUb = outputQueue.AllocTensor<T>();
-        __local_mem__ T* inputUbAddr = (__local_mem__ T*)inputUb.GetPhyAddr();
-        __local_mem__ T* outputUbAddr = (__local_mem__ T*)outputUb.GetPhyAddr();
+        __ubuf__ T* inputUbAddr = (__ubuf__ T*)inputUb.GetPhyAddr();
+        __ubuf__ T* outputUbAddr = (__ubuf__ T*)outputUb.GetPhyAddr();
         SequenceReduceSum<T, T, true>(
             inputUbAddr, outputUbAddr, currkUbFactor, this->k, currSubhLen, currSubhAlign, this->k);
         inputQueue.FreeTensor(inputUb);
