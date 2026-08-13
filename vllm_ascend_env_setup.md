@@ -933,3 +933,214 @@ curl -X POST -s http://127.0.0.1:8004/v1/completions \
 # 预期返回 JSON，包含 choices[0].text 为生成的文本
 # 日志中出现: "POST /v1/completions HTTP/1.1" 200 OK
 ```
+
+## 步骤十：DeepSeek-V4 + Layerwise PD 混部
+
+### 10.1 下载 DeepSeek-V4-Flash-w8a8-mtp 模型
+
+```bash
+cd /mnt/sfs_turbo/weights
+
+python3 -c "
+import requests
+import urllib3
+from modelscope import snapshot_download
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+_original_request = requests.Session.request
+def _patched_request(self, method, url, *args, **kwargs):
+    kwargs['verify'] = False
+    return _original_request(self, method, url, *args, **kwargs)
+requests.Session.request = _patched_request
+
+print('开始下载 DeepSeek-V4-Flash-w8a8-mtp...')
+model_dir = snapshot_download(
+    'Eco-Tech/DeepSeek-V4-Flash-w8a8-mtp',
+    local_dir='/mnt/sfs_turbo/weights/DeepSeek-V4-Flash-w8a8-mtp'
+)
+print(f'下载完成！模型位于: {model_dir}')
+"
+
+# 模型约 280GB，70 个 safetensors 文件
+ls /mnt/sfs_turbo/weights/DeepSeek-V4-Flash-w8a8-mtp/*.safetensors | wc -l  # 预期 70
+du -sh /mnt/sfs_turbo/weights/DeepSeek-V4-Flash-w8a8-mtp/  # 预期约 280G
+```
+
+### 10.2 确认 NPU 显存充足
+
+```bash
+# 检查所有 NPU 显存占用
+npu-smi info
+
+# 确保每张卡至少有 48GB 空闲（HBM-Usage 应小于 ~16000MB）
+# 如果有其他进程占用（如 atk），需要杀掉：
+pkill -9 -f atk 2>/dev/null
+
+# 再次确认
+npu-smi info | grep HBM-Usage
+```
+
+### 10.3 创建 DeepSeek-V4 layerwise PD 混部 run.sh
+
+```bash
+cat > /home/lsy/run.sh << 'RUNEOF'
+#!/bin/bash
+rm -rf /root/ascend/log/*
+
+echo "/tmp/core.%p" | tee /proc/sys/kernel/core_pattern
+
+export PYTHONPATH=$PYTHONPATH:/home/vllm
+export PYTHONPATH=$PYTHONPATH:/home/vllm-ascend-official
+
+nic_name="enp189s0f0"
+local_ip="172.28.1.10"
+export HCCL_IF_IP=$local_ip
+export GLOO_SOCKET_IFNAME=$nic_name
+export TP_SOCKET_IFNAME=$nic_name
+export HCCL_SOCKET_IFNAME=$nic_name
+
+export PYTHONHASHSEED=0
+export HCCL_BUFFSIZE=1024
+export HCCL_NPU_SOCKET_PORT_RANGE=20000-25000
+export OMP_PROC_BIND=false
+export OMP_NUM_THREADS=10
+
+export VLLM_USE_V1=1
+export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
+export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/mooncake:$LD_LIBRARY_PATH
+
+export VLLM_VERSION=0.20.2
+
+source /usr/local/memcache_hybrid/set_env.sh
+source /usr/local/memfabric_hybrid/set_env.sh
+
+export MMC_LOCAL_CONFIG_PATH=/home/lsy/layerwise/mmc-local.conf
+
+vllm serve /mnt/sfs_turbo/weights/DeepSeek-V4-Flash-w8a8-mtp \
+    --host 0.0.0.0 \
+    --port 8004 \
+    --tensor-parallel-size 8 \
+    --seed 1024 \
+    --served-model-name deepseek_v4 \
+    --enable-expert-parallel \
+    --max-num-seqs 40 \
+    --max-model-len 16384 \
+    --max-num-batched-tokens 4096 \
+    --trust-remote-code \
+    --no-enable-prefix-caching \
+    --no-disable-hybrid-kv-cache-manager \
+    --gpu-memory-utilization 0.85 \
+    --quantization ascend \
+    --additional-config '{"ascend_scheduler_config":{"enabled":false},"torchair_graph_config":{"enabled":true}}' \
+    --kv-transfer-config \
+    '{"kv_connector": "AscendStoreConnector",
+        "kv_role": "kv_both",
+        "kv_connector_extra_config": {"backend": "memcache","use_layerwise": true,"mooncake_rpc_port":"0"}}' > /home/lsy/log_p.log 2>&1
+RUNEOF
+chmod +x /home/lsy/run.sh
+```
+
+### 10.4 关键配置说明
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| `--tensor-parallel-size 8` | 8 | 8 卡张量并行 |
+| `--gpu-memory-utilization 0.85` | 0.85 | NPU 显存利用率，如显存不足可降到 0.75 |
+| `--quantization ascend` | ascend | Ascend 量化（不能用 deepseek_v4_fp8，NPU 不支持） |
+| `--no-disable-hybrid-kv-cache-manager` | - | DeepSeekV4 有 hybrid KV cache，必须启用 |
+| `--torchair_graph_config {"enabled":true}` | true | 启用 torchair graph，支持 PIECEWISE cudagraph |
+| `kv_connector: AscendStoreConnector` | - | KV transfer 连接器 |
+| `kv_role: kv_both` | kv_both | PD 混部（同一个实例同时做 prefill 和 decode） |
+| `use_layerwise: true` | true | 启用 layerwise KV transfer |
+| `backend: memcache` | memcache | 使用 memcache 作为 KV transfer backend |
+| `HCCL_NPU_SOCKET_PORT_RANGE=20000-25000` | - | 避免 HCCL 端口冲突 |
+
+> **注意**：layerwise 需要 PIECEWISE cudagraph 模式，不能加 `--enforce-eager`。
+> `AscendStoreConnector.requires_piecewise_for_cudagraph` 返回 True，vllm 会自动启用 PIECEWISE。
+
+### 10.5 启动 vllm serve
+
+```bash
+cd /home/lsy
+
+# 杀掉旧的 vllm 进程
+pkill -9 -f vllm 2>/dev/null
+sleep 5
+
+# 启动
+nohup bash run.sh > /dev/null 2>&1 &
+
+# 查看日志（模型加载约需 38 分钟，280GB 模型）
+tail -f /home/lsy/log_p.log
+```
+
+### 10.6 关键日志标志
+
+```
+# 模型加载中
+Loading safetensors checkpoint shards:  50% Completed | 35/70 [...]
+Loading safetensors checkpoint shards: 100% Completed | 70/70 [38:11<00:00, 32.73s/it]
+Loading weights took 2291.39 seconds
+Loading model weights took 36.0575 GB
+
+# PIECEWISE 编译
+PIECEWISE compilation enabled on NPU
+Compiling a graph for compile range (1, 4096) takes 34.38 s
+torch.compile took 62.11 s in total
+
+# KV cache 初始化
+Available KV cache memory: XX GiB
+GPU KV cache size: XXX tokens
+
+# 服务启动成功
+Application startup complete.
+```
+
+### 10.7 验证推理接口
+
+```bash
+# 等待日志出现 "Application startup complete." 后执行
+curl -X POST -s http://127.0.0.1:8004/v1/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek_v4",
+    "prompt": "The sun dipped below the horizon painting the sky in hues of orange and purple.",
+    "max_tokens": 50,
+    "temperature": 0
+  }'
+```
+
+### 10.8 常见问题
+
+**问题1：`deepseek_v4_fp8 quantization is currently not supported in npu`**
+解决：使用 `--quantization ascend` 而不是 `--quantization deepseek_v4_fp8`
+
+**问题2：`No available memory for the cache blocks`**
+解决：模型 36GB/卡 + 编译开销占了大部分显存。降低 `--gpu-memory-utilization`（如 0.75）或减小 `--max-model-len`（如 8192）
+
+**问题3：`Free memory on device (XX/60.96 GiB) on startup is less than desired GPU memory utilization`**
+解决：NPU 被其他进程占用。执行 `pkill -9 -f atk` 释放显存，或降低 `--gpu-memory-utilization`
+
+**问题4：NPU 0 被 atk 进程占用**
+```bash
+# 查看 NPU 0 上的进程
+npu-smi info | grep "0       0"
+
+# 杀掉 atk 进程
+pkill -9 -f atk
+
+# 确认显存释放
+npu-smi info | grep HBM-Usage
+```
+
+### 10.9 DeepSeek-V4 环境信息
+
+- 模型：DeepSeek-V4-Flash-w8a8-mtp（W8A8 量化, 280GB, 70 shards）
+- 架构：DeepseekV4ForCausalLM（256 专家, 43 层, MTP）
+- TP=8, EP=8（每卡 32 个专家）
+- 每卡权重：36.06 GB
+- PIECEWISE cudagraph + layerwise KV transfer
+- PD 混部（kv_role=kv_both）
+- 模型加载时间：约 38 分钟
+- 图编译时间：约 62 秒
