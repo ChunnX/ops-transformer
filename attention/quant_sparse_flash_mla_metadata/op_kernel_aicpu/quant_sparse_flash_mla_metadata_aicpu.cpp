@@ -486,14 +486,6 @@ uint32_t QuantSparseFlashMlaMetadataCpuKernel::GetS1Idx(uint32_t s1Size, uint32_
 uint32_t QuantSparseFlashMlaMetadataCpuKernel::GetBsStride(uint32_t bIdx, uint32_t s1Idx)
 {
     uint32_t bsStride = 0;
-    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-        const int32_t *seqUsedPtr = static_cast<const int32_t *>(sequsedQ_->GetData());
-        for (uint32_t i = 0; i < bIdx; i++) {
-            bsStride += seqUsedPtr[i];
-        }
-        bsStride += s1Idx;
-        return bsStride;
-    }
     if (layoutQ_ == "TND") {
         if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
             const int32_t *s1Ptr = static_cast<const int32_t *>(cuSeqlensQ_->GetData());
