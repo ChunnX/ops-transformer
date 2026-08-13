@@ -16,15 +16,9 @@
 
 class MhcPreBackwardProto : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MhcPreBackwardInferShape SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MhcPreBackwardInferShape SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MhcPreBackwardInferShape TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MhcPreBackwardInferShape TearDown" << std::endl; }
 };
 
 /*
