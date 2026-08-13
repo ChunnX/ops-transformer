@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file kv_rms_norm_rope_cache_regbase_platform.h
+ * \file kv_rms_norm_rope_cache_platform.h
  * \brief platform apator
  */
 #include "kernel_operator.h"
