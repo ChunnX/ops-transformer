@@ -53,11 +53,11 @@ ge::graphStatus BuildMatmulTiling(const gert::TilingContext *context,
 {
     matmul_tiling::MultiCoreMatmulTiling mm(platform);
     mm.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                matmul_tiling::DataType::DT_BFLOAT16, false);
+                matmul_tiling::DataType::DT_BF16, false);
     mm.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                matmul_tiling::DataType::DT_BFLOAT16, false);
+                matmul_tiling::DataType::DT_BF16, false);
     mm.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                matmul_tiling::DataType::DT_BFLOAT16);
+                matmul_tiling::DataType::DT_BF16);
     mm.SetBias(false);
     mm.SetDim(aicCoreNum);
     mm.SetShape(m0, n0, k);
