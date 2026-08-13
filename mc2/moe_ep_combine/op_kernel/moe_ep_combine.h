@@ -100,6 +100,7 @@ private:
     __aicore__ inline void SendLocalToken(uint32_t tokenIndex, GM_ADDR dstAddr);
     __aicore__ inline void SendSlot(uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx,
                                     int32_t srcTopKIdx, uint32_t channelIndex, uint32_t weight);
+    __aicore__ inline void ResetState(uint32_t tStart, uint32_t tEnd);
     __aicore__ inline bool WaitDispatch(uint32_t tokenIndex, uint32_t copyCount);
     __aicore__ inline void ProcessTopKToken(uint32_t tokenIndex);
     __aicore__ inline void SendPhaseExpertToToken();
@@ -599,6 +600,22 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKTo
 }
 
 template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ResetState(uint32_t tStart, uint32_t tEnd)
+{
+    constexpr uint16_t MAX_REPEAT = 4095;
+    uint16_t MAX_TOKEN_STRIDE = MAX_REPEAT / topK_;
+    for (uint32_t tCur = tStart; tCur < tEnd; tCur += MAX_TOKEN_STRIDE) {
+        GM_ADDR stateGM = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + tCur * topK_ * WIN_ADDR_ALIGN;
+        GlobalTensor<uint32_t> stateGMTensor;
+        stateGMTensor.SetGlobalBuffer((__gm__ uint32_t *)stateGM);
+
+        uint16_t tCnt = tCur + MAX_TOKEN_STRIDE < tEnd_ ? MAX_TOKEN_STRIDE : tEnd_ - tCur;
+        DataCopyExtParams resetParams = {static_cast<uint16_t>(topK_ * tCnt), UB_ALIGN, 0, WIN_ADDR_ALIGN - UB_ALIGN, 0};
+        DataCopyPad<uint32_t>(stateGMTensor, stateResetTensor_, resetParams);
+    }
+}
+
+template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseReduce()
 {
     DataCopyPadParams padParams = {false, 0, 0, 0};
@@ -629,16 +646,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
             Cast(ubResultBf16, ubAccFp32_, RoundMode::CAST_RINT, axisH_);
             SyncFunc<AscendC::HardEvent::V_MTE3>();
             DataCopyPad(combinedXGm_[tokenIdx * axisH_], ubResultBf16, xCopyParams);
-
-            GM_ADDR stateGM = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) +
-                              tokenIdx * topK_ * WIN_ADDR_ALIGN;
-            GlobalTensor<uint32_t> stateGMTensor;
-            stateGMTensor.SetGlobalBuffer((__gm__ uint32_t *)stateGM);
-            DataCopyExtParams resetParams = {
-                static_cast<uint16_t>(topK_), UB_ALIGN, 0, WIN_ADDR_ALIGN - UB_ALIGN, 0};
-            DataCopyPad<uint32_t>(stateGMTensor, stateResetTensor_, resetParams);
         }
     }
+    ResetState(tStart_, tEnd_);
 }
 
 template <TemplateMoeEpCombineTypeClass>
