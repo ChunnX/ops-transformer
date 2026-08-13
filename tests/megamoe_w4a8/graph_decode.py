@@ -3,7 +3,10 @@ import torch_npu
 import torchair
 import torch.distributed as dist
 from enum import IntEnum
-import cann_ops_nn.ops
+try:
+    import cann_ops_nn.ops
+except ImportError:
+    pass
 
 FLOAT8_E8M0FNU_DTYPE = getattr(torch_npu, "float8_e8m0fnu", getattr(torch, "float8_e8m0fnu", None))
 FLOAT8_E4M3FN_DTYPE = getattr(torch_npu, "float8_e4m3fn", getattr(torch, "float8_e4m3fn", None))
@@ -153,18 +156,45 @@ class CascadeGraphModel(torch.nn.Module):
         return self._slice_shared_weights(weights), self._slice_moe_weights(weights)
 
     def _swiglu_mx_quant(self, x, dst_type):
-        y, y_scale, _ = torch.ops.cann_ops_nn.swiglu_group_quant(
-            x,
-            weight=None,
-            group_index=None,
-            scale=None,
-            dst_type=dst_type,
-            quant_mode=1,
-            block_size=32,
-            round_scale=True,
-            clamp_limit=self.clamp_limit,
-            output_origin=False,
+        swiglu_group_quant = getattr(
+            torch.ops.cann_ops_nn, "swiglu_group_quant", None
         )
+        if swiglu_group_quant is not None:
+            y, y_scale, _ = swiglu_group_quant(
+                x,
+                weight=None,
+                group_index=None,
+                scale=None,
+                dst_type=dst_type,
+                quant_mode=1,
+                block_size=32,
+                round_scale=True,
+                clamp_limit=self.clamp_limit,
+                output_origin=False,
+            )
+            return y, y_scale
+
+        activation_part, multiply_part = x.chunk(2, dim=-1)
+        activation_part = activation_part.to(torch.float32)
+        multiply_part = multiply_part.to(torch.float32)
+        if self.clamp_limit is not None:
+            activation_part = torch.clamp(
+                activation_part, max=self.clamp_limit
+            )
+            multiply_part = torch.clamp(
+                multiply_part,
+                min=-self.clamp_limit,
+                max=self.clamp_limit,
+            )
+        y = activation_part * torch.sigmoid(activation_part) * multiply_part
+        y, y_scale = torch_npu.npu_dynamic_mx_quant(
+            y.to(torch.bfloat16),
+            axis=-1,
+            dst_type=dst_type,
+            block_size=32,
+        )
+        if y_scale.dim() == 2 and y_scale.shape[-1] % 2 == 0:
+            y_scale = y_scale.reshape(y_scale.shape[0], y_scale.shape[1] // 2, 2)
         return y, y_scale
 
     def _situ_mx_quant(self, x, dst_type):

@@ -3,7 +3,10 @@ import torch_npu
 import torchair
 import torch.distributed as dist
 from enum import IntEnum
-import cann_ops_nn.ops
+try:
+    import cann_ops_nn.ops
+except ImportError:
+    pass
 from cann_ops_transformer.ops import mega_moe
 
 FLOAT8_E8M0FNU_DTYPE = getattr(torch_npu, "float8_e8m0fnu", getattr(torch, "float8_e8m0fnu", None))
@@ -204,19 +207,46 @@ class CascadeGraphModel(torch.nn.Module):
     def _swiglu_mx_quant(self, x, dst_type, topk_weights=None):
         if topk_weights is not None:
             topk_weights = topk_weights.reshape(-1).to(torch.float32)
-        y, y_scale, _ = torch.ops.cann_ops_nn.swiglu_group_quant(
-            x,
-            weight=topk_weights,
-            group_index=None,
-            scale=None,
-            dst_type=dst_type,
-            quant_mode=1,
-            block_size=32,
-            round_scale=True,
-            clamp_limit=self.clamp_limit,
-            output_origin=False,
+        swiglu_group_quant = getattr(
+            torch.ops.cann_ops_nn, "swiglu_group_quant", None
         )
-        return y, y_scale
+        if swiglu_group_quant is not None:
+            y, y_scale, _ = swiglu_group_quant(
+                x,
+                weight=topk_weights,
+                group_index=None,
+                scale=None,
+                dst_type=dst_type,
+                quant_mode=1,
+                block_size=32,
+                round_scale=True,
+                clamp_limit=self.clamp_limit,
+                output_origin=False,
+            )
+            return y, y_scale
+
+        activation_part, multiply_part = x.chunk(2, dim=-1)
+        activation_part = activation_part.to(torch.float32)
+        multiply_part = multiply_part.to(torch.float32)
+        if self.clamp_limit is not None:
+            activation_part = torch.clamp(
+                activation_part, max=self.clamp_limit
+            )
+            multiply_part = torch.clamp(
+                multiply_part,
+                min=-self.clamp_limit,
+                max=self.clamp_limit,
+            )
+        y = activation_part * torch.sigmoid(activation_part) * multiply_part
+        if topk_weights is not None:
+            y = y * topk_weights.reshape(-1, 1)
+        y, y_scale = torch_npu.npu_dynamic_mx_quant(
+            y.to(torch.bfloat16),
+            axis=-1,
+            dst_type=dst_type,
+            block_size=32,
+        )
+        return y, self._normalize_dispatch_scale(y_scale)
 
     def _situ_mx_quant(self, x, dst_type, topk_weights=None):
         gate, up = x.chunk(2, dim=-1)

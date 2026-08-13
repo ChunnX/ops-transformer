@@ -19,7 +19,7 @@ python3 -m pip install --force-reinstall build_out/cann_ops_transformer-*.whl
 python3 -m pip install -r tests/megamoe_w4a8/requirements.txt
 ```
 
-还需要与当前 CANN/PyTorch 版本匹配的 `torch_npu`、`torchair` 和 `cann_ops_nn`。若算子包使用了自定义安装路径，运行前先执行对应的 `vendors/customize/bin/set_env.bash`。
+还需要与当前 CANN/PyTorch 版本匹配的 `torch_npu` 和 `torchair`。`cann_ops_nn` 为可选依赖：存在 `swiglu_group_quant` 时优先使用；未安装或未注册该算子时，测试会自动使用 SwiGLU 加 `npu_dynamic_mx_quant` 的兼容路径。若算子包使用了自定义安装路径，运行前先执行对应的 `vendors/customize/bin/set_env.bash`。
 
 ## 2. 运行
 
