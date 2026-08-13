@@ -152,7 +152,7 @@ inline static bool CheckShape(const aclTensor *kCache, const aclTensor *vCache, 
         (kvLayout == KV_LAYOUT_BBND) ? kCacheShape.GetDim(SHAPE_DIM_2) : kCacheShape.GetDim(SHAPE_DIM_1);
     int64_t batch = kvIndicesShape.GetDim(SHAPE_DIM_0);
 
-    if (batch != kvSeqLens.Size()) {
+    if (batch != kvSeqLens->Size()) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "kvIndicesShape[0] and kvSeqLensShape[0] are not equal.");
         return false;      
@@ -166,7 +166,7 @@ inline static bool CheckShape(const aclTensor *kCache, const aclTensor *vCache, 
         return false;
     }
 
-    if ((kvBlockSize != 64) || (kvBlockSize != 128)) {
+    if ((kvBlockSize != 64) && (kvBlockSize != 128)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "kvBlockSize must be 64 or 128.");
         return false;        
