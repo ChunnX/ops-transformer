@@ -961,3 +961,94 @@ int main() {
     return 0;
 }
 ```
+
+<!-- 实现说明（不对外，代码上库评审需要，md文件上gitcode前删除） -->
+
+## 实现说明
+
+> ⚠️ 本章节仅供代码上库评审使用，不对外暴露。md 文件上 gitcode 前请删除本章节。
+
+### L0 aclnn 接口层计算图
+
+算子在 L0 aclnn 接口层暴露两段式接口，计算图仅体现接口层面的输入输出关系，不体现算子内部 kernel 实现逻辑。
+
+#### 两段式接口
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        aclnnPoolKeyIndexer                              │
+│                    (L0 aclnn 接口层计算图)                              │
+│                                                                         │
+│  ┌─────────────┐                                                        │
+│  │   Inputs    │                                                        │
+│  │             │                                                        │
+│  │  query      │──────┐                                                 │
+│  │  poolKey    │      │                                                 │
+│  │  weights    │      │      ┌──────────────────────┐                   │
+│  │  poolTailK  │──────┼─────▶│ aclnnPoolKeyIndexer  │                   │
+│  │  actualSeqQ │      │      │   GetWorkspaceSize   │                   │
+│  │  actualSeqK │      │      │                      │───▶ executor       │
+│  │  blockTable │      │      │  (计算 workspaceSize  │                   │
+│  │  qDescale   │      │      │   + 构造 executor)    │                   │
+│  │  kDescale   │      │      └──────────────────────┘                   │
+│  │             │      │                        │                         │
+│  │  attrs:     │      │                        │                         │
+│  │  topk       │      │                        ▼                         │
+│  │  poolSize   │      │      ┌──────────────────────┐                   │
+│  │  layoutQ    │      │      │ aclnnPoolKeyIndexer  │                   │
+│  │  layoutK    │      ├─────▶│   (执行)             │                   │
+│  │  maskMode   │      │      │                      │───▶ NPU 执行       │
+│  │  quantMode  │      │      │  workspace + executor│                   │
+│  │  returnValue│      │      │  + stream            │                   │
+│  └─────────────┘      │      └──────────────────────┘                   │
+│                       │                        │                         │
+│  ┌─────────────┐      │                        ▼                         │
+│  │  Outputs    │      │             ┌─────────────────┐                  │
+│  │             │      └────────────▶│  sparseIndices  │                  │
+│  │  (GM)       │                    │  sparseValues   │                  │
+│  └─────────────┘                    └─────────────────┘                  │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 接口层数据流
+
+| 阶段 | 接口 | 输入 | 输出 |
+|------|------|------|------|
+| 第一段（Host） | `aclnnPoolKeyIndexerGetWorkspaceSize` | 9 个 aclTensor 输入 + 7 个属性 | `workspaceSize` + `aclOpExecutor*` |
+| 第二段（Device） | `aclnnPoolKeyIndexer` | `workspace` + `executor` + `stream` | 2 个 aclTensor 输出（sparseIndicesOut + sparseValuesOut） |
+
+#### 接口层输入输出关系
+
+```
+输入 Tensor (aclTensor*):
+  [0] query              ─┐
+  [1] poolKey             │
+  [2] weights             │
+  [3] poolTailK           │    ┌──────────────────────────┐    ┌─────────────────────┐
+  [4] actualSeqQ (opt)    ├───▶│  GetWorkspaceSize + Run  │──▶│  sparseIndicesOut   │ [0]
+  [5] actualSeqK (opt)    │    │  (aclnn 两段式调用)       │    │  sparseValuesOut    │ [1]
+  [6] blockTable (opt)    │    └──────────────────────────┘    └─────────────────────┘
+  [7] qDescale (opt)      │
+  [8] kDescale (opt)     ─┘
+
+属性 (Attr):
+  topk, poolSize, layoutQ, layoutK, maskMode, quantMode, returnValue
+```
+
+#### 可选输入处理（接口层）
+
+| 可选输入 | 为 null 时的处理 |
+|---------|-----------------|
+| actualSeqQ | BSND 时为 null，使用 query shape 的 S1 作为序列长度 |
+| actualSeqK | BSND 时为 null，使用 poolKey shape 的 S2 作为序列长度 |
+| blockTable | 非 PA 布局时为 null |
+| qDescale / kDescale | quantMode=-1 时为 null |
+
+#### 输出 shape 推导（接口层）
+
+| 输出 | shape 公式 | 数据类型 |
+|------|-----------|---------|
+| sparseIndicesOut | BSND: `(B, S1, topk + poolSize - 1)` / TND: `(T1, topk + poolSize - 1)` | INT32 |
+| sparseValuesOut | BSND: `(B, S1, topk // poolSize)` / TND: `(T1, topk // poolSize)` | FLOAT |
+
+<!-- 实现说明结束 -->

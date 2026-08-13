@@ -1,0 +1,17 @@
+# PoolKeyIndexer ATK 节点配置 (复检模式)
+#
+# 双标杆 (cv_fused_double_benchmark) 精度复检节点:
+#   - operator: 算子执行端, PyAclnn 后端, NPU 0 号卡
+#   - golden  : 标杆执行端, CPU 后端
+#
+# 复检模式使用 accuracy_lt 任务, 触发 cv_fused 复检流程
+
+nodes:
+  - backend: pyaclnn
+    task: ['accuracy_lt']
+    devices: [0]
+    name: operator
+
+  - backend: cpu
+    task: ['accuracy_lt']
+    name: golden

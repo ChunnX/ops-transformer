@@ -151,8 +151,7 @@ int ExecutePoolKeyIndexer(TensorResources& resources, aclrtStream stream,
     return ret;
 }
 
-void CleanupResources(TensorResources& resources, void* workspaceAddr,
-                      aclrtStream stream, int32_t deviceId) {
+void CleanupTensorsOnly(TensorResources& resources, void* workspaceAddr) {
     if (resources.queryTensor) aclDestroyTensor(resources.queryTensor);
     if (resources.poolKeyTensor) aclDestroyTensor(resources.poolKeyTensor);
     if (resources.weightsTensor) aclDestroyTensor(resources.weightsTensor);
@@ -166,26 +165,135 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
     if (resources.sparseIndicesDeviceAddr) aclrtFree(resources.sparseIndicesDeviceAddr);
     if (resources.sparseValuesDeviceAddr) aclrtFree(resources.sparseValuesDeviceAddr);
     if (workspaceAddr) aclrtFree(workspaceAddr);
+}
+
+void CleanupResources(TensorResources& resources, void* workspaceAddr,
+                      aclrtStream stream, int32_t deviceId) {
+    CleanupTensorsOnly(resources, workspaceAddr);
     if (stream) aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
+}
+
+int TestDegradedScenario(aclrtStream stream) {
+    // Degraded scenario: pool_size=1, pool_tail_k=0, quantMode=-1, maskMode=0, returnValue=true
+    TensorResources resources = {};
+    void* workspaceAddr = nullptr;
+    uint64_t workspaceSize = 0;
+
+    // topk=128, poolSize=1
+    // sparseIndicesOut last dim = topk + poolSize - 1 = 128
+    // sparseValuesOut last dim = topk / poolSize = 128
+    std::vector<int64_t> queryShape = {1, 128, 8, 128};
+    std::vector<int64_t> poolKeyShape = {1, 128, 1, 128};
+    std::vector<int64_t> weightsShape = {1, 128, 8};
+    std::vector<int64_t> poolTailKShape = {1};
+    std::vector<int64_t> sparseIndicesShape = {1, 128, 128};
+    std::vector<int64_t> sparseValuesShape = {1, 128, 128};
+
+    int64_t querySize = GetShapeSize(queryShape);
+    int64_t poolKeySize = GetShapeSize(poolKeyShape);
+    int64_t weightsSize = GetShapeSize(weightsShape);
+    int64_t poolTailKSize = GetShapeSize(poolTailKShape);
+    int64_t sparseIndicesSize = GetShapeSize(sparseIndicesShape);
+    int64_t sparseValuesSize = GetShapeSize(sparseValuesShape);
+
+    std::vector<float> queryData(querySize, 1);
+    std::vector<float> poolKeyData(poolKeySize, 1);
+    std::vector<float> weightsData(weightsSize, 1);
+    std::vector<int32_t> poolTailKData = {0};
+    std::vector<int32_t> sparseIndicesData(sparseIndicesSize, 1);
+    std::vector<float> sparseValuesData(sparseValuesSize, 1);
+
+    int ret = CreateAclTensor(queryData, queryShape, &resources.queryDeviceAddr,
+                              ACL_FLOAT16, &resources.queryTensor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) { CleanupTensorsOnly(resources, workspaceAddr); return ret; }
+    ret = CreateAclTensor(poolKeyData, poolKeyShape, &resources.poolKeyDeviceAddr,
+                          ACL_FLOAT16, &resources.poolKeyTensor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) { CleanupTensorsOnly(resources, workspaceAddr); return ret; }
+    ret = CreateAclTensor(weightsData, weightsShape, &resources.weightsDeviceAddr,
+                          ACL_FLOAT16, &resources.weightsTensor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) { CleanupTensorsOnly(resources, workspaceAddr); return ret; }
+    ret = CreateAclTensor(poolTailKData, poolTailKShape, &resources.poolTailKDeviceAddr,
+                          ACL_INT32, &resources.poolTailKTensor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) { CleanupTensorsOnly(resources, workspaceAddr); return ret; }
+    ret = CreateAclTensor(sparseIndicesData, sparseIndicesShape, &resources.sparseIndicesDeviceAddr,
+                          ACL_INT32, &resources.sparseIndicesTensor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) { CleanupTensorsOnly(resources, workspaceAddr); return ret; }
+    ret = CreateAclTensor(sparseValuesData, sparseValuesShape, &resources.sparseValuesDeviceAddr,
+                          ACL_FLOAT, &resources.sparseValuesTensor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) { CleanupTensorsOnly(resources, workspaceAddr); return ret; }
+
+    // Execute: topk=128, poolSize=1, maskMode=0, quantMode=-1, returnValue=true
+    int64_t topk = 128;
+    int64_t poolSize = 1;
+    int64_t maskMode = 0;
+    int64_t quantMode = -1;
+    bool returnValue = true;
+    constexpr const char layoutStr[] = "BSND";
+    char layoutQuery[sizeof(layoutStr)];
+    char layoutKey[sizeof(layoutStr)];
+    errno_t memcpyRet = memcpy_s(layoutQuery, sizeof(layoutQuery), layoutStr, sizeof(layoutStr));
+    if (!CHECK_RET(memcpyRet == 0)) { CleanupTensorsOnly(resources, workspaceAddr); return -1; }
+    memcpyRet = memcpy_s(layoutKey, sizeof(layoutKey), layoutStr, sizeof(layoutStr));
+    if (!CHECK_RET(memcpyRet == 0)) { CleanupTensorsOnly(resources, workspaceAddr); return -1; }
+
+    aclOpExecutor* executor;
+    ret = aclnnPoolKeyIndexerGetWorkspaceSize(
+        resources.queryTensor, resources.poolKeyTensor,
+        resources.weightsTensor, resources.poolTailKTensor,
+        nullptr, nullptr, nullptr, nullptr, nullptr,
+        layoutQuery, layoutKey, topk, poolSize,
+        maskMode, quantMode, returnValue,
+        resources.sparseIndicesTensor, resources.sparseValuesTensor,
+        &workspaceSize, &executor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) { CleanupTensorsOnly(resources, workspaceAddr); return ret; }
+
+    if (workspaceSize > 0ULL) {
+        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        if (!CHECK_RET(ret == ACL_SUCCESS)) { CleanupTensorsOnly(resources, workspaceAddr); return ret; }
+    }
+    ret = aclnnPoolKeyIndexer(workspaceAddr, workspaceSize, executor, stream);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) { CleanupTensorsOnly(resources, workspaceAddr); return ret; }
+
+    ret = aclrtSynchronizeStream(stream);
+    CleanupTensorsOnly(resources, workspaceAddr);
+    return ret;
 }
 } // namespace
 
 int main() {
     int32_t deviceId = 0;
     aclrtStream stream = nullptr;
-    TensorResources resources = {};
-    void* workspaceAddr = nullptr;
-    uint64_t workspaceSize = 0;
 
     int ret = Init(deviceId, &stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) return ret;
-    ret = InitializeTensors(resources);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { CleanupResources(resources, workspaceAddr, stream, deviceId); return ret; }
-    ret = ExecutePoolKeyIndexer(resources, stream, &workspaceAddr, &workspaceSize);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { CleanupResources(resources, workspaceAddr, stream, deviceId); return ret; }
-    ret = aclrtSynchronizeStream(stream);
-    CleanupResources(resources, workspaceAddr, stream, deviceId);
+
+    // Original test: pool_size=16
+    {
+        TensorResources resources = {};
+        void* workspaceAddr = nullptr;
+        uint64_t workspaceSize = 0;
+        ret = InitializeTensors(resources);
+        if (!CHECK_RET(ret == ACL_SUCCESS)) { CleanupResources(resources, workspaceAddr, stream, deviceId); return ret; }
+        ret = ExecutePoolKeyIndexer(resources, stream, &workspaceAddr, &workspaceSize);
+        if (!CHECK_RET(ret == ACL_SUCCESS)) { CleanupResources(resources, workspaceAddr, stream, deviceId); return ret; }
+        ret = aclrtSynchronizeStream(stream);
+        CleanupTensorsOnly(resources, workspaceAddr);
+    }
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        if (stream) aclrtDestroyStream(stream);
+        aclrtResetDevice(deviceId);
+        aclFinalize();
+        return ret;
+    }
+
+    // Degraded scenario test: pool_size=1, quantMode=-1, maskMode=0, returnValue=true
+    ret = TestDegradedScenario(stream);
+
+    // Final cleanup
+    if (stream) aclrtDestroyStream(stream);
+    aclrtResetDevice(deviceId);
+    aclFinalize();
     return ret;
 }
