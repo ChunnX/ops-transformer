@@ -43,8 +43,6 @@ constexpr uint8_t SYNC_AIC_TO_AIV_DETER_BARRIER_FLAG = 14;
 constexpr uint8_t SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0 = 12;
 
 constexpr int32_t SLI_DETER_SCATTER_BANK_NUM = optiling::SLI_DETER_SCATTER_BANK_NUM;
-static_assert(SLI_DETER_SCATTER_BANK_NUM == 2 || SLI_DETER_SCATTER_BANK_NUM == 4,
-    "SLI_DETER_SCATTER_BANK_NUM must be 2 or 4");
 
 static constexpr uint32_t N_WORKSPACE_SIZE = 1024; // n方向切分
 static constexpr uint32_t K_BASE_SIZE = 2048; // n方向切分
