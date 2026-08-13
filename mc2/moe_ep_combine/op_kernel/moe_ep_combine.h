@@ -443,10 +443,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     uint32_t metaChunkTokens = (actualA_ < metaChunkTokenMax) ? actualA_ : metaChunkTokenMax;
     uint32_t metaChunkBytes = Ceil(metaChunkTokens * metaBytesPerToken, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(metadataBuf_, metaChunkBytes);
-    uint32_t weightChunkBytes = Ceil(metaChunkTokens * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
-    tpipe_->InitBuffer(weightsBuf_, weightChunkBytes);
+    if constexpr (HasTopkWeight == 1) {
+        uint32_t weightChunkBytes = Ceil(metaChunkTokens * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
+        tpipe_->InitBuffer(weightsBuf_, weightChunkBytes);
+    }
     LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
-    const DataCopyPadExtParams<int32_t> metaPadParams{false, 0U, 0U, 0U};
+    const DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
 
     for (uint64_t chunkStart = scanStart; chunkStart < scanEnd; chunkStart += metaChunkTokens) {
         uint64_t chunkEnd = (chunkStart + metaChunkTokens > scanEnd) ? scanEnd : (chunkStart + metaChunkTokens);
@@ -455,12 +457,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         LocalTensor<uint32_t> weightsForNotify;
         if constexpr (HasTopkWeight == 1) {
             weightsForNotify = weightsBuf_.Get<uint32_t>();
-            // 如果没有 32 对齐接口会自动对齐
-            DataCopy(weightsForNotify, topkWeightsGm_[chunkStart].template ReinterpretCast<uint32_t>(), metaChunkTokens);
+            DataCopyExtParams weightCopyParams{1U, curChunkTokens * sizeof(uint32_t), 0U, 0U, 0U};
+            DataCopyPad(weightsForNotify, topkWeightsGm_[chunkStart].template ReinterpretCast<uint32_t>(),
+                weightCopyParams, padParams);
         }
 
         DataCopyExtParams metaCopyParams{1U, curChunkTokens * metaBytesPerToken, 0U, 0U, 0U};
-        DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], metaCopyParams, metaPadParams);
+        DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], metaCopyParams, padParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
 
         for (uint32_t i = 0; i < curChunkTokens; ++i) {
