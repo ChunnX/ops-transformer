@@ -90,7 +90,7 @@ _LAYOUT_EXPECTED_NDIM = {
     "BNSD": 4,
     "PA_NZ": 5,
     "PA_BNBD": 4,
-    "N2TGD": 4,
+    "N2TGD": 5,
 }
 
 
