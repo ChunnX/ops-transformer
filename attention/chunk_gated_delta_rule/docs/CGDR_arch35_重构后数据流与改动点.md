@@ -12,29 +12,29 @@
 | R2 | 省略 QKPreprocess | AIV 将 Q/K 从 strided GM 搬入连续 WS (queryConGm_/keyConGm_)，AIC 从 WS 读 | AIC 直接从 strided GM 读取，通过 `SetOrgShape(M,N,K,Ka,Kb)` 指定行 stride | Stage1 AIV 删除 QKPreProcess；AIC matmul 1/2 改用 strided GM；删除 queryConGm_/keyConGm_ WS |
 | R3 | K 衰减系数移至 Stage2 | Stage1 计算 `k_cumdecay = A@(-k*beta*g_cum_exp)`，含 g_cum_exp | Stage1 输出 `kBetaInv = (beta*A*(-gamma))@K`，不含 g_cum_exp；Stage2 CalVPrime 后对 vInner 做 g_cum_exp 行缩放 | Stage1 GBKCompute → NegGammaMultiply+KgCompute；Stage2 新增 CastGmToGmWithScale/ScaleVInnerBf16 |
 | R4 | beta 改为 A 行缩放 | KKT 乘 beta (`attn = kk*beta`)，V 乘 beta (`v_beta = v*beta`) | KKT 不含 beta (`attn = kk`)，求逆后 `A_beta = beta[:,None]*A`，V 不乘 beta 直接用 | Stage1 KKBetaCompute 删 beta 乘法；InverseCompute 增 beta 行缩放；删除 VBetaCompute；AIC matmul 5 直接用原始 V |
-| R5 | -W 矩阵 | `k_cumdecay = A@(-k*beta*g_cum_exp)` | `kBetaInv = (beta*A*(-gamma))@K`，AIV 计算 `A_beta_neg_gamma = A_beta*(-gamma)` 写入 attnWs，AIC matmul `attnWs@K` | Stage1 新增 NegGammaMultiply；AIC matmul 4 右矩阵从 gBKWs 改为 strided K |
+| R5 | -W 矩阵 | `k_cumdecay = A@(-k*beta*g_cum_exp)` | `kBetaInv = (beta*A*(-gamma))@K`，AIV 计算 `A_beta_neg_gamma = A_beta*(-gamma)` 写入 attnWsNegGm_（独立 WS），AIC matmul `attnWsNegGm_@K` | Stage1 新增 NegGammaMultiply；AIC matmul 4 右矩阵从 gBKWs 改为 strided K；新增 attnWsNegGm_ WS |
 | R6 | Stage2/3 重算 cumsumg | Stage1 GCumExpCompute 将 gCum 写到 GM，Stage2/3 从 GM 读 | Stage1 不再输出 gCum 到 GM；Stage2 CalGCumExp* 从原始 g (T,Nv) 重算；Stage3 CalMaskedQKT 从原始 g 重算 | Stage1 GCumExpCompute 删 DataCopyPad；Stage2/3 新增 g 搬入+CumSum+Exp；主入口删 gCum_ GM 分配 |
-| R7 | AIC 步骤4/5 交换顺序 + 删除 kg_ | AIC 先 kBetaInv 后 vInner；Stage1 输出 kg_，Stage2 CalStateNew 用 kg_ | AIC 先 vInner (读 A_beta) 后 kBetaInv (读 A_beta_neg_gamma)；Stage1 删除 KgCompute/kg_ 输出；Stage2 CalStateNew 直接用原始 K (strided GM) | Stage1 AIC 交换 matmul 4/5；AIV 同步 flag 顺序调整；Stage2 v_new 行缩放合并 exp(g[-1])；CalStateNew 改用 strided K |
+| R7 | AIC 步骤4/5 顺序 + 删除 kg_ | Stage1 输出 kg_，Stage2 CalStateNew 用 kg_；AIC 先 kBetaInv 后 vInner | AIC 保持先 kBetaInv 后 vInner；A_beta_neg_gamma 写入独立 attnWsNegGm_ (不覆盖 attnWs 中的 A_beta)；Stage1 删除 KgCompute/kg_ 输出；Stage2 CalStateNew 直接用原始 K (strided GM) | Stage1 新增 attnWsNegGm_ WS (3个c*c)；Stage2 v_new 行缩放合并 exp(g[-1])；CalStateNew 改用 strided K |
 
 ---
 
 ## 1.1 R7 详细分析
 
-### 问题1: AIC 步骤4/5 顺序
+### 问题1: attnWs 覆盖 race condition
 
-**重构前（有 bug）：**
-- AIC 步骤4: `kBetaInv = A_beta_neg_gamma @ K` (读 attnWs, 此时是 A_beta_neg_gamma)
-- AIC 步骤5: `vInner = A_beta @ V` (读 attnWs, 但已被 NegGammaMultiply 覆盖为 A_beta_neg_gamma!)
+**初始重构方案（有 bug）：**
+- AIV `InverseCompute` 将 A_beta 写入 attnWs
+- AIV `NegGammaMultiply` 将 A_beta*(-gamma) 覆盖写入 attnWs（同一个 buffer）
+- AIC vInner 需读 attnWs 中的 A_beta，但已被 NegGammaMultiply 覆盖为 A_beta_neg_gamma
 
-**原因：** AIV 侧 `InverseCompute` 将 A_beta 存入 inverseRes_ (UB)，然后 `NegGammaMultiply` 将 A_beta*(-gamma) 写入 attnWs (GM)。但 AIC 步骤5需要读 attnWs 中的 A_beta，而此时 attnWs 已被覆盖。
+**尝试方案1（交换 AIC 步骤4/5顺序）：** AIC 先做 vInner（读 A_beta），后做 kBetaInv（读 A_beta_neg_gamma）。但 AIV 的 NegGammaMultiply 和 AIC 的 vInner 都读写 attnWs，仍存在并行 race condition，需要额外同步 flag（0xB/0xC），导致串行等待。
 
-**修复：交换 AIC 步骤4/5 顺序：**
-- AIC 步骤4 (先): `vInner = A_beta @ V` (读 attnWs, 此时是 A_beta, 由 InverseCompute 写入)
-- AIC 步骤5 (后): `kBetaInv = A_beta_neg_gamma @ K` (读 attnWs, 此时已被 NegGammaMultiply 覆盖)
-
-**AIV 同步顺序也需调整：**
-- InverseCompute 写 A_beta → attnWs → set 0x7 (求逆辅助) + set 0x5 (vInner)
-- NegGammaMultiply 覆盖 attnWs → set 0x6 (kBetaInv)
+**最终方案（独立 WS buffer）：**
+- `attnWsGm_`：存 A_beta（由 InverseCompute 写入，供 AIC vInner matmul 读）
+- `attnWsNegGm_`：存 A_beta_neg_gamma（由 NegGammaMultiply 写入，供 AIC kBetaInv matmul 读）
+- AIC 保持原始顺序：先 kBetaInv（读 attnWsNegGm_），后 vInner（读 attnWs_）
+- 两个 buffer 独立，无覆盖问题，无需额外同步 flag
+- WS 从 2 个 c*c 增加到 3 个 c*c（kkWs + attnWs + attnWsNeg）
 
 ### 问题2: 删除 kg_，Stage2 直接用 K
 
@@ -95,23 +95,24 @@ offset 1:  vInner_       FP32/BF16 [Nv][Sp][Dv]
 offset 2:  vInnerBf16_   BF16  [Nv][Sp][Dv]                    (FP32 path)
 offset 3:  qPrime_       BF16  [Nv][Sp][Dk]
 offset 4:  attnInter_    BF16  [Nv][Sp][Dv]
-offset 5:  kg_           BF16  [Nv][Sp][Dk]
-offset 6:  qkt_          BF16  [Nv][Sp][C]
-offset 7:  curStateBf16_ BF16  [Nv][Dv][Dk]                    (FP32 path)
-offset 8:  stageOneMask_ FP32  [coreNum*2][C][C]
-offset 9:  stageThreeMask_ FP32 [coreNum*2][C][C]
-offset 10: stageWsAddr_  → kkWs/attnWs (仅 2 个 WS buffer)
+offset 5:  qkt_          BF16  [Nv][Sp][C]
+offset 6:  curStateBf16_ BF16  [Nv][Dv][Dk]                    (FP32 path)
+offset 7:  stageOneMask_ FP32  [coreNum*2][C][C]
+offset 8:  stageThreeMask_ FP32 [coreNum*2][C][C]
+offset 9:  stageWsAddr_  → kkWs/attnWs/attnWsNeg (3 个 WS buffer)
 ```
 
 **GM workspace 削减：**
 - 删除 `gCum_` (FP32 × Nv × Sp) — R6
+- 删除 `kg_` (BF16 × Nv × Sp × Dk) — R7
 - 删除 `queryConGm_` / `keyConGm_` (BF16 × C × Dk × P × coreNum) — R2
 - 删除 `vBetaWsGm_` (BF16 × C × Dv × P × coreNum) — R4
 - 删除 `gBKWsGm_` (BF16 × C × Dk × P × coreNum) — R5
+- 新增 `attnWsNegGm_` (BF16 × C × C × P × coreNum) — R7（独立 WS 避免 attnWs 覆盖）
 
 **stageWorkspaceSz 变化：**
 - 重构前：`sizeLow * C * (2*C + 3*Dk + Dv) * P * coreNum`（6 个 WS buffer）
-- 重构后：`sizeLow * C * (2*C) * P * coreNum`（2 个 WS buffer：kkWs + attnWs）
+- 重构后：`sizeLow * C * (3*C) * P * coreNum`（3 个 WS buffer：kkWs + attnWs + attnWsNeg）
 
 ---
 
@@ -144,24 +145,18 @@ for i in [0, curParaNum):
     // R4: attn = kk (仅 Cast, 不乘 beta)
     KKBetaCompute(kkWs_[i*C*C])
     // 求逆: A = (I + kk*gamma)^{-1}  [不含 beta]
-    // R4: A_beta = beta[:,None] * A (行缩放), 存入 inverseRes_
+    // R4: A_beta = beta[:,None] * A (行缩放) → 写入 attnWs (GM)
     InverseCompute(attnWs_[i*C*C], gammaUB, betaUB[i*H])
-    CrossCoreSetFlag<PIPE_MTE3>(0x7)                        // → AIC: 求逆完成
-
-// ============ 步骤 4: NegGammaMultiply (R5: A_beta * (-gamma) → attnWs) ============
-for i in [0, curParaNum):
-    // R5: A_beta_neg_gamma = A_beta * (-gamma) → Cast BF16 → attnWs (GM)
-    NegGammaMultiply(attnWs_[i*C*C], gammaUB)
-    CrossCoreSetFlag<PIPE_MTE3>(0x6)                        // → AIC: A_beta_neg_gamma 就绪
-
-// ============ 步骤 5: kg (R5: 从 strided GM 读 K) ============
-for i in [0, curParaNum):
-    // kg = k * exp(g_cum[-1] - g_cum)
-    // K 从 strided GM 读取 (不再从 keyConGm_)
-    KgCompute(outKgGm, gCumSumUB[i*C], chunkStartRow[i], nId[i])
+    CrossCoreSetFlag<PIPE_MTE3>(0x7)                        // → AIC: 求逆完成, 可做辅助 matmul
     CrossCoreSetFlag<PIPE_MTE3>(0x5)                        // → AIC: A_beta 就绪, 可做 vInner
 
-// ============ 步骤 6: q_prime (R2: 从 strided GM 读 Q) ============
+// ============ 步骤 4: NegGammaMultiply (R5: A_beta * (-gamma) → attnWsNegGm_) ============
+for i in [0, curParaNum):
+    // R5: A_beta_neg_gamma = A_beta * (-gamma) → Cast BF16 → attnWsNegGm_ (独立 WS, 不覆盖 attnWs)
+    NegGammaMultiply(attnWsNegGm_[i*C*C], gammaUB)
+    CrossCoreSetFlag<PIPE_MTE3>(0x6)                        // → AIC: A_beta_neg_gamma 就绪
+
+// ============ 步骤 5: q_prime (R2: 从 strided GM 读 Q) ============
 for i in [0, curParaNum):
     // q_prime = query * scale * g_cum_exp[:,None]
     // Q 从 strided GM 读取 (不再从 queryConGm_)
@@ -195,21 +190,21 @@ for i in [0, curParaNum):
     CrossCoreWaitFlag(0x7)                                  // ← AIV: 求逆完成
     AttnInverseMMCompute(i * C*C)
 
-// ============ matmul 4: kBetaInv = A_beta_neg_gamma @ K (R3/R5) ============
+// ============ matmul 4: kBetaInv = A_beta_neg_gamma @ K (R3/R5: 读 attnWsNegGm_) ============
 for i in [0, curParaNum):
     CrossCoreWaitFlag(0x6)                                  // ← AIV: NegGammaMultiply 完成
     qk_base = chunkStartRow[i] * Nk*Dk + nId[i] * (Nk/Nv)*Dk
-    // A=attnWs(A_beta_neg_gamma, C,C), B=keyGm(C,Dk) stride=Nk*Dk
-    AICProcess(mmBf16_, attnWs[i*C*C], keyGm_[qk_base], kCumDecayGm[...],
+    // A=attnWsNegGm_(A_beta_neg_gamma, C,C), B=keyGm(C,Dk) stride=Nk*Dk
+    AICProcess(mmBf16_, attnWsNegGm_[i*C*C], keyGm_[qk_base], kCumDecayGm[...],
                {M=C, N=Dk, K=C, Ka=0, Kb=Nk*Dk})
     // 输出: kBetaInv = (beta*A*(-gamma))@K → GM kCumDecay_ (不含 g_exp)
 
-// ============ matmul 5: vInner = A_beta @ V (R4: 直接用原始 V) ============
+// ============ matmul 5: vInner = A_beta @ V (R4: 读 attnWs_, 直接用原始 V) ============
 for i in [0, curParaNum):
     CrossCoreWaitFlag(0x5)                                  // ← AIV: A_beta 就绪
     vOffset = chunkStartRow[i] * (Nv*Dv) + nId[i]*Dv
-    // A=attnWs(A_beta, C,C), B=valueGm(C,Dv) stride=Nv*Dv
-    AICProcess(mmVInner_, attnWs[i*C*C], valueGm_[vOffset], vInnerGm[...],
+    // A=attnWs_(A_beta, C,C), B=valueGm(C,Dv) stride=Nv*Dv
+    AICProcess(mmVInner_, attnWs_[i*C*C], valueGm_[vOffset], vInnerGm[...],
                {M=C, N=Dv, K=C, Ka=0, Kb=Nv*Dv})
     // 输出: vInner = A_beta @ V (V 不含 beta) → GM vInner_
 ```
@@ -226,11 +221,20 @@ SetFlag(0x9) ──────────────────────�
                                             SetFlag(0x8) ──────────→ WaitFlag(0x8)
 KKBetaCompute (读 kkWs, 不乘 beta)
 InverseCompute (求逆 + R4 beta 行缩放)
+A_beta 写入 attnWs
 SetFlag(0x7) ─────────────────────────→   WaitFlag(0x7)
-                                            AttnInverseMMCompute
-[R5: NegGammaMultiply]
-A_beta *= (-gamma) → attnWs
+SetFlag(0x5)                              AttnInverseMMCompute
+[R5: NegGammaMultiply → attnWsNegGm_]
+A_beta_neg_gamma = A_beta * (-gamma)
+→ 写入 attnWsNegGm_ (不覆盖 attnWs)
 SetFlag(0x6) ─────────────────────────→   WaitFlag(0x6)
+                                            kBetaInv = attnWsNegGm_ @ K(strided GM)
+                                          WaitFlag(0x5)
+                                            vInner = attnWs_(A_beta) @ V(strided GM)
+                                            QKT matmul (strided GM)
+                                            SetFlag(0xA) ──────────→ WaitFlag(0xA)
+QPrimeCompute (从 strided GM 读 Q)
+```
                                             kBetaInv = attnWs @ K(strided GM)
 KgCompute (从 strided GM 读 K)
 SetFlag(0x5) ─────────────────────────→   WaitFlag(0x5)
@@ -248,7 +252,7 @@ QPrimeCompute (从 strided GM 读 Q)
 | kCumDecay_ | `A@(-k*beta*g_exp)` | `(beta*A*(-gamma))@K` (kBetaInv) | R3/R5: 不含 g_exp |
 | vInner_ | `A@(v*beta)` | `(beta*A)@V` (A_beta@V) | R4: V 不含 beta |
 | qPrime_ | `q*scale*g_exp` (从 queryConGm 读 Q) | 不变 (从 strided GM 读 Q) | R2: Q 来源变更 |
-| kg_ | `k*exp(g[-1]-g_cum)` (从 keyConGm 读 K) | 不变 (从 strided GM 读 K) | R2: K 来源变更 |
+| kg_ | `k*exp(g[-1]-g_cum)` | **不输出** | R7 删除 |
 | qkt_ | `Q@K^T` (从 queryConGm/keyConGm) | 不变 (从 strided GM) | R2: Q/K 来源变更 |
 
 ---
@@ -330,12 +334,12 @@ ProcessAic(nvId, cId, length):
     CrossCoreWaitFlag(0x5)                                   // ← AIV: vInnerBf16/vInner 缩放完成
 
     if FP32 path:
-        // CalStateNew 用 vInnerBf16 (已含 g_exp 缩放)
-        CalStateNew(vInnerBf16[mm_offset1], kg[mm_offset0], stateOut)
+        // R7: CalStateNew 用 vInnerBf16 (已含 g_exp*exp(g[-1]) 缩放) + 原始 K (strided GM)
+        CalStateNew(vInnerBf16[mm_offset1], keyGm, cgStartPos, length, nvId, stateOut)
     else:
-        // BF16 path: 等 AIV 完成 g_exp 缩放
+        // BF16 path: 等 AIV 完成 g_exp*exp(g[-1]) 缩放
         CrossCoreWaitFlag(0x7)                               // ← AIV: ScaleVInnerBf16 完成 (R3 新增)
-        CalStateNew(vInner[mm_offset1], kg[mm_offset0], stateOut)
+        CalStateNew(vInner[mm_offset1], keyGm, cgStartPos, length, nvId, stateOut)
         FIX_MTE2 同步
 
     CrossCoreSetFlag<PIPE_FIX>(0x4)                         // → AIV: state 更新完成
@@ -449,7 +453,8 @@ AICProcess(tmpGM, vInner, attnInter):
 | ~~gBKWsGm_~~ | ~~BF16~~ | ~~P×C×Dk~~ | ~~AIV~~ | ~~AIC~~ | **R5 删除** |
 | ~~vBetaWsGm_~~ | ~~BF16~~ | ~~P×C×Dv~~ | ~~AIV~~ | ~~AIC~~ | **R4 删除** |
 | kkWsGm_ | BF16 | P×C×C | AIC matmul 1 | AIV KKBetaCompute | 不变 (布局从 ckOffset 改为 ccOffset) |
-| attnWsGm_ | BF16 | P×C×C | AIV NegGammaMultiply | AIC matmul 3/4/5 | R5: 存 A_beta_neg_gamma (重构前存 A) |
+| attnWsGm_ | BF16 | P×C×C | AIV InverseCompute | AIC matmul 3/5 (求逆辅助+vInner) | R4: 存 A_beta (重构前存 A) |
+| attnWsNegGm_ | BF16 | P×C×C | AIV NegGammaMultiply | AIC matmul 4 (kBetaInv) | R5/R7: 新增, 存 A_beta_neg_gamma (独立 WS 避免覆盖) |
 
 ### 6.3 UB 层新增/变更
 
@@ -487,7 +492,7 @@ AICProcess(tmpGM, vInner, attnInter):
 | v_new | `v_inner + v_prime` | `v_inner + v_prime` (v_inner 不含 g_exp, v_prime 含) | R3 |
 | state 衰减 | `state *= exp(gCum[-1])` | `state *= exp(g_cum[-1])` (从重算 g_cum) | R6 |
 | attn_inter | `q_prime @ state^T` | 不变 | — |
-| state_new | `v_new^T @ kg` | 不变 | — |
+| state_new | `v_new^T @ kg` | `v_new^T @ K` (v_new 含 g_exp*exp(g[-1]) 缩放, K 从 strided GM 读) | R7 |
 
 ### 7.3 Stage3 核心计算
 
@@ -517,22 +522,22 @@ AICProcess(tmpGM, vInner, attnInter):
     │    attn = kk (R4: 不含 beta)                   │
     │    A = (I + kk*gamma)^{-1} (求逆)              │  ← R4
     │    A_beta = beta[:,None] * A (行缩放)           │  ← R4
-    │    SetFlag(0x7) → AIC                          │
-    │    A_beta_neg_gamma = A_beta * (-gamma) → GM   │  ← R5
+    │    A_beta → attnWs (GM)                        │
+    │    SetFlag(0x7+0x5) → AIC                      │
+    │    A_beta_neg_gamma = A_beta * (-gamma)        │  ← R5
+    │    → attnWsNegGm_ (独立 WS, 不覆盖 attnWs)     │
     │    SetFlag(0x6) → AIC                          │
-    │    kg = k * exp(g[-1]-g_cum) (strided GM 读 K) │  ← R2/R5
-    │    SetFlag(0x5) → AIC                          │
     │    q_prime = q * scale * g_exp (strided GM 读 Q)│  ← R2
     │                                               │
     │  AIC:                                         │
     │    KKT = K@K^T (strided GM, Ka=Nk*Dk)         │  ← R2
     │    QKT = Q@K^T (strided GM)                    │  ← R2
-    │    求逆辅助 matmul                              │
-    │    kBetaInv = A_beta_neg_gamma @ K (strided)   │  ← R3/R5
-    │    vInner = A_beta @ V (strided GM, V 不含 beta)│  ← R4
+    │    求逆辅助 matmul (读 attnWs)                  │
+    │    kBetaInv = attnWsNegGm_ @ K (strided)       │  ← R3/R5
+    │    vInner = attnWs_(A_beta) @ V (strided)      │  ← R4
     │                                               │
-    │  输出: kBetaInv, vInner, qPrime, kg, qkt       │
-    │  (不输出 gCum)                                 │  ← R6
+    │  输出: kBetaInv, vInner, qPrime, qkt           │
+    │  (不输出 gCum, 不输出 kg)                      │  ← R6/R7
     └───────────────┬───────────────────────────────┘
                     │
     ┌───────────────┼───────────────────────────────┐
@@ -543,7 +548,7 @@ AICProcess(tmpGM, vInner, attnInter):
     │    state *= exp(g_cum[-1])                     │
     │    SetFlag(0x3) → AIC                          │
     │    WaitFlag(0x2) ← AIC                         │
-    │    vInner *= g_cum_exp (行缩放)                │  ← R3
+    │    vInner *= g_cum_exp * exp(g[-1]) (行缩放)   │  ← R3+R7
     │    SetFlag(0x5/0x7) → AIC                      │
     │                                               │
     │  AIC:                                         │
@@ -551,7 +556,7 @@ AICProcess(tmpGM, vInner, attnInter):
     │    attn_inter = qPrime @ state^T               │
     │    SetFlag(0x2/0x6) → AIV                      │
     │    WaitFlag(0x5/0x7) ← AIV                     │
-    │    state_new = v_new^T @ kg (accum=1)          │
+    │    state_new = v_new^T @ K (strided GM, accum=1)│  ← R7
     └───────────────┬───────────────────────────────┘
                     │
     ┌───────────────┼───────────────────────────────┐
