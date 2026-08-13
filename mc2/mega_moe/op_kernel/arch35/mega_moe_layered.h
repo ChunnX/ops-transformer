@@ -428,6 +428,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     sendWorkspaceServerBytes_ = static_cast<uint64_t>(ALIGN_32) + static_cast<uint64_t>(m_) * sendWorkspaceMetaBytes_;
     uint64_t flagSnapshotBytes = static_cast<uint64_t>(m_) * sizeof(uint64_t);
     dispatchL2ScratchBytes_ = Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<uint64_t>(ALIGN_512));
+    TIMER_BLOCK(
+        if (timerAddr != nullptr) {
+            SyncAll<false>();
+        }
+    );
+    TIMER_BLOCK(kernelTimer_.Tik());
+    TIMER_BLOCK(timer_.Tik());
 }
 
 // =================================================================================================
@@ -2574,15 +2581,27 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSh
 template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
 {
-    TIMER_BLOCK(kernelTimer_.Tik());
-    TIMER_BLOCK(timer_.Tik());
+    TIMER_BLOCK(if (timer_.IsAiv0() || timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_INIT_PARAM); });
     // 1.本卡数据处理
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     SendAndQuantBuffInit();
+    TIMER_BLOCK(if (timer_.IsAiv0() || timer_.IsAiv1()) { timer_.Tik(); });
     SendMaskCal();        // 源卡按所有全局专家算 mask 并推送到目标专家卡
+    TIMER_BLOCK(
+        if (timer_.IsAiv0() || timer_.IsAiv1()) {
+            timer_.Tok(AscendTimer::AIV_INITROUTING_SORT);
+            timer_.Tik();
+        }
+    );
     ResetFlagList();      // 清理workSpace空间上的flag位
     ResetDispatchState(); // cross-server URMA dispatch 队列与 relay ready flag 清零
+    TIMER_BLOCK(
+        if (timer_.IsAiv0() || timer_.IsAiv1()) {
+            timer_.Tok(AscendTimer::AIV_INITROUTING_EXPERT_TOKEN_COUNT);
+            timer_.Tik();
+        }
+    );
     if (sharedExpertNum_ > 0) {
         SharedExpertCopyInput();
     }
@@ -2590,7 +2609,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
     }
     SyncAll<false>(); // aic需要等待flag位reset清理完成
-    TIMER_BLOCK(timer_.Tok(AscendTimer::INPUT_PREP_TIMING_IDX));
+    TIMER_BLOCK(
+        if (timer_.IsAiv0() || timer_.IsAiv1()) {
+            timer_.Tok(AscendTimer::AIV_INITROUTING_GATHEROUT_QUANT);
+        }
+    );
 
     // 共享专家 GMM1+SwiGLU (前移, 在 MoE 之前执行, 复用 MoE 函数)
     TupleShape initShape;
@@ -2599,18 +2622,31 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     int32_t gmTileSequence = 0; // Specialized A8W4/A4W4 AIC-AIV1 GM tile ready sequence.
     if (sharedExpertNum_ > 0) {
-        TIMER_BLOCK(timer_.Tik());
         ProcessSharedExpertGmm1(initShape, initOffset, gmTileSequence);
-        TIMER_BLOCK(timer_.Tok(AscendTimer::SHARED_GMM1_TIMING_IDX));
         SyncAll<false>();
     }
 
-    TIMER_BLOCK(timer_.Tik());
+    TIMER_BLOCK(if (timer_.IsAiv0() || timer_.IsAiv1()) { timer_.Tik(); });
+    TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tik(); });
     CrossRankSyncInWorldSize();
-    TIMER_BLOCK(timer_.Tok(AscendTimer::CROSS_RANK_TIMING_IDX));
+    TIMER_BLOCK(if (timer_.IsAiv0() || timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_ALLGATHER); });
+    TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tok(AscendTimer::AIC_WAIT_ALLGATHER); });
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
-    TIMER_BLOCK(timer_.Tik());
+    TIMER_BLOCK(
+        if (timer_.IsAiv1()) {
+            timer_.SetDynamicActualIter(AscendTimer::AIV_DISPATCH, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIV_SWIGLU_WAIT, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIV_SWIGLU, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIV_COMBINE_WAIT, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIV_COMBINE, moeExpertPerRank_);
+        } else if (timer_.IsAic()) {
+            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM1_WAIT, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM1, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM2_WAIT, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM2, moeExpertPerRank_);
+        }
+    );
     DispatchBuffInit();
     GMMAddrInfo dispatchAddrInfo;
     GMMAddrInfo gmm1AddrInfo;
@@ -2628,12 +2664,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     // 预调度 expert 0。
     if constexpr (g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
+            TIMER_BLOCK(timer_.Tik(AscendTimer::AIV_DISPATCH, 0));
             DispatchTokenToRmtServer(0);
             SendCntCal(0, nextSendCnt);
             if (UpdateGroupParams<AddrUpdateMode::GMM1>(dispatchState, 0, nextSendCnt)) {
                 UpdateGlobalBuffer<AddrUpdateMode::GMM1>(dispatchAddrInfo, dispatchState);
                 MetaInfoCalAndDispatch(dispatchAddrInfo, 0);
             }
+            TIMER_BLOCK(timer_.Tok(AscendTimer::AIV_DISPATCH, 0));
         }
     }
 
@@ -2643,12 +2681,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
         // Prefetch dispatch expert e+1，与当前 GMM1 consumer expert e 并发。
         if constexpr (g_coreType == AIV) {
             if (subBlockIdx_ == 1 && localExpertId + 1 < moeExpertPerRank_) {
+                TIMER_BLOCK(timer_.Tik(AscendTimer::AIV_DISPATCH, localExpertId + 1));
                 DispatchTokenToRmtServer(localExpertId + 1);
                 SendCntCal(localExpertId + 1, nextSendCnt);
                 if (UpdateGroupParams<AddrUpdateMode::GMM1>(dispatchState, localExpertId + 1, nextSendCnt)) {
                     UpdateGlobalBuffer<AddrUpdateMode::GMM1>(dispatchAddrInfo, dispatchState);
                     MetaInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
                 }
+                TIMER_BLOCK(timer_.Tok(AscendTimer::AIV_DISPATCH, localExpertId + 1));
             }
         }
 
@@ -2657,7 +2697,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State);
+        TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tik(AscendTimer::AIC_GMM1, localExpertId); });
+        TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tik(AscendTimer::AIV_SWIGLU, localExpertId); });
         GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State, localExpertId, vecSetSyncCom, gmTileSequence);
+        TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tok(AscendTimer::AIC_GMM1, localExpertId); });
+        TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_SWIGLU, localExpertId); });
     }
     if constexpr (TopkWeightsPrefetch) {
         if constexpr (g_coreType == AIV) {
@@ -2699,20 +2743,23 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State);
+        TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tik(AscendTimer::AIC_GMM2, expertIdx); });
+        TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tik(AscendTimer::AIV_COMBINE, expertIdx); });
         GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx, gmTileSequence);
+        TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tok(AscendTimer::AIC_GMM2, expertIdx); });
+        TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_COMBINE, expertIdx); });
     }
-    TIMER_BLOCK(timer_.Tok(AscendTimer::MOE_EXPERT_TIMING_IDX));
 
     if constexpr (g_coreType == AIV) {
+        TIMER_BLOCK(timer_.Tik());
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+        TIMER_BLOCK(timer_.Tok(AscendTimer::AIV_WAIT_COMB));
     }
 
     // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
     if (sharedExpertNum_ > 0) {
-        TIMER_BLOCK(timer_.Tik());
         ProcessSharedExpertGmm2(initShape, initOffset, gmTileSequence);
-        TIMER_BLOCK(timer_.Tok(AscendTimer::SHARED_GMM2_TIMING_IDX));
     }
 
     // 4. 本卡数据Unpermute
@@ -2720,10 +2767,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
         UnpermuteBuffInit();
         TIMER_BLOCK(timer_.Tik());
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
-        TIMER_BLOCK(timer_.Tok(AscendTimer::PRE_UNPERMUTE_SYNC_TIMING_IDX));
+        TIMER_BLOCK(timer_.Tok(AscendTimer::AIV_UNPERMUTE_WAIT));
         TIMER_BLOCK(timer_.Tik());
         Unpermute();
-        TIMER_BLOCK(timer_.Tok(AscendTimer::UNPERMUTE_TIMING_IDX));
+        TIMER_BLOCK(timer_.Tok(AscendTimer::AIV_UNPERMUTE));
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
     TIMER_BLOCK(kernelTimer_.Tok(AscendTimer::KERNEL_TIMING_IDX));

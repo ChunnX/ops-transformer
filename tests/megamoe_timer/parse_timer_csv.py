@@ -7,13 +7,15 @@ from timer_path import resolve_timer_dir
 
 FIXED_NAMES = [
     "KERNEL_TIMING",
-    "INPUT_PREP",
-    "SHARED_GMM1",
-    "CROSS_RANK",
-    "MOE_EXPERT",
-    "SHARED_GMM2",
-    "PRE_UNPERMUTE_SYNC",
-    "UNPERMUTE",
+    "AIV_INIT_PARAM",
+    "AIV_INITROUTING_SORT",
+    "AIV_INITROUTING_EXPERT_TOKEN_COUNT",
+    "AIV_INITROUTING_GATHEROUT_QUANT",
+    "AIV_ALLGATHER",
+    "AIV_WAIT_COMB",
+    "AIV_UNPERMUTE_WAIT",
+    "AIV_UNPERMUTE",
+    "AIC_WAIT_ALLGATHER",
 ]
 DYNAMIC_NAMES = [
     "AIV_DISPATCH",
@@ -49,7 +51,8 @@ def load_values(path: Path):
 
 def core_info(core_id):
     group_id, slot = divmod(core_id, CORES_PER_GROUP)
-    return group_id, ("AIC" if slot == 0 else "AIV"), (0 if slot == 0 else slot - 1)
+    core_type = "AIC" if slot == 0 else f"AIV{slot - 1}"
+    return group_id, core_type, (0 if slot == 0 else slot - 1)
 
 
 def event_names(iter_values):

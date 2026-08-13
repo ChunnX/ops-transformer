@@ -373,6 +373,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     InitGmm2CombineConfigs(commonConfig, dispatchFlagSlotsPerExpert);
     InitCombineBuffers();
     InitTokenUnpermuteConfig(commonConfig);
+    TIMER_BLOCK(
+        if (timerAddr != nullptr) {
+            SyncAll<false>();
+        }
+    );
+    TIMER_BLOCK(kernelTimer_.Tik());
+    TIMER_BLOCK(timer_.Tik());
 }
 
 // 普通模板 Token Dispatch 使用的 UB/GM 视图。
@@ -697,10 +704,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(int32_t &gmTileSequence)
 {
-    TIMER_BLOCK(timer_.SetDynamicActualIter(AscendTimer::AIV_DISPATCH, moeExpertPerRank_));
-    TIMER_BLOCK(timer_.SetDynamicActualIter(AscendTimer::AIV_COMBINE, moeExpertPerRank_));
-    TIMER_BLOCK(timer_.SetDynamicActualIter(AscendTimer::AIC_GMM1, moeExpertPerRank_));
-    TIMER_BLOCK(timer_.SetDynamicActualIter(AscendTimer::AIC_GMM2, moeExpertPerRank_));
+    TIMER_BLOCK(
+        if (timer_.IsAiv1()) {
+            timer_.SetDynamicActualIter(AscendTimer::AIV_DISPATCH, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIV_SWIGLU_WAIT, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIV_SWIGLU, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIV_COMBINE_WAIT, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIV_COMBINE, moeExpertPerRank_);
+        } else if (timer_.IsAic()) {
+            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM1_WAIT, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM1, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM2_WAIT, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM2, moeExpertPerRank_);
+        }
+    );
     DispatchBuffInit();
     gmm1SwigluScratch_.expertRevNumsGlobalTensor.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.expertRevTokenNumsPtr));
@@ -714,27 +731,29 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(
     uint64_t currentSendCnt = 0U;
     uint64_t nextSendCnt = 0U;
 
-    TIMER_BLOCK(timer_.Tik(AscendTimer::AIV_DISPATCH, 0));
+    TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tik(AscendTimer::AIV_DISPATCH, 0); });
     RunMoeExpertDispatchStage<ActivationType, QuantScaleOutType, ENABLE_A8W4, GMM1_TILE_M,
                               TopkWeightsPrefetch>(
         tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_, 0U, nextSendCnt);
-    TIMER_BLOCK(timer_.Tok(AscendTimer::AIV_DISPATCH, 0));
+    TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_DISPATCH, 0); });
     for (uint32_t expertIdx = 0U; expertIdx < gmm1Config_.common.moeExpertPerRank; ++expertIdx) {
         currentSendCnt = nextSendCnt;
         if (expertIdx + 1U < gmm1Config_.common.moeExpertPerRank) {
-            TIMER_BLOCK(timer_.Tik(AscendTimer::AIV_DISPATCH, expertIdx + 1U));
+            TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tik(AscendTimer::AIV_DISPATCH, expertIdx + 1U); });
             RunMoeExpertDispatchStage<ActivationType, QuantScaleOutType, ENABLE_A8W4, GMM1_TILE_M,
                                       TopkWeightsPrefetch>(
                 tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx + 1U, nextSendCnt);
-            TIMER_BLOCK(timer_.Tok(AscendTimer::AIV_DISPATCH, expertIdx + 1U));
+            TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_DISPATCH, expertIdx + 1U); });
         }
-        TIMER_BLOCK(timer_.Tik(AscendTimer::AIC_GMM1, expertIdx));
+        TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tik(AscendTimer::AIC_GMM1, expertIdx); });
+        TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tik(AscendTimer::AIV_SWIGLU, expertIdx); });
         RunMoeExpertGmm1SwigluStage<QuantOutType, ActivationType, Weight1Type, SwigluQuantOutType,
                                     QuantScaleOutType, ENABLE_A8W4, GMM1_TILE_M, EPILOGUE_TILE_M,
                                     TopkWeightsPrefetch, false, false>(
             gmm1Config_, params_, moeWeightTensorListAddrs_, epilogueOp_, gmm1SwigluScratch_, gmm1State, gmm1AddrInfo,
             gmm1RuntimeState, expertIdx, currentSendCnt);
-        TIMER_BLOCK(timer_.Tok(AscendTimer::AIC_GMM1, expertIdx));
+        TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tok(AscendTimer::AIC_GMM1, expertIdx); });
+        TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_SWIGLU, expertIdx); });
     }
     FinishMoeGmm1SwigluStage<ENABLE_A8W4, TopkWeightsPrefetch>(
         gmm1Config_, params_.workspaceInfo, gmm1RuntimeState);
@@ -770,18 +789,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(
                                           gmm2State, gmm2AddrInfo, expertIdx)) {
             continue;
         }
-        TIMER_BLOCK(timer_.Tik(AscendTimer::AIC_GMM2, expertIdx));
+        TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tik(AscendTimer::AIC_GMM2, expertIdx); });
         RunMoeExpertGmm2Stage<CombineQuantMode, QuantOutType, SwigluQuantOutType,
                               Weight1Type, QuantScaleOutType, ENABLE_A8W4, ENABLE_A4W4,
                               GMM1_TILE_M, TopkWeightsPrefetch, false, false>(
             gmm2Config_, params_, gmm2AddrInfo, gmm2State, gmm2RuntimeState);
-        TIMER_BLOCK(timer_.Tok(AscendTimer::AIC_GMM2, expertIdx));
-        TIMER_BLOCK(timer_.Tik(AscendTimer::AIV_COMBINE, expertIdx));
+        TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tok(AscendTimer::AIC_GMM2, expertIdx); });
+        TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tik(AscendTimer::AIV_COMBINE, expertIdx); });
         ScheduleQuantizedMoeExpertCombine<CombineQuantMode>(
             quantCombineConfig_, quantCombineBufferConfig_, params_, gmm2AddrInfo,
             static_cast<uint32_t>(Get<M_VALUE>(gmm2State.problemShape)),
             gmm2State.expertBeforeCnt, expertIdx);
-        TIMER_BLOCK(timer_.Tok(AscendTimer::AIV_COMBINE, expertIdx));
+        TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_COMBINE, expertIdx); });
     }
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         EndGMM2Sync(gmm2RuntimeState.vecSetSyncCom, gmm2RuntimeState.pingpongIdx);
@@ -791,17 +810,25 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
-    TIMER_BLOCK(kernelTimer_.Tik());
-    TIMER_BLOCK(timer_.Tik());
+    TIMER_BLOCK(if (timer_.IsAiv0() || timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_INIT_PARAM); });
     // 1.本卡数据处理
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     SendAndQuantBuffInit();
 
     // Phase 1: 量化 + 共享专家输入拆分 + mask/reset (AIV)
+    TIMER_BLOCK(if (timer_.IsAiv0() || timer_.IsAiv1()) { timer_.Tik(); });
     QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
         dispatchPrepareConfig_, params_, quantProcessConfig_, quantScratch_);
+    TIMER_BLOCK(if (timer_.IsAiv0() || timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_INITROUTING_SORT); });
+    TIMER_BLOCK(if (timer_.IsAiv0() || timer_.IsAiv1()) { timer_.Tik(); });
     GatherAndSendExpertMasks(dispatchPrepareConfig_, params_, winRankAddr_, sendMaskConfig_, sendMaskScratch_);
+    TIMER_BLOCK(
+        if (timer_.IsAiv0() || timer_.IsAiv1()) {
+            timer_.Tok(AscendTimer::AIV_INITROUTING_EXPERT_TOKEN_COUNT);
+        }
+    );
+    TIMER_BLOCK(if (timer_.IsAiv0() || timer_.IsAiv1()) { timer_.Tik(); });
     ResetDispatchWorkspace<TopkWeightsPrefetch>(
         dispatchPrepareConfig_, params_, resetWorkspaceConfig_, resetTensor_);
     if (sharedExpertNum_ > 0) {
@@ -812,45 +839,47 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
     }
     SyncAll<false>(); // aic需要等待flag位reset清理完成
-    TIMER_BLOCK(timer_.Tok(AscendTimer::INPUT_PREP_TIMING_IDX));
+    TIMER_BLOCK(
+        if (timer_.IsAiv0() || timer_.IsAiv1()) {
+            timer_.Tok(AscendTimer::AIV_INITROUTING_GATHEROUT_QUANT);
+        }
+    );
 
     int32_t gmTileSequence = 0;
     if (sharedExpertNum_ > 0) {
-        TIMER_BLOCK(timer_.Tik());
         ProcessSharedExpertGmm1(gmTileSequence);
-        TIMER_BLOCK(timer_.Tok(AscendTimer::SHARED_GMM1_TIMING_IDX));
     }
 
-    TIMER_BLOCK(timer_.Tik());
+    TIMER_BLOCK(if (timer_.IsAiv0() || timer_.IsAiv1()) { timer_.Tik(); });
+    TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tik(); });
     CrossRankSyncInWorldSize();
-    TIMER_BLOCK(timer_.Tok(AscendTimer::CROSS_RANK_TIMING_IDX));
+    TIMER_BLOCK(if (timer_.IsAiv0() || timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_ALLGATHER); });
+    TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tok(AscendTimer::AIC_WAIT_ALLGATHER); });
 
     // 2. MoE 专家 Dispatch -> GMM1/SwiGLU -> GMM2/Combine。
-    TIMER_BLOCK(timer_.Tik());
     ProcessMoeExpertStages(gmTileSequence);
-    TIMER_BLOCK(timer_.Tok(AscendTimer::MOE_EXPERT_TIMING_IDX));
 
     if constexpr (g_coreType == AIV) {
+        TIMER_BLOCK(timer_.Tik());
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+        TIMER_BLOCK(timer_.Tok(AscendTimer::AIV_WAIT_COMB));
     }
 
     if (sharedExpertNum_ > 0) {
-        TIMER_BLOCK(timer_.Tik());
         ProcessSharedExpertGmm2(gmTileSequence);
-        TIMER_BLOCK(timer_.Tok(AscendTimer::SHARED_GMM2_TIMING_IDX));
     }
 
     // 3. 本卡数据Unpermute
     if constexpr (g_coreType == AIV) {
         TIMER_BLOCK(timer_.Tik());
         CrossRankSyncInWorldSize();
-        TIMER_BLOCK(timer_.Tok(AscendTimer::PRE_UNPERMUTE_SYNC_TIMING_IDX));
+        TIMER_BLOCK(timer_.Tok(AscendTimer::AIV_UNPERMUTE_WAIT));
         TIMER_BLOCK(timer_.Tik());
         UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
             tokenUnpermuteConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
-        TIMER_BLOCK(timer_.Tok(AscendTimer::UNPERMUTE_TIMING_IDX));
+        TIMER_BLOCK(timer_.Tok(AscendTimer::AIV_UNPERMUTE));
     }
     TIMER_BLOCK(kernelTimer_.Tok(AscendTimer::KERNEL_TIMING_IDX));
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);

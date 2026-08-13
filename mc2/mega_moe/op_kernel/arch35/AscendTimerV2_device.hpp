@@ -29,7 +29,8 @@ public:
     }
     __aicore__ inline void SetDynamicActualIter(AscendTimer::DynamicTimingType type, int64_t iter)
     {
-        if (timerAddr_ == nullptr || coreId_ < 0 || coreId_ >= AscendTimer::N_CORE_COUNT) {
+        if (timerAddr_ == nullptr || coreId_ < 0 || coreId_ >= AscendTimer::N_CORE_COUNT ||
+            !MatchesDynamicCore(type)) {
             return;
         }
         int32_t idx = AscendTimer::N_TIMING_COUNTER +
@@ -37,6 +38,27 @@ public:
         AscendC::GlobalTensor<int64_t> timer;
         timer.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(timerAddr_));
         timer(idx) = iter;
+    }
+    __aicore__ inline bool IsAic() const
+    {
+        if ASCEND_IS_AIV {
+            return false;
+        }
+        return true;
+    }
+    __aicore__ inline bool IsAiv0() const
+    {
+        if ASCEND_IS_AIV {
+            return subBlockId_ == 0;
+        }
+        return false;
+    }
+    __aicore__ inline bool IsAiv1() const
+    {
+        if ASCEND_IS_AIV {
+            return subBlockId_ == 1;
+        }
+        return false;
     }
     __aicore__ inline void Tik()
     {
@@ -50,7 +72,7 @@ public:
     {
         int typeIdx = static_cast<int>(type);
         if (timerAddr_ == nullptr || typeIdx < 0 || typeIdx >= AscendTimer::DYNAMIC_TYPE_COUNT ||
-            iter < 0 || iter >= AscendTimer::MAX_DYNAMIC_ITER) {
+            iter < 0 || iter >= AscendTimer::MAX_DYNAMIC_ITER || !MatchesDynamicCore(type)) {
             return;
         }
         AscendC::PipeBarrier<PIPE_ALL>();
@@ -60,7 +82,8 @@ public:
     template <typename ModeTag = TimerOverwriteTag>
     __aicore__ inline void Tok(int32_t index)
     {
-        if (timerAddr_ == nullptr || index < 0 || index >= AscendTimer::N_TIMING_ITEM_PER_CORE) {
+        if (timerAddr_ == nullptr || index < 0 || index >= AscendTimer::N_TIMING_ITEM_PER_CORE ||
+            !MatchesFixedCore(index)) {
             return;
         }
         AscendC::PipeBarrier<PIPE_ALL>();
@@ -76,7 +99,8 @@ public:
     {
         int typeIdx = static_cast<int>(type);
         if (timerAddr_ == nullptr || typeIdx < 0 || typeIdx >= AscendTimer::DYNAMIC_TYPE_COUNT ||
-            iter < 0 || iter >= AscendTimer::MAX_DYNAMIC_ITER || dynamicIter_[typeIdx] != iter) {
+            iter < 0 || iter >= AscendTimer::MAX_DYNAMIC_ITER || dynamicIter_[typeIdx] != iter ||
+            !MatchesDynamicCore(type)) {
             return;
         }
         AscendC::PipeBarrier<PIPE_ALL>();
@@ -85,6 +109,35 @@ public:
         dynamicIter_[typeIdx] = -1;
     }
 private:
+    __aicore__ inline bool MatchesFixedCore(int32_t index) const
+    {
+        if (index == AscendTimer::KERNEL_TIMING_IDX) {
+            return true;
+        }
+        if (index == AscendTimer::AIC_WAIT_ALLGATHER) {
+            return IsAic();
+        }
+        return index > AscendTimer::KERNEL_TIMING_IDX && index < AscendTimer::AIC_WAIT_ALLGATHER &&
+               (IsAiv0() || IsAiv1());
+    }
+    __aicore__ inline bool MatchesDynamicCore(AscendTimer::DynamicTimingType type) const
+    {
+        switch (type) {
+            case AscendTimer::AIV_DISPATCH:
+            case AscendTimer::AIV_SWIGLU_WAIT:
+            case AscendTimer::AIV_SWIGLU:
+            case AscendTimer::AIV_COMBINE_WAIT:
+            case AscendTimer::AIV_COMBINE:
+                return IsAiv1();
+            case AscendTimer::AIC_GMM1_WAIT:
+            case AscendTimer::AIC_GMM1:
+            case AscendTimer::AIC_GMM2_WAIT:
+            case AscendTimer::AIC_GMM2:
+                return IsAic();
+            default:
+                return false;
+        }
+    }
     __aicore__ inline int32_t PhysicalIndex(int32_t logicalIndex) const
     {
         int32_t coreBase = groupId_ * AscendTimer::N_TIMING_COUNTER_PER_CORE_ALIGN * 3;
