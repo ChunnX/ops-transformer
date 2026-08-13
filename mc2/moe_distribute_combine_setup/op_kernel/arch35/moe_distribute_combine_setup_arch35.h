@@ -151,7 +151,7 @@ private:
         GlobalTensor<int32_t> t;
         t.SetGlobalBuffer((__gm__ int32_t *)addr);
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("C_S IoDumpHex32 1 epRankId_:%u, epRankId_:%u, %s: addr=0x%llx words=%u\n", epRankId_, tag, addr, wordCnt);
+        printf("C_S IoDumpHex32 1 epRankId_:%u, %s: addr=0x%llx words=%u\n", epRankId_, tag, addr, wordCnt);
         const uint32_t n = (wordCnt < IO_DUMP_MAX_ELEM) ? wordCnt : IO_DUMP_MAX_ELEM;
         for (uint32_t i = 0U; i < n; ++i) {
             printf("C_S IoDumpHex32 2 epRankId_:%u, %s[%u]=0x%08x\n", epRankId_, tag, i, static_cast<uint32_t>(t.GetValue(i)));
@@ -167,7 +167,7 @@ private:
         GlobalTensor<int32_t> t;
         t.SetGlobalBuffer((__gm__ int32_t *)addr);
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("C_S IoDumpI32 1 epRankId_:%u, epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
+        printf("C_S IoDumpI32 1 epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
         const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
         for (uint32_t i = 0U; i < n; ++i) {
             printf("C_S IoDumpI32 2 epRankId_:%u, %s[%u]=%d\n", epRankId_, tag, i, t.GetValue(i));
