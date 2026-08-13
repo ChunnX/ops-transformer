@@ -44,7 +44,7 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext 
     auto compileInfoPtr = context->GetCompileInfo<GMMSwigluV2CompileInfo>();
     if (compileInfoPtr->supportL12BtBf16) {
         std::vector<int32_t> registerList = {2};
-        OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the tiling strategy in the mxfp8");
+        OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using low-level API tiling strategy for MX quant.");
         return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
     }else {
         std::vector<int32_t> registerList = {0,1};

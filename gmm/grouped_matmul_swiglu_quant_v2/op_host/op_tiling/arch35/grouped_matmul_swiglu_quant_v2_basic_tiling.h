@@ -63,6 +63,7 @@ private:
     void PrintQuantParams() override;
     bool SetQuantModeForGMMSwigluQuant(const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
     bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
+    bool CheckMxWeightNzShape(const gert::Shape &wStorageShape) const;
     bool CheckDtype();
     bool CheckDims() const;
     bool IsFp4(ge::DataType dtype) const;

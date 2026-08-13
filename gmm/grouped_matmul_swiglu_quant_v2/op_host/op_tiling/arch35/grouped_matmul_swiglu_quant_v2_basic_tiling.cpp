@@ -25,6 +25,15 @@ using namespace Ops::Transformer::OpTiling;
 using namespace GroupedMatmulSwigluQuantParamsV2;
 using namespace optiling::GmmConstant;
 namespace optiling {
+namespace {
+constexpr size_t WEIGHT_NZ_MULTI_DIM_NUM = GmmConstant::WEIGHTNZ_DIM_NUM - 1U;
+
+inline uint64_t CeilDivUint64(uint64_t a, uint64_t b)
+{
+    return b == 0UL ? 0UL : (a + b - 1UL) / b;
+}
+} // namespace
+
 void GroupedMatmulSwigluQuantV2Tiling950::Reset()
 {
     tilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
@@ -160,18 +169,25 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is nullptr."), return false);
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
     inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
+    auto weightFormat = wDesc->GetFormat().GetStorageFormat();
+    auto weightPrimaryFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
+    if (IsMicroScaling()) {
+        inputParams_.bFormat = weightPrimaryFormat;
+    }
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
     OP_CHECK_IF(!SetQuantModeForGMMSwigluQuant(wScaleShape, xScaleShape),
                 OP_LOGE(inputParams_.opName, "SetQuantModeForGMMSwigluQuant failed."), return false);
-    auto weightFormat = wDesc->GetFormat().GetStorageFormat();
-    if (weightFormat == ge::FORMAT_FRACTAL_NZ) {
+    if (IsMicroScaling() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
         const gert::Shape &wStorageShapeNz = wStorageShape->GetStorageShape();
-        OP_CHECK_IF(wStorageShapeNz.GetDimNum() != 5,
-                    OP_LOGE(context_->GetNodeName(), "NZ weight storage shape must be 5."),
-                    return false);
+        OP_CHECK_IF(!CheckMxWeightNzShape(wStorageShapeNz),
+                    OP_LOGE(context_->GetNodeName(), "CheckMxWeightNzShape failed."), return false);
+    } else if (weightFormat == ge::FORMAT_FRACTAL_NZ) {
+        const gert::Shape &wStorageShapeNz = wStorageShape->GetStorageShape();
+        OP_CHECK_IF(wStorageShapeNz.GetDimNum() != GmmConstant::WEIGHTNZ_DIM_NUM,
+                    OP_LOGE(context_->GetNodeName(), "NZ weight storage shape must be 5."), return false);
 
         OP_CHECK_IF(!(inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN &&
-                    inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN),
+                      inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN),
                     OP_LOGE(context_->GetNodeName(),
                             "NZ weight, x and weight dtype must both be DT_FLOAT8_E4M3FN."),
                     return false);
@@ -180,6 +196,52 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
         return CheckDtypePertoken();
     }
     return CheckDtype();
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxWeightNzShape(const gert::Shape &wStorageShape) const
+{
+    auto wDimNum = wStorageShape.GetDimNum();
+    OP_CHECK_IF(wDimNum != GmmConstant::WEIGHTNZ_DIM_NUM && wDimNum != WEIGHT_NZ_MULTI_DIM_NUM,
+                OP_LOGE(context_->GetNodeName(),
+                        "MX weight NZ storage shape dim num should be 5 for single weight or 4 for multi weight, "
+                        "actual is %zu.",
+                        wDimNum),
+                return false);
+
+    const bool isWeight4Bit = inputParams_.bDtype == ge::DT_FLOAT4_E2M1;
+    const uint64_t weightNzLastDim = isWeight4Bit ? GmmConstant::WEIGHTNZ_64 : GmmConstant::WEIGHTNZ_32;
+    const auto dimOffset = wDimNum == GmmConstant::WEIGHTNZ_DIM_NUM ? 1U : 0U;
+    const auto wShapeDimSecond = static_cast<uint64_t>(wStorageShape[dimOffset]);
+    const auto wShapeDimThird = static_cast<uint64_t>(wStorageShape[dimOffset + 1U]);
+    const auto wShapeDimFourth = static_cast<uint64_t>(wStorageShape[dimOffset + 2U]);
+    const auto wShapeDimFifth = static_cast<uint64_t>(wStorageShape[dimOffset + 3U]);
+
+    OP_CHECK_IF(wShapeDimFifth != weightNzLastDim,
+                OP_LOGE(context_->GetNodeName(),
+                        "MX weight NZ last dim should be %lu for %s weight, actual is %lu.", weightNzLastDim,
+                        isWeight4Bit ? "FLOAT4" : "FLOAT8", wShapeDimFifth),
+                return false);
+    OP_CHECK_IF(wShapeDimFourth != GmmConstant::WEIGHTNZ_16,
+                OP_LOGE(context_->GetNodeName(), "MX weight NZ fourth dim should be 16, actual is %lu.",
+                        wShapeDimFourth),
+                return false);
+
+    const auto expectedOuterDim = inputParams_.transB ? CeilDivUint64(inputParams_.kSize, weightNzLastDim) :
+                                                        CeilDivUint64(inputParams_.nSize, weightNzLastDim);
+    const auto expectedInnerDim = inputParams_.transB ? CeilDivUint64(inputParams_.nSize, GmmConstant::WEIGHTNZ_16) :
+                                                        CeilDivUint64(inputParams_.kSize, GmmConstant::WEIGHTNZ_16);
+    OP_CHECK_IF(wShapeDimSecond != expectedOuterDim || wShapeDimThird != expectedInnerDim,
+                OP_LOGE(context_->GetNodeName(),
+                        "MX weight NZ shape mismatch, expected middle dims [%lu, %lu], actual [%lu, %lu].",
+                        expectedOuterDim, expectedInnerDim, wShapeDimSecond, wShapeDimThird),
+                return false);
+    OP_CHECK_IF(inputParams_.kSize == 1UL || inputParams_.nSize == 1UL,
+                OP_LOGE(context_->GetNodeName(),
+                        "When MX weight is in NZ format, logical n and k axes must not be 1, actual nSize=%lu, "
+                        "kSize=%lu.",
+                        inputParams_.nSize, inputParams_.kSize),
+                return false);
+    return true;
 }
 
 bool GroupedMatmulSwigluQuantV2Tiling950::IsFp4(ge::DataType dtype) const
