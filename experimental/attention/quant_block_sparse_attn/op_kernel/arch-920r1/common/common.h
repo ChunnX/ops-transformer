@@ -19,3 +19,4 @@ constexpr uint32_t CV_RATIO = 1;
 #else
 constexpr uint32_t CV_RATIO = 2;
 #endif
+#endif
