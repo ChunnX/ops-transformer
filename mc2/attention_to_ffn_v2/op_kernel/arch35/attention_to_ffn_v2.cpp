@@ -43,7 +43,9 @@ __global__ __aicore__ void attention_to_ffn_v2(GM_ADDR mc2Context, GM_ADDR x, GM
     REGISTER_TILING_DEFAULT(AttentionToFfnV2TilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", AttentionToFfnV2TilingData);
     TPipe pipe;
-
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ ==3510)
+    int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
+#endif
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(AttentionToFfnV2TilingData, tilingData, tilingGM);
         const auto *v1TilingData = reinterpret_cast<const AttentionToFFNTilingData *>(&tilingData);
@@ -91,4 +93,7 @@ __global__ __aicore__ void attention_to_ffn_v2(GM_ADDR mc2Context, GM_ADDR x, GM
             }
         }
     }
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ ==3510)
+    AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
 }

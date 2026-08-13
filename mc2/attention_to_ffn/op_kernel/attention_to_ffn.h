@@ -297,6 +297,9 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::Init(
     GM_ADDR expertRankTable, GM_ADDR scales, GM_ADDR activeMask, GM_ADDR workspaceGM, TPipe *pipe,
     const AttentionToFFNTilingData *tilingData)
 {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ ==3510)
+    AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL,FLOAT_OVERFLOW_MODE_CTRL>(0);
+#endif
     tpipe_ = pipe;
     InitByTinglingData(context, tilingData);
 
