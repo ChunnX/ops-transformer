@@ -70,11 +70,13 @@ __aicore__ inline void GmmNoQuantTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
                                         1U;
     BlockSchedulerParams schedulerParams{static_cast<int32_t>(baseM),
                                          static_cast<int32_t>(baseN),
-                                         static_cast<int32_t>(baseK),
                                          static_cast<uint64_t>(gmmBaseParams.mTailCnt),
                                          static_cast<uint64_t>(gmmBaseParams.nTailCnt),
                                          1U,
-                                         nTailAlign};
+                                         nTailAlign,
+                                         static_cast<int32_t>(gmmBaseParams.groupType),
+                                         static_cast<uint32_t>(gmmBaseParams.groupNum),
+                                         static_cast<int64_t>(mmTilingData.M)};
 
     typename BlockMmad::Params mmParams{
         x,

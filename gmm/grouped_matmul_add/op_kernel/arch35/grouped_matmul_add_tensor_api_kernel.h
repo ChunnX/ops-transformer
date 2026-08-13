@@ -58,13 +58,16 @@ __aicore__ inline void GmmAddTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR groupL
     constexpr uint32_t nTailAlign = BlockMmad::WEIGHT_NZ_FORMAT ?
                                         static_cast<uint32_t>(AscendC::Te::C0_ELEMENT<BType>) :
                                         1U;
+    constexpr int32_t groupTypeSplitK = 2;
     BlockSchedulerParams schedulerParams{static_cast<int32_t>(baseM),
                                          static_cast<int32_t>(baseN),
-                                         static_cast<int32_t>(baseK),
                                          static_cast<uint64_t>(gmmAddParams.mTailCnt),
                                          static_cast<uint64_t>(gmmAddParams.nTailCnt),
                                          1U,
-                                         nTailAlign};
+                                         nTailAlign,
+                                         groupTypeSplitK,
+                                         static_cast<uint32_t>(gmmAddParams.groupNum),
+                                         static_cast<int64_t>(mmTilingData.M)};
     typename BlockMmad::Params mmParams{
         x,
         weight,
