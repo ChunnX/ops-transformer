@@ -205,8 +205,9 @@ __aicore__ inline int32_t EngramFetchGradArch35::ReadLocalCounter(GM_ADDR winBas
 __aicore__ inline void EngramFetchGradArch35::WriteRemoteCounter(uint32_t dstRank, uint64_t counterOffset,
                                                                  int32_t value)
 {
-    if (dstRank == rankId_)
+    if (dstRank == rankId_) {
         return;
+    }
 
     LocalTensor<int32_t> valLocal = statusBuf_.Get<int32_t>();
     valLocal.SetValue(0, value);
@@ -389,9 +390,9 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     flagScratchGM_ = workspaceGM_ + wsOffset;
     wsOffset += UB_ALIGN;
     segCountGM_ = workspaceGM_ + wsOffset;
-    wsOffset += static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t);
+    wsOffset += Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     coreStartGM_ = workspaceGM_ + wsOffset;
-    wsOffset += static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t);
+    wsOffset += Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
 
     uint32_t maxSortCount = static_cast<uint32_t>(totalRecv_);
     uint64_t sortCompanionSize = Ceil(static_cast<uint64_t>(maxSortCount) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
@@ -409,9 +410,17 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
 
     uint32_t statusBufSize = Ceil(numRanks_ * STATE_OFFSET, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
-    tpipe_->InitBuffer(tempBuf_, statusBufSize);
-    uint32_t gradSumBufSize = Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) *
-                                       GRAD_SUB_BATCH,
+    uint32_t tempBufSize = statusBufSize;
+    uint32_t entryBatchBytes = ENTRY_BATCH_CAP * sizeof(int32_t);
+    if (tempBufSize < entryBatchBytes) {
+        tempBufSize = entryBatchBytes;
+    }
+    uint32_t coreArrayBytes = Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    if (tempBufSize < coreArrayBytes) {
+        tempBufSize = coreArrayBytes;
+    }
+    tpipe_->InitBuffer(tempBuf_, tempBufSize);
+    uint32_t gradSumBufSize = Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * GRAD_SUB_BATCH,
                                    UB_ALIGN) *
                               UB_ALIGN;
     tpipe_->InitBuffer(gradSumBuf_, gradSumBufSize);
@@ -562,8 +571,9 @@ __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
     uint32_t recvIdx = aivId_ - numSendCores_;
 
     for (uint32_t srcRank = recvIdx; srcRank < numRanks_; srcRank += numRecvCores_) {
-        if (srcRank == rankId_)
+        if (srcRank == rankId_) {
             continue;
+        }
 
         GM_ADDR rSlot = recvCountsGM_ + srcRank * sizeof(int32_t);
         GlobalTensor<int32_t> rSlotGM;
@@ -734,8 +744,9 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrier()
 {
     if (isSender_) {
         for (uint32_t dstRank = aivId_; dstRank < numRanks_; dstRank += numSendCores_) {
-            if (dstRank == rankId_)
+            if (dstRank == rankId_) {
                 continue;
+            }
             uint64_t handle = GetCommHandle(dstRank);
             GM_ADDR remoteFlagAddr = GetRemoteWinAddr(dstRank, barrierFlagOffset_) + rankId_ * STATE_OFFSET;
             WriteNbiChecked(handle, remoteFlagAddr, flagScratchGM_, STATE_OFFSET);

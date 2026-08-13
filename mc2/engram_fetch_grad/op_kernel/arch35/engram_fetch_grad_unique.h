@@ -161,8 +161,9 @@ __aicore__ inline void EngramFetchGradUnique::ZeroGradUnique(uint32_t numRecv, G
     uint64_t chunk = (totalFloats + totalBlocks_ - 1U) / totalBlocks_;
     uint64_t start = static_cast<uint64_t>(aivId_) * chunk;
     uint64_t end = start + chunk;
-    if (end > totalFloats)
+    if (end > totalFloats) {
         end = totalFloats;
+    }
 
     if (start < end) {
         AscendC::LocalTensor<float> zeroBuf = pongBuf_->Get<float>();
@@ -175,8 +176,9 @@ __aicore__ inline void EngramFetchGradUnique::ZeroGradUnique(uint32_t numRecv, G
         dstGM.SetGlobalBuffer((__gm__ float *)dstBase);
         for (uint64_t off = start; off < end; off += tileFloats) {
             uint64_t thisLen = end - off;
-            if (thisLen > tileFloats)
+            if (thisLen > tileFloats) {
                 thisLen = tileFloats;
+            }
             AscendC::DataCopyParams params{1U, static_cast<uint16_t>(thisLen * sizeof(float)), 0U, 0U};
             AscendC::DataCopyPad(dstGM[off], zeroBuf, params);
         }
@@ -190,8 +192,9 @@ __aicore__ inline void EngramFetchGradUnique::CountUniquesParallel(
     uint32_t chunk = (numRecv + totalBlocks_ - 1U) / totalBlocks_;
     uint32_t rawStart = aivId_ * chunk;
     uint32_t rawEnd = rawStart + chunk;
-    if (rawEnd > numRecv)
+    if (rawEnd > numRecv) {
         rawEnd = numRecv;
+    }
 
     AscendC::GlobalTensor<int32_t> sortedEntryGM;
     sortedEntryGM.SetGlobalBuffer((__gm__ int32_t *)recvLocalEntryOutGM);
@@ -200,8 +203,9 @@ __aicore__ inline void EngramFetchGradUnique::CountUniquesParallel(
     if (rawStart > 0 && rawStart < rawEnd) {
         AscendC::LocalTensor<int32_t> probeUb = tempBuf_->Get<int32_t>();
         uint32_t probeLen = rawEnd - rawStart + 1U;
-        if (probeLen > Mc2Kernel::ENTRY_BATCH_CAP)
+        if (probeLen > Mc2Kernel::ENTRY_BATCH_CAP) {
             probeLen = Mc2Kernel::ENTRY_BATCH_CAP;
+        }
         AscendC::DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
         AscendC::DataCopyExtParams cpParams{1U, static_cast<uint32_t>(probeLen * sizeof(int32_t)), 0U, 0U, 0U};
         AscendC::DataCopyPad(probeUb, sortedEntryGM[rawStart - 1U], cpParams, cpPad);
@@ -231,8 +235,9 @@ __aicore__ inline void EngramFetchGradUnique::CountUniquesParallel(
         uint32_t cur = start;
         while (cur < rawEnd) {
             uint32_t batchLen = rawEnd - cur;
-            if (batchLen > Mc2Kernel::ENTRY_BATCH_CAP)
+            if (batchLen > Mc2Kernel::ENTRY_BATCH_CAP) {
                 batchLen = Mc2Kernel::ENTRY_BATCH_CAP;
+            }
             AscendC::DataCopyExtParams cpParams{1U, static_cast<uint32_t>(batchLen * sizeof(int32_t)), 0U, 0U, 0U};
             AscendC::DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
             AscendC::DataCopyPad(entryUb, sortedEntryGM[cur], cpParams, cpPad);
@@ -275,8 +280,9 @@ __aicore__ inline void EngramFetchGradUnique::CountUniquesParallel(
 
 __aicore__ inline void EngramFetchGradUnique::FixCoreStartForSkippedCores(GM_ADDR coreStartGM, GM_ADDR segCountGM)
 {
-    if (aivId_ != 0)
+    if (aivId_ != 0) {
         return;
+    }
 
     AscendC::GlobalTensor<int32_t> coreStartGMT;
     coreStartGMT.SetGlobalBuffer((__gm__ int32_t *)coreStartGM);
@@ -308,10 +314,12 @@ __aicore__ inline void EngramFetchGradUnique::LoadCoreRange(uint32_t numRecv, GM
     coreStartGM_.SetGlobalBuffer((__gm__ int32_t *)coreStartGM);
     AscendC::LocalTensor<int32_t> startUb = tempBuf_->Get<int32_t>();
     uint32_t readCores = aivId_ + 2U;
-    if (readCores > totalBlocks_)
+    if (readCores > totalBlocks_) {
         readCores = totalBlocks_;
-    if (aivId_ == totalBlocks_ - 1U)
+    }
+    if (aivId_ == totalBlocks_ - 1U) {
         readCores = totalBlocks_;
+    }
     AscendC::DataCopyPadExtParams<int32_t> csPad{false, 0, 0, 0};
     AscendC::DataCopyExtParams csParams{1U, static_cast<uint32_t>(readCores * sizeof(int32_t)), 0U, 0U, 0U};
     AscendC::DataCopyPad(startUb, coreStartGM_, csParams, csPad);
@@ -474,8 +482,9 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
     GM_ADDR gradUniqueFp32GM, GM_ADDR recvGradGM, GM_ADDR sortCompanionGM)
 {
     uint32_t batchLen = end - cur;
-    if (batchLen > Mc2Kernel::ENTRY_BATCH_CAP)
+    if (batchLen > Mc2Kernel::ENTRY_BATCH_CAP) {
         batchLen = Mc2Kernel::ENTRY_BATCH_CAP;
+    }
 
     int32_t inclusiveSum = 0;
     uint32_t tileUniqueCnt = ProcessBatchUnique(
@@ -491,8 +500,9 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
     }
     for (uint32_t subStart = 0; subStart < batchLen; subStart += maxGradPerBatch) {
         uint32_t subLen = batchLen - subStart;
-        if (subLen > maxGradPerBatch)
+        if (subLen > maxGradPerBatch) {
             subLen = maxGradPerBatch;
+        }
         ScatterGradSubBatch(subStart, subLen, gradUniqueOutGM, gradUniqueFp32GM, recvGradGM);
     }
 
@@ -511,8 +521,9 @@ __aicore__ inline void EngramFetchGradUnique::ScatterAddAtomicParallel(
     uint32_t start;
     uint32_t end;
     LoadCoreRange(numRecv, coreStartGM, start, end);
-    if (start >= end)
+    if (start >= end) {
         return;
+    }
 
     int32_t preCoreOffset = ComputePreCoreOffset(segCountGM);
     int32_t runningOffset = preCoreOffset;
@@ -564,8 +575,9 @@ __aicore__ inline void EngramFetchGradUnique::CastGradUniqueToOutput(
     uint32_t chunk = (totalElements + totalBlocks_ - 1U) / totalBlocks_;
     uint32_t start = aivId_ * chunk;
     uint32_t end = start + chunk;
-    if (end > totalElements)
+    if (end > totalElements) {
         end = totalElements;
+    }
     if (start >= end) {
         AscendC::SyncAll<true>();
         return;
@@ -582,8 +594,9 @@ __aicore__ inline void EngramFetchGradUnique::CastGradUniqueToOutput(
     uint32_t off = start;
     while (off < end) {
         uint32_t thisLen = end - off;
-        if (thisLen > tileLen)
+        if (thisLen > tileLen) {
             thisLen = tileLen;
+        }
 
         AscendC::DataCopyExtParams inParams{1U, static_cast<uint32_t>(thisLen * sizeof(float)), 0U, 0U, 0U};
         AscendC::DataCopyPadExtParams<float> inPad{false, 0, 0, 0};
