@@ -49,16 +49,6 @@ __aicore__ inline void GenDropMaskFa(LocalTensor<uint8_t> &dropMaskUb,
         GenIndexVec(dropmaskIndexVec, runInfo.actVecMSize, eachRowIndexNum, eachRowOffset);
     }
 
-    if (runInfo.isFirstS2Loop && runInfo.bIdx == 0 && runInfo.n2Idx == 0 && runInfo.gIdx == 0 &&
-        runInfo.s1Idx == 0 && runInfo.vecMbaseIdx == 0 && runInfo.s2Idx == 0) {
-        printf("[DROPMASK] eachRowCount=%u eachRowIndexNum=%u eachRowOffset=%u actVecMSize=%u count=%u\n",
-               eachRowCount, eachRowIndexNum, eachRowOffset, runInfo.actVecMSize,
-               runInfo.actVecMSize * eachRowCount);
-        for (uint32_t i = 0; i < 8; i++) {
-            printf("[DROPMASK] index[%u]=%d\n", i, dropmaskIndexVec.GetValue(i));
-        }
-    }
-
     uint64_t seed = constInfo.seed;
     uint32_t seedHigh = static_cast<uint32_t>(seed >> 32);
     uint32_t seedLow = static_cast<uint32_t>(seed & 0xffffffff);

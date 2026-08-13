@@ -136,7 +136,8 @@ def tforward_tnd(q, k, v, **kwargs):
     if abs(1 - keep_prob) >= 2e-14:
         g_size = n1 // n2 if n2 > 0 else 1
         max_kv = max(seqused_kv) if isinstance(seqused_kv, list) else seqused_kv
-        drop_mask = gen_dropmask_gs1(b, n2, g_size, max(seqused_q), max_kv, keep_prob, seed, offset)
+        layout_q = kwargs.get("layout_q", kwargs.get("input_layout", "BSND"))
+        drop_mask = gen_dropmask_gs1(b, n2, g_size, max(seqused_q), max_kv, keep_prob, seed, offset, layout_q)
 
     out_golden = torch.zeros([1, n1, s1_total, d_v], dtype=q.dtype)
     x_max = torch.zeros([n1, s1_total], dtype=torch.float32)

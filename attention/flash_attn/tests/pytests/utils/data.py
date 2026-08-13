@@ -231,9 +231,11 @@ def gen_dropmask(b, n1, s1, s2, keep_prob=0.9, seed=2, offset=0):
     return torch.from_numpy(drop_mask_np)
 
 
-def gen_dropmask_gs1(b, n2, g_size, s1, s2, keep_prob=0.9, seed=2, offset=0):
-    """Generate dropmask with gS1 layout: mask ordered as (B, N2, S1*G, S2).
-    The gS1 dimension is flattened as s1*gSize + g (S1G layout for BSND/TND).
+def gen_dropmask_gs1(b, n2, g_size, s1, s2, keep_prob=0.9, seed=2, offset=0, layout="BSND"):
+    """Generate dropmask with gS1 layout.
+    gS1 flattening depends on layout:
+      BSND/TND (S1G): gS1 = s1*gSize + g  (s1 outer, g inner)
+      BNSD (GS1):     gS1 = g*s1 + s1     (g outer, s1 inner)
     Returns mask in (B, N1, S1, S2) shape where N1 = N2 * G.
     """
     n1 = n2 * g_size
@@ -253,8 +255,12 @@ def gen_dropmask_gs1(b, n2, g_size, s1, s2, keep_prob=0.9, seed=2, offset=0):
         mask_gs1 = np.array(golden_uint8).reshape(b, n2, gs1, s2_aligned)[:, :, :, :s2].astype(np.uint8)
     else:
         mask_gs1 = np.array(golden_uint8).reshape(b, n2, gs1, s2).astype(np.uint8)
-    # Reshape (B, N2, S1*G, S2) -> (B, N2, S1, G, S2) -> (B, N2, G, S1, S2) -> (B, N1, S1, S2)
-    mask = mask_gs1.reshape(b, n2, s1, g_size, s2).transpose(0, 1, 3, 2, 4).reshape(b, n1, s1, s2)
+    if layout == "BNSD":
+        # GS1: gS1 = g*s1 + s1 -> reshape (B, N2, G, S1, S2) -> (B, N1, S1, S2)
+        mask = mask_gs1.reshape(b, n2, g_size, s1, s2).reshape(b, n1, s1, s2)
+    else:
+        # S1G: gS1 = s1*gSize + g -> reshape (B, N2, S1, G, S2) -> transpose -> (B, N2, G, S1, S2) -> (B, N1, S1, S2)
+        mask = mask_gs1.reshape(b, n2, s1, g_size, s2).transpose(0, 1, 3, 2, 4).reshape(b, n1, s1, s2)
     return torch.from_numpy(mask)
 
 
