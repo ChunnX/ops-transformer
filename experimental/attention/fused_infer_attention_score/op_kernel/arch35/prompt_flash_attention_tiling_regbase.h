@@ -212,75 +212,75 @@ public:
     void set_tailReduceSize(uint32_t tailReduceSizeParam) { this->tailReduceSize = tailReduceSizeParam; }
 };
 
-}
+} // namespace pfatilingdata
 
-#define TCubeTilingCopy(dstTCubeTiling, srcTCubeTiling)  \
-do{  \
-    dstTCubeTiling.usedCoreNum = srcTCubeTiling.usedCoreNum;  \
-    dstTCubeTiling.M = srcTCubeTiling.M;  \
-    dstTCubeTiling.N = srcTCubeTiling.N;  \
-    dstTCubeTiling.Ka = srcTCubeTiling.Ka;  \
-    dstTCubeTiling.Kb = srcTCubeTiling.Kb;  \
-    dstTCubeTiling.singleCoreM = srcTCubeTiling.singleCoreM;  \
-    dstTCubeTiling.singleCoreN = srcTCubeTiling.singleCoreN;  \
-    dstTCubeTiling.singleCoreK = srcTCubeTiling.singleCoreK;  \
-    dstTCubeTiling.baseM = srcTCubeTiling.baseM;  \
-    dstTCubeTiling.baseN = srcTCubeTiling.baseN;  \
-    dstTCubeTiling.baseK = srcTCubeTiling.baseK;  \
-    dstTCubeTiling.depthA1 = srcTCubeTiling.depthA1;  \
-    dstTCubeTiling.depthB1 = srcTCubeTiling.depthB1;  \
-    dstTCubeTiling.stepM = srcTCubeTiling.stepM;  \
-    dstTCubeTiling.stepN = srcTCubeTiling.stepN;  \
-    dstTCubeTiling.stepKa = srcTCubeTiling.stepKa;  \
-    dstTCubeTiling.stepKb = srcTCubeTiling.stepKb;  \
-    dstTCubeTiling.isBias = srcTCubeTiling.isBias;  \
-    dstTCubeTiling.transLength = srcTCubeTiling.transLength;  \
-    dstTCubeTiling.iterateOrder = srcTCubeTiling.iterateOrder;  \
-    dstTCubeTiling.dbL0A = srcTCubeTiling.dbL0A;  \
-    dstTCubeTiling.dbL0B = srcTCubeTiling.dbL0B;  \
-    dstTCubeTiling.dbL0C = srcTCubeTiling.dbL0C;  \
-    dstTCubeTiling.shareMode = srcTCubeTiling.shareMode;  \
-    dstTCubeTiling.shareL1Size = srcTCubeTiling.shareL1Size;  \
-    dstTCubeTiling.shareL0CSize = srcTCubeTiling.shareL0CSize;  \
-    dstTCubeTiling.shareUbSize = srcTCubeTiling.shareUbSize;  \
-    dstTCubeTiling.batchM = srcTCubeTiling.batchM;  \
-    dstTCubeTiling.batchN = srcTCubeTiling.batchN;  \
-    dstTCubeTiling.singleBatchM = srcTCubeTiling.singleBatchM;  \
-    dstTCubeTiling.singleBatchN = srcTCubeTiling.singleBatchN;  \
-}while(0)
+#define TCubeTilingCopy(dstTCubeTiling, srcTCubeTiling) \
+    do { \
+        dstTCubeTiling.usedCoreNum = srcTCubeTiling.usedCoreNum; \
+        dstTCubeTiling.M = srcTCubeTiling.M; \
+        dstTCubeTiling.N = srcTCubeTiling.N; \
+        dstTCubeTiling.Ka = srcTCubeTiling.Ka; \
+        dstTCubeTiling.Kb = srcTCubeTiling.Kb; \
+        dstTCubeTiling.singleCoreM = srcTCubeTiling.singleCoreM; \
+        dstTCubeTiling.singleCoreN = srcTCubeTiling.singleCoreN; \
+        dstTCubeTiling.singleCoreK = srcTCubeTiling.singleCoreK; \
+        dstTCubeTiling.baseM = srcTCubeTiling.baseM; \
+        dstTCubeTiling.baseN = srcTCubeTiling.baseN; \
+        dstTCubeTiling.baseK = srcTCubeTiling.baseK; \
+        dstTCubeTiling.depthA1 = srcTCubeTiling.depthA1; \
+        dstTCubeTiling.depthB1 = srcTCubeTiling.depthB1; \
+        dstTCubeTiling.stepM = srcTCubeTiling.stepM; \
+        dstTCubeTiling.stepN = srcTCubeTiling.stepN; \
+        dstTCubeTiling.stepKa = srcTCubeTiling.stepKa; \
+        dstTCubeTiling.stepKb = srcTCubeTiling.stepKb; \
+        dstTCubeTiling.isBias = srcTCubeTiling.isBias; \
+        dstTCubeTiling.transLength = srcTCubeTiling.transLength; \
+        dstTCubeTiling.iterateOrder = srcTCubeTiling.iterateOrder; \
+        dstTCubeTiling.dbL0A = srcTCubeTiling.dbL0A; \
+        dstTCubeTiling.dbL0B = srcTCubeTiling.dbL0B; \
+        dstTCubeTiling.dbL0C = srcTCubeTiling.dbL0C; \
+        dstTCubeTiling.shareMode = srcTCubeTiling.shareMode; \
+        dstTCubeTiling.shareL1Size = srcTCubeTiling.shareL1Size; \
+        dstTCubeTiling.shareL0CSize = srcTCubeTiling.shareL0CSize; \
+        dstTCubeTiling.shareUbSize = srcTCubeTiling.shareUbSize; \
+        dstTCubeTiling.batchM = srcTCubeTiling.batchM; \
+        dstTCubeTiling.batchN = srcTCubeTiling.batchN; \
+        dstTCubeTiling.singleBatchM = srcTCubeTiling.singleBatchM; \
+        dstTCubeTiling.singleBatchN = srcTCubeTiling.singleBatchN; \
+    } while (0)
 
-#define SoftMaxTilingCopy(dstSoftMaxTiling, srcSoftMaxTiling)  \
-do{  \
-    dstSoftMaxTiling.srcM = srcSoftMaxTiling.srcM;  \
-    dstSoftMaxTiling.srcK = srcSoftMaxTiling.srcK;  \
-    dstSoftMaxTiling.srcSize = srcSoftMaxTiling.srcSize;  \
-    dstSoftMaxTiling.outMaxM = srcSoftMaxTiling.outMaxM;  \
-    dstSoftMaxTiling.outMaxK = srcSoftMaxTiling.outMaxK;  \
-    dstSoftMaxTiling.outMaxSize = srcSoftMaxTiling.outMaxSize;  \
-    dstSoftMaxTiling.splitM = srcSoftMaxTiling.splitM;  \
-    dstSoftMaxTiling.splitK = srcSoftMaxTiling.splitK;  \
-    dstSoftMaxTiling.splitSize = srcSoftMaxTiling.splitSize;  \
-    dstSoftMaxTiling.reduceM = srcSoftMaxTiling.reduceM;  \
-    dstSoftMaxTiling.reduceK = srcSoftMaxTiling.reduceK;  \
-    dstSoftMaxTiling.reduceSize = srcSoftMaxTiling.reduceSize;  \
-    dstSoftMaxTiling.rangeM = srcSoftMaxTiling.rangeM;  \
-    dstSoftMaxTiling.tailM = srcSoftMaxTiling.tailM;  \
-    dstSoftMaxTiling.tailSplitSize = srcSoftMaxTiling.tailSplitSize;  \
-    dstSoftMaxTiling.tailReduceSize = srcSoftMaxTiling.tailReduceSize;  \
-}while(0)
+#define SoftMaxTilingCopy(dstSoftMaxTiling, srcSoftMaxTiling) \
+    do { \
+        dstSoftMaxTiling.srcM = srcSoftMaxTiling.srcM; \
+        dstSoftMaxTiling.srcK = srcSoftMaxTiling.srcK; \
+        dstSoftMaxTiling.srcSize = srcSoftMaxTiling.srcSize; \
+        dstSoftMaxTiling.outMaxM = srcSoftMaxTiling.outMaxM; \
+        dstSoftMaxTiling.outMaxK = srcSoftMaxTiling.outMaxK; \
+        dstSoftMaxTiling.outMaxSize = srcSoftMaxTiling.outMaxSize; \
+        dstSoftMaxTiling.splitM = srcSoftMaxTiling.splitM; \
+        dstSoftMaxTiling.splitK = srcSoftMaxTiling.splitK; \
+        dstSoftMaxTiling.splitSize = srcSoftMaxTiling.splitSize; \
+        dstSoftMaxTiling.reduceM = srcSoftMaxTiling.reduceM; \
+        dstSoftMaxTiling.reduceK = srcSoftMaxTiling.reduceK; \
+        dstSoftMaxTiling.reduceSize = srcSoftMaxTiling.reduceSize; \
+        dstSoftMaxTiling.rangeM = srcSoftMaxTiling.rangeM; \
+        dstSoftMaxTiling.tailM = srcSoftMaxTiling.tailM; \
+        dstSoftMaxTiling.tailSplitSize = srcSoftMaxTiling.tailSplitSize; \
+        dstSoftMaxTiling.tailReduceSize = srcSoftMaxTiling.tailReduceSize; \
+    } while (0)
 
 #define TilingDataCopy(dstTilingData, srcTilingData) \
-do{  \
-    TCubeTilingCopy(dstTilingData.bmm1TilingDataRect, srcTilingData.bmm1TilingDataRect);  \
-    TCubeTilingCopy(dstTilingData.bmm2TilingDataRect, srcTilingData.bmm2TilingDataRect);  \
-    dstTilingData.promptAttentionBaseParams = srcTilingData.promptAttentionBaseParams;  \
-    dstTilingData.promptAttentionSeqParams = srcTilingData.promptAttentionSeqParams;  \
-    dstTilingData.promptAttentionSingleCoreParams = srcTilingData.promptAttentionSingleCoreParams;  \
-    dstTilingData.promptAttentionTensorSizeRect = srcTilingData.promptAttentionTensorSizeRect;  \
-    dstTilingData.promptAttentionInitOutputParams = srcTilingData.promptAttentionInitOutputParams;  \
-    SoftMaxTilingCopy(dstTilingData.softmaxTilingDataRect, srcTilingData.softmaxTilingDataRect);  \
-    SoftMaxTilingCopy(dstTilingData.softmaxFlashTilingDataRect, srcTilingData.softmaxFlashTilingDataRect);  \
-}while(0)
+    do { \
+        TCubeTilingCopy(dstTilingData.bmm1TilingDataRect, srcTilingData.bmm1TilingDataRect); \
+        TCubeTilingCopy(dstTilingData.bmm2TilingDataRect, srcTilingData.bmm2TilingDataRect); \
+        dstTilingData.promptAttentionBaseParams = srcTilingData.promptAttentionBaseParams; \
+        dstTilingData.promptAttentionSeqParams = srcTilingData.promptAttentionSeqParams; \
+        dstTilingData.promptAttentionSingleCoreParams = srcTilingData.promptAttentionSingleCoreParams; \
+        dstTilingData.promptAttentionTensorSizeRect = srcTilingData.promptAttentionTensorSizeRect; \
+        dstTilingData.promptAttentionInitOutputParams = srcTilingData.promptAttentionInitOutputParams; \
+        SoftMaxTilingCopy(dstTilingData.softmaxTilingDataRect, srcTilingData.softmaxTilingDataRect); \
+        SoftMaxTilingCopy(dstTilingData.softmaxFlashTilingDataRect, srcTilingData.softmaxFlashTilingDataRect); \
+    } while (0)
 
 namespace optiling {
 class PromptAttentionBaseParams {
@@ -803,7 +803,6 @@ public:
     void set_isOneN(uint32_t isOneNParam) { this->isOneN = isOneNParam; }
 };
 
-
 class PromptFlashAttentionTilingDataV2 {
 public:
     TCubeTiling bmm1TilingDataRect;
@@ -832,7 +831,8 @@ public:
     pfatilingdata::SoftMaxTiling softmaxTilingDataRect;
     pfatilingdata::SoftMaxTiling softmaxFlashTilingDataRect;
 
-    void Bmm1TilingDataRectFromLegacyFormat(TCubeTiling& bmm1TilingDataRectVal) {
+    void Bmm1TilingDataRectFromLegacyFormat(TCubeTiling &bmm1TilingDataRectVal)
+    {
         this->bmm1TilingDataRect.usedCoreNum = bmm1TilingDataRectVal.get_usedCoreNum();
         this->bmm1TilingDataRect.M = bmm1TilingDataRectVal.get_M();
         this->bmm1TilingDataRect.N = bmm1TilingDataRectVal.get_N();
@@ -866,7 +866,8 @@ public:
         this->bmm1TilingDataRect.singleBatchN = bmm1TilingDataRectVal.get_singleBatchN();
     }
 
-    void Bmm2TilingDataRectFromLegacyFormat(TCubeTiling& bmm2TilingDataRectVal) {
+    void Bmm2TilingDataRectFromLegacyFormat(TCubeTiling &bmm2TilingDataRectVal)
+    {
         this->bmm2TilingDataRect.usedCoreNum = bmm2TilingDataRectVal.get_usedCoreNum();
         this->bmm2TilingDataRect.M = bmm2TilingDataRectVal.get_M();
         this->bmm2TilingDataRect.N = bmm2TilingDataRectVal.get_N();
@@ -900,7 +901,8 @@ public:
         this->bmm2TilingDataRect.singleBatchN = bmm2TilingDataRectVal.get_singleBatchN();
     }
 
-    void softmaxTilingDataRectFromLegacyFormat(SoftMaxTiling& softmaxTilingDataRectVal) {
+    void softmaxTilingDataRectFromLegacyFormat(SoftMaxTiling &softmaxTilingDataRectVal)
+    {
         this->softmaxTilingDataRect.srcM = softmaxTilingDataRectVal.get_srcM();
         this->softmaxTilingDataRect.srcK = softmaxTilingDataRectVal.get_srcK();
         this->softmaxTilingDataRect.srcSize = softmaxTilingDataRectVal.get_srcSize();
@@ -919,7 +921,8 @@ public:
         this->softmaxTilingDataRect.tailReduceSize = softmaxTilingDataRectVal.get_tailReduceSize();
     }
 
-    void softmaxFlashTilingDataRectFromLegacyFormat(SoftMaxTiling& softmaxFlashTilingDataRectVal) {
+    void softmaxFlashTilingDataRectFromLegacyFormat(SoftMaxTiling &softmaxFlashTilingDataRectVal)
+    {
         this->softmaxFlashTilingDataRect.srcM = softmaxFlashTilingDataRectVal.get_srcM();
         this->softmaxFlashTilingDataRect.srcK = softmaxFlashTilingDataRectVal.get_srcK();
         this->softmaxFlashTilingDataRect.srcSize = softmaxFlashTilingDataRectVal.get_srcSize();
@@ -938,7 +941,8 @@ public:
         this->softmaxFlashTilingDataRect.tailReduceSize = softmaxFlashTilingDataRectVal.get_tailReduceSize();
     }
 
-    void MigrateFromLegacyFormat(PromptFlashAttentionTilingDataV2& tiling) {
+    void MigrateFromLegacyFormat(PromptFlashAttentionTilingDataV2 &tiling)
+    {
         Bmm1TilingDataRectFromLegacyFormat(tiling.bmm1TilingDataRect);
         Bmm2TilingDataRectFromLegacyFormat(tiling.bmm2TilingDataRect);
         this->promptAttentionBaseParams = tiling.promptAttentionBaseParams;
@@ -950,5 +954,5 @@ public:
         softmaxFlashTilingDataRectFromLegacyFormat(tiling.softmaxFlashTilingDataRect);
     }
 };
-}
+} // namespace optiling
 #endif

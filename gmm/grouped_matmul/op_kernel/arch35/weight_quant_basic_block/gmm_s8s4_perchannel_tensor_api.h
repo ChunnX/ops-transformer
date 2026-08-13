@@ -18,7 +18,7 @@
 #include "../int4_weight_to_int8_preprocess.h"
 #include "gmm_s8s4_rowsum_preprocess.h"
 #include "../grouped_matmul_tiling_data_apt.h"
-#include "../../grouped_matmul_utils.h"
+#include "../../grouped_matmul_grouped_matmul_utils.h"
 
 namespace GROUPED_MATMUL::S8S4V5 {
 

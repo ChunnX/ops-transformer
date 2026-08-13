@@ -18,10 +18,10 @@
 
 #include "quant_compressor_comm.h"
 #include "quant_compressor_tools.h"
-#include "vf/vf_softmax.h"
-#include "vf/vf_add.h"
-#include "vf/vf_mul.h"
-#include "vf/vf_dequant.h"
+#include "vf/quant_compressor_vf_softmax_arch35.h"
+#include "vf/quant_compressor_vf_add_arch35.h"
+#include "vf/quant_compressor_vf_mul_arch35.h"
+#include "vf/quant_compressor_vf_dequant_arch35.h"
 
 using namespace AscendC;
 
@@ -198,7 +198,6 @@ private:
     // out queue
     TQue<QuePosition::VECOUT, 1> outputQue1;
 };
-
 
 template <typename COMP>
 __aicore__ inline void QuantCompressorBlockVector<COMP>::InitParams(const ConstInfo &constInfo,
@@ -586,7 +585,6 @@ QuantCompressorBlockVector<COMP>::PadAlign(const LocalTensor<T> &dstLocal, const
                         dstSingleRowCount);
 }
 
-
 template <typename COMP>
 template <bool IS_SCORE>
 __aicore__ inline void QuantCompressorBlockVector<COMP>::OverLap(
@@ -885,7 +883,6 @@ QuantCompressorBlockVector<COMP>::DuplicateFirstBlock(const LocalTensor<T> &dstL
     }
 }
 
-
 template <typename COMP>
 template <bool IS_SCORE>
 __aicore__ inline void
@@ -1045,7 +1042,6 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::OverLapScoreKv(
         overLapSliceIterator.IteratorSlice();
     }
     inputQue1.FreeTensor(kvUb);
-
 
     PipeBarrier<PIPE_V>();
 }
@@ -1207,7 +1203,6 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::ComputeVec1(const Vec1R
     loopInfo.coreColIdx = GetBlockIdx() % splitInfo.vec1GroupSize;
     loopInfo.isCoreRowLast = loopInfo.coreRowIdx == splitInfo.vec1GroupNum - 1;
     loopInfo.isCoreRowFirst = loopInfo.coreRowIdx == 0;
-
 
     QuantCompressorVec1SliceIterator sliceIterator(tools_);
     sliceIterator.SetMaxBatchSize(constInfo_.batchSize);

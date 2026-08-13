@@ -175,9 +175,9 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureQueryS(const FiaTilingInfo &fiaI
                 (keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
                     fiaInfo.inputKvType == ge::DT_INT8,
                 OP_LOGE(fiaInfo.opName,
-                    "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario, if "
-                    "keyAntiquantMode/valueAntiquantMode is 0 or 1, leftpadding is not supported!"),
-                    return ge::GRAPH_FAILED);
+                        "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario, if "
+                        "keyAntiquantMode/valueAntiquantMode is 0 or 1, leftpadding is not supported!"),
+                return ge::GRAPH_FAILED);
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -220,4 +220,4 @@ ge::graphStatus LeftPaddingChecker::CheckMultiParaConsistency(const FiaTilingInf
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+} // namespace optiling

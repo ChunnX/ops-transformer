@@ -22,7 +22,6 @@
 #include "fused_infer_attention_score_tiling_index.h"
 #include "fused_infer_attention_score_tiling_info_parser.h"
 
-
 using std::map;
 using std::pair;
 using std::string;
@@ -132,9 +131,9 @@ ge::graphStatus FiaInfoParser::GetEmptyTensorFlag()
 ge::graphStatus FiaInfoParser::GetMaxWorkspaceFlag()
 {
     if ((opParamInfo_.actualSeqLengths.tensor != nullptr &&
-        opParamInfo_.actualSeqLengths.tensor->GetData<int64_t>() == nullptr) ||
+         opParamInfo_.actualSeqLengths.tensor->GetData<int64_t>() == nullptr) ||
         (opParamInfo_.actualSeqLengthsQ.tensor != nullptr &&
-        opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() == nullptr)) {
+         opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() == nullptr)) {
         isMaxWorkspace_ = true;
         OP_LOGI(opName_, "FIA tiling sink");
     } else {
@@ -458,7 +457,6 @@ void FiaInfoParser::GetPreNextToken()
         preToken_ = SPARSE_MODE_INT_MAX;
         nextToken_ = SPARSE_MODE_INT_MAX;
     }
-
 }
 
 ge::graphStatus FiaInfoParser::GetTensorListCache(uint32_t index, const std::string &name,
@@ -924,13 +922,7 @@ ge::graphStatus FiaInfoParser::GetQueryAndOutLayout()
     // 获取query和attentionOut的Layout基准值
     // inputLayout: {qLayout, outLayout}
     const map<string, pair<FiaLayout, FiaLayout>> layoutMap = {
-        {"BSH", {FiaLayout::BSH, FiaLayout::BSH}},         {"BSND", {FiaLayout::BSND, FiaLayout::BSND}},
-        {"BNSD", {FiaLayout::BNSD, FiaLayout::BNSD}},      {"TND", {FiaLayout::TND, FiaLayout::TND}},
-        {"BSH_NBSD", {FiaLayout::BSH, FiaLayout::NBSD}},   {"BSND_NBSD", {FiaLayout::BSND, FiaLayout::NBSD}},
-        {"BNSD_NBSD", {FiaLayout::BNSD, FiaLayout::NBSD}}, {"TND_NTD", {FiaLayout::TND, FiaLayout::NTD}},
-        {"NTD_TND", {FiaLayout::NTD, FiaLayout::TND}},     {"BNSD_BSND", {FiaLayout::BNSD, FiaLayout::BSND}},
-        {"BSND_BNSD", {FiaLayout::BSND, FiaLayout::BNSD}}, {"BSH_BNSD", {FiaLayout::BSH, FiaLayout::BNSD}},
-        {"NTD", {FiaLayout::NTD, FiaLayout::NTD}}};
+        {"BSH", {FiaLayout::BSH, FiaLayout::BSH}}, {"BSND", {FiaLayout::BSND, FiaLayout::BSND}}, {"BNSD", {FiaLayout::BNSD, FiaLayout::BNSD}}, {"TND", {FiaLayout::TND, FiaLayout::TND}}, {"BSH_NBSD", {FiaLayout::BSH, FiaLayout::NBSD}}, {"BSND_NBSD", {FiaLayout::BSND, FiaLayout::NBSD}}, {"BNSD_NBSD", {FiaLayout::BNSD, FiaLayout::NBSD}}, {"TND_NTD", {FiaLayout::TND, FiaLayout::NTD}}, {"NTD_TND", {FiaLayout::NTD, FiaLayout::TND}}, {"BNSD_BSND", {FiaLayout::BNSD, FiaLayout::BSND}}, {"BSND_BNSD", {FiaLayout::BSND, FiaLayout::BNSD}}, {"BSH_BNSD", {FiaLayout::BSH, FiaLayout::BNSD}}, {"NTD", {FiaLayout::NTD, FiaLayout::NTD}}};
 
     std::string layout(opParamInfo_.layOut);
     auto it = layoutMap.find(layout);
@@ -1315,10 +1307,14 @@ ge::graphStatus FiaInfoParser::GetFullQuantMode()
 TilingKeyLayout FiaInfoParser::MapStringToLayout(FiaLayout &layoutString) const
 {
     const std::map<FiaLayout, TilingKeyLayout> layoutMap = {
-        {FiaLayout::BSH, TilingKeyLayout::BSH_BSND}, {FiaLayout::BSND, TilingKeyLayout::BSH_BSND},
-        {FiaLayout::BNSD, TilingKeyLayout::BNSD},    {FiaLayout::NZ, TilingKeyLayout::NZ},
-        {FiaLayout::TND, TilingKeyLayout::TND},      {FiaLayout::NBSD, TilingKeyLayout::NBSD},
-        {FiaLayout::NTD, TilingKeyLayout::NTD},      {FiaLayout::BnBsH, TilingKeyLayout::BSH_BSND},
+        {FiaLayout::BSH, TilingKeyLayout::BSH_BSND},
+        {FiaLayout::BSND, TilingKeyLayout::BSH_BSND},
+        {FiaLayout::BNSD, TilingKeyLayout::BNSD},
+        {FiaLayout::NZ, TilingKeyLayout::NZ},
+        {FiaLayout::TND, TilingKeyLayout::TND},
+        {FiaLayout::NBSD, TilingKeyLayout::NBSD},
+        {FiaLayout::NTD, TilingKeyLayout::NTD},
+        {FiaLayout::BnBsH, TilingKeyLayout::BSH_BSND},
         {FiaLayout::BnNBsD, TilingKeyLayout::BNSD},
     };
 

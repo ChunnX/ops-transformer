@@ -19,7 +19,7 @@
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_dispatch_setup_tiling.h"
-#include "../moe_distribute_base.h"
+#include "../common_moe_distribute_base.h"
 #if __has_include("../../common/mc2_kernel_utils.h")
 #include "../../moe_distribute_dispatch_v2/quantize_functions.h"
 #include "../../common/mc2_kernel_utils.h"
@@ -343,7 +343,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(
     }
     uint32_t statusBufCntAlign = Ceil(recvWinBlockNum_, 8) * 8; // 8 = UB_ALIGN / sizeof(int32_t)
     tpipe_->InitBuffer(statusBuf_, statusBufCntAlign * UB_ALIGN);
-    statusTensor_ = statusBuf_.Get<int32_t>(); // 保存发送数据量及flag，同时用于计算windows中的偏移
+    statusTensor_ = statusBuf_.Get<int32_t>();                  // 保存发送数据量及flag，同时用于计算windows中的偏移
     Duplicate<int32_t>(statusTensor_, 0, recvWinBlockNum_ * 8); // 8 = UB_ALIGN / sizeof(int32_t)
     statusSpaceGm_ = GetWindStateAddrByRankId(epRankId_);
     uint64_t mask[2] = {0x101010101010101, 0}; // 一次性操作256字节，也是64个int32_t，每8个数将首个设置为0x3F800000
@@ -986,7 +986,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
     windowExpGMTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGM_ + (WIN_STATE_OFFSET << 1))); // 不加偏移
     uint32_t len =
         sharedExpertRankNum_ + (endRankId_ - sharedExpertRankNum_) * moeExpertNumPerRank_; // 要传0到end位置的状态数
-    DataCopy<int32_t>(statusTensor_, windowExpGMTensor, len * 8); // 8时数据大小，按32对齐拷贝
+    DataCopy<int32_t>(statusTensor_, windowExpGMTensor, len * 8);                          // 8时数据大小，按32对齐拷贝
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     CalMoeStartTokenNum(startRankId_, statusTensor_, moeStartToken);
     LocalTensor<uint8_t> sqInfoU8 = urmaSqInfoBuf_.Get<uint8_t>();
@@ -1017,7 +1017,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
         PollCommCQUpdateSQCI(sqInfoU8, cqInfoU8, cqeTensorU8, jfcDoorBellU8, sqCi, cqCi, cqCiLinear);
         UpdateCommWriteSQE(templateSqeU8, sqInfoU8);
         if (rankId < sharedExpertRankNum_) { // 给共享专家卡发数据和状态，每张共享专家卡上只会有一个共享专家
-        } else { // 给moe专家卡发数据和状态，每张moe专家卡上有moeExpertNumPerRank_个moe专家
+        } else {                             // 给moe专家卡发数据和状态，每张moe专家卡上有moeExpertNumPerRank_个moe专家
             uint32_t tokenSqeNum = 0;
             uint32_t preExpertNum = sharedExpertRankNum_ + (rankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
             uint32_t calCnt = 0; // 目的卡中当前专家之前其他专家的累计token数

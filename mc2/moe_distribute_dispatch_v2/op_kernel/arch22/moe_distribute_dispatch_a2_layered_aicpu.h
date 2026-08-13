@@ -23,12 +23,12 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_dispatch_tiling.h"
-#include "../../../common/op_kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/common_moe_distribute_base.h"
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 
 namespace MoeDistributeDispatchA2Impl {
 
-#define TemplateMC2TypeA2layeredAicpuClass                                                                             \
+#define TemplateMC2TypeA2layeredAicpuClass \
     typename XType, typename ExpandXOutType, bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist
 #define TemplateMC2TypeA2layeredAicpuFunc XType, ExpandXOutType, StaticQuant, DynamicQuant, IsSmoothScaleExist
 
@@ -367,7 +367,6 @@ __aicore__ inline void MoeDistributeDispatchA2LayeredAicpu<TemplateMC2TypeA2laye
     DataCopy(magicGt, tempLocal, UB_32B_ALIGN / sizeof(uint64_t));
     PipeBarrier<PIPE_ALL>();
 }
-
 
 template <TemplateMC2TypeA2layeredAicpuClass>
 __aicore__ inline void MoeDistributeDispatchA2LayeredAicpu<TemplateMC2TypeA2layeredAicpuFunc>::CreateInnerReduceInfo()
@@ -732,8 +731,8 @@ __aicore__ inline void MoeDistributeDispatchA2LayeredAicpu<TemplateMC2TypeA2laye
             for (uint32_t expertIndex = 0; expertIndex < startExpId; ++expertIndex) {
                 tokenIndex = expertIndex / axisK_;
                 uint32_t expertId = (uint32_t)(expertIdsTensor_(expertIndex)); // 读取expId
-                currentSum = expertCountTensor_(expertId);               // 读取已经往该Exp发送的token个数
-                uint32_t dstServerId = expertId / moeExpertNumInServer_; // 该token去往哪个Server
+                currentSum = expertCountTensor_(expertId);                     // 读取已经往该Exp发送的token个数
+                uint32_t dstServerId = expertId / moeExpertNumInServer_;       // 该token去往哪个Server
                 // 覆盖写，确保去往同一个Server，该Token只统计一次
                 expertToServerCntTensor_(tokenIndex * serverNum + dstServerId) = (int8_t)1;
                 expertCountTensor_(expertId) = currentSum + 1;
@@ -840,7 +839,6 @@ __aicore__ inline void MoeDistributeDispatchA2LayeredAicpu<TemplateMC2TypeA2laye
         scaleTensor.SetValue(0, float(1.0) / dynamicScale); // int8->float32
     }
 }
-
 
 template <TemplateMC2TypeA2layeredAicpuClass>
 __aicore__ inline void MoeDistributeDispatchA2LayeredAicpu<TemplateMC2TypeA2layeredAicpuFunc>::CopyTokenToWinOut(

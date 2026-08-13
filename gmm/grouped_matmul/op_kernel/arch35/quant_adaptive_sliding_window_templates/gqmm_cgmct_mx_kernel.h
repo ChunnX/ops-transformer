@@ -21,7 +21,7 @@
 #include "cgmct/epilogue/block_epilogue_empty.h"
 #include "cgmct/kernel/kernel_qgmm_mx.h"
 #include "cgmct/policy/dispatch_policy.h"
-#include "../../grouped_matmul_utils.h"
+#include "../../grouped_matmul_grouped_matmul_utils.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 using GMMQuantParams = GroupedMatmulTilingData::GMMQuantParams;
 using QuantBasicApiMMTiling = GroupedMatmulTilingData::QuantBasicApiMMTiling;
@@ -68,11 +68,11 @@ __aicore__ inline void GmmCgmctMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias,
     using GmmKernel = Kernel::KernelQGmmMx<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename GmmKernel::Params;
     using GMMTiling = typename GmmKernel::GMMTiling;
-    GMMTiling gmmParams{gmmBaseParamsIn->groupNum, mmTilingDataIn->m,          mmTilingDataIn->n,
-                        mmTilingDataIn->k,         mmTilingDataIn->baseM,      mmTilingDataIn->baseN,
-                        mmTilingDataIn->baseK,     mmTilingDataIn->kAL1,       mmTilingDataIn->kBL1,
-                        mmTilingDataIn->scaleKAL1, mmTilingDataIn->scaleKBL1,  mmTilingDataIn->isBias,
-                        mmTilingDataIn->dbL0C,     gmmBaseParamsIn->groupType, gmmBaseParamsIn->groupListType};
+    GMMTiling gmmParams{gmmBaseParamsIn->groupNum, mmTilingDataIn->m, mmTilingDataIn->n,
+                        mmTilingDataIn->k, mmTilingDataIn->baseM, mmTilingDataIn->baseN,
+                        mmTilingDataIn->baseK, mmTilingDataIn->kAL1, mmTilingDataIn->kBL1,
+                        mmTilingDataIn->scaleKAL1, mmTilingDataIn->scaleKBL1, mmTilingDataIn->isBias,
+                        mmTilingDataIn->dbL0C, gmmBaseParamsIn->groupType, gmmBaseParamsIn->groupListType};
     Params params = {{1, 1, 1, 1},                                          // shape
                      {x, weight, scale, perTokenScale, y, bias, groupList}, // gm addr
                      gmmParams};

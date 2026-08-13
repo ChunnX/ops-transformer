@@ -19,7 +19,7 @@
 #include "../template_linear_algebra_v2/gemm_coord.hpp"
 #include "../template_linear_algebra_v2/matrix_coord.hpp"
 #include "../template_linear_algebra_v2/layout/layout.hpp"
-#include "../template_linear_algebra_v2/detail/callback.hpp"
+#include "../template_linear_algebra_v2/detail/mega_moe_callback_arch22.hpp"
 #include "gated_activation.hpp"
 #include "get_tensor_addr.hpp"
 

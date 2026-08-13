@@ -18,7 +18,8 @@
 namespace ops {
 class LightningIndexerV2 : public OpDef {
 public:
-    explicit LightningIndexerV2(const char *name) : OpDef(name)
+    explicit LightningIndexerV2(const char *name)
+        : OpDef(name)
     {
         this->Input("q")
             .ParamType(REQUIRED)

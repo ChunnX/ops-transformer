@@ -23,7 +23,7 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_dispatch_tiling.h"
-#include "../../../common/op_kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/common_moe_distribute_base.h"
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 
 #include "moe_distribute_a2_base.h"
@@ -31,7 +31,7 @@
 #include "moe_distribute_a2_constant.h"
 
 namespace MoeDistributeDispatchA2Impl {
-#define TemplateMC2TypeA2layeredClass                                                                                  \
+#define TemplateMC2TypeA2layeredClass \
     typename XType, typename ExpandXOutType, bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist
 #define TemplateMC2TypeA2layeredFunc XType, ExpandXOutType, StaticQuant, DynamicQuant, IsSmoothScaleExist
 
@@ -705,7 +705,6 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     }
 }
 
-
 template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::ReorderTokens()
 {
@@ -743,7 +742,6 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     }
     uint32_t maxTokenNumInUB = tokenUbSize_ / singleTokenUBSize;
     uint32_t batchNum = (sendTokenNum + maxTokenNumInUB - 1) / maxTokenNumInUB;
-
 
     LocalTensor<uint8_t> tokenTensorU8_ =
         tBuf.GetWithOffset<uint8_t>(maxTokenNumInUB * tokenStructLen_, TBUF_TEMP_OFFSET);
@@ -1082,7 +1080,6 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         tokenStructLen_ / sizeof(uint8_t), RoundUp(tokenNumPerExpInfoSize + TBUF_TEMP_OFFSET, IPC_BUFF_ALIGN));
     LocalTensor<int32_t> localUB_32 = tBuf.GetWithOffset<int32_t>(
         tokenStructLen_ / sizeof(int32_t), RoundUp(tokenNumPerExpInfoSize + TBUF_TEMP_OFFSET, IPC_BUFF_ALIGN));
-
 
     Duplicate<int32_t>(tokenNumPerExp, 0, SERVER_RANK_SIZE * localMoeExpertNum_ * EXP_TOKEN_COUNT_FLAG_CNT);
     int64_t startTime = GetCurrentTimestampUs();

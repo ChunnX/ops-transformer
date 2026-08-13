@@ -25,7 +25,6 @@ static constexpr uint32_t IDX_FIVE = 5;
 static constexpr uint32_t IDX_EIGHT = 8;
 static constexpr uint32_t IDX_THIRTEEN = 13;
 
-
 static ge::graphStatus InferShapeCheck(gert::InferShapeContext *context)
 {
     if (context == nullptr) {
@@ -40,9 +39,9 @@ static ge::graphStatus InferShapeCheck(gert::InferShapeContext *context)
         }
     }
 
-    static const char *INPUT_NAMES[] = {"expand_x",       "expert_ids",    "assist_info_for_combine",
+    static const char *INPUT_NAMES[] = {"expand_x", "expert_ids", "assist_info_for_combine",
                                         "ep_send_counts", "expert_scales", "residual_x",
-                                        "gamma",          "tp_send_counts"};
+                                        "gamma", "tp_send_counts"};
     for (uint32_t i = 0; i < IDX_EIGHT; ++i) {
         if (context->GetInputShape(i) == nullptr) {
             OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), INPUT_NAMES[i]);

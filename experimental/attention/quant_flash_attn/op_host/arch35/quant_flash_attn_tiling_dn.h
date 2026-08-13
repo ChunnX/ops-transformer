@@ -41,7 +41,8 @@ struct FaTilingKeyInfo {
 
 class QuantFlashAttnTilingDn : public FiaTilingBase {
 public:
-    explicit QuantFlashAttnTilingDn(gert::TilingContext *context) : FiaTilingBase(context)
+    explicit QuantFlashAttnTilingDn(gert::TilingContext *context)
+        : FiaTilingBase(context)
     {
     }
     ~QuantFlashAttnTilingDn() override = default;

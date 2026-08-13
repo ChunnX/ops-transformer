@@ -23,7 +23,7 @@
 #include "lib/matmul_intf.h"
 #include "../common.h"
 #include "lib/hccl/hccl.h"
-#include "all_gather_matmul_base.h"
+#include "all_gather_matmul_v2_all_gather_matmul_base_arch35.h"
 #include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h"
 #include "../../../common/op_kernel/mc2_quant_batch_matmul.h"
 #include "../all_gather_matmul_tiling_data.h"
@@ -232,7 +232,7 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CT
     if (cfg.rankN == 0) {
         return;
     }
-    auto &&qBMMLocalTiling = tilingData_->quantBmmv3LocalTiling; // QuantBatchMatmulV3TilingData 本地核切分tiling参数
+    auto &&qBMMLocalTiling = tilingData_->quantBmmv3LocalTiling;           // QuantBatchMatmulV3TilingData 本地核切分tiling参数
     uint32_t tilingKa = tilingData_->quantBmmv3TileTiling.matmulTiling.Ka; // 整块K轴大小
 
     MatMulASWKernel<AType, BType, X2ScaleType, BiasType, CType, CubeFormat::ND, CubeFormat::ND, CubeFormat::ND, ATrans,

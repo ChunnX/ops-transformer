@@ -11,7 +11,7 @@
 #ifndef CATLASS_EPILOGUE_TILE_TILE_ELEMWISE_MULS_HPP
 #define CATLASS_EPILOGUE_TILE_TILE_ELEMWISE_MULS_HPP
 
-#include "../../../template_linear_algebra_v2/gemm/helper.hpp"
+#include "../../../template_linear_algebra_v2/gemm/mega_moe_helper_arch22.hpp"
 
 namespace Catlass::Epilogue::Tile {
 template <class ArchTag_, class ComputeType_, uint32_t COMPUTE_LENGTH_>

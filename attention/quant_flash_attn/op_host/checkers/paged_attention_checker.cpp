@@ -20,7 +20,7 @@
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../qfa_tiling_info.h"
-#include "paged_attention_checker.h"
+#include "quant_flash_attn_paged_attention_checker.h"
 
 namespace optiling {
 namespace quant_flash_attn {
@@ -127,7 +127,7 @@ ge::graphStatus PagedAttentionChecker::CheckFeature(const QfaTilingInfo &qfaInfo
         // MxFP8 场景: blockSize 仅支持 64、128、256、512或1024
         if (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
             OP_CHECK_IF(qfaInfo.blockSize != 64 && qfaInfo.blockSize != 128 && qfaInfo.blockSize != 256 &&
-                        qfaInfo.blockSize != 512 && qfaInfo.blockSize != 1024,
+                            qfaInfo.blockSize != 512 && qfaInfo.blockSize != 1024,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                             qfaInfo.opName, "block_size", std::to_string(qfaInfo.blockSize).c_str(),
                             "When quant_mode is MxFP8, block_size must be in [64, 128, 256, 512, 1024]"),

@@ -19,7 +19,7 @@
 #include "fia_public_define_arch35.h"
 #include "fia_block_cube_fullquant_mx.h"
 #include "fia_block_vec_fullquant_mx.h"
-#include "../memory_copy_arch35.h"
+#include "../flash_attn_memory_copy_arch35.h"
 #include "fia_block_vec_flashdecode_fullquant.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -114,7 +114,9 @@ public:
 
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionFullQuantMxKernel()
-        : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
+        : cubeBlock(constInfo),
+          vecFaBlock(constInfo),
+          vecFdBlock(constInfo){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
                                 __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable,
@@ -190,7 +192,7 @@ public:
         // GM Buffer
         if constexpr (!BMM2_TOUB) {
             int64_t mm2ResultSize =
-                mBaseSize * constInfo.dBasicBlock; // 使用Cube计算的总大小，Gm上的数据按照实际的dSize存储
+                mBaseSize * constInfo.dBasicBlock;                              // 使用Cube计算的总大小，Gm上的数据按照实际的dSize存储
             int64_t prevCoretotalOffset = constInfo.aicIdx * 3 * mm2ResultSize; // 3为preload次数
             // SameB模式下V0和V1调用IterateAll的时候填写的地址相同
             gmBufferManager.Init(workspace + prevCoretotalOffset * sizeof(T));
@@ -505,7 +507,7 @@ public:
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
         int64_t s1GLastToken = AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
-                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.realGSize)) -
+                                                    static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.realGSize)) -
                                1;
 
         int64_t s1FirstToken = 0;

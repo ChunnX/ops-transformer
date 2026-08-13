@@ -22,7 +22,7 @@
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../qfa_tiling_info.h"
-#include "common_checker.h"
+#include "quant_flash_attn_common_checker.h"
 
 namespace optiling {
 namespace quant_flash_attn {
@@ -41,7 +41,7 @@ using namespace Ops::Base;
 ge::graphStatus CommonChecker::CheckSingleParaLayout(const QfaTilingInfo &qfaInfo)
 {
     const std::vector<QfaLayout> supportedQLayouts = {QfaLayout::BSND, QfaLayout::BNSD, QfaLayout::TND};
-    const std::vector<QfaLayout> supportedKvLayouts = {QfaLayout::BSND,    QfaLayout::BNSD,    QfaLayout::TND,
+    const std::vector<QfaLayout> supportedKvLayouts = {QfaLayout::BSND, QfaLayout::BNSD, QfaLayout::TND,
                                                        QfaLayout::PA_BBND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ};
     const std::vector<QfaLayout> supportedOutLayouts = {QfaLayout::BSND, QfaLayout::BNSD, QfaLayout::TND};
 

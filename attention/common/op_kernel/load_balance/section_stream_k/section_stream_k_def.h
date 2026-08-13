@@ -41,7 +41,10 @@ struct SectionStreamKFaResult {
     std::vector<uint32_t> firstFdDataWorkspaceIdx{}; // FD块在workspace中的位置
 
     explicit SectionStreamKFaResult(uint32_t aicNum)
-        : bN2End(aicNum), gS1End(aicNum), s2End(aicNum), firstFdDataWorkspaceIdx(aicNum)
+        : bN2End(aicNum),
+          gS1End(aicNum),
+          s2End(aicNum),
+          firstFdDataWorkspaceIdx(aicNum)
     {
     }
 };
@@ -49,7 +52,7 @@ struct SectionStreamKFaResult {
 struct SectionStreamKFdResult {
     uint32_t usedVecNum{0U}; // 归约过程中使用的AIV数量
     // 1、归约任务的索引信息
-    std::vector<uint32_t> bN2Idx{}; // 每个归约任务的BN2索引，脚标为归约任务的序号，最大为核数-1
+    std::vector<uint32_t> bN2Idx{};       // 每个归约任务的BN2索引，脚标为归约任务的序号，最大为核数-1
     std::vector<uint32_t> gS1Idx{};       // 每个归约任务的GS1索引，脚标为归约任务的序号
     std::vector<uint32_t> workspaceIdx{}; // 每个归约任务在workspace中的存放位置
     std::vector<uint32_t> s2SplitNum{};   // 每个归约任务的S2核间切分份数，脚标为归约任务的序号
@@ -59,7 +62,12 @@ struct SectionStreamKFdResult {
     std::vector<uint32_t> mLen{};    // 每个AIV处理的归约任务的M轴行数
 
     explicit SectionStreamKFdResult(uint32_t aicNum, uint32_t aivNum)
-        : bN2Idx(aicNum), gS1Idx(aicNum), workspaceIdx(aicNum), s2SplitNum(aicNum), taskIdx(aivNum), mStart(aivNum),
+        : bN2Idx(aicNum),
+          gS1Idx(aicNum),
+          workspaceIdx(aicNum),
+          s2SplitNum(aicNum),
+          taskIdx(aivNum),
+          mStart(aivNum),
           mLen(aivNum)
     {
     }

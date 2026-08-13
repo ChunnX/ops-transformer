@@ -30,7 +30,7 @@
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "util/math_util.h"
 #include "all_gather_fit_balance_tiling.h"
-#include "all_gather_matmul_tiling_base.h"
+#include "all_gather_matmul_v2_all_gather_matmul_tiling_base.h"
 #include "../../op_kernel/all_gather_matmul_v2_apt_tiling_key.h"
 
 using namespace AscendC;
@@ -130,7 +130,6 @@ ge::graphStatus AllGatherMatmulTilingBase::AnalyzeShapeAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-
 void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling,
                                                         ::TCubeTiling &tailTiling)
 {
@@ -187,7 +186,6 @@ void AllGatherMatmulTilingBase::DoAllGatherTiling(Mc2Tiling::RCSTiling &rcsCfg, 
     // 计算一下额外申请的内存
     storageA_ = GetStorageA(rcsCfg);
 }
-
 
 void AllGatherMatmulTilingBase::SetRcsTilingData(Mc2Tiling::RCSTiling &rcsCfg)
 {

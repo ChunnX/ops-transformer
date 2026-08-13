@@ -12,8 +12,8 @@
 #define CATLASS_LAYOUT_VECTOR_HPP
 
 #include "../catlass.hpp"
-#include "../coord.hpp"
-#include "../numeric_size.hpp"
+#include "../third_coord.hpp"
+#include "../third_numeric_size.hpp"
 
 namespace Catlass::layout {
 
@@ -41,12 +41,16 @@ public:
     // Methods
 
     CATLASS_HOST_DEVICE
-    VectorLayout(Index size = 0) : shape_(MakeCoord(size)), stride_(MakeCoord(LongIndex(1)))
+    VectorLayout(Index size = 0)
+        : shape_(MakeCoord(size)),
+          stride_(MakeCoord(LongIndex(1)))
     {
     }
 
     CATLASS_HOST_DEVICE
-    VectorLayout(Shape shape, Stride stride) : shape_(shape), stride_(stride)
+    VectorLayout(Shape shape, Stride stride)
+        : shape_(shape),
+          stride_(stride)
     {
     }
 

@@ -120,7 +120,10 @@ class FiaTilingShape {
 public:
     FiaTilingShape(const gert::Shape &shape, FiaLayout layout, std::string name, std::string opName,
                    int64_t N = std::numeric_limits<int64_t>::min())
-        : shape_(shape), layout_(layout), name_(name), opName_(opName)
+        : shape_(shape),
+          layout_(layout),
+          name_(name),
+          opName_(opName)
     {
         if (HasShapeH() && N != std::numeric_limits<int64_t>::min()) {
             N_ = N;
@@ -270,7 +273,10 @@ class FiaTilingShapeCompare {
 
 public:
     FiaTilingShapeCompare(const gert::Shape &shape, FiaLayout layout, std::string name, std::string opName)
-        : shape_(shape), layout_(layout), name_(name), opName_(opName) {};
+        : shape_(shape),
+          layout_(layout),
+          name_(name),
+          opName_(opName) {};
 
 public:
     const gert::Shape &shape_;

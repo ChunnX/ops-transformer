@@ -27,7 +27,7 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_tiling/kernel_tiling.h"
-#include "../moe_distribute_base.h"
+#include "../common_moe_distribute_base.h"
 #include "../moe_distribute_combine_setup_tiling_data.h"
 
 namespace MoeDistributeCombineSetupImpl {
@@ -47,12 +47,12 @@ struct WriteWithNotifySQEInfoParams {
 using namespace AscendC;
 template <TemplateMC2TypeClass>
 class MoeDistributeCombineSetup {
-    constexpr static uint8_t BUFFER_NUM = 2;              // 多buf
-    constexpr static uint64_t STATE_OFFSET = 512U;        // 状态空间偏移地址
-    constexpr static uint32_t STATE_SIZE = 1024U * 1024U; // 1M
-    constexpr static uint32_t UB_ALIGN = 32U;             // UB按32字节对齐
-    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U; // 数据和状态的0/1区标识占用空间
-    constexpr static uint64_t COMBINE_STATE_OFFSET = 0U; // 本卡状态空间偏移地址，前面的地址给dispatch用
+    constexpr static uint8_t BUFFER_NUM = 2;                // 多buf
+    constexpr static uint64_t STATE_OFFSET = 512U;          // 状态空间偏移地址
+    constexpr static uint32_t STATE_SIZE = 1024U * 1024U;   // 1M
+    constexpr static uint32_t UB_ALIGN = 32U;               // UB按32字节对齐
+    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;   // 数据和状态的0/1区标识占用空间
+    constexpr static uint64_t COMBINE_STATE_OFFSET = 0U;    // 本卡状态空间偏移地址，前面的地址给dispatch用
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
 
 public:
@@ -153,7 +153,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(
     axisMaxBS_ = moeDistributeCombineSetupInfo_->globalBs / moeDistributeCombineSetupInfo_->epWorldSize;
     moeSendNum_ = moeDistributeCombineSetupInfo_->epWorldSize * moeDistributeCombineSetupInfo_->moeExpertPerRankNum;
     isShardExpert_ = (moeDistributeCombineSetupInfo_->epRankId <
-                      moeDistributeCombineSetupInfo_->sharedExpertRankNum); // 当前rank是否为共享专家
+                      moeDistributeCombineSetupInfo_->sharedExpertRankNum);                          // 当前rank是否为共享专家
     curRankExpertNum_ = (isShardExpert_) ? 1U : moeDistributeCombineSetupInfo_->moeExpertPerRankNum; // 本卡专家数
 
     axisHExpandXTypeSize_ = static_cast<uint64_t>(moeDistributeCombineSetupInfo_->h) *

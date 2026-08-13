@@ -12,16 +12,16 @@
  * \file moe_token_unpermute.cpp
  * \brief
  */
-#include "moe_token_unpermute.h"
+#include "moe_token_unpermute_moe_token_unpermute.h"
 #include "kernel_operator.h"
 
-#define MOE_TOKEN_UNPERMUTE_IMPL(T1, T2, T3, haveProbs)                                  \
-    do {                                                                                 \
-        GET_TILING_DATA(tiling_data_in, tiling);                                         \
-        const MoeTokenUnpermuteTilingData* __restrict tiling_data = &tiling_data_in;     \
-        KernelMoeTokenUnpermute<T1, T2, T3, haveProbs> op;                               \
+#define MOE_TOKEN_UNPERMUTE_IMPL(T1, T2, T3, haveProbs) \
+    do { \
+        GET_TILING_DATA(tiling_data_in, tiling); \
+        const MoeTokenUnpermuteTilingData *__restrict tiling_data = &tiling_data_in; \
+        KernelMoeTokenUnpermute<T1, T2, T3, haveProbs> op; \
         op.Init(permuted_tokens, sorted_indices, probs, unpermuted_tokens, tiling_data, &pipe); \
-        op.Process();                                                                    \
+        op.Process(); \
     } while (0)
 
 extern "C" __global__ __aicore__ void moe_token_unpermute(

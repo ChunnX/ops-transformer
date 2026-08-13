@@ -13,12 +13,12 @@
 
 #include "../../catlass.hpp"
 #include "../../arch/resource.hpp"
-#include "../../coord.hpp"
+#include "../../third_coord.hpp"
 #include "../../gemv_coord.hpp"
-#include "../../gemv/helper.hpp"
-#include "../../gemm/helper.hpp"
+#include "../../gemv/third_helper.hpp"
+#include "../../gemm/third_helper.hpp"
 #include "../../layout/layout.hpp"
-#include "../../detail/alignment.hpp"
+#include "../../detail/third_alignment.hpp"
 #include "../../gemm/dispatch_policy.hpp"
 
 namespace Catlass::Gemv::Block {

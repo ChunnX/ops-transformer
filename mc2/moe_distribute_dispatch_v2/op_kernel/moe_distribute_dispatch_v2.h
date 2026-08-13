@@ -33,17 +33,17 @@
 #include "check_winsize.h"
 #if __has_include("../common/mc2_moe_context.h")
 #include "../common/mc2_moe_context.h"
-#include "../common/moe_distribute_base.h"
+#include "../common/common_moe_distribute_base.h"
 #else
 #include "../../common/op_kernel/mc2_moe_context.h"
-#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/common_moe_distribute_base.h"
 #endif
 #include "hccl_context_holder.h"
 #include "mc2_moe_context_holder.h"
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace Mc2Kernel {
-#define TemplateDispatchV2TypeClass                                                                                    \
+#define TemplateDispatchV2TypeClass \
     typename ContextHolder, typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist
 #define TemplateDispatchV2TypeFunc ContextHolder, XType, ExpandXOutType, QuantMode, IsSmoothScaleExist
 
@@ -455,7 +455,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     uint32_t statusBufSize = statusBufCntAlign * UB_ALIGN;
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
     totalUsedUB_ += statusBufSize;
-    statusTensor_ = statusBuf_.Get<int32_t>(); // 保存发送数据量及flag，同时用于计算windows中的偏移
+    statusTensor_ = statusBuf_.Get<int32_t>();                   // 保存发送数据量及flag，同时用于计算windows中的偏移
     Duplicate<int32_t>(statusTensor_, 0, statusBufCntAlign * 8); // 8 = UB_ALIGN / sizeof(int32_t)
     statusSpaceGm_ = GetWindStateAddrByRankId(epRankIdOriginal_);
     sumTarget_ = static_cast<float>(1.0);
@@ -519,7 +519,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
 
     if (hasExpertScalesFlag_) {
         expandScalesOutGM_ = expandScalesOut;
-        expertScalesGMTensor_.SetGlobalBuffer((__gm__ float*)expertScales);
+        expertScalesGMTensor_.SetGlobalBuffer((__gm__ float *)expertScales);
         tpipe_->InitBuffer(expertScalesBuf_, expertIdsBufSize);
         totalUsedUB_ += expertIdsBufSize;
     }
@@ -1051,7 +1051,7 @@ MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SyncCntOnCore(LocalTensor<f
                                                                    LocalTensor<float> &statusSumOutTensor)
 {
     gatherTmpTensor.SetValue(0, STATUS_BLOCK_COUNT_SEL_PATTERN); // 源操作数每个datablock取下标为1的元素
-    uint32_t mask = 2; // 源操作数每个datablock只需要处理两个元素
+    uint32_t mask = 2;                                           // 源操作数每个datablock只需要处理两个元素
     SyncFunc<AscendC::HardEvent::S_V>();
 
     // 将当前核对应的专家recv cnt收集到gatherMaskOutTensor
@@ -1476,7 +1476,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Loca
                 expertScaleInGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(
                     wAddr + tokenCopiedNumThisExpert * hAlignWinSize_ + expertScaleAlign_ * sizeof(float)));
                 expandScalesOutGlobal.SetGlobalBuffer(
-                    (__gm__ float*)(expandScalesOutGM_) + beginIdx + tokenCopiedNumThisExpert);
+                    (__gm__ float *)(expandScalesOutGM_) + beginIdx + tokenCopiedNumThisExpert);
                 DataCopyExtParams expertScaleCopyInParams{
                     blockCount, static_cast<uint32_t>(sizeof(float)),
                     static_cast<uint32_t>(hAlignWinSize_ - sizeof(float)), 0U, 0U};

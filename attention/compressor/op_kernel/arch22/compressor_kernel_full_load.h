@@ -16,7 +16,7 @@
 #ifndef COMPRESSOR_KERNEL_FULL_LOAD_H
 #define COMPRESSOR_KERNEL_FULL_LOAD_H
 
-#include "compressor_comm.h"
+#include "compressor_comm_arch22.h"
 #include "compressor_template_tiling_key.h"
 #include "compressor_tiling_data.h"
 #include "compressor_tools.h"
@@ -30,7 +30,8 @@ template <typename COMP>
 class CompressorKernelFullLoad {
 public:
     __aicore__ inline CompressorKernelFullLoad(TPipe *pipe, const optiling::CompressorTilingData *__restrict tilingData)
-        : pipe_(pipe), tilingData_(tilingData)
+        : pipe_(pipe),
+          tilingData_(tilingData)
     {
     }
 

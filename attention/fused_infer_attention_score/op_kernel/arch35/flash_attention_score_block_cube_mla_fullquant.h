@@ -20,9 +20,9 @@
 #include "../../../common/op_kernel/FixpipeOut.h"
 #include "../../../common/op_kernel/CopyInL1.h"
 
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
@@ -650,10 +650,10 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
     fixpipec310Params.mSize = (runInfo.s1RealSize + 1) >> 1 << 1;
     // 源NZ矩阵中相邻Z排布的起始地址偏移
     fixpipec310Params.srcStride = (fixpipec310Params.mSize + 15) >>
-                                  4 << 4; // 15, 4: L0C上matmul结果相邻连续数据片断间隔, 单位为16 *sizeof(T) ，对齐到16
+                                  4 << 4;     // 15, 4: L0C上matmul结果相邻连续数据片断间隔, 单位为16 *sizeof(T) ，对齐到16
     fixpipec310Params.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 //
                                               // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
-    fixpipec310Params.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+    fixpipec310Params.dualDstCtl = 1;         // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
     fixpipec310Params.params.ndNum = 1;
     fixpipec310Params.params.srcNdStride = 0;
     fixpipec310Params.params.dstNdStride = 0;
@@ -803,11 +803,11 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
         Buffer<BufferType::L1> biasBufTemp = biasBufL1.Get();
         biasBufTemp.Wait<HardEvent::MTE1_MTE2>();                             // 等待同步，MTE2等待MTE1搬运完
         LocalTensor<int32_t> biasL1Tensor = biasBufTemp.GetTensor<int32_t>(); // 在L1中的位置
-        InitConstValue(biasL1Tensor, params); // 利用结构体参数来完成对biasTensor（C1上的局部Localtensor）初始化
-        biasBufTemp.Set<HardEvent::MTE2_MTE1>();            // 设置同步信号，MTE1等待MTE2搬运完
-        biasBufTemp.Wait<HardEvent::MTE2_MTE1>();           // 等待同步，MTE1等待MTE2搬运完
-        const uint32_t nSplitSize = 128;                    // 128:n方向切分，s2basesize = 128
-        DataCopy(btC2Tensor, biasL1Tensor, nSplitSize * 2); // 因此利用了Datacopy完成了数据从C1---C2的搬运
+        InitConstValue(biasL1Tensor, params);                                 // 利用结构体参数来完成对biasTensor（C1上的局部Localtensor）初始化
+        biasBufTemp.Set<HardEvent::MTE2_MTE1>();                              // 设置同步信号，MTE1等待MTE2搬运完
+        biasBufTemp.Wait<HardEvent::MTE2_MTE1>();                             // 等待同步，MTE1等待MTE2搬运完
+        const uint32_t nSplitSize = 128;                                      // 128:n方向切分，s2basesize = 128
+        DataCopy(btC2Tensor, biasL1Tensor, nSplitSize * 2);                   // 因此利用了Datacopy完成了数据从C1---C2的搬运
         biasBufTemp.Set<HardEvent::MTE1_MTE2>();
     }
     //********************结束偏置矩阵的计算 */
@@ -895,7 +895,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
     MatmulKbias<INPUT_T, INPUT_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
         mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers,
         mm1ResL0C.GetTensor<int32_t>(), l0biasBuffer.GetTensor<int32_t>(), param);
-    LocalTensor<int32_t> cL0Tensor = mm1ResL0C.GetTensor<int32_t>(); // 用int32_t的形式去接收，
+    LocalTensor<int32_t> cL0Tensor = mm1ResL0C.GetTensor<int32_t>();        // 用int32_t的形式去接收，
     LocalTensor<T> cL0TensorFp32 = cL0Tensor.template ReinterpretCast<T>(); // 解释为另一种数据类型,解读方式不同
 
     // ROPE 计算
@@ -943,11 +943,11 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride =
             (fixpipeParams.mSize + 15) >>
-            4 << 4; // 15, 4: L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16
-                    // *sizeof(T) ，对齐到16
+            4 << 4;                           // 15, 4: L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16
+                                              // *sizeof(T) ，对齐到16
         fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 //
                                               // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
-        fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+        fixpipeParams.dualDstCtl = 1;         // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
@@ -965,7 +965,6 @@ __aicore__ inline bool FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IsGS1Merge(ConstI
 {
     return (Q_FORMAT == GmFormat::BSNGD || Q_FORMAT == GmFormat::TNGD) && constInfo.isPfaGS1Merge;
 }
-
 
 TEMPLATES_DEF
 class FABlockCubeMlaFullquantDummy {
@@ -1018,11 +1017,11 @@ struct CubeBlockTraits; // 声明
 /* 生成CubeBlockTraits */
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
 #define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
-#define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS)                                                                     \
-    TEMPLATES_DEF_NO_DEFAULT                                                                                           \
-    struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> {                                                          \
-        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE)                                                                  \
-        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST)                                                                \
+#define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
+    TEMPLATES_DEF_NO_DEFAULT \
+    struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
+        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE) \
+        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
     };
 DEFINE_CUBE_BLOCK_TRAITS(FABlockCubeMlaFullquant);
 DEFINE_CUBE_BLOCK_TRAITS(FABlockCubeMlaFullquantDummy);
@@ -1030,8 +1029,8 @@ DEFINE_CUBE_BLOCK_TRAITS(FABlockCubeMlaFullquantDummy);
 // /* 生成Arg Traits, kernel中只需要调用ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
 #define GEN_ARGS_TYPE(name, ...) using name = typename CubeBlockTraits<CubeBlockType>::name##_TRAITS;
 #define GEN_ARGS_CONST(name, type, ...) static constexpr type name = CubeBlockTraits<CubeBlockType>::name##Traits;
-#define ARGS_TRAITS                                                                                                    \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE)                                                                       \
+#define ARGS_TRAITS \
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE) \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST)
 } // namespace BaseApi
 #endif // FLASH_ATTENTION_SCORE_BLOCK_CUBE_MLA_FULLQUANT_H_

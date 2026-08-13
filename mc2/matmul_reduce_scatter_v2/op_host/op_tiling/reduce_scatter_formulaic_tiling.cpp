@@ -73,9 +73,9 @@ void MMPlusReduceScatter::EstimateKernelTime()
     bool increaseMinLen =
         (ratioCalcComm_ < commGrowRatio) ||
         ((totalMatmulTime > totalTpTime * UNBALANCE_RATIO) &&
-         (clusterInfo_.mValue >= tilingM_.GetAlignLength() * FOUR)); // 4 = 2 x 2，m太小时增加初始值会导致不切
+         (clusterInfo_.mValue >= tilingM_.GetAlignLength() * FOUR));                                // 4 = 2 x 2，m太小时增加初始值会导致不切
     increaseMinLen = increaseMinLen && (clusterInfo_.nValue <= FOUR_KILO) && deterministicSoc910B_; // n小时要少切
-    if (increaseMinLen) { // 通过增加初始值的方式鼓励少切
+    if (increaseMinLen) {                                                                           // 通过增加初始值的方式鼓励少切
         tilingM_.SetMinLenByMax(tilingM_.GetAlignLength() * TWO);
     }
 

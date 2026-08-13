@@ -12,12 +12,12 @@
  * \file moe_token_permute.cpp
  * \brief
  */
-#include "moe_mrgsort_out.h"
-#include "moe_mrgsort.h"
-#include "moe_sort_multi_core.h"
-#include "moe_sort_one_core.h"
-#include "moe_index_copy.h"
-#include "moe_index_copy_spilt_d.h"
+#include "moe_token_permute_moe_mrgsort_out.h"
+#include "moe_token_permute_moe_mrgsort.h"
+#include "moe_token_permute_moe_sort_multi_core.h"
+#include "moe_token_permute_moe_sort_one_core.h"
+#include "moe_token_permute_moe_index_copy.h"
+#include "moe_token_permute_moe_index_copy_spilt_d.h"
 #if !defined(DTYPE_TOKENS)
 #define DTYPE_TOKENS bfloat16_t
 #endif
@@ -26,21 +26,21 @@
 #endif
 using namespace AscendC;
 using namespace MoeTokenPermute;
-#define GENERAL_OP_IMPL(sortClass1, sortClass2, indexCopyClass, ...)                  \
-    do {                                                                              \
-        sortClass1<DTYPE_INDICES> op;                                                 \
-        op.Init(indices, sortedIndices, userWS, t, &sortPipe);                        \
-        op.Process();                                                                 \
-        sortPipe.Destroy();                                                           \
-        sortClass2<int32_t> op2;                                                      \
-        TPipe sortPipe2;                                                              \
-        op2.Init(sortedIndices, sortedIndices, userWS, t, &sortPipe2);                \
-        op2.Process();                                                                \
-        sortPipe2.Destroy();                                                          \
-        TPipe MoeindexCopyPipe;                                                       \
-        indexCopyClass<__VA_ARGS__> indexCopyOp;                                      \
+#define GENERAL_OP_IMPL(sortClass1, sortClass2, indexCopyClass, ...) \
+    do { \
+        sortClass1<DTYPE_INDICES> op; \
+        op.Init(indices, sortedIndices, userWS, t, &sortPipe); \
+        op.Process(); \
+        sortPipe.Destroy(); \
+        sortClass2<int32_t> op2; \
+        TPipe sortPipe2; \
+        op2.Init(sortedIndices, sortedIndices, userWS, t, &sortPipe2); \
+        op2.Process(); \
+        sortPipe2.Destroy(); \
+        TPipe MoeindexCopyPipe; \
+        indexCopyClass<__VA_ARGS__> indexCopyOp; \
         indexCopyOp.Init(tokens, sortedIndices, permuteTokens, t, &MoeindexCopyPipe); \
-        indexCopyOp.Process();                                                        \
+        indexCopyOp.Process(); \
     } while (0)
 
 extern "C" __global__ __aicore__ void moe_token_permute(

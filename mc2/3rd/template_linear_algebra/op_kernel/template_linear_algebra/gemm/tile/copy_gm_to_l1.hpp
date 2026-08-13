@@ -12,7 +12,7 @@
 #define CATLASS_GEMM_TILE_COPY_GM_TO_L1_HPP
 
 #include "../../catlass.hpp"
-#include "../../numeric_size.hpp"
+#include "../../third_numeric_size.hpp"
 #include "../../layout/layout.hpp"
 #include "../../gemm/gemm_type.hpp"
 
@@ -391,7 +391,6 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout>,
         AscendC::DataCopy(dstTensor, srcTensor, intriParams);
     }
 };
-
 
 ///////////////////////////////////////
 /// new add gemv, ColumnMajor -> nN

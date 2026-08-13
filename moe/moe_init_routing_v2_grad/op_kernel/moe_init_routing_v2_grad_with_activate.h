@@ -15,19 +15,18 @@
 #ifndef MOE_INIT_ROUTING_V2_GRAD_ACTIVATE_COMPUTE_H
 #define MOE_INIT_ROUTING_V2_GRAD_ACTIVATE_COMPUTE_H
 
-#include "moe_init_routing_v2_grad_base.h"
+#include "moe_init_routing_v2_grad_base_kernel.h"
 
 namespace MoeInitRoutingV2Grad {
 using namespace AscendC;
 
 template <typename T>
-class MoeInitRoutingV2GradActivateCompute : public MoeInitRoutingV2GradBase<T>
-{
+class MoeInitRoutingV2GradActivateCompute : public MoeInitRoutingV2GradBase<T> {
 public:
     __aicore__ inline MoeInitRoutingV2GradActivateCompute(){};
     __aicore__ inline void Init(
-        GM_ADDR gradExpandedX, GM_ADDR expandedRowIdx, GM_ADDR gradX, const MoeInitRoutingV2GradTilingData* tilingData,
-        TPipe* tPipe);
+        GM_ADDR gradExpandedX, GM_ADDR expandedRowIdx, GM_ADDR gradX, const MoeInitRoutingV2GradTilingData *tilingData,
+        TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -41,7 +40,7 @@ private:
         int64_t colOffset, int64_t cpyCols);
 
 private:
-    TPipe* pipe;
+    TPipe *pipe;
 
     int64_t perTokenUseBinBuffSize;
     int64_t perTokenUseTmpBuffSize;
@@ -53,14 +52,14 @@ private:
 
 template <typename T>
 __aicore__ inline void MoeInitRoutingV2GradActivateCompute<T>::Init(
-    GM_ADDR gradExpandedX, GM_ADDR expandedRowIdx, GM_ADDR gradX, const MoeInitRoutingV2GradTilingData* tilingData,
-    TPipe* tPipe)
+    GM_ADDR gradExpandedX, GM_ADDR expandedRowIdx, GM_ADDR gradX, const MoeInitRoutingV2GradTilingData *tilingData,
+    TPipe *tPipe)
 {
     this->pipe = tPipe;
     this->ParseTilingData(tilingData);
 
-    this->gradExpandedXGm.SetGlobalBuffer((__gm__ T*)gradExpandedX, this->activeNum * this->cols); // input: {A, H}
-    this->gradXGm.SetGlobalBuffer((__gm__ T*)gradX, tilingData->n * this->cols);                   // output: {B*S, H}
+    this->gradExpandedXGm.SetGlobalBuffer((__gm__ T *)gradExpandedX, this->activeNum * this->cols); // input: {A, H}
+    this->gradXGm.SetGlobalBuffer((__gm__ T *)gradX, tilingData->n * this->cols);                   // output: {B*S, H}
     expandedRowIdxAddr = expandedRowIdx;
 
     this->perTokenUseBinBuffSize = this->binBufferNum * this->perBuffSize;
@@ -79,7 +78,7 @@ __aicore__ inline void MoeInitRoutingV2GradActivateCompute<T>::GradProcessTokenA
 {
     int64_t tokenIdx = tokenIdxStart;
     for (; tokenIdx < tokenIdxEnd; tokenIdx += this->baseStride) {
-        int32_t xRow = ((__gm__ int32_t*)expandedRowIdxAddr)[tokenIdx];
+        int32_t xRow = ((__gm__ int32_t *)expandedRowIdxAddr)[tokenIdx];
         if (xRow >= this->activeNum) {
             continue;
         }
@@ -110,7 +109,7 @@ __aicore__ inline void MoeInitRoutingV2GradActivateCompute<T>::GradProcess(
     int64_t tokenIdx = tokenIdxStart;
     int64_t binIdx = 0;
     for (; tokenIdx < tokenIdxEnd && binIdx < this->binBufferNum; tokenIdx += this->baseStride, binIdx++) {
-        int32_t xRow = ((__gm__ int32_t*)expandedRowIdxAddr)[tokenIdx];
+        int32_t xRow = ((__gm__ int32_t *)expandedRowIdxAddr)[tokenIdx];
         int64_t binBuffOffset = tokenBinBuffSizeOffset + this->perBuffSize * binIdx;
         LocalTensor<float> xLocal = this->binBuff.template GetWithOffset<float>(this->perCpyCols, binBuffOffset);
         LocalTensor<T> xLocalT =

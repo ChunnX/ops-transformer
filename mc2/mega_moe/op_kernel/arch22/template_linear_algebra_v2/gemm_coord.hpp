@@ -11,7 +11,7 @@
 #ifndef CATLASS_GEMM_COORD_HPP
 #define CATLASS_GEMM_COORD_HPP
 
-#include "../template_linear_algebra_v2/coord.hpp"
+#include "../template_linear_algebra_v2/mega_moe_coord_arch22.hpp"
 
 namespace Catlass {
 
@@ -87,13 +87,15 @@ struct GemmCoord : public Coord<3, uint32_t> {
 
     /// Constructs from Coord<3> and a batch
     CATLASS_HOST_DEVICE
-    GemmCoord(Coord<3, Index> const &coord) : Base(coord)
+    GemmCoord(Coord<3, Index> const &coord)
+        : Base(coord)
     {
     }
 
     /// Helper to construct from a K, N, M, batch variables
     CATLASS_HOST_DEVICE
-    GemmCoord(Index m, Index n, Index k) : Base(MakeCoord(m, n, k))
+    GemmCoord(Index m, Index n, Index k)
+        : Base(MakeCoord(m, n, k))
     {
     }
 

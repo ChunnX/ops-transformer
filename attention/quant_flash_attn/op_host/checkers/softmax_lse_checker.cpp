@@ -20,7 +20,7 @@
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../qfa_tiling_info.h"
-#include "softmax_lse_checker.h"
+#include "quant_flash_attn_softmax_lse_checker.h"
 
 namespace optiling {
 namespace quant_flash_attn {

@@ -22,7 +22,7 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_tiling/kernel_tiling.h"
-#include "../moe_distribute_base.h"
+#include "../matmul_allto_all_moe_distribute_base_arch22.h"
 #include "../moe_distribute_dispatch_setup_tiling.h"
 
 namespace Mc2Kernel {
@@ -53,7 +53,7 @@ __aicore__ inline void SyncFunc()
     AscendC::WaitFlag<event>(eventID);
 }
 
-#define TemplateMC2TypeClass                                                                                           \
+#define TemplateMC2TypeClass \
     typename XType, typename YOutType, bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist
 #define TemplateMC2TypeFunc XType, YOutType, StaticQuant, DynamicQuant, IsSmoothScaleExist
 
@@ -263,8 +263,8 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(
     commCmdInfoOutGM_ = commCmdInfoOut;
 
     hOutSize_ = axisH_ * sizeof(YOutType);
-    hOutSizeAlign_ = Ceil(hOutSize_, UB_ALIGN) * UB_ALIGN; // scale起始放置偏移
-    uint32_t hScaleSizeAlign = hOutSizeAlign_ + UB_ALIGN;  // 实际搬运大小，搬运token_align32B + 32B(float)
+    hOutSizeAlign_ = Ceil(hOutSize_, UB_ALIGN) * UB_ALIGN;                   // scale起始放置偏移
+    uint32_t hScaleSizeAlign = hOutSizeAlign_ + UB_ALIGN;                    // 实际搬运大小，搬运token_align32B + 32B(float)
     hAlignWinSize_ = Ceil(hScaleSizeAlign, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // win区token起始地址对齐512
     hAlignWinCnt_ = hAlignWinSize_ / sizeof(YOutType);
     expertPerSizeOnWin_ = axisMaxBS_ * hAlignWinSize_;
@@ -292,7 +292,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(
     }
     uint32_t statusBufCntAlign = Ceil(recvWinBlockNum_, 8) * 8; // 8 = UB_ALIGN / sizeof(int32_t)
     tpipe_->InitBuffer(statusBuf_, statusBufCntAlign * UB_ALIGN);
-    statusTensor_ = statusBuf_.Get<int32_t>(); // 保存发送数据量及flag，同时用于计算windows中的偏移
+    statusTensor_ = statusBuf_.Get<int32_t>();                  // 保存发送数据量及flag，同时用于计算windows中的偏移
     Duplicate<int32_t>(statusTensor_, 0, recvWinBlockNum_ * 8); // 8 = UB_ALIGN / sizeof(int32_t)
     statusSpaceGm_ = GetWindStateAddrByRankId(epRankId_);
     uint64_t mask[2] = {0x101010101010101, 0}; // 一次性操作256字节，也是64个int32_t，每8个数将首个设置为0x3F800000

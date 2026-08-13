@@ -11,7 +11,7 @@
 #ifndef CATLASS_MATRIX_COORD_HPP
 #define CATLASS_MATRIX_COORD_HPP
 
-#include "coord.hpp"
+#include "third_coord.hpp"
 
 namespace Catlass {
 
@@ -55,19 +55,22 @@ struct MatrixCoord : public Coord<2, uint32_t> {
 
     /// Constructs from Coord<2>
     CATLASS_HOST_DEVICE
-    MatrixCoord(Coord<2, Index> const &coord) : Base(coord)
+    MatrixCoord(Coord<2, Index> const &coord)
+        : Base(coord)
     {
     }
 
     /// Helper to construct from a row and column
     CATLASS_HOST_DEVICE
-    MatrixCoord(Index row, Index column) : Base(MakeCoord(row, column))
+    MatrixCoord(Index row, Index column)
+        : Base(MakeCoord(row, column))
     {
     }
 
     /// Helper to construct from a row and column, which are LongIndex based
     CATLASS_HOST_DEVICE
-    MatrixCoord(LongIndex row, LongIndex column) : Base(MakeCoord(Index(row), Index(column)))
+    MatrixCoord(LongIndex row, LongIndex column)
+        : Base(MakeCoord(Index(row), Index(column)))
     {
     }
 

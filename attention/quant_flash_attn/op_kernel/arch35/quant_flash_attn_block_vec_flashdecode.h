@@ -19,15 +19,15 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
-#include "memory_copy_arch35.h"
+#include "quant_flash_attn_memory_copy_arch35.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "quant_flash_attn_common_def.h"
-#if __has_include("../../../common/op_kernel/arch35/infer_flash_attention_comm.h")
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#if __has_include("../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h")
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #else
-#include "../../common/op_kernel/arch35/infer_flash_attention_comm.h"
-#include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#include "../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#include "../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #endif
 
 namespace BaseApi {
@@ -156,7 +156,8 @@ private:
     TBuf<> fdLseUbBuf_;
 
 public:
-    __aicore__ inline QuantFlashAttnBlockVecFlashDecode(ConstInfoX &constInfo) : constInfo_(constInfo){};
+    __aicore__ inline QuantFlashAttnBlockVecFlashDecode(ConstInfoX &constInfo)
+        : constInfo_(constInfo){};
 
     __aicore__ inline void InitGlobalTensor(GlobalTensor<float> lseMaxFdGm, GlobalTensor<float> lseSumFdGm,
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm,

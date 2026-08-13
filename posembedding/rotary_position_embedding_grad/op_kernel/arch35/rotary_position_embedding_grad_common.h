@@ -17,10 +17,12 @@
 
 #include "kernel_operator.h"
 #include "op_kernel/load_store_utils.h"
-#if __has_include("../../apply_rotary_pos_emb/arch35/apply_rotary_pos_emb_common.h")
-#include "../../apply_rotary_pos_emb/arch35/apply_rotary_pos_emb_common.h"
+#if __has_include("../../../apply_rotary_pos_emb/op_kernel/arch35/apply_rotary_pos_emb_apply_rotary_pos_emb_common_arch35.h")
+#include "../../../apply_rotary_pos_emb/op_kernel/arch35/apply_rotary_pos_emb_apply_rotary_pos_emb_common_arch35.h"
+#elif __has_include("../../apply_rotary_pos_emb/op_kernel/arch35/apply_rotary_pos_emb_apply_rotary_pos_emb_common_arch35.h")
+#include "../../apply_rotary_pos_emb/op_kernel/arch35/apply_rotary_pos_emb_apply_rotary_pos_emb_common_arch35.h"
 #else
-#include "../../apply_rotary_pos_emb/op_kernel/arch35/apply_rotary_pos_emb_common.h"
+#include "../../../apply_rotary_pos_emb/op_kernel/arch35/apply_rotary_pos_emb_apply_rotary_pos_emb_common_arch35.h"
 #endif
 
 using namespace AscendC;
@@ -32,13 +34,13 @@ namespace RotaryPositionEmbeddingGrad {
 */
 template <typename T>
 __aicore__ inline void HalfGradAlignVF(
-    const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const LocalTensor<T>& inTensor,
-    const LocalTensor<T>& outTensor, uint32_t dLen, uint32_t dAlign, uint16_t currSNum, uint16_t currDNum)
+    const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor, const LocalTensor<T> &inTensor,
+    const LocalTensor<T> &outTensor, uint32_t dLen, uint32_t dAlign, uint16_t currSNum, uint16_t currDNum)
 {
-    __local_mem__ T* sinUb = (__local_mem__ T*)sinTensor.GetPhyAddr();
-    __local_mem__ T* cosUb = (__local_mem__ T*)cosTensor.GetPhyAddr();
-    __local_mem__ T* inUb = (__local_mem__ T*)inTensor.GetPhyAddr();
-    __local_mem__ T* outUb = (__local_mem__ T*)outTensor.GetPhyAddr();
+    __local_mem__ T *sinUb = (__local_mem__ T *)sinTensor.GetPhyAddr();
+    __local_mem__ T *cosUb = (__local_mem__ T *)cosTensor.GetPhyAddr();
+    __local_mem__ T *inUb = (__local_mem__ T *)inTensor.GetPhyAddr();
+    __local_mem__ T *outUb = (__local_mem__ T *)outTensor.GetPhyAddr();
     uint32_t halfD = dLen / HALF_INTERLEAVE_COEF;
     uint32_t halfDAlign = Ops::Base::CeilAlign(halfD, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
     uint16_t repeatTimes = Ops::Base::CeilDiv(halfD, VL_FLOAT32_SIZE);
@@ -89,13 +91,13 @@ __aicore__ inline void HalfGradAlignVF(
 */
 template <typename T>
 __aicore__ inline void QuarterGradAlignVF(
-    const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const LocalTensor<T>& inTensor,
-    const LocalTensor<T>& outTensor, uint32_t dLen, uint32_t dAlign, uint16_t currSNum, uint16_t currDNum)
+    const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor, const LocalTensor<T> &inTensor,
+    const LocalTensor<T> &outTensor, uint32_t dLen, uint32_t dAlign, uint16_t currSNum, uint16_t currDNum)
 {
-    __local_mem__ T* sinUb = (__local_mem__ T*)sinTensor.GetPhyAddr();
-    __local_mem__ T* cosUb = (__local_mem__ T*)cosTensor.GetPhyAddr();
-    __local_mem__ T* inUb = (__local_mem__ T*)inTensor.GetPhyAddr();
-    __local_mem__ T* outUb = (__local_mem__ T*)outTensor.GetPhyAddr();
+    __local_mem__ T *sinUb = (__local_mem__ T *)sinTensor.GetPhyAddr();
+    __local_mem__ T *cosUb = (__local_mem__ T *)cosTensor.GetPhyAddr();
+    __local_mem__ T *inUb = (__local_mem__ T *)inTensor.GetPhyAddr();
+    __local_mem__ T *outUb = (__local_mem__ T *)outTensor.GetPhyAddr();
     uint32_t quarterD = dLen / QUARTER_MODE_COEF;
     uint32_t quarterDAlign = Ops::Base::CeilAlign(quarterD, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
     uint16_t repeatTimes = Ops::Base::CeilDiv(quarterD, VL_FLOAT32_SIZE);
@@ -156,13 +158,13 @@ __aicore__ inline void QuarterGradAlignVF(
 
 template <typename T>
 __aicore__ inline void InterleaveModeGradVF(
-    const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const LocalTensor<T>& inTensor,
-    const LocalTensor<T>& outTensor, uint16_t dLen, uint16_t currSNum, uint16_t currDNum)
+    const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor, const LocalTensor<T> &inTensor,
+    const LocalTensor<T> &outTensor, uint16_t dLen, uint16_t currSNum, uint16_t currDNum)
 {
-    __local_mem__ T* sinUb = (__local_mem__ T*)sinTensor.GetPhyAddr();
-    __local_mem__ T* cosUb = (__local_mem__ T*)cosTensor.GetPhyAddr();
-    __local_mem__ T* inUb = (__local_mem__ T*)inTensor.GetPhyAddr();
-    __local_mem__ T* outUb = (__local_mem__ T*)outTensor.GetPhyAddr();
+    __local_mem__ T *sinUb = (__local_mem__ T *)sinTensor.GetPhyAddr();
+    __local_mem__ T *cosUb = (__local_mem__ T *)cosTensor.GetPhyAddr();
+    __local_mem__ T *inUb = (__local_mem__ T *)inTensor.GetPhyAddr();
+    __local_mem__ T *outUb = (__local_mem__ T *)outTensor.GetPhyAddr();
     uint16_t loopSize = 2 * VL_FLOAT32_SIZE;
     uint16_t loopNum = (dLen + loopSize - 1) / (2 * VL_FLOAT32_SIZE);
     uint16_t dAlignLen = Ops::Base::CeilAlign(dLen, static_cast<uint16_t>(BLOCK_TYPE_SIZE / sizeof(T)));
@@ -225,13 +227,13 @@ __aicore__ inline void InterleaveModeGradVF(
 
 template <typename T>
 __aicore__ inline void DeepSeekInterleaveModeGradVF(
-    const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const LocalTensor<T>& inTensor,
-    const LocalTensor<T>& outTensor, uint32_t dLen, uint16_t currSNum, uint16_t currDNum)
+    const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor, const LocalTensor<T> &inTensor,
+    const LocalTensor<T> &outTensor, uint32_t dLen, uint16_t currSNum, uint16_t currDNum)
 {
-    __local_mem__ T* sinUb = (__local_mem__ T*)sinTensor.GetPhyAddr();
-    __local_mem__ T* cosUb = (__local_mem__ T*)cosTensor.GetPhyAddr();
-    __local_mem__ T* inUb = (__local_mem__ T*)inTensor.GetPhyAddr();
-    __local_mem__ T* outUb = (__local_mem__ T*)outTensor.GetPhyAddr();
+    __local_mem__ T *sinUb = (__local_mem__ T *)sinTensor.GetPhyAddr();
+    __local_mem__ T *cosUb = (__local_mem__ T *)cosTensor.GetPhyAddr();
+    __local_mem__ T *inUb = (__local_mem__ T *)inTensor.GetPhyAddr();
+    __local_mem__ T *outUb = (__local_mem__ T *)outTensor.GetPhyAddr();
     uint32_t dAlign = Ops::Base::CeilAlign(dLen, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
     uint32_t loopSize = 2 * VL_FLOAT32_SIZE;
     uint16_t repeatTimes = (dLen + loopSize - 1) / loopSize;
@@ -294,7 +296,7 @@ __aicore__ inline void DeepSeekInterleaveModeGradVF(
 
 template <typename T, bool IsBBoardcast>
 __aicore__ inline void BatchHalfGradAlignVF(
-    __local_mem__ T* in, __local_mem__ T* cos, __local_mem__ T* sin, __local_mem__ T* out, uint16_t sLength,
+    __local_mem__ T *in, __local_mem__ T *cos, __local_mem__ T *sin, __local_mem__ T *out, uint16_t sLength,
     uint16_t bLength, uint16_t nLength, int64_t d, int64_t dAlign, int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t dHalfSize = d / HALF_INTERLEAVE_COEF;
@@ -356,7 +358,7 @@ __aicore__ inline void BatchHalfGradAlignVF(
 
 template <typename T, bool IsBBoardcast>
 __aicore__ inline void BatchQuarterGradAlignVF(
-    __local_mem__ T* in, __local_mem__ T* cos, __local_mem__ T* sin, __local_mem__ T* out, uint16_t sLength,
+    __local_mem__ T *in, __local_mem__ T *cos, __local_mem__ T *sin, __local_mem__ T *out, uint16_t sLength,
     uint16_t bLength, uint16_t nLength, int64_t d, int64_t dAlign, int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t dQuarterSize = d / QUARTER_MODE_COEF;
@@ -440,7 +442,7 @@ __aicore__ inline void BatchQuarterGradAlignVF(
 
 template <typename T, bool IsBBoardcast>
 __aicore__ inline void BatchInterleaveModeGradVF(
-    __local_mem__ T* in, __local_mem__ T* cos, __local_mem__ T* sin, __local_mem__ T* out, uint16_t sLength,
+    __local_mem__ T *in, __local_mem__ T *cos, __local_mem__ T *sin, __local_mem__ T *out, uint16_t sLength,
     uint16_t bLength, uint16_t nLength, int64_t d, int64_t dAlign, int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t loopSize = 2 * VL_FLOAT32_SIZE;
@@ -523,7 +525,7 @@ __aicore__ inline void BatchInterleaveModeGradVF(
 
 template <typename T, bool IsBBoardcast>
 __aicore__ inline void BatchDeepSeekInterleaveModeGradVF(
-    __local_mem__ T* in, __local_mem__ T* cos, __local_mem__ T* sin, __local_mem__ T* out, uint16_t sLength,
+    __local_mem__ T *in, __local_mem__ T *cos, __local_mem__ T *sin, __local_mem__ T *out, uint16_t sLength,
     uint16_t bLength, uint16_t nLength, int64_t d, int64_t dAlign, int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t loopSize = 2 * VL_FLOAT32_SIZE;

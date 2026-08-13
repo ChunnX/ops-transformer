@@ -12,7 +12,7 @@
 #define CATLASS_GEMM_TILE_COPY_L1_TO_L0B_HPP
 
 #include "../../../template_linear_algebra_v2/catlass.hpp"
-#include "../../../template_linear_algebra_v2/numeric_size.hpp"
+#include "../../../template_linear_algebra_v2/mega_moe_numeric_size_arch22.hpp"
 #include "../../../template_linear_algebra_v2/arch/arch.hpp"
 #include "../../../template_linear_algebra_v2/layout/layout.hpp"
 #include "../../../template_linear_algebra_v2/gemm/gemm_type.hpp"
@@ -87,7 +87,6 @@ struct CopyL1ToL0B<ArchTag, Catlass::Gemm::GemmType<float, layout::zZ, AscendC::
         }
     }
 };
-
 
 template <class ArchTag>
 struct CopyL1ToL0B<ArchTag, Catlass::Gemm::GemmType<int8_t, layout::zN, AscendC::TPosition::B1>,
@@ -481,7 +480,6 @@ struct CopyL1ToL0B<ArchTag, Gemm::GemmType<Element, layout::nZ, AscendC::TPositi
         }
     }
 };
-
 
 } // namespace Catlass::Gemm::Tile
 

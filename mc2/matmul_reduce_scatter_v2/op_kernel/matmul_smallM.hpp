@@ -17,11 +17,11 @@
 #define CATLASS_GEMM_KERNEL_MATMUL_REDUCE_SCATTER_AIV_MODE_SMALLM_HPP
 
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/third_coord.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/third_cross_core_sync.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_ub_to_gm.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/padding_matmul.hpp"
@@ -108,9 +108,20 @@ public:
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrBias_, GM_ADDR ptrC_, GM_ADDR ptrScale_, int32_t pValue_, int32_t swizzlCount_,
                int32_t swizzlDirect_, int32_t rankIdx_, int32_t rankSize_, bool needFixpipe_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              ptrBias(ptrBias_), ptrC(ptrC_), ptrScale(ptrScale_), pValue(pValue_), swizzlCount(swizzlCount_),
-              swizzlDirect(swizzlDirect_), rankIdx(rankIdx_), rankSize(rankSize_), needFixpipe(needFixpipe_)
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrBias(ptrBias_),
+              ptrC(ptrC_),
+              ptrScale(ptrScale_),
+              pValue(pValue_),
+              swizzlCount(swizzlCount_),
+              swizzlDirect(swizzlDirect_),
+              rankIdx(rankIdx_),
+              rankSize(rankSize_),
+              needFixpipe(needFixpipe_)
         {
         }
     };

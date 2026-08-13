@@ -12,18 +12,18 @@
  * \file moe_init_routing_quant_v2.cpp
  * \brief
  */
-#include "inner/moe_v2_sort_one_core.h"
-#include "inner/moe_v2_sort_multi_core.h"
-#include "inner/moe_v2_mrgsort_out.h"
-#include "inner/moe_v2_mrgsort.h"
-#include "inner/moe_v2_expert_token_out.h"
-#include "inner/moe_v2_src_to_dst_op.h"
-#include "inner/moe_v2_src_to_dst_with_capacity.h"
-#include "moe_v2_fullload_quant.h"
-#include "moe_v2_fullload_dynamic_quant.h"
-#include "moe_v2_gather_quant.h"
-#include "moe_v2_gather_dynamic_quant.h"
-#include "moe_v2_src_to_dst_and_gather.h"
+#include "inner/moe_init_routing_quant_v2_moe_v2_sort_one_core_x_v2.h"
+#include "inner/moe_init_routing_quant_v2_moe_v2_sort_multi_core_x_v2.h"
+#include "inner/moe_init_routing_quant_v2_moe_v2_mrgsort_out_x_v2.h"
+#include "inner/moe_init_routing_quant_v2_moe_v2_mrgsort_x_v2.h"
+#include "inner/moe_init_routing_quant_v2_moe_v2_expert_token_out_x_v2.h"
+#include "inner/moe_init_routing_quant_v2_moe_v2_src_to_dst_op_x_v2.h"
+#include "inner/moe_init_routing_quant_v2_moe_v2_src_to_dst_with_capacity_x_v2.h"
+#include "moe_init_routing_quant_v2_moe_v2_fullload_quant.h"
+#include "moe_init_routing_quant_v2_moe_v2_fullload_dynamic_quant.h"
+#include "moe_init_routing_quant_v2_moe_v2_gather_quant.h"
+#include "moe_init_routing_quant_v2_moe_v2_gather_dynamic_quant.h"
+#include "moe_init_routing_quant_v2_moe_v2_src_to_dst_and_gather.h"
 
 using namespace AscendC;
 using namespace MoeInitRoutingQuantV2;
@@ -40,7 +40,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_quant_v2(
     GM_ADDR workspace,
     GM_ADDR tiling)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);  
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
     if (g_coreType == AIC) {
         return;
     }

@@ -11,7 +11,7 @@
 #ifndef CATLASS_GEMV_COORD_HPP
 #define CATLASS_GEMV_COORD_HPP
 
-#include "coord.hpp"
+#include "third_coord.hpp"
 
 namespace Catlass {
 
@@ -60,13 +60,15 @@ struct GemvCoord : public Coord<2, uint32_t> {
 
     /// Constructs from Coord<2> and a batch
     CATLASS_HOST_DEVICE
-    GemvCoord(Coord<2, Index> const &coord) : Base(coord)
+    GemvCoord(Coord<2, Index> const &coord)
+        : Base(coord)
     {
     }
 
     /// Helper to construct from M, N coordinates
     CATLASS_HOST_DEVICE
-    GemvCoord(Index m, Index n) : Base(MakeCoord(m, n))
+    GemvCoord(Index m, Index n)
+        : Base(MakeCoord(m, n))
     {
     }
 

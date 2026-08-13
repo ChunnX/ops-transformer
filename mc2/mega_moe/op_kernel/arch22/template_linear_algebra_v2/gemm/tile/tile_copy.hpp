@@ -22,10 +22,9 @@
 #include "../../../template_linear_algebra_v2/gemm/tile/copy_gm_to_ub.hpp"
 #include "../../../template_linear_algebra_v2/gemm/tile/copy_ub_to_gm.hpp"
 #include "../../../template_linear_algebra_v2/gemm/tile/cast_int4_to_int8.hpp"
-#include "../../../template_linear_algebra_v2/gemm/tile/cast_int8_to_fp16.hpp"
-#include "../../../template_linear_algebra_v2/gemm/tile/cast_fp8_to_fp16.hpp"
-#include "../../../template_linear_algebra_v2/gemm/helper.hpp"
-
+#include "../../../template_linear_algebra_v2/gemm/tile/mega_moe_cast_int8_to_fp16_arch22.hpp"
+#include "../../../template_linear_algebra_v2/gemm/tile/mega_moe_cast_fp8_to_fp16_arch22.hpp"
+#include "../../../template_linear_algebra_v2/gemm/mega_moe_helper_arch22.hpp"
 
 namespace Catlass::Gemm::Tile {
 

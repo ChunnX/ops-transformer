@@ -16,7 +16,7 @@
 #ifndef COMPRESSOR_KERNEL_H
 #define COMPRESSOR_KERNEL_H
 
-#include "compressor_comm.h"
+#include "compressor_comm_arch35.h"
 #include "compressor_template_tiling_key.h"
 #include "compressor_tiling_data.h"
 #include "compressor_tools.h"
@@ -31,7 +31,8 @@ template <typename COMP>
 class CompressorKernel {
 public:
     __aicore__ inline CompressorKernel(TPipe *pipe, const optiling::CompressorTilingData *__restrict tilingData)
-        : pipe_(pipe), tilingData_(tilingData)
+        : pipe_(pipe),
+          tilingData_(tilingData)
     {}
 
     __aicore__ inline void Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate,

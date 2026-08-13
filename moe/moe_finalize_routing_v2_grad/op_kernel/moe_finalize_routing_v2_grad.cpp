@@ -14,8 +14,8 @@
  */
 #include "moe_finalize_routing_v2_grad_with_scale_cut_h.h"
 #include "moe_finalize_routing_v2_grad_with_scale_not_cut_h.h"
-#include "moe_finalize_routing_v2_grad_without_scale_cut_h.h"
-#include "moe_finalize_routing_v2_grad_without_scale_not_cut_h.h"
+#include "moe_finalize_routing_v2_grad_without_scale_cut_h_kernel.h"
+#include "moe_finalize_routing_v2_grad_without_scale_not_cut_h_kernel.h"
 
 #define TILING_KEY_WITHOUT_SCALE_NOT_CUT_H 10001
 #define TILING_KEY_WITHOUT_SCALE_CUT_H 10002
@@ -28,7 +28,7 @@ extern "C" __global__ __aicore__ void moe_finalize_routing_v2_grad(
     GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR bias,
     GM_ADDR gradExpandedX, GM_ADDR gradScales, GM_ADDR workspace, GM_ADDR tiling)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0); 
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
     GET_TILING_DATA(tilingData, tiling);
 
     TPipe pipe;

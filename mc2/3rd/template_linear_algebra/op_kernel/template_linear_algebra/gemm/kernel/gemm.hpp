@@ -12,12 +12,12 @@
 #define CATLASS_GEMM_KERNEL_GEMM_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/cross_core_sync.hpp"
+#include "../../arch/third_cross_core_sync.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
 #include "../../epilogue/tile/copy_gm_to_ub.hpp"
 #include "../../epilogue/tile/copy_ub_to_gm.hpp"
-#include "../../gemm/helper.hpp"
+#include "../../gemm/third_helper.hpp"
 
 namespace Catlass::Gemm::Kernel {
 template <class ArchTag_, class Element_, class Layout_, uint32_t COMPUTE_LENGTH>
@@ -208,13 +208,20 @@ public:
         Params(GemmCoord problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR gmWorkspace_, GM_ADDR ptrWA_, LayoutA layoutWA_, GM_ADDR ptrWB_, LayoutB layoutWB_,
                EpilogueParams epilogueParams_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              gmWorkspace(gmWorkspace_), ptrWA(ptrWA_), layoutWA(layoutWA_), ptrWB(ptrWB_), layoutWB(layoutWB_),
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              gmWorkspace(gmWorkspace_),
+              ptrWA(ptrWA_),
+              layoutWA(layoutWA_),
+              ptrWB(ptrWB_),
+              layoutWB(layoutWB_),
               epilogueParams(epilogueParams_)
         {
         }
     };
-
 
     CATLASS_DEVICE
     KernelGemm()

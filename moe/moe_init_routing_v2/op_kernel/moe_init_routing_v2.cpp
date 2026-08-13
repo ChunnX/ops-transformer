@@ -13,28 +13,27 @@
  * \brief
  */
 
-
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-#include "arch35/moe_v2_mrgsort_out.h"
-#include "arch35/moe_v2_mrgsort.h"
-#include "arch35/moe_v2_sort_multi_core.h"
-#include "arch35/moe_v2_sort_one_core.h"
+#include "arch35/moe_init_routing_v2_moe_v2_mrgsort_out_arch35.h"
+#include "arch35/moe_init_routing_v2_moe_v2_mrgsort_arch35.h"
+#include "arch35/moe_init_routing_v2_moe_v2_sort_multi_core_arch35.h"
+#include "arch35/moe_init_routing_v2_moe_v2_sort_one_core_arch35.h"
 #include "arch35/moe_v2_expert_token_out_regbase.h"
-#include "arch35/moe_v2_expert_token_out_simt.h"
-#include "arch35/moe_v2_src_to_dst_op_simt.h"
-#include "arch35/moe_v2_src_to_dst_with_capacity_simt.h"
+#include "arch35/moe_init_routing_v2_moe_v2_expert_token_out_simt_arch35.h"
+#include "arch35/moe_init_routing_v2_moe_v2_src_to_dst_op_simt_arch35.h"
+#include "arch35/moe_init_routing_v2_moe_v2_src_to_dst_with_capacity_simt_arch35.h"
 #include "arch35/moe_v2_gather_out_for_simt.h"
 #include "arch35/moe_v2_scatter_out_batch_row.h"
 #else
-#include "moe_v2_mrgsort_out.h"
-#include "moe_v2_mrgsort.h"
-#include "moe_v2_sort_multi_core.h"
-#include "moe_v2_sort_one_core.h"
-#include "moe_v2_expert_token_out.h"
-#include "moe_v2_src_to_dst_op.h"
-#include "moe_v2_src_to_dst_with_capacity.h"
-#include "moe_v2_gather_out.h"
-#include "moe_v2_init_routing_fullload.h"
+#include "moe_init_routing_v2_moe_v2_mrgsort_out_arch35.h"
+#include "moe_init_routing_v2_moe_v2_mrgsort_arch35.h"
+#include "moe_init_routing_v2_moe_v2_sort_multi_core_arch35.h"
+#include "moe_init_routing_v2_moe_v2_sort_one_core_arch35.h"
+#include "moe_init_routing_v2_moe_v2_expert_token_out_x.h"
+#include "moe_init_routing_v2_moe_v2_src_to_dst_op_x.h"
+#include "moe_init_routing_v2_moe_v2_src_to_dst_with_capacity_x.h"
+#include "moe_init_routing_v2_moe_v2_gather_out_x.h"
+#include "moe_init_routing_v2_moe_v2_init_routing_fullload_x.h"
 #endif
 
 using namespace AscendC;

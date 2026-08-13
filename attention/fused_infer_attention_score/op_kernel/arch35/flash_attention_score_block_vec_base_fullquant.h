@@ -15,16 +15,16 @@
 #ifndef FLASH_ATTENTION_SCORE_BLOCK_VEC_BASE_FULLQUANT_H_
 #define FLASH_ATTENTION_SCORE_BLOCK_VEC_BASE_FULLQUANT_H_
 #include "../../../common/op_kernel/arch35/util_regbase.h"
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/activation/softmax.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
-#include "../../../common/op_kernel/arch35/vf/vf_div_cast.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
+#include "../../../common/op_kernel/arch35/vf/vf_div_cast_arch35.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
+#include "../../../common/op_kernel/arch35/common_flash_attention_score_tiling_regbase_arch35.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -1133,7 +1133,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec2O
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     if constexpr (isInt8 && isMlaFullQuant) {
         LocalTensor<int32_t> mmResUb = bmm2ResBuf.template GetTensor<int32_t>(); // int8场景c2的输出为int32
-        Cast(mmRes, mmResUb, RoundMode::CAST_ROUND, vec2CalcSize); // 需要将int32转为fp32后参与后续的计算
+        Cast(mmRes, mmResUb, RoundMode::CAST_ROUND, vec2CalcSize);               // 需要将int32转为fp32后参与后续的计算
     }
     if (unlikely(runInfo.s2LoopCount == 0)) {
         DataCopy(vec2ResUb, mmRes, vec2CalcSize);
@@ -1665,9 +1665,9 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::MlaTranspose
         attenOutUbOffset += (constInfo.s1Size - curS1Idx) * constInfo.dSizeV;
     }
     DataCopyExtParams dataCopyParams;
-    dataCopyParams.blockCount = gCount;                                               // 处理多少个G
-    dataCopyParams.blockLen = constInfo.s1Size * constInfo.dSizeV * sizeof(OUTPUT_T); // 一个S1*D的大小
-    dataCopyParams.srcStride = 0;                                                     // 连读
+    dataCopyParams.blockCount = gCount;                                                                        // 处理多少个G
+    dataCopyParams.blockLen = constInfo.s1Size * constInfo.dSizeV * sizeof(OUTPUT_T);                          // 一个S1*D的大小
+    dataCopyParams.srcStride = 0;                                                                              // 连读
     dataCopyParams.dstStride = (constInfo.bSize - 1) * constInfo.s1Size * constInfo.dSizeV * sizeof(OUTPUT_T); // 跳写
     runInfo.attentionOutOffset +=
         int(hasHeadBlock) * constInfo.bSize * constInfo.s1Size * constInfo.dSizeV - curS1Idx * constInfo.dSizeV;
@@ -1882,8 +1882,8 @@ FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::InitLocalBuffer(TPipe *pipe, ConstI
                 if constexpr (hasAtten) {
                     tPipe->InitBuffer(
                         attenMaskInQue[0], 1,
-                        4096); // 4096:
-                               // GS1方向需要循环处理，一个vector计算softmax的数据量最大为32*128，对应mask(bool/int8/uint8)的数据量为4096Bytes
+                        4096);                                     // 4096:
+                                                                   // GS1方向需要循环处理，一个vector计算softmax的数据量最大为32*128，对应mask(bool/int8/uint8)的数据量为4096Bytes
                     tPipe->InitBuffer(attenMaskInQue[1], 1, 4096); // 4096：同上
                 }
 
@@ -1895,7 +1895,7 @@ FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::InitLocalBuffer(TPipe *pipe, ConstI
                 tPipe->InitBuffer(stage2OutBuf, 32768);
             }
             tPipe->InitBuffer(stage1OutQue[0], 1,
-                              4224); // 4224: (s1BaseSize / CV_RATIO + 1) * s2BaseSize * sizeof(INPUT_T)
+                              4224);                     // 4224: (s1BaseSize / CV_RATIO + 1) * s2BaseSize * sizeof(INPUT_T)
             tPipe->InitBuffer(stage1OutQue[1], 1, 4224); // 4224: 同上
         } else if constexpr (useNz) {
             tPipe->InitBuffer(commonTBuf, 512);
@@ -2001,7 +2001,6 @@ FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::InitLocalBuffer(TPipe *pipe, ConstI
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
 }
-
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::GetExtremeValue(T &negativeScalar,

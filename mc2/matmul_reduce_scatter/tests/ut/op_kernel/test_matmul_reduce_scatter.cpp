@@ -44,12 +44,14 @@ protected:
     {
         size_t ctxSize = sizeof(HcclCombinOpParam);
         g_hcclContextReserved[0] = (uint8_t *)AscendC::GmAlloc(ctxSize);
-        cout << "MatmulReduceScatterTest SetUp\n" << endl;
+        cout << "MatmulReduceScatterTest SetUp\n"
+             << endl;
     }
     static void TearDownTestCase()
     {
         AscendC::GmFree((void *)g_hcclContextReserved[0]);
-        cout << "MatmulReduceScatterTest TearDown\n" << endl;
+        cout << "MatmulReduceScatterTest TearDown\n"
+             << endl;
     }
 };
 

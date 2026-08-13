@@ -24,13 +24,14 @@
 #include "err/ops_err.h"
 #include "tiling/tiling_api.h"
 #include "platform/platform_info.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
+#include "../../../common/op_kernel/arch35/common_flash_attention_score_tiling_regbase_arch35.h"
 #include "../../op_kernel/fused_infer_attention_score_template_tiling_key.h"
 
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
-ge::graphStatus TilingFusedInferAttentionScoreV4(gert::TilingContext *context) {
+ge::graphStatus TilingFusedInferAttentionScoreV4(gert::TilingContext *context)
+{
     // Parse -> Check -> DoOpTiling
     FiaTilingInfo fiaInfo;
     FiaInfoParser fiaInfoParser(context);

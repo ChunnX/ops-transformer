@@ -25,11 +25,11 @@
 #include "adv_api/reduce/reduce.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "attention_to_ffn_tiling.h"
-#if __has_include("../common/moe_distribute_base.h")
-#include "../common/moe_distribute_base.h"
+#if __has_include("../common/common_moe_distribute_base.h")
+#include "../common/common_moe_distribute_base.h"
 #include "../common/mc2_kernel_utils.h"
 #else
-#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/common_moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
@@ -48,7 +48,6 @@ constexpr uint32_t RANK_OFFSET_STRIDE = 2;              // RankTable第一个为
 constexpr uint32_t TOKEN_INFO_TABLE_RS = 2;             // tokenInfoTable前2位为flag和layer_id
 constexpr uint32_t TOKEN_INFO_TABLE_COPY_BLOCK_CNT = 2; // tokenInfoTable在DataCopy时每次搬运2个int32
 constexpr float INT8_MAX_VALUE = 127.0f;
-
 
 #define TemplateAttentionToFFNTypeClass typename XType, bool isQuant, bool isSync, bool isActiveMask
 #define TemplateAttentionToFFNTypeFunc XType, isQuant, isSync, isActiveMask
@@ -370,9 +369,9 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::FindExper
 {
     uint64_t expRankTableOffset = expertId * expRankTableM_ + layIdsExpRankTableOffset_;
     // 此前已刷新expertRankTableGM的整个Cache，可直接读取
-    uint32_t rankCnt = expertRankTableGMTensor_.GetValue(expRankTableOffset); // 该专家部署在多少卡上
-    uint32_t rankOffset = (sessionId_ % rankCnt) * RANK_OFFSET_STRIDE + 1;    // 第1位为rankCnt, 后面两两组合
-    toRankId_ = expertRankTableGMTensor_.GetValue(expRankTableOffset + rankOffset); // 拿到当前要发送的卡号
+    uint32_t rankCnt = expertRankTableGMTensor_.GetValue(expRankTableOffset);             // 该专家部署在多少卡上
+    uint32_t rankOffset = (sessionId_ % rankCnt) * RANK_OFFSET_STRIDE + 1;                // 第1位为rankCnt, 后面两两组合
+    toRankId_ = expertRankTableGMTensor_.GetValue(expRankTableOffset + rankOffset);       // 拿到当前要发送的卡号
     localExpId_ = expertRankTableGMTensor_.GetValue(expRankTableOffset + rankOffset + 1); // 拿到当前要发送的local专家号
 }
 

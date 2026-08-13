@@ -19,13 +19,14 @@
 #include <map>
 #include <numeric>
 #include "tiling/tiling_api.h"
-#include "base_checker.h"
+#include "fused_infer_attention_score_base_checker.h"
 
 namespace optiling {
 class SoftmaxLSEChecker : public BaseChecker {
 public:
-    SoftmaxLSEChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    SoftmaxLSEChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant)
+    {}
     ~SoftmaxLSEChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;

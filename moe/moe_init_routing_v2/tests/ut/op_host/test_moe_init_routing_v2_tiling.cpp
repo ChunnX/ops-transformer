@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <gtest/gtest.h>
-#include "../../../op_host/moe_init_routing_v2_tiling.h"
+#include "../../../op_host/moe_init_routing_v2_moe_init_routing_v2_tiling_x.h"
 #include "../../../op_host/moe_init_routing_v2_tiling_util.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"

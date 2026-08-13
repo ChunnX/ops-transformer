@@ -21,7 +21,7 @@
 #include "register/op_def_registry.h"
 #include "../fa_tiling_info.h"
 #include "fa_checker.h"
-#include "common_checker.h"
+#include "flash_attn_common_checker.h"
 
 namespace optiling {
 namespace flash_attn {

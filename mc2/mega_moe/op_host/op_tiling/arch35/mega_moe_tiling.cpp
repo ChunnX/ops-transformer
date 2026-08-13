@@ -28,7 +28,7 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "mc2_hcom_topo_info.h"
-#include "../mega_moe.h"
+#include "../mega_moe_kernel.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling_key.h"
 #include "../../../op_kernel/arch35/common/mega_moe_workspace.h"
@@ -380,14 +380,14 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
         const float beta = activationParams[0];
         OP_TILING_CHECK(!std::isfinite(beta) || beta == 0.0f,
                         OP_LOGE_FOR_INVALID_VALUE(nodeName, "situglu_beta", std::to_string(beta).c_str(),
-                                                   "should be finite and non-zero"),
+                                                  "should be finite and non-zero"),
                         return ge::GRAPH_FAILED);
         if (paramCount == 2U) {
             const float linearBeta = activationParams[1];
             OP_TILING_CHECK(!std::isfinite(linearBeta) || linearBeta == 0.0f,
                             OP_LOGE_FOR_INVALID_VALUE(nodeName, "situglu_linear_beta",
                                                       std::to_string(linearBeta).c_str(),
-                                                       "should be finite and non-zero"),
+                                                      "should be finite and non-zero"),
                             return ge::GRAPH_FAILED);
         }
     }
@@ -596,7 +596,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     const float *activationParams = activationParamsPtr->GetData();
     if (std::strcmp(activationPtr, "situglu") == 0) {
         tilingData->clampLimit = std::numeric_limits<float>::max();
-        tilingData->actMode = 1U;    // ACT_MODE_SITU
+        tilingData->actMode = 1U; // ACT_MODE_SITU
         tilingData->activationBeta = activationParams[0];
         if (activationParamsPtr->GetSize() == 2U) {
             tilingData->actSubMode = 1U; // ACT_SUB_MODE_LINEAR

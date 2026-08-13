@@ -15,27 +15,27 @@
 #ifndef FLASH_ATTENTION_BLOCK_VEC_DN_H_
 #define FLASH_ATTENTION_BLOCK_VEC_DN_H_
 
-#if __has_include("../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h")
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#if __has_include("../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
-#include "../../../common/op_kernel/arch35/vf/vf_div_cast.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#include "../../../common/op_kernel/arch35/vf/vf_div_cast_arch35.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/init_output.h"
 #else
-#include "../../common/arch35/flash_attention_score_common_regbase.h"
+#include "../../common/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "../../common/arch35/vf/vf_flashupdate_new.h"
-#include "../../common/arch35/vf/vf_div_cast.h"
-#include "../../common/arch35/vf/vf_flash_decode.h"
+#include "../../common/arch35/vf/vf_div_cast_arch35.h"
+#include "../../common/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../common/vector_common.h"
 #include "../../common/init_output.h"
 #endif
 
-#include "memory_copy_arch35.h"
+#include "flash_attn_memory_copy_arch35.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;

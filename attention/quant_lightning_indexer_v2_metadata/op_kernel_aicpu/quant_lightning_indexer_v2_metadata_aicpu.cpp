@@ -115,7 +115,8 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsCheck()
         const int32_t *sequsedQPtr = static_cast<const int32_t *>(sequsedQ_->GetData());
         const int32_t *cuSeqlensQPtr = (layoutQ_ == "TND" && cuSeqlensQ_ != nullptr &&
                                         cuSeqlensQ_->GetData() != nullptr) ?
-                                           static_cast<const int32_t *>(cuSeqlensQ_->GetData()) : nullptr;
+                                           static_cast<const int32_t *>(cuSeqlensQ_->GetData()) :
+                                           nullptr;
         for (int i = 0; i < batchSize; i++) {
             if (sequsedQPtr[i] < 0) {
                 KERNEL_LOG_ERROR("The elements in seqused_q should be >= 0, but got seqused_q[%d] = %d", i,
@@ -125,14 +126,16 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsCheck()
             // 校验 seqused_q 元素不大于 max_seqlen_q (BSND) 或 cu_seqlens_q 序列长度 (TND)
             if (layoutQ_ == "BSND" && sequsedQPtr[i] > maxSeqlenQ_) {
                 KERNEL_LOG_ERROR("The elements in seqused_q should not be greater than max_seqlen_q %d, "
-                                 "but got seqused_q[%d] = %d", maxSeqlenQ_, i, sequsedQPtr[i]);
+                                 "but got seqused_q[%d] = %d",
+                                 maxSeqlenQ_, i, sequsedQPtr[i]);
                 return false;
             }
             if (cuSeqlensQPtr != nullptr) {
                 int32_t seqLen = cuSeqlensQPtr[i + 1] - cuSeqlensQPtr[i];
                 if (sequsedQPtr[i] > seqLen) {
                     KERNEL_LOG_ERROR("The elements in seqused_q should not be greater than the sequence length "
-                                     "from cu_seqlens_q %d, but got seqused_q[%d] = %d", seqLen, i, sequsedQPtr[i]);
+                                     "from cu_seqlens_q %d, but got seqused_q[%d] = %d",
+                                     seqLen, i, sequsedQPtr[i]);
                     return false;
                 }
             }
@@ -143,7 +146,8 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsCheck()
         const int32_t *sequsedKPtr = static_cast<const int32_t *>(sequsedK_->GetData());
         const int32_t *cuSeqlensKPtr = (layoutK_ == "TND" && cuSeqlensK_ != nullptr &&
                                         cuSeqlensK_->GetData() != nullptr) ?
-                                           static_cast<const int32_t *>(cuSeqlensK_->GetData()) : nullptr;
+                                           static_cast<const int32_t *>(cuSeqlensK_->GetData()) :
+                                           nullptr;
         for (int i = 0; i < batchSize; i++) {
             if (sequsedKPtr[i] < 0) {
                 KERNEL_LOG_ERROR("The elements in seqused_k should be >= 0, but got seqused_k[%d] = %d", i,
@@ -153,14 +157,16 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsCheck()
             // 校验 seqused_k 元素不大于 max_seqlen_k (BSND) 或 cu_seqlens_k 序列长度 (TND)
             if (layoutK_ == "BSND" && sequsedKPtr[i] > maxSeqlenK_) {
                 KERNEL_LOG_ERROR("The elements in seqused_k should not be greater than max_seqlen_k %d, "
-                                 "but got seqused_k[%d] = %d", maxSeqlenK_, i, sequsedKPtr[i]);
+                                 "but got seqused_k[%d] = %d",
+                                 maxSeqlenK_, i, sequsedKPtr[i]);
                 return false;
             }
             if (cuSeqlensKPtr != nullptr) {
                 int32_t seqLen = cuSeqlensKPtr[i + 1] - cuSeqlensKPtr[i];
                 if (sequsedKPtr[i] > seqLen) {
                     KERNEL_LOG_ERROR("The elements in seqused_k should not be greater than the sequence length "
-                                     "from cu_seqlens_k %d, but got seqused_k[%d] = %d", seqLen, i, sequsedKPtr[i]);
+                                     "from cu_seqlens_k %d, but got seqused_k[%d] = %d",
+                                     seqLen, i, sequsedKPtr[i]);
                     return false;
                 }
             }
@@ -172,7 +178,8 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsCheck()
         for (int i = 0; i < batchSize; i++) {
             if (cmpResidualKPtr[i] < 0 || cmpResidualKPtr[i] >= cmpRatio_) {
                 KERNEL_LOG_ERROR("The elements in cmp_residual_k should be in [0, cmpRatio_(%d)), but got "
-                                 "cmp_residual_k[%d] = %d", cmpRatio_,
+                                 "cmp_residual_k[%d] = %d",
+                                 cmpRatio_,
                                  i, cmpResidualKPtr[i]);
                 return false;
             }
@@ -350,7 +357,7 @@ int64_t QuantLightningIndexerV2MetadataCpuKernel::CalcCost(uint32_t basicM, uint
 {
     uint32_t alignCoefM = 16U;
     uint32_t alignCoefS2 = 64U;
-    uint32_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U; // 按alignCoefM对齐，向上取整，4：移位操作实现除16
+    uint32_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U;    // 按alignCoefM对齐，向上取整，4：移位操作实现除16
     uint32_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U; // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
     return static_cast<int64_t>(COST_WEIGHT_M * alignBasicM + COST_WEIGHT_S2 * alignBasicS2);
 }

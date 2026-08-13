@@ -19,7 +19,7 @@
 #include "cgmct/kernel/kernel_grouped_matmul.h"
 #include "cgmct/block/block_scheduler_grouped_matmul_aswt.h"
 #include "../grouped_matmul_tiling_data_apt.h"
-#include "../../grouped_matmul_utils.h"
+#include "../../grouped_matmul_grouped_matmul_utils.h"
 
 using namespace Cgmct::Gemm;
 using namespace Cgmct::Gemm::Kernel;
@@ -62,9 +62,9 @@ __aicore__ inline void GmmNoQuantAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, G
     using GroupedMatmulKernel = Kernel::KernelGroupedMatmul<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename GroupedMatmulKernel::Params;
     using GMMTiling = typename GroupedMatmulKernel::GMMTiling;
-    GMMTiling gmmParams{gmmBaseParams_.groupNum,       gmmBaseParams_.groupType,    gmmBaseParams_.groupListType,
-                        gmmBaseParams_.singleX,        gmmBaseParams_.singleWeight, gmmBaseParams_.singleY,
-                        gmmBaseParams_.hasBias,        gmmBaseParams_.mTailCnt,     gmmBaseParams_.nTailCnt,
+    GMMTiling gmmParams{gmmBaseParams_.groupNum, gmmBaseParams_.groupType, gmmBaseParams_.groupListType,
+                        gmmBaseParams_.singleX, gmmBaseParams_.singleWeight, gmmBaseParams_.singleY,
+                        gmmBaseParams_.hasBias, gmmBaseParams_.mTailCnt, gmmBaseParams_.nTailCnt,
                         gmmBaseParams_.weightNoL2Cache};
     gmmParams.matmulTiling = &mmTilingData_;
     Params params = {// template shape, gmm shape can not get now

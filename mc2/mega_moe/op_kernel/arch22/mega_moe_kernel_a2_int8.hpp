@@ -16,10 +16,10 @@
 #include "utils/copy_l0c_to_gm_custom.hpp"
 
 #include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/cross_core_sync.hpp"
+#include "template_linear_algebra_v2/arch/mega_moe_cross_core_sync_arch22.hpp"
 #include "template_linear_algebra_v2/arch/resource.hpp"
-#include "template_linear_algebra_v2/coord.hpp"
-#include "template_linear_algebra_v2/detail/callback.hpp"
+#include "template_linear_algebra_v2/mega_moe_coord_arch22.hpp"
+#include "template_linear_algebra_v2/detail/mega_moe_callback_arch22.hpp"
 #include "template_linear_algebra_v2/gemm_coord.hpp"
 #include "template_linear_algebra_v2/matrix_coord.hpp"
 #include "template_linear_algebra_v2/epilogue/tile/tile_copy.hpp"
@@ -34,8 +34,8 @@
 
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2.hpp"
-#include "moe_init_routing_quant_v2/moe_v2_fullload_dynamic_quant.h"
-#include "unpermute/moe_token_unpermute.h"
+#include "moe_init_routing_quant_v2/mega_moe_moe_v2_fullload_dynamic_quant_arch22.h"
+#include "unpermute/mega_moe_moe_token_unpermute_arch22.h"
 #include "utils/get_tensor_addr.hpp"
 #include "mega_moe_exception_dump_policy.h"
 
@@ -140,23 +140,46 @@ public:
                float swigluLimit_ = std::numeric_limits<float>::infinity(), uint32_t activationCode_ = 0,
                float activationParams1_ = Epilogue::SwigluOaiActivation::DEFAULT_ALPHA,
                float activationParams2_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
-            : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
-              maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
-              epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
-              activationCode(activationCode_), activationParams1(activationParams1_),
+            : problemShape(problemShape_),
+              EP(EP_),
+              listLen(listLen_),
+              expertPerRank(expertPerRank_),
+              maxOutputSize(maxOutputSize_),
+              topK(topK_),
+              initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
+              epilogueCoreNum(epilogueCoreNum_),
+              epilogueGranularity(epilogueGranularity_),
+              swigluLimit(swigluLimit_),
+              activationCode(activationCode_),
+              activationParams1(activationParams1_),
               activationParams2(activationParams2_),
-              contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
-              layoutA(layoutA_), layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
-              layoutB1(layoutB1_), ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
-              ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)), layoutB2(layoutB2_),
+              contextGM(contextGM_),
+              tilingGM(tilingGM_),
+              ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
+              layoutA(layoutA_),
+              layoutA2(layoutA2_),
+              ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
+              layoutB1(layoutB1_),
+              ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
+              ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)),
+              layoutB2(layoutB2_),
               ptrBias2(reinterpret_cast<__gm__ float *>(ptrBias2_)),
-              ptrScale1(reinterpret_cast<__gm__ ElementScale *>(ptrScale1_)), layoutScale1(layoutScale1_),
-              ptrScale2(reinterpret_cast<__gm__ ElementScale *>(ptrScale2_)), layoutScale2(layoutScale2_),
-              ptrOutput(reinterpret_cast<__gm__ ElementD2 *>(ptrOutput_)), layoutD1(layoutD1_), layoutD2(layoutD2_),
-              expertIdx(expertIdx_), moeInitRoutingQuantV2Scale(moeInitRoutingQuantV2Scale_),
+              ptrScale1(reinterpret_cast<__gm__ ElementScale *>(ptrScale1_)),
+              layoutScale1(layoutScale1_),
+              ptrScale2(reinterpret_cast<__gm__ ElementScale *>(ptrScale2_)),
+              layoutScale2(layoutScale2_),
+              ptrOutput(reinterpret_cast<__gm__ ElementD2 *>(ptrOutput_)),
+              layoutD1(layoutD1_),
+              layoutD2(layoutD2_),
+              expertIdx(expertIdx_),
+              moeInitRoutingQuantV2Scale(moeInitRoutingQuantV2Scale_),
               moeInitRoutingQuantV2Offset(moeInitRoutingQuantV2Offset_),
-              expertTokensBeforeCapacity(expertTokensBeforeCapacity_), probs(probs_), ptrXActiveMask(ptrXActiveMask_),
-              ptrScales(ptrScales_), ptrWorkspace(ptrWorkspace_), ptrExpertTokenNums(gmExpertTokenNums_),
+              expertTokensBeforeCapacity(expertTokensBeforeCapacity_),
+              probs(probs_),
+              ptrXActiveMask(ptrXActiveMask_),
+              ptrScales(ptrScales_),
+              ptrWorkspace(ptrWorkspace_),
+              ptrExpertTokenNums(gmExpertTokenNums_),
               moeInitRoutingQuantV2TilingData(moeInitRoutingQuantV2TilingData_)
         {
             gmmOutPreRowStride = problemShape.n() > problemShape.k() ? problemShape.n() : problemShape.k();
@@ -778,7 +801,7 @@ private:
         AscendC::LocalTensor<int32_t> flagUb = resource.ubBuf.template GetBufferByByte<int32_t>(ubOffet + 2 * UB_ALIGN);
 
         // ── Stage 1：发送（每 core 处理若干 dstEpIdx）──────────────
-        for(int32_t dstEpIdx = coreIdx, dstServerId = 0; dstEpIdx < params.EP; dstEpIdx += coreNum) {
+        for (int32_t dstEpIdx = coreIdx, dstServerId = 0; dstEpIdx < params.EP; dstEpIdx += coreNum) {
             dstServerId = dstEpIdx / SERVER_RANK_SIZE_A2;
             AscendC::GlobalTensor<int32_t> srcAddress;
             int64_t localTokenPerExpertWinOutOffset = peermemInfo.offsetWinOutPeerTokenPerExpert +
@@ -804,15 +827,15 @@ private:
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
 
             copyGmToUb(tmpBuffer, srcAddress[0],
-                layout::RowMajor{ 1, numPerCore},
-                layout::RowMajor{1, numPerCore});
+                       layout::RowMajor{1, numPerCore},
+                       layout::RowMajor{1, numPerCore});
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
             if (dstEpIdx == static_cast<int32_t>(RuntimeRank(params))) {
                 // ── 路径 A：self-rank，本地搬运，无 flag ──
                 copyUbToGm(dstAddress, tmpBuffer,
-                    layout::RowMajor{ 1, numPerCore},
-                    layout::RowMajor{1, numPerCore});
+                           layout::RowMajor{1, numPerCore},
+                           layout::RowMajor{1, numPerCore});
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             } else if (dstServerId == serverId_) {
@@ -1447,8 +1470,8 @@ private:
         static constexpr int64_t kFlagSlotI32 = 16;
         // 跨 server RDMA 时一次写入的 payload 大小：8 个 int32 = 32B，首 4B 为 magic，其余为 padding
         static constexpr int64_t kFlagPayloadI32 = 8;
-        int64_t offsetWinOutA;                   // A tensor in winOut (dispatch, outgoing tokens)
-        int64_t offsetWinOutD;                   // D tensor in winOut (combine, outgoing FFN results)
+        int64_t offsetWinOutA; // A tensor in winOut (dispatch, outgoing tokens)
+        int64_t offsetWinOutD; // D tensor in winOut (combine, outgoing FFN results)
         int64_t offsetAllgatherFlag;
         int64_t offsetWinOutPeerPerTokenScale;  // per-token scale in winOut
         int64_t offsetWinOutFlag;               // Dispatch Flag 区 in winOut

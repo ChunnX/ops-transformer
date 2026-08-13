@@ -13,12 +13,12 @@
 
 #include "../../catlass.hpp"
 #include "../../arch/resource.hpp"
-#include "../../coord.hpp"
+#include "../../third_coord.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
-#include "../../../tla/tensor.hpp"
+#include "../../../tla/mega_moe_tensor_arch22.hpp"
 #include "../../../tla/layout.hpp"
-#include "../../../tla/tensor.hpp"
+#include "../../../tla/mega_moe_tensor_arch22.hpp"
 namespace Catlass::Gemm::Kernel {
 
 // Template for Matmul kernel. Compute C = A * B
@@ -62,7 +62,12 @@ public:
         CATLASS_DEVICE
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrC_, LayoutC layoutC_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrC(ptrC_),
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrC(ptrC_),
               layoutC(layoutC_)
         {
         }

@@ -17,7 +17,7 @@
 #include "kernel_operator.h"
 #endif
 
-#include "detail/alignment.hpp"
+#include "detail/third_alignment.hpp"
 #include "detail/dependent_false.hpp"
 #include "detail/macros.hpp"
 

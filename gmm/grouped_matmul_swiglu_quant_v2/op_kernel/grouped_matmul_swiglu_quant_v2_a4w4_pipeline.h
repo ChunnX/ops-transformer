@@ -18,7 +18,7 @@
 #include <typeinfo>
 #include "grouped_matmul_swiglu_quant_v2_a4w4_mid.h"
 #include "grouped_matmul_swiglu_quant_v2_a4w4_post.h"
-#include "grouped_matmul_swiglu_quant_v2_utils.h"
+#include "grouped_matmul_swiglu_quant_v2_utils_kernel.h"
 
 using namespace AscendC;
 using namespace matmul;
@@ -53,8 +53,11 @@ public:
     __aicore__ inline GMMSwigluQuantPipelineSchedule(
         typename mmType::MT &mm_, const GMMSwigluQuantV2BaseParams *__restrict gmmSwigluQuantV2BaseParamsIN,
         const GMMSwigluQuantV2 *__restrict gmmSwigluIN, TPipe *tPipeIN)
-        : mm(mm_), midProcess(mm), gmmSwigluQuantV2BaseParams(gmmSwigluQuantV2BaseParamsIN),
-          gmmSwigluQuantV2(gmmSwigluIN), pipe(tPipeIN)
+        : mm(mm_),
+          midProcess(mm),
+          gmmSwigluQuantV2BaseParams(gmmSwigluQuantV2BaseParamsIN),
+          gmmSwigluQuantV2(gmmSwigluIN),
+          pipe(tPipeIN)
     {
     }
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,

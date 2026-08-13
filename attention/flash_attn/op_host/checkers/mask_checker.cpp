@@ -21,7 +21,7 @@
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../fa_tiling_info.h"
-#include "mask_checker.h"
+#include "flash_attn_mask_checker.h"
 
 namespace optiling {
 namespace flash_attn {
@@ -37,8 +37,8 @@ ge::graphStatus MaskChecker::CheckSingleParaMaskMode(const FaTilingInfo &faInfo)
                                                static_cast<int64_t>(MaskMode::CAUSAL),
                                                static_cast<int64_t>(MaskMode::BAND)};
     OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(static_cast<int64_t>(faInfo.maskMode), maskModeList),
-        OP_LOGE_FOR_INVALID_VALUE(faInfo.opName, "mask_mode", std::to_string(faInfo.maskMode).c_str(), "0, 3 or 4"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE(faInfo.opName, "mask_mode", std::to_string(faInfo.maskMode).c_str(), "0, 3 or 4"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -139,17 +139,17 @@ ge::graphStatus MaskChecker::CheckParaExistence(const FaTilingInfo &faInfo)
     if (faInfo.maskMode == static_cast<int64_t>(MaskMode::BAND)) {
         OP_CHECK_IF(attnMaskTensor == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "attn_mask",
-                        "The value of attn_mask cannot be nullptr when the mask_mode=4 (band mode)"),
+                                                             "The value of attn_mask cannot be nullptr when the mask_mode=4 (band mode)"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(faInfo.winLeft < -1,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "win_left",
-                        std::to_string(faInfo.winLeft).c_str(),
-                        "The value of win_left must be greater than or equal to -1"),
+                                                          std::to_string(faInfo.winLeft).c_str(),
+                                                          "The value of win_left must be greater than or equal to -1"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(faInfo.winRight < -1,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "win_right",
-                        std::to_string(faInfo.winRight).c_str(),
-                        "The value of win_right must be greater than or equal to -1"),
+                                                          std::to_string(faInfo.winRight).c_str(),
+                                                          "The value of win_right must be greater than or equal to -1"),
                     return ge::GRAPH_FAILED);
     }
 

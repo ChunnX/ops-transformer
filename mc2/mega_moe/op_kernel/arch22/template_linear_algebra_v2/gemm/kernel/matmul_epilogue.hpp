@@ -13,7 +13,7 @@
 
 #include "../../../template_linear_algebra_v2/catlass.hpp"
 #include "../../../template_linear_algebra_v2/arch/resource.hpp"
-#include "../../../template_linear_algebra_v2/arch/cross_core_sync.hpp"
+#include "../../../template_linear_algebra_v2/arch/mega_moe_cross_core_sync_arch22.hpp"
 #include "../../../template_linear_algebra_v2/layout/layout.hpp"
 #include "../../../template_linear_algebra_v2/gemm_coord.hpp"
 #include "../../../template_linear_algebra_v2/matrix_coord.hpp"
@@ -65,8 +65,13 @@ public:
         CATLASS_HOST_DEVICE
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA const &layoutA_, GM_ADDR ptrB_,
                LayoutB const &layoutB_, GM_ADDR ptrWorkspace_, EpilogueParams const &epilogueParams_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              ptrWorkspace(ptrWorkspace_), epilogueParams(epilogueParams_)
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrWorkspace(ptrWorkspace_),
+              epilogueParams(epilogueParams_)
         {
         }
     };

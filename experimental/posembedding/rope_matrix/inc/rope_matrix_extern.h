@@ -16,8 +16,7 @@
 namespace npu_ops_transformer_ext {
 namespace RopeMatrix {
 // define a struct as TCubeTiling, which can be call by both op_device and op_host
-struct RopeMatrixTiling
-{
+struct RopeMatrixTiling {
     uint32_t blockDim;
     uint32_t b;
     uint32_t n;
@@ -25,6 +24,6 @@ struct RopeMatrixTiling
     uint32_t d;
 };
 } // namespace RopeMatrix
-} //namespace npu_ops_transformer_ext
+} // namespace npu_ops_transformer_ext
 
 #endif

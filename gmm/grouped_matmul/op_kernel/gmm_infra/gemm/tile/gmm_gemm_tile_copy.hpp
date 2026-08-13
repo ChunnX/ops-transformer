@@ -22,10 +22,9 @@
 #include "../../../gmm_infra/gemm/tile/copy_gm_to_ub.hpp"
 #include "../../../gmm_infra/gemm/tile/copy_ub_to_gm.hpp"
 #include "../../../gmm_infra/gemm/tile/cast_int4_to_int8.hpp"
-#include "../../../gmm_infra/gemm/tile/cast_int8_to_fp16.hpp"
-#include "../../../gmm_infra/gemm/tile/cast_fp8_to_fp16.hpp"
+#include "grouped_matmul_cast_int8_to_fp16.hpp"
+#include "grouped_matmul_cast_fp8_to_fp16.hpp"
 #include "../../../gmm_infra/gemm/gmm_helper.hpp"
-
 
 namespace Catlass::Gemm::Tile {
 
@@ -39,8 +38,7 @@ template <
     /// GemmType type for C matrix operand
     class CType,
     /// GemmType type for Bias operand
-    class BiasType = void
->
+    class BiasType = void>
 struct TileCopy {
     using ElementA = typename AType::Element;
     using ElementB = typename BType::Element;
@@ -56,15 +54,15 @@ struct TileCopy {
     using CopyL0CToGm = Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType>;
     using BiasTypeSelector = helper::L1BiasTypeSelector<BiasType, ElementAccumulator>;
     using CopyGmToL1Bias = std::conditional_t<std::is_same_v<BiasType, void>,
-        void,
-        Gemm::Tile::CopyGmToL1<ArchTag,
-            typename BiasTypeSelector::GMBiasType,
-            typename BiasTypeSelector::L1BiasType>>;
+                                              void,
+                                              Gemm::Tile::CopyGmToL1<ArchTag,
+                                                                     typename BiasTypeSelector::GMBiasType,
+                                                                     typename BiasTypeSelector::L1BiasType>>;
     using CopyL1ToBT = std::conditional_t<std::is_same_v<BiasType, void>,
-        void,
-        Gemm::Tile::CopyL1ToBT<ArchTag,
-            typename BiasTypeSelector::L1BiasType,
-            typename BiasTypeSelector::L0BiasType>>;
+                                          void,
+                                          Gemm::Tile::CopyL1ToBT<ArchTag,
+                                                                 typename BiasTypeSelector::L1BiasType,
+                                                                 typename BiasTypeSelector::L0BiasType>>;
 };
 
 template <
@@ -74,8 +72,7 @@ template <
     class CType,
     class PrologueA_,
     class PrologueB_,
-    class BiasType = void
->
+    class BiasType = void>
 struct TileCopyWithPrologueDeqPerTensor {
     using ElementA = typename AType::Element;
     using ElementB = typename BType::Element;
@@ -97,15 +94,15 @@ struct TileCopyWithPrologueDeqPerTensor {
         ArchTag, ElementAccumulator, CType, Tile::ScaleGranularity::PER_TENSOR>;
     using BiasTypeSelector = helper::L1BiasTypeSelector<BiasType, ElementAccumulator>;
     using CopyGmToL1Bias = std::conditional_t<std::is_same_v<BiasType, void>,
-        void,
-        Gemm::Tile::CopyGmToL1<ArchTag,
-            typename BiasTypeSelector::GMBiasType,
-            typename BiasTypeSelector::L1BiasType>>;
+                                              void,
+                                              Gemm::Tile::CopyGmToL1<ArchTag,
+                                                                     typename BiasTypeSelector::GMBiasType,
+                                                                     typename BiasTypeSelector::L1BiasType>>;
     using CopyL1ToBT = std::conditional_t<std::is_same_v<BiasType, void>,
-        void,
-        Gemm::Tile::CopyL1ToBT<ArchTag,
-            typename BiasTypeSelector::L1BiasType,
-            typename BiasTypeSelector::L0BiasType>>;
+                                          void,
+                                          Gemm::Tile::CopyL1ToBT<ArchTag,
+                                                                 typename BiasTypeSelector::L1BiasType,
+                                                                 typename BiasTypeSelector::L0BiasType>>;
 };
 
 template <
@@ -115,8 +112,7 @@ template <
     class CType,
     class PrologueA_,
     class PrologueB_,
-    class BiasType = void
->
+    class BiasType = void>
 struct TileCopyWithPrologue {
     using ElementA = typename AType::Element;
     using ElementB = typename BType::Element;
@@ -137,15 +133,15 @@ struct TileCopyWithPrologue {
     using CopyL0CToGm = Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType>;
     using BiasTypeSelector = helper::L1BiasTypeSelector<BiasType, ElementAccumulator>;
     using CopyGmToL1Bias = std::conditional_t<std::is_same_v<BiasType, void>,
-        void,
-        Gemm::Tile::CopyGmToL1<ArchTag,
-            typename BiasTypeSelector::GMBiasType,
-            typename BiasTypeSelector::L1BiasType>>;
+                                              void,
+                                              Gemm::Tile::CopyGmToL1<ArchTag,
+                                                                     typename BiasTypeSelector::GMBiasType,
+                                                                     typename BiasTypeSelector::L1BiasType>>;
     using CopyL1ToBT = std::conditional_t<std::is_same_v<BiasType, void>,
-        void,
-        Gemm::Tile::CopyL1ToBT<ArchTag,
-            typename BiasTypeSelector::L1BiasType,
-            typename BiasTypeSelector::L0BiasType>>;
+                                          void,
+                                          Gemm::Tile::CopyL1ToBT<ArchTag,
+                                                                 typename BiasTypeSelector::L1BiasType,
+                                                                 typename BiasTypeSelector::L0BiasType>>;
 };
 
 ///////////////////////////////////
@@ -160,8 +156,7 @@ template <
     /// GemmType type for C matrix operand
     class CType,
     /// GemmTpe type for Bias operand
-    class BiasType = void
->
+    class BiasType = void>
 struct TileCopyGemm {
     using ElementA = typename AType::Element;
     using ElementB = typename BType::Element;
@@ -190,8 +185,7 @@ template <
     /// GemmType type for C matrix operand
     class CType,
     /// GemmType type for Bias operand
-    class BiasType
->
+    class BiasType>
 struct ConvTileCopy {
     using ElementA = typename AType::Element;
     using ElementB = typename BType::Element;
@@ -207,15 +201,15 @@ struct ConvTileCopy {
     using CopyL0CToGm = Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType>;
     using BiasTypeSelector = helper::L1BiasTypeSelector<BiasType, ElementAccumulator>;
     using CopyGmToL1Bias = std::conditional_t<std::is_same_v<BiasType, void>,
-        void,
-        Gemm::Tile::CopyGmToL1<ArchTag,
-            typename BiasTypeSelector::GMBiasType,
-            typename BiasTypeSelector::L1BiasType>>;
+                                              void,
+                                              Gemm::Tile::CopyGmToL1<ArchTag,
+                                                                     typename BiasTypeSelector::GMBiasType,
+                                                                     typename BiasTypeSelector::L1BiasType>>;
     using CopyL1ToBT = std::conditional_t<std::is_same_v<BiasType, void>,
-        void,
-        Gemm::Tile::CopyL1ToBT<ArchTag,
-            typename BiasTypeSelector::L1BiasType,
-            typename BiasTypeSelector::L0BiasType>>;
+                                          void,
+                                          Gemm::Tile::CopyL1ToBT<ArchTag,
+                                                                 typename BiasTypeSelector::L1BiasType,
+                                                                 typename BiasTypeSelector::L0BiasType>>;
 };
 
 // fixpipe开启relu开关
@@ -229,13 +223,12 @@ template <
     /// GemmType type for C matrix operand
     class CType,
     /// GemmType type for Bias operand
-    class BiasType = void
->
+    class BiasType = void>
 struct ReluTileCopy : public TileCopy<ArchTag, AType, BType, CType, BiasType> {
     // 重写 CopyL0CToGm
     using ElementAccumulator = typename TileCopy<ArchTag, AType, BType, CType, BiasType>::ElementAccumulator;
     using CopyL0CToGm = Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType,
-        Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT, true>;
+                                                Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT, true>;
 };
 
 // fixpipe开启随路量化
@@ -251,22 +244,19 @@ template <
     /// GemmType type for Bias operand
     class BiasType = void,
     /// GemmType type for Bias operand
-    ScaleGranularity SCALE_GRANU = ScaleGranularity::PER_TENSOR
->
+    ScaleGranularity SCALE_GRANU = ScaleGranularity::PER_TENSOR>
 struct QuantTileCopy : public TileCopy<ArchTag, AType, BType, CType, BiasType> {
     // 重写 CopyL0CToGm
     using ElementAccumulator = typename TileCopy<ArchTag, AType, BType, CType, BiasType>::ElementAccumulator;
     using CopyL0CToGm = Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType, SCALE_GRANU, false>;
 
     using CopyGmToL1Scale = Gemm::Tile::CopyGmToL1<ArchTag,
-        Gemm::GemmType<uint64_t, layout::VectorLayout, AscendC::TPosition::GM>,
-        Gemm::GemmType<uint64_t, layout::VectorLayout, AscendC::TPosition::A1>
-    >;
+                                                   Gemm::GemmType<uint64_t, layout::VectorLayout, AscendC::TPosition::GM>,
+                                                   Gemm::GemmType<uint64_t, layout::VectorLayout, AscendC::TPosition::A1>>;
 
     using CopyL1ToFP = Gemm::Tile::CopyL1ToFP<ArchTag,
-        Gemm::GemmType<uint64_t, layout::VectorLayout, AscendC::TPosition::A1>,
-        Gemm::GemmType<uint64_t, layout::VectorLayout, AscendC::TPosition::C2PIPE2GM>
-    >;
+                                              Gemm::GemmType<uint64_t, layout::VectorLayout, AscendC::TPosition::A1>,
+                                              Gemm::GemmType<uint64_t, layout::VectorLayout, AscendC::TPosition::C2PIPE2GM>>;
 };
 
 } // namespace Catlass::Gemm::Tile
