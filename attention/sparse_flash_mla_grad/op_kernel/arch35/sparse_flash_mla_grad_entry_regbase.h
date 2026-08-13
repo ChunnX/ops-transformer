@@ -32,7 +32,7 @@
     isCmpKVSparse, isDeter)                                                                                            \
     do {                                                                                                               \
         SparseFlashMlaGradPreRegbase<INPUT_TYPE, float, IS_TND, isOriKVExist, isCmpKVExist, isOriKVSparse,             \
-                                     isCmpKVSparse>                                                                    \
+                                     isCmpKVSparse, isDeter>                                                           \
             opPre;                                                                                                     \
         opPre.Init(user, dsinks, ori_softmax_l1, cmp_softmax_l1, tilingData, &pipeIn);                                 \
         opPre.Process();                                                                                               \
@@ -64,7 +64,8 @@
             op.SyncALLCores();                                                                                         \
             pipeBase.Destroy();                                                                                        \
             TPipe pipePost;                                                                                            \
-            SparseFlashMlaGradPostRegbase<INPUT_TYPE, float, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist>             \
+            SparseFlashMlaGradPostRegbase<INPUT_TYPE, float, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist,            \
+                                          isOriKVSparse, isCmpKVSparse, isDeter>                                       \
                 opPost;                                                                                                \
             opPost.Init(dq, dori_kv, dcmp_kv, dsinks, user, tilingData, &pipePost);                                    \
             opPost.Process();                                                                                          \

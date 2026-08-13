@@ -298,12 +298,15 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetWorkspaceSize()
     int64_t dqWorkspaceLen = tmpData.dqWorkspaceLen;
     int64_t doriKVWorkspaceLen = tmpData.doriKVWorkspaceLen;
     int64_t dcmpKVWorkspaceLen = tmpData.dcmpKVWorkspaceLen;
+    int64_t doriVWorkspaceLen = tmpData.doriVWorkspaceLen;
+    int64_t dcmpVWorkspaceLen = tmpData.dcmpVWorkspaceLen;
 
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = sysLen;
     workspaces[0] += selectedKWorkspaceLen * coreNum;
     workspaces[0] += (mm4WorkspaceLen + mm5WorkspaceLen + dSinkWorkspaceLen) * coreNum;
     workspaces[0] += dqWorkspaceLen + doriKVWorkspaceLen + dcmpKVWorkspaceLen;
+    workspaces[0] += doriVWorkspaceLen + dcmpVWorkspaceLen;
 
     baseParams_->set_selectedKWorkSpaceOffset(0);
     int64_t workspaceOffsets = selectedKWorkspaceLen * coreNum;
@@ -319,6 +322,10 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetWorkspaceSize()
     workspaceOffsets = workspaceOffsets + doriKVWorkspaceLen;
     postTilingData_->set_dCmpKVWorkSpaceOffset(workspaceOffsets);
     workspaceOffsets = workspaceOffsets + dcmpKVWorkspaceLen;
+    postTilingData_->set_dOriVWorkSpaceOffset(workspaceOffsets);
+    workspaceOffsets = workspaceOffsets + doriVWorkspaceLen;
+    postTilingData_->set_dCmpVWorkSpaceOffset(workspaceOffsets);
+    workspaceOffsets = workspaceOffsets + dcmpVWorkspaceLen;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -638,6 +645,12 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::DoCastTiling()
     tmpData.dqWorkspaceLen = (allNumQuery * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
     tmpData.doriKVWorkspaceLen = (allNumOriKV * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
     tmpData.dcmpKVWorkspaceLen = (allNumCmpKV * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
+    if (!tmpData.oriKVSparse && !tmpData.deterministic) {
+        tmpData.doriVWorkspaceLen = (allNumOriKV * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
+    }
+    if (!tmpData.cmpKVSparse && !tmpData.deterministic) {
+        tmpData.dcmpVWorkspaceLen = (allNumCmpKV * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
+    }
     return ge::GRAPH_SUCCESS;
 }
 

@@ -977,6 +977,9 @@ FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor<CALC_TYPE> &mm4ResWork
                                        const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm, LocalTensor<CALC_TYPE> &dkInTensor,
                                        LocalTensor<CALC_TYPE> &dvInTensor, FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
+    if constexpr (!IS_SPARSE) {
+        return;
+    }
     int64_t UB_ROW_SIZE = 8;
     int64_t s2RealSize = runInfo.commonRunInfo.s2RealSize;
     int64_t firstCoreKSize = s2RealSize / 2;
