@@ -54,8 +54,8 @@ public:
     static constexpr uint32_t kMRealSize = gSize;
 
     __aicore__ inline SCFABlockCube() {};
-    __aicore__ inline void InitCubeBlock(__gm__ uint8_t *query, uint32_t l1BaseAddr, uint32_t goIdx);
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ);
+    __aicore__ inline void InitLocalBuffer(uint32_t l1Addr, uint32_t goIdx);
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *cuSeqlensQ);
     __aicore__ inline void IterateLoadQK(
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         bool isFirstLoop, uint8_t taskIdMod3, int32_t s2RealSize, int64_t s1oIdx);
@@ -69,7 +69,6 @@ public:
         uint8_t taskIdMod3, int32_t s2RealSize);
 
 private:
-    __aicore__ inline void InitLocalBuffer(uint32_t l1BaseAddr);
     __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ);
 
     __aicore__ inline void CopyQGmToL1(int64_t s1oIdx);
@@ -105,64 +104,57 @@ private:
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeBlock(
-    __gm__ uint8_t *query, uint32_t l1BaseAddr, uint32_t goIdx)
+__aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(
+    uint32_t l1Addr, uint32_t goIdx)
 {
-    this->goIdx = goIdx;
+    if ASCEND_IS_AIC {
+        this->goIdx = goIdx;
+
+        l1QBufs[0] = {LocalTensor<Q_T>(TPosition::A1, l1Addr, L1Q_ELEM_PER_BUF), 0};
+        l1Addr += L1Q_ELEM_PER_BUF * sizeof(Q_T);
+        l1QBufs[1] = {LocalTensor<Q_T>(TPosition::A1, l1Addr, L1Q_ELEM_PER_BUF), 1};
+        l1Addr += L1Q_ELEM_PER_BUF * sizeof(Q_T);
+        l1QBufs[2] = {LocalTensor<Q_T>(TPosition::A1, l1Addr, L1Q_ELEM_PER_BUF), 2};
+        l1Addr += L1Q_ELEM_PER_BUF * sizeof(Q_T);
+
+        l1RightBufs[0] = {LocalTensor<Q_T>(TPosition::B1, l1Addr, L1_RIGHT_ELEM_PER_BLOCK), 0};
+        l1Addr += L1_RIGHT_ELEM_PER_BLOCK * sizeof(Q_T);
+        l1RightBufs[1] = {LocalTensor<Q_T>(TPosition::B1, l1Addr, L1_RIGHT_ELEM_PER_BLOCK), 1};
+        l1Addr += L1_RIGHT_ELEM_PER_BLOCK * sizeof(Q_T);
+        l1RightBufs[2] = {LocalTensor<Q_T>(TPosition::B1, l1Addr, L1_RIGHT_ELEM_PER_BLOCK), 2};
+        l1Addr += L1_RIGHT_ELEM_PER_BLOCK * sizeof(Q_T);
+
+        uint32_t l0aAddr = 0;
+        l0ABufs[0] = {LocalTensor<Q_T>(TPosition::A2, l0aAddr, L0A_ELEM_PER_BUF), 0};
+        l0aAddr += L0A_ELEM_PER_BUF * sizeof(Q_T);
+        l0ABufs[1] = {LocalTensor<Q_T>(TPosition::A2, l0aAddr, L0A_ELEM_PER_BUF), 1};
+        l0aAddr += L0A_ELEM_PER_BUF * sizeof(Q_T);
+
+        uint32_t l0bAddr = 0;
+        l0BBufs[0] = {LocalTensor<Q_T>(TPosition::B2, l0bAddr, L0B_ELEM_PER_BUF), 0};
+        l0bAddr += L0B_ELEM_PER_BUF * sizeof(Q_T);
+        l0BBufs[1] = {LocalTensor<Q_T>(TPosition::B2, l0bAddr, L0B_ELEM_PER_BUF), 1};
+        l0bAddr += L0B_ELEM_PER_BUF * sizeof(Q_T);
+
+        uint32_t l0cAddr = 0;
+        l0CBufs[0] = {LocalTensor<T>(TPosition::CO1, l0cAddr, L0C_ELEM_PER_BUF), 0};
+        l0cAddr += L0C_ELEM_PER_BUF * sizeof(T);
+        l0CBufs[1] = {LocalTensor<T>(TPosition::CO1, l0cAddr, L0C_ELEM_PER_BUF), 1};
+        l0cAddr += L0C_ELEM_PER_BUF * sizeof(T);
+
+        l0A = RingBuffer<Q_T>(l0ABufs, 2);
+        l0B = RingBuffer<Q_T>(l0BBufs, 2);
+        l0C = RingBuffer<T>(l0CBufs, 2);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *cuSeqlensQ)
+{
     if ASCEND_IS_AIC {
         this->queryGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)query);
-        InitLocalBuffer(l1BaseAddr);
-    }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *cuSeqlensQ)
-{
-    if ASCEND_IS_AIC {
         InitGmTensor(cuSeqlensQ);
     }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(uint32_t l1BaseAddr)
-{
-    uint32_t l1Addr = l1BaseAddr;
-
-    l1QBufs[0] = {LocalTensor<Q_T>(TPosition::A1, l1Addr, L1Q_ELEM_PER_BUF), 0};
-    l1Addr += L1Q_ELEM_PER_BUF * sizeof(Q_T);
-    l1QBufs[1] = {LocalTensor<Q_T>(TPosition::A1, l1Addr, L1Q_ELEM_PER_BUF), 1};
-    l1Addr += L1Q_ELEM_PER_BUF * sizeof(Q_T);
-    l1QBufs[2] = {LocalTensor<Q_T>(TPosition::A1, l1Addr, L1Q_ELEM_PER_BUF), 2};
-    l1Addr += L1Q_ELEM_PER_BUF * sizeof(Q_T);
-
-    l1RightBufs[0] = {LocalTensor<Q_T>(TPosition::B1, l1Addr, L1_RIGHT_ELEM_PER_BLOCK), 0};
-    l1Addr += L1_RIGHT_ELEM_PER_BLOCK * sizeof(Q_T);
-    l1RightBufs[1] = {LocalTensor<Q_T>(TPosition::B1, l1Addr, L1_RIGHT_ELEM_PER_BLOCK), 1};
-    l1Addr += L1_RIGHT_ELEM_PER_BLOCK * sizeof(Q_T);
-    l1RightBufs[2] = {LocalTensor<Q_T>(TPosition::B1, l1Addr, L1_RIGHT_ELEM_PER_BLOCK), 2};
-    l1Addr += L1_RIGHT_ELEM_PER_BLOCK * sizeof(Q_T);
-
-    uint32_t l0aAddr = 0;
-    l0ABufs[0] = {LocalTensor<Q_T>(TPosition::A2, l0aAddr, L0A_ELEM_PER_BUF), 0};
-    l0aAddr += L0A_ELEM_PER_BUF * sizeof(Q_T);
-    l0ABufs[1] = {LocalTensor<Q_T>(TPosition::A2, l0aAddr, L0A_ELEM_PER_BUF), 1};
-    l0aAddr += L0A_ELEM_PER_BUF * sizeof(Q_T);
-
-    uint32_t l0bAddr = 0;
-    l0BBufs[0] = {LocalTensor<Q_T>(TPosition::B2, l0bAddr, L0B_ELEM_PER_BUF), 0};
-    l0bAddr += L0B_ELEM_PER_BUF * sizeof(Q_T);
-    l0BBufs[1] = {LocalTensor<Q_T>(TPosition::B2, l0bAddr, L0B_ELEM_PER_BUF), 1};
-    l0bAddr += L0B_ELEM_PER_BUF * sizeof(Q_T);
-
-    uint32_t l0cAddr = 0;
-    l0CBufs[0] = {LocalTensor<T>(TPosition::CO1, l0cAddr, L0C_ELEM_PER_BUF), 0};
-    l0cAddr += L0C_ELEM_PER_BUF * sizeof(T);
-    l0CBufs[1] = {LocalTensor<T>(TPosition::CO1, l0cAddr, L0C_ELEM_PER_BUF), 1};
-    l0cAddr += L0C_ELEM_PER_BUF * sizeof(T);
-
-    l0A = RingBuffer<Q_T>(l0ABufs, 2);
-    l0B = RingBuffer<Q_T>(l0BBufs, 2);
-    l0C = RingBuffer<T>(l0CBufs, 2);
 }
 
 /* 初始化GmTensor,设置shape信息并计算strides */
@@ -371,8 +363,8 @@ TEMPLATES_DEF
 class SCFABlockCubeDummy {
 public:
     __aicore__ inline SCFABlockCubeDummy() {};
-    __aicore__ inline void InitCubeBlock(__gm__ uint8_t *query, uint32_t l1BaseAddr, uint32_t goIdx) {}
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ) {}
+    __aicore__ inline void InitLocalBuffer(uint32_t l1Addr, uint32_t goIdx) {}
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *cuSeqlensQ) {}
 };
 
 template <typename T>
