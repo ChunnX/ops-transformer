@@ -96,8 +96,10 @@ __aicore__ inline void RotaryPositionEmbedding3d<T>::Compute(int32_t progress)
         Mul(zLocal[base], xLocal[base], cosLocal[base], halfD);                 // zL = xL * cos
         Mul(zLocal[base + halfD], xLocal[base], cosLocal[base + halfD], halfD); // zR = xL * sin
         Mul(tmp, xLocal[base + halfD], cosLocal[base + halfD], halfD);          // tmp = xR * sin
+        PipeBarrier<PIPE_V>();
         Sub(zLocal[base], zLocal[base], tmp, halfD);                            // zL = xL*cos - xR*sin
         Mul(tmp, xLocal[base + halfD], cosLocal[base], halfD);                  // tmp = xR * cos
+        PipeBarrier<PIPE_V>();
         Add(zLocal[base + halfD], zLocal[base + halfD], tmp, halfD);            // zR = xL*sin + xR*cos
     }
 
