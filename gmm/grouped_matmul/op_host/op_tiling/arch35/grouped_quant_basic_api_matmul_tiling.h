@@ -58,7 +58,7 @@ private:
                                                     uint64_t baseASize, uint64_t baseBSize);
     void TryUpdateThreeBufferCandidate(const GQmmBasicTiling &initialTiling, uint64_t candidateDepthA1,
                                        uint64_t candidateDepthB1, uint64_t baseASize, uint64_t baseBSize,
-                                       L1SearchResult &result);
+                                       bool requireMinLoadSize, L1SearchResult &result);
     bool IsBetterThreeBufferCandidate(uint64_t highBwPayload, uint64_t totalPayload,
                                       const L1SearchResult &result) const;
     ge::graphStatus FinalizeStepAndScale();

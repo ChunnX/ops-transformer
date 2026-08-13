@@ -18,6 +18,10 @@ using namespace GroupedMatmul;
 using namespace optiling::GmmConstant;
 using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTilingData;
 namespace optiling {
+namespace {
+constexpr uint64_t THREE_BUFFER_MIN_LOAD_SIZE = MTE2_MIN_LOAD_SIZE_V120 * 3UL / 4UL; // 48 KiB
+}
+
 GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context)
     : GroupedQmmTiling(context)
 {
@@ -211,7 +215,7 @@ bool GroupedQmmBasicApiTiling::SearchReducedThreeBufferTiling(const GQmmBasicTil
         uint64_t candidateDepthB1 = initialTiling.depthB1;
         while (true) {
             TryUpdateThreeBufferCandidate(initialTiling, candidateDepthA1, candidateDepthB1, baseASize, baseBSize,
-                                          result);
+                                          true, result);
             if (candidateDepthB1 <= DB_SIZE) {
                 break;
             }
@@ -244,7 +248,7 @@ GQmmBasicTiling GroupedQmmBasicApiTiling::SearchExpandedThreeBufferTiling(const 
         uint64_t candidateDepthB1 = initialTiling.depthB1;
         while (true) {
             TryUpdateThreeBufferCandidate(initialTiling, candidateDepthA1, candidateDepthB1, baseASize, baseBSize,
-                                          result);
+                                          false, result);
             if (candidateDepthB1 >= maxDepthB1) {
                 break;
             }
@@ -262,7 +266,8 @@ GQmmBasicTiling GroupedQmmBasicApiTiling::SearchExpandedThreeBufferTiling(const 
 void GroupedQmmBasicApiTiling::TryUpdateThreeBufferCandidate(const GQmmBasicTiling &initialTiling,
                                                              uint64_t candidateDepthA1,
                                                              uint64_t candidateDepthB1, uint64_t baseASize,
-                                                             uint64_t baseBSize, L1SearchResult &result)
+                                                             uint64_t baseBSize, bool requireMinLoadSize,
+                                                             L1SearchResult &result)
 {
     basicTiling_ = initialTiling;
     basicTiling_.depthA1 = candidateDepthA1;
@@ -276,6 +281,10 @@ void GroupedQmmBasicApiTiling::TryUpdateThreeBufferCandidate(const GQmmBasicTili
 
     const uint64_t aPayload = basicTiling_.stepKa * baseASize;
     const uint64_t bPayload = basicTiling_.stepKb * baseBSize;
+    // 缩小 depth 以开启 3-buffer 时，避免过小的单次 GM->L1 搬运导致带宽下降。
+    if (requireMinLoadSize && (aPayload < THREE_BUFFER_MIN_LOAD_SIZE || bPayload < THREE_BUFFER_MIN_LOAD_SIZE)) {
+        return;
+    }
     const uint64_t highBwPayload =
         std::min(aPayload, static_cast<uint64_t>(MTE2_MIN_LOAD_SIZE_V120)) +
         std::min(bPayload, static_cast<uint64_t>(MTE2_MIN_LOAD_SIZE_V120));
