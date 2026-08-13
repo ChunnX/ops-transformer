@@ -543,6 +543,31 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
     }
     OP_LOGD(OP_NAME, "argsAddr=0x%lx (argsOffset=%lu)", argsAddr, argsOffset);
 
+    // 实验 lijd：mix kernel 的 args 首槽位可能是 ffts、第二个才是 context。
+    // 除 args[0] 外，把 args[1] 位置的候选 context 也读出来对比，验证 epRankId 垃圾是否为读错位假象
+    {
+        uint64_t argsAddrAlt = 0;
+        auto retAlt = aclrtMemcpy(&argsAddrAlt, sizeof(uint64_t), devArgsPtr + sizeof(uint64_t), sizeof(uint64_t),
+                                  ACL_MEMCPY_DEVICE_TO_HOST);
+        if (retAlt == ACL_SUCCESS && argsAddrAlt != 0) {
+            Mc2Aclnn::Mc2MoeContext ctxAlt{};
+            if (aclrtMemcpy(&ctxAlt, sizeof(ctxAlt), reinterpret_cast<void *>(argsAddrAlt), sizeof(ctxAlt),
+                            ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS) {
+                OP_LOGE(OP_NAME,
+                        "verify lijd: alt ctx at args[1] 0x%lx, epRankId %u, rankSizePerServer %u, buf0 0x%lx.",
+                        argsAddrAlt, ctxAlt.epRankId, ctxAlt.rankSizePerServer, ctxAlt.epHcclBuffer_[0]);
+            } else {
+                OP_LOGE(OP_NAME, "verify lijd: alt ctx read failed at args[1] 0x%lx.", argsAddrAlt);
+            }
+        }
+        Mc2Aclnn::Mc2MoeContext ctx0{};
+        if (aclrtMemcpy(&ctx0, sizeof(ctx0), reinterpret_cast<void *>(argsAddr), sizeof(ctx0),
+                        ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "verify lijd: raw ctx at args[0] 0x%lx, epRankId %u, rankSizePerServer %u, buf0 0x%lx.",
+                    argsAddr, ctx0.epRankId, ctx0.rankSizePerServer, ctx0.epHcclBuffer_[0]);
+        }
+    }
+
     // Get win content
     std::vector<uint8_t> winContent;
     bool isMegaMoe = (std::strstr(op, "MegaMoe") != nullptr);

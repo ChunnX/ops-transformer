@@ -284,6 +284,11 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::
     }
     // 按 groupEp 缓存 context Const 节点与 buffer 大小，同图同通信域的多个 V2 节点复用
     std::map<std::string, std::pair<ge::GNode, int64_t>> contextNodes;
+    ge::AscendString graphNameAscend;
+    const std::string graphName =
+        (graph->GetName(graphNameAscend) == ge::GRAPH_SUCCESS && graphNameAscend.GetString() != nullptr) ?
+            graphNameAscend.GetString() :
+            "";
     for (auto &gNode : graph->GetDirectNode()) {
         ge::AscendString nodeType;
         if ((gNode.GetType(nodeType) != ge::GRAPH_SUCCESS) || (nodeType != FUSED_OP_TYPE2.c_str())) {
@@ -312,16 +317,15 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::
         if (contextNodes.find(groupEpStr) == contextNodes.end()) {
             std::vector<int32_t> contextData;
             int64_t hcclBuffSize = 0;
-            if (!ops::Mc2MoeGraphContext::GetContextData(groupEpStr, contextData, hcclBuffSize)) {
+            if (!ops::Mc2MoeGraphContext::GetContextData(graphName, groupEpStr, contextData, hcclBuffSize)) {
                 OPS_LOG_E(FUSION_PASS_NAME.c_str(), "get mc2 context data failed, V2 node kept as-is.");
                 continue;
             }
             // 先按名查重：另一个 pass（dispatch/combine 互为对端）可能已为本通信域创建过 context Const
-            ge::GNode contextNode = ops::Mc2MoeGraphContext::FindContextConstNode(*graph, groupEpStr);
-            ge::AscendString tmpType;
-            if (contextNode.GetType(tmpType) != ge::GRAPH_SUCCESS) {
-                if (ops::Mc2MoeGraphContext::CreateContextConstNode(*graph, groupEpStr, contextData, contextNode) !=
-                    ge::GRAPH_SUCCESS) {
+            ge::GNode contextNode;
+            if (!ops::Mc2MoeGraphContext::FindContextConstNode(*graph, graphName, groupEpStr, contextNode)) {
+                if (ops::Mc2MoeGraphContext::CreateContextConstNode(*graph, graphName, groupEpStr, contextData,
+                                                                    contextNode) != ge::GRAPH_SUCCESS) {
                     continue;
                 }
             }
@@ -345,6 +349,10 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "hccl version not support mc2 context, V2 node kept as-is.");
         continue;
 #endif
+    }
+    // 回读校验：确认 pass 结束时 Const 内容仍正确
+    for (const auto &entry : contextNodes) {
+        ops::Mc2MoeGraphContext::VerifyContextConstNode(*graph, graphName, entry.first);
     }
     return ge::GRAPH_SUCCESS;
 }

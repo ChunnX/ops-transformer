@@ -355,20 +355,69 @@ bool Mc2MoeGraphContext::BuildContextData(const std::string &groupEp, std::vecto
     return true;
 }
 
-bool Mc2MoeGraphContext::GetContextData(const std::string &groupEp, std::vector<int32_t> &contextData,
-                                        int64_t &hcclBuffSize)
+bool Mc2MoeGraphContext::IsContextCacheValid(const std::string &groupEp, const std::vector<int32_t> &contextData)
+{
+    // 复用 BuildContextData 的查询链路：仅确认 HCCL 当前 buffer 基址与本卡缓存值一致。
+    // 不一致说明窗口已重建（HCCL buffer 地址变更），缓存快照失效，需要重新构建。
+    if (contextData.size() < 2) {
+        return false;
+    }
+    if (!LoadHcclSymbols()) {
+        return false;
+    }
+    HcclComm hcclHandle;
+    if (!GetCommHandle(groupEp.c_str(), hcclHandle)) {
+        return false;
+    }
+    void *tempBuffer = nullptr;
+    uint64_t bufSize = 0;
+    auto hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &bufSize);
+    if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {
+        return false;
+    }
+    const int32_t epRankId = contextData[0];
+    // contextData 布局：Mc2MoeContext 序列化（epRankId, rankSizePerServer, kfcContextAddr, epHcclBuffer_[]），
+    // epHcclBuffer_[rankId] 的 int32 偏移 = 4 + rankId*2（每个 uint64 占 2 个 int32）
+    const size_t epHcclBufferOffset = 4;
+    const uint64_t cachedAddr = static_cast<uint64_t>(
+        static_cast<uint32_t>(contextData[epHcclBufferOffset + epRankId * 2]) |
+        (static_cast<uint64_t>(static_cast<uint32_t>(contextData[epHcclBufferOffset + epRankId * 2 + 1])) << 32));
+    const uint64_t currentAddr = reinterpret_cast<uint64_t>(tempBuffer) + static_cast<uint64_t>(epRankId) *
+                                                                              EP_RANK_OFFSET_STEP;
+    if (cachedAddr != currentAddr) {
+        OPS_LOG_E(CONTEXT_NAME,
+                  "context cache invalid, groupEp %s, epRankId %d, cached %016lx, current %016lx.",
+                  groupEp.c_str(), epRankId, cachedAddr, currentAddr);
+        return false;
+    }
+    return true;
+}
+
+bool Mc2MoeGraphContext::GetContextData(const std::string &graphName, const std::string &groupEp,
+                                        std::vector<int32_t> &contextData, int64_t &hcclBuffSize)
 {
     if (groupEp.empty()) {
         OPS_LOG_E(CONTEXT_NAME, "groupEp is empty.");
         return false;
     }
     Mc2MoeGraphContext &manager = GetInstance();
-    auto iter = manager.contextCache_.find(groupEp);
+    // 缓存 key 加入图名：多图场景各自独立缓存，不做跨图复用
+    const std::string cacheKey = graphName + "#" + groupEp;
+    std::lock_guard<std::mutex> lock(manager.contextMutex_);
+    auto iter = manager.contextCache_.find(cacheKey);
     if (iter != manager.contextCache_.end()) {
-        contextData = iter->second.first;
-        hcclBuffSize = iter->second.second;
-        OPS_LOG_D(CONTEXT_NAME, "Found cached Mc2MoeContext data, groupEp %s.", groupEp.c_str());
-        return true;
+        // 缓存命中时校验地址有效性：HCCL 窗口重建后旧地址失效，命中必须重建
+        if (!manager.IsContextCacheValid(groupEp, iter->second.first)) {
+            OPS_LOG_W(CONTEXT_NAME, "cached Mc2MoeContext invalid, rebuild, graph %s, groupEp %s.",
+                      graphName.c_str(), groupEp.c_str());
+            manager.contextCache_.erase(iter);
+        } else {
+            contextData = iter->second.first;
+            hcclBuffSize = iter->second.second;
+            OPS_LOG_D(CONTEXT_NAME, "Found cached Mc2MoeContext data, graph %s, groupEp %s.", graphName.c_str(),
+                      groupEp.c_str());
+            return true;
+        }
     }
     // 与 aclnn 场景（mc2_context.cpp 每次调用新建实例）对齐：
     // 每次构建使用全新实例，layerMap 等中间状态不跨通信域复用，缓存仅保存最终产物
@@ -376,18 +425,25 @@ bool Mc2MoeGraphContext::GetContextData(const std::string &groupEp, std::vector<
     if (!builder.BuildContextData(groupEp, contextData, hcclBuffSize)) {
         return false;
     }
-    manager.contextCache_.emplace(groupEp, std::make_pair(contextData, hcclBuffSize));
+    // 源头真值：构建完成时刻打印关键字段，与 pass 结束回读（verify lijd）、kernel dump 三点对比
+    OPS_LOG_E(CONTEXT_NAME,
+              "create lijd: graph %s, groupEp %s, epRankId %d, rankSizePerServer %d, hcclBuffSize %ld, "
+              "data[2..5] %08x %08x %08x %08x.",
+              graphName.c_str(), groupEp.c_str(), contextData[0], contextData[1], hcclBuffSize, contextData[2],
+              contextData[3], contextData[4], contextData[5]);
+    manager.contextCache_.emplace(cacheKey, std::make_pair(contextData, hcclBuffSize));
     return true;
 }
 
 // 模板函数显式实例化
 template void *Mc2MoeGraphContext::GetHcclLibFunc<void *>(void *handle, const std::string &funcName);
 
-ge::graphStatus Mc2MoeGraphContext::CreateContextConstNode(ge::Graph &graph, const std::string &groupEp,
+ge::graphStatus Mc2MoeGraphContext::CreateContextConstNode(ge::Graph &graph, const std::string &graphName,
+                                                           const std::string &groupEp,
                                                            const std::vector<int32_t> &contextData,
                                                            ge::GNode &constNode)
 {
-    const std::string constName = kContextConstNamePrefix + groupEp;
+    const std::string constName = kContextConstNamePrefix + graphName + "_" + groupEp;
     const size_t dataLen = contextData.size() * sizeof(int32_t);
     ge::Shape shape({static_cast<int64_t>(contextData.size())});
     ge::TensorDesc tensorDesc(shape, ge::FORMAT_ND, ge::DT_INT32);
@@ -402,23 +458,62 @@ ge::graphStatus Mc2MoeGraphContext::CreateContextConstNode(ge::Graph &graph, con
     constOp.SetAttr("value", tensorValue);
 
     constNode = graph.AddNodeByOp(constOp);
-    OPS_LOG_I(CONTEXT_NAME, "Context Const node %s added, data len %zu.", constName.c_str(), dataLen);
+    OPS_LOG_I(CONTEXT_NAME, "Context Const node %s added, graph %s, groupEp %s, data len %zu.", constName.c_str(),
+              graphName.c_str(), groupEp.c_str(), dataLen);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::GNode Mc2MoeGraphContext::FindContextConstNode(ge::Graph &graph, const std::string &groupEp)
+bool Mc2MoeGraphContext::FindContextConstNode(ge::Graph &graph, const std::string &graphName,
+                                              const std::string &groupEp, ge::GNode &constNode)
 {
-    const std::string constName = kContextConstNamePrefix + groupEp;
+    const std::string constName = kContextConstNamePrefix + graphName + "_" + groupEp;
     for (auto &gNode : graph.GetDirectNode()) {
         ge::AscendString name;
         ge::AscendString type;
         if (gNode.GetName(name) == ge::GRAPH_SUCCESS && name.GetString() != nullptr &&
             constName == name.GetString() && gNode.GetType(type) == ge::GRAPH_SUCCESS &&
             type.GetString() != nullptr && std::string(type.GetString()) == "Const") {
-            return gNode;
+            constNode = gNode;
+            OPS_LOG_D(CONTEXT_NAME, "Find existing context Const node %s, graph %s, groupEp %s.", constName.c_str(),
+                      graphName.c_str(), groupEp.c_str());
+            return true;
         }
     }
-    return ge::GNode();
+    return false;
+}
+
+void Mc2MoeGraphContext::VerifyContextConstNode(ge::Graph &graph, const std::string &graphName,
+                                                const std::string &groupEp)
+{
+    const std::string constName = kContextConstNamePrefix + graphName + "_" + groupEp;
+    for (auto &gNode : graph.GetDirectNode()) {
+        ge::AscendString name;
+        ge::AscendString type;
+        if (gNode.GetName(name) != ge::GRAPH_SUCCESS || name.GetString() == nullptr ||
+            constName != name.GetString() || gNode.GetType(type) != ge::GRAPH_SUCCESS ||
+            type.GetString() == nullptr || std::string(type.GetString()) != "Const") {
+            continue;
+        }
+        ge::Tensor value;
+        if (gNode.GetAttr(ge::AscendString("value"), value) != ge::GRAPH_SUCCESS) {
+            OPS_LOG_E(CONTEXT_NAME, "verify lijd: get value attr failed, Const %s.", constName.c_str());
+            return;
+        }
+        if (value.GetData() == nullptr || value.GetSize() < 2 * sizeof(int32_t)) {
+            OPS_LOG_E(CONTEXT_NAME, "verify lijd: value invalid, Const %s, size %zu.", constName.c_str(),
+                      value.GetSize());
+            return;
+        }
+        const int32_t *data = reinterpret_cast<const int32_t *>(value.GetData());
+        OPS_LOG_E(CONTEXT_NAME,
+                  "verify lijd: Const %s, graph %s, groupEp %s, epRankId %d, rankSizePerServer %d, value size %zu, "
+                  "data[2..5] %08x %08x %08x %08x.",
+                  constName.c_str(), graphName.c_str(), groupEp.c_str(), data[0], data[1], value.GetSize(), data[2],
+                  data[3], data[4], data[5]);
+        return;
+    }
+    OPS_LOG_E(CONTEXT_NAME, "verify lijd: Const %s not found in graph, graph %s, groupEp %s.", constName.c_str(),
+              graphName.c_str(), groupEp.c_str());
 }
 } // namespace ops
 #endif // HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION

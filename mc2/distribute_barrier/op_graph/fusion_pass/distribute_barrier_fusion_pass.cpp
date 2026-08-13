@@ -246,6 +246,11 @@ ge::graphStatus DistributeBarrierFusionPass::Run(ge::GraphPtr &graph, ge::Custom
     }
     // 按 group 缓存 context Const 节点，同图同通信域的多个 barrier 节点复用
     std::map<std::string, ge::GNode> contextNodes;
+    ge::AscendString graphNameAscend;
+    const std::string graphName =
+        (graph->GetName(graphNameAscend) == ge::GRAPH_SUCCESS && graphNameAscend.GetString() != nullptr) ?
+            graphNameAscend.GetString() :
+            "";
     for (auto &gNode : graph->GetDirectNode()) {
         ge::AscendString nodeType;
         if ((gNode.GetType(nodeType) != ge::GRAPH_SUCCESS) || (nodeType != FUSED_OP_TYPE2.c_str())) {
@@ -260,16 +265,15 @@ ge::graphStatus DistributeBarrierFusionPass::Run(ge::GraphPtr &graph, ge::Custom
         if (contextNodes.find(groupStr) == contextNodes.end()) {
             std::vector<int32_t> contextData;
             int64_t hcclBuffSize = 0;
-            if (!ops::Mc2MoeGraphContext::GetContextData(groupStr, contextData, hcclBuffSize)) {
+            if (!ops::Mc2MoeGraphContext::GetContextData(graphName, groupStr, contextData, hcclBuffSize)) {
                 OPS_LOG_E(FUSION_PASS_NAME.c_str(), "get mc2 context data failed, barrier node kept as-is.");
                 continue;
             }
             // 先按名查重：D&C 的 pass 可能已为本通信域创建过 context Const
-            ge::GNode contextNode = ops::Mc2MoeGraphContext::FindContextConstNode(*graph, groupStr);
-            ge::AscendString tmpType;
-            if (contextNode.GetType(tmpType) != ge::GRAPH_SUCCESS) {
-                if (ops::Mc2MoeGraphContext::CreateContextConstNode(*graph, groupStr, contextData, contextNode) !=
-                    ge::GRAPH_SUCCESS) {
+            ge::GNode contextNode;
+            if (!ops::Mc2MoeGraphContext::FindContextConstNode(*graph, graphName, groupStr, contextNode)) {
+                if (ops::Mc2MoeGraphContext::CreateContextConstNode(*graph, graphName, groupStr, contextData,
+                                                                    contextNode) != ge::GRAPH_SUCCESS) {
                     continue;
                 }
             }
