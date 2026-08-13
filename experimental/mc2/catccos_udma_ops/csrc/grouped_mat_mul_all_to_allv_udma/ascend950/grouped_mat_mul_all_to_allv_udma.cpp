@@ -128,11 +128,12 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     TORCH_CHECK(localExpertNum <= kMaxLocalExperts,
                 "local expert count exceeds ", kMaxLocalExperts);
 
-    const int64_t m64 = x.size(0);
+    const int64_t inputRows64 = x.size(0);
     const int64_t k64 = x.size(1);
     const int64_t n64 = weight.size(2);
-    TORCH_CHECK(m64 > 0 && k64 > 0 && n64 > 0, "m, k and n must be positive");
-    TORCH_CHECK(m64 <= std::numeric_limits<uint32_t>::max() &&
+    TORCH_CHECK(inputRows64 > 0 && k64 > 0 && n64 > 0,
+                "input rows, k and n must be positive");
+    TORCH_CHECK(inputRows64 <= std::numeric_limits<uint32_t>::max() &&
                     k64 <= std::numeric_limits<uint32_t>::max() &&
                     n64 <= std::numeric_limits<uint32_t>::max(),
                 "shape exceeds the kernel's uint32 range");
@@ -155,25 +156,41 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
                 "kernel tiling requires ", requiredWorkspaceBytes,
                 " symmetric workspace bytes, exceeding ", Config::kSymmetricDataBytes);
 
-    at::Tensor output = outputOptional.has_value()
-        ? outputOptional.value()
-        : at::empty({m64, n64}, x.options());
+    // This fused direction consumes sum(global_tokens) rows and returns
+    // sum(local_tokens) rows. Use the caller-provided capacity on the reusable
+    // out path to avoid a device-to-host reduction in the hot launch path.
+    int64_t outputRows64;
+    at::Tensor output;
+    if (outputOptional.has_value()) {
+        output = outputOptional.value();
+        TORCH_CHECK(output.dim() == 2 && output.size(1) == n64,
+                    "out must have shape [sum(local_tokens_per_expert), n]");
+        outputRows64 = output.size(0);
+    } else {
+        outputRows64 = localTokensPerExpert.sum().item<int64_t>();
+        TORCH_CHECK(outputRows64 >= 0,
+                    "sum(local_tokens_per_expert) must be non-negative");
+        output = at::empty({outputRows64, n64}, x.options());
+    }
+    TORCH_CHECK(outputRows64 <= std::numeric_limits<uint32_t>::max(),
+                "output row count exceeds the kernel's uint32 range");
     CheckNpuTensor(output, "out", at::kBFloat16);
     TORCH_CHECK(output.device() == x.device(), "out and x must be on the same NPU");
-    TORCH_CHECK(output.dim() == 2 && output.size(0) == m64 && output.size(1) == n64,
-                "out must have shape [m, n]");
+    TORCH_CHECK(output.dim() == 2 && output.size(1) == n64,
+                "out must have shape [sum(local_tokens_per_expert), n]");
     TORCH_CHECK(output.data_ptr() != x.data_ptr() && output.data_ptr() != weight.data_ptr(),
                 "out must not alias x or weight");
 
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
     runtime.RecordStream(stream);
     Catlass::GemmCoord shape{
-        static_cast<uint32_t>(m64), static_cast<uint32_t>(n64), static_cast<uint32_t>(k64)};
+        static_cast<uint32_t>(inputRows64), static_cast<uint32_t>(n64), static_cast<uint32_t>(k64)};
     Catlass::MatrixCoord commCoreSplit{kCommDataSplit, kCommNpuSplit};
     Catlass::MatrixCoord commBlockShape{kCommBlockM, kN0};
     Catlass::MatrixCoord commTileShape{kCommTileM / 2, kN0};
     DeviceOp::Arguments arguments{
         shape,
+        static_cast<uint32_t>(outputRows64),
         static_cast<uint32_t>(runtime.Rank()),
         static_cast<uint32_t>(worldSize),
         kCommInterval,
@@ -228,12 +245,16 @@ at::Tensor GroupedMatMulAllToAllVUdmaOutNpu(
 
 at::Tensor GroupedMatMulAllToAllVUdmaMeta(
     const at::Tensor &x, const at::Tensor &weight,
-    const at::Tensor &, const at::Tensor &, int64_t epSize, int64_t expertNum)
+    const at::Tensor &, const at::Tensor &,
+    int64_t epSize, int64_t expertNum)
 {
     TORCH_CHECK(x.dim() == 2 && weight.dim() == 3,
                 "expected x[m,k] and weight[e,k,n]");
     TORCH_CHECK(epSize > 0 && expertNum > 0 && expertNum % epSize == 0,
                 "invalid expert topology");
+    // The route-dependent first dimension is not available from Meta tensors.
+    // Eager NPU calls allocate the exact size; compile and FakeTensor users
+    // should provide out= with a known output capacity.
     return at::empty({x.size(0), weight.size(2)}, x.options());
 }
 
@@ -246,8 +267,7 @@ at::Tensor GroupedMatMulAllToAllVUdmaOutMeta(
                 "expected x[m,k] and weight[e,k,n]");
     TORCH_CHECK(epSize > 0 && expertNum > 0 && expertNum % epSize == 0,
                 "invalid expert topology");
-    TORCH_CHECK(output.dim() == 2 && output.size(0) == x.size(0) &&
-                    output.size(1) == weight.size(2),
+    TORCH_CHECK(output.dim() == 2 && output.size(1) == weight.size(2),
                 "invalid out shape");
     return output;
 }

@@ -21,6 +21,7 @@ def test_default_manifest_resolves_and_selects_modes():
     assert len(cases) == 3
     assert len(select_cases(cases, mode="accuracy")) == 3
     assert len(select_cases(cases, mode="performance")) == 2
+    assert all(case["output_all_to_allv"] for case in cases)
     assert select_cases(cases, mode="accuracy", include_tags=["normal"])[0]["id"].endswith("normal")
 
 
@@ -33,4 +34,5 @@ def test_grouped_mat_mul_all_to_allv_manifest_uses_stricter_expert_limit():
     cases = load_case_manifest(GROUPED_CASES)
     assert len(cases) == 3
     assert all(case["operator"] == "grouped_mat_mul_all_to_allv" for case in cases)
+    assert all(not case["output_all_to_allv"] for case in cases)
     assert len(select_cases(cases, mode="performance")) == 2

@@ -29,6 +29,56 @@ namespace Catccos::DGemm::Kernel {
 using Catlass::MatrixCoord;
 using Catlass::GemmCoord;
 
+template <bool Enabled, class BlockExport>
+class AllToAllVExportPipeline {
+public:
+    template <class Resource, class BlockCommParams>
+    CATLASS_DEVICE
+    AllToAllVExportPipeline(Resource &, BlockCommParams const &) {}
+};
+
+template <class BlockExport>
+class AllToAllVExportPipeline<true, BlockExport> {
+public:
+    template <class Resource, class BlockCommParams>
+    CATLASS_DEVICE
+    AllToAllVExportPipeline(Resource &resource, BlockCommParams const &commParams) :
+        blockExport(resource, MakeParams(commParams))
+    {
+    }
+
+    CATLASS_DEVICE
+    void InitBlockLoop()
+    {
+        blockExport.InitBlockLoop();
+    }
+
+    CATLASS_DEVICE
+    void FinalizeBlockLoop()
+    {
+        blockExport.FinalizeBlockLoop();
+    }
+
+    CATLASS_DEVICE
+    BlockExport &GetBlockExport()
+    {
+        return blockExport;
+    }
+
+private:
+    template <class BlockCommParams>
+    CATLASS_DEVICE
+    static typename BlockExport::Params MakeParams(BlockCommParams const &commParams)
+    {
+        typename BlockExport::TileRemoteCopy::Params exportTileParams{
+            commParams.TileShape()};
+        return typename BlockExport::Params{
+            commParams.BlockShape(), exportTileParams};
+    }
+
+    BlockExport blockExport;
+};
+
 template <bool EXPORT_ALLTOALLV_, class ElementA_>
 struct AllToAllVExportParams {
     CATLASS_HOST_DEVICE
@@ -83,6 +133,10 @@ public:
     static constexpr uint32_t WORKSPACE_STAGES = WORKSPACE_STAGES_;
     static constexpr bool USE_UDMA_PEER_SERIAL_SCHEDULE = USE_UDMA_PEER_SERIAL_SCHEDULE_;
     static constexpr bool EXPORT_ALLTOALLV = EXPORT_ALLTOALLV_;
+    static_assert(!EXPORT_ALLTOALLV || WORKSPACE_STAGES >= 2,
+        "Pipelined AllToAllV export requires at least two staging buffers");
+    static_assert(!EXPORT_ALLTOALLV || USE_UDMA_PEER_SERIAL_SCHEDULE,
+        "Pipelined AllToAllV export requires the two-subcore UDMA schedule");
     static constexpr uint32_t L1_TILE_M = tla::get<0>(L1TileShape{});
     static constexpr uint32_t L1_TILE_N = tla::get<1>(L1TileShape{});
     static constexpr uint32_t L1_TILE_K = tla::get<2>(L1TileShape{});
@@ -306,6 +360,8 @@ public:
     void operator()<AscendC::AIV>(Params const &params)
     {
         BlockComm blockRemoteCopy(resource, params.blockCommParams);
+        AllToAllVExportPipeline<EXPORT_ALLTOALLV, BlockExport> exportPipeline{
+            resource, params.blockCommParams};
 
         uint32_t commShapeM = params.commInterval * L1_TILE_M;
         MatrixCoord commShape{commShapeM, params.problemShape.k()};
@@ -338,10 +394,22 @@ public:
 
         uint32_t receiveAccum = 0;
         auto commLoops = scheduler.GetCommLoops();
-        blockRemoteCopy.InitBlockLoop();
         if constexpr (EXPORT_ALLTOALLV) {
             static_assert(!std::is_void_v<BlockExport>,
                 "The AllToAllV export kernel requires a local GM copy block");
+        }
+        uint32_t subcoreIdx = AscendC::GetSubBlockIdx();
+        if constexpr (EXPORT_ALLTOALLV) {
+            // Keep communication and export on different AIV subcores. UB and
+            // MTE event IDs are private to an AIV subcore, so the two blocks
+            // can now make progress independently without aliasing resources.
+            if (subcoreIdx == 0) {
+                exportPipeline.InitBlockLoop();
+            } else {
+                blockRemoteCopy.InitBlockLoop();
+            }
+        } else {
+            blockRemoteCopy.InitBlockLoop();
         }
         for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
             uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
@@ -363,18 +431,40 @@ public:
                 aclshmemx_signal_op(syncMmadFinish, commIdx + 1, ACLSHMEM_SIGNAL_SET, rankIdx);
             }
 
+            if constexpr (EXPORT_ALLTOALLV) {
+                // Pipeline the previous stage's ordinary-GM export with the
+                // current stage's communication. Both consumers only read the
+                // staging buffers, and the per-loop barrier below guarantees
+                // that export(i - 1) finishes before its stage can be reused.
+                if (commIdx > 0 && subcoreIdx == 0) {
+                    uint32_t exportIdx = commIdx - 1;
+                    uint32_t exportStageIdx = exportIdx % WORKSPACE_STAGES;
+                    ExportCurrentStage(params, exportIdx, commShapeM,
+                        gmSymmetricList[exportStageIdx], layoutTagSymmetric,
+                        exportPipeline.GetBlockExport());
+                }
+            }
+
             if constexpr (USE_UDMA_PEER_SERIAL_SCHEDULE) {
                 // A UDMA queue is owned by one AIV subcore for each destination PE.
                 // Sharing a PE and sync-id between many AIV cores can corrupt or
-                // drop requests. Keep local MTE on subcore 0 and remote UDMA puts
-                // on subcore 1, as done by the Ascend950 UDMA all-gather kernels.
+                // drop requests. The regular variant keeps local MTE on subcore 0
+                // and remote UDMA puts on subcore 1; the export variant reserves
+                // subcore 0 for the preceding stage's export.
                 uint32_t aicoreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
-                uint32_t subcoreIdx = AscendC::GetSubBlockIdx();
                 if (aicoreIdx < rankSize) {
                     uint32_t dstRankIdx = aicoreIdx;
                     bool isLocalCopy = dstRankIdx == rankIdx;
-                    bool ownsPeer = (isLocalCopy && subcoreIdx == 0) ||
-                                    (!isLocalCopy && subcoreIdx == 1);
+                    bool ownsPeer;
+                    if constexpr (EXPORT_ALLTOALLV) {
+                        // Subcore 0 is dedicated to export. Subcore 1 owns both
+                        // the self MTE copy and remote UDMA submission so the
+                        // complete next communication round overlaps export.
+                        ownsPeer = subcoreIdx == 1;
+                    } else {
+                        ownsPeer = (isLocalCopy && subcoreIdx == 0) ||
+                                   (!isLocalCopy && subcoreIdx == 1);
+                    }
                     if (ownsPeer) {
                         auto commOffset = scheduler.GetBlockOffset(0, dstRankIdx);
                         auto actualCommShape = remapperSrc.GetResidueShape(commOffset);
@@ -474,11 +564,23 @@ public:
             }
             // 缁涘绶熻ぐ鎾冲闁矮淇婃潪顔筋偧娑撳鏆熼幑顔藉复閺€璺虹暚閹存劕鎮楅敍灞惧閺堝娈?aic 闁氨鐓?aiv 瀵偓婵顓哥粻妤佹拱鏉烆喚娈?            Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
             if constexpr (EXPORT_ALLTOALLV) {
-                // The receive counters cover remote UDMA completion, while a
-                // self copy can still be in the local MTE pipeline. The export
-                // variant must drain both before either AIC or the export copy
-                // consumes this staging buffer.
-                blockRemoteCopy.FinalizeBlockLoop();
+                // Export reads stage(i - 1), so it does not depend on the
+                // current receive-counter wait. Drain export(i - 1) and
+                // communication(i) independently, then use one barrier to
+                // publish both completions and protect staging reuse.
+                if (subcoreIdx == 0) {
+                    if (commIdx > 0) {
+                        exportPipeline.FinalizeBlockLoop();
+                        exportPipeline.InitBlockLoop();
+                    }
+                } else {
+                    blockRemoteCopy.FinalizeBlockLoop();
+                    if (commIdx + 1 < commLoops) {
+                        blockRemoteCopy.InitBlockLoop();
+                    }
+                }
+                Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
+            } else {
                 Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
             }
 #ifdef ENABLE_TIMER
@@ -486,26 +588,25 @@ public:
 #endif
             Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagAivFinishComm[stageIdx]);
 
-            if constexpr (EXPORT_ALLTOALLV) {
-                // The communication block and export block deliberately share
-                // the same UB tiles and event IDs. Use a direct local-GM
-                // copier; ordinary output GM must never pass through
-                // shmem_ptr(). The two dynamic parameter classes are distinct
-                // C++ types, so reconstruct the export parameters explicitly.
-                typename BlockExport::TileRemoteCopy::Params exportTileParams{
-                    params.blockCommParams.TileShape()};
-                typename BlockExport::Params exportParams{
-                    params.blockCommParams.BlockShape(), exportTileParams};
-                BlockExport blockExport{resource, exportParams};
-                blockExport.InitBlockLoop();
-                ExportCurrentStage(params, commIdx, commShapeM,
-                    gmSymmetric, layoutTagSymmetric, blockExport);
-                blockExport.FinalizeBlockLoop();
-                Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
-                blockRemoteCopy.InitBlockLoop();
-            }
         }
-        blockRemoteCopy.FinalizeBlockLoop();
+        if constexpr (EXPORT_ALLTOALLV) {
+            // Drain the final stage; there is no communication(i + 1) with
+            // which to overlap it. AIC can still compute the same stage in
+            // parallel because both operations are read-only on staging GM.
+            if (subcoreIdx == 0) {
+                if (commLoops > 0) {
+                    uint32_t exportIdx = commLoops - 1;
+                    uint32_t exportStageIdx = exportIdx % WORKSPACE_STAGES;
+                    ExportCurrentStage(params, exportIdx, commShapeM,
+                        gmSymmetricList[exportStageIdx], layoutTagSymmetric,
+                        exportPipeline.GetBlockExport());
+                }
+                exportPipeline.FinalizeBlockLoop();
+            }
+            Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
+        } else {
+            blockRemoteCopy.FinalizeBlockLoop();
+        }
     }
 
 private:

@@ -3,6 +3,7 @@ schema_version: 1
 defaults:
   dtype: bfloat16
   route: balanced
+  output_all_to_allv: true
   seed: 2026
   accuracy:
     standard: opbase_experimental

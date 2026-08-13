@@ -35,6 +35,24 @@ def test_business_shapes_select_tuned_tiling_profiles():
     assert "return kDefaultTiling" in source
 
 
+def test_export_business_shapes_use_separate_tuned_profiles():
+    source = (ASCEND950_ROOT / "all_to_allv_grouped_mat_mul_udma.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert "kM131072K2048N1024NonExportTiling" in source
+    assert "kM131072K2048N1024ExportTiling" in source
+    assert "KernelVariant::kM0_128, 128, 256, 256, 12, 128, 128, 2, 8" in source
+    assert "kM131072K2048N512NonExportTiling" in source
+    assert "kM131072K2048N512ExportTiling" in source
+    assert "KernelVariant::kM0_256, 256, 128, 256, 6, 128, 128, 1, 20" in source
+    assert "bool outputAllToAllV" in source
+    assert "? kM131072K2048N1024ExportTiling" in source
+    assert ": kM131072K2048N1024NonExportTiling" in source
+    assert "? kM131072K2048N512ExportTiling" in source
+    assert ": kM131072K2048N512NonExportTiling" in source
+    assert "allToAllVOutputOptional.has_value());" in source
+
+
 def test_m0_256_profile_has_a_dedicated_kernel_instance():
     device = (
         ASCEND950_ROOT / "all_to_allv_grouped_mat_mul_udma_device.h"
@@ -45,6 +63,8 @@ def test_m0_256_profile_has_a_dedicated_kernel_instance():
     assert "using AllToAllVGroupedMatMulUdmaM0_256Config" in device
     assert "256, 128, 256>;" in device
     assert "TypeTag<AllToAllVGroupedMatMulUdmaM0_256Config>" in host
+    assert "using AllToAllVGroupedMatMulUdmaM0_256ExportConfig" in device
+    assert "TypeTag<AllToAllVGroupedMatMulUdmaM0_256ExportConfig>" in host
 
 
 def test_selected_profile_drives_all_effective_runtime_tiling_fields():

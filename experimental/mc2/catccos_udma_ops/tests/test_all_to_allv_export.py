@@ -10,6 +10,12 @@ import types
 PROJECT_ROOT = Path(__file__).parents[1]
 
 
+def _route(rows=3):
+    route = SimpleNamespace(sum=lambda: SimpleNamespace(item=lambda: rows))
+    route.view = lambda *_shape: route
+    return route
+
+
 def _load_ops(monkeypatch, calls, world_size=2):
     fake_torch = types.ModuleType("torch")
     fake_torch.Tensor = object
@@ -40,7 +46,7 @@ def _load_ops(monkeypatch, calls, world_size=2):
 def test_optional_flag_selects_export_schema(monkeypatch):
     calls = []
     operator = _load_ops(monkeypatch, calls)
-    route = SimpleNamespace(sum=lambda: SimpleNamespace(item=lambda: 3))
+    route = _route()
     x = SimpleNamespace(shape=(4, 8), dtype="bf16", device="npu")
     export = SimpleNamespace(shape=(3, 8))
     result = operator(
@@ -55,7 +61,7 @@ def test_optional_flag_selects_export_schema(monkeypatch):
 def test_default_path_keeps_original_schema(monkeypatch):
     calls = []
     operator = _load_ops(monkeypatch, calls)
-    route = SimpleNamespace(sum=lambda: SimpleNamespace(item=lambda: 3))
+    route = _route()
     x = SimpleNamespace(shape=(4, 8), dtype="bf16", device="npu")
     assert operator(x, "weight", "local", route, ep_size=2, expert_num=4) == "output"
     assert calls[-1][0] == "all_to_allv_grouped_mat_mul_udma"
@@ -112,3 +118,23 @@ def test_export_order_is_local_expert_then_source_rank():
     assert kernel.index(local_expert_loop) < kernel.index(
         source_rank_loop, kernel.index(local_expert_loop)
     )
+
+
+def test_export_overlaps_previous_stage_with_current_communication():
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "ascend950_alltoallv_grouped_matmul.hpp"
+    ).read_text(encoding="utf-8")
+    assert "class AllToAllVExportPipeline<true, BlockExport>" in kernel
+    assert "WORKSPACE_STAGES >= 2" in kernel
+    assert "USE_UDMA_PEER_SERIAL_SCHEDULE" in kernel
+    assert "uint32_t exportIdx = commIdx - 1;" in kernel
+    assert "ownsPeer = subcoreIdx == 1;" in kernel
+    assert "exportPipeline.GetBlockExport()" in kernel
+    assert "uint32_t exportIdx = commLoops - 1;" in kernel

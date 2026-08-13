@@ -92,7 +92,8 @@ def grouped_mat_mul_all_to_allv(
     """Apply local grouped matmuls and return tokens with UDMA AllToAllV.
 
     ``x`` is a regular contiguous BF16 NPU tensor grouped by this rank's local
-    experts. The result has shape ``[m, n]`` and resides in regular NPU memory.
+    experts and has ``sum(global_tokens_per_local_expert)`` rows. The result has
+    shape ``[sum(local_tokens_per_expert), n]`` and resides in regular NPU memory.
     Both route tensors returned by :func:`build_rank_route_tensors` are flat and
     have shape ``[expert_num]``. The global table is laid out by source rank and
     then local expert.

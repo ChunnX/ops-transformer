@@ -36,6 +36,20 @@ def test_ratio_and_hard_limit_failures_are_reported_separately():
     assert report["hard_limit_violation_count"] == 2
 
 
+def test_export_report_accepts_source_rank_by_local_expert_route_table():
+    expected = torch.zeros((6, 2), dtype=torch.bfloat16)
+    actual = expected.clone()
+    report = analyze_accuracy(
+        actual,
+        expected,
+        global_table=[[1, 2], [2, 1]],
+    )
+
+    assert report["passed"]
+    assert [item["elements"] for item in report["by_local_expert"]] == [6, 6]
+    assert [item["elements"] for item in report["by_source_rank"]] == [6, 6]
+
+
 def test_bfloat16_hard_limit_scales_with_each_golden_magnitude():
     expected = torch.full((100, 1), 1024.0, dtype=torch.bfloat16)
     actual = expected.clone()

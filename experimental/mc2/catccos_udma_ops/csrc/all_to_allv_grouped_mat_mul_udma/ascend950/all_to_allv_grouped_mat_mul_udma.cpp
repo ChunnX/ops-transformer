@@ -60,20 +60,29 @@ struct TilingProfile {
 
 constexpr TilingProfile kDefaultTiling{
     KernelVariant::kM0_128, 128, 256, 256, 10, 64, 64, 1, 16};
-constexpr TilingProfile kM131072K2048N1024Tiling{
+constexpr TilingProfile kM131072K2048N1024NonExportTiling{
     KernelVariant::kM0_128, 128, 256, 256, 12, 128, 128, 4, 4};
-constexpr TilingProfile kM131072K2048N512Tiling{
+constexpr TilingProfile kM131072K2048N1024ExportTiling{
+    KernelVariant::kM0_128, 128, 256, 256, 12, 128, 128, 2, 8};
+constexpr TilingProfile kM131072K2048N512NonExportTiling{
     KernelVariant::kM0_256, 256, 128, 256, 6, 128, 128, 4, 4};
+constexpr TilingProfile kM131072K2048N512ExportTiling{
+    KernelVariant::kM0_256, 256, 128, 256, 6, 128, 128, 1, 20};
 
 const TilingProfile &SelectTiling(
-    uint32_t m, uint32_t k, uint32_t n, uint32_t worldSize, uint32_t expertNum)
+    uint32_t m, uint32_t k, uint32_t n, uint32_t worldSize, uint32_t expertNum,
+    bool outputAllToAllV)
 {
     const bool isEightRank256ExpertCase = worldSize == 8 && expertNum == 256;
     if (isEightRank256ExpertCase && m == 131072 && k == 2048 && n == 1024) {
-        return kM131072K2048N1024Tiling;
+        return outputAllToAllV
+            ? kM131072K2048N1024ExportTiling
+            : kM131072K2048N1024NonExportTiling;
     }
     if (isEightRank256ExpertCase && m == 131072 && k == 2048 && n == 512) {
-        return kM131072K2048N512Tiling;
+        return outputAllToAllV
+            ? kM131072K2048N512ExportTiling
+            : kM131072K2048N512NonExportTiling;
     }
     return kDefaultTiling;
 }
@@ -230,7 +239,8 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     const uint32_t k = static_cast<uint32_t>(k64);
     const uint32_t n = static_cast<uint32_t>(n64);
     const TilingProfile &tiling = SelectTiling(
-        m, k, n, static_cast<uint32_t>(worldSize), static_cast<uint32_t>(expertNum));
+        m, k, n, static_cast<uint32_t>(worldSize), static_cast<uint32_t>(expertNum),
+        allToAllVOutputOptional.has_value());
     const uint32_t kLoops = (k + tiling.k0 - 1) / tiling.k0;
     const uint64_t maxPeerElements = kIpcBufferBytes / sizeof(uint16_t) / worldSize / kMaxBlockCount;
     TORCH_CHECK(static_cast<uint64_t>(tiling.commInterval) * tiling.m0 * tiling.k0 * kLoops <

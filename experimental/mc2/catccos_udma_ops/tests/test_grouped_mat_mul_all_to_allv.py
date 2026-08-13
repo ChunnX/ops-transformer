@@ -15,7 +15,7 @@ def test_kernel_keeps_inputs_and_output_in_regular_npu_memory():
     )
     assert 'reinterpret_cast<uint8_t *>(x.data_ptr())' in source
     assert 'reinterpret_cast<uint8_t *>(weight.data_ptr())' in source
-    assert ": at::empty({m64, n64}, x.options())" in source
+    assert "at::empty({outputRows64, n64}, x.options())" in source
     assert "runtime.IsSymmetric(output.data_ptr())" not in source
     assert "AllocateSymmetricTensor(x, {m64, n64}" not in source
     assert "aclrtMemcpyAsync" not in source
@@ -68,3 +68,37 @@ def test_python_facade_dispatches_both_allocation_modes():
     )
     assert "grouped_mat_mul_all_to_allv_udma(" in source
     assert "grouped_mat_mul_all_to_allv_udma_out(" in source
+
+
+def test_unbalanced_route_uses_distinct_input_and_output_row_counts():
+    host = (ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma.cpp").read_text(
+        encoding="utf-8"
+    )
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "grouped_matmul_alltoallv_tla.hpp"
+    ).read_text(encoding="utf-8")
+    assert "const int64_t inputRows64 = x.size(0);" in host
+    assert "outputRows64 = localTokensPerExpert.sum().item<int64_t>();" in host
+    assert "outputRows64 = output.size(0);" in host
+    assert "static_cast<uint32_t>(outputRows64)" in host
+    assert "uint32_t outputRows;" in kernel
+    assert "LayoutTagA layoutTagA{args.gemmShape.m(), args.gemmShape.k()}" in kernel
+    assert "LayoutTagC layoutTagC{args.outputRows, args.gemmShape.n()}" in kernel
+    assert "output.size(0) == x.size(0)" not in host
+
+
+def test_reusable_out_path_does_not_add_route_sum_synchronization():
+    host = (ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma.cpp").read_text(
+        encoding="utf-8"
+    )
+    out_branch = host[host.index("if (outputOptional.has_value())"):
+                      host.index("} else {", host.index("if (outputOptional.has_value())"))]
+    assert "outputRows64 = output.size(0);" in out_branch
+    assert ".sum().item" not in out_branch

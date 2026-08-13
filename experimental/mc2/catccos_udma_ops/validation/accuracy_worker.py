@@ -160,6 +160,7 @@ def _run_case(case, rank, world_size, device, output_root):
     local_table, global_table = udma.build_rank_route_tensors(
         m, rank, world_size, expert_num, device
     )
+    global_table_2d = global_table.view(world_size, expert_num // world_size)
     route_matrix = udma.build_global_route_matrix(m, world_size, expert_num)
     candidates = []
     segments_override = None
@@ -202,42 +203,55 @@ def _run_case(case, rank, world_size, device, output_root):
         valid_rows = int(global_table.sum().item())
         if valid_rows != expected.shape[0]:
             raise RuntimeError("golden rows do not match the global route table")
-        ordinary = udma.all_to_allv_grouped_mat_mul(
-            x, weight, local_table, global_table,
-            ep_size=world_size, expert_num=expert_num,
-        )
-        torch_npu.npu.synchronize()
-        candidates.append(("ordinary", ordinary.clone(), _padding_stats(ordinary, valid_rows)))
-
-        exported_output, exported_all_to_allv = udma.all_to_allv_grouped_mat_mul(
-            x, weight, local_table, global_table,
-            ep_size=world_size, expert_num=expert_num,
-            output_all_to_allv=True,
-        )
-        torch_npu.npu.synchronize()
+        export_enabled = case["output_all_to_allv"]
+        if export_enabled:
+            ordinary, exported_all_to_allv = udma.all_to_allv_grouped_mat_mul(
+                x, weight, local_table, global_table,
+                ep_size=world_size, expert_num=expert_num,
+                output_all_to_allv=True,
+            )
+            torch_npu.npu.synchronize()
+            export_report = analyze_accuracy(
+                exported_all_to_allv, expected_all_to_allv,
+                global_table=global_table_2d.cpu().tolist(),
+                topk=case["accuracy"]["topk"],
+                heatmap_bins=case["accuracy"]["heatmap_bins"],
+            )
+            export_report.update(
+                case_id=case["id"], rank=rank, path="all_to_allv_export",
+                valid_rows=expected_all_to_allv.shape[0],
+                padding={"elements": 0, "nonzero_count": 0, "max_abs": 0.0},
+            )
+            additional_reports.append(("all_to_allv_export", export_report))
+        else:
+            ordinary = udma.all_to_allv_grouped_mat_mul(
+                x, weight, local_table, global_table,
+                ep_size=world_size, expert_num=expert_num,
+            )
+            torch_npu.npu.synchronize()
         candidates.append((
-            "export_output", exported_output.clone(),
-            _padding_stats(exported_output, valid_rows),
+            "export_output" if export_enabled else "ordinary",
+            ordinary.clone(), _padding_stats(ordinary, valid_rows),
         ))
-        export_report = analyze_accuracy(
-            exported_all_to_allv, expected_all_to_allv,
-            topk=case["accuracy"]["topk"],
-            heatmap_bins=case["accuracy"]["heatmap_bins"],
-        )
-        export_report.update(
-            case_id=case["id"], rank=rank, path="all_to_allv_export",
-            valid_rows=expected_all_to_allv.shape[0],
-            padding={"elements": 0, "nonzero_count": 0, "max_abs": 0.0},
-        )
-        additional_reports.append(("all_to_allv_export", export_report))
 
         reusable_out = torch.zeros_like(ordinary)
+        reusable_all_to_allv_out = (
+            torch.empty_like(expected_all_to_allv) if export_enabled else None
+        )
         for repeat in range(case["accuracy"]["repeats"]):
             reusable_out.zero_()
-            out_actual = udma.all_to_allv_grouped_mat_mul(
-                x, weight, local_table, global_table,
-                ep_size=world_size, expert_num=expert_num, out=reusable_out,
-            )
+            if export_enabled:
+                out_actual, _ = udma.all_to_allv_grouped_mat_mul(
+                    x, weight, local_table, global_table,
+                    ep_size=world_size, expert_num=expert_num, out=reusable_out,
+                    output_all_to_allv=True,
+                    all_to_allv_out=reusable_all_to_allv_out,
+                )
+            else:
+                out_actual = udma.all_to_allv_grouped_mat_mul(
+                    x, weight, local_table, global_table,
+                    ep_size=world_size, expert_num=expert_num, out=reusable_out,
+                )
             torch_npu.npu.synchronize()
             candidates.append((
                 "out_repeat_{}".format(repeat), out_actual.clone(),
@@ -255,9 +269,7 @@ def _run_case(case, rank, world_size, device, output_root):
             "heatmap_bins": case["accuracy"]["heatmap_bins"],
         }
         if segments_override is None:
-            analyze_arguments["global_table"] = (
-                global_table.view(world_size, expert_num // world_size).cpu().tolist()
-            )
+            analyze_arguments["global_table"] = global_table_2d.cpu().tolist()
         else:
             analyze_arguments["segments_override"] = segments_override
         report = analyze_accuracy(actual[:valid_rows], expected, **analyze_arguments)

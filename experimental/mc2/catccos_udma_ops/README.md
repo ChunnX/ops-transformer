@@ -19,7 +19,9 @@ The operator-local `csrc/catccos_overlay` directory contains only the
 UDMA all-to-all-v headers that have not yet landed in that official revision.
 The GroupedMatMul-AllToAllV configuration is migrated from CatCCOS commit
 `ee01c5181c50ce2aeb5feb05d603b568eb31a61a`; the fork is a source reference,
-not a build dependency.
+not a build dependency. The optional AllToAllV output and its pipelined export
+follow CatCCOS commits `1d96ae736f1054a28b0ddf3cbb96cd0c64c81a21` and
+`2444c7ee5acee145c8a296e3462b4bcf487571b8` respectively.
 
 ## Build and install
 
@@ -147,6 +149,12 @@ output, all_to_allv_output = udma.all_to_allv_grouped_mat_mul(
 source rank second. When `output_all_to_allv` is omitted or false, the original
 compile-time kernel variant is used and no export allocation or copy is issued.
 For repeated calls, pass preallocated `out=` and `all_to_allv_out=` tensors.
+
+The bundled accuracy and performance manifests enable this export path by
+default for AllToAllV-GroupedMatMul. Set `output_all_to_allv: false` on a case
+to benchmark or validate the original non-export kernel explicitly. Performance
+preallocates both outputs before warm-up, so allocation and route-count
+preprocessing are excluded from the profiled launch loop.
 
 `grouped_mat_mul_all_to_allv` performs the inverse order: local grouped
 matmuls followed by UDMA AllToAllV. Its `x` and `weight` inputs remain ordinary
@@ -286,18 +294,26 @@ Current kernel constraints are BF16, TP=1 (`ep_size == world_size`), at most 8
 ranks, at most 64 local experts, contiguous row-major tensors, and the original
 CatCCOS peer-memory/tiling limit.
 
+For `grouped_mat_mul_all_to_allv`, the input and output row counts are distinct
+under unbalanced routing: `x.shape[0] == sum(global_tokens)` and
+`out.shape[0] == sum(local_tokens)`. Supplying a correctly sized reusable
+`out=` avoids an additional device-to-host route-count reduction in the launch
+path.
+
 ## Fixed business-shape tiling
 
 `all_to_allv_grouped_mat_mul` selects the following tuned profiles only when
-`world_size=8`, `expert_num=256`, and `(M, K, N)` matches exactly. All other
-shapes and topologies retain the default profile.
+`world_size=8`, `expert_num=256`, and `(M, K, N)` matches exactly. Export and
+non-export calls select separate records. All other shapes and topologies
+retain the default profile.
 
-| M | K | N | M0 | N0 | K0 | commInterval | commTileM | commBlockM |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 131072 | 2048 | 1024 | 128 | 256 | 256 | 12 | 128 | 128 |
-| 131072 | 2048 | 512 | 256 | 128 | 256 | 6 | 128 | 128 |
+| AllToAllV output | M | K | N | M0 | N0 | K0 | commInterval | commTileM | commBlockM | commNpuSplit | commDataSplit |
+|:---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| disabled | 131072 | 2048 | 1024 | 128 | 256 | 256 | 12 | 128 | 128 | 4 | 4 |
+| enabled | 131072 | 2048 | 1024 | 128 | 256 | 256 | 12 | 128 | 128 | 2 | 8 |
+| disabled | 131072 | 2048 | 512 | 256 | 128 | 256 | 6 | 128 | 128 | 4 | 4 |
+| enabled | 131072 | 2048 | 512 | 256 | 128 | 256 | 6 | 128 | 128 | 1 | 20 |
 
-Both tuning records also contain `(commNpuSplit, commDataSplit)=(4,4)`.
-Those are legacy example-host fields: the migrated CatCCOS UDMA
+`commNpuSplit` and `commDataSplit` are legacy example-host fields. The migrated CatCCOS UDMA
 `DeviceOp::Arguments` and its device schedulers do not consume them, so they are
 retained as profile metadata rather than presented as effective kernel inputs.

@@ -109,7 +109,10 @@ public:
 
     /// User API arguments
     struct Arguments {
+        // gemmShape.m() is the grouped-matmul input row count. AllToAllV may
+        // return a different number of rows under an unbalanced route.
         Catlass::GemmCoord gemmShape;
+        uint32_t outputRows;
         uint32_t rankIdx;
         uint32_t rankSize;
         uint32_t commInterval;
@@ -130,7 +133,7 @@ public:
     {
         LayoutTagA layoutTagA{args.gemmShape.m(), args.gemmShape.k()};
         LayoutTagB layoutTagB{args.gemmShape.k(), args.gemmShape.n()};
-        LayoutTagC layoutTagC{args.gemmShape.m(), args.gemmShape.n()};
+        LayoutTagC layoutTagC{args.outputRows, args.gemmShape.n()};
 
         ProblemShape problemShape{
             args.gemmShape, args.rankSize, args.rankIdx, args.epSize, args.expertNum,

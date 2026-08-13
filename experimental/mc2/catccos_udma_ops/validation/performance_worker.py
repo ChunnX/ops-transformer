@@ -53,6 +53,7 @@ def main():
     initialized_udma = False
     x = None
     out = None
+    all_to_allv_out = None
     try:
         torch_npu.npu.set_device(local_rank)
         if not dist.is_gloo_available():
@@ -98,11 +99,20 @@ def main():
                 (world_size * shape["m"], shape["n"]),
                 dtype=torch.bfloat16, device=device,
             )
+            output_all_to_allv = case["output_all_to_allv"]
+            if output_all_to_allv:
+                received_rows = int(global_table.sum().item())
+                all_to_allv_out = torch.empty(
+                    (received_rows, shape["k"]),
+                    dtype=torch.bfloat16, device=device,
+                )
 
             def launch():
                 udma.all_to_allv_grouped_mat_mul(
                     x, weight, local_table, global_table,
                     ep_size=world_size, expert_num=case["expert_num"], out=out,
+                    output_all_to_allv=output_all_to_allv,
+                    all_to_allv_out=all_to_allv_out,
                 )
 
         # All target launches are deliberately countable. The parser removes
@@ -124,12 +134,13 @@ def main():
             "align_iterations": performance["align_iterations"],
             "iterations": performance["iterations"],
             "repeats": performance["repeats"],
+            "output_all_to_allv": case["output_all_to_allv"],
             "expected_target_launches": performance["warmup"] + performance["repeats"] * (
                 performance["align_iterations"] + performance["iterations"]
             ),
         })
     finally:
-        del out, x
+        del all_to_allv_out, out, x
         gc.collect()
         if initialized_udma:
             udma.destroy_udma_group()

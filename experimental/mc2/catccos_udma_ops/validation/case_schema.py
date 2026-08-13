@@ -94,6 +94,19 @@ def _validate_case(raw_case: Mapping[str, Any]) -> Dict[str, Any]:
             f"case {case_id}: operator must be one of {sorted(SUPPORTED_OPERATORS)}"
         )
     case["operator"] = operator
+    output_all_to_allv = case.get(
+        "output_all_to_allv", operator == "all_to_allv_grouped_mat_mul"
+    )
+    if not isinstance(output_all_to_allv, bool):
+        raise CaseManifestError(
+            f"case {case_id}: output_all_to_allv must be a boolean"
+        )
+    if operator != "all_to_allv_grouped_mat_mul" and output_all_to_allv:
+        raise CaseManifestError(
+            f"case {case_id}: output_all_to_allv is supported only for "
+            "all_to_allv_grouped_mat_mul"
+        )
+    case["output_all_to_allv"] = output_all_to_allv
 
     world_size = _require_positive_int(case_id, "world_size", case.get("world_size"))
     if world_size > 8:
@@ -268,6 +281,7 @@ def performance_workload_digest(case: Mapping[str, Any]) -> str:
         "dtype": case["dtype"],
         "expert_num": case["expert_num"],
         "operator": case["operator"],
+        "output_all_to_allv": case["output_all_to_allv"],
         "input_distribution": case["input_distribution"],
         "route": case["route"],
         "seed": case["seed"],
