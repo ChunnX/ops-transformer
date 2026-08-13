@@ -58,57 +58,6 @@ using namespace Mc2Aclnn;
 // 每个张量只打印头部若干元素，要看更多改大这个上限即可。
 constexpr uint32_t IO_DUMP_MAX_ELEM = 16U;
 
-__aicore__ inline void IoDumpHex32(const char *tag, GM_ADDR addr, uint32_t wordCnt)
-{
-    if (addr == nullptr) {
-        printf("    %s: null\n", tag);
-        return;
-    }
-    GlobalTensor<int32_t> t;
-    t.SetGlobalBuffer((__gm__ int32_t *)addr);
-    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-    printf("    %s: addr=0x%llx words=%u\n", tag,
-           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), wordCnt);
-    const uint32_t n = (wordCnt < IO_DUMP_MAX_ELEM) ? wordCnt : IO_DUMP_MAX_ELEM;
-    for (uint32_t i = 0U; i < n; ++i) {
-        printf("      [%u]=0x%08x\n", i, static_cast<uint32_t>(t.GetValue(i)));
-    }
-}
-
-__aicore__ inline void IoDumpI32(const char *tag, GM_ADDR addr, uint32_t elemCnt)
-{
-    if (addr == nullptr) {
-        printf("    %s: null\n", tag);
-        return;
-    }
-    GlobalTensor<int32_t> t;
-    t.SetGlobalBuffer((__gm__ int32_t *)addr);
-    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-    printf("    %s: addr=0x%llx count=%u\n", tag,
-           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), elemCnt);
-    const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
-    for (uint32_t i = 0U; i < n; ++i) {
-        printf("      [%u]=%d\n", i, t.GetValue(i));
-    }
-}
-
-__aicore__ inline void IoDumpI64(const char *tag, GM_ADDR addr, uint32_t elemCnt)
-{
-    if (addr == nullptr) {
-        printf("    %s: null\n", tag);
-        return;
-    }
-    GlobalTensor<int64_t> t;
-    t.SetGlobalBuffer((__gm__ int64_t *)addr);
-    DataCacheCleanAndInvalid<int64_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-    printf("    %s: addr=0x%llx count=%u\n", tag,
-           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), elemCnt);
-    const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
-    for (uint32_t i = 0U; i < n; ++i) {
-        printf("      [%u]=%lld\n", i, static_cast<long long>(t.GetValue(i)));
-    }
-}
-
 template <TemplateMC2TypeClass>
 class MoeDistributeDispatchTeardown {
 public:
@@ -134,8 +83,6 @@ private:
     __aicore__ inline void SyncCntOnCore(LocalTensor<float> &gatherMaskOutTensor,
                                          LocalTensor<uint32_t> &gatherTmpTensor,
                                          LocalTensor<float> &statusSumOutTensor);
-    __aicore__ inline void DumpInputs(GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADDR commCmdInfo);
-    __aicore__ inline void DumpOutputs();
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
         return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_);
@@ -237,6 +184,88 @@ private:
     DataCopyExtParams floatDataCopyParams_;
     DataCopyExtParams expandXCopyParams_;
     DataCopyExtParams hCommuCopyOutParams_;
+
+    // =============================== Log Dump =============================== //
+    __aicore__ inline void IoDumpHex32(const __gm__ char *tag, GM_ADDR addr, uint32_t wordCnt)
+    {
+        if (addr == nullptr) {
+            printf("D_T IoDumpHex32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
+            return;
+        }
+        GlobalTensor<int32_t> t;
+        t.SetGlobalBuffer((__gm__ int32_t *)addr);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+        printf("D_T IoDumpHex32 1 epRankId_:%u, epRankId_:%u, %s: addr=0x%llx words=%u\n", epRankId_, tag, addr, wordCnt);
+        const uint32_t n = (wordCnt < IO_DUMP_MAX_ELEM) ? wordCnt : IO_DUMP_MAX_ELEM;
+        for (uint32_t i = 0U; i < n; ++i) {
+            printf("D_T IoDumpHex32 2 epRankId_:%u, %s[%u]=0x%08x\n", epRankId_, tag, i, static_cast<uint32_t>(t.GetValue(i)));
+        }
+    }
+
+    __aicore__ inline void IoDumpI32(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
+    {
+        if (addr == nullptr) {
+            printf("D_T IoDumpI32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
+            return;
+        }
+        GlobalTensor<int32_t> t;
+        t.SetGlobalBuffer((__gm__ int32_t *)addr);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+        printf("D_T IoDumpI32 1 epRankId_:%u, epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
+        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
+        for (uint32_t i = 0U; i < n; ++i) {
+            printf("D_T IoDumpI32 2 epRankId_:%u, %s[%u]=%d\n", epRankId_, tag, i, t.GetValue(i));
+        }
+    }
+
+    __aicore__ inline void IoDumpI64(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
+    {
+        if (addr == nullptr) {
+            printf("D_T IoDumpI64 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
+            return;
+        }
+        GlobalTensor<int64_t> t;
+        t.SetGlobalBuffer((__gm__ int64_t *)addr);
+        DataCacheCleanAndInvalid<int64_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+        printf("D_T IoDumpI64 1 epRankId_:%u, epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
+        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
+        for (uint32_t i = 0U; i < n; ++i) {
+            printf("D_T IoDumpI64 2 epRankId_:%u, %s[%u]=%lld\n", epRankId_, tag, i, static_cast<int64_t>(t.GetValue(i)));
+        }
+    }
+
+    __aicore__ inline void DumpInputs(GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADDR commCmdInfo)
+    {
+        if (aivId_ != 0U) {
+            return;
+        }
+        printf("[IN][dispatch_teardown] rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
+            "moeExpertNumPerRank=%u globalBs=%u bs=%u k=%u h=%u aivNum=%u quantMode=%u expertTokenNumsType=%u "
+            "totalWinSize=%llu\n",
+            epRankId_, epWorldSize_, sharedExpertNum_, sharedExpertRankNum_, moeExpertNum_, moeExpertNumPerRank_,
+            axisMaxBS_ * epWorldSize_, axisBS_, axisK_, axisH_, aivNum_, static_cast<uint32_t>(QuantMode),
+            expertTokenNumsType_, static_cast<uint64_t>(tempTotalWinSize_));
+        // x 是 [bs, h] 的 XType，按 32bit 字打印原始位，不做类型转换
+        IoDumpHex32("IN_x", x, static_cast<uint64_t>(axisBS_) * axisH_ * sizeof(XType) / sizeof(int32_t));
+        IoDumpHex32("IN_y", y, IO_DUMP_MAX_ELEM);
+        IoDumpI32("IN_expertIds", expertIds, axisBS_ * axisK_);
+        IoDumpI32("IN_commCmdInfo", commCmdInfo, IO_DUMP_MAX_ELEM);
+    }
+
+    __aicore__ inline void DumpOutputs()
+    {
+        if (aivId_ != 0U) {
+            return;
+        }
+        printf("[OUT][dispatch_teardown] rank=%u\n", epRankId_);
+        // expandXOut 的 dim0 由实际收到的 token 数决定，不在 tiling 里，只打头部
+        IoDumpHex32("OUT_expandXOut", expandXOutGM_, IO_DUMP_MAX_ELEM);
+        IoDumpHex32("OUT_dynamicScalesOut", dynamicScalesOutGM_, IO_DUMP_MAX_ELEM);
+        // assistInfoForCombineOut 就是下游 combine_setup 读的前缀和，整段都要能看到
+        IoDumpI32("OUT_assistInfoForCombineOut", sendCountsOutGM_, epWorldSize_ * moeExpertNumPerRank_);
+        IoDumpI64("OUT_expertTokenNumsOut", expertTokenNumsOutGM_, moeExpertNumPerRank_);
+    }
+    // =============================== Log Dump =============================== //
 };
 
 template <TemplateMC2TypeClass>
@@ -664,42 +693,6 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Updat
                 expertTokenNumsOutGMTensor_);
         }
     }
-}
-
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::DumpInputs(GM_ADDR x, GM_ADDR y,
-    GM_ADDR expertIds, GM_ADDR commCmdInfo)
-{
-    if (aivId_ != 0U) {
-        return;
-    }
-    printf("[IN][dispatch_teardown] rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
-           "moeExpertNumPerRank=%u globalBs=%u bs=%u k=%u h=%u aivNum=%u quantMode=%u expertTokenNumsType=%u "
-           "totalWinSize=%llu\n",
-           epRankId_, epWorldSize_, sharedExpertNum_, sharedExpertRankNum_, moeExpertNum_, moeExpertNumPerRank_,
-           axisMaxBS_ * epWorldSize_, axisBS_, axisK_, axisH_, aivNum_, static_cast<uint32_t>(QuantMode),
-           expertTokenNumsType_, static_cast<unsigned long long>(tempTotalWinSize_));
-    // x 是 [bs, h] 的 XType，按 32bit 字打印原始位，不做类型转换
-    IoDumpHex32("x", x, static_cast<uint32_t>(static_cast<uint64_t>(axisBS_) * axisH_ * sizeof(XType) /
-                                              sizeof(int32_t)));
-    IoDumpHex32("y", y, IO_DUMP_MAX_ELEM);
-    IoDumpI32("expertIds", expertIds, axisBS_ * axisK_);
-    IoDumpI32("commCmdInfo", commCmdInfo, IO_DUMP_MAX_ELEM);
-}
-
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::DumpOutputs()
-{
-    if (aivId_ != 0U) {
-        return;
-    }
-    printf("[OUT][dispatch_teardown] rank=%u\n", epRankId_);
-    // expandXOut 的 dim0 由实际收到的 token 数决定，不在 tiling 里，只打头部
-    IoDumpHex32("expandXOut", expandXOutGM_, IO_DUMP_MAX_ELEM);
-    IoDumpHex32("dynamicScalesOut", dynamicScalesOutGM_, IO_DUMP_MAX_ELEM);
-    // assistInfoForCombineOut 就是下游 combine_setup 读的前缀和，整段都要能看到
-    IoDumpI32("assistInfoForCombineOut", sendCountsOutGM_, epWorldSize_ * moeExpertNumPerRank_);
-    IoDumpI64("expertTokenNumsOut", expertTokenNumsOutGM_, moeExpertNumPerRank_);
 }
 
 template <TemplateMC2TypeClass>

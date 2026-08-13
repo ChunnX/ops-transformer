@@ -47,40 +47,6 @@ using namespace Mc2Aclnn;
 // 每个张量只打印头部若干元素，要看更多改大这个上限即可。
 constexpr uint32_t IO_DUMP_MAX_ELEM = 16U;
 
-__aicore__ inline void IoDumpHex32(const char *tag, GM_ADDR addr, uint32_t wordCnt)
-{
-    if (addr == nullptr) {
-        printf("    %s: null\n", tag);
-        return;
-    }
-    GlobalTensor<int32_t> t;
-    t.SetGlobalBuffer((__gm__ int32_t *)addr);
-    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-    printf("    %s: addr=0x%llx words=%u\n", tag,
-           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), wordCnt);
-    const uint32_t n = (wordCnt < IO_DUMP_MAX_ELEM) ? wordCnt : IO_DUMP_MAX_ELEM;
-    for (uint32_t i = 0U; i < n; ++i) {
-        printf("      [%u]=0x%08x\n", i, static_cast<uint32_t>(t.GetValue(i)));
-    }
-}
-
-__aicore__ inline void IoDumpI32(const char *tag, GM_ADDR addr, uint32_t elemCnt)
-{
-    if (addr == nullptr) {
-        printf("    %s: null\n", tag);
-        return;
-    }
-    GlobalTensor<int32_t> t;
-    t.SetGlobalBuffer((__gm__ int32_t *)addr);
-    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-    printf("    %s: addr=0x%llx count=%u\n", tag,
-           static_cast<unsigned long long>(static_cast<uint64_t>(addr)), elemCnt);
-    const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
-    for (uint32_t i = 0U; i < n; ++i) {
-        printf("      [%u]=%d\n", i, t.GetValue(i));
-    }
-}
-
 template <TemplateMC2TypeClass>
 class MoeDistributeCombineSetup {
     constexpr static uint8_t BUFFER_NUM = 2;              // 多buf
@@ -106,8 +72,6 @@ private:
     __aicore__ inline void Communication();
     __aicore__ inline void BuffInit();
     __aicore__ inline void AssistInfoLocalCopy();
-    __aicore__ inline void DumpInputs(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine);
-    __aicore__ inline void DumpOutputs();
 
     TPipe *tpipe_{nullptr};
     GlobalTensor<int32_t> assistInfoForCombineGlobal_;
@@ -174,6 +138,71 @@ private:
                          dataState_ * COMBINE_STATE_BANK_STRIDE);
     }
     // =============================== Urma =============================== //
+
+    // =============================== Log Dump =============================== //
+    __aicore__ inline void IoDumpHex32(const __gm__ char *tag, GM_ADDR addr, uint32_t wordCnt)
+    {
+        if (addr == nullptr) {
+            printf("C_S IoDumpHex32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
+            return;
+        }
+        GlobalTensor<int32_t> t;
+        t.SetGlobalBuffer((__gm__ int32_t *)addr);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+        printf("C_S IoDumpHex32 1 epRankId_:%u, epRankId_:%u, %s: addr=0x%llx words=%u\n", epRankId_, tag, addr, wordCnt);
+        const uint32_t n = (wordCnt < IO_DUMP_MAX_ELEM) ? wordCnt : IO_DUMP_MAX_ELEM;
+        for (uint32_t i = 0U; i < n; ++i) {
+            printf("C_S IoDumpHex32 2 epRankId_:%u, %s[%u]=0x%08x\n", epRankId_, tag, i, static_cast<uint32_t>(t.GetValue(i)));
+        }
+    }
+
+    __aicore__ inline void IoDumpI32(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
+    {
+        if (addr == nullptr) {
+            printf("C_S IoDumpI32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
+            return;
+        }
+        GlobalTensor<int32_t> t;
+        t.SetGlobalBuffer((__gm__ int32_t *)addr);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+        printf("C_S IoDumpI32 1 epRankId_:%u, epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
+        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
+        for (uint32_t i = 0U; i < n; ++i) {
+            printf("C_S IoDumpI32 2 epRankId_:%u, %s[%u]=%d\n", epRankId_, tag, i, t.GetValue(i));
+        }
+    }
+
+    __aicore__ inline void DumpInputs(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine)
+    {
+        if (aivId_ != 0U) {
+            return;
+        }
+        const MoeDistributeCombineSetupInfo *t = moeDistributeCombineSetupInfo_;
+        printf("[IN][combine_setup] rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
+            "moeExpertPerRankNum=%u commQuantMode=%u globalBs=%u bs=%u k=%u h=%u a=%u aivNum=%u totalUbSize=%llu "
+            "totalWinSize=%llu\n",
+            epRankId_, t->epWorldSize, t->sharedExpertNum, t->sharedExpertRankNum, t->moeExpertNum,
+            t->moeExpertPerRankNum, t->commQuantMode, t->globalBs, t->bs, t->k, t->h, t->a, t->aivNum,
+            static_cast<uint64_t>(t->totalUbSize), static_cast<uint64_t>(t->totalWinSize));
+        // expandX 是 [a, h] 的 ExpandXType，按 32bit 字打印原始位，不做类型转换
+        IoDumpHex32("IN_expandX", expandX,
+                    static_cast<uint32_t>(static_cast<uint64_t>(t->a) * t->h * sizeof(ExpandXType) / sizeof(int32_t)));
+        IoDumpI32("IN_expertIds", expertIds, t->bs * t->k);
+        IoDumpI32("IN_assistInfoForCombine", assistInfoForCombine, t->epWorldSize * t->moeExpertPerRankNum);
+    }
+
+    __aicore__ inline void DumpOutputs()
+    {
+        if (aivId_ != 0U) {
+            return;
+        }
+        printf("[OUT][combine_setup] rank=%u\n", epRankId_);
+        IoDumpHex32("OUT_quantExpandX", quantExpandXGM_, IO_DUMP_MAX_ELEM);
+        IoDumpI32("OUT_commCmdInfoOut", commCmdInfoOutGM_,
+            (static_cast<uint64_t>(moeDistributeCombineSetupInfo_->a) + moeDistributeCombineSetupInfo_->epWorldSize) *
+            COMM_CMD_INFO_BYTES / sizeof(int32_t));
+    }
+    // =============================== Log Dump =============================== //
 };
 
 template <TemplateMC2TypeClass>
@@ -457,41 +486,6 @@ MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(
         (__gm__ int32_t *)(GetUrmaStateAddrByRankId(epRankId_) + epStateOffsetOnWin_));
     selfStatusTensor.SetValue(0, static_cast<int32_t>(STATUS_FLAG_VALUE));
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor);
-}
-
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::DumpInputs(GM_ADDR expandX, GM_ADDR expertIds,
-    GM_ADDR assistInfoForCombine)
-{
-    if (aivId_ != 0U) {
-        return;
-    }
-    const MoeDistributeCombineSetupInfo *t = moeDistributeCombineSetupInfo_;
-    printf("[IN][combine_setup] rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
-           "moeExpertPerRankNum=%u commQuantMode=%u globalBs=%u bs=%u k=%u h=%u a=%u aivNum=%u totalUbSize=%llu "
-           "totalWinSize=%llu\n",
-           epRankId_, t->epWorldSize, t->sharedExpertNum, t->sharedExpertRankNum, t->moeExpertNum,
-           t->moeExpertPerRankNum, t->commQuantMode, t->globalBs, t->bs, t->k, t->h, t->a, t->aivNum,
-           static_cast<unsigned long long>(t->totalUbSize), static_cast<unsigned long long>(t->totalWinSize));
-    // expandX 是 [a, h] 的 ExpandXType，按 32bit 字打印原始位，不做类型转换
-    IoDumpHex32("expandX", expandX,
-                static_cast<uint32_t>(static_cast<uint64_t>(t->a) * t->h * sizeof(ExpandXType) / sizeof(int32_t)));
-    IoDumpI32("expertIds", expertIds, t->bs * t->k);
-    IoDumpI32("assistInfoForCombine", assistInfoForCombine, t->epWorldSize * t->moeExpertPerRankNum);
-}
-
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::DumpOutputs()
-{
-    if (aivId_ != 0U) {
-        return;
-    }
-    printf("[OUT][combine_setup] rank=%u\n", epRankId_);
-    IoDumpHex32("quantExpandX", quantExpandXGM_, IO_DUMP_MAX_ELEM);
-    IoDumpI32("commCmdInfoOut", commCmdInfoOutGM_,
-              static_cast<uint32_t>((static_cast<uint64_t>(moeDistributeCombineSetupInfo_->a) +
-                                     moeDistributeCombineSetupInfo_->epWorldSize) *
-                                    COMM_CMD_INFO_BYTES / sizeof(int32_t)));
 }
 
 template <TemplateMC2TypeClass>
