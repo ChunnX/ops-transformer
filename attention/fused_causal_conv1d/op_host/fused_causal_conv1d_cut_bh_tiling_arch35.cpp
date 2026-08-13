@@ -457,7 +457,6 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateConvStatesShape()
     auto convStatesShape = context_->GetInputShape(CONV_STATES_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, convStatesShape);
     auto convStatesOriginShape = convStatesShape->GetOriginShape();
-
     // conv_states shape: [-1, K-1+m, dim]，state_len 需能容纳所有历史状态
     if (xInputMode_ == X_INPUT_3D) {
         int64_t expectedCacheLen = kernelSize_ + seqLen_ - 2; // = (K-1) + (seqLen-1)
