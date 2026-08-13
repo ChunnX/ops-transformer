@@ -82,6 +82,7 @@ struct MatmulReduceScatterV2TilingUtParam : public MatmulReduceScatterV2HostUtPa
     uint64_t ubsize;
     uint64_t expectTilingKey;
     std::string expectTilingDataHash;
+    std::vector<size_t> expectWorkspaces;
 
     MatmulReduceScatterV2TilingUtParam(const csv_map &csvMap) : MatmulReduceScatterV2HostUtParamBase(csvMap)
     {
@@ -104,6 +105,10 @@ struct MatmulReduceScatterV2TilingUtParam : public MatmulReduceScatterV2HostUtPa
         if (this->expectResult == ge::GRAPH_SUCCESS) {
             this->expectTilingKey = stoull(ReadMap(csvMap, "expectTilingKey"));
             this->expectTilingDataHash = ReadMap(csvMap, "expectTilingDataHash");
+            const std::string expectWorkspace = ReadMap(csvMap, "expectWorkspace");
+            if (!expectWorkspace.empty()) {
+                this->expectWorkspaces.emplace_back(static_cast<size_t>(stoull(expectWorkspace)));
+            }
         }
     }
 };

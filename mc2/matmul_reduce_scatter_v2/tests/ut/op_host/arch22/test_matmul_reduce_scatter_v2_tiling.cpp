@@ -62,7 +62,7 @@ TEST_P(MatmulReduceScatterV2Arch22TilingTest, param)
         param.inputInstance, param.outputInstance, &compileInfo, param.soc, param.coreNum, param.ubsize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.rank_size}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.expectResult, param.expectTilingKey,
-                       param.expectTilingDataHash, {}, MC2_TILING_DATA_RESERVED_LEN, true);
+                       param.expectTilingDataHash, param.expectWorkspaces, MC2_TILING_DATA_RESERVED_LEN, true);
 }
 
 INSTANTIATE_TEST_SUITE_P(
