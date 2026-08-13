@@ -49,9 +49,8 @@ elevate_mod() {
     fi
 }
 
-# 与 install.sh 末尾对齐。必须用 EXIT trap：generated postinst 含 set -e，
-# 且对 script 做 find -type f → 555；若中途失败或 copy_entity 递归把 csv 刷成 555，
-# 仍要在进程退出前把 filelist.csv 收成 444/440。
+# 与 install.sh 末尾对齐：script 树刷权后再单独收 filelist.csv（覆盖
+# generated postinst 的 find -type f → 555，以及 copy_entity 递归结果）。
 align_share_info_perms() {
     local share_info_dir script_dir filelist
     share_info_dir="${INSTALL_PATH}/share/info/${PKG_SHARE_NAME}"
@@ -72,7 +71,6 @@ align_share_info_perms() {
     fi
     return 0
 }
-trap align_share_info_perms EXIT
 
 # Mirror run: recursive chmod for copy_entity rows in filelist.
 apply_copy_entity_from_filelist() {
@@ -135,11 +133,9 @@ if [ -d "${TARGET_OPP_BUILT_IN}" ]; then
     fi
 fi
 
-# copy_entity 递归赋权（会把 script/filelist 刷成 555/550；随后 trap/下面再收 filelist）
+# copy_entity 递归赋权后，再按 install.sh 收 script / filelist / RECORD
 filelist_csv="${sourcedir}/share/info/${PKG_SHARE_NAME}/script/filelist.csv"
 if [ -f "${filelist_csv}" ]; then
     apply_copy_entity_from_filelist "${filelist_csv}"
 fi
-
-# 显式再刷一次（trap 在 EXIT 时还会刷，双保险）
 align_share_info_perms
