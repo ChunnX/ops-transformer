@@ -13,18 +13,19 @@
  * \brief Torch bridge — decode / update, delegates to aclnnCausalConv1dUpdate.
  */
 
+#include <tuple>
 #include <torch/extension.h>
 #include "aclnn_common.h"
 
 namespace op_api {
 
-at::Tensor CausalConv1dUpdate(const at::Tensor &x, at::Tensor &convStates, const at::Tensor &weight,
-                              const c10::optional<at::Tensor> &bias, const std::string &activation,
-                              const c10::optional<at::Tensor> &cacheIndices,
-                              const c10::optional<at::Tensor> &numAcceptedTokens,
-                              const c10::optional<at::Tensor> &queryStartLoc, int64_t maxQueryLen, int64_t nullBlockId,
-                              const c10::optional<at::Tensor> &blockIdxLastScheduledToken,
-                              const c10::optional<at::Tensor> &initialStateIdx)
+std::tuple<at::Tensor, at::Tensor> CausalConv1dUpdate(const at::Tensor &x, at::Tensor &convStates, const at::Tensor &weight,
+                                                      const c10::optional<at::Tensor> &bias, const std::string &activation,
+                                                      const c10::optional<at::Tensor> &cacheIndices,
+                                                      const c10::optional<at::Tensor> &numAcceptedTokens,
+                                                      const c10::optional<at::Tensor> &queryStartLoc, int64_t maxQueryLen, int64_t nullBlockId,
+                                                      const c10::optional<at::Tensor> &blockIdxLastScheduledToken,
+                                                      const c10::optional<at::Tensor> &initialStateIdx)
 {
     TORCH_CHECK(activation == "silu" || activation == "none", "activation must be 'silu' or 'none', got: ", activation);
 
@@ -39,7 +40,7 @@ at::Tensor CausalConv1dUpdate(const at::Tensor &x, at::Tensor &convStates, const
     ACLNN_CMD(aclnnCausalConv1dUpdate, x, weight, convStates, bias, queryStartLoc, cacheIndices, numAcceptedTokens,
               blockIdxLastScheduledToken, initialStateIdx, activationMode, nullBlockId, maxQueryLen, y);
 
-    return y;
+    return {convStates, y};
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
