@@ -21,10 +21,8 @@ test_stem_indexer_paramset.py
 csv/stem_indexer_generalized_cases.csv
 ```
 
-single case直接维护在`ENABLED_PARAMS`中，每条case前通过注释记录覆盖点和设计原因。
-`csv/stem_indexer_generalized_cases.csv`保存批量用例信息，作为批量模式生成`.pt`文件的输入。
+single与batch模式分别维护各自的用例：single模式的用例直接维护在`ENABLED_PARAMS`中，每条case前通过注释记录覆盖点和设计原因；batch模式的用例维护在`csv/stem_indexer_generalized_cases.csv`中，作为批量模式生成`.pt`文件的输入。
 
-single和batch模式当前均维护154条正例case，分别从`ENABLED_PARAMS`和CSV读取。
 两种用例源均包含`topk_score_precision`：1表示uint32，2表示uint16，未显式配置时默认1。
 其中`SI_WB_001`～`SI_WB_100`固定使用uint32 TopK score路径；`SI_WB_101`～`SI_WB_150`
 镜像前50条功能场景，固定使用uint16 TopK score路径。
@@ -128,7 +126,7 @@ STEM_INDEXER_CASE_ID=SI_WB_001_1,SI_WB_101_1 \
 生成脚本默认使用全部可用CPU核按case并行。大用例并行时内存占用较高，可通过`--workers`限制进程数：
 
 ```bash
-python3 batch/stem_indexer_pt_save.py csv/stem_indexer_cases.csv pt_path --workers 8
+python3 batch/stem_indexer_pt_save.py csv/stem_indexer_generalized_cases.csv pt_path --workers 8
 ```
 
 `--workers 0`表示使用全部可用CPU核，`--workers 1`表示按原方式串行生成。
