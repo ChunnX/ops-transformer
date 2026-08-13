@@ -138,10 +138,21 @@ def check_tiling_and_kernel() -> None:
             "Ascend950 does not support the platform-less MultiCoreMatmulTiling constructor")
     require("matmul_tiling::MultiCoreMatmulTiling mm;" not in tiling,
             "platform-less MatMul tiling must not be used for Ascend950")
-    require(tiling.count("matmul_tiling::DataType::DT_BF16") == 3,
+    require(tiling.count("matmul_tiling::DataType::DT_BF16") >= 3,
             "Ascend950 MatMul tiling must use the arch35 BF16 enum for A/B/C")
     require("matmul_tiling::DataType::DT_BFLOAT16" not in tiling,
             "the legacy BF16 tiling enum is not valid for the Ascend950 arch35 path")
+    for token in (
+        "CoreMemType::L1",
+        "CoreMemType::L0_C",
+        "CoreMemType::UB",
+        '"fixed+actual-mem"',
+        '"fixed+single-shape"',
+        '"fixed+one-core"',
+        '"auto-split"',
+        "MatMul diagnostic probe",
+    ):
+        require(token in tiling, f"missing failed-GetTiling diagnostic: {token}")
     tiling_flat = normalized(tiling)
     require(
         "const uint64_t alignedK = (static_cast<uint64_t>(k) + CUBE_K_ALIGNMENT - 1) / "

@@ -47,6 +47,58 @@ bool MulOverflow(uint64_t lhs, uint64_t rhs, uint64_t &out)
     return false;
 }
 
+void RunMatmulDiagnosticProbes(const gert::TilingContext *context,
+                               const platform_ascendc::PlatformAscendC &platform, uint32_t m0, uint32_t n0,
+                               uint32_t k, uint32_t aicCoreNum, uint32_t baseK)
+{
+    uint64_t l1Size = 0;
+    uint64_t l0cSize = 0;
+    uint64_t ubSize = 0;
+    platform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1Size);
+    platform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0cSize);
+    platform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+
+    auto runProbe = [&](const char *label, bool useActualMemory, bool setSingleShape, bool setFixedSplit,
+                        uint32_t coreDim) {
+        matmul_tiling::MultiCoreMatmulTiling probe(platform);
+        probe.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                       matmul_tiling::DataType::DT_BF16, false);
+        probe.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                       matmul_tiling::DataType::DT_BF16, false);
+        probe.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                       matmul_tiling::DataType::DT_BF16);
+        probe.SetBias(false);
+        probe.SetDim(coreDim);
+        probe.SetShape(m0, n0, k);
+        probe.SetOrgShape(m0, n0, k);
+        if (useActualMemory) {
+            probe.SetBufferSpace(static_cast<int64_t>(l1Size), static_cast<int64_t>(l0cSize),
+                                 static_cast<int64_t>(ubSize));
+        } else {
+            probe.SetBufferSpace(512 * 1024, -1, -1);
+        }
+        if (setSingleShape) {
+            probe.SetSingleShape(-1, -1, -1);
+        }
+        if (setFixedSplit) {
+            probe.SetFixSplit(m0, n0, baseK);
+        }
+        ::TCubeTiling probeTiling{};
+        const int32_t ret = probe.GetTiling(probeTiling);
+        OP_LOGE(context->GetNodeName(),
+                "MatMul diagnostic probe %s ret=%d, dim=%u, fixed=%d, singleShape=%d, "
+                "L1/L0C/UB=[%llu,%llu,%llu].",
+                label, ret, coreDim, static_cast<int32_t>(setFixedSplit), static_cast<int32_t>(setSingleShape),
+                static_cast<unsigned long long>(l1Size), static_cast<unsigned long long>(l0cSize),
+                static_cast<unsigned long long>(ubSize));
+    };
+
+    runProbe("fixed+actual-mem", true, false, true, aicCoreNum);
+    runProbe("fixed+single-shape", false, true, true, aicCoreNum);
+    runProbe("fixed+one-core", false, false, true, 1);
+    runProbe("auto-split", false, false, false, aicCoreNum);
+}
+
 ge::graphStatus BuildMatmulTiling(const gert::TilingContext *context,
                                   const platform_ascendc::PlatformAscendC &platform, uint32_t m0, uint32_t n0,
                                   uint32_t k, uint32_t aicCoreNum, ::TCubeTiling &tiling)
@@ -69,10 +121,12 @@ ge::graphStatus BuildMatmulTiling(const gert::TilingContext *context,
     OP_TILING_CHECK(mm.SetFixSplit(m0, n0, baseK) != 0,
                     OP_LOGE(context->GetNodeName(), "SetFixSplit(%u,%u,%u) failed.", m0, n0, baseK),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(mm.GetTiling(tiling) == -1,
-                    OP_LOGE(context->GetNodeName(), "BF16 matmul tiling failed for [%u,%u,%u], baseK=%u.",
-                            m0, n0, k, baseK),
-                    return ge::GRAPH_FAILED);
+    const int32_t getTilingRet = mm.GetTiling(tiling);
+    if (getTilingRet == -1) {
+        OP_LOGE(context->GetNodeName(), "BF16 matmul tiling failed for [%u,%u,%u], baseK=%u.", m0, n0, k, baseK);
+        RunMatmulDiagnosticProbes(context, platform, m0, n0, k, aicCoreNum, baseK);
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
