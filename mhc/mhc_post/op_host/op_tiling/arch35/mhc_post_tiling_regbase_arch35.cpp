@@ -132,7 +132,7 @@ bool MhcPostTilingRegBaseArch35::IsCapable()
         return false;
     }
 
-    if (tt < static_cast<int64_t>(ascendcPlatform.GetCoreNumAiv()) / 2) {
+    if (tt < 56 / 2) {
         return false;
     }
 
@@ -163,7 +163,7 @@ ge::graphStatus MhcPostTilingRegBaseArch35::GetPlatformInfo()
     }
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    aicoreParams_.numBlocks = ascendcPlatform.GetCoreNumAiv();
+    aicoreParams_.numBlocks = 56;
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     aicoreParams_.ubSize = ubSizePlatForm;
