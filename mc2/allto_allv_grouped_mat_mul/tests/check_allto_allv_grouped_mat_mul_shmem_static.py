@@ -130,8 +130,8 @@ def check_tiling_and_kernel() -> None:
         "Per-peer send/recv totals must fit the source uint32 scheduler",
     ):
         require(token in tiling, f"missing source tiling invariant: {token}")
-    require("uint32_t aicCoreNum, ::TCubeTiling &tiling)" in normalized(tiling),
-            "host tiling must use the global TCubeTiling type stored in kernel tiling data")
+    require("uint32_t k, ::TCubeTiling &tiling)" in normalized(tiling),
+            "per-AIC MatMul tiling must not receive the operator-wide AIC count")
     require("const platform_ascendc::PlatformAscendC &platform" in normalized(tiling),
             "Ascend950 MatMul tiling must receive the runtime platform description")
     require("matmul_tiling::MultiCoreMatmulTiling mm(platform);" in tiling,
@@ -142,17 +142,14 @@ def check_tiling_and_kernel() -> None:
             "Ascend950 MatMul tiling must use the arch35 BF16 enum for A/B/C")
     require("matmul_tiling::DataType::DT_BFLOAT16" not in tiling,
             "the legacy BF16 tiling enum is not valid for the Ascend950 arch35 path")
-    for token in (
-        "CoreMemType::L1",
-        "CoreMemType::L0_C",
-        "CoreMemType::UB",
-        '"fixed+actual-mem"',
-        '"fixed+single-shape"',
-        '"fixed+one-core"',
-        '"auto-split"',
-        "MatMul diagnostic probe",
-    ):
-        require(token in tiling, f"missing failed-GetTiling diagnostic: {token}")
+    require("MATMUL_SUBTASK_CORE_NUM = 1" in tiling,
+            "each source-scheduled MatMul tile must be described as one AIC subtask")
+    require("mm.SetDim(MATMUL_SUBTASK_CORE_NUM)" in tiling,
+            "MatMul tiling must not schedule the same fixed tile across all operator AICs")
+    require("mm.SetDim(aicCoreNum)" not in tiling,
+            "operator-wide AIC count must remain owned by the outer source scheduler")
+    require("RunMatmulDiagnosticProbes" not in tiling and "MatMul diagnostic probe" not in tiling,
+            "temporary failed-GetTiling probes must be removed after identifying the root cause")
     tiling_flat = normalized(tiling)
     require(
         "const uint64_t alignedK = (static_cast<uint64_t>(k) + CUBE_K_ALIGNMENT - 1) / "
