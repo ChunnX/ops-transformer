@@ -22,7 +22,7 @@ using namespace matmulReduceScatterV2_aivmode_tiling;
 namespace matmulReduceScatterV2_util {
 #define PADDING_ARGS_CALL()                                                                                            \
     transA, transB, alignedA, alignedB, matrixAM, matrixAK, matrixBK, matrixBN, matrixAMAlign, matrixAKAlign,          \
-        matrixBKAlign, matrixBNAlign, gmA, gmB, gmAAlign, gmBAlign
+        matrixBKAlign, matrixBNAlign, gmA, gmB, gmAAlign, gmBAlign, castBias, biasLength, gmBias, gmBiasCast
 
 #define DEQUANT_ARGS_CALL()                                                                                            \
     rowNum, colNum, perChannelScale, perTokenScale, workspace, reinterpret_cast<GM_ADDR>(peerMem),                     \
@@ -207,6 +207,7 @@ public:
         aAlignSize = tilingData.matmulReduceScatterV2AivModeInfo.aAlignSize;
         bAlignSize = tilingData.matmulReduceScatterV2AivModeInfo.bAlignSize;
         dequantSize = tilingData.matmulReduceScatterV2AivModeInfo.dequantSize;
+        biasCastSize = tilingData.matmulReduceScatterV2AivModeInfo.biasCastSize;
         hasAAlign = tilingData.matmulReduceScatterV2AivModeInfo.hasAAlign;
         hasBAlign = tilingData.matmulReduceScatterV2AivModeInfo.hasBAlign;
         dequant_type = tilingData.matmulReduceScatterV2AivModeInfo.dequant_type;
@@ -446,11 +447,14 @@ public:
     GM_ADDR bGM_;
     GM_ADDR cGM_;
     GM_ADDR biasGM_;
+    GM_ADDR biasSrcGM_;
+    GM_ADDR biasCastGM_;
     GM_ADDR perChannelScaleGM_;
     GM_ADDR perTokenScaleGM_;
     uint64_t aAlignSize;
     uint64_t bAlignSize;
     uint64_t dequantSize;
+    uint64_t biasCastSize;
     bool hasAAlign;
     bool hasBAlign;
     bool nAlign16;
