@@ -249,37 +249,183 @@ aclnnStatus aclnnChunkKdaFwd(
 
 ## 调用示例
 
-以下示例通过`cann_ops_transformer.ops.chunk_kda_fwd`完成一次BSND布局的BF16正向计算：
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-```python
-import math
+```cpp
+#include <cmath>
+#include <iostream>
+#include <vector>
+#include "acl/acl.h"
+#include "aclnnop/aclnn_chunk_kda_fwd.h"
 
-import torch
-import torch_npu
-from cann_ops_transformer.ops import chunk_kda_fwd
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
+    } while (0)
 
-torch.npu.set_device(0)
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
+    } while (0)
 
-B, S, H, HV, K, V = 1, 64, 2, 2, 128, 128
-q = (torch.randn(B, S, H, K) * 0.05).to(torch.bfloat16).npu()
-k = (torch.randn(B, S, H, K) * 0.05).to(torch.bfloat16).npu()
-v = (torch.randn(B, S, HV, V) * 0.05).to(torch.bfloat16).npu()
-g = (torch.randn(B, S, HV, K) * 0.02 - 0.5).float().npu()
-beta = torch.sigmoid(torch.randn(B, S, HV)).to(torch.bfloat16).npu()
-a_log = torch.linspace(-0.5, 0.5, HV, dtype=torch.float32).npu()
-dt_bias = torch.linspace(-0.1, 0.1, HV * K, dtype=torch.float32).npu()
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
+{
+    int64_t shapeSize = 1;
+    for (auto i : shape) {
+        shapeSize *= i;
+    }
+    return shapeSize;
+}
 
-attn_out, final_state, gk, Aqk, Akk, w, u, qg, kg, v_new, h, initial_state = chunk_kda_fwd(
-    q, k, v, g, beta,
-    scale=1.0 / math.sqrt(K),
-    output_final_state=True,
-    safe_gate=True,
-    lower_bound=-5.0,
-    use_gate_in_kernel=True,
-    A_log=a_log,
-    dt_bias=dt_bias,
-    chunk_size=64,
-    layout="BSND",
-)
-print(attn_out.shape, final_state.shape, Aqk.shape, Akk.shape)
+int Init(int32_t deviceId, aclrtContext *context, aclrtStream *stream)
+{
+    auto ret = aclInit(nullptr);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtSetDevice(deviceId);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtCreateContext(context, deviceId);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateContext failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtSetCurrentContext(*context);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetCurrentContext failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtCreateStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
+    return 0;
+}
+
+template <typename T>
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
+                    aclDataType dataType, aclTensor **tensor)
+{
+    auto size = GetShapeSize(shape) * sizeof(T);
+    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_ND,
+                              shape.data(), shape.size(), *deviceAddr);
+    return ACL_SUCCESS;
+}
+
+int main()
+{
+    // 1. device/context/stream初始化，根据实际device填写deviceId
+    int32_t deviceId = 0;
+    aclrtContext context;
+    aclrtStream stream;
+    auto ret = Init(deviceId, &context, &stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
+
+    // 2. 构造输入与输出
+    int64_t batch = 1;
+    int64_t seqLen = 64;
+    int64_t headNum = 2;
+    int64_t headDim = 128;
+    int64_t chunkSize = 64;
+
+    std::vector<int64_t> qkShape = {batch, seqLen, headNum, headDim};       // BSND
+    std::vector<int64_t> vShape = {batch, seqLen, headNum, headDim};        // BSND
+    std::vector<int64_t> gShape = {batch, seqLen, headNum, headDim};        // BSND
+    std::vector<int64_t> betaShape = {batch, seqLen, headNum};              // BSND
+    std::vector<int64_t> attnOutShape = {batch, seqLen, headNum, headDim};  // BSND
+    std::vector<int64_t> aqkShape = {batch, headNum, seqLen, chunkSize};    // (B, HV, S, C)
+    std::vector<int64_t> akkShape = aqkShape;
+
+    int16_t bfloatOne = 16256;  // int16_t的16256二进制对应bfloat16的1.0
+    std::vector<int16_t> qHostData(GetShapeSize(qkShape), bfloatOne);
+    std::vector<int16_t> kHostData(GetShapeSize(qkShape), bfloatOne);
+    std::vector<int16_t> vHostData(GetShapeSize(vShape), bfloatOne);
+    std::vector<float> gHostData(GetShapeSize(gShape), 0.5f);
+    std::vector<float> betaHostData(GetShapeSize(betaShape), 1.0f);
+    std::vector<int16_t> attnOutHostData(GetShapeSize(attnOutShape), bfloatOne);
+    std::vector<int16_t> aqkHostData(GetShapeSize(aqkShape), bfloatOne);
+    std::vector<int16_t> akkHostData(GetShapeSize(akkShape), bfloatOne);
+
+    void *qDeviceAddr = nullptr;
+    void *kDeviceAddr = nullptr;
+    void *vDeviceAddr = nullptr;
+    void *gDeviceAddr = nullptr;
+    void *betaDeviceAddr = nullptr;
+    void *attnOutDeviceAddr = nullptr;
+    void *aqkDeviceAddr = nullptr;
+    void *akkDeviceAddr = nullptr;
+
+    aclTensor *q = nullptr;
+    aclTensor *k = nullptr;
+    aclTensor *v = nullptr;
+    aclTensor *g = nullptr;
+    aclTensor *beta = nullptr;
+    aclTensor *attnOut = nullptr;
+    aclTensor *aqk = nullptr;
+    aclTensor *akk = nullptr;
+
+    ret = CreateAclTensor(qHostData, qkShape, &qDeviceAddr, ACL_BF16, &q);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(kHostData, qkShape, &kDeviceAddr, ACL_BF16, &k);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, ACL_BF16, &v);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(gHostData, gShape, &gDeviceAddr, ACL_FLOAT, &g);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(betaHostData, betaShape, &betaDeviceAddr, ACL_FLOAT, &beta);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(attnOutHostData, attnOutShape, &attnOutDeviceAddr, ACL_BF16, &attnOut);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(aqkHostData, aqkShape, &aqkDeviceAddr, ACL_BF16, &aqk);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(akkHostData, akkShape, &akkDeviceAddr, ACL_BF16, &akk);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+
+    // 3. 调用CANN算子库API
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    ret = aclnnChunkKdaFwdGetWorkspaceSize(
+        q, k, v, g, beta, nullptr, nullptr, nullptr, nullptr, nullptr, "BSND",
+        1.0 / std::sqrt(static_cast<double>(headDim)), chunkSize, false, -5.0, false, false,
+        attnOut, nullptr, nullptr, aqk, akk, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("aclnnChunkKdaFwdGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+
+    void *workspaceAddr = nullptr;
+    if (workspaceSize > 0) {
+        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+    }
+
+    ret = aclnnChunkKdaFwd(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnChunkKdaFwd failed. ERROR: %d\n", ret); return ret);
+
+    // 4. 同步等待任务执行结束
+    ret = aclrtSynchronizeStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+
+    LOG_PRINT("ChunkKdaFwd aclnn call succeeded.\n");
+
+    // 5. 释放资源
+    aclDestroyTensor(q);
+    aclDestroyTensor(k);
+    aclDestroyTensor(v);
+    aclDestroyTensor(g);
+    aclDestroyTensor(beta);
+    aclDestroyTensor(attnOut);
+    aclDestroyTensor(aqk);
+    aclDestroyTensor(akk);
+    aclrtFree(qDeviceAddr);
+    aclrtFree(kDeviceAddr);
+    aclrtFree(vDeviceAddr);
+    aclrtFree(gDeviceAddr);
+    aclrtFree(betaDeviceAddr);
+    aclrtFree(attnOutDeviceAddr);
+    aclrtFree(aqkDeviceAddr);
+    aclrtFree(akkDeviceAddr);
+    if (workspaceAddr != nullptr) {
+        aclrtFree(workspaceAddr);
+    }
+    aclrtDestroyStream(stream);
+    aclrtDestroyContext(context);
+    aclFinalize();
+    return 0;
+}
 ```
