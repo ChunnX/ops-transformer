@@ -340,7 +340,8 @@ public:
                         // UpdatePScale(delay3TileInfo);
                         epilogueComputePScale(
                             l1PScaleTensorTla, 
-                            delay3TileInfo);
+                            delay3TileInfo,
+                            delay3TaskInfo);
                         // AscendC::DumpTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx], 168, 128);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2_BUF0 + delay3TileInfo.pscaleNum);
                     }
@@ -408,7 +409,8 @@ public:
                         epilogueOnlineSoftmax(
                             l1PTensorTla, 
                             actualBlockShapeQK, 
-                            curTileInfo);
+                            curTileInfo,
+                            curTaskInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId]);
                     }
                     if (curTileInfo.isUpdatePScale) {

@@ -11,12 +11,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file vf_computeScale_dn_mxfp4.h
+ * \file vf_computeScale_dn_mxfp4_qs64.h
  * \brief
  */
 
-#ifndef COMPUTESCALE_DN_MXFP4_H_
-#define COMPUTESCALE_DN_MXFP4_H_
+#ifndef COMPUTESCALE_DN_MXFP4_QS64_H_
+#define COMPUTESCALE_DN_MXFP4_QS64_H_
 #include "kernel_tensor.h"
 #include "vf_common_def.h"
 #include "../../bsa_epilogue_dispatch_policy.hpp"
@@ -31,13 +31,13 @@ using namespace MicroAPI;
 
 // T: half
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, uint16_t m = 128>
-__simd_vf__ inline void computePscaleVF(__ubuf__ uint8_t *mxscale1, __ubuf__ uint8_t *mxscale2, __ubuf__ T *ulmax1,
+__simd_vf__ inline void computePscaleQs64VF(__ubuf__ uint8_t *mxscale1, __ubuf__ uint8_t *mxscale2, __ubuf__ T *ulmax1,
                                         __ubuf__ T *ulmax2, __ubuf__ T *umax1, __ubuf__ T *umax2, __ubuf__ T *ugmax_old,
                                         __ubuf__ float *urs, uint16_t firstLoop, uint16_t secondLoop, uint16_t coreIndex,
                                         const T LOG2_CX_CEIL)
 {
     MaskReg preg_all_32 = CreateMask<uint32_t, MaskPattern::ALL>();
-    MaskReg preg_VL32_32 = CreateMask<uint32_t, MaskPattern::ALL>();
+    MaskReg preg_VL32_32 = CreateMask<uint32_t, MaskPattern::VL32>();
     MaskReg preg_all16 = CreateMask<uint16_t, MaskPattern::ALL>();
     MaskReg preg_VL64_16 = CreateMask<uint16_t, MaskPattern::VL64>();
     MaskReg preg_VL128_8 = CreateMask<uint8_t, MaskPattern::VL128>();
@@ -194,7 +194,7 @@ __simd_vf__ inline void computePscaleVF(__ubuf__ uint8_t *mxscale1, __ubuf__ uin
 }
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, uint16_t QsBase = 128>
-__aicore__ inline void computePscale(const LocalTensor<uint8_t> &mxscale1, const LocalTensor<uint8_t> &mxscale2,
+__aicore__ inline void computePscaleQS64CallVF(const LocalTensor<uint8_t> &mxscale1, const LocalTensor<uint8_t> &mxscale2,
                                      const LocalTensor<T> &ulmax1, const LocalTensor<T> &ulmax2,
                                      const LocalTensor<T> &umax1, const LocalTensor<T> &umax2,
                                      const LocalTensor<T> &ugmaxOld, const LocalTensor<float> &urs, uint16_t firstLoop, uint16_t secondLoop, uint16_t coreIndex,
@@ -209,8 +209,8 @@ __aicore__ inline void computePscale(const LocalTensor<uint8_t> &mxscale1, const
     __ubuf__ T *ugmaxOldVF = (__ubuf__ T *)ugmaxOld.GetPhyAddr();
     __ubuf__ float *ursVF = (__ubuf__ float *)urs.GetPhyAddr();
 
-    computePscaleVF<MX_QUANT_MODE, clear_gmax, T, QsBase>(mxscale1VF, mxscale2VF, ulmax1VF, ulmax2VF, umax1VF, umax2VF, ugmaxOldVF,
+    computePscaleQs64VF<MX_QUANT_MODE, clear_gmax, T, QsBase>(mxscale1VF, mxscale2VF, ulmax1VF, ulmax2VF, umax1VF, umax2VF, ugmaxOldVF,
                                            ursVF, firstLoop, secondLoop, coreIndex, LOG2_CX_CEIL);
 }
 }
-#endif  // COMPUTESCALE_DN_MXFP4_H_
+#endif  // COMPUTESCALE_DN_MXFP4_QS64_H_
