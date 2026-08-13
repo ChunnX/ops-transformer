@@ -9,25 +9,30 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-# Align deb/rpm postinst with .run opp_install.sh (仓内特性权限 & cleanup).
+# Align deb/rpm postinst with .run opp_install.sh / install.sh (仓内特性权限 & cleanup).
 
 sourcedir="${INSTALL_PATH}"
 WHL_INSTALL_DIR_PATH="${sourcedir}/python/site-packages"
 TARGET_OPP_BUILT_IN="${sourcedir}/opp/built-in"
+# postinst 里已设置 PACKAGE_NAME=ops_transformer；兜底避免空路径
+PKG_SHARE_NAME="${PACKAGE_NAME:-ops_transformer}"
 unset PYTHONPATH
 export PIP_BREAK_SYSTEM_PACKAGES=1
 
 run_pip() { python3 -m pip "$@" || pip3 "$@"; }
 
-# Same as opp_install.sh / gen_postinst root elevation: 550→555, 440→444, 750→755
 if [ "${EUID:-0}" -eq 0 ]; then
     CUSTOM_PERM="755"
     BUILTIN_PERM="555"
     ONLYREAD_PERM="444"
+    SCRIPT_TREE_PERM="555"
+    FILELIST_PERM="444"
 else
     CUSTOM_PERM="750"
     BUILTIN_PERM="550"
     ONLYREAD_PERM="440"
+    SCRIPT_TREE_PERM="550"
+    FILELIST_PERM="440"
 fi
 
 elevate_mod() {
@@ -44,51 +49,47 @@ elevate_mod() {
     fi
 }
 
-# Mirror run install_common_parser: recursive chmod for every copy_entity in filelist
-# (deb generated postinst only chmods the entity path itself / script files via find -type f).
-# Then mirror install.sh: script tree 555/550, filelist.csv specially 444/440.
-apply_copy_entity_perms_from_filelist() {
-    local filelist share_info_dir script_dir
-    filelist=$(find "${sourcedir}/share/info" -path '*/script/filelist.csv' 2>/dev/null | head -1)
-    [ -f "${filelist}" ] || return 0
-    script_dir=$(dirname "${filelist}")
-    share_info_dir=$(dirname "${script_dir}")
+# 与 install.sh 末尾对齐。必须用 EXIT trap：generated postinst 含 set -e，
+# 且对 script 做 find -type f → 555；若中途失败或 copy_entity 递归把 csv 刷成 555，
+# 仍要在进程退出前把 filelist.csv 收成 444/440。
+align_share_info_perms() {
+    local share_info_dir script_dir filelist
+    share_info_dir="${INSTALL_PATH}/share/info/${PKG_SHARE_NAME}"
+    script_dir="${share_info_dir}/script"
+    filelist="${script_dir}/filelist.csv"
 
-    # CSV: module,operation,relative_path_in_pkg,relative_install_path,...,permission,...
+    if [ -d "${script_dir}" ]; then
+        chmod -R "${SCRIPT_TREE_PERM}" "${script_dir}" 2>/dev/null || true
+    fi
+    if [ -f "${filelist}" ]; then
+        chmod "${FILELIST_PERM}" "${filelist}" 2>/dev/null || true
+    fi
+    chmod "${ONLYREAD_PERM}" "${share_info_dir}/scene.info" 2>/dev/null || true
+    chmod "${ONLYREAD_PERM}" "${share_info_dir}/version.info" 2>/dev/null || true
+    # RECORD 不在仓内交付物中；若运行环境已有该文件，与 script 树同权（run 侧常见 555）
+    if [ -e "${share_info_dir}/RECORD" ]; then
+        chmod "${SCRIPT_TREE_PERM}" "${share_info_dir}/RECORD" 2>/dev/null || true
+    fi
+    return 0
+}
+trap align_share_info_perms EXIT
+
+# Mirror run: recursive chmod for copy_entity rows in filelist.
+apply_copy_entity_from_filelist() {
+    local filelist="$1"
+    [ -f "${filelist}" ] || return 0
+    # CSV: module,operation,relative_path_in_pkg,relative_install_path,is_in_docker,permission,...
     while IFS=',' read -r _ op _ relpath _ perm _; do
         [ "${op}" = "copy_entity" ] || continue
         [ -n "${relpath}" ] && [ "${relpath}" != "NA" ] || continue
         [ -e "${sourcedir}/${relpath}" ] || continue
         [ -n "${perm}" ] && [ "${perm}" != "NA" ] || continue
         chmod -R "$(elevate_mod "${perm}")" "${sourcedir}/${relpath}" 2>/dev/null || true
-    done < <(tail -n +2 "${filelist}")
-
-    # Match run scripts/install.sh after opp_install (仓内 / 与 nn 相同):
-    #   root: chmod -R 555 script; chmod 444 filelist.csv
-    #   non-root: chmod -R 550 script; chmod 440 filelist.csv
-    if [ "$(id -u)" -eq 0 ]; then
-        chmod -R 555 "${script_dir}" 2>/dev/null || true
-        chmod 444 "${filelist}" 2>/dev/null || true
-    else
-        chmod -R 550 "${script_dir}" 2>/dev/null || true
-        chmod 440 "${filelist}" 2>/dev/null || true
-    fi
-
-    # Match run opp_install: scene.info / version.info → ONLYREAD
-    chmod "${ONLYREAD_PERM}" "${share_info_dir}/scene.info" 2>/dev/null || true
-    chmod "${ONLYREAD_PERM}" "${share_info_dir}/version.info" 2>/dev/null || true
-
-    # RECORD under share/info/<pkg> (if packaged/created): run compare shows 555; not in filelist
-    if [ -e "${share_info_dir}/RECORD" ]; then
-        if [ "$(id -u)" -eq 0 ]; then
-            chmod 555 "${share_info_dir}/RECORD" 2>/dev/null || true
-        else
-            chmod 550 "${share_info_dir}/RECORD" 2>/dev/null || true
-        fi
-    fi
+    done < <(tail -n +2 "${filelist}" 2>/dev/null) || true
+    return 0
 }
 
-# install es_* / cann_ops_* whl (same as install_es_whl_package + install_whl_package)
+# ---------- whl install (same as opp_install) ----------
 whl_dir="${sourcedir}/ops_transformer/es_packages/whl"
 if [ -d "${whl_dir}" ]; then
     chmod u+w "${sourcedir}/python" 2>/dev/null || true
@@ -102,13 +103,11 @@ if [ -d "${whl_dir}" ]; then
     done
 fi
 
-# Match run: CUSTOM_PERM on installed python packages (names follow pip layout, not fixed paths)
 chmod -R "${CUSTOM_PERM}" "${WHL_INSTALL_DIR_PATH}"/es_transformer 2>/dev/null || true
 chmod -R "${CUSTOM_PERM}" "${WHL_INSTALL_DIR_PATH}"/es_transformer-*.dist-info 2>/dev/null || true
 chmod -R "${CUSTOM_PERM}" "${WHL_INSTALL_DIR_PATH}"/cann_ops_transformer 2>/dev/null || true
 chmod -R "${CUSTOM_PERM}" "${WHL_INSTALL_DIR_PATH}"/cann_ops_transformer-*.dist-info 2>/dev/null || true
 
-# Match run: remove ops_transformer delivery tree after whl install
 if [ -d "${sourcedir}/ops_transformer" ]; then
     rm -rf "${sourcedir}/ops_transformer"
 fi
@@ -127,9 +126,7 @@ if [ -d "${built_in_impl_path}" ]; then
     fi
 fi
 
-apply_copy_entity_perms_from_filelist
-
-# Match run:仓内特性 — root 刷 CUSTOM_PERM，非 root 刷 BUILTIN_PERM
+# Match run:仓内特性 — opp/built-in 整树刷权
 if [ -d "${TARGET_OPP_BUILT_IN}" ]; then
     if [ "$(id -u)" = "0" ]; then
         chmod "${CUSTOM_PERM}" -R "${TARGET_OPP_BUILT_IN}" 2>/dev/null || true
@@ -137,3 +134,12 @@ if [ -d "${TARGET_OPP_BUILT_IN}" ]; then
         chmod "${BUILTIN_PERM}" -R "${TARGET_OPP_BUILT_IN}" 2>/dev/null || true
     fi
 fi
+
+# copy_entity 递归赋权（会把 script/filelist 刷成 555/550；随后 trap/下面再收 filelist）
+filelist_csv="${sourcedir}/share/info/${PKG_SHARE_NAME}/script/filelist.csv"
+if [ -f "${filelist_csv}" ]; then
+    apply_copy_entity_from_filelist "${filelist_csv}"
+fi
+
+# 显式再刷一次（trap 在 EXIT 时还会刷，双保险）
+align_share_info_perms
