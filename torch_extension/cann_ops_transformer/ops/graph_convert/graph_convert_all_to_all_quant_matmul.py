@@ -74,7 +74,7 @@ if _TORCHAIR_AVAILABLE:
         group_size: int = 0,
         comm_mode: str = "ai_cpu",
         alltoall_out_flag: bool = True,
-        perf_mode: int = 0,
+        precision_mode: int = 0,
         dependencies=[],
         node_name=None,
     ):
@@ -100,7 +100,7 @@ if _TORCHAIR_AVAILABLE:
         .ATTR(group_size, Int, 0)\n
         .ATTR(comm_mode, String, "ai_cpu")\n
         .ATTR(alltoall_out_flag, Bool, true)\n
-        .ATTR(perf_mode, Int, 0)\n
+        .ATTR(precision_mode, Int, 0)\n
         """
         inputs = {
             "context": context,
@@ -123,7 +123,7 @@ if _TORCHAIR_AVAILABLE:
             "group_size": attr.Int(group_size),
             "comm_mode": attr.Str(comm_mode),
             "alltoall_out_flag": attr.Bool(alltoall_out_flag),
-            "perf_mode": attr.Int(perf_mode),
+            "precision_mode": attr.Int(precision_mode),
         }
 
         outputs = [
@@ -162,7 +162,7 @@ if _TORCHAIR_AVAILABLE:
             .attr("group_size", attr.Int(0))
             .attr("comm_mode", attr.Str("ai_cpu"))
             .attr("alltoall_out_flag", attr.Bool(True))
-            .attr("perf_mode", attr.Int(0))
+            .attr("precision_mode", attr.Int(0))
             .output("y", "DT_FLOAT16, DT_BF16, DT_FLOAT")
             .output(
                 "all2all_out",
@@ -179,7 +179,6 @@ if _TORCHAIR_AVAILABLE:
         group_name: str,
         world_size: int,
         *,
-        alltoall_out_flag: bool = True,
         bias: Optional[Tensor] = None,
         x1_scale: Optional[Tensor] = None,
         x2_scale: Optional[Tensor] = None,
@@ -192,7 +191,7 @@ if _TORCHAIR_AVAILABLE:
         x2_scale_dtype: int = -1,
         y_dtype: int = -1,
         comm_mode: str = "ai_cpu",
-        perf_mode: int = 0,
+        precision_mode: int = 0,
         meta_outputs: TensorSpec = None,
     ):
         return AlltoAllMatmul(
@@ -212,6 +211,5 @@ if _TORCHAIR_AVAILABLE:
             transpose_x2=False,
             group_size=group_sizes[0] if group_sizes else 0,
             comm_mode=comm_mode,
-            alltoall_out_flag=alltoall_out_flag,
-            perf_mode=perf_mode,
+            precision_mode=precision_mode,
         )

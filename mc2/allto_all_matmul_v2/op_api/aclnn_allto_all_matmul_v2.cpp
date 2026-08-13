@@ -101,7 +101,7 @@ extern "C" aclnnStatus AlltoAllMatmulV2GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
     const aclTensor *x1ScaleOptional, const aclTensor *x2ScaleOptional, const char *group, int64_t worldSize,
     int64_t hcclBufferSize, int64_t x1QuantMode, int64_t x2QuantMode,
-    int64_t groupSize, const char *commMode, int64_t perfMode, const aclTensor *output,
+    int64_t groupSize, const char *commMode, int64_t precisionMode, const aclTensor *output,
     const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("AlltoAllMatmulV2GetWorkspaceSize start");
@@ -123,14 +123,14 @@ extern "C" aclnnStatus AlltoAllMatmulV2GetWorkspaceSize(
         }
     }
 
-    constexpr int64_t kDefaultYdtype = 27; // ge::DT_BF16
-    constexpr bool kDefaultAlltoallOutFlag = false;
+    constexpr int64_t kDefaultYdtype = 28;       // ge::DT_UNDEFINED
+    constexpr int64_t kDefaultX1QuantDtype = 28; // ge::DT_UNDEFINED
     constexpr bool kDefaultTransposeX1 = false;
     aclnnStatus ret = aclnnInnerAlltoAllMatmulV2GetWorkspaceSize(
         context, x1, transX2, biasOptional, x1ScaleOptional, x2ScaleOptional,
         const_cast<char *>(group), worldSize, hcclBufferSize, kDefaultYdtype,
-        x1QuantMode, x2QuantMode, kDefaultTransposeX1, transposeX2,
-        groupSize, kDefaultAlltoallOutFlag, const_cast<char *>(commMode ? commMode : "urma"), perfMode, output,
+        x1QuantMode, x2QuantMode, kDefaultX1QuantDtype, kDefaultTransposeX1, transposeX2,
+        groupSize, const_cast<char *>(commMode ? commMode : "urma"), precisionMode, output,
         alltoAllOutOptional, workspaceSize, executor);
 
     if (ret != ACLNN_SUCCESS) {

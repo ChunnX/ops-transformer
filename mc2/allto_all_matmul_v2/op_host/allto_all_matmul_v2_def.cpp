@@ -52,20 +52,16 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("x1_scale")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
+                       ge::DT_FLOAT, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("x2_scale")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
+                       ge::DT_FLOAT, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
@@ -76,7 +72,7 @@ public:
                                                         ge::DT_BF16, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND});
         this->Output("all2all_out")
-            .ParamType(OPTIONAL)
+            .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
                        ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
@@ -85,16 +81,16 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("world_size").AttrType(REQUIRED).Int();
-        this->Attr("hccl_buffer_size").AttrType(REQUIRED).Int();
-        this->Attr("y_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_BF16)); // not read by tiling, output dtype from tensor desc
+        this->Attr("hccl_buffer_size").AttrType(REQUIRED).Int(0);
+        this->Attr("y_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED));
         this->Attr("x1_quant_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("x2_quant_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("x1_quant_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED));
         this->Attr("transpose_x1").AttrType(OPTIONAL).Bool(false);
-        this->Attr("transpose_x2").AttrType(OPTIONAL).Bool(true);
+        this->Attr("transpose_x2").AttrType(OPTIONAL).Bool(false);
         this->Attr("group_size").AttrType(OPTIONAL).Int(0);
-        this->Attr("alltoall_out_flag").AttrType(OPTIONAL).Bool(false);
-        this->Attr("comm_mode").AttrType(OPTIONAL).String("urma");
-        this->Attr("perf_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("comm_mode").AttrType(OPTIONAL).String("ai_cpu");
+        this->Attr("precision_mode").AttrType(OPTIONAL).Int(0);
 
         OpAICoreConfig aicoreConfig950;
         aicoreConfig950.DynamicCompileStaticFlag(true)

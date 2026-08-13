@@ -33,7 +33,7 @@ constexpr size_t INDEX_IN_X2_SCALE = 3;
 constexpr size_t INDEX_OUT_Y = 0;
 constexpr size_t INDEX_ATTR_WORLD_SIZE = 1;
 constexpr size_t INDEX_ATTR_Y_DTYPE = 3;
-constexpr size_t INDEX_ATTR_TRANSPOSE_X2 = 7;
+constexpr size_t INDEX_ATTR_TRANSPOSE_X2 = 8;
 
 constexpr int64_t MX_SCALE_BLOCK_SIZE = 64;
 constexpr int64_t MX_SCALE_LAST_DIM = 2;

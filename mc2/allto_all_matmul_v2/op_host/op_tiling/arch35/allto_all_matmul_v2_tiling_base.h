@@ -62,11 +62,12 @@ protected:
     static constexpr size_t IDX_ATTR_Y_DTYPE = 3;
     static constexpr size_t IDX_ATTR_X1_QUANT_MODE = 4;
     static constexpr size_t IDX_ATTR_X2_QUANT_MODE = 5;
-    static constexpr size_t IDX_ATTR_TRANSPOSE_X2 = 7;
-    static constexpr size_t IDX_ATTR_GROUP_SIZE = 8;
-    static constexpr size_t IDX_ATTR_ALLTOALL_OUT_FLAG = 9;
+    static constexpr size_t IDX_ATTR_X1_QUANT_DTYPE = 6;
+    static constexpr size_t IDX_ATTR_TRANSPOSE_X1 = 7;
+    static constexpr size_t IDX_ATTR_TRANSPOSE_X2 = 8;
+    static constexpr size_t IDX_ATTR_GROUP_SIZE = 9;
     static constexpr size_t IDX_ATTR_COMM_MODE = 10;
-    static constexpr size_t IDX_ATTR_PERF_MODE = 11;
+    static constexpr size_t IDX_ATTR_PRECISION_MODE = 11;
     static constexpr uint64_t MX_SCALE_ALIGN = 64;
     static constexpr uint64_t SCALE_LAST_DIM = 2;
     static constexpr uint64_t SCALE_DIM_NUM = 3;
@@ -205,9 +206,13 @@ protected:
         auto *x2ScaleDesc = context_->GetOptionalInputDesc(IDX_INPUT_X2_SCALE);
         if (!x1ScaleDesc || !x2ScaleDesc) {
             if (!x1ScaleDesc)
-                OP_LOGE_WITH_INVALID_INPUT(opName, "x1_scale");
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    opName, "x1_scale", "nil",
+                    "only MXFP quantization is currently supported, x1_scale is required");
             if (!x2ScaleDesc)
-                OP_LOGE_WITH_INVALID_INPUT(opName, "x2_scale");
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    opName, "x2_scale", "nil",
+                    "only MXFP quantization is currently supported, x2_scale is required");
             return false;
         }
         auto x1ScaleFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleDesc->GetStorageFormat()));
@@ -225,7 +230,7 @@ protected:
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                 opName, "x1_scale, x2_scale",
                 (Ops::Base::ToString(x1ScaleDtype) + "," + Ops::Base::ToString(x2ScaleDtype)).c_str(),
-                "x1_scale and x2_scale must be FP8_E8M0");
+                "only MXFP quantization is currently supported, x1_scale and x2_scale must be FP8_E8M0");
             return false;
         }
         return true;
@@ -271,8 +276,8 @@ protected:
             return false;
         }
         auto *yDtypePtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_Y_DTYPE);
-        if (yDtypePtr != nullptr && *yDtypePtr != static_cast<int64_t>(ge::DT_BF16) &&
-            *yDtypePtr != static_cast<int64_t>(ge::DT_FLOAT16)) {
+        if (yDtypePtr != nullptr && *yDtypePtr != static_cast<int64_t>(ge::DT_UNDEFINED) &&
+            *yDtypePtr != static_cast<int64_t>(ge::DT_BF16) && *yDtypePtr != static_cast<int64_t>(ge::DT_FLOAT16)) {
             OP_LOGE_WITH_INVALID_ATTR(opName, "y_dtype", std::to_string(*yDtypePtr).c_str(), "BF16/FP16");
             return false;
         }
@@ -281,6 +286,11 @@ protected:
 
     bool CheckOtherAttrs(const char *opName)
     {
+        auto *tx1 = context_->GetAttrs()->GetAttrPointer<bool>(IDX_ATTR_TRANSPOSE_X1);
+        if (tx1 != nullptr && *tx1) {
+            OP_LOGE_WITH_INVALID_ATTR(opName, "transpose_x1", "true", "false");
+            return false;
+        }
         auto *tx2 = context_->GetAttrs()->GetAttrPointer<bool>(IDX_ATTR_TRANSPOSE_X2);
         if (!tx2 || !(*tx2)) {
             OP_LOGE_WITH_INVALID_ATTR(opName, "transpose_x2",
@@ -296,13 +306,10 @@ protected:
             OP_LOGE_WITH_INVALID_ATTR(opName, "comm_mode", commModePtr, "urma");
             return false;
         }
-        auto *a2aFlag = context_->GetAttrs()->GetAttrPointer<bool>(IDX_ATTR_ALLTOALL_OUT_FLAG);
-        if (!a2aFlag) {
-            OP_LOGE_WITH_INVALID_INPUT(opName, "alltoall_out_flag");
-            return false;
-        }
-        if (*a2aFlag) {
-            OP_LOGE_WITH_INVALID_ATTR(opName, "alltoall_out_flag", "true", "false");
+        auto *x1QdPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_X1_QUANT_DTYPE);
+        if (x1QdPtr != nullptr && *x1QdPtr != static_cast<int64_t>(ge::DT_UNDEFINED) &&
+            *x1QdPtr != static_cast<int64_t>(ge::DT_FLOAT8_E8M0)) {
+            OP_LOGE_WITH_INVALID_ATTR(opName, "x1_quant_dtype", std::to_string(*x1QdPtr).c_str(), "fp8_e8m0");
             return false;
         }
         return CheckGroupSizeAttr(opName);
@@ -577,8 +584,8 @@ protected:
         k_ = x1ss.GetDim(1U); // Ka (per-rank K)
         n_ = x2ss.GetDim(0U); // N (always dim0, x2 shape = [N, K_total])
 
-        auto *pm = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_PERF_MODE);
-        perfMode_ = pm ? static_cast<uint32_t>(*pm) : 0;
+        auto *pm = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_PRECISION_MODE);
+        precisionMode_ = pm ? static_cast<uint32_t>(*pm) : 0;
         return ge::GRAPH_SUCCESS;
     }
 
@@ -626,9 +633,9 @@ protected:
                 td->scaleCommTilingData.splitAxisTailSize, td->scaleCommTilingData.splitAxisTailCnt,
                 td->scaleCommTilingData.nonSplitAxisSize);
 
-        td->localMatmul = perfMode_;
+        td->localMatmul = precisionMode_;
 
-        OP_LOGI(opName, "localMatmul perfMode=%u", perfMode_);
+        OP_LOGI(opName, "localMatmul precisionMode=%u", precisionMode_);
 
         return ge::GRAPH_SUCCESS;
     }
@@ -662,7 +669,7 @@ protected:
 private:
     uint64_t m_{0}, k_{0}, n_{0};
     uint64_t worldSize_{1};
-    uint32_t perfMode_{0};
+    uint32_t precisionMode_{0};
 };
 
 } // namespace MC2Tiling
