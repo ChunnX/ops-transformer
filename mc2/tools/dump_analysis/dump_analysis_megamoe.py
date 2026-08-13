@@ -99,6 +99,8 @@ ARCH35_DUMP_ENTRY_NAMES = [
     "expert_source_count",
 ]
 
+ARCH35_TILING_DATA_SIZE = 216
+
 STAGE_NAMES = ARCH22_STAGE_NAMES
 DUMP_ENTRY_NAMES = ARCH22_DUMP_ENTRY_NAMES
 DUMP_LAYOUT = "arch22"
@@ -209,6 +211,100 @@ def get_dump_entry_name(index: int) -> str:
     if index < len(DUMP_ENTRY_NAMES):
         return DUMP_ENTRY_NAMES[index]
     return f"dump_{index}"
+
+
+def analyze_arch35_tiling_data(raw: bytes):
+    """Parse MegaMoeTilingData using the arch35 C++ ABI layout."""
+    if len(raw) < ARCH35_TILING_DATA_SIZE:
+        logging.warning(
+            "MegaMoeTilingData 数据不完整: 实际 %d 字节, 需要 %d 字节",
+            len(raw),
+            ARCH35_TILING_DATA_SIZE,
+        )
+        return
+
+    def read(offset: int, fmt: str):
+        return struct.unpack_from("<" + fmt, raw, offset)[0]
+
+    scalar_fields = [
+        ("moeExpertPerRank", 0, "I"),
+        ("bs", 4, "I"),
+        ("h", 8, "I"),
+        ("hiddenDim", 12, "I"),
+        ("epWorldSize", 16, "I"),
+        ("blockNumPerEP", 20, "I"),
+        ("maxOutputSize", 24, "I"),
+        ("topK", 28, "I"),
+        ("aicNum", 32, "I"),
+        ("blockAivNum", 36, "I"),
+        ("combineQuantMode", 40, "q"),
+        ("clampLimit", 48, "f"),
+        ("groupedMatmulMode", 52, "B"),
+        ("topoType", 56, "q"),
+        ("sharedExpertNum", 64, "I"),
+        ("combineSyncSlotCountPerExpert", 72, "Q"),
+    ]
+    logging.info("  基础参数:")
+    for name, offset, fmt in scalar_fields:
+        logging.info("    %-34s = %s", name, read(offset, fmt))
+
+    config_fields = [
+        (
+            "dispatchBufferConfig",
+            80,
+            ("routeItemsPerBatch", "routeBatchCount", "bufferCount", "copyBufferBytes"),
+        ),
+        (
+            "sendMaskConfigForCoreWithExtraExpert",
+            96,
+            ("routeItemsPerBatch", "routeBatchCount", "bufferCount", "bufferBytes"),
+        ),
+        (
+            "sendMaskConfigForCoreWithoutExtraExpert",
+            112,
+            ("routeItemsPerBatch", "routeBatchCount", "bufferCount", "bufferBytes"),
+        ),
+    ]
+    logging.info("  Dispatch/SendMask buffer 配置:")
+    for config_name, base_offset, field_names in config_fields:
+        values = struct.unpack_from("<iiiI", raw, base_offset)
+        logging.info("    %s:", config_name)
+        for field_name, value in zip(field_names, values):
+            logging.info("      %-32s = %s", field_name, value)
+    logging.info("    %-36s = %s", "sendMaskCoreCountWithExtraExpert", read(128, "I"))
+
+    unpermute_fields = (
+        "tokensPerBatch",
+        "inputBufferCount",
+        "bf16SlotElementCount",
+        "fp32SlotElementCount",
+        "topKWeightsBufferBytes",
+        "topKWeightsConversionBufferBytes",
+    )
+    logging.info("  Unpermute buffer 配置:")
+    for config_name, base_offset in (
+        ("unpermuteConfigForFullTokenChunk", 132),
+        ("unpermuteConfigForTailTokenChunk", 156),
+    ):
+        values = struct.unpack_from("<iiIIII", raw, base_offset)
+        logging.info("    %s:", config_name)
+        for field_name, value in zip(unpermute_fields, values):
+            logging.info("      %-32s = %s", field_name, value)
+
+    trailing_fields = [
+        ("unpermuteFullTokenChunkCoreCount", 180, "I"),
+        ("topkWeightsPrefetch", 184, "i"),
+        ("maxTilesPerExpert", 188, "I"),
+        ("actMode", 192, "B"),
+        ("actSubMode", 193, "B"),
+        ("activationAlpha", 196, "f"),
+        ("activationBeta", 200, "f"),
+        ("mGroupsPerWave", 204, "I"),
+        ("isPerExpertWeightTensor", 208, "?"),
+    ]
+    logging.info("  调度与激活配置:")
+    for name, offset, fmt in trailing_fields:
+        logging.info("    %-34s = %s", name, read(offset, fmt))
 
 
 def analyze_block_stages(block_stages: list):
@@ -477,10 +573,12 @@ def main():
     if tiling_data_size > 0 and tiling_end <= len(data):
         tiling_raw = data[tiling_offset:tiling_end]
         logging.info("--- Tiling Data ---")
-        logging.info(
-            "大小: %d 字节 (原始二进制, 需按 TilingDataT 结构体解析)\n",
-            tiling_data_size,
-        )
+        logging.info("大小: %d 字节", tiling_data_size)
+        if DUMP_LAYOUT == "arch35":
+            analyze_arch35_tiling_data(tiling_raw)
+        else:
+            logging.info("原始二进制，当前未解析该架构的 TilingDataT")
+        logging.info("")
     else:
         logging.warning("Tiling 数据不可用\n")
 
