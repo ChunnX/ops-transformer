@@ -158,7 +158,9 @@ def generate_inputs(bs, h, n, world_size, x1dtype="e4m3fn", x2dtype="e4m3fn", us
         "a_scale_list": a_scale_list,
         "a_dequant_list": a_dequant_list,
         "b_dequant": b_dequant,
-        "bias": np.random.uniform(-1, 1, n).astype(np.float32) if use_bias else None,
+        # bias magnitude ~1e5 is ~3% of the matmul output (~3.3e6), so an omitted/wrong bias
+        # exceeds the rtol=atol=1e-2 tolerance and is actually detected.
+        "bias": np.random.uniform(-100000, 100000, n).astype(np.float32) if use_bias else None,
     }
 
 
