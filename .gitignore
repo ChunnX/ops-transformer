@@ -53,3 +53,4 @@ third_party/
 log/
 oat_reports/
 extra-info/
+.git-rewrite/
