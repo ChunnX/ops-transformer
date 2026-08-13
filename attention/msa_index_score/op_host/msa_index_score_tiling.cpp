@@ -167,8 +167,15 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
                     OP_LOGE(context, "sparse_mode=0 must not pass atten_mask."), return ge::GRAPH_FAILED);
     }
 
-    info.initBlocks = MSA_DEFAULT_INIT_BLOCKS;
-    info.localBlocks = MSA_DEFAULT_LOCAL_BLOCKS;
+    const int64_t *initBlocksAttr = attrs->GetInt(MSA_ATTR_INIT_BLOCKS);
+    const int64_t *localBlocksAttr = attrs->GetInt(MSA_ATTR_LOCAL_BLOCKS);
+    info.initBlocks = (initBlocksAttr == nullptr) ? MSA_DEFAULT_INIT_BLOCKS
+                                                  : static_cast<uint32_t>(*initBlocksAttr);
+    info.localBlocks = (localBlocksAttr == nullptr) ? MSA_DEFAULT_LOCAL_BLOCKS
+                                                   : static_cast<uint32_t>(*localBlocksAttr);
+    OP_CHECK_IF(info.initBlocks > info.maxBlocksPerBatch || info.localBlocks > info.maxBlocksPerBatch,
+                OP_LOGE(context, "init_blocks/local_blocks must be <= maxBlocksPerBatch."),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
