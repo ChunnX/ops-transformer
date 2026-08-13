@@ -99,11 +99,11 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Compute(int64_t rowLength)
     LocalTensor<float> inLocal = inputXInQueue_.DeQue<float>();
     LocalTensor<int8_t> outLocal = inputXOutQueue_.AllocTensor<int8_t>();
 
-    __local_mem__ float *inUbAddr = (__local_mem__ float *)inLocal.GetPhyAddr();
-    __local_mem__ int8_t *outUbAddr = (__local_mem__ int8_t *)outLocal.GetPhyAddr();
-    __local_mem__ T *inUbAddrCastT;
+    __ubuf__ float *inUbAddr = (__ubuf__ float *)inLocal.GetPhyAddr();
+    __ubuf__ int8_t *outUbAddr = (__ubuf__ int8_t *)outLocal.GetPhyAddr();
+    __ubuf__ T *inUbAddrCastT;
     if constexpr (!IsSameType<T, float>::value) {
-        inUbAddrCastT = (__local_mem__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + colsAlign_;
+        inUbAddrCastT = (__ubuf__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + colsAlign_;
     }
 
     uint16_t repeatTimes = Ceil(this->cols_ * rowLength, FLOAT_REG_TENSOR_LENGTH);
@@ -121,13 +121,13 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Compute(int64_t rowLength)
             if constexpr (!IsSameType<T, float>::value) {
                 ops::LoadOneTensorForDtypeT<T>(inUbAddrCastT, inReg, maskRegInLoop, i * FLOAT_REG_TENSOR_LENGTH);
             } else {
-                MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+                MicroAPI::LoadAlign(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
             }
             MicroAPI::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
             MicroAPI::Muls(outRegF16, outRegF16, static_cast<half>(scale_), maskRegInLoop);
             MicroAPI::Adds(outRegF16, outRegF16, static_cast<half>(offset_), maskRegInLoop);
             MicroAPI::Cast<int8_t, half, castTraitF16ToI8>(outRegI8, outRegF16, maskRegInLoop);
-            MicroAPI::DataCopy<int8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH,
+            MicroAPI::StoreAlign<int8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH,
                                                                             outRegI8, maskRegInLoop);
         }
     }
