@@ -47,10 +47,11 @@ bool MulOverflow(uint64_t lhs, uint64_t rhs, uint64_t &out)
     return false;
 }
 
-ge::graphStatus BuildMatmulTiling(const gert::TilingContext *context, uint32_t m0, uint32_t n0, uint32_t k,
-                                  uint32_t aicCoreNum, ::TCubeTiling &tiling)
+ge::graphStatus BuildMatmulTiling(const gert::TilingContext *context,
+                                  const platform_ascendc::PlatformAscendC &platform, uint32_t m0, uint32_t n0,
+                                  uint32_t k, uint32_t aicCoreNum, ::TCubeTiling &tiling)
 {
-    matmul_tiling::MultiCoreMatmulTiling mm;
+    matmul_tiling::MultiCoreMatmulTiling mm(platform);
     mm.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
                 matmul_tiling::DataType::DT_BFLOAT16, false);
     mm.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
@@ -234,7 +235,7 @@ ge::graphStatus AlltoAllvGroupedMatMulShmemTilingFunc(gert::TilingContext *conte
         tilingData->sendCounts[i] = static_cast<uint32_t>(sendData[i]);
         tilingData->recvCounts[i] = static_cast<uint32_t>(recvData[i]);
     }
-    OP_TILING_CHECK(BuildMatmulTiling(context, m0, n0, static_cast<uint32_t>(k), aicCoreNum,
+    OP_TILING_CHECK(BuildMatmulTiling(context, platform, m0, n0, static_cast<uint32_t>(k), aicCoreNum,
                                      tilingData->matmulTiling) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "BuildMatmulTiling failed."), return ge::GRAPH_FAILED);
 

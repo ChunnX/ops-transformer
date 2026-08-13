@@ -132,6 +132,12 @@ def check_tiling_and_kernel() -> None:
         require(token in tiling, f"missing source tiling invariant: {token}")
     require("uint32_t aicCoreNum, ::TCubeTiling &tiling)" in normalized(tiling),
             "host tiling must use the global TCubeTiling type stored in kernel tiling data")
+    require("const platform_ascendc::PlatformAscendC &platform" in normalized(tiling),
+            "Ascend950 MatMul tiling must receive the runtime platform description")
+    require("matmul_tiling::MultiCoreMatmulTiling mm(platform);" in tiling,
+            "Ascend950 does not support the platform-less MultiCoreMatmulTiling constructor")
+    require("matmul_tiling::MultiCoreMatmulTiling mm;" not in tiling,
+            "platform-less MatMul tiling must not be used for Ascend950")
     tiling_flat = normalized(tiling)
     require(
         "const uint64_t alignedK = (static_cast<uint64_t>(k) + CUBE_K_ALIGNMENT - 1) / "
