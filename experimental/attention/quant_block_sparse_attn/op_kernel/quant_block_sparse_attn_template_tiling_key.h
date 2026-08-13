@@ -57,7 +57,7 @@ ASCENDC_TPL_ARGS_DECL(
                           Config_S1Aligned64_S2Aligned512_DAligned128_DVAligned128),
     ASCENDC_TPL_UINT_DECL(QUANT_MODE, QBSA_TPL_4_BW, ASCENDC_TPL_UI_LIST, FP8QuantMode, MXFullQuantMode),);
 
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 9201) || (__NPU_ARCH__ == 9202))
 ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(QKV_DTYPE, ASCENDC_TPL_UI_LIST, QBSA_DTYPE_FP8_E4M3FN),

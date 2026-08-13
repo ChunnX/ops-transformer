@@ -18,7 +18,7 @@
 #include "quant_block_sparse_attn_template_tiling_key.h"
 #include "quant_block_sparse_attn_common.h"
 #include "quant_block_sparse_attn_mx_tiling_data.h"
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 9201) || (__NPU_ARCH__ == 9202))
 #include "arch-920r1/quant_block_sparse_attn_kernel.h"
 #else
 #include "arch35/quant_block_sparse_attn_kernel.h"
@@ -84,7 +84,7 @@ __global__ __aicore__ void quant_block_sparse_attn(
     __gm__ uint8_t *blockTable, __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
     __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 9201) || (__NPU_ARCH__ == 9202))
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
 #else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
@@ -100,7 +100,7 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr bool bsaIsPa = true;
     constexpr bool bsaUseDn = BaseApi::IsDn();
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102)
+#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 9201) || (__NPU_ARCH__ == 9202))
     static_assert(QUANT_MODE == FP8QuantMode, "V121 only instantiates the QBSA FP8 kernel");
     static_assert(Config == Config_S1Aligned64_S2Aligned512_DAligned128_DVAligned128,
                   "V121 FP8QuantMode must use S1=64, S2=512, D=128, DV=128 config");

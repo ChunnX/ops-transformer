@@ -48,8 +48,7 @@ bool QuantBlockSparseAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     // output
     metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metadata));
 
-    bool requiredAttrs = GetAttrValue(ctx, "soc_version", socVersion_) &&
-                         GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
+    bool requiredAttrs = GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
                          GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
     if (!requiredAttrs) {
         return false;
@@ -104,7 +103,7 @@ bool QuantBlockSparseAttnMetadataCpuKernel::ParamsInit()
         KERNEL_LOG_ERROR("sparseSeqLen must be a valid tensor");
         return false;
     }
-    metadataSlotConfig_ = optiling::GetMetadataSlotConfig(socVersion_.c_str(), quantMode_);
+    metadataSlotConfig_ = optiling::GetMetadataSlotConfig();
     if (aicCoreNum_ <= 0 || static_cast<uint32_t>(aicCoreNum_) > metadataSlotConfig_.aicSlots ||
         aivCoreNum_ <= 0 || static_cast<uint32_t>(aivCoreNum_) > metadataSlotConfig_.aivSlots) {
         KERNEL_LOG_ERROR("actual core count exceeds metadata capacity, aic=%d/%u, aiv=%d/%u", aicCoreNum_,

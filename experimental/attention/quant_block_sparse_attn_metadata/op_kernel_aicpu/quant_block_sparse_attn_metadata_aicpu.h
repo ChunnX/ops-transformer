@@ -124,10 +124,9 @@ private:
     std::string layoutSparseIndices_ = "B_N_Qb_Kb";
 
     // platform
-    std::string socVersion_ = "";
-    int32_t aicCoreNum_ = 36;
+    int32_t aicCoreNum_ = 72;
     int32_t aivCoreNum_ = 72;
-    optiling::MetadataSlotConfig metadataSlotConfig_ {optiling::LEGACY_AIC_CORE_NUM, optiling::AIV_CORE_NUM};
+    optiling::MetadataSlotConfig metadataSlotConfig_ {optiling::AIC_CORE_NUM, optiling::AIV_CORE_NUM};
 
     // SplitParams
     uint32_t sparseSeqLenDimNum_ = 0;

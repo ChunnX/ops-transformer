@@ -15,7 +15,7 @@ namespace custom {
 using namespace at_npu::native;
 
 constexpr uint64_t QBSA_HEAD_METADATA_SIZE = 8;
-constexpr uint64_t QBSA_AIC_CORE_NUM = 36;
+constexpr uint64_t QBSA_AIC_CORE_NUM = 72;
 constexpr uint64_t QBSA_AIV_CORE_NUM = 72;
 constexpr uint64_t QBSA_METADATA_SIZE = 8;
 constexpr uint64_t QBSA_FD_METADATA_SIZE = 8;
