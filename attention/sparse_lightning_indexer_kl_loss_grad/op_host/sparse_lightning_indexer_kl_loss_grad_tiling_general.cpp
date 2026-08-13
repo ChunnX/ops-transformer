@@ -405,11 +405,9 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetWorkspaceSize()
         (pSize + bmm1Size + bmm2Size + reluGradSize + sySize + psySyncSize + bmm3Size);
     int64_t multiCoreTotalSize = 0;
     if (deterministic) {
-        multiCoreTotalSize = singleCoreTotalSize * static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum())
-                            + scatterAddOutSize * static_cast<int64_t>(SLI_DETER_SCATTER_BANK_NUM);
+        multiCoreTotalSize = singleCoreTotalSize * static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum()) + scatterAddOutSize * static_cast<int64_t>(SLI_DETER_SCATTER_BANK_NUM);
     } else {
-        multiCoreTotalSize = singleCoreTotalSize * static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum())
-                            + scatterAddOutSize;
+        multiCoreTotalSize = singleCoreTotalSize * static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum()) + scatterAddOutSize;
     }
     workspaces[0] = static_cast<size_t>(multiCoreTotalSize) + WORK_SPACE_RESERVE_SIZE;
     OP_LOGW(context_, "workspace size:[%zu], multicoreTotalSize:[%ld]", workspaces[0], multiCoreTotalSize);

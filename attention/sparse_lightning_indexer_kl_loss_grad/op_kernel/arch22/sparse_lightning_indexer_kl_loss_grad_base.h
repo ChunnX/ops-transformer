@@ -103,7 +103,7 @@ private:
     __aicore__ inline void ResetValidIdxMap();
     __aicore__ inline bool LoadValidBatchAt(int64_t curB);
     __aicore__ inline bool MapValidIdxToBS1(int64_t validIdx, int64_t &bIdx, int64_t &s1Idx,
-        int64_t &accumS1Len, int64_t &accumS2Len, int32_t &actualSeqLensQ, int32_t &actualSeqLensK);
+                                            int64_t &accumS1Len, int64_t &accumS2Len, int32_t &actualSeqLensQ, int32_t &actualSeqLensK);
 
     TPipe *pipe = nullptr;
     const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData = nullptr;
@@ -378,7 +378,7 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitWorkspace
         if constexpr (deterministic) {
             for (int32_t bank = 1; bank < SLI_DETER_SCATTER_BANK_NUM; ++bank) {
                 AscendC::InitOutput(scatterAddResBanks[bank][t2Start * constInfo.dSizeQueryIndex],
-                    constInfo.dSizeQueryIndex * (t2End - t2Start), static_cast<T>(0));
+                                    constInfo.dSizeQueryIndex * (t2End - t2Start), static_cast<T>(0));
             }
         }
     }
@@ -414,11 +414,11 @@ __aicore__ inline int64_t SparseLightningIndexerKLLossGradBase<SLIT>::CalcValidT
             int64_t accumS1Len = 0;
             int64_t accumS2Len = 0;
             int32_t actualSeqLensQ = GetActualSeqLens(bIdx, constInfo.s1Size,
-                actualSeqLengthsQueryGm, LAYOUT_T, accumS1Len);
+                                                      actualSeqLengthsQueryGm, LAYOUT_T, accumS1Len);
             int32_t actualSeqLensK = 0;
             if constexpr (KV_LAYOUT_T == SLILayout::TND) {
                 actualSeqLensK = GetActualSeqLens(bIdx, constInfo.s2Size,
-                    actualSeqLengthsKeyGm, KV_LAYOUT_T, accumS2Len);
+                                                  actualSeqLengthsKeyGm, KV_LAYOUT_T, accumS2Len);
             } else {
                 actualSeqLensK = constInfo.s2Size;
             }
@@ -460,11 +460,11 @@ __aicore__ inline bool SparseLightningIndexerKLLossGradBase<SLIT>::LoadValidBatc
         int64_t curAccumS1 = 0;
         int64_t curAccumS2 = 0;
         int32_t seqQ = GetActualSeqLens(curB, constInfo.s1Size,
-            actualSeqLengthsQueryGm, LAYOUT_T, curAccumS1);
+                                        actualSeqLengthsQueryGm, LAYOUT_T, curAccumS1);
         int32_t seqK = 0;
         if constexpr (KV_LAYOUT_T == SLILayout::TND) {
             seqK = GetActualSeqLens(curB, constInfo.s2Size,
-                actualSeqLengthsKeyGm, KV_LAYOUT_T, curAccumS2);
+                                    actualSeqLengthsKeyGm, KV_LAYOUT_T, curAccumS2);
         } else {
             seqK = constInfo.s2Size;
             curAccumS2 = curB * constInfo.s2Size;
@@ -584,11 +584,11 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitInvalidS1
                 int64_t accumS1Len = 0;
                 int64_t accumS2Len = 0;
                 int64_t actualSeqLensQ = GetActualSeqLens(bIdx, constInfo.s1Size,
-                    actualSeqLengthsQueryGm, LAYOUT_T, accumS1Len);
+                                                          actualSeqLengthsQueryGm, LAYOUT_T, accumS1Len);
                 int64_t actualSeqLensK = 0;
                 if constexpr (KV_LAYOUT_T == SLILayout::TND) {
                     actualSeqLensK = GetActualSeqLens(bIdx, constInfo.s2Size,
-                        actualSeqLengthsKeyGm, KV_LAYOUT_T, accumS2Len);
+                                                      actualSeqLengthsKeyGm, KV_LAYOUT_T, accumS2Len);
                 } else {
                     actualSeqLensK = constInfo.s2Size;
                 }
@@ -604,13 +604,13 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitInvalidS1
                     CalcCoreClearRange(invalidS1Size * qRowSize, totalCoreNum, dqClearStart, dqClearEnd);
                     CalcCoreClearRange(invalidS1Size * dwRowSize, totalCoreNum, dwClearStart, dwClearEnd);
                     CalcCoreClearRange(invalidS1Size * softmaxRowSize, totalCoreNum,
-                        softmaxClearStart, softmaxClearEnd);
+                                       softmaxClearStart, softmaxClearEnd);
                     ClearInvalidS1Output(dQueryIndexGm, dqClearStart, dqClearEnd,
-                        0, invalidS1Size, accumS1Len, qRowSize);
+                                         0, invalidS1Size, accumS1Len, qRowSize);
                     ClearInvalidS1Output(dWeightGm, dwClearStart, dwClearEnd,
-                        0, invalidS1Size, accumS1Len, dwRowSize);
+                                         0, invalidS1Size, accumS1Len, dwRowSize);
                     ClearInvalidS1Output(softmaxOutGm, softmaxClearStart, softmaxClearEnd,
-                        0, invalidS1Size, accumS1Len, softmaxRowSize);
+                                         0, invalidS1Size, accumS1Len, softmaxRowSize);
                 }
             }
         } else {
@@ -628,13 +628,13 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitInvalidS1
                     CalcCoreClearRange(invalidS1Size * qRowSize, totalCoreNum, dqClearStart, dqClearEnd);
                     CalcCoreClearRange(invalidS1Size * dwRowSize, totalCoreNum, dwClearStart, dwClearEnd);
                     CalcCoreClearRange(invalidS1Size * softmaxRowSize, totalCoreNum,
-                        softmaxClearStart, softmaxClearEnd);
+                                       softmaxClearStart, softmaxClearEnd);
                     ClearInvalidS1Output(dQueryIndexGm, dqClearStart, dqClearEnd,
-                        0, invalidS1Size, batchS1Base, qRowSize);
+                                         0, invalidS1Size, batchS1Base, qRowSize);
                     ClearInvalidS1Output(dWeightGm, dwClearStart, dwClearEnd,
-                        0, invalidS1Size, batchS1Base, dwRowSize);
+                                         0, invalidS1Size, batchS1Base, dwRowSize);
                     ClearInvalidS1Output(softmaxOutGm, softmaxClearStart, softmaxClearEnd,
-                        0, invalidS1Size, batchS1Base, softmaxRowSize);
+                                         0, invalidS1Size, batchS1Base, softmaxRowSize);
                 }
             }
         }
@@ -862,14 +862,14 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::DeterProcess(
 
     const int64_t loopLimit = bS1TotalSize + extraLoopTimes * coreNum;
     for (int64_t bS1Idx = constInfo.aicIdx; bS1Idx < loopLimit; bS1Idx += coreNum) {
-        SLIKLLossGradRunInfo &runInfoNeg2 = runInfos[(taskId + 1) % 3];       // 上2轮
-        SLIKLLossGradRunInfo &runInfoNeg1 = runInfos[(taskId + 2) % 3];       // 上1轮
-        SLIKLLossGradRunInfo &runInfo0 = runInfos[taskId % 3];                // 当前轮
+        SLIKLLossGradRunInfo &runInfoNeg2 = runInfos[(taskId + 1) % 3]; // 上2轮
+        SLIKLLossGradRunInfo &runInfoNeg1 = runInfos[(taskId + 2) % 3]; // 上1轮
+        SLIKLLossGradRunInfo &runInfo0 = runInfos[taskId % 3];          // 当前轮
         const bool hasNextRound = (bS1Idx + coreNum < loopLimit);
 
         if (MapValidIdxToBS1(bS1Idx, bIdx, s1Idx, accumS1Len, accumS2Len, actualSeqLensQ, actualSeqLensK)) {
             GetRunInfo(taskId, bIdx, s1Idx, s1Idx + 1, accumS1Len, accumS2Len,
-                actualSeqLensQ, actualSeqLensK, runInfo0);
+                       actualSeqLensQ, actualSeqLensK, runInfo0);
         } else {
             runInfo0.isValid = false;
         }
@@ -886,7 +886,7 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::DeterProcess(
 
         if (runInfo0.isValid) {
             if ASCEND_IS_AIV {
-                vectorService.ProcessVector0(runInfo0);  // V0
+                vectorService.ProcessVector0(runInfo0); // V0
             }
         }
         if ASCEND_IS_AIV {
@@ -896,7 +896,7 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::DeterProcess(
         if (runInfoNeg1.isValid) {
             if ASCEND_IS_AIC {
                 CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C1_TO_V1_P_FLAG[runInfoNeg1.taskIdMod2]);
-                matmulService.ComputeMm2(runInfoNeg1);   // C1
+                matmulService.ComputeMm2(runInfoNeg1); // C1
             }
 
             if ASCEND_IS_AIV {
@@ -954,7 +954,7 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::DeterProcess(
     if ASCEND_IS_AIV {
         vector2Service.InitParams(constInfo, tilingData);
         vector2Service.InitVector2GM(scatterAddRes, topKIndexGm, dKeyIndexGm, actualSeqLengthsQueryGm,
-                                    actualSeqLengthsKeyGm, scatterAddResBanks);
+                                     actualSeqLengthsKeyGm, scatterAddResBanks);
         vector2Service.InitBuffers(pipe);
     }
     SyncAll<false>();
@@ -1065,7 +1065,7 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::MainProcess()
     if ASCEND_IS_AIV {
         vector2Service.InitParams(constInfo, tilingData);
         vector2Service.InitVector2GM(scatterAddRes, topKIndexGm, dKeyIndexGm, actualSeqLengthsQueryGm,
-                                    actualSeqLengthsKeyGm, scatterAddResBanks);
+                                     actualSeqLengthsKeyGm, scatterAddResBanks);
         vector2Service.InitBuffers(pipe);
     }
     SyncAll<false>();
