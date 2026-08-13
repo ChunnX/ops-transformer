@@ -104,6 +104,11 @@ public:
             .DataTypeList({ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("timer")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("shared_weight1")
             .ParamType(DYNAMIC)
             .DataType({

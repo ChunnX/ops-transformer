@@ -37,6 +37,7 @@
 #include "common/mega_moe_types.h"
 #include "common/mega_moe_workspace.h"
 #include "common/mega_moe_utils.h"
+#include "AscendTimerV2_device.hpp"
 #include "blaze/epilogue/block_epilogue_swiglu_mx_quant.h"
 #include "stage/mega_moe_gmm1_swiglu.h"
 #include "stage/mega_moe_gmm2_combine.h"
@@ -97,7 +98,8 @@ public:
                                 GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
                                 GM_ADDR scales, GM_ADDR sharedWeight1, GM_ADDR sharedWeight2,
                                 GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2, GM_ADDR yOut,
-                                GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData);
+                                GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData,
+                                GM_ADDR timerAddr);
     __aicore__ inline void Process();
 
 private:
@@ -179,6 +181,8 @@ private:
     __gm__ int32_t *gmmToEpilogueFlag_{nullptr};
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
     Params params_{};
+    AscendTimerDevice timer_;
+    AscendTimerDevice kernelTimer_;
 
     GlobalTensor<int32_t> swigluToGmm2FlagGm_;
     GlobalTensor<int32_t> expertTokenNumsOut_;
@@ -320,8 +324,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
     GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR sharedWeight1,
     GM_ADDR sharedWeight2, GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2, GM_ADDR yOut,
-    GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
+    GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData, GM_ADDR timerAddr)
 {
+    TIMER_BLOCK(timer_.Init(timerAddr));
+    TIMER_BLOCK(kernelTimer_.Init(timerAddr));
     m_ = tilingData->bs;
     k_ = tilingData->h;
     aicNum_ = tilingData->aicNum;
@@ -2568,6 +2574,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSh
 template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
 {
+    TIMER_BLOCK(kernelTimer_.Tik());
+    TIMER_BLOCK(timer_.Tik());
     // 1.本卡数据处理
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
@@ -2582,6 +2590,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
     }
     SyncAll<false>(); // aic需要等待flag位reset清理完成
+    TIMER_BLOCK(timer_.Tok(AscendTimer::INPUT_PREP_TIMING_IDX));
 
     // 共享专家 GMM1+SwiGLU (前移, 在 MoE 之前执行, 复用 MoE 函数)
     TupleShape initShape;
@@ -2590,13 +2599,18 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     int32_t gmTileSequence = 0; // Specialized A8W4/A4W4 AIC-AIV1 GM tile ready sequence.
     if (sharedExpertNum_ > 0) {
+        TIMER_BLOCK(timer_.Tik());
         ProcessSharedExpertGmm1(initShape, initOffset, gmTileSequence);
+        TIMER_BLOCK(timer_.Tok(AscendTimer::SHARED_GMM1_TIMING_IDX));
         SyncAll<false>();
     }
 
+    TIMER_BLOCK(timer_.Tik());
     CrossRankSyncInWorldSize();
+    TIMER_BLOCK(timer_.Tok(AscendTimer::CROSS_RANK_TIMING_IDX));
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
+    TIMER_BLOCK(timer_.Tik());
     DispatchBuffInit();
     GMMAddrInfo dispatchAddrInfo;
     GMMAddrInfo gmm1AddrInfo;
@@ -2687,6 +2701,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
         UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State);
         GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx, gmTileSequence);
     }
+    TIMER_BLOCK(timer_.Tok(AscendTimer::MOE_EXPERT_TIMING_IDX));
 
     if constexpr (g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
@@ -2695,16 +2710,23 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
 
     // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
     if (sharedExpertNum_ > 0) {
+        TIMER_BLOCK(timer_.Tik());
         ProcessSharedExpertGmm2(initShape, initOffset, gmTileSequence);
+        TIMER_BLOCK(timer_.Tok(AscendTimer::SHARED_GMM2_TIMING_IDX));
     }
 
     // 4. 本卡数据Unpermute
     if constexpr (g_coreType == AIV) {
         UnpermuteBuffInit();
+        TIMER_BLOCK(timer_.Tik());
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
+        TIMER_BLOCK(timer_.Tok(AscendTimer::PRE_UNPERMUTE_SYNC_TIMING_IDX));
+        TIMER_BLOCK(timer_.Tik());
         Unpermute();
+        TIMER_BLOCK(timer_.Tok(AscendTimer::UNPERMUTE_TIMING_IDX));
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    TIMER_BLOCK(kernelTimer_.Tok(AscendTimer::KERNEL_TIMING_IDX));
 }
 
 #endif

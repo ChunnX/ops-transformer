@@ -20,12 +20,24 @@ from .comm_context import CommContextManager
 _CLAMP_DEFAULT = 3.4028234663852886e38
 _ALPHA_DEFAULT = 1.702
 _BETA_DEFAULT = 1.0
+_MEGA_MOE_TIMER_COUNT = 1772544
 _ALLOWED_ACTIVATION_KEYS = {
     "swiglu": frozenset(),
     "swiglustep": frozenset(),
     "swigluoai": frozenset({"alpha", "beta"}),
     "situglu": frozenset({"beta", "linear_beta"}),
 }
+
+
+def _validate_timer(timer: Optional[torch.Tensor]) -> None:
+    if timer is None:
+        return
+    if timer.dtype != torch.int64:
+        raise TypeError(f"timer must use torch.int64, got {timer.dtype}.")
+    if timer.numel() < _MEGA_MOE_TIMER_COUNT:
+        raise ValueError(
+            f"timer needs at least {_MEGA_MOE_TIMER_COUNT} elements, got {timer.numel()}."
+        )
 
 
 def _normalize_activation_params(
@@ -83,6 +95,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             "Tensor[]? weight_scales1=None, Tensor[]? weight_scales2=None, "
             "Tensor[]? bias1=None, Tensor[]? bias2=None, "
             "Tensor? x_active_mask=None, "
+            "Tensor? timer=None, "
             "Tensor[]? shared_weight1=None, Tensor[]? shared_weight2=None, "
             "Tensor[]? shared_weight_scales1=None, Tensor[]? shared_weight_scales2=None, "
             "Tensor[]? shared_bias1=None, Tensor[]? shared_bias2=None, "
@@ -112,6 +125,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             bias1=None,
             bias2=None,
             x_active_mask=None,
+            timer=None,
             shared_weight1=None,
             shared_weight2=None,
             shared_weight_scales1=None,
@@ -164,6 +178,7 @@ def _npu_mega_moe(
     bias1=None,
     bias2=None,
     x_active_mask=None,
+    timer=None,
     shared_weight1=None,
     shared_weight2=None,
     shared_weight_scales1=None,
@@ -185,6 +200,7 @@ def _npu_mega_moe(
     rank_num_per_server=None,
     topk_weights_type=0,
 ):
+    _validate_timer(timer)
     activation_params_list = _normalize_activation_params(
         activation, activation_clamp, activation_params
     )
@@ -204,6 +220,7 @@ def _npu_mega_moe(
         bias1,
         bias2,
         x_active_mask,
+        timer,
         shared_weight1,
         shared_weight2,
         shared_weight_scales1,
@@ -388,6 +405,7 @@ def mega_moe(
     l1_bias: Optional[List[torch.Tensor]] = None,
     l2_bias: Optional[List[torch.Tensor]] = None,
     x_active_mask: Optional[torch.Tensor] = None,
+    timer: Optional[torch.Tensor] = None,
     activation: str = "swiglu",
     activation_clamp: Optional[float] = None,
     activation_params: Optional[Dict[str, float]] = None,
@@ -415,6 +433,7 @@ def mega_moe(
         bias1=l1_bias,
         bias2=l2_bias,
         x_active_mask=x_active_mask,
+        timer=timer,
         shared_weight1=shared_l1_weights,
         shared_weight2=shared_l2_weights,
         shared_weight_scales1=shared_l1_weights_sf,

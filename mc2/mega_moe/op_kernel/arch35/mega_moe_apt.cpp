@@ -62,7 +62,7 @@ template <uint8_t DispatchQuantMode, uint8_t DispatchQuantOutType, uint8_t Combi
           bool TopkWeightsPrefetch>
 __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1,
                                     GM_ADDR weight2, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR bias1,
-                                    GM_ADDR bias2, GM_ADDR xActiveMask, GM_ADDR scales, GM_ADDR sharedWeight1,
+                                    GM_ADDR bias2, GM_ADDR xActiveMask, GM_ADDR scales, GM_ADDR timerAddr, GM_ADDR sharedWeight1,
                                     GM_ADDR sharedWeight2, GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2,
                                     GM_ADDR sharedBias1, GM_ADDR sharedBias2, GM_ADDR yOut, GM_ADDR expertTokenNumsOut,
                                     GM_ADDR workspaceGM, GM_ADDR tilingGM)
@@ -71,6 +71,10 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(MegaMoeTilingData);
     GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
+    constexpr bool isW4A8 =
+        Std::IsSame<DTYPE_WEIGHT1, fp4x2_e2m1_t>::value &&
+        DispatchQuantOutType != DISPATCH_QUANT_OUT_DTYPE_E2M1;
+    GM_ADDR w4a8TimerAddr = isW4A8 ? timerAddr : nullptr;
 #if defined(ENABLE_TENSOR_API) && defined(ORIG_DTYPE_X) && (ORIG_DTYPE_X == DT_BF16) && defined(ORIG_DTYPE_Y) && \
     (ORIG_DTYPE_Y == DT_BF16) && defined(ORIG_DTYPE_WEIGHT1) && \
     ((ORIG_DTYPE_WEIGHT1 == DT_FLOAT8_E5M2) || (ORIG_DTYPE_WEIGHT1 == DT_FLOAT8_E4M3FN) || \
@@ -99,7 +103,7 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
                     op;
                 op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                         scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut,
-                        expertTokenNumsOut, workspaceGM, &tilingData);
+                        expertTokenNumsOut, workspaceGM, &tilingData, w4a8TimerAddr);
                 op.Process();
             }
         }
@@ -111,7 +115,7 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
                 op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                     scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut,
-                    expertTokenNumsOut, workspaceGM, &tilingData);
+                    expertTokenNumsOut, workspaceGM, &tilingData, w4a8TimerAddr);
             op.Process();
         }
 #endif

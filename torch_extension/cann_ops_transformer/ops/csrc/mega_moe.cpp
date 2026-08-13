@@ -22,7 +22,8 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
            int64_t epWorldSize, int64_t cclBufferSize, const c10::optional<std::vector<at::Tensor>> &weightScales1,
            const c10::optional<std::vector<at::Tensor>> &weightScales2,
            const c10::optional<std::vector<at::Tensor>> &bias1, const c10::optional<std::vector<at::Tensor>> &bias2,
-           const c10::optional<at::Tensor> &xActiveMask, const c10::optional<std::vector<at::Tensor>> &sharedWeight1,
+           const c10::optional<at::Tensor> &xActiveMask, const c10::optional<at::Tensor> &timer,
+           const c10::optional<std::vector<at::Tensor>> &sharedWeight1,
            const c10::optional<std::vector<at::Tensor>> &sharedWeight2,
            const c10::optional<std::vector<at::Tensor>> &sharedWeightScales1,
            const c10::optional<std::vector<at::Tensor>> &sharedWeightScales2,
@@ -128,7 +129,7 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     ACLNN_CMD(aclnnMegaMoe, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper, weightScales1Wrapper,
               weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, sharedWeight1Wrapper, sharedWeight2Wrapper,
               sharedWeightScales1Wrapper, sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper,
-              moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType,
+              timer, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType,
               combineQuantMode, commAlgPtr, numMaxTokensPerRank, activationPtr, activationParams, topoTypeValue,
               rankNumPerServerValue, topkWeightsType, y, expertTokenNums);
 

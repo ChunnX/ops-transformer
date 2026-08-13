@@ -1,0 +1,49 @@
+#ifndef MEGA_MOE_ASCEND_TIMER_V2_HPP
+#define MEGA_MOE_ASCEND_TIMER_V2_HPP
+
+namespace AscendTimer {
+
+enum FixedTimingIndex {
+    KERNEL_TIMING_IDX = 0,
+    INPUT_PREP_TIMING_IDX,
+    SHARED_GMM1_TIMING_IDX,
+    CROSS_RANK_TIMING_IDX,
+    MOE_EXPERT_TIMING_IDX,
+    SHARED_GMM2_TIMING_IDX,
+    PRE_UNPERMUTE_SYNC_TIMING_IDX,
+    UNPERMUTE_TIMING_IDX,
+    FIXED_TIMING_COUNT
+};
+
+enum DynamicTimingType {
+    AIV_DISPATCH = 0,
+    AIV_SWIGLU_WAIT,
+    AIV_SWIGLU,
+    AIV_COMBINE_WAIT,
+    AIV_COMBINE,
+    AIC_GMM1_WAIT,
+    AIC_GMM1,
+    AIC_GMM2_WAIT,
+    AIC_GMM2,
+    DYNAMIC_TYPE_COUNT
+};
+
+static constexpr int MAX_DYNAMIC_ITER = 1024;
+static constexpr int N_CORE_COUNT = 96;
+static constexpr int N_TIMING_ITEM_PER_CORE = FIXED_TIMING_COUNT + DYNAMIC_TYPE_COUNT * MAX_DYNAMIC_ITER;
+static constexpr int N_TIMING_COUNTER_PER_CORE = N_TIMING_ITEM_PER_CORE * 2;
+static constexpr int N_TIMING_COUNTER_PER_CORE_ALIGN = (N_TIMING_COUNTER_PER_CORE + 15) / 16 * 16;
+static constexpr int N_TIMING_COUNTER = N_TIMING_COUNTER_PER_CORE_ALIGN * N_CORE_COUNT;
+static constexpr int DYNAMIC_ITER_PER_CORE_ALIGN = (DYNAMIC_TYPE_COUNT + 15) / 16 * 16;
+static constexpr int DYNAMIC_ITER_TOTAL_SIZE = DYNAMIC_ITER_PER_CORE_ALIGN * N_CORE_COUNT;
+static constexpr int TOTAL_BUFFER_SIZE = N_TIMING_COUNTER + DYNAMIC_ITER_TOTAL_SIZE;
+
+} // namespace AscendTimer
+
+#ifdef ENABLE_TIMER
+#define TIMER_BLOCK(code) do { code; } while (0)
+#else
+#define TIMER_BLOCK(code) do { } while (0)
+#endif
+
+#endif

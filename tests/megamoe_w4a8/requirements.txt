@@ -1,0 +1,5 @@
+en_dtypes>=0.0.4
+ml_dtypes
+numpy
+packaging
+pandas

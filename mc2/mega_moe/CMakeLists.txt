@@ -8,6 +8,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+add_compile_definitions(ENABLE_TIMER=1)
+
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
 if(NOT ENABLE_TEST)
     list(REMOVE_ITEM CURRENT_DIRS tests)

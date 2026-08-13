@@ -189,6 +189,7 @@ if _TORCHAIR_AVAILABLE:
             .dynamic_input("bias1", "DT_FLOAT")
             .dynamic_input("bias2", "DT_FLOAT")
             .optional_input("x_active_mask", "DT_INT8")
+            .optional_input("timer", "DT_INT64")
             .required_attr("moe_expert_num", attr.Int)
             .required_attr("ep_world_size", attr.Int)
             .required_attr("ccl_buffer_size", attr.Int)
@@ -222,6 +223,7 @@ if _TORCHAIR_AVAILABLE:
         bias1: Optional[List[Tensor]] = None,
         bias2: Optional[List[Tensor]] = None,
         x_active_mask: Optional[Tensor] = None,
+        timer: Optional[Tensor] = None,
         max_recv_token_num: int = 0,
         dispatch_quant_mode: int = 0,
         combine_quant_mode: int = 0,
@@ -251,6 +253,7 @@ if _TORCHAIR_AVAILABLE:
             bias1=bias1,
             bias2=bias2,
             x_active_mask=x_active_mask,
+            timer=timer,
             moe_expert_num=moe_expert_num,
             ep_world_size=ep_world_size,
             ccl_buffer_size=ccl_buffer_size,
