@@ -19,6 +19,7 @@
 #include "arch35/apply_rotary_pos_emb_grad_bab.h"
 #include "arch35/apply_rotary_pos_emb_grad_a.h"
 #include "arch35/apply_rotary_pos_emb_grad_dag.h"
+#include "arch35/apply_rotary_pos_emb_grad_dcos_dsin.h"
 
 enum class ApplyRopeGradDxTilingKey : uint32_t {
     TILING_KEY_BAB = 203,
@@ -53,16 +54,6 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     GET_TILING_DATA_WITH_STRUCT(ApplyRopeGradTilingData, tilingData, tiling);
     TPipe pipe;
 
-    // 部分积 workspace 基址（DcosFlag=1 且非 A 模板时，BAB/AB 需在 Phase 1 写 grad_cos/grad_sin 部分积到 workspace）
-    GM_ADDR usrWorkSpace = nullptr;
-    int64_t partSize = 0;
-    if constexpr (DcosFlag && DxTilingKey != static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
-        SetSysWorkspace(workspace);
-        usrWorkSpace = AscendC::GetUserWorkspace(workspace);
-        int64_t maxN = max(tilingData.ropeGradParams.nQ, tilingData.ropeGradParams.nK);
-        partSize = tilingData.ropeGradParams.b * tilingData.ropeGradParams.s * maxN * tilingData.ropeGradParams.d;
-    }
-
     // ================================================================
     // Phase 1: 计算 grad_query / grad_key
     //          当 DcosFlag=1 时，同步在 kernel 内累加 grad_cos / grad_sin 部分积
@@ -90,20 +81,37 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
 #endif
     } else if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
         if constexpr (DcosFlag) {
-            // 融合模式：grad_cos/grad_sin 在 Phase 1 内同步累加，grad 只搬一次
-            ApplyRotaryPosEmbGradA<DTYPE_GRAD_QUERY_EMBED, true> op(&pipe, &tilingData.ropeGradParams);
-            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin,
-                    gradQueryOut, gradKeyOut,
-                    query, key, gradCosOut, gradSinOut);
-            op.Process();
-        } else {
-            ApplyRotaryPosEmbGradA<DTYPE_GRAD_QUERY_EMBED, false> op(&pipe, &tilingData.ropeGradParams);
-            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin,
-                    gradQueryOut, gradKeyOut);
-            op.Process();
+            if (workspace == nullptr) {
+                return;
+            }
         }
+        ApplyRotaryPosEmbGradA<DTYPE_GRAD_QUERY_EMBED> op(&pipe, &tilingData.ropeGradParams);
+        op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, gradQueryOut, gradKeyOut);
+        op.Process();
         pipe.Reset();
-        // A 模板无需 Reduce：grad_cos/grad_sin 已融合写回 GM
+
+        if constexpr (DcosFlag) {
+            PipeBarrier<PIPE_ALL>();
+            SetSysWorkspace(workspace);
+            GM_ADDR usrWorkSpace = AscendC::GetUserWorkspace(workspace);
+            // 阶段 2: 预计算 rotate(query)/rotate(key) -> workspace（ws_q / ws_k 各 b_*d 元素）
+            ApplyRotaryXDual<DTYPE_GRAD_QUERY_EMBED> rotOp(&pipe, &tilingData.ropeGradParams);
+            rotOp.Init(query, key, usrWorkSpace);
+            rotOp.Process();
+            pipe.Reset();
+            SyncAll(); // 确保 rotate 的 MTE3 写 GM 完成，阶段 3 才能读
+
+            // 阶段 3: dcos/dsin 高层 Mul + Q/K 累加
+            int64_t bTotal = tilingData.ropeGradParams.b;
+            int64_t dVal = tilingData.ropeGradParams.d;
+            GM_ADDR wsQ = usrWorkSpace;
+            GM_ADDR wsK = usrWorkSpace + bTotal * dVal * sizeof(DTYPE_GRAD_QUERY_EMBED);
+            ApplyDcosDsin<DTYPE_GRAD_QUERY_EMBED> dcosOp(&pipe, &tilingData.ropeGradParams);
+            dcosOp.Init(gradQueryEmbed, gradKeyEmbed, query, key, wsQ, wsK, gradCosOut, gradSinOut);
+            dcosOp.Process();
+            pipe.Reset();
+        }
+        // A 模板无需 Reduce：grad_cos/grad_sin 已在阶段 3 直接写回 GM
         return;
     }
 
@@ -113,6 +121,13 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     // ================================================================
     if constexpr (DcosFlag) {
         PipeBarrier<PIPE_ALL>();
+        SetSysWorkspace(workspace);
+        GM_ADDR usrWorkSpace = AscendC::GetUserWorkspace(workspace);
+
+        // 单份中间结果大小 = B * S * max(nQ, nK) * D
+        int64_t maxN = max(tilingData.ropeGradParams.nQ, tilingData.ropeGradParams.nK);
+        int64_t partSize = tilingData.ropeGradParams.b * tilingData.ropeGradParams.s *
+                           maxN * tilingData.ropeGradParams.d;
 
         using ReduceOp = ReduceSch<REDUCE_TPL_VALUE,
             ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<DTYPE_GRAD_QUERY_EMBED, float>::OpDag>;

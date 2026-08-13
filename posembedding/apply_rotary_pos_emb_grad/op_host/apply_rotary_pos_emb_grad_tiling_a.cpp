@@ -19,11 +19,11 @@ constexpr uint64_t APPLY_ROPE_GRAD_A_TILING_PRIORITY = 40000;
 constexpr int64_t DOUBLE_BUFFER = 2;
 // D 按 D/2 分两块搬运的拆分系数，与 kernel 侧 HALF_COEF 保持一致
 constexpr int64_t HALF_COEF = 2;
-// 每个输入/输出独立 buffer（全部双缓冲）：
-//   DcosFlag=0: gradQ/gradK/cos/sin/gradQOut/gradKOut 共 6 队列
-//   DcosFlag=1: + query/key/gradCosOut/gradSinOut 共 10 队列
-constexpr int64_t UB_BUF_NUM_WITH_DCOS = 10;
-constexpr int64_t UB_BUF_NUM_WITHOUT_DCOS = 6;
+// 三阶段架构（kernel 侧 a.h / dcos_dsin.h）单 tile 内 UB 队列份数，ComputeUbFactor 须严格对应：
+//   阶段1 ApplyRotaryPosEmbGradA : 6 队列 × 双缓冲 = 12 份（D/2 对齐双半行布局）
+//   阶段3 ApplyDcosDsin          : 8 队列 × 双缓冲 + 1 tmpBuf = 17 份（连续 D 布局，Q/K 独立队列）
+constexpr int64_t STG1_BUF_NUM = 12;
+constexpr int64_t STG3_BUF_NUM = 17;
 
 class ApplyRotaryPosEmbGradRegbaseTilingClassA : public ApplyRotaryPosEmbGradRegbaseTilingClass
 {
@@ -71,15 +71,19 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassA::SplitCore()
 ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassA::ComputeUbFactor()
 {
     int64_t typeSize = ge::GetSizeByDataType(dtype_);
-    // 与 kernel InitAllBuffer 严格对应：D 按 D/2 分两块搬运，每个半行独立 32B 对齐落位，
-    // 故每行 UB 占用为 CeilAlign(D/2*typeSize, blockSize) * 2，而非 CeilAlign(D*typeSize, blockSize)。
-    int64_t dSize = Ops::Base::CeilAlign(d_ / HALF_COEF * typeSize, blockSize_) * HALF_COEF;
-    int64_t numDAvail = Ops::Base::FloorDiv(static_cast<int64_t>(aicoreParams_.ubSize), DOUBLE_BUFFER * dSize);
-    int64_t ubBufNum = (dCosFlag_ == 1) ? UB_BUF_NUM_WITH_DCOS : UB_BUF_NUM_WITHOUT_DCOS;
-    OP_CHECK_IF(numDAvail < ubBufNum,
+    // 阶段1/2（ApplyRotaryPosEmbGradA / ApplyRotaryXDual）：D/2 对齐双半行布局，
+    // 每行 UB 字节 = CeilAlign(D/2*typeSize, blockSize) * 2（与 kernel dBuffer_ 一致）。
+    int64_t dBufBytes = Ops::Base::CeilAlign(d_ / HALF_COEF * typeSize, blockSize_) * HALF_COEF;
+    int64_t ubMaxBytes = STG1_BUF_NUM * dBufBytes;
+    if (dCosFlag_ == 1) {
+        // 阶段3（ApplyDcosDsin）：连续 D 布局，Q/K 各自独立输入队列，份数最多最紧。
+        int64_t dContigBytes = d_ * typeSize;
+        ubMaxBytes = std::max(ubMaxBytes, STG3_BUF_NUM * dContigBytes);
+    }
+    int64_t numDAvail = Ops::Base::FloorDiv(static_cast<int64_t>(aicoreParams_.ubSize), ubMaxBytes);
+    OP_CHECK_IF(numDAvail < 1,
         OP_LOGE(context_, "D too big for UB"),
         return ge::GRAPH_FAILED);
-    numDAvail /= ubBufNum;
     ubFactorB_ = std::min(blockFactorB_, numDAvail);
     ubFactorB_ = std::min(ubFactorB_, MAX_COPY_BLOCK_COUNT / HALF_COEF);
     return ge::GRAPH_SUCCESS;
