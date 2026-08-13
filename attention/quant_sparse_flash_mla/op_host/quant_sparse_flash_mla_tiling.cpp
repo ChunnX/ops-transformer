@@ -64,7 +64,6 @@ ge::graphStatus QSMLAInfoParser::GetOpName()
 ge::graphStatus QSMLAInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
-    OP_LOGE(opName_, "[panjie]test.");
     OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
@@ -78,9 +77,7 @@ ge::graphStatus QSMLAInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
-    batchConsistency_ = true; //(context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL);
-    OP_LOGE(opName_, "DeterministicLevel: %d.", context_->GetDeterministicLevel());
-    OP_LOGE(opName_, "batchConsistency_ forced to true for testing.");
+    batchConsistency_ = (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL);
     return ge::GRAPH_SUCCESS;
 }
 
