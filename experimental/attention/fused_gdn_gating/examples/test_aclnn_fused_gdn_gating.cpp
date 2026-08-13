@@ -276,11 +276,33 @@ int main() {
   auto ret = Init(deviceId, &stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
+#ifdef ASCEND_SOC_VERSION
+  if (strstr(ASCEND_SOC_VERSION, "310p") != nullptr) {
+    LOG_PRINT("SOC=%s, running 310P FP16 test.\n", ASCEND_SOC_VERSION);
+    test_310p_fp16(stream);
+  } else if (strstr(ASCEND_SOC_VERSION, "910b") != nullptr) {
+    LOG_PRINT("SOC=%s, running 910B BF16_FLOAT test.\n", ASCEND_SOC_VERSION);
+    test_910b_bf16_float(stream);
+  } else {
+    LOG_PRINT("SOC=%s is unknown, trying 910B first then 310P fallback.\n", ASCEND_SOC_VERSION);
+    ret = test_910b_bf16_float(stream);
+    if (ret != 0) {
+      test_310p_fp16(stream);
+    }
+  }
+#else
   ret = test_910b_bf16_float(stream);
   if (ret != 0) {
     LOG_PRINT("910B test failed or not supported, falling back to 310P FP16 test.\n");
     test_310p_fp16(stream);
   }
+#endif
+
+  aclrtDestroyStream(stream);
+  aclrtResetDevice(deviceId);
+  aclrtFinalize();
+  return 0;
+}
 
   aclrtDestroyStream(stream);
   aclrtResetDevice(deviceId);
