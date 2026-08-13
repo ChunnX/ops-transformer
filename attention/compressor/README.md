@@ -193,6 +193,8 @@
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   - cache_mode不支持输入2，且state_cache不支持0轴非连续。
   - cmp_ratio仅支持2/4/8/16/32/64/128。
+- <term>Ascend 950PR/Ascend 950DT</term>：
+  - 通过SetDeterministicLevel配置确定性级别为3开启batch一致性，开启后可以满足计算结果和所在批次大小和所在批次位置无关。
 
 ## 约束说明
 
@@ -246,9 +248,8 @@
       - C4A：D=512，coff=2，cmp_ratio=4。
       - C4Li：D=128，coff=2，cmp_ratio=4。
       - C128A：D=512，coff=1，cmp_ratio=128。
-- 确定性计算与batch一致性：
+- 确定性计算：
   - 默认确定性实现，相同输入多次调用结果一致。
-  - 当通过SetDeterministicLevel配置确定性级别为3时启用batch一致性模式。该模式下，当按M轴切分无法占满所有AI Core时，不切K轴，确保同一batch的计算在同一核上完成；未启用该模式时，会切K轴以占满所有核从而提升性能。
 
 ## 调用说明
 

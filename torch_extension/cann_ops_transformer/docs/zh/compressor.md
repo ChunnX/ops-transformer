@@ -180,7 +180,9 @@ cann_ops_transformer.compressor(
 ## 确定性计算
 
 - 默认支持确定性计算。
-- batch一致性：当确定性级别配置为3时启用batch一致性模式。该模式下，当按M轴切分无法占满所有AI Core时，不切K轴，确保同一batch的计算在同一核上完成；未启用该模式时，会切K轴以占满所有核从而提升性能。
+<!-- npu="950" id8 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：batch一致性：通过torch_npu.npu.set_deterministic_level()设置确定性级别为3开启batch一致性，开启后可以满足计算结果和所在批次大小和所在批次位置无关。
+<!-- end id8 -->
 
 ## 调用示例
 

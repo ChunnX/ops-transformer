@@ -438,7 +438,7 @@ aclnnStatus aclnnQuantCompressor(
 ## 约束说明
 
 - 确定性说明：aclnnQuantCompressor默认确定性实现。
-- batch一致性：当通过SetDeterministicLevel配置确定性级别为3时启用batch一致性模式。该模式下，当按M轴切分无法占满所有AI Core时，不切K轴，确保同一batch的计算在同一核上完成，保证batch维度的调度一致性；未启用该模式时，会切K轴以占满所有核从而提升性能。
+- batch一致性：通过SetDeterministicLevel配置确定性级别为3开启batch一致性，开启后可以满足计算结果和所在批次大小和所在批次位置无关。
 - x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
 - 输入shape限制：
     - stateCache支持输入shape[block_num,block_size,2* coff* D]，要求blockNum>0，cacheMode=2时，需要满足blockSize >= coff * cmp_ratio + S - 1。
