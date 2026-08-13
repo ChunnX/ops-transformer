@@ -111,6 +111,8 @@ std::tuple<at::Tensor, at::Tensor> NpuAlltoAllQuantMatmul(
 
     std::string commModeStr(commMode);
     std::string groupStr(group);
+    char *commModePtr = const_cast<char *>(commModeStr.c_str());
+    char *groupPtr = const_cast<char *>(groupStr.c_str());
     int64_t x1QuantModeVal = x1QuantMode.has_value() ? x1QuantMode.value() : DYN_PERTOKEN_QUANT_MODE;
     int64_t x2QuantModeVal = x2QuantMode.has_value() ? x2QuantMode.value() : PERCHANNEL_QUANT_MODE;
 
@@ -130,8 +132,8 @@ std::tuple<at::Tensor, at::Tensor> NpuAlltoAllQuantMatmul(
     int64_t groupSize = CheckAndGetGroupSize(groupSizes);
 
     ACLNN_CMD(AlltoAllMatmulV2, context, x1Wrapper, x2Wrapper, biasOptional, x1ScaleWrapper, x2ScaleWrapper,
-              const_cast<char *>(groupStr.c_str()), worldSize, hcclBufferSize, x1QuantModeVal, x2QuantModeVal,
-              groupSize, const_cast<char *>(commModeStr.c_str()), perfMode, y, alltoallOutWrapper);
+              groupPtr, worldSize, hcclBufferSize, x1QuantModeVal, x2QuantModeVal,
+              groupSize, commModePtr, perfMode, y, alltoallOutWrapper);
 
     return std::make_tuple(y, alltoallOut);
 }
