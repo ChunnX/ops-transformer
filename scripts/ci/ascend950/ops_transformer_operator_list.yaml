@@ -11,6 +11,7 @@ operator_group_1:
   - mla_prolog
   - mla_prolog_v2
   - mla_prolog_v3
+  - mla_prolog_v4
   - gather_pa_kv_cache
   - scatter_pa_cache
   - scatter_pa_kv_cache
