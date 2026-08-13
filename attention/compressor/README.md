@@ -269,7 +269,7 @@
       - C128A：D=512，coff=1，cmp_ratio=128。
 - 确定性计算与batch一致性：
   - 默认确定性实现，相同输入多次调用结果一致。
-  - <term>Ascend 950PR/Ascend 950DT</term>：batch一致性：通过aclrtSetSysParamOpt()配置ACL_OPT_DETERMINISTIC为3，或ACL_OPT_DETERMINISTIC为1的同时配置ACL_OPT_STRONG_CONSISTENCY为1，来开启batch一致性，开启后可以满足计算结果和所在批次大小、位置无关。开启batch一致性后，性能可能存在劣化。
+  - <term>Ascend 950PR/Ascend 950DT</term>：batch一致性：通过aclrtSetSysParamOpt()配置ACL_OPT_DETERMINISTIC为3来开启batch一致性，开启后可以满足计算结果和所在批次大小、位置无关。开启batch一致性后，性能可能存在劣化。
 
 ## 调用说明
 
