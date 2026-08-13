@@ -450,6 +450,13 @@ MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitCommContext(GM_ADDR mc2Co
         epRankIdHccl = mc2Context_->epRankId;
         epWorldSizeHccl = tilingData->moeDistributeCombineV2Info.epWorldSize;
         statusDataSpaceGm_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankIdHccl]);
+        if (GetBlockIdx() == 0) {
+            AscendC::PRINTF("[lijd-ctx] combine mc2Context addr=0x%lx epRankId=%u epWorldSize=%u status=0x%lx "
+                            "buf0=0x%lx isMc2Context=%u\n",
+                            (uint64_t)(uintptr_t)mc2Context_, epRankIdHccl, epWorldSizeHccl,
+                            (uint64_t)(uintptr_t)statusDataSpaceGm_,
+                            (uint64_t)(uintptr_t)mc2Context_->epHcclBuffer_[0], (uint32_t)isMc2Context_);
+        }
     } else {
         auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
         epWinContext_ = (__gm__ Mc2Kernel::HcclOpParam *)contextGM0;

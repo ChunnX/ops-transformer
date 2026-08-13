@@ -42,6 +42,14 @@ public:
                                         GM_ADDR exceptionAddr)
     {
         epContext_ = (__gm__ Mc2Kernel::HcclOpParam *)ctxPtr;
+        if (GetBlockIdx() == 0) {
+            AscendC::PRINTF("[lijd-ctx] dispatch hcclContext addr=0x%lx epRankId=%u epWorldSize=%u status=0x%lx "
+                            "buf0=0x%lx isMc2Context=0\n",
+                            (uint64_t)(uintptr_t)epContext_, Mc2Kernel::GetRankId(epContext_),
+                            Mc2Kernel::GetRankDim(epContext_),
+                            (uint64_t)(uintptr_t)Mc2Kernel::GetStatusDataSpaceGm(epContext_),
+                            (uint64_t)(uintptr_t)Mc2Kernel::GetBaseWindAddrByRankId(epContext_, 0, 0));
+        }
         Check(totalWinSize, pipe, exceptionAddr);
     }
 
