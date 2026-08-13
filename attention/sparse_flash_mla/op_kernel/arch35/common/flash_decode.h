@@ -73,14 +73,15 @@ struct FdBuffers {
 };
 
 template <typename T, int64_t D_ALIGN, typename PipeType, typename BufferType>
-__aicore__ inline void InitFDBuffers(const FdRunInfo &fdRunInfo, PipeType *tPipe, FdBuffers<BufferType> &buffers)
+__aicore__ inline void InitFDBuffers(const FdRunInfo &fdRunInfo, PipeType *tPipe, FdBuffers<BufferType> &buffers,
+    int64_t partialOInputNum = 1)
 {
     tPipe->Reset();
     int64_t maxSumTotal = static_cast<uint32_t>(fdRunInfo.workspaceNum) * FD_REDUCE_CHUNK_ROWS *
                           FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
     int64_t lseExpSize = FD_REDUCE_CHUNK_ROWS * FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
     int64_t accumOutSize = static_cast<uint32_t>(fdRunInfo.mNum) * D_ALIGN * sizeof(T);
-    int64_t partialOSize = FD_REDUCE_CHUNK_ROWS * D_ALIGN * sizeof(T);
+    int64_t partialOSize = partialOInputNum * FD_REDUCE_CHUNK_ROWS * D_ALIGN * sizeof(T);
     tPipe->InitBuffer(buffers.accumOut, accumOutSize);
     tPipe->InitBuffer(buffers.blockMax, maxSumTotal);
     tPipe->InitBuffer(buffers.blockSum, maxSumTotal);
@@ -452,6 +453,122 @@ __aicore__ inline void ReducePairwiseWithLse(const S2SplitFdStagingLayout &layou
     }
 }
 
+// Deterministic FD reduction: merge contiguous staging slots in a fixed left fold.
+// Each step uses the same two-input UB reduction as the intra-core batch-consistency path:
+//   state = ((slot0 merge slot1) merge slot2) ...
+// partialOUb must hold two [layout.chunkRows, D_ALIGN] inputs.
+template <typename T, int64_t D_ALIGN>
+__aicore__ inline void ReducePairwiseWithLse(const S2SplitFdStagingLayout &layout,
+    __gm__ uint8_t *stagingBase, int64_t workspaceIdx, int64_t workspaceNum,
+    int64_t fdMOffset, int64_t mNum, int64_t dValid,
+    LocalTensor<T> &accumulatedO, LocalTensor<float> &lseExpUb,
+    LocalTensor<float> &blockMaxUb, LocalTensor<float> &blockSumUb,
+    LocalTensor<T> &partialOUb, bool softmaxLseFlag,
+    GlobalTensor<T> &softmaxLseGm, int64_t softmaxLseOffset,
+    uint8_t vToMte2Id0, uint8_t vToMte2Id1, uint8_t mte2ToVId,
+    uint8_t vToMte3LseOutId, uint8_t mte3ToVLseOutId)
+{
+    if (workspaceNum <= FD_INCREMENTAL_MERGE_INPUT_NUM) {
+        ReduceWithLse<T, D_ALIGN>(layout, stagingBase, workspaceIdx, workspaceNum,
+            fdMOffset, mNum, dValid, accumulatedO, lseExpUb, blockMaxUb, blockSumUb,
+            partialOUb, softmaxLseFlag, softmaxLseGm, softmaxLseOffset,
+            vToMte2Id0, vToMte2Id1, mte2ToVId, vToMte3LseOutId, mte3ToVLseOutId);
+        return;
+    }
+
+    constexpr int64_t OUTPUT_ELEMS_PER_BLOCK = FD_BUFFER_SIZE_BYTE_32B / sizeof(float);
+    int64_t attenOutElems = layout.StagingAttenOutElems();
+    int64_t maxSumBytes = layout.StagingMaxSumBytes();
+    GlobalTensor<float> maxGm;
+    maxGm.SetGlobalBuffer((__gm__ float *)(layout.MaxRegion(stagingBase) +
+        workspaceIdx * maxSumBytes));
+    GlobalTensor<float> sumGm;
+    sumGm.SetGlobalBuffer((__gm__ float *)(layout.SumRegion(stagingBase) +
+        workspaceIdx * maxSumBytes));
+    GlobalTensor<float> stagingOutGm;
+    stagingOutGm.SetGlobalBuffer((__gm__ float *)(layout.AttenOutRegion(stagingBase) +
+        workspaceIdx * attenOutElems * sizeof(float)));
+    int64_t splitStride = maxSumBytes / sizeof(float);
+    int64_t outSplitStride = attenOutElems;
+
+    int64_t mChunks = (mNum + layout.chunkRows - 1) / layout.chunkRows;
+    int64_t startRow = 0;
+    for (int64_t chunkIdx = 0; chunkIdx < mChunks; chunkIdx++) {
+        int64_t dealRowCount = layout.chunkRows;
+        if (startRow + dealRowCount > mNum) {
+            dealRowCount = mNum - startRow;
+        }
+        int64_t dealRowsElems = dealRowCount * layout.broadcastElems;
+        int64_t partialOSplitStride = dealRowCount * D_ALIGN;
+        int64_t maxSumRowOffset = (fdMOffset + startRow) * layout.broadcastElems;
+        int64_t outRowOffset = (fdMOffset + startRow) * dValid;
+        DataCopyExtParams inParams;
+        inParams.blockLen = dValid * sizeof(float);
+        inParams.srcStride = 0;
+        inParams.dstStride = static_cast<uint16_t>((D_ALIGN - dValid) / OUTPUT_ELEMS_PER_BLOCK);
+        inParams.blockCount = dealRowCount;
+        DataCopyPadExtParams<float> padParams{true, 0,
+            static_cast<uint8_t>((D_ALIGN - dValid) % OUTPUT_ELEMS_PER_BLOCK), 0};
+
+        // Seed the fold with slot0 and slot1.
+        WaitFlag<HardEvent::V_MTE2>(vToMte2Id0);
+        WaitFlag<HardEvent::V_MTE2>(vToMte2Id1);
+        DataCopy(blockMaxUb, maxGm[maxSumRowOffset], dealRowsElems);
+        DataCopy(blockSumUb, sumGm[maxSumRowOffset], dealRowsElems);
+        DataCopy(blockMaxUb[dealRowsElems], maxGm[maxSumRowOffset + splitStride], dealRowsElems);
+        DataCopy(blockSumUb[dealRowsElems], sumGm[maxSumRowOffset + splitStride], dealRowsElems);
+        DataCopyPad(partialOUb, stagingOutGm[outRowOffset], inParams, padParams);
+        DataCopyPad(partialOUb[partialOSplitStride], stagingOutGm[outRowOffset + outSplitStride],
+            inParams, padParams);
+        SetFlag<HardEvent::MTE2_V>(mte2ToVId);
+        WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
+
+        LocalTensor<T> chunkAccumO = accumulatedO[startRow * D_ALIGN];
+        ReduceUb<T, D_ALIGN>(layout, dealRowCount, chunkAccumO, lseExpUb,
+            blockMaxUb, blockSumUb, partialOUb, FD_INCREMENTAL_MERGE_INPUT_NUM, true);
+
+        // Convert the accumulated state to (LSE, 1, normalized O), then merge one slot at a time.
+        for (int64_t splitIdx = FD_INCREMENTAL_MERGE_INPUT_NUM; splitIdx < workspaceNum; splitIdx++) {
+            DataCopy(partialOUb, chunkAccumO, partialOSplitStride);
+            DataCopy(blockMaxUb, lseExpUb, dealRowsElems);
+            Duplicate(blockSumUb, static_cast<float>(1.0), dealRowsElems);
+            PipeBarrier<PIPE_V>();
+            SetFlag<HardEvent::V_MTE2>(vToMte2Id0);
+            SetFlag<HardEvent::V_MTE2>(vToMte2Id1);
+            WaitFlag<HardEvent::V_MTE2>(vToMte2Id0);
+            WaitFlag<HardEvent::V_MTE2>(vToMte2Id1);
+
+            int64_t maxSumOffset = maxSumRowOffset + splitIdx * splitStride;
+            int64_t partialOOffset = outRowOffset + splitIdx * outSplitStride;
+            DataCopy(blockMaxUb[dealRowsElems], maxGm[maxSumOffset], dealRowsElems);
+            DataCopy(blockSumUb[dealRowsElems], sumGm[maxSumOffset], dealRowsElems);
+            DataCopyPad(partialOUb[partialOSplitStride], stagingOutGm[partialOOffset],
+                inParams, padParams);
+            SetFlag<HardEvent::MTE2_V>(mte2ToVId);
+            WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
+            ReduceUb<T, D_ALIGN>(layout, dealRowCount, chunkAccumO, lseExpUb,
+                blockMaxUb, blockSumUb, partialOUb, FD_INCREMENTAL_MERGE_INPUT_NUM, true);
+        }
+
+        if (softmaxLseFlag) {
+            DataCopyExtParams lseParams;
+            lseParams.blockCount = static_cast<uint16_t>(dealRowCount);
+            lseParams.blockLen = sizeof(float);
+            lseParams.srcStride = 0;
+            lseParams.dstStride = 0;
+            WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+            SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+            WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+            DataCopyPad(softmaxLseGm[softmaxLseOffset + startRow], lseExpUb, lseParams);
+            SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+        }
+
+        SetFlag<HardEvent::V_MTE2>(vToMte2Id0);
+        SetFlag<HardEvent::V_MTE2>(vToMte2Id1);
+        startRow += layout.chunkRows;
+    }
+}
+
 // Merge one previously staged result with one current normalized result.
 // dealRowCount must not exceed layout.chunkRows.
 // currentMaxUb/currentSumUb contain one scalar per row; currentPartialO uses D_ALIGN elements per row.
@@ -484,7 +601,6 @@ __aicore__ inline void MergeStagedAndCurrentChunk(
     DataCopy(blockSumUb, previousSumGm[maxSumOffset], dealRowsElems);
     SetFlag<HardEvent::MTE2_V>(mte2ToVId);
     WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
-
     GlobalTensor<float> previousPartialOGm;
     previousPartialOGm.SetGlobalBuffer((__gm__ float *)(layout.AttenOutRegion(stagingBase) +
                                                         workspaceIdx * layout.StagingAttenOutElems() * sizeof(float)));
