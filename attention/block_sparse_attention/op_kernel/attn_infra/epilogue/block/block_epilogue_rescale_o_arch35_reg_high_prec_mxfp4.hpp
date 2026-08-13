@@ -100,7 +100,7 @@ public:
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
                 AscendC::LocalTensor<ElementOTmp> outTensorFp32Ub = oTransUBTensor.template ReinterpretCast<ElementOTmp>(); // 空间复用P, bf16 vf写出是强解释fp32
-                Mxfp4VF::processOut(outTensorFp32Ub, oUBTensor, globalRowSumUBTensor);
+                Mxfp4VF::processOut<MXFP4::QS_BASE_SIZE, ElementO>(outTensorFp32Ub, oUBTensor, globalRowSumUBTensor);
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::LocalTensor<ElementO> oTransUBTensorB16 = oTransUBTensor.template ReinterpretCast<ElementO>();
                 AscendC::LocalTensor<ElementO> oUBTensorB16 = oUBTensor.template ReinterpretCast<ElementO>();
