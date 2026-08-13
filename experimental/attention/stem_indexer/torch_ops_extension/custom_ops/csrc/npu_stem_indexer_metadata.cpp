@@ -16,8 +16,8 @@ using namespace at_npu::native;
 
 constexpr int64_t STEM_INDEXER_METADATA_HEADER_SIZE = 16;
 constexpr int64_t STEM_INDEXER_METADATA_CORE_STRIDE = 16;
-constexpr int64_t STEM_INDEXER_METADATA_AIC_CORE_NUM = 36;
-constexpr int64_t STEM_INDEXER_METADATA_AIV_CORE_NUM = 72;
+constexpr int64_t STEM_INDEXER_METADATA_AIC_CORE_NUM = 64;
+constexpr int64_t STEM_INDEXER_METADATA_AIV_CORE_NUM = 64;
 constexpr int64_t STEM_INDEXER_METADATA_ALIGN_SIZE = 4096;
 
 static int64_t CalcStemIndexerMetadataOutputSize(int64_t batchSize, int64_t kvHeads)

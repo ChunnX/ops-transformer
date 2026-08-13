@@ -22,8 +22,8 @@
 namespace optiling {
 
 // Constants
-constexpr uint32_t AIC_CORE_NUM = 36U;
-constexpr uint32_t AIV_CORE_NUM = 72U;
+constexpr uint32_t AIC_CORE_NUM = 64U;
+constexpr uint32_t AIV_CORE_NUM = 64U;
 using SLI_METADATA_T = uint32_t;
 
 constexpr uint32_t HEAD_METADATA_STRIDE = 16U;
