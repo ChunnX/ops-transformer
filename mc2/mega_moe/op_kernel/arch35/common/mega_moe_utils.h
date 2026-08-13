@@ -297,7 +297,7 @@ __aicore__ inline ExpertLoopState CreateExpertLoopState(const MoeStageCommonConf
 __aicore__ inline bool UpdateExpertLoopState(ExpertLoopState &state, uint32_t expertIdx, uint64_t expertTokenCount)
 {
     if (expertIdx != 0U) {
-        state.rowOffset += Get<M_VALUE>(state.problemShape);
+        state.globalTokenStartIndex += Get<M_VALUE>(state.problemShape);
     }
     Get<M_VALUE>(state.problemShape) = static_cast<int64_t>(expertTokenCount);
     return expertTokenCount != 0U;
