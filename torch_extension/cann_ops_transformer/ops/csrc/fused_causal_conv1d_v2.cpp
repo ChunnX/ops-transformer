@@ -28,7 +28,7 @@ static int64_t parseActivation(const c10::optional<c10::string_view> &activation
     return 0;
 }
 
-void npu_fused_causal_conv1d_v2(
+void FusedCausalConv1dV2(
     const at::Tensor &x,
     const at::Tensor &weight,
     at::Tensor &conv_states,
