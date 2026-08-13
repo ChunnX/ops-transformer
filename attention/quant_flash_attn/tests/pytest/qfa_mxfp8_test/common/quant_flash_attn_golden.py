@@ -121,7 +121,7 @@ SEED_KR = 9
 DATA_RANGE_Q = 1.0
 DATA_RANGE_K = 1.0
 DATA_RANGE_V = 1.0
-DATA_RANGE_QR = 1.0 
+DATA_RANGE_QR = 1.0
 DATA_RANGE_KR = 1.0
 
 DEVICE_ID = 0
@@ -1253,6 +1253,7 @@ def _call_npu_fa_op(
         max_seqlen_q=max_seqlen_q,
         max_seqlen_kv=max_seqlen_kv,
     )
+
     main_kwargs = dict(
         q=q,
         k=k,

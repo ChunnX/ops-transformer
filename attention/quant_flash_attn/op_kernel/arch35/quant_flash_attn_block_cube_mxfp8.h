@@ -303,7 +303,7 @@ public:
                                              constInfo_.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
             uint32_t d0 = 32 / sizeof(KV_T);
-            uint32_t d1 = (headDim + d0 -1) / d0;
+            uint32_t d1 = headDim / d0;
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm_,
                                              constInfo_.maxBlockNumPerBatch);
         } else if constexpr (KV_NEEDS_WZH) {
@@ -345,7 +345,7 @@ public:
                                                  constInfo_.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<V_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
             uint32_t d0 = 32 / sizeof(KV_T);
-            uint32_t d1 = (headDim + d0 -1) / d0;
+            uint32_t d1 = headDim / d0;
             vScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm_,
                                                  constInfo_.maxBlockNumPerBatch);
         } else if constexpr (KV_NEEDS_WZH) {
@@ -558,7 +558,7 @@ public:
             mm1A = l1QBuffers_.Get();
             mm1A.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
-            if (constInfo_.dSize % 64 != 0) {
+            if constexpr (!isDAligned) {
                 InitValueL1BufferNAxis(mm1ATensor, mBaseSize, dBaseSize);
                 AscendC::PipeBarrier<PIPE_MTE2>();
             }
@@ -575,7 +575,7 @@ public:
         Buffer<BufferType::L1> mm1B = l1KVBuffers_.Get();
         mm1B.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
-        if (!isDAligned) {
+        if constexpr (!isDAligned) {
             InitValueL1BufferNAxis(mm1BTensor, s2SplitSize, dBaseSize);
             AscendC::PipeBarrier<PIPE_MTE2>();
         }
@@ -673,7 +673,7 @@ public:
             mm1B = l1QBuffers_.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>(); // B矩阵常驻，两次Sub中，只有第一次搬B
             LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
-            if (!isDAligned) {
+            if constexpr (!isDAligned) {
                 InitValueL1BufferNAxis(mm1BTensor, mBaseSize, dBaseSize);
                 AscendC::PipeBarrier<PIPE_MTE2>();
             }
@@ -690,7 +690,7 @@ public:
         Buffer<BufferType::L1> mm1A = l1KVBuffers_.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
-        if (!isDAligned) {
+        if constexpr (!isDAligned) {
             InitValueL1BufferNAxis(mm1ATensor, s2SplitSize, dBaseSize);
             AscendC::PipeBarrier<PIPE_MTE2>();
         }
@@ -765,7 +765,7 @@ public:
             if (unlikely(runInfo.isLastS2Loop)) {
                 InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo_.dSizeV);
             }
-            if (!isDAligned) {
+            if constexpr (!isDAligned) {
                 InitValueL1BufferNAxis(mm2BTensor, baseK + baseK / MXFP_GROUP_SIZE, dVBaseSize);
                 AscendC::PipeBarrier<PIPE_MTE2>();
             }
@@ -857,7 +857,7 @@ public:
             if (unlikely(runInfo.isLastS2Loop)) {
                 InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo_.dSizeV);
             }
-            if (!isDAligned) {
+            if constexpr (!isDAligned) {
                 InitValueL1BufferNAxis(mm2BTensor, baseK + baseK / MXFP_GROUP_SIZE, dVBaseSize);
                 AscendC::PipeBarrier<PIPE_MTE2>();
             }
@@ -893,12 +893,12 @@ public:
         outputBuf.SetCrossCore();
     }
 
-    __aicore__ inline void InitValueL1BufferNAxis(const LocalTensor<KV_T> &valueL1, const uint32_t K,
-                                                    const uint32_t N)
+    __aicore__ inline void InitValueL1BufferNAxis(const LocalTensor<KV_T> &valueL1, const uint32_t k,
+                                                    const uint32_t n)
     {
         InitConstValueParams<half> initConstValueParams;
-        initConstValueParams.repeatTimes = N / 32U;
-        initConstValueParams.blockNum = K;
+        initConstValueParams.repeatTimes = n / 32U;
+        initConstValueParams.blockNum = k;
         initConstValueParams.dstGap = 0;
         initConstValueParams.initValue = 0;
         InitConstValue(valueL1.template ReinterpretCast<half>(), initConstValueParams);
