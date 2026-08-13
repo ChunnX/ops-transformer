@@ -484,11 +484,11 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, CheckOpInputInfo());
     // 参数校验通过后赋值给全局上下文变量
     MC2_CHECK_LOG_RET(opName_, InitTilingContextParameters());
-    // 判断是否使用apace实现: all2all_out为空且卡数<16
-    usingApaceImpl_ = (!contextInfo_.allToAllOutFlag) && (contextInfo_.args_.rankDim < APACE_IMPL_MAX_RANK_DIM);
+    // 判断是否使用apace实现: all2all_out为空且卡数<=8
+    usingApaceImpl_ = (!contextInfo_.allToAllOutFlag) && (contextInfo_.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM);
     // 进行通算切分
     MC2_CHECK_LOG_RET(opName_, TileCommAndCompute());
-    // 量化Matmul的tiling方法进行切分
+    // 调用量化Matmul的tiling方法进行切分
     MC2_CHECK_LOG_RET(opName_, DoMxQuantMMTiling());
     // hccl的tiling参数赋值处理
     MC2_CHECK_LOG_RET(opName_, SetHcclTiling());
@@ -557,12 +557,12 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::SetHcclTiling()
                 allToAllMatmulBuilder.errorMsg().c_str());
         return ge::GRAPH_FAILED;
     }
-    if (!usingApaceImpl_) {
-        allToAllTilingConfig.GetTiling(localTilingData_.mc2InitTiling);
-        allToAllTilingConfig.GetTiling(localTilingData_.mc2CcTiling);
-    } else {
+    if (usingApaceImpl_) {
         allToAllTilingConfig.GetTiling(hcommTilingData_.mc2InitTiling);
         allToAllTilingConfig.GetTiling(hcommTilingData_.mc2CcTiling);
+    } else {
+        allToAllTilingConfig.GetTiling(localTilingData_.mc2InitTiling);
+        allToAllTilingConfig.GetTiling(localTilingData_.mc2CcTiling);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -799,7 +799,25 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
 {
     context_->SetScheduleMode(1);
     size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
-    if (!usingApaceImpl_) {
+    if (usingApaceImpl_) {
+        // hcomm 路径: 输出 hcommAllToAllMatmulTilingData
+        SetHcommTilingInfo(hcommTilingData_.commTilingData);
+        hcommAllToAllMatmulTilingData *outTilingData = context_->GetTilingData<hcommAllToAllMatmulTilingData>();
+        OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((tilingBufCap < sizeof(hcommTilingData_)),
+                        OP_LOGE(opName_, "TilingBuffer capacity is too small, capacity = %zu, need = %zu.",
+                                tilingBufCap, sizeof(hcommTilingData_)),
+                        return ge::GRAPH_FAILED);
+        errno_t ret = memcpy_s(outTilingData, tilingBufCap, &hcommTilingData_, sizeof(hcommTilingData_));
+        if (ret != EOK) {
+            OP_LOGE(opName_, "AlltoAllMxQuantMatmul postTiling: memcpy_s hcomm tiling data failed, ret=%d.", ret);
+            return ge::GRAPH_FAILED;
+        }
+        OP_LOGD(opName_, "Final hcomm tiling data size=%zu and context capacity size=%zu.",
+                sizeof(hcommAllToAllMatmulTilingData), context_->GetRawTilingData()->GetCapacity());
+        context_->GetRawTilingData()->SetDataSize(sizeof(hcommAllToAllMatmulTilingData));
+    } else {
         // arch35 主线路径: 输出 AlltoAllQuantMatmulTilingData
         SetTilingInfo(localTilingData_.alltoAllQuantMatmulTilingInfo);
         AlltoAllQuantMatmulTilingData *outTilingData = context_->GetTilingData<AlltoAllQuantMatmulTilingData>();
@@ -818,24 +836,6 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
                 sizeof(AlltoAllQuantMatmulTilingData), context_->GetRawTilingData()->GetCapacity());
         context_->GetRawTilingData()->SetDataSize(sizeof(AlltoAllQuantMatmulTilingData));
         PrintAlltoAllMxQuantMatmulTilingData(*outTilingData);
-    } else {
-        // hcomm 路径: 输出 hcommAllToAllMatmulTilingData
-        SetHcommTilingInfo(hcommTilingData_.commTilingData);
-        hcommAllToAllMatmulTilingData *outTilingData = context_->GetTilingData<hcommAllToAllMatmulTilingData>();
-        OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
-                        return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((tilingBufCap < sizeof(hcommTilingData_)),
-                        OP_LOGE(opName_, "TilingBuffer capacity is too small, capacity = %zu, need = %zu.",
-                                tilingBufCap, sizeof(hcommTilingData_)),
-                        return ge::GRAPH_FAILED);
-        errno_t ret = memcpy_s(outTilingData, tilingBufCap, &hcommTilingData_, sizeof(hcommTilingData_));
-        if (ret != EOK) {
-            OP_LOGE(opName_, "AlltoAllMxQuantMatmul postTiling: memcpy_s hcomm tiling data failed, ret=%d.", ret);
-            return ge::GRAPH_FAILED;
-        }
-        OP_LOGD(opName_, "Final hcomm tiling data size=%zu and context capacity size=%zu.",
-                sizeof(hcommAllToAllMatmulTilingData), context_->GetRawTilingData()->GetCapacity());
-        context_->GetRawTilingData()->SetDataSize(sizeof(hcommAllToAllMatmulTilingData));
     }
     context_->SetBlockDim(contextInfo_.args_.aicCoreNum);
     return ge::GRAPH_SUCCESS;
