@@ -107,9 +107,14 @@ public:
         kkWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
         workSpaceOffset += coreNum_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
 
-        // attnWsGm_: 求逆结果 A, A_beta, A_beta_neg_gamma 中间结果
+        // attnWsGm_: 求逆结果 A_beta (供 AIC vInner matmul)
         curWS = coreIdx_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
         attnWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
+        workSpaceOffset += coreNum_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
+
+        // attnWsNegGm_: A_beta_neg_gamma (供 AIC kBetaInv matmul, 独立 WS 避免覆盖 attnWs)
+        curWS = coreIdx_ * paraNum_ * ccOffset_ * sizeof(bfloat16_t);
+        attnWsNegGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
     }
 
     __aicore__ inline void InitLocalBuffers()
@@ -312,22 +317,22 @@ private:
             AttnInverseMMCompute(i * ccOffset_);
         }
 
-        // R4: vInner = A_beta @ V, 直接从 strided GM 读 V (先于 kBetaInv, 因 attnWs 中此时是 A_beta)
+        // R3/R5: kBetaInv = A_beta_neg_gamma @ K (读 attnWsNegGm_ 独立 WS, 不与 attnWs 冲突)
+        for (uint32_t i = 0; i < curParaNum; ++i) {
+            AscendC::CrossCoreWaitFlag(0x6); // 同步3: AIV NegGammaMultiply 完成
+            uint64_t qk_base = chunkStartRowBatch_[i] * nk_ * dk_ + nIdBatch_[i] * nk_ / nv_ * dk_;
+            AICProcess(mmBf16_, attnWsNegGm_[i * ccOffset_], keyGm_[qk_base],
+                       outKCumdecayGm_[chunkRowBase_[i] * dk_],
+                       {chunkSize_, dk_, chunkSize_, chunkSize_, dk_, chunkSize_, 0, qkStride_});
+        }
+
+        // R4: vInner = A_beta @ V (读 attnWs, 其中是 A_beta, 不被 NegGammaMultiply 覆盖)
         for (uint32_t i = 0; i < curParaNum; ++i) {
             AscendC::CrossCoreWaitFlag(0x5); // 同步4: AIV A_beta 写入 attnWs 完成
             uint64_t vOffset = chunkStartRowBatch_[i] * vRowStride_ + nIdBatch_[i] * dv_;
             AICProcess(mmVInner_, attnWsGm_[i * ccOffset_], valueGm_[vOffset],
                        outVInnerGm_[chunkRowBase_[i] * dv_],
                        {chunkSize_, dv_, chunkSize_, chunkSize_, dv_, chunkSize_, 0, vRowStride_});
-        }
-
-        // R3/R5: kBetaInv = A_beta_neg_gamma @ K, 直接从 strided GM 读 K (后于 vInner, 因 attnWs 已被覆盖为 A_beta_neg_gamma)
-        for (uint32_t i = 0; i < curParaNum; ++i) {
-            AscendC::CrossCoreWaitFlag(0x6); // 同步3: AIV NegGammaMultiply 完成 (attnWs 已覆盖为 A_beta_neg_gamma)
-            uint64_t qk_base = chunkStartRowBatch_[i] * nk_ * dk_ + nIdBatch_[i] * nk_ / nv_ * dk_;
-            AICProcess(mmBf16_, attnWsGm_[i * ccOffset_], keyGm_[qk_base],
-                       outKCumdecayGm_[chunkRowBase_[i] * dk_],
-                       {chunkSize_, dk_, chunkSize_, chunkSize_, dk_, chunkSize_, 0, qkStride_});
         }
     }
 
@@ -369,9 +374,9 @@ private:
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5); // 同步4: AIC 可做 vInner
         }
 
-        // R5: A_beta *= (-gamma) → 覆盖 attnWs, 供 AIC kBetaInv matmul
+        // R5: A_beta *= (-gamma) → 写入 attnWsNegGm_ (独立 WS, 不覆盖 attnWs 中的 A_beta)
         for (uint32_t i = 0; i < curParaNum; ++i) {
-            NegGammaMultiply(attnWsGm_[i * ccOffset_], gammaUbFloat_[i * chunkSize_ * maxLen_]);
+            NegGammaMultiply(attnWsNegGm_[i * ccOffset_], gammaUbFloat_[i * chunkSize_ * maxLen_]);
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x6); // 同步3: A_beta_neg_gamma 就绪, AIC 可做 kBetaInv
         }
 
@@ -756,6 +761,7 @@ private:
     GlobalTensor<bfloat16_t> outQkGm_;
     GlobalTensor<bfloat16_t> kkWsGm_;
     GlobalTensor<bfloat16_t> attnWsGm_;
+    GlobalTensor<bfloat16_t> attnWsNegGm_; // R5: A_beta_neg_gamma 独立 WS
     GlobalTensor<float> stageOneMask_;
 
     // UB queues
