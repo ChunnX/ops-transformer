@@ -14,8 +14,6 @@ try:
     import torchair
     from typing import List, Optional
     from torchair.ge._ge_graph import Tensor, TensorSpec
-    from torchair.ge._ge_graph import auto_convert_to_tensor
-    from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
     from torchair._ge_concrete_graph.fx2ge_converter import (
         register_fx_node_ge_converter,
     )
@@ -32,57 +30,6 @@ _ROTARY_MODE_MAP = {
 
 
 if _TORCHAIR_AVAILABLE:
-
-    @auto_convert_to_tensor([False, False, False], [False, False, False])
-    def inplace_partial_rotary_mul(
-        x: Tensor,
-        cos: Tensor,
-        sin: Tensor,
-        *,
-        rotary_mode: int = 0,
-        partial_slice: Optional[List[int]] = None,
-        dependencies=None,
-        node_name=None,
-    ):
-        """REG_OP(InplacePartialRotaryMul)\n
-        .INPUT(x, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))\n
-        .INPUT(cos, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))\n
-        .INPUT(sin, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))\n
-        .OUTPUT(x, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))\n
-        .ATTR(rotary_mode, Int, 0)\n
-        .ATTR(partial_slice, ListInt, {0, 0})\n
-        """
-        if partial_slice is None:
-            partial_slice = [0, 0]
-        if dependencies is None:
-            dependencies = []
-
-        inputs = {
-            "x": x,
-            "cos": cos,
-            "sin": sin,
-        }
-        attrs = {
-            "rotary_mode": attr.Int(rotary_mode),
-            "partial_slice": attr.ListInt(partial_slice),
-        }
-        outputs = ["x"]
-
-        return ge_op(
-            op_type="InplacePartialRotaryMul",
-            inputs=inputs,
-            attrs=attrs,
-            outputs=outputs,
-            dependencies=dependencies,
-            node_name=node_name,
-            ir=IrDef("InplacePartialRotaryMul")
-            .input("x", "DT_FLOAT16, DT_FLOAT, DT_BFLOAT16")
-            .input("cos", "DT_FLOAT16, DT_FLOAT, DT_BFLOAT16")
-            .input("sin", "DT_FLOAT16, DT_FLOAT, DT_BFLOAT16")
-            .attr("rotary_mode", attr.Int(0))
-            .attr("partial_slice", attr.ListInt([0, 0]))
-            .output("x", "DT_FLOAT16, DT_FLOAT, DT_BFLOAT16"),
-        )
 
     @register_fx_node_ge_converter(
         torch.ops.cann_ops_transformer.inplace_partial_rotary_mul.default
@@ -101,12 +48,17 @@ if _TORCHAIR_AVAILABLE:
             raise ValueError(
                 f"rotary_mode only supports 'interleave', got '{rotary_mode}'."
             )
-        return inplace_partial_rotary_mul(
-            x=x,
-            cos=r1,
-            sin=r2,
-            rotary_mode=_ROTARY_MODE_MAP[rotary_mode],
-            partial_slice=partial_slice,
+        # Use a custom GE node so TorchAir preserves the backend's in-place
+        # aliasing instead of functionalizing the Tensor(a!) -> () op and
+        # inserting a copy-back for view/unsqueeze inputs.
+        return torchair.ge.custom_op(
+            "InplacePartialRotaryMul",
+            inputs={"x": x, "cos": r1, "sin": r2},
+            attrs={
+                "rotary_mode": attr.Int(_ROTARY_MODE_MAP[rotary_mode]),
+                "partial_slice": attr.ListInt(partial_slice),
+            },
+            outputs=["x"],
         )
 else:
 
