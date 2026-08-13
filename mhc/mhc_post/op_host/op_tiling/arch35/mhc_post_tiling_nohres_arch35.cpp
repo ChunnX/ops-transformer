@@ -120,7 +120,7 @@ ge::graphStatus MhcPostTilingNoHResArch35::GetPlatformInfo()
     }
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    aicoreParams_.numBlocks = ascendcPlatform.GetCoreNumAiv();
+    aicoreParams_.numBlocks = 56;
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     aicoreParams_.ubSize = ubSizePlatForm;
