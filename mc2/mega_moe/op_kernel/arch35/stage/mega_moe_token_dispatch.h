@@ -406,64 +406,114 @@ __aicore__ inline void DispatchExpertRowsByRank(
     }
 }
 
-// 全量 Dispatch 的分核实现：按所有专家的总接收行数给所有 Dispatch core 分配连续
-// 行区间，再沿专家和 source rank 求交集。这里保留
-// source rank 的原有顺序扫描，不改变二层路由，只把多个小专家合并到同一个
-// Dispatch pass，避免每个小专家都单独占用一轮核分配。
-template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
+/**
+ * Dispatch tokens for one or more experts.  The A8W4 dynamic-wave pipeline
+ * keeps its original rank-shard partitioning because its producer/consumer
+ * synchronization is coupled to that partition.  Other paths use the
+ * row-balanced partitioning below.
+ */
+template <typename ActivationType, typename QuantScaleType, bool UseRankShardDispatch,
+          uint32_t PipelineTileM, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchExpertTokens(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t firstExpert,
     uint32_t endExpert, uint32_t totalDispatchRowCount)
 {
-    if (totalDispatchRowCount == 0U || firstExpert >= endExpert) {
-        return;
-    }
-
-    constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
-    uint32_t dispatchCoreCount = context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs;
-    int32_t rowsPerCore = Ops::Base::CeilDiv(
-        static_cast<int32_t>(totalDispatchRowCount), static_cast<int32_t>(dispatchCoreCount));
-    int32_t coreDispatchRowBegin = static_cast<int32_t>(context.blockJob.jobIndex) * rowsPerCore;
-    int32_t coreDispatchRowEnd = coreDispatchRowBegin + rowsPerCore;
-    if (coreDispatchRowEnd > static_cast<int32_t>(totalDispatchRowCount)) {
-        coreDispatchRowEnd = static_cast<int32_t>(totalDispatchRowCount);
-    }
-    if (coreDispatchRowBegin >= coreDispatchRowEnd) {
-        return;
-    }
-
-    int32_t expertDispatchRowBegin = 0;
-    for (uint32_t localExpertId = firstExpert; localExpertId < endExpert; ++localExpertId) {
-        DispatchExpertRange expertRange = CalculateDispatchExpertRange(
-            context, scratch, localExpertId, coreDispatchRowBegin, coreDispatchRowEnd,
-            expertDispatchRowBegin);
-        if (expertRange.isBeyondOutput) {
-            continue;
+    if constexpr (UseRankShardDispatch) {
+        if (firstExpert >= endExpert) {
+            return;
         }
-        expertDispatchRowBegin = expertRange.expertDispatchRowEnd;
-        if (!expertRange.hasRows) {
+
+        constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
+        uint32_t localExpertId = firstExpert;
+        int32_t expertGlobalRowBegin = localExpertId == 0U ? 0 :
+            scratch.cumsumInfoTensor.GetValue(localExpertId * context.common.worldSize - 1U);
+        uint32_t rankShardCount = context.countWorkspace.blockNum / context.common.worldSize;
+        rankShardCount = rankShardCount == 0U ? 1U : rankShardCount;
+
+        for (uint32_t dispatchShardIdx = context.blockJob.jobIndex;
+             dispatchShardIdx < context.common.worldSize * rankShardCount;
+             dispatchShardIdx += context.blockJob.totalJobs) {
+            uint32_t remoteRankIdx = dispatchShardIdx / rankShardCount;
+            uint32_t rankShardIdx = dispatchShardIdx % rankShardCount;
+            uint32_t rankSegmentDstRowBegin =
+                (remoteRankIdx == 0U && localExpertId == 0U) ?
+                    0U :
+                    static_cast<uint32_t>(scratch.cumsumInfoTensor.GetValue(
+                        localExpertId * context.common.worldSize + remoteRankIdx - 1U));
+            if (rankSegmentDstRowBegin >= context.maxOutputSize) {
+                continue;
+            }
+
+            int32_t rankTokenCount =
+                scratch.cumsumInfoTensor.GetValue(localExpertId * context.common.worldSize + remoteRankIdx) -
+                static_cast<int32_t>(rankSegmentDstRowBegin);
+            int32_t rankDispatchRowCount =
+                rankSegmentDstRowBegin + rankTokenCount > context.maxOutputSize ?
+                    static_cast<int32_t>(context.maxOutputSize - rankSegmentDstRowBegin) : rankTokenCount;
+            int32_t rowsPerRankShard =
+                Ops::Base::CeilDiv(rankDispatchRowCount, static_cast<int32_t>(rankShardCount));
+            int32_t rankShardRowBegin = static_cast<int32_t>(rankShardIdx) * rowsPerRankShard;
+            int32_t dispatchRowCount =
+                rankShardRowBegin + rowsPerRankShard > rankDispatchRowCount ?
+                    rankDispatchRowCount - rankShardRowBegin : rowsPerRankShard;
+            if (dispatchRowCount <= 0) {
+                continue;
+            }
+
+            DispatchRankTokenRange<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+                context, params, winRankAddr, scratch, localExpertId, expertGlobalRowBegin,
+                remoteRankIdx, static_cast<int32_t>(rankSegmentDstRowBegin) - expertGlobalRowBegin,
+                rankShardRowBegin, rankShardRowBegin + dispatchRowCount, gmm1TileRowCount);
+        }
+    } else {
+        if (totalDispatchRowCount == 0U || firstExpert >= endExpert) {
+            return;
+        }
+
+        constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
+        uint32_t dispatchCoreCount = context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs;
+        int32_t rowsPerCore = Ops::Base::CeilDiv(
+            static_cast<int32_t>(totalDispatchRowCount), static_cast<int32_t>(dispatchCoreCount));
+        int32_t coreDispatchRowBegin = static_cast<int32_t>(context.blockJob.jobIndex) * rowsPerCore;
+        int32_t coreDispatchRowEnd = coreDispatchRowBegin + rowsPerCore;
+        if (coreDispatchRowEnd > static_cast<int32_t>(totalDispatchRowCount)) {
+            coreDispatchRowEnd = static_cast<int32_t>(totalDispatchRowCount);
+        }
+        if (coreDispatchRowBegin >= coreDispatchRowEnd) {
+            return;
+        }
+
+        int32_t expertDispatchRowBegin = 0;
+        for (uint32_t localExpertId = firstExpert; localExpertId < endExpert; ++localExpertId) {
+            DispatchExpertRange expertRange = CalculateDispatchExpertRange(
+                context, scratch, localExpertId, coreDispatchRowBegin, coreDispatchRowEnd,
+                expertDispatchRowBegin);
+            if (expertRange.isBeyondOutput) {
+                continue;
+            }
+            expertDispatchRowBegin = expertRange.expertDispatchRowEnd;
+            if (!expertRange.hasRows) {
+                if (coreDispatchRowEnd <= expertRange.expertDispatchRowEnd) {
+                    break;
+                }
+                continue;
+            }
+
+            DispatchExpertRankRange rankRange = FindDispatchExpertRankRange(
+                context, scratch, localExpertId, expertRange.expertGlobalRowBegin,
+                expertRange.coreExpertRowBegin, expertRange.coreExpertRowEnd);
+            if (rankRange.firstRankIdx == context.common.worldSize || rankRange.lastRankIdx < 0) {
+                continue;
+            }
+
+            DispatchExpertRowsByRank<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+                context, params, winRankAddr, scratch, localExpertId, expertRange, rankRange,
+                gmm1TileRowCount);
+
             if (coreDispatchRowEnd <= expertRange.expertDispatchRowEnd) {
                 break;
             }
-            continue;
-        }
-
-        // 找到本 core 行区间覆盖的 source-rank 段。rank 仍按原有顺序处理，
-        // 不引入新的 rank/token 交织策略。
-        DispatchExpertRankRange rankRange = FindDispatchExpertRankRange(
-            context, scratch, localExpertId, expertRange.expertGlobalRowBegin,
-            expertRange.coreExpertRowBegin, expertRange.coreExpertRowEnd);
-        if (rankRange.firstRankIdx == context.common.worldSize || rankRange.lastRankIdx < 0) {
-            continue;
-        }
-
-        DispatchExpertRowsByRank<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-            context, params, winRankAddr, scratch, localExpertId, expertRange, rankRange,
-            gmm1TileRowCount);
-
-        if (coreDispatchRowEnd <= expertRange.expertDispatchRowEnd) {
-            break;
         }
     }
 }
@@ -628,7 +678,7 @@ __aicore__ inline void RunMoeExpertDispatchStage(
             if (dispatchRowCount > sendCnt) {
                 dispatchRowCount = sendCnt;
             }
-            DispatchExpertTokens<ActivationType, QuantScaleType, Gmm1TileM, TopkWeightsPrefetch>(
+            DispatchExpertTokens<ActivationType, QuantScaleType, EnableA8W4, Gmm1TileM, TopkWeightsPrefetch>(
                 context, params, winRankAddr, scratch, expertIdx, expertIdx + 1U,
                 static_cast<uint32_t>(dispatchRowCount));
         }
