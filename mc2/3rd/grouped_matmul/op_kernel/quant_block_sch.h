@@ -61,7 +61,8 @@ struct ASWOffsetParam {
 class QuantASWBlockSch {
 public:
     __aicore__ inline QuantASWBlockSch() {}
-    template <bool isGmm> __aicore__ inline void Init(const TCubeTiling *__restrict &tilingData, uint32_t blockIdx);
+    template <bool isGmm>
+    __aicore__ inline void Init(const TCubeTiling *__restrict &tilingData, uint32_t blockIdx);
     __aicore__ inline void SetRankFirstLayout(uint32_t rankDim, const __gm__ uint64_t *cGroupOffsetTableGm)
     {
         rankDim_ = rankDim;
@@ -77,7 +78,8 @@ public:
     }
     template <bool aTrans, bool bTrans, class xType, class scaleType, CubeFormat wFormat = CubeFormat::ND>
     __aicore__ inline void UpdateGroupOffset(int32_t m, int32_t n, int32_t k, uint32_t groupIdx);
-    template <bool isGmm> __aicore__ inline void UpdateGroupParams();
+    template <bool isGmm>
+    __aicore__ inline void UpdateGroupParams();
     __aicore__ inline void UpdateTailTile();
     template <bool isGmm>
     __aicore__ inline void UpdateBasicIndex(uint64_t roundIdx, bool isLastGroupRound);
@@ -113,9 +115,9 @@ __aicore__ inline void QuantASWBlockSch::Init(const TCubeTiling *__restrict &til
     params_.mSplitAddrOffset = 0;
     params_.nSplitAddrOffset = 0;
     params_.xScaleGroupAddrOffset = 0; // xScale is optional, mm不需要，与GMM代码归一
-    params_.mTailTile = 1; // 1 说明不切分, mm可直接从mm tiling里获取，但目前仓不同，无法拿到
-    params_.nTailTile = 1; // 1 说明不切分
-    startBlockIdx_ = 0;    // 每个group核使用开始的索引, 单mm默认从0开始
+    params_.mTailTile = 1;             // 1 说明不切分, mm可直接从mm tiling里获取，但目前仓不同，无法拿到
+    params_.nTailTile = 1;             // 1 说明不切分
+    startBlockIdx_ = 0;                // 每个group核使用开始的索引, 单mm默认从0开始
 
     if constexpr (isGmm) { // GMM
         params_.m = 0;
