@@ -41,7 +41,8 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
                            const c10::optional<at::Tensor> &atten_mask,
                            const c10::optional<at::Tensor> &actual_seq_qlen,
                            const c10::optional<at::Tensor> &actual_seq_klen,
-                           const at::Tensor &start_loc, int64_t sparse_mode)
+                           const at::Tensor &start_loc, int64_t sparse_mode,
+                           int64_t init_blocks, int64_t local_blocks)
 {
     TORCH_CHECK(query.defined() && query.numel() > 0, "Tensor query is empty.");
     TORCH_CHECK(key.defined() && key.numel() > 0, "Tensor key is empty.");
@@ -109,6 +110,9 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
     TORCH_CHECK(cu_q.size(0) == kv_len.size(0) + 1, "actual_seq_qlen size must be batch+1.");
     TORCH_CHECK(start_loc.size(0) == kv_len.size(0), "start_loc size must equal batch.");
     TORCH_CHECK(bt.size(0) == kv_len.size(0), "block_table batch must equal batch.");
+    TORCH_CHECK(init_blocks >= 0 && local_blocks >= 0, "init_blocks/local_blocks must be >= 0.");
+    TORCH_CHECK(init_blocks <= bt.size(1) && local_blocks <= bt.size(1),
+                "init_blocks/local_blocks must be <= maxBlocks.");
 
     at::Tensor score{nullptr};
     {
@@ -123,7 +127,7 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key,
     }
 
     ACLNN_CMD(aclnnMsaIndexScore, query, key, block_table, scale, atten_mask, actual_seq_qlen,
-              actual_seq_klen, start_loc, sparse_mode, score);
+              actual_seq_klen, start_loc, sparse_mode, init_blocks, local_blocks, score);
     return score;
 }
 

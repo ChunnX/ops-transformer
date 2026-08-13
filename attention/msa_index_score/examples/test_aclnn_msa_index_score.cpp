@@ -443,7 +443,8 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
     int ret = aclnnMsaIndexScoreGetWorkspaceSize(queryT, keyT, blockTableT, scaleT, attenMaskT, actualSeqQlenT, actualSeqKlenT,
-                                                 startLocT, tc.sparseMode, scoreT, &workspaceSize, &executor);
+                                                 startLocT, tc.sparseMode, kInitBlocks, kLocalBlocks, scoreT, &workspaceSize,
+                                                 &executor);
     if (ret != ACL_SUCCESS) {
         (void)printf("  [%s] GetWorkspaceSize failed, ERROR %d -> FAIL\n", tc.name, ret);
         return false;
@@ -490,9 +491,7 @@ int main()
     }
 
     // startLoc 为逻辑 block 索引；因果由 sparseMode=3（rightDownCausal）承担。
-    // 旧 token-prefix 语义下的 startLoc_token ≈ kv-q，对应 block = (kv-q)/P。
-    const char *runAll = std::getenv("MSA_INDEX_SCORE_RUN_ALL");
-    const std::vector<TestCase> allCases = {
+    const std::vector<TestCase> cases = {
         // name                       Hq   D    pages  qLen           kvLen         startLoc(block) bf16  int8
         {"L0-debug-trace",             2,  16,   2,   {2},           {5},          {16},          false, false},
         {"L0-int8-dequant-trace",      2,  16,   2,   {2},           {5},          {16},          false, true},
@@ -509,12 +508,6 @@ int main()
         {"L1-int8-dequant",            8, 128,   8,   {32, 17},      {300, 130},   {2, 0},        false, true},
         {"L2-tiny-kv",                 8, 128,   4,   {1, 1},        {1, 3},       {0, 0},        false, false},
     };
-    const std::vector<TestCase> debugCases = {
-        {"L0-debug-trace",             2,  16,   2,   {2},           {5},          {16},          false, false},
-        {"L0-int8-dequant-trace",      2,  16,   2,   {2},           {5},          {16},          false, true},
-    };
-    const std::vector<TestCase> &cases =
-        (runAll != nullptr && runAll[0] == '1') ? allCases : debugCases;
 
     size_t passed = 0;
     (void)printf("running %zu MsaIndexScore cases\n", cases.size());

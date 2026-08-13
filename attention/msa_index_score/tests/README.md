@@ -28,7 +28,7 @@ bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
 | `L1-bf16` / `L1-int8-dequant` | dtype | 非量化 / 量化 |
 | `L2-tiny-kv` | 极小 kv | 尾填充 |
 
-默认只跑两个 L0 TRACE；全矩阵：`MSA_INDEX_SCORE_RUN_ALL=1`。
+默认跑完整 13 条用例矩阵。
 
 ## 3. Python 参考
 

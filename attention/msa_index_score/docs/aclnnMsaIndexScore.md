@@ -28,6 +28,14 @@
     score = Maxpool[ scale \cdot Q_{idx}@K_{idx}^{T}  ]
     $$
 
+    完整公式（含因果 mask 与 local_mask）：
+
+    $$
+    score = Maxpool[(scale \cdot) Q_{idx}@K_{idx}^{T} + atten\_mask] + local\_mask
+    $$
+
+    $local\_mask$ 由 `startLoc`、`initBlocks`、`localBlocks` 生成：逻辑 block $[0, initBlocks)$ 写入 $1\mathrm{e}30$；窗口 $[max(0, startLoc+1-localBlocks), startLoc]$ 写入 $1\mathrm{e}29$（覆盖同位置的 init）。两者均为 0 时关闭 $local\_mask$。
+
 - **参数介绍**：
 
     > - B（Batch Size）表示输入样本批量大小
@@ -51,7 +59,9 @@ aclnnStatus aclnnMsaIndexScoreGetWorkspaceSize(
     const aclTensor *actualSeqQlenOptional,
     const aclTensor *actualSeqKlenOptional,
     const aclTensor *startLoc,
-    int64_t          sparseMode, 
+    int64_t          sparseMode,
+    int64_t          initBlocks,
+    int64_t          localBlocks,
     const aclTensor *score,
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor);
@@ -75,8 +85,10 @@ aclnnStatus aclnnMsaIndexScore(
 | attenMaskOptional             | 输入      | 控制因果可见的mask掩码。                          | 仅在sparseMode=3时使用，作为base mask控制causal可见；取值为1代表该位不参与计算，为0代表该位参与计算 | INT8                         | ND       | 2（$[2048, 2048]$）                                          |
 | actualSeqQlenOptional | 输入      | 每个Batch中，Query的有效token数                   | 当传入TND时，该入参必须传入，单调不减（前缀和）              | INT32                        | ND       | 1（$[B+1]$）                                                 |
 | actualSeqKlenOptional   | 输入      | 每个Batch中，Key的有效token数                     | 当传入TND时，该入参必须传入，单调不减（前缀和）；PageAttention场景下为各请求可见 $S2$ | INT32                        | ND       | 1（$[B]$）                                                   |
-| startLoc                      | 输入      | 当前 query 所在 block 在完整 block table 中的索引 | 提供 block 在整个 block 序列中的位置信息，生成$local\_mask$，用于设置部分block的score | INT32                        | ND       | 1（$[B]$）                                                   |
+| startLoc                      | 输入      | 当前 query 所在逻辑 block 索引（非 token 前缀） | 与 `initBlocks` / `localBlocks` 一起生成 $local\_mask$ | INT32                        | ND       | 1（$[B]$）                                                   |
 | sparseMode                    | 输入      | 表示sparse的模式                                  | 为0时，代表defaultMask模式；为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。 | INT64                        | -        | -                                                            |
+| initBlocks                    | 输入      | $local\_mask$ 强制选中的头部 block 数             | 对逻辑 block $[0, initBlocks)$ 写入高分 $1\mathrm{e}30$。可选，默认 $0$；须 $\ge 0$ 且 $\le maxBlockNumPerSeq$ | INT64                        | -        | -                                                            |
+| localBlocks                   | 输入      | $local\_mask$ 强制选中的局部窗口长度              | 窗口为 $[max(0, startLoc+1-localBlocks), startLoc]$，写入高分 $1\mathrm{e}29$（覆盖同位置 init）。可选，默认 $1$（对齐 MiniMax HF）；与 Triton raw score 对齐时置 $0$ | INT64                        | -        | -                                                            |
 | score                         | 输出      | 公式中的$score$                                   | 逐block的重要性分数；末维为对齐后的逻辑 block 数             | FLOAT                        | ND       | 3（$[N1, T1, RoundUp(maxBlockNumPerSeq, 16)]$）              |
 | workspaceSize                 | 输出      | 所需 workspace 字节数                             | -                                                            | uint64_t                     | -        | -                                                            |
 | executor                      | 输出      | 算子执行器                                        | -                                                            | aclOpExecutor**              | -        | -                                                            |
@@ -115,6 +127,7 @@ aclnnStatus aclnnMsaIndexScore(
 - `sparseMode` 当前仅支持 0、3：
     - 为 0 时，代表 defaultMask 模式，`attenMaskOptional` 传入 `nullptr`；
     - 为 3 时，代表 rightDownCausal 模式，`attenMaskOptional` 必须传入，shape 为 $[2048, 2048]$，取值为 1 代表该位不参与计算，为 0 代表该位参与计算。
+- `initBlocks`、`localBlocks` 必须 $\ge 0$ 且不超过 `blockTableOptional` 第二维（$maxBlockNumPerSeq$）。两者均为 0 时跳过 $local\_mask$。
 
 
 ## 调用示例
@@ -295,6 +308,8 @@ int InitializeTensors(TensorResources& resources) {
 int ExecuteMsaIndexScore(TensorResources& resources, aclrtStream stream,
                          void** workspaceAddr, uint64_t* workspaceSize) {
   int64_t sparseMode = 3;
+  int64_t initBlocks = 0;
+  int64_t localBlocks = 1;
   aclOpExecutor* executor = nullptr;
 
   // 非量化：scaleOptional 传 nullptr
@@ -308,6 +323,8 @@ int ExecuteMsaIndexScore(TensorResources& resources, aclrtStream stream,
       resources.actualSeqKlenTensor,
       resources.startLocTensor,
       sparseMode,
+      initBlocks,
+      localBlocks,
       resources.scoreTensor,
       workspaceSize,
       &executor);

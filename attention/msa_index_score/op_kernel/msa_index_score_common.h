@@ -29,6 +29,9 @@ constexpr uint32_t MSA_BLOCK_SIZE = 128;
 // 一个 M-tile 的行数。行 = 请求内 (token, head) 扁平索引，head 为低位。
 constexpr uint32_t MSA_ROW_TILE_M = 128;
 
+// Cube L0A fractal / 向量归约对齐行数。末尾短 tile 不足该值时向前重叠。
+constexpr uint32_t MSA_M_ALIGN = 16;
+
 // BlockMmad 的 L1TileShape::K。headDim <= 该值时 kLoop = 1，
 // headDim 更大时 BlockMmad 内部自动多轮 K 迭代。
 constexpr uint32_t MSA_K_TILE = 128;
