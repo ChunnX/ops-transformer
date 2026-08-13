@@ -270,22 +270,7 @@ MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_
     combinedXGm_.SetGlobalBuffer((__gm__ XType *)combinedX);
 
     // 计算actualA_的大小
-    uint32_t numRecvBytes = Ceil(localmoeNum_ * sizeof(int64_t), UB_ALIGN) * UB_ALIGN;
-    uint32_t reduceTmpBytes = ReduceSumWorkNeedSize(localmoeNum_, sizeof(int64_t)) * sizeof(int64_t);
-    TBuf<TPosition::VECCALC> numRecvBuf;
-    tpipe_->InitBuffer(numRecvBuf, numRecvBytes + reduceTmpBytes + UB_ALIGN); // 数据 + ReduceSum tmp + 输出
-    LocalTensor<int64_t> numRecvLocal = numRecvBuf.Get<int64_t>();
-
-    DataCopyExtParams numRecvCopyParams{1U, static_cast<uint32_t>(localmoeNum_ * sizeof(int64_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int64_t> numRecvPadParams{false, 0U, 0U, 0U};
-    DataCopyPad(numRecvLocal, numRecvPerExpertGm_, numRecvCopyParams, numRecvPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-
-    LocalTensor<int64_t> reduceTmp = numRecvLocal[numRecvBytes / sizeof(int64_t)];
-    LocalTensor<int64_t> sumOut = reduceTmp[reduceTmpBytes / sizeof(int64_t)];
-    ReduceSum<int64_t>(sumOut, numRecvLocal, reduceTmp, static_cast<int32_t>(localmoeNum_));
-    SyncFunc<AscendC::HardEvent::V_S>();
-    actualA_ = static_cast<uint64_t>(sumOut.GetValue(0));
+    actualA_ = tilingData_->cfg.actualA;
     ubXBytes_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
     XTypeAlign32Size_ = hAlignSize_;
     if constexpr (HasTopkWeight == 1) {
