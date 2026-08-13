@@ -151,10 +151,6 @@ private:
     uint32_t gmm1TilesPerMGroup_ = 1U;
     uint32_t mGroupsPerWave_ = 1U;
     // Dispatch wave 按实际接收行数合并小专家；GMM wave 仍按 mGroupsPerWave_ 独立推进。
-    static constexpr uint32_t DISPATCH_WAVE_BUDGET_MULTIPLE = 1U;
-    uint32_t dispatchWaveRowBudget_ = 1U;
-    bool dispatchHasPreparedExpert_ = false;
-    uint32_t dispatchPreparedExpertIdx_ = 0U;
     uint16_t gmm1PingPongIdx_ = 0;
     uint32_t startBlockIdx_ = 0;
     uint32_t blockNum_ = GetBlockNum();
@@ -361,9 +357,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
                                       tilingData->hiddenDim / ACTIVATION_N_HALF;
     gmm1TilesPerMGroup_ = Ops::Base::CeilDiv(gmm1SchedulerWidth, static_cast<uint32_t>(L1_TILE_N));
     mGroupsPerWave_ = tilingData->mGroupsPerWave == 0U ? 1U : tilingData->mGroupsPerWave;
-    dispatchWaveRowBudget_ = mGroupsPerWave_ * GMM1_TILE_M * DISPATCH_WAVE_BUDGET_MULTIPLE;
-    dispatchHasPreparedExpert_ = false;
-    dispatchPreparedExpertIdx_ = 0U;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
     rankId_ = mc2Context_->epRankId;
     for (int i = 0; i < worldSize_; i++) {
@@ -811,20 +804,23 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
         // 保留 full_port 的阶段顺序：一次调用完成全部路由专家 Dispatch，随后才由
         // AIC/AIV0 按 GMM wave 进入 GMM1/GMM2。这里的内部 wave 只是 Dispatch 分核
         // 的批次，不是跨阶段流水边界。
+        const uint32_t dispatchWaveRowBudget = mGroupsPerWave_ * GMM1_TILE_M;
+        bool hasPreparedExpert = false;
+        uint32_t preparedExpertIdx = 0U;
         uint32_t waveBeginExpert = dispatchWaveCursor.expertIdx;
         while (waveBeginExpert < moeExpertPerRank_) {
             uint32_t waveEndExpert = waveBeginExpert;
             uint32_t plannedDispatchRowCount = 0U;
             while (waveEndExpert < moeExpertPerRank_) {
                 uint32_t expertIdx = waveEndExpert;
-                if (!dispatchHasPreparedExpert_ || dispatchPreparedExpertIdx_ != expertIdx) {
+                if (!hasPreparedExpert || preparedExpertIdx != expertIdx) {
                     PrepareMoeExpertDispatchStage<ActivationType, false, TopkWeightsPrefetch>(
                         tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx, dispatchExpertRowCount);
-                    dispatchPreparedExpertIdx_ = expertIdx;
-                    dispatchHasPreparedExpert_ = true;
+                    preparedExpertIdx = expertIdx;
+                    hasPreparedExpert = true;
                 }
                 if (dispatchExpertRowCount == 0U) {
-                    dispatchHasPreparedExpert_ = false;
+                    hasPreparedExpert = false;
                     ++waveEndExpert;
                     continue;
                 }
@@ -840,7 +836,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
                         dispatchExpertRowCount : remainingWorkspaceRowCount;
                 }
                 if (dispatchRowCount == 0U) {
-                    dispatchHasPreparedExpert_ = false;
+                    hasPreparedExpert = false;
                     ++waveEndExpert;
                     continue;
                 }
@@ -849,15 +845,15 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
                 // 一个 GMM MGroup。若下一个专家放不进当前 wave，只保留 count，
                 // 下一轮内部 Dispatch wave 复用该 count。
                 if (plannedDispatchRowCount != 0U &&
-                    plannedDispatchRowCount + dispatchRowCount > dispatchWaveRowBudget_) {
+                    plannedDispatchRowCount + dispatchRowCount > dispatchWaveRowBudget) {
                     break;
                 }
                 plannedDispatchRowCount += static_cast<uint32_t>(dispatchRowCount);
-                dispatchHasPreparedExpert_ = false;
+                hasPreparedExpert = false;
                 ++waveEndExpert;
 
                 // 热点大专家允许独占一个 Dispatch wave，不按 GMM 的 256-row 边界重复进入。
-                if (plannedDispatchRowCount >= dispatchWaveRowBudget_) {
+                if (plannedDispatchRowCount >= dispatchWaveRowBudget) {
                     break;
                 }
             }
