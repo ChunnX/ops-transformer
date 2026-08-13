@@ -1285,23 +1285,23 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint
         }
         this->GetExtremeValue(this->negativeFloatScalar);
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
-    }
 
-    oriKVGm.SetGlobalBuffer((__gm__ KV_T *)(oriKV));
-    oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)oriBlockTable);
+        oriKVGm.SetGlobalBuffer((__gm__ KV_T *)(oriKV));
+        oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)oriBlockTable);
 
-    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
-        cmpKVGm.SetGlobalBuffer((__gm__ KV_T *)cmpKV);
-        cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)cmpBlockTable);
-    }
+        if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+            cmpKVGm.SetGlobalBuffer((__gm__ KV_T *)cmpKV);
+            cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)cmpBlockTable);
+        }
 
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
-        cmpSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)cmpSparseIndices);
-    }
+        if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+            cmpSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)cmpSparseIndices);
+        }
 
-    if (sinks != nullptr) {
-        sinksGm.SetGlobalBuffer((__gm__ T *)sinks);
-        this->isSinks = true;
+        if (sinks != nullptr) {
+            sinksGm.SetGlobalBuffer((__gm__ T *)sinks);
+            this->isSinks = true;
+        }
     }
 }
 
