@@ -104,23 +104,21 @@ def _to_npu(tensor):
     return torch.as_tensor(tensor).npu()
 
 
-def _build_metadata(data, case):
+def _build_metadata(sparse_seq_len, cu_seqlens_q, kv_lengths, case):
+    """用合法的 sparse_seq_len/cu_seqlens_q + case 的 attr 构造 metadata。
+    张量输入必须是未篡改的原始值，attr 用 case_override 以保证 metadata 与
+    主算子收到的 attr 一致。"""
     golden._ensure_custom_ops_registered()
-    q_lengths = data["q_lengths"]
-    kv_lengths = data["kv_lengths"]
-    n1 = case["N1"]
-    n2 = case["N2"]
-    d = case["D"]
     seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32).npu()
-    cu_seqlens_q = _to_npu(data["cu_seqlens_q"])
-    sparse_seq_len = _to_npu(data["sparse_seq_len"])
+    cu_seqlens_q_npu = _to_npu(cu_seqlens_q)
+    sparse_seq_len_npu = _to_npu(sparse_seq_len)
     torch_npu.npu.synchronize()
     metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
-        sparse_seq_len,
-        n1,
-        n2,
-        d,
-        cu_seqlens_q=cu_seqlens_q,
+        sparse_seq_len_npu,
+        case["N1"],
+        case["N2"],
+        case["D"],
+        cu_seqlens_q=cu_seqlens_q_npu,
         cu_seqlens_kv=None,
         seqused_q=None,
         seqused_kv=seqused_kv,
@@ -168,7 +166,9 @@ def _preprocess_to_npu(data):
         physical_block_count=golden.BLOCK_NUM,
     )
 
-    data["query"] = data["query"].contiguous().view(golden.FP8_DTYPE)
+    data["query"] = golden.convert_q_tnd_or_ntd_to_layout(
+        data["query"], q_lengths, golden.N_q, golden.Q_INPUT_LAYOUT, "Q"
+    ).contiguous().view(golden.FP8_DTYPE)
 
     data["key"] = golden.mxfp8_pa_preprocessing(
         data["key"], is_vscale=False, is_scale=False, **pa_kwargs
@@ -471,11 +471,15 @@ def run_one_tiling_check(name, mutate_fn, case_fn, idx, total):
 
     try:
         data = _gen_base_data()
-        base_case = golden._normalize_case(dict(_BASE_CASE))
-        metadata, seqused_kv = _build_metadata(data, base_case)
+        orig_sparse_seq_len = data["sparse_seq_len"]
+        orig_cu_seqlens_q = data["cu_seqlens_q"]
+        orig_kv_lengths = data["kv_lengths"]
         _preprocess_to_npu(data)
         mutate_fn(data)
         case_override = case_fn()
+        metadata, seqused_kv = _build_metadata(
+            orig_sparse_seq_len, orig_cu_seqlens_q, orig_kv_lengths, case_override
+        )
         _log_constructed_case(name, data, case_override)
         _call_op_direct(data, case_override, metadata, seqused_kv)
         elapsed = time.time() - start
