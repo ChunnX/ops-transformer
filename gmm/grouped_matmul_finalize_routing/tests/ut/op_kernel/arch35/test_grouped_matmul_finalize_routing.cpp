@@ -14,7 +14,12 @@
 
 #include "gtest/gtest.h"
 #include "tikicpulib.h"
-#include "../../../../op_kernel/grouped_matmul_finalize_routing_apt.cpp"
+#include "../../../../op_kernel/arch35/grouped_matmul_finalize_routing_tiling_data.h"
+
+template <int ATRANS, int BTRANS, int SCALETYPE, int ROWINDEXTYPE>
+__global__ __aicore__ void grouped_matmul_finalize_routing(
+    GM_ADDR x, GM_ADDR w, GM_ADDR scale, GM_ADDR bias, GM_ADDR pertokenScale, GM_ADDR groupList, GM_ADDR shareInput,
+    GM_ADDR logit, GM_ADDR rowIndex, GM_ADDR offset, GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling);
 
 namespace {
 

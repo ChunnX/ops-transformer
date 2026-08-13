@@ -9,7 +9,11 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (UT_TEST_ALL OR OP_KERNEL_UT)
+    set(grouped_matmul_finalize_routing_arch35_kernel
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../op_kernel/grouped_matmul_finalize_routing_apt.cpp)
+
     AddOpTestCase(grouped_matmul_finalize_routing "Ascend950PR_9599"
-        "-DDTYPE_X=fp8_e5m2_t -DDTYPE_W=fp8_e5m2_t -DDTYPE_SCALE=fp8_e8m0_t -DDTYPE_PERTOKEN_SCALE=fp8_e8m0_t -DDTYPE_LOGIT=bfloat16_t -DDTYPE_Y=bfloat16_t -DORIG_DTYPE_X=DT_FLOAT8_E5M2 -DORIG_DTYPE_W=DT_FLOAT8_E5M2 -DORIG_DTYPE_Y=DT_BF16"
-        "")
+        "-I${PROJECT_SOURCE_DIR}/gmm/common -DDTYPE_X=fp8_e5m2_t -DDTYPE_W=fp8_e5m2_t -DDTYPE_SCALE=fp8_e8m0_t -DDTYPE_PERTOKEN_SCALE=fp8_e8m0_t -DDTYPE_LOGIT=bfloat16_t -DDTYPE_Y=bfloat16_t -DORIG_DTYPE_X=DT_FLOAT8_E5M2 -DORIG_DTYPE_W=DT_FLOAT8_E5M2 -DORIG_DTYPE_Y=DT_BF16"
+        ""
+        "${grouped_matmul_finalize_routing_arch35_kernel}")
 endif()
