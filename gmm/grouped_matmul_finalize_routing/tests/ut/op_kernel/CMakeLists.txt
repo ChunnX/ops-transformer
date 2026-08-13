@@ -18,3 +18,5 @@ if (UT_TEST_ALL OR OP_KERNEL_UT)
     AddOpTestCase(grouped_matmul_finalize_routing "Ascend910B1" "" "${grouped_matmul_finalize_routing_files}")
 
 endif()
+
+add_subdirectory(arch35)
