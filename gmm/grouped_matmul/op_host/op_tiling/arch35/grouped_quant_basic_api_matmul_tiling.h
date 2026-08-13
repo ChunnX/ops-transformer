@@ -62,11 +62,11 @@ private:
     ge::graphStatus CalL1Depth(uint64_t leftL1Size);
     bool SearchReducedThreeBufferTiling(uint64_t initialDepthA1, uint64_t initialDepthB1, uint64_t baseASize,
                                         uint64_t baseBSize, L1SearchResult &result);
-    void SearchExpandedThreeBufferTiling(uint64_t initialDepthA1, uint64_t initialDepthB1,
-                                         uint64_t maxDepthA1, uint64_t maxDepthB1,
-                                         uint64_t baseASize, uint64_t baseBSize, L1SearchResult &result);
-    void TryUpdateThreeBufferCandidate(uint64_t candidateDepthA1, uint64_t candidateDepthB1,
-                                       uint64_t baseASize, uint64_t baseBSize, L1SearchResult &result);
+    void SearchExpandedThreeBufferTiling(uint64_t initialDepthA1, uint64_t initialDepthB1, uint64_t maxDepthA1,
+                                         uint64_t maxDepthB1, uint64_t baseASize, uint64_t baseBSize,
+                                         L1SearchResult &result);
+    void TryUpdateThreeBufferCandidate(uint64_t candidateDepthA1, uint64_t candidateDepthB1, uint64_t baseASize,
+                                       uint64_t baseBSize, bool requireMinLoadSize, L1SearchResult &result);
     bool IsBetterThreeBufferCandidate(uint64_t highBwPayload, uint64_t totalPayload,
                                       const L1SearchResult &result) const;
     void ApplyThreeBufferSearchResult(const L1SearchResult &result);
@@ -167,9 +167,9 @@ private:
     // Shadows base's private tilingData_ (GMMQuantBasicApiTilingData); own type
     GroupedMatmulTilingData::GMMS4S4IntQuantTilingData tilingData_;
     uint64_t int8WeightWs_ = 0UL;
-    uint64_t int8XWs_ = 0UL;      // ★ x int4->int8 预转换 workspace (m·k·1B, m=totalM single x)
+    uint64_t int8XWs_ = 0UL; // ★ x int4->int8 预转换 workspace (m·k·1B, m=totalM single x)
     uint64_t mmOutWs_ = 0UL;
-    uint64_t perTokenScaleFillWs_ = 0UL;  // F3: isPerTokenQuant=0 时全 1 perTokenScale 兜底段 (m·float)
+    uint64_t perTokenScaleFillWs_ = 0UL; // F3: isPerTokenQuant=0 时全 1 perTokenScale 兜底段 (m·float)
     bool weightNzC032_ = false;
     // mList_/kList_/nList_ shadow base's private same-named (base private, derived inaccessible)
     int32_t mList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};
