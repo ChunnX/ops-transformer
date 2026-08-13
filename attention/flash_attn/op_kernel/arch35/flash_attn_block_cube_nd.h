@@ -164,10 +164,6 @@ public:
         static_assert(sizeof(L1Layout) <= 512 * 1024, "L1 buffer too large");
         l1PBuffers_ = LocalTensor<uint8_t>(TPosition::A1, OFFSET_OF_MEMBER(L1Layout, pBuffers),
                                            SIZE_OF_MEMBER(L1Layout, pBuffers));
-        // PRINTF("p offset:%d, q offset:%d, kv offset:%d, kv size:%d\n",
-        //         OFFSET_OF_MEMBER(L1Layout, pBuffers),
-        //         OFFSET_OF_MEMBER(L1Layout, qBuffers),
-        //         OFFSET_OF_MEMBER(L1Layout, kvBuffers), SIZE_OF_MEMBER(L1Layout, kvBuffers));
         l1QBuffers_ = LocalTensor<uint8_t>(TPosition::A1, OFFSET_OF_MEMBER(L1Layout, qBuffers),
                                            SIZE_OF_MEMBER(L1Layout, qBuffers));
         l1KvBuffers_ = LocalTensor<uint8_t>(TPosition::A1, OFFSET_OF_MEMBER(L1Layout, kvBuffers),
