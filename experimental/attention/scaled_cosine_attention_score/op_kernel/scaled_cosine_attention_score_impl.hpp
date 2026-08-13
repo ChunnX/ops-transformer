@@ -174,7 +174,6 @@ private:
         Mul(tmp, src, src, alignedHeadDim_);
         PipeBarrier<PIPE_V>();
         ReduceSum<float>(scalar[sumOffset], tmp, work, alignedHeadDim_);
-        PipeBarrier<PIPE_V>();
         Adds(scalar[sumEpsOffset], scalar[sumOffset], eps_, 1);
         PipeBarrier<PIPE_V>();
         Sqrt(scalar[normOffset], scalar[sumEpsOffset], 1);

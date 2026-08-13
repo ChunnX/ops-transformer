@@ -47,10 +47,10 @@ score[b,h,i,j] = sum_t(query[b,h,i,t] * key[b,h,j,t])
 - 当前 kernel 为 Vector Core 融合基线；最终吞吐需要在目标 NPU 上与组合算子实测。
 - 本算子采用 `sqrt(sum(x^2) + eps)`，不要与 `max(norm(x), eps)` 的参考式混用。
 
-## opsnn 集成
+## ops-transformer 集成
 
-本目录是 opsnn 仓库的单算子模块，不是独立 CMake 工程。提交时将整个目录放到
-opsnn 对应算子分类目录，由仓库顶层 CMake 提供 `add_modules_sources`、
+本目录是 ops-transformer 仓库 experimental/attention 下的单算子模块，不是独立 CMake 工程。提交时将整个目录放到
+ops-transformer 对应算子分类目录，由仓库顶层 CMake 提供 `add_modules_sources`、
 `add_graph_plugin_sources`、`AddOpTestCase` 等构建函数。
 
 主要文件：
@@ -61,7 +61,6 @@ opsnn 对应算子分类目录，由仓库顶层 CMake 提供 `add_modules_sourc
 ├── examples/test_aclnn_scaled_cosine_attention_score.cpp
 ├── op_graph
 ├── op_host
-│   ├── config/ascend910b/scaled_cosine_attention_score_binary.json
 │   ├── scaled_cosine_attention_score_def.cpp
 │   ├── scaled_cosine_attention_score_infershape.cpp
 │   ├── scaled_cosine_attention_score_tiling.cpp
