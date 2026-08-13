@@ -12,8 +12,10 @@
  * \file flash_attn_block_vec_dn.h
  * \brief FANoQuantGqaBlockVecDn —— Dn 路径专用 Vec Block 模板（独立类，无 base 基类）。
  */
-#ifndef FLASH_ATTENTION_BLOCK_VEC_DN_H_
-#define FLASH_ATTENTION_BLOCK_VEC_DN_H_
+#ifndef FLASH_ATTN_BLOCK_VEC_DN_H_
+#define FLASH_ATTN_BLOCK_VEC_DN_H_
+
+#include <limits>
 
 #if __has_include("../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h")
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
@@ -71,6 +73,8 @@ public:
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
     static constexpr uint32_t CC_MM_0 = 0U;
     static constexpr uint32_t CC_MM_1 = 1U;
+    static constexpr uint32_t CC_MM_2 = 2U;
+    static constexpr uint32_t CC_MM_3 = 3U;
     static constexpr uint32_t CC_L1P_0 = 5U;
     static constexpr uint32_t CC_L1P_1 = 6U;
     static constexpr uint32_t CC_L1P_2 = 7U;
@@ -89,7 +93,7 @@ public:
     LocalTensor<uint8_t> l1PBuffers_;
 
     // UB
-    static constexpr uint32_t UB_MM_RES_BUFCNT = 2U;
+    static constexpr uint32_t UB_MM_RES_BUFCNT = (dBaseSize > 128) ? 2U : 4U;
     static constexpr uint32_t UB_MM_RES_BUF_BYTES =
         mBaseSize / CV_RATIO * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(T);
     LocalTensor<uint8_t> ubMmResBuffers_;
@@ -178,7 +182,7 @@ public:
         /*--------------------------------------------UB--------------------------------------------*/
         uint32_t addrUb = 0;
         ubMmResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb,
-                                                UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES); // CV通信BUF
+                                               UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES); // CV通信BUF
         addrUb = UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES;
         ubVec2Res_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_VEC2_RES_BUF_BYTES)
                          .template ReinterpretCast<T>(); // 输出BUF: attn_out拷出
@@ -209,10 +213,23 @@ public:
         addrUb += UB_LSE_OUT_BUFCNT * UB_LSE_OUT_BUF_BYTES;
     }
 
+    __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx)
+    {
+        constexpr uint32_t softmaxBufElementCount = UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T);
+        LocalTensor<T> sumUb = softmaxSumBuf_[slotIdx * softmaxBufElementCount];
+        LocalTensor<T> maxUb = softmaxMaxBuf_[slotIdx * softmaxBufElementCount];
+        Duplicate<T>(sumUb, static_cast<T>(0), softmaxBufElementCount);
+        Duplicate<T>(maxUb, static_cast<T>(-std::numeric_limits<float>::infinity()), softmaxBufElementCount);
+    }
+
     __aicore__ inline void InitCrossCoreSync()
     {
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_0);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_1);
+        if constexpr (dBaseSize <= 128) {
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_2);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_3);
+        }
     }
 
     __aicore__ inline void UnInitCrossCoreSync()
@@ -236,6 +253,11 @@ public:
         uint32_t v1c2CrossCoreSyncIdx = CC_L1P_0 + pL1BufId;
         LocalTensor<INPUT_T> pL1Tensor = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES].template ReinterpretCast<INPUT_T>();
         auto mm1ResUbTensor = ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<T>();
+
+        if (unlikely(runInfo.isFirstS2Loop)) {
+            ResetSoftmaxBuffer(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
 
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
         ProcessVec1Dn(pL1Tensor, mm1ResUbTensor, runInfo);
@@ -368,17 +390,10 @@ public:
 
         LocalTensor<INPUT_T> stage1CastTensor =
             ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
-        if (unlikely(runInfo.isFirstS2Loop)) {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, false, s2BaseSize>(
-                stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
-                runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
-                static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
-        } else {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
-                stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
-                runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
-                static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
-        }
+        FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
+            stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
+            runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
+            static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
 
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
         Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
@@ -572,4 +587,4 @@ public:
 };
 
 } // namespace BaseApi
-#endif // FLASH_ATTENTION_BLOCK_VEC_DN_H_
+#endif // FLASH_ATTN_BLOCK_VEC_DN_H_
