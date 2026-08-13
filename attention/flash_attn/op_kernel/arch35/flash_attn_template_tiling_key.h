@@ -57,6 +57,11 @@ ASCENDC_TPL_ARGS_DECL(FlashAttn,
                       //    1: true
                       ASCENDC_TPL_BOOL_DECL(HasAttenMask, false, true),
 
+                      // hasDrop (1-bit)
+                      //    0: false
+                      //    1: true
+                      ASCENDC_TPL_BOOL_DECL(HasDrop, false, true),
+
                       // config (3-bit), support D=64/128/256
                       //    config=0: sOuter=64, sInner=128 → D=64,  DV=64
                       //    config=1: sOuter=32, sInner=256 → D=64,  DV=64
@@ -70,6 +75,7 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCEN
                                                           InOutLayoutType_BNSD_BSND),
                                      ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3),
                                      ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
+                                     ASCENDC_TPL_BOOL_SEL(HasDrop, false, true),
                                      ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3, 4),
                                      ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttnTilingData)), );
 

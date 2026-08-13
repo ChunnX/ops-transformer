@@ -122,6 +122,9 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
         max_seqlen_kv=msk,
         layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
         return_softmax_lse=p.get("return_softmax_lse", False),
+        seed=p.get("seed", 0),
+        offset=p.get("offset", 0),
+        keep_prob=p.get("keep_prob", 1.0),
     )
 
     return meta_kwargs, kernel_kwargs, layout_out

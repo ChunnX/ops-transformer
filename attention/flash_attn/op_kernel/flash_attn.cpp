@@ -83,16 +83,16 @@ __aicore__ inline constexpr bool IsPageAttention()
     return (KV_STORAGE_MODE != KV_STORAGE_MODE_CONTINUE);
 }
 
-template <bool hasAttenMask, uint8_t config>
+template <bool hasAttenMask, bool hasDrop, uint8_t config>
 __aicore__ inline constexpr bool EnableSoftmaxDn()
 {
-    if constexpr (hasAttenMask) {
+    if constexpr (hasAttenMask || hasDrop) {
         return false;
     }
     return ((config == 0) || (config == 2));
 }
 
-template <uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask, uint8_t config>
+template <uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask, bool hasDrop, uint8_t config>
 __global__ __aicore__ void
 flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
            __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
@@ -127,7 +127,7 @@ flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
     constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2);
     constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);
     constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv);
-    constexpr bool useDn = EnableSoftmaxDn<hasAttenMask, config>();
+    constexpr bool useDn = EnableSoftmaxDn<hasAttenMask, hasDrop, config>();
 
     // 根因（静态图）：固定 shape 下 tiling 是编译期常量字节数组而非 __gm__ buffer，
     // 不能直接 reinterpret_cast 成结构体指针访问，必须先拷贝到栈局部结构体对象再取指针。
@@ -139,7 +139,7 @@ flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
     InitSocState();
 
     using FA_T = BaseApi::FAType<INPUT_T, OUT_T, pageAttention, qLayout, kvLayout, outLayout, s1TemplateType,
-                                 s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask>;
+                                 s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, hasDrop>;
 
     if constexpr (useDn) {
         using CubeBlock = BaseApi::FANoQuantGqaBlockCubeDn<FA_T>;

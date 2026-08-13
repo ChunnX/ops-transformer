@@ -100,6 +100,13 @@ struct FlashAttnS1OuterSplitCoreParams {
     uint64_t totalSize;
 };
 
+struct FlashAttnDropMaskParams {
+    uint64_t seed;
+    uint64_t offset;
+    float keepProb;
+    uint8_t keepProbUint8;
+};
+
 struct FlashAttnMetaData {
     uint32_t FAMetadata[FA_AIC_CORE_NUM][FLASH_ATTN_METADATA_SIZE];
     uint32_t FDMetadata[FA_AIV_CORE_NUM][FA_FD_METADATA_SIZE];
@@ -112,6 +119,7 @@ public:
     FlashAttnPageAttentionParams flashAttnPageAttentionParams;
     FlashAttnWorkspaceParams flashAttnWorkspaceParams;
     FlashAttnS1OuterSplitCoreParams flashAttnS1OuterSplitCoreParams;
+    FlashAttnDropMaskParams flashAttnDropMaskParams;
 };
 
 class FlashAttnTilingData {

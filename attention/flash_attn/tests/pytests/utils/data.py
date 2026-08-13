@@ -139,3 +139,135 @@ def make_noncontiguous(tensor, nc_dims):
         p[tuple(ws)] = tensor
         return p[tuple(ws)]
     return tensor
+
+
+import math
+import numpy as np
+
+PHILOX_M4_32 = [0xD2511F53, 0xCD9E8D57]
+PHIL0X_W_32 = [0x9E3779B9, 0xBB67AE85]
+
+
+def _philox4_round(counter, key, philox_m, len_w, mask_w):
+    prod = philox_m[0] * counter[0]
+    hi_1 = prod >> len_w
+    lo_1 = prod & mask_w
+    prod = philox_m[1] * counter[2]
+    hi_2 = prod >> len_w
+    lo_2 = prod & mask_w
+    counter[0] = hi_2 ^ counter[1] ^ key[0]
+    counter[1] = lo_2
+    counter[2] = hi_1 ^ counter[3] ^ key[1]
+    counter[3] = lo_1
+
+
+def _philox4_bumpkey(key, philox_w, mask_w):
+    key[0] = (key[0] + philox_w[0]) & mask_w
+    key[1] = (key[1] + philox_w[1]) & mask_w
+
+
+def _philox(counter, key, rounds):
+    for i in range(rounds - 1):
+        _philox4_round(counter, key, PHILOX_M4_32, 32, 0xffffffff)
+        _philox4_bumpkey(key, PHIL0X_W_32, 0xffffffff)
+    _philox4_round(counter, key, PHILOX_M4_32, 32, 0xffffffff)
+    return counter
+
+
+def _inc_counter(counter):
+    for i in range(4):
+        counter[i] = (counter[i] + 1) & 0xffffffff
+        if counter[i] != 0:
+            return counter
+    return counter
+
+
+def _philox_random(rounds, counter, key, count):
+    ret = list()
+    for i in range((count + 255) // 256 * 256 // 4):
+        ret.extend(_philox(counter[:], key[:], rounds))
+        counter = _inc_counter(counter[:])
+    return np.array(ret)[:count]
+
+
+def _uint32_to_uint8_array(data):
+    uint8_array = np.zeros((4), dtype=np.uint8)
+    uint8_array[0] = data & 0xff
+    uint8_array[1] = (data >> 8) & 0xff
+    uint8_array[2] = (data >> 16) & 0xff
+    uint8_array[3] = (data >> 24) & 0xff
+    return uint8_array
+
+
+def _gen_dropmask_uint8(rounds, counter, key, uint8_count, keep_prob):
+    keep_prob_uint8 = keep_prob * 255
+    uint32_count = math.ceil(uint8_count / 4)
+    philox_uint32 = _philox_random(rounds, counter, key, uint32_count)
+    golden_uint8 = []
+    for each_uint32 in philox_uint32:
+        four_uint8 = _uint32_to_uint8_array(each_uint32)
+        for each_philox_uint8 in four_uint8:
+            compare_res = 1 if each_philox_uint8 <= keep_prob_uint8 else 0
+            golden_uint8.append(compare_res)
+    return golden_uint8[:uint8_count]
+
+
+def gen_dropmask(b, n1, s1, s2, keep_prob=0.9, seed=2, offset=0):
+    rounds = 7
+    seed_high = seed // 0x100000000
+    seed_low = seed - seed_high * 0x100000000
+    key = [seed_low, seed_high]
+    offset_aligned = math.ceil(offset / 16)
+    offset_high = offset_aligned // 0x100000000
+    offset_low = offset_aligned - offset_high * 0x100000000
+    counter = [offset_low, offset_high, 0, 0]
+    s2_aligned = math.ceil(s2 / 16) * 16
+    count = b * n1 * s1 * s2_aligned
+    golden_uint8 = _gen_dropmask_uint8(rounds, counter, key, count, keep_prob)
+    if s2_aligned != s2:
+        drop_mask_np = np.array(golden_uint8).reshape(b, n1, s1, s2_aligned)[:, :, :, :s2].astype(np.uint8)
+    else:
+        drop_mask_np = np.array(golden_uint8).reshape(b, n1, s1, s2).astype(np.uint8)
+    return torch.from_numpy(drop_mask_np)
+
+
+def gen_dropmask_gs1(b, n2, g_size, s1, s2, keep_prob=0.9, seed=2, offset=0):
+    """Generate dropmask with gS1 layout: mask ordered as (B, N2, S1*G, S2).
+    The gS1 dimension is flattened as s1*gSize + g (S1G layout for BSND/TND).
+    Returns mask in (B, N1, S1, S2) shape where N1 = N2 * G.
+    """
+    n1 = n2 * g_size
+    rounds = 7
+    seed_high = seed // 0x100000000
+    seed_low = seed - seed_high * 0x100000000
+    key = [seed_low, seed_high]
+    offset_aligned = math.ceil(offset / 16)
+    offset_high = offset_aligned // 0x100000000
+    offset_low = offset_aligned - offset_high * 0x100000000
+    counter = [offset_low, offset_high, 0, 0]
+    s2_aligned = math.ceil(s2 / 16) * 16
+    gs1 = s1 * g_size
+    count = b * n2 * gs1 * s2_aligned
+    golden_uint8 = _gen_dropmask_uint8(rounds, counter, key, count, keep_prob)
+    if s2_aligned != s2:
+        mask_gs1 = np.array(golden_uint8).reshape(b, n2, gs1, s2_aligned)[:, :, :, :s2].astype(np.uint8)
+    else:
+        mask_gs1 = np.array(golden_uint8).reshape(b, n2, gs1, s2).astype(np.uint8)
+    # Reshape (B, N2, S1*G, S2) -> (B, N2, S1, G, S2) -> (B, N2, G, S1, S2) -> (B, N1, S1, S2)
+    mask = mask_gs1.reshape(b, n2, s1, g_size, s2).transpose(0, 1, 3, 2, 4).reshape(b, n1, s1, s2)
+    return torch.from_numpy(mask)
+
+
+def gen_dropmask_tnd(length, keep_prob=0.9, seed=2, offset=0):
+    rounds = 7
+    seed_high = seed // 0x100000000
+    seed_low = seed - seed_high * 0x100000000
+    key = [seed_low, seed_high]
+    offset_aligned = math.ceil(offset / 16)
+    offset_high = offset_aligned // 0x100000000
+    offset_low = offset_aligned - offset_high * 0x100000000
+    counter = [offset_low, offset_high, 0, 0]
+    count = math.ceil(length / 16) * 16
+    golden_uint8 = _gen_dropmask_uint8(rounds, counter, key, count, keep_prob)
+    drop_mask_np = np.array(golden_uint8).astype(np.uint8)
+    return torch.from_numpy(drop_mask_np)

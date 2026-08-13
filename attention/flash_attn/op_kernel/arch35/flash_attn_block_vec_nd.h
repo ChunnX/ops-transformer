@@ -18,6 +18,7 @@
 #include <limits>
 
 #include "../utils/attenmask_gs1.h"
+#include "../utils/flash_attn_dropmask.h"
 
 #if __has_include("../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h")
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
@@ -63,6 +64,7 @@ public:
     static constexpr FA_LAYOUT LAYOUT_OUT = FA_T::attnOutLayout;
     static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
     static constexpr bool HAS_MASK = FA_T::hasMask;
+    static constexpr bool HAS_DROP = FA_T::hasDrop;
 
     using T = float;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)FA_T::dVBaseSize);
@@ -398,8 +400,6 @@ public:
             return;
         }
 
-        static constexpr bool hasDrop = false;
-
         LocalTensor<uint8_t> dropMaskUb;
         LocalTensor<INPUT_T> nonePseUb; // PSE不支持，占位
         LocalTensor<uint8_t> attenMaskUb;
@@ -422,42 +422,49 @@ public:
             Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
         }
 
+        if constexpr (HAS_DROP) {
+            dropMaskUb = ubMaskBuffers_[0 * UB_MASK_BUF_BYTES];
+            LocalTensor<int32_t> dropMaskIndexBuf =
+                ubMaskBuffers_[1 * UB_MASK_BUF_BYTES].template ReinterpretCast<int32_t>();
+            GenDropMaskFa<LAYOUT_T, mBaseSize, s2BaseSize>(dropMaskUb, dropMaskIndexBuf, runInfo, constInfo_);
+        }
+
         Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
 
         LocalTensor<INPUT_T> stage1CastTensor =
             ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
         if (likely(runInfo.actSingleLoopS2Size == 128)) {
             FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, EQ_128,
-                                       HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
+                                       HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, HAS_DROP, false, false>(
                 stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
                 nonePseUb, dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                 0 /* pseStride */, 0.0f /* slopes */, 0.0f /* posShift */, static_cast<T>(constInfo_.scaleValue),
-                descaleQK, negativeFloatScalar_, 0.0F, queryScaleUb, deSCaleKValue);
+                descaleQK, negativeFloatScalar_, constInfo_.keepProb, queryScaleUb, deSCaleKValue);
         } else if (runInfo.actSingleLoopS2Size <= 64) {
             FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize,
-                                       GT_0_AND_LTE_64, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false,
+                                       GT_0_AND_LTE_64, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, HAS_DROP, false,
                                        false>(
                 stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
                 nonePseUb, dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                 0 /* pseStride */, 0.0f /* slopes */, 0.0f /* posShift */, static_cast<T>(constInfo_.scaleValue),
-                descaleQK, negativeFloatScalar_, 0.0F, queryScaleUb, deSCaleKValue);
+                descaleQK, negativeFloatScalar_, constInfo_.keepProb, queryScaleUb, deSCaleKValue);
         } else if (runInfo.actSingleLoopS2Size < 128) {
             FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize,
-                                       GT_64_AND_LTE_128, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false,
+                                       GT_64_AND_LTE_128, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, HAS_DROP, false,
                                        false>(
                 stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
                 nonePseUb, dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                 0 /* pseStride */, 0.0f /* slopes */, 0.0f /* posShift */, static_cast<T>(constInfo_.scaleValue),
-                descaleQK, negativeFloatScalar_, 0.0F, queryScaleUb, deSCaleKValue);
+                descaleQK, negativeFloatScalar_, constInfo_.keepProb, queryScaleUb, deSCaleKValue);
         } else {
             if constexpr (s2BaseSize == 256) {
                 FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize,
-                                           GT_128_AND_LTE_256, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, hasDrop>(
+                                           GT_128_AND_LTE_256, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, HAS_DROP>(
                     stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
                     nonePseUb, dropMaskUb, vec1ApiTmpBuf_, expUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                     0 /* pseStride */, 0.0f /* slopes */, 0.0f /* posShift */,
                     static_cast<T>(constInfo_.scaleValue),
-                    descaleQK, negativeFloatScalar_, 0.0F);
+                    descaleQK, negativeFloatScalar_, constInfo_.keepProb);
             }
         }
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);

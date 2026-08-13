@@ -82,6 +82,9 @@ constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;      // layout_q
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;     // layout_kv
 constexpr uint32_t ATTR_LAYOUT_OUT_INDEX = 8;    // layout_out
 constexpr uint32_t ATTR_RETURN_LSE_INDEX = 9;    // return_softmax_lse
+constexpr uint32_t ATTR_SEED_INDEX = 10;        // seed
+constexpr uint32_t ATTR_OFFSET_INDEX = 11;      // offset
+constexpr uint32_t ATTR_KEEP_PROB_INDEX = 12;   // keep_prob
 
 // Legacy aliases for backward compatibility
 constexpr uint32_t ATTR_SCALE_INDEX = ATTR_SOFTMAX_SCALE_INDEX;
@@ -183,6 +186,9 @@ struct FAParaInfo {
     const char *layoutKV = nullptr;
     const char *layoutOut = nullptr;
     const int64_t *returnSoftMaxLse = nullptr;
+    const int64_t *seed = nullptr;
+    const int64_t *offset = nullptr;
+    const float *keepProb = nullptr;
 
     FARequiredParaInfo attnOut = {nullptr, nullptr};
     FARequiredParaInfo lseOut = {nullptr, nullptr};
@@ -210,6 +216,9 @@ public:
     int64_t qTSize = 0;
     int64_t kTSize = 0;
     float softmaxScale = 0;
+    int64_t seed = 0;
+    int64_t offset = 0;
+    float keepProb = 1.0f;
 
     uint64_t totalOutputSize = 0;
     uint64_t totalLseSize = 0;

@@ -126,6 +126,15 @@
          this->Attr("return_softmax_lse") 
              .AttrType(OPTIONAL) 
              .Int(0); 
+         this->Attr("seed")
+             .AttrType(OPTIONAL)
+             .Int(0);
+         this->Attr("offset")
+             .AttrType(OPTIONAL)
+             .Int(0);
+         this->Attr("keep_prob")
+             .AttrType(OPTIONAL)
+             .Float(1.0f);
 
 
          OpAICoreConfig aicore_config_95;

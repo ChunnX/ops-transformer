@@ -33,12 +33,13 @@ const std::array<const aclTensor *, 2> FlashAttn(
     int32_t maxSeqlenQ, int32_t maxSeqlenKV,
     const char *layoutQ, const char *layoutKv, const char *layoutOut,
     int32_t returnSoftmaxLse,
+    int64_t seed, int64_t offset, double keepProb,
     aclOpExecutor *executor)
 {
     L0_DFX(FlashAttn, q, k, v, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional,
            sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional,
            softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv, layoutOut,
-           returnSoftmaxLse);
+           returnSoftmaxLse, seed, offset, keepProb);
 
     if (blockTableOptional == nullptr) {
         blockTableOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
@@ -73,7 +74,7 @@ const std::array<const aclTensor *, 2> FlashAttn(
                                     sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
                            OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
                            OP_ATTR(softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
-                                   layoutQ, layoutKv, layoutOut, returnSoftmaxLse));
+                                   layoutQ, layoutKv, layoutOut, returnSoftmaxLse, seed, offset, keepProb));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttn InferShape failed.");
         return {nullptr, nullptr};
@@ -85,7 +86,7 @@ const std::array<const aclTensor *, 2> FlashAttn(
                  sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
         OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
         OP_ATTR(softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
-                layoutQ, layoutKv, layoutOut, returnSoftmaxLse));
+                layoutQ, layoutKv, layoutOut, returnSoftmaxLse, seed, offset, keepProb));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttn launch kernel failed.");
         return {nullptr, nullptr};
