@@ -21,13 +21,14 @@
 #else
 #include "kernel_operator.h"
 #endif
+#include "common.h"
 using namespace AscendC;
 namespace fa_base_matmul {
 __BLOCK_LOCAL__ __inline__ uint32_t idCounterNum;
 #define MAKE_ID ((++idCounterNum) % 11)
 
 // 核间同步中，AIC(flagId 0-10)对应AIV0(flagId 0-10)，对应AIV1(flagId 16-26)
-#define AIV0_AIV1_OFFSET 16
+#define AIV0_AIV1_OFFSET 11
 
 enum class BufferType {
     L1 = 0,
@@ -221,7 +222,9 @@ public:
             // AIC属于消费者，AIV属于生产者，且一个AIC对应两个AIV
             if ASCEND_IS_AIC {
                 CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE2>(id1_);
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE2>(id1_ + AIV0_AIV1_OFFSET);
+                if constexpr(CV_RATIO == 2){
+                    CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE2>(id1_ + AIV0_AIV1_OFFSET);
+                }
             } else {
                 CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE2>(id0_);
             }
@@ -229,7 +232,9 @@ public:
             // AIC属于生产者，AIV属于消费者，且一个AIC对应两个AIV
             if ASCEND_IS_AIC {
                 CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id1_);
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id1_ + AIV0_AIV1_OFFSET);
+                if constexpr(CV_RATIO == 2){
+                    CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id1_ + AIV0_AIV1_OFFSET);
+                }
             } else {
                 if constexpr (isReuse) {
                     CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id0_);
@@ -241,7 +246,9 @@ public:
             // AIC属于消费者，AIV属于生产者，且一个AIC对应两个AIV
             if ASCEND_IS_AIC {
                 CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(id0_);
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(id0_ + AIV0_AIV1_OFFSET);
+                if constexpr(CV_RATIO == 2){
+                    CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(id0_ + AIV0_AIV1_OFFSET);
+                }
             } else {
                 if constexpr (syncType == SyncType::CROSS_CORE_SYNC_BOTH) {
                     CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id1_);
@@ -257,7 +264,9 @@ public:
             // AIC属于消费者，AIV属于生产者，且一个AIC对应两个AIV
             if ASCEND_IS_AIC {
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id0_);
-                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id0_ + AIV0_AIV1_OFFSET);
+                if constexpr(CV_RATIO == 2){
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id0_ + AIV0_AIV1_OFFSET);
+                }
             } else {
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id1_);
             }
@@ -265,7 +274,9 @@ public:
             // AIC属于生产者，AIV属于消费者，且一个AIC对应两个AIV
             if ASCEND_IS_AIC {
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id0_);
-                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id0_ + AIV0_AIV1_OFFSET);
+                if constexpr(CV_RATIO == 2){
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(id0_ + AIV0_AIV1_OFFSET);
+                }
             } else {
                 if constexpr (isReuse) {
                     CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id1_);
@@ -278,7 +289,9 @@ public:
             if ASCEND_IS_AIC {
                 if constexpr (syncType == SyncType::CROSS_CORE_SYNC_BOTH) {
                     CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(id1_);
-                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(id1_ + AIV0_AIV1_OFFSET);
+                    if constexpr(CV_RATIO == 2){
+                        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(id1_ + AIV0_AIV1_OFFSET);
+                    }
                 }
             } else {
                 CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(id0_);
