@@ -178,3 +178,151 @@ TEST_F(aclnnFusedGdnGating_test, ascend910B2_test_opapi_case13)
 {
     fgg_test.FggTestCase(0, 7);
 }
+
+class aclnnFusedGdnGating_310P_test : public testing::Test {
+protected:
+    static void SetUpTestCase()
+    {
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND310P);
+        cout << "aclnnFusedGdnGating_310P_test SetUp" << endl;
+    }
+
+    static void TearDownTestCase()
+    {
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        cout << "aclnnFusedGdnGating_310P_test TearDown" << endl;
+    }
+};
+
+TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case0)
+{
+    uint32_t batch = 4;
+    uint32_t numHeads = 8;
+
+    auto aLog = TensorDesc({numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto a = TensorDesc({batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto b = TensorDesc({batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto dtBias = TensorDesc({numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto g = TensorDesc({1, batch, numHeads}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto betaOutput = TensorDesc({1, batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+
+    auto ut = OP_API_UT(aclnnFusedGdnGating,
+                        INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}
+
+TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case1)
+{
+    uint32_t batch = 1;
+    uint32_t numHeads = 16;
+
+    auto aLog = TensorDesc({numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto a = TensorDesc({batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto b = TensorDesc({batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto dtBias = TensorDesc({numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto g = TensorDesc({1, batch, numHeads}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto betaOutput = TensorDesc({1, batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+
+    auto ut = OP_API_UT(aclnnFusedGdnGating,
+                        INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}
+
+TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case2)
+{
+    uint32_t batch = 16;
+    uint32_t numHeads = 32;
+
+    auto aLog = TensorDesc({numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto a = TensorDesc({batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto b = TensorDesc({batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto dtBias = TensorDesc({numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto g = TensorDesc({1, batch, numHeads}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto betaOutput = TensorDesc({1, batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+
+    auto ut = OP_API_UT(aclnnFusedGdnGating,
+                        INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}
+
+TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case3)
+{
+    uint32_t batch = 4;
+    uint32_t numHeads = 8;
+
+    auto aLog = TensorDesc({numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto a = TensorDesc({batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto b = TensorDesc({batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto dtBias = TensorDesc({numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto g = TensorDesc({1, batch, numHeads}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto betaOutput = TensorDesc({1, batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+
+    auto ut = OP_API_UT(aclnnFusedGdnGating,
+                        INPUT(aLog, a, b, dtBias, 0.5f, 10.0f), OUTPUT(g, betaOutput));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}
+
+TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case4)
+{
+    uint32_t batch = 4;
+    uint32_t numHeads = 8;
+
+    auto aLog = TensorDesc({numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto a = TensorDesc({batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto b = TensorDesc({batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto dtBias = TensorDesc({numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto g = TensorDesc({1, batch, numHeads}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto betaOutput = TensorDesc({1, batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+
+    auto ut = OP_API_UT(aclnnFusedGdnGating,
+                        INPUT(nullptr, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case5)
+{
+    uint32_t batch = 4;
+    uint32_t numHeads = 8;
+
+    auto aLog = TensorDesc({numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto a = TensorDesc({batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto b = TensorDesc({batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto dtBias = TensorDesc({numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto g = TensorDesc({1, batch, numHeads}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto betaOutput = TensorDesc({1, batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+
+    auto ut = OP_API_UT(aclnnFusedGdnGating,
+                        INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(nullptr, betaOutput));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case6)
+{
+    uint32_t batch = 4;
+    uint32_t numHeads = 8;
+
+    auto aLog = TensorDesc({numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto a = TensorDesc({batch, numHeads}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto b = TensorDesc({batch, numHeads}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto dtBias = TensorDesc({numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto g = TensorDesc({1, batch, numHeads}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto betaOutput = TensorDesc({1, batch, numHeads}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 1);
+
+    auto ut = OP_API_UT(aclnnFusedGdnGating,
+                        INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}
