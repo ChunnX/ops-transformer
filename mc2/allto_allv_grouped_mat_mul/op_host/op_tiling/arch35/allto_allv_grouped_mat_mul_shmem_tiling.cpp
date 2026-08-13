@@ -243,7 +243,8 @@ ge::graphStatus AlltoAllvGroupedMatMulShmemTilingFunc(gert::TilingContext *conte
 
     const uint32_t blockDim = platform.CalcTschBlockDim(aivCoreNum, aicCoreNum, aivCoreNum);
     context->SetBlockDim(blockDim);
-    context->SetTilingKey(1UL);
+    // The SHMEM entry has one unconditional kernel variant, which OPC emits with the default tiling key 0.
+    context->SetTilingKey(0UL);
     size_t *workspaceSizes = context->GetWorkspaceSizes(1);
     OPS_CHECK_NULL_WITH_CONTEXT(context, workspaceSizes);
     workspaceSizes[0] = AlltoAllvGmmShmem::WORKSPACE_BYTES;

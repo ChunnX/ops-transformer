@@ -166,6 +166,15 @@ def check_tiling_and_kernel() -> None:
     require(tiling.count("GetStorageFormat() != ge::FORMAT_ND") == 3,
             "tiling must enforce ND for x/weight/y")
 
+    # This operator has one unconditional kernel entry and no TILING_KEY_IS specializations, so OPC emits
+    # only the default kernel variant (tiling key 0). The host key must select that exact variant.
+    require("TILING_KEY_IS(" not in read("op_kernel/allto_allv_grouped_mat_mul_shmem.cpp"),
+            "single-variant SHMEM kernel unexpectedly gained compile-time tiling-key branches")
+    require("context->SetTilingKey(0UL);" in tiling,
+            "single-variant SHMEM tiling must select the compiled default kernel key 0")
+    require("context->SetTilingKey(1UL);" not in tiling,
+            "host requests tiling key 1, which is absent from the single-variant kernel JSON")
+
     cmake = read("op_host/CMakeLists.txt")
     require("ENV{SHMEM_HOME_PATH}" in cmake and "ENV{SHMEM_HOME}" in cmake,
             "CMake must support source and HCCL-integrated SHMEM SDK layouts")
