@@ -46,7 +46,7 @@ bool ValidateInferDtypes(gert::InferShapeContext *context, const char *nodeName)
     if ((x1Dtype != ge::DT_FLOAT8_E4M3FN && x1Dtype != ge::DT_FLOAT8_E5M2 && x1Dtype != ge::DT_FLOAT4_E2M1) ||
         (x2Dtype != ge::DT_FLOAT8_E4M3FN && x2Dtype != ge::DT_FLOAT8_E5M2 && x2Dtype != ge::DT_FLOAT4_E2M1)) {
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-            nodeName, "x1,x2",
+            nodeName, "x1, x2",
             (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
             "x1/x2 dtype must be FP8_E4M3/FP8_E5M2/FP4_E2M1");
         return false;
@@ -144,7 +144,7 @@ ge::graphStatus AlltoAllMatmulV2InferShape(gert::InferShapeContext *context)
     OPS_CHECK_NULL_WITH_CONTEXT(context, x2Shape);
     if (x1Shape->GetDimNum() < 2 || x2Shape->GetDimNum() < 2) {
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
-            nodeName, "x1,x2",
+            nodeName, "x1, x2",
             (std::to_string(x1Shape->GetDimNum()) + "D," + std::to_string(x2Shape->GetDimNum()) + "D").c_str(),
             "x1 and x2 must have at least 2D");
         return ge::GRAPH_FAILED;

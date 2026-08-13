@@ -137,7 +137,7 @@ protected:
         auto yFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(yDesc->GetStorageFormat()));
         if (x1Fmt != ge::FORMAT_ND || x2Fmt != ge::FORMAT_ND) {
             OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
-                opName, "x1,x2",
+                opName, "x1, x2",
                 (Ops::Base::ToString(x1Fmt) + "," + Ops::Base::ToString(x2Fmt)).c_str(),
                 "x1 and x2 format must be ND");
             return false;
@@ -159,14 +159,14 @@ protected:
         if ((x1Dtype != ge::DT_FLOAT8_E4M3FN && x1Dtype != ge::DT_FLOAT8_E5M2 && x1Dtype != ge::DT_FLOAT4_E2M1) ||
             (x2Dtype != ge::DT_FLOAT8_E4M3FN && x2Dtype != ge::DT_FLOAT8_E5M2 && x2Dtype != ge::DT_FLOAT4_E2M1)) {
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                opName, "x1,x2",
+                opName, "x1, x2",
                 (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
                 "x1/x2 dtype must be FP8_E4M3/FP8_E5M2/FP4_E2M1");
             return false;
         }
         if ((x1Dtype == ge::DT_FLOAT4_E2M1) != (x2Dtype == ge::DT_FLOAT4_E2M1)) {
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                opName, "x1,x2",
+                opName, "x1, x2",
                 (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
                 "FP4 requires both x1 and x2 to be FP4_E2M1");
             return false;
@@ -194,7 +194,7 @@ protected:
         auto x2ScaleFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleDesc->GetStorageFormat()));
         if (x1ScaleFmt != ge::FORMAT_ND || x2ScaleFmt != ge::FORMAT_ND) {
             OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
-                opName, "x1_scale,x2_scale",
+                opName, "x1_scale, x2_scale",
                 (Ops::Base::ToString(x1ScaleFmt) + "," + Ops::Base::ToString(x2ScaleFmt)).c_str(),
                 "x1_scale and x2_scale format must be ND");
             return false;
@@ -203,7 +203,7 @@ protected:
         auto x2ScaleDtype = x2ScaleDesc->GetDataType();
         if (x1ScaleDtype != ge::DT_FLOAT8_E8M0 || x2ScaleDtype != ge::DT_FLOAT8_E8M0) {
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                opName, "x1_scale,x2_scale",
+                opName, "x1_scale, x2_scale",
                 (Ops::Base::ToString(x1ScaleDtype) + "," + Ops::Base::ToString(x2ScaleDtype)).c_str(),
                 "x1_scale and x2_scale must be FP8_E8M0");
             return false;
@@ -238,7 +238,7 @@ protected:
         int64_t x2QuantMode = x2QmPtr ? *x2QmPtr : static_cast<int64_t>(MX_QUANT_MODE);
         if (x1QuantMode != static_cast<int64_t>(MX_QUANT_MODE) || x2QuantMode != static_cast<int64_t>(MX_QUANT_MODE)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName, "x1_quant_mode,x2_quant_mode",
+                opName, "x1_quant_mode, x2_quant_mode",
                 (std::to_string(x1QuantMode) + "," + std::to_string(x2QuantMode)).c_str(),
                 "x1_quant_mode and x2_quant_mode must be MX_QUANT(6)");
             return false;
@@ -338,7 +338,7 @@ protected:
         uint64_t yDimNum = yShape->GetStorageShape().GetDimNum();
         if (x1DimNum != 2 || x2DimNum != 2) {
             OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
-                opName, "x1,x2",
+                opName, "x1, x2",
                 (std::to_string(x1DimNum) + "D," + std::to_string(x2DimNum) + "D").c_str(),
                 "x1 and x2 must be 2D");
             return false;
@@ -464,7 +464,7 @@ protected:
         uint64_t x2ScaleDimNum = x2ScaleShape->GetStorageShape().GetDimNum();
         if (x1ScaleDimNum != SCALE_DIM_NUM || x2ScaleDimNum != SCALE_DIM_NUM) {
             OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
-                opName, "x1_scale,x2_scale",
+                opName, "x1_scale, x2_scale",
                 (std::to_string(x1ScaleDimNum) + "D," + std::to_string(x2ScaleDimNum) + "D").c_str(),
                 "x1_scale and x2_scale must be 3D");
             return false;
@@ -534,7 +534,7 @@ protected:
         auto &x2ss = x2sh->GetStorageShape();
         if (x1ss.GetDimNum() < 2 || x2ss.GetDimNum() < 2) {
             OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
-                opName, "x1,x2",
+                opName, "x1, x2",
                 (std::to_string(x1ss.GetDimNum()) + "D," + std::to_string(x2ss.GetDimNum()) + "D").c_str(),
                 "x1 and x2 must have at least 2D");
             return ge::GRAPH_FAILED;
