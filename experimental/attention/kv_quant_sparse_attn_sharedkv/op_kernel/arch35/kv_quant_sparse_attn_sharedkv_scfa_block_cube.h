@@ -54,8 +54,8 @@ public:
     static constexpr uint32_t kMRealSize = gSize;
 
     __aicore__ inline SCFABlockCube() {};
-    __aicore__ inline void InitCubeBlock(__gm__ uint8_t *query, uint32_t l1BaseAddr, uint32_t goIdx);
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ);
+    __aicore__ inline void InitLocalBuffer(uint32_t l1BaseAddr, uint32_t goIdx);
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *cuSeqlensQ);
     __aicore__ inline void IterateLoadQK(
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         bool isFirstLoop, uint8_t taskIdMod3, int32_t s2RealSize, int64_t s1oIdx);
@@ -69,7 +69,7 @@ public:
         uint8_t taskIdMod3, int32_t s2RealSize);
 
 private:
-    __aicore__ inline void InitLocalBuffer(uint32_t l1BaseAddr);
+    __aicore__ inline void InitLocalBuffer(uint32_t l1BaseAddr, uint32_t goIdx);
     __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ);
 
     __aicore__ inline void CopyQGmToL1(int64_t s1oIdx);
@@ -105,20 +105,21 @@ private:
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeBlock(
-    __gm__ uint8_t *query, uint32_t l1BaseAddr, uint32_t goIdx)
+__aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(
+    uint32_t l1BaseAddr, uint32_t goIdx)
 {
     this->goIdx = goIdx;
     if ASCEND_IS_AIC {
-        this->queryGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)query);
+        
         InitLocalBuffer(l1BaseAddr);
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *cuSeqlensQ)
+__aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *cuSeqlensQ)
 {
     if ASCEND_IS_AIC {
+        this->queryGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)query);
         InitGmTensor(cuSeqlensQ);
     }
 }
@@ -371,8 +372,8 @@ TEMPLATES_DEF
 class SCFABlockCubeDummy {
 public:
     __aicore__ inline SCFABlockCubeDummy() {};
-    __aicore__ inline void InitCubeBlock(__gm__ uint8_t *query, uint32_t l1BaseAddr, uint32_t goIdx) {}
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ) {}
+    __aicore__ inline void InitLocalBuffer(uint32_t l1BaseAddr, uint32_t goIdx) {}
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *cuSeqlensQ) {}
 };
 
 template <typename T>
