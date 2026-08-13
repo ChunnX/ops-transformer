@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 #include <cstdlib>
+#include "tiling/platform/platform_ascendc.h"
 #include "../allto_all_matmul_host_ut_param.h"
 #include "tiling_case_executor.h"
 
@@ -33,6 +34,7 @@ class AlltoAllMatmulArch35TilingTest : public testing::TestWithParam<AlltoAllMat
 protected:
     static void SetUpTestCase()
     {
+        platform_ascendc::PlatformAscendCManager::GetInstance("Ascend950");
         std::cout << "AlltoAllMatmulArch35TilingTest SetUp." << std::endl;
     }
 
