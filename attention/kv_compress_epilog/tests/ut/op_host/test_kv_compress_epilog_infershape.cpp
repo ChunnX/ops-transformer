@@ -44,7 +44,7 @@ TEST_F(KvCompressEpilogProto, kv_compress_epilog_infershape_bf16)
             {"quant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
             {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+            {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         }
     );
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS);
@@ -66,7 +66,7 @@ TEST_F(KvCompressEpilogProto, kv_compress_epilog_infershape_hif8_fp4_mode2)
             {"quant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
             {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
             {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.5f)},
+            {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.5f)},
         }
     );
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS);
@@ -87,7 +87,7 @@ TEST_F(KvCompressEpilogProto, kv_compress_epilog_infershape_dynamic)
             {"quant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
             {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+            {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         }
     );
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS);

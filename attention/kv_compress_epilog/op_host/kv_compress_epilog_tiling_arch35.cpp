@@ -45,9 +45,9 @@ ge::graphStatus KvCompressEpilogTilingArch35::GetPlatformInfo()
         ubSize_ = compileInfoPtr->ubSize;
     } else {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-        uint64_t ubSizePlatForm;
-        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
-        ubSize_ = ubSizePlatForm;
+        uint64_t ubSizePlatform;
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatform);
+        ubSize_ = ubSizePlatform;
         coreNum_ = ascendcPlatform.GetCoreNumAiv();
     }
     return ge::GRAPH_SUCCESS;
@@ -158,10 +158,10 @@ ge::graphStatus KvCompressEpilogTilingArch35::ValidateShapes()
               return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(d_ <= SLICE_SIZE,
-              OP_LOGE(context_->GetNodeName(), "input x tail dimension must Greater than 64, got %ld", d_),
+              OP_LOGE(context_->GetNodeName(), "input x tail dimension must be greater than 64, got %ld", d_),
               return ge::GRAPH_FAILED);
     OP_CHECK_IF(d_ > D_LENGTH_FULL_LOAD,
-              OP_LOGE(context_->GetNodeName(), "input x tail dimension must less than 8192, got %ld", d_),
+              OP_LOGE(context_->GetNodeName(), "input x tail dimension must be less than 8192, got %ld", d_),
               return ge::GRAPH_FAILED);
     OP_CHECK_IF(d_ % SLICE_SIZE != 0,
               OP_LOGE(context_->GetNodeName(), "d_ %% 64 should be 0 , got %ld", d_),

@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file swiglu_block_quant_base.h
+ * \file kv_compress_epilog_common.h
  * \brief
  */
 
