@@ -2299,19 +2299,33 @@ if __name__ == "__main__":
         proc.start()
         proc_list.append(proc)
 
+    rank_outputs = [None] * rank_per_dev
+    pending_results = len(proc_list)
+    received_ranks = set()
+    while pending_results:
+        try:
+            rank_id, rank_output = result_queue.get(timeout=1)
+        except queue.Empty:
+            failed_workers = [proc for proc in proc_list if proc.exitcode not in (None, 0)]
+            if failed_workers:
+                failed_codes = [proc.exitcode for proc in failed_workers]
+                raise RuntimeError(f"rank workers exited with codes {failed_codes}")
+            if all(not proc.is_alive() for proc in proc_list):
+                raise RuntimeError("rank workers finished without returning all results")
+            continue
+        if rank_id in received_ranks:
+            raise RuntimeError(f"received duplicate result from rank {rank_id}")
+        local_rank_id = rank_id - server_index * rank_per_dev
+        if local_rank_id < 0 or local_rank_id >= len(rank_outputs):
+            raise RuntimeError(f"received out-of-range rank result: {rank_id}")
+        received_ranks.add(rank_id)
+        rank_outputs[local_rank_id] = rank_output
+        pending_results -= 1
+
     for proc in proc_list:
         proc.join()
         if proc.exitcode != 0:
             raise RuntimeError(f"rank worker exited with code {proc.exitcode}")
-
-    rank_outputs = [None] * rank_per_dev
-    for _ in proc_list:
-        try:
-            rank_id, rank_output = result_queue.get(timeout=10)
-        except queue.Empty as exc:
-            raise RuntimeError("rank worker finished without returning a result") from exc
-        local_rank_id = rank_id - server_index * rank_per_dev
-        rank_outputs[local_rank_id] = rank_output
     queue_manager.shutdown()
 
     if kernel_timing_enable:

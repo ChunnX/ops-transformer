@@ -558,6 +558,8 @@ def dataComparev2(dataCheck, dataExpect, start, end, diffThd=0.01, pctThd=0.05):
 
 
 def dataCompare_new(NpuOut, ExpFP16Out, ExpFP32Out, diffThd=0.01, pctThd=0.05, MaxdiffThd=0.1):
+    import psutil
+
     print("xxxxxxxxxxxxxx in dataCompare_new")
     npu_shape = NpuOut.shape
     expect_shape = ExpFP16Out.shape
@@ -646,9 +648,46 @@ def dataCompare_new(NpuOut, ExpFP16Out, ExpFP32Out, diffThd=0.01, pctThd=0.05, M
     return result, ltPct
 
 
+def cosine_similarity(lhs, rhs):
+    lhs_flat = np.asarray(lhs, dtype=np.float64).reshape(-1)
+    rhs_flat = np.asarray(rhs, dtype=np.float64).reshape(-1)
+    if lhs_flat.size != rhs_flat.size:
+        raise ValueError(
+            f"cosine similarity requires equal sizes, got {lhs_flat.size} and {rhs_flat.size}"
+        )
+    if lhs_flat.size == 0:
+        return 1.0
+    denominator = np.linalg.norm(lhs_flat) * np.linalg.norm(rhs_flat)
+    if denominator == 0:
+        return 1.0 if np.array_equal(lhs_flat, rhs_flat) else 0.0
+    return float(np.dot(lhs_flat, rhs_flat) / denominator)
+
+
+def cal_relative_diff_np_isclose(real_data, expect_data):
+    diff = abs(float(real_data) - float(expect_data))
+    return diff / (np.abs(expect_data) + 1e-10)
+
+
+def display_output_np_isclose(real_data, expect_data, start, end):
+    display_indices = list(range(start, min(end + 1, start + 10)))
+    if end - start + 1 > 20:
+        display_indices.extend(range(max(start + 10, end - 9), end + 1))
+    elif end >= start + 10:
+        display_indices.extend(range(start + 10, end + 1))
+    print_log('Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff')
+    for index in display_indices:
+        diff_abs = abs(np.float64(expect_data[index]) - np.float64(real_data[index]))
+        diff_rate = cal_relative_diff_np_isclose(real_data[index], expect_data[index])
+        print_log('%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f' % (
+            index + 1, expect_data[index], real_data[index], diff_abs, diff_rate
+        ))
+
+
 def data_compare_np(cpu_output, npu_output, diff_thd=0.01, pct_thd=0.05, max_diff_hd=0.1,
                     precision_method=0,
                     rtol=0.005, atol=0.000025, output_dtype=None):
+    if precision_method not in (0, 1, 3):
+        raise ValueError(f"unsupported precision_method: {precision_method}")
     max_error_idx = 10000000
     real_data = npu_output.flatten()
     data_compe = cpu_output.flatten()
@@ -764,10 +803,11 @@ def data_compare_np(cpu_output, npu_output, diff_thd=0.01, pct_thd=0.05, max_dif
                                  err_idx, err_diff[0:max_error_idx])
     # 余弦相似度对比
     if precision_method == 3:
-        start_time = time()
+        start_time = time.time()
         cos = cosine_similarity(npu_output, cpu_output)
         print_log(
-            'The data comparison by cosine_similarity is：%s; Duration:%0.2f second.' % (cos, (time() - start_time)))
+            'The data comparison by cosine_similarity is：%s; Duration:%0.2f second.' %
+            (cos, (time.time() - start_time)))
         result = "PASS" if (cos >= 0.99) else "FAIL"
         fulfill_percent = cos
         max_error = 'NA'
@@ -896,6 +936,15 @@ def cal_relative_diff(real_data, expect_data, diff_thd, type_str='fp16'):
     else:
         result = diff / (float(max(abs(real_data), abs(expect_data))) + 10e-10)
     return result
+
+
+def cal_relative_diff_mix(real_data, expect_data, diff_thd):
+    if any(marker in str(value) for value in (real_data, expect_data) for marker in ('nan', 'inf')):
+        return 0 if str(real_data) == str(expect_data) else 1
+    diff = abs(float(real_data) - float(expect_data))
+    if diff < diff_thd:
+        return diff
+    return diff / (float(max(abs(real_data), abs(expect_data))) + 1e-10)
 
 def display_error_output(real_data, expect_data, err_idx, relative_diff):
     print_log(

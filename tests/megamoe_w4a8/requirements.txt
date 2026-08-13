@@ -3,3 +3,4 @@ ml_dtypes
 numpy
 packaging
 pandas
+psutil
