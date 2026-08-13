@@ -101,7 +101,7 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassBAB::DoOpTiling()
 ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassBAB::SplitUb()
 {
     uint32_t typeSize = ge::GetSizeByDataType(dtype_);
-    int64_t dAlign = Ops::Base::CeilAlign(d_ * typeSize, blockSize_);
+    int64_t dAlign = Ops::Base::CeilAlign(d_ * typeSize / dSplitCoef_, blockSize_) * dSplitCoef_;
     // dCosFlag=0: gradQueryEmb+gradKeyEmb+gradQ+gradK = 4路 tensor, double buffer → ×8
     // dCosFlag=1: +query+key+gradCos+gradSin = 8路 tensor, double buffer → ×16
     uint32_t minUbLoadDNum = dCosFlag_ ? MIN_UB_LOAD_D_NUM_DCOS1 : MIN_UB_LOAD_D_NUM_DCOS0;

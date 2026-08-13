@@ -53,15 +53,30 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     GET_TILING_DATA_WITH_STRUCT(ApplyRopeGradTilingData, tilingData, tiling);
     TPipe pipe;
 
+    // 部分积 workspace 基址（DcosFlag=1 且非 A 模板时，BAB/AB 需在 Phase 1 写 grad_cos/grad_sin 部分积到 workspace）
+    GM_ADDR usrWorkSpace = nullptr;
+    int64_t partSize = 0;
+    if constexpr (DcosFlag && DxTilingKey != static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
+        SetSysWorkspace(workspace);
+        usrWorkSpace = AscendC::GetUserWorkspace(workspace);
+        int64_t maxN = max(tilingData.ropeGradParams.nQ, tilingData.ropeGradParams.nK);
+        partSize = tilingData.ropeGradParams.b * tilingData.ropeGradParams.s * maxN * tilingData.ropeGradParams.d;
+    }
+
     // ================================================================
     // Phase 1: 计算 grad_query / grad_key
     //          当 DcosFlag=1 时，同步在 kernel 内累加 grad_cos / grad_sin 部分积
     // ================================================================
     if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_BAB)) {
         ApplyRotaryPosEmbGradBAB<DTYPE_GRAD_QUERY_EMBED> op(&pipe, &tilingData.ropeGradParams);
-        op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin,
-                query, key,
-                gradQueryOut, gradKeyOut, gradCosOut, gradSinOut);
+        if constexpr (DcosFlag) {
+            GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * sizeof(DTYPE_GRAD_QUERY_EMBED);
+            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key,
+                gradQueryOut, gradKeyOut, usrWorkSpace, dSinWorkSpace);
+        } else {
+            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key,
+                gradQueryOut, gradKeyOut, nullptr, nullptr);
+        }
         op.Process();
         pipe.Reset();
     } else if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB)) {
@@ -98,13 +113,6 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     // ================================================================
     if constexpr (DcosFlag) {
         PipeBarrier<PIPE_ALL>();
-        SetSysWorkspace(workspace);
-        GM_ADDR usrWorkSpace = AscendC::GetUserWorkspace(workspace);
-
-        // 单份中间结果大小 = B * S * max(nQ, nK) * D
-        int64_t maxN = max(tilingData.ropeGradParams.nQ, tilingData.ropeGradParams.nK);
-        int64_t partSize = tilingData.ropeGradParams.b * tilingData.ropeGradParams.s *
-                           maxN * tilingData.ropeGradParams.d;
 
         using ReduceOp = ReduceSch<REDUCE_TPL_VALUE,
             ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<DTYPE_GRAD_QUERY_EMBED, float>::OpDag>;
