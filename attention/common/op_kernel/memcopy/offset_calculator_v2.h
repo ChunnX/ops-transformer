@@ -105,7 +105,6 @@ struct GmLayoutParams<GmFormat::PA_BnBsND> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_KV_PA_BNBD;
 };
 
-
 template <>
 struct GmLayoutParams<GmFormat::PA_BnNBsD> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_KV_PA_BNBD;
@@ -387,9 +386,11 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD, ACTLEN_T> {
         gmLayout.MakeLayout(b, n2, s2, d);
     }
 
-    __aicore__ inline void Init(const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T> &parser)
+    __aicore__ inline void Init(uint32_t b, uint32_t n2, uint32_t s2, uint32_t d,
+                                const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T> &parser)
     {
         actualSeqLensKVParser = parser;
+        gmLayout.MakeLayout(b, n2, s2, d);
     }
 
     __aicore__ inline uint64_t GetOffset(uint32_t bIdx, uint32_t n2Idx, uint32_t s2Idx, uint32_t dIdx)
@@ -526,7 +527,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_V_SCALE_TND, ACTLEN_T, WI
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
     }
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t d, const SeqLensKVParserType& parser)
+    __aicore__ inline void Init(uint32_t n2, uint32_t d, const SeqLensKVParserType &parser)
     {
         actualSeqLensKVParser = parser;
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
@@ -1105,16 +1106,16 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnNBs, ACTLEN_T> {
     __aicore__ inline OffsetCalculatorImpl() = default;
 
     __aicore__ inline void Init(uint32_t n, uint32_t blockSize, GlobalTensor<int32_t> blockTableGm,
-                                uint32_t maxblockNumPerBatch)
+                                uint32_t maxblockNumPerBatch, uint64_t bn2Stride = 0, uint64_t n2Stride = 0)
     {
         blockTableParser.Init(blockTableGm, maxblockNumPerBatch);
-        gmLayout.MakeLayout(n, blockSize);
+        gmLayout.MakeLayout(n, blockSize, bn2Stride, n2Stride);
     }
 
     __aicore__ inline uint64_t GetOffset(uint32_t bIdx, uint32_t nIdx, uint32_t sIdx)
     {
-        uint64_t blockIdxInBatch = sIdx / GetStrideBlockSize(); // 获取block table上的索引
-        uint64_t bsIdx = sIdx % GetStrideBlockSize();           // 获取在单个块上超出的行数
+        uint64_t blockIdxInBatch = sIdx / GetDimBlockSize(); // 获取block table上的索引
+        uint64_t bsIdx = sIdx % GetDimBlockSize();           // 获取在单个块上超出的行数
         int32_t blockIdx = blockTableParser.GetBlockIdx(bIdx, blockIdxInBatch);
         uint64_t offset = blockIdx * GetStrideBlockNum() + nIdx * GetStrideN() + bsIdx * GetStrideBlockSize();
 

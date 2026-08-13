@@ -158,26 +158,6 @@ Ascend 950支持的算子分类和算子列表如下：
   </tr>
   <tr>
     <td>attention</td>
-    <td><a href="../../attention/mla_prolog/README.md">mla_prolog</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>推理MlaProlog算子。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
-    <td><a href="../../attention/mla_prolog_v2/README.md">mla_prolog_v2</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>推理MlaPrologV2WeightNz算子。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
     <td><a href="../../attention/mla_prolog_v3/README.md">mla_prolog_v3</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -195,6 +175,16 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>AI Core</td>
     <td>推理场景下，SparseFlashAttention前处理的计算，选出关键的稀疏token，并对输入query和key进行量化实现存8算8。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/chunk_kda_fwd/README.md">chunk_kda_fwd</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>完成不涉及CP切分的KDA分块正向计算。</td>
   </tr>
   <tr>
     <td>attention</td>
