@@ -29,11 +29,13 @@ class FusedQkvProjectionKernelTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        cout << "FusedQkvProjectionKernelTest SetUp\n" << endl;
+        cout << "FusedQkvProjectionKernelTest SetUp\n"
+             << endl;
     }
     static void TearDownTestCase()
     {
-        cout << "FusedQkvProjectionKernelTest TearDown\n" << endl;
+        cout << "FusedQkvProjectionKernelTest TearDown\n"
+             << endl;
     }
 };
 
