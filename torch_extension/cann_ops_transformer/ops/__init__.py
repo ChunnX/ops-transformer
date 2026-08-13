@@ -9,7 +9,9 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import os
+import sys
 import importlib
+import importlib.util
 import logging
 
 logger = logging.getLogger(__name__)
@@ -51,6 +53,59 @@ def _discover_ops_from_dir():
     return ops
 
 
+def _find_repo_root():
+    """从当前文件向上定位仓库根目录（含 build.sh 的目录）。"""
+    path = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(6):
+        if os.path.isfile(os.path.join(path, "build.sh")):
+            return path
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+    return None
+
+
+def _mount_source_ops():
+    """源码目录场景：将仓库根下 <cat>/<op>/torch_extension/ 动态挂载为
+    cann_ops_transformer.ops.<cat>.<op> 包，兼容 `sys.path.insert(0, torch_extension)`
+    后直接从源码 import 的用法（无需先编包装 wheel）。
+    """
+    repo_root = _find_repo_root()
+    if repo_root is None:
+        return {}
+
+    mounted = {}
+    for cat in sorted(os.listdir(repo_root)):
+        cat_path = os.path.join(repo_root, cat)
+        if not os.path.isdir(cat_path) or cat.startswith((".", "_")):
+            continue
+        for op in sorted(os.listdir(cat_path)):
+            te_dir = os.path.join(cat_path, op, "torch_extension")
+            init_file = os.path.join(te_dir, "__init__.py")
+            if not os.path.isfile(init_file):
+                continue
+            module_name = "cann_ops_transformer.ops.%s.%s" % (cat, op)
+            if module_name in sys.modules:
+                mounted[op] = module_name
+                continue
+            spec = importlib.util.spec_from_file_location(
+                module_name,
+                init_file,
+                submodule_search_locations=[te_dir],
+            )
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            try:
+                spec.loader.exec_module(module)
+            except (ImportError, RuntimeError, AttributeError) as _e:
+                logger.warning("Failed to mount source op '%s': %s", op, _e)
+                sys.modules.pop(module_name, None)
+                continue
+            mounted[op] = module_name
+    return mounted
+
+
 def _load_op(name, target):
     if ":" in target:
         module_path, attr_name = target.split(":", 1)
@@ -90,7 +145,12 @@ def _load_op(name, target):
 _ep_ops = _discover_ops_from_entry_points()
 _dir_ops = _discover_ops_from_dir()
 
+# 仅当 ops/ 目录下无分类子目录（即源码目录而非已安装 wheel）时，
+# 才从仓库根动态挂载 <cat>/<op>/torch_extension/ 下的算子。
+_source_ops = _mount_source_ops() if not _dir_ops else {}
+
 _all_ops = dict(_dir_ops)
+_all_ops.update(_source_ops)
 _all_ops.update(_ep_ops)
 
 for _name, _target in _all_ops.items():
@@ -98,7 +158,8 @@ for _name, _target in _all_ops.items():
 
 try:
     del _discover_ops_from_entry_points, _discover_ops_from_dir, _load_op
-    del _ep_ops, _dir_ops, _all_ops, _name, _target
+    del _find_repo_root, _mount_source_ops
+    del _ep_ops, _dir_ops, _source_ops, _all_ops, _name, _target
 except NameError:
     pass
 
