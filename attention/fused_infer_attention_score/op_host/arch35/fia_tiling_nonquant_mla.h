@@ -57,7 +57,8 @@ struct FiaMlaPlatFormInfo {
 
 class FiaTilingNonQuantMlaArch35 : public FiaTilingBase {
 public:
-    explicit FiaTilingNonQuantMlaArch35(gert::TilingContext *context) : FiaTilingBase(context)
+    explicit FiaTilingNonQuantMlaArch35(gert::TilingContext *context)
+        : FiaTilingBase(context)
     {
     }
     ~FiaTilingNonQuantMlaArch35() override = default;

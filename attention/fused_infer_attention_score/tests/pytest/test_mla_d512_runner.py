@@ -63,7 +63,7 @@ def _make_block_table(batch, seqs_kv, bs):
     tbl = -torch.ones(batch, mx, dtype=torch.int32)
     off = 0
     for b in range(batch):
-        tbl[b, :vn[b]] = torch.tensor(ids[off:off + vn[b]], dtype=torch.int32)
+        tbl[b, : vn[b]] = torch.tensor(ids[off : off + vn[b]], dtype=torch.int32)
         off += vn[b]
     return tbl, total
 
@@ -145,18 +145,26 @@ def run_case(case_name, params, device_id=0):
     else:
         block_table_npu = None
         key = torch.randn(b, n2, s2_max, QK_D, dtype=dtype, device="npu")
-        value = key if kv_reused else torch.randn(b, n2, s2_max, QK_D, dtype=dtype, device="npu")
+        value = (
+            key
+            if kv_reused
+            else torch.randn(b, n2, s2_max, QK_D, dtype=dtype, device="npu")
+        )
         key_rope = torch.randn(b, n2, s2_max, drope, dtype=dtype, device="npu")
 
-    print(f"\n[{case_name}] B={b} N1={n1} N2={n2} S1={s1} S2={s2_max} "
-          f"layout_kv={layout_kv} dtype={dtype_str} act_kv={act_kv} kv_reused={kv_reused}")
+    print(
+        f"\n[{case_name}] B={b} N1={n1} N2={n2} S1={s1} S2={s2_max} "
+        f"layout_kv={layout_kv} dtype={dtype_str} act_kv={act_kv} kv_reused={kv_reused}"
+    )
 
-    print(f"  Generating tensors on NPU...", flush=True)
+    print("  Generating tensors on NPU...", flush=True)
 
     try:
-        print(f"  Calling NPU operator...", flush=True)
+        print("  Calling NPU operator...", flush=True)
         attn_out, _ = torch_npu.npu_fused_infer_attention_score(
-            query, key, value,
+            query,
+            key,
+            value,
             pse_shift=None,
             atten_mask=None,
             actual_seq_lengths=act_q,
@@ -178,7 +186,7 @@ def run_case(case_name, params, device_id=0):
             softmax_lse_flag=False,
         )
         torch.npu.synchronize()
-        print(f"  NPU operator done.", flush=True)
+        print("  NPU operator done.", flush=True)
     except Exception as e:
         print(f"  [SKIP] Operator error: {type(e).__name__}")
         del query, query_rope, key, value, key_rope
@@ -188,7 +196,7 @@ def run_case(case_name, params, device_id=0):
         return None
 
     try:
-        print(f"  Computing golden...", flush=True)
+        print("  Computing golden...", flush=True)
         golden = FusedInferAttentionScoreGolden(
             num_heads_q=n1,
             num_heads_kv=n2,
@@ -196,7 +204,9 @@ def run_case(case_name, params, device_id=0):
             softmax_scale=scale,
         )
         golden_out, _ = golden.forward_golden(
-            query, key, value,
+            query,
+            key,
+            value,
             query_rope=query_rope,
             key_rope=key_rope,
             softmax_scale=scale,
@@ -224,8 +234,10 @@ def run_case(case_name, params, device_id=0):
     mean_diff = diff.mean().item()
     pass_both = torch.allclose(npu_out, golden_np, atol=ATOL, rtol=RTOL)
 
-    print(f"  max_diff={max_diff:.6f} mean_diff={mean_diff:.6f} "
-          f"atol={ATOL} rtol={RTOL} -> {'PASS' if pass_both else 'FAIL'}")
+    print(
+        f"  max_diff={max_diff:.6f} mean_diff={mean_diff:.6f} "
+        f"atol={ATOL} rtol={RTOL} -> {'PASS' if pass_both else 'FAIL'}"
+    )
 
     del query, query_rope, key, value, key_rope, attn_out, golden_out
     if block_table_npu is not None:
@@ -237,17 +249,33 @@ def run_case(case_name, params, device_id=0):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MLA D512 non-quant precision test runner")
-    parser.add_argument("--case_files", type=str, default="mla_d512_noquant",
-                        help="Comma-separated test_cases module names")
-    parser.add_argument("--case_id", type=str, default="all",
-                        help="Specific case id (substring match) or 'all'")
-    parser.add_argument("--gen", type=int, default=None,
-                        help="Generate N random cases and run them")
-    parser.add_argument("--max_mem_gb", type=float, default=5,
-                        help="Max single-case memory in GB (for --gen)")
-    parser.add_argument("--seed", type=int, default=2026,
-                        help="Random seed (for --gen)")
+    parser = argparse.ArgumentParser(
+        description="MLA D512 non-quant precision test runner"
+    )
+    parser.add_argument(
+        "--case_files",
+        type=str,
+        default="mla_d512_noquant",
+        help="Comma-separated test_cases module names",
+    )
+    parser.add_argument(
+        "--case_id",
+        type=str,
+        default="all",
+        help="Specific case id (substring match) or 'all'",
+    )
+    parser.add_argument(
+        "--gen", type=int, default=None, help="Generate N random cases and run them"
+    )
+    parser.add_argument(
+        "--max_mem_gb",
+        type=float,
+        default=5,
+        help="Max single-case memory in GB (for --gen)",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=2026, help="Random seed (for --gen)"
+    )
     parser.add_argument("--device_id", type=int, default=0)
     args = parser.parse_args()
 
@@ -255,8 +283,11 @@ if __name__ == "__main__":
 
     if args.gen is not None:
         from gen_mla_cases import gen_cases, write_cases_file, est_mem_bytes
+
         cases = gen_cases(args.gen, args.max_mem_gb, args.seed)
-        gen_file = os.path.join(os.path.dirname(__file__), "test_cases", "mla_d512_noquant_gen.py")
+        gen_file = os.path.join(
+            os.path.dirname(__file__), "test_cases", "mla_d512_noquant_gen.py"
+        )
         write_cases_file(cases, gen_file)
         case_files = "mla_d512_noquant_gen"
     else:
@@ -267,8 +298,9 @@ if __name__ == "__main__":
     all_cases = load_cases(modules)
 
     if args.case_id != "all":
-        all_cases = {k: v for k, v in all_cases.items()
-                     if args.case_id in k.rsplit("/", 1)[-1]}
+        all_cases = {
+            k: v for k, v in all_cases.items() if args.case_id in k.rsplit("/", 1)[-1]
+        }
 
     if not all_cases:
         print("No cases found.")
@@ -284,16 +316,22 @@ if __name__ == "__main__":
         passed = sum(1 for r in results if r is True)
         skipped = sum(1 for r in results if r is None)
         failed = sum(1 for r in results if r is False)
-        print(f"  Progress: {i+1}/{len(all_cases)}, passed={passed}, skipped={skipped}, failed={failed}")
+        print(
+            f"  Progress: {i + 1}/{len(all_cases)}, passed={passed}, skipped={skipped}, failed={failed}"
+        )
 
     passed = sum(1 for r in results if r is True)
     skipped = sum(1 for r in results if r is None)
     failed = sum(1 for r in results if r is False)
-    print(f"\n{'='*80}")
-    print(f"Total: {len(results)}, Passed: {passed}, Skipped: {skipped}, Failed: {failed}")
+    print(f"\n{'=' * 80}")
+    print(
+        f"Total: {len(results)}, Passed: {passed}, Skipped: {skipped}, Failed: {failed}"
+    )
     if failed > 0:
-        failed_names = [name for name, r in zip(sorted(all_cases.keys()), results) if r is False]
+        failed_names = [
+            name for name, r in zip(sorted(all_cases.keys()), results) if r is False
+        ]
         print("Failed cases:")
         for name in failed_names:
             print(f"  {name}")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")

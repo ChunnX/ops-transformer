@@ -115,7 +115,7 @@ bool FiaTilingNonQuantMlaArch35::IsCapable()
     if (!IsCapableBasicCheckMla()) {
         return false;
     }
-    
+
     if (!IsCapableFeatureCheckMla()) {
         return false;
     }
