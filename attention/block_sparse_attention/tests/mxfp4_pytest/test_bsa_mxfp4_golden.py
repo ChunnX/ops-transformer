@@ -2963,6 +2963,164 @@ class TestBSAMxfp4Golden(TestCase):
                   act_s1=[131072, 131072],
                   act_s2=[1792, 202],
                   quant_mode=2, out_dtype='bfloat16')
+    
+    # =====================================================================
+    # fp16 输出用例系列(out_dtype='float16'): 验证 NPU fp16 输出路径。
+    #   golden fp32->fp16 cast; NPU attention_out_dtype=torch.float16。
+    #   历史 kernel bug(processOutVF 硬编码 bfloat16_t, 见 line 1810/1841 注释)修复后启用。
+    #   覆盖: 基础布局矩阵(BNSD/BSND/TND × MHA/GQA × dense/sparse) + CX 量化 × fp16 + TND varlen × fp16。
+    #   判据: check_result 中 float16 走 rtol=1/128 atol=1e-4(同 bf16, 见 line 776-779 注释)。
+    # =====================================================================
+
+    # --- 基础布局矩阵 × fp16 out (9 例) ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128_fp16out(self, device="npu"):
+        """fp16 out: BNSD MHA dense 基线, out_dtype='float16'(NPU attention_out_dtype=float16)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_sparse_b1_qn2_kvn2_g1_qs128_kvs1024_d128_fp16out(self, device="npu"):
+        """fp16 out: BNSD MHA sparse(8 kv tile 稀疏 gather), out_dtype='float16'。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_dense_b1_qn8_kvn2_g4_qs256_kvs1024_d128_fp16out(self, device="npu"):
+        """fp16 out: BNSD GQA g4 dense 多 block, out_dtype='float16'(GQA 头映射 × fp16 cast)。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128_fp16out(self, device="npu"):
+        """fp16 out: BSND MHA dense(N=2 token-stride + fp16 输出 cast 路径)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND', out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_sparse_b1_qn2_kvn2_g1_qs1_kvs1024_d128_fp16out(self, device="npu"):
+        """fp16 out: BSND MHA sparse decode(s1=1 + 长 KV 稀疏 gather × BSND stride × fp16)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=1, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='BSND', out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_gqa_dense_b1_qn8_kvn2_g4_qs256_kvs1024_d128_fp16out(self, device="npu"):
+        """fp16 out: BSND GQA g4 dense(非对称 headMul 8/2 × BSND stride × fp16 输出)。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND', out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128_fp16out(self, device="npu"):
+        """fp16 out: TND MHA dense 基线(TND flatten × fp16 输出路径)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND', out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_mha_sparse_b1_qn2_kvn2_g1_qs128_kvs1024_d128_fp16out(self, device="npu"):
+        """fp16 out: TND MHA sparse(TND flatten × 稀疏 kv gather × fp16 输出)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND', out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_gqa_dense_b1_qn8_kvn2_g4_qs256_kvs1024_d128_fp16out(self, device="npu"):
+        """fp16 out: TND GQA g4 dense(TND flatten + GQA stride × fp16 输出 cast)。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND', out_dtype='float16')
+
+    # --- CX 量化 × fp16 out (4 例) ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128_fp16out(self, device="npu"):
+        """fp16 out + CX: BNSD MHA dense × quant_mode=3(默认 dstTypeMax=6.0) × fp16 输出。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3, out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128_fp16out(self, device="npu"):
+        """fp16 out + CX: BSND MHA dense × CX 量化 × BSND stride × fp16 输出。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+                  quant_mode=3, out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_tnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128_fp16out(self, device="npu"):
+        """fp16 out + CX: TND MHA dense × CX 量化 × TND flatten × fp16 输出。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  quant_mode=3, out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_sparse_b1_qn2_kvn2_g1_qs128_kvs1024_d128_fp16out(self, device="npu"):
+        """fp16 out + CX: BNSD MHA sparse(8 kv tile) × CX 量化 × fp16 输出。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', quant_mode=3, out_dtype='float16')
+
+    # --- TND varlen × fp16 out (3 例) ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_128_256_s2_256_128_d128_fp16out(self, device="npu"):
+        """fp16 out + TND varlen: b=2 s1=[128,256] s2=[256,128] 变长, per-batch base-offset 累加 × fp16 输出。
+        镜像已注释 line 1844-1850 case, 启用验证 TND-varlen 的 fp16 输出路径。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[128, 256], s2_list=[256, 128], out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_gqa_dense_b2_qn8_kvn2_g4_s1_128_256_s2_512_256_d128_fp16out(self, device="npu"):
+        """fp16 out + TND varlen GQA: b=2 qn8/kvn2/g4 s1=[128,256] s2=[512,256](GQA 头映射 + varlen 累加 × fp16)。"""
+        self._run(b=2, n1=8, n2=2, g=4, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[128, 256], s2_list=[512, 256], out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_sparse_b2_qn2_kvn2_g1_s1_1_1_s2_512_256_d128_fp16out(self, device="npu"):
+        """fp16 out + TND varlen sparse 双 decode: b=2 s1=[1,1] s2=[512,256], per-batch 稀疏 gather × fp16 输出。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND',
+                  s1_list=[1, 1], s2_list=[512, 256], out_dtype='float16')
+
+    # --- 长 KV(s2>4096) × fp16 out (6 例) ---
+    # 验证 fp16 输出路径在跨多 chunk online-softmax rescale 累积下的正确性。
+    # s2 涵盖 4097/8192/8448/16385 边界(尾块非对齐 + 超长 rescale 累积)。
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs4097_d128_fp16out(self, device="npu"):
+        """fp16 out + 长 KV: BNSD MHA dense s2=4097(32 kv 块 + 尾块 1 行), 跨 chunk rescale × fp16 输出。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=4097, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs8192_d128_fp16out(self, device="npu"):
+        """fp16 out + 长 KV: BNSD MHA dense s2=8192(64 kv 块), online rescale 累积极限 × fp16 输出。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=8192, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_dense_b1_qn8_kvn2_g4_qs256_kvs8448_d128_fp16out(self, device="npu"):
+        """fp16 out + 长 KV: BNSD GQA g4 dense s2=8448(66 kv 块)超长, GQA stride × 长 KV rescale × fp16。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=8448, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_sparse_b1_qn2_kvn2_g1_qs256_kvs8192_d128_fp16out(self, device="npu"):
+        """fp16 out + 长 KV sparse: BNSD MHA sparse s2=8192(64 kv 块随机 gather), 稀疏跳块 × 长 KV rescale × fp16。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=8192, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs16385_d128_fp16out(self, device="npu"):
+        """fp16 out + 超长 KV: TND MHA dense s2=16385(129 kv 块, 尾块 1 行), 极限 rescale 累积 × TND × fp16。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=16385, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND', out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b4_qn20_kvn4_g4_qs128_kvs8193_d128_fp16out(self, device="npu"):
+        """fp16 out + CX + 长 KV: BNSD MHA dense s2=8192 × CX 量化 × fp16 输出(三重累积压力)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=8192, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3, out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_sparse_b2_qn1_kvn1_g1_qs25600_kvs33024_d128(self, device="npu"):
+        """① BNSD 超大序列 sparse: s1=25600/s2=33024, b=2 验证超长 sparse gather + online rescale。"""
+        self._run(b=2, n1=1, n2=1, g=1, s1=25600, s2=33024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse',  out_dtype='float16')
                   
 if __name__ == "__main__":
     run_tests()
