@@ -15,5 +15,6 @@ if (UT_TEST_ALL OR OP_KERNEL_UT)
     )
 
     AddOpTestCase(fused_gdn_gating "Ascend910B1" "" "${fused_gdn_gating_files}")
+    AddOpTestCase(fused_gdn_gating "Ascend310P1" "" "${fused_gdn_gating_files}")
 
 endif()

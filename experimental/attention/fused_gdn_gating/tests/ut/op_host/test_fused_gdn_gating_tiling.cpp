@@ -265,3 +265,96 @@ TEST_F(FusedGdnGatingTilingTest, InvalidDim)
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
+
+TEST_F(FusedGdnGatingTilingTest, Ascend310PTilingKey)
+{
+    optiling::FusedGdnGatingCompileInfo compileinfo = {8, 196608};
+
+    int batch = 4;
+    int numHeads = 8;
+
+    gert::StorageShape aLogShape = {{numHeads}, {numHeads}};
+    gert::StorageShape aShape = {{batch, numHeads}, {batch, numHeads}};
+    gert::StorageShape bShape = {{batch, numHeads}, {batch, numHeads}};
+    gert::StorageShape dtBiasShape = {{numHeads}, {numHeads}};
+    gert::StorageShape gShape = {{1, batch, numHeads}, {1, batch, numHeads}};
+    gert::StorageShape betaOutputShape = {{1, batch, numHeads}, {1, batch, numHeads}};
+
+    gert::TilingContextPara tilingContextPara("FusedGdnGating",
+                                              {
+                                                  {aLogShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {aShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {bShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {dtBiasShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {betaOutputShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"beta", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                  {"threshold", Ops::Transformer::AnyValue::CreateFrom<float>(20.0f)},
+                                              },
+                                              &compileinfo,
+                                              "Ascend310P", 8, 196608);
+
+    int64_t expectTilingKey = 200000UL;
+
+    TilingInfo tilingInfo;
+    ExecuteTiling(tilingContextPara, tilingInfo);
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+    auto tilingData = reinterpret_cast<FusedGdnGatingTilingData *>(tilingInfo.tilingData.get());
+    ASSERT_NE(tilingData, nullptr);
+    EXPECT_EQ(tilingData->numHeads, static_cast<uint32_t>(numHeads));
+    EXPECT_EQ(tilingData->beta, 1.0f);
+    EXPECT_EQ(tilingData->threshold, 20.0f);
+    EXPECT_GT(tilingData->usedCoreNum, 0u);
+    EXPECT_GT(tilingData->alignedLength, 0u);
+    EXPECT_GT(tilingData->tailLength, 0u);
+    EXPECT_GT(tilingData->tileRows, 0u);
+    EXPECT_FLOAT_EQ(tilingData->inv_beta, 1.0f);
+}
+
+TEST_F(FusedGdnGatingTilingTest, Ascend310PLargeBatch)
+{
+    optiling::FusedGdnGatingCompileInfo compileinfo = {8, 196608};
+
+    int batch = 128;
+    int numHeads = 64;
+
+    gert::StorageShape aLogShape = {{numHeads}, {numHeads}};
+    gert::StorageShape aShape = {{batch, numHeads}, {batch, numHeads}};
+    gert::StorageShape bShape = {{batch, numHeads}, {batch, numHeads}};
+    gert::StorageShape dtBiasShape = {{numHeads}, {numHeads}};
+    gert::StorageShape gShape = {{1, batch, numHeads}, {1, batch, numHeads}};
+    gert::StorageShape betaOutputShape = {{1, batch, numHeads}, {1, batch, numHeads}};
+
+    gert::TilingContextPara tilingContextPara("FusedGdnGating",
+                                              {
+                                                  {aLogShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {aShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {bShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {dtBiasShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {betaOutputShape, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"beta", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                                  {"threshold", Ops::Transformer::AnyValue::CreateFrom<float>(20.0f)},
+                                              },
+                                              &compileinfo,
+                                              "Ascend310P", 8, 196608);
+
+    int64_t expectTilingKey = 200000UL;
+
+    TilingInfo tilingInfo;
+    ExecuteTiling(tilingContextPara, tilingInfo);
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+    auto tilingData = reinterpret_cast<FusedGdnGatingTilingData *>(tilingInfo.tilingData.get());
+    ASSERT_NE(tilingData, nullptr);
+    EXPECT_EQ(tilingData->numHeads, static_cast<uint32_t>(numHeads));
+    EXPECT_GT(tilingData->usedCoreNum, 0u);
+    EXPECT_GT(tilingData->tileRows, 0u);
+}

@@ -155,3 +155,82 @@ TEST_P(FusedGdnGatingKernelTest, RunTest)
     ICPU_SET_TILING_KEY(params.tilingKey);
     ICPU_RUN_KF(fused_gdn_gating, blockDim, aLogGm, aGm, bGm, dtBiasGm, gGm, betaOutputGm, workspace, tiling);
 }
+
+#if __CCE_AICORE__ == 200
+
+class FusedGdnGating310PTest : public testing::Test {
+protected:
+    uint32_t batch = 4;
+    uint32_t numHeads = 8;
+    uint32_t totalElements = batch * numHeads;
+
+    size_t shapeALog = numHeads * sizeof(half);
+    size_t shapeA = totalElements * sizeof(half);
+    size_t shapeB = totalElements * sizeof(half);
+    size_t shapeDtBias = numHeads * sizeof(half);
+    size_t shapeG = totalElements * sizeof(float);
+    size_t shapeBetaOutput = totalElements * sizeof(half);
+    size_t allWorkspaceSize = 196608;
+    size_t tilingSize = sizeof(FusedGdnGatingTilingData);
+
+    uint8_t *aLogGm = nullptr;
+    uint8_t *aGm = nullptr;
+    uint8_t *bGm = nullptr;
+    uint8_t *dtBiasGm = nullptr;
+    uint8_t *gGm = nullptr;
+    uint8_t *betaOutputGm = nullptr;
+    uint8_t *workspace = nullptr;
+    uint8_t *tiling = nullptr;
+
+    void SetUp() override
+    {
+        AscendC::SetKernelMode(KernelMode::AIV_MODE);
+        aLogGm = GmAllocWrapper<uint8_t>(shapeALog);
+        aGm = GmAllocWrapper<uint8_t>(shapeA);
+        bGm = GmAllocWrapper<uint8_t>(shapeB);
+        dtBiasGm = GmAllocWrapper<uint8_t>(shapeDtBias);
+        gGm = GmAllocWrapper<uint8_t>(shapeG);
+        betaOutputGm = GmAllocWrapper<uint8_t>(shapeBetaOutput);
+        workspace = GmAllocWrapper<uint8_t>(allWorkspaceSize);
+        tiling = GmAllocWrapper<uint8_t>(tilingSize);
+
+        InitInputData(aLogGm, shapeALog, aGm, shapeA, bGm, shapeB, dtBiasGm, shapeDtBias,
+                      gGm, shapeG, betaOutputGm, shapeBetaOutput);
+
+        FusedGdnGatingTilingData *td = reinterpret_cast<FusedGdnGatingTilingData *>(tiling);
+        td->numHeads = numHeads;
+        td->beta = 1.0f;
+        td->numBatches = batch;
+        td->rowsPerIter = 0;
+        td->useBulkDma = 0;
+        td->usedCoreNum = 1;
+        td->alignedLength = totalElements;
+        td->tailLength = totalElements;
+        td->tileRows = totalElements;
+        td->inv_beta = 1.0f;
+        td->threshold = 20.0f;
+    }
+
+    void TearDown() override
+    {
+        AscendC::GmFree(aLogGm);
+        AscendC::GmFree(aGm);
+        AscendC::GmFree(bGm);
+        AscendC::GmFree(dtBiasGm);
+        AscendC::GmFree(gGm);
+        AscendC::GmFree(betaOutputGm);
+        AscendC::GmFree(workspace);
+        AscendC::GmFree(tiling);
+    }
+};
+
+TEST_F(FusedGdnGating310PTest, RunTest310P)
+{
+    std::cout << "test config: 310P tilingKey=200000" << std::endl;
+
+    uint32_t blockDim = 1;
+    ICPU_SET_TILING_KEY(200000);
+    ICPU_RUN_KF(fused_gdn_gating, blockDim, aLogGm, aGm, bGm, dtBiasGm, gGm, betaOutputGm, workspace, tiling);
+}
+
+#endif
