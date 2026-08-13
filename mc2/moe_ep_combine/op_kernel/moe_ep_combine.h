@@ -587,7 +587,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKTo
         Cast(ubTmpFp32_, ubX_, AscendC::RoundMode::CAST_NONE, axisH_);
         Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, axisH_);
         if constexpr (HasTopkWeight == 1) {
-            GM_ADDR weightAddr = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + (tokenIndex * topK_ + topkId) * WIN_ADDR_ALIGN;
+            GM_ADDR weightAddr = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) +
+                                 (tokenIndex * topK_ + topkId) * WIN_ADDR_ALIGN;
             GlobalTensor<float> srcWeightTensor;
             srcWeightTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(weightAddr));
             DataCopyPad(ubWeighted_, srcWeightTensor, weightCopyParams, padParams);
@@ -632,7 +633,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
 
             GM_ADDR stateGM = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) +
                               tokenIdx * topK_ * WIN_ADDR_ALIGN;
-            ;
             GlobalTensor<uint32_t> stateGMTensor;
             stateGMTensor.SetGlobalBuffer((__gm__ uint32_t *)stateGM);
             DataCopyExtParams resetParams = {

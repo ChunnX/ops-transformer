@@ -526,7 +526,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
         if (dstRankId != epRankId_) { // 远端 使用URMA发送 count + state
             uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId);
             hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DEFAULT_WQE_CONFIG>(commHandle, remoteCountAddr,
-                                                                                   srcWorkspaceAddr, moeNumPerRankSize_, notifyAddr, notifyVal);
+                                                                                   srcWorkspaceAddr, moeNumPerRankSize_,
+                                                                                   notifyAddr, notifyVal);
             continue;
         }
 
@@ -698,7 +699,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
             uint32_t slotCnt = (index < remainder) ? slotCntPerNotify + 1 : slotCntPerNotify;
             uint64_t dataSize = (slotCnt > 0) ? static_cast<uint64_t>(perSlotBytes_) * slotCnt : UB_ALIGN;
             hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DEFAULT_WQE_CONFIG>(commHandle, remoteWinAddr,
-                                                                                   localSendWinAddr, dataSize, notifyAddr, 1);
+                                                                                   localSendWinAddr, dataSize,
+                                                                                   notifyAddr, 1);
             remoteWinAddr += dataSize;
             localSendWinAddr += dataSize;
             notifyAddr += WIN_ADDR_ALIGN;
