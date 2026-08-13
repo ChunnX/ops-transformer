@@ -150,6 +150,11 @@ private:
     uint32_t worldSize_ = 0;
     uint32_t gmm1TilesPerMGroup_ = 1U;
     uint32_t mGroupsPerWave_ = 1U;
+    // Dispatch wave 按实际接收行数合并小专家；GMM wave 仍按 mGroupsPerWave_ 独立推进。
+    static constexpr uint32_t DISPATCH_WAVE_BUDGET_MULTIPLE = 1U;
+    uint32_t dispatchWaveRowBudget_ = 1U;
+    bool dispatchHasPreparedExpert_ = false;
+    uint32_t dispatchPreparedExpertIdx_ = 0U;
     uint16_t gmm1PingPongIdx_ = 0;
     uint32_t startBlockIdx_ = 0;
     uint32_t blockNum_ = GetBlockNum();
@@ -356,6 +361,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
                                       tilingData->hiddenDim / ACTIVATION_N_HALF;
     gmm1TilesPerMGroup_ = Ops::Base::CeilDiv(gmm1SchedulerWidth, static_cast<uint32_t>(L1_TILE_N));
     mGroupsPerWave_ = tilingData->mGroupsPerWave == 0U ? 1U : tilingData->mGroupsPerWave;
+    dispatchWaveRowBudget_ = mGroupsPerWave_ * GMM1_TILE_M * DISPATCH_WAVE_BUDGET_MULTIPLE;
+    dispatchHasPreparedExpert_ = false;
+    dispatchPreparedExpertIdx_ = 0U;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
     rankId_ = mc2Context_->epRankId;
     for (int i = 0; i < worldSize_; i++) {
@@ -800,35 +808,62 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
         if (GetSubBlockIdx() != 1U) {
             return dispatchWaveCursor;
         }
-        uint32_t plannedMGroupCount = 0U;
-        while (dispatchWaveCursor.expertIdx < moeExpertPerRank_ &&
-               plannedMGroupCount < mGroupsPerWave_) {
-            if (dispatchWaveCursor.rowOffsetInExpert == 0U) {
-                RunMoeExpertDispatchStage<ActivationType, QuantScaleOutType, false,
-                                          GMM1_TILE_M, TopkWeightsPrefetch>(
-                    tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_,
-                    dispatchWaveCursor.expertIdx, dispatchExpertRowCount);
+        uint32_t waveBeginExpert = dispatchWaveCursor.expertIdx;
+        uint32_t waveEndExpert = waveBeginExpert;
+        uint32_t plannedDispatchRowCount = 0U;
+        while (waveEndExpert < moeExpertPerRank_) {
+            uint32_t expertIdx = waveEndExpert;
+            if (!dispatchHasPreparedExpert_ || dispatchPreparedExpertIdx_ != expertIdx) {
+                PrepareMoeExpertDispatchStage<ActivationType, false, TopkWeightsPrefetch>(
+                    tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx, dispatchExpertRowCount);
+                dispatchPreparedExpertIdx_ = expertIdx;
+                dispatchHasPreparedExpert_ = true;
             }
-            if (dispatchExpertRowCount == 0U ||
-                dispatchWaveCursor.rowOffsetInExpert >= dispatchExpertRowCount) {
-                ++dispatchWaveCursor.expertIdx;
-                dispatchWaveCursor.rowOffsetInExpert = 0U;
+            if (dispatchExpertRowCount == 0U) {
+                dispatchHasPreparedExpert_ = false;
+                ++waveEndExpert;
                 continue;
             }
 
-            uint32_t remainingMGroupCount = mGroupsPerWave_ - plannedMGroupCount;
-            uint32_t waveEndRowOffsetInExpert = GetWaveEndRowOffsetInExpert(
-                dispatchExpertRowCount, dispatchWaveCursor.rowOffsetInExpert,
-                remainingMGroupCount, GMM1_TILE_M);
-            uint32_t waveRowCount =
-                waveEndRowOffsetInExpert - dispatchWaveCursor.rowOffsetInExpert;
-            plannedMGroupCount += GetMGroupCountForRows(waveRowCount, GMM1_TILE_M);
-            dispatchWaveCursor.rowOffsetInExpert = waveEndRowOffsetInExpert;
-            if (dispatchWaveCursor.rowOffsetInExpert >= dispatchExpertRowCount) {
-                ++dispatchWaveCursor.expertIdx;
-                dispatchWaveCursor.rowOffsetInExpert = 0U;
+            uint64_t expertGlobalRowBegin = expertIdx == 0U ? 0U :
+                static_cast<uint64_t>(tokenDispatchScratch_.cumsumInfoTensor.GetValue(
+                    expertIdx * tokenDispatchConfig_.common.worldSize - 1U));
+            uint64_t dispatchRowCount = 0U;
+            if (expertGlobalRowBegin < tokenDispatchConfig_.maxOutputSize) {
+                uint64_t remainingWorkspaceRowCount =
+                    tokenDispatchConfig_.maxOutputSize - expertGlobalRowBegin;
+                dispatchRowCount = dispatchExpertRowCount < remainingWorkspaceRowCount ?
+                    dispatchExpertRowCount : remainingWorkspaceRowCount;
+            }
+            if (dispatchRowCount == 0U) {
+                dispatchHasPreparedExpert_ = false;
+                ++waveEndExpert;
+                continue;
+            }
+
+            // Dispatch wave 按实际行数合并小专家，不把每个专家的尾块强制放大为
+            // 一个 GMM MGroup。若下一个专家放不进当前 wave，只保留 count，
+            // 下一次调用再执行真正的数据搬运。
+            if (plannedDispatchRowCount != 0U &&
+                plannedDispatchRowCount + dispatchRowCount > dispatchWaveRowBudget_) {
+                break;
+            }
+            plannedDispatchRowCount += static_cast<uint32_t>(dispatchRowCount);
+            dispatchHasPreparedExpert_ = false;
+            ++waveEndExpert;
+
+            // 热点大专家允许独占一个 Dispatch wave，不按 GMM 的 256-row 边界重复进入。
+            if (plannedDispatchRowCount >= dispatchWaveRowBudget_) {
+                break;
             }
         }
+        if (plannedDispatchRowCount != 0U) {
+            DispatchExpertWaveTokens<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+                tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_,
+                waveBeginExpert, waveEndExpert, plannedDispatchRowCount);
+        }
+        dispatchWaveCursor.expertIdx = waveEndExpert;
+        dispatchWaveCursor.rowOffsetInExpert = 0U;
     }
     return dispatchWaveCursor;
 }

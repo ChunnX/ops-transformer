@@ -335,6 +335,201 @@ __aicore__ inline void DispatchExpertTokens(const TokenDispatchConfig &context, 
     }
 }
 
+// 基线 Dispatch wave 的分核实现：先按当前 wave 的总接收行数给所有 Dispatch
+// core 分配连续的 wave-local 区间，再沿专家和 source rank 求交集。这里保留
+// source rank 的原有顺序扫描，不改变二层路由，只把多个小专家合并到同一个
+// Dispatch pass，避免每个小专家都单独占用一轮核分配。
+template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
+__aicore__ inline void DispatchExpertWaveTokens(
+    const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
+    TokenDispatchScratch<ActivationType> &scratch, uint32_t waveBeginExpert,
+    uint32_t waveEndExpert, uint32_t waveRowCount)
+{
+    if (waveRowCount == 0U || waveBeginExpert >= waveEndExpert) {
+        return;
+    }
+
+    const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
+    constexpr int32_t dispatchWaveRowCount = static_cast<int32_t>(PipelineTileM);
+    uint32_t dispatchCoreCount = context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs;
+    int32_t rowsPerCore = Ops::Base::CeilDiv(
+        static_cast<int32_t>(waveRowCount), static_cast<int32_t>(dispatchCoreCount));
+    int32_t coreWaveRowBegin = static_cast<int32_t>(context.blockJob.jobIndex) * rowsPerCore;
+    int32_t coreWaveRowEnd = coreWaveRowBegin + rowsPerCore;
+    if (coreWaveRowEnd > static_cast<int32_t>(waveRowCount)) {
+        coreWaveRowEnd = static_cast<int32_t>(waveRowCount);
+    }
+    if (coreWaveRowBegin >= coreWaveRowEnd) {
+        return;
+    }
+
+    uint32_t maskSlotSize = context.maskAlignSize + static_cast<uint32_t>(ALIGN_32);
+    int32_t expertWaveLocalRowBegin = 0;
+    for (uint32_t localExpertId = waveBeginExpert; localExpertId < waveEndExpert; ++localExpertId) {
+        int32_t expertGlobalRowBegin =
+            localExpertId == 0U ? 0 : scratch.cumsumInfoTensor.GetValue(
+                localExpertId * context.common.worldSize - 1U);
+        if (static_cast<uint64_t>(expertGlobalRowBegin) >= context.maxOutputSize) {
+            continue;
+        }
+
+        int32_t expertTokenCount =
+            scratch.cumsumInfoTensor.GetValue(localExpertId * context.common.worldSize +
+                                              context.common.worldSize - 1U) -
+            expertGlobalRowBegin;
+        int32_t remainingWorkspaceRowCount = static_cast<int32_t>(
+            context.maxOutputSize - static_cast<uint64_t>(expertGlobalRowBegin));
+        int32_t expertRowCount = expertTokenCount < remainingWorkspaceRowCount ?
+                                     expertTokenCount : remainingWorkspaceRowCount;
+        if (expertRowCount <= 0) {
+            continue;
+        }
+
+        int32_t expertWaveLocalRowEnd = expertWaveLocalRowBegin + expertRowCount;
+        int32_t coreExpertRowBegin =
+            coreWaveRowBegin > expertWaveLocalRowBegin ?
+                coreWaveRowBegin - expertWaveLocalRowBegin : 0;
+        int32_t coreExpertRowEnd = coreWaveRowEnd - expertWaveLocalRowBegin;
+        if (coreExpertRowEnd > expertRowCount) {
+            coreExpertRowEnd = expertRowCount;
+        }
+        expertWaveLocalRowBegin = expertWaveLocalRowEnd;
+        if (coreExpertRowEnd <= coreExpertRowBegin) {
+            if (coreWaveRowEnd <= expertWaveLocalRowEnd) {
+                break;
+            }
+            continue;
+        }
+
+        // 找到本 core 行区间覆盖的 source-rank 段。rank 仍按原有顺序处理，
+        // 不引入新的 rank/token 交织策略。
+        uint32_t firstRankIdx = context.common.worldSize;
+        int32_t lastRankIdx = -1;
+        int32_t firstSegmentGlobalRowBegin = expertGlobalRowBegin;
+        int32_t previousRankPrefix = expertGlobalRowBegin;
+        for (uint32_t remoteRankIdx = 0U; remoteRankIdx < context.common.worldSize; ++remoteRankIdx) {
+            int32_t rankPrefix = scratch.cumsumInfoTensor.GetValue(
+                localExpertId * context.common.worldSize + remoteRankIdx);
+            if (firstRankIdx == context.common.worldSize &&
+                rankPrefix - expertGlobalRowBegin > coreExpertRowBegin) {
+                firstRankIdx = remoteRankIdx;
+                firstSegmentGlobalRowBegin = previousRankPrefix;
+            }
+            if (rankPrefix - expertGlobalRowBegin >= coreExpertRowEnd) {
+                lastRankIdx = static_cast<int32_t>(remoteRankIdx);
+                break;
+            }
+            previousRankPrefix = rankPrefix;
+        }
+        if (firstRankIdx == context.common.worldSize || lastRankIdx < 0) {
+            continue;
+        }
+
+        int32_t rankSegmentRowBegin = firstSegmentGlobalRowBegin - expertGlobalRowBegin;
+        int32_t rankSegmentRowEnd = 0;
+        for (int32_t remoteRankIdx = static_cast<int32_t>(firstRankIdx);
+             remoteRankIdx <= lastRankIdx; ++remoteRankIdx) {
+            if (remoteRankIdx > static_cast<int32_t>(firstRankIdx)) {
+                rankSegmentRowBegin = rankSegmentRowEnd;
+            }
+            rankSegmentRowEnd = scratch.cumsumInfoTensor.GetValue(
+                localExpertId * context.common.worldSize + static_cast<uint32_t>(remoteRankIdx)) -
+                expertGlobalRowBegin;
+
+            int32_t coreMatchOrdinalBegin =
+                coreExpertRowBegin > rankSegmentRowBegin ?
+                    coreExpertRowBegin - rankSegmentRowBegin : 0;
+            int32_t coreMatchOrdinalEnd = coreExpertRowEnd - rankSegmentRowBegin;
+            int32_t rankSegmentRowCount = rankSegmentRowEnd - rankSegmentRowBegin;
+            if (coreMatchOrdinalEnd > rankSegmentRowCount) {
+                coreMatchOrdinalEnd = rankSegmentRowCount;
+            }
+            if (coreMatchOrdinalEnd <= coreMatchOrdinalBegin) {
+                continue;
+            }
+
+            GlobalTensor<uint8_t> remoteRankMaskGlobal;
+            int32_t matchedRouteCount = 0;
+            int32_t dispatchedRowCount = 0;
+            for (int32_t batchIdx = 0;
+                 batchIdx < bufferConfig.routeBatchCount && matchedRouteCount < coreMatchOrdinalEnd;
+                 ++batchIdx) {
+                int32_t batchRouteBegin = batchIdx * bufferConfig.routeItemsPerBatch;
+                bool isLastBatch = batchIdx == bufferConfig.routeBatchCount - 1;
+                int32_t validRouteCount = bufferConfig.routeItemsPerBatch;
+                int32_t maskSliceBytes = bufferConfig.routeItemsPerBatch / 8;
+                if (isLastBatch) {
+                    uint64_t sendTotalNum = static_cast<uint64_t>(context.common.tokenNum) * context.common.topK;
+                    validRouteCount = static_cast<int32_t>(sendTotalNum - static_cast<uint64_t>(batchRouteBegin));
+                    if (batchRouteBegin / 8 + maskSliceBytes > static_cast<int32_t>(context.maskAlignSize)) {
+                        maskSliceBytes = static_cast<int32_t>(context.maskAlignSize) - batchRouteBegin / 8;
+                    }
+                }
+                remoteRankMaskGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(
+                    params.peermemInfo.maskRecvPtr +
+                    (static_cast<uint64_t>(localExpertId) * context.common.worldSize +
+                     static_cast<uint32_t>(remoteRankIdx)) * maskSlotSize +
+                    static_cast<uint64_t>(batchRouteBegin / 8)));
+                DataCopy(scratch.maskBatchTensor, remoteRankMaskGlobal, static_cast<uint32_t>(maskSliceBytes));
+                SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+                CreateVecIndex(scratch.topkIndexTensor, batchRouteBegin, bufferConfig.routeItemsPerBatch);
+                uint64_t batchMatchedRouteCount = 0;
+                GatherMask(scratch.validTopkIndexTensor, scratch.topkIndexTensor, scratch.maskBatchU32Tensor,
+                           true, static_cast<uint32_t>(validRouteCount), {1, 1, 0, 0}, batchMatchedRouteCount);
+                SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
+
+                int32_t batchMatchOrdinalBegin = matchedRouteCount;
+                int32_t batchMatchOrdinalEnd =
+                    matchedRouteCount + static_cast<int32_t>(batchMatchedRouteCount);
+                int32_t dispatchMatchOrdinalBegin =
+                    batchMatchOrdinalBegin > coreMatchOrdinalBegin ?
+                        batchMatchOrdinalBegin : coreMatchOrdinalBegin;
+                int32_t dispatchMatchOrdinalEnd =
+                    batchMatchOrdinalEnd < coreMatchOrdinalEnd ?
+                        batchMatchOrdinalEnd : coreMatchOrdinalEnd;
+                if (dispatchMatchOrdinalEnd > dispatchMatchOrdinalBegin) {
+                    int32_t batchLocalMatchBegin = dispatchMatchOrdinalBegin - batchMatchOrdinalBegin;
+                    int32_t batchDispatchRowCount = dispatchMatchOrdinalEnd - dispatchMatchOrdinalBegin;
+                    int32_t dispatchDstRowBegin =
+                        rankSegmentRowBegin + expertGlobalRowBegin + dispatchMatchOrdinalBegin;
+                    CopyTokensAndMetaForDispatch<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+                        context, params, winRankAddr, scratch, dispatchDstRowBegin,
+                        static_cast<uint32_t>(remoteRankIdx), batchLocalMatchBegin, batchDispatchRowCount);
+                    dispatchedRowCount += batchDispatchRowCount;
+                }
+                matchedRouteCount = batchMatchOrdinalEnd;
+            }
+
+            if (dispatchedRowCount > 0) {
+                SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
+                int32_t segmentExpertRowBegin = rankSegmentRowBegin + coreMatchOrdinalBegin;
+                int32_t segmentExpertRowEnd = segmentExpertRowBegin + dispatchedRowCount;
+                __gm__ int32_t *dispatchWaveReadyCount =
+                    reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
+                    static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
+                int32_t firstWaveIdx = segmentExpertRowBegin / dispatchWaveRowCount;
+                int32_t lastWaveIdx = (segmentExpertRowEnd - 1) / dispatchWaveRowCount;
+                for (int32_t waveIdx = firstWaveIdx; waveIdx <= lastWaveIdx; ++waveIdx) {
+                    int32_t waveExpertRowBegin = waveIdx * dispatchWaveRowCount;
+                    int32_t waveExpertRowEnd = waveExpertRowBegin + dispatchWaveRowCount;
+                    int32_t overlapRowBegin =
+                        segmentExpertRowBegin > waveExpertRowBegin ?
+                            segmentExpertRowBegin : waveExpertRowBegin;
+                    int32_t overlapRowEnd =
+                        segmentExpertRowEnd < waveExpertRowEnd ?
+                            segmentExpertRowEnd : waveExpertRowEnd;
+                    AtomicAdd(dispatchWaveReadyCount + static_cast<int64_t>(waveIdx) * INT_CACHELINE,
+                              overlapRowEnd - overlapRowBegin);
+                }
+            }
+        }
+
+        if (coreWaveRowEnd <= expertWaveLocalRowEnd) {
+            break;
+        }
+    }
+}
+
 // 计算一个专家的接收 token 数，并发布就绪 flag。
 template <typename ActivationType, bool EnableA8W4, bool TopkWeightsPrefetch>
 __aicore__ inline void ComputeExpertTokenCountAndNotify(
@@ -490,6 +685,24 @@ __aicore__ inline void RunMoeExpertDispatchStage(
             DispatchExpertTokens<ActivationType, QuantScaleType, EnableA8W4, Gmm1TileM, TopkWeightsPrefetch>(
                 context, params, winRankAddr, scratch, expertIdx);
         }
+    }
+}
+
+// 仅准备一个专家的接收行数和前缀和。Wave 调度需要先用实际行数判断当前
+// Dispatch wave 能否继续合并下一个小专家，因此 count 计算与真正的数据搬运
+// 必须能够分开执行；否则在发现下一个专家放不进当前 wave 后，会重复搬运它。
+template <typename ActivationType, bool EnableA8W4, bool TopkWeightsPrefetch>
+__aicore__ inline void PrepareMoeExpertDispatchStage(
+    const TokenDispatchConfig &context, const Params &params,
+    TokenDispatchScratch<ActivationType> &scratch, uint32_t expertIdx, uint64_t &sendCnt)
+{
+    sendCnt = 0U;
+    if constexpr (g_coreType == AIV) {
+        if (GetSubBlockIdx() != 1U) {
+            return;
+        }
+        ComputeExpertTokenCountAndNotify<ActivationType, EnableA8W4, TopkWeightsPrefetch>(
+            context, params, scratch, expertIdx, sendCnt);
     }
 }
 
