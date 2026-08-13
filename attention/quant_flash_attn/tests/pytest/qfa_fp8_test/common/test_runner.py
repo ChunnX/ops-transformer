@@ -187,6 +187,7 @@ def execute_test(params, mode, cdir=None):
         lse_cmp = golden.convert_q_bnsd_to_layout(
             cpu_lse, golden.ACTUAL_SEQ_Q, compare_layout
         )
+        lse_cmp = lse_cmp.squeeze(-1).permute(1, 0).contiguous()
         lse_result = result_compare_method.check_result(lse_cmp, lse_out)
 
     return atten_result, lse_result
