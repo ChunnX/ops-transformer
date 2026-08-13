@@ -42,6 +42,7 @@ struct StageTwoParams {
     GlobalTensor<stateType> stateIn;       // (Nv, Dv, Dk) state input
     GlobalTensor<stateType> stateOut;      // (Nv, Dv, Dk) state output
     GlobalTensor<bfloat16_t> kg;
+    GlobalTensor<bfloat16_t> keyGm; // R7: 原始 K (T, Nk, Dk), 用于 CalStateNew
     GlobalTensor<bfloat16_t> out;
     int64_t cgStartPos; // R6: ChunkGroup 在 T 上的起始位置
     GM_ADDR ws;
@@ -182,7 +183,13 @@ public:
         if (GetSubBlockIdx() == 0) {
             PipeBarrier<PIPE_MTE3>();
             uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-            // R3: CastGmToGm 时同时做 g_cum_exp 行缩放
+            // R3+R7: CastGmToGm 时做 g_cum_exp * exp(g[-1]) 行缩放
+            //   v_new = v_inner * g_cum_exp * exp(g[-1]) (exp(g[-1]) = g_cum_exp[-1], 标量)
+            float gEndExp = gCumExpUb_.GetValue(chunkSize_ - 1);
+            SetFlag<HardEvent::S_V>(S_V_EVENT);
+            WaitFlag<HardEvent::S_V>(S_V_EVENT);
+            Muls(gCumExpUb_, gCumExpUb_, gEndExp, chunkSize_);
+            PipeBarrier<PIPE_V>();
             CastGmToGmWithScale<float, bfloat16_t>(sTP_->vInner[mm_offset1], sTP_->vInnerBf16[mm_offset1],
                                                    curChunkSize_ * Dv_, gCumExpUb_);
         }
@@ -203,9 +210,15 @@ public:
         if (GetSubBlockIdx() == 0) {
             CopyOutState(finalState);
         }
-        // R3: BF16 path 需对 vInner 做 g_cum_exp 行缩放 (AIC CalVPrime 完成后)
+        // R3+R7: BF16 path 需对 vInner 做 g_cum_exp * exp(g[-1]) 行缩放 (AIC CalVPrime 完成后)
         CrossCoreWaitFlag(0x6);
         if (GetSubBlockIdx() == 0) {
+            // R7: 额外乘 exp(g[-1]) = g_cum_exp[-1]
+            float gEndExp = gCumExpUb_.GetValue(chunkSize_ - 1);
+            SetFlag<HardEvent::S_V>(S_V_EVENT);
+            WaitFlag<HardEvent::S_V>(S_V_EVENT);
+            Muls(gCumExpUb_, gCumExpUb_, gEndExp, chunkSize_);
+            PipeBarrier<PIPE_V>();
             ScaleVInnerBf16(nvId, length);
         }
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
@@ -233,11 +246,12 @@ public:
         }
         CrossCoreWaitFlag(0x5);
         if constexpr (kIsFp32) {
-            CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->kg[mm_offset0], stateOut);
+            // R7: CalStateNew 改用原始 K (strided GM), v_new 已含 exp(g[-1]) 行缩放
+            CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->keyGm, sTP_->cgStartPos, length, nvId, stateOut);
         } else {
             // BF16 path: 等 AIV 完成 g_exp 缩放
             CrossCoreWaitFlag(0x7);
-            CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], stateOut);
+            CalStateNew(sTP_->vInner[mm_offset1], sTP_->keyGm, sTP_->cgStartPos, length, nvId, stateOut);
             SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
             WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
         }
@@ -377,14 +391,25 @@ public:
         }
     }
 
+    // R7: CalStateNew 改用原始 K (strided GM), v_new 已含 exp(g[-1]) 行缩放
+    // state_new = state * exp(g[-1]) + v_new^T @ K
+    // v_new = (v_inner + kBetaInv@state^T) * g_cum_exp * exp(g[-1]) / g_cum_exp = ... * exp(g[-1])
     template <typename stateOutType>
-    __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner, GlobalTensor<bfloat16_t> kg,
+    __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner, GlobalTensor<bfloat16_t> keyGm,
+                                       int64_t cgStartPos, int64_t length, int64_t nvId,
                                        GlobalTensor<stateOutType> state)
     {
+        // K 在原始 GM (T, Nk, Dk) 中, 行 stride = Nk*Dk
+        // 当前 chunk 的 K 起始位置: (cgStartPos + length) * Nk*Dk + nvId * (Nk/Nv) * Dk
+        int64_t kStart = cgStartPos + length;
+        uint64_t kOffset = static_cast<uint64_t>(kStart) * Nk_ * Dk_ + static_cast<uint64_t>(nvId) * (Nk_ / Nv_) * Dk_;
+        uint64_t kStride = static_cast<uint64_t>(Nk_) * Dk_;
         if constexpr (kIsFp32) {
-            RunMatmul(sTP_->mm1Fp32, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 1);
+            RunMatmul(sTP_->mm1Fp32, vInner, true, keyGm[kOffset], false, state, Dv_, Dk_, curChunkSize_,
+                      curChunkSize_, kStride, 1);
         } else {
-            RunMatmul(sTP_->mm1Bf16, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 1);
+            RunMatmul(sTP_->mm1Bf16, vInner, true, keyGm[kOffset], false, state, Dv_, Dk_, curChunkSize_,
+                      curChunkSize_, kStride, 1);
         }
     }
 

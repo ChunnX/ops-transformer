@@ -146,9 +146,7 @@ public:
         attnInter_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
 
-        kg_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
-        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
-
+        // R7: kg_ 不再分配 GM workspace (Stage2 CalStateNew 直接用原始 K)
         qkt_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->chunkSize;
 
@@ -230,7 +228,8 @@ private:
         initStageTwoParams.gCum = gCum_; // R6: 不再使用, 保留兼容
         initStageTwoParams.g = g_;       // R6: 传原始 g 给 Stage2 重算
         initStageTwoParams.kCumdecay = kCumDecay_;
-        initStageTwoParams.kg = kg_;
+        initStageTwoParams.kg = kg_;     // R7: 不再使用, 保留兼容
+        initStageTwoParams.keyGm = key_; // R7: 传原始 K 给 Stage2 CalStateNew
         initStageTwoParams.out = out_[cg.startPos * tiling_->nv * tiling_->dv];
         initStageTwoParams.ws = stageWsAddr_;
         initStageTwoParams.mm1Bf16 = &stage2MmBf16_;

@@ -14,8 +14,59 @@
 | R4 | beta 改为 A 行缩放 | KKT 乘 beta (`attn = kk*beta`)，V 乘 beta (`v_beta = v*beta`) | KKT 不含 beta (`attn = kk`)，求逆后 `A_beta = beta[:,None]*A`，V 不乘 beta 直接用 | Stage1 KKBetaCompute 删 beta 乘法；InverseCompute 增 beta 行缩放；删除 VBetaCompute；AIC matmul 5 直接用原始 V |
 | R5 | -W 矩阵 | `k_cumdecay = A@(-k*beta*g_cum_exp)` | `kBetaInv = (beta*A*(-gamma))@K`，AIV 计算 `A_beta_neg_gamma = A_beta*(-gamma)` 写入 attnWs，AIC matmul `attnWs@K` | Stage1 新增 NegGammaMultiply；AIC matmul 4 右矩阵从 gBKWs 改为 strided K |
 | R6 | Stage2/3 重算 cumsumg | Stage1 GCumExpCompute 将 gCum 写到 GM，Stage2/3 从 GM 读 | Stage1 不再输出 gCum 到 GM；Stage2 CalGCumExp* 从原始 g (T,Nv) 重算；Stage3 CalMaskedQKT 从原始 g 重算 | Stage1 GCumExpCompute 删 DataCopyPad；Stage2/3 新增 g 搬入+CumSum+Exp；主入口删 gCum_ GM 分配 |
+| R7 | AIC 步骤4/5 交换顺序 + 删除 kg_ | AIC 先 kBetaInv 后 vInner；Stage1 输出 kg_，Stage2 CalStateNew 用 kg_ | AIC 先 vInner (读 A_beta) 后 kBetaInv (读 A_beta_neg_gamma)；Stage1 删除 KgCompute/kg_ 输出；Stage2 CalStateNew 直接用原始 K (strided GM) | Stage1 AIC 交换 matmul 4/5；AIV 同步 flag 顺序调整；Stage2 v_new 行缩放合并 exp(g[-1])；CalStateNew 改用 strided K |
 
 ---
+
+## 1.1 R7 详细分析
+
+### 问题1: AIC 步骤4/5 顺序
+
+**重构前（有 bug）：**
+- AIC 步骤4: `kBetaInv = A_beta_neg_gamma @ K` (读 attnWs, 此时是 A_beta_neg_gamma)
+- AIC 步骤5: `vInner = A_beta @ V` (读 attnWs, 但已被 NegGammaMultiply 覆盖为 A_beta_neg_gamma!)
+
+**原因：** AIV 侧 `InverseCompute` 将 A_beta 存入 inverseRes_ (UB)，然后 `NegGammaMultiply` 将 A_beta*(-gamma) 写入 attnWs (GM)。但 AIC 步骤5需要读 attnWs 中的 A_beta，而此时 attnWs 已被覆盖。
+
+**修复：交换 AIC 步骤4/5 顺序：**
+- AIC 步骤4 (先): `vInner = A_beta @ V` (读 attnWs, 此时是 A_beta, 由 InverseCompute 写入)
+- AIC 步骤5 (后): `kBetaInv = A_beta_neg_gamma @ K` (读 attnWs, 此时已被 NegGammaMultiply 覆盖)
+
+**AIV 同步顺序也需调整：**
+- InverseCompute 写 A_beta → attnWs → set 0x7 (求逆辅助) + set 0x5 (vInner)
+- NegGammaMultiply 覆盖 attnWs → set 0x6 (kBetaInv)
+
+### 问题2: 删除 kg_，Stage2 直接用 K
+
+**重构前：**
+- Stage1: `kg = K * exp(g[-1] - g_cum)` → 输出到 GM
+- Stage2: `state_new = state * exp(g[-1]) + v_new^T @ kg`
+
+**重构后：**
+- Stage1: 不再计算/输出 kg_
+- Stage2: `state_new = state * exp(g[-1]) + v_new^T @ K`
+
+**数学推导：**
+```
+重构前: state_new = state * exp(g[-1]) + v_new^T @ (K * exp(g[-1]-g_cum)[...,None])
+重构后: state_new = state * exp(g[-1]) + v_new_scaled^T @ K
+
+其中 v_new_scaled = v_new * exp(g[-1]-g_cum)[...,None]
+```
+
+由于 `exp(g[-1]-g_cum) = exp(g[-1]) / exp(g_cum) = exp(g[-1]) / g_cum_exp`，而 v_new 已含 g_cum_exp 行缩放 (R3)，所以：
+```
+v_new_scaled = v_new * g_cum_exp * (exp(g[-1]) / g_cum_exp)
+             = v_new * exp(g[-1])
+             = v_new * g_cum_exp[-1]  (标量)
+```
+
+即 v_new 只需在 R3 的 g_cum_exp 行缩放基础上，额外乘 `g_cum_exp[-1]`（一个标量），然后 CalStateNew 直接用原始 K (strided GM)。
+
+**收益：**
+- 删除 Stage1 KgCompute 函数和 kg_ GM workspace (BF16 × Nv × Sp × Dk)
+- Stage2 CalStateNew 直接从 strided GM 读 K (通过 SetOrgShape Ka=Nk*Dk)
+- 减少 Stage1 AIV 计算量 (删除 kg 的 broadcast+mul+cast+copyout)
 
 ## 2 GM Workspace 布局对比
 

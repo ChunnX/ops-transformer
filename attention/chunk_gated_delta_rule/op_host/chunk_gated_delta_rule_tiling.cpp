@@ -139,7 +139,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     }
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // qPrime (BF16)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dv; // attnInter (BF16, arch22 compat)
-    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kg (BF16)
+    // R7: kg 不再分配 GM workspace (Stage2 CalStateNew 直接用原始 K)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * c;  // qkt (BF16)
     if (tilingData_.stateIsFp32) {
         tilingData_.interWorkspaceSz += sizeLow * nv * dv * dk; // stateBf16Wk (BF16, arch35)
