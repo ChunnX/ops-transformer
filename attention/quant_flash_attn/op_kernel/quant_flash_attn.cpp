@@ -64,7 +64,7 @@ __aicore__ inline void quant_flash_attn_mxfp8(
             dTemplateType, dVTemplateType, KvLayoutType, useDn, isDAligned>;
     using VecFaBlock =
         BaseApi::QuantFlashAttnBlockVecMxfp8<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
-            s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, isFdConst, useDn>;
+            s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, isFdConst, useDn, isDAligned>;
     using VecFdBlock =
         BaseApi::QuantFlashAttnBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
             s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;

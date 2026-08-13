@@ -147,8 +147,8 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
 
     if (dVsize <= DSIZE_64) {
         dVsize = DSIZE_64;
-    } else if (dSize <= 72) {
-        dSize = DSIZE_72;
+    } else if (dVsize <= 72) {
+        dVsize = DSIZE_72;
     } else if (dVsize <= DSIZE_128) {
         dVsize = DSIZE_128;
     } else if (dVsize <= DSIZE_256) {

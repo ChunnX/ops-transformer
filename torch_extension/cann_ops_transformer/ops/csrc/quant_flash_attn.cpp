@@ -101,12 +101,7 @@ quant_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, 
     if (layout_kv == "TND") {
         dSize = v.size(2);
     } else if (layout_kv == "PA_NZ") {
-        if (q.size(-1) == 72){
-            dSize = q.size(-1);
-        }
-        else {
-            dSize = v.size(2) * v.size(4);
-        }
+        dSize = v.size(2) * v.size(4);
     } else {
         dSize = v.size(v.dim() - 1);
     }
