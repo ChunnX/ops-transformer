@@ -53,6 +53,13 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const QfaTilingInfo &qfaInf
     }
 
     OP_CHECK_IF(
+        (qfaInfo.kvLayout == QfaLayout::PA_NZ) && (qfaInfo.qkHeadDim == 72),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "layout_kv",
+                                              QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),
+                                              "When quant_mode is MxFP8 and qkHeadDim is 72, layout_kv cannot be PA_NZ"),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(
         std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), qfaInfo.kvLayout) == supportedKvLayouts.end(),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "layout_kv",
                                               QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),

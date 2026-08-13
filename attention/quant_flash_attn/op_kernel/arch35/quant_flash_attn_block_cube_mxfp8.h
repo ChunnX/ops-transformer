@@ -770,8 +770,7 @@ public:
                 AscendC::PipeBarrier<PIPE_MTE2>();
             }
             CopyValueSlice(mm2BTensor, runInfo.s2Idx + kIdx * baseK, realK, 0, constInfo_.dSizeV, runInfo);
-            uint32_t dSizeVAlign32 = ((uint32_t)constInfo_.dSizeV + 31) >> 5 << 5;	 
-             uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * dSizeVAlign32;
+            uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * dVBaseSize;
             LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
             CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + kIdx * baseK) / MXFP_DIVISOR_SIZE,
                                 (realK + 63) / MXFP_DIVISOR_SIZE, 0, constInfo_.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
@@ -862,8 +861,7 @@ public:
                 AscendC::PipeBarrier<PIPE_MTE2>();
             }
             CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo_.dSizeV, runInfo);
-            uint32_t dSizeVAlign32 = ((uint32_t)constInfo_.dSizeV + 31) >> 5 << 5;	 
-            uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * dSizeVAlign32;
+            uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * dVBaseSize;
             LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
             CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + k * baseK) / MXFP_DIVISOR_SIZE,
                                 (realK + 63) / MXFP_DIVISOR_SIZE, 0, constInfo_.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
