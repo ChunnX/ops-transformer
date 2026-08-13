@@ -243,6 +243,9 @@ ge::graphStatus AlltoAllvGroupedMatMulShmemTilingFunc(gert::TilingContext *conte
 
     const uint32_t blockDim = platform.CalcTschBlockDim(aivCoreNum, aicCoreNum, aivCoreNum);
     context->SetBlockDim(blockDim);
+    // The kernel contains full-core and cross-rank synchronization. Batch mode
+    // guarantees that every AIC/AIV is resident before any core enters a wait.
+    context->SetScheduleMode(1);
     // The SHMEM entry has one unconditional kernel variant, which OPC emits with the default tiling key 0.
     context->SetTilingKey(0UL);
     size_t *workspaceSizes = context->GetWorkspaceSizes(1);

@@ -174,6 +174,8 @@ def check_tiling_and_kernel() -> None:
             "single-variant SHMEM tiling must select the compiled default kernel key 0")
     require("context->SetTilingKey(1UL);" not in tiling,
             "host requests tiling key 1, which is absent from the single-variant kernel JSON")
+    require("context->SetScheduleMode(1);" in tiling,
+            "SHMEM full-core synchronization requires batch scheduling so every AIC/AIV starts together")
 
     cmake = read("op_host/CMakeLists.txt")
     require("ENV{SHMEM_HOME_PATH}" in cmake and "ENV{SHMEM_HOME}" in cmake,
