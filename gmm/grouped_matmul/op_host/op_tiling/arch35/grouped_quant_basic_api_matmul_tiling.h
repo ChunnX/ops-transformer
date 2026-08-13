@@ -62,7 +62,8 @@ private:
                                          uint64_t maxDepthA1, uint64_t maxDepthB1,
                                          uint64_t baseASize, uint64_t baseBSize, L1SearchResult &result);
     void TryUpdateThreeBufferCandidate(uint64_t candidateDepthA1, uint64_t candidateDepthB1,
-                                       uint64_t baseASize, uint64_t baseBSize, L1SearchResult &result);
+                                       uint64_t baseASize, uint64_t baseBSize, bool requireMinLoadSize,
+                                       L1SearchResult &result);
     bool IsBetterThreeBufferCandidate(uint64_t highBwPayload, uint64_t totalPayload,
                                       const L1SearchResult &result) const;
     void ApplyThreeBufferSearchResult(const L1SearchResult &result);
