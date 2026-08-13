@@ -319,7 +319,7 @@ ge::graphStatus CommonChecker::CheckAxis(const QfaTilingInfo &qfaInfo)
     OP_CHECK_IF(CheckValueSupport(qfaInfo.vHeadDim, supportedHeadDims) != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "axis D of value",
                                                       std::to_string(qfaInfo.vHeadDim).c_str(),
-                                                      "The value of axis D of value can only be 64/128"),
+                                                      "The value of axis D of value can only be 64, 72 or 128"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

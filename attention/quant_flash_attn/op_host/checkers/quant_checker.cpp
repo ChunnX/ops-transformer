@@ -535,6 +535,11 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
                         qLayoutStr.c_str(), QfaLayoutToSerialString(qfaInfo.kvLayout).c_str()),
                 return ge::GRAPH_FAILED);
 
+    OP_CHECK_IF((qfaInfo.kvLayout == QfaLayout::PA_NZ) && (qfaInfo.qkHeadDim == 72),
+                OP_LOGE(qfaInfo.opName,
+                        "When quant_mode is MxFP8 and qkHeadDim is 72, layout_kv cannot be PA_NZ"),
+                return ge::GRAPH_FAILED);
+
     OP_CHECK_IF(
         std::find(config.supportedOutLayouts.begin(), config.supportedOutLayouts.end(), qfaInfo.outLayout) ==
             config.supportedOutLayouts.end(),

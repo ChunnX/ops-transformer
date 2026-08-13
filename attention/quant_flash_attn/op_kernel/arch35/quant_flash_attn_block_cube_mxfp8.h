@@ -770,8 +770,7 @@ public:
                 AscendC::PipeBarrier<PIPE_MTE2>();
             }
             CopyValueSlice(mm2BTensor, runInfo.s2Idx + kIdx * baseK, realK, 0, constInfo_.dSizeV, runInfo);
-            uint32_t dSizeVAlign32 = ((uint32_t)constInfo_.dSizeV + 31) >> 5 << 5;
-            uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * dSizeVAlign32;
+            uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * dVBaseSize;
             LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
             CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + kIdx * baseK) / MXFP_DIVISOR_SIZE,
                                 (realK + 63) / MXFP_DIVISOR_SIZE, 0, constInfo_.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
@@ -779,7 +778,7 @@ public:
 
             mm2B.Wait<HardEvent::MTE2_MTE1>();
             MMParam param =
-                MakeMMParam((uint32_t)mBaseSize, dSizeVAlign32,
+                MakeMMParam((uint32_t)mBaseSize, dVBaseSize,
                             (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE, false, false, kIdx == 0, kIdx == 0);
             if constexpr (!USE_DN) {
                 param.realM = (uint32_t)runInfo.actMSize;
@@ -862,8 +861,7 @@ public:
                 AscendC::PipeBarrier<PIPE_MTE2>();
             }
             CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo_.dSizeV, runInfo);
-            uint32_t dSizeVAlign32 = ((uint32_t)constInfo_.dSizeV + 31) >> 5 << 5;
-            uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * dSizeVAlign32;
+            uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * dVBaseSize;
             LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
             CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + k * baseK) / MXFP_DIVISOR_SIZE,
                                 (realK + 63) / MXFP_DIVISOR_SIZE, 0, constInfo_.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
@@ -871,7 +869,7 @@ public:
 
             mm2B.Wait<HardEvent::MTE2_MTE1>();
             MMParam param =
-                MakeMMParam((uint32_t)mBaseSize, dSizeVAlign32,
+                MakeMMParam((uint32_t)mBaseSize, dVBaseSize,
                             (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE, USE_DN, false, k == 0, k == 0);
             if constexpr (!USE_DN) {
                 param.realM = (uint32_t)runInfo.actMSize;
