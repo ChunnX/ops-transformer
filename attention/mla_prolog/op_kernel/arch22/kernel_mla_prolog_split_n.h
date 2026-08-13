@@ -62,7 +62,9 @@ public:
 
     __aicore__ inline MlaPrologVecS1CubS2(TPipe *pipe, const optiling::MlaPrologTilingData *__restrict tilingData,
                                           const optiling::MlaPrologBaseParams *__restrict baseParams)
-        : pipe_(pipe), tilingData_(tilingData), baseParams_(baseParams)
+        : pipe_(pipe),
+          tilingData_(tilingData),
+          baseParams_(baseParams)
     {
     }
 
@@ -364,7 +366,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCqParamInit()
         mmCqParam_.n = baseParams_->mm1SingleCoreN; // 1536 / 24 = 64
     }
     mmCqParam_.m = baseParams_->stepBatchSize; // 32
-    mmCqParam_.k = baseParams_->headSizeX; // 7168
+    mmCqParam_.k = baseParams_->headSizeX;     // 7168
     mmCqParam_.needSetOrgShape = 1;
     mmCqParam_.orgKb = mmCqParam_.k;
     mmCqParam_.orgKa = mmCqParam_.k;
@@ -391,7 +393,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCkvKrParamInit()
         mmCkvKrParam_.n = baseParams_->mm2SingleCoreN;
     }
     mmCkvKrParam_.m = baseParams_->stepBatchSize; // 32
-    mmCkvKrParam_.k = baseParams_->headSizeX; // 7168
+    mmCkvKrParam_.k = baseParams_->headSizeX;     // 7168
     mmCkvKrParam_.needSetOrgShape = 1;
     mmCkvKrParam_.orgKb = mmCkvKrParam_.k;
     mmCkvKrParam_.orgKa = mmCkvKrParam_.k;
@@ -1242,7 +1244,6 @@ MlaPrologVecS1CubS2<MLAPT>::MatmulQnSyncDynamicQuantAndMulQr(int64_t qcOffset, i
     }
 }
 
-
 template <typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::CopyGlobalParams()
 {
@@ -1295,7 +1296,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::CopyGlobalParams()
         DataCopyPad(quantScaleCkrLocal_, quantScaleCkrGm_, quantCopyParams, quantPadParams);
     }
 }
-
 
 /**
  * @brief RmsNormCq流程，融合了dynamicquant
@@ -1431,7 +1431,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ComputeBlkScatterOffsets(Glob
         spill = false;
         nextPageId = -1;
     }
-
 
     MaterializeOffsetsWithHeadSize<krCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_BLK_NZ)>(
         paBlkId, tokenOffsetInPage, rowsThisStep, spill, nextPageId, baseParams_->dimHeadRope,
@@ -1730,7 +1729,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQr(int64_t ropeQrOffset, 
     }
     uint64_t stride = static_cast<uint64_t>(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope);
 
-    
     LocalTensor<ropeOutputType> outputLocal;
     LocalTensor<float> channelDeqScaleLocal = shareBuffer_.Get<float>();
 
@@ -1909,7 +1907,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::CastQcQrSplitN(const CastQcQr
         static_cast<uint16_t>(row), static_cast<uint16_t>(sizeof(mmQnInputType) * colQcSingle / ALIGN_BLOCK_SIZE), 0,
         static_cast<uint16_t>(sizeof(mmQnInputType) * castQcQrSplitN.dstStride / ALIGN_BLOCK_SIZE)};
 
-
     GlobalTensor<mmQnInputType> outputGm = mmQcQrResDequantGm_[castQcQrSplitN.mmQnPreCastResOffset];
     GlobalTensor<mmQcQrOutputType> inputGm = mmQcQrResGm_[castQcQrSplitN.mmQnPreCastOffset];
 
@@ -1945,7 +1942,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcQrSplitN(const Dequa
     DataCopyParams outputCopyParams{
         static_cast<uint16_t>(row), static_cast<uint16_t>(sizeof(mmQnInputType) * colQcSingle / ALIGN_BLOCK_SIZE), 0,
         static_cast<uint16_t>(sizeof(mmQnInputType) * dequantQcQrSplitN.dstStride / ALIGN_BLOCK_SIZE)};
-
 
     GlobalTensor<mmQcQrOutputType> inputGm = mmQcQrResGm_[dequantQcQrSplitN.mmQnPreDequantOffset];
     GlobalTensor<float> scale1Gm = deqScaleQcQrW_[dequantQcQrSplitN.mmQnPreDequantOffset];
@@ -2180,7 +2176,6 @@ MlaPrologVecS1CubS2<MLAPT>::DynamicQuantQnAndMulQrSyncMMQn(int64_t batchOffset, 
     int64_t qrPostProcessResOffset = blockBatchOffset * static_cast<int64_t>(baseParams_->headSizeQr) +
                                      numHeadOffset * static_cast<int64_t>(baseParams_->dimHeadRope) +
                                      batchOffset * static_cast<int64_t>(baseParams_->headSizeQr);
-
 
     LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
 
