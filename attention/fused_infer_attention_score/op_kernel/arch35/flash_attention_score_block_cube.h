@@ -73,7 +73,8 @@ template <typename INPUT_T, uint32_t dBaseSize>
 struct QL1BuffSel {
     using Type = std::conditional_t<std::is_same_v<INPUT_T, float> || (!(std::is_same_v<INPUT_T, fp8_e4m3fn_t> ||
                                                                          std::is_same_v<INPUT_T, fp8_e5m2_t> ||
-                                                                         std::is_same_v<INPUT_T, hifloat8_t>)&&dBaseSize > 256),
+                                                                         std::is_same_v<INPUT_T, hifloat8_t>) &&
+                                                                       dBaseSize > 256),
                                     BuffersPolicySingleBuffer<BufferType::L1>, BuffersPolicyDB<BufferType::L1>>;
 };
 
