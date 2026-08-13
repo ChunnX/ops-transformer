@@ -59,6 +59,10 @@ protected:
     __aicore__ inline void CalSub(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor, int32_t baseM,
                                   int32_t baseN);
     __aicore__ inline void CalDsinks(const int32_t processM, const RunInfo &runInfo, const int32_t mOffset);
+    __aicore__ inline void ScatterCopyOutPairwise(const LocalTensor<float> &srcTensor,
+                                                   GlobalTensor<float> &dstGm,
+                                                   GlobalTensor<int32_t> &indicesGm,
+                                                   int64_t validRows, int64_t &curS2Index);
 
 protected:
     // core info
@@ -695,29 +699,30 @@ __aicore__ inline void VecOp<SMLAGT>::CalDsinks(const int32_t processM, const Ru
     if (MODE != SMLAG_SCFA_MODE && curActualRight - curActualLeft == 0) {
         return;
     }
+    uint64_t tailS2 = actualSelS2Align % 64 ? actualSelS2Align % 64 : 64;
+    uint64_t totalLoop = CeilDiv(actualSelS2Align, 64);
     for (int32_t i = 0; i < processM; ++i) {
-        uint64_t tailS2 = actualSelS2Align % 64 ? actualSelS2Align % 64 : 64;
-        uint64_t totalLoop = CeilDiv(actualSelS2Align, 64);
         for (int32_t loop = 0; loop < totalLoop; ++loop) {
             uint64_t mask = loop == totalLoop - 1 ? tailS2 : 64;
-            Mul(dSinkSumTensor[i * actualSelS2Align + loop * 64], dSinkSumTensor[i * actualSelS2Align + loop * 64], sinkTensor[i * 8], mask, 1, {1, 1, 0, 0, 0, 0});
+            Mul(dSinkSumTensor[i * actualSelS2Align + loop * 64],
+                dSinkSumTensor[i * actualSelS2Align + loop * 64], sinkTensor[i * BLOCK_FP32], mask, 1,
+                {1, 1, 0, 0, 0, 0});
         }
         PIPE_BARRIER(PIPE_V);
 
-        // ReduceSum
         if constexpr (MODE != SMLAG_SCFA_MODE) {
-            ReduceSum(dSinkSumTensor[i * actualSelS2Align], dSinkSumTensor[i * actualSelS2Align], sinkTmpBuf, curActualRight);
+            ReduceSum(sinkTensor[i * BLOCK_FP32], dSinkSumTensor[i * actualSelS2Align], sinkTmpBuf,
+                      curActualRight);
         } else {
-            ReduceSum(dSinkSumTensor[i * actualSelS2Align], dSinkSumTensor[i * actualSelS2Align], sinkTmpBuf, actualSelS2);
+            ReduceSum(sinkTensor[i * BLOCK_FP32], dSinkSumTensor[i * actualSelS2Align], sinkTmpBuf, actualSelS2);
         }
         PIPE_BARRIER(PIPE_V);
-
-        float dSink = -dSinkSumTensor.GetValue(i * actualSelS2Align);
-        sinkTensor.SetValue(i * 8, dSink);
     }
 
-    // Add to dSinkTensor
-    Add(dSinkTensor[mOffset * BLOCK_FP32], dSinkTensor[mOffset * BLOCK_FP32], sinkTensor, processM * BLOCK_FP32);
+    Muls(sinkTensor, sinkTensor, -1.0f, processM * BLOCK_FP32);
+    PIPE_BARRIER(PIPE_V);
+    Add(dSinkTensor[mOffset * BLOCK_FP32], dSinkTensor[mOffset * BLOCK_FP32], sinkTensor,
+        processM * BLOCK_FP32);
 
     SET_FLAG(V, MTE3, mte3WaitV);
     WAIT_FLAG(V, MTE3, mte3WaitV);
@@ -908,6 +913,43 @@ __aicore__ inline void VecOp<SMLAGT>::Process(const RunInfo &runInfo)
 }
 
 template <typename SMLAGT>
+__aicore__ inline void VecOp<SMLAGT>::ScatterCopyOutPairwise(
+    const LocalTensor<float> &srcTensor, GlobalTensor<float> &dstGm,
+    GlobalTensor<int32_t> &indicesGm, int64_t validRows, int64_t &curS2Index)
+{
+    int64_t row = 0;
+    while (row < validRows) {
+        int64_t idx0 = indicesGm.GetValue(curS2Index);
+        bool canPair = row + 1 < validRows;
+        int64_t idx1 = -1;
+        uint64_t gapBytes = 0;
+        if (canPair) {
+            idx1 = indicesGm.GetValue(curS2Index + 1);
+            if (idx0 >= 0 && idx1 > idx0) {
+                gapBytes = static_cast<uint64_t>(idx1 - idx0 - 1) * dimDAlign * sizeof(float);
+                canPair = gapBytes <= UINT32_MAX;
+            } else {
+                canPair = false;
+            }
+        }
+
+        if (canPair) {
+            DataCopyExtParams pairParams{2, static_cast<uint32_t>(dimDAlign * sizeof(float)),
+                                         0, static_cast<uint32_t>(gapBytes), 0};
+            DataCopyPad(dstGm[idx0 * dimDAlign], srcTensor[row * dimDAlign], pairParams);
+            row += 2;
+            curS2Index += 2;
+        } else {
+            if (idx0 >= 0) {
+                DataCopy(dstGm[idx0 * dimDAlign], srcTensor[row * dimDAlign], dimDAlign);
+            }
+            ++row;
+            ++curS2Index;
+        }
+    }
+}
+
+template <typename SMLAGT>
 __aicore__ inline void VecOp<SMLAGT>::ScatterAdd(const RunInfo &runInfo)
 {
     if (runInfo.isOri) {
@@ -956,13 +998,7 @@ __aicore__ inline void VecOp<SMLAGT>::ScatterAdd(const RunInfo &runInfo)
         Add(dkInUb, dkInUb, dvInUb, UB_ROW_SIZE * dimDAlign);
         SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
         WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
-        for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
-            int32_t s2Idx = indicesGm.GetValue(curS2Index);
-            if (s2Idx >= 0) {
-                DataCopy(dCmpKvOutGm[s2Idx * dimDAlign], dkInUb[row * dimDAlign], dimDAlign);
-            }
-            curS2Index++;
-        }
+        ScatterCopyOutPairwise(dkInUb, dCmpKvOutGm, indicesGm, UB_ROW_SIZE, curS2Index);
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
         pingPongIdx = 1 - pingPongIdx;
     }
@@ -982,13 +1018,7 @@ __aicore__ inline void VecOp<SMLAGT>::ScatterAdd(const RunInfo &runInfo)
     Add(dkInUb, dkInUb, dvInUb, tailRows * dimDAlign);
     SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
     WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
-    for (int64_t row = 0; row < tailRows; row++) {
-        int32_t s2Idx = indicesGm.GetValue(curS2Index);
-        if (s2Idx >= 0) {
-            DataCopy(dCmpKvOutGm[s2Idx * dimDAlign], dkInUb[row * dimDAlign], dimDAlign);
-        }
-        curS2Index++;
-    }
+    ScatterCopyOutPairwise(dkInUb, dCmpKvOutGm, indicesGm, tailRows, curS2Index);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
     pingPongIdx = 1 - pingPongIdx;
     SetAtomicNone();
