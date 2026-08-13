@@ -100,11 +100,54 @@ def get_pct_thd(data_type):
     return PRECISION[data_type]["pct_thd"]
 
 
+def _format_threeway_row(seq, a_val, b_val, c_val, re_a, re_b):
+    """格式化单行点位：A(NPU)/B(小算子)/C(高精度) 三值 + 相对 C 的两列相对误差。
+    C 为 inf/nan 时用字符串列（与两方 _format_loop_row 同款处理）。
+    数值列右对齐宽度 10（负数多占负号位，保证小数点对齐）。"""
+    if "inf" in str(c_val) or "nan" in str(c_val):
+        return f"{seq:08d} \t {a_val:>10} \t {b_val:>10} \t {c_val:>10} \t {'inf/nan':>10} \t {'inf/nan':>10}"
+    return f"{seq:08d} \t {a_val:>10.7f} \t {b_val:>10.7f} \t {c_val:>10.7f} \t {re_a:>10.7f} \t {re_b:>10.7f}"
+
+
+def _display_threeway_table(a_flat, b_flat, c_flat, re_a, re_b, name):
+    """三方点位表：Loop 风格（对齐两方 display_output_np_isclose，首尾各 10 行）。"""
+    print_log(_ROW_DIVIDER)
+    print_log(f"[three-way] {name}:")
+    print_log("Loop \t A(NPU) \t B(same) \t C(high) \t A_RE \t B_RE")
+    print_log(_ROW_DIVIDER)
+    split_count = int(a_flat.numel())
+    if split_count <= 20:
+        shown = range(split_count)
+    else:
+        shown = list(range(10)) + list(range(split_count - 10, split_count))
+    for idx in shown:
+        print_log(
+            _format_threeway_row(
+                idx,
+                a_flat[idx].item(),
+                b_flat[idx].item(),
+                c_flat[idx].item(),
+                re_a[idx].item(),
+                re_b[idx].item(),
+            )
+        )
+    if split_count > 20:
+        print_log("... \t ... \t ... \t ... \t ... \t ...")
+    print_log(_ROW_DIVIDER)
+
+
 def three_way_report(name, npu_out, golden_out, ref_out, data_type):
     """三方精度判定：metric_A / max(metric_B, err) < ratio（MARE=10/MERE=2/RMSE=2）。
 
     小值域兼容：|C| >= err 的元素走原 MARE/MERE/RMSE；|C| < err 的元素走
     errorcount 比较（errorcount_A / max(errorcount_B, 1) < 2）。
+
+    打印格式（对齐两方列表风格）：
+      1. 点位表：每行 A(NPU)/B(小算子)/C(高精度) 三值 + A_RE/B_RE 两列相对误差
+         （分别相对 C），首尾各 10 行；
+      2. MARE/MERE/RMSE 分块打印：每类单独一块，A 值/B 值/ratio/阈值/状态各一行，
+         块间用标题分隔线区分；
+      3. SMALL 小值域 errorcount 兼容块。
     """
     ERR_BY_DTYPE = {"float16": 2e-11, "bfloat16": 2e-8, "float32": 2e-14}
     ERROR_BY_DTYPE = {"float16": 2e-16, "bfloat16": 2e-16, "float32": 2e-30}
@@ -144,14 +187,40 @@ def three_way_report(name, npu_out, golden_out, ref_out, data_type):
     small_ratio = err_cnt_a / max(err_cnt_b, 1)
     ok_small = small_ratio < 2
     ok = ok_main and ok_small
-    print_log(
-        f"[three-way] {name}: "
-        f"MARE {mare_a:.3e}/{mare_b:.3e} ({ratios['MARE']:.3f}<{RATIO['MARE']:.0f}) "
-        f"MERE {mere_a:.3e}/{mere_b:.3e} ({ratios['MERE']:.3f}<{RATIO['MERE']:.0f}) "
-        f"RMSE {rmse_a:.3e}/{rmse_b:.3e} ({ratios['RMSE']:.3f}<{RATIO['RMSE']:.0f}) "
-        f"SMALL err_cnt_A={err_cnt_a} err_cnt_B={err_cnt_b} ({small_ratio:.3f}<2) "
-        f"[{'PASS' if ok else 'FAIL'}]"
-    )
+
+    # ── 1. 点位表（Loop 风格，A/B/C 三值 + 相对 C 的两列相对误差，首尾各 10 行）──
+    a_flat = a.flatten()
+    b_flat = b.flatten()
+    c_flat = c.flatten()
+    denom_pt = c_flat.abs() + 1e-9
+    re_a = (a_flat - c_flat).abs() / denom_pt
+    re_b = (b_flat - c_flat).abs() / denom_pt
+    _display_threeway_table(a_flat, b_flat, c_flat, re_a, re_b, name)
+
+    # ── 2. MARE / MERE / RMSE 分块打印（每类单独一块，A/B/ratio/阈值/状态各一行）──
+    metric_vals = [
+        ("MARE", mare_a, mare_b),
+        ("MERE", mere_a, mere_b),
+        ("RMSE", rmse_a, rmse_b),
+    ]
+    for mname, val_a, val_b in metric_vals:
+        print_log(f"================ {mname} ================")
+        print_log(f"  A      = {val_a:.6e}")
+        print_log(f"  B      = {val_b:.6e}")
+        print_log(f"  ratio  = {ratios[mname]:.6f}")
+        print_log(f"  thd    = {RATIO[mname]:.0f}")
+        print_log(f"  status = {'PASS' if ratios[mname] < RATIO[mname] else 'FAIL'}")
+
+    # ── 3. SMALL 小值域 errorcount 兼容块 ──
+    print_log("================ SMALL ================")
+    print_log(f"  err_cnt_A = {err_cnt_a}")
+    print_log(f"  err_cnt_B = {err_cnt_b}")
+    print_log(f"  ratio     = {small_ratio:.3f}")
+    print_log("  thd       = 2")
+    print_log(f"  status    = {'PASS' if ok_small else 'FAIL'}")
+    print_log(_ROW_DIVIDER)
+    print_log(f"[three-way] {name}: Result {'PASS' if ok else 'FAIL'}")
+    print_log(_ROW_DIVIDER)
     return {"status": "PASS" if ok else "FAIL", "ratios": ratios}
 
 
