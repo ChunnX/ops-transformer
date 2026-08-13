@@ -21,7 +21,7 @@
 #include "cgmct/block/block_scheduler_policy.h"
 #include "cgmct/kernel/kernel_qgmm_pertile.h"
 #include "cgmct/policy/dispatch_policy.h"
-#include "../../grouped_matmul_utils.h"
+#include "../../grouped_matmul_grouped_matmul_utils.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 #include "quant_utils.h"
 using GMMQuantParams = GroupedMatmulTilingData::GMMQuantParams;

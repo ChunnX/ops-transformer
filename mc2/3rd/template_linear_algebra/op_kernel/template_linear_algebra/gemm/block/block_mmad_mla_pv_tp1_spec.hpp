@@ -12,11 +12,11 @@
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_MLA_PV_TP1_SPEC_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/cross_core_sync.hpp"
+#include "../../arch/third_cross_core_sync.hpp"
 #include "../../arch/resource.hpp"
-#include "../../coord.hpp"
+#include "../../third_coord.hpp"
 #include "../../gemm/dispatch_policy.hpp"
-#include "../../gemm/helper.hpp"
+#include "../../gemm/third_helper.hpp"
 #include "../../gemm_coord.hpp"
 
 ////////////////////////////////////////////////////////////////////

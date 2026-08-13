@@ -27,10 +27,10 @@ constexpr uint32_t SOFTMAX_SUM_INDEX = 1;
 constexpr uint32_t SUB_INDEX_NUM = 1;
 constexpr ge::DataType OUTPUT_TYPE = ge::DT_FLOAT;
 
-static ge::graphStatus InferShapeDenseLightningIndexerSoftmaxLse(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeDenseLightningIndexerSoftmaxLse(gert::InferShapeContext *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("DenseLightningIndexerSoftmaxLse", "InferShapeContext is nullptr!"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     OP_LOGD(context->GetNodeName(), "Enter DenseLightningIndexerSoftmaxLse InferDataType impl.");
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
@@ -46,7 +46,7 @@ static ge::graphStatus InferShapeDenseLightningIndexerSoftmaxLse(gert::InferShap
         inputLayoutPtrStr != "TND" && inputLayoutPtrStr != "BSND",
         OP_LOGE(context, "The attr layout_query should be TND or BSND, but got %s.", inputLayoutPtrStr.c_str()),
         return ge::GRAPH_FAILED);
-    
+
     gert::Shape *softmaxMaxShape = context->GetOutputShape(SOFTMAX_MAX_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, softmaxMaxShape);
     gert::Shape *softmaxSumShape = context->GetOutputShape(SOFTMAX_SUM_INDEX);
@@ -60,19 +60,19 @@ static ge::graphStatus InferShapeDenseLightningIndexerSoftmaxLse(gert::InferShap
             OP_LOGE(context, "Layout BSND, queryDims (%zu) must be 4!", queryShape->GetDimNum()),
             return ge::GRAPH_FAILED);
         softmaxMaxShape->SetDim(0, queryShape->GetDim(0)); // 0:Dim B
-        softmaxMaxShape->SetDim(1, keyShape->GetDim(2)); // 1:Dim N2
+        softmaxMaxShape->SetDim(1, keyShape->GetDim(2));   // 1:Dim N2
         softmaxMaxShape->SetDim(2, queryShape->GetDim(1)); // 2:Dim S
         softmaxSumShape->SetDim(0, queryShape->GetDim(0)); // 0:Dim B
-        softmaxSumShape->SetDim(1, keyShape->GetDim(2)); // 1:Dim N2
+        softmaxSumShape->SetDim(1, keyShape->GetDim(2));   // 1:Dim N2
         softmaxSumShape->SetDim(2, queryShape->GetDim(1)); // 2:Dim S
     } else {
         OP_CHECK_IF(
             queryShape->GetDimNum() != 3,
             OP_LOGE(context, "Layout TND, queryDims (%zu) must be 3!", queryShape->GetDimNum()),
             return ge::GRAPH_FAILED);
-        softmaxMaxShape->SetDim(0, keyShape->GetDim(1)); // 0:Dim N2
+        softmaxMaxShape->SetDim(0, keyShape->GetDim(1));   // 0:Dim N2
         softmaxMaxShape->SetDim(1, queryShape->GetDim(0)); // 0:Dim T
-        softmaxSumShape->SetDim(0, keyShape->GetDim(1)); // 0:Dim N2
+        softmaxSumShape->SetDim(0, keyShape->GetDim(1));   // 0:Dim N2
         softmaxSumShape->SetDim(1, queryShape->GetDim(0)); // 0:Dim T
     }
 

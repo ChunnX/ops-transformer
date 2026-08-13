@@ -94,4 +94,4 @@ const std::array<const aclTensor *, 2> FlashAttn(
     return {attentionOutAlloc, softmaxLseAlloc};
 }
 
-}  // namespace l0op
+} // namespace l0op

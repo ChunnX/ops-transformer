@@ -13,11 +13,11 @@
 
 #include "../../catlass.hpp"
 #include "../../arch/resource.hpp"
-#include "../../coord.hpp"
-#include "../../detail/callback.hpp"
+#include "../../third_coord.hpp"
+#include "../../detail/third_callback.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../gemm/dispatch_policy.hpp"
-#include "../../gemm/helper.hpp"
+#include "../../gemm/third_helper.hpp"
 
 namespace Catlass::Gemm::Block {
 

@@ -22,8 +22,7 @@ using namespace ge;
 namespace optiling {
 
 const std::unordered_map<ge::DataType, uint32_t> DTYPE_TO_SIZE{
-    {ge::DT_BF16, 2},        {ge::DT_FLOAT16, 2},  {ge::DT_INT8, 1},  {ge::DT_FLOAT8_E4M3FN, 1},
-    {ge::DT_FLOAT8_E8M0, 1}, {ge::DT_HIFLOAT8, 1}, {ge::DT_INT32, 4}, {ge::DT_FLOAT, 4}};
+    {ge::DT_BF16, 2}, {ge::DT_FLOAT16, 2}, {ge::DT_INT8, 1}, {ge::DT_FLOAT8_E4M3FN, 1}, {ge::DT_FLOAT8_E8M0, 1}, {ge::DT_HIFLOAT8, 1}, {ge::DT_INT32, 4}, {ge::DT_FLOAT, 4}};
 
 template <typename E>
 std::string ElemToString(const E &elem)
@@ -349,7 +348,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckDtileSize() const
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     context_.opName, "dtileSize", std::to_string(baseShapeInfo_.dtileSize),
                     "when kvQuantMode is pertoken-pergroup, dtileSize allows only " +
-                    std::to_string(supportedDtileSize));
+                        std::to_string(supportedDtileSize));
             } else {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     context_.opName, "dtileSize", std::to_string(baseShapeInfo_.dtileSize),
@@ -578,23 +577,22 @@ void MlaPrologTilingCheck::FillScenarioParamInfo()
 {
     using FillFunc = void (MlaPrologTilingCheck::*)();
     static const std::unordered_map<QUANT_MODE, FillFunc> dispatchTable = {
-        {QUANT_MODE::NO_QUANT,                              &MlaPrologTilingCheck::FillNonQuantParamInfo},
-        {QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT,             &MlaPrologTilingCheck::FillPartialQuantParamInfo},
-        {QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL,    &MlaPrologTilingCheck::FillPartialKVQuantParamInfo},
-        {QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE,       &MlaPrologTilingCheck::FillPartialKVPertileQuantParamInfo},
-        {QUANT_MODE::FULL_QUANT_KV_NO_QUANT,                &MlaPrologTilingCheck::FillFullQuantParamInfo},
-        {QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR,        &MlaPrologTilingCheck::FillFullKVQuantParamInfo},
-        {QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE,          &MlaPrologTilingCheck::FillFullKVPertileQuantParamInfo},
-        {QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT,          &MlaPrologTilingCheck::FillMxfp8FullQuantParamInfo},
-        {QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR,  &MlaPrologTilingCheck::FillMxfp8FullKVQuantParamInfo},
-        {QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE,    &MlaPrologTilingCheck::FillMxfp8FullKVPertileParamInfo},
-        {QUANT_MODE::FP8_FULL_QUANT_KV_NO_QUANT,            &MlaPrologTilingCheck::FillFP8FullQuantParamInfo},
-        {QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR,    &MlaPrologTilingCheck::FillFP8FullKVQuantParamInfo},
-        {QUANT_MODE::HIF8_FULL_QUANT_KV_NO_QUANT,           &MlaPrologTilingCheck::FillHIF8FullQuantParamInfo},
-        {QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR,   &MlaPrologTilingCheck::FillHIF8FullKVQuantParamInfo},
-        {QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE,      &MlaPrologTilingCheck::FillFP8FullKVPertileQuantParamInfo},
-        {QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE,     &MlaPrologTilingCheck::FillHIF8FullKVPertileQuantParamInfo}
-    };
+        {QUANT_MODE::NO_QUANT, &MlaPrologTilingCheck::FillNonQuantParamInfo},
+        {QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT, &MlaPrologTilingCheck::FillPartialQuantParamInfo},
+        {QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL, &MlaPrologTilingCheck::FillPartialKVQuantParamInfo},
+        {QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE, &MlaPrologTilingCheck::FillPartialKVPertileQuantParamInfo},
+        {QUANT_MODE::FULL_QUANT_KV_NO_QUANT, &MlaPrologTilingCheck::FillFullQuantParamInfo},
+        {QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR, &MlaPrologTilingCheck::FillFullKVQuantParamInfo},
+        {QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE, &MlaPrologTilingCheck::FillFullKVPertileQuantParamInfo},
+        {QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT, &MlaPrologTilingCheck::FillMxfp8FullQuantParamInfo},
+        {QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR, &MlaPrologTilingCheck::FillMxfp8FullKVQuantParamInfo},
+        {QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE, &MlaPrologTilingCheck::FillMxfp8FullKVPertileParamInfo},
+        {QUANT_MODE::FP8_FULL_QUANT_KV_NO_QUANT, &MlaPrologTilingCheck::FillFP8FullQuantParamInfo},
+        {QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR, &MlaPrologTilingCheck::FillFP8FullKVQuantParamInfo},
+        {QUANT_MODE::HIF8_FULL_QUANT_KV_NO_QUANT, &MlaPrologTilingCheck::FillHIF8FullQuantParamInfo},
+        {QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR, &MlaPrologTilingCheck::FillHIF8FullKVQuantParamInfo},
+        {QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE, &MlaPrologTilingCheck::FillFP8FullKVPertileQuantParamInfo},
+        {QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE, &MlaPrologTilingCheck::FillHIF8FullKVPertileQuantParamInfo}};
     auto it = dispatchTable.find(scenarioInfo_.quantMode_);
     if (it != dispatchTable.end()) {
         (this->*(it->second))();

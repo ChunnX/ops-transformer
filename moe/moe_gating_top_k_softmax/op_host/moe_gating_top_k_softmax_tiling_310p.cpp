@@ -43,25 +43,25 @@ static inline uint32_t CeilDiv(uint32_t value, uint32_t factor)
     return (value + factor - 1U) / factor;
 }
 
-
-static inline int64_t Align(int64_t x, int64_t y) {
+static inline int64_t Align(int64_t x, int64_t y)
+{
     if (y == 0) {
         return 0;
     }
     return (x + y - 1) / y * y;
 }
 
-static inline int64_t CeilDiv(int64_t x, int64_t y) {
+static inline int64_t CeilDiv(int64_t x, int64_t y)
+{
     if (y == 0) {
         return 0;
     }
     return (x + y - 1) / y;
 }
 
-class MoeGatingTopKSoftmax310PTiling : public MoeGatingTopKSoftmaxBaseTiling
-{
+class MoeGatingTopKSoftmax310PTiling : public MoeGatingTopKSoftmaxBaseTiling {
 public:
-    explicit MoeGatingTopKSoftmax310PTiling(gert::TilingContext* context)
+    explicit MoeGatingTopKSoftmax310PTiling(gert::TilingContext *context)
         : MoeGatingTopKSoftmaxBaseTiling(context)
     {}
 
@@ -87,7 +87,6 @@ bool MoeGatingTopKSoftmax310PTiling::IsCapable()
     return is310P;
 }
 
-
 ge::graphStatus MoeGatingTopKSoftmax310PTiling::DoOpTiling()
 {
     const uint32_t perBlockEleNum = 32 / 2;
@@ -112,14 +111,14 @@ ge::graphStatus MoeGatingTopKSoftmax310PTiling::DoOpTiling()
 
     // Set col
     const int64_t colTmp = x_shape.GetDim(x_dim_num - 1);
-        tilingData.set_col(static_cast<int32_t>(colTmp));
+    tilingData.set_col(static_cast<int32_t>(colTmp));
 
     // Set k
     const int64_t kTmp = expertIdx_shape.GetDim(expertIdx_dim_num - 1);
-        tilingData.set_k(static_cast<int32_t>(kTmp));
-        
+    tilingData.set_k(static_cast<int32_t>(kTmp));
+
     const int64_t kAlign = Align(kTmp, 16);
-        tilingData.set_kAlign(static_cast<int32_t>(kAlign));
+    tilingData.set_kAlign(static_cast<int32_t>(kAlign));
 
     // Set blockNum
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
@@ -180,7 +179,7 @@ ge::graphStatus MoeGatingTopKSoftmax310PTiling::PostTiling()
     tilingData.set_tilingKey(GetTilingKey());
     context_->SetTilingKey(GetTilingKey());
     context_->SetBlockDim(tilingData.get_blockNum());
-    size_t* workspaces = context_->GetWorkspaceSizes(1);
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize_;
     tilingData.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
@@ -188,9 +187,9 @@ ge::graphStatus MoeGatingTopKSoftmax310PTiling::PostTiling()
     auto FormertopkShape = ge::Shape({tilingData.get_oneCoreRow(), tilingData.get_col()});
     bool FormerTopkTilingSuccess = TopKTilingFunc(
         ascendcPlatform,
-        tilingData.get_col(),           // inner
-        tilingData.get_oneCoreRow(),    // outter
-        tilingData.get_kAlign(),        // k
+        tilingData.get_col(),        // inner
+        tilingData.get_oneCoreRow(), // outter
+        tilingData.get_kAlign(),     // k
         dataTypeSize, true, TopKMode::TOPK_NORMAL, true, tilingData.FormerTopkTilingData);
     auto TailtopkShape = ge::Shape({tilingData.get_tailRow(), tilingData.get_col()});
     bool TailTopkTilingSuccess = TopKTilingFunc(
@@ -213,7 +212,7 @@ ge::graphStatus MoeGatingTopKSoftmax310PTiling::PostTiling()
     tilingData.set_TailTmpMinsize(minsize);
     const int64_t kAlign = tilingData.get_kAlign();
     const int64_t activateCore = tilingData.get_activateCore();
-    size_t userWorkspaceSize = 1024 + kAlign * row * activateCore * (sizeof(int16_t) + sizeof(int32_t)) ;
+    size_t userWorkspaceSize = 1024 + kAlign * row * activateCore * (sizeof(int16_t) + sizeof(int32_t));
     tilingData.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     size_t systemWorkspaceSize = static_cast<size_t>(ascendcPlatform.GetLibApiWorkSpaceSize());

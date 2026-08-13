@@ -18,7 +18,7 @@
 #include "log/log.h"
 #include "register/op_def_registry.h"
 #include "../fused_infer_attention_score_tiling_constants.h"
-#include "softmax_lse_checker.h"
+#include "fused_infer_attention_score_softmax_lse_checker.h"
 
 namespace optiling {
 using std::map;
@@ -34,9 +34,9 @@ ge::graphStatus SoftmaxLSEChecker::CheckSingleDtype(const FiaTilingInfo &fiaInfo
     // SoftmaxLse only supports output FP32
     if (fiaInfo.softmaxLseFlag) {
         OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckDtypeSupport(fiaInfo.opParamInfo.lseOut.desc, SOFTMAX_LSE_NAME),
-            OP_LOGE_FOR_INVALID_DTYPE(fiaInfo.opName, "softmax_lse",
-                ToString(fiaInfo.opParamInfo.lseOut.desc->GetDataType()).c_str(),
-                ToString(ge::DT_FLOAT).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(fiaInfo.opName, "softmax_lse",
+                                              ToString(fiaInfo.opParamInfo.lseOut.desc->GetDataType()).c_str(),
+                                              ToString(ge::DT_FLOAT).c_str()),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -49,12 +49,12 @@ ge::graphStatus SoftmaxLSEChecker::CheckExistenceShapeAndDesc(const FiaTilingInf
     if (fiaInfo.softmaxLseFlag) {
         const gert::StorageShape *lseShape = fiaInfo.opParamInfo.lseOut.shape;
         OP_CHECK_IF(lseShape == nullptr,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "softmax_lse",
-                "When softmaxLseFlag is true, softmaxLse cannot be empty"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "softmax_lse",
+                                                             "When softmaxLseFlag is true, softmaxLse cannot be empty"),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(fiaInfo.opParamInfo.lseOut.desc == nullptr,
-            OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "TensorDesc of softmax_lse"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "TensorDesc of softmax_lse"),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -81,7 +81,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &
                 lseShape->GetStorageShape().GetDim(DIM_NUM_2) != SHAPE_PARAMS_CONST) {
                 std::string shapeStr = ToStringRaw(lseShape->GetStorageShape());
                 std::string reasonMsg = "The shape of softmax_lse must be [T(" +
-                    std::to_string(fiaInfo.qTSize) + "), N(" + std::to_string(fiaInfo.n1Size) + "), 1]";
+                                        std::to_string(fiaInfo.qTSize) + "), N(" + std::to_string(fiaInfo.n1Size) + "), 1]";
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     fiaInfo.opName, "softmax_lse", shapeStr.c_str(), reasonMsg.c_str());
                 return ge::GRAPH_FAILED;
@@ -98,8 +98,8 @@ ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &
                 lseShape->GetStorageShape().GetDim(DIM_NUM_3) != SHAPE_PARAMS_CONST) {
                 std::string shapeStr = ToStringRaw(lseShape->GetStorageShape());
                 std::string reasonMsg = "The shape of softmax_lse must be [B(" +
-                    std::to_string(fiaInfo.bSize) + "), N(" + std::to_string(fiaInfo.n1Size) + "), Q_S(" +
-                    std::to_string(fiaInfo.s1Size) + "), 1]";
+                                        std::to_string(fiaInfo.bSize) + "), N(" + std::to_string(fiaInfo.n1Size) + "), Q_S(" +
+                                        std::to_string(fiaInfo.s1Size) + "), 1]";
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "softmax_lse", shapeStr.c_str(),
                                                       reasonMsg.c_str());
                 return ge::GRAPH_FAILED;
@@ -129,12 +129,12 @@ ge::graphStatus SoftmaxLSEChecker::CheckParaExistence(const FiaTilingInfo &fiaIn
 ge::graphStatus SoftmaxLSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckFeatureDimAndShape(fiaInfo)) {
-            return ge::GRAPH_FAILED;
+        return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(
         fiaInfo.isQKVDDifferent && fiaInfo.ropeMode == RopeMode::NO_ROPE && fiaInfo.softmaxLseFlag,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "softmax_lse_flag", "True",
-            "In GQA scenario, when the headDim of query, key and value are different, softmax_lse_flag must be False"),
+                                              "In GQA scenario, when the headDim of query, key and value are different, softmax_lse_flag must be False"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -144,4 +144,4 @@ ge::graphStatus SoftmaxLSEChecker::CheckMultiParaConsistency(const FiaTilingInfo
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+} // namespace optiling

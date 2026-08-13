@@ -18,8 +18,8 @@
 
 namespace FaVectorApi {
 template <typename T, typename OUTPUT_T, uint16_t srcD>
-__simd_vf__ inline void DivCastImpl64VF(__ubuf__ OUTPUT_T * dstUb, __ubuf__ float * srcUb, __ubuf__ float * expSumUb,
-    const uint16_t m)
+__simd_vf__ inline void DivCastImpl64VF(__ubuf__ OUTPUT_T *dstUb, __ubuf__ float *srcUb, __ubuf__ float *expSumUb,
+                                        const uint16_t m)
 {
     RegTensor<T> vreg_src;
     RegTensor<T> vreg_div;
@@ -59,20 +59,20 @@ __simd_vf__ inline void DivCastImpl64VF(__ubuf__ OUTPUT_T * dstUb, __ubuf__ floa
 }
 
 template <typename T, typename OUTPUT_T, uint16_t srcD>
-__aicore__ inline void DivCastImpl64(const LocalTensor<OUTPUT_T>& dstTensor,
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expSumTensor,
-    const uint16_t m)
+__aicore__ inline void DivCastImpl64(const LocalTensor<OUTPUT_T> &dstTensor,
+                                     const LocalTensor<T> &srcTensor, const LocalTensor<T> &expSumTensor,
+                                     const uint16_t m)
 {
-    __ubuf__ OUTPUT_T * dstUb = (__ubuf__ OUTPUT_T*)dstTensor.GetPhyAddr();
-    __ubuf__ float * srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
-    __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ OUTPUT_T *dstUb = (__ubuf__ OUTPUT_T *)dstTensor.GetPhyAddr();
+    __ubuf__ float *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
 
     DivCastImpl64VF<T, OUTPUT_T, srcD>(dstUb, srcUb, expSumUb, m);
 }
 
 template <typename T, typename OUTPUT_T, uint16_t srcD>
-__simd_vf__ inline void DivCastImpl128VF(__ubuf__ OUTPUT_T * dstUb, __ubuf__ float * srcUb, __ubuf__ float * expSumUb,
-    const uint16_t m)
+__simd_vf__ inline void DivCastImpl128VF(__ubuf__ OUTPUT_T *dstUb, __ubuf__ float *srcUb, __ubuf__ float *expSumUb,
+                                         const uint16_t m)
 {
     RegTensor<float> vreg_src_even, vreg_src_odd;
     RegTensor<float> vreg_div_even, vreg_div_odd;
@@ -109,14 +109,14 @@ __simd_vf__ inline void DivCastImpl128VF(__ubuf__ OUTPUT_T * dstUb, __ubuf__ flo
         } else if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) {
             Cast<OUTPUT_T, T, castTraitZero>(vreg_div_even_bf16, vreg_div_even, preg_all);
             Cast<OUTPUT_T, T, castTraitOne>(vreg_div_odd_bf16, vreg_div_odd, preg_all);
-            Or((RegTensor<uint16_t>&)vreg_cast_bf16, (RegTensor<uint16_t>&)vreg_div_even_bf16,
-                (RegTensor<uint16_t>&)vreg_div_odd_bf16, preg_all_b16);
+            Or((RegTensor<uint16_t> &)vreg_cast_bf16, (RegTensor<uint16_t> &)vreg_div_even_bf16,
+               (RegTensor<uint16_t> &)vreg_div_odd_bf16, preg_all_b16);
             StoreAlign<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_cast_bf16, preg_all_b16);
         } else {
             Cast<OUTPUT_T, T, castTraitZero>(vreg_div_even_f16, vreg_div_even, preg_all);
             Cast<OUTPUT_T, T, castTraitOne>(vreg_div_odd_f16, vreg_div_odd, preg_all);
-            Or((RegTensor<uint16_t>&)vreg_cast_f16, (RegTensor<uint16_t>&)vreg_div_even_f16, (RegTensor<uint16_t>&)vreg_div_odd_f16, preg_all_b16);
+            Or((RegTensor<uint16_t> &)vreg_cast_f16, (RegTensor<uint16_t> &)vreg_div_even_f16, (RegTensor<uint16_t> &)vreg_div_odd_f16, preg_all_b16);
             StoreAlign<OUTPUT_T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_cast_f16, preg_all_b16);
         }
@@ -124,20 +124,20 @@ __simd_vf__ inline void DivCastImpl128VF(__ubuf__ OUTPUT_T * dstUb, __ubuf__ flo
 }
 
 template <typename T, typename OUTPUT_T, uint16_t srcD>
-__aicore__ inline void DivCastImpl128(const LocalTensor<OUTPUT_T>& dstTensor,
-                                      const LocalTensor<T>& srcTensor, const LocalTensor<T>& expSumTensor,
+__aicore__ inline void DivCastImpl128(const LocalTensor<OUTPUT_T> &dstTensor,
+                                      const LocalTensor<T> &srcTensor, const LocalTensor<T> &expSumTensor,
                                       const uint16_t m)
 {
-    __ubuf__ OUTPUT_T * dstUb = (__ubuf__ OUTPUT_T*)dstTensor.GetPhyAddr();
-    __ubuf__ float * srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
-    __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ OUTPUT_T *dstUb = (__ubuf__ OUTPUT_T *)dstTensor.GetPhyAddr();
+    __ubuf__ float *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
 
     DivCastImpl128VF<T, OUTPUT_T, srcD>(dstUb, srcUb, expSumUb, m);
 }
 
 template <typename T, typename OUTPUT_T, uint16_t srcD>
-__simd_vf__ inline void DivCastImplGeneralVF(__ubuf__ OUTPUT_T * dstUb, __ubuf__ float * srcUb,
-    __ubuf__ float * expSumUb, const uint16_t m)
+__simd_vf__ inline void DivCastImplGeneralVF(__ubuf__ OUTPUT_T *dstUb, __ubuf__ float *srcUb,
+                                             __ubuf__ float *expSumUb, const uint16_t m)
 {
     RegTensor<float> vreg_src;
     RegTensor<float> vreg_div;
@@ -179,13 +179,13 @@ __simd_vf__ inline void DivCastImplGeneralVF(__ubuf__ OUTPUT_T * dstUb, __ubuf__
 }
 
 template <typename T, typename OUTPUT_T, uint16_t srcD>
-__aicore__ inline void DivCastImplGeneral(const LocalTensor<OUTPUT_T>& dstTensor,
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expSumTensor,
-    const uint16_t m)
+__aicore__ inline void DivCastImplGeneral(const LocalTensor<OUTPUT_T> &dstTensor,
+                                          const LocalTensor<T> &srcTensor, const LocalTensor<T> &expSumTensor,
+                                          const uint16_t m)
 {
-    __ubuf__ OUTPUT_T * dstUb = (__ubuf__ OUTPUT_T*)dstTensor.GetPhyAddr();
-    __ubuf__ float * srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
-    __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ OUTPUT_T *dstUb = (__ubuf__ OUTPUT_T *)dstTensor.GetPhyAddr();
+    __ubuf__ float *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
 
     DivCastImplGeneralVF<T, OUTPUT_T, srcD>(dstUb, srcUb, expSumUb, m);
 }
@@ -201,18 +201,18 @@ __aicore__ inline void DivCastImplGeneral(const LocalTensor<OUTPUT_T>& dstTensor
  * @param [in] srcD, should be 64 or 128
  */
 template <typename T, typename OUTPUT_T, uint16_t srcD>
-__aicore__ inline void DivCast(const LocalTensor<OUTPUT_T>& dstTensor,
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expSumTensor,
-    const uint16_t m)
+__aicore__ inline void DivCast(const LocalTensor<OUTPUT_T> &dstTensor,
+                               const LocalTensor<T> &srcTensor, const LocalTensor<T> &expSumTensor,
+                               const uint16_t m)
 {
     if constexpr (srcD == 64) {
         DivCastImpl64<T, OUTPUT_T, srcD>(dstTensor, srcTensor, expSumTensor, m);
     } else if constexpr (srcD == 128) {
         DivCastImpl128<T, OUTPUT_T, srcD>(dstTensor, srcTensor, expSumTensor, m);
-    } else {    
+    } else {
         DivCastImplGeneral<T, OUTPUT_T, srcD>(dstTensor, srcTensor, expSumTensor, m);
     }
 }
-} // namespace
+} // namespace FaVectorApi
 
 #endif // VF_DIV_CAST_INTERFACE_H

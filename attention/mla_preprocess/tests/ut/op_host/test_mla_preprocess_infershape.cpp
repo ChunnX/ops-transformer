@@ -72,37 +72,33 @@ TEST_P(MlaPreprocessProto, mla_preprocess_infershape_1)
     const std::vector<int64_t> disabledRopeShape = {0};
     const std::vector<int64_t> tokenMismatchShape = {0, 64};
     const std::vector<int64_t> cosShape =
-        ropeInputMode == 0 || ropeInputMode == 2 || ropeInputMode == 4
-            ? normalRopeShape
-            : (ropeInputMode == 1 ? disabledRopeShape : tokenMismatchShape);
+        ropeInputMode == 0 || ropeInputMode == 2 || ropeInputMode == 4 ? normalRopeShape : (ropeInputMode == 1 ? disabledRopeShape : tokenMismatchShape);
     const std::vector<int64_t> sinShape =
-        ropeInputMode == 0 || ropeInputMode == 4
-            ? normalRopeShape
-            : (ropeInputMode == 1 || ropeInputMode == 2 ? disabledRopeShape : tokenMismatchShape);
+        ropeInputMode == 0 || ropeInputMode == 4 ? normalRopeShape : (ropeInputMode == 1 || ropeInputMode == 2 ? disabledRopeShape : tokenMismatchShape);
     gert::InfershapeContextPara infershapeContextPara(
         "MlaPreprocess",
         {
             {{{tokenNum, hiddenNum}, {tokenNum, hiddenNum}},
              ge::DT_FLOAT16,
-             ge::FORMAT_ND}, // input 对应 {{{原始shape}, {运行时shape}}, 数据类型, 数据格式}
-            {{{hiddenNum}, {hiddenNum}}, ge::DT_FLOAT16, ge::FORMAT_ND},                          // gamma0
-            {{{hiddenNum}, {hiddenNum}}, ge::DT_FLOAT16, ge::FORMAT_ND},                          // beta0
-            {{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                          // quantScale0
-            {{{1}, {1}}, ge::DT_INT8, ge::FORMAT_ND},                                             // quantOffset0
-            {{{2112, hiddenNum}, {2112, hiddenNum}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},         // wdqkv
-            {{{2112}, {2112}}, ge::DT_INT64, ge::FORMAT_ND},                                      // deScale0
-            {{{2112}, {2112}}, ge::DT_INT32, ge::FORMAT_ND},                                      // bias0
-            {{{1536}, {1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                    // gamma1
-            {{{1536}, {1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                    // beta1
-            {{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                          // quantScale1
-            {{{1}, {1}}, ge::DT_INT8, ge::FORMAT_ND},                                             // quantOffset1
-            {{{headNum * 192, 1536}, {headNum * 192, 1536}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ}, // wuq
-            {{{headNum * 192}, {headNum * 192}}, ge::DT_INT64, ge::FORMAT_ND},                    // deScale1
-            {{{headNum * 192}, {headNum * 192}}, ge::DT_INT32, ge::FORMAT_ND},                    // bias1
-            {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                      // gamma2
-            {MakeStorageShape(cosShape), ge::DT_FLOAT16, ge::FORMAT_ND},                              // cos
-            {MakeStorageShape(sinShape), ge::DT_FLOAT16, ge::FORMAT_ND},                              // sin
-            {{{headNum, 128, 512}, {headNum, 128, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},          // wuk
+             ge::FORMAT_ND},                                                                                 // input 对应 {{{原始shape}, {运行时shape}}, 数据类型, 数据格式}
+            {{{hiddenNum}, {hiddenNum}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                     // gamma0
+            {{{hiddenNum}, {hiddenNum}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                     // beta0
+            {{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                                     // quantScale0
+            {{{1}, {1}}, ge::DT_INT8, ge::FORMAT_ND},                                                        // quantOffset0
+            {{{2112, hiddenNum}, {2112, hiddenNum}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},                    // wdqkv
+            {{{2112}, {2112}}, ge::DT_INT64, ge::FORMAT_ND},                                                 // deScale0
+            {{{2112}, {2112}}, ge::DT_INT32, ge::FORMAT_ND},                                                 // bias0
+            {{{1536}, {1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                               // gamma1
+            {{{1536}, {1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                               // beta1
+            {{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                                     // quantScale1
+            {{{1}, {1}}, ge::DT_INT8, ge::FORMAT_ND},                                                        // quantOffset1
+            {{{headNum * 192, 1536}, {headNum * 192, 1536}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},            // wuq
+            {{{headNum * 192}, {headNum * 192}}, ge::DT_INT64, ge::FORMAT_ND},                               // deScale1
+            {{{headNum * 192}, {headNum * 192}}, ge::DT_INT32, ge::FORMAT_ND},                               // bias1
+            {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                                 // gamma2
+            {MakeStorageShape(cosShape), ge::DT_FLOAT16, ge::FORMAT_ND},                                     // cos
+            {MakeStorageShape(sinShape), ge::DT_FLOAT16, ge::FORMAT_ND},                                     // sin
+            {{{headNum, 128, 512}, {headNum, 128, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},                     // wuk
             {{{blockNum, blockSize, 1, 576}, {blockNum, blockSize, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // kvCache
             {{{blockNum, blockSize, 1, 64}, {blockNum, blockSize, 1, 64}},
              ge::DT_FLOAT16,
@@ -134,8 +130,7 @@ TEST_P(MlaPreprocessProto, mla_preprocess_infershape_1)
         });
     std::vector<std::vector<int64_t>> expectOutputShape = {
         {tokenNum, headNum, 512}, {blockNum, blockSize, 1, 576}, {tokenNum, headNum, 64}, {blockNum, blockSize, 1, 64}};
-    ExecuteTestCase(infershapeContextPara, ropeInputMode == 2 || ropeInputMode == 3 ? ge::GRAPH_FAILED
-                                                                                   : ge::GRAPH_SUCCESS,
+    ExecuteTestCase(infershapeContextPara, ropeInputMode == 2 || ropeInputMode == 3 ? ge::GRAPH_FAILED : ge::GRAPH_SUCCESS,
                     expectOutputShape);
 }
 

@@ -14,7 +14,7 @@
  */
 #include "arch35/moe_init_routing_v2_grad_full_load.h"
 #include "arch35/moe_init_routing_v2_grad_split_h.h"
-#include "arch35/moe_init_routing_v2_grad.h"
+#include "arch35/moe_init_routing_v2_grad_arch35.h"
 
 using namespace AscendC;
 using namespace MoeInitRoutingV2Grad;
@@ -43,55 +43,55 @@ extern "C" __global__ __aicore__ void moe_init_routing_v2_grad(
     TPipe pipeOp;
     if (TILING_KEY_IS(TILINGKEY_SPLIT_H_DROPLESS)) {
         GET_TILING_DATA_WITH_STRUCT(MoeInitRoutingV2GradRegbaseSplitHTilingData, tiling_data_in, tiling);
-        const MoeInitRoutingV2GradRegbaseSplitHTilingData* __restrict tilingData = &tiling_data_in;
+        const MoeInitRoutingV2GradRegbaseSplitHTilingData *__restrict tilingData = &tiling_data_in;
         MoeInitRoutingV2GradSplitHCompute<DTYPE_GRAD_EXPANDED_X> op(tilingData);
         op.Init(gradExpandedX, expandedRowIdx, gradX, &pipeOp);
         op.Process();
     } else if (TILING_KEY_IS(TILINGKEY_SPLIT_H_DROP_PAD)) {
         GET_TILING_DATA_WITH_STRUCT(MoeInitRoutingV2GradRegbaseSplitHTilingData, tiling_data_in, tiling);
-        const MoeInitRoutingV2GradRegbaseSplitHTilingData* __restrict tilingData = &tiling_data_in;
+        const MoeInitRoutingV2GradRegbaseSplitHTilingData *__restrict tilingData = &tiling_data_in;
         MoeInitRoutingV2GradSplitHCompute<DTYPE_GRAD_EXPANDED_X, DROP_PAD_MODE> op(tilingData);
         op.Init(gradExpandedX, expandedRowIdx, gradX, &pipeOp);
         op.Process();
     } else if (TILING_KEY_IS(TILINGKEY_SPLIT_H_ACTIVE)) {
         GET_TILING_DATA_WITH_STRUCT(MoeInitRoutingV2GradRegbaseSplitHTilingData, tiling_data_in, tiling);
-        const MoeInitRoutingV2GradRegbaseSplitHTilingData* __restrict tilingData = &tiling_data_in;
+        const MoeInitRoutingV2GradRegbaseSplitHTilingData *__restrict tilingData = &tiling_data_in;
         MoeInitRoutingV2GradSplitHCompute<DTYPE_GRAD_EXPANDED_X, ACTIVE_MODE> op(tilingData);
         op.Init(gradExpandedX, expandedRowIdx, gradX, &pipeOp);
         op.Process();
     } else if (TILING_KEY_IS(TILINGKEY_FULL_LOAD_DROPLESS)) {
         GET_TILING_DATA_WITH_STRUCT(MoeInitRoutingV2GradRegbaseFullLoadTilingData, tiling_data_in, tiling);
-        const MoeInitRoutingV2GradRegbaseFullLoadTilingData* __restrict tilingData = &tiling_data_in;
+        const MoeInitRoutingV2GradRegbaseFullLoadTilingData *__restrict tilingData = &tiling_data_in;
         MoeInitRoutingV2GradFullLoadCompute<DTYPE_GRAD_EXPANDED_X> op(tilingData);
         op.Init(gradExpandedX, expandedRowIdx, gradX, &pipeOp);
         op.Process();
     } else if (TILING_KEY_IS(TILINGKEY_FULL_LOAD_DROP_PAD)) {
         GET_TILING_DATA_WITH_STRUCT(MoeInitRoutingV2GradRegbaseFullLoadTilingData, tiling_data_in, tiling);
-        const MoeInitRoutingV2GradRegbaseFullLoadTilingData* __restrict tilingData = &tiling_data_in;
+        const MoeInitRoutingV2GradRegbaseFullLoadTilingData *__restrict tilingData = &tiling_data_in;
         MoeInitRoutingV2GradFullLoadCompute<DTYPE_GRAD_EXPANDED_X, DROP_PAD_MODE> op(tilingData);
         op.Init(gradExpandedX, expandedRowIdx, gradX, &pipeOp);
         op.Process();
     } else if (TILING_KEY_IS(TILINGKEY_FULL_LOAD_ACTIVE)) {
         GET_TILING_DATA_WITH_STRUCT(MoeInitRoutingV2GradRegbaseFullLoadTilingData, tiling_data_in, tiling);
-        const MoeInitRoutingV2GradRegbaseFullLoadTilingData* __restrict tilingData = &tiling_data_in;
+        const MoeInitRoutingV2GradRegbaseFullLoadTilingData *__restrict tilingData = &tiling_data_in;
         MoeInitRoutingV2GradFullLoadCompute<DTYPE_GRAD_EXPANDED_X, ACTIVE_MODE> op(tilingData);
         op.Init(gradExpandedX, expandedRowIdx, gradX, &pipeOp);
         op.Process();
     } else if (TILING_KEY_IS(TILINGKEY_REGBASE_DROPLESS)) {
         GET_TILING_DATA_WITH_STRUCT(MoeInitRoutingV2GradRegbaseTilingData, tiling_data_in, tiling);
-        const MoeInitRoutingV2GradRegbaseTilingData* __restrict tilingData = &tiling_data_in;
+        const MoeInitRoutingV2GradRegbaseTilingData *__restrict tilingData = &tiling_data_in;
         MoeInitRoutingV2GradCompute<DTYPE_GRAD_EXPANDED_X> op(tilingData);
         op.Init(gradExpandedX, expandedRowIdx, gradX, &pipeOp);
         op.Process();
     } else if (TILING_KEY_IS(TILINGKEY_REGBASE_DROP_PAD)) {
         GET_TILING_DATA_WITH_STRUCT(MoeInitRoutingV2GradRegbaseTilingData, tiling_data_in, tiling);
-        const MoeInitRoutingV2GradRegbaseTilingData* __restrict tilingData = &tiling_data_in;
+        const MoeInitRoutingV2GradRegbaseTilingData *__restrict tilingData = &tiling_data_in;
         MoeInitRoutingV2GradCompute<DTYPE_GRAD_EXPANDED_X, DROP_PAD_MODE> op(tilingData);
         op.Init(gradExpandedX, expandedRowIdx, gradX, &pipeOp);
         op.Process();
     } else if (TILING_KEY_IS(TILINGKEY_REGBASE_ACTIVE)) {
         GET_TILING_DATA_WITH_STRUCT(MoeInitRoutingV2GradRegbaseTilingData, tiling_data_in, tiling);
-        const MoeInitRoutingV2GradRegbaseTilingData* __restrict tilingData = &tiling_data_in;
+        const MoeInitRoutingV2GradRegbaseTilingData *__restrict tilingData = &tiling_data_in;
         MoeInitRoutingV2GradCompute<DTYPE_GRAD_EXPANDED_X, ACTIVE_MODE> op(tilingData);
         op.Init(gradExpandedX, expandedRowIdx, gradX, &pipeOp);
         op.Process();

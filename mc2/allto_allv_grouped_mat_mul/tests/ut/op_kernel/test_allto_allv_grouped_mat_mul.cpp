@@ -28,11 +28,13 @@ class AlltoAllvGroupedMatMulTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "AlltoAllvGroupedMatMulTest SetUp\n" << std::endl;
+        std::cout << "AlltoAllvGroupedMatMulTest SetUp\n"
+                  << std::endl;
     }
     static void TearDownTestCase()
     {
-        std::cout << "AlltoAllvGroupedMatMulTest TearDown\n" << std::endl;
+        std::cout << "AlltoAllvGroupedMatMulTest TearDown\n"
+                  << std::endl;
     }
 };
 
@@ -48,8 +50,8 @@ TEST_F(AlltoAllvGroupedMatMulTest, AlltoAllvGroupedMatMulTest0)
     size_t tilingSize = sizeof(AlltoAllvGmmTilingData);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2,      7168,  7168,  4096,  4096,  4096,  1,   1,
-                                                  40,   20,   194560, false, false, false, false, false, true};
+    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2, 7168, 7168, 4096, 4096, 4096, 1, 1,
+                                                  40, 20, 194560, false, false, false, false, false, true};
     AlltoAllvGmmTilingData *tilingData = reinterpret_cast<AlltoAllvGmmTilingData *>(tiling);
     tilingData->commonTilingInfo = commonTilingInfo;
 
@@ -97,8 +99,8 @@ TEST_F(AlltoAllvGroupedMatMulTest, AlltoAllvGroupedMatMulTest10)
     size_t tilingSize = sizeof(AlltoAllvGmmTilingData);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2,      7168,  7168,  4096,  4096,  4096,  1,   1,
-                                                  40,   20,   194560, false, false, false, false, false, true};
+    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2, 7168, 7168, 4096, 4096, 4096, 1, 1,
+                                                  40, 20, 194560, false, false, false, false, false, true};
     AlltoAllvGmmTilingData *tilingData = reinterpret_cast<AlltoAllvGmmTilingData *>(tiling);
     tilingData->commonTilingInfo = commonTilingInfo;
 
@@ -145,8 +147,8 @@ TEST_F(AlltoAllvGroupedMatMulTest, AlltoAllvGroupedMatMulTest100)
     size_t tilingSize = sizeof(AlltoAllvGmmTilingData);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2,      7168,  7168,  4096,  4096,  4096,  1,   1,
-                                                  40,   20,   194560, false, false, false, false, false, true};
+    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2, 7168, 7168, 4096, 4096, 4096, 1, 1,
+                                                  40, 20, 194560, false, false, false, false, false, true};
     AlltoAllvGmmTilingData *tilingData = reinterpret_cast<AlltoAllvGmmTilingData *>(tiling);
     tilingData->commonTilingInfo = commonTilingInfo;
 
@@ -193,8 +195,8 @@ TEST_F(AlltoAllvGroupedMatMulTest, AlltoAllvGroupedMatMulTest101)
     size_t tilingSize = sizeof(AlltoAllvGmmTilingData);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2,      7168,  7168,  4096,  4096,  4096,  1,   1,
-                                                  40,   20,   194560, false, false, false, false, false, true};
+    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2, 7168, 7168, 4096, 4096, 4096, 1, 1,
+                                                  40, 20, 194560, false, false, false, false, false, true};
     AlltoAllvGmmTilingData *tilingData = reinterpret_cast<AlltoAllvGmmTilingData *>(tiling);
     tilingData->commonTilingInfo = commonTilingInfo;
 
@@ -241,8 +243,8 @@ TEST_F(AlltoAllvGroupedMatMulTest, AlltoAllvGroupedMatMulTest110)
     size_t tilingSize = sizeof(AlltoAllvGmmTilingData);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2,      7168,  7168,  4096,  4096,  4096,  1,   1,
-                                                  40,   20,   194560, false, false, false, false, false, true};
+    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2, 7168, 7168, 4096, 4096, 4096, 1, 1,
+                                                  40, 20, 194560, false, false, false, false, false, true};
     AlltoAllvGmmTilingData *tilingData = reinterpret_cast<AlltoAllvGmmTilingData *>(tiling);
     tilingData->commonTilingInfo = commonTilingInfo;
 
@@ -289,8 +291,8 @@ TEST_F(AlltoAllvGroupedMatMulTest, AlltoAllvGroupedMatMulTest111)
     size_t tilingSize = sizeof(AlltoAllvGmmTilingData);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2,      7168,  7168,  4096,  4096,  4096,  1,   1,
-                                                  40,   20,   194560, false, false, false, false, false, true};
+    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2, 7168, 7168, 4096, 4096, 4096, 1, 1,
+                                                  40, 20, 194560, false, false, false, false, false, true};
     AlltoAllvGmmTilingData *tilingData = reinterpret_cast<AlltoAllvGmmTilingData *>(tiling);
     tilingData->commonTilingInfo = commonTilingInfo;
 
@@ -337,8 +339,8 @@ TEST_F(AlltoAllvGroupedMatMulTest, AlltoAllvGroupedMatMulTest1000)
     size_t tilingSize = sizeof(AlltoAllvGmmTilingData);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2,      7168,  7168,  4096,  4096,  4096,  1,   1,
-                                                  40,   20,   194560, false, false, false, false, false, true};
+    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2, 7168, 7168, 4096, 4096, 4096, 1, 1,
+                                                  40, 20, 194560, false, false, false, false, false, true};
     AlltoAllvGmmTilingData *tilingData = reinterpret_cast<AlltoAllvGmmTilingData *>(tiling);
     tilingData->commonTilingInfo = commonTilingInfo;
 
@@ -385,8 +387,8 @@ TEST_F(AlltoAllvGroupedMatMulTest, AlltoAllvGroupedMatMulTest1010)
     size_t tilingSize = sizeof(AlltoAllvGmmTilingData);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2,      7168,  7168,  4096,  4096,  4096,  1,   1,
-                                                  40,   20,   194560, false, false, false, false, false, true};
+    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2, 7168, 7168, 4096, 4096, 4096, 1, 1,
+                                                  40, 20, 194560, false, false, false, false, false, true};
     AlltoAllvGmmTilingData *tilingData = reinterpret_cast<AlltoAllvGmmTilingData *>(tiling);
     tilingData->commonTilingInfo = commonTilingInfo;
 
@@ -433,8 +435,8 @@ TEST_F(AlltoAllvGroupedMatMulTest, AlltoAllvGroupedMatMulTest1110)
     size_t tilingSize = sizeof(AlltoAllvGmmTilingData);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2,      7168,  7168,  4096,  4096,  4096,  1,   1,
-                                                  40,   20,   194560, false, false, false, false, false, true};
+    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2, 7168, 7168, 4096, 4096, 4096, 1, 1,
+                                                  40, 20, 194560, false, false, false, false, false, true};
     AlltoAllvGmmTilingData *tilingData = reinterpret_cast<AlltoAllvGmmTilingData *>(tiling);
     tilingData->commonTilingInfo = commonTilingInfo;
 
@@ -481,8 +483,8 @@ TEST_F(AlltoAllvGroupedMatMulTest, AlltoAllvGroupedMatMulTest1111)
     size_t tilingSize = sizeof(AlltoAllvGmmTilingData);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2,      7168,  7168,  4096,  4096,  4096,  1,   1,
-                                                  40,   20,   194560, false, false, false, false, false, true};
+    AlltoAllvGmmCommonTilingInfo commonTilingInfo{4096, 2048, 2, 7168, 7168, 4096, 4096, 4096, 1, 1,
+                                                  40, 20, 194560, false, false, false, false, false, true};
     AlltoAllvGmmTilingData *tilingData = reinterpret_cast<AlltoAllvGmmTilingData *>(tiling);
     tilingData->commonTilingInfo = commonTilingInfo;
 

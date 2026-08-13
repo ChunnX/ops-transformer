@@ -21,11 +21,13 @@ class MoeUpdateExpertTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "MoeUpdateExpertTest SetUp\n" << std::endl;
+        std::cout << "MoeUpdateExpertTest SetUp\n"
+                  << std::endl;
     }
     static void TearDownTestCase()
     {
-        std::cout << "MoeUpdateExpertTest TearDown\n" << std::endl;
+        std::cout << "MoeUpdateExpertTest TearDown\n"
+                  << std::endl;
     }
 };
 

@@ -16,7 +16,7 @@
 #ifndef COMPRESSOR_KERNEL_FULL_LOAD_H
 #define COMPRESSOR_KERNEL_FULL_LOAD_H
 
-#include "compressor_comm.h"
+#include "compressor_comm_arch35.h"
 #include "compressor_template_tiling_key.h"
 #include "compressor_tiling_data.h"
 #include "compressor_tools.h"
@@ -30,7 +30,8 @@ template <typename COMP>
 class CompressorKernelFullLoad {
 public:
     __aicore__ inline CompressorKernelFullLoad(TPipe *pipe, const optiling::CompressorTilingData *__restrict tilingData)
-        : pipe_(pipe), tilingData_(tilingData)
+        : pipe_(pipe),
+          tilingData_(tilingData)
     {}
 
     __aicore__ inline void Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate,
@@ -150,7 +151,7 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::Init(__gm__ uint8_t *x, _
     } else {
         blockVec_.InitParams(constInfo, tools_);
         blockVec_.Init(x, wKv, wGate, stateCache, ape, stateBlockTable,
-                        cuSeqlens, seqUsed, startPos, cmpKvOut, softmaxScoreOut, kvOut);
+                       cuSeqlens, seqUsed, startPos, cmpKvOut, softmaxScoreOut, kvOut);
         blockVec_.InitBuffers(pipe_);
         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm);
     }

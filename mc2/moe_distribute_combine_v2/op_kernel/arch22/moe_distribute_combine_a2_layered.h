@@ -20,7 +20,7 @@
 #include "kernel_operator.h"
 #endif
 #include "../moe_distribute_combine_tiling.h"
-#include "../../../common/op_kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/common_moe_distribute_base.h"
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_a2_base.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_a2_adump.h"
@@ -118,7 +118,6 @@ private:
     GlobalTensor<ExpandXTransType> localInWindow_;
     GlobalTensor<uint64_t> readStateGlobal_;
     GlobalTensor<int32_t> performanceInfoI32GMTensor_;
-
 
     // 低精度需要用到的变量
     GlobalTensor<ExpandXType> localInScaleWindow_;
@@ -343,7 +342,6 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     axisHFloatSize_ = axisH_ * static_cast<uint32_t>(sizeof(float));
     axisHExpandXTypeSize_ = axisH_ * static_cast<uint32_t>(sizeof(ExpandXType));
 
-
     needPerformanceInfo_ = performanceInfo != nullptr;
     if (unlikely(needPerformanceInfo_)) {
         performanceInfoSize_ = worldSize_;
@@ -356,7 +354,6 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     BuffInit();
 
     SplitCoreCal();
-
 
     uint64_t send_counts_inner_offset = static_cast<uint64_t>(worldSize_ * localMoeExpertNum_);
     uint64_t offset_inner_offset = send_counts_inner_offset + static_cast<uint64_t>(globalBs_ * serverNum_ / 2);

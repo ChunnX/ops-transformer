@@ -16,7 +16,6 @@
 #ifndef FLASH_ATTN_TILING_DATA_H_
 #define FLASH_ATTN_TILING_DATA_H_
 
-
 namespace optiling {
 constexpr uint32_t FA_AIC_CORE_NUM = 36;
 constexpr uint32_t FA_AIV_CORE_NUM = 72;

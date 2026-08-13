@@ -12,12 +12,12 @@
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_HPP
 
 #include "../../catlass.hpp"
-#include "../../numeric_size.hpp"
+#include "../../third_numeric_size.hpp"
 #include "../../arch/resource.hpp"
-#include "../../coord.hpp"
+#include "../../third_coord.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../gemm/dispatch_policy.hpp"
-#include "../../gemm/helper.hpp"
+#include "../../gemm/third_helper.hpp"
 
 namespace Catlass::Gemm::Block {
 

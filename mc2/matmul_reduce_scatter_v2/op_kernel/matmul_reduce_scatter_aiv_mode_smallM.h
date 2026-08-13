@@ -21,7 +21,7 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/common_moe_distribute_base.h"
 #include "matmul_reduce_scatter_aiv_mode_util.h"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/arch.hpp"

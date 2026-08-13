@@ -35,7 +35,8 @@ using FiaTilingClassCase = std::unique_ptr<FiaTilingBase> (*)(gert::TilingContex
 
 class FiaTilingCases {
 public:
-    explicit FiaTilingCases(std::string op_type) : op_type_(std::move(op_type))
+    explicit FiaTilingCases(std::string op_type)
+        : op_type_(std::move(op_type))
     {
     }
 
@@ -146,7 +147,8 @@ private:
 
 class FiaRegister {
 public:
-    explicit FiaRegister(std::string op_type) : op_type_(std::move(op_type))
+    explicit FiaRegister(std::string op_type)
+        : op_type_(std::move(op_type))
     {
     }
 
@@ -180,8 +182,8 @@ private:
 
 // op_type: 算子名称， class_name: 注册的 tiling 类, soc_version：芯片版本号
 // priority: tiling 类的优先级, 越小表示优先级越高, 即会优先选择这个tiling类
-#define REGISTER_TILING_TEMPLATE_FIA(op_type, class_name, soc_versions, priority)                                      \
-    [[maybe_unused]] uint32_t op_impl_register_template_##op_type##_##class_name##priority;                            \
-    static FiaRegister VAR_UNUSED##op_type##class_name##priority_register =                                            \
+#define REGISTER_TILING_TEMPLATE_FIA(op_type, class_name, soc_versions, priority) \
+    [[maybe_unused]] uint32_t op_impl_register_template_##op_type##_##class_name##priority; \
+    static FiaRegister VAR_UNUSED##op_type##class_name##priority_register = \
         FiaRegister(#op_type).tiling<class_name>(priority, soc_versions)
 } // namespace optiling

@@ -15,9 +15,9 @@
 
 #define MLA_PROLOG_VERSION 1
 #if __CCE_AICORE__ == 310
-#include "arch35/kernel_mla_prolog_split_n.h"
+#include "arch35/kernel_mla_prolog_split_n_arch35.h"
 #else
-#include "arch22/kernel_mla_prolog_split_n.h"
+#include "arch22/kernel_mla_prolog_split_n_arch22.h"
 #endif
 using namespace MlaProlog;
 
@@ -44,7 +44,6 @@ mla_prolog(__gm__ uint8_t *tokenX, __gm__ uint8_t *weightDq, __gm__ uint8_t *wei
     constexpr auto actualSeqLenMode = static_cast<ACTUAL_SEQ_MODE>(ActualSeqLenMode);
     constexpr auto splitMMode = static_cast<SPLIT_M_MODE>(SplitMMode);
     constexpr uint32_t cvRatio = CvMode == ASCENDC_TPL_MIX_AIC_1_1 ? 1 : 2;
-
 
     GET_TILING_DATA_WITH_STRUCT(optiling::MlaPrologTilingData, tilingDataIn, tiling);
     const optiling::MlaPrologTilingData *__restrict tilingData = nullptr;

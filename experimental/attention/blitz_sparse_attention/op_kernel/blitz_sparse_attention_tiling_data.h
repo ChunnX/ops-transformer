@@ -3,7 +3,7 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -208,7 +208,7 @@ public:
 
     uint32_t get_actualSeqLengthsKVSize() const { return actualSeqLengthsKVSize; }
     void set_actualSeqLengthsKVSize(uint32_t actualSeqLengthsKVSize) { this->actualSeqLengthsKVSize = actualSeqLengthsKVSize; }
-    
+
     uint32_t get_deqScaleFlag() const { return deqScaleFlag; }
     void set_deqScaleFlag(uint32_t deqScaleFlag) { this->deqScaleFlag = deqScaleFlag; }
 
@@ -220,7 +220,7 @@ public:
 
     uint32_t get_isRowInvalid() const { return isRowInvalid; }
     void set_isRowInvalid(uint32_t isRowInvalid) { this->isRowInvalid = isRowInvalid; }
-    
+
     uint32_t get_softmaxOuterSize() const { return softmaxOuterSize; }
     void set_softmaxOuterSize(uint32_t softmaxOuterSize) { this->softmaxOuterSize = softmaxOuterSize; }
 
@@ -309,7 +309,7 @@ public:
     uint32_t headNumSize = 0;
     uint32_t headSize = 0;
     uint32_t maskTypeByteNum = 0;
-  
+
     uint32_t inputLayoutType = 0;
     uint32_t kvHeadNumSize = 0;
     uint32_t maxSeqLen = 0;
@@ -438,88 +438,91 @@ public:
 
 class PromptAttentionSeqParams {
 public:
-  // Temporary reuse
-   uint32_t CoreHeadNumTail[64] = {0};       // coreNStart
-   uint32_t actualS1[64] = {0};             // coreNEnd
-   uint32_t actualCoreNums[64] = {0};       // coreSidStart
-   uint32_t singleCoreHeadNumSize[64] = {0};// coreSidEnd
-   uint32_t coreSeqPosStart[64] = {0};
-   uint32_t coreSeqPosEnd[64] = {0};
+    // Temporary reuse
+    uint32_t CoreHeadNumTail[64] = {0};       // coreNStart
+    uint32_t actualS1[64] = {0};              // coreNEnd
+    uint32_t actualCoreNums[64] = {0};        // coreSidStart
+    uint32_t singleCoreHeadNumSize[64] = {0}; // coreSidEnd
+    uint32_t coreSeqPosStart[64] = {0};
+    uint32_t coreSeqPosEnd[64] = {0};
 
-  // ========================
-  // Getter & Setter 方法
-  // ========================
+    // ========================
+    // Getter & Setter 方法
+    // ========================
 
-  const uint32_t* get_CoreHeadNumTail() const { return CoreHeadNumTail; }
-  void set_CoreHeadNumTail(const uint32_t* values) { 
-    for (int i = 0; i < 64; ++i) {
-        CoreHeadNumTail[i] = values[i];
+    const uint32_t *get_CoreHeadNumTail() const { return CoreHeadNumTail; }
+    void set_CoreHeadNumTail(const uint32_t *values)
+    {
+        for (int i = 0; i < 64; ++i) {
+            CoreHeadNumTail[i] = values[i];
+        }
     }
-  }
 
-  
-  const uint32_t* get_actualS1() const { return actualS1; }
-  void set_actualS1(const uint32_t* values) { 
-    for (int i = 0; i < 64; ++i) {
-        actualS1[i] = values[i];
+    const uint32_t *get_actualS1() const { return actualS1; }
+    void set_actualS1(const uint32_t *values)
+    {
+        for (int i = 0; i < 64; ++i) {
+            actualS1[i] = values[i];
+        }
     }
-  }
 
-  
-  const uint32_t* get_actualCoreNums() const { return actualCoreNums; }
-  void set_actualCoreNums(const uint32_t* values) { 
-    for (int i = 0; i < 64; ++i) {
-        actualCoreNums[i] = values[i];
+    const uint32_t *get_actualCoreNums() const { return actualCoreNums; }
+    void set_actualCoreNums(const uint32_t *values)
+    {
+        for (int i = 0; i < 64; ++i) {
+            actualCoreNums[i] = values[i];
+        }
     }
-  }
 
-  
-  const uint32_t* get_singleCoreHeadNumSize() const { return singleCoreHeadNumSize; }
-  void set_singleCoreHeadNumSize(const uint32_t* values) { 
-    for (int i = 0; i < 64; ++i) {
-        singleCoreHeadNumSize[i] = values[i];
+    const uint32_t *get_singleCoreHeadNumSize() const { return singleCoreHeadNumSize; }
+    void set_singleCoreHeadNumSize(const uint32_t *values)
+    {
+        for (int i = 0; i < 64; ++i) {
+            singleCoreHeadNumSize[i] = values[i];
+        }
     }
-  }
 
-  
-  const uint32_t* get_coreSeqPosStart() const { return coreSeqPosStart; }
-  void set_coreSeqPosStart(const uint32_t* values) { 
-    for (int i = 0; i < 64; ++i) {
-        coreSeqPosStart[i] = values[i];
+    const uint32_t *get_coreSeqPosStart() const { return coreSeqPosStart; }
+    void set_coreSeqPosStart(const uint32_t *values)
+    {
+        for (int i = 0; i < 64; ++i) {
+            coreSeqPosStart[i] = values[i];
+        }
     }
-  }
 
-  
-  const uint32_t* get_coreSeqPosEnd() const { return coreSeqPosEnd; }
-  void set_coreSeqPosEnd(const uint32_t* values) { 
-    for (int i = 0; i < 64; ++i) {
-        coreSeqPosEnd[i] = values[i];
+    const uint32_t *get_coreSeqPosEnd() const { return coreSeqPosEnd; }
+    void set_coreSeqPosEnd(const uint32_t *values)
+    {
+        for (int i = 0; i < 64; ++i) {
+            coreSeqPosEnd[i] = values[i];
+        }
     }
-  }
 };
 
 class PromptAttentionSplitCoreParams {
 public:
-   uint32_t startBlkArray[50] = {0};
-   uint32_t endBlkArray[50] = {0};
+    uint32_t startBlkArray[50] = {0};
+    uint32_t endBlkArray[50] = {0};
 
-  // ========================
-  // Getter & Setter 方法
-  // ========================
+    // ========================
+    // Getter & Setter 方法
+    // ========================
 
-  const uint32_t* get_startBlkArray() const { return startBlkArray; }
-  void set_startBlkArray(const uint32_t* values) { 
-    for (int i = 0; i < 50; ++i) {
-        startBlkArray[i] = values[i];
+    const uint32_t *get_startBlkArray() const { return startBlkArray; }
+    void set_startBlkArray(const uint32_t *values)
+    {
+        for (int i = 0; i < 50; ++i) {
+            startBlkArray[i] = values[i];
+        }
     }
-  }
-  
-  const uint32_t* get_endBlkArray() const { return endBlkArray; }
-  void set_endBlkArray(const uint32_t* values) { 
-    for (int i = 0; i < 50; ++i) {
-        endBlkArray[i] = values[i];
+
+    const uint32_t *get_endBlkArray() const { return endBlkArray; }
+    void set_endBlkArray(const uint32_t *values)
+    {
+        for (int i = 0; i < 50; ++i) {
+            endBlkArray[i] = values[i];
+        }
     }
-  }
 };
 
 class PromptAttentionSingleCoreParams {
@@ -559,7 +562,7 @@ public:
 };
 
 class PromptAttentionSingleCoreTensorSize {
-  public:
+public:
     uint32_t mmResUbSize = 0;
     uint32_t pseShiftUbSize = 0;
     uint32_t attenMaskUbSize = 0;
@@ -667,7 +670,7 @@ class PromptAttentionSingleCoreTensorSize {
     void set_msdAMaxTmpBuffSize(uint32_t msdAMaxTmpBuffSize) { this->msdAMaxTmpBuffSize = msdAMaxTmpBuffSize; }
 
     uint32_t get_msdAMaxResBuffSize() const { return msdAMaxResBuffSize; }
-    void set_msdAMaxResBuffSize(uint32_t msdAMaxResBuffSize) { this->msdAMaxResBuffSize = msdAMaxResBuffSize; } 
+    void set_msdAMaxResBuffSize(uint32_t msdAMaxResBuffSize) { this->msdAMaxResBuffSize = msdAMaxResBuffSize; }
 
     uint32_t get_msdSoftmaxResAmaxBuffSize() const { return msdSoftmaxResAmaxBuffSize; }
     void set_msdSoftmaxResAmaxBuffSize(uint32_t msdSoftmaxResAmaxBuffSize) { this->msdSoftmaxResAmaxBuffSize = msdSoftmaxResAmaxBuffSize; }
@@ -694,7 +697,7 @@ class PromptAttentionSingleCoreTensorSize {
     void set_msdComputeLines(uint32_t msdComputeLines) { this->msdComputeLines = msdComputeLines; }
 };
 
-class CopyTransposeTiling{
+class CopyTransposeTiling {
 public:
     uint32_t dstShapeB = 0;
     uint32_t dstShapeN = 0;
@@ -857,7 +860,7 @@ public:
     float scaleValue = 0;
     int64_t preTokens = 0;
     int64_t nextTokens = 0;
-  // in pse encoding scenes s1 and s2 might not equal with s1 s2 in Q K
+    // in pse encoding scenes s1 and s2 might not equal with s1 s2 in Q K
     int64_t pseS1Size = 0;
     int64_t pseS2Size = 0;
     uint32_t pseBSize = 0;
@@ -865,19 +868,19 @@ public:
     uint32_t blockSize = 0;
     uint32_t blockTableDim2 = 0;
 
-  // 1: BSH/BSND 2: SBH 3: BNSD
+    // 1: BSH/BSND 2: SBH 3: BNSD
     uint8_t layoutType = 0;
-  // Paged Attention kvcache layout 0: BBH 1: BNBD 2: NZ
+    // Paged Attention kvcache layout 0: BBH 1: BNBD 2: NZ
     uint32_t paCacheLayoutType = 0;
-  // 0: (B,N2,G,S1,S2 { 1: (B,N2,G,1,S2 {
+    // 0: (B,N2,G,S1,S2 { 1: (B,N2,G,1,S2 {
     uint8_t pseShapeType = 0;
-  // 0: (B,N2,G,S1,S2 { 1: (B,1,1,S1,S2 { 2: (1,1,1,S1,S2 {
+    // 0: (B,N2,G,S1,S2 { 1: (B,1,1,S1,S2 { 2: (1,1,1,S1,S2 {
     uint8_t attenMaskShapeType = 0;
-  // 0: fp16 1: bool(uint8 {
+    // 0: fp16 1: bool(uint8 {
     uint8_t attenMaskDataType = 0;
-  // ALL: 0 NONE: 1 ANY: 2 CAUSAL: 3 BAND: 4 } = 0;
+    // ALL: 0 NONE: 1 ANY: 2 CAUSAL: 3 BAND: 4 } = 0;
     uint8_t attenMaskCompressMode = 0;
-  // 0: high precise 1: high performance 2: invalid line high precise
+    // 0: high precise 1: high performance 2: invalid line high precise
     uint8_t implMode = 0;
     uint8_t sparseType = 0;
     uint8_t fromFused = 0;
@@ -900,17 +903,14 @@ public:
     int64_t get_gSize() const { return gSize; }
     void set_gSize(int64_t gSize) { this->gSize = gSize; }
 
-
     int64_t get_s1Size() const { return s1Size; }
     void set_s1Size(int64_t s1Size) { this->s1Size = s1Size; }
-
 
     int64_t get_s2Size() const { return s2Size; }
     void set_s2Size(int64_t s2Size) { this->s2Size = s2Size; }
 
     int64_t get_alignedS2() const { return alignedS2; }
     void set_alignedS2(int64_t alignedS2) { this->alignedS2 = alignedS2; }
-
 
     int64_t get_dSize() const { return dSize; }
     void set_dSize(int64_t dSize) { this->dSize = dSize; }
@@ -960,7 +960,6 @@ public:
     uint8_t get_attenMaskShapeType() const { return attenMaskShapeType; }
     void set_attenMaskShapeType(uint8_t attenMaskShapeType) { this->attenMaskShapeType = attenMaskShapeType; }
 
-
     uint8_t get_attenMaskDataType() const { return attenMaskDataType; }
     void set_attenMaskDataType(uint8_t attenMaskDataType) { this->attenMaskDataType = attenMaskDataType; }
 
@@ -1006,37 +1005,37 @@ public:
 
 class PFAMultiCoreParams {
 public:
-  int32_t coreNum = 0;
-  int32_t reserve = 0;
-  // BN2GS1.o
-  int64_t totalSize = 0;
-  // BN2GS1.o / core_num
-  int64_t splitFactorSize = 0;
-  int64_t splitFactorTailSize = 0;
-  int64_t sparseStartIdx[48] = {0};
+    int32_t coreNum = 0;
+    int32_t reserve = 0;
+    // BN2GS1.o
+    int64_t totalSize = 0;
+    // BN2GS1.o / core_num
+    int64_t splitFactorSize = 0;
+    int64_t splitFactorTailSize = 0;
+    int64_t sparseStartIdx[48] = {0};
 
+    int32_t get_coreNum() const { return coreNum; }
+    void set_coreNum(int32_t coreNum) { this->coreNum = coreNum; }
 
-  int32_t get_coreNum() const { return coreNum; }
-  void set_coreNum(int32_t coreNum) { this->coreNum = coreNum; }
+    int32_t get_reserve() const { return reserve; }
+    void set_reserve(int32_t reserve) { this->reserve = reserve; }
 
-  int32_t get_reserve() const { return reserve; }
-  void set_reserve(int32_t reserve) { this->reserve = reserve; }
+    int64_t get_totalSize() const { return totalSize; }
+    void set_totalSize(int64_t totalSize) { this->totalSize = totalSize; }
 
-  int64_t get_totalSize() const { return totalSize; }
-  void set_totalSize(int64_t totalSize) { this->totalSize = totalSize; }
+    int64_t get_splitFactorSize() const { return splitFactorSize; }
+    void set_splitFactorSize(int64_t splitFactorSize) { this->splitFactorSize = splitFactorSize; }
 
-  int64_t get_splitFactorSize() const { return splitFactorSize; }
-  void set_splitFactorSize(int64_t splitFactorSize) { this->splitFactorSize = splitFactorSize; }
+    int64_t get_splitFactorTailSize() const { return splitFactorTailSize; }
+    void set_splitFactorTailSize(int64_t splitFactorTailSize) { this->splitFactorTailSize = splitFactorTailSize; }
 
-  int64_t get_splitFactorTailSize() const { return splitFactorTailSize; }
-  void set_splitFactorTailSize(int64_t splitFactorTailSize) { this->splitFactorTailSize = splitFactorTailSize; }
-
-  int64_t* get_sparseStartIdx() { return sparseStartIdx; }
-  void set_sparseStartIdx(const int64_t* values) { 
-    for (int i = 0; i < 48; ++i) {
-        sparseStartIdx[i] = values[i];
+    int64_t *get_sparseStartIdx() { return sparseStartIdx; }
+    void set_sparseStartIdx(const int64_t *values)
+    {
+        for (int i = 0; i < 48; ++i) {
+            sparseStartIdx[i] = values[i];
+        }
     }
-  }
 };
 
 class PFACoreParams {
@@ -1134,7 +1133,7 @@ public:
 
     int32_t get_nRatio() const { return nRatio; }
     void set_nRatio(int32_t nRatio) { this->nRatio = nRatio; }
-    
+
     int32_t get_rsvd() const { return rsvd; }
     void set_rsvd(int32_t rsvd) { this->rsvd = rsvd; }
 
@@ -1165,7 +1164,7 @@ public:
     int32_t bmm2ResUbSize = 0;
     int32_t inputQueBytes = 0;
     int32_t outputQueBytes = 0;
-  // API buffer use remain space of ub
+    // API buffer use remain space of ub
     int32_t tmpBufBytes = 0;
     int32_t softmaxMaxOffsetBytes = 0;
     int32_t softmaxSumOffsetBytes = 0;
@@ -1180,7 +1179,7 @@ public:
     int32_t attenMaskApiOffsetBytes = 0;
     int32_t bmm1ProcessTInStage2Size = 0;
     int32_t bmm1ProcessTInStage2OffsetBytes = 0;
-  // workspace
+    // workspace
     int32_t wkspSection1OffsetBytes = 0;
     int32_t wkspSection2OffsetBytes = 0;
 
@@ -1303,23 +1302,23 @@ public:
     float scaleValue = 0;
     int64_t preTokens = 0;
     int64_t nextTokens = 0;
-  // in pse encoding scenes s1 and s2 might not equal with s1 s2 in Q K
+    // in pse encoding scenes s1 and s2 might not equal with s1 s2 in Q K
     int64_t pseS1Size = 0;
     int64_t pseS2Size = 0;
     uint32_t pseBSize = 0;
     uint32_t bandIndex = 0;
 
-  // 1: BSH/BSND 2: SBH 3: BNSD
+    // 1: BSH/BSND 2: SBH 3: BNSD
     uint8_t layoutType = 0;
-  // 0: (B,N2,G,S1,S2 { 1: (B,N2,G,1,S2 {
+    // 0: (B,N2,G,S1,S2 { 1: (B,N2,G,1,S2 {
     uint8_t pseShapeType = 0;
-  // 0: (B,N2,G,S1,S2 { 1: (B,1,1,S1,S2 { 2: (1,1,1,S1,S2 {
+    // 0: (B,N2,G,S1,S2 { 1: (B,1,1,S1,S2 { 2: (1,1,1,S1,S2 {
     uint8_t attenMaskShapeType = 0;
-  // 0: fp16 1: bool(uint8 {
+    // 0: fp16 1: bool(uint8 {
     uint8_t attenMaskDataType = 0;
-  // ALL: 0 NONE: 1 ANY: 2 CAUSAL: 3 BAND: 4 } = 0;
+    // ALL: 0 NONE: 1 ANY: 2 CAUSAL: 3 BAND: 4 } = 0;
     uint8_t attenMaskCompressMode = 0;
-  // 0: high precise 1: high performance 2: invalid line high precise
+    // 0: high precise 1: high performance 2: invalid line high precise
     uint8_t implMode = 0;
     uint8_t sparseType = 0;
     uint8_t needDropMaskOp = 0;
@@ -1339,7 +1338,7 @@ public:
     int64_t pseAlibiBaseS1 = 0;
     int64_t pseAlibiBaseS2 = 0;
 
-  // BSA
+    // BSA
     uint8_t deqScaleFlag = 0;
     uint8_t deqScale2Flag = 0;
     uint8_t isActualSeqLengthsNull = 0;
@@ -1426,7 +1425,7 @@ public:
 
     uint8_t get_layoutType() const { return layoutType; }
     void set_layoutType(uint8_t layoutType) { this->layoutType = layoutType; }
-    
+
     uint8_t get_pseShapeType() const { return pseShapeType; }
     void set_pseShapeType(uint8_t pseShapeType) { this->pseShapeType = pseShapeType; }
 
@@ -1573,12 +1572,12 @@ public:
 
     uint8_t get_isPostQuantPerChnl() const { return isPostQuantPerChnl; }
     void set_isPostQuantPerChnl(uint8_t isPostQuantPerChnl) { this->isPostQuantPerChnl = isPostQuantPerChnl; }
-    
+
     uint8_t get_isPostQuantBF16() const { return isPostQuantBF16; }
     void set_isPostQuantBF16(uint8_t isPostQuantBF16) { this->isPostQuantBF16 = isPostQuantBF16; }
 
-    uint16_t get_antiquantPerTensorFlag () const { return antiquantPerTensorFlag ; }
-    void set_antiquantPerTensorFlag (uint16_t antiquantPerTensorFlag ) { this->antiquantPerTensorFlag  = antiquantPerTensorFlag ; }
+    uint16_t get_antiquantPerTensorFlag() const { return antiquantPerTensorFlag; }
+    void set_antiquantPerTensorFlag(uint16_t antiquantPerTensorFlag) { this->antiquantPerTensorFlag = antiquantPerTensorFlag; }
 
     uint16_t get_antiquantPerHeadFlag() const { return antiquantPerHeadFlag; }
     void set_antiquantPerHeadFlag(uint16_t antiquantPerHeadFlag) { this->antiquantPerHeadFlag = antiquantPerHeadFlag; }
@@ -1589,42 +1588,44 @@ public:
 
 class MultiCoreParamsRegbase {
 public:
-  int32_t coreNum = 0;
-  int64_t totalSize = 0;
-  int64_t s1OuterSize = 0;
-  int64_t splitFactorSize = 0;
-  int64_t splitFactorTailSize = 0;
-  uint32_t bnStartIdx[48] = {0};
-  int64_t sparseStartIdx[48] = {0};
+    int32_t coreNum = 0;
+    int64_t totalSize = 0;
+    int64_t s1OuterSize = 0;
+    int64_t splitFactorSize = 0;
+    int64_t splitFactorTailSize = 0;
+    uint32_t bnStartIdx[48] = {0};
+    int64_t sparseStartIdx[48] = {0};
 
-  int32_t get_coreNum() const { return coreNum; }
-  void set_coreNum(int32_t coreNum) { this->coreNum = coreNum; }
+    int32_t get_coreNum() const { return coreNum; }
+    void set_coreNum(int32_t coreNum) { this->coreNum = coreNum; }
 
-  int64_t get_totalSize() const { return totalSize; }
-  void set_totalSize(int64_t totalSize) { this->totalSize = totalSize; }
+    int64_t get_totalSize() const { return totalSize; }
+    void set_totalSize(int64_t totalSize) { this->totalSize = totalSize; }
 
-  int64_t get_s1OuterSize() const { return s1OuterSize; }
-  void set_s1OuterSize(int64_t s1OuterSize) { this->s1OuterSize = s1OuterSize; }
+    int64_t get_s1OuterSize() const { return s1OuterSize; }
+    void set_s1OuterSize(int64_t s1OuterSize) { this->s1OuterSize = s1OuterSize; }
 
-  int64_t get_splitFactorSize() const { return splitFactorSize; }
-  void set_splitFactorSize(int64_t splitFactorSize) { this->splitFactorSize = splitFactorSize; }
+    int64_t get_splitFactorSize() const { return splitFactorSize; }
+    void set_splitFactorSize(int64_t splitFactorSize) { this->splitFactorSize = splitFactorSize; }
 
-  int64_t get_splitFactorTailSize() const { return splitFactorTailSize; }
-  void set_splitFactorTailSize(int64_t splitFactorTailSize) { this->splitFactorTailSize = splitFactorTailSize; }
+    int64_t get_splitFactorTailSize() const { return splitFactorTailSize; }
+    void set_splitFactorTailSize(int64_t splitFactorTailSize) { this->splitFactorTailSize = splitFactorTailSize; }
 
-  const uint32_t* get_bnStartIdx() const { return bnStartIdx; }
-  void set_bnStartIdx(const uint32_t* values) { 
-    for (int i = 0; i < 48; ++i) {
-        bnStartIdx[i] = values[i];
+    const uint32_t *get_bnStartIdx() const { return bnStartIdx; }
+    void set_bnStartIdx(const uint32_t *values)
+    {
+        for (int i = 0; i < 48; ++i) {
+            bnStartIdx[i] = values[i];
+        }
     }
-  }
 
-  const int64_t* get_sparseStartIdx() const { return sparseStartIdx; }
-  void set_sparseStartIdx(const int64_t* values) { 
-    for (int i = 0; i < 48; ++i) {
-        sparseStartIdx[i] = values[i];
+    const int64_t *get_sparseStartIdx() const { return sparseStartIdx; }
+    void set_sparseStartIdx(const int64_t *values)
+    {
+        for (int i = 0; i < 48; ++i) {
+            sparseStartIdx[i] = values[i];
+        }
     }
-  }
 };
 
 class DropmaskParamsRegbase {
@@ -1637,14 +1638,11 @@ public:
     int32_t get_multiCoreFactorSize() const { return multiCoreFactorSize; }
     void set_multiCoreFactorSize(int32_t multiCoreFactorSize) { this->multiCoreFactorSize = multiCoreFactorSize; }
 
-
     int32_t get_baseUbCalSize() const { return baseUbCalSize; }
     void set_baseUbCalSize(int32_t baseUbCalSize) { this->baseUbCalSize = baseUbCalSize; }
 
-
     int64_t get_multiCoreTotalSize() const { return multiCoreTotalSize; }
     void set_multiCoreTotalSize(int64_t multiCoreTotalSize) { this->multiCoreTotalSize = multiCoreTotalSize; }
-
 
     int64_t get_shapeTotalSize() const { return shapeTotalSize; }
     void set_shapeTotalSize(int64_t shapeTotalSize) { this->shapeTotalSize = shapeTotalSize; }
@@ -1664,14 +1662,15 @@ public:
 
     uint8_t get_needInit() const { return needInit; }
     void set_needInit(uint8_t needInit) { this->needInit = needInit; }
-    
+
     uint8_t get_isOneN() const { return isOneN; }
     void set_isOneN(uint8_t isOneN) { this->isOneN = isOneN; }
 
-    const uint8_t* get_rsvd() const { return rsvd; }
-    void set_rsvd(const uint8_t* values) { 
-      for (int i = 0; i < 2; ++i) {
-          rsvd[i] = values[i];
+    const uint8_t *get_rsvd() const { return rsvd; }
+    void set_rsvd(const uint8_t *values)
+    {
+        for (int i = 0; i < 2; ++i) {
+            rsvd[i] = values[i];
         }
     }
 
@@ -1680,7 +1679,6 @@ public:
 
     int64_t get_totalSoftMaxLseOutputSize() const { return totalSoftMaxLseOutputSize; }
     void set_totalSoftMaxLseOutputSize(int64_t totalSoftMaxLseOutputSize) { this->totalSoftMaxLseOutputSize = totalSoftMaxLseOutputSize; }
-
 };
 
 class FlashAttentionScoreSimplifiedTilingData {

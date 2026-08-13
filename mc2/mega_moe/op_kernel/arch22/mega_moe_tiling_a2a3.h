@@ -14,7 +14,7 @@
  */
 
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
-#include "moe_init_routing_v2/moe_init_routing_v2_tiling.h"
+#include "moe_init_routing_v2/mega_moe_moe_init_routing_v2_tiling_arch22_v2.h"
 
 #ifndef ASCENDC_MEGA_MOE_TILING_H
 #define ASCENDC_MEGA_MOE_TILING_H

@@ -16,7 +16,7 @@
 #include "gtest/gtest.h"
 #include "tikicpulib.h"
 #include "distribute_barrier_extend_tiling_def.h"
-#include "../../../../common/op_kernel/moe_distribute_base.h"
+#include "../../../../common/op_kernel/common_moe_distribute_base.h"
 
 extern "C" __global__ __aicore__ void distribute_barrier_extend(GM_ADDR context, GM_ADDR xRef, GM_ADDR timeOut,
                                                                 GM_ADDR elasticInfo, GM_ADDR xRefOut,

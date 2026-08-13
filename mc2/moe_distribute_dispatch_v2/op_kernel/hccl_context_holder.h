@@ -23,10 +23,10 @@
 
 #include "check_winsize.h"
 #include "moe_distribute_v2_constant.h"
-#if __has_include("../common/moe_distribute_base.h")
-#include "../common/moe_distribute_base.h"
+#if __has_include("../common/common_moe_distribute_base.h")
+#include "../common/common_moe_distribute_base.h"
 #else
-#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/common_moe_distribute_base.h"
 #endif
 
 namespace Mc2Kernel {

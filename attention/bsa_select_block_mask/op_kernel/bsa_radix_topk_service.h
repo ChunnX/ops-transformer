@@ -18,8 +18,8 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include <limits.h>
-#include "bsa_select_block_mask_common.h"
-#include "bsa_select_block_mask_tiling_data.h"
+#include "bsa_select_block_mask_common_kernel.h"
+#include "bsa_select_block_mask_tiling_data_kernel.h"
 
 template <typename BSAT>
 class BSARadixTopKService {
@@ -391,7 +391,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                 VToSSync();
                 CalcCumsumHistogram(curBuf, roundId, tileId - startTileId, curTileLen);
 
-
                 // Signal next tile ready
                 SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
 
@@ -513,7 +512,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(TBuf<TPosi
     Cast(xLocalInt32, xLocalFp32, RoundMode::CAST_RINT, curTileLen);
     PipeBarrier<PIPE_V>();
 
-
     LocalTensor<half> tempHalf = outValueBuf_.Get<half>();
     LocalTensor<uint8_t> cmpMaskTensor = outIndexBuf_.Get<uint8_t>();
     LocalTensor<int32_t> tileHist = tileHistAndTopKBuf_.Get<int32_t>();
@@ -535,7 +533,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(TBuf<TPosi
         GatherMask(tempHalf, tempHalf, cmpMaskTensor.ReinterpretCast<uint16_t>(), true, curTileLen, {1, 1, 0, 0},
                    rsvdCnt);
         VToSSync();
-
 
         cumSumOne += rsvdCnt;
 
@@ -1054,7 +1051,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(LocalT
                     curTileBoundaryNum -= tileHistBoundaryPrev.GetValue(tileId - static_cast<int32_t>(startTileId));
                 }
 
-
                 if (static_cast<uint64_t>(curTileBoundaryNum) < remainCoreBoundaryNum) {
                     remainCoreBoundaryNum -= static_cast<uint32_t>(curTileBoundaryNum);
                     tileTopK.SetValue(tileId - static_cast<int32_t>(startTileId),
@@ -1107,7 +1103,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::WriteCoreTopKFromWs(LocalTenso
         }
     }
 
-
     CopyOutCoreTopK(resTensor, totalTileTopKInCore);
 }
 
@@ -1126,7 +1121,6 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
     ReduceGlobalHist(globalHist);
     FindBoundaryBin(globalHist, roundId);
 
-
     AddTileHistToTileTopK(globalHist);
 
     remainK_ = kValue_ - totalDefinitelyInTopK_;
@@ -1140,7 +1134,6 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
     if (isLastRound) {
         WriteCoreTopKFromWs(resTensor, tileHistFp32);
     }
-
 
     return isLastRound;
 }
@@ -1173,7 +1166,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(LocalTen
             }
         }
 
-
         GlobalTensor<uint8_t> maskOutTileGm;
         maskOutTileGm.SetGlobalBuffer((__gm__ uint8_t *)(maskOutGmU8Local.GetPhyAddr() + outputGmOffset));
 
@@ -1197,7 +1189,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(LocalTen
     GatherMask(tempHalf, tempHalf, cmpMask.template ReinterpretCast<uint16_t>(), true, curTileLen, {1, 1, 0, 0},
                rsvdCnt);
     PipeBarrier<PIPE_V>();
-
 
     LocalTensor<half> maskHalf = outValueBuf_.Get<half>();
     LocalTensor<half> onesHalf = outIndexBuf_.Get<half>();
@@ -1229,7 +1220,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(LocalTen
 
     VToSSync();
 
-
     curTileK -= static_cast<int32_t>(rsvdCnt);
 }
 
@@ -1260,7 +1250,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(LocalTen
             }
         }
 
-
         SToMTE3Sync();
         DataCopyPad(maskOutTileGm[0], maskLocal,
                     DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
@@ -1286,7 +1275,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(LocalTen
     VToSSync();
 
     uint32_t writeCnt = BSAMin(static_cast<uint32_t>(curTileK), static_cast<uint32_t>(eqRsvdCnt));
-
 
     LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
     GlobalTensor<uint8_t> maskOutTileGm;
@@ -1428,7 +1416,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
         boundaryHalf = static_cast<half>(-static_cast<float>(boundaryHalf));
     }
 
-
     // WS version: batch read tileTopK, use ping-pong double buffering
     for (uint32_t repeatId = 0; repeatId <= tileNumRepeatTimes_; repeatId++) {
         uint32_t startTileId = repeatId * MAX_TILE_NUM_IN_UB;
@@ -1438,7 +1425,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
         CopyTileTopKWs2Ub(tileTopK, startTileId, dataNum);
         MTE2ToSSync();
-
 
         // Prefetch first tile
         uint32_t firstTileId = startTileId;
@@ -1479,7 +1465,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
                 SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, outputGmOffset, curTileK);
             }
 
-
             if (curTileK > 0) {
                 if constexpr (IS_VARLEN) {
                     SubTopKAndWriteMaskEQTnd(xLocal, boundaryHalf, curTileLen, tileGmOffset, outputOffset, curTileK);
@@ -1495,6 +1480,5 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
         }
     }
 }
-
 
 #endif // BSA_RADIX_TOPK_SERVICE_H

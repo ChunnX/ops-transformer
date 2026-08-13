@@ -14,11 +14,11 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* FlashAttnMetadata(
-    const aclTensor* cuSeqlensQOptional,
-    const aclTensor* cuSeqlensKvOptional,
-    const aclTensor* sequsedQOptional,
-    const aclTensor* sequsedKvOptional,
+const aclTensor *FlashAttnMetadata(
+    const aclTensor *cuSeqlensQOptional,
+    const aclTensor *cuSeqlensKvOptional,
+    const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedKvOptional,
     int64_t batchSize,
     int64_t maxSeqlenQ,
     int64_t maxSeqlenKv,
@@ -28,14 +28,14 @@ const aclTensor* FlashAttnMetadata(
     int64_t maskMode,
     int64_t winLeft,
     int64_t winRight,
-    const char* layoutQ,
-    const char* layoutKv,
-    const char* layoutOut,
-    const char* socVersion,
+    const char *layoutQ,
+    const char *layoutKv,
+    const char *layoutOut,
+    const char *socVersion,
     int64_t aicCoreNum,
     int64_t aivCoreNum,
-    const aclTensor* metaData,
-    aclOpExecutor* executor);
+    const aclTensor *metaData,
+    aclOpExecutor *executor);
 } // namespace l0op
 
 #endif

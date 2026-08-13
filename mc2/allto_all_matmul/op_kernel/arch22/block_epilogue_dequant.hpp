@@ -23,7 +23,7 @@
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/callback.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/mega_moe_callback_arch22.hpp"
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue.hpp"
 
 namespace Catlass::Epilogue::Block {
@@ -89,8 +89,12 @@ public:
         CATLASS_DEVICE
         Params(GM_ADDR ptrScale_, LayoutScale layoutScale_, GM_ADDR ptrPerTokenScale_,
                LayoutPerTokenScale layoutPerTokenScale_, GM_ADDR ptrBias_, LayoutBias layoutBias_)
-            : ptrScale(ptrScale_), layoutScale(layoutScale_), ptrPerTokenScale(ptrPerTokenScale_),
-              layoutPerTokenScale(layoutPerTokenScale_), ptrBias(ptrBias_), layoutBias(layoutBias_)
+            : ptrScale(ptrScale_),
+              layoutScale(layoutScale_),
+              ptrPerTokenScale(ptrPerTokenScale_),
+              layoutPerTokenScale(layoutPerTokenScale_),
+              ptrBias(ptrBias_),
+              layoutBias(layoutBias_)
         {
         }
     };

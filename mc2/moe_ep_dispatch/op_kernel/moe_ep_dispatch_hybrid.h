@@ -43,12 +43,12 @@
 #include "moe_ep_dispatch_tiling.h"
 #include "moe_ep_dispatch_base.h"
 
-#if __has_include("../common/moe_distribute_base.h")
-#include "../common/moe_distribute_base.h"
+#if __has_include("../common/common_moe_distribute_base.h")
+#include "../common/common_moe_distribute_base.h"
 #include "../common/mc2_kernel_utils.h"
 #include "../common/mc2_moe_context.h"
 #else
-#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/common_moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 #endif
@@ -176,7 +176,7 @@ private:
                                                   uint32_t destinationScaleupStart,
                                                   uint32_t destinationScaleupEnd, bool &hasReadRouteInfo);
     __aicore__ inline void SendFanoutPayloads(uint32_t destinationScaleupStart,
-                                             uint32_t destinationScaleupEnd);
+                                              uint32_t destinationScaleupEnd);
     __aicore__ inline void SendScaleupPayloads();
     __aicore__ inline void SendPayloadsToScaleupRank(uint32_t dstRankId);
     __aicore__ inline void SendScaleupEntries(uint32_t dstRankId, uint64_t commHandle);
@@ -184,7 +184,7 @@ private:
                                        GM_ADDR sourceDataBaseAddr, uint32_t sourceSlotBytes,
                                        uint32_t srcRankId, uint32_t dstRankId, uint64_t commHandle);
     __aicore__ inline void SendFanoutPayloadToRank(GM_ADDR sourcePayloadAddr, uint32_t srcRankId,
-                                                  uint32_t dstRankId, uint32_t destinationSlot);
+                                                   uint32_t dstRankId, uint32_t destinationSlot);
     __aicore__ inline void CopyPayloadToLocal(GM_ADDR sourcePayloadAddr, GM_ADDR destinationPayloadAddr);
     __aicore__ inline void PublishFinalReadyStatuses(uint32_t dstRankId);
     __aicore__ inline void WriteFinalReadyStatusToRank(uint32_t srcRankId, uint32_t dstRankId);
@@ -304,9 +304,9 @@ private:
     uint32_t axisKAlign_{0};
     uint32_t currentTokenRangeIndex_{0};
     uint64_t sendEntryTokenRangeBytes_{0};
-    uint32_t serverNumAlign_{0};  // server 数对齐到 UB_ALIGN
-    uint32_t perGroupSizeAlign_{0};      // 每组 token 数 * axisK * sizeof(int16_t) 对齐到 256
-    uint32_t perGroupTokenNum_{0};       // 每组 token 数
+    uint32_t serverNumAlign_{0};    // server 数对齐到 UB_ALIGN
+    uint32_t perGroupSizeAlign_{0}; // 每组 token 数 * axisK * sizeof(int16_t) 对齐到 256
+    uint32_t perGroupTokenNum_{0};  // 每组 token 数
     uint32_t epWorldSizeAlign_{0};
     uint32_t epWorldSizeAlign512_{0};
     uint32_t moeNumPerRankAlign_{0};
@@ -866,7 +866,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     for (uint32_t remoteScaleoutOrdinal = remoteScaleoutStart;
          remoteScaleoutOrdinal < remoteScaleoutEnd; remoteScaleoutOrdinal++) {
         uint32_t dstScaleoutIndex = remoteScaleoutOrdinal < currentServerIndex_ ?
-            remoteScaleoutOrdinal : remoteScaleoutOrdinal + 1U;
+                                        remoteScaleoutOrdinal :
+                                        remoteScaleoutOrdinal + 1U;
         uint32_t proxyRankId = dstScaleoutIndex * rankNumPerServer_ + currentScaleupIndex;
         if (proxyRankId >= epWorldSize_) {
             continue;

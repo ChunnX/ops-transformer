@@ -19,7 +19,7 @@
 #include "log/log.h"
 #include "register/op_def_registry.h"
 #include "../fused_infer_attention_score_tiling_constants.h"
-#include "mask_checker.h"
+#include "fused_infer_attention_score_mask_checker.h"
 
 namespace optiling {
 using std::map;
@@ -51,8 +51,8 @@ ge::graphStatus MaskChecker::CheckDtypeAndFormat(const FiaTilingInfo &fiaInfo) c
 ge::graphStatus MaskChecker::CheckSparseMode(const FiaTilingInfo &fiaInfo) const
 {
     // SparseMode only supports 0/1/2/3/4/9. SparseMode 9 only support in ascend910B.
-    const std::vector<int32_t> sparseModeList = {SPARSE_MODE_NO_MASK,    SPARSE_MODE_ALL_MASK, SPARSE_MODE_LEFT_UP,
-                                                 SPARSE_MODE_RIGHT_DOWN, SPARSE_MODE_BAND,     SPARSE_MODE_TREE};
+    const std::vector<int32_t> sparseModeList = {SPARSE_MODE_NO_MASK, SPARSE_MODE_ALL_MASK, SPARSE_MODE_LEFT_UP,
+                                                 SPARSE_MODE_RIGHT_DOWN, SPARSE_MODE_BAND, SPARSE_MODE_TREE};
     OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(fiaInfo.sparseMode, sparseModeList),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "sparse_mode",
                                                       std::to_string(fiaInfo.sparseMode).c_str(),
@@ -511,7 +511,7 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo 
             maskInfo.attenMaskBatch = maskShape->GetStorageShape().GetDim(DIM_NUM_0);
             maskInfo.attenMaskN = maskShape->GetStorageShape().GetDim(DIM_NUM_1);
             maskInfo.attenMaskQSize =
-                maskShape->GetStorageShape().GetDim(DIM_NUM_2); // 2: When the dim is 4, the second dimension is S1.
+                maskShape->GetStorageShape().GetDim(DIM_NUM_2);                      // 2: When the dim is 4, the second dimension is S1.
             maskInfo.attenMaskSize = maskShape->GetStorageShape().GetDim(DIM_NUM_3); // 3:The third dimension is S2.
             maskInfo.strMaskShape =
                 std::to_string(maskInfo.attenMaskBatch) + ", " + std::to_string(maskInfo.attenMaskN) + ", " +

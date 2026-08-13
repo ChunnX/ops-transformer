@@ -116,7 +116,6 @@ struct GmLayoutParams<GmFormat::PA_BnBsND> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_KV_PA_BNBD;
 };
 
-
 template <>
 struct GmLayoutParams<GmFormat::PA_BnNBsD> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_KV_PA_BNBD;
@@ -362,7 +361,6 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_NBSGD2, ACTLEN_T, W
         return AscendC::Std::get<4>(gmLayout.shape);
     }
 };
-
 
 template <GmFormat FORMAT, typename ACTLEN_T, bool WITH_ZERO_HEAD>
 struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T, WITH_ZERO_HEAD> {

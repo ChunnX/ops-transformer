@@ -24,7 +24,7 @@
 #include "util_regbase.h"
 
 namespace regbaseutil {
-enum class PseLayoutTypeEnum: uint32_t{
+enum class PseLayoutTypeEnum : uint32_t {
     PSE_S1S2 = 0,
     PSE_1S2 = 1,
     PSE_SLOPE_BN = 2,
@@ -93,20 +93,20 @@ __aicore__ inline void DataCopyIn(LocalTensor<INPUT_T> &dstTensor, GlobalTensor<
 
 template <typename INPUT_T, bool hasPse>
 __aicore__ inline void DataCopyInAlign8(LocalTensor<INPUT_T> &dstTensor, GlobalTensor<INPUT_T> &srcTensor, int64_t offset,
-                                  int64_t s1Size, int64_t s2Size, int64_t actualS2Len)
+                                        int64_t s1Size, int64_t s2Size, int64_t actualS2Len)
 {
     int32_t dtypeSize = sizeof(INPUT_T);
-    if (dtypeSize == 0){
+    if (dtypeSize == 0) {
         return;
     }
     int32_t alignedS2Size = CeilDiv(s2Size, 32 / dtypeSize) * (32 / dtypeSize);
     DataCopyInCommon<INPUT_T, hasPse>(dstTensor, srcTensor, offset, s1Size, s2Size,
-        actualS2Len, alignedS2Size);
+                                      actualS2Len, alignedS2Size);
 }
 
 template <bool hasPse, bool isInfer = false, bool hasRope = false>
-__aicore__ inline int64_t PseComputeOffset(const RunInfo<isInfer> &runInfo, 
-    ConstInfo<isInfer, hasRope> &constInfo, PseInfo &pseInfo)
+__aicore__ inline int64_t PseComputeOffset(const RunInfo<isInfer> &runInfo,
+                                           ConstInfo<isInfer, hasRope> &constInfo, PseInfo &pseInfo)
 {
     if constexpr (isInfer) {
         return runInfo.pseShiftOffset;
@@ -271,8 +271,7 @@ template <typename T, typename INPUT_T, bool hasPse, bool isInfer = false, bool 
 __aicore__ inline void ComputeInnerPseOffset(float &slopes, float &posShift, const RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
                                              PseInfo &pseInfo, __gm__ uint8_t *pseSlope)
 {
-    if constexpr (hasPse)
-    {
+    if constexpr (hasPse) {
         if (pseInfo.pseType != (uint32_t)PseTypeEnum::PSE_INNER_MUL_ADD_TYPE &&
             pseInfo.pseType != (uint32_t)PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
             return;
@@ -294,5 +293,5 @@ __aicore__ inline void ComputeInnerPseOffset(float &slopes, float &posShift, con
         return;
     }
 }
-}
+} // namespace regbaseutil
 #endif

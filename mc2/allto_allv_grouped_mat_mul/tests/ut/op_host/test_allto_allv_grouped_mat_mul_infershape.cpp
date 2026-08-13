@@ -65,7 +65,7 @@ struct TilingShapes {
 
 struct TilingDTypes {
     std::vector<ge::DataType> inputDtypes{ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT64,
-                                          ge::DT_INT64,   ge::DT_FLOAT16, ge::DT_FLOAT16};
+                                          ge::DT_INT64, ge::DT_FLOAT16, ge::DT_FLOAT16};
     std::vector<ge::DataType> outputDtypes{ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16};
 };
 
@@ -206,7 +206,6 @@ TEST_P(AlltoAllvGroupedMatMulInfershape, infershapeTest)
     std::vector<std::vector<int64_t>> expectOutputShape = {{4096, 4096}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
 }
-
 
 static TestParams testParams[] = {{"Test_sample", {{"permuteOutFlag", "true"}}, {}, {}, {}, ge::GRAPH_SUCCESS}};
 

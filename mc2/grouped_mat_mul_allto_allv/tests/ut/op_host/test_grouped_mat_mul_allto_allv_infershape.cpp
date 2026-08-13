@@ -62,7 +62,7 @@ struct TilingShapes {
 
 struct TilingDTypes {
     std::vector<ge::DataType> inputDtypes{ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT64,
-                                          ge::DT_INT64,   ge::DT_FLOAT16, ge::DT_FLOAT16};
+                                          ge::DT_INT64, ge::DT_FLOAT16, ge::DT_FLOAT16};
     std::vector<ge::DataType> outputDtypes{ge::DT_FLOAT16, ge::DT_FLOAT16};
 };
 

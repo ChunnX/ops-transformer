@@ -20,7 +20,7 @@
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../fused_infer_attention_score_tiling_constants.h"
-#include "softmax_lse_checker.h"
+#include "fused_infer_attention_score_softmax_lse_checker.h"
 
 namespace optiling {
 using std::map;
@@ -73,8 +73,8 @@ ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &
                                 lseShape->GetStorageShape().GetDimNum()),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(lseShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.qTSize ||
-                lseShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.n1Size ||
-                lseShape->GetStorageShape().GetDim(DIM_NUM_2) != SHAPE_PARAMS_CONST,
+                            lseShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.n1Size ||
+                            lseShape->GetStorageShape().GetDim(DIM_NUM_2) != SHAPE_PARAMS_CONST,
                         OP_LOGE(fiaInfo.opName, "SoftmaxLse shape[%ld, %ld, %ld] does not match TN1!",
                                 lseShape->GetStorageShape().GetDim(DIM_NUM_0),
                                 lseShape->GetStorageShape().GetDim(DIM_NUM_1),
@@ -86,9 +86,9 @@ ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &
                                 lseShape->GetStorageShape().GetDimNum()),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(lseShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize ||
-                lseShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.n1Size ||
-                lseShape->GetStorageShape().GetDim(DIM_NUM_2) != fiaInfo.s1Size ||
-                lseShape->GetStorageShape().GetDim(DIM_NUM_3) != SHAPE_PARAMS_CONST,
+                            lseShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.n1Size ||
+                            lseShape->GetStorageShape().GetDim(DIM_NUM_2) != fiaInfo.s1Size ||
+                            lseShape->GetStorageShape().GetDim(DIM_NUM_3) != SHAPE_PARAMS_CONST,
                         OP_LOGE(fiaInfo.opName, "SoftmaxLse shape[%ld, %ld, %ld, %ld] does not match [B, N, Q_S, 1]!",
                                 lseShape->GetStorageShape().GetDim(DIM_NUM_0),
                                 lseShape->GetStorageShape().GetDim(DIM_NUM_1),
@@ -120,7 +120,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckParaExistence(const FiaTilingInfo &fiaIn
 ge::graphStatus SoftmaxLSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckFeatureDimAndShape(fiaInfo)) {
-            return ge::GRAPH_FAILED;
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -130,4 +130,4 @@ ge::graphStatus SoftmaxLSEChecker::CheckMultiParaConsistency(const FiaTilingInfo
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+} // namespace optiling

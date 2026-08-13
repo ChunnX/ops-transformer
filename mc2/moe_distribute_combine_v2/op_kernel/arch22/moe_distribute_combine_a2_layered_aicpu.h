@@ -20,7 +20,7 @@
 #include "kernel_operator.h"
 #endif
 #include "../moe_distribute_combine_tiling.h"
-#include "../../../common/op_kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/common_moe_distribute_base.h"
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 
 namespace MoeDistributeCombineA2Impl {

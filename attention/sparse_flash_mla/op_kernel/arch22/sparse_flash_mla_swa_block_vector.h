@@ -20,7 +20,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "sparse_flash_mla_common.h"
+#include "sparse_flash_mla_common_arch22.h"
 
 namespace SMLAKernel {
 using AscendC::CrossCoreSetFlag;
@@ -211,10 +211,9 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::InitBuffers(TPipe *pipe)
     sinksBrcbUb = sinksBrcbBuff.Get<SINKS_T>();
 }
 
-
 template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::InitParams(const struct ConstInfo &constInfo,
-                                                        const SparseFlashMlaTilingData *__restrict tilingData)
+                                                         const SparseFlashMlaTilingData *__restrict tilingData)
 {
     this->constInfo = constInfo;
     this->tilingData = tilingData;
@@ -223,9 +222,9 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::InitParams(const struct ConstInfo 
 template <typename SMLAT>
 __aicore__ inline void
 SWAVectorBlock<SMLAT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
-                                           GlobalTensor<int32_t> actualSeqLengthsQGm,
-                                           GlobalTensor<int32_t> actualSeqLengthsKVGm,
-                                           GlobalTensor<SINKS_T> sinksGm, GlobalTensor<T> softmaxLseGm)
+                                            GlobalTensor<int32_t> actualSeqLengthsQGm,
+                                            GlobalTensor<int32_t> actualSeqLengthsKVGm,
+                                            GlobalTensor<SINKS_T> sinksGm, GlobalTensor<T> softmaxLseGm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
@@ -238,7 +237,7 @@ SWAVectorBlock<SMLAT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, Gl
 template <typename SMLAT>
 __aicore__ inline void
 SWAVectorBlock<SMLAT>::InitVec2GlobalTensor(GlobalTensor<T> accumOutGm, GlobalTensor<UPDATE_T> vec2ResGm,
-                                           GlobalTensor<MM2_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm)
+                                            GlobalTensor<MM2_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm)
 {
     this->accumOutGm = accumOutGm;
     this->vec2ResGm = vec2ResGm;
@@ -324,9 +323,9 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::InitSoftmaxDefaultBuffer()
 
 template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::ElewiseCompute(const RunInfo &info,
-                                                            const MSplitInfo &mSplitInfo,
-                                                            const LocalTensor<T> &mmResUb, uint32_t startRow,
-                                                            uint32_t dealRowCount, uint32_t columnCount)
+                                                             const MSplitInfo &mSplitInfo,
+                                                             const LocalTensor<T> &mmResUb, uint32_t startRow,
+                                                             uint32_t dealRowCount, uint32_t columnCount)
 {
     Muls(mmResUb, mmResUb, static_cast<T>(tilingData->baseParams.softmaxScale), dealRowCount * columnCount);
     uint32_t gs1StartIdx = info.gS1Idx + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
@@ -377,11 +376,11 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ElewiseCompute(const RunInfo &info
             }
             SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, 0, oriLeft - 1);
             SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, oriRight + 1,
-                info.actualSingleProcessSInnerOriSize - 1);
+                        info.actualSingleProcessSInnerOriSize - 1);
             oriRight = Min(oriRight + 1, info.actualSingleProcessSInnerOriSize);
             oriLeft = Max(0, static_cast<int32_t>(oriRight) - constInfo.oriWinLeft + constInfo.oriWinRight);
             SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, cmpRight + info.actualSingleProcessSInnerOriSize,
-                columnCount - 1);
+                        columnCount - 1);
             noMaskCmpSize += 1;
             ubOffset += dealTempSize * columnCount;
             gStartIdx = 0;
@@ -393,7 +392,7 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ElewiseCompute(const RunInfo &info
         // relativeS2Idx is the cmp tile index relative to the current batch.
         // s2Idx may include the global task index.
         int64_t cmpTileStart = static_cast<int64_t>(info.relativeS2Idx) * constInfo.s2BaseSize +
-            static_cast<int64_t>(info.s2StartPoint);
+                               static_cast<int64_t>(info.s2StartPoint);
         for (uint32_t i = s1StartIdx; i <= s1EndIdx; i++) {
             actNoMaskCmpSize = noMaskCmpSize / constInfo.cmpRatio;
             if (actNoMaskCmpSize <= 0) {
@@ -418,8 +417,8 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ElewiseCompute(const RunInfo &info
 
 template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::SetInfInBlk(const LocalTensor<T> &mmResUb,
-                                                         uint32_t dealRowCount, uint32_t columnCount,
-                                                         int64_t startId, int64_t endId)
+                                                          uint32_t dealRowCount, uint32_t columnCount,
+                                                          int64_t startId, int64_t endId)
 {
     //       startId     endId
     // x x x   0      0   0     x x x
@@ -453,8 +452,8 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::SetInfInBlk(const LocalTensor<T> &
 template <typename SMLAT>
 __aicore__ inline void
 SWAVectorBlock<SMLAT>::SoftmaxFlashV2Compute(const RunInfo &info, const MSplitInfo &mSplitInfo, LocalTensor<T> &mmResUb,
-                                            LocalTensor<uint8_t> &softmaxTmpUb, uint32_t startRow,
-                                            uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                                             LocalTensor<uint8_t> &softmaxTmpUb, uint32_t startRow,
+                                             uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     LocalTensor<T> inSumTensor;
     LocalTensor<T> inMaxTensor;
@@ -527,8 +526,8 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ProcessLse(const RunInfo &info, co
 
 template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::DealBmm1ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                                  uint32_t startRow, uint32_t dealRowCount,
-                                                                  uint32_t columnCount, uint32_t loopId)
+                                                                   uint32_t startRow, uint32_t dealRowCount,
+                                                                   uint32_t columnCount, uint32_t loopId)
 {
     uint32_t computeSize = dealRowCount * columnCount;
     uint64_t inOutGmOffset = (info.loop % constInfo.preLoadNum) * constInfo.mmResUbSize +
@@ -671,7 +670,7 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ProcessVec2L(const RunInfo &info)
 
 template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::ProcessVec2Inner(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                              uint32_t mStartRow, uint32_t mDealSize)
+                                                               uint32_t mStartRow, uint32_t mDealSize)
 {
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / constInfo.headDim;
     if (mSplitSize > mDealSize) {
@@ -692,8 +691,8 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ProcessVec2Inner(const RunInfo &in
 
 template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::Bmm2FDDataCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb,
-                                                               uint32_t wsMStart, uint32_t dealRowCount,
-                                                               uint32_t columnCount, uint32_t actualColumnCount)
+                                                                uint32_t wsMStart, uint32_t dealRowCount,
+                                                                uint32_t columnCount, uint32_t actualColumnCount)
 {
     LocalTensor<T> tmp = outputBuff1.Get<T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
@@ -721,8 +720,8 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::Bmm2FDDataCopyOut(const RunInfo &i
 
 template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::Bmm2DataCopyOutTrans(const RunInfo &info, LocalTensor<OUT_T> &attenOutUb,
-                                                                  uint32_t wsMStart, uint32_t dealRowCount,
-                                                                  uint32_t columnCount, uint32_t actualColumnCount)
+                                                                   uint32_t wsMStart, uint32_t dealRowCount,
+                                                                   uint32_t columnCount, uint32_t actualColumnCount)
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
@@ -735,8 +734,8 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::Bmm2DataCopyOutTrans(const RunInfo
 
 template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::Bmm2CastAndCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb,
-                                                                uint32_t wsMStart, uint32_t dealRowCount,
-                                                                uint32_t columnCount, uint32_t actualColumnCount)
+                                                                 uint32_t wsMStart, uint32_t dealRowCount,
+                                                                 uint32_t columnCount, uint32_t actualColumnCount)
 {
     LocalTensor<OUT_T> tmpBmm2ResCastTensor = outputBuff1.Get<OUT_T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
@@ -754,8 +753,8 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::Bmm2CastAndCopyOut(const RunInfo &
 
 template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::Bmm2ResCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb,
-                                                            uint32_t wsMStart, uint32_t dealRowCount,
-                                                            uint32_t columnCount, uint32_t actualColumnCount)
+                                                             uint32_t wsMStart, uint32_t dealRowCount,
+                                                             uint32_t columnCount, uint32_t actualColumnCount)
 {
     if constexpr (FLASH_DECODE) {
         if (info.tndIsS2SplitCore) {
@@ -770,8 +769,8 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::Bmm2ResCopyOut(const RunInfo &info
 
 template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::DealBmm2ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                                  uint32_t startRow, uint32_t dealRowCount,
-                                                                  uint32_t columnCount, uint32_t actualColumnCount)
+                                                                   uint32_t startRow, uint32_t dealRowCount,
+                                                                   uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t vec2ComputeSize = dealRowCount * columnCount;
     uint32_t mStart = mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
@@ -845,8 +844,8 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::DealBmm2ResBaseBlock(const RunInfo
 
 template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::RowDivs(LocalTensor<float> dstUb, LocalTensor<float> src0Ub,
-                                                     LocalTensor<float> src1Ub, uint32_t dealRowCount,
-                                                     uint32_t columnCount, uint32_t actualColumnCount)
+                                                      LocalTensor<float> src1Ub, uint32_t dealRowCount,
+                                                      uint32_t columnCount, uint32_t actualColumnCount)
 {
     // divs by row, 每行的元素除以相同的元素
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] / src1Ub[i, 0 : 7]
@@ -892,8 +891,8 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::RowDivs(LocalTensor<float> dstUb, 
 
 template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub,
-                                                     uint32_t dealRowCount, uint32_t columnCount,
-                                                     uint32_t actualColumnCount)
+                                                      uint32_t dealRowCount, uint32_t columnCount,
+                                                      uint32_t actualColumnCount)
 {
     // muls by row, 每行的元素乘以相同的元素
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] * src1Ub[i, 0 : 7]

@@ -26,8 +26,7 @@
 
 using namespace std;
 
-class l2_moe_token_unpermute_with_routing_map_test : public testing::Test
-{
+class l2_moe_token_unpermute_with_routing_map_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -44,41 +43,41 @@ protected:
 TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unpermute_with_routingmap_probs_no_padded)
 {
     // 张量形状定义
-    const int64_t tokens_num = 4;        // 令牌数量
-    const int64_t experts_num = 2;       // 专家数量  
-    const int64_t topK_num = 2;          // 每个令牌选择的专家数
-    const int64_t hidden_size = 64;      // 隐藏层大小
+    const int64_t tokens_num = 4;                                // 令牌数量
+    const int64_t experts_num = 2;                               // 专家数量
+    const int64_t topK_num = 2;                                  // 每个令牌选择的专家数
+    const int64_t hidden_size = 64;                              // 隐藏层大小
     const int64_t total_permuted_tokens = tokens_num * topK_num; // 置换后的令牌总数
-    
+
     // 输入张量定义
     auto permutedTokens = TensorDesc({total_permuted_tokens, hidden_size}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
     auto sortedIndices = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND).ValueRange(int64_t(0), total_permuted_tokens - 1);
-    
+
     // routingMapOptional: 形状 (tokens_num, experts_num), INT8 类型
     auto routingMapOptional = TensorDesc({tokens_num, experts_num}, ACL_INT8, ACL_FORMAT_ND).ValueRange(0, 1);
-    
+
     // probsOptional: 形状与 routingMapOptional 相同
     auto probsOptional = TensorDesc({tokens_num, experts_num}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
-    
+
     // 输出张量
     auto unpermutedTokens = TensorDesc({tokens_num, hidden_size}, ACL_FLOAT, ACL_FORMAT_ND);
     auto outIndex = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND);
     auto permuteTokenId = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND);
     auto permuteProbs = TensorDesc({total_permuted_tokens}, ACL_FLOAT, ACL_FORMAT_ND);
-    
+
     // 创建形状数据
     std::vector<int64_t> shape_data = {tokens_num, hidden_size};
     // 使用工厂函数创建 aclIntArray
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
-    
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+
     // paddedMode 设置为 false
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
         INPUT(permutedTokens, sortedIndices, routingMapOptional, probsOptional, false, restoreShape),
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
-    
+
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
@@ -91,31 +90,31 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
     const int64_t topK_num = 2;
     const int64_t hidden_size = 128;
     const int64_t total_permuted_tokens = tokens_num * topK_num;
-    
+
     auto permutedTokens = TensorDesc({total_permuted_tokens, hidden_size}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-5, 5);
     auto sortedIndices = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND).ValueRange(int64_t(0), total_permuted_tokens - 1);
-    
+
     // routingMapOptional: bool 类型
     auto routingMapOptional = TensorDesc({tokens_num, experts_num}, ACL_BOOL, ACL_FORMAT_ND).ValueRange(0, 1);
     auto probsOptional = TensorDesc({tokens_num, experts_num}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 0.9);
-    
+
     auto unpermutedTokens = TensorDesc({tokens_num, hidden_size}, ACL_FLOAT, ACL_FORMAT_ND);
     auto outIndex = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND);
     auto permuteTokenId = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND);
     auto permuteProbs = TensorDesc({total_permuted_tokens}, ACL_FLOAT, ACL_FORMAT_ND);
-    
+
     // 创建形状数据
     std::vector<int64_t> shape_data = {tokens_num, hidden_size};
     // 使用工厂函数创建 aclIntArray
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
-    
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
         INPUT(permutedTokens, sortedIndices, routingMapOptional, probsOptional, false, restoreShape),
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
-    
+
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
@@ -128,14 +127,14 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
     const int64_t topK_num = 1;
     const int64_t hidden_size = 32;
     const int64_t total_permuted_tokens = tokens_num * topK_num;
-    
+
     auto permutedTokens = TensorDesc({total_permuted_tokens, hidden_size}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto sortedIndices = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND).ValueRange(int64_t(0), total_permuted_tokens - 1);
-    
+
     // routingMap 全为 0
     auto routingMapOptional = TensorDesc({tokens_num, experts_num}, ACL_INT8, ACL_FORMAT_ND).ValueRange(0, 0);
     auto probsOptional = TensorDesc({tokens_num, experts_num}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(double(0), 0.5);
-    
+
     auto unpermutedTokens = TensorDesc({tokens_num, hidden_size}, ACL_FLOAT, ACL_FORMAT_ND);
     auto outIndex = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND);
     auto permuteTokenId = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND);
@@ -144,15 +143,15 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
     // 创建形状数据
     std::vector<int64_t> shape_data = {tokens_num, hidden_size};
     // 使用工厂函数创建 aclIntArray
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
-    
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
         INPUT(permutedTokens, sortedIndices, routingMapOptional, probsOptional, false, restoreShape),
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
-    
+
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
@@ -165,31 +164,31 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
     const int64_t topK_num = 2;
     const int64_t hidden_size = 64;
     const int64_t total_permuted_tokens = tokens_num * topK_num;
-    
+
     // 使用FP16数据类型
     auto permutedTokens = TensorDesc({total_permuted_tokens, hidden_size}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
     auto sortedIndices = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND).ValueRange(int64_t(0), total_permuted_tokens - 1);
-    
+
     auto routingMapOptional = TensorDesc({tokens_num, experts_num}, ACL_INT8, ACL_FORMAT_ND).ValueRange(0, 1);
     auto probsOptional = TensorDesc({tokens_num, experts_num}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
-    
+
     auto unpermutedTokens = TensorDesc({tokens_num, hidden_size}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto outIndex = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND);
     auto permuteTokenId = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND);
     auto permuteProbs = TensorDesc({total_permuted_tokens}, ACL_FLOAT16, ACL_FORMAT_ND);
-    
+
     // 创建形状数据
     std::vector<int64_t> shape_data = {tokens_num, hidden_size};
     // 使用工厂函数创建 aclIntArray
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
-    
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
         INPUT(permutedTokens, sortedIndices, routingMapOptional, probsOptional, false, restoreShape),
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
-    
+
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
@@ -197,35 +196,35 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
 // 大规模令牌测试
 TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unpermute_with_routingmap_large_scale)
 {
-    const int64_t tokens_num = 16;      // 更多令牌
-    const int64_t experts_num = 8;     // 更多专家
+    const int64_t tokens_num = 16; // 更多令牌
+    const int64_t experts_num = 8; // 更多专家
     const int64_t topK_num = 2;
-    const int64_t hidden_size = 512;   // 更大隐藏层
+    const int64_t hidden_size = 512; // 更大隐藏层
     const int64_t total_permuted_tokens = tokens_num * topK_num;
-    
+
     auto permutedTokens = TensorDesc({total_permuted_tokens, hidden_size}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
     auto sortedIndices = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND).ValueRange(int64_t(0), total_permuted_tokens - 1);
-    
+
     auto routingMapOptional = TensorDesc({tokens_num, experts_num}, ACL_INT8, ACL_FORMAT_ND).ValueRange(0, 1);
     auto probsOptional = TensorDesc({tokens_num, experts_num}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
-    
+
     auto unpermutedTokens = TensorDesc({tokens_num, hidden_size}, ACL_FLOAT, ACL_FORMAT_ND);
     auto outIndex = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND);
     auto permuteTokenId = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND);
     auto permuteProbs = TensorDesc({total_permuted_tokens}, ACL_FLOAT, ACL_FORMAT_ND);
-    
+
     // 创建形状数据
     std::vector<int64_t> shape_data = {tokens_num, hidden_size};
     // 使用工厂函数创建 aclIntArray
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
-    
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
         INPUT(permutedTokens, sortedIndices, routingMapOptional, probsOptional, false, restoreShape),
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
-    
+
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
@@ -238,26 +237,26 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
     const int64_t topK_num = 2;
     const int64_t hidden_size = 64;
     const int64_t total_permuted_tokens = tokens_num * topK_num;
-    
+
     auto permutedTokens = TensorDesc({total_permuted_tokens, hidden_size}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-5, 5);
     auto sortedIndices = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND).ValueRange(int64_t(0), total_permuted_tokens - 1);
-    
+
     auto routingMapOptional = TensorDesc({tokens_num, experts_num}, ACL_INT8, ACL_FORMAT_ND).ValueRange(0, 1);
     auto probsOptional = TensorDesc({tokens_num, experts_num}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
-    
+
     auto unpermutedTokens = TensorDesc({tokens_num, hidden_size}, ACL_FLOAT, ACL_FORMAT_ND);
     auto outIndex = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND);
     auto permuteTokenId = TensorDesc({total_permuted_tokens}, ACL_INT32, ACL_FORMAT_ND);
     auto permuteProbs = TensorDesc({total_permuted_tokens}, ACL_FLOAT, ACL_FORMAT_ND);
-    
+
     // restoreShapeOptional 传 nullptr
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
-        INPUT(permutedTokens, sortedIndices, routingMapOptional, probsOptional, false, (aclIntArray*)nullptr),
+        INPUT(permutedTokens, sortedIndices, routingMapOptional, probsOptional, false, (aclIntArray *)nullptr),
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
-    
+
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
@@ -280,11 +279,11 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
 
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
-        INPUT(permutedTokens, sortedIndices, routingMapOptional, (aclTensor*)nullptr, false, (aclIntArray*)nullptr),
+        INPUT(permutedTokens, sortedIndices, routingMapOptional, (aclTensor *)nullptr, false, (aclIntArray *)nullptr),
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_ERR_PARAM_NULLPTR);
 }
@@ -306,15 +305,15 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
     auto permuteProbs = TensorDesc({total_permuted_tokens}, ACL_FLOAT, ACL_FORMAT_ND);
 
     std::vector<int64_t> shape_data = {tokens_num, hidden_size};
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
 
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
-        INPUT(permutedTokens, sortedIndices, routingMapOptional, (aclTensor*)nullptr, false, restoreShape),
+        INPUT(permutedTokens, sortedIndices, routingMapOptional, (aclTensor *)nullptr, false, restoreShape),
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
@@ -334,7 +333,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
     auto permuteProbs = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND);
 
     std::vector<int64_t> shape_data = {tokens_num, hidden_size};
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
 
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
@@ -342,7 +341,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
@@ -365,7 +364,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
     auto permuteProbs = TensorDesc({total_permuted_tokens}, ACL_FLOAT, ACL_FORMAT_ND);
 
     std::vector<int64_t> shape_data = {tokens_num, hidden_size};
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
 
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
@@ -373,7 +372,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
@@ -396,7 +395,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
     auto permuteProbs = TensorDesc({total_permuted_tokens}, ACL_FLOAT, ACL_FORMAT_ND);
 
     std::vector<int64_t> shape_data = {tokens_num, hidden_size};
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
 
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
@@ -404,7 +403,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
@@ -427,7 +426,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
     auto permuteProbs = TensorDesc({total_permuted_tokens}, ACL_FLOAT, ACL_FORMAT_ND);
 
     std::vector<int64_t> shape_data = {tokens_num, hidden_size};
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
 
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
@@ -435,7 +434,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
@@ -458,7 +457,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
     auto permuteProbs = TensorDesc({total_permuted_tokens}, ACL_FLOAT, ACL_FORMAT_ND);
 
     std::vector<int64_t> shape_data = {tokens_num, hidden_size};
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
 
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
@@ -466,7 +465,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
@@ -488,7 +487,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
     auto permuteProbs = TensorDesc({total_permuted_tokens}, ACL_FLOAT, ACL_FORMAT_ND);
 
     std::vector<int64_t> shape_data = {tokens_num, 0};
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
 
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
@@ -496,7 +495,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
@@ -518,15 +517,15 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
     auto permuteProbs = TensorDesc({total_permuted_tokens}, ACL_FLOAT, ACL_FORMAT_ND);
 
     std::vector<int64_t> shape_data = {tokens_num};
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
 
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
-        INPUT(permutedTokens, sortedIndices, routingMapOptional, (aclTensor*)nullptr, false, restoreShape),
+        INPUT(permutedTokens, sortedIndices, routingMapOptional, (aclTensor *)nullptr, false, restoreShape),
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_ERR_INNER_NULLPTR);
 }
@@ -552,7 +551,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test,
     auto permuteProbs = TensorDesc({total_permuted_tokens}, ACL_FLOAT, ACL_FORMAT_ND);
 
     std::vector<int64_t> shape_data = {tokens_num, hidden_size};
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
 
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
@@ -560,7 +559,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test,
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
@@ -595,7 +594,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test,
     auto permuteProbs = TensorDesc({total_permuted_tokens}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     std::vector<int64_t> shape_data = {tokens_num, hidden_size};
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
 
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
@@ -603,7 +602,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test,
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
@@ -627,7 +626,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
     auto permuteProbs = TensorDesc({total_permuted_tokens}, ACL_FLOAT, ACL_FORMAT_ND);
 
     std::vector<int64_t> shape_data = {tokens_num, hidden_size};
-    aclIntArray* restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
+    aclIntArray *restoreShape = aclCreateIntArray(shape_data.data(), shape_data.size());
 
     auto ut = OP_API_UT(
         aclnnMoeTokenUnpermuteWithRoutingMap,
@@ -635,7 +634,7 @@ TEST_F(l2_moe_token_unpermute_with_routing_map_test, Ascend910B2_moe_token_unper
         OUTPUT(unpermutedTokens, outIndex, permuteTokenId, permuteProbs));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 

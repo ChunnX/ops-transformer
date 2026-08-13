@@ -30,7 +30,6 @@ protected:
         cout << "test_aclnn_quant_grouped_mat_mul_allto_all SetUp" << endl;
     }
 
-
     static void TearDownTestCase()
     {
         cout << "test_aclnn_quant_grouped_mat_mul_allto_all TearDown" << endl;
@@ -969,7 +968,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_mmWeightScale_null)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-
 namespace {
 constexpr size_t kHcclGroupNameMax = 128U;
 }
@@ -1216,7 +1214,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_gmm_weight_scale_rank
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
-
 
 TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_gmm_weight_scale_last_dim_invalid)
 {

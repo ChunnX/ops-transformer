@@ -19,13 +19,14 @@
 #include <map>
 #include <numeric>
 #include "tiling/tiling_api.h"
-#include "base_checker.h"
+#include "fused_infer_attention_score_base_checker.h"
 
 namespace optiling {
 class MaskChecker : public BaseChecker {
 public:
-    MaskChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    MaskChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant)
+    {}
     ~MaskChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;
@@ -54,11 +55,12 @@ private:
     ge::graphStatus GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo &maskInfo);
     ge::graphStatus CheckDimAndShape(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckAntiquantSparseMode(const FiaTilingInfo &fiaInfo);
+
 private:
     bool enableIFAMLA = false;
     bool isIFAFlag = false;
     bool enableMXFP8 = false;
 };
 
-}  // namespace optiling
-#endif  // MASK_CHECKER_H
+} // namespace optiling
+#endif // MASK_CHECKER_H

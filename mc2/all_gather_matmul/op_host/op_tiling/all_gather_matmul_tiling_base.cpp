@@ -12,7 +12,7 @@
  * \file all_gather_matmul_tiling.cc
  * \brief
  */
-#include "all_gather_matmul_tiling_base.h"
+#include "all_gather_matmul_all_gather_matmul_tiling_base.h"
 #include "ops_utils.h"
 
 using namespace AscendC;

@@ -16,7 +16,7 @@
 #ifndef OP_KERNEL_GROUPED_MATMUL_SWIGLU_QUANT_V2_A4W4_POST_H
 #define OP_KERNEL_GROUPED_MATMUL_SWIGLU_QUANT_V2_A4W4_POST_H
 
-#include "grouped_matmul_swiglu_quant_v2_utils.h"
+#include "grouped_matmul_swiglu_quant_v2_utils_kernel.h"
 #include "kernel_operator.h"
 
 #ifdef GMM_SWIGLU_QUANT_V2_A4W4
@@ -80,8 +80,8 @@ private:
 };
 
 __aicore__ inline void GMMA4W4PostProcess::Init(const GMAddrParams gmAddrParams,
-                         const GMMSwigluQuantV2BaseParams *__restrict gmmSwigluQuantV2BaseParamsIN,
-                         const GMMSwigluQuantV2 *__restrict gmmSwigluIN)
+                                                const GMMSwigluQuantV2BaseParams *__restrict gmmSwigluQuantV2BaseParamsIN,
+                                                const GMMSwigluQuantV2 *__restrict gmmSwigluIN)
 {
     if ASCEND_IS_AIV {
         aicCoreNum = GetBlockNum();
@@ -169,7 +169,7 @@ __aicore__ inline void GMMA4W4PostProcess::Swiglu(uint32_t loopIdx, VecConfig &v
 }
 
 __aicore__ inline void GMMA4W4PostProcess::ApplySmoothScale(uint32_t loopIdx, VecConfig &vecConfig,
-                                                                WorkSpaceSplitConfig &workspaceSplitConfig)
+                                                            WorkSpaceSplitConfig &workspaceSplitConfig)
 {
     int64_t smoothScaleDimNum = gmmSwigluQuantV2BaseParams->smoothScaleDimNum;
     int64_t halfTokenLen = gmmSwigluQuantV2->tokenLen / SWIGLU_REDUCE_FACTOR;

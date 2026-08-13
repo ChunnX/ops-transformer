@@ -28,11 +28,13 @@ class AlltoAllAllGatherBatchMatMulTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "AlltoAllAllGatherBatchMatMulTest SetUp\n" << std::endl;
+        std::cout << "AlltoAllAllGatherBatchMatMulTest SetUp\n"
+                  << std::endl;
     }
     static void TearDownTestCase()
     {
-        std::cout << "AlltoAllAllGatherBatchMatMulTest TearDown\n" << std::endl;
+        std::cout << "AlltoAllAllGatherBatchMatMulTest TearDown\n"
+                  << std::endl;
     }
 };
 

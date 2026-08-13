@@ -33,7 +33,11 @@ constexpr uint32_t COST_WEIGHT_S2 = 10U;
 constexpr uint32_t S1_BASE_SIZE_SMALL = 2;
 constexpr uint32_t TOPK_6K = 6144;
 
-enum BlockType : uint32_t { NORMAL_BLOCK = 0, TAIL_BLOCK, BLOCK_MAX_TYPE };
+enum BlockType : uint32_t {
+    NORMAL_BLOCK = 0,
+    TAIL_BLOCK,
+    BLOCK_MAX_TYPE
+};
 
 enum class SparseMode : uint8_t {
     DEFAULT_MASK = 0,
@@ -44,7 +48,11 @@ enum class SparseMode : uint8_t {
     SPARSE_BUTT,
 };
 
-enum class ValidSocVersion { ASCEND910B = 0, ASCEND950, RESERVED_VERSION = 99999 };
+enum class ValidSocVersion {
+    ASCEND910B = 0,
+    ASCEND950,
+    RESERVED_VERSION = 99999
+};
 
 template <class T>
 using Range = std::pair<T, T>;
@@ -74,11 +82,11 @@ inline bool IsWithinTolerance(T limit, T tolerance, T value)
 struct FlashDecodeResult {
     uint32_t fdUsedVecNum{0U}; // 归约过程使用的vector数量
     // 1、归约任务的索引信息
-    std::vector<uint32_t> fdBN2Idx{}; // 每个归约任务的BN2索引，脚标为归约任务的序号，最大为核数-1
+    std::vector<uint32_t> fdBN2Idx{};       // 每个归约任务的BN2索引，脚标为归约任务的序号，最大为核数-1
     std::vector<uint32_t> fdMIdx{};         // 每个归约任务的GS1索引，脚标为归约任务的序号
     std::vector<uint32_t> fdWorkspaceIdx{}; // 每个归约任务在workspace中的存放位置
-    std::vector<uint32_t> fdS2SplitNum{}; // 每个归约任务的S2核间切分份数，脚标为归约任务的序号
-    std::vector<uint32_t> fdMSize{};      // 每个归约任务m轴大小，脚标为归约任务的序号
+    std::vector<uint32_t> fdS2SplitNum{};   // 每个归约任务的S2核间切分份数，脚标为归约任务的序号
+    std::vector<uint32_t> fdMSize{};        // 每个归约任务m轴大小，脚标为归约任务的序号
     // 2、FD负载均衡阶段，归约任务的分核（vec）信息
     std::vector<uint32_t> fdIdx{};    // FD负载均衡阶段，每个vector处理的归约任务对应ID
     std::vector<uint32_t> fdMStart{}; // FD负载均衡阶段，每个vector处理的归约任务的m轴起点
@@ -109,7 +117,11 @@ struct SplitResult {
     FlashDecodeResult fdRes{0U, 0U};                 // FD信息
 
     SplitResult(uint32_t aicNum, uint32_t aivNum)
-        : bN2End(aicNum), gS1End(aicNum), s2End(aicNum), firstFdDataWorkspaceIdx(aicNum), fdRes(aicNum, aivNum) {};
+        : bN2End(aicNum),
+          gS1End(aicNum),
+          s2End(aicNum),
+          firstFdDataWorkspaceIdx(aicNum),
+          fdRes(aicNum, aivNum) {};
 };
 
 // 分核功能模块内部使用：记录切分信息
@@ -121,7 +133,10 @@ struct SplitInfo {
     bool isKvSeqAllZero{true};
 
     explicit SplitInfo(uint32_t batchSize)
-        : s1GBaseNum(batchSize), s2BaseNum(batchSize), s1GTailSize(batchSize), s2TailSize(batchSize)
+        : s1GBaseNum(batchSize),
+          s2BaseNum(batchSize),
+          s1GTailSize(batchSize),
+          s2TailSize(batchSize)
     {}
 };
 
@@ -135,7 +150,9 @@ struct CostInfo {
     uint64_t maxS1GCost{0}; // 新增
 
     explicit CostInfo(uint32_t batchSize)
-        : bN2CostOfEachBatch(batchSize), bN2BlockOfEachBatch(batchSize), bN2LastBlockCostOfEachBatch(batchSize)
+        : bN2CostOfEachBatch(batchSize),
+          bN2BlockOfEachBatch(batchSize),
+          bN2LastBlockCostOfEachBatch(batchSize)
     {}
 };
 
@@ -144,7 +161,10 @@ struct SplitContext {
     SplitInfo splitInfo{0U};
     CostInfo costInfo{0U};
 
-    explicit SplitContext(uint32_t batchSize) : splitInfo(batchSize), costInfo(batchSize) {}
+    explicit SplitContext(uint32_t batchSize)
+        : splitInfo(batchSize),
+          costInfo(batchSize)
+    {}
 };
 
 // 分核功能模块内部使用：记录batch相关的临时信息

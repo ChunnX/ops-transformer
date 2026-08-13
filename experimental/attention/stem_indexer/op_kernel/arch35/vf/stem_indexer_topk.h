@@ -16,8 +16,8 @@
 #define stem_indexer_TOPK_H
 
 #include "kernel_operator.h"
-#include "vf_topk_gather.h"
-#include "vf_topk_16_gather.h"
+#include "lightning_indexer_vf_topk_gather_arch35.h"
+#include "quant_lightning_indexer_v2_vf_topk_16_gather_arch35.h"
 
 namespace SIKernel {
 template <typename SCORE_T>

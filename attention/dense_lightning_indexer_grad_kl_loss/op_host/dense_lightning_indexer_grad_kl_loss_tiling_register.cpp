@@ -17,26 +17,26 @@
 #include "util/math_util.h"
 #include "op_host/tiling_util.h"
 #include "op_host/tiling_templates_registry.h"
-#include "../op_kernel/dense_lightning_indexer_grad_kl_loss_tiling_data.h"
+#include "../op_kernel/dense_lightning_indexer_grad_kl_loss_tiling_data_kernel.h"
 #include "../op_kernel/dense_lightning_indexer_grad_kl_loss_tiling_key.h"
 #include "dense_lightning_indexer_grad_kl_loss_tiling.h"
 
 namespace optiling {
 
 // tiling 分发入口
-static ge::graphStatus DenseLightningIndexerGradKLLossTilingFunc(gert::TilingContext* context)
+static ge::graphStatus DenseLightningIndexerGradKLLossTilingFunc(gert::TilingContext *context)
 {
     DenseLightningIndexerGradKLLossTilingBase dligKLLossTiling(context);
     return dligKLLossTiling.DoTiling();
 }
 
-static ge::graphStatus TilingParseForDenseLightningIndexerGradKLLoss([[maybe_unused]] gert::TilingParseContext* context)
+static ge::graphStatus TilingParseForDenseLightningIndexerGradKLLoss([[maybe_unused]] gert::TilingParseContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Start parsing tiling for DenseLightningIndexerGradKLLoss.");
     auto compileInfoPtr = context->GetCompiledInfo<DenseLightningIndexerGradKLLossCompileInfo>();
     OP_CHECK_IF(compileInfoPtr == nullptr,
-        OP_LOGE(context->GetNodeName(), "compileInfoPtr is null"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context->GetNodeName(), "compileInfoPtr is null"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

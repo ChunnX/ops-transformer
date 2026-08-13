@@ -13,7 +13,7 @@
  * \brief MoeInitRoutingV4 kernel entry, reuses MoeInitRoutingV3 arch35 kernel implementation.
  *        If MoeInitRoutingV3 kernel is modified, MoeInitRoutingV4 must be adapted accordingly.
  */
-#if __has_include("../moe_init_routing_v3/arch35/moe_v3_mrgsort_out.h")
+#if __has_include("../moe_init_routing_v3/arch35/moe_v3_mrgsort_out_arch35.h")
 #define MOE_V3_INC(path) <../moe_init_routing_v3/arch35/path>
 #else
 #define MOE_V3_INC(path) <../../moe_init_routing_v3/op_kernel/arch35/path>
@@ -49,12 +49,12 @@
 #define MOE_INIT_ROUTING_V3_QUANT_MODE_DYNAMIC 1
 #define MOE_INIT_ROUTING_V3_QUANT_MODE_INT4_DYNAMIC 13
 
-#define MOE_INIT_ROUTING_V3_SORTONECORE_GATHER 10000000    // 单核排序、非量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER 10001000   // 单核排序、非量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER 11000000  // 多核排序、非量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER 11001000 // 多核排序、非量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP 10000100     // 单核排序、非量化、GATHER索引、DROP_PAD
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP 11000100   // 多核排序、非量化、GATHER索引、DROP_PAD
+#define MOE_INIT_ROUTING_V3_SORTONECORE_GATHER 10000000        // 单核排序、非量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER 10001000       // 单核排序、非量化、SCATTER索引
+#define MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER 11000000      // 多核排序、非量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER 11001000     // 多核排序、非量化、SCATTER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP 10000100   // 单核排序、非量化、GATHER索引、DROP_PAD
+#define MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP 11000100 // 多核排序、非量化、GATHER索引、DROP_PAD
 
 /*
  * 静态量化
@@ -119,8 +119,8 @@
 /*
  * HIF8 PENTEOKEN量化
  */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTOKEN_QUANT_GATHER 10090000  // 单核排序、HIF8 PENTEOKEN量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTOKEN_QUANT_SCATTER 10091000 // 单核排序、HIF8 PENTEOKEN量化、SCATTER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTOKEN_QUANT_GATHER 10090000   // 单核排序、HIF8 PENTEOKEN量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTOKEN_QUANT_SCATTER 10091000  // 单核排序、HIF8 PENTEOKEN量化、SCATTER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTOKEN_QUANT_GATHER 11090000 // 多核排序、HIF8 PENTEOKEN量化、GATHER索引
 // 多核排序、HIF8 PENTEOKEN量化、SCATTER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTOKEN_QUANT_SCATTER 11091000
@@ -169,11 +169,11 @@
 using namespace AscendC;
 using namespace MoeInitRoutingV3;
 extern "C" __global__ __aicore__ void moe_init_routing_v4(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset,
-                                                           GM_ADDR activeNum, GM_ADDR topkWeight,
-                                                           GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-                                                           GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale,
-                                                           GM_ADDR expandedTopkWeight,
-                                                           GM_ADDR workspace, GM_ADDR tiling)
+                                                          GM_ADDR activeNum, GM_ADDR topkWeight,
+                                                          GM_ADDR expandedX, GM_ADDR expandedRowIdx,
+                                                          GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale,
+                                                          GM_ADDR expandedTopkWeight,
+                                                          GM_ADDR workspace, GM_ADDR tiling)
 {
     if (g_coreType == AIC) {
         return;
@@ -222,8 +222,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v4(GM_ADDR x, GM_ADDR exp
             // 无论isInputScale是否为1，输出均有元素需初始化。MXFP8/MXFP4/FP8_PERBLOCK在cols==0时
             // expandedScale含ceilDiv(0,blockSize)=0的维度，总元素为0，无需init。
             bool needScaleInit = !isMXFPXNoQuant &&
-                (t->quantMode == quantModeUnquant || t->quantMode == quantModeDynamic ||
-                 t->quantMode == quantModeInt4Dynamic || t->quantMode == quantModeHif8Pertoken);
+                                 (t->quantMode == quantModeUnquant || t->quantMode == quantModeDynamic ||
+                                  t->quantMode == quantModeInt4Dynamic || t->quantMode == quantModeHif8Pertoken);
             if (needScaleInit) {
                 int64_t scaleElements = rowIdxElements;
                 if (t->dropPadMode == DROP_PAD_MODE && t->quantMode != quantModeHif8Pertoken) {
@@ -252,14 +252,14 @@ extern "C" __global__ __aicore__ void moe_init_routing_v4(GM_ADDR x, GM_ADDR exp
             TBuf<TPosition::VECCALC> zeroBuf;
             TPipe pipe;
             int32_t expertCountElements = (t->expertTokensNumType == EXERPT_TOKENS_KEY_VALUE) ?
-                static_cast<int32_t>(t->expertNum * EXERPT_TOKENS_KEY_VALUE) :
-                static_cast<int32_t>(t->actualExpertNum);
+                                              static_cast<int32_t>(t->expertNum * EXERPT_TOKENS_KEY_VALUE) :
+                                              static_cast<int32_t>(t->actualExpertNum);
             expertTokensCountGm.SetGlobalBuffer((__gm__ int64_t *)expertTokensCountOrCumsum, expertCountElements);
             pipe.InitBuffer(zeroBuf, AlignBytes(expertCountElements, sizeof(int64_t)));
 
             LocalTensor<int64_t> zeroLocal = zeroBuf.Get<int64_t>();
             Duplicate<int32_t>(zeroLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
-                        static_cast<int32_t>(Align(expertCountElements, static_cast<int32_t>(sizeof(int64_t))) * 2));
+                               static_cast<int32_t>(Align(expertCountElements, static_cast<int32_t>(sizeof(int64_t))) * 2));
             DataCopyExtParams dataCopyParams = {1, static_cast<uint32_t>(expertCountElements * sizeof(int64_t)),
                                                 0, 0, 0};
             DataCopyPad(expertTokensCountGm, zeroLocal, dataCopyParams);
@@ -285,7 +285,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v4(GM_ADDR x, GM_ADDR exp
         return;
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_FULLLOAD_DYNAMIC_QUANT)) {
         if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
-                       IsSameType<DTYPE_X, float32_t>::value) && IsSameType<DTYPE_EXPANDED_X, int8_t>::value) {
+                       IsSameType<DTYPE_X, float32_t>::value) &&
+                      IsSameType<DTYPE_EXPANDED_X, int8_t>::value) {
             if (isInt8DynamicQuant) {
                 TPipe fullLoadPipe;
                 MoeV3FullLoadDynamicQuant<DTYPE_X> fullLoadOp;
@@ -502,9 +503,9 @@ extern "C" __global__ __aicore__ void moe_init_routing_v4(GM_ADDR x, GM_ADDR exp
             gatherOp.Process();
             gatherPipe.Destroy();
         }
-    // 5.直接搬运或是搬运的过程中对x进行量化
+        // 5.直接搬运或是搬运的过程中对x进行量化
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP)) {
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP)) {
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
                       IsSameType<DTYPE_X, float32_t>::value || IsSameType<DTYPE_X, int8_t>::value ||
                       IsSameType<DTYPE_X, hifloat8_t>::value) {
@@ -534,7 +535,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v4(GM_ADDR x, GM_ADDR exp
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_SCATTER)) {
         // 动态量化
         if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
-                       IsSameType<DTYPE_X, float32_t>::value) && IsSameType<DTYPE_EXPANDED_X, int8_t>::value) {
+                       IsSameType<DTYPE_X, float32_t>::value) &&
+                      IsSameType<DTYPE_EXPANDED_X, int8_t>::value) {
             if (isInt8DynamicQuant) {
                 TPipe gatherPipe;
                 MoeGatherOutDynamicQuant<DTYPE_X> gatherDynamicQuantOp;

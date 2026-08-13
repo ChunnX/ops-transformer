@@ -16,7 +16,7 @@
 #ifndef APPLY_ROTARY_POS_EMB_BAB_H
 #define APPLY_ROTARY_POS_EMB_BAB_H
 
-#include "apply_rotary_pos_emb_common.h"
+#include "apply_rotary_pos_emb_apply_rotary_pos_emb_common_arch35.h"
 
 namespace ApplyRotaryPosEmb {
 using namespace AscendC;
@@ -24,16 +24,17 @@ using namespace AscendC;
 template <typename T>
 class ApplyRotaryPosEmbBAB {
 public:
-    __aicore__ inline ApplyRotaryPosEmbBAB(TPipe* pipe, const ApplyRotaryPosEmbRegbaseTilingData* tiling)
-        : pipe_(pipe), tilingData_(tiling){};
+    __aicore__ inline ApplyRotaryPosEmbBAB(TPipe *pipe, const ApplyRotaryPosEmbRegbaseTilingData *tiling)
+        : pipe_(pipe),
+          tilingData_(tiling){};
     __aicore__ inline void Init(
         GM_ADDR q, GM_ADDR k, GM_ADDR cos, GM_ADDR sin, GM_ADDR q_out, GM_ADDR k_out, GM_ADDR workspace);
     __aicore__ inline void Process();
 
 private:
     constexpr static int32_t bufferNum = 2;
-    const ApplyRotaryPosEmbRegbaseTilingData* tilingData_;
-    TPipe* pipe_;
+    const ApplyRotaryPosEmbRegbaseTilingData *tilingData_;
+    TPipe *pipe_;
     int64_t blockIdx_ = 0;
     int64_t dSplitCoef_ = 1; // 切分系数初始化为1
     uint32_t dSplitSize_ = 0;
@@ -59,19 +60,19 @@ private:
     __aicore__ inline void PrePareParams();
     __aicore__ inline void ProcessNLoop(const uint32_t bIdx, const uint32_t sIdx, const uint32_t currSNum);
     __aicore__ inline void Compute(
-        const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const LocalTensor<T>& inTensor,
-        const LocalTensor<T>& outTensor, const uint32_t currSNum, const uint32_t currDNum);
+        const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor, const LocalTensor<T> &inTensor,
+        const LocalTensor<T> &outTensor, const uint32_t currSNum, const uint32_t currDNum);
     __aicore__ inline void ProcessQN(
-        const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const uint32_t bIdx, const uint32_t sIdx,
+        const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor, const uint32_t bIdx, const uint32_t sIdx,
         const uint32_t currSNum);
     __aicore__ inline void ProcessKN(
-        const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const uint32_t bIdx, const uint32_t sIdx,
+        const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor, const uint32_t bIdx, const uint32_t sIdx,
         const uint32_t currSNum);
     __aicore__ inline void CopyInByMode(
-        LocalTensor<T>& tensor, GlobalTensor<T>& gm, const int64_t offset, const int64_t count,
-        const uint32_t splitSize, const DataCopyPadExtParams<T>& padParams);
+        LocalTensor<T> &tensor, GlobalTensor<T> &gm, const int64_t offset, const int64_t count,
+        const uint32_t splitSize, const DataCopyPadExtParams<T> &padParams);
     __aicore__ inline void CopyOutByMode(
-        LocalTensor<T>& tensor, GlobalTensor<T>& gm, const int64_t offset, const int64_t count,
+        LocalTensor<T> &tensor, GlobalTensor<T> &gm, const int64_t offset, const int64_t count,
         const uint32_t splitSize);
 };
 
@@ -90,12 +91,12 @@ __aicore__ inline void ApplyRotaryPosEmbBAB<T>::Init(
     this->dAlign_ = Ops::Base::CeilAlign<int64_t>(tilingData_->realDim / dSplitCoef_, BLOCK_TYPE_SIZE / sizeof(T)) * dSplitCoef_;
     ubFactorN_ =
         tilingData_->ubFactorQN > tilingData_->ubFactorKN ? tilingData_->ubFactorQN : tilingData_->ubFactorKN;
-    this->qGm_.SetGlobalBuffer((__gm__ T*)q);
-    this->kGm_.SetGlobalBuffer((__gm__ T*)k);
-    this->cosGm_.SetGlobalBuffer((__gm__ T*)cos);
-    this->sinGm_.SetGlobalBuffer((__gm__ T*)sin);
-    this->qOutGm_.SetGlobalBuffer((__gm__ T*)q_out);
-    this->kOutGm_.SetGlobalBuffer((__gm__ T*)k_out);
+    this->qGm_.SetGlobalBuffer((__gm__ T *)q);
+    this->kGm_.SetGlobalBuffer((__gm__ T *)k);
+    this->cosGm_.SetGlobalBuffer((__gm__ T *)cos);
+    this->sinGm_.SetGlobalBuffer((__gm__ T *)sin);
+    this->qOutGm_.SetGlobalBuffer((__gm__ T *)q_out);
+    this->kOutGm_.SetGlobalBuffer((__gm__ T *)k_out);
     this->pipe_->InitBuffer(qkInQue_, bufferNum, ubFactorS_ * ubFactorN_ * dAlign_ * sizeof(T));
     this->pipe_->InitBuffer(cosInQue_, bufferNum, ubFactorS_ * dAlign_ * sizeof(T));
     this->pipe_->InitBuffer(sinInQue_, bufferNum, ubFactorS_ * dAlign_ * sizeof(T));
@@ -155,7 +156,7 @@ __aicore__ inline void ApplyRotaryPosEmbBAB<T>::ProcessNLoop(
 
 template <typename T>
 __aicore__ inline void ApplyRotaryPosEmbBAB<T>::ProcessQN(
-    const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const uint32_t bIdx, const uint32_t sIdx,
+    const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor, const uint32_t bIdx, const uint32_t sIdx,
     const uint32_t currSNum)
 {
     LocalTensor<T> qTensor;
@@ -203,7 +204,7 @@ __aicore__ inline void ApplyRotaryPosEmbBAB<T>::ProcessQN(
 
 template <typename T>
 __aicore__ inline void ApplyRotaryPosEmbBAB<T>::ProcessKN(
-    const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const uint32_t bIdx, const uint32_t sIdx,
+    const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor, const uint32_t bIdx, const uint32_t sIdx,
     const uint32_t currSNum)
 {
     LocalTensor<T> kTensor;
@@ -235,7 +236,7 @@ __aicore__ inline void ApplyRotaryPosEmbBAB<T>::ProcessKN(
         qkOutQue_.EnQue(kOutTensor);
         kOutTensor = qkOutQue_.DeQue<T>();
 
-         if (tilingData_->isPartialRope) {
+        if (tilingData_->isPartialRope) {
             CopyOutByMode(kOutTensor, kOutGm_, offset, currSNum * currDNum, dSplitSize_);
         } else {
             DataCopyExtParams copyOutParams;
@@ -252,8 +253,8 @@ __aicore__ inline void ApplyRotaryPosEmbBAB<T>::ProcessKN(
 
 template <typename T>
 __aicore__ inline void ApplyRotaryPosEmbBAB<T>::Compute(
-    const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const LocalTensor<T>& inTensor,
-    const LocalTensor<T>& outTensor, const uint32_t currSNum, const uint32_t currDNum)
+    const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor, const LocalTensor<T> &inTensor,
+    const LocalTensor<T> &outTensor, const uint32_t currSNum, const uint32_t currDNum)
 {
     if (tilingData_->rotaryMode == static_cast<int64_t>(ApplyRotaryPosEmbRotaryMode::HALF)) {
         HalfAlignVF<T>(sinTensor, cosTensor, inTensor, outTensor, tilingData_->realDim, dAlign_, currSNum, currDNum);
@@ -266,8 +267,8 @@ __aicore__ inline void ApplyRotaryPosEmbBAB<T>::Compute(
 
 template <typename T>
 __aicore__ inline void ApplyRotaryPosEmbBAB<T>::CopyInByMode(
-    LocalTensor<T>& tensor, GlobalTensor<T>& gm, const int64_t offset, const int64_t count,
-    const uint32_t splitSize, const DataCopyPadExtParams<T>& padParams)
+    LocalTensor<T> &tensor, GlobalTensor<T> &gm, const int64_t offset, const int64_t count,
+    const uint32_t splitSize, const DataCopyPadExtParams<T> &padParams)
 {
     if (tilingData_->rotaryMode == static_cast<int64_t>(ApplyRotaryPosEmbRotaryMode::HALF)) {
         CopyInHalfMode(tensor, gm, offset, count, splitSize, padParams, tilingData_->D, tilingData_->realDim, static_cast<uint32_t>(dSplitCoef_));
@@ -280,7 +281,7 @@ __aicore__ inline void ApplyRotaryPosEmbBAB<T>::CopyInByMode(
 
 template <typename T>
 __aicore__ inline void ApplyRotaryPosEmbBAB<T>::CopyOutByMode(
-    LocalTensor<T>& tensor, GlobalTensor<T>& gm, const int64_t offset, const int64_t count,
+    LocalTensor<T> &tensor, GlobalTensor<T> &gm, const int64_t offset, const int64_t count,
     const uint32_t splitSize)
 {
     if (tilingData_->rotaryMode == static_cast<int64_t>(ApplyRotaryPosEmbRotaryMode::HALF)) {

@@ -23,7 +23,7 @@
 
 TEMPLATE_INTF
 __aicore__ inline void GetSparseParam(const ConstInfo<isInfer, hasRope> &constInfo,
-    const AttenMaskInfo &attenMaskInfo, RunParamStr<isInfer> &runParam)
+                                      const AttenMaskInfo &attenMaskInfo, RunParamStr<isInfer> &runParam)
 {
     if constexpr (hasAtten) {
         if constexpr (hasRope && dTemplateType == DTemplateType::Aligned576) {
@@ -76,9 +76,9 @@ __aicore__ inline void GetSparseParam(const ConstInfo<isInfer, hasRope> &constIn
                 }
             } else {
                 runParam.preTokensPerBatch = attenMaskInfo.preTokens - runParam.actualS2Size +
-                    runParam.actualS1Size;
+                                             runParam.actualS1Size;
                 runParam.nextTokensPerBatch = attenMaskInfo.nextTokens + runParam.actualS2Size -
-                    runParam.actualS1Size;
+                                              runParam.actualS1Size;
                 if constexpr (enableKVPrefix) {
                     runParam.preTokensPerBatch -= constInfo.actualKVPrefixSize;
                     runParam.nextTokensPerBatch += constInfo.actualKVPrefixSize;
@@ -90,32 +90,30 @@ __aicore__ inline void GetSparseParam(const ConstInfo<isInfer, hasRope> &constIn
 
 TEMPLATE_INTF
 __aicore__ inline void CalPseShiftCoreOffset(RunParamStr<isInfer> &runParam, const ConstInfo<isInfer, hasRope> &constInfo,
-    int32_t sIdx, int64_t sOuterOffset, PseInfo& pseInfo)
+                                             int32_t sIdx, int64_t sOuterOffset, PseInfo &pseInfo)
 {
     uint64_t pseShiftBatchOffset = 0;
     if (constInfo.isGqa) {
         // 是否为多batch
         if (pseInfo.pseBSize != 1) {
             pseShiftBatchOffset = (uint64_t)sIdx * (uint64_t)constInfo.n2Size * (uint64_t)constInfo.gSize *
-                (uint64_t)pseInfo.pseS1Size * (uint64_t)pseInfo.pseS2Size;
+                                  (uint64_t)pseInfo.pseS1Size * (uint64_t)pseInfo.pseS2Size;
         }
         // 多个N
-        runParam.pseShiftCoreOffset = pseShiftBatchOffset + (uint64_t)runParam.n2oIdx * (uint64_t)constInfo.gSize *
-            (uint64_t)pseInfo.pseS1Size * (uint64_t)pseInfo.pseS2Size +
-            (uint64_t)(sOuterOffset + runParam.queryLeftPaddingSize) * (uint64_t)pseInfo.pseS2Size +
-            (uint64_t)runParam.kvLeftPaddingSize;
+        runParam.pseShiftCoreOffset = pseShiftBatchOffset + (uint64_t)runParam.n2oIdx * (uint64_t)constInfo.gSize * (uint64_t)pseInfo.pseS1Size * (uint64_t)pseInfo.pseS2Size +
+                                      (uint64_t)(sOuterOffset + runParam.queryLeftPaddingSize) * (uint64_t)pseInfo.pseS2Size +
+                                      (uint64_t)runParam.kvLeftPaddingSize;
     } else {
         // 是否为多batch
         if (pseInfo.pseBSize != 1) {
             pseShiftBatchOffset = (uint64_t)sIdx * (uint64_t)constInfo.n2G * (uint64_t)pseInfo.pseS1Size *
-                (uint64_t)pseInfo.pseS2Size;
+                                  (uint64_t)pseInfo.pseS2Size;
         }
         // 多个N
-        runParam.pseShiftCoreOffset = pseShiftBatchOffset + (uint64_t)runParam.n2oIdx * (uint64_t)constInfo.gSize *
-            (uint64_t)pseInfo.pseS1Size * (uint64_t)pseInfo.pseS2Size +
-            (uint64_t)runParam.goIdx * (uint64_t)pseInfo.pseS1Size * (uint64_t)pseInfo.pseS2Size +
-            (uint64_t)(sOuterOffset + runParam.queryLeftPaddingSize) * (uint64_t)pseInfo.pseS2Size +
-            (uint64_t)runParam.kvLeftPaddingSize;
+        runParam.pseShiftCoreOffset = pseShiftBatchOffset + (uint64_t)runParam.n2oIdx * (uint64_t)constInfo.gSize * (uint64_t)pseInfo.pseS1Size * (uint64_t)pseInfo.pseS2Size +
+                                      (uint64_t)runParam.goIdx * (uint64_t)pseInfo.pseS1Size * (uint64_t)pseInfo.pseS2Size +
+                                      (uint64_t)(sOuterOffset + runParam.queryLeftPaddingSize) * (uint64_t)pseInfo.pseS2Size +
+                                      (uint64_t)runParam.kvLeftPaddingSize;
     }
 }
 
@@ -125,4 +123,4 @@ __aicore__ inline uint64_t ComputePseShiftOffset(const RunParamStr<isInfer> &run
     return (runParam.pseShiftCoreOffset + (uint64_t)sInnerOffsetDataSize);
 }
 
-#endif  // INFER_FLASH_ATTENTION_SPARSE_H
+#endif // INFER_FLASH_ATTENTION_SPARSE_H

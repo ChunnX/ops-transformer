@@ -16,7 +16,7 @@
 #include "catlass/gemm/dispatch_policy.hpp"
 #include "catlass/gemm/gemm_type.hpp"
 
-#include "catlass/arch/cross_core_sync.hpp"
+#include "catlass/arch/third_cross_core_sync.hpp"
 #include "catlass/arch/resource.hpp"
 #include "catlass/epilogue/dispatch_policy.hpp"
 
@@ -81,7 +81,7 @@ public:
 
     static constexpr uint32_t ADDR_HALF_WIDTH = 32;
     static constexpr uint32_t MOD_2 = 2;
-    
+
     /// Parameters structure
     struct Params {
         // Data members
@@ -107,8 +107,20 @@ public:
         Params(GM_ADDR q_, GM_ADDR qRope_, GM_ADDR k_, GM_ADDR kRope_, GM_ADDR blockTables_,
                GM_ADDR o_, GM_ADDR s_, GM_ADDR p_, GM_ADDR oTmp_, GM_ADDR oUpdate_,
                GM_ADDR oCoreTmp_, GM_ADDR l_, GM_ADDR tiling_)
-            : q(q_), qRope(qRope_), k(k_), kRope(kRope_), blockTables(blockTables_), o(o_),
-              s(s_), p(p_), oTmp(oTmp_), oUpdate(oUpdate_), oCoreTmp(oCoreTmp_), l(l_), tiling(tiling_) {}
+            : q(q_),
+              qRope(qRope_),
+              k(k_),
+              kRope(kRope_),
+              blockTables(blockTables_),
+              o(o_),
+              s(s_),
+              p(p_),
+              oTmp(oTmp_),
+              oUpdate(oUpdate_),
+              oCoreTmp(oCoreTmp_),
+              l(l_),
+              tiling(tiling_)
+        {}
     };
 
     // Methods
@@ -219,9 +231,9 @@ public:
             }
             uint32_t qHeadSplitIdx = (process % (curQheadSplitNum * kvSplitCoreNum)) / kvSplitCoreNum;
             uint32_t qHeadSplitSizeActual = (qHeadSplitIdx ==
-                                             (curQheadSplitNum - 1))
-                                                ? (qHeads - qHeadSplitIdx * curQheadSplitSize)
-                                                : curQheadSplitSize;
+                                             (curQheadSplitNum - 1)) ?
+                                                (qHeads - qHeadSplitIdx * curQheadSplitSize) :
+                                                curQheadSplitSize;
             uint32_t curStartHeadIdx = qHeadSplitIdx * curQheadSplitSize;
             uint64_t gQOffset = qAddr + curStartHeadIdx * embed;
             uint64_t gQRopeOffset = qRopeAddr + curStartHeadIdx * embedRope;
@@ -229,7 +241,8 @@ public:
             uint32_t kvSeqlenAlign = RoundUp(kvSeqlen, blockSize);
             uint32_t curNIdx = process % kvSplitCoreNum;
             uint32_t curKVSeqlen = kvSplitPerCore;
-            uint32_t kvLoop = CeilDiv(kvSeqlen, kvSplitPerCore);;
+            uint32_t kvLoop = CeilDiv(kvSeqlen, kvSplitPerCore);
+            ;
             if (curNIdx >= kvLoop) {
                 continue;
             }
@@ -352,7 +365,8 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID4);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);;
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
+        ;
 
         // Get the memory offset address of the input on Global Memory
         AscendC::GlobalTensor<ElementO> gO;
@@ -387,7 +401,7 @@ public:
         uint32_t curQheadSplitNum = gTiling.GetValue(TILING_HEAD_SPLIT_NUM);
         uint32_t kvSplitPerCore = gTiling.GetValue(TILING_KVSPLIT);
         uint32_t kvSplitCoreNum = gTiling.GetValue(TILING_KVCORENUM);
-        
+
         uint32_t strideQO = qHeads * embed;
         uint32_t embedRound = RoundUp<BLOCK_SIZE>(embed);
         uint32_t glFlag = 1;
@@ -412,9 +426,7 @@ public:
                 continue;
             }
             uint32_t qHeadSplitIdx = (process % (curQheadSplitNum * kvSplitCoreNum)) / kvSplitCoreNum;
-            uint32_t qHeadSplitSizeActual = (qHeadSplitIdx == (curQheadSplitNum - 1))
-                                                ? (qHeads - qHeadSplitIdx * curQheadSplitSize)
-                                                : curQheadSplitSize;
+            uint32_t qHeadSplitSizeActual = (qHeadSplitIdx == (curQheadSplitNum - 1)) ? (qHeads - qHeadSplitIdx * curQheadSplitSize) : curQheadSplitSize;
             uint32_t curStartHeadIdx = qHeadSplitIdx * curQheadSplitSize;
             uint64_t gmOffsetO = oAddr + curStartHeadIdx * embed;
 
@@ -541,9 +553,7 @@ public:
             uint32_t aivNum = AscendC::GetBlockNum() * AscendC::GetSubBlockNum();
             uint32_t aivId = AscendC::GetBlockIdx();
 
-            uint32_t headsProcess = (COMPUTE_ELE_NUM / embed) > HEADS_PROCESS_MAX
-                                    ? HEADS_PROCESS_MAX
-                                    : (COMPUTE_ELE_NUM / embed);
+            uint32_t headsProcess = (COMPUTE_ELE_NUM / embed) > HEADS_PROCESS_MAX ? HEADS_PROCESS_MAX : (COMPUTE_ELE_NUM / embed);
             uint32_t loopsPerBatch = (qHeads + headsProcess - 1) / headsProcess;
             uint32_t loopsTotal = batch * loopsPerBatch;
 
@@ -576,7 +586,7 @@ public:
                 epilogueMLAFDRescaleO(
                     gO[oAddr + loopIdxInBatch * headsProcess * embed],
                     gOCoreTmp[oFdOffset * kvSplitCoreNum +
-                    loopIdxInBatch * headsProcess * kvSplitCoreNum * embed],
+                              loopIdxInBatch * headsProcess * kvSplitCoreNum * embed],
                     gl[lOffset + loopIdxInBatch * headsProcess * kvSplitCoreNum],
                     actualHeads, headsProcess, embed);
             }
@@ -590,28 +600,28 @@ private:
     Arch::CrossCoreFlag pvReady{PV_READY_ID};
 };
 
-
 static constexpr uint64_t L1_TILE_DIM_0 = 128;
 static constexpr uint64_t L1_TILE_DIM_1 = 128;
 static constexpr uint64_t L1_TILE_DIM_2 = 576;
 constexpr uint32_t ComputeEleNum = 6144;
 
-
 CATLASS_GLOBAL void MLAFp16(uint64_t fftsAddr,
-                        GM_ADDR q, GM_ADDR qRope, GM_ADDR k, GM_ADDR kRope,
-                        GM_ADDR blockTables, GM_ADDR o, GM_ADDR s, GM_ADDR p,
-                        GM_ADDR oTmp, GM_ADDR oUpdate,GM_ADDR oCoreTmp, GM_ADDR l,
-                        GM_ADDR tiling)
+                            GM_ADDR q, GM_ADDR qRope, GM_ADDR k, GM_ADDR kRope,
+                            GM_ADDR blockTables, GM_ADDR o, GM_ADDR s, GM_ADDR p,
+                            GM_ADDR oTmp, GM_ADDR oUpdate, GM_ADDR oCoreTmp, GM_ADDR l,
+                            GM_ADDR tiling)
 {
     // Set FFTS address
-    AscendC::SetSyncBaseAddr(fftsAddr);;
+    AscendC::SetSyncBaseAddr(fftsAddr);
+    ;
 
     using ElementQ = half;
     using LayoutQ = layout::RowMajor;
     using ElementK = half;
     using LayoutK = layout::ColumnMajor;
     using ElementV = half;
-    using LayoutV = layout::RowMajor;;
+    using LayoutV = layout::RowMajor;
+    ;
     using ElementS = float;
     using LayoutS = layout::RowMajor;
     using ElementP = half;
@@ -619,7 +629,8 @@ CATLASS_GLOBAL void MLAFp16(uint64_t fftsAddr,
     using ElementO = half;
     using LayoutO = layout::RowMajor;
     using ElementMask = half;
-    using LayoutMask = layout::RowMajor;;
+    using LayoutMask = layout::RowMajor;
+    ;
     using ElementOTmp = float;
     using LayoutOTmp = layout::RowMajor;
     using ElementUpdate = float;
@@ -627,14 +638,16 @@ CATLASS_GLOBAL void MLAFp16(uint64_t fftsAddr,
 
     // L1TileShape::K must be embdding
     using L1TileShape = GemmShape<L1_TILE_DIM_0, L1_TILE_DIM_1, L1_TILE_DIM_2>;
-    using L0TileShape = L1TileShape;;
+    using L0TileShape = L1TileShape;
+    ;
 
     // GEMM Block模块，实现Flash MLA的Q * K^T
     using DispatchPolicyQK = Gemm::MmadAtlasA2MLAQK;
     using QType = Gemm::GemmType<ElementQ, LayoutQ>;
     using KType = Gemm::GemmType<ElementK, LayoutK>;
     using SType = Gemm::GemmType<ElementS, LayoutS>;
-    using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShape, L0TileShape, QType, KType, SType>;;
+    using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShape, L0TileShape, QType, KType, SType>;
+    ;
 
     // Epilogue Block模块，实现Flash MLA中当前S基块的softmax
     using PType = Gemm::GemmType<ElementP, LayoutP>;
@@ -643,38 +656,41 @@ CATLASS_GLOBAL void MLAFp16(uint64_t fftsAddr,
         Epilogue::Block::BlockEpilogue<Epilogue::EpilogueAtlasA2MLASoftmax, PType, SType, MaskType>;
 
     // GEMM Block模块，实现Flash MLA的P * V
-    using DispatchPolicyPV = Gemm::MmadAtlasA2MLAPV;;
+    using DispatchPolicyPV = Gemm::MmadAtlasA2MLAPV;
+    ;
     using VType = Gemm::GemmType<ElementV, LayoutV>;
     using OTmpType = Gemm::GemmType<ElementOTmp, LayoutOTmp>;
     using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShape, L0TileShape, PType, VType, OTmpType>;
 
     // Epilogue Block模块，实现Flash MLA中当前O基块的更新
     using OType = Gemm::GemmType<ElementO, LayoutO>;
-    using OUpdateType = Gemm::GemmType<ElementUpdate, LayoutUpdate>;;
+    using OUpdateType = Gemm::GemmType<ElementUpdate, LayoutUpdate>;
+    ;
     using EpilogueMLARescaleO =
         Epilogue::Block::BlockEpilogue<Epilogue::EpilogueAtlasA2MLARescaleO, OType, OUpdateType, OTmpType>;
 
     // Epilogue Block模块，实现Flash MLA中flash decoding
-    using lType = Gemm::GemmType<ElementUpdate, LayoutUpdate>;;
+    using lType = Gemm::GemmType<ElementUpdate, LayoutUpdate>;
+    ;
     using EpilogueMLAFDRescaleO =
         Epilogue::Block::BlockEpilogue<Epilogue::EpilogueAtlasA2MLAFDRescaleO<ComputeEleNum>, OType, lType>;
 
     // Kernel level
     using MLAKernel = MLAKernel<BlockMmadQK, BlockMmadPV, EpilogueMLASoftmax,
                                 EpilogueMLARescaleO, EpilogueMLAFDRescaleO>;
-    typename MLAKernel::Params params{q, qRope, k, kRope, blockTables, o, s, p, oTmp, oUpdate, oCoreTmp, l, tiling};;
+    typename MLAKernel::Params params{q, qRope, k, kRope, blockTables, o, s, p, oTmp, oUpdate, oCoreTmp, l, tiling};
+    ;
 
     // call kernel
     MLAKernel mla;
     mla(params);
 }
 
-
 CATLASS_GLOBAL void MLABf16(uint64_t fftsAddr,
-                        GM_ADDR q, GM_ADDR qRope, GM_ADDR k, GM_ADDR kRope,
-                        GM_ADDR blockTables, GM_ADDR o, GM_ADDR s, GM_ADDR p,
-                        GM_ADDR oTmp, GM_ADDR oUpdate, GM_ADDR oCoreTmp, GM_ADDR l,
-                        GM_ADDR tiling)
+                            GM_ADDR q, GM_ADDR qRope, GM_ADDR k, GM_ADDR kRope,
+                            GM_ADDR blockTables, GM_ADDR o, GM_ADDR s, GM_ADDR p,
+                            GM_ADDR oTmp, GM_ADDR oUpdate, GM_ADDR oCoreTmp, GM_ADDR l,
+                            GM_ADDR tiling)
 {
     // Set FFTS address
     AscendC::SetSyncBaseAddr(fftsAddr);
@@ -685,7 +701,8 @@ CATLASS_GLOBAL void MLABf16(uint64_t fftsAddr,
     using LayoutK = layout::ColumnMajor;
     using ElementV = __bf16;
     using LayoutV = layout::RowMajor;
-    using ElementS = float;;
+    using ElementS = float;
+    ;
     using LayoutS = layout::RowMajor;
     using ElementP = __bf16;
     using LayoutP = layout::RowMajor;
@@ -730,7 +747,7 @@ CATLASS_GLOBAL void MLABf16(uint64_t fftsAddr,
     // Epilogue Block模块，实现Flash MLA中flash decoding
     using OType = Gemm::GemmType<ElementO, LayoutO>;
     using lType = Gemm::GemmType<ElementUpdate, LayoutUpdate>;
-    
+
     using EpilogueMLAFDRescaleO =
         Epilogue::Block::BlockEpilogue<Epilogue::EpilogueAtlasA2MLAFDRescaleO<ComputeEleNum>, OType, lType>;
 

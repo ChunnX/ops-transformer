@@ -14,8 +14,8 @@
  */
 
 #include "kernel_operator.h"
-#include "rope_with_sin_cos_cache_fp32.h"
-#include "rope_with_sin_cos_cache_f_bf16.h"
+#include "rope_with_sin_cos_cache_fp32_kernel.h"
+#include "rope_with_sin_cos_cache_f_bf16_kernel.h"
 
 using namespace AscendC;
 using namespace RopeWithSinCosCache;
@@ -29,7 +29,7 @@ extern "C" __global__ __aicore__ void rope_with_sin_cos_cache(
     TPipe pipe;
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113)) && ORIG_DTYPE_QUERYIN == DT_BF16
     if (TILING_KEY_IS(20)) {
-        TPipe* ptr = &pipe;
+        TPipe *ptr = &pipe;
         if (ptr != nullptr) {
             RopeWithSinCosCacheFP16<bfloat16_t> op;
             op.Init(position_id, query_in, key_in, cos_sin_cache, query_out, key_out, tilingData, ptr);
@@ -38,7 +38,7 @@ extern "C" __global__ __aicore__ void rope_with_sin_cos_cache(
     }
 #elif ORIG_DTYPE_QUERYIN == DT_FLOAT16
     if (TILING_KEY_IS(21)) {
-        TPipe* ptr = &pipe;
+        TPipe *ptr = &pipe;
         if (ptr != nullptr) {
             RopeWithSinCosCacheFP16<half> op;
             op.Init(position_id, query_in, key_in, cos_sin_cache, query_out, key_out, tilingData, ptr);
@@ -47,7 +47,7 @@ extern "C" __global__ __aicore__ void rope_with_sin_cos_cache(
     }
 #elif ORIG_DTYPE_QUERYIN == DT_FLOAT
     if (TILING_KEY_IS(22)) {
-        TPipe* ptr = &pipe;
+        TPipe *ptr = &pipe;
         if (ptr != nullptr) {
             RopeWithSinCosCacheF32<float> op;
             op.Init(position_id, query_in, key_in, cos_sin_cache, query_out, key_out, tilingData, ptr);

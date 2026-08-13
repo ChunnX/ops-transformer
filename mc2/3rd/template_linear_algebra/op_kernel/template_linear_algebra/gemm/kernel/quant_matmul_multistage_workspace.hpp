@@ -12,10 +12,10 @@
 #define CATLASS_GEMM_KERNEL_QUANT_MATMUL_MULTISTAGE_WORKSPACE_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/cross_core_sync.hpp"
+#include "../../arch/third_cross_core_sync.hpp"
 #include "../../arch/resource.hpp"
-#include "../../coord.hpp"
-#include "../../detail/callback.hpp"
+#include "../../third_coord.hpp"
+#include "../../detail/third_callback.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
 
@@ -73,12 +73,18 @@ public:
         Params(GemmCoord problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrScale_, LayoutScale layoutScale_, GM_ADDR ptrPerTokenScale_,
                LayoutPerTokenScale layoutPerTokenScale_, GM_ADDR ptrD_, LayoutD layoutD_, GM_ADDR ptrWorkspace_)
-            : problemShape(problemShape_), ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)), layoutA(layoutA_),
-              ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)), layoutB(layoutB_),
-              ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)), layoutScale(layoutScale_),
+            : problemShape(problemShape_),
+              ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)),
+              layoutA(layoutA_),
+              ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)),
+              layoutB(layoutB_),
+              ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)),
+              layoutScale(layoutScale_),
               ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale *>(ptrPerTokenScale_)),
-              layoutPerTokenScale(layoutPerTokenScale_), ptrD(reinterpret_cast<__gm__ ElementD *>(ptrD_)),
-              layoutD(layoutD_), ptrWorkspace(ptrWorkspace_)
+              layoutPerTokenScale(layoutPerTokenScale_),
+              ptrD(reinterpret_cast<__gm__ ElementD *>(ptrD_)),
+              layoutD(layoutD_),
+              ptrWorkspace(ptrWorkspace_)
         {
         }
     };
@@ -192,7 +198,7 @@ public:
             params.layoutPerTokenScale.GetTileLayout(params.problemShape.template GetCoordByAxis<0>());
         LayoutD layoutD = params.layoutD.GetTileLayout(params.problemShape.GetCoordMN());
 
-        EpilogueParams epilogueParams{params.ptrScale,     layoutScale, params.ptrPerTokenScale,
+        EpilogueParams epilogueParams{params.ptrScale, layoutScale, params.ptrPerTokenScale,
                                       layoutPerTokenScale, params.ptrD, layoutD};
 
         blockScheduler.Update(params.problemShape, L1TileShape::ToCoordMN());

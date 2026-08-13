@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /*!
  * \file soft_max.h
  * \brief
@@ -17,7 +16,7 @@
 #ifndef SOFT_MAX_H
 #define SOFT_MAX_H
 
-#include "compressor_comm.h"
+#include "compressor_comm_arch22.h"
 #include "compressor_vector_comm.h"
 
 namespace Compressor {

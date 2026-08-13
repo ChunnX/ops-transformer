@@ -16,11 +16,11 @@
 #ifndef COMPRESSOR_BLOCK_VEC_H
 #define COMPRESSOR_BLOCK_VEC_H
 
-#include "compressor_comm.h"
+#include "compressor_comm_arch35.h"
 #include "compressor_tools.h"
-#include "vf/vf_softmax.h"
-#include "vf/vf_add.h"
-#include "vf/vf_mul.h"
+#include "vf/compressor_vf_softmax_arch35.h"
+#include "vf/compressor_vf_add_arch35.h"
+#include "vf/compressor_vf_mul_arch35.h"
 
 using namespace AscendC;
 
@@ -917,7 +917,6 @@ __aicore__ inline void CompressorBlockVector<COMP>::KvMulReduceScore(const Local
 {
     MulReduceSumbaseVF(kvLocal, scoreLocal, dstLocal, coff_, cmpRatio_, dDealSize, tcDealSize);
 }
-
 
 template <typename COMP>
 __aicore__ inline void

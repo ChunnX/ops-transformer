@@ -17,7 +17,7 @@
 #include <register/op_impl_registry.h>
 #include "log/log.h"
 #include "op_host/tiling_templates_registry.h"
-#include "flash_attn_tiling.h"
+#include "flash_attn_tiling_kernel.h"
 #include "flash_attn_tiling_common.h"
 #include "../op_kernel/arch35/flash_attn_template_tiling_key.h"
 #include "flash_attn_tiling_info_parser.h"

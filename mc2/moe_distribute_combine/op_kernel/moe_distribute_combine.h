@@ -21,12 +21,12 @@
 #include "kernel_operator.h"
 #endif
 #include "adv_api/reduce/sum.h"
-#if __has_include("../common/moe_distribute_base.h")
-#include "../common/moe_distribute_base.h"
+#if __has_include("../common/common_moe_distribute_base.h")
+#include "../common/common_moe_distribute_base.h"
 #include "../common/mc2_kernel_utils.h"
 #include "../moe_distribute_combine_v2/moe_distribute_combine_tiling.h"
 #else
-#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/common_moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_tiling.h"
 #endif
@@ -294,8 +294,8 @@ __aicore__ inline void MoeDistributeCombine<TemplateCombineTypeFunc>::BuffInit()
     tpipe_->Reset();
     tpipe_->InitBuffer(readStateBuf_, UB_ALIGN);                                      // 32
     uint32_t sendNumAlign = Ceil(moeSendNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN; // 32B向上取整
-    tpipe_->InitBuffer(sendCountBuf_, sendNumAlign); // epWorldSize_ * moeExpertPerRankNum_ * 4，且32B向上取整
-    tpipe_->InitBuffer(gmTpSendCountQueue_, BUFFER_NUM, axisHExpandXTypeSize_); // 28K
+    tpipe_->InitBuffer(sendCountBuf_, sendNumAlign);                                  // epWorldSize_ * moeExpertPerRankNum_ * 4，且32B向上取整
+    tpipe_->InitBuffer(gmTpSendCountQueue_, BUFFER_NUM, axisHExpandXTypeSize_);       // 28K
     if constexpr (IsQuant) {
         tpipe_->InitBuffer(gmQuantInQueue_, BUFFER_NUM, axisHExpandXTypeSize_);     // 28K
         tpipe_->InitBuffer(xOutQueue_, BUFFER_NUM, axisHExpandXTypeSize_);          // 28K

@@ -12,7 +12,7 @@
  * \file moe_init_routing_v2_tiling.cpp
  * \brief
  */
-#include "moe_init_routing_v2_tiling.h"
+#include "moe_init_routing_v2_moe_init_routing_v2_tiling_x.h"
 #include "op_host/tiling_util.h"
 
 namespace optiling {
@@ -62,12 +62,12 @@ const static int64_t TILING_KEY_DROP_PAD_MODE_HIST_REGBASE_SORT_MULTI_CORE = 110
 const static int64_t TILING_KEY_HIGH_PERFORMANCE = 20000;
 const static int64_t SCATTER_MODE_MAX_K = 6;
 
-#define CHECK_FAIL(context, cond, ...)                                                                                 \
-    do {                                                                                                               \
-        if (cond) {                                                                                                    \
-            __VA_ARGS__;                                                                                               \
-            return ge::GRAPH_FAILED;                                                                                   \
-        }                                                                                                              \
+#define CHECK_FAIL(context, cond, ...) \
+    do { \
+        if (cond) { \
+            __VA_ARGS__; \
+            return ge::GRAPH_FAILED; \
+        } \
     } while (0)
 
 inline static int64_t GetPerOrLastValue(int64_t x, int64_t y)
@@ -922,7 +922,7 @@ void MoeInitRoutingV2TilingBase::SetGatherOutLoopParams(int64_t perCoreRows, int
     bool colsAligned = (cols * inuptXDtypeSize_ % ONE_BLOCK_BYTE == 0);
     // 使用moe_v2_scatter_out_batch_row模板
     bool useScatterMode = regBase && colsAligned && (ubRowsVal >= NUM_TWO) &&
-                         (dropPadMode != 1) && (moeInitRoutingTilingData.get_k() <= SCATTER_MODE_MAX_K);
+                          (dropPadMode != 1) && (moeInitRoutingTilingData.get_k() <= SCATTER_MODE_MAX_K);
     if (useScatterMode) {
         tilingData->set_scatterMode(1);
         int64_t actualActivateRows = tilingData->get_activateRows();

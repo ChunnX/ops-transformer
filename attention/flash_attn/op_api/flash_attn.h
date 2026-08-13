@@ -70,6 +70,6 @@ const std::array<const aclTensor *, 2> FlashAttn(
     int32_t returnSoftmaxLse,
     aclOpExecutor *executor);
 
-}  // namespace l0op
+} // namespace l0op
 
-#endif  // OP_API_INC_LEVEL0_FLASH_ATTN_H_
+#endif // OP_API_INC_LEVEL0_FLASH_ATTN_H_

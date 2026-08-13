@@ -84,6 +84,6 @@ REG_OP(PromptFlashAttention)
     .ATTR(sparse_mode, Int, 0)
     .ATTR(inner_precise, Int, 1)
     .OP_END_FACTORY_REG(PromptFlashAttention)
-}  // namespace ge
+} // namespace ge
 
 #endif // OPS_OP_PROTO_INC_PROMPT_FLASH_ATTENTION_OPS_H_

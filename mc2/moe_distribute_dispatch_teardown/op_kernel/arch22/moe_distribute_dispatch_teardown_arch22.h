@@ -22,10 +22,10 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_tiling/kernel_tiling.h"
-#if __has_include("../../moe_distribute_dispatch_setup/moe_distribute_base.h")
-#include "../../moe_distribute_dispatch_setup/moe_distribute_base.h"
+#if __has_include("../../moe_distribute_dispatch_setup/matmul_allto_all_moe_distribute_base_arch22.h")
+#include "../../moe_distribute_dispatch_setup/matmul_allto_all_moe_distribute_base_arch22.h"
 #else
-#include "../../../moe_distribute_dispatch_setup/op_kernel/moe_distribute_base.h"
+#include "../../../moe_distribute_dispatch_setup/op_kernel/matmul_allto_all_moe_distribute_base_arch22.h"
 #endif
 #include "../moe_distribute_dispatch_teardown_tiling.h"
 
@@ -47,8 +47,8 @@ __aicore__ inline void SyncFunc()
     AscendC::WaitFlag<event>(eventID);
 }
 
-#define TemplateMC2TypeClass                                                                                           \
-    typename XType, typename ExpandXOutType, bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist,             \
+#define TemplateMC2TypeClass \
+    typename XType, typename ExpandXOutType, bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist, \
         bool IsShareExpertRank
 #define TemplateMC2TypeFunc XType, ExpandXOutType, StaticQuant, DynamicQuant, IsSmoothScaleExist, IsShareExpertRank
 
@@ -220,8 +220,8 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
 
     uint32_t hSize = axisH_ * sizeof(XType);
     hOutSize_ = axisH_ * sizeof(ExpandXOutType);
-    hOutSizeAlign_ = Ceil(hOutSize_, UB_ALIGN) * UB_ALIGN; // scale起始放置偏移
-    uint32_t hScaleSizeAlign = hOutSizeAlign_ + UB_ALIGN;  // 实际搬运大小，搬运token_align32B + 32B(float)
+    hOutSizeAlign_ = Ceil(hOutSize_, UB_ALIGN) * UB_ALIGN;                   // scale起始放置偏移
+    uint32_t hScaleSizeAlign = hOutSizeAlign_ + UB_ALIGN;                    // 实际搬运大小，搬运token_align32B + 32B(float)
     hAlignWinSize_ = Ceil(hScaleSizeAlign, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // win区token起始地址对齐512
     hAlignWinCnt_ = hAlignWinSize_ / sizeof(ExpandXOutType);
     expertPerSizeOnWin_ = axisMaxBS_ * hAlignWinSize_;

@@ -40,19 +40,28 @@ public:
         // FD
         uint32_t usedVecNum{0U}; // 归约过程使用的vector数量
         // 1、归约任务的索引信息
-        std::vector<uint32_t> bN2Idx{}; // 每个归约任务的BN2索引，脚标为归约任务的序号，最大为核数-1
+        std::vector<uint32_t> bN2Idx{};       // 每个归约任务的BN2索引，脚标为归约任务的序号，最大为核数-1
         std::vector<uint32_t> mIdx{};         // 每个归约任务的GS1索引，脚标为归约任务的序号
         std::vector<uint32_t> workspaceIdx{}; // 每个归约任务在workspace中的存放位置
-        std::vector<uint32_t> s2SplitNum{}; // 每个归约任务的S2核间切分份数，脚标为归约任务的序号
-        std::vector<uint32_t> mSize{};      // 每个归约任务的M轴大小，脚标为归约任务的序号
+        std::vector<uint32_t> s2SplitNum{};   // 每个归约任务的S2核间切分份数，脚标为归约任务的序号
+        std::vector<uint32_t> mSize{};        // 每个归约任务的M轴大小，脚标为归约任务的序号
         // 2、FD kernel阶段，归约任务的分核信息
         std::vector<uint32_t> taskIdx{}; // 每个vector处理的归约任务对应ID
         std::vector<uint32_t> mStart{};  // 每个vector处理的归约任务的M轴起点
         std::vector<uint32_t> mLen{};    // 每个vector处理的归约任务的M轴行数
 
         explicit SectionStreamKImplResult(uint32_t aicNum, uint32_t aivNum)
-            : bN2End(aicNum), gS1End(aicNum), s2End(aicNum), firstFdDataWorkspaceIdx(aicNum), bN2Idx(aicNum),
-              mIdx(aicNum), workspaceIdx(aicNum), s2SplitNum(aicNum), mSize(aicNum), taskIdx(aivNum), mStart(aivNum),
+            : bN2End(aicNum),
+              gS1End(aicNum),
+              s2End(aicNum),
+              firstFdDataWorkspaceIdx(aicNum),
+              bN2Idx(aicNum),
+              mIdx(aicNum),
+              workspaceIdx(aicNum),
+              s2SplitNum(aicNum),
+              mSize(aicNum),
+              taskIdx(aivNum),
+              mStart(aivNum),
               mLen(aivNum)
         {
         }
@@ -101,7 +110,10 @@ private:
         bool isEmpty{true};
 
         explicit GridInfo(uint32_t batchSize)
-            : mBaseNum(batchSize), s2BaseNum(batchSize), mTailSize(batchSize), s2TailSize(batchSize)
+            : mBaseNum(batchSize),
+              s2BaseNum(batchSize),
+              mTailSize(batchSize),
+              s2TailSize(batchSize)
         {
         }
     };
@@ -114,7 +126,9 @@ private:
         std::vector<int64_t> sectionCost{};
 
         explicit CostInfo(uint32_t batchSize)
-            : bN2CostOfEachBatch(batchSize), bN2BlockOfEachBatch(batchSize), bN2LastBlockCostOfEachBatch(batchSize)
+            : bN2CostOfEachBatch(batchSize),
+              bN2BlockOfEachBatch(batchSize),
+              bN2LastBlockCostOfEachBatch(batchSize)
         {
         }
     };
@@ -126,7 +140,10 @@ private:
         CostInfo costInfo;
 
         explicit ComputeContext(const DeviceInfo &dInfo, const IBaseInfo &bInfo)
-            : deviceInfo(dInfo), baseInfo(bInfo), gridInfo(bInfo.GetBatchSize()), costInfo(bInfo.GetBatchSize())
+            : deviceInfo(dInfo),
+              baseInfo(bInfo),
+              gridInfo(bInfo.GetBatchSize()),
+              costInfo(bInfo.GetBatchSize())
         {
         }
     };
@@ -474,8 +491,8 @@ inline int64_t SectionStreamKImpl::CalcCost(uint32_t basicM, uint32_t basicS2)
 {
     uint32_t alignCoefM = 16U;
     uint32_t alignCoefS2 = 64U;
-    int64_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U; // 按alignCoefM对齐，向上取整，4：移位操作实现除16
-    int64_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U; // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
+    int64_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U;             // 按alignCoefM对齐，向上取整，4：移位操作实现除16
+    int64_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U;          // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
     return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2); // 6：M轴系数，10：S2轴系数
 }
 

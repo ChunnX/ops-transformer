@@ -1,12 +1,12 @@
 /**
-* Copyright (c) 2025 Huawei Technologies Co., Ltd.
-* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-* CANN Open Software License Agreement Version 2.0 (the "License").
-* Please refer to the License for details. You may not use this file except in compliance with the License.
-* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-* See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <iostream>
 #include <gtest/gtest.h>
@@ -77,38 +77,34 @@ TEST_P(MlaPreprocessTilingV2, mla_preprocess_v2_test_tiling_case0)
     const std::vector<int64_t> disabledRopeShape = {0};
     const std::vector<int64_t> tokenMismatchShape = {0, 64};
     const std::vector<int64_t> cosShape =
-        ropeInputMode == 0 || ropeInputMode == 2
-            ? normalRopeShape
-            : (ropeInputMode == 1 ? disabledRopeShape : tokenMismatchShape);
+        ropeInputMode == 0 || ropeInputMode == 2 ? normalRopeShape : (ropeInputMode == 1 ? disabledRopeShape : tokenMismatchShape);
     const std::vector<int64_t> sinShape =
-        ropeInputMode == 0
-            ? normalRopeShape
-            : (ropeInputMode == 1 || ropeInputMode == 2 ? disabledRopeShape : tokenMismatchShape);
+        ropeInputMode == 0 ? normalRopeShape : (ropeInputMode == 1 || ropeInputMode == 2 ? disabledRopeShape : tokenMismatchShape);
     gert::TilingContextPara tilingContextPara(
         "MlaPreprocessV2",
         {
             // input info
             {{{tokenNum, hiddenNum}, {tokenNum, hiddenNum}},
              ge::DT_FLOAT16,
-             ge::FORMAT_ND}, // input 对应 {{{原始shape}, {运行时shape}}, 数据类型, 数据格式}
-            {{{hiddenNum}, {hiddenNum}}, ge::DT_FLOAT16, ge::FORMAT_ND},                          // gamma0
-            {{{hiddenNum}, {hiddenNum}}, ge::DT_FLOAT16, ge::FORMAT_ND},                          // beta0
-            {{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                          // quantScale0
-            {{{1}, {1}}, ge::DT_INT8, ge::FORMAT_ND},                                             // quantOffset0
-            {{{2112, hiddenNum}, {2112, hiddenNum}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},         // wdqkv
-            {{{2112}, {2112}}, ge::DT_INT64, ge::FORMAT_ND},                                      // deScale0
-            {{{2112}, {2112}}, ge::DT_INT32, ge::FORMAT_ND},                                      // bias0
-            {{{1536}, {1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                    // gamma1
-            {{{1536}, {1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                    // beta1
-            {{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                          // quantScale1
-            {{{1}, {1}}, ge::DT_INT8, ge::FORMAT_ND},                                             // quantOffset1
-            {{{headNum * 192, 1536}, {headNum * 192, 1536}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ}, // wuq
-            {{{headNum * 192}, {headNum * 192}}, ge::DT_INT64, ge::FORMAT_ND},                    // deScale1
-            {{{headNum * 192}, {headNum * 192}}, ge::DT_INT32, ge::FORMAT_ND},                    // bias1
-            {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                      // gamma2
-            {MakeStorageShape(cosShape), ge::DT_FLOAT16, ge::FORMAT_ND},                              // cos
-            {MakeStorageShape(sinShape), ge::DT_FLOAT16, ge::FORMAT_ND},                              // sin
-            {{{headNum, 128, 512}, {headNum, 128, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},          // wuk
+             ge::FORMAT_ND},                                                                                 // input 对应 {{{原始shape}, {运行时shape}}, 数据类型, 数据格式}
+            {{{hiddenNum}, {hiddenNum}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                     // gamma0
+            {{{hiddenNum}, {hiddenNum}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                     // beta0
+            {{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                                     // quantScale0
+            {{{1}, {1}}, ge::DT_INT8, ge::FORMAT_ND},                                                        // quantOffset0
+            {{{2112, hiddenNum}, {2112, hiddenNum}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},                    // wdqkv
+            {{{2112}, {2112}}, ge::DT_INT64, ge::FORMAT_ND},                                                 // deScale0
+            {{{2112}, {2112}}, ge::DT_INT32, ge::FORMAT_ND},                                                 // bias0
+            {{{1536}, {1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                               // gamma1
+            {{{1536}, {1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                               // beta1
+            {{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                                     // quantScale1
+            {{{1}, {1}}, ge::DT_INT8, ge::FORMAT_ND},                                                        // quantOffset1
+            {{{headNum * 192, 1536}, {headNum * 192, 1536}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},            // wuq
+            {{{headNum * 192}, {headNum * 192}}, ge::DT_INT64, ge::FORMAT_ND},                               // deScale1
+            {{{headNum * 192}, {headNum * 192}}, ge::DT_INT32, ge::FORMAT_ND},                               // bias1
+            {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                                 // gamma2
+            {MakeStorageShape(cosShape), ge::DT_FLOAT16, ge::FORMAT_ND},                                     // cos
+            {MakeStorageShape(sinShape), ge::DT_FLOAT16, ge::FORMAT_ND},                                     // sin
+            {{{headNum, 128, 512}, {headNum, 128, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},                     // wuk
             {{{blockNum, blockSize, 1, 576}, {blockNum, blockSize, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // kvCache
             {{{blockNum, blockSize, 1, 64}, {blockNum, blockSize, 1, 64}},
              ge::DT_FLOAT16,

@@ -19,7 +19,8 @@ extern "C" {
 #endif
 
 __attribute__((visibility("default")))
-aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
+aclnnStatus
+aclnnLightningIndexerV2MetadataGetWorkspaceSize(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional, int64_t numHeadsQ, int64_t numHeadsK,
     int64_t headDim, int64_t topk, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK, char *layoutQOptional,
@@ -27,11 +28,12 @@ aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
     aclOpExecutor **executor);
 
 __attribute__((visibility("default")))
-aclnnStatus aclnnLightningIndexerV2Metadata(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-    aclrtStream stream);
+aclnnStatus
+aclnnLightningIndexerV2Metadata(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // ACLNN_LIGHTNING_INDEXER_V2_METADATA_H
+#endif // ACLNN_LIGHTNING_INDEXER_V2_METADATA_H

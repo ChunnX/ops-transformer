@@ -13,7 +13,7 @@
 
 #include "../../catlass.hpp"
 #include "../../arch/resource.hpp"
-#include "../../coord.hpp"
+#include "../../third_coord.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
 
@@ -60,8 +60,17 @@ public:
         CATLASS_DEVICE
         Params(uint32_t batchCount_, GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, int64_t strideA_,
                GM_ADDR ptrB_, LayoutB layoutB_, int64_t strideB_, GM_ADDR ptrC_, LayoutC layoutC_, int64_t strideC_)
-            : batchCount(batchCount_), problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), strideA(strideA_),
-              ptrB(ptrB_), layoutB(layoutB_), strideB(strideB_), ptrC(ptrC_), layoutC(layoutC_), strideC(strideC_)
+            : batchCount(batchCount_),
+              problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              strideA(strideA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              strideB(strideB_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              strideC(strideC_)
         {
         }
     };

@@ -21,15 +21,14 @@
 #ifndef HCCL_SHMEM_HPP
 #define HCCL_SHMEM_HPP
 
-
 #include "kernel_operator.h"
 #include "const_args.hpp"
 #include "mc2_moe_context.h"
 
-#if __has_include("../../../common/moe_distribute_base.h")
-#include "../../../common/moe_distribute_base.h"
+#if __has_include("../../../common/common_moe_distribute_base.h")
+#include "../../../common/common_moe_distribute_base.h"
 #else
-#include "../../../../common/op_kernel/moe_distribute_base.h"
+#include "../../../../common/op_kernel/common_moe_distribute_base.h"
 #endif
 
 #define FORCE_INLINE_AICORE inline __attribute__((always_inline)) __aicore__

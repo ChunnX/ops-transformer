@@ -187,7 +187,9 @@ public:
     // 初始化 Vec Block 层
     __aicore__ inline QuantFlashAttnBlockVectorDn(ConstInfo &constInfo, SeqLensTool<LAYOUT_Q, SEQLEN_T> &qSeqLensTool,
                                                   SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool)
-        : constInfo(constInfo), qSeqLensTool(qSeqLensTool), kvSeqLensTool(kvSeqLensTool){};
+        : constInfo(constInfo),
+          qSeqLensTool(qSeqLensTool),
+          kvSeqLensTool(kvSeqLensTool){};
 
     __aicore__ inline void InitInput(__gm__ uint8_t *attentionOut)
     {

@@ -12,7 +12,7 @@
 #define CATLASS_GEMM_BLOCK_BLOCK_SWIZZLE_HPP
 
 #include "../../catlass.hpp"
-#include "../../detail/alignment.hpp"
+#include "../../detail/third_alignment.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
 
@@ -38,14 +38,17 @@ struct GemmIdentityBlockSwizzle {
 
     CATLASS_DEVICE
     GemmIdentityBlockSwizzle(GemmCoord const &problemShape_, MatrixCoord const &tileMN_)
-        : problemShape(problemShape_), tileMN(tileMN_)
+        : problemShape(problemShape_),
+          tileMN(tileMN_)
     {
         loopsMN = CeilDiv(MatrixCoord(problemShape.GetCoordMN()), tileMN);
     }
 
     CATLASS_DEVICE
     GemmIdentityBlockSwizzle(GemmCoord const &problemShape_, MatrixCoord const &tileMN_, MatrixCoord const &loopsMN_)
-        : problemShape(problemShape_), tileMN(tileMN_), loopsMN(loopsMN_)
+        : problemShape(problemShape_),
+          tileMN(tileMN_),
+          loopsMN(loopsMN_)
     {
     }
 
@@ -148,7 +151,9 @@ struct SplitkGemmIdentityBlockSwizzle {
     CATLASS_DEVICE
     SplitkGemmIdentityBlockSwizzle(GemmCoord const &problemShape_, GemmCoord const &tileShape_,
                                    uint32_t splitkFactor_ = 1)
-        : problemShape(problemShape_), tileShape(tileShape_), splitkFactor(splitkFactor_)
+        : problemShape(problemShape_),
+          tileShape(tileShape_),
+          splitkFactor(splitkFactor_)
     {
         loopsMNK = CeilDiv(problemShape, tileShape);
     }

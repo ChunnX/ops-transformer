@@ -107,7 +107,8 @@ public:
     VectorBlock vectorBlock;
 
     __aicore__ inline QuantFlashAttnKernelDn()
-        : cubeBlock(constInfo, qSeqLensTool, kvSeqLensTool), vectorBlock(constInfo, qSeqLensTool, kvSeqLensTool){};
+        : cubeBlock(constInfo, qSeqLensTool, kvSeqLensTool),
+          vectorBlock(constInfo, qSeqLensTool, kvSeqLensTool){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
                                 __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *blockTable,
@@ -478,7 +479,6 @@ public:
         info.actSingleLoopS2SizeAlign16 = Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)16); // 统一对齐到16
         info.actSingleLoopS2SizeAlign64 =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)BUFFER_SIZE_BYTE_64B); // 统一对齐到64
-
 
         info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
         info.isS2SplitCore = false;

@@ -19,18 +19,19 @@ inline void InitMoeDistributeCombineAddRmsNormTilingData(uint8_t *tiling, MoeDis
     memcpy(constData, tiling, sizeof(MoeDistributeCombineV2TilingData));
 }
 
-#define GET_TILING_DATA(tilingData, tilingArg)                                                                         \
-    MoeDistributeCombineV2TilingData tilingData;                                                                       \
+#define GET_TILING_DATA(tilingData, tilingArg) \
+    MoeDistributeCombineV2TilingData tilingData; \
     InitMoeDistributeCombineAddRmsNormTilingData(tilingArg, &tilingData)
 
-#define GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingArg)                           \
-    MoeDistributeCombineV2TilingData tilingData;                                                                       \
+#define GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingArg) \
+    MoeDistributeCombineV2TilingData tilingData; \
     InitMoeDistributeCombineAddRmsNormTilingData(tilingArg, &tilingData)
 
 struct float16_t {
     uint16_t raw;
 
-    constexpr float16_t(uint16_t, bool) : raw(raw)
+    constexpr float16_t(uint16_t, bool)
+        : raw(raw)
     {
     }
 
@@ -56,6 +57,5 @@ struct float16_t {
 };
 
 #define DTYPE_X int64_t
-
 
 #endif

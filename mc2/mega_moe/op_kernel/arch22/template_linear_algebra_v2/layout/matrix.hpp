@@ -12,11 +12,11 @@
 #define CATLASS_LAYOUT_MATRIX_HPP
 
 #include "../../template_linear_algebra_v2/catlass.hpp"
-#include "../../template_linear_algebra_v2/coord.hpp"
-#include "../../template_linear_algebra_v2/numeric_size.hpp"
-#include "../../template_linear_algebra_v2/detail/alignment.hpp"
+#include "../../template_linear_algebra_v2/mega_moe_coord_arch22.hpp"
+#include "../../template_linear_algebra_v2/mega_moe_numeric_size_arch22.hpp"
+#include "../../template_linear_algebra_v2/detail/mega_moe_alignment_arch22.hpp"
 #include "../../template_linear_algebra_v2/matrix_coord.hpp"
-#include "../../template_linear_algebra_v2/conv_coord.hpp"
+#include "../../template_linear_algebra_v2/mega_moe_conv_coord_arch22.hpp"
 
 namespace Catlass::layout {
 
@@ -42,20 +42,24 @@ public:
     /// Constructor
     CATLASS_HOST_DEVICE
     RowMajor(Index rows = 0, Index cols = 0)
-        : shape_(MakeCoord(rows, cols)), stride_(MakeCoord(LongIndex(cols), LongIndex(1)))
+        : shape_(MakeCoord(rows, cols)),
+          stride_(MakeCoord(LongIndex(cols), LongIndex(1)))
     {
     }
 
     /// Constructor
     CATLASS_HOST_DEVICE
     RowMajor(Index rows, Index cols, LongIndex ldm)
-        : shape_(MakeCoord(rows, cols)), stride_(MakeCoord(ldm, LongIndex(1)))
+        : shape_(MakeCoord(rows, cols)),
+          stride_(MakeCoord(ldm, LongIndex(1)))
     {
     }
 
     /// Ctor
     CATLASS_HOST_DEVICE
-    RowMajor(Shape shape, Stride stride) : shape_(shape), stride_(stride)
+    RowMajor(Shape shape, Stride stride)
+        : shape_(shape),
+          stride_(stride)
     {
     }
 
@@ -186,20 +190,24 @@ public:
     /// Constructor
     CATLASS_HOST_DEVICE
     ColumnMajor(Index rows = 0, Index cols = 0)
-        : shape_(MakeCoord(rows, cols)), stride_(MakeCoord(LongIndex(1), LongIndex(rows)))
+        : shape_(MakeCoord(rows, cols)),
+          stride_(MakeCoord(LongIndex(1), LongIndex(rows)))
     {
     }
 
     /// Constructor
     CATLASS_HOST_DEVICE
     ColumnMajor(Index rows, Index cols, LongIndex ldm)
-        : shape_(MakeCoord(rows, cols)), stride_(MakeCoord(LongIndex(1), ldm))
+        : shape_(MakeCoord(rows, cols)),
+          stride_(MakeCoord(LongIndex(1), ldm))
     {
     }
 
     /// Ctor
     CATLASS_HOST_DEVICE
-    ColumnMajor(Shape shape, Stride stride) : shape_(shape), stride_(stride)
+    ColumnMajor(Shape shape, Stride stride)
+        : shape_(shape),
+          stride_(stride)
     {
     }
 
@@ -346,7 +354,9 @@ public:
 
     /// Ctor
     CATLASS_HOST_DEVICE constexpr nZ(OrgShape orgShape, Shape shape, Stride stride)
-        : orgShape_(orgShape), shape_(shape), stride_(stride)
+        : orgShape_(orgShape),
+          shape_(shape),
+          stride_(stride)
     {
     }
 
@@ -515,7 +525,9 @@ public:
 
     /// Ctor
     CATLASS_HOST_DEVICE constexpr zN(OrgShape orgShape, Shape shape, Stride stride)
-        : orgShape_(orgShape), shape_(shape), stride_(stride)
+        : orgShape_(orgShape),
+          shape_(shape),
+          stride_(stride)
     {
     }
 
@@ -693,7 +705,9 @@ public:
 
     /// Ctor
     CATLASS_HOST_DEVICE constexpr zZ(OrgShape orgShape, Shape shape, Stride stride)
-        : orgShape_(orgShape), shape_(shape), stride_(stride)
+        : orgShape_(orgShape),
+          shape_(shape),
+          stride_(stride)
     {
     }
 
@@ -1061,7 +1075,6 @@ public:
         return stride_[idx];
     }
 
-
 private:
     //
     // Data members
@@ -1128,7 +1141,10 @@ public:
 
     /// Ctor
     CATLASS_HOST_DEVICE
-    nN(OrgShape orgShape, Shape shape, Stride stride) : orgShape_(orgShape), shape_(shape), stride_(stride)
+    nN(OrgShape orgShape, Shape shape, Stride stride)
+        : orgShape_(orgShape),
+          shape_(shape),
+          stride_(stride)
     {
     }
 
@@ -1282,7 +1298,9 @@ public:
 
     /// Ctor
     CATLASS_HOST_DEVICE constexpr NDC1HWC0(OrgShape orgshape, Shape shape, Stride stride)
-        : orgShape_(orgshape), shape_(shape), stride_(stride)
+        : orgShape_(orgshape),
+          shape_(shape),
+          stride_(stride)
     {
     }
 
@@ -1453,7 +1471,9 @@ public:
 
     /// Ctor
     CATLASS_HOST_DEVICE constexpr KDC1KHKWN1N0C0(OrgShape orgShape, Shape shape, Stride stride)
-        : orgShape_(orgShape), shape_(shape), stride_(stride)
+        : orgShape_(orgShape),
+          shape_(shape),
+          stride_(stride)
     {
     }
 

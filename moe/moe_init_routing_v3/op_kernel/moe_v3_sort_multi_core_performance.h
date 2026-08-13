@@ -15,7 +15,7 @@
 #ifndef MOE_V3_VBS_ONE_CORE_PERFORMANCE_H
 #define MOE_V3_VBS_ONE_CORE_PERFORMANCE_H
 
-#include "moe_v3_sort_base.h"
+#include "moe_v3_sort_base_kernel.h"
 #include "moe_v3_mrgsort_performance.h"
 #include "moe_v3_mrgsort_out_performance.h"
 

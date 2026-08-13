@@ -12,7 +12,7 @@
 #define CATLASS_BLOCK_BLOCK_MMAD_GEMM_HPP
 
 #include "../../catlass.hpp"
-#include "../../gemm/helper.hpp"
+#include "../../gemm/third_helper.hpp"
 #include "../../gemm/tile/tile_copy.hpp"
 #include "../../gemm/tile/tile_mmad.hpp"
 #include "../../gemm_coord.hpp"

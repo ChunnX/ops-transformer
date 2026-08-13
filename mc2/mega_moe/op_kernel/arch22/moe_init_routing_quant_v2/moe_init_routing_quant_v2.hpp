@@ -15,23 +15,22 @@
 
 #ifndef MC2_MOE_INIT_ROUTING_QUANT_V2_HPP
 #define MC2_MOE_INIT_ROUTING_QUANT_V2_HPP
-#include "moe_v2_sort_one_core.h"
-#include "moe_v2_sort_multi_core.h"
-#include "moe_v2_mrgsort_out.h"
-#include "moe_v2_mrgsort.h"
-#include "moe_v2_expert_token_out.h"
-#include "moe_v2_src_to_dst_op.h"
-#include "moe_v2_src_to_dst_with_capacity.h"
-#include "moe_v2_fullload_quant.h"
-#include "moe_v2_fullload_dynamic_quant.h"
-#include "moe_v2_gather_quant.h"
-#include "moe_v2_gather_dynamic_quant.h"
-#include "moe_v2_src_to_dst_and_gather.h"
+#include "mega_moe_moe_v2_sort_one_core_arch22.h"
+#include "mega_moe_moe_v2_sort_multi_core_arch22.h"
+#include "mega_moe_moe_v2_mrgsort_out_arch22.h"
+#include "mega_moe_moe_v2_mrgsort_arch22.h"
+#include "mega_moe_moe_v2_expert_token_out_arch22.h"
+#include "mega_moe_moe_v2_src_to_dst_op_arch22.h"
+#include "mega_moe_moe_v2_src_to_dst_with_capacity_arch22.h"
+#include "mega_moe_moe_v2_fullload_quant_arch22.h"
+#include "mega_moe_moe_v2_fullload_dynamic_quant_arch22.h"
+#include "mega_moe_moe_v2_gather_quant_arch22.h"
+#include "mega_moe_moe_v2_gather_dynamic_quant_arch22.h"
+#include "mega_moe_moe_v2_src_to_dst_and_gather_arch22.h"
 
 using namespace AscendC;
 using namespace MoeInitRoutingQuantV2;
 using namespace Mc2Tiling;
-
 
 template <class DTYPE_X = bfloat16_t>
 __aicore__ inline void moe_init_routing_quant_v2(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset,
@@ -58,7 +57,6 @@ __aicore__ inline void moe_init_routing_quant_v2(GM_ADDR x, GM_ADDR expertIdx, G
         sortPipe.Destroy();
         return;
     }
-
 
     else if (tilingKey == 21000) { // dynamic quant full load
         TPipe sortPipe;

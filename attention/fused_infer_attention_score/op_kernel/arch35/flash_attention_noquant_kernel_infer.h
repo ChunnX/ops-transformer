@@ -15,11 +15,11 @@
 
 #ifndef FLASH_ATTENTION_NOQUANT_KERNEL_INFER_H_
 #define FLASH_ATTENTION_NOQUANT_KERNEL_INFER_H_
-#include "./flash_attention_noquant_kernel_base.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
-#include "./infer_flash_attention_kvcache.h"
-#include "./infer_flash_attention_sparse.h"
+#include "fused_infer_attention_score_flash_attention_noquant_kernel_base_arch35.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#include "fused_infer_attention_score_infer_flash_attention_kvcache_arch35.h"
+#include "fused_infer_attention_score_infer_flash_attention_sparse_arch35.h"
 
 namespace BaseApi {
 template <typename CubeBlockType, typename VecBlockType>
@@ -111,7 +111,6 @@ FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::InitUniqueRunInfo
     ComputeOffset<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(
         runParam, this->constInfo, runInfo.s2LoopCount + runInfo.s2StartIdx / this->constInfo.s2BaseSize, runInfo);
 }
-
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::ProcessS2Loop(

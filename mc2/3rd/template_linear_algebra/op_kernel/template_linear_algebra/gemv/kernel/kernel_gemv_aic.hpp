@@ -11,7 +11,7 @@
 #define CATLASS_GEMV_KERNLE_GEMV_AIC_HPP
 
 #include "../../catlass.hpp"
-#include "../../arch/cross_core_sync.hpp"
+#include "../../arch/third_cross_core_sync.hpp"
 #include "../../arch/resource.hpp"
 #include "../../epilogue/tile/copy_gm_to_ub.hpp"
 #include "../../epilogue/tile/copy_ub_to_gm.hpp"
@@ -45,7 +45,6 @@ public:
     using ElementAccumulator =
         typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementX>::ElementAccumulator;
 
-
     struct Params {
         // Data members
         GemvCoord problemShape;
@@ -65,8 +64,13 @@ public:
         CATLASS_HOST_DEVICE
         Params(GemvCoord const &problemShape_, GM_ADDR ptrX_, LayoutX layoutX_, GM_ADDR ptrA_, LayoutA layoutA_,
                GM_ADDR ptrWorkspace_, EpilogueParams const &epilogueParams_)
-            : problemShape(problemShape_), ptrX(ptrX_), layoutX(layoutX_), ptrA(ptrA_), layoutA(layoutA_),
-              ptrWorkspace(ptrWorkspace_), epilogueParams(epilogueParams_)
+            : problemShape(problemShape_),
+              ptrX(ptrX_),
+              layoutX(layoutX_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrWorkspace(ptrWorkspace_),
+              epilogueParams(epilogueParams_)
         {
         }
     };

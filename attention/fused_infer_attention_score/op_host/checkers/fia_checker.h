@@ -19,20 +19,20 @@
 #include <map>
 #include <numeric>
 #include "tiling/tiling_api.h"
-#include "base_checker.h"
+#include "fused_infer_attention_score_base_checker.h"
 
 #include "./actual_seq_len_checker.h"
-#include "./base_checker.h"
+#include "fused_infer_attention_score_base_checker.h"
 #include "./dequant_checker.h"
 #include "./learnable_sink_checker.h"
 #include "./left_padding_checker.h"
-#include "./mask_checker.h"
-#include "./paged_attention_checker.h"
+#include "fused_infer_attention_score_mask_checker.h"
+#include "fused_infer_attention_score_paged_attention_checker.h"
 #include "./post_quant_checker.h"
 #include "./pse_checker.h"
 #include "./rope_checker.h"
-#include "./common_checker.h"
-#include "./softmax_lse_checker.h"
+#include "fused_infer_attention_score_common_checker.h"
+#include "fused_infer_attention_score_softmax_lse_checker.h"
 #include "./system_prefix_checker.h"
 
 namespace optiling {

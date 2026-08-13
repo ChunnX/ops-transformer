@@ -21,11 +21,11 @@
 #include "arch35/quant_flash_attn_kernel_fp8.h"
 #include "arch35/quant_flash_attn_template_tiling_key.h"
 #include "arch35/quant_flash_attn_tiling_data.h"
-#if __has_include("../../common/op_kernel/arch35/flash_attention_score_common_regbase.h")
-#include "../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#if __has_include("../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
+#include "../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../common/op_kernel/vector_common.h"
 #else
-#include "../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../common/op_kernel/vector_common.h"
 #endif
 
@@ -59,24 +59,24 @@ __aicore__ inline void quant_flash_attn_mxfp8(
 
     using CubeBlock =
         BaseApi::QuantFlashAttnBlockCubeMxfp8<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-            dTemplateType, dVTemplateType, KvLayoutType, useDn>;
+                                              dTemplateType, dVTemplateType, KvLayoutType, useDn>;
     using VecFaBlock =
         BaseApi::QuantFlashAttnBlockVecMxfp8<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
-            s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, isFdConst, useDn>;
+                                             s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, isFdConst, useDn>;
     using VecFdBlock =
         BaseApi::QuantFlashAttnBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-            s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;
+                                                   s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;
 
     using CubeBlockDummy =
         BaseApi::QuantFlashAttnBlockCubeMxfp8Dummy<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-            dTemplateType, dVTemplateType, KvLayoutType, useDn>;
+                                                   dTemplateType, dVTemplateType, KvLayoutType, useDn>;
     using VecFaBlockDummy =
         BaseApi::QuantFlashAttnBlockVecMxfp8Dummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-            s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-            hasAttenMask, KvLayoutType, isFdConst, useDn>;
+                                                  s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                  hasAttenMask, KvLayoutType, isFdConst, useDn>;
     using VecFdBlockDummy =
         BaseApi::QuantFlashAttnBlockVecFlashDecodeDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-            s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;
+                                                        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;
 
 #ifdef __DAV_C310_CUBE__
     using Kernel = BaseApi::QuantFlashAttnKernelMxfp8<CubeBlock, VecFaBlockDummy, VecFdBlockDummy>;
