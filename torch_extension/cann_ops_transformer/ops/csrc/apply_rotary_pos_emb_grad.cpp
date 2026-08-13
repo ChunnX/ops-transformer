@@ -105,12 +105,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> ApplyRotaryPosEmbGrad
 
     at::Tensor grad_query = at::empty(grad_query_embed.sizes(), grad_query_embed.options());
     at::Tensor grad_key = at::empty(grad_key_embed.sizes(), grad_key_embed.options());
-    at::Tensor grad_cos;
-    at::Tensor grad_sin;
-    if (query_const.defined()) {
-        grad_cos = at::empty(cos.sizes(), cos.options());
-        grad_sin = at::empty(sin.sizes(), sin.options());
-    }
+    at::Tensor grad_cos = at::empty(cos.sizes(), cos.options());
+    at::Tensor grad_sin = at::empty(sin.sizes(), sin.options());
 
     char *rotary_mode_ptr = const_cast<char *>(rotary_mode_str.c_str());
     ACLNN_CMD(aclnnApplyRotaryPosEmbGrad, grad_query_embed, grad_key_embed, cos, sin, query_const, key_const,
