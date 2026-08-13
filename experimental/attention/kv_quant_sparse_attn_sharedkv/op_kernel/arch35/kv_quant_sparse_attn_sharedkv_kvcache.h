@@ -235,19 +235,4 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam)
     return false;
 }
 
-TEMPLATE_INTF
-__aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &runInfo)
-{
-    runInfo.boIdx = runParam.boIdx;
-    runInfo.preTokensPerBatch = runParam.preTokensPerBatch;
-    runInfo.nextTokensPerBatch = runParam.nextTokensPerBatch;
-    runInfo.actualS1Size = runParam.actualS1Size;
-    runInfo.actualS2Size = runParam.actualS2Size;
-    runInfo.softmaxLseOffset = runParam.softmaxLseOffset;
-    runInfo.qSNumInOneBlock = runParam.qSNumInOneBlock;
-    runInfo.oriKvLoopEndIdx = runParam.oriKvLoopEndIdx;
-    runInfo.cmpKvLoopEndIdx = runParam.cmpKvLoopEndIdx;
-    runInfo.isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
-}
-
 #endif  // KV_QUANT_SPARSE_ATTN_SHAREDKV_KVCACHE_H

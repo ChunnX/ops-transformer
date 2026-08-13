@@ -48,16 +48,15 @@ public:
     __aicore__ inline void Process();
 private:
     __aicore__ inline void ProcessMainLoop();
-    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
-        __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
-        __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks, __gm__ uint8_t *workspace);
-    __aicore__ inline void InitLocalBuffer();
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
+        __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
+        __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks,
+        __gm__ uint8_t *attentionOut);
+    __aicore__ inline void InitLocalBuffer(uint32_t goIdx);
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *workspace);
     __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount,
                                       int64_t s2LoopLimit, int64_t multiCoreInnerIdx);
-    __aicore__ inline void ComputeBmm1Tail(RunInfo &runInfo, RunParamStr &runParam);
     __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam);
-    __aicore__ inline void InitUniqueRunInfo(const RunParamStr &runParam, RunInfo &runInfo);
 
     static constexpr uint64_t SYNC_MODE = 4;
     static constexpr uint32_t PRELOAD_NUM = 3;
@@ -131,10 +130,8 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
         bN2EndIdx++;
     }
 
-    this->InitGlobalBuffer(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ, sequsedQ, sequsedKv, sinks,
-        workspace);
-    vecBlock.InitVecBlock(cuSeqlensQ, sequsedKv);
-    vecBlock.CleanOutput(attentionOut);
+    this->InitGlobalBuffer(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable,
+        cuSeqlensQ, sequsedQ, sequsedKv, sinks, attentionOut);
     if ASCEND_IS_AIV {
         if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE && IS_VEC_S2PHYADDR) {
             this->vecBlock.GetKVPhyAddr(hasLoad, bN2StartIdx, bN2EndIdx, gS1StartIdx, nextGs1Idx,
@@ -142,15 +139,18 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
         }
     }
     InitMMResBuf(workspace);
-    cubeBlock.InitCubeBlock(query, l1CubeBase);
-    this->InitLocalBuffer();
+    uint32_t goIdx = 0;
+    if constexpr (IS_SPLIT_G) {
+        goIdx = (aicIdx % 2 == 0) ? 0 : 64;
+    }
+    this->InitLocalBuffer(goIdx);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::InitGlobalBuffer(
     __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
     __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
-    __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks, __gm__ uint8_t *workspace)
+    __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks, __gm__ uint8_t *attentionOut)
 {
     if (cuSeqlensQ != nullptr) {
         cuSeqlensQAddr = (__gm__ int32_t *)cuSeqlensQ;
@@ -163,8 +163,10 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
         actualSeqQlenAddr = (__gm__ int32_t *)sequsedQ;
     }
 
-    vecBlock.InitGlobalBuffer(oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, sequsedQ, sinks);
-    cubeBlock.InitCubeInput(cuSeqlensQ);
+    vecBlock.InitGlobalBuffer(oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable,
+        cuSeqlensQ, sequsedKv, sinks, attentionOut);
+
+    cubeBlock.InitGlobalBuffer(query, cuSeqlensQ);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -207,8 +209,9 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
 }
  
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::InitLocalBuffer()
+__aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::InitLocalBuffer(uint32_t goIdx)
 {
+    cubeBlock.InitLocalBuffer(l1CubeBase, goIdx);
     vecBlock.InitLocalBuffer(vUbBase);
 }
 
@@ -303,7 +306,8 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                     if (notLastThreeLoop) {
                         RunInfo &runInfo1 = runInfo[taskId % 4];
                         this->vecBlock.ProcessVec0(
-                            v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->aivIdx);
+                            v0ResGmBuffers.Get(runInfo1.taskIdMod3), this->aivIdx,
+                            runInfo1.s2LoopCount, runInfo1.s2RealSize, runInfo1.s2StartIdx, runInfo1.s1oIdx, runInfo1.oriKvLoopEndIdx);
                     }
                     if (taskId > 1 && notLast) {
                         uint32_t bmm1Slot = bmm1GetFlag;
@@ -312,17 +316,22 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                         l1PGetFlag ^= 1;
                         auto &runInfo2 = runInfo[(taskId + 2) % 4];
                         this->vecBlock.ProcessVec1(this->l1PBuffers[l1PSlot], this->bmm1Buffers[bmm1Slot],
-                            runInfo2, this->subBlockIdx, this->aivIdx);
+                            this->subBlockIdx, this->aivIdx,
+                            runInfo2.s2LoopCount, runInfo2.s2RealSize,
+                            runInfo2.taskIdMod2, runInfo2.multiCoreIdxMod2);
                     }
                     if (taskId > 2) {
                         RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
-                        this->vecBlock.ProcessVec2(this->bmm2Buffers, runInfo3);
+                        this->vecBlock.ProcessVec2(this->bmm2Buffers,
+                            runInfo3.s2LoopCount, runInfo3.s2LoopLimit,
+                            runInfo3.taskIdMod2, runInfo3.multiCoreIdxMod2, runInfo3.attentionOutOffset);
                     }
                 } else {
                     if (taskId > 0 && notLastTwoLoop) {
                         RunInfo &runInfo1 = runInfo[(taskId + 3) % 4];
                         this->cubeBlock.IterateLoadQK(
-                            v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, isFirstLoop);
+                            v0ResGmBuffers.Get(runInfo1.taskIdMod3), isFirstLoop,
+                            runInfo1.taskIdMod3, runInfo1.s2RealSize, runInfo1.s1oIdx);
                         isFirstLoop = false;
                     } else {
                         if constexpr (IS_SPLIT_G) {
@@ -341,14 +350,15 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                         this->cubeBlock.IterateBmm1(
                             this->bmm1Buffers[bmm1Slot],
                                 v0ResGmBuffers.Get(runInfo2.taskIdMod3),
-                            notLastTwoLoop, runInfoNext, runInfo2);
+                            notLastTwoLoop, runInfoNext.s1oIdx,
+                            runInfo2.taskIdMod3, runInfo2.s2RealSize, runInfo2.s2LoopCount, runInfo2.s2LoopLimit);
                     }
                     if (taskId > 2) {
                         RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
                         uint32_t l1PSlot = l1PGetFlag;
                         l1PGetFlag ^= 1;
                         this->cubeBlock.IterateBmm2(this->bmm2Buffers, this->l1PBuffers[l1PSlot],
-                            runInfo3);
+                            runInfo3.taskIdMod3, runInfo3.s2RealSize);
                     }
                 }
                 ++taskId;
@@ -384,68 +394,28 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::SetRunInfo(
     RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
 {
+    int64_t s2EndIdx = 0;
     if (s2LoopCount < runParam.oriKvLoopEndIdx) {
         runInfo.s2StartIdx = runParam.s2LineStartIdx;
-        runInfo.s2EndIdx = runParam.s2LineEndIdx;
+        s2EndIdx = runParam.s2LineEndIdx;
     } else {
         runInfo.s2StartIdx = 0;
-        runInfo.s2EndIdx = runParam.s2CmpLineEndIdx;
+        s2EndIdx = runParam.s2CmpLineEndIdx;
     }
     runInfo.s2LoopCount = s2LoopCount;
-    if (runInfo.multiCoreInnerIdx != multiCoreInnerIdx) {
-        runInfo.s1oIdx = runParam.s1oIdx;
-        runInfo.boIdx = runParam.boIdx;
-        runInfo.n2oIdx = runParam.n2oIdx;
-        runInfo.goIdx = runParam.goIdx;
-        runInfo.multiCoreInnerIdx = multiCoreInnerIdx;
-        runInfo.multiCoreIdxMod2 = multiCoreInnerIdx & 1;
-        runInfo.multiCoreIdxMod3 = multiCoreInnerIdx % 3;
-    }
-
-    runInfo.taskId = taskId;
+    runInfo.s2LoopLimit = s2LoopLimit;
+    runInfo.s1oIdx = runParam.s1oIdx;
+    runInfo.attentionOutOffset = runParam.attentionOutOffset;
+    runInfo.oriKvLoopEndIdx = runParam.oriKvLoopEndIdx;
     runInfo.taskIdMod2 = taskId & 1;
     runInfo.taskIdMod3 = taskId % 3;
-    runInfo.s2LoopLimit = s2LoopLimit;
+    runInfo.multiCoreIdxMod2 = multiCoreInnerIdx & 1;
 
-    runInfo.actualS1Size = runParam.actualS1Size;
-    runInfo.actualS2Size = runParam.actualS2Size;
-    runInfo.attentionOutOffset = runParam.attentionOutOffset;
-    runInfo.sOuterOffset = runParam.sOuterOffset;
-    this->ComputeBmm1Tail(runInfo, runParam);
-    InitUniqueRunInfo(runParam, runInfo);
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
-    const RunParamStr &runParam, RunInfo &runInfo)
-{
-    InitTaskParamByRun<TEMPLATE_INTF_ARGS>(runParam, runInfo);
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::ComputeBmm1Tail(
-    RunInfo &runInfo, RunParamStr &runParam)
-{
-    // ------------------------S1 Base Related---------------------------
-    runInfo.s1RealSize = runParam.s1RealSize;
-    runInfo.halfS1RealSize = runParam.halfS1RealSize;
-    runInfo.firstHalfS1RealSize = runParam.firstHalfS1RealSize;
-    runInfo.mRealSize = runParam.mRealSize;
-    runInfo.halfMRealSize = runParam.halfMRealSize;
-    runInfo.firstHalfMRealSize = runParam.firstHalfMRealSize;
-
-    runInfo.vec2S1BaseSize = runInfo.halfS1RealSize;  // D>128 这里需要适配
-    runInfo.vec2MBaseSize = runInfo.halfMRealSize;
-
-    // ------------------------S2 Base Related----------------------------
     runInfo.s2RealSize = s2BaseSize;
-    runInfo.s2AlignedSize = runInfo.s2RealSize;
-    int64_t curS2LoopCnt = (runInfo.s2LoopCount >= runParam.oriKvLoopEndIdx) ? \
-        (runInfo.s2LoopCount - runParam.oriKvLoopEndIdx) : runInfo.s2LoopCount;
-    if (runInfo.s2StartIdx + (curS2LoopCnt + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
-        runInfo.s2RealSize = runInfo.s2EndIdx - curS2LoopCnt * runInfo.s2RealSize - runInfo.s2StartIdx;
-        runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
+    int64_t curS2LoopCnt = (s2LoopCount >= runParam.oriKvLoopEndIdx) ? \
+        (s2LoopCount - runParam.oriKvLoopEndIdx) : s2LoopCount;
+    if (runInfo.s2StartIdx + (curS2LoopCnt + 1) * runInfo.s2RealSize > s2EndIdx) {
+        runInfo.s2RealSize = s2EndIdx - curS2LoopCnt * runInfo.s2RealSize - runInfo.s2StartIdx;
     }
 }
 }
