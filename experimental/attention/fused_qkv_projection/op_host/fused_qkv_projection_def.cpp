@@ -14,7 +14,8 @@ namespace ops {
 
 class FusedQkvProjection : public OpDef {
 public:
-    explicit FusedQkvProjection(const char *name) : OpDef(name)
+    explicit FusedQkvProjection(const char *name)
+        : OpDef(name)
     {
         this->Input("hidden_states")
             .ParamType(REQUIRED)
