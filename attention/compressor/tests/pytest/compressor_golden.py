@@ -1132,7 +1132,7 @@ def run_compressor_eager(
         seqused = torch.tensor(seqused).to(torch.int32).to("npu:%s" % DEVICE_ID)
     # ======================== execute npu finish ================================
     # start run custom ops（grad_enabled=True 导出 softmax_score/kv 中间量，供 interleave 比对）
-    npu_out, npu_softmax, npu_kv = _compressor_forward(
+    npu_out, npu_softmax, npu_kv, _ = _compressor_forward(
         x,
         wkv,
         wgate,
