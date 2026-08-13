@@ -27,7 +27,7 @@ class _FFNToAttentionV2OpBuilder(OpBuilder):
 
     def schema(self) -> str:
         return (
-            "npu_ffn_to_attention_v2(Tensor context, Tensor x, Tensor session_ids, "
+            "npu_ffn_to_attention_v2(Tensor(a!) context, Tensor x, Tensor session_ids, "
             "Tensor micro_batch_ids, Tensor token_ids, Tensor expert_offsets, Tensor actual_token_num, "
             "str group, int world_size, "
             "int[] token_info_table_shape, int[] token_data_shape, int ccl_buffer_size, *, "
