@@ -24,6 +24,7 @@ constexpr uint32_t BLOCK = 32;                            // 32B
 constexpr uint32_t B32 = 4;                               // 4B
 constexpr uint32_t B16 = 2;
 constexpr uint32_t SINGLE_N_512 = 512;
+constexpr uint32_t SINGLE_N_256 = 256;
 constexpr uint32_t SINGLE_N_128 = 128;
 constexpr int64_t GM_ALIGN = 512;
 constexpr uint32_t PING_PONG_BUFFER = 2;
@@ -102,9 +103,14 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::DoOpTiling()
     // Init
     int32_t selBlkCntAlign = CeilCommon(tilingData.opInfo.get_selectedBlockCount(), 8) * 8;
     tmpData.singleM = tmpData.mode == SMLAG_SCFA_MODE ? tilingData.opInfo.get_G() : SINGLE_M;
-    tmpData.singleN = tmpData.mode == SMLAG_SCFA_MODE && selBlkCntAlign >= SINGLE_N_512 ? 
-                      SINGLE_N_512 : 
-                      SINGLE_N_128;
+    if (tmpData.mode == SMLAG_SCFA_MODE && selBlkCntAlign >= SINGLE_N_512) {
+        tmpData.singleN = tilingData.opInfo.get_selectedBlockCount() >= 1024 &&
+                                  tilingData.opInfo.get_selectedBlockCount() % SINGLE_N_512 == 0 &&
+                                  tilingData.opInfo.get_G() <= 64 ?
+                              SINGLE_N_256 : SINGLE_N_512;
+    } else {
+        tmpData.singleN = SINGLE_N_128;
+    }
     tmpData.s1BasicSize = tmpData.mode == SMLAG_SCFA_MODE ? 1 : tmpData.singleM / tilingData.opInfo.get_G();
 
     // setTilingData
@@ -581,4 +587,3 @@ REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseFlashMlaGrad, SparseFlashMlaGradBasicTi
 
 } // namespace smlag
 } // namespace optiling
-
