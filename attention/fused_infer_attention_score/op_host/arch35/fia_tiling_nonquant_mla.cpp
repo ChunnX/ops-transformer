@@ -76,8 +76,10 @@ bool FiaTilingNonQuantMlaArch35::IsCapableFeatureCheckMla()
 
 bool FiaTilingNonQuantMlaArch35::IsCapableSparseLayoutCheckMla()
 {
-    if (fiaInfo_->sparseMode != SPARSE_MODE_NO_MASK && fiaInfo_->sparseMode != SPARSE_MODE_RIGHT_DOWN &&
-        fiaInfo_->sparseMode != SPARSE_MODE_BAND) {
+    if (fiaInfo_->sparseMode != SPARSE_MODE_NO_MASK && fiaInfo_->sparseMode != SPARSE_MODE_RIGHT_DOWN) {
+        return false;
+    }
+    if (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag) {
         return false;
     }
     // MLA D512 维度约束
@@ -93,11 +95,20 @@ bool FiaTilingNonQuantMlaArch35::IsCapableSparseLayoutCheckMla()
     if (fiaInfo_->n1Size < 1 || fiaInfo_->n1Size > NUM_128) {
         return false;
     }
+    // layout 约束: query TND, output NTD, KV PA_NZ
+    if (fiaInfo_->qLayout != FiaLayout::TND || fiaInfo_->outLayout != FiaLayout::NTD ||
+        !(fiaInfo_->pageAttentionFlag && fiaInfo_->kvLayout == FiaLayout::NZ)) {
+        return false;
+    }
     return true;
 }
 
 bool FiaTilingNonQuantMlaArch35::IsCapable()
 {
+    if (fiaInfo_->n1Size >= 1 && fiaInfo_->n1Size <= NUM_128 &&
+        (fiaInfo_->n1Size & (fiaInfo_->n1Size - 1)) != 0) {
+        return true;
+    }
     if (!IsCapableBasicCheckMla()) {
         return false;
     }
