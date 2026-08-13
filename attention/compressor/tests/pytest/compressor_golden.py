@@ -1036,8 +1036,6 @@ def run_compressor_eager(
         (cpu_score_state.shape[0], cpu_score_state.shape[1], cpu_score_state.shape[2]),
         dtype=torch.bool,
     )
-    # cpu_compressor 返回 5 元组（39321f448 引入），pytest 单独调用不需要中间量，
-    # 取前两项即可（grad_enabled 默认 False，不导出 softmax/kv）
     cpu_out, cmp_kv_mask, *_ = cpu_compressor(
         x,
         wkv,
@@ -1129,7 +1127,7 @@ def run_compressor_eager(
     if seqused is not None:
         seqused = torch.tensor(seqused).to(torch.int32).to("npu:%s" % DEVICE_ID)
     # ======================== execute npu finish ================================
-    # start run custom ops（公开包装，pytest 单独调用不需要中间量）
+    # start run custom ops
     npu_out = compressor(
         x,
         wkv,
