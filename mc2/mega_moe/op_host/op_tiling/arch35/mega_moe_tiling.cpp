@@ -924,7 +924,8 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
         flagElementCount += static_cast<uint64_t>(tilingData->aicNum) * INT_CACHELINE;
     }
     if (useMteA8W8Wave) {
-        flagElementCount += moeExpertCount * tilingData->aicNum * INT_CACHELINE;
+        uint64_t maxGmm2WaveCount = maxWavesPerExpert + moeExpertCount;
+        flagElementCount += maxGmm2WaveCount * tilingData->aicNum * INT_CACHELINE;
     }
     if (useGroupSyncCounters) {
         flagElementCount += tilingData->combineSyncSlotCountPerExpert * moeExpertCount * INT_CACHELINE;
