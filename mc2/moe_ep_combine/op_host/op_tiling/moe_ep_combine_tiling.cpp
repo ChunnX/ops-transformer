@@ -99,7 +99,8 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
                     return ge::GRAPH_FAILED);
     const int64_t recvxDim0 = recvxShape->GetStorageShape().GetDim(0);
     const int64_t recvxDim1 = recvxShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(recvxDim0 <= 0, OP_LOGE(nodeName, "x dim0(A) must be positive, but got %ld.", recvxDim0),
+    // 允许本 rank 收到的 token 数为 0（所有专家均无 token 的情况）：dim0(A) 可为 0，但不能为负。
+    OP_TILING_CHECK(recvxDim0 < 0, OP_LOGE(nodeName, "x dim0(A) must be non-negative, but got %ld.", recvxDim0),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (recvxDim1 < H_MIN) || (recvxDim1 > H_MAX),
