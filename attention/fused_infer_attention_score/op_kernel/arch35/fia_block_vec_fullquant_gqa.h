@@ -155,7 +155,8 @@ public:
     bool isSkipMask{false};
 
     // ==================== Functions ======================
-    __aicore__ inline FAFullQuantGqaBlockVec(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FAFullQuantGqaBlockVec(ConstInfoX &constInfo)
+        : constInfo(constInfo){};
 
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *actualSeqQlenAddr,
                                         __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *pScale,
@@ -346,7 +347,6 @@ public:
     {
         CopyQueryScaleSlice(dstTensor, 0, 1, runInfo);
     }
-
 
     __aicore__ inline void CopyKeyScaleSlice(const LocalTensor<float> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
                                              RunInfoX &runInfo, bool isPreload)
@@ -677,7 +677,6 @@ public:
     {
         return;
     }
-
 
     __aicore__ inline void CopyOutAttentionOut(RunInfoX runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
                                                uint32_t mDealSize)
