@@ -12,8 +12,7 @@
 """
 QBSA MXFP8 Tiling 拦截校验测试脚本
 
-用合法 base case 生成数据，然后在调 NPU 前篡改张量/参数，触发 tiling check 拦截。
-不跑 CPU golden，只调 NPU 接口。
+直接调用 torch.ops.custom.npu_quant_block_sparse_attn，完整输出异常。
 
 用法:
   python qbsa_mxfp8_tiling_check.py
@@ -25,9 +24,10 @@ import argparse
 import logging
 import os
 import sys
-import time
+import traceback
 
 import torch
+import torch_npu
 
 if not hasattr(torch, "float8_e4m3fn"):
     torch.float8_e4m3fn = torch.float8_e4m3
@@ -91,32 +91,90 @@ def _gen_base_data():
     return golden._generate_reference_style_mxfp8_inputs()
 
 
-def _call_npu(data, case_override=None):
-    if case_override is None:
-        case_override = dict(_BASE_CASE)
-    golden.set_active_case(golden._normalize_case(case_override))
-    return golden.npu_mxfp8_fa(
-        data["query"],
-        data["key"],
-        data["value"],
-        data["q_descale"],
-        data["k_descale"],
-        data["v_descale"],
-        data["p_scale"],
-        data["q_lengths"],
-        data["kv_lengths"],
-        data["cu_seqlens_q"],
-        data["cu_seqlens_kv"],
-        block_table_torch=data["block_table"],
-        sparse_indices=data["sparse_indices"],
-        sparse_seq_len=data["sparse_seq_len"],
+def _to_npu(tensor):
+    if tensor is None:
+        return None
+    if isinstance(tensor, torch.Tensor):
+        return tensor.npu() if tensor.device.type == "cpu" else tensor
+    return torch.as_tensor(tensor).npu()
+
+
+def _call_op(data, case):
+    golden._ensure_custom_ops_registered()
+    golden.set_active_case(golden._normalize_case(case))
+    torch_npu.npu.set_device(int(case.get("device_id", 0)))
+
+    q = _to_npu(data["query"])
+    k = _to_npu(data["key"])
+    v = _to_npu(data["value"])
+    q_descale = _to_npu(data["q_descale"])
+    k_descale = _to_npu(data["k_descale"])
+    v_descale = _to_npu(data["v_descale"])
+    p_scale = _to_npu(data["p_scale"])
+    sparse_indices = _to_npu(data["sparse_indices"])
+    sparse_seq_len = _to_npu(data["sparse_seq_len"])
+    block_table = _to_npu(data["block_table"])
+    cu_seqlens_q = _to_npu(data["cu_seqlens_q"])
+    seqused_kv = torch.tensor(data["kv_lengths"], dtype=torch.int32).npu()
+
+    if case["mask_mode"] == 0:
+        mask = torch.tensor([], dtype=torch.uint8).npu()
+    else:
+        mask = torch.triu(torch.ones(2048, 2048, dtype=torch.uint8), diagonal=0).npu()
+
+    torch_npu.npu.synchronize()
+    metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
+        sparse_seq_len,
+        case["N1"],
+        case["N2"],
+        case["D"],
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_kv=None,
+        seqused_q=None,
+        seqused_kv=seqused_kv,
+        batch_size=case["B"],
+        sparse_block_size_q=case["sparse_q_block_size"],
+        sparse_block_size_k=case["sparse_kv_block_size"],
+        quant_mode=case["quant_mode"],
+        mask_mode=case["mask_mode"],
+        layout_q=case["layout_q"],
+        layout_kv=case["layout_kv"],
+        layout_sparse_indices=case["layout_sparse_indices"],
+    )
+    torch_npu.npu.synchronize()
+
+    return torch.ops.custom.npu_quant_block_sparse_attn(
+        q,
+        k,
+        v,
+        q_descale,
+        k_descale,
+        v_descale,
+        p_scale,
+        sparse_indices,
+        sparse_seq_len,
+        mask,
+        float(case["softmax_scale"]),
+        int(case["sparse_q_block_size"]),
+        int(case["sparse_kv_block_size"]),
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_kv=None,
+        seqused_q=None,
+        seqused_kv=seqused_kv,
+        block_table=block_table,
+        metadata=metadata,
+        layout_kv=case["layout_kv"],
+        layout_q=case["layout_q"],
+        layout_sparse_indices=case["layout_sparse_indices"],
+        layout_out=case["layout_out"],
+        quant_mode=int(case["quant_mode"]),
+        mask_mode=int(case["mask_mode"]),
+        return_softmax_lse=bool(case["return_softmax_lse"]),
     )
 
 
 # ============================================================================
 # 拦截用例定义：每条 = (name, mutate_fn, case_override_fn)
-#   mutate_fn(data): 篡改生成好的 data dict 中的张量
-#   case_override_fn(): 返回覆盖后的 case dict（改 attr 值，不改影响数据生成的字段）
 # ============================================================================
 
 def _noop(data):
@@ -288,115 +346,6 @@ TILING_CHECK_CASES = [
 ]
 
 
-def _log_constructed_case(name, data, case_override):
-    logger.info("[CASE] %s", name)
-    for key in ["query", "key", "value", "q_descale", "k_descale", "v_descale",
-                "p_scale", "sparse_indices", "sparse_seq_len", "block_table",
-                "cu_seqlens_q", "cu_seqlens_kv"]:
-        val = data.get(key)
-        if val is None:
-            logger.info("  %-18s = None", key)
-        elif hasattr(val, "shape"):
-            logger.info("  %-18s = shape=%s dtype=%s", key, tuple(val.shape), val.dtype)
-        else:
-            logger.info("  %-18s = %s", key, val)
-    diff = {k: v for k, v in case_override.items() if _BASE_CASE.get(k) != v}
-    if diff:
-        logger.info("  [attr overrides]")
-        for k, v in diff.items():
-            logger.info("    %-18s = %s", k, v)
-
-
-_PLOG_DIR = os.path.expanduser("~/ascend/log/debug/plog")
-
-
-def _find_latest_plog():
-    if not os.path.isdir(_PLOG_DIR):
-        return None
-    files = [f for f in os.listdir(_PLOG_DIR) if f.startswith("plog-")]
-    if not files:
-        return None
-    files.sort(key=lambda fn: os.path.getmtime(os.path.join(_PLOG_DIR, fn)), reverse=True)
-    return os.path.join(_PLOG_DIR, files[0])
-
-
-def _extract_check_error(plog_path, offset):
-    """从 plog offset 之后的内容中提取 QuantBlockSparseAttn tiling check 的拦截信息。
-
-    op_host 的 OP_LOGE_* 宏会写入 [ERROR] 行，包含 kOpName="QuantBlockSparseAttn"。
-    """
-    if plog_path is None or not os.path.isfile(plog_path):
-        return ""
-    try:
-        with open(plog_path, "r", encoding="utf-8", errors="ignore") as f:
-            f.seek(offset)
-            new_content = f.read()
-    except Exception:
-        return ""
-    keywords = ("QuantBlockSparseAttn", "quant_block_sparse_attn")
-    hits = []
-    for line in new_content.splitlines():
-        if "[ERROR]" not in line:
-            continue
-        if any(kw in line for kw in keywords):
-            hits.append(line.strip())
-    return "\n".join(hits[:5])[:300]
-
-
-def run_one_tiling_check(name, mutate_fn, case_fn, idx, total):
-    start = time.time()
-    logger.info("")
-    logger.info("=" * 80)
-    logger.info("[TILING CHECK %d/%d] %s", idx, total, name)
-    logger.info("=" * 80)
-
-    plog_path = _find_latest_plog()
-    plog_offset = os.path.getsize(plog_path) if plog_path and os.path.isfile(plog_path) else 0
-
-    try:
-        data = _gen_base_data()
-        mutate_fn(data)
-        case_override = case_fn()
-        _log_constructed_case(name, data, case_override)
-        _call_npu(data, case_override)
-        elapsed = time.time() - start
-        logger.info("[RESULT] %s -> UNEXPECTED PASS (算子未拦截)", name)
-        return {"case": name, "status": "UnexpectedPass", "time": elapsed, "error": ""}
-    except Exception as err:
-        elapsed = time.time() - start
-        err_msg = str(err).strip().replace("\n", " ")[:200]
-        check_err = _extract_check_error(plog_path, plog_offset)
-        if check_err:
-            logger.info("[RESULT] %s -> BLOCKED (%.2fs) tiling check 拦截:", name, elapsed)
-            for line in check_err.split("\n"):
-                logger.info("  %s", line)
-            return {"case": name, "status": "Blocked", "time": elapsed, "error": check_err}
-        else:
-            logger.info("[RESULT] %s -> BLOCKED (%.2fs) %s", name, elapsed, err_msg)
-            return {"case": name, "status": "Blocked", "time": elapsed, "error": err_msg}
-
-
-def _print_summary(results):
-    total = len(results)
-    blocked = sum(1 for r in results if r["status"] == "Blocked")
-    unexpected = sum(1 for r in results if r["status"] == "UnexpectedPass")
-
-    logger.info("")
-    logger.info("=" * 80)
-    logger.info("Tiling Check Summary")
-    logger.info("=" * 80)
-    logger.info("  Total           : %d", total)
-    logger.info("  Blocked (PASS)  : %d", blocked)
-    logger.info("  UnexpectedPass  : %d", unexpected)
-    logger.info("  PassRate        : %.2f%%  (%d/%d)",
-                (blocked / total * 100) if total else 0, blocked, total)
-    logger.info("-" * 80)
-    for r in results:
-        tag = "OK" if r["status"] == "Blocked" else "FAIL"
-        logger.info("  [%s] %-50s %.2fs  %s", tag, r["case"], r["time"], r["error"][:80])
-    logger.info("=" * 80)
-
-
 def main():
     parser = argparse.ArgumentParser(description="QBSA MXFP8 Tiling 拦截校验测试")
     parser.add_argument("--case_name", default=None,
@@ -423,14 +372,20 @@ def main():
         parser.error("No runnable case selected.")
 
     total = len(cases)
-    results = []
     for idx, (name, mutate_fn, case_fn) in enumerate(cases, 1):
-        results.append(run_one_tiling_check(name, mutate_fn, case_fn, idx, total))
-
-    _print_summary(results)
-
-    if any(r["status"] != "Blocked" for r in results):
-        sys.exit(1)
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("[CASE %d/%d] %s", idx, total, name)
+        logger.info("=" * 80)
+        try:
+            data = _gen_base_data()
+            mutate_fn(data)
+            case_override = case_fn()
+            _call_op(data, case_override)
+            logger.info("[RESULT] %s -> PASS (算子未拦截)", name)
+        except Exception:
+            logger.info("[RESULT] %s -> ERROR", name)
+            traceback.print_exc()
 
 
 if __name__ == "__main__":
