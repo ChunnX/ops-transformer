@@ -105,6 +105,7 @@ private:
     /* 编译期常量的基本块信息 */
     static constexpr uint64_t SYNC_MODE = 4;
     static constexpr uint32_t PRELOAD_NUM = 3;
+    static constexpr uint32_t SPARSE_BLOCK_ALIGN_NUM = 128;
 
     uint32_t crossCoreSyncBufId = 0;
     /* 核间通道 */
@@ -263,7 +264,6 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Par
     constInfo.cmpS2Size = sparseFlashMLACmpParams.cmpKvSeqSize;
     constInfo.oriSparseBlockCount = sparseFlashMLABaseParams.oriSparseBlockCount;
     constInfo.cmpSparseBlockCount = sparseFlashMLACmpParams.cmpSparseBlockCount;
-    constexpr uint32_t SPARSE_BLOCK_ALIGN_NUM = 128;
     constInfo.alignedOriSparseBlockCount =
         (constInfo.oriSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) / SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
     constInfo.alignedCmpSparseBlockCount =
@@ -278,10 +278,8 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Par
     constInfo.tileSize = 0;
     constInfo.dSizeRope = 64;
     constInfo.oriKeyStride0 = sparseFlashMLABaseParams.oriKeyStride0;
-    constInfo.oriKvStride = static_cast<uint32_t>(sparseFlashMLABaseParams.oriKeyStride0);
     if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
         constInfo.cmpKeyStride0 = sparseFlashMLACmpParams.cmpKeyStride0;
-        constInfo.cmpKvStride = static_cast<uint32_t>(sparseFlashMLACmpParams.cmpKeyStride0);
     }
     if ASCEND_IS_AIV {
         constInfo.softmaxScale = sparseFlashMLABaseParams.softmaxScale;

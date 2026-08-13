@@ -245,6 +245,8 @@ struct RunInfo {
     bool returnSoftmaxLse;                                                                                             \
     uint32_t oriSparseBlockCount;                                                                                      \
     uint32_t cmpSparseBlockCount;                                                                                      \
+    uint32_t alignedOriSparseBlockCount;                                                                               \
+    uint32_t alignedCmpSparseBlockCount;                                                                                \
     uint32_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */                                               \
     uint32_t actualLenDimsOriKV; /* seqused_ori_kv的维度 */                                                         \
     uint32_t actualLenDimsCmpKV; /* seqused_cmp_kv的维度 */                                                         \
@@ -262,11 +264,7 @@ struct RunInfo {
     uint32_t cmpRatio;                                                                                                 \
     float softmaxScale;                                                                                                \
     uint32_t oriMaskMode;                                                                                              \
-    uint32_t cmpMaskMode;                                                                                              \
-    uint32_t oriKvStride;                                                                                              \
-    uint32_t cmpKvStride;                                                                                              \
-    uint32_t alignedOriSparseBlockCount;                                                                               \
-    uint32_t alignedCmpSparseBlockCount
+    uint32_t cmpMaskMode                                                                                              \
 
 struct ConstInfo {
     COMMON_CONST_INFO;

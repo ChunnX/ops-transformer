@@ -661,9 +661,6 @@ TEST_PARAMS = {
         "template_mode": ["CSA"],
         "cmp_kv_topk_mode": ["fullK"],
         "cmp_sparse_indices_mode": ["full"],
-        # "q_datarange": ["[1, 1]"],
-        # "ori_kv_datarange": ["[1, 1]"],
-        # "cmp_kv_datarange": ["[1, 1]"],
         },
 
     "smla_prefill_pro": {
