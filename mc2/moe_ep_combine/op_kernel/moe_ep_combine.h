@@ -233,6 +233,7 @@ private:
     uint32_t aivId_{0};
     uint64_t activeBatchHandle_{0};
     uint32_t preparedWriteCount_{0};
+    uint32_t batchCapacity_{HCOMM_BATCH_CAPACITY};
     bool pendingWriteValid_{false};
     GM_ADDR pendingWriteDst_{nullptr};
     GM_ADDR pendingWriteSrc_{nullptr};
@@ -251,6 +252,10 @@ MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_
     tpipe_ = pipe;
     tilingData_ = tilingData;
     aivId_ = GetBlockIdx();
+    batchCapacity_ = aivId_ + 1U;
+    if (batchCapacity_ > HCOMM_BATCH_CAPACITY) {
+        batchCapacity_ = HCOMM_BATCH_CAPACITY;
+    }
     combineSendDataWorkspaceAddr_ = workspace;
     epWorldSize_ = tilingData_->cfg.epWorldSize;
     numMaxTokensPerRank_ = tilingData_->cfg.numMaxTokensPerRank;
@@ -410,7 +415,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWriteW
             pendingNotifyValue_, batchBuffer, HCOMM_BATCH_BUFFER_BYTES);
         ascendc_assert(ret == HCOMM_SUCCESS, "WriteWithNotifyNbiPrepare failed, ret=%d", ret);
         ++preparedWriteCount_;
-        if (preparedWriteCount_ == HCOMM_BATCH_CAPACITY) {
+        if (preparedWriteCount_ == batchCapacity_) {
             ret = hcomm_.WriteWithNotifyNbiPrepareEnd<true>(activeBatchHandle_, batchBuffer);
             ascendc_assert(ret == HCOMM_SUCCESS, "WriteWithNotifyNbiPrepareEnd failed, ret=%d", ret);
             preparedWriteCount_ = 0;
