@@ -23,6 +23,8 @@
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
 #include "quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h"
 #include "../../../op_kernel/all_gather_matmul_tiling_data.h"
+#include "apace/tiling/quant_matmul_tiling_swat.h"
+#include "apace/tiling/quant_matmul_tiling_data.h"
 
 namespace optiling {
 
@@ -77,6 +79,8 @@ protected:
 private:
     Mc2Tiling::AllGatherMatmulTilingDataFp8 allGatherMatmulTilingDataFp8Self_;
     Mc2Tiling::AllGatherMatmulTilingDataFp8 *allGatherMatmulTilingDataFp8_;
+    bool useApaceImpl_{false};
+    ge::graphStatus DoApaceMatmulTiling();
     uint64_t myWorkSpaceSize_{0U};
     uint64_t scale1kSpaceSize_{0U};
     mc2tiling::Mc2QuantMode quantMmMode_{mc2tiling::Mc2QuantMode::INVALID_MODE};

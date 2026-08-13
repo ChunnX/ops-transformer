@@ -34,6 +34,11 @@ if (BUILD_OPEN_PROJECT)  # custom
             OP_NAME AllGatherMatmulV2
             OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
         )
+        # Add mc2/common/op_kernel to ccec include path for apace kernel headers
+        add_ops_compile_options(
+            OP_NAME AllGatherMatmulV2
+            OPTIONS -I${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
+        )
     endif()
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE all_gather_matmul_v2 all_gather_matmul_v2 ACLNNTYPE aclnn aclnn_inner)

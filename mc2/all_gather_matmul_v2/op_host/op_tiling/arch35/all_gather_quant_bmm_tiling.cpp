@@ -63,6 +63,9 @@ constexpr int32_t IDX_B_LOW = 6;
 
 constexpr uint32_t X1_INDEX = 0;
 constexpr uint32_t X2_INDEX = 1;
+
+constexpr uint32_t APACE_DEFAULT_TILE_M = 512;
+constexpr uint32_t APACE_M_TAIL_ALIGN = 16;
 } // namespace
 
 static constexpr int64_t CMP_MAX_LEN = 7;
@@ -83,6 +86,16 @@ bool AllGatherQuantBmmTiling::IsCapable()
     if (mc2tiling::CheckDataTypeVaild(args_.geAType, mc2tiling::FP8DTYPE_SUPPORT_LIST) &&
         mc2tiling::CheckDataTypeVaild(args_.geBType, mc2tiling::FP8DTYPE_SUPPORT_LIST)) {
         OP_LOGI(opName_, "Start with allgather quantbmm tiling.");
+        if (npuArch_ == NpuArch::DAV_3510 &&
+            std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0 &&
+            args_.geAType == ge::DataType::DT_FLOAT8_E4M3FN &&
+            args_.geBType == ge::DataType::DT_FLOAT8_E4M3FN) {
+            auto scaleInv1Desc = context_->GetOptionalInputDesc(SCALE_INV1);
+            if (scaleInv1Desc != nullptr && scaleInv1Desc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0) {
+                useApaceImpl_ = true;
+                OP_LOGI(opName_, "useApaceImpl=true, apace CCU tiling for MX FP8 e4m3.");
+            }
+        }
         return true;
     }
     // geAType 和 geBType 为fp4时做tiling
@@ -530,6 +543,29 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
     MC2_CHECK_LOG_RET(opName_, CheckInput());
     SetTilingKeyParams();
+    if (useApaceImpl_) {
+        SetRcsTilingData(MutableRCSTilingDataA5());
+        auto &param = MutableRCSTilingDataA5();
+        uint32_t tileM = std::min(APACE_DEFAULT_TILE_M, static_cast<uint32_t>(args_.mValue));
+        param.tileCnt = static_cast<uint32_t>(args_.mValue) / tileM;
+        param.tailM = static_cast<uint32_t>(args_.mValue) % tileM;
+        param.tailCnt = (param.tailM > 0) ? 1 : 0;
+        tileMValue_ = tileM;
+        tailMValue_ = param.tailM;
+
+        OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Tiling SetHcommCfg failed."),
+                        return ge::GRAPH_FAILED);
+
+        DoAllGatherTiling(MutableRCSTilingDataA5(), MutableTCubeTileTilingData(),
+                          MutableTCubeTailTilingData(),
+                          allGatherMatmulTilingDataFp8_->debugMode,
+                          allGatherMatmulTilingDataFp8_->dataType);
+
+        MC2_CHECK_LOG_RET(opName_, DoApaceMatmulTiling());
+
+        allGatherMatmulTilingDataFp8_->useApaceImpl = 1;
+        return ge::GRAPH_SUCCESS;
+    }
     OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Tiling SetHcommCfg failed."),
                     return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingDataA5());
@@ -542,6 +578,29 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     }
     DoAllGatherTiling(MutableRCSTilingDataA5(), MutableTCubeTileTilingData(), MutableTCubeTailTilingData(),
                       allGatherMatmulTilingDataFp8_->debugMode, allGatherMatmulTilingDataFp8_->dataType);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus AllGatherQuantBmmTiling::DoApaceMatmulTiling()
+{
+    auto &param = MutableRCSTilingDataA5();
+    uint32_t tileM = static_cast<uint32_t>(tileMValue_);
+    uint32_t tileCnt = param.tileCnt;
+    uint32_t tailM = param.tailM;
+    uint32_t tailCnt = param.tailCnt;
+    uint32_t paddedTailM = (tailM > 0) ? ((tailM + APACE_M_TAIL_ALIGN - 1) / APACE_M_TAIL_ALIGN * APACE_M_TAIL_ALIGN) : 0U;
+    uint32_t totalLogicalM = static_cast<uint32_t>(args_.rankDim) * (tileCnt * tileM + tailCnt * paddedTailM);
+
+    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+    tilingEngine.SetOptimizeEnable(false);
+    tilingEngine.SetMTailAlignEnable(true);
+    tilingEngine.GetTilingData(static_cast<uint64_t>(totalLogicalM), args_.nValue, args_.kValue,
+                               false, args_.isBTrans,
+                               allGatherMatmulTilingDataFp8_->mmTile);
+
+    OP_LOGI(opName_, "DoApaceMatmulTiling: totalLogicalM=%u, n=%lu, k=%lu, isBTrans=%d, usedCoreNum=%u",
+            totalLogicalM, args_.nValue, args_.kValue, args_.isBTrans,
+            allGatherMatmulTilingDataFp8_->mmTile.usedCoreNum);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -699,6 +758,25 @@ ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
             Mc2PrintTCubeTilingL2cache(context_->GetNodeName(), MutableTCubeTailTilingTileL2());
             Mc2PrintTCubeTilingWindowParam(context_->GetNodeName(), MutableTCubeTailTilingWindowParam());
         }
+    }
+
+    if (useApaceImpl_) {
+        printf("==== Apace CCU Tiling ====\n");
+        printf("[Input] m=%lu, n=%lu, k=%lu, rankDim=%lu, isBTrans=%d, aicCoreNum=%lu\n",
+               args_.mValue, args_.nValue, args_.kValue, args_.rankDim, args_.isBTrans, args_.aicCoreNum);
+        printf("[param] tileCnt=%u, tileM=%lu, tailM=%u, tailCnt=%u, rankM=%u, rankK=%u, gatherLen=%lu\n",
+               MutableRCSTilingDataA5().tileCnt, tileMValue_, MutableRCSTilingDataA5().tailM,
+               MutableRCSTilingDataA5().tailCnt, MutableRCSTilingDataA5().rankM,
+               MutableRCSTilingDataA5().rankK, MutableRCSTilingDataA5().gatherLen);
+        printf("[mmTile] baseM=%u, baseN=%u, baseK=%u, usedCoreNum=%u, stepK=%u, nBufferNum=%u\n",
+               allGatherMatmulTilingDataFp8_->mmTile.baseM,
+               allGatherMatmulTilingDataFp8_->mmTile.baseN,
+               allGatherMatmulTilingDataFp8_->mmTile.baseK,
+               allGatherMatmulTilingDataFp8_->mmTile.usedCoreNum,
+               allGatherMatmulTilingDataFp8_->mmTile.stepK,
+               allGatherMatmulTilingDataFp8_->mmTile.nBufferNum);
+        printf("[Workspace] total=%lu\n", myWorkSpaceSize_);
+        printf("==========================\n");
     }
 
     context_->SetBlockDim(args_.aicCoreNum);

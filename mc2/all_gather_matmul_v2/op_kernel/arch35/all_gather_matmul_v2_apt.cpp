@@ -27,6 +27,9 @@
 #include "all_gather_quant_bmm.h"
 #include "all_gather_quant_bmm_perblock.h"
 #endif
+#if ((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) && (ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN))
+#include "apace/kernel/all_gather_quant_matmul/all_gather_mx_matmul_ccu_impl.h"
+#endif
 
 using namespace Mc2Tiling;
 using namespace AllGatherMatmulImpl;
@@ -37,11 +40,6 @@ using namespace AllGatherMatmulImpl;
         using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, B_DTYPE, isTransB>;                           \
         using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, typename BiasType<BIAS_DTYPE>::type>;      \
         using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;                                     \
-        REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataV2);                                               \
-        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataV2 *)tilingGM;                                       \
-        __gm__ void *mc2InitTiling = (__gm__ void *)(&(tiling->mc2InitTiling));                                        \
-        __gm__ void *mc2CcTiling = (__gm__ void *)(&(tiling->mc2CcTiling));                                            \
-        GET_TILING_DATA(tilingData, tilingGM);                                                                         \
         templateClass<aType, bType, biasType, cType, hcclCommType> op;                                                 \
         op.Init(aGM, bGM, biasGM, cGM, (__gm__ uint8_t *)context, workspaceGM, gatherOut, &tilingData, mc2InitTiling,  \
                 mc2CcTiling, &pipe);                                                                                   \
@@ -50,11 +48,6 @@ using namespace AllGatherMatmulImpl;
 
 #define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_OP_IMPL(templateClass, isMxFp4, hcclCommType, ...)                         \
     do {                                                                                                               \
-        REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8);                                              \
-        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8 *)tilingGM;                                      \
-        __gm__ void *mc2InitTiling = (__gm__ void *)(&(tiling->mc2InitTiling));                                        \
-        __gm__ void *mc2CcTiling = (__gm__ void *)(&(tiling->mc2CcTiling));                                            \
-        GET_TILING_DATA(tilingData, tilingGM);                                                                         \
         templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, uint64_t, DTYPE_Y, __VA_ARGS__, isMxFp4, hcclCommType> op;       \
         op.Init(aGM, bGM, scaleInv1, scaleInv2, biasGM, scale, cGM, gatherOut, workspaceGM, (__gm__ uint8_t *)context, \
                 &tilingData, mc2InitTiling, mc2CcTiling, &pipe);                                                       \
@@ -63,35 +56,61 @@ using namespace AllGatherMatmulImpl;
 
 #define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(templateClass, isMxFp4, hcclCommType, ...)                      \
     do {                                                                                                               \
-        REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8);                                              \
-        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8 *)tilingGM;                                      \
-        __gm__ void *mc2InitTiling = (__gm__ void *)(&(tiling->mc2InitTiling));                                        \
-        __gm__ void *mc2CcTiling = (__gm__ void *)(&(tiling->mc2CcTiling));                                            \
-        GET_TILING_DATA(tilingData, tilingGM);                                                                         \
         templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, fp8_e8m0_t, DTYPE_Y, __VA_ARGS__, isMxFp4, hcclCommType> op;     \
         op.Init(aGM, bGM, scaleInv1, scaleInv2, biasGM, scale, cGM, gatherOut, workspaceGM, (__gm__ uint8_t *)context, \
                 &tilingData, mc2InitTiling, mc2CcTiling, &pipe);                                                       \
         op.Process();                                                                                                  \
     } while (0)
 
+#define INVOKE_ALL_GATHER_QUANT_MATMUL_APACE_CCU_IMPL()                              \
+    do {                                                                              \
+        AllGatherQuantMatmulImpl::AllGatherMxMatmulCcuImpl<                           \
+            DTYPE_X1, DTYPE_X2, DTYPE_Y> impl(&tilingData);                           \
+        impl.Init(aGM, scaleInv1, bGM, scaleInv2, cGM, workspaceGM);                 \
+        impl.Run();                                                                   \
+    } while (0)
+
 template <TPL_PARAMS_COMM, TPL_QUANT_BMM_PARAMS_COMM, TPL_HCCL_COMM_MODE>
 __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR scaleInv1,
-                                                GM_ADDR scaleInv2, GM_ADDR scale, GM_ADDR cGM, GM_ADDR gatherOut,
-                                                GM_ADDR amax, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+                                                 GM_ADDR scaleInv2, GM_ADDR scale, GM_ADDR cGM, GM_ADDR gatherOut,
+                                                 GM_ADDR amax, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_0);
     TPipe pipe;
     __gm__ HcclCombinOpParam *context = (__gm__ HcclCombinOpParam *)(GetHcclContext<0>());
 
-#if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) ||                                           \
-     (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                    \
-      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) ||                                   \
-     ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1)))
-// MX
+#if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
+    REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataV2);
+    GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::AllGatherMatmulTilingDataV2, tilingData, tilingGM);
+    auto tilingFp16 = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataV2 *)tilingGM;
+    __gm__ void *mc2InitTiling = (__gm__ void *)(&(tilingFp16->mc2InitTiling));
+    __gm__ void *mc2CcTiling = (__gm__ void *)(&(tilingFp16->mc2CcTiling));
+
+    if constexpr (SCALETYPE == SCALE_TYPE_NOT_IS_MX && INPUT_IS_BF16FP16 &&
+                  OUTPUTDTYPE == OUTPUT_TYPE_IS_FP16_BF16) {
+        INVOKE_ALLGATHERMM_FP16_BF16_V2_OP_IMPL(AllGatherMatmulFP16BF16, TRANS_B, HCCL_COMM_MODE);
+    }
+
+#else
+    REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8);
+    GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::AllGatherMatmulTilingDataFp8, tilingData, tilingGM);
+    auto tilingFp8 = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8 *)tilingGM;
+    __gm__ void *mc2InitTiling = (__gm__ void *)(&(tilingFp8->mc2InitTiling));
+    __gm__ void *mc2CcTiling = (__gm__ void *)(&(tilingFp8->mc2CcTiling));
+
 #if (ORIG_DTYPE_X1 != DT_HIFLOAT8)
     if constexpr (SCALETYPE == SCALE_TYPE_IS_MX && !INPUT_IS_BF16FP16 && QUANTMMMODE == TPL_DEFAULT_MODE) {
-        if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&
-            ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) {
+        if ((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) && (ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN)) {
+#if ((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) && (ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN))
+            if (tilingData.useApaceImpl) {
+                INVOKE_ALL_GATHER_QUANT_MATMUL_APACE_CCU_IMPL();
+            } else
+#endif
+            {
+                INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(AllGatherQuantBmm, false, HCCL_COMM_MODE, false, TRANS_B);
+            }
+        } else if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&
+                   ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) {
             INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(AllGatherQuantBmm, false, HCCL_COMM_MODE, false, TRANS_B);
         } else if ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1)) {
             INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(AllGatherQuantBmm, true, HCCL_COMM_MODE, false, TRANS_B);
@@ -100,14 +119,10 @@ __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADD
 #endif
     if constexpr (SCALETYPE == SCALE_TYPE_NOT_IS_MX && !INPUT_IS_BF16FP16 && QUANTMMMODE == TPL_DEFAULT_MODE) {
         INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_OP_IMPL(AllGatherQuantBmm, false, HCCL_COMM_MODE, false, TRANS_B);
-    } else if constexpr (SCALETYPE == SCALE_TYPE_NOT_IS_MX && !INPUT_IS_BF16FP16 && QUANTMMMODE == TPL_PERBLOCK_MODE) {
+    } else if constexpr (SCALETYPE == SCALE_TYPE_NOT_IS_MX && !INPUT_IS_BF16FP16 &&
+                         QUANTMMMODE == TPL_PERBLOCK_MODE) {
         INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_PERBLOCK_OP_IMPL(Mc2QuantBatchMatmulV3::MatMulPerBlockASWNonContiguous,
                                                              Mc2CoreType::ON_CUBE, HCCL_COMM_MODE, false, TRANS_B);
-    }
-#elif ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
-    if constexpr (SCALETYPE == SCALE_TYPE_NOT_IS_MX && INPUT_IS_BF16FP16 &&
-                  OUTPUTDTYPE == OUTPUT_TYPE_IS_FP16_BF16) { // full mesh+ no nd2nz +biasNoNeedCast
-        INVOKE_ALLGATHERMM_FP16_BF16_V2_OP_IMPL(AllGatherMatmulFP16BF16, TRANS_B, HCCL_COMM_MODE);
     }
 #endif
 }

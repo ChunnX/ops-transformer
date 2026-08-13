@@ -46,7 +46,7 @@
 #include "apace/basic/fragment_tensor/fragment_tensor_api.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"
 #include "apace/tiling/comm_tiling_data.h"
-#include "apace/kernel/all_gather_quant_matmul/all_gather_mx_matmul_ccu_tiling_data.h"
+#include "../../../../../all_gather_matmul_v2/op_kernel/all_gather_matmul_tiling_data.h"
 #include "apace/kernel/all_gather_quant_matmul/qmm_mx_kernel_ag_udma.h"
 
 namespace AllGatherQuantMatmulImpl {
@@ -93,7 +93,7 @@ struct HcommCommWaitPolicy {
 template <typename AType, typename BType, typename CType>
 class AllGatherMxMatmulCcuImpl {
 public:
-    __aicore__ inline AllGatherMxMatmulCcuImpl(ccuAllGatherMxMatmulTilingData *tilingData)
+    __aicore__ inline AllGatherMxMatmulCcuImpl(Mc2Tiling::AllGatherMatmulTilingDataFp8 *tilingData)
         : tilingData_(tilingData) {}
 
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
@@ -111,7 +111,7 @@ private:
     __aicore__ inline void CommitAllGather();
     __aicore__ inline void SetupKernelParams(KernelParams &params);
 
-    ccuAllGatherMxMatmulTilingData *tilingData_;
+    Mc2Tiling::AllGatherMatmulTilingDataFp8 *tilingData_;
 
     GM_ADDR aGM_{};
     GM_ADDR aScaleGM_{};
@@ -150,15 +150,17 @@ private:
 template <typename AType, typename BType, typename CType>
 __aicore__ inline void AllGatherMxMatmulCcuImpl<AType, BType, CType>::InitBaseParams()
 {
-    const auto &ct = tilingData_->commTile;
-    tileCnt_ = static_cast<uint32_t>(ct.splitAxisTileCnt);
-    tileM_ = static_cast<uint32_t>(ct.splitAxisTileSize);
-    tailCnt_ = static_cast<uint32_t>(ct.splitAxisTailCnt);
-    tailM_ = static_cast<uint32_t>(ct.splitAxisTailSize);
+    const auto &param = tilingData_->param;
+    tileCnt_ = param.tileCnt;
+    tileM_ = (param.rankM - param.tailM * param.tailCnt) / param.tileCnt;
+    if (param.tileCnt == 0) {
+        tileM_ = param.rankM;
+    }
+    tailCnt_ = param.tailCnt;
+    tailM_ = param.tailM;
     k_ = tilingData_->mmTile.k;
     n_ = tilingData_->mmTile.n;
-    m_ = static_cast<uint32_t>(ct.splitAxisTileSize * ct.splitAxisTileCnt +
-                               ct.splitAxisTailSize * ct.splitAxisTailCnt);
+    m_ = param.rankM;
     commTurn_ = tileCnt_ + tailCnt_;
     paddedTailM_ = (tailM_ > 0) ? ((tailM_ + kPaddingLength - 1) / kPaddingLength * kPaddingLength) : 0U;
     headRows_ = static_cast<uint64_t>(tileCnt_) * tileM_;
@@ -187,15 +189,15 @@ __aicore__ inline void AllGatherMxMatmulCcuImpl<AType, BType, CType>::Init(
     // HCCL initialization
     commState_.hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
     commState_.hccl_.SetCcTilingV2(
-        static_cast<uint64_t>(offsetof(ccuAllGatherMxMatmulTilingData, mc2CcTiling)));
+        static_cast<uint64_t>(offsetof(Mc2Tiling::AllGatherMatmulTilingDataFp8, mc2CcTiling)));
     rankId_ = commState_.hccl_.GetRankId();
     rankSize_ = commState_.hccl_.GetRankDim();
 
-    // Compute gather buffer addresses
+    // Compute gather buffer addresses (scale first, data second — matches existing kernel layout)
     dataRegionBytes_ = static_cast<uint64_t>(rankSize_) * m_ * dataBytesPerMRow_;
     scaleRegionBytes_ = static_cast<uint64_t>(rankSize_) * m_ * scaleBytesPerMRow_;
-    gatherDataAddr_ = workspaceGM_;
-    gatherScaleAddr_ = workspaceGM_ + dataRegionBytes_;
+    gatherScaleAddr_ = workspaceGM_;
+    gatherDataAddr_ = workspaceGM_ + scaleRegionBytes_;
 
     // Submit AllGather (non-blocking)
     CommitAllGather();
@@ -268,16 +270,3 @@ __aicore__ inline void AllGatherMxMatmulCcuImpl<AType, BType, CType>::Run()
 }
 
 } // namespace AllGatherQuantMatmulImpl
-
-__global__ __aicore__ void AllGatherQuantMatmulCcuKernel(
-    GM_ADDR aGM, GM_ADDR aScaleGM,
-    GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
-    GM_ADDR workspaceGM,
-    ccuAllGatherMxMatmulTilingData tilingData)
-{
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_0);
-    AllGatherQuantMatmulImpl::AllGatherMxMatmulCcuImpl<
-        fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t> impl(&tilingData);
-    impl.Init(aGM, aScaleGM, bGM, bScaleGM, cGM, workspaceGM);
-    impl.Run();
-}
