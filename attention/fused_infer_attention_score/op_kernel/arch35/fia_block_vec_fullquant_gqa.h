@@ -414,6 +414,10 @@ public:
         dataCopyParams.dstStride = (s2BaseSize + blockElemNum - actDataLen) * sizeof(T) / FA_BYTE_BLOCK;
 
         DataCopyPadExtParams<T> dataCopyPadParams;
+        dataCopyPadParams.isPad = true;
+        dataCopyPadParams.leftPadding = 0;
+        dataCopyPadParams.rightPadding = (blockElemNum - (actDataLen % blockElemNum)) % blockElemNum;
+        dataCopyPadParams.paddingValue = 0;
         DataCopyPad(ubTensor, gmTensor, dataCopyParams, dataCopyPadParams);
     }
 
