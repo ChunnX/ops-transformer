@@ -95,9 +95,16 @@ bool FiaTilingNonQuantMlaArch35::IsCapableSparseLayoutCheckMla()
     if (fiaInfo_->n1Size < 1 || fiaInfo_->n1Size > NUM_128) {
         return false;
     }
-    // layout 约束: query TND, output NTD, KV PA_NZ
-    if (fiaInfo_->qLayout != FiaLayout::TND || fiaInfo_->outLayout != FiaLayout::NTD ||
-        !(fiaInfo_->pageAttentionFlag && fiaInfo_->kvLayout == FiaLayout::NZ)) {
+    // layout 约束: query TND
+    if (fiaInfo_->qLayout != FiaLayout::TND) {
+        return false;
+    }
+    // output NTD
+    if (fiaInfo_->outLayout != FiaLayout::NTD) {
+        return false;
+    }
+    // KV PA_NZ
+    if (fiaInfo_->kvLayout != FiaLayout::NZ) {
         return false;
     }
     return true;

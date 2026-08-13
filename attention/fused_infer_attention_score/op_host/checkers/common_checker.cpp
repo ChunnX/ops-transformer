@@ -646,6 +646,13 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
             }
         }
     }
+    if ((fiaInfo.n1Size & (fiaInfo.n1Size - 1)) != 0 &&
+        fiaInfo.sparseMode == SPARSE_MODE_NO_MASK && fiaInfo.attenMaskFlag) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
+            std::to_string(fiaInfo.n1Size).c_str(),
+            "When num_heads is not a power of 2, sparse_mode 0 with atten_mask is not supported in the Decode MLA scenario");
+        return ge::GRAPH_FAILED;
+    }
     OP_LOGI(fiaInfo.opName, "The axis B(%u), qkD(%u), vD(%u), G(%u), qT(%u), kT(%u).",
             fiaInfo.bSize, fiaInfo.qkHeadDim, fiaInfo.vHeadDim, fiaInfo.gSize, fiaInfo.qTSize, fiaInfo.kTSize);
     return ge::GRAPH_SUCCESS;
