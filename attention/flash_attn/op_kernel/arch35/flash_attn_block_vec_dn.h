@@ -182,7 +182,7 @@ public:
         /*--------------------------------------------UB--------------------------------------------*/
         uint32_t addrUb = 0;
         ubMmResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb,
-                                                UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES); // CV通信BUF
+                                               UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES); // CV通信BUF
         addrUb = UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES;
         ubVec2Res_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_VEC2_RES_BUF_BYTES)
                          .template ReinterpretCast<T>(); // 输出BUF: attn_out拷出

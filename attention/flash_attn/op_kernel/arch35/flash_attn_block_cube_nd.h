@@ -434,8 +434,7 @@ public:
                     tileN,
                     (uint32_t)runInfo.actSingleLoopS2Size,
                     false,
-                    false
-                };
+                    false};
                 param.realM = (uint32_t)runInfo.actMSize;
 
                 uint32_t s2Aligned = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U);
