@@ -175,7 +175,7 @@ int test_910b_bf16_float(aclrtStream stream) {
 
   ret = DoFusedGdnGating(stream, aLog, a, b, dtBias, 1.0f, 20.0f, g, betaOutput);
   if (ret != 0) {
-    LOG_PRINT("910B BF16_FLOAT test failed.\n");
+    LOG_PRINT("910B BF16_FLOAT test failed, SOC may not be 910B.\n");
   } else {
     LOG_PRINT("g output:\n");
     PrintOutResult(gShape, &gDeviceAddr);
@@ -194,7 +194,7 @@ int test_910b_bf16_float(aclrtStream stream) {
   aclrtFree(dtBiasDeviceAddr);
   aclrtFree(gDeviceAddr);
   aclrtFree(betaOutputDeviceAddr);
-  return 0;
+  return ret;
 }
 
 int test_310p_fp16(aclrtStream stream) {
@@ -266,7 +266,7 @@ int test_310p_fp16(aclrtStream stream) {
   aclrtFree(dtBiasDeviceAddr);
   aclrtFree(gDeviceAddr);
   aclrtFree(betaOutputDeviceAddr);
-  return 0;
+  return ret;
 }
 
 int main() {
@@ -275,8 +275,11 @@ int main() {
   auto ret = Init(deviceId, &stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-  test_910b_bf16_float(stream);
-  test_310p_fp16(stream);
+  ret = test_910b_bf16_float(stream);
+  if (ret != 0) {
+    LOG_PRINT("910B test failed or not supported, falling back to 310P FP16 test.\n");
+    test_310p_fp16(stream);
+  }
 
   aclrtDestroyStream(stream);
   aclrtResetDevice(deviceId);
