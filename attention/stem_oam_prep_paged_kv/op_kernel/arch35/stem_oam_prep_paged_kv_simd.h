@@ -264,7 +264,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputTotalStemBlockIndex(void)
                 }
             }
             if (i >= startStemBlock && i < endStemBlock) {
-                ProcessKVFlatTest(batchIdx, hKvIdx, stemBlockIdx)
+                ProcessKVFlatTest(batchIdx, hKvIdx, stemBlockIdx);
                 // totalStemBlockIndexLocal.SetValue(setN * 3, batchIdx);
                 // totalStemBlockIndexLocal.SetValue(setN * 3 + 1, hKvIdx);
                 // totalStemBlockIndexLocal.SetValue(setN * 3 + 2, stemBlockIdx);
