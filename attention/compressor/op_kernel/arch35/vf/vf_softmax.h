@@ -1904,10 +1904,10 @@ __simd_vf__ inline void SoftmaxDndBase256(__ubuf__ T *inputAddr, __ubuf__ float 
                 LoadAlign(vregF32_20, srcUb2 + remOffset + ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE);
                 LoadAlign(vregF32_30, srcUb3 + remOffset + ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE);
 
-                FusedExpSub(vregExp00, vregF32_00, max0, pregAll);
-                FusedExpSub(vregExp10, vregF32_10, max1, pregAll);
-                FusedExpSub(vregExp20, vregF32_20, max2, pregAll);
-                FusedExpSub(vregExp30, vregF32_30, max3, pregAll);
+                FusedExpSub(vregExp00, vregF32_00, max00, pregAll);
+                FusedExpSub(vregExp10, vregF32_10, max10, pregAll);
+                FusedExpSub(vregExp20, vregF32_20, max20, pregAll);
+                FusedExpSub(vregExp30, vregF32_30, max30, pregAll);
 
                 Add(vregSum00, vregExp00, vregSum00, pregAll);
                 Add(vregSum10, vregExp10, vregSum10, pregAll);
@@ -2208,10 +2208,10 @@ __simd_vf__ inline void SoftmaxDndBase512(__ubuf__ T *inputAddr, __ubuf__ float 
                 LoadAlign(vregF32_20, srcUb2 + remOffset + ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE);
                 LoadAlign(vregF32_30, srcUb3 + remOffset + ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE);
 
-                FusedExpSub(vregExp00, vregF32_00, max0, pregAll);
-                FusedExpSub(vregExp10, vregF32_10, max1, pregAll);
-                FusedExpSub(vregExp20, vregF32_20, max2, pregAll);
-                FusedExpSub(vregExp30, vregF32_30, max3, pregAll);
+                FusedExpSub(vregExp00, vregF32_00, max00, pregAll);
+                FusedExpSub(vregExp10, vregF32_10, max10, pregAll);
+                FusedExpSub(vregExp20, vregF32_20, max20, pregAll);
+                FusedExpSub(vregExp30, vregF32_30, max30, pregAll);
 
                 Add(vregSum00, vregExp00, vregSum00, pregAll);
                 Add(vregSum10, vregExp10, vregSum10, pregAll);
