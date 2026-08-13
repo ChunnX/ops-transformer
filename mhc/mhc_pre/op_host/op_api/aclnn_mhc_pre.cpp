@@ -739,7 +739,7 @@ static aclnnStatus mHCPreCommonProcess(MhcParamsBase &params, aclOpExecutor *exe
                                executor);
 }
 
-aclnnStatus aclnnMhcPreGetWorkspaceSize(
+static aclnnStatus MhcPreGetWorkspaceSizeCommon(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
     const aclTensor *gammaOptional, double normEps, double hcEps, int64_t opImplMode, aclTensor *hIn,
     aclTensor *hPost, aclTensor *hRes, aclTensor *invRmsOptional, aclTensor *hMixOptional, aclTensor *hPreOptional,
