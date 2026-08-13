@@ -701,9 +701,6 @@ TEST_PARAMS = {
         "template_mode": ["CSA"],
         "cmp_kv_topk_mode": ["fullK"],
         "cmp_sparse_indices_mode": ["full"],
-        # "q_datarange": ["[1, 1]"],
-        # "ori_kv_datarange": ["[1, 1]"],
-        # "cmp_kv_datarange": ["[1, 1]"],
     },
     "smla_prefill_flash": {
             "testcase_name": [None],
@@ -740,16 +737,10 @@ TEST_PARAMS = {
             "template_mode": ["CSA"],
             "cmp_kv_topk_mode": ["fullK"],
             "cmp_sparse_indices_mode": ["full"],
-            # "q_datarange": ["[1, 1]"],
-            # "ori_kv_datarange": ["[1, 1]"],
-            # "cmp_kv_datarange": ["[1, 1]"],
         },
 }
 
 # 按需选择要启用的测试参数（例如默认启用所有）
 ENABLED_PARAMS = [
-    {**TEST_PARAMS["mytest"], "testcase_name": [None]},
-    # {**TEST_PARAMS["swa_decode"], "testcase_name": [None]},
-    
-    # {**TEST_PARAMS[key], "testcase_name": [key]} for key in TEST_PARAMS.keys()
+    {**TEST_PARAMS[key], "testcase_name": [key]} for key in TEST_PARAMS.keys()
 ]
