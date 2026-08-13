@@ -104,7 +104,7 @@ private:
     const SparseFlashMlaTilingData *__restrict tilingData;
     /* 编译期常量的基本块信息 */
     static constexpr uint64_t SYNC_MODE = 4;
-    static constexpr uint32_t PRELOAD_NUM = 2;
+    static constexpr uint32_t PRELOAD_NUM = 3;
 
     uint32_t crossCoreSyncBufId = 0;
     /* 核间通道 */
@@ -595,7 +595,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
     int64_t taskId = 0;
     bool notLast = true;
     bool isFirstLoop = true;
-    RunInfo runInfo[3];
+    RunInfo runInfo[4];
     RunParamStr runParam;
     runParam.firstFdDataWorkspaceIdx = firstFdDataWorkspaceIdx;
     int64_t multiCoreInnerIdx = 1;
@@ -612,22 +612,28 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
 
         int64_t gS1LoopEnd = lastBN ? (runParam.gs1LoopEndIdx + PRELOAD_NUM) : runParam.gs1LoopEndIdx;
         for (int64_t gS1Index = runParam.gs1LoopStartIdx; gS1Index < gS1LoopEnd; gS1Index++) {
+            bool notLastThreeLoop = true;
             bool notLastTwoLoop = true;
             if (lastBN) {
                 int32_t extraGS1 = gS1Index - runParam.gs1LoopEndIdx;
                 switch (extraGS1) {
                     case 0:
-                        notLastTwoLoop = false;
+                        notLastThreeLoop = false;
                         break;
                     case 1:
+                        notLastTwoLoop = false;
+                        notLastThreeLoop = false;
+                        break;
+                    case 2:
                         notLast = false;
                         notLastTwoLoop = false;
+                        notLastThreeLoop = false;
                         break;
                     default:
                         break;
                 }
             }
-            if (notLastTwoLoop) {
+            if (notLastThreeLoop) {
                 this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, runParam);
                 bool s1NoNeedCalc =
                     ComputeParamS1<TEMPLATE_INTF_ARGS>(runParam, this->constInfo, gS1Index, this->cuSeqlensQGm);
@@ -684,21 +690,17 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                 if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
                               TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                               TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-                    if (notLastTwoLoop) {
-                        RunInfo &runInfo1 = runInfo[taskId % 3];
+                    if (notLastThreeLoop) {
+                        RunInfo &runInfo1 = runInfo[taskId % 4];
                         this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
-                        if ASCEND_IS_AIC {
-                            this->cubeBlock.IterateLoadQK(this->l1RightBuffers.Get(runInfo1.taskIdMod3),
-                                                         this->v0ResGmBuffers.Get(runInfo1.taskIdMod3),
-                                                         runInfo1, this->constInfo, isFirstLoop);
-                            isFirstLoop = false;
-                        } else {
+                    }
+                    if ASCEND_IS_AIV {
+                        if (notLastThreeLoop) {
+                            RunInfo &runInfo1 = runInfo[taskId % 4];
                             this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(runInfo1.taskIdMod3),
                                                        this->v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1,
                                                        this->constInfo, 0);
-                        }
-                    } else {
-                        if ASCEND_IS_AIV {
+                        } else {
                             if constexpr (IS_SPLIT_G) {
                                 if (maxS2LoopCnt > 0) {
                                     maxS2LoopCnt--;
@@ -707,24 +709,32 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                                 }
                             }
                         }
-                    }
-                    if (taskId > 0 && notLast) {
-                        auto &runInfo2 = runInfo[(taskId + 2) % 3];
-                        if ASCEND_IS_AIV {
+                        if (taskId > 1 && notLast) {
+                            auto &runInfo2 = runInfo[(taskId + 2) % 4];
                             this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo2,
                                                        this->constInfo);
-                        } else {
-                            RunInfo &runInfoNext = runInfo[taskId % 3];
+                        }
+                        if (taskId > 2) {
+                            RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
+                            this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
+                        }
+                    } else {
+                        if (taskId > 0 && notLastTwoLoop) {
+                            RunInfo &runInfo1 = runInfo[(taskId + 3) % 4];
+                            this->cubeBlock.IterateLoadQK(this->l1RightBuffers.Get(runInfo1.taskIdMod3),
+                                                         this->v0ResGmBuffers.Get(runInfo1.taskIdMod3),
+                                                         runInfo1, this->constInfo, isFirstLoop);
+                            isFirstLoop = false;
+                        }
+                        if (taskId > 1 && notLast) {
+                            auto &runInfo2 = runInfo[(taskId + 2) % 4];
+                            RunInfo &runInfoNext = runInfo[(taskId + 3) % 4];
                             this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(),
                                                         this->l1RightBuffers.Get(runInfo2.taskIdMod3),
                                                         notLastTwoLoop, runInfoNext, runInfo2, this->constInfo);
                         }
-                    }
-                    if (taskId > 1) {
-                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 3];
-                        if ASCEND_IS_AIV {
-                            this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
-                        } else {
+                        if (taskId > 2) {
+                            RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
                             this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers,
                                                         this->l1RightBuffers.Get(runInfo3.taskIdMod3),
                                                         runInfo3, this->constInfo);
