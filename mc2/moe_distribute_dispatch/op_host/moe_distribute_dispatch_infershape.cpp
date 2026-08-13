@@ -185,10 +185,10 @@ static ge::graphStatus InferShapeMoeDistributeDispatch(gert::InferShapeContext *
     int64_t localExpertNum;
     int64_t globalBsReal;
     OP_CHECK_IF(InferExpertIdsShape(context, k, h, globalBsReal, *epWorldSize) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context->GetNodeName(), "InferExpertIdsShape failed."), return ge::GRAPH_FAILED);
+                OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "InferExpertIdsShape failed."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(InferExpandXAndScalesShape(context, k, h, localExpertNum, globalBsReal, *epWorldSize) !=
                     ge::GRAPH_SUCCESS,
-                OP_LOGE(context->GetNodeName(), "InferExpandXAndScalesShape failed."), return ge::GRAPH_FAILED);
+                OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "InferExpandXAndScalesShape failed."), return ge::GRAPH_FAILED);
     expertTokenNumsShape->SetDimNum(DIM_ONE);
     expertTokenNumsShape->SetDim(0U, localExpertNum);
     OP_LOGD(context->GetNodeName(), "expertTokenNumsShape shape is :%s after infershape.",

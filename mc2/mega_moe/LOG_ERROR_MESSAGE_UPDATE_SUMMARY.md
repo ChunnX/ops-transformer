@@ -1,8 +1,15 @@
-# MegaMoe Arch22 错误日志规范化修改总结
+# MC2 MoE 错误日志规范化修改总结
 
 ## 1. 修改背景与目的
 
-本次修改针对 `mc2/mega_moe/op_host/op_tiling/arch22/mega_moe_tiling_arch22.cpp` 中的错误日志进行规范化，参考以下内容：
+本次修改先对 `mc2/mega_moe/op_host/op_tiling/arch22/mega_moe_tiling_arch22.cpp` 中的错误日志进行规范化，随后将相同原则扩展到以下算子的非 `arch35` `op_host` 实现：
+
+- `moe_distribute_dispatch`
+- `moe_distribute_combine`
+- `moe_distribute_dispatch_v2`
+- `moe_distribute_combine_v2`
+
+参考以下内容：
 
 - `ops-transformer` PR 7234 的日志改造方式；
 - `mc2/mega_moe/op_host/op_tiling/arch35/mega_moe_tiling.cpp` 的校验语义；
@@ -138,3 +145,41 @@ bash build.sh -u --ophost --ops=mega_moe -j4
 - 8 个单元测试全部通过，其中包含 2 个 Arch22 tiling 测试和 6 个 infer shape/dtype 测试。
 
 现有单元测试主要验证返回状态和 tiling/infer 行为，尚未逐项断言错误码及错误文本字段。
+
+## 6. Dispatch/Combine V1/V2 补充整改
+
+### 6.1 范围与边界
+
+本轮补充修改覆盖上述四个算子的 `op_host` 推导、公共 tiling、Arch22 tiling 及公共 helper 文件，共 12 个源码文件。按照需求明确排除了所有 `arch35` 文件，也未修改 `op_graph`、`op_api`、算子接口定义和计算逻辑。
+
+### 6.2 实际修改
+
+- 清理非 `arch35` `op_host` 中剩余的 228 处普通 `OP_LOGE`；
+- 对属性范围及属性关联约束使用 `INVALID_ATTR` 或通用 value 错误宏，并采用 `ep_world_size`、`tp_world_size`、`moe_expert_num`、`shared_expert_num` 等对外名称；
+- 对输入/输出 shape、dtype、format 错误使用相应结构化宏，携带实际值和期望约束；
+- 对 infer、helper、workspace、通信 tiling、平台信息等调用链包装错误使用 `OP_LOGE_WITHOUT_REPORT`，避免下层已上报具体错误后再次生成通用错误；
+- Arch22 中结构化错误的算子标识统一为正式算子名 `MoeDistributeDispatch`、`MoeDistributeCombine`、`MoeDistributeDispatchV2`、`MoeDistributeCombineV2`；
+- 保持所有校验条件、返回值、tiling 数据和控制流不变。
+
+### 6.3 补充验证
+
+执行：
+
+```bash
+git diff --check
+rg -n '\\bOP_LOGE\\(' \
+  mc2/moe_distribute_dispatch/op_host \
+  mc2/moe_distribute_combine/op_host \
+  mc2/moe_distribute_dispatch_v2/op_host \
+  mc2/moe_distribute_combine_v2/op_host \
+  -g '*.cpp' -g '*.h' -g '!**/arch35/**'
+bash build.sh --ophost \
+  --ops=moe_distribute_dispatch,moe_distribute_combine,moe_distribute_dispatch_v2,moe_distribute_combine_v2 \
+  --soc=ascend910b,ascend910_93 -j8
+```
+
+结果：
+
+- `git diff --check` 通过；
+- 目标范围内普通 `OP_LOGE` 扫描结果为 0；
+- 四个算子的目标 SoC ophost 编译通过；构建过程仅出现仓库原有告警，无本次修改引入的编译错误。

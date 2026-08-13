@@ -61,7 +61,7 @@ constexpr uint32_t MAX_K_VALUE_A2 = 16;
 constexpr uint64_t TILING_KEY_BASE_A2 = 2000UL;
 constexpr uint64_t TILING_KEY_LAYERED_COMM_A2 = 3000UL;
 constexpr uint64_t TILING_KEY_INT8_COMM_QUANT_A2 = 100UL;
-const char *K_INNER_DEBUG = "MoeDistributeCombineV2 Tiling Debug";
+const char *K_INNER_DEBUG = "MoeDistributeCombineV2";
 
 enum class CommQuantMode : int32_t {
     NON_QUANT = 0,
@@ -272,7 +272,8 @@ static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(const gert::T
     OP_TILING_CHECK(tpWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "tpWorldSize"),
                     return GRAPH_FAILED);
     OP_TILING_CHECK(*tpWorldSizePtr >= 2,
-                    OP_LOGE(K_INNER_DEBUG, "tpWorldSize >= 2 is NOT supported, got tpWorldSize=%ld.", *tpWorldSizePtr),
+                    OP_LOGE_WITH_INVALID_ATTR(K_INNER_DEBUG, "tp_world_size",
+                                              std::to_string(*tpWorldSizePtr).c_str(), "less than 2"),
                     return GRAPH_FAILED);
     OP_TILING_CHECK(expertSharedTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "expertSharedType"),
                     return GRAPH_FAILED);
@@ -594,21 +595,21 @@ static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext 
 
     bool isLayered = false;
     OP_TILING_CHECK(MoeDistributeCombineCheckCommAlg(context, isLayered, config) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "MoeDistributeCombineA2 CheckCommAlg Failed"),
+                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckCommAlg Failed"),
                     return ge::GRAPH_FAILED);
     int32_t commQuantMode = 0;
     OP_TILING_CHECK(MoeDistributeCombineA2CheckShapeAndSetTiling(context, info, isLayered, config) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "MoeDistributeCombineA2 CheckShapeAndSetTiling Failed"),
+                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckShapeAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MoeDistributeCombineA2CheckAttrAndSetTiling(context, info, commQuantMode, isLayered, config) !=
                         ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "MoeDistributeCombineA2 CheckAttrAndSetTiling Failed"),
+                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckAttrAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MoeDistributeCombineA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "MoeDistributeCombineA2 GetPlatformInfoAndSetTiling Failed"),
+                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 GetPlatformInfoAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MoeDistributeCombineA2CheckWinSize(context, nodeName, info, isLayered) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "MoeDistributeCombineA2 CheckWinSize Failed"),
+                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "MoeDistributeCombineA2 CheckWinSize Failed"),
                     return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -636,10 +637,10 @@ static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext 
     std::string algConfig = MoeDistributeCombineA2GetAlgConfig(*epWorldSizePtr, isLayered);
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, static_cast<uint32_t>(18), algConfig); // opType=18
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
-                    OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
+                    OP_LOGE_WITHOUT_REPORT(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
-                    OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"),
+                    OP_LOGE_WITHOUT_REPORT(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
