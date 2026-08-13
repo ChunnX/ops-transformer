@@ -21,10 +21,6 @@
 #include "../../tiling/comm_tiling_data.h"
 #include "../../block/aiv_comm/collective_comm_context.h"
 
-constexpr uint32_t LOCAL_MATMUL_DISABLED = 0;
-constexpr uint32_t LOCAL_MATMUL_ENABLED = 1;
-constexpr uint32_t LOCAL_MATMUL_DEFERRED_SYNC = 2;
-
 struct allToAllMatmulTilingData {
     CommTilingData commTilingData;
     CommTilingData scaleCommTilingData;

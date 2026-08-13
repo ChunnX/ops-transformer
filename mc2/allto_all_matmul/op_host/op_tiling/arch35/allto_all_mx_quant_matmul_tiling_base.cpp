@@ -408,6 +408,9 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::InitTilingContextParameters()
         opName_, MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
     MC2_CHECK_LOG_RET(opName_, SetMxDataTypeInfo(context_, opName_, contextInfo_));
     MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
+    // 判断是否使用apace实现: all2all_out为空且卡数<=8
+    constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
+    usingApaceImpl_ = (!contextInfo_.allToAllOutFlag) && (contextInfo_.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -420,7 +423,7 @@ CutResult AllToAllMxQuantMatmulTilingBase::GetCutResOfCommAndCompute()
         OP_LOGD(opName_, "GetAndConvertCommMode failed, use default commMode AICPU for tiling.");
     }
     CutResult cutRes;
-    if (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR) {
+    if ((!usingApaceImpl_) && (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR)) {
         // 950的4卡形态使用基于拟合数据的公式化tiling
         AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, TopoType::STANDARD_CARD,
                                               SocVersion::SOC950, commMode);
@@ -484,8 +487,6 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, CheckOpInputInfo());
     // 参数校验通过后赋值给全局上下文变量
     MC2_CHECK_LOG_RET(opName_, InitTilingContextParameters());
-    // 判断是否使用apace实现: all2all_out为空且卡数<=8
-    usingApaceImpl_ = (!contextInfo_.allToAllOutFlag) && (contextInfo_.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM);
     // 进行通算切分
     MC2_CHECK_LOG_RET(opName_, TileCommAndCompute());
     // 调用量化Matmul的tiling方法进行切分
@@ -897,7 +898,6 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoHcommMxQuantMMTiling()
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
         tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
     }
-    hcommTilingData_.localMatmul = LOCAL_MATMUL_DISABLED;
     OP_LOGD(opName_, "HcommMxQuantMM tiling: perRankM=%lu perRankK=%lu N=%lu", perRankM, perRankK, nValue);
     return ge::GRAPH_SUCCESS;
 }
