@@ -149,7 +149,7 @@ private:
     uint32_t worldSize_ = 0;
     uint32_t gmm1TilesPerMGroup_ = 1U;
     uint32_t mGroupsPerWave_ = 1U;
-    // Dispatch 一次完成全部专家；GMM wave 仍按 mGroupsPerWave_ 独立推进。
+    // Dispatch 按内部 batch 完成全部专家；GMM wave 仍按 mGroupsPerWave_ 独立推进。
     uint16_t gmm1PingPongIdx_ = 0;
     uint32_t startBlockIdx_ = 0;
     uint32_t blockNum_ = GetBlockNum();
@@ -798,25 +798,56 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchAllExpe
         if (GetSubBlockIdx() != 1U) {
             return;
         }
-        uint64_t totalDispatchRowCount = 0U;
-        for (uint32_t expertIdx = 0U; expertIdx < moeExpertPerRank_; ++expertIdx) {
-            uint64_t expertTokenCount = 0U;
-            ComputeExpertTokenCountAndNotify<ActivationType, false, TopkWeightsPrefetch>(
-                tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx, expertTokenCount);
-            uint64_t expertGlobalRowBegin = expertIdx == 0U ? 0U :
-                static_cast<uint64_t>(tokenDispatchScratch_.cumsumInfoTensor.GetValue(
-                    expertIdx * tokenDispatchConfig_.common.worldSize - 1U));
-            if (expertGlobalRowBegin < tokenDispatchConfig_.maxOutputSize) {
-                uint64_t remainingWorkspaceRowCount =
-                    tokenDispatchConfig_.maxOutputSize - expertGlobalRowBegin;
-                totalDispatchRowCount += expertTokenCount < remainingWorkspaceRowCount ?
-                    expertTokenCount : remainingWorkspaceRowCount;
+        // Dispatch batch 只决定一次 Dispatch 调用覆盖的专家范围和分核粒度；全部 batch
+        // 在 GMM 流水开始前完成，和 GMM wave 没有阶段依赖关系。
+        const uint32_t dispatchBatchRowBudget = mGroupsPerWave_ * GMM1_TILE_M;
+        uint64_t expertTokenCount = 0U;
+        bool hasPreparedExpert = false;
+        uint32_t preparedExpertIdx = 0U;
+        uint32_t batchBeginExpert = 0U;
+        while (batchBeginExpert < moeExpertPerRank_) {
+            uint32_t batchEndExpert = batchBeginExpert;
+            uint32_t plannedDispatchRowCount = 0U;
+            while (batchEndExpert < moeExpertPerRank_) {
+                uint32_t expertIdx = batchEndExpert;
+                if (!hasPreparedExpert || preparedExpertIdx != expertIdx) {
+                    ComputeExpertTokenCountAndNotify<ActivationType, false, TopkWeightsPrefetch>(
+                        tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx, expertTokenCount);
+                    preparedExpertIdx = expertIdx;
+                    hasPreparedExpert = true;
+                }
+                uint64_t expertGlobalRowBegin = expertIdx == 0U ? 0U :
+                    static_cast<uint64_t>(tokenDispatchScratch_.cumsumInfoTensor.GetValue(
+                        expertIdx * tokenDispatchConfig_.common.worldSize - 1U));
+                uint64_t dispatchRowCount = 0U;
+                if (expertGlobalRowBegin < tokenDispatchConfig_.maxOutputSize) {
+                    uint64_t remainingWorkspaceRowCount =
+                        tokenDispatchConfig_.maxOutputSize - expertGlobalRowBegin;
+                    dispatchRowCount = expertTokenCount < remainingWorkspaceRowCount ?
+                        expertTokenCount : remainingWorkspaceRowCount;
+                }
+                if (dispatchRowCount == 0U) {
+                    hasPreparedExpert = false;
+                    ++batchEndExpert;
+                    continue;
+                }
+                if (plannedDispatchRowCount != 0U &&
+                    plannedDispatchRowCount + dispatchRowCount > dispatchBatchRowBudget) {
+                    break;
+                }
+                plannedDispatchRowCount += static_cast<uint32_t>(dispatchRowCount);
+                hasPreparedExpert = false;
+                ++batchEndExpert;
+                if (plannedDispatchRowCount >= dispatchBatchRowBudget) {
+                    break;
+                }
             }
-        }
-        if (totalDispatchRowCount != 0U) {
-            DispatchExpertTokens<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-                tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_,
-                0U, moeExpertPerRank_, static_cast<uint32_t>(totalDispatchRowCount));
+            if (plannedDispatchRowCount != 0U) {
+                DispatchExpertTokens<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+                    tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_,
+                    batchBeginExpert, batchEndExpert, plannedDispatchRowCount);
+            }
+            batchBeginExpert = batchEndExpert;
         }
     }
 }
@@ -1122,7 +1153,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmmPipel
     // 等待所有 rank 完成本轮输入准备，再读取远端 dispatch 数据。
     CrossRankSyncInWorldSize();
 
-    // Dispatch 先一次完成全部专家，随后按 GMM wave 执行 GMM1、SwiGLU、GMM2 与 Combine。
+    // Dispatch 的全部 batch 先完成，随后按 GMM wave 执行 GMM1、SwiGLU、GMM2 与 Combine。
     ProcessMoeExpertStages();
 
     if constexpr (g_coreType == AIV) {
