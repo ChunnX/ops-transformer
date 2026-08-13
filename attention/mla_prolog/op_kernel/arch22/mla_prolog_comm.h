@@ -160,67 +160,54 @@ constexpr uint32_t L0B_PP_SIZE = 32 * 1024;
 constexpr uint32_t L0C_PP_SIZE = 64 * 1024;
 
 /*
-                                     非量化             半量化(kv非量化)       半量化(kv量化)       int8全量化(kv非量化)
-  int8全量化(kv量化)  半量化(kv per-tile量化)   int8全量化(kv per-tile量化) cacheMode PA_BSND/PA_BLK_BSND
-  PA_BSND/PA_BLK_BSND  PA_BSND/PA_BLK_BSND   PA_BSND/PA_BLK_BSND   PA_BSND/PA_BLK_BSND      PA_BSND/BSND/TND
-  PA_BSND/BSND/TND /PA_NZ/PA_BLK_NZ       /PA_NZ/PA_BLK_NZ     /PA_NZ/PA_BLK_NZ      /PA_NZ/PA_BLK_NZ /PA_NZ/PA_BLK_NZ
-                                  /BSND/TND             /BSND/TND             /BSND/TND            /BSND/TND /BSND/TND
-  enableDequantOpt                    false               true/false           true/false             true/false
-  true/false                true                       true enableGroupDequantOpt               false true/false
-  true/false               false                false                   false                      false quantMode 0 1
-  2                      3                    4                       5                          6
-  tokenXType(复用mmInputType)       bfloat16_t            bfloat16_t            bfloat16_t              int8_t int8_t
-  bfloat16_t                    int8_t WdqType(复用mmInputType)          bfloat16_t            bfloat16_t bfloat16_t
-  int8_t               int8_t                bfloat16_t                    int8_t WuqqrType(复用mmQcQrInputType)
-  bfloat16_t              int8_t                int8_t                int8_t               int8_t int8_t int8_t
-  WukType(复用mmQnInputType)        bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t
-  bfloat16_t              bfloat16_t                  bfloat16_t WdkvkrType(复用mmInputType)       bfloat16_t bfloat16_t
-  bfloat16_t              int8_t               int8_t                bfloat16_t                    int8_t
-  rmsNormGammaType                  bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t
-  bfloat16_t              bfloat16_t                  bfloat16_t gammaCkvType(复用rmsNormGammaType)bfloat16_t bfloat16_t
-  bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
-  ropeSinCosType                    bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t
-  bfloat16_t              bfloat16_t                  bfloat16_t cosType(复用ropeSinCosType)       bfloat16_t bfloat16_t
-  bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
-  cacheIndexType                      int64_t               int64_t               int64_t               int64_t int64_t
-  int64_t                     int64_t kvCacheType                       bfloat16_t            bfloat16_t int8_t
-  bfloat16_t             int8_t                  int8_t                      int8_t krCacheType bfloat16_t bfloat16_t
-  int8_t              bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t deqScaleXType
-  /                     /                     /                   float                float                     / float
-  deqScaleWdqType                       /                     /                     /                   float float /
-  float deqScaleWuqqrType                     /                   float                 float                 float
-  float                   float                       float deqScaleWdkvkrType                    / / / float float /
-  float quantScaleCkvType                     /                     /                   float                   / float
-  /                           / quantScaleCkrType                     /                     /                   float /
-  /                       /                           / smoothScaleCqType                     /                   float
-  float                 float                float                   float                       float queryOutputType
-  bfloat16_t            bfloat16_t              int8_t              bfloat16_t             int8_t bfloat16_t bfloat16_t
-  ropeOutputType                    bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t
-  bfloat16_t              bfloat16_t                  bfloat16_t dequantScaleQNopeType                 / / / / float / /
-  queryNormType(复用mmQcQrInputType)bfloat16_t              int8_t                int8_t                int8_t int8_t
-  int8_t                      int8_t dequantScaleQNormType                 /                   float float float float
-  float                       float mmInputType                       bfloat16_t            bfloat16_t bfloat16_t int8_t
-  int8_t                bfloat16_t                    int8_t mmCqOutputType                    bfloat16_t bfloat16_t
-  bfloat16_t              int32_t              int32_t               bfloat16_t                    int32_t
-  mmCkvKrInputType(复用mmInputType) bfloat16_t            bfloat16_t            bfloat16_t              int8_t int8_t
-  bfloat16_t                    int8_t mmCkvKrOutputType                 bfloat16_t            bfloat16_t bfloat16_t
-  int32_t              int32_t               bfloat16_t                    int32_t mmQcQrInputType bfloat16_t int8_t
-  int8_t                int8_t               int8_t                  int8_t                      int8_t mmQcQrOutputType
-  bfloat16_t            bfloat16_t            bfloat16_t              int32_t              int32_t bfloat16_t int32_t
-  mmQnInputType                     bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t
-  bfloat16_t              bfloat16_t                  bfloat16_t mmQnOutputType                    bfloat16_t bfloat16_t
-  bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
-  rmsNormComputType                   float                 float                 float                 float float
-  float                       float rmsNormCqOutputType               bfloat16_t              int8_t int8_t int8_t
-  int8_t                  int8_t                      int8_t rmsNormCkvOutputType              bfloat16_t bfloat16_t
-  int8_t              bfloat16_t             int8_t                  int8_t                      int8_t ropeComputType
-  float                 float                 float                 float                float                   float
-  float
+                                     非量化             半量化(kv非量化)       半量化(kv量化)       int8全量化(kv非量化)    int8全量化(kv量化)  半量化(kv per-tile量化)   int8全量化(kv per-tile量化)
+  cacheMode                    PA_BSND/PA_BLK_BSND    PA_BSND/PA_BLK_BSND  PA_BSND/PA_BLK_BSND   PA_BSND/PA_BLK_BSND   PA_BSND/PA_BLK_BSND      PA_BSND/BSND/TND            PA_BSND/BSND/TND
+                                /PA_NZ/PA_BLK_NZ       /PA_NZ/PA_BLK_NZ     /PA_NZ/PA_BLK_NZ      /PA_NZ/PA_BLK_NZ      /PA_NZ/PA_BLK_NZ
+                                  /BSND/TND             /BSND/TND             /BSND/TND            /BSND/TND             /BSND/TND
+  enableDequantOpt                    false               true/false           true/false             true/false           true/false                true                       true
+  enableGroupDequantOpt               false               true/false           true/false               false                false                   false                      false
+  quantMode                             0                     1                    2                      3                    4                       5                          6
+  tokenXType(复用mmInputType)       bfloat16_t            bfloat16_t            bfloat16_t              int8_t               int8_t                bfloat16_t                    int8_t
+  WdqType(复用mmInputType)          bfloat16_t            bfloat16_t            bfloat16_t              int8_t               int8_t                bfloat16_t                    int8_t
+  WuqqrType(复用mmQcQrInputType)    bfloat16_t              int8_t                int8_t                int8_t               int8_t                  int8_t                      int8_t
+  WukType(复用mmQnInputType)        bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  WdkvkrType(复用mmInputType)       bfloat16_t            bfloat16_t            bfloat16_t              int8_t               int8_t                bfloat16_t                    int8_t
+  rmsNormGammaType                  bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  gammaCkvType(复用rmsNormGammaType)bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  ropeSinCosType                    bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  cosType(复用ropeSinCosType)       bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  cacheIndexType                      int64_t               int64_t               int64_t               int64_t              int64_t                 int64_t                     int64_t
+  kvCacheType                       bfloat16_t            bfloat16_t              int8_t              bfloat16_t             int8_t                  int8_t                      int8_t
+  krCacheType                       bfloat16_t            bfloat16_t              int8_t              bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  deqScaleXType                         /                     /                     /                   float                float                     /                         float
+  deqScaleWdqType                       /                     /                     /                   float                float                     /                         float
+  deqScaleWuqqrType                     /                   float                 float                 float                float                   float                       float
+  deqScaleWdkvkrType                    /                     /                     /                   float                float                     /                         float
+  quantScaleCkvType                     /                     /                   float                   /                  float                     /                           /
+  quantScaleCkrType                     /                     /                   float                   /                    /                       /                           /
+  smoothScaleCqType                     /                   float                 float                 float                float                   float                       float
+  queryOutputType                   bfloat16_t            bfloat16_t              int8_t              bfloat16_t             int8_t                bfloat16_t                  bfloat16_t
+  ropeOutputType                    bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  dequantScaleQNopeType                 /                     /                     /                     /                  float                     /                           /
+  queryNormType(复用mmQcQrInputType)bfloat16_t              int8_t                int8_t                int8_t               int8_t                  int8_t                      int8_t
+  dequantScaleQNormType                 /                   float                 float                 float                float                   float                       float
+  mmInputType                       bfloat16_t            bfloat16_t            bfloat16_t              int8_t               int8_t                bfloat16_t                    int8_t
+  mmCqOutputType                    bfloat16_t            bfloat16_t            bfloat16_t              int32_t              int32_t               bfloat16_t                    int32_t
+  mmCkvKrInputType(复用mmInputType) bfloat16_t            bfloat16_t            bfloat16_t              int8_t               int8_t                bfloat16_t                    int8_t
+  mmCkvKrOutputType                 bfloat16_t            bfloat16_t            bfloat16_t              int32_t              int32_t               bfloat16_t                    int32_t
+  mmQcQrInputType                   bfloat16_t              int8_t                int8_t                int8_t               int8_t                  int8_t                      int8_t
+  mmQcQrOutputType                  bfloat16_t            bfloat16_t            bfloat16_t              int32_t              int32_t               bfloat16_t                    int32_t
+  mmQnInputType                     bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  mmQnOutputType                    bfloat16_t            bfloat16_t            bfloat16_t            bfloat16_t           bfloat16_t              bfloat16_t                  bfloat16_t
+  rmsNormComputType                   float                 float                 float                 float                float                   float                       float
+  rmsNormCqOutputType               bfloat16_t              int8_t                int8_t                int8_t               int8_t                  int8_t                      int8_t
+  rmsNormCkvOutputType              bfloat16_t            bfloat16_t              int8_t              bfloat16_t             int8_t                  int8_t                      int8_t
+  ropeComputType                      float                 float                 float                 float                float                   float                       float
 */
 
 template <typename X_T, typename W_T, typename C_T, typename D_S, CACHE_MODE C_M, bool ENABLE_DEQUANT_OPT,
           bool ENABLE_GROUP_COMPUTE_OPT, EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE,
-          bool IS_PERTILE = false, uint32_t CV_RATIO = 2, typename... Args>
+          bool IS_PERTILE = false, uint32_t CV_RATIO = 2, bool ENABLE_ROPE = true, typename... Args>
 struct MLAPType {
     using mmQcQrInputType = W_T;
     using mmInputType = X_T;          // tokenX的类型与weight的类型一致
@@ -255,6 +242,7 @@ struct MLAPType {
     static constexpr EMPTY_TENSOR_MODE emptyMode = EMPTY_MODE;
     static constexpr ACTUAL_SEQ_MODE actualSeqMode = SEQ_MODE;
     static constexpr bool isPertile = IS_PERTILE;
+    static constexpr bool enableRope = ENABLE_ROPE;
 };
 
 struct CastQcQrSplitNParams {
