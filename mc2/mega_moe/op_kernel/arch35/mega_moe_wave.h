@@ -808,7 +808,11 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
         if (GetSubBlockIdx() != 1U) {
             return dispatchWaveCursor;
         }
+        // 保留 full_port 的阶段顺序：一次调用完成全部路由专家 Dispatch，随后才由
+        // AIC/AIV0 按 GMM wave 进入 GMM1/GMM2。这里的内部 wave 只是 Dispatch 分核
+        // 的批次，不是跨阶段流水边界。
         uint32_t waveBeginExpert = dispatchWaveCursor.expertIdx;
+        while (waveBeginExpert < moeExpertPerRank_) {
         uint32_t waveEndExpert = waveBeginExpert;
         uint32_t plannedDispatchRowCount = 0U;
         while (waveEndExpert < moeExpertPerRank_) {
@@ -843,7 +847,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
 
             // Dispatch wave 按实际行数合并小专家，不把每个专家的尾块强制放大为
             // 一个 GMM MGroup。若下一个专家放不进当前 wave，只保留 count，
-            // 下一次调用再执行真正的数据搬运。
+            // 下一轮内部 Dispatch wave 复用该 count。
             if (plannedDispatchRowCount != 0U &&
                 plannedDispatchRowCount + dispatchRowCount > dispatchWaveRowBudget_) {
                 break;
@@ -857,12 +861,15 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
                 break;
             }
         }
-        if (plannedDispatchRowCount != 0U) {
-            DispatchExpertWaveTokens<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-                tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_,
-                waveBeginExpert, waveEndExpert, plannedDispatchRowCount);
+
+            if (plannedDispatchRowCount != 0U) {
+                DispatchExpertWaveTokens<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+                    tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_,
+                    waveBeginExpert, waveEndExpert, plannedDispatchRowCount);
+            }
+            waveBeginExpert = waveEndExpert;
         }
-        dispatchWaveCursor.expertIdx = waveEndExpert;
+        dispatchWaveCursor.expertIdx = waveBeginExpert;
         dispatchWaveCursor.rowOffsetInExpert = 0U;
     }
     return dispatchWaveCursor;
@@ -1102,8 +1109,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     ExpertRowCursor dispatchWaveCursor{};
     ExpertRowCursor gmm1WaveCursor{};
     ExpertRowCursor gmm2WaveCursor{};
-    ExpertRowCursor preparedWaveEndCursor{};
-    bool hasPreparedWave = false;
     uint64_t dispatchExpertRowCount = 0U;
     uint32_t combineBeginExpertIndex = 0U;
 
@@ -1113,15 +1118,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
 
         if constexpr (g_coreType == AIV) {
             if (GetSubBlockIdx() == 1U) {
-                if (hasPreparedWave) {
-                    waveEndCursor = preparedWaveEndCursor;
-                } else {
-                    waveEndCursor = DispatchWaveAndGetEndCursor(
-                        dispatchWaveCursor, dispatchExpertRowCount);
-                }
-                preparedWaveEndCursor = DispatchWaveAndGetEndCursor(
+                // full_port 语义：一次完成全部 Dispatch，之后再进入 GMM wave 流水。
+                waveEndCursor = DispatchWaveAndGetEndCursor(
                     dispatchWaveCursor, dispatchExpertRowCount);
-                hasPreparedWave = true;
             } else {
                 waveEndCursor = ProcessGmm1Wave(
                     gmm1WaveCursor, gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState);
