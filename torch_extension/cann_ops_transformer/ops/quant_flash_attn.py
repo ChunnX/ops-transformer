@@ -151,6 +151,9 @@ def _validate_layout_dims(
             dq_expected is not None,
             lambda: f"Unsupported layout_q_descale: {layout_q_descale!r}, expected one of TND/BSND/BNSD/N2TGD",
         )
+        # q_descale 在 TND/N2TGD 时比 q 多一维 group
+        if layout_q_descale in ("TND", "N2TGD"):
+            dq_expected += 1
         torch._check(
             q_descale.dim() == dq_expected,
             lambda: f"q_descale with layout {layout_q_descale} expects {dq_expected} dims, "
