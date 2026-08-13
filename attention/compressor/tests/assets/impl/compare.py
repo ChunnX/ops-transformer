@@ -77,6 +77,26 @@ def as_numpy(value):
     return np.asarray(value)
 
 
+def _to_torch(value):
+    if value is None:
+        return None
+    if torch.is_tensor(value):
+        return value
+    arr = np.asarray(value)
+    dtype_str = str(arr.dtype)
+    if dtype_str == "bfloat16":
+        return torch.from_numpy(arr.view(np.uint16)).view(torch.bfloat16)
+    if arr.dtype == np.float16:
+        return torch.from_numpy(arr)
+    if arr.dtype == np.float32:
+        return torch.from_numpy(arr)
+    if arr.dtype == np.uint16:
+        return torch.from_numpy(arr.view(np.int16)).view(torch.bfloat16)
+    if arr.dtype == np.uint8:
+        return torch.from_numpy(arr)
+    return torch.from_numpy(np.ascontiguousarray(arr))
+
+
 def _get_thresholds(dtype_str):
     if dtype_str == "bfloat16":
         return _BF16_RTOL, _BF16_ATOL, _PCT_THD
@@ -348,6 +368,9 @@ def compare(*outputs, **kwargs):
                     "error_info": f"{name}: NPU state_cache not captured",
                 }
             )
+        result_consistency = _batch_consistency_check(npu_outputs[0], kwargs)
+        if result_consistency is not None:
+            results.append(result_consistency)
         return results
 
     npu_cmp_kv = npu_outputs[0]
@@ -361,31 +384,42 @@ def compare(*outputs, **kwargs):
     npu_sub_outputs = [npu_cmp_kv[cmp_kv_mask]]
     golden_sub_outputs = [cpu_cmp_kv[cmp_kv_mask]]
 
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][update_kv]
-    )
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][update_score]
-    )
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][~update_kv]
-    )
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][~update_score]
-    )
+    if update_kv is not None and update_score is not None:
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][update_kv]
+        )
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][update_score]
+        )
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][~update_kv]
+        )
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][~update_score]
+        )
 
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][update_kv]
-    )
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][update_score]
-    )
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][~update_kv]
-    )
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][~update_score]
-    )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][update_kv]
+        )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][update_score]
+        )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][~update_kv]
+        )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][~update_score]
+        )
+    else:
+        npu_sub_outputs.append(npu_state_cache[:, :, : npu_state_cache.shape[2] // 2])
+        npu_sub_outputs.append(npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :])
+        npu_sub_outputs.append(None)
+        npu_sub_outputs.append(None)
+
+        golden_sub_outputs.append(cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2])
+        golden_sub_outputs.append(cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :])
+        golden_sub_outputs.append(None)
+        golden_sub_outputs.append(None)
 
     results = []
     for idx in range(len(golden_sub_outputs)):
@@ -420,8 +454,8 @@ def compare_aclnn(*outputs, **kwargs):
         }
 
     GOLDEN_OUTPUT_COUNT = 4
-    golden_outputs = list(outputs[-GOLDEN_OUTPUT_COUNT:])
-    npu_outputs = list(outputs[:-GOLDEN_OUTPUT_COUNT])
+    golden_outputs = [_to_torch(g) for g in outputs[-GOLDEN_OUTPUT_COUNT:]]
+    npu_outputs = [_to_torch(o) for o in outputs[:-GOLDEN_OUTPUT_COUNT]]
     cmp_kv_mask = kwargs.get("cmp_kv_mask", None)
     mid_result_mask = kwargs.get("mid_result_mask", None)
     gradEnabled = kwargs.get("gradEnabled", None)
@@ -442,6 +476,9 @@ def compare_aclnn(*outputs, **kwargs):
                     "error_info": f"{name}: NPU state_cache not captured",
                 }
             )
+        result_consistency = _batch_consistency_check(npu_outputs[0].to(torch.float32), kwargs)
+        if result_consistency is not None:
+            results.append(result_consistency)
         return results
 
     npu_cmp_kv = npu_outputs[0].to(torch.float32)
@@ -455,31 +492,42 @@ def compare_aclnn(*outputs, **kwargs):
     npu_sub_outputs = [npu_cmp_kv[cmp_kv_mask]]
     golden_sub_outputs = [cpu_cmp_kv[cmp_kv_mask]]
 
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][update_kv]
-    )
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][update_score]
-    )
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][~update_kv]
-    )
-    npu_sub_outputs.append(
-        npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][~update_score]
-    )
+    if update_kv is not None and update_score is not None:
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][update_kv]
+        )
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][update_score]
+        )
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, : npu_state_cache.shape[2] // 2][~update_kv]
+        )
+        npu_sub_outputs.append(
+            npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :][~update_score]
+        )
 
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][update_kv]
-    )
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][update_score]
-    )
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][~update_kv]
-    )
-    golden_sub_outputs.append(
-        cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][~update_score]
-    )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][update_kv]
+        )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][update_score]
+        )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2][~update_kv]
+        )
+        golden_sub_outputs.append(
+            cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :][~update_score]
+        )
+    else:
+        npu_sub_outputs.append(npu_state_cache[:, :, : npu_state_cache.shape[2] // 2])
+        npu_sub_outputs.append(npu_state_cache[:, :, npu_state_cache.shape[2] // 2 :])
+        npu_sub_outputs.append(None)
+        npu_sub_outputs.append(None)
+
+        golden_sub_outputs.append(cpu_state_cache[:, :, : cpu_state_cache.shape[2] // 2])
+        golden_sub_outputs.append(cpu_state_cache[:, :, cpu_state_cache.shape[2] // 2 :])
+        golden_sub_outputs.append(None)
+        golden_sub_outputs.append(None)
 
     if gradEnabled:
         npu_softmax_out = npu_outputs[1][mid_result_mask].to(torch.float32)
