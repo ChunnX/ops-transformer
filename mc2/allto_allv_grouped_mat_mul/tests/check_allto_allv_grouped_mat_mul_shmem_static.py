@@ -1,0 +1,478 @@
+#!/usr/bin/env python3
+"""Offline contract checks for the Ascend950 SHMEM migration."""
+
+from __future__ import annotations
+
+import ast
+import json
+import re
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def read(relative: str) -> str:
+    return (ROOT / relative).read_text(encoding="utf-8")
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
+def load_jsonl(relative: str) -> list[dict]:
+    path = ROOT / relative
+    require(path.suffix == ".jsonl", f"case file must be JSONL: {path}")
+    return [json.loads(line) for line in path.read_text("utf-8").splitlines() if line.strip()]
+
+
+def normalized(text: str) -> str:
+    return re.sub(r"\s+", " ", text)
+
+
+def check_public_abi() -> None:
+    header = read("op_api/aclnn_allto_allv_grouped_mat_mul_v2.h")
+    flat = normalized(header)
+    require('#include "aclnn_util.h"' in header,
+            "public V2 header must include the ACLNN_API definition")
+    signature = (
+        "aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize( const aclTensor *gmmX, "
+        "const aclTensor *gmmWeight, void *shmemContext, int64_t epWorldSize, "
+        "const aclIntArray *sendCounts, const aclIntArray *recvCounts, aclTensor *gmmY, "
+        "uint64_t *workspaceSize, aclOpExecutor **executor)"
+    )
+    require(signature in flat, "public V2 ABI does not match the approved SHMEM signature")
+    require(re.search(r"\b(?:char|aclChar|std::string)\s*\*?\s*group\b", flat) is None,
+            "public V2 header still contains group parameter")
+    require("commMode" not in header and "comm_mode" not in header, "public V2 header still contains commMode")
+
+    impl = read("op_api/aclnn_allto_allv_grouped_mat_mul_v2.cpp")
+    require("aclnnInnerAlltoAllvGroupedMatMulShmemGetWorkspaceSize" in impl, "V2 does not dispatch to SHMEM op")
+    require("OP_CHECK_NULL(shmemContext" not in impl,
+            "Ascend950 must accept the zero FFTS value returned by shmemx_get_ffts_config")
+    require("CreateShmemContextTensor" not in impl and "ACL_UINT8" not in impl,
+            "Ascend950 FFTS value must not be represented as a required device tensor")
+    require("NpuArch::DAV_3510" in impl, "V2 lacks Ascend950 platform guard")
+    require("GetStorageFormat() != op::Format::FORMAT_ND" in impl,
+            "V2 lacks the source ND storage-format guard")
+    require(impl.count("MC2Aclnn::IsTensorContiguous(") == 3,
+            "V2 must reject non-contiguous x/weight/y before SHMEM dispatch")
+
+    fallback = read("op_graph/fallback_allto_allv_grouped_mat_mul.cpp")
+    require("EXEC_OPAPI_CMD(aclnnAlltoAllvGroupedMatMulV2" not in fallback,
+            "legacy HCCL fallback must not call the ABI-incompatible SHMEM V2 interface")
+    require("EXEC_OPAPI_CMD(aclnnAlltoAllvGroupedMatMul," in fallback,
+            "legacy A3 HCCL fallback must route through the V1 interface")
+    fallback_call_begin = fallback.index("EXEC_OPAPI_CMD(aclnnAlltoAllvGroupedMatMul,")
+    fallback_call_end = fallback.index(");", fallback_call_begin)
+    require("commMode" not in fallback[fallback_call_begin:fallback_call_end],
+            "legacy A3 fallback must use the V1 argument list without commMode")
+
+
+def check_registration_and_binary() -> None:
+    shmem_def = read("op_host/allto_allv_grouped_mat_mul_shmem_def.cpp")
+    hccl_def = read("op_host/allto_allv_grouped_mat_mul_def.cpp")
+    host_cmake = normalized(read("op_host/CMakeLists.txt"))
+    require('AddConfig("ascend950"' in shmem_def, "SHMEM op is not registered for ascend950")
+    shmem_code = re.sub(r"//.*", "", shmem_def)
+    require(".HcclGroup(" not in shmem_code, "SHMEM op accidentally registers an HCCL group")
+    require(".AutoContiguous()" not in shmem_code,
+            "SHMEM op must not replace the symmetric gmm_x address with an implicit contiguous copy")
+    require('AddConfig("ascend910_93"' in hccl_def, "A3 HCCL registration is missing")
+    require('AddConfig("ascend950"' not in hccl_def, "legacy HCCL op is still registered for ascend950")
+    require(
+        "set(allto_allv_grouped_mat_mul_shmem_dir ${CMAKE_CURRENT_SOURCE_DIR}/.. PARENT_SCOPE)" in host_cmake,
+        "SHMEM op_file is not mapped to its containing operator directory, so kernel compilation is skipped",
+    )
+    require(
+        "set(allto_allv_grouped_mat_mul_shmem_depends mc2/common mc2/3rd "
+        "mc2/allto_allv_quant_grouped_mat_mul PARENT_SCOPE)" in host_cmake,
+        "SHMEM kernel dependencies are not exported under the SHMEM op_file name",
+    )
+
+    config_dir = ROOT / "op_host/config/ascend950"
+    require(not (config_dir / "allto_allv_grouped_mat_mul_binary.json").exists(), "legacy A5 HCCL binary remains")
+    config = json.loads((config_dir / "allto_allv_grouped_mat_mul_shmem_binary.json").read_text("utf-8"))
+    require(config["op_type"] == "AlltoAllvGroupedMatMulShmem", "wrong SHMEM op_type")
+    item = config["op_list"][0]
+    require([x["name"] for x in item["inputs"]] == ["gmm_x", "gmm_weight"],
+            "binary input order differs from kernel/internal op")
+    require([x["dtype"] for x in item["inputs"]] == ["bfloat16", "bfloat16"],
+            "binary input dtypes differ from source contract")
+    require([x["name"] for x in item["outputs"]] == ["gmm_y"], "unexpected SHMEM outputs")
+
+
+def check_tiling_and_kernel() -> None:
+    tiling_header = read("op_kernel/allto_allv_grouped_mat_mul_shmem_tiling.h")
+    for token in (
+        "MAX_EP_WORLD_SIZE = 8",
+        "MAX_LOCAL_EXPERTS = 64",
+        "WORKSPACE_STAGES = 2",
+        "WORKSPACE_DATA_BYTES = 400ULL * 1024ULL * 1024ULL",
+        "WORKSPACE_BYTES = WORKSPACE_DATA_BYTES + 4096ULL",
+        "sizeof(AlltoAllvGroupedMatMulShmemTilingData) <= 8192",
+    ):
+        require(token in tiling_header, f"missing tiling contract token: {token}")
+
+    tiling = read("op_host/op_tiling/arch35/allto_allv_grouped_mat_mul_shmem_tiling.cpp")
+    for token in (
+        "SOURCE_M0_SMALL = 128",
+        "SOURCE_N0_LARGE = 256",
+        "SOURCE_M0_LARGE = 256",
+        "SOURCE_N0_SMALL = 128",
+        "SOURCE_K0 = 256",
+        "CUBE_K_ALIGNMENT = 16",
+        "SOURCE_COMM_INTERVAL = 10",
+        "SOURCE_COMM_TILE_M = 32",
+        "SOURCE_COMM_BLOCK_M = 64",
+        "SHMEM_HEAP_LIMIT_BYTES = 1004ULL * 1024ULL * 1024ULL",
+        "Per-peer send/recv totals must fit the source uint32 scheduler",
+    ):
+        require(token in tiling, f"missing source tiling invariant: {token}")
+    require("uint32_t k, ::TCubeTiling &tiling)" in normalized(tiling),
+            "per-AIC MatMul tiling must not receive the operator-wide AIC count")
+    require("const platform_ascendc::PlatformAscendC &platform" in normalized(tiling),
+            "Ascend950 MatMul tiling must receive the runtime platform description")
+    require("matmul_tiling::MultiCoreMatmulTiling mm(platform);" in tiling,
+            "Ascend950 does not support the platform-less MultiCoreMatmulTiling constructor")
+    require("matmul_tiling::MultiCoreMatmulTiling mm;" not in tiling,
+            "platform-less MatMul tiling must not be used for Ascend950")
+    require(tiling.count("matmul_tiling::DataType::DT_BF16") >= 3,
+            "Ascend950 MatMul tiling must use the arch35 BF16 enum for A/B/C")
+    require("matmul_tiling::DataType::DT_BFLOAT16" not in tiling,
+            "the legacy BF16 tiling enum is not valid for the Ascend950 arch35 path")
+    require("MATMUL_SUBTASK_CORE_NUM = 1" in tiling,
+            "each source-scheduled MatMul tile must be described as one AIC subtask")
+    require("mm.SetDim(MATMUL_SUBTASK_CORE_NUM)" in tiling,
+            "MatMul tiling must not schedule the same fixed tile across all operator AICs")
+    require("mm.SetDim(aicCoreNum)" not in tiling,
+            "operator-wide AIC count must remain owned by the outer source scheduler")
+    require("RunMatmulDiagnosticProbes" not in tiling and "MatMul diagnostic probe" not in tiling,
+            "temporary failed-GetTiling probes must be removed after identifying the root cause")
+    tiling_flat = normalized(tiling)
+    require(
+        "const uint64_t alignedK = (static_cast<uint64_t>(k) + CUBE_K_ALIGNMENT - 1) / "
+        "CUBE_K_ALIGNMENT * CUBE_K_ALIGNMENT;" in tiling_flat,
+        "small-K MatMul tiling must align the actual K to the BF16 Cube granularity",
+    )
+    require(
+        "const uint32_t baseK = static_cast<uint32_t>(std::min<uint64_t>(SOURCE_L0_K, alignedK));"
+        in tiling_flat,
+        "MatMul baseK must shrink for small K without exceeding the source L0 K tile",
+    )
+    require("mm.SetFixSplit(m0, n0, baseK)" in tiling,
+            "MatMul tiling must use the effective small-K baseK")
+    require(tiling.count("GetStorageFormat() != ge::FORMAT_ND") == 3,
+            "tiling must enforce ND for x/weight/y")
+
+    # This operator has one unconditional kernel entry and no TILING_KEY_IS specializations, so OPC emits
+    # only the default kernel variant (tiling key 0). The host key must select that exact variant.
+    require("TILING_KEY_IS(" not in read("op_kernel/allto_allv_grouped_mat_mul_shmem.cpp"),
+            "single-variant SHMEM kernel unexpectedly gained compile-time tiling-key branches")
+    require("context->SetTilingKey(0UL);" in tiling,
+            "single-variant SHMEM tiling must select the compiled default kernel key 0")
+    require("context->SetTilingKey(1UL);" not in tiling,
+            "host requests tiling key 1, which is absent from the single-variant kernel JSON")
+    require("context->SetScheduleMode(1);" in tiling,
+            "SHMEM full-core synchronization requires batch scheduling so every AIC/AIV starts together")
+
+    cmake = read("op_host/CMakeLists.txt")
+    require("ENV{SHMEM_HOME_PATH}" in cmake and "ENV{SHMEM_HOME}" in cmake,
+            "CMake must support source and HCCL-integrated SHMEM SDK layouts")
+    require("SHMEM_HOME_PATH (source SDK layout) or SHMEM_HOME (HCCL-integrated layout)" in cmake,
+            "Ascend950 configuration must fail clearly when SHMEM headers are unavailable")
+    a5_begin = cmake.index('if("${CONDITION_UNIT}" STREQUAL "ascend950")')
+    shmem_dependency = cmake.index("if(DEFINED SHMEM_HOME_PATH")
+    a3_begin = cmake.index('elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")')
+    require(a5_begin < shmem_dependency < a3_begin,
+            "SHMEM dependency discovery must remain scoped to Ascend950 and must not break A3 builds")
+
+    entry = read("op_kernel/allto_allv_grouped_mat_mul_shmem.cpp")
+    kernel = read("op_kernel/allto_allv_grouped_mat_mul_shmem.h")
+    schedule = read("op_kernel/allto_allv_grouped_mat_mul_shmem_schedule.h")
+    require('#include "lib/matmul_intf.h"' in entry,
+            "kernel entry must include the MatmulType/MatmulImpl/CubeFormat interface")
+    entry_flat = normalized(entry)
+    require(
+        "constexpr MatmulConfig SHMEM_MM_CFG_NO_PRELOAD = "
+        "GetMDLConfig(false, false, 0, false, false, false, true);" in entry_flat,
+        "SHMEM MatMul config must preserve the source no-preload/unit-flag policy",
+    )
+    require(
+        "MatmulImpl<ShmemAType, ShmemBType, ShmemCType, ShmemBiasType, "
+        "SHMEM_MM_CFG_NO_PRELOAD> mm;" in entry_flat,
+        "SHMEM MatMul must use its locally defined Ascend950 config",
+    )
+    require("REGISTER_TILING_DEFAULT(AlltoAllvGmmShmem::AlltoAllvGroupedMatMulShmemTilingData);" in entry,
+            "kernel entry must register its tiling struct before GET_TILING_DATA")
+    require("allto_allv_grouped_mat_mul_shmem" in entry, "dedicated kernel entry is missing")
+    require("KERNEL_TYPE_MIX_AIC_1_2" in entry, "kernel is not configured for one AIC/two AIV")
+    require("shmemContextGM" not in entry and "SetSyncBaseAddr" not in entry,
+            "Ascend950 zero-FFTS path must use the source kernel overload without a sync-base argument")
+    require("shmem_my_pe" in entry and "shmem_n_pes" in entry,
+            "kernel does not consume the SHMEM topology")
+    kernel_flat = normalized(kernel)
+    for token in (
+        "__aicore__ inline uint32_t MinU32(",
+        "__aicore__ inline void Init(",
+        "__aicore__ inline void Process(",
+        "__aicore__ inline uint32_t GetActualRoundRows(",
+        "__aicore__ inline void AivBarrier(",
+        "__aicore__ inline void CopyLocal2D(",
+        "__aicore__ inline void PutRemote2D(",
+        "__aicore__ inline void SubmitUdma(",
+        "__aicore__ inline void RunAicGroupedMatmul(",
+    ):
+        require(token in kernel_flat, f"SHMEM kernel helper is missing its device qualifier: {token}")
+    schedule_flat = normalized(schedule)
+    require("#if defined(__CCE_AICORE__)" in schedule and
+            "#define A2AV_GMM_SHMEM_HOST_DEVICE __aicore__" in schedule and
+            "#define A2AV_GMM_SHMEM_HOST_DEVICE" in schedule,
+            "schedule helpers need a CCE-only device qualifier so host UT remains compilable")
+    for token in (
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint64_t CeilDivU64(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint64_t ClipSubU64(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint64_t AlignUpU64(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline RoundExpertSlice GetRoundExpertSlice(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint64_t GetStagePeerOffset(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint32_t GetCompletedCommBlocks(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint32_t GetPeerTokenCount(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint64_t GetPeerInputOffset(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint64_t GetExpertOutputOffset(",
+        "A2AV_GMM_SHMEM_HOST_DEVICE inline uint64_t GetExpertBeginInPeer(",
+    ):
+        require(token in schedule_flat, f"SHMEM schedule helper is missing its host/device qualifier: {token}")
+    require("#undef A2AV_GMM_SHMEM_HOST_DEVICE" in schedule,
+            "schedule helper qualifier macro must not leak into includers")
+    require("aclshmemx_udma_put_nbi<uint8_t, PIPE_S>" in kernel and
+            "if (rows == 1 || (srcStride == columns && dstStride == columns))" in kernel and
+            "for (uint32_t row = 0; row < rows; ++row)" in kernel,
+            "kernel lacks source UDMA contiguous/row-wise copy paths")
+    submit_begin = kernel.index("inline void SubmitUdma")
+    submit_end = kernel.index("__gm__ Element *x_", submit_begin)
+    submit_udma = kernel[submit_begin:submit_end]
+    require("shmem_ptr(" not in submit_udma and "aclshmem_ptr(" not in submit_udma,
+            "UDMA destination must be the local symmetric address plus peer, not a translated remote pointer")
+    require("DataCopyPad" in kernel, "kernel lacks source local MTE copy path")
+    require("WaitFlag<HardEvent::MTE3_MTE2>" in kernel and "WaitFlag<HardEvent::MTE2_MTE3>" in kernel,
+            "local MTE double buffer lacks source dependency/reuse events")
+    require("stage * copyTileElements_ * BF16_BYTES" in kernel,
+            "local UB ping-pong offset must be expressed in bytes")
+    require("Hccl" not in entry + kernel and "HCCL" not in entry + kernel, "SHMEM kernel contains HCCL code")
+
+
+def check_pta_bridge() -> None:
+    bridge = read("examples/arch35/pta/allto_allv_grouped_mat_mul_shmem_torch.cpp")
+    for token in (
+        "TORCH_LIBRARY(allto_allv_grouped_mat_mul_shmem_pta, m)",
+        'm.def("init(int rank, int world_size, int heap_bytes, str ip_port) -> int")',
+        'm.def("run(Tensor x, Tensor weight, int[] send_counts, int[] recv_counts) -> Tensor")',
+        'm.def("barrier() -> int")',
+        'm.def("finalize() -> int")',
+        "aclshmemx_init_attr",
+        "aclshmemx_set_extern_logger",
+        "shmemx_get_ffts_config",
+        "aclshmem_malloc",
+        "aclshmem_calloc",
+        "aclrtMemcpyAsync",
+        "aclGetRecentErrMsg",
+        "aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize",
+        "aclnnAlltoAllvGroupedMatMulV2(",
+        "aclrtSynchronizeStream",
+        "aclshmem_barrier_all",
+        "shmem_free",
+    ):
+        require(token in bridge, f"PTA bridge missing contract token: {token}")
+    require("init_process_group" not in bridge and "Hccl" not in bridge and "HCCL" not in bridge,
+            "PTA bridge must not initialize or call HCCL")
+    require("c10::DispatchKey::PrivateUse1" in bridge and "torch::kPrivateUse1" not in bridge,
+            "PTA bridge must use the current PyTorch PrivateUse1 dispatch key")
+    init_begin = bridge.index("int64_t Init(")
+    init_end = bridge.index("int64_t Barrier()", init_begin)
+    init_code = bridge[init_begin:init_end]
+    require("catch (...)" in init_code and "shmem_finalize()" in init_code,
+            "PTA bridge must finalize SHMEM when post-init topology validation fails")
+    require("shmemx_get_ffts_config returned null" not in init_code,
+            "PTA bridge must accept Ascend950's source-compatible zero FFTS value")
+
+
+def check_pta_build() -> None:
+    cmake = read("examples/arch35/pta/CMakeLists.txt")
+    for token in (
+        "find_package(Python3 REQUIRED COMPONENTS Interpreter Development)",
+        "find_package(Torch REQUIRED)",
+        "cxx_std_17",
+        "SHMEM_HOME_PATH",
+        "SHMEM_HOME",
+        "CUST_OPAPI_LIBRARY",
+        "CUST_OPAPI_INCLUDE_DIR",
+        "torch_npu",
+        "ascendcl",
+        "shmem_utils",
+        "LIBRARY_OUTPUT_DIRECTORY",
+    ):
+        require(token in cmake, f"PTA CMake missing contract token: {token}")
+    require("unset(CUST_OPAPI_INCLUDE_DIR CACHE)" in cmake,
+            "PTA CMake must not reuse a stale cached custom op-api include path")
+    require("file(READ" in cmake and "shmemContext" in cmake and "commMode" in cmake,
+            "PTA CMake must reject a legacy HCCL V2 header before compilation")
+    require("OPS_TRANSFORMER_EXTERNAL_INCLUDE_DIR" in cmake and
+            "common/include/external/aclnn_util.h" in cmake,
+            "PTA CMake must locate the repository ACLNN_API helper used by installed public headers")
+    find_begin = cmake.index("find_path(CUST_OPAPI_INCLUDE_DIR")
+    find_end = cmake.index("endif()", find_begin)
+    require("${ASCEND_HOME_PATH}/include" not in cmake[find_begin:find_end],
+            "PTA CMake must not select CANN's legacy built-in V2 header as the custom ABI")
+    includes_begin = cmake.index("target_include_directories(allto_allv_grouped_mat_mul_shmem_pta")
+    includes_end = cmake.index(")", includes_begin)
+    includes = cmake[includes_begin:includes_end]
+    require(includes.index("${CUST_OPAPI_INCLUDE_DIR}") < includes.index("${ASCEND_HOME_PATH}/include"),
+            "custom SHMEM V2 headers must precede built-in CANN headers")
+    require("${OPS_TRANSFORMER_EXTERNAL_INCLUDE_DIR}" in includes,
+            "PTA target must include the directory that provides aclnn_util.h")
+    require(includes.index("${SHMEM_INCLUDE_DIRS}") < includes.index("${TORCH_INCLUDE_DIRS}") and
+            includes.index("${SHMEM_INCLUDE_DIRS}") < includes.index("${TORCH_NPU_ROOT}/include"),
+            "selected SHMEM SDK headers must precede Torch/torch_npu bundled SHMEM headers")
+
+    build = read("examples/arch35/pta/build_pta.sh")
+    for token in (
+        "set -euo pipefail",
+        "ASCEND_HOME_PATH",
+        "SHMEM_HOME_PATH",
+        "SHMEM_HOME",
+        "CUST_OPAPI_LIBRARY",
+        "PYTHON_BIN",
+        "torch.utils.cmake_prefix_path",
+        "import torch_npu",
+        "cmake -S",
+        "cmake --build",
+    ):
+        require(token in build, f"PTA build script missing contract token: {token}")
+    require("liballto_allv_grouped_mat_mul_shmem_pta.so" in build,
+            "PTA build script must print and verify the expected shared library")
+
+
+def check_pta_driver() -> None:
+    driver = read("examples/arch35/pta/test_allto_allv_grouped_mat_mul_shmem.py")
+    module = ast.parse(driver)
+    functions = {node.name for node in ast.walk(module) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    for name in (
+        "build_global_counts",
+        "rank_send_counts",
+        "rank_recv_counts",
+        "build_rank_input",
+        "build_rank_weight",
+        "build_golden",
+        "precision_metrics",
+        "worker",
+        "main",
+    ):
+        require(name in functions, f"PTA driver missing function: {name}")
+    for token in (
+        'mp.get_context("spawn")',
+        "torch.ops.load_library",
+        "torch.ops.allto_allv_grouped_mat_mul_shmem_pta.init",
+        "torch.ops.allto_allv_grouped_mat_mul_shmem_pta.run",
+        "torch.ops.allto_allv_grouped_mat_mul_shmem_pta.barrier",
+        "torch.ops.allto_allv_grouped_mat_mul_shmem_pta.finalize",
+        'default=2',
+        '"balanced"',
+        '"uneven"',
+        '"--self-check"',
+        "2 ** (-7)",
+        "2 ** (-6)",
+        "precision_failures",
+    ):
+        require(token in driver, f"PTA driver missing contract token: {token}")
+    require("torch.distributed" not in driver and "init_process_group" not in driver,
+            "SHMEM PTA driver must not initialize a torch/HCCL process group")
+
+
+def check_pta_run_and_docs() -> None:
+    run = read("examples/arch35/pta/run_pta_test.sh")
+    for token in (
+        "set -euo pipefail",
+        "PTA_TIMEOUT_SECONDS:-600",
+        "timeout --signal=TERM --kill-after=30",
+        "liballto_allv_grouped_mat_mul_shmem_pta.so",
+        "SHMEM_HOME_PATH",
+        "SHMEM_HOME",
+        "LD_LIBRARY_PATH",
+        "SHMEM_LOG_LEVEL",
+        "SHMEM runtime library directory",
+        "SHMEM runtime was built without Ascend950 UDMA support",
+        "DEVICE UDMA support is not enabled in this build.",
+        "bash scripts/build.sh -soc_type Ascend950",
+        "ASCEND_CUSTOM_OPP_PATH",
+        "aic-ascend950-ops-info.json",
+        "OPS_INFO_CONFIG",
+        "binary_info_config.json",
+        "KERNEL_BINARY_CONFIG",
+        "AlltoAllvGroupedMatMulShmem",
+        '"$@"',
+    ):
+        require(token in run, f"PTA run script missing contract token: {token}")
+
+    readme = read("examples/arch35/pta/README.md")
+    for token in (
+        "## Prerequisites",
+        "## Build",
+        "## Run",
+        "--world-size 2 --device-ids 0,1 --case all",
+        "## Result interpretation",
+        "## Troubleshooting",
+        "## Offline verification limits",
+        "PTA_TIMEOUT_SECONDS",
+        "ACLSHMEM_UDMA_SUPPORT=ON",
+        "bash scripts/build.sh -soc_type Ascend950",
+    ):
+        require(token in readme, f"PTA README missing section or command: {token}")
+    for address in re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", run + readme):
+        require(address.startswith("127."), f"PTA artifacts contain a machine-specific IP literal: {address}")
+
+
+def check_cases() -> None:
+    precision = load_jsonl("tests/precision/allto_allv_grouped_mat_mul_shmem_precision_cases.jsonl")
+    perf = load_jsonl("tests/performance/allto_allv_grouped_mat_mul_shmem_perf_cases.jsonl")
+    require(len(precision) == 36, f"expected 36 legal precision cases, got {len(precision)}")
+    require(len(perf) == 10, f"expected 10 performance cases, got {len(perf)}")
+    names = [case["case_id"] for case in precision]
+    require(len(names) == len(set(names)), "duplicate precision case ids")
+    eps: set[int] = set()
+    for case in precision:
+        specs = {item["name"]: item for item in case["inputs"]}
+        x_shape = specs["gmm_x"]["shape"]
+        w_shape = specs["gmm_weight"]["shape"]
+        ep = specs["ep_world_size"]["value"]
+        experts = specs["local_experts"]["value"]
+        eps.add(ep)
+        require(specs["gmm_x"]["dtype"] == specs["gmm_weight"]["dtype"] == "bfloat16", "non-BF16 case")
+        require(len(x_shape) == 2 and len(w_shape) == 3 and x_shape[1] == w_shape[1], "invalid M/K/N shape")
+        require(1 <= ep <= 8 and 1 <= experts <= 64, "case exceeds source EP/E limits")
+        require(case["route_seed"] == 20260810, "route seed drift")
+    require(eps == set(range(1, 9)), f"EP coverage is incomplete: {sorted(eps)}")
+    precision_names = set(names)
+    require(all(case["case_id"] in precision_names for case in perf), "performance case not in precision set")
+
+
+def main() -> int:
+    checks = [
+        check_public_abi,
+        check_registration_and_binary,
+        check_tiling_and_kernel,
+        check_pta_bridge,
+        check_pta_build,
+        check_pta_driver,
+        check_pta_run_and_docs,
+        check_cases,
+    ]
+    for check in checks:
+        check()
+        print(f"PASS {check.__name__}")
+    print(f"PASS all static SHMEM migration checks ({len(checks)} groups)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
