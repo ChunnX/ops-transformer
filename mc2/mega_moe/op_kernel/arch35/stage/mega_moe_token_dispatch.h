@@ -30,7 +30,6 @@ struct TokenDispatchConfig {
     uint32_t quantTokenAlignBytes;
     uint32_t quantScaleAlignBytes;
     uint32_t quantTokenScaleAlignBytes;
-    int32_t dispatchFlagSlotsPerExpert;
 };
 
 template <typename ActivationType>
@@ -245,6 +244,7 @@ __aicore__ inline DispatchShardRange CalculateDispatchShardRange(
 template <typename ActivationType, typename QuantScaleType, bool EnableA8W4, uint32_t PipelineTileM,
           bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchExpertTokens(const TokenDispatchConfig &context, const Params &params,
+                                            const MoeSyncWorkspaceLayout &syncLayout,
                                             GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch,
                                             uint32_t localExpertId)
 {
@@ -255,7 +255,7 @@ __aicore__ inline void DispatchExpertTokens(const TokenDispatchConfig &context, 
         localExpertId == 0 ? 0 : scratch.cumsumInfoTensor.GetValue(localExpertId * context.common.worldSize - 1);
     __gm__ int32_t *dispatchWaveReadyCount =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
-        static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
+        static_cast<uint64_t>(localExpertId) * syncLayout.dispatchFlagSlotCountPerExpert;
     uint32_t rankShardCount = context.countWorkspace.blockNum / context.common.worldSize;
     rankShardCount = rankShardCount == 0U ? 1U : rankShardCount;
 
@@ -476,7 +476,8 @@ __aicore__ inline void ExportExpertTokenCountsFromWorkspace(
 template <typename ActivationType, typename QuantScaleType, bool EnableA8W4, uint32_t Gmm1TileM,
           bool TopkWeightsPrefetch>
 __aicore__ inline void RunMoeExpertDispatchStage(
-    const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
+    const TokenDispatchConfig &context, const MoeSyncWorkspaceLayout &syncLayout,
+    const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t expertIdx, uint64_t &sendCnt)
 {
     sendCnt = 0U;
@@ -488,7 +489,7 @@ __aicore__ inline void RunMoeExpertDispatchStage(
             context, params, scratch, expertIdx, sendCnt);
         if (sendCnt != 0U) {
             DispatchExpertTokens<ActivationType, QuantScaleType, EnableA8W4, Gmm1TileM, TopkWeightsPrefetch>(
-                context, params, winRankAddr, scratch, expertIdx);
+                context, params, syncLayout, winRankAddr, scratch, expertIdx);
         }
     }
 }
