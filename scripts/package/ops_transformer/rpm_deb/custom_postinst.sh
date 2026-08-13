@@ -46,11 +46,13 @@ elevate_mod() {
 
 # Mirror run install_common_parser: recursive chmod for every copy_entity in filelist
 # (deb generated postinst only chmods the entity path itself / script files via find -type f).
+# Then mirror install.sh: script tree 555/550, filelist.csv specially 444/440.
 apply_copy_entity_perms_from_filelist() {
-    local filelist share_info_dir
+    local filelist share_info_dir script_dir
     filelist=$(find "${sourcedir}/share/info" -path '*/script/filelist.csv' 2>/dev/null | head -1)
     [ -f "${filelist}" ] || return 0
-    share_info_dir=$(dirname "$(dirname "${filelist}")")
+    script_dir=$(dirname "${filelist}")
+    share_info_dir=$(dirname "${script_dir}")
 
     # CSV: module,operation,relative_path_in_pkg,relative_install_path,...,permission,...
     while IFS=',' read -r _ op _ relpath _ perm _; do
@@ -61,9 +63,29 @@ apply_copy_entity_perms_from_filelist() {
         chmod -R "$(elevate_mod "${perm}")" "${sourcedir}/${relpath}" 2>/dev/null || true
     done < <(tail -n +2 "${filelist}")
 
-    # Match run opp_install: scene.info / version.info → ONLYREAD (same share/info package dir)
+    # Match run scripts/install.sh after opp_install (仓内 / 与 nn 相同):
+    #   root: chmod -R 555 script; chmod 444 filelist.csv
+    #   non-root: chmod -R 550 script; chmod 440 filelist.csv
+    if [ "$(id -u)" -eq 0 ]; then
+        chmod -R 555 "${script_dir}" 2>/dev/null || true
+        chmod 444 "${filelist}" 2>/dev/null || true
+    else
+        chmod -R 550 "${script_dir}" 2>/dev/null || true
+        chmod 440 "${filelist}" 2>/dev/null || true
+    fi
+
+    # Match run opp_install: scene.info / version.info → ONLYREAD
     chmod "${ONLYREAD_PERM}" "${share_info_dir}/scene.info" 2>/dev/null || true
     chmod "${ONLYREAD_PERM}" "${share_info_dir}/version.info" 2>/dev/null || true
+
+    # RECORD under share/info/<pkg> (if packaged/created): run compare shows 555; not in filelist
+    if [ -e "${share_info_dir}/RECORD" ]; then
+        if [ "$(id -u)" -eq 0 ]; then
+            chmod 555 "${share_info_dir}/RECORD" 2>/dev/null || true
+        else
+            chmod 550 "${share_info_dir}/RECORD" 2>/dev/null || true
+        fi
+    fi
 }
 
 # install es_* / cann_ops_* whl (same as install_es_whl_package + install_whl_package)
