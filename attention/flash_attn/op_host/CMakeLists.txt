@@ -19,6 +19,7 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
+
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
     set(flash_attn_depends attention/incre_flash_attention attention/prompt_flash_attention attention/common CACHE INTERNAL "Dependencies for flash_attn")
     add_ops_compile_options(
