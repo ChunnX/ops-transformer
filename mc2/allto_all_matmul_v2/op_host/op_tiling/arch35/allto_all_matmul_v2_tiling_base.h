@@ -137,10 +137,11 @@ protected:
             OP_LOGE_WITH_INVALID_INPUT(opName, "group");
             return false;
         }
-        size_t groupLen = std::strlen(groupPtr);
-        if (groupLen > MAX_GROUP_NAME_LEN) {
-            OP_LOGE_WITH_INVALID_ATTR(opName, "group", std::to_string(groupLen).c_str(),
-                                      ("length in [0, " + std::to_string(MAX_GROUP_NAME_LEN) + "]").c_str());
+        uint64_t groupLen = strnlen(groupPtr, MAX_GROUP_NAME_LEN);
+        if (groupLen == 0 || groupLen == MAX_GROUP_NAME_LEN) {
+            OP_LOGE_FOR_INVALID_VALUE(
+                opName, "group", std::to_string(groupLen).c_str(),
+                (std::string("length in (0, ") + std::to_string(MAX_GROUP_NAME_LEN) + ")").c_str());
             return false;
         }
         return true;
@@ -260,6 +261,13 @@ protected:
                 opName, "x1_quant_mode, x2_quant_mode",
                 (std::to_string(x1QuantMode) + "," + std::to_string(x2QuantMode)).c_str(),
                 "x1_quant_mode and x2_quant_mode must be MX_QUANT(6)");
+            return false;
+        }
+        if (x1QuantMode != x2QuantMode) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName, "x1_quant_mode, x2_quant_mode",
+                (std::to_string(x1QuantMode) + "," + std::to_string(x2QuantMode)).c_str(),
+                "x1_quant_mode and x2_quant_mode must be consistent");
             return false;
         }
         auto *yDtypePtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_Y_DTYPE);
