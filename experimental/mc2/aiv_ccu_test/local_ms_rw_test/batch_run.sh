@@ -157,7 +157,7 @@ echo "==================================================================="
 
 # ==================== 批量执行 ====================
 
-HEADER="id,mode0,warmup,ms_id,loop_count,data_size,rank_id,ranksize,warmup_cycles,start_cycle,end_cycle,avg_cycles,avg_ns,bandwidth_gbs,verify_result,status"
+HEADER="id,mode0,warmup,ms_id,loop_count,data_size,rank_id,ranksize,warmup_cycles,start_cycle,end_cycle,avg_cycles,avg_ns,bandwidth_gbs,warmup_cycles2,start_cycle2,end_cycle2,avg_ns2,bandwidth_gbs2,verify_result,status"
 echo "$HEADER" > "$OUTPUT_CSV"
 
 total_lines=$(wc -l < "$INPUT_CSV")
@@ -188,6 +188,7 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode0 warmup ms_id loop_count
         1|read|READ) mode0_str="READ" ;;
         2|read_write|READ_WRITE|rw|RW) mode0_str="READ_WRITE" ;;
         3|write_then_read|WRITE_THEN_READ|wtr|WTR) mode0_str="WRITE_THEN_READ" ;;
+        4|dual_core_rw|DUAL_CORE_RW|dcrw|DCRW) mode0_str="DUAL_CORE_RW" ;;
         *) mode0_str="UNKNOWN($mode0)" ;;
     esac
 
@@ -220,25 +221,45 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode0 warmup ms_id loop_count
     fi
 
     # 解析输出
-    warmup_cycles=$(echo "$output" | grep "warmupCycle:" | grep -oP '\d+' | tail -1)
-    start_cycle=$(echo "$output" | grep "startCycle:" | grep -oP '\d+' | tail -1)
-    end_cycle=$(echo "$output" | grep "endCycle:" | grep -oP '\d+' | tail -1)
-    avg_ns=$(echo "$output" | grep "平均:" | grep -oP '[\d.]+' | head -1)
-    bandwidth_gbs=$(echo "$output" | grep "带宽:" | grep -oP '[\d.]+' | head -1)
-
-    # verify_result: 仅 write_then_read 才有数据校验，其他模式为 N/A
-    if [ "$mode0" = "3" ] || [ "$mode0" = "write_then_read" ] || [ "$mode0" = "WRITE_THEN_READ" ] \
-       || [ "$mode0" = "wtr" ] || [ "$mode0" = "WTR" ]; then
-        verify_str=$(echo "$output" | grep "数据校验:" | grep -oP '(通过|失败)' | head -1)
-        if [ "$verify_str" = "通过" ]; then
-            verify_result="PASS"
-        elif [ "$verify_str" = "失败" ]; then
-            verify_result="FAIL"
+    if [ "$mode0" = "4" ] || [ "$mode0" = "dual_core_rw" ] || [ "$mode0" = "DUAL_CORE_RW" ] \
+       || [ "$mode0" = "dcrw" ] || [ "$mode0" = "DCRW" ]; then
+        # 双核模式：写核用 startCycle/endCycle，读核用 startCycle2/endCycle2
+        warmup_cycles=$(echo "$output" | grep "warmupCycle:" | grep -oP '\d+' | head -1)
+        start_cycle=$(echo "$output" | grep "startCycle:" | grep -oP '\d+' | tail -1)
+        end_cycle=$(echo "$output" | grep "endCycle:" | grep -oP '\d+' | tail -1)
+        warmup_cycles2=$(echo "$output" | grep "warmupCycle:" | grep -oP '\d+' | tail -1)
+        start_cycle2=$(echo "$output" | grep "startCycle2:" | grep -oP '\d+' | tail -1)
+        end_cycle2=$(echo "$output" | grep "endCycle2:" | grep -oP '\d+' | tail -1)
+        avg_ns=$(echo "$output" | grep "平均:" | grep -oP '[\d.]+' | head -1)
+        avg_ns2=$(echo "$output" | grep "平均:" | grep -oP '[\d.]+' | tail -1)
+        bandwidth_gbs=$(echo "$output" | grep "带宽:" | grep -oP '[\d.]+' | head -1)
+        bandwidth_gbs2=$(echo "$output" | grep "带宽:" | grep -oP '[\d.]+' | tail -1)
+        verify_result="N/A"
+    else
+        warmup_cycles=$(echo "$output" | grep "warmupCycle:" | grep -oP '\d+' | tail -1)
+        start_cycle=$(echo "$output" | grep "startCycle:" | grep -oP '\d+' | tail -1)
+        end_cycle=$(echo "$output" | grep "endCycle:" | grep -oP '\d+' | tail -1)
+        avg_ns=$(echo "$output" | grep "平均:" | grep -oP '[\d.]+' | head -1)
+        bandwidth_gbs=$(echo "$output" | grep "带宽:" | grep -oP '[\d.]+' | head -1)
+        warmup_cycles2=""
+        start_cycle2=""
+        end_cycle2=""
+        avg_ns2=""
+        bandwidth_gbs2=""
+        # verify_result: 仅 write_then_read 才有数据校验，其他模式为 N/A
+        if [ "$mode0" = "3" ] || [ "$mode0" = "write_then_read" ] || [ "$mode0" = "WRITE_THEN_READ" ] \
+           || [ "$mode0" = "wtr" ] || [ "$mode0" = "WTR" ]; then
+            verify_str=$(echo "$output" | grep "数据校验:" | grep -oP '(通过|失败)' | head -1)
+            if [ "$verify_str" = "通过" ]; then
+                verify_result="PASS"
+            elif [ "$verify_str" = "失败" ]; then
+                verify_result="FAIL"
+            else
+                verify_result="N/A"
+            fi
         else
             verify_result="N/A"
         fi
-    else
-        verify_result="N/A"
     fi
 
     if [ -n "$start_cycle" ] && [ -n "$end_cycle" ] && [ "$loop_count" -gt 0 ]; then
@@ -262,11 +283,20 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode0 warmup ms_id loop_count
     avg_cycles="${avg_cycles:-}"
     avg_ns="${avg_ns:-}"
     bandwidth_gbs="${bandwidth_gbs:-}"
+    warmup_cycles2="${warmup_cycles2:-}"
+    start_cycle2="${start_cycle2:-}"
+    end_cycle2="${end_cycle2:-}"
+    avg_ns2="${avg_ns2:-}"
+    bandwidth_gbs2="${bandwidth_gbs2:-}"
 
-    echo "  结果: warmup=$warmup_cycles start=$start_cycle end=$end_cycle avg_cycles=$avg_cycles avg_ns=$avg_ns bandwidth=$bandwidth_gbs verify=$verify_result status=$status"
+    echo "  结果: warmup=$warmup_cycles start=$start_cycle end=$end_cycle avg_cycles=$avg_cycles avg_ns=$avg_ns bw=$bandwidth_gbs"
+    if [ -n "$start_cycle2" ]; then
+        echo "         read_core: warmup=$warmup_cycles2 start=$start_cycle2 end=$end_cycle2 avg_ns=$avg_ns2 bw=$bandwidth_gbs2"
+    fi
+    echo "  verify=$verify_result status=$status"
     echo "-------------------------------------------------------------------"
 
-    echo "${id},${mode0},${warmup},${ms_id},${loop_count},${data_size},${rank_id},${ranksize},${warmup_cycles},${start_cycle},${end_cycle},${avg_cycles},${avg_ns},${bandwidth_gbs},${verify_result},${status}" >> "$OUTPUT_CSV"
+    echo "${id},${mode0},${warmup},${ms_id},${loop_count},${data_size},${rank_id},${ranksize},${warmup_cycles},${start_cycle},${end_cycle},${avg_cycles},${avg_ns},${bandwidth_gbs},${warmup_cycles2},${start_cycle2},${end_cycle2},${avg_ns2},${bandwidth_gbs2},${verify_result},${status}" >> "$OUTPUT_CSV"
 
 done
 

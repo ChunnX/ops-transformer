@@ -85,3 +85,15 @@ id,mode0,warmup,ms_id,loop_count,data_size,rank_id,ranksize
 83,read_write,0,1,1,32768,0,1
 84,read_write,0,1,1,65536,0,1
 85,read_write,0,1,1,122880,0,1
+86,dual_core_rw,10,0,100,4096,0,1
+87,dual_core_rw,10,0,100,8192,0,1
+88,dual_core_rw,10,0,100,16384,0,1
+89,dual_core_rw,10,0,100,32768,0,1
+90,dual_core_rw,10,0,100,65536,0,1
+91,dual_core_rw,10,0,100,122880,0,1
+92,dual_core_rw,10,1,100,4096,0,1
+93,dual_core_rw,10,1,100,8192,0,1
+94,dual_core_rw,10,1,100,16384,0,1
+95,dual_core_rw,10,1,100,32768,0,1
+96,dual_core_rw,10,1,100,65536,0,1
+97,dual_core_rw,10,1,100,122880,0,1

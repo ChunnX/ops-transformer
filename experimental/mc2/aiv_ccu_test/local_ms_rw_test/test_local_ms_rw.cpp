@@ -71,7 +71,7 @@ constexpr int64_t HCCL_BUFFER_SIZE = 200;
 constexpr uint64_t MIN_DATA_SIZE = 32;                  // 32B，DataCopy 最小对齐
 constexpr uint64_t MAX_DATA_SIZE_SINGLE_BUF = 240 * 1024;  // 240KB，单 buffer 上限（WRITE/READ）
 constexpr uint64_t MAX_DATA_SIZE_DOUBLE_BUF = 120 * 1024;  // 120KB，双 buffer 上限（WTR/READ_WRITE）
-constexpr uint32_t RESULT_WORDS = 4;
+constexpr uint32_t RESULT_WORDS = 8;
 int32_t g_rankId = 0;
 int32_t g_ranksize = 1;        // 卡数（本地测试默认单卡）
 uint32_t g_mode0 = 3;          // 0=写, 1=读, 2=读写混合, 3=先写后读
@@ -107,6 +107,7 @@ void GetOption(int argc, char **argv)
                 else if (m == "read" || m == "READ") { g_mode0 = 1; }
                 else if (m == "read_write" || m == "READ_WRITE" || m == "rw" || m == "RW") { g_mode0 = 2; }
                 else if (m == "write_then_read" || m == "WRITE_THEN_READ" || m == "wtr" || m == "WTR") { g_mode0 = 3; }
+                else if (m == "dual_core_rw" || m == "DUAL_CORE_RW" || m == "dcrw" || m == "DCRW") { g_mode0 = 4; }
                 else { g_mode0 = static_cast<uint32_t>(atoi(optarg)); }
                 break;
             }
@@ -135,6 +136,7 @@ const char *GetMode0Str(uint32_t mode0)
         case 1: return "READ";
         case 2: return "READ_WRITE";
         case 3: return "WRITE_THEN_READ";
+        case 4: return "DUAL_CORE_RW";
         default: return "UNKNOWN";
     }
 }
@@ -149,7 +151,7 @@ int main(int argc, char *argv[])
               g_rankId, g_ranksize, GetMode0Str(g_mode0), g_enableWarmup, g_msId,
               g_loopCount, g_dataSize, (double)g_dataSize / 1024.0);
 
-    CHECK_RET(g_mode0 <= 3, LOG_PRINT("[ERROR] mode0 invalid: %u\n", g_mode0); return -1);
+    CHECK_RET(g_mode0 <= 4, LOG_PRINT("[ERROR] mode0 invalid: %u\n", g_mode0); return -1);
     CHECK_RET(g_enableWarmup <= 1000, LOG_PRINT("[ERROR] warmup invalid: %u (0-1000)\n", g_enableWarmup); return -1);
     CHECK_RET(g_msId < 4, LOG_PRINT("[ERROR] ms_id invalid: %u, valid range is 0..3\n", g_msId); return -1);
     CHECK_RET(g_loopCount > 0, LOG_PRINT("[ERROR] loop_count must be greater than 0.\n"); return -1);
@@ -226,8 +228,9 @@ int main(int argc, char *argv[])
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc timeGm failed. ret: %d\n", ret); return ret);
 
     // ========== <<<>>> 调用 Kernel ==========
-    LOG_PRINT("[INFO] 启动 Kernel (blockDim=%ld)...\n", BLOCK_NUM);
-    local_ms_rw_demo(g_mode0, g_enableWarmup, g_msId, g_loopCount, g_dataSize, (uint32_t)BLOCK_NUM, stream,
+    uint32_t blockDim = (g_mode0 == 4) ? 2 : (uint32_t)BLOCK_NUM;
+    LOG_PRINT("[INFO] 启动 Kernel (blockDim=%u)...\n", blockDim);
+    local_ms_rw_demo(g_mode0, g_enableWarmup, g_msId, g_loopCount, g_dataSize, blockDim, stream,
                      (uint8_t *)msAddrs[0], (uint8_t *)msAddrs[1], (uint8_t *)msAddrs[2], (uint8_t *)msAddrs[3],
                      (uint8_t *)timeGm);
 
@@ -244,6 +247,9 @@ int main(int argc, char *argv[])
     uint64_t endCycle = timeHost[1];
     uint64_t verifyResult = timeHost[2];
     uint64_t warmupCycles = timeHost[3];
+    uint64_t startCycle2 = timeHost[4];
+    uint64_t endCycle2 = timeHost[5];
+    uint64_t warmupCycles2 = timeHost[6];
     uint64_t elapsedCycles = endCycle - startCycle;
     double elapsedNs = (double)elapsedCycles * NS_PER_CYCLE;
     double avgNs = elapsedNs / static_cast<double>(g_loopCount);
@@ -262,14 +268,36 @@ int main(int argc, char *argv[])
     LOG_PRINT("  MS ID:        %u\n", g_msId);
     LOG_PRINT("  loop_count:   %u\n", g_loopCount);
     LOG_PRINT("  数据量:       %.2f KB (%lu bytes)\n", dataKB, g_dataSize);
-    LOG_PRINT("  warmupCycle:  %lu\n", warmupCycles);
-    LOG_PRINT("  startCycle:   %lu\n", startCycle);
-    LOG_PRINT("  endCycle:     %lu\n", endCycle);
-    LOG_PRINT("  耗时:         %.2f ns (%.2f us)\n", elapsedNs, elapsedUs);
-    LOG_PRINT("  平均:         %.4f ns/loop\n", avgNs);
-    LOG_PRINT("  带宽:         %.4f GB/s\n", bandwidthGBs);
-    if (g_mode0 == 3) {
-        LOG_PRINT("  数据校验:     %s\n", verifyResult == 0 ? "通过" : "失败");
+    if (g_mode0 == 4) {
+        double elapsedCycles2 = (double)(endCycle2 - startCycle2);
+        double elapsedNs2 = elapsedCycles2 * NS_PER_CYCLE;
+        double avgNs2 = elapsedNs2 / static_cast<double>(g_loopCount);
+        double bwWrite = (double)g_dataSize * (double)g_loopCount / elapsedNs;
+        double bwRead = (double)g_dataSize * (double)g_loopCount / elapsedNs2;
+        LOG_PRINT("  --- 写核 (core 0) ---\n");
+        LOG_PRINT("  warmupCycle:  %lu\n", warmupCycles);
+        LOG_PRINT("  startCycle:   %lu\n", startCycle);
+        LOG_PRINT("  endCycle:     %lu\n", endCycle);
+        LOG_PRINT("  耗时:         %.2f ns\n", elapsedNs);
+        LOG_PRINT("  平均:         %.4f ns/loop\n", avgNs);
+        LOG_PRINT("  带宽:         %.4f GB/s\n", bwWrite);
+        LOG_PRINT("  --- 读核 (core 1) ---\n");
+        LOG_PRINT("  warmupCycle:  %lu\n", warmupCycles2);
+        LOG_PRINT("  startCycle2:  %lu\n", startCycle2);
+        LOG_PRINT("  endCycle2:    %lu\n", endCycle2);
+        LOG_PRINT("  耗时:         %.2f ns\n", elapsedNs2);
+        LOG_PRINT("  平均:         %.4f ns/loop\n", avgNs2);
+        LOG_PRINT("  带宽:         %.4f GB/s\n", bwRead);
+    } else {
+        LOG_PRINT("  warmupCycle:  %lu\n", warmupCycles);
+        LOG_PRINT("  startCycle:   %lu\n", startCycle);
+        LOG_PRINT("  endCycle:     %lu\n", endCycle);
+        LOG_PRINT("  耗时:         %.2f ns (%.2f us)\n", elapsedNs, elapsedUs);
+        LOG_PRINT("  平均:         %.4f ns/loop\n", avgNs);
+        LOG_PRINT("  带宽:         %.4f GB/s\n", bandwidthGBs);
+        if (g_mode0 == 3) {
+            LOG_PRINT("  数据校验:     %s\n", verifyResult == 0 ? "通过" : "失败");
+        }
     }
     LOG_PRINT("=======================\n");
 

@@ -14,9 +14,9 @@
 #   -b build-type      Release or Debug
 #   -c cmake-rebuild   ON=重新编译, OFF=不编译
 #   -r run-test        ON=运行用例, OFF=不运行
-#   -m mode0           0=写, 1=读, 2=读写混合, 3=先写后读
-#   -w warmup          0=不预热, 1=正式打点前执行一次相同操作
-#   -u ms_id           选择测试的 MS ID，范围 0..3
+#   -m mode0           0=写, 1=读, 2=读写混合, 3=先写后读, 4=双核混合读写
+#   -w warmup          预热次数(0=不预热)
+#   -u ms_id           选择测试的 MS ID，范围 0..3（mode0=4时 0=同地址 1=非同地址）
 #   -l loop_count      正式执行循环次数
 #   -s data_size       数据量(字节), 4KB=4096 ~ 120KB=122880 (mode0=3时上限120KB)
 #   -n ranksize        卡数(默认1)
