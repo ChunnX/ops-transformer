@@ -39,15 +39,12 @@ public:
                                 GmmArrayAddrType *gmmArrayAddrIn, GmmArrayAddrType *mmArrayAddrIn, TPipe *tPipe,
                                 bool isA2avGmmFlag)
     {
-        // init member variables
         GET_TILING_DATA(tilingData, tilingGM);
         tilingData_ = &tilingData;
         e_ = tilingData_->taskTilingInfo.e;
         expertNum_ = tilingData_->taskTilingInfo.expertNum;
         gmmxScaleGm_ = gmmxScaleGM;
-        // workspace偏移
         uint64_t workspaceOffset = 0;
-        // x通信输出区域：isPermuteOut=true时通信结果写到workspace，AIV重排到permuteOut
         uint64_t commOutLen =
             Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1),
                           PACK_FACTOR) *
@@ -57,13 +54,11 @@ public:
         workspaceOffset += commOutLen;
         permuteOutGm_ = permuteOutOptionalGM;
         computeScaleGm_ = gmmxScaleGm_;
-        // gmmX comm init
         const void *hcclInitTiling = &(tilingData_->hcclA2avTilingInfo.hcclInitTiling);
         uint64_t hcclCcTilingOffset = offsetof(TilingDataType, hcclA2avTilingInfo) +
                                       offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
         commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commOutGm_, commOutGm_,
                     static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
-        // scale commOut区域：MX场景scale通信输出
         if constexpr (MX_QUANT_MODE) {
             uint64_t scaleAxis = CeilDiv(tilingData_->taskTilingInfo.H1, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
             uint64_t permuteScaleOutSize = Align(tilingData_->taskTilingInfo.A * scaleAxis, TENSOR_LIST_SIZE);
@@ -104,10 +99,6 @@ protected:
 private:
     __aicore__ inline void ProcessCommRoundMode()
     {
-        if ASCEND_IS_AIC {
-            AscendC::printf("[DBG] Sched e=%u expertNum=%u isPermute=%d MX=%d PERTENSOR=%d\n",
-                            e_, expertNum_, isPermuteOut_ ? 1 : 0, MX_QUANT_MODE ? 1 : 0, PERTENSOR_QUANT_MODE ? 1 : 0);
-        }
         for (uint32_t start = 0; start < e_; start += expertNum_) {
             uint32_t actualExpertNum = (start + expertNum_ > e_) ? (e_ - start) : expertNum_;
             if constexpr (MX_QUANT_MODE) {
@@ -125,23 +116,18 @@ private:
                     commOp.Wait(start);
                 }
                 SyncAll<true>();
-                AscendC::CrossCoreSetFlag<SYNC_MODE_AIV_TO_AIC, PIPE_V>(
-                    SYNC_FLAG_ID_COMM_DONE + SYNC_FLAG_AIV1_OFFSET * GetSubBlockIdx());
+            }
+            SyncAll<false>();
+            if ASCEND_IS_AIV {
                 if (isPermuteOut_) {
                     commOp.PermuteData(start, actualExpertNum, permuteOutGm_);
                 }
             }
             if ASCEND_IS_AIC {
-                AscendC::CrossCoreWaitFlag<SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(SYNC_FLAG_ID_COMM_DONE);
-#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
-                AscendC::CrossCoreWaitFlag<SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(
-                    SYNC_FLAG_ID_COMM_DONE + SYNC_FLAG_AIV1_OFFSET);
-#endif
                 computeOp.Process(start, actualExpertNum);
                 AscendC::CrossCoreSetFlag<SYNC_MODE_AIC_BARRIER, PIPE_FIX>(SYNC_FLAG_ID_AIC_BARRIER);
                 AscendC::CrossCoreWaitFlag<SYNC_MODE_AIC_BARRIER, PIPE_FIX>(SYNC_FLAG_ID_AIC_BARRIER);
             }
-            SyncAll<false>();
         }
     }
 
