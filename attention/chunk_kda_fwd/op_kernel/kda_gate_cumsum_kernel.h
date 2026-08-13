@@ -62,8 +62,8 @@ static __simd_vf__ inline void AccumulateGateRowRegbase(__ubuf__ float *input, _
 }
 
 static __simd_vf__ inline void AccumulateGateChunk128Regbase(__ubuf__ float *input,
-                                                              __ubuf__ float *output,
-                                                              uint16_t rows)
+                                                             __ubuf__ float *output,
+                                                             uint16_t rows)
 {
     using namespace AscendC::MicroAPI;
     constexpr uint16_t FLOAT_ELEMENTS_PER_REG = AscendC::VECTOR_REG_WIDTH / sizeof(float);

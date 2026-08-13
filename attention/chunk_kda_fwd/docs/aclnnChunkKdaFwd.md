@@ -249,4 +249,384 @@ aclnnStatus aclnnChunkKdaFwd(
 
 ## 调用示例
 
-无。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+
+```Cpp
+#include <iostream>
+#include <vector>
+#include <cstring>
+#include <cmath>
+#include <cstdint>
+#include <random>
+#include "acl/acl.h"
+#include "aclnnop/aclnn_chunk_kda_fwd.h"
+
+using namespace std;
+
+#define CHECK_RET(cond, return_expr) \
+    do {                               \
+        if (!(cond)) {                   \
+            return_expr;                   \
+        }                                \
+    } while (0)
+
+#define LOG_PRINT(message, ...)     \
+    do {                              \
+        printf(message, ##__VA_ARGS__); \
+    } while (0)
+
+int64_t GetShapeSize(const std::vector<int64_t>& shape) {
+    int64_t shapeSize = 1;
+    for (auto i : shape) {
+        shapeSize *= i;
+    }
+    return shapeSize;
+}
+
+int Init(int32_t deviceId, aclrtStream* stream) {
+    // 固定写法，AscendCL初始化
+    auto ret = aclInit(nullptr);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtSetDevice(deviceId);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
+    ret = aclrtCreateStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
+    return 0;
+}
+
+template <typename T>
+int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
+                    aclDataType dataType, aclTensor** tensor) {
+    // 检查shape是否有效
+    if (shape.empty()) {
+        LOG_PRINT("CreateAclTensor: ERROR - shape is empty\n");
+        return -1;
+    }
+    for (size_t i = 0; i < shape.size(); ++i) {
+        if (shape[i] <= 0) {
+            LOG_PRINT("CreateAclTensor: ERROR - shape[%zu]=%ld is invalid\n", i, shape[i]);
+            return -1;
+        }
+    }
+
+    auto size = GetShapeSize(shape) * sizeof(T);
+
+    // 检查hostData大小是否匹配
+    if (hostData.size() != static_cast<size_t>(GetShapeSize(shape))) {
+        LOG_PRINT("CreateAclTensor: ERROR - hostData size mismatch: %zu vs %ld\n",
+                  hostData.size(), GetShapeSize(shape));
+        return -1;
+    }
+
+    // 调用aclrtMalloc申请device侧内存
+    *deviceAddr = nullptr;
+    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+
+    // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
+    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
+              aclrtFree(*deviceAddr); *deviceAddr = nullptr; return ret);
+
+    // 计算连续tensor的strides
+    std::vector<int64_t> strides(shape.size(), 1);
+    if (shape.size() > 1) {
+        for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; i--) {
+            strides[i] = shape[i + 1] * strides[i + 1];
+        }
+    }
+
+    // 调用aclCreateTensor接口创建aclTensor
+    *tensor = nullptr;
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
+                                shape.data(), shape.size(), *deviceAddr);
+    CHECK_RET(*tensor != nullptr, LOG_PRINT("aclCreateTensor failed - returned nullptr\n");
+              aclrtFree(*deviceAddr); *deviceAddr = nullptr; return -1);
+    return 0;
+}
+
+float Bf16ToFloat(int16_t value) {
+    // bfloat16转float：低16位补0后按float解释
+    uint32_t bits = static_cast<uint32_t>(static_cast<uint16_t>(value)) << 16;
+    float result;
+    memcpy(&result, &bits, sizeof(result));
+    return result;
+}
+
+int16_t FloatToBf16(float value) {
+    // float转bfloat16：就近舍入后取高16位
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof(bits));
+    uint32_t rounded = bits + 0x7FFF + ((bits >> 16) & 1);
+    return static_cast<int16_t>(rounded >> 16);
+}
+
+float Sigmoid(float value) {
+    return 1.0f / (1.0f + std::exp(-value));
+}
+
+void FreeResource(aclTensor *qTensor, aclTensor *kTensor, aclTensor *vTensor, aclTensor *gTensor,
+                  aclTensor *betaTensor, aclTensor *aLogTensor, aclTensor *dtBiasTensor,
+                  aclTensor *attnOutTensor, aclTensor *aqkTensor, aclTensor *akkTensor,
+                  void *qAddr, void *kAddr, void *vAddr, void *gAddr, void *betaAddr,
+                  void *aLogAddr, void *dtBiasAddr, void *attnOutAddr, void *aqkAddr, void *akkAddr,
+                  void *workspaceAddr, int32_t deviceId, aclrtStream *stream)
+{
+    if (qTensor) aclDestroyTensor(qTensor);
+    if (kTensor) aclDestroyTensor(kTensor);
+    if (vTensor) aclDestroyTensor(vTensor);
+    if (gTensor) aclDestroyTensor(gTensor);
+    if (betaTensor) aclDestroyTensor(betaTensor);
+    if (aLogTensor) aclDestroyTensor(aLogTensor);
+    if (dtBiasTensor) aclDestroyTensor(dtBiasTensor);
+    if (attnOutTensor) aclDestroyTensor(attnOutTensor);
+    if (aqkTensor) aclDestroyTensor(aqkTensor);
+    if (akkTensor) aclDestroyTensor(akkTensor);
+
+    if (qAddr) aclrtFree(qAddr);
+    if (kAddr) aclrtFree(kAddr);
+    if (vAddr) aclrtFree(vAddr);
+    if (gAddr) aclrtFree(gAddr);
+    if (betaAddr) aclrtFree(betaAddr);
+    if (aLogAddr) aclrtFree(aLogAddr);
+    if (dtBiasAddr) aclrtFree(dtBiasAddr);
+    if (attnOutAddr) aclrtFree(attnOutAddr);
+    if (aqkAddr) aclrtFree(aqkAddr);
+    if (akkAddr) aclrtFree(akkAddr);
+    if (workspaceAddr) aclrtFree(workspaceAddr);
+
+    aclrtDestroyStream(*stream);
+    aclrtResetDevice(deviceId);
+    aclFinalize();
+}
+
+int main() {
+    // 1. device/stream初始化
+    int32_t deviceId = 0;
+    aclrtStream stream;
+    auto ret = Init(deviceId, &stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
+
+    // 2. 构造输入与输出
+    int64_t batch = 1;
+    int64_t seqLen = 64;
+    int64_t headNum = 2;
+    int64_t headDim = 128;
+    int64_t chunkSize = 64;
+
+    std::vector<int64_t> qkShape = {batch, seqLen, headNum, headDim};       // BSND
+    std::vector<int64_t> vShape = {batch, seqLen, headNum, headDim};        // BSND
+    std::vector<int64_t> gShape = {batch, seqLen, headNum, headDim};        // BSND
+    std::vector<int64_t> betaShape = {batch, seqLen, headNum};              // BSND
+    std::vector<int64_t> attnOutShape = {batch, seqLen, headNum, headDim};  // BSND
+    std::vector<int64_t> aqkShape = {batch, headNum, seqLen, chunkSize};    // (B, HV, S, C)
+    std::vector<int64_t> akkShape = aqkShape;
+    std::vector<int64_t> aLogShape = {headNum};                             // (HV,)
+    std::vector<int64_t> dtBiasShape = {headNum * headDim};                 // (HV*K,)
+
+    // 使用固定种子生成小随机数作为输入，与pytest数据构造保持一致
+    std::mt19937 gen(20260808);
+    std::normal_distribution<float> dist(0.0f, 1.0f);
+    std::vector<int16_t> qHostData(GetShapeSize(qkShape));
+    std::vector<int16_t> kHostData(GetShapeSize(qkShape));
+    std::vector<int16_t> vHostData(GetShapeSize(vShape));
+    std::vector<float> gHostData(GetShapeSize(gShape));
+    std::vector<float> betaHostData(GetShapeSize(betaShape));
+    for (size_t i = 0; i < qHostData.size(); i++) {
+        qHostData[i] = FloatToBf16(dist(gen) * 0.05f);
+        kHostData[i] = FloatToBf16(dist(gen) * 0.05f);
+        vHostData[i] = FloatToBf16(dist(gen) * 0.05f);
+        gHostData[i] = dist(gen) * 0.02f - 0.5f;
+        betaHostData[i] = Sigmoid(dist(gen));
+    }
+    std::vector<float> aLogHostData = {-0.5f, 0.5f};
+    std::vector<float> dtBiasHostData(GetShapeSize(dtBiasShape));
+    for (int64_t i = 0; i < static_cast<int64_t>(dtBiasHostData.size()); i++) {
+        dtBiasHostData[i] = -0.1f + 0.2f * static_cast<float>(i) / static_cast<float>(dtBiasHostData.size() - 1);
+    }
+    std::vector<int16_t> attnOutHostData(GetShapeSize(attnOutShape), 0);
+    std::vector<int16_t> aqkHostData(GetShapeSize(aqkShape), 0);
+    std::vector<int16_t> akkHostData(GetShapeSize(akkShape), 0);
+
+    // 3. 创建输入输出tensor
+    void* qAddr = nullptr;
+    void* kAddr = nullptr;
+    void* vAddr = nullptr;
+    void* gAddr = nullptr;
+    void* betaAddr = nullptr;
+    void* aLogAddr = nullptr;
+    void* dtBiasAddr = nullptr;
+    void* attnOutAddr = nullptr;
+    void* aqkAddr = nullptr;
+    void* akkAddr = nullptr;
+    void* workspaceAddr = nullptr;
+
+    aclTensor* qTensor = nullptr;
+    aclTensor* kTensor = nullptr;
+    aclTensor* vTensor = nullptr;
+    aclTensor* gTensor = nullptr;
+    aclTensor* betaTensor = nullptr;
+    aclTensor* aLogTensor = nullptr;
+    aclTensor* dtBiasTensor = nullptr;
+    aclTensor* attnOutTensor = nullptr;
+    aclTensor* aqkTensor = nullptr;
+    aclTensor* akkTensor = nullptr;
+
+    ret = CreateAclTensor(qHostData, qkShape, &qAddr, ACL_BF16, &qTensor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("create q tensor failed\n");
+              FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                           attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                           aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+              return ret);
+    ret = CreateAclTensor(kHostData, qkShape, &kAddr, ACL_BF16, &kTensor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("create k tensor failed\n");
+              FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                           attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                           aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+              return ret);
+    ret = CreateAclTensor(vHostData, vShape, &vAddr, ACL_BF16, &vTensor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("create v tensor failed\n");
+              FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                           attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                           aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+              return ret);
+    ret = CreateAclTensor(gHostData, gShape, &gAddr, ACL_FLOAT, &gTensor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("create g tensor failed\n");
+              FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                           attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                           aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+              return ret);
+    ret = CreateAclTensor(betaHostData, betaShape, &betaAddr, ACL_FLOAT, &betaTensor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("create beta tensor failed\n");
+              FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                           attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                           aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+              return ret);
+    ret = CreateAclTensor(aLogHostData, aLogShape, &aLogAddr, ACL_FLOAT, &aLogTensor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("create aLog tensor failed\n");
+              FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                           attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                           aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+              return ret);
+    ret = CreateAclTensor(dtBiasHostData, dtBiasShape, &dtBiasAddr, ACL_FLOAT, &dtBiasTensor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("create dtBias tensor failed\n");
+              FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                           attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                           aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+              return ret);
+    ret = CreateAclTensor(attnOutHostData, attnOutShape, &attnOutAddr, ACL_BF16, &attnOutTensor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("create attnOut tensor failed\n");
+              FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                           attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                           aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+              return ret);
+    ret = CreateAclTensor(aqkHostData, aqkShape, &aqkAddr, ACL_BF16, &aqkTensor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("create aqk tensor failed\n");
+              FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                           attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                           aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+              return ret);
+    ret = CreateAclTensor(akkHostData, akkShape, &akkAddr, ACL_BF16, &akkTensor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("create akk tensor failed\n");
+              FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                           attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                           aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+              return ret);
+
+    // 4. 调用第一段接口: 计算workspace大小
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    ret = aclnnChunkKdaFwdGetWorkspaceSize(
+        qTensor,
+        kTensor,
+        vTensor,
+        gTensor,
+        betaTensor,
+        aLogTensor,
+        dtBiasTensor,
+        nullptr,  // initialStateOptional
+        nullptr,  // cuSeqlensOptional
+        nullptr,  // chunkIndicesOptional
+        "BSND",
+        1.0 / std::sqrt(static_cast<double>(headDim)),
+        chunkSize,
+        true,   // safeGate
+        -5.0,   // lowerBound
+        true,   // useGateInKernel
+        false,  // stateVFirst
+        attnOutTensor,
+        nullptr,  // finalStateOut
+        nullptr,  // gkOut
+        aqkTensor,
+        akkTensor,
+        nullptr,  // wOut
+        nullptr,  // uOut
+        nullptr,  // qgOut
+        nullptr,  // kgOut
+        nullptr,  // vNewOut
+        nullptr,  // hOut
+        &workspaceSize,
+        &executor
+    );
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("GetWorkspaceSize failed. ERROR: %d\n", ret);
+              FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                           attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                           aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+              return ret);
+    CHECK_RET(executor != nullptr, LOG_PRINT("executor is null after GetWorkspaceSize\n");
+              FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                           attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                           aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+              return -1);
+    LOG_PRINT("Workspace size required: %lu bytes\n", workspaceSize);
+
+    // 5. 分配workspace
+    if (workspaceSize > 0) {
+        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret);
+                  FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                               attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                               aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+                  return ret);
+    }
+
+    // 6. 调用第二段接口: 执行计算
+    LOG_PRINT("Calling aclnnChunkKdaFwd...\n");
+    ret = aclnnChunkKdaFwd(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnChunkKdaFwd failed. ERROR: %d\n", ret);
+              FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                           attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                           aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+              return ret);
+
+    // 7. 同步Stream，等待任务执行结束
+    ret = aclrtSynchronizeStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
+              FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                           attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                           aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+              return ret);
+
+    // 8. 将结果拷贝回Host侧打印
+    ret = aclrtMemcpy(attnOutHostData.data(), attnOutHostData.size() * sizeof(int16_t), attnOutAddr,
+                      attnOutHostData.size() * sizeof(int16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed.\n");
+              FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                           attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                           aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+              return ret);
+
+    LOG_PRINT("Execution Success! Output results (first 5 elements of attnOut):\n");
+    for (uint64_t i = 0; i < 5 && i < attnOutHostData.size(); i++) {
+        LOG_PRINT("  attnOut index %lu: %f\n", i, Bf16ToFloat(attnOutHostData[i]));
+    }
+
+    // 9. 释放所有资源
+    FreeResource(qTensor, kTensor, vTensor, gTensor, betaTensor, aLogTensor, dtBiasTensor,
+                 attnOutTensor, aqkTensor, akkTensor, qAddr, kAddr, vAddr, gAddr, betaAddr,
+                 aLogAddr, dtBiasAddr, attnOutAddr, aqkAddr, akkAddr, workspaceAddr, deviceId, &stream);
+
+    LOG_PRINT("ChunkKdaFwd Test completed successfully!\n");
+    return 0;
+}
+```

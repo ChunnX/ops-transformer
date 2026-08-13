@@ -5,6 +5,7 @@
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
@@ -42,7 +43,11 @@ def make_inputs(tokens: int, heads: int = 2, seed: int = 20260808) -> Inputs:
     k = (torch.randn(shape, generator=generator) * 0.05).to(torch.bfloat16).npu()
     v = (torch.randn(shape, generator=generator) * 0.05).to(torch.bfloat16).npu()
     g = (torch.randn(shape, generator=generator) * 0.02 - 0.5).float().npu()
-    beta = torch.sigmoid(torch.randn(shape[:-1], generator=generator)).to(torch.bfloat16).npu()
+    beta = (
+        torch.sigmoid(torch.randn(shape[:-1], generator=generator))
+        .to(torch.bfloat16)
+        .npu()
+    )
     a_log = torch.linspace(-0.5, 0.5, heads, dtype=torch.float32).npu()
     dt_bias = torch.linspace(-0.1, 0.1, heads * 128, dtype=torch.float32).npu()
     return Inputs(q, k, v, g, beta, a_log, dt_bias)
@@ -92,9 +97,13 @@ def assert_binary_equal(first, second) -> None:
     assert len(first) == len(second) == 12
     for index, (actual, repeated) in enumerate(zip(first, second)):
         if actual is None or repeated is None:
-            assert actual is None and repeated is None, f"output {index} optionality changed"
+            assert actual is None and repeated is None, (
+                f"output {index} optionality changed"
+            )
             continue
-        assert torch.equal(actual, repeated), f"output {index} is not binary deterministic"
+        assert torch.equal(actual, repeated), (
+            f"output {index} is not binary deterministic"
+        )
 
 
 def assert_close(actual: torch.Tensor, expected: torch.Tensor) -> None:
@@ -102,4 +111,6 @@ def assert_close(actual: torch.Tensor, expected: torch.Tensor) -> None:
     if actual.dtype == torch.float32:
         torch.testing.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
     else:
-        torch.testing.assert_close(actual.float(), expected.float(), rtol=2e-2, atol=2e-3)
+        torch.testing.assert_close(
+            actual.float(), expected.float(), rtol=2e-2, atol=2e-3
+        )
