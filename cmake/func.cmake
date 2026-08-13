@@ -89,6 +89,7 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
     if(ENABLE_EXPERIMENTAL)
         message(STATUS "Build experimental module")
         file(GLOB OP_HOST_CMAKE_FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/experimental/attention/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/ffn/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/gmm/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/moe/**/op_host/CMakeLists.txt"
