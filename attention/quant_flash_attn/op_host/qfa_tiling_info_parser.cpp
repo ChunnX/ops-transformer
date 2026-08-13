@@ -616,18 +616,18 @@ ge::graphStatus QfaInfoParser::ParseAxisInfo()
     uint32_t qDescaleDimNum = opParamInfo_.qDescale.shape->GetStorageShape().GetDimNum();
     using QM = QfaQuantMode;
     if (quantMode_ == QM::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
-        if (qDescaleDimNum != 2) {
-            OP_LOGE(opName_, "q_descale must be 2D for GQA_FP8_FULLQUANT, but got %uD.", qDescaleDimNum);
+        if (qDescaleDimNum != 2) { // GQA FP8 fullquant qDescaleDimNum = 2
+            OP_LOGE(opName_, "q_descale must be 2D for GQA FP8 fullquant, but got %uD.", qDescaleDimNum);
             return ge::GRAPH_FAILED;
         }
     } else {
         bool isDecode = (layoutQDescale_ == QfaLayout::N2TGD);
-        if (isDecode && qDescaleDimNum != 5) {
+        if (isDecode && qDescaleDimNum != 5) { // layout_q_descale=N2TGD, qDescaleDimNum must be 5
             OP_LOGE(opName_,
                     "q_descale must be 5D in decode mode(layout_q_descale=N2TGD), but got %uD.", qDescaleDimNum);
             return ge::GRAPH_FAILED;
         }
-        if (!isDecode && qDescaleDimNum != 4) {
+        if (!isDecode && qDescaleDimNum != 4) { // layout_q_descale=TN, qDescaleDimNum must be 4
             OP_LOGE(opName_,
                     "q_descale must be 4D in prefill mode(layout_q_descale=TND), but got %uD.", qDescaleDimNum);
             return ge::GRAPH_FAILED;
