@@ -121,14 +121,16 @@ __aicore__ inline void LocalMsRw<T>::Init(uint32_t mode0, uint32_t enableWarmup,
         if (mode0_ == MODE_READ_WRITE || mode0_ == MODE_WRITE_THEN_READ) {
             pipe->InitBuffer(dataBuf_, dataSize);
             pipe->InitBuffer(readBuf_, dataSize);
+            dataLocal_ = dataBuf_.Get<T>();
+            readLocal_ = readBuf_.Get<T>();
         } else if (mode0_ == MODE_WRITE) {
             pipe->InitBuffer(dataBuf_, dataSize);
+            dataLocal_ = dataBuf_.Get<T>();
         } else if (mode0_ == MODE_READ) {
             pipe->InitBuffer(readBuf_, dataSize);
+            readLocal_ = readBuf_.Get<T>();
         }
         totalElem_ = static_cast<uint32_t>(dataSize / sizeof(T));
-        dataLocal_ = dataBuf_.Get<T>();
-        readLocal_ = readBuf_.Get<T>();
     }
 }
 
