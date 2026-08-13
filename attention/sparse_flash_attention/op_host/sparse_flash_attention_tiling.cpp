@@ -2174,6 +2174,9 @@ ge::graphStatus SFAInfoParser::CheckContiguous() const
         }
     }
 
+    printf("CheckContiguous =========keyShape_.GetDim is [%d,%d,%d,%d]========\n", keyShape_.GetDim(0), keyShape_.GetDim(1), keyShape_.GetDim(2), keyShape_.GetDim(3));
+    OP_LOGE("SparseFlashAttention", "keyShape_.GetDim is [%d,%d,%d,%d]", keyShape_.GetDim(0), keyShape_.GetDim(1), keyShape_.GetDim(2), keyShape_.GetDim(3));
+
     bool keyNonContiguous = false;
     if (keyStride0_ != 0 && keyShape_.GetDimNum() > 0) {
         uint64_t totalElements = 0;
