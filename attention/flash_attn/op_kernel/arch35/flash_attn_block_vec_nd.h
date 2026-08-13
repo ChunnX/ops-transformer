@@ -423,9 +423,9 @@ public:
         }
 
         if constexpr (HAS_DROP) {
-            dropMaskUb = ubMaskBuffers_[0 * UB_MASK_BUF_BYTES];
+            dropMaskUb = ubLseOutBuffers_[0 * UB_LSE_OUT_BUF_BYTES];
             LocalTensor<int32_t> dropMaskIndexBuf =
-                ubMaskBuffers_[1 * UB_MASK_BUF_BYTES].template ReinterpretCast<int32_t>();
+                ubLseOutBuffers_[1 * UB_LSE_OUT_BUF_BYTES].template ReinterpretCast<int32_t>();
             GenDropMaskFa<LAYOUT_T, mBaseSize, s2BaseSize>(dropMaskUb, dropMaskIndexBuf, runInfo, constInfo_);
         }
 
