@@ -1094,7 +1094,6 @@ ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
     }
 
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) { // ifamla
-<<<<<<< HEAD
         static const std::set<uint32_t> SUPPORT_NUM_HEAD_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景qN支持范围
         bool isArch35NonQuant = (enableNonQuant_ && fiaInfo.npuArch == NpuArch::DAV_3510);
         if (isArch35NonQuant) {
@@ -1113,8 +1112,6 @@ ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
                 return ge::GRAPH_FAILED;
             }
         }
-=======
->>>>>>> upstream/master
         if (fiaInfo.n2Size != 1U) {
             std::string reason = "The value of num_key_value_heads must be 1 in the Decode MLA scenario";
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_key_value_heads",
