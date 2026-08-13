@@ -429,6 +429,10 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(GM_
     stateOffset_ = ((recvWinBlockNum_ > 512) ? (STATE_OFFSET / 2) : STATE_OFFSET);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
     dataState_ = selfDataStatusTensor(0);
+    // D_S 直接当 bank 乘数用，非 0/1 时算出的地址仍可能落在注册段内，
+    // WriteNbi 会正常返回成功，对端却永远等不到。窗口不保证清零，必须校验。
+    ascendc_assert(dataState_ <= 1U, "dispatch_setup D_S corrupted, rank=%u aiv=%u D_S=%u", epRankId_, aivId_,
+                   dataState_);
     rscvStatusNum_ = recvWinBlockNum_;
     recStatusNumPerCore_ = rscvStatusNum_ / aivNum_; // 每个aiv需要处理的专家数
     remainderRankNum_ = rscvStatusNum_ % aivNum_;
@@ -444,9 +448,11 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(GM_
     statusTensor_ = statusBuf_.Get<int32_t>(); // 保存发送数据量及flag，同时用于计算windows中的偏移
     Duplicate<int32_t>(statusTensor_, 0, recvWinBlockNum_ * 8); // 8 = UB_ALIGN / sizeof(int32_t)
     statusSpaceGm_ = GetUrmaStateAddrByRankId(epRankId_);
-    uint64_t mask[2] = {0x101010101010101, 0}; // 一次性操作256字节，也是64个int32_t，每8个数将首个设置为0x3F800000
+    uint64_t mask[2] = {0x101010101010101, 0}; // 一次性操作256字节，也是64个int32_t，每8个数将首个设置为flag
     PipeBarrier<PIPE_V>();
-    Duplicate<int32_t>(statusTensor_, 0x40000000, mask, statusBufCntAlign / 8, 1, 8); // 0x3F800000是float的1
+    // 0x40000000 是 float 的 2.0；dispatch_teardown 的 sumTarget_ 取 1.0，
+    // 靠比较 compareTarget * 2 来匹配，两侧改动必须同步
+    Duplicate<int32_t>(statusTensor_, 0x40000000, mask, statusBufCntAlign / 8, 1, 8);
 
     // D 固定占用数据区前半，区内按 D_S 做 totalWin/4 乒乓
     winDataSizeOffset_ = dataState_ * (tilingData->moeDistributeDispatchSetupInfo.totalWinSize / 4);
@@ -676,6 +682,8 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SendToMo
     GlobalTensor<int32_t> expandIdxGMTensor;
     expandIdxGMTensor.SetGlobalBuffer((__gm__ int32_t *)(expandIdxOutGM_ + startTokenId_ * sizeof(int32_t)));
     DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(sendTokenNum_ * sizeof(uint32_t)), 0U, 0U, 0U};
+    // expertCountTensor_ 是循环里标量写的，搬出前先等 S 落盘
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopyPad(expandIdxGMTensor, expertCountTensor_, expertIdsCntParams);
 }
 
@@ -731,6 +739,8 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::AlltoAll
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SetStatus()
 {
+    // flag 位由 Init 的 Duplicate(V) 写入，下面的 token 数是标量写，先等 V 落盘
+    SyncFunc<AscendC::HardEvent::V_S>();
     if (activeMaskBsCnt_ > 0) { // 需要发送的再算
         for (uint32_t curExpertId = startExpertId_; curExpertId < endExpertId_; ++curExpertId) {
             int32_t curExpertCnt = 0;
@@ -752,9 +762,12 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SetStatu
     // 状态区拷贝到windowOut
     windowExpGMTensor.SetGlobalBuffer(
         (__gm__ int32_t *)(statusDataSpaceGM_ + DISPATCH_STAGING_OFFSET + startExpertId_ * 8 * sizeof(int32_t)));
+    // 标量写完 statusTensor_ 才能搬走，否则 staging 拿到的是旧值，对端等不到 flag、也收不到 token
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopy<int32_t>(windowExpGMTensor, statusTensor_[startExpertId_ * 8],
                       sendExpertNum_ * 8); // 8时数据大小，按32对齐拷贝
-    SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+    // Communication 随后要把 staging 读回 UB
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
 }
 
 template <TemplateMC2TypeClass>
@@ -961,6 +974,8 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::TokenSca
     PipeBarrier<PIPE_V>();
     Extract(sortedOutF32LT_, sortedIndex1LT_, sortedLocal, sortRepeat_);
     SyncFunc<HardEvent::V_MTE2>();
+    // SendToMoeExpert 用标量读 sortedIndex1LT_ 算搬运源地址，须等 Extract 完成
+    SyncFunc<HardEvent::V_S>();
 }
 
 template <TemplateMC2TypeClass>

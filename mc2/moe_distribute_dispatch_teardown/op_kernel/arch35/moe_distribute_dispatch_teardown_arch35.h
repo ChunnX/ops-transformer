@@ -332,6 +332,9 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
     moeUsedAivNum_ = aivNum_ - sharedUsedAivNum_;
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
     dataState_ = selfDataStatusTensor(0); // 本轮仍使用该 bank，GM 待 Wait 成功后再翻
+    // D_S 直接当 bank 乘数用，非 0/1 时会等错状态区、读错数据区，表现为卡死；窗口不保证清零，必须校验
+    ascendc_assert(dataState_ <= 1U, "dispatch_teardown D_S corrupted, rank=%u aiv=%u D_S=%u", epRankId_, aivId_,
+                   dataState_);
     if constexpr (IsShareExpertRank) { // 接收状态数
         rscvStatusNum_ = epWorldSize_;
     } else {
@@ -352,6 +355,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
     tpipe_->InitBuffer(statusBuf_, statusBufCntAlign * UB_ALIGN);
     statusTensor_ = statusBuf_.Get<int32_t>(); // 保存状态，用于计算windows中的偏移
     statusSpaceGm_ = GetWindStateAddrByRankId(epRankId_);
+    // 单块期望值；dispatch_setup 实际写的 flag 是 float 2.0，故等待时比较 compareTarget * 2
     sumTarget_ = static_cast<float>(1.0);
     // D 固定占用数据区前半，区内按 D_S 做 totalWin/4 乒乓
     winDataSizeOffset_ = dataState_ * (tilingData->moeDistributeDispatchTeardownInfo.totalWinSize / 4);
@@ -501,6 +505,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::WaitD
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1,
                                static_cast<uint16_t>((recvWinBlockNum_ > 512) ? 7 : 15), 0};
     SyncFunc<AscendC::HardEvent::S_V>();
+    // 乘 2 是因为 dispatch_setup 每块写的 flag 为 float 2.0，而 sumTarget_ 按 1.0 计
     while (sumOfFlag != compareTarget * 2) {
         DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
                  intriParams);
