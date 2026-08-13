@@ -760,6 +760,8 @@ def cpu_qfa_gqa_fp8(
             )
         if cpu_lse_aligned.ndim == 3 and cpu_lse_aligned.shape[-1] == 1:
             cpu_lse_aligned = cpu_lse_aligned.squeeze(-1).contiguous()
+        if cpu_lse_aligned.ndim == 2:
+            cpu_lse_aligned = cpu_lse_aligned.permute(1, 0).contiguous()
         result = [cpu_out_aligned, cpu_lse_aligned]
     else:
         result = [cpu_out_aligned, None]
