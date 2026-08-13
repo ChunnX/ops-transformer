@@ -25,7 +25,6 @@
 #include "grouped_matmul_swiglu_quant_v2_fusion_tiling.h"
 #include "grouped_matmul_swiglu_quant_v2_base_tiling.h"
 #include "arch35/grouped_matmul_swiglu_quant_v2_basic_tiling.h"
-#include "arch35/grouped_matmul_swiglu_quant_v2_basic_api_tiling.h"
 #include "arch35/grouped_matmul_swiglu_quant_v2_weight_quant_tiling.h"
 #include "platform/platform_infos_def.h"
 
@@ -51,10 +50,6 @@ constexpr int64_t GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE = 3;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2WeightQuantTiling,
     GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE);
 
-constexpr int64_t GMMSQ_TENSOR_API_TILING_TEMPLATE = 4;
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2BasicApiTiling950,
-    GMMSQ_TENSOR_API_TILING_TEMPLATE);
-
 static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr,
@@ -74,22 +69,13 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext 
         OP_CHECK_NULL_WITH_CONTEXT(context, xScaleDesc);
         ge::DataType xDtype = xDesc->GetDataType();
         ge::DataType wDtype = wDesc->GetDataType();
-        ge::DataType xScaleDtype = xScaleDesc->GetDataType();
-        ge::Format weightFormat =
-            static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetFormat().GetStorageFormat()));
         if (xDtype == ge::DT_FLOAT8_E4M3FN && wDtype == ge::DT_FLOAT4_E2M1) {
             // 伪量化场景 MxA8W4: x=FP8_E4M3FN, w=FP4_E2M1
             OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the weight quant tiling for MxA8W4");
             registerList[0] = GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE;
-        } else if (xScaleDtype == ge::DT_FLOAT8_E8M0 &&
-                   (weightFormat == ge::FORMAT_ND || weightFormat == ge::FORMAT_NCL)) {
-            // Tensor API is preferred for MX quant with ND weight. Unsupported cases fall back to template 2.
-            registerList = {GMMSQ_TENSOR_API_TILING_TEMPLATE, GMMSQ_950_TILING_TEMPLATE};
-            OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc",
-                    "Using Tensor API tiling first and falling back to the original MX tiling");
         } else {
             // 全量化场景
-            OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the tiling strategy in the mxfp8");
+            OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the low-level tiling strategy");
         }
         return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
     } else {
