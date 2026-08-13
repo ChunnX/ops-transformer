@@ -286,7 +286,7 @@ TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case4)
                         INPUT(nullptr, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case5)
@@ -305,7 +305,7 @@ TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case5)
                         INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(nullptr, betaOutput));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case6)
