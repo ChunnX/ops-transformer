@@ -180,7 +180,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr &runParam, const ConstIn
                                             runParam.sOuterOffset * constInfo.gSize;
             }
             if (IS_SPLIT_G && constInfo.aicIdx % 2U != 0) {
-                runParam.softmaxLseOffset += (constInfo.gSize + 1U) >> 1U;
+                runParam.softmaxLseOffset += runParam.goIdx;;
             }
             if (constInfo.subBlockIdx == 1) {
                 runParam.softmaxLseOffset += runParam.firstHalfMRealSize;
