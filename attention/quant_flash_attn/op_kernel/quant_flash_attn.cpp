@@ -50,15 +50,18 @@ __aicore__ inline void quant_flash_attn_mxfp8(
 
     constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);
     constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2);
-    constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);
-    constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv);
+    constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(
+        (static_cast<std::underlying_type_t<inferDTemplateType>>(ConfigValue[config].d) + 63) >> 6 << 6);
+    constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(
+        (static_cast<std::underlying_type_t<inferDTemplateType>>(ConfigValue[config].dv) + 63) >> 6 << 6);
+    constexpr bool isDAligned = ConfigValue[config].d == inferDTemplateType::Aligned128;
 
     constexpr bool isFdConst = false;
     constexpr bool useDn = (quantMode == QFA_MXFP8_FP32_PREFILL);
 
     using CubeBlock =
         BaseApi::QuantFlashAttnBlockCubeMxfp8<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-            dTemplateType, dVTemplateType, KvLayoutType, useDn>;
+            dTemplateType, dVTemplateType, KvLayoutType, useDn, isDAligned>;
     using VecFaBlock =
         BaseApi::QuantFlashAttnBlockVecMxfp8<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
             s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, isFdConst, useDn>;

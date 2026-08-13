@@ -133,7 +133,7 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
 
     if (dSize <= DSIZE_64) {
         dSize = DSIZE_64;
-    } else if (dSize == 72) {
+    } else if (dSize <= 72) {
         dSize = DSIZE_72;
     } else if (dSize <= DSIZE_128) {
         dSize = DSIZE_128;
@@ -147,7 +147,7 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
 
     if (dVsize <= DSIZE_64) {
         dVsize = DSIZE_64;
-    } else if (dSize == 72) {
+    } else if (dSize <= 72) {
         dSize = DSIZE_72;
     } else if (dVsize <= DSIZE_128) {
         dVsize = DSIZE_128;
