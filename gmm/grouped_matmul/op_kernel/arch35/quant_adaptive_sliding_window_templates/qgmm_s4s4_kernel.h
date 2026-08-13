@@ -3,7 +3,7 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -19,7 +19,7 @@
 #include "../grouped_matmul_tiling_data_apt.h"
 #include "tensor_api/tensor.h"
 
-#include "blaze/gemm/kernel/kernel_gmm_fixpipe_quant.h"
+#include "blaze/gemm/kernel/kernel_qgmm_fixpipe_quant.h"
 #include "../int4_tensor_to_int8_preprocess.h"
 #include "../int4_weight_to_int8_preprocess.h"
 #include "../../grouped_matmul_utils.h"
@@ -62,11 +62,8 @@ __aicore__ inline void GmmS4S4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     const uint32_t kAL1 = static_cast<uint32_t>(mmTilingData->stepKa) * baseK;
     const uint32_t kBL1 = static_cast<uint32_t>(mmTilingData->stepKb) * baseK;
 
-    const uint32_t quantGroupSize = isPerGroup
-        ? static_cast<uint32_t>(gmmBaseParams->k / gmmBaseParams->quantGroupNum) : 0U;
-    const uint32_t quantMode = isPerGroup
-        ? static_cast<uint32_t>(Blaze::Gemm::QuantMode::PERGROUP_MODE)
-        : static_cast<uint32_t>(Blaze::Gemm::QuantMode::PERCHANNEL_MODE);
+    const uint32_t quantGroupSize = isPerGroup ? static_cast<uint32_t>(gmmBaseParams->k / gmmBaseParams->quantGroupNum) : 0U;
+    const uint32_t quantMode = isPerGroup ? static_cast<uint32_t>(Blaze::Gemm::QuantMode::PERGROUP_MODE) : static_cast<uint32_t>(Blaze::Gemm::QuantMode::PERCHANNEL_MODE);
 
     GMMTiling gmmParams{};
     gmmParams.groupNum = gmmBaseParams->groupNum;
@@ -91,12 +88,8 @@ __aicore__ inline void GmmS4S4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     const bool weightNzC032 = (weightFmtFlags & 4ULL) != 0;
     constexpr uint64_t INT8_NZ_K_ALIGN = 16UL;
     constexpr uint64_t INT8_NZ_N_ALIGN = 32UL;
-    const uint64_t int8WeightK = weightIsNz
-        ? (static_cast<uint64_t>(gmmBaseParams->k) + INT8_NZ_K_ALIGN - 1UL) / INT8_NZ_K_ALIGN * INT8_NZ_K_ALIGN
-        : static_cast<uint64_t>(gmmBaseParams->k);
-    const uint64_t int8WeightN = weightIsNz
-        ? (static_cast<uint64_t>(gmmBaseParams->n) + INT8_NZ_N_ALIGN - 1UL) / INT8_NZ_N_ALIGN * INT8_NZ_N_ALIGN
-        : static_cast<uint64_t>(gmmBaseParams->n);
+    const uint64_t int8WeightK = weightIsNz ? (static_cast<uint64_t>(gmmBaseParams->k) + INT8_NZ_K_ALIGN - 1UL) / INT8_NZ_K_ALIGN * INT8_NZ_K_ALIGN : static_cast<uint64_t>(gmmBaseParams->k);
+    const uint64_t int8WeightN = weightIsNz ? (static_cast<uint64_t>(gmmBaseParams->n) + INT8_NZ_N_ALIGN - 1UL) / INT8_NZ_N_ALIGN * INT8_NZ_N_ALIGN : static_cast<uint64_t>(gmmBaseParams->n);
     const uint64_t int8WeightWs = static_cast<uint64_t>(gmmBaseParams->groupNum) *
                                   int8WeightK * int8WeightN;
     const uint64_t int8XWs = static_cast<uint64_t>(gmmBaseParams->m) *
