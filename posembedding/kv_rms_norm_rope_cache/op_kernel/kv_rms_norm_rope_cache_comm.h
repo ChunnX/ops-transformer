@@ -62,7 +62,8 @@ template <bool isPagedAttention, typename KV_DTYPE, typename K_DTYPE, typename V
 class KernelKvRmsNormRopeCacheBase {
 public:
     __aicore__ inline KernelKvRmsNormRopeCacheBase(TPipe *pipe, const KvRmsNormRopeCacheTilingData *tiling)
-        : pipe_(pipe), tilingData_(tiling)
+        : pipe_(pipe),
+          tilingData_(tiling)
     {
     }
 
