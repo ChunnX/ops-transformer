@@ -31,14 +31,14 @@ public:
     {
     }
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
-        GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace, const GMMQuantParams *__restrict gmmBaseParamsIn,
-        const TCubeTiling *__restrict mmTilingDataIn, TILING_TYPE *gmmArrayAddrIn, TPipe *que);
+                                GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace, const GMMQuantParams *__restrict gmmBaseParamsIn,
+                                const TCubeTiling *__restrict mmTilingDataIn, TILING_TYPE *gmmArrayAddrIn, TPipe *que);
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
-        GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace, const GMMQuantParams *__restrict gmmBaseParamsIn,
-        const TCubeTiling *__restrict mmTilingDataIn, TILING_TYPE *gmmArrayAddrIn, TPipe *que,
-        uint32_t rankDim, const __gm__ uint64_t *cGroupOffsetTableGm,
-        const __gm__ uint64_t *aGroupOffsetTableGm = nullptr,
-        const __gm__ uint64_t *xScaleGroupOffsetTableGm = nullptr);
+                                GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace, const GMMQuantParams *__restrict gmmBaseParamsIn,
+                                const TCubeTiling *__restrict mmTilingDataIn, TILING_TYPE *gmmArrayAddrIn, TPipe *que,
+                                uint32_t rankDim, const __gm__ uint64_t *cGroupOffsetTableGm,
+                                const __gm__ uint64_t *aGroupOffsetTableGm = nullptr,
+                                const __gm__ uint64_t *xScaleGroupOffsetTableGm = nullptr);
     __aicore__ inline void Process();
 
 protected:
@@ -122,10 +122,10 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Init(
 
 LOCAL_TEMPLATE_CLASS_PARAMS
 __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias,
-    GM_ADDR scale, GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace,
-    const GMMQuantParams *__restrict gmmBaseParamsIn, const TCubeTiling *__restrict mmTilingDataIn,
-    TILING_TYPE *gmmArrayAddrIn, TPipe *que, uint32_t rankDim, const __gm__ uint64_t *cGroupOffsetTableGm,
-    const __gm__ uint64_t *aGroupOffsetTableGm, const __gm__ uint64_t *xScaleGroupOffsetTableGm)
+                                                                         GM_ADDR scale, GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace,
+                                                                         const GMMQuantParams *__restrict gmmBaseParamsIn, const TCubeTiling *__restrict mmTilingDataIn,
+                                                                         TILING_TYPE *gmmArrayAddrIn, TPipe *que, uint32_t rankDim, const __gm__ uint64_t *cGroupOffsetTableGm,
+                                                                         const __gm__ uint64_t *aGroupOffsetTableGm, const __gm__ uint64_t *xScaleGroupOffsetTableGm)
 {
     if ASCEND_IS_AIV {
         return;
@@ -157,6 +157,9 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::InitAddrAndP
     groupType_ = gmmQuantParams_->groupType;
     groupListType_ = gmmQuantParams_->groupListType;
     block_.template Init<true>(mmTilingData_, blockIdx_);
+    AscendC::printf("[DBG] gqmmInit groupNum=%u groupType=%d baseM=%u baseN=%u usedCore=%u blockIdx=%u\n",
+                    groupNum_, groupType_, mmTilingData_->baseM, mmTilingData_->baseN,
+                    mmTilingData_->usedCoreNum, blockIdx_);
     xTensorPtr_ = x;
     weightTensorPtr_ = weight;
     biasTensorPtr_ = bias;
@@ -186,8 +189,8 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::UpdateMMGlob
         if (gmmQuantParams_->aQuantMode == static_cast<uint32_t>(Mc2QuantUtils::QuantMode::DEFAULT) &&
             gmmQuantParams_->bQuantMode == static_cast<uint32_t>(Mc2QuantUtils::QuantMode::DEFAULT)) {
         } else if (gmmQuantParams_->aQuantMode == static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE) &&
-            gmmQuantParams_->bQuantMode ==
-            static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE)) { // doubleScale, M_SPLIT
+                   gmmQuantParams_->bQuantMode ==
+                       static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE)) { // doubleScale, M_SPLIT
             uint32_t scaleIdx = (rankDim_ > 1U) ? (groupIdx / rankDim_) : groupIdx;
             __gm__ scaleType *scaleB = MC2_GROUPED_MATMUL::GetTensorAddr<scaleType>(0, scaleTensorPtr_) + scaleIdx;
             float scaleBValue = *((__gm__ float *)scaleB);
@@ -240,28 +243,28 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMNK(uint3
     int32_t splitValue =
         Mc2QuantUtils::GetSplitValueFromGroupList(groupIdx, preOffset_, groupType_, groupListType_, groupListGlobal_);
     switch (groupType_) {
-        case (Mc2QuantUtils::SPLIT_M):
-            {
-                mSize = splitValue;
-                uint32_t valueIdx = gmmQuantParams_->singleW == 1 ? 0 : groupIdx;
-                kSize = kListGm_[valueIdx];
-                nSize = nListGm_[valueIdx];
-                break;
-            }
-        case (Mc2QuantUtils::SPLIT_K):
-            {
-                mSize = gmmQuantParams_->singleX == 1 ? mListGm_[0] : mListGm_[groupIdx];
-                kSize = splitValue;
-                nSize = gmmQuantParams_->singleW == 1 ? nListGm_[0] : nListGm_[groupIdx];
-                break;
-            }
-        default:
-            {
-                mSize = mListGm_[groupIdx];
-                kSize = kListGm_[groupIdx];
-                nSize = nListGm_[groupIdx];
-            }
+        case (Mc2QuantUtils::SPLIT_M): {
+            mSize = splitValue;
+            uint32_t valueIdx = gmmQuantParams_->singleW == 1 ? 0 : groupIdx;
+            kSize = kListGm_[valueIdx];
+            nSize = nListGm_[valueIdx];
+            break;
+        }
+        case (Mc2QuantUtils::SPLIT_K): {
+            mSize = gmmQuantParams_->singleX == 1 ? mListGm_[0] : mListGm_[groupIdx];
+            kSize = splitValue;
+            nSize = gmmQuantParams_->singleW == 1 ? nListGm_[0] : nListGm_[groupIdx];
+            break;
+        }
+        default: {
+            mSize = mListGm_[groupIdx];
+            kSize = kListGm_[groupIdx];
+            nSize = nListGm_[groupIdx];
+        }
     }
+    AscendC::printf("[DBG] SetMNK g=%u m=%d k=%d n=%d singleW=%u singleX=%u splitVal=%d\n",
+                    groupIdx, mSize, kSize, nSize, gmmQuantParams_->singleW,
+                    gmmQuantParams_->singleX, splitValue);
     return;
 }
 
@@ -340,6 +343,9 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process()
             continue;
         }
         block_.template UpdateGroupParams<true>();
+        AscendC::printf("[DBG] GrpP g=%u mCnt=%u nCnt=%u total=%u round=%u mBaseTail=%u nBaseTail=%u\n",
+                        groupIdx, block_.params_.mCnt, block_.params_.nCnt, block_.params_.totalCnt,
+                        block_.params_.round, block_.params_.mBaseTail, block_.params_.nBaseTail);
         // 最后一个group最后一轮是否进一步切分以使用更多的核数
         if (IsLastGroupAndNeedSplit(groupIdx)) {
             CalcTailTile(block_.params_.mBaseTail, block_.params_.nBaseTail);
@@ -355,6 +361,9 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process()
             if (block_.params_.singleCoreM <= 0 || block_.params_.singleCoreN <= 0) {
                 continue;
             }
+            AscendC::printf("[DBG] Compute g=%u r=%u sM=%u sN=%u idx=%u mIdx=%u nIdx=%u\n",
+                            groupIdx, roundIdx, block_.params_.singleCoreM, block_.params_.singleCoreN,
+                            block_.params_.index, block_.params_.mIndex, block_.params_.nIndex);
             // 2. compute offset
             block_.template CalcGMOffset<aTrans, bTrans, scaleType, wFormat>();
             // 3. set offset and compute

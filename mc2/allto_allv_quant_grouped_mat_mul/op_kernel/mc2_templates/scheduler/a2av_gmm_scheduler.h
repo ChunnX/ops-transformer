@@ -104,6 +104,10 @@ protected:
 private:
     __aicore__ inline void ProcessCommRoundMode()
     {
+        if ASCEND_IS_AIC {
+            AscendC::printf("[DBG] Sched e=%u expertNum=%u isPermute=%d MX=%d PERTENSOR=%d\n",
+                            e_, expertNum_, isPermuteOut_ ? 1 : 0, MX_QUANT_MODE ? 1 : 0, PERTENSOR_QUANT_MODE ? 1 : 0);
+        }
         for (uint32_t start = 0; start < e_; start += expertNum_) {
             uint32_t actualExpertNum = (start + expertNum_ > e_) ? (e_ - start) : expertNum_;
             if constexpr (MX_QUANT_MODE) {
