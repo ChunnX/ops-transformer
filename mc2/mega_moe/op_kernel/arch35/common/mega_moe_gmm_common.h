@@ -142,88 +142,51 @@ struct Config {
      *
      * +----------------------------------------+----------------------------------------+
      * | buffer 0: A(kL1) + B(kL1)             | buffer 1: A(kL1) + B(kL1)             |
-     * |           + scaleA/B(scaleKL1) + free |           + scaleA/B(scaleKL1) + free |
+     * |           + scaleA/B(512K) + free     |           + scaleA/B(512K) + free     |
      * +----------------------------------------+----------------------------------------+
      * |<-------------- halfL1Size ------------>|<-------------- halfL1Size ------------>|
      *
-     * K 轴覆盖关系：
-     * A/B data: |--- kL1 ---|--- kL1 ---|--- kL1 ---| ...
-     * MX scale: |<------------ scaleKL1 ------------>| ...
-     *                         scaleKL1 = scaleFactor * kL1
-     *
-     * 在 A/B 数据占用之外，用半片 L1 的剩余空间尽可能放大 scaleFactor，从而减少 MX scale 搬运轮数。
+     * 这里只根据小 M 释放的 L1 容量尝试把 A/B 的 kL1 从 256 放大到 512；MX scale
+     * 保持基线的 512K 窗口，避免同时改变数据和 scale 两类搬运行为。
      */
-    static __aicore__ inline typename BlockMmad::L1Params CalcAdaptiveL1Params(uint32_t blockM, uint32_t blockN,
-                                                                               uint32_t k)
+    static __aicore__ inline typename BlockMmad::L1Params CalcAdaptiveL1Params(uint32_t blockM, uint32_t blockN)
     {
         constexpr uint64_t halfL1Size = AscendC::TOTAL_L1_SIZE / 2U;
         constexpr uint64_t scaleGroupK = 64U;
         constexpr uint64_t scaleBytesPerGroup = MXFP_MULTI_BASE_SIZE;
-        constexpr uint64_t scaleTransferBytes = 64U * 1024U;
-        constexpr uint64_t maxScaleFactor = 127U;
         constexpr uint64_t maxKL1Units = 2U;
+        constexpr uint64_t baselineScaleKL1 = L1_TILE_K * SCALE_K_L1_RATE;
         constexpr uint64_t aElementsPerByte = Blaze::Gemm::IsFp4<ElementA>() ? 2U : 1U;
         constexpr uint64_t bElementsPerByte = Blaze::Gemm::IsFp4<ElementB>() ? 2U : 1U;
 
         const uint64_t blockM64 = blockM;
         const uint64_t blockN64 = blockN;
         /*
-         * 先计算一个 256K 基础窗口的字节数。当前只允许 kL1=256/512，且 256 同时是
-         * FP4 打包和 MX scale group 的整数倍，因此 512K 窗口的占用严格等于两倍基础窗口。
+         * 先计算一个 256K 数据窗口的字节数。当前只允许 kL1=256/512，且 256 同时是
+         * FP4 打包和 MX scale group 的整数倍，因此 512K 数据窗口的占用严格等于两倍基础窗口。
          */
         const uint64_t dataBytesPerUnit = Ops::Base::CeilDiv(blockM64 * L1_TILE_K, aElementsPerByte) +
                                           Ops::Base::CeilDiv(blockN64 * L1_TILE_K, bElementsPerByte);
-        const uint64_t scaleKBytesPerUnit =
-            Ops::Base::CeilDiv(static_cast<uint64_t>(L1_TILE_K), scaleGroupK) * scaleBytesPerGroup;
-        const uint64_t scaleABytesPerUnit = blockM64 * scaleKBytesPerUnit;
-        const uint64_t scaleBBytesPerUnit = blockN64 * scaleKBytesPerUnit;
-        const uint64_t scaleBytesPerUnit = scaleABytesPerUnit + scaleBBytesPerUnit;
+        const uint64_t scaleKBytes = Ops::Base::CeilDiv(baselineScaleKL1, scaleGroupK) * scaleBytesPerGroup;
+        const uint64_t scaleBytes = (blockM64 + blockN64) * scaleKBytes;
 
         /*
-         * K>256 时，若两个基础窗口的 A/B 和至少一个 scale 窗口可同时放入半片 L1，
-         * 且单侧 scale 不超过 64 KiB 搬运限制，则直接选择 512K；否则使用 256K。
+         * 若 512K 的 A/B 数据和基线 512K scale 窗口可同时放入半片 L1，则选择
+         * kL1=512；否则保留 kL1=256。
          */
         const uint64_t doubleDataBytes = dataBytesPerUnit * maxKL1Units;
-        const uint64_t doubleScaleABytes = scaleABytesPerUnit * maxKL1Units;
-        const uint64_t doubleScaleBBytes = scaleBBytesPerUnit * maxKL1Units;
-        const uint64_t doubleScaleBytes = scaleBytesPerUnit * maxKL1Units;
-        const bool canUseDoubleKL1 = doubleDataBytes + doubleScaleBytes <= halfL1Size &&
-                                     doubleScaleABytes <= scaleTransferBytes &&
-                                     doubleScaleBBytes <= scaleTransferBytes;
+        const bool canUseDoubleKL1 = doubleDataBytes + scaleBytes <= halfL1Size;
         const uint64_t kL1Units = canUseDoubleKL1 ? maxKL1Units : 1U;
         const uint64_t kL1 = static_cast<uint64_t>(L1_TILE_K) * kL1Units;
-        const uint64_t dataBytes = dataBytesPerUnit * kL1Units;
-        const uint64_t scaleABytes = scaleABytesPerUnit * kL1Units;
-        const uint64_t scaleBBytes = scaleBBytesPerUnit * kL1Units;
-        const uint64_t scaleBytes = scaleBytesPerUnit * kL1Units;
-
-        /*
-         * factorByL1 = floor((halfL1Size - dataBytes) / scaleBytes)
-         * factorByA/B = floor(64 KiB / 单个 kL1 窗口的 scaleA/B 字节数)
-         * factorByK = ceil(K / kL1)
-         * scaleFactor 取上述上限及 MX scale factor 字段上限 127 的最小值，既不超过覆盖实际 K
-         * 所需的 kL1 窗口数，也不超过半片 L1 容量和单侧 64 KiB 的 scale 搬运限制。
-         * 256K 基础窗口不大于基线占用；512K 只在上面的容量检查通过后才会选中，
-         * 因此此处的 dataBytes 必定小于 halfL1Size，scaleBytes 也必定非零。
-         */
-        uint64_t scaleFactor = (halfL1Size - dataBytes) / scaleBytes;
-        const uint64_t scaleFactorByA = scaleTransferBytes / scaleABytes;
-        const uint64_t scaleFactorByB = scaleTransferBytes / scaleBBytes;
-        const uint64_t scaleFactorByK = Ops::Base::CeilDiv(static_cast<uint64_t>(k), kL1);
-        // 取 L1 容量、A/B 搬运上限、实际 K 覆盖范围及字段宽度共同允许的最小值。
-        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByA);
-        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByB);
-        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByK);
-        scaleFactor = Blaze::Gemm::Min(scaleFactor, maxScaleFactor);
-        return MakeL1Params(kL1, scaleFactor * kL1);
+        return MakeL1Params(kL1, baselineScaleKL1);
     }
 
-    static __aicore__ inline BlockMmadTilingConfig MakeAdaptiveBlockMmadTilingConfig(uint32_t m, uint32_t k)
+    static __aicore__ inline BlockMmadTilingConfig MakeAdaptiveBlockMmadTilingConfig(uint32_t m)
     {
         constexpr uint32_t blockMAlign = 16U;
         // blockM 是 BlockMmad 的容量上限；实际 MMAD 仍使用 actualShape 中的有效 M，不会补算对齐行。
         const uint32_t blockM = Ops::Base::CeilAlign(m, blockMAlign);
-        return BlockMmadTilingConfig{blockM, L1_TILE_N, CalcAdaptiveL1Params(blockM, L1_TILE_N, k)};
+        return BlockMmadTilingConfig{blockM, L1_TILE_N, CalcAdaptiveL1Params(blockM, L1_TILE_N)};
     }
 
     static __aicore__ inline BlockMmadTilingConfig SelectBlockMmadTilingConfig(uint32_t m, uint32_t k,
@@ -252,18 +215,14 @@ struct Config {
                 return baselineConfig;
             }
 
-            BlockMmadTilingConfig adaptiveConfig = MakeAdaptiveBlockMmadTilingConfig(m, k);
+            BlockMmadTilingConfig adaptiveConfig = MakeAdaptiveBlockMmadTilingConfig(m);
             // 512K 一旦可用，必然比 256K 减少 A/B 的 K 搬运轮数。
             if (adaptiveConfig.l1Params.kL1 > baselineConfig.l1Params.kL1) {
                 return adaptiveConfig;
             }
 
-            // 512K 放不下时使用 256K，只在动态 scale 窗口减少搬运轮数时替换基线。
-            const uint64_t adaptiveScaleLoops =
-                Ops::Base::CeilDiv(static_cast<uint64_t>(k), adaptiveConfig.l1Params.scaleKL1);
-            const uint64_t baselineScaleLoops =
-                Ops::Base::CeilDiv(static_cast<uint64_t>(k), baselineConfig.l1Params.scaleKL1);
-            return adaptiveScaleLoops < baselineScaleLoops ? adaptiveConfig : baselineConfig;
+            // kL1 不能增大时动态配置没有减少搬运轮数，保留已验证的基线布局。
+            return baselineConfig;
         }
         return baselineConfig;
     }
