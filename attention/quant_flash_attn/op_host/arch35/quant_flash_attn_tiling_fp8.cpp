@@ -12,10 +12,10 @@
  * \file quant_flash_attn_tiling_fp8.cpp
  * \brief QuantFlashAttn arch35 tiling implementation (GQA_FP8_FULLQUANT)
  */
-
+ 
+#include <vector>
 #include "quant_flash_attn_tiling_fp8.h"
 #include "../quant_flash_attn_tiling.h"
-#include <vector>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "../quant_flash_attn_tiling_utils.h"

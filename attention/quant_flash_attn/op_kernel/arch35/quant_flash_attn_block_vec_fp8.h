@@ -75,7 +75,6 @@ public:
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
 
     static constexpr bool USE_DN = useDn;
-    static constexpr uint8_t KV_LAYOUT = 4;  // 4: K与K_Scale在同一物理内存中交叉排列
     static constexpr bool IS_PER_TOEKN_HEAD = true;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
 
