@@ -15,15 +15,15 @@
 
 #ifndef SPARSE_FLASH_ATTENTION_GRAD_KERNEL_H
 #define SPARSE_FLASH_ATTENTION_GRAD_KERNEL_H
- 
+
 #include "sparse_flash_attention_grad_common.h"
 #include "sparse_flash_attention_grad_kernel_base.h"
 #include "sparse_flash_attention_grad_tiling_data_regbase.h"
- 
+
 namespace SfagBaseApi {
- 
+
 template <typename CubeBlockType, typename VecBlockType>
- 
+
 class FlashAttentionScoreGradKernel
     : public FlashAttentionScoreGradKernelBase<FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>,
                                                CubeBlockType, VecBlockType> {
@@ -47,18 +47,18 @@ private:
     __aicore__ inline void ProcessNotFirst(FagRunInfo &runInfo);
     __aicore__ inline void DrainUnDeter(FagRunInfo runInfos[3], int64_t taskId);
 };
- 
+
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo &runInfo)
 {
 }
- 
+
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
 FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueConstInfo(FagConstInfo &constInfo)
 {
 }
- 
+
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessGather(FagRunInfo &runInfo)
 {
@@ -204,7 +204,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessPreload(FagRunInfo &runInfo,
-                                                                                                 int64_t taskId)
+                                                                                                  int64_t taskId)
 {
     ProcessGather(runInfo);
     ProcessMm12(runInfo);
@@ -246,8 +246,8 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 if (taskId >= 0) {
                     this->SetRunInfo(runInfos[taskId & 1], taskId, sTaskId);
                     ProcessPreload(runInfos[taskId & 1], taskId);
-                } 
-                
+                }
+
                 if (taskId > 0) {
                     ProcessNotFirst(runInfos[(taskId + 1) & 1]);
                 }
@@ -273,7 +273,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             } else {
                 CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
                 this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
-                                this->dvWorkSpaceGm, this->constInfo, deterRunInfos[(sTaskId + 1) & 1]);
+                                               this->dvWorkSpaceGm, this->constInfo, deterRunInfos[(sTaskId + 1) & 1]);
             }
         }
         sTaskId++;
@@ -289,7 +289,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         } else {
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
             this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
-                            this->dvWorkSpaceGm, this->constInfo, deterRunInfos[(sTaskId + 1) & 1]);
+                                           this->dvWorkSpaceGm, this->constInfo, deterRunInfos[(sTaskId + 1) & 1]);
         }
     }
 
@@ -304,7 +304,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
             this->SetDeterRunInfo(deterRunInfos[sTaskId & 1], sTaskId);
             this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm,
-                            this->dkWorkSpaceGm, this->dvWorkSpaceGm, this->constInfo, deterRunInfos[sTaskId & 1]);
+                                           this->dkWorkSpaceGm, this->dvWorkSpaceGm, this->constInfo, deterRunInfos[sTaskId & 1]);
         }
     }
     this->FreeEventID();
@@ -312,7 +312,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::DrainUnDeter(FagRunInfo runInfos[3],
-                                                                                               int64_t taskId)
+                                                                                                int64_t taskId)
 {
     if (taskId <= 0) {
         return;
@@ -368,6 +368,5 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     this->FreeEventID();
 }
 } // namespace SfagBaseApi
- 
- 
+
 #endif
