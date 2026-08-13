@@ -13,8 +13,12 @@ if (UT_TEST_ALL OR OP_KERNEL_UT)
     set(fused_gdn_gating_files
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/fused_gdn_gating_tiling.cpp
     )
+    # 算子kernel入口文件（experimental嵌套目录需显式指定）
+    set(fused_gdn_gating_kernel
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_kernel/fused_gdn_gating.cpp
+    )
 
-    AddOpTestCase(fused_gdn_gating "Ascend910B1" "" "${fused_gdn_gating_files}")
-    AddOpTestCase(fused_gdn_gating "Ascend310P1" "" "${fused_gdn_gating_files}")
+    AddOpTestCase(fused_gdn_gating "Ascend910B1" "" "${fused_gdn_gating_files}" "${fused_gdn_gating_kernel}")
+    AddOpTestCase(fused_gdn_gating "Ascend310P1" "" "${fused_gdn_gating_files}" "${fused_gdn_gating_kernel}")
 
 endif()

@@ -408,7 +408,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
     if(ARGN)
       list(GET ARGN 0 KernelFile)
     else()
-      file(GLOB KernelFile "${PROJECT_SOURCE_DIR}/*/${opName}/op_kernel/${opName}.cpp")
+      file(GLOB KernelFile "${PROJECT_SOURCE_DIR}/*/${opName}/op_kernel/${opName}.cpp" "${PROJECT_SOURCE_DIR}/*/*/${opName}/op_kernel/${opName}.cpp")
     endif()
 
     # find case file
