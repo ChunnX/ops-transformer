@@ -215,7 +215,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::InitCubeBuffer(FagConstInfo &constInfo)
 {
     qL1Buf.Init(*l1BufferManagerPtr, CUBE_BASEM * HEAD_DIM_ALIGN * sizeof(INPUT_TYPE));
-    dYL1Buf.Init(*l1BufferManagerPtr, CUBE_BASEM * (HEAD_DIM_ALIGN - ROPE_D_64) * sizeof(INPUT_TYPE));
+    dYL1Buf.Init(*l1BufferManagerPtr, CUBE_BASEM * HEAD_DIM_ALIGN * sizeof(INPUT_TYPE));
     commonL1Buf.Init(*l1BufferManagerPtr, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
  
     // init l0a l0b buffer
