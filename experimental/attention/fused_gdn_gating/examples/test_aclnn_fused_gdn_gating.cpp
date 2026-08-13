@@ -276,10 +276,19 @@ int main() {
   auto ret = Init(deviceId, &stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-  ret = test_910b_bf16_float(stream);
-  if (ret != 0) {
-    LOG_PRINT("910B test failed or not supported, falling back to 310P FP16 test.\n");
+  const char *socEnv = getenv("ASCEND_SOC_UNITS");
+  if (socEnv != nullptr && strstr(socEnv, "310p") != nullptr) {
+    LOG_PRINT("SOC=%s, running 310P FP16 test.\n", socEnv);
     test_310p_fp16(stream);
+  } else if (socEnv != nullptr && strstr(socEnv, "910b") != nullptr) {
+    LOG_PRINT("SOC=%s, running 910B BF16_FLOAT test.\n", socEnv);
+    test_910b_bf16_float(stream);
+  } else {
+    ret = test_910b_bf16_float(stream);
+    if (ret != 0) {
+      LOG_PRINT("910B test failed or not supported, falling back to 310P FP16 test.\n");
+      test_310p_fp16(stream);
+    }
   }
 
   aclrtDestroyStream(stream);
