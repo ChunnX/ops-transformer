@@ -48,7 +48,10 @@ third_party/
 .agents/
 .opencode/
 .claude/
+.cannbot
 
 # pre-commit log
 log/
 oat_reports/
+
+
