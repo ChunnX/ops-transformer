@@ -637,9 +637,8 @@ function build_example()
             if [[ "$REAL_FILE_PATH" == "${ABSOLUTE_MC2_PATH}"* || "$REAL_FILE_PATH" == "${ABSOLUTE_EXAMPLES_MC2_PATH}"* || "$REAL_FILE_PATH" == "${ABSOLUTE_EXPERIMENTAL_MC2_PATH}"* ]]; then
                 MC2_APPEND_INCLUDE_AND_LIBRARY="-lpthread -Wl,--no-as-needed -lhccl -lhccl_fwk"
             fi
-            SOC_DEFINE="-DASCEND_SOC_VERSION=\"${ASCEND_SOC_UNITS}\""
             if [[ "${PKG_MODE}" == "" ]]; then
-                g++ ${verbose_option} ${SOC_DEFINE} ${file} \
+                g++ ${verbose_option} ${file} \
                     -I ${INCLUDE_PATH} -I ${ACLNN_INCLUDE_PATH} -I ${EAGER_INCLUDE_OPP_ACLNNOP_PATH} \
                     -L ${EAGER_LIBRARY_OPP_PATH} -L ${EAGER_LIBRARY_PATH} \
                     -lopapi_math -lopapi_transformer -lascendcl -lnnopbase \
@@ -657,7 +656,7 @@ function build_example()
                     CUST_LIBRARY_PATH="${CUST_VENDORS_PATH}/${vendor_name}_transformer/op_api/lib"
                     CUST_INCLUDE_PATH="${CUST_VENDORS_PATH}/${vendor_name}_transformer/op_api/include"
                 fi
-                g++ ${verbose_option} ${SOC_DEFINE} ${file} \
+                g++ ${verbose_option} ${file} \
                     -I ${CUST_INCLUDE_PATH} -I ${INCLUDE_PATH} \
                     -L ${CUST_LIBRARY_PATH} -L ${EAGER_LIBRARY_PATH} \
                     -lopapi_math -lcust_opapi -lascendcl -lnnopbase \
