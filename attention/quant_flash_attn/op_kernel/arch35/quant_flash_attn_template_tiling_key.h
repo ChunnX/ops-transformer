@@ -52,6 +52,7 @@ ASCENDC_TPL_ARGS_DECL(QuantFlashAttn,
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(
     ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_TND_TND),
     ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64,
+                         Config_S1Aligned128_S2Aligned512_DAligned72_DVAligned72,
                          Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128),
     ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, QFA_MXFP8_FP32_PREFILL, QFA_MXFP8_FP32_DECODE),
     ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
