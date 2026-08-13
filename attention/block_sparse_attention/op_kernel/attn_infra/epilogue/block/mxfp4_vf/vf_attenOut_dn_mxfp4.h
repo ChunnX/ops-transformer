@@ -27,11 +27,11 @@ using namespace MicroAPI;
 #define VMULSCVT false
 #define DROPOUT false
 
-template <uint16_t QsBase = 128>
+template <uint16_t QsBase = 128, typename Otype = bfloat16_t>
 __simd_vf__ void processOutVF(__ubuf__ float *attenOutMD, __ubuf__ float *attenOutDM, __ubuf__ float *rsum)
 {
     MaskReg preg_all32 = CreateMask<float, MaskPattern::ALL>();
-    MaskReg preg_all16 = CreateMask<bfloat16_t, MaskPattern::ALL>();
+    MaskReg preg_all16 = CreateMask<uint16_t, MaskPattern::ALL>();
     RegTensor<float> vreg_rrsum, vreg_ones;
     Duplicate(vreg_ones, (float)1.0);
     LoadAlign(vreg_rrsum, (__ubuf__ float *)rsum);
@@ -40,7 +40,7 @@ __simd_vf__ void processOutVF(__ubuf__ float *attenOutMD, __ubuf__ float *attenO
     for (uint16_t i = 0; i < QsBase / 16; i++) {
         RegTensor<float> vreg_src1, vreg_src2, vreg_src3, vreg_src4, vreg_src5, vreg_src6, vreg_src7, vreg_src8;
         RegTensor<float> vreg_src9, vreg_src10, vreg_src11, vreg_src12, vreg_src13, vreg_src14, vreg_src15, vreg_src16;
-        RegTensor<bfloat16_t> vreg_bf16_1, vreg_bf16_2;
+        RegTensor<Otype> vreg_bf16_1, vreg_bf16_2;
 
         LoadAlign(vreg_src1, (__ubuf__ float *)attenOutDM + i * 64 * 16 + 64 * 0);
         LoadAlign(vreg_src2, (__ubuf__ float *)attenOutDM + i * 64 * 16 + 64 * 1);
@@ -76,36 +76,36 @@ __simd_vf__ void processOutVF(__ubuf__ float *attenOutMD, __ubuf__ float *attenO
         Mul(vreg_src15, vreg_src15, vreg_rrsum, preg_all32);
         Mul(vreg_src16, vreg_src16, vreg_rrsum, preg_all32);
 
-        Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src1, preg_all32);
-        Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src2, preg_all32);
+        Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src1, preg_all32);
+        Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src2, preg_all32);
         Or((RegTensor<uint16_t> &)vreg_src1, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
 
-        Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src3, preg_all32);
-        Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src4, preg_all32);
+        Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src3, preg_all32);
+        Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src4, preg_all32);
         Or((RegTensor<uint16_t> &)vreg_src2, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
 
-        Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src5, preg_all32);
-        Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src6, preg_all32);
+        Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src5, preg_all32);
+        Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src6, preg_all32);
         Or((RegTensor<uint16_t> &)vreg_src3, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
         
-        Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src7, preg_all32);
-        Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src8, preg_all32);
+        Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src7, preg_all32);
+        Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src8, preg_all32);
         Or((RegTensor<uint16_t> &)vreg_src4, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
 
-        Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src9, preg_all32);
-        Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src10, preg_all32);
+        Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src9, preg_all32);
+        Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src10, preg_all32);
         Or((RegTensor<uint16_t> &)vreg_src5, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
 
-        Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src11, preg_all32);
-        Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src12, preg_all32);
+        Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src11, preg_all32);
+        Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src12, preg_all32);
         Or((RegTensor<uint16_t> &)vreg_src6, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
 
-        Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src13, preg_all32);
-        Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src14, preg_all32);
+        Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src13, preg_all32);
+        Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src14, preg_all32);
         Or((RegTensor<uint16_t> &)vreg_src7, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
         
-        Cast<bfloat16_t, float, castTraitZero>(vreg_bf16_1, vreg_src15, preg_all32);
-        Cast<bfloat16_t, float, castTraitOne>(vreg_bf16_2, vreg_src16, preg_all32);
+        Cast<Otype, float, castTraitZero>(vreg_bf16_1, vreg_src15, preg_all32);
+        Cast<Otype, float, castTraitOne>(vreg_bf16_2, vreg_src16, preg_all32);
         Or((RegTensor<uint16_t> &)vreg_src8, (RegTensor<uint16_t> &)vreg_bf16_1, (RegTensor<uint16_t> &)vreg_bf16_2, preg_all16);
 
         Interleave(vreg_src1, vreg_src5, vreg_src1, vreg_src5);
@@ -142,7 +142,7 @@ __simd_vf__ void processOutVF(__ubuf__ float *attenOutMD, __ubuf__ float *attenO
     }
 }
 
-template <uint16_t QsBase = 128>
+template <uint16_t QsBase = 128, typename Otype = bfloat16_t>
 __aicore__ inline void processOut(const LocalTensor<float> &dstTensor, const LocalTensor<float> &srcTensor,
                                      const LocalTensor<float> &rSum)
 {
@@ -150,7 +150,7 @@ __aicore__ inline void processOut(const LocalTensor<float> &dstTensor, const Loc
     __ubuf__ float *attenOutDM = (__ubuf__ float*) srcTensor.GetPhyAddr();
     __ubuf__ float *rsum = (__ubuf__ float*) rSum.GetPhyAddr();
 
-    processOutVF<QsBase>(attenOutMD, attenOutDM, rsum);
+    processOutVF<QsBase, Otype>(attenOutMD, attenOutDM, rsum);
 }
 
 }  // namespace NpuArch::Epilogue::Block::Mxfp4VF
