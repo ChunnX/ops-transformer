@@ -113,10 +113,10 @@ __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::Compute()
     LocalTensor<hifloat8_t> outLocal = xOutQueue_.AllocTensor<hifloat8_t>();
     LocalTensor<float> scaleLocal = scaleOutQueue_.AllocTensor<float>();
 
-    __local_mem__ float *inUbAddr = (__local_mem__ float *)inLocal.GetPhyAddr();
-    __local_mem__ float *scaleUbAddr = (__local_mem__ float *)scaleLocal.GetPhyAddr();
-    __local_mem__ hifloat8_t *outUbAddr = (__local_mem__ hifloat8_t *)outLocal.GetPhyAddr();
-    __local_mem__ T *inUbAddrCastT = (__local_mem__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + perLoopColsAlign_;
+    __ubuf__ float *inUbAddr = (__ubuf__ float *)inLocal.GetPhyAddr();
+    __ubuf__ float *scaleUbAddr = (__ubuf__ float *)scaleLocal.GetPhyAddr();
+    __ubuf__ hifloat8_t *outUbAddr = (__ubuf__ hifloat8_t *)outLocal.GetPhyAddr();
+    __ubuf__ T *inUbAddrCastT = (__ubuf__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + perLoopColsAlign_;
 
     uint16_t repeatTimes = Ceil(cols_, FLOAT_REG_TENSOR_LENGTH);
     uint32_t sreg;
@@ -139,7 +139,7 @@ __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::Compute()
             MicroAPI::Abs(inReg, inReg, maskRegInLoop);
             MicroAPI::Max(scaleValueReg, scaleValueReg, inReg, maskRegAll); //求当前块中x的最大值
         }
-        MicroAPI::ReduceMax(scaleValueReg, scaleValueReg, maskRegAll); //求所有块中的最大值
+        MicroAPI::Reduce<ReduceType::MAX>(scaleValueReg, scaleValueReg, maskRegAll); //求所有块中的最大值
         MicroAPI::Muls(scaleValueReg, scaleValueReg, 1.0f / HIFLOAT8_MAX_VALUE, maskRegVL1); // hifloat8最大值 计算scale
         MicroAPI::Duplicate(scaleValueReg, scaleValueReg, maskRegAll);// 将scalevalue按照最低位元素进行进行广播
         MicroAPI::StoreAlign(scaleUbAddr, scaleValueReg, maskRegVL8);// 将scale写回，按照块大小32字节对齐
@@ -208,10 +208,10 @@ __aicore__ inline float MoeGatherOutHif8PertokenQuant<T>::ComputeMax(LocalTensor
     inputXInQueue_.EnQue<float>(inLocal);
     inLocal = inputXInQueue_.DeQue<float>();
 
-    __local_mem__ float *inUbAddr = (__local_mem__ float *)inLocal.GetPhyAddr();
-    __local_mem__ float *scaleUbAddr = (__local_mem__ float *)scaleLocal.GetPhyAddr();
-    __local_mem__ T *inUbAddrCastT;
-    inUbAddrCastT = (__local_mem__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + perLoopColsAlign_;
+    __ubuf__ float *inUbAddr = (__ubuf__ float *)inLocal.GetPhyAddr();
+    __ubuf__ float *scaleUbAddr = (__ubuf__ float *)scaleLocal.GetPhyAddr();
+    __ubuf__ T *inUbAddrCastT;
+    inUbAddrCastT = (__ubuf__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + perLoopColsAlign_;
     uint32_t sreg;
     uint16_t repeatTimes = Ceil(colsTileLength_, FLOAT_REG_TENSOR_LENGTH);
 
@@ -232,7 +232,7 @@ __aicore__ inline float MoeGatherOutHif8PertokenQuant<T>::ComputeMax(LocalTensor
             MicroAPI::Abs(inReg, inReg, maskRegLoop);
             MicroAPI::Max(scaleReg, scaleReg, inReg, maskRegAll);
         }
-        MicroAPI::ReduceMax(scaleReg, scaleReg, maskRegAll);
+        MicroAPI::Reduce<ReduceType::MAX>(scaleReg, scaleReg, maskRegAll);
         MicroAPI::StoreAlign(scaleUbAddr + 8, scaleReg, maskRegVL2);
     }
 
@@ -257,8 +257,8 @@ __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::ComputeQuant(LocalTenso
     inputXInQueue_.EnQue<float>(inLocal);
     inLocal = inputXInQueue_.DeQue<float>();
 
-    __local_mem__ float *inUbAddr = (__local_mem__ float *)inLocal.GetPhyAddr();
-    __local_mem__ hifloat8_t *outUbAddr = (__local_mem__ hifloat8_t *)outLocal.GetPhyAddr();
+    __ubuf__ float *inUbAddr = (__ubuf__ float *)inLocal.GetPhyAddr();
+    __ubuf__ hifloat8_t *outUbAddr = (__ubuf__ hifloat8_t *)outLocal.GetPhyAddr();
 
     uint16_t repeatTimes = Ceil(colsTileLength_, FLOAT_REG_TENSOR_LENGTH);
     uint32_t sreg;

@@ -22,6 +22,7 @@
 
 namespace MoeFinalizeRoutingV2Grad {
 using namespace AscendC;
+using namespace AscendC::MicroAPI;
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr int64_t BINARY_ADD_COF = 2;
 constexpr uint32_t BLOCK_BYTE_SIZE = Ops::Base::GetUbBlockSize();	
@@ -41,7 +42,7 @@ struct BinAddParams {
 };
 
 __aicore__ inline void BinaryAddVF(
-    __local_mem__ float* ubbinaryAddCache, __local_mem__ float* binaryAddTmpAddr, const uint16_t binaryAddKLoop,
+    __ubuf__ float* ubbinaryAddCache, __ubuf__ float* binaryAddTmpAddr, const uint16_t binaryAddKLoop,
     const uint16_t binaryAddLoop, const int64_t binaryAddLastNum, const int64_t pos)
 {
     MicroAPI::RegTensor<float> vregXQ;
@@ -53,19 +54,19 @@ __aicore__ inline void BinaryAddVF(
     for (uint16_t i = 0; i < binaryAddKLoop; i++) {
         curBinaryAddLoop = curBinaryAddLoop / BINARY_ADD_COF;
         for (uint16_t j = 0; j < curBinaryAddLoop; j++) {
-            DataCopy(vregXQ, ((__local_mem__ float*)binaryAddTmpAddr + j * VL_FLOAT32_SIZE));
-            DataCopy(vregXR, ((__local_mem__ float*)binaryAddTmpAddr + (j + curBinaryAddLoop) * VL_FLOAT32_SIZE));
+            LoadAlign(vregXQ, ((__ubuf__ float*)binaryAddTmpAddr + j * VL_FLOAT32_SIZE));
+            LoadAlign(vregXR, ((__ubuf__ float*)binaryAddTmpAddr + (j + curBinaryAddLoop) * VL_FLOAT32_SIZE));
             Add(vregXQ, vregXQ, vregXR, pregMain);
-            DataCopy(binaryAddTmpAddr + j * VL_FLOAT32_SIZE, vregXQ, pregMain);
+            StoreAlign(binaryAddTmpAddr + j * VL_FLOAT32_SIZE, vregXQ, pregMain);
         }
         MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
     }
     {
         uint32_t sreg2 = binaryAddLastNum;
         MicroAPI::MaskReg pregLoop = MicroAPI::UpdateMask<float>(sreg2);
-        DataCopy(vregXSum, ((__local_mem__ float*)binaryAddTmpAddr));
-        ReduceSum(vregXSum, vregXSum, pregLoop);
-        DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(ubbinaryAddCache + pos, vregXSum, pregMerge);
+        LoadAlign(vregXSum, ((__ubuf__ float*)binaryAddTmpAddr));
+        Reduce<ReduceType::SUM>(vregXSum, vregXSum, pregLoop);
+        StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(ubbinaryAddCache + pos, vregXSum, pregMerge);
     }
 }
 
@@ -132,11 +133,11 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist>:
     const LocalTensor<T1>& biasUb, const LocalTensor<T1>& gradYUb, const BinAddParams& binAddParams,
     const int64_t reduceNum, const LocalTensor<float>& binaryAddCache, const int64_t pos)
 {
-    __local_mem__ T1* ubBias = (__local_mem__ T1*)biasUb.GetPhyAddr();
-    __local_mem__ T1* ubGradY = (__local_mem__ T1*)gradYUb.GetPhyAddr();
-    __local_mem__ float* ubbinaryAddCache = (__local_mem__ float*)binaryAddCache.GetPhyAddr();
+    __ubuf__ T1* ubBias = (__ubuf__ T1*)biasUb.GetPhyAddr();
+    __ubuf__ T1* ubGradY = (__ubuf__ T1*)gradYUb.GetPhyAddr();
+    __ubuf__ float* ubbinaryAddCache = (__ubuf__ float*)binaryAddCache.GetPhyAddr();
     LocalTensor<float> binaryAddSumUb = binaryAddSumBuf_.Get<float>();
-    __local_mem__ float* ubAddSum = (__local_mem__ float*)binaryAddSumUb.GetPhyAddr();
+    __ubuf__ float* ubAddSum = (__ubuf__ float*)binaryAddSumUb.GetPhyAddr();
 
     int64_t binaryAddQuotient = binAddParams.binaryAddQuotient;
     int64_t binaryAddKLoop = binAddParams.binaryAddk;
@@ -173,8 +174,8 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist>:
             Mul(vregBiasQ, vregBiasQ, vregGradYQ, pregMain);
             Mul(vregBiasR, vregBiasR, vregGradYR, pregLoop);
             Add(vregBiasQ, vregBiasQ, vregBiasR, pregLoop);
-            ReduceSum(vregSumBias, vregBiasQ, pregLoop);
-            DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(ubAddSum + i, vregSumBias, pregMerge);
+            Reduce<ReduceType::SUM>(vregSumBias, vregBiasQ, pregLoop);
+            StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(ubAddSum + i, vregSumBias, pregMerge);
         }
         // step2: the tail (last 64 or less than 64) blocks reduce to 1.
         {
@@ -189,8 +190,8 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist>:
             Mul(vregBiasR, vregBiasR, vregGradYR, pregLoop);
             Add(tempBias, vregBiasQ, vregBiasR, pregLoop);
             Copy<float, MicroAPI::MaskMergeMode::MERGING>(vregBiasQ, tempBias, pregLoop);
-            ReduceSum(vregSumBias, vregBiasQ, pregMain);
-            DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
+            Reduce<ReduceType::SUM>(vregSumBias, vregBiasQ, pregMain);
+            StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
                 ubAddSum + remainderGeneral, vregSumBias, pregMerge);
         }
         // step3: non-overlapping portions of the first half reduce by 64, this part always 64 align
@@ -198,8 +199,8 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist>:
             ops::LoadOneTensorForDtypeT<T1>(ubBias, vregBias, pregMain, (i + remainderLoop) * VL_FLOAT32_SIZE);
             ops::LoadOneTensorForDtypeT<T1>(ubGradY, vregGradY, pregMain, (i + remainderLoop) * VL_FLOAT32_SIZE);
             Mul(vregBias, vregBias, vregGradY, pregMain);
-            ReduceSum(vregSumBias, vregBias, pregMain);
-            DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
+            Reduce<ReduceType::SUM>(vregSumBias, vregBias, pregMain);
+            StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
                 ubAddSum + remainderLoop + i, vregSumBias, pregMerge);
         }
         MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();

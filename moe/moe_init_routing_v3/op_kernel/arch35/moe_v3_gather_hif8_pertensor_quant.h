@@ -108,11 +108,11 @@ __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::Compute()
     LocalTensor<float> inLocal = inputXInQueue_.DeQue<float>();
     LocalTensor<hifloat8_t> outLocal = inputXOutQueue_.AllocTensor<hifloat8_t>();
 
-    __local_mem__ float *inUbAddr = (__local_mem__ float *)inLocal.GetPhyAddr();
-    __local_mem__ hifloat8_t *outUbAddr = (__local_mem__ hifloat8_t *)outLocal.GetPhyAddr();
-    __local_mem__ T *inUbAddrCastT;
+    __ubuf__ float *inUbAddr = (__ubuf__ float *)inLocal.GetPhyAddr();
+    __ubuf__ hifloat8_t *outUbAddr = (__ubuf__ hifloat8_t *)outLocal.GetPhyAddr();
+    __ubuf__ T *inUbAddrCastT;
 
-    inUbAddrCastT = (__local_mem__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + perLoopColsAlign_;
+    inUbAddrCastT = (__ubuf__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + perLoopColsAlign_;
 
     uint16_t repeatTimes = Ceil(cols_, FLOAT_REG_TENSOR_LENGTH);
     float scaleNum = scale_;
@@ -178,9 +178,9 @@ __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::ComputePartial(LocalTe
 
     LocalTensor<hifloat8_t> outLocal = inputXOutQueue_.AllocTensor<hifloat8_t>();
 
-    __local_mem__ float *inUbAddr = (__local_mem__ float *)inLocal.GetPhyAddr();
-    __local_mem__ T *inUbAddrCastT = (__local_mem__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + perLoopColsAlign_;
-    __local_mem__ hifloat8_t *outUbAddr = (__local_mem__ hifloat8_t *)outLocal.GetPhyAddr();
+    __ubuf__ float *inUbAddr = (__ubuf__ float *)inLocal.GetPhyAddr();
+    __ubuf__ T *inUbAddrCastT = (__ubuf__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + perLoopColsAlign_;
+    __ubuf__ hifloat8_t *outUbAddr = (__ubuf__ hifloat8_t *)outLocal.GetPhyAddr();
 
     uint16_t repeatTimes = Ceil(colsTileLength_, FLOAT_REG_TENSOR_LENGTH);
     float scaleNum = scale_;

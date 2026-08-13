@@ -71,14 +71,14 @@ private:
         int64_t currentHAlign)
     {
         LocalTensor<float> tmpBuf = binaryAddBuf.Get<float>();
-        __local_mem__ float* tmpBufAddr = (__local_mem__ float*)tmpBuf.GetPhyAddr();
+        __ubuf__ float* tmpBufAddr = (__ubuf__ float*)tmpBuf.GetPhyAddr();
         CopyInAndUpdateAllK(tmpBufAddr, indexOffset, inputOffset, currentN, currentH, currentHAlign);
         Compute(tmpBufAddr, currentN, currentH, currentHAlign);
         CopyOut(outputOffset, currentN, currentH, currentHAlign);
     }
 
     __aicore__ inline void CopyInAndUpdateAllK(
-        __local_mem__ float* tmpBuf, int64_t indexOffset, int64_t inputOffset, int64_t currentN, int64_t currentH,
+        __ubuf__ float* tmpBuf, int64_t indexOffset, int64_t inputOffset, int64_t currentN, int64_t currentH,
         int64_t currentHAlign)
     {
         int64_t kQuotient = (td_->k + td_->kUbFactor - 1) / td_->kUbFactor;
@@ -131,30 +131,30 @@ private:
     }
 
     __aicore__ inline void UpdateKWithInit(
-        __local_mem__ float* tmpBuf, int64_t currentN, int64_t currentK, int64_t currentH, int64_t currentHAlign)
+        __ubuf__ float* tmpBuf, int64_t currentN, int64_t currentK, int64_t currentH, int64_t currentHAlign)
     {
         LocalTensor<T> inputUb = inputQueue.template DeQue<T>();
-        __local_mem__ T* inputUbAddr = (__local_mem__ T*)inputUb.GetPhyAddr();
+        __ubuf__ T* inputUbAddr = (__ubuf__ T*)inputUb.GetPhyAddr();
         SequenceReduceSum<T, float, true>(
             inputUbAddr, tmpBuf, currentN, currentK, currentH, currentHAlign, td_->kUbFactor);
         inputQueue.FreeTensor(inputUb);
     }
 
     __aicore__ inline void UpdateK(
-        __local_mem__ float* tmpBuf, int64_t currentN, int64_t currentK, int64_t currentH, int64_t currentHAlign)
+        __ubuf__ float* tmpBuf, int64_t currentN, int64_t currentK, int64_t currentH, int64_t currentHAlign)
     {
         LocalTensor<T> inputUb = inputQueue.template DeQue<T>();
-        __local_mem__ T* inputUbAddr = (__local_mem__ T*)inputUb.GetPhyAddr();
+        __ubuf__ T* inputUbAddr = (__ubuf__ T*)inputUb.GetPhyAddr();
         SequenceReduceSum<T, float, false>(
             inputUbAddr, tmpBuf, currentN, currentK, currentH, currentHAlign, td_->kUbFactor);
         inputQueue.FreeTensor(inputUb);
     }
 
     __aicore__ inline void Compute(
-        __local_mem__ float* tmpBuf, int64_t currentN, int64_t currentH, int64_t currentHAlign)
+        __ubuf__ float* tmpBuf, int64_t currentN, int64_t currentH, int64_t currentHAlign)
     {
         LocalTensor<T> outputUb = outputQueue.AllocTensor<T>();
-        __local_mem__ T* outputUbAddr = (__local_mem__ T*)outputUb.GetPhyAddr();
+        __ubuf__ T* outputUbAddr = (__ubuf__ T*)outputUb.GetPhyAddr();
 
         uint32_t updateNum = currentN * currentHAlign;
         uint16_t dataLoopCount = Ops::Base::CeilDiv(updateNum, VL_F32);

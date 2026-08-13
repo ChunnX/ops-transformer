@@ -22,8 +22,8 @@ namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
 __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void FullLoadComputeExpertFirstIndexSimt(
-    int32_t elementNum, int32_t expertStart, int32_t expertEnd, __local_mem__ int32_t *sortedExpertIdLocalAddr,
-    __local_mem__ int32_t *expertFirstIndexLocalAddr)
+    int32_t elementNum, int32_t expertStart, int32_t expertEnd, __ubuf__ int32_t *sortedExpertIdLocalAddr,
+    __ubuf__ int32_t *expertFirstIndexLocalAddr)
 {
     for (auto i = static_cast<int32_t>(threadIdx.x); i < elementNum;
          i += static_cast<int32_t>(blockDim.x)) {
@@ -39,8 +39,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void FullLoadCompute
 }
 
 __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void FullLoadComputeExpertCountOutSimt(
-    int32_t elementNum, int32_t expertStart, int32_t expertEnd, __local_mem__ int32_t *sortedExpertIdLocalAddr,
-    __local_mem__ int32_t *expertFirstIndexLocalAddr, __local_mem__ int32_t *expertCountOutLocalAddr)
+    int32_t elementNum, int32_t expertStart, int32_t expertEnd, __ubuf__ int32_t *sortedExpertIdLocalAddr,
+    __ubuf__ int32_t *expertFirstIndexLocalAddr, __ubuf__ int32_t *expertCountOutLocalAddr)
 {
     for (auto i = static_cast<int32_t>(threadIdx.x); i < elementNum;
          i += static_cast<int32_t>(blockDim.x)) {
@@ -56,8 +56,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void FullLoadCompute
 }
 
 __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void FullLoadComputeActualIdxNumSimt(
-    int32_t elementNum, int32_t expertStart, int32_t expertEnd, __local_mem__ int32_t *sortedExpertIdLocalAddr,
-    __local_mem__ int32_t *actualIdxNumAddr)
+    int32_t elementNum, int32_t expertStart, int32_t expertEnd, __ubuf__ int32_t *sortedExpertIdLocalAddr,
+    __ubuf__ int32_t *actualIdxNumAddr)
 {
     int32_t localCount = 0;
     for (auto i = static_cast<int32_t>(threadIdx.x); i < elementNum;
@@ -302,8 +302,8 @@ __aicore__ inline void MoeV3FullLoadBase<T>::SortCompute()
 
     LocalTensor<int32_t> expertCountLocal = expertCountBuf_.Get<int32_t>(actualExpertNum_);
     Duplicate(expertCountLocal, static_cast<int32_t>(0), static_cast<int32_t>(1));
-    __local_mem__ int32_t *sortedExpertIdxLocalAddr = (__local_mem__ int32_t *)sortedExpertIdxLocal.GetPhyAddr();
-    __local_mem__ int32_t *actualIdxNumAddr = (__local_mem__ int32_t *)expertCountLocal.GetPhyAddr();
+    __ubuf__ int32_t *sortedExpertIdxLocalAddr = (__ubuf__ int32_t *)sortedExpertIdxLocal.GetPhyAddr();
+    __ubuf__ int32_t *actualIdxNumAddr = (__ubuf__ int32_t *)expertCountLocal.GetPhyAddr();
     asc_vf_call<FullLoadComputeActualIdxNumSimt>(
         dim3{SIMT_THREAD_NUM, 1, 1}, static_cast<int32_t>(totalLength_), static_cast<int32_t>(expertStart_),
         static_cast<int32_t>(expertEnd_), sortedExpertIdxLocalAddr, actualIdxNumAddr);
@@ -336,7 +336,7 @@ __aicore__ inline void MoeV3FullLoadBase<T>::FilterExpertIdx(LocalTensor<int32_t
 
     uint16_t repeatTimes = Ceil(this->tileLength_, FLOAT_REG_TENSOR_LENGTH);
     uint32_t sreg = static_cast<uint32_t>(this->tileLength_);
-    __local_mem__ float *inUbAddr = (__local_mem__ float *)expertIdxLocalFp32.GetPhyAddr();
+    __ubuf__ float *inUbAddr = (__ubuf__ float *)expertIdxLocalFp32.GetPhyAddr();
     float cmpScalar = static_cast<float>(expertStart_);
     float negOne = static_cast<float>(-1);
 
@@ -350,11 +350,11 @@ __aicore__ inline void MoeV3FullLoadBase<T>::FilterExpertIdx(LocalTensor<int32_t
 
         for (uint16_t i = 0; i < repeatTimes; i++) {
             maskRegLoop = MicroAPI::UpdateMask<float>(sreg);
-            MicroAPI::DataCopy(inRegToFloat, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-            MicroAPI::CompareScalar<float, CMPMODE::LT>(cmpMaskReg, inRegToFloat, cmpScalar, maskRegLoop);
+            MicroAPI::LoadAlign(inRegToFloat, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+            MicroAPI::Compares<float, CMPMODE::LT>(cmpMaskReg, inRegToFloat, cmpScalar, maskRegLoop);
             MicroAPI::Muls(inRegToFloat, inRegToFloat, negOne, maskRegLoop);
             MicroAPI::Select(vDstReg0, infFloat, inRegToFloat, cmpMaskReg);
-            MicroAPI::DataCopy(inUbAddr + i * FLOAT_REG_TENSOR_LENGTH, vDstReg0, maskRegLoop);
+            MicroAPI::StoreAlign(inUbAddr + i * FLOAT_REG_TENSOR_LENGTH, vDstReg0, maskRegLoop);
         }
     }
 }
@@ -490,8 +490,8 @@ __aicore__ inline void MoeV3FullLoadBase<T>::ComputeExpertTokenCount()
     LocalTensor<int32_t> expertCountLocal = expertCountBuf_.Get<int32_t>(actualExpertNum_);
     Duplicate(expertCountLocal, static_cast<int32_t>(0), actualExpertNum_);
 
-    __local_mem__ int32_t *sortedExpertIdxLocalAddr = (__local_mem__ int32_t *)sortedExpertIdx.GetPhyAddr();
-    __local_mem__ int32_t *expertCountOutLocalAddr = (__local_mem__ int32_t *)expertCountLocal.GetPhyAddr();
+    __ubuf__ int32_t *sortedExpertIdxLocalAddr = (__ubuf__ int32_t *)sortedExpertIdx.GetPhyAddr();
+    __ubuf__ int32_t *expertCountOutLocalAddr = (__ubuf__ int32_t *)expertCountLocal.GetPhyAddr();
 
     asc_vf_call<FullLoadComputeExpertFirstIndexSimt>(
         dim3{SIMT_THREAD_NUM, 1, 1}, static_cast<int32_t>(totalLength_), static_cast<int32_t>(expertStart_),

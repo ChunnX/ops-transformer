@@ -181,7 +181,7 @@ private:
                 mask = MicroAPI::UpdateMask<int32_t>(sregMask);
                 MicroAPI::Arange(vreg, i * REPEAT_B32_SIZE);
                 for (uint16_t j = 0; j < loops; j++) {
-                    MicroAPI::DataCopy(ubDst + i * REPEAT_B32_SIZE + j * tilingData->colAlign, vreg, mask);
+                    MicroAPI::StoreAlign(ubDst + i * REPEAT_B32_SIZE + j * tilingData->colAlign, vreg, mask);
                 }
             }
         }
@@ -328,25 +328,25 @@ private:
         {
             MicroAPI::RegTensor<int32_t> vreg0;
             MicroAPI::RegTensor<int32_t> vreg1;
-            MicroAPI::UnalignReg ureg0;
-            MicroAPI::UnalignReg ureg1;
+            MicroAPI::UnalignRegForStore ureg0;
+            MicroAPI::UnalignRegForStore ureg1;
             MicroAPI::MaskReg mask;
 
             for (uint16_t i = 0; i < loops; i++) {
-                MicroAPI::DataCopy<int32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1, ubSrc + i * VL_FP32);
+                MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1, ubSrc + i * VL_FP32);
                 if constexpr (renorm == 0) {
-                    MicroAPI::DataCopyUnAlign(ubValue, (MicroAPI::RegTensor<float>&)vreg0, ureg0, tilingData->k);
+                    MicroAPI::StoreUnAlign(ubValue, (MicroAPI::RegTensor<float>&)vreg0, ureg0, tilingData->k);
                 } else {
                     sregMask = tilingData->kAlign;
                     mask = MicroAPI::UpdateMask<float>(sregMask);
-                    MicroAPI::DataCopy(ubValue + i * tilingData->kAlign, (MicroAPI::RegTensor<float>&)vreg0, mask);
+                    MicroAPI::StoreAlign(ubValue + i * tilingData->kAlign, (MicroAPI::RegTensor<float>&)vreg0, mask);
                 }
-                MicroAPI::DataCopyUnAlign(ubIndex, vreg1, ureg1, tilingData->k);
+                MicroAPI::StoreUnAlign(ubIndex, vreg1, ureg1, tilingData->k);
             }
             if constexpr (renorm == 0) {
-                MicroAPI::DataCopyUnAlignPost(ubValue, ureg0, 0);
+                MicroAPI::StoreUnAlignPost(ubValue, ureg0, 0);
             }
-            MicroAPI::DataCopyUnAlignPost(ubIndex, ureg1, 0);
+            MicroAPI::StoreUnAlignPost(ubIndex, ureg1, 0);
         }
     }
 
@@ -366,9 +366,9 @@ private:
             MicroAPI::RegTensor<int32_t> vreg1;
             MicroAPI::RegTensor<int32_t> vreg2;
             MicroAPI::RegTensor<int32_t> vregSrc;
-            MicroAPI::UnalignReg uregX;
-            MicroAPI::UnalignReg uregSrc;
-            MicroAPI::UnalignReg uregDst;
+            MicroAPI::UnalignRegForLoad uregX;
+            MicroAPI::UnalignRegForLoad uregSrc;
+            MicroAPI::UnalignRegForStore uregDst;
             MicroAPI::MaskReg preg1;
             MicroAPI::MaskReg preg2;
 
@@ -377,18 +377,18 @@ private:
             preg1 = MicroAPI::UpdateMask<int8_t>(finCount);
             preg2 = MicroAPI::UpdateMask<int32_t>(srcCount);
 
-            MicroAPI::DataCopyUnAlignPre(uregX, finishedUb);
-            MicroAPI::DataCopyUnAlignPre(uregSrc, srcUb);
+            MicroAPI::LoadUnAlignPre(uregX, finishedUb);
+            MicroAPI::LoadUnAlignPre(uregSrc, srcUb);
             for (uint16_t i = 0; i < loops; i++) {
-                MicroAPI::DataCopyUnAlign(vreg0, uregX, finishedUb, 1);
-                MicroAPI::DataCopyUnAlign(vregSrc, uregSrc, srcUb, tilingData->k);
+                MicroAPI::LoadUnAlign(vreg0, uregX, finishedUb, 1);
+                MicroAPI::LoadUnAlign(vregSrc, uregSrc, srcUb, tilingData->k);
                 MicroAPI::Cast<int32_t, int8_t, castTraitINT82INT32>(vreg1, vreg0, preg1);
                 MicroAPI::Muls(vreg1, vreg1, int32_t(tilingData->col), preg1);
                 MicroAPI::Duplicate(vreg2, vreg1, preg2);
                 MicroAPI::Max(vreg2, vreg2, vregSrc, preg2);
-                MicroAPI::DataCopyUnAlign(dstUb, vreg2, uregDst, tilingData->k);
+                MicroAPI::StoreUnAlign(dstUb, vreg2, uregDst, tilingData->k);
             }
-            MicroAPI::DataCopyUnAlignPost(dstUb, uregDst, 0);
+            MicroAPI::StoreUnAlignPost(dstUb, uregDst, 0);
         }
         finishedQueue.FreeTensor(finishedLocal);
     }
@@ -449,12 +449,12 @@ private:
         __VEC_SCOPE__
         {
             MicroAPI::RegTensor<float> vregx;
-            MicroAPI::UnalignReg ureg;
+            MicroAPI::UnalignRegForStore ureg;
             for (uint16_t i = 0; i < loops; i++) {
-                MicroAPI::DataCopy(vregx, ubSrc + i * BLOCK_B32_SIZE);
-                MicroAPI::DataCopyUnAlign(ubDst, vregx, ureg, tilingData->k);
+                MicroAPI::LoadAlign(vregx, ubSrc + i * BLOCK_B32_SIZE);
+                MicroAPI::StoreUnAlign(ubDst, vregx, ureg, tilingData->k);
             }
-            MicroAPI::DataCopyUnAlignPost(ubDst, ureg, 0);
+            MicroAPI::StoreUnAlignPost(ubDst, ureg, 0);
         }
     }
 
