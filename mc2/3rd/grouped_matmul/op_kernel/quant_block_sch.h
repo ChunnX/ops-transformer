@@ -90,10 +90,6 @@ public:
     __aicore__ inline void ResetAddressOffsets();
     __aicore__ inline uint32_t GetStartBlockIdx() const;
     __aicore__ inline uint32_t GetEndBlockIdx() const;
-    __aicore__ inline uint64_t GetTailTileCnt()
-    {
-        return Mc2QuantUtils::Min(static_cast<uint64_t>(endBlockIdx_ + 1), params_.totalCnt);
-    }
 
 public:
     ASWTilingParam params_;
@@ -106,8 +102,6 @@ private:
     uint32_t startBlockIdx_;
     uint32_t endBlockIdx_;
     uint32_t rankDim_ = 1U;
-    uint64_t tailCnt_ = 1;
-    uint64_t tailBlockBase_ = 0;
     const __gm__ uint64_t *cGroupOffsetTableGm_ = nullptr;
     const __gm__ uint64_t *aGroupOffsetTableGm_ = nullptr;
     const __gm__ uint64_t *xScaleGroupOffsetTableGm_ = nullptr;
@@ -267,22 +261,9 @@ __aicore__ inline void QuantASWBlockSch::UpdateGroupParams()
 // 尾块切分后，更新结束的核索引和round数
 __aicore__ inline void QuantASWBlockSch::UpdateTailTile()
 {
-    uint64_t tailCnt = params_.mTailTile * params_.nTailTile;
-    tailCnt_ = tailCnt;
-    uint64_t tailOriCnt = GetTailTileCnt();
-    uint64_t newEndBlockIdx = endBlockIdx_ + tailOriCnt * (tailCnt - 1);
+    uint64_t newEndBlockIdx = params_.mTailTile * params_.nTailTile * (endBlockIdx_ + 1) - 1;
     if (blockIdx_ > endBlockIdx_ && blockIdx_ <= newEndBlockIdx) {
         params_.round += 1;
-    }
-    if (blockIdx_ > newEndBlockIdx) {
-        params_.mTailTile = 1;
-        params_.nTailTile = 1;
-        tailCnt_ = 1;
-        tailBlockBase_ = 0;
-    } else if (tailCnt > 1) {
-        tailBlockBase_ = endBlockIdx_ + 1 - tailOriCnt;
-    } else {
-        tailBlockBase_ = 0;
     }
     endBlockIdx_ = newEndBlockIdx;
 }
@@ -290,14 +271,12 @@ __aicore__ inline void QuantASWBlockSch::UpdateTailTile()
 template <bool isGmm>
 __aicore__ inline void QuantASWBlockSch::UpdateBasicIndex(uint64_t roundIdx, bool isLastGroupRound)
 {
-    uint64_t newBlockIdx = isLastGroupRound ? (tailBlockBase_ + ((blockIdx_ - tailBlockBase_) / tailCnt_) * tailCnt_) / tailCnt_ : blockIdx_;
+    uint64_t newBlockIdx = isLastGroupRound ? (blockIdx_ / (params_.mTailTile * params_.nTailTile)) : blockIdx_;
     params_.index = newBlockIdx + roundIdx * tilingData_->usedCoreNum;
     // GMM当前group的startBlockIdx_不一定从0开始，要进行计算过的base块数修正
     if constexpr (isGmm) {
         if (blockIdx_ < startBlockIdx_) {
             params_.index += tilingData_->usedCoreNum - startBlockIdx_; // 加上最开始从startBlockIdx_开始的base数
-        } else if (tailCnt_ > 1 && endBlockIdx_ + 1 >= tailCnt_ * params_.totalCnt) {
-            params_.index -= (tailBlockBase_ + ((startBlockIdx_ - tailBlockBase_) / tailCnt_) * tailCnt_) / tailCnt_;
         } else {
             params_.index -= startBlockIdx_; // 减去roundIdx * CoreNum的未包含的最开始0-(startBlockIdx_-1)的base数
         }

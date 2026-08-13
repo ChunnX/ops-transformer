@@ -172,8 +172,6 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
     if (!isLocal && expertTokenNum == 0) {
         return;
     }
-    AscendC::printf("[DBG] Process start=%u expertNum=%u tokenNum=%llu offset=%llu h1=%llu n1=%llu ep=%llu e=%llu\n",
-                    startExpertIdx, expertNum, expertTokenNum, expertTokenOffset_, h1_, n1_, epWorldSize_, expertNumInOneRank_);
 
     __gm__ int64_t *groupListPtr = reinterpret_cast<__gm__ int64_t *>(groupListGm_);
     if constexpr (!isLocal && !isA2avGmm) {
@@ -213,8 +211,6 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
                 uint32_t absExpertIdx = startExpertIdx + e;
                 uint64_t cnt = static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]);
                 groupListPtr[GROUP_LIST_INDEX + e * epWorldSize_ + r] = static_cast<int64_t>(cnt);
-                AscendC::printf("[DBG] gList[%u]=%llu e=%u r=%u absE=%u recvCnt=%d\n",
-                                e * epWorldSize_ + r, cnt, e, r, absExpertIdx, opCnt[absExpertIdx + r * expertNumInOneRank_]);
             }
         }
         uint64_t batchBaseOffset = expertTokenOffset_ * h1_ / PACK_FACTOR;
@@ -237,7 +233,6 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
                 uint32_t absExpertIdx = startExpertIdx + e;
                 uint32_t groupIdx = e * epWorldSize_ + r;
                 aGroupOffsetTable[groupIdx] = aRunningElemOffset;
-                AscendC::printf("[DBG] aGrpTab[%u]=%llu (e=%u r=%u)\n", groupIdx, aRunningElemOffset, e, r);
                 aRunningElemOffset +=
                     static_cast<uint64_t>(opCnt[absExpertIdx + r * expertNumInOneRank_]) * h1_ / PACK_FACTOR;
             }
@@ -288,8 +283,6 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
             ttXScalePtr[i] = xScaleValue;
             ttWeightScalePtr[i] = wScaleValue;
         }
-        AscendC::printf("[DBG] PerTensor xScale=%f wScale=%f expertNum=%u expertNumMax=%u\n",
-                        xScaleValue, wScaleValue, expertNum, tilingData_->taskTilingInfo.expertNum);
     }
 
     this->UpdateAddr(startExpertIdx, expertTokenNum);
@@ -311,10 +304,6 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
         xScalePtr = nullptr;
     }
     GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3);
-
-    AscendC::printf("[DBG] ptrTab x=%p w=%p scaleB=%p y=%p gList=%p groupNum=%u rankDim=%u\n",
-                    xPtr, wPtr, scaleBPtr, yPtr, groupListGm_,
-                    expertNum * static_cast<uint32_t>(epWorldSize_), static_cast<uint32_t>(epWorldSize_));
 
     Mc2GroupedMatmulTilingData::GMMQuantParams localQuantParams = gmmTilingData_->gmmQuantParams;
     if constexpr (!isLocal && !isA2avGmm) {
@@ -362,7 +351,6 @@ template <typename TilingDataType, typename GmmTilingDataType, class xType, clas
 __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xType, wType, scaleType, yType,
                                           wFormat, aTrans, bTrans, isLocal, isA2avGmm>::UpdateAddr(uint32_t startExpertIdx, uint32_t expertTokenNum)
 {
-    AscendC::printf("[DBG] UpdAddr start=%u tokenNum=%u offset=%llu\n", startExpertIdx, expertTokenNum, expertTokenOffset_);
     if constexpr (!isLocal && isA2avGmm) {
         xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr();
         wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(startExpertIdx * h1_ * n1_);
