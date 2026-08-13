@@ -447,10 +447,13 @@ aclnnStatus aclnnQuantLightningIndexer(
 - D支持128。
 - blockSize取值为16的倍数，最大支持1024。
 - 参数query、key的数据类型应保持一致。
-- Atlas A3训练系列产品/Atlas A3推理系列产品：
+
+<!-- npu="A3" id8 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   - query和key的数据类型支持`INT8`。
   - 仅支持weights、queryDequantScale、keyDequantScale数据类型为`FLOAT16、FLOAT16、FLOAT16`。
   - key和keyDequantScale不支持非连续。
+<!-- end id8 -->
 
 <!-- npu="950" id7 -->
 - Ascend 950PR/Ascend 950DT：
