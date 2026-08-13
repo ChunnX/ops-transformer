@@ -11,7 +11,7 @@ add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
     set(kv_quant_sparse_flash_attention_depends attention/common attention/sparse_flash_attention CACHE INTERNAL "Dependencies for kv_quant_sparse_flash_attention")
-    target_sources(op_host_aclnn PRIVATE
+    target_sources(op_host_aclnnInner PRIVATE
     kv_quant_sparse_flash_attention_def.cpp
     )
 endif()
@@ -26,5 +26,5 @@ add_ops_compile_options(
 )
 
 if (NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE kv_quant_sparse_flash_attention ACLNNTYPE aclnn ACLNN_EXTRA_VERSION v2)
+    add_modules_sources(OPTYPE kv_quant_sparse_flash_attention ACLNNTYPE aclnn_inner)
 endif()

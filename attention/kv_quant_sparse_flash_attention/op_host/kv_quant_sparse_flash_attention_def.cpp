@@ -15,7 +15,6 @@
 
 #include "register/op_def_registry.h"
 
-constexpr uint32_t KV_QUANT_SPARSE_FLASH_ATTENTION_VERSION_TWO = 2;
 namespace ops {
 class KvQuantSparseFlashAttention : public OpDef {
 public:
@@ -67,13 +66,20 @@ public:
             .AutoContiguous();
         this->Input("sinks")
             .ParamType(OPTIONAL)
-            .Version(KV_QUANT_SPARSE_FLASH_ATTENTION_VERSION_TWO)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Output("attention_out")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("softmax_max")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("softmax_sum")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("scale_value").AttrType(REQUIRED).Float(1.0);
         this->Attr("key_quant_mode").AttrType(REQUIRED).Int(1);
@@ -88,6 +94,7 @@ public:
         this->Attr("quant_scale_repo_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("tile_size").AttrType(OPTIONAL).Int(128);    // 128:默认值
         this->Attr("rope_head_dim").AttrType(OPTIONAL).Int(64); // 64:默认值
+        this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
@@ -146,13 +153,20 @@ public:
             .AutoContiguous();
         aicore_config_95.Input("sinks")
             .ParamType(OPTIONAL)
-            .Version(KV_QUANT_SPARSE_FLASH_ATTENTION_VERSION_TWO)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Output("attention_out")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16})
+            .FormatList({ge::FORMAT_ND});
+        aicore_config_95.Output("softmax_max")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND});
+        aicore_config_95.Output("softmax_sum")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
         aicore_config_95.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
