@@ -33,8 +33,8 @@ __simd_vf__ inline void mm1_res_pre_padding_align_kvs32_multi_qs64_vf(__ubuf__ T
     MaskReg mask_VL64_16b = CreateMask<uint16_t, MaskPattern::VL64>();
     uint16_t s2Idx = 0;
     RegTensor<T> padding_tensor1;
-    Duplicate(padding_tensor1, MIN_VALUE, mask_reg);
-    Muls(padding_tensor1, padding_tensor1, TWO_VALE, mask_reg);
+    Duplicate(padding_tensor1, MIN_VALUE, mask_VL64_16b);
+    Muls(padding_tensor1, padding_tensor1, TWO_VALE, mask_VL64_16b);
     for (s2Idx = actSingleLoopS2Size; s2Idx < actSingleLoopS2SizeAlign32 - 1; s2Idx += 2) {
         StoreAlign(s + (s2Idx * QsBase)*2, padding_tensor1, mask_VL64_16b);
         StoreAlign(s + (s2Idx * QsBase + 1 * QsBase)*2, padding_tensor1, mask_VL64_16b);

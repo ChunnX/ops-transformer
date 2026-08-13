@@ -22,6 +22,7 @@
 #include "block_epilogue_arch35_utils.hpp"
 #include "mxfp4_vf/vf_computeScale_dn_mxfp4.h"
 #include "mxfp4_vf/vf_onlyUpdateScale_dn_mxfp4.h"
+#include "mxfp4_vf/vf_computeScale_dn_mxfp4_qs64.h"
 
 namespace NpuArch::Epilogue::Block {
 
@@ -75,7 +76,7 @@ public:
     __aicore__ inline ~BlockEpilogue() {}
 
     template <class TensorL1Pscale>
-    __aicore__ inline void operator()(TensorL1Pscale &l1PScaleTensor, TileInfo const &tileInfo)
+    __aicore__ inline void operator()(TensorL1Pscale &l1PScaleTensor, TileInfo const &tileInfo, TaskInfo &taskInfo)
     {
         uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
         AscendC::LocalTensor<ElementGroupMax> localGlobalMax = localGlobalMaxUBTensor[tileInfo.tileMaxIdx];
@@ -115,15 +116,32 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
 
         if (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) {
-            Mxfp4VF::computePscale<MX_QUANT_MODE, true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
-                pscale1, pscale2, localGroupMax1, localGroupMax2,
-                localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
-                firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
+            if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
+                Mxfp4VF::computePscale<MX_QUANT_MODE, true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
+                    pscale1, pscale2, localGroupMax1, localGroupMax2,
+                    localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
+                    firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
+            } else {
+                // AscendC::PRINTF("lwg first 64\n");
+                Mxfp4VF::computePscaleQS64CallVF<MX_QUANT_MODE, true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
+                    pscale1, pscale2, localGroupMax1, localGroupMax2,
+                    localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
+                    firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
+            }
         } else {
-            Mxfp4VF::computePscale<MX_QUANT_MODE, false, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
-                pscale1, pscale2, localGroupMax1, localGroupMax2,
-                localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
-                firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
+            if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
+                Mxfp4VF::computePscale<MX_QUANT_MODE, false, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
+                    pscale1, pscale2, localGroupMax1, localGroupMax2,
+                    localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
+                    firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
+            } else {
+                // AscendC::PRINTF("lwg first222 64 \n");
+
+                Mxfp4VF::computePscaleQS64CallVF<MX_QUANT_MODE, false, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
+                    pscale1, pscale2, localGroupMax1, localGroupMax2,
+                    localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
+                    firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
+            }
         }
         // AscendC::printf("localGroupMax: \n");
         // for (int i =0; i < 8; i++) {
@@ -157,7 +175,8 @@ public:
         // }
 
         // copy pscale1 ub to l1
-        CopyPScaleUbToL1(l1PScaleTensor, pscale1, pscale2, subBlockIdx, firstLoopStart, firstLoop, secondLoopStart, secondLoop);
+        bool isQsAlign128 = taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE;
+        CopyPScaleUbToL1(l1PScaleTensor, pscale1, pscale2, subBlockIdx, firstLoopStart, firstLoop, secondLoopStart, secondLoop, isQsAlign128);
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
@@ -165,7 +184,7 @@ public:
 
      template <class TensorDst>
     __aicore__ inline void CopyPScaleUbToL1(TensorDst &l1PScaleTensor, AscendC::LocalTensor<ElementPScale> &pscale1Src, AscendC::LocalTensor<ElementPScale> &pscale2Src, 
-                                                uint32_t subBlockIdx, uint16_t firstLoopStart, uint16_t firstLoop, uint16_t secondLoopStart, uint16_t secondLoop) {
+                                                uint32_t subBlockIdx, uint16_t firstLoopStart, uint16_t firstLoop, uint16_t secondLoopStart, uint16_t secondLoop, bool isQsAlign128) {
         // 第一部分: firstLoop 组, 从 firstLoopStart 开始
         uint32_t l1PScaleTensorNSize = tla::get<1>(l1PScaleTensor.shape());
         // uint32_t l1PScaleTensorMSize = tla::get<0>(l1PScaleTensor.shape());
@@ -173,12 +192,14 @@ public:
             tla::MakeCoord(subBlockIdx + firstLoopStart, 0),
             tla::MakeShape(firstLoop, l1PScaleTensorNSize));
         uint32_t dstOffset = l1TlaTile1.layout()(l1TlaTile1.coord());
-        uint32_t pscaleGroupLen = l1PScaleTensorNSize / MXFP4::DATA_BLOCK_BYTE;
+        uint16_t pscaleGroupLen = static_cast<uint16_t>(l1PScaleTensorNSize / MXFP4::DATA_BLOCK_BYTE);
+        uint16_t pscaleGroupHalfLen = static_cast<uint16_t>(l1PScaleTensorNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
         AscendC::DataCopyParams repeatParams1;
         repeatParams1.blockCount = firstLoop;
-        repeatParams1.blockLen = static_cast<uint16_t>(pscaleGroupLen);
-        repeatParams1.srcStride = 0;
-        repeatParams1.dstStride = static_cast<uint16_t>(pscaleGroupLen);
+        repeatParams1.blockLen = isQsAlign128 ? pscaleGroupLen : pscaleGroupHalfLen;
+        repeatParams1.srcStride = isQsAlign128 ? 0 : pscaleGroupHalfLen;
+        repeatParams1.dstStride = isQsAlign128 ? pscaleGroupLen : (pscaleGroupHalfLen + pscaleGroupLen);
+
 
         // AscendC::printf("==== CopyPScaleUbToL1 debug ====\n");
         // AscendC::printf("subBlockIdx:%d, firstLoopStart:%d, firstLoop:%d, secondLoopStart:%d, secondLoop:%d\n",
@@ -202,9 +223,13 @@ public:
             uint32_t dstOffset2 = l1TlaTile2.layout()(l1TlaTile2.coord());
             AscendC::DataCopyParams repeatParams2;
             repeatParams2.blockCount = secondLoop;
-            repeatParams2.blockLen = static_cast<uint16_t>(pscaleGroupLen);
-            repeatParams2.srcStride = 0;
-            repeatParams2.dstStride = static_cast<uint16_t>(pscaleGroupLen);
+            repeatParams2.blockLen = isQsAlign128 ? pscaleGroupLen : pscaleGroupHalfLen;
+            repeatParams2.srcStride = isQsAlign128 ? 0 : pscaleGroupHalfLen;
+            repeatParams2.dstStride = isQsAlign128 ? pscaleGroupLen : (pscaleGroupHalfLen + pscaleGroupLen);
+            // repeatParams2.blockCount = secondLoop;
+            // repeatParams2.blockLen = static_cast<uint16_t>(pscaleGroupLen);
+            // repeatParams2.srcStride = 0;
+            // repeatParams2.dstStride = static_cast<uint16_t>(pscaleGroupLen);
 
             // AscendC::printf("---- secondLoop branch ----\n");
             // AscendC::printf("l1TlaTile2 coord(M,N):(%d,%d), shape(M,N):(%d,%d)\n",
