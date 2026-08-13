@@ -235,14 +235,6 @@ SetFlag(0x6) ──────────────────────�
                                             SetFlag(0xA) ──────────→ WaitFlag(0xA)
 QPrimeCompute (从 strided GM 读 Q)
 ```
-                                            kBetaInv = attnWs @ K(strided GM)
-KgCompute (从 strided GM 读 K)
-SetFlag(0x5) ─────────────────────────→   WaitFlag(0x5)
-                                            vInner = attnWs(A_beta) @ V(strided GM)
-                                            QKT matmul (strided GM)
-                                            SetFlag(0xA) ──────────→ WaitFlag(0xA)
-QPrimeCompute (从 strided GM 读 Q)
-```
 
 ### 3.4 Stage1 输出对比
 
@@ -281,8 +273,8 @@ ProcessAivFp32(nvId, cId, length):
   CrossCoreWaitFlag(0x2)                                    // ← AIC: CalVPrime+CalAttnInter 完成
 
   if subBlockIdx == 0:
-    // R3: CastGmToGmWithScale — 合并 cast FP32→BF16 + g_cum_exp 行缩放
-    //   vInner(FP32) *= g_cum_exp[:,None] → vInnerBf16(BF16)
+    // R3+R7: CastGmToGmWithScale — 合并 cast FP32→BF16 + g_cum_exp*exp(g[-1]) 行缩放
+    //   vInner(FP32) *= g_cum_exp[:,None] * g_cum_exp[-1] → vInnerBf16(BF16)
     CastGmToGmWithScale<FP32→BF16>(vInner, vInnerBf16, curChunkSize*Dv, gCumExpUb_)
 
   CrossCoreSetFlag<PIPE_MTE3>(0x5)                          // → AIC: vInnerBf16 就绪
@@ -302,10 +294,10 @@ ProcessAivBf16(nvId, cId, length):
   if subBlockIdx == 0:
     CopyOutState(finalState)
 
-  // R3: BF16 path 新增 — 对 vInner 做 g_cum_exp 行缩放
+  // R3+R7: BF16 path — 对 vInner 做 g_cum_exp*exp(g[-1]) 行缩放
   CrossCoreWaitFlag(0x6)                                    // ← AIC: vInner 就绪 (flag 0x6 新增)
   if subBlockIdx == 0:
-    // vInner(BF16) 读入 → Cast FP32 → *= g_cum_exp → Cast BF16 → 写回 vInner
+    // vInner(BF16) 读入 → Cast FP32 → *= g_cum_exp*exp(g[-1]) → Cast BF16 → 写回 vInner
     ScaleVInnerBf16(nvId, length)
 
   CrossCoreSetFlag<PIPE_MTE3>(0x5)                          // → AIC: vInner 缩放完成
@@ -360,9 +352,9 @@ SetFlag(0x3) [FP32 only]
 CopyOutState                                   SetFlag(0x6) ─────────→ [BF16: R3 新增]
 [R3: ScaleVInnerBf16]                          WaitFlag(0x5)
 WaitFlag(0x6) [BF16: R3 新增]
-vInner *= g_cum_exp → 写回
+vInner *= g_cum_exp*exp(g[-1]) → 写回
 SetFlag(0x7) [BF16: R3 新增] ─────────────→   WaitFlag(0x7) [BF16: R3 新增]
-SetFlag(0x5)                                   CalStateNew (state += v_new^T @ kg)
+SetFlag(0x5)                                   CalStateNew (state += v_new^T @ K)
 WaitFlag(0x4)                                  SetFlag(0x4) ─────────→ WaitFlag(0x4)
 [下一 chunk]
 ```
@@ -439,7 +431,7 @@ AICProcess(tmpGM, vInner, attnInter):
 | vInner_ | FP32/BF16 | Nv×Sp×Dv | Stage1→Stage2 | Stage2→Stage3 | R4: v_inner=A_beta@V (不含 v*beta) |
 | vInnerBf16_ | BF16 | Nv×Sp×Dv | Stage2 | Stage2/3 | R3: CastGmToGmWithScale 含 g_exp 缩放 |
 | qPrime_ | BF16 | Nv×Sp×Dk | Stage1 | Stage2 | R2: Q 从 strided GM 读 |
-| kg_ | BF16 | Nv×Sp×Dk | Stage1 | Stage2 | R2/R5: K 从 strided GM 读 |
+| ~~kg_~~ | ~~BF16~~ | ~~Nv×Sp×Dk~~ | ~~Stage1~~ | ~~Stage2~~ | **R7 删除** |
 | qkt_ | BF16 | Nv×Sp×C | Stage1 | Stage3 | R2: Q/K 从 strided GM 读 |
 | stateOut_ | FP32/BF16 | Nv×Dv×Dk | Stage2 | Stage2 (递推) | 不变 |
 | out_ | BF16 | T×Nv×Dv | Stage2→Stage3 | 用户输出 | 不变 |
