@@ -84,6 +84,9 @@ public:
 
         // 0: defaultMask；3: rightDownCausal
         this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);
+        // local_mask：强制选中 block 数（对齐 Triton prepare / HF；对比 raw score 时可置 0）
+        this->Attr("init_blocks").AttrType(OPTIONAL).Int(0);
+        this->Attr("local_blocks").AttrType(OPTIONAL).Int(1);
 
         OpAICoreConfig aicoreConfig;
         aicoreConfig.DynamicCompileStaticFlag(true)

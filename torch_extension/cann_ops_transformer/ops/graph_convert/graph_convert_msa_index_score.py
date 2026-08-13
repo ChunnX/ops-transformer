@@ -43,6 +43,8 @@ if _TORCHAIR_AVAILABLE:
         start_loc: Tensor,
         *,
         sparse_mode: int = 3,
+        init_blocks: int = 0,
+        local_blocks: int = 1,
         dependencies=None,
         node_name=None,
     ):
@@ -61,6 +63,8 @@ if _TORCHAIR_AVAILABLE:
         }
         attrs = {
             "sparse_mode": attr.Int(sparse_mode),
+            "init_blocks": attr.Int(init_blocks),
+            "local_blocks": attr.Int(local_blocks),
         }
         outputs = ["score"]
         return ge_op(
@@ -79,6 +83,8 @@ if _TORCHAIR_AVAILABLE:
             .optional_input("actual_seq_klen", "DT_INT32")
             .input("start_loc", "DT_INT32")
             .attr("sparse_mode", attr.Int(3))
+            .attr("init_blocks", attr.Int(0))
+            .attr("local_blocks", attr.Int(1))
             .output("score", "DT_FLOAT"),
         )
 
@@ -96,6 +102,8 @@ if _TORCHAIR_AVAILABLE:
         start_loc: Tensor,
         *,
         sparse_mode: int = 3,
+        init_blocks: int = 0,
+        local_blocks: int = 1,
         meta_outputs: TensorSpec = None,
     ):
         return MsaIndexScore(
@@ -108,6 +116,8 @@ if _TORCHAIR_AVAILABLE:
             actual_seq_klen=actual_seq_klen,
             start_loc=start_loc,
             sparse_mode=sparse_mode,
+            init_blocks=init_blocks,
+            local_blocks=local_blocks,
         )
 
 else:
