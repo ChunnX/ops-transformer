@@ -853,7 +853,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
             }
 
             if (plannedDispatchRowCount != 0U) {
-                DispatchExpertWaveTokens<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+                DispatchExpertTokens<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
                     tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_,
                     waveBeginExpert, waveEndExpert, plannedDispatchRowCount);
             }

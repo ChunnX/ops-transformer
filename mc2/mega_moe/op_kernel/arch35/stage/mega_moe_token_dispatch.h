@@ -194,53 +194,6 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
     }
 }
 
-struct DispatchShardRange {
-    uint32_t remoteRankIdx;
-    uint32_t rankSegmentDstRowBegin;
-    int32_t matchOrdinalBegin;
-    int32_t matchOrdinalEnd;
-    int32_t dstRowBegin;
-};
-
-template <typename ActivationType>
-__aicore__ inline DispatchShardRange CalculateDispatchShardRange(
-    const TokenDispatchConfig &context, const TokenDispatchScratch<ActivationType> &scratch,
-    uint32_t localExpertId, uint32_t dispatchShardIdx, uint32_t rankShardCount)
-{
-    uint32_t remoteRankIdx = dispatchShardIdx / rankShardCount;
-    uint32_t rankShardIdx = dispatchShardIdx % rankShardCount;
-    uint32_t rankSegmentDstRowBegin =
-        (remoteRankIdx == 0U && localExpertId == 0U) ?
-            0U :
-            static_cast<uint32_t>(
-                scratch.cumsumInfoTensor.GetValue(localExpertId * context.common.worldSize + remoteRankIdx - 1U));
-    DispatchShardRange range{remoteRankIdx, rankSegmentDstRowBegin, 0, 0, 0};
-    if (rankSegmentDstRowBegin >= context.maxOutputSize) {
-        return range;
-    }
-
-    int32_t rankTokenCount =
-        scratch.cumsumInfoTensor.GetValue(localExpertId * context.common.worldSize + remoteRankIdx) -
-        static_cast<int32_t>(rankSegmentDstRowBegin);
-    int32_t rankDispatchRowCount =
-        rankSegmentDstRowBegin + rankTokenCount > context.maxOutputSize ?
-            static_cast<int32_t>(context.maxOutputSize - rankSegmentDstRowBegin) :
-            rankTokenCount;
-    int32_t rowsPerRankShard =
-        Ops::Base::CeilDiv(rankDispatchRowCount, static_cast<int32_t>(rankShardCount));
-    int32_t rankShardRowBegin = static_cast<int32_t>(rankShardIdx) * rowsPerRankShard;
-    range.dstRowBegin = static_cast<int32_t>(rankSegmentDstRowBegin) + rankShardRowBegin;
-    int32_t dispatchRowCount =
-        range.dstRowBegin + rowsPerRankShard > rankSegmentDstRowBegin + rankDispatchRowCount ?
-            static_cast<int32_t>(rankSegmentDstRowBegin + rankDispatchRowCount - range.dstRowBegin) :
-            rowsPerRankShard;
-    if (dispatchRowCount > 0) {
-        range.matchOrdinalBegin = rankShardRowBegin;
-        range.matchOrdinalEnd = rankShardRowBegin + dispatchRowCount;
-    }
-    return range;
-}
-
 struct DispatchExpertWaveRange {
     int32_t expertGlobalRowBegin;
     int32_t expertWaveLocalRowEnd;
@@ -453,106 +406,12 @@ __aicore__ inline void DispatchExpertRowsByRank(
     }
 }
 
-// Prototype: MegaMoe::MetaInfoCalAndDispatch. Scans route batches and dispatches one block's token shards.
-template <typename ActivationType, typename QuantScaleType, bool EnableA8W4, uint32_t PipelineTileM,
-          bool TopkWeightsPrefetch>
-__aicore__ inline void DispatchExpertTokens(const TokenDispatchConfig &context, const Params &params,
-                                            GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch,
-                                            uint32_t localExpertId)
-{
-    constexpr int32_t dispatchWaveRowCount = static_cast<int32_t>(PipelineTileM);
-    const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
-    uint32_t maskSlotSize = context.maskAlignSize + static_cast<uint32_t>(ALIGN_32);
-    int32_t expertGlobalRowBegin =
-        localExpertId == 0 ? 0 : scratch.cumsumInfoTensor.GetValue(localExpertId * context.common.worldSize - 1);
-    __gm__ int32_t *dispatchWaveReadyCount =
-        reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
-        static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
-    uint32_t rankShardCount = context.countWorkspace.blockNum / context.common.worldSize;
-    rankShardCount = rankShardCount == 0U ? 1U : rankShardCount;
-
-    for (uint32_t dispatchShardIdx = context.blockJob.jobIndex;
-         dispatchShardIdx < context.common.worldSize * rankShardCount;
-         dispatchShardIdx += context.blockJob.totalJobs) {
-        DispatchShardRange shardRange =
-            CalculateDispatchShardRange(context, scratch, localExpertId, dispatchShardIdx, rankShardCount);
-
-        GlobalTensor<uint8_t> remoteRankMaskGlobal;
-        int32_t matchedRouteCount = 0;
-        int32_t dispatchedRowCount = 0;
-        for (int32_t batchIdx = 0;
-             batchIdx < bufferConfig.routeBatchCount && matchedRouteCount < shardRange.matchOrdinalEnd;
-             ++batchIdx) {
-            int32_t batchRouteBegin = batchIdx * bufferConfig.routeItemsPerBatch;
-            bool isLastBatch = batchIdx == bufferConfig.routeBatchCount - 1;
-            int32_t validRouteCount = bufferConfig.routeItemsPerBatch;
-            int32_t maskSliceBytes = bufferConfig.routeItemsPerBatch / 8;
-            if (isLastBatch) {
-                uint64_t sendTotalNum = static_cast<uint64_t>(context.common.tokenNum) * context.common.topK;
-                validRouteCount = static_cast<int32_t>(sendTotalNum - static_cast<uint64_t>(batchRouteBegin));
-                if (batchRouteBegin / 8 + maskSliceBytes > static_cast<int32_t>(context.maskAlignSize)) {
-                    maskSliceBytes = static_cast<int32_t>(context.maskAlignSize) - batchRouteBegin / 8;
-                }
-            }
-            remoteRankMaskGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(
-                params.peermemInfo.maskRecvPtr +
-                (static_cast<uint64_t>(localExpertId) * context.common.worldSize + shardRange.remoteRankIdx) *
-                    maskSlotSize +
-                static_cast<uint64_t>(batchRouteBegin / 8)));
-            DataCopy(scratch.maskBatchTensor, remoteRankMaskGlobal, static_cast<uint32_t>(maskSliceBytes));
-            SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-            CreateVecIndex(scratch.topkIndexTensor, batchRouteBegin, bufferConfig.routeItemsPerBatch);
-            uint64_t batchMatchedRouteCount = 0;
-            GatherMask(scratch.validTopkIndexTensor, scratch.topkIndexTensor, scratch.maskBatchU32Tensor, true,
-                       static_cast<uint32_t>(validRouteCount), {1, 1, 0, 0}, batchMatchedRouteCount);
-            SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
-
-            int32_t batchMatchOrdinalBegin = matchedRouteCount;
-            int32_t batchMatchOrdinalEnd = matchedRouteCount + static_cast<int32_t>(batchMatchedRouteCount);
-            int32_t dispatchMatchOrdinalBegin =
-                batchMatchOrdinalBegin > shardRange.matchOrdinalBegin ? batchMatchOrdinalBegin :
-                                                                        shardRange.matchOrdinalBegin;
-            int32_t dispatchMatchOrdinalEnd =
-                batchMatchOrdinalEnd < shardRange.matchOrdinalEnd ? batchMatchOrdinalEnd : shardRange.matchOrdinalEnd;
-            if (dispatchMatchOrdinalEnd > dispatchMatchOrdinalBegin) {
-                int32_t batchLocalMatchBegin = dispatchMatchOrdinalBegin - batchMatchOrdinalBegin;
-                int32_t batchDispatchRowCount = dispatchMatchOrdinalEnd - dispatchMatchOrdinalBegin;
-                int32_t dispatchDstRowBegin =
-                    static_cast<int32_t>(shardRange.rankSegmentDstRowBegin) + dispatchMatchOrdinalBegin;
-                CopyTokensAndMetaForDispatch<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-                    context, params, winRankAddr, scratch, dispatchDstRowBegin, shardRange.remoteRankIdx,
-                    batchLocalMatchBegin,
-                    batchDispatchRowCount);
-                dispatchedRowCount += batchDispatchRowCount;
-            }
-            matchedRouteCount = batchMatchOrdinalEnd;
-        }
-
-        if (dispatchedRowCount > 0) {
-            SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
-            int32_t coreExpertRowBegin = shardRange.dstRowBegin - expertGlobalRowBegin;
-            int32_t coreExpertRowEnd = coreExpertRowBegin + dispatchedRowCount;
-            int32_t firstWaveIdx = coreExpertRowBegin / dispatchWaveRowCount;
-            int32_t lastWaveIdx = (coreExpertRowEnd - 1) / dispatchWaveRowCount;
-            for (int32_t waveIdx = firstWaveIdx; waveIdx <= lastWaveIdx; ++waveIdx) {
-                int32_t waveExpertRowBegin = waveIdx * dispatchWaveRowCount;
-                int32_t waveExpertRowEnd = waveExpertRowBegin + dispatchWaveRowCount;
-                int32_t overlapRowBegin =
-                    coreExpertRowBegin > waveExpertRowBegin ? coreExpertRowBegin : waveExpertRowBegin;
-                int32_t overlapRowEnd = coreExpertRowEnd < waveExpertRowEnd ? coreExpertRowEnd : waveExpertRowEnd;
-                AtomicAdd(dispatchWaveReadyCount + static_cast<int64_t>(waveIdx) * INT_CACHELINE,
-                          overlapRowEnd - overlapRowBegin);
-            }
-        }
-    }
-}
-
 // 基线 Dispatch wave 的分核实现：先按当前 wave 的总接收行数给所有 Dispatch
 // core 分配连续的 wave-local 区间，再沿专家和 source rank 求交集。这里保留
 // source rank 的原有顺序扫描，不改变二层路由，只把多个小专家合并到同一个
 // Dispatch pass，避免每个小专家都单独占用一轮核分配。
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
-__aicore__ inline void DispatchExpertWaveTokens(
+__aicore__ inline void DispatchExpertTokens(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t waveBeginExpert,
     uint32_t waveEndExpert, uint32_t waveRowCount)
@@ -760,8 +619,17 @@ __aicore__ inline void RunMoeExpertDispatchStage(
         ComputeExpertTokenCountAndNotify<ActivationType, EnableA8W4, TopkWeightsPrefetch>(
             context, params, scratch, expertIdx, sendCnt);
         if (sendCnt != 0U) {
-            DispatchExpertTokens<ActivationType, QuantScaleType, EnableA8W4, Gmm1TileM, TopkWeightsPrefetch>(
-                context, params, winRankAddr, scratch, expertIdx);
+            uint64_t expertGlobalRowBegin = expertIdx == 0U ? 0U :
+                static_cast<uint64_t>(
+                    scratch.cumsumInfoTensor.GetValue(expertIdx * context.common.worldSize - 1U));
+            uint64_t dispatchRowCount = expertGlobalRowBegin < context.maxOutputSize ?
+                context.maxOutputSize - expertGlobalRowBegin : 0U;
+            if (dispatchRowCount > sendCnt) {
+                dispatchRowCount = sendCnt;
+            }
+            DispatchExpertTokens<ActivationType, QuantScaleType, Gmm1TileM, TopkWeightsPrefetch>(
+                context, params, winRankAddr, scratch, expertIdx, expertIdx + 1U,
+                static_cast<uint32_t>(dispatchRowCount));
         }
     }
 }
