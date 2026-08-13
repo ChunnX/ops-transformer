@@ -16,6 +16,7 @@
 #include <iostream>
 #include <vector>
 #include <cstdint>
+#include <cstring>
 #include <cmath>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_fused_gdn_gating.h"
