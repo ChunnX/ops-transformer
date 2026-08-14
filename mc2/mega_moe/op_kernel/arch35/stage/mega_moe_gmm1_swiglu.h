@@ -321,7 +321,8 @@ __aicore__ inline void Gmm1AicMmadGeneric(
 template <typename BlockMmad, bool IsShared, bool TopkWeightsPrefetch, typename WorkSet, typename Config>
 __aicore__ inline void Gmm1AicMmadA8W4(
     WorkSet &workSet, const Params &params, const GMMAddrInfo &gmmAddrInfo, const Config &config,
-    uint32_t startLoopIdx, uint32_t tileNum, int32_t &gmTileSequence, uint32_t expertIdx)
+    uint32_t startLoopIdx, uint32_t tileNum, int32_t &gmTileSequence, uint32_t expertIdx,
+    AscendTimerDevice *timer = nullptr)
 {
     BlockMmad blockMmad{};
     typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
@@ -339,7 +340,11 @@ __aicore__ inline void Gmm1AicMmadA8W4(
             WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
             lastWaveWaited = waveIdx;
         }
-
+        if (loopIdx == startLoopIdx) {
+            TIMER_BLOCK(if (timer != nullptr && timer->IsAic()) {
+                timer->Tik(AscendTimer::AIC_GMM1, expertIdx);
+            });
+        }
         Gmm1AicMmadTileA8W4(blockMmad, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, config,
                             actualShape, mLoc, nLoc);
 
@@ -351,6 +356,9 @@ __aicore__ inline void Gmm1AicMmadA8W4(
             AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++gmTileSequence);
         }
     }
+    TIMER_BLOCK(if (timer != nullptr && timer->IsAic()) {
+        timer->Tok(AscendTimer::AIC_GMM1, expertIdx);
+    });
 }
 
 // Prefetch 交错路径从 GM 取回一个子 tile，执行 SwiGLU/量化并通知 GMM2。
@@ -784,7 +792,7 @@ template <typename ElementC, typename MakeLayoutC, bool IsWaveFlagGrained, typen
 __aicore__ inline void Gmm1Aiv1PrefetchEpilogueA8W4(
     WorkSet &workSet, const Params &params, const GMMAddrInfo &gmmAddrInfo, const Config &config,
     uint32_t startLoopIdx, uint32_t tileNum, SwigluQuantOp &swigluQuantOp, uint32_t expertBeforeCnt,
-    uint32_t expertIdx)
+    uint32_t expertIdx, AscendTimerDevice *timer = nullptr)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
@@ -792,10 +800,18 @@ __aicore__ inline void Gmm1Aiv1PrefetchEpilogueA8W4(
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         WaitGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
+        if (loopIdx == startLoopIdx) {
+            TIMER_BLOCK(if (timer != nullptr && timer->IsAiv1()) {
+                timer->Tik(AscendTimer::AIV_SWIGLU, expertIdx);
+            });
+        }
         Gmm1Aiv1PrefetchEpilogueTileA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
             swigluQuantOp, workSet.gmC, workSet.metaInfoGm, gmmAddrInfo, config, actualShape, mLoc, nLoc,
             expertBeforeCnt);
     }
+    TIMER_BLOCK(if (timer != nullptr && timer->IsAiv1()) {
+        timer->Tok(AscendTimer::AIV_SWIGLU, expertIdx);
+    });
 }
 
 // 非 Prefetch 路径的 AIV1 按 AIC 序号消费 A8W4 GMM1 tile。
@@ -803,7 +819,8 @@ template <typename ElementC, typename MakeLayoutC, bool IsWaveFlagGrained, typen
           typename SwigluQuantOp>
 __aicore__ inline void Gmm1Aiv1EpilogueA8W4(
     WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t startLoopIdx,
-    uint32_t tileNum, int32_t &gmTileSequence, SwigluQuantOp &swigluQuantOp)
+    uint32_t tileNum, int32_t &gmTileSequence, SwigluQuantOp &swigluQuantOp, uint32_t expertIdx,
+    AscendTimerDevice *timer = nullptr)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
@@ -816,10 +833,18 @@ __aicore__ inline void Gmm1Aiv1EpilogueA8W4(
             while (AscendC::GetSystemCycle() - startCycle < 100) {
             }
         }
+        if (loopIdx == startLoopIdx) {
+            TIMER_BLOCK(if (timer != nullptr && timer->IsAiv1()) {
+                timer->Tik(AscendTimer::AIV_SWIGLU, expertIdx);
+            });
+        }
         Gmm1Aiv1EpilogueTileA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
             swigluQuantOp, workSet.gmC, gmmAddrInfo, config, actualShape, mLoc, nLoc);
         gmTileSequence = expectedReadySequence;
     }
+    TIMER_BLOCK(if (timer != nullptr && timer->IsAiv1()) {
+        timer->Tok(AscendTimer::AIV_SWIGLU, expertIdx);
+    });
 }
 
 // 根据 GM 地址建立执行资源，并执行 A8W4 GMM1/SwiGLU 阶段。
@@ -863,10 +888,8 @@ __aicore__ inline void Gmm1ExecA8W4(
                                     decltype(gmScaleB), decltype(gmBias), decltype(gmC), decltype(metaInfoGm)>;
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmC, metaInfoGm};
     if constexpr (g_coreType == AscendC::AIC) {
-        TIMER_BLOCK(if (timer != nullptr && timer->IsAic()) { timer->Tik(AscendTimer::AIC_GMM1, expertIdx); });
         Gmm1AicMmadA8W4<BlockMmad, IsShared, TopkWeightsPrefetch>(
-            workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, expertIdx);
-        TIMER_BLOCK(if (timer != nullptr && timer->IsAic()) { timer->Tok(AscendTimer::AIC_GMM1, expertIdx); });
+            workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, expertIdx, timer);
     } else if (GetSubBlockIdx() == 0) {
         TIMER_BLOCK(if (timer != nullptr && timer->IsAiv0()) {
             timer->Tik(AscendTimer::AIV_GMM1_PROLOGUE, expertIdx);
@@ -879,12 +902,10 @@ __aicore__ inline void Gmm1ExecA8W4(
         if constexpr (TopkWeightsPrefetch) {
             Gmm1Aiv1PrefetchEpilogueA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
                 workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, swigluQuantOp, expertBeforeCnt,
-                expertIdx);
+                expertIdx, timer);
         } else {
-            TIMER_BLOCK(if (timer != nullptr && timer->IsAiv1()) { timer->Tik(AscendTimer::AIV_SWIGLU, expertIdx); });
             Gmm1Aiv1EpilogueA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
-                workSet, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, swigluQuantOp);
-            TIMER_BLOCK(if (timer != nullptr && timer->IsAiv1()) { timer->Tok(AscendTimer::AIV_SWIGLU, expertIdx); });
+                workSet, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, swigluQuantOp, expertIdx, timer);
         }
     }
 }
