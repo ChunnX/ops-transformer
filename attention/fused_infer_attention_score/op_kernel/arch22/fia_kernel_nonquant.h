@@ -287,7 +287,10 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
 template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
 __aicore__ inline bool FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::IsInitAttentionOutGm()
 {
-    // 存在空batch时需要全局预清零
+    /* 存在空batch时需要全局预清零
+     * needInit: host侧检测到存在空batch/变长序列/padding时为true，
+     * 仅作为IsInitAttentionOutGm的输入之一，不代表最终的初始化决策
+     */
     if (tilingData->baseParams.needInit) {
         return true;
     }
