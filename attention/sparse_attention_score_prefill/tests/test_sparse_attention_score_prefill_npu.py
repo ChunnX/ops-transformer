@@ -16,6 +16,7 @@ and compares against NPU kernel output.
 import importlib.util
 import os
 import sys
+import time
 from pathlib import Path
 
 import torch
@@ -38,6 +39,10 @@ cpu_golden_prefill_bf16 = prefill_golden.cpu_golden_prefill_bf16
 
 
 def _load_prefill_op():
+  # Avoid importing unrelated custom-op builders (for example mega_moe) during
+  # collection; their headers can be version-sensitive across CANN installs.
+  os.environ.setdefault("CANN_OPS_TRANSFORMER_LAZY_IMPORT", "1")
+  import cann_ops_transformer.ops.sparse_attention_score  # noqa: F401
   import cann_ops_transformer.ops.sparse_attention_score_prefill  # noqa: F401
 
 
@@ -57,6 +62,197 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
 
   def _max_abs_diff(self, a, b):
     return (a.float() - b.float()).abs().max().item()
+
+  def _make_arch22_133120_case(self, q_seqlen=2048):
+    """Fast-build the msa_compare_arch22 shape without CPU QK top-k pooling."""
+    batch = 1
+    kv_seqlen = 133120
+    q_heads = 16
+    kv_heads = 1
+    head_dim = 128
+    block_size = 128
+    top_k = 16
+    seed = 2026
+    layout_seed = 137
+    max_blocks = kv_seqlen // block_size
+    physical_blocks = 1563
+    total_q_tokens = batch * q_seqlen
+
+    torch.manual_seed(seed)
+    query = (torch.rand(total_q_tokens, q_heads, head_dim, dtype=torch.float32) * 2 - 1).to(torch.bfloat16)
+    key = (torch.rand(physical_blocks, block_size, kv_heads, head_dim, dtype=torch.float32) * 2 - 1).to(torch.bfloat16)
+    value = (torch.rand(physical_blocks, block_size, kv_heads, head_dim, dtype=torch.float32) * 2 - 1).to(torch.bfloat16)
+
+    import random
+    physical_ids = list(range(physical_blocks))
+    random.Random(layout_seed).shuffle(physical_ids)
+    block_table = torch.tensor(physical_ids[:max_blocks * batch], dtype=torch.int32).reshape(batch, max_blocks)
+
+    history_len = kv_seqlen - q_seqlen
+    q_tokens = torch.arange(q_seqlen, dtype=torch.int64)
+    current_blocks = (history_len + q_tokens) // block_size
+    slot_offsets = torch.arange(top_k, dtype=torch.int64)
+    selected = current_blocks.unsqueeze(1) - top_k + 1 + slot_offsets.unsqueeze(0)
+    selected = torch.clamp(selected, min=0)
+    select_idx = selected.unsqueeze(0).expand(kv_heads, total_q_tokens, top_k).contiguous().to(torch.int32)
+    select_num_idx = torch.full((kv_heads, total_q_tokens), top_k, dtype=torch.int32)
+
+    actual_seq_lengths = torch.tensor([q_seqlen], dtype=torch.int32)
+    actual_seq_lengths_kv = torch.tensor([kv_seqlen], dtype=torch.int32)
+    k2q_row_ptr, k2q_q_indices, k2q_slot_indices = prefill_golden.build_k2q_csr_torch_reference(
+        select_idx, actual_seq_lengths, actual_seq_lengths_kv, block_size, q_global_offset=True)
+
+    return {
+        "query": query,
+        "key": key,
+        "value": value,
+        "block_table": block_table,
+        "select_idx": select_idx,
+        "select_num_idx": select_num_idx,
+        "k2q_row_ptr": k2q_row_ptr.to(torch.int32),
+        "k2q_q_indices": k2q_q_indices.to(torch.int32),
+        "k2q_slot_indices": k2q_slot_indices.to(torch.int32),
+        "actual_seq_lengths": actual_seq_lengths,
+        "actual_seq_lengths_kv": actual_seq_lengths_kv,
+        "kv_heads": kv_heads,
+        "scale_value": 1.0 / (head_dim ** 0.5),
+        "block_size": block_size,
+        "top_k": top_k,
+        "inner_precise": 4,
+    }
+
+  def _run_arch22_precision_once(self, data, sample_tokens, label):
+    """Run one A2 prefill invocation and compare selected rows with CPU golden."""
+    q = data["query"].npu()
+    k = data["key"].npu()
+    v = data["value"].npu()
+    bt = data["block_table"].npu()
+    row_ptr = data["k2q_row_ptr"].npu()
+    q_indices = data["k2q_q_indices"].npu()
+    slot_indices = data["k2q_slot_indices"].npu()
+    actual_seq_lengths = data["actual_seq_lengths"].npu()
+    actual_seq_lengths_kv = data["actual_seq_lengths_kv"].npu()
+
+    def prefill_fn():
+      return torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
+          q, k, v, bt, row_ptr, q_indices, slot_indices,
+          actual_seq_lengths, actual_seq_lengths_kv,
+          data["kv_heads"], data["scale_value"], data["block_size"],
+          data["top_k"], data["inner_precise"])
+
+    prefill_out = prefill_fn()
+    torch.npu.synchronize()
+    prefill_cpu = prefill_out.cpu()
+    reference_sample = self._arch22_cpu_reference_sample(data, sample_tokens)
+    actual_sample = prefill_cpu[sample_tokens]
+    diff = (actual_sample.float() - reference_sample.float()).abs()
+    print(
+        f"[{label}] query={tuple(data['query'].shape)} "
+        f"max_diff={diff.max().item():.6f} mean_diff={diff.mean().item():.6f} "
+        f"samples={sample_tokens}")
+    self.assertFalse(torch.any(torch.isnan(prefill_cpu.float())), "Prefill output contains NaN")
+    self.assertFalse(torch.any(torch.isinf(prefill_cpu.float())), "Prefill output contains Inf")
+    self.assertFalse(torch.all(prefill_cpu.float() == 0), "Prefill output is all zeros")
+    self.assertRtolEqual(
+        reference_sample.float().numpy(), actual_sample.float().numpy(), prec=1.5e-2)
+    return prefill_fn
+
+  def _run_arch22_phase1_dump_once(self, data, label):
+    """Return the raw debug-mode workspace view for the deterministic probe."""
+    tensors = [
+        data["query"].npu(), data["key"].npu(), data["value"].npu(),
+        data["block_table"].npu(), data["k2q_row_ptr"].npu(),
+        data["k2q_q_indices"].npu(), data["k2q_slot_indices"].npu(),
+        data["actual_seq_lengths"].npu(), data["actual_seq_lengths_kv"].npu(),
+    ]
+    out = torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
+        *tensors, data["kv_heads"], data["scale_value"], data["block_size"],
+        data["top_k"], data["inner_precise"])
+    torch.npu.synchronize()
+    result = out.cpu()
+    print(f"[{label}] range=({result.float().min().item():.6f}, {result.float().max().item():.6f})")
+    return result
+
+  def _time_npu_op(self, fn, warmup=2, repeat=5):
+    for _ in range(warmup):
+      fn()
+    torch.npu.synchronize()
+
+    timings_ms = []
+    out = None
+    for _ in range(repeat):
+      start = time.perf_counter()
+      out = fn()
+      torch.npu.synchronize()
+      timings_ms.append((time.perf_counter() - start) * 1000.0)
+    return out, timings_ms
+
+  def _arch22_cpu_reference_sample(self, data, q_tokens):
+    """Compute a small independent two-phase reference for selected rows.
+
+    The production case is intentionally too large for a full CPU QK/PV
+    reference.  Reusing the same block math on the first, middle, and last
+    query rows still checks the causal boundary, block-table indirection,
+    Phase1 statistics, and Phase2 combine without invoking the decode op.
+    """
+    query = data["query"]
+    key = data["key"]
+    value = data["value"]
+    block_table = data["block_table"]
+    select_idx = data["select_idx"]
+    q_seqlen = int(data["actual_seq_lengths"][0].item())
+    kv_seqlen = int(data["actual_seq_lengths_kv"][0].item())
+    block_size = data["block_size"]
+    top_k = data["top_k"]
+    group_size = query.shape[1] // data["kv_heads"]
+    head_dim = query.shape[2]
+    output = torch.zeros(len(q_tokens), query.shape[1], head_dim, dtype=torch.bfloat16)
+
+    history_len = kv_seqlen - q_seqlen
+    for out_row, q_token in enumerate(q_tokens):
+      q_position = history_len + q_token
+      for kv_head in range(data["kv_heads"]):
+        q_start = kv_head * group_size
+        partials = []
+        maxima = []
+        sums = []
+        for slot in range(top_k):
+          logical_block = int(select_idx[kv_head, q_token, slot].item())
+          block_begin = logical_block * block_size
+          valid_end = min(block_begin + block_size, kv_seqlen, q_position + 1)
+          valid_len = max(valid_end - block_begin, 0)
+          if valid_len == 0:
+            partials.append(torch.zeros(group_size, head_dim, dtype=torch.float32))
+            maxima.append(torch.full((group_size,), -float("inf")))
+            sums.append(torch.zeros(group_size))
+            continue
+          physical_block = int(block_table[0, logical_block].item())
+          partial, row_max, row_sum = prefill_golden._bf16_block_qk_sm_pv(
+              query[q_token, q_start:q_start + group_size, :],
+              key[physical_block, :valid_len, kv_head, :],
+              value[physical_block, :valid_len, kv_head, :],
+              data["scale_value"], q_token, kv_head, slot, data["inner_precise"])
+          partials.append(partial)
+          maxima.append(row_max)
+          sums.append(row_sum)
+
+        partials = torch.stack(partials, dim=0)
+        maxima = torch.stack(maxima, dim=0)
+        sums = torch.stack(sums, dim=0)
+        valid = torch.isfinite(maxima) & (sums > 0)
+        masked_maxima = torch.where(
+            valid, maxima, torch.full_like(maxima, -float("inf")))
+        global_max = masked_maxima.max(dim=0).values
+        exp_weight = torch.where(
+            valid, torch.exp(maxima - global_max.unsqueeze(0)), torch.zeros_like(sums))
+        denominator = (sums * exp_weight).sum(dim=0)
+        combined_scale = torch.where(
+            denominator.unsqueeze(0) > 0,
+            exp_weight / denominator.clamp_min(1e-30).unsqueeze(0),
+            torch.zeros_like(exp_weight))
+        combined = (combined_scale.unsqueeze(-1) * partials).sum(dim=0)
+        output[out_row, q_start:q_start + group_size, :] = combined.to(torch.bfloat16)
+    return output
 
   def _run_npu_test(self, batch, q_seqlens, kv_seqlens, q_heads, kv_heads,
                     head_dim=128, block_size=128, top_k=4, seed=42, prec=7e-3):
@@ -179,6 +375,90 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
     self._run_npu_test(
         batch=1, q_seqlens=[16], kv_seqlens=[16],
         q_heads=64, kv_heads=4, top_k=16, seed=42, prec=1e-2)
+
+  def test_arch22_bf16_q2048_kv133120_precision_and_perf(self):
+    """msa_compare_arch22 shape: B=1, Q=2048, KV=133120, H=16, KVH=1, D=128, topK=16."""
+    print("[test_arch22_bf16_q2048_kv133120_precision_and_perf]")
+    torch.npu.synchronize()
+    torch.npu.empty_cache()
+    data = self._make_arch22_133120_case()
+    self.assertEqual(tuple(data["query"].shape), (2048, 16, 128))
+    self.assertEqual(tuple(data["key"].shape), (1563, 128, 1, 128))
+    self.assertEqual(tuple(data["value"].shape), (1563, 128, 1, 128))
+    self.assertEqual(tuple(data["block_table"].shape), (1, 1040))
+    self.assertEqual(tuple(data["k2q_row_ptr"].shape), (1, 1041))
+
+    q = data["query"].npu()
+    k = data["key"].npu()
+    v = data["value"].npu()
+    bt = data["block_table"].npu()
+    row_ptr = data["k2q_row_ptr"].npu()
+    q_indices = data["k2q_q_indices"].npu()
+    slot_indices = data["k2q_slot_indices"].npu()
+    actual_seq_lengths = data["actual_seq_lengths"].npu()
+    actual_seq_lengths_kv = data["actual_seq_lengths_kv"].npu()
+    kv_heads = data["kv_heads"]
+    scale_value = data["scale_value"]
+    block_size = data["block_size"]
+    top_k = data["top_k"]
+    inner_precise = data["inner_precise"]
+
+    def prefill_fn():
+      return torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
+          q, k, v, bt, row_ptr, q_indices, slot_indices,
+          actual_seq_lengths, actual_seq_lengths_kv,
+          kv_heads, scale_value, block_size, top_k, inner_precise)
+
+    prefill_out = prefill_fn()
+    torch.npu.synchronize()
+
+    prefill_cpu = prefill_out.cpu()
+    sample_tokens = [0, data["query"].shape[0] // 2, data["query"].shape[0] - 1]
+    reference_sample = self._arch22_cpu_reference_sample(data, sample_tokens)
+    actual_sample = prefill_cpu[sample_tokens]
+    diff = (actual_sample.float() - reference_sample.float()).abs()
+    per_token = diff.amax(dim=(1, 2))
+    per_head = diff.amax(dim=2)
+    print(
+        f"[arch22_shape] query={tuple(data['query'].shape)} key={tuple(data['key'].shape)} "
+        f"block_table={tuple(data['block_table'].shape)} row_ptr={tuple(data['k2q_row_ptr'].shape)} "
+        f"max_diff={diff.max().item():.6f} mean_diff={diff.mean().item():.6f}")
+    print(f"[arch22_shape_diff] sample_tokens={sample_tokens} per_token={per_token.tolist()}")
+    print(f"[arch22_shape_diff] per_head={per_head.tolist()}")
+
+    self.assertFalse(torch.any(torch.isnan(prefill_cpu.float())), "Prefill output contains NaN")
+    self.assertFalse(torch.any(torch.isinf(prefill_cpu.float())), "Prefill output contains Inf")
+    self.assertFalse(torch.all(prefill_cpu.float() == 0), "Prefill output is all zeros")
+    self.assertRtolEqual(
+        reference_sample.float().numpy(), actual_sample.float().numpy(), prec=1.5e-2)
+
+    _, timings_ms = self._time_npu_op(prefill_fn)
+    mean_ms = sum(timings_ms) / len(timings_ms)
+    print(
+        f"[arch22_shape_perf] prefill warmup=2 repeat={len(timings_ms)} "
+        f"min={min(timings_ms):.3f}ms max={max(timings_ms):.3f}ms mean={mean_ms:.3f}ms "
+        "(informational; use run_sparse_attention_score_prefill_perf.py/msprof for the gate)")
+
+  def test_arch22_bf16_q128_hot_csr_precision(self):
+    """Regression: one hot CSR row split into many four-group batches."""
+    print("[test_arch22_bf16_q128_hot_csr_precision]")
+    torch.npu.synchronize()
+    torch.npu.empty_cache()
+    data = self._make_arch22_133120_case(q_seqlen=128)
+    self._run_arch22_precision_once(data, [0, 64, 127], "arch22_q128_hot_csr")
+
+  def test_arch22_bf16_q16_hot_csr_precision(self):
+    """Regression: same high logical block ids with four query batches."""
+    print("[test_arch22_bf16_q16_hot_csr_precision]")
+    torch.npu.synchronize()
+    torch.npu.empty_cache()
+    data = self._make_arch22_133120_case(q_seqlen=16)
+    self._run_arch22_precision_once(data, [0, 8, 15], "arch22_q16_hot_csr")
+
+  def test_arch22_bf16_q16_hot_csr_phase1_dump(self):
+    """Manual DEBUG_MODE=1/2/3 probe; compare against saved phase1 golden."""
+    data = self._make_arch22_133120_case(q_seqlen=16)
+    self._run_arch22_phase1_dump_once(data, "arch22_q16_hot_csr_phase1")
 
   # ---------------------------------------------------------------------------
   # Production-config precision sweep. FIXED dims (do NOT vary):

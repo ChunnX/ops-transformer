@@ -90,11 +90,6 @@ public:
         kvHeads_ = kvHeads;
         headDimAlignFp32_ = RoundUp(D_, FP32_ONE_BLOCK_SIZE);
 
-        uint32_t cap = FLOAT_VECTOR_SIZE * FLOAT_BLOCK_SIZE / (groupSize_ * headDimAlignFp32_);
-        if (cap == 0U) { cap = 1U; }
-        uint32_t half = (topK_ + 1U) / 2U;
-        splitsPerBuf_ = (half < 1U) ? 1U : ((cap < half) ? cap : half);
-
         // Slot sizes (in floats)
         uint32_t lseFloats = topK_ * groupSize_ * FP32_ONE_BLOCK_SIZE;
         uint32_t dstFloats = groupSize_ * headDimAlignFp32_;
@@ -112,6 +107,20 @@ public:
         }
         uint32_t scratchFloats = lseFloats + scaleScratchFloats;
         uint32_t bcTmpFloats = 2U * alignedLseCount + scratchFloats;
+
+        // Use the real remaining UB capacity for the O_partial ping-pong
+        // buffers.  The previous fixed 512-float budget forced one split per
+        // buffer for groupSize=16, D=128, so Phase2 issued 16 small GM reads
+        // per task even though the A2 UB can hold eight splits per stage.
+        constexpr uint32_t ubFloats = ArchTag::UB_SIZE / sizeof(float);
+        uint32_t fixedFloats = 2U * lseFloats + dstFloats + bcTmpFloats;
+        uint32_t cap = 1U;
+        if (fixedFloats < ubFloats && dstFloats > 0U) {
+            cap = (ubFloats - fixedFloats) / (ACCUM_OUT_STAGES * dstFloats);
+            if (cap == 0U) { cap = 1U; }
+        }
+        uint32_t half = (topK_ + 1U) / 2U;
+        splitsPerBuf_ = (half < 1U) ? 1U : ((cap < half) ? cap : half);
         uint32_t accumOutFloats = splitsPerBuf_ * dstFloats;
 
         // Carve from ubBase (contiguous, no holes)
@@ -151,8 +160,9 @@ public:
         const uint32_t firstRows = (rowSplit > groupSize_) ? groupSize_ : rowSplit;
         const uint32_t rowOffset = (subBlockNum > 1U && AscendC::GetSubBlockIdx() != 0U)
             ? firstRows : 0U;
-        const uint32_t dealRowCount = (subBlockNum > 1U && AscendC::GetSubBlockIdx() != 0U)
-            ? (groupSize_ - firstRows) : groupSize_;
+        const uint32_t dealRowCount = (subBlockNum > 1U)
+            ? ((AscendC::GetSubBlockIdx() == 0U) ? firstRows : (groupSize_ - firstRows))
+            : groupSize_;
         if (dealRowCount == 0U) {
             return;
         }
@@ -196,6 +206,55 @@ private:
     static uint32_t RoundDown(uint32_t a, uint32_t b)
     {
         return a / b * b;
+    }
+
+    __aicore__ inline
+    static void RowMulsFp32(AscendC::LocalTensor<T> dst,
+                            AscendC::LocalTensor<T> src,
+                            AscendC::LocalTensor<T> rowScale,
+                            uint32_t rowCount,
+                            uint32_t columnCount,
+                            uint32_t actualColumnCount)
+    {
+        constexpr uint32_t elemsPerRepeat = FLOAT_VECTOR_SIZE;
+        constexpr uint32_t elemsPerBlock = FP32_ONE_BLOCK_SIZE;
+        uint32_t fullRepeats = actualColumnCount / elemsPerRepeat;
+        uint32_t remain = actualColumnCount % elemsPerRepeat;
+
+        AscendC::BinaryRepeatParams repeatParams;
+        repeatParams.src0BlkStride = 1U;
+        repeatParams.src1BlkStride = 0U;
+        repeatParams.dstBlkStride = 1U;
+        repeatParams.src0RepStride = columnCount / elemsPerBlock;
+        repeatParams.src1RepStride = 1U;
+        repeatParams.dstRepStride = columnCount / elemsPerBlock;
+
+        if (fullRepeats <= rowCount) {
+            for (uint32_t d = 0U; d < fullRepeats; ++d) {
+                uint32_t offset = d * elemsPerRepeat;
+                AscendC::Mul<float, false>(
+                    dst[offset], src[offset], rowScale, elemsPerRepeat, rowCount, repeatParams);
+            }
+        } else {
+            AscendC::BinaryRepeatParams rowParams;
+            rowParams.src0BlkStride = 1U;
+            rowParams.src1BlkStride = 0U;
+            rowParams.dstBlkStride = 1U;
+            rowParams.src0RepStride = elemsPerRepeat / elemsPerBlock;
+            rowParams.src1RepStride = 0U;
+            rowParams.dstRepStride = elemsPerRepeat / elemsPerBlock;
+            for (uint32_t row = 0U; row < rowCount; ++row) {
+                uint32_t offset = row * columnCount;
+                AscendC::Mul<float, false>(
+                    dst[offset], src[offset], rowScale[row * elemsPerBlock], elemsPerRepeat,
+                    fullRepeats, rowParams);
+            }
+        }
+        if (remain > 0U) {
+            AscendC::Mul<float, false>(
+                dst[fullRepeats * elemsPerRepeat], src[fullRepeats * elemsPerRepeat], rowScale,
+                remain, rowCount, repeatParams);
+        }
     }
 
     // Set vector mask for count elements (up to 128)
@@ -283,22 +342,37 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
         } else {
-            // Phase1 stores each sparse slot as a 32-byte-aligned GM row.  Read
-            // those rows into the roomy broadcast buffers, then compact their
-            // valid groupSize values for the existing softmax-combine layout.
-            AscendC::DataCopyExtParams slotCopyParams;
-            slotCopyParams.blockCount = 1U;
-            slotCopyParams.blockLen = static_cast<uint32_t>(dealRowCount) * sizeof(float);
-            slotCopyParams.srcStride = 0U;
-            slotCopyParams.dstStride = 0U;
-            for (uint32_t slot = 0U; slot < topK_; ++slot) {
-                uint32_t paddedOff = slot * statSlotStride;
-                AscendC::DataCopyPad(lseMaxLocal[paddedOff],
-                                     gmSoftmaxMax[taskBase + paddedOff + rowOffset],
+            // Keep every slot at its padded local offset.  When that gap is
+            // 32B-aligned, one strided MTE2 transaction gathers all slots.
+            const uint32_t statGap = statSlotStride - dealRowCount;
+            if ((statGap % FP32_ONE_BLOCK_SIZE) == 0U) {
+                AscendC::DataCopyExtParams slotCopyParams;
+                slotCopyParams.blockCount = topK_;
+                slotCopyParams.blockLen = dealRowCount * sizeof(float);
+                slotCopyParams.srcStride = statGap * sizeof(float);
+                slotCopyParams.dstStride = statGap / FP32_ONE_BLOCK_SIZE;
+                AscendC::DataCopyPad(lseMaxLocal,
+                                     gmSoftmaxMax[taskBase + rowOffset],
                                      slotCopyParams, copyPadParams);
-                AscendC::DataCopyPad(lseSumLocal[paddedOff],
-                                     gmSoftmaxSum[taskBase + paddedOff + rowOffset],
+                AscendC::DataCopyPad(lseSumLocal,
+                                     gmSoftmaxSum[taskBase + rowOffset],
                                      slotCopyParams, copyPadParams);
+            } else {
+                // A non-32B UB stride cannot be expressed by DataCopyPad.
+                AscendC::DataCopyExtParams slotCopyParams;
+                slotCopyParams.blockCount = 1U;
+                slotCopyParams.blockLen = dealRowCount * sizeof(float);
+                slotCopyParams.srcStride = 0U;
+                slotCopyParams.dstStride = 0U;
+                for (uint32_t slot = 0U; slot < topK_; ++slot) {
+                    uint32_t paddedOff = slot * statSlotStride;
+                    AscendC::DataCopyPad(lseMaxLocal[paddedOff],
+                                         gmSoftmaxMax[taskBase + paddedOff + rowOffset],
+                                         slotCopyParams, copyPadParams);
+                    AscendC::DataCopyPad(lseSumLocal[paddedOff],
+                                         gmSoftmaxSum[taskBase + paddedOff + rowOffset],
+                                         slotCopyParams, copyPadParams);
+                }
             }
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
@@ -348,15 +422,18 @@ private:
         // area after PipeBarrier<PIPE_V>.  Reusing that area for rowSum made
         // the second broadcast consume score-like stale data on topK > 1.
         // There are at most topK * groupSize scalars here, so materialize the
-        // required [topK, row, 8] layout explicitly and keep 1/rowSum in the
-        // compact staging range used by ReduceFinalRes.
+        // required [topK, row, 8] layout explicitly.  The current combined
+        // scale formula cancels rowSum before ReduceFinalRes, so its reciprocal
+        // is needed only by the phase2 dump contract.
         for (uint32_t idx = 0U; idx < lseCount; ++idx) {
             const float rowMax = lseMaxTmpBuf.GetValue(idx);
             const float rowSum = lseSumTmpBuf.GetValue(idx);
             const uint32_t dstOff = idx * FP32_ONE_BLOCK_SIZE;
             AscendC::Duplicate<float>(lseMaxLocal[dstOff], rowMax, FP32_ONE_BLOCK_SIZE);
             AscendC::Duplicate<float>(lseSumLocal[dstOff], rowSum, FP32_ONE_BLOCK_SIZE);
-            lseSumTmpBuf.SetValue(idx, rowSum > 0.0f ? 1.0f / rowSum : 1.0f);
+#if KERNEL_DUMP_PHASE2_STATE
+            lseSumTmpBuf.SetValue(idx, rowSum > 0.0f ? 1.0f / rowSum : 0.0f);
+#endif
         }
         AscendC::PipeBarrier<PIPE_V>();
     }
@@ -434,7 +511,18 @@ private:
             AscendC::PipeBarrier<PIPE_V>();
         }
 
-        // Step 3: recompute one numerator and materialize its scale before
+        // Step 3: recompute one exp(rowMax - globalMax) vector and materialize
+        // the final combine weight before moving to the next split.  Phase1
+        // stores unnormalized O_partial = P * V.  The original FlashDecode
+        // formula uses:
+        //   scale = rowSum * exp(rowMax - globalMax) / denominator
+        //   O_norm = O_partial / rowSum
+        // so the rowSum term cancels during the final multiply:
+        //   combinedScale = exp(rowMax - globalMax) / denominator.
+        // Store combinedScale in lseSumLocal directly; ReduceFinalRes can then
+        // skip the per-row reciprocal load, duplicate, and vector multiply.
+        //
+        // Recompute one numerator and materialize its scale before
         // moving to the next split.  The denominator above proves that every
         // numerator was correct when accumulated, but A2 does not preserve the
         // first vector in the multi-split numerator array through the complete
@@ -458,22 +546,19 @@ private:
                 (uint64_t)0, vecRepeats,
                 AscendC::UnaryRepeatParams(1, 1, 8, 8));
             AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Mul<float, false>(
-                numeratorBuf, numeratorBuf, lseSumLocal[k * dealCount],
-                (uint64_t)0, vecRepeats,
-                AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
-            AscendC::PipeBarrier<PIPE_V>();
 #if KERNEL_DUMP_PHASE2_STATE
             if (dumpState) {
-                printf("[A2 p2scale] split=%u numerator0=%f denominator0=%f\\n",
+                printf("[A2 p2scale] split=%u exp0=%f denominator0=%f\\n",
                        k, numeratorBuf.GetValue(0), totalBuf.GetValue(0));
             }
 #endif
             for (uint32_t row = 0U; row < dealRowCount; ++row) {
                 const uint32_t rowOff = row * FP32_ONE_BLOCK_SIZE;
                 const float denominator = totalBuf.GetValue(rowOff);
-                const float numerator = numeratorBuf.GetValue(rowOff);
-                const float scale = denominator > 0.0f ? numerator / denominator : 0.0f;
+                const float expValue = numeratorBuf.GetValue(rowOff);
+                const float rowSum = lseSumLocal[k * dealCount + rowOff].GetValue(0);
+                const float scale = (denominator > 0.0f && rowSum > 0.0f)
+                    ? expValue / denominator : 0.0f;
                 AscendC::Duplicate<float>(lseSumLocal[k * dealCount + rowOff], scale,
                                            FP32_ONE_BLOCK_SIZE);
             }
@@ -496,36 +581,58 @@ private:
                         AscendC::LocalTensor<TwsO> &accumOutLocal)
     {
         constexpr uint32_t blockElems = BYTE_BLOCK / sizeof(TwsO);
-        AscendC::DataCopyExtParams copyInParams;
         AscendC::DataCopyPadExtParams<TwsO> copyInPadParams;
-        copyInParams.blockCount = nSplits * dealRowCount;
-        copyInParams.blockLen = static_cast<uint32_t>(D_) * sizeof(TwsO);
-        copyInParams.srcStride = 0;
-        copyInParams.dstStride = (headDimAlignFp32_ - D_) / blockElems;
 
         copyInPadParams.isPad = true;
         copyInPadParams.leftPadding = 0;
         copyInPadParams.rightPadding = (headDimAlignFp32_ - D_) % blockElems;
         copyInPadParams.paddingValue = 0;
 
+        // For the fp32 D=128 path, each subblock's rows are contiguous within a
+        // split.  Treat each split as one MTE2 block and skip the peer
+        // subblock's rows with strides, reducing one DMA launch per split to one
+        // multi-block launch per group.
+        if constexpr (AscendC::IsSameType<TwsO, float>::value) {
+            const uint32_t gapRows = groupSize_ - dealRowCount;
+            const uint32_t dstGapBytes = gapRows * headDimAlignFp32_ * sizeof(TwsO);
+            if ((nSplits > 1U) && (headDimAlignFp32_ == D_)
+                && ((dstGapBytes % BYTE_BLOCK) == 0U)) {
+                AscendC::DataCopyExtParams batchCopyParams;
+                batchCopyParams.blockCount = nSplits;
+                batchCopyParams.blockLen = dealRowCount * D_ * sizeof(TwsO);
+                batchCopyParams.srcStride = gapRows * D_ * sizeof(TwsO);
+                batchCopyParams.dstStride = dstGapBytes / BYTE_BLOCK;
+                const uint64_t src = TaskAccumBase(qToken, kvHeadIdx)
+                    + static_cast<uint64_t>(jStart) * groupSize_ * D_
+                    + static_cast<uint64_t>(rowOffset) * D_;
+                AscendC::DataCopyPad(accumOutLocal, gmAccumOut[src],
+                                     batchCopyParams, copyInPadParams);
+                return;
+            }
+        }
+
+        // Generic path for padded dimensions and bf16 O_partial.
         for (uint32_t s = 0U; s < nSplits; ++s) {
+            AscendC::DataCopyExtParams copyInParams;
+            copyInParams.blockCount = dealRowCount;
+            copyInParams.blockLen = static_cast<uint32_t>(D_) * sizeof(TwsO);
+            copyInParams.srcStride = 0;
+            copyInParams.dstStride = (headDimAlignFp32_ - D_) / blockElems;
             uint64_t src = TaskAccumBase(qToken, kvHeadIdx)
                 + static_cast<uint64_t>(jStart + s) * groupSize_ * D_
                 + static_cast<uint64_t>(rowOffset) * D_;
             uint64_t dst = static_cast<uint64_t>(s) * groupSize_ * headDimAlignFp32_;
-            AscendC::DataCopyExtParams oneParams = copyInParams;
-            oneParams.blockCount = dealRowCount;
-            AscendC::DataCopyPad(accumOutLocal[dst], gmAccumOut[src], oneParams, copyInPadParams);
+            AscendC::DataCopyPad(accumOutLocal[dst], gmAccumOut[src], copyInParams, copyInPadParams);
         }
     }
 
     // ---------------------------------------------------------------------------
     // ReduceFinalRes: standard vector API replacement for ReduceFinalRes_VF(_BF16)
     // ---------------------------------------------------------------------------
-    // For each split j, row k, D-chunk z:
-    //   combined_scale = scale[j][k] * (1/rowSum[j][k])   (per-row scalar)
-    //   if j == 0: dst[k][z] = combined_scale * accumOut[j][k][z]
-    //   if j > 0:  dst[k][z] += combined_scale * accumOut[j][k][z]
+    // For each split j and row k:
+    //   combined_scale = exp(rowMax - globalMax) / denominator
+    //   if j == 0: dst[k] = combined_scale * accumOut[j][k]
+    //   if j > 0:  dst[k] += combined_scale * accumOut[j][k]
     //
     // For bf16 path (TwsO=bfloat16_t):
     //   accumOut is Cast bf16→fp32 before Mul, dst stays fp32 across splits,
@@ -559,8 +666,8 @@ private:
             if (nSplits > remain) { nSplits = remain; }
             uint32_t curId = g % ACCUM_OUT_STAGES;
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(ACCUM_OUT_FLAG_BASE + curId);
-            CopyAccumOutIn(qToken, kvHeadIdx, jStart, nSplits, dealRowCount, rowOffset, gmAccumOut,
-                           accumOutBuf[curId]);
+            CopyAccumOutIn(qToken, kvHeadIdx, jStart, nSplits, dealRowCount, rowOffset,
+                           gmAccumOut, accumOutBuf[curId]);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(ACCUM_OUT_FLAG_BASE + curId);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(ACCUM_OUT_FLAG_BASE + curId);
             if (qToken < 2U) {
@@ -584,6 +691,76 @@ private:
                 uint64_t localOff = static_cast<uint64_t>(j - jStart) * groupSize_
                     * headDimAlignFp32_;
 
+                if constexpr (!AscendC::IsSameType<TwsO, bfloat16_t>::value) {
+                    const uint32_t totalElems = dealRowCount * headDimAlignFp32_;
+                    const uint32_t addRepeats = totalElems / FLOAT_VECTOR_SIZE;
+                    if (((totalElems % FLOAT_VECTOR_SIZE) == 0U) && (addRepeats <= 255U)) {
+                        // scaleLocal already stores every row scale as one
+                        // repeated 32B block.  RowMuls consumes one such block
+                        // per row, replacing the scalar GetValue/Duplicate loop.
+                        AscendC::LocalTensor<T> rowScale = scaleLocal[
+                            static_cast<uint64_t>(j) * dealRowCount * FP32_ONE_BLOCK_SIZE];
+                        if (j == 0U) {
+                            RowMulsFp32(dst, accumOutBuf[curId][localOff], rowScale,
+                                       dealRowCount, headDimAlignFp32_, D_);
+                            AscendC::PipeBarrier<PIPE_V>();
+                        } else {
+                            AscendC::LocalTensor<T> tmpMul = broadCastTmpBuf_[scratchBase];
+                            RowMulsFp32(tmpMul, accumOutBuf[curId][localOff], rowScale,
+                                       dealRowCount, headDimAlignFp32_, D_);
+                            AscendC::PipeBarrier<PIPE_V>();
+                            AscendC::Add<float, false>(
+                                dst, dst, tmpMul,
+                                (uint64_t)0, addRepeats,
+                                AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
+                            AscendC::PipeBarrier<PIPE_V>();
+                        }
+                        continue;
+                    }
+
+                    // Fallback for a non-64-element row layout.
+                    AscendC::LocalTensor<T> combinedScale = broadCastTmpBuf_[scratchBase];
+                    uint64_t dstOff = static_cast<uint64_t>(0);
+                    uint64_t accumOff = localOff;
+                    float scaleValue = scaleLocal[static_cast<uint64_t>(j)
+                        * dealRowCount * FP32_ONE_BLOCK_SIZE].GetValue(0);
+                    AscendC::Duplicate<float>(combinedScale, scaleValue, FLOAT_VECTOR_SIZE);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    for (uint32_t k = 0; k < dealRowCount; ++k) {
+                        scaleValue = scaleLocal[static_cast<uint64_t>(j)
+                            * dealRowCount * FP32_ONE_BLOCK_SIZE
+                            + k * FP32_ONE_BLOCK_SIZE].GetValue(0);
+                        AscendC::Duplicate<float>(combinedScale, scaleValue, FLOAT_VECTOR_SIZE);
+                        AscendC::PipeBarrier<PIPE_V>();
+                        dstOff = static_cast<uint64_t>(k) * headDimAlignFp32_;
+                        accumOff = localOff + dstOff;
+                        for (uint32_t z = 0; z < dLoops; ++z) {
+                            AscendC::Mul<float, false>(
+                                broadCastTmpBuf_[scratchBase + 2U * FLOAT_VECTOR_SIZE],
+                                accumOutBuf[curId][accumOff + z * FLOAT_VECTOR_SIZE],
+                                combinedScale,
+                                (uint64_t)0, 1U,
+                                AscendC::BinaryRepeatParams(1, 1, 0, 8, 8, 1));
+                            AscendC::PipeBarrier<PIPE_V>();
+                            if (j == 0U) {
+                                AscendC::DataCopy(
+                                    dst[dstOff + z * FLOAT_VECTOR_SIZE],
+                                    broadCastTmpBuf_[scratchBase + 2U * FLOAT_VECTOR_SIZE],
+                                    AscendC::DataCopyParams(1, FLOAT_VECTOR_SIZE / FP32_ONE_BLOCK_SIZE, 0, 0));
+                            } else {
+                                AscendC::Add<float, false>(
+                                    dst[dstOff + z * FLOAT_VECTOR_SIZE],
+                                    dst[dstOff + z * FLOAT_VECTOR_SIZE],
+                                    broadCastTmpBuf_[scratchBase + 2U * FLOAT_VECTOR_SIZE],
+                                    (uint64_t)0, 1U,
+                                    AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
+                            }
+                            AscendC::PipeBarrier<PIPE_V>();
+                        }
+                    }
+                    continue;
+                }
+
                 for (uint32_t k = 0; k < dealRowCount; ++k) {
                     // Broadcast scale[j][k] (1 float) → FLOAT_VECTOR_SIZE floats via Brcb.
                     // scale is in broadcast layout [topK, dealRowCount, 8]; each scalar is
@@ -592,28 +769,6 @@ private:
                     AscendC::LocalTensor<T> combinedScale = broadCastTmpBuf_[scratchBase];
                     float scaleValue = scaleLocal[scaleOff].GetValue(0);
                     AscendC::Duplicate<float>(combinedScale, scaleValue, FLOAT_VECTOR_SIZE);
-                    AscendC::PipeBarrier<PIPE_V>();
-
-                    // Broadcast 1/rowSum[j][k] (1 float, compact at broadCastTmpBuf_[alignedLseCount + j*dealRowCount + k])
-                    uint64_t rowSumOff = static_cast<uint64_t>(alignedLseCount)
-                        + static_cast<uint64_t>(j) * dealRowCount + k;
-                    AscendC::LocalTensor<T> rowSumBrcb = broadCastTmpBuf_[scratchBase + FLOAT_VECTOR_SIZE];
-                    float invRowSum = broadCastTmpBuf_[rowSumOff].GetValue(0);
-                    // A2 may return an empty rowSum for a valid top-k=1
-                    // partial when the stats write races the phase barrier.
-                    // Keep the partial usable: softmax P is already normalized
-                    // in Phase1, so reciprocal one is the correct fallback.
-                    if (!(invRowSum > 0.0f)) {
-                        invRowSum = 1.0f;
-                    }
-                    AscendC::Duplicate<float>(rowSumBrcb, invRowSum, FLOAT_VECTOR_SIZE);
-                    AscendC::PipeBarrier<PIPE_V>();
-
-                    // combined_scale = scale * (1/rowSum)
-                    AscendC::Mul<float, false>(
-                        combinedScale, combinedScale, rowSumBrcb,
-                        (uint64_t)0, 1U,
-                        AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
                     AscendC::PipeBarrier<PIPE_V>();
 
                     uint64_t dstOff = static_cast<uint64_t>(k) * headDimAlignFp32_;
@@ -675,39 +830,6 @@ private:
                                     AscendC::RoundMode::CAST_ROUND,
                                     (uint64_t)0, 1U,
                                     AscendC::UnaryRepeatParams(1, 1, 4, 8));
-                                AscendC::PipeBarrier<PIPE_V>();
-                            }
-                        }
-                    } else {
-                        // fp32 path: TwsO=float, dst is float
-                        AscendC::LocalTensor<T> tmpMul =
-                            broadCastTmpBuf_[scratchBase + 2U * FLOAT_VECTOR_SIZE];
-                        AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
-
-                        for (uint32_t z = 0; z < dLoops; ++z) {
-                            // Mul: tmp = accumOut * combinedScale
-                            AscendC::Mul<float, false>(
-                                tmpMul,
-                                accumOutBuf[curId][accumOff + z * FLOAT_VECTOR_SIZE],
-                                combinedScale,
-                                (uint64_t)0, 1U,
-                                AscendC::BinaryRepeatParams(1, 1, 0, 8, 8, 1));
-                            AscendC::PipeBarrier<PIPE_V>();
-                            if (j == 0U) {
-                                // Init: dst = tmp (DataCopy float)
-                                AscendC::DataCopy(
-                                    dst[dstOff + z * FLOAT_VECTOR_SIZE],
-                                    tmpMul,
-                                    AscendC::DataCopyParams(1, FLOAT_VECTOR_SIZE / FP32_ONE_BLOCK_SIZE, 0, 0));
-                                AscendC::PipeBarrier<PIPE_V>();
-                            } else {
-                                // Add: dst += tmp
-                                AscendC::Add<float, false>(
-                                    dst[dstOff + z * FLOAT_VECTOR_SIZE],
-                                    dst[dstOff + z * FLOAT_VECTOR_SIZE],
-                                    tmpMul,
-                                    (uint64_t)0, 1U,
-                                    AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
                                 AscendC::PipeBarrier<PIPE_V>();
                             }
                         }

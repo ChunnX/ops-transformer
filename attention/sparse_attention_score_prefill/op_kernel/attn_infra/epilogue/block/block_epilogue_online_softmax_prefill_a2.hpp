@@ -546,13 +546,20 @@ public:
         uint32_t ubSBufId, uint32_t l1PBufId,
         Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag,
         const uint32_t *causalValidLens, uint32_t groupCount, uint32_t groupRows,
-        uint32_t bi, bool dumpPhase1Rowsum)
+        uint32_t bi, bool dumpPhase1Rowsum, bool extraToSubBlock0)
     {
         (void)l1PTensorTla;  // A2: VEC writes P to GM, not L1. Kept for API compatibility.
         (void)l1PBufId;
         uint32_t M = actualBlockShape.m();
         // Split by group so each AIV owns whole query groups.
-        uint32_t mCopyOffset = CeilDiv(groupCount, 2U) * groupRows;
+        // Keep complete query groups on one AIV, but alternate the owner of the
+        // odd group.  This preserves the exact per-row math while preventing
+        // every one-group batch from running entirely on subBlock 0.
+        uint32_t group0 = groupCount / 2U;
+        if ((groupCount & 1U) != 0U && extraToSubBlock0) {
+            ++group0;
+        }
+        uint32_t mCopyOffset = group0 * groupRows;
         uint32_t mHalf = mCopyOffset < M ? mCopyOffset : M;
         uint32_t m = subBlockIdx_ == 0U ? mHalf : (M - mHalf);
         if (m == 0) {
@@ -601,13 +608,19 @@ public:
         // and MTE2_V events instead of the unrelated MTE3 pipeline.
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(ubSBufId);
         uint32_t gmStageOffset = (bi % 2U) * gmSStageElems_;
+        // QK's A2 fixpipe keeps a fixed physical row stride of
+        // RoundUp(blockSize, 16) elements in GM, even when the current KV
+        // block is shorter.  The UB tile is compact, so describe the gap
+        // between copied rows explicitly instead of treating GM as compact.
+        constexpr uint32_t GM_S_STAGE_ROWS = 64U;
+        uint32_t gmStageRowStride = static_cast<uint32_t>(gmSStageElems_ / GM_S_STAGE_ROWS);
         uint32_t gmSubOffset = (subBlockIdx_ == 0)
             ? gmStageOffset
-            : (gmStageOffset + mCopyOffset * nRound);
+            : (gmStageOffset + mCopyOffset * gmStageRowStride);
         AscendC::DataCopyExtParams copyParams(
             static_cast<uint16_t>(m),
             nRound * sizeof(ElementInput),
-            0, 0, 0);
+            (gmStageRowStride - nRound) * sizeof(ElementInput), 0, 0);
         AscendC::DataCopyPadExtParams<ElementInput> padParams(false, 0, 0, 0);
         AscendC::DataCopyPad(lsStage, gmSWorkspace_[gmSubOffset], copyParams, padParams);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(ubSBufId);

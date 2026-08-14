@@ -197,7 +197,10 @@ def _softmax_p_from_scores_fp32(s_fp32):
 def _bf16_block_qk_sm_pv(q_group_bf16, k_bf16, v_bf16, scale_value, q, h, t, inner_precise):
   """Single KV block: QK -> SM -> PV. Returns unnormalized O_partial, rowMax, rowSum."""
   s_bf16 = torch.matmul(q_group_bf16.float(), k_bf16.float().t()).to(torch.bfloat16)
-  s_fp32 = (s_bf16 * torch.tensor([scale_value], dtype=torch.bfloat16)).to(torch.float32)
+  # A2 casts S back to fp32 before applying the scalar scale.  Keeping the
+  # scale in fp32 matters for long sparse windows where small score shifts can
+  # alter the softmax reduction.
+  s_fp32 = s_bf16.float() * float(scale_value)
   #if q ==0 and h == 0 and t == 0:
   #  print("s_fp32:", torch.matmul(q_group_bf16.float(), k_bf16.float().t()))
   p_bf16, row_max_fp32, row_sum_fp32 = _softmax_p_from_scores_fp32(s_fp32)
@@ -245,24 +248,24 @@ def _compute_scale_weights(max_slots, sum_slots):
 
 
 def _combine_partials_max_sum_ws(o_partial_slots, max_slots, sum_slots):
-  """Combine topK workspace partials via IFA ComputeScaleValue + ReduceFinalRes.
-
-  Phase1 stores unnormalized O_partial = P*V and per-row rowMax/rowSum.
-  Phase2 CopyAccumOutIn: O_norm = O_partial / rowSum (invalid rowSum<=0 -> 0).
-  ReduceFinalRes: out = sum(scale[k] * O_norm[k]).
-  """
-  #print("max_slots:", max_slots)
-  #print("sum_slots:", sum_slots)
-  scale = _compute_scale_weights(max_slots, sum_slots)
-  #print("scale:", scale)
-  if scale.sum() <= 0:
+  """Combine unnormalized Phase1 partials in the same order as A2 Phase2."""
+  valid = sum_slots > 0
+  if not torch.any(valid):
     return None
 
-  valid = sum_slots > 0
-  o_norm = torch.zeros_like(o_partial_slots)
-  if torch.any(valid):
-    o_norm[valid] = o_partial_slots[valid] / sum_slots[valid].unsqueeze(-1)
-  return (scale.unsqueeze(-1) * o_norm).sum(dim=0)
+  safe_max = torch.where(valid, max_slots, torch.full_like(max_slots, -float("inf")))
+  global_max = safe_max.max()
+  exp_weight = torch.where(
+      valid, torch.exp(max_slots - global_max), torch.zeros_like(sum_slots))
+  denominator = (sum_slots * exp_weight).sum()
+  if denominator <= 0:
+    return None
+
+  # A2 stores O_partial=P*V and applies the algebraically reduced coefficient
+  # exp(rowMax-globalMax)/denominator directly.  Avoiding a separate
+  # O_partial/rowSum round trip is material for BF16 long-window references.
+  combined_scale = exp_weight / denominator
+  return (combined_scale.unsqueeze(-1) * o_partial_slots).sum(dim=0)
 
 
 # ---------------------------------------------------------------------------
@@ -731,17 +734,21 @@ def _save_phase2_intermediates(ws_o, ws_max, ws_sum, dump_dir):
   global_max = safe_max.max(dim=2).values
   delta = torch.where(
       valid, ws_max - global_max.unsqueeze(2), torch.zeros_like(ws_max))
-  numerator = torch.where(
-      valid, ws_sum * torch.exp(delta), torch.zeros_like(ws_sum))
+  exp_weight = torch.where(valid, torch.exp(delta), torch.zeros_like(ws_sum))
+  numerator = ws_sum * exp_weight
   denominator = numerator.sum(dim=2)
   scale = torch.where(
       denominator.unsqueeze(2) > 0,
       numerator / denominator.unsqueeze(2),
       torch.zeros_like(numerator))
+  combined_scale = torch.where(
+      denominator.unsqueeze(2) > 0,
+      exp_weight / denominator.unsqueeze(2),
+      torch.zeros_like(exp_weight))
   inv_row_sum = torch.where(ws_sum > 0, ws_sum.reciprocal(), torch.ones_like(ws_sum))
   o_normalized = torch.where(
       valid.unsqueeze(-1), ws_o * inv_row_sum.unsqueeze(-1), torch.zeros_like(ws_o))
-  contribution = scale.unsqueeze(-1) * o_normalized
+  contribution = combined_scale.unsqueeze(-1) * ws_o
   accum_after_split = contribution.cumsum(dim=2)
   combined = contribution.sum(dim=2)
 
@@ -753,6 +760,7 @@ def _save_phase2_intermediates(ws_o, ws_max, ws_sum, dump_dir):
       "golden_phase2_numerator.pt": numerator,
       "golden_phase2_denominator.pt": denominator,
       "golden_phase2_scale.pt": scale,
+      "golden_phase2_combined_scale.pt": combined_scale,
       "golden_phase2_o_normalized.pt": o_normalized,
       "golden_phase2_contribution.pt": contribution,
       "golden_phase2_accum_after_split.pt": accum_after_split,

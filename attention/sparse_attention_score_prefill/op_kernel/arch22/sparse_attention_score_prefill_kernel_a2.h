@@ -40,6 +40,10 @@
 #define KERNEL_DUMP_SYNC_TRACE 0
 #endif
 
+#ifndef DEBUG_MODE
+#define DEBUG_MODE 0
+#endif
+
 #include "kernel_utils.hpp"
 #include "../kernel_common.hpp"
 
@@ -824,10 +828,14 @@ private:
                            AscendC::GlobalTensor<float> &gSoftmaxSum,
                            uint32_t ubSBufId, uint32_t batchM, uint32_t groupRows,
                            const uint32_t *qTokens, const uint32_t *slotKs,
-                           uint32_t kvHeadIdx, uint32_t groupCount)
+                           uint32_t kvHeadIdx, uint32_t groupCount,
+                           bool extraToSubBlock0)
     {
         // Match the softmax epilogue's group split across the two AIV sub-blocks.
-        uint32_t gSplit = CeilDiv(groupCount, 2U);
+        uint32_t gSplit = groupCount / 2U;
+        if ((groupCount & 1U) != 0U && extraToSubBlock0) {
+            ++gSplit;
+        }
         uint32_t mCopyOffset = gSplit * groupRows;
         uint32_t mHalf = mCopyOffset < batchM ? mCopyOffset : batchM;
         uint32_t m = (AscendC::GetSubBlockIdx() == 0U) ? mHalf : (batchM - mHalf);
@@ -939,6 +947,21 @@ private:
         if (batchGroupsMax == 0U || batchGroupsMax > MAX_BATCH_GROUPS) {
             batchGroupsMax = MAX_BATCH_GROUPS;
         }
+        // The A2 softmax keeps S/P in two 16-KiB stages and the float FS
+        // workspace in one 32-KiB stage.  Both vector sub-blocks share the
+        // latter stage, so one batched tile must fit in 8192 float elements
+        // (RoundUp(blockSize, 16) columns).  Without this cap, groupSize=16
+        // selected 8 groups (M=128); sub-block 1 started at row 64 and wrote
+        // past the stage into the next pipeline buffer/statistics area.
+        uint32_t maxGroupsBySoftmaxUb =
+            EpilogueOnlineSoftmax::MAX_UB_S_ELEM_NUM /
+            (RoundUp(blockSize_, 16U) * groupSize_);
+        if (maxGroupsBySoftmaxUb == 0U) {
+            maxGroupsBySoftmaxUb = 1U;
+        }
+        if (batchGroupsMax > maxGroupsBySoftmaxUb) {
+            batchGroupsMax = maxGroupsBySoftmaxUb;
+        }
 #ifdef __DAV_CUBE__
         BlockMmadQK blockMmadQK;
         BlockMmadPV blockMmadPV;
@@ -1016,18 +1039,6 @@ private:
             ResolveBatchQSide(batchIdx, kvSeqlenBatch, numBlocksB, cumQStart, qSeqlenBatch);
             uint32_t localBlockIdx = kvBlockIdx;
 
-            // --- 查 block_table: logical block → physical block ---
-            int64_t btOffset =
-                static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + localBlockIdx;
-            int32_t physicalBlockId = gBlockTable.GetValue(btOffset);
-
-            // --- 计算该 KV block 的有效 token 数 ---
-            // 非尾块: validSize = blockSize; 尾块: validSize = kvSeqlen % blockSize
-            uint32_t validSize = CalcKvBlockValidSize(kvSeqlenBatch, numBlocksB, localBlockIdx);
-            if (validSize == 0) {
-                continue;
-            }
-
             // --- 从 CSR 读取选择该 block 的 Q token 列表 ---
             // csrStart = k2q_row_ptr[kvHeadIdx, packedRow]
             // csrEnd   = k2q_row_ptr[kvHeadIdx, packedRow + 1]
@@ -1040,6 +1051,19 @@ private:
             uint32_t numQTokens = csrEnd - csrStart;
             if (numQTokens == 0) {
                 continue;  // 空 CSR 行: 无 Q token 选择该 block, 跳过
+            }
+
+            // --- 查 block_table: logical block → physical block ---
+            // 仅对非空 CSR 行读取 block_table，避免长 KV 场景下无效 task 的 GM 访问。
+            int64_t btOffset =
+                static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + localBlockIdx;
+            int32_t physicalBlockId = gBlockTable.GetValue(btOffset);
+
+            // --- 计算该 KV block 的有效 token 数 ---
+            // 非尾块: validSize = blockSize; 尾块: validSize = kvSeqlen % blockSize
+            uint32_t validSize = CalcKvBlockValidSize(kvSeqlenBatch, numBlocksB, localBlockIdx);
+            if (validSize == 0) {
+                continue;
             }
 
             uint64_t csrDataBase = static_cast<uint64_t>(kvHeadIdx) * k2qNnzUpperBound_;
@@ -1098,6 +1122,10 @@ private:
                     uint32_t rem = numQTokens - bi * batchGroupsMax;
                     uint32_t batchGroupCount = (rem < batchGroupsMax) ? rem : batchGroupsMax;
                     uint32_t batchM = batchGroupCount * groupSize_;
+                    // Alternate the owner of an odd query-group batch.  The
+                    // two AIVs still process identical rows and reduction
+                    // order; only the producer/consumer is rebalanced.
+                    bool extraToSubBlock0 = ((taskIdx + bi) & 1U) == 0U;
 #ifdef __DAV_VEC__
                     // VEC 侧: 计算每个 qToken 的 causalValidLen (causal mask 有效列长)
                     // 纯计算, 无 GM 访问 (cumQStart/qSeqlenBatch/kvSeqlenBatch 已预取)
@@ -1162,11 +1190,12 @@ private:
                         batchGroupCount,
                         groupSize_,
                         bi,
-                        taskIdx == 0U);
+                        taskIdx == 0U,
+                        extraToSubBlock0);
                     // VEC: scatter rowMax/rowSum to workspace GM
                     ScatterBatchStats(gSoftmaxMax, gSoftmaxSum, ubSBufId, batchM, groupSize_,
-                                      batchQToken[stage], batchSlotK[stage], kvHeadIdx,
-                                      batchGroupCount);
+                                       batchQToken[stage], batchSlotK[stage], kvHeadIdx,
+                                       batchGroupCount, extraToSubBlock0);
 #endif
                 }
 
@@ -1264,8 +1293,6 @@ private:
     //   for taskIdx = coreIdx; taskIdx < totalTaskNumP2; taskIdx += coreNum
     // DEBUG_MODE: 0=normal, 1=dump softmaxMax, 2=dump softmaxSum,
     //             3=dump accumOut (raw O_partial), 4=dump S from GM workspace
-#define DEBUG_MODE 0
-
     __aicore__ inline
     void Phase2CombineScale(
         AscendC::GlobalTensor<ElementO> &gO,
@@ -1282,10 +1309,12 @@ private:
             uint32_t subBlockNum = AscendC::GetSubBlockNum();
             uint32_t coreIdx = AscendC::GetBlockIdx();
             uint32_t coreNum = AscendC::GetBlockNum() * subBlockNum;
-            // Keep this probe to one 64-float vector.  This follows the normal
-            // float->bf16 Cast contract exactly and leaves enough room for the
-            // source and destination in the same UB buffer.
-            constexpr uint32_t debugDumpElems = 64U;
+            // Reserve enough room for the largest supported GQA row tile.
+            // DEBUG_MODE=3 reads fp32 O_partial and must cast it through the
+            // normal float->bf16 path before returning it through the output
+            // contract; a reinterpret cast would turn fp32 bit patterns into
+            // invalid bf16 values (including NaNs).
+            constexpr uint32_t debugDumpElems = 8192U;
             auto castBuf = ubBase[debugDumpElems].template ReinterpretCast<bfloat16_t>();
             if (coreNum == 0U) { coreNum = 1U; }
             for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNumP2_; taskIdx += coreNum) {
@@ -1352,6 +1381,14 @@ private:
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
 #endif
+                AscendC::SetVectorMask<int8_t>(static_cast<uint64_t>(-1), static_cast<uint64_t>(-1));
+                AscendC::Cast<ElementO, float, false>(
+                    castBuf, ubBase,
+                    AscendC::RoundMode::CAST_RINT,
+                    static_cast<uint64_t>(0),
+                    (groupSize_ * embed_ + 63U) / 64U,
+                    AscendC::UnaryRepeatParams(1, 1, 4, 8));
+                AscendC::PipeBarrier<PIPE_V>();
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
                 AscendC::DataCopyExtParams outParams;
@@ -1367,7 +1404,7 @@ private:
                 AscendC::DataCopyPadExtParams<ElementO> outPadParams(false, 0, 0, 0);
 #if DEBUG_MODE == 3
                 AscendC::DataCopyPad(gO[attenOutOffset],
-                    ubBase.template ReinterpretCast<ElementO>(), outParams);
+                    castBuf, outParams);
 #else
                 AscendC::DataCopyPad(gO[attenOutOffset], castBuf, outParams);
 #endif

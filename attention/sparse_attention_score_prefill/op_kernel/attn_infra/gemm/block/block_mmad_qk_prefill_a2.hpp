@@ -239,35 +239,40 @@ struct BlockMmadQKPrefillA2 {
         // === 阶段 1: Q gather — 从 GM 收集不连续的 Q tile 到 L1 连续空间 ===
         // MTE1_MTE2(EVENT_ID1) 同步: 等上一个 batch 的 L1→L0A MTE1 完成, L1 Q 空间可覆盖
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID1);
-        // 每次搬 2 个 group (COPY_GRANULARITY=2): 利用 ndNum=2 的 DataCopy 一次搬两个不连续的 Q tile
+        // 每次最多搬 2 个 group。ndNum=2 只能保持 GM 地址递增顺序；逆序或超 stride
+        // 的 Q token 必须逐个搬运，保证 L1 group 顺序与 qTokens 一致。
         for (uint32_t g = 0; g < groupCount; g += COPY_GRANULARITY) {
-            // qBase: 当前 group 的 Q token 在 GM 中的起始地址
-            //   qBase = qToken × (qHeads × D) + (qHeadStart × D) = qToken × perQTokenStrideQ + qHeadStartBase
-            uint64_t qBase = static_cast<uint64_t>(qTokens[g]) * perQTokenStrideQ + qHeadStartBase;
-            uint64_t srcNdMatrixStride = 0;   // GM 中两个 group 的间距 (ndNum=2 时用)
-            uint64_t dstNzMatrixStride = 0;   // L1 中两个 group 的间距 (NZ 格式 stride)
-            uint32_t ndNum = 1;               // 搬运 group 数: 1 或 2
-            // 如果还有下一个 group, 尝试 ndNum=2 批量搬运 (减少 MTE2 启动开销)
-            if (g + 1 < groupCount) {
-                uint32_t nextQ = qTokens[g + 1];
-                // 950平台，srcNdMatrixStride不限制小于65536
-                if (nextQ > qTokens[g]) {
-                    srcNdMatrixStride = static_cast<uint64_t>(nextQ - qTokens[g]) * perQTokenStrideQ;
-                } else {
-                    // nextQ < qTokens[g]: Q token 逆序, 取较小者作为 qBase, stride 取绝对值
-                    srcNdMatrixStride = static_cast<uint64_t>(qTokens[g] - nextQ) * perQTokenStrideQ;
-                    qBase = static_cast<uint64_t>(nextQ) * perQTokenStrideQ + qHeadStartBase;
-                }
-                dstNzMatrixStride = groupRows * C0_SIZE;  // L1 NZ 格式: 每个 group 间隔 = groupRows × 16
-                ndNum = COPY_GRANULARITY;                  // 一次搬 2 个 group
+            uint32_t pairCount = (g + 1U < groupCount) ? COPY_GRANULARITY : 1U;
+            uint64_t srcStride64 = 0U;
+            bool canBatchPair = false;
+            if (pairCount == COPY_GRANULARITY && qTokens[g + 1U] > qTokens[g]) {
+                srcStride64 = static_cast<uint64_t>(qTokens[g + 1U] - qTokens[g]) * perQTokenStrideQ;
+                uint64_t tileElems = static_cast<uint64_t>(groupRows) * K;
+                canBatchPair = srcStride64 >= tileElems && srcStride64 < STRIDE_LIMIT;
             }
-            auto gmQTensor = tla::MakeTensor(gQ[qBase], gmQLayout, Arch::PositionGM{});
-            auto gmQTile = GetTile(gmQTensor,
-                tla::MakeCoord(0, 0), tla::MakeShape(groupRows, K));
-            // L1 目标: 按 group 顺序连续排列 [g*groupRows, 0]
-            auto l1QTile = GetTile(l1QTensorTla,
-                tla::MakeCoord(g * groupRows, 0), tla::MakeShape(groupRows, K));
-            copyGmToL1Q(l1QTile, gmQTile, ndNum, srcNdMatrixStride, dstNzMatrixStride);
+
+            if (canBatchPair) {
+                uint64_t qBase = static_cast<uint64_t>(qTokens[g]) * perQTokenStrideQ + qHeadStartBase;
+                auto gmQTensor = tla::MakeTensor(gQ[qBase], gmQLayout, Arch::PositionGM{});
+                auto gmQTile = GetTile(gmQTensor,
+                    tla::MakeCoord(0, 0), tla::MakeShape(groupRows, K));
+                auto l1QTile = GetTile(l1QTensorTla,
+                    tla::MakeCoord(g * groupRows, 0), tla::MakeShape(groupRows, K));
+                copyGmToL1Q(l1QTile, gmQTile, COPY_GRANULARITY,
+                            static_cast<uint32_t>(srcStride64), groupRows * C0_SIZE);
+                continue;
+            }
+
+            for (uint32_t pairIdx = 0; pairIdx < pairCount; pairIdx++) {
+                uint32_t groupIdx = g + pairIdx;
+                uint64_t qBase = static_cast<uint64_t>(qTokens[groupIdx]) * perQTokenStrideQ + qHeadStartBase;
+                auto gmQTensor = tla::MakeTensor(gQ[qBase], gmQLayout, Arch::PositionGM{});
+                auto gmQTile = GetTile(gmQTensor,
+                    tla::MakeCoord(0, 0), tla::MakeShape(groupRows, K));
+                auto l1QTile = GetTile(l1QTensorTla,
+                    tla::MakeCoord(groupIdx * groupRows, 0), tla::MakeShape(groupRows, K));
+                copyGmToL1Q(l1QTile, gmQTile);
+            }
         }
         // MTE2→MTE1 同步: 等 GM→L1 完成, L1 Q 数据就绪可供 L1→L0A 读取
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID1);
