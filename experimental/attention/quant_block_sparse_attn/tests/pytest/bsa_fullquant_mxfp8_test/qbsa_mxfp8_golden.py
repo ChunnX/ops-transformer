@@ -1301,7 +1301,7 @@ def generate_mxfp8_inputs(
         if p_scale_mode != "value"
         else torch.tensor([float(p_scale_value)], dtype=torch.float32)
     )
-    atten_mask = _build_causal_mask(case["mask_mode"], atten_mask_shape)
+    atten_mask = _build_causal_mask(atten_mask_shape)
 
     return {
         "case": case,
@@ -2359,18 +2359,10 @@ def _call_npu_fa_op_graph(
     return atten_out.detach().cpu(), lse_out.detach().cpu()
 
 
-def _build_causal_mask(mask_mode, shape=None):
-    mask_mode = int(mask_mode)
-    if shape is None:
-        shape = (0, 0) if mask_mode == 0 else (2048, 2048)
+def _build_causal_mask(shape=None):
+    if shape is None or len(shape) != 2:
+        return None
     shape = tuple(int(dim) for dim in shape)
-
-    if mask_mode == 0:
-        return torch.empty(shape, dtype=torch.uint8)
-    if len(shape) != 2:
-        raise ValueError(
-            f"causal attention mask must be 2D, got shape={shape}"
-        )
     return torch.tril(torch.ones(shape, dtype=torch.uint8)).T.contiguous()
 
 
@@ -2600,7 +2592,7 @@ def npu_mxfp8_fa(
     else:
         p_scale_npu = torch.tensor([], dtype=torch.float8_e8m0fnu).npu()
         logger.info("[NPU] P scale=empty tensor (shape size 0, default 1.0)")
-    mask_arg = atten_mask.npu()
+    mask_arg = None if atten_mask is None else atten_mask.npu()
 
     if block_table_torch is None:
         raise ValueError("PA KV cache requires block_table_torch")
@@ -2966,7 +2958,7 @@ def run_one_case(
         p_scale = data["p_scale"]
         atten_mask = data.get("atten_mask")
         if atten_mask is None:
-            atten_mask = _build_causal_mask(MASK_MODE)
+            atten_mask = _build_causal_mask()
         block_table_torch = data.get("block_table_torch")
         sparse_indices = data.get("sparse_indices")
         sparse_seq_len = data.get("sparse_seq_len")
