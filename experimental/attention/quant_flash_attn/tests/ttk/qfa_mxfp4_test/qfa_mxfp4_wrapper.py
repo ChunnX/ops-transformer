@@ -217,6 +217,7 @@ def npu_qfa_mxfp4(
     if _SKIP_GENERATE:
         _inject_replay_qkv(q, k, v, q_descale, k_descale, v_descale)
 <<<<<<< HEAD
+<<<<<<< HEAD
     golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
     try:
         try:
@@ -240,12 +241,27 @@ def npu_qfa_mxfp4(
         },
     )
 =======
+=======
+    golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
+>>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
     try:
-        data_dict = golden_mod.generate_data()
+        try:
+            data_dict = golden_mod.generate_data()
+        except Exception:
+            golden_mod._clear_physical_s_override()
+            data_dict = golden_mod.generate_data()
     finally:
+        golden_mod._clear_physical_s_override()
         if _SKIP_GENERATE:
             _clear_replay_qkv()
+<<<<<<< HEAD
 >>>>>>> 13706ea7e... ttk优化
+=======
+    golden_mod._apply_csv_shape_override(
+        data_dict,
+        {"q": q, "k": k, "v": v, "q_descale": q_descale, "k_descale": k_descale, "v_descale": v_descale},
+    )
+>>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
     logger.info(
         "[WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d, skip_generate=%s",
         graph_path,

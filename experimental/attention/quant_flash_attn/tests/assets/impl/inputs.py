@@ -42,9 +42,13 @@ def _inplace_write(dst, src_torch, slot_name):
         if tuple(dst_t.shape) != tuple(src_torch.shape):
             logger.warning(
                 "[INPUTS] %s shape mismatch: CSV %s != computed %s, 按 CSV shape 适配",
+<<<<<<< HEAD
                 slot_name,
                 tuple(dst_t.shape),
                 tuple(src_torch.shape),
+=======
+                slot_name, tuple(dst_t.shape), tuple(src_torch.shape),
+>>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
             )
             adapted = golden_mod._adapt_tensor_to_shape(src_torch, dst_t.shape)
             if dst_t.dtype == adapted.dtype:
@@ -64,6 +68,7 @@ def _inplace_write(dst, src_torch, slot_name):
     if tuple(dst_np.shape) != tuple(src_torch.shape):
         logger.warning(
             "[INPUTS] %s shape mismatch: CSV %s != computed %s, 按 CSV shape 适配",
+<<<<<<< HEAD
             slot_name,
             tuple(dst_np.shape),
             tuple(src_torch.shape),
@@ -83,6 +88,17 @@ def _inplace_write(dst, src_torch, slot_name):
     src_np = (
         src_torch.numpy() if src_torch.device.type == "cpu" else src_torch.cpu().numpy()
     )
+=======
+            slot_name, tuple(dst_np.shape), tuple(src_torch.shape),
+        )
+        adapted = golden_mod._adapt_tensor_to_shape(src_torch, dst_np.shape)
+        src_np = adapted.numpy() if adapted.device.type == "cpu" else adapted.cpu().numpy()
+        if src_np.dtype != dst_np.dtype:
+            src_np = src_np.view(dst_np.dtype) if src_np.dtype.itemsize == dst_np.dtype.itemsize else src_np.astype(dst_np.dtype)
+        dst_np[...] = src_np
+        return
+    src_np = src_torch.numpy() if src_torch.device.type == "cpu" else src_torch.cpu().numpy()
+>>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
     if src_np.dtype != dst_np.dtype:
         src_np = (
             src_np.view(dst_np.dtype)

@@ -136,6 +136,9 @@ SEED_V = 4
 _REPLAY_QKV_OVERRIDE = {}
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
 # 物理 S override: wrapper/inputs 从 CSV 分配的 q/k/v tensor shape 推导物理 S 后注入,
 # generate_data 优先用这两个值作为物理 S (生成 query/key/value 的 S 维),
 # 而不是 max(ACT_SEQ_LENS) / MAX_SEQLEN (后者只决定有效长度).
@@ -172,9 +175,13 @@ def _infer_physical_s_from_tensor(tensor, layout):
     return None
 
 
+<<<<<<< HEAD
 def _resolve_s_with_effective(
     act_seq_lens, max_seqlen, physical_s_override, b_size, tag
 ):
+=======
+def _resolve_s_with_effective(act_seq_lens, max_seqlen, physical_s_override, b_size, tag):
+>>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
     """解析物理 S 和有效长度, 并做校验.
 
     优先级:
@@ -260,6 +267,7 @@ def _apply_csv_shape_override(data_dict, csv_tensors):
             continue
         logger.warning(
             "[GOLDEN] %s CSV shape %s != golden shape %s, 用 CSV shape 重构",
+<<<<<<< HEAD
             name,
             tuple(csv_t.shape),
             tuple(golden_t.shape),
@@ -268,6 +276,12 @@ def _apply_csv_shape_override(data_dict, csv_tensors):
 
 =======
 >>>>>>> 13706ea7e... ttk优化
+=======
+            name, tuple(csv_t.shape), tuple(golden_t.shape),
+        )
+        data_dict[name] = _adapt_tensor_to_shape(golden_t, csv_t.shape).contiguous()
+
+>>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
 
 def _get_npu_fa_kwargs():
     return dict(
@@ -658,9 +672,15 @@ def generate_data():
         )
 
 <<<<<<< HEAD
+<<<<<<< HEAD
         # V 按 act_seq_lens_kv 分批量化: padding 区域 packed 填 0, descale 只覆盖有效区域.
         # v_descale 的 S 维基于 s2_effective (= max(act_kv)), 与 NPU kernel stride
         # (基于 maxSeqlenKv) 及 metadata 校验 (ceil(max(seqused_kv)/64)) 对齐.
+=======
+        # V 按 act_seq_lens_kv 分批量化: padding 区域 packed 填 0, descale 只覆盖有效区域.
+        # n_blocks 基于有效长度 (s2_effective), 不是物理 S; packed 的 S 维用物理 S (s2).
+        # 统一走分 batch 量化, 保证 v_descale shape 与 CSV (基于 max(act)/64) 一致.
+>>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
         n_blocks_effective = (s2_effective + 31) // 32
         packed_value_list = []
         v_descale_list = []
@@ -676,6 +696,7 @@ def generate_data():
             n_blocks_actual = v_b_scale.shape[2]
             scale_padded = torch.full(
                 (1, n2, n_blocks_effective, v_d), 127, dtype=v_b_scale.dtype
+<<<<<<< HEAD
             )
             scale_padded[:, :, :n_blocks_actual, :] = v_b_scale
             v_descale_list.append(scale_padded)
@@ -709,6 +730,13 @@ def generate_data():
                 value, quant_axis=-2, mode="baseline"
             )
 >>>>>>> 13706ea7e... ttk优化
+=======
+            )
+            scale_padded[:, :, :n_blocks_actual, :] = v_b_scale
+            v_descale_list.append(scale_padded)
+        value_packed = torch.cat(packed_value_list, dim=0)
+        v_descale = torch.cat(v_descale_list, dim=0)
+>>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
 
         # V scale: n_blocks 奇数时 pad 一个 block, 然后 reshape (Sg//2, D*2)
         if v_descale.shape[2] % 2 != 0:
@@ -737,6 +765,7 @@ def generate_data():
 
         # Layout 转换 (Q packed + scale 用 query_layout; K/V packed + scale 用 kv_layout)
 <<<<<<< HEAD
+<<<<<<< HEAD
         query_packed = rearrange_by_layout(query_packed, query_layout, B, act_seq_q_eff)
         key_packed = rearrange_by_layout(key_packed, kv_layout, B, act_seq_kv_eff)
         value_packed = rearrange_by_layout(value_packed, kv_layout, B, act_seq_kv_eff)
@@ -753,16 +782,25 @@ def generate_data():
         query_packed = rearrange_by_layout(query_packed, query_layout, B, ACT_SEQ_LENS_Q)
         key_packed = rearrange_by_layout(key_packed, kv_layout, B, ACT_SEQ_LENS_KV)
         value_packed = rearrange_by_layout(value_packed, kv_layout, B, ACT_SEQ_LENS_KV)
+=======
+        query_packed = rearrange_by_layout(query_packed, query_layout, B, act_seq_q_eff)
+        key_packed = rearrange_by_layout(key_packed, kv_layout, B, act_seq_kv_eff)
+        value_packed = rearrange_by_layout(value_packed, kv_layout, B, act_seq_kv_eff)
+>>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
 
-        q_descale = rearrange_by_layout(q_descale, query_layout, B, ACT_SEQ_LENS_Q)
+        q_descale = rearrange_by_layout(q_descale, query_layout, B, act_seq_q_eff)
         q_descale = transpose_qscale(q_descale, query_layout, n2)
 
-        aligned_seq_lens_kv_k = [(x + 31) // 32 for x in ACT_SEQ_LENS_KV]
+        aligned_seq_lens_kv_k = [(x + 31) // 32 for x in act_seq_kv_eff]
         k_descale = rearrange_by_layout(k_descale, kv_layout, B, aligned_seq_lens_kv_k)
         k_descale = transpose_kscale(k_descale, kv_layout)
 
+<<<<<<< HEAD
         aligned_seq_lens_kv_v = [(x + 63) // 64 for x in ACT_SEQ_LENS_KV]
 >>>>>>> 13706ea7e... ttk优化
+=======
+        aligned_seq_lens_kv_v = [(x + 63) // 64 for x in act_seq_kv_eff]
+>>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
         v_descale = rearrange_by_layout(v_descale, kv_layout, B, aligned_seq_lens_kv_v)
 
         # V descale 最后再 view 出 (*shape, -1, 2) 末尾两维
@@ -868,11 +906,15 @@ def cpu_mxfp4_golden(data_dict):
     if s1 is None:
         s1 = max(act_seq_q) if act_seq_q else (MAX_SEQLEN_Q if MAX_SEQLEN_Q >= 0 else 0)
     if s2 is None:
+<<<<<<< HEAD
         s2 = (
             max(act_seq_kv)
             if act_seq_kv
             else (MAX_SEQLEN_KV if MAX_SEQLEN_KV >= 0 else 0)
         )
+=======
+        s2 = max(act_seq_kv) if act_seq_kv else (MAX_SEQLEN_KV if MAX_SEQLEN_KV >= 0 else 0)
+>>>>>>> bdf052343... ttk: 支持异常用例测试 (错 shape 透传算子测 op_host 拦截)
     if act_seq_q_eff is None:
         act_seq_q_eff = list(act_seq_q) if act_seq_q else [s1] * b
     if act_seq_kv_eff is None:
