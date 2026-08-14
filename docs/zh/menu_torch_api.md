@@ -20,6 +20,8 @@
 - [mhc_pre_sinkhorn](../../torch_extension/cann_ops_transformer/docs/zh/mhc_pre_sinkhorn.md)
 - [mixed_quant_sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/mixed_quant_sparse_flash_mla.md)
 - [moe_finalize_routing](../../torch_extension/cann_ops_transformer/docs/zh/moe_finalize_routing.md)
+- [moe_init_routing](../../torch_extension/cann_ops_transformer/docs/zh/moe_init_routing.md)
+- [moe_re_routing](../../torch_extension/cann_ops_transformer/docs/zh/moe_re_routing.md)
 - [moe_token_permute](../../torch_extension/cann_ops_transformer/docs/zh/moe_token_permute.md)
 - [qkv_rms_norm_rope_cache_with_k_scale](../../torch_extension/cann_ops_transformer/docs/zh/qkv_rms_norm_rope_cache_with_k_scale.md)
 - [quant_compressor](../../torch_extension/cann_ops_transformer/docs/zh/quant_compressor.md)
@@ -33,3 +35,4 @@
 - [sparse_lightning_indexer_kl_loss_grad](../../torch_extension/cann_ops_transformer/docs/zh/sparse_lightning_indexer_kl_loss_grad.md)
 - [dense_lightning_indexer_kl_loss_grad](../../torch_extension/cann_ops_transformer/docs/zh/dense_lightning_indexer_kl_loss_grad.md)
 - [stem_oam_prep_paged_kv](../../torch_extension/cann_ops_transformer/docs/zh/stem_oam_prep_paged_kv.md)
+- [und_gen_qkv_rms_norm_rope_cache](../../torch_extension/cann_ops_transformer/docs/zh/und_gen_qkv_rms_norm_rope_cache.md)

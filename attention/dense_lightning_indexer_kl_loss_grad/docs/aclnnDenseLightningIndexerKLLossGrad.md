@@ -3,40 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-<!-- npu="950" id1 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
-
-<!-- end id1 -->
-<!-- npu="A3" id2 -->
 <!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
 <!-- end id2 -->
-
-<!-- end id2 -->
-<!-- npu="910b" id3 -->
 <!-- npu="910b" id3 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
 <!-- end id3 -->
-
-<!-- end id3 -->
-<!-- npu="310b" id4 -->
 <!-- npu="310b" id4 -->
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
 <!-- end id4 -->
-
-<!-- end id4 -->
-<!-- npu="310p" id5 -->
 <!-- npu="310p" id5 -->
 - <term>Atlas 推理系列产品</term>：不支持
 <!-- end id5 -->
-
-<!-- end id5 -->
-<!-- npu="910" id6 -->
 <!-- npu="910" id6 -->
 - <term>Atlas 训练系列产品</term>：不支持
-<!-- end id6 -->
-
 <!-- end id6 -->
 
 ## 功能说明
@@ -282,9 +264,9 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
             </tr>
             <tr>
                 <td>metadataOptional</td>
-                <td>可选输入</td>
+                <td>输入</td>
                 <td>由aclnnDenseLightningIndexerKLLossGradMetadata生成的分核信息。</td>
-                <td>传入后kernel将使用metadata中的分核切分，必须传入。</td>
+                <td>必须传入。传入后kernel将使用metadata中的分核切分。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(x,)</td>
@@ -298,7 +280,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>STRING</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>layoutK</td>
@@ -308,7 +290,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>STRING</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>maskMode</td>
@@ -318,7 +300,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>INT64</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>cmpRatio</td>
@@ -328,7 +310,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>INT64</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>dq</td>
@@ -375,20 +357,20 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>输出</td>
                 <td>返回用户需要在Device侧申请的workspace大小。</td>
                 <td>-</td>
-                <td>UINT64</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>executor</td>
                 <td>输出</td>
                 <td>op执行器，包含算子计算流程。</td>
                 <td>-</td>
-                <td>aclOpExecutor*</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
         </tbody>
     </table>
@@ -416,17 +398,18 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
             <tr>
                 <td>ACLNN_ERR_PARAM_NULLPTR</td>
                 <td>161001</td>
-                <td>必选参数或输出为空指针。</td>
+                <td>参数中存在非法的nullptr。</td>
             </tr>
             <tr>
-                <td>ACLNN_ERR_PARAM_INVALID</td>
-                <td>161002</td>
-                <td>输入、输出、属性的数据类型、数据格式或取值不在支持范围内。</td>
+                <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
+                <td rowspan="3">161002</td>
+                <td>输入的数据类型不满足支持类型。</td>
             </tr>
             <tr>
-                <td>ACLNN_ERR_RUNTIME_ERROR</td>
-                <td>361001</td>
-                <td>API内存调用npu runtime的接口异常。</td>
+                <td>q、k、w、attnSoftmaxL1Norm、softmaxLse必选输入未传。</td>
+            </tr>
+            <tr>
+                <td>dq、dk、dw、softmaxOut必选输出未传。</td>
             </tr>
         </tbody>
     </table>
@@ -697,7 +680,7 @@ int main() {
   const int64_t numHeadsK = 1;
   const int64_t headDim = 128;
   const int64_t maskMode = 3;
-  const int64_t cmpRatio = 4;
+  const int64_t cmpRatio = 1;
 
   std::vector<int64_t> qShape = {t1, numHeadsQ, headDim};
   std::vector<int64_t> kShape = {t2, numHeadsK, headDim};

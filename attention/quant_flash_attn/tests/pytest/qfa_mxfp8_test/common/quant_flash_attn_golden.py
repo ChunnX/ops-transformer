@@ -163,7 +163,8 @@ def get_mxfp8_per_token_group_quant_scale(tensor, fp8_dtype, group_size=32):
     emax_elem = _EMAX_MAP[fp8_dtype]
 
     dim1, dim2, dim3, dim4 = tensor.shape
-    num_groups = math.ceil(dim4 / group_size)
+    dim4_align = (dim4 + 63) // 64 * 64
+    num_groups = math.ceil(dim4_align / group_size)
     pad_size = num_groups * group_size - dim4
     if pad_size > 0:
         tensor = torch.nn.functional.pad(tensor, (0, pad_size))
@@ -833,9 +834,13 @@ def generate_data():
     kr_bf16 = None
     if ENABLE_ROPE and D_rope > 0:
         torch.manual_seed(SEED_QR)
-        qr_bf16 = (torch.rand(B, N_q, max_sq, D_rope, dtype=torch.bfloat16) * 2 - 1) * DATA_RANGE_QR
+        qr_bf16 = (
+            torch.rand(B, N_q, max_sq, D_rope, dtype=torch.bfloat16) * 2 - 1
+        ) * DATA_RANGE_QR
         torch.manual_seed(SEED_KR)
-        kr_bf16 = (torch.rand(B, N_kv, max_skv, D_rope, dtype=torch.bfloat16) * 2 - 1) * DATA_RANGE_KR
+        kr_bf16 = (
+            torch.rand(B, N_kv, max_skv, D_rope, dtype=torch.bfloat16) * 2 - 1
+        ) * DATA_RANGE_KR
 
     logger.info(
         "[INFO] q_fp16=%s, k_fp16=%s, v_fp16=%s",
@@ -993,8 +998,12 @@ def cpu_mxfp8_golden(
     EPSILON = 1e-20
     LN2 = math.log(2.0)
     Q_BLOCK_SIZE = 128
-    K_BLOCK_SIZE = 256
-    V_BLOCK_SIZE = 512
+    if D == 256:
+        K_BLOCK_SIZE = 128
+        V_BLOCK_SIZE = 256
+    else:
+        K_BLOCK_SIZE = 256
+        V_BLOCK_SIZE = 512
 
     if actual_seq_q is None:
         actual_seq_q = _get_seqused_q()
@@ -1055,10 +1064,10 @@ def cpu_mxfp8_golden(
     # dequant_scale 按 group_size 扩展，用于逐元素反量化
     dequant_scale_q_expanded = dequant_scale_q.repeat_interleave(
         QUANT_GROUP_SIZE, dim=-1
-    )
+    )[:, :, :, :D]
     dequant_scale_k_expanded = dequant_scale_k.repeat_interleave(
         QUANT_GROUP_SIZE, dim=-1
-    )
+    )[:, :, :, :D]
     v_descale_expanded = v_descale.repeat_interleave(QUANT_GROUP_SIZE, dim=2)
 
     logger.info(
@@ -2058,4 +2067,7 @@ if __name__ == "__main__":
         cpu_lse_tnd_torch = convert_q_bnsd_to_layout(
             cpu_lse, _get_seqused_q(), "TND", cu_seqlens=CU_SEQLENS_Q
         )
-        result_compare_method.check_result(cpu_lse_tnd_torch, lse_out)
+        # NPU LSE 输出已改为 N-major 排布 (N, T): N 在外, T 在内
+        # CPU golden 经 convert 后是 [T, N, 1] (T-major), 需转成 [N, T] 对齐
+        cpu_lse_nt_torch = cpu_lse_tnd_torch.squeeze(-1).permute(1, 0).contiguous()
+        result_compare_method.check_result(cpu_lse_nt_torch, lse_out)

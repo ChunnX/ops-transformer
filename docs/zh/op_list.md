@@ -444,7 +444,7 @@
     <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能输出。</td>
+    <td>SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，并额外融合了Loss计算功能输出。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -714,7 +714,7 @@
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>全量推理场景的FlashAttention算子。</td>
+    <td>面向Swin Transformer的注意力输出后处理融合算子，完成输出线性投影（MatMul+Bias）、窗口还原、反向循环移位以及残差加法。</td>
   </tr>
   <tr>
     <td>ffn</td>
@@ -1218,6 +1218,16 @@
   </tr>
   <tr>
     <td>moe</td>
+    <td><a href="../../moe/moe_init_routing_v4/README.md">moe_init_routing_v4</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>MoE的routing计算，根据<a href="../../moe/moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md">aclnnMoeGatingTopKSoftmaxV2</a>的计算结果做routing处理，支持非量化、静态量化和动态量化模式。</td>
+  </tr>
+  <tr>
+    <td>moe</td>
     <td><a href="../../moe/moe_re_routing/README.md">moe_re_routing</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -1225,6 +1235,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>MoE网络中，进行AlltoAll操作从其他卡上拿到需要算的token后，将token按照专家顺序重新排列。</td>
+  </tr>
+  <tr>
+    <td>moe</td>
+    <td><a href="../../moe/moe_re_routing_v2/README.md">moe_re_routing_v2</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>MoE网络中，进行AlltoAll操作从其他卡上拿到需要算的token后，将token按照专家顺序重新排列，支持对topkWeight重排。</td>
   </tr>
   <tr>
     <td>moe</td>
@@ -1274,7 +1294,7 @@
     <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>aclnnMoeTokenPermuteWithRoutingMap的反向传播。</td>
+    <td>MoE的permute计算，将token和expert的标签作为routingMap传入，根据routingMap将tokens和可选probsOptional广播后排序。</td>
   </tr>
   <tr>
     <td>moe</td>
@@ -1354,7 +1374,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>基于用Sinkhorn-Knopp迭代算法将超连接的混合矩阵投影到双随机矩阵流形，以此稳定深度网络信号传播、解决梯度消失 / 爆炸问题</td>
+    <td>基于Sinkhorn-Knopp迭代算法将超连接的混合矩阵投影到双随机矩阵流形，以此稳定深度网络信号传播、解决梯度消失 / 爆炸问题</td>
   </tr>
   <tr>
     <td>mhc</td>
@@ -1384,7 +1404,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向</td>
+    <td>mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向计算。</td>
   </tr>
   <tr>
     <td>mhc</td>
@@ -1514,7 +1534,7 @@
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对输入张量的尾轴进行切分。</td>
+    <td>对输入张量按照‘sizeSplits’对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，生成qOut与kOut，之后对kOut与vOut进行量化并按照‘indices’更新到kCacheRef和vCacheRef上。</td>
   </tr>
   <tr>
     <td>posembedding</td>
@@ -1555,6 +1575,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>对输入张量(kv)的尾轴，拆分出左半边用于rms_norm计算，右半边用于rope计算，再将计算结果分别scatter到两块cache中。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
+    <td><a href="../../posembedding/und_gen_qkv_rms_norm_rope_cache/README.md">und_gen_qkv_rms_norm_rope_cache</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>输入understand段与generate段两路QKV融合张量，按cat_indices重排后拆分Q、K、V；对Q、K分别用两段各自的权重执行RMSNorm并做MRoPE多轴旋转位置编码，输出q；K、V按slot_mapping散写更新分页k_cache与v_cache。</td>
   </tr>
 </tbody>
 </table>
