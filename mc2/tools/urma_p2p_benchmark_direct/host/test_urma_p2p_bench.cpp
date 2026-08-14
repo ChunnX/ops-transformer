@@ -121,11 +121,11 @@ static HcclResult build_channel_descs(HcclComm comm, uint32_t self, uint32_t wor
             fprintf(stderr, "[INFO] rank %u:   layer=%u peer=%u: total_links=%u\n", self, layer, peer, listSize);
             for (uint32_t li2 = 0; li2 < listSize; ++li2) {
                 int proto = static_cast<int>(linkList[li2].linkAttr.linkProtocol);
-                fprintf(stderr, "[INFO] rank %u:     link[%u]: protocol=%d(%s) srcAddr=0x%x dstAddr=0x%x\n",
+                fprintf(stderr, "[INFO] rank %u:     link[%u]: protocol=%d(%s) srcAddr=%u dstAddr=%u\n",
                         self, li2, proto,
                         (proto == 4) ? "UBC_CTP" : (proto == 5) ? "UBC_TP" : "other",
-                        linkList[li2].srcEndpointDesc.commAddr,
-                        linkList[li2].dstEndpointDesc.commAddr);
+                        (uint32_t)linkList[li2].srcEndpointDesc.commAddr,
+                        (uint32_t)linkList[li2].dstEndpointDesc.commAddr);
             }
 
             for (uint32_t i = 0; i < listSize; ++i) {
@@ -279,7 +279,6 @@ static BenchCtx *setup_ctx(HcclComm comm, uint32_t rank, uint32_t world, uint64_
 // ============================================================================
 static void *build_hccl_context(BenchCtx *ctx, uint32_t rank, uint32_t world, uint64_t bufBytes)
 {
-    using namespace CommWithUrmaImpl;
 
     // 读取 ChannelEntity + SqContext + CqContext + RegedBuffer 到 host
     constexpr uint32_t READ_SIZE = CHANNEL_ENTITY_SIZE + SQ_CONTEXT_SIZE + CQ_CONTEXT_SIZE + 2 * REGED_BUFFER_SIZE;
