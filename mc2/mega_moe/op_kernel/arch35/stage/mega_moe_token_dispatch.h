@@ -68,8 +68,8 @@ struct DispatchExpertRankRange {
     // 最后一个与当前 core 的专家 row range 相交的 source rank index。
     // 当没有相交的 source rank 时为 -1。
     int32_t lastRankIdx;
-    // 第一个相交 source-rank segment 在全局 Dispatch row 空间中的起始位置。
-    int32_t firstRankSegmentGlobalRowBegin;
+    // 第一个相交 source-rank segment 在当前专家 row 空间中的起始 offset。
+    int32_t firstRankOffset;
 };
 
 struct ExpertTokenCountExportScratch {
@@ -233,7 +233,7 @@ __aicore__ inline DispatchExpertRankRange FindDispatchExpertRankRange(
         if (range.firstRankIdx == static_cast<int32_t>(context.common.worldSize) &&
             rankPrefix - expertGlobalRowBegin > coreExpertRowBegin) {
             range.firstRankIdx = static_cast<int32_t>(remoteRankIdx);
-            range.firstRankSegmentGlobalRowBegin = previousRankPrefix;
+            range.firstRankOffset = previousRankPrefix - expertGlobalRowBegin;
         }
         if (rankPrefix - expertGlobalRowBegin >= coreExpertRowEnd) {
             range.lastRankIdx = static_cast<int32_t>(remoteRankIdx);
@@ -353,7 +353,7 @@ __aicore__ inline void DispatchExpertTokensByRank(
     const DispatchExpertRankRange &rankRange,
     int32_t gmm1TileRowCount)
 {
-    int32_t rankSegmentRowBegin = rankRange.firstRankSegmentGlobalRowBegin - expertGlobalRowBegin;
+    int32_t rankSegmentRowBegin = rankRange.firstRankOffset;
     int32_t rankSegmentRowEnd = 0;
     for (int32_t remoteRankIdx = static_cast<int32_t>(rankRange.firstRankIdx);
          remoteRankIdx <= rankRange.lastRankIdx; ++remoteRankIdx) {
