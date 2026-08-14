@@ -23,9 +23,9 @@ block_attn_res_update(
 ```
 
 `eps` is an optional finite positive float attribute. When it is omitted, host tiling uses `1e-6`; the selected value
-and the `uint8_t phase2Mode` are serialized into `BlockAttnResUpdateTilingData`. The kernel computes `1 / D` from
-`dSize` and never reads an `eps` tensor. The RMS path intentionally uses FP32 `sqrt` followed by direct division
-and does not include Newton refinement or special handling for zero/extreme values.
+is serialized into `BlockAttnResUpdateTilingData`. The kernel computes `1 / D` from `dSize` and never reads an `eps`
+tensor. The RMS path intentionally uses FP32 `sqrt` followed by direct division and does not include Newton
+refinement or special handling for zero/extreme values.
 
 Host tiling requires concrete positive `T` and `D`, with `D <= 8192`. It rejects zero/unknown/negative dimensions,
 incorrect ranks, inconsistent related shapes, unsupported input/output dtypes, shapes whose `T * D` element count
@@ -45,8 +45,7 @@ strides:
 ```text
 dAlignFp32 = AlignUp(D, 8)    // 8 FP32 = 32 B
 dAlignBf16 = AlignUp(D, 16)   // 16 BF16 = 32 B
-phase2Mode = D <= 128 && tileT >= 8 ? BATCH : TOKEN
-statsTStride = phase2Mode == BATCH ? AlignUp(tileT, 64) : AlignUp(tileT, 8)
+statsTStride = AlignUp(tileT, 8)
 ```
 
 The effective reduction length is always `D`; aligned elements are padding only.
@@ -78,7 +77,7 @@ zeroing, and streams only middle query pairs. `Reg::MulAddDst` shortens the accu
 scratch or a local-memory barrier. For the only partial register, masked `Add` clears invalid `partial` lanes and a
 preload-time zero-shift `Reg::ShiftLefts` clears invalid query lanes before full-mask accumulation. Runtime 0/1
 tail/odd routing values are computed by the scalar caller and passed into the VF instead of being derived from
-`dSize`/`tSize` inside `__simd_vf__`. Optional tail masks are materialized once through parameter-bounded 0/1 setup
+`dSize` inside `__simd_vf__`. Optional tail masks are materialized once through parameter-bounded 0/1 setup
 loops and reused by the later optional loops. Mandatory 1VL/second-VREG compute masks remain direct initializations
 from a valid 1-to-64 element count.
 
@@ -87,11 +86,6 @@ Compute is split into two ordered VF calls. Phase 1 consumes `partial`, `delta`,
 `exp_sum` into disjoint UB regions. Once phase 1 finishes, MTE3 can write updated `partial` back while phase 2
 uses it read-only to update the online-softmax state and form `h`. Separate phase event IDs allow these transfers to
 remain in flight without serializing the two handoffs for a buffer.
-
-For `D <= 128` and `tileT >= 8`, phase 2 first vectorizes the online-softmax coefficient update across T, with one
-FP32 VREG lane per T index. The normalized alpha and beta overwrite the consumed
-`logit_max` and `exp_sum` regions in `stats`; after one local vector-store-to-vector-load barrier, they are
-broadcast at each T index while forming `h`. Smaller tiles and larger `D` retain the `TOKEN` phase-2 path.
 
 ## Kernel test
 

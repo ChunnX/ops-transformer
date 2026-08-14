@@ -13,11 +13,6 @@
 
 #include <cstdint>
 
-enum class BlockAttnResUpdatePhase2Mode : uint8_t {
-    TOKEN = 0,
-    BATCH = 1,
-};
-
 #pragma pack(push, 8)
 struct alignas(8) BlockAttnResUpdateTilingData {
     // All used cores except the last process tPerCore T indices.
@@ -31,13 +26,11 @@ struct alignas(8) BlockAttnResUpdateTilingData {
     uint32_t dAlignBf16;
     // Maximum T size processed by one UB tile.
     uint32_t tileT;
-    // Element stride between FP32 stats planes, aligned from tileT according to phase2Mode.
+    // Element stride between FP32 stats planes, aligned to a 32-byte boundary.
     uint32_t statsTStride;
     // Number of FP32 VREG chunks required to cover D.
     uint32_t dVregNum;
     float eps;
-    // Host-selected primary Phase 2 path. A short tail tile may still use TOKEN.
-    uint8_t phase2Mode;
 };
 #pragma pack(pop)
 
