@@ -174,7 +174,7 @@ echo "==================================================================="
 
 current=0
 
-tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode0 warmup ms_id loop_count data_size rank_id ranksize || [ -n "$id" ]; do
+tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode0 warmup ms_id loop_count data_size rank_id ranksize same_addr || [ -n "$id" ]; do
     current=$((current + 1))
 
     # 单跑模式：按 id 匹配
@@ -196,7 +196,7 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode0 warmup ms_id loop_count
     esac
 
     echo "[INFO] === 用例 id=$id ($current/$case_count) ==="
-    echo "  mode0=$mode0_str warmup=$warmup ms_id=$ms_id loop=$loop_count data_size=$data_size rank=$rank_id/$ranksize"
+    echo "  mode0=$mode0_str warmup=$warmup ms_id=$ms_id same_addr=${same_addr:-N/A} loop=$loop_count data_size=$data_size rank=$rank_id/$ranksize"
 
     if [ -n "$CASE_LINE" ]; then
         # 单跑：直接打屏
@@ -207,7 +207,8 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode0 warmup ms_id loop_count
             --warmup "$warmup" \
             --ms_id "$ms_id" \
             --loop_count "$loop_count" \
-            --data_size "$data_size" 2>&1
+            --data_size "$data_size" \
+            --same_addr "${same_addr:-1}" 2>&1
         bin_ret=$?
         output=""
     else
@@ -219,7 +220,8 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode0 warmup ms_id loop_count
             --warmup "$warmup" \
             --ms_id "$ms_id" \
             --loop_count "$loop_count" \
-            --data_size "$data_size" 2>&1)
+            --data_size "$data_size" \
+            --same_addr "${same_addr:-1}" 2>&1)
         bin_ret=$?
     fi
 

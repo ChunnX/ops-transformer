@@ -14,9 +14,10 @@
 #   -b build-type      Release or Debug
 #   -c cmake-rebuild   ON=重新编译, OFF=不编译
 #   -r run-test        ON=运行用例, OFF=不运行
-#   -m mode0           0=写, 1=读, 2=读写混合, 3=先写后读, 4=双核混合读写
+#   -m mode0           0=写, 1=读, 2=读写混合, 3=先写后读, 4=双核混合读写, 5=GM写, 6=GM读, 7=跨核混合读写
 #   -w warmup          预热次数(0=不预热)
-#   -u ms_id           选择测试的 MS ID，范围 0..3（mode0=4时 0=同地址 1=非同地址）
+#   -u ms_id           选择测试的 MS ID，范围 0..3
+#   -e same_addr       同地址(1)/非同地址(0)，仅 mode0=4/7 生效
 #   -l loop_count      正式执行循环次数
 #   -s data_size       数据量(字节), 4KB=4096 ~ 120KB=122880 (mode0=3时上限120KB)
 #   -n ranksize        卡数(默认1)
@@ -37,13 +38,14 @@ RUN_TEST="OFF"
 MODE0=0
 WARMUP=0
 MS_ID=0
+SAME_ADDR=1
 LOOP_COUNT=100
 DATA_SIZE=4096
 RANKSIZE=1
 RANK_ID=0
 
-SHORT=v:,b:,c:,r:,m:,w:,u:,l:,s:,n:,a:,
-LONG=soc-version:,build-type:,cmake-rebuild:,run-test:,mode0:,warmup:,ms-id:,loop-count:,data-size:,ranksize:,rank-id:,
+SHORT=v:,b:,c:,r:,m:,w:,u:,e:,l:,s:,n:,a:,
+LONG=soc-version:,build-type:,cmake-rebuild:,run-test:,mode0:,warmup:,ms-id:,same-addr:,loop-count:,data-size:,ranksize:,rank-id:,
 OPTS=$(getopt -a --options $SHORT --longoptions $LONG -- "$@")
 eval set -- "$OPTS"
 
@@ -75,6 +77,10 @@ while :; do
         ;;
     -u | --ms-id)
         MS_ID="$2"
+        shift 2
+        ;;
+    -e | --same-addr)
+        SAME_ADDR="$2"
         shift 2
         ;;
     -l | --loop-count)
@@ -151,6 +157,7 @@ if [[ "$RUN_TEST" == "ON" ]]; then
     #             --rank_id ${rank_id} \
     #             --ranksize ${RANKSIZE} \
     #             --mode0 ${MODE0} \
+    #             --same_addr ${SAME_ADDR} \
     #             --data_size ${DATA_SIZE}
     #     ) &
     # done
@@ -161,6 +168,7 @@ if [[ "$RUN_TEST" == "ON" ]]; then
         --mode0 ${MODE0} \
         --warmup ${WARMUP} \
         --ms_id ${MS_ID} \
+        --same_addr ${SAME_ADDR} \
         --loop_count ${LOOP_COUNT} \
         --data_size ${DATA_SIZE}
     echo "========== 程序执行完成 =========="

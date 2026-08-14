@@ -77,6 +77,7 @@ int32_t g_ranksize = 1;        // 卡数（本地测试默认单卡）
 uint32_t g_mode0 = 3;          // 0=写, 1=读, 2=读写混合, 3=先写后读
 uint32_t g_enableWarmup = 0;   // 预热次数，0=不预热
 uint32_t g_msId = 0;           // 0..3，选择测试哪块 MS
+uint32_t g_sameAddr = 1;       // 1=同地址, 0=非同地址（仅 mode0=4/7 双核场景生效）
 uint32_t g_loopCount = 100;    // 正式打点内循环次数
 uint64_t g_dataSize = 4096;    // 默认 4KB
 
@@ -87,13 +88,14 @@ static const struct option kLongOptions[] = {{"rank_id", 1, 0, 'a'},
                                              {"ms_id", 1, 0, 'u'},
                                              {"loop_count", 1, 0, 'l'},
                                              {"data_size", 1, 0, 's'},
+                                             {"same_addr", 1, 0, 'e'},
                                              {0, 0, 0, 0}};
 
 void GetOption(int argc, char **argv)
 {
     int optionIndex = 0, c = 1;
     while (c != -1) {
-        c = getopt_long(argc, argv, "a:d:m:w:u:l:s:", kLongOptions, &optionIndex);
+        c = getopt_long(argc, argv, "a:d:m:w:u:l:s:e:", kLongOptions, &optionIndex);
         switch (c) {
             case 'a':
                 g_rankId = atoi(optarg);
@@ -126,6 +128,9 @@ void GetOption(int argc, char **argv)
             case 's':
                 g_dataSize = (uint64_t)atoll(optarg);
                 break;
+            case 'e':
+                g_sameAddr = (uint32_t)atoi(optarg);
+                break;
             default:
                 break;
         }
@@ -152,9 +157,9 @@ int main(int argc, char *argv[])
     GetOption(argc, argv);
 
     LOG_PRINT("[INFO] ===== 本地读写 MS 测试 =====\n");
-    LOG_PRINT("[INFO] rank_id=%d, ranksize=%d, mode0=%s, warmup=%u, ms_id=%u, loop_count=%u, "
+    LOG_PRINT("[INFO] rank_id=%d, ranksize=%d, mode0=%s, warmup=%u, ms_id=%u, same_addr=%u, loop_count=%u, "
               "data_size=%lu bytes (%.2f KB)\n",
-              g_rankId, g_ranksize, GetMode0Str(g_mode0), g_enableWarmup, g_msId,
+              g_rankId, g_ranksize, GetMode0Str(g_mode0), g_enableWarmup, g_msId, g_sameAddr,
               g_loopCount, g_dataSize, (double)g_dataSize / 1024.0);
 
     CHECK_RET(g_mode0 <= 7, LOG_PRINT("[ERROR] mode0 invalid: %u\n", g_mode0); return -1);
@@ -250,7 +255,9 @@ int main(int argc, char *argv[])
     uint32_t blockDim = (g_mode0 == 4) ? 2 : (g_mode0 == 7) ? 3 : (uint32_t)BLOCK_NUM;
     LOG_PRINT("[INFO] 启动 Kernel (blockDim=%u)...\n", blockDim);
     uint8_t *addr0 = (g_mode0 == 5 || g_mode0 == 6) ? (uint8_t *)testGm : (uint8_t *)msAddrs[0];
-    local_ms_rw_demo(g_mode0, g_enableWarmup, g_msId, g_loopCount, g_dataSize, blockDim, stream,
+    // 双核场景用 same_addr 控制，单核场景用 ms_id 选择 MS
+    uint32_t kernelMsId = (g_mode0 == 4 || g_mode0 == 7) ? (g_sameAddr ? 0 : 1) : g_msId;
+    local_ms_rw_demo(g_mode0, g_enableWarmup, kernelMsId, g_loopCount, g_dataSize, blockDim, stream,
                      addr0, (uint8_t *)msAddrs[1], (uint8_t *)msAddrs[2], (uint8_t *)msAddrs[3],
                      (uint8_t *)timeGm, (uint8_t *)timeGm2);
 
