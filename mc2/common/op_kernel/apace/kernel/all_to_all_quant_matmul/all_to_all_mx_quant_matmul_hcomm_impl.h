@@ -41,7 +41,6 @@
 #include "blaze/gemm/utils/common_utils.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
-#include "blaze/gemm/block/block_scheduler_qbmm.h"
 #include "quant_matmul_mx_kernel.h"
 #include "include/tensor_api/tensor.h"
 
@@ -67,6 +66,9 @@ struct HcommCommState {
 
 struct HcommCommWaitPolicy {
     HcommCommState *state_{nullptr};
+    uint32_t bufferCount{0};   // hcomm 路径不做 win 复用，保持 0
+
+    __aicore__ inline void ReleaseTile(uint32_t tileIdx) {}
 
     __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
