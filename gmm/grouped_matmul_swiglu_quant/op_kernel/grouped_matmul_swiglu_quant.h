@@ -406,7 +406,7 @@ __aicore__ inline void GMMSwigluCompute<mmType, sync, CHANNELDTYPE>::UpdateChann
 {
     // 更新perChannel
     if (unlikely(vecConfig.nextUpadteInterVal == 0)) {
-        int64_t loop = gmmSwiglu->groupListLen - vecConfig.curGroupIdx;
+        int64_t loop = gmmSwiglu->groupListLen - vecConfig.curGroupIdx - 1;
         while (loop--) {
             int64_t curTemp = groupListGM.GetValue(vecConfig.curGroupIdx);
             vecConfig.curGroupIdx++;

@@ -288,7 +288,7 @@ __aicore__ inline void GMMA8W4PostProcess::UpdateAuxiliaryMatrix(uint32_t loopId
     if (unlikely(vecConfig.nextUpadteInterVal == 0)) {
         int64_t loop = gmmSwiglu->groupListLen - vecConfig.curGroupIdx;
         while (loop--) {
-            int64_t curTemp = groupListGM.GetValue(vecConfig.curGroupIdx);
+            int64_t loop = gmmSwiglu->groupListLen - vecConfig.curGroupIdx - 1;
             vecConfig.curGroupIdx++;
             int64_t nextTemp = groupListGM.GetValue(vecConfig.curGroupIdx);
             if (nextTemp != curTemp) {
