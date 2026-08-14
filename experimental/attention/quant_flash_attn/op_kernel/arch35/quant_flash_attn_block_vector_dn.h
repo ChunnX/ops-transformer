@@ -423,6 +423,7 @@ public:
             Mxfp4Api::computePscale<false, half, s1BaseSize>(pscale1, pscale2, localGroupMax1, localGroupMax2,
                                                              localGlobalMax1, localGlobalMax2, softmaxMaxOld, urs,
                                                              firstLoop, secondLoop, constInfo.subBlockIdx);
+            UB_UPDATE_IDX = (UB_UPDATE_IDX + 1) % UB_UPDATE_BUFCNT;
         }
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_GMAX_UB_TO_L1_BUF0_FLAG + runInfo.tileMaxIdx);
         SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_VEC1_RES_BUF0_FLAG);
@@ -449,7 +450,6 @@ public:
             Mxfp4Api::processUpdate<false>(attentionOutUB, mm2ResUB, urs, globalRowsumUB, localRowsumUB);
         } else {
             Mxfp4Api::processUpdate<true>(attentionOutUB, mm2ResUB, urs, globalRowsumUB, localRowsumUB);
-            UB_UPDATE_IDX = (UB_UPDATE_IDX + 1) % UB_UPDATE_BUFCNT;
         }
 
         if (unlikely(runInfo.isLastS2Loop)) {
