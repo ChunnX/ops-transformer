@@ -765,7 +765,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchAllExpe
      * Dispatch core，便于验证专家级分核的并发收益。
      */
     for (uint32_t expertIdx = 0U; expertIdx < moeExpertPerRank_; ++expertIdx) {
-        uint64_t expertTokenCount = 0U;
+        uint32_t expertTokenCount = 0U;
         ComputeExpertTokenCountAndNotify<ActivationType, false, TopkWeightsPrefetch>(
             tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx, expertTokenCount);
         uint64_t expertGlobalRowBegin = expertIdx == 0U ? 0U :
@@ -812,9 +812,11 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(
     while (gmm1WaveCursor.expertIdx < moeExpertPerRank_ &&
            processedMGroupCount < mGroupsPerWave_) {
         if (gmm1WaveCursor.rowOffsetInExpert == 0U) {
-            PrepareMoeExpertGmm1State<false>(
-                countWorkspace_, params_.workspaceInfo, gmm1ExpertState,
-                gmm1WaveCursor.expertIdx, 0U);
+            WaitForMoeExpertTokenCountReady(
+                countWorkspace_, params_.workspaceInfo, gmm1WaveCursor.expertIdx);
+            uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(
+                params_.workspaceInfo, countWorkspace_, gmm1WaveCursor.expertIdx);
+            UpdateExpertLoopState(gmm1ExpertState, gmm1WaveCursor.expertIdx, expertTokenCount);
         }
 
         uint64_t expertRowCount = Get<M_VALUE>(gmm1ExpertState.problemShape);
@@ -832,15 +834,13 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(
         ProblemShape gmm1WaveProblemShape = gmm1ExpertState.problemShape;
         Get<M_VALUE>(gmm1WaveProblemShape) =
             waveEndRowOffsetInExpert - gmm1WaveCursor.rowOffsetInExpert;
-        uint32_t expertMGroupOffset = gmm1WaveCursor.rowOffsetInExpert / GMM1_TILE_M;
         UpdateMoeExpertGmm1GlobalBuffer<ActivationType, Weight1Type, ActivationType,
                                         QuantScaleOutType,
                                         PackedElementTraits<QuantOutType>::ELEMENTS_PER_BYTE,
                                         false, TopkWeightsPrefetch>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo,
             moeWeightTensorListAddrs_, epilogueOp_,
-            gmm1AddrInfo, gmm1ExpertState, gmm1WaveCursor.expertIdx,
-            gmm1WaveCursor.rowOffsetInExpert, expertMGroupOffset, gmm1TilesPerMGroup_);
+            gmm1AddrInfo, gmm1ExpertState, gmm1WaveCursor.rowOffsetInExpert, gmm1TilesPerMGroup_);
         /*
          * 只有该 problem 从第 0 行覆盖到专家尾，后续 Wave 才不会再次读取同一份 GMM1 权重。
          * 热点专家的任一 Wave problem 都为 false，即使本次不足 256 行也保留正常 L2 cache。
@@ -881,9 +881,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
     while (!IsSameExpertRowCursor(gmm2WaveCursor, waveEndCursor) &&
            gmm2WaveCursor.expertIdx < moeExpertPerRank_) {
         if (gmm2WaveCursor.rowOffsetInExpert == 0U) {
-            UpdateExpertLoopStateFromWorkspace(
-                params_.workspaceInfo, countWorkspace_, gmm2ExpertState,
-                gmm2WaveCursor.expertIdx);
+            uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(
+                params_.workspaceInfo, countWorkspace_, gmm2WaveCursor.expertIdx);
+            UpdateExpertLoopState(gmm2ExpertState, gmm2WaveCursor.expertIdx, expertTokenCount);
         }
 
         uint64_t expertRowCount = Get<M_VALUE>(gmm2ExpertState.problemShape);
@@ -900,12 +900,10 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
         ProblemShape gmm2WaveProblemShape = gmm2ExpertState.problemShape;
         Get<M_VALUE>(gmm2WaveProblemShape) =
             waveEndRowOffsetInExpert - gmm2WaveCursor.rowOffsetInExpert;
-        uint32_t expertMGroupOffset = gmm2WaveCursor.rowOffsetInExpert / GMM1_TILE_M;
         UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationType, QuantScaleOutType,
                                         true, false, false>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_,
-            gmm2AddrInfo, gmm2ExpertState, gmm2WaveCursor.expertIdx,
-            gmm2WaveCursor.rowOffsetInExpert, expertMGroupOffset);
+            gmm2AddrInfo, gmm2ExpertState, gmm2WaveCursor.rowOffsetInExpert);
         // GMM2 与 GMM1 使用相同保护：只有完整专家 problem 才允许进一步判断是否绕过 L2。
         bool isWholeExpert =
             gmm2WaveCursor.rowOffsetInExpert == 0U &&
@@ -940,18 +938,20 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineE
 
     uint32_t rowSequence = 0U;
     for (uint32_t expertIdx = expertBegin; expertIdx < expertEnd; ++expertIdx) {
-        if (!UpdateExpertLoopStateFromWorkspace(
-                params_.workspaceInfo, countWorkspace_, combineState, expertIdx)) {
+        uint32_t expertTokenCount =
+            GetExpertTokenCountFromWorkspace(params_.workspaceInfo, countWorkspace_, expertIdx);
+        UpdateExpertLoopState(combineState, expertIdx, expertTokenCount);
+        if (expertTokenCount == 0U) {
             continue;
         }
         UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationType, QuantScaleOutType,
                                         true, false, false>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo,
             moeWeightTensorListAddrs_, combineAddrInfo,
-            combineState, expertIdx);
+            combineState);
         RunWaveExpertCombineStage<CombineQuantMode>(
             waveCombineConfig_, bufferConfig, waveCombineScratch_, params_,
-            combineAddrInfo, combineState, expertIdx, rowSequence);
+            combineAddrInfo, combineState, combineState.expertIdx, rowSequence);
     }
     DrainWaveCombineRowRing<CombineQuantMode>(rowSequence);
 }

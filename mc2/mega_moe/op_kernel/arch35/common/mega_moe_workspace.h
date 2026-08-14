@@ -175,6 +175,9 @@ struct WorkspaceInfo {
         // 以下三组 flag 仅由 MoE 专家使用；共享专家路径不使用这些 flag。
         bool isGenericGmm = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
                             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
+        bool isA8W4 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4;
+        bool useGroupGrainedActivationFlag =
+            tilingData->topoType == TOPO_TYPE_MTE && (isGenericGmm || isA8W4);
         bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isGenericGmm;
         bool useGroupSyncCounters =
             tilingData->topoType == TOPO_TYPE_URMA ||
@@ -184,9 +187,9 @@ struct WorkspaceInfo {
             Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize),
                                static_cast<int64_t>(L1_TILE_M_256));
         int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
-        // 只有 wave 流水会按 256 行粒度消费 SwiGLU；普通和 layered 路径仍为每个专家保留一个 cache line 槽。
+        // Wave 流水按 256 行分段消费 activation；非 Wave 路径仍只读写每个专家的第一个槽。
         int64_t activationFlagSlotsPerExpert =
-            useMteA8W8Wave ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
+            useGroupGrainedActivationFlag ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
         int64_t moeExpertCount = static_cast<int64_t>(tilingData->moeExpertPerRank);
 
         // 所有 Scalar 通知都放在同一段连续 workspace 中。每个逻辑槽独占一个 64B cache line，
