@@ -318,9 +318,6 @@ ge::graphStatus StemOamPrepPagedKvTilingSimd::GetShapeAttrsInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvSeqLensShape);
     batchSize_ = kvSeqLensShape->GetShape().GetDim(DIM_0);
 
-    OP_CHECK_IF(CheckParams() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CheckParams failed."),
-                return ge::GRAPH_FAILED);
-
     auto kvSeqLensTensor = context_->GetInputTensor(INPUT_KV_SEQ_LENS_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvSeqLensTensor);
     int32_t maxKvLen = 0;
@@ -345,8 +342,10 @@ ge::graphStatus StemOamPrepPagedKvTilingSimd::GetShapeAttrsInfo()
         numKvHeads_ = kcacheShape_.GetDim(DIM_1);
         kvBlockSize_ = kcacheShape_.GetDim(DIM_2);
     }
-    dimQk_ = kcacheShape_.GetDim(DIM_3);
 
+    OP_CHECK_IF(CheckParams() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CheckParams failed."),
+                return ge::GRAPH_FAILED);
+    dimQk_ = kcacheShape_.GetDim(DIM_3);
     const gert::StorageShape *kvIndicesShape = context_->GetInputShape(INPUT_KV_INDICES_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvIndicesShape);
     maxKvBlocks_ = kvIndicesShape->GetShape().GetDim(DIM_1);
