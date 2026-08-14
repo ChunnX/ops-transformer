@@ -33,7 +33,7 @@ protected:
 
     static void TearDownTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
         cout << "AclnnFfnToAttentionV2Test TearDown" << endl;
     }
 };
@@ -93,3 +93,6 @@ TEST_F(AclnnFfnToAttentionV2Test, TestFfnToAttentionV2NoAttnRankTable)
 }
 
 } // namespace FFNToAttentionV2UT
+
+
+

@@ -53,6 +53,7 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+*.log
 
 
 AF/
