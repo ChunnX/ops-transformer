@@ -281,13 +281,21 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, invRms shape is nullptr"),
                 return ge::GRAPH_FAILED);
     auto invRmsShape = invRmsShapePtr->GetStorageShape();
-    // BSND: invRms=[B,S,1] (3D), TND: invRms=[T,1] (2D)
+    // BSND: invRms=[B,S] (2D), TND: invRms=[T] (1D)
     if (isTND) {
+        OP_CHECK_IF(invRmsShape.GetDimNum() != 1,
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify invRms failed, expected 1D (T), but got %ldD",
+                                                invRmsShape.GetDimNum()),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(invRmsShape.GetDim(0) != totalLength,
                     OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify invRms failed, expected (T=%ld), but got (%ld)",
                                                 totalLength, invRmsShape.GetDim(0)),
                     return ge::GRAPH_FAILED);
     } else {
+        OP_CHECK_IF(invRmsShape.GetDimNum() != 2,
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify invRms failed, expected 2D (B,S), but got %ldD",
+                                                invRmsShape.GetDimNum()),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(invRmsShape.GetDim(0) != batchSize || invRmsShape.GetDim(1) != seqLength,
                     OPS_REPORT_VECTOR_INNER_ERR(
                         opName, "ShapeVerify invRms failed, expected (B=%ld, S=%ld), but got (%ld, %ld)", batchSize,

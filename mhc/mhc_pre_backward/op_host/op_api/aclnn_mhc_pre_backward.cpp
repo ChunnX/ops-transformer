@@ -220,8 +220,7 @@ bool MhcGradCheckInputDims(const AclnnMhcPreBackwardParams &params)
            CheckDimNum(params.gradHPost, (params.x)->GetViewShape().GetDimNum() - 1, "gradHPost") &&
            CheckDimNum(params.gradHRes, (params.x)->GetViewShape().GetDimNum(), "gradHRes", true,
                        (params.x)->GetViewShape().GetDimNum() - 1) &&
-           CheckDimNum(params.invRms, (params.x)->GetViewShape().GetDimNum() - 2, "invRms", true,
-                       (params.x)->GetViewShape().GetDimNum() - 1) &&
+           CheckDimNum(params.invRms, (params.x)->GetViewShape().GetDimNum() - 2, "invRms") &&
            CheckDimNum(params.hMix, (params.x)->GetViewShape().GetDimNum() - 1, "hMix") &&
            CheckDimNum(params.hPre, (params.x)->GetViewShape().GetDimNum() - 1, "hPre") &&
            CheckDimNum(params.hPost, (params.x)->GetViewShape().GetDimNum() - 1, "hPost") &&
