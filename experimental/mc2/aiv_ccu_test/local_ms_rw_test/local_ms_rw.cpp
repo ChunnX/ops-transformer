@@ -18,6 +18,7 @@
 #include "kernel_operator.h"
 #include "./kernel/local_ms_rw_kernel.h"
 #include "./kernel/dual_core_rw_kernel.h"
+#include "./kernel/read_verify_kernel.h"
 
 using namespace AscendC;
 using namespace LocalMsRwImpl;
@@ -40,6 +41,10 @@ local_ms_rw_kernel_impl(uint32_t mode0, uint32_t enableWarmup, uint32_t msId, ui
     } else if (mode0 == 7) {
         DualCoreCrossRw<uint8_t> op;
         op.Init(enableWarmup, msId, loopCount, dataSize, msAddrs, timeAddr, timeAddr2, &pipe);
+        op.Process();
+    } else if (mode0 == 8) {
+        ReadVerify<uint8_t> op;
+        op.Init(enableWarmup, msId, loopCount, dataSize, msAddrs, timeAddr, &pipe);
         op.Process();
     } else {
         LocalMsRw<uint8_t> op;

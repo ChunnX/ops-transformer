@@ -192,6 +192,7 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode0 warmup ms_id loop_count
         5|gm_write|GM_WRITE) mode0_str="GM_WRITE" ;;
         6|gm_read|GM_READ) mode0_str="GM_READ" ;;
         7|dual_cross_rw|DUAL_CROSS_RW|dcrw2|DCRW2) mode0_str="DUAL_CROSS_RW" ;;
+        8|read_verify|READ_VERIFY) mode0_str="READ_VERIFY" ;;
         *) mode0_str="UNKNOWN($mode0)" ;;
     esac
 

@@ -113,6 +113,7 @@ void GetOption(int argc, char **argv)
                 else if (m == "gm_write" || m == "GM_WRITE") { g_mode0 = 5; }
                 else if (m == "gm_read" || m == "GM_READ") { g_mode0 = 6; }
                 else if (m == "dual_cross_rw" || m == "DUAL_CROSS_RW" || m == "dcrw2" || m == "DCRW2") { g_mode0 = 7; }
+                else if (m == "read_verify" || m == "READ_VERIFY") { g_mode0 = 8; }
                 else { g_mode0 = static_cast<uint32_t>(atoi(optarg)); }
                 break;
             }
@@ -148,6 +149,7 @@ const char *GetMode0Str(uint32_t mode0)
         case 5: return "GM_WRITE";
         case 6: return "GM_READ";
         case 7: return "DUAL_CROSS_RW";
+        case 8: return "READ_VERIFY";
         default: return "UNKNOWN";
     }
 }
@@ -162,7 +164,7 @@ int main(int argc, char *argv[])
               g_rankId, g_ranksize, GetMode0Str(g_mode0), g_enableWarmup, g_msId, g_sameAddr,
               g_loopCount, g_dataSize, (double)g_dataSize / 1024.0);
 
-    CHECK_RET(g_mode0 <= 7, LOG_PRINT("[ERROR] mode0 invalid: %u\n", g_mode0); return -1);
+    CHECK_RET(g_mode0 <= 8, LOG_PRINT("[ERROR] mode0 invalid: %u\n", g_mode0); return -1);
     CHECK_RET(g_enableWarmup <= 1000, LOG_PRINT("[ERROR] warmup invalid: %u (0-1000)\n", g_enableWarmup); return -1);
     CHECK_RET(g_msId < 4, LOG_PRINT("[ERROR] ms_id invalid: %u, valid range is 0..3\n", g_msId); return -1);
     CHECK_RET(g_loopCount > 0, LOG_PRINT("[ERROR] loop_count must be greater than 0.\n"); return -1);
@@ -170,7 +172,7 @@ int main(int argc, char *argv[])
     // ========== dataSize 校验 ==========
     CHECK_RET(g_dataSize >= MIN_DATA_SIZE && (g_dataSize % MIN_DATA_SIZE) == 0,
               LOG_PRINT("[ERROR] dataSize=%lu 不满足 32B 对齐要求\n", g_dataSize); return -1);
-    if (g_mode0 == 0 || g_mode0 == 1 || g_mode0 == 5 || g_mode0 == 6 || g_mode0 == 7) {
+    if (g_mode0 == 0 || g_mode0 == 1 || g_mode0 == 5 || g_mode0 == 6 || g_mode0 == 7 || g_mode0 == 8) {
         if (g_dataSize > MAX_DATA_SIZE_SINGLE_BUF) {
             LOG_PRINT("[ERROR] dataSize=%lu 超过单 buffer UB 上限 %lu bytes\n",
                       g_dataSize, MAX_DATA_SIZE_SINGLE_BUF);
