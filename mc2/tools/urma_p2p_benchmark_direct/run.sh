@@ -19,7 +19,7 @@ DEV_COUNT=2
 DEV_IDS=""
 PEER=""
 
-SHORT=v:,b:,c:,r:,n:,s:,k:,l:,w:,m:,d:,i:,p:
+SHORT=v:,b:,c:,r:,n:,s:,k:,l:,m:,o:,d:,i:,p:
 LONG=soc-version:,build-type:,cmake-rebuild:,run-test:,num-sqe:,sqe-bytes:,buf-bytes:,db-interval:,loop-count:,sqe-mode:,bench-mode:,dev-count:,dev-ids:,peer:
 OPTS=$(getopt -a --options $SHORT --longoptions $LONG -- "$@")
 eval set -- "$OPTS"
