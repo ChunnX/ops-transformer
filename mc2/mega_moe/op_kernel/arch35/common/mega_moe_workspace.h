@@ -31,8 +31,8 @@ namespace MegaMoeImpl {
 
 // The raw communication-window prefix stores exception-dump metadata. All functional peer-memory addresses start
 // after this prefix, so every local and remote rank must use the same shifted base.
-constexpr int64_t EXCEPTION_DUMP_REGION_SIZE = 1024 * 60LL;
-constexpr int64_t PEERMEM_DATA_OFFSET = 1024 * 60LL;
+constexpr int64_t EXCEPTION_DUMP_REGION_SIZE = 60 * 1024LL;
+constexpr int64_t PEERMEM_DATA_OFFSET = 60 * 1024LL;
 constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
 constexpr int64_t SIZE_BF_16 = 2U;

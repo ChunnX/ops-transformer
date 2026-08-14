@@ -58,7 +58,7 @@ DUMP_PARAMS_SIZE = 32
 DUMP_PARAMS_FORMAT = "<4Q"
 
 # MegaMoe Stage 枚举
-ARCH22_STAGE_NAMES = [
+STAGE_NAMES = [
     "INIT",  # 0
     "APPLY_XACTIVE_MASK",  # 1
     "MOE_INIT_ROUTING",  # 2
@@ -73,50 +73,13 @@ ARCH22_STAGE_NAMES = [
 ]
 
 # DumpParams 条目语义（DumpSyncRegions 产生的 5 条固定条目）
-ARCH22_DUMP_ENTRY_NAMES = [
+DUMP_ENTRY_NAMES = [
     "tokenPerExpert",  # 0: 各 rank 每专家 token 数矩阵
     "sync_counter",  # 1: CrossRankSync sync_counter[rank][0]
     "sync_base",  # 2: CrossRankSync sync_base
     "per_rank_status",  # 3: V2Set/V2Wait per-rank status
     "selfStatus",  # 4: InitStatusTargetSum selfStatus
 ]
-
-ARCH35_STAGE_NAMES = [
-    "INIT",
-    "INPUT_PREPARE",
-    "SHARED_EXPERT_GMM1",
-    "CROSS_RANK_SYNC_INPUT",
-    "MOE_GMM1_PIPELINE",
-    "MOE_GMM2_COMBINE",
-    "SHARED_EXPERT_GMM2",
-    "CROSS_RANK_SYNC_OUTPUT",
-    "UNPERMUTE",
-]
-
-ARCH35_DUMP_ENTRY_NAMES = [
-    "cross_rank_sync",
-    "aiv_sync_count",
-    "expert_source_count",
-]
-
-ARCH35_TILING_DATA_SIZE = 216
-
-STAGE_NAMES = ARCH22_STAGE_NAMES
-DUMP_ENTRY_NAMES = ARCH22_DUMP_ENTRY_NAMES
-DUMP_LAYOUT = "arch22"
-
-
-def configure_dump_layout(stage_num: int):
-    """Select the dump layout from the stage count in the header."""
-    global STAGE_NAMES, DUMP_ENTRY_NAMES, DUMP_LAYOUT
-    if stage_num == len(ARCH35_STAGE_NAMES):
-        STAGE_NAMES = ARCH35_STAGE_NAMES
-        DUMP_ENTRY_NAMES = ARCH35_DUMP_ENTRY_NAMES
-        DUMP_LAYOUT = "arch35"
-    else:
-        STAGE_NAMES = ARCH22_STAGE_NAMES
-        DUMP_ENTRY_NAMES = ARCH22_DUMP_ENTRY_NAMES
-        DUMP_LAYOUT = "arch22"
 
 
 def parse_header(data: bytes):
@@ -213,100 +176,6 @@ def get_dump_entry_name(index: int) -> str:
     return f"dump_{index}"
 
 
-def analyze_arch35_tiling_data(raw: bytes):
-    """Parse MegaMoeTilingData using the arch35 C++ ABI layout."""
-    if len(raw) < ARCH35_TILING_DATA_SIZE:
-        logging.warning(
-            "MegaMoeTilingData 数据不完整: 实际 %d 字节, 需要 %d 字节",
-            len(raw),
-            ARCH35_TILING_DATA_SIZE,
-        )
-        return
-
-    def read(offset: int, fmt: str):
-        return struct.unpack_from("<" + fmt, raw, offset)[0]
-
-    scalar_fields = [
-        ("moeExpertPerRank", 0, "I"),
-        ("bs", 4, "I"),
-        ("h", 8, "I"),
-        ("hiddenDim", 12, "I"),
-        ("epWorldSize", 16, "I"),
-        ("blockNumPerEP", 20, "I"),
-        ("maxOutputSize", 24, "I"),
-        ("topK", 28, "I"),
-        ("aicNum", 32, "I"),
-        ("blockAivNum", 36, "I"),
-        ("combineQuantMode", 40, "q"),
-        ("clampLimit", 48, "f"),
-        ("groupedMatmulMode", 52, "B"),
-        ("topoType", 56, "q"),
-        ("sharedExpertNum", 64, "I"),
-        ("combineSyncSlotCountPerExpert", 72, "Q"),
-    ]
-    logging.info("  基础参数:")
-    for name, offset, fmt in scalar_fields:
-        logging.info("    %-34s = %s", name, read(offset, fmt))
-
-    config_fields = [
-        (
-            "dispatchBufferConfig",
-            80,
-            ("routeItemsPerBatch", "routeBatchCount", "bufferCount", "copyBufferBytes"),
-        ),
-        (
-            "sendMaskConfigForCoreWithExtraExpert",
-            96,
-            ("routeItemsPerBatch", "routeBatchCount", "bufferCount", "bufferBytes"),
-        ),
-        (
-            "sendMaskConfigForCoreWithoutExtraExpert",
-            112,
-            ("routeItemsPerBatch", "routeBatchCount", "bufferCount", "bufferBytes"),
-        ),
-    ]
-    logging.info("  Dispatch/SendMask buffer 配置:")
-    for config_name, base_offset, field_names in config_fields:
-        values = struct.unpack_from("<iiiI", raw, base_offset)
-        logging.info("    %s:", config_name)
-        for field_name, value in zip(field_names, values):
-            logging.info("      %-32s = %s", field_name, value)
-    logging.info("    %-36s = %s", "sendMaskCoreCountWithExtraExpert", read(128, "I"))
-
-    unpermute_fields = (
-        "tokensPerBatch",
-        "inputBufferCount",
-        "bf16SlotElementCount",
-        "fp32SlotElementCount",
-        "topKWeightsBufferBytes",
-        "topKWeightsConversionBufferBytes",
-    )
-    logging.info("  Unpermute buffer 配置:")
-    for config_name, base_offset in (
-        ("unpermuteConfigForFullTokenChunk", 132),
-        ("unpermuteConfigForTailTokenChunk", 156),
-    ):
-        values = struct.unpack_from("<iiIIII", raw, base_offset)
-        logging.info("    %s:", config_name)
-        for field_name, value in zip(unpermute_fields, values):
-            logging.info("      %-32s = %s", field_name, value)
-
-    trailing_fields = [
-        ("unpermuteFullTokenChunkCoreCount", 180, "I"),
-        ("topkWeightsPrefetch", 184, "i"),
-        ("maxTilesPerExpert", 188, "I"),
-        ("actMode", 192, "B"),
-        ("actSubMode", 193, "B"),
-        ("activationAlpha", 196, "f"),
-        ("activationBeta", 200, "f"),
-        ("mGroupsPerWave", 204, "I"),
-        ("isPerExpertWeightTensor", 208, "?"),
-    ]
-    logging.info("  调度与激活配置:")
-    for name, offset, fmt in trailing_fields:
-        logging.info("    %-34s = %s", name, read(offset, fmt))
-
-
 def analyze_block_stages(block_stages: list):
     """分析各核执行阶段，定位卡死阶段。"""
     if not block_stages:
@@ -374,9 +243,6 @@ def analyze_dump_entries(dump_params: list, dump_data_offset: int, data: bytes):
     logging.info("有效条目数: %d", len(dump_params))
 
     current_offset = dump_data_offset
-    arch35_world_size = (
-        dump_params[0]["blockCount"] if DUMP_LAYOUT == "arch35" else 0
-    )
     for dp in dump_params:
         name = get_dump_entry_name(dp["index"])
         logging.info(
@@ -395,9 +261,7 @@ def analyze_dump_entries(dump_params: list, dump_data_offset: int, data: bytes):
             continue
 
         # 根据 dump entry 类型做特定分析
-        if DUMP_LAYOUT == "arch35":
-            analyze_arch35_int32_slots(raw, dp, name, arch35_world_size)
-        elif dp["index"] == 0:
+        if dp["index"] == 0:
             analyze_token_per_expert(raw, dp)
         elif dp["index"] == 1:
             analyze_sync_counter(raw, dp)
@@ -409,34 +273,6 @@ def analyze_dump_entries(dump_params: list, dump_data_offset: int, data: bytes):
             analyze_self_status(raw, dp)
 
         current_offset += consumed
-
-
-def analyze_arch35_int32_slots(
-    raw: np.ndarray, dp: dict, name: str, world_size: int
-):
-    """Analyze compacted int32 slots from the arch35 structured dump."""
-    if dp["blockLen"] != 4:
-        logging.warning(
-            "  %s: unexpected blockLen=%d, expected 4", name, dp["blockLen"]
-        )
-        return
-    value_count = len(raw) // 4
-    values = np.frombuffer(raw[: value_count * 4], dtype="<i4")
-    logging.info("  %s: %d int32 slots", name, value_count)
-    for index, value in enumerate(values):
-        if name == "cross_rank_sync":
-            slot_label = f"rank[{index}]"
-        elif name == "aiv_sync_count":
-            slot_label = f"aiv[{index}]"
-        elif name == "expert_source_count" and world_size > 0:
-            slot_label = (
-                f"expert[{index // world_size}].sourceRank[{index % world_size}]"
-            )
-        else:
-            slot_label = f"slot[{index}]"
-        logging.info(
-            "    %s: %d (0x%08x)", slot_label, value, int(value) & 0xFFFFFFFF
-        )
 
 
 def analyze_token_per_expert(raw: np.ndarray, dp: dict):
@@ -536,7 +372,6 @@ def main():
         logging.error("该文件可能不是 ExceptionDump 格式，或未启用 ExceptionDump")
         sys.exit(1)
 
-    configure_dump_layout(hdr["stageNum"])
     logging.info("=== MegaMoe Exception Dump Summary ===")
     logging.info(
         "CANN 版本: %d.%d.%d",
@@ -544,12 +379,7 @@ def main():
         hdr["minorVersion"],
         hdr["patchVersion"],
     )
-    logging.info(
-        "opType: %d, stageNum: %d, layout: %s",
-        hdr["opType"],
-        hdr["stageNum"],
-        DUMP_LAYOUT,
-    )
+    logging.info("opType: %d, stageNum: %d", hdr["opType"], hdr["stageNum"])
     logging.info("execTimes: %d, dumpCount: %d", hdr["execTimes"], hdr["dumpCount"])
     logging.info(
         "tilingDataSize: %d, numBlocks: %d\n", hdr["tilingDataSize"], hdr["numBlocks"]
@@ -570,12 +400,10 @@ def main():
     if tiling_data_size > 0 and tiling_end <= len(data):
         tiling_raw = data[tiling_offset:tiling_end]
         logging.info("--- Tiling Data ---")
-        logging.info("大小: %d 字节", tiling_data_size)
-        if DUMP_LAYOUT == "arch35":
-            analyze_arch35_tiling_data(tiling_raw)
-        else:
-            logging.info("原始二进制，当前未解析该架构的 TilingDataT")
-        logging.info("")
+        logging.info(
+            "大小: %d 字节 (原始二进制, 需按 TilingDataT 结构体解析)\n",
+            tiling_data_size,
+        )
     else:
         logging.warning("Tiling 数据不可用\n")
 

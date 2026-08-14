@@ -1286,6 +1286,8 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     totalBytes = exceptionDumpRegionSize + peermemDataOffset
                + maskRecvSize + quantTokenScaleSize + combineOut;
     ```
+    其中 `ep_world_size` 即通信域大小，$maxExpertPerRank$ 表示每张卡上可能专家数的最大值，$\mathrm{quant}$ 表示是否开启dispatch量化（`dispatch_quant_mode = 2`）。预留空间10 MB为内部元数据对齐与安全余量。
+
     MTE模板中，`exceptionDumpRegionSize` 和 `peermemDataOffset` 均为60KB：前者保存异常dump元数据，后者是功能区内的全卡软同步空间，因此mask接收区从原始winIn基址偏移120KB处开始。URMA模板暂未适配结构化异常dump，`exceptionDumpRegionSize` 为0，保持原有winIn布局。
   - 通信域各节点的驱动版本应当相同。
     <!-- end id13 -->

@@ -565,11 +565,9 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
     // Get win content
     std::vector<uint8_t> winContent;
     bool isMegaMoe = (std::strstr(op, "MegaMoe") != nullptr);
-    bool isA2orA3 = (std::strstr(socName, "Ascend910_93") != nullptr || std::strstr(socName, "Ascend910B") != nullptr);
-    bool isA5 = (std::strstr(socName, "Ascend950") != nullptr);
-    OP_LOGD(OP_NAME, "isMegaMoe=%d isA2orA3=%d isA5=%d", isMegaMoe, isA2orA3, isA5);
+    OP_LOGD(OP_NAME, "isMegaMoe=%d", isMegaMoe);
 
-    if (isMegaMoe && (isA2orA3 || isA5)) {
+    if (isMegaMoe) {
         // MegaMoe structured dump: copy metadata first, then compact the selected GM regions on host.
         OP_LOGD(OP_NAME, "MegaMoe structured dump: getting peermem base");
         void *peermemBase = GetPeermemBase(socName, argsAddr);
