@@ -65,6 +65,11 @@ constexpr int64_t SLICE_SIZE = 64;
 constexpr int64_t BLOCK_SIZE = 32;
 constexpr int64_t REPEAT_SIZE = 256;
 constexpr int64_t DOUBLE_BUFFER = 2;
+constexpr int64_t MIN_ROW_PER_CORE = 1;
+constexpr int64_t X_BUFFER_ALIGN = 16;
+constexpr int64_t X_ELEMENT_BYTES = 2;
+constexpr int64_t TMP_BUFFER_ALIGN = 8;
+constexpr int64_t TMP_BUFFER_ELEMENT_BYTES = 4;
 // 4D-only cache contract: cache 逻辑 shape 必须恰为 4D [blockNum, blockSize, 1, headDim]。
 //   - dim0 blockNum: 仅此维支持非连续(分页); dim1 blockSize: 每 block 的 token 数;
 //   - dim2 固定为 1 (每 token 写出一个压缩向量, 该轴不支持为变量);
