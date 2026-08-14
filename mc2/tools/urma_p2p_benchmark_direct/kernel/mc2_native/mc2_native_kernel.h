@@ -21,7 +21,6 @@
 #endif
 #include "../common/urma_p2p_bench_tiling.h"
 #include "moe_distribute_base_native.h"
-#include "../common/aiv_urma_channel_decode.h"
 
 namespace UrmaP2pBench {
 
