@@ -47,8 +47,12 @@ using namespace Apace::AivComm;
 struct UrmaCommWaitPolicy {
     __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
+        if (tileIdx >= bufferCount) {
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE2>(tileIdx - bufferCount);
+        }
         AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
     }
+    uint32_t bufferCount{0};
 };
 
 // 定义问题形状：[M, N, K, Batch]
@@ -127,9 +131,9 @@ private:
     // ---------------- 通信相关组件与参数 ----------------
     __gm__ CommUbmemContext *syncBuffer_{nullptr};
     __gm__ CommUdmaContext *udmaCtx_{nullptr};
-    CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, AType, TeamBarrier> allToAllA_;
+    CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, AType, TeamBarrier, true> allToAllA_;
     CollectiveComm<
-        CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier>
+        CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier, false>
         allToAllScaleA_;
     TeamBarrier teamBarrier_;
 
@@ -149,6 +153,8 @@ private:
         uint64_t headMSize{0};   // 长块 M 大小
         uint64_t scaleKaSize{0}; // Scale 的 K 轴字节长度
         uint64_t rankDataBytes{0};
+        uint32_t bufferCount{0};   // win区复用槽位数，0=不复用
+        uint64_t winBytes{0};      // win区data部分的字节大小
     } baseParams_;
 
     const allToAllMatmulTilingData *tilingData_{nullptr};
@@ -200,7 +206,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 
     allToAllScaleA_.Init(udmaCtx_, teamBarrier_, tilingData->scaleCommTilingData, baseParams_.scaleAGm,
                          commScaleBuf.Get(), baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()),
-                         baseParams_.rankSize * baseParams_.rankDataBytes);
+                         baseParams_.winBytes);
 }
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -227,6 +233,13 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 {
     for (uint32_t tid = 0; tid < baseParams_.commTurn; ++tid) {
         // 必选保证baseParams_.rankSize <= BlockNum
+        if (baseParams_.bufferCount > 0 && tid >= baseParams_.bufferCount) {
+            AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE3>(tid - baseParams_.bufferCount);
+            if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
+                teamBarrier_.CrossDevice();
+                teamBarrier_.CrossCore();
+            }
+        }
         if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
             allToAllScaleA_.Commit();
             allToAllA_.Commit();
@@ -265,6 +278,17 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 
     // 计算地址偏移所需的参数
     baseParams_.rankDataBytes = baseParams_.axisM * baseParams_.axisKa * sizeof(AType);
+
+    baseParams_.bufferCount = tilingData->commTilingData.bufferCount;
+    if (baseParams_.bufferCount > 0) {
+        uint64_t maxTileSize = tilingData->commTilingData.splitAxisTileSize >
+            tilingData->commTilingData.splitAxisTailSize ?
+            tilingData->commTilingData.splitAxisTileSize : tilingData->commTilingData.splitAxisTailSize;
+        baseParams_.winBytes = baseParams_.rankSize * baseParams_.bufferCount *
+                               maxTileSize * baseParams_.axisKa * sizeof(AType);
+    } else {
+        baseParams_.winBytes = baseParams_.rankSize * baseParams_.rankDataBytes;
+    }
 }
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -317,10 +341,12 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     MatmulMode mode = (tilingData_->localMatmul == 2) ? MatmulMode::DEFERRED_SYNC : MatmulMode::REMOTE;
     SetupParams(&tilingData_->tileQbmmTilingData, params, mode);
     params.mmadParams.aGmAddr = baseParams_.selfWinAddr;
-    params.mmadParams.scaleAGmAddr = baseParams_.selfWinAddr + baseParams_.rankSize * baseParams_.rankDataBytes;
+    params.mmadParams.scaleAGmAddr = baseParams_.selfWinAddr + baseParams_.winBytes;
     params.mmadParams.cGmAddr = baseParams_.cGm;
     params.localParams.localAGmAddr = baseParams_.aGm;
     params.localParams.localScaleAGmAddr = baseParams_.scaleAGm;
+    quantMatmulKernelImpl_.GetCommPolicy().bufferCount = baseParams_.bufferCount;
+    bool reuseWin = baseParams_.bufferCount > 0 && baseParams_.bufferCount < static_cast<uint32_t>(baseParams_.commTurn);
     quantMatmulKernelImpl_(params);
 }
 

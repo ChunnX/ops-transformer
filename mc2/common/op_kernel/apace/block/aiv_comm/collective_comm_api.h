@@ -36,24 +36,24 @@ enum class CommMode {
     PUT
 };
 
-template<CommCollectiveOp Op, CommMode Mode, typename T, typename Barrier>
+template<CommCollectiveOp Op, CommMode Mode, typename T, typename Barrier, bool HasBufferReuse = false>
 struct CollectiveCommHelper;
 
-template<typename T, typename Barrier>
-struct CollectiveCommHelper<CommCollectiveOp::AllToAll, CommMode::GET, T, Barrier> {
+template<typename T, typename Barrier, bool HasBufferReuse>
+struct CollectiveCommHelper<CommCollectiveOp::AllToAll, CommMode::GET, T, Barrier, HasBufferReuse> {
     using type = AllToAllCommGetImpl<T, Barrier>;
 };
-template<typename T, typename Barrier>
-struct CollectiveCommHelper<CommCollectiveOp::AllToAll, CommMode::PUT, T, Barrier> {
-    using type = AllToAllCommPutImpl<T, Barrier>;
+template<typename T, typename Barrier, bool HasBufferReuse>
+struct CollectiveCommHelper<CommCollectiveOp::AllToAll, CommMode::PUT, T, Barrier, HasBufferReuse> {
+    using type = AllToAllCommPutImpl<T, Barrier, HasBufferReuse>;
 };
-template<typename T, typename Barrier>
-struct CollectiveCommHelper<CommCollectiveOp::AllGather, CommMode::PUT, T, Barrier> {
+template<typename T, typename Barrier, bool HasBufferReuse>
+struct CollectiveCommHelper<CommCollectiveOp::AllGather, CommMode::PUT, T, Barrier, HasBufferReuse> {
     using type = AllGatherCommPutImpl<T, Barrier>;
 };
 
-template<CommCollectiveOp Op, CommMode Mode, typename T, typename Barrier>
-using CollectiveComm = typename CollectiveCommHelper<Op, Mode, T, Barrier>::type;
+template<CommCollectiveOp Op, CommMode Mode, typename T, typename Barrier, bool HasBufferReuse = false>
+using CollectiveComm = typename CollectiveCommHelper<Op, Mode, T, Barrier, HasBufferReuse>::type;
 
 } // namespace AivComm
 } // namespace Apace
