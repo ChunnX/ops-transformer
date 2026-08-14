@@ -326,6 +326,7 @@ def _blockwise_snap_local_quantize_p_eff(
     seqk_dim_pos = seqk_dim if seqk_dim >= 0 else ndim + seqk_dim
     seqk_len = S.shape[seqk_dim_pos]
     LN2 = math.log(2.0)
+    LN2 = torch.tensor(LN2, dtype=torch.float16, device=device)
 
     # 阶段 1: pad 到 mx_block_size 倍数 (-inf padding 不影响 max)
     pad = (mx_block_size - seqk_len % mx_block_size) % mx_block_size
