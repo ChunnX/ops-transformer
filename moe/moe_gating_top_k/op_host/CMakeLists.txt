@@ -22,7 +22,7 @@ if (BUILD_OPEN_PROJECT)
             OPTIONS --cce-auto-sync=off
                     -Wno-deprecated-declarations
                     -Werror
-                    -mllvm -cce-aicore-hoist-movemask=false
+                    -mllvm
                     -cce-aicore-dcci-before-kernel-end=false
         )
     else()
