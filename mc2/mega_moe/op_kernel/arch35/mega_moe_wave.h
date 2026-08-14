@@ -802,15 +802,16 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchAllExpe
         ComputeExpertTokenCountAndNotify<ActivationType, false, TopkWeightsPrefetch>(
             tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx, expertTokenCount);
         uint64_t expertGlobalRowBegin = expertIdx == 0U ? 0U :
-            static_cast<uint64_t>(tokenDispatchScratch_.cumsumInfoTensor.GetValue(
-                expertIdx * tokenDispatchConfig_.common.worldSize - 1U));
+                                                          static_cast<uint64_t>(tokenDispatchScratch_.cumsumInfoTensor.GetValue(
+                                                              expertIdx * tokenDispatchConfig_.common.worldSize - 1U));
         if (expertGlobalRowBegin >= tokenDispatchConfig_.maxOutputSize) {
             continue;
         }
         uint64_t remainingWorkspaceRowCount =
             tokenDispatchConfig_.maxOutputSize - expertGlobalRowBegin;
         uint64_t dispatchRowCount = expertTokenCount < remainingWorkspaceRowCount ?
-            expertTokenCount : remainingWorkspaceRowCount;
+                                        expertTokenCount :
+                                        remainingWorkspaceRowCount;
         if (dispatchRowCount == 0U) {
             continue;
         }

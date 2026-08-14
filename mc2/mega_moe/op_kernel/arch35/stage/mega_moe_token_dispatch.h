@@ -361,12 +361,13 @@ __aicore__ inline void DispatchExpertTokensByRank(
             rankSegmentRowBegin = rankSegmentRowEnd;
         }
         rankSegmentRowEnd = scratch.cumsumInfoTensor.GetValue(
-            localExpertId * context.common.worldSize + static_cast<uint32_t>(remoteRankIdx)) -
-            expertGlobalRowBegin;
+                                localExpertId * context.common.worldSize + static_cast<uint32_t>(remoteRankIdx)) -
+                            expertGlobalRowBegin;
 
         int32_t segmentMatchOrdinalBegin =
             expertRange.coreExpertRowBegin > rankSegmentRowBegin ?
-                expertRange.coreExpertRowBegin - rankSegmentRowBegin : 0;
+                expertRange.coreExpertRowBegin - rankSegmentRowBegin :
+                0;
         int32_t segmentMatchOrdinalEnd = expertRange.coreExpertRowEnd - rankSegmentRowBegin;
         int32_t rankSegmentRowCount = rankSegmentRowEnd - rankSegmentRowBegin;
         if (segmentMatchOrdinalEnd > rankSegmentRowCount) {
@@ -392,7 +393,7 @@ __aicore__ inline void DispatchExpertTokensByRankShard(
 {
     constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
     int32_t expertGlobalRowBegin = localExpertId == 0U ? 0 :
-        scratch.cumsumInfoTensor.GetValue(localExpertId * context.common.worldSize - 1U);
+                                                         scratch.cumsumInfoTensor.GetValue(localExpertId * context.common.worldSize - 1U);
     uint32_t rankShardCount = context.countWorkspace.blockNum / context.common.worldSize;
     rankShardCount = rankShardCount == 0U ? 1U : rankShardCount;
 
@@ -415,13 +416,15 @@ __aicore__ inline void DispatchExpertTokensByRankShard(
             static_cast<int32_t>(rankSegmentDstRowBegin);
         int32_t rankDispatchRowCount =
             rankSegmentDstRowBegin + rankTokenCount > context.maxOutputSize ?
-                static_cast<int32_t>(context.maxOutputSize - rankSegmentDstRowBegin) : rankTokenCount;
+                static_cast<int32_t>(context.maxOutputSize - rankSegmentDstRowBegin) :
+                rankTokenCount;
         int32_t rowsPerRankShard =
             Ops::Base::CeilDiv(rankDispatchRowCount, static_cast<int32_t>(rankShardCount));
         int32_t rankShardRowBegin = static_cast<int32_t>(rankShardIdx) * rowsPerRankShard;
         int32_t dispatchRowCount =
             rankShardRowBegin + rowsPerRankShard > rankDispatchRowCount ?
-                rankDispatchRowCount - rankShardRowBegin : rowsPerRankShard;
+                rankDispatchRowCount - rankShardRowBegin :
+                rowsPerRankShard;
         if (dispatchRowCount <= 0) {
             continue;
         }
@@ -621,10 +624,11 @@ __aicore__ inline void RunMoeExpertDispatchStage(
             context, params, scratch, expertIdx, sendCnt);
         if (sendCnt != 0U) {
             uint64_t expertGlobalRowBegin = expertIdx == 0U ? 0U :
-                static_cast<uint64_t>(
-                    scratch.cumsumInfoTensor.GetValue(expertIdx * context.common.worldSize - 1U));
+                                                              static_cast<uint64_t>(
+                                                                  scratch.cumsumInfoTensor.GetValue(expertIdx * context.common.worldSize - 1U));
             uint64_t dispatchRowCount = expertGlobalRowBegin < context.maxOutputSize ?
-                context.maxOutputSize - expertGlobalRowBegin : 0U;
+                                            context.maxOutputSize - expertGlobalRowBegin :
+                                            0U;
             if (dispatchRowCount > sendCnt) {
                 dispatchRowCount = sendCnt;
             }
