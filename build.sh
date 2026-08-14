@@ -590,6 +590,7 @@ function build_example()
     # Compile and Execute
     if [[ "${EXAMPLE_MODE}" == "eager" ]]; then
         if [ -z "$files" ]; then
+            echo "$files"
             echo "${EXAMPLE_NAME} do not have eager example"
             return 2
         fi
