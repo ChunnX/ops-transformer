@@ -18,8 +18,8 @@
 #include "opdev/op_log.h"
 #include "aclnn_kernels/cast.h"
 #include "opdev/common_types.h"
-#include "inplace_fused_causal_conv1d.h"
-#include "aclnn_inplace_fused_causal_conv1d.h"
+#include "inplace_fused_causal_conv1d_v2.h"
+#include "aclnn_inplace_fused_causal_conv1d_v2.h"
 
 using namespace op;
 
@@ -101,7 +101,7 @@ aclnnStatus InplaceFusedCausalConv1dV2CommonProcess(
     CHECK_COND(initialStateIdx == nullptr || initialStateIdxFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR,
                "Contiguous initialStateIdx failed.");
 
-    bool ok = l0op::InplaceFusedCausalConv1dV2(
+    bool ok = l0op::InplaceFusedCausalConv1d(
         xFinal, weightFinal, convStatesFinal, queryStartLocFinal, cacheIndicesFinal, initialStateModeFinal, biasFinal,
         numAcceptedTokensFinal, numComputedTokensFinal, blockIdxFirstFinal, blockIdxLastFinal, initialStateIdxFinal,
         activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, maxDraftTokens,

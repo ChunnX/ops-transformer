@@ -16,7 +16,6 @@
 #include "aclnn_common.h"
 
 namespace op_api {
-using npu_preparation = at_npu::native::OpPreparation;
 
 static int64_t parseActivation(const c10::optional<c10::string_view> &activation)
 {

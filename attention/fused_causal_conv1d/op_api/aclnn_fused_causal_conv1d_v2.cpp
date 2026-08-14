@@ -18,8 +18,8 @@
 #include "opdev/op_log.h"
 #include "aclnn_kernels/cast.h"
 #include "opdev/common_types.h"
-#include "fused_causal_conv1d.h"
-#include "aclnn_fused_causal_conv1d.h"
+#include "fused_causal_conv1d_v2.h"
+#include "aclnn_fused_causal_conv1d_v2.h"
 
 using namespace op;
 
