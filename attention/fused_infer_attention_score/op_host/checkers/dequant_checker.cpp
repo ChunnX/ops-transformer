@@ -2238,7 +2238,7 @@ ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingIn
         }
 
         if ((keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
-            fiaInfo.inputKvType == ge::DT_INT8 && fiaInfo.kvCacheNzD0 != NUM_32 &&
+            fiaInfo.inputKvType == ge::DT_INT8 &&
             (fiaInfo.inputQType != ge::DT_BF16 || fiaInfo.outputType != ge::DT_BF16)) {
             std::string dtypeMsg = ToString(fiaInfo.inputQType) + " and " + ToString(fiaInfo.outputType);
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
@@ -2249,8 +2249,7 @@ ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingIn
         }
 
         if ((keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
-            fiaInfo.inputKvType == ge::DT_INT8 && fiaInfo.kvCacheNzD0 != NUM_32 &&
-            fiaInfo.s1Size > NUM_16) {
+            fiaInfo.inputKvType == ge::DT_INT8 && fiaInfo.s1Size > NUM_16) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query", std::to_string(fiaInfo.s1Size).c_str(),
                                                   "When the dtype of key/value is INT8 and keyAntiquantMode is 0 or 1, "
                                                   "the axis S of query should not be greater than 16");
