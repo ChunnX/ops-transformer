@@ -191,3 +191,4 @@ phi和gradPhi的shape记为（2N+N^2，N*C），不受维度格式影响。
 | 调用方式 | 调用样例 | 说明 |
 | :--- | :--- | :--- |
 | aclnn调用 | [test_aclnn_mhc_pre.cpp](examples/test_aclnn_mhc_pre_sinkhorn_backward.cpp) | 通过[aclnnMhcPreSinkhornBackward](docs/aclnnMhcPreSinkhornBackward.md)接口方式调用MhcPreSinkhornBackward算子。 |
+| PyTorch API | - | 通过[mhc_pre_sinkhorn_backward](../../torch_extension/cann_ops_transformer/docs/zh/mhc_pre_sinkhorn_backward.md)接口方式调用MhcPreSinkhornBackward算子。 |
