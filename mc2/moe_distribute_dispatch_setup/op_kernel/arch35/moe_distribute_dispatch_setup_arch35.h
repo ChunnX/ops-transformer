@@ -347,7 +347,7 @@ private:
         if (aivId_ != 0U) {
             return;
         }
-        printf("[IN][dispatch_setup] rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
+        printf("D_S IN rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
             "moeExpertNumPerRank=%u globalBs=%u bs=%u k=%u h=%u aivNum=%u quantMode=%u isActiveMask=%d "
             "scalesCount=%llu totalWinSize=%llu\n",
             epRankId_, epWorldSize_, sharedExpertNum_, sharedExpertRankNum_, moeExpertNum_, moeExpertNumPerRank_,
@@ -355,10 +355,10 @@ private:
             static_cast<int32_t>(isInputActiveMaskFlag_), static_cast<uint64_t>(scalesCount_),
             static_cast<uint64_t>(totalWinSize_));
         // x 是 [bs, h] 的 XType，按 32bit 字打印原始位，不做类型转换
-        IoDumpI64("IN_x", x, static_cast<uint64_t>(axisBS_) * axisH_ * sizeof(XType) / sizeof(int32_t));
-        IoDumpI64("IN_expertIds", expertIds, axisBS_ * axisK_);
+        IoDumpF32("IN_x", x, static_cast<uint64_t>(axisBS_) * axisH_ * sizeof(XType) / sizeof(int32_t));
+        IoDumpI32("IN_expertIds", expertIds, axisBS_ * axisK_);
         IoDumpF32("IN_scales", scales, static_cast<uint32_t>(scalesCount_));
-        IoDumpI64("IN_xActiveMask", xActiveMask, IO_DUMP_MAX_ELEM);
+        //IoDumpI64("IN_xActiveMask", xActiveMask, IO_DUMP_MAX_ELEM);
     }
 
     __aicore__ inline void DumpOutputs()
@@ -366,11 +366,10 @@ private:
         if (aivId_ != 0U) {
             return;
         }
-        printf("[OUT][dispatch_setup] rank=%u\n", epRankId_);
         // YOut 的 dim0 由分发结果决定，不在 tiling 里，只打头部
-        IoDumpI64("OUT_YOut", yOutGM_, IO_DUMP_MAX_ELEM);
-        IoDumpI64("OUT_expandIdxOut", expandIdxOutGM_, axisBS_ * axisK_);
-        IoDumpI64("OUT_commCmdInfoOut", commCmdInfoOutGM_, IO_DUMP_MAX_ELEM);
+        IoDumpF32("OUT_YOut", yOutGM_, IO_DUMP_MAX_ELEM);
+        IoDumpI32("OUT_expandIdxOut", expandIdxOutGM_, axisBS_ * axisK_);
+        IoDumpI32("OUT_commCmdInfoOut", commCmdInfoOutGM_, IO_DUMP_MAX_ELEM);
     }
     // =============================== Log Dump =============================== //
 };
@@ -698,8 +697,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SendToMo
     GlobalTensor<int32_t> expandIdxGMTensor;
     expandIdxGMTensor.SetGlobalBuffer((__gm__ int32_t *)(expandIdxOutGM_ + startTokenId_ * sizeof(int32_t)));
     DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(sendTokenNum_ * sizeof(uint32_t)), 0U, 0U, 0U};
-    // expertCountTensor_ 是循环里标量写的，搬出前先等 S 落盘
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopyPad(expandIdxGMTensor, expertCountTensor_, expertIdsCntParams);
 }
 
@@ -755,8 +752,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::AlltoAll
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SetStatus()
 {
-    // flag 位由 Init 的 Duplicate(V) 写入，下面的 token 数是标量写，先等 V 落盘
-    SyncFunc<AscendC::HardEvent::V_S>();
     if (activeMaskBsCnt_ > 0) { // 需要发送的再算
         for (uint32_t curExpertId = startExpertId_; curExpertId < endExpertId_; ++curExpertId) {
             int32_t curExpertCnt = 0;
@@ -778,12 +773,9 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SetStatu
     // 状态区拷贝到windowOut
     windowExpGMTensor.SetGlobalBuffer(
         (__gm__ int32_t *)(statusDataSpaceGM_ + DISPATCH_STAGING_OFFSET + startExpertId_ * 8 * sizeof(int32_t)));
-    // 标量写完 statusTensor_ 才能搬走，否则 staging 拿到的是旧值，对端等不到 flag、也收不到 token
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopy<int32_t>(windowExpGMTensor, statusTensor_[startExpertId_ * 8],
                       sendExpertNum_ * 8); // 8时数据大小，按32对齐拷贝
-    // Communication 随后要把 staging 读回 UB
-    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+    SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
 }
 
 template <TemplateMC2TypeClass>
@@ -990,8 +982,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::TokenSca
     PipeBarrier<PIPE_V>();
     Extract(sortedOutF32LT_, sortedIndex1LT_, sortedLocal, sortRepeat_);
     SyncFunc<HardEvent::V_MTE2>();
-    // SendToMoeExpert 用标量读 sortedIndex1LT_ 算搬运源地址，须等 Extract 完成
-    SyncFunc<HardEvent::V_S>();
 }
 
 template <TemplateMC2TypeClass>

@@ -218,6 +218,22 @@ private:
         }
     }
 
+    __aicore__ inline void IoDumpF32(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
+    {
+        if (addr == nullptr) {
+            printf("D_T IoDumpF32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
+            return;
+        }
+        GlobalTensor<float> t;
+        t.SetGlobalBuffer((__gm__ float *)addr);
+        DataCacheCleanAndInvalid<float, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+        printf("D_T IoDumpF32 1 epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
+        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
+        for (uint32_t i = 0U; i < n; ++i) {
+            printf("D_T IoDumpF32 2 epRankId_:%u, %s[%u]=%f\n", epRankId_, tag, i, t.GetValue(i));
+        }
+    }
+
     __aicore__ inline void IoDumpI64(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
     {
         if (addr == nullptr) {
@@ -239,17 +255,17 @@ private:
         if (aivId_ != 0U) {
             return;
         }
-        printf("[IN][dispatch_teardown] rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
+        printf("D_T IN rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
             "moeExpertNumPerRank=%u globalBs=%u bs=%u k=%u h=%u aivNum=%u quantMode=%u expertTokenNumsType=%u "
             "totalWinSize=%llu\n",
             epRankId_, epWorldSize_, sharedExpertNum_, sharedExpertRankNum_, moeExpertNum_, moeExpertNumPerRank_,
             axisMaxBS_ * epWorldSize_, axisBS_, axisK_, axisH_, aivNum_, static_cast<uint32_t>(QuantMode),
             expertTokenNumsType_, static_cast<uint64_t>(tempTotalWinSize_));
         // x 是 [bs, h] 的 XType，按 32bit 字打印原始位，不做类型转换
-        IoDumpI64("IN_x", x, static_cast<uint64_t>(axisBS_) * axisH_ * sizeof(XType) / sizeof(int32_t));
-        IoDumpI64("IN_y", y, IO_DUMP_MAX_ELEM);
-        IoDumpI64("IN_expertIds", expertIds, axisBS_ * axisK_);
-        IoDumpI64("IN_commCmdInfo", commCmdInfo, IO_DUMP_MAX_ELEM);
+        IoDumpF32("IN_x", x, static_cast<uint64_t>(axisBS_) * axisH_ * sizeof(XType) / sizeof(int32_t));
+        IoDumpF32("IN_y", y, IO_DUMP_MAX_ELEM);
+        IoDumpI32("IN_expertIds", expertIds, axisBS_ * axisK_);
+        IoDumpI32("IN_commCmdInfo", commCmdInfo, IO_DUMP_MAX_ELEM);
     }
 
     __aicore__ inline void DumpOutputs()
@@ -257,12 +273,11 @@ private:
         if (aivId_ != 0U) {
             return;
         }
-        printf("[OUT][dispatch_teardown] rank=%u\n", epRankId_);
         // expandXOut 的 dim0 由实际收到的 token 数决定，不在 tiling 里，只打头部
-        IoDumpI64("OUT_expandXOut", expandXOutGM_, IO_DUMP_MAX_ELEM);
-        IoDumpI64("OUT_dynamicScalesOut", dynamicScalesOutGM_, IO_DUMP_MAX_ELEM);
+        IoDumpF32("OUT_expandXOut", expandXOutGM_, IO_DUMP_MAX_ELEM);
+        IoDumpF32("OUT_dynamicScalesOut", dynamicScalesOutGM_, IO_DUMP_MAX_ELEM);
         // assistInfoForCombineOut 就是下游 combine_setup 读的前缀和，整段都要能看到
-        IoDumpI64("OUT_assistInfoForCombineOut", sendCountsOutGM_, epWorldSize_ * moeExpertNumPerRank_);
+        IoDumpI32("OUT_assistInfoForCombineOut", sendCountsOutGM_, epWorldSize_ * moeExpertNumPerRank_);
         IoDumpI64("OUT_expertTokenNumsOut", expertTokenNumsOutGM_, moeExpertNumPerRank_);
     }
     // =============================== Log Dump =============================== //
@@ -709,7 +724,6 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Proce
         SyncAll<true>();
         LocalWindowCopy();
         UpdateTokenNumsOut();
-
         SyncAll<true>(); // 等全核写完，aiv0 打印的输出才是完整的
         DumpOutputs();
     }

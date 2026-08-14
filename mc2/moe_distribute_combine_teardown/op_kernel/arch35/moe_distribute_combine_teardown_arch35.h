@@ -207,7 +207,7 @@ private:
             return;
         }
         const MoeDistributeCombineTeardownInfo *t = moeDistributeCombineTeardownInfo_;
-        printf("[IN][combine_teardown] rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
+        printf("C_T IN rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
             "moeExpertPerRankNum=%u globalBs=%u bs=%u k=%u h=%u aivNum=%u isActiveMask=%d hasSharedExpertX=%d "
             "totalUbSize=%llu totalWinSize=%llu\n",
             epRankId_, t->epWorldSize, t->sharedExpertNum, t->sharedExpertRankNum, t->moeExpertNum,
@@ -215,14 +215,14 @@ private:
             static_cast<int32_t>(t->hasSharedExpertX), static_cast<uint64_t>(t->totalUbSize),
             static_cast<uint64_t>(t->totalWinSize));
         // expandX / quantExpandX / sharedExpertX 的 dim0 不在 tiling 里，只打头部
-        IoDumpI64("IN_expandX", expandX, IO_DUMP_MAX_ELEM);
-        IoDumpI64("IN_quantExpandX", quantExpandX, IO_DUMP_MAX_ELEM);
-        IoDumpI64("IN_expertIds", expertIds, t->bs * t->k);
-        IoDumpI64("IN_expandIdx", expandIdx, t->bs * t->k);
+        IoDumpF32("IN_expandX", expandX, IO_DUMP_MAX_ELEM);
+        IoDumpI32("IN_quantExpandX", quantExpandX, IO_DUMP_MAX_ELEM);
+        IoDumpI32("IN_expertIds", expertIds, t->bs * t->k);
+        IoDumpI32("IN_expandIdx", expandIdx, t->bs * t->k);
         IoDumpF32("IN_expertScales", expertScales, t->bs * t->k);
-        IoDumpI64("IN_commCmdInfo", commCmdInfo, IO_DUMP_MAX_ELEM);
-        IoDumpI64("IN_xActiveMask", xActiveMask, IO_DUMP_MAX_ELEM);
-        IoDumpI64("IN_sharedExpertX", sharedExpertX, IO_DUMP_MAX_ELEM);
+        //IoDumpI32("IN_commCmdInfo", commCmdInfo, IO_DUMP_MAX_ELEM);
+        IoDumpI32("IN_xActiveMask", xActiveMask, IO_DUMP_MAX_ELEM);
+        //IoDumpF32("IN_sharedExpertX", sharedExpertX, IO_DUMP_MAX_ELEM);
     }
 
     __aicore__ inline void DumpOutputs()
@@ -230,9 +230,8 @@ private:
         if (coreIdx_ != 0U) {
             return;
         }
-        printf("[OUT][combine_teardown] rank=%u\n", epRankId_);
         // XOut 是 [bs, h] 的 ExpandXType，按 32bit 字打印原始位，不做类型转换
-        IoDumpI64("OUT_XOut", xOutGM_,
+        IoDumpF32("OUT_XOut", xOutGM_,
             static_cast<uint64_t>(moeDistributeCombineTeardownInfo_->bs) *
             moeDistributeCombineTeardownInfo_->h * sizeof(ExpandXType) / sizeof(int32_t));
     }

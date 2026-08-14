@@ -174,6 +174,22 @@ private:
         }
     }
 
+    __aicore__ inline void IoDumpF32(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
+    {
+        if (addr == nullptr) {
+            printf("C_S IoDumpF32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
+            return;
+        }
+        GlobalTensor<float> t;
+        t.SetGlobalBuffer((__gm__ float *)addr);
+        DataCacheCleanAndInvalid<float, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+        printf("C_S IoDumpF32 1 epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
+        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
+        for (uint32_t i = 0U; i < n; ++i) {
+            printf("C_S IoDumpF32 2 epRankId_:%u, %s[%u]=%f\n", epRankId_, tag, i, t.GetValue(i));
+        }
+    }
+
     __aicore__ inline void IoDumpI64(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
     {
         if (addr == nullptr) {
@@ -196,17 +212,17 @@ private:
             return;
         }
         const MoeDistributeCombineSetupInfo *t = moeDistributeCombineSetupInfo_;
-        printf("[IN][combine_setup] rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
+        printf("C_S IN rank=%u epWorldSize=%u sharedExpertNum=%u sharedExpertRankNum=%u moeExpertNum=%u "
             "moeExpertPerRankNum=%u commQuantMode=%u globalBs=%u bs=%u k=%u h=%u a=%u aivNum=%u totalUbSize=%llu "
             "totalWinSize=%llu\n",
             epRankId_, t->epWorldSize, t->sharedExpertNum, t->sharedExpertRankNum, t->moeExpertNum,
             t->moeExpertPerRankNum, t->commQuantMode, t->globalBs, t->bs, t->k, t->h, t->a, t->aivNum,
             static_cast<uint64_t>(t->totalUbSize), static_cast<uint64_t>(t->totalWinSize));
         // expandX 是 [a, h] 的 ExpandXType，按 32bit 字打印原始位，不做类型转换
-        IoDumpI64("IN_expandX", expandX,
+        IoDumpF32("IN_expandX", expandX,
                     static_cast<uint32_t>(static_cast<uint64_t>(t->a) * t->h * sizeof(ExpandXType) / sizeof(int32_t)));
-        IoDumpI64("IN_expertIds", expertIds, t->bs * t->k);
-        IoDumpI64("IN_assistInfoForCombine", assistInfoForCombine, t->epWorldSize * t->moeExpertPerRankNum);
+        IoDumpI32("IN_expertIds", expertIds, t->bs * t->k);
+        IoDumpI32("IN_assistInfoForCombine", assistInfoForCombine, t->epWorldSize * t->moeExpertPerRankNum);
     }
 
     __aicore__ inline void DumpOutputs()
@@ -214,9 +230,8 @@ private:
         if (aivId_ != 0U) {
             return;
         }
-        printf("[OUT][combine_setup] rank=%u\n", epRankId_);
-        IoDumpI64("OUT_quantExpandX", quantExpandXGM_, IO_DUMP_MAX_ELEM);
-        IoDumpI64("OUT_commCmdInfoOut", commCmdInfoOutGM_,
+        IoDumpI32("OUT_quantExpandX", quantExpandXGM_, IO_DUMP_MAX_ELEM);
+        IoDumpI32("OUT_commCmdInfoOut", commCmdInfoOutGM_,
             (static_cast<uint64_t>(moeDistributeCombineSetupInfo_->a) + moeDistributeCombineSetupInfo_->epWorldSize) *
             COMM_CMD_INFO_BYTES / sizeof(int32_t));
     }
