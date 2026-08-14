@@ -1204,7 +1204,9 @@ def _materialize_pa_bnsd(tensor):
 # ==============================================================================
 
 
-def generate_mxfp8_inputs(case=None, max_block_per_batch=None):
+def generate_mxfp8_inputs(
+    case=None, max_block_per_batch=None, atten_mask_shape=None
+):
     """Generate test inputs with paired fp8 + descale.
 
     流程: fp32 随机 → 从 fp32 算 descale → fp8 = clamp(fp32/descale)
@@ -1299,6 +1301,7 @@ def generate_mxfp8_inputs(case=None, max_block_per_batch=None):
         if p_scale_mode != "value"
         else torch.tensor([float(p_scale_value)], dtype=torch.float32)
     )
+    atten_mask = _build_causal_mask(case["mask_mode"], atten_mask_shape)
 
     return {
         "case": case,
@@ -1309,6 +1312,7 @@ def generate_mxfp8_inputs(case=None, max_block_per_batch=None):
         "k_descale": k_descale,
         "v_descale": v_descale,
         "p_scale": p_scale,
+        "atten_mask": atten_mask,
         "block_table": block_table,
         "sparse_indices": sparse_indices,
         "sparse_seq_len": sparse_seq_len,
@@ -1347,6 +1351,7 @@ def generate_data():
         data["k_descale"],
         data["v_descale"],
         data["p_scale"],
+        data["atten_mask"],
         data["block_table"],
         data["sparse_indices"],
         data["sparse_seq_len"],
@@ -2354,10 +2359,19 @@ def _call_npu_fa_op_graph(
     return atten_out.detach().cpu(), lse_out.detach().cpu()
 
 
-def _build_causal_mask():
-    if MASK_MODE == 0:
-        return torch.empty((0, 0), dtype=torch.uint8).npu()
-    return torch.tril(torch.ones(2048, 2048, dtype=torch.uint8)).T.contiguous().npu()
+def _build_causal_mask(mask_mode, shape=None):
+    mask_mode = int(mask_mode)
+    if shape is None:
+        shape = (0, 0) if mask_mode == 0 else (2048, 2048)
+    shape = tuple(int(dim) for dim in shape)
+
+    if mask_mode == 0:
+        return torch.empty(shape, dtype=torch.uint8)
+    if len(shape) != 2:
+        raise ValueError(
+            f"causal attention mask must be 2D, got shape={shape}"
+        )
+    return torch.tril(torch.ones(shape, dtype=torch.uint8)).T.contiguous()
 
 
 def _calc_cube_compute_amount(q_lengths, kv_lengths, sparse_indices, sparse_seq_len):
@@ -2535,6 +2549,7 @@ def npu_mxfp8_fa(
     dequant_scale_k,
     dequant_scale_v,
     p_scale,
+    atten_mask,
     q_lengths,
     kv_lengths,
     cu_seqlens_q,
@@ -2585,7 +2600,7 @@ def npu_mxfp8_fa(
     else:
         p_scale_npu = torch.tensor([], dtype=torch.float8_e8m0fnu).npu()
         logger.info("[NPU] P scale=empty tensor (shape size 0, default 1.0)")
-    mask_arg = _build_causal_mask()
+    mask_arg = atten_mask.npu()
 
     if block_table_torch is None:
         raise ValueError("PA KV cache requires block_table_torch")
@@ -2904,6 +2919,7 @@ def run_one_case(
             dequant_scale_k,
             dequant_scale_v,
             p_scale,
+            atten_mask,
             block_table_torch,
             sparse_indices,
             sparse_seq_len,
@@ -2924,6 +2940,7 @@ def run_one_case(
                 "dequant_scale_k": dequant_scale_k,
                 "dequant_scale_v": dequant_scale_v,
                 "p_scale": p_scale,
+                "atten_mask": atten_mask,
                 "block_table_torch": block_table_torch,
                 "sparse_indices": sparse_indices,
                 "sparse_seq_len": sparse_seq_len,
@@ -2947,6 +2964,9 @@ def run_one_case(
         dequant_scale_k = data["dequant_scale_k"]
         dequant_scale_v = data["dequant_scale_v"]
         p_scale = data["p_scale"]
+        atten_mask = data.get("atten_mask")
+        if atten_mask is None:
+            atten_mask = _build_causal_mask(MASK_MODE)
         block_table_torch = data.get("block_table_torch")
         sparse_indices = data.get("sparse_indices")
         sparse_seq_len = data.get("sparse_seq_len")
@@ -3026,6 +3046,7 @@ def run_one_case(
             dequant_scale_k,
             dequant_scale_v,
             p_scale,
+            atten_mask,
             q_lengths,
             kv_lengths,
             cu_seqlens_q,
