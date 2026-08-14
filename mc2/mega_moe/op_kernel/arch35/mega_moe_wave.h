@@ -423,6 +423,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     const size_t maskSlotSize = sendMaskConfig_.maskAlignSize + ALIGN_32;
     exceptionDump_.Dump(params_.peermemInfo.maskRecvPtr + sendMaskConfig_.maskAlignSize,
                         static_cast<size_t>(moeExpertPerRank_) * worldSize_, sizeof(int32_t), maskSlotSize);
+    exceptionDump_.Dump(reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId), sizeof(uint32_t));
 }
 
 // =================================================================================================
@@ -1056,7 +1057,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineE
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExpertStages()
 {
-    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::MOE_GMM1_PIPELINE);
+    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::MOE_GMM1_ACTIVATION);
     tokenDispatchScratch_.expertRevNumsGlobalTensor.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.expertRevTokenNumsPtr));
     gmm1Scratch_.expertRevNumsGlobalTensor.SetGlobalBuffer(
@@ -1088,7 +1089,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     uint32_t combineBeginExpertIndex = 0U;
 
     while (waveBeginCursor.expertIdx < moeExpertPerRank_) {
-        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::MOE_GMM1_PIPELINE);
+        exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::MOE_GMM1_ACTIVATION);
         ExpertRowCursor waveEndCursor = waveBeginCursor;
         const uint32_t waveStartBlockIndex = startBlockIdx_;
 
@@ -1225,6 +1226,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Process()
     }
     // 恢复入口时保存的溢出模式。
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::COMPLETE);
 }
 
 #undef TemplateMegaMoeWaveTypeClass

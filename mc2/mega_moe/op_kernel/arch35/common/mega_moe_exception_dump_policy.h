@@ -27,7 +27,8 @@ enum class Stage : uint32_t {
     SHARED_EXPERT_GMM2 = 6,
     CROSS_RANK_SYNC_OUTPUT = 7,
     UNPERMUTE = 8,
-    END = 9
+    COMPLETE = 9,
+    END = 10
 };
 
 struct MegaMoeExceptionDumpPolicy {
