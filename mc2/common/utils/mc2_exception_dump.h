@@ -200,6 +200,53 @@ inline int DumpToFile(std::string dir, std::string name, uint32_t id, void *buf)
     return 0;
 }
 
+const uint32_t XN_ADDR_DUMP_SIZE = 64U * 64U * 8U;
+const uint32_t CKE_ADDR_DUMP_SIZE = 64U * 2U * 8U;
+
+inline std::string GenDumpFileNameWithPrefix(aclrtExceptionInfo *args, const char *op, const char *prefix)
+{
+    std::stringstream ss;
+
+    uint32_t streamId = aclrtGetStreamIdFromExceptionInfo(args);
+    uint32_t taskId = aclrtGetTaskIdFromExceptionInfo(args);
+    std::string ts = GetTimestampWithMilliseconds();
+
+    ss << prefix << op << "." << streamId << "." << taskId << "." << ts;
+
+    return ss.str();
+}
+
+inline int DumpToFileWithSize(std::string dir, std::string name, uint32_t id, void *buf, uint32_t size)
+{
+    if (IsStrEmpty(dir) || IsStrEmpty(name)) {
+        OP_LOGE(OP_NAME, "Dump path or buf is null.");
+        return -1;
+    }
+
+    std::string rankPath = dir + "/" + std::to_string(id) + "/";
+    std::string path = rankPath + name;
+    OP_LOGE(OP_NAME, "Start to dump file. The dump path is %s", path.c_str());
+
+    int fd = open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, FILE_MODE);
+    if (fd < 0) {
+        int openErrno = errno;
+        OP_LOGE(OP_NAME, "Failed to open a dump file. errno=%d(%s)", openErrno, strerror(openErrno));
+        return -1;
+    }
+
+    ssize_t ret = write(fd, buf, size);
+    if (ret < 0) {
+        int writeErrno = errno;
+        OP_LOGE(OP_NAME, "Failed to write a dump file. errno=%d(%s)", writeErrno, strerror(writeErrno));
+        close(fd);
+        return -1;
+    }
+
+    close(fd);
+    OP_LOGE(OP_NAME, "Dump to file %s done.", path.c_str());
+    return 0;
+}
+
 inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf, const char *op)
 {
     // Get hccl context from its addr
@@ -413,6 +460,104 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
     if (DumpToFile(std::string(dumpPath), GenDumpFileName(args, op), deviceId,
                    winContent.data()) != 0) {
         OP_LOGE(OP_NAME, "Failed to get win content.");
+    }
+}
+
+inline void Mc2ExceptionImplTmp(aclrtExceptionInfo *args, void *userdata, const char *op)
+{
+    const char* socName = aclrtGetSocName();
+    if (std::strstr(socName, "Ascend950") == nullptr) {
+        OP_LOGE(OP_NAME, "The soc version is %s, skip dump process", socName);
+        return;
+    }
+
+    OP_LOGD(OP_NAME, "Start to handle mc2 exception and dump xn/cke info.");
+
+    // 1. 动态加载 aclrtGetArgsFromExceptionInfo 函数
+    auto aclrtGetArgsFromExceptionInfoFunc = GetAclrtGetArgsFromExceptionInfoFunc();
+    if (aclrtGetArgsFromExceptionInfoFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load aclrtGetArgsFromExceptionInfo function.");
+        return;
+    }
+
+    // 2. 调用获取函数，拿到 devArgsPtr 和 devArgsLen
+    void* devArgsPtr = nullptr;
+    uint32_t devArgsLen = 0;
+    auto ret = aclrtGetArgsFromExceptionInfoFunc(args, &devArgsPtr, &devArgsLen);
+    if (ret != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtGetArgsFromExceptionInfo failed. ret=%d", ret);
+        return;
+    }
+
+    // 3. 获取报错的 deviceId
+    uint32_t deviceId = aclrtGetDeviceIdFromExceptionInfo(args);
+    OP_LOGD(OP_NAME, "Get context from args. deviceId=%u, devArgsAddr=%p, devArgsLen=%u", deviceId, devArgsPtr,
+            devArgsLen);
+
+    // 4. args 首地址中的内容即为 hccl context 的 device 地址，做一次 D2H copy（无 argsOffset）
+    uint64_t argsAddr = 0;
+    ret = aclrtMemcpy(&argsAddr, sizeof(uint64_t), devArgsPtr, sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    if (ret != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy address of args failed. ret=%d", ret);
+        return;
+    }
+
+    // 5. 根据 hccl context 的 device 地址，做一次 D2H copy，大小为 HcclCombinOpParam
+    std::vector<uint8_t> hcclArgs(sizeof(HcclCombinOpParam), 0);
+    ret = aclrtMemcpy(hcclArgs.data(), sizeof(HcclCombinOpParam), (void *)argsAddr, sizeof(HcclCombinOpParam),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    if (ret != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy HcclCombinOpParam from device to host failed. ret = %d", ret);
+        return;
+    }
+    HcclCombinOpParam* winContext = reinterpret_cast<HcclCombinOpParam *>(hcclArgs.data());
+    if (winContext == nullptr) {
+        OP_LOGE(OP_NAME, "Cast to winContext failed. HcclCombinOpParam is null.");
+        return;
+    }
+    OP_LOGD(OP_NAME, "Get winContext from args. rankId=%u, rankDim=%u, xnAddr=0x%lx, ckeAddr=0x%lx",
+            winContext->rankId, winContext->rankDim, winContext->xnAddr, winContext->ckeAddr);
+
+    // 6. 解析 HcclCombinOpParam，拿到 xnAddr 和 ckeAddr，分别做 D2H copy 并落盘
+    auto acldumpGetPathFunc = GetAcldumpGetPathFunc();
+    if (acldumpGetPathFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load acldumpGetPath function, skip dump");
+        return;
+    }
+    const char* dumpPath = acldumpGetPathFunc(acldumpType::AIC_ERR_BRIEF_DUMP);
+    if (dumpPath == nullptr) {
+        OP_LOGE(OP_NAME, "acldumpGetPath returned NULL");
+        return;
+    }
+
+    // xnAddr: 64*64*8 bytes
+    if (winContext->xnAddr == 0) {
+        OP_LOGE(OP_NAME, "xnAddr is 0, skip xn dump.");
+    } else {
+        std::vector<uint8_t> xnBuf(XN_ADDR_DUMP_SIZE, 0);
+        ret = aclrtMemcpy(xnBuf.data(), XN_ADDR_DUMP_SIZE, (void *)winContext->xnAddr, XN_ADDR_DUMP_SIZE,
+                          ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy xnAddr from device to host failed. ret = %d", ret);
+        } else if (DumpToFileWithSize(std::string(dumpPath), GenDumpFileNameWithPrefix(args, op, "xn_addr_info_"),
+                                      deviceId, xnBuf.data(), XN_ADDR_DUMP_SIZE) != 0) {
+            OP_LOGE(OP_NAME, "Failed to dump xn addr info.");
+        }
+    }
+
+    // ckeAddr: 64*2*8 bytes
+    if (winContext->ckeAddr == 0) {
+        OP_LOGE(OP_NAME, "ckeAddr is 0, skip cke dump.");
+    } else {
+        std::vector<uint8_t> ckeBuf(CKE_ADDR_DUMP_SIZE, 0);
+        ret = aclrtMemcpy(ckeBuf.data(), CKE_ADDR_DUMP_SIZE, (void *)winContext->ckeAddr, CKE_ADDR_DUMP_SIZE,
+                          ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy ckeAddr from device to host failed. ret = %d", ret);
+        } else if (DumpToFileWithSize(std::string(dumpPath), GenDumpFileNameWithPrefix(args, op, "cke_addr_info_"),
+                                      deviceId, ckeBuf.data(), CKE_ADDR_DUMP_SIZE) != 0) {
+            OP_LOGE(OP_NAME, "Failed to dump cke addr info.");
+        }
     }
 }
 } // namespace Mc2Exception

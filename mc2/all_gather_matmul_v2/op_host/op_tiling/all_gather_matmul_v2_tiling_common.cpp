@@ -19,6 +19,7 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "all_gather_matmul_v2_tiling_common.h"
+#include "mc2_exception_dump.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -36,4 +37,20 @@ ge::graphStatus TilingParseForAllGatherMatmulV2(gert::TilingParseContext* contex
 IMPL_OP_OPTILING(AllGatherMatmulV2)
     .Tiling(AllGatherMatmulTilingV2Func)
     .TilingParse<AllGatherMatmulCompileInfo>(TilingParseForAllGatherMatmulV2);
+
+// Register exception dump func
+inline void AllGatherMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
+{
+    const char* socName = aclrtGetSocName();
+    if (std::strstr(socName, "Ascend950") == nullptr) {
+        return;
+    }
+    Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "AllGatherMatmulV2");
+}
+
+__attribute__((constructor)) void RegisterAllGatherMatmulV2ExceptionFunc()
+{
+    IMPL_OP(AllGatherMatmulV2)
+        .ExceptionDumpParseFunc(AllGatherMatmulV2ExceptionImplWrapper);
+}
 }  // namespace optiling
