@@ -53,6 +53,30 @@ struct TokenDispatchScratch {
     uint64_t cumsumRevCntInRank;
 };
 
+/** 表示当前 Dispatch core 在当前专家 row 空间中负责的相对 row range。 */
+struct DispatchExpertRange {
+    // 当前 Dispatch core 负责的起始专家 row offset（包含）。
+    int32_t coreExpertRowBegin;
+    // 当前 Dispatch core 负责的结束专家 row offset（不包含）。
+    int32_t coreExpertRowEnd;
+};
+
+/** 描述覆盖当前 core 的专家 row range 的 source-rank 范围。 */
+struct DispatchExpertRankRange {
+    // 第一个与当前 core 的专家 row range 相交的 source rank index。
+    int32_t firstRankIdx;
+    // 最后一个与当前 core 的专家 row range 相交的 source rank index。
+    // 当没有相交的 source rank 时为 -1。
+    int32_t lastRankIdx;
+    // 第一个相交 source-rank segment 在全局 Dispatch row 空间中的起始位置。
+    int32_t firstRankSegmentGlobalRowBegin;
+};
+
+struct ExpertTokenCountExportScratch {
+    LocalTensor<int32_t> stridedTensor;
+    LocalTensor<int32_t> compactTensor;
+};
+
 template <typename ActivationType>
 __aicore__ inline LocalTensor<ActivationType> GetDispatchCopyBuffer(
     const TokenDispatchConfig &context, const TokenDispatchScratch<ActivationType> &scratch, int32_t bufferIdx)
@@ -194,34 +218,22 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
     }
 }
 
-struct DispatchExpertRange {
-    int32_t coreExpertRowBegin;
-    int32_t coreExpertRowEnd;
-};
-
-// 计算当前专家在完整 Dispatch 行空间和本 core 行区间中的交集。
-struct DispatchExpertRankRange {
-    uint32_t firstRankIdx;
-    int32_t lastRankIdx;
-    int32_t firstSegmentRowBegin;
-};
-
-// 定位覆盖当前 core 专家行区间的 source-rank 段。
+/** 根据当前 core 的专家 row range 定位相交的 source-rank segment。 */
 template <typename ActivationType>
 __aicore__ inline DispatchExpertRankRange FindDispatchExpertRankRange(
     const TokenDispatchConfig &context, const TokenDispatchScratch<ActivationType> &scratch,
     uint32_t localExpertId, int32_t expertGlobalRowBegin,
     int32_t coreExpertRowBegin, int32_t coreExpertRowEnd)
 {
-    DispatchExpertRankRange range{context.common.worldSize, -1, expertGlobalRowBegin};
+    DispatchExpertRankRange range{static_cast<int32_t>(context.common.worldSize), -1, expertGlobalRowBegin};
     int32_t previousRankPrefix = expertGlobalRowBegin;
     for (uint32_t remoteRankIdx = 0U; remoteRankIdx < context.common.worldSize; ++remoteRankIdx) {
         int32_t rankPrefix = scratch.cumsumInfoTensor.GetValue(
             localExpertId * context.common.worldSize + remoteRankIdx);
-        if (range.firstRankIdx == context.common.worldSize &&
+        if (range.firstRankIdx == static_cast<int32_t>(context.common.worldSize) &&
             rankPrefix - expertGlobalRowBegin > coreExpertRowBegin) {
-            range.firstRankIdx = remoteRankIdx;
-            range.firstSegmentRowBegin = previousRankPrefix;
+            range.firstRankIdx = static_cast<int32_t>(remoteRankIdx);
+            range.firstRankSegmentGlobalRowBegin = previousRankPrefix;
         }
         if (rankPrefix - expertGlobalRowBegin >= coreExpertRowEnd) {
             range.lastRankIdx = static_cast<int32_t>(remoteRankIdx);
@@ -341,7 +353,7 @@ __aicore__ inline void DispatchExpertTokensByRank(
     const DispatchExpertRankRange &rankRange,
     int32_t gmm1TileRowCount)
 {
-    int32_t rankSegmentRowBegin = rankRange.firstSegmentRowBegin - expertGlobalRowBegin;
+    int32_t rankSegmentRowBegin = rankRange.firstRankSegmentGlobalRowBegin - expertGlobalRowBegin;
     int32_t rankSegmentRowEnd = 0;
     for (int32_t remoteRankIdx = static_cast<int32_t>(rankRange.firstRankIdx);
          remoteRankIdx <= rankRange.lastRankIdx; ++remoteRankIdx) {
@@ -452,7 +464,7 @@ __aicore__ inline void DispatchExpertTokensByRows(
     DispatchExpertRankRange rankRange = FindDispatchExpertRankRange(
         context, scratch, localExpertId, expertGlobalRowBegin,
         expertRange.coreExpertRowBegin, expertRange.coreExpertRowEnd);
-    if (rankRange.firstRankIdx == context.common.worldSize || rankRange.lastRankIdx < 0) {
+    if (rankRange.firstRankIdx == static_cast<int32_t>(context.common.worldSize) || rankRange.lastRankIdx < 0) {
         return;
     }
 
@@ -556,11 +568,6 @@ __aicore__ inline void ExportExpertTokenCounts(const TokenDispatchConfig &contex
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 }
-
-struct ExpertTokenCountExportScratch {
-    LocalTensor<int32_t> stridedTensor;
-    LocalTensor<int32_t> compactTensor;
-};
 
 // 从稳定的物理 workspace 槽导出专家 token 数。
 __aicore__ inline void ExportExpertTokenCountsFromWorkspace(

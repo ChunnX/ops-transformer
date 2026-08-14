@@ -149,7 +149,6 @@ private:
     uint32_t worldSize_ = 0;
     uint32_t gmm1TilesPerMGroup_ = 1U;
     uint32_t mGroupsPerWave_ = 1U;
-    // Dispatch 按专家逐一完成；GMM wave 仍按 mGroupsPerWave_ 独立推进。
     uint16_t gmm1PingPongIdx_ = 0;
     uint32_t startBlockIdx_ = 0;
     uint32_t blockNum_ = GetBlockNum();
@@ -794,8 +793,10 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::CrossRankSyncIn
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchAllExpertTokens()
 {
-    // 每个专家单独分配全部 Dispatch 核，便于验证专家级分核的并发收益；全部专家
-    // 仍在 GMM 流水开始前完成，因此不与 GMM wave 建立阶段依赖。
+    /**
+     * 在 GMM pipeline 开始前完成所有专家的 Dispatch。每个专家单独使用全部
+     * Dispatch core，便于验证专家级分核的并发收益。
+     */
     for (uint32_t expertIdx = 0U; expertIdx < moeExpertPerRank_; ++expertIdx) {
         uint64_t expertTokenCount = 0U;
         ComputeExpertTokenCountAndNotify<ActivationType, false, TopkWeightsPrefetch>(
