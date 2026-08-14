@@ -71,8 +71,8 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpCombineInfo &in
 {
     OP_LOGD(nodeName, "epWorldSize=%u, epRankId=%u, numExperts=%u, numLocalExperts=%u", info.cfg.epWorldSize,
             info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
-    OP_LOGD(nodeName, "numTokens=%u, hidden=%u, topK=%u, numMaxTokensPerRank=%u", info.cfg.numTokens, info.cfg.hidden,
-            info.cfg.topK, info.cfg.numMaxTokensPerRank);
+    OP_LOGD(nodeName, "numTokens=%u, hidden=%u, topK=%u, numMaxTokensPerRank=%u, actualA=%u", info.cfg.numTokens, info.cfg.hidden,
+            info.cfg.topK, info.cfg.numMaxTokensPerRank, info.cfg.actualA);
     OP_LOGD(nodeName, "perSlotBytes=%u, hasTopkWeights=%u, aivNum=%u", info.cfg.perSlotBytes, info.hasTopkWeights,
             info.aivNum);
     OP_LOGD(nodeName,
@@ -372,6 +372,28 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus CalcActualA(gert::TilingContext *context, MoeEpCombineInfo &info)
+{
+    const gert::Tensor *numRecvTokensPerExpert = context->GetInputTensor(NUM_RECV_PER_EXPERT_INDEX);
+    if (numRecvTokensPerExpert == nullptr) {
+        OPS_LOG_E(context->GetNodeName(), "Can not get num_recv_tokens_per_expert in tiling phase.");
+        return ge::GRAPH_FAILED;
+    }
+    if (numRecvTokensPerExpert->GetSize() != info.cfg.numExperts) {
+        OPS_LOG_E(context->GetNodeName(),
+                  "Can not get num_recv_tokens_per_expert should have %d elements, but it got %d.",
+                  info.cfg.numExperts, numRecvTokensPerExpert->GetSize());
+        return ge::GRAPH_FAILED;
+    }
+    const int32_t *recvs = numRecvTokensPerExpert->GetData<int32_t>();
+    int32_t actualA = 0;
+    for (size_t i = 0; i < info.cfg.numExperts; i++) {
+        actualA += recvs[i];
+    }
+    info.cfg.actualA = actualA;
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
 {
     context->SetScheduleMode(1U);
@@ -394,6 +416,9 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
 
     OP_TILING_CHECK(CheckInputDataType(context, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check input tensor dtype failed."), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(CalcActualA(context, info) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "Calculate actualA failed."), return ge::GRAPH_FAILED);
 
     uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     info.cfg.perSlotBytes = static_cast<uint32_t>(((hAlign32 + UB_ALIGN + COMM_ALIGN - 1UL) / COMM_ALIGN) * COMM_ALIGN);
@@ -434,5 +459,6 @@ ge::graphStatus TilingParseForMoeEpCombine(gert::TilingParseContext *context)
 
 IMPL_OP_OPTILING(MoeEpCombine)
     .Tiling(MoeEpCombineTilingFunc)
-    .TilingParse<MoeEpCombineCompileInfo>(TilingParseForMoeEpCombine);
+    .TilingParse<MoeEpCombineCompileInfo>(TilingParseForMoeEpCombine)
+    .TilingInputsDataDependency({NUM_RECV_PER_EXPERT_INDEX});
 } // namespace
