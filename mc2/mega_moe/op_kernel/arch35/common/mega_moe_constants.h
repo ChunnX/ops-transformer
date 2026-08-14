@@ -15,6 +15,13 @@
 
 namespace MegaMoeImpl {
 
+enum class MegaMoeActMode : uint8_t {
+    SWIGLU = 0U,
+    SITU = 1U,
+    SWIGLU_STEP = 2U,
+    SWIGLU_OAI = 3U,
+};
+
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;
 constexpr uint64_t K_VALUE = 2UL;
