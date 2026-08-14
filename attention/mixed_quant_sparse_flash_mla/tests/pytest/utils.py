@@ -17,6 +17,41 @@ from pathlib import Path
 import numpy as np
 import os
 import math
+import torch
+
+
+INT32_TENSOR_INPUTS = (
+    "cu_seqlens_q",
+    "cu_seqlens_ori_kv",
+    "cu_seqlens_cmp_kv",
+    "seqused_q",
+    "seqused_ori_kv",
+    "seqused_cmp_kv",
+    "cmp_residual_kv",
+    "ori_topk_length",
+    "cmp_topk_length",
+)
+
+
+def prepare_tensor_inputs(params):
+    """Materialize operator tensor inputs before invoking the CPU golden."""
+    prepared = params.copy()
+    for name in INT32_TENSOR_INPUTS:
+        value = prepared.get(name)
+        if value is not None and not torch.is_tensor(value):
+            prepared[name] = torch.as_tensor(value, dtype=torch.int32)
+
+    topk_shape = (
+        (prepared["B"], prepared["S1"], prepared["N2"])
+        if prepared["layout_q"] == "BSND"
+        else (prepared["T1"], prepared["N2"])
+    )
+    for name in ("ori_topk_length", "cmp_topk_length"):
+        value = prepared.get(name)
+        if value is not None:
+            prepared[name] = value.reshape(topk_shape)
+
+    return prepared
 
 
 def infer_template_run_mode(

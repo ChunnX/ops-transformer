@@ -29,6 +29,17 @@ RUN_MODE = 1
 # torch.manual_seed(42)
 
 
+def _require_int32_tensor(name, value):
+    if value is None:
+        return
+    if not torch.is_tensor(value):
+        raise TypeError(
+            f"{name} must be passed to the golden as a torch.Tensor, got {type(value).__name__}"
+        )
+    if value.dtype != torch.int32:
+        raise TypeError(f"{name} must have dtype torch.int32, got {value.dtype}")
+
+
 class GeneralizedSFA:
     def __init__(
         self,
@@ -1356,36 +1367,6 @@ def gen_cmp_kv(
     )
 
 
-def resolve_compressed_actual_lengths(
-    seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, cmp_ratio
-):
-    """Resolve compressed actual lengths exactly as SMLA input generation does."""
-    if seqused_ori_kv is None or cmp_ratio is None:
-        return seqused_cmp_kv, cmp_residual_kv
-    if cmp_ratio < 1:
-        raise ValueError(
-            f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}"
-        )
-    if seqused_cmp_kv is None:
-        if torch.is_tensor(seqused_ori_kv):
-            seqused_cmp_kv = seqused_ori_kv // cmp_ratio
-        else:
-            seqused_cmp_kv = [value // cmp_ratio for value in seqused_ori_kv]
-    if cmp_residual_kv is None:
-        if torch.is_tensor(seqused_ori_kv):
-            cmp_residual_kv = seqused_ori_kv % cmp_ratio
-        else:
-            cmp_residual_kv = [value % cmp_ratio for value in seqused_ori_kv]
-    return seqused_cmp_kv, cmp_residual_kv
-
-
-def resolve_query_actual_lengths(layout_q, batch_size, sequence_length, seqused_q):
-    """Resolve the query actual lengths exactly as SMLA input generation does."""
-    if layout_q == "BSND" and seqused_q is None:
-        return [int(sequence_length)] * int(batch_size)
-    return seqused_q
-
-
 def gen_data(params, prepare_device_storage=True):
     # 从字典中提取参数
     layout_q = params.get("layout_q")
@@ -1435,49 +1416,12 @@ def gen_data(params, prepare_device_storage=True):
     # 支持外部指定topk_length
     ori_topk_length_override = params.get("ori_topk_length", None)
     cmp_topk_length_override = params.get("cmp_topk_length", None)
-    if (
-        isinstance(ori_topk_length_override, list)
-        and len(ori_topk_length_override) == 1
-        and ori_topk_length_override[0] is None
-    ):
-        ori_topk_length_override = None
-    if (
-        isinstance(cmp_topk_length_override, list)
-        and len(cmp_topk_length_override) == 1
-        and cmp_topk_length_override[0] is None
-    ):
-        cmp_topk_length_override = None
-    if ori_topk_length_override is not None and not isinstance(
-        ori_topk_length_override, torch.Tensor
-    ):
-        if layout_q == "BSND":
-            ori_topk_length_override = torch.tensor(
-                ori_topk_length_override, dtype=torch.int32
-            ).reshape(B, S1, N2)
-        else:
-            ori_topk_length_override = torch.tensor(
-                ori_topk_length_override, dtype=torch.int32
-            ).reshape(T1, N2)
-    if cmp_topk_length_override is not None and not isinstance(
-        cmp_topk_length_override, torch.Tensor
-    ):
-        if layout_q == "BSND":
-            cmp_topk_length_override = torch.tensor(
-                cmp_topk_length_override, dtype=torch.int32
-            ).reshape(B, S1, N2)
-        else:
-            cmp_topk_length_override = torch.tensor(
-                cmp_topk_length_override, dtype=torch.int32
-            ).reshape(T1, N2)
-
     B = int(B)
     S1 = int(S1)
     S2 = int(S2)
     N1 = int(N1)
     N2 = int(N2)
     D = int(D)
-    seqused_q = resolve_query_actual_lengths(layout_q, B, S1, seqused_q)
-
     if layout_q == "TND" and T1 == None:
         raise ValueError("T1 must be provided when layout_kv is TND")
     if layout_kv == "TND" and T2 == None:
@@ -1485,20 +1429,20 @@ def gen_data(params, prepare_device_storage=True):
     if layout_kv == "BSND" and S2 == None:
         raise ValueError("S2 must be provided when layout_kv is BSND")
 
-    if cu_seqlens_q is not None:
-        cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
-    if cu_seqlens_ori_kv is not None:
-        cu_seqlens_ori_kv = torch.tensor(cu_seqlens_ori_kv).to(torch.int32)
-    if cu_seqlens_cmp_kv is not None:
-        cu_seqlens_cmp_kv = torch.tensor(cu_seqlens_cmp_kv).to(torch.int32)
-    if seqused_ori_kv is not None:
-        seqused_ori_kv = torch.tensor(seqused_ori_kv).to(torch.int32)
-    if seqused_cmp_kv is not None:
-        seqused_cmp_kv = torch.tensor(seqused_cmp_kv).to(torch.int32)
-    if cmp_residual_kv is not None:
-        cmp_residual_kv = torch.tensor(cmp_residual_kv).to(torch.int32)
-    if seqused_q is not None:
-        seqused_q = torch.tensor(seqused_q).to(torch.int32)
+    for name, value in (
+        ("cu_seqlens_q", cu_seqlens_q),
+        ("cu_seqlens_ori_kv", cu_seqlens_ori_kv),
+        ("cu_seqlens_cmp_kv", cu_seqlens_cmp_kv),
+        ("seqused_q", seqused_q),
+        ("seqused_ori_kv", seqused_ori_kv),
+        ("seqused_cmp_kv", seqused_cmp_kv),
+        ("cmp_residual_kv", cmp_residual_kv),
+        ("ori_topk_length", ori_topk_length_override),
+        ("cmp_topk_length", cmp_topk_length_override),
+    ):
+        _require_int32_tensor(name, value)
+    if seqused_q is None:
+        raise ValueError("seqused_q must be passed to the golden")
 
     if layout_kv == "PA_BBND" and len(seqused_ori_kv) != B:
         raise ValueError(
@@ -1530,12 +1474,7 @@ def gen_data(params, prepare_device_storage=True):
             torch.rand((B, S1, N1, D)) * (q_datarange[1] - q_datarange[0])
             + q_datarange[0]
         ).to(q_type)
-        if seqused_q is None:
-            act_q = B * [S1]
-            seqused_q = torch.tensor(B * [S1]).to(torch.int32)
-        else:
-            act_q = seqused_q
-            seqused_q = torch.tensor(seqused_q).to(torch.int32)
+        act_q = seqused_q
     elif layout_q == "TND":
         T1, B = int(T1), int(B)
         q = (
@@ -1557,9 +1496,6 @@ def gen_data(params, prepare_device_storage=True):
     else:
         raise ValueError(f"layout_kv is not support {layout_kv}")
 
-    seqused_cmp_kv, cmp_residual_kv = resolve_compressed_actual_lengths(
-        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, cmp_ratio
-    )
     # 路由到三个算子的逻辑：
     template_idx = 0
 

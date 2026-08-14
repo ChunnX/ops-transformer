@@ -592,7 +592,8 @@ class MixedQuantSparseFlashMlaInputAdapter:
 
     def build_case_params(self, q, ori_kv, cmp_kv, ori_sparse_indices,
                           cmp_sparse_indices,
-                          layout_q, layout_kv, kwargs):
+                          layout_q, layout_kv, kwargs, tensor_inputs=None):
+        tensor_inputs = tensor_inputs or {}
         is_batch_case = kwargs.get("batch_axis") is not None
         cu_q = self.list_value(kwargs, "cu_seqlens_q")
         cu_ori = self.list_value(kwargs, "cu_seqlens_ori_kv")
@@ -687,13 +688,15 @@ class MixedQuantSparseFlashMlaInputAdapter:
             "block_num2": block_num2,
             "block_size1": block_size1,
             "block_size2": block_size2,
-            "seqused_q": seq_q,
-            "cu_seqlens_q": cu_q,
-            "seqused_ori_kv": seq_ori,
-            "seqused_cmp_kv": seq_cmp,
-            "cu_seqlens_ori_kv": cu_ori,
-            "cu_seqlens_cmp_kv": cu_cmp,
-            "cmp_residual_kv": residual,
+            "seqused_q": tensor_inputs.get("seqused_q", seq_q),
+            "cu_seqlens_q": tensor_inputs.get("cu_seqlens_q", cu_q),
+            "seqused_ori_kv": tensor_inputs.get("seqused_ori_kv", seq_ori),
+            "seqused_cmp_kv": tensor_inputs.get("seqused_cmp_kv", seq_cmp),
+            "cu_seqlens_ori_kv": tensor_inputs.get("cu_seqlens_ori_kv", cu_ori),
+            "cu_seqlens_cmp_kv": tensor_inputs.get("cu_seqlens_cmp_kv", cu_cmp),
+            "cmp_residual_kv": tensor_inputs.get("cmp_residual_kv", residual),
+            "ori_topk_length": tensor_inputs.get("ori_topk_length"),
+            "cmp_topk_length": tensor_inputs.get("cmp_topk_length"),
         })
         if is_batch_case and params.get("tile_size") is None:
             # The batch CSV has no target API field for this pytest packing geometry.
@@ -727,6 +730,7 @@ class MixedQuantSparseFlashMlaInputAdapter:
             "golden", "mixed_quant_sparse_flash_mla_golden.py"
         )
         filled = pytest_utils.fill_none_params(params)
+        filled = pytest_utils.prepare_tensor_inputs(filled)
         for name in ("q_datarange", "ori_kv_datarange", "cmp_kv_datarange"):
             if params.get(name) is not None:
                 filled[name] = params[name]
@@ -758,6 +762,21 @@ def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
                                                  cmp_topk_length=None, sinks=None, **kwargs):
     """Reuse the pytest parameter validation and input processing for a TTK case."""
     batch_random = NumpyBatchRandomContext.from_case(q, ori_kv, cmp_kv, kwargs)
+    tensor_inputs = {
+        name: tensor
+        for name, tensor in (
+            ("cu_seqlens_q", cu_seqlens_q),
+            ("cu_seqlens_ori_kv", cu_seqlens_ori_kv),
+            ("cu_seqlens_cmp_kv", cu_seqlens_cmp_kv),
+            ("seqused_q", seqused_q),
+            ("seqused_ori_kv", seqused_ori_kv),
+            ("seqused_cmp_kv", seqused_cmp_kv),
+            ("cmp_residual_kv", cmp_residual_kv),
+            ("ori_topk_length", ori_topk_length),
+            ("cmp_topk_length", cmp_topk_length),
+        )
+        if tensor is not None
+    }
     params = INPUT_ADAPTER.build_case_params(
         q,
         ori_kv,
@@ -767,6 +786,7 @@ def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
         kwargs.get("layout_q"),
         kwargs.get("layout_kv"),
         kwargs,
+        tensor_inputs,
     )
     data = INPUT_ADAPTER.generate_case(params, batch_random)
     op_input = data["op_input"]

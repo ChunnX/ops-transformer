@@ -38,10 +38,9 @@ run_batch_save() {
     export QSMLA_EXCEL="$EXCEL_FILE"
     export QSMLA_SHEET="$SHEET_NAME"
     export QSMLA_PT_DIR="$PT_SAVE_DIR"
-    python3 -m pytest -rA -s $QSMLA_PT_SAVE_SCRIPT -x -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning --show-capture=no
+    python3 -m pytest -rA -s $QSMLA_PT_SAVE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning --show-capture=no
     if [ $? -ne 0 ]; then
-        echo "batch_save 执行失败，退出"
-        exit 1
+        echo "batch_save 存在失败用例，已记录；继续处理其余成功生成的pt文件"
     fi
     echo -e "\n===== batch_save 完成！pt文件保存在 $PT_SAVE_DIR 目录 ====="
 }
@@ -55,20 +54,56 @@ run_batch_exec() {
         exit 1
     fi
 
-    pt_count=$(ls -1 $PT_SAVE_DIR/*.pt 2>/dev/null | wc -l)
-    if [ $pt_count -eq 0 ]; then
+    mapfile -t CASE_FILES < <(find "$PT_SAVE_DIR" -maxdepth 1 -type f -name "*.pt" | sort)
+    total=${#CASE_FILES[@]}
+    if [ "$total" -eq 0 ]; then
         echo "错误: 目录中没有找到.pt文件: $PT_SAVE_DIR，请先执行 batch_save 生成pt文件"
         exit 1
     fi
 
-    echo "找到 $pt_count 个pt文件，开始执行NPU测试"
+    echo "找到 $total 个pt文件，开始隔离执行NPU测试"
     export QSMLA_PT_DIR="$PT_SAVE_DIR"
     export RUN_GRAPH="$RUN_GRAPH"
-    python3 -m pytest -rA -s $TEST_QSMLA_PT_BATCH_SCRIPT -x -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning --show-capture=no
-    if [ $? -ne 0 ]; then
-        echo "batch_exec 执行失败"
-        exit 1
+
+    pass_count=0
+    fail_count=0
+    fail_list=()
+    summary_log="qsmla_batch_summary.log"
+    fail_log="qsmla_batch_fail_list.log"
+    : > "$summary_log"
+    : > "$fail_log"
+
+    index=0
+    for case_file in "${CASE_FILES[@]}"; do
+        index=$((index + 1))
+        case_name=$(basename "$case_file")
+        echo -e "\n===== [$index/$total] 执行用例: $case_name =====" | tee -a "$summary_log"
+
+        QSMLA_TESTCASE_PATH="$case_file" python3 -m pytest -rA -s "$TEST_QSMLA_PT_BATCH_SCRIPT" -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning --show-capture=no 2>&1 | tee -a "$summary_log"
+        status=${PIPESTATUS[0]}
+
+        if [ "$status" -eq 0 ]; then
+            pass_count=$((pass_count + 1))
+            echo "[PASS] $case_name" | tee -a "$summary_log"
+        else
+            fail_count=$((fail_count + 1))
+            fail_list+=("$case_name")
+            echo "[FAIL] $case_name" | tee -a "$summary_log"
+            echo "$case_name" >> "$fail_log"
+        fi
+    done
+
+    echo -e "\n========== 批量执行汇总 ==========" | tee -a "$summary_log"
+    echo "总计: $total  通过: $pass_count  失败: $fail_count" | tee -a "$summary_log"
+    if [ "$fail_count" -gt 0 ]; then
+        echo "失败用例:" | tee -a "$summary_log"
+        for case_name in "${fail_list[@]}"; do
+            echo "  - $case_name" | tee -a "$summary_log"
+        done
     fi
+    echo "详细日志: $summary_log"
+    echo "失败清单: $fail_log"
+    echo "结果表格: ${QSMLA_RESULT_SAVE_PATH:-result.xlsx}"
 
     echo -e "\n===== batch_exec 完成！====="
 }
