@@ -485,7 +485,6 @@ class BatchOutputComparator:
             output_shape, output_dtype = self.resolve_output_metadata(shapes)
             if not output_shape or output_shape[0] <= 0:
                 raise ValueError(f"{testcase_name}: output 0 requires a non-empty batch axis")
-            output_extent = output_shape[0]
             output_path = self.dump_dir / f"{testcase_name}_output_{self.output_index}.bin"
             if not output_path.is_file():
                 raise ValueError(f"{testcase_name}: missing output dump {output_path}")
