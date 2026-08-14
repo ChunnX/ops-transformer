@@ -36,7 +36,7 @@ protected:
 
     static void TearDownTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
         cout << "AclnnAttentionToFfnV2Test TearDown" << endl;
     }
 };
@@ -112,3 +112,5 @@ TEST_F(AclnnAttentionToFfnV2Test, TestAttentionToFfnV2Quant)
 }
 
 } // namespace AttentionToFfnV2UT
+
+

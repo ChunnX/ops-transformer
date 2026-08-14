@@ -93,3 +93,6 @@ TEST_F(AclnnFfnToAttentionV2Test, TestFfnToAttentionV2NoAttnRankTable)
 }
 
 } // namespace FFNToAttentionV2UT
+
+
+
