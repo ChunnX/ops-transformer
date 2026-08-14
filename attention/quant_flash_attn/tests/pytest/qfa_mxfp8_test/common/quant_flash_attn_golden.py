@@ -2066,7 +2066,15 @@ if __name__ == "__main__":
         cpu_lse_tnd_torch = convert_q_bnsd_to_layout(
             cpu_lse, _get_seqused_q(), "TND", cu_seqlens=CU_SEQLENS_Q
         )
+        # TND padding 位置填 inf 以匹配 NPU 行为：NPU 对超出实际序列长度的 Q 位置输出 inf LSE
+        cpu_lse_tnd_torch = fill_tnd_padding(
+            cpu_lse_tnd_torch, _get_seqused_q(), CU_SEQLENS_Q, fill_value=float("inf")
+        )
         # NPU LSE 输出已改为 N-major 排布 (N, T): N 在外, T 在内
         # CPU golden 经 convert 后是 [T, N, 1] (T-major), 需转成 [N, T] 对齐
         cpu_lse_nt_torch = cpu_lse_tnd_torch.squeeze(-1).permute(1, 0).contiguous()
-        result_compare_method.check_result(cpu_lse_nt_torch, lse_out)
+        # LSE 为 float32, mxfp8 量化 + m 对齐 ln2 引入数值精度边界差异;
+        # 对齐 ttk replay 模式默认阈值(rtol=0.0078125, atol=0.0001), 保证 pytest 与 ttk 行为一致
+        result_compare_method.check_result(
+            cpu_lse_nt_torch, lse_out, rtol=0.0078125, atol=0.0001
+        )
