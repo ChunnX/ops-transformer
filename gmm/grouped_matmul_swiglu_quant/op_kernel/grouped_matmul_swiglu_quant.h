@@ -32,7 +32,8 @@ public:
     constexpr static bool transposeW = mmType::BT::isTrans;
 
     /** @brief constructor */
-    __aicore__ inline GMMSwigluCompute(typename mmType::MT &mm_) : mm(mm_)
+    __aicore__ inline GMMSwigluCompute(typename mmType::MT &mm_)
+        : mm(mm_)
     {
     }
 
