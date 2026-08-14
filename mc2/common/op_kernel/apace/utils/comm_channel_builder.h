@@ -22,7 +22,7 @@
 #include "acl/acl_rt.h"
 #include "hccl/hccl.h"
 #include "hccl/hccl_res.h"
-#include "apace/block/aiv_comm/collective_comm_context.h"
+#include "apace/core/aiv_comm/collective_comm_context.h"
 
 constexpr uint8_t BUILDER_COMM_ENGINE_AIV = 4;
 constexpr uint32_t BUILDER_CHANNEL_NOTIFY_NUM = 3U;
