@@ -739,7 +739,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     uint64_t tilingKey = GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag,
                                             inputQLayout, inputKLayout, weightTypeFlag);
     context_->SetTilingKey(tilingKey);
-
+    OP_LOGE(context_->GetNodeName(), "guijianwei compile test run package");
     return ge::GRAPH_SUCCESS;
 }
 

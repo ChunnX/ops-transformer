@@ -160,6 +160,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe *
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitLDBuffers(TPipe *pipe)
 {
+    printf("InitLDBuffers start====\n");
     pipe->Reset();
     pipe->InitBuffer(ldToBeMrgBuf_, 2 * BASE_TOPK * mrgListNum_ * sizeof(float)); // 2：value + index
     pipe->InitBuffer(ldTmpBuf_, 2 * BASE_TOPK * mrgListNum_ * sizeof(float));     // 2：value + index
@@ -246,6 +247,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::CleanInvalidOutput(
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec(const LIV2Common::RunInfo &info)
 {
+    printf("[VDBG] blk=%d ProcessVec enter loop=%d s1Idx=%d s2Idx=%d\n",
+           (int)blockId_, (int)info.loop, (int)info.gS1Idx, (int)info.s2Idx);
     int32_t cuBaseS1Idx = info.gS1Idx * s1BaseSize_;
     int32_t cuBaseS2Idx = info.s2Idx * s2BaseSize_;
 
@@ -293,6 +296,10 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec(const LI
     // LD输出S1方向偏移，保证2个Vector输出的内容连续
     uint32_t ldS1Offset = (blockId_ % 2 == 0) ? s1BaseSize_ / 2 - cuS1ProcNumPerAiv : 0;
 
+    printf("[VDBG] blk=%d PV s1ProcNum=%d s1ProcPerAiv=%d outerG=%d cuRealAcSeq=%d cuS2Len=%d actS2Size=%d\n",
+           (int)blockId_, (int)cuS1ProcNum, (int)cuS1ProcNumPerAiv, (int)outerG,
+           (int)cuRealAcSeq, (int)(cuBaseS2Idx + s2BaseSize_ >= cuRealAcSeq ? cuRealAcSeq - cuBaseS2Idx : s2BaseSize_),
+           (int)info.actS2Size);
     for (int innerS1Idx = 0; innerS1Idx < cuS1ProcNumPerAiv; innerS1Idx++) {
         if (constInfo_.attenMaskFlag) {
             cuRealAcSeqCount += 1;
@@ -301,20 +308,28 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec(const LI
         int32_t cuS2Len = cuBaseS2Idx + s2BaseSize_ >= cuRealAcSeq ? cuRealAcSeq - cuBaseS2Idx : s2BaseSize_;
         int32_t cuS1Idx = cuS1BeginIdxPerAiv + innerS1Idx;
         if (cuRealAcSeq > 0 && cuS2Len > 0) {
+            printf("[VDBG] blk=%d PV innerS1=%d cuS2Len=%d cuRealAcSeq=%d enter main\n",
+                   (int)blockId_, (int)innerS1Idx, (int)cuS2Len, (int)cuRealAcSeq);
             int32_t cuS2LenVecAlign = CeilDiv(cuS2Len, s2BaseSize_) * s2BaseSize_;
             int32_t mmUbStride = (cuS2LenVecAlign - info.actualSingleProcessSInnerSizeAlign) / B32_BLOCK_ALIGN_NUM;
             LocalTensor<float> reduceOutInner = reduceOutBuff[s2BaseSize_];
             PipeBarrier<PIPE_V>();
             LocalTensor<float> reduceCacheBuf = outQueue_.AllocTensor<float>();
             if (constInfo_.isSparseCountOver2K) {
+                printf("[VDBG] blk=%d PV wait TMPUB innerS1=%d\n", (int)blockId_, (int)innerS1Idx);
                 WaitFlag<HardEvent::V_MTE2>(EVENTID_V_TO_MTE2_TMPUB);
+                printf("[VDBG] blk=%d PV got TMPUB innerS1=%d\n", (int)blockId_, (int)innerS1Idx);
             }
             for (int outerGidx = 0; outerGidx < outerG; outerGidx++) {
                 int32_t procGnum = outerGidx != outerG - 1 ? groupInner_ : gSize_ - outerGidx * groupInner_;
                 int32_t pingpong = outerGidx % 2;
                 LocalTensor<float> dbTmpUb = tmpUb_[pingpong * (groupInner_ * s2BaseSize_ + s2BaseSize_)];
                 LocalTensor<float> weightsInUb = dbTmpUb[procGnum * s2BaseSize_];
+                printf("[VDBG] blk=%d PV wait V_MTE2 pp=%d og=%d innerS1=%d\n",
+                       (int)blockId_, (int)pingpong, (int)outerGidx, (int)innerS1Idx);
                 WaitFlag<HardEvent::V_MTE2>(pingpong);
+                printf("[VDBG] blk=%d PV got V_MTE2 pp=%d og=%d innerS1=%d\n",
+                       (int)blockId_, (int)pingpong, (int)outerGidx, (int)innerS1Idx);
                 LocalTensor<W_T> weightsInTUb = weightsInUb.template ReinterpretCast<W_T>();
                 if constexpr (!IsSameType<W_T, float>::value) {
                     weightsInTUb = weightsInTUb[groupInner_];
@@ -325,15 +340,18 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec(const LI
                                      weightGmOffset + innerS1Idx * gSize_ + outerGidx * groupInner_, procGnum,
                                      info.actualSingleProcessSInnerSizeAlign, mmUbStride);
 
+                printf("[VDBG] blk=%d PV set+wait MTE2_V pp=%d og=%d innerS1=%d\n",
+                       (int)blockId_, (int)pingpong, (int)outerGidx, (int)innerS1Idx);
                 SetFlag<HardEvent::MTE2_V>(pingpong);
                 WaitFlag<HardEvent::MTE2_V>(pingpong);
+                printf("[VDBG] blk=%d PV got MTE2_V pp=%d og=%d innerS1=%d\n",
+                       (int)blockId_, (int)pingpong, (int)outerGidx, (int)innerS1Idx);
                 weightsInUb = dbTmpUb[procGnum * s2BaseSize_];
                 LIServiceVec::DoScale(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], dbTmpUb, weightsInUb, weightsInTUb,
                                       brcBuf, procGnum, s2BaseSize_, outerGidx);
-                // confused reduceOp in DoScale
-                // neednot use LIServiceVec::doReduce(mmInUb, reduceOutInner, procGnum, (s2BaseSize_+8));
                 SetFlag<HardEvent::V_MTE2>(pingpong);
             }
+            printf("[VDBG] blk=%d PV outerG done innerS1=%d, DoReduce+Sort\n", (int)blockId_, (int)innerS1Idx);
 
             int32_t gRedCnt = groupInner_ > gSize_ ? gSize_ : groupInner_;
             bool isS2End = cuBaseS2Idx + s2BaseSize_ >= cuRealAcSeq;
@@ -510,6 +528,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec(const LI
         // S2最后一个Loop后, 下一个基本块初始从0开始
         blockS2StartIdx_ = 0;
     }
+    printf("[VDBG] blk=%d ProcessVec exit loop=%d\n", (int)blockId_, (int)info.loop);
 }
 
 template <typename LIT>
