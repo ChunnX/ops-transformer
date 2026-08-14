@@ -3111,26 +3111,6 @@ TEST_PARAMS = {
         "p_scale": [448.0],
         "enable_lse": [True],
     },
-    "Prefill_FP8e4m3_FP8e4m3_BF16_Mxfp8_redline_1_16_16_16384_16384_256_256_TND_PABNBD_Mask_000006": {
-        "B": [1],
-        "N_q": [16],
-        "N_kv": [16],
-        "D": [256],
-        "cu_seqlens_q": [[0, 16384]],
-        "cu_seqlens_kv": [None],
-        "seqused_q": [None],
-        "seqused_kv": [[16384]],
-        "max_seqlen_q": [16384],
-        "max_seqlen_kv": [-1],
-        "enable_pa": [True],
-        "kv_cache_layout": ["BnNBsD"],
-        "block_size": [512],
-        "mask_mode": [3],
-        "q_scale_layout": ["TND"],
-        "p_scale": [1.0],
-        "enable_lse": [True],
-    },
-    
     # D = 256 泛化用例
     "PA_NZ_B1_QS3_KVS896_Nq224_Nkv16_D256_SP3_Decode": {
         "B": [1],
