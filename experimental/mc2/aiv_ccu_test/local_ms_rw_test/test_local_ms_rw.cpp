@@ -233,7 +233,7 @@ int main(int argc, char *argv[])
     ret = aclrtMalloc(&timeGm, RESULT_WORDS * sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc timeGm failed. ret: %d\n", ret); return ret);
     void *timeGm2 = nullptr;
-    if (g_mode0 == 4) {
+    if (g_mode0 == 4 || g_mode0 == 7) {
         ret = aclrtMalloc(&timeGm2, RESULT_WORDS * sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc timeGm2 failed. ret: %d\n", ret); return ret);
     }
