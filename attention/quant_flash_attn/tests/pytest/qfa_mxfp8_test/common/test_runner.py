@@ -180,11 +180,18 @@ def execute_test(params, mode, cdir=None):
             golden.fill_tnd_padding(
                 lse_cmp, act_seqused_q, golden.CU_SEQLENS_Q, fill_value=float("inf")
             )
+            # NPU LSE 输出为 N-major 排布 (N, T): N 在外, T 在内
+            # CPU golden 经 convert 后是 [T, N, 1] (T-major), 需转成 [N, T] 对齐
+            lse_cmp = lse_cmp.squeeze(-1).permute(1, 0).contiguous()
         else:
             lse_cmp = golden.convert_q_bnsd_to_layout(
                 cpu_lse, act_seqused_q, compare_layout
             )
-        lse_result = result_compare_method.check_result(lse_cmp, lse_out)
+        # LSE 为 float32, mxfp8 量化 + m 对齐 ln2 引入数值精度边界差异;
+        # 对齐 ttk replay 模式默认阈值(rtol=0.0078125, atol=0.0001), 保证 pytest 与 ttk 行为一致
+        lse_result = result_compare_method.check_result(
+            lse_cmp, lse_out, rtol=0.0078125, atol=0.0001
+        )
 
     return atten_result, lse_result
 
