@@ -32,9 +32,12 @@
 
 namespace MsaIndexScoreNs {
 
+template <bool IS_QUANT>
 class MsaSegRowMaxEpilogue {
 public:
     using ArchTag = Catlass::Arch::AtlasA2;
+    // S workspace 元素类型：非量化 fp16，int8 fp32。
+    using ElementS = std::conditional_t<IS_QUANT, float, half>;
 
     // UB 手工布局（字节偏移），catlass 不提供 UB allocator。
     static constexpr uint32_t UB_OFF_S = 0;
@@ -48,7 +51,10 @@ public:
     // 反量化 scale 一页：block_size 个 fp32 = 512B。
     static constexpr uint32_t UB_OFF_DEQ = UB_OFF_ROWMAX + UB_SIZE_ROWMAX;
     static constexpr uint32_t UB_SIZE_DEQ = MSA_BLOCK_SIZE * sizeof(float);
-    static constexpr uint32_t UB_TOTAL = UB_OFF_DEQ + UB_SIZE_DEQ;
+    // 非量化：S16（fp16 载入缓冲）放在 UB 顶部，Cast 到 fp32 后走原有流水。
+    static constexpr uint32_t UB_OFF_S16 = 160 * 1024;
+    static constexpr uint32_t UB_SIZE_S16 = MSA_ROWS_PER_PASS * MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE * sizeof(half);
+    static constexpr uint32_t UB_TOTAL = UB_OFF_S16 + UB_SIZE_S16;
     static_assert(UB_TOTAL <= ArchTag::UB_SIZE, "MsaSegRowMaxEpilogue UB out of bounds");
 
     static constexpr uint32_t STILE_WIDTH = MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE;
@@ -74,6 +80,7 @@ public:
         gBlockTable_ = gBlockTable;
 
         ubS_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_S);
+        ubS16_ = resource.ubBuf.template GetBufferByByte<half>(UB_OFF_S16);
         ubT64_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_T64);
         ubT8_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_T8);
         ubRowMax_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_ROWMAX);
@@ -81,7 +88,7 @@ public:
     }
 
     /// 处理一个 S tile（MSA_BLOCKS_PER_STILE 个 sparse block）中属于本 subcore 的行。
-    __aicore__ inline void ProcessSTile(const AscendC::GlobalTensor<float> &gS, const MsaTask &task,
+    __aicore__ inline void ProcessSTile(const AscendC::GlobalTensor<ElementS> &gS, const MsaTask &task,
                                         uint32_t blkBase, uint32_t subIdx, uint32_t subBlockNum,
                                         bool dumpDebug = false)
     {
@@ -110,7 +117,7 @@ public:
 
 private:
     /// 处理一个 pass（最多 MSA_ROWS_PER_PASS 行 × MSA_BLOCKS_PER_STILE 个 block）。
-    __aicore__ inline void ProcessPass(const AscendC::GlobalTensor<float> &gS, const MsaTask &task,
+    __aicore__ inline void ProcessPass(const AscendC::GlobalTensor<ElementS> &gS, const MsaTask &task,
                                        uint32_t blkBase, uint32_t rowOff, uint32_t rows, bool dumpDebug)
     {
         const bool allInvalid = (blkBase >= task.visibleEndBlk);
@@ -127,7 +134,11 @@ private:
             // 短 pass 只拷了部分行；SegRowMax 固定按 16 行归约，未写入区域必须是 -inf。
             // 满 16 行时 DataCopy 覆盖整块 ubS_，可跳过 Duplicate。
             if (rows < MSA_ROWS_PER_PASS) {
-                AscendC::Duplicate(ubS_, MSA_FILL_VALUE, MSA_ROWS_PER_PASS * STILE_WIDTH);
+                if constexpr (IS_QUANT) {
+                    AscendC::Duplicate(ubS_, MSA_FILL_VALUE, MSA_ROWS_PER_PASS * STILE_WIDTH);
+                } else {
+                    AscendC::Duplicate(ubS16_, static_cast<half>(MSA_FILL_VALUE), MSA_ROWS_PER_PASS * STILE_WIDTH);
+                }
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
@@ -138,9 +149,17 @@ private:
                 sDumpN = static_cast<uint32_t>(task.kvLen) + 3U;
             }
 #endif
-            AscendC::DataCopy(ubS_, gS[static_cast<uint64_t>(rowOff) * STILE_WIDTH], rows * STILE_WIDTH);
+            if constexpr (IS_QUANT) {
+                AscendC::DataCopy(ubS_, gS[static_cast<uint64_t>(rowOff) * STILE_WIDTH], rows * STILE_WIDTH);
+            } else {
+                AscendC::DataCopy(ubS16_, gS[static_cast<uint64_t>(rowOff) * STILE_WIDTH], rows * STILE_WIDTH);
+            }
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            if constexpr (!IS_QUANT) {
+                // 短 pass 时 S16 已按 16 行填 -inf，整块 Cast 保证归约尾行为 -inf。
+                AscendC::Cast(ubS_, ubS16_, AscendC::RoundMode::CAST_NONE, MSA_ROWS_PER_PASS * STILE_WIDTH);
+            }
 
 #if MSA_INDEX_SCORE_DEBUG
             if (dumpDebug) {
@@ -474,6 +493,7 @@ private:
     AscendC::GlobalTensor<float> gScale_;
     AscendC::GlobalTensor<int32_t> gBlockTable_;
     AscendC::LocalTensor<float> ubS_;
+    AscendC::LocalTensor<half> ubS16_;
     AscendC::LocalTensor<float> ubT64_;
     AscendC::LocalTensor<float> ubT8_;
     AscendC::LocalTensor<float> ubRowMax_;
