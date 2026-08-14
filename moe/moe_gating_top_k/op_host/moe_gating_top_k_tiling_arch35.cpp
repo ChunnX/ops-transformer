@@ -556,7 +556,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::GetPlatformInfo()
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "platform_info"),
                 return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    aicoreParams_.numBlocks = 58;
+    aicoreParams_.numBlocks = ascendcPlatform.GetCoreNumAiv();
     socVersion = ascendcPlatform.GetSocVersion();
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);

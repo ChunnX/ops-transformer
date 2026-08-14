@@ -24,6 +24,7 @@ if (BUILD_OPEN_PROJECT)
                     -Werror
                     -mllvm
                     -cce-aicore-dcci-before-kernel-end=false
+                    -mllvm -cce-aicore-hoist-movemask=false
         )
     else()
         add_ops_compile_options(
