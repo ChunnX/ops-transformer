@@ -131,9 +131,12 @@ struct RunInfo {
     uint32_t tileBuffIdx = 0;         // 当前tile分给哪个buff
     uint32_t tileMaxIdx = 0;
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
     uint32_t updateScaleIdx = 0;
 >>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
+=======
+>>>>>>> b0add032b... urs风险规避
     uint32_t pscaleNum = 0;
     bool isS2FirstTilePerCore = false; // 16个softmax均分在两个core, 当前任务是否是分在当前core上的第一个，
 

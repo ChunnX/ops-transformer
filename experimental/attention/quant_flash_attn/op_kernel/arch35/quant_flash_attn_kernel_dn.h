@@ -87,7 +87,10 @@ public:
     uint32_t s2FirstStartVecCore = 0;
     uint32_t tileLoopIdx = 1;
     uint32_t tileMaxIdx = 3;
+<<<<<<< HEAD
     uint32_t updateScaleNum = 3;
+=======
+>>>>>>> b0add032b... urs风险规避
     // fd metadata
     FDparams fdParams_;
 
