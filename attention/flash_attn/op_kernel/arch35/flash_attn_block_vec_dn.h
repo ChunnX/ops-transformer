@@ -318,7 +318,7 @@ public:
                 sinkPadParams.paddingValue = static_cast<INPUT_T>(0);
                 DataCopyPad(sinkTmpUb, sinkGm[n2Idx * gSize], sinkCopyParams, sinkPadParams);
 
-                uint32_t ubOffset = AttentionCommon::Align(gEnd + 1, 16);
+                uint32_t ubOffset = AttentionCommon::Align(gEnd + 1, 16U);
                 sinkCopyParams.blockLen = (gSize - gStart) * sizeof(INPUT_T);
                 DataCopyPad(sinkTmpUb[ubOffset], sinkGm[n2Idx * gSize + gStart], sinkCopyParams, sinkPadParams);
 
@@ -369,7 +369,7 @@ public:
                 // 由于头尾块的长度都可能不对齐, 并且gSize有可能很大, 而UB要求32B对齐,
                 // 约定先拷贝尾块的GM[0, gEnd]->UB[0, Align(gEnd + 1, 16) - 1],
                 // 再拷贝头块的GM[gStart, gSize)->UB[Align(gEnd + 1, 16), Align(gEnd + 1, 16) + Align(gSize - gStart, 16))
-                uint32_t srcUbOffset = AttentionCommon::Align(gEnd + 1, 16) * BRCB_NUM;
+                uint32_t srcUbOffset = AttentionCommon::Align(gEnd + 1, 16U) * BRCB_NUM;
                 uint32_t copySize = (gSize - gStart) * BRCB_NUM;
                 DataCopy(sinkExpandUb, sinkBrcbUb[srcUbOffset], copySize);
                 DataCopy(sinkExpandUb[copySize], sinkBrcbUb[0], (gEnd + 1) * BRCB_NUM);
