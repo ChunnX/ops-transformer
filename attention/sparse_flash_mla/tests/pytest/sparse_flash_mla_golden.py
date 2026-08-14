@@ -190,6 +190,10 @@ class GeneralizedSFA:
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
                             [G, self.D], dtype=torch.float
                         )
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = torch.zeros(
+                                [G], dtype=torch.float32
+                            )
                         continue
 
                     q_curr = q_bnsd[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :]
@@ -323,8 +327,7 @@ class GeneralizedSFA:
                             dtype=q_bnsd.dtype
                         )
                         if return_softmax_lse:
-                            softmax_max[batch, n2Idx, s1Idx, :] = x_max[:, 0]
-                            softmax_sum[batch, n2Idx, s1Idx, :] = x_sum[:, 0]
+                            softmax_lse[i_B, i_N2, i_S1, :] = x_max[:, 0] + torch.log(x_sum[:, 0] + 1e-10)
                     elif RUN_MODE == 1:
                         if empty_flag_ori:
                             ori_s2_loop_time = 0
@@ -511,6 +514,8 @@ class GeneralizedSFA:
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = (
                             O_flash / row_sum_expand / tmp_scale_16_expand
                         ).to(dtype=q_bnsd.dtype)
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = row_max + torch.log(row_sum + 1e-10)
                     else:
                         raise ValueError(f"unsupported RUN_MODE:{RUN_MODE}")
         return attn_out, softmax_lse
