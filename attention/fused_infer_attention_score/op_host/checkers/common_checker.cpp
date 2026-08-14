@@ -635,6 +635,7 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
                                                       "The value of axis G must be in the range of [1, 128] in the Decode MLA scenario");
                 return ge::GRAPH_FAILED;
             }
+            // n1不满足2的幂次方拦截
             if ((fiaInfo.n1Size & (fiaInfo.n1Size - 1)) != 0) {
                 if (fiaInfo.learnableSinkFlag) {
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "learnable_sink",
