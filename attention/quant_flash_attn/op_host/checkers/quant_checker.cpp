@@ -39,9 +39,9 @@ namespace {
 //   MxFP8: FLOAT8_E8M0; GQA_FP8_FULLQUANT: FLOAT32
 const std::map<QfaQuantMode, std::pair<ge::DataType, std::string>> DESCALE_DTYPE_TABLE = {
     {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-        {ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0"}},
+     {ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0"}},
     {QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-        {ge::DT_FLOAT, "FLOAT32"}},
+     {ge::DT_FLOAT, "FLOAT32"}},
 };
 } // namespace
 
@@ -90,7 +90,7 @@ ge::graphStatus QuantChecker::CheckQDescaleDimGqaFp8(const QfaTilingInfo &qfaInf
     // GQA: q_descale 为 2D [N1, T]
     OP_CHECK_IF(dimNum != DIM_NUM_2,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, Q_DESCALE_NAME.c_str(),
-                    (std::to_string(dimNum) + "D").c_str(), "2D"),
+                                             (std::to_string(dimNum) + "D").c_str(), "2D"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -148,7 +148,7 @@ ge::graphStatus QuantChecker::CheckKDescaleDimGqaFp8(const QfaTilingInfo &qfaInf
     // GQA: k_descale 为 3D [Bn, N2, Bs]
     OP_CHECK_IF(dimNum != DIM_NUM_3,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, K_DESCALE_NAME.c_str(),
-                    (std::to_string(dimNum) + "D").c_str(), "3D"),
+                                             (std::to_string(dimNum) + "D").c_str(), "3D"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -206,7 +206,7 @@ ge::graphStatus QuantChecker::CheckVDescaleDimGqaFp8(const QfaTilingInfo &qfaInf
     // GQA: v_descale 为 1D [N2]
     OP_CHECK_IF(dimNum != DIM_NUM_1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, V_DESCALE_NAME.c_str(),
-                    (std::to_string(dimNum) + "D").c_str(), "1D"),
+                                             (std::to_string(dimNum) + "D").c_str(), "1D"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -590,7 +590,7 @@ ge::graphStatus QuantChecker::CheckDescaleDtype(const QfaTilingInfo &qfaInfo) co
     //   GQA_FP8_FULLQUANT 场景下, q/k/v descale 的 tensor_type 仅支持 FLOAT32
     if (qfaInfo.quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 &&
         qfaInfo.quantMode !=
-        QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+            QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
         return ge::GRAPH_SUCCESS;
     }
 
@@ -599,7 +599,7 @@ ge::graphStatus QuantChecker::CheckDescaleDtype(const QfaTilingInfo &qfaInfo) co
     const std::string expectedDtypeStr = it->second.second;
 
     const auto CheckDescaleDtype = [&qfaInfo, this, expectedDtype, &expectedDtypeStr](const QfaRequiredParaInfo &slot,
-                                                    const std::string &paraName) -> ge::graphStatus {
+                                                                                      const std::string &paraName) -> ge::graphStatus {
         const gert::CompileTimeTensorDesc *desc = slot.desc;
         if (desc == nullptr) {
             return ge::GRAPH_SUCCESS; // 存在性校验负责

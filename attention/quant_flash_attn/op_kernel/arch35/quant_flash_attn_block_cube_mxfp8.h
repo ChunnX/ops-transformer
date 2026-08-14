@@ -921,7 +921,7 @@ public:
     }
 
     __aicore__ inline void InitValueL1BufferNAxis(const LocalTensor<KV_T> &valueL1, const uint32_t k,
-                                                    const uint32_t n)
+                                                  const uint32_t n)
     {
         InitConstValueParams<half> initConstValueParams;
         initConstValueParams.repeatTimes = n / 32U;
