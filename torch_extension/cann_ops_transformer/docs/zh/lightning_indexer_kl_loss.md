@@ -12,6 +12,7 @@
 | <term>Atlas 训练系列产品</term> | × |
 
 ## 功能说明
+
 - 接口说明
 
   - **teacher 侧**（target_score）：压缩段未归一化的原始主注意力分数（sum ≠ 1），用 `clamp_min` 防止 target_score=0 处 log(0) 导致 NaN。
@@ -42,6 +43,7 @@
   其中 $\varepsilon$ 为 `eps` 参数，默认值 $10^{-9}$。
 
   weight 的选择由 `weight_type` 控制：
+
   - `'logits'`（默认）：weight = y，即原始未归一化分数
   - `'probs'`：weight = P，即归一化概率
 
@@ -81,6 +83,7 @@ lightning_indexer_kl_loss(
 - `target_score` 与 `index_probs` 需在同一 NPU 设备上。
 
 ## 确定性计算
+
 - 默认不支持确定性计算，可通过PyTorch开关（torch.use_deterministic_algorithms）支持。
 
 ## 调用示例

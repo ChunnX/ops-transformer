@@ -43,6 +43,7 @@
   其中 $\varepsilon$ 为 `eps` 参数$。
 
   weight 的选择由 `weight_type` 控制：
+  
   - `'logits'`：weight = y，即原始未归一化分数
   - `'probs'`：weight = P，即归一化概率
 
