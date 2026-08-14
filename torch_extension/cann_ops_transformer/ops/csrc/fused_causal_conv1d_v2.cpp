@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * the CANN Open Software License Agreement Version 2.0 (the "License").
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -57,7 +57,7 @@ void FusedCausalConv1dV2(
     c10::optional<int64_t> max_query_len,
     c10::optional<int64_t> residual_connection,
     c10::optional<int64_t> block_size,
-    c10::optional<int64_t> conv_mode,
+    c10::optional<c10::string_view> conv_mode,
     c10::optional<int64_t> max_draft_tokens)
 {
     int64_t activation_value = parseActivation(activation);

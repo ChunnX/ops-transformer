@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * the CANN Open Software License Agreement Version 2.0 (the "License").
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -70,7 +70,7 @@ at::Tensor FusedCausalConv1d(
     int64_t max_query_len_value = max_query_len.value_or(-1);
     int64_t residual_connection_value = residual_connection.value_or(0);
     int64_t block_size_value = block_size.value_or(128);
-    int64_t conv_mode_value = parseConvMode(conv_mode)
+    int64_t conv_mode_value = parseConvMode(conv_mode);
 
     if (max_draft_tokens.has_value()) {
         int64_t max_draft_tokens_value = max_draft_tokens.value_or(7);
@@ -94,7 +94,7 @@ at::Tensor FusedCausalConv1d(
                   max_query_len_value, residual_connection_value,
                   block_size_value, conv_mode_value, y);
     }
-    
+
     return y;
 }
 

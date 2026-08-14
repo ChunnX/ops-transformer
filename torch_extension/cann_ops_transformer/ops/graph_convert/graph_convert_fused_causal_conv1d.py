@@ -39,7 +39,7 @@ if _TORCHAIR_AVAILABLE:
         elif activation == "swish":
             return 2
         return 0
-    
+
     def _parse_conv_mode(conv_mode):
         """将字符串卷积模式转换为整数值（PTA str → GE Int）
         "default" → 0：正常卷积计算
@@ -73,7 +73,7 @@ if _TORCHAIR_AVAILABLE:
         query_start_loc: Optional[torch.Tensor] = None,
         cache_indices: Optional[torch.Tensor] = None,
         initial_state_mode: Optional[torch.Tensor] = None,
-        bias: Optional[torch.Tensor],
+        bias: Optional[torch.Tensor] = None,
         num_accepted_tokens: Optional[torch.Tensor] = None,
         num_computed_tokens: Optional[torch.Tensor] = None,
         block_idx_first_scheduled_token: Optional[torch.Tensor] = None,

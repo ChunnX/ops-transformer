@@ -39,7 +39,7 @@ class FusedCausalConv1dOpBuilder(OpBuilder):
             "Tensor? block_idx_first_scheduled_token=None, "
             "Tensor? block_idx_last_scheduled_token=None, "
             "Tensor? initial_state_idx=None, "
-            'str? activation="None", ' 
+            'str? activation="None", '
             "int? pad_slot_id=-1, "
             "int? run_mode=0, "
             "int? max_query_len=-1, "
@@ -176,5 +176,5 @@ def fused_causal_conv1d(
         residual_connection=residual_connection,
         block_size=block_size,
         conv_mode=conv_mode,
-        max_draft_tokens=max_draft_tokens
+        max_draft_tokens=max_draft_tokens,
     )
