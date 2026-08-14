@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_matmul_mx_kernel.h
+ * \file all_to_all_qbmm_mx_kernel.h
  * \brief mxfp8 场景 quantMatmul 实现。
  */
 
@@ -48,11 +48,11 @@ using AscendC::Te::Get;
 
 template <class ProblemShape, class BlockMmad, class BlockScheduler,
           class CommPolicy>
-class QuantMatmulMxKernel {
+class AllToAllQbmmMxKernel {
 public:
-    __aicore__ inline QuantMatmulMxKernel()
+    __aicore__ inline AllToAllQbmmMxKernel()
     {}
-    __aicore__ inline ~QuantMatmulMxKernel()
+    __aicore__ inline ~AllToAllQbmmMxKernel()
     {}
 
     static constexpr bool weightNz = BlockMmad::WEIGHT_NZ;
@@ -180,7 +180,7 @@ private:
 };
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Run(const Params &params)
+__aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Run(const Params &params)
 {
     Init(params);
 
@@ -202,7 +202,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Run(
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
 template <typename TensorScaleB>
-__aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::SetScaleL2Cache(
+__aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::SetScaleL2Cache(
     const ProblemShape &problemShape, uint64_t baseN, uint64_t scaleKL1, TensorScaleB &gmScaleB)
 {
     if (Te::Get<MNK_B>(problemShape) != 1) {
@@ -231,7 +231,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::SetS
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
 template <typename TensorB, typename TensorScaleB, typename TensorC>
-__aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::SetL2Cache(
+__aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::SetL2Cache(
     const ProblemShape &problemShape, uint64_t curBaseM, uint64_t baseN, uint64_t scaleKL1, TensorB& gmB,
     TensorScaleB &gmScaleB, TensorC& gmC)
 {
@@ -263,7 +263,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::SetL
 }
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Init(const Params &params)
+__aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Init(const Params &params)
 {
     if ASCEND_IS_AIV {
         return;
@@ -280,7 +280,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Init
 }
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::ResetGmAddr(const Params &params)
+__aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::ResetGmAddr(const Params &params)
 {
     if ASCEND_IS_AIV {
         return;
@@ -298,7 +298,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Rese
 }
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline int32_t QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::CalcDependTileIdx(
+__aicore__ inline int32_t AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::CalcDependTileIdx(
     int64_t mPos, uint32_t headTileSize, uint32_t totalTiles) const
 {
     int32_t tileIdx = static_cast<int32_t>(mPos / headTileSize);
@@ -309,7 +309,7 @@ __aicore__ inline int32_t QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::C
 }
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::ProcessSingleBatch(
+__aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::ProcessSingleBatch(
     const Params &params, BlockScheduler& bs, uint64_t restBatch, bool isTailRound)
 {
     auto rankId = params.localParams.rankId;

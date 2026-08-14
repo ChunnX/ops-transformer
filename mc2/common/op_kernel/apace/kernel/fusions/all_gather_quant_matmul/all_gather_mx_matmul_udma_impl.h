@@ -17,12 +17,12 @@
 
 #include "kernel_basic_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "apace/kernel/all_gather_quant_matmul/all_gather_mx_matmul_udma_tiling_data.h"
-#include "apace/kernel/all_gather_quant_matmul/qmm_mx_kernel_ag_udma.h"
+#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_udma_tiling_data.h"
+#include "apace/kernel/matmul/quant_batch_matmul/all_gather_qbmm_mx_kernel.h"
 #include "adv_api/hcomm/hcomm.h"
-#include "apace/block/aiv_comm/collective_comm_context.h"
-#include "apace/block/aiv_comm/collective_comm_api.h"
-#include "apace/block/aiv_comm/barrier/barrier_ubmem.h"
+#include "apace/core/aiv_comm/collective_comm_context.h"
+#include "apace/core/aiv_comm/collective_comm_api.h"
+#include "apace/core/aiv_comm/barrier/barrier_ubmem.h"
 #include "apace/tiling/comm_tiling_data.h"
 #include "include/tensor_api/tensor.h"
 
@@ -46,7 +46,7 @@ public:
                                 const AllGatherMxMatmulUdmaTilingData *tilingData);
     __aicore__ inline void Process();
 
-    using QuantMatmulKernelImpl = QmmMxKernelAgUdma<AType, BType, CType>;
+    using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType>;
     using KernelParams = typename QuantMatmulKernelImpl::Params;
     using QBMMTiling = typename QuantMatmulKernelImpl::QBMMTiling;
     using FragmentParams = typename QuantMatmulKernelImpl::FragmentParams;
@@ -190,7 +190,8 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::InitBaseP
 
     scaleKGroups_ = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(k_), Blaze::Gemm::MXFP_DIVISOR_SIZE);
     dataBytesPerMRow_ = static_cast<uint64_t>(k_) * sizeof(AType);
-    scaleBytesPerMRow_ = scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE) * sizeof(AscendC::fp8_e8m0_t);
+    scaleBytesPerMRow_ =
+        scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE) * sizeof(AscendC::fp8_e8m0_t);
     cBytesPerM_ = static_cast<uint64_t>(n_) * sizeof(CType);
 }
 

@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file qmm_mx_kernel_ag_udma.h
+ * \file all_gather_qbmm_mx_kernel.h
  * \brief AllGather Prefill 专用 QMM 内核 — 基于 FragmentTensor。
  */
 
@@ -27,7 +27,7 @@
 #include "blaze/epilogue/block/block_epilogue_empty.h"
 #include "blaze/gemm/utils/layout_utils.h"
 #include "include/tensor_api/tensor.h"
-#include "apace/block/blaze_ext/gemm/block/qmm_mx_block_mmad_fragment.h"
+#include "apace/block/mmad/qmm_mx_block_mmad_fragment.h"
 #include "apace/basic/fragment_tensor/fragment_tensor.h"
 #include "apace/basic/fragment_tensor/fragment_tensor_api.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"
@@ -44,10 +44,10 @@ using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 enum RegionTag { HEAD, MAIN, TAIL };
 
 template <typename AType, typename BType, typename CType>
-class QmmMxKernelAgUdma {
+class AllGatherQbmmMxKernel {
 public:
-    __aicore__ inline QmmMxKernelAgUdma() {}
-    __aicore__ inline ~QmmMxKernelAgUdma() {}
+    __aicore__ inline AllGatherQbmmMxKernel() {}
+    __aicore__ inline ~AllGatherQbmmMxKernel() {}
 
     // ---- Component types ----
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, 0>;
@@ -229,7 +229,7 @@ private:
 };
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Init(const Params& params)
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Init(const Params& params)
 {
     if ASCEND_IS_AIV {
         return;
@@ -243,7 +243,7 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Init(const Params
 
 template <typename AType, typename BType, typename CType>
 template <typename TensorB, typename TensorScaleB>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::SetL2Cache(
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::SetL2Cache(
     const ProblemShape& problemShape, int64_t baseM, int64_t baseN,
     TensorB& gmB, TensorScaleB& gmScaleB)
 {
@@ -273,7 +273,7 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::SetL2Cache(
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Run(const Params& params)
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Run(const Params& params)
 {
     Init(params);
 
@@ -318,7 +318,7 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Run(const Params&
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Process(
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(
     const Params& params, const ProblemShape& problemShape, BlockScheduler& sch, BlockMmadFragC& mmadFrag)
 {
     const auto& mmT = *params.mmTile;
@@ -413,7 +413,7 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Process(
 
 template <typename AType, typename BType, typename CType>
 __aicore__ inline Apace::Basic::FragmentParam<2>
-QmmMxKernelAgUdma<AType, BType, CType>::MakeFragParam(
+AllGatherQbmmMxKernel<AType, BType, CType>::MakeFragParam(
     uint64_t fragSize, uint64_t realFragSize, uint32_t fragCnt, uint64_t shape1) const
 {
     Apace::Basic::FragmentParam<2> param{};
@@ -427,7 +427,7 @@ QmmMxKernelAgUdma<AType, BType, CType>::MakeFragParam(
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildFragmentTensors(const Params& params)
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::BuildFragmentTensors(const Params& params)
 {
     const auto& fp = params.fragParams;
 
@@ -453,7 +453,7 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildFragmentTens
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::EnsureWinRankBasesReady(const Params& params)
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::EnsureWinRankBasesReady(const Params& params)
 {
     if (winBasesReady_) {
         return;
@@ -467,7 +467,7 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::EnsureWinRankBase
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildMainFragment(
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::BuildMainFragment(
     const Params& params, uint32_t roundIdx)
 {
     EnsureWinRankBasesReady(params);
@@ -497,7 +497,7 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildMainFragment
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildTailFragment(const Params& params)
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::BuildTailFragment(const Params& params)
 {
     EnsureWinRankBasesReady(params);
     const auto& fp = params.fragParams;
@@ -526,7 +526,7 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildTailFragment
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::UpdateMainRoundAddrs(
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::UpdateMainRoundAddrs(
     const Params& params, uint32_t roundIdx)
 {
     const auto& fp = params.fragParams;
@@ -552,8 +552,8 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::UpdateMainRoundAd
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline typename QmmMxKernelAgUdma<AType, BType, CType>::TileCtx
-QmmMxKernelAgUdma<AType, BType, CType>::ResolveTileCtx(
+__aicore__ inline typename AllGatherQbmmMxKernel<AType, BType, CType>::TileCtx
+AllGatherQbmmMxKernel<AType, BType, CType>::ResolveTileCtx(
     int64_t mPos, int64_t headMainRows, int64_t mainRoundRows, int64_t mainSectionRows,
     uint32_t rankSize, uint32_t commTurn) const
 {
