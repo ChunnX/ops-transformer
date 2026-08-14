@@ -65,7 +65,8 @@ struct MsaTask {
     uint32_t localBlocks;
     uint32_t fullEndBlk;
     uint32_t visibleEndBlk;
-    uint32_t numSTiles;
+    uint32_t numSTiles;        // 含不可见尾，必须写 -inf 的 S-tile 数
+    uint32_t numComputeSTiles; // AIC 真正做 QKᵀ 的 S-tile 数（<= numSTiles）
 };
 
 class MsaTaskScheduler {
@@ -165,6 +166,10 @@ public:
 
         // 不可见尾一律写 -inf，末维对齐到 scoreBlockStride
         task.numSTiles = MsaCeilDiv(scoreBlockStride_, MSA_BLOCKS_PER_STILE);
+        task.numComputeSTiles = MsaCeilDiv(task.visibleEndBlk, MSA_BLOCKS_PER_STILE);
+        if (task.numComputeSTiles > task.numSTiles) {
+            task.numComputeSTiles = task.numSTiles;
+        }
     }
 
 private:
