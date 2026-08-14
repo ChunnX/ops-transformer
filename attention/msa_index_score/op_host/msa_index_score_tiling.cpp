@@ -187,9 +187,12 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
     OP_CHECK_IF(aicNum == 0, OP_LOGE(context, "aic core num is 0."), return ge::GRAPH_FAILED);
 
     const uint32_t scoreBlockStride = RoundUpU32(info.maxBlocksPerBatch, MSA_SCORE_STRIDE_ALIGN);
-    const uint32_t sWsElems = aicNum * MSA_WORKSPACE_STAGES * MSA_STILE_ELEM_NUM;
+    // S workspace：非量化路径元素为 fp16（AIC fixpipe F322F16 直接写出），int8 路径 fp32。
+    const uint32_t sWsBytes = aicNum * MSA_WORKSPACE_STAGES * MSA_STILE_ELEM_NUM *
+                              (info.isQuant ? sizeof(float) : sizeof(uint16_t));
     const uint32_t kScratchBytes = info.isQuant ? (aicNum * MSA_K_SCRATCH_ELEM_NUM * sizeof(uint16_t)) : 0U;
-    const uint32_t kScratchOffsetElems = sWsElems;
+    // K scratch 基址以 4B 为单位表达（kernel 内按 float* 折算），S 变 fp16 后偏移减半。
+    const uint32_t kScratchOffsetElems = sWsBytes / sizeof(float);
 
     MsaIndexScoreTilingData tilingData;
     tilingData.set_batch(info.batch);
@@ -228,8 +231,8 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
 
     size_t *workspaces = context->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);
-    workspaces[0] = ascendcPlatform.GetLibApiWorkSpaceSize() +
-                    static_cast<size_t>(sWsElems) * sizeof(float) + static_cast<size_t>(kScratchBytes);
+    workspaces[0] = ascendcPlatform.GetLibApiWorkSpaceSize() + static_cast<size_t>(sWsBytes) +
+                    static_cast<size_t>(kScratchBytes);
 
     uint64_t tilingKey = MSA_TILING_KEY_FP16;
     if (info.isQuant) {
