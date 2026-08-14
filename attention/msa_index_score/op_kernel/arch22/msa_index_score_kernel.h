@@ -31,11 +31,10 @@
 #include "catlass/matrix_coord.hpp"
 #include "catlass/layout/layout.hpp"
 #include "catlass/gemm/gemm_type.hpp"
-#include "catlass/gemm/dispatch_policy.hpp"
-#include "catlass/gemm/block/block_mmad.hpp"
 
 #include "../msa_index_score_common.h"
 #include "../msa_index_score_debug.h"
+#include "msa_block_mmad.h"
 #include "msa_index_score_task.h"
 #include "msa_index_score_epilogue.h"
 
@@ -55,11 +54,7 @@ public:
     using KType = Catlass::Gemm::GemmType<ElementQ, LayoutK>;
     using SType = Catlass::Gemm::GemmType<float, LayoutS>;
 
-    using DispatchPolicy = Catlass::Gemm::MmadAtlasA2Pingpong<false>;
-    using L1TileShape = Catlass::GemmShape<MSA_ROW_TILE_M, MSA_BLOCK_SIZE, MSA_K_TILE>;
-    using L0TileShape = L1TileShape;
-    using BlockMmad =
-        Catlass::Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, QType, KType, SType>;
+    using BlockMmad = MsaBlockMmad<QType, KType, SType>;
 
     static constexpr uint32_t REVERSE_DEPTH = MSA_WORKSPACE_STAGES - 1;
     static constexpr uint32_t STILE_WIDTH = MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE;
@@ -145,7 +140,9 @@ private:
 #else
             constexpr bool dbgTask = false;
 #endif
-            for (uint32_t st = 0; st < task.numSTiles; ++st) {
+            // 只对可见 S-tile 做 QKᵀ + 握手；因果不可见尾由 AIV 直接写 -inf，避免空转同步。
+            bool needLoadQ = true;
+            for (uint32_t st = 0; st < task.numComputeSTiles; ++st) {
                 if constexpr (IS_QUANT_V) {
                     // MIX 1AIC:2AIV：AIV→AIC 的 0x2 flag 需两个 AIV 都 Set 后才放行。
                     Catlass::Arch::CrossCoreWaitFlag(flagKReady);
@@ -153,7 +150,8 @@ private:
                 const uint64_t sBase =
                     coreWsBase + static_cast<uint64_t>(tileSeq % MSA_WORKSPACE_STAGES) * MSA_STILE_ELEM_NUM;
                 ComputeSTile(blockMmad, task, st * MSA_BLOCKS_PER_STILE, sBase, coreKScratch,
-                             dbgTask && (st == 0));
+                             needLoadQ, dbgTask && (st == 0));
+                needLoadQ = false;
                 Catlass::Arch::CrossCoreSetFlagWithReverse<0x2, PIPE_FIX>(flagSReady);
                 ++tileSeq;
             }
@@ -200,7 +198,8 @@ private:
     }
 
     __aicore__ inline void ComputeSTile(BlockMmad &blockMmad, const MsaTask &task, uint32_t blkBase,
-                                        uint64_t sBase, uint64_t kScratchBase, bool dumpDebug)
+                                        uint64_t sBase, uint64_t kScratchBase, bool needLoadL1,
+                                        bool dumpDebug)
     {
         const uint32_t mActual = task.mActual;
         const uint32_t headDim = tiling_->headDim;
@@ -231,14 +230,15 @@ private:
             if constexpr (IS_QUANT_V) {
                 const uint64_t scratchOff = kScratchBase + static_cast<uint64_t>(j) * pageStride;
                 blockMmad(gQuery_[qOffset], layoutQ, gKeyScratch_[scratchOff], layoutK,
-                          gWorkspace_[sBase + j * MSA_BLOCK_SIZE], layoutS, shape);
+                          gWorkspace_[sBase + j * MSA_BLOCK_SIZE], layoutS, shape, needLoadL1);
             } else {
                 const int32_t page =
                     gBlockTable_.GetValue(task.batchIdx * tiling_->maxBlocksPerBatch + blk);
                 const uint64_t kOffset = static_cast<uint64_t>(page) * tiling_->strideKvBlock;
                 blockMmad(gQuery_[qOffset], layoutQ, gKeyFp_[kOffset], layoutK,
-                          gWorkspace_[sBase + j * MSA_BLOCK_SIZE], layoutS, shape);
+                          gWorkspace_[sBase + j * MSA_BLOCK_SIZE], layoutS, shape, needLoadL1);
             }
+            needLoadL1 = false;
         }
 
 #if MSA_INDEX_SCORE_DEBUG
@@ -280,7 +280,7 @@ private:
 #else
             constexpr bool dbgTask = false;
 #endif
-            for (uint32_t st = 0; st < task.numSTiles; ++st) {
+            for (uint32_t st = 0; st < task.numComputeSTiles; ++st) {
                 if constexpr (IS_QUANT_V) {
                     // AIV0 写 scratch；AIV0/AIV1 barrier 后双方都 Set，满足 1:2 MIX 握手。
                     if (subIdx == 0) {
@@ -295,6 +295,11 @@ private:
                 epilogue.ProcessSTile(gWorkspace_[sBase], task, st * MSA_BLOCKS_PER_STILE, subIdx,
                                       subBlockNum, dbgTask && (st == 0));
                 ++tileSeq;
+            }
+            // 因果不可见尾：不握手，直接写 -inf（与 AIC 跳过这些 tile 对齐）。
+            for (uint32_t st = task.numComputeSTiles; st < task.numSTiles; ++st) {
+                epilogue.ProcessSTile(gWorkspace_[0], task, st * MSA_BLOCKS_PER_STILE, subIdx,
+                                      subBlockNum, false);
             }
         }
         AscendC::PipeBarrier<PIPE_ALL>();

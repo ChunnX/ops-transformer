@@ -124,11 +124,14 @@ private:
 #endif
 
         if (!allInvalid) {
-            // 短 M-tile 只拷了部分行；SegRowMax 固定按 16 行归约，未写入区域必须是 -inf。
-            AscendC::Duplicate(ubS_, MSA_FILL_VALUE, MSA_ROWS_PER_PASS * STILE_WIDTH);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+            // 短 pass 只拷了部分行；SegRowMax 固定按 16 行归约，未写入区域必须是 -inf。
+            // 满 16 行时 DataCopy 覆盖整块 ubS_，可跳过 Duplicate。
+            if (rows < MSA_ROWS_PER_PASS) {
+                AscendC::Duplicate(ubS_, MSA_FILL_VALUE, MSA_ROWS_PER_PASS * STILE_WIDTH);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+            }
 #if MSA_INDEX_SCORE_DEBUG
             uint32_t sDumpN = MSA_DEBUG_DUMP_ELEMS;
             if (task.kvLen > 0 && task.kvLen <= 8) {
