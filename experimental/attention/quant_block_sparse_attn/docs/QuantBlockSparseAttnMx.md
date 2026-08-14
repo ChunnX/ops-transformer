@@ -31,7 +31,7 @@ $$
 
 ## 接口说明
 
-该算子通过 PyTorch 扩展注册为 `torch.ops.custom.npu_quant_block_sparse_attn`，与 `quant_mode=1` 共用同一接口签名，通过 `quant_mode=2` 选择 MXFP8 全量化路径。PyTorch 入口会创建输出 Tensor，并调用底层算子接口。
+该算子通过 PyTorch 扩展注册为 `torch.ops.custom.npu_quant_block_sparse_attn`，与 `quant_mode=1` 共用同一接口签名，通过显式传入 `quant_mode=2` 选择 MXFP8 全量化路径。PyTorch 入口会创建输出 Tensor，并调用底层算子接口。
 
 ### PyTorch 接口原型
 
@@ -61,7 +61,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
     layout_q: str = "TND",
     layout_sparse_indices: str = "B_N_Qb_Kb",
     layout_out: str = "TND",
-    quant_mode: int = 2,
+    quant_mode: int = 1,
     mask_mode: int = 3,
     return_softmax_lse: bool = False,
 ) -> Tuple[Tensor, Tensor]
@@ -323,7 +323,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>quant_mode</td>
       <td>输入属性</td>
       <td>量化模式。</td>
-      <td>支持1 和 2，1 表示 FP8量化，2表示 MXFP8 量化。</td>
+      <td>支持1 和 2，1 表示 FP8量化，2表示 MXFP8 量化；MXFP8要求显式传入2，否则会默认走入FP8量化。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -374,7 +374,6 @@ PyTorch 接口返回 `(attention_out, softmax_lse)`：
 - `attention_out`：BF16 Tensor，最后一维为 `D_v`。MXFP8 路径固定按 TND 语义返回 `(T1,N1,D_v)`。
 - `softmax_lse`：FLOAT32 Tensor。`return_softmax_lse=True` 时返回 `(T1,N1)`（注意：与 `quant_mode=1` 的 `(N1,T1)` 布局不同）；`return_softmax_lse=False` 时返回无有效 LSE 的占位 Tensor。
 
-底层算子接口返回状态码。第一段 GetWorkspaceSize 接口完成参数校验，必选输入为空、数据类型不支持、shape 与属性不匹配时返回参数错误。
 
 ## 约束说明
 
@@ -577,11 +576,10 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 
 ### 参数组约束
 
-#### 公共参数组（CommonChecker）
+#### 公共参数组
 
 - 单参数约束
 
-  - 当前算子配置支持 `ascend950`。
   - `query`、`key`、`value` 数据类型仅支持 `FLOAT8_E4M3FN`，数据格式仅支持 ND。
   - `query` 仅支持 3D Tensor，MXFP8 路径下 `layout_q` 必须为 `"TND"`，shape 为 `(QueryTokenNum, N1, D)`。
   - `query` 不支持空 Tensor，且 `D` 当前固定为 128。
@@ -685,8 +683,8 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
   - `key` stride 必须满足 `[key.stride(0), pa_block_size * D, D, 1]`。
   - `value` stride 必须满足 `[value.stride(0), pa_block_size * D_v, D_v, 1]`。
   - `value.stride(0)` 必须等于 `key.stride(0)`，表示 Value 视图与 Key 视图使用相同的物理 PA block 外步长。
-  - `k_descale` shape 必须为 `[block_num, N2, pa_block_size, D/64, 2]`；`k_descale.stride(0) * 1`（FLOAT8_E8M0 单字节）必须与 `key.stride(0)` 对齐同一物理 PA block 外步长。
-  - `v_descale` shape 必须为 `[block_num, N2, pa_block_size/64, D_v, 2]`；`v_descale.stride(0) * 1`（FLOAT8_E8M0 单字节）必须与 `value.stride(0)` 对齐同一物理 PA block 外步长。
+  - `k_descale` shape 必须为 `[block_num, N2, pa_block_size, D/64, 2]`。
+  - `v_descale` shape 必须为 `[block_num, N2, pa_block_size/64, D_v, 2]`。
   - `pa_block_size` 必须为 `sparse_kv_block_size` 的正整数倍且不超过 1024。
   - `block_table` 的有效值必须在 `[0, block_num - 1]` 范围内，该逻辑由用户外部保证。
 
@@ -695,7 +693,6 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
   - `block_table` 的 Batch 维度必须与 `sparse_indices`、`sparse_seq_len`、ActualSeqLen 参数组中的 BatchSize 一致；
   - `sparse_indices` 的有效逻辑 block id 必须小于 `max_block_num_per_batch`，否则 `block_table` 映射越界。
   - `block_table` 数值合法性由调用者保证。
-  - `sparse_indices` 的第四维必须小于等于 `block_table` 的第二维。
 
 #### ActualSeqLen参数组（ActualSeqLenChecker）
 
@@ -791,6 +788,82 @@ import torch
 import torch_npu
 import custom_ops
 
+torch_npu.npu.set_device(0)
+
+# BASE_01 用例参数: B=1, N1=1, N2=1, D=128, T1=256, S2=512
+# pa_block_size=128, sparse_block_size=128, block_num=4
+# quant_group_size=32, D//64=2
+
+# query: (T1, N1, D) = (256, 1, 128) FP8_E4M3FN
+query = torch.randn(256, 1, 128, dtype=torch.float32).to(torch.float8_e4m3fn).npu()
+
+# key/value: (block_num, N2, pa_block_size, D) = (4, 1, 128, 128) FP8_E4M3FN
+key = torch.randn(4, 1, 128, 128, dtype=torch.float32).to(torch.float8_e4m3fn).npu()
+value = torch.randn(4, 1, 128, 128, dtype=torch.float32).to(torch.float8_e4m3fn).npu()
+
+# q_descale: (T1, N1, D//64, 2) = (256, 1, 2, 2) E8M0
+# 每个 32-D group 一个 scale，pair-packed 末维 2
+q_descale = torch.full((256, 1, 2, 2), 127, dtype=torch.uint8).to(torch.float8_e8m0fnu).npu()
+
+# k_descale: (block_num, N2, pa_block_size, D//64, 2) = (4, 1, 128, 2, 2) E8M0
+k_descale = torch.full((4, 1, 128, 2, 2), 127, dtype=torch.uint8).to(torch.float8_e8m0fnu).npu()
+
+# v_descale: (block_num, N2, pa_block_size//64, D_v, 2) = (4, 1, 2, 128, 2) E8M0
+# pa_block_size=128, 128//64=2 个 S-group
+v_descale = torch.full((4, 1, 2, 128, 2), 127, dtype=torch.uint8).to(torch.float8_e8m0fnu).npu()
+
+# p_scale: (1,) E8M0, 127 = 2^0 = 1.0
+p_scale = torch.tensor([127], dtype=torch.uint8).to(torch.float8_e8m0fnu).npu()
+
+# sparse_indices: (B, N1, max_Qb, max_Kb) = (1, 1, 2, 4)
+# QB0 访问 KV block 0,1,2; QB1 访问 KV block 0,1,2,3
+sparse_indices = torch.tensor([[[[0, 1, 2, -1],
+                                 [0, 1, 2, 3]]]], dtype=torch.int32).npu()
+
+# sparse_seq_len: (B, N1, max_Qb) = (1, 1, 2)
+sparse_seq_len = torch.tensor([[[3, 4]]], dtype=torch.int32).npu()
+
+# atten_mask: (2048, 2048) UINT8 causal mask
+atten_mask = torch.triu(torch.ones(2048, 2048, dtype=torch.uint8), diagonal=0).npu()
+
+# cu_seqlens_q: (B+1,) = (2,)
+cu_seqlens_q = torch.tensor([0, 256], dtype=torch.int32).npu()
+
+# seqused_kv: (B,) = (1,)
+seqused_kv = torch.tensor([512], dtype=torch.int32).npu()
+
+# block_table: (B, max_block_num_per_batch) = (1, 4)
+# 逻辑 block 0→物理 0, 1→1, 2→2, 3→3
+block_table = torch.tensor([[0, 1, 2, 3]], dtype=torch.int32).npu()
+
+# softmax_scale = 1/sqrt(128)
+softmax_scale = 0.08838834764831843
+
+# 生成 metadata
+print("[INFO] 生成 metadata ...")
+metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
+    sparse_seq_len,
+    1,  # num_heads_q = N1
+    1,  # num_heads_kv = N2
+    128,  # head_dim = D
+    cu_seqlens_q=cu_seqlens_q,
+    cu_seqlens_kv=None,
+    seqused_q=None,
+    seqused_kv=seqused_kv,
+    batch_size=1,
+    sparse_block_size_q=128,
+    sparse_block_size_k=128,
+    quant_mode=2,
+    mask_mode=3,
+    layout_q="TND",
+    layout_kv="PA_BNSD",
+    layout_sparse_indices="B_N_Qb_Kb",
+)
+print("[INFO] metadata 生成成功, shape =", tuple(metadata.shape))
+
+print("[INFO] 开始执行 npu_quant_block_sparse_attn (quant_mode=2 MXFP8) ...")
+torch_npu.npu.synchronize()
+
 attn_out, softmax_lse = torch.ops.custom.npu_quant_block_sparse_attn(
     query,
     key,
@@ -810,7 +883,7 @@ attn_out, softmax_lse = torch.ops.custom.npu_quant_block_sparse_attn(
     seqused_q=None,
     seqused_kv=seqused_kv,
     block_table=block_table,
-    metadata=None,
+    metadata=metadata,
     layout_kv="PA_BNSD",
     layout_q="TND",
     layout_sparse_indices="B_N_Qb_Kb",
@@ -819,6 +892,10 @@ attn_out, softmax_lse = torch.ops.custom.npu_quant_block_sparse_attn(
     mask_mode=3,
     return_softmax_lse=True,
 )
+torch_npu.npu.synchronize()
+print("[INFO] 算子执行成功")
+print("[INFO] attn_out:       shape =", tuple(attn_out.shape), "dtype =", attn_out.dtype)
+print("[INFO] softmax_lse:    shape =", tuple(softmax_lse.shape), "dtype =", softmax_lse.dtype)
 ```
 
 ## 相关接口
