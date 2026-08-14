@@ -738,9 +738,6 @@ static bool CheckOutputDtype(const MhcParamsBase &params)
     if (!CheckTensorDtype(params.hPost, "hPost", DataType::DT_FLOAT)) {
         return false;
     }
-    if (!CheckTensorDtype(params.hIn, "hIn", params.x->GetDataType())) {
-        return false;
-    }
     if (params.hRes != nullptr && !CheckTensorDtype(params.hRes, "hRes", DataType::DT_FLOAT)) {
         return false;
     }
