@@ -17,6 +17,7 @@
 #include "tiling/tiling_api.h"
 #include "apply_rotary_pos_emb_grad_tiling.h"
 #include "../op_kernel/arch35/apply_rotary_pos_emb_grad_tiling_key.h"
+#include "../op_kernel/arch35/apply_rotary_pos_emb_grad_dag.h"
 
 namespace {
 constexpr int64_t GQ_INDEX = 0;      // grad_query_embed
@@ -740,8 +741,17 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::TilingReduce()
         (GetInputParam(opInput, GQ_INDEX, COS_INDEX) == ge::GRAPH_FAILED),
         OP_LOGE(context_->GetNodeName(), "ReduceOp get input param failed"),
         return ge::GRAPH_FAILED);
-    // TilingReduce - the DAG would be defined in kernel side, using a placeholder for now
-    // The actual DAG template instantiation follows the same pattern as single-road reverse
+    ge::graphStatus status;
+    if (ge::GetSizeByDataType(opInput.inputDtype) == sizeof(float)) {
+        status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<float, float>::OpDag>(
+            context_, opInput, key_, &opInfo, &tilingData_->reduceTiling);
+    } else {
+        status = Ops::Base::Tiling4ReduceOp<ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<Ops::Base::half, float>::OpDag>(
+            context_, opInput, key_, &opInfo, &tilingData_->reduceTiling);
+    }
+    OP_CHECK_IF(
+        (status == ge::GRAPH_FAILED),
+        OP_LOGE(context_->GetNodeName(), "ReduceOp Tiling failed."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
