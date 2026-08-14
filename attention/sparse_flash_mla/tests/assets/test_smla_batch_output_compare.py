@@ -14,6 +14,7 @@
 
 import csv
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -161,18 +162,19 @@ class FixtureWriter:
         ])
         self.write_outputs(second_case_differs)
 
-    def command(self):
-        return [
+    def command(self, include_excel=True):
+        command = [
             sys.executable,
             str(SCRIPT),
             "--csv", str(self.case_csv),
             "--result", str(self.result_csv),
             "--dump-dir", str(self.dump_dir),
             "--report", str(self.report),
-            "--excel", str(self.excel),
-            "--require-intra-case",
-            "--require-cross-case",
         ]
+        if include_excel:
+            command.extend(("--excel", str(self.excel)))
+        command.extend(("--require-intra-case", "--require-cross-case"))
+        return command
 
 
 def test_batch_output_comparator_accepts_same_and_cross_case(tmp_path):
@@ -195,6 +197,31 @@ def test_batch_output_comparator_accepts_same_and_cross_case(tmp_path):
     assert "N2:N5" in {str(value) for value in details.merged_cells.ranges}
     assert details["F2"].value == "PASS"
     assert details["I2"].value
+
+
+def test_json_only_comparison_does_not_import_openpyxl(tmp_path):
+    fixture = FixtureWriter(tmp_path)
+    fixture.write_fixture()
+    (tmp_path / "openpyxl.py").write_text(
+        "raise RuntimeError('openpyxl must not load in JSON-only mode')\n",
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = os.pathsep.join(filter(None, (
+        str(tmp_path), environment.get("PYTHONPATH"),
+    )))
+
+    completed = subprocess.run(
+        fixture.command(include_excel=False),
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+    assert json.loads(fixture.report.read_text(encoding="utf-8"))["status"] == "PASS"
+    assert not fixture.excel.exists()
 
 
 def test_batch_output_comparator_rejects_cross_case_difference(tmp_path):
