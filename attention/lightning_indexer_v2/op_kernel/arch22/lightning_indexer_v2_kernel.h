@@ -453,9 +453,11 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
                                                            const LIV2TilingData *__restrict tiling,
                                                            TPipe *tPipe)
 {
+    int isAivFlag = 0;
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
         aiCoreIdx = tmpBlockIdx / 2;
+        isAivFlag = 1;
     } else {
         tmpBlockIdx = GetBlockIdx(); // cube:0-23
         aiCoreIdx = tmpBlockIdx;
@@ -470,6 +472,23 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
     }
     // 计算分核
     SplitCore(aiCoreIdx, usedCoreNum, splitCoreInfo);
+
+    printf("[DBG] blk=%d aiCoreIdx=%d isAIV=%d usedCoreNum=%d batchSize=%d s1BaseSize=%d s2BaseSize=%d "
+           "mBaseSize=%d gSize=%d kHeadNum=%d headDim=%d sparseCount=%d isOver2K=%d attenMask=%d "
+           "cmpRatio=%d layout=%d kLayout=%d qSeqSize=%d kSeqSize=%d actualLenQDims=%d actualLenDims=%d "
+           "usedLenKDims=%d isAccumS1=%d isAccumS2=%d returnValue=%d "
+           "split: bN2Start=%d bN2End=%d gS1Start=%d gS1End=%d s2Start=%d s2End=%d isLD=%d\n",
+           (int)GetBlockIdx(), (int)aiCoreIdx, isAivFlag, (int)usedCoreNum,
+           (int)constInfo.batchSize, (int)constInfo.s1BaseSize, (int)constInfo.s2BaseSize,
+           (int)constInfo.mBaseSize, (int)constInfo.gSize, (int)constInfo.kHeadNum,
+           (int)constInfo.headDim, (int)constInfo.sparseCount, (int)constInfo.isSparseCountOver2K,
+           (int)constInfo.attenMaskFlag, (int)constInfo.cmpRatio, (int)LAYOUT_T, (int)K_LAYOUT_T,
+           (int)constInfo.qSeqSize, (int)constInfo.kSeqSize, (int)constInfo.actualLenQDims,
+           (int)constInfo.actualLenDims, (int)constInfo.usedLenKDims, (int)constInfo.isAccumSeqS1,
+           (int)constInfo.isAccumSeqS2, (int)constInfo.returnValue,
+           (int)splitCoreInfo.bN2Start, (int)splitCoreInfo.bN2End, (int)splitCoreInfo.gS1Start,
+           (int)splitCoreInfo.gS1End, (int)splitCoreInfo.s2Start, (int)splitCoreInfo.s2End,
+           (int)splitCoreInfo.isLD);
 
     pipe = tPipe;
     // workspace 内存排布
@@ -625,12 +644,14 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerV2Kernel<LIT>::Process()
 {
     if (usedCoreNum == 0) {
-        // 没有计算任务，直接清理输出
         ProcessInvalid();
         return;
     }
+    if (aiCoreIdx < 2) printf("[VDBG] blk=%d Process start\n", (int)GetBlockIdx());
     ProcessMain();
+    if (aiCoreIdx < 2) printf("[VDBG] blk=%d ProcessDecode start\n", (int)GetBlockIdx());
     ProcessDecode();
+    if (aiCoreIdx < 2) printf("[VDBG] blk=%d Process end\n", (int)GetBlockIdx());
 }
 
 template <typename LIT>
@@ -675,6 +696,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessMain()
         vectorService.AllocEventID();
         CrossCoreSetFlag<LIV2Common::ConstInfo::FIA_SYNC_MODE2, PIPE_MTE2>(constInfo.syncV1C1);
         CrossCoreSetFlag<LIV2Common::ConstInfo::FIA_SYNC_MODE2, PIPE_MTE2>(constInfo.syncV1C1);
+        if (aiCoreIdx < 2) printf("[VDBG] blk=%d AIV init done\n", (int)GetBlockIdx());
     } else {
         matmulService.AllocEventID();
     }
@@ -683,6 +705,8 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessMain()
     uint32_t gloop = 0;
     for (uint32_t bN2LoopIdx = splitCoreInfo.bN2Start; bN2LoopIdx <= splitCoreInfo.bN2End; bN2LoopIdx++) {
         CalcGS1LoopParams(bN2LoopIdx);
+        if (aiCoreIdx < 2) printf("[VDBG] blk=%d bN2=%d seqZero=%d gS1End=%d\n",
+            (int)GetBlockIdx(), (int)bN2LoopIdx, (int)tempLoopInfo.curActSeqLenIsZero, (int)tempLoopInfo.gS1LoopEnd);
         if (tempLoopInfo.curActSeqLenIsZero) {
             DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, 0U);
             continue;
@@ -702,11 +726,15 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessMain()
     }
 
     if ASCEND_IS_AIV {
+        if (aiCoreIdx < 2) printf("[VDBG] blk=%d AIV loop done\n", (int)GetBlockIdx());
         vectorService.FreeEventID();
+        if (aiCoreIdx < 2) printf("[VDBG] blk=%d AIV FreeEventID done\n", (int)GetBlockIdx());
     } else {
         matmulService.FreeEventID();
+        if (aiCoreIdx < 2) printf("[VDBG] blk=%d AIC wait final\n", (int)GetBlockIdx());
         CrossCoreWaitFlag(constInfo.syncV1C1);
         CrossCoreWaitFlag(constInfo.syncV1C1);
+        if (aiCoreIdx < 2) printf("[VDBG] blk=%d AIC final done\n", (int)GetBlockIdx());
     }
 }
 
@@ -716,12 +744,18 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessBaseBlock(
 {
     CalcRunInfo(loop, s2LoopIdx, runInfo);
     if ASCEND_IS_AIC {
+        if (aiCoreIdx < 2) printf("[VDBG] blk=%d AIC wait V1C1 loop=%d\n", (int)GetBlockIdx(), (int)loop);
         CrossCoreWaitFlag(constInfo.syncV1C1);
+        if (aiCoreIdx < 2) printf("[VDBG] blk=%d AIC got V1C1 Mm1 loop=%d\n", (int)GetBlockIdx(), (int)loop);
         matmulService.ComputeMm1(runInfo);
+        if (aiCoreIdx < 2) printf("[VDBG] blk=%d AIC Mm1 done set C1V1 loop=%d\n", (int)GetBlockIdx(), (int)loop);
         CrossCoreSetFlag<LIV2Common::ConstInfo::FIA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC1V1);
     } else {
+        if (aiCoreIdx < 2) printf("[VDBG] blk=%d AIV wait C1V1 loop=%d\n", (int)GetBlockIdx(), (int)loop);
         CrossCoreWaitFlag(constInfo.syncC1V1);
+        if (aiCoreIdx < 2) printf("[VDBG] blk=%d AIV got C1V1 PV loop=%d\n", (int)GetBlockIdx(), (int)loop);
         vectorService.ProcessVec(runInfo);
+        if (aiCoreIdx < 2) printf("[VDBG] blk=%d AIV PV done set V1C1 loop=%d\n", (int)GetBlockIdx(), (int)loop);
         CrossCoreSetFlag<LIV2Common::ConstInfo::FIA_SYNC_MODE2, PIPE_MTE2>(constInfo.syncV1C1);
     }
 }
@@ -729,10 +763,15 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessBaseBlock(
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessDecode()
 {
+    printf("ProcessDecode enter start\n");
     if ASCEND_IS_AIV {
+        printf("InitLDBuffers enter start\n");
         vectorService.InitLDBuffers(pipe);
+        printf("ICachePreLoad enter start\n");
         ICachePreLoad(LD_PREFETCH_LEN);
+        printf("ProcessDecode SyncAll start====\n");
         SyncAll();
+        printf("ProcessDecode SyncAll end\n");
         if (splitCoreInfo.isLD) {
             vectorService.ProcessLD();
         }
