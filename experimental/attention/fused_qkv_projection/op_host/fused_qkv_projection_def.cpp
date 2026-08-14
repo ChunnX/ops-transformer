@@ -8,7 +8,14 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <vector>
+
 #include "register/op_def_registry.h"
+
+namespace {
+const std::vector<ge::DataType> kFusedQkvDataTypes = {ge::DT_FLOAT, ge::DT_FLOAT16};
+const std::vector<ge::Format> kFusedQkvFormats = {ge::FORMAT_ND, ge::FORMAT_ND};
+} // namespace
 
 namespace ops {
 
@@ -19,38 +26,38 @@ public:
     {
         this->Input("hidden_states")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType(kFusedQkvDataTypes)
+            .Format(kFusedQkvFormats)
             .AutoContiguous();
 
         this->Input("weight")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType(kFusedQkvDataTypes)
+            .Format(kFusedQkvFormats)
             .AutoContiguous();
 
         this->Input("bias")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType(kFusedQkvDataTypes)
+            .Format(kFusedQkvFormats)
             .AutoContiguous();
 
         this->Output("query")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType(kFusedQkvDataTypes)
+            .Format(kFusedQkvFormats)
             .AutoContiguous();
 
         this->Output("key")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType(kFusedQkvDataTypes)
+            .Format(kFusedQkvFormats)
             .AutoContiguous();
 
         this->Output("value")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType(kFusedQkvDataTypes)
+            .Format(kFusedQkvFormats)
             .AutoContiguous();
 
         this->Attr("q_output_dim").AttrType(REQUIRED).Int();
@@ -58,13 +65,13 @@ public:
         this->Attr("v_output_dim").AttrType(REQUIRED).Int();
 
         OpAICoreConfig aicoreConfig;
-        aicoreConfig.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(false)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("opFile.value", "fused_qkv_projection");
+        aicoreConfig.DynamicCompileStaticFlag(true);
+        aicoreConfig.DynamicFormatFlag(false);
+        aicoreConfig.DynamicRankSupportFlag(true);
+        aicoreConfig.DynamicShapeSupportFlag(true);
+        aicoreConfig.NeedCheckSupportFlag(false);
+        aicoreConfig.PrecisionReduceFlag(true);
+        aicoreConfig.ExtendCfgInfo("opFile.value", "fused_qkv_projection");
         this->AICore().AddConfig("ascend910b", aicoreConfig);
         this->AICore().AddConfig("ascend910_93", aicoreConfig);
     }
