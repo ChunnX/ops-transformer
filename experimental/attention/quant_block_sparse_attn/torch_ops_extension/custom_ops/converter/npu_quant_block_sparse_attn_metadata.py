@@ -39,7 +39,6 @@ def convert_npu_quant_block_sparse_attn_metadata(
     stream_info = torch.npu.get_stream_limit(torch.npu.current_stream())
     aic_core_num = stream_info.get("cube_core_num")
     aiv_core_num = stream_info.get("vector_core_num")
-    soc_version = torch.npu.get_device_properties().name
     return torchair.ge.custom_op(
         "QuantBlockSparseAttnMetadata",
         inputs={
@@ -61,7 +60,6 @@ def convert_npu_quant_block_sparse_attn_metadata(
             "layout_q": attr.Str(layout_q),
             "layout_kv": attr.Str(layout_kv),
             "layout_sparse_indices": attr.Str(layout_sparse_indices),
-            "soc_version": attr.Str(soc_version),
             "aic_core_num": attr.Int(aic_core_num),
             "aiv_core_num": attr.Int(aiv_core_num),
         },

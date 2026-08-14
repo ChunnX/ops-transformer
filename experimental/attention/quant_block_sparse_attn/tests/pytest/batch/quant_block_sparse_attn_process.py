@@ -10,6 +10,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import os
+
 import pytest
 import torch
 import torchair
@@ -25,9 +27,28 @@ else:
 
 import custom_ops
 import combined_kv_cache
+from python_quant_block_sparse_attn_metadata import (
+    npu_quant_block_sparse_attn_metadata as python_quant_block_sparse_attn_metadata,
+)
 
 
 QBSA_METADATA_OUTPUT_SIZE = 2048
+
+
+def _get_metadata_backend():
+    backend = os.getenv("QBSA_METADATA_BACKEND", "aicpu").strip().lower()
+    if backend not in ("aicpu", "python"):
+        raise ValueError(
+            "QBSA_METADATA_BACKEND must be 'aicpu' or 'python', "
+            f"but got {backend!r}"
+        )
+    return backend
+
+
+def _get_metadata_op():
+    if _get_metadata_backend() == "python":
+        return python_quant_block_sparse_attn_metadata
+    return torch.ops.custom.npu_quant_block_sparse_attn_metadata
 
 
 def _to_npu(tensor):
@@ -51,7 +72,7 @@ def _check_runtime_available():
         detail = "; ".join(custom_ops.load_errors()[:3])
         suffix = f" Load errors: {detail}" if detail else ""
         pytest.skip(f"torch.ops.custom.npu_quant_block_sparse_attn is not registered.{suffix}")
-    if not custom_ops.has_quant_block_sparse_attn_metadata_op():
+    if _get_metadata_backend() == "aicpu" and not custom_ops.has_quant_block_sparse_attn_metadata_op():
         detail = "; ".join(custom_ops.load_errors()[:3])
         suffix = f" Load errors: {detail}" if detail else ""
         pytest.skip(f"torch.ops.custom.npu_quant_block_sparse_attn_metadata is not registered.{suffix}")
@@ -116,7 +137,7 @@ def _call_npu_quant_block_sparse_attn_metadata(test_data):
     inputs = test_data["input"]
     metadata_input = test_data.get("metadata_input", {})
     sparse_seq_len = _to_npu(inputs["sparse_seq_len"])
-    metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
+    metadata = _get_metadata_op()(
         sparse_seq_len,
         metadata_input["num_heads_q"],
         metadata_input["num_heads_kv"],

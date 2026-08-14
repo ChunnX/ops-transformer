@@ -24,7 +24,7 @@
 
 namespace optiling {
 
-constexpr uint32_t AIC_CORE_NUM = 36U;
+constexpr uint32_t AIC_CORE_NUM = 72U;
 constexpr uint32_t AIV_CORE_NUM = 72U;
 constexpr uint32_t QBSA_META_SIZE = 2048U;
 using QBSA_METADATA_T = uint32_t;
@@ -46,18 +46,32 @@ constexpr uint32_t QBSA_S2_END_INDEX = 6U; // 当前AIC核的终止s2Idx
 constexpr uint32_t QBSA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7U; // 当前AIC核第一份规约任务在FD_DATA_WORKSPACE的idx
 
 #ifndef __CCE_AICORE__
+struct MetadataSlotConfig {
+    uint32_t aicSlots;
+    uint32_t aivSlots;
+};
+
+inline MetadataSlotConfig GetMetadataSlotConfig()
+{
+    return {AIC_CORE_NUM, AIV_CORE_NUM};
+}
+
 namespace detail {
 struct qbsaMetaData {
     uint32_t sectionNum { 0U };
+    uint32_t aicCoreSlots { AIC_CORE_NUM };
+    uint32_t aivCoreSlots { AIV_CORE_NUM };
     QBSA_METADATA_T *headMetadata; // [QBSA_HEAD_METADATA_SIZE];
     QBSA_METADATA_T *qbsaMetadata; // [sectionNum][AIC_CORE_NUM][QBSA_METADATA_SIZE];
     QBSA_METADATA_T *fdMetadata; // [AIV_CORE_NUM][FD_METADATA_SIZE];
 
-    explicit qbsaMetaData(void *metadataPtr, uint32_t sectionNumVal)
+    explicit qbsaMetaData(void *metadataPtr, uint32_t sectionNumVal, MetadataSlotConfig slotConfig)
         : sectionNum(sectionNumVal),
+          aicCoreSlots(slotConfig.aicSlots),
+          aivCoreSlots(slotConfig.aivSlots),
           headMetadata(static_cast<QBSA_METADATA_T *>(metadataPtr)),
           qbsaMetadata(headMetadata + QBSA_HEAD_METADATA_SIZE),
-          fdMetadata(qbsaMetadata + sectionNum * AIC_CORE_NUM * QBSA_METADATA_SIZE)
+          fdMetadata(qbsaMetadata + sectionNum * aicCoreSlots * QBSA_METADATA_SIZE)
     {}
 
     void Clear()
@@ -65,10 +79,10 @@ struct qbsaMetaData {
         for (size_t i = 0; i < QBSA_HEAD_METADATA_SIZE; ++i) {
             headMetadata[i] = 0U;
         }
-        for (size_t i = 0; i < static_cast<size_t>(sectionNum) * AIC_CORE_NUM * QBSA_METADATA_SIZE; ++i) {
+        for (size_t i = 0; i < static_cast<size_t>(sectionNum) * aicCoreSlots * QBSA_METADATA_SIZE; ++i) {
             qbsaMetadata[i] = 0U;
         }
-        for (size_t i = 0; i < AIV_CORE_NUM * FD_METADATA_SIZE; ++i) {
+        for (size_t i = 0; i < static_cast<size_t>(aivCoreSlots) * FD_METADATA_SIZE; ++i) {
             fdMetadata[i] = 0U;
         }
     }
@@ -88,19 +102,19 @@ struct qbsaMetaData {
     void SetQbsaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx, uint32_t val)
     {
         assert(sectionIdx < sectionNum);
-        assert(aicIdx < AIC_CORE_NUM);
+        assert(aicIdx < aicCoreSlots);
         assert(metaIdx < QBSA_METADATA_SIZE);
-        qbsaMetadata[sectionIdx * AIC_CORE_NUM * QBSA_METADATA_SIZE + aicIdx * QBSA_METADATA_SIZE + metaIdx] =
+        qbsaMetadata[sectionIdx * aicCoreSlots * QBSA_METADATA_SIZE + aicIdx * QBSA_METADATA_SIZE + metaIdx] =
             static_cast<QBSA_METADATA_T>(val);
     }
 
     uint32_t GetQbsaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx) const
     {
         assert(sectionIdx < sectionNum);
-        assert(aicIdx < AIC_CORE_NUM);
+        assert(aicIdx < aicCoreSlots);
         assert(metaIdx < QBSA_METADATA_SIZE);
         return static_cast<uint32_t>(
-            qbsaMetadata[sectionIdx * AIC_CORE_NUM * QBSA_METADATA_SIZE + aicIdx * QBSA_METADATA_SIZE + metaIdx]);
+            qbsaMetadata[sectionIdx * aicCoreSlots * QBSA_METADATA_SIZE + aicIdx * QBSA_METADATA_SIZE + metaIdx]);
     }
 };
 } // namespace detail

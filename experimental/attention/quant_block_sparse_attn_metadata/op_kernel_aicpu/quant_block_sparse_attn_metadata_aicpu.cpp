@@ -48,8 +48,7 @@ bool QuantBlockSparseAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     // output
     metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metadata));
 
-    bool requiredAttrs = GetAttrValue(ctx, "soc_version", socVersion_) &&
-                         GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
+    bool requiredAttrs = GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
                          GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
     if (!requiredAttrs) {
         return false;
@@ -102,6 +101,13 @@ bool QuantBlockSparseAttnMetadataCpuKernel::ParamsInit()
 {
     if (sparseSeqLen_ == nullptr || sparseSeqLen_->GetTensorShape() == nullptr || sparseSeqLen_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("sparseSeqLen must be a valid tensor");
+        return false;
+    }
+    metadataSlotConfig_ = optiling::GetMetadataSlotConfig();
+    if (aicCoreNum_ <= 0 || static_cast<uint32_t>(aicCoreNum_) > metadataSlotConfig_.aicSlots ||
+        aivCoreNum_ <= 0 || static_cast<uint32_t>(aivCoreNum_) > metadataSlotConfig_.aivSlots) {
+        KERNEL_LOG_ERROR("actual core count exceeds metadata capacity, aic=%d/%u, aiv=%d/%u", aicCoreNum_,
+                         metadataSlotConfig_.aicSlots, aivCoreNum_, metadataSlotConfig_.aivSlots);
         return false;
     }
     auto sparseSeqLenShape = sparseSeqLen_->GetTensorShape();
@@ -441,7 +447,7 @@ bool QuantBlockSparseAttnMetadataCpuKernel::GenMetadata(const std::vector<Sectio
         return false;
     }
     const uint32_t sectionNum = static_cast<uint32_t>(sectionResults.size());
-    optiling::detail::qbsaMetaData qbsaMetadata(metadata_->GetData(), sectionNum);
+    optiling::detail::qbsaMetaData qbsaMetadata(metadata_->GetData(), sectionNum, metadataSlotConfig_);
     qbsaMetadata.Clear();
     qbsaMetadata.SetHeadMetadata(optiling::QBSA_HEAD_SECTION_NUM_INDEX, sectionNum);
 

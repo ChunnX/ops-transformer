@@ -31,7 +31,6 @@ const aclTensor* QuantBlockSparseAttnMetadata(
     const char* layoutQOptional,
     const char* layoutKvOptional,
     const char* layoutSparseIndicesOptional,
-    const char* socVersion,
     int64_t aicCoreNum,
     int64_t aivCoreNum,
     const aclTensor* metadata,
