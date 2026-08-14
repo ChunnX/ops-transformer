@@ -17,7 +17,7 @@
 #include <numeric>
 #include <algorithm>
 #include "../op_kernel/bsa_select_block_mask_tiling_key.h"
-#include "../op_kernel/bsa_select_block_mask_tiling_data.h"
+#include "../op_kernel/bsa_select_block_mask_tiling_data_legacy.h"
 #include "tiling_base_class.h"
 
 using namespace ge;
@@ -38,7 +38,8 @@ struct BSASelectBlockMaskCompileInfo {
 
 class BSASelectBlockMaskTilingBase : public TilingBaseClass {
 public:
-    explicit BSASelectBlockMaskTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit BSASelectBlockMaskTilingBase(gert::TilingContext *context)
+        : TilingBaseClass(context)
     {
         Reset();
     }

@@ -19,9 +19,9 @@
 #include "kernel_operator.h"
 #include "../../../common/op_kernel/matmul.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
-#include "flash_attention_score_block_cube.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
+#include "fused_infer_attention_score_block_cube_arch35.h"
 
 using namespace fa_base_matmul;
 using namespace BaseApi;
@@ -192,27 +192,27 @@ FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncTyp
         Gm2L1Nd2NzParams.ndNum = 1;                   // ND矩阵的个数
         Gm2L1Nd2NzParams.nValue = runInfo.s1RealSize; // 单个ND矩阵的实际行数，单位为元素个数
         Gm2L1Nd2NzParams.dValue = constInfo.dSize;    // 单个ND矩阵的实际列数，单位为元素个数
-        Gm2L1Nd2NzParams.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移， 单位为元素个数
+        Gm2L1Nd2NzParams.srcNdMatrixStride = 0;       // 相邻ND矩阵起始地址之间的偏移， 单位为元素个数
         Gm2L1Nd2NzParams.srcDValue = constInfo.mm1Ka; // 同一个ND矩阵中相邻行起始地址之间的偏移， 单位为元素个数
         Gm2L1Nd2NzParams.dstNzC0Stride =
             (Gm2L1Nd2NzParams.nValue + 15) >> 4 << 4; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移， 单位为Block个数
         Gm2L1Nd2NzParams.dstNzNStride =
-            1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
+            1;                                  // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
         Gm2L1Nd2NzParams.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移， 单位为元素数量
         DataCopy(mm1ATensor, this->queryGm[runParam.tensorQOffset], Gm2L1Nd2NzParams);
 
         // 拷贝 Qrope
         if constexpr (hasRope) {
             int64_t queryRopeOffset = GetQueryRopeOffset(runInfo, constInfo);
-            Gm2L1Nd2NzParams.ndNum = 1;                    // ND矩阵的个数
-            Gm2L1Nd2NzParams.nValue = runInfo.s1RealSize;  // 单个ND矩阵的实际行数，单位为元素个数
-            Gm2L1Nd2NzParams.dValue = constInfo.dSizeRope; // 单个ND矩阵的实际列数，单位为元素个数
-            Gm2L1Nd2NzParams.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移， 单位为元素个数
+            Gm2L1Nd2NzParams.ndNum = 1;                       // ND矩阵的个数
+            Gm2L1Nd2NzParams.nValue = runInfo.s1RealSize;     // 单个ND矩阵的实际行数，单位为元素个数
+            Gm2L1Nd2NzParams.dValue = constInfo.dSizeRope;    // 单个ND矩阵的实际列数，单位为元素个数
+            Gm2L1Nd2NzParams.srcNdMatrixStride = 0;           // 相邻ND矩阵起始地址之间的偏移， 单位为元素个数
             Gm2L1Nd2NzParams.srcDValue = constInfo.mm1RopeKa; // 同一个ND矩阵中相邻行起始地址之间的偏移， 单位为元素个数
             Gm2L1Nd2NzParams.dstNzC0Stride = (Gm2L1Nd2NzParams.nValue + 15) >>
                                              4 << 4; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移， 单位为Block个数
             Gm2L1Nd2NzParams.dstNzNStride =
-                1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
+                1;                                  // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
             Gm2L1Nd2NzParams.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移， 单位为元素数量
             DataCopy(mm1ATensor[Gm2L1Nd2NzParams.dstNzC0Stride * constInfo.dSize], this->queryRopeGm[queryRopeOffset],
                      Gm2L1Nd2NzParams);
@@ -263,12 +263,12 @@ FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncTyp
         Gm2L1Nd2NzParams.ndNum = 1;                   // ND矩阵的个数
         Gm2L1Nd2NzParams.nValue = runInfo.s2RealSize; // 单个ND矩阵的实际行数，单位为元素个数
         Gm2L1Nd2NzParams.dValue = constInfo.dSize;    // 单个ND矩阵的实际列数，单位为元素个数
-        Gm2L1Nd2NzParams.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移， 单位为元素个数
+        Gm2L1Nd2NzParams.srcNdMatrixStride = 0;       // 相邻ND矩阵起始地址之间的偏移， 单位为元素个数
         Gm2L1Nd2NzParams.srcDValue = constInfo.mm1Kb; // 同一个ND矩阵中相邻行起始地址之间的偏移， 单位为元素个数
         Gm2L1Nd2NzParams.dstNzC0Stride =
             (Gm2L1Nd2NzParams.nValue + 15) >> 4 << 4; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移， 单位为Block个数
         Gm2L1Nd2NzParams.dstNzNStride =
-            1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
+            1;                                  // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
         Gm2L1Nd2NzParams.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移， 单位为元素数量
         DataCopy(mm1BTensor, this->keyGm[runInfo.keyOffset], Gm2L1Nd2NzParams);
 
@@ -276,15 +276,15 @@ FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncTyp
         if constexpr (hasRope) {
             keyRopeOffset[runInfo.taskIdMod3] = GetKeyRopeOffset(runInfo, constInfo);
             Nd2NzParams Gm2L1Nd2NzParams;
-            Gm2L1Nd2NzParams.ndNum = 1;                    // ND矩阵的个数
-            Gm2L1Nd2NzParams.nValue = runInfo.s2RealSize;  // 单个ND矩阵的实际行数，单位为元素个数
-            Gm2L1Nd2NzParams.dValue = constInfo.dSizeRope; // 单个ND矩阵的实际列数，单位为元素个数
-            Gm2L1Nd2NzParams.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移， 单位为元素个数
+            Gm2L1Nd2NzParams.ndNum = 1;                       // ND矩阵的个数
+            Gm2L1Nd2NzParams.nValue = runInfo.s2RealSize;     // 单个ND矩阵的实际行数，单位为元素个数
+            Gm2L1Nd2NzParams.dValue = constInfo.dSizeRope;    // 单个ND矩阵的实际列数，单位为元素个数
+            Gm2L1Nd2NzParams.srcNdMatrixStride = 0;           // 相邻ND矩阵起始地址之间的偏移， 单位为元素个数
             Gm2L1Nd2NzParams.srcDValue = constInfo.mm1RopeKb; // 同一个ND矩阵中相邻行起始地址之间的偏移， 单位为元素个数
             Gm2L1Nd2NzParams.dstNzC0Stride = (Gm2L1Nd2NzParams.nValue + 15) >>
                                              4 << 4; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移， 单位为Block个数
             Gm2L1Nd2NzParams.dstNzNStride =
-                1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
+                1;                                  // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
             Gm2L1Nd2NzParams.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移， 单位为元素数量
             DataCopy(mm1BTensor[Gm2L1Nd2NzParams.dstNzC0Stride * constInfo.dSize],
                      this->keyRopeGm[keyRopeOffset[runInfo.taskIdMod3]], Gm2L1Nd2NzParams);
@@ -323,12 +323,12 @@ FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncTyp
     fixpipeParams.nSize =
         (runInfo.s2RealSize + 7) >> 3 << 3; // L0C上的bmm1结果矩阵N方向的size大小；同mmadParams.n；8个元素（32B)对齐
     fixpipeParams.mSize = (runInfo.s1RealSize + 1) >>
-                          1 << 1; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
+                          1 << 1;                                     // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
     fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) >> 4) << 4; // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16
                                                                       // *sizeof(T) //源NZ矩阵中相邻Z排布的起始地址偏移
-    fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 //
-                                          // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
-    fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+    fixpipeParams.dstStride = s2BaseSize;                             // mmResUb上两行之间的间隔，单位：element。 //
+                                                                      // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
+    fixpipeParams.dualDstCtl = 1;                                     // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
@@ -445,15 +445,15 @@ FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm2(Buffer<BufferType::UB, SyncTyp
     outputBuf.WaitCrossCore();
 
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C->UB
-    fixpipeParams.nSize = constInfo.dSizeV; // L0C上的bmm1结果矩阵N方向的size大小；同mmadParams.n；8个元素（32B)对齐
+    fixpipeParams.nSize = constInfo.dSizeV;                // L0C上的bmm1结果矩阵N方向的size大小；同mmadParams.n；8个元素（32B)对齐
     fixpipeParams.mSize =
-        s1BaseSize; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
+        s1BaseSize;                                                   // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
     fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) >> 4) << 4; // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16
                                                                       // *sizeof(T) //源NZ矩阵中相邻Z排布的起始地址偏移
     fixpipeParams.dstStride =
         (fixpipeParams.nSize + 15) >> 4 << 4; // mmResUb上两行之间的间隔，单位：element。 //
                                               // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
-    fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+    fixpipeParams.dualDstCtl = 1;             // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;

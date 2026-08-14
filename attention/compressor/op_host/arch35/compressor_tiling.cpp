@@ -20,7 +20,7 @@
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "register/op_def_registry.h"
-#include "compressor_tiling.h"
+#include "compressor_tiling_arch35.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -238,10 +238,10 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
                 baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + baseParams_->kBaseSize;
                 uint32_t mStart = (i / dBaseNum) * innerSplitParams_->mBaseSize;
                 baseParams_->splitCoreParam[i].mStart =
-                        mStart < baseParams_->tokenSize ? mStart : baseParams_->tokenSize;
+                    mStart < baseParams_->tokenSize ? mStart : baseParams_->tokenSize;
                 uint32_t mEnd = baseParams_->splitCoreParam[i].mStart + innerSplitParams_->mBaseSize;
                 baseParams_->splitCoreParam[i].mEnd =
-                        mEnd < baseParams_->tokenSize ? mEnd : baseParams_->tokenSize;
+                    mEnd < baseParams_->tokenSize ? mEnd : baseParams_->tokenSize;
                 baseParams_->mLoopNum = mBaseNum / baseParams_->coreGroupNum;
             }
         }
@@ -391,7 +391,8 @@ ge::graphStatus CompressorTiling::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaStartPos() || ge::GRAPH_SUCCESS != CheckSingleParaCmpKv() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio() || ge::GRAPH_SUCCESS != CheckSingleParaCoff() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCacheMode() || ge::GRAPH_SUCCESS != CheckSingleParaSoftmaxScore() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaKv()) {        return ge::GRAPH_FAILED;
+        ge::GRAPH_SUCCESS != CheckSingleParaKv()) {
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -469,8 +470,8 @@ ge::graphStatus CompressorTiling::CheckDimNumInLayoutSupport(const std::string &
     const auto &dimIt = LAYOUT_DIM_MAP.find(layout);
     OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != dimIt->second,
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->opName, name,
-                    std::to_string(shape->GetStorageShape().GetDimNum()),
-                    "when layout is " + layout + ", dimension should be " + std::to_string(dimIt->second)),
+                                                         std::to_string(shape->GetStorageShape().GetDimNum()),
+                                                         "when layout is " + layout + ", dimension should be " + std::to_string(dimIt->second)),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -483,7 +484,7 @@ ge::graphStatus CompressorTiling::CheckDtypeSupport(const gert::CompileTimeTenso
         OP_CHECK_IF(
             it == DTYPE_SUPPORT_MAP.end(),
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, name,
-                "datatype support list should be specify in DTYPE_SUPPORT_MAP"),
+                                                     "datatype support list should be specify in DTYPE_SUPPORT_MAP"),
             return ge::GRAPH_FAILED);
         auto &expectDtypeList = it->second;
         OP_CHECK_IF(
@@ -526,7 +527,7 @@ ge::graphStatus CompressorTiling::CheckDimNumSupport(const gert::StorageShape *s
     const auto &it = DIM_NUM_MAP.find(name);
     OP_CHECK_IF(it == DIM_NUM_MAP.end(),
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, name,
-                    "dim number support list should be specify in DIM_NUM_MAP"),
+                                                         "dim number support list should be specify in DIM_NUM_MAP"),
                 return ge::GRAPH_FAILED);
     auto &expectDimNumList = it->second;
     OP_CHECK_IF(std::find(expectDimNumList.begin(), expectDimNumList.end(), shape->GetStorageShape().GetDimNum()) ==
@@ -661,12 +662,13 @@ ge::graphStatus CompressorTiling::CheckSingleParaKv() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorTiling::CheckSingleParaCmpRatio() const{
+ge::graphStatus CompressorTiling::CheckSingleParaCmpRatio() const
+{
     uint32_t cmpRatio = static_cast<uint32_t>(*context_->cmpRatio);
     OP_CHECK_IF(cmpRatio > MAX_CMPRATIO_SIZE || cmpRatio < MIN_CMPRATIO_SIZE,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "cmp_ratio", std::to_string(cmpRatio),
-                    "should be within [" + std::to_string(MIN_CMPRATIO_SIZE) + ", " +
-                    std::to_string(MAX_CMPRATIO_SIZE) + "]"),
+                                                      "should be within [" + std::to_string(MIN_CMPRATIO_SIZE) + ", " +
+                                                          std::to_string(MAX_CMPRATIO_SIZE) + "]"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -754,20 +756,20 @@ ge::graphStatus CompressorTiling::CheckRequiredInOutExistence() const
     if (context_->layout == LayoutType::LAYOUT_TH) {
         OP_CHECK_IF(context_->cuSeqlens.desc == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cu_seqlens",
-                        "in TH layout, should not be nullptr"),
+                                                             "in TH layout, should not be nullptr"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->cuSeqlens.shape == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cu_seqlens",
-                        "in TH layout, should not be nullptr"),
+                                                             "in TH layout, should not be nullptr"),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(context_->cuSeqlens.desc != nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cu_seqlens",
-                        "in BSH layout, must be nullptr"),
+                                                             "in BSH layout, must be nullptr"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->cuSeqlens.shape != nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cu_seqlens",
-                        "in BSH layout, must be nullptr"),
+                                                             "in BSH layout, must be nullptr"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -789,37 +791,37 @@ ge::graphStatus CompressorTiling::CheckFeature() const
     OP_CHECK_IF(baseParams_->hiddenSize > MAX_HIDDEN_SIZE || baseParams_->hiddenSize < MIN_HIDDEN_SIZE ||
                     baseParams_->hiddenSize % ALIGN_FACTOR_HIDDEN_SIZE != 0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "hiddenSize",
-                    std::to_string(baseParams_->hiddenSize),
-                    "should be within [" + std::to_string(MIN_HIDDEN_SIZE) + ", " +
-                    std::to_string(MAX_HIDDEN_SIZE) + "] and be 512-aligned"),
+                                                      std::to_string(baseParams_->hiddenSize),
+                                                      "should be within [" + std::to_string(MIN_HIDDEN_SIZE) + ", " +
+                                                          std::to_string(MAX_HIDDEN_SIZE) + "] and be 512-aligned"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(pageAttentionParams_->blockSize > MAX_BLOCK_SIZE || pageAttentionParams_->blockSize < MIN_BLOCK_SIZE,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "blockSize",
-                    std::to_string(pageAttentionParams_->blockSize),
-                    "should be within [" + std::to_string(MIN_BLOCK_SIZE) + ", " +
-                    std::to_string(MAX_BLOCK_SIZE) + "]"),
+                                                      std::to_string(pageAttentionParams_->blockSize),
+                                                      "should be within [" + std::to_string(MIN_BLOCK_SIZE) + ", " +
+                                                          std::to_string(MAX_BLOCK_SIZE) + "]"),
                 return ge::GRAPH_FAILED);
     if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) {
         OP_CHECK_IF(pageAttentionParams_->blockNum < baseParams_->batchSize,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "blockNum",
-                        std::to_string(pageAttentionParams_->blockNum),
-                        "when cacheMode is " + std::to_string(static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) +
-                        ", should not be less than batchSize(" + std::to_string(baseParams_->batchSize) + ")"),
+                                                          std::to_string(pageAttentionParams_->blockNum),
+                                                          "when cacheMode is " + std::to_string(static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) +
+                                                              ", should not be less than batchSize(" + std::to_string(baseParams_->batchSize) + ")"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_1,
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->opName, "state_block_table",
-                std::to_string(context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
-                "when cacheMode is " + std::to_string(static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) +
-                ", dim num should be equal to " + std::to_string(COMPRESSOR_DIM_NUM_1)),
+                                                     std::to_string(context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
+                                                     "when cacheMode is " + std::to_string(static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) +
+                                                         ", dim num should be equal to " + std::to_string(COMPRESSOR_DIM_NUM_1)),
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(
             context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_2,
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->opName, "state_block_table",
-                std::to_string(context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
-                "when cacheMode is " + std::to_string(static_cast<uint8_t>(CACHE_MODE::LINEAR_BUFFER)) +
-                ", dim num should be equal to " + std::to_string(COMPRESSOR_DIM_NUM_2)),
+                                                     std::to_string(context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
+                                                     "when cacheMode is " + std::to_string(static_cast<uint8_t>(CACHE_MODE::LINEAR_BUFFER)) +
+                                                         ", dim num should be equal to " + std::to_string(COMPRESSOR_DIM_NUM_2)),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -836,8 +838,8 @@ ge::graphStatus CompressorTiling::LogErrorShapeConsistency(const std::string &na
     const uint32_t actualNum = shape->GetStorageShape().GetDim(dimNum);
     OP_CHECK_IF(actualNum != expectNum,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, name,
-                    "dim " + std::to_string(dimNum) + "=" + std::to_string(actualNum),
-                    "should be equal to " + subName + ": " + std::to_string(expectNum)),
+                                                      "dim " + std::to_string(dimNum) + "=" + std::to_string(actualNum),
+                                                      "should be equal to " + subName + ": " + std::to_string(expectNum)),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -887,8 +889,8 @@ ge::graphStatus CompressorTiling::CheckDtypeConsistencyX(const gert::CompileTime
     const auto actualDtype = desc->GetDataType();
     OP_CHECK_IF(actualDtype != context_->dtype,
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->opName, name,
-                    DataTypeToSerialString(actualDtype),
-                    "should be same with x: " + DataTypeToSerialString(context_->dtype)),
+                                                      DataTypeToSerialString(actualDtype),
+                                                      "should be same with x: " + DataTypeToSerialString(context_->dtype)),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -908,8 +910,8 @@ ge::graphStatus CompressorTiling::CheckDimNumConsistency() const
     auto xDimNum = context_->x.shape->GetStorageShape().GetDimNum();
     OP_CHECK_IF(xDimNum != context_->cmpKv.shape->GetStorageShape().GetDimNum(),
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->opName, "cmp_kv",
-                    std::to_string(context_->cmpKv.shape->GetStorageShape().GetDimNum()),
-                    "dim num should be equal to x: " + std::to_string(xDimNum)),
+                                                         std::to_string(context_->cmpKv.shape->GetStorageShape().GetDimNum()),
+                                                         "dim num should be equal to x: " + std::to_string(xDimNum)),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -919,7 +921,7 @@ ge::graphStatus CompressorTiling::CheckBlockDimConstrain() const
     uint32_t minBlockNum = baseParams_->headDim / 64; // 64 is the largest dBaseSize
     OP_CHECK_IF(aicNum_ < minBlockNum,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "aicNum", std::to_string(aicNum_),
-                    "should not be less than " + std::to_string(minBlockNum)),
+                                                      "should not be less than " + std::to_string(minBlockNum)),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -933,7 +935,7 @@ ge::graphStatus CompressorTiling::CheckMultiParaConsistency() const
     return ge::GRAPH_SUCCESS;
 }
 
-} // namespace anonymous
+} // namespace
 
 CMP_EXTERN_C ge::graphStatus TilingCompressorArch35(gert::TilingContext *context)
 {
@@ -946,7 +948,7 @@ CMP_EXTERN_C ge::graphStatus TilingCompressorArch35(gert::TilingContext *context
     CompressorContext compressorContext{};
     if (CompressorTiling::ConvertContext(*context, compressorContext) != ge::GRAPH_SUCCESS) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "context",
-            "error occurred while converting tilingContext to Compressor context");
+                                                 "error occurred while converting tilingContext to Compressor context");
         return ge::GRAPH_FAILED;
     }
     CompressorTiling compressorTiling(&compressorContext);

@@ -19,7 +19,7 @@
 #include "fia_public_define_arch35.h"
 #include "fia_block_cube_noquant_gqa.h"
 #include "fia_block_vec_noquant_gqa.h"
-#include "memory_copy_arch35.h"
+#include "fused_infer_attention_score_memory_copy_arch35.h"
 #include "fia_block_vec_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -110,7 +110,9 @@ public:
 
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionNoQuantGqaKernel()
-        : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
+        : cubeBlock(constInfo),
+          vecFaBlock(constInfo),
+          vecFdBlock(constInfo){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
                                 __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable,
@@ -273,7 +275,7 @@ public:
     {
         int64_t varlenCycleCoreNums = constInfo.coreNum * 2;
         int64_t varlenCalcLoops =
-            constInfo.totalSize / varlenCycleCoreNums; // 需要进行计算的循环次数(正序+倒序为一次循环)
+            constInfo.totalSize / varlenCycleCoreNums;                             // 需要进行计算的循环次数(正序+倒序为一次循环)
         int64_t varlenCalcLoopsRemain = constInfo.totalSize % varlenCycleCoreNums; // 一次循环正序+倒序为两倍核数
         varlenCalcTimes = varlenCalcLoops * 2;
         if (varlenCalcLoopsRemain >= constInfo.aicIdx + 1) {

@@ -13,8 +13,8 @@
  * \brief
  */
 
-#include "flash_attn_tiling.h"
-#include "../flash_attn_tiling.h"
+#include "flash_attn_tiling_arch35.h"
+#include "../flash_attn_tiling_legacy.h"
 #include "../fa_adjust_sinner_souter.h"
 #include <map>
 #include <vector>

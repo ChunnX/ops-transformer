@@ -16,7 +16,7 @@
 #ifndef ROPE_H
 #define ROPE_H
 
-#include "compressor_comm.h"
+#include "compressor_comm_arch22.h"
 #include "compressor_vector_comm.h"
 
 namespace Compressor {
@@ -32,7 +32,7 @@ __aicore__ inline void SetGatherSrcOffset(const LocalTensor<int32_t> &gatherOffs
     for (uint32_t i = 0; i < 8; i++) {
         gatherOffsetLocal.SetValue(i, i ^ 1);
     }
-    
+
     event_t eventId_S_V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
     SetFlag<HardEvent::S_V>(eventId_S_V);
     WaitFlag<HardEvent::S_V>(eventId_S_V);
@@ -52,7 +52,6 @@ __aicore__ inline void SetGatherSrcOffset(const LocalTensor<int32_t> &gatherOffs
     PipeBarrier<PIPE_V>();
     Muls(gatherOffsetLocal, gatherOffsetLocal, static_cast<int32_t>(sizeof(T)), count);
 }
-
 
 /**
  * @brief RotaryPosEmb 同时做row行的RotaryPosEmb，每一行的元素为col
@@ -112,7 +111,7 @@ __aicore__ inline void RotaryPosEmb(const LocalTensor<float> &dstLocal, const Lo
         }
         ResetMask();
     }
-   
+
     PipeBarrier<PIPE_V>();
     BinaryRepeatParams computeParams{1,
                                      1,
@@ -125,6 +124,6 @@ __aicore__ inline void RotaryPosEmb(const LocalTensor<float> &dstLocal, const Lo
     PipeBarrier<PIPE_V>();
     Add(dstLocal[baseAddr], dstLocal[baseAddr], reArrLocal, col, row, computeParams);
 }
-}
+} // namespace Compressor
 
 #endif

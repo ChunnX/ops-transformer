@@ -17,17 +17,17 @@
 
 #include "kernel_operator.h"
 
-#include "flash_attention_score_common_regbase.h"
+#include "flash_attention_score_common_regbase_arch35.h"
 #include "adv_api/activation/softmax.h"
 #include "vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "vf/vf_flashupdate_new.h"
-#include "vf/vf_div_cast.h"
-#include "vf/vf_flash_decode.h"
+#include "vf/vf_div_cast_arch35.h"
+#include "vf/vf_flash_decode_arch35.h"
 #include "fia_public_define_arch35.h"
 #include "../vector_common.h"
 #include "../memory_copy_arch35.h"
-#include "attenmask_gs1.h"
+#include "attenmask_gs1_arch35.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -81,7 +81,9 @@ public:
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr LAYOUT_Q MASK_LAYOUT = (layout == LayOutTypeEnum::LAYOUT_BSH ||
-        layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_SBH) ? LAYOUT_Q::SG : LAYOUT_Q::GS;
+                                             layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_SBH) ?
+                                                LAYOUT_Q::SG :
+                                                LAYOUT_Q::GS;
 
     static constexpr bool USE_DN = useDn;
 
@@ -158,11 +160,12 @@ public:
 
     const ConstInfoX &constInfo;
     T negativeFloatScalar;
-    float pScaleValue { 1.0f };
-    bool isSkipMask { false };
+    float pScaleValue{1.0f};
+    bool isSkipMask{false};
 
     // ==================== Functions ======================
-    __aicore__ inline FAFullQuantMxBlockVec(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FAFullQuantMxBlockVec(ConstInfoX &constInfo)
+        : constInfo(constInfo){};
 
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *actualSeqQlenAddr,
                                         __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *pScale,
@@ -363,7 +366,7 @@ public:
         if constexpr (HAS_MASK) {
             this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
         }
-        
+
         this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
         this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
         //-------------------------Data copy to l1-------------------------
@@ -380,7 +383,7 @@ public:
             for (uint16_t i = 0; i < 4; i++) { // PScale在s2方向的block块大小为32，所以一共有256/32=8个，而L1上需要满足16x2的分形，所以重复拷贝4次
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {copyCount, 1, 0, dstStride});
                 DataCopy(mm2AScaleL1Tensor[subLoopOffset + vecOffset + i * 32], pScaleSubLoop0Tensor[128],
-                    {4, 1, 0, dstStride});
+                         {4, 1, 0, dstStride});
             }
         } else if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
             for (uint16_t i = 0; i < 2; i++) {
@@ -439,7 +442,7 @@ public:
 
     __aicore__ inline void UpdateMinCheckValue(uint32_t &min)
     {
-        float minValue = *((float*)&min);
+        float minValue = *((float *)&min);
         if constexpr (USE_DN) {
             minValue *= constInfo.scaleValue;
         }
@@ -684,7 +687,7 @@ public:
         }
 
         // ===================DataCopy to L1 ====================
-        uint64_t pScaleL1Offset = mBaseSize * s2BaseSize;  // PScale在L1P的偏移量（单位：元素）
+        uint64_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
         LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
         this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
         this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
@@ -1166,14 +1169,14 @@ public:
         if (!IsSkipMaskForPre) {
             LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUbPre, attenMaskGmInt,
-                maskInfo, true);
+                                                                           maskInfo, true);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSizeCur);
             this->attenMaskInQue[0].template FreeTensor(attenMaskUbPre);
         }
     }
 
     __aicore__ inline void AttenMaskCopyInDn(LocalTensor<uint8_t> attenMaskUb,
-                                           uint32_t vecMIdx, uint32_t mDealSize, RunInfoX &runInfo, uint32_t subLoop)
+                                             uint32_t vecMIdx, uint32_t mDealSize, RunInfoX &runInfo, uint32_t subLoop)
     {
         uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
         constexpr uint32_t s2BaseSizeCur = s2BaseSize >> 1;
@@ -1245,7 +1248,7 @@ public:
     static constexpr bool FLASH_DECODE = isFd;
     using OUT_T = OUTPUT_T;
     using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
-    __aicore__ inline FAFullQuantMxBlockVecDummy(ConstInfoX &constInfo) {};
+    __aicore__ inline FAFullQuantMxBlockVecDummy(ConstInfoX &constInfo){};
 };
 } // namespace BaseApi
 #endif // FIA_BLOCK_VEC_FULLQUANT_MX_H_

@@ -16,11 +16,11 @@
 #ifndef COMPRESSOR_BLOCK_VEC_FULL_LOAD_H
 #define COMPRESSOR_BLOCK_VEC_FULL_LOAD_H
 
-#include "compressor_comm.h"
+#include "compressor_comm_arch35.h"
 #include "compressor_tools.h"
-#include "vf/vf_softmax.h"
-#include "vf/vf_add.h"
-#include "vf/vf_mul.h"
+#include "vf/compressor_vf_softmax_arch35.h"
+#include "vf/compressor_vf_add_arch35.h"
+#include "vf/compressor_vf_mul_arch35.h"
 #include <cstdint>
 
 using namespace AscendC;
@@ -1002,8 +1002,8 @@ CompressorBlockVectorFullLoad<COMP>::CopyOutMidResToOutput(const LocalTensor<T> 
 template <typename COMP>
 __aicore__ inline void
 CompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutput(const LocalTensor<T> &comperssoredUb,
-                                                                const Vec1SliceInfo &sliceInfo, uint32_t compressTcSize,
-                                                                uint32_t dStartIdx, uint32_t dDealSize)
+                                                            const Vec1SliceInfo &sliceInfo, uint32_t compressTcSize,
+                                                            uint32_t dStartIdx, uint32_t dDealSize)
 {
     LocalTensor<X_T> outputUb = outputQue2.AllocTensor<X_T>();
     Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, compressTcSize * dDealSize);

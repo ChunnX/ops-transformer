@@ -21,7 +21,7 @@
 #include <memory>
 #include <numeric>
 #include "tiling/tiling_api.h"
-#include "base_checker.h"
+#include "quant_flash_attn_base_checker.h"
 
 namespace optiling {
 namespace quant_flash_attn {

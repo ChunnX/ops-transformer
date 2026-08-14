@@ -16,7 +16,7 @@
 #ifndef COMPRESSOR_TOOLS_H
 #define COMPRESSOR_TOOLS_H
 
-#include "compressor_comm.h"
+#include "compressor_comm_arch22.h"
 
 using namespace AscendC;
 
@@ -119,7 +119,9 @@ __aicore__ inline uint64_t CompressorTools<COMP>::GetTIdxByBatch(uint32_t bIdx)
 // iterator
 struct SliceInfo {
     __aicore__ inline SliceInfo(){};
-    __aicore__ inline SliceInfo(uint32_t bIdx, uint32_t sIdx) : bIdx(bIdx), sIdx(sIdx){};
+    __aicore__ inline SliceInfo(uint32_t bIdx, uint32_t sIdx)
+        : bIdx(bIdx),
+          sIdx(sIdx){};
 
     uint32_t bIdx = 0U;
     uint32_t sIdx = 0U;
@@ -138,7 +140,8 @@ struct SliceInfo {
 template <typename COMP>
 class CompressorSliceIterator {
 public:
-    __aicore__ inline CompressorSliceIterator(CompressorTools<COMP> &tools) : tools_(tools)
+    __aicore__ inline CompressorSliceIterator(CompressorTools<COMP> &tools)
+        : tools_(tools)
     {
     }
 
@@ -303,7 +306,8 @@ __aicore__ inline SliceInfo &CompressorSliceIterator<COMP>::GetSlice()
 
 struct SplitCoreSliceInfo : public SliceInfo {
     __aicore__ inline SplitCoreSliceInfo(){};
-    __aicore__ inline SplitCoreSliceInfo(uint32_t bIdx, uint32_t sIdx) : SliceInfo(bIdx, sIdx){};
+    __aicore__ inline SplitCoreSliceInfo(uint32_t bIdx, uint32_t sIdx)
+        : SliceInfo(bIdx, sIdx){};
 
     uint32_t preFirstSeqCnt = 0U; // 左边每次迭代基本块的第一个seqCnt大小
 };
@@ -311,7 +315,8 @@ struct SplitCoreSliceInfo : public SliceInfo {
 template <typename COMP>
 class CompressorSplitCoreSliceIterator {
 public:
-    __aicore__ inline CompressorSplitCoreSliceIterator(CompressorTools<COMP> &tools) : tools_(tools)
+    __aicore__ inline CompressorSplitCoreSliceIterator(CompressorTools<COMP> &tools)
+        : tools_(tools)
     {
     }
 
@@ -525,9 +530,11 @@ __aicore__ inline SplitCoreSliceInfo &CompressorSplitCoreSliceIterator<COMP>::Ge
 
 struct Vec1SliceInfo : public SliceInfo {
     __aicore__ inline Vec1SliceInfo(){};
-    __aicore__ inline Vec1SliceInfo(uint32_t bIdx, uint32_t sIdx) : SliceInfo(bIdx, sIdx){};
+    __aicore__ inline Vec1SliceInfo(uint32_t bIdx, uint32_t sIdx)
+        : SliceInfo(bIdx, sIdx){};
     __aicore__ inline Vec1SliceInfo(uint32_t bIdx, uint32_t sIdx, uint32_t dealedSeqCnt)
-        : SliceInfo(bIdx, sIdx), dealedSeqCnt(dealedSeqCnt){};
+        : SliceInfo(bIdx, sIdx),
+          dealedSeqCnt(dealedSeqCnt){};
 
     uint32_t dealedSeqCnt = 0U;
     uint32_t dealedTcCnt = 0U;
@@ -540,7 +547,9 @@ struct Vec1SliceInfo : public SliceInfo {
 struct StatisticInfo {
     __aicore__ inline StatisticInfo(){};
     __aicore__ inline StatisticInfo(uint32_t actualTcCnt, uint32_t dealSeqCnt, uint32_t compressorScCnt)
-        : actualTcCnt(actualTcCnt), dealSeqCnt(dealSeqCnt), compressorScCnt(compressorScCnt){};
+        : actualTcCnt(actualTcCnt),
+          dealSeqCnt(dealSeqCnt),
+          compressorScCnt(compressorScCnt){};
 
     uint32_t actualTcCnt = 0U;
     uint32_t dealSeqCnt = 0U;
@@ -550,7 +559,8 @@ struct StatisticInfo {
 template <typename COMP>
 class CompressorVec1SliceIterator {
 public:
-    __aicore__ inline CompressorVec1SliceIterator(CompressorTools<COMP> &tools) : tools_(tools)
+    __aicore__ inline CompressorVec1SliceIterator(CompressorTools<COMP> &tools)
+        : tools_(tools)
     {
     }
 
@@ -711,7 +721,7 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::IteratorSlice()
                     sliceInfo_.dealedSeqCnt += skip;
                     sliceInfo_.sIdx += skip;
                     needDealTcSize_ = 0;
-                    break;                       // 任务量耗尽：迭代终止
+                    break; // 任务量耗尽：迭代终止
                 }
                 // ── (C) 完整跳过：推进整个空洞，消耗 tcGap 个 Tc ──
                 // 空洞全部行在本 batch 内，推进后 sIdx 到达 seqLength（batch 末尾），
@@ -747,7 +757,6 @@ __aicore__ inline uint32_t CompressorVec1SliceIterator<COMP>::GetNeedDealTcSize(
 {
     return needDealTcSize_;
 }
-
 
 template <typename COMP>
 __aicore__ inline bool CompressorVec1SliceIterator<COMP>::IsEnd()

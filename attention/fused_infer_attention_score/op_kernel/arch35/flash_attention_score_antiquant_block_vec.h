@@ -18,11 +18,11 @@
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
-#include "../../../common/op_kernel/arch35/vf/vf_div_cast.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
-#include "../../../common/op_kernel/arch35/vf/vf_post_quant.h"
+#include "../../../common/op_kernel/arch35/vf/vf_div_cast_arch35.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
+#include "../../../common/op_kernel/arch35/vf/vf_post_quant_arch35.h"
 #include "flash_attention_score_antiquant_processor.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
+#include "../../../common/op_kernel/arch35/common_flash_attention_score_tiling_regbase_arch35.h"
 #include "../../../common/op_kernel/arch35/util_regbase.h"
 using namespace optiling;
 using namespace FaVectorApi;
@@ -553,7 +553,6 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitPostQua
     }
 }
 
-
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
 FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::setConstAntiTaskParam(ConstInfo<isInfer, hasRope> &constInfo)
@@ -611,7 +610,6 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantKe
                                          kvInputQue, kvOutputQue, keyAntiqScaleInputQue, keyAntiqOffsetInputQue,
                                          kvAntiqMxScaleRes, taskParam, subTaskId, isBeforeHalf, runInfo.s2RealSize);
 }
-
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
@@ -1723,7 +1721,6 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SoftmaxDataCopyOut(const RunInfo<i
         this->sumBrdcst.template FreeTensor(maxOutTensor);
     }
 }
-
 
 ANTIQUANT_TEMPLATES_DEF
 class FABlockVecAntiquantDummy {

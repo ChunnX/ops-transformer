@@ -22,7 +22,7 @@
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../quant_flash_attn_tiling_info.h"
-#include "paged_attention_checker.h"
+#include "quant_flash_attn_paged_attention_checker.h"
 
 namespace optiling {
 namespace quant_flash_attn {

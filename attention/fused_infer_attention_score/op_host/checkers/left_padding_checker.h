@@ -19,14 +19,15 @@
 #include <map>
 #include <numeric>
 #include "tiling/tiling_api.h"
-#include "base_checker.h"
+#include "fused_infer_attention_score_base_checker.h"
 
 namespace optiling {
 
 class LeftPaddingChecker : public BaseChecker {
 public:
-    LeftPaddingChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    LeftPaddingChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant)
+    {}
     ~LeftPaddingChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;
@@ -50,5 +51,5 @@ private:
 private:
 };
 
-}  // namespace optiling
-#endif  // LEFT_PADDING_CHECKER_H
+} // namespace optiling
+#endif // LEFT_PADDING_CHECKER_H

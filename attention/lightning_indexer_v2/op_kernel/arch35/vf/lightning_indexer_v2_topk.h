@@ -16,20 +16,20 @@
 #define LIGHTNING_INDEXER_V2_TOPK_H
 
 #include "kernel_operator.h"
-#include "vf_topk_gather.h"
+#include "lightning_indexer_v2_vf_topk_gather_arch35.h"
 
 namespace liV2Topk {
-template<typename T>
+template <typename T>
 class LIV2Topk {
 public:
-    __aicore__ inline void operator()(LocalTensor<uint32_t>& outputIdxLocal,
-                                      LocalTensor<T>& inputLocal,
+    __aicore__ inline void operator()(LocalTensor<uint32_t> &outputIdxLocal,
+                                      LocalTensor<T> &inputLocal,
                                       uint32_t s2SeqLen)
     {
     }
 };
 
-template<>
+template <>
 class LIV2Topk<uint32_t> {
 public:
     __aicore__ inline uint32_t GetSharedTmpBufferSize()
@@ -37,9 +37,9 @@ public:
         // 2 * LIV2Common::Align(topK, (uint32_t)256): 两块hisIndexLocal
         // 5 * 256：histogramsLocal + idxLocal[0-3]
         // 64：nkValueLocal
-        uint64_t bufferSize1 = (2 * LIV2Common::Align(topK, (uint32_t)256) + 5 * 256 + 64)  * sizeof(uint32_t);
+        uint64_t bufferSize1 = (2 * LIV2Common::Align(topK, (uint32_t)256) + 5 * 256 + 64) * sizeof(uint32_t);
         // LIV2Common::Align(topK, (uint32_t)256) + trunkLen：tmpIndexLocal
-        uint64_t bufferSize2 = (LIV2Common::Align(topK, (uint32_t)256) + trunkLen)  * sizeof(uint32_t);
+        uint64_t bufferSize2 = (LIV2Common::Align(topK, (uint32_t)256) + trunkLen) * sizeof(uint32_t);
         uint64_t reuseBufferSize = LIV2Common::Align(topK, (uint32_t)256) * sizeof(uint32_t);
         return bufferSize1 + bufferSize2 - reuseBufferSize;
     }
@@ -49,8 +49,8 @@ public:
         this->topK = topK;
         this->trunkLen = trunkLen;
     }
-    
-    __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer, LocalTensor<uint32_t>& indicesOutLocal)
+
+    __aicore__ inline void InitBuffers(LocalTensor<uint32_t> &sharedTmpBuffer, LocalTensor<uint32_t> &indicesOutLocal)
     {
         LocalTensor<uint32_t> hisIndexLocal1 = indicesOutLocal;
         LocalTensor<uint32_t> hisIndexLocal2 = sharedTmpBuffer[0];
@@ -65,8 +65,8 @@ public:
         tmpIndexLocal = nkValueLocal[64];
     }
 
-    __aicore__ inline void operator()(LocalTensor<uint32_t>& mrgValueLocal, LocalTensor<uint32_t>& indicesOutLocal,
-                                      LocalTensor<uint32_t>& hisValueLocal, uint32_t s2SeqLen, uint32_t loopIdx,
+    __aicore__ inline void operator()(LocalTensor<uint32_t> &mrgValueLocal, LocalTensor<uint32_t> &indicesOutLocal,
+                                      LocalTensor<uint32_t> &hisValueLocal, uint32_t s2SeqLen, uint32_t loopIdx,
                                       uint32_t s2LoopNum, bool isNeedLD, bool returnValueFlag,
                                       uint32_t outputIdxOffset)
     {
@@ -96,7 +96,7 @@ public:
                                                   nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
                 uint32_t loopBasicIdx = topK < trunkLen ? loopIdx * trunkLen - LIV2Common::Align(topK, (uint32_t)256) :
-                                        (loopIdx - 1) * trunkLen;
+                                                          (loopIdx - 1) * trunkLen;
                 liV2Topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal,
                                                   mrgValueLocal, tmpIndexLocal, hisIndexLocal[loopIdx % 2],
                                                   topK, loopBasicIdx,
@@ -116,14 +116,14 @@ public:
         }
     }
 
-    __aicore__ inline void LdTopK(LocalTensor<uint32_t>& mrgValueLocal, LocalTensor<uint32_t> indexLocal,
-                                  LocalTensor<uint32_t>& indicesOutLocal,
-                                  LocalTensor<uint32_t>& hisValueLocal, uint32_t s2SeqLen, uint32_t loopIdx,
+    __aicore__ inline void LdTopK(LocalTensor<uint32_t> &mrgValueLocal, LocalTensor<uint32_t> indexLocal,
+                                  LocalTensor<uint32_t> &indicesOutLocal,
+                                  LocalTensor<uint32_t> &hisValueLocal, uint32_t s2SeqLen, uint32_t loopIdx,
                                   uint32_t s2LoopNum)
     {
         liV2Topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
-                                      idx0Local, idx1Local, idx2Local, idx3Local,
-                                      nkValueLocal, topK, s2SeqLen);
+                                          idx0Local, idx1Local, idx2Local, idx3Local,
+                                          nkValueLocal, topK, s2SeqLen);
         PipeBarrier<PIPE_V>();
         liV2Topkb32gather::LiTopKLDGatherVF(indicesOutLocal, tmpIndexLocal, indexLocal, topK);
     }
@@ -140,5 +140,5 @@ private:
     uint32_t topK = 512;
     uint32_t trunkLen = 8192;
 };
-}
+} // namespace liV2Topk
 #endif
