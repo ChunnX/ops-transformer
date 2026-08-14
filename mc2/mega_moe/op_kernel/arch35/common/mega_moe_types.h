@@ -12,6 +12,7 @@
 #define MEGA_MOE_TYPES_H
 
 #include "lib/std/tuple.h"
+#include "tensor_api/tensor.h"
 #include "../mega_moe_tiling.h"
 #include "mega_moe_constants.h"
 #include "mega_moe_workspace.h"
@@ -20,6 +21,14 @@
 namespace MegaMoeImpl {
 
 using namespace AscendC;
+
+using ExpertProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
+
+// GMM1/GMM2 逐专家遍历的公共状态：problemShape 保存当前问题规模，rowOffset 保存前序 token 行数。
+struct ExpertLoopState {
+    ExpertProblemShape problemShape;
+    int64_t rowOffset = 0;
+};
 
 struct Mc2MoeContext {
     uint32_t epRankId = 0;
@@ -37,7 +46,7 @@ struct GMMAddrInfo {
     GM_ADDR gmm1OutGlobal;
     GM_ADDR gmm2OutGlobal;
     GM_ADDR metaInfoGlobal;
-    __gm__ int32_t *swigluToGmm2Flag;
+    __gm__ int32_t *activationToGmm2Flag;
     __gm__ int32_t *dispatchToGmm1Flag;
     __gm__ int32_t *gmm2CombineSyncCounter;
     __gm__ int32_t *gmmToEpilogueFlag;

@@ -1249,8 +1249,12 @@ def cpu_mxfp8_golden(
     """CPU Flash Attention golden with MXFP8, C1V1C1V1C2V2 流水"""
     EPSILON = 1e-20
     Q_BLOCK_SIZE = 128
-    K_BLOCK_SIZE = 256
-    V_BLOCK_SIZE = 512
+    if D == 256:
+        K_BLOCK_SIZE = 128
+        V_BLOCK_SIZE = 256
+    else:
+        K_BLOCK_SIZE = 256
+        V_BLOCK_SIZE = 512
 
     if actual_seq_q is None:
         actual_seq_q = _actual_seq_q()
@@ -2122,5 +2126,8 @@ if __name__ == "__main__":
         cpu_lse_tnd_torch = convert_q_bnsd_to_layout(
             cpu_lse, _actual_seq_q(), "TND", cu_seqlens=CU_SEQLENS_Q
         )
+        # NPU LSE 输出已改为 N-major 排布 (N, T): N 在外, T 在内
+        # CPU golden 经 convert 后是 [T, N, 1] (T-major), 需转成 [N, T] 对齐
+        cpu_lse_nt_torch = cpu_lse_tnd_torch.squeeze(-1).permute(1, 0).contiguous()
 
-        result_compare_method.check_result(cpu_lse_tnd_torch, lse_out)
+        result_compare_method.check_result(cpu_lse_nt_torch, lse_out)
