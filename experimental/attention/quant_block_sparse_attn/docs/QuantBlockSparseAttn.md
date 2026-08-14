@@ -781,10 +781,103 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 ## 调用示例
 
+运行以下示例前，请先安装 PyTorch、TorchNPU、QBSA 自定义扩展和 QBSA 算子包。示例固定使用设备 0。
+示例中的一维 storage 仅作为共享底层存储；算子实际接收的是 key、value、k_descale 三个四维 PA 视图，并非一维组合 KV 输入。
+`npu_quant_block_sparse_attn_metadata` 用于生成 QBSA 负载均衡元数据。调用主算子前，需使用与主算子一致的稀疏、序列长度、分块及布局参数生成 metadata，并将其传入主算子的 `metadata` 参数。
+
 ```python
 import torch
 import torch_npu
 import custom_ops
+
+torch_npu.npu.set_device(0)
+device = torch.device("npu:0")
+
+B, N1, N2 = 1, 1, 1
+S1, S2 = 128, 128
+D = D_v = 128
+block_size = 128
+num_blocks = 1
+head_dim = D
+layout_q = "TND"
+layout_kv = "PA_BNSD"
+layout_sparse_indices = "B_N_Qb_Kb"
+quant_mode = 1
+mask_mode = 0
+
+
+def make_kv_views(storage):
+    key_segment = num_kv_heads * block_size * head_dim
+    value_segment = num_kv_heads * block_size * head_dim
+    k_descale_segment = num_kv_heads * block_size * 4
+    block_stride = key_segment + value_segment + k_descale_segment
+    key_stride = (block_stride, block_size * head_dim, head_dim, 1)
+    k_descale_stride = (block_stride // 4, block_size, 1, 1)
+
+    fp8_storage = storage.view(torch.float8_e4m3fn)
+    key = torch.as_strided(
+        fp8_storage,
+        (num_blocks, num_kv_heads, block_size, head_dim),
+        key_stride,
+        0,
+    )
+    value = torch.as_strided(
+        fp8_storage,
+        (num_blocks, num_kv_heads, block_size, D_v),
+        key_stride,
+        key_segment,
+    )
+    fp32_storage = storage.view(torch.float32)
+    k_descale = torch.as_strided(
+        fp32_storage,
+        (num_blocks, num_kv_heads, block_size, 1),
+        k_descale_stride,
+        (key_segment + value_segment) // 4,
+    )
+    return key, value, k_descale
+
+
+num_kv_heads = N2
+key_segment = num_kv_heads * block_size * head_dim
+value_segment = num_kv_heads * block_size * head_dim
+k_descale_segment = num_kv_heads * block_size * 4
+block_stride = key_segment + value_segment + k_descale_segment
+storage = torch.empty(num_blocks * block_stride, dtype=torch.uint8)
+key_cpu, value_cpu, k_descale_cpu = make_kv_views(storage)
+key_cpu.fill_(1)
+value_cpu.fill_(1)
+k_descale_cpu.fill_(1.0)
+storage = storage.to(device)
+key, value, k_descale = make_kv_views(storage)
+
+query = torch.ones((S1, N1, D), dtype=torch.float32).to(torch.float8_e4m3fn).to(device)
+q_descale = torch.ones((S1, N1), dtype=torch.float32, device=device)
+v_descale = torch.ones((N2,), dtype=torch.float32, device=device)
+p_scale = torch.ones((1,), dtype=torch.float32, device=device)
+sparse_indices = torch.tensor([[[[0]]]], dtype=torch.int32, device=device)
+sparse_seq_len = torch.ones((B, N1, S1 // block_size), dtype=torch.int32, device=device)
+cu_seqlens_q = torch.tensor([0, S1], dtype=torch.int32, device=device)
+seqused_kv = torch.tensor([S2], dtype=torch.int32, device=device)
+block_table = torch.zeros((B, num_blocks), dtype=torch.int32, device=device)
+
+metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
+    sparse_seq_len,
+    N1,
+    N2,
+    head_dim,
+    cu_seqlens_q=cu_seqlens_q,
+    cu_seqlens_kv=None,
+    seqused_q=None,
+    seqused_kv=seqused_kv,
+    batch_size=B,
+    sparse_block_size_q=block_size,
+    sparse_block_size_k=block_size,
+    quant_mode=quant_mode,
+    mask_mode=mask_mode,
+    layout_q=layout_q,
+    layout_kv=layout_kv,
+    layout_sparse_indices=layout_sparse_indices,
+)
 
 attn_out, softmax_lse = torch.ops.custom.npu_quant_block_sparse_attn(
     query,
@@ -796,47 +889,26 @@ attn_out, softmax_lse = torch.ops.custom.npu_quant_block_sparse_attn(
     p_scale,
     sparse_indices,
     sparse_seq_len,
-    atten_mask,
-    softmax_scale,
-    128,
-    128,
+    None,
+    1.0 / (D ** 0.5),
+    block_size,
+    block_size,
     cu_seqlens_q=cu_seqlens_q,
     cu_seqlens_kv=None,
     seqused_q=None,
     seqused_kv=seqused_kv,
     block_table=block_table,
     metadata=metadata,
-    layout_kv="PA_BNSD",
-    layout_q="TND",
-    layout_sparse_indices="B_N_Qb_Kb",
+    layout_kv=layout_kv,
+    layout_q=layout_q,
+    layout_sparse_indices=layout_sparse_indices,
     layout_out="TND",
-    quant_mode=1,
-    mask_mode=3,
+    quant_mode=quant_mode,
+    mask_mode=mask_mode,
     return_softmax_lse=True,
 )
-```
 
-## 相关接口
-
-`npu_quant_block_sparse_attn_metadata` 可用于生成 QBSA 负载均衡元数据，其输出作为本算子的 `metadata` 输入。典型调用形式如下：
-
-```python
-metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
-    sparse_seq_len,
-    num_heads_q,
-    num_heads_kv,
-    head_dim,
-    cu_seqlens_q=cu_seqlens_q,
-    cu_seqlens_kv=None,
-    seqused_q=None,
-    seqused_kv=seqused_kv,
-    batch_size=batch_size,
-    sparse_block_size_q=128,
-    sparse_block_size_k=128,
-    quant_mode=1,
-    mask_mode=3,
-    layout_q="TND",
-    layout_kv="PA_BNSD",
-    layout_sparse_indices="B_N_Qb_Kb",
-)
+torch_npu.npu.synchronize()
+print(f"attention_out: shape={tuple(attn_out.shape)}, dtype={attn_out.dtype}")
+print(f"softmax_lse: shape={tuple(softmax_lse.shape)}, dtype={softmax_lse.dtype}")
 ```
