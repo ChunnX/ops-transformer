@@ -438,9 +438,7 @@ def _mxfp8_customize_inputs(
     data = module.generate_mxfp8_inputs(
         case,
         max_block_per_batch=max_block_per_batch,
-        atten_mask_shape=(
-            tuple(atten_mask.shape) if atten_mask is not None else None
-        ),
+        atten_mask_shape=(tuple(atten_mask.shape) if atten_mask is not None else None),
     )
 
     q_scale = module.fp32_to_e8m0fnu_safe(

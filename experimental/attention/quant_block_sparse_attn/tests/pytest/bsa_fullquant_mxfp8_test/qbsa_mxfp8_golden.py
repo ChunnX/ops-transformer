@@ -1204,9 +1204,7 @@ def _materialize_pa_bnsd(tensor):
 # ==============================================================================
 
 
-def generate_mxfp8_inputs(
-    case=None, max_block_per_batch=None, atten_mask_shape=None
-):
+def generate_mxfp8_inputs(case=None, max_block_per_batch=None, atten_mask_shape=None):
     """Generate test inputs with paired fp8 + descale.
 
     流程: fp32 随机 → 从 fp32 算 descale → fp8 = clamp(fp32/descale)
