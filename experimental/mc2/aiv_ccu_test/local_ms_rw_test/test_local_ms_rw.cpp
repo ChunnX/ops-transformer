@@ -264,7 +264,7 @@ int main(int argc, char *argv[])
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy timeGm failed. ret: %d\n", ret); return ret);
 
     uint64_t timeHost2[RESULT_WORDS] = {0};
-    if (g_mode0 == 4) {
+    if (g_mode0 == 4 || g_mode0 == 7) {
         ret = aclrtMemcpy(timeHost2, sizeof(timeHost2), timeGm2, sizeof(timeHost2), ACL_MEMCPY_DEVICE_TO_HOST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy timeGm2 failed. ret: %d\n", ret); return ret);
     }
@@ -273,9 +273,9 @@ int main(int argc, char *argv[])
     uint64_t endCycle = timeHost[1];
     uint64_t verifyResult = timeHost[2];
     uint64_t warmupCycles = timeHost[3];
-    uint64_t startCycle2 = (g_mode0 == 4) ? timeHost2[0] : 0;
-    uint64_t endCycle2 = (g_mode0 == 4) ? timeHost2[1] : 0;
-    uint64_t warmupCycles2 = (g_mode0 == 4) ? timeHost2[2] : 0;
+    uint64_t startCycle2 = (g_mode0 == 4 || g_mode0 == 7) ? timeHost2[0] : 0;
+    uint64_t endCycle2 = (g_mode0 == 4 || g_mode0 == 7) ? timeHost2[1] : 0;
+    uint64_t warmupCycles2 = (g_mode0 == 4 || g_mode0 == 7) ? timeHost2[2] : 0;
     uint64_t elapsedCycles = endCycle - startCycle;
     double elapsedNs = (double)elapsedCycles * NS_PER_CYCLE;
     double avgNs = elapsedNs / static_cast<double>(g_loopCount);
@@ -294,7 +294,7 @@ int main(int argc, char *argv[])
     LOG_PRINT("  MS ID:        %u\n", g_msId);
     LOG_PRINT("  loop_count:   %u\n", g_loopCount);
     LOG_PRINT("  数据量:       %.2f KB (%lu bytes)\n", dataKB, g_dataSize);
-    if (g_mode0 == 4) {
+    if (g_mode0 == 4 || g_mode0 == 7) {
         double elapsedCycles2 = (double)(endCycle2 - startCycle2);
         double elapsedNs2 = elapsedCycles2 * NS_PER_CYCLE;
         double avgNs2 = elapsedNs2 / static_cast<double>(g_loopCount);
