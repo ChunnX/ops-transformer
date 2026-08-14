@@ -257,9 +257,12 @@ __aicore__ inline void PublishGmm1TileReady(
     }
 }
 
-// 扫描一个 source-rank 段的 route mask，搬运本 core 负责的 token 并发布完成 flag。
+/**
+ * Dispatch layer 3/3: scan one source-rank route mask, copy the selected
+ * tokens and metadata, and publish the GMM1 tile-ready counts.
+ */
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
-__aicore__ inline void DispatchRankTokenRange(
+__aicore__ inline void DispatchRankTokens(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
     int32_t expertGlobalRowBegin, uint32_t remoteRankIdx,
@@ -326,9 +329,13 @@ __aicore__ inline void DispatchRankTokenRange(
     }
 }
 
-// 遍历覆盖当前 core 行区间的 source-rank 段，并逐段完成 token 搬运与 flag 发布。
+/**
+ * Dispatch layer 2/3: map the core-owned rows of one expert to the
+ * overlapping source-rank segments, then call DispatchRankTokens for each
+ * segment.
+ */
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
-__aicore__ inline void DispatchExpertRowsByRank(
+__aicore__ inline void DispatchExpertTokensByRank(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
     int32_t expertGlobalRowBegin, const DispatchExpertRange &expertRange,
@@ -358,7 +365,7 @@ __aicore__ inline void DispatchExpertRowsByRank(
             continue;
         }
 
-        DispatchRankTokenRange<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+        DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, params, winRankAddr, scratch, localExpertId,
             expertGlobalRowBegin, static_cast<uint32_t>(remoteRankIdx),
             rankSegmentRowBegin, segmentMatchOrdinalBegin, segmentMatchOrdinalEnd,
@@ -408,14 +415,17 @@ __aicore__ inline void DispatchExpertTokensByRankShard(
             continue;
         }
 
-        DispatchRankTokenRange<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+        DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, params, winRankAddr, scratch, localExpertId, expertGlobalRowBegin,
             remoteRankIdx, static_cast<int32_t>(rankSegmentDstRowBegin) - expertGlobalRowBegin,
             rankShardRowBegin, rankShardRowBegin + dispatchRowCount, gmm1TileRowCount);
     }
 }
 
-/** Dispatch one expert by evenly partitioning its received rows across dispatch cores. */
+/**
+ * Dispatch layer 1/3: partition one expert's received rows across dispatch
+ * cores, then call DispatchExpertTokensByRank for the core-owned row range.
+ */
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchExpertTokensByRows(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
@@ -447,7 +457,7 @@ __aicore__ inline void DispatchExpertTokensByRows(
         return;
     }
 
-    DispatchExpertRowsByRank<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+    DispatchExpertTokensByRank<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
         context, params, winRankAddr, scratch, localExpertId, expertGlobalRowBegin,
         expertRange, rankRange, gmm1TileRowCount);
 }
