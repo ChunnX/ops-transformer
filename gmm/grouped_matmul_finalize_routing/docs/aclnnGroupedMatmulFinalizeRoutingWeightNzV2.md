@@ -341,8 +341,10 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     - 上表数据类型列中的角标"2"代表该系列不支持的数据类型。
     - rowIndex在x1以及x2数据类型为INT8时，数据类型支持INT64、INT32；在x1以及x2数据类型为FLOAT8_E4M3FN、HIFLOAT8或MxA8W4量化模式时，数据类型仅支持INT64。
     - x1、x2、scale、groupList、logit、rowIndex是必选参数，pertokenScaleOptional、sharedInput、bias是可选参数。MxA8W4场景下pertokenScaleOptional为必选参数。目前暂不支持offsetOptional参数，必须为nullptr。
+    - 当groupListType为0时，groupList须为非负单调非递减数列（累积和），且最后一个值不大于x1中tensor的第一维；当groupListType为1时，groupList须为非负数组（各组大小），且数值的总和不大于x1中tensor的第一维。
     - out的第一维batch、sharedInputOffset必须大于等于0，且小于等于m。
     - 当sharedInput不为空时，其第一维长度为shareInputLen。sharedInputOffset、shareInputLen以及两者之和均需小于等于out的第一维batch。
+    - x1支持M为0，x2支持N为0；其他空Tensor场景不支持。
 
   <!-- end id10 -->
 
@@ -379,7 +381,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>x1、x2、scale、bias、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupList、sharedInput、logit、rowIndex或out的shape不满足校验条件。</td>
     </tr>
     <tr>
-      <td>x1、x2、scale、bias、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupList、sharedInput、logit、rowIndex或out的shape是空tensor。</td>
+      <td>除x1的M为0或x2的N为0外，传入了其他空Tensor。</td>
     </tr>
   </tbody></table>
 
@@ -467,6 +469,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     - groupList：当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。
     - x2的e取值范围[1, 1024]。
     - sharedInput的n和x2的n一致。
+    - x1支持M为0，x2支持N为0；其他空Tensor场景不支持。
 
   - 全量化场景支持的数据类型为：
 
