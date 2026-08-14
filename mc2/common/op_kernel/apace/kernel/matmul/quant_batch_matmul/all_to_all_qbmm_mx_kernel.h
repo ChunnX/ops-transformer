@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_matmul_mx_kernel.h
+ * \file all_to_all_qbmm_mx_kernel.h
  * \brief mxfp8 场景 quantMatmul 实现。
  */
 
