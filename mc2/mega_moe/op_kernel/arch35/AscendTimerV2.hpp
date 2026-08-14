@@ -4,8 +4,7 @@
 namespace AscendTimer {
 
 enum FixedTimingIndex {
-    KERNEL_TIMING_IDX = 0,
-    AIV_INIT_PARAM,
+    AIV_INIT_PARAM = 0,
     AIV_INITROUTING_SORT,
     AIV_INITROUTING_EXPERT_TOKEN_COUNT,
     AIV_INITROUTING_GATHEROUT_QUANT,
@@ -27,6 +26,8 @@ enum DynamicTimingType {
     AIC_GMM1,
     AIC_GMM2_WAIT,
     AIC_GMM2,
+    AIV_GMM1_PROLOGUE,
+    AIV_GMM2_PROLOGUE,
     DYNAMIC_TYPE_COUNT
 };
 

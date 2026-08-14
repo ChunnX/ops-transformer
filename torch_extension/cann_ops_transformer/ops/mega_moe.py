@@ -20,7 +20,7 @@ from .comm_context import CommContextManager
 _CLAMP_DEFAULT = 3.4028234663852886e38
 _ALPHA_DEFAULT = 1.702
 _BETA_DEFAULT = 1.0
-_MEGA_MOE_TIMER_COUNT = 1774080
+_MEGA_MOE_TIMER_COUNT = 2167296
 _ALLOWED_ACTIVATION_KEYS = {
     "swiglu": frozenset(),
     "swiglustep": frozenset(),

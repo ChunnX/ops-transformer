@@ -6,7 +6,6 @@ from timer_path import resolve_timer_dir
 
 
 FIXED_NAMES = [
-    "KERNEL_TIMING",
     "AIV_INIT_PARAM",
     "AIV_INITROUTING_SORT",
     "AIV_INITROUTING_EXPERT_TOKEN_COUNT",
@@ -27,6 +26,8 @@ DYNAMIC_NAMES = [
     "AIC_GMM1",
     "AIC_GMM2_WAIT",
     "AIC_GMM2",
+    "AIV_GMM1_PROLOGUE",
+    "AIV_GMM2_PROLOGUE",
 ]
 MAX_DYNAMIC_ITER = 1024
 CORE_COUNT = 96

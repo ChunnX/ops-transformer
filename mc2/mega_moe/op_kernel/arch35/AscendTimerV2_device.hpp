@@ -90,11 +90,6 @@ public:
         Write(index, start_, AscendC::GetSystemCycle(), ModeTag{});
     }
     template <typename ModeTag = TimerOverwriteTag>
-    __aicore__ inline void Tok()
-    {
-        Tok<ModeTag>(AscendTimer::KERNEL_TIMING_IDX);
-    }
-    template <typename ModeTag = TimerOverwriteTag>
     __aicore__ inline void Tok(AscendTimer::DynamicTimingType type, int iter)
     {
         int typeIdx = static_cast<int>(type);
@@ -111,13 +106,10 @@ public:
 private:
     __aicore__ inline bool MatchesFixedCore(int32_t index) const
     {
-        if (index == AscendTimer::KERNEL_TIMING_IDX) {
-            return true;
-        }
         if (index == AscendTimer::AIC_WAIT_ALLGATHER) {
             return IsAic();
         }
-        return index > AscendTimer::KERNEL_TIMING_IDX && index < AscendTimer::AIC_WAIT_ALLGATHER &&
+        return index >= AscendTimer::AIV_INIT_PARAM && index < AscendTimer::AIC_WAIT_ALLGATHER &&
                (IsAiv0() || IsAiv1());
     }
     __aicore__ inline bool MatchesDynamicCore(AscendTimer::DynamicTimingType type) const
@@ -129,6 +121,9 @@ private:
             case AscendTimer::AIV_COMBINE_WAIT:
             case AscendTimer::AIV_COMBINE:
                 return IsAiv1();
+            case AscendTimer::AIV_GMM1_PROLOGUE:
+            case AscendTimer::AIV_GMM2_PROLOGUE:
+                return IsAiv0();
             case AscendTimer::AIC_GMM1_WAIT:
             case AscendTimer::AIC_GMM1:
             case AscendTimer::AIC_GMM2_WAIT:

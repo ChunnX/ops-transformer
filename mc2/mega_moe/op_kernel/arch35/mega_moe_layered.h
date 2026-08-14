@@ -182,7 +182,6 @@ private:
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
     Params params_{};
     AscendTimerDevice timer_;
-    AscendTimerDevice kernelTimer_;
 
     GlobalTensor<int32_t> swigluToGmm2FlagGm_;
     GlobalTensor<int32_t> expertTokenNumsOut_;
@@ -327,7 +326,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData, GM_ADDR timerAddr)
 {
     TIMER_BLOCK(timer_.Init(timerAddr));
-    TIMER_BLOCK(kernelTimer_.Init(timerAddr));
     m_ = tilingData->bs;
     k_ = tilingData->h;
     aicNum_ = tilingData->aicNum;
@@ -433,7 +431,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
             SyncAll<false>();
         }
     );
-    TIMER_BLOCK(kernelTimer_.Tik());
     TIMER_BLOCK(timer_.Tik());
 }
 
@@ -2640,6 +2637,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
             timer_.SetDynamicActualIter(AscendTimer::AIV_SWIGLU, moeExpertPerRank_);
             timer_.SetDynamicActualIter(AscendTimer::AIV_COMBINE_WAIT, moeExpertPerRank_);
             timer_.SetDynamicActualIter(AscendTimer::AIV_COMBINE, moeExpertPerRank_);
+        } else if (timer_.IsAiv0()) {
+            timer_.SetDynamicActualIter(AscendTimer::AIV_GMM1_PROLOGUE, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIV_GMM2_PROLOGUE, moeExpertPerRank_);
         } else if (timer_.IsAic()) {
             timer_.SetDynamicActualIter(AscendTimer::AIC_GMM1_WAIT, moeExpertPerRank_);
             timer_.SetDynamicActualIter(AscendTimer::AIC_GMM1, moeExpertPerRank_);
@@ -2699,9 +2699,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
         UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State);
         TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tik(AscendTimer::AIC_GMM1, localExpertId); });
         TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tik(AscendTimer::AIV_SWIGLU, localExpertId); });
+        TIMER_BLOCK(if (timer_.IsAiv0()) { timer_.Tik(AscendTimer::AIV_GMM1_PROLOGUE, localExpertId); });
         GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State, localExpertId, vecSetSyncCom, gmTileSequence);
         TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tok(AscendTimer::AIC_GMM1, localExpertId); });
         TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_SWIGLU, localExpertId); });
+        TIMER_BLOCK(if (timer_.IsAiv0()) { timer_.Tok(AscendTimer::AIV_GMM1_PROLOGUE, localExpertId); });
     }
     if constexpr (TopkWeightsPrefetch) {
         if constexpr (g_coreType == AIV) {
@@ -2745,9 +2747,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
         UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State);
         TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tik(AscendTimer::AIC_GMM2, expertIdx); });
         TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tik(AscendTimer::AIV_COMBINE, expertIdx); });
+        TIMER_BLOCK(if (timer_.IsAiv0()) { timer_.Tik(AscendTimer::AIV_GMM2_PROLOGUE, expertIdx); });
         GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx, gmTileSequence);
         TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tok(AscendTimer::AIC_GMM2, expertIdx); });
         TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_COMBINE, expertIdx); });
+        TIMER_BLOCK(if (timer_.IsAiv0()) { timer_.Tok(AscendTimer::AIV_GMM2_PROLOGUE, expertIdx); });
     }
 
     if constexpr (g_coreType == AIV) {
@@ -2773,7 +2777,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
         TIMER_BLOCK(timer_.Tok(AscendTimer::AIV_UNPERMUTE));
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
-    TIMER_BLOCK(kernelTimer_.Tok(AscendTimer::KERNEL_TIMING_IDX));
 }
 
 #endif
