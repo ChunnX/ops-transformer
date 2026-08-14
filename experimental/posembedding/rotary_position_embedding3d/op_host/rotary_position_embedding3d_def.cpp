@@ -14,7 +14,8 @@ namespace ops {
 
 class RotaryPositionEmbedding3d : public OpDef {
 public:
-    explicit RotaryPositionEmbedding3d(const char *name) : OpDef(name)
+    explicit RotaryPositionEmbedding3d(const char *name)
+        : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
