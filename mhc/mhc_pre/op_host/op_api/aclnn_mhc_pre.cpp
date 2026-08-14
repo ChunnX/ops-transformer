@@ -416,6 +416,7 @@ static bool CheckParamShapesA2(const MhcParamsBase &params, int64_t n, int64_t d
         return false;
     }
     auto biasShape = params.bias->GetViewShape();
+    auto phiShape = params.phi->GetViewShape();
     if (alphaSize == ALPHA_DIM_SIZE_2) {
         int64_t expectedPhiRows = 2 * n;
         if (phiShape_dim0 != expectedPhiRows) {
@@ -600,7 +601,7 @@ static bool CheckInputOutShapeA2(const MhcParamsBase &params)
         return false;
     }
     if (xShape.GetDimNum() == DIM_NUM_4) {
-        return CheckOutputShape4DA2(params, b, s, n, d, expectedPhiRows_factorial, expectedPhiRows_pow, phiShape_dim0);
+        return CheckOutputShape4DA2(params, b, s, n, d, alphaSize, expectedPhiRows_factorial, expectedPhiRows_pow, phiShape_dim0);
     }
 
     if (xShape.GetDimNum() == DIM_NUM_3) {
