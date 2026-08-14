@@ -18,7 +18,7 @@
 #include "opdev/op_log.h"
 #include "aclnn_kernels/cast.h"
 #include "opdev/common_types.h"
-#include "inplace_fused_causal_conv1d_v2.h"
+#include "inplace_fused_causal_conv1d.h"
 #include "aclnn_inplace_fused_causal_conv1d_v2.h"
 
 using namespace op;
