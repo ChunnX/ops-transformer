@@ -60,6 +60,7 @@ def generate_and_save(param_combinations):
     global case_id
     try:
         test_data = utils.generate_case_with_default_param(param_combinations)
+        test_data = utils.prepare_tensor_inputs(test_data)
         print("data parsed.", test_data)
         print("strat to generate data")
         input_data = sparse_flash_mla_golden.gen_data(test_data)

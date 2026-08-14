@@ -31,11 +31,12 @@ param_combinations = utils.generate_param_combinations(ENABLED_PARAMS)
 @pytest.mark.parametrize("param_combinations", param_combinations)
 def test_example(param_combinations):
     test_data = utils.generate_case_with_default_param(param_combinations)
+    golden_params = utils.prepare_tensor_inputs(test_data)
     torch_npu.npu.set_device(0)
 
     print("test_data:", test_data)
     # 获得cpu结果(真值)和算子结果（测试值）
-    input_data = sparse_flash_mla_golden.gen_data(test_data)
+    input_data = sparse_flash_mla_golden.gen_data(golden_params)
     if save_pt:
         sparse_flash_mla_golden.save_test_case(input_data, pt_save_path)
     npu_error_msg = None

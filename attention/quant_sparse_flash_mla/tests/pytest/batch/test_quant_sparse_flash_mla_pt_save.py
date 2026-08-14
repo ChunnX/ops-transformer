@@ -266,6 +266,8 @@ def qsmla(param_combinations):
         except ValueError as e:
             pytest.skip(f"输入参数校验失败:{e}")
 
+        params = utils.prepare_tensor_inputs(params)
+
         # 生成测试数据
         quant_sparse_flash_mla_golden.generate_and_save_testdata(
             params, save_pt=True, save_path=save_path

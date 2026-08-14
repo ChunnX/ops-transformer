@@ -28,6 +28,17 @@ FP8_DATA_RANGE_LEFT = -5
 FP8_DATA_RANGE_RIGHT = 5
 
 
+def _require_int32_tensor(name, value):
+    if value is None:
+        return
+    if not torch.is_tensor(value):
+        raise TypeError(
+            f"{name} must be passed to the golden as a torch.Tensor, got {type(value).__name__}"
+        )
+    if value.dtype != torch.int32:
+        raise TypeError(f"{name} must have dtype torch.int32, got {value.dtype}")
+
+
 class GeneralizedSFAQuant:
     def __init__(
         self,
@@ -1309,42 +1320,23 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
 
     if seqused_q is None:
         raise ValueError("seqused_q must not be None")
-    cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
-    seqused_q = torch.tensor(seqused_q).to(torch.int32)
-    seqused_ori_kv = torch.tensor(seqused_ori_kv).to(torch.int32)
-    seqused_cmp_kv = (
-        torch.tensor(seqused_cmp_kv).to(torch.int32)
-        if seqused_cmp_kv is not None
-        else None
-    )
+    for name, value in (
+        ("cu_seqlens_q", cu_seqlens_q),
+        ("cu_seqlens_ori_kv", cu_seqlens_ori_kv),
+        ("cu_seqlens_cmp_kv", cu_seqlens_cmp_kv),
+        ("seqused_q", seqused_q),
+        ("seqused_ori_kv", seqused_ori_kv),
+        ("seqused_cmp_kv", seqused_cmp_kv),
+        ("cmp_residual_kv", cmp_residual_kv),
+        ("ori_topk_length", ori_topk_length_override),
+        ("cmp_topk_length", cmp_topk_length_override),
+    ):
+        _require_int32_tensor(name, value)
 
     print(q_datarange, ori_kv_datarange, cmp_kv_datarange)
     print(params)
 
     assert quant_mode == 1, f"quant_mode only support 1, but got {quant_mode}"
-    # convert topk_length override to tensor with proper shape
-    if ori_topk_length_override is not None and not isinstance(
-        ori_topk_length_override, torch.Tensor
-    ):
-        if layout_q == "BSND":
-            ori_topk_length_override = torch.tensor(
-                ori_topk_length_override, dtype=torch.int32
-            ).reshape(B, S1, N2)
-        elif layout_q == "TND":
-            ori_topk_length_override = torch.tensor(
-                ori_topk_length_override, dtype=torch.int32
-            ).reshape(T1, N2)
-    if cmp_topk_length_override is not None and not isinstance(
-        cmp_topk_length_override, torch.Tensor
-    ):
-        if layout_q == "BSND":
-            cmp_topk_length_override = torch.tensor(
-                cmp_topk_length_override, dtype=torch.int32
-            ).reshape(B, S1, N2)
-        elif layout_q == "TND":
-            cmp_topk_length_override = torch.tensor(
-                cmp_topk_length_override, dtype=torch.int32
-            ).reshape(T1, N2)
     # generate q (hifp8FullQuant)
     if layout_q == "BSND":
         q, q_npu, q_descale = _gen_hif8_tensor(
@@ -1555,28 +1547,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
 
     logging.info("mode:%s\n", template_run_mode)
 
-    cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
-    seqused_ori_kv = torch.tensor(seqused_ori_kv).to(torch.int32)
-    seqused_cmp_kv = (
-        torch.tensor(seqused_cmp_kv).to(torch.int32)
-        if seqused_cmp_kv is not None
-        else None
-    )
-    cu_seqlens_ori_kv = (
-        torch.tensor(cu_seqlens_ori_kv).to(torch.int32)
-        if cu_seqlens_ori_kv is not None
-        else None
-    )
-    cu_seqlens_cmp_kv = (
-        torch.tensor(cu_seqlens_cmp_kv).to(torch.int32)
-        if cu_seqlens_cmp_kv is not None
-        else None
-    )
-    cmp_residual_kv = (
-        torch.tensor(cmp_residual_kv).to(torch.int32)
-        if cmp_residual_kv is not None
-        else None
-    )
     max_seqlen_q = S1
     if layout_q == "TND":
         max_seqlen_q = cu_seqlens_q.max().item()

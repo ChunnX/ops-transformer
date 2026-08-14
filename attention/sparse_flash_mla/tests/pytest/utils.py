@@ -34,6 +34,62 @@ str_map_dict = {
 }
 
 
+INT32_TENSOR_INPUTS = (
+    "cu_seqlens_q",
+    "cu_seqlens_ori_kv",
+    "cu_seqlens_cmp_kv",
+    "seqused_q",
+    "seqused_ori_kv",
+    "seqused_cmp_kv",
+    "cmp_residual_kv",
+    "ori_topk_length",
+    "cmp_topk_length",
+)
+
+
+def prepare_tensor_inputs(params):
+    """Materialize operator tensor inputs before invoking the CPU golden."""
+    prepared = params.copy()
+
+    if prepared.get("seqused_q") is None:
+        cu_seqlens_q = prepared.get("cu_seqlens_q")
+        if cu_seqlens_q is not None:
+            cu_seqlens_q = torch.as_tensor(cu_seqlens_q, dtype=torch.int32)
+            prepared["cu_seqlens_q"] = cu_seqlens_q
+            prepared["seqused_q"] = cu_seqlens_q[1:] - cu_seqlens_q[:-1]
+
+    seqused_ori_kv = prepared.get("seqused_ori_kv")
+    cmp_ratio = prepared.get("cmp_ratio")
+    if seqused_ori_kv is not None and cmp_ratio is not None:
+        if cmp_ratio < 1:
+            raise ValueError(
+                f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}"
+            )
+        seqused_ori_kv = torch.as_tensor(seqused_ori_kv, dtype=torch.int32)
+        prepared["seqused_ori_kv"] = seqused_ori_kv
+        if prepared.get("seqused_cmp_kv") is None:
+            prepared["seqused_cmp_kv"] = seqused_ori_kv // cmp_ratio
+        if prepared.get("cmp_residual_kv") is None:
+            prepared["cmp_residual_kv"] = seqused_ori_kv % cmp_ratio
+
+    for name in INT32_TENSOR_INPUTS:
+        value = prepared.get(name)
+        if value is not None and not torch.is_tensor(value):
+            prepared[name] = torch.as_tensor(value, dtype=torch.int32)
+
+    topk_shape = (
+        (prepared["B"], prepared["S1"], prepared["N2"])
+        if prepared["layout_q"] == "BSND"
+        else (prepared["T1"], prepared["N2"])
+    )
+    for name in ("ori_topk_length", "cmp_topk_length"):
+        value = prepared.get(name)
+        if value is not None:
+            prepared[name] = value.reshape(topk_shape)
+
+    return prepared
+
+
 def to_int_or_na(x):
     if pd.isna(x) or x == "":
         return pd.NA

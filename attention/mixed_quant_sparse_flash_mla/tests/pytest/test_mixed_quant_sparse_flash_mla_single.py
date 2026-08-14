@@ -115,9 +115,12 @@ def mqsmla(param_combinations):
     except ValueError as e:
         pytest.skip(f"输入参数校验失败:{e}")
 
+    result_params = params
+    golden_params = utils.prepare_tensor_inputs(params)
+
     # 生成测试数据及golden
     test_data = mixed_quant_sparse_flash_mla_golden.generate_and_save_testdata(
-        params, save_pt=save_pt, save_path=pt_save_path
+        golden_params, save_pt=save_pt, save_path=pt_save_path
     )
 
     # 获得cpu结果(真值)和算子结果（测试值）
@@ -161,7 +164,7 @@ def mqsmla(param_combinations):
 
     case_id += 1
 
-    utils.save_result(test_data["params"], result, fulfill_percent, result_path)
+    utils.save_result(result_params, result, fulfill_percent, result_path)
 
     if result == "Failed":
         pytest.fail(
