@@ -382,6 +382,41 @@ void JudgeIsNeedDeter(FuzzyBaseInfoParamsRegbase& fBaseParams, std::array<int64_
             }
         }
     }
+
+    // Adjacent rounds are pipelined. Even if neither round has an intra-round conflict, two different cores can
+    // atomically accumulate to the same output across the round boundary. Mark both rounds as deterministic so
+    // that the earlier normal atomic path cannot overlap the later round.
+    bool dqCrossRoundConflict = false;
+    bool dkDvCrossRoundConflict = false;
+    if (calcNum != 0) {
+        for (uint16_t i = 0; i < fBaseParams.blockOuter && (!dqCrossRoundConflict || !dkDvCrossRoundConflict); i++) {
+            for (uint16_t j = 0; j < fBaseParams.blockOuter; j++) {
+                if (i == j) {
+                    continue;
+                }
+                if (!dqCrossRoundConflict && dqOffset[i] == dqOffsetpre[j] && dqOffset[i] != OUTINDEX) {
+                    dqCrossRoundConflict = true;
+                }
+                if (!dkDvCrossRoundConflict && dkDvOffset[i] == dkDvOffsetpre[j] && dkDvOffset[i] != OUTINDEX) {
+                    dkDvCrossRoundConflict = true;
+                }
+            }
+        }
+
+        int64_t previousIndex = (calcNum - 1) / ALIGN64;
+        int64_t previousBitPosition = (calcNum - 1) % ALIGN64;
+        dqNeedDeter = dqNeedDeter || dqCrossRoundConflict;
+        dkDvNeedDeter = dkDvNeedDeter || dkDvCrossRoundConflict;
+        if (previousIndex >= 0 && previousIndex < INT64_NUM) {
+            if (dqCrossRoundConflict) {
+                fBaseParams.dqIsNeedDeter[previousIndex] |= (1ULL << previousBitPosition);
+            }
+            if (dkDvCrossRoundConflict) {
+                fBaseParams.dkDvIsNeedDeter[previousIndex] |= (1ULL << previousBitPosition);
+            }
+        }
+    }
+
     if (calcNum != 0 && ((!dqNeedDeter && dqNeedDeterpre) || (!dkDvNeedDeter && dkDvNeedDeterpre))) {
         for (uint16_t i = 0; i < fBaseParams.blockOuter; i++) {
             for (uint16_t j = 0; j < fBaseParams.blockOuter; j++) {
@@ -404,8 +439,8 @@ void JudgeIsNeedDeter(FuzzyBaseInfoParamsRegbase& fBaseParams, std::array<int64_
     }
     noNeedDeter = noNeedDeter && !dqNeedDeter && !dkDvNeedDeter;
     // caculate index and position
-    int64_t index = calcNum / 64;
-    int64_t bitPosition = calcNum % 64;
+    int64_t index = calcNum / ALIGN64;
+    int64_t bitPosition = calcNum % ALIGN64;
     if (index >= 0 && index < INT64_NUM) {
         if (dqNeedDeter) {
             fBaseParams.dqIsNeedDeter[index] |= (1ULL << bitPosition);
