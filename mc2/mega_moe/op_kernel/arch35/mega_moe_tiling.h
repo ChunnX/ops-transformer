@@ -193,8 +193,8 @@ struct MegaMoeTilingData {
     // 调度扩展字段统一追加在末尾，保持已有字段偏移不变。
     int32_t topkWeightsPrefetch;
     uint32_t maxTilesPerExpert; // GMM1 tile 状态位区每 expert 的容量，按交织调度的完整 N 上界预留
-    uint8_t actMode;            // 激活模式：0=swiglu, 1=situ, 2=swiglustep, 3=swigluoai
-    uint8_t actSubMode;         // situ下 0=默认, 1=linear; 其他激活忽略
+    uint8_t actMode;            // MegaMoeImpl::MegaMoeActMode 的底层协议值
+    uint8_t actSubMode;         // MegaMoeImpl::MegaMoeActSubMode 的底层协议值
     float activationAlpha;      // situ: linear_beta; swigluoai: alpha(默认1.702); swiglu/swiglustep: 占位
     float activationBeta;       // situ/swigluoai: beta(默认1.0); swiglu/swiglustep: 占位
     uint32_t mGroupsPerWave;    // 每个 routed expert Wave 消费的 256-row M 分组数

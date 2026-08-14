@@ -41,6 +41,11 @@ struct ActivationContext {
     __ubuf__ DataTypeInT *firstSrc = nullptr;
     __ubuf__ DataTypeInT *secondSrc = nullptr;
     __ubuf__ bfloat16_t *gluResAddr = nullptr;
+    __ubuf__ DataTypeInT *firstTailAddr = nullptr;
+    __ubuf__ DataTypeInT *secondTailAddr = nullptr;
+    __ubuf__ bfloat16_t *activationTailAddr1 = nullptr;
+    __ubuf__ bfloat16_t *activationTailAddr2 = nullptr;
+    __ubuf__ float *weightUbAddr = nullptr;
 
     uint32_t nSrcUbAligned = 0;
     uint32_t nDstUbAligned = 0;
@@ -54,19 +59,28 @@ struct ActivationContext {
     uint32_t mask1Num = 0;
     uint32_t mask2Num = 0;
     uint32_t mask3Num = 0;
+};
 
-    __ubuf__ DataTypeInT *firstTailAddr = nullptr;
-    __ubuf__ DataTypeInT *secondTailAddr = nullptr;
-    __ubuf__ bfloat16_t *activationTailAddr1 = nullptr;
-    __ubuf__ bfloat16_t *activationTailAddr2 = nullptr;
+struct SwiGLUParams {
+    float clampLimit;
+};
 
-    __ubuf__ float *weightUbAddr = nullptr;
+struct SiTUParams {
+    float clampLimit;
+    float beta;
+    float invBeta;
+    float alpha;
+    float invAlpha;
+};
 
-    float clampLimit = 0.0f;
-    float beta = 1.0f;
-    float invBeta = 1.0f;
-    float alpha = 1.0f;
-    float invAlpha = 1.0f;
+struct SwiGLUStepParams {
+    float clampLimit;
+};
+
+struct SwiGLUOaiParams {
+    float clampLimit;
+    float alpha;
+    float beta;
 };
 
 /*
@@ -109,7 +123,7 @@ struct ActivationContext {
  */
 template <typename DataTypeIn, bool TopkWeightsPrefetch, bool IsInterleaved>
 __aicore__ inline void
-RunSwiGLU(const ActivationContext<DataTypeIn> &ctx)
+RunSwiGLU(const ActivationContext<DataTypeIn> &ctx, const SwiGLUParams &swiGluParams)
 {
     const float scalarOne = 1.0f;
     const float negScalarOne = -1.0f;
@@ -155,9 +169,9 @@ RunSwiGLU(const ActivationContext<DataTypeIn> &ctx)
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX1F, vregX1, mask);
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX2F, vregX2, mask);
 
-                AscendC::MicroAPI::Mins(vregX1F, vregX1F, ctx.clampLimit, mask);
-                AscendC::MicroAPI::Mins(vregX2F, vregX2F, ctx.clampLimit, mask);
-                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -ctx.clampLimit, mask);
+                AscendC::MicroAPI::Mins(vregX1F, vregX1F, swiGluParams.clampLimit, mask);
+                AscendC::MicroAPI::Mins(vregX2F, vregX2F, swiGluParams.clampLimit, mask);
+                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -swiGluParams.clampLimit, mask);
 
                 // === SwiGLU: swish(x1) * x2 ===
                 AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask); // -x
@@ -189,9 +203,9 @@ RunSwiGLU(const ActivationContext<DataTypeIn> &ctx)
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX1F, vregX1, mask1);
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX2F, vregX2, mask1);
 
-                AscendC::MicroAPI::Mins(vregX1F, vregX1F, ctx.clampLimit, mask1);
-                AscendC::MicroAPI::Mins(vregX2F, vregX2F, ctx.clampLimit, mask1);
-                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -ctx.clampLimit, mask1);
+                AscendC::MicroAPI::Mins(vregX1F, vregX1F, swiGluParams.clampLimit, mask1);
+                AscendC::MicroAPI::Mins(vregX2F, vregX2F, swiGluParams.clampLimit, mask1);
+                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -swiGluParams.clampLimit, mask1);
 
                 // === SwiGLU: swish(x1) * x2 (tail, mask1) ===
                 AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask1);
@@ -227,7 +241,7 @@ RunSwiGLU(const ActivationContext<DataTypeIn> &ctx)
  */
 template <typename DataTypeIn, bool TopkWeightsPrefetch, bool IsLinear, bool IsInterleaved>
 __aicore__ inline void
-RunSiTU(const ActivationContext<DataTypeIn> &ctx)
+RunSiTU(const ActivationContext<DataTypeIn> &ctx, const SiTUParams &situParams)
 {
     // tanh 多项式近似的奇次项系数（8 阶 Padé 近似，仅取奇次项）
     // 参见 ACTIVATION_IMPL_COMPUTE_TANH_TWOPATH 宏注释，c1/c2 对应 x^3/x^5 的系数
@@ -299,13 +313,13 @@ RunSiTU(const ActivationContext<DataTypeIn> &ctx)
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX1F, vregX1, mask);
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX2F, vregX2, mask);
 
-                AscendC::MicroAPI::Mins(vregX1F, vregX1F, ctx.clampLimit, mask);
-                AscendC::MicroAPI::Mins(vregX2F, vregX2F, ctx.clampLimit, mask);
-                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -ctx.clampLimit, mask);
+                AscendC::MicroAPI::Mins(vregX1F, vregX1F, situParams.clampLimit, mask);
+                AscendC::MicroAPI::Mins(vregX2F, vregX2F, situParams.clampLimit, mask);
+                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -situParams.clampLimit, mask);
 
                 // === SiTU 激活（主循环, mask）===
                 // gate路: z = gate / beta
-                AscendC::MicroAPI::Muls(zReg, vregX1F, ctx.invBeta, mask);
+                AscendC::MicroAPI::Muls(zReg, vregX1F, situParams.invBeta, mask);
                 // tanh(gate/beta) — 两段式, 结果存 sigmoidReg
                 ACTIVATION_IMPL_COMPUTE_TANH_TWOPATH(sigmoidReg, zReg, mask, oneReg, absReg, sqrReg, polyReg,
                                                       tanhTmpReg, expReg, c1Reg, c2Reg, cmpMaskReg);
@@ -313,7 +327,7 @@ RunSiTU(const ActivationContext<DataTypeIn> &ctx)
                 AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask); // -gate
                 AscendC::MicroAPI::Exp(expReg, negReg, mask);                 // exp(-gate)
                 AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask);    // exp(-gate)+1
-                AscendC::MicroAPI::Duplicate(betaReg, ctx.beta, mask);        // betaReg = beta
+                AscendC::MicroAPI::Duplicate(betaReg, situParams.beta, mask); // betaReg = beta
                 AscendC::MicroAPI::Div(expReg, betaReg, addsReg, mask);       // beta/(exp(-gate)+1)
                 // situ_a = tanh(gate/beta) * beta * sigmoid(gate)
                 AscendC::MicroAPI::Mul(outFReg, sigmoidReg, expReg, mask); // outFReg = situ_a
@@ -321,11 +335,11 @@ RunSiTU(const ActivationContext<DataTypeIn> &ctx)
                 if constexpr (IsLinear) {
                     // up路: alpha * tanh(up/alpha), 用 vregX1F 暂存 gate_result
                     AscendC::MicroAPI::Muls(vregX1F, outFReg, scalarOne, mask); // vregX1F = gate_result (保存)
-                    AscendC::MicroAPI::Muls(zReg, vregX2F, ctx.invAlpha, mask); // zReg = up/alpha
+                    AscendC::MicroAPI::Muls(zReg, vregX2F, situParams.invAlpha, mask); // zReg = up/alpha
                     ACTIVATION_IMPL_COMPUTE_TANH_TWOPATH(sigmoidReg, zReg, mask, oneReg, absReg, sqrReg, polyReg,
                                                           tanhTmpReg, expReg, c1Reg, c2Reg, cmpMaskReg);
                     // alpha * tanh(up/alpha)
-                    AscendC::MicroAPI::Muls(sigmoidReg, sigmoidReg, ctx.alpha, mask);
+                    AscendC::MicroAPI::Muls(sigmoidReg, sigmoidReg, situParams.alpha, mask);
                     // out = gate_result * up_transformed
                     AscendC::MicroAPI::Mul(outFReg, vregX1F, sigmoidReg, mask);
                 } else {
@@ -356,27 +370,27 @@ RunSiTU(const ActivationContext<DataTypeIn> &ctx)
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX1F, vregX1, mask1);
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX2F, vregX2, mask1);
 
-                AscendC::MicroAPI::Mins(vregX1F, vregX1F, ctx.clampLimit, mask1);
-                AscendC::MicroAPI::Mins(vregX2F, vregX2F, ctx.clampLimit, mask1);
-                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -ctx.clampLimit, mask1);
+                AscendC::MicroAPI::Mins(vregX1F, vregX1F, situParams.clampLimit, mask1);
+                AscendC::MicroAPI::Mins(vregX2F, vregX2F, situParams.clampLimit, mask1);
+                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -situParams.clampLimit, mask1);
 
                 // === SiTU 激活（尾循环, mask1）===
-                AscendC::MicroAPI::Muls(zReg, vregX1F, ctx.invBeta, mask1);
+                AscendC::MicroAPI::Muls(zReg, vregX1F, situParams.invBeta, mask1);
                 ACTIVATION_IMPL_COMPUTE_TANH_TWOPATH(sigmoidReg, zReg, mask1, oneReg, absReg, sqrReg, polyReg,
                                                       tanhTmpReg, expReg, c1Reg, c2Reg, cmpMaskReg);
                 AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask1);
                 AscendC::MicroAPI::Exp(expReg, negReg, mask1);
                 AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask1);
-                AscendC::MicroAPI::Duplicate(betaReg, ctx.beta, mask1);
+                AscendC::MicroAPI::Duplicate(betaReg, situParams.beta, mask1);
                 AscendC::MicroAPI::Div(expReg, betaReg, addsReg, mask1);
                 AscendC::MicroAPI::Mul(outFReg, sigmoidReg, expReg, mask1);
 
                 if constexpr (IsLinear) {
                     AscendC::MicroAPI::Muls(vregX1F, outFReg, scalarOne, mask1);
-                    AscendC::MicroAPI::Muls(zReg, vregX2F, ctx.invAlpha, mask1);
+                    AscendC::MicroAPI::Muls(zReg, vregX2F, situParams.invAlpha, mask1);
                     ACTIVATION_IMPL_COMPUTE_TANH_TWOPATH(sigmoidReg, zReg, mask1, oneReg, absReg, sqrReg, polyReg,
                                                           tanhTmpReg, expReg, c1Reg, c2Reg, cmpMaskReg);
-                    AscendC::MicroAPI::Muls(sigmoidReg, sigmoidReg, ctx.alpha, mask1);
+                    AscendC::MicroAPI::Muls(sigmoidReg, sigmoidReg, situParams.alpha, mask1);
                     AscendC::MicroAPI::Mul(outFReg, vregX1F, sigmoidReg, mask1);
                 } else {
                     AscendC::MicroAPI::Mul(outFReg, outFReg, vregX2F, mask1);
@@ -405,7 +419,7 @@ RunSiTU(const ActivationContext<DataTypeIn> &ctx)
  */
 template <typename DataTypeIn, bool TopkWeightsPrefetch, bool IsInterleaved>
 __aicore__ inline void
-RunSwiGLUStep(const ActivationContext<DataTypeIn> &ctx)
+RunSwiGLUStep(const ActivationContext<DataTypeIn> &ctx, const SwiGLUStepParams &swiGluStepParams)
 {
     const float scalarOne = 1.0f;
     const float negScalarOne = -1.0f;
@@ -452,8 +466,8 @@ RunSwiGLUStep(const ActivationContext<DataTypeIn> &ctx)
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX2F, vregX2, mask);
 
                 // 对 up 作对称裁剪。
-                AscendC::MicroAPI::Mins(vregX2F, vregX2F, ctx.clampLimit, mask);
-                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -ctx.clampLimit, mask);
+                AscendC::MicroAPI::Mins(vregX2F, vregX2F, swiGluStepParams.clampLimit, mask);
+                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -swiGluStepParams.clampLimit, mask);
 
                 // === SwiGLUStep: SiLU(gate) * up ===
                 AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask); // -gate
@@ -462,7 +476,7 @@ RunSwiGLUStep(const ActivationContext<DataTypeIn> &ctx)
                 AscendC::MicroAPI::Div(sigmoidReg, vregX1F, addsReg, mask);   // SiLU(gate)=gate/(exp(-gate)+1)
 
                 // 对 SiLU(gate) 作上限裁剪。
-                AscendC::MicroAPI::Mins(sigmoidReg, sigmoidReg, ctx.clampLimit, mask);
+                AscendC::MicroAPI::Mins(sigmoidReg, sigmoidReg, swiGluStepParams.clampLimit, mask);
 
                 AscendC::MicroAPI::Mul(outFReg, sigmoidReg, vregX2F, mask);   // SiLU(gate)*up
                 // === 激活结束 ===
@@ -490,8 +504,8 @@ RunSwiGLUStep(const ActivationContext<DataTypeIn> &ctx)
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX2F, vregX2, mask1);
 
                 // 对 up 作对称裁剪。
-                AscendC::MicroAPI::Mins(vregX2F, vregX2F, ctx.clampLimit, mask1);
-                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -ctx.clampLimit, mask1);
+                AscendC::MicroAPI::Mins(vregX2F, vregX2F, swiGluStepParams.clampLimit, mask1);
+                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -swiGluStepParams.clampLimit, mask1);
 
                 // === SwiGLUStep: SiLU(gate) * up (tail, mask1) ===
                 AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask1);
@@ -500,7 +514,7 @@ RunSwiGLUStep(const ActivationContext<DataTypeIn> &ctx)
                 AscendC::MicroAPI::Div(sigmoidReg, vregX1F, addsReg, mask1);
 
                 // 对 SiLU(gate) 作上限裁剪。
-                AscendC::MicroAPI::Mins(sigmoidReg, sigmoidReg, ctx.clampLimit, mask1);
+                AscendC::MicroAPI::Mins(sigmoidReg, sigmoidReg, swiGluStepParams.clampLimit, mask1);
 
                 AscendC::MicroAPI::Mul(outFReg, sigmoidReg, vregX2F, mask1);
                 // === 激活结束 ===
@@ -528,7 +542,7 @@ RunSwiGLUStep(const ActivationContext<DataTypeIn> &ctx)
  */
 template <typename DataTypeIn, bool TopkWeightsPrefetch, bool IsInterleaved>
 __aicore__ inline void
-RunSwiGLUOai(const ActivationContext<DataTypeIn> &ctx)
+RunSwiGLUOai(const ActivationContext<DataTypeIn> &ctx, const SwiGLUOaiParams &swiGluOaiParams)
 {
     const float scalarOne = 1.0f;
     bfloat16_t numZero = 0;
@@ -574,16 +588,16 @@ RunSwiGLUOai(const ActivationContext<DataTypeIn> &ctx)
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX2F, vregX2, mask);
 
                 // 对 gate 作上限裁剪。
-                AscendC::MicroAPI::Mins(vregX1F, vregX1F, ctx.clampLimit, mask);
+                AscendC::MicroAPI::Mins(vregX1F, vregX1F, swiGluOaiParams.clampLimit, mask);
                 // 对 up 作对称裁剪。
-                AscendC::MicroAPI::Mins(vregX2F, vregX2F, ctx.clampLimit, mask);
-                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -ctx.clampLimit, mask);
+                AscendC::MicroAPI::Mins(vregX2F, vregX2F, swiGluOaiParams.clampLimit, mask);
+                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -swiGluOaiParams.clampLimit, mask);
 
                 // 对 up 加 beta。
-                AscendC::MicroAPI::Adds(vregX2F, vregX2F, ctx.beta, mask);
+                AscendC::MicroAPI::Adds(vregX2F, vregX2F, swiGluOaiParams.beta, mask);
 
                 // 计算 gate * sigmoid(alpha * gate)。
-                AscendC::MicroAPI::Muls(negReg, vregX1F, -ctx.alpha, mask);  // -alpha*gate
+                AscendC::MicroAPI::Muls(negReg, vregX1F, -swiGluOaiParams.alpha, mask); // -alpha*gate
                 AscendC::MicroAPI::Exp(expReg, negReg, mask);                 // exp(-alpha*gate)
                 AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask);    // exp(-alpha*gate)+1
                 AscendC::MicroAPI::Div(sigmoidReg, vregX1F, addsReg, mask);   // gate*sigmoid(alpha*gate)
@@ -612,15 +626,15 @@ RunSwiGLUOai(const ActivationContext<DataTypeIn> &ctx)
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX1F, vregX1, mask1);
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX2F, vregX2, mask1);
 
-                AscendC::MicroAPI::Mins(vregX1F, vregX1F, ctx.clampLimit, mask1);
-                AscendC::MicroAPI::Mins(vregX2F, vregX2F, ctx.clampLimit, mask1);
-                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -ctx.clampLimit, mask1);
+                AscendC::MicroAPI::Mins(vregX1F, vregX1F, swiGluOaiParams.clampLimit, mask1);
+                AscendC::MicroAPI::Mins(vregX2F, vregX2F, swiGluOaiParams.clampLimit, mask1);
+                AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -swiGluOaiParams.clampLimit, mask1);
 
                 // 对 up 加 beta。
-                AscendC::MicroAPI::Adds(vregX2F, vregX2F, ctx.beta, mask1);
+                AscendC::MicroAPI::Adds(vregX2F, vregX2F, swiGluOaiParams.beta, mask1);
 
                 // === SwiGLUOai (tail, mask1) ===
-                AscendC::MicroAPI::Muls(negReg, vregX1F, -ctx.alpha, mask1);
+                AscendC::MicroAPI::Muls(negReg, vregX1F, -swiGluOaiParams.alpha, mask1);
                 AscendC::MicroAPI::Exp(expReg, negReg, mask1);
                 AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask1);
                 AscendC::MicroAPI::Div(sigmoidReg, vregX1F, addsReg, mask1);
