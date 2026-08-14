@@ -596,7 +596,9 @@ class SparseFlashMlaInputAdapter:
             raise ValueError(f"{mode} requires cmp_kv in the CSV")
 
     def build_case_params(self, q, ori_kv, cmp_kv, ori_sparse_indices,
-                          cmp_sparse_indices, layout_q, layout_kv, kwargs):
+                          cmp_sparse_indices, layout_q, layout_kv, kwargs,
+                          tensor_inputs=None):
+        tensor_inputs = tensor_inputs or {}
         cu_q = self.list_value(kwargs, "cu_seqlens_q")
         cu_ori = self.list_value(kwargs, "cu_seqlens_ori_kv")
         cu_cmp = self.list_value(kwargs, "cu_seqlens_cmp_kv")
@@ -675,13 +677,15 @@ class SparseFlashMlaInputAdapter:
             "block_num2": block_num2,
             "block_size1": block_size1,
             "block_size2": block_size2,
-            "cu_seqlens_q": cu_q,
-            "cu_seqlens_ori_kv": cu_ori,
-            "cu_seqlens_cmp_kv": cu_cmp,
-            "seqused_q": seq_q,
-            "seqused_ori_kv": seq_ori,
-            "seqused_cmp_kv": seq_cmp,
-            "cmp_residual_kv": residual,
+            "cu_seqlens_q": tensor_inputs.get("cu_seqlens_q", cu_q),
+            "cu_seqlens_ori_kv": tensor_inputs.get("cu_seqlens_ori_kv", cu_ori),
+            "cu_seqlens_cmp_kv": tensor_inputs.get("cu_seqlens_cmp_kv", cu_cmp),
+            "seqused_q": tensor_inputs.get("seqused_q", seq_q),
+            "seqused_ori_kv": tensor_inputs.get("seqused_ori_kv", seq_ori),
+            "seqused_cmp_kv": tensor_inputs.get("seqused_cmp_kv", seq_cmp),
+            "cmp_residual_kv": tensor_inputs.get("cmp_residual_kv", residual),
+            "ori_topk_length": tensor_inputs.get("ori_topk_length"),
+            "cmp_topk_length": tensor_inputs.get("cmp_topk_length"),
             "template_mode": mode,
             "cmp_ratio": kwargs.get("cmp_ratio"),
             "cmp_mask_mode": kwargs.get("cmp_mask_mode"),
@@ -716,6 +720,7 @@ class SparseFlashMlaInputAdapter:
                 f"expected one pytest parameter combination, got {len(param_combinations)}"
             )
         case_params = pytest_utils.generate_case_with_default_param(param_combinations[0])
+        case_params = pytest_utils.prepare_tensor_inputs(case_params)
         if batch_random is None:
             data = pytest_golden.gen_data(
                 case_params, prepare_device_storage=False
@@ -732,10 +737,11 @@ class SparseFlashMlaInputAdapter:
         return data
 
     def customize(self, q, ori_kv, cmp_kv, ori_sparse_indices,
-                  cmp_sparse_indices, layout_q, layout_kv, kwargs, batch_random=None):
+                  cmp_sparse_indices, layout_q, layout_kv, kwargs, batch_random=None,
+                  tensor_inputs=None):
         params = self.build_case_params(
             q, ori_kv, cmp_kv, ori_sparse_indices, cmp_sparse_indices,
-            layout_q, layout_kv, kwargs
+            layout_q, layout_kv, kwargs, tensor_inputs
         )
         return self.generate_case(params, batch_random)
 
@@ -752,6 +758,21 @@ def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_
                                      cmp_topk_length=None, sinks=None, **kwargs):
     """Reuse the pytest parameter and input processing for a TTK case."""
     batch_random = TorchBatchRandomContext.from_case(q, ori_kv, cmp_kv, kwargs)
+    tensor_inputs = {
+        name: tensor
+        for name, tensor in (
+            ("cu_seqlens_q", cu_seqlens_q),
+            ("cu_seqlens_ori_kv", cu_seqlens_ori_kv),
+            ("cu_seqlens_cmp_kv", cu_seqlens_cmp_kv),
+            ("seqused_q", seqused_q),
+            ("seqused_ori_kv", seqused_ori_kv),
+            ("seqused_cmp_kv", seqused_cmp_kv),
+            ("cmp_residual_kv", cmp_residual_kv),
+            ("ori_topk_length", ori_topk_length),
+            ("cmp_topk_length", cmp_topk_length),
+        )
+        if tensor is not None
+    }
     data = INPUT_ADAPTER.customize(
         q,
         ori_kv,
@@ -762,6 +783,7 @@ def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_
         kwargs.get("layout_kv"),
         kwargs,
         batch_random,
+        tensor_inputs,
     )
     op_input = data["input"]
     metadata_input = data.get("metadata_input", {})

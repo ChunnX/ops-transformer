@@ -33,8 +33,17 @@ logging.basicConfig(
 )
 
 testcase_files = []
-if os.path.isdir(testcase_path):
-    pt_files = [f for f in os.listdir(testcase_path) if f.endswith(".pt")]
+single_case_path = os.environ.get("QSMLA_TESTCASE_PATH", "").strip()
+if single_case_path:
+    if os.path.isfile(single_case_path):
+        logging.info(f"单用例隔离模式，仅执行: {single_case_path}")
+        testcase_files.append(single_case_path)
+    else:
+        logging.warning(
+            f"环境变量 QSMLA_TESTCASE_PATH 指定的用例不存在: {single_case_path}"
+        )
+elif os.path.isdir(testcase_path):
+    pt_files = sorted(f for f in os.listdir(testcase_path) if f.endswith(".pt"))
     if not pt_files:
         logging.warning(f"错误: 目录中没有找到.pt文件: {testcase_path}")
     else:
@@ -97,7 +106,7 @@ def qsmla(testcase_files):
 
     utils.save_result(test_data["params"], result, fulfill_percent, Path(result_path))
 
-    if result in ("NPU ERROR", "Failed"):
+    if result not in ("PASS", "Pass", "Passed", "pass", "passed"):
         pytest.fail(
             f"用例执行失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%"
         )

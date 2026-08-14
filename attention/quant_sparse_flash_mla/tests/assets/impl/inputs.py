@@ -617,7 +617,9 @@ class QuantSparseFlashMlaInputAdapter:
         return mode
 
     def build_case_params(self, q, ori_kv, cmp_kv, ori_sparse_indices,
-                          cmp_sparse_indices, sinks, layout_q, layout_kv, kwargs):
+                          cmp_sparse_indices, sinks, layout_q, layout_kv, kwargs,
+                          tensor_inputs=None):
+        tensor_inputs = tensor_inputs or {}
         cu_q = self.list_value(kwargs, "cu_seqlens_q")
         cu_ori = self.list_value(kwargs, "cu_seqlens_ori_kv")
         cu_cmp = self.list_value(kwargs, "cu_seqlens_cmp_kv")
@@ -704,13 +706,15 @@ class QuantSparseFlashMlaInputAdapter:
             "block_num2": block_num2,
             "block_size1": block_size1,
             "block_size2": block_size2,
-            "seqused_q": seq_q,
-            "cu_seqlens_q": cu_q,
-            "seqused_ori_kv": seq_ori,
-            "seqused_cmp_kv": seq_cmp,
-            "cu_seqlens_ori_kv": cu_ori,
-            "cu_seqlens_cmp_kv": cu_cmp,
-            "cmp_residual_kv": residual,
+            "seqused_q": tensor_inputs.get("seqused_q", seq_q),
+            "cu_seqlens_q": tensor_inputs.get("cu_seqlens_q", cu_q),
+            "seqused_ori_kv": tensor_inputs.get("seqused_ori_kv", seq_ori),
+            "seqused_cmp_kv": tensor_inputs.get("seqused_cmp_kv", seq_cmp),
+            "cu_seqlens_ori_kv": tensor_inputs.get("cu_seqlens_ori_kv", cu_ori),
+            "cu_seqlens_cmp_kv": tensor_inputs.get("cu_seqlens_cmp_kv", cu_cmp),
+            "cmp_residual_kv": tensor_inputs.get("cmp_residual_kv", residual),
+            "ori_topk_length": tensor_inputs.get("ori_topk_length"),
+            "cmp_topk_length": tensor_inputs.get("cmp_topk_length"),
             "cmp_ratio": kwargs.get("cmp_ratio"),
             "cmp_mask_mode": kwargs.get("cmp_mask_mode"),
             "isSink": sinks is not None,
@@ -765,6 +769,7 @@ class QuantSparseFlashMlaInputAdapter:
             "golden", "quant_sparse_flash_mla_golden.py"
         )
         filled = pytest_utils.fill_none_params(params)
+        filled = pytest_utils.prepare_tensor_inputs(filled)
         for name in ("q_datarange", "ori_kv_datarange", "cmp_kv_datarange"):
             if params.get(name) is not None:
                 filled[name] = params[name]
@@ -798,6 +803,21 @@ def generate_quant_sparse_flash_mla_inputs(
     batch_random = QuantSparseFlashMlaBatchRandomContext.from_case(
         q, ori_kv, cmp_kv, kwargs
     )
+    tensor_inputs = {
+        name: tensor
+        for name, tensor in (
+            ("cu_seqlens_q", cu_seqlens_q),
+            ("cu_seqlens_ori_kv", cu_seqlens_ori_kv),
+            ("cu_seqlens_cmp_kv", cu_seqlens_cmp_kv),
+            ("seqused_q", seqused_q),
+            ("seqused_ori_kv", seqused_ori_kv),
+            ("seqused_cmp_kv", seqused_cmp_kv),
+            ("cmp_residual_kv", cmp_residual_kv),
+            ("ori_topk_length", ori_topk_length),
+            ("cmp_topk_length", cmp_topk_length),
+        )
+        if tensor is not None
+    }
     params = INPUT_ADAPTER.build_case_params(
         q,
         ori_kv,
@@ -808,6 +828,7 @@ def generate_quant_sparse_flash_mla_inputs(
         kwargs.get("layout_q"),
         kwargs.get("layout_kv"),
         kwargs,
+        tensor_inputs,
     )
     data = INPUT_ADAPTER.generate_case(params, batch_random)
     op_input = data["op_input"]
