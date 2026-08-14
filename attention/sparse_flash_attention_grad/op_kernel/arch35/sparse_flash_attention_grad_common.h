@@ -33,6 +33,7 @@ constexpr uint8_t SYNC_C5_TO_V4_FLAG = 10;
 constexpr uint8_t SCATTER_CUBE_SYNC_FLAG = 11;
 constexpr uint8_t SCATTER_VEC_SYNC_FLAG = 12;
 constexpr uint8_t SCATTER_SYNC_FLAG = 13;
+constexpr uint8_t SCATTER_TO_FIX_SYNC_FLAG = 14;
  
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;

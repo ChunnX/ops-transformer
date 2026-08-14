@@ -440,8 +440,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::FinalizeDSinkAcc(FagConstInfo
         }
 
         if constexpr (IS_DETER) {
-            // deter：写本核 slot 对应 halfG 半区（slot 起始 512B 对齐，DataCopyPad 处理 halfG 偏移）
-            int64_t slotOffset = static_cast<int64_t>(cBlockIdx) * MAX_N1 + halfGOffset;
+            // det：写 workspace slot（cBlockIdx*MAX_N1 + halfGOffset），由循环外 ReduceDSink 单 writer 跨核归约
+            int64_t slotOffset = cBlockIdx * MAX_N1 + halfGOffset;
             DataCopyExtParams dSinkCopyParams;
             dSinkCopyParams.blockCount = 1;
             dSinkCopyParams.blockLen = static_cast<uint16_t>(halfGRealSize * sizeof(CALC_TYPE));
@@ -452,6 +452,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::FinalizeDSinkAcc(FagConstInfo
             // 非 deter：AtomicAdd 半份到 dSinksGm（[N1] 输出，顺序不定符合非确定语义）
             // 用 DataCopyPad（字节级 blockLen）而非 DataCopy——halfGOffset/halfGRealSize 在小 N1 下
             // 非 32B 对齐，DataCopy 是对齐搬运接口语义未定义；DataCopyPad 专为非对齐设计，稳妥。
+            // V→MTE3 同步已在函数头完成（guard V3 写入的 dSinkAcc），此处无需重复
             DataCopyExtParams dSinkCopyParams;
             dSinkCopyParams.blockCount = 1;
             dSinkCopyParams.blockLen = static_cast<uint16_t>(halfGRealSize * sizeof(CALC_TYPE));
@@ -464,34 +465,50 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::FinalizeDSinkAcc(FagConstInfo
     }
 }
 
-// 【新增】dSink 第2步：循环外，仅 deter，单 writer（cBlockIdx==0 && vSubBlockIdx==0）跨核 reduce
+// 【新增】dSink 第2步：循环外，仅 deter，单 writer（cBlockIdx==usedCoreNum-1 && vSubBlockIdx==0）跨核 reduce
 // 全核 barrier 后，单 writer 搬 usedCoreNum 个 slot→scratch + Add 归约→dSinksGm
-// scratch/reduceOut 复用 mm1ResBuf[0]/[1]（循环后空闲，TBuf 无 Position 约束，PipeBarrier 手动管同步）
+// scratch/reduceOut 复用 mm1ResBuf[0]/[1]（循环后空闲，TBuf 无 Position 约束，手动管同步）
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ReduceDSink(LocalTensor<CALC_TYPE> &scratchTensor,
                                                                LocalTensor<CALC_TYPE> &reduceOutTensor,
                                                                FagConstInfo &constInfo)
 {
     if constexpr (IS_SINKS && IS_DETER) {
-        // AIV 间全核 barrier：复用 SCATTER_VEC_SYNC_FLAG(12) + modeId=0 + PIPE_MTE3（set+wait 配对=1 轮）
-        CrossCoreSetFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
-        CrossCoreWaitFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
-        if (cBlockIdx == 0 && vSubBlockIdx == 0) {
-            int64_t coreNum = tilingData->baseParams.usedCoreNum;
-            // MTE2: 搬入 coreNum 个 slot（每 MAX_N1 floats，slots 连续，count 32B 对齐）→ scratch
-            DataCopy(scratchTensor, dSinkWorkSpaceGm[0], coreNum * MAX_N1);
-            PipeBarrier<PIPE_MTE2>();
-            // V: Add 归约 over 核序 → reduceOut[0..MAX_N1)
-            Duplicate(reduceOutTensor, 0.0f, MAX_N1);
-            for (int64_t c = 0; c < coreNum; c++) {
-                Add(reduceOutTensor, reduceOutTensor, scratchTensor[c * MAX_N1], MAX_N1);
+        // 跨核 slot 可见性由 ProcessDeter 中 ReduceDSink 调用前的 SyncALLCores()（SyncAll<false> 硬 barrier）保证。
+        // 本处不再设置 CrossCore flag：David 上 flag 11-14 非可靠全核 barrier，单 writer 会读到未写完的 slot。
+        int64_t usedCoreNum = tilingData->baseParams.usedCoreNum;
+        if (cBlockIdx == usedCoreNum - 1 && vSubBlockIdx == 0) {
+            int64_t gSize = constInfo.commonConstInfo.gSize;
+            // Phase 1: MTE2 搬 usedCoreNum 个 slot（每核独占 MAX_N1 槽位，各写各段不相交）→ scratch 对应段
+            // DataCopyPad 拷贝进需要 4 参形式（Local, GM[off], DataCopyExtParams, DataCopyPadExtParams）
+            DataCopyPadExtParams<CALC_TYPE> copyPadParams;  // 默认 isPad=false：等长搬运，不补位
+            for (int64_t i = 0; i < usedCoreNum; i++) {
+                DataCopyExtParams copyIn;
+                copyIn.blockCount = 1;
+                copyIn.blockLen = static_cast<uint16_t>(gSize * sizeof(CALC_TYPE));
+                copyIn.srcStride = 0;
+                copyIn.dstStride = 0;
+                DataCopyPad(scratchTensor[i * MAX_N1], dSinkWorkSpaceGm[i * MAX_N1], copyIn, copyPadParams);
             }
-            PipeBarrier<PIPE_V>();
-            // MTE3: 写 dSinksGm[0..N1)（N1 = gSize，n2=1；DataCopyPad 处理非对齐）
-            int64_t n1 = constInfo.commonConstInfo.gSize;
+            // MTE2→V 显式同步：regbase 无自动同步，等所有 slot 搬入完成
+            event_t mte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+            SetFlag<HardEvent::MTE2_V>(mte2ToV);
+            WaitFlag<HardEvent::MTE2_V>(mte2ToV);
+            // Phase 2: V 归约 reduceOut = Σ_i scratch[i*MAX_N1]
+            Duplicate(reduceOutTensor, 0.0f, gSize);
+            AscendC::PipeBarrier<PIPE_V>();
+            for (int64_t i = 0; i < usedCoreNum; i++) {
+                Add(reduceOutTensor, reduceOutTensor, scratchTensor[i * MAX_N1], gSize);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+            // V→MTE3 显式同步：regbase 无自动同步，等归约完成
+            event_t vToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+            SetFlag<HardEvent::V_MTE3>(vToMte3);
+            WaitFlag<HardEvent::V_MTE3>(vToMte3);
+            // MTE3: reduceOut → dSinksGm[0..gSize)（N1 = gSize，n2=1；DataCopyPad 处理非对齐）
             DataCopyExtParams outParams;
             outParams.blockCount = 1;
-            outParams.blockLen = static_cast<uint16_t>(n1 * sizeof(CALC_TYPE));
+            outParams.blockLen = static_cast<uint16_t>(gSize * sizeof(CALC_TYPE));
             outParams.srcStride = 0;
             outParams.dstStride = 0;
             DataCopyPad(dSinksGm[0], reduceOutTensor, outParams);
@@ -542,6 +559,10 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec2(LocalTensor<CALC_
         // P_sink：微指令直接读 sink 专用 TQue（TQue DeQue 自动 MTE2→V 同步，无需 PipeBarrier）
         CalculateSinkSimpleSoftMax<CALC_TYPE, VECTOR_BASEM>(constInfo, runInfo,
                                                             sinksInQue, maxForSinkQue, sumForSinkQue, sinkPkTensor);
+        // V2→V3 同步：SinkSoftMaxVF 是 __simd_vf__ 微指令，StoreAlign(P_sink→sinkTensor) 的写依赖
+        // 编译器自动 PIPE_V 同步无法感知；det 调度下 V3 标准 Mul 会读到上一 task 的旧 P_sink，
+        // 导致 P_sink 与 rowSumNeg 错配（非 det 恰好时序正确）。强制 V2 写入先于 V3 读取。
+        AscendC::PipeBarrier<PIPE_V>();
         maxSumQue[runInfo.commonRunInfo.taskIdMod2].FreeTensor(maxSumTensor);
     } else {
         // 原版路径（IS_SINKS=false）：行为与改动前完全一致
@@ -576,9 +597,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(Buffer<BufferType
             CalculateSinkNegRowSum<CALC_TYPE, VECTOR_BASEN>(sinkRowSumTensor, mm2ResTensor, mm1ResTensor,
                 static_cast<uint16_t>(runInfo.halfGRealSize),
                 static_cast<uint16_t>(runInfo.commonRunInfo.s2RealSize));
-            // sinkPk = P_sink · rowSumNeg（逐 head）
+            // 累加 dSinkAcc += P_sink·rowSumNeg；P_sink 就绪由 ProcessVec2 的 PIPE_V barrier 保证
             Mul(sinkPkTensor, sinkPkTensor, sinkRowSumTensor, runInfo.halfGRealSize);
-            // dSinkAcc += sinkPk（跨 key-block 累加，dSinkAcc 初始已清零）
             Add(dSinkAccTensor, dSinkAccTensor, sinkPkTensor, runInfo.halfGRealSize);
         }
     }
@@ -773,7 +793,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         // 前remainder 个块分配 avgSize + 1， 其余分配avgSize
         int64_t currentCoreKSize = avgSize + (this->vBlockIdx < remainder ? 1 : 0);
         if (currentCoreKSize == 0) {
-            // V核同步等待所有V核完成某一个C核上S2的计算
+            // 【诊断实验 2026-08-13】恢复 SCATTER_VEC_SYNC(mode0 全AIV核同步)，仅保留 SCATTER_SYNC(13) 注释，隔离验证 mode0 barrier 是否本身卡死
             CrossCoreSetFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
             CrossCoreWaitFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
             continue;
@@ -850,7 +870,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         }
         SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
         WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-        // V核同步等待所有V核完成某一个C核上S2的计算
+        // 【诊断实验 2026-08-13】恢复 SCATTER_VEC_SYNC(mode0 全AIV核同步)，仅保留 SCATTER_SYNC(13) 注释，隔离验证 mode0 barrier 是否本身卡死
         CrossCoreSetFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
         CrossCoreWaitFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
     }
