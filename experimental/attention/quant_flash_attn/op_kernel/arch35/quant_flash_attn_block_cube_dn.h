@@ -464,6 +464,9 @@ public:
             }
             {
                 WaitFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
+                if (info.isLastS2Loop) {
+                    InitL0BufferForReduceSum();
+                }
                 LoadPToL0(info);
                 LoadVToL0(info);
                 SetFlag<HardEvent::MTE1_M>(PV_L0AB_EVENT0 + pvL0abBufId);
@@ -480,9 +483,7 @@ public:
         }
         SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
         kvBufId = (kvBufId + 1) % L1_KV_BUFCNT;
-        if (info.isLastSecondS2Loop) {
-            InitL0BufferForReduceSum();
-        }
+        
     }
 
     __aicore__ inline void CopyGMaxL1ToUb(const RunInfo &runInfo)
@@ -622,20 +623,21 @@ private:
 
     __aicore__ inline void InitL0BufferForReduceSum()
     {
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
+        uint32_t tmpBufId = (kvBufId + 3) % 4;
+        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + tmpBufId);
 
         InitConstValueParams<uint16_t> vL1InitParams(1, static_cast<uint16_t>(PV_L0A_SIZE / 32), 0, 0x6666);
-        uint64_t l1BaseOffset = kvBufId * (L1_KV_SIZE / sizeof(DATA_T));
+        uint32_t l1BaseOffset = tmpBufId * (L1_KV_SIZE / sizeof(DATA_T));
         Fill(kvL1Tensor[l1BaseOffset].template ReinterpretCast<uint16_t>(), vL1InitParams);
 
         PipeBarrier<PIPE_MTE2>();
 
         InitConstValueParams<uint16_t> vScaleL1InitParams(1, static_cast<uint16_t>(V_SCALE_L0A_SIZE / 32), 0, 0x7d7d);
-        uint32_t vScaleL1Offset = kvBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
+        uint32_t vScaleL1Offset = tmpBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
         Fill(kvDescaleL1Tensor[vScaleL1Offset].template ReinterpretCast<uint16_t>(), vScaleL1InitParams);
 
-        SetFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvBufId);
-        WaitFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvBufId);
+        SetFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + tmpBufId);
+        WaitFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + tmpBufId);
 
         LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.mStartPosition = 0;
@@ -660,8 +662,8 @@ private:
                  kvL1Tensor[l1BaseOffset].ReinterpretCast<QUANT_T>(), kvDescaleL1Tensor[vScaleL1Offset],
                  loadData2DParamsA, loadData2DMXParamsA);
         SetFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
-        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
-        kvBufId = (kvBufId + 1) % L1_KV_BUFCNT;
+        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + tmpBufId);
+        tmpBufId = (tmpBufId + 1) % L1_KV_BUFCNT;
     }
 
     __aicore__ inline void CopyQGmToL1(const RunInfo &info)
