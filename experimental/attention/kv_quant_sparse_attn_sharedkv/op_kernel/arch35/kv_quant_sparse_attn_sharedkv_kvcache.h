@@ -172,6 +172,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, uint8_t subBl
 {
     if ASCEND_IS_AIV {
         int64_t seqOffset = 0;
+        #if 0
         if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
             seqOffset = cuSeqlensQAddr[sIdx];
         } else {
@@ -180,16 +181,15 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, uint8_t subBl
 
         constexpr int64_t n2GDv = n2Size * gSize * dSizeV;
         constexpr int64_t gDv = gSize * dSizeV;
-        int64_t attentionOutSeqOffset = seqOffset * n2GDv;
+        int64_t attentionOutSeqOffset = 0;
         if constexpr (LAYOUT_T == SAS_LAYOUT::BSND || LAYOUT_T == SAS_LAYOUT::TND) {
-            #if 0
             runParam.attentionOutOffset = attentionOutSeqOffset +
                 runParam.sOuterOffset * n2GDv + runParam.n2oIdx * gDv +
                 runParam.goIdx * dSizeV;
-            #endif
-            runParam.attentionOutOffset = attentionOutSeqOffset +
-                runParam.cubeMOuterOffset * dSizeV + runParam.goIdx * dSizeV;
         }
+        #endif
+        runParam.attentionOutOffset = \
+            runParam.cubeMOuterOffset * dSizeV + runParam.goIdx * dSizeV;
         if (subBlockIdx == 1) {
             runParam.attentionOutOffset += runParam.halfMRealSize * dSizeV;
         }
@@ -210,19 +210,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, uint8_t subBlockIdx
 
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, subBlockIdx, sOuterLoopIdx);
 
-    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, subBlockIdx, runParam.boIdx, cuSeqlensQAddr);
-    return false;
-}
-
-TEMPLATE_INTF
-__aicore__ inline bool ComputeLastBN(RunParamStr& runParam, __gm__ int32_t *cuSeqlensQAddr) 
-{
-    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
-        // TND格式下 相邻Batch中当actualSeqQlen相等时则返回true
-        if (runParam.boIdx > 0 && cuSeqlensQAddr[runParam.boIdx + 1] - cuSeqlensQAddr[runParam.boIdx] == 0) {
-            return true;
-        }
-    }
+    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, subBlockIdx, 0, cuSeqlensQAddr);
     return false;
 }
 

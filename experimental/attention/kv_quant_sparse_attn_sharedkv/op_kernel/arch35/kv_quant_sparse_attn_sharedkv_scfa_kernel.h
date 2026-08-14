@@ -251,17 +251,17 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     RunParamStr runParam;
     int64_t multiCoreInnerIdx = 1;
     for (int64_t bnIdx = bN2StartIdx; bnIdx < bN2EndIdx; bnIdx++) {
-        bool lastBN = (bnIdx == bN2EndIdx - 1);
-        runParam.boIdx = bnIdx;
+        // bool lastBN = (bnIdx == bN2EndIdx - 1);
+        runParam.boIdx = 0;
         runParam.n2oIdx = 0;
         ComputeParamBatch<TEMPLATE_INTF_ARGS>(runParam,
             this->cuSeqlensQAddr, this->actualSeqQlenAddr, this->actualSeqKvlenAddr);
-        ComputeS1LoopInfo<TEMPLATE_INTF_ARGS>(runParam, lastBN, nextGs1Idx, gS1StartIdx);
+        ComputeS1LoopInfo<TEMPLATE_INTF_ARGS>(runParam, true, nextGs1Idx, gS1StartIdx);
 
-        int64_t gS1LoopEnd = lastBN ? (runParam.gs1LoopEndIdx + PRELOAD_NUM) : runParam.gs1LoopEndIdx;
+        int64_t gS1LoopEnd = runParam.gs1LoopEndIdx + PRELOAD_NUM;
         for (int64_t gS1Index = runParam.gs1LoopStartIdx; gS1Index < gS1LoopEnd; gS1Index++) {
             bool notLastThreeLoop = true;
-            if (lastBN) {
+            if constexpr (true) {
                 int32_t extraGS1 = gS1Index - runParam.gs1LoopEndIdx;
                 switch (extraGS1) {
                     case 0:
