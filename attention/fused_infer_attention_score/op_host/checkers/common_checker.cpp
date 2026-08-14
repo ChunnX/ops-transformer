@@ -635,25 +635,6 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
                                                       "The value of axis G must be in the range of [1, 128] in the Decode MLA scenario");
                 return ge::GRAPH_FAILED;
             }
-            if ((fiaInfo.n1Size & (fiaInfo.n1Size - 1)) != 0) {
-                if (fiaInfo.learnableSinkFlag) {
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "learnable_sink",
-                                                             "learnable_sink is not supported when num_heads is not a power of 2 in the Decode MLA scenario");
-                    return ge::GRAPH_FAILED;
-                }
-                if (fiaInfo.isOutQuantEnable) {
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
-                                                          ToString(fiaInfo.outputType).c_str(),
-                                                          "post quant is not supported when num_heads is not a power of 2 in the Decode MLA scenario");
-                    return ge::GRAPH_FAILED;
-                }
-                if (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK && fiaInfo.attenMaskFlag) {
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
-                                                          std::to_string(fiaInfo.n1Size).c_str(),
-                                                          "When num_heads is not a power of 2, sparse_mode 0 with atten_mask is not supported in the Decode MLA scenario");
-                    return ge::GRAPH_FAILED;
-                }
-            }
         } else {
             if (SUPPORT_G_IN_IFAMLA.find(fiaInfo.gSize) == SUPPORT_G_IN_IFAMLA.end()) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis G",
