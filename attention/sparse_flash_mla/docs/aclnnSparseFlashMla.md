@@ -525,7 +525,7 @@ aclnnStatus aclnnSparseFlashMla(
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1/N2支持1、2、4、8、16、32、64、128；cmp_ratio在SWA场景保持默认值1，CSA支持传入4，HCA支持传入128；block_size取值为16的倍数，最大支持1024；ori_sparse_indices当前暂不支持，cmp_sparse_indices的最后一维K2当前支持512或1024。
   <!-- end id7 -->
   <!-- npu="950" id8 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：N1/N2支持2、4、8、16、32、64、128，不支持1。
+  - <term>Ascend 950PR/Ascend 950DT</term>：N1/N2支持1-128。
 
   <!-- end id8 -->
 
@@ -702,6 +702,7 @@ aclnnStatus aclnnSparseFlashMla(
   - 当`layoutQOptional`为TND时，`cuSeqlensQOptional`必须传入。
   - 当`layoutKvOptional`为PA_BBND时，`sequsedOriKvOptional`必须传入，`oriBlockTableOptional`必须传入。BSND场景可选传入`sequsedOriKvOptional`覆盖每个batch的oriKv有效长度；TND场景使用`cuSeqlensOriKvOptional`表达oriKv序列边界。
   - 当`layoutKvOptional`为TND时，`cuSeqlensOriKvOptional`必须传入。
+  - 当输入为TND时，ori_kv总长度由cuSeqlensOriKvOptional表达，若sequsedOriKvOptional被传入，则ori_kv的有效长度由sequsedOriKvOptional表达，否则有效长度与总长度相同。
   - 当`layoutKvOptional`为TND且存在`cmpKvOptional`时，`cuSeqlensCmpKvOptional`必须传入。
   - `sequsedCmpKvOptional`为所有layoutKvOptional下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度。
 

@@ -176,7 +176,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>q（aclTensor*）</td>
       <td>输入</td>
       <td>Query输入张量。</td>
-      <td>不支持空Tensor。N1/N2仅支持2、4、8、16、32、64、128范围内的2的幂；D仅支持512。</td>
+      <td>不支持空Tensor。N1/N2仅支持1-128；D仅支持512。</td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>
@@ -562,8 +562,6 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
   </tbody>
   </table>
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：qN/kvN支持2、4、8、16、32、64、128，不支持1。
-
 - **常见字段释义**
 
 |    命名    |                            含义                            |
@@ -681,6 +679,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
   - cuSeqlensQOptional、cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
   - 当layoutKv为PA_BBND时，oriKvOptional和cmpKvOptional支持0轴非连续。
   - 各参数shape中以相同符号表示的维度，其对应轴的实际数值需保持一致。
+  - 当输入为TND时，ori_kv总长度由cuSeqlensOriKvOptional表达，若sequsedOriKvOptional被传入，则ori_kv的有效长度由sequsedOriKvOptional表达，否则有效长度与总长度相同。
 
 ### 特性参数组
 

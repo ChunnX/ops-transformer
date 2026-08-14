@@ -244,6 +244,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
   - cu_seqlens_q、cu_seqlens_ori_kv、cu_seqlens_cmp_kv须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
   - 当layout_kv为PA_BBND时，ori_kv和cmp_kv支持0轴非连续。
   - 各参数shape中以相同符号表示的维度，其对应轴的实际数值需保持一致。
+  - 当输入为TND时，ori_kv总长度由cu_seqlens_ori_kv表达，若seqused_ori_kv被传入，则ori_kv的有效长度由seqused_ori_kv表达，否则有效长度与总长度相同。
 
 ### 特性参数组
 

@@ -233,6 +233,7 @@ cann_ops_transformer.sparse_flash_mla(
   - `cu_seqlens_q`、`cu_seqlens_ori_kv`、`cu_seqlens_cmp_kv`、`seqused_q`、`seqused_ori_kv`、`seqused_cmp_kv`、`cmp_residual_kv`、稀疏索引及Block Table均为Tensor。算子在Tiling阶段无法校验其具体值，用户必须保证其合法性；传入非法值可能导致精度异常或非法内存访问。
   - `sparse_flash_mla_metadata`和`sparse_flash_mla`分两段调用。两次调用中参与任务切分的入参必须一致；不一致时可能产生未定义行为。
   - 本接口支持单算子模式和TorchAir图模式调用，可用于训练和推理场景。
+  - 当输入为TND时，ori_kv总长度由cu_seqlens_ori_kv表达，若seqused_ori_kv被传入，则ori_kv的有效长度由seqused_ori_kv表达，否则有效长度与总长度相同。
 
 ### 特性参数组
 
