@@ -624,12 +624,15 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::CalcRunInfo(
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2Kernel<LIT>::Process()
 {
+    printf("Process start\n");
     if (usedCoreNum == 0) {
         // 没有计算任务，直接清理输出
         ProcessInvalid();
         return;
     }
+    printf("ProcessMain start\n");
     ProcessMain();
+    printf("ProcessDecode start\n");
     ProcessDecode();
 }
 
@@ -732,7 +735,9 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessDecode()
     if ASCEND_IS_AIV {
         vectorService.InitLDBuffers(pipe);
         ICachePreLoad(LD_PREFETCH_LEN);
+        printf("ProcessDecode SyncAll start\n");
         SyncAll();
+        printf("ProcessDecode SyncAll end\n");
         if (splitCoreInfo.isLD) {
             vectorService.ProcessLD();
         }
