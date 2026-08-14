@@ -570,9 +570,9 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         // current tile's address calculation is not inserted into the compute critical path.
         auto gmBlockA = workSet.gmA.Slice(Te::MakeCoord(mLoc, kLoc),
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
+        /* E8M0 scales are padded to an even count because GM->L1 moves 64-K scale pairs as b16. */
         auto gmBlockScaleA = workSet.gmScaleA.Slice(
-            Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
-            Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
+            Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.scaleK));
 
         if constexpr (std::remove_reference_t<decltype(config)>::IS_WAVE_FLAG_GRAINED) {
             uint32_t waveIdx = mLoc / L1_TILE_M_256;
@@ -590,8 +590,7 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         auto gmBlockB = workSet.gmB.Slice(Te::MakeCoord(kLoc, nLoc),
                                           Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         auto gmBlockScaleB = workSet.gmScaleB.Slice(
-            Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
-            Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
+            Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
         auto gmBlockC = workSet.gmC.Slice(Te::MakeCoord(mLoc, nLoc),
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);

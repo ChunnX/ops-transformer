@@ -133,8 +133,7 @@ __aicore__ inline void Gmm1AicMmadTileToGmGeneric(
         auto gmBlockB = gmB.Slice(Te::MakeCoord(kLoc, nLoc),
                                   Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         auto gmBlockScaleB = gmScaleB.Slice(
-            Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
-            Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
+            Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
         auto tensorBlockGm = gmC.Slice(
             Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, tensorBlockGm, singleShape);
@@ -144,9 +143,7 @@ __aicore__ inline void Gmm1AicMmadTileToGmGeneric(
             auto gmBlockB = gmB.Slice(Te::MakeCoord(kLoc, nOffset),
                                       Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
             auto gmBlockScaleB = gmScaleB.Slice(
-                Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nOffset),
-                Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM),
-                              Get<N_VALUE>(actualShape)));
+                Te::MakeCoord(0, nOffset), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
             auto tensorBlockGm = gmC.Slice(
                 Te::MakeCoord(mLoc, nOffset), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
             blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, tensorBlockGm, singleShape);
@@ -169,8 +166,7 @@ __aicore__ inline void Gmm1AicMmadTileToUbGeneric(
         auto gmBlockB = gmB.Slice(Te::MakeCoord(kLoc, nLoc),
                                   Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         auto gmBlockScaleB = gmScaleB.Slice(
-            Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
-            Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
+            Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
         auto tensorUb = pingpongIdx == 0U ? l0cOutUbFirst : l0cOutUbSecond;
         auto tensorBlockUb = tensorUb.Slice(
             Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
@@ -184,9 +180,8 @@ __aicore__ inline void Gmm1AicMmadTileToUbGeneric(
             auto gmBlockB = gmB.Slice(Te::MakeCoord(kLoc, nLoc + weightBlock * config.outputN),
                                       Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
             auto gmBlockScaleB = gmScaleB.Slice(
-                Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc + weightBlock * config.outputN),
-                Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM),
-                              Get<N_VALUE>(actualShape)));
+                Te::MakeCoord(0, nLoc + weightBlock * config.outputN),
+                Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
             blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias,
                       weightBlock == 0 ? tensorBlockUbFirst : tensorBlockUbSecond, singleShape);
         }
@@ -234,9 +229,12 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(
         uint32_t kLoc = Get<K_VALUE>(blockCoord);
         auto gmBlockA = workSet.gmA.Slice(
             Te::MakeCoord(mLoc, kLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
+        /*
+         * E8M0 scales are stored in 64-K pairs. Keep the padded even scale span in the tensor view;
+         * the QBMM GM->L1 copy consumes each pair as one 16-bit element.
+         */
         auto gmBlockScaleA = workSet.gmScaleA.Slice(
-            Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
-            Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
+            Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.scaleK));
         uint32_t waveIdx = mLoc / config.tileM;
         if (waveIdx != lastWaveWaited) {
             WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
@@ -283,8 +281,7 @@ __aicore__ inline void Gmm1AicMmadGeneric(
         auto gmBlockA = workSet.gmA.Slice(
             Te::MakeCoord(mLoc, kLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
         auto gmBlockScaleA = workSet.gmScaleA.Slice(
-            Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
-            Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
+            Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.scaleK));
         uint32_t waveIdx = mLoc / config.tileM;
         if (waveIdx != lastWaveWaited) {
             WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
