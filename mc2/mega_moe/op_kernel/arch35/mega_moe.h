@@ -376,6 +376,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
             SyncAll<false>();
         }
     );
+    TIMER_BLOCK(
+        if (timer_.IsAiv1()) {
+            timer_.SetDynamicActualIter(AscendTimer::AIV_DISPATCH, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIV_SWIGLU, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIV_COMBINE, moeExpertPerRank_);
+        } else if (timer_.IsAiv0()) {
+            timer_.SetDynamicActualIter(AscendTimer::AIV_GMM1_PROLOGUE, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIV_GMM2_PROLOGUE, moeExpertPerRank_);
+        } else if (timer_.IsAic()) {
+            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM1, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM2, moeExpertPerRank_);
+        }
+    );
     TIMER_BLOCK(timer_.Tik());
 }
 
@@ -701,23 +714,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(int32_t &gmTileSequence)
 {
-    TIMER_BLOCK(
-        if (timer_.IsAiv1()) {
-            timer_.SetDynamicActualIter(AscendTimer::AIV_DISPATCH, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIV_SWIGLU_WAIT, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIV_SWIGLU, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIV_COMBINE_WAIT, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIV_COMBINE, moeExpertPerRank_);
-        } else if (timer_.IsAiv0()) {
-            timer_.SetDynamicActualIter(AscendTimer::AIV_GMM1_PROLOGUE, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIV_GMM2_PROLOGUE, moeExpertPerRank_);
-        } else if (timer_.IsAic()) {
-            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM1_WAIT, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM1, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM2_WAIT, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM2, moeExpertPerRank_);
-        }
-    );
     DispatchBuffInit();
     gmm1SwigluScratch_.expertRevNumsGlobalTensor.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.expertRevTokenNumsPtr));
@@ -745,17 +741,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(
                 tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx + 1U, nextSendCnt);
             TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_DISPATCH, expertIdx + 1U); });
         }
-        TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tik(AscendTimer::AIC_GMM1, expertIdx); });
-        TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tik(AscendTimer::AIV_SWIGLU, expertIdx); });
-        TIMER_BLOCK(if (timer_.IsAiv0()) { timer_.Tik(AscendTimer::AIV_GMM1_PROLOGUE, expertIdx); });
         RunMoeExpertGmm1SwigluStage<QuantOutType, ActivationType, Weight1Type, SwigluQuantOutType,
                                     QuantScaleOutType, ENABLE_A8W4, GMM1_TILE_M, EPILOGUE_TILE_M,
                                     TopkWeightsPrefetch, false, false>(
             gmm1Config_, params_, moeWeightTensorListAddrs_, epilogueOp_, gmm1SwigluScratch_, gmm1State, gmm1AddrInfo,
-            gmm1RuntimeState, expertIdx, currentSendCnt);
-        TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tok(AscendTimer::AIC_GMM1, expertIdx); });
-        TIMER_BLOCK(if (timer_.IsAiv1()) { timer_.Tok(AscendTimer::AIV_SWIGLU, expertIdx); });
-        TIMER_BLOCK(if (timer_.IsAiv0()) { timer_.Tok(AscendTimer::AIV_GMM1_PROLOGUE, expertIdx); });
+            gmm1RuntimeState, expertIdx, currentSendCnt, &timer_);
     }
     FinishMoeGmm1SwigluStage<ENABLE_A8W4, TopkWeightsPrefetch>(
         gmm1Config_, params_.workspaceInfo, gmm1RuntimeState);

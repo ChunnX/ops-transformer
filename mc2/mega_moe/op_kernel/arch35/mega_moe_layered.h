@@ -431,6 +431,19 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
             SyncAll<false>();
         }
     );
+    TIMER_BLOCK(
+        if (timer_.IsAiv1()) {
+            timer_.SetDynamicActualIter(AscendTimer::AIV_DISPATCH, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIV_SWIGLU, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIV_COMBINE, moeExpertPerRank_);
+        } else if (timer_.IsAiv0()) {
+            timer_.SetDynamicActualIter(AscendTimer::AIV_GMM1_PROLOGUE, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIV_GMM2_PROLOGUE, moeExpertPerRank_);
+        } else if (timer_.IsAic()) {
+            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM1, moeExpertPerRank_);
+            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM2, moeExpertPerRank_);
+        }
+    );
     TIMER_BLOCK(timer_.Tik());
 }
 
@@ -2630,23 +2643,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     TIMER_BLOCK(if (timer_.IsAic()) { timer_.Tok(AscendTimer::AIC_WAIT_ALLGATHER); });
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
-    TIMER_BLOCK(
-        if (timer_.IsAiv1()) {
-            timer_.SetDynamicActualIter(AscendTimer::AIV_DISPATCH, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIV_SWIGLU_WAIT, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIV_SWIGLU, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIV_COMBINE_WAIT, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIV_COMBINE, moeExpertPerRank_);
-        } else if (timer_.IsAiv0()) {
-            timer_.SetDynamicActualIter(AscendTimer::AIV_GMM1_PROLOGUE, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIV_GMM2_PROLOGUE, moeExpertPerRank_);
-        } else if (timer_.IsAic()) {
-            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM1_WAIT, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM1, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM2_WAIT, moeExpertPerRank_);
-            timer_.SetDynamicActualIter(AscendTimer::AIC_GMM2, moeExpertPerRank_);
-        }
-    );
     DispatchBuffInit();
     GMMAddrInfo dispatchAddrInfo;
     GMMAddrInfo gmm1AddrInfo;

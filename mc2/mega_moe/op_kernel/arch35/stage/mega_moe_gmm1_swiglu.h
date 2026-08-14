@@ -18,6 +18,7 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 #include "tensor_api/tensor.h"
+#include "../AscendTimerV2_device.hpp"
 #include "../blaze/epilogue/block_epilogue_swiglu_mx_quant.h"
 #include "../common/mega_moe_gmm_common.h"
 
@@ -828,7 +829,7 @@ template <typename BlockMmad, typename BlockPrologue, typename ElementC, typenam
 __aicore__ inline void Gmm1ExecA8W4(
     Scheduler &scheduler, const Params &params, const GMMAddrInfo &gmmAddrInfo, const Config &config,
     uint32_t startLoopIdx, uint32_t tileNum, int32_t &gmTileSequence, SwigluQuantOp &swigluQuantOp,
-    uint32_t expertBeforeCnt, uint32_t expertIdx)
+    uint32_t expertBeforeCnt, uint32_t expertIdx, AscendTimerDevice *timer = nullptr)
 {
     using KernelConfig = typename Config::KernelConfig;
     using ElementA = typename KernelConfig::ElementAType;
@@ -862,18 +863,28 @@ __aicore__ inline void Gmm1ExecA8W4(
                                     decltype(gmScaleB), decltype(gmBias), decltype(gmC), decltype(metaInfoGm)>;
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmC, metaInfoGm};
     if constexpr (g_coreType == AscendC::AIC) {
+        TIMER_BLOCK(if (timer != nullptr && timer->IsAic()) { timer->Tik(AscendTimer::AIC_GMM1, expertIdx); });
         Gmm1AicMmadA8W4<BlockMmad, IsShared, TopkWeightsPrefetch>(
             workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, expertIdx);
+        TIMER_BLOCK(if (timer != nullptr && timer->IsAic()) { timer->Tok(AscendTimer::AIC_GMM1, expertIdx); });
     } else if (GetSubBlockIdx() == 0) {
+        TIMER_BLOCK(if (timer != nullptr && timer->IsAiv0()) {
+            timer->Tik(AscendTimer::AIV_GMM1_PROLOGUE, expertIdx);
+        });
         Gmm1Aiv0PrologueA8W4<BlockPrologue>(workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+        TIMER_BLOCK(if (timer != nullptr && timer->IsAiv0()) {
+            timer->Tok(AscendTimer::AIV_GMM1_PROLOGUE, expertIdx);
+        });
     } else {
         if constexpr (TopkWeightsPrefetch) {
             Gmm1Aiv1PrefetchEpilogueA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
                 workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, swigluQuantOp, expertBeforeCnt,
                 expertIdx);
         } else {
+            TIMER_BLOCK(if (timer != nullptr && timer->IsAiv1()) { timer->Tik(AscendTimer::AIV_SWIGLU, expertIdx); });
             Gmm1Aiv1EpilogueA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
                 workSet, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, swigluQuantOp);
+            TIMER_BLOCK(if (timer != nullptr && timer->IsAiv1()) { timer->Tok(AscendTimer::AIV_SWIGLU, expertIdx); });
         }
     }
 }
@@ -952,7 +963,7 @@ __aicore__ inline void RunGmm1A8W4(
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence,
     const BlockJobContext &blockJob,
-    uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
+    uint32_t expertBeforeCnt, uint32_t expertIdx = 0, AscendTimerDevice *timer = nullptr)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
@@ -984,7 +995,7 @@ __aicore__ inline void RunGmm1A8W4(
     GmmKernel::Gmm1ExecA8W4<BlockMmad, BlockPrologue, ElementC, MakeLayoutC, IsShared,
                             GmmKernel::BlockScheduler, decltype(config), TopkWeightsPrefetch, IsWaveFlagGrained>(
         scheduler, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, swigluQuantOp, expertBeforeCnt,
-        expertIdx);
+        expertIdx, timer);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -1131,13 +1142,13 @@ template <typename QuantOutType, typename WeightType, typename SwigluOutType, ty
 __aicore__ inline void RunGmm1SwigluByMode(
     const Gmm1SwigluConfig &context, const Params &gmmParams, BlockEpilogue &epilogueOp,
     const GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state, Gmm1SwigluState &runtimeState,
-    uint32_t expertIdx)
+    uint32_t expertIdx, AscendTimerDevice *timer = nullptr)
 {
     if constexpr (EnableA8W4) {
         RunGmm1A8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType, Gmm1TileM,
                     EpilogueTileM, TopkWeightsPrefetch, false, IsWaveFlagGrained>(
             epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
-            runtimeState.gmTileSequence, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx);
+            runtimeState.gmTileSequence, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx, timer);
     } else if (context.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                context.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         RunGmm1Generic<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, true,
@@ -1247,7 +1258,7 @@ template <typename QuantOutType, typename ActivationType, typename WeightType, t
 __aicore__ inline void RunMoeExpertGmm1SwigluStage(
     const Gmm1SwigluConfig &context, const Params &gmmParams, const ExpertWeightTensorListAddrs &weights,
     BlockEpilogue &epilogueOp, Gmm1SwigluScratch &scratch, Gmm1ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
-    Gmm1SwigluState &runtimeState, uint32_t expertIdx, uint64_t sendCnt)
+    Gmm1SwigluState &runtimeState, uint32_t expertIdx, uint64_t sendCnt, AscendTimerDevice *timer = nullptr)
 {
     if (!WaitAndUpdateGmm1GroupParams<EnableA8W4>(
             context, gmmParams.workspaceInfo, scratch, state, expertIdx, sendCnt)) {
@@ -1259,7 +1270,7 @@ __aicore__ inline void RunMoeExpertGmm1SwigluStage(
     RunGmm1SwigluByMode<QuantOutType, WeightType, SwigluOutType, QuantScaleType, EnableA8W4,
                         Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch,
                         IsGmm1Interleaved, IsWaveFlagGrained>(
-        context, gmmParams, epilogueOp, gmmAddrInfo, state, runtimeState, expertIdx);
+        context, gmmParams, epilogueOp, gmmAddrInfo, state, runtimeState, expertIdx, timer);
 }
 
 // 完成 MoE GMM1/SwiGLU 阶段的末尾同步。
