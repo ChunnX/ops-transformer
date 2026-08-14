@@ -50,6 +50,8 @@ class FlashAttnSpec:
     def customize_inputs(*args, **kwargs):
         return _load_impl_module("inputs").customize_inputs(*args, **kwargs)
 
+    pre_npu = _load_impl_module("pre_npu").run
+
     tolerance = {
         "float16": {"standard": "stat_rel_err"},
         "bfloat16": {"standard": "stat_rel_err"},
@@ -59,9 +61,7 @@ class FlashAttnSpec:
     def compare(*outputs, **kwargs):
         return _load_impl_module("compare").compare(*outputs, **kwargs)
 
-    torch_graph = _load_impl_module("graph").FlashAttnAclGraph
-
 
 __spec__ = {
-    "flash_attn_ttk_ops.flash_attn_ttk": "FlashAttnSpec",
+    "torch.ops.cann_ops_transformer.flash_attn": "FlashAttnSpec",
 }

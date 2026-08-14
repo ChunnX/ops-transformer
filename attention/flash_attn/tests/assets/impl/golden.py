@@ -699,9 +699,11 @@ def cpu_flash_attn(
     layout_kv: str = "BSND",
     layout_out: str = "BSND",
     return_softmax_lse: bool = False,
+    context=None,
     **_unused,
 ):
     """Compute CPU golden reference using FlashAttnGolden."""
+    del context
     if sinks is not None:
         message = "FlashAttn golden does not support sinks yet"
         print(message)

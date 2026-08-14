@@ -17,9 +17,48 @@ No return value. Tensor shapes/dtypes are pre-allocated by TTK from CSV.
 
 Rule: only fill tensors that are provided (not None). Do not auto-generate
 missing parameters — use them if present, skip if absent.
+
+The metadata slot (CSV tensor index 10) is zeroed here so the pre-NPU stage
+knows it must regenerate metadata via torch.ops.cann_ops_transformer.
+flash_attn_metadata. Replayed cases load a materialized metadata tensor
+instead, and the pre-NPU stage skips generation.
 """
 
+import importlib.util
+import sys
+from pathlib import Path
+
 import torch
+
+
+def _load_pre_npu_module():
+    name = "fa_ttk_pre_npu"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = Path(__file__).with_name("pre_npu.py")
+    try:
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot create import spec for {path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        sys.modules.pop(name, None)
+        raise ImportError(
+            f"Failed to load FlashAttn pre-NPU module {path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        ) from exc
+    return module
+
+
+def zero_metadata(metadata):
+    if metadata is None:
+        return
+    if torch.is_tensor(metadata):
+        metadata.zero_()
+    else:
+        metadata[...] = 0
 
 
 def _to_int_list(value):
@@ -95,6 +134,7 @@ def customize_inputs(
     layout_kv="BSND",
     layout_out="BSND",
     return_softmax_lse=False,
+    context=None,
     **kwargs,
 ):
     """Fill auxiliary tensors in-place for FlashAttn TTK cases.
@@ -123,3 +163,28 @@ def customize_inputs(
 
     if mask_mode in (3, 4):
         _fill_attn_mask(attn_mask, mask_mode, win_left, win_right)
+
+    # 清零 metadata 槽位, 标记 pre-NPU 阶段需要重新生成 (重放场景该
+    # tensor 已从输入文件恢复非零内容, pre-NPU 会跳过生成)
+    zero_metadata(metadata)
+    if context is not None and kwargs.get("testcase_name") is not None:
+        arguments = _load_pre_npu_module().build_metadata_arguments(
+            q,
+            k,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_kv=cu_seqlens_kv,
+            seqused_q=seqused_q,
+            seqused_kv=seqused_kv,
+            batch_size=batch_size,
+            max_seqlen_q=max_seqlen_q,
+            max_seqlen_kv=max_seqlen_kv,
+            mask_mode=mask_mode,
+            win_left=win_left,
+            win_right=win_right,
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            layout_out=layout_out,
+        )
+        _load_pre_npu_module().persist_metadata_inputs(
+            kwargs.get("testcase_name"), arguments, context
+        )
