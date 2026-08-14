@@ -118,7 +118,7 @@ public:
         uint64_t originalM; // 单卡负责的总 M 行数
         GM_ADDR localAGmAddr;
         GM_ADDR localScaleAGmAddr;
-        uint32_t localMatmul; // 1 means local matmul
+        uint32_t localMatmul; // 0: remote, 1: L0c accumulate (DEFERRED_SYNC), 2: GM accumulate
         uint32_t splitKNum;
         MatmulMode matmulMode; // 1: LOCAL, 2: REMOTE, 3: DEFERRED_SYNC
         uint32_t headTileSize;
@@ -270,8 +270,8 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Init
     }
     isBias_ = (params.mmadParams.biasGmAddr != nullptr);
 
-    if ((params.localParams.matmulMode == MatmulMode::REMOTE) && (params.localParams.localMatmul == 1)) {
-        isAtomicAdd_ = true; // REMOTE 模式需要原子累加
+    if ((params.localParams.matmulMode == MatmulMode::REMOTE) && (params.localParams.localMatmul == 2)) {
+        isAtomicAdd_ = true; // GM累加模式（local已写GM）需要原子累加
     }
     needUpdateTail_ = false;
     ResetGmAddr(params);
@@ -311,7 +311,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
     auto rankId = params.localParams.rankId;
     auto rankSize = params.localParams.rankSize;
     auto oriM = params.localParams.originalM;
-    bool localFirst = ((params.localParams.matmulMode == MatmulMode::LOCAL) && (params.localParams.localMatmul == 1));
+    bool localFirst = ((params.localParams.matmulMode == MatmulMode::LOCAL) && (params.localParams.localMatmul == 2));
     // DEFERRED_SYNC: per-tile 内 local 先算驻留 L0C → wait_flag → remote 累加 → 单次 fixpipe。
     // wait_flag 必须由 kernel 内部发出（在 self rank 的 mmad 之后、其它 rank 的 mmad 之前）。
     bool deferredSync = (params.localParams.matmulMode == MatmulMode::DEFERRED_SYNC);
@@ -454,8 +454,8 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
                                                     AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
 
                 if (rank == rankId) {
-                    if (params.localParams.localMatmul == 1) {
-                        continue;
+                    if (params.localParams.localMatmul == 2) {
+                        continue; // GM累加模式：self rank 已在 RunLocalMatmul 计算，REMOTE 阶段跳过
                     } else {
                         gmBlockA = gmALocal.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
                                                   AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));

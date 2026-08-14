@@ -213,8 +213,8 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     }
 
     if ASCEND_IS_AIC {
-        if (tilingData_->localMatmul == 1) {
-            RunLocalMatmul(); // AIC local计算前置
+        if (tilingData_->localMatmul == 2) {
+            RunLocalMatmul(); // AIC local计算前置（GM累加模式）
         }
         RunMatmul(); // AIC 通信块计算（带同步等待）
     }
@@ -283,10 +283,10 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     if (matmulMode == MatmulMode::LOCAL) {
         mmadParams.cGmAddr = baseParams_.cGm; // 本地模式直接写入输出
     } else {
-        if (tilingData_->localMatmul == 1) {
-            localParams.splitKNum = baseParams_.rankSize - 1; // 低精度模式通信块计算只有rankSize-1个远程卡参与
+        if (tilingData_->localMatmul == 2) {
+            localParams.splitKNum = baseParams_.rankSize - 1; // GM累加模式通信块计算只有rankSize-1个远程卡参与
         } else {
-            // localMatmul==0（融合）和==2（DEFERRED_SYNC）都需要 splitKNum=rankSize
+            // localMatmul==0（remote融合）和==1（L0c累加/DEFERRED_SYNC）都需要 splitKNum=rankSize
             localParams.splitKNum = baseParams_.rankSize;
         }
     }
@@ -317,7 +317,7 @@ template <typename AType, typename BType, typename CType, bool TransA, bool Tran
 __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA, TransB>::RunMatmul()
 {
     Params params;
-    MatmulMode mode = (tilingData_->localMatmul == 2) ? MatmulMode::DEFERRED_SYNC : MatmulMode::REMOTE;
+    MatmulMode mode = (tilingData_->localMatmul == 1) ? MatmulMode::DEFERRED_SYNC : MatmulMode::REMOTE;
     SetupParams(&tilingData_->tileQbmmTilingData, params, mode);
     params.mmadParams.aGmAddr = baseParams_.selfWinAddr;
     params.mmadParams.scaleAGmAddr = baseParams_.selfWinAddr + baseParams_.rankSize * baseParams_.rankDataBytes;
