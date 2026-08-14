@@ -1301,8 +1301,6 @@ def generate_mxfp8_inputs(
         if p_scale_mode != "value"
         else torch.tensor([float(p_scale_value)], dtype=torch.float32)
     )
-    if atten_mask_shape is None and int(case["mask_mode"]) == 3:
-        atten_mask_shape = (2048, 2048)
     atten_mask = _build_causal_mask(atten_mask_shape)
 
     return {
@@ -1329,7 +1327,8 @@ def generate_mxfp8_inputs(
 
 def generate_data():
     """Generate inputs through the reference-style data-generation wrapper."""
-    data = generate_mxfp8_inputs()
+    atten_mask_shape = (2048, 2048) if MASK_MODE == 3 else None
+    data = generate_mxfp8_inputs(atten_mask_shape=atten_mask_shape)
     logger.info(
         "[INFO] reference-style data: q=%s, k=%s, v=%s, q_descale=%s, k_descale=%s, v_descale=%s",
         data["query"].shape,
