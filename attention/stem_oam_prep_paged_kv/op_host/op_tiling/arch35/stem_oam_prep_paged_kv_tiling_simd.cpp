@@ -194,7 +194,7 @@ ge::graphStatus StemOamPrepPagedKvTilingSimd::CheckParams()
         return ge::GRAPH_FAILED;
     }
 
-    if (kvBlockSize_ != 64 || kvBlockSize_ != 128) {
+    if (kvBlockSize_ != 64 && kvBlockSize_ != 128) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "kvBlockSize_",
                                               "64 or 128",
                                               "kvBlockSize must be 64 or 128.");
