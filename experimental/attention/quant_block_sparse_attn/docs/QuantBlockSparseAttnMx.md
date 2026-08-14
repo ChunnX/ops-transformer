@@ -59,7 +59,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
     seqused_kv: Optional[Tensor] = None,
     block_table: Optional[Tensor] = None,
     metadata: Optional[Tensor] = None,
-    layout_kv: str = "PA_BNSD",
+    layout_kv: str = "PA_BNBD",
     layout_q: str = "TND",
     layout_sparse_indices: str = "B_N_Qb_Kb",
     layout_out: str = "TND",
@@ -126,7 +126,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>key</td>
       <td>输入</td>
       <td>PageAttention KV Cache 中的 Key。</td>
-      <td>layout_kv 仅支持 PA_BNSD。按 4D PA BNBD 视图传入。第 3 维为 pa_block_size，可不等于 sparse_kv_block_size。</td>
+      <td>layout_kv 仅支持 PA_BNBD。按 4D PA BNBD 视图传入。第 3 维为 pa_block_size，可不等于 sparse_kv_block_size。</td>
       <td>FLOAT8_E4M3FN</td>
       <td>ND</td>
       <td>(block_num,N2,pa_block_size,D)</td>
@@ -135,7 +135,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>value</td>
       <td>输入</td>
       <td>PageAttention KV Cache 中的 Value。</td>
-      <td>layout_kv 仅支持 PA_BNSD。按 4D PA BNBD 视图传入。第 3 维为 pa_block_size，与 key 第 3 维一致。</td>
+      <td>layout_kv 仅支持 PA_BNBD。按 4D PA BNBD 视图传入。第 3 维为 pa_block_size，与 key 第 3 维一致。</td>
       <td>FLOAT8_E4M3FN</td>
       <td>ND</td>
       <td>(block_num,N2,pa_block_size,D_v)</td>
@@ -207,7 +207,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>cu_seqlens_q</td>
       <td>输入</td>
       <td>Query 累积序列长度。</td>
-      <td>TND + PA_BNSD 场景必传，实际 Q 长度由相邻前缀差计算。</td>
+      <td>TND + PA_BNBD 场景必传，实际 Q 长度由相邻前缀差计算。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B+1)</td>
@@ -234,7 +234,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>seqused_kv</td>
       <td>输入</td>
       <td>每个 batch 的 KV 实际使用长度。</td>
-      <td>TND + PA_BNSD 场景必传。</td>
+      <td>TND + PA_BNBD 场景必传。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B)</td>
@@ -288,7 +288,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>layout_kv</td>
       <td>输入属性</td>
       <td>KV 数据布局。</td>
-      <td>仅支持 "PA_BNSD"。</td>
+      <td>仅支持 "PA_BNBD"。</td>
       <td>STRING</td>
       <td>-</td>
       <td>-</td>
@@ -556,7 +556,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 | 命名 | 含义 |
 | :---: | :--- |
 | MXFP8全量化 | `query`、`key`、`value` 为 `FLOAT8_E4M3FN`，`q_descale`、`k_descale`、`v_descale`、`p_scale` 为 `FLOAT8_E8M0` |
-| PA_BNSD | Paged Attention KV Cache 排布，逻辑形态为 `[block_num, N2, pa_block_size, D或D_v]`。 |
+| PA_BNBD | Paged Attention KV Cache 排布，逻辑形态为 `[block_num, N2, pa_block_size, D或D_v]`。 |
 | 4D PA | 当前支持的 KV Cache 存储形态；接口传入 4D `key`、4D `value` 和 5D `k_descale`、5D `v_descale` 视图。 |
 | BatchSize | Batch 数，对应 `sparse_indices`、`sparse_seq_len`、`block_table` 的第 1 维。 |
 | QueryTokenNum | 所有 batch 的 Query 有效 token 数之和，对应 `query` 的 T 轴。 |
@@ -597,7 +597,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 
   - `query`、`key`、`value`、`q_descale`、`k_descale`、`v_descale`、`sparse_indices`、`sparse_seq_len` 必须传入；`p_scale` 允许传空，传空时使用默认值 1.0 进行量化计算；`atten_mask` 在 `mask_mode=3` 时必须传入，在 `mask_mode=0` 时可不传或传空指针。
   - `metadata` 在 MXFP8 路径下为必选输入，不允许传空（None）。
-  - 当前算子仅支持 4D PA_BNSD KV Cache 输入和 BF16 attention_out 输出 以及FP32 softmax_lse。
+  - 当前算子仅支持 4D PA_BNBD KV Cache 输入和 BF16 attention_out 输出 以及FP32 softmax_lse。
 
 - 一致性约束
 
@@ -667,7 +667,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 
 - 单参数约束
 
-  - `layout_kv` 当前仅支持 `PA_BNSD`。
+  - `layout_kv` 当前仅支持 `PA_BNBD`。
   - `block_table` 数据类型仅支持 `INT32`，数据格式仅支持 ND。当前 PA 执行路径依赖 `block_table` 做逻辑 block 到物理 block 的映射，必须传入有效 `block_table`。
   - `block_table` 的 shape 必须为 `(BatchSize, max_block_num_per_batch)`，第 1 维必须等于 `BatchSize`。
   - PA 物理 block 外步长由 host 侧从 `key.stride(0)` 推导，不再作为输入属性传入。
@@ -704,7 +704,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
 
 - 存在性约束
 
-  - TND + PA_BNSD 场景必须传入 `cu_seqlens_q` 和 `seqused_kv`。
+  - TND + PA_BNBD 场景必须传入 `cu_seqlens_q` 和 `seqused_kv`。
   - `cu_seqlens_kv` 和 `seqused_q` 为预留参数，必须传空；传入非空 Tensor 时 host 侧将拦截并报错。
 
 - 一致性约束
@@ -857,7 +857,7 @@ metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
     quant_mode=2,
     mask_mode=3,
     layout_q="TND",
-    layout_kv="PA_BNSD",
+    layout_kv="PA_BNBD",
     layout_sparse_indices="B_N_Qb_Kb",
 )
 print("[INFO] metadata 生成成功, shape =", tuple(metadata.shape))
@@ -885,7 +885,7 @@ attn_out, softmax_lse = torch.ops.custom.npu_quant_block_sparse_attn(
     seqused_kv=seqused_kv,
     block_table=block_table,
     metadata=metadata,
-    layout_kv="PA_BNSD",
+    layout_kv="PA_BNBD",
     layout_q="TND",
     layout_sparse_indices="B_N_Qb_Kb",
     layout_out="TND",
