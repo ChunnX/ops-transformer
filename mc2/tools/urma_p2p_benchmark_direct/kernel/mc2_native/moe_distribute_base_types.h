@@ -2,10 +2,11 @@
 #define MOE_DISTRIBUTE_BASE_TYPES_H
 
 // ============================================================================
-// moe_distribute_base_types.h — HcclCombinOpParam 相关结构体定义
+// moe_distribute_base_types.h — HcclCombinOpParam 结构体 + ChannelEntity 偏移常量
 //
-// 纯 C++ 结构体, 不含 kernel API, Host 侧和 Kernel 侧共用。
-// 从 moe_distribute_base_native.h 抽出, 避免 host 编译器引入 kernel_operator.h。
+// 纯 C++ 结构体和常量, 不含 kernel API, Host 侧和 Kernel 侧共用。
+// 从 moe_distribute_base_native.h 和 aiv_urma_channel_decode.h 抽出,
+// 避免 host 编译器引入 kernel_operator.h。
 // ============================================================================
 
 #include <cstdint>
@@ -16,6 +17,40 @@ constexpr uint32_t MAX_OP_NUM = 8U;
 
 constexpr uint64_t WIN_PICI_OFFSET = 1024U * 1024U;
 constexpr uint64_t PICI_WIN_SIZE = 512UL;
+
+// ---- ChannelEntity (256B) 偏移 ----
+constexpr uint32_t CH_OFF_LOCAL_BUFFER_NUM  = 32U;
+constexpr uint32_t CH_OFF_REMOTE_BUFFER_NUM = 36U;
+constexpr uint32_t CH_OFF_LOCAL_BUFFER_PTR  = 64U;
+constexpr uint32_t CH_OFF_REMOTE_BUFFER_PTR = 72U;
+constexpr uint32_t CH_OFF_SQ_CONTEXT_PTR    = 80U;
+constexpr uint32_t CH_OFF_CQ_CONTEXT_PTR    = 88U;
+
+// ---- SqContext (128B) 偏移 ----
+constexpr uint32_t SQ_OFF_SQVA       = 8U;
+constexpr uint32_t SQ_OFF_DBVA       = 32U;
+constexpr uint32_t SQ_OFF_WQESIZE    = 44U;
+constexpr uint32_t SQ_OFF_SQDEPTH    = 48U;
+constexpr uint32_t SQ_OFF_TPID       = 52U;
+constexpr uint32_t SQ_OFF_REMOTE_EID = 56U;
+
+// ---- CqContext (128B) 偏移 ----
+constexpr uint32_t CQ_OFF_CQVA    = 8U;
+constexpr uint32_t CQ_OFF_DBVA    = 32U;
+constexpr uint32_t CQ_OFF_CQESIZE = 44U;
+constexpr uint32_t CQ_OFF_CQDEPTH = 48U;
+
+// ---- RegedBufferEntity (64B) 偏移 ----
+constexpr uint32_t RB_OFF_ADDR         = 8U;
+constexpr uint32_t RB_OFF_SIZE         = 16U;
+constexpr uint32_t RB_OFF_UB_TOKEN_ID  = 28U;
+constexpr uint32_t RB_OFF_UB_TOKEN_VAL = 32U;
+
+// ---- 结构体大小 ----
+constexpr uint32_t CHANNEL_ENTITY_SIZE = 256U;
+constexpr uint32_t SQ_CONTEXT_SIZE     = 128U;
+constexpr uint32_t CQ_CONTEXT_SIZE     = 128U;
+constexpr uint32_t REGED_BUFFER_SIZE   = 64U;
 
 struct HcclAiRMAWQ {
     uint32_t jettyId;
