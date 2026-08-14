@@ -137,8 +137,6 @@ private:
         UB_MAX_SIZE * UB_MAX_BUFCNT * sizeof(half) + UB_MAX_SIZE * UB_MAX_BUFCNT * sizeof(half) +
         UB_LOCALGROUPMAX_SIZE * UB_LOCALGROUPMAX_BUFCNT * sizeof(half);
 
-    uint32_t UB_UPDATE_IDX = 0;
-
     LocalTensor<half> mm1ResUB;
     LocalTensor<float> mm2ResUB;
     LocalTensor<uint8_t> pscaleUB;
@@ -386,10 +384,14 @@ public:
         LocalTensor<half> localGlobalMax2 = GetPeerGlobalMaxUbByCurIdx(runInfo.tileMaxIdx);
         LocalTensor<half> softmaxMaxOld = softmaxMaxUB;
 <<<<<<< HEAD
+<<<<<<< HEAD
         LocalTensor<float> urs = GetUpdateScaleByCurIdx(runInfo.updateScaleNum);
 =======
         LocalTensor<float> urs = GetUpdateScaleByCurIdx(UB_UPDATE_IDX);
 >>>>>>> b0add032b... urs风险规避
+=======
+        LocalTensor<float> urs = GetUpdateScaleByCurIdx(runInfo.updateScaleNum);
+>>>>>>> 1230b1ddd... 修复urs
 
         if (runInfo.s2FirstStartVecCore != constInfo.subBlockIdx && runInfo.isC2Sync) {
             if (unlikely(runInfo.curS2LoopIdx / 16 == 0)) {
@@ -398,7 +400,6 @@ public:
             } else {
                 Mxfp4Api::computeOnlyScale<false, half, s1BaseSize>(localGlobalMax1, localGlobalMax2, softmaxMaxOld,
                                                                     urs, constInfo.subBlockIdx);
-                UB_UPDATE_IDX = (UB_UPDATE_IDX + 1) % UB_UPDATE_BUFCNT;
             }
             PipeBarrier<PIPE_V>();
             return;
@@ -426,7 +427,6 @@ public:
             Mxfp4Api::computePscale<false, half, s1BaseSize>(pscale1, pscale2, localGroupMax1, localGroupMax2,
                                                              localGlobalMax1, localGlobalMax2, softmaxMaxOld, urs,
                                                              firstLoop, secondLoop, constInfo.subBlockIdx);
-            UB_UPDATE_IDX = (UB_UPDATE_IDX + 1) % UB_UPDATE_BUFCNT;
         }
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_GMAX_UB_TO_L1_BUF0_FLAG + runInfo.tileMaxIdx);
         SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_VEC1_RES_BUF0_FLAG);
@@ -447,10 +447,14 @@ public:
     __aicore__ inline void ComputeVec2(const RunInfo &runInfo)
     {
 <<<<<<< HEAD
+<<<<<<< HEAD
         LocalTensor<float> urs = GetUpdateScaleByCurIdx(runInfo.updateScaleNum);
 =======
         LocalTensor<float> urs = GetUpdateScaleByCurIdx(UB_UPDATE_IDX);
 >>>>>>> b0add032b... urs风险规避
+=======
+        LocalTensor<float> urs = GetUpdateScaleByCurIdx(runInfo.updateScaleNum);
+>>>>>>> 1230b1ddd... 修复urs
 
         if (unlikely(runInfo.curS2LoopIdx / 16 == 0)) {
             WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_ATTN_BUF_FLAG);

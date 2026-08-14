@@ -88,9 +88,13 @@ public:
     uint32_t tileLoopIdx = 1;
     uint32_t tileMaxIdx = 3;
 <<<<<<< HEAD
+<<<<<<< HEAD
     uint32_t updateScaleNum = 3;
 =======
 >>>>>>> b0add032b... urs风险规避
+=======
+    uint32_t updateScaleNum = 3;
+>>>>>>> 1230b1ddd... 修复urs
     // fd metadata
     FDparams fdParams_;
 
@@ -536,6 +540,12 @@ public:
 =======
 >>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
         }
+<<<<<<< HEAD
+=======
+        if (info.isUpdatePScale && info.curS2LoopIdx / 16 != 0) {
+            updateScaleNum = (updateScaleNum + 1) % 4;
+        }
+>>>>>>> 1230b1ddd... 修复urs
         info.updateScaleNum = updateScaleNum;
         info.tileBuffIdx = tileLoopIdx;
         info.tileMaxIdx = tileMaxIdx;
