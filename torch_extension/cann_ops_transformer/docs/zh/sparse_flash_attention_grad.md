@@ -56,10 +56,9 @@ cann_ops_transformer.sparse_flash_attention_grad(
     actual_seq_kvlen=None,
     layout="BSND",
     sparse_mode=3,
-    win_left=2147483647,
-    win_right=2147483647,
-    attention_mode=0,
-    deterministic=False
+    win_left=9223372036854775807,
+    win_right=9223372036854775807,
+    attention_mode=0
 ) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)
 ```
 
@@ -99,13 +98,11 @@ cann_ops_transformer.sparse_flash_attention_grad(
 
 - **sparse_mode**（`int`，可选）：稀疏模式，默认值：3。
 
-- **win_left**（`int`，可选）：左侧窗口 token 数，默认值：2147483647。
+- **win_left**（`int`，可选）：左侧窗口 token 数，默认值：9223372036854775807（int64 max，表示不限窗口）。
 
-- **win_right**（`int`，可选）：右侧窗口 token 数，默认值：2147483647。
+- **win_right**（`int`，可选）：右侧窗口 token 数，默认值：9223372036854775807（int64 max，表示不限窗口）。
 
 - **attention_mode**（`int`，可选）：注意力模式占位参数（暂不参与计算），默认值：0。
-
-- **deterministic**（`bool`，可选）：是否确定性计算，默认值：False。
 
 ## 返回值说明
 
@@ -131,7 +128,7 @@ cann_ops_transformer.sparse_flash_attention_grad(
 
 ## 确定性计算
 
-支持通过 `deterministic` 参数控制确定性计算，默认关闭。
+接口不暴露 `deterministic` 参数，内部固定开启确定性计算（`deterministic=true`），与 op-plugin 仓 `npu_sparse_flash_attention_grad_v2` 一致（该仓同样不暴露该参数、内部硬编码 true）。确定性开启时，d_sinks 的跨核 reduce 确定性计算被启用。
 
 ## 调用示例
 
@@ -174,6 +171,6 @@ cann_ops_transformer.sparse_flash_attention_grad(
         sinks, scale_value, 1,
         query_rope=query_rope, key_rope=key_rope,
         actual_seq_qlen=None, actual_seq_kvlen=None,
-        layout=input_layout, sparse_mode=0, deterministic=False,
+        layout=input_layout, sparse_mode=0,
     )
     ```

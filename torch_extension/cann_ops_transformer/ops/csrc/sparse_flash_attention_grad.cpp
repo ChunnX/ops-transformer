@@ -48,8 +48,7 @@ SparseFlashAttentionGrad(
     double scaleValue, int64_t sparseBlockSize,
     const c10::optional<at::Tensor> &queryRope, const c10::optional<at::Tensor> &keyRope,
     const c10::optional<at::Tensor> &actualSeqLenQ, const c10::optional<at::Tensor> &actualSeqLenKv,
-    std::string layout, int64_t sparseMode, int64_t winLeft, int64_t winRight,
-    int64_t attentionMode, bool deterministic)
+    std::string layout, int64_t sparseMode, int64_t winLeft, int64_t winRight, int64_t attentionMode)
 {
     // attention_mode 为接口占位参数，暂不参与计算（仅收参，不转发到 aclnn/OpDef/tiling）
     (void)attentionMode;
@@ -112,6 +111,11 @@ SparseFlashAttentionGrad(
     }
 
     char *layoutPtr = const_cast<char *>(layout.c_str());
+    // aclnn 层接口仍保留 bool deterministic 位置参数，但 host tiling(arch35/arch22) 实际用的是
+    // context_->GetDeterministic()，即 torch.use_deterministic_algorithms(True/False) 下推的
+    // ACL_OPT_DETERMINISTIC，本参数在 host 层不生效（模板切换靠全局 flag）。
+    // 必须传左值 bool 变量：ACLNN_CMD 宏 ConvertTypes 要求参数可绑定非 const 左值引用，字面量 true 编不过。
+    bool deterministic = true;
     ACLNN_CMD(aclnnSparseFlashAttentionGradV2, query, key, value, sparseIndices, dOut, out, softmaxMax, softmaxSum,
               sinksConst, actualSeqLenQConst, actualSeqLenKvConst, queryRopeConst, keyRopeConst, scaleValue,
               sparseBlockSize, layoutPtr, sparseMode, winLeft, winRight, deterministic, dq, dk, dv,

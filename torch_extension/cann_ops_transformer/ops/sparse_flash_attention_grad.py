@@ -30,8 +30,7 @@ class SparseFlashAttentionGradOpBuilder(OpBuilder):
             "float scale_value, int sparse_block_size, "
             "*, Tensor? query_rope=None, Tensor? key_rope=None, Tensor? actual_seq_qlen=None, "
             "Tensor? actual_seq_kvlen=None, str layout=\"BSND\", int sparse_mode=3, "
-            "int win_left=2147483647, int win_right=2147483647, int attention_mode=0, "
-            "bool deterministic=False) "
+            "int win_left=9223372036854775807, int win_right=9223372036854775807, int attention_mode=0) "
             "-> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)"
         )
 
@@ -60,10 +59,9 @@ class SparseFlashAttentionGradOpBuilder(OpBuilder):
             actual_seq_kvlen=None,
             layout="BSND",
             sparse_mode=3,
-            win_left=2147483647,
-            win_right=2147483647,
+            win_left=9223372036854775807,
+            win_right=9223372036854775807,
             attention_mode=0,
-            deterministic=False,
         ):
             dq = query.new_empty(query.shape, dtype=query.dtype, device="meta")
             dk = key.new_empty(key.shape, dtype=key.dtype, device="meta")
@@ -109,10 +107,9 @@ def sparse_flash_attention_grad(
     actual_seq_kvlen=None,
     layout="BSND",
     sparse_mode=3,
-    win_left=2147483647,
-    win_right=2147483647,
+    win_left=9223372036854775807,
+    win_right=9223372036854775807,
     attention_mode=0,
-    deterministic=False,
 ):
     """SparseFlashAttentionGrad（SFAG，MLA OSS Sink）反向计算，封装 aclnnSparseFlashAttentionGradV2。
 
@@ -134,10 +131,9 @@ def sparse_flash_attention_grad(
         actual_seq_kvlen (Tensor, optional): key/value 实际序列长度，int32，shape [B]。
         layout (str): 输入排布，支持 "BSND"/"TND"，默认 "BSND"。
         sparse_mode (int): 稀疏模式，默认 3。
-        win_left (int): 左侧窗口 token 数，默认 2147483647。
-        win_right (int): 右侧窗口 token 数，默认 2147483647。
+        win_left (int): 左侧窗口 token 数，默认 9223372036854775807（int64 max）。
+        win_right (int): 右侧窗口 token 数，默认 9223372036854775807（int64 max）。
         attention_mode (int): 注意力模式占位参数（暂不参与计算），默认 0。
-        deterministic (bool): 是否确定性计算，默认 False。
 
     Returns:
         Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
@@ -167,7 +163,6 @@ def sparse_flash_attention_grad(
         win_left,
         win_right,
         attention_mode,
-        deterministic,
     )
 
 
