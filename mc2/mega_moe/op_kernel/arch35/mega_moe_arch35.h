@@ -361,6 +361,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     const size_t maskSlotSize = sendMaskConfig_.maskAlignSize + ALIGN_32;
     exceptionDump_.Dump(params_.peermemInfo.maskRecvPtr + sendMaskConfig_.maskAlignSize,
                         static_cast<size_t>(moeExpertPerRank_) * worldSize_, sizeof(int32_t), maskSlotSize);
+    exceptionDump_.Dump(reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId), sizeof(uint32_t));
 }
 
 // 普通模板 Token Dispatch 使用的 UB/GM 视图。
@@ -697,7 +698,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm1ActivationForExp
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(int32_t &gmTileSequence)
 {
-    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::MOE_GMM1_PIPELINE);
+    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::MOE_GMM1_ACTIVATION);
     DispatchBuffInit();
     ExpertLoopState gmm1State = CreateExpertLoopState(commonConfig_);
     GMMAddrInfo gmm1AddrInfo{};
@@ -819,6 +820,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             tokenUnpermuteConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    exceptionDump_.UpdateStage(MC2MegaMoeA5Dump::Stage::COMPLETE);
 }
 
 } // namespace MegaMoeImpl
