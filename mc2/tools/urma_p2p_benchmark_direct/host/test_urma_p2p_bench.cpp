@@ -32,8 +32,8 @@
 #include "../kernel/hcomm/hcomm_launch.h"
 #include "../kernel/mc2_native/mc2_native_launch.h"
 #include "../kernel/common/urma_p2p_bench_tiling.h"
-#include "../kernel/mc2_native/moe_distribute_base_native.h"
 #include "../kernel/common/aiv_urma_channel_decode.h"
+#include "../kernel/mc2_native/moe_distribute_base_types.h"
 
 constexpr double NS_PER_CYCLE = 1.0;
 constexpr int64_t BLOCK_NUM = 1;

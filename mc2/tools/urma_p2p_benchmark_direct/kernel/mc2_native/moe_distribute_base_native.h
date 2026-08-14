@@ -19,6 +19,7 @@
 #include "kernel_operator.h"
 #endif
 #include "adv_api/hccl/hccl.h"
+#include "moe_distribute_base_types.h"
 
 // ============================================================================
 // SyncFunc: 内联替代 mc2_kernel_utils.h 中的同名函数
@@ -38,14 +39,11 @@ __aicore__ inline void SyncFunc()
 // ============================================================================
 // 常量定义 (与 moe_distribute_base.h 完全一致)
 // ============================================================================
-constexpr uint32_t MAX_RANK_NUM = 64U;
-constexpr uint32_t MAX_OP_NUM = 8U;
+// MAX_RANK_NUM / MAX_OP_NUM / WIN_PICI_OFFSET / PICI_WIN_SIZE 已在 moe_distribute_base_types.h 中定义
 constexpr uint32_t WRITE_SQE_SIZE = 64U;
 constexpr uint32_t WRITE_WITH_NOTIFY_SQE_SIZE = 96U;
 constexpr uint64_t WIN_STATE_OFFSET = 350U * 1024U;
 constexpr uint64_t STATE_WIN_OFFSET = 950U * 1024U;
-constexpr uint64_t WIN_PICI_OFFSET = 1024U * 1024U;
-constexpr uint64_t PICI_WIN_SIZE = 512UL;
 constexpr uint32_t NORMAL_CQE_SIZE = 64U;
 constexpr uint32_t CQ_DEPTH_256 = 256U;
 constexpr uint32_t UB_ALIGN = 32U;
@@ -118,51 +116,8 @@ constexpr uint32_t SQE_WITH_NOTIFY_DATA_ADDR_OFFSET = 11U;
 constexpr uint32_t SQE_WITH_NOTIFY_NOTIFY_ADDR_OFFSET = 7U;
 constexpr uint32_t SQE_WITH_NOTIFY_NOTIFY_DATA_OFFSET = 8U;
 
-// ============================================================================
-// 结构体定义 (与 moe_distribute_base.h 完全一致)
-// ============================================================================
-struct HcclAiRMAWQ {
-    uint32_t jettyId;
-    uint64_t sqVA;
-    uint32_t wqeSize;
-    uint32_t sqDepth;
-    uint64_t headAddr;
-    uint64_t tailAddr;
-    uint64_t dbAddr;
-    uint32_t tp_id;
-    uint8_t rmtEid[16];
-    uint32_t rmtObjId;
-    uint32_t rmtTokenValue;
-    uint32_t localTokenId;
-};
-
-struct HcclAiRMACQ {
-    uint32_t jfcId;
-    uint64_t cqVA;
-    uint32_t cqeSize;
-    uint32_t cqDepth;
-    uint64_t headAddr;
-    uint64_t tailAddr;
-    uint64_t dbAddr;
-};
-
-struct HcclCombinOpParam {
-    uint64_t workSpace;
-    uint64_t workSpaceSize;
-    uint32_t rankId;
-    uint32_t rankDim;
-    uint64_t winSize;
-    uint64_t windowsIn[MAX_RANK_NUM];
-    uint64_t windowsOut[MAX_RANK_NUM];
-    uint64_t xnAddr;
-    uint64_t ckeAddr;
-    uint64_t msAddr;
-    uint64_t msSize;
-    uint32_t opType[MAX_OP_NUM];
-    uint8_t algorithmType[MAX_OP_NUM];
-    HcclAiRMAWQ sqs[MAX_RANK_NUM];
-    HcclAiRMACQ cqs[MAX_RANK_NUM];
-};
+// 结构体定义 (HcclAiRMAWQ / HcclAiRMACQ / HcclCombinOpParam)
+// 已移到 moe_distribute_base_types.h, Host 侧和 Kernel 侧共用
 
 // ============================================================================
 // URMA通信接口 (与 moe_distribute_base.h 完全一致, 逐字复制)

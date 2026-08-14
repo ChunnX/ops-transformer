@@ -24,6 +24,8 @@
 
 namespace UrmaP2pBench {
 
+using AscendC::SyncFunc;
+
 // mc2 版的状态区常量(与 p2p_urma_comm.h 一致)
 constexpr uint64_t P2P_STATE_SIZE = 350UL * 1024UL;
 constexpr uint64_t P2P_WIN_STATE_OFFSET = 350UL * 1024UL;
