@@ -25,6 +25,8 @@ using namespace op;
 
 namespace {
 
+static const int64_t MAX_DRAFT_TOKENS_DEFAULT = 7;
+
 aclnnStatus InplaceFusedCausalConv1dCommonProcess(
     aclTensor *x, const aclTensor *weight, aclTensor *convStates, const aclTensor *queryStartLoc,
     const aclTensor *cacheIndices, const aclTensor *initialStateMode, const aclTensor *bias,
@@ -126,7 +128,7 @@ ACLNN_API aclnnStatus aclnnInplaceFusedCausalConv1dGetWorkspaceSize(
     const aclTensor *blockIdxFirstScheduledToken, const aclTensor *blockIdxLastScheduledToken,
     const aclTensor *initialStateIdx, int64_t activationMode, int64_t padSlotId, int64_t runMode, int64_t maxQueryLen,
     int64_t residualConnection, int64_t blockSize, int64_t convMode,
-    int64_t maxDraftTokens, uint64_t *workspaceSize, aclOpExecutor **executor)
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnInplaceFusedCausalConv1d,
                    DFX_IN(x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
@@ -135,7 +137,7 @@ ACLNN_API aclnnStatus aclnnInplaceFusedCausalConv1dGetWorkspaceSize(
     return InplaceFusedCausalConv1dCommonProcess(
         x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
         numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, activationMode,
-        padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, maxDraftTokens,
+        padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, MAX_DRAFT_TOKENS_DEFAULT,
         workspaceSize, executor);
 }
 
