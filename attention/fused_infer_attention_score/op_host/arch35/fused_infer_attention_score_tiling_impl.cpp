@@ -1565,8 +1565,6 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetWorkspaceAntiQuant(const 
                           sizeof(float); // 2 : sMax 和 sSum
     }
 
-    workspaceSize_ += 100 * 1024 * 1024; // 100*1024*1024: extra workspace for dump in david
-
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
         workspaceSize_ += platformInfo_.coreNum * 64 * 2; // bmm1 bmm2 2份
     }
