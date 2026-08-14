@@ -548,9 +548,10 @@ int Sample(void *arg)
         aclrtMemcpy(timingHost, sizeof(timingHost), timingGm, sizeof(timingHost), ACL_MEMCPY_DEVICE_TO_HOST);
 
         // [0-3]=累计值, [4-7]=最后一轮单轮值
-        // benchMode=1 (write_drain_loop): 累计值除以loopCount得平均一次Write+Drain时间
-        // benchMode=0 (batch_write): [0-3]是总量, 不除以loopCount
-        double divisor = (args->benchMode == 1) ? (double)args->loopCount : 1.0;
+        // 两种模式都除以 loopCount 得平均单次时间
+        // benchMode=0: assemble=平均单次Write, wait=单次Drain(只1次Drain所以同总量)
+        // benchMode=1: assemble=平均单次Write, wait=平均单次Drain
+        double divisor = (double)args->loopCount;
         double avgAssembleNs = (double)timingHost[0] * NS_PER_CYCLE / divisor;
         double avgIssueNs    = (double)timingHost[1] * NS_PER_CYCLE / divisor;
         double avgWaitNs     = (double)timingHost[2] * NS_PER_CYCLE / divisor;
