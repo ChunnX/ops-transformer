@@ -258,8 +258,8 @@ __aicore__ inline void PublishGmm1TileReady(
 }
 
 /**
- * Dispatch layer 3/3: scan one source-rank route mask, copy the selected
- * tokens and metadata, and publish the GMM1 tile-ready counts.
+ * Dispatch 第 3 层：扫描单个 source rank 的路由掩码，搬运选中的 token
+ * 和元数据，并发布 GMM1 tile 就绪计数。
  */
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchRankTokens(
@@ -330,9 +330,8 @@ __aicore__ inline void DispatchRankTokens(
 }
 
 /**
- * Dispatch layer 2/3: map the core-owned rows of one expert to the
- * overlapping source-rank segments, then call DispatchRankTokens for each
- * segment.
+ * Dispatch 第 2 层：将当前专家中本 core 负责的行区间映射到重叠的
+ * source-rank 段，并逐段调用 DispatchRankTokens。
  */
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchExpertTokensByRank(
@@ -423,8 +422,8 @@ __aicore__ inline void DispatchExpertTokensByRankShard(
 }
 
 /**
- * Dispatch layer 1/3: partition one expert's received rows across dispatch
- * cores, then call DispatchExpertTokensByRank for the core-owned row range.
+ * Dispatch 第 1 层：将当前专家接收的行均分给 Dispatch core，再将本 core
+ * 的行区间交给 DispatchExpertTokensByRank 处理。
  */
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchExpertTokensByRows(
