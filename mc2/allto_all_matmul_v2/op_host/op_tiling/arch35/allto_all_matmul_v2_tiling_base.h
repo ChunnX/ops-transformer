@@ -48,6 +48,19 @@ protected:
         }
         platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
         aicoreParams_.aicNum = ascendcPlatform.GetCoreNumAic();
+
+        // Cache the full platform profile from the tiling context so the apace
+        // matmul engine can use it without querying the global singleton.
+        quantPlatformInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
+        quantPlatformInfo_.aivNum = ascendcPlatform.GetCoreNumAiv();
+        quantPlatformInfo_.socVersion = ascendcPlatform.GetSocVersion();
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, quantPlatformInfo_.ubSize);
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, quantPlatformInfo_.l1Size);
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, quantPlatformInfo_.l0aSize);
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, quantPlatformInfo_.l0bSize);
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, quantPlatformInfo_.l0cSize);
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, quantPlatformInfo_.l2Size);
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::BT, quantPlatformInfo_.btSize);
         return ge::GRAPH_SUCCESS;
     }
 
@@ -615,6 +628,7 @@ protected:
         auto *td = reinterpret_cast<allToAllMatmulTilingData *>(rt->GetData());
 
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+        tilingEngine.SetPlatformInfo(quantPlatformInfo_);
         tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
 
         auto &mm = td->tileQbmmTilingData;
@@ -670,6 +684,7 @@ private:
     uint64_t m_{0}, k_{0}, n_{0};
     uint64_t worldSize_{1};
     uint32_t precisionMode_{0};
+    QuantMatmulPlatformInfo quantPlatformInfo_;
 };
 
 } // namespace MC2Tiling
