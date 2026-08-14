@@ -175,6 +175,7 @@ private:
     GM_ADDR counterScratchGM_{0};
     GM_ADDR flagScratchGM_{0};
     GM_ADDR partialCountsGM_{0};
+    GM_ADDR indicesReadyFlagGM_{0};
 
     TBuf<> pingBuf_;
     TBuf<> pongBuf_;
@@ -429,6 +430,9 @@ __aicore__ inline void EngramFetchTrainArch35::InitWorkspaceLayout(const EngramF
     partialCountsGM_ = workspaceGM_ + wsOffset;
     wsOffset += static_cast<uint64_t>(tilingData->aivNum) * static_cast<uint64_t>(numRanks_) * sizeof(int32_t);
     flagScratchGM_ = workspaceGM_ + wsOffset;
+    wsOffset += static_cast<uint64_t>(tilingData->aivNum) * UB_ALIGN;
+    indicesReadyFlagGM_ = workspaceGM_ + wsOffset;
+    wsOffset += static_cast<uint64_t>(numRanks_) * sizeof(int32_t);
 }
 
 __aicore__ inline void EngramFetchTrainArch35::InitUbBuffers(const EngramFetchTilingData *tilingData)
@@ -481,6 +485,14 @@ __aicore__ inline void EngramFetchTrainArch35::InitFlagsAndCounters()
         GlobalTensor<int32_t> flagInit;
         flagInit.SetGlobalBuffer((__gm__ int32_t *)flagScratchGM_);
         DataCopy(flagInit, zeroLocal, STATE_OFFSET / sizeof(int32_t));
+        EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
+
+        uint32_t flagCount = Ceil(numRanks_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN / sizeof(int32_t);
+        Duplicate<int32_t>(zeroLocal, 0, flagCount);
+        EngramFetchTrainSyncFunc<HardEvent::V_MTE3>();
+        GlobalTensor<int32_t> indicesFlagInit;
+        indicesFlagInit.SetGlobalBuffer((__gm__ int32_t *)indicesReadyFlagGM_);
+        DataCopy(indicesFlagInit, zeroLocal, flagCount);
         EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
     }
     SyncAll<true>();
@@ -751,8 +763,6 @@ __aicore__ inline void EngramFetchTrainArch35::ExchangeIndices()
 {
     SendIndicesToPeers();
     RecvIndicesFromPeers();
-
-    SyncAll<true>();
 }
 
 __aicore__ inline void EngramFetchTrainArch35::SendIndicesToPeers()
@@ -791,6 +801,7 @@ __aicore__ inline void EngramFetchTrainArch35::SendIndicesLocal(int32_t sendCoun
         LocalCopySlice(recvLocalEntryOutGM_ + static_cast<uint64_t>(rdispl) * sizeof(int32_t),
                        sortedIndicesGM_ + static_cast<uint64_t>(sdispl) * sizeof(int32_t),
                        static_cast<uint64_t>(sendCount) * sizeof(int32_t));
+        EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
     }
 }
 
@@ -895,6 +906,18 @@ __aicore__ inline void EngramFetchTrainArch35::RecvIndicesFromPeers()
             WriteRemoteCounter(srcRank, indicesReadOffset_, static_cast<int32_t>(localReadCnt), 0U, false);
         }
         ClearCountersAfterRecv(localWinBase, srcRank, indicesWriteOffset_, indicesReadOffset_);
+
+        EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
+
+        LocalTensor<int32_t> flagLocal = statusBuf_.Get<int32_t>();
+        flagLocal.SetValue(0, 1);
+        EngramFetchTrainSyncFunc<HardEvent::S_MTE3>();
+        GM_ADDR flagAddr = indicesReadyFlagGM_ + static_cast<uint64_t>(srcRank) * sizeof(int32_t);
+        GlobalTensor<int32_t> flagGM;
+        flagGM.SetGlobalBuffer((__gm__ int32_t *)flagAddr);
+        DataCopyParams flagParams = {1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U};
+        DataCopyPad(flagGM, flagLocal, flagParams);
+        EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
     }
 }
 
@@ -1409,6 +1432,23 @@ __aicore__ inline void EngramFetchTrainArch35::LocalReadTableAndSend()
     int32_t sendCount = recvCountsUb.GetValue(dstRank);
     int64_t rdispl = rdisplsUb.GetValue(dstRank);
     uint32_t indicesBufCap = indicesBatchSize_;
+
+    if (dstRank != rankId_ && sendCount > 0) {
+        GM_ADDR flagAddr = indicesReadyFlagGM_ + static_cast<uint64_t>(dstRank) * sizeof(int32_t);
+        GlobalTensor<int32_t> flagGM;
+        flagGM.SetGlobalBuffer((__gm__ int32_t *)flagAddr);
+        LocalTensor<int32_t> flagLocal = statusBuf_.Get<int32_t>();
+        uint64_t startTime = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_CYCLES_PER_US;
+        int32_t flagVal = 0;
+        while (flagVal != 1) {
+            DataCopyExtParams cpParams{1U, sizeof(int32_t), 0U, 0U, 0U};
+            DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
+            DataCopyPad(flagLocal, flagGM, cpParams, cpPad);
+            EngramFetchTrainSyncFunc<HardEvent::MTE2_S>();
+            flagVal = flagLocal.GetValue(0);
+            TimeoutCheck(startTime);
+        }
+    }
 
     if (dstRank == rankId_) {
         if (sendCount > 0) {
