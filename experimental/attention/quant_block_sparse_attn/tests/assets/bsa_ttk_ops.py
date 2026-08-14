@@ -200,7 +200,7 @@ def _prepare_operator_inputs(
             mask_mode=mask_mode,
             quant_mode=quant_mode,
         )
-    if int(quant_mode) == 1:
+    if int(quant_mode) == 1 and _should_pack_combined_kv():
         key, value, k_descale = _fp8_pack_combined_kv(key, value, k_descale)
     return key, value, k_descale, p_scale, metadata
 
@@ -429,6 +429,24 @@ def quant_block_sparse_attn(
 # ==================================================================================================
 # FP8-only helpers
 # ==================================================================================================
+def _should_pack_combined_kv():
+    """Skip combined-KV packing only for TTK E2E without --plugin."""
+    try:
+        from ttk.utilities import get_global_storage
+    except (ImportError, ModuleNotFoundError):
+        # pytest、直接调用或未安装 TTK：维持原来的正常 pack 行为
+        return True
+
+    switches = get_global_storage()
+
+    # 非 TTK E2E 环境保持原行为
+    if getattr(switches, "test_mode", None) != "framework-api":
+        return True
+
+    # TTK E2E：
+    # 带 --plugin    -> plugin_path 非空 -> 正常 pack
+    # 不带 --plugin  -> plugin_path 为空 -> 负向用例不 pack
+    return bool(getattr(switches, "plugin_path", None))
 
 
 def _fp8_pack_combined_kv(key, value, k_descale):
