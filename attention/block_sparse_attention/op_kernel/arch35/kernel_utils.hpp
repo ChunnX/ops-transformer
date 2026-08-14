@@ -204,4 +204,16 @@ __aicore__ inline uint32_t GetCurQSTileNum(int64_t curQSeqlen, uint32_t blockSha
 
 } // namespace BsaKernelArch35
 
+namespace MXFP8Kernel {
+static constexpr uint32_t TILE_GROUP_N = 4;
+using TaskInfo = MXFP4Kernel::TaskInfo;
+using TileInfo = MXFP4Kernel::TileInfo;
+using BatchOffsetInfo = MXFP4Kernel::BatchOffsetInfo;
+using BsaFullQuantKernelParamsArch35 = BsaKernelArch35::BsaFullQuantKernelParamsArch35;
+__aicore__ inline uint32_t GetCurQSTileNum(int64_t curQSeqlen, uint32_t blockShapeX, uint32_t qBaseTile)
+{
+    return BsaKernelArch35::GetCurQSTileNum(curQSeqlen, blockShapeX, qBaseTile);
+}
+} // namespace MXFP8Kernel
+
 #endif

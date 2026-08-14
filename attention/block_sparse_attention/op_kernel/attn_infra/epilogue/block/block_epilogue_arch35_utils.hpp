@@ -96,6 +96,79 @@ static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF3_FLAG = 5;
 static constexpr uint64_t SYNC_ATTNOUT_BUF_FLAG = 6;
 } // namespace MXFP4
 
-} // namespace NpuArch::Epilogue::Block
+namespace MXFP8 {
+    static constexpr uint32_t KB_BYTE = 1024;
+    static constexpr uint32_t QS_BASE_SIZE = 128;
+    static constexpr uint32_t KVS_BASE_SIZE = 256;
+    static constexpr uint32_t DATA_BLOCK_BYTE = 32;
+
+    static constexpr uint32_t UB_S_BUF_CNT = 2;
+    static constexpr uint32_t UB_S_INNER_BUF_OFFSET = 256;
+    static constexpr uint32_t UB_S_BUF_SIZE = 64 * KB_BYTE;
+    static constexpr uint32_t UB_S_BUF_OFFSET = 0;
+
+    static constexpr uint32_t UB_OTMP_BUF_SIZE = 32 * KB_BYTE;
+    static constexpr uint32_t UB_OTMP_BUF_OFFSET = 128 * KB_BYTE;
+
+    static constexpr uint32_t UB_LOCAL_ROW_SUM_BUF_SIZE = 256;
+    static constexpr uint32_t UB_LOCAL_ROW_SUM_BUF_OFFSET = 160 * KB_BYTE;
+
+    static constexpr uint32_t UB_GLOBAL_ROW_SUM_BUF_SIZE = 256;
+    static constexpr uint32_t UB_GLOBAL_ROW_SUM_BUF_OFFSET = 160 * KB_BYTE + 256;
+
+    // P：2 槽各半基块 16KB（128 kvs × 128 qs × 1B）
+    static constexpr uint32_t UB_P_BUF_CNT = 2;
+    static constexpr uint32_t UB_P_INNER_BUF_OFFSET = 256;
+    static constexpr uint32_t UB_P_INNER_BUF_ELEMENT_OFFSET = 256;
+    static constexpr uint32_t UB_P_BUF_SIZE = 16 * KB_BYTE;
+    static constexpr uint32_t UB_P_BUF_OFFSET = 160 * KB_BYTE + 512;
+
+    static constexpr uint32_t UB_O_TRANS_BUF_SIZE = 18 * KB_BYTE;
+    static constexpr uint32_t UB_O_TRANS_BUF_OFFSET = 160 * KB_BYTE + 512;
+
+    static constexpr uint32_t UB_P_SCALE_CNT = 8;
+    static constexpr uint32_t UB_P_SCALE_BUF_SIZE = 1280;
+    static constexpr uint32_t UB_P_SCALE_BUF_OFFSET = 178 * KB_BYTE + 512;
+
+    static constexpr uint32_t UB_O_BUF_SIZE = 32 * KB_BYTE;
+    static constexpr uint32_t UB_O_BUF_OFFSET = 192 * KB_BYTE + 512;
+
+    static constexpr uint32_t UB_PEER_GLOBAL_MAX_CNT = 4;
+    static constexpr uint32_t UB_PEER_GLOBAL_MAX_BUF_SIZE = 256;
+    static constexpr uint32_t UB_PEER_GLOBAL_MAX_BUF_OFFSET = 224 * KB_BYTE + 512;
+
+    static constexpr uint32_t UB_SOFTMAX_MAX_BUF_SIZE = 256;
+    static constexpr uint32_t UB_SOFTMAX_MAX_BUF_OFFSET = 225 * KB_BYTE + 512;
+
+    // localGroupMax：Dpv/2 = 4 个 2K 逻辑槽 → 8×1K
+    static constexpr uint32_t UB_LOCAL_GROUP_MAX_CNT = 8;
+    static constexpr uint32_t UB_LOCAL_GROUP_MAX_BUF_SIZE = KB_BYTE;
+    static constexpr uint32_t UB_LOCAL_GROUP_MAX_BUF_OFFSET = 225 * KB_BYTE + 768;
+
+    static constexpr uint32_t UB_LOCAL_GLOBAL_MAX_CNT = 4;
+    static constexpr uint32_t UB_LOCAL_GLOBAL_MAX_BUF_SIZE = 256;
+    static constexpr uint32_t UB_LOCAL_GLOBAL_MAX_BUF_OFFSET = 233 * KB_BYTE + 768;
+
+    static constexpr uint32_t UB_UPDATE_SCALE_CNT = 4;
+    static constexpr uint32_t UB_UPDATE_SCALE_BUF_SIZE = 256;
+    static constexpr uint32_t UB_UPDATE_SCALE_BUF_OFFSET = 234 * KB_BYTE + 768;
+
+    static constexpr uint32_t UB_INDEX_BUF_SIZE = 256;
+    static constexpr uint32_t UB_INDEX_BUF_OFFSET = 235 * KB_BYTE + 768;
+
+    static constexpr uint64_t SYNC_VEC1_RES_BUF0_FLAG = 0;
+    static constexpr uint64_t SYNC_VEC1_RES_BUF1_FLAG = 1;
+    static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF0_FLAG = 2;
+    static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF1_FLAG = 3;
+    static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF2_FLAG = 4;
+    static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF3_FLAG = 5;
+    static constexpr uint64_t SYNC_ATTN_BUF_FLAG = 6;
+    static constexpr uint64_t SYNC_INIT_OUTPUT = 7;
+
+    static_assert(UB_INDEX_BUF_OFFSET + UB_INDEX_BUF_SIZE <= 256 * KB_BYTE,
+                  "MXFP8 UB exceeds 256KB");
+}  // namespace MXFP8
+
+}  // namespace NpuArch::Epilogue::Block
 
 #endif // BLOCK_EPILOGUE_ARCH35_UTILS_HPP
