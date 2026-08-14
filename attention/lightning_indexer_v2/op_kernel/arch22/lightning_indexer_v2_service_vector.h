@@ -330,8 +330,6 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec(const LI
                 weightsInUb = dbTmpUb[procGnum * s2BaseSize_];
                 LIServiceVec::DoScale(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], dbTmpUb, weightsInUb, weightsInTUb,
                                       brcBuf, procGnum, s2BaseSize_, outerGidx);
-                // confused reduceOp in DoScale
-                // neednot use LIServiceVec::doReduce(mmInUb, reduceOutInner, procGnum, (s2BaseSize_+8));
                 SetFlag<HardEvent::V_MTE2>(pingpong);
             }
 
