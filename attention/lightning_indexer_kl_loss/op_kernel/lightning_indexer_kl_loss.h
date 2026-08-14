@@ -27,13 +27,12 @@ constexpr uint32_t FLOAT_VECTOR_SIZE = 64;
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint32_t VECTOR_SIZE = 8;
 
-
 template <typename T, bool isDeterministic, bool weightType>
 class LightningIndexerKLLoss {
 public:
     __aicore__ inline LightningIndexerKLLoss(){};
     __aicore__ inline void Init(GM_ADDR targetScore, GM_ADDR indexProbs, GM_ADDR loss,
-                                GM_ADDR workspace, const LightningIndexerKLLossTilingData* tilingData,
+                                GM_ADDR workspace, const LightningIndexerKLLossTilingData *tilingData,
                                 TPipe *pipe);
     __aicore__ inline void InitWorkspaceDet(GM_ADDR workspace);
     __aicore__ inline void InitHalfBufs();
@@ -73,12 +72,11 @@ private:
     DataCopyExtParams copyParams;
     DataCopyPadExtParams<T> padParams;
 
-
     // Y 和 y 独立流水线 EventID
-    int32_t eventMTE2YToV_;  // MTE2 → Vector: Y 搬运完成
-    int32_t eventMTE2yToV_;  // MTE2 → Vector: y 搬运完成
-    int32_t eventVToMTE2Y_;  // Vector → MTE2: Y 的 UB 已释放
-    int32_t eventVToMTE2y_;  // Vector → MTE2: y 的 UB 已释放
+    int32_t eventMTE2YToV_; // MTE2 → Vector: Y 搬运完成
+    int32_t eventMTE2yToV_; // MTE2 → Vector: y 搬运完成
+    int32_t eventVToMTE2Y_; // Vector → MTE2: Y 的 UB 已释放
+    int32_t eventVToMTE2y_; // Vector → MTE2: y 的 UB 已释放
     int32_t eventVToMTE3_;
     int32_t eventMTE3ToV_;
 
@@ -99,7 +97,7 @@ private:
 
 template <typename T, bool isDeterministic, bool weightType>
 __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::Init(GM_ADDR targetScore, GM_ADDR indexProbs,
-    GM_ADDR loss, GM_ADDR workspace, const LightningIndexerKLLossTilingData* tilingData, TPipe *pipe)
+                                                                                    GM_ADDR loss, GM_ADDR workspace, const LightningIndexerKLLossTilingData *tilingData, TPipe *pipe)
 {
     totalLength_ = tilingData->totalLength;
     K_ = tilingData->K;
@@ -115,19 +113,17 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::I
     blockIdx_ = GetBlockIdx();
     blocksPerCore_ = (blockIdx_ < formerNum_) ? formerTileNum_ : tailTileNum_;
 
-    inputGMTargetScore.SetGlobalBuffer((__gm__ T*)targetScore, totalLength_ * K_);
-    inputGMIndexProbs.SetGlobalBuffer((__gm__ T*)indexProbs, totalLength_ * K_);
-    outputGMLoss.SetGlobalBuffer((__gm__ T*)loss, 1);
+    inputGMTargetScore.SetGlobalBuffer((__gm__ T *)targetScore, totalLength_ * K_);
+    inputGMIndexProbs.SetGlobalBuffer((__gm__ T *)indexProbs, totalLength_ * K_);
+    outputGMLoss.SetGlobalBuffer((__gm__ T *)loss, 1);
     if (std::is_same_v<T, float> && !isDeterministic) {
         if (blockIdx_ == 0) {
             outputGMLoss.SetValue(0, (T)0);
             DataCacheCleanAndInvalid<T, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(outputGMLoss);
         }
-    }
-    else {
+    } else {
         InitWorkspaceDet(workspace);
     }
-    
 
     // 分配 UB buffer：7 块连续 LocalTensor，总大小 = tileLen_ * (5 * KAligned_ + 8) + 8
     uint32_t tileElemsAligned = tileLength_ * KAligned_;
@@ -174,7 +170,7 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::I
 template <typename T, bool isDeterministic, bool weightType>
 __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::InitWorkspaceDet(GM_ADDR workspace)
 {
-    perCoreSumWS.SetGlobalBuffer((__gm__ float*)(workspace) + blockIdx_ * FLOAT_BLOCK_SIZE, FLOAT_BLOCK_SIZE);
+    perCoreSumWS.SetGlobalBuffer((__gm__ float *)(workspace) + blockIdx_ * FLOAT_BLOCK_SIZE, FLOAT_BLOCK_SIZE);
     Fill(perCoreSumWS, FLOAT_BLOCK_SIZE, (float)0);
     userWorkspace_ = workspace;
 }
@@ -192,7 +188,6 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::I
     copyParams.blockLen = K_ * sizeof(T);
     copyParams.dstStride = (KAligned_ * 2 - halfKAligned_) / HALF_BLOCK_SIZE;
     padParams.rightPadding = halfKAligned_ - K_;
-
 }
 
 template <typename T, bool isDeterministic, bool weightType>
@@ -208,15 +203,14 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
         WaitFlag<HardEvent::V_MTE2>(eventVToMTE2y_);
         DataCopyPad(ubTargetScoreIn, inputGMTargetScore[offset], copyParams, padParams);
         SetFlag<HardEvent::MTE2_V>(eventMTE2yToV_);
-    }
-    else {
+    } else {
         WaitFlag<HardEvent::V_MTE2>(eventVToMTE2Y_);
         DataCopyPad(ubHalfIndexProbs, inputGMIndexProbs[offset], copyParams, padParams);
         SetFlag<HardEvent::MTE2_V>(eventMTE2YToV_);
 
         WaitFlag<HardEvent::V_MTE2>(eventVToMTE2y_);
         DataCopyPad(ubHalfTarget, inputGMTargetScore[offset], copyParams, padParams);
-        SetFlag<HardEvent::MTE2_V>(eventMTE2yToV_);  
+        SetFlag<HardEvent::MTE2_V>(eventMTE2yToV_);
     }
 }
 
@@ -233,8 +227,8 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
         UnaryRepeatParams repeatParams(1, 1, 8, 4);
         for (uint32_t i = 0; i < curTileLen; ++i) {
             Cast(ubIndexProbsIn[i * KAligned_],
-                ubHalfIndexProbs[i * KAligned_ * 2],
-                RoundMode::CAST_NONE, FLOAT_VECTOR_SIZE, repeat, repeatParams);
+                 ubHalfIndexProbs[i * KAligned_ * 2],
+                 RoundMode::CAST_NONE, FLOAT_VECTOR_SIZE, repeat, repeatParams);
             if (remain) {
                 Cast(ubIndexProbsIn[i * KAligned_ + repeat * FLOAT_VECTOR_SIZE],
                      ubHalfIndexProbs[i * KAligned_ * 2 + repeat * FLOAT_VECTOR_SIZE],
@@ -251,8 +245,8 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
         UnaryRepeatParams repeatParams(1, 1, 8, 4);
         for (uint32_t i = 0; i < curTileLen; ++i) {
             Cast(ubTargetScoreIn[i * KAligned_],
-                ubHalfTarget[i * KAligned_ * 2],
-                RoundMode::CAST_NONE, FLOAT_VECTOR_SIZE, repeat, repeatParams);
+                 ubHalfTarget[i * KAligned_ * 2],
+                 RoundMode::CAST_NONE, FLOAT_VECTOR_SIZE, repeat, repeatParams);
             if (remain) {
                 Cast(ubTargetScoreIn[i * KAligned_ + repeat * FLOAT_VECTOR_SIZE],
                      ubHalfTarget[i * KAligned_ * 2 + repeat * FLOAT_VECTOR_SIZE],
@@ -289,25 +283,25 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
     if (remain) {
         Adds(ubReduceSum[reduceOff + repeat * FLOAT_VECTOR_SIZE], ubReduceSum[reduceOff + repeat * FLOAT_VECTOR_SIZE], eps_, remain, 1, {1, 1, 8, 8});
     }
-    
+
     repeat = (curTileLen + 7) / 8;
     Brcb(ubReduceSum, ubReduceSum[reduceOff], repeat, {1, 8});
     repeat = KAligned_ / FLOAT_VECTOR_SIZE;
     remain = KAligned_ % FLOAT_VECTOR_SIZE;
     BinaryRepeatParams divParams{1, 1, 0, 8, 8, 0};
     for (uint32_t i = 0; i < curTileLen; ++i) {
-        Div(ubTmp[i * KAligned_], 
-            ubTargetScoreIn[i * KAligned_], 
-            ubReduceSum[i * FLOAT_BLOCK_SIZE], 
-            FLOAT_VECTOR_SIZE, 
-            repeat, 
+        Div(ubTmp[i * KAligned_],
+            ubTargetScoreIn[i * KAligned_],
+            ubReduceSum[i * FLOAT_BLOCK_SIZE],
+            FLOAT_VECTOR_SIZE,
+            repeat,
             divParams);
         if (remain) {
-            Div(ubTmp[i * KAligned_ + repeat * FLOAT_VECTOR_SIZE], 
-                ubTargetScoreIn[i * KAligned_ + repeat * FLOAT_VECTOR_SIZE], 
-                ubReduceSum[i * FLOAT_BLOCK_SIZE], 
-                remain, 
-                1, 
+            Div(ubTmp[i * KAligned_ + repeat * FLOAT_VECTOR_SIZE],
+                ubTargetScoreIn[i * KAligned_ + repeat * FLOAT_VECTOR_SIZE],
+                ubReduceSum[i * FLOAT_BLOCK_SIZE],
+                remain,
+                1,
                 divParams);
         }
     }
@@ -331,8 +325,7 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
     remain = tileElems % FLOAT_VECTOR_SIZE;
     if (remain && !repeat) {
         ReduceSum(ubOut, ubLogP, ubTmp, remain, 1, 8);
-    }
-    else {
+    } else {
         ReduceSum(ubOut, ubLogP, ubTmp, FLOAT_VECTOR_SIZE, repeat, 8);
         if (remain) {
             ReduceSum(ubReduceSum, ubLogP[repeat * FLOAT_VECTOR_SIZE], ubTmp, remain, 1, 8);
@@ -352,8 +345,7 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
     // DumpTensor(outputGMLoss, 222, 8);
     if constexpr (std::is_same_v<T, float> && !isDeterministic) {
         DataCopyPad(outputGMLoss, ubOut, {1, sizeof(float), 0, 0});
-    }
-    else {
+    } else {
         DataCopyPad(perCoreSumWS, ubOut, {1, sizeof(float), 0, 0});
     }
     DisableDmaAtomic();
@@ -373,9 +365,7 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::P
     SetFlag<HardEvent::V_MTE2>(eventVToMTE2y_);
     SetFlag<HardEvent::MTE3_V>(eventMTE3ToV_);
     for (int64_t b = 0; b < blocksPerCore_; b++) {
-        curTileLen = (rowOffset + tileLength_ <= totalLength_)
-                         ? tileLength_
-                         : (totalLength_ - rowOffset);
+        curTileLen = (rowOffset + tileLength_ <= totalLength_) ? tileLength_ : (totalLength_ - rowOffset);
         CopyIn(rowOffset, curTileLen);
         tileElems = curTileLen * KAligned_;
         Compute(tileElems, curTileLen);
@@ -393,9 +383,7 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::P
     pipePtr->ReleaseEventID<HardEvent::V_MTE2>(eventVToMTE2y_);
     pipePtr->ReleaseEventID<HardEvent::V_MTE3>(eventVToMTE3_);
     pipePtr->ReleaseEventID<HardEvent::MTE3_V>(eventMTE3ToV_);
-
 }
-
 
 /* ---------- WriteBackDet: 确定性结果写回 ---------- */
 template <typename T, bool isDeterministic, bool weightType>
@@ -406,7 +394,7 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::W
         GlobalTensor<float> ws;
         uint32_t count = coreNum_ * FLOAT_BLOCK_SIZE;
         LocalTensor<float> ubCoreSum = tmpBuf_.Get<float>(count);
-        ws.SetGlobalBuffer((__gm__ float*)userWorkspace_, count);
+        ws.SetGlobalBuffer((__gm__ float *)userWorkspace_, count);
         DataCopy(ubCoreSum, ws, count);
         SetFlag<HardEvent::MTE2_V>(eventMTE2YToV_);
         WaitFlag<HardEvent::MTE2_V>(eventMTE2YToV_);
@@ -416,8 +404,7 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::W
             SetFlag<HardEvent::V_MTE3>(eventVToMTE3_);
             WaitFlag<HardEvent::V_MTE3>(eventVToMTE3_);
             DataCopyPad(outputGMLoss, ubOut, {1, sizeof(float), 0, 0});
-        }
-        else {
+        } else {
             LocalTensor<T> ubOutHalf = tmpBuf_.GetWithOffset<T>(HALF_BLOCK_SIZE, count * sizeof(float));
             Cast(ubOutHalf, ubOut, RoundMode::CAST_RINT, FLOAT_BLOCK_SIZE);
             SetFlag<HardEvent::V_MTE3>(eventVToMTE3_);
@@ -425,7 +412,6 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::W
             DataCopyPad(outputGMLoss, ubOutHalf, {1, sizeof(T), 0, 0});
         }
     }
-    
 }
 
 } // namespace NsLightningIndexerKLLoss

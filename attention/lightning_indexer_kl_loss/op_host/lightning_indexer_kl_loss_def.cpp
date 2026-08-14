@@ -17,15 +17,16 @@
 namespace ops {
 class LightningIndexerKLLoss : public OpDef {
 public:
-    explicit LightningIndexerKLLoss(const char* name) : OpDef(name)
+    explicit LightningIndexerKLLoss(const char *name)
+        : OpDef(name)
     {
         // 输入参数说明
-        this->Input("target_score")                                      
+        this->Input("target_score")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();  
-        this->Input("index_probs")                                      
+            .AutoContiguous();
+        this->Input("index_probs")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})

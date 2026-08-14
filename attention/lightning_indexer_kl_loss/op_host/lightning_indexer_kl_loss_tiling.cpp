@@ -21,9 +21,9 @@ using namespace Ops::Transformer::OpTiling;
 
 struct LightningIndexerKLLossCompileInfo {};
 
-static ge::graphStatus GetPlatformInfo(gert::TilingContext* context, uint64_t& ubSize, int64_t& coreNum)
+static ge::graphStatus GetPlatformInfo(gert::TilingContext *context, uint64_t &ubSize, int64_t &coreNum)
 {
-    fe::PlatFormInfos* platformInfoPtr = context->GetPlatformInfo();
+    fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfoPtr);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     coreNum = ascendcPlatform.GetCoreNumAiv();
@@ -52,26 +52,25 @@ static int64_t ComputeTileLength(int64_t K, int64_t ubSize)
 
 // 先定义一个向上取整函数
 int Ceil(int a, int b)
-{ 
+{
     return (a + b - 1) / b;
 }
 
-ge::graphStatus GetWorkspaceSize(gert::TilingContext* context, bool deterministic, bool isHalf, int64_t coreNum)
+ge::graphStatus GetWorkspaceSize(gert::TilingContext *context, bool deterministic, bool isHalf, int64_t coreNum)
 {
-    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
+    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, currentWorkspace);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     if (deterministic || isHalf) {
         currentWorkspace[0] = static_cast<size_t>(coreNum) * sizeof(float) * 8 + sysWorkspaceSize;
-    }
-    else {
+    } else {
         currentWorkspace[0] = sysWorkspaceSize;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckInputDim(gert::TilingContext* context)
+static ge::graphStatus CheckInputDim(gert::TilingContext *context)
 {
     const auto targetScoreShape = context->GetInputShape(0);
     const auto indexProbsShape = context->GetInputShape(1);
@@ -79,7 +78,7 @@ static ge::graphStatus CheckInputDim(gert::TilingContext* context)
     if (dimNum != 2 && dimNum != 3) {
         std::string dimNumStr = std::to_string(dimNum);
         OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "target_score",
-            dimNumStr.c_str(), "2D or 3D");
+                                     dimNumStr.c_str(), "2D or 3D");
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_NULL_WITH_CONTEXT(context, indexProbsShape);
@@ -94,24 +93,24 @@ static ge::graphStatus CheckInputDim(gert::TilingContext* context)
     }
     if (targetShapeStr != indexShapeStr) {
         std::string reasonMsg = "The shape of target_score " + targetShapeStr +
-            " does not match the shape of index_probs " + indexShapeStr;
+                                " does not match the shape of index_probs " + indexShapeStr;
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "target_score and index_probs",
-            ("target_score: " + targetShapeStr + ", index_probs: " + indexShapeStr).c_str(),
-            reasonMsg.c_str());
+                                              ("target_score: " + targetShapeStr + ", index_probs: " + indexShapeStr).c_str(),
+                                              reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
 
     int64_t K = targetScoreOrigin.GetDim(dimNum - 1);
     if (K > 8192) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "target_score",
-            targetShapeStr.c_str(),
-            "The last dim of input target_score should be less than 8192");
+                                              targetShapeStr.c_str(),
+                                              "The last dim of input target_score should be less than 8192");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext* context)
+static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext *context)
 {
     uint64_t ubSize;
     int64_t coreNum;
@@ -150,7 +149,7 @@ static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext* con
     int64_t formerTileNum = (totalTileNum + coreNum - 1) / coreNum;
     int64_t tailTileNum = totalTileNum / coreNum;
 
-    LightningIndexerKLLossTilingData* tiling = context->GetTilingData<LightningIndexerKLLossTilingData>();
+    LightningIndexerKLLossTilingData *tiling = context->GetTilingData<LightningIndexerKLLossTilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context, tiling);
     OP_CHECK_IF(
         memset_s(tiling, sizeof(LightningIndexerKLLossTilingData), 0, sizeof(LightningIndexerKLLossTilingData)) != EOK,
@@ -166,13 +165,13 @@ static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext* con
     tiling->coreNum = coreNum;
     context->SetBlockDim(coreNum);
 
-
     // TilingKey: [bit 0: deterministic] | [bits 1-2: DataType]
     //   DataType 0: FLOAT16, 1: FLOAT32, 2: BFLOAT16, 3: FLOAT16_PRECISION
     auto dataType = context->GetInputDesc(0)->GetDataType();
-    uint8_t dataTypeVal = (dataType == ge::DT_FLOAT16)? 0 :
-                          (dataType == ge::DT_BF16)? 2 :
-                          (dataType == ge::DT_FLOAT)? 1 : 0;
+    uint8_t dataTypeVal = (dataType == ge::DT_FLOAT16) ? 0 :
+                          (dataType == ge::DT_BF16)    ? 2 :
+                          (dataType == ge::DT_FLOAT)   ? 1 :
+                                                         0;
     ASCENDC_TPL_SEL_PARAM(context, deterministic, dataTypeVal, weightType);
     OP_CHECK_IF(
         GetWorkspaceSize(context, deterministic, dataTypeVal != 1, coreNum) != ge::GRAPH_SUCCESS, OP_LOGE(context, "GetWorkspaceSize error"),
@@ -180,7 +179,7 @@ static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext* con
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingParseForLightningIndexerKLLoss([[maybe_unused]] gert::TilingParseContext* context)
+static ge::graphStatus TilingParseForLightningIndexerKLLoss([[maybe_unused]] gert::TilingParseContext *context)
 {
     return ge::GRAPH_SUCCESS;
 }

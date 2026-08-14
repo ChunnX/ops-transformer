@@ -21,13 +21,13 @@ at::Tensor lightning_indexer_kl_loss(
 {
     TORCH_CHECK((eps > 0), "eps should be greater than 0, current is: ", eps);
     TORCH_CHECK((weightType == "logits" || weightType == "probs"),
-        "weightType must be 'logits' or 'probs', current is: ", weightType);
+                "weightType must be 'logits' or 'probs', current is: ", weightType);
     TORCH_CHECK((targetScore.scalar_type() == indexProbs.scalar_type()),
-        "targetScore and indexProbs should have the same dtype.");
+                "targetScore and indexProbs should have the same dtype.");
     TORCH_CHECK((targetScore.dim() >= 2 && targetScore.dim() <= 3),
-        "targetScore.dim() should be in [2, 3], current is: ", targetScore.dim());
+                "targetScore.dim() should be in [2, 3], current is: ", targetScore.dim());
     TORCH_CHECK((indexProbs.dim() >= 2 && indexProbs.dim() <= 3),
-        "indexProbs.dim() should be in [2, 3], current is: ", indexProbs.dim());
+                "indexProbs.dim() should be in [2, 3], current is: ", indexProbs.dim());
 
     at::Tensor loss{nullptr};
     {
@@ -49,4 +49,4 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           py::arg("target_score"), py::arg("index_probs"), py::arg("eps"), py::arg("weight_type"));
 }
 
-}  // namespace op_api
+} // namespace op_api

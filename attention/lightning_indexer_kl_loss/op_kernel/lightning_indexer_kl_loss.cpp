@@ -25,7 +25,7 @@ using namespace NsLightningIndexerKLLoss;
  */
 template <bool isDeterministic, uint8_t dataType, bool weightType>
 __global__ __aicore__ void lightning_indexer_kl_loss(GM_ADDR targetScore, GM_ADDR indexProbs,
-    GM_ADDR loss, GM_ADDR workspace, GM_ADDR tiling)
+                                                     GM_ADDR loss, GM_ADDR workspace, GM_ADDR tiling)
 {
     REGISTER_TILING_DEFAULT(LightningIndexerKLLossTilingData);
     GET_TILING_DATA_WITH_STRUCT(LightningIndexerKLLossTilingData, tilingData, tiling);
