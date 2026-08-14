@@ -22,6 +22,7 @@
 #else
 #include "kernel_operator.h"
 #endif
+#include "../../common/mega_moe_constants.h"
 #include "../../common/mega_moe_utils.h"
 #include "gated_activation.h"
 
@@ -41,17 +42,8 @@ enum class QuantDtype : uint8_t {
     FP8_E5M2 = 0x1U << 1,
 };
 
-enum class ActMode : uint8_t {
-    SWIGLU = 0,
-    SITU = 1,
-    SWIGLU_STEP = 2,
-    SWIGLU_OAI = 3,
-};
-
-enum class ActSubMode : uint8_t {
-    DEFAULT = 0,
-    LINEAR = 1,
-};
+using ActMode = MegaMoeImpl::MegaMoeActMode;
+using ActSubMode = MegaMoeImpl::MegaMoeActSubMode;
 
 constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64;
 constexpr uint32_t Y_IDX = 0;
@@ -73,7 +65,7 @@ constexpr uint32_t FLAG_VALUE_ONE = 1;
 constexpr int64_t QUANT_ONCE_NUM = 256;
 constexpr int64_t QUANT_ONCE_NUM_FP4 = 128;
 constexpr int64_t SCALE_ONCE_NUM = 8;
-constexpr int64_t CONST_64 = 64;
+constexpr int64_t MX_SCALE_PACK_COUNT = 64;
 
 constexpr AscendC::MicroAPI::CastTrait ctInt322Fp32 = {
     AscendC::MicroAPI::RegLayout::UNKNOWN, AscendC::MicroAPI::SatMode::UNKNOWN,
@@ -141,8 +133,8 @@ public:
         GM_ADDR x1ScaleGmAddr{nullptr};
         GM_ADDR biasGmAddr{nullptr};
         float clampLimit{0.0f};
-        uint8_t actMode{0};
-        uint8_t actSubMode{0};
+        uint8_t actMode{static_cast<uint8_t>(ActMode::SWIGLU)};
+        uint8_t actSubMode{static_cast<uint8_t>(ActSubMode::DEFAULT)};
         float activationAlpha{1.0f};
         float activationBeta{1.0f};
         Arguments() = default;
@@ -177,13 +169,15 @@ public:
 private:
     __aicore__ inline void VFDoActivationForMX(uint16_t mSize, uint16_t pingpongIdx = 0, uint64_t mLoc = 0);
 
-    template <ActivationQuantMsg::QuantMode quantMode, bool IsInterleavedSrc = false,
-              ActMode Activation = ActMode::SWIGLU, ActSubMode ActSub = ActSubMode::DEFAULT>
     __aicore__ inline void VFDoActivationAndQuantForMX(__ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
                                                        __ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc,
                                                        __ubuf__ bfloat16_t *gluResAddr, __ubuf__ uint16_t *maxExpAddr,
                                                        __ubuf__ uint16_t *halfScaleLocalAddr, uint16_t mSize,
                                                        uint16_t nSize, uint64_t mLoc = 0);
+
+    __aicore__ inline void VFDoActivation(__ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc,
+                                           __ubuf__ bfloat16_t *gluResAddr, uint16_t mSize, uint16_t nSize,
+                                           uint32_t nDstUbAligned);
 
     __aicore__ inline void ComputeScale(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr,
                                         __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB,
@@ -237,8 +231,8 @@ private:
 
     BlockCoord blockCoord_{0, 0, 0, 0, 0, 0};
     float clampLimit_{0.0f};
-    uint8_t actMode_{0};
-    uint8_t actSubMode_{0};
+    uint8_t actMode_{static_cast<uint8_t>(ActMode::SWIGLU)};
+    uint8_t actSubMode_{static_cast<uint8_t>(ActSubMode::DEFAULT)};
     float activationAlpha_{1.0f};
     float activationBeta_{1.0f};
 };
@@ -250,7 +244,7 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(P
     if constexpr (g_coreType == AscendC::AIC) {
         return;
     }
-    // Init 接收临时 Arguments，Epilogue 自身保存输出 GM 基址，避免后续引用失效。
+    // Params 的生命周期可能短于 Epilogue 对象，因此保存输出 GM 地址。
     yGmAddr_ = params.yGmAddr;
     yScaleGmAddr_ = params.yScaleGmAddr;
     clampLimit_ = params.clampLimit;
@@ -261,15 +255,14 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(P
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value) {
         fpEmax_ = FP8_E4M3_MAX_EXP;
     } else if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
-        fpEmax_ = FP8_E5M2_MAX_EXP; // this
+        fpEmax_ = FP8_E5M2_MAX_EXP;
     } else if constexpr (AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value) {
         fpEmax_ = FP4_E2M1_MAX_EXP;
     } else {
         fpEmax_ = FP4_E1M2_MAX_EXP;
     }
 
-    // 重构UB内存
-    // 当前master默认非interleaved，保留完整256x256空间；interleaved预留按half tile + pingpong偏移使用。
+    // 非交织布局使用完整 tile，交织布局使用带 ping-pong 偏移的半 tile。
     constexpr uint32_t MAX_SINGLE_MN_ALIAS =
         IsInterleaved_ ? MAX_SINGLE_MN / ACTIVATION_N_HALF : MAX_SINGLE_MN;
     constexpr uint32_t gluResOffset = 0;
@@ -393,8 +386,6 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     __ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr, __ubuf__ uint16_t *halfScaleLocalAddr,
     uint32_t totalScaleInUB, uint16_t loopNumScale) // 128*8  8
 {
-    int64_t onceNum = QUANT_ONCE_NUM_FP4;
-    int64_t onceNumMxScale = CONST_64;
     __VEC_SCOPE__
     {
         AscendC::MicroAPI::RegTensor<uint16_t> expMask, vdMaxExp;
@@ -413,7 +404,7 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
         for (uint16_t i = 0; i < loopNumScale; i++) {                               // 8
             preMaskScale = AscendC::MicroAPI::UpdateMask<uint16_t>(totalScaleInUB); // 128*8
             AscendC::MicroAPI::DataCopy<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                vdMaxExp, maxExpAddr, onceNum); // 每次搬运128个数到vdMaxExp
+                vdMaxExp, maxExpAddr, QUANT_ONCE_NUM_FP4); // 每次搬运128个数到vdMaxExp
             // 得到不等于INF的结果掩码 cmpResult
             AscendC::MicroAPI::Compare<uint16_t, AscendC::CMPMODE::NE>(cmpResult, vdMaxExp, expMask, preMaskScale);
             // 得到不等于0的结果掩码 zeroMask
@@ -433,7 +424,7 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
             // 将scaleValue中数取低半部分，搬运到mxScaleLocalAddr uint16--int8
             AscendC::MicroAPI::DataCopy<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
                                         AscendC::MicroAPI::StoreDist::DIST_PACK_B16>(mxScaleLocalAddr, scaleValue,
-                                                                                     onceNumMxScale, preMaskScale);
+                                                                                     MX_SCALE_PACK_COUNT, preMaskScale);
             // 得到sharedExp等于0x7f00的结果掩码 specialDataMask
             AscendC::MicroAPI::Compare<uint16_t, AscendC::CMPMODE::EQ>(specialDataMask, sharedExp, scaleBias,
                                                                        preMaskScale);
@@ -446,7 +437,7 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
             AscendC::MicroAPI::Select<uint16_t>(halfScale, specialExpRegTensor, halfScale, specialDataMask);
             // 将128个数搬运到halfScaleLocalAddr uint16--uint16
             AscendC::MicroAPI::DataCopy<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                halfScaleLocalAddr, halfScale, onceNum, preMaskScale);
+                halfScaleLocalAddr, halfScale, QUANT_ONCE_NUM_FP4, preMaskScale);
         }
     }
     return;
@@ -558,34 +549,21 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Comput
     return;
 }
 
-
-/*
- * VFDoActivationAndQuantForMX: 激活 + MX 量化主入口（重构后为分派器）
- *   1. 标量分块计算（对齐、tail、mask）
- *   2. 填充 ActivationContext
- *   3. 按模板参数 Activation 分派到 ActivationFlowSwiGLU / ActivationFlowSiTU
- *   4. MX 量化调度（ComputeMaxExp / ComputeScale / ComputeDataForQuantTargetFp8/Fp4）
- */
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
-template <ActivationQuantMsg::QuantMode quantMode, bool IsInterleavedSrc, ActMode Activation, ActSubMode ActSub>
 __aicore__ inline void
-BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoActivationAndQuantForMX(
-    __ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst, __ubuf__ DataTypeIn *firstSrc,
-    __ubuf__ DataTypeIn *secondSrc, __ubuf__ bfloat16_t *gluResAddr, __ubuf__ uint16_t *maxExpAddr,
-    __ubuf__ uint16_t *halfScaleLocalAddr, uint16_t mSize, uint16_t nSize, uint64_t mLoc)
+BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoActivation(
+    __ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc, __ubuf__ bfloat16_t *gluResAddr, uint16_t mSize,
+    uint16_t nSize, uint32_t nDstUbAligned)
 {
-    // ---- 标量分块计算（原样保留）----
     uint32_t nSrcUbAligned;
-    if constexpr (IsInterleavedSrc) {
+    if constexpr (IsInterleaved_) {
         // interleaved源布局为[x1, x2]连续存放在同一行，下一行stride是2*nSize
         nSrcUbAligned = static_cast<uint32_t>(nSize) * 2U;
     } else {
-        // 非interleaved源布局为两块独立UB，按原master逻辑只需要对齐单个nSize
+        // 非交织源布局将两个输入存放在独立的 UB 中。
         nSrcUbAligned = Ops::Base::CeilAlign(static_cast<uint32_t>(nSize),
                                              static_cast<uint32_t>(AscendC::ONE_BLK_SIZE / sizeof(DataTypeIn)));
     }
-    uint32_t nDstUbAligned =
-        Ops::Base::CeilAlign(static_cast<uint32_t>(nSize), static_cast<uint32_t>(AscendC::ONE_BLK_SIZE));
     uint16_t dim0VfTimes = mSize;
     uint16_t dim1VfTimes = nSize / ActivationImpl::VF_LEN_FP32;
     uint32_t dim1Tail = nSize % ActivationImpl::VF_LEN_FP32;
@@ -616,11 +594,20 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoAc
         activationTailAddr2 = gluResAddr + offsetAlign + dim1TailTimes * ActivationImpl::VF_LEN_FP32;
     }
 
-    // ---- 填充分块上下文结构体 ----
     ActivationImpl::ActivationContext<DataTypeIn> ctx;
     ctx.firstSrc = firstSrc;
     ctx.secondSrc = secondSrc;
     ctx.gluResAddr = gluResAddr;
+    ctx.firstTailAddr = firstTailAddr;
+    ctx.secondTailAddr = secondTailAddr;
+    ctx.activationTailAddr1 = activationTailAddr1;
+    ctx.activationTailAddr2 = activationTailAddr2;
+    if constexpr (TopkWeightsPrefetch) {
+        ctx.weightUbAddr = (__ubuf__ float *)weightUb_.GetPhyAddr();
+    } else {
+        ctx.weightUbAddr = nullptr;
+    }
+
     ctx.nSrcUbAligned = nSrcUbAligned;
     ctx.nDstUbAligned = nDstUbAligned;
     ctx.dim0VfTimes = dim0VfTimes;
@@ -631,33 +618,42 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoAc
     ctx.mask1Num = mask1Num;
     ctx.mask2Num = mask2Num;
     ctx.mask3Num = mask3Num;
-    ctx.firstTailAddr = firstTailAddr;
-    ctx.secondTailAddr = secondTailAddr;
-    ctx.activationTailAddr1 = activationTailAddr1;
-    ctx.activationTailAddr2 = activationTailAddr2;
-    ctx.clampLimit = clampLimit_;
-    ctx.beta = activationBeta_;
-    ctx.invBeta = (activationBeta_ != 0.0f) ? (1.0f / activationBeta_) : 1.0f;
-    ctx.alpha = activationAlpha_;
-    ctx.invAlpha = (activationAlpha_ != 0.0f) ? (1.0f / activationAlpha_) : 1.0f;
-    if constexpr (TopkWeightsPrefetch) {
-        ctx.weightUbAddr = (__ubuf__ float *)weightUb_.GetPhyAddr();
+
+    const auto activation = static_cast<ActMode>(actMode_);
+    if (activation == ActMode::SITU) {
+        const float invBeta = (activationBeta_ != 0.0f) ? (1.0f / activationBeta_) : 1.0f;
+        if (actSubMode_ == static_cast<uint8_t>(ActSubMode::LINEAR)) {
+            const float invAlpha = (activationAlpha_ != 0.0f) ? (1.0f / activationAlpha_) : 1.0f;
+            const ActivationImpl::SiTUParams situParams{
+                clampLimit_, activationBeta_, invBeta, activationAlpha_, invAlpha};
+            ActivationImpl::RunSiTU<DataTypeIn, TopkWeightsPrefetch, true, IsInterleaved_>(ctx, situParams);
+        } else {
+            const ActivationImpl::SiTUParams situParams{clampLimit_, activationBeta_, invBeta, 1.0f, 1.0f};
+            ActivationImpl::RunSiTU<DataTypeIn, TopkWeightsPrefetch, false, IsInterleaved_>(ctx, situParams);
+        }
+    } else if (activation == ActMode::SWIGLU_STEP) {
+        const ActivationImpl::SwiGLUParams swiGluParams{clampLimit_};
+        ActivationImpl::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, true, IsInterleaved_>(ctx, swiGluParams);
+    } else if (activation == ActMode::SWIGLU_OAI) {
+        const ActivationImpl::SwiGLUOaiParams swiGluOaiParams{clampLimit_, activationAlpha_, activationBeta_};
+        ActivationImpl::RunSwiGLUOai<DataTypeIn, TopkWeightsPrefetch, IsInterleaved_>(ctx, swiGluOaiParams);
     } else {
-        ctx.weightUbAddr = nullptr;
+        const ActivationImpl::SwiGLUParams swiGluParams{clampLimit_};
+        ActivationImpl::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, false, IsInterleaved_>(ctx, swiGluParams);
     }
+}
 
-    // ---- 激活分派 ----
-    if constexpr (Activation == ActMode::SWIGLU) {
-        ActivationImpl::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, IsInterleavedSrc>(ctx);
-    } else if constexpr (Activation == ActMode::SITU) {
-        ActivationImpl::RunSiTU<DataTypeIn, TopkWeightsPrefetch, ActSub == ActSubMode::LINEAR, IsInterleavedSrc>(ctx);
-    } else if constexpr (Activation == ActMode::SWIGLU_STEP) {
-        ActivationImpl::RunSwiGLUStep<DataTypeIn, TopkWeightsPrefetch, IsInterleavedSrc>(ctx);
-    } else if constexpr (Activation == ActMode::SWIGLU_OAI) {
-        ActivationImpl::RunSwiGLUOai<DataTypeIn, TopkWeightsPrefetch, IsInterleavedSrc>(ctx);
-    }
+BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void
+BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoActivationAndQuantForMX(
+    __ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst, __ubuf__ DataTypeIn *firstSrc,
+    __ubuf__ DataTypeIn *secondSrc, __ubuf__ bfloat16_t *gluResAddr, __ubuf__ uint16_t *maxExpAddr,
+    __ubuf__ uint16_t *halfScaleLocalAddr, uint16_t mSize, uint16_t nSize, uint64_t mLoc)
+{
+    uint32_t nDstUbAligned =
+        Ops::Base::CeilAlign(static_cast<uint32_t>(nSize), static_cast<uint32_t>(AscendC::ONE_BLK_SIZE));
+    VFDoActivation(firstSrc, secondSrc, gluResAddr, mSize, nSize, nDstUbAligned);
 
-    // ---- 量化（原样保留，不涉及激活寄存器）----
     uint32_t totalDataInUb = mSize * nDstUbAligned;
     uint32_t totalScaleInUb = totalDataInUb / AscendC::ONE_BLK_SIZE;
     uint16_t loopDataNum = (totalDataInUb + vlForHalfNumber_ * 2 - 1) / (vlForHalfNumber_ * 2); // 128
@@ -684,7 +680,7 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     constexpr uint32_t pongElemOf_bf16 = MAX_SINGLE_MN * sizeof(DataTypeIn) / sizeof(bfloat16_t);
     constexpr uint32_t pongElemOf_int8 = MAX_SINGLE_MN * sizeof(DataTypeIn);
     constexpr uint32_t pongElemOf_uint16 = MAX_SINGLE_MN * sizeof(DataTypeIn) / sizeof(uint16_t);
-    // 当前master调用不传pingpongIdx，默认走非interleaved/idx0；interleaved接入后只在入口切当前half UB。
+    // 为交织 ping-pong 布局选择当前使用的半 tile 缓冲区。
     const uint32_t pongMul = (IsInterleaved_ && pingpongIdx == 1U) ? 1U : 0U;
 
     __ubuf__ DataTypeIn *l0cOutUbBase =
@@ -702,34 +698,8 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     } else {
         l0cOutUbSecondAddr = (__ubuf__ DataTypeIn *)l0cOutUbSecond_.GetPhyAddr();
     }
-    if (actMode_ == static_cast<uint8_t>(ActMode::SITU)) {
-        if (actSubMode_ == static_cast<uint8_t>(ActSubMode::LINEAR)) {
-            VFDoActivationAndQuantForMX<ActivationQuantMsg::QuantMode::MX_PERGROUP_MODE, IsInterleaved_, ActMode::SITU,
-                                        ActSubMode::LINEAR>(quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase,
-                                                            l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr,
-                                                            mSize, singleN_, mLoc);
-        } else {
-            VFDoActivationAndQuantForMX<ActivationQuantMsg::QuantMode::MX_PERGROUP_MODE, IsInterleaved_,
-                                        ActMode::SITU, ActSubMode::DEFAULT>(
-                quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase,
-                l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
-        }
-    } else if (actMode_ == static_cast<uint8_t>(ActMode::SWIGLU_STEP)) {
-        VFDoActivationAndQuantForMX<ActivationQuantMsg::QuantMode::MX_PERGROUP_MODE, IsInterleaved_,
-                                    ActMode::SWIGLU_STEP, ActSubMode::DEFAULT>(
-            quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase,
-            l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
-    } else if (actMode_ == static_cast<uint8_t>(ActMode::SWIGLU_OAI)) {
-        VFDoActivationAndQuantForMX<ActivationQuantMsg::QuantMode::MX_PERGROUP_MODE, IsInterleaved_,
-                                    ActMode::SWIGLU_OAI, ActSubMode::DEFAULT>(
-            quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase,
-            l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
-    } else {
-        VFDoActivationAndQuantForMX<ActivationQuantMsg::QuantMode::MX_PERGROUP_MODE, IsInterleaved_,
-                                    ActMode::SWIGLU, ActSubMode::DEFAULT>(
-            quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase,
-            l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
-    }
+    VFDoActivationAndQuantForMX(quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase,
+                                l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
 }
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
