@@ -11,9 +11,9 @@
 #ifndef MEGA_MOE_ARCH35_EXCEPTION_DUMP_POLICY_H
 #define MEGA_MOE_ARCH35_EXCEPTION_DUMP_POLICY_H
 
-#include "../../../common/op_kernel/mc2_exception_dump.h"
-#include "common/mega_moe_workspace.h"
-#include "mega_moe_tiling.h"
+#include "../../../../common/op_kernel/mc2_exception_dump.h"
+#include "mega_moe_workspace.h"
+#include "../mega_moe_tiling.h"
 
 namespace MC2MegaMoeA5Dump {
 
@@ -22,7 +22,7 @@ enum class Stage : uint32_t {
     INPUT_PREPARE = 1,
     SHARED_EXPERT_GMM1 = 2,
     CROSS_RANK_SYNC_INPUT = 3,
-    MOE_GMM1_PIPELINE = 4,
+    MOE_GMM1_ACTIVATION = 4,
     MOE_GMM2_COMBINE = 5,
     SHARED_EXPERT_GMM2 = 6,
     CROSS_RANK_SYNC_OUTPUT = 7,
