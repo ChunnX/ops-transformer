@@ -41,11 +41,17 @@ constexpr uint32_t MSA_K_TILE = 128;
 constexpr uint32_t MSA_BLOCKS_PER_STILE = 8;
 
 // S workspace 轮转级数。AIC 领先 AIV 的未消费 tile 数 <= MSA_WORKSPACE_STAGES - 1。
-// 从 3 提到 5：A1 上 AIC 约一半时间在等 AIV（wait_id2≈1.7ms / 5ms），加深缓冲可藏 epilogue。
-constexpr uint32_t MSA_WORKSPACE_STAGES = 5;
+// 5 -> 8：AIV 乒乓化后服务速度提升，加深缓冲让 AIC 几乎不因 AIV 停顿（wait_id2→0）。
+// 非量化路径 S 为 fp16，8 级 × 256KB × 20 核 = 40MB，仍可整体驻留 L2。
+constexpr uint32_t MSA_WORKSPACE_STAGES = 8;
 
-// 一个 S workspace tile 的 fp32 元素数：[MSA_ROW_TILE_M, MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE]
+// 一个 S workspace tile 的元素数：[MSA_ROW_TILE_M, MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE]
+// 非量化路径元素为 fp16（fixpipe F322F16 直接写），int8 路径为 fp32。
 constexpr uint32_t MSA_STILE_ELEM_NUM = MSA_ROW_TILE_M * MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE;
+// 非量化 S tile 的字节数（fp16）。
+constexpr uint32_t MSA_STILE_BYTES_FP16 = MSA_STILE_ELEM_NUM * sizeof(uint16_t);
+// int8 路径 S tile 的字节数（fp32）。
+constexpr uint32_t MSA_STILE_BYTES_FP32 = MSA_STILE_ELEM_NUM * sizeof(float);
 
 // int8 路径：每个 AIC 私有一块 K cast 暂存，容纳一个 S-tile 内全部 page
 //（AIV 先 cast，AIC 再 Mmad，避免逐 page 细粒度同步）。

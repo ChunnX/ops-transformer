@@ -52,9 +52,13 @@ public:
 
     using QType = Catlass::Gemm::GemmType<ElementQ, LayoutQ>;
     using KType = Catlass::Gemm::GemmType<ElementQ, LayoutK>;
-    using SType = Catlass::Gemm::GemmType<float, LayoutS>;
+    // S workspace 元素：非量化 fp16（fixpipe F322F16 直接写，写读流量减半），int8 fp32
+    //（S 幅值大、1e-3 容差下 fp16 精度余量不足 15%，保持 fp32 反量化）。
+    using ElementS = std::conditional_t<IS_QUANT, float, half>;
+    using SType = Catlass::Gemm::GemmType<ElementS, LayoutS>;
 
-    using BlockMmad = MsaBlockMmad<QType, KType, SType>;
+    // int8 的 K 源是每 stile 复用的 per-core scratch，保持 2 级 L1B 流水（3 级实测竞态崩溃）。
+    using BlockMmad = MsaBlockMmad<QType, KType, SType, IS_QUANT ? 2U : 3U>;
 
     static constexpr uint32_t REVERSE_DEPTH = MSA_WORKSPACE_STAGES - 1;
     static constexpr uint32_t STILE_WIDTH = MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE;
@@ -87,7 +91,7 @@ public:
         gActualSeqKlen_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(actualSeqKlen));
         gStartLoc_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(startLoc));
         gScore_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(score));
-        gWorkspace_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspace));
+        gWorkspace_.SetGlobalBuffer(reinterpret_cast<__gm__ ElementS *>(workspace));
 
         scheduler_.Init(tiling_->batch, tiling_->numQHeads, tiling_->maxBlocksPerBatch,
                         tiling_->scoreBlockStride, tiling_->sparseMode, tiling_->initBlocks,
@@ -253,7 +257,7 @@ private:
     __aicore__ inline void ProcessVector()
     {
         Catlass::Arch::Resource<ArchTag> resource;
-        MsaSegRowMaxEpilogue epilogue;
+        MsaSegRowMaxEpilogue<IS_QUANT_V> epilogue;
         epilogue.Init(resource, tiling_->numQHeads, tiling_->strideOutHead, tiling_->strideOutToken,
                       tiling_->maxBlocksPerBatch, tiling_->strideScalePage, tiling_->strideScaleHead,
                       IS_QUANT_V, gScore_, gScale_, gBlockTable_);
@@ -318,7 +322,7 @@ private:
     AscendC::GlobalTensor<int32_t> gActualSeqKlen_;
     AscendC::GlobalTensor<int32_t> gStartLoc_;
     AscendC::GlobalTensor<float> gScore_;
-    AscendC::GlobalTensor<float> gWorkspace_;
+    AscendC::GlobalTensor<ElementS> gWorkspace_;
 };
 
 } // namespace MsaIndexScoreNs

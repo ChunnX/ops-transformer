@@ -71,11 +71,12 @@ __aicore__ inline void MsaPrintUbFloats(const AscendC::LocalTensor<float> &ub, u
     AscendC::printf("\n");
 }
 
-__aicore__ inline void MsaPrintGmFloats(const AscendC::GlobalTensor<float> &g, uint32_t n)
+template <typename T>
+__aicore__ inline void MsaPrintGmFloats(const AscendC::GlobalTensor<T> &g, uint32_t n)
 {
     const uint32_t lim = n < MSA_DEBUG_DUMP_ELEMS ? n : MSA_DEBUG_DUMP_ELEMS;
     for (uint32_t i = 0; i < lim; ++i) {
-        AscendC::printf(" %f", g.GetValue(i));
+        AscendC::printf(" %f", static_cast<float>(g.GetValue(i)));
     }
     AscendC::printf("\n");
 }
@@ -96,7 +97,8 @@ __aicore__ inline void MsaDumpUbSample(const AscendC::LocalTensor<float> &, uint
 
 __aicore__ inline void MsaPrintUbFloats(const AscendC::LocalTensor<float> &, uint32_t) {}
 
-__aicore__ inline void MsaPrintGmFloats(const AscendC::GlobalTensor<float> &, uint32_t) {}
+template <typename T>
+__aicore__ inline void MsaPrintGmFloats(const AscendC::GlobalTensor<T> &, uint32_t) {}
 
 #endif // MSA_INDEX_SCORE_DEBUG
 

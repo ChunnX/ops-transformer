@@ -34,7 +34,7 @@
 
 namespace MsaIndexScoreNs {
 
-template <class AType_, class BType_, class CType_>
+template <class AType_, class BType_, class CType_, uint32_t STAGES_IN = 3>
 class MsaBlockMmad {
 public:
     using ArchTag = Catlass::Arch::AtlasA2;
@@ -62,18 +62,29 @@ public:
     using L1AAlignHelper = Catlass::Gemm::helper::L1AlignHelper<ElementA, LayoutA>;
     using L1BAlignHelper = Catlass::Gemm::helper::L1AlignHelper<ElementB, LayoutB>;
 
-    static constexpr uint32_t STAGES = 2;
+    // K (B) 的 L1 流水级数。非量化 3 级：fixpipe 减半（fp16 S）后 MTE2 的逐页延迟
+    //（~390ns，L2 命中）会成为新的关键路径，加深一级让 MTE2 提前两页预取。
+    // int8 保持 2 级：K 源是每 stile 复用的 per-core scratch，AIV 下一 stile 的 cast
+    // 会重写该区，更深的预取与 cast 重写产生竞态（实测 STAGES=3 下 int8 崩溃）。
+    // L1 占用：A 32KB + 3×32KB B = 128KB / 512KB。
+    static constexpr uint32_t STAGES = STAGES_IN;
     static constexpr uint32_t L0C_STAGES = 2;
     static constexpr uint32_t L1_M = MSA_ROW_TILE_M;
     static constexpr uint32_t L1_N = MSA_BLOCK_SIZE;
     static constexpr uint32_t L1_K = MSA_K_TILE;
     static constexpr uint32_t L1A_SIZE = L1_M * L1_K * sizeof(ElementA);
     static constexpr uint32_t L1B_SIZE = L1_N * L1_K * sizeof(ElementB);
-    static constexpr uint32_t L0A_PINGPONG_BUF_SIZE = ArchTag::L0A_SIZE / STAGES;
-    static constexpr uint32_t L0B_PINGPONG_BUF_SIZE = ArchTag::L0B_SIZE / STAGES;
+    // L0A/L0B 各仅 64KB，B tile 32KB → 乒乓固定 2 级（32KB/级）；与 L1B STAGES 解耦。
+    static constexpr uint32_t L0A_STAGES = 2;
+    static constexpr uint32_t L0B_STAGES = 2;
+    static constexpr uint32_t L0A_PINGPONG_BUF_SIZE = ArchTag::L0A_SIZE / L0A_STAGES;
+    static constexpr uint32_t L0B_PINGPONG_BUF_SIZE = ArchTag::L0B_SIZE / L0B_STAGES;
     static constexpr uint32_t L0C_TILE_SIZE = L1_M * L1_N * sizeof(ElementAccumulator);
 
     static_assert(std::is_same_v<LayoutC, Catlass::layout::RowMajor>, "LayoutC must be RowMajor");
+    // A2 的 L0A/L0B 各仅 64KB：A/B tile 32KB，乒乓最多 2 级（32KB/级）。
+    static_assert(L0A_PINGPONG_BUF_SIZE >= L1A_SIZE, "L0A pingpong buf smaller than A tile");
+    static_assert(L0B_PINGPONG_BUF_SIZE >= L1B_SIZE, "L0B pingpong buf smaller than B tile");
     static_assert(L0C_TILE_SIZE * L0C_STAGES <= ArchTag::L0C_SIZE, "L0C pingpong exceeds L0C");
     static_assert(L1A_SIZE + L1B_SIZE * STAGES <= ArchTag::L1_SIZE, "L1 A+B exceeds L1");
 
@@ -83,13 +94,17 @@ public:
         const uint32_t l1BOffset = L1A_SIZE;
         for (uint32_t i = 0; i < STAGES; ++i) {
             l1BTensorList_[i] = resource.l1Buf.template GetBufferByByte<ElementB>(l1BOffset + L1B_SIZE * i);
-            l0ATensorList_[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(L0A_PINGPONG_BUF_SIZE * i);
-            l0BTensorList_[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(L0B_PINGPONG_BUF_SIZE * i);
             l1BEventList_[i] = static_cast<int32_t>(i + STAGES);
-            l0AEventList_[i] = static_cast<int32_t>(i);
-            l0BEventList_[i] = static_cast<int32_t>(i + STAGES);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventList_[i]);
+        }
+        for (uint32_t i = 0; i < L0A_STAGES; ++i) {
+            l0ATensorList_[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(L0A_PINGPONG_BUF_SIZE * i);
+            l0AEventList_[i] = static_cast<int32_t>(i);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventList_[i]);
+        }
+        for (uint32_t i = 0; i < L0B_STAGES; ++i) {
+            l0BTensorList_[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(L0B_PINGPONG_BUF_SIZE * i);
+            l0BEventList_[i] = static_cast<int32_t>(i + STAGES + L0A_STAGES);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventList_[i]);
         }
         for (uint32_t i = 0; i < L0C_STAGES; ++i) {
@@ -104,7 +119,11 @@ public:
     {
         for (uint32_t i = 0; i < STAGES; ++i) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventList_[i]);
+        }
+        for (uint32_t i = 0; i < L0A_STAGES; ++i) {
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventList_[i]);
+        }
+        for (uint32_t i = 0; i < L0B_STAGES; ++i) {
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventList_[i]);
         }
         for (uint32_t i = 0; i < L0C_STAGES; ++i) {
@@ -203,10 +222,10 @@ public:
                         tileMmad_(l0CTile, l0ATile, l0BTile, mPartActual, nPartActual, kPartActual, initC,
                                   0);
                         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventList_[l0BListId_]);
-                        l0BListId_ = (l0BListId_ + 1 < STAGES) ? (l0BListId_ + 1) : 0;
+                        l0BListId_ = (l0BListId_ + 1 < L0B_STAGES) ? (l0BListId_ + 1) : 0;
                     }
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventList_[l0AListId_]);
-                    l0AListId_ = (l0AListId_ + 1 < STAGES) ? (l0AListId_ + 1) : 0;
+                    l0AListId_ = (l0AListId_ + 1 < L0A_STAGES) ? (l0AListId_ + 1) : 0;
                 }
             }
             l1ListId_ = l1ListIdNext;
