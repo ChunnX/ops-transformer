@@ -412,7 +412,8 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
   } else {
     fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV; // dstGm 两行之间的间隔
   }
-  fixpipeParams.dualDstCtl = 1;
+  fixpipeParams.dualDstCtl = 0;
+  fixpipeParams.subBlockId = 0;
   fixpipeParams.params.ndNum = 1;
   fixpipeParams.params.srcNdStride = 0;
   fixpipeParams.params.dstNdStride = 0;
@@ -518,7 +519,8 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
     } else {
         fixpipeParams.dstStride = fixpipeParams.nSize / 2;
     }
-    fixpipeParams.dualDstCtl = 1;
+    fixpipeParams.dualDstCtl = 0;
+    fixpipeParams.subBlockId = 0;
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
@@ -665,7 +667,8 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
                                   // 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
     fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 // 128:根据比对dump文件得到,
                                           // ND方案(S1*S2)时脏数据用mask剔除
-    fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
+    fixpipeParams.dualDstCtl = 0;
+    fixpipeParams.subBlockId = 0;
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
