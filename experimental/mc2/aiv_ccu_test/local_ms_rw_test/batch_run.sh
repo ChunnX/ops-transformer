@@ -191,6 +191,7 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode0 warmup ms_id loop_count
         4|dual_core_rw|DUAL_CORE_RW|dcrw|DCRW) mode0_str="DUAL_CORE_RW" ;;
         5|gm_write|GM_WRITE) mode0_str="GM_WRITE" ;;
         6|gm_read|GM_READ) mode0_str="GM_READ" ;;
+        7|dual_cross_rw|DUAL_CROSS_RW|dcrw2|DCRW2) mode0_str="DUAL_CROSS_RW" ;;
         *) mode0_str="UNKNOWN($mode0)" ;;
     esac
 
@@ -224,7 +225,9 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode0 warmup ms_id loop_count
 
     # 解析输出
     if [ "$mode0" = "4" ] || [ "$mode0" = "dual_core_rw" ] || [ "$mode0" = "DUAL_CORE_RW" ] \
-       || [ "$mode0" = "dcrw" ] || [ "$mode0" = "DCRW" ]; then
+       || [ "$mode0" = "dcrw" ] || [ "$mode0" = "DCRW" ] \
+       || [ "$mode0" = "7" ] || [ "$mode0" = "dual_cross_rw" ] || [ "$mode0" = "DUAL_CROSS_RW" ] \
+       || [ "$mode0" = "dcrw2" ] || [ "$mode0" = "DCRW2" ]; then
         # 双核模式：写核用 startCycle/endCycle，读核用 startCycle2/endCycle2
         warmup_cycles=$(echo "$output" | grep "warmupCycle:" | grep -oP '\d+' | head -1)
         start_cycle=$(echo "$output" | grep "startCycle:" | grep -oP '\d+' | tail -1)

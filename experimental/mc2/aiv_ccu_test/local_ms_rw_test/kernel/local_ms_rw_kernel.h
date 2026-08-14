@@ -31,7 +31,6 @@ enum RwMode : uint32_t {
     MODE_READ = 1,
     MODE_READ_WRITE = 2,
     MODE_WRITE_THEN_READ = 3,
-    MODE_DUAL_CORE_RW = 4,
     MODE_GM_WRITE = 5,
     MODE_GM_READ = 6,
 };
@@ -56,8 +55,6 @@ private:
     __aicore__ inline void ReadMode();
     __aicore__ inline void ReadWriteMode();
     __aicore__ inline void WriteThenReadMode();
-    __aicore__ inline void DualCoreWriteMode();
-    __aicore__ inline void DualCoreReadMode();
     __aicore__ inline void FillData();
     __aicore__ inline void VerifyResult();
     __aicore__ inline void PrintSampleData();
@@ -71,8 +68,7 @@ private:
     uint32_t aivId_;
 
     GlobalTensor<T> msGm_[4];
-    GlobalTensor<uint64_t> timeGm_;       // 核0用 [0-3]
-    GlobalTensor<uint64_t> timeGm2_;      // 核1用 [0-3]，独立地址
+    GlobalTensor<uint64_t> timeGm_;
 
     TBuf<TPosition::VECCALC> dataBuf_;
     TBuf<TPosition::VECCALC> readBuf_;
@@ -81,7 +77,6 @@ private:
 
     uint32_t totalElem_{0};
     uint32_t verifyResult_{0};
-    bool sameAddr_{false};
 };
 
 template <typename T>
@@ -103,44 +98,22 @@ __aicore__ inline void LocalMsRw<T>::Init(uint32_t mode0, uint32_t enableWarmup,
         msGm_[i].SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     }
     timeGm_.SetGlobalBuffer((__gm__ uint64_t *)timeAddr);
-    if (mode0_ == MODE_DUAL_CORE_RW) {
-        timeGm2_.SetGlobalBuffer((__gm__ uint64_t *)timeAddr2);
-    }
 
-    if (mode0_ == MODE_DUAL_CORE_RW) {
-        sameAddr_ = (msId_ == 0);
-        constexpr uint32_t DUAL_MS_ID = 1;
-        if (aivId_ == 0) {
-            pipe->InitBuffer(dataBuf_, dataSize);
-            dataLocal_ = dataBuf_.Get<T>();
-        } else {
-            pipe->InitBuffer(readBuf_, dataSize);
-            readLocal_ = readBuf_.Get<T>();
-        }
-        totalElem_ = static_cast<uint32_t>(dataSize / sizeof(T));
-    } else {
-        if (aivId_ > 0) return;
+    if (aivId_ > 0) return;
 
-        if (mode0_ == MODE_READ_WRITE || mode0_ == MODE_WRITE_THEN_READ) {
-            pipe->InitBuffer(dataBuf_, dataSize);
-            pipe->InitBuffer(readBuf_, dataSize);
-            dataLocal_ = dataBuf_.Get<T>();
-            readLocal_ = readBuf_.Get<T>();
-        } else if (mode0_ == MODE_WRITE) {
-            pipe->InitBuffer(dataBuf_, dataSize);
-            dataLocal_ = dataBuf_.Get<T>();
-        } else if (mode0_ == MODE_READ) {
-            pipe->InitBuffer(readBuf_, dataSize);
-            readLocal_ = readBuf_.Get<T>();
-        } else if (mode0_ == MODE_GM_WRITE) {
-            pipe->InitBuffer(dataBuf_, dataSize);
-            dataLocal_ = dataBuf_.Get<T>();
-        } else if (mode0_ == MODE_GM_READ) {
-            pipe->InitBuffer(readBuf_, dataSize);
-            readLocal_ = readBuf_.Get<T>();
-        }
-        totalElem_ = static_cast<uint32_t>(dataSize / sizeof(T));
+    if (mode0_ == MODE_READ_WRITE || mode0_ == MODE_WRITE_THEN_READ) {
+        pipe->InitBuffer(dataBuf_, dataSize);
+        pipe->InitBuffer(readBuf_, dataSize);
+        dataLocal_ = dataBuf_.Get<T>();
+        readLocal_ = readBuf_.Get<T>();
+    } else if (mode0_ == MODE_WRITE || mode0_ == MODE_GM_WRITE) {
+        pipe->InitBuffer(dataBuf_, dataSize);
+        dataLocal_ = dataBuf_.Get<T>();
+    } else if (mode0_ == MODE_READ || mode0_ == MODE_GM_READ) {
+        pipe->InitBuffer(readBuf_, dataSize);
+        readLocal_ = readBuf_.Get<T>();
     }
+    totalElem_ = static_cast<uint32_t>(dataSize / sizeof(T));
 }
 
 template <typename T>
@@ -249,27 +222,6 @@ __aicore__ inline void LocalMsRw<T>::WriteThenReadMode()
 }
 
 template <typename T>
-__aicore__ inline void LocalMsRw<T>::DualCoreWriteMode()
-{
-    constexpr uint32_t DUAL_MS_ID = 1;
-    for (uint32_t i = 0; i < loopCount_; i++) {
-        DataCopy(msGm_[DUAL_MS_ID], dataLocal_, totalElem_);
-        PipeBarrier<PIPE_ALL>();
-    }
-}
-
-template <typename T>
-__aicore__ inline void LocalMsRw<T>::DualCoreReadMode()
-{
-    constexpr uint32_t DUAL_MS_ID = 1;
-    uint64_t readOffset = sameAddr_ ? 0 : totalElem_;
-    for (uint32_t i = 0; i < loopCount_; i++) {
-        DataCopy(readLocal_, msGm_[DUAL_MS_ID][readOffset], totalElem_);
-        PipeBarrier<PIPE_ALL>();
-    }
-}
-
-template <typename T>
 __aicore__ inline void LocalMsRw<T>::FillData()
 {
     for (uint32_t i = 0; i < totalElem_; i++) {
@@ -306,67 +258,6 @@ __aicore__ inline void LocalMsRw<T>::PrintSampleData()
 template <typename T>
 __aicore__ inline void LocalMsRw<T>::Process()
 {
-    if (mode0_ == MODE_DUAL_CORE_RW) {
-        if (aivId_ == 0) {
-            Duplicate<T>(dataLocal_, (T)2, totalElem_);
-            PipeBarrier<PIPE_ALL>();
-
-            uint64_t warmupCycles = 0;
-            if (enableWarmup_ != 0) {
-                uint64_t warmupStart = GetSystemCycle();
-                constexpr uint32_t DUAL_MS_ID = 1;
-                for (uint32_t w = 0; w < enableWarmup_; w++) {
-                    DataCopy(msGm_[DUAL_MS_ID], dataLocal_, totalElem_);
-                    PipeBarrier<PIPE_ALL>();
-                }
-                uint64_t warmupEnd = GetSystemCycle();
-                warmupCycles = warmupEnd - warmupStart;
-            }
-
-            // 同步点1：核0通知核1就绪
-            CrossCoreSetFlag<0x0, PIPE_ALL>(1);
-            CrossCoreWaitFlag<0x0, PIPE_ALL>(2);
-
-            uint64_t startCycle = GetSystemCycle();
-            DualCoreWriteMode();
-            uint64_t endCycle = GetSystemCycle();
-
-            timeGm_.SetValue(0, startCycle);
-            timeGm_.SetValue(1, endCycle);
-            timeGm_.SetValue(2, 0);
-            timeGm_.SetValue(3, warmupCycles);
-            DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(timeGm_);
-        } else {
-            uint64_t warmupCycles = 0;
-            if (enableWarmup_ != 0) {
-                uint64_t warmupStart = GetSystemCycle();
-                constexpr uint32_t DUAL_MS_ID = 1;
-                uint64_t readOffset = sameAddr_ ? 0 : totalElem_;
-                for (uint32_t w = 0; w < enableWarmup_; w++) {
-                    DataCopy(readLocal_, msGm_[DUAL_MS_ID][readOffset], totalElem_);
-                    PipeBarrier<PIPE_ALL>();
-                }
-                uint64_t warmupEnd = GetSystemCycle();
-                warmupCycles = warmupEnd - warmupStart;
-            }
-
-            // 同步点1：核1等待核0就绪，然后通知核0
-            CrossCoreWaitFlag<0x0, PIPE_ALL>(1);
-            CrossCoreSetFlag<0x0, PIPE_ALL>(2);
-
-            uint64_t startCycle = GetSystemCycle();
-            DualCoreReadMode();
-            uint64_t endCycle = GetSystemCycle();
-
-            timeGm2_.SetValue(0, startCycle);
-            timeGm2_.SetValue(1, endCycle);
-            timeGm2_.SetValue(2, warmupCycles);
-            timeGm2_.SetValue(3, 0);
-            DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(timeGm2_);
-        }
-        return;
-    }
-
     if (aivId_ > 0) return;
 
     // 打点外：填充数据

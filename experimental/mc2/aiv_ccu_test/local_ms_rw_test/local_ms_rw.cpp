@@ -17,6 +17,7 @@
 #include <cstring>
 #include "kernel_operator.h"
 #include "./kernel/local_ms_rw_kernel.h"
+#include "./kernel/dual_core_rw_kernel.h"
 
 using namespace AscendC;
 using namespace LocalMsRwImpl;
@@ -32,9 +33,19 @@ local_ms_rw_kernel_impl(uint32_t mode0, uint32_t enableWarmup, uint32_t msId, ui
 
     GM_ADDR msAddrs[4] = {msAddr0, msAddr1, msAddr2, msAddr3};
 
-    LocalMsRw<uint8_t> op;
-    op.Init(mode0, enableWarmup, msId, loopCount, dataSize, msAddrs, timeAddr, timeAddr2, blockDim, &pipe);
-    op.Process();
+    if (mode0 == 4) {
+        DualCoreRw<uint8_t> op;
+        op.Init(enableWarmup, msId, loopCount, dataSize, msAddrs, timeAddr, timeAddr2, &pipe);
+        op.Process();
+    } else if (mode0 == 7) {
+        DualCoreCrossRw<uint8_t> op;
+        op.Init(enableWarmup, msId, loopCount, dataSize, msAddrs, timeAddr, timeAddr2, &pipe);
+        op.Process();
+    } else {
+        LocalMsRw<uint8_t> op;
+        op.Init(mode0, enableWarmup, msId, loopCount, dataSize, msAddrs, timeAddr, timeAddr2, blockDim, &pipe);
+        op.Process();
+    }
 }
 
 extern "C" __global__ __aicore__ void Aivccu_COMM(uint32_t mode0, uint32_t enableWarmup,
