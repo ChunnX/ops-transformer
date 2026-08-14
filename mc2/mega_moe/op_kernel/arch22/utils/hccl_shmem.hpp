@@ -414,7 +414,6 @@ public:
             gm_dcci((__gm__ uint8_t *)sync_remote);
         }
         for (int i = vec_id; i < m_rankSize; i += vec_size) {
-            gm_dcci(rankMask + i);
             if (gm_load(rankMask + i) != 0) { // masked rank不再等待
                 continue;
             }

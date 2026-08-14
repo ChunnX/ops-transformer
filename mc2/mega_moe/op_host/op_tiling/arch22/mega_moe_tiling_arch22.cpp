@@ -1394,7 +1394,7 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
                                                  // cumsum + ptrSumBeforeRankForDispatch + ptrSumBeforeRankForCombine
                            paddedExpertNumAligned * (info.worldSize + 2UL) * sizeof(int32_t) +
                            info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) + // GMM1&2 Out
-                           info.maxRecvTokenNum * std::max(info.K, k2) * swigluSize +      // swiglu out & quantizedToken
+                           info.maxRecvTokenNum * std::max(info.K, k2) * swigluSize +      // swiglu out
                            info.worldSize * sizeof(int32_t) * 16UL;                        // sync
         if (info.isQuantRouting) {
             megeMoeWorkspace += info.maxRecvTokenNum * sizeof(float) * 2UL; // perTokenScale GMM1&2

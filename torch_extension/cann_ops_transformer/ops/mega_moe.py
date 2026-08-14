@@ -304,11 +304,9 @@ class SymmBuffer:
         self._ctx_manager.destroy()
 
     def query_mask_buffer(self) -> Optional[torch.Tensor]:
-        """Return a host-side snapshot of the rank mask."""
+        """Return the current rank mask tensor."""
         self._check_mask_buffer_supported()
-        if self.mask_buffer is None:
-            return None
-        return self.mask_buffer.detach().cpu().clone()
+        return self.mask_buffer
 
     def update_mask_buffer(self, rank: int, masked: bool) -> None:
         self._check_mask_buffer_supported()
@@ -328,6 +326,7 @@ class SymmBuffer:
 
     def update_group(self, group) -> None:
         """Destroy the old links after a replacement context has been created."""
+        self._check_mask_buffer_supported()
         rank_id = torch.distributed.get_rank(group)
         group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(
             rank_id, init_comm=True
@@ -520,15 +519,3 @@ def mega_moe(
         rank_num_per_server=sym_buffer.rank_num_per_server,
         topk_weights_type=sym_buffer.topk_weights_type,
     )
-
-
-def query_mask_buffer(sym_buffer: SymmBuffer) -> Optional[torch.Tensor]:
-    return sym_buffer.query_mask_buffer()
-
-
-def update_mask_buffer(sym_buffer: SymmBuffer, rank: int, masked: bool) -> None:
-    sym_buffer.update_mask_buffer(rank, masked)
-
-
-def update_group(sym_buffer: SymmBuffer, group) -> None:
-    sym_buffer.update_group(group)
