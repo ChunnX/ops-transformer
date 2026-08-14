@@ -625,6 +625,11 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
             }
         }
     }
+    if ASCEND_IS_AIC {
+        bmm2Buffers.Get().WaitCrossCore();
+        bmm1Buffers.Get().WaitCrossCore();
+        bmm1Buffers.Get().WaitCrossCore();
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
