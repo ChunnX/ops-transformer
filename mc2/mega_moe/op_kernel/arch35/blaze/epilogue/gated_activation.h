@@ -223,7 +223,7 @@ RunSwiGLU(const ActivationContext<DataTypeIn> &ctx)
  *   ActSub==LINEAR: out = situ_a * (alpha * tanh(up/alpha))
  *   ActSub==DEFAULT: out = situ_a * up
  *   tanh 采用两段式（多项式路 + sigmoid 分解路），保号无相消
- *   参照 situ_mx_quant_common.h::ComputeVfSitu，含主循环 + 尾循环 + pad 填零
+ *   含主循环、尾循环和 padding 填零处理。
  */
 template <typename DataTypeIn, bool TopkWeightsPrefetch, bool IsLinear, bool IsInterleaved>
 __aicore__ inline void
