@@ -274,10 +274,17 @@ public:
     {
         if (bN2Cur != bN2End_) {
             return bN2Cur < bN2End_;
+<<<<<<< HEAD
         }
         if (gS1Cur != gS1OEnd_) {
             return gS1Cur < gS1OEnd_;
         }
+=======
+        }
+        if (gS1Cur != gS1OEnd_) {
+            return gS1Cur < gS1OEnd_;
+        }
+>>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
         return s2Cur < s2OEnd_;
     }
 
@@ -376,6 +383,7 @@ public:
         if (loop >= DELAY_P_SCALE_N && runInfo3.isValid) {
             if (runInfo3.isUpdatePScale) {
                 if ASCEND_IS_AIC {
+<<<<<<< HEAD
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
                                                               runInfo3.tileMaxIdx / 2);
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
@@ -385,13 +393,24 @@ public:
                                                              runInfo3.tileMaxIdx / 2);
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB +
                                                              runInfo3.tileMaxIdx / 2 + 16);
+=======
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo3.tileMaxIdx / 2);
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo3.tileMaxIdx / 2 + 16);
+                    CopyGMaxL1ToUb(runInfo3);
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2);
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2 + 16);
+>>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
                     if (runInfo3.tileMaxIdx == 3) {
                         CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_UB_L1);
                         CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_UB_L1 + 16);
                     }
                 } else {
+<<<<<<< HEAD
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB +
                                                            runInfo3.tileMaxIdx / 2);
+=======
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_BUF0_GMAX_L1_TO_UB + runInfo3.tileMaxIdx / 2);
+>>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
                     UpdatePScale(runInfo3);
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2_0 + runInfo3.pscaleNum);
                 }
@@ -416,8 +435,12 @@ public:
                         CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_UB_L1);
                     }
                     CopyGMaxUbToL1(runInfo0);
+<<<<<<< HEAD
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
                                                              runInfo0.tileMaxIdx / 2);
+=======
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 + runInfo0.tileMaxIdx / 2);
+>>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
                 }
             }
         }
@@ -472,8 +495,12 @@ public:
         }
         info.actSingleLoopS2Size = s2BaseSize;
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
+<<<<<<< HEAD
             info.actSingleLoopS2Size =
                 (info.actS2Size > s2Cur * s2BaseSize) ? (info.actS2Size - s2Cur * s2BaseSize) : 0;
+=======
+            info.actSingleLoopS2Size = (info.actS2Size > s2Cur * s2BaseSize) ? (info.actS2Size - s2Cur * s2BaseSize) : 0;
+>>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
         }
         info.actSingleLoopS2SizeAlign =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)AttentionCommon::BYTE_BLOCK);      // 统一对齐到32
@@ -485,6 +512,10 @@ public:
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
+<<<<<<< HEAD
+=======
+        info.isLastSecondS2Loop = (s2Cur + 2 == curS2End) || (curS2End == 1);
+>>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
         info.isUpdatePScale = (info.isLastS2Loop || ((info.curS2LoopIdx + 1) % TILE_N == 0));
         info.isC2Sync = (info.curS2LoopIdx % TILE_N == 0);
         if (info.isFirstS2Loop) {
@@ -495,9 +526,12 @@ public:
             tileLoopIdx = (tileLoopIdx + 1) % 2;
             tileMaxIdx = (tileMaxIdx + 1) % 4;
             pscaleNum = (pscaleNum + 1) % 20;
+<<<<<<< HEAD
         }
         if (info.isUpdatePScale && info.curS2LoopIdx / 16 != 0) {
             updateScaleNum = (updateScaleNum + 1) % 4;
+=======
+>>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
         }
         info.updateScaleNum = updateScaleNum;
         info.tileBuffIdx = tileLoopIdx;

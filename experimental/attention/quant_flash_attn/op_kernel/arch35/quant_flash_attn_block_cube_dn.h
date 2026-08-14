@@ -484,6 +484,10 @@ public:
         }
         SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
         kvBufId = (kvBufId + 1) % L1_KV_BUFCNT;
+<<<<<<< HEAD
+=======
+        
+>>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
     }
 
     __aicore__ inline void CopyGMaxL1ToUb(const RunInfo &runInfo)

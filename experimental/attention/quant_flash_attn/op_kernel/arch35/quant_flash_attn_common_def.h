@@ -121,11 +121,19 @@ struct RunInfo {
     bool isValid = false;
     bool isFirstS2Loop = false;
     bool isLastS2Loop = false;
+<<<<<<< HEAD
+=======
+    bool isLastSecondS2Loop = true;
+>>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
     bool isUpdatePScale = false;
     bool isC2Sync = false;            // s2上16个softmax是一个tile，这是每一个tile的第一个softmax 任务
     uint32_t s2FirstStartVecCore = 0; // s2上第一个softmax分给哪个vec core
     uint32_t tileBuffIdx = 0;         // 当前tile分给哪个buff
     uint32_t tileMaxIdx = 0;
+<<<<<<< HEAD
+=======
+    uint32_t updateScaleIdx = 0;
+>>>>>>> f86e98fea... kernel主循环修改 & Cube刷1逻辑修改
     uint32_t pscaleNum = 0;
     bool isS2FirstTilePerCore = false; // 16个softmax均分在两个core, 当前任务是否是分在当前core上的第一个，
 
