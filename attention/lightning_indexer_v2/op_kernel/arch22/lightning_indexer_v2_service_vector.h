@@ -160,6 +160,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe *
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitLDBuffers(TPipe *pipe)
 {
+    printf("InitLDBuffers start\n");
+    PipeBarrier<PIPE_ALL>();
     pipe->Reset();
     pipe->InitBuffer(ldToBeMrgBuf_, 2 * BASE_TOPK * mrgListNum_ * sizeof(float)); // 2：value + index
     pipe->InitBuffer(ldTmpBuf_, 2 * BASE_TOPK * mrgListNum_ * sizeof(float));     // 2：value + index
