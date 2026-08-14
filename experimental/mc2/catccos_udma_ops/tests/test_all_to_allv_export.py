@@ -138,3 +138,27 @@ def test_export_overlaps_previous_stage_with_current_communication():
     assert "ownsPeer = subcoreIdx == 1;" in kernel
     assert "exportPipeline.GetBlockExport()" in kernel
     assert "uint32_t exportIdx = commLoops - 1;" in kernel
+
+
+def test_peer_completion_signal_is_published_after_data_completion():
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "ascend950_alltoallv_grouped_matmul.hpp"
+    ).read_text(encoding="utf-8")
+    completion_comment = kernel.index(
+        "current peer before publishing its receive-counter increment"
+    )
+    finalize = kernel.index(
+        "blockRemoteCopy.FinalizeBlockLoop();", completion_comment
+    )
+    completion_signal = kernel.index("syncCommFinish, completedBlocks,", finalize)
+    receiver_wait = kernel.index(
+        "aclshmem_signal_wait_until(syncCommFinish", completion_signal
+    )
+    assert finalize < completion_signal < receiver_wait

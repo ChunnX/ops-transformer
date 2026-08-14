@@ -414,6 +414,8 @@ public:
         for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
             uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
             auto const &gmSymmetric = gmSymmetricList[stageIdx];
+            uint32_t completionPeerIdx = 0;
+            int32_t completedBlocks = 0;
 
             // 妫板嫯顓搁張顒冪枂鏉╁洤鎮楅敍灞界秼閸?rank 鐏忓棛鐤拋鈩冩暪閸掓澘顦跨亸?token
             receiveAccum += scheduler.GetActualReceiveAccum(commIdx);
@@ -497,8 +499,14 @@ public:
                                         gmBlockDst, layoutBlockDst,
                                         actualBlockShape, dstRankIdx
                                     );
-                                    aclshmem_fence();
-                                    aclshmemx_signal_op(syncCommFinish, 1, ACLSHMEM_SIGNAL_ADD, dstRankIdx);
+                                    if constexpr (EXPORT_ALLTOALLV) {
+                                        ++completedBlocks;
+                                    } else {
+                                        aclshmem_fence();
+                                        aclshmemx_signal_op(
+                                            syncCommFinish, 1,
+                                            ACLSHMEM_SIGNAL_ADD, dstRankIdx);
+                                    }
                                 }
                             } else {
                                 // UDMA does not need the MTE communication block. Submit
@@ -517,13 +525,37 @@ public:
                                     gmCommDst, layoutCommDst,
                                     actualCommShape, dstRankIdx
                                 );
-                                aclshmem_fence();
-                                auto completedBlocks = static_cast<int32_t>(
+                                auto peerCompletedBlocks = static_cast<int32_t>(
                                     Numel(CeilDiv(actualCommShape, blockShape)));
-                                aclshmemx_signal_op(
-                                    syncCommFinish, completedBlocks, ACLSHMEM_SIGNAL_ADD, dstRankIdx);
+                                if constexpr (EXPORT_ALLTOALLV) {
+                                    completedBlocks = peerCompletedBlocks;
+                                } else {
+                                    aclshmem_fence();
+                                    aclshmemx_signal_op(
+                                        syncCommFinish, peerCompletedBlocks,
+                                        ACLSHMEM_SIGNAL_ADD, dstRankIdx);
+                                }
                             }
+                            completionPeerIdx = dstRankIdx;
                         }
+                    }
+                }
+
+                // UDMA puts are non-blocking. A fence orders their submission but
+                // does not make the remote staging data consumable. Drain the
+                // current peer before publishing its receive-counter increment;
+                // otherwise a receiver can export the unfinished tail of a stage.
+                if constexpr (EXPORT_ALLTOALLV) {
+                    if (subcoreIdx == 1) {
+                        blockRemoteCopy.FinalizeBlockLoop();
+                    }
+                    if (completedBlocks > 0) {
+                        aclshmemx_signal_op(
+                            syncCommFinish, completedBlocks,
+                            ACLSHMEM_SIGNAL_ADD, completionPeerIdx);
+                    }
+                    if (subcoreIdx == 1 && commIdx + 1 < commLoops) {
+                        blockRemoteCopy.InitBlockLoop();
                     }
                 }
             } else {
@@ -573,7 +605,7 @@ public:
                         exportPipeline.FinalizeBlockLoop();
                         exportPipeline.InitBlockLoop();
                     }
-                } else {
+                } else if constexpr (!USE_UDMA_PEER_SERIAL_SCHEDULE) {
                     blockRemoteCopy.FinalizeBlockLoop();
                     if (commIdx + 1 < commLoops) {
                         blockRemoteCopy.InitBlockLoop();
