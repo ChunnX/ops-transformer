@@ -137,7 +137,7 @@ private:
         UB_MAX_SIZE * UB_MAX_BUFCNT * sizeof(half) + UB_MAX_SIZE * UB_MAX_BUFCNT * sizeof(half) +
         UB_LOCALGROUPMAX_SIZE * UB_LOCALGROUPMAX_BUFCNT * sizeof(half);
 
-    static constexpr uint32_t UB_UPDATE_IDX = 0;
+    uint32_t UB_UPDATE_IDX = 0;
 
     LocalTensor<half> mm1ResUB;
     LocalTensor<float> mm2ResUB;
