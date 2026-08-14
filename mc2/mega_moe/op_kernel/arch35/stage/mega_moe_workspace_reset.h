@@ -34,13 +34,13 @@ __aicore__ inline int64_t CalcResetFlagElementCount(const MegaMoeTilingData *til
     int64_t maxWavesPerExpert =
         Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(L1_TILE_M_256));
     int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
-    int64_t swigluFlagSlotsPerExpert =
+    int64_t activationFlagSlotsPerExpert =
         useMteA8W8Wave ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
     int64_t moeExpertCount = static_cast<int64_t>(tilingData->moeExpertPerRank);
 
     int64_t flagElementCount =
         moeExpertCount *
-        (swigluFlagSlotsPerExpert + waveFlagSlotsPerExpert +
+        (activationFlagSlotsPerExpert + waveFlagSlotsPerExpert +
          static_cast<int64_t>(INT_CACHELINE) * tilingData->aicNum);
     if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
@@ -64,10 +64,10 @@ __aicore__ inline int64_t CalcResetFlagElementCount(const MegaMoeTilingData *til
 
 // 清理连续 flag workspace；prefetch 路径额外清理独立分配的 GMM1 tile 状态区。
 template <bool TopkWeightsPrefetch>
-__aicore__ inline void ResetDispatchWorkspace(const DispatchPrepareConfig &context,
-                                              const Params &params,
-                                              const ResetWorkspaceConfig &config,
-                                              LocalTensor<int32_t> &resetTensor)
+__aicore__ inline void ResetSyncStatus(const DispatchPrepareConfig &context,
+                                       const Params &params,
+                                       const ResetWorkspaceConfig &config,
+                                       LocalTensor<int32_t> &resetTensor)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -77,7 +77,7 @@ __aicore__ inline void ResetDispatchWorkspace(const DispatchPrepareConfig &conte
         return;
     }
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
-    ResetWorkspaceRegion<1>(job, params.workspaceInfo.flagSwiGluToGmm2Ptr, config.flagElementCount,
+    ResetWorkspaceRegion<1>(job, params.workspaceInfo.flagActivationToGmm2Ptr, config.flagElementCount,
                             config.resetBatchElementCount, resetTensor);
     if constexpr (TopkWeightsPrefetch) {
         int32_t statusElementCount =
