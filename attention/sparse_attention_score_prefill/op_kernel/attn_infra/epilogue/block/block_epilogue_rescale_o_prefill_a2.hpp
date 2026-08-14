@@ -418,24 +418,25 @@ private:
             AscendC::DumpTensor(lseSumTmpBuf, 903, alignedLseCount);
 #endif
         }
-        // A2's two consecutive Broadcast calls may still use their temporary
-        // area after PipeBarrier<PIPE_V>.  Reusing that area for rowSum made
-        // the second broadcast consume score-like stale data on topK > 1.
-        // There are at most topK * groupSize scalars here, so materialize the
-        // required [topK, row, 8] layout explicitly.  The current combined
-        // scale formula cancels rowSum before ReduceFinalRes, so its reciprocal
-        // is needed only by the phase2 dump contract.
-        for (uint32_t idx = 0U; idx < lseCount; ++idx) {
-            const float rowMax = lseMaxTmpBuf.GetValue(idx);
-            const float rowSum = lseSumTmpBuf.GetValue(idx);
-            const uint32_t dstOff = idx * FP32_ONE_BLOCK_SIZE;
-            AscendC::Duplicate<float>(lseMaxLocal[dstOff], rowMax, FP32_ONE_BLOCK_SIZE);
-            AscendC::Duplicate<float>(lseSumLocal[dstOff], rowSum, FP32_ONE_BLOCK_SIZE);
-#if KERNEL_DUMP_PHASE2_STATE
-            lseSumTmpBuf.SetValue(idx, rowSum > 0.0f ? 1.0f / rowSum : 0.0f);
-#endif
-        }
+        // Vectorized: replace per-element scalar GetValue+Duplicate with Brcb.
+        // Brcb broadcasts each consecutive source float to an 8-element block
+        // in the destination, matching the [topK, row, 8] layout exactly.
+        // topK_ being a multiple of 8 guarantees lseCount is block-aligned.
+        AscendC::Brcb(lseMaxLocal.ReinterpretCast<uint32_t>(),
+                       lseMaxTmpBuf.ReinterpretCast<uint32_t>(),
+                       alignedLseCount / FP32_ONE_BLOCK_SIZE,
+                       AscendC::BrcbRepeatParams(1, 8));
+        AscendC::Brcb(lseSumLocal.ReinterpretCast<uint32_t>(),
+                       lseSumTmpBuf.ReinterpretCast<uint32_t>(),
+                       alignedLseCount / FP32_ONE_BLOCK_SIZE,
+                       AscendC::BrcbRepeatParams(1, 8));
         AscendC::PipeBarrier<PIPE_V>();
+#if KERNEL_DUMP_PHASE2_STATE
+        for (uint32_t idx = 0U; idx < lseCount; ++idx) {
+            const float rowSum = lseSumTmpBuf.GetValue(idx);
+            lseSumTmpBuf.SetValue(idx, rowSum > 0.0f ? 1.0f / rowSum : 0.0f);
+        }
+#endif
     }
 
     // ---------------------------------------------------------------------------
@@ -552,16 +553,15 @@ private:
                        k, numeratorBuf.GetValue(0), totalBuf.GetValue(0));
             }
 #endif
-            for (uint32_t row = 0U; row < dealRowCount; ++row) {
-                const uint32_t rowOff = row * FP32_ONE_BLOCK_SIZE;
-                const float denominator = totalBuf.GetValue(rowOff);
-                const float expValue = numeratorBuf.GetValue(rowOff);
-                const float rowSum = lseSumLocal[k * dealCount + rowOff].GetValue(0);
-                const float scale = (denominator > 0.0f && rowSum > 0.0f)
-                    ? expValue / denominator : 0.0f;
-                AscendC::Duplicate<float>(lseSumLocal[k * dealCount + rowOff], scale,
-                                           FP32_ONE_BLOCK_SIZE);
-            }
+            // Vectorized: replace per-row scalar GetValue+div+Duplicate with
+            // a single vector Div.  When rowSum=0 (padding row), rowMax=
+            // NEG_INF_LSE so exp(rowMax-globalMax) underflows to 0, making
+            // 0/total=0 — the correct scale.  The denominator=0 case (all
+            // splits empty) is unreachable for valid attention.
+            AscendC::Div<float, false>(
+                lseSumLocal[k * dealCount], numeratorBuf, totalBuf,
+                (uint64_t)0, vecRepeats,
+                AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
             AscendC::PipeBarrier<PIPE_V>();
         }
         AscendC::PipeBarrier<PIPE_V>();

@@ -258,6 +258,13 @@ public:
 
     static constexpr uint32_t COPY_GRANULARITY = 2;
 
+    // CSR batch-read UB buffers (VEC only): replace per-element GlobalTensor::GetValue
+    // (blacklisted API, ~100 cycles each) with one DataCopyPad per task + LocalTensor
+    // GetValue (~few cycles each).  Free UB starts after GL stage 1.
+    static constexpr uint32_t CSR_UB_MAX_QTOKENS = 512U;  // max Q tokens per CSR row
+    static constexpr uint32_t CSR_UB_QINDICES_OFFSET = SM_UB_GL_OFFSET + 2U * SM_UB_STAGE_BYTES;
+    static constexpr uint32_t CSR_UB_SLOTK_OFFSET = CSR_UB_QINDICES_OFFSET + CSR_UB_MAX_QTOKENS * sizeof(int32_t);
+
     __aicore__ inline
     uint64_t TaskLinearIdx(uint32_t qToken, uint32_t kvHeadIdx) const
     {
@@ -1069,6 +1076,30 @@ private:
             uint64_t csrDataBase = static_cast<uint64_t>(kvHeadIdx) * k2qNnzUpperBound_;
             uint32_t kvStartPos = localBlockIdx * blockSize_;  // KV block 在序列中的起始位置
 
+#ifdef __DAV_VEC__
+            // === VEC-only CSR batch-read: DataCopyPad q_indices/slot_indices GM→UB ===
+            // Replaces per-element GlobalTensor::GetValue (blacklisted, ~100 cycles each)
+            // with one batched DMA per task + LocalTensor::GetValue (~few cycles each).
+            // CUBE keeps original GlobalTensor::GetValue (CUBE scalar is not the bottleneck).
+            if (numQTokens <= CSR_UB_MAX_QTOKENS) {
+                AscendC::LocalTensor<int32_t> ubQIdx =
+                    resource.ubBuf.template GetBufferByByte<int32_t>(CSR_UB_QINDICES_OFFSET);
+                AscendC::LocalTensor<int32_t> ubSlotK =
+                    resource.ubBuf.template GetBufferByByte<int32_t>(CSR_UB_SLOTK_OFFSET);
+                AscendC::DataCopyExtParams csrCp;
+                csrCp.blockCount = 1U;
+                csrCp.blockLen = static_cast<uint16_t>(numQTokens * sizeof(int32_t));
+                csrCp.srcStride = 0;
+                csrCp.dstStride = 0;
+                AscendC::DataCopyPadExtParams<int32_t> csrPad(false, 0, 0, 0);
+                AscendC::DataCopyPad(ubQIdx, gK2qQIndices[csrDataBase + csrStart], csrCp, csrPad);
+                AscendC::DataCopyPad(ubSlotK, gK2qSlotIndices[csrDataBase + csrStart], csrCp, csrPad);
+                // DataCopyPad uses MTE2 pipe; GetValue is a Scalar read.
+                // PipeBarrier<PIPE_ALL> on VEC only syncs S/V/MTE2/MTE3 (no fixpipe).
+                AscendC::PipeBarrier<PIPE_ALL>();
+            }
+#endif
+
 #ifdef __DAV_CUBE__
             // --- CUBE: 加载 K/V 到 L1 (常驻, 每个 task 仅加载一次) ---
             // K/V 在 GM 中按 [physicalBlock, blockSize, kvHeads, D] 排列
@@ -1133,11 +1164,31 @@ private:
 #endif
                     // 从 CSR gather Q token id 和 slotK
                     for (uint32_t g = 0U; g < batchGroupCount; g++) {
-                        uint32_t csrIdx = csrStart + bi * batchGroupsMax + g;
+                        uint32_t csrRelIdx = bi * batchGroupsMax + g;
+#ifdef __DAV_VEC__
+                        // VEC: read from UB (batch-loaded via DataCopyPad above)
+                        if (numQTokens <= CSR_UB_MAX_QTOKENS) {
+                            AscendC::LocalTensor<int32_t> ubQIdx =
+                                resource.ubBuf.template GetBufferByByte<int32_t>(CSR_UB_QINDICES_OFFSET);
+                            AscendC::LocalTensor<int32_t> ubSlotK =
+                                resource.ubBuf.template GetBufferByByte<int32_t>(CSR_UB_SLOTK_OFFSET);
+                            batchQToken[stage][g] = static_cast<uint32_t>(
+                                ubQIdx.GetValue(csrRelIdx));
+                            batchSlotK[stage][g] = static_cast<uint32_t>(
+                                ubSlotK.GetValue(csrRelIdx));
+                        } else {
+                            batchQToken[stage][g] = static_cast<uint32_t>(
+                                gK2qQIndices.GetValue(csrDataBase + csrStart + csrRelIdx));
+                            batchSlotK[stage][g] = static_cast<uint32_t>(
+                                gK2qSlotIndices.GetValue(csrDataBase + csrStart + csrRelIdx));
+                        }
+#else
+                        // CUBE: read from GM (original path)
                         batchQToken[stage][g] = static_cast<uint32_t>(
-                            gK2qQIndices.GetValue(csrDataBase + csrIdx));
+                            gK2qQIndices.GetValue(csrDataBase + csrStart + csrRelIdx));
                         batchSlotK[stage][g] = static_cast<uint32_t>(
-                            gK2qSlotIndices.GetValue(csrDataBase + csrIdx));
+                            gK2qSlotIndices.GetValue(csrDataBase + csrStart + csrRelIdx));
+#endif
 #ifdef __DAV_VEC__
                         // 计算 causal mask: 该 qToken 在此 KV block 中的有效列数
                         cvlArr[g] = CalcCausalValidLen(batchQToken[stage][g], validSize, kvStartPos,

@@ -142,7 +142,6 @@ ge::graphStatus SASAPrefillTilingBase::ParseInputTensors(gert::TilingContext *co
     numHeads_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_N));
     embeddingSize_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_D));
     printf("[SASAPrefillTiling] totalQTokens=%u numHeads=%u D=%u\n", totalQTokens_, numHeads_, embeddingSize_);
-
     // KV: [num_physical_blocks, blockSize, kvHeads, D]
     auto kShape = context->GetInputShape(KEY_INDEX);
     if (kShape == nullptr) { printf("[SASAPrefillTiling] kShape is null!\n"); return ge::GRAPH_FAILED; }
