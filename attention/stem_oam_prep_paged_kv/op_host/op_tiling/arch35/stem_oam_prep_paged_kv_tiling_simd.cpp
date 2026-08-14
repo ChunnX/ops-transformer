@@ -187,6 +187,7 @@ ge::graphStatus StemOamPrepPagedKvTilingSimd::CheckParams()
         return ge::GRAPH_FAILED;
     }
 
+    printf("@@@@@%ld,   %ld", batchSize_, kvIndicesShape.GetDim(DIM_0));
     if (batchSize_ != kvIndicesShape.GetDim(DIM_0)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "kvIndicesAndvkvSeqLens",
                                               "dim0 not same",
