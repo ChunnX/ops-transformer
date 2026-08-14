@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file qmm_mx_kernel_ag_udma.h
+ * \file all_gather_qbmm_mx_kernel.h
  * \brief AllGather Prefill 专用 QMM 内核 — 基于 FragmentTensor。
  */
 
@@ -27,7 +27,7 @@
 #include "blaze/epilogue/block/block_epilogue_empty.h"
 #include "blaze/gemm/utils/layout_utils.h"
 #include "include/tensor_api/tensor.h"
-#include "apace/block/blaze_ext/gemm/block/qmm_mx_block_mmad_fragment.h"
+#include "apace/block/mmad/qmm_mx_block_mmad_fragment.h"
 #include "apace/basic/fragment_tensor/fragment_tensor.h"
 #include "apace/basic/fragment_tensor/fragment_tensor_api.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"

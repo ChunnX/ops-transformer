@@ -18,7 +18,7 @@
 #include <cstdint>
 #include "apace/tiling/quant_matmul_tiling_data.h"
 #include "apace/tiling/comm_tiling_data.h"
-#include "apace/block/aiv_comm/collective_comm_context.h"
+#include "apace/core/aiv_comm/collective_comm_context.h"
 
 namespace Apace {
 namespace AivComm {

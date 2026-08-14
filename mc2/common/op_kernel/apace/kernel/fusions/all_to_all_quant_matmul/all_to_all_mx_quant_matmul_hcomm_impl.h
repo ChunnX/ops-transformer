@@ -42,7 +42,7 @@
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
-#include "quant_matmul_mx_kernel.h"
+#include "../../matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel.h"
 #include "include/tensor_api/tensor.h"
 
 namespace Apace {

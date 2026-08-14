@@ -17,9 +17,9 @@
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
-#include "../../tiling/quant_matmul_tiling_data.h"
-#include "../../tiling/comm_tiling_data.h"
-#include "../../block/aiv_comm/collective_comm_context.h"
+#include "../../../tiling/quant_matmul_tiling_data.h"
+#include "../../../tiling/comm_tiling_data.h"
+#include "../../../core/aiv_comm/collective_comm_context.h"
 
 struct allToAllMatmulTilingData {
     CommTilingData commTilingData;
