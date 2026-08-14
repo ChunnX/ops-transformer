@@ -81,8 +81,8 @@ bool ValidateInferScaleShapes(gert::InferShapeContext *context, const char *node
         return false;
     }
 
-    auto x1ScaleShape = context->GetInputShape(INDEX_IN_X1_SCALE);
-    auto x2ScaleShape = context->GetInputShape(INDEX_IN_X2_SCALE);
+    auto x1ScaleShape = context->GetOptionalInputShape(INDEX_IN_X1_SCALE);
+    auto x2ScaleShape = context->GetOptionalInputShape(INDEX_IN_X2_SCALE);
     if (x1ScaleShape == nullptr || x2ScaleShape == nullptr) {
         return true;
     }
