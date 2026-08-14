@@ -39,12 +39,37 @@ if _TORCHAIR_AVAILABLE:
         elif activation == "swish":
             return 2
         return 0
+    
+    def _parse_conv_mode(conv_mode):
+        """将字符串卷积模式转换为整数值（PTA str → GE Int）
+        "default" → 0：正常卷积计算
+        "pangu"   → 1：盘古模型下卷积计算前k-1个token置零
+        """
+        if conv_mode == "pangu":
+            return 1
+        return 0  # "default"
 
+    @auto_convert_to_tensor(
+        [
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+        ],
+        [False, False, False, True, True, True, True, True, True, True, True, True],
+    )
     def FusedCausalConv1d(
         x: torch.Tensor,
         weight: torch.Tensor,
         conv_states: torch.Tensor,
-        *,
         query_start_loc: Optional[torch.Tensor] = None,
         cache_indices: Optional[torch.Tensor] = None,
         initial_state_mode: Optional[torch.Tensor] = None,
@@ -54,13 +79,14 @@ if _TORCHAIR_AVAILABLE:
         block_idx_first_scheduled_token: Optional[torch.Tensor] = None,
         block_idx_last_scheduled_token: Optional[torch.Tensor] = None,
         initial_state_idx: Optional[torch.Tensor] = None,
-        activation: str = None,
+        *,
+        activation: str = "None",
         pad_slot_id: int = -1,
         run_mode: int = 0,
         max_query_len: int = -1,
         residual_connection: int = 1,
         block_size: int = 128,
-        conv_mode: int = 1,
+        conv_mode: str = "default",
         max_draft_tokens: int = 7,
         null_block_id: int = 0,
         dependencies=None,
@@ -115,7 +141,7 @@ if _TORCHAIR_AVAILABLE:
             "max_query_len": max_query_len,
             "residual_connection": residual_connection,
             "block_size": block_size,
-            "conv_mode": conv_mode,
+            "conv_mode": _parse_conv_mode(conv_mode),
             "max_draft_tokens": max_draft_tokens,
             "null_block_id": attr.Int(null_block_id),
         }
@@ -147,7 +173,7 @@ if _TORCHAIR_AVAILABLE:
             .attr("max_query_len", attr.Int(-1))
             .attr("residual_connection", attr.Int(-1))
             .attr("block_size", attr.Int(-1))
-            .attr("conv_mode", attr.Int(-1))
+            .attr("conv_mode", _parse_conv_mode(conv_mode))
             .attr("max_draft_tokens", attr.Int(-1))
             .attr("null_block_id", attr.Int(0))
             .output("conv_states", "DT_BF16, DT_FLOAT16")
@@ -177,7 +203,7 @@ if _TORCHAIR_AVAILABLE:
         block_idx_last_scheduled_token: Optional[Tensor] = None,
         initial_state_idx: Optional[Tensor] = None,
         block_size: Optional[int] = 128,
-        conv_mode: Optional[int] = 1,
+        conv_mode: Optional[str] = "default",
         max_draft_tokens: Optional[int] = 7,
         null_block_id: int = 0,
         meta_outputs: TensorSpec = None,
@@ -201,7 +227,7 @@ if _TORCHAIR_AVAILABLE:
             max_query_len=max_query_len,
             residual_connection=residual_connection,
             block_size=block_size,
-            conv_mode=conv_mode,
+            conv_mode=_parse_conv_mode(conv_mode),
             max_draft_tokens=max_draft_tokens,
             null_block_id=null_block_id,
         )

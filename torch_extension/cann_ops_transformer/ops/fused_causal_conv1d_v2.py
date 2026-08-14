@@ -39,13 +39,13 @@ class FusedCausalConv1dV2OpBuilder(OpBuilder):
             "Tensor? block_idx_first_scheduled_token=None, "
             "Tensor? block_idx_last_scheduled_token=None, "
             "Tensor? initial_state_idx=None, "
-            "str? activation=None, "
+            'str? activation="None", '
             "int? pad_slot_id=-1, "
             "int? run_mode=0, "
             "int? max_query_len=-1, "
             "int? residual_connection=1, "
             "int? block_size=128, "
-            "int? conv_mode=1, "
+            'str? conv_mode="default", '
             "int? max_draft_tokens=7"
             ") -> ()"
         )
@@ -68,13 +68,13 @@ class FusedCausalConv1dV2OpBuilder(OpBuilder):
             block_idx_first_scheduled_token: Optional[torch.Tensor] = None,
             block_idx_last_scheduled_token: Optional[torch.Tensor] = None,
             initial_state_idx: Optional[torch.Tensor] = None,
-            activation: str = None,
+            activation: str = "None",
             pad_slot_id: int = -1,
             run_mode: int = 0,
             max_query_len: int = -1,
             residual_connection: int = 1,
             block_size: int = 128,
-            conv_mode: int = 1,
+            conv_mode: str = "default",
             max_draft_tokens: int = 7,
         ) -> None:
             return
@@ -98,13 +98,13 @@ def _fused_causal_conv1d_v2(
     block_idx_first_scheduled_token: Optional[torch.Tensor] = None,
     block_idx_last_scheduled_token: Optional[torch.Tensor] = None,
     initial_state_idx: Optional[torch.Tensor] = None,
-    activation: str = None,
+    activation: str = "None",
     pad_slot_id: int = -1,
     run_mode: int = 0,
     max_query_len: int = -1,
     residual_connection: int = 1,
     block_size: int = 128,
-    conv_mode: int = 1,
+    conv_mode: str = "default",
     max_draft_tokens: int = 7,
 ) -> None:
     _op_module = _fused_causal_conv1d_v2_op_builder.load()
@@ -146,13 +146,13 @@ def fused_causal_conv1d_v2(
     block_idx_first_scheduled_token: Optional[torch.Tensor] = None,
     block_idx_last_scheduled_token: Optional[torch.Tensor] = None,
     initial_state_idx: Optional[torch.Tensor] = None,
-    activation: str = None,
+    activation: str = "None",
     pad_slot_id: int = -1,
     run_mode: int = 0,
     max_query_len: int = -1,
     residual_connection: int = 1,
     block_size: int = 128,
-    conv_mode: int = 1,
+    conv_mode: str = "default",
     max_draft_tokens: int = 7,
 ) -> None:
     return _fused_causal_conv1d_v2(

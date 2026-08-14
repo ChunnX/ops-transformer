@@ -30,6 +30,16 @@ static int64_t parseActivation(const c10::optional<c10::string_view> &activation
     return 0;
 }
 
+static int64_t parseConvMode(const c10::optional<c10::string_view> &conv_mode)
+{
+    c10::string_view conv_mode_str = conv_mode.value_or("default");
+    std::string mode = std::string(conv_mode_str);
+    if (mode == "pangu") {
+        return 1;
+    }
+    return 0; // "default"
+}
+
 at::Tensor FusedCausalConv1d(
     const at::Tensor &x,
     const at::Tensor &weight,
@@ -49,7 +59,7 @@ at::Tensor FusedCausalConv1d(
     c10::optional<int64_t> max_query_len,
     c10::optional<int64_t> residual_connection,
     c10::optional<int64_t> block_size,
-    c10::optional<int64_t> conv_mode,
+    c10::optional<c10::string_view> conv_mode,
     c10::optional<int64_t> max_draft_tokens)
 {
     at::Tensor y = at::empty(x.sizes(), x.options().dtype(x.dtype()));
@@ -60,19 +70,31 @@ at::Tensor FusedCausalConv1d(
     int64_t max_query_len_value = max_query_len.value_or(-1);
     int64_t residual_connection_value = residual_connection.value_or(0);
     int64_t block_size_value = block_size.value_or(128);
-    int64_t conv_mode_value = conv_mode.value_or(1);
-    int64_t max_draft_tokens_value = max_draft_tokens.value_or(7);
+    int64_t conv_mode_value = parseConvMode(conv_mode)
 
-    ACLNN_CMD(aclnnFusedCausalConv1d,
-              x, weight, conv_states,
-              query_start_loc, cache_indices, initial_state_mode, bias,
-              num_accepted_tokens, num_computed_tokens,
-              block_idx_first_scheduled_token, block_idx_last_scheduled_token,
-              initial_state_idx,
-              activation_value, pad_slot_id_value, run_mode_value,
-              max_query_len_value, residual_connection_value,
-              block_size_value, conv_mode_value, max_draft_tokens_value, y);
-
+    if (max_draft_tokens.has_value()) {
+        int64_t max_draft_tokens_value = max_draft_tokens.value_or(7);
+        ACLNN_CMD(aclnnFusedCausalConv1dV2,
+                  x, weight, conv_states,
+                  query_start_loc, cache_indices, initial_state_mode, bias,
+                  num_accepted_tokens, num_computed_tokens,
+                  block_idx_first_scheduled_token, block_idx_last_scheduled_token,
+                  initial_state_idx,
+                  activation_value, pad_slot_id_value, run_mode_value,
+                  max_query_len_value, residual_connection_value,
+                  block_size_value, conv_mode_value, max_draft_tokens_value, y);
+    } else {
+        ACLNN_CMD(aclnnFusedCausalConv1d,
+                  x, weight, conv_states,
+                  query_start_loc, cache_indices, initial_state_mode, bias,
+                  num_accepted_tokens, num_computed_tokens,
+                  block_idx_first_scheduled_token, block_idx_last_scheduled_token,
+                  initial_state_idx,
+                  activation_value, pad_slot_id_value, run_mode_value,
+                  max_query_len_value, residual_connection_value,
+                  block_size_value, conv_mode_value, y);
+    }
+    
     return y;
 }
 
