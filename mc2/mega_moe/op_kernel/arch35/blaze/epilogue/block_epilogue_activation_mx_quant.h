@@ -177,8 +177,6 @@ public:
 private:
     __aicore__ inline void VFDoActivationForMX(uint16_t mSize, uint16_t pingpongIdx = 0, uint64_t mLoc = 0);
 
-    template <ActivationQuantMsg::QuantMode quantMode, bool IsInterleavedSrc = false,
-              ActMode Activation = ActMode::SWIGLU, ActSubMode ActSub = ActSubMode::DEFAULT>
     __aicore__ inline void VFDoActivationAndQuantForMX(__ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
                                                        __ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc,
                                                        __ubuf__ bfloat16_t *gluResAddr, __ubuf__ uint16_t *maxExpAddr,
@@ -563,11 +561,10 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Comput
  * VFDoActivationAndQuantForMX: 激活 + MX 量化主入口（重构后为分派器）
  *   1. 标量分块计算（对齐、tail、mask）
  *   2. 填充 ActivationContext
- *   3. 按模板参数 Activation 分派到 ActivationFlowSwiGLU / ActivationFlowSiTU
+ *   3. 按 actMode_ 和 actSubMode_ 分派到对应激活实现
  *   4. MX 量化调度（ComputeMaxExp / ComputeScale / ComputeDataForQuantTargetFp8/Fp4）
  */
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
-template <ActivationQuantMsg::QuantMode quantMode, bool IsInterleavedSrc, ActMode Activation, ActSubMode ActSub>
 __aicore__ inline void
 BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoActivationAndQuantForMX(
     __ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst, __ubuf__ DataTypeIn *firstSrc,
@@ -576,7 +573,7 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoAc
 {
     // ---- 标量分块计算（原样保留）----
     uint32_t nSrcUbAligned;
-    if constexpr (IsInterleavedSrc) {
+    if constexpr (IsInterleaved_) {
         // interleaved源布局为[x1, x2]连续存放在同一行，下一行stride是2*nSize
         nSrcUbAligned = static_cast<uint32_t>(nSize) * 2U;
     } else {
@@ -647,14 +644,19 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoAc
     }
 
     // ---- 激活分派 ----
-    if constexpr (Activation == ActMode::SWIGLU) {
-        ActivationImpl::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, IsInterleavedSrc>(ctx);
-    } else if constexpr (Activation == ActMode::SITU) {
-        ActivationImpl::RunSiTU<DataTypeIn, TopkWeightsPrefetch, ActSub == ActSubMode::LINEAR, IsInterleavedSrc>(ctx);
-    } else if constexpr (Activation == ActMode::SWIGLU_STEP) {
-        ActivationImpl::RunSwiGLUStep<DataTypeIn, TopkWeightsPrefetch, IsInterleavedSrc>(ctx);
-    } else if constexpr (Activation == ActMode::SWIGLU_OAI) {
-        ActivationImpl::RunSwiGLUOai<DataTypeIn, TopkWeightsPrefetch, IsInterleavedSrc>(ctx);
+    const auto activation = static_cast<ActMode>(actMode_);
+    if (activation == ActMode::SITU) {
+        if (actSubMode_ == static_cast<uint8_t>(ActSubMode::LINEAR)) {
+            ActivationImpl::RunSiTU<DataTypeIn, TopkWeightsPrefetch, true, IsInterleaved_>(ctx);
+        } else {
+            ActivationImpl::RunSiTU<DataTypeIn, TopkWeightsPrefetch, false, IsInterleaved_>(ctx);
+        }
+    } else if (activation == ActMode::SWIGLU_STEP) {
+        ActivationImpl::RunSwiGLUStep<DataTypeIn, TopkWeightsPrefetch, IsInterleaved_>(ctx);
+    } else if (activation == ActMode::SWIGLU_OAI) {
+        ActivationImpl::RunSwiGLUOai<DataTypeIn, TopkWeightsPrefetch, IsInterleaved_>(ctx);
+    } else {
+        ActivationImpl::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, IsInterleaved_>(ctx);
     }
 
     // ---- 量化（原样保留，不涉及激活寄存器）----
@@ -702,34 +704,8 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     } else {
         l0cOutUbSecondAddr = (__ubuf__ DataTypeIn *)l0cOutUbSecond_.GetPhyAddr();
     }
-    if (actMode_ == static_cast<uint8_t>(ActMode::SITU)) {
-        if (actSubMode_ == static_cast<uint8_t>(ActSubMode::LINEAR)) {
-            VFDoActivationAndQuantForMX<ActivationQuantMsg::QuantMode::MX_PERGROUP_MODE, IsInterleaved_, ActMode::SITU,
-                                        ActSubMode::LINEAR>(quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase,
-                                                            l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr,
-                                                            mSize, singleN_, mLoc);
-        } else {
-            VFDoActivationAndQuantForMX<ActivationQuantMsg::QuantMode::MX_PERGROUP_MODE, IsInterleaved_,
-                                        ActMode::SITU, ActSubMode::DEFAULT>(
-                quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase,
-                l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
-        }
-    } else if (actMode_ == static_cast<uint8_t>(ActMode::SWIGLU_STEP)) {
-        VFDoActivationAndQuantForMX<ActivationQuantMsg::QuantMode::MX_PERGROUP_MODE, IsInterleaved_,
-                                    ActMode::SWIGLU_STEP, ActSubMode::DEFAULT>(
-            quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase,
-            l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
-    } else if (actMode_ == static_cast<uint8_t>(ActMode::SWIGLU_OAI)) {
-        VFDoActivationAndQuantForMX<ActivationQuantMsg::QuantMode::MX_PERGROUP_MODE, IsInterleaved_,
-                                    ActMode::SWIGLU_OAI, ActSubMode::DEFAULT>(
-            quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase,
-            l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
-    } else {
-        VFDoActivationAndQuantForMX<ActivationQuantMsg::QuantMode::MX_PERGROUP_MODE, IsInterleaved_,
-                                    ActMode::SWIGLU, ActSubMode::DEFAULT>(
-            quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase,
-            l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
-    }
+    VFDoActivationAndQuantForMX(quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase,
+                                l0cOutUbSecondAddr, gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
 }
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
