@@ -30,8 +30,6 @@ constexpr uint32_t VREG_FP32_ELEMENTS = 64;
 constexpr uint32_t VREG_FP32_SHIFT = 6;
 constexpr uint32_t MAX_D_SIZE = 8192;
 constexpr uint32_t DOUBLE_BUFFER_NUM = 2;
-constexpr uint32_t SMALL_D_MAX_VREG_NUM = 2;
-constexpr uint32_t MIN_T_FOR_BATCH = 8;
 constexpr uint32_t MAX_DATA_COPY_BLOCK_COUNT = 4095;
 constexpr uint32_t SYSTEM_RESERVED_UB_BYTES = 8 * 1024;
 constexpr uint64_t FULL_D_TILING_KEY = 0;
@@ -77,13 +75,9 @@ ge::graphStatus BlockAttnResUpdateFullDTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t BlockAttnResUpdateFullDTiling::CalcUbBytes(
-    uint32_t tileT, uint32_t &statsTStride, BlockAttnResUpdatePhase2Mode &phase2Mode) const
+uint64_t BlockAttnResUpdateFullDTiling::CalcUbBytes(uint32_t tileT, uint32_t &statsTStride) const
 {
-    const bool useBatch = tilingInfo_.dVregNum <= SMALL_D_MAX_VREG_NUM && tileT >= MIN_T_FOR_BATCH;
-    phase2Mode = useBatch ? BlockAttnResUpdatePhase2Mode::BATCH : BlockAttnResUpdatePhase2Mode::TOKEN;
-    const uint32_t statsTAlignElements = useBatch ? VREG_FP32_ELEMENTS : FP32_ALIGN_ELEMENTS;
-    statsTStride = Ops::Base::CeilAlign(tileT, statsTAlignElements);
+    statsTStride = Ops::Base::CeilAlign(tileT, FP32_ALIGN_ELEMENTS);
     const uint64_t queryBytes = static_cast<uint64_t>(tilingInfo_.dAlignFp32) * FP32_BYTES;
     const uint64_t partialBytes = static_cast<uint64_t>(tileT) * tilingInfo_.dAlignFp32 * FP32_BYTES;
     const uint64_t deltaHBytes = static_cast<uint64_t>(tileT) * tilingInfo_.dAlignBf16 * BF16_BYTES;
@@ -117,12 +111,10 @@ bool BlockAttnResUpdateFullDTiling::TryUbTiling(uint64_t maxTPerCore)
                                                  (static_cast<uint64_t>(DOUBLE_BUFFER_NUM) * bytesPerT));
     while (candidateT > 0) {
         uint32_t statsTStride = 0;
-        BlockAttnResUpdatePhase2Mode phase2Mode = BlockAttnResUpdatePhase2Mode::TOKEN;
-        const uint64_t ubBytes = CalcUbBytes(static_cast<uint32_t>(candidateT), statsTStride, phase2Mode);
+        const uint64_t ubBytes = CalcUbBytes(static_cast<uint32_t>(candidateT), statsTStride);
         if (ubBytes <= usableUbBytes) {
             tilingInfo_.tileT = static_cast<uint32_t>(candidateT);
             tilingInfo_.statsTStride = statsTStride;
-            tilingInfo_.phase2Mode = phase2Mode;
             tilingInfo_.selectedUbBytes = ubBytes;
             return true;
         }
@@ -136,11 +128,10 @@ ge::graphStatus BlockAttnResUpdateFullDTiling::SelectUbTiling(uint64_t maxTPerCo
     if (TryUbTiling(maxTPerCore)) {
         OP_LOGI(opName_,
                 "T=%lu D=%u dAlignFp32=%u dAlignBf16=%u cores=%u "
-                "tileT=%u phase2Mode=%u buffers=%u "
+                "tileT=%u buffers=%u "
                 "UB=%lu/%lu.",
                 tSize_, dSize_, tilingInfo_.dAlignFp32, tilingInfo_.dAlignBf16,
-                tilingInfo_.usedCoreNum, tilingInfo_.tileT,
-                static_cast<uint32_t>(tilingInfo_.phase2Mode), DOUBLE_BUFFER_NUM, tilingInfo_.selectedUbBytes,
+                tilingInfo_.usedCoreNum, tilingInfo_.tileT, DOUBLE_BUFFER_NUM, tilingInfo_.selectedUbBytes,
                 compileInfo_.ubSize);
         return ge::GRAPH_SUCCESS;
     }
@@ -168,7 +159,6 @@ void BlockAttnResUpdateFullDTiling::SetTilingData()
     tilingData_.statsTStride = tilingInfo_.statsTStride;
     tilingData_.dVregNum = tilingInfo_.dVregNum;
     tilingData_.eps = eps_;
-    tilingData_.phase2Mode = static_cast<uint8_t>(tilingInfo_.phase2Mode);
 }
 
 ge::graphStatus BlockAttnResUpdateFullDTiling::PostTiling()

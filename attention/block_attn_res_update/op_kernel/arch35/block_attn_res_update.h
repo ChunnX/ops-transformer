@@ -26,7 +26,6 @@ constexpr uint32_t BARU_VREG_FP32_ELEMENTS = 64;
 constexpr uint32_t BARU_VREG_FP32_SHIFT = 6;
 constexpr uint32_t BARU_VREG_FP32_MASK = BARU_VREG_FP32_ELEMENTS - 1U;
 constexpr uint32_t BARU_BUFFER_NUM = 2;
-constexpr uint32_t BARU_MIN_T_FOR_BATCH = 8;
 
 constexpr AscendC::Reg::CastTrait BARU_CAST_BF16_TO_FP32 = {
     AscendC::Reg::RegLayout::ZERO,
@@ -458,170 +457,6 @@ __simd_vf__ inline void BlockAttnResUpdatePhase2TokenVF(
     }
 }
 
-/**
- * Small-D Phase 2 vectorizes the coefficient calculation across T. Normalized alpha and beta overwrite
- * the consumed history-max and history-ell regions in stats, then are broadcast per T index to form BF16 h.
- * statsTStride is VREG-aligned for this path, so the masked final coefficient load/store stays in its region.
- */
-__simd_vf__ inline void BlockAttnResUpdatePhase2BatchVF(
-    __ubuf__ float *partial, __ubuf__ bfloat16_t *deltaH, __ubuf__ float *numerator,
-    __ubuf__ float *stats, uint16_t tSize, uint32_t dSize, uint32_t dAlignFp32,
-    uint32_t dAlignBf16, uint32_t statsTStride, uint16_t dVregNum, uint16_t hasTTail,
-    uint16_t hasDTail, uint16_t hasMixedDPair, uint16_t hasOddFullDOnly,
-    uint16_t hasDTailOnly)
-{
-    Reg::MaskReg allMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-    Reg::MaskReg tTailMask;
-    Reg::MaskReg dTailMask;
-    Reg::RegTensor<float> partialReg0;
-    Reg::RegTensor<float> partialReg1;
-    Reg::RegTensor<float> tmpReg0;
-    Reg::RegTensor<float> tmpReg1;
-    Reg::RegTensor<float> scoreReg;
-    Reg::RegTensor<float> historyMaxReg;
-    Reg::RegTensor<float> historyEllReg;
-    Reg::RegTensor<float> currentMaxReg;
-    Reg::RegTensor<float> alphaReg;
-    Reg::RegTensor<float> betaReg;
-    Reg::RegTensor<float> numeratorReg0;
-    Reg::RegTensor<float> numeratorReg1;
-    Reg::RegTensor<bfloat16_t> outputBf16Reg0;
-    Reg::RegTensor<bfloat16_t> outputBf16Reg1;
-
-    const uint16_t fullTLoops = static_cast<uint16_t>(tSize >> BARU_VREG_FP32_SHIFT);
-    const uint32_t tailT = static_cast<uint32_t>(tSize) & BARU_VREG_FP32_MASK;
-    const uint32_t tailD = dSize & BARU_VREG_FP32_MASK;
-    const uint16_t fullDLoops = static_cast<uint16_t>(dVregNum - hasDTail);
-    const uint16_t pairFullDLoops = static_cast<uint16_t>(fullDLoops >> 1U);
-    // T and D tails are tile-invariant, so neither mask needs regeneration in the compute loops.
-    uint32_t remainingT = tailT;
-    for (uint16_t loop = 0; loop < hasTTail; ++loop) {
-        tTailMask = Reg::UpdateMask<float>(remainingT);
-    }
-    uint32_t remainingD = tailD;
-    for (uint16_t loop = 0; loop < hasDTail; ++loop) {
-        dTailMask = Reg::UpdateMask<float>(remainingD);
-    }
-
-    for (uint16_t loop = 0; loop < fullTLoops; ++loop) {
-        const uint32_t tOffset = static_cast<uint32_t>(loop) * BARU_VREG_FP32_ELEMENTS;
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(historyMaxReg, stats + tOffset);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(historyEllReg, stats + statsTStride + tOffset);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(scoreReg, stats + 2 * statsTStride + tOffset);
-        Reg::Max<float>(currentMaxReg, historyMaxReg, scoreReg, allMask);
-        Reg::ExpSub<float>(alphaReg, historyMaxReg, currentMaxReg, allMask);
-        Reg::ExpSub<float>(betaReg, scoreReg, currentMaxReg, allMask);
-        Reg::MulDstAdd<float>(historyEllReg, alphaReg, betaReg, allMask);
-        // The two direct divisions are independent and remove the reciprocal-and-multiply dependency chain.
-        Reg::Div<float>(alphaReg, alphaReg, historyEllReg, allMask);
-        Reg::Div<float>(betaReg, betaReg, historyEllReg, allMask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(stats + tOffset, alphaReg, allMask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(stats + statsTStride + tOffset, betaReg, allMask);
-    }
-
-    for (uint16_t loop = 0; loop < hasTTail; ++loop) {
-        const uint32_t tOffset =
-            (static_cast<uint32_t>(fullTLoops) + loop) * BARU_VREG_FP32_ELEMENTS;
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(historyMaxReg, stats + tOffset);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(historyEllReg, stats + statsTStride + tOffset);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(scoreReg, stats + 2 * statsTStride + tOffset);
-        Reg::Max<float>(currentMaxReg, historyMaxReg, scoreReg, tTailMask);
-        Reg::ExpSub<float>(alphaReg, historyMaxReg, currentMaxReg, tTailMask);
-        Reg::ExpSub<float>(betaReg, scoreReg, currentMaxReg, tTailMask);
-        Reg::MulDstAdd<float>(historyEllReg, alphaReg, betaReg, tTailMask);
-        Reg::Div<float>(alphaReg, alphaReg, historyEllReg, tTailMask);
-        Reg::Div<float>(betaReg, betaReg, historyEllReg, tTailMask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(stats + tOffset, alphaReg, tTailMask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(stats + statsTStride + tOffset, betaReg, tTailMask);
-    }
-
-    Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
-    for (uint16_t tIdx = 0; tIdx < tSize; ++tIdx) {
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(alphaReg, stats + tIdx);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(betaReg, stats + statsTStride + tIdx);
-        const uint32_t fp32TOffset = static_cast<uint32_t>(tIdx) * dAlignFp32;
-        const uint32_t bf16TOffset = static_cast<uint32_t>(tIdx) * dAlignBf16;
-        // Separate register sets expose two adjacent D vectors to RVEC dual issue.
-        for (uint16_t loop = 0; loop < pairFullDLoops; ++loop) {
-            const uint32_t vectorOffset0 =
-                static_cast<uint32_t>(loop) * 2U * BARU_VREG_FP32_ELEMENTS;
-            const uint32_t vectorOffset1 = vectorOffset0 + BARU_VREG_FP32_ELEMENTS;
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg0,
-                                                            partial + fp32TOffset + vectorOffset0);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg1,
-                                                            partial + fp32TOffset + vectorOffset1);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(
-                numeratorReg0, numerator + fp32TOffset + vectorOffset0);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(
-                numeratorReg1, numerator + fp32TOffset + vectorOffset1);
-            Reg::Mul<float>(tmpReg0, partialReg0, betaReg, allMask);
-            Reg::Mul<float>(tmpReg1, partialReg1, betaReg, allMask);
-            Reg::MulDstAdd<float>(numeratorReg0, alphaReg, tmpReg0, allMask);
-            Reg::MulDstAdd<float>(numeratorReg1, alphaReg, tmpReg1, allMask);
-            Reg::Cast<bfloat16_t, float, BARU_CAST_FP32_TO_BF16>(outputBf16Reg0, numeratorReg0, allMask);
-            Reg::Cast<bfloat16_t, float, BARU_CAST_FP32_TO_BF16>(outputBf16Reg1, numeratorReg1, allMask);
-            Reg::StoreAlign<bfloat16_t, Reg::StoreDist::DIST_PACK_B32>(
-                deltaH + bf16TOffset + vectorOffset0, outputBf16Reg0, allMask);
-            Reg::StoreAlign<bfloat16_t, Reg::StoreDist::DIST_PACK_B32>(
-                deltaH + bf16TOffset + vectorOffset1, outputBf16Reg1, allMask);
-        }
-
-        // Keep an odd full vector paired with the tail so the original two-vector ILP is preserved.
-        for (uint16_t loop = 0; loop < hasMixedDPair; ++loop) {
-            const uint32_t vectorOffset0 =
-                (static_cast<uint32_t>(pairFullDLoops) * 2U + static_cast<uint32_t>(loop) * 2U) *
-                BARU_VREG_FP32_ELEMENTS;
-            const uint32_t vectorOffset1 = vectorOffset0 + BARU_VREG_FP32_ELEMENTS;
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg0,
-                                                            partial + fp32TOffset + vectorOffset0);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg1,
-                                                            partial + fp32TOffset + vectorOffset1);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(
-                numeratorReg0, numerator + fp32TOffset + vectorOffset0);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(
-                numeratorReg1, numerator + fp32TOffset + vectorOffset1);
-            Reg::Mul<float>(tmpReg0, partialReg0, betaReg, allMask);
-            Reg::Mul<float>(tmpReg1, partialReg1, betaReg, dTailMask);
-            Reg::MulDstAdd<float>(numeratorReg0, alphaReg, tmpReg0, allMask);
-            Reg::MulDstAdd<float>(numeratorReg1, alphaReg, tmpReg1, dTailMask);
-            Reg::Cast<bfloat16_t, float, BARU_CAST_FP32_TO_BF16>(outputBf16Reg0, numeratorReg0, allMask);
-            Reg::Cast<bfloat16_t, float, BARU_CAST_FP32_TO_BF16>(outputBf16Reg1, numeratorReg1, dTailMask);
-            Reg::StoreAlign<bfloat16_t, Reg::StoreDist::DIST_PACK_B32>(
-                deltaH + bf16TOffset + vectorOffset0, outputBf16Reg0, allMask);
-            Reg::StoreAlign<bfloat16_t, Reg::StoreDist::DIST_PACK_B32>(
-                deltaH + bf16TOffset + vectorOffset1, outputBf16Reg1, dTailMask);
-        }
-
-        for (uint16_t loop = 0; loop < hasOddFullDOnly; ++loop) {
-            const uint32_t vectorOffset =
-                (static_cast<uint32_t>(pairFullDLoops) * 2U + loop) * BARU_VREG_FP32_ELEMENTS;
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg0,
-                                                            partial + fp32TOffset + vectorOffset);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(
-                numeratorReg0, numerator + fp32TOffset + vectorOffset);
-            Reg::Mul<float>(tmpReg0, partialReg0, betaReg, allMask);
-            Reg::MulDstAdd<float>(numeratorReg0, alphaReg, tmpReg0, allMask);
-            Reg::Cast<bfloat16_t, float, BARU_CAST_FP32_TO_BF16>(outputBf16Reg0, numeratorReg0, allMask);
-            Reg::StoreAlign<bfloat16_t, Reg::StoreDist::DIST_PACK_B32>(
-                deltaH + bf16TOffset + vectorOffset, outputBf16Reg0, allMask);
-        }
-
-        for (uint16_t loop = 0; loop < hasDTailOnly; ++loop) {
-            const uint32_t vectorOffset =
-                (static_cast<uint32_t>(fullDLoops) + loop) * BARU_VREG_FP32_ELEMENTS;
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg0,
-                                                            partial + fp32TOffset + vectorOffset);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(
-                numeratorReg0, numerator + fp32TOffset + vectorOffset);
-            Reg::Mul<float>(tmpReg0, partialReg0, betaReg, dTailMask);
-            Reg::MulDstAdd<float>(numeratorReg0, alphaReg, tmpReg0, dTailMask);
-            Reg::Cast<bfloat16_t, float, BARU_CAST_FP32_TO_BF16>(outputBf16Reg0, numeratorReg0, dTailMask);
-            Reg::StoreAlign<bfloat16_t, Reg::StoreDist::DIST_PACK_B32>(
-                deltaH + bf16TOffset + vectorOffset, outputBf16Reg0, dTailMask);
-        }
-    }
-}
-
 class BlockAttnResUpdateKernel {
 public:
     __aicore__ inline __attribute__((always_inline)) BlockAttnResUpdateKernel()
@@ -678,8 +513,6 @@ public:
         const uint16_t hasDTailOnly = static_cast<uint16_t>(hasDTail - hasMixedDPair);
         const float eps = tilingData_->eps;
         const float invD = 1.0F / static_cast<float>(dSize);
-        const bool usePhase2Batch =
-            tilingData_->phase2Mode == static_cast<uint8_t>(BlockAttnResUpdatePhase2Mode::BATCH);
         const int64_t coreTDim = static_cast<int64_t>(coreTSize);
         const int64_t dDim = static_cast<int64_t>(dSize);
         const int64_t tileTDim = static_cast<int64_t>(tileT);
@@ -723,8 +556,6 @@ public:
         while (tileTStart < coreTSize) {
             const uint32_t remainingT = coreTSize - tileTStart;
             const uint32_t currentTSize = remainingT < tileT ? remainingT : tileT;
-            const uint16_t hasTTail =
-                static_cast<uint16_t>((currentTSize & BARU_VREG_FP32_MASK) != 0U);
             const int64_t tileTStartDim = static_cast<int64_t>(tileTStart);
             const auto matrixTileShape = Te::MakeShape(static_cast<int64_t>(currentTSize), dDim);
             const auto statsTileShape = Te::MakeShape(1L, static_cast<int64_t>(currentTSize));
@@ -799,19 +630,11 @@ public:
 
             // The partial copy-out and Phase 2 only read partial, so MTE3 and V may overlap.
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(phase2EventId);
-            if (usePhase2Batch && currentTSize >= BARU_MIN_T_FOR_BATCH) {
-                asc_vf_call<BlockAttnResUpdatePhase2BatchVF>(
-                    partialUbMem.Get(), deltaHUbMem.Get(), numeratorUbMem.Get(), statsUbMem.Get(),
-                    static_cast<uint16_t>(currentTSize), dSize, dAlignFp32,
-                    dAlignBf16, statsTStride, dVregNum, hasTTail, hasDTail, hasMixedDPair,
-                    hasOddFullDOnly, hasDTailOnly);
-            } else {
-                asc_vf_call<BlockAttnResUpdatePhase2TokenVF>(
-                    partialUbMem.Get(), deltaHUbMem.Get(), numeratorUbMem.Get(), statsUbMem.Get(),
-                    static_cast<uint16_t>(currentTSize), dSize, dAlignFp32,
-                    dAlignBf16, statsTStride, dVregNum, hasDTail, hasMixedDPair,
-                    hasOddFullDOnly, hasDTailOnly);
-            }
+            asc_vf_call<BlockAttnResUpdatePhase2TokenVF>(
+                partialUbMem.Get(), deltaHUbMem.Get(), numeratorUbMem.Get(), statsUbMem.Get(),
+                static_cast<uint16_t>(currentTSize), dSize, dAlignFp32,
+                dAlignBf16, statsTStride, dVregNum, hasDTail, hasMixedDPair,
+                hasOddFullDOnly, hasDTailOnly);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(phase2EventId);
 
             // Phase 2 copy-out closes this buffer's reuse dependency chain.

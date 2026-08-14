@@ -28,7 +28,6 @@ struct BlockAttnResUpdateFullDTilingInfo {
     uint32_t tileT = 0;
     uint32_t statsTStride = 0;
     uint32_t dVregNum = 0;
-    BlockAttnResUpdatePhase2Mode phase2Mode = BlockAttnResUpdatePhase2Mode::TOKEN;
     // Used only for Host-side UB diagnostics.
     uint64_t selectedUbBytes = 0;
 };
@@ -50,8 +49,7 @@ private:
     void SetTilingData();
     ge::graphStatus SelectUbTiling(uint64_t maxTPerCore);
     bool TryUbTiling(uint64_t maxTPerCore);
-    uint64_t CalcUbBytes(uint32_t tileT, uint32_t &statsTStride,
-                         BlockAttnResUpdatePhase2Mode &phase2Mode) const;
+    uint64_t CalcUbBytes(uint32_t tileT, uint32_t &statsTStride) const;
 
     BlockAttnResUpdateFullDTilingInfo tilingInfo_{};
     BlockAttnResUpdateTilingData tilingData_{};
