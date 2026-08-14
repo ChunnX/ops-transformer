@@ -794,33 +794,28 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::CrossRankSyncIn
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchAllExpertTokens()
 {
-    if constexpr (g_coreType == AIV) {
-        if (GetSubBlockIdx() != 1U) {
-            return;
+    // 每个专家单独分配全部 Dispatch 核，便于验证专家级分核的并发收益；全部专家
+    // 仍在 GMM 流水开始前完成，因此不与 GMM wave 建立阶段依赖。
+    for (uint32_t expertIdx = 0U; expertIdx < moeExpertPerRank_; ++expertIdx) {
+        uint64_t expertTokenCount = 0U;
+        ComputeExpertTokenCountAndNotify<ActivationType, false, TopkWeightsPrefetch>(
+            tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx, expertTokenCount);
+        uint64_t expertGlobalRowBegin = expertIdx == 0U ? 0U :
+            static_cast<uint64_t>(tokenDispatchScratch_.cumsumInfoTensor.GetValue(
+                expertIdx * tokenDispatchConfig_.common.worldSize - 1U));
+        if (expertGlobalRowBegin >= tokenDispatchConfig_.maxOutputSize) {
+            continue;
         }
-        // 每个专家单独分配全部 Dispatch 核，便于验证专家级分核的并发收益；全部专家
-        // 仍在 GMM 流水开始前完成，因此不与 GMM wave 建立阶段依赖。
-        for (uint32_t expertIdx = 0U; expertIdx < moeExpertPerRank_; ++expertIdx) {
-            uint64_t expertTokenCount = 0U;
-            ComputeExpertTokenCountAndNotify<ActivationType, false, TopkWeightsPrefetch>(
-                tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx, expertTokenCount);
-            uint64_t expertGlobalRowBegin = expertIdx == 0U ? 0U :
-                static_cast<uint64_t>(tokenDispatchScratch_.cumsumInfoTensor.GetValue(
-                    expertIdx * tokenDispatchConfig_.common.worldSize - 1U));
-            if (expertGlobalRowBegin >= tokenDispatchConfig_.maxOutputSize) {
-                continue;
-            }
-            uint64_t remainingWorkspaceRowCount =
-                tokenDispatchConfig_.maxOutputSize - expertGlobalRowBegin;
-            uint64_t dispatchRowCount = expertTokenCount < remainingWorkspaceRowCount ?
-                expertTokenCount : remainingWorkspaceRowCount;
-            if (dispatchRowCount == 0U) {
-                continue;
-            }
-            DispatchExpertTokensByRows<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-                tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_,
-                expertIdx, expertIdx + 1U, static_cast<uint32_t>(dispatchRowCount));
+        uint64_t remainingWorkspaceRowCount =
+            tokenDispatchConfig_.maxOutputSize - expertGlobalRowBegin;
+        uint64_t dispatchRowCount = expertTokenCount < remainingWorkspaceRowCount ?
+            expertTokenCount : remainingWorkspaceRowCount;
+        if (dispatchRowCount == 0U) {
+            continue;
         }
+        DispatchExpertTokensByRows<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+            tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_,
+            expertIdx, static_cast<int32_t>(expertGlobalRowBegin), static_cast<uint32_t>(dispatchRowCount));
     }
 }
 
