@@ -150,8 +150,8 @@
 <tr>
 <td style="white-space: nowrap">output</td>
 <td style="white-space: nowrap">输出</td>
-<td style="white-space: nowrap">输出的量化因子，公式中的Q。</td>
-<td style="white-space: nowrap">FLOAT</td>
+<td style="white-space: nowrap">输出的量化结果，公式中的Q。</td>
+<td style="white-space: nowrap">INT8</td>
 <td style="white-space: nowrap">ND</td>
 </tr>
 <tr>
