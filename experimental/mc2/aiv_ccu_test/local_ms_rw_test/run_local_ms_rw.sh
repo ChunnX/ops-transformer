@@ -14,7 +14,7 @@
 #   -b build-type      Release or Debug
 #   -c cmake-rebuild   ON=重新编译, OFF=不编译
 #   -r run-test        ON=运行用例, OFF=不运行
-#   -m mode0           0=写, 1=读, 2=读写混合, 3=先写后读, 4=双核混合读写, 5=GM写, 6=GM读, 7=跨核混合读写
+#   -m mode0           0=写, 1=读, 2=读写混合, 3=先写后读, 4=双核混合读写, 5=GM写, 6=GM读, 7=跨核混合读写, 8=纯读校验
 #   -w warmup          预热次数(0=不预热)
 #   -u ms_id           选择测试的 MS ID，范围 0..3
 #   -e same_addr       同地址(1)/非同地址(0)，仅 mode0=4/7 生效

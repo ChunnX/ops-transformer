@@ -330,7 +330,7 @@ int main(int argc, char *argv[])
         LOG_PRINT("  耗时:         %.2f ns (%.2f us)\n", elapsedNs, elapsedUs);
         LOG_PRINT("  平均:         %.4f ns/loop\n", avgNs);
         LOG_PRINT("  带宽:         %.4f GB/s\n", bandwidthGBs);
-        if (g_mode0 == 3) {
+        if (g_mode0 == 3 || g_mode0 == 8) {
             LOG_PRINT("  数据校验:     %s\n", verifyResult == 0 ? "通过" : "失败");
         }
     }

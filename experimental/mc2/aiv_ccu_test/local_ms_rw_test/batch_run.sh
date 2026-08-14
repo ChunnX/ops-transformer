@@ -256,7 +256,8 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode0 warmup ms_id loop_count
         bandwidth_gbs2=""
         # verify_result: 仅 write_then_read 才有数据校验，其他模式为 N/A
         if [ "$mode0" = "3" ] || [ "$mode0" = "write_then_read" ] || [ "$mode0" = "WRITE_THEN_READ" ] \
-           || [ "$mode0" = "wtr" ] || [ "$mode0" = "WTR" ]; then
+           || [ "$mode0" = "wtr" ] || [ "$mode0" = "WTR" ] \
+           || [ "$mode0" = "8" ] || [ "$mode0" = "read_verify" ] || [ "$mode0" = "READ_VERIFY" ]; then
             verify_str=$(echo "$output" | grep "数据校验:" | grep -oP '(通过|失败)' | head -1)
             if [ "$verify_str" = "通过" ]; then
                 verify_result="PASS"
