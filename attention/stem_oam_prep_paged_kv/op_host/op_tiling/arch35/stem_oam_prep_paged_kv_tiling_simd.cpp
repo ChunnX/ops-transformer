@@ -187,10 +187,6 @@ ge::graphStatus StemOamPrepPagedKvTilingSimd::CheckParams()
         return ge::GRAPH_FAILED;
     }
 
-    std::ostringstream info;
-    info << "batchSize_: " << batchSize_ << std::endl;
-    info << "kvIndicesShape: " << kvIndicesShape.GetDim(DIM_0) << std::endl;
-    OP_LOGI("StemOamPrepPagedKv", "Test Info is: %s", info.str().c_str());
     if (batchSize_ != kvIndicesShape.GetDim(DIM_0)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "kvIndicesAndvkvSeqLens",
                                               "dim0 not same",
@@ -316,14 +312,14 @@ ge::graphStatus StemOamPrepPagedKvTilingSimd::GetShapeAttrsInfo()
         return ge::GRAPH_FAILED;
     }
 
-    OP_CHECK_IF(CheckParams() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CheckParams failed."),
-                return ge::GRAPH_FAILED);
-
     rVal_ = stemBlocks_ / stemStride_;
 
     const gert::StorageShape *kvSeqLensShape = context_->GetInputShape(INPUT_KV_SEQ_LENS_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvSeqLensShape);
     batchSize_ = kvSeqLensShape->GetShape().GetDim(DIM_0);
+
+    OP_CHECK_IF(CheckParams() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CheckParams failed."),
+                return ge::GRAPH_FAILED);
 
     auto kvSeqLensTensor = context_->GetInputTensor(INPUT_KV_SEQ_LENS_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvSeqLensTensor);
