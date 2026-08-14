@@ -323,8 +323,15 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
         Blaze::Gemm::CeilDiv(Te::Get<MNK_K>(params.problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
         MXFP_MULTI_BASE_SIZE;
 
+    uint32_t bufferCount = commPolicy_.bufferCount;
+    uint64_t winPerRank = oriM;
+    if (bufferCount > 0) {
+        winPerRank = static_cast<uint64_t>(bufferCount) * params.localParams.headTileSize;
+    }
+    auto winTotalM = rankSize * winPerRank;
+
     // 构建各 Tensor 的全局布局
-    auto layoutA = MakeLayoutA{}(rankSize * params.localParams.originalM, Te::Get<MNK_K>(params.problemShape));
+    auto layoutA = MakeLayoutA{}(winTotalM, Te::Get<MNK_K>(params.problemShape));
     auto layoutALocal = MakeLayoutA{}(rankSize * oriM, Te::Get<MNK_K>(params.problemShape));
     auto layoutScaleA = MakeLayoutScaleA{}(rankSize * oriM, scaleKLen);
 
@@ -365,15 +372,22 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
     constexpr int64_t kPos = 0L;
     uint32_t totalTiles = (oriM + params.localParams.headTileSize - 1) / params.localParams.headTileSize;
     int32_t readyTileIdx = -1;
+    int32_t releasedTileIdx = -1;
+    int64_t maxMPos = 0L;
     // 遍历当前块的调度任务
     while (bs.GetTileIdx(blockIdx)) {
         BlockShape singleShape =
             bs.template GetBlockShape<QuantMode::MX_PERGROUP_MODE, QuantMode::MX_PERGROUP_MODE, weightNz>(blockIdx);
         if ((Te::Get<IDX_M_TILEIDX>(singleShape) <= 0) || (Te::Get<IDX_N_TILEIDX>(singleShape) <= 0)) {
-            return;
+            break;
         }
 
         bs.GetTileCoord(blockIdx, mPos, nPos);
+        int64_t blockM = Te::Get<IDX_M_TILEIDX>(singleShape);
+        int32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, params.localParams.headTileSize, totalTiles);
+        if (mPos + blockM > maxMPos) {
+            maxMPos = mPos + blockM;
+        }
         // 切分输出块：地址基址已在外部按流水步偏移，此处仅按调度器位置切局部块
         auto gmBlockC =
             gmC.Slice(AscendC::Te::MakeCoord(mPos, nPos),
@@ -397,8 +411,6 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
             mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC, singleShape, 0);
         } else if (deferredSync) {
             // DEFERRED_SYNC 模式：
-            int64_t blockM = Te::Get<IDX_M_TILEIDX>(singleShape);
-            int32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, params.localParams.headTileSize, totalTiles);
             // Phase 1: 本 rank 的 local A × 本 rank 的 B 段 → L0C（reset，remoteRankCnt=0）
             //          此处读 GM 的 localAGmAddr_，不依赖通信，可与 AIV 的 UDMA put 并行。
             auto selfMPos = rankId * oriM + mPos;
@@ -423,11 +435,21 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
             uint32_t remoteRankCnt = 1;
             for (uint64_t rank = 0; rank < rankSize; rank++) {
                 if (rank == rankId) continue;
-                auto actualMPos = rank * oriM + mPos;
+                auto denseMPos = rank * oriM + static_cast<uint64_t>(mPos);
+                uint64_t actualMPos;
+                if (bufferCount > 0) {
+                    uint64_t tileIdx = static_cast<uint64_t>(mPos) / params.localParams.headTileSize;
+                    uint64_t slotIdx = tileIdx % static_cast<uint64_t>(bufferCount);
+                    uint64_t tileOffset = static_cast<uint64_t>(mPos) -
+                        tileIdx * params.localParams.headTileSize;
+                    actualMPos = rank * winPerRank + slotIdx * params.localParams.headTileSize + tileOffset;
+                } else {
+                    actualMPos = denseMPos;
+                }
                 auto gmBlockA_remote =
                     gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
                         AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
-                auto gmBlockScaleA_remote = gmScaleA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
+                auto gmBlockScaleA_remote = gmScaleA.Slice(AscendC::Te::MakeCoord(denseMPos, kPos),
                         AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
                 auto gmBlockB_r = gmB.Slice(AscendC::Te::MakeCoord(rank * Get<MNK_K>(params.problemShape), nPos),
                     AscendC::Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
@@ -440,29 +462,37 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
         } else {
             // REMOTE 模式：低精度模式下遍历除本 Rank 外的所有其他卡发送过来的数据
             auto remoteRankCnt = 0UL;
-            int64_t blockM = Te::Get<IDX_M_TILEIDX>(singleShape);
-            int32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, params.localParams.headTileSize, totalTiles);
             // 等待当前 block 依赖的通信 tile 完成（去重：同一 tile 只 wait 一次）
             while (readyTileIdx < dependTileIdx) {
                 readyTileIdx++;
                 commPolicy_.WaitTile(readyTileIdx);
             }
             for (uint64_t rank = 0; rank < rankSize; rank++) {
-                auto actualMPos = rank * oriM + mPos;
+                auto denseMPos = rank * oriM + static_cast<uint64_t>(mPos);
+                uint64_t actualMPos;
+                if (bufferCount > 0) {
+                    uint64_t tileIdx = static_cast<uint64_t>(mPos) / params.localParams.headTileSize;
+                    uint64_t slotIdx = tileIdx % static_cast<uint64_t>(bufferCount);
+                    uint64_t tileOffset = static_cast<uint64_t>(mPos) -
+                        tileIdx * params.localParams.headTileSize;
+                    actualMPos = rank * winPerRank + slotIdx * params.localParams.headTileSize + tileOffset;
+                } else {
+                    actualMPos = denseMPos;
+                }
                 // 从通信buffer上切片
                 auto gmBlockA =
                     gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
                         AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
-                auto gmBlockScaleA = gmScaleA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
+                auto gmBlockScaleA = gmScaleA.Slice(AscendC::Te::MakeCoord(denseMPos, kPos),
                         AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
 
                 if (rank == rankId) {
                     if (params.localParams.localMatmul == 1) {
                         continue;
                     } else {
-                        gmBlockA = gmALocal.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
+                        gmBlockA = gmALocal.Slice(AscendC::Te::MakeCoord(denseMPos, kPos),
                             AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
-                        gmBlockScaleA = gmScaleALocal.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
+                        gmBlockScaleA = gmScaleALocal.Slice(AscendC::Te::MakeCoord(denseMPos, kPos),
                             AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
                     }
                 }
@@ -478,13 +508,31 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
                 remoteRankCnt++;
             }
         }
+        if (!localFirst && bufferCount > 0) {
+            int32_t maxDependTile = CalcDependTileIdx(maxMPos - 1, params.localParams.headTileSize, totalTiles);
+            int32_t releaseBound = maxDependTile + static_cast<int32_t>(bufferCount) - 1;
+            while (releasedTileIdx < releaseBound) {
+                releasedTileIdx++;
+                if (static_cast<uint32_t>(releasedTileIdx) >= bufferCount) {
+                    commPolicy_.ReleaseTile(static_cast<uint32_t>(releasedTileIdx));
+                }
+            }
+        }
     }
-
     // 存在尾核没用满核，所以这里要等flag兜底
     if (!localFirst) {
         while (readyTileIdx < totalTiles - 1) {
             readyTileIdx++;
             commPolicy_.WaitTile(readyTileIdx);
+        }
+        if (bufferCount > 0) {
+            int32_t releaseBound = static_cast<int32_t>(totalTiles - 1) + static_cast<int32_t>(bufferCount) - 1;
+            while (releasedTileIdx < releaseBound) {
+                releasedTileIdx++;
+                if (static_cast<uint32_t>(releasedTileIdx) >= bufferCount) {
+                    commPolicy_.ReleaseTile(static_cast<uint32_t>(releasedTileIdx));
+                }
+            }
         }
     }
 }
