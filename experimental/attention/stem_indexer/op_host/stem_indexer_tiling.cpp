@@ -565,8 +565,14 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     tilingData_.set_stemStride(tilingInfo->stemStride);
     tilingData_.set_initialBlocks(tilingInfo->initialBlocks);
     tilingData_.set_windowSize(tilingInfo->windowSize);
-    tilingData_.set_mBaseSize(STEM_M_BASE_SIZE);
-    tilingData_.set_s2BaseSize(STEM_S2_BASE_SIZE);
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201 ||
+        ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9202) {
+        tilingData_.set_mBaseSize(STEM_M_BASE_SIZE_920R1);
+        tilingData_.set_s2BaseSize(STEM_S2_BASE_SIZE_920R1);
+    } else {
+        tilingData_.set_mBaseSize(STEM_M_BASE_SIZE);
+        tilingData_.set_s2BaseSize(STEM_S2_BASE_SIZE);
+    }
     tilingData_.set_rSquare(tilingInfo->rSquare);
     tilingData_.set_alpha(tilingInfo->alpha);
     tilingData_.set_kBlockNumRateMedium(tilingInfo->kBlockNumRateMedium);

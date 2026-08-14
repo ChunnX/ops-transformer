@@ -88,13 +88,13 @@ PadMrgFourRowsFirstS2RangeVFImpl(__ubuf__ SCORE_T *mrgValueBuf, const uint32_t r
                                  const uint32_t s2ValidLen2, const uint32_t s2ValidLen3)
 {
     PadMrgOneRowFirstS2RangeVFCore(mrgValueBuf + rowIdx0 * rowStride, topkNum0, s2ValidLen0,
-                                   PadMrgAlignUp(s2ValidLen0, SICommon::TRUNK_LEN_256));
+                                   PadMrgAlignUp(s2ValidLen0, SICommon::TOPK_TRUNK_LEN));
     PadMrgOneRowFirstS2RangeVFCore(mrgValueBuf + rowIdx1 * rowStride, topkNum1, s2ValidLen1,
-                                   PadMrgAlignUp(s2ValidLen1, SICommon::TRUNK_LEN_256));
+                                   PadMrgAlignUp(s2ValidLen1, SICommon::TOPK_TRUNK_LEN));
     PadMrgOneRowFirstS2RangeVFCore(mrgValueBuf + rowIdx2 * rowStride, topkNum2, s2ValidLen2,
-                                   PadMrgAlignUp(s2ValidLen2, SICommon::TRUNK_LEN_256));
+                                   PadMrgAlignUp(s2ValidLen2, SICommon::TOPK_TRUNK_LEN));
     PadMrgOneRowFirstS2RangeVFCore(mrgValueBuf + rowIdx3 * rowStride, topkNum3, s2ValidLen3,
-                                   PadMrgAlignUp(s2ValidLen3, SICommon::TRUNK_LEN_256));
+                                   PadMrgAlignUp(s2ValidLen3, SICommon::TOPK_TRUNK_LEN));
 }
 
 template <typename SCORE_T>
@@ -106,13 +106,13 @@ PadMrgFourRowsNotFirstS2RangeVFImpl(__ubuf__ SCORE_T *mrgValueBuf, const uint32_
                                     const uint32_t s2ValidLen2, const uint32_t s2ValidLen3)
 {
     PadMrgOneRowNotFirstS2RangeVFCore(mrgValueBuf + rowIdx0 * rowStride, topkNum0, s2ValidLen0,
-                                      SICommon::TRUNK_LEN_256);
+                                      SICommon::TOPK_TRUNK_LEN);
     PadMrgOneRowNotFirstS2RangeVFCore(mrgValueBuf + rowIdx1 * rowStride, topkNum1, s2ValidLen1,
-                                      SICommon::TRUNK_LEN_256);
+                                      SICommon::TOPK_TRUNK_LEN);
     PadMrgOneRowNotFirstS2RangeVFCore(mrgValueBuf + rowIdx2 * rowStride, topkNum2, s2ValidLen2,
-                                      SICommon::TRUNK_LEN_256);
+                                      SICommon::TOPK_TRUNK_LEN);
     PadMrgOneRowNotFirstS2RangeVFCore(mrgValueBuf + rowIdx3 * rowStride, topkNum3, s2ValidLen3,
-                                      SICommon::TRUNK_LEN_256);
+                                      SICommon::TOPK_TRUNK_LEN);
 }
 
 template <typename SCORE_T>

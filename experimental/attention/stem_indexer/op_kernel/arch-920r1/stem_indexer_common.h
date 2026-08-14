@@ -39,7 +39,7 @@ constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096U;
 constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192U;
 constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384U;
 constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768U;
-constexpr uint32_t TRUNK_LEN_256 = 256U;
+constexpr uint32_t TOPK_TRUNK_LEN = 512U;
 // Invalid index.
 constexpr int INVALID_IDX = -1;
 struct RowIdx4 {
