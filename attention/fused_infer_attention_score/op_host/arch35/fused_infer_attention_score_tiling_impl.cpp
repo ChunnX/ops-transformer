@@ -645,7 +645,6 @@ void FusedInferAttentionScoreTilingImpl::ComputeSplitNBSeq(const FiaTilingInfo &
     faRunTilingAdapter_.multiCoreParamsRegbase.set_sparseStartIdx(gS1StartIdx.data());
 }
 
-
 /*
  * 计算同时参与计算所需的L2 cache大小
  * 算法思路：
@@ -1565,8 +1564,6 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetWorkspaceAntiQuant(const 
                           sizeof(float); // 2 : sMax 和 sSum
     }
 
-    workspaceSize_ += 100 * 1024 * 1024; // 100*1024*1024: extra workspace for dump in david
-
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
         workspaceSize_ += platformInfo_.coreNum * 64 * 2; // bmm1 bmm2 2份
     }
@@ -1673,7 +1670,6 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetMaskTilingData(const FiaT
     return ge::GRAPH_SUCCESS;
 }
 
-
 uint8_t FusedInferAttentionScoreTilingImpl::ComputeSparseType(const FiaTilingInfo &fiaInfo) const
 {
     if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT && !isPFAFlag_) {
@@ -1713,7 +1709,11 @@ void FusedInferAttentionScoreTilingImpl::SetAlibiStartIdx(const FiaTilingInfo &f
 void FusedInferAttentionScoreTilingImpl::SetLayoutType(const FiaTilingInfo &fiaInfo)
 {
     static const std::map<FiaLayout, uint8_t> layoutTypeMap = {
-        {FiaLayout::BSH, 1}, {FiaLayout::TND, 4}, {FiaLayout::BSND, 1}, {FiaLayout::BNSD, 3}, {FiaLayout::NTD, 5},
+        {FiaLayout::BSH, 1},
+        {FiaLayout::TND, 4},
+        {FiaLayout::BSND, 1},
+        {FiaLayout::BNSD, 3},
+        {FiaLayout::NTD, 5},
     };
     auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
     uint8_t layoutType = GetMapValueOrDefault(layoutTypeMap, fiaInfo.qLayout);
@@ -1730,7 +1730,9 @@ void FusedInferAttentionScoreTilingImpl::SetPaLayoutTilingData(const FiaTilingIn
 
     if (fiaInfo.antiQuantFlag) {
         uint32_t dimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
-        uint8_t paType = (dimNum == 3) ? 0 : (dimNum == 4) ? 1 : (dimNum == 5) ? 2 : 0;
+        uint8_t paType = (dimNum == 3) ? 0 : (dimNum == 4) ? 1 :
+                                         (dimNum == 5)     ? 2 :
+                                                             0;
         inputParams.set_paLayoutType(paType);
         return;
     }
@@ -1747,8 +1749,14 @@ void FusedInferAttentionScoreTilingImpl::SetPaLayoutTilingData(const FiaTilingIn
 void FusedInferAttentionScoreTilingImpl::SetTransposeLayout(const FiaTilingInfo &fiaInfo)
 {
     static const std::map<std::string, uint32_t> transposeLayoutMap = {
-        {"BNSD_BSND", 1}, {"BSND_BNSD", 2}, {"BSH_BNSD", 3}, {"BNSD_NBSD", 4},
-        {"BSND_NBSD", 5}, {"BSH_NBSD", 6},  {"NTD_TND", 7},  {"TND_NTD", 8},
+        {"BNSD_BSND", 1},
+        {"BSND_BNSD", 2},
+        {"BSH_BNSD", 3},
+        {"BNSD_NBSD", 4},
+        {"BSND_NBSD", 5},
+        {"BSH_NBSD", 6},
+        {"NTD_TND", 7},
+        {"TND_NTD", 8},
     };
     auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
     uint32_t transposeType = GetMapValueOrDefault(transposeLayoutMap, std::string(fiaInfo.opParamInfo.layOut));
@@ -1920,7 +1928,6 @@ void FusedInferAttentionScoreTilingImpl::SetFATilingDataInitOutput(const FiaTili
     initOutputParams.set_needInit(fiaInfo.needInit || needInit_);
     initOutputParams.set_isOneN(0); // 默认值,当前未使用
 }
-
 
 ge::graphStatus FusedInferAttentionScoreTilingImpl::SetTilingData(gert::TilingContext *context,
                                                                   const FiaTilingInfo &fiaInfo)
