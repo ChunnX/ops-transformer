@@ -127,6 +127,7 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
     if (communicationType_ == Communicationtype::COMMUNICATION_WAIT_ONE) {
         for (uint32_t i = 0; i < taskCnt; i++) {
             hccl_.Commit(hTasks_[startIndex_ + i]);
+            AscendC::PRINTF("===130 hccl.Commit===");
             taskSuccess_[startIndex_ + i] = false;
         }
     }
@@ -147,6 +148,7 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
         taskSuccess_[startIndex_ + taskIndex] = true;
     } else if (communicationType_ == Communicationtype::COMMUNICATION_SEND_ONE) {
         hccl_.Commit(hTasks_[startIndex_ + taskIndex]);
+        AscendC::PRINTF("===151 hccl.Commit===");
         taskSuccess_[startIndex_ + taskIndex] = false;
     }
 }
@@ -204,6 +206,7 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
     if (communicationType_ == Communicationtype::COMMUNICATION_WAIT_ONE) {
         for (uint32_t i = 0; i < context_.repeat; ++i) {
             hccl_.Commit(hTasks_[startIndex_ + i]);
+            AscendC::PRINTF("===209 hccl.Commit===");
             taskSuccess_[startIndex_ + i] = false;
         }
     }
