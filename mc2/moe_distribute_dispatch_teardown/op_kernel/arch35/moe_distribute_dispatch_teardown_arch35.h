@@ -186,19 +186,19 @@ private:
     DataCopyExtParams hCommuCopyOutParams_;
 
     // =============================== Log Dump =============================== //
-    __aicore__ inline void IoDumpHex32(const __gm__ char *tag, GM_ADDR addr, uint32_t wordCnt)
+    __aicore__ inline void IoDumpUI32(const __gm__ char *tag, GM_ADDR addr, uint32_t wordCnt)
     {
         if (addr == nullptr) {
-            printf("D_T IoDumpHex32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
+            printf("D_T IoDumpUI32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
             return;
         }
         GlobalTensor<int32_t> t;
         t.SetGlobalBuffer((__gm__ int32_t *)addr);
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("D_T IoDumpHex32 1 epRankId_:%u, %s: addr=0x%llx words=%u\n", epRankId_, tag, addr, wordCnt);
+        printf("D_T IoDumpUI32 1 epRankId_:%u, %s: addr=0x%llx words=%u\n", epRankId_, tag, addr, wordCnt);
         const uint32_t n = (wordCnt < IO_DUMP_MAX_ELEM) ? wordCnt : IO_DUMP_MAX_ELEM;
         for (uint32_t i = 0U; i < n; ++i) {
-            printf("D_T IoDumpHex32 2 epRankId_:%u, %s[%u]=0x%08x\n", epRankId_, tag, i, static_cast<uint32_t>(t.GetValue(i)));
+            printf("D_T IoDumpUI32 2 epRankId_:%u, %s[%u]=%u\n", epRankId_, tag, i, static_cast<uint32_t>(t.GetValue(i)));
         }
     }
 
@@ -246,10 +246,10 @@ private:
             axisMaxBS_ * epWorldSize_, axisBS_, axisK_, axisH_, aivNum_, static_cast<uint32_t>(QuantMode),
             expertTokenNumsType_, static_cast<uint64_t>(tempTotalWinSize_));
         // x 是 [bs, h] 的 XType，按 32bit 字打印原始位，不做类型转换
-        IoDumpHex32("IN_x", x, static_cast<uint64_t>(axisBS_) * axisH_ * sizeof(XType) / sizeof(int32_t));
-        IoDumpHex32("IN_y", y, IO_DUMP_MAX_ELEM);
-        IoDumpI32("IN_expertIds", expertIds, axisBS_ * axisK_);
-        IoDumpI32("IN_commCmdInfo", commCmdInfo, IO_DUMP_MAX_ELEM);
+        IoDumpI64("IN_x", x, static_cast<uint64_t>(axisBS_) * axisH_ * sizeof(XType) / sizeof(int32_t));
+        IoDumpI64("IN_y", y, IO_DUMP_MAX_ELEM);
+        IoDumpI64("IN_expertIds", expertIds, axisBS_ * axisK_);
+        IoDumpI64("IN_commCmdInfo", commCmdInfo, IO_DUMP_MAX_ELEM);
     }
 
     __aicore__ inline void DumpOutputs()
@@ -259,10 +259,10 @@ private:
         }
         printf("[OUT][dispatch_teardown] rank=%u\n", epRankId_);
         // expandXOut 的 dim0 由实际收到的 token 数决定，不在 tiling 里，只打头部
-        IoDumpHex32("OUT_expandXOut", expandXOutGM_, IO_DUMP_MAX_ELEM);
-        IoDumpHex32("OUT_dynamicScalesOut", dynamicScalesOutGM_, IO_DUMP_MAX_ELEM);
+        IoDumpI64("OUT_expandXOut", expandXOutGM_, IO_DUMP_MAX_ELEM);
+        IoDumpI64("OUT_dynamicScalesOut", dynamicScalesOutGM_, IO_DUMP_MAX_ELEM);
         // assistInfoForCombineOut 就是下游 combine_setup 读的前缀和，整段都要能看到
-        IoDumpI32("OUT_assistInfoForCombineOut", sendCountsOutGM_, epWorldSize_ * moeExpertNumPerRank_);
+        IoDumpI64("OUT_assistInfoForCombineOut", sendCountsOutGM_, epWorldSize_ * moeExpertNumPerRank_);
         IoDumpI64("OUT_expertTokenNumsOut", expertTokenNumsOutGM_, moeExpertNumPerRank_);
     }
     // =============================== Log Dump =============================== //

@@ -278,19 +278,19 @@ private:
     // =============================== Urma =============================== //
 
     // =============================== Log Dump =============================== //
-    __aicore__ inline void IoDumpHex32(const __gm__ char *tag, GM_ADDR addr, uint32_t wordCnt)
+    __aicore__ inline void IoDumpUI32(const __gm__ char *tag, GM_ADDR addr, uint32_t wordCnt)
     {
         if (addr == nullptr) {
-            printf("D_S IoDumpHex32 error epRankId_:%u, %s: addr=null\n", epRankId_, tag);
+            printf("D_S IoDumpUI32 error epRankId_:%u, %s: addr=null\n", epRankId_, tag);
             return;
         }
         GlobalTensor<int32_t> t;
         t.SetGlobalBuffer((__gm__ int32_t *)addr);
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("D_S IoDumpHex32 1 epRankId_:%u, %s: addr=0x%llx words=%u\n", epRankId_, tag, addr, wordCnt);
+        printf("D_S IoDumpUI32 1 epRankId_:%u, %s: addr=0x%llx words=%u\n", epRankId_, tag, addr, wordCnt);
         const uint32_t n = (wordCnt < IO_DUMP_MAX_ELEM) ? wordCnt : IO_DUMP_MAX_ELEM;
         for (uint32_t i = 0U; i < n; ++i) {
-            printf("D_S IoDumpHex32 2 epRankId_:%u, %s[%u]=0x%08x\n", epRankId_, tag, i, static_cast<uint32_t>(t.GetValue(i)));
+            printf("D_S IoDumpUI32 2 epRankId_:%u, %s[%u]=%u\n", epRankId_, tag, i, static_cast<uint32_t>(t.GetValue(i)));
         }
     }
 
@@ -326,6 +326,22 @@ private:
         }
     }
 
+    __aicore__ inline void IoDumpI64(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
+    {
+        if (addr == nullptr) {
+            printf("D_S IoDumpI64 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
+            return;
+        }
+        GlobalTensor<int64_t> t;
+        t.SetGlobalBuffer((__gm__ int64_t *)addr);
+        DataCacheCleanAndInvalid<int64_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+        printf("D_S IoDumpI64 1 epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
+        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
+        for (uint32_t i = 0U; i < n; ++i) {
+            printf("D_S IoDumpI64 2 epRankId_:%u, %s[%u]=%lld\n", epRankId_, tag, i, static_cast<int64_t>(t.GetValue(i)));
+        }
+    }
+
     __aicore__ inline void DumpInputs(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask)
     {
         if (aivId_ != 0U) {
@@ -339,10 +355,10 @@ private:
             static_cast<int32_t>(isInputActiveMaskFlag_), static_cast<uint64_t>(scalesCount_),
             static_cast<uint64_t>(totalWinSize_));
         // x 是 [bs, h] 的 XType，按 32bit 字打印原始位，不做类型转换
-        IoDumpHex32("IN_x", x, static_cast<uint64_t>(axisBS_) * axisH_ * sizeof(XType) / sizeof(int32_t));
-        IoDumpI32("IN_expertIds", expertIds, axisBS_ * axisK_);
+        IoDumpI64("IN_x", x, static_cast<uint64_t>(axisBS_) * axisH_ * sizeof(XType) / sizeof(int32_t));
+        IoDumpI64("IN_expertIds", expertIds, axisBS_ * axisK_);
         IoDumpF32("IN_scales", scales, static_cast<uint32_t>(scalesCount_));
-        IoDumpHex32("IN_xActiveMask", xActiveMask, IO_DUMP_MAX_ELEM);
+        IoDumpI64("IN_xActiveMask", xActiveMask, IO_DUMP_MAX_ELEM);
     }
 
     __aicore__ inline void DumpOutputs()
@@ -352,9 +368,9 @@ private:
         }
         printf("[OUT][dispatch_setup] rank=%u\n", epRankId_);
         // YOut 的 dim0 由分发结果决定，不在 tiling 里，只打头部
-        IoDumpHex32("OUT_YOut", yOutGM_, IO_DUMP_MAX_ELEM);
-        IoDumpI32("OUT_expandIdxOut", expandIdxOutGM_, axisBS_ * axisK_);
-        IoDumpI32("OUT_commCmdInfoOut", commCmdInfoOutGM_, IO_DUMP_MAX_ELEM);
+        IoDumpI64("OUT_YOut", yOutGM_, IO_DUMP_MAX_ELEM);
+        IoDumpI64("OUT_expandIdxOut", expandIdxOutGM_, axisBS_ * axisK_);
+        IoDumpI64("OUT_commCmdInfoOut", commCmdInfoOutGM_, IO_DUMP_MAX_ELEM);
     }
     // =============================== Log Dump =============================== //
 };

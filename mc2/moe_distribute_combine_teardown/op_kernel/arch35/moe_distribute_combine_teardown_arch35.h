@@ -136,19 +136,19 @@ private:
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
 
     // =============================== Log Dump =============================== //
-    __aicore__ inline void IoDumpHex32(const __gm__ char *tag, GM_ADDR addr, uint32_t wordCnt)
+    __aicore__ inline void IoDumpUI32(const __gm__ char *tag, GM_ADDR addr, uint32_t wordCnt)
     {
         if (addr == nullptr) {
-            printf("C_T IoDumpHex32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
+            printf("C_T IoDumpUI32 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
             return;
         }
         GlobalTensor<int32_t> t;
         t.SetGlobalBuffer((__gm__ int32_t *)addr);
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
-        printf("C_T IoDumpHex32 1 epRankId_:%u, %s: addr=0x%llx words=%u\n", epRankId_, tag, addr, wordCnt);
+        printf("C_T IoDumpUI32 1 epRankId_:%u, %s: addr=0x%llx words=%u\n", epRankId_, tag, addr, wordCnt);
         const uint32_t n = (wordCnt < IO_DUMP_MAX_ELEM) ? wordCnt : IO_DUMP_MAX_ELEM;
         for (uint32_t i = 0U; i < n; ++i) {
-            printf("C_T IoDumpHex32 2 epRankId_:%u, %s[%u]=0x%08x\n", epRankId_, tag, i, static_cast<uint32_t>(t.GetValue(i)));
+            printf("C_T IoDumpUI32 2 epRankId_:%u, %s[%u]=%u\n", epRankId_, tag, i, static_cast<uint32_t>(t.GetValue(i)));
         }
     }
 
@@ -184,6 +184,22 @@ private:
         }
     }
 
+    __aicore__ inline void IoDumpI64(const __gm__ char *tag, GM_ADDR addr, uint32_t elemCnt)
+    {
+        if (addr == nullptr) {
+            printf("C_T IoDumpI64 error epRankId_:%u, %s: addr null\n", epRankId_, tag);
+            return;
+        }
+        GlobalTensor<int64_t> t;
+        t.SetGlobalBuffer((__gm__ int64_t *)addr);
+        DataCacheCleanAndInvalid<int64_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(t);
+        printf("C_T IoDumpI64 1 epRankId_:%u, %s: addr=0x%llx count=%u\n", epRankId_, tag, addr, elemCnt);
+        const uint32_t n = (elemCnt < IO_DUMP_MAX_ELEM) ? elemCnt : IO_DUMP_MAX_ELEM;
+        for (uint32_t i = 0U; i < n; ++i) {
+            printf("C_T IoDumpI64 2 epRankId_:%u, %s[%u]=%lld\n", epRankId_, tag, i, static_cast<int64_t>(t.GetValue(i)));
+        }
+    }
+
     __aicore__ inline void DumpInputs(GM_ADDR expandX, GM_ADDR quantExpandX, GM_ADDR expertIds, GM_ADDR expandIdx,
         GM_ADDR expertScales, GM_ADDR commCmdInfo, GM_ADDR xActiveMask, GM_ADDR sharedExpertX)
     {
@@ -199,14 +215,14 @@ private:
             static_cast<int32_t>(t->hasSharedExpertX), static_cast<uint64_t>(t->totalUbSize),
             static_cast<uint64_t>(t->totalWinSize));
         // expandX / quantExpandX / sharedExpertX 的 dim0 不在 tiling 里，只打头部
-        IoDumpHex32("IN_expandX", expandX, IO_DUMP_MAX_ELEM);
-        IoDumpHex32("IN_quantExpandX", quantExpandX, IO_DUMP_MAX_ELEM);
-        IoDumpI32("IN_expertIds", expertIds, t->bs * t->k);
-        IoDumpI32("IN_expandIdx", expandIdx, t->bs * t->k);
+        IoDumpI64("IN_expandX", expandX, IO_DUMP_MAX_ELEM);
+        IoDumpI64("IN_quantExpandX", quantExpandX, IO_DUMP_MAX_ELEM);
+        IoDumpI64("IN_expertIds", expertIds, t->bs * t->k);
+        IoDumpI64("IN_expandIdx", expandIdx, t->bs * t->k);
         IoDumpF32("IN_expertScales", expertScales, t->bs * t->k);
-        IoDumpI32("IN_commCmdInfo", commCmdInfo, IO_DUMP_MAX_ELEM);
-        IoDumpHex32("IN_xActiveMask", xActiveMask, IO_DUMP_MAX_ELEM);
-        IoDumpHex32("IN_sharedExpertX", sharedExpertX, IO_DUMP_MAX_ELEM);
+        IoDumpI64("IN_commCmdInfo", commCmdInfo, IO_DUMP_MAX_ELEM);
+        IoDumpI64("IN_xActiveMask", xActiveMask, IO_DUMP_MAX_ELEM);
+        IoDumpI64("IN_sharedExpertX", sharedExpertX, IO_DUMP_MAX_ELEM);
     }
 
     __aicore__ inline void DumpOutputs()
@@ -216,7 +232,7 @@ private:
         }
         printf("[OUT][combine_teardown] rank=%u\n", epRankId_);
         // XOut 是 [bs, h] 的 ExpandXType，按 32bit 字打印原始位，不做类型转换
-        IoDumpHex32("OUT_XOut", xOutGM_,
+        IoDumpI64("OUT_XOut", xOutGM_,
             static_cast<uint64_t>(moeDistributeCombineTeardownInfo_->bs) *
             moeDistributeCombineTeardownInfo_->h * sizeof(ExpandXType) / sizeof(int32_t));
     }
