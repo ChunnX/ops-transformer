@@ -30,7 +30,7 @@ constexpr uint8_t BARRIER_DEVICE = 1;
 constexpr uint8_t BARRIER_CORE = 2;
 constexpr uint8_t BARRIER_BOTH = BARRIER_DEVICE | BARRIER_CORE;
 
-template<typename Impl, typename Dtype, typename Barrier>
+template<typename Impl, typename Dtype, typename Barrier, bool EnableReuse = false>
 class CollectiveCommBase {
     friend Impl;
 public:
@@ -82,6 +82,19 @@ public:
         chunkBytes_ = chunkSize * nonSplitAxisBytes;
         tileMaxByteSize_ = (tilingData_->splitAxisTileSize > tilingData_->splitAxisTailSize ?
             tilingData_->splitAxisTileSize : tilingData_->splitAxisTailSize) * nonSplitAxisBytes;
+
+        if constexpr (EnableReuse) {
+            bufferCount_ = tilingData_->bufferCount;
+            if (bufferCount_ == 0) {
+                bufferCount_ = tilingData_->splitAxisTileCnt + tilingData_->splitAxisTailCnt;
+                dstChunkBytes_ = chunkBytes_;
+            } else {
+                dstChunkBytes_ = bufferCount_ * tileMaxByteSize_;
+            }
+        } else {
+            dstChunkBytes_ = chunkBytes_;
+        }
+
         currentTileIdx_ = 0;
         tileByteOffset_ = 0;
         remainingChunkSize_ = chunkSize;
@@ -143,7 +156,7 @@ public:
 
     __aicore__ inline uint64_t GetCommByteSize() const
     {
-        return chunkBytes_ * udmaCtx_->rankSize;
+        return dstChunkBytes_ * udmaCtx_->rankSize;
     }
 
     __aicore__ inline uint64_t GetCommTurn() const
@@ -174,6 +187,9 @@ protected:
     uint64_t tileMaxByteSize_;
     uint64_t slotByteOffset_;
     uint64_t chunkByteOffset_;
+
+    uint64_t bufferCount_{0};
+    uint64_t dstChunkBytes_{0};
 
     uint32_t targetRankStart_;
     uint32_t targetRankCnt_;
