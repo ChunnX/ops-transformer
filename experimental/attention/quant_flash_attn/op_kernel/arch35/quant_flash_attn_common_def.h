@@ -128,7 +128,6 @@ struct RunInfo {
     uint32_t s2FirstStartVecCore = 0; // s2上第一个softmax分给哪个vec core
     uint32_t tileBuffIdx = 0;         // 当前tile分给哪个buff
     uint32_t tileMaxIdx = 0;
-    uint32_t updateScaleIdx = 0;
     uint32_t pscaleNum = 0;
     bool isS2FirstTilePerCore = false; // 16个softmax均分在两个core, 当前任务是否是分在当前core上的第一个，
 

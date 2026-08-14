@@ -137,6 +137,8 @@ private:
         UB_MAX_SIZE * UB_MAX_BUFCNT * sizeof(half) + UB_MAX_SIZE * UB_MAX_BUFCNT * sizeof(half) +
         UB_LOCALGROUPMAX_SIZE * UB_LOCALGROUPMAX_BUFCNT * sizeof(half);
 
+    static constexpr uint32_t UB_UPDATE_IDX = 0;
+
     LocalTensor<half> mm1ResUB;
     LocalTensor<float> mm2ResUB;
     LocalTensor<uint8_t> pscaleUB;
@@ -384,15 +386,16 @@ public:
         LocalTensor<half> localGlobalMax1 = GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx);
         LocalTensor<half> localGlobalMax2 = GetPeerGlobalMaxUbByCurIdx(runInfo.tileMaxIdx);
         LocalTensor<half> softmaxMaxOld = softmaxMaxUB;
-        LocalTensor<float> urs = GetUpdateScaleByCurIdx(runInfo.updateScaleIdx);
+        LocalTensor<float> urs = GetUpdateScaleByCurIdx(UB_UPDATE_IDX);
 
         if (runInfo.s2FirstStartVecCore != constInfo.subBlockIdx && runInfo.isC2Sync) {
-            if (runInfo.curS2LoopIdx / 16 == 0) {
+            if (unlikely(runInfo.curS2LoopIdx / 16 == 0)) {
                 Mxfp4Api::computeOnlyScale<true, half, s1BaseSize>(localGlobalMax1, localGlobalMax2, softmaxMaxOld, urs,
                                                                    constInfo.subBlockIdx);
             } else {
                 Mxfp4Api::computeOnlyScale<false, half, s1BaseSize>(localGlobalMax1, localGlobalMax2, softmaxMaxOld,
                                                                     urs, constInfo.subBlockIdx);
+                UB_UPDATE_IDX = (UB_UPDATE_IDX + 1) % UB_UPDATE_BUFCNT;
             }
             PipeBarrier<PIPE_V>();
             return;
@@ -412,7 +415,7 @@ public:
 
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF0_FLAG);
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF1_FLAG);
-        if (runInfo.curS2LoopIdx / 16 == 0) {
+        if (unlikely(runInfo.curS2LoopIdx / 16 == 0)) {
             Mxfp4Api::computePscale<true, half, s1BaseSize>(pscale1, pscale2, localGroupMax1, localGroupMax2,
                                                             localGlobalMax1, localGlobalMax2, softmaxMaxOld, urs,
                                                             firstLoop, secondLoop, constInfo.subBlockIdx);
@@ -439,13 +442,14 @@ public:
 
     __aicore__ inline void ComputeVec2(const RunInfo &runInfo)
     {
-        LocalTensor<float> urs = GetUpdateScaleByCurIdx(runInfo.updateScaleIdx);
+        LocalTensor<float> urs = GetUpdateScaleByCurIdx(UB_UPDATE_IDX);
 
-        if (runInfo.curS2LoopIdx / 16 == 0) {
+        if (unlikely(runInfo.curS2LoopIdx / 16 == 0)) {
             WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_ATTN_BUF_FLAG);
             Mxfp4Api::processUpdate<false>(attentionOutUB, mm2ResUB, urs, globalRowsumUB, localRowsumUB);
         } else {
             Mxfp4Api::processUpdate<true>(attentionOutUB, mm2ResUB, urs, globalRowsumUB, localRowsumUB);
+            UB_UPDATE_IDX = (UB_UPDATE_IDX + 1) % UB_UPDATE_BUFCNT;
         }
 
         if (unlikely(runInfo.isLastS2Loop)) {
@@ -508,7 +512,7 @@ public:
         int64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
-        if (singleInitOutputSize > 0) {
+        if (likely(singleInitOutputSize > 0)) {
             WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_INIT_OUTPUT);
             constexpr int64_t initChunkSize = INIT_OUTPUT_UB_BYTES / sizeof(OUT_T);
             LocalTensor<OUT_T> initUb = mm1ResUB.template ReinterpretCast<OUT_T>();
