@@ -23,6 +23,7 @@
 #include "kernel_operator.h"
 #endif
 #include "../../common/mega_moe_utils.h"
+#include "gated_activation.h"
 
 namespace ActivationQuantMsg {
 enum class QuantMode : uint32_t {
@@ -73,7 +74,6 @@ constexpr int64_t QUANT_ONCE_NUM = 256;
 constexpr int64_t QUANT_ONCE_NUM_FP4 = 128;
 constexpr int64_t SCALE_ONCE_NUM = 8;
 constexpr int64_t CONST_64 = 64;
-constexpr uint32_t VF_LEN_FP32 = AscendC::VECTOR_REG_WIDTH / sizeof(float);
 
 constexpr AscendC::MicroAPI::CastTrait ctInt322Fp32 = {
     AscendC::MicroAPI::RegLayout::UNKNOWN, AscendC::MicroAPI::SatMode::UNKNOWN,
@@ -95,15 +95,9 @@ static constexpr AscendC::MicroAPI::DivSpecificMode DIV_MODE = {
     AscendC::MicroAPI::MaskMergeMode::ZEROING,
     true,
 };
-static constexpr AscendC::MicroAPI::CastTrait CAST_ZERO = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::UNKNOWN};
 static constexpr AscendC::MicroAPI::CastTrait CAST_ONE = {
     AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN};
-static constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_FP16_BF16 = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT};
 static constexpr AscendC::MicroAPI::CastTrait CAST_32_TO_80 = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT};
@@ -129,51 +123,6 @@ using namespace ActivationQuantMsg;
 #define BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS \
     DataTypeOut_, DataTypeIn_, DataTypeX2Scale_, DataTypeX1Scale_, IsTensorList_, TileM, TileN, TopkWeightsPrefetch, \
         IsInterleaved_
-
-/*
- * ActivationContext: 激活分块上下文
- * 仅含标量与 UB 指针（不含 RegTensor），可安全跨函数传递给各 ActivationFlow*
- * 由 VFDoActivationAndQuantForMX 填充后分派给具体激活函数
- */
-template <typename DataTypeInT>
-struct ActivationContext {
-    // 源数据地址
-    __ubuf__ DataTypeInT *firstSrc = nullptr;
-    __ubuf__ DataTypeInT *secondSrc = nullptr;
-    __ubuf__ bfloat16_t *gluResAddr = nullptr;
-
-    // 对齐参数
-    uint32_t nSrcUbAligned = 0;
-    uint32_t nDstUbAligned = 0;
-
-    // 分块循环控制
-    uint16_t dim0VfTimes = 0;
-    uint16_t dim1VfTimes = 0;
-    uint32_t dim1Tail = 0;
-    uint16_t dim1TailTimes = 0;
-    uint16_t dim1Tail2 = 0;
-
-    // 尾循环 mask
-    uint32_t mask1Num = 0;
-    uint32_t mask2Num = 0;
-    uint32_t mask3Num = 0;
-
-    // 尾循环地址
-    __ubuf__ DataTypeInT *firstTailAddr = nullptr;
-    __ubuf__ DataTypeInT *secondTailAddr = nullptr;
-    __ubuf__ bfloat16_t *activationTailAddr1 = nullptr;
-    __ubuf__ bfloat16_t *activationTailAddr2 = nullptr;
-
-    // 权重预取地址（nullptr 表示不启用 TopkWeightsPrefetch）
-    __ubuf__ float *weightUbAddr = nullptr;
-
-    // 激活参数（beta/alpha 默认 1.0，倒数同步 1.0，兜底为恒等变换）
-    float clampLimit = 0.0f;
-    float beta = 1.0f;
-    float invBeta = 1.0f;
-    float alpha = 1.0f;
-    float invAlpha = 1.0f;
-};
 
 template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_, typename DataTypeX1Scale_,
           bool IsTensorList_, uint32_t TileM = 256, uint32_t TileN = 256, bool TopkWeightsPrefetch = false,
@@ -235,21 +184,6 @@ private:
                                                        __ubuf__ bfloat16_t *gluResAddr, __ubuf__ uint16_t *maxExpAddr,
                                                        __ubuf__ uint16_t *halfScaleLocalAddr, uint16_t mSize,
                                                        uint16_t nSize, uint64_t mLoc = 0);
-
-    // 激活流程独立函数：每种激活一个完整函数，自含全部寄存器声明与 __VEC_SCOPE__
-    // （RegTensor 不能跨函数传递，故各激活函数内独立声明寄存器）
-    // 由 VFDoActivationAndQuantForMX 按模板参数 Activation 分派调用
-    template <bool IsInterleaved>
-    __aicore__ inline void ActivationFlowSwiGLU(const ActivationContext<DataTypeIn> &ctx);
-
-    template <ActSubMode ActSub, bool IsInterleaved>
-    __aicore__ inline void ActivationFlowSiTU(const ActivationContext<DataTypeIn> &ctx);
-
-    template <bool IsInterleaved>
-    __aicore__ inline void ActivationFlowSwiGLUStep(const ActivationContext<DataTypeIn> &ctx);
-
-    template <bool IsInterleaved>
-    __aicore__ inline void ActivationFlowSwiGLUOai(const ActivationContext<DataTypeIn> &ctx);
 
     __aicore__ inline void ComputeScale(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr,
                                         __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB,
@@ -553,9 +487,9 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Comput
             // vdExp0/vdExp1乘以广播后的halfScale，得到量化前缩放值
             AscendC::MicroAPI::Mul(vdExp0, vdExp0, (AscendC::MicroAPI::RegTensor<T> &)halfScaleForMul, maskAll);
             AscendC::MicroAPI::Mul(vdExp1, vdExp1, (AscendC::MicroAPI::RegTensor<T> &)halfScaleForMul, maskAll);
-            AscendC::MicroAPI::Cast<float, T, CAST_ZERO>(vdExp0FP32Zero, vdExp0, maskAll);
+            AscendC::MicroAPI::Cast<float, T, ActivationImpl::CAST_ZERO>(vdExp0FP32Zero, vdExp0, maskAll);
             AscendC::MicroAPI::Cast<float, T, CAST_ONE>(vdExp0FP32One, vdExp0, maskAll);
-            AscendC::MicroAPI::Cast<float, T, CAST_ZERO>(vdExp1FP32Zero, vdExp1, maskAll);
+            AscendC::MicroAPI::Cast<float, T, ActivationImpl::CAST_ZERO>(vdExp1FP32Zero, vdExp1, maskAll);
             AscendC::MicroAPI::Cast<float, T, CAST_ONE>(vdExp1FP32One, vdExp1, maskAll);
             // CAST_32_TO_80/82/81/83把4路fp32 lane cast到fp8 lane，后续按uint8合并成连续fp8输出
             AscendC::MicroAPI::Cast<U, float, CAST_32_TO_80>(vdExp0FP8Zero, vdExp0FP32Zero, maskAll);
@@ -653,8 +587,8 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoAc
     uint32_t nDstUbAligned =
         Ops::Base::CeilAlign(static_cast<uint32_t>(nSize), static_cast<uint32_t>(AscendC::ONE_BLK_SIZE));
     uint16_t dim0VfTimes = mSize;
-    uint16_t dim1VfTimes = nSize / VF_LEN_FP32;
-    uint32_t dim1Tail = nSize % VF_LEN_FP32;
+    uint16_t dim1VfTimes = nSize / ActivationImpl::VF_LEN_FP32;
+    uint32_t dim1Tail = nSize % ActivationImpl::VF_LEN_FP32;
     uint16_t dim1TailTimes = 0;
     uint16_t dim1Tail2 = 0;
     uint32_t mask1Num = 0;
@@ -667,23 +601,23 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoAc
     if (dim1Tail > 0) {
         mask1Num = dim1Tail;
         dim1TailTimes = 1;
-        uint32_t padNum = nDstUbAligned - dim1VfTimes * VF_LEN_FP32;
-        if (padNum <= VF_LEN_FP32) {
+        uint32_t padNum = nDstUbAligned - dim1VfTimes * ActivationImpl::VF_LEN_FP32;
+        if (padNum <= ActivationImpl::VF_LEN_FP32) {
             mask2Num = padNum;
         } else {
             dim1Tail2 = 1;
-            mask2Num = VF_LEN_FP32;
-            mask3Num = padNum - VF_LEN_FP32;
+            mask2Num = ActivationImpl::VF_LEN_FP32;
+            mask3Num = padNum - ActivationImpl::VF_LEN_FP32;
         }
-        uint32_t offsetAlign = dim1VfTimes * VF_LEN_FP32;
+        uint32_t offsetAlign = dim1VfTimes * ActivationImpl::VF_LEN_FP32;
         firstTailAddr = firstSrc + offsetAlign;
         secondTailAddr = secondSrc + offsetAlign;
         activationTailAddr1 = gluResAddr + offsetAlign;
-        activationTailAddr2 = gluResAddr + offsetAlign + dim1TailTimes * VF_LEN_FP32;
+        activationTailAddr2 = gluResAddr + offsetAlign + dim1TailTimes * ActivationImpl::VF_LEN_FP32;
     }
 
     // ---- 填充分块上下文结构体 ----
-    ActivationContext<DataTypeIn> ctx;
+    ActivationImpl::ActivationContext<DataTypeIn> ctx;
     ctx.firstSrc = firstSrc;
     ctx.secondSrc = secondSrc;
     ctx.gluResAddr = gluResAddr;
@@ -714,13 +648,13 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoAc
 
     // ---- 激活分派 ----
     if constexpr (Activation == ActMode::SWIGLU) {
-        ActivationFlowSwiGLU<IsInterleavedSrc>(ctx);
+        ActivationImpl::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, IsInterleavedSrc>(ctx);
     } else if constexpr (Activation == ActMode::SITU) {
-        ActivationFlowSiTU<ActSub, IsInterleavedSrc>(ctx);
+        ActivationImpl::RunSiTU<DataTypeIn, TopkWeightsPrefetch, ActSub == ActSubMode::LINEAR, IsInterleavedSrc>(ctx);
     } else if constexpr (Activation == ActMode::SWIGLU_STEP) {
-        ActivationFlowSwiGLUStep<IsInterleavedSrc>(ctx);
+        ActivationImpl::RunSwiGLUStep<DataTypeIn, TopkWeightsPrefetch, IsInterleavedSrc>(ctx);
     } else if constexpr (Activation == ActMode::SWIGLU_OAI) {
-        ActivationFlowSwiGLUOai<IsInterleavedSrc>(ctx);
+        ActivationImpl::RunSwiGLUOai<DataTypeIn, TopkWeightsPrefetch, IsInterleavedSrc>(ctx);
     }
 
     // ---- 量化（原样保留，不涉及激活寄存器）----
@@ -859,9 +793,6 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
 }
-
-// 激活函数实现（SwiGLU / SiTU / SwiGLUStep / SwiGLUOai）由 gated_activation.h 提供
-#include "gated_activation.h"
 
 } // namespace MegaMoeImpl
 

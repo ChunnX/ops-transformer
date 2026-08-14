@@ -18,20 +18,70 @@
 #define MEGA_MOE_ARCH35_GATED_ACTIVATION_H
 
 #if defined(__DAV_C310__)
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
+#include "../../common/mega_moe_utils.h"
+
+namespace MegaMoeImpl {
+namespace ActivationImpl {
+
+constexpr uint32_t VF_LEN_FP32 = AscendC::VECTOR_REG_WIDTH / sizeof(float);
+static constexpr AscendC::MicroAPI::CastTrait CAST_ZERO = {
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+static constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_FP16_BF16 = {
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+
+template <typename DataTypeInT>
+struct ActivationContext {
+    __ubuf__ DataTypeInT *firstSrc = nullptr;
+    __ubuf__ DataTypeInT *secondSrc = nullptr;
+    __ubuf__ bfloat16_t *gluResAddr = nullptr;
+
+    uint32_t nSrcUbAligned = 0;
+    uint32_t nDstUbAligned = 0;
+
+    uint16_t dim0VfTimes = 0;
+    uint16_t dim1VfTimes = 0;
+    uint32_t dim1Tail = 0;
+    uint16_t dim1TailTimes = 0;
+    uint16_t dim1Tail2 = 0;
+
+    uint32_t mask1Num = 0;
+    uint32_t mask2Num = 0;
+    uint32_t mask3Num = 0;
+
+    __ubuf__ DataTypeInT *firstTailAddr = nullptr;
+    __ubuf__ DataTypeInT *secondTailAddr = nullptr;
+    __ubuf__ bfloat16_t *activationTailAddr1 = nullptr;
+    __ubuf__ bfloat16_t *activationTailAddr2 = nullptr;
+
+    __ubuf__ float *weightUbAddr = nullptr;
+
+    float clampLimit = 0.0f;
+    float beta = 1.0f;
+    float invBeta = 1.0f;
+    float alpha = 1.0f;
+    float invAlpha = 1.0f;
+};
 
 /*
- * COMPUTE_TANH_TWOPATH: 两段式 tanh 宏（多项式路 + sigmoid 分解路）
+ * ACTIVATION_IMPL_COMPUTE_TANH_TWOPATH: 两段式 tanh 宏（多项式路 + sigmoid 分解路）
  *   多项式路(|x|<0.6): x*(1 + c1*x^2 + c2*x^4 + c3*x^6 + c4*x^8), Horner + FusedMulDstAdd
  *   sigmoid路(|x|>=0.6): 2/(1+e^{-2x}) - 1, 天然保号无相消
  *   系数来源: tanh_dag.h / situ_mx_quant_common.h
  *   c1=-0.333327681, c2=0.133152977, c3=-0.0523039624, c4=0.0157396831
- * 用法: COMPUTE_TANH_TWOPATH(result, zReg, msk, oneReg, absReg, sqrReg,
+ * 用法: ACTIVATION_IMPL_COMPUTE_TANH_TWOPATH(result, zReg, msk, oneReg, absReg, sqrReg,
  *                           polyReg, tmpReg, expReg, c1Reg, c2Reg, cmpMask);
  * 注意: 宏在函数内展开，所用寄存器须在调用点函数作用域内声明；
  *       宏会覆盖 sqrReg/polyReg/tmpReg/expReg/absReg/cmpMask，结果写入 result
  */
-#define COMPUTE_TANH_TWOPATH(result, zReg, msk, oneReg, absReg, sqrReg, \
-                             polyReg, tmpReg, expReg, c1Reg, c2Reg, cmpMask) \
+#define ACTIVATION_IMPL_COMPUTE_TANH_TWOPATH(result, zReg, msk, oneReg, absReg, sqrReg, \
+                                             polyReg, tmpReg, expReg, c1Reg, c2Reg, cmpMask) \
     do { \
         AscendC::MicroAPI::Mul(sqrReg, zReg, zReg, msk); \
         AscendC::MicroAPI::Muls(polyReg, sqrReg, 0.0157396831f, msk); \
@@ -53,15 +103,13 @@
     } while (0)
 
 /*
- * ActivationFlowSwiGLU: SwiGLU 激活完整计算流
+ * RunSwiGLU: SwiGLU 激活完整计算流
  *   swish(x1) * x2, 其中 swish(x) = x / (exp(-x) + 1) = x * sigmoid(x)
  *   含主循环 + 尾循环 + pad 填零，所有寄存器在本函数内声明
  */
-BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
-template <bool IsInterleaved>
+template <typename DataTypeIn, bool TopkWeightsPrefetch, bool IsInterleaved>
 __aicore__ inline void
-BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ActivationFlowSwiGLU(
-    const ActivationContext<DataTypeIn> &ctx)
+RunSwiGLU(const ActivationContext<DataTypeIn> &ctx)
 {
     const float scalarOne = 1.0f;
     const float negScalarOne = -1.0f;
@@ -170,21 +218,19 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Activa
 }
 
 /*
- * ActivationFlowSiTU: SiTU 激活完整计算流
+ * RunSiTU: SiTU 激活完整计算流
  *   situ_a = beta * tanh(gate/beta) * sigmoid(gate)
  *   ActSub==LINEAR: out = situ_a * (alpha * tanh(up/alpha))
  *   ActSub==DEFAULT: out = situ_a * up
  *   tanh 采用两段式（多项式路 + sigmoid 分解路），保号无相消
  *   参照 situ_mx_quant_common.h::ComputeVfSitu，含主循环 + 尾循环 + pad 填零
  */
-BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
-template <ActSubMode ActSub, bool IsInterleaved>
+template <typename DataTypeIn, bool TopkWeightsPrefetch, bool IsLinear, bool IsInterleaved>
 __aicore__ inline void
-BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ActivationFlowSiTU(
-    const ActivationContext<DataTypeIn> &ctx)
+RunSiTU(const ActivationContext<DataTypeIn> &ctx)
 {
     // tanh 多项式近似的奇次项系数（8 阶 Padé 近似，仅取奇次项）
-    // 参见 COMPUTE_TANH_TWOPATH 宏注释，c1/c2 对应 x^3/x^5 的系数
+    // 参见 ACTIVATION_IMPL_COMPUTE_TANH_TWOPATH 宏注释，c1/c2 对应 x^3/x^5 的系数
     const float tanhC1 = -0.333327681f; // c1: tanh 多项式 x^3 项系数，约 -1/3
     const float tanhC2 = 0.133152977f;  // c2: tanh 多项式 x^5 项系数，约 2/15
     const float scalarOne = 1.0f;
@@ -261,8 +307,8 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Activa
                 // gate路: z = gate / beta
                 AscendC::MicroAPI::Muls(zReg, vregX1F, ctx.invBeta, mask);
                 // tanh(gate/beta) — 两段式, 结果存 sigmoidReg
-                COMPUTE_TANH_TWOPATH(sigmoidReg, zReg, mask, oneReg, absReg, sqrReg, polyReg, tanhTmpReg, expReg,
-                                     c1Reg, c2Reg, cmpMaskReg);
+                ACTIVATION_IMPL_COMPUTE_TANH_TWOPATH(sigmoidReg, zReg, mask, oneReg, absReg, sqrReg, polyReg,
+                                                      tanhTmpReg, expReg, c1Reg, c2Reg, cmpMaskReg);
                 // beta * sigmoid(gate) = beta / (exp(-gate)+1)
                 AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask); // -gate
                 AscendC::MicroAPI::Exp(expReg, negReg, mask);                 // exp(-gate)
@@ -272,12 +318,12 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Activa
                 // situ_a = tanh(gate/beta) * beta * sigmoid(gate)
                 AscendC::MicroAPI::Mul(outFReg, sigmoidReg, expReg, mask); // outFReg = situ_a
 
-                if constexpr (ActSub == ActSubMode::LINEAR) {
+                if constexpr (IsLinear) {
                     // up路: alpha * tanh(up/alpha), 用 vregX1F 暂存 gate_result
                     AscendC::MicroAPI::Muls(vregX1F, outFReg, scalarOne, mask); // vregX1F = gate_result (保存)
                     AscendC::MicroAPI::Muls(zReg, vregX2F, ctx.invAlpha, mask); // zReg = up/alpha
-                    COMPUTE_TANH_TWOPATH(sigmoidReg, zReg, mask, oneReg, absReg, sqrReg, polyReg, tanhTmpReg, expReg,
-                                         c1Reg, c2Reg, cmpMaskReg);
+                    ACTIVATION_IMPL_COMPUTE_TANH_TWOPATH(sigmoidReg, zReg, mask, oneReg, absReg, sqrReg, polyReg,
+                                                          tanhTmpReg, expReg, c1Reg, c2Reg, cmpMaskReg);
                     // alpha * tanh(up/alpha)
                     AscendC::MicroAPI::Muls(sigmoidReg, sigmoidReg, ctx.alpha, mask);
                     // out = gate_result * up_transformed
@@ -316,8 +362,8 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Activa
 
                 // === SiTU 激活（尾循环, mask1）===
                 AscendC::MicroAPI::Muls(zReg, vregX1F, ctx.invBeta, mask1);
-                COMPUTE_TANH_TWOPATH(sigmoidReg, zReg, mask1, oneReg, absReg, sqrReg, polyReg, tanhTmpReg, expReg,
-                                     c1Reg, c2Reg, cmpMaskReg);
+                ACTIVATION_IMPL_COMPUTE_TANH_TWOPATH(sigmoidReg, zReg, mask1, oneReg, absReg, sqrReg, polyReg,
+                                                      tanhTmpReg, expReg, c1Reg, c2Reg, cmpMaskReg);
                 AscendC::MicroAPI::Muls(negReg, vregX1F, negScalarOne, mask1);
                 AscendC::MicroAPI::Exp(expReg, negReg, mask1);
                 AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask1);
@@ -325,11 +371,11 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Activa
                 AscendC::MicroAPI::Div(expReg, betaReg, addsReg, mask1);
                 AscendC::MicroAPI::Mul(outFReg, sigmoidReg, expReg, mask1);
 
-                if constexpr (ActSub == ActSubMode::LINEAR) {
+                if constexpr (IsLinear) {
                     AscendC::MicroAPI::Muls(vregX1F, outFReg, scalarOne, mask1);
                     AscendC::MicroAPI::Muls(zReg, vregX2F, ctx.invAlpha, mask1);
-                    COMPUTE_TANH_TWOPATH(sigmoidReg, zReg, mask1, oneReg, absReg, sqrReg, polyReg, tanhTmpReg, expReg,
-                                         c1Reg, c2Reg, cmpMaskReg);
+                    ACTIVATION_IMPL_COMPUTE_TANH_TWOPATH(sigmoidReg, zReg, mask1, oneReg, absReg, sqrReg, polyReg,
+                                                          tanhTmpReg, expReg, c1Reg, c2Reg, cmpMaskReg);
                     AscendC::MicroAPI::Muls(sigmoidReg, sigmoidReg, ctx.alpha, mask1);
                     AscendC::MicroAPI::Mul(outFReg, vregX1F, sigmoidReg, mask1);
                 } else {
@@ -354,14 +400,12 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Activa
 }
 
 /*
- * ActivationFlowSwiGLUStep: SwiGLU-Step 激活计算流
+ * RunSwiGLUStep: SwiGLU-Step 激活计算流
  *   公式: min(SiLU(gate), clamp) × clip(up, ±clamp)
  */
-BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
-template <bool IsInterleaved>
+template <typename DataTypeIn, bool TopkWeightsPrefetch, bool IsInterleaved>
 __aicore__ inline void
-BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ActivationFlowSwiGLUStep(
-    const ActivationContext<DataTypeIn> &ctx)
+RunSwiGLUStep(const ActivationContext<DataTypeIn> &ctx)
 {
     const float scalarOne = 1.0f;
     const float negScalarOne = -1.0f;
@@ -478,15 +522,13 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Activa
 }
 
 /*
- * ActivationFlowSwiGLUOai: SwiGLU-OAI 激活计算流
+ * RunSwiGLUOai: SwiGLU-OAI 激活计算流
  *   公式: (up + beta) × min(gate, clamp) × sigmoid(alpha × min(gate, clamp))
  *        = (clip(up,±clamp)+beta) × min(gate,clamp) / (1+exp(-alpha×min(gate,clamp)))
  */
-BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
-template <bool IsInterleaved>
+template <typename DataTypeIn, bool TopkWeightsPrefetch, bool IsInterleaved>
 __aicore__ inline void
-BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ActivationFlowSwiGLUOai(
-    const ActivationContext<DataTypeIn> &ctx)
+RunSwiGLUOai(const ActivationContext<DataTypeIn> &ctx)
 {
     const float scalarOne = 1.0f;
     bfloat16_t numZero = 0;
@@ -600,6 +642,11 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Activa
         }
     }
 }
+
+#undef ACTIVATION_IMPL_COMPUTE_TANH_TWOPATH
+
+} // namespace ActivationImpl
+} // namespace MegaMoeImpl
 
 #endif // defined(__DAV_C310__)
 #endif // MEGA_MOE_ARCH35_GATED_ACTIVATION_H
