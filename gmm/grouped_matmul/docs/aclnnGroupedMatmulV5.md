@@ -596,7 +596,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 <!-- end id9 -->
 
 <!-- npu="A3,910b" id12 -->
-### Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品
+### Atlas A3/A2 系列产品
 
 #### 平台约束
 
