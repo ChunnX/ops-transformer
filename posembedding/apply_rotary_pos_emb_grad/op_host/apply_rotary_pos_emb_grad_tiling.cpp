@@ -726,6 +726,9 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::GetReduceOpCompileInfo(
 
 ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::TilingReduce()
 {
+    if (dCosFlag_ == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
     auto compileInfo = context_->GetCompileInfo<ApplyRotaryPosEmbGradCompileInfo>();
     Ops::Base::ReduceOpCompileInfo opInfo;
     if (compileInfo == nullptr) {

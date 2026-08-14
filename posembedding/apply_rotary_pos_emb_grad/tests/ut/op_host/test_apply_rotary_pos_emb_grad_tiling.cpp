@@ -46,12 +46,10 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, bab_fp16_bsnd_dcos0)
             {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         },
         &compileInfo, "Ascend950", 48, 253952);
-    uint64_t expectTilingKey = 41281;
+    uint64_t expectTilingKey = 1;  // dcos0: TilingReduce 跳过 → EMPTY pattern
     string expectTilingData =
-        "2 64 1 1 1 1 1 8192 36608 8960 137438953520 4467570830351532032 1 1 1 1 1 "
-        "2 64 4 128 65536 65536 65536 65536 65536 32768 512 128 1 8192 8192 8192 8192 8192 8192 128 128 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 "
-        "2 64 4 128 65536 65536 65536 65536 65536 32768 512 128 1 "
-        "2 64 128 4 4 2 1 22 3 3 1 4 4 44 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 128 4 4 2 1 22 3 3 1 4 4 44 "
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, {});
 }
 
@@ -74,12 +72,10 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, bab_fp32_bsnd_dcos0)
             {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         },
         &compileInfo, "Ascend950", 48, 253952);
-    uint64_t expectTilingKey = 41281;
+    uint64_t expectTilingKey = 1;  // dcos0: TilingReduce 跳过 → EMPTY pattern
     string expectTilingData =
-        "2 64 1 1 1 1 1 8192 55808 6912 137438953520 4467570830351532032 1 1 1 1 1 "
-        "2 64 4 128 65536 65536 65536 65536 65536 32768 512 128 1 8192 8192 8192 8192 8192 8192 128 128 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 "
-        "2 64 4 128 65536 65536 65536 65536 65536 32768 512 128 1 "
-        "2 64 128 4 4 2 1 22 3 3 1 4 4 44 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 128 4 4 2 1 22 3 3 1 4 4 44 "
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, {});
 }
 
@@ -265,11 +261,9 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, bab_fp16_bsnd_d48_unaligned_dcos0)
             {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         },
         &compileInfo, "Ascend950", 48, 253952);
-    uint64_t expectTilingKey = 41281;
+    uint64_t expectTilingKey = 1;  // dcos0: TilingReduce 跳过 → EMPTY pattern
     string expectTilingData =
-        "1 32 2 1 1 1 1 3072 36608 8960 137438953520 4467570830351532032 1 1 1 1 1 "
-        "2 64 4 48 24576 24576 24576 24576 24576 12288 192 48 1 3072 3072 3072 3072 3072 3072 48 48 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 "
-        "2 64 4 48 24576 24576 24576 24576 24576 12288 192 48 1 "
-        "2 64 48 4 4 2 1 22 3 3 1 4 4 44 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 48 4 4 2 1 22 3 3 1 4 4 44 "
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, {});
 }
