@@ -11,11 +11,22 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import pytest
+import torch
 import torch_npu
 
-import custom_ops  # noqa: E402, F401
 from fused_gdn_gating_paramset import ENABLED_PARAMS  # noqa: E402
 import fused_gdn_gating_golden  # noqa: E402
+
+
+def _has_npu_fused_gdn_gating_op():
+    try:
+        getattr(torch.ops.custom, "npu_fused_gdn_gating")
+    except AttributeError:
+        return False
+    return True
+
+
+_HAS_OP = _has_npu_fused_gdn_gating_op()
 
 
 def case_id(case):
@@ -33,6 +44,8 @@ def _is_310p():
 @pytest.mark.ci
 @pytest.mark.parametrize("case", ENABLED_PARAMS, ids=case_id)
 def test_fused_gdn_gating(case):
+    if not _HAS_OP:
+        pytest.skip("npu_fused_gdn_gating op not registered, skip")
     is_310p = _is_310p()
     if case["soc"] == "910b" and is_310p:
         pytest.skip("BF16 not supported on 310P")
