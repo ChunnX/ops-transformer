@@ -21,8 +21,13 @@
 #include "base_checker.h"
 
 namespace optiling {
+#if defined(ASCEND_OPTILING_UT)
+#define FIA_CHECKER_UT_VISIBLE __attribute__((visibility("default")))
+#else
+#define FIA_CHECKER_UT_VISIBLE
+#endif
 
-class PagedAttentionChecker : public BaseChecker {
+class FIA_CHECKER_UT_VISIBLE PagedAttentionChecker : public BaseChecker {
 public:
     PagedAttentionChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
         BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
@@ -73,6 +78,7 @@ private:
     ge::graphStatus CheckFeatureQueryS(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureInputLayoutForAntiquant(const FiaTilingInfo &fiaInfo) const;
 };
+#undef FIA_CHECKER_UT_VISIBLE
 
 } // namespace optiling
 #endif // PAGED_ATTENTION_CHECKER_H

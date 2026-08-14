@@ -23,6 +23,14 @@
 #include "../../../common/op_host/split_core.h"
 
 namespace optiling {
+#if defined(ASCEND_OPTILING_UT)
+#define FIA_MLA_UT_VISIBLE __attribute__((visibility("default")))
+#else
+#define FIA_MLA_UT_VISIBLE
+#endif
+
+FIA_MLA_UT_VISIBLE void FillArch22MlaKvStrideParams(
+    FusedInferAttentionKvStrideParams &params, const FiaTilingInfo &fiaInfo);
 
 class FiaTilingNonQuantMla : public FiaTilingBase {
 public:
@@ -105,6 +113,7 @@ private:
     // Tiling Info
     FiaTilingInfo *fiaInfo_ = nullptr;
 };
+#undef FIA_MLA_UT_VISIBLE
 
 } // namespace optiling
 #endif // FIA_TILING_NONQUNAT_MLA_H

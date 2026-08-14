@@ -16,9 +16,9 @@
   新模板 (FiaTilingNonQuantArch35):
     D=128 且无 pse/sink/padding/prefix/后量化, sparseMode=0/3
     支持 ROPE_COMBINE (D=192)
-  老模板 (兼容): 其余场景 (D≠128 非MLA, 非PA等)
+  老模板 (兼容): 其余场景 (D≠128 非MLA, 非PA等) 由 OpAPI 连续化回退
 
-非连续规格: BnNBsD/NZ: dim0/dim01; BnBsH: dim0; 非PA: 不允许
+非连续规格: BnNBsD/NZ: dim0/dim01; BnBsH: dim0; 非PA: OpAPI 连续化回退
 """
 
 import logging, math, random
@@ -102,7 +102,7 @@ def _run(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, bs, scale,
             input_layout=q_layout, softmax_scale=scale,
             pre_tokens=pre_tok, next_tokens=next_tok,
             block_table=bt_npu if pa else None,
-            block_size=bs if pa else 0, out_dtype=DTYPE)
+            block_size=bs if pa else 0)
     else:
         r, _ = torch_npu.npu_fused_infer_attention_score(
             q_npu, k_npu, v_npu,
@@ -219,8 +219,8 @@ NEW_NORMAL = [
      "kv_seq":1536,"bs":384,"q_seq":4,"d":192,"dv":128},
 ]
 
-NEW_ERROR = [
-    {"id":"NEW-BnBsH-dim01-ERR","B":2,"N_q":2,"N_kv":1,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"dim01",
+NEW_COMPAT_FALLBACK = [
+    {"id":"NEW-BnBsH-dim01-FALLBACK","B":2,"N_q":2,"N_kv":1,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"dim01",
      "kv_seq":1024,"bs":256,"q_seq":5,"d":128},
 ]
 
@@ -257,15 +257,15 @@ OLD_NORMAL = [
      "kv_seq":1024,"bs":128,"q_seq":5,"d":64},
 ]
 
-OLD_ERROR = [
-    {"id":"OLD-BnBsH-dim01-ERR","B":2,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"dim01",
+COMPAT_FALLBACK = [
+    {"id":"OLD-BnBsH-dim01-FALLBACK","B":2,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"dim01",
      "kv_seq":1024,"bs":128,"q_seq":4,"d":256},
-    {"id":"OLD-NonPA-dim0-ERR", "B":4,"N_q":4,"N_kv":2,"pa":False,"fmt":"none","ql":"BNSD","nc":"dim0",
+    {"id":"OLD-NonPA-dim0-FALLBACK", "B":4,"N_q":4,"N_kv":2,"pa":False,"fmt":"none","ql":"BNSD","nc":"dim0",
      "kv_seq":640,"bs":0,"q_seq":3,"d":64},
-    {"id":"OLD-NonPA-dim01-ERR","B":2,"N_q":6,"N_kv":2,"pa":False,"fmt":"none","ql":"BNSD","nc":"dim01",
+    {"id":"OLD-NonPA-dim01-FALLBACK","B":2,"N_q":6,"N_kv":2,"pa":False,"fmt":"none","ql":"BNSD","nc":"dim01",
      "kv_seq":512,"bs":0,"q_seq":6,"d":128},
-    # 非PA + rope: krope 非连续应拦截
-    {"id":"OLD-NonPA-rope-dim0-ERR","B":1,"N_q":2,"N_kv":1,"pa":False,"fmt":"none","ql":"BNSD","nc":"dim0",
+    # 非PA + rope: keyRope 非连续由 OpAPI 连续化回退
+    {"id":"OLD-NonPA-rope-dim0-FALLBACK","B":1,"N_q":2,"N_kv":1,"pa":False,"fmt":"none","ql":"BNSD","nc":"dim0",
      "kv_seq":512,"bs":0,"q_seq":4,"d":128,"dr":64,"dv":128},
 ]
 
@@ -273,28 +273,18 @@ OLD_ERROR = [
 # ==============================================================================
 # pytest
 # ==============================================================================
-ALL_NORMAL = NEW_NORMAL + OLD_NORMAL
-ALL_ERROR  = NEW_ERROR  + OLD_ERROR
+ALL_NORMAL = NEW_NORMAL + OLD_NORMAL + NEW_COMPAT_FALLBACK + COMPAT_FALLBACK
 
 @pytest.mark.parametrize("cfg", ALL_NORMAL, ids=[c["id"] for c in ALL_NORMAL])
 def test_normal(cfg):
     logger.info(f"\n[NORMAL] {cfg['id']}")
     _run_one(cfg, expect_pass=True)
 
-@pytest.mark.parametrize("cfg", ALL_ERROR, ids=[c["id"] for c in ALL_ERROR])
-def test_error(cfg):
-    logger.info(f"\n[ERROR]  {cfg['id']}")
-    _run_one(cfg, expect_pass=False)
-
-
 if __name__ == '__main__':
-    logger.info(f"新模板正例={len(NEW_NORMAL)} 异常={len(NEW_ERROR)}")
-    logger.info(f"老模板正例={len(OLD_NORMAL)} 异常={len(OLD_ERROR)}")
+    logger.info(f"普通路径={len(NEW_NORMAL) + len(OLD_NORMAL)} "
+                f"兼容回退={len(NEW_COMPAT_FALLBACK) + len(COMPAT_FALLBACK)}")
     ok = True
     for c in ALL_NORMAL:
         try: _run_one(c, True); logger.info(f"  PASS")
-        except Exception as e: logger.info(f"  FAIL: {e}"); ok = False
-    for c in ALL_ERROR:
-        try: _run_one(c, False); logger.info(f"  PASS")
         except Exception as e: logger.info(f"  FAIL: {e}"); ok = False
     logger.info("\n全部通过!" if ok else "\n存在失败!")
