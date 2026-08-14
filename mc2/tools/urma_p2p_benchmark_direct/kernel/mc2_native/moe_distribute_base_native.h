@@ -23,14 +23,17 @@
 // ============================================================================
 // SyncFunc: 内联替代 mc2_kernel_utils.h 中的同名函数
 // 从 TPipe 获取 eventID, SetFlag + WaitFlag 实现同步
+// 定义在 AscendC 命名空间内, 与原版 mc2_kernel_utils.h 一致
 // ============================================================================
-template<AscendC::HardEvent event>
+namespace AscendC {
+template<HardEvent event>
 __aicore__ inline void SyncFunc()
 {
-    AscendC::TEventID eventID = GetTPipePtr()->FetchEventID(event);
-    AscendC::SetFlag<event>(eventID);
-    AscendC::WaitFlag<event>(eventID);
+    TEventID eventID = GetTPipePtr()->FetchEventID(event);
+    SetFlag<event>(eventID);
+    WaitFlag<event>(eventID);
 }
+} // namespace AscendC
 
 // ============================================================================
 // 常量定义 (与 moe_distribute_base.h 完全一致)
