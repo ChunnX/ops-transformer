@@ -25,6 +25,9 @@ aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outArray);
 void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTensor *softmaxLse,
                                                const aclTensor *&tempTensor, const aclTensor *&placeHolder);
 
+// TensorV2 is required to retain view storage/offset/stride metadata.
+bool NnopbaseSupportTensorV2() __attribute__((weak));
+
 ACLNN_API aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
     const aclTensor *pseShiftOptional, const aclTensor *attenMaskOptional,

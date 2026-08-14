@@ -278,9 +278,11 @@ struct GmLayout<GmFormat::PA_BnNBsD> {
         uint64_t bsStride = dStride * d;
         uint64_t nStride = bsStride * blockSize;
         uint64_t bnStride = nStride * n;
-        if (bn2stride != 0 && n2Stride != 0) {
-            nStride = n2Stride;
+        if (bn2stride != 0) {
             bnStride = bn2stride;
+        }
+        if (n2Stride != 0) {
+            nStride = n2Stride;
         }
         stride = AscendC::MakeStride(bnStride, nStride, bsStride, dStride);
     }
@@ -300,8 +302,10 @@ struct GmLayout<GmFormat::PA_BnNBsD_KS> {
         uint64_t bsStride = dStride * d;
         uint64_t nStride = bsStride * (blockSize + 4); // 4: 两个K间隔一个K_Scale
         uint64_t bnStride = nStride * n;
-        if (bnStrides != 0 && n2Strides != 0) {
+        if (bnStrides != 0) {
             bnStride = bnStrides;
+        }
+        if (n2Strides != 0) {
             nStride = n2Strides;
         }
         stride = AscendC::MakeStride(bnStride, nStride, bsStride, dStride);
@@ -323,9 +327,11 @@ struct GmLayout<GmFormat::PA_NZ> {
         uint64_t d1Stride = bsStride * blockSize;
         uint64_t nStride = d1Stride * d1;
         uint64_t bnStride = nStride * n;
-        if (bn2stride != 0 && n2Stride != 0) {
-            nStride = n2Stride;
+        if (bn2stride != 0) {
             bnStride = bn2stride;
+        }
+        if (n2Stride != 0) {
+            nStride = n2Stride;
         }
         stride = AscendC::MakeStride(bnStride, nStride, d1Stride, bsStride, d0Stride);
     }
