@@ -2491,7 +2491,7 @@ ge::graphStatus DequantChecker::CheckFeatureNzD32ForAntiquant(const FiaTilingInf
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         fiaInfo.opName, "sparse_mode", std::to_string(fiaInfo.sparseMode).c_str(),
                         "When PA_NZ D0=32 antiquant is enabled and Q_S>1, "
-                        "sparse_mode must be 3 (right_down) or 9 (tree mask)"),
+                        "sparse_mode must be 3 (right_down)"),
                     return ge::GRAPH_FAILED);
     }
 
