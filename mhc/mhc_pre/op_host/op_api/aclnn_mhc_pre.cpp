@@ -819,7 +819,7 @@ static bool CheckOutputFormat(const MhcParamsBase &params)
     if (!CheckTensorFormat(params.hPost, "hPost")) {
         return false;
     }
-    if (params.hRes != nullptr && CheckTensorFormat(params.hRes, "hRes")) {
+    if (params.hRes != nullptr && !CheckTensorFormat(params.hRes, "hRes")) {
         return false;
     }
     return true;
