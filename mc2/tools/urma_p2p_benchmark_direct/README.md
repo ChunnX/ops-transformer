@@ -2,13 +2,23 @@
 
 URMA 点对点通信基准测试工具，使用 `<<<>>>` kernel 直调方式，**不依赖 mc2 算子框架**，单进程多线程，编译运行轻量。
 
-## 三种通信模式
+## 四种通信模式
 
-| 模式 | opcode | SQE 大小 | WQEBB 占用 | 特点 |
-|------|--------|----------|-----------|------|
-| `--sqe_mode 0` (Write) | `0x3` | 64B | 1 个 (64B) | 纯数据搬运，无通知，comm_samples 风格 |
-| `--sqe_mode 1` (WriteWithNotify) | `0x5` | 96B | 2 个 (128B) | 数据搬运 + 远端状态通知，mc2 风格 |
-| `--sqe_mode 2` (Hcomm) | N/A | N/A | N/A | 高层 API: `WriteNbi` + `Drain`，无需手动组装 SQE |
+| 模式 | opcode | SQE 大小 | SQE 接口来源 | 特点 |
+|------|--------|----------|-------------|------|
+| `--sqe_mode 0` (Write) | `0x3` | 64B | 自写裸操作 | 纯数据搬运，无通知 |
+| `--sqe_mode 1` (WriteWithNotify) | `0x5` | 96B | 自写裸操作 | 数据搬运 + 远端通知 |
+| `--sqe_mode 2` (Hcomm) | N/A | N/A | `Hcomm::WriteNbi` | 高层 API，无需手动组装 SQE |
+| `--sqe_mode 3` (mc2_native) | `0x5` | 96B | `moe_distribute_base_native.h` | **与 mc2 算子版逻辑完全一致**，含 PutCommNotifySQE/PollCommCQUpdateSQCI/GetPICI/UpdatePICI |
+
+`-m 3` 模式直接使用 `moe_distribute_base.h` 的原版接口（逐字复制到 `moe_distribute_base_native.h`），适合对该头文件做优化后验证效果。
+
+## mc2_native 的两种 benchMode
+
+| benchMode | 说明 | `-l` 含义 | timing 计算 |
+|-----------|------|----------|------------|
+| `--bench_mode 0` (batch_write) | `-l` 次 Write → 一次 Drain | WQE 发送次数 | 不除以 loopCount（总量） |
+| `--bench_mode 1` (write_drain_loop) | 循环 `-l` 次 { Write → Drain } | Write+Drain 组数 | 除以 loopCount 得平均单次 |
 
 ## 目录结构
 
@@ -16,22 +26,27 @@ URMA 点对点通信基准测试工具，使用 `<<<>>>` kernel 直调方式，*
 urma_p2p_benchmark_direct/
 ├── kernel/
 │   ├── common/                              # 共享文件
-│   │   ├── aiv_urma_channel_decode.h        #   ChannelEntity 解码 (SQ/CQ/buffer/token)
-│   │   └── urma_p2p_bench_tiling.h          #   Tiling 结构体
-│   ├── sqe_write/                           # 模式0: Write (64B, opcode 0x3)
-│   │   ├── aiv_urma_sqe.h                   #   SQE 原语 (GenerateCommWriteSQE/PutSQEToRing/...)
+│   │   ├── aiv_urma_channel_decode.h        #   ChannelEntity 解码 (仅 -m 0/1/2 用)
+│   │   └── urma_p2p_bench_tiling.h          #   Tiling 结构体 + benchMode 定义
+│   ├── sqe_write/                           # -m 0: Write (64B, opcode 0x3)
+│   │   ├── aiv_urma_sqe.h                   #   SQE 原语
 │   │   ├── sqe_write_kernel.h               #   Kernel 类
 │   │   ├── sqe_write_launch.cpp             #   __global__ 入口 + <<<>>> launch
-│   │   └── sqe_write_launch.h               #   launch 声明
-│   ├── sqe_write_with_notify/               # 模式1: WriteWithNotify (96B, opcode 0x5)
-│   │   ├── aiv_urma_sqe_mc2.h               #   SQE 原语 (GenerateCommWriteWithNotifySQE/...)
+│   │   └── sqe_write_launch.h
+│   ├── sqe_write_with_notify/               # -m 1: WriteWithNotify (96B, opcode 0x5)
+│   │   ├── aiv_urma_sqe_mc2.h               #   SQE 原语
 │   │   ├── sqe_write_with_notify_kernel.h   #   Kernel 类
-│   │   ├── sqe_write_with_notify_launch.cpp #   __global__ 入口 + <<<>>> launch
-│   │   └── sqe_write_with_notify_launch.h   #   launch 声明
-│   └── hcomm/                               # 模式2: Hcomm (WriteNbi + Drain)
-│       ├── hcomm_kernel.h                   #   Kernel 类
-│       ├── hcomm_launch.cpp                 #   __global__ 入口 + <<<>>> launch
-│       └── hcomm_launch.h                   #   launch 声明
+│   │   ├── sqe_write_with_notify_launch.cpp
+│   │   └── sqe_write_with_notify_launch.h
+│   ├── hcomm/                               # -m 2: Hcomm (WriteNbi + Drain)
+│   │   ├── hcomm_kernel.h
+│   │   ├── hcomm_launch.cpp
+│   │   └── hcomm_launch.h
+│   └── mc2_native/                          # -m 3: mc2_native (moe_distribute_base 完整接口)
+│       ├── moe_distribute_base_native.h     #   无依赖版 moe_distribute_base.h (保留全部接口含PICI)
+│       ├── mc2_native_kernel.h              #   Kernel 类: InitRankComm→Write→Drain
+│       ├── mc2_native_launch.cpp
+│       └── mc2_native_launch.h
 ├── host/
 │   └── test_urma_p2p_bench.cpp              # C++ main: 单进程多线程 HCCL + channel setup + <<<>>>
 ├── CMakeLists.txt
@@ -45,6 +60,7 @@ urma_p2p_benchmark_direct/
 - CANN Toolkit (>= 9.0), `ASCEND_HOME_PATH` 已设置
 - 支持的芯片: `ascend950pr_9599` (默认), 可通过 `-v` 修改
 - 至少 2 张 NPU 卡 (P2P 通信需要)
+- 端口冲突时: `export HCCL_IF_BASE_PORT=64000`
 
 ### 编译命令
 
@@ -58,11 +74,19 @@ bash run.sh -c ON -v ascend950pr_9599
 
 ### 基本用法
 
-单进程多线程模式，参考 HCCL `01_send_recv` 样例：`HcclGetRootInfo` + `HcclCommInitRootInfoConfig`，每个设备一个线程，共享同一份 `rootInfo`。**不需要 rank table 文件**。
+单进程多线程模式，参考 HCCL `01_send_recv` 样例：`HcclGetRootInfo` + `HcclCommInitRootInfoConfig`，每个设备一个线程。**不需要 rank table 文件**。
 
 ```bash
-# 编译后直接运行 (默认卡0和卡1, WriteWithNotify模式)
-bash run.sh -r ON -m 1 -n 16 -s 65536 -l 100
+# mc2_native batch_write: 16个WQE攒着发, 一次Drain
+bash run.sh -r ON -d 2 -m 3 -o 0 -s 65536 -l 16
+
+# mc2_native write_drain_loop: 100组 Write→Drain, 看平均单次延迟
+bash run.sh -r ON -d 2 -m 3 -o 1 -s 4096 -l 100
+
+# 其他模式
+bash run.sh -r ON -d 2 -m 0 -n 16 -s 65536 -l 100   # Write
+bash run.sh -r ON -d 2 -m 1 -n 16 -s 65536 -l 100   # WriteWithNotify
+bash run.sh -r ON -d 2 -m 2 -n 16 -s 65536 -l 100   # Hcomm
 ```
 
 ### 指定通信的卡
@@ -71,70 +95,44 @@ bash run.sh -r ON -m 1 -n 16 -s 65536 -l 100
 
 ```bash
 # 卡0和卡3通信
-bash run.sh -r ON -i 0,3 -m 1 -n 16 -s 65536 -l 100
-
-# 卡2和卡5通信
-bash run.sh -r ON -i 2,5 -m 2 -n 32 -s 131072 -l 200
+bash run.sh -r ON -i 0,3 -m 3 -o 0 -s 65536 -l 16
 ```
-
-`dev_ids` 列表第 N 个 = rank N 的物理设备号。不传默认 `0,1,...,devCount-1`。
 
 ### 命令行参数
 
 | 参数 | 短选项 | 默认值 | 说明 |
 |------|--------|--------|------|
 | `--dev_ids` | `-i` | `0,1` | 参与通信的物理设备ID列表 (逗号分隔) |
-| `--dev_count` | `-d` | 2 | 设备数 (与 dev_ids 一起使用, dev_ids 优先) |
+| `--dev_count` | `-d` | 2 | 设备数 (dev_ids 优先) |
 | `--peer` | `-p` | 自动 | 目标 rank (rank号, 不是设备号) |
-| `--sqe_mode` | `-m` | 1 | 0=Write(samples), 1=WriteWithNotify(mc2), 2=Hcomm(WriteNbi+Drain) |
-| `--num_sqe` | `-n` | 16 | 数据 SQE 数量 (不含 trailing completion SQE) |
+| `--sqe_mode` | `-m` | 1 | 0=Write, 1=WriteWithNotify, 2=Hcomm, 3=mc2_native |
+| `--bench_mode` | `-o` | 0 | 0=batch_write, 1=write_drain_loop (仅 -m 3) |
+| `--num_sqe` | `-n` | 16 | 数据 SQE 数量 (仅 -m 0/1/2) |
 | `--sqe_bytes` | `-s` | 65536 | 每个 SQE 传输的数据量 (字节) |
 | `--buf_bytes` | `-b` | 104857600 (100MB) | 注册 workspace 大小 |
-| `--db_interval` | `-k` | 1 | 每 K 个 SQE 敲一次 DoorBell |
-| `--loop_count` | `-l` | 100 | kernel 内正式执行次数 (一次launch) |
+| `--db_interval` | `-k` | 1 | 每 K 个 SQE 敲一次 DoorBell (仅 -m 0/1) |
+| `--loop_count` | `-l` | 100 | kernel 内循环次数 |
 | `--soc-version` | `-v` | ascend950pr_9599 | 芯片版本 |
 | `--cmake-rebuild` | `-c` | OFF | ON=重新编译 |
 | `--run-test` | `-r` | OFF | ON=运行测试 |
 
-### 运行示例
-
-```bash
-# 基本测试: mc2 WriteWithNotify, 16 SQE × 64KB, 100轮
-bash run.sh -r ON -i 0,1 -m 1 -n 16 -s 65536 -l 100
-
-# Hcomm 模式
-bash run.sh -r ON -i 0,1 -m 2 -n 16 -s 65536 -l 100
-
-# 大包带宽测试: 64 SQE × 256KB
-bash run.sh -r ON -i 0,1 -m 1 -n 64 -s 262144 -l 200
-
-# 小包延迟测试: 1 SQE × 256B
-bash run.sh -r ON -i 0,1 -m 0 -n 1 -s 256 -l 1000
-
-# DoorBell 间隔测试: 每8个SQE敲一次 (仅SQE模式)
-bash run.sh -r ON -i 0,1 -m 1 -n 64 -s 65536 -k 8 -l 100
-
-# 三种模式对比
-bash run.sh -r ON -i 0,1 -m 0 -n 16 -s 65536 -l 100   # Write
-bash run.sh -r ON -i 0,1 -m 1 -n 16 -s 65536 -l 100   # WriteWithNotify
-bash run.sh -r ON -i 0,1 -m 2 -n 16 -s 65536 -l 100   # Hcomm
-```
-
 ### 输出格式
 
 ```
-[rank 0 (dev 0)] assemble=12.34us issue=15.67us wait=8.90us total=24.57us bw=42.71GB/s
+[rank 0 (dev 0)] avg  assemble=12.34us issue=12.34us wait=3.67us total=16.01us bw=4.09GB/s (over 16 loops)
+[rank 0 (dev 0)] last assemble=11.89us issue=11.89us wait=3.21us total=15.10us bw=4.33GB/s (last loop)
 ```
 
 | 字段 | 含义 |
 |------|------|
-| `rank` | 逻辑 rank 号 |
-| `dev` | 物理设备号 |
-| `assemble` | n 个数据 SQE 组装 + ring 写入 + doorbell 时间 |
-| `issue` | assemble + completion SQE + 最终 doorbell |
-| `wait` | 从 doorbell 到 CQ 完成事件落地 (Hcomm 模式 ≈0) |
-| `total` | 端到端总时间 (最后一轮的 timing) |
-| `bw` | 带宽 = numSqe × sqeBytes / total |
+| `assemble` | WQE 组装 + ring 写入时间 (mc2_native: PutCommNotifySQE 总时间) |
+| `issue` | 同 assemble (mc2_native 无 trailing SQE) |
+| `wait` | Drain 时间 (SendJFSDoorBell + PollCommCQUpdateSQCI + UpdatePICI) |
+| `total` | assemble + wait |
+| `bw` | 带宽 |
+
+- `avg`：所有轮的平均值（benchMode=1 时除以 loopCount）
+- `last`：最后一轮的单轮值
 
 ## 工作原理
 
@@ -143,76 +141,122 @@ bash run.sh -r ON -i 0,1 -m 2 -n 16 -s 65536 -l 100   # Hcomm
 ```
 main()
   ├─ aclInit()
-  ├─ HcclGetRootInfo(rootInfo)          # 主线程生成 rootInfo
-  ├─ std::thread per device:            # 每个设备一个线程
-  │   ├─ aclrtSetDevice(physicalDev)    #   设置物理设备
-  │   ├─ HcclCommInitRootInfoConfig     #   初始化通信域
-  │   ├─ aclrtMalloc workspace          #   申请 URMA 目标缓冲区
-  │   ├─ HcclCommMemReg                 #   注册 workspace
-  │   ├─ HcclRankGraphGetLinks          #   枚举 UBC_CTP/UBC_TP 链路
-  │   ├─ HcclChannelAcquire             #   获取 ChannelHandle (跨 rank 握手)
-  │   ├─ HcommChannelGetPtrByHandle     #   handle → device VA (dlsym 兼容新旧 ABI)
-  │   ├─ barrier(devCount)              #   等所有 rank 就绪
-  │   └─ <<<>>> launch (loop在kernel内部) → 读timing
+  ├─ HcclGetRootInfo(rootInfo)              # 主线程生成 rootInfo (需先 aclrtSetDevice)
+  ├─ std::thread per device:                # 每个设备一个线程
+  │   ├─ aclrtSetDevice + aclrtCreateContext
+  │   ├─ HcclCommInitRootInfoConfig         # 初始化通信域
+  │   ├─ setup_ctx():
+  │   │   ├─ [1/6] aclrtMalloc workspace    # 分配 URMA 目标缓冲区
+  │   │   ├─ [2/6] HcclCommMemReg           # 注册 workspace, 使对端可 URMA 写入
+  │   │   ├─ [3/6] build_channel_descs      # 枚举 UBC_CTP/UBC_TP 链路, 构建 ChannelDesc
+  │   │   ├─ [4/6] HcclChannelAcquire       # 跨 rank 握手, 获取 ChannelHandle
+  │   │   ├─ [5/6] resolve channel ptrs     # handle → device VA (兼容新旧 ABI)
+  │   │   └─ [6/6] alloc table+state GM     # channelPtrTable + state 拷到 device
+  │   ├─ 如果 -m 3 (mc2_native):
+  │   │   └─ build_hccl_context():
+  │   │       ├─ 从 device 读 ChannelEntity (aclrtMemcpy D2H)
+  │   │       ├─ 解码 SQ/CQ/buffer/token 字段
+  │   │       ├─ 填入 HcclAiRMAWQ / HcclAiRMACQ 结构体
+  │   │       ├─ 设置 windowsIn[peer] (对端 workspace 地址)
+  │   │       ├─ 设置 windowsOut[myRank] (PICI 窗口 GM, 含 1MB 前缀)
+  │   │       └─ 拷 HcclCombinOpParam 到 device
+  │   ├─ barrier (等所有 rank 就绪)
+  │   └─ rank 0: <<<>>> launch → synchronize → 读 timing → 打印
+  │      rank 1: sleep (URMA 单向, 接收方不做事)
   └─ join all threads
 ```
 
-### Kernel 侧流程
+### mc2_native Kernel 侧流程 (-m 3)
 
-三种模式共享 `aiv_urma_channel_decode.h`（从 ChannelEntity 提取 SQ/CQ/buffer/token），区别在 SQE 组装方式：
+与 mc2 算子版 `P2pUrmaSqeComm` 逻辑完全一致：
 
-**SQE Write / WriteWithNotify:**
 ```
-DecodePeerChannel → 生成SQE模板 → for(loopCount):
-  重置SQ/CQ状态 → [首轮]InvalidateCqRing →
-  组装n个数据SQE写入ring+doorbell → 发1个completion SQE →
-  Poll CQ等待完成 → 记录timing(最后一轮写GM)
+InitRankComm(peer):
+  1. GetURMASqInfoTensor  — 从 HcclCombinOpParam.sqs[peer] 读 SQ 信息到 UB
+  2. GetURMACqInfoTensor  — 从 HcclCombinOpParam.cqs[peer] 读 CQ 信息到 UB
+  3. GetIsFirstInComm     — 读 PICI 窗口的 isFirstFlag
+  4. GetPICI              — 读 windowsOut[myRank]+1MB+512B*peer 的 sqPi/sqCi/cqCi
+  5. InvalidateCqeStatus  — 首次通信时 CQ ring 全填 0xff
+  6. PollCommCQUpdateSQCI — 清理残余 CQE + 敲 JFC DoorBell 更新硬件 cqCi
+  7. GenerateCommWriteWithNotifySQE — 生成 SQE 模板 (opcode=0x5, 96B)
+  8. UpdateCommWriteWithNotifySQE   — 填 channel 元数据 (tp_id/eid/token)
+
+benchMode=0 (batch_write):
+  for (i=0..loopCount-1):
+    Write(peer, localAddr+off, remoteAddr+off, sqeBytes)
+      → SetCommWriteWithNotifySQE (填 dataAddr/rmtAddr/length/notifyAddr/notifyData)
+      → PutCommNotifySQE (检查 SQ 空间→不够则 poll CQ 腾空间→DataCopy SQE→ring→更新 sqPi)
+  Drain(peer):
+    → SendJFSDoorBell (敲 JFS DoorBell)
+    → PollCommCQUpdateSQCI (轮询 CQ + 敲 JFC DoorBell 更新硬件 cqCi)
+    → UpdatePICI (写 sqPi/sqCi/cqCi 回 windowsOut, 供下次 launch 复用)
+
+benchMode=1 (write_drain_loop):
+  for (i=0..loopCount-1):
+    Write(peer, ...) → Drain(peer)
+    累加 timing
+  Host 侧除以 loopCount 得平均一次 Write+Drain 时间
 ```
 
-**Hcomm:**
+### 关键数据结构
+
+**HcclCombinOpParam** (Host 侧 `build_hccl_context` 构造)：
+
 ```
-DecodePeerChannel → Hcomm.Init → for(loopCount):
-  n×WriteNbi → Drain → 记录timing(最后一轮写GM)
+struct HcclCombinOpParam {
+    rankId, rankDim;                     // rank 信息
+    windowsIn[MAX_RANK_NUM];             // 各 peer 的 workspace 地址 (URMA 写入目的)
+    windowsOut[MAX_RANK_NUM];            // 本 rank 的 PICI 窗口地址 (跨 launch 持久化 SQ/CQ 索引)
+    sqs[MAX_RANK_NUM]: HcclAiRMAWQ {     // 每个 peer 的 SQ 信息
+        sqVA, dbAddr, wqeSize, sqDepth,  //   SQ ring 地址 + doorbell + 深度
+        tp_id, rmtEid[16],               //   通信路由元数据
+        rmtObjId, rmtTokenValue,         //   远端 token (填入 SQE)
+        localTokenId                     //   本端 token (填入 SQE)
+    };
+    cqs[MAX_RANK_NUM]: HcclAiRMACQ {     // 每个 peer 的 CQ 信息
+        cqVA, cqeSize, cqDepth, dbAddr   //   CQ ring 地址 + doorbell + 深度
+    };
+};
 ```
+
+**PICI 窗口** (每个 peer 512B)：
+
+```
+[sqPi]       — SQ 生产者索引 (kernel 写到哪了)
+[sqCi]       — SQ 消费者索引 (硬件处理到哪了)
+[cqPi]       — CQ 生产者索引 (硬件写到哪了)
+[cqCi]       — CQ 消费者索引 (kernel 读到哪了)
+[sqPiLinear] — SQ 线性计数 (不取模)
+[cqCiLinear] — CQ 线性计数
+```
+
+跨 kernel launch 持久化 SQ/CQ 读写位置，kernel 结束时 `UpdatePICI` 写回，下次开始时 `GetPICI` 读出。
 
 ### Timing Slots
 
-| Slot | 位置 | SQE 模式含义 | Hcomm 模式含义 |
-|------|------|------------|---------------|
-| `[0]` | 循环开始前 | 起始 | 起始 |
-| `[1]` | n 个数据 SQE 完毕 | 组装+ring写入+doorbell | n × WriteNbi 调用 |
-| `[2]` | completion SQE + doorbell | issue 完成 | Drain 完毕 |
-| `[3]` | CQ poll 收到 completion | 等待完成 | ≈[2] (Drain 内部已等待) |
-
-> timing 记录的是**最后一轮**的值。`loopCount` 轮在 kernel 内部循环，无 Host↔Device 同步开销。
-
-## SQE 模式选择指南
-
-| 场景 | 推荐模式 | 原因 |
-|------|---------|------|
-| 测纯 URMA 写入性能 | `-m 0` | 无 notify 开销 |
-| 模拟 mc2 MoE dispatch | `-m 1` | 与 mc2 算子 SQE 类型一致 |
-| 对比底层 vs 高层 API | `-m 0/1` vs `-m 2` | SQE 模式 vs Hcomm 封装开销 |
-| 小包延迟 | `-m 0` | notify 开销在小包占比大 |
-| 大包带宽 | 三者均可 | notify 开销在大包可忽略 |
+```
+[0]=assemble累计 [1]=issue累计 [2]=wait累计 [3]=total累计
+[4]=最后一轮assemble [5]=最后一轮issue [6]=最后一轮wait [7]=最后一轮total
+```
 
 ## 与 mc2 算子版的对比
 
-| 维度 | mc2 算子版 | 本直调版 |
-|------|-----------|---------|
+| 维度 | mc2 算子版 | 本直调版 (-m 3) |
+|------|-----------|-----------------|
 | 调用方式 | GE 图框架调度 aclnn | `<<<>>>` 直调 |
-| HCCL 初始化 | `HcclCommInitClusterInfoConfig` + rank table | `HcclGetRootInfo` + `HcclCommInitRootInfoConfig` (单进程多线程) |
-| 通道建立 | `MC2().HcclGroup()` 框架自动 | `HcclCommMemReg` + `HcclChannelAcquire` |
-| SQE 模式 | 仅 WriteWithNotify | 运行时切换 Write / WriteWithNotify / Hcomm |
+| HCCL 初始化 | `MC2().HcclGroup()` 框架自动 | `HcclGetRootInfo` + `HcclCommInitRootInfoConfig` |
+| 通信上下文 | `GetHcclContext` → `HcclCombinOpParam` (框架创建) | `build_hccl_context` Host 侧手动构造 |
+| SQE 接口 | `moe_distribute_base.h` | `moe_distribute_base_native.h` (逐字复制) |
 | 多轮循环 | Host 侧多次 launch | kernel 内部循环, 一次 launch |
+| PICI | windowsOut (框架分配) | 单独分配 GM |
 | 编译依赖 | mc2 全量代码 | 仅 CANN headers |
 | rank table | 需要 | 不需要 |
 
 ## 限制
 
 - 单核执行 (blockDim=1, aivId==0)
-- 单向发送: rank 0 发, rank 1 等 (URMA Write 单向, 接收方无需操作)
+- 单向发送: rank 0 发, rank 1 等 (URMA Write 单向)
 - `sqeBytes` 需 ≤ `bufBytes`，建议 32B 对齐
-- WriteWithNotify 每个 SQE 占 2 个 WQEBB，`numSqe` 需满足 `numSqe * 2 < sqDepth` (通常 256)
+- WriteWithNotify 每个 SQE 占 2 个 WQEBB，`loopCount` 需满足 `loopCount * 2 < sqDepth` (通常 256)
 - 需要物理 UBC_CTP 或 UBC_TP 链路 (同机 NPU 间)
-- Hcomm 模式 `dbInterval` 参数无效 (Hcomm 每次 WriteNbi 默认 commit=true)
+- `benchMode` 仅 `-m 3` 支持

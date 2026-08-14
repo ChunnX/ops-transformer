@@ -82,7 +82,7 @@ public:
         AscendC::Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> hcomm;
         hcomm.Init(hcommBuf, HCOMM_INIT_BUF_SIZE);
 
-        const uint32_t S = static_cast<uint32_t>(sqeBytes);
+        const uint32_t sqeDataBytes = static_cast<uint32_t>(sqeBytes);
         AscendC::LocalTensor<int64_t> timingLocal = timingBuf_.Get<int64_t>();
 
         // ========== 正式执行循环 (kernel内部, 无Host同步开销) ==========
@@ -99,10 +99,12 @@ public:
             // ---- n个WriteNbi: 非阻塞写入(内部自动SQE组装+ring写入+doorbell) ----
             for (uint32_t i = 0; i < n; ++i) {
                 uint64_t off = (static_cast<uint64_t>(i) % numSlots) * sqeBytes;
+                // 默认是commit，如果想要非commit模式可以在Hcomm.WriteNbi()里加参数
+                // 如果是非commit模式，必须在Drain()前调用Hcomm.Commit()，否则可能出现数据未落地的情况
                 hcomm.WriteNbi(channelHandle,
                                (GM_ADDR)(ch.remoteBufAddr + off),  // dst: 远端workspace
                                (GM_ADDR)(ch.localBufAddr + off),   // src: 本地workspace
-                               S);
+                               sqeDataBytes);
             }
 
             int64_t t1 = AscendC::GetSystemCycle();  // n×WriteNbi完毕

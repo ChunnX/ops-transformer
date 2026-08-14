@@ -100,7 +100,7 @@ public:
         GenerateCommWriteWithNotifySQE(sqe);
         FillCommWriteWithNotifySQEFromChannel(sqe, ch);
 
-        const uint32_t S = static_cast<uint32_t>(sqeBytes);
+        const uint32_t sqeDataBytes = static_cast<uint32_t>(sqeBytes);
         AscendC::LocalTensor<int64_t> timingLocal = timingBuf_.Get<int64_t>();
         AscendC::LocalTensor<uint8_t> cqe = cqeBuf_.Get<uint8_t>();
 
@@ -128,7 +128,7 @@ public:
             for (uint32_t i = 0; i < n; ++i) {
                 uint64_t off = (static_cast<uint64_t>(i) % numSlots) * sqeBytes;
                 SetCommWriteWithNotifySQE(sqe,
-                    ch.localBufAddr + off, ch.remoteBufAddr + off, S,
+                    ch.localBufAddr + off, ch.remoteBufAddr + off, sqeDataBytes,
                     ch.remoteBufAddr, WDN_DEFAULT_NOTIFY_DATA, 0);  // notifyAddr=远端buffer基址, notifyData=1.0f标志
                 SyncFunc<AscendC::HardEvent::S_MTE3>();       // 等Scalar写完SQE字段再DataCopy
                 PutWriteWithNotifySQEToRing(ch.sqVa, ch.wqeSize, ch.sqDepth, sqe, sqPi, sqPiLinear);  // DataCopy SQE→SQ ring

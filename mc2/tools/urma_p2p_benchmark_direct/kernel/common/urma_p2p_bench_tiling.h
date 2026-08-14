@@ -10,6 +10,10 @@ constexpr uint32_t COMPLETION_SQE_BYTES = 32U;
 // [0]=assemble累计 [1]=issue累计 [2]=wait累计 [3]=total累计
 // [4]=最后一轮assemble [5]=最后一轮issue [6]=最后一轮wait [7]=最后一轮total
 
+// benchMode: 0=多次Write一次Drain, 1=一次Write一次Drain循环
+constexpr uint32_t BENCH_MODE_BATCH_WRITE = 0U;
+constexpr uint32_t BENCH_MODE_WRITE_DRAIN_LOOP = 1U;
+
 struct UrmaP2pBenchTiling {
     uint32_t rankId;
     uint32_t peer;
@@ -21,6 +25,7 @@ struct UrmaP2pBenchTiling {
     uint32_t cqOwnerSlot;
     uint32_t stateStride;
     uint32_t loopCount;
+    uint32_t benchMode;
 };
 
 #endif

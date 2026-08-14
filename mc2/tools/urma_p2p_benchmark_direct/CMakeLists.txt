@@ -21,6 +21,7 @@ file(GLOB KERNEL_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel/sqe_write/sqe_write_launch.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel/sqe_write_with_notify/sqe_write_with_notify_launch.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel/hcomm/hcomm_launch.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel/mc2_native/mc2_native_launch.cpp
 )
 
 if(EXISTS ${ASCEND_CANN_PACKAGE_PATH}/compiler/tikcpp/ascendc_kernel_cmake)
@@ -55,6 +56,7 @@ target_include_directories(test_urma_p2p_bench PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel/sqe_write
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel/sqe_write_with_notify
     ${CMAKE_CURRENT_SOURCE_DIR}/kernel/hcomm
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernel/mc2_native
 )
 
 target_link_libraries(test_urma_p2p_bench PRIVATE

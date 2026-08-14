@@ -97,7 +97,7 @@ public:
                                     ch.remoteEID2, ch.remoteEID3,
                                     ch.remoteTokenId, ch.remoteTokenValue);
 
-        const uint32_t S = static_cast<uint32_t>(sqeBytes);
+        const uint32_t sqeDataBytes = static_cast<uint32_t>(sqeBytes);
         AscendC::LocalTensor<int64_t> timingLocal = timingBuf_.Get<int64_t>();
         AscendC::LocalTensor<uint8_t> cqe = cqeBuf_.Get<uint8_t>();
 
@@ -123,7 +123,7 @@ public:
             // ---- 组装并发送n个数据SQE (cqe=0, 不产生完成事件) ----
             for (uint32_t i = 0; i < n; ++i) {
                 uint64_t off = (static_cast<uint64_t>(i) % numSlots) * sqeBytes;
-                SetCommWriteSQE(sqe, ch.localBufAddr + off, ch.remoteBufAddr + off, S, ch.localTokenId, 0);
+                SetCommWriteSQE(sqe, ch.localBufAddr + off, ch.remoteBufAddr + off, sqeDataBytes, ch.localTokenId, 0);
                 SyncFunc<AscendC::HardEvent::S_MTE3>();       // 等Scalar写完SQE字段再DataCopy
                 PutSQEToRing(ch.sqVa, ch.wqeSize, ch.sqDepth, sqe, sqPi, sqPiLinear);  // DataCopy SQE→SQ ring
                 SyncFunc<AscendC::HardEvent::MTE3_S>();       // 等DataCopy完成再继续
