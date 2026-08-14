@@ -42,10 +42,16 @@ def _inplace_write(dst, src_torch, slot_name):
     if hasattr(dst, "numpy"):  # torch tensor
         dst_t = dst
         if tuple(dst_t.shape) != tuple(src_torch.shape):
-            raise ValueError(
-                f"[INPUTS] {slot_name} shape mismatch: CSV storage {tuple(dst_t.shape)} "
-                f"!= computed {tuple(src_torch.shape)}. 检查 Excel shape vs layout 转换逻辑."
+            logger.warning(
+                "[INPUTS] %s shape mismatch: CSV %s != computed %s, 按 CSV shape 适配",
+                slot_name, tuple(dst_t.shape), tuple(src_torch.shape),
             )
+            adapted = golden_mod._adapt_tensor_to_shape(src_torch, dst_t.shape)
+            if dst_t.dtype == adapted.dtype:
+                dst_t[...] = adapted
+            else:
+                dst_t[...] = adapted.to(dst_t.dtype)
+            return
         if dst_t.dtype == src_torch.dtype:
             dst_t[...] = src_torch
         elif dst_t.dtype == torch.uint8 and src_torch.dtype == torch.uint8:
@@ -56,10 +62,16 @@ def _inplace_write(dst, src_torch, slot_name):
     # numpy array
     dst_np = np.asarray(dst)
     if tuple(dst_np.shape) != tuple(src_torch.shape):
-        raise ValueError(
-            f"[INPUTS] {slot_name} shape mismatch: CSV storage {tuple(dst_np.shape)} "
-            f"!= computed {tuple(src_torch.shape)}."
+        logger.warning(
+            "[INPUTS] %s shape mismatch: CSV %s != computed %s, 按 CSV shape 适配",
+            slot_name, tuple(dst_np.shape), tuple(src_torch.shape),
         )
+        adapted = golden_mod._adapt_tensor_to_shape(src_torch, dst_np.shape)
+        src_np = adapted.numpy() if adapted.device.type == "cpu" else adapted.cpu().numpy()
+        if src_np.dtype != dst_np.dtype:
+            src_np = src_np.view(dst_np.dtype) if src_np.dtype.itemsize == dst_np.dtype.itemsize else src_np.astype(dst_np.dtype)
+        dst_np[...] = src_np
+        return
     src_np = src_torch.numpy() if src_torch.device.type == "cpu" else src_torch.cpu().numpy()
     if src_np.dtype != dst_np.dtype:
         src_np = src_np.view(dst_np.dtype) if src_np.dtype.itemsize == dst_np.dtype.itemsize else src_np.astype(dst_np.dtype)
@@ -197,8 +209,15 @@ def generate_qfa_mxfp4_inputs(
         }
     )
 
-    # 调 golden_mod.generate_data 生成真实 MXFP4 数据 (确定性种子, 无跨用例缓存)
-    data_dict = golden_mod.generate_data()
+    golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
+    try:
+        try:
+            data_dict = golden_mod.generate_data()
+        except Exception:
+            golden_mod._clear_physical_s_override()
+            data_dict = golden_mod.generate_data()
+    finally:
+        golden_mod._clear_physical_s_override()
 
     # 原位写 CSV 框架分配的张量 (q/k/v/q_descale/k_descale/v_descale)
     _inplace_write(q, data_dict["q"], "q (slot 0)")

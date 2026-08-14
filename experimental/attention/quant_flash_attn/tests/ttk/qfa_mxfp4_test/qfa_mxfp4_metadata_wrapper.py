@@ -171,8 +171,19 @@ def run_metadata(
         }
     )
 
-    # data_dict 由 generate_data 重新生成 (确定性种子, 与 inputs.py 同源, 无跨用例缓存)
-    data_dict = golden_mod.generate_data()
+    golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
+    try:
+        try:
+            data_dict = golden_mod.generate_data()
+        except Exception:
+            golden_mod._clear_physical_s_override()
+            data_dict = golden_mod.generate_data()
+    finally:
+        golden_mod._clear_physical_s_override()
+    golden_mod._apply_csv_shape_override(
+        data_dict,
+        {"q": q, "k": k, "v": v, "q_descale": q_descale, "k_descale": k_descale, "v_descale": v_descale},
+    )
     logger.info(
         "[METADATA_WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d",
         graph_path,

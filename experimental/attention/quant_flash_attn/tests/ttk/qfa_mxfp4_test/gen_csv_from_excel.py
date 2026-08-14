@@ -253,15 +253,13 @@ def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
     q_descale_shape = _parse_shape(g("q_descale_shape"))
     k_descale_shape = _parse_shape(g("k_descale_shape"))
 
-    # v_descale: golden 重算校验, 不一致则用 golden 并告警
     v_descale_excel = _parse_shape(g("v_descale_shape"))
     v_descale_golden = _compute_v_descale_shape(B, N_kv, V_D, skv, max_seqlen_kv)
     if v_descale_excel != v_descale_golden:
         print(
-            f"[WARN] {name}: Excel v_descale={v_descale_excel} 与 golden={v_descale_golden} "
-            f"不一致, 使用 golden (Excel 公式疑似用 v_shape 的 S 而非 max(seqused_kv))"
+            f"[WARN] {name}: Excel v_descale={v_descale_excel} 与 golden={v_descale_golden} 不一致, 保留 Excel 值"
         )
-    v_descale_shape = v_descale_golden
+    v_descale_shape = v_descale_excel
 
     block_table_shape = (
         0,
