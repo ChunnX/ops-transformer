@@ -547,7 +547,8 @@ __aicore__ inline void Gmm1Aiv1PrefetchEpilogueTileA8W4(
             0};
         AscendC::SetCtrlSpr<60, 60>(0);
         activationQuantOp(epilogueShape, epilogueOffset);
-        NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag);
+        NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag,
+                                                subMLoc / L1_TILE_M_256);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
     }
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
@@ -596,7 +597,8 @@ __aicore__ inline void Gmm1Aiv1EpilogueTileA8W4(
         0};
     AscendC::SetCtrlSpr<60, 60>(0);
     activationQuantOp(epilogueShape, epilogueOffset);
-    NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag);
+    NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag,
+                                            mLoc / L1_TILE_M_256);
     AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
     AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
 }
@@ -1022,34 +1024,13 @@ __aicore__ inline void WaitForMoeExpertTokenCountReady(const BlockWorkspaceConte
     }
 }
 
-// 进入一个 MoE 专家时推进累计行偏移，并准备该专家的完整 GMM1 状态。
-template <bool EnableA8W4>
-__aicore__ inline bool PrepareMoeExpertGmm1State(const BlockWorkspaceContext &countWorkspace,
-                                                 const WorkspaceInfo &workspace, ExpertLoopState &state,
-                                                 uint32_t expertIdx, uint64_t sendCnt)
-{
-    if constexpr (g_coreType == AIV && !EnableA8W4) {
-        if (GetSubBlockIdx() != 0) {
-            Get<M_VALUE>(state.problemShape) = sendCnt;
-            return sendCnt != 0;
-        }
-    }
-
-    if (GetSubBlockIdx() == 0) {
-        WaitForMoeExpertTokenCountReady(countWorkspace, workspace, expertIdx);
-        return UpdateExpertLoopStateFromWorkspace(workspace, countWorkspace, state, expertIdx);
-    }
-    return UpdateExpertLoopState(state, expertIdx, sendCnt);
-}
-
 template <typename ActivationType, typename WeightType, typename ActivationOutType, typename QuantScaleType,
           uint32_t ActivationElementsPerByte, bool EnableA8W4, bool TopkWeightsPrefetch, typename BlockEpilogue>
 __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
     const GmmExecutionConfig &gmmConfig, const MoeSyncWorkspaceLayout &syncLayout,
     const WorkspaceInfo &workspace,
     const ExpertWeightTensorListAddrs &weights, BlockEpilogue &epilogueOp, GMMAddrInfo &gmmAddrInfo,
-    const ExpertLoopState &state, uint32_t expertIdx, uint32_t rowOffsetInExpert = 0U,
-    uint32_t expertMGroupOffset = 0U, uint32_t gmm1TilesPerMGroup = 0U)
+    const ExpertLoopState &state, uint32_t rowOffsetInExpert = 0U, uint32_t gmm1TilesPerMGroup = 0U)
 {
     if constexpr (g_coreType == AIV && !EnableA8W4) {
         if (GetSubBlockIdx() != 0) {
@@ -1061,8 +1042,9 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
     constexpr uint32_t outputElementsPerByte = PackedElementTraits<ActivationOutType>::ELEMENTS_PER_BYTE;
     int64_t n = Get<N_VALUE>(state.problemShape);
     int64_t k = Get<K_VALUE>(state.problemShape);
-    int64_t expertOffset = expertIdx;
+    int64_t expertOffset = state.expertIdx;
     int64_t globalTokenStartIndex = state.globalTokenStartIndex + rowOffsetInExpert;
+    uint32_t expertMGroupOffset = rowOffsetInExpert / L1_TILE_M_256;
     int64_t scaleK = Ops::Base::CeilDiv(k, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
 
     if constexpr (EnableA8W4 || TopkWeightsPrefetch) {
@@ -1071,7 +1053,8 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
     }
     if constexpr (TopkWeightsPrefetch) {
         gmmAddrInfo.gmm1TileStatus = reinterpret_cast<__gm__ int32_t *>(workspace.gmm1TileStatusPtr) +
-                                     (static_cast<uint64_t>(expertIdx) * syncLayout.gmm1TileStatusCountPerExpert +
+                                     (static_cast<uint64_t>(state.expertIdx) *
+                                          syncLayout.gmm1TileStatusCountPerExpert +
                                       static_cast<uint64_t>(expertMGroupOffset) * gmm1TilesPerMGroup) *
                                          INT_CACHELINE;
     }
@@ -1085,11 +1068,11 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
     gmmAddrInfo.aScaleGlobal =
         workspace.dispatchRevScalePtr + globalTokenStartIndex * scaleK * sizeof(QuantScaleType);
     gmmAddrInfo.bGlobal = GetExpertWeightAddr<ActivationType>(
-        weights.weight1, gmmConfig.isPerExpertWeightTensor, expertIdx,
-        static_cast<uint64_t>(expertIdx) * n * k / weightElementsPerByte);
+        weights.weight1, gmmConfig.isPerExpertWeightTensor, state.expertIdx,
+        static_cast<uint64_t>(state.expertIdx) * n * k / weightElementsPerByte);
     gmmAddrInfo.bScaleGlobal = GetExpertWeightAddr<QuantScaleType>(
-        weights.weightScales1, gmmConfig.isPerExpertWeightTensor, expertIdx,
-        static_cast<uint64_t>(expertIdx) * n * scaleK);
+        weights.weightScales1, gmmConfig.isPerExpertWeightTensor, state.expertIdx,
+        static_cast<uint64_t>(state.expertIdx) * n * scaleK);
     if constexpr (g_coreType == AIV) {
         bool runsActivation = true;
         if constexpr (EnableA8W4) {
@@ -1247,34 +1230,6 @@ __aicore__ inline void RunSharedExpertGmm1ActivationStage(const MoeStageCommonCo
             gmmConfig.blockJob, expertBeforeCnt, sharedExpertIdx, runtimeState.pingpongIdx,
             persistentBlockMmadContext, allowWeightL2Bypass);
     }
-}
-
-// 执行一个 MoE 专家的 GMM1 和 SwiGLU。
-template <typename QuantOutType, typename ActivationType, typename WeightType, typename ActivationOutType,
-          typename QuantScaleType, bool EnableA8W4, uint32_t Gmm1TileM, uint32_t EpilogueTileM,
-          bool TopkWeightsPrefetch, bool IsGmm1Interleaved, bool IsWaveFlagGrained, typename BlockEpilogue>
-__aicore__ inline void RunMoeExpertGmm1ActivationStage(
-    const GmmExecutionConfig &gmmConfig, const BlockWorkspaceContext &countWorkspace,
-    const MoeSyncWorkspaceLayout &syncLayout, const Params &gmmParams,
-    const ExpertWeightTensorListAddrs &weights, BlockEpilogue &epilogueOp, ExpertLoopState &state,
-    GMMAddrInfo &gmmAddrInfo,
-    Gmm1ActivationState &runtimeState, uint32_t expertIdx, uint64_t sendCnt,
-    void *persistentBlockMmadContext = nullptr, bool allowWeightL2Bypass = false)
-{
-    if (!PrepareMoeExpertGmm1State<EnableA8W4>(
-            countWorkspace, gmmParams.workspaceInfo, state, expertIdx, sendCnt)) {
-        return;
-    }
-    UpdateMoeExpertGmm1GlobalBuffer<ActivationType, WeightType, ActivationOutType, QuantScaleType,
-                                    PackedElementTraits<QuantOutType>::ELEMENTS_PER_BYTE, EnableA8W4,
-                                    TopkWeightsPrefetch>(
-        gmmConfig, syncLayout, gmmParams.workspaceInfo, weights, epilogueOp, gmmAddrInfo, state, expertIdx);
-    RunGmm1ActivationByMode<QuantOutType, WeightType, ActivationOutType, QuantScaleType, EnableA8W4,
-                            Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch,
-                            IsGmm1Interleaved, IsWaveFlagGrained>(
-        gmmConfig, gmmParams, epilogueOp, gmmAddrInfo, state.problemShape,
-        static_cast<uint32_t>(state.globalTokenStartIndex), runtimeState, expertIdx,
-        persistentBlockMmadContext, allowWeightL2Bypass);
 }
 
 // 完成 MoE GMM1/SwiGLU 阶段的末尾同步。
