@@ -384,22 +384,23 @@
          uint32_t pSlot = delay20TileInfo.loop % MXFP4::L1_P_BUF_CNT;
 
          // [预取] 首个 sparse index 是阻塞式 GM 标量读，且 gather 的第一条 Nd2Nz 地址依赖它。
-         //   在此提前发起，把访存延迟藏进后面的 Pad / WaitFlag，并让标量单元能继续往前排 MTE2 指令。
+         //   在此提前发起，把访存延迟藏进后面的 WaitFlag，并让标量单元能继续往前排 MTE2 指令。
          uint32_t firstYBlockIdx = (gatheredKvSTileIdx * kvSBaseTile) / blockShapeY;
          uint32_t firstOriYBlockIdx = static_cast<uint32_t>(gSparseBlockIdx.GetValue(firstYBlockIdx));
 
          uint32_t mMmad = MXFP4::PV_MMAD_M_DIM;
- 
+
+         // 先等 MTE1 释放 L1A 再 Pad: 对齐 QFA 安全顺序, 避免 Pad(MTE2 Fill) 与上一轮
+         // MTE1 LoadData(L1A->L0A) 竞争 l1ATensor[l1ABufId]（仅尾部 kvs 不齐 64 时触发, 符合偶现）。
+         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + l1ABufId);
+
          if (delay20TileInfo.kvsActBaseTileAlign32 != delay20TileInfo.kvsActBaseTileAlign64) {
              PadPS2NotAlign64(delay20TileInfo.kvsActBaseTileAlign64, delay20TileInfo.kvsActBaseTileAlign32, embedReal, pSlot);
          }
- 
+
          if (curBaseTileSize != delay20TileInfo.kvsActBaseTileAlign64) {
              PadVS2NotAlign64(delay20TileInfo.kvsActBaseTileAlign64, curBaseTileSize, embedReal);
          }
- 
-         // AscendC::PipeBarrier<PIPE_MTE2>();
-         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + l1ABufId);
  
          auto l1ATensorTla = tla::MakeTensor(l1ATensor[l1ABufId],
              tla::MakeLayout<ElementA, layout::nZ>(embedReal, delay20TileInfo.kvsActBaseTileAlign64), Arch::PositionL1{});
