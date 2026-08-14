@@ -236,7 +236,7 @@ struct Config {
         if constexpr (IsA8W4) {
             /*
              * kL1=0 让 BlockMmad 与 AIV prologue 按相同规则、基于实际 tile M/N 自动选择 kbL1；
-             * BlockMmad 还会独立按 A buffer 容量选择 kaL1。scale 使用专用实现固定的 4096K 窗口。
+             * BlockMmad 还会独立按实际 M/N 选择 kaL1。scale 使用专用实现固定的 4096K 窗口。
              */
             return BlockMmadTilingConfig{
                 tileM,
