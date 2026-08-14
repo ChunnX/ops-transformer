@@ -41,7 +41,8 @@ constexpr uint32_t MSA_K_TILE = 128;
 constexpr uint32_t MSA_BLOCKS_PER_STILE = 8;
 
 // S workspace 轮转级数。AIC 领先 AIV 的未消费 tile 数 <= MSA_WORKSPACE_STAGES - 1。
-constexpr uint32_t MSA_WORKSPACE_STAGES = 3;
+// 从 3 提到 5：A1 上 AIC 约一半时间在等 AIV（wait_id2≈1.7ms / 5ms），加深缓冲可藏 epilogue。
+constexpr uint32_t MSA_WORKSPACE_STAGES = 5;
 
 // 一个 S workspace tile 的 fp32 元素数：[MSA_ROW_TILE_M, MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE]
 constexpr uint32_t MSA_STILE_ELEM_NUM = MSA_ROW_TILE_M * MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE;
