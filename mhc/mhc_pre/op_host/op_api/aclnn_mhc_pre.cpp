@@ -71,6 +71,7 @@ static int64_t Factorial(int64_t n)
 
 static bool CheckAlphaShape(const aclTensor *alphaTensor);
 static bool ValidateNDParams(int64_t n, int64_t d);
+static bool ValidateNDParamsA2(int64_t n, int64_t d);
 static bool CheckTensorShape(const aclTensor *tensor, std::initializer_list<int64_t> expectedShape, const char *name);
 
 static std::string TensorShapeToString(const aclTensor *tensor)
@@ -406,8 +407,9 @@ static bool CheckParamShapes(const MhcParamsBase &params, int64_t n, int64_t d, 
 }
 
 static bool CheckParamShapesA2(const MhcParamsBase &params, int64_t n, int64_t d, int64_t nD,
-                             int64_t expectedParamRows, int64_t alphaSize, 
-                             int64_t expectedPhiRows_factorial, int64_t expectedPhiRows_pow)
+                             int64_t alphaSize, 
+                             int64_t expectedPhiRows_factorial, int64_t expectedPhiRows_pow,
+                             int64_t phiShape_dim0)
 {
     // n,d must bigger than 0  || n must be 4,6,8 ||  d must align to 16/128
     if (!ValidateNDParamsA2(n, d)) {
@@ -416,9 +418,9 @@ static bool CheckParamShapesA2(const MhcParamsBase &params, int64_t n, int64_t d
     auto biasShape = params.bias->GetViewShape();
     if (alphaSize == ALPHA_DIM_SIZE_2) {
         int64_t expectedPhiRows = 2 * n;
-        if (phiShape.GetDim(0) != expectedPhiRows) {
+        if (phiShape_dim0 != expectedPhiRows) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be %ld, but got %ld", expectedPhiRows,
-                    phiShape.GetDim(0));
+                    phiShape_dim0);
             return false;
         }
         if (biasShape.GetDim(0) != expectedPhiRows) {
@@ -427,9 +429,9 @@ static bool CheckParamShapesA2(const MhcParamsBase &params, int64_t n, int64_t d
             return false;
         }
     } else {
-        if (phiShape.GetDim(0) != expectedPhiRows_pow && phiShape.GetDim(0) != expectedPhiRows_factorial) {
+        if (phiShape_dim0 != expectedPhiRows_pow && phiShape_dim0 != expectedPhiRows_factorial) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be %ld or %ld, but got %ld", expectedPhiRows_pow, expectedPhiRows_factorial,
-                    phiShape.GetDim(0));
+                    phiShape_dim0);
             return false;
         }
         if (biasShape.GetDim(0) != expectedPhiRows_pow && biasShape.GetDim(0) != expectedPhiRows_factorial) {
@@ -470,7 +472,8 @@ static bool CheckOutputShape4D(const MhcParamsBase &params, int64_t n, int64_t d
 }
 
 static bool CheckOutputShape4DA2(const MhcParamsBase &params, int64_t b, int64_t s, int64_t n, int64_t d, 
-                             int64_t expectedPhiRows_factorial, int64_t expectedPhiRows_pow, int64_t phiShape_dim0)
+                             int64_t alphaSize, int64_t expectedPhiRows_factorial, int64_t expectedPhiRows_pow, 
+                             int64_t phiShape_dim0)
 {
     if (!CheckTensorShape(params.hIn, {b, s, d}, "hIn")) {
         return false;
@@ -521,7 +524,9 @@ static bool CheckOutputShape3D(const MhcParamsBase &params, int64_t n, int64_t d
            CheckTensorShape(params.hPreOptional, {t, n}, "hPreOptional");
 }
 
-static bool CheckOutputShape3DA2(const MhcParamsBase &params, int64_t t, int64_t n, int64_t d, int64_t expectedPhiRows_factorial, int64_t expectedPhiRows_pow, int64_t phiShape_dim0)
+static bool CheckOutputShape3DA2(const MhcParamsBase &params, int64_t t, int64_t n, int64_t d, 
+                                 int64_t alphaSize,
+                                 int64_t expectedPhiRows_factorial, int64_t expectedPhiRows_pow, int64_t phiShape_dim0)
 {
     if (!CheckTensorShape(params.hIn, {t, d}, "hIn")) {
         return false;
@@ -604,8 +609,6 @@ static bool CheckInputOutShapeA2(const MhcParamsBase &params)
     }
     return true;
 }
-
-
 
 static bool CheckTensorShape(const aclTensor *tensor, std::initializer_list<int64_t> expectedShape, const char *name)
 {
