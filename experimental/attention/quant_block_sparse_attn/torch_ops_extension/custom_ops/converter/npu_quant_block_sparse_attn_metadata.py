@@ -32,7 +32,7 @@ def convert_npu_quant_block_sparse_attn_metadata(
     quant_mode: int = 1,
     mask_mode: int = 3,
     layout_q: str = "TND",
-    layout_kv: str = "PA_BNSD",
+    layout_kv: str = "PA_BNBD",
     layout_sparse_indices: str = "B_N_Qb_Kb",
     meta_outputs: List[TensorSpec] = None,
 ):

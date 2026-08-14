@@ -6,7 +6,7 @@ import torch
 
 COMMON = {
     "Testcase_Name": [None],
-    "layout_kv": ["PA_BNSD"],
+    "layout_kv": ["PA_BNBD"],
     "output_dtype": [torch.bfloat16],
     "D": [128],
     "sparse_q_block_size": [128],

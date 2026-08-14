@@ -22,7 +22,7 @@
 // === Layout enum (shared by host and kernel) ===
 enum class QBSALayout : uint32_t {
     TND = 2,
-    PA_BNSD = 3,
+    PA_BNBD = 3,
     PA_BSND = 4,
     NTD = 5,
 };
@@ -45,7 +45,7 @@ enum class QBSAAxis : size_t {
     MAX_BLOCK_NUM,  // block_table dim1: max blocks per batch
 };
 
-// === Layout-aware axis index mapping for Q/KV (QBSALayout::TND/NTD/PA_BNSD) ===
+// === Layout-aware axis index mapping for Q/KV (QBSALayout::TND/NTD/PA_BNBD) ===
 constexpr size_t QBSAGetAxisIdx(QBSALayout layout, QBSAAxis axis)
 {
     switch (layout) {
@@ -65,7 +65,7 @@ constexpr size_t QBSAGetAxisIdx(QBSALayout layout, QBSAAxis axis)
                 default: break;
             }
             break;
-        case QBSALayout::PA_BNSD:
+        case QBSALayout::PA_BNBD:
             switch (axis) {
                 case QBSAAxis::BLOCK_NUM:  return 0U;
                 case QBSAAxis::N:           return 1U;

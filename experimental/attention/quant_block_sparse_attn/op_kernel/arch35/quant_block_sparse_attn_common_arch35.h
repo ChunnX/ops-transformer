@@ -94,7 +94,7 @@ __aicore__ constexpr TPosition GetC2Position()
 
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X)                                                                              \
     X(layout, QBSALayout, QBSALayout::TND)                                                                             \
-    X(kvLayout, QBSALayout, QBSALayout::PA_BNSD)                                                                       \
+    X(kvLayout, QBSALayout, QBSALayout::PA_BNBD)                                                                       \
     X(s1TemplateType, S1TemplateType, S1TemplateType::Aligned128)                                                      \
     X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128)                                                      \
     X(dTemplateType, DTemplateType, DTemplateType::Aligned128)                                                         \

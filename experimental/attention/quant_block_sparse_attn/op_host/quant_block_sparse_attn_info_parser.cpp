@@ -85,8 +85,8 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseKeyValue(QuantBlockSparseAt
         return ge::GRAPH_FAILED;
     }
 
-    if (!QBSAGetDimAsU32(keyShape, QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::N), tilingInfo.n2Size) ||
-        !QBSAGetDimAsU32(keyShape, QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::BLOCK_NUM),
+    if (!QBSAGetDimAsU32(keyShape, QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::N), tilingInfo.n2Size) ||
+        !QBSAGetDimAsU32(keyShape, QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::BLOCK_NUM),
                          tilingInfo.paBlockNumSum)) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "key", std::to_string(keyShape.GetDimNum()) + "D",
                                                  "failed to get n2Size/paBlockNumSum from key shape");
@@ -96,21 +96,21 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseKeyValue(QuantBlockSparseAt
     uint64_t paBlockStride = 0U;
     if (context_->InputIsView(QBSA_KEY_INDEX) && keyStride != nullptr) {
         tilingInfo.hasViewStride = true;
-        paBlockStride = keyStride->GetStride(QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::BLOCK_NUM));
+        paBlockStride = keyStride->GetStride(QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::BLOCK_NUM));
         if (tilingInfo.quantModeVal == QBSA_QUANT_MODE_FP8 && valueShape.GetDimNum() == DIM_NUM_4 &&
             kDescaleShape.GetDimNum() == DIM_NUM_4) {
             const uint64_t keyBlockBytes =
-                static_cast<uint64_t>(keyShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::N))) *
-                static_cast<uint64_t>(keyShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::BLOCK_SIZE))) *
-                static_cast<uint64_t>(keyShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::HEAD_DIM)));
+                static_cast<uint64_t>(keyShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::N))) *
+                static_cast<uint64_t>(keyShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::BLOCK_SIZE))) *
+                static_cast<uint64_t>(keyShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::HEAD_DIM)));
             const uint64_t valueBlockBytes =
-                static_cast<uint64_t>(valueShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::N))) *
-                static_cast<uint64_t>(valueShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::BLOCK_SIZE))) *
-                static_cast<uint64_t>(valueShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::HEAD_DIM)));
+                static_cast<uint64_t>(valueShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::N))) *
+                static_cast<uint64_t>(valueShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::BLOCK_SIZE))) *
+                static_cast<uint64_t>(valueShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::HEAD_DIM)));
             const uint64_t kDescaleBlockBytes =
-                static_cast<uint64_t>(kDescaleShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::N))) *
-                static_cast<uint64_t>(kDescaleShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::BLOCK_SIZE))) *
-                static_cast<uint64_t>(kDescaleShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::HEAD_DIM))) *
+                static_cast<uint64_t>(kDescaleShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::N))) *
+                static_cast<uint64_t>(kDescaleShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::BLOCK_SIZE))) *
+                static_cast<uint64_t>(kDescaleShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::HEAD_DIM))) *
                 sizeof(float);
             const uint64_t expectedPaBlockStride = keyBlockBytes + valueBlockBytes + kDescaleBlockBytes;
             if (paBlockStride != expectedPaBlockStride) {
@@ -124,9 +124,9 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseKeyValue(QuantBlockSparseAt
     } else {
         tilingInfo.hasViewStride = false;
         paBlockStride =
-            static_cast<uint64_t>(keyShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::N))) *
-            static_cast<uint64_t>(keyShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::BLOCK_SIZE))) *
-            static_cast<uint64_t>(keyShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::HEAD_DIM)));
+            static_cast<uint64_t>(keyShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::N))) *
+            static_cast<uint64_t>(keyShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::BLOCK_SIZE))) *
+            static_cast<uint64_t>(keyShape.GetDim(QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::HEAD_DIM)));
         OP_LOGD(kOpName, "key is not a view, treat as contiguous, paBlockStride=%llu", paBlockStride);
     }
     if (paBlockStride == 0U || paBlockStride > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
@@ -135,7 +135,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseKeyValue(QuantBlockSparseAt
         return ge::GRAPH_FAILED;
     }
     tilingInfo.paBlockStrideVal = static_cast<uint32_t>(paBlockStride);
-    if (!QBSAGetDimAsU32(keyShape, QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::BLOCK_SIZE),
+    if (!QBSAGetDimAsU32(keyShape, QBSAGetAxisIdx(QBSALayout::PA_BNBD, QBSAAxis::BLOCK_SIZE),
                          tilingInfo.paBlockSizeVal)) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "key", std::to_string(keyShape.GetDimNum()) + "D",
                                                  "failed to get paBlockSize from key shape dim[2]");
@@ -297,7 +297,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseAttributes(QuantBlockSparse
     tilingInfo.maskModeVal = QBSAGetUintAttr(attrs, QBSA_MASK_MODE_ATTR_INDEX, 0U);
     tilingInfo.quantModeVal = QBSAGetUintAttr(attrs, QBSA_QUANT_MODE_ATTR_INDEX, QBSA_QUANT_MODE_FP8);
     tilingInfo.layoutQStr = QBSAGetStringAttr(attrs, QBSA_LAYOUT_Q_ATTR_INDEX, "TND");
-    tilingInfo.layoutKVStr = QBSAGetStringAttr(attrs, QBSA_LAYOUT_KV_ATTR_INDEX, "PA_BNSD");
+    tilingInfo.layoutKVStr = QBSAGetStringAttr(attrs, QBSA_LAYOUT_KV_ATTR_INDEX, "PA_BNBD");
     tilingInfo.layoutSparseIndicesStr = QBSAGetStringAttr(attrs, QBSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX, "B_N_Qb_Kb");
     tilingInfo.layoutOutStr = QBSAGetStringAttr(attrs, QBSA_LAYOUT_OUT_ATTR_INDEX, "TND");
     tilingInfo.returnSoftmaxLseVal = QBSAGetBoolAttr(attrs, QBSA_RETURN_SOFTMAX_LSE_ATTR_INDEX, false);

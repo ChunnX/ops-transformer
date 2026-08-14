@@ -24,7 +24,7 @@ def _fp8_dtype():
 
 
 def make_combined_kv_meta(block_num, block_size, n2, d_size, dv_size, block_padding_bytes, layout_kv):
-    if layout_kv != "PA_BNSD":
+    if layout_kv != "PA_BNBD":
         raise ValueError(f"unsupported combined KV layout: {layout_kv}")
     if block_padding_bytes != 0:
         raise ValueError("segmented combined KV layout does not support block padding")
@@ -75,7 +75,7 @@ def make_combined_kv_views(storage, meta):
     if storage.numel() % FP32_BYTES != 0:
         raise ValueError(f"combined KV storage byte length should be divisible by {FP32_BYTES}")
 
-    if meta["layout_kv"] != "PA_BNSD":
+    if meta["layout_kv"] != "PA_BNBD":
         raise ValueError(f"unsupported combined KV layout: {meta['layout_kv']}")
     if meta.get("packing") != PACKING:
         raise ValueError(f"unsupported combined KV packing: {meta.get('packing')}")
