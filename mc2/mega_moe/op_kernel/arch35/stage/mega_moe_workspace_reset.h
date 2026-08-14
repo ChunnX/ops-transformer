@@ -27,6 +27,8 @@ __aicore__ inline int64_t CalcResetFlagElementCount(const MegaMoeTilingData *til
 {
     bool isA8W8 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
                   tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
+    bool isA8W4 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4;
+    bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE && (isA8W8 || isA8W4);
     bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isA8W8;
     bool useGroupSyncCounters =
         tilingData->topoType == TOPO_TYPE_URMA ||
@@ -35,7 +37,7 @@ __aicore__ inline int64_t CalcResetFlagElementCount(const MegaMoeTilingData *til
         Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(L1_TILE_M_256));
     int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
     int64_t activationFlagSlotsPerExpert =
-        useMteA8W8Wave ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
+        useGroupGrainedActivationFlag ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
     int64_t moeExpertCount = static_cast<int64_t>(tilingData->moeExpertPerRank);
 
     int64_t flagElementCount =
