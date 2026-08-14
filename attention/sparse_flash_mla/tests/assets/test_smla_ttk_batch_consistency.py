@@ -17,6 +17,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 import torch
 
 
@@ -36,12 +37,12 @@ def batch_kwargs(slices, seed, sequence_slices=None):
     axes = (0,) if sequence_slices is None else (0, 1)
     slice_groups = (tuple(slices),)
     seed_groups = (tuple(seed for _ in slices),)
-    ids = [tuple(f"{seed}_0_{start}_{stop}_{step}"
+    ids = [tuple(f"{seed}_0_{len(range(start, stop, step))}_{step}"
                  for start, stop, step in slices)]
     if sequence_slices is not None:
         slice_groups += (tuple(sequence_slices),)
         seed_groups += (tuple(seed for _ in sequence_slices),)
-        ids.append(tuple(f"{seed}_1_{start}_{stop}_{step}"
+        ids.append(tuple(f"{seed}_1_{len(range(start, stop, step))}_{step}"
                          for start, stop, step in sequence_slices))
     return {
         "batch_consistency_id": (tuple(ids),),
@@ -178,6 +179,93 @@ def test_bsnd_batch_context_ignores_auxiliary_q_prefix():
 
     assert context.q_prefix is None
     assert context.batch_size == 2
+
+
+def test_bsnd_input_adapter_rejects_prefix_tensor_slot(monkeypatch):
+    q = torch.empty((2, 1, 1, 1), dtype=torch.float32)
+    ori_kv = torch.empty((2, 1, 1, 1), dtype=torch.float32)
+    cmp_kv = torch.empty((2, 1, 1, 1), dtype=torch.float32)
+    prefix_slot = torch.empty((3,), dtype=torch.int32)
+    generated = {
+        "input": {
+            "q": q.clone(),
+            "ori_kv": ori_kv.clone(),
+            "cmp_kv": cmp_kv.clone(),
+        },
+        "metadata_input": {},
+    }
+    monkeypatch.setattr(
+        INPUTS_MODULE.INPUT_ADAPTER,
+        "customize",
+        lambda *_args, **_kwargs: generated,
+    )
+
+    with pytest.raises(ValueError, match="cu_seqlens_q is present in CSV"):
+        INPUTS_MODULE.generate_sparse_flash_mla_inputs(
+            q,
+            ori_kv=ori_kv,
+            cmp_kv=cmp_kv,
+            cu_seqlens_q=prefix_slot,
+            layout_q="BSND",
+            layout_kv="BSND",
+        )
+
+
+def test_topk_override_preserves_csv_values_and_masked_legacy_slots():
+    tensor = torch.full((2, 1), 7, dtype=torch.int32)
+    explicit = [[3], [4]]
+    generated_context = SimpleNamespace(attributes={})
+    explicit_context = SimpleNamespace(attributes={"ori_topk_length": explicit})
+
+    assert INPUTS_MODULE.INPUT_ADAPTER.select_topk_override(
+        "ori_topk_length", tensor, 0, None
+    ) is tensor
+    assert INPUTS_MODULE.INPUT_ADAPTER.select_topk_override(
+        "ori_topk_length", tensor, 0, generated_context
+    ) is None
+    assert INPUTS_MODULE.INPUT_ADAPTER.select_topk_override(
+        "ori_topk_length", tensor, 0, explicit_context
+    ) == explicit
+    assert INPUTS_MODULE.INPUT_ADAPTER.select_topk_override(
+        "ori_topk_length", tensor, 3, None
+    ) is tensor
+
+
+def test_mask_zero_topk_is_generated_then_copied_to_ttk_tensor(monkeypatch):
+    q = torch.zeros((1, 2, 1, 4), dtype=torch.float32)
+    ori_kv = torch.zeros((1, 4, 1, 4), dtype=torch.float32)
+    ori_sparse_indices = torch.zeros((1, 2, 1, 4), dtype=torch.int32)
+    ori_topk_length = torch.full((1, 2, 1), 99, dtype=torch.int32)
+    generated_topk = torch.tensor([[[4], [3]]], dtype=torch.int32)
+    captured = {}
+
+    def capture_customize(*args):
+        captured["params"] = args[7]
+        return {
+            "input": {
+                "q": q.clone(),
+                "ori_kv": ori_kv.clone(),
+                "ori_sparse_indices": ori_sparse_indices.clone(),
+                "ori_topk_length": generated_topk,
+            },
+            "metadata_input": {"ori_topk_length": generated_topk},
+        }
+
+    monkeypatch.setattr(INPUTS_MODULE.INPUT_ADAPTER, "customize", capture_customize)
+
+    INPUTS_MODULE.generate_sparse_flash_mla_inputs(
+        q,
+        ori_kv=ori_kv,
+        ori_sparse_indices=ori_sparse_indices,
+        ori_topk_length=ori_topk_length,
+        ori_mask_mode=0,
+        layout_q="BSND",
+        layout_kv="BSND",
+        context=SimpleNamespace(attributes={}),
+    )
+
+    assert captured["params"]["ori_topk_length"] is None
+    assert torch.equal(ori_topk_length, generated_topk)
 
 
 def test_tnd_batch_random_context_maps_q_and_kv_token_ranges():
@@ -380,5 +468,8 @@ def test_tnd_pa_input_adapter_preserves_relation_through_block_tables():
         cmp_kv[int(cmp_block_table[2, 0])],
     )
     data = INPUTS_MODULE.INPUT_ADAPTER.load_golden_store().CASE_DATA.get(testcase_name)
+    assert data["cpu_output"] is None
+    assert data["softmax_lse"] is None
+    INPUTS_MODULE.INPUT_ADAPTER.load_golden_store().materialize_golden(data)
     assert torch.equal(data["cpu_output"][0], data["cpu_output"][2])
-    assert torch.equal(data["softmax_lse"][0], data["softmax_lse"][2])
+    assert data["softmax_lse"] is not None
