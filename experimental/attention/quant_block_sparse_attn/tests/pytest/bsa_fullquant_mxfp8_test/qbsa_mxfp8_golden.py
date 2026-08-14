@@ -1301,6 +1301,8 @@ def generate_mxfp8_inputs(
         if p_scale_mode != "value"
         else torch.tensor([float(p_scale_value)], dtype=torch.float32)
     )
+    if atten_mask_shape is None and int(case["mask_mode"]) == 3:
+        atten_mask_shape = (2048, 2048)
     atten_mask = _build_causal_mask(atten_mask_shape)
 
     return {
@@ -2956,9 +2958,7 @@ def run_one_case(
         dequant_scale_k = data["dequant_scale_k"]
         dequant_scale_v = data["dequant_scale_v"]
         p_scale = data["p_scale"]
-        atten_mask = data.get("atten_mask")
-        if atten_mask is None:
-            atten_mask = _build_causal_mask()
+        atten_mask = data["atten_mask"]
         block_table_torch = data.get("block_table_torch")
         sparse_indices = data.get("sparse_indices")
         sparse_seq_len = data.get("sparse_seq_len")
