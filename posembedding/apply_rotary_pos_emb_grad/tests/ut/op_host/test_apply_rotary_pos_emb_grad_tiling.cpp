@@ -42,7 +42,7 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, bab_fp16_bsnd_dcos0)
             {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         },
         &compileInfo, "Ascend950", 48, 253952);
-    uint64_t expectTilingKey = 1;
+    uint64_t expectTilingKey = 41281;
     string expectTilingData =
         "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 128 4 4 2 1 22 3 3 1 4 4 44 "
         "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
@@ -68,7 +68,7 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, bab_fp32_bsnd_dcos0)
             {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         },
         &compileInfo, "Ascend950", 48, 253952);
-    uint64_t expectTilingKey = 1;
+    uint64_t expectTilingKey = 41281;
     string expectTilingData =
         "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 128 4 4 2 1 22 3 3 1 4 4 44 "
         "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
@@ -99,7 +99,7 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, bab_fp16_bsnd_dcos1)
             {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         },
         &compileInfo, "Ascend950", 48, 253952);
-    uint64_t expectTilingKey = 17179869185;
+    uint64_t expectTilingKey = 17179910465;
     string expectTilingData =
         "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 128 4 4 2 1 22 3 3 1 4 4 44 "
         "0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 ";
@@ -129,7 +129,7 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, bab_bf16_bsnd_dcos1)
             {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         },
         &compileInfo, "Ascend950", 48, 253952);
-    uint64_t expectTilingKey = 17179869185;
+    uint64_t expectTilingKey = 17179910465;
     string expectTilingData =
         "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 128 4 4 2 1 22 3 3 1 4 4 44 "
         "0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 ";
@@ -160,7 +160,7 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, bab_fp16_bsnd_nq_neq_nk)
             {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         },
         &compileInfo, "Ascend950", 48, 253952);
-    uint64_t expectTilingKey = 17179869185;
+    uint64_t expectTilingKey = 17179910465;
     string expectTilingData =
         "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 128 8 4 2 1 22 3 3 1 8 8 44 "
         "0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 ";
@@ -191,7 +191,7 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, bab_fp16_tnd_dcos1)
             {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
         },
         &compileInfo, "Ascend950", 48, 253952);
-    uint64_t expectTilingKey = 17179869185;
+    uint64_t expectTilingKey = 17179879505;  // TND: B=1 → 不同 reduce pattern
     string expectTilingData =
         "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 64 128 4 4 1 1 32 2 2 1 4 4 32 "
         "0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 ";
@@ -222,7 +222,7 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, bab_fp16_bsnd_d48_unaligned)
             {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         },
         &compileInfo, "Ascend950", 48, 253952);
-    uint64_t expectTilingKey = 17179869185;
+    uint64_t expectTilingKey = 17179910465;
     string expectTilingData =
         "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 48 4 4 2 1 22 3 3 1 4 4 44 "
         "0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 ";
@@ -248,7 +248,7 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, bab_fp16_bsnd_d48_unaligned_dcos0)
             {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         },
         &compileInfo, "Ascend950", 48, 253952);
-    uint64_t expectTilingKey = 1;
+    uint64_t expectTilingKey = 41281;
     string expectTilingData =
         "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 48 4 4 2 1 22 3 3 1 4 4 44 "
         "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
