@@ -4240,7 +4240,7 @@ TEST_PARAMS = {
         "q_scale_layout": ["TND"],
         "p_scale": [1.0],
         "enable_lse": [True],
-    }
+    },
 }
 
 SKIP_CASES = {
