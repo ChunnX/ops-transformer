@@ -146,6 +146,7 @@ struct RunInfo {
     uint32_t actMSizeAlign128 = 0; // GS1 方向上长度对齐对齐128
     uint32_t actVecMSize = 0;      // VEC 视角, 基本块GS1方向长度，每个核的M长度
     uint32_t vecMbaseIdx = 0;      // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
+    uint32_t updateScaleNum = 0;
 
     uint32_t actSingleLoopS2Size = 0;        // 单个softmaxS2方向长度
     uint32_t actSingleLoopS2SizeAlign = 0;   // 对齐到32

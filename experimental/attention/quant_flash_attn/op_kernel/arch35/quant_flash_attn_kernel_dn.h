@@ -88,6 +88,7 @@ public:
     uint32_t s2FirstStartVecCore = 0;
     uint32_t tileLoopIdx = 1;
     uint32_t tileMaxIdx = 3;
+    uint32_t updateScaleNum = 3;
     // fd metadata
     FDparams fdParams_;
 
@@ -513,6 +514,10 @@ public:
             tileMaxIdx = (tileMaxIdx + 1) % 4;
             pscaleNum = (pscaleNum + 1) % 20;
         }
+        if (info.isUpdatePScale && info.curS2LoopIdx / 16 != 0) {
+            updateScaleNum = (updateScaleNum + 1) % 4;
+        }
+        info.updateScaleNum = updateScaleNum;
         info.tileBuffIdx = tileLoopIdx;
         info.tileMaxIdx = tileMaxIdx;
         info.isS2FirstTilePerCore = (info.curS2LoopIdx % TILE_N / 2 == 0);
