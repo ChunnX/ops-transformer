@@ -70,7 +70,7 @@ void FusedCausalConv1dV2(
 
     if (max_draft_tokens.has_value()) {
         int64_t max_draft_tokens_value = max_draft_tokens.value_or(7);
-        ACLNN_CMD(aclnnInplaceFusedCausalConv1d,
+        ACLNN_CMD(aclnnInplaceFusedCausalConv1dV2,
                   x, weight, conv_states,
                   query_start_loc, cache_indices, initial_state_mode, bias,
                   num_accepted_tokens, num_computed_tokens,
@@ -80,7 +80,7 @@ void FusedCausalConv1dV2(
                   max_query_len_value, residual_connection_value,
                   block_size_value, conv_mode_value, max_draft_tokens_value);
     } else {
-        ACLNN_CMD(aclnnFusedCausalConv1d,
+        ACLNN_CMD(aclnnInplaceFusedCausalConv1d,
                   x, weight, conv_states,
                   query_start_loc, cache_indices, initial_state_mode, bias,
                   num_accepted_tokens, num_computed_tokens,

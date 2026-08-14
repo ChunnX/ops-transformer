@@ -169,12 +169,12 @@ if _TORCHAIR_AVAILABLE:
             .optional_input("initial_state_idx", "DT_INT32")
             .attr("activation_mode", _parse_activation(activation))
             .attr("pad_slot_id", attr.Int(-1))
-            .attr("run_mode", attr.Int(-1))
+            .attr("run_mode", attr.Int(0))
             .attr("max_query_len", attr.Int(-1))
-            .attr("residual_connection", attr.Int(-1))
-            .attr("block_size", attr.Int(-1))
+            .attr("residual_connection", attr.Int(1))
+            .attr("block_size", attr.Int(128))
             .attr("conv_mode", _parse_conv_mode(conv_mode))
-            .attr("max_draft_tokens", attr.Int(-1))
+            .attr("max_draft_tokens", attr.Int(7))
             .attr("null_block_id", attr.Int(0))
             .output("conv_states", "DT_BF16, DT_FLOAT16")
             .output("y", "DT_BF16, DT_FLOAT16"),
@@ -193,15 +193,15 @@ if _TORCHAIR_AVAILABLE:
         initial_state_mode: Optional[Tensor] = None,
         bias: Optional[Tensor] = None,
         num_accepted_tokens: Optional[Tensor] = None,
+        num_computed_tokens: Optional[Tensor] = None,
+        block_idx_first_scheduled_token: Optional[Tensor] = None,
+        block_idx_last_scheduled_token: Optional[Tensor] = None,
+        initial_state_idx: Optional[Tensor] = None,
         activation: Optional[str] = "None",
         pad_slot_id: Optional[int] = -1,
         run_mode: Optional[int] = 0,
         max_query_len: Optional[int] = -1,
         residual_connection: Optional[int] = 0,
-        num_computed_tokens: Optional[Tensor] = None,
-        block_idx_first_scheduled_token: Optional[Tensor] = None,
-        block_idx_last_scheduled_token: Optional[Tensor] = None,
-        initial_state_idx: Optional[Tensor] = None,
         block_size: Optional[int] = 128,
         conv_mode: Optional[str] = "default",
         max_draft_tokens: Optional[int] = 7,
