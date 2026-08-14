@@ -165,6 +165,10 @@ class GeneralizedSFAQuant:
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
                             [G, self.D], dtype=torch.float
                         )
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = torch.zeros(
+                                [G], dtype=torch.float32
+                            )
                         continue
 
                     if self.ori_mask_mode == 0:
@@ -358,15 +362,24 @@ class GeneralizedSFAQuant:
                         mm2_res = mm2_res * cur_v_descale
                         acc_o = acc_o * score_max_pre.unsqueeze(1) + mm2_res
 
-                    acc_o = torch.div(acc_o, sumexp.unsqueeze(1))
-                    acc_o = acc_o / hifp8_scale_value
-                    attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(
-                        torch.bfloat16
-                    )
-                    if return_softmax_lse:
-                        softmax_lse[i_B, i_N2, i_S1, :] = score_max + torch.log(
-                            sumexp + 1e-10
+                    if total_s2_loop_time == 0:
+                        attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
+                            [G, self.D], dtype=torch.bfloat16
                         )
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = torch.zeros(
+                                [G], dtype=torch.float32
+                            )
+                    else:
+                        acc_o = torch.div(acc_o, sumexp.unsqueeze(1))
+                        acc_o = acc_o / hifp8_scale_value
+                        attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(
+                            torch.bfloat16
+                        )
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = score_max + torch.log(
+                                sumexp + 1e-10
+                            )
         return attn_out, softmax_lse
 
     def gather_ori_kv(
