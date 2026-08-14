@@ -562,12 +562,13 @@ int Sample(void *arg)
         double lastWaitNs     = (double)timingHost[6] * NS_PER_CYCLE;
         double lastTotalNs    = (double)timingHost[7] * NS_PER_CYCLE;
 
-        // 带宽计算: benchMode=0 总数据量=loopCount*sqeBytes; benchMode=1 单次数据量=sqeBytes
-        double totalData = (args->benchMode == 0)
-                           ? (double)args->loopCount * args->sqeBytes
-                           : (double)args->sqeBytes;
-        double avgBwGBs = totalData / (avgTotalNs);
-        double lastBwGBs = totalData / (lastTotalNs);
+        // avgTotalNs 已除以 loopCount (单次平均时间), 用单次数据量 sqeBytes 计算带宽
+        // lastTotalNs: benchMode=0 时 slot[7]=总量(同 slot[3]), 用总数据量; benchMode=1 时为单次, 用 sqeBytes
+        double lastData = (args->benchMode == 0)
+                          ? (double)args->loopCount * args->sqeBytes
+                          : (double)args->sqeBytes;
+        double avgBwGBs = (double)args->sqeBytes / avgTotalNs;
+        double lastBwGBs = lastData / lastTotalNs;
 
         printf("[rank %u (dev %u)] avg  assemble=%.2fus issue=%.2fus wait=%.2fus total=%.2fus bw=%.2fGB/s (over %u loops)\n",
                rank, physicalDev,
