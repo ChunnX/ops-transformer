@@ -22,7 +22,7 @@
 #include "common/buffer_manager.h"
 #include "common/buffers_policy.h"
 #include "common/util_regbase_mx.h"
-#include "vf/vf_div_cast.h"
+#include "vf/vf_div_cast_arch35.h"
 #include "vf/vf_flashupdate_new.h"
 #include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 

@@ -17,10 +17,10 @@
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "bsa_select_block_mask_common.h"
-#include "bsa_select_block_mask_tiling_data.h"
+#include "bsa_select_block_mask_common_legacy.h"
+#include "bsa_select_block_mask_tiling_data_legacy.h"
 #include "bsa_vec_pool_service.h"
-#include "bsa_vec_sm_service.h"
+#include "bsa_vec_sm_service_legacy.h"
 
 template <typename BSAT>
 class BSAVectorService {

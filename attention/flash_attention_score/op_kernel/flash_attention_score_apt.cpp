@@ -21,18 +21,17 @@
 #include "arch35/flash_attention_score_empty_tensor_regbase.h"
 #include "arch35/flash_attention_score_template_tiling_key.h"
 #include "arch35/flash_attention_score_entry_regbase.h"
-#if __has_include("../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h")
-#include "../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
+#if __has_include("../../common/op_kernel/arch35/common_flash_attention_score_tiling_regbase_arch35.h")
+#include "../../common/op_kernel/arch35/common_flash_attention_score_tiling_regbase_arch35.h"
 #else
-#include "../common/arch35/flash_attention_score_tiling_regbase.h"
+#include "../common/arch35/flash_attention_score_tiling_regbase_arch35.h"
 #endif
 using namespace optiling;
 using namespace AscendC;
 
-
-template<uint8_t KernelTypeKey, uint8_t implMode, uint8_t layout, uint16_t s1TemplateType, uint16_t s2TemplateType,
-    uint16_t dTemplateType, uint16_t dvTemplateType, uint8_t pseMode, bool hasAtten, bool hasDrop, bool hasRope,
-    uint8_t outDtype, uint8_t regbase, bool optionalDn>
+template <uint8_t KernelTypeKey, uint8_t implMode, uint8_t layout, uint16_t s1TemplateType, uint16_t s2TemplateType,
+          uint16_t dTemplateType, uint16_t dvTemplateType, uint8_t pseMode, bool hasAtten, bool hasDrop, bool hasRope,
+          uint8_t outDtype, uint8_t regbase, bool optionalDn>
 __global__ __aicore__ void
 flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
                       __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
@@ -49,27 +48,27 @@ flash_attention_score(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
         REGISTER_TILING_FOR_TILINGKEY("(TILING_KEY_VAR & 0x1)", optiling::FlashAttentionScoreEmptyInputTilingDataRegbase);
         GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreEmptyInputTilingDataRegbase, tiling_data_in, tiling);
         const FlashAttentionScoreEmptyInputTilingDataRegbase *__restrict tiling_data = &tiling_data_in;
-        #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
-            FlashAttentionScoreEmptyTensorRegbase<half> op;
-            op.Init(softmaxMax, softmaxSum, attentionOut, tiling_data);
-            op.Process();
-        #endif
-        #if (ORIG_DTYPE_QUERY == DT_FLOAT)
-            FlashAttentionScoreEmptyTensorRegbase<float> op;
-            op.Init(softmaxMax, softmaxSum, attentionOut, tiling_data);
-            op.Process();
-        #endif
-        #if (ORIG_DTYPE_QUERY == DT_BF16)
-            FlashAttentionScoreEmptyTensorRegbase<bfloat16_t> op;
-            op.Init(softmaxMax, softmaxSum, attentionOut, tiling_data);
-            op.Process();
-        #endif
+#if (ORIG_DTYPE_QUERY == DT_FLOAT16)
+        FlashAttentionScoreEmptyTensorRegbase<half> op;
+        op.Init(softmaxMax, softmaxSum, attentionOut, tiling_data);
+        op.Process();
+#endif
+#if (ORIG_DTYPE_QUERY == DT_FLOAT)
+        FlashAttentionScoreEmptyTensorRegbase<float> op;
+        op.Init(softmaxMax, softmaxSum, attentionOut, tiling_data);
+        op.Process();
+#endif
+#if (ORIG_DTYPE_QUERY == DT_BF16)
+        FlashAttentionScoreEmptyTensorRegbase<bfloat16_t> op;
+        op.Init(softmaxMax, softmaxSum, attentionOut, tiling_data);
+        op.Process();
+#endif
         return;
     } else {
         flash_attention_score_regbase<implMode, layout, s1TemplateType, s2TemplateType, dTemplateType, dvTemplateType,
-            pseMode, hasAtten, hasDrop, hasRope, outDtype, regbase, optionalDn>(query, key, value, pse, dropMask,
-            paddingMask, attenMask, prefix, actualSeqLengths, actualSeqLengthsKv, qStartIdx, kvStartIdx, deqScaleQ,
-            deqScaleK, deqScaleV, pScale, queryRope, keyRope, softmaxMax, softmaxSum, softmaxOut, attentionOut, sink,
-            workspace, tiling);
+                                      pseMode, hasAtten, hasDrop, hasRope, outDtype, regbase, optionalDn>(query, key, value, pse, dropMask,
+                                                                                                          paddingMask, attenMask, prefix, actualSeqLengths, actualSeqLengthsKv, qStartIdx, kvStartIdx, deqScaleQ,
+                                                                                                          deqScaleK, deqScaleV, pScale, queryRope, keyRope, softmaxMax, softmaxSum, softmaxOut, attentionOut, sink,
+                                                                                                          workspace, tiling);
     }
 }

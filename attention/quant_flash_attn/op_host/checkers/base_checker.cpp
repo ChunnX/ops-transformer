@@ -17,7 +17,7 @@
 #include <numeric>
 #include "tiling/tiling_api.h"
 #include "../qfa_tiling_info.h"
-#include "base_checker.h"
+#include "quant_flash_attn_base_checker.h"
 #include "log/log.h"
 
 namespace optiling {

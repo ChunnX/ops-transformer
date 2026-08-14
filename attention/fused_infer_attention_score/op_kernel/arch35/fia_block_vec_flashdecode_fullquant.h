@@ -20,10 +20,10 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "fia_public_define_arch35.h"
-#include "memory_copy_arch35.h"
+#include "fused_infer_attention_score_memory_copy_arch35.h"
 
 namespace BaseApi {
 template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
@@ -131,7 +131,8 @@ private:
     TBuf<> fdLseUbBuf;
 
 public:
-    __aicore__ inline FiaBlockVecFlashDecodeFullQuant(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FiaBlockVecFlashDecodeFullQuant(ConstInfoX &constInfo)
+        : constInfo(constInfo){};
 
     __aicore__ inline void InitGlobalTensor(GlobalTensor<float> lseMaxFdGm, GlobalTensor<float> lseSumFdGm,
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm,
@@ -440,14 +441,14 @@ public:
             if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
                 uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
                 uint64_t bN2Offset = prefixBS1 * constInfo.realGSize * constInfo.realN2Size +
-                    taskInfo.n2Idx * constInfo.realGSize;
+                                     taskInfo.n2Idx * constInfo.realGSize;
                 DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
                                                            constInfo);
             } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                 uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
                 uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
                 uint64_t bN2Offset = prefixBS1 * constInfo.realGSize * constInfo.realN2Size +
-                    taskInfo.n2Idx * constInfo.realGSize;
+                                     taskInfo.n2Idx * constInfo.realGSize;
                 DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
                                                            constInfo, s1Size);
             } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {

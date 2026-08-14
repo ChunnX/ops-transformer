@@ -93,7 +93,7 @@
 #include "kernel_operator_intf.h"
 #endif
 #include "blaze/gemm/utils/layout_struct.h"
-#include "blaze/gemm/tile/copy_gm_to_ub.h"
+#include "blaze/gemm/tile/mc2_copy_gm_to_ub_arch35.h"
 #include "blaze/gemm/tile/shift_w4_to_w8.h"
 #include "blaze/gemm/tile/copy_weight_ub_to_l1.h"
 #include "block_prologue.h"

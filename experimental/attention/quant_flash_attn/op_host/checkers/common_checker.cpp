@@ -22,7 +22,7 @@
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../quant_flash_attn_tiling_info.h"
-#include "common_checker.h"
+#include "quant_flash_attn_common_checker.h"
 
 namespace optiling {
 namespace quant_flash_attn {
@@ -35,7 +35,7 @@ using namespace Ops::Base;
 ge::graphStatus CommonChecker::CheckSingleParaLayout(const QuantFlashAttnTilingInfo &qfaInfo)
 {
     const std::vector<FiaLayout> supportedQLayouts = {FiaLayout::BSND, FiaLayout::BNSD, FiaLayout::TND};
-    const std::vector<FiaLayout> supportedKvLayouts = {FiaLayout::BSND,  FiaLayout::BNSD,   FiaLayout::TND,
+    const std::vector<FiaLayout> supportedKvLayouts = {FiaLayout::BSND, FiaLayout::BNSD, FiaLayout::TND,
                                                        FiaLayout::BnBsH, FiaLayout::BnNBsD, FiaLayout::NZ};
     const std::vector<FiaLayout> supportedOutLayouts = {FiaLayout::BSND, FiaLayout::BNSD, FiaLayout::TND};
 

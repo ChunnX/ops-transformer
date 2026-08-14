@@ -16,14 +16,13 @@
 #ifndef COMPRESSOR_BLOCK_VEC_H
 #define COMPRESSOR_BLOCK_VEC_H
 
-#include "compressor_comm.h"
+#include "compressor_comm_arch35.h"
 #include "compressor_tools.h"
-#include "vf/vf_softmax.h"
-#include "vf/vf_add.h"
-#include "vf/vf_mul.h"
+#include "vf/compressor_vf_softmax_arch35.h"
+#include "vf/compressor_vf_add_arch35.h"
+#include "vf/compressor_vf_mul_arch35.h"
 #include "vf/vf_rms_norm.h"
 #include "vf/vf_rope.h"
-
 
 using namespace AscendC;
 
@@ -221,7 +220,6 @@ private:
     TQue<QuePosition::VECOUT, 1> outputQue1;
     TQue<QuePosition::VECOUT, 1> outputQue2;
 };
-
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockVector<COMP>::InitParams(const ConstInfo &constInfo,
@@ -604,7 +602,6 @@ CompressorBlockVector<COMP>::PadAlign(const LocalTensor<T> &dstLocal, const Loca
                         dstSingleRowCount);
 }
 
-
 template <typename COMP>
 template <bool IS_SCORE>
 __aicore__ inline void
@@ -841,7 +838,8 @@ CompressorBlockVector<COMP>::SaveState(const LocalTensor<T> &srcLocal, const Glo
     if constexpr (COMP::cacheMode == CACHE_MODE::CYCLE) {
         uint32_t compressSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.bSeqUsed, cmpRatio_);
         uint32_t writeSeqStartIdx = compressSeqIdx > (coff_ - 1) * cmpRatio_ ?
-                                    compressSeqIdx - (coff_ - 1) * cmpRatio_ : 0;
+                                        compressSeqIdx - (coff_ - 1) * cmpRatio_ :
+                                        0;
         if (endSeqIdx <= writeSeqStartIdx) {
             return;
         }
@@ -877,7 +875,6 @@ CompressorBlockVector<COMP>::DuplicateFirstBlock(const LocalTensor<T> &dstLocal,
         }
     }
 }
-
 
 template <typename COMP>
 template <bool IS_SCORE>
@@ -1004,7 +1001,6 @@ __aicore__ inline void CompressorBlockVector<COMP>::OverLapScoreKv(
         overLapSliceIterator.IteratorSlice();
     }
     inputQue1.FreeTensor(kvUb);
-
 
     PipeBarrier<PIPE_V>();
 }
@@ -1173,7 +1169,6 @@ __aicore__ inline void CompressorBlockVector<COMP>::ComputeVec1(const Vec1RunInf
     loopInfo.isCoreRowLast = loopInfo.coreRowIdx == splitInfo.vec1GroupNum - 1;
     loopInfo.isCoreRowFirst = loopInfo.coreRowIdx == 0;
 
-
     CompressorVec1SliceIterator sliceIterator(tools_);
     sliceIterator.SetMaxBatchSize(constInfo_.batchSize);
     // 切块循环
@@ -1312,7 +1307,6 @@ CompressorBlockVector<COMP>::MultRowRmsNorm(const LocalTensor<T> &normResUb, con
     }
 }
 
-
 template <typename COMP>
 __aicore__ inline void CompressorBlockVector<COMP>::CalRope(const LocalTensor<X_T> &outputUb,
                                                             const LocalTensor<T> &normResUb,
@@ -1347,7 +1341,6 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalRope(const LocalTensor<X_
         ropeSliceIterator.IteratorSlice();
     }
 }
-
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockVector<COMP>::CopyFinalResultOut(const LocalTensor<X_T> &cmpKvOutUb,

@@ -20,8 +20,8 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "infer_flash_attention_comm.h"
-#include "./vf/vf_flash_decode.h"
+#include "infer_flash_attention_comm_arch35.h"
+#include "./vf/vf_flash_decode_arch35.h"
 #include "fia_public_define_arch35.h"
 #include "../memory_copy_arch35.h"
 #include "./vf/vf_post_quant_gs1.h"
@@ -92,7 +92,7 @@ protected:
     // postquant
     using postQuantGmType = typename std::conditional<POST_QUANT, FaGmTensor<T, PostQuant_FORMAT>, int8_t>::type;
     using postQuantBf16GmType = typename std::conditional<POST_QUANT,
-        FaGmTensor<bfloat16_t, PostQuant_FORMAT>, int8_t>::type;
+                                                          FaGmTensor<bfloat16_t, PostQuant_FORMAT>, int8_t>::type;
     postQuantGmType quantScale2GmTensor;
     postQuantGmType quantOffset2GmTensor;
     postQuantBf16GmType quantScale2Bf16GmTensor;
@@ -149,7 +149,8 @@ private:
     TBuf<> fdLseUbBuf;
 
 public:
-    __aicore__ inline FiaBlockVecFlashDecodeFullQuant(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FiaBlockVecFlashDecodeFullQuant(ConstInfoX &constInfo)
+        : constInfo(constInfo){};
 
     __aicore__ inline void InitGlobalTensor(GlobalTensor<float> lseMaxFdGm, GlobalTensor<float> lseSumFdGm,
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm,
@@ -711,7 +712,7 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
 class FiaBlockVecFlashDecodeFullQuantDummy {
 public:
     using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
-    __aicore__ inline FiaBlockVecFlashDecodeFullQuantDummy(ConstInfoX &constInfo) {};
+    __aicore__ inline FiaBlockVecFlashDecodeFullQuantDummy(ConstInfoX &constInfo){};
 };
 
 } // namespace BaseApi

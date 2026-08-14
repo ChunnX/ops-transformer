@@ -11,7 +11,7 @@
 #include <iostream>
 #include <algorithm>
 #include <unordered_map>
-#include "nsa_compress_attention_infer.h"
+#include "nsa_compress_attention_infer_kernel.h"
 #include "aclnn_nsa_compress_attention_infer.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/pad.h"
@@ -57,9 +57,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnNsaCompressAttentionInfe
     aclOpExecutor **executor);
 
 aclnnStatus nsaCompressAttentionInferContiguous(const aclTensor *&query, const aclTensor *&key, const aclTensor *&value,
-    const aclTensor *attentionMaskOptional, const aclTensor *&blockTableOptional,
-    const aclTensor *&topKMaskOptional,
-    aclOpExecutor *executor)
+                                                const aclTensor *attentionMaskOptional, const aclTensor *&blockTableOptional,
+                                                const aclTensor *&topKMaskOptional,
+                                                aclOpExecutor *executor)
 {
     query = l0op::Contiguous(query, executor);
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -142,7 +142,7 @@ aclnnStatus nsaCompressAttentionInferValidateParam(
         return ACLNN_ERR_PARAM_INVALID;
     }
     CHECK_RET(nsaCompressAttentionInferCheckDataType(query, key, value, blockTableOptional, output, topKOutput),
-        ACLNN_ERR_PARAM_INVALID);
+              ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
@@ -213,36 +213,36 @@ aclnnStatus aclnnNsaCompressAttentionInferGetMaxWorkspaceSize(
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-        aclIntArray *fakeActualCmpKvSeqLenOptional{nullptr};
-        // nullptr不处理， nullptr是空指针，这样不会影响原来就不传入actual seq length为空的逻辑
-        aclnnStatus ret = FakeArray_cai(actualCmpKvSeqLenOptional, fakeActualCmpKvSeqLenOptional);
-        CHECK_RET_CODE(ret, "Try alloc fake actualSeqLengthsKvOptional failed");
-        ret = aclnnNsaCompressAttentionInferGetWorkspaceSize(query,
-                                                             key,
-                                                             value,
-                                                             attentionMaskOptional,
-                                                             blockTableOptional,
-                                                             actualQSeqLenOptional,
-                                                             fakeActualCmpKvSeqLenOptional,
-                                                             actualSelKvSeqLenOptional,
-                                                             topKMaskOptional,
-                                                             numHeads,
-                                                             numKeyValueHeads,
-                                                             selectBlockSize,
-                                                             selectBlockCount,
-                                                             compressBlockSize,
-                                                             compressBlockStride,
-                                                             scaleValue,
-                                                             layoutOptional,
-                                                             pageBlockSize,
-                                                             sparseMode,
-                                                             output,
-                                                             topKOutput,
-                                                             workspaceSize,
-                                                             executor);
-        aclDestroyIntArray(fakeActualCmpKvSeqLenOptional);
-        return ret;
-    }
+    aclIntArray *fakeActualCmpKvSeqLenOptional{nullptr};
+    // nullptr不处理， nullptr是空指针，这样不会影响原来就不传入actual seq length为空的逻辑
+    aclnnStatus ret = FakeArray_cai(actualCmpKvSeqLenOptional, fakeActualCmpKvSeqLenOptional);
+    CHECK_RET_CODE(ret, "Try alloc fake actualSeqLengthsKvOptional failed");
+    ret = aclnnNsaCompressAttentionInferGetWorkspaceSize(query,
+                                                         key,
+                                                         value,
+                                                         attentionMaskOptional,
+                                                         blockTableOptional,
+                                                         actualQSeqLenOptional,
+                                                         fakeActualCmpKvSeqLenOptional,
+                                                         actualSelKvSeqLenOptional,
+                                                         topKMaskOptional,
+                                                         numHeads,
+                                                         numKeyValueHeads,
+                                                         selectBlockSize,
+                                                         selectBlockCount,
+                                                         compressBlockSize,
+                                                         compressBlockStride,
+                                                         scaleValue,
+                                                         layoutOptional,
+                                                         pageBlockSize,
+                                                         sparseMode,
+                                                         output,
+                                                         topKOutput,
+                                                         workspaceSize,
+                                                         executor);
+    aclDestroyIntArray(fakeActualCmpKvSeqLenOptional);
+    return ret;
+}
 
 aclnnStatus aclnnNsaCompressAttentionInferGetWorkspaceSize(
     const aclTensor *query,
@@ -270,16 +270,18 @@ aclnnStatus aclnnNsaCompressAttentionInferGetWorkspaceSize(
     aclOpExecutor **executor)
 {
     CHECK_RET(nsaCompressAttentionInferCheckTensorNull(query, key, value, blockTableOptional,
-        actualCmpKvSeqLenOptional, layoutOptional, output, topKOutput,
-        workspaceSize) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
+                                                       actualCmpKvSeqLenOptional, layoutOptional, output, topKOutput,
+                                                       workspaceSize) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(nsaCompressAttentionInferValidateParam(query, key, value, blockTableOptional,
-        output, topKOutput) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+                                                     output, topKOutput) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
     L2_DFX_PHASE_1(aclnnNsaCompressAttentionInfer,
-        DFX_IN(query, key, value, attentionMaskOptional, blockTableOptional, actualQSeqLenOptional,
-        actualCmpKvSeqLenOptional, actualSelKvSeqLenOptional, topKMaskOptional, numHeads, numKeyValueHeads,
-        selectBlockSize, selectBlockCount, compressBlockSize, compressBlockStride, scaleValue,
-        layoutOptional, pageBlockSize, sparseMode),
-        DFX_OUT(output, topKOutput));
+                   DFX_IN(query, key, value, attentionMaskOptional, blockTableOptional, actualQSeqLenOptional,
+                          actualCmpKvSeqLenOptional, actualSelKvSeqLenOptional, topKMaskOptional, numHeads, numKeyValueHeads,
+                          selectBlockSize, selectBlockCount, compressBlockSize, compressBlockStride, scaleValue,
+                          layoutOptional, pageBlockSize, sparseMode),
+                   DFX_OUT(output, topKOutput));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -335,7 +337,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(void *workspace, uint64_t workspaceSi
     // 固定写法，调用框架能力，完成计算
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
-}  // namespace
+} // namespace
 
 #ifdef __cplusplus
 }

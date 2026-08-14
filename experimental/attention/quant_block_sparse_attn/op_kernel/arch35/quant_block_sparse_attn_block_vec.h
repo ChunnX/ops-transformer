@@ -15,14 +15,14 @@
 #ifndef QUANT_BLOCK_SPARSE_ATTN_BLOCK_VEC_H_
 #define QUANT_BLOCK_SPARSE_ATTN_BLOCK_VEC_H_
 #include "common/util_regbase.h"
-#include "common/copy_gm_to_ub.h"
+#include "common/common_copy_gm_to_ub.h"
 #include "quant_block_sparse_attn_common_arch35.h"
 #include "quant_block_sparse_attn_attenmask.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/activation/softmax.h"
 #include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "vf/vf_flashupdate_new.h"
-#include "vf/vf_div_cast.h"
+#include "vf/vf_div_cast_arch35.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -432,8 +432,8 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2(mm2ResPos &bmm2R
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
-                                                                   LocalTensor<VEC2_RES_T> &vec2ResUb,
-                                                                   int64_t vec2S1Idx, int64_t vec2CalcSize)
+                                                                    LocalTensor<VEC2_RES_T> &vec2ResUb,
+                                                                    int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
     LocalTensor<OUTPUT_T> attenOut;
     int64_t dSizeAligned64 = (int64_t)dVTemplateType;
@@ -678,8 +678,8 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxDataCopyOut(RunInfo &
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::CopyOutAttentionOut(RunInfo &runInfo, ConstInfo &constInfo,
-                                                                       LocalTensor<VEC2_RES_T> &vec2ResUb,
-                                                                       int64_t vec2S1Idx, int64_t vec2CalcSize)
+                                                                        LocalTensor<VEC2_RES_T> &vec2ResUb,
+                                                                        int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
     this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize);
 }

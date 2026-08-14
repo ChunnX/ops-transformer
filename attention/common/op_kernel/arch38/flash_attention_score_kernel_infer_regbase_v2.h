@@ -18,10 +18,10 @@
 namespace optiling {
 };
 #include "flash_attention_score_kernel_base.h"
-#include "vf/vf_flash_decode.h"
-#include "infer_flash_attention_comm.h"
-#include "./infer_flash_attention_kvcache.h"
-#include "./infer_flash_attention_sparse.h"
+#include "vf/vf_flash_decode_arch38.h"
+#include "infer_flash_attention_comm_arch38.h"
+#include "./common_infer_flash_attention_kvcache_arch38.h"
+#include "./common_infer_flash_attention_sparse_arch38.h"
 
 using namespace AscendC;
 

@@ -16,13 +16,12 @@
 #ifndef COMPRESSOR_KERNEL_PERF_H
 #define COMPRESSOR_KERNEL_PERF_H
 
-#include "compressor_comm.h"
+#include "compressor_comm_arch22.h"
 #include "compressor_template_tiling_key.h"
 #include "compressor_tiling_data.h"
 #include "compressor_tools.h"
 #include "compressor_block_cube_perf.h"
 #include "compressor_block_vec_perf.h"
-
 
 using namespace AscendC;
 
@@ -32,7 +31,8 @@ template <typename COMP>
 class CompressorKernelPerf {
 public:
     __aicore__ inline CompressorKernelPerf(TPipe *pipe, const optiling::CompressorTilingData *__restrict tilingData)
-        : pipe_(pipe), tilingData_(tilingData)
+        : pipe_(pipe),
+          tilingData_(tilingData)
     {
     }
 
@@ -240,7 +240,6 @@ __aicore__ inline void CompressorKernelPerf<COMP>::SetBaseSize()
     }
 }
 
-
 template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::SkipInvalidBatch(BatchInfo &batchInfo)
 {
@@ -267,7 +266,6 @@ __aicore__ inline void CompressorKernelPerf<COMP>::SkipInvalidBatch(BatchInfo &b
                                                batchInfo.bStartPos / constInfo.cmpRatio);
     }
 }
-
 
 template <typename COMP>
 __aicore__ inline void CompressorKernelPerf<COMP>::UpdateCurGroup(BasicBlockInfo &basicBlockInfo, BatchInfo batchInfo,
@@ -361,7 +359,6 @@ __aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneLoop(BatchIn
 
     return basicBlockInfo;
 }
-
 
 template <typename COMP>
 __aicore__ inline uint32_t CompressorKernelPerf<COMP>::GetLoopTimes()

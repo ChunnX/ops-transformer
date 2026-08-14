@@ -23,7 +23,7 @@
 #endif
 #include "quant_flash_attn_template_tiling_key.h"
 #include "quant_flash_attn_common_def.h"
-#include "../../common/op_kernel/memcopy/copy_gm_to_l1.h"
+#include "../../common/op_kernel/memcopy/common_copy_gm_to_l1.h"
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
@@ -201,11 +201,11 @@ private:
     CopyValueScaleGmToL1<SCALE_T, V_SCALE_FORMAT> copyValueScaleGmToL1;
 
     // =================================L1 Buffer=================================
-    static constexpr uint32_t L1_Q_SIZE = 128 * 128 / 2;                               // 8K, 2个fp4_e2m1元素为1B
-    static constexpr uint32_t L1_Q_DESCALE_SIZE = 128 * (128 / 32) * sizeof(SCALE_T);  // 0.5K
-    static constexpr uint32_t L1_KV_SIZE = 512 * 128 / 2;                              // 32K, 2个fp4_e2m1元素为1B
-    static constexpr uint32_t L1_KV_DESCALE_SIZE = 512 * (128 / 32) * sizeof(SCALE_T); // 2K
-    static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;                               // 16K, 2个fp4_e2m1元素为1B
+    static constexpr uint32_t L1_Q_SIZE = 128 * 128 / 2;                                      // 8K, 2个fp4_e2m1元素为1B
+    static constexpr uint32_t L1_Q_DESCALE_SIZE = 128 * (128 / 32) * sizeof(SCALE_T);         // 0.5K
+    static constexpr uint32_t L1_KV_SIZE = 512 * 128 / 2;                                     // 32K, 2个fp4_e2m1元素为1B
+    static constexpr uint32_t L1_KV_DESCALE_SIZE = 512 * (128 / 32) * sizeof(SCALE_T);        // 2K
+    static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;                                      // 16K, 2个fp4_e2m1元素为1B
     static constexpr uint32_t L1_P_DESCALE_SIZE = 128 * 2 * (256 / 64 + 1) * sizeof(SCALE_T); // 1.25K
     static constexpr uint32_t L1_Q_BUFCNT = 2;
     static constexpr uint32_t L1_KV_BUFCNT = 4;
@@ -283,7 +283,9 @@ private:
 public:
     __aicore__ inline QuantFlashAttnBlockCubeDn(ConstInfo &constInfo, SeqLensTool<LAYOUT_Q, SEQLEN_T> &qSeqLensTool,
                                                 SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool)
-        : constInfo(constInfo), qSeqLensTool(qSeqLensTool), kvSeqLensTool(kvSeqLensTool){};
+        : constInfo(constInfo),
+          qSeqLensTool(qSeqLensTool),
+          kvSeqLensTool(kvSeqLensTool){};
 
     __aicore__ inline void InitInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                      __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
@@ -490,7 +492,6 @@ public:
         LocalTensor<half> localGlobalMax0 = localGlobalMaxL1[runInfo.tileMaxIdx * 256];
         LocalTensor<half> localGlobalMax1 = localGlobalMaxL1[runInfo.tileMaxIdx * 256 + L1_SINGLE_GLOBAL_MAX_SIZE];
         LocalTensor<half> peerGlobalMax = peerGlobalMaxUB[runInfo.tileMaxIdx * 128];
-
 
         __cbuf__ half *localGlobalMax0Cbuf = (__cbuf__ half *)localGlobalMax0.GetPhyAddr();
         __cbuf__ half *localGlobalMax1Cbuf = (__cbuf__ half *)localGlobalMax1.GetPhyAddr();

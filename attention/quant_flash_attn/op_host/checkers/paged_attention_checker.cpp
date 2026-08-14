@@ -20,7 +20,7 @@
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../qfa_tiling_info.h"
-#include "paged_attention_checker.h"
+#include "quant_flash_attn_paged_attention_checker.h"
 
 namespace optiling {
 namespace quant_flash_attn {
@@ -108,7 +108,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeMxFp8(const QfaTilingInfo &
     }
     // MxFP8 场景: blockSize 仅支持 64、128、256、512或1024
     OP_CHECK_IF(qfaInfo.blockSize != 64 && qfaInfo.blockSize != 128 && qfaInfo.blockSize != 256 &&
-                qfaInfo.blockSize != 512 && qfaInfo.blockSize != 1024,
+                    qfaInfo.blockSize != 512 && qfaInfo.blockSize != 1024,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     qfaInfo.opName, "block_size", std::to_string(qfaInfo.blockSize).c_str(),
                     "When quant_mode is MxFP8, block_size must be in [64, 128, 256, 512, 1024]"),
@@ -125,8 +125,8 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeGqaFp8(const QfaTilingInfo 
     // GQA FP8 fullquant 场景: blockSize 固定 128
     OP_CHECK_IF(qfaInfo.blockSize != 128,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "block_size",
-                    std::to_string(qfaInfo.blockSize).c_str(),
-                    "When quant_mode is GQA_FP8_FULLQUANT, block_size must be 128"),
+                                                      std::to_string(qfaInfo.blockSize).c_str(),
+                                                      "When quant_mode is GQA_FP8_FULLQUANT, block_size must be 128"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

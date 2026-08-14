@@ -19,15 +19,13 @@
 #include <numeric>
 #include <algorithm>
 #include "../op_kernel/dense_lightning_indexer_grad_kl_loss_tiling_key.h"
-#include "../op_kernel/dense_lightning_indexer_grad_kl_loss_tiling_data.h"
+#include "../op_kernel/dense_lightning_indexer_grad_kl_loss_tiling_data_legacy.h"
 #include "lightning_indexer_grad_kl_loss_tiling_base.h"
-
 
 using namespace ge;
 using namespace AscendC;
 
 namespace optiling {
-
 
 struct DenseLightningIndexerGradKLLossCompileInfo {
     int64_t core_num;
@@ -41,10 +39,10 @@ struct DenseLightningIndexerGradKLLossCompileInfo {
     platform_ascendc::SocVersion socVersion;
 };
 
-
 class DenseLightningIndexerGradKLLossTilingBase : public TilingBaseClass {
 public:
-    explicit DenseLightningIndexerGradKLLossTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit DenseLightningIndexerGradKLLossTilingBase(gert::TilingContext *context)
+        : TilingBaseClass(context)
     {
         Reset();
     }
@@ -57,7 +55,8 @@ public:
     }
 
 protected:
-    void Reset() {
+    void Reset()
+    {
         bSize = 0;
         gSizeQuery = 0;
         gSizeQueryIndex = 0;
@@ -98,7 +97,7 @@ protected:
     uint64_t GetTilingKey() const override;
     // 5、计算Workspace 大小
     ge::graphStatus GetWorkspaceSize() override;
-    
+
     ge::graphStatus CheckContext();
     bool AnalyzeAttrs();
     bool AnalyzeDtype();
@@ -116,21 +115,20 @@ protected:
     // deter 相关
     void CalcMaxLoop();
     int32_t GetS2SparseLen(int32_t s1Idx, int32_t actualSeqLensQ,
-                            int32_t actualSeqLensK, int32_t sparseMode);
+                           int32_t actualSeqLensK, int32_t sparseMode);
     int32_t GetActualSeqLens(int32_t bIdx, int32_t defaultLens,
-                                std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &actualSeqLenData,
-                                LayoutType layout);
+                             std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &actualSeqLenData,
+                             LayoutType layout);
     int64_t FindBIndex(int64_t bIndex, int64_t curBs1Index, int64_t &accumulateLen);
     void CalcMultiCoreOffset(int64_t &bStartIdx, int64_t &s1StartIdx, int64_t &bEndIdx, int64_t &s1EndIdx, int64_t &aicIdx);
-    int64_t GetEndS1Etx(int32_t bIdx, int32_t defaultLens, std::array<int64_t,
-                        MAX_VAR_LEN_SEQ_LEN> &actualSeqLenData, LayoutType layout);
+    int64_t GetEndS1Etx(int32_t bIdx, int32_t defaultLens, std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &actualSeqLenData, LayoutType layout);
 
     int64_t GetS2RealSize(int32_t sparseMode, int32_t s1Size, int32_t s2Size, int32_t s1Idx);
     inline bool InitLoadValue(const std::vector<int64_t> &sparseValidArray, int64_t validAicNum, int64_t totalSize,
                               const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue);
     bool BalanceLoad(const std::vector<int64_t> &sparseValidArray, std::vector<int64_t> &localValue,
                      std::vector<int64_t> &sparseStartIdx);
-    bool Balance4DLoad(std::vector<int64_t> &tmpSparseValue, const std::vector<int64_t> sparseValidArray, 
+    bool Balance4DLoad(std::vector<int64_t> &tmpSparseValue, const std::vector<int64_t> sparseValidArray,
                        const int64_t balanceNum);
     bool SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray);
     bool InitSparseValidArray(std::vector<int64_t> &sparseValidArray);
@@ -182,8 +180,7 @@ protected:
     DenseLightningIndexerGradKLLossTilingData *tilingData = context_->GetTilingData<DenseLightningIndexerGradKLLossTilingData>();
     DLIGradKLLossBaseParams *dliGradkllossBaseParams_ = &tilingData->baseParams;
     DLIGradKLLossMultiCoreParams *dliGradkllossMultiCoreParams_ = &tilingData->multiCoreParams;
-
 };
 
-} // optiling
+} // namespace optiling
 #endif

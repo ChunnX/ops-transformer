@@ -16,13 +16,12 @@
 #ifndef COMPRESSOR_BLOCK_VEC_PERF_H
 #define COMPRESSOR_BLOCK_VEC_PERF_H
 
-#include "compressor_comm.h"
+#include "compressor_comm_arch22.h"
 #include "compressor_tools.h"
 #include "compressor_vector_comm.h"
 #include "rms_norm.h"
 #include "rope.h"
 #include "soft_max.h"
-
 
 using namespace AscendC;
 
@@ -236,7 +235,6 @@ private:
     // out queue
     TQue<QuePosition::VECOUT, 1> outputQue1;
 };
-
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorPerf<COMP>::InitParams(const ConstInfo &constInfo,
@@ -655,7 +653,6 @@ CompressorBlockVectorPerf<COMP>::PadAlign(const LocalTensor<T> dstLocal, const L
                         dstSingleRowCount);
 }
 
-
 template <typename COMP>
 template <bool IS_SCORE>
 __aicore__ inline void
@@ -788,11 +785,11 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ReadFromCacheState(
             copyRowCount = seqCnt - copyFinishRowCnt;
         }
         uint64_t stateOffset = idInBlockTable * constInfo_.blockSize * 2 * coff_ * constInfo_.headDim +
-                                remainRowCnt * 2 * coff_ * constInfo_.headDim +
-                                stateIdx * coff_ * constInfo_.headDim + dStartIdx;
+                               remainRowCnt * 2 * coff_ * constInfo_.headDim +
+                               stateIdx * coff_ * constInfo_.headDim + dStartIdx;
 
         DataCopyAlignGmToUb(output[copyFinishRowCnt * coff_ * dDealSize], state[stateOffset], copyRowCount,
-                                dDealSize, coff_ * constInfo_.headDim * 2, coff_ * dDealSize);
+                            dDealSize, coff_ * constInfo_.headDim * 2, coff_ * dDealSize);
         copyFinishRowCnt += copyRowCount;
         curSeqIdx += copyRowCount;
     }
@@ -817,10 +814,10 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::WriteToCacheState(
         }
         if (idInBlockTable != 0) { // 32
             uint64_t stateOffset = idInBlockTable * constInfo_.blockSize * 2 * coff_ * constInfo_.headDim +
-                                    remainRowCnt * 2 * coff_ * constInfo_.headDim +
-                                    stateIdx * coff_ * constInfo_.headDim + dStartIdx;
+                                   remainRowCnt * 2 * coff_ * constInfo_.headDim +
+                                   stateIdx * coff_ * constInfo_.headDim + dStartIdx;
             DataCopyWithOutputQue(state[stateOffset], input[copyFinishRowCnt * coff_ * dDealSize], copyRowCount,
-                                    dDealSize, coff_ * dDealSize, coff_ * constInfo_.headDim * 2);
+                                  dDealSize, coff_ * dDealSize, coff_ * constInfo_.headDim * 2);
         }
 
         copyFinishRowCnt += copyRowCount;
@@ -866,7 +863,6 @@ CompressorBlockVectorPerf<COMP>::DuplicateFirstBlock(const LocalTensor<T> &dstLo
         }
     }
 }
-
 
 template <typename COMP>
 template <bool IS_SCORE>
@@ -1170,7 +1166,6 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ComputeVec1(const Vec1Ru
     loopInfo.isCoreRowLast = loopInfo.coreRowIdx == splitInfo.vec1GroupNum - 1;
     loopInfo.isCoreRowFirst = loopInfo.coreRowIdx == 0;
 
-
     CompressorVec1SliceIterator sliceIterator(tools_);
     sliceIterator.SetMaxBatchSize(constInfo_.batchSize);
     // 切块循环
@@ -1232,7 +1227,6 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::DealVec2BaseBlock(const 
     MultRowRmsNorm(normResUb, vec1ResUb, normWeightUb, tempLocal, dealRowCount);
     inputQue1.FreeTensor(vec1ResUb);
 
-
     // rope: 只对后RD进行rope; 将normResUb每行前headDim -
     // ropeHeadDim个元素cast到X_T，然后再与rope后的结果组合存到outputUb
     LocalTensor<X_T> outputUb = outputQue1.AllocTensor<X_T>();
@@ -1259,7 +1253,6 @@ CompressorBlockVectorPerf<COMP>::MultRowRmsNorm(const LocalTensor<T> &normResUb,
     rmsNormParams.col = constInfo_.headDim;
     RmsNorm(normResUb, vec1ResUb, normWeightUb, tempLocal, rmsNormParams);
 }
-
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorPerf<COMP>::SingleCalRope(const LocalTensor<X_T> &outputUb,
@@ -1327,7 +1320,6 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::CalRope(const LocalTenso
     Cast(outputUb, normResUb, RoundMode::CAST_RINT, totalSize);
     PipeBarrier<PIPE_V>();
 }
-
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorPerf<COMP>::SplitCoreV2(const Compressor::Vec2RunInfo &info)
