@@ -830,7 +830,7 @@ public:
         info.curKvsTileLoopIdx = curTaskTileIdx;
         info.isFirstKvsTile = (curTaskTileIdx == 0);
         info.isLastKvsTile = (curTaskTileIdx + 1 == taskInfo.taskTileNum);
-        info.isLastSecondKvsTile = (curTaskTileIdx + 2 == taskInfo.taskTileNum);
+        info.isLastSecondKvsTile = ((curTaskTileIdx + 2 == taskInfo.taskTileNum) || (taskInfo.taskTileNum == 1)); // pv rowsum刷1
 
         info.isUpdatePScale = (info.isLastKvsTile ||
                                ((info.curKvsTileLoopIdx + 1) % TILE_GROUP_N == 0));
@@ -840,7 +840,7 @@ public:
         }
         info.kvsFirstTileStartVecCore = kvsFirstTileStartVecCore_;
 
-        if (info.isTileGoupFirstTile) {
+        if (info.isTileGoupFirstTile && !info.isFirstKvsTile) { // 非第一个kvs tileGroup，更新dm id
             updateScaleIdx_ = (updateScaleIdx_ + 1) % 4;
         }
 
