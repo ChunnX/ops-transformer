@@ -17,26 +17,6 @@
 #include "seq_len_checker.h"
 namespace optiling {
 namespace lightning_indexer_v2 {
-namespace {
-IndexerLayout ConvertLayout(DataLayout layout)
-{
-    switch (layout) {
-        case DataLayout::BSND:
-            return IndexerLayout::BSND;
-        case DataLayout::TND:
-            return IndexerLayout::TND;
-        case DataLayout::PA_BBND:
-            return IndexerLayout::PA_BBND;
-        default:
-            return IndexerLayout::UNKNOWN;
-    }
-}
-int64_t HeadDim(const CheckerTensor &query, IndexerLayout layout)
-{
-    const size_t index = layout == IndexerLayout::BSND ? 3 : 2;
-    return query.shape.size() > index ? query.shape[index] : 0;
-}
-} // namespace
 void LIChecker::BuildInfo(const LIV2TilingInfo &source)
 {
     const auto &p = source.opParamInfo;
@@ -56,8 +36,8 @@ void LIChecker::BuildInfo(const LIV2TilingInfo &source)
     info_.metadata = MakeOptionalTensor(p.metadata.desc, p.metadata.tensor);
     info_.sparseIndices = MakeRequiredTensor(p.attenOut.desc, p.attenOut.shape);
     info_.sparseValues = MakeRequiredTensor(p.valuesOut.desc, p.valuesOut.shape);
-    info_.queryLayout = ConvertLayout(source.inputQLayout);
-    info_.keyLayout = ConvertLayout(source.inputKLayout);
+    info_.queryLayout = ConvertIndexerLayout(static_cast<uint32_t>(source.inputQLayout));
+    info_.keyLayout = ConvertIndexerLayout(static_cast<uint32_t>(source.inputKLayout));
     info_.batchSize = source.bSize;
     info_.queryHeadNum = source.n1Size;
     info_.keyHeadNum = source.n2Size;
@@ -65,7 +45,7 @@ void LIChecker::BuildInfo(const LIV2TilingInfo &source)
                             info_.query.shape[0] :
                             source.s1Size;
     info_.keySeqLen = source.s2Size;
-    info_.headDim = HeadDim(info_.query, info_.queryLayout);
+    info_.headDim = GetIndexerHeadDim(info_.query, info_.queryLayout);
     info_.groupSize = source.gSize;
     info_.blockSize = source.blockSize;
     info_.maxBlockNumPerBatch = source.maxBlockNumPerBatch;
@@ -73,19 +53,19 @@ void LIChecker::BuildInfo(const LIV2TilingInfo &source)
     info_.maxSeqlenQ = source.maxSeqlenQ;
     info_.maskMode = source.maskMode;
     info_.cmpRatio = source.cmpRatio;
-    info_.returnValue = source.returnValue;
+    info_.returnValue = p.returnValue == nullptr ? static_cast<int64_t>(source.returnValue) : *p.returnValue;
     info_.keyStrides = source.keyStridesVec;
 }
 void LIChecker::RegisterCheckers()
 {
-    checkers_.clear();
-    checkers_.push_back(std::make_unique<CommonChecker>());
-    checkers_.push_back(std::make_unique<NonQuantChecker>());
-    checkers_.push_back(std::make_unique<SeqLenChecker>());
-    checkers_.push_back(std::make_unique<PagedAttentionChecker>());
-    checkers_.push_back(std::make_unique<MaskChecker>());
-    checkers_.push_back(std::make_unique<CompressionChecker>());
-    checkers_.push_back(std::make_unique<MetadataChecker>());
+    ClearCheckers();
+    AddChecker<CommonChecker>();
+    AddChecker<NonQuantChecker>();
+    AddChecker<SeqLenChecker>();
+    AddChecker<PagedAttentionChecker>();
+    AddChecker<MaskChecker>();
+    AddChecker<CompressionChecker>();
+    AddChecker<MetadataChecker>();
 }
 ge::graphStatus LIChecker::Init(const LIV2TilingInfo &source)
 {
@@ -93,29 +73,10 @@ ge::graphStatus LIChecker::Init(const LIV2TilingInfo &source)
     RegisterCheckers();
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus LIChecker::RunCheck(
-    const std::function<ge::graphStatus(LIBaseChecker *, const IndexerCheckerInfo &)> &method)
-{
-    for (const auto &checker : checkers_) {
-        if (method(checker.get(), info_) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
 ge::graphStatus LIChecker::Process(const LIV2TilingInfo &source)
 {
     (void)source;
-    if (RunCheck([](LIBaseChecker *c, const IndexerCheckerInfo &i) { return c->CheckSinglePara(i); }) !=
-            ge::GRAPH_SUCCESS ||
-        RunCheck([](LIBaseChecker *c, const IndexerCheckerInfo &i) { return c->CheckParaExistence(i); }) !=
-            ge::GRAPH_SUCCESS ||
-        RunCheck([](LIBaseChecker *c, const IndexerCheckerInfo &i) { return c->CheckFeature(i); }) != ge::GRAPH_SUCCESS ||
-        RunCheck([](LIBaseChecker *c, const IndexerCheckerInfo &i) { return c->CheckMultiPara(i); }) !=
-            ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
+    return LICompositeChecker::Process(info_);
 }
 } // namespace lightning_indexer_v2
 } // namespace optiling

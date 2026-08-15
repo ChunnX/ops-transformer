@@ -7,92 +7,132 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+
+/*!
+ * \file quant_checker.cpp
+ * \brief Quantization-specific checker for QuantLightningIndexerV2
+ */
+
 #include "log/log.h"
 #include "quant_checker.h"
+
 namespace optiling {
 namespace lightning_indexer_v2 {
+namespace {
+
+constexpr int64_t MX_SCALE_GROUP_SIZE = 64;
+constexpr int64_t MX_SCALE_PACK_SIZE = 2;
+
+struct QuantDtypeConfig {
+    ge::DataType qk;
+    ge::DataType weight;
+    ge::DataType descale;
+};
+
+ge::graphStatus GetQuantDtypeConfig(int64_t quantMode, QuantDtypeConfig &config)
+{
+    switch (quantMode) {
+        case 1:
+            config = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT, ge::DT_FLOAT};
+            return ge::GRAPH_SUCCESS;
+        case 2:
+            config = {ge::DT_INT8, ge::DT_FLOAT16, ge::DT_FLOAT16};
+            return ge::GRAPH_SUCCESS;
+        case 3:
+            config = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT, ge::DT_FLOAT8_E8M0};
+            return ge::GRAPH_SUCCESS;
+        case 4:
+            config = {ge::DT_HIFLOAT8, ge::DT_FLOAT, ge::DT_FLOAT};
+            return ge::GRAPH_SUCCESS;
+        case 5:
+            config = {ge::DT_FLOAT4_E2M1, ge::DT_FLOAT, ge::DT_FLOAT8_E8M0};
+            return ge::GRAPH_SUCCESS;
+        default:
+            return ge::GRAPH_FAILED;
+    }
+}
+
+} // namespace
+
 ge::graphStatus QuantChecker::CheckSinglePara(const IndexerCheckerInfo &info)
 {
-    if (info.quantMode < 1 || info.quantMode > 5) {
-        OP_LOGE_FOR_INVALID_VALUE(info.opName, "quant_mode", std::to_string(info.quantMode).c_str(), "[1, 5]");
-        return ge::GRAPH_FAILED;
-    }
-    ge::DataType qType = ge::DT_FLOAT8_E4M3FN;
-    ge::DataType weightType = ge::DT_FLOAT;
-    ge::DataType scaleType = ge::DT_FLOAT;
-    if (info.quantMode == 2) {
-        qType = ge::DT_INT8;
-        weightType = ge::DT_FLOAT16;
-        scaleType = ge::DT_FLOAT16;
-    } else if (info.quantMode == 3 || info.quantMode == 5) {
-        qType = info.quantMode == 3 ? ge::DT_FLOAT8_E4M3FN : ge::DT_FLOAT4_E2M1;
-        scaleType = ge::DT_FLOAT8_E8M0;
-    } else if (info.quantMode == 4) {
-        qType = ge::DT_HIFLOAT8;
-    }
-    if (CheckDtype(info.query, "query", {qType}, info) != ge::GRAPH_SUCCESS ||
-        CheckDtype(info.key, "key", {qType}, info) != ge::GRAPH_SUCCESS ||
-        CheckDtype(info.weights, "weights", {weightType}, info) != ge::GRAPH_SUCCESS ||
-        CheckDtype(info.queryDescale, "query_dequant_scale", {scaleType}, info) != ge::GRAPH_SUCCESS ||
-        CheckDtype(info.keyDescale, "key_dequant_scale", {scaleType}, info) != ge::GRAPH_SUCCESS ||
+    QuantDtypeConfig config{};
+    OP_CHECK_IF(GetQuantDtypeConfig(info.quantMode, config) != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE(info.opName, "quant_mode",
+                                          std::to_string(info.quantMode).c_str(), "1, 2, 3, 4 or 5"),
+                return ge::GRAPH_FAILED);
+
+    if (CheckDtype(info.query, "q", {config.qk}, info) != ge::GRAPH_SUCCESS ||
+        CheckDtype(info.key, "k", {config.qk}, info) != ge::GRAPH_SUCCESS ||
+        CheckDtype(info.weights, "w", {config.weight}, info) != ge::GRAPH_SUCCESS ||
+        CheckDtype(info.queryDescale, "q_descale", {config.descale}, info) != ge::GRAPH_SUCCESS ||
+        CheckDtype(info.keyDescale, "k_descale", {config.descale}, info) != ge::GRAPH_SUCCESS ||
         CheckDtype(info.sparseIndices, "sparse_indices", {ge::DT_INT32}, info) != ge::GRAPH_SUCCESS ||
         CheckDtype(info.sparseValues, "sparse_values", {ge::DT_BF16}, info) != ge::GRAPH_SUCCESS ||
-        CheckFormat(info.queryDescale, "query_dequant_scale", info) != ge::GRAPH_SUCCESS ||
-        CheckFormat(info.keyDescale, "key_dequant_scale", info) != ge::GRAPH_SUCCESS ||
-        CheckNoZeroDim(info.queryDescale, "query_dequant_scale", info) != ge::GRAPH_SUCCESS ||
-        CheckNoZeroDim(info.keyDescale, "key_dequant_scale", info) != ge::GRAPH_SUCCESS) {
+        CheckFormat(info.queryDescale, "q_descale", info) != ge::GRAPH_SUCCESS ||
+        CheckFormat(info.keyDescale, "k_descale", info) != ge::GRAPH_SUCCESS ||
+        CheckNoZeroDim(info.queryDescale, "q_descale", info) != ge::GRAPH_SUCCESS ||
+        CheckNoZeroDim(info.keyDescale, "k_descale", info) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
+
 ge::graphStatus QuantChecker::CheckFeature(const IndexerCheckerInfo &info)
 {
     OP_CHECK_IF(!info.isArch35 && info.quantMode != 2,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "quant_mode",
-                                                      std::to_string(info.quantMode).c_str(),
-                                                      "Ascend A2/A3 only supports quant_mode 2"),
+                                                      std::to_string(info.quantMode).c_str(), "Ascend A2/A3 only supports quant_mode=2"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
+
 ge::graphStatus QuantChecker::CheckMultiPara(const IndexerCheckerInfo &info)
 {
-    std::vector<int64_t> qScale;
-    std::vector<int64_t> kScale;
+    std::vector<int64_t> queryDescaleShape;
+    std::vector<int64_t> keyDescaleShape;
     if (info.quantMode == 4) {
-        qScale = {1};
-        kScale = {1};
+        queryDescaleShape = {1};
+        keyDescaleShape = {1};
     } else if (info.quantMode == 3 || info.quantMode == 5) {
         if (info.queryLayout == IndexerLayout::BSND) {
-            qScale = {info.batchSize, info.querySeqLen, info.queryHeadNum, info.headDim / 64, 2};
+            queryDescaleShape = {info.batchSize, info.querySeqLen, info.queryHeadNum,
+                                 info.headDim / MX_SCALE_GROUP_SIZE, MX_SCALE_PACK_SIZE};
         } else {
-            qScale = {info.querySeqLen, info.queryHeadNum, info.headDim / 64, 2};
+            queryDescaleShape = {info.querySeqLen, info.queryHeadNum,
+                                 info.headDim / MX_SCALE_GROUP_SIZE, MX_SCALE_PACK_SIZE};
         }
         if (info.keyLayout == IndexerLayout::BSND) {
-            kScale = {info.batchSize, info.keySeqLen, info.keyHeadNum, info.headDim / 64, 2};
+            keyDescaleShape = {info.batchSize, info.keySeqLen, info.keyHeadNum,
+                               info.headDim / MX_SCALE_GROUP_SIZE, MX_SCALE_PACK_SIZE};
         } else if (info.keyLayout == IndexerLayout::TND) {
-            kScale = {info.keySeqLen, info.keyHeadNum, info.headDim / 64, 2};
-        } else {
-            kScale = {info.key.shape[0], info.blockSize, info.keyHeadNum, info.headDim / 64, 2};
+            keyDescaleShape = {info.keySeqLen, info.keyHeadNum,
+                               info.headDim / MX_SCALE_GROUP_SIZE, MX_SCALE_PACK_SIZE};
+        } else if (!info.key.shape.empty()) {
+            keyDescaleShape = {info.key.shape[0], info.blockSize, info.keyHeadNum,
+                               info.headDim / MX_SCALE_GROUP_SIZE, MX_SCALE_PACK_SIZE};
         }
     } else {
         if (info.queryLayout == IndexerLayout::BSND) {
-            qScale = {info.batchSize, info.querySeqLen, info.queryHeadNum};
+            queryDescaleShape = {info.batchSize, info.querySeqLen, info.queryHeadNum};
         } else {
-            qScale = {info.querySeqLen, info.queryHeadNum};
+            queryDescaleShape = {info.querySeqLen, info.queryHeadNum};
         }
         if (info.keyLayout == IndexerLayout::BSND) {
-            kScale = {info.batchSize, info.keySeqLen, info.keyHeadNum};
+            keyDescaleShape = {info.batchSize, info.keySeqLen, info.keyHeadNum};
         } else if (info.keyLayout == IndexerLayout::TND) {
-            kScale = {info.keySeqLen, info.keyHeadNum};
-        } else {
-            kScale = {info.key.shape[0], info.blockSize, info.keyHeadNum};
+            keyDescaleShape = {info.keySeqLen, info.keyHeadNum};
+        } else if (!info.key.shape.empty()) {
+            keyDescaleShape = {info.key.shape[0], info.blockSize, info.keyHeadNum};
         }
     }
-    if (CheckShape(info.queryDescale, "query_dequant_scale", qScale, info) != ge::GRAPH_SUCCESS ||
-        CheckShape(info.keyDescale, "key_dequant_scale", kScale, info) != ge::GRAPH_SUCCESS) {
+
+    if (CheckShape(info.queryDescale, "q_descale", queryDescaleShape, info) != ge::GRAPH_SUCCESS ||
+        CheckShape(info.keyDescale, "k_descale", keyDescaleShape, info) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
+
 } // namespace lightning_indexer_v2
 } // namespace optiling

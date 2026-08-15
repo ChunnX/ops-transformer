@@ -25,9 +25,10 @@ public:
 
 private:
     ge::graphStatus CheckOutputOffset(const IndexerCheckerInfo &info) const;
+    ge::graphStatus CheckOutputOffsetConsistency(const IndexerCheckerInfo &info) const;
 };
 
 } // namespace lightning_indexer_v2
 } // namespace optiling
 
-#endif
+#endif // LIGHTNING_INDEXER_V2_COMMON_CHECKER_H

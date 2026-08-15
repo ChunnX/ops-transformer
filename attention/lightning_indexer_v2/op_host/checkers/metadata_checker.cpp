@@ -20,7 +20,7 @@ ge::graphStatus MetadataChecker::CheckSinglePara(const IndexerCheckerInfo &info)
         CheckFormat(info.metadata, "metadata", info) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    return CheckShape(info.metadata, "metadata", {1024}, info);
+    return CheckShape(info.metadata, "metadata", {INDEXER_METADATA_SIZE}, info);
 }
 } // namespace lightning_indexer_v2
 } // namespace optiling
