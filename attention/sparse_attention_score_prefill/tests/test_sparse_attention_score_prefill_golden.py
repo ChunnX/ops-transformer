@@ -63,7 +63,7 @@ def generate_block_index_with_causal(query_fp32, key_fp32, q_seqlen, kv_seqlen,
           if effective_end > block_begin:
             pooled[block_idx] = torch.max(scores[block_begin:effective_end]).item()
 
-      visible_blocks = min(total_blocks, q_block + 1)
+      visible_blocks = max(0, min(total_blocks, q_block + 1))
       valid_k = min(top_k, visible_blocks)
       select_num_idx[kv_head, q_token] = valid_k
       if valid_k > 0:
@@ -527,7 +527,13 @@ def build_k2q_csr_torch_reference(
     kv_flat = q2k_batch.reshape(head_kv, num_entries).long()
     valid_flat = valid_batch.reshape(head_kv, num_entries)
     safe_kv_flat = torch.where(valid_flat, kv_flat, torch.zeros_like(kv_flat))
-    row_flat = row_map_t[batch_idx][safe_kv_flat]
+    if kv_rows == 0:
+      # A skipped KV batch owns no packed CSR row. Keep its entries invalid and
+      # use row zero only as a harmless scatter placeholder for the masked data.
+      valid_flat = torch.zeros_like(valid_flat)
+      row_flat = torch.zeros_like(safe_kv_flat)
+    else:
+      row_flat = row_map_t[batch_idx][safe_kv_flat]
     q_flat = (
         torch.arange(q_len, device=q2k_indices.device, dtype=torch.int32)
         .view(1, q_len, 1)

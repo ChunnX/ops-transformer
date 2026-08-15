@@ -329,9 +329,8 @@ private:
     // The (batchIdx, kvBlockIdx) decode is an incremental state machine persisted across
     // the task loop: each core's packedRows are strided (taskIdx stride coreNum ->
     // packedRow stride coreNum/kvHeads_), and AdvancePackedRowCoord steps the round-robin
-    // order forward. Seeded eagerly before the loop with packedRow=0 -> (batchIdx=0,
-    // kvBlockIdx=0) (valid for non-empty batch 0 -- the only supported config; an empty
-    // batch 0 would need a skip-while seed, but a batch with kvseqlen=0 is not a real input).
+    // order forward. The seed skips batches with kvseqlen=0 because they own no
+    // packed CSR row.
     // A direct O(batch) decode would need rows_per_batch for ALL batches (no compile-time
     // bound on batch_, up to 4096) -> 16KB UB scratch (the reverted G-piece1 path); the
     // incremental walk is correct, scratch-free, and its cost is negligible.
@@ -339,6 +338,16 @@ private:
     uint32_t KvRowsPerBatch(uint32_t batchIdx)
     {
         return CeilDiv(static_cast<uint32_t>(gActualKvseqlen_.GetValue(batchIdx)), blockSize_);
+    }
+
+    __aicore__ inline
+    void InitPackedRowCoord(uint32_t &batchIdx, uint32_t &kvBlockIdx)
+    {
+        batchIdx = 0U;
+        kvBlockIdx = 0U;
+        while (batchIdx < batch_ && KvRowsPerBatch(batchIdx) == 0U) {
+            ++batchIdx;
+        }
     }
 
     __aicore__ inline
@@ -672,14 +681,14 @@ private:
         uint32_t batchIdx = 0;
         uint32_t kvBlockIdx = 0;
         uint32_t prevHead = kvHeads_;
+        InitPackedRowCoord(batchIdx, kvBlockIdx);
 
         for (uint32_t taskIdx = rowLo; taskIdx <= rowHi && taskIdx < totalTasks; ++taskIdx) {
             uint32_t kvHeadIdx = taskIdx / totalKvRows_;
             uint32_t packedRow = taskIdx % totalKvRows_;
             if (kvHeadIdx != prevHead) {
                 curPackedRow = 0;
-                batchIdx = 0;
-                kvBlockIdx = 0;
+                InitPackedRowCoord(batchIdx, kvBlockIdx);
                 prevHead = kvHeadIdx;
             }
             // Incremental round-robin decode of packedRow -> (batchIdx, kvBlockIdx).

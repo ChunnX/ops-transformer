@@ -372,6 +372,48 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         batch=3, q_seqlens=[8, 16, 4], kv_seqlens=[1024, 2048, 512],
         q_heads=8, kv_heads=2, top_k=4, seed=456, prec=1e-2)
 
+  def test_bf16_zero_q_len_mixed_batch(self):
+    """Batches with q_len=0 contribute no query rows and are skipped."""
+    print("[test_bf16_zero_q_len_mixed_batch]")
+    self._run_npu_test(
+        batch=3, q_seqlens=[0, 4, 0], kv_seqlens=[128, 128, 0],
+        q_heads=8, kv_heads=2, top_k=1, seed=457, prec=1e-2)
+
+  def test_bf16_zero_kv_len_mixed_batch(self):
+    """A leading batch with kv_len=0 produces zero output and is skipped."""
+    print("[test_bf16_zero_kv_len_mixed_batch]")
+    data = make_case(
+        batch=2, q_seqlens=[4, 4], kv_seqlens=[0, 128],
+        q_heads=8, kv_heads=2, head_dim=128, block_size=128, top_k=1, seed=458)
+    golden = cpu_golden_prefill_bf16(
+        data["query"], data["key"], data["value"], data["k2q_row_ptr"],
+        data["k2q_q_indices"], data["k2q_slot_indices"], data["block_table"],
+        data["actual_seq_lengths"], data["actual_seq_lengths_kv"],
+        data["block_size"], data["top_k"], data["scale_value"])
+    out = torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
+        data["query"].npu(), data["key"].npu(), data["value"].npu(),
+        data["block_table"].npu(), data["k2q_row_ptr"].npu(),
+        data["k2q_q_indices"].npu(), data["k2q_slot_indices"].npu(),
+        data["actual_seq_lengths"].npu(), data["actual_seq_lengths_kv"].npu(),
+        data["kv_heads"], data["scale_value"], data["block_size"], data["top_k"], 0).cpu()
+    self.assertTrue(torch.all(out[:4] == 0))
+    self.assertRtolEqual(golden.float().numpy(), out.float().numpy(), prec=1e-2)
+
+  def test_bf16_all_zero_lengths(self):
+    """An entirely empty TND input returns an empty output without launching work."""
+    print("[test_bf16_all_zero_lengths]")
+    data = make_case(
+        batch=1, q_seqlens=[0], kv_seqlens=[0],
+        q_heads=8, kv_heads=2, head_dim=128, block_size=128, top_k=1, seed=459)
+    out = torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
+        data["query"].npu(), data["key"].npu(), data["value"].npu(),
+        data["block_table"].npu(), data["k2q_row_ptr"].npu(),
+        data["k2q_q_indices"].npu(), data["k2q_slot_indices"].npu(),
+        data["actual_seq_lengths"].npu(), data["actual_seq_lengths_kv"].npu(),
+        data["kv_heads"], data["scale_value"], data["block_size"], data["top_k"], 0)
+    self.assertEqual(tuple(out.shape), (0, 8, 128))
+    self.assertEqual(out.numel(), 0)
+
   def test_bf16_gqa_large_group(self):
     print("[test_bf16_gqa_large_group]")
     self._run_npu_test(

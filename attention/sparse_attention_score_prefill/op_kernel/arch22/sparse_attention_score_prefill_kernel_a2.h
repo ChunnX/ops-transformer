@@ -684,6 +684,16 @@ private:
     }
 
     __aicore__ inline
+    void InitPackedRowCoord(uint32_t &batchIdx, uint32_t &kvBlockIdx)
+    {
+        batchIdx = 0U;
+        kvBlockIdx = 0U;
+        while (batchIdx < batch_ && KvRowsPerBatch(batchIdx) == 0U) {
+            ++batchIdx;
+        }
+    }
+
+    __aicore__ inline
     void AdvancePackedRowCoord(uint32_t &batchIdx, uint32_t &kvBlockIdx)
     {
         batchIdx++;
@@ -1018,11 +1028,12 @@ private:
         }
 #endif
 
-        // === Eager seed: packedRow=0 → (batchIdx=0, kvBlockIdx=0) ===
-        // 非空 batch 0 的初始坐标 (batch 0 有 kv token 是合法输入的前提)
+        // Seed packedRow=0 with the first batch that owns a KV block. Batches
+        // with kv_len=0 do not own a packed CSR row and must be skipped.
         int32_t curPackedRow = 0;
         uint32_t batchIdx = 0;
         uint32_t kvBlockIdx = 0;
+        InitPackedRowCoord(batchIdx, kvBlockIdx);
 
         // ===== Main loop: MODE_2 cross-core sync, full pipeline (QK || softmax || PV) =====
         // === Phase1 主循环: 按 taskIdx stride 分核遍历所有 Phase1 任务 ===
