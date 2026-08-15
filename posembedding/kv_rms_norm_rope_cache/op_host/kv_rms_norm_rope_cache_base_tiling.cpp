@@ -256,7 +256,7 @@ bool KvRmsNormRopeCacheTilingBase::CheckKCacheValid(const gert::TilingContext *c
 bool KvRmsNormRopeCacheTilingBase::CheckVCacheValid(const gert::TilingContext *context, int64_t batchSize,
                                                     int64_t numHead, int64_t cacheLen, int64_t headSize)
 {
-    return CheckCacheValid(context, batchSize, numHead, cacheLen, headSize, V_CACHE_INDEX, "v_cache");
+    return CheckCacheValid(context, batchSize, numHead, cacheLen, headSize, V_CACHE_INDEX, "ckv_cache");
 }
 
 bool KvRmsNormRopeCacheTilingBase::CheckKCacheValidPA(const gert::TilingContext *context, int64_t numHead,

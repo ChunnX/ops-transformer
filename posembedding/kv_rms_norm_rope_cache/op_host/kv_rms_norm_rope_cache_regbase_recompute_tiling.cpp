@@ -242,7 +242,7 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckInputDtype()
             if (vKvOffsetDtype != ge::DT_FLOAT) {
                 std::string vKvOffsetDtypeStr = ToString(vKvOffsetDtype);
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                    context_->GetNodeName(), "v_kv_offset", vKvOffsetDtypeStr.c_str(),
+                    context_->GetNodeName(), "c_kv_offset", vKvOffsetDtypeStr.c_str(),
                     "The dtype of input v_kv_offset should be FLOAT "
                     "when the dtype of input ckv_cache is INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2");
                 return false;
