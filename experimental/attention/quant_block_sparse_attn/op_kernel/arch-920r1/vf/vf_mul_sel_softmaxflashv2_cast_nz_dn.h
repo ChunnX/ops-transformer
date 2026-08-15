@@ -39,38 +39,75 @@ constexpr static AscendC::MicroAPI::CastTrait QBSA_CAST_B8_TO_B32_TWO = {
 constexpr static AscendC::MicroAPI::CastTrait QBSA_CAST_B8_TO_B32_THREE = {
     RegLayout::THREE, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
-constexpr static AscendC::MicroAPI::CastTrait QBSA_CAST_FP8_E4M3_TO_FP32 = {
-    RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-constexpr static AscendC::MicroAPI::CastTrait QBSA_CAST_FP32_TO_FP8_E4M3 = {
-    RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-
 __simd_vf__ inline void RescaleRound0VF(
     __ubuf__ fp8_e4m3fn_t *pTensor, __ubuf__ float *alphaTensor, const uint32_t realK)
 {
     constexpr uint32_t BLOCK_ELEMS = 32U;
+    constexpr uint32_t COLUMNS_PER_REG = 8U;
     constexpr uint32_t FORM_STRIDE_BLOCKS = 65U;
     constexpr uint32_t GROUP_STRIDE_BLOCKS = 130U;
     const uint32_t repeat = (realK + 63U) >> 6U;
 
-    RegTensor<fp8_e4m3fn_t> pFp8Reg;
-    RegTensor<float> pFp32Reg;
+    RegTensor<fp8_e4m3fn_t> pFp8Reg, pFp8Lane1, pFp8Lane2, pFp8Lane3;
+    RegTensor<float> pFp32Lane0, pFp32Lane1, pFp32Lane2, pFp32Lane3;
     RegTensor<float> alphaReg;
-    MaskReg fp32Mask = CreateMask<float, MaskPattern::VL32>();
+    RegTensor<float> alphaLane0, alphaLane1, alphaLane2, alphaLane3;
+    RegTensor<uint32_t> alphaIndex0, alphaIndex1, alphaIndex2, alphaIndex3, alphaIndexMask;
+    MaskReg fp32FullMask = CreateMask<float, MaskPattern::ALL>();
+
+    // A 256-byte B8 register contains eight contiguous 32-element columns.
+    // Each B8 -> B32 Cast layout extracts one byte out of every four, so build
+    // the matching alpha order: [lane, lane + 4, ..., lane + 28], repeated.
+    Arange(alphaIndex0, 0U);
+    ShiftLefts(alphaIndex0, alphaIndex0, 2, fp32FullMask);
+    Duplicate(alphaIndexMask, BLOCK_ELEMS - 1U);
+    And(alphaIndex0, alphaIndex0, alphaIndexMask, fp32FullMask);
+    Adds(alphaIndex1, alphaIndex0, 1U, fp32FullMask);
+    Adds(alphaIndex2, alphaIndex0, 2U, fp32FullMask);
+    Adds(alphaIndex3, alphaIndex0, 3U, fp32FullMask);
 
     for (uint32_t group = 0U; group < repeat; ++group) {
         uint32_t validColumns = realK - group * 64U;
         validColumns = validColumns > 64U ? 64U : validColumns;
         for (uint32_t form = 0U; form < 2U; ++form) {
             LoadAlign(alphaReg, alphaTensor + form * BLOCK_ELEMS);
+            Gather(alphaLane0, alphaReg, alphaIndex0);
+            Gather(alphaLane1, alphaReg, alphaIndex1);
+            Gather(alphaLane2, alphaReg, alphaIndex2);
+            Gather(alphaLane3, alphaReg, alphaIndex3);
             const uint32_t formBase =
                 (group * GROUP_STRIDE_BLOCKS + form * FORM_STRIDE_BLOCKS) * BLOCK_ELEMS;
-            for (uint32_t column = 0U; column < validColumns; ++column) {
+            for (uint32_t column = 0U; column < validColumns; column += COLUMNS_PER_REG) {
                 __ubuf__ fp8_e4m3fn_t *pBlock = pTensor + formBase + column * BLOCK_ELEMS;
+                const uint32_t columnsThisLoop =
+                    validColumns - column > COLUMNS_PER_REG ? COLUMNS_PER_REG : validColumns - column;
+                uint32_t fp32Elements = columnsThisLoop * BLOCK_ELEMS / 4U;
+                uint32_t fp8Elements = columnsThisLoop * BLOCK_ELEMS;
+                MaskReg fp32Mask = UpdateMask<float>(fp32Elements);
+                MaskReg fp8Mask = UpdateMask<uint8_t>(fp8Elements);
+
                 LoadAlign(pFp8Reg, pBlock);
-                Cast<float, fp8_e4m3fn_t, QBSA_CAST_FP8_E4M3_TO_FP32>(pFp32Reg, pFp8Reg, fp32Mask);
-                Mul(pFp32Reg, pFp32Reg, alphaReg, fp32Mask);
-                Cast<fp8_e4m3fn_t, float, QBSA_CAST_FP32_TO_FP8_E4M3>(pFp8Reg, pFp32Reg, fp32Mask);
-                StoreAlign(pBlock, pFp8Reg, fp32Mask);
+                Cast<float, fp8_e4m3fn_t, QBSA_CAST_B8_TO_B32_ZERO>(pFp32Lane0, pFp8Reg, fp32Mask);
+                Cast<float, fp8_e4m3fn_t, QBSA_CAST_B8_TO_B32_ONE>(pFp32Lane1, pFp8Reg, fp32Mask);
+                Cast<float, fp8_e4m3fn_t, QBSA_CAST_B8_TO_B32_TWO>(pFp32Lane2, pFp8Reg, fp32Mask);
+                Cast<float, fp8_e4m3fn_t, QBSA_CAST_B8_TO_B32_THREE>(pFp32Lane3, pFp8Reg, fp32Mask);
+
+                Mul(pFp32Lane0, pFp32Lane0, alphaLane0, fp32Mask);
+                Mul(pFp32Lane1, pFp32Lane1, alphaLane1, fp32Mask);
+                Mul(pFp32Lane2, pFp32Lane2, alphaLane2, fp32Mask);
+                Mul(pFp32Lane3, pFp32Lane3, alphaLane3, fp32Mask);
+
+                Cast<fp8_e4m3fn_t, float, castTraitRintZero>(pFp8Reg, pFp32Lane0, fp32Mask);
+                Cast<fp8_e4m3fn_t, float, castTraitRintOne>(pFp8Lane1, pFp32Lane1, fp32Mask);
+                Cast<fp8_e4m3fn_t, float, castTraitRintTwo>(pFp8Lane2, pFp32Lane2, fp32Mask);
+                Cast<fp8_e4m3fn_t, float, castTraitRintThree>(pFp8Lane3, pFp32Lane3, fp32Mask);
+                Or((RegTensor<uint8_t> &)pFp8Reg, (RegTensor<uint8_t> &)pFp8Reg,
+                   (RegTensor<uint8_t> &)pFp8Lane1, fp8Mask);
+                Or((RegTensor<uint8_t> &)pFp8Reg, (RegTensor<uint8_t> &)pFp8Reg,
+                   (RegTensor<uint8_t> &)pFp8Lane2, fp8Mask);
+                Or((RegTensor<uint8_t> &)pFp8Reg, (RegTensor<uint8_t> &)pFp8Reg,
+                   (RegTensor<uint8_t> &)pFp8Lane3, fp8Mask);
+                StoreAlign<fp8_e4m3fn_t, StoreDist::DIST_NORM_B8>(pBlock, pFp8Reg, fp8Mask);
             }
         }
     }
