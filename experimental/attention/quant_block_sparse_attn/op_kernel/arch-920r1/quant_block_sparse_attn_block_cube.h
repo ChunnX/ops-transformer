@@ -346,19 +346,33 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
     shape.maxblockNumPerBatch = maxBlockNumPerBatch;
     shape.pageStride = constInfo.paBlockStride;
     shape.rowStride = constInfo.dSizeV;
-    shape.copyRowNumAlign = (actualS2RealSize + 31U) >> 5U << 5U;
     GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
     uint32_t blockElementCnt = 32U / sizeof(INPUT_T);
-    uint32_t copiedRows = 0U;
-    for (uint32_t slot = 0U; slot < QBSA_V121_SPARSE_BLOCKS_PER_TASK; ++slot) {
-      if (runInfo.sparseBlkIdx[slot] < 0 || runInfo.s2SparseBlkRealSize[slot] == 0) {
+    const uint32_t roundBufferStride =
+        QBSA_V121_ROUND_S2_SIZE * ((static_cast<uint32_t>(constInfo.dSizeV) + 31U) >> 5U << 5U);
+    for (uint32_t roundIdx = 0U; roundIdx < 2U; ++roundIdx) {
+      const uint32_t firstSlot = roundIdx * 2U;
+      const uint32_t roundRealSize = static_cast<uint32_t>(runInfo.s2SparseBlkRealSize[firstSlot] +
+                                                           runInfo.s2SparseBlkRealSize[firstSlot + 1U]);
+      if (roundRealSize == 0U) {
         continue;
       }
-      startPos.s2Offset = runInfo.sparseBlkIdx[slot] * constInfo.kvSparseBlockSize;
-      shape.copyRowNum = runInfo.s2SparseBlkRealSize[slot];
-      LocalTensor<INPUT_T> slotTensor = mm2BTensor[copiedRows * blockElementCnt];
-      GmCopyInToL1PA<INPUT_T>(slotTensor, mm2BGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
-      copiedRows += runInfo.s2SparseBlkRealSize[slot];
+      // MatmulK consumes V as two independent K=256 tiles. Keep each round in
+      // its own NZ matrix instead of forming one K=512 NZ matrix, whose C0
+      // planes would interleave data from the two K tiles.
+      shape.copyRowNumAlign = (roundRealSize + 31U) >> 5U << 5U;
+      LocalTensor<INPUT_T> roundTensor = mm2BTensor[roundIdx * roundBufferStride];
+      uint32_t copiedRows = 0U;
+      for (uint32_t slot = firstSlot; slot < firstSlot + 2U; ++slot) {
+        if (runInfo.sparseBlkIdx[slot] < 0 || runInfo.s2SparseBlkRealSize[slot] == 0) {
+          continue;
+        }
+        startPos.s2Offset = runInfo.sparseBlkIdx[slot] * constInfo.kvSparseBlockSize;
+        shape.copyRowNum = runInfo.s2SparseBlkRealSize[slot];
+        LocalTensor<INPUT_T> slotTensor = roundTensor[copiedRows * blockElementCnt];
+        GmCopyInToL1PA<INPUT_T>(slotTensor, mm2BGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
+        copiedRows += runInfo.s2SparseBlkRealSize[slot];
+      }
     }
   } else {
     uint64_t gmOffset = runInfo.keyOffset;
