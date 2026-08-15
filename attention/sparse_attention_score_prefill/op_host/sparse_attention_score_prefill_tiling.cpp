@@ -72,6 +72,7 @@ constexpr int BLOCKED_KV_DIM_BLOCK_NUM = 0;
 constexpr int BLOCKED_KV_DIM_BLOCK_SIZE = 1;
 constexpr int BLOCKED_KV_DIM_KV_HEAD = 2;
 constexpr int BLOCKED_KV_DIM_D = 3;
+constexpr int BLOCKED_KV_DIM_NUM = 4;
 
 constexpr int ATTR_NUM_KV_HEADS_INDEX = 0;
 constexpr int ATTR_SCALE_VALUE_INDEX = 1;
@@ -148,8 +149,33 @@ ge::graphStatus SASAPrefillTilingBase::ParseInputTensors(gert::TilingContext *co
     if (kvHeads_ == 0) {
         kvHeads_ = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(BLOCKED_KV_DIM_KV_HEAD));
     }
+    keyBlockStride_ = static_cast<uint64_t>(blockSize_) * kvHeads_ * embeddingSize_;
+    valueBlockStride_ = keyBlockStride_;
+    if (context->InputIsView(KEY_INDEX)) {
+        auto *keyStride = context->GetInputStride(KEY_INDEX);
+        if (keyStride != nullptr && keyStride->GetDimNum() == BLOCKED_KV_DIM_NUM) {
+            int64_t stride = keyStride->GetStride(BLOCKED_KV_DIM_BLOCK_NUM);
+            if (stride <= 0) {
+                printf("[SASAPrefillTiling] key cache block stride is invalid\n");
+                return ge::GRAPH_FAILED;
+            }
+            keyBlockStride_ = static_cast<uint64_t>(stride);
+        }
+    }
+    if (context->InputIsView(VALUE_INDEX)) {
+        auto *valueStride = context->GetInputStride(VALUE_INDEX);
+        if (valueStride != nullptr && valueStride->GetDimNum() == BLOCKED_KV_DIM_NUM) {
+            int64_t stride = valueStride->GetStride(BLOCKED_KV_DIM_BLOCK_NUM);
+            if (stride <= 0) {
+                printf("[SASAPrefillTiling] value cache block stride is invalid\n");
+                return ge::GRAPH_FAILED;
+            }
+            valueBlockStride_ = static_cast<uint64_t>(stride);
+        }
+    }
     groupSize_ = (kvHeads_ > 0) ? (numHeads_ / kvHeads_) : 1;
-    printf("[SASAPrefillTiling] kvHeads=%u groupSize=%u\n", kvHeads_, groupSize_);
+    printf("[SASAPrefillTiling] kvHeads=%u groupSize=%u keyBlockStride=%lu valueBlockStride=%lu\n",
+           kvHeads_, groupSize_, keyBlockStride_, valueBlockStride_);
 
     // block_table: [batch_size, max_num_blocks]
     auto btShape = context->GetInputShape(BLOCK_TABLE_INDEX);
@@ -347,6 +373,8 @@ ge::graphStatus SASAPrefillTilingA5::FillTilingData(gert::TilingContext *context
     tilingData_->set_groupSize(groupSize_);
     tilingData_->set_embeddingSize(embeddingSize_);
     tilingData_->set_blockSize(blockSize_);
+    tilingData_->set_keyBlockStride(keyBlockStride_);
+    tilingData_->set_valueBlockStride(valueBlockStride_);
     tilingData_->set_topK(topK_);
     tilingData_->set_totalQTokens(totalQTokens_);
     tilingData_->set_numKvBlocks(numKvBlocks_);

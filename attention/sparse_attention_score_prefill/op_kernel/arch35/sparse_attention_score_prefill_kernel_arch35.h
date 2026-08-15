@@ -265,6 +265,8 @@ private:
         groupSize_ = tilingData->groupSize;
         embed_ = tilingData->embeddingSize;
         blockSize_ = tilingData->blockSize;
+        keyBlockStride_ = tilingData->keyBlockStride;
+        valueBlockStride_ = tilingData->valueBlockStride;
         topK_ = tilingData->topK;
         totalKvRows_ = tilingData->numKvBlocks;
         maxBlocksPerBatch_ = tilingData->maxBlocksPerBatch;
@@ -724,16 +726,16 @@ private:
             uint32_t kvStartPos = localBlockIdx * blockSize_;
 
 #ifdef __DAV_CUBE__
-            uint64_t kvBlockBase =
-                static_cast<uint64_t>(physicalBlockId) * blockSize_ * kvHeads_ * embed_
-                + static_cast<uint64_t>(kvHeadIdx) * embed_;
+            uint64_t kvHeadOffset = static_cast<uint64_t>(kvHeadIdx) * embed_;
+            uint64_t keyBlockBase = static_cast<uint64_t>(physicalBlockId) * keyBlockStride_ + kvHeadOffset;
+            uint64_t valueBlockBase = static_cast<uint64_t>(physicalBlockId) * valueBlockStride_ + kvHeadOffset;
 
             auto gmKLayout = tla::MakeLayout<ElementK, LayoutK>(strideKVRow, blockSize_);
-            auto gmKTensor = tla::MakeTensor(gK[kvBlockBase], gmKLayout, Arch::PositionGM{});
+            auto gmKTensor = tla::MakeTensor(gK[keyBlockBase], gmKLayout, Arch::PositionGM{});
             blockMmadQK.LoadKResident(gmKTensor, validSize, embed_);
 
             auto gmVLayout = tla::MakeLayout<ElementV, LayoutV>(blockSize_, strideKVRow);
-            auto gmVTensor = tla::MakeTensor(gV[kvBlockBase], gmVLayout, Arch::PositionGM{});
+            auto gmVTensor = tla::MakeTensor(gV[valueBlockBase], gmVLayout, Arch::PositionGM{});
             blockMmadPV.LoadVResident(gmVTensor, validSize, embed_);
 #endif
 
@@ -904,6 +906,8 @@ private:
     uint32_t groupSize_;
     uint32_t embed_;
     uint32_t blockSize_;
+    uint64_t keyBlockStride_;
+    uint64_t valueBlockStride_;
     uint32_t topK_;
     uint32_t totalKvRows_;
     uint32_t maxBlocksPerBatch_;

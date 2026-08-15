@@ -125,6 +125,8 @@ ge::graphStatus SASAPrefillTilingA2::FillTilingData(gert::TilingContext *context
     tilingData_->set_groupSize(groupSize_);
     tilingData_->set_embeddingSize(embeddingSize_);
     tilingData_->set_blockSize(blockSize_);
+    tilingData_->set_keyBlockStride(keyBlockStride_);
+    tilingData_->set_valueBlockStride(valueBlockStride_);
     tilingData_->set_topK(topK_);
     tilingData_->set_totalQTokens(totalQTokens_);
     tilingData_->set_numKvBlocks(numKvBlocks_);

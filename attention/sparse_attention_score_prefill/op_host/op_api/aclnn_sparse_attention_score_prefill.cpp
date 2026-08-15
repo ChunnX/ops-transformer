@@ -34,8 +34,6 @@ namespace {
 // 对于非连续的 tensor，会通过 l0op::Contiguous 创建连续副本；
 // 任一输入转换失败（返回 nullptr）则整体返回错误码。
 static aclnnStatus MakeContiguous(const aclTensor *&query,
-                                  const aclTensor *&key,
-                                  const aclTensor *&value,
                                   const aclTensor *&blockTable,
                                   const aclTensor *&k2qRowPtr,
                                   const aclTensor *&k2qQIndices,
@@ -46,12 +44,6 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
 {
     query = l0op::Contiguous(query, executor);
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-
-    key = l0op::Contiguous(key, executor);
-    CHECK_RET(key != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-
-    value = l0op::Contiguous(value, executor);
-    CHECK_RET(value != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
     blockTable = l0op::Contiguous(blockTable, executor);
     CHECK_RET(blockTable != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -127,7 +119,15 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto *executorImpl = uniqueExecutor.get();
 
-    aclnnStatus ret = MakeContiguous(query, key, value, blockTable,
+    const aclTensor *keyView = IsContiguous(key) ? key :
+        executorImpl->CreateView(key, key->GetViewShape(), key->GetStorageShape(),
+                                 key->GetViewStrides(), key->GetViewOffset());
+    const aclTensor *valueView = IsContiguous(value) ? value :
+        executorImpl->CreateView(value, value->GetViewShape(), value->GetStorageShape(),
+                                 value->GetViewStrides(), value->GetViewOffset());
+    CHECK_RET(keyView != nullptr && valueView != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+
+    aclnnStatus ret = MakeContiguous(query, blockTable,
                                      k2qRowPtr, k2qQIndices, k2qSlotIndices,
                                      actualSeqLengthsOptional, actualSeqLengthsKvOptional,
                                      executorImpl);
@@ -135,7 +135,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
         return ret;
     }
     auto output = l0op::SparseAttentionScorePrefill(
-        query, key, value, blockTable,
+        query, keyView, valueView, blockTable,
         k2qRowPtr, k2qQIndices, k2qSlotIndices,
         actualSeqLengthsOptional, actualSeqLengthsKvOptional,
         numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise,

@@ -28,6 +28,8 @@ TILING_DATA_FIELD_DEF(uint32_t, kvHeads);                // KV head 数
 TILING_DATA_FIELD_DEF(uint32_t, groupSize);              // numHeads/kvHeads, GQA 分组大小
 TILING_DATA_FIELD_DEF(uint32_t, embeddingSize);          // head 维度 D
 TILING_DATA_FIELD_DEF(uint32_t, blockSize);              // KV block token 数 (通常 128)
+TILING_DATA_FIELD_DEF(uint64_t, keyBlockStride);         // K cache physical-block stride in elements
+TILING_DATA_FIELD_DEF(uint64_t, valueBlockStride);       // V cache physical-block stride in elements
 TILING_DATA_FIELD_DEF(uint32_t, topK);                   // 每个 Q token 选择的 KV block 数
 TILING_DATA_FIELD_DEF(uint32_t, totalQTokens);           // 所有 batch 的 Q token 总数
 TILING_DATA_FIELD_DEF(uint32_t, numKvBlocks);            // totalPackedRows = Σ ceil(kv_seqlen/blockSize)
@@ -96,6 +98,8 @@ protected:
     uint32_t groupSize_ = 0;
     uint32_t embeddingSize_ = 0;
     uint32_t blockSize_ = 128;
+    uint64_t keyBlockStride_ = 0;
+    uint64_t valueBlockStride_ = 0;
     uint32_t topK_ = 8;
     uint32_t totalQTokens_ = 0;
     uint32_t numKvBlocks_ = 0;
