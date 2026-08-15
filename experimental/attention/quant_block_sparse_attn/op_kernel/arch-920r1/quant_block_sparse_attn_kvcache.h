@@ -254,28 +254,25 @@ __aicore__ inline void SwapValues(T &numValue1, T &numValue2)
     numValue2 = tempValue;
 }
 
-__aicore__ inline void SwapSparseBlockSlots(RunInfo &runInfo)
+__aicore__ inline void SwapSparseBlockSlots(RunInfo &runInfo, uint32_t lhs, uint32_t rhs)
 {
-    SwapValues(runInfo.sparseBlkIdx1, runInfo.sparseBlkIdx2);
-    SwapValues(runInfo.s2SparseBlk1RealSize, runInfo.s2SparseBlk2RealSize);
-    SwapValues(runInfo.s2SparseBlk1RealAlignedSize, runInfo.s2SparseBlk2RealAlignedSize);
-    SwapValues(runInfo.sparseBlk1PartialMask, runInfo.sparseBlk2PartialMask);
+    SwapValues(runInfo.sparseBlkIdx[lhs], runInfo.sparseBlkIdx[rhs]);
+    SwapValues(runInfo.phyBlkNumIdx[lhs], runInfo.phyBlkNumIdx[rhs]);
+    SwapValues(runInfo.s2SparseBlkRealSize[lhs], runInfo.s2SparseBlkRealSize[rhs]);
+    SwapValues(runInfo.s2SparseBlkRealAlignedSize[lhs], runInfo.s2SparseBlkRealAlignedSize[rhs]);
+    SwapValues(runInfo.sparseBlkPartialMask[lhs], runInfo.sparseBlkPartialMask[rhs]);
 }
 
 __aicore__ inline void IdxSortBySparseIdx(RunInfo &runInfo)
 {
-    if (unlikely(runInfo.sparseBlkIdx1 == -1 && runInfo.sparseBlkIdx2 == -1)) {
-        return;
-    }
-    if (unlikely(runInfo.sparseBlkIdx1 == -1)) {
-        SwapSparseBlockSlots(runInfo);
-        return;
-    }
-    if (unlikely(runInfo.sparseBlkIdx2 == -1)) {
-        return;
-    }
-    if (runInfo.sparseBlkIdx1 > runInfo.sparseBlkIdx2) {
-        SwapSparseBlockSlots(runInfo);
+    for (uint32_t lhs = 0U; lhs < 3U; ++lhs) {
+        for (uint32_t rhs = lhs + 1U; rhs < 4U; ++rhs) {
+            bool lhsInvalid = runInfo.sparseBlkIdx[lhs] < 0;
+            bool rhsValid = runInfo.sparseBlkIdx[rhs] >= 0;
+            if (rhsValid && (lhsInvalid || runInfo.sparseBlkIdx[lhs] > runInfo.sparseBlkIdx[rhs])) {
+                SwapSparseBlockSlots(runInfo, lhs, rhs);
+            }
+        }
     }
 }
 

@@ -129,10 +129,8 @@ struct RunParamStr { // 分核与切块需要使用到参数
     int32_t firstHalfS1RealSize; /* s1非2倍数时v0比v1少算一行 */ \
     int32_t s2RealSize;          /* s2基本块真实长度 */ \
     int64_t s2AlignedSize;       /* s2对齐到16后的长度 */ \
-    int32_t s2SparseBlk1RealSize; \
-    int32_t s2SparseBlk1RealAlignedSize; \
-    int32_t s2SparseBlk2RealSize; \
-    int32_t s2SparseBlk2RealAlignedSize; \
+    int32_t s2SparseBlkRealSize[4]; \
+    int32_t s2SparseBlkRealAlignedSize[4]; \
     int64_t sparseBase = 0;          /* sparseIndices当前(b,n2,g,qb)基址 */ \
     int64_t sparseS2TokenOffset = 0; /* sparseIndices映射后KV token offset */ \
     int32_t actSparseLen = 0;        /* sparseSeqLen当前实际选块数 */ \
@@ -151,8 +149,6 @@ struct RunParamStr { // 分核与切块需要使用到参数
     int64_t actualS2Size;       /* 当前batch的s2 */ \
     int64_t preTokensPerBatch;  /* vec2左上顶点pretoken */ \
     int64_t nextTokensPerBatch; /* vec2左上顶点nexttoken */ \
-    int64_t b1SSOffsetAlign; /* TND s2对齐16后前面batch的s1*s2之和 */ \
-    int64_t deScaleKvOffset; /* KV反量化scale在Gm偏移, shape[B,N2,1,Ceil(S2,128),1] */ \
     uint8_t taskIdMod2; \
     uint8_t taskIdMod3; \
     uint8_t multiCoreIdxMod2 = 0; \
@@ -162,12 +158,9 @@ struct RunParamStr { // 分核与切块需要使用到参数
 struct RunInfo {
     COMMON_RUN_INFO;
     /* sparseIndices 偏移量计算 */
-    int64_t sparseBlkIdx1; /* 256/128 第一个sparse块 */
-    int64_t sparseBlkIdx2; /* 256/128 第二个sparse块 */
-    int64_t phyBlkNumIdx1; // blockTable映射后的blockNum的Idx
-    int64_t phyBlkNumIdx2;
-    bool sparseBlk1PartialMask; // true表示部分计算  false表示全量计算
-    bool sparseBlk2PartialMask; // true表示部分计算  false表示全量计算
+    int64_t sparseBlkIdx[4]; /* V121 S2=512基本块内的四个sparse块 */
+    int64_t phyBlkNumIdx[4]; // blockTable映射后的blockNum的Idx
+    bool sparseBlkPartialMask[4]; // true表示部分计算  false表示全量计算
     // lse 输出offset
     int64_t softmaxLseOffset;
 };
