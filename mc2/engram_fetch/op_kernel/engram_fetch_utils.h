@@ -25,7 +25,7 @@
 namespace Mc2Kernel {
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
 constexpr uint32_t UB_ALIGN = 32U;
-constexpr uint32_t TILE_BYTES = 32U * 1024U;
+constexpr uint32_t TILE_BYTES = 64U * 1024U;
 constexpr uint32_t HCOMM_INIT_SIZE = 512U;
 constexpr uint32_t READ_COMMIT_FIRST_THRESHOLD = 4U;
 constexpr uint32_t READ_COMMIT_THRESHOLD = 16U;
