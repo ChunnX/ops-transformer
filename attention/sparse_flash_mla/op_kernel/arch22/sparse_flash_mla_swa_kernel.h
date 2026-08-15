@@ -494,8 +494,7 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::GetSparseActualSeqLen()
 template <typename SMLAT>
 __aicore__ inline void SparseFlashMlaSwa<SMLAT>::UpdateInnerLoopCond()
 {
-    bool hasOriWindow = tempLoopInfo.oriMaskRight >= tempLoopInfo.oriMaskLeft;
-    if ((tempLoopInfo.actCmpS2Size == 0 && !hasOriWindow) || (tempLoopInfo.actS1Size == 0)) {
+    if ((tempLoopInfo.actCmpS2Size == 0 && tempLoopInfo.actOriS2Size == 0) || (tempLoopInfo.actS1Size == 0)) {
         tempLoopInfo.curActSeqLenIsZero = true;
         return;
     }

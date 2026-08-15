@@ -384,9 +384,6 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ProcessVec0L(const RunInfo &runInf
     int32_t myEnd = (GetSubBlockIdx() == 0) ? splitPoint : slotEnd;
     uint32_t sparseColStart = runInfo.s2Idx * constInfo.s2BaseSize;
     uint32_t bufSlot = runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM;
-    if (GetSubBlockIdx() == 0) {
-        LoadOriSparseIndicesToUb(runInfo.qTokenOffset, runInfo.n2IdxReal, sparseColStart, s2DealSize, bufSlot, 0);
-    }
     LocalTensor<int32_t> sliceUb = v0ValidSizeBuff.Get<int32_t>();
     LoadOriSparseIndicesGmToUb(runInfo.qTokenOffset, runInfo.n2IdxReal, sparseColStart + static_cast<uint32_t>(myStart),
                                  myEnd - myStart, sliceUb);
