@@ -1176,8 +1176,7 @@ def prepare_npu_inputs_gqa_fp8(
         if isinstance(block_table_torch, torch.Tensor)
         else torch.as_tensor(block_table_torch, dtype=torch.int32).npu()
     )
-    # 6: block_table
-    block_table_npu = _make_uncontiguous(block_table_npu, ud[6])
+
     logger.info("[NPU GQA FP8 PA] kv_layout=%s", KV_CACHE_LAYOUT)
     logger.info(
         "[NPU GQA FP8 PA] k=%s, v=%s, deq_q=%s, deq_v=%s",
