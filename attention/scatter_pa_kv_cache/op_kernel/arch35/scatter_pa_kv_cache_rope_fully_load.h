@@ -35,7 +35,7 @@ constexpr uint32_t VL_B32 = VECTOR_LENGTH / sizeof(uint32_t);
 
 template <typename T, typename U>
 __simd_vf__ inline void CastToOriginFullyVf(__ubuf__ U* srcAddr, __ubuf__ T* dstAddr,
-    uint32_t dataLen, uint16_t loopNum)
+                                            uint32_t dataLen, uint16_t loopNum)
 {
     MicroAPI::RegTensor<U> valueSrc;
     MicroAPI::MaskReg curpreg;
@@ -57,7 +57,8 @@ template <typename T, typename IndexDtype, int64_t InOutMode>
 class ScatterPaKvCacheRopeFullyLoad {
 public:
     __aicore__ inline ScatterPaKvCacheRopeFullyLoad(TPipe *pipe, const ScatterPaKvCacheTilingData *__restrict tiling)
-        : pipe_(pipe), tilingData_(tiling){};
+        : pipe_(pipe),
+          tilingData_(tiling){};
     __aicore__ inline void Init(GM_ADDR key, GM_ADDR key_cache_in, GM_ADDR slot_mapping, GM_ADDR value,
                                 GM_ADDR value_cache_in, GM_ADDR compress_lens, GM_ADDR compress_seq_offset,
                                 GM_ADDR seq_lens, GM_ADDR key_cache_out, GM_ADDR value_cache_out);
@@ -261,7 +262,7 @@ __aicore__ inline void ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::
 
     uint16_t loopNum = CeilDivFully(dataLen, VL_B32);
 
-    CastToOriginFullyVf<T, U>((__ubuf__ U*)srcPhyAddr, (__ubuf__ T*)dstPhyAddr, dataLen, loopNum);
+    CastToOriginFullyVf<T, U>((__ubuf__ U *)srcPhyAddr, (__ubuf__ T *)dstPhyAddr, dataLen, loopNum);
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
@@ -378,7 +379,7 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::CopyInKey(int64_t iter,
             break;
         }
         DataCopyPad(inputKeyLocal[(k - startIdx) * RoundUp(tilingData_->kHeadSize)],
-                 inputKeyGm_[offset + k * tilingData_->keyStride1], inKeyParams, padParams);
+                    inputKeyGm_[offset + k * tilingData_->keyStride1], inKeyParams, padParams);
     }
     inputKeyQueue_.EnQue(inputKeyLocal);
 }
@@ -405,7 +406,7 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::CopyInValue(int64_t ite
             break;
         }
         DataCopyPad(inputValueLocal[(k - startIdx) * RoundUp(tilingData_->vHeadSize)],
-                 inputValueGm_[offset + k * tilingData_->valueStride1], inValueParams, padParams);
+                    inputValueGm_[offset + k * tilingData_->valueStride1], inValueParams, padParams);
     }
     inputValueQueue_.EnQue(inputValueLocal);
 }
