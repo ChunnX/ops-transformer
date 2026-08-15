@@ -164,6 +164,8 @@ def _get_quant_reduce_scatter_ccl_buffer_size(x: torch.Tensor, scales: torch.Ten
 
 _buffer_cache: dict[str, QuantReduceScatterBuffer] = {}
 
+_context_data_cache: dict[tuple, list[int]] = {}
+
 def _get_or_create_buffer(hcom: str, group, world_size: int, x: torch.Tensor, scales: torch.Tensor,
                           op_name: str = "quant_reduce_scatter") -> QuantReduceScatterBuffer:
     """按hcom字符串查找缓存：未命中或现有buffer尺寸不足时新建并缓存旧buffer后销毁"""
@@ -176,6 +178,9 @@ def _get_or_create_buffer(hcom: str, group, world_size: int, x: torch.Tensor, sc
         cached.destroy()
     buffer = get_quant_reduce_scatter_buffer(group, world_size, x, scales, op_name=op_name)
     _buffer_cache[hcom] = buffer
+    cache_key = (world_size, buffer.hccl_buffer_size)
+    if cache_key not in _context_data_cache:
+        _context_data_cache[cache_key] = buffer.context.cpu().tolist()
     return buffer
 
 
@@ -186,8 +191,13 @@ def _cleanup_all_buffers():
         except Exception:
             pass
     _buffer_cache.clear()
+    _context_data_cache.clear()
 
 atexit.register(_cleanup_all_buffers)
+
+
+def get_cached_context_data(world_size: int, hccl_buffer_size: int) -> list[int]:
+    return _context_data_cache.get((world_size, hccl_buffer_size))
 
 
 def quant_reduce_scatter(

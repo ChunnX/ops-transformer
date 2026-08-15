@@ -140,6 +140,13 @@ if _TORCHAIR_AVAILABLE:
         if hasattr(world_size, 'node'):
             world_size = int(world_size.node)
         
+        # 图模式下context张量被捕获为图输入占位符(arg)，编译期tiling读nPerServer读到野指针。
+        # 改用wrapper缓存的CommContext int32数据构建ge.Const注入，保证tiling/运行期数据可用。
+        from cann_ops_transformer.ops.quant_reduce_scatter import get_cached_context_data
+        cached_ctx = get_cached_context_data(world_size, hccl_buffer_size)
+        if cached_ctx is not None:
+            context = ge.Const(cached_ctx, dtype=int(DataType.DT_INT32))
+
         if x_dtype is not None:
             if x_dtype == 296 or x_dtype == 297:
                 const_x = ge.Const([1] * (x.rank - 1) + [2])
