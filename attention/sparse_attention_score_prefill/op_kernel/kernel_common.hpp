@@ -23,6 +23,9 @@ struct SparseAttentionScorePrefillTilingData {
     uint32_t groupSize;             // numHeads/kvHeads，GQA 中一个 KV head 对应的 Q head 数
     uint32_t embeddingSize;         // head 维度 D
     uint32_t blockSize;             // KV block token 数，通常为 128
+    uint64_t queryTokenStride;      // Q token stride in elements
+    uint64_t keyBlockStride;        // K cache physical-block stride in elements
+    uint64_t valueBlockStride;      // V cache physical-block stride in elements
     uint32_t topK;                  // 每个 Q token 选择的 KV block 数
     uint32_t totalQTokens;          // 所有 batch 的 Q token 总数
     uint32_t numKvBlocks;           // totalPackedRows = sum(ceil(kv_seqlen/blockSize))
