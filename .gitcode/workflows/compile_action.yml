@@ -113,6 +113,6 @@ jobs:
     #   - self-hosted
     #   - arch=${{ inputs.arch }}
     #   - spec=${{ inputs.spec }}
-    runs-on: ["dedicate-hosted", ${{ inputs.arch }}, ${{ inputs.spec }}]
+    runs-on: ["dedicate-hosted", "${{ inputs.arch }}", "${{ inputs.spec }}"]
     container:
       image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ inputs.image_version }}
