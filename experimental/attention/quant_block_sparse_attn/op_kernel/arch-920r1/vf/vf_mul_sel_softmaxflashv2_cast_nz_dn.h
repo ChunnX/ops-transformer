@@ -59,7 +59,7 @@ __simd_vf__ inline void RescaleRound0VF(
     // Each B8 -> B32 Cast layout extracts one byte out of every four, so build
     // the matching alpha order: [lane, lane + 4, ..., lane + 28], repeated.
     Arange(alphaIndex0, static_cast<int32_t>(0));
-    ShiftLefts(alphaIndex0, alphaIndex0, 2, indexFullMask);
+    ShiftLefts(alphaIndex0, alphaIndex0, static_cast<int16_t>(2), indexFullMask);
     Duplicate(alphaIndexMask, static_cast<int32_t>(BLOCK_ELEMS - 1U));
     And(alphaIndex0, alphaIndex0, alphaIndexMask, indexFullMask);
     Adds(alphaIndex1, alphaIndex0, static_cast<int32_t>(1), indexFullMask);
