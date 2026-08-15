@@ -381,22 +381,22 @@ ge::graphStatus FiaInfoParser::GetStrides()
         valueStrides_ = &valueContiguousStrides_;
     }
     if (ValidateStrideLocal(opName_, "key", opParamInfo_.key.shape->GetStorageShape(), keyStrides_) !=
-            ge::GRAPH_SUCCESS ||
+        ge::GRAPH_SUCCESS ||
         ValidateStrideLocal(opName_, "value", opParamInfo_.value.shape->GetStorageShape(), valueStrides_) !=
-            ge::GRAPH_SUCCESS) {
+        ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     for (size_t index = 0; index < kStrideCache_.size(); ++index) {
         if (HasUsableStride(kStrideCache_[index]) &&
             ValidateStrideLocal(opName_, "key", kCache_[index]->GetStorageShape(), kStrideCache_[index]) !=
-                ge::GRAPH_SUCCESS) {
+            ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
     for (size_t index = 0; index < vStrideCache_.size(); ++index) {
         if (HasUsableStride(vStrideCache_[index]) &&
             ValidateStrideLocal(opName_, "value", vCache_[index]->GetStorageShape(), vStrideCache_[index]) !=
-                ge::GRAPH_SUCCESS) {
+            ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -406,7 +406,7 @@ ge::graphStatus FiaInfoParser::GetStrides()
             kScaleStrides_ = &keyScaleContiguousStrides_;
         }
         if (ValidateStrideLocal(opName_, "keyAntiquantScale",
-                opParamInfo_.keyAntiquantScale.tensor->GetStorageShape(), kScaleStrides_) != ge::GRAPH_SUCCESS) {
+            opParamInfo_.keyAntiquantScale.tensor->GetStorageShape(), kScaleStrides_) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -417,7 +417,7 @@ ge::graphStatus FiaInfoParser::GetStrides()
             vScaleStrides_ = &valueScaleContiguousStrides_;
         }
         if (ValidateStrideLocal(opName_, "valueAntiquantScale",
-                opParamInfo_.valueAntiquantScale.tensor->GetStorageShape(), vScaleStrides_) != ge::GRAPH_SUCCESS) {
+            opParamInfo_.valueAntiquantScale.tensor->GetStorageShape(), vScaleStrides_) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -427,7 +427,7 @@ ge::graphStatus FiaInfoParser::GetStrides()
             kRopeStrides_ = &keyRopeContiguousStrides_;
         }
         if (ValidateStrideLocal(opName_, "keyRope", opParamInfo_.keyRope.tensor->GetStorageShape(),
-                kRopeStrides_) != ge::GRAPH_SUCCESS) {
+            kRopeStrides_) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }

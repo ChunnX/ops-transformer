@@ -470,7 +470,7 @@ const aclTensor *CreateStrideAwareView(const aclTensor *tensor, const char *name
 }
 
 aclnnStatus NormalizeDim0CacheTensorList(const aclTensorList *&tensorList, const char *name,
-                                        aclOpExecutor *executor)
+                                         aclOpExecutor *executor)
 {
     if (tensorList == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "%s tensorList is nullptr.", name);
@@ -660,12 +660,15 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
         learnableSinkOptional, inputLayout, numHeads, numKeyValueHeads, sparseMode, innerPrecise);
     const bool hasUnsupportedMlaFeature =
         pseShiftOptional != nullptr || queryPaddingSizeOptional != nullptr || kvPaddingSizeOptional != nullptr ||
-        keySharedPrefixOptional != nullptr || valueSharedPrefixOptional != nullptr || learnableSinkOptional != nullptr ||
+        keySharedPrefixOptional != nullptr || valueSharedPrefixOptional != nullptr ||
+        learnableSinkOptional != nullptr ||
         deqScale1Optional != nullptr || quantScale1Optional != nullptr || deqScale2Optional != nullptr ||
         quantScale2Optional != nullptr || quantOffset2Optional != nullptr || antiquantScaleOptional != nullptr ||
-        antiquantOffsetOptional != nullptr || keyAntiquantScaleOptional != nullptr || keyAntiquantOffsetOptional != nullptr ||
+        antiquantOffsetOptional != nullptr || keyAntiquantScaleOptional != nullptr ||
+        keyAntiquantOffsetOptional != nullptr ||
         valueAntiquantScaleOptional != nullptr || valueAntiquantOffsetOptional != nullptr ||
-        keyRopeAntiquantScaleOptional != nullptr || dequantScaleQueryOptional != nullptr || qStartIdxOptional != nullptr ||
+        keyRopeAntiquantScaleOptional != nullptr || dequantScaleQueryOptional != nullptr ||
+        qStartIdxOptional != nullptr ||
         kvStartIdxOptional != nullptr || antiquantMode != 0 || keyAntiquantMode != 0 || valueAntiquantMode != 0 ||
         queryQuantMode != 0;
     const bool isArch22MlaRoutingCandidate = IsArch22MlaD512RoutingCandidate(
