@@ -89,7 +89,7 @@ public:
                                          RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void ProcessVec1_1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                         RunInfo &round0, RunInfo &round1, ConstInfo &constInfo);
+                                         RunInfo &runInfo, ConstInfo &constInfo);
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
@@ -138,6 +138,7 @@ public:
     TBuf<> softmaxMaxBuf[3];
     TBuf<> softmaxSumBuf[3];
     TBuf<> softmaxExpBuf[3];
+    TBuf<> round1ExpBuf;
     TBuf<> pScaleBuf[3];
     TQue<QuePosition::VECIN, 2> qScaleInputQue;
     TQue<QuePosition::VECIN, 2> kScaleInputQue;
@@ -166,7 +167,7 @@ private:
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                          RunInfo &runInfo, ConstInfo &constInfo, uint32_t roundIdx);
     __aicore__ inline void FinalizeVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                        RunInfo &round0, RunInfo &round1, ConstInfo &constInfo, bool hasRound1);
+                                        RunInfo &runInfo, ConstInfo &constInfo, bool hasRound1);
     __aicore__ inline void RescaleRound0(LocalTensor<INPUT_T> &pTensor, LocalTensor<float> &alphaTensor,
                                          uint32_t realK, uint32_t taskSlot);
     __aicore__ inline void CopyRoundToL1(LocalTensor<INPUT_T> &dstTensor, LocalTensor<INPUT_T> &srcTensor,
@@ -241,14 +242,14 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1_0(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1_1(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &round0, RunInfo &round1,
-    ConstInfo &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
 {
-  if (round1.s2RealSize > 0) {
-    ProcessVec1Dn(outputBuf, bmm1ResBuf, round1, constInfo, 1U);
-    FinalizeVec1(outputBuf, round0, round1, constInfo, true);
+  bool hasRound1 = runInfo.s2SparseBlkRealSize[2] + runInfo.s2SparseBlkRealSize[3] > 0;
+  if (hasRound1) {
+    ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, constInfo, 1U);
+    FinalizeVec1(outputBuf, runInfo, constInfo, true);
   } else {
-    FinalizeVec1(outputBuf, round0, round1, constInfo, false);
+    FinalizeVec1(outputBuf, runInfo, constInfo, false);
   }
 }
 
@@ -282,23 +283,33 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, ConstInfo &constInfo,
     uint32_t roundIdx)
 {
-  // bmm1ResBuf.WaitCrossCore();
+  uint32_t firstSlot = roundIdx * 2U;
+  uint32_t secondSlot = firstSlot + 1U;
+  uint32_t roundRealSize = static_cast<uint32_t>(runInfo.s2SparseBlkRealSize[firstSlot] +
+                                                  runInfo.s2SparseBlkRealSize[secondSlot]);
+  uint32_t roundAlignedSize = Align(roundRealSize);
+  bool roundPartialMask =
+      runInfo.sparseBlkPartialMask[firstSlot] || runInfo.sparseBlkPartialMask[secondSlot];
   LocalTensor<uint8_t> attenMaskUb;
   if constexpr (isFp8 && hasAtten) {
     AttenMaskCopyInDn<hasAtten>(this->attenMaskInQue[roundIdx], this->attenMaskGmInt, runInfo, constInfo,
-                                *attenMaskInfoPtr, runInfo.sparseBlk1PartialMask, runInfo.sparseBlk2PartialMask);
+                                *attenMaskInfoPtr, roundIdx);
     attenMaskUb = this->attenMaskInQue[roundIdx].template DeQue<uint8_t>();
   }
   LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
   LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
 
-  uint32_t expBufIdx = roundIdx == 0U ? runInfo.taskIdMod3 : (runInfo.taskIdMod3 + 1U) % 3U;
-  auto expUb = this->softmaxExpBuf[expBufIdx].template Get<T>()[0];
+  LocalTensor<T> expUb;
+  if (roundIdx == 0U) {
+    expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>()[0];
+  } else {
+    expUb = this->round1ExpBuf.template Get<T>()[0];
+  }
   uint32_t stage1Offset = runInfo.taskIdMod2 * 2U + roundIdx;
 
   LocalTensor<float> qScaleUbTensor = qScaleInputQue.template AllocTensor<float>();
   LocalTensor<float> kScaleUbTensor = kScaleInputQue.template AllocTensor<float>();
-  if (unlikely(runInfo.s2SparseBlk2RealSize < constInfo.kvSparseBlockSize)) {
+  if (unlikely(runInfo.s2SparseBlkRealSize[secondSlot] < constInfo.kvSparseBlockSize)) {
     Duplicate<float>(kScaleUbTensor, 1, QBSA_V121_ROUND_S2_SIZE);
     TEventID vDoneEvent = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
     SetFlag<HardEvent::V_MTE2>(vDoneEvent);  // Vector 完成
@@ -307,7 +318,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
   }
 
   copyQueryScaleGmToUb(qScaleUbTensor, deScaleQGm, runInfo, constInfo);
-  copyKeyScaleGmToUb(kScaleUbTensor, deScaleKGm, blockTableGm, runInfo, constInfo);
+  copyKeyScaleGmToUb(kScaleUbTensor, deScaleKGm, blockTableGm, runInfo, constInfo, roundIdx);
   qScaleInputQue.template EnQue(qScaleUbTensor);
   qScaleUbTensor = qScaleInputQue.DeQue<float>();
   kScaleInputQue.template EnQue(kScaleUbTensor);
@@ -317,32 +328,32 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
   LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
   auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
   if constexpr (layout == QBSALayout::NTD) {
-    if (unlikely(runInfo.s2LoopCount == 0)) {
+    if (unlikely(runInfo.s2LoopCount == 0 && roundIdx == 0U)) {
       FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, false, hasAtten, QBSA_V121_ROUND_S2_SIZE>(
           stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
-          kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32)), runInfo.s2AlignedSize,
-          runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
-          runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+          kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32)), roundAlignedSize,
+          roundRealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, roundPartialMask,
+          constInfo.pScale);
     } else {
       FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, true, hasAtten, QBSA_V121_ROUND_S2_SIZE>(
           stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
-          kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32)), runInfo.s2AlignedSize,
-          runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
-          runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+          kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32)), roundAlignedSize,
+          roundRealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, roundPartialMask,
+          constInfo.pScale);
     }
   } else {
-    if (unlikely(runInfo.s2LoopCount == 0)) {
+    if (unlikely(runInfo.s2LoopCount == 0 && roundIdx == 0U)) {
       FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, QBSA_V121_ROUND_S2_SIZE>(
           stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
-          kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32)), runInfo.s2AlignedSize,
-          runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
-          runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+          kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32)), roundAlignedSize,
+          roundRealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, roundPartialMask,
+          constInfo.pScale);
     } else {
       FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, QBSA_V121_ROUND_S2_SIZE>(
           stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
-          kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32)), runInfo.s2AlignedSize,
-          runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
-          runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+          kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32)), roundAlignedSize,
+          roundRealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, roundPartialMask,
+          constInfo.pScale);
     }
   }
   qScaleInputQue.FreeTensor(qScaleUbTensor);
@@ -401,33 +412,36 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::CopyRoundToL1(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::FinalizeVec1(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf, RunInfo &round0, RunInfo &round1,
-    ConstInfo &constInfo, bool hasRound1)
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo,
+    bool hasRound1)
 {
-  LocalTensor<INPUT_T> p0 = round0StageTensor[round0.taskIdMod2];
+  uint32_t round0RealSize = static_cast<uint32_t>(runInfo.s2SparseBlkRealSize[0] +
+                                                  runInfo.s2SparseBlkRealSize[1]);
+  uint32_t round1RealSize = static_cast<uint32_t>(runInfo.s2SparseBlkRealSize[2] +
+                                                  runInfo.s2SparseBlkRealSize[3]);
+  LocalTensor<INPUT_T> p0 = round0StageTensor[runInfo.taskIdMod2];
   if (hasRound1) {
-    LocalTensor<float> alpha1 = softmaxExpBuf[(round0.taskIdMod3 + 1U) % 3U].template Get<float>();
-    LocalTensor<float> combinedAlpha = softmaxExpBuf[round0.taskIdMod3].template Get<float>();
-    RescaleRound0(p0, alpha1, static_cast<uint32_t>(round0.s2RealSize), round0.taskIdMod2);
+    LocalTensor<float> alpha1 = round1ExpBuf.template Get<float>();
+    LocalTensor<float> combinedAlpha = softmaxExpBuf[runInfo.taskIdMod3].template Get<float>();
+    RescaleRound0(p0, alpha1, round0RealSize, runInfo.taskIdMod2);
     Mul(combinedAlpha, combinedAlpha, alpha1, s1BaseSize);
   }
 
   LocalTensor<INPUT_T> pL1 = outputBuf.template GetTensor<INPUT_T>();
-  CopyRoundToL1(pL1, p0, 0U, static_cast<uint32_t>(round0.s2RealSize));
+  CopyRoundToL1(pL1, p0, 0U, round0RealSize);
   if (hasRound1) {
-    LocalTensor<INPUT_T> p1 = round1StageTensor[round1.taskIdMod2];
-    CopyRoundToL1(pL1, p1, 1U, static_cast<uint32_t>(round1.s2RealSize));
-    stage1OutQue[round1.taskIdMod2 * 2U + 1U].template FreeTensor(p1);
+    LocalTensor<INPUT_T> p1 = round1StageTensor[runInfo.taskIdMod2];
+    CopyRoundToL1(pL1, p1, 1U, round1RealSize);
+    stage1OutQue[runInfo.taskIdMod2 * 2U + 1U].template FreeTensor(p1);
   }
-  stage1OutQue[round0.taskIdMod2 * 2U].template FreeTensor(p0);
+  stage1OutQue[runInfo.taskIdMod2 * 2U].template FreeTensor(p0);
   outputBuf.SetCrossCore();
 
-  RunInfo &finalRun = hasRound1 ? round1 : round0;
   if constexpr (hasLse) {
-    if (unlikely(finalRun.s2LoopCount == finalRun.s2LoopLimit)) {
-      LocalTensor<float> sumUb = softmaxSumBuf[finalRun.multiCoreIdxMod3].template Get<float>();
-      LocalTensor<float> maxUb = softmaxMaxBuf[finalRun.multiCoreIdxMod3].template Get<float>();
-      SoftmaxDataCopyOut(finalRun, constInfo, sumUb, maxUb);
+    if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
+      LocalTensor<float> sumUb = softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
+      LocalTensor<float> maxUb = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>();
+      SoftmaxDataCopyOut(runInfo, constInfo, sumUb, maxUb);
     }
   }
 }
@@ -451,9 +465,6 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(
 
     int64_t vec2CalcSize = runInfo.vec2S1RealSize * dTemplateAlign64;
     float deSCaleVValue = 1.0f;
-    // QBSA: V 为 per-head 反量化，vScale shape [N2]，按 n2 head 取值。
-    // 原 deScaleKvOffset 未被赋值（未初始化），GetValue 会越界读 GM，
-    // 触发 AICore SVM page fault(507015)。
     deSCaleVValue = this->deScaleVGm.GetValue(runInfo.n2oIdx);
     LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
@@ -462,8 +473,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(
         DataCopy(vec2ResUb, mmRes, vec2CalcSize);
     } else {
       LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
-      // QBSA: V per-head 反量化，前一块与当前块同为 vScale[n2oIdx]（非 FIA 的 per-block scale），
-      // 不能用 deScaleKvOffset 的 per-block ping-pong（未初始化且 -1 会越界，触发 507015）。
+
       float deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.n2oIdx);
       if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
         if (unlikely(runInfo.s2LoopCount == 1)) {
@@ -563,6 +573,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer()
     tPipe->InitBuffer(softmaxExpBuf[0], 256);
     tPipe->InitBuffer(softmaxExpBuf[1], 256);
     tPipe->InitBuffer(softmaxExpBuf[2], 256);
+    tPipe->InitBuffer(round1ExpBuf, 256);
     tPipe->InitBuffer(qScaleInputQue, 2, 256 * 8);
     tPipe->InitBuffer(kScaleInputQue, 2, 1024);
 }
@@ -818,7 +829,7 @@ public:
                                          RunInfo & runInfo, ConstInfo & constInfo) {}
     __aicore__ inline void ProcessVec1_1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> & outputBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> & bmm1ResBuf,
-                                         RunInfo & round0, RunInfo & round1, ConstInfo & constInfo) {}
+                                         RunInfo & runInfo, ConstInfo & constInfo) {}
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;

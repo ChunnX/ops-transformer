@@ -252,7 +252,7 @@ __aicore__ inline void MergePrefixModeMask(LocalTensor<uint8_t> &maskPre, LocalT
 
 template <bool hasAtten, DTemplateType dTemplateType = DTemplateType::Aligned128>
 __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo &runInfo, ConstInfo &constInfo,
-                                                      AttenMaskInfo &attenMaskInfo, bool first_block = true,
+                                                      AttenMaskInfo &attenMaskInfo, uint32_t sparseSlot = 0U,
                                                       const bool useDn = false, const int32_t subLoop = 0)
 {
     if constexpr (hasAtten) {
@@ -261,12 +261,7 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo &runInfo, Co
         int64_t deltaPre = 0;
         int64_t deltaN = runInfo.actualS1Size - runInfo.actualS2Size;
         int64_t s1Offset = runInfo.s1oIdx * constInfo.s1BaseSize;
-        int64_t s2Offset = 0;
-        if (unlikely(first_block)) {
-            s2Offset = runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
-        } else {
-            s2Offset = runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
-        }
+        int64_t s2Offset = runInfo.sparseBlkIdx[sparseSlot] * constInfo.kvSparseBlockSize;
 
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) {
             deltaCausalOrNext = s1Offset - s2Offset - deltaN;
@@ -283,10 +278,10 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo &runInfo, Co
 
 template <bool hasAtten, DTemplateType dTemplateType = DTemplateType::Aligned128>
 __aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo &runInfo, ConstInfo &constInfo,
-                                                 AttenMaskInfo &attenMaskInfo, const bool first_block = false,
+                                                 AttenMaskInfo &attenMaskInfo, uint32_t sparseSlot = 1U,
                                                  const bool useDn = true, const int32_t subLoop = 0)
 {
-    auto result = ComputeAttenMaskInnerOffset<hasAtten, dTemplateType>(runInfo, constInfo, attenMaskInfo, first_block,
+    auto result = ComputeAttenMaskInnerOffset<hasAtten, dTemplateType>(runInfo, constInfo, attenMaskInfo, sparseSlot,
                                                                        useDn, subLoop);
     return result;
 }
@@ -326,18 +321,20 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
 template <bool hasAtten>
 __aicore__ inline void AttenMaskCopyInDnFun(LocalTensor<uint8_t> attenMaskUb, GlobalTensor<uint8_t> &srcTensor,
                                             RunInfo &runInfo, ConstInfo &constInfo, AttenMaskInfo &attenMaskInfo,
-                                            bool needAtten, uint64_t offset, int32_t sparseBlkIdx, uint32_t s2Len)
+                                            bool needAtten, uint64_t offset, uint32_t sparseSlot)
 {
     if constexpr (hasAtten) {
         int64_t maskOffset = 0;
+        int64_t sparseBlkIdx = runInfo.sparseBlkIdx[sparseSlot];
+        uint32_t s2Len = runInfo.s2SparseBlkRealSize[sparseSlot];
         if (sparseBlkIdx == -1) {
             // 丢弃块：s2Len(=s2SparseBlkRealSize)为0，必须按整块宽度(kvSparseBlockSize)清零该段，
             // 否则该段 mask 未初始化，vf 读到未初始化 mask + cube 未写过的 stale/NaN bmm1 区域 → NaN/随时序漂移。
             Duplicate<uint8_t>(attenMaskUb[offset], 0, constInfo.kvSparseBlockSize * constInfo.s1BaseSize);
         } else {
             if (needAtten) {
-                maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo,
-                                                              sparseBlkIdx == runInfo.sparseBlkIdx1);
+                maskOffset =
+                    ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo, sparseSlot);
                 BoolCopyInRegbase(attenMaskUb[offset], srcTensor, maskOffset, s2Len, constInfo.s1BaseSize,
                                   attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize, constInfo);
             } else {
@@ -350,14 +347,16 @@ __aicore__ inline void AttenMaskCopyInDnFun(LocalTensor<uint8_t> attenMaskUb, Gl
 template <bool hasAtten>
 __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskInQue, GlobalTensor<uint8_t> &srcTensor,
                                          RunInfo &runInfo, ConstInfo &constInfo, AttenMaskInfo &attenMaskInfo,
-                                         bool needAtten1, bool needAtten2)
+                                         uint32_t roundIdx)
 {
     LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
-    AttenMaskCopyInDnFun<hasAtten>(attenMaskUb, srcTensor, runInfo, constInfo, attenMaskInfo, needAtten1, 0,
-                                   runInfo.sparseBlkIdx1, runInfo.s2SparseBlk1RealSize);
-    AttenMaskCopyInDnFun<hasAtten>(attenMaskUb, srcTensor, runInfo, constInfo, attenMaskInfo, needAtten2,
-                                   constInfo.s1BaseSize * runInfo.s2SparseBlk1RealSize, runInfo.sparseBlkIdx2,
-                                   runInfo.s2SparseBlk2RealSize);
+    uint32_t firstSlot = roundIdx * 2U;
+    uint32_t secondSlot = firstSlot + 1U;
+    AttenMaskCopyInDnFun<hasAtten>(attenMaskUb, srcTensor, runInfo, constInfo, attenMaskInfo,
+                                   runInfo.sparseBlkPartialMask[firstSlot], 0, firstSlot);
+    AttenMaskCopyInDnFun<hasAtten>(
+        attenMaskUb, srcTensor, runInfo, constInfo, attenMaskInfo, runInfo.sparseBlkPartialMask[secondSlot],
+        constInfo.s1BaseSize * runInfo.s2SparseBlkRealSize[firstSlot], secondSlot);
     attenMaskInQue.template EnQue(attenMaskUb);
 }
 

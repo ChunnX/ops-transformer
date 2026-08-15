@@ -127,7 +127,7 @@ public:
 
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf,
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
-                                       RunInfo &round0, RunInfo &round1, ConstInfo &constInfo);
+                                       RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
                                              __gm__ uint8_t *deqScaleV);
     GlobalTensor<int32_t> blockTableGm; // pageattention需要
@@ -141,9 +141,9 @@ private:
     __aicore__ inline GlobalTensor<INPUT_T> GetValueGm(RunInfo &runInfo, ConstInfo &constInfo);
 
     __aicore__ inline void IterateBmm1Nd(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                         RunInfo &runInfo, ConstInfo &constInfo);
+                                         RunInfo &runInfo, ConstInfo &constInfo, uint32_t roundIdx);
     __aicore__ inline void IterateBmm1Dn(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                         RunInfo &runInfo, ConstInfo &constInfo);
+                                         RunInfo &runInfo, ConstInfo &constInfo, uint32_t roundIdx);
 
     TPipe *tPipe;
     /* =====================GM变量==================== */
@@ -292,8 +292,9 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo &runInfo, ConstInfo &constInfo)
 {
     // QBSA sparse: sparse block indices 已在 SetRunInfo 中预计算
-    coordInfo[runInfo.taskIdMod3].sparseBlockIdx[0] = runInfo.sparseBlkIdx1;
-    coordInfo[runInfo.taskIdMod3].sparseBlockIdx[1] = runInfo.sparseBlkIdx2;
+    for (uint32_t slot = 0U; slot < QBSA_V121_SPARSE_BLOCKS_PER_TASK; ++slot) {
+        coordInfo[runInfo.taskIdMod3].sparseBlockIdx[slot] = runInfo.sparseBlkIdx[slot];
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -303,9 +304,9 @@ QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1_0(Buffer<BufferType::UB, SyncType::CRO
   CalcS2Coord(runInfo, constInfo);
   if constexpr (isFp8) {
     if constexpr (useDn) {
-      IterateBmm1Dn(outputBuf, runInfo, constInfo);
+      IterateBmm1Dn(outputBuf, runInfo, constInfo, 0U);
     } else {
-      IterateBmm1Nd(outputBuf, runInfo, constInfo);
+      IterateBmm1Nd(outputBuf, runInfo, constInfo, 0U);
     }
   }
 }
@@ -314,27 +315,28 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
 QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1_1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
                                             RunInfo &runInfo, ConstInfo &constInfo) {
-  IterateBmm1_0(outputBuf, runInfo, constInfo);
+  if constexpr (isFp8) {
+    if constexpr (useDn) {
+      IterateBmm1Dn(outputBuf, runInfo, constInfo, 1U);
+    } else {
+      IterateBmm1Nd(outputBuf, runInfo, constInfo, 1U);
+    }
+  }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
     mm2ResPos &outputBuf, BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
-    RunInfo &round0, RunInfo &round1, ConstInfo &constInfo) {
+    RunInfo &runInfo, ConstInfo &constInfo) {
   Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
   Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
   mm2B.Wait<HardEvent::MTE1_MTE2>();
   LocalTensor<INPUT_T> mm2BTensor = mm2B.GetTensor<INPUT_T>();
-  const uint32_t actualS2RealSize = static_cast<uint32_t>(round0.s2RealSize + round1.s2RealSize);
+  const uint32_t actualS2RealSize = static_cast<uint32_t>(runInfo.s2RealSize);
   if constexpr (isPa) {
-    int64_t sparseBlockIdx[QBSA_V121_SPARSE_BLOCKS_PER_TASK] = {round0.sparseBlkIdx1, round0.sparseBlkIdx2,
-                                                                round1.sparseBlkIdx1, round1.sparseBlkIdx2};
-    uint32_t sparseBlockRealSize[QBSA_V121_SPARSE_BLOCKS_PER_TASK] = {
-        static_cast<uint32_t>(round0.s2SparseBlk1RealSize), static_cast<uint32_t>(round0.s2SparseBlk2RealSize),
-        static_cast<uint32_t>(round1.s2SparseBlk1RealSize), static_cast<uint32_t>(round1.s2SparseBlk2RealSize)};
     Position startPos;
-    startPos.bIdx = round0.boIdx;
-    startPos.n2Idx = round0.n2oIdx;
+    startPos.bIdx = runInfo.boIdx;
+    startPos.n2Idx = runInfo.n2oIdx;
     startPos.dIdx = 0;
     PAShape shape;
     shape.blockSize = constInfo.kvSparseBlockSize;
@@ -345,25 +347,25 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
     shape.pageStride = constInfo.paBlockStride;
     shape.rowStride = constInfo.dSizeV;
     shape.copyRowNumAlign = (actualS2RealSize + 31U) >> 5U << 5U;
-    GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(round0, constInfo);
+    GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
     uint32_t blockElementCnt = 32U / sizeof(INPUT_T);
     uint32_t copiedRows = 0U;
     for (uint32_t slot = 0U; slot < QBSA_V121_SPARSE_BLOCKS_PER_TASK; ++slot) {
-      if (sparseBlockIdx[slot] < 0 || sparseBlockRealSize[slot] == 0U) {
+      if (runInfo.sparseBlkIdx[slot] < 0 || runInfo.s2SparseBlkRealSize[slot] == 0) {
         continue;
       }
-      startPos.s2Offset = sparseBlockIdx[slot] * constInfo.kvSparseBlockSize;
-      shape.copyRowNum = sparseBlockRealSize[slot];
+      startPos.s2Offset = runInfo.sparseBlkIdx[slot] * constInfo.kvSparseBlockSize;
+      shape.copyRowNum = runInfo.s2SparseBlkRealSize[slot];
       LocalTensor<INPUT_T> slotTensor = mm2BTensor[copiedRows * blockElementCnt];
       GmCopyInToL1PA<INPUT_T>(slotTensor, mm2BGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
-      copiedRows += sparseBlockRealSize[slot];
+      copiedRows += runInfo.s2SparseBlkRealSize[slot];
     }
   } else {
-    uint64_t gmOffset = round0.keyOffset;
+    uint64_t gmOffset = runInfo.keyOffset;
     if (constInfo.dSize != constInfo.dSizeV) {
-      gmOffset = this->valueGm.offsetCalculator.GetOffset(round0.boIdx, round0.n2oIdx, 0, 0);
+      gmOffset = this->valueGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, 0, 0);
     }
-    CopyToL1Nd2Nz<INPUT_T>(mm2BTensor, GetValueGm(round0, constInfo)[gmOffset], actualS2RealSize, constInfo.dSizeV,
+    CopyToL1Nd2Nz<INPUT_T>(mm2BTensor, GetValueGm(runInfo, constInfo)[gmOffset], actualS2RealSize, constInfo.dSizeV,
                            constInfo.mm2Kb);
   }
   mm2B.Set<HardEvent::MTE2_MTE1>();
@@ -375,7 +377,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
                    false};
   param.isOutKFisrt = true;
   if constexpr (!useDn) {
-    param.realM = static_cast<uint32_t>(round0.s1RealSize);
+    param.realM = static_cast<uint32_t>(runInfo.s1RealSize);
   }
   mm2B.Wait<HardEvent::MTE2_MTE1>();
   MatmulK<INPUT_T, INPUT_T, T, QBSA_V121_S1_BASE_SIZE, (uint32_t)dVTemplateType, QBSA_V121_ROUND_S2_SIZE, ABLayout::MK,
@@ -402,7 +404,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
     fixpipeParams.mSize = s1BaseSize;
     fixpipeParams.srcStride = ((s1BaseSize + 15) / 16) * 16;
   } else {
-    fixpipeParams.mSize = (round0.s1RealSize + 1) >>
+    fixpipeParams.mSize = (runInfo.s1RealSize + 1) >>
                           1 << 1; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
     fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) *
                               16; // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
@@ -425,11 +427,18 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo,
+    uint32_t roundIdx)
 {
+    uint32_t firstSlot = roundIdx * 2U;
+    uint32_t secondSlot = firstSlot + 1U;
+    uint32_t actualS2RealSize = static_cast<uint32_t>(runInfo.s2SparseBlkRealSize[firstSlot] +
+                                                      runInfo.s2SparseBlkRealSize[secondSlot]);
+    bool hasRound1 = runInfo.s2SparseBlkRealSize[2] + runInfo.s2SparseBlkRealSize[3] > 0;
+    bool isLastRound = roundIdx == 1U || !hasRound1;
     Buffer<BufferType::L1> mm1A;
     Buffer<BufferType::L1> mm1B;
-    if (unlikely(runInfo.s2LoopCount == 0)) {
+    if (unlikely(runInfo.s2LoopCount == 0 && roundIdx == 0U)) {
         mm1B = l1QBuffers.Get();
         mm1B.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<INPUT_T> mm1BTensor = mm1B.GetTensor<INPUT_T>();
@@ -444,15 +453,12 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
     mm1A = l1KBuffers.Get();
     mm1A.Wait<HardEvent::MTE1_MTE2>();
     LocalTensor<INPUT_T> mm1ATensor = mm1A.GetTensor<INPUT_T>();
-    uint32_t actualS2RealSize = (uint32_t)runInfo.s2SparseBlk1RealSize;
-    if (likely(runInfo.sparseBlkIdx2 != -1)) {
-        actualS2RealSize += (uint32_t)runInfo.s2SparseBlk2RealSize;
-    }
     if constexpr (isPa) {
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
         startPos.n2Idx = runInfo.n2oIdx;
-        startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[0] * constInfo.kvSparseBlockSize;
+        startPos.s2Offset =
+            coordInfo[runInfo.taskIdMod3].sparseBlockIdx[firstSlot] * constInfo.kvSparseBlockSize;
         startPos.dIdx = 0;
         PAShape shape;
         shape.blockSize = constInfo.kvSparseBlockSize;
@@ -460,7 +466,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
         shape.headDim = constInfo.dSize;
         shape.actHeadDim = constInfo.dSize;
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
-        shape.copyRowNum = runInfo.s2SparseBlk1RealSize;
+        shape.copyRowNum = runInfo.s2SparseBlkRealSize[firstSlot];
         shape.pageStride = constInfo.paBlockStride;
         shape.rowStride = constInfo.dSize;
         if constexpr (isFp8) {
@@ -471,21 +477,22 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
         GlobalTensor<INPUT_T> mm1AGmTensor = GetKeyGm(runInfo, constInfo);
         GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
 
-        if (likely(runInfo.sparseBlkIdx2 != -1)) {
-            startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[1] * constInfo.kvSparseBlockSize;
-            shape.copyRowNum = runInfo.s2SparseBlk2RealSize;
+        if (likely(runInfo.sparseBlkIdx[secondSlot] != -1)) {
+            startPos.s2Offset =
+                coordInfo[runInfo.taskIdMod3].sparseBlockIdx[secondSlot] * constInfo.kvSparseBlockSize;
+            shape.copyRowNum = runInfo.s2SparseBlkRealSize[secondSlot];
             uint32_t blockElementCnt = 32U / sizeof(INPUT_T);
             if constexpr (IsSameType<INPUT_T, int4b_t>::value) {
                 blockElementCnt = 64U;
             }
-            uint32_t halfOffset = runInfo.s2SparseBlk1RealSize * blockElementCnt;
+            uint32_t halfOffset = runInfo.s2SparseBlkRealSize[firstSlot] * blockElementCnt;
             LocalTensor<INPUT_T> mm1ATensor2 = mm1ATensor[halfOffset];
             GmCopyInToL1PA<INPUT_T>(mm1ATensor2, mm1AGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
         }
     } else {
         runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
             coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
-        CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
+        CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], actualS2RealSize,
                                constInfo.dSize, constInfo.mm1Kb);
     }
     mm1A.Set<HardEvent::MTE2_MTE1>();
@@ -500,7 +507,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
         mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
         param);
 
-    if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
+    if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit && isLastRound)) {
         mm1B.Set<HardEvent::MTE1_MTE2>();
     }
     mm1A.Set<HardEvent::MTE1_MTE2>();
@@ -573,14 +580,21 @@ __aicore__ inline GlobalTensor<INPUT_T> QBSABlockCube<TEMPLATE_ARGS>::GetValueGm
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo,
+    uint32_t roundIdx)
 {
+    uint32_t firstSlot = roundIdx * 2U;
+    uint32_t secondSlot = firstSlot + 1U;
+    uint32_t roundRealSize = static_cast<uint32_t>(runInfo.s2SparseBlkRealSize[firstSlot] +
+                                                   runInfo.s2SparseBlkRealSize[secondSlot]);
+    bool hasRound1 = runInfo.s2SparseBlkRealSize[2] + runInfo.s2SparseBlkRealSize[3] > 0;
+    bool isLastRound = roundIdx == 1U || !hasRound1;
     // 计算key的offset
     Buffer<BufferType::L1> mm1A;
     Buffer<BufferType::L1> mm1B;
     // 左矩阵复用，S2的第一次循环加载左矩阵
     // 加载左矩阵到L1 ,当前使用全载方式
-    if (unlikely(runInfo.s2LoopCount == 0)) { // sOuter循环第一个基本块：搬运Q
+    if (unlikely(runInfo.s2LoopCount == 0 && roundIdx == 0U)) { // sOuter循环第一个基本块：搬运Q
         mm1A = l1QBuffers.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>(); // 占用L1A
         LocalTensor<INPUT_T> mm1ATensor = mm1A.GetTensor<INPUT_T>();
@@ -603,7 +617,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
         startPos.n2Idx = runInfo.n2oIdx;
-        startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize; // 非FD场景
+        startPos.s2Offset = runInfo.sparseBlkIdx[firstSlot] * constInfo.kvSparseBlockSize;
         startPos.dIdx = 0;
         PAShape shape;
         shape.blockSize = constInfo.kvSparseBlockSize;
@@ -611,20 +625,20 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         shape.headDim = constInfo.dSize;
         shape.actHeadDim = constInfo.dSize;
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
-        shape.copyRowNum = runInfo.s2RealSize;
+        shape.copyRowNum = roundRealSize;
         shape.pageStride = constInfo.paBlockStride;
         shape.rowStride = constInfo.dSize;
         if constexpr (isFp8) {
-            shape.copyRowNumAlign = (runInfo.s2RealSize + 31) >> 5 << 5;
+            shape.copyRowNumAlign = (roundRealSize + 31) >> 5 << 5;
         } else {
-            shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
+            shape.copyRowNumAlign = (roundRealSize + 15) >> 4 << 4;
         }
         GlobalTensor<INPUT_T> mm1BGmTensor = GetKeyGm(runInfo, constInfo);
         GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
     } else {
         runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
             coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
-        CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
+        CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], roundRealSize,
                                constInfo.dSize, constInfo.mm1Kb);
     }
     mm1B.Set<HardEvent::MTE2_MTE1>(); // 通知
@@ -636,7 +650,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
     mm1ResL0C.Wait<HardEvent::FIX_M>(); // 占用
     MMParam param = {
         (uint32_t)runInfo.s1RealSize, // singleM
-        (uint32_t)runInfo.s2RealSize, // singleN
+        roundRealSize,                // singleN
         (uint32_t)(constInfo.dSize),  // singleK
         0,                            // isLeftTranspose
         1                             // isRightTranspose
@@ -644,7 +658,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
     MatmulBase<INPUT_T, INPUT_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
         mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
         param);
-    if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
+    if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit && isLastRound)) {
         mm1A.Set<HardEvent::MTE1_MTE2>(); // 释放L1A
     }
 
@@ -657,7 +671,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
 
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB
     fixpipeParams.nSize =
-        (runInfo.s2RealSize + 7) >>
+        (roundRealSize + 7) >>
         3 << 3; // L0C上的bmm1结果矩阵N方向的size大小; 同mmadParams.n; 为什么要8个元素对齐(32B对齐) // 128
     fixpipeParams.mSize =
         (runInfo.s1RealSize + 1) >>
@@ -707,7 +721,7 @@ public:
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf,
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
-                                       RunInfo &round0, RunInfo &round1, ConstInfo &constInfo)
+                                       RunInfo &runInfo, ConstInfo &constInfo)
     {}
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
                                              __gm__ uint8_t *deqScaleV)
