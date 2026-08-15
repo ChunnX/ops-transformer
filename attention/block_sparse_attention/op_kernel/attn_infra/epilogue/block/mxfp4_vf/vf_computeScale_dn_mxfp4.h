@@ -31,7 +31,7 @@ using namespace MicroAPI;
 
 // T: half
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, uint16_t m = 128>
-__simd_vf__ inline void computePscaleVF(__ubuf__ uint8_t *mxscale1, __ubuf__ uint8_t *mxscale2, __ubuf__ T *ulmax1,
+__simd_vf__ inline void compute_pscale_vf(__ubuf__ uint8_t *mxscale1, __ubuf__ uint8_t *mxscale2, __ubuf__ T *ulmax1,
                                         __ubuf__ T *ulmax2, __ubuf__ T *umax1, __ubuf__ T *umax2, __ubuf__ T *ugmax_old,
                                         __ubuf__ float *urs, uint16_t firstLoop, uint16_t secondLoop, uint16_t coreIndex,
                                         const T LOG2_CX_CEIL)
@@ -192,23 +192,23 @@ __simd_vf__ inline void computePscaleVF(__ubuf__ uint8_t *mxscale1, __ubuf__ uin
 }
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, uint16_t QsBase = 128>
-__aicore__ inline void computePscale(const LocalTensor<uint8_t> &mxscale1, const LocalTensor<uint8_t> &mxscale2,
+__aicore__ inline void ComputePscaleCallVF(const LocalTensor<uint8_t> &mxscale1, const LocalTensor<uint8_t> &mxscale2,
                                      const LocalTensor<T> &ulmax1, const LocalTensor<T> &ulmax2,
                                      const LocalTensor<T> &umax1, const LocalTensor<T> &umax2,
                                      const LocalTensor<T> &ugmaxOld, const LocalTensor<float> &urs, uint16_t firstLoop, uint16_t secondLoop, uint16_t coreIndex,
                                      const T LOG2_CX_CEIL)
 {
-    __ubuf__ uint8_t *mxscale1VF = (__ubuf__ uint8_t *)mxscale1.GetPhyAddr();
-    __ubuf__ uint8_t *mxscale2VF = (__ubuf__ uint8_t *)mxscale2.GetPhyAddr();
-    __ubuf__ T *ulmax1VF = (__ubuf__ T *)ulmax1.GetPhyAddr();
-    __ubuf__ T *ulmax2VF = (__ubuf__ T *)ulmax2.GetPhyAddr();
-    __ubuf__ T *umax1VF = (__ubuf__ T *)umax1.GetPhyAddr();
-    __ubuf__ T *umax2VF = (__ubuf__ T *)umax2.GetPhyAddr();
-    __ubuf__ T *ugmaxOldVF = (__ubuf__ T *)ugmaxOld.GetPhyAddr();
-    __ubuf__ float *ursVF = (__ubuf__ float *)urs.GetPhyAddr();
+    __ubuf__ uint8_t *mxscale1_buf = (__ubuf__ uint8_t *)mxscale1.GetPhyAddr();
+    __ubuf__ uint8_t *mxscale2_buf = (__ubuf__ uint8_t *)mxscale2.GetPhyAddr();
+    __ubuf__ T *ulmax1_buf = (__ubuf__ T *)ulmax1.GetPhyAddr();
+    __ubuf__ T *ulmax2_buf = (__ubuf__ T *)ulmax2.GetPhyAddr();
+    __ubuf__ T *umax1_buf = (__ubuf__ T *)umax1.GetPhyAddr();
+    __ubuf__ T *umax2_buf = (__ubuf__ T *)umax2.GetPhyAddr();
+    __ubuf__ T *ugmax_old_buf = (__ubuf__ T *)ugmaxOld.GetPhyAddr();
+    __ubuf__ float *urs_buf = (__ubuf__ float *)urs.GetPhyAddr();
 
-    computePscaleVF<MX_QUANT_MODE, clear_gmax, T, QsBase>(mxscale1VF, mxscale2VF, ulmax1VF, ulmax2VF, umax1VF, umax2VF, ugmaxOldVF,
-                                           ursVF, firstLoop, secondLoop, coreIndex, LOG2_CX_CEIL);
+    compute_pscale_vf<MX_QUANT_MODE, clear_gmax, T, QsBase>(mxscale1_buf, mxscale2_buf, ulmax1_buf, ulmax2_buf, umax1_buf, umax2_buf, ugmax_old_buf,
+                                           urs_buf, firstLoop, secondLoop, coreIndex, LOG2_CX_CEIL);
 }
 }
 #endif  // COMPUTESCALE_DN_MXFP4_H_

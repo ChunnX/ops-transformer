@@ -25,7 +25,7 @@ using namespace AscendC;
 using namespace MicroAPI;
 
 template <typename T>
-__simd_vf__ void  inline  vf_init_indexs_and_duplicate(__ubuf__ uint8_t *index_nd2xz, __ubuf__ T *dupDest)
+__simd_vf__ void  inline  vf_init_indexs_and_duplicate(__ubuf__ uint8_t *index_nd2xz, __ubuf__ T *dup_dest)
 {
     // Index
     RegTensor<uint8_t> index_reg, index_reg_1, index_reg_2;
@@ -46,7 +46,7 @@ __simd_vf__ void  inline  vf_init_indexs_and_duplicate(__ubuf__ uint8_t *index_n
     MaskReg preg_all_16bit = CreateMask<uint16_t, MaskPattern::ALL>();
     Duplicate(src, MIN_VALUE);
     for (uint16_t i = 0; i < 4; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(dupDest + i * 128, src, preg_all_16bit);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(dup_dest + i * 128, src, preg_all_16bit);
     }
 }
 
@@ -55,9 +55,9 @@ __aicore__ inline void InitIndexesAndDuplicateCallVF(LocalTensor<uint8_t> &nd2nz
 {
     __ubuf__ uint8_t * index_nd2xz = (__ubuf__ uint8_t*)nd2nzIndexes.GetPhyAddr();
 
-    __ubuf__ T *localGlobalMax1Buf = (__ubuf__ T*) localGlobalMaxUB.GetPhyAddr();
+    __ubuf__ T *local_global_max_buf = (__ubuf__ T*) localGlobalMaxUB.GetPhyAddr();
 
-    vf_init_indexs_and_duplicate<T>(index_nd2xz, localGlobalMax1Buf);
+    vf_init_indexs_and_duplicate<T>(index_nd2xz, local_global_max_buf);
 }
 
 }

@@ -97,11 +97,6 @@ public:
         __gm__ BlockSparseAttentionTilingData *bsaTilingData =
             reinterpret_cast<__gm__ BlockSparseAttentionTilingData *>(params.tiling);
         FetchBaseShapeInfo(bsaTilingData);
-        // CalcOnChipBufTileInfo(bsaTilingData);
-        // KV(V 数据) 与 V-scale 的 stride 预算（PV 稀疏 gather 用）
-        // V 数据 fp4：sizeof(fp4x2_e2m1_t)=1，元素偏移即字节偏移，行 stride = embed_(D 个 fp4)
-        // V-scale E8M0：GM [B,N2,S2//64,D,2]，每 64-S2 行 group 占 D*2 字节
-                // O / Lse stride & batch offsets（同 BF16，在 while 循环中创建 task 时传入）
         InitLayoutStride();
         // global buffers
         AscendC::GlobalTensor<ElementQ> gQ;
@@ -165,8 +160,7 @@ public:
 
  #ifdef __DAV_CUBE__
         coreIdx = AscendC::GetBlockIdx();
-        // [QK/PV 共享] kernel 层单一 kvBufId，传引用进两 block ctor（QK 先构造预置 4 路 KV event；
-        //   PV 后构造、其 ctor 内 InitL0BufferForReduceSum 把 kvBufId 0→1，与 QFA cube 同构）
+
         uint32_t kvBufId = 0;
         BlockMmadQK blockMmadQK(resource, kvBufId);
         BlockMmadPV blockMmadPV(resource, kvBufId);
@@ -177,12 +171,6 @@ public:
         // host 侧已预算: log2Cx_ = -dstTypeMax, log2CxCeil_ = ceil(dstTypeMax)
         half NEG_LOG2_CX = static_cast<half>(-log2Cx_);
         half LOG2_CX_CEIL = static_cast<half>(log2CxCeil_);
-        // if(coreIdx == 0) {
-        //             AscendC::printf("NEG_LOG2_CX = %f, LOG2_CX_CEIL = %f\n", 
-        //         static_cast<float>(NEG_LOG2_CX), 
-        //         static_cast<float>(LOG2_CX_CEIL));
-        // }
-
 
         EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_, NEG_LOG2_CX);
         EpilogueCopyGlobalMaxUbToL1 epilogueCopyGlobalMaxUbToL1(resource);
@@ -216,17 +204,12 @@ public:
         // 后续调用在 while 循环内基于该状态续算，不再从 batch 0 重扫
         BatchOffsetInfo batchOffsetInfo;
         batchOffsetInfo.curTotalTaskNum = firstBatchTaskNum_;
-        // [BSND/TND stride 修复] 头内 per-token/per-group gather stride 因子: BNSD=1(头内连续);
-        //   BSND/TND=kvHeads_/qHeads_(头内 token 隔 N*D)。原 gather layout 烧死 embed_=D(仅 BNSD 对),
-        //   BSND/TND 头内越界 507015(开发者 :236 TODO)。修法=「乘 extent」hack:
-        //   ColumnMajor(rows)/RowMajor(cols)/MxScale(rows) 乘此因子, col/row/group-stride 自动变对,
-        //   extent 超估对 GetTile(按真实 extent 取子块)无害。
+
         const uint32_t kvHeadMul = (kvFormat == Format::BNSD) ? 1u : kvHeads_;
         const uint32_t qHeadMul = (qFormat == Format::BNSD) ? 1u : qHeads_;
 
         while (coreTaskId < coreTaskNum || delay20CoreTaskId < coreTaskNum || delay3CoreTaskId < coreTaskNum)
         {
-            // AscendC::PRINTF("loop:%llu \n", coreTileLoop);
             curTaskTileIdx = coreTileLoop - preTaskTileSum;
             delay20TaskTileIdx = coreTileLoop - PV_RE_DELAY_N - delay20preTaskTileSum;
             delay3TaskTileIdx = coreTileLoop - DELAY_PSCALE_N - delay3preTaskTileSum;
@@ -257,36 +240,26 @@ public:
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2);
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2 + 16);
                     }
-                    // ComputeMm2(delay20TileInfo);
 
-                    // [BSND/TND stride 修复] V GM col-stride(头内 token-stride): BNSD=embed_(D, 头内连续);
-                    //   BSND/TND=kvHeadMul*embed_(=N*D, 头内 token 隔 N*D)。原 :236 todo 已修——
-                    //   乘 kvHeadMul(BNSD=1) 使 col-stride 变为 N*D; extent 超估对 GetTile(读 embed_) 无害。
-                    //   物理: V BSND row-major [S,N,D] 头内 token-stride=N*D; BNSD [N,S,D] 头内=D。
+
                     auto gmVLayoutTla = tla::MakeLayout<ElementV, LayoutV>(kvHeadMul * embed_, kvBaseTile_);
                     auto gmVTensorTla = tla::MakeTensor(gV[delay20TaskInfo.gmOffsetV], gmVLayoutTla, Arch::PositionGM{});
 
-                    // [catlass化] UB Oᵀ 实际存储布局：rows=embed_+1（D 行 Oᵀ + 1 行 rowsum）、
-                    //   cols=s1Align128=CeilDiv(qsActBaseTile,128)*128（对齐 128，供 fixpipe nSize）、
-                    //   row-stride=64（固定 rowsum-fractal 宽，供 fixpipe dstStride）。
-                    //   非标 RowMajor（stride≠cols），由 block 的 FixpipeMm2 经 CopyL0CToUBTla SPLIT_N 消费；
-                    //   isRowMajor 只查 stride<1>==1 → 命中。block 直传此 tla（不再 .data() 重包）。
+                    // [catlass化] UB Oᵀ 实际存储布局：rows=embed_+1（D 行 Oᵀ + 1 行 rowsum）
                      auto ubOTmpLayoutTla = tla::MakeLayout(
  	                         tla::MakeShape(GmMXFP4::ROW_SUM_NUM + 1, delay20TaskInfo.qsActBaseTileAlign64),
  	                         tla::MakeStride(static_cast<int64_t>(64), tla::Int<1>{}));
                     auto ubOTmpTensorTla = tla::MakeTensor(ubOTmpTensor, ubOTmpLayoutTla, Arch::PositionUB{});
 
                     GemmCoord actualBlockShapePV{delay20TaskInfo.qsActBaseTile, embed_, delay20TileInfo.kvsActBaseTile};
-                    // [改造] 传 base GM 张量(gVDequantScale/gSparseIdx) + delay20TaskInfo 整体，
-                    //   block 内按 gmOffsetVScale/gmOffsetSparseIdx 取子缓冲、解析 kvSeqlen/yBlockNumAval/yBlockNumRsvd。
-                    //   调用处不再出现 delay20TaskInfo.<field> 分字段传参。
+
                     blockMmadPV(
                         gmVTensorTla,
                         gVDequantScale,
                         gSparseIdx,
                         ubOTmpTensorTla,
                         actualBlockShapePV,
-                        delay20TileInfo,  // gatheredKvSTileIdx
+                        delay20TileInfo,
                         delay20TaskInfo,
                         kvBaseTile_, blockShapeY_, kvHeadMul);
 
@@ -297,14 +270,7 @@ public:
                 } else {
                     if (delay20TileInfo.isUpdatePScale) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
-                        // AscendC::DumpTensor(ubOTmpTensor, 130, 128);
-                        ComputeVec2(delay20TileInfo);
-                        // [BSND root fix] O GM layout: cols=embed_(D, 每 token 元素数) + row-stride=oShapeCol(=strideOS_, token-stride)。
-                        //   原 RowMajor(qBaseTile, oShapeCol) 把 cols-extent 与 row-stride 都设成 oShapeCol(=strideOS_):
-                        //   BNSD 二者都=D 过; BSND oShapeCol=strideOS_=N*D -> cols 放大 -> epilogue get<1>(shape)=N*D
-                        //   -> copyUbToGmO 每 token 写 N*D 元素(128 真+128 垃圾) -> 输出错乱 1.147%。
-                        //   hand-build 分离: cols=embed_(D, extent 正确)、row-stride=oShapeCol(strideOS_, token-stride 正确);
-                        //   isRowMajor(stride<1>=1) 仍成立 -> dispatch 不变; epilogue get<1>(shape) 自然=embed_=D, 无需 epilogue 侧特判。
+
                         auto gmOLayoutTla = tla::MakeLayout(
                             tla::MakeShape(qBaseTile_, embed_),
                             tla::MakeStride(delay20TaskInfo.oShapeCol, tla::Int<1>{}));
@@ -320,14 +286,12 @@ public:
                 }
             }
             if (coreTileLoop >= DELAY_PSCALE_N && delay3CoreTaskId < coreTaskNum) {
-                // delay3TileInfo = tileInfos[(coreTileLoop - DELAY_PSCALE_N) % PRELOAD_TASK_CACHE_SIZE];
                 if (delay3TileInfo.isUpdatePScale) {
                     if ASCEND_IS_AIC {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1_BUF0 + delay3TileInfo.tileMaxIdx / 2);
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1_BUF0 + delay3TileInfo.tileMaxIdx / 2 + 16);
                         auto l1GMaxLayoutTla = tla::MakeLayout<ElementLocalGlobalMax, LayoutLocalGlobalMax>(1, EpMXFP4::KVS_BASE_SIZE);
                         auto l1GMaxTensorTla = tla::MakeTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx], l1GMaxLayoutTla, Arch::PositionUB{});
-                        CopyGMaxL1ToUb(delay3TileInfo);
                         blockGMaxL1ToUb(l1GMaxTensorTla, delay3TileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB_BUF0 + delay3TileInfo.tileMaxIdx / 2);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB_BUF0 + delay3TileInfo.tileMaxIdx / 2 + 16);
@@ -337,12 +301,10 @@ public:
                         }
                     } else {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_GMAX_L1_TO_UB_BUF0 + delay3TileInfo.tileMaxIdx / 2);
-                        // UpdatePScale(delay3TileInfo);
                         epilogueComputePScale(
                             l1PScaleTensorTla, 
                             delay3TileInfo,
                             delay3TaskInfo);
-                        // AscendC::DumpTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx], 168, 128);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2_BUF0 + delay3TileInfo.pscaleNum);
                     }
                 }
@@ -356,7 +318,6 @@ public:
 
                 if ASCEND_IS_AIC {
                     AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
-                    // todo mm1
                     auto gQLayoutTla = tla::MakeLayout<ElementQ, LayoutQ>(
                         curTaskInfo.qsActBaseTile,   // rows = S1 实际 tile
                         qHeadMul * embed_);          // cols → row-stride（BNSD 时 qHeadMul=1，即 embed_）
@@ -366,7 +327,6 @@ public:
                     auto gKTensorTla = tla::MakeTensor(gK[curTaskInfo.gmOffsetK], gKLayout, Arch::PositionGM{});
                     auto curUBSTensorTla = GetTile(ubSTensorTla, MakeCoord(0, EpMXFP4::QS_BASE_SIZE * mm1ResBufId), MakeShape(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE));
 
-                    ComputeMm1(curTileInfo);
                     // QK：UB S 传当前 ping-pong 槽 TLA；Fixpipe 按 subBlockIdx 写到对应 AIV。
                     blockMmadQK(
                         gQTensorTla,
@@ -390,22 +350,6 @@ public:
                         auto l1PLayoutTla = tla::MakeLayout<ElementDisguiseP, LayoutPL1>(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE / 2);
                         auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId], l1PLayoutTla, Arch::PositionL1{});
                         GemmCoord actualBlockShapeQK{curTileInfo.kvsActBaseTile, curTaskInfo.qsActBaseTile, embed_};
-                        // AscendC::DumpTensor(ubSTensor[0], 7771, 128);
-                        // AscendC::DumpTensor(ubSTensor[0][128], 7772, 128);
-                        // AscendC::DumpTensor(ubSTensor[0][128 * 2], 7773, 128);
-                        // AscendC::DumpTensor(ubSTensor[0][128 * 3], 7774, 128);
-                        // AscendC::DumpTensor(ubSTensor[0][128 * 4], 7775, 128);
-                        // AscendC::DumpTensor(ubSTensor[0][128 * 5], 7776, 128);
-                        // AscendC::DumpTensor(ubSTensor[0][128 * 128], 7777, 128);
-                        // AscendC::DumpTensor(ubSTensor[0][128 * 129], 7778, 128);
-                        // AscendC::DumpTensor(ubSTensor[0][128 * 130], 7779, 128);
-                        // AscendC::DumpTensor(ubSTensor[0][128 * 131], 7780, 128);
-                        // AscendC::DumpTensor(ubSTensor[0][128 * 256], 7781, 128);
-                        // AscendC::DumpTensor(ubSTensor[0][128 * 257], 7782, 128);
-                        // AscendC::DumpTensor(ubSTensor[0][128 * 258], 7783, 128);
-                        // AscendC::DumpTensor(ubSTensor[0][128 * 259], 7784, 128);
-                        // AscendC::DumpTensor(ubSTensor[0][128 * 260], 7785, 128);
-                        // AscendC::DumpTensor(ubSTensor[0][128 * 261], 7786, 128);
                         epilogueOnlineSoftmax(
                             l1PTensorTla, 
                             actualBlockShapeQK, 
@@ -419,7 +363,6 @@ public:
                         }
                         auto l1GMaxLayoutTla = tla::MakeLayout<ElementLocalGlobalMax, LayoutLocalGlobalMax>(2, EpMXFP4::QS_BASE_SIZE);
                         auto l1GMaxTensorTla = tla::MakeTensor(l1LocalGlobalMaxTensor[curTileInfo.tileMaxIdx], l1GMaxLayoutTla, Arch::PositionL1{});
-                        // CopyGMaxUbToL1(curTileInfo);
                         epilogueCopyGlobalMaxUbToL1(
                             l1GMaxTensorTla, 
                             curTileInfo);
@@ -443,54 +386,13 @@ public:
                 delay3CoreTaskId++;
             }
             coreTileLoop++;
-            // AscendC::PRINTF("-----------------------\n");
         }
 
         // release reverse sync flags
         ReleaseSyncFlags();
     }
 
-    __aicore__ inline void ComputeMm1(TileInfo &runInfo)
-    {
-        // AscendC::PRINTF("C1 \n");
-        // cubeBlock.ComputeMm1(runInfo);
-    }
-
-    __aicore__ inline void ComputeMm2(TileInfo &runInfo)
-    {
-        // AscendC::PRINTF("C2 \n");
-        // cubeBlock.ComputeMm2(runInfo);
-    }
-
-    __aicore__ inline void ComputeVec1(TileInfo &runInfo)
-    {
-        // AscendC::PRINTF("V1 \n");
-        // vectorBlock.ComputeVec1(runInfo);
-    }
-
-    __aicore__ inline void CopyGMaxUbToL1(TileInfo &runInfo)
-    {
-        // AscendC::PRINTF("CopyGMaxUbToL1 \n");
-        // vectorBlock.CopyGMaxUbToL1(runInfo);
-    }
-
-    __aicore__ inline void CopyGMaxL1ToUb(TileInfo &runInfo)
-    {
-        // AscendC::PRINTF("CopyGMaxL1ToUb \n");
-        // cubeBlock.CopyGMaxL1ToUb(runInfo);
-    }
-
-    __aicore__ inline void UpdatePScale(TileInfo &runInfo)
-    {
-        // AscendC::PRINTF("UpdatePScale \n");
-        // vectorBlock.UpdatePScale(runInfo);
-    }
-
-    __aicore__ inline void ComputeVec2(TileInfo &runInfo)
-    {
-        // AscendC::PRINTF("V2  \n");
-        // vectorBlock.ComputeVec2(runInfo);
-    }
+  
 
     __aicore__ inline
     void FetchBaseShapeInfo(__gm__ BlockSparseAttentionTilingData *bsaTilingData)
@@ -521,35 +423,6 @@ public:
         // aligned seqlen q & kv
         qSeqlenAligned_ = bsaTilingData->maxQSeqlen;
         kvSeqlenAligned_ = bsaTilingData->maxKvSeqlen;
-    }
-
-    __aicore__ inline
-    void CalcOnChipBufTileInfo(__gm__ BlockSparseAttentionTilingData *bsaTilingData)
-    {
-        mm1L1TileM_ = bsaTilingData->BsaMmPhaseL1TileInfo.mm1L1TileM;
-        mm1L1TileN_ = bsaTilingData->BsaMmPhaseL1TileInfo.mm1L1TileN;
-        mm1L1TileKLeft_ = bsaTilingData->BsaMmPhaseL1TileInfo.mm1L1TileKLeft;
-        mm1L1TileKRight_ = bsaTilingData->BsaMmPhaseL1TileInfo.mm1L1TileKRight;
-        mm2L1TileM_ = bsaTilingData->BsaMmPhaseL1TileInfo.mm2L1TileM;
-        mm2L1TileN_ = bsaTilingData->BsaMmPhaseL1TileInfo.mm2L1TileN;
-        mm2L1TileKLeft_ = bsaTilingData->BsaMmPhaseL1TileInfo.mm2L1TileKLeft;
-        mm2L1TileKRight_ = bsaTilingData->BsaMmPhaseL1TileInfo.mm2L1TileKRight;
-        qL1BufNum_ = bsaTilingData->BsaMmPhaseL1TileInfo.qL1BufNum;
-        kL1BufNum_ = bsaTilingData->BsaMmPhaseL1TileInfo.kL1BufNum;
-        vL1BufNum_ = bsaTilingData->BsaMmPhaseL1TileInfo.vL1BufNum;
-        pL1BufNum_ = bsaTilingData->BsaMmPhaseL1TileInfo.pL1BufNum;
-        Gemm::Block::Mm1L1TileHelper mm1L1TileHelper(mm1L1TileM_, mm1L1TileN_, mm1L1TileKLeft_, mm1L1TileKRight_,
-            qL1BufNum_, kL1BufNum_);
-        mm1L1TileHelper_ = mm1L1TileHelper;
-        Gemm::Block::Mm2L1TileHelper mm2L1TileHelper(mm2L1TileM_, mm2L1TileN_, mm2L1TileKLeft_, mm2L1TileKRight_,
-            pL1BufNum_, vL1BufNum_);
-        mm2L1TileHelper_ = mm2L1TileHelper;
-        mm2L1AddrStart_ = mm1L1TileM_ * mm1L1TileKLeft_ * qL1BufNum_ * sizeof(ElementQ) +
-                          mm1L1TileKRight_ * mm1L1TileN_ * kL1BufNum_ * sizeof(ElementK);
-        mm1L0ATotalStages_ = (qBaseTile_ / BlockMmadQK::L0_TILE_M) * (embed_ / BlockMmadQK::L0_TILE_K);
-        mm1L0BTotalStages_ = (kvBaseTile_ / BlockMmadQK::L0_TILE_N) * (embed_ / BlockMmadQK::L0_TILE_K);
-        mm2L0ATotalStages_ = (qBaseTile_ / BlockMmadPV::L0_TILE_M) * (kvBaseTile_ / BlockMmadPV::L0_TILE_K);
-        mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * (embed_ / BlockMmadPV::L0_TILE_N);
     }
 
     __aicore__ inline
@@ -643,9 +516,7 @@ public:
     }
 
 
-    // 由 coreTaskId (本核上的 task 序号) 反推 globalTaskId 并填充 TaskInfo
-    // 仅在 task 起始 tile (taskTileId == 0) 调用，避免每个 tile 重复计算
-    // coreIdx / coreNum 由调用方 Process 传入, 避免重复调用 GetBlockIdx/GetBlockNum
+    // Qs维度任务
     __aicore__ inline
     void CreateTaskInfo(
         TaskInfo& info,
@@ -800,24 +671,9 @@ public:
                                   qSOffset * static_cast<int64_t>(qHeads_) * qScaleBytesPerTok +
                                   qHeadIdx * qScaleStrideN_;
         }
-        // [PV-VERIFY] 打印本 task 算出的稀疏 gather 偏移，供测试逐行核对（补丁1/2 验证用）
-        // AscendC::printf(
-        //     "[PV-VERIFY] t=%u b=%u qh=%u kvh=%u xb=%u | gmOffV=%llu gmOffVSc=%llu spIdx=%u kvSeq=%llu yAval=%u yRsvd=%u\n",
-        //     (unsigned)coreTaskId, (unsigned)info.batchIdx, (unsigned)info.qHeadIdx, (unsigned)info.kvHeadIdx,
-        //     (unsigned)info.xBlockIdx,
-        //     (unsigned long long)info.gmOffsetV, (unsigned long long)info.gmOffsetVScale,
-        //     (unsigned)info.gmOffsetSparseIdx, (unsigned long long)info.kvSeqlen,
-        //     (unsigned)info.yBlockNumAval, (unsigned)info.yBlockNumRsvd);
-        // AscendC::printf(
-        //     "[QK-VERIFY] t=%u qsAct=%u qSOff=%lld | gmOffQ=%llu gmOffK=%llu gmOffQSc=%llu gmOffKSc=%llu "
-        //     "gathered=%llu taskTiles=%u\n",
-        //     (unsigned)coreTaskId, (unsigned)info.qsActBaseTile, (long long)qSOffset,
-        //     (unsigned long long)info.gmOffsetQ, (unsigned long long)info.gmOffsetK,
-        //     (unsigned long long)info.gmOffsetQScale, (unsigned long long)info.gmOffsetKScale,
-        //     (unsigned long long)info.gatheredKvSeqlen, (unsigned)info.taskTileNum);
     }
 
-    // 每个 tile 调用一次，根据 coreTileLoop / curTaskTileIdx / taskInfo 填充 TileInfo
+    // 256*128基本块维度
     __aicore__ inline
     void CreateTileInfo(
         TileInfo& info,
@@ -844,14 +700,12 @@ public:
             updateScaleIdx_ = (updateScaleIdx_ + 1) % 4;
         }
 
-        // task 第一个 tile 或 TileGroup 第一个 tile 时切换 buff (双缓冲 / 四缓冲)
+        // task 第一个 tile 或 TileGroup 第一个 tile 时切换 buff (四缓冲)
         if (info.isFirstKvsTile || info.isTileGoupFirstTile) {
-            tileLoopIdx_ = (tileLoopIdx_ + 1) % 2;
             tileMaxIdx_ = (tileMaxIdx_ + 1) % 4;
             pscaleNum_ = (pscaleNum_ + 1) % 20;
         }
         info.pscaleNum = static_cast<uint16_t>(pscaleNum_ / 10);
-        info.tileBuffIdx = tileLoopIdx_;
         info.tileMaxIdx = tileMaxIdx_;
         info.updateScaleIdx = updateScaleIdx_;
         info.isKvsFirstTilePerCore = (info.curKvsTileLoopIdx % TILE_GROUP_N / 2 == 0);
@@ -964,26 +818,6 @@ private:
     // aligned seqlen q & kv
     int64_t qSeqlenAligned_;
     int64_t kvSeqlenAligned_;
-    // L1 tile info
-    uint32_t mm1L1TileM_;
-    uint32_t mm1L1TileN_;
-    uint32_t mm1L1TileKLeft_;
-    uint32_t mm1L1TileKRight_;
-    uint32_t mm2L1TileM_;
-    uint32_t mm2L1TileN_;
-    uint32_t mm2L1TileKLeft_;
-    uint32_t mm2L1TileKRight_;
-    uint32_t qL1BufNum_;
-    uint32_t kL1BufNum_;
-    uint32_t vL1BufNum_;
-    uint32_t pL1BufNum_;
-    uint32_t mm1L0ATotalStages_;
-    uint32_t mm1L0BTotalStages_;
-    uint32_t mm2L0ATotalStages_;
-    uint32_t mm2L0BTotalStages_;
-    uint32_t mm2L1AddrStart_ = 0;
-    Gemm::Block::Mm1L1TileHelper mm1L1TileHelper_;
-    Gemm::Block::Mm2L1TileHelper mm2L1TileHelper_;
     // ===== stride 族（O / V 数据 / V-scale）=====
     int64_t strideO_;
     int64_t strideOB_;
@@ -991,12 +825,12 @@ private:
     int64_t strideOS_;
     // ===== V 数据 / V-scale stride（PV 稀疏 gather 用，operator() 内预算一次）=====
     // V 数据为 fp4，sizeof(fp4x2_e2m1_t)=1，元素偏移即字节偏移
-    int64_t strideKVData_ = 0;   // TND: 每 token 跨 kvHead 的步长（fp4 元素）
-    int64_t strideKVDataB_ = 0;  // BNSD/BSND: V 数据 batch 步长
-    int64_t strideKVDataN_ = 0;  // BNSD/BSND: V 数据 head 步长
+    int64_t strideKVData_ = 0; 
+    int64_t strideKVDataB_ = 0;
+    int64_t strideKVDataN_ = 0; 
     // V-scale 为 E8M0(1 字节)，GM 布局 [B,N2,S2//64,D,2]；B16 视图下每 64-S2 行 group 占 D 个 B16 = 2D 字节
-    int64_t vScaleStrideB_ = 0;  // V-scale batch 步长（字节）
-    int64_t vScaleStrideN_ = 0;   // V-scale head 步长（字节）
+    int64_t vScaleStrideB_ = 0;  
+    int64_t vScaleStrideN_ = 0; 
     // ===== K-scale / Q / Q-scale stride（QK Mm1 用；K-scale Host 沿 D）=====
     int64_t kScaleStrideB_ = 0;
     int64_t kScaleStrideN_ = 0;
@@ -1008,8 +842,7 @@ private:
 
     // ---- CreateTileInfo 持久状态 (跨 tileGroup 保持 ----
     uint32_t kvsFirstTileStartVecCore_ = 0; // task 首 tile 时切换 (loop % 2)
-    uint32_t updateScaleIdx_ = 3;       // C2 Sync 时切换 (循环 0~3)// dm
-    uint32_t tileLoopIdx_ = 1;          // 双缓冲索引 (0/1)
+    uint32_t updateScaleIdx_ = 3;       //  dm idx
     uint32_t tileMaxIdx_ = 3;           // 四缓冲索引 (0~3)
     uint32_t pscaleNum_ = 19;           // 20缓冲索引 (0~19)
 };

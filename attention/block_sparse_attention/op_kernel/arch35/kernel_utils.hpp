@@ -87,7 +87,6 @@ struct TileInfo {
     bool isUpdatePScale = false; // TileGroup的最后一个
     bool isTileGoupFirstTile = false; // Kvs上16个softmax是一个TileGroup，这是每一个TileGroup(16个kvs基本块)的第一个softmax 任务，isC2Sync
     uint32_t kvsFirstTileStartVecCore = 0; // Kvs上第一个softmax分给哪个vec core
-    uint32_t tileBuffIdx = 0; // 当前tile分给哪个buff
     uint32_t tileMaxIdx = 0;
     uint32_t updateScaleIdx = 0;
     bool isKvsFirstTilePerCore = false; // 16个softmax均分在两个core, 当前任务是否是分在当前core上的第一个，    
