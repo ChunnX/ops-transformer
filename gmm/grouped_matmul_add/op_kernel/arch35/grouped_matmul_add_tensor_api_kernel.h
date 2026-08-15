@@ -17,7 +17,7 @@
 
 #include "blaze/gemm/block/block_mmad_matmul_basic.h"
 #include "blaze/gemm/block/block_scheduler_gmm_no_quant.h"
-#include "blaze/gemm/kernel/kernel_grouped_matmul_add.h"
+#include "blaze/gemm/kernel/kernel_grouped_matmul_no_quant.h"
 #include "grouped_matmul_add_tiling_data.h"
 
 namespace GroupedMatmulAdd {
@@ -35,7 +35,8 @@ __aicore__ inline void GmmAddTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR groupL
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
     using LayoutBias = AscendC::Te::NDExtLayoutPtn;
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
-    using DispatchPolicy = Blaze::Gemm::MatmulMultiBlockBasic<0, 0, Blaze::Gemm::KernelGroupedMmadAdd, 0>;
+    using DispatchPolicy = Blaze::Gemm::MatmulMultiBlockBasic<
+        0, 0, Blaze::Gemm::KernelGroupedMmadAdd, 0>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
                                                     BiasType, LayoutBias>;
     using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueEmpty;
@@ -43,7 +44,7 @@ __aicore__ inline void GmmAddTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR groupL
     using GroupedMatmulAddKernel = Blaze::Gemm::Kernel::GemmUniversal<
         ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename GroupedMatmulAddKernel::Params;
-    using GMMAddTiling = typename GroupedMatmulAddKernel::GMMAddTiling;
+    using GMMTiling = typename GroupedMatmulAddKernel::GMMTiling;
     using BlockSchedulerParams = typename BlockScheduler::Params;
 
     const uint64_t baseM = static_cast<uint64_t>(mmTilingData.baseM);
@@ -53,12 +54,18 @@ __aicore__ inline void GmmAddTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR groupL
                                                   static_cast<uint64_t>(mmTilingData.stepKb));
     const uint64_t kL1 = baseK * Blaze::Gemm::Max(sharedKStep, static_cast<uint64_t>(1));
 
-    GMMAddTiling gmmParams{static_cast<uint32_t>(gmmAddParams.groupNum),
-                           static_cast<uint32_t>(gmmAddParams.groupListType)};
+    constexpr int32_t groupTypeSplitK = 2;
+    GMMTiling gmmParams{static_cast<uint32_t>(gmmAddParams.groupNum),
+                        groupTypeSplitK,
+                        static_cast<uint32_t>(gmmAddParams.groupListType),
+                        1UL,
+                        1UL,
+                        1UL,
+                        0U,
+                        0U};
     constexpr uint32_t nTailAlign = BlockMmad::WEIGHT_NZ_FORMAT ?
                                         static_cast<uint32_t>(AscendC::Te::C0_ELEMENT<BType>) :
                                         1U;
-    constexpr int32_t groupTypeSplitK = 2;
     BlockSchedulerParams schedulerParams{static_cast<int32_t>(baseM),
                                          static_cast<int32_t>(baseN),
                                          static_cast<uint64_t>(gmmAddParams.mTailCnt),
@@ -82,8 +89,7 @@ __aicore__ inline void GmmAddTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR groupL
         static_cast<uint32_t>(baseN),
         static_cast<uint32_t>(baseK),
         2U,
-        static_cast<uint16_t>(mmTilingData.dbL0C),
-        nullptr};
+        static_cast<uint16_t>(mmTilingData.dbL0C)};
 
     ProblemShape problemShape{static_cast<int64_t>(mmTilingData.M),
                               static_cast<int64_t>(mmTilingData.N),
