@@ -109,9 +109,9 @@ jobs:
             ${{ steps.process_checkout.outputs.path }}/build_out/${{ inputs.package_name != '' && inputs.package_name || '*.run' }}
           object-prefix: ${{ env.obs_path }}/
     if: "${{ default() }}"
-    runs-on:
-      - dedicate-hosted
-      - ${{ inputs.arch }}
-      - ${{ inputs.spec }}
+    runs-on: 
+      - self-hosted
+      - arch=${{ inputs.arch }}
+      - spec=${{ inputs.spec }}
     container:
       image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ inputs.image_version }}
