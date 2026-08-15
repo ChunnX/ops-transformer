@@ -84,13 +84,15 @@ static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {
     .odr = 5,
     .fence = 1,
     .se = 0,
-    .cqe = 0,
+    // PR111 batch Drain waits according to generated CQEs. Keep CQE enabled so
+    // payload and top-k-weight writes on every channel complete before flags.
+    .cqe = 1,
     .inlineEn = 0};
 static constexpr struct UrmaWqeEntry FLAG_WQE_CONFIG = {
     .odr = 6,
     .fence = 1,
     .se = 0,
-    .cqe = 0,
+    .cqe = 1,
     .inlineEn = 0};
 
 template <TemplateMoeEpCombineTypeClass>
