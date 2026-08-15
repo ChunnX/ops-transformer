@@ -286,7 +286,7 @@ __simd_vf__ inline void BlockAttnResUpdatePhase1VF(__ubuf__ float *partial, __ub
  * Alpha and beta are normalized once per T index so that each D loop needs only Mul + MulDstAdd.
  * The two VF calls are ordered on V; delta has been fully consumed before this phase reuses it as h.
  */
-__simd_vf__ inline void BlockAttnResUpdatePhase2TokenVF(
+__simd_vf__ inline void BlockAttnResUpdatePhase2VF(
     __ubuf__ float *partial, __ubuf__ bfloat16_t *deltaH, __ubuf__ float *numerator,
     __ubuf__ float *stats, uint16_t tSize, uint32_t dSize, uint32_t dAlignFp32,
     uint32_t dAlignBf16, uint32_t statsTStride, uint16_t dVregNum, uint16_t hasTail,
@@ -586,7 +586,7 @@ public:
 
             // The partial copy-out and Phase 2 only read partial, so MTE3 and V may overlap.
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(phase2EventId);
-            asc_vf_call<BlockAttnResUpdatePhase2TokenVF>(
+            asc_vf_call<BlockAttnResUpdatePhase2VF>(
                 partialUbMem.Get(), deltaHUbMem.Get(), numeratorUbMem.Get(), statsUbMem.Get(),
                 static_cast<uint16_t>(currentTSize), dSize, dAlignFp32,
                 dAlignBf16, statsTStride, dVregNum, hasDTail, hasMixedDPair,
