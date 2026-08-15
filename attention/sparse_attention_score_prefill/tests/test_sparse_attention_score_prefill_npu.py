@@ -332,6 +332,21 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         batch=1, q_seqlens=[8], kv_seqlens=[512],
         q_heads=8, kv_heads=2, top_k=3, seed=405, inner_precise=0)
 
+  def test_bf16_inner_precise_1(self):
+    """BF16 O_partial remains accurate for regular and tail blocks."""
+    print("[test_bf16_inner_precise_1]")
+    cases = (
+        ([4], [512], 8, 2, 3, 501),
+        ([32], [2048], 16, 4, 5, 502),
+        ([8], [300], 8, 2, 3, 503),
+    )
+    for q_seqlens, kv_seqlens, q_heads, kv_heads, top_k, seed in cases:
+      with self.subTest(q=q_seqlens, kv=kv_seqlens):
+        self._run_npu_test(
+            batch=1, q_seqlens=q_seqlens, kv_seqlens=kv_seqlens,
+            q_heads=q_heads, kv_heads=kv_heads, top_k=top_k, seed=seed,
+            prec=1.5e-2, inner_precise=1)
+
   def test_bf16_axis0_strided_qkv(self):
     """Q/K/V views with independent leading strides match contiguous input."""
     print("[test_bf16_axis0_strided_qkv]")
