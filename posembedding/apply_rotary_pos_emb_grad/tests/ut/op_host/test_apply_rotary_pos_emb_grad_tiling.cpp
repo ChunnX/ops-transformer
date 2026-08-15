@@ -112,6 +112,39 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, bab_fp16_bsnd_dcos1)
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, {});
 }
 
+// AB template, dCosFlag=1 (SBND layout, 6 inputs, 4 outputs) — covers AB -> TilingReduce path
+TEST_F(ApplyRotaryPosEmbGradBabTiling, ab_fp16_sbnd_dcos1)
+{
+    optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
+    gert::TilingContextPara para("ApplyRotaryPosEmbGrad",
+        {
+            {{{64, 2, 4, 128}, {64, 2, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 2, 4, 128}, {64, 2, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 2, 4, 128}, {64, 2, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 2, 4, 128}, {64, 2, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{64, 2, 4, 128}, {64, 2, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 2, 4, 128}, {64, 2, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<string>("half")},
+            {"layout", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+        },
+        &compileInfo, "Ascend950", 48, 253952);
+    uint64_t expectTilingKey = 17246988369;
+    string expectTilingData =
+        "2 64 1 1 1 1 1 8192 36608 8960 137438953520 4467570830351532032 1 1 1 1 1 "
+        "2 64 4 128 65536 65536 65536 65536 65536 32768 512 128 1 8192 8192 8192 8192 8192 8192 128 128 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 "
+        "2 64 4 128 65536 65536 65536 65536 65536 32768 512 128 1 "
+        "2 64 128 4 4 2 1 22 3 3 1 4 4 44 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 ";
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, {});
+}
+
 TEST_F(ApplyRotaryPosEmbGradBabTiling, bab_bf16_bsnd_dcos1)
 {
     optiling::ApplyRotaryPosEmbGradCompileInfo compileInfo = {};
