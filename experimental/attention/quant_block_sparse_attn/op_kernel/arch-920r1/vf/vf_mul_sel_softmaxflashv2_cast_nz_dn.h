@@ -52,29 +52,29 @@ __simd_vf__ inline void RescaleRound0VF(
     RegTensor<float> pFp32Lane0, pFp32Lane1, pFp32Lane2, pFp32Lane3;
     RegTensor<float> alphaReg;
     RegTensor<float> alphaLane0, alphaLane1, alphaLane2, alphaLane3;
-    RegTensor<uint32_t> alphaIndex0, alphaIndex1, alphaIndex2, alphaIndex3, alphaIndexMask;
-    MaskReg fp32FullMask = CreateMask<float, MaskPattern::ALL>();
+    RegTensor<int32_t> alphaIndex0, alphaIndex1, alphaIndex2, alphaIndex3, alphaIndexMask;
+    MaskReg indexFullMask = CreateMask<int32_t, MaskPattern::ALL>();
 
     // A 256-byte B8 register contains eight contiguous 32-element columns.
     // Each B8 -> B32 Cast layout extracts one byte out of every four, so build
     // the matching alpha order: [lane, lane + 4, ..., lane + 28], repeated.
-    Arange(alphaIndex0, 0U);
-    ShiftLefts(alphaIndex0, alphaIndex0, 2, fp32FullMask);
-    Duplicate(alphaIndexMask, BLOCK_ELEMS - 1U);
-    And(alphaIndex0, alphaIndex0, alphaIndexMask, fp32FullMask);
-    Adds(alphaIndex1, alphaIndex0, 1U, fp32FullMask);
-    Adds(alphaIndex2, alphaIndex0, 2U, fp32FullMask);
-    Adds(alphaIndex3, alphaIndex0, 3U, fp32FullMask);
+    Arange(alphaIndex0, static_cast<int32_t>(0));
+    ShiftLefts(alphaIndex0, alphaIndex0, 2, indexFullMask);
+    Duplicate(alphaIndexMask, static_cast<int32_t>(BLOCK_ELEMS - 1U));
+    And(alphaIndex0, alphaIndex0, alphaIndexMask, indexFullMask);
+    Adds(alphaIndex1, alphaIndex0, static_cast<int32_t>(1), indexFullMask);
+    Adds(alphaIndex2, alphaIndex0, static_cast<int32_t>(2), indexFullMask);
+    Adds(alphaIndex3, alphaIndex0, static_cast<int32_t>(3), indexFullMask);
 
     for (uint32_t group = 0U; group < repeat; ++group) {
         uint32_t validColumns = realK - group * 64U;
         validColumns = validColumns > 64U ? 64U : validColumns;
         for (uint32_t form = 0U; form < 2U; ++form) {
             LoadAlign(alphaReg, alphaTensor + form * BLOCK_ELEMS);
-            Gather(alphaLane0, alphaReg, alphaIndex0);
-            Gather(alphaLane1, alphaReg, alphaIndex1);
-            Gather(alphaLane2, alphaReg, alphaIndex2);
-            Gather(alphaLane3, alphaReg, alphaIndex3);
+            Gather(alphaLane0, alphaReg, (RegTensor<uint32_t> &)alphaIndex0);
+            Gather(alphaLane1, alphaReg, (RegTensor<uint32_t> &)alphaIndex1);
+            Gather(alphaLane2, alphaReg, (RegTensor<uint32_t> &)alphaIndex2);
+            Gather(alphaLane3, alphaReg, (RegTensor<uint32_t> &)alphaIndex3);
             const uint32_t formBase =
                 (group * GROUP_STRIDE_BLOCKS + form * FORM_STRIDE_BLOCKS) * BLOCK_ELEMS;
             for (uint32_t column = 0U; column < validColumns; column += COLUMNS_PER_REG) {
