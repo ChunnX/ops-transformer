@@ -173,8 +173,7 @@ __simd_vf__ inline void BlockAttnResUpdatePhase1VF(__ubuf__ float *partial, __ub
                                                    __ubuf__ float *pseudoQuery, __ubuf__ float *stats,
                                                    uint16_t tSize, uint32_t dSize, uint32_t dAlignFp32,
                                                    uint32_t dAlignBf16, uint32_t statsTStride,
-                                                   float eps, float invD, uint16_t hasOddFull,
-                                                   uint16_t hasTail)
+                                                   float eps, float invD, uint16_t remainderLoops)
 {
     Reg::MaskReg allMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
     Reg::MaskReg scalarMask = Reg::CreateMask<float, Reg::MaskPattern::VL1>();
@@ -184,12 +183,9 @@ __simd_vf__ inline void BlockAttnResUpdatePhase1VF(__ubuf__ float *partial, __ub
     Reg::RegTensor<float> partialReg1;
     Reg::RegTensor<float> deltaFp32Reg0;
     Reg::RegTensor<float> deltaFp32Reg1;
-    Reg::RegTensor<float> firstQueryReg0;
-    Reg::RegTensor<float> firstQueryReg1;
     Reg::RegTensor<float> loopQueryReg0;
     Reg::RegTensor<float> loopQueryReg1;
-    Reg::RegTensor<float> oddQueryReg;
-    Reg::RegTensor<float> tailQueryReg;
+    Reg::RegTensor<float> remainderQueryReg;
     Reg::RegTensor<float> squareAccReg0;
     Reg::RegTensor<float> squareAccReg1;
     Reg::RegTensor<float> dotAccReg0;
@@ -203,59 +199,24 @@ __simd_vf__ inline void BlockAttnResUpdatePhase1VF(__ubuf__ float *partial, __ub
 
     const uint16_t fullLoops = static_cast<uint16_t>(dSize >> BARU_VREG_FP32_SHIFT);
     const uint16_t pairLoops = static_cast<uint16_t>(fullLoops >> 1U);
-    // This VF is dispatched only for D > 2 * VL, so at least one complete pair is always available to peel.
-    const uint16_t remainingPairLoops = static_cast<uint16_t>(pairLoops - 1U);
-    const uint32_t tailD = dSize & BARU_VREG_FP32_MASK;
-    const uint32_t oddVectorOffset =
+    const uint32_t pairElements =
         static_cast<uint32_t>(pairLoops) * 2U * BARU_VREG_FP32_ELEMENTS;
-    const uint32_t tailVectorOffset = static_cast<uint32_t>(fullLoops) * BARU_VREG_FP32_ELEMENTS;
-    // The D tail is invariant across T. UpdateMask mutates only tailRemaining; the returned MaskReg is reusable.
-    uint32_t tailRemaining = tailD;
-    for (uint16_t loop = 0; loop < hasTail; ++loop) {
-        tailMask = Reg::UpdateMask<float>(tailRemaining);
-    }
-
-    // Query is invariant across T. Keep the first pair and the optional remainders resident; only middle pairs
-    // are streamed inside the T loop. The tail query is cleared once for full-mask accumulation at every T index.
-    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(firstQueryReg0, pseudoQuery);
-    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(
-        firstQueryReg1, pseudoQuery + BARU_VREG_FP32_ELEMENTS);
-    for (uint16_t loop = 0; loop < hasOddFull; ++loop) {
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(oddQueryReg, pseudoQuery + oddVectorOffset);
-    }
-    for (uint16_t loop = 0; loop < hasTail; ++loop) {
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(tailQueryReg, pseudoQuery + tailVectorOffset);
-        Reg::ShiftLefts((Reg::RegTensor<uint32_t> &)tailQueryReg, (Reg::RegTensor<uint32_t> &)tailQueryReg,
-                        static_cast<int16_t>(0), tailMask);
-    }
+    const uint32_t remainderD = dSize - pairElements;
 
     for (uint16_t tIdx = 0; tIdx < tSize; ++tIdx) {
         const uint32_t partialTOffset = static_cast<uint32_t>(tIdx) * dAlignFp32;
         const uint32_t deltaTOffset = static_cast<uint32_t>(tIdx) * dAlignBf16;
 
-        // Peel the guaranteed first pair: Mul initializes all four accumulators and removes four per-T Duplicate
-        // instructions. The two independent vectors still halve each accumulation dependency chain.
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg0, partial + partialTOffset);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(
-            partialReg1, partial + partialTOffset + BARU_VREG_FP32_ELEMENTS);
-        Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_UNPACK_B16>(deltaReg0, delta + deltaTOffset);
-        Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_UNPACK_B16>(
-            deltaReg1, delta + deltaTOffset + BARU_VREG_FP32_ELEMENTS);
-        Reg::Cast<float, bfloat16_t, BARU_CAST_BF16_TO_FP32>(deltaFp32Reg0, deltaReg0, allMask);
-        Reg::Cast<float, bfloat16_t, BARU_CAST_BF16_TO_FP32>(deltaFp32Reg1, deltaReg1, allMask);
-        Reg::Add<float>(partialReg0, partialReg0, deltaFp32Reg0, allMask);
-        Reg::Add<float>(partialReg1, partialReg1, deltaFp32Reg1, allMask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(partial + partialTOffset, partialReg0, allMask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(
-            partial + partialTOffset + BARU_VREG_FP32_ELEMENTS, partialReg1, allMask);
-        Reg::Mul<float>(squareAccReg0, partialReg0, partialReg0, allMask);
-        Reg::Mul<float>(squareAccReg1, partialReg1, partialReg1, allMask);
-        Reg::Mul<float>(dotAccReg0, partialReg0, firstQueryReg0, allMask);
-        Reg::Mul<float>(dotAccReg1, partialReg1, firstQueryReg1, allMask);
+        Reg::Duplicate(squareAccReg0, 0.0F, allMask);
+        Reg::Duplicate(squareAccReg1, 0.0F, allMask);
+        Reg::Duplicate(dotAccReg0, 0.0F, allMask);
+        Reg::Duplicate(dotAccReg1, 0.0F, allMask);
 
-        for (uint16_t loop = 0; loop < remainingPairLoops; ++loop) {
+        // Process every complete 2 * VL pair first. Query vectors are loaded near use instead of being kept
+        // resident across the whole T loop.
+        for (uint16_t loop = 0; loop < pairLoops; ++loop) {
             const uint32_t vectorOffset0 =
-                (static_cast<uint32_t>(loop) * 2U + 2U) * BARU_VREG_FP32_ELEMENTS;
+                static_cast<uint32_t>(loop) * 2U * BARU_VREG_FP32_ELEMENTS;
             const uint32_t vectorOffset1 = vectorOffset0 + BARU_VREG_FP32_ELEMENTS;
 
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg0,
@@ -284,33 +245,27 @@ __simd_vf__ inline void BlockAttnResUpdatePhase1VF(__ubuf__ float *partial, __ub
             Reg::MulAddDst<float>(dotAccReg1, partialReg1, loopQueryReg1, allMask);
         }
 
-        for (uint16_t loop = 0; loop < hasOddFull; ++loop) {
+        // The scalar side passes a 0/1/2 loop count. UpdateMask is the sole owner of remainderActive: an odd
+        // complete vector receives allMask, followed by the true partial tail mask when both are present.
+        uint32_t remainderActive = remainderD;
+        for (uint16_t loop = 0; loop < remainderLoops; ++loop) {
+            tailMask = Reg::UpdateMask<float>(remainderActive);
+            const uint32_t vectorOffset =
+                pairElements + static_cast<uint32_t>(loop) * BARU_VREG_FP32_ELEMENTS;
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg0,
-                                                            partial + partialTOffset + oddVectorOffset);
+                                                            partial + partialTOffset + vectorOffset);
             Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_UNPACK_B16>(
-                deltaReg0, delta + deltaTOffset + oddVectorOffset);
-            Reg::Cast<float, bfloat16_t, BARU_CAST_BF16_TO_FP32>(deltaFp32Reg0, deltaReg0, allMask);
-            Reg::Add<float>(partialReg0, partialReg0, deltaFp32Reg0, allMask);
-            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(partial + partialTOffset + oddVectorOffset,
-                                                              partialReg0, allMask);
-            Reg::MulAddDst<float>(squareAccReg0, partialReg0, partialReg0, allMask);
-            Reg::MulAddDst<float>(dotAccReg0, partialReg0, oddQueryReg, allMask);
-        }
-
-        for (uint16_t loop = 0; loop < hasTail; ++loop) {
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg0,
-                                                            partial + partialTOffset + tailVectorOffset);
-            Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_UNPACK_B16>(
-                deltaReg0, delta + deltaTOffset + tailVectorOffset);
+                deltaReg0, delta + deltaTOffset + vectorOffset);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(remainderQueryReg, pseudoQuery + vectorOffset);
+            Reg::ShiftLefts((Reg::RegTensor<uint32_t> &)remainderQueryReg,
+                            (Reg::RegTensor<uint32_t> &)remainderQueryReg, static_cast<int16_t>(0), tailMask);
             Reg::Cast<float, bfloat16_t, BARU_CAST_BF16_TO_FP32>(deltaFp32Reg0, deltaReg0, tailMask);
             Reg::Add<float>(partialReg0, partialReg0, deltaFp32Reg0, tailMask);
-            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(partial + partialTOffset + tailVectorOffset,
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(partial + partialTOffset + vectorOffset,
                                                               partialReg0, tailMask);
-
-            // MulAddDst only supports ZEROING mode. partial padding was cleared by Add and query padding was
-            // cleared before the T loop, so inactive lanes cannot erase the resident destination accumulator.
-            Reg::MulAddDst<float>(squareAccReg1, partialReg0, partialReg0, allMask);
-            Reg::MulAddDst<float>(dotAccReg1, partialReg0, tailQueryReg, allMask);
+            // Add and ShiftLefts clear inactive lanes before the all-mask accumulation.
+            Reg::MulAddDst<float>(squareAccReg0, partialReg0, partialReg0, allMask);
+            Reg::MulAddDst<float>(dotAccReg0, partialReg0, remainderQueryReg, allMask);
         }
 
         Reg::Add<float>(squareAccReg0, squareAccReg0, squareAccReg1, allMask);
@@ -508,6 +463,7 @@ public:
         const uint16_t fullDLoops = static_cast<uint16_t>(dSize >> BARU_VREG_FP32_SHIFT);
         const uint16_t hasDTail = static_cast<uint16_t>((dSize & BARU_VREG_FP32_MASK) != 0U);
         const uint16_t hasOddFullD = static_cast<uint16_t>(fullDLoops & 1U);
+        const uint16_t phase1RemainderLoops = static_cast<uint16_t>(hasOddFullD + hasDTail);
         const uint16_t hasMixedDPair = static_cast<uint16_t>(hasOddFullD & hasDTail);
         const uint16_t hasOddFullDOnly = static_cast<uint16_t>(hasOddFullD - hasMixedDPair);
         const uint16_t hasDTailOnly = static_cast<uint16_t>(hasDTail - hasMixedDPair);
@@ -612,7 +568,7 @@ public:
                 asc_vf_call<BlockAttnResUpdatePhase1VF>(
                     partialUbMem.Get(), deltaHUbMem.Get(), pseudoQueryUbMem.Get(), statsUbMem.Get(),
                     static_cast<uint16_t>(currentTSize), dSize, dAlignFp32,
-                    dAlignBf16, statsTStride, eps, invD, hasOddFullD, hasDTail);
+                    dAlignBf16, statsTStride, eps, invD, phase1RemainderLoops);
             }
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(bufferId);
 
