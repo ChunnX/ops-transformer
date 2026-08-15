@@ -108,16 +108,17 @@ public:
     static constexpr uint32_t REPEATE_STRIDE_UP_BOUND = 256;
     static constexpr uint64_t MERGE_CACHE_GM_BUF_NUM = 3;
     static constexpr uint64_t MERGE_WORKSPACE_ROW_NUM = 512;
-
 private:
     __aicore__ inline int64_t GetOriSparseKeyGmOffset(int32_t logicalIdx, const RunInfo &runInfo);
-    __aicore__ inline void CopyOriSparseRowToMerge(uint32_t mergeRowIdx, int32_t logicalIdx, const RunInfo &runInfo);
-    __aicore__ inline LocalTensor<int32_t> GetOriSparseIndexUb(uint32_t bufSlot);
+    __aicore__ inline void CopyInSingleOriSparseRow(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx,
+                                                    int32_t logicalIdx, const RunInfo &runInfo);
+    __aicore__ inline void CopyInOriSparseKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx,
+                                             int32_t logicalIdx0, int32_t logicalIdx1, const RunInfo &runInfo);
+    __aicore__ inline void CopyOutOriSparseMerge(int64_t mte2Size, int64_t mte3Size, int64_t s2GmStartOffset,
+                                                 int64_t mergeMte3Idx, const RunInfo &runInfo);
     __aicore__ inline int32_t AlignOriSparseIndexLoadCount(int32_t loadCount);
     __aicore__ inline void LoadOriSparseIndicesGmToUb(uint64_t qTokenOffset, uint32_t n2Idx, uint32_t gmColStart,
                                                       int32_t loadCount, const LocalTensor<int32_t> &dstUb);
-    __aicore__ inline void LoadOriSparseIndicesToUb(uint64_t qTokenOffset, uint32_t n2Idx, uint32_t gmColStart,
-                                                    int32_t loadCount, uint32_t bufSlot, uint32_t ubColStart);
     static constexpr bool PAGE_ATTENTION = SMLAT::pageAttention;
     static constexpr bool FLASH_DECODE = SMLAT::flashDecode;
     static constexpr SMLA_LAYOUT LAYOUT_T = SMLAT::layout;
@@ -169,14 +170,12 @@ private:
 
     // ================================Local Buffer区====================================
     TBuf<> inputBuff1;  // 32K
-    TBuf<> inputBuff2;  // 16K
+    TBuf<> inputBuff2;  // 8K
     TBuf<> outputBuff1; // 32K
     TBuf<> outputBuff2; // 4K
 
     TBuf<> tmpBuff1;        // 32K
     TBuf<> v0ValidSizeBuff; // 8K
-    TBuf<> oriIndexUbBuff;  // 3 * 512 int32, ping-pong with kvMergeGm
-
     TBuf<> sinksBuff;     // 1K
     TBuf<> sinksBrcbBuff; // 12K
 
@@ -194,6 +193,8 @@ private:
     LocalTensor<T> softmaxExpUb;
     LocalTensor<SINKS_T> sinksUb;
     LocalTensor<SINKS_T> sinksBrcbUb;
+    LocalTensor<KV_T> kvMergUb_;
+    uint32_t mergeMte3Idx = 0;
 };
 
 // ============================== init ==============================================
@@ -201,17 +202,12 @@ template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(inputBuff1, ConstInfo::BUFFER_SIZE_BYTE_32K * 2); // 2:pingpong
-    pipe->InitBuffer(inputBuff2, ConstInfo::BUFFER_SIZE_BYTE_8K * 2);  // 2:pingpong
+    pipe->InitBuffer(inputBuff2, ConstInfo::BUFFER_SIZE_BYTE_8K * 2); // 2:pingpong
     pipe->InitBuffer(outputBuff1, ConstInfo::BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(outputBuff2, ConstInfo::BUFFER_SIZE_BYTE_4K);
 
     pipe->InitBuffer(tmpBuff1, ConstInfo::BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(v0ValidSizeBuff, ConstInfo::BUFFER_SIZE_BYTE_8K);
-    if (constInfo.hasOriSparseIndices) {
-        pipe->InitBuffer(oriIndexUbBuff,
-                         MERGE_CACHE_GM_BUF_NUM * MERGE_WORKSPACE_ROW_NUM * sizeof(int32_t));
-    }
-
     // M_MAX = 512/2vector = 256, 256 * sizeof(T) * N_Buffer
     pipe->InitBuffer(softmaxMaxBuff, ConstInfo::BUFFER_SIZE_BYTE_1K * constInfo.preLoadNum);
     pipe->InitBuffer(softmaxExpBuff, ConstInfo::BUFFER_SIZE_BYTE_1K * constInfo.preLoadNum);
@@ -233,6 +229,7 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::InitBuffers(TPipe *pipe)
 
     sinksUb = sinksBuff.Get<SINKS_T>();
     sinksBrcbUb = sinksBrcbBuff.Get<SINKS_T>();
+    kvMergUb_ = inputBuff1.Get<KV_T>();
 }
 
 
@@ -277,44 +274,85 @@ __aicore__ inline int64_t SWAVectorBlock<SMLAT>::GetOriSparseKeyGmOffset(int32_t
 }
 
 template <typename SMLAT>
-__aicore__ inline void SWAVectorBlock<SMLAT>::CopyOriSparseRowToMerge(uint32_t mergeRowIdx, int32_t logicalIdx,
+__aicore__ inline void SWAVectorBlock<SMLAT>::CopyInSingleOriSparseRow(int64_t &mte2Size, int64_t mte3Size,
+                                                                      int64_t mergeMte3Idx, int32_t logicalIdx,
                                                                       const RunInfo &runInfo)
 {
-    LocalTensor<KV_T> rowUb = inputBuff2.Get<KV_T>();
-    uint64_t mergeOffset = runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM * MERGE_WORKSPACE_ROW_NUM * constInfo.headDim +
-                           static_cast<uint64_t>(mergeRowIdx) * constInfo.headDim;
     int64_t keyOffset = GetOriSparseKeyGmOffset(logicalIdx, runInfo);
-    if (keyOffset < 0) {
-        Duplicate(rowUb, static_cast<KV_T>(0), constInfo.headDim);
-        PipeBarrier<PIPE_V>();
-    } else {
+    if (keyOffset >= 0) {
+        int64_t ubRowOffset = mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T) +
+                              (mte2Size - mte3Size) * constInfo.headDim;
         DataCopyExtParams copyInParams;
         copyInParams.blockCount = 1;
         copyInParams.blockLen = constInfo.headDim * sizeof(KV_T);
         copyInParams.srcStride = 0;
         copyInParams.dstStride = 0;
         DataCopyPadExtParams<KV_T> padInParams{false, 0, 0, 0};
-        DataCopyPad(rowUb, oriKvGm_[keyOffset], copyInParams, padInParams);
-        event_t mte2ToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
-        SetFlag<HardEvent::MTE2_MTE3>(mte2ToMte3);
-        WaitFlag<HardEvent::MTE2_MTE3>(mte2ToMte3);
+        DataCopyPad(kvMergUb_[ubRowOffset], oriKvGm_[keyOffset], copyInParams, padInParams);
     }
-    DataCopyExtParams copyOutParams;
-    copyOutParams.blockCount = 1;
-    copyOutParams.blockLen = constInfo.headDim * sizeof(KV_T);
-    copyOutParams.srcStride = 0;
-    copyOutParams.dstStride = 0;
-    DataCopyPad(kvMergeGm_[mergeOffset], rowUb, copyOutParams);
-    event_t mte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
-    SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
-    WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
+    mte2Size += constInfo.sparseBlockSize;
 }
 
 template <typename SMLAT>
-__aicore__ inline LocalTensor<int32_t> SWAVectorBlock<SMLAT>::GetOriSparseIndexUb(uint32_t bufSlot)
+__aicore__ inline void SWAVectorBlock<SMLAT>::CopyInOriSparseKv(int64_t &mte2Size, int64_t mte3Size,
+                                                              int64_t mergeMte3Idx, int32_t logicalIdx0,
+                                                              int32_t logicalIdx1, const RunInfo &runInfo)
 {
-    LocalTensor<int32_t> indexUb = oriIndexUbBuff.Get<int32_t>();
-    return indexUb[bufSlot * MERGE_WORKSPACE_ROW_NUM];
+    int64_t keyOffset1 = GetOriSparseKeyGmOffset(logicalIdx0, runInfo);
+    int64_t keyOffset2 = GetOriSparseKeyGmOffset(logicalIdx1, runInfo);
+    if (logicalIdx1 < 0) {
+        CopyInSingleOriSparseRow(mte2Size, mte3Size, mergeMte3Idx, logicalIdx0, runInfo);
+        return;
+    }
+    if (unlikely(keyOffset1 < 0 && keyOffset2 < 0)) {
+        // invalid 行仅占 merge 行位，不搬 KV；V1 按索引刷 -inf，值无关
+        mte2Size += 2 * constInfo.sparseBlockSize;
+        return;
+    }
+
+    int64_t keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) : (keyOffset2 - keyOffset1)) -
+                            constInfo.sparseBlockSize * constInfo.headDim) *
+                           static_cast<int64_t>(sizeof(KV_T));
+    if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0 || keyOffset1 < 0 || keyOffset2 < 0)) {
+        CopyInSingleOriSparseRow(mte2Size, mte3Size, mergeMte3Idx, logicalIdx0, runInfo);
+        CopyInSingleOriSparseRow(mte2Size, mte3Size, mergeMte3Idx, logicalIdx1, runInfo);
+    } else {
+        DataCopyExtParams intriParams;
+        intriParams.blockLen = constInfo.sparseBlockSize * constInfo.headDim * sizeof(KV_T);
+        intriParams.blockCount = (keyOffset1 >= 0) + (keyOffset2 >= 0);
+        intriParams.dstStride = 0;
+        intriParams.srcStride = keySrcStride;
+        DataCopyPadExtParams<KV_T> padParams{false, 0, 0, 0};
+        int64_t startGmOffset = keyOffset1 > -1 ? keyOffset1 : keyOffset2;
+        if (keyOffset2 > -1 && keyOffset2 < keyOffset1) {
+            startGmOffset = keyOffset2;
+        }
+        DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T) +
+                              (mte2Size - mte3Size) * constInfo.headDim],
+                    oriKvGm_[startGmOffset], intriParams, padParams);
+        mte2Size += 2 * constInfo.sparseBlockSize;
+    }
+}
+
+template <typename SMLAT>
+__aicore__ inline void SWAVectorBlock<SMLAT>::CopyOutOriSparseMerge(int64_t mte2Size, int64_t mte3Size,
+                                                                    int64_t s2GmStartOffset, int64_t mergeMte3Idx,
+                                                                    const RunInfo &runInfo)
+{
+    if (mte2Size <= mte3Size) {
+        return;
+    }
+    SetFlag<AscendC::HardEvent::MTE2_MTE3>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
+    WaitFlag<AscendC::HardEvent::MTE2_MTE3>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
+
+    DataCopyExtParams dataCopyParams;
+    dataCopyParams.blockCount = static_cast<uint16_t>(mte2Size - mte3Size);
+    dataCopyParams.blockLen = constInfo.headDim * sizeof(KV_T);
+    dataCopyParams.srcStride = 0;
+    dataCopyParams.dstStride = 0;
+    DataCopyPad(kvMergeGm_[runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM * MERGE_WORKSPACE_ROW_NUM * constInfo.headDim +
+                           (s2GmStartOffset + mte3Size) * constInfo.headDim],
+                kvMergUb_[mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T)], dataCopyParams);
 }
 
 template <typename SMLAT>
@@ -361,37 +399,59 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::LoadOriSparseIndicesGmToUb(uint64_
 }
 
 template <typename SMLAT>
-__aicore__ inline void SWAVectorBlock<SMLAT>::LoadOriSparseIndicesToUb(uint64_t qTokenOffset, uint32_t n2Idx,
-                                                                      uint32_t gmColStart, int32_t loadCount,
-                                                                      uint32_t bufSlot, uint32_t ubColStart)
-{
-    (void)ubColStart;
-    LocalTensor<int32_t> indexUb = GetOriSparseIndexUb(bufSlot);
-    LoadOriSparseIndicesGmToUb(qTokenOffset, n2Idx, gmColStart, loadCount, indexUb);
-}
-
-template <typename SMLAT>
 __aicore__ inline void SWAVectorBlock<SMLAT>::ProcessVec0L(const RunInfo &runInfo)
 {
-    int32_t s2DealSize = runInfo.v0S2DealSize;
-    if (s2DealSize <= 0) {
+    // V0 shares inputBuff1 with V1. Complete all prior pipe activity before reuse.
+    PipeBarrier<PIPE_ALL>();
+    int64_t s2ProcessSize = runInfo.v0S2DealSize;
+    if (s2ProcessSize <= 0) {
         return;
     }
-    int32_t slotStart = runInfo.v0S2Start;
-    int32_t slotEnd = slotStart + s2DealSize;
-    int32_t splitPoint = slotStart + (s2DealSize + 1) / 2;
-    int32_t myStart = (GetSubBlockIdx() == 0) ? slotStart : splitPoint;
-    int32_t myEnd = (GetSubBlockIdx() == 0) ? splitPoint : slotEnd;
-    uint32_t sparseColStart = runInfo.s2Idx * constInfo.s2BaseSize;
-    uint32_t bufSlot = runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM;
-    LocalTensor<int32_t> sliceUb = v0ValidSizeBuff.Get<int32_t>();
-    LoadOriSparseIndicesGmToUb(runInfo.qTokenOffset, runInfo.n2IdxReal, sparseColStart + static_cast<uint32_t>(myStart),
-                                 myEnd - myStart, sliceUb);
-    for (int32_t slot = myStart; slot < myEnd; ++slot) {
-        int32_t mergeRowIdx = slot - slotStart;
-        int32_t logicalIdx = sliceUb.GetValue(static_cast<uint32_t>(slot - myStart));
-        CopyOriSparseRowToMerge(static_cast<uint32_t>(mergeRowIdx), logicalIdx, runInfo);
+    uint32_t sparseColStart =
+        runInfo.s2Idx * constInfo.s2BaseSize + static_cast<uint32_t>(runInfo.v0S2Start);
+    int64_t s2Pair = CeilDiv(s2ProcessSize, 2 * constInfo.sparseBlockSize);
+    int64_t s2SplitPoint = SMLAAlign(s2Pair, 2) * constInfo.sparseBlockSize;
+    int64_t s2GmStartOffset = GetSubBlockIdx() == 0 ? 0 : s2SplitPoint;
+    int64_t s2GmLimit = GetSubBlockIdx() == 0 ? s2SplitPoint : s2ProcessSize;
+    if (s2GmLimit > s2ProcessSize) {
+        s2GmLimit = s2ProcessSize;
     }
+    if (s2GmStartOffset >= s2GmLimit) {
+        return;
+    }
+
+    LocalTensor<int32_t> sliceUb = v0ValidSizeBuff.Get<int32_t>();
+    LoadOriSparseIndicesGmToUb(runInfo.qTokenOffset, runInfo.n2IdxReal,
+                               sparseColStart + static_cast<uint32_t>(s2GmStartOffset),
+                               static_cast<int32_t>(s2GmLimit - s2GmStartOffset), sliceUb);
+
+    int64_t s2LocalSize = s2GmLimit - s2GmStartOffset;
+    int64_t mte2Size = 0;
+    int64_t mte3Size = 0;
+    bool needWaitMte3ToMte2 = true;
+    for (int64_t s2GmOffsetArray = 0; s2GmOffsetArray < s2LocalSize;
+         s2GmOffsetArray += 2 * constInfo.sparseBlockSize) {
+        if (needWaitMte3ToMte2) {
+            WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
+            needWaitMte3ToMte2 = false;
+        }
+        int32_t logicalIdx0 = sliceUb.GetValue(static_cast<uint32_t>(s2GmOffsetArray));
+        int32_t logicalIdx1 = -1;
+        if (s2GmOffsetArray + constInfo.sparseBlockSize < s2LocalSize) {
+            logicalIdx1 = sliceUb.GetValue(static_cast<uint32_t>(s2GmOffsetArray + constInfo.sparseBlockSize));
+        }
+        CopyInOriSparseKv(mte2Size, mte3Size, mergeMte3Idx, logicalIdx0, logicalIdx1, runInfo);
+        if ((mte2Size - mte3Size + 2 * constInfo.sparseBlockSize > 16) ||
+            s2GmOffsetArray + 2 * constInfo.sparseBlockSize >= s2LocalSize) {
+            CopyOutOriSparseMerge(mte2Size, mte3Size, s2GmStartOffset, mergeMte3Idx, runInfo);
+            mte3Size = mte2Size;
+            SetFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
+            mergeMte3Idx++;
+            needWaitMte3ToMte2 = true;
+        }
+    }
+    // V1 may overwrite inputBuff1 only after V0's final MTE3 copy is complete.
+    PipeBarrier<PIPE_ALL>();
 }
 
 template <typename SMLAT>
@@ -431,6 +491,10 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::AllocEventID()
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_PONG_FLAG);
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG);
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_PONG_FLAG);
+    if (constInfo.hasOriSparseIndices) {
+        SetFlag<AscendC::HardEvent::MTE3_MTE2>(SYNC_INPUT_BUF2_FLAG);
+        SetFlag<AscendC::HardEvent::MTE3_MTE2>(SYNC_INPUT_BUF2_PONG_FLAG);
+    }
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
 }
@@ -442,6 +506,10 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::FreeEventID()
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_PONG_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_PONG_FLAG);
+    if (constInfo.hasOriSparseIndices) {
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(SYNC_INPUT_BUF2_FLAG);
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(SYNC_INPUT_BUF2_PONG_FLAG);
+    }
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
 }

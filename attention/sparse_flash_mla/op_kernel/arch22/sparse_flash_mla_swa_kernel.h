@@ -241,6 +241,7 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::InitTilingData()
     // innerSplitParams
     constInfo.mBaseSize = tilingData->baseParams.mBaseSize;
     constInfo.s2BaseSize = tilingData->baseParams.s2BaseSize;
+    constInfo.sparseBlockSize = tilingData->baseParams.sparseBlockSize;
 
     constInfo.preLoadNum = PRELOAD_NUM;
     constInfo.nBufferMBaseSize = N_BUFFER_M_BASIC_SIZE;
@@ -857,10 +858,11 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::ProcessBalance()
         GetBN2Idx(bN2LoopIdx, tempLoopInfo.bIdx, tempLoopInfo.n2Idx);
         tempLoopInfo.actS1Size = GetActualSeqLenQ(tempLoopInfo.bIdx); // 获取actualSeqLength
         tempLoopInfo.actOriS2Size = GetActualSeqLenKV(tempLoopInfo.bIdx); // 获取actualSeqLengthKV
-        // 判断是否存在行无效场景，直接全部刷零
+        // 判断是否存在行无效场景，直接全部刷零（DSpark 走 sparse topk，不做 dense 行无效清零）
         int32_t inValidRowCount = 0;
         int32_t inValidRowS1StartIdx = 0;
-        if (inValidRowS1StartIdx < (tempLoopInfo.actS1Size - tempLoopInfo.actOriS2Size)) {
+        if (!constInfo.hasOriSparseIndices &&
+            inValidRowS1StartIdx < (tempLoopInfo.actS1Size - tempLoopInfo.actOriS2Size)) {
             inValidRowCount = tempLoopInfo.actS1Size - tempLoopInfo.actOriS2Size;
             tempLoopInfo.hasInvalidRow = true;
             if ASCEND_IS_AIV {

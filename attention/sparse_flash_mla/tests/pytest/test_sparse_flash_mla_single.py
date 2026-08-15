@@ -39,6 +39,8 @@ def test_example(param_combinations):
     if save_pt:
         sparse_flash_mla_golden.save_test_case(input_data, pt_save_path)
     npu_error_msg = None
+    main_failed = False
+    lse_failed = False
     try:
         npu_result, softmax_lse = sparse_flash_mla_process.call_npu(input_data)
     except Exception as e:
