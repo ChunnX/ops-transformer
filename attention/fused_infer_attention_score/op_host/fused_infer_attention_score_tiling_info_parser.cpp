@@ -324,24 +324,14 @@ ge::graphStatus FiaInfoParser::GetStrides()
     if (hasKeyRope) {
         kRopeStrides_ = context_->GetOptionalInputStride(KEY_ROPE_INDEX);
     }
-    if (hasKeyScale) {
-        kScaleStrides_ = context_->GetOptionalInputStride(KEY_ANTIQUANT_SCALE_INDEX);
-    }
-    if (hasValueScale) {
-        vScaleStrides_ = context_->GetOptionalInputStride(VALUE_ANTIQUANT_SCALE_INDEX);
-    }
     if (!HasUsableStride(kRopeStrides_)) {
         kRopeStrides_ = nullptr;
     }
-    if (!HasUsableStride(kScaleStrides_)) {
-        kScaleStrides_ = nullptr;
-    }
-    if (!HasUsableStride(vScaleStrides_)) {
-        vScaleStrides_ = nullptr;
-    }
 
+    // Cache view routing is scoped to K/V/KeyRope. KScale/VScale remain AutoContiguous in the OpDef,
+    // so scale-only TensorV2 metadata must not change the legacy Arch35 cache-stride behavior.
     hasViewStride_ = HasStrideMetadata(kStrideCache_) || HasStrideMetadata(vStrideCache_) ||
-        kRopeStrides_ != nullptr || kScaleStrides_ != nullptr || vScaleStrides_ != nullptr;
+        kRopeStrides_ != nullptr;
     // TensorV1 can report InputIsView=true for the result of an explicit
     // Contiguous node, but it cannot expose any stride metadata.  In that
     // all-or-nothing case the OpAPI has already materialized K/V/KeyRope, so
@@ -350,6 +340,19 @@ ge::graphStatus FiaInfoParser::GetStrides()
     // silently interpreted as dense.
     if (!hasViewStride_) {
         return ge::GRAPH_SUCCESS;
+    }
+
+    if (hasKeyScale) {
+        kScaleStrides_ = context_->GetOptionalInputStride(KEY_ANTIQUANT_SCALE_INDEX);
+    }
+    if (hasValueScale) {
+        vScaleStrides_ = context_->GetOptionalInputStride(VALUE_ANTIQUANT_SCALE_INDEX);
+    }
+    if (!HasUsableStride(kScaleStrides_)) {
+        kScaleStrides_ = nullptr;
+    }
+    if (!HasUsableStride(vScaleStrides_)) {
+        vScaleStrides_ = nullptr;
     }
 
     OP_CHECK_IF(keyIsView && !HasStrideMetadata(kStrideCache_),
