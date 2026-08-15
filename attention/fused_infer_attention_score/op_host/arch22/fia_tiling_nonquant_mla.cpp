@@ -135,7 +135,7 @@ bool FiaTilingNonQuantMla::IsCapable()
 
     // 支持的input_layout范围
     std::string layout = fiaInfo_->opParamInfo.layOut;
-    const std::vector<std::string> layoutSupportList = {"BSH",      "BSND",      "BNSD",      "TND",
+    const std::vector<std::string> layoutSupportList = {"BSH", "BSND", "BNSD", "TND",
                                                         "BSH_NBSD", "BSND_NBSD", "BNSD_NBSD", "TND_NTD"};
     if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
         return false;

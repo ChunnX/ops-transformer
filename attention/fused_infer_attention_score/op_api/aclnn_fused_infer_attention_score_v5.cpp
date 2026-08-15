@@ -40,10 +40,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScore
     const aclTensor *valueAntiquantScaleOptional, const aclTensor *valueAntiquantOffsetOptional,
     const aclTensor *keySharedPrefixOptional, const aclTensor *valueSharedPrefixOptional,
     const aclIntArray *actualSharedPrefixLenOptional, const aclTensor *queryRopeOptional,
-    const aclTensor *keyRopeOptional, const aclTensor *keyRopeAntiquantScaleOptional, 
+    const aclTensor *keyRopeOptional, const aclTensor *keyRopeAntiquantScaleOptional,
     const aclTensor *dequantScaleQueryOptional, const aclTensor *learnableSinkOptional,
-    const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, int64_t numHeads, 
-    double scaleValue, int64_t preTokens, int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads, 
+    const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, int64_t numHeads,
+    double scaleValue, int64_t preTokens, int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads,
     int64_t sparseMode, int64_t innerPrecise, int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag,
     int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode, int64_t pseType,
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
@@ -76,7 +76,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     const aclTensor *keyRopeAntiquantScaleOptional,
     const aclTensor *dequantScaleQueryOptional,
     const aclTensor *learnableSinkOptional,
-    const aclIntArray *qStartIdxOptional, 
+    const aclIntArray *qStartIdxOptional,
     const aclIntArray *kvStartIdxOptional,
     int64_t numHeads, double scaleValue, int64_t preTokens,
     int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads,
@@ -127,7 +127,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
     const aclTensor *keyRopeAntiquantScaleOptional,
     const aclTensor *dequantScaleQueryOptional,
     const aclTensor *learnableSinkOptional,
-    const aclIntArray *qStartIdxOptional, 
+    const aclIntArray *qStartIdxOptional,
     const aclIntArray *kvStartIdxOptional,
     int64_t numHeads, double scaleValue, int64_t preTokens,
     int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads,
@@ -150,7 +150,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
         std::vector<int64_t> shape = {0};
         int64_t addr = 0xff;
         tempTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0, ACL_FORMAT_ND,
-                                     shape.data(), shape.size(), static_cast<void*>(&addr));
+                                     shape.data(), shape.size(), static_cast<void *>(&addr));
         placeHolder = tempTensor;
     } else {
         placeHolder = softmaxLse;
@@ -163,8 +163,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
         valueAntiquantScaleOptional, valueAntiquantOffsetOptional, tensorKeySharedPrefixOptional,
         tensorValueSharedPrefixOptional, actualSharedPrefixLenOptional, queryRopeOptional,
         keyRopeOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional, learnableSinkOptional, qStartIdxOptional, kvStartIdxOptional,
-        numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize, 
-        antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, 0, attentionOut, 
+        numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize,
+        antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, 0, attentionOut,
         placeHolder, workspaceSize, executor);
     if (softmaxLseFlag == false) {
         aclDestroyTensor(tempTensor);

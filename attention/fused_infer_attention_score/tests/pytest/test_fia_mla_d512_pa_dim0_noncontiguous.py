@@ -1,8 +1,14 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
-# This file is a part of the CANN Open Software.
-# Licensed under CANN Open Software License Agreement Version 2.0.
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 """arch22 D512 MLA PageAttention cache dim0-stride NPU regression tests.
 
 The positive tests compare the same logical cache through three independent
@@ -106,9 +112,11 @@ def _format_cache(canonical, layout):
     if layout == "NZ":
         block_num, block_size, num_heads, head_dim = canonical.shape
         assert head_dim % 16 == 0
-        return canonical.reshape(
-            block_num, block_size, num_heads, head_dim // 16, 16
-        ).permute(0, 2, 3, 1, 4).contiguous()
+        return (
+            canonical.reshape(block_num, block_size, num_heads, head_dim // 16, 16)
+            .permute(0, 2, 3, 1, 4)
+            .contiguous()
+        )
     raise ValueError(f"unsupported cache layout {layout}")
 
 
@@ -126,8 +134,7 @@ def _canonical_cache(cache, layout):
 
 def _build_block_table(geometry, generator):
     block_counts = [
-        math.ceil(length / geometry.block_size)
-        for length in geometry.kv_lengths
+        math.ceil(length / geometry.block_size) for length in geometry.kv_lengths
     ]
     required_blocks = sum(block_counts)
     physical_blocks = required_blocks + geometry.spare_blocks
@@ -164,15 +171,21 @@ def _build_inputs(geometry):
 
     query_parts = [
         torch.randn(
-            length, NUM_QUERY_HEADS, QK_DIM,
-            dtype=torch.float32, generator=generator,
+            length,
+            NUM_QUERY_HEADS,
+            QK_DIM,
+            dtype=torch.float32,
+            generator=generator,
         ).to(geometry.dtype)
         for length in geometry.query_lengths
     ]
     query_rope_parts = [
         torch.randn(
-            length, NUM_QUERY_HEADS, ROPE_DIM,
-            dtype=torch.float32, generator=generator,
+            length,
+            NUM_QUERY_HEADS,
+            ROPE_DIM,
+            dtype=torch.float32,
+            generator=generator,
         ).to(geometry.dtype)
         for length in geometry.query_lengths
     ]
@@ -185,12 +198,10 @@ def _build_inputs(geometry):
     elif geometry.query_layout == "BNSD":
         assert len(set(geometry.query_lengths)) == 1
         query = torch.stack(query_parts, dim=0).permute(0, 2, 1, 3).contiguous()
-        query_rope = torch.stack(query_rope_parts, dim=0).permute(
-            0, 2, 1, 3
-        ).contiguous()
-        actual_query_lengths = torch.tensor(
-            geometry.query_lengths, dtype=torch.int64
+        query_rope = (
+            torch.stack(query_rope_parts, dim=0).permute(0, 2, 1, 3).contiguous()
         )
+        actual_query_lengths = torch.tensor(geometry.query_lengths, dtype=torch.int64)
         assert query.shape[2] == max_query_length
     else:
         raise ValueError(f"unsupported query layout {geometry.query_layout}")
@@ -238,9 +249,7 @@ def _make_dim0_view(source, gap_elements, poison):
     block_num = source.shape[0]
     logical_block_elements = source[0].numel()
     stride0 = logical_block_elements + gap_elements
-    storage_elements = (
-        (block_num - 1) * stride0 + logical_block_elements
-    )
+    storage_elements = (block_num - 1) * stride0 + logical_block_elements
     backing = torch.full(
         (storage_elements,), poison, dtype=source.dtype, device=source.device
     )
@@ -265,10 +274,7 @@ def _make_dim0_view(source, gap_elements, poison):
 def _assert_poison_untouched(cache_view):
     block_num = cache_view.view.shape[0]
     for block_index in range(block_num - 1):
-        gap_start = (
-            block_index * cache_view.stride0
-            + cache_view.logical_block_elements
-        )
+        gap_start = block_index * cache_view.stride0 + cache_view.logical_block_elements
         gap_end = (block_index + 1) * cache_view.stride0
         gap = cache_view.backing[gap_start:gap_end]
         expected = torch.full_like(gap, cache_view.poison)
@@ -285,11 +291,11 @@ def _cpu_golden(geometry, inputs):
 
     if geometry.query_layout == "TND":
         query_parts = torch.split(inputs.query, geometry.query_lengths, dim=0)
-        query_rope_parts = torch.split(
-            inputs.query_rope, geometry.query_lengths, dim=0
-        )
+        query_rope_parts = torch.split(inputs.query_rope, geometry.query_lengths, dim=0)
     else:
-        query_parts = tuple(inputs.query[b].permute(1, 0, 2) for b in range(inputs.query.shape[0]))
+        query_parts = tuple(
+            inputs.query[b].permute(1, 0, 2) for b in range(inputs.query.shape[0])
+        )
         query_rope_parts = tuple(
             inputs.query_rope[b].permute(1, 0, 2)
             for b in range(inputs.query_rope.shape[0])
@@ -298,9 +304,9 @@ def _cpu_golden(geometry, inputs):
     for batch_index, kv_length in enumerate(geometry.kv_lengths):
         block_count = math.ceil(kv_length / geometry.block_size)
         block_ids = inputs.block_table[batch_index, :block_count].long()
-        batch_key = key.index_select(0, block_ids).reshape(
-            -1, NUM_KV_HEADS, QK_DIM
-        )[:kv_length]
+        batch_key = key.index_select(0, block_ids).reshape(-1, NUM_KV_HEADS, QK_DIM)[
+            :kv_length
+        ]
         batch_value = value.index_select(0, block_ids).reshape(
             -1, NUM_KV_HEADS, VALUE_DIM
         )[:kv_length]
@@ -308,21 +314,21 @@ def _cpu_golden(geometry, inputs):
             -1, NUM_KV_HEADS, ROPE_DIM
         )[:kv_length]
 
-        query_total = torch.cat(
-            (query_parts[batch_index], query_rope_parts[batch_index]), dim=-1
-        ).float().transpose(0, 1)
-        key_total = torch.cat((batch_key, batch_key_rope), dim=-1).float()
-        key_total = key_total.permute(1, 0, 2).repeat_interleave(
-            NUM_QUERY_HEADS, dim=0
+        query_total = (
+            torch.cat((query_parts[batch_index], query_rope_parts[batch_index]), dim=-1)
+            .float()
+            .transpose(0, 1)
         )
-        value_by_head = batch_value.float().permute(1, 0, 2).repeat_interleave(
-            NUM_QUERY_HEADS, dim=0
+        key_total = torch.cat((batch_key, batch_key_rope), dim=-1).float()
+        key_total = key_total.permute(1, 0, 2).repeat_interleave(NUM_QUERY_HEADS, dim=0)
+        value_by_head = (
+            batch_value.float()
+            .permute(1, 0, 2)
+            .repeat_interleave(NUM_QUERY_HEADS, dim=0)
         )
         scores = torch.matmul(query_total, key_total.transpose(-2, -1))
         probabilities = torch.softmax(scores * SCALE, dim=-1)
-        outputs.append(
-            torch.matmul(probabilities, value_by_head).transpose(0, 1)
-        )
+        outputs.append(torch.matmul(probabilities, value_by_head).transpose(0, 1))
 
     if geometry.query_layout == "TND":
         return torch.cat(outputs, dim=0).to(geometry.dtype)
@@ -419,19 +425,39 @@ def test_fp16_tnd_bnbs_h_independent_stride_profiles():
     (
         Geometry(
             "fp16-single-block-exact-boundary",
-            torch.float16, "TND", "BnBsH", (1,), (128,), 128,
+            torch.float16,
+            "TND",
+            "BnBsH",
+            (1,),
+            (128,),
+            128,
         ),
         Geometry(
             "bf16-bnsd-bnnbds-multi-batch",
-            torch.bfloat16, "BNSD", "BnNBsD", (2, 2), (255, 385), 128,
+            torch.bfloat16,
+            "BNSD",
+            "BnNBsD",
+            (2, 2),
+            (255, 385),
+            128,
         ),
         Geometry(
             "bf16-bnsd-nz-tail-block",
-            torch.bfloat16, "BNSD", "NZ", (2, 2), (17, 129), 128,
+            torch.bfloat16,
+            "BNSD",
+            "NZ",
+            (2, 2),
+            (17, 129),
+            128,
         ),
         Geometry(
             "fp16-long-kv-flash-decode",
-            torch.float16, "TND", "BnNBsD", (1,), (4097,), 128,
+            torch.float16,
+            "TND",
+            "BnNBsD",
+            (1,),
+            (4097,),
+            128,
             table_order="reversed",
         ),
     ),
@@ -462,7 +488,12 @@ def _make_inner_strided(source):
 def test_inner_axis_noncontiguous_cache_falls_back_to_contiguous(targets):
     geometry = Geometry(
         "inner-axis-contiguous-fallback",
-        torch.float16, "TND", "BnNBsD", (1,), (129,), 128,
+        torch.float16,
+        "TND",
+        "BnNBsD",
+        (1,),
+        (129,),
+        128,
     )
     npu_inputs = _to_npu(_build_inputs(geometry))
     baseline = _run(geometry, npu_inputs)

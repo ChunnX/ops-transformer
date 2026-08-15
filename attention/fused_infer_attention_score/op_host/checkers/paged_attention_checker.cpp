@@ -35,7 +35,7 @@ namespace {
 bool HasNonContiguousCache(const FiaTilingInfo &fiaInfo)
 {
     return fiaInfo.keyNonContigDim != -1 || fiaInfo.valueNonContigDim != -1 ||
-        fiaInfo.keyRopeNonContigDim != -1;
+           fiaInfo.keyRopeNonContigDim != -1;
 }
 
 bool IsArch22MlaD512Dim0StrideCapable(const FiaTilingInfo &fiaInfo)
@@ -68,27 +68,27 @@ bool IsArch22MlaD512Dim0StrideCapable(const FiaTilingInfo &fiaInfo)
         return false;
     }
     return fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN ||
-        fiaInfo.sparseMode == SPARSE_MODE_BAND || fiaInfo.sparseMode == SPARSE_MODE_TREE;
+           fiaInfo.sparseMode == SPARSE_MODE_BAND || fiaInfo.sparseMode == SPARSE_MODE_TREE;
 }
 
 ge::graphStatus CheckArch22Dim0Stride(const FiaTilingInfo &fiaInfo, const char *inputName, int32_t nonContigDim,
-    uint64_t bnStride)
+                                      uint64_t bnStride)
 {
     OP_CHECK_IF(nonContigDim > 0,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-            fiaInfo.opName, inputName,
-            ("On arch22, the FiaTilingNonQuantMla D512 template supports non-contiguous " +
-             std::string(inputName) + " only in dimension 0, but the first non-contiguous dimension is index " +
-             std::to_string(nonContigDim) + ".")
-                .c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                    fiaInfo.opName, inputName,
+                    ("On arch22, the FiaTilingNonQuantMla D512 template supports non-contiguous " +
+                     std::string(inputName) + " only in dimension 0, but the first non-contiguous dimension is index " +
+                     std::to_string(nonContigDim) + ".")
+                        .c_str()),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(nonContigDim == 0 && bnStride == 0,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-            fiaInfo.opName, inputName,
-            ("The forwarded dim0 stride of non-contiguous " + std::string(inputName) +
-             " must be greater than 0 on arch22.")
-                .c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                    fiaInfo.opName, inputName,
+                    ("The forwarded dim0 stride of non-contiguous " + std::string(inputName) +
+                     " must be greater than 0 on arch22.")
+                        .c_str()),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 } // namespace
@@ -711,8 +711,8 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
         // mxfp8 仅支持blocksize等于64、128、256、512或1024
         if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT &&
             (fiaInfo.blockSize != BLOCK_SIZE_64_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_128_FOR_MXFP8 &&
-            fiaInfo.blockSize != BLOCK_SIZE_256_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_512_FOR_MXFP8 &&
-            fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8)) {
+             fiaInfo.blockSize != BLOCK_SIZE_256_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_512_FOR_MXFP8 &&
+             fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
                 "In MXFP8 fullquant scenario, when page attention is enabled, "
@@ -743,12 +743,12 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
 
     if (fiaInfo.npuArch == NpuArch::DAV_2201) {
         OP_CHECK_IF(!IsArch22MlaD512Dim0StrideCapable(fiaInfo),
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                fiaInfo.opName, "key/value/keyRope",
-                "On arch22, non-contiguous cache is supported only by PageAttention nonquant split-RoPE D512 "
-                "FiaTilingNonQuantMla with qkHeadDim=512, vHeadDim=512, ropeHeadDim=64 and n2Size=1; all other "
-                "FIA and legacy templates require contiguous cache inputs."),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        fiaInfo.opName, "key/value/keyRope",
+                        "On arch22, non-contiguous cache is supported only by PageAttention nonquant split-RoPE D512 "
+                        "FiaTilingNonQuantMla with qkHeadDim=512, vHeadDim=512, ropeHeadDim=64 and n2Size=1; all other "
+                        "FIA and legacy templates require contiguous cache inputs."),
+                    return ge::GRAPH_FAILED);
         if (CheckArch22Dim0Stride(fiaInfo, "key", keyDim, fiaInfo.keyBnStride) != ge::GRAPH_SUCCESS ||
             CheckArch22Dim0Stride(fiaInfo, "value", valueDim, fiaInfo.valueBnStride) != ge::GRAPH_SUCCESS ||
             CheckArch22Dim0Stride(fiaInfo, "keyRope", keyRopeDim, fiaInfo.kRopeBnStride) != ge::GRAPH_SUCCESS) {
@@ -758,10 +758,10 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
     }
 
     OP_CHECK_IF(fiaInfo.npuArch != NpuArch::DAV_3510,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-            fiaInfo.opName, "key/value/keyRope",
-            "Non-contiguous cache is not supported on the current architecture."),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                    fiaInfo.opName, "key/value/keyRope",
+                    "Non-contiguous cache is not supported on the current architecture."),
+                return ge::GRAPH_FAILED);
 
     if (enableAntiQuant_ || fiaInfo.fullQuantMode == FiaFullQuantMode::Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT) {
         OP_CHECK_IF(keyDim != -1,
@@ -846,7 +846,6 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
 
     return ge::GRAPH_SUCCESS;
 }
-
 
 ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInfo) const
 {

@@ -34,7 +34,8 @@ FIA_MLA_UT_VISIBLE void FillArch22MlaKvStrideParams(
 
 class FiaTilingNonQuantMla : public FiaTilingBase {
 public:
-    explicit FiaTilingNonQuantMla(gert::TilingContext *context) : FiaTilingBase(context)
+    explicit FiaTilingNonQuantMla(gert::TilingContext *context)
+        : FiaTilingBase(context)
     {
     }
     ~FiaTilingNonQuantMla() override = default;

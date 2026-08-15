@@ -2322,10 +2322,10 @@ static bool IsSupportedRegularFiaCacheStrideInput(const gert::TilingContext *con
     const gert::StorageShape *keyRopeShape = context->GetOptionalInputShape(KEY_ROPE_INDEX);
     const gert::Stride *keyRopeStride = context->GetOptionalInputStride(KEY_ROPE_INDEX);
     const bool keyRopeMissingViewStride = keyRopeShape != nullptr && context->InputIsView(KEY_ROPE_INDEX) &&
-        (keyRopeStride == nullptr || keyRopeStride->GetDimNum() == 0);
+                                          (keyRopeStride == nullptr || keyRopeStride->GetDimNum() == 0);
     return IsDynamicInputDim0StrideCompatible(context, KEY_INDEX) &&
-        IsDynamicInputDim0StrideCompatible(context, VALUE_INDEX) && !keyRopeMissingViewStride &&
-        IsTensorContiguous(keyRopeShape, keyRopeStride);
+           IsDynamicInputDim0StrideCompatible(context, VALUE_INDEX) && !keyRopeMissingViewStride &&
+           IsTensorContiguous(keyRopeShape, keyRopeStride);
 }
 
 static bool HasNonContiguousCacheInput(const gert::TilingContext *context)
@@ -2347,9 +2347,9 @@ static bool HasNonContiguousCacheInput(const gert::TilingContext *context)
         return false;
     }
     const bool keyRopeMissingViewStride = keyRopeShape != nullptr && context->InputIsView(KEY_ROPE_INDEX) &&
-        (keyRopeStride == nullptr || keyRopeStride->GetDimNum() == 0);
+                                          (keyRopeStride == nullptr || keyRopeStride->GetDimNum() == 0);
     return !IsDynamicInputContiguous(context, KEY_INDEX) || !IsDynamicInputContiguous(context, VALUE_INDEX) ||
-        keyRopeMissingViewStride || !IsTensorContiguous(keyRopeShape, keyRopeStride);
+           keyRopeMissingViewStride || !IsTensorContiguous(keyRopeShape, keyRopeStride);
 }
 
 ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
@@ -2364,9 +2364,9 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
     }
 
     OP_CHECK_IF(HasNonContiguousCacheInput(context) && !IsSupportedRegularFiaCacheStrideInput(context),
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-            "Non-contiguous cache is supported only by the arch22 regular FAI or D512 MLA PA routes."),
-        return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                            "Non-contiguous cache is supported only by the arch22 regular FAI or D512 MLA PA routes."),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(CheckQKV(*context) != ge::GRAPH_SUCCESS,
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check query/key/value failed"), return ge::GRAPH_FAILED);
@@ -2431,9 +2431,9 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
         return TilingFusedInferAttentionScoreV4(context);
     } else if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_5102) {
         OP_CHECK_IF(HasNonContiguousCacheInput(context),
-            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                "Non-contiguous key/value/keyRope cache is not supported by the arch38 route."),
-            return ge::GRAPH_FAILED);
+                    OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                                "Non-contiguous key/value/keyRope cache is not supported by the arch38 route."),
+                    return ge::GRAPH_FAILED);
         return TilingFusedInferAttentionScoreArch38(context);
     } else {
         return TilingFusedInferAttentionScore(context);

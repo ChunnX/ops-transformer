@@ -28,7 +28,8 @@ namespace optiling {
 constexpr int64_t SPARSE_MODE_INT_MAX = 2147483647;
 class FiaInfoParser {
 public:
-    explicit FiaInfoParser(const gert::TilingContext *context) : context_(context)
+    explicit FiaInfoParser(const gert::TilingContext *context)
+        : context_(context)
     {
     }
     ~FiaInfoParser() = default;
