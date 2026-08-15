@@ -69,13 +69,6 @@ ge::graphStatus MaskChecker::CheckFeature(const CheckContext &context) const
                                                           std::to_string(context.cmpMaskMode).c_str(),
                                                           "Compressed HCA/CSA mode requires cmp_mask_mode=3"),
                     return ge::GRAPH_FAILED);
-    } else if (context.variant == OperatorVariant::MIXED_QUANT &&
-               (context.oriMaskMode == 3 || context.oriMaskMode == 4)) {
-        OP_CHECK_IF(context.cmpMaskMode != 3,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(Op(context), "cmp_mask_mode",
-                                                          std::to_string(context.cmpMaskMode).c_str(),
-                                                          "Mixed-quant causal/sliding mode requires cmp_mask_mode=3"),
-                    return ge::GRAPH_FAILED);
     }
 
     if (context.oriSparseIndices.present && !context.cmpKv.present) {
