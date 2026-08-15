@@ -97,10 +97,10 @@ def mqsmla_aclgraph(testcase_files):
 
     utils.save_result(test_data['params'], result, fulfill_percent, Path(result_path))
 
-    if result == "Failed":
-        pytest.fail(f"用例精度失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%")
     if result == "NPU ERROR":
         pytest.fail(f"用例执行失败:{test_data['Testcase_Name']} NPU ERROR: {npu_error_msg}")
+    elif result != "Pass":
+        pytest.fail(f"用例精度失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%")
 
 testcase_ids = [os.path.splitext(os.path.basename(f))[0] for f in locals()["testcase_files"]]
 
