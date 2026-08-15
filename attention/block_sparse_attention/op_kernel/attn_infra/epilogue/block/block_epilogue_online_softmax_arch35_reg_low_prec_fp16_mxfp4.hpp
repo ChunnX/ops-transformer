@@ -41,13 +41,13 @@ template <
     class LayoutS_,
     class ScaleType_>
 class BlockEpilogue<
-    EpilogueOnlineSoftmaxBsa<true, MX_QUANT_MODE_>,
+    EpilogueOnlineSoftmaxBsaMX<true, MX_QUANT_MODE_>,
     OutputType_,
     Gemm::GemmType<half, LayoutS_>,
     ScaleType_>
 {
 public:
-    using DispatchPolicy = EpilogueOnlineSoftmaxBsa<true, MX_QUANT_MODE_>;
+    using DispatchPolicy = EpilogueOnlineSoftmaxBsaMX<true, MX_QUANT_MODE_>;
     static constexpr MXQuantMode MX_QUANT_MODE = DispatchPolicy::MX_QUANT_MODE;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementOutput = typename OutputType_::Element; // P
