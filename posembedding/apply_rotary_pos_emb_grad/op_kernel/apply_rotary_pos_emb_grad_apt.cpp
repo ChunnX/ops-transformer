@@ -17,6 +17,7 @@
 #include "arch35/apply_rotary_pos_emb_grad_tiling_key.h"
 #include "arch35/apply_rotary_pos_emb_grad_tiling_data.h"
 #include "arch35/apply_rotary_pos_emb_grad_bab.h"
+#include "arch35/apply_rotary_pos_emb_grad_ab.h"
 #include "arch35/apply_rotary_pos_emb_grad_a.h"
 #include "arch35/apply_rotary_pos_emb_grad_dag.h"
 #include "arch35/apply_rotary_pos_emb_grad_dcos_dsin.h"
@@ -81,14 +82,17 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
         op.Process();
         pipe.Reset();
     } else if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB)) {
-#if 0  // AB template not yet implemented
-        ApplyRotaryPosEmbGradAB<DTYPE_GRAD_QUERY_EMBED> op(&pipe, &tilingData.ropeGradABParams);
-        op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin,
-                query, key,
-                gradQueryOut, gradKeyOut, gradCosOut, gradSinOut);
+        ApplyRotaryPosEmbGradAB<DTYPE_GRAD_QUERY_EMBED, (DcosFlag != 0)> op(&pipe, &tilingData.ropeGradABParams);
+        if constexpr (DcosFlag) {
+            GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * sizeof(DTYPE_GRAD_QUERY_EMBED);
+            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key,
+                gradQueryOut, gradKeyOut, usrWorkSpace, dSinWorkSpace);
+        } else {
+            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key,
+                gradQueryOut, gradKeyOut, nullptr, nullptr);
+        }
         op.Process();
         pipe.Reset();
-#endif
     } else if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
         if constexpr (DcosFlag) {
             // dcos/dsin 走 workspace 三阶段路径，需要 workspace 非空
