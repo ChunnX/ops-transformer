@@ -84,15 +84,13 @@ static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {
     .odr = 5,
     .fence = 1,
     .se = 0,
-    // PR111 batch Drain waits according to generated CQEs. Keep CQE enabled so
-    // payload and top-k-weight writes on every channel complete before flags.
-    .cqe = 1,
+    .cqe = 0,
     .inlineEn = 0};
 static constexpr struct UrmaWqeEntry FLAG_WQE_CONFIG = {
     .odr = 6,
     .fence = 1,
     .se = 0,
-    .cqe = 1,
+    .cqe = 0,
     .inlineEn = 0};
 
 template <TemplateMoeEpCombineTypeClass>
@@ -374,8 +372,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPrepared
     }
     int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
     ascendc_assert(ret == HCOMM_SUCCESS, "BatchCommit failed, ret=%d", ret);
-    ret = hcomm_.Drain(activeBatchHandle_);
-    ascendc_assert(ret == HCOMM_SUCCESS, "batch Drain failed, ret=%d", ret);
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0;
     preparedWriteCount_ = 0;
