@@ -68,11 +68,11 @@ using namespace AscendC;
 
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 4;
-static constexpr uint32_t HCOMM_BATCH_CAPACITY = 128;
-static constexpr uint32_t HCOMM_BATCH_HEADER_BYTES = 32;
+// PR 111 requires each committed batch to contain fewer WQEBBs than the SQ depth.
+static constexpr uint32_t HCOMM_BATCH_CAPACITY = 127;
 static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
 static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES =
-    HCOMM_BATCH_HEADER_BYTES + HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
+    HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U; // 本卡状态空间偏移地址，前面的地址给dispatch用
 constexpr uint32_t STATE_OFFSET = 32U;
@@ -113,7 +113,8 @@ private:
                                     int32_t srcTopKIdx, uint32_t channelIndex, uint32_t weight);
     __aicore__ inline void SendRankFlag(uint32_t dstRank);
     template <auto const& config>
-    __aicore__ inline void PrepareWrite(uint64_t commHandle, GM_ADDR dst, GM_ADDR src, uint64_t len);
+    __aicore__ inline void PrepareWrite(
+        uint64_t commHandle, GM_ADDR dstBase, GM_ADDR dst, GM_ADDR src, uint64_t len);
     __aicore__ inline void FlushPreparedWrites();
     __aicore__ inline bool WaitDispatch();
     __aicore__ inline void ResetRankFlags();
@@ -231,13 +232,15 @@ private:
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;                 // 通信上下文
+    using HcommBatchHandle = typename AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP>::BatchHandleType;
 
     GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
     uint64_t hcommHandle_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
     GM_ADDR combineSendDataWorkspaceAddr_{nullptr};
     GM_ADDR flagWorkspaceAddr_{nullptr};
     uint32_t aivId_{0};
-    uint64_t activeBatchHandle_{0};
+    HcommBatchHandle activeBatchHandle_{};
+    uint64_t activeBatchChannel_{0};
     uint32_t preparedWriteCount_{0};
 };
 
@@ -367,32 +370,35 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPrepared
     if (preparedWriteCount_ == 0) {
         return;
     }
-    __ubuf__ uint8_t *batchBuffer = reinterpret_cast<__ubuf__ uint8_t *>(hcommBatchTensor_.GetPhyAddr());
-    int32_t ret = hcomm_.WriteNbiPrepareEnd<true>(activeBatchHandle_, batchBuffer);
-    ascendc_assert(ret == HCOMM_SUCCESS, "WriteNbiPrepareEnd failed, ret=%d", ret);
-    activeBatchHandle_ = 0;
+    int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
+    ascendc_assert(ret == HCOMM_SUCCESS, "BatchCommit failed, ret=%d", ret);
+    ret = hcomm_.Drain(activeBatchHandle_);
+    ascendc_assert(ret == HCOMM_SUCCESS, "batch Drain failed, ret=%d", ret);
+    activeBatchHandle_ = {};
+    activeBatchChannel_ = 0;
     preparedWriteCount_ = 0;
 }
 
 template <TemplateMoeEpCombineTypeClass>
 template <auto const& config>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
-    uint64_t commHandle, GM_ADDR dst, GM_ADDR src, uint64_t len)
+    uint64_t commHandle, GM_ADDR dstBase, GM_ADDR dst, GM_ADDR src, uint64_t len)
 {
-    if (preparedWriteCount_ != 0 && activeBatchHandle_ != commHandle) {
+    if (preparedWriteCount_ != 0 && activeBatchChannel_ != commHandle) {
         FlushPreparedWrites();
     }
-    activeBatchHandle_ = commHandle;
-    __ubuf__ uint8_t *batchBuffer = reinterpret_cast<__ubuf__ uint8_t *>(hcommBatchTensor_.GetPhyAddr());
-    int32_t ret = hcomm_.WriteNbiPrepare<config>(
-        commHandle, dst, src, len, batchBuffer, HCOMM_BATCH_BUFFER_BYTES);
-    if (ret == HCOMM_PREPARE_BUFFER_FULL || ret == HCOMM_PREPARE_QUEUE_FULL) {
+    if (preparedWriteCount_ == HCOMM_BATCH_CAPACITY) {
         FlushPreparedWrites();
-        activeBatchHandle_ = commHandle;
-        ret = hcomm_.WriteNbiPrepare<config>(
-            commHandle, dst, src, len, batchBuffer, HCOMM_BATCH_BUFFER_BYTES);
     }
-    ascendc_assert(ret == HCOMM_SUCCESS, "WriteNbiPrepare failed, ret=%d", ret);
+    if (preparedWriteCount_ == 0) {
+        activeBatchHandle_ =
+            hcomm_.MakeBatchHandle(commHandle, dstBase, nullptr, hcommBatchTensor_, HCOMM_BATCH_BUFFER_BYTES);
+        activeBatchChannel_ = commHandle;
+        ascendc_assert(
+            activeBatchHandle_.channelHandle == commHandle, "MakeBatchHandle failed, channel=%lu", commHandle);
+    }
+    int32_t ret = hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
+    ascendc_assert(ret == HCOMM_SUCCESS, "batch WriteNbi failed, ret=%d", ret);
     ++preparedWriteCount_;
 }
 
@@ -410,11 +416,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendSlot(
     if (srcRank != static_cast<int32_t>(rankId_)) {
         GM_ADDR tokenAddr = (GM_ADDR)xGm_.GetPhyAddr(tokenIndex * axisH_);
         PrepareWrite<DEFAULT_WQE_CONFIG>(
-            commHandle, remoteRankWinAddr + sendTokenOffset, tokenAddr, axisH_ * sizeof(XType));
+            commHandle, winRankAddr_[srcRank], remoteRankWinAddr + sendTokenOffset, tokenAddr,
+            axisH_ * sizeof(XType));
         if constexpr (HasTopkWeight == 1) {
             GM_ADDR weightAddr = (GM_ADDR)topkWeightsGm_.GetPhyAddr(tokenIndex);
             PrepareWrite<DEFAULT_WQE_CONFIG>(
-                commHandle, remoteRankStateAddr + recvStateOffset, weightAddr, sizeof(uint32_t));
+                commHandle, winRankAddr_[srcRank], remoteRankStateAddr + recvStateOffset, weightAddr,
+                sizeof(uint32_t));
         }
     } else {
         SendLocalToken(tokenIndex, remoteRankWinAddr + sendTokenOffset);
@@ -442,7 +450,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRankFlag(
         return;
     }
     PrepareWrite<FLAG_WQE_CONFIG>(
-        GetCommHandle(dstRank, 0), flagAddr, flagWorkspaceAddr_, sizeof(uint32_t));
+        GetCommHandle(dstRank, 0), winRankAddr_[dstRank], flagAddr, flagWorkspaceAddr_, sizeof(uint32_t));
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -480,13 +488,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     }
 
     Duplicate<uint32_t>(statusTensor_, static_cast<uint32_t>(1), FLOAT_PER_UB_ALIGN);
-    Duplicate<uint8_t>(hcommBatchTensor_, static_cast<uint8_t>(0), HCOMM_BATCH_BUFFER_BYTES);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     GlobalTensor<uint32_t> flagWorkspace;
     flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(flagWorkspaceAddr_));
     DataCopy(flagWorkspace, statusTensor_, FLOAT_PER_UB_ALIGN);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
-    activeBatchHandle_ = 0;
+    activeBatchHandle_ = {};
+    activeBatchChannel_ = 0;
     preparedWriteCount_ = 0;
 
     bool sendsTokens = actualA_ != 0 && aivId_ < activeAivNum;
