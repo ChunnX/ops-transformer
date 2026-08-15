@@ -108,6 +108,7 @@ private:
     QfaLayout layoutQDescale_ = QfaLayout::BSND;
 
     // Strides (for non-contiguous tensor check)
+    bool hasStride_ = false;
     const gert::Stride *keyStrides_ = nullptr;
     const gert::Stride *valueStrides_ = nullptr;
     const gert::Stride *kDescaleStrides_ = nullptr;
