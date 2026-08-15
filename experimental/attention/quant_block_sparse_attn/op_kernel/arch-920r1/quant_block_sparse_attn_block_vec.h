@@ -168,8 +168,6 @@ private:
                                          RunInfo &runInfo, ConstInfo &constInfo, uint32_t roundIdx);
     __aicore__ inline void FinalizeVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                         RunInfo &runInfo, ConstInfo &constInfo, bool hasRound1);
-    __aicore__ inline void RescaleRound0(LocalTensor<INPUT_T> &pTensor, LocalTensor<float> &alphaTensor,
-                                         uint32_t realK, uint32_t taskSlot);
     __aicore__ inline void CopyRoundToL1(LocalTensor<INPUT_T> &dstTensor, LocalTensor<INPUT_T> &srcTensor,
                                          uint32_t roundIdx, uint32_t realK);
     __aicore__ inline void ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
@@ -372,31 +370,6 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::RescaleRound0(
-    LocalTensor<INPUT_T> &pTensor, LocalTensor<float> &alphaTensor, uint32_t realK, uint32_t taskSlot)
-{
-  LocalTensor<float> castTensor = lseTmpBuff[taskSlot].template Get<float>();
-  const uint32_t repeat = (realK + 63U) >> 6U;
-  constexpr uint32_t BLOCK_ELEMS = 32U;
-  constexpr uint32_t FORM_STRIDE_BLOCKS = 65U;
-  constexpr uint32_t GROUP_STRIDE_BLOCKS = 130U;
-  for (uint32_t group = 0U; group < repeat; ++group) {
-    uint32_t validColumns = realK - group * 64U;
-    validColumns = validColumns > 64U ? 64U : validColumns;
-    for (uint32_t form = 0U; form < 2U; ++form) {
-      const uint32_t alphaOffset = form * 32U;
-      const uint32_t formBase = (group * GROUP_STRIDE_BLOCKS + form * FORM_STRIDE_BLOCKS) * BLOCK_ELEMS;
-      for (uint32_t column = 0U; column < validColumns; ++column) {
-        LocalTensor<INPUT_T> pBlock = pTensor[formBase + column * BLOCK_ELEMS];
-        Cast(castTensor, pBlock, RoundMode::CAST_NONE, BLOCK_ELEMS);
-        Mul(castTensor, castTensor, alphaTensor[alphaOffset], BLOCK_ELEMS);
-        Cast(pBlock, castTensor, RoundMode::CAST_RINT, BLOCK_ELEMS);
-      }
-    }
-  }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::CopyRoundToL1(
     LocalTensor<INPUT_T> &dstTensor, LocalTensor<INPUT_T> &srcTensor, uint32_t roundIdx, uint32_t realK)
 {
@@ -423,7 +396,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::FinalizeVec1(
   if (hasRound1) {
     LocalTensor<float> alpha1 = round1ExpBuf.template Get<float>();
     LocalTensor<float> combinedAlpha = softmaxExpBuf[runInfo.taskIdMod3].template Get<float>();
-    RescaleRound0(p0, alpha1, round0RealSize, runInfo.taskIdMod2);
+    FaVectorApi::RescaleRound0(p0, alpha1, round0RealSize);
     Mul(combinedAlpha, combinedAlpha, alpha1, s1BaseSize);
   }
 
