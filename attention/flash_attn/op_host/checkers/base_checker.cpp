@@ -34,7 +34,8 @@ ge::graphStatus FABaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDe
         const auto &it = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(
             it == DTYPE_SUPPORT_MAP.end(),
-            OP_LOGE("FlashAttn", "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                "FlashAttn", name.c_str(), "The datatype support list must be specified in DTYPE_SUPPORT_MAP"),
             return ge::GRAPH_FAILED);
         auto &expectDtypeList = it->second;
         if (std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end()) {
@@ -69,7 +70,9 @@ std::string FABaseChecker::DataTypeToSerialString(ge::DataType type) const
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("FlashAttn", "datatype %d not support", type);
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FlashAttn", "dtype",
+                                              std::to_string(static_cast<int32_t>(type)).c_str(),
+                                              "The datatype is not supported");
         return "UNDEFINED";
     }
 }

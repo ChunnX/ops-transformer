@@ -257,7 +257,9 @@ cann_ops_transformer.lightning_indexer(
                 <li>k_n = 1</li>
                 <li>q_s > 0</li>
                 <li>k_s > 0</li>
-                <li>d = 128</li>
+                <li>k_s = 128</li>
+                <li>q_n % k_n == 0且q_n / k_n > 0</li>
+                <li>1 <= topk <= 8192</li>
             </ul>
         </td>
     </tr>
@@ -537,9 +539,6 @@ mask_mode参数解释
         </tr>
     </tbody>
 </table>
-
-## 确定性计算
-默认支持确定性计算
 
 ## 调用示例
 
