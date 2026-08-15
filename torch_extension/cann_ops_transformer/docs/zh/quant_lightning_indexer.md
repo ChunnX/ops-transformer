@@ -170,7 +170,7 @@ cann_ops_transformer.quant_lightning_indexer(
 - b（batch）表示输入样本批量大小。
 - 参数cu_seqlens_q、cu_seqlens_k要求其值为当前batch与前序batch有效token数的累加值，第一个元素必须为0，且后一个元素的值必须大于等于前一个元素的值。
 - 参数seqused_q、seqused_k要求其值表示每个batch中的有效token数。
-- 参数cmp_residual_k需满足0 <= cmp_residual_k\[i\] < cmp_ratio。
+- 参数cmp_residual_k需满足cmp_residual_k\[i\] < cmp_ratio。
 - mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../../../docs/zh/context/sparse_mode_introduction.md)。
 - pa_kv_cache支持0轴非连续；pa_block_size支持1~1024，且是16的倍数。
 - 参数q、k的数据类型应保持一致。
@@ -189,6 +189,7 @@ cann_ops_transformer.quant_lightning_indexer(
   - q、k仅支持int8，不支持float8_e4m3fn、HIfloat8和float4_e2m1。
   - q_descale和k_descale支持float16，不支持float32和float8_e8m0。
   - w支持float16，不支持float32。
+  - 仅支持quant_mode = 2，q、k仅支持int8，不支持float8_e4m3fn和HIfloat8，w、q_descale和k_descale支持float16，不支持float32。
   - layout_k仅支持PA_BBND，必须传入seqused_k。
   - cmp_ratio仅支持2的幂次方值：1/2/4/8/16/32/64/128。
   - 不支持return_value功能，不建议传入该参数。
@@ -266,7 +267,7 @@ cann_ops_transformer.quant_lightning_indexer(
                 <li>q_t > 0</li>
                 <li>k_t > 0</li>
                 <li>q_n > 0</li>
-                <li>k_n = 1</li>
+                <li>k_n = 1</li>s
                 <li>q_s > 0</li>
                 <li>k_s > 0</li>
                 <li>d = 128</li>
