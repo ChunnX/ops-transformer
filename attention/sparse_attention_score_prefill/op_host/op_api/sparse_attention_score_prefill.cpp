@@ -48,23 +48,14 @@ const aclTensor *SparseAttentionScorePrefill(
            actualSeqLengthsOptional, actualSeqLengthsKvOptional,
            numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise);
 
-    DataType attentionOutDtype = query->GetDataType();
-    auto attentionOutTensor = executor->AllocTensor(attentionOutDtype,
-        Format::FORMAT_ND, Format::FORMAT_ND);
-
-    auto ret = INFER_SHAPE(SparseAttentionScorePrefill,
-                           OP_INPUT(query, key, value, blockTable,
-                                    k2qRowPtr, k2qQIndices, k2qSlotIndices,
-                                    actualSeqLengthsOptional, actualSeqLengthsKvOptional),
-                           OP_OUTPUT(attentionOutTensor),
-                           OP_ATTR(static_cast<int64_t>(numKeyValueHeads),
-                                   static_cast<float>(scaleValue),
-                                   static_cast<int64_t>(blockSize),
-                                   static_cast<int64_t>(topK),
-                                   static_cast<int64_t>(innerPrecise)));
-    if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "SparseAttentionScorePrefill infer shape failed.");
+    // aclTensor keeps logical dimensions in ViewShape while StorageShape may
+    // be flattened for strided views.  Allocating from the logical shape
+    // avoids feeding the physical rank into the generic InferShape callback.
+    auto attentionOutTensor = executor->AllocTensor(
+        query->GetViewShape(), query->GetDataType(), Format::FORMAT_ND);
+    if (attentionOutTensor == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
+                "SparseAttentionScorePrefill AllocTensor failed.");
         return nullptr;
     }
 

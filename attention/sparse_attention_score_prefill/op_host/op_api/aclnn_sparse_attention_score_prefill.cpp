@@ -115,15 +115,18 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto *executorImpl = uniqueExecutor.get();
 
-    const aclTensor *queryView = IsContiguous(query) ? query :
-        executorImpl->CreateView(query, query->GetViewShape(), query->GetStorageShape(),
-                                 query->GetViewStrides(), query->GetViewOffset());
-    const aclTensor *keyView = IsContiguous(key) ? key :
-        executorImpl->CreateView(key, key->GetViewShape(), key->GetStorageShape(),
-                                 key->GetViewStrides(), key->GetViewOffset());
-    const aclTensor *valueView = IsContiguous(value) ? value :
-        executorImpl->CreateView(value, value->GetViewShape(), value->GetStorageShape(),
-                                 value->GetViewStrides(), value->GetViewOffset());
+    // Torch ACL tensors may use a flattened StorageShape even when they are
+    // contiguous. Always create the logical view so tiling receives both the
+    // TND/blocked-KV shape and its strides; this remains zero-copy.
+    const aclTensor *queryView = executorImpl->CreateView(
+        query, query->GetViewShape(), query->GetStorageShape(),
+        query->GetViewStrides(), query->GetViewOffset());
+    const aclTensor *keyView = executorImpl->CreateView(
+        key, key->GetViewShape(), key->GetStorageShape(),
+        key->GetViewStrides(), key->GetViewOffset());
+    const aclTensor *valueView = executorImpl->CreateView(
+        value, value->GetViewShape(), value->GetStorageShape(),
+        value->GetViewStrides(), value->GetViewOffset());
     CHECK_RET(queryView != nullptr && keyView != nullptr && valueView != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
     aclnnStatus ret = MakeMetadataContiguous(blockTable,
