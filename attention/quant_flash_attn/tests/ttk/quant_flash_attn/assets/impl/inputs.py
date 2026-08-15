@@ -363,6 +363,9 @@ def generate_qfa_hif8_inputs(
     enable_lse: bool = False,
     graph_path: int = 0,
     input_layout: str = "TND",
+    layout_q: str = None,
+    layout_kv: str = None,
+    layout_out: str = None,
     is_contiguous: bool = True,
     device_id: int = 0,
     softmax_scale: float = None,
@@ -384,22 +387,35 @@ def generate_qfa_hif8_inputs(
       block_table: (0,) int32 (无 PA)
     """
     import quant_flash_attn_hif8_golden as hif8_golden_mod
+    input_layout = layout_q or input_layout
     cu_seqlens_q = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
     cu_seqlens_kv = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
-    actual_seq_q = (
-        [cu_seqlens_q[i + 1] - cu_seqlens_q[i] for i in range(len(cu_seqlens_q) - 1)]
-        if len(cu_seqlens_q) > 1
-        else [0]
-    )
+    if len(cu_seqlens_q) > 1:
+        actual_seq_q = [
+            cu_seqlens_q[i + 1] - cu_seqlens_q[i]
+            for i in range(len(cu_seqlens_q) - 1)
+        ]
+    elif seqused_q is not None and len(list(seqused_q)) > 0:
+        actual_seq_q = list(seqused_q)
+    elif max_seqlen_q is not None and max_seqlen_q > 0:
+        actual_seq_q = [max_seqlen_q] * B
+    else:
+        actual_seq_q = [0]
     if len(cu_seqlens_kv) > 1:
         actual_seq_kv = [
             cu_seqlens_kv[i + 1] - cu_seqlens_kv[i]
             for i in range(len(cu_seqlens_kv) - 1)
         ]
-    elif seqused_kv is not None and len(seqused_kv) > 0:
+    elif seqused_kv is not None and len(list(seqused_kv)) > 0:
         actual_seq_kv = list(seqused_kv)
+    elif max_seqlen_kv is not None and max_seqlen_kv > 0:
+        actual_seq_kv = [max_seqlen_kv] * B
     else:
         actual_seq_kv = [0]
+
+    # B 可能为-1
+    if B is None or B <= 0:
+        B = len(actual_seq_q)
 
     max_sq = max(actual_seq_q) if actual_seq_q else D
     max_skv = max(actual_seq_kv) if actual_seq_kv else D
@@ -459,13 +475,16 @@ def generate_qfa_hif8_inputs(
     v_hif8_bnsd = hif8_golden_mod.hif8_per_tensor_quant(v_fp16.to(torch.float32), quant_scale_v)
 
     q_final = hif8_golden_mod.convert_q_bnsd_to_layout(
-        q_hif8_bnsd, actual_seq_q, "TND", cu_seqlens=cu_seqlens_q
+        q_hif8_bnsd, actual_seq_q, input_layout,
+        cu_seqlens=cu_seqlens_q if (input_layout == "TND" and len(cu_seqlens_q) > 1) else None,
     ).contiguous().view(torch.float8_e4m3fn)
     k_final = hif8_golden_mod.convert_kv_bnsd_to_layout(
-        k_hif8_bnsd, actual_seq_kv, "TND", cu_seqlens=cu_seqlens_kv if cu_seqlens_kv else None,
+        k_hif8_bnsd, actual_seq_kv, input_layout,
+        cu_seqlens=cu_seqlens_kv if (input_layout == "TND" and len(cu_seqlens_kv) > 1) else None,
     ).contiguous().view(torch.float8_e4m3fn)
     v_final = hif8_golden_mod.convert_kv_bnsd_to_layout(
-        v_hif8_bnsd, actual_seq_kv, "TND", cu_seqlens=cu_seqlens_kv if cu_seqlens_kv else None,
+        v_hif8_bnsd, actual_seq_kv, input_layout,
+        cu_seqlens=cu_seqlens_kv if (input_layout == "TND" and len(cu_seqlens_kv) > 1) else None,
     ).contiguous().view(torch.float8_e4m3fn)
 
     def _inplace_write(dst, src_torch, slot_name):

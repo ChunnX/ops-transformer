@@ -112,15 +112,7 @@ quant_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, 
     if (return_softmax_lse) {
         if (q.dim() == DIM_THREE) {
             softmaxOutSize = {nSize, tSize};
-    } else if (quant_mode == QUANT_MODE_HIF8) {
-        TensorWrapper q_wrapper = make_wrapper(q, HIFLOAT8);
-        TensorWrapper k_wrapper = make_wrapper(k, HIFLOAT8);
-        TensorWrapper v_wrapper = make_wrapper(v, HIFLOAT8);
-        ACLNN_CMD(aclnnQuantFlashAttn, q_wrapper, k_wrapper, v_wrapper, q_descale, k_descale, v_descale,
-                  block_table, p_scale, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata,
-                  quant_mode, softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr,
-                  layout_q_descale_ptr, layout_kv_ptr, layout_out_ptr, return_softmax_lse, attentionOutput, softmaxLse);
-    } else {
+        } else {
             softmaxOutSize = {bSize, nSize, sSize};
         }
     } else {
@@ -153,6 +145,14 @@ quant_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, 
                   attn_mask, metadata, quant_mode, softmax_scale, mask_mode, win_left, win_right, max_seqlen_q,
                   max_seqlen_kv, layout_q_ptr, layout_q_descale_ptr, layout_kv_ptr, layout_out_ptr, return_softmax_lse,
                   attentionOutput, softmaxLse);
+    } else if (quant_mode == QUANT_MODE_HIF8) {
+        TensorWrapper q_wrapper = make_wrapper(q, HIFLOAT8);
+        TensorWrapper k_wrapper = make_wrapper(k, HIFLOAT8);
+        TensorWrapper v_wrapper = make_wrapper(v, HIFLOAT8);
+        ACLNN_CMD(aclnnQuantFlashAttn, q_wrapper, k_wrapper, v_wrapper, q_descale, k_descale, v_descale,
+                  block_table, p_scale, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata,
+                  quant_mode, softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr,
+                  layout_q_descale_ptr, layout_kv_ptr, layout_out_ptr, return_softmax_lse, attentionOutput, softmaxLse);
     } else {
         ACLNN_CMD(aclnnQuantFlashAttn, q, k, v, q_descale, k_descale, v_descale, block_table, p_scale, cu_seqlens_q,
                   cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata, quant_mode, softmax_scale,

@@ -104,6 +104,7 @@ ENABLE_PA = False
 BLOCK_SIZE = 0
 KV_CACHE_LAYOUT = "TND"
 FP8_DTYPE = torch.float8_e4m3fn
+HIF8_DTYPE = torch.uint8
 
 SEED_Q = 54
 SEED_K = 3
@@ -585,6 +586,7 @@ def _call_npu_fa_op(
         layout_out=layout_out,
         max_seqlen_q=max_seqlen_q,
         max_seqlen_kv=max_seqlen_kv,
+        batch_size=B,
     )
 
     main_kwargs = dict(
@@ -728,6 +730,7 @@ def prepare_npu_inputs(
     max_seqlen_q,
     max_seqlen_kv,
     block_table_torch=None,
+    input_layout=None,
 ):
     """准备 NPU 侧入参
 
@@ -741,12 +744,13 @@ def prepare_npu_inputs(
     其余 tensor 字段均为已就绪的 NPU tensor.
     """
     torch_npu.npu.set_device(int(DEVICE_ID))
+    eff_layout = input_layout or INPUT_LAYOUT or "TND"
 
     softmax_scale = SOFTMAX_SCALE
 
-    q_runtime_layout = Q_SCALE_LAYOUT
+    q_runtime_layout = Q_SCALE_LAYOUT if Q_SCALE_LAYOUT is not None else "TND"
 
-    q_npu = q_fp8.contiguous().view(FP8_DTYPE).npu()
+    q_npu = q_fp8.contiguous().view(HIF8_DTYPE).npu()
     deq_q_npu = dequant_scale_q.npu()
     p_scale_npu = p_scale.npu()
 
@@ -754,8 +758,8 @@ def prepare_npu_inputs(
     mask_arg = _build_causal_mask()
 
     if ENABLE_PA:
-        k_npu = k_fp8.contiguous().view(FP8_DTYPE).npu()
-        v_npu = v_fp8.contiguous().view(FP8_DTYPE).npu()
+        k_npu = k_fp8.contiguous().view(HIF8_DTYPE).npu()
+        v_npu = v_fp8.contiguous().view(HIF8_DTYPE).npu()
         deq_k_npu = dequant_scale_k.npu()
         deq_v_npu = dequant_scale_v.npu()
 
@@ -822,8 +826,8 @@ def prepare_npu_inputs(
         )
 
     # 非 PA 模式
-    k_npu = k_fp8.contiguous().view(FP8_DTYPE).npu()
-    v_npu = v_fp8.contiguous().view(FP8_DTYPE).npu()
+    k_npu = k_fp8.contiguous().view(HIF8_DTYPE).npu()
+    v_npu = v_fp8.contiguous().view(HIF8_DTYPE).npu()
     deq_k_npu = dequant_scale_k.npu()
     deq_v_npu = dequant_scale_v.npu()
     logger.info("[NPU TND] k=%s, v=%s", k_npu.shape, v_npu.shape)
@@ -849,10 +853,10 @@ def prepare_npu_inputs(
         q_n=N_q,
         kv_n=N_kv,
         softmax_scale=softmax_scale,
-        layout_q="TND",
+        layout_q=eff_layout,
         layout_q_descale=q_runtime_layout,
-        layout_kv="TND",
-        layout_out="TND",
+        layout_kv=eff_layout,
+        layout_out=eff_layout,
         block_size=0,
         sparse_mode=SPARSE_MODE,
         out_dtype=out_dtype,
@@ -879,6 +883,16 @@ def npu_hif8_fa(
 
     正常用例入口：准备入参 → 调用算子 → 输出截断/LSE 处理。
     """
+    global INPUT_LAYOUT
+    if q_fp8.dim() == 3:
+        inferred_layout = "TND"
+    elif INPUT_LAYOUT and INPUT_LAYOUT != "TND":
+        inferred_layout = INPUT_LAYOUT
+    else:
+        inferred_layout = "BSND"
+    if INPUT_LAYOUT in (None, "TND") and inferred_layout != "TND":
+        INPUT_LAYOUT = inferred_layout
+        logger.info("[NPU] npu_hif8_fa: 从q维度推断layout=%s, 已更新INPUT_LAYOUT", inferred_layout)
     inputs = prepare_npu_inputs(
         q_fp8,
         k_fp8,
@@ -894,6 +908,7 @@ def npu_hif8_fa(
         max_seqlen_q,
         max_seqlen_kv,
         block_table_torch=block_table_torch,
+        input_layout=INPUT_LAYOUT,
     )
 
     logger.info(
@@ -906,9 +921,11 @@ def npu_hif8_fa(
 
     act_seqused_q = _get_seqused_q()
     npu_output = atten_out
-    T_actual = cu_seqlens_q[-1] if cu_seqlens_q is not None else sum(act_seqused_q)
-    if npu_output.shape[0] > T_actual:
-        npu_output = npu_output[:T_actual]
+    if npu_output.dim() == 3:
+        T_actual = cu_seqlens_q[-1] if cu_seqlens_q is not None else (
+            sum(act_seqused_q) if act_seqused_q is not None else npu_output.shape[0])
+        if npu_output.shape[0] > T_actual:
+            npu_output = npu_output[:T_actual]
     logger.info("[NPU] output=%s", npu_output.shape)
     return npu_output, lse_out
 

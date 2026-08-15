@@ -157,14 +157,19 @@ ge::graphStatus CommonChecker::CheckSingleParaDtype(const QfaTilingInfo &qfaInfo
 ge::graphStatus CommonChecker::CheckSingleParaShapeDim(const QfaTilingInfo &qfaInfo)
 {
     const std::vector<uint32_t> supportedKvDims = {DIM_NUM_3, DIM_NUM_4, DIM_NUM_5};
+    bool isHif8Mode = (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32);
+    const std::vector<uint32_t> supportedQOutDims = isHif8Mode
+        ? std::vector<uint32_t>{DIM_NUM_3, DIM_NUM_4}
+        : std::vector<uint32_t>{DIM_NUM_3};
 
-    // q: shape dim 仅支持 3
+    // q: shape dim HIF8支持3D/4D, 其他仅支持3D
     const gert::StorageShape *queryShape = qfaInfo.opParamInfo.query.shape;
     if (queryShape != nullptr) {
         uint32_t queryDimNum = queryShape->GetStorageShape().GetDimNum();
-        OP_CHECK_IF(queryDimNum != DIM_NUM_3,
+        OP_CHECK_IF(std::find(supportedQOutDims.begin(), supportedQOutDims.end(), queryDimNum) == supportedQOutDims.end(),
                     OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, QUERY_NAME.c_str(),
-                                                 (std::to_string(queryDimNum) + "D").c_str(), "3D"),
+                                                 (std::to_string(queryDimNum) + "D").c_str(),
+                                                 isHif8Mode ? "3D/4D" : "3D"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -188,13 +193,14 @@ ge::graphStatus CommonChecker::CheckSingleParaShapeDim(const QfaTilingInfo &qfaI
                     return ge::GRAPH_FAILED);
     }
 
-    // attn_out: shape dim 仅支持 3
+    // attn_out: shape dim HIF8支持3D/4D, 其他仅支持3D
     const gert::StorageShape *attnOutShape = qfaInfo.opParamInfo.attnOut.shape;
     if (attnOutShape != nullptr) {
         uint32_t attnOutDimNum = attnOutShape->GetStorageShape().GetDimNum();
-        OP_CHECK_IF(attnOutDimNum != DIM_NUM_3,
+        OP_CHECK_IF(std::find(supportedQOutDims.begin(), supportedQOutDims.end(), attnOutDimNum) == supportedQOutDims.end(),
                     OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, ATTN_OUT_NAME.c_str(),
-                                                 (std::to_string(attnOutDimNum) + "D").c_str(), "3D"),
+                                                 (std::to_string(attnOutDimNum) + "D").c_str(),
+                                                 isHif8Mode ? "3D/4D" : "3D"),
                     return ge::GRAPH_FAILED);
     }
 

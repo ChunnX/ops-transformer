@@ -94,6 +94,7 @@ public:
     static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
     static constexpr uint32_t l1BaseD = 128;
     static constexpr uint32_t s2SplitSize = 256U;
+    static constexpr uint32_t MXFP_DIVISOR_SIZE = 64U;
     static constexpr LayOutTypeEnum LAYOUT = layout;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool USE_DN = useDn;
@@ -509,7 +510,7 @@ public:
 
             mm2B.Wait<HardEvent::MTE2_MTE1>();
             MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo_.dSizeV,
-                                        realK, USE_DN, false, k == 0, k == 0);
+                                        (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE, USE_DN, false, k == 0, k == 0);
             MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
                        float, float, INPUT_T, INPUT_T>(
                 mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset],

@@ -192,6 +192,9 @@ def npu_qfa_hif8(
     enable_lse: bool = False,
     graph_path: int = 0,
     input_layout: str = "TND",
+    layout_q: str = None,
+    layout_kv: str = None,
+    layout_out: str = None,
     is_contiguous: bool = True,
     device_id: int = 0,
     softmax_scale: float = None,
@@ -201,6 +204,8 @@ def npu_qfa_hif8(
     **kwargs,
 ):
     import quant_flash_attn_hif8_golden as hif8_golden_mod
+    input_layout = layout_q or input_layout
+    logger.info("[WRAPPER HIF8] layout_q=%r, input_layout=%r", layout_q, input_layout)
     torch_npu.npu.set_device(int(device_id))
     env_graph_path = os.environ.get("GRAPH_PATH")
     if env_graph_path is not None:
@@ -211,6 +216,12 @@ def npu_qfa_hif8(
 
     cu_seqlens_q_list = list(cu_seqlens_q) if cu_seqlens_q is not None else None
     cu_seqlens_kv_list = list(cu_seqlens_kv) if cu_seqlens_kv is not None else None
+
+    if B is None or B <= 0:
+        if cu_seqlens_q_list is not None and len(cu_seqlens_q_list) > 1:
+            B = len(cu_seqlens_q_list) - 1
+        elif seqused_q is not None and len(list(seqused_q)) > 0:
+            B = len(list(seqused_q))
 
     _apply_golden_globals(
         {

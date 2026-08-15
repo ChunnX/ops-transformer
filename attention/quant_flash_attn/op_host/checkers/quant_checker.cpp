@@ -569,18 +569,26 @@ ge::graphStatus QuantChecker::CheckNonContiguousSupport(const QfaTilingInfo &qfa
 
 namespace {
 struct QfaLayoutConstraintConfig {
+    std::vector<QfaLayout> supportedQLayouts;
     std::vector<QfaLayout> supportedKvLayouts;
     std::vector<QfaLayout> supportedOutLayouts;
     std::vector<QfaLayout> supportedQDescaleLayouts;
+    bool requireLayoutConsistent;
 };
 
 const std::map<QfaQuantMode, QfaLayoutConstraintConfig> QFA_LAYOUT_CONSTRAINT_TABLE = {
     {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-     {{QfaLayout::TND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ}, {QfaLayout::TND},
-      {QfaLayout::TND, QfaLayout::N2TGD}}},
+     {{QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD},
+      {QfaLayout::TND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ},
+      {QfaLayout::TND},
+      {QfaLayout::TND, QfaLayout::N2TGD},
+      false}},
     {QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32,
-     {{QfaLayout::TND}, {QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD},
-      {QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD}}},
+     {{QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD},
+      {QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD},
+      {QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD},
+      {QfaLayout::TND},
+      true}},
 };
 } // namespace
 
@@ -597,18 +605,25 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
     const std::string qLayoutStr = QfaLayoutToSerialString(qfaInfo.qLayout);
     const std::string quantModeStr = QfaQuantModeToSerialString(qfaInfo.quantMode);
 
+    OP_CHECK_IF(std::find(config.supportedQLayouts.begin(), config.supportedQLayouts.end(),
+                          qfaInfo.qLayout) == config.supportedQLayouts.end(),
+                OP_LOGE(qfaInfo.opName,
+                        "When quant_mode is %s, layout_q must be in supported list, but got %s",
+                        quantModeStr.c_str(), qLayoutStr.c_str()),
+                return ge::GRAPH_FAILED);
+
     OP_CHECK_IF(std::find(config.supportedKvLayouts.begin(), config.supportedKvLayouts.end(), qfaInfo.kvLayout) ==
                     config.supportedKvLayouts.end(),
                 OP_LOGE(qfaInfo.opName,
                         "When quant_mode is %s and layout_q is %s, "
-                        "layout_kv must be in {TND, PA_BNBD, PA_NZ}, but got %s",
+                        "layout_kv is not supported, but got %s",
                         quantModeStr.c_str(), qLayoutStr.c_str(), QfaLayoutToSerialString(qfaInfo.kvLayout).c_str()),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
         std::find(config.supportedOutLayouts.begin(), config.supportedOutLayouts.end(), qfaInfo.outLayout) ==
             config.supportedOutLayouts.end(),
-        OP_LOGE(qfaInfo.opName, "When quant_mode is %s and layout_q is %s, layout_out must be TND, but got %s",
+        OP_LOGE(qfaInfo.opName, "When quant_mode is %s and layout_q is %s, layout_out is not supported, but got %s",
                 quantModeStr.c_str(), qLayoutStr.c_str(), QfaLayoutToSerialString(qfaInfo.outLayout).c_str()),
         return ge::GRAPH_FAILED);
 
@@ -616,9 +631,20 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
         std::find(config.supportedQDescaleLayouts.begin(), config.supportedQDescaleLayouts.end(),
                   qfaInfo.layoutQDescale) == config.supportedQDescaleLayouts.end(),
         OP_LOGE(qfaInfo.opName,
-                "When quant_mode is %s and layout_q is %s, layout_q_descale must be in {TND, N2TGD}, but got %s",
+                "When quant_mode is %s and layout_q is %s, layout_q_descale is not supported, but got %s",
                 quantModeStr.c_str(), qLayoutStr.c_str(), QfaLayoutToSerialString(qfaInfo.layoutQDescale).c_str()),
         return ge::GRAPH_FAILED);
+
+    if (config.requireLayoutConsistent) {
+        OP_CHECK_IF(qfaInfo.qLayout != qfaInfo.kvLayout || qfaInfo.qLayout != qfaInfo.outLayout,
+                    OP_LOGE(qfaInfo.opName,
+                            "When quant_mode is %s, layout_q, layout_kv and layout_out must be the same, "
+                            "but got layout_q=%s, layout_kv=%s, layout_out=%s",
+                            quantModeStr.c_str(), qLayoutStr.c_str(),
+                            QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),
+                            QfaLayoutToSerialString(qfaInfo.outLayout).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -664,11 +690,16 @@ void QuantChecker::SetQfaShapeCompare(const QfaTilingInfo &qfaInfo)
 
 ge::graphStatus QuantChecker::CheckQueryShape(const QfaTilingInfo &qfaInfo) const
 {
-    // q: TND -> (Q_T, Q_N, D)
+    // q: TND -> (Q_T, Q_N, D)  BSND -> (B, S, Q_N, D) BNSD -> (B, Q_N, S, D)
     QfaTilingShapeCompareParam shapeParams;
-    shapeParams.T = qfaInfo.qTSize;
     shapeParams.N = qfaInfo.n1Size;
     shapeParams.D = qfaInfo.qkHeadDim;
+    if (qfaInfo.qLayout == QfaLayout::TND) {
+        shapeParams.T = qfaInfo.qTSize;
+    } else if (qfaInfo.qLayout == QfaLayout::BSND || qfaInfo.qLayout == QfaLayout::BNSD) {
+        shapeParams.B = qfaInfo.bSize;
+        shapeParams.S = qfaInfo.s1Size;
+    }
     return queryShapeCmp_->CompareShape(shapeParams, __func__);
 }
 
@@ -685,6 +716,9 @@ ge::graphStatus QuantChecker::CheckKVShape(const QfaTilingInfo &qfaInfo) const
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD || qfaInfo.kvLayout == QfaLayout::PA_NZ) {
         shapeParams.Bn = qfaInfo.totalBlockNum;
         shapeParams.Bs = qfaInfo.blockSize;
+    } else if (qfaInfo.kvLayout == QfaLayout::BSND || qfaInfo.kvLayout == QfaLayout::BNSD) {
+        shapeParams.B = qfaInfo.bSize;
+        shapeParams.S = qfaInfo.s2Size;
     }
     // PA_NZ k/v: D0=32, shape 为 (Bn, KV_N, D/32, Bs, 32)
     if (qfaInfo.kvLayout == QfaLayout::PA_NZ) {
@@ -705,11 +739,17 @@ ge::graphStatus QuantChecker::CheckKVShape(const QfaTilingInfo &qfaInfo) const
 
 ge::graphStatus QuantChecker::CheckAttnOutShape(const QfaTilingInfo &qfaInfo) const
 {
-    // attn_out: TND -> (Q_T, Q_N, D)，D 取 vHeadDim（反量化后输出 dtype 为 BF16）
+    // attn_out: TND -> (Q_T, Q_N, D)，BSND -> (B, S, Q_N, D) BNSD -> (B, Q_N, S, D)
+    // D 取 vHeadDim（反量化后输出 dtype 为 BF16）
     QfaTilingShapeCompareParam shapeParams;
-    shapeParams.T = qfaInfo.qTSize;
     shapeParams.N = qfaInfo.n1Size;
     shapeParams.D = qfaInfo.vHeadDim;
+    if (qfaInfo.outLayout == QfaLayout::TND) {
+        shapeParams.T = qfaInfo.qTSize;
+    } else if (qfaInfo.outLayout == QfaLayout::BSND || qfaInfo.outLayout == QfaLayout::BNSD) {
+        shapeParams.B = qfaInfo.bSize;
+        shapeParams.S = qfaInfo.s1Size;
+    }
     return attnOutShapeCmp_->CompareShape(shapeParams, __func__);
 }
 
