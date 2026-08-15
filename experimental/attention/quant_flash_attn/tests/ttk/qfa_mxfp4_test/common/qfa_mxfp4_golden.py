@@ -648,8 +648,8 @@ def generate_data():
         )
 
         # V 按 act_seq_lens_kv 分批量化: padding 区域 packed 填 0, descale 只覆盖有效区域.
-        # n_blocks 基于有效长度 (s2_effective), 不是物理 S; packed 的 S 维用物理 S (s2).
-        # 统一走分 batch 量化, 保证 v_descale shape 与 CSV (基于 max(act)/64) 一致.
+        # v_descale 的 S 维基于 s2_effective (= max(act_kv)), 与 NPU kernel stride
+        # (基于 maxSeqlenKv) 及 metadata 校验 (ceil(max(seqused_kv)/64)) 对齐.
         n_blocks_effective = (s2_effective + 31) // 32
         packed_value_list = []
         v_descale_list = []
