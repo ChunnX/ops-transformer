@@ -454,7 +454,7 @@ public:
         constexpr uint32_t softmaxBufElementCount = UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T);
         LocalTensor<T> sumUb = softmaxSumBuf_[slotIdx * softmaxBufElementCount];
         LocalTensor<T> maxUb = softmaxMaxBuf_[slotIdx * softmaxBufElementCount];
-        if (constInfo_.learnableSinkFlag && !runInfo.headS2Split) {
+        if (constInfo_.learnableSinkFlag && runInfo.isFirstFdBlock) {
             Duplicate<T>(sumUb, static_cast<T>(1), softmaxBufElementCount);
 
             uint32_t gs1Start = runInfo.gS1Idx + runInfo.vecMbaseIdx;

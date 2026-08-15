@@ -100,6 +100,7 @@ public:
     uint32_t mloop_ = 0;
     bool headS2Split_ = false;
     bool tailS2Split_ = false;
+    uint32_t s2FirstToken_ = 0;
 
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionNoQuantGqaKernelNd()
@@ -344,6 +345,7 @@ public:
 
     __aicore__ inline void CalcCurS2StartEndNoSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
+        s2FirstToken_ = 0;
         curS2Start_ = 0U;
         curS2End_ = (static_cast<uint32_t>(actSeqLensKv_) + s2BaseSize - 1) / s2BaseSize;
 
@@ -360,6 +362,7 @@ public:
 
     __aicore__ inline void CalcCurS2StartEndWithSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
+        s2FirstToken_ = 0;
         // 1. Calc preTokenLeftUp, nextTokenLeftUp
         int64_t preTokenLeftUp = 0;
         int64_t nextTokenLeftUp = 0;
@@ -398,11 +401,13 @@ public:
         if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv_) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
             curS2Start_ = 0U;
             curS2End_ = 0U;
+            s2FirstToken_ = s2FirstToken;
             return;
         }
         // get valid range
         s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv_ - 1));
         s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv_ - 1));
+        s2FirstToken_ = s2FirstToken;
 
         s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / s2BaseSize;
         s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / s2BaseSize + 1U;
@@ -478,6 +483,7 @@ public:
     {
         info.loop = loop;
         info.mloop = mloop_;
+        info.isFirstFdBlock = (s2Cur == (s2FirstToken_ / s2BaseSize));
         info.bIdx = bN2Cur / constInfo_.n2Size;
         info.n2Idx = bN2Cur % constInfo_.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
@@ -515,7 +521,6 @@ public:
         info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start_));
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
-        info.headS2Split = headS2Split_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End_);
         info.actVecMSize = (info.actMSize + 1) >> 1;
         info.vecMbaseIdx = 0;
