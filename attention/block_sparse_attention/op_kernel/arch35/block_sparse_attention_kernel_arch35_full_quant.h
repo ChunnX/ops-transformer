@@ -438,6 +438,23 @@ public:
                         uint32_t kvDequantScaleOffsetSm =
                             curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndexSm;
                         float vDequantScaleValueSm = gVDequantScale.GetValue(kvDequantScaleOffsetSm);
+                        // vScalePrev（比值记账）：上一 tile（t-1）的 deqscaleV。
+                        // ★ 索引裁决：用 SM 侧 gatheredKvSTileIdx（软 max 的 t），与 vScaleCurr 同侧——
+                        // diag 块按 softmax 自身 tile 索引落 L1 缓冲（l1PBufId = t % 3），被同 tile 的
+                        // PV RE（l1DiagBufId = tDe % 3，tDe = t - PRE_LAUNCH，模 3 轮转下与 t 同余）消费，
+                        // PRE_LAUNCH 只错开执行时刻、不改变 diag 与 tile 的配对关系。t=0 传 1.0f 占位
+                        // （首块无 diag，不会调用）。
+                        float vDequantScaleValueSmPrev = 1.0f;
+                        if (gatheredKvSTileIdx > 0) {
+                            uint32_t yBlockIndexOffsetSmPrev =
+                                ((gatheredKvSTileIdx - 1) * kvBaseTile_) / blockShapeY_;
+                            uint32_t yBlockIndexSmPrev =
+                                gSparseIdx[gmOffsetSparseIdx].GetValue(yBlockIndexOffsetSmPrev);
+                            uint32_t kvDequantScaleOffsetSmPrev =
+                                curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ +
+                                yBlockIndexSmPrev;
+                            vDequantScaleValueSmPrev = gVDequantScale.GetValue(kvDequantScaleOffsetSmPrev);
+                        }
                         AscendC::printf("tkd online softmax rescael on cube\n");
                         epilogueOnlineSoftmax(
                             l1PTensorTla,
@@ -448,7 +465,8 @@ public:
                             mm1ToSmFlag,
                             smToMm2Flag,
                             l1DiagTensor[l1PBufId],
-                            vDequantScaleValueSm);
+                            vDequantScaleValueSm,
+                            vDequantScaleValueSmPrev);
                     } else {
                         // 旧路径（FP8 ND）：ND softmax 7 参签名，无 diag/vScale
                         epilogueOnlineSoftmax(
@@ -507,8 +525,11 @@ public:
                             resource.l1Buf.template GetBufferByByte<float>(l1GoAddrStart_);
                         auto l1GoLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(embed_, qBaseTile_);
                         auto l1GoTensorTla = tla::MakeTensor(l1GoTensor, l1GoLayoutTla, Arch::PositionL1{});
+                        // 写侧 C1 视图（DataCopy CO1→C1 要求 C1 位置标签；与 A1 视图同一物理 L1，零拷贝双视图）
+                        auto l1GoTensorTlaC1 = tla::MakeTensor(l1GoTensor, l1GoLayoutTla, Arch::PositionC1{});
                         AscendC::printf("tkd mmad pv rescael on cube\n");
-                        blockMmadPV(gmVTensorTla, ubGoTensorTla, l1GoTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapePV,
+                        blockMmadPV(gmVTensorTla, ubGoTensorTla, l1GoTensorTla, l1GoTensorTlaC1,
+                                    gSparseIdx[gmOffsetSparseIdx], actualBlockShapePV,
                                     gatheredKvSTileIdxDe, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
                                     prefixSumL0AStages, prefixSumL0BStages, smToMm2Flag, mm2ToReFlag,
                                     (gatheredKvSTileIdxDe == 0), (gatheredKvSTileIdxDe == kvSLoopNum - 1), deqScalar);

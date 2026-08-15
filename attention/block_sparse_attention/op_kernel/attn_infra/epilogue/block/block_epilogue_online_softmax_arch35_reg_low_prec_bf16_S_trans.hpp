@@ -104,7 +104,8 @@ public:
         uint32_t isFirstKvSTile, uint32_t ubSBufId, uint32_t l1PBufId,
          Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag,
          AscendC::LocalTensor<float> l1DiagTensor = AscendC::LocalTensor<float>(),
-         float vScale = 1.0f)
+         float vScale = 1.0f,
+         float vScalePrev = 1.0f)   // 上一 tile 的 deqscaleV（比值记账 diag(dm·vS_{t-1}/vS_t)，t=0 占位不用）
     {
         uint32_t nCopyOffset =
             FULL_QUANT_FP8 ? RoundUp(actualBlockShape.m(), 64) / 2 : RoundUp(actualBlockShape.m(), 32) / 2;
@@ -247,13 +248,13 @@ public:
                 __ubuf__ float *diagUbAddr = (__ubuf__ float *)diagUbTensor[l1PBufId].GetPhyAddr();
                 if (diagDmTileNum == 0) {
                     SetDiagonalDeltaMax<MAlignedTileNum::Zero>(diagUbAddr, dmUbAddr, diagDmRound, diagDmFirstTile,
-                                                               vScale);
+                                                               vScale, vScalePrev);
                 } else if (diagDmTileNum == 1) {
                     SetDiagonalDeltaMax<MAlignedTileNum::One>(diagUbAddr, dmUbAddr, diagDmRound, diagDmFirstTile,
-                                                              vScale);
+                                                              vScale, vScalePrev);
                 } else {
                     SetDiagonalDeltaMax<MAlignedTileNum::Two>(diagUbAddr, dmUbAddr, diagDmRound, diagDmFirstTile,
-                                                              vScale);
+                                                              vScale, vScalePrev);
                 }
                 // VF 写完成 → MTE3 可读（P 对称组，tile 内自足无需预置；V_MTE3 通道 2/3/4 为 diag 专用）
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2 + l1PBufId);
@@ -777,12 +778,14 @@ private:
     // 参考 P 的 mAligned16TileNum 分派保证双发射：行 i 与行 i+diagDmRound/2 双发写
     // diagDmUb0（前 diagDmRound/2 行区）/ diagDmUb1（后 diagDmRound/2 行区，偏移 4×diagDmRound 元素）
     // （P 的 pUb0/pUb1 双指针模式，各自 POST_MODE_UPDATE 前进）
-    // 注：÷vScale（diag(dm/vScale) 语义）在 LoadAlign 后对 dmVreg 整体 Div 一次（VL64 全宽），
-    // 与 CUBE 侧 FixPipe 的 deqScalar=vScale 对消（设计文档 §2.3 记账）
+    // 注：比值记账 —— 中间块 GO^T 落 L1 改用 DataCopy（CO1→C1）保形、无随路反量化（deqScalar 不生效），
+    // diag = dm·vS_{t-1}/vS_t（上一轮 ×、当前轮 ÷）：GO 全程 raw 域，末块 Fixpipe 的 deqScalar=vS_t
+    // 一次 ×vScale 摆平两项；比值 vS_{t-1}/vS_t 恒消，对 vScale 逐 tile 变化鲁棒；
+    // vScale 恒定（=1）时退化为旧 ÷vScale 语义
     template <MAlignedTileNum diagDmTileNum>
     __simd_vf__ inline void SetDiagonalDeltaMax(__ubuf__ float *diagonalDmUb, __ubuf__ float *dmUb,
                                                 uint32_t diagDmRound, uint32_t diagDmFirstTile,
-                                                float vDequantScaleValue)
+                                                float vDequantScaleValue, float vScalePrevValue)
     {
         using namespace AscendC::MicroAPI;
 
@@ -790,14 +793,16 @@ private:
         RegTensor<float> diagDmVreg0;
         RegTensor<float> diagDmVreg1;
         RegTensor<float> allZeroVreg;
-        RegTensor<float> vScaleVreg;
+        RegTensor<float> vScaleRatioVreg;
         Duplicate(allZeroVreg, 0);
         MaskReg maskReg32VL64 = CreateMask<float, MaskPattern::VL64>();
 
         LoadAlign(dmVreg, dmUb);
-        // 标量 vScale 先 Duplicate 成寄存器再真除（Div 全张量形式，无标量重载；VL64 全宽）
-        Duplicate(vScaleVreg, vDequantScaleValue);
-        Div(dmVreg, dmVreg, vScaleVreg, maskReg32VL64);
+        // 标量比值 vS_prev/vS_curr 先算出（Aux Scalar 执行），Duplicate 后整体乘一次（VL64 全宽）：
+        // diag(dm·vS_prev/vS_curr)；vScale 由 host 校验非 0，防御分支保底
+        Duplicate(vScaleRatioVreg,
+                  (vDequantScaleValue != 0.0f) ? (vScalePrevValue / vDequantScaleValue) : 1.0f);
+        Mul(dmVreg, dmVreg, vScaleRatioVreg, maskReg32VL64);
 
         __ubuf__ float *diagDmUb0 = diagonalDmUb;
         __ubuf__ float *diagDmUb1 = diagonalDmUb + 4 * diagDmRound; // diagDmRound/2 * 8(element per datablock)

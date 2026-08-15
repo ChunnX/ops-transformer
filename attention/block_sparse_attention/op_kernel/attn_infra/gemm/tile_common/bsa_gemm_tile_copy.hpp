@@ -199,6 +199,14 @@ struct PackedTileCopyTlaToUB : public PackedTileCopyTla<ArchTag, ElementA_, Layo
     template <class TensorC>
     using CopyL0CToDst =
         Gemm::Tile::CopyL0CToUBTla<ArchTag, TensorL0C, TensorC, CopyMode, DEQUANT_GRANULARITY, ReluEnable>;
+
+    // 重写 CopyL0CToL1：基类 PackedTileCopyTla 的 DEQUANT_GRANULARITY 未透传（继承时只传 8 参，
+    // 落默认 NO_QUANT），而调用方（FP8 新 PV 的 TileCopyPV）是 PER_TENSOR——必须在此用本类的
+    // DEQUANT_GRANULARITY 重写，否则实例化 NO_QUANT 版（特化已删）→ primary static_assert。
+    // 仅 FP8+DN+rescaleOnCube 场景使用（唯一调用点 block_mmad_pv_transposed_rescale_arch35.hpp 中间块分支）
+    template <class TensorC>
+    using CopyL0CToL1 =
+        Gemm::Tile::CopyL0CToL1Tla<ArchTag, TensorL0C, TensorC, DEQUANT_GRANULARITY, ReluEnable>;
 };
 #endif
 

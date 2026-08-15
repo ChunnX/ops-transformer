@@ -14,10 +14,12 @@
  * A full p base tile is loaded to L1 from UB(softmax), no workspace transit
  * A full v base tile is loaded to L1 from GM，relavent instructions launched before p base tile crossCore wait
  * PV is computed in transposed form: C' = (V)^T * (P)^T, C' is [D, qS] on L0C (split n by subcore: [D, qS/2])
- * rescale is fused as: C' += (GO_prev)^T * diag(dm/vScale), accumulated on the same L0C tile
- * FixPipe paths by tile type:
- *   first/middle: CFG_NZ -> L1 (GO^T keeps transposed & Nz, no conversion, deqScalar=vScale applied)
- *   last:         CFG_COLUMN_MAJOR (NZ2DN) -> UB (output is row-major [qS, D], deqScalar=vScale applied)
+ * rescale is fused as: C' += (GO_prev)^T * diag(dm·vS_{t-1}/vS_t), accumulated on the same L0C tile
+ * （比值记账：中间块 GO^T 落 L1 = raw 域保形（DataCopy 无随路反量化），diag 用上一轮/当前轮
+ *  vScale 比值补偿，末块 Fixpipe 的 deqScalar=vScale 一次归位——vScale 逐 tile 变化时比值精确消元）
+ * DataCopy paths by tile type:
+ *   first/middle: DataCopy CO1->C1 (channelSplit, NZ 保形, raw 域, 无 deqScalar)
+ *   last:         Fixpipe CFG_COLUMN_MAJOR (NZ2DN) -> UB (output is row-major [qS, D], deqScalar=vScale applied)
  * The whole module keeps the transposed view: A = (GO_i)^T is exactly the previous C output [D, qS].
  */
 #ifndef GEMM_BLOCK_PV_TRANSPOSED_RESCALE_ARCH35_HPP
@@ -111,7 +113,9 @@ public:
     // 注：双子核块宽 = qS/2 为运行期值（qPerSubCore_ 成员），qS ≤ 128 且为偶数（tiling 约束）
     static constexpr bool rescaleOnCube = DispatchPolicy::rescaleOnCube;
     // GO^T 的 L1 写完成事件（FIX_M 的空闲 id，l0C 释放用 0-3）：
-    // 中间块 FixPipe(CFG_NZ→L1) 后 set、非首块 RE 读 GO^T 前 wait——严格交替，单 id 即可
+    // 中间块 DataCopy（CO1→C1）后 set、非首块 RE 读 GO^T 前 wait——严格交替，单 id 即可。
+    // DataCopy（CO1→C1）与 Fixpipe 同属 CO1 搬出引擎（FIX 域，共用 Fixpipe 寄存器体系），
+    // 完成事件仍用 FIX_MTE1（FIX→MTE1：CO1 写 L1 完成 → MTE1 可读 L1）
     static constexpr uint32_t GO_READY_EVENT_ID = 4;
 
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementA, fp8_e4m3fn_t>::value;
@@ -257,9 +261,9 @@ public:
         }
     }
 
-    template <class TensorB, class TensorC, class TensorGo>
+    template <class TensorB, class TensorC, class TensorGo, class TensorGoC1>
     __aicore__ inline
-    void operator()(TensorB &gBTensor, TensorC &ubCTensor, TensorGo &l1GoTensorTla,
+    void operator()(TensorB &gBTensor, TensorC &ubCTensor, TensorGo &l1GoTensorTla, TensorGoC1 &l1GoTensorTlaC1,
                     AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
                     GemmCoord actualOriShape,
                     uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
@@ -529,11 +533,15 @@ public:
             // crossCoreSync after all fixPipe move
             SetCrossCoreSync<4, PIPE_FIX>(mm2ToReFlag);
         } else {
-            // 首/中间块：NZ 保形反量化落 L1 作为下一块 GO^T（倒置状态保持，零转换）
-            // dst 直接用模板参数 TensorGo（kernel 构造的 GO^T TLA，与末块 go 的 TensorC 模式一致）
-            using CopyL0CToL1 = typename TileCopy::template CopyL0CToL1<TensorGo>;
+            // 首/中间块：NZ 保形落 L1 作为下一块 GO^T（倒置状态保持，零转换，raw 域——比值记账在 softmax 侧）
+            // 通路：DataCopy（CO1→C1，channelSplit）——950 的 L0C fractal = 16×16 元素（fp32 64B/C0），
+            // L1 标准 NZ = 32B/C0（fp32 16×8）；Fixpipe 的 channelSplit 仅 L0C→GM 有效，L0C→L1 无法做
+            // 该 16×16→16×8 切分；DataCopyCO12Dst 是唯一正确通路（dst 位置标签必须为 C1）。
+            // 写侧 C1 视图（kernel 传入的 l1GoTensorTlaC1，与 RE 读侧 A1 视图同一物理 L1，零拷贝双视图）
+            using CopyL0CToL1 = typename TileCopy::template CopyL0CToL1<TensorGoC1>;
             CopyL0CToL1 copyL0CToL1;
-            copyL0CToL1(l1GoTensorTla, l0CTensorTla, deqScalar);
+            // deqScalar 在 CO1→C1 通路不生效（保形，比值记账在 softmax 侧），不传
+            copyL0CToL1(l1GoTensorTlaC1, l0CTensorTla);
             // GO^T L1 写完成 → 非首块 RE 读前 wait（只能在此分支 set：末块 NZ2DN→UB 与 GO^T 无关，
             // 若统一在尾部 set，跨 task 时 RE 会 wait 到无关的 UB 写完成而提前通过）
             AscendC::SetFlag<AscendC::HardEvent::FIX_MTE1>(GO_READY_EVENT_ID);

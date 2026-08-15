@@ -8,6 +8,15 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/**
+ * @brief L0C -> L1（CO1->C1）数据搬运：DataCopy 通路 + channelSplit。
+ * 背景（950）：L0C fractal = 16×16 元素（fp32 每 C0 = 64B），L1 标准 NZ = 32B/C0（fp32 16×8）；
+ * Fixpipe 的 channelSplit 仅 L0C->GM 通路有效，L0C->L1 无法做 16×16->16×8 切分；
+ * DataCopyCO12Dst（CO1->C1）支持 channelSplit，是 L0C->L1 的正确通路（dst 位置标签必须为 C1）。
+ * 反量化：CO1->C1 的 quantPre 无 float->float 枚举，保形浮点搬移（raw 域），
+ * 记账改比值方案（diag(dm·vS_{t-1}/vS_t)，见 S_trans SetDiagonalDeltaMax）；deqScalar 本通路不生效。
+ * 仅 FP8+DN+rescaleOnCube 场景使用（唯一调用点 block_mmad_pv_transposed_rescale_arch35.hpp 中间块分支）。
+ */
 #ifndef GEMM_TILE_COPY_L0C_TO_L1_A5_HPP
 #define GEMM_TILE_COPY_L0C_TO_L1_A5_HPP
 
@@ -16,121 +25,66 @@
 #include "../../../attn_infra/gemm/tile_common/copy_l0c_to_dst.hpp"
 #include "../../../tla/tensor.hpp"
 
-#if (__CCE_AICORE__ == 310)
-// Fixpipe L0C -> L1（A1）通路：NZ 保形输出（NZ2NZ），isToUB=false
-constexpr AscendC::FixpipeConfig CFG_NZ_L1 = {AscendC::CO2Layout::NZ, false};
-#endif
-
 namespace NpuArch::Gemm::Tile {
 
-// L0C -> L1，无随路反量化废弃代码
-// L0C -> L1，NZ 保形（CFG_NZ），无量化
+#if (__CCE_AICORE__ == 310)
+// L0C -> L1（C1），NZ 保形（channelSplit），DataCopy 通路（950 官方支持）
 template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
 struct CopyL0CToL1Tla<
     NpuArch::Arch::AtlasA5,
     TensorSrc_,
-    tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::A1>,
-    ScaleGranularity::NO_QUANT,
-    ReluEnable_> {
-    using ArchTag = NpuArch::Arch::AtlasA5;
-    using ElementDst = ElementDst_;
-    using ElementSrc = typename TensorSrc_::Element;
-    static constexpr auto quantPre =
-        CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::NO_QUANT>::VALUE;
-    static constexpr auto reluEn = ReluEnable_;
-
-    template <class TensorDst, class TensorSrc>
-    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
-    {
-        static_assert(
-            TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::A1,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be L1");
-
-        AscendC::FixpipeParamsC310<AscendC::CO2Layout::NZ> intriParams;
-
-        // Fixpipe layout information
-        // 注：dst 为 zN 布局时 shape 每维 = (fractal 内元素数, fractal 数) 嵌套 tuple，
-        // 总元素数 = 两分量乘积（RowMajor/ColumnMajor 的 shape 为纯值，可直接 tla::get）
-        auto dstShape = dstTensor.shape();
-        uint32_t nSize =
-            static_cast<uint32_t>(tla::get<0>(tla::get<1>(dstShape))) * tla::get<1>(tla::get<1>(dstShape));
-        uint32_t mSize =
-            static_cast<uint32_t>(tla::get<0>(tla::get<0>(dstShape))) * tla::get<1>(tla::get<0>(dstShape));
-        intriParams.nSize = nSize;
-        intriParams.mSize = mSize;
-        intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
-        // NZ2NZ：目的 NZ 矩阵相邻 Z 排布的起始地址偏移 = mSize × C0_Size(32B) / sizeof(T)
-        // （fixpipe_l0c2l1 样例：dstStride = baseM × c0Size，c0Size 单位 B；换算成 element 即本公式）
-        intriParams.dstStride = mSize * NpuArch::BYTE_PER_C0 / sizeof(ElementDst);
-
-        // Fixpipe auxiliary arguments
-        intriParams.quantPre = quantPre;
-        intriParams.reluEn = reluEn;
-        intriParams.unitFlag = unitFlag;
-
-        auto dstOffset = dstTensor.layout()(dstTensor.coord());
-        auto srcOffset = srcTensor.layout()(srcTensor.coord());
-
-        // Call AscendC Fixpipe
-        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_NZ_L1>(
-            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
-    }
-};
-
-// L0C -> L1，NZ 保形（CFG_NZ），scalar 反量化（QF322F32_PRE）
-template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
-struct CopyL0CToL1Tla<
-    NpuArch::Arch::AtlasA5,
-    TensorSrc_,
-    tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::A1>,
+    tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::C1>,
     ScaleGranularity::PER_TENSOR,
     ReluEnable_> {
     using ArchTag = NpuArch::Arch::AtlasA5;
     using ElementDst = ElementDst_;
     using ElementSrc = typename TensorSrc_::Element;
-    static constexpr auto quantPre =
-        CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::PER_TENSOR>::VALUE;
-    static constexpr auto reluEn = ReluEnable_;
+    static_assert(AscendC::IsSameType<ElementSrc, float>::value &&
+                  AscendC::IsSameType<ElementDst, float>::value,
+        "DataCopy CO1->C1 channelSplit only supports float NZ output");
 
     template <class TensorDst, class TensorSrc>
-    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint64_t deqScalar,
-                                      uint8_t unitFlag = 0)
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor)
     {
         static_assert(
-            TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::A1,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be L1");
+            TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::C1,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be L1(C1)");
 
-        AscendC::FixpipeParamsC310<AscendC::CO2Layout::NZ> intriParams;
-
-        // Fixpipe layout information
-        // 注：dst 为 zN 布局时 shape 每维 = (fractal 内元素数, fractal 数) 嵌套 tuple，
-        // 总元素数 = 两分量乘积（RowMajor/ColumnMajor 的 shape 为纯值，可直接 tla::get）
+        AscendC::DataCopyCO12DstParams intriParams;
+        // dst 为 zN 布局时 shape 每维 = (fractal 内元素数, fractal 数) 嵌套 tuple，
+        // 总元素数 = 内层两分量乘积（与 block_epilogue_online_softmax_arch35_reg_low_prec.hpp 同款变参取法）
         auto dstShape = dstTensor.shape();
         uint32_t nSize =
-            static_cast<uint32_t>(tla::get<0>(tla::get<1>(dstShape))) * tla::get<1>(tla::get<1>(dstShape));
+            static_cast<uint32_t>(tla::get<1, 0>(dstShape)) * tla::get<1, 1>(dstShape);
         uint32_t mSize =
-            static_cast<uint32_t>(tla::get<0>(tla::get<0>(dstShape))) * tla::get<1>(tla::get<0>(dstShape));
-        intriParams.nSize = nSize;
-        intriParams.mSize = mSize;
+            static_cast<uint32_t>(tla::get<0, 0>(dstShape)) * tla::get<0, 1>(dstShape);
+        // DataCopy（CO1->C1）官方语义：
+        //   nSize：源 NZ N 方向大小（channelSplit 时 C0=8，nSize 须 8 的倍数）
+        //   mSize：源 NZ M 方向大小
+        //   srcStride：源 NZ 相邻 Z 排布起始地址偏移，单位 C0_Size（16×sizeof(T)），= mSize 对 16 向上取整
+        //   dstStride：目的 NZ 相邻 Z 排布起始地址偏移，单位 datablock（32 字节）
+        intriParams.nSize = nSize;   // qS（=qBaseTile_，8 的倍数）
+        intriParams.mSize = mSize;   // D（=embed ∈ {64,128}，16 的倍数）
         intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
-        // NZ2NZ：目的 NZ 矩阵相邻 Z 排布的起始地址偏移 = mSize × C0_Size(32B) / sizeof(T)
-        // （fixpipe_l0c2l1 样例：dstStride = baseM × c0Size，c0Size 单位 B；换算成 element 即本公式）
-        intriParams.dstStride = mSize * NpuArch::BYTE_PER_C0 / sizeof(ElementDst);
+        // dstStride（datablock 32B 单位）：L1 zN 每行恰 32B → 列块步长折合的 datablock 数 = RoundUp(mSize,16)，
+        // 与下方 stride 比值数值恒等（[RoundUp(mSize,16)×ELE_NUM_PER_C0] / ELE_NUM_PER_C0 = RoundUp(mSize,16)）；
+        // 直读写法：intriParams.dstStride = RoundUp(mSize, 16);
+        // （D∈{64,128} 时 = mSize，与官方样例公式 baseM×c0Size×sizeof/ONE_BLK_SIZE 等价）
+        intriParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / tla::get<0, 0>(dstTensor.stride());
+        intriParams.channelSplit = true;  // L0C 每个 C0（64B，16×16 fp32）拆为 2 个 L1 datablock（32B，16×8）
+        // quantPre/nz2ndEn/reluPre/unitFlag：保持默认（NoQuant 恒等、NZ2NZ、无 ReLU、无 unitFlag）
+        // ——CO1->C1 无 float 反量化枚举；官方样例仅填四参数；deqScalar 本通路不生效
+        // （raw 域保形，比值记账在 softmax 侧）
 
-        // Fixpipe auxiliary arguments
-        intriParams.quantPre = quantPre;
-        intriParams.deqScalar = deqScalar;
-        intriParams.reluEn = reluEn;
-        intriParams.unitFlag = unitFlag;
-
+        // 偏移计算与指令无关（tla 纯地址计算）：整块搬 coord=(0,0) → offset=0；GetTile 子块也能正确算
         auto dstOffset = dstTensor.layout()(dstTensor.coord());
         auto srcOffset = srcTensor.layout()(srcTensor.coord());
 
-        // Call AscendC Fixpipe
-        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_NZ_L1>(
-            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+        // Call AscendC DataCopy（CO1 -> C1）
+        AscendC::DataCopy(dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
     }
 };
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
