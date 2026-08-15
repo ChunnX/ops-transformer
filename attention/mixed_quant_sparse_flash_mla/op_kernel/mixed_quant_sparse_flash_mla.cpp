@@ -13,7 +13,12 @@
  * \brief
  */
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "mixed_quant_sparse_flash_mla_template_tiling_key.h"
 #include "arch35/mixed_quant_sparse_flash_mla_csa_kernel.h"
@@ -38,7 +43,7 @@ using namespace AscendC;
     } while (0)
 
 template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int SPLIT_G, int QUANT_MODE, int KV_DTYPE,
-    int BATCH_CONSISTENCY>
+    int BATCH_CONSISTENCY, int IS_VEC_S2PHYADDR>
  __global__ __aicore__ void mixed_quant_sparse_flash_mla(__gm__ uint8_t *query, __gm__ uint8_t *oriKV,
     __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices,
     __gm__ uint8_t* oriBlockTable, __gm__ uint8_t* cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
@@ -57,12 +62,12 @@ template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int
             fp8_e4m3fn_t, float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
             static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
             static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
-            static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE), BATCH_CONSISTENCY);
+            static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE), BATCH_CONSISTENCY, IS_VEC_S2PHYADDR);
     } else {
         QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaCsa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
             hifloat8_t, float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
             static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
             static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
-            static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE), BATCH_CONSISTENCY);
+            static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE), BATCH_CONSISTENCY, IS_VEC_S2PHYADDR);
     }
 }
