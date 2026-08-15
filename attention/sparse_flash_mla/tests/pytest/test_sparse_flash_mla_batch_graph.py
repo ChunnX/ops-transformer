@@ -101,10 +101,10 @@ def smla_graph(testcase_files):
 
     utils.save_result(result, fulfill_percent, test_data['params'], result_path)
 
-    if result == "Failed":
-        pytest.fail(f"用例精度失败:{os.path.basename(testcase_files)} 精度:{fulfill_percent:.2f}%")
     if result == "NPU ERROR":
         pytest.fail(f"用例执行失败:{os.path.basename(testcase_files)} NPU ERROR: {npu_error_msg}")
+    elif result != "Pass":
+        pytest.fail(f"用例精度失败:{os.path.basename(testcase_files)} 精度:{fulfill_percent:.2f}%")
 
 testcase_ids = [os.path.splitext(os.path.basename(f))[0] for f in locals()["testcase_files"]]
 
