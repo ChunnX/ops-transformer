@@ -586,18 +586,17 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsSdispls = numRanks * UB_ALIGN;
     int64_t wsRdispls = numRanks * UB_ALIGN;
     int64_t wsCounterScratch = static_cast<int64_t>(tilingData.aivNum) * UB_ALIGN;
-    int64_t wsFlagScratch = 32;
-    int64_t wsSegCount = static_cast<int64_t>(tilingData.aivNum) * sizeof(int32_t);
+    int64_t wsFlagScratch = UB_ALIGN;
+    int64_t wsSegCount = AlignTo(static_cast<int64_t>(tilingData.aivNum) * sizeof(int32_t), UB_ALIGN);
+    int64_t wsCoreStart = AlignTo(static_cast<int64_t>(tilingData.aivNum) * sizeof(int32_t), UB_ALIGN);
 
     int64_t maxSortCount = totalRecv;
     OP_TILING_CHECK(maxSortCount > INT64_MAX / static_cast<int64_t>(sizeof(int32_t)),
                     OP_LOGE(nodeName, "sort temp overflow: totalRecv=%ld", totalRecv),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(maxSortCount > INT64_MAX - 4095,
-                    OP_LOGE(nodeName, "sortTileCount CeilDiv overflow: totalRecv=%ld", totalRecv),
-                    return ge::GRAPH_FAILED);
     int64_t sortTempSize = (maxSortCount * sizeof(int32_t) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    int64_t sortTileCount = (maxSortCount + 4096 - 1) / 4096;
+    int64_t sortTileCountByDefault = (maxSortCount + 4096 - 1) / 4096;
+    int64_t sortTileCount = (static_cast<int64_t>(tilingData.aivNum) > sortTileCountByDefault) ? static_cast<int64_t>(tilingData.aivNum) : sortTileCountByDefault;
     int64_t wsSortTempVal = sortTempSize;
     int64_t wsSortTempIdx = sortTempSize;
     int64_t wsSortCompanion = sortTempSize;
@@ -609,15 +608,17 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsGradUniqueFp32 = totalRecv * tilingData.hiddenDim * sizeof(float);
 
     int64_t wsTotal = wsGradSorted + wsRecvGrad + wsSdispls + wsRdispls + wsCounterScratch + wsFlagScratch +
-                      wsSegCount + wsSortTotal + wsGradUniqueFp32;
+                      wsSegCount + wsCoreStart + wsSortTotal + wsGradUniqueFp32;
     wsTotal = AlignTo(wsTotal, BUFFER_ALIGNMENT);
     wsTotal += SYSTEM_NEED_WORKSPACE;
 
     workSpaces[0] = static_cast<size_t>(wsTotal);
     OP_LOGD(nodeName,
             "backward workspace: gradSorted=%ld, recvGrad=%ld, sdispls=%ld, rdispls=%ld, "
-            "counterScratch=%ld, flagScratch=%ld, total=%zu",
-            wsGradSorted, wsRecvGrad, wsSdispls, wsRdispls, wsCounterScratch, wsFlagScratch, workSpaces[0]);
+            "counterScratch=%ld, flagScratch=%ld, segCount=%ld, coreStart=%ld, sortTotal=%ld, "
+            "gradUniqueFp32=%ld, total=%zu",
+            wsGradSorted, wsRecvGrad, wsSdispls, wsRdispls, wsCounterScratch, wsFlagScratch,
+            wsSegCount, wsCoreStart, wsSortTotal, wsGradUniqueFp32, workSpaces[0]);
     return ge::GRAPH_SUCCESS;
 }
 
