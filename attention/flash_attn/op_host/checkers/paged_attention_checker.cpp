@@ -120,28 +120,28 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo
     }
 
     // PA场景下kvcache非连续stride校验 (dimIndex由parser预计算)
-    if (faInfo.kvLayout == FaLayout::PA_BBND) {
-        OP_CHECK_IF((faInfo.keyNonContigDim > 0),
-                    OP_LOGE(faInfo.opName,
-                            "In PA BBND scenarios, key only supports non-contiguous tensors in dimension 0, "
-                            "but the first non-contiguous dimension is index %d.", faInfo.keyNonContigDim),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF((faInfo.valueNonContigDim > 0),
-                    OP_LOGE(faInfo.opName,
-                            "In PA BBND scenarios, value only supports non-contiguous tensors in dimension 0, "
-                            "but the first non-contiguous dimension is index %d.", faInfo.valueNonContigDim),
-                    return ge::GRAPH_FAILED);
-    } else if (faInfo.kvLayout == FaLayout::PA_BNBD || faInfo.kvLayout == FaLayout::PA_NZ) {
-        OP_CHECK_IF((faInfo.keyNonContigDim > 1),
-                    OP_LOGE(faInfo.opName,
-                            "In PA BNBD/NZ scenarios, key only supports non-contiguous tensors in dimensions 0 or 1, "
-                            "but the first non-contiguous dimension is index %d.", faInfo.keyNonContigDim),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF((faInfo.valueNonContigDim > 1),
-                    OP_LOGE(faInfo.opName,
-                            "In PA BNBD/NZ scenarios, value only supports non-contiguous tensors in dimensions 0 or 1, "
-                            "but the first non-contiguous dimension is index %d.", faInfo.valueNonContigDim),
-                    return ge::GRAPH_FAILED);
+    if (faInfo.kvLayout == FaLayout::PA_BBND) {	 
+         OP_CHECK_IF((faInfo.keyNonContigDim > 0),	 
+                     OP_LOGE(faInfo.opName,	 
+                             "In PA BBND scenarios, key only supports non-contiguous tensors in dimension 0, "	 
+                             "but the first non-contiguous dimension is index %d.", faInfo.keyNonContigDim),	 
+                     return ge::GRAPH_FAILED);	 
+         OP_CHECK_IF((faInfo.valueNonContigDim > 0),	 
+                     OP_LOGE(faInfo.opName,	 
+                             "In PA BBND scenarios, value only supports non-contiguous tensors in dimension 0, "	 
+                             "but the first non-contiguous dimension is index %d.", faInfo.valueNonContigDim),	 
+                     return ge::GRAPH_FAILED);	 
+     } else if (faInfo.kvLayout == FaLayout::PA_BNBD || faInfo.kvLayout == FaLayout::PA_NZ) {	 
+         OP_CHECK_IF((faInfo.keyNonContigDim > 1),	 
+                     OP_LOGE(faInfo.opName,	 
+                             "In PA BNBD/NZ scenarios, key only supports non-contiguous tensors in dimensions 0 or 1, "	 
+                             "but the first non-contiguous dimension is index %d.", faInfo.keyNonContigDim),	 
+                     return ge::GRAPH_FAILED);	 
+         OP_CHECK_IF((faInfo.valueNonContigDim > 1),	 
+                     OP_LOGE(faInfo.opName,	 
+                             "In PA BNBD/NZ scenarios, value only supports non-contiguous tensors in dimensions 0 or 1, "	 
+                             "but the first non-contiguous dimension is index %d.", faInfo.valueNonContigDim),	 
+                     return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;

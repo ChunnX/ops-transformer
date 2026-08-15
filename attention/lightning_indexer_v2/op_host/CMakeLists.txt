@@ -26,4 +26,8 @@ add_ops_compile_options(
 
 if (NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE lightning_indexer_v2 ACLNNTYPE aclnn)
+    file(GLOB LIGHTNING_INDEXER_V2_CHECKER_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/checkers/*checker*.cpp
+    )
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${LIGHTNING_INDEXER_V2_CHECKER_SOURCES})
 endif()
