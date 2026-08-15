@@ -130,7 +130,7 @@ cann_ops_transformer.lightning_indexer(
 | seqused_k | Tensor | 可选 | 不同batch中k的真实使用长度。数据格式为ND。 | int32 | (b,) |
 | cmp_residual_k | Tensor | 可选 | 表示k压缩前token数量除以cmp_ratio的余数。需要在mask_mode等于3、cmp_ratio不等于1的场景下使用。数据格式为ND。 | int32 | (b,) |
 | block_table | Tensor | 可选 | 表示PageAttention中KV存储使用的block映射表。不支持空tensor。数据格式为ND。 | int32 | (b, k_s_max/block_size) |
-| output_idx_offset | Tensor | 可选 | 表示topK结果输出索引所需要加上的偏移。值必须大于0，加上偏移后topK index不能超过int32最大值。数据格式为ND。 | int32 | (b,) |
+| output_idx_offset | Tensor | 可选 | 表示topK结果输出索引所需要加上的偏移。值必须大于0，加上偏移后topK index不能超过int32最大值。数据格式为ND。 | int32 | layout_q为BSND时shape为(b,q_s,k_n)；layout_q为TND时shape为(q_t,k_n) |
 | metadata | Tensor | 可选 | 由lightning_indexer_metadata得到的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。不支持空tensor。数据格式为ND。| int32 | (1024,) |
 | max_seqlen_q | int | 可选 | q的最大序列长度。-1表示任意可能长度，默认值为-1。 | int32 | - |
 | layout_q | str | 可选 | 用于标识输入q的数据排布格式，支持BSND、TND，默认值为BSND。 | string | - |
@@ -253,7 +253,6 @@ cann_ops_transformer.lightning_indexer(
                 <li>65536 > b > 0</li>
                 <li>q_t > 0</li>
                 <li>k_t > 0</li>
-                <li>q_n > 0</li>
                 <li>k_n = 1</li>
                 <li>q_s > 0</li>
                 <li>k_s > 0</li>
@@ -484,7 +483,7 @@ mask_mode参数解释
             <td rowspan="2">
                 <ul>
                     <li>data_type支持INT</li>
-                    <li>暂不生效，仅支持-1</li>
+                    <li> 支持大于等于-1-1</li>
                     <li>默认值为-1</li>
                 </ul>
             </td>
