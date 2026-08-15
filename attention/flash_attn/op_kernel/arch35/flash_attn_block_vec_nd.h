@@ -293,16 +293,27 @@ public:
         uint32_t tailS1 = (actVecMSize - headS1) % actS1Size;
 
         uint32_t ubOffset = 0;
+        uint32_t gIdx = 0;
         if (headS1 > 0) {
-            DataCopy(sinkExpandUb[ubOffset], sinkBrcbUb[s1Start * BRCB_NUM], headS1 * BRCB_NUM);
-            ubOffset += headS1 * BRCB_NUM;
+            for (uint32_t i = 0; i < headS1; i++) {
+                DataCopy(sinkExpandUb[ubOffset], sinkBrcbUb[gIdx * BRCB_NUM], BRCB_NUM);
+                ubOffset += BRCB_NUM;
+            }
+            gIdx++;
         }
-        for (uint32_t i = 0; i < midCnt; i++) {
-            DataCopy(sinkExpandUb[ubOffset], sinkBrcbUb[0], actS1Size * BRCB_NUM);
-            ubOffset += actS1Size * BRCB_NUM;
+        for (uint32_t j = 0; j < midCnt; j++) {
+            for (uint32_t i = 0; i < actS1Size; i++) {
+                DataCopy(sinkExpandUb[ubOffset], sinkBrcbUb[gIdx * BRCB_NUM], BRCB_NUM);
+                ubOffset += BRCB_NUM;
+            }
+            gIdx++;
         }
         if (tailS1 > 0) {
-            DataCopy(sinkExpandUb[ubOffset], sinkBrcbUb[0], tailS1 * BRCB_NUM);
+            for (uint32_t i = 0; i < tailS1; i++) {
+                DataCopy(sinkExpandUb[ubOffset], sinkBrcbUb[gIdx * BRCB_NUM], BRCB_NUM);
+                ubOffset += BRCB_NUM;
+            }
+            gIdx++;
         }
     }
 
@@ -443,7 +454,7 @@ public:
         constexpr uint32_t softmaxBufElementCount = UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T);
         LocalTensor<T> sumUb = softmaxSumBuf_[slotIdx * softmaxBufElementCount];
         LocalTensor<T> maxUb = softmaxMaxBuf_[slotIdx * softmaxBufElementCount];
-        if (constInfo_.learnableSinkFlag && runInfo.faTmpOutWsPos == 0) {
+        if (constInfo_.learnableSinkFlag && !runInfo.headS2Split) {
             Duplicate<T>(sumUb, static_cast<T>(1), softmaxBufElementCount);
 
             uint32_t gs1Start = runInfo.gS1Idx + runInfo.vecMbaseIdx;

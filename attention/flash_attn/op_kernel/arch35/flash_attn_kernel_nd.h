@@ -515,6 +515,7 @@ public:
         info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start_));
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
+        info.headS2Split = headS2Split_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End_);
         info.actVecMSize = (info.actMSize + 1) >> 1;
         info.vecMbaseIdx = 0;

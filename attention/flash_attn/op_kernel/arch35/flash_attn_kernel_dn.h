@@ -515,6 +515,7 @@ public:
         info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start_));
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
+        info.headS2Split = headS2Split_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End_);
         info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
         info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
