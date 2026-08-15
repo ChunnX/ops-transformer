@@ -900,12 +900,8 @@ ge::graphStatus QuantChecker::CheckShapeMatch(const QfaTilingInfo &qfaInfo)
 ge::graphStatus QuantChecker::CheckFeature(const QfaTilingInfo &qfaInfo)
 {
     // 文档"特性交叉校验"列(rowspan=5)包含三项:
-    //   1. 非连续 Tensor 支持
-    //   2. Layout 校验(layout 匹配关系表, 含 layout_q_descale)
-    //   3. q/k/v/attn_out shape 校验(shape 匹配关系表)
-    if (CheckNonContiguousSupport(qfaInfo) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
+    //   1. Layout 校验(layout 匹配关系表, 含 layout_q_descale)
+    //   2. q/k/v/attn_out shape 校验(shape 匹配关系表)
     if (CheckLayoutConstraint(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }

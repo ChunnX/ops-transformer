@@ -269,9 +269,9 @@ public:
         keyPtr_ = key;
         valuePtr_ = value;
         InitKVBuffer(constInfo_.bSize, constInfo_.s2Size, constInfo_.n2Size, constInfo_.blockSize, constInfo_.dSize,
-                     keyGm_, key);
+                     keyGm_, key, constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
         InitKVBuffer(constInfo_.bSize, constInfo_.s2Size, constInfo_.n2Size, constInfo_.blockSize, constInfo_.dSizeV,
-                     valueGm_, value);
+                     valueGm_, value, constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
         InitKScaleBuffer(constInfo_.bSize, constInfo_.s2Size, constInfo_.n2Size, constInfo_.blockSize,
                          dBaseSize / MXFP_GROUP_SIZE, keyScaleGm_, dequantScaleKey);
         InitVScaleBuffer(constInfo_.bSize, constInfo_.s2Size / MXFP_DIVISOR_SIZE, constInfo_.n2Size,
@@ -303,17 +303,17 @@ public:
 
     __aicore__ inline void InitKVBuffer(uint32_t batchSize, uint32_t kvSeqSize, uint32_t n2Size,
                                         uint32_t kvCacheBlockSize, uint32_t headDim, FaGmTensorKV &kvGmTensor,
-                                        __gm__ uint8_t *gm)
+                                        __gm__ uint8_t *gm, uint64_t bnStride, uint64_t n2Stride)
     {
         kvGmTensor.gmTensor.SetGlobalBuffer((__gm__ KV_T *)gm);
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm_,
-                                             constInfo_.maxBlockNumPerBatch);
+                                             constInfo_.maxBlockNumPerBatch, bnStride, n2Stride);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
             uint32_t d0 = 32 / sizeof(KV_T);
             uint32_t d1 = headDim / d0;
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm_,
-                                             constInfo_.maxBlockNumPerBatch);
+                                             constInfo_.maxBlockNumPerBatch, bnStride, n2Stride);
         } else if constexpr (KV_NEEDS_WZH) {
             kvGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr_);
         } else {
@@ -329,12 +329,14 @@ public:
         kScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ SCALE_T *)gm);
         if constexpr (GmLayoutParams<K_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
             kScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm_,
-                                                 constInfo_.maxBlockNumPerBatch);
+                                                 constInfo_.maxBlockNumPerBatch, constInfo.kDescaleStrides.bnStride,
+ 	                                             constInfo.kDescaleStrides.n2Stride);
         } else if constexpr (GmLayoutParams<K_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_K_SCALE_PA_NZ) {
             uint32_t bs0 = 32 / sizeof(KV_T);
             uint32_t kvCacheBlockSize1 = kvCacheBlockSize / bs0 * MXFP_MULTI_BASE_SIZE;
             kScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize1, headDim / MXFP_MULTI_BASE_SIZE, bs0,
-                                                 blockTableGm_, constInfo_.maxBlockNumPerBatch);
+                                                 blockTableGm_, constInfo_.maxBlockNumPerBatch,
+                                                 constInfo.kDescaleStrides.bnStride, constInfo.kDescaleStrides.n2Stride);
         } else if constexpr (KV_NEEDS_WZH) {
             kScaleGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr_);
         } else {
@@ -350,12 +352,14 @@ public:
         vScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ SCALE_T *)gm);
         if constexpr (GmLayoutParams<V_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
             vScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm_,
-                                                 constInfo_.maxBlockNumPerBatch);
+                                                 constInfo_.maxBlockNumPerBatch, constInfo.vDescaleStrides.bnStride,
+ 	                                             constInfo.vDescaleStrides.n2Stride);
         } else if constexpr (GmLayoutParams<V_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
             uint32_t d0 = 32 / sizeof(KV_T);
             uint32_t d1 = headDim / d0;
             vScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm_,
-                                                 constInfo_.maxBlockNumPerBatch);
+                                                 constInfo_.maxBlockNumPerBatch, constInfo.vDescaleStrides.bnStride,
+ 	                                             constInfo.vDescaleStrides.n2Stride);
         } else if constexpr (KV_NEEDS_WZH) {
             vScaleGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr_);
         } else {
