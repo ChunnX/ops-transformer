@@ -57,8 +57,9 @@ public:
     using ElementS = std::conditional_t<IS_QUANT, float, half>;
     using SType = Catlass::Gemm::GemmType<ElementS, LayoutS>;
 
-    // int8 的 K 源是每 stile 复用的 per-core scratch，保持 2 级 L1B 流水（3 级实测竞态崩溃）。
-    using BlockMmad = MsaBlockMmad<QType, KType, SType, IS_QUANT ? 2U : 3U>;
+    // int8 的 K 源是每 stile 复用的 per-core scratch，保持 2 级 L1B 流水（3 级实测竞态崩溃）；
+    // 同样出于该 scratch 的时序保守性，unit flag 只在非量化路径开启。
+    using BlockMmad = MsaBlockMmad<QType, KType, SType, IS_QUANT ? 2U : 3U, !IS_QUANT>;
 
     static constexpr uint32_t REVERSE_DEPTH = MSA_WORKSPACE_STAGES - 1;
     static constexpr uint32_t STILE_WIDTH = MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE;
@@ -234,13 +235,15 @@ private:
             if constexpr (IS_QUANT_V) {
                 const uint64_t scratchOff = kScratchBase + static_cast<uint64_t>(j) * pageStride;
                 blockMmad(gQuery_[qOffset], layoutQ, gKeyScratch_[scratchOff], layoutK,
-                          gWorkspace_[sBase + j * MSA_BLOCK_SIZE], layoutS, shape, needLoadL1);
+                          gWorkspace_[sBase + static_cast<uint64_t>(j) * MSA_BLOCK_SIZE], layoutS,
+                          shape, needLoadL1);
             } else {
                 const int32_t page =
                     gBlockTable_.GetValue(task.batchIdx * tiling_->maxBlocksPerBatch + blk);
                 const uint64_t kOffset = static_cast<uint64_t>(page) * tiling_->strideKvBlock;
                 blockMmad(gQuery_[qOffset], layoutQ, gKeyFp_[kOffset], layoutK,
-                          gWorkspace_[sBase + j * MSA_BLOCK_SIZE], layoutS, shape, needLoadL1);
+                          gWorkspace_[sBase + static_cast<uint64_t>(j) * MSA_BLOCK_SIZE], layoutS,
+                          shape, needLoadL1);
             }
             needLoadL1 = false;
         }
@@ -284,6 +287,7 @@ private:
 #else
             constexpr bool dbgTask = false;
 #endif
+            epilogue.BeginTask(task, subIdx, subBlockNum);
             for (uint32_t st = 0; st < task.numComputeSTiles; ++st) {
                 if constexpr (IS_QUANT_V) {
                     // AIV0 写 scratch；AIV0/AIV1 barrier 后双方都 Set，满足 1:2 MIX 握手。
@@ -305,6 +309,7 @@ private:
                 epilogue.ProcessSTile(gWorkspace_[0], task, st * MSA_BLOCKS_PER_STILE, subIdx,
                                       subBlockNum, false);
             }
+            epilogue.EndTask();
         }
         AscendC::PipeBarrier<PIPE_ALL>();
     }
