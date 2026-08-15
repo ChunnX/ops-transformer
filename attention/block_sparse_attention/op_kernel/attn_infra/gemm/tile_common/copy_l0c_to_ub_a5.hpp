@@ -77,6 +77,7 @@ struct CopyL0CToUBTla<
             dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
     }
     
+    // MmadQk+ND+非量化+混合精度 / MmadQk+DN+非量化+混合精度
     template <class TensorDst, class TensorSrc>
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, bool subBlockId, uint8_t unitFlag = 0)
     {
@@ -126,6 +127,7 @@ struct CopyL0CToUBTla<
         CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::NO_QUANT>::VALUE;
     static constexpr auto reluEn = ReluEnable_;
 
+    // MmadPv+非量化
     template <class TensorDst, class TensorSrc>
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
     {
@@ -174,6 +176,7 @@ struct CopyL0CToUBTla<
         CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::NO_QUANT>::VALUE;
     static constexpr auto reluEn = ReluEnable_;
 
+    // MmadQk+DN+非量化+高精度
     template <class TensorDst, class TensorSrc>
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
     {
@@ -222,6 +225,7 @@ struct CopyL0CToUBTla<
         CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::PER_TENSOR>::VALUE;
     static constexpr auto reluEn = ReluEnable_;
 
+    // MmadQk+DN+全量化FP8+混合精度 / MmadQk+DN+全量化FP8+混合精度 / MmadPv+ND+全量化FP8+混合精度
     template <class TensorDst, class TensorSrc>
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint64_t deqScalar,
                                       bool subBlockId, uint8_t unitFlag = 0)
@@ -312,6 +316,7 @@ struct CopyL0CToUBTla<
 // L0C -> UB，NZ2DN（CFG_COLUMN_MAJOR），scalar 反量化（QF322F32_PRE）
 // dst 为 ColumnMajor（DN）布局；输出 DN[D,qS] 的内存序即 row-major [qS,D]
 // CopyMode 键与 TileCopyPV 一致（NO_SPLIT），硬件行为由 dualDstCtl=0 单目标 + subBlockId 控制
+// MmadPv+DN+RescaleOnCube+全量化FP8+混合精度
 template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
 struct CopyL0CToUBTla<
     NpuArch::Arch::AtlasA5,
@@ -341,12 +346,14 @@ struct CopyL0CToUBTla<
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::COLUMN_MAJOR> intriParams;
 
+
+        AscendC::printf("tkd mmadpv l0ctoub nd2dn");
         // Fixpipe layout information
         intriParams.nSize = tla::get<1>(dstTensor.shape());
         intriParams.mSize = tla::get<0>(dstTensor.shape());
         intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
         // NZ2DN：目的 DN 矩阵每一行中的元素个数（element 单位）= mSize
-        intriParams.dstStride = tla::get<0>(dstTensor.shape());
+        intriParams.dstStride = tla::get<1>(dstTensor.stride());
 
         // NZ2DN 随路转换参数（TransformParams<COLUMN_MAJOR>::PARAMS = Nz2DnParams）
         // dnNum=1：srcNzMatrixStride/dstDnMatrixStride 置 0 不生效；srcNzC0Stride 必须非 0，=1 时兼容 unitFlag
