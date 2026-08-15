@@ -306,10 +306,20 @@ public:
                          constInfo.dSize / MXFP_GROUP_SIZE, qSeqLensTool, queryScaleGm, dequantScaleQuery);
         InitKScaleBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize,
                          constInfo.dSize / MXFP_GROUP_SIZE, kvSeqLensTool, keyScaleGm, dequantScaleKey);
+<<<<<<< HEAD
 
         InitVScaleBuffer(
             constInfo.bSize, static_cast<uint32_t>((constInfo.maxSeqlenKv + 63) / 64 * 64 / (2 * MXFP_GROUP_SIZE)),
             constInfo.n2Size, constInfo.blockSize, 2 * constInfo.dSize, kvSeqLensTool, valueScaleGm, dequantScaleValue);
+=======
+        // v_scale per-batch stride 基于 maxSeqlenKv (= max(act_kv)) 而非物理 s2Size,
+        // 与 metadata 校验 (ceil(max(seqused_kv)/64)) 及 golden v_descale S 维对齐.
+        // maxSeqlenKv 未传入时回退为 s2Size (kernel_dn.h Init 中已处理).
+        InitVScaleBuffer(constInfo.bSize,
+                         static_cast<uint32_t>((constInfo.maxSeqlenKv + 63) / 64 * 64 / (2 * MXFP_GROUP_SIZE)),
+                         constInfo.n2Size, constInfo.blockSize, 2 * constInfo.dSize, kvSeqLensTool,
+                         valueScaleGm, dequantScaleValue);
+>>>>>>> 624988a3d... kernel: v_scale stride 基于 maxSeqlenKv, 与 metadata/golden 对齐
     }
 
     __aicore__ inline void InitTensors()
