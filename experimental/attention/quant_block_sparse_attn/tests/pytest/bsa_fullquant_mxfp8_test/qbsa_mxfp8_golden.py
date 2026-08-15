@@ -980,23 +980,6 @@ def fp32_to_e8m0fnu_safe(scale, name="scale"):
     return packed.view(SCALE_DTYPE)
 
 
-def _make_noncontiguous_e8m0_npu(scale_e8m0):
-    """Create a segmented PA view without filling an E8M0 tensor on NPU.
-
-    ``torch.ones_like``/``torch.full`` dispatch to NPU ``fill_``, which does
-    not support E8M0.  Stack the raw bytes on CPU instead, reinterpret them as
-    E8M0, transfer the contiguous parent, and finally select one segment.  The
-    segment axis follows the PA block axis so inner N/BS/D strides stay dense.
-    """
-    if scale_e8m0.dtype != SCALE_DTYPE:
-        raise TypeError(
-            f"expected E8M0 scale dtype {SCALE_DTYPE}, got {scale_e8m0.dtype}"
-        )
-    packed = scale_e8m0.contiguous().view(torch.uint8)
-    segmented = torch.stack([packed, packed], dim=1).view(SCALE_DTYPE).npu()
-    return segmented[:, 0]
-
-
 def e8m0fnu_to_fp32(scale_e8m0, name="scale"):
     """Decode E8M0 bytes to the exact FP32 powers of two used by the NPU."""
     scale_tensor = torch.as_tensor(scale_e8m0)
@@ -2683,10 +2666,10 @@ def npu_mxfp8_fa(
     deq_k_npu = k_scale_e8m0.npu()
     deq_v_npu = v_scale_e8m0.npu()
     if not IS_CONTIGUOUS:
-        deq_k_npu = _make_noncontiguous_e8m0_npu(k_scale_e8m0)
-        deq_v_npu = _make_noncontiguous_e8m0_npu(v_scale_e8m0)
+        # In MXFP8 quant_mode=2 only K/V may use segmented PA block strides.
+        # K/V descale tensors must retain their standard contiguous layouts.
         logger.info(
-            "[NPU] deq_k_descale is_contiguous=%s, deq_v_descale is_contiguous=%s",
+            "[NPU] segmented K/V keep descales contiguous: k=%s, v=%s",
             deq_k_npu.is_contiguous(),
             deq_v_npu.is_contiguous(),
         )
