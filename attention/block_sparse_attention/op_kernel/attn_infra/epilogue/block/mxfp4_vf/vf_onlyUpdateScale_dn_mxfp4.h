@@ -29,7 +29,7 @@ using namespace MicroAPI;
 
 // T: half
 template <bool clear_gmax, typename T, uint16_t m = 128>
-__simd_vf__ inline void computeOnlyScaleVF(__ubuf__ T *umax1, __ubuf__ T *umax2, __ubuf__ T *ugmax_old,
+__simd_vf__ inline void compute_only_scale_vf(__ubuf__ T *umax1, __ubuf__ T *umax2, __ubuf__ T *ugmax_old,
                                            __ubuf__ float *urs, uint16_t coreIndex)
 {
     MaskReg preg_all16 = CreateMask<uint16_t, MaskPattern::ALL>();
@@ -73,16 +73,16 @@ __simd_vf__ inline void computeOnlyScaleVF(__ubuf__ T *umax1, __ubuf__ T *umax2,
 }
 
 template <bool clear_gmax, typename T, uint16_t QsBase = 128>
-__aicore__ inline void computeOnlyScale(const LocalTensor<T> &umax1, const LocalTensor<T> &umax2,
+__aicore__ inline void ComputeOnlyScaleCallVF(const LocalTensor<T> &umax1, const LocalTensor<T> &umax2,
                                         const LocalTensor<T> &ugmaxOld, const LocalTensor<float> &urs,
                                         uint16_t coreIndex)
 {
-    __ubuf__ T *umax1VF = (__ubuf__ T *)umax1.GetPhyAddr();
-    __ubuf__ T *umax2VF = (__ubuf__ T *)umax2.GetPhyAddr();
-    __ubuf__ T *ugmaxOldVF = (__ubuf__ T *)ugmaxOld.GetPhyAddr();
-    __ubuf__ float *ursVF = (__ubuf__ float *)urs.GetPhyAddr();
+    __ubuf__ T *umax1_buf = (__ubuf__ T *)umax1.GetPhyAddr();
+    __ubuf__ T *umax2_buf = (__ubuf__ T *)umax2.GetPhyAddr();
+    __ubuf__ T *ugmax_old_buf = (__ubuf__ T *)ugmaxOld.GetPhyAddr();
+    __ubuf__ float *urs_buf = (__ubuf__ float *)urs.GetPhyAddr();
 
-    computeOnlyScaleVF<clear_gmax, T, QsBase>(umax1VF, umax2VF, ugmaxOldVF, ursVF, coreIndex);
+    compute_only_scale_vf<clear_gmax, T, QsBase>(umax1_buf, umax2_buf, ugmax_old_buf, urs_buf, coreIndex);
 }
 }
 #endif  // ONLYUPDATESCALE_DN_MXFP4_H_
