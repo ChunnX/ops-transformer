@@ -5,7 +5,7 @@
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
@@ -32,9 +32,9 @@ try:
 except ImportError:
     import importlib.util
     from pathlib import Path
+
     _inputs_path = Path(__file__).with_name("inputs.py")
-    _spec_mod = importlib.util.spec_from_file_location(
-        "ffn_wb_inputs", _inputs_path)
+    _spec_mod = importlib.util.spec_from_file_location("ffn_wb_inputs", _inputs_path)
     _inputs_module = importlib.util.module_from_spec(_spec_mod)
     _spec_mod.loader.exec_module(_inputs_module)
     _DATA_CACHE = _inputs_module._DATA_CACHE
@@ -47,7 +47,8 @@ def _get_cached_data(testcase_name):
     if testcase_name not in _DATA_CACHE:
         raise KeyError(
             f"No cached data for testcase '{testcase_name}'. "
-            f"Available: {list(_DATA_CACHE.keys())}")
+            f"Available: {list(_DATA_CACHE.keys())}"
+        )
     return _DATA_CACHE[testcase_name]
 
 
@@ -57,10 +58,9 @@ def _sort_expert_ids(expert_ids_flat):
     Returns (sorted_order, valid_count, sorted_valid_expert_ids).
     """
     sort_key = np.where(
-        expert_ids_flat < EXPERT_MASK_VALUE,
-        expert_ids_flat,
-        np.iinfo(np.int32).max).astype(np.int64)
-    sorted_order = np.argsort(sort_key, kind='stable')
+        expert_ids_flat < EXPERT_MASK_VALUE, expert_ids_flat, np.iinfo(np.int32).max
+    ).astype(np.int64)
+    sorted_order = np.argsort(sort_key, kind="stable")
     valid_count = int(np.sum(expert_ids_flat < EXPERT_MASK_VALUE))
     sorted_valid_ids = expert_ids_flat[sorted_order[:valid_count]]
     return sorted_order, valid_count, sorted_valid_ids
@@ -107,30 +107,42 @@ def _to_torch(arr, dtype):
     return t
 
 
-def ffn_worker_batching_golden(scheduleContext, expertNum, maxOutShape,
-                               tokenDtype, needSchedule, layerNum,
-                               y, groupList, sessionIds, microBatchIds,
-                               tokenIds, expertOffsets, dynamicScale,
-                               actualTokenNum, **kwargs):
+def ffn_worker_batching_golden(
+    scheduleContext,
+    expertNum,
+    maxOutShape,
+    tokenDtype,
+    needSchedule,
+    layerNum,
+    y,
+    groupList,
+    sessionIds,
+    microBatchIds,
+    tokenIds,
+    expertOffsets,
+    dynamicScale,
+    actualTokenNum,
+    **kwargs,
+):
     """CPU golden reference for aclnnFfnWorkerBatching.
 
     All 14 positional args match aclnnFfnWorkerBatchingGetWorkspaceSize
     (without workspaceSize & executor).  Output tensors are pre-allocated
     placeholders and ignored — the function returns fresh golden tensors.
     """
-    testcase_name = kwargs.get('testcase_name', 'default')
+    testcase_name = kwargs.get("testcase_name", "default")
     data = _get_cached_data(testcase_name)
 
-    A = data['A']
-    M = data['M']
-    BS = data['BS']
-    K = data['K']
-    H = data['H']
-    token_data = data['token_data']
-    token_scales = data.get('token_scales')
-    session_ids_buf = data['session_ids_buf']
-    micro_batch_ids_buf = data['micro_batch_ids_buf']
-    expert_ids = data['expert_ids']
+    A = data["A"]
+    M = data["M"]
+    BS = data["BS"]
+    K = data["K"]
+    H = data["H"]
+    token_data = data["token_data"]
+    token_scales = data.get("token_scales")
+    session_ids_buf = data["session_ids_buf"]
+    micro_batch_ids_buf = data["micro_batch_ids_buf"]
+    expert_ids = data["expert_ids"]
 
     Y = A * BS * K
 
@@ -146,8 +158,7 @@ def ffn_worker_batching_golden(scheduleContext, expertNum, maxOutShape,
 
     expert_ids_flat = expert_ids.reshape(-1).astype(np.int32)
 
-    sorted_order, valid_count, sorted_valid_ids = _sort_expert_ids(
-        expert_ids_flat)
+    sorted_order, valid_count, sorted_valid_ids = _sort_expert_ids(expert_ids_flat)
 
     y_out = np.zeros((Y, H), dtype=out_np_dtype)
     session_ids_out = np.zeros(Y, dtype=np.int32)
@@ -157,7 +168,7 @@ def ffn_worker_batching_golden(scheduleContext, expertNum, maxOutShape,
     dynamic_scale_out = np.ones(Y, dtype=np.float32)
 
     bsk = BS * K
-    cur_mb = data.get('cur_micro_batch_id', 0)
+    cur_mb = data.get("cur_micro_batch_id", 0)
 
     for i in range(valid_count):
         gidx = int(sorted_order[i])
@@ -183,8 +194,7 @@ def ffn_worker_batching_golden(scheduleContext, expertNum, maxOutShape,
         if tokenDtype == 2 and token_scales is not None:
             dynamic_scale_out[i] = token_scales[s_idx, mb_idx, bs_idx, k_idx]
 
-    group_list_out = _generate_group_list(
-        sorted_valid_ids, valid_count, expertNum)
+    group_list_out = _generate_group_list(sorted_valid_ids, valid_count, expertNum)
     actual_token_num_out = np.array([valid_count], dtype=np.int64)
 
     return [

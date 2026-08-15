@@ -5,7 +5,7 @@
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
@@ -22,7 +22,8 @@ ASSET_IMPL_DIR = Path(__file__).with_name("impl")
 def _load_impl(stem):
     path = ASSET_IMPL_DIR / f"{stem}.py"
     spec = importlib.util.spec_from_file_location(
-        f"ffn_wb_impl_{stem}_{abs(hash(path))}", path)
+        f"ffn_wb_impl_{stem}_{abs(hash(path))}", path
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -41,6 +42,7 @@ class AclnnFfnWorkerBatchingTestSpec:
     and executor).  The scheduleContext is the only input tensor; outputs
     are auto-identified via output_tensor_indexes in the CSV.
     """
+
     golden = golden_module.ffn_worker_batching_golden
     customize_inputs = inputs_module.ffn_worker_batching_inputs
 
@@ -101,13 +103,17 @@ class AclnnFfnWorkerBatchingTestSpec:
                 else:
                     match = int(np.sum(npu_arr[:valid] == gold_arr[:valid]))
                     total = valid * 2
-                    passed = (match == total)
+                    passed = match == total
                     precision = f"{match / total * 100}%"
-                results.append({
-                    "pass": passed,
-                    "precision": precision,
-                    "error_info": None if passed else "group_list mismatch before [0,0] terminator",
-                })
+                results.append(
+                    {
+                        "pass": passed,
+                        "precision": precision,
+                        "error_info": None
+                        if passed
+                        else "group_list mismatch before [0,0] terminator",
+                    }
+                )
             elif idx in (0, 2, 3, 4, 5):
                 npu_flat = npu.flatten()
                 gold_flat = gold.flatten()
@@ -117,13 +123,17 @@ class AclnnFfnWorkerBatchingTestSpec:
                     n = actual_token_num
                 n = min(n, npu_flat.size)
                 diff = int(np.sum(npu_flat[:n] != gold_flat[:n]))
-                passed = (diff == 0)
+                passed = diff == 0
                 precision = f"{(n - diff) / n * 100}%" if n > 0 else "100%"
-                results.append({
-                    "pass": passed,
-                    "precision": precision,
-                    "error_info": None if passed else f"{diff} mismatches in first {n} elements [idx={idx}]",
-                })
+                results.append(
+                    {
+                        "pass": passed,
+                        "precision": precision,
+                        "error_info": None
+                        if passed
+                        else f"{diff} mismatches in first {n} elements [idx={idx}]",
+                    }
+                )
             else:
                 npu_flat = npu.flatten()
                 gold_flat = gold.flatten()
@@ -134,13 +144,17 @@ class AclnnFfnWorkerBatchingTestSpec:
                 else:
                     diff = int(np.sum(npu_flat != gold_flat))
                     total = npu_flat.size
-                passed = (diff == 0)
+                passed = diff == 0
                 precision = f"{(total - diff) / total * 100}%" if total > 0 else "100%"
-                results.append({
-                    "pass": passed,
-                    "precision": precision,
-                    "error_info": None if passed else f"{diff} mismatches [idx={idx}]",
-                })
+                results.append(
+                    {
+                        "pass": passed,
+                        "precision": precision,
+                        "error_info": None
+                        if passed
+                        else f"{diff} mismatches [idx={idx}]",
+                    }
+                )
         return results
 
 
