@@ -34,7 +34,6 @@ static ge::graphStatus InferShapeSparseAttentionScorePrefill(gert::InferShapeCon
     // 获取输入 query 的形状，作为输出形状推断的依据。
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
-
     // 获取输出 attentionOut 的形状对象，待填充。
     gert::Shape *attentionOutShape = context->GetOutputShape(ATTENTION_OUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, attentionOutShape);

@@ -26,7 +26,7 @@ class SparseAttentionScorePrefillOpBuilder(OpBuilder):
         return (
             "npu_sparse_attention_score_prefill("
             "Tensor query, Tensor key, Tensor value, "
-            "Tensor block_table, "
+            "Tensor? block_table, "
             "Tensor k2q_row_ptr, "
             "Tensor k2q_q_indices, "
             "Tensor k2q_slot_indices, "

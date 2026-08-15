@@ -593,6 +593,9 @@ private:
         queryTokenStride_ = tilingData->queryTokenStride;
         keyBlockStride_ = tilingData->keyBlockStride;
         valueBlockStride_ = tilingData->valueBlockStride;
+        isKvContinuous_ = (tilingData->isKvContinuous != 0U);
+        keyTokenStride_ = tilingData->keyTokenStride;
+        valueTokenStride_ = tilingData->valueTokenStride;
         topK_ = tilingData->topK;
         totalKvRows_ = tilingData->numKvBlocks;
         maxBlocksPerBatch_ = tilingData->maxBlocksPerBatch;
@@ -724,9 +727,21 @@ private:
     //   所以只取一次 batchIdx 对应的参数, 后续 CalcCausalValidLen 可纯计算 (0 GM GetValue)
     __aicore__ inline
     void ResolveBatchQSide(uint32_t batchIdx, uint32_t &kvSeqlenBatch, uint32_t &numBlocksB,
-                          uint32_t &cumQStart, uint32_t &qSeqlenBatch)
+                          uint32_t &cumQStart, uint32_t &qSeqlenBatch, uint32_t &cumKvStart)
     {
-        kvSeqlenBatch = static_cast<uint32_t>(gActualKvseqlen_.GetValue(batchIdx));
+        cumKvStart = 0U;
+        if (isKvContinuous_) {
+            for (uint32_t b = 0; b <= batchIdx; ++b) {
+                uint32_t kvB = static_cast<uint32_t>(gActualKvseqlen_.GetValue(b));
+                if (b < batchIdx) {
+                    cumKvStart += kvB;
+                } else {
+                    kvSeqlenBatch = kvB;
+                }
+            }
+        } else {
+            kvSeqlenBatch = static_cast<uint32_t>(gActualKvseqlen_.GetValue(batchIdx));
+        }
         numBlocksB = CeilDiv(kvSeqlenBatch, blockSize_);
         cumQStart = 0;
         for (uint32_t b = 0; b <= batchIdx; ++b) {
@@ -1005,7 +1020,10 @@ private:
                 EpilogueOnlineSoftmax::MAX_UB_S_ELEM_NUM * sizeof(ElementS) * i);
         }
 
-        int64_t strideKVRow = static_cast<int64_t>(kvHeads_) * embed_;
+        int64_t keyRowStride = isKvContinuous_ ? static_cast<int64_t>(keyTokenStride_)
+                                                : static_cast<int64_t>(kvHeads_) * embed_;
+        int64_t valueRowStride = isKvContinuous_ ? static_cast<int64_t>(valueTokenStride_)
+                                                  : static_cast<int64_t>(kvHeads_) * embed_;
 #endif
 #ifdef __DAV_VEC__
         // decode bf16 regbase softmax self-allocates its UB (lsUb/lpUb/lmUb/gmUb/glUb/
@@ -1057,7 +1075,8 @@ private:
             uint32_t numBlocksB = 0;
             uint32_t cumQStart = 0;
             uint32_t qSeqlenBatch = 0;
-            ResolveBatchQSide(batchIdx, kvSeqlenBatch, numBlocksB, cumQStart, qSeqlenBatch);
+            uint32_t cumKvStart = 0;
+            ResolveBatchQSide(batchIdx, kvSeqlenBatch, numBlocksB, cumQStart, qSeqlenBatch, cumKvStart);
             uint32_t localBlockIdx = kvBlockIdx;
 
             // --- 从 CSR 读取选择该 block 的 Q token 列表 ---
@@ -1073,12 +1092,6 @@ private:
             if (numQTokens == 0) {
                 continue;  // 空 CSR 行: 无 Q token 选择该 block, 跳过
             }
-
-            // --- 查 block_table: logical block → physical block ---
-            // 仅对非空 CSR 行读取 block_table，避免长 KV 场景下无效 task 的 GM 访问。
-            int64_t btOffset =
-                static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + localBlockIdx;
-            int32_t physicalBlockId = gBlockTable.GetValue(btOffset);
 
             // --- 计算该 KV block 的有效 token 数 ---
             // 非尾块: validSize = blockSize; 尾块: validSize = kvSeqlen % blockSize
@@ -1116,16 +1129,26 @@ private:
 
 #ifdef __DAV_CUBE__
             // --- CUBE: 加载 K/V 到 L1 (常驻, 每个 task 仅加载一次) ---
-            // K/V 在 GM 中按 [physicalBlock, blockSize, kvHeads, D] 排列
             uint64_t kvHeadOffset = static_cast<uint64_t>(kvHeadIdx) * embed_;
-            uint64_t keyBlockBase = static_cast<uint64_t>(physicalBlockId) * keyBlockStride_ + kvHeadOffset;
-            uint64_t valueBlockBase = static_cast<uint64_t>(physicalBlockId) * valueBlockStride_ + kvHeadOffset;
+            uint64_t keyBlockBase;
+            uint64_t valueBlockBase;
+            if (isKvContinuous_) {
+                uint64_t tokenStart = static_cast<uint64_t>(cumKvStart) +
+                    static_cast<uint64_t>(localBlockIdx) * blockSize_;
+                keyBlockBase = tokenStart * keyTokenStride_ + kvHeadOffset;
+                valueBlockBase = tokenStart * valueTokenStride_ + kvHeadOffset;
+            } else {
+                int64_t btOffset = static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + localBlockIdx;
+                int32_t physicalBlockId = gBlockTable.GetValue(btOffset);
+                keyBlockBase = static_cast<uint64_t>(physicalBlockId) * keyBlockStride_ + kvHeadOffset;
+                valueBlockBase = static_cast<uint64_t>(physicalBlockId) * valueBlockStride_ + kvHeadOffset;
+            }
 
-            auto gmKLayout = tla::MakeLayout<ElementK, LayoutK>(strideKVRow, blockSize_);
+            auto gmKLayout = tla::MakeLayout<ElementK, LayoutK>(keyRowStride, blockSize_);
             auto gmKTensor = tla::MakeTensor(gK[keyBlockBase], gmKLayout, Arch::PositionGM{});
             blockMmadQK.LoadKResident(gmKTensor, validSize, embed_);
 
-            auto gmVLayout = tla::MakeLayout<ElementV, LayoutV>(blockSize_, strideKVRow);
+            auto gmVLayout = tla::MakeLayout<ElementV, LayoutV>(blockSize_, valueRowStride);
             auto gmVTensor = tla::MakeTensor(gV[valueBlockBase], gmVLayout, Arch::PositionGM{});
             blockMmadPV.LoadVResident(gmVTensor, validSize, embed_);
 #endif
@@ -1379,7 +1402,7 @@ private:
             // normal float->bf16 path before returning it through the output
             // contract; a reinterpret cast would turn fp32 bit patterns into
             // invalid bf16 values (including NaNs).
-            constexpr uint32_t debugDumpElems = 8192U;
+            uint32_t debugDumpElems = groupSize_ * embed_;
             auto castBuf = ubBase[debugDumpElems].template ReinterpretCast<bfloat16_t>();
             if (coreNum == 0U) { coreNum = 1U; }
             for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNumP2_; taskIdx += coreNum) {
@@ -1523,6 +1546,9 @@ private:
     uint64_t queryTokenStride_;
     uint64_t keyBlockStride_;
     uint64_t valueBlockStride_;
+    bool isKvContinuous_;
+    uint64_t keyTokenStride_;
+    uint64_t valueTokenStride_;
     uint32_t topK_;
     uint32_t totalKvRows_;
     uint32_t maxBlocksPerBatch_;

@@ -48,6 +48,9 @@ TILING_DATA_FIELD_DEF(uint64_t, workSpaceSize);          // workspace 总字节�
 TILING_DATA_FIELD_DEF(uint64_t, gmSWorkspaceSize);       // A2 GM S 中转 workspace per-core 字节数 (A5=0)
 TILING_DATA_FIELD_DEF(uint64_t, gmPWorkspaceSize);       // A2 GM P 中转 workspace per-core 字节数 (A5=0)
 TILING_DATA_FIELD_DEF(uint64_t, tilingKey);              // tiling key 用于 kernel 派发
+TILING_DATA_FIELD_DEF(uint32_t, isKvContinuous);
+TILING_DATA_FIELD_DEF(uint64_t, keyTokenStride);
+TILING_DATA_FIELD_DEF(uint64_t, valueTokenStride);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(SparseAttentionScorePrefill, SparseAttentionScorePrefillTilingData)
 
@@ -111,6 +114,10 @@ protected:
     uint32_t k2qNnzUpperBound_ = 0;
     float scaleValue_ = 0.0f;
     uint32_t innerPrecise_ = 0;
+
+    bool isKvContinuous_ = false;
+    uint64_t keyTokenStride_ = 0;
+    uint64_t valueTokenStride_ = 0;
 
     const int32_t *qSeqLenList_ = nullptr;
     const int32_t *kvSeqLenList_ = nullptr;

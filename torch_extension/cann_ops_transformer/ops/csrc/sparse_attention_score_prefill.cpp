@@ -31,7 +31,7 @@ at::Tensor npu_sparse_attention_score_prefill(
     const at::Tensor &query,
     const at::Tensor &key,
     const at::Tensor &value,
-    const at::Tensor &block_table,
+    const c10::optional<at::Tensor> &block_table,
     const at::Tensor &k2q_row_ptr,
     const at::Tensor &k2q_q_indices,
     const at::Tensor &k2q_slot_indices,
@@ -43,7 +43,11 @@ at::Tensor npu_sparse_attention_score_prefill(
     int64_t top_k,
     int64_t inner_precise)
 {
-    CheckInt32Tensor(block_table, "block_table");
+    TORCH_CHECK(block_size == 0 || block_table.has_value(),
+        "block_table is required when block_size is non-zero");
+    if (block_table.has_value()) {
+        CheckInt32Tensor(block_table.value(), "block_table");
+    }
     CheckInt32Tensor(k2q_row_ptr, "k2q_row_ptr");
     CheckInt32Tensor(k2q_q_indices, "k2q_q_indices");
     CheckInt32Tensor(k2q_slot_indices, "k2q_slot_indices");

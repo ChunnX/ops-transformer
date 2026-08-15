@@ -41,8 +41,10 @@ static aclnnStatus MakeMetadataContiguous(const aclTensor *&blockTable,
                                   const aclTensor *&actualSeqLengthsKvOptional,
                                   aclOpExecutor *executor)
 {
-    blockTable = l0op::Contiguous(blockTable, executor);
-    CHECK_RET(blockTable != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    if (blockTable != nullptr) {
+        blockTable = l0op::Contiguous(blockTable, executor);
+        CHECK_RET(blockTable != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    }
 
     k2qRowPtr = l0op::Contiguous(k2qRowPtr, executor);
     CHECK_RET(k2qRowPtr != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -94,7 +96,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(key != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(value != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(blockTable != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(blockSize == 0 || blockTable != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(k2qRowPtr != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(k2qQIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(k2qSlotIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -135,6 +137,12 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
                                      executorImpl);
     if (ret != ACLNN_SUCCESS) {
         return ret;
+    }
+    // GE compacts absent optional inputs in the tiling context. Keep the
+    // launcher input positions stable by supplying an existing int32 tensor as
+    // a dummy block table in continuous-KV mode; the kernel never reads it.
+    if (blockTable == nullptr) {
+        blockTable = actualSeqLengthsOptional;
     }
     auto output = l0op::SparseAttentionScorePrefill(
         queryView, keyView, valueView, blockTable,

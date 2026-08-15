@@ -129,6 +129,9 @@ ge::graphStatus SASAPrefillTilingA2::FillTilingData(gert::TilingContext *context
     tilingData_->set_queryTokenStride(queryTokenStride_);
     tilingData_->set_keyBlockStride(keyBlockStride_);
     tilingData_->set_valueBlockStride(valueBlockStride_);
+    tilingData_->set_isKvContinuous(static_cast<uint32_t>(isKvContinuous_));
+    tilingData_->set_keyTokenStride(keyTokenStride_);
+    tilingData_->set_valueTokenStride(valueTokenStride_);
     tilingData_->set_topK(topK_);
     tilingData_->set_totalQTokens(totalQTokens_);
     tilingData_->set_numKvBlocks(numKvBlocks_);

@@ -368,6 +368,40 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
     self.assertTrue(torch.equal(contiguous_cpu, strided_cpu))
     self.assertRtolEqual(golden.float().numpy(), strided_cpu.float().numpy(), prec=7e-3)
 
+  def test_bf16_continuous_kv_multi_batch(self):
+    """block_size=0 consumes concatenated TND K/V without a block table."""
+    print("[test_bf16_continuous_kv_multi_batch]")
+    data = make_case(
+        batch=2, q_seqlens=[8, 6], kv_seqlens=[144, 70],
+        q_heads=8, kv_heads=2, head_dim=128, block_size=128, top_k=2, seed=406)
+
+    dense_key = []
+    dense_value = []
+    for batch_idx, kv_len in enumerate(data["actual_seq_lengths_kv"].tolist()):
+      num_blocks = (kv_len + data["block_size"] - 1) // data["block_size"]
+      physical = data["block_table"][batch_idx, :num_blocks].to(torch.long)
+      dense_key.append(data["key"][physical].reshape(-1, data["kv_heads"], 128)[:kv_len])
+      dense_value.append(data["value"][physical].reshape(-1, data["kv_heads"], 128)[:kv_len])
+    dense_key = torch.cat(dense_key, dim=0)
+    dense_value = torch.cat(dense_value, dim=0)
+
+    golden = cpu_golden_prefill_bf16(
+        data["query"], data["key"], data["value"], data["k2q_row_ptr"],
+        data["k2q_q_indices"], data["k2q_slot_indices"], data["block_table"],
+        data["actual_seq_lengths"], data["actual_seq_lengths_kv"],
+        data["block_size"], data["top_k"], data["scale_value"], 4)
+    out = torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
+        data["query"].npu(), _npu_axis0_strided(dense_key, 2),
+        _npu_axis0_strided(dense_value, 3), None,
+        data["k2q_row_ptr"].npu(), data["k2q_q_indices"].npu(),
+        data["k2q_slot_indices"].npu(), data["actual_seq_lengths"].npu(),
+        data["actual_seq_lengths_kv"].npu(), data["kv_heads"],
+        data["scale_value"], 0, data["top_k"], 4).cpu()
+
+    self.assertFalse(torch.any(torch.isnan(out.float())))
+    self.assertFalse(torch.any(torch.isinf(out.float())))
+    self.assertRtolEqual(golden.float().numpy(), out.float().numpy(), prec=1e-2)
+
   def test_bf16_single_batch_medium(self):
     print("[test_bf16_single_batch_medium]")
     self._run_npu_test(

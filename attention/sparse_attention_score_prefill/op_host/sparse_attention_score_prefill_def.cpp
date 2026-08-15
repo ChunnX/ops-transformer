@@ -33,7 +33,7 @@ public:
             .FormatList({ge::FORMAT_ND});
         // blockTable: [batch, maxBlocksPerBatch], int32, 逻辑块到物理块的映射表
         this->Input("blockTable")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         // k2qRowPtr: per-head CSR row pointers [kvHeads, totalKvRows+1], int32. A plain runtime

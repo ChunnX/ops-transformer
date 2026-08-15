@@ -73,6 +73,7 @@ constexpr int BLOCKED_KV_DIM_BLOCK_SIZE = 1;
 constexpr int BLOCKED_KV_DIM_KV_HEAD = 2;
 constexpr int BLOCKED_KV_DIM_D = 3;
 constexpr int BLOCKED_KV_DIM_NUM = 4;
+constexpr uint32_t CONTINUOUS_KV_TILE_SIZE = 128U;
 
 constexpr int ATTR_NUM_KV_HEADS_INDEX = 0;
 constexpr int ATTR_SCALE_VALUE_INDEX = 1;
@@ -125,11 +126,17 @@ ge::graphStatus SASAPrefillTilingBase::ParseAttrs(gert::TilingContext *context)
     auto attrs = context->GetAttrs();
     kvHeads_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_NUM_KV_HEADS_INDEX));
     scaleValue_ = static_cast<float>(*attrs->GetFloat(ATTR_SCALE_VALUE_INDEX));
-    blockSize_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_BLOCK_SIZE_INDEX));
+    int64_t blockSizeAttr = *attrs->GetInt(ATTR_BLOCK_SIZE_INDEX);
+    if (blockSizeAttr < 0) {
+        printf("[SASAPrefillTiling] blockSize must be non-negative\n");
+        return ge::GRAPH_FAILED;
+    }
+    isKvContinuous_ = (blockSizeAttr == 0);
+    blockSize_ = isKvContinuous_ ? CONTINUOUS_KV_TILE_SIZE : static_cast<uint32_t>(blockSizeAttr);
     topK_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_TOP_K_INDEX));
     innerPrecise_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_INNER_PRECISE_INDEX));
-    printf("[SASAPrefillTiling] Attrs: kvHeads=%u scaleValue=%f blockSize=%u topK=%u innerPrecise=%u\n",
-           kvHeads_, scaleValue_, blockSize_, topK_, innerPrecise_);
+    printf("[SASAPrefillTiling] Attrs: kvHeads=%u scaleValue=%f blockSize=%u continuousKv=%u topK=%u innerPrecise=%u\n",
+           kvHeads_, scaleValue_, blockSize_, static_cast<uint32_t>(isKvContinuous_), topK_, innerPrecise_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -164,53 +171,108 @@ ge::graphStatus SASAPrefillTilingBase::ParseInputTensors(gert::TilingContext *co
     }
     printf("[SASAPrefillTiling] totalQTokens=%u numHeads=%u D=%u queryTokenStride=%lu\n",
            totalQTokens_, numHeads_, embeddingSize_, queryTokenStride_);
-    // KV: [num_physical_blocks, blockSize, kvHeads, D]
+    // Paged KV uses [physicalBlocks, blockSize, kvHeads, D]. When the public
+    // blockSize attribute is 0, KV is a concatenated TND tensor and the kernel
+    // tiles it internally in 128-token chunks.
     auto kShape = context->GetInputShape(KEY_INDEX);
-    if (kShape == nullptr) { printf("[SASAPrefillTiling] kShape is null!\n"); return ge::GRAPH_FAILED; }
-    if (kvHeads_ == 0) {
-        kvHeads_ = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(BLOCKED_KV_DIM_KV_HEAD));
+    auto vShape = context->GetInputShape(VALUE_INDEX);
+    if (kShape == nullptr || vShape == nullptr) {
+        printf("[SASAPrefillTiling] K/V shape is null\n");
+        return ge::GRAPH_FAILED;
     }
-    keyBlockStride_ = static_cast<uint64_t>(blockSize_) * kvHeads_ * embeddingSize_;
-    valueBlockStride_ = keyBlockStride_;
-    if (context->InputIsView(KEY_INDEX)) {
-        auto *keyStride = context->GetInputStride(KEY_INDEX);
-        if (keyStride != nullptr && keyStride->GetDimNum() == BLOCKED_KV_DIM_NUM) {
-            int64_t stride = keyStride->GetStride(BLOCKED_KV_DIM_BLOCK_NUM);
-            if (stride <= 0 ||
-                (blockSize_ > 1U && keyStride->GetStride(BLOCKED_KV_DIM_BLOCK_SIZE) !=
-                    static_cast<int64_t>(kvHeads_) * embeddingSize_) ||
-                (kvHeads_ > 1U && keyStride->GetStride(BLOCKED_KV_DIM_KV_HEAD) != static_cast<int64_t>(embeddingSize_)) ||
-                (embeddingSize_ > 1U && keyStride->GetStride(BLOCKED_KV_DIM_D) != 1)) {
-                printf("[SASAPrefillTiling] key cache requires dense block-local dimensions\n");
-                return ge::GRAPH_FAILED;
-            }
-            keyBlockStride_ = static_cast<uint64_t>(stride);
+    const gert::Shape &keyShape = context->InputIsView(KEY_INDEX)
+        ? kShape->GetOriginShape() : kShape->GetStorageShape();
+    const gert::Shape &valueShape = context->InputIsView(VALUE_INDEX)
+        ? vShape->GetOriginShape() : vShape->GetStorageShape();
+    uint32_t expectedKvRank = isKvContinuous_ ? 3U : BLOCKED_KV_DIM_NUM;
+    if (keyShape.GetDimNum() != expectedKvRank || valueShape.GetDimNum() != expectedKvRank) {
+        printf("[SASAPrefillTiling] KV rank must be %u when continuousKv=%u\n",
+               expectedKvRank, static_cast<uint32_t>(isKvContinuous_));
+        return ge::GRAPH_FAILED;
+    }
+    uint32_t kvHeadDim = isKvContinuous_ ? TND_DIM_N : BLOCKED_KV_DIM_KV_HEAD;
+    uint32_t kvEmbedDim = isKvContinuous_ ? TND_DIM_D : BLOCKED_KV_DIM_D;
+    if (kvHeads_ == 0U) {
+        kvHeads_ = static_cast<uint32_t>(keyShape.GetDim(kvHeadDim));
+    }
+    if (kvHeads_ == 0U || numHeads_ % kvHeads_ != 0U ||
+        keyShape.GetDim(kvHeadDim) != kvHeads_ || valueShape.GetDim(kvHeadDim) != kvHeads_ ||
+        keyShape.GetDim(kvEmbedDim) != embeddingSize_ || valueShape.GetDim(kvEmbedDim) != embeddingSize_) {
+        printf("[SASAPrefillTiling] K/V heads or embedding dimension is invalid\n");
+        return ge::GRAPH_FAILED;
+    }
+    if (isKvContinuous_) {
+        if (keyShape.GetDim(TND_DIM_T) != valueShape.GetDim(TND_DIM_T)) {
+            printf("[SASAPrefillTiling] continuous K/V token dimensions must match\n");
+            return ge::GRAPH_FAILED;
         }
+    } else if (keyShape.GetDim(BLOCKED_KV_DIM_BLOCK_SIZE) != blockSize_ ||
+               valueShape.GetDim(BLOCKED_KV_DIM_BLOCK_SIZE) != blockSize_) {
+        printf("[SASAPrefillTiling] paged K/V block dimension must equal blockSize\n");
+        return ge::GRAPH_FAILED;
     }
-    if (context->InputIsView(VALUE_INDEX)) {
-        auto *valueStride = context->GetInputStride(VALUE_INDEX);
-        if (valueStride != nullptr && valueStride->GetDimNum() == BLOCKED_KV_DIM_NUM) {
-            int64_t stride = valueStride->GetStride(BLOCKED_KV_DIM_BLOCK_NUM);
-            if (stride <= 0 ||
-                (blockSize_ > 1U && valueStride->GetStride(BLOCKED_KV_DIM_BLOCK_SIZE) !=
-                    static_cast<int64_t>(kvHeads_) * embeddingSize_) ||
-                (kvHeads_ > 1U && valueStride->GetStride(BLOCKED_KV_DIM_KV_HEAD) != static_cast<int64_t>(embeddingSize_)) ||
-                (embeddingSize_ > 1U && valueStride->GetStride(BLOCKED_KV_DIM_D) != 1)) {
-                printf("[SASAPrefillTiling] value cache requires dense block-local dimensions\n");
-                return ge::GRAPH_FAILED;
-            }
-            valueBlockStride_ = static_cast<uint64_t>(stride);
-        }
-    }
-    groupSize_ = (kvHeads_ > 0) ? (numHeads_ / kvHeads_) : 1;
-    printf("[SASAPrefillTiling] kvHeads=%u groupSize=%u keyBlockStride=%lu valueBlockStride=%lu\n",
-           kvHeads_, groupSize_, keyBlockStride_, valueBlockStride_);
 
-    // block_table: [batch_size, max_num_blocks]
+    keyTokenStride_ = static_cast<uint64_t>(kvHeads_) * embeddingSize_;
+    valueTokenStride_ = keyTokenStride_;
+    keyBlockStride_ = static_cast<uint64_t>(blockSize_) * keyTokenStride_;
+    valueBlockStride_ = static_cast<uint64_t>(blockSize_) * valueTokenStride_;
+
+    auto parseKvStride = [&](uint32_t inputIndex, bool isKey) -> ge::graphStatus {
+        if (!context->InputIsView(inputIndex)) {
+            return ge::GRAPH_SUCCESS;
+        }
+        auto *stride = context->GetInputStride(inputIndex);
+        if (stride == nullptr || stride->GetDimNum() != expectedKvRank) {
+            return ge::GRAPH_SUCCESS;
+        }
+        uint32_t tokenDim = isKvContinuous_ ? TND_DIM_T : BLOCKED_KV_DIM_BLOCK_SIZE;
+        int64_t axis0Stride = stride->GetStride(0);
+        if (axis0Stride <= 0 ||
+            (!isKvContinuous_ && blockSize_ > 1U && stride->GetStride(tokenDim) !=
+                static_cast<int64_t>(kvHeads_) * embeddingSize_) ||
+            (kvHeads_ > 1U && stride->GetStride(kvHeadDim) != static_cast<int64_t>(embeddingSize_)) ||
+            (embeddingSize_ > 1U && stride->GetStride(kvEmbedDim) != 1)) {
+            printf("[SASAPrefillTiling] K/V requires dense token-local dimensions\n");
+            return ge::GRAPH_FAILED;
+        }
+        if (isKvContinuous_) {
+            if (isKey) {
+                keyTokenStride_ = static_cast<uint64_t>(axis0Stride);
+            } else {
+                valueTokenStride_ = static_cast<uint64_t>(axis0Stride);
+            }
+        } else if (isKey) {
+            keyBlockStride_ = static_cast<uint64_t>(axis0Stride);
+        } else {
+            valueBlockStride_ = static_cast<uint64_t>(axis0Stride);
+        }
+        return ge::GRAPH_SUCCESS;
+    };
+    if (parseKvStride(KEY_INDEX, true) != ge::GRAPH_SUCCESS ||
+        parseKvStride(VALUE_INDEX, false) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    groupSize_ = numHeads_ / kvHeads_;
+    printf("[SASAPrefillTiling] kvHeads=%u groupSize=%u keyBlockStride=%lu valueBlockStride=%lu keyTokenStride=%lu valueTokenStride=%lu\n",
+           kvHeads_, groupSize_, keyBlockStride_, valueBlockStride_, keyTokenStride_, valueTokenStride_);
+
     auto btShape = context->GetInputShape(BLOCK_TABLE_INDEX);
-    if (btShape == nullptr) { printf("[SASAPrefillTiling] btShape is null!\n"); return ge::GRAPH_FAILED; }
-    batch_ = static_cast<uint32_t>(btShape->GetStorageShape().GetDim(0));
-    maxBlocksPerBatch_ = static_cast<uint32_t>(btShape->GetStorageShape().GetDim(1));
+    if (!isKvContinuous_ && btShape == nullptr) {
+        printf("[SASAPrefillTiling] blockTable is required for paged KV\n");
+        return ge::GRAPH_FAILED;
+    }
+    if (isKvContinuous_) {
+        auto actualQShape = context->GetInputShape(ACTUAL_SEQ_LENGTHS_INDEX);
+        if (actualQShape == nullptr || actualQShape->GetStorageShape().GetDimNum() != 1U) {
+            printf("[SASAPrefillTiling] actualSeqLengths must be rank-1 for continuous KV\n");
+            return ge::GRAPH_FAILED;
+        }
+        batch_ = static_cast<uint32_t>(actualQShape->GetStorageShape().GetDim(0));
+        maxBlocksPerBatch_ = 0U;
+    } else {
+        batch_ = static_cast<uint32_t>(btShape->GetStorageShape().GetDim(0));
+        maxBlocksPerBatch_ = static_cast<uint32_t>(btShape->GetStorageShape().GetDim(1));
+    }
     printf("[SASAPrefillTiling] batch=%u maxBlocksPerBatch=%u\n", batch_, maxBlocksPerBatch_);
 
     // Data type
@@ -405,6 +467,9 @@ ge::graphStatus SASAPrefillTilingA5::FillTilingData(gert::TilingContext *context
     tilingData_->set_queryTokenStride(queryTokenStride_);
     tilingData_->set_keyBlockStride(keyBlockStride_);
     tilingData_->set_valueBlockStride(valueBlockStride_);
+    tilingData_->set_isKvContinuous(static_cast<uint32_t>(isKvContinuous_));
+    tilingData_->set_keyTokenStride(keyTokenStride_);
+    tilingData_->set_valueTokenStride(valueTokenStride_);
     tilingData_->set_topK(topK_);
     tilingData_->set_totalQTokens(totalQTokens_);
     tilingData_->set_numKvBlocks(numKvBlocks_);

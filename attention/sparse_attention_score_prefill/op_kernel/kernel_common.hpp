@@ -41,6 +41,9 @@ struct SparseAttentionScorePrefillTilingData {
     uint64_t gmSWorkspaceSize;                      // A2 GM S staging workspace per-core 字节数 (A5=0)
     uint64_t gmPWorkspaceSize;                      // A2 GM P staging workspace per-core 字节数 (A5=0)
     uint64_t tilingKey;                             // tiling key 用于 kernel 派发
+    uint32_t isKvContinuous;
+    uint64_t keyTokenStride;
+    uint64_t valueTokenStride;
 };
 
 }  // namespace SparseAttnPrefill
