@@ -39,6 +39,32 @@ struct CheckerTensor {
     bool shapeAvailable = false;
 };
 
+constexpr int64_t INDEXER_BATCH_LIMIT = 65536;
+constexpr int64_t INDEXER_HEAD_DIM = 128;
+constexpr int64_t INDEXER_KEY_HEAD_NUM = 1;
+constexpr int64_t INDEXER_HEAD_NUM_MAX = 64;
+constexpr int64_t INDEXER_TOPK_MAX_ARCH22 = 2048;
+constexpr int64_t INDEXER_TOPK_MAX_ARCH35 = 8192;
+constexpr int64_t INDEXER_CMP_RATIO_MAX = 128;
+constexpr int64_t INDEXER_METADATA_SIZE = 1024;
+constexpr int64_t INDEXER_PA_BLOCK_SIZE_MIN = 16;
+constexpr int64_t INDEXER_PA_BLOCK_SIZE_MAX = 1024;
+constexpr int64_t INDEXER_PA_BLOCK_SIZE_ALIGN = 16;
+
+inline IndexerLayout ConvertIndexerLayout(uint32_t layout)
+{
+    switch (layout) {
+        case 0:
+            return IndexerLayout::BSND;
+        case 1:
+            return IndexerLayout::TND;
+        case 2:
+            return IndexerLayout::PA_BBND;
+        default:
+            return IndexerLayout::UNKNOWN;
+    }
+}
+
 inline std::vector<int64_t> CopyShape(const gert::Shape &shape)
 {
     std::vector<int64_t> dims;
@@ -72,6 +98,12 @@ inline CheckerTensor MakeOptionalTensor(const gert::CompileTimeTensorDesc *desc,
         result.shape = CopyShape(tensor->GetStorageShape());
     }
     return result;
+}
+
+inline int64_t GetIndexerHeadDim(const CheckerTensor &query, IndexerLayout layout)
+{
+    const size_t index = layout == IndexerLayout::BSND ? 3 : 2;
+    return query.shape.size() > index ? query.shape[index] : 0;
 }
 
 struct IndexerCheckerInfo {

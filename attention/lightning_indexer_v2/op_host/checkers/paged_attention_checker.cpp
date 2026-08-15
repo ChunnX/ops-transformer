@@ -29,7 +29,8 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const IndexerCheckerInfo 
     if (info.keyLayout != IndexerLayout::PA_BBND) {
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(info.blockSize < 16 || info.blockSize > 1024 || info.blockSize % 16 != 0,
+    OP_CHECK_IF(info.blockSize < INDEXER_PA_BLOCK_SIZE_MIN || info.blockSize > INDEXER_PA_BLOCK_SIZE_MAX ||
+                    info.blockSize % INDEXER_PA_BLOCK_SIZE_ALIGN != 0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "block_size",
                                                       std::to_string(info.blockSize).c_str(),
                                                       "The PA block size must be a multiple of 16 in [16, 1024]"),
@@ -72,7 +73,7 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const IndexerCheckerInfo &
         return ge::GRAPH_FAILED;
     }
     if (info.quantized &&
-        CheckStrides(info.keyDescale, info.keyDescaleStrides, paged, "key_dequant_scale", info) != ge::GRAPH_SUCCESS) {
+        CheckStrides(info.keyDescale, info.keyDescaleStrides, paged, "k_descale", info) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

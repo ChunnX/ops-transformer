@@ -7,16 +7,22 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+
+/*!
+ * \file qli_checker.h
+ * \brief Composite checker entry for QuantLightningIndexerV2
+ */
+
 #ifndef QUANT_LIGHTNING_INDEXER_V2_QLI_CHECKER_H
 #define QUANT_LIGHTNING_INDEXER_V2_QLI_CHECKER_H
-#include <functional>
-#include <memory>
-#include <vector>
+
 #include "../quant_lightning_indexer_v2_tiling.h"
-#include "../../../lightning_indexer_v2/op_host/checkers/base_checker.h"
+#include "../../../lightning_indexer_v2/op_host/checkers/checker_runner.h"
+
 namespace optiling {
 namespace lightning_indexer_v2 {
-class QLIChecker {
+
+class QLIChecker : public LICompositeChecker {
 public:
     ge::graphStatus Init(const QLIV2TilingInfo &source);
     ge::graphStatus Process(const QLIV2TilingInfo &source);
@@ -24,10 +30,9 @@ public:
 private:
     void RegisterCheckers();
     void BuildInfo(const QLIV2TilingInfo &source);
-    ge::graphStatus RunCheck(const std::function<ge::graphStatus(LIBaseChecker *, const IndexerCheckerInfo &)> &method);
     IndexerCheckerInfo info_;
-    std::vector<std::unique_ptr<LIBaseChecker>> checkers_;
 };
 } // namespace lightning_indexer_v2
 } // namespace optiling
-#endif
+
+#endif // QUANT_LIGHTNING_INDEXER_V2_QLI_CHECKER_H

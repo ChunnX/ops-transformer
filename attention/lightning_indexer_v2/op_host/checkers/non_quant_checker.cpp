@@ -13,9 +13,9 @@ namespace optiling {
 namespace lightning_indexer_v2 {
 ge::graphStatus NonQuantChecker::CheckSinglePara(const IndexerCheckerInfo &info)
 {
-    if (CheckDtype(info.query, "query", {ge::DT_FLOAT16, ge::DT_BF16}, info) != ge::GRAPH_SUCCESS ||
-        CheckDtype(info.key, "key", {ge::DT_FLOAT16, ge::DT_BF16}, info) != ge::GRAPH_SUCCESS ||
-        CheckDtype(info.weights, "weights", {ge::DT_FLOAT}, info) != ge::GRAPH_SUCCESS ||
+    if (CheckDtype(info.query, "q", {ge::DT_FLOAT16, ge::DT_BF16}, info) != ge::GRAPH_SUCCESS ||
+        CheckDtype(info.key, "k", {ge::DT_FLOAT16, ge::DT_BF16}, info) != ge::GRAPH_SUCCESS ||
+        CheckDtype(info.weights, "w", {ge::DT_FLOAT}, info) != ge::GRAPH_SUCCESS ||
         CheckDtype(info.sparseIndices, "sparse_indices", {ge::DT_INT32}, info) != ge::GRAPH_SUCCESS ||
         CheckDtype(info.sparseValues, "sparse_values", {ge::DT_FLOAT}, info) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -24,8 +24,8 @@ ge::graphStatus NonQuantChecker::CheckSinglePara(const IndexerCheckerInfo &info)
         info.query.desc->GetDataType() != info.key.desc->GetDataType()) {
         const std::string actual = DataTypeToString(info.query.desc->GetDataType()) + " and " +
                                    DataTypeToString(info.key.desc->GetDataType());
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(info.opName, "query and key", actual.c_str(),
-                                               "The query and key must have the same dtype");
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(info.opName, "q and k", actual.c_str(),
+                                               "q and k must have the same dtype");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
