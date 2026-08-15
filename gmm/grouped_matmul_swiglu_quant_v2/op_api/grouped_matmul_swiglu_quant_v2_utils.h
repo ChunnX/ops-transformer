@@ -398,7 +398,7 @@ protected:
                 "dequantMode=" + std::to_string(gmmDsqParams_.dequantMode) +
                     ", quantMode=" + std::to_string(gmmDsqParams_.quantMode),
                 "the values of dequantMode and quantMode must be 0 (pertoken) or 2 (mx), and they must be equal; "
-                "FRACTAL_NZ weight supports pertoken mode for INT8 x and weight");
+                "FRACTAL_NZ weight supports pertoken mode for INT8, FLOAT8 or HIFLOAT8 x and weight");
             return false;
         }
         ge::DataType dequantDtype = static_cast<ge::DataType>(gmmDsqParams_.dequantDtype);
