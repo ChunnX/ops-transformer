@@ -45,7 +45,7 @@ struct Args {
     aclrtContext context;
 };
 
-constexpr uint32_t WORLD_SIZE = 16;
+constexpr uint32_t WORLD_SIZE = 8;
 constexpr uint32_t ATTENTION_WORKER_NUM = 8;
 constexpr uint32_t DEVICE_NUM = WORLD_SIZE;
 

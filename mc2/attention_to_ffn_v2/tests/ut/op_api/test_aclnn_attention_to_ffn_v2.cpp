@@ -9,6 +9,8 @@ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULA
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include "test_aclnn_attention_to_ffn_v2_helper.h"
+
 #include <cfloat>
 
 #include <array>
@@ -16,7 +18,6 @@ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULA
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
-//#include "aclnn/aclnn_attention_to_ffn_v2.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
@@ -36,7 +37,7 @@ protected:
 
     static void TearDownTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
         cout << "AclnnAttentionToFfnV2Test TearDown" << endl;
     }
 };
@@ -64,11 +65,12 @@ TEST_F(AclnnAttentionToFfnV2Test, TestAttentionToFfnV2NoQuant)
     int64_t quantMode = 0;
     int64_t syncFlag = 0;
     int64_t ffnStartRankId = 0;
+    int64_t cclBufferSize = 1LL << 30;
 
     auto ut = OP_API_UT(aclnnAttentionToFfnV2,
                         INPUT(context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, nullptr, activeMask,
                               group, worldSize, ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape,
-                              moeExpertNum, quantMode, syncFlag, ffnStartRankId),
+                              moeExpertNum, quantMode, syncFlag, ffnStartRankId, cclBufferSize),
                         OUTPUT());
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -99,11 +101,12 @@ TEST_F(AclnnAttentionToFfnV2Test, TestAttentionToFfnV2Quant)
     int64_t quantMode = 2;
     int64_t syncFlag = 0;
     int64_t ffnStartRankId = 0;
+    int64_t cclBufferSize = 1LL << 30;
 
     auto ut = OP_API_UT(aclnnAttentionToFfnV2,
                         INPUT(context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, activeMask,
                               group, worldSize, ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape,
-                              moeExpertNum, quantMode, syncFlag, ffnStartRankId),
+                              moeExpertNum, quantMode, syncFlag, ffnStartRankId, cclBufferSize),
                         OUTPUT());
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -112,3 +115,5 @@ TEST_F(AclnnAttentionToFfnV2Test, TestAttentionToFfnV2Quant)
 }
 
 } // namespace AttentionToFfnV2UT
+
+

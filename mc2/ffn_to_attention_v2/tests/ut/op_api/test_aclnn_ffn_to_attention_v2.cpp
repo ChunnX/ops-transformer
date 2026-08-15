@@ -12,7 +12,7 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "aclnnop/aclnn_ffn_to_attention_v2.h"
+#include "test_aclnn_ffn_to_attention_v2_helper.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "opdev/platform.h"
@@ -33,7 +33,7 @@ protected:
 
     static void TearDownTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
         cout << "AclnnFfnToAttentionV2Test TearDown" << endl;
     }
 };
@@ -54,10 +54,11 @@ TEST_F(AclnnFfnToAttentionV2Test, TestFfnToAttentionV2AttnRankTable)
     std::vector<int64_t> tokenData = {1, 16, 9, 7168};
     aclIntArray *tokenInfoTableShape = aclCreateIntArray(tokenInfoTable.data(), tokenInfoTable.size());
     aclIntArray *tokenDataShape = aclCreateIntArray(tokenData.data(), tokenData.size());
+    int64_t cclBufferSize = 1LL << 30;
 
     auto ut = OP_API_UT(aclnnFFNToAttentionV2,
                         INPUT(context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum,
-                              attnRankTable, group, worldSize, tokenInfoTableShape, tokenDataShape),
+                              attnRankTable, group, worldSize, tokenInfoTableShape, tokenDataShape, cclBufferSize),
                         OUTPUT());
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -81,10 +82,11 @@ TEST_F(AclnnFfnToAttentionV2Test, TestFfnToAttentionV2NoAttnRankTable)
     std::vector<int64_t> tokenData = {1, 16, 9, 7168};
     aclIntArray *tokenInfoTableShape = aclCreateIntArray(tokenInfoTable.data(), tokenInfoTable.size());
     aclIntArray *tokenDataShape = aclCreateIntArray(tokenData.data(), tokenData.size());
+    int64_t cclBufferSize = 1LL << 30;
 
     auto ut = OP_API_UT(aclnnFFNToAttentionV2,
                         INPUT(context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum,
-                              attnRankTable, group, worldSize, tokenInfoTableShape, tokenDataShape),
+                              attnRankTable, group, worldSize, tokenInfoTableShape, tokenDataShape, cclBufferSize),
                         OUTPUT());
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -93,3 +95,6 @@ TEST_F(AclnnFfnToAttentionV2Test, TestFfnToAttentionV2NoAttnRankTable)
 }
 
 } // namespace FFNToAttentionV2UT
+
+
+
