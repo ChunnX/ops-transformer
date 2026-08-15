@@ -67,19 +67,6 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t cmpKvLoopEndIdx;
 };
 
-struct RunInfo {
-    int64_t s2LoopCount; /* s2循环当前的循环index */
-    int32_t s2RealSize; /* s2方向基本块的真实长度 */
-    int64_t s2StartIdx; /* s2的起始位置，sparse场景下可能不是0 */
-    int64_t s2LoopLimit;
-    int64_t s1oIdx; /* s1轴的index */
-    int64_t attentionOutOffset;
-    int64_t oriKvLoopEndIdx;
-    uint8_t taskIdMod2;
-    uint8_t taskIdMod3;
-    uint8_t multiCoreIdxMod2;
-};
-
 
 }
 

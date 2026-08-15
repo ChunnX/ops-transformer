@@ -54,8 +54,6 @@ private:
         __gm__ uint8_t *attentionOut);
     __aicore__ inline void InitLocalBuffer(uint32_t goIdx);
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *workspace);
-    __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount,
-                                      int64_t s2LoopLimit, int64_t multiCoreInnerIdx);
     __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam);
 
     static constexpr uint64_t SYNC_MODE = 4;
@@ -247,7 +245,14 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     bool isFirstLoop = true;
     bool notLast = true;
     bool notLastTwoLoop = true;
-    RunInfo runInfo[4];
+    int64_t s2LoopCountHist[4];
+    int32_t s2RealSizeHist[4];
+    int64_t s2LoopLimitHist[4];
+    int64_t s1oIdxHist[4];
+    int64_t attentionOutOffsetHist[4];
+    uint8_t taskIdMod2Hist[4];
+    uint8_t taskIdMod3Hist[4];
+    uint8_t multiCoreIdxMod2Hist[4];
     RunParamStr runParam;
     int64_t multiCoreInnerIdx = 1;
     for (int64_t bnIdx = bN2StartIdx; bnIdx < bN2EndIdx; bnIdx++) {
@@ -298,40 +303,60 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                 s2LoopLimit = 0;
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
+                int64_t s2StartIdxLocal = 0;
                 if (notLastThreeLoop) {
-                    RunInfo &runInfo1 = runInfo[taskId % 4];
-                    this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
+                    int64_t slot = taskId % 4;
+                    int64_t s2EndIdxLocal;
+                    if (s2LoopCount < runParam.oriKvLoopEndIdx) {
+                        s2StartIdxLocal = runParam.s2LineStartIdx;
+                        s2EndIdxLocal = runParam.s2LineEndIdx;
+                    } else {
+                        s2StartIdxLocal = 0;
+                        s2EndIdxLocal = runParam.s2CmpLineEndIdx;
+                    }
+                    int32_t s2RealSizeLocal = s2BaseSize;
+                    int64_t curS2LoopCnt = (s2LoopCount >= runParam.oriKvLoopEndIdx) ? \
+                        (s2LoopCount - runParam.oriKvLoopEndIdx) : s2LoopCount;
+                    if (s2StartIdxLocal + (curS2LoopCnt + 1) * s2RealSizeLocal > s2EndIdxLocal) {
+                        s2RealSizeLocal = s2EndIdxLocal - curS2LoopCnt * s2RealSizeLocal - s2StartIdxLocal;
+                    }
+                    s2LoopCountHist[slot] = s2LoopCount;
+                    s2RealSizeHist[slot] = s2RealSizeLocal;
+                    s2LoopLimitHist[slot] = s2LoopLimit;
+                    s1oIdxHist[slot] = runParam.s1oIdx;
+                    attentionOutOffsetHist[slot] = runParam.attentionOutOffset;
+                    taskIdMod2Hist[slot] = taskId & 1;
+                    taskIdMod3Hist[slot] = taskId % 3;
+                    multiCoreIdxMod2Hist[slot] = multiCoreInnerIdx & 1;
                 }
                 if ASCEND_IS_AIV {
                     if (notLastThreeLoop) {
-                        RunInfo &runInfo1 = runInfo[taskId % 4];
                         this->vecBlock.ProcessVec0(
-                            v0ResGmBuffers.Get(runInfo1.taskIdMod3), this->aivIdx,
-                            runInfo1.s2LoopCount, runInfo1.s2RealSize, runInfo1.s2StartIdx, runInfo1.s1oIdx, runInfo1.oriKvLoopEndIdx);
+                            v0ResGmBuffers.Get(taskIdMod3Hist[taskId % 4]), this->aivIdx,
+                            s2LoopCountHist[taskId % 4], s2RealSizeHist[taskId % 4], s2StartIdxLocal,
+                            s1oIdxHist[taskId % 4], runParam.oriKvLoopEndIdx);
                     }
                     if (taskId > 1 && notLast) {
                         uint32_t bmm1Slot = bmm1GetFlag;
                         bmm1GetFlag ^= 1;
                         uint32_t l1PSlot = l1PGetFlag;
                         l1PGetFlag ^= 1;
-                        auto &runInfo2 = runInfo[(taskId + 2) % 4];
                         this->vecBlock.ProcessVec1(this->l1PBuffers[l1PSlot], this->bmm1Buffers[bmm1Slot],
                             this->subBlockIdx, this->aivIdx,
-                            runInfo2.s2LoopCount, runInfo2.s2RealSize,
-                            runInfo2.taskIdMod2, runInfo2.multiCoreIdxMod2);
+                            s2LoopCountHist[(taskId + 2) % 4], s2RealSizeHist[(taskId + 2) % 4],
+                            taskIdMod2Hist[(taskId + 2) % 4], multiCoreIdxMod2Hist[(taskId + 2) % 4]);
                     }
                     if (taskId > 2) {
-                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
                         this->vecBlock.ProcessVec2(this->bmm2Buffers,
-                            runInfo3.s2LoopCount, runInfo3.s2LoopLimit,
-                            runInfo3.taskIdMod2, runInfo3.multiCoreIdxMod2, runInfo3.attentionOutOffset);
+                            s2LoopCountHist[(taskId + 1) % 4], s2LoopLimitHist[(taskId + 1) % 4],
+                            taskIdMod2Hist[(taskId + 1) % 4], multiCoreIdxMod2Hist[(taskId + 1) % 4],
+                            attentionOutOffsetHist[(taskId + 1) % 4]);
                     }
                 } else {
                     if (taskId > 0 && notLastTwoLoop) {
-                        RunInfo &runInfo1 = runInfo[(taskId + 3) % 4];
                         this->cubeBlock.IterateLoadQK(
-                            v0ResGmBuffers.Get(runInfo1.taskIdMod3), isFirstLoop,
-                            runInfo1.taskIdMod3, runInfo1.s2RealSize, runInfo1.s1oIdx);
+                            v0ResGmBuffers.Get(taskIdMod3Hist[(taskId + 3) % 4]), isFirstLoop,
+                            taskIdMod3Hist[(taskId + 3) % 4], s2RealSizeHist[(taskId + 3) % 4], s1oIdxHist[(taskId + 3) % 4]);
                         isFirstLoop = false;
                     } else {
                         if constexpr (IS_SPLIT_G) {
@@ -345,20 +370,18 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                     if (taskId > 1 && notLast) {
                         uint32_t bmm1Slot = bmm1GetFlag;
                         bmm1GetFlag ^= 1;
-                        auto &runInfo2 = runInfo[(taskId + 2) % 4];
-                        RunInfo &runInfoNext = runInfo[(taskId + 3) % 4];
                         this->cubeBlock.IterateBmm1(
                             this->bmm1Buffers[bmm1Slot],
-                                v0ResGmBuffers.Get(runInfo2.taskIdMod3),
-                            notLastTwoLoop, runInfoNext.s1oIdx,
-                            runInfo2.taskIdMod3, runInfo2.s2RealSize, runInfo2.s2LoopCount, runInfo2.s2LoopLimit);
+                                v0ResGmBuffers.Get(taskIdMod3Hist[(taskId + 2) % 4]),
+                            notLastTwoLoop, s1oIdxHist[(taskId + 3) % 4],
+                            taskIdMod3Hist[(taskId + 2) % 4], s2RealSizeHist[(taskId + 2) % 4],
+                            s2LoopCountHist[(taskId + 2) % 4], s2LoopLimitHist[(taskId + 2) % 4]);
                     }
                     if (taskId > 2) {
-                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
                         uint32_t l1PSlot = l1PGetFlag;
                         l1PGetFlag ^= 1;
                         this->cubeBlock.IterateBmm2(this->bmm2Buffers, this->l1PBuffers[l1PSlot],
-                            runInfo3.taskIdMod3, runInfo3.s2RealSize);
+                            taskIdMod3Hist[(taskId + 1) % 4], s2RealSizeHist[(taskId + 1) % 4]);
                     }
                 }
                 ++taskId;
@@ -387,35 +410,6 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
         runParam.goIdx = (aicIdx % 2 == 0) ? 0 : 64;
     } else {
         runParam.goIdx = 0;
-    }
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::SetRunInfo(
-    RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
-{
-    int64_t s2EndIdx = 0;
-    if (s2LoopCount < runParam.oriKvLoopEndIdx) {
-        runInfo.s2StartIdx = runParam.s2LineStartIdx;
-        s2EndIdx = runParam.s2LineEndIdx;
-    } else {
-        runInfo.s2StartIdx = 0;
-        s2EndIdx = runParam.s2CmpLineEndIdx;
-    }
-    runInfo.s2LoopCount = s2LoopCount;
-    runInfo.s2LoopLimit = s2LoopLimit;
-    runInfo.s1oIdx = runParam.s1oIdx;
-    runInfo.attentionOutOffset = runParam.attentionOutOffset;
-    runInfo.oriKvLoopEndIdx = runParam.oriKvLoopEndIdx;
-    runInfo.taskIdMod2 = taskId & 1;
-    runInfo.taskIdMod3 = taskId % 3;
-    runInfo.multiCoreIdxMod2 = multiCoreInnerIdx & 1;
-
-    runInfo.s2RealSize = s2BaseSize;
-    int64_t curS2LoopCnt = (s2LoopCount >= runParam.oriKvLoopEndIdx) ? \
-        (s2LoopCount - runParam.oriKvLoopEndIdx) : s2LoopCount;
-    if (runInfo.s2StartIdx + (curS2LoopCnt + 1) * runInfo.s2RealSize > s2EndIdx) {
-        runInfo.s2RealSize = s2EndIdx - curS2LoopCnt * runInfo.s2RealSize - runInfo.s2StartIdx;
     }
 }
 }
