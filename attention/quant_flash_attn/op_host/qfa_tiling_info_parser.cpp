@@ -211,10 +211,13 @@ void QfaInfoParser::GetInputParaInfo()
     opParamInfo_.vDescale.shape = context_->GetInputShape(V_DESCALE_INDEX);
 
     // 获取 k/v/k_descale/v_descale 的 stride，用于非连续 Tensor 校验
-    keyStrides_ = context_->GetInputStride(KEY_INDEX);
-    valueStrides_ = context_->GetInputStride(VALUE_INDEX);
-    kDescaleStrides_ = context_->GetInputStride(K_DESCALE_INDEX);
-    vDescaleStrides_ = context_->GetInputStride(V_DESCALE_INDEX);
+    if (context_->InputIsView(KEY_INDEX) == true) {
+        hasStride_ = true;
+        keyStrides_ = context_->GetInputStride(KEY_INDEX);
+        valueStrides_ = context_->GetInputStride(VALUE_INDEX);
+        kDescaleStrides_ = context_->GetInputStride(K_DESCALE_INDEX);
+        vDescaleStrides_ = context_->GetInputStride(V_DESCALE_INDEX);
+    }
 
     GetOptionalInputParaInfo();
 }
@@ -571,6 +574,7 @@ void QfaInfoParser::GenerateInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.opName = opName_;
     qfaInfo.platformInfo = platformInfo_;
     qfaInfo.opParamInfo = opParamInfo_;
+    qfaInfo.hasStride = hasStride_;
     qfaInfo.keyStrides = keyStrides_;
     qfaInfo.valueStrides = valueStrides_;
     qfaInfo.kDescaleStrides = kDescaleStrides_;
