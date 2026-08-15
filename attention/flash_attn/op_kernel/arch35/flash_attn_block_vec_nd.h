@@ -693,10 +693,10 @@ public:
             ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
         if (likely(runInfo.actSingleLoopS2Size == 128)) {
             FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, EQ_128,
-                                       HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, hasDrop, false, false>(
+                                       HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false, false, false>(
                 stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
                 nonePseUb, dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
-                0, 0.0f, 0.0f, static_cast<T>(constInfo_.scaleValue),
+                0 /* pseStride */, 0.0f /* slopes */, 0.0f /* posShift */, static_cast<T>(constInfo_.scaleValue),
                 descaleQK, negativeFloatScalar_, 0.0F, queryScaleUb, deSCaleKValue);
         } else if (runInfo.actSingleLoopS2Size <= 64) {
             FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize,
