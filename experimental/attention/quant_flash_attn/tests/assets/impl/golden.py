@@ -163,7 +163,16 @@ def cpu_qfa_mxfp4(
         }
     )
 
-    data_dict = golden_mod.generate_data()
+
+    golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
+    try:
+        try:
+            data_dict = golden_mod.generate_data()
+        except Exception:
+            golden_mod._clear_physical_s_override()
+            data_dict = golden_mod.generate_data()
+    finally:
+        golden_mod._clear_physical_s_override()
     cpu_out, cpu_lse = golden_mod.cpu_mxfp4_golden(data_dict)
 
     if enable_lse and cpu_lse is not None:
