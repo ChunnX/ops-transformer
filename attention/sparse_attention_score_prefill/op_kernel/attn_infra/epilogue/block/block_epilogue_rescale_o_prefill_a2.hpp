@@ -113,22 +113,29 @@ public:
         // buffer for groupSize=16, D=128, so Phase2 issued 16 small GM reads
         // per task even though the A2 UB can hold eight splits per stage.
         constexpr uint32_t ubFloats = ArchTag::UB_SIZE / sizeof(float);
-        uint32_t fixedFloats = 2U * lseFloats + dstFloats + bcTmpFloats;
+        const uint32_t castAccumFloats = AscendC::IsSameType<TwsO, bfloat16_t>::value
+            ? dstFloats : 0U;
+        const uint32_t accumFloatsPerSplit =
+            (dstFloats * sizeof(TwsO) + sizeof(float) - 1U) / sizeof(float);
+        uint32_t fixedFloats = 2U * lseFloats + dstFloats + bcTmpFloats
+            + castAccumFloats;
         uint32_t cap = 1U;
-        if (fixedFloats < ubFloats && dstFloats > 0U) {
-            cap = (ubFloats - fixedFloats) / (ACCUM_OUT_STAGES * dstFloats);
+        if (fixedFloats < ubFloats && accumFloatsPerSplit > 0U) {
+            cap = (ubFloats - fixedFloats)
+                / (ACCUM_OUT_STAGES * accumFloatsPerSplit);
             if (cap == 0U) { cap = 1U; }
         }
         uint32_t half = (topK_ + 1U) / 2U;
         splitsPerBuf_ = (half < 1U) ? 1U : ((cap < half) ? cap : half);
-        uint32_t accumOutFloats = splitsPerBuf_ * dstFloats;
+        uint32_t accumOutFloats = splitsPerBuf_ * accumFloatsPerSplit;
 
         // Carve from ubBase (contiguous, no holes)
         uint32_t off = 0;
         lseMaxBuf_ = ubBase[off]; off += lseFloats;
         lseSumBuf_ = ubBase[off]; off += lseFloats;
-        dstBuf_ = ubBase[off].template ReinterpretCast<TwsO>(); off += dstFloats;
+        dstBuf_ = ubBase[off]; off += dstFloats;
         broadCastTmpBuf_ = ubBase[off]; off += bcTmpFloats;
+        castAccumBuf_ = ubBase[off]; off += castAccumFloats;
         for (uint32_t i = 0U; i < ACCUM_OUT_STAGES; ++i) {
             accumOutBuf[i] = ubBase[off + accumOutFloats * i].template ReinterpretCast<TwsO>();
         }
@@ -178,9 +185,10 @@ public:
 private:
     AscendC::LocalTensor<T> lseMaxBuf_;
     AscendC::LocalTensor<T> lseSumBuf_;
-    AscendC::LocalTensor<TwsO> dstBuf_;
+    AscendC::LocalTensor<T> dstBuf_;
     AscendC::LocalTensor<TwsO> accumOutBuf[ACCUM_OUT_STAGES];
     AscendC::LocalTensor<T> broadCastTmpBuf_;
+    AscendC::LocalTensor<T> castAccumBuf_;
 
     uint32_t D_ = 0;
     uint32_t groupSize_ = 0;
@@ -232,7 +240,7 @@ private:
         if (fullRepeats <= rowCount) {
             for (uint32_t d = 0U; d < fullRepeats; ++d) {
                 uint32_t offset = d * elemsPerRepeat;
-                AscendC::Mul<float, false>(
+                AscendC::Mul<float>(
                     dst[offset], src[offset], rowScale, elemsPerRepeat, rowCount, repeatParams);
             }
         } else {
@@ -245,13 +253,13 @@ private:
             rowParams.dstRepStride = elemsPerRepeat / elemsPerBlock;
             for (uint32_t row = 0U; row < rowCount; ++row) {
                 uint32_t offset = row * columnCount;
-                AscendC::Mul<float, false>(
+                AscendC::Mul<float>(
                     dst[offset], src[offset], rowScale[row * elemsPerBlock], elemsPerRepeat,
                     fullRepeats, rowParams);
             }
         }
         if (remain > 0U) {
-            AscendC::Mul<float, false>(
+            AscendC::Mul<float>(
                 dst[fullRepeats * elemsPerRepeat], src[fullRepeats * elemsPerRepeat], rowScale,
                 remain, rowCount, repeatParams);
         }
@@ -267,7 +275,9 @@ private:
         for (uint32_t i = 0U; i < tail; ++i) {
             mask |= one << i;
         }
-        if (count == FLOAT_VECTOR_SIZE || count == 0U) {
+        if (count == 0U || count >= 2U * FLOAT_VECTOR_SIZE) {
+            AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
+        } else if (count == FLOAT_VECTOR_SIZE) {
             AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
         } else if (count >= FLOAT_VECTOR_SIZE) {
             AscendC::SetVectorMask<int8_t>(mask, (uint64_t)-1);
@@ -418,18 +428,30 @@ private:
             AscendC::DumpTensor(lseSumTmpBuf, 903, alignedLseCount);
 #endif
         }
-        // Vectorized: replace per-element scalar GetValue+Duplicate with Brcb.
-        // Brcb broadcasts each consecutive source float to an 8-element block
-        // in the destination, matching the [topK, row, 8] layout exactly.
-        // topK_ being a multiple of 8 guarantees lseCount is block-aligned.
-        AscendC::Brcb(lseMaxLocal.ReinterpretCast<uint32_t>(),
-                       lseMaxTmpBuf.ReinterpretCast<uint32_t>(),
-                       alignedLseCount / FP32_ONE_BLOCK_SIZE,
-                       AscendC::BrcbRepeatParams(1, 8));
-        AscendC::Brcb(lseSumLocal.ReinterpretCast<uint32_t>(),
-                       lseSumTmpBuf.ReinterpretCast<uint32_t>(),
-                       alignedLseCount / FP32_ONE_BLOCK_SIZE,
-                       AscendC::BrcbRepeatParams(1, 8));
+        // One Brcb repeat consumes eight scalars and writes eight 32B blocks.
+        // Its destination is therefore rounded up to 64 float elements per
+        // repeat. lse{Max,Sum}Local only reserve lseCount * 8 floats, so Brcb
+        // is valid only when lseCount itself is a multiple of eight. In
+        // particular, topK=3/groupSize=4 and topK=5/groupSize=4 otherwise
+        // overrun their LSE buffers and contaminate the following invocation.
+        if ((lseCount % FP32_ONE_BLOCK_SIZE) == 0U) {
+            AscendC::Brcb(lseMaxLocal.ReinterpretCast<uint32_t>(),
+                           lseMaxTmpBuf.ReinterpretCast<uint32_t>(),
+                           lseCount / FP32_ONE_BLOCK_SIZE,
+                           AscendC::BrcbRepeatParams(1, 8));
+            AscendC::Brcb(lseSumLocal.ReinterpretCast<uint32_t>(),
+                           lseSumTmpBuf.ReinterpretCast<uint32_t>(),
+                           lseCount / FP32_ONE_BLOCK_SIZE,
+                           AscendC::BrcbRepeatParams(1, 8));
+        } else {
+            for (uint32_t idx = 0U; idx < lseCount; ++idx) {
+                const uint32_t dstOff = idx * FP32_ONE_BLOCK_SIZE;
+                AscendC::Duplicate<float>(lseMaxLocal[dstOff], lseMaxTmpBuf.GetValue(idx),
+                                           FP32_ONE_BLOCK_SIZE);
+                AscendC::Duplicate<float>(lseSumLocal[dstOff], lseSumTmpBuf.GetValue(idx),
+                                           FP32_ONE_BLOCK_SIZE);
+            }
+        }
         AscendC::PipeBarrier<PIPE_V>();
 #if KERNEL_DUMP_PHASE2_STATE
         for (uint32_t idx = 0U; idx < lseCount; ++idx) {
@@ -553,15 +575,27 @@ private:
                        k, numeratorBuf.GetValue(0), totalBuf.GetValue(0));
             }
 #endif
-            // Vectorized: replace per-row scalar GetValue+div+Duplicate with
-            // a single vector Div.  When rowSum=0 (padding row), rowMax=
-            // NEG_INF_LSE so exp(rowMax-globalMax) underflows to 0, making
-            // 0/total=0 — the correct scale.  The denominator=0 case (all
-            // splits empty) is unreachable for valid attention.
-            AscendC::Div<float, false>(
-                lseSumLocal[k * dealCount], numeratorBuf, totalBuf,
-                (uint64_t)0, vecRepeats,
-                AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
+            // Keep the vector path for the block-aligned production layout.
+            // For a non-aligned LSE count, retain the original guarded scalar
+            // division: padded/invalid slots may carry a zero denominator and
+            // must materialize a zero scale instead of evaluating 0 / 0.
+            if (((topK_ * dealRowCount) % FP32_ONE_BLOCK_SIZE) == 0U) {
+                AscendC::Div<float, false>(
+                    lseSumLocal[k * dealCount], numeratorBuf, totalBuf,
+                    (uint64_t)0, vecRepeats,
+                    AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
+            } else {
+                for (uint32_t row = 0U; row < dealRowCount; ++row) {
+                    const uint32_t rowOff = row * FP32_ONE_BLOCK_SIZE;
+                    const float denominator = totalBuf.GetValue(rowOff);
+                    const float expValue = numeratorBuf.GetValue(rowOff);
+                    const float rowSum = lseSumLocal[k * dealCount + rowOff].GetValue(0);
+                    const float scale = (denominator > 0.0f && rowSum > 0.0f)
+                        ? expValue / denominator : 0.0f;
+                    AscendC::Duplicate<float>(lseSumLocal[k * dealCount + rowOff], scale,
+                                               FP32_ONE_BLOCK_SIZE);
+                }
+            }
             AscendC::PipeBarrier<PIPE_V>();
         }
         AscendC::PipeBarrier<PIPE_V>();
@@ -588,30 +622,27 @@ private:
         copyInPadParams.rightPadding = (headDimAlignFp32_ - D_) % blockElems;
         copyInPadParams.paddingValue = 0;
 
-        // For the fp32 D=128 path, each subblock's rows are contiguous within a
-        // split.  Treat each split as one MTE2 block and skip the peer
-        // subblock's rows with strides, reducing one DMA launch per split to one
-        // multi-block launch per group.
-        if constexpr (AscendC::IsSameType<TwsO, float>::value) {
-            const uint32_t gapRows = groupSize_ - dealRowCount;
-            const uint32_t dstGapBytes = gapRows * headDimAlignFp32_ * sizeof(TwsO);
-            if ((nSplits > 1U) && (headDimAlignFp32_ == D_)
-                && ((dstGapBytes % BYTE_BLOCK) == 0U)) {
-                AscendC::DataCopyExtParams batchCopyParams;
-                batchCopyParams.blockCount = nSplits;
-                batchCopyParams.blockLen = dealRowCount * D_ * sizeof(TwsO);
-                batchCopyParams.srcStride = gapRows * D_ * sizeof(TwsO);
-                batchCopyParams.dstStride = dstGapBytes / BYTE_BLOCK;
-                const uint64_t src = TaskAccumBase(qToken, kvHeadIdx)
-                    + static_cast<uint64_t>(jStart) * groupSize_ * D_
-                    + static_cast<uint64_t>(rowOffset) * D_;
-                AscendC::DataCopyPad(accumOutLocal, gmAccumOut[src],
-                                     batchCopyParams, copyInPadParams);
-                return;
-            }
+        // Each subblock's rows are contiguous within one split. Treat every
+        // split as one block and skip the peer subblock rows with byte strides.
+        // This layout is valid for both fp32 and bf16 O_partial.
+        const uint32_t gapRows = groupSize_ - dealRowCount;
+        const uint32_t dstGapBytes = gapRows * headDimAlignFp32_ * sizeof(TwsO);
+        if ((nSplits > 1U) && (headDimAlignFp32_ == D_)
+            && ((dstGapBytes % BYTE_BLOCK) == 0U)) {
+            AscendC::DataCopyExtParams batchCopyParams;
+            batchCopyParams.blockCount = nSplits;
+            batchCopyParams.blockLen = dealRowCount * D_ * sizeof(TwsO);
+            batchCopyParams.srcStride = gapRows * D_ * sizeof(TwsO);
+            batchCopyParams.dstStride = dstGapBytes / BYTE_BLOCK;
+            const uint64_t src = TaskAccumBase(qToken, kvHeadIdx)
+                + static_cast<uint64_t>(jStart) * groupSize_ * D_
+                + static_cast<uint64_t>(rowOffset) * D_;
+            AscendC::DataCopyPad(accumOutLocal, gmAccumOut[src],
+                                 batchCopyParams, copyInPadParams);
+            return;
         }
 
-        // Generic path for padded dimensions and bf16 O_partial.
+        // Generic path for one split or padded dimensions.
         for (uint32_t s = 0U; s < nSplits; ++s) {
             AscendC::DataCopyExtParams copyInParams;
             copyInParams.blockCount = dealRowCount;
@@ -641,7 +672,7 @@ private:
     __aicore__ inline
     void ReduceFinalRes(uint32_t qToken,
                         uint32_t kvHeadIdx,
-                        AscendC::LocalTensor<TwsO> &dst,
+                        AscendC::LocalTensor<T> &dst,
                         AscendC::LocalTensor<T> &scaleLocal,
                         uint32_t dealRowCount,
                         uint32_t rowOffset,
@@ -691,148 +722,73 @@ private:
                 uint64_t localOff = static_cast<uint64_t>(j - jStart) * groupSize_
                     * headDimAlignFp32_;
 
-                if constexpr (!AscendC::IsSameType<TwsO, bfloat16_t>::value) {
-                    const uint32_t totalElems = dealRowCount * headDimAlignFp32_;
-                    const uint32_t addRepeats = totalElems / FLOAT_VECTOR_SIZE;
-                    if (((totalElems % FLOAT_VECTOR_SIZE) == 0U) && (addRepeats <= 255U)) {
-                        // scaleLocal already stores every row scale as one
-                        // repeated 32B block.  RowMuls consumes one such block
-                        // per row, replacing the scalar GetValue/Duplicate loop.
-                        AscendC::LocalTensor<T> rowScale = scaleLocal[
-                            static_cast<uint64_t>(j) * dealRowCount * FP32_ONE_BLOCK_SIZE];
-                        if (j == 0U) {
-                            RowMulsFp32(dst, accumOutBuf[curId][localOff], rowScale,
-                                       dealRowCount, headDimAlignFp32_, D_);
-                            AscendC::PipeBarrier<PIPE_V>();
-                        } else {
-                            AscendC::LocalTensor<T> tmpMul = broadCastTmpBuf_[scratchBase];
-                            RowMulsFp32(tmpMul, accumOutBuf[curId][localOff], rowScale,
-                                       dealRowCount, headDimAlignFp32_, D_);
-                            AscendC::PipeBarrier<PIPE_V>();
-                            AscendC::Add<float, false>(
-                                dst, dst, tmpMul,
-                                (uint64_t)0, addRepeats,
-                                AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
-                            AscendC::PipeBarrier<PIPE_V>();
-                        }
-                        continue;
-                    }
-
-                    // Fallback for a non-64-element row layout.
-                    AscendC::LocalTensor<T> combinedScale = broadCastTmpBuf_[scratchBase];
-                    uint64_t dstOff = static_cast<uint64_t>(0);
-                    uint64_t accumOff = localOff;
-                    float scaleValue = scaleLocal[static_cast<uint64_t>(j)
-                        * dealRowCount * FP32_ONE_BLOCK_SIZE].GetValue(0);
-                    AscendC::Duplicate<float>(combinedScale, scaleValue, FLOAT_VECTOR_SIZE);
+                const uint32_t totalElems = dealRowCount * headDimAlignFp32_;
+                const uint32_t addRepeats = totalElems / FLOAT_VECTOR_SIZE;
+                AscendC::LocalTensor<T> splitFp32;
+                if constexpr (AscendC::IsSameType<TwsO, bfloat16_t>::value) {
+                    // Keep O_partial compact in GM/UB, but cast the complete
+                    // split once so all weighted accumulation remains fp32.
+                    AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
+                    AscendC::Cast<float, bfloat16_t, false>(
+                        castAccumBuf_, accumOutBuf[curId][localOff],
+                        AscendC::RoundMode::CAST_NONE, (uint64_t)0,
+                        addRepeats, AscendC::UnaryRepeatParams(1, 1, 8, 4));
                     AscendC::PipeBarrier<PIPE_V>();
-                    for (uint32_t k = 0; k < dealRowCount; ++k) {
-                        scaleValue = scaleLocal[static_cast<uint64_t>(j)
-                            * dealRowCount * FP32_ONE_BLOCK_SIZE
-                            + k * FP32_ONE_BLOCK_SIZE].GetValue(0);
-                        AscendC::Duplicate<float>(combinedScale, scaleValue, FLOAT_VECTOR_SIZE);
+                    splitFp32 = castAccumBuf_;
+                } else {
+                    splitFp32 = accumOutBuf[curId][localOff];
+                }
+
+                if (((totalElems % FLOAT_VECTOR_SIZE) == 0U) && (addRepeats <= 255U)) {
+                    AscendC::LocalTensor<T> rowScale = scaleLocal[
+                        static_cast<uint64_t>(j) * dealRowCount * FP32_ONE_BLOCK_SIZE];
+                    if (j == 0U) {
+                        RowMulsFp32(dst, splitFp32, rowScale,
+                                   dealRowCount, headDimAlignFp32_, D_);
                         AscendC::PipeBarrier<PIPE_V>();
-                        dstOff = static_cast<uint64_t>(k) * headDimAlignFp32_;
-                        accumOff = localOff + dstOff;
-                        for (uint32_t z = 0; z < dLoops; ++z) {
-                            AscendC::Mul<float, false>(
-                                broadCastTmpBuf_[scratchBase + 2U * FLOAT_VECTOR_SIZE],
-                                accumOutBuf[curId][accumOff + z * FLOAT_VECTOR_SIZE],
-                                combinedScale,
-                                (uint64_t)0, 1U,
-                                AscendC::BinaryRepeatParams(1, 1, 0, 8, 8, 1));
-                            AscendC::PipeBarrier<PIPE_V>();
-                            if (j == 0U) {
-                                AscendC::DataCopy(
-                                    dst[dstOff + z * FLOAT_VECTOR_SIZE],
-                                    broadCastTmpBuf_[scratchBase + 2U * FLOAT_VECTOR_SIZE],
-                                    AscendC::DataCopyParams(1, FLOAT_VECTOR_SIZE / FP32_ONE_BLOCK_SIZE, 0, 0));
-                            } else {
-                                AscendC::Add<float, false>(
-                                    dst[dstOff + z * FLOAT_VECTOR_SIZE],
-                                    dst[dstOff + z * FLOAT_VECTOR_SIZE],
-                                    broadCastTmpBuf_[scratchBase + 2U * FLOAT_VECTOR_SIZE],
-                                    (uint64_t)0, 1U,
-                                    AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
-                            }
-                            AscendC::PipeBarrier<PIPE_V>();
-                        }
+                    } else {
+                        AscendC::LocalTensor<T> tmpMul = broadCastTmpBuf_[scratchBase];
+                        RowMulsFp32(tmpMul, splitFp32, rowScale,
+                                   dealRowCount, headDimAlignFp32_, D_);
+                        AscendC::PipeBarrier<PIPE_V>();
+                        AscendC::Add<float>(
+                            dst, dst, tmpMul, FLOAT_VECTOR_SIZE, addRepeats,
+                            AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
+                        AscendC::PipeBarrier<PIPE_V>();
                     }
                     continue;
                 }
 
-                for (uint32_t k = 0; k < dealRowCount; ++k) {
-                    // Broadcast scale[j][k] (1 float) → FLOAT_VECTOR_SIZE floats via Brcb.
-                    // scale is in broadcast layout [topK, dealRowCount, 8]; each scalar is
-                    // replicated 8×, so Brcb the first element of the 8-block.
-                    uint32_t scaleOff = j * dealRowCount * FP32_ONE_BLOCK_SIZE + k * FP32_ONE_BLOCK_SIZE;
-                    AscendC::LocalTensor<T> combinedScale = broadCastTmpBuf_[scratchBase];
-                    float scaleValue = scaleLocal[scaleOff].GetValue(0);
+                // Fallback for a non-64-element row layout.
+                AscendC::LocalTensor<T> combinedScale = broadCastTmpBuf_[scratchBase];
+                AscendC::LocalTensor<T> tmpMul =
+                    broadCastTmpBuf_[scratchBase + 2U * FLOAT_VECTOR_SIZE];
+                for (uint32_t k = 0U; k < dealRowCount; ++k) {
+                    const uint32_t scaleOff = j * dealRowCount * FP32_ONE_BLOCK_SIZE
+                        + k * FP32_ONE_BLOCK_SIZE;
+                    const float scaleValue = scaleLocal[scaleOff].GetValue(0);
                     AscendC::Duplicate<float>(combinedScale, scaleValue, FLOAT_VECTOR_SIZE);
                     AscendC::PipeBarrier<PIPE_V>();
-
-                    uint64_t dstOff = static_cast<uint64_t>(k) * headDimAlignFp32_;
-                    uint64_t accumOff = localOff + dstOff;
-
-                    if constexpr (AscendC::IsSameType<TwsO, bfloat16_t>::value) {
-                        // bf16 path: Cast accumOut bf16→fp32, Mul with combinedScale,
-                        // then either init dst (j==0) or Cast dst bf16→fp32, Add, Cast back.
-                        // Scratch: tmpAccum (Cast+Mul result), tmpDst (Cast prev dst)
-                        AscendC::LocalTensor<T> tmpAccum =
-                            broadCastTmpBuf_[scratchBase + 2U * FLOAT_VECTOR_SIZE];
-                        AscendC::LocalTensor<T> tmpDst =
-                            broadCastTmpBuf_[scratchBase + 3U * FLOAT_VECTOR_SIZE];
-                        AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
-
-                        for (uint32_t z = 0; z < dLoops; ++z) {
-                            // Cast bf16 accumOut → fp32 tmpAccum
-                            AscendC::Cast<float, bfloat16_t, false>(
-                                tmpAccum,
-                                accumOutBuf[curId][accumOff + z * FLOAT_VECTOR_SIZE],
-                                AscendC::RoundMode::CAST_NONE,
-                                (uint64_t)0, 1U,
-                                AscendC::UnaryRepeatParams(1, 1, 8, 4));
-                            AscendC::PipeBarrier<PIPE_V>();
-                            // Mul: tmpAccum = tmpAccum * combinedScale
-                            AscendC::Mul<float, false>(
-                                tmpAccum, tmpAccum, combinedScale,
-                                (uint64_t)0, 1U,
-                                AscendC::BinaryRepeatParams(1, 1, 0, 8, 8, 1));
-                            AscendC::PipeBarrier<PIPE_V>();
-                            if (j == 0U) {
-                                // Init: Cast fp32→bf16 → dst
-                                AscendC::Cast<bfloat16_t, float, false>(
-                                    dst[dstOff + z * FLOAT_VECTOR_SIZE],
-                                    tmpAccum,
-                                    AscendC::RoundMode::CAST_ROUND,
-                                    (uint64_t)0, 1U,
-                                    AscendC::UnaryRepeatParams(1, 1, 4, 8));
-                                AscendC::PipeBarrier<PIPE_V>();
-                            } else {
-                                // Cast dst bf16→fp32 → tmpDst
-                                AscendC::Cast<float, bfloat16_t, false>(
-                                    tmpDst,
-                                    dst[dstOff + z * FLOAT_VECTOR_SIZE],
-                                    AscendC::RoundMode::CAST_NONE,
-                                    (uint64_t)0, 1U,
-                                    AscendC::UnaryRepeatParams(1, 1, 8, 4));
-                                AscendC::PipeBarrier<PIPE_V>();
-                                // Add: tmpAccum = tmpDst + tmpAccum
-                                AscendC::Add<float, false>(
-                                    tmpAccum, tmpDst, tmpAccum,
-                                    (uint64_t)0, 1U,
-                                    AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
-                                AscendC::PipeBarrier<PIPE_V>();
-                                // Cast fp32→bf16 → dst
-                                AscendC::Cast<bfloat16_t, float, false>(
-                                    dst[dstOff + z * FLOAT_VECTOR_SIZE],
-                                    tmpAccum,
-                                    AscendC::RoundMode::CAST_ROUND,
-                                    (uint64_t)0, 1U,
-                                    AscendC::UnaryRepeatParams(1, 1, 4, 8));
-                                AscendC::PipeBarrier<PIPE_V>();
-                            }
+                    const uint64_t dstOff = static_cast<uint64_t>(k) * headDimAlignFp32_;
+                    for (uint32_t z = 0U; z < dLoops; ++z) {
+                        AscendC::Mul<float>(
+                            tmpMul, splitFp32[dstOff + z * FLOAT_VECTOR_SIZE],
+                            combinedScale, FLOAT_VECTOR_SIZE, 1U,
+                            AscendC::BinaryRepeatParams(1, 1, 0, 8, 8, 1));
+                        AscendC::PipeBarrier<PIPE_V>();
+                        if (j == 0U) {
+                            AscendC::DataCopy(
+                                dst[dstOff + z * FLOAT_VECTOR_SIZE], tmpMul,
+                                AscendC::DataCopyParams(
+                                    1, FLOAT_VECTOR_SIZE / FP32_ONE_BLOCK_SIZE, 0, 0));
+                        } else {
+                            AscendC::Add<float>(
+                                dst[dstOff + z * FLOAT_VECTOR_SIZE],
+                                dst[dstOff + z * FLOAT_VECTOR_SIZE], tmpMul,
+                                FLOAT_VECTOR_SIZE, 1U,
+                                AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
                         }
+                        AscendC::PipeBarrier<PIPE_V>();
                     }
                 }
             }
@@ -850,44 +806,30 @@ private:
     __aicore__ inline
     void CopyFinalResOut(uint64_t attenOutOffset,
                          AscendC::GlobalTensor<ElementO> &gmO,
-                         AscendC::LocalTensor<TwsO> &accumOutLocal,
+                         AscendC::LocalTensor<T> &accumOutLocal,
                          uint32_t dealRowCount)
     {
         AscendC::PipeBarrier<PIPE_V>();
-        if constexpr (AscendC::IsSameType<TwsO, bfloat16_t>::value) {
-            // bf16 path: dst is already bf16 (Cast in ReduceFinalRes)
-            uint32_t shapeArray[] = {dealRowCount, D_};
-            accumOutLocal.SetShapeInfo(AscendC::ShapeInfo(2, shapeArray, AscendC::DataFormat::ND));
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-            AscendC::DataCopyExtParams dataCopyParams;
-            dataCopyParams.blockCount = dealRowCount;
-            dataCopyParams.blockLen = static_cast<uint32_t>(D_) * sizeof(ElementO);
-            dataCopyParams.srcStride = (headDimAlignFp32_ - D_) / (BYTE_BLOCK / sizeof(ElementO));
-            dataCopyParams.dstStride = 0;
-            AscendC::DataCopyPad(gmO[attenOutOffset], accumOutLocal, dataCopyParams);
-        } else {
-            // fp32 path: Cast fp32→bf16 then copy
-            AscendC::LocalTensor<ElementO> castBuf = broadCastTmpBuf_.template ReinterpretCast<ElementO>();
-            uint32_t shapeArray[] = {dealRowCount, D_};
-            castBuf.SetShapeInfo(AscendC::ShapeInfo(2, shapeArray, AscendC::DataFormat::ND));
-            uint32_t totalElems = dealRowCount * headDimAlignFp32_;
-            AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
-            AscendC::Cast<ElementO, float, false>(
-                castBuf, accumOutLocal.template ReinterpretCast<T>(),
-                AscendC::RoundMode::CAST_ROUND, (uint64_t)0,
-                (totalElems + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE,
-                AscendC::UnaryRepeatParams(1, 1, 4, 8));
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-            AscendC::DataCopyExtParams dataCopyParams;
-            dataCopyParams.blockCount = dealRowCount;
-            dataCopyParams.blockLen = static_cast<uint32_t>(D_) * sizeof(ElementO);
-            dataCopyParams.srcStride = (headDimAlignFp32_ - D_) / (BYTE_BLOCK / sizeof(ElementO));
-            dataCopyParams.dstStride = 0;
-            AscendC::DataCopyPad(gmO[attenOutOffset], castBuf, dataCopyParams);
-        }
+        AscendC::LocalTensor<ElementO> castBuf =
+            broadCastTmpBuf_.template ReinterpretCast<ElementO>();
+        uint32_t shapeArray[] = {dealRowCount, D_};
+        castBuf.SetShapeInfo(AscendC::ShapeInfo(2, shapeArray, AscendC::DataFormat::ND));
+        uint32_t totalElems = dealRowCount * headDimAlignFp32_;
+        AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
+        AscendC::Cast<ElementO, float, false>(
+            castBuf, accumOutLocal, AscendC::RoundMode::CAST_ROUND, (uint64_t)0,
+            (totalElems + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE,
+            AscendC::UnaryRepeatParams(1, 1, 4, 8));
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        AscendC::DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = dealRowCount;
+        dataCopyParams.blockLen = static_cast<uint32_t>(D_) * sizeof(ElementO);
+        dataCopyParams.srcStride =
+            (headDimAlignFp32_ - D_) / (BYTE_BLOCK / sizeof(ElementO));
+        dataCopyParams.dstStride = 0;
+        AscendC::DataCopyPad(gmO[attenOutOffset], castBuf, dataCopyParams);
         // The next Phase2 task handled by this AIV reuses dstBuf_.  Publish
         // MTE3 completion so that task waits until this copy has stopped
         // reading the shared UB storage.
@@ -939,11 +881,11 @@ private:
                                 976, topK_ * dealCount);
         }
 #endif
-        AscendC::LocalTensor<TwsO> dst = dstBuf_;
+        AscendC::LocalTensor<T> dst = dstBuf_;
         // Invalid or empty splits may be skipped in ReduceFinalRes; clear the
         // complete tile first so skipped rows cannot expose stale UB contents.
-        AscendC::Duplicate<TwsO>(dst, static_cast<TwsO>(0),
-                                 static_cast<int32_t>(dealRowCount * headDimAlignFp32_));
+        AscendC::Duplicate<T>(dst, 0.0f,
+                              static_cast<int32_t>(dealRowCount * headDimAlignFp32_));
         AscendC::PipeBarrier<PIPE_V>();
         ReduceFinalRes(qToken, kvHeadIdx, dst, lseSumBuf_, dealRowCount, rowOffset, gmAccumOut);
 #if KERNEL_DUMP_PHASE2_STATE

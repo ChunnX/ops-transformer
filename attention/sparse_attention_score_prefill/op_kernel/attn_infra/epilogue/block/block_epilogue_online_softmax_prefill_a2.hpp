@@ -263,7 +263,7 @@ public:
     // Called AFTER SubtractRowMaxAndExp so we zero the exp result directly.
     // Handles unaligned tailN: A2 VEC instructions require 32-byte (8-float)
     // aligned UB addresses. When tailN % 8 != 0, the unaligned part is zeroed
-    // via SetVecMask + Muls(0) at the aligned address tailNAlignedDown.
+    // via a masked Duplicate at the aligned address tailNAlignedDown.
     __aicore__ inline
     void ZeroOutCausalTail(AscendC::LocalTensor<float> &fsUb, uint32_t rows,
                            uint32_t nRound, uint32_t tailN)
@@ -277,7 +277,8 @@ public:
         for (uint32_t row = 0; row < rows; row++) {
             uint32_t rowOff = row * nRound;
 
-            // Unaligned part: zero [tailN, tailNAlignedDown+8) via Muls(0) with mask
+            // Overwrite instead of multiplying by zero: stale NaNs in padded
+            // L0C lanes survive NaN * 0 and would poison the subsequent RowSum.
             if (tailNRem != 0U) {
                 // Build mask: bits [tailNRem, FLOAT_BLOCK_SIZE) set
                 uint64_t mask = 0;
@@ -285,13 +286,13 @@ public:
                     mask |= (1ULL << i);
                 }
                 AscendC::SetVectorMask<int8_t>(0x0, mask);
-                AscendC::Muls<float, false>(
-                    fsUb[rowOff + tailNAlignedDown],
+                AscendC::Duplicate<float, false>(
                     fsUb[rowOff + tailNAlignedDown],
                     0.0f,
                     static_cast<uint64_t>(0),
                     1,
-                    AscendC::UnaryRepeatParams(1, 1, 8, 8));
+                    1,
+                    8);
                 AscendC::SetVectorMask<int8_t>(static_cast<uint64_t>(-1), static_cast<uint64_t>(-1));
             }
 
@@ -593,7 +594,10 @@ public:
         // [mCopyOffset*nRound, M*nRound) — no overlap.
         // Limitation: requires m*nRound <= MAX_UB_S_ELEM_NUM/2 per subBlock.
         uint32_t ubSubOffset = subBlockIdx_ * mCopyOffset * nRound;
-        auto lsStage = lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM + ubSubOffset];
+        AscendC::LocalTensor<ElementInput> lsStage;
+        if constexpr (!AscendC::IsSameType<ElementInput, float>::value) {
+            lsStage = lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM + ubSubOffset];
+        }
         auto lpStage = lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM + ubSubOffset];
         auto fsStage = fsUbTensor[ubSubOffset];
         auto nowMax = gmUbTensor[ubSBufId];
@@ -625,7 +629,11 @@ public:
             nRound * sizeof(ElementInput),
             (gmStageRowStride - nRound) * sizeof(ElementInput), 0, 0);
         AscendC::DataCopyPadExtParams<ElementInput> padParams(false, 0, 0, 0);
-        AscendC::DataCopyPad(lsStage, gmSWorkspace_[gmSubOffset], copyParams, padParams);
+        if constexpr (AscendC::IsSameType<ElementInput, float>::value) {
+            AscendC::DataCopyPad(fsStage, gmSWorkspace_[gmSubOffset], copyParams, padParams);
+        } else {
+            AscendC::DataCopyPad(lsStage, gmSWorkspace_[gmSubOffset], copyParams, padParams);
+        }
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(ubSBufId);
 #if KERNEL_DUMP || KERNEL_DUMP_P
@@ -634,7 +642,11 @@ public:
 #if KERNEL_DUMP
         if (dumpThisBatch) {
             // S is the unscaled QK result read back from GM staging.
-            AscendC::DumpTensor(lsStage, 900, m * nRound);
+            if constexpr (AscendC::IsSameType<ElementInput, float>::value) {
+                AscendC::DumpTensor(fsStage, 900, m * nRound);
+            } else {
+                AscendC::DumpTensor(lsStage, 900, m * nRound);
+            }
         }
 #endif
 #endif
@@ -643,7 +655,7 @@ public:
         // V can safely overwrite lpStage. Pre-primed in InitSyncFlags for first iteration.
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2U);
 
-        // V compute: Cast, Scale, per-group softmax, DownCastP
+        // V compute: fp32 score is already resident in fsStage; bf16 score is cast first.
         CastSToFloat(fsStage, lsStage, m, nRound);
 
         // Step 2: Scale FS = FS * scaleValue.
