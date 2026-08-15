@@ -981,20 +981,20 @@ def fp32_to_e8m0fnu_safe(scale, name="scale"):
 
 
 def _make_noncontiguous_e8m0_npu(scale_e8m0):
-    """Create an interleaved NPU view without filling an E8M0 tensor on NPU.
+    """Create a segmented PA view without filling an E8M0 tensor on NPU.
 
     ``torch.ones_like``/``torch.full`` dispatch to NPU ``fill_``, which does
     not support E8M0.  Stack the raw bytes on CPU instead, reinterpret them as
-    E8M0, transfer the contiguous parent, and finally select one interleaved
-    lane to obtain the non-contiguous view.
+    E8M0, transfer the contiguous parent, and finally select one segment.  The
+    segment axis follows the PA block axis so inner N/BS/D strides stay dense.
     """
     if scale_e8m0.dtype != SCALE_DTYPE:
         raise TypeError(
             f"expected E8M0 scale dtype {SCALE_DTYPE}, got {scale_e8m0.dtype}"
         )
     packed = scale_e8m0.contiguous().view(torch.uint8)
-    interleaved = torch.stack([packed, packed], dim=2).view(SCALE_DTYPE).npu()
-    return interleaved[:, :, 0]
+    segmented = torch.stack([packed, packed], dim=1).view(SCALE_DTYPE).npu()
+    return segmented[:, 0]
 
 
 def e8m0fnu_to_fp32(scale_e8m0, name="scale"):
@@ -2655,9 +2655,11 @@ def npu_mxfp8_fa(
     k_npu = k_input.npu()
     v_npu = v_input.npu()
     if not IS_CONTIGUOUS:
-        kv_cache = torch.stack([k_pa, v_pa], dim=2).npu()
-        k_npu = kv_cache[:, :, 0]
-        v_npu = kv_cache[:, :, 1]
+        # PA_BNBD permits padding only in paBlockStride.  Put the segment axis
+        # directly after the PA block axis so N/BS/D retain dense inner strides.
+        kv_cache = torch.stack([k_pa, v_pa], dim=1).npu()
+        k_npu = kv_cache[:, 0]
+        v_npu = kv_cache[:, 1]
         logger.info(
             "[NPU] key is_contiguous=%s, value is_contiguous=%s",
             k_npu.is_contiguous(),
