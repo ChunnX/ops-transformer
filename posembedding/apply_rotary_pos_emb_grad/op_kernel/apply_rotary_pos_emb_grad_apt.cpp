@@ -141,15 +141,18 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
 
         // 第一份 workspace 存 dcos_partial，第二份存 dsin_partial
         // gradCosOut = reduce(dcos_partial), gradSinOut = reduce(dsin_partial)
+        // 注意: 本算子 DAG 为单输入 (In0=部分积, DAG 内无 Mul), Init 按占位符顺序绑定,
+        // 只需 (pipe, In0, Out0, ws) 四参; 若照抄双输入 DAG 的五参写法多传 dy,
+        // 会错位绑定导致 reduce 读原始梯度、暂存区覆盖 grad_cos/sin 输出 (越界写)
         GM_ADDR reduceWorkSpace = usrWorkSpace + partSize * INPUT_OUTPUT_NUM * sizeof(DTYPE_GRAD_QUERY_EMBED);
 
-        reduceOp0.Init(&pipe, gradQueryEmbed, usrWorkSpace, gradCosOut, reduceWorkSpace);
+        reduceOp0.Init(&pipe, usrWorkSpace, gradCosOut, reduceWorkSpace);
         reduceOp0.Process();
         pipe.Reset();
         PipeBarrier<PIPE_ALL>();
 
         GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * sizeof(DTYPE_GRAD_QUERY_EMBED);
-        reduceOp1.Init(&pipe, gradQueryEmbed, dSinWorkSpace, gradSinOut, reduceWorkSpace);
+        reduceOp1.Init(&pipe, dSinWorkSpace, gradSinOut, reduceWorkSpace);
         reduceOp1.Process();
         pipe.Reset();
     }
