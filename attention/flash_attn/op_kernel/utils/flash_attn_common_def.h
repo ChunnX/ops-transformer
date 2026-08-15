@@ -13,7 +13,6 @@
  * \brief
  */
 
-
 #ifndef FLASH_ATTN_COMMON_DEF_H_
 #define FLASH_ATTN_COMMON_DEF_H_
 
@@ -192,7 +191,6 @@ static constexpr ConfigParams ConfigValue[] = {
 // Config macro definitions for D=256
 #define Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256 4
 
-
 // PseMode
 #define PSE_MODE_PSE_OUTER_MUL_ADD_TYPE 0
 #define PSE_MODE_PSE_OUTER_ADD_MUL_TYPE 1
@@ -238,8 +236,8 @@ static constexpr ConfigParams ConfigValue[] = {
 #define false 0
 #define true 1
 
-#define OFFSET_OF_MEMBER(TYPE, MEMBER)  ((uint64_t) &((TYPE *)0)->MEMBER)
-#define SIZE_OF_MEMBER(TYPE, MEMBER)  sizeof(((TYPE *)0)->MEMBER)
+#define OFFSET_OF_MEMBER(TYPE, MEMBER) ((uint64_t) & ((TYPE *)0)->MEMBER)
+#define SIZE_OF_MEMBER(TYPE, MEMBER) sizeof(((TYPE *)0)->MEMBER)
 
 // kernel stream related struct
 struct FDparamsX {
@@ -284,6 +282,7 @@ struct RunInfoX {
     // uint32_t curS2LoopTimes = 0;
     bool isS2SplitCore = false;
     uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
+    bool headS2Split = false;
 
     int64_t preTokensLeftUp = 0;
     int64_t nextTokensLeftUp = 0;
@@ -291,7 +290,6 @@ struct RunInfoX {
     uint64_t qPaddingBeginOffset = 0;
     uint64_t kvPaddingBeginOffset = 0;
 };
-
 
 struct CommonConstInfo {
     /* 轴长度 */
