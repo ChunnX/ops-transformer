@@ -194,7 +194,6 @@ static constexpr ConfigParams ConfigValue[] = {
 // Config macro definitions for D=256
 #define Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256 4
 
-
 // PseMode
 #define PSE_MODE_PSE_OUTER_MUL_ADD_TYPE 0
 #define PSE_MODE_PSE_OUTER_ADD_MUL_TYPE 1
