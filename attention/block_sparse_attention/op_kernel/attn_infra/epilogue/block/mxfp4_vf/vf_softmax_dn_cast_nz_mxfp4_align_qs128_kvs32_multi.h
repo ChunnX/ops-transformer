@@ -17,7 +17,6 @@
 
 #ifndef VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_MULTI_H_
 #define VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_MULTI_H_
-// #include "kernel_tensor.h"
 #include "vf_common_def.h"
 #include "../../bsa_epilogue_dispatch_policy.hpp"
 
@@ -29,9 +28,9 @@ using namespace MicroAPI;
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
           uint16_t QsBase = 128>
-__simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(__ubuf__ T2 *pDest, __ubuf__ T *s,
+__simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(__ubuf__ T2 *p_dest, __ubuf__ T *s,
                                                   __ubuf__ T *local_group_max, __ubuf__ T *global_max,
-                                                  __ubuf__ uint8_t *indexesUb, const T dScale, const T NEG_LOG2_CX,
+                                                  __ubuf__ uint8_t *indexes_ub, const T dScale, const T NEG_LOG2_CX,
                                                   uint16_t KvsBaseAlign32, uint16_t KvsBaseAlign64)
 {
 // ====================== 寄存器定义 ======================
@@ -65,13 +64,9 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(__ubuf
     MaskReg preg_invalid_max;
 
     // ====================== 全局最大值初始化 ======================
-    // if constexpr (clear_gmax) {
-    //     Duplicate(group_gmax, MIN_VALUE);
-    // } else {
     LoadAlign(group_gmax, global_max);
-    // }
 
-    LoadAlign(idx_nd2nz, indexesUb);
+    LoadAlign(idx_nd2nz, indexes_ub);
 
     // ====================== 预计算：第一个分组的最大值 ======================
     Duplicate(curr_group_max, MIN_VALUE);
@@ -166,11 +161,11 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(__ubuf
             Gather((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, idx_nd2nz);
 
             // 写入内存（偶数块：无+128偏移）
-            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256, (RegTensor<uint8_t> &)quant_0,
+            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + i * 2048 + j * 256, (RegTensor<uint8_t> &)quant_0,
                        preg_vl128  // 低128字节掩码
             );
 
-            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 16256, (RegTensor<uint8_t> &)quant_0,
+            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + i * 2048 + j * 256 + 16256, (RegTensor<uint8_t> &)quant_0,
                        preg_vl128_not  // 高128字节掩码
             );
         }
@@ -232,11 +227,11 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(__ubuf
             Gather((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, idx_nd2nz);
 
             // 奇数块：低128字节写入（基础地址 +128 偏移）
-            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 128, (RegTensor<uint8_t> &)quant_0,
+            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + i * 2048 + j * 256 + 128, (RegTensor<uint8_t> &)quant_0,
                        preg_vl128);
 
             // 奇数块：高128字节写入（远端地址）
-            StoreAlign(((__ubuf__ uint8_t *&)pDest) + i * 2048 + j * 256 + 16384, (RegTensor<uint8_t> &)quant_0,
+            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + i * 2048 + j * 256 + 16384, (RegTensor<uint8_t> &)quant_0,
                        preg_vl128_not);
         }
 
@@ -277,20 +272,20 @@ template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typenam
           uint16_t QsBase = 128>
 __aicore__ inline void SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF(const LocalTensor<T2> &dstTensor,
                                                   const LocalTensor<T> &srcTensor,
-                                                  const LocalTensor<T> &local_group_max,
-                                                  const LocalTensor<T> &global_max,
+                                                  const LocalTensor<T> &localGroupMax,
+                                                  const LocalTensor<T> &globalMax,
                                                   const LocalTensor<uint8_t> &indexesBuf,
                                                   const T scale, const T NEG_LOG2_CX,
                                                   uint16_t KvsBaseAlign32, uint16_t KvsBaseAlign64)
 {
-    __ubuf__ T2 *pDest = (__ubuf__ T2*) dstTensor.GetPhyAddr();
-    __ubuf__ T *input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
-    __ubuf__ T *localGroupMax = (__ubuf__ T*)local_group_max.GetPhyAddr();
-    __ubuf__ T *globalMax = (__ubuf__ T*)global_max.GetPhyAddr();
-    __ubuf__ uint8_t * indexesUb = (__ubuf__ uint8_t*)indexesBuf.GetPhyAddr();
+    __ubuf__ T2 *p_dest = (__ubuf__ T2*) dstTensor.GetPhyAddr();
+    __ubuf__ T *s_ub = (__ubuf__ T*) srcTensor.GetPhyAddr();
+    __ubuf__ T *local_group_max = (__ubuf__ T*)localGroupMax.GetPhyAddr();
+    __ubuf__ T *global_max = (__ubuf__ T*)globalMax.GetPhyAddr();
+    __ubuf__ uint8_t * indexes_ub = (__ubuf__ uint8_t*)indexesBuf.GetPhyAddr();
 
     softmax_with_group_max_align_qs128_kvs32_multi_vf<MX_QUANT_MODE, clear_gmax, T, T2, QsBase>(
-        pDest, input_x_local_UB, localGroupMax, globalMax, indexesUb, scale, NEG_LOG2_CX,
+        p_dest, s_ub, local_group_max, global_max, indexes_ub, scale, NEG_LOG2_CX,
         KvsBaseAlign32, KvsBaseAlign64);
 }
 
