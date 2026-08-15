@@ -28,16 +28,15 @@ enum class KvBaseTileRegSplitStages {
 };
 
 template <
-    MXQuantMode MX_QUANT_MODE_,
     class OutputType_,
     class LayoutS_>
 class BlockEpilogue<
-    EpilogueOnlineSoftmaxBsa<false, MX_QUANT_MODE_>,
+    EpilogueOnlineSoftmaxBsa,
     OutputType_,
     Gemm::GemmType<half, LayoutS_>>
 {
 public:
-    using DispatchPolicy = EpilogueOnlineSoftmaxBsa<false, MX_QUANT_MODE_>;
+    using DispatchPolicy = EpilogueOnlineSoftmaxBsa;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementOutput = typename OutputType_::Element;
     using ElementInput = half;
