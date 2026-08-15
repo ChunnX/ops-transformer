@@ -54,10 +54,12 @@ struct MmadAtlasA5BsaQK : public MmadAtlasA5 {
     static constexpr bool transposedMm1 = transposedMm1_;
 };
 
-template <bool transposedMm1_>
+template <bool transposedMm1_, bool rescaleOnCube_ = false>
 struct MmadAtlasA5BsaPV : public MmadAtlasA5 {
     static constexpr uint32_t L0_STAGES = 2;
     static constexpr bool transposedMm1 = transposedMm1_;
+    // true: PV^T 与 rescale（diag 矩阵乘）融合，仅在 DN + FP8 场景使用
+    static constexpr bool rescaleOnCube = rescaleOnCube_;
 };
 
 }  // namespace NpuArch::Gemm
