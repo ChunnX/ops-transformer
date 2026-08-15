@@ -77,11 +77,11 @@ __global__ __aicore__ void SasaPrefillInferIntf(
 {
     // === Phase 1 组件: QK matmul (Cube) ===
     // BlockMmadQKPrefillArch35: Q[bf16] × K^T[bf16] → S[bf16], K 常驻 L1
-    using KernelBlockMmadQK = Gemm::Block::BlockMmadQKPrefillArch35<InDtype, InDtype, bfloat16_t>;
+    using KernelBlockMmadQK = Gemm::Block::BlockMmadQKPrefillArch35<InDtype, InDtype, SMDtype>;
     using LayoutS = layout::RowMajor;
     using LayoutPDummy = layout::zN;
     using PType = Gemm::GemmType<InDtype, LayoutPDummy>;
-    using SType = Gemm::GemmType<bfloat16_t, LayoutS>;
+    using SType = Gemm::GemmType<SMDtype, LayoutS>;
 
     // === Phase 1 组件: Online Softmax (Vector) ===
     // 对 S 做 online softmax: 计算 rowMax/rowSum, 生成 P=exp(S-rowMax) cast bf16 写 L1
@@ -141,11 +141,11 @@ __global__ __aicore__ void SasaPrefillInferIntf(
     GM_ADDR o, GM_ADDR workspace, GM_ADDR tiling)
 {
     // === Phase 1 组件: QK matmul (Cube) — A2 版本 ===
-    using KernelBlockMmadQK = Gemm::Block::BlockMmadQKPrefillA2<InDtype, InDtype, bfloat16_t>;
+    using KernelBlockMmadQK = Gemm::Block::BlockMmadQKPrefillA2<InDtype, InDtype, SMDtype>;
     using LayoutS = layout::RowMajor;
     using LayoutPDummy = layout::zN;
     using PType = Gemm::GemmType<InDtype, LayoutPDummy>;
-    using SType = Gemm::GemmType<bfloat16_t, LayoutS>;
+    using SType = Gemm::GemmType<SMDtype, LayoutS>;
 
     // === Phase 1 组件: Online Softmax (Vector) — A2 版本 ===
     using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxPrefillA2;

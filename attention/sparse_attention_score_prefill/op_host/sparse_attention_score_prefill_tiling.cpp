@@ -422,13 +422,18 @@ ge::graphStatus SASAPrefillTilingA5::FillTilingData(gert::TilingContext *context
     // 根据 innerPrecise 选择 TilingKey, 决定 kernel 编译路径:
     //   innerPrecise==1 → SASA_PREFILL_BF16_D128_INNER_LOW_TILING (bf16 O_partial)
     //   innerPrecise!=1 → SASA_PREFILL_BF16_D128_TILING (fp32 O_partial)
-    uint64_t tilingKeyVal = (innerPrecise_ == 1U)
-        ? SASA_PREFILL_BF16_D128_INNER_LOW_TILING
-        : SASA_PREFILL_BF16_D128_TILING;
+    uint64_t tilingKeyVal = SASA_PREFILL_BF16_D128_TILING;
+    if (innerPrecise_ == 0U) {
+        tilingKeyVal = SASA_PREFILL_BF16_D128_HIGH_SOFTMAX_TILING;
+    } else if (innerPrecise_ == 1U) {
+        tilingKeyVal = SASA_PREFILL_BF16_D128_INNER_LOW_TILING;
+    }
     tilingData_->set_tilingKey(tilingKeyVal);
     context->SetTilingKey(tilingKeyVal);
+    const char *precisionPath = innerPrecise_ == 0U ? "fp32 score softmax"
+        : (innerPrecise_ == 1U ? "bf16 INNER_LOW" : "fp32 O_partial");
     printf("[SASAPrefillTilingA5] FillTilingData: tilingKey=%lu (%s path), gmSWorkspaceSize=0 (A5 no GM S staging)\n",
-           tilingKeyVal, innerPrecise_ == 1U ? "bf16 INNER_LOW" : "fp32");
+           tilingKeyVal, precisionPath);
     return ge::GRAPH_SUCCESS;
 }
 

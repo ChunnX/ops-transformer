@@ -195,7 +195,7 @@ public:
     // 均由 GEMM Block 的模板参数推导, 保证 QK/PV/softmax 组件类型一致
     using ElementQ = typename BlockMmadQK::ElementQ;          // Q 输入类型 (bf16, 从 GM 读取)
     using ElementK = typename BlockMmadQK::ElementK;          // K 输入类型 (bf16, 从 GM 读取到 L1 常驻)
-    using ElementS = bfloat16_t;                              // Score S = Q×K^T 的类型 (Cube fixpipe 到 UB)
+    using ElementS = typename BlockMmadQK::ElementS;          // Score S = Q×K^T 的类型 (Cube fixpipe 到 GM)
     using ElementP = typename BlockMmadPV::ElementP;          // P = softmax(S) 的类型 (bf16, VEC 写到 L1)
     using ElementV = typename BlockMmadPV::ElementV;          // V 输入类型 (bf16, 从 GM 读取到 L1 常驻)
     using ElementO = typename BlockMmadQK::ElementQ;          // 最终输出 O 类型 (bf16, 写到 GM)

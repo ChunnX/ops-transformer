@@ -64,17 +64,18 @@ namespace NpuArch::Epilogue::Block {
 
 template <
     class OutputType_,
+    class ElementInput_,
     class LayoutS_>
 class BlockEpilogue<
     EpilogueOnlineSoftmaxPrefillA2,
     OutputType_,
-    Gemm::GemmType<bfloat16_t, LayoutS_>>
+    Gemm::GemmType<ElementInput_, LayoutS_>>
 {
 public:
     using DispatchPolicy = EpilogueOnlineSoftmaxPrefillA2;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementOutput = typename OutputType_::Element;
-    using ElementInput = bfloat16_t;
+    using ElementInput = ElementInput_;
 
     using LayoutOutput = typename OutputType_::Layout;
     using LayoutInput = LayoutS_;
@@ -232,16 +233,18 @@ public:
     // === Cast bf16 S → float FS (for standard vector compute) ===
     __aicore__ inline
     void CastSToFloat(AscendC::LocalTensor<float> &fsUb,
-                      AscendC::LocalTensor<ElementInput> const &lsUb,
-                      uint32_t m, uint32_t nRound)
+                       AscendC::LocalTensor<ElementInput> const &lsUb,
+                       uint32_t m, uint32_t nRound)
     {
-        AscendC::Cast<float, ElementInput, false>(
-            fsUb, lsUb,
-            AscendC::RoundMode::CAST_NONE,
-            static_cast<uint64_t>(0),
-            CeilDiv(m * nRound, FLOAT_VECTOR_SIZE),
-            AscendC::UnaryRepeatParams(1, 1, 8, 4));
-        AscendC::PipeBarrier<PIPE_V>();
+        if constexpr (!AscendC::IsSameType<ElementInput, float>::value) {
+            AscendC::Cast<float, ElementInput, false>(
+                fsUb, lsUb,
+                AscendC::RoundMode::CAST_NONE,
+                static_cast<uint64_t>(0),
+                CeilDiv(m * nRound, FLOAT_VECTOR_SIZE),
+                AscendC::UnaryRepeatParams(1, 1, 8, 4));
+            AscendC::PipeBarrier<PIPE_V>();
+        }
     }
 
     // === Scale: FS = FS * scaleValue ===

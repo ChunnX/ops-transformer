@@ -196,11 +196,13 @@ def _softmax_p_from_scores_fp32(s_fp32):
 
 def _bf16_block_qk_sm_pv(q_group_bf16, k_bf16, v_bf16, scale_value, q, h, t, inner_precise):
   """Single KV block: QK -> SM -> PV. Returns unnormalized O_partial, rowMax, rowSum."""
-  s_bf16 = torch.matmul(q_group_bf16.float(), k_bf16.float().t()).to(torch.bfloat16)
-  # A2 casts S back to fp32 before applying the scalar scale.  Keeping the
-  # scale in fp32 matters for long sparse windows where small score shifts can
-  # alter the softmax reduction.
-  s_fp32 = s_bf16.float() * float(scale_value)
+  scores_fp32 = torch.matmul(q_group_bf16.float(), k_bf16.float().t())
+  if inner_precise == 0:
+    # The high-softmax path keeps S in fp32 until P is materialized.
+    s_fp32 = scores_fp32 * float(scale_value)
+  else:
+    # The regular and INNER_LOW paths fixpipe S to bf16 before softmax.
+    s_fp32 = scores_fp32.to(torch.bfloat16).float() * float(scale_value)
   #if q ==0 and h == 0 and t == 0:
   #  print("s_fp32:", torch.matmul(q_group_bf16.float(), k_bf16.float().t()))
   p_bf16, row_max_fp32, row_sum_fp32 = _softmax_p_from_scores_fp32(s_fp32)

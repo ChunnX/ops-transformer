@@ -20,6 +20,8 @@ constexpr uint64_t SASA_PREFILL_BF16_D128_TILING = 20001;          // bf16 输�
 // innerPrecise==1: O_partial 以 bf16 存储 (PV fixpipe F322BF16 + Phase2 regbase cast bf16→fp32)
 // 否则 (如 innerPrecise==4) 使用 fp32 O_partial 路径 (SASA_PREFILL_BF16_D128_TILING)
 constexpr uint64_t SASA_PREFILL_BF16_D128_INNER_LOW_TILING = 20002; // bf16 输入, D=128, bf16 O_partial 路径
+// innerPrecise==0: QK score S stays fp32 through online softmax.
+constexpr uint64_t SASA_PREFILL_BF16_D128_HIGH_SOFTMAX_TILING = 20003;
 
 BEGIN_TILING_DATA_DEF(SparseAttentionScorePrefillTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, batch);                  // batch 数
@@ -39,7 +41,7 @@ TILING_DATA_FIELD_DEF(uint32_t, k2qNnzUpperBound);       // CSR 数据区每 hea
 TILING_DATA_FIELD_DEF(uint32_t, totalTaskNumP1);         // Phase1 任务数 = numKvBlocks * kvHeads
 TILING_DATA_FIELD_DEF(uint32_t, totalTaskNumP2);         // Phase2 任务数 = totalQTokens * kvHeads
 TILING_DATA_FIELD_DEF(float, scaleValue);                // softmax 缩放因子
-TILING_DATA_FIELD_DEF(uint32_t, innerPrecise);           // 精度模式: 1=bf16 O_partial, 4=fp32 O_partial
+TILING_DATA_FIELD_DEF(uint32_t, innerPrecise);           // 0=fp32 score softmax, 1=bf16 O_partial, 4=fp32 O_partial
 TILING_DATA_FIELD_DEF(uint64_t, accumOutSize);           // workspace O_partial 元素数
 TILING_DATA_FIELD_DEF(uint64_t, lseStatSize);            // workspace max/sum 各自元素数
 TILING_DATA_FIELD_DEF(uint64_t, workSpaceSize);          // workspace 总字节数

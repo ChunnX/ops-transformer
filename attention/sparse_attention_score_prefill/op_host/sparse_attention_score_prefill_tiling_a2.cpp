@@ -86,7 +86,8 @@ ge::graphStatus SASAPrefillTilingA2::CalculateWorkSpace(gert::TilingContext *con
     // A 64-row allocation overflows whenever a batched group has M > 64.
     constexpr uint32_t A2_L0_TILE_M = 64U;
     uint64_t gmSStageElems = static_cast<uint64_t>(A2_L0_TILE_M) * blockSize_;
-    uint64_t gmSPerCoreBytes = 2U * gmSStageElems * sizeof(uint16_t);  // ElementS = bf16
+    const uint32_t scoreElementBytes = innerPrecise_ == 0U ? sizeof(float) : sizeof(uint16_t);
+    uint64_t gmSPerCoreBytes = 2U * gmSStageElems * scoreElementBytes;
     gmSWorkspaceSize_ = gmSPerCoreBytes;
     uint64_t totalGmSBytes = static_cast<uint64_t>(blockDim_) * gmSPerCoreBytes;
     userWorkspaceSize += totalGmSBytes;
@@ -147,17 +148,22 @@ ge::graphStatus SASAPrefillTilingA2::FillTilingData(gert::TilingContext *context
     // 根据 innerPrecise 选择 TilingKey, 决定 kernel 编译路径:
     //   innerPrecise==1 → SASA_PREFILL_BF16_D128_INNER_LOW_TILING (bf16 O_partial)
     //   innerPrecise!=1 → SASA_PREFILL_BF16_D128_TILING (fp32 O_partial)
-    uint64_t tilingKeyVal = (innerPrecise_ == 1U)
-        ? SASA_PREFILL_BF16_D128_INNER_LOW_TILING
-        : SASA_PREFILL_BF16_D128_TILING;
+    uint64_t tilingKeyVal = SASA_PREFILL_BF16_D128_TILING;
+    if (innerPrecise_ == 0U) {
+        tilingKeyVal = SASA_PREFILL_BF16_D128_HIGH_SOFTMAX_TILING;
+    } else if (innerPrecise_ == 1U) {
+        tilingKeyVal = SASA_PREFILL_BF16_D128_INNER_LOW_TILING;
+    }
     printf("[SASAPrefillTilingA2] FillTilingData: workspace fields written\n");
     fflush(stdout);
     tilingData_->set_tilingKey(tilingKeyVal);
     context->SetTilingKey(tilingKeyVal);
     printf("[SASAPrefillTilingA2] FillTilingData: tiling key set\n");
     fflush(stdout);
+    const char *precisionPath = innerPrecise_ == 0U ? "fp32 score softmax"
+        : (innerPrecise_ == 1U ? "bf16 INNER_LOW" : "fp32 O_partial");
     printf("[SASAPrefillTilingA2] FillTilingData: tilingKey=%lu (%s path), gmSWorkspaceSize=%lu, gmPWorkspaceSize=%lu (A2 GM S/P staging)\n",
-           tilingKeyVal, innerPrecise_ == 1U ? "bf16 INNER_LOW" : "fp32", gmSWorkspaceSize_, gmPWorkspaceSize_);
+           tilingKeyVal, precisionPath, gmSWorkspaceSize_, gmPWorkspaceSize_);
     return ge::GRAPH_SUCCESS;
 }
 

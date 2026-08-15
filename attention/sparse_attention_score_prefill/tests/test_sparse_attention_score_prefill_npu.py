@@ -264,7 +264,8 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
     return output
 
   def _run_npu_test(self, batch, q_seqlens, kv_seqlens, q_heads, kv_heads,
-                    head_dim=128, block_size=128, top_k=4, seed=42, prec=7e-3):
+                    head_dim=128, block_size=128, top_k=4, seed=42, prec=7e-3,
+                    inner_precise=4):
     torch.npu.synchronize()
     torch.npu.empty_cache()
 
@@ -277,7 +278,7 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         data["k2q_row_ptr"], data["k2q_q_indices"], data["k2q_slot_indices"],
         data["block_table"],
         data["actual_seq_lengths"], data["actual_seq_lengths_kv"],
-        data["block_size"], data["top_k"], data["scale_value"])
+        data["block_size"], data["top_k"], data["scale_value"], inner_precise)
 
     npu_out = torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
         data["query"].npu(),
@@ -293,7 +294,7 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         data["scale_value"],
         block_size,
         top_k,
-        0,  # inner_precise=0 → fp32 O_partial path, aligned with golden
+        inner_precise,
     )
 
     npu_out_cpu = npu_out.cpu()
@@ -324,6 +325,13 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         #q_heads=8, kv_heads=2, top_k=1)
         q_heads=8, kv_heads=2, top_k=3)
 
+  def test_bf16_high_precision_softmax(self):
+    """innerPrecise=0 keeps QK score S in fp32 until softmax."""
+    print("[test_bf16_high_precision_softmax]")
+    self._run_npu_test(
+        batch=1, q_seqlens=[8], kv_seqlens=[512],
+        q_heads=8, kv_heads=2, top_k=3, seed=405, inner_precise=0)
+
   def test_bf16_axis0_strided_qkv(self):
     """Q/K/V views with independent leading strides match contiguous input."""
     print("[test_bf16_axis0_strided_qkv]")
@@ -343,7 +351,7 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
     def run(query, key, value):
       return torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
           query, key, value, *inputs, data["kv_heads"], data["scale_value"],
-          data["block_size"], data["top_k"], 0)
+          data["block_size"], data["top_k"], 4)
 
     contiguous_out = run(q, k, v)
     strided_out = run(
@@ -356,7 +364,7 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         data["query"], data["key"], data["value"], data["k2q_row_ptr"],
         data["k2q_q_indices"], data["k2q_slot_indices"], data["block_table"],
         data["actual_seq_lengths"], data["actual_seq_lengths_kv"],
-        data["block_size"], data["top_k"], data["scale_value"])
+        data["block_size"], data["top_k"], data["scale_value"], 4)
     self.assertTrue(torch.equal(contiguous_cpu, strided_cpu))
     self.assertRtolEqual(golden.float().numpy(), strided_cpu.float().numpy(), prec=7e-3)
 

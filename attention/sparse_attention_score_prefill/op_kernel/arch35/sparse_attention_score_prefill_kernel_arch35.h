@@ -30,7 +30,7 @@ public:
 
     using ElementQ = typename BlockMmadQK::ElementQ;
     using ElementK = typename BlockMmadQK::ElementK;
-    using ElementS = bfloat16_t;
+    using ElementS = typename BlockMmadQK::ElementS;
     using ElementP = typename BlockMmadPV::ElementP;
     using ElementV = typename BlockMmadPV::ElementV;
     using ElementO = typename BlockMmadQK::ElementQ;

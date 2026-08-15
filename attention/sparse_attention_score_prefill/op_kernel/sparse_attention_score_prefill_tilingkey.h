@@ -29,4 +29,7 @@
 // innerPrecise==1: O_partial stored as bf16 (PV fixpipe F322BF16 + Phase2 regbase cast).
 #define SASA_PREFILL_BF16_D128_INNER_LOW_TILING 20002
 
+// innerPrecise==0: QK score remains fp32 through online softmax.
+#define SASA_PREFILL_BF16_D128_HIGH_SOFTMAX_TILING 20003
+
 #endif  // SPARSE_ATTENTION_SCORE_PREFILL_TILINGKEY_H

@@ -101,6 +101,15 @@ extern "C" __global__ __aicore__ void sparse_attention_score_prefill(
             attentionOut, user, tiling);
 #endif
 
+        TILING_KEY_IS(SASA_PREFILL_BF16_D128_HIGH_SOFTMAX_TILING);
+#if TILING_KEY_VAR == SASA_PREFILL_BF16_D128_HIGH_SOFTMAX_TILING
+        SasaPrefillInferIntf<bfloat16_t, float, float>(
+            query, key, value, blockTable,
+            k2qRowPtr, k2qQIndices, k2qSlotIndices,
+            actualSeqLengths, actualSeqLengthsKv,
+            attentionOut, user, tiling);
+#endif
+
         // 路径 2: bf16 O_partial (innerPrecise == 1, 低精度路径)
         // REDtype=bfloat16_t, PV fixpipe F322BF16 写 bf16, Phase2 regbase cast bf16→fp32
         // 可节省 workspace 中 O_partial buffer 的一半空间 (bf16=2B vs fp32=4B)
@@ -122,6 +131,15 @@ extern "C" __global__ __aicore__ void sparse_attention_score_prefill(
         TILING_KEY_IS(SASA_PREFILL_BF16_D128_TILING);
 #if TILING_KEY_VAR == SASA_PREFILL_BF16_D128_TILING
         SasaPrefillInferIntf<bfloat16_t, bfloat16_t, float>(
+            query, key, value, blockTable,
+            k2qRowPtr, k2qQIndices, k2qSlotIndices,
+            actualSeqLengths, actualSeqLengthsKv,
+            attentionOut, user, tiling);
+#endif
+
+        TILING_KEY_IS(SASA_PREFILL_BF16_D128_HIGH_SOFTMAX_TILING);
+#if TILING_KEY_VAR == SASA_PREFILL_BF16_D128_HIGH_SOFTMAX_TILING
+        SasaPrefillInferIntf<bfloat16_t, float, float>(
             query, key, value, blockTable,
             k2qRowPtr, k2qQIndices, k2qSlotIndices,
             actualSeqLengths, actualSeqLengthsKv,
