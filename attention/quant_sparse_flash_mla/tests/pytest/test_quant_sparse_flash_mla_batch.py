@@ -97,10 +97,10 @@ def qsmla(testcase_files):
 
     utils.save_result(test_data["params"], result, fulfill_percent, Path(result_path))
 
-    if result == "NPU ERROR":
-        pytest.fail(f"用例执行失败:{testcase_files} NPU ERROR")
-    elif result != "PASS":
-        pytest.fail(f"用例精度失败:{testcase_files} 精度:{fulfill_percent:.2f}%")
+    if result in ("NPU ERROR", "Failed"):
+        pytest.fail(
+            f"用例执行失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%"
+        )
 
 
 testcase_ids = [os.path.splitext(os.path.basename(f))[0] for f in testcase_files]
