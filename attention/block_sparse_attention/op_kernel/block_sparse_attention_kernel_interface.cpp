@@ -168,7 +168,7 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using BlockMmadQK = Gemm::Block::BlockMmadTla<
         DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK, ElementS, void, TileCopyQK>;
     // online softmax
-    using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa<>;
+    using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa;
     using PType = Gemm::GemmType<ElementP, LayoutPDummy>;
     using SType = Gemm::GemmType<ElementS, LayoutS>;
     using EpilogueOnlineSoftmax = Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType>;
@@ -245,7 +245,7 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
     using BlockMmadQK = Gemm::Block::BlockMmadTla<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK,
                                                   ElementS, void, TileCopyQK>;
    // online softmax
-    using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa<>;
+    using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa;
     using PType = Gemm::GemmType<ElementP, LayoutPDummy>;
     using SType = Gemm::GemmType<ElementS, LayoutS>;
     using EpilogueOnlineSoftmax = Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType>;
@@ -342,17 +342,17 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     using BlockMmadQK = Gemm::Block::BlockMmadTla<
         DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK, ElementS, void, TileCopyQK>;
    // online softmax
-    using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa<transposedMm1, mxQuantMode>;
+    using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsaMX<transposedMm1, mxQuantMode>;
     using PType = Gemm::GemmType<ElementP, LayoutPDummy>;
     using SType = Gemm::GemmType<ElementS, LayoutS>;
     using PScaleType = Gemm::GemmType<ElementScale, LayoutPScale>;
     using EpilogueOnlineSoftmax = Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType, PScaleType>;
     // compute PScale from group max: 输入 ElementGroupMax, 输出 PScaleType
-    using DispatchPolicyComputePScale = Epilogue::EpilogueComputePScaleBsa<transposedMm1, mxQuantMode>;
+    using DispatchPolicyComputePScale = Epilogue::EpilogueComputePScaleBsaMX<transposedMm1, mxQuantMode>;
     using EpilogueComputePScale = Epilogue::Block::BlockEpilogue<
         DispatchPolicyComputePScale, ElementGroupMax, ElementDm, PScaleType>;
     // copy global max from UB to L1: 输入 ElementLocalGlobalMax
-    using DispatchPolicyCopyGlobalMaxUbToL1 = Epilogue::EpilogueCopyGlobalMaxUbToL1Bsa;
+    using DispatchPolicyCopyGlobalMaxUbToL1 = Epilogue::EpilogueCopyGlobalMaxUbToL1BsaMX;
     using EpilogueCopyGlobalMaxUbToL1 = Epilogue::Block::BlockEpilogue<
         DispatchPolicyCopyGlobalMaxUbToL1, ElementLocalGlobalMax, LayoutLocalGlobalMax>;
     // 处理单个tile内P和Value的matmul
@@ -368,7 +368,7 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     using BlockMmadCopyGlobalMaxL1ToUB = Gemm::Block::BlockMmadTla<
         Gemm::CopyGlobalMaxL1ToUBBsa, void, void, ElementLocalGlobalMax, void, void, void, void, void>;
     // rescale O
-    using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleO<lseMode, lseFormat, transposedMm1>;
+    using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleOMX<lseMode, lseFormat, transposedMm1>;
     using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<
         ArchTag, ElementO, LayoutO, LayoutOTmp>;
     using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<

@@ -42,29 +42,42 @@ struct EpilogueBsaMask2Idx {
     using ArchTag = Arch::AtlasA5;
 };
 
-template <bool transposedMm1_ = false, MXQuantMode MX_QUANT_MODE_ = MXQuantMode::NONE>
 struct EpilogueOnlineSoftmaxBsa {
     using ArchTag = Arch::AtlasA5;
+};
+
+template <bool transposedMm1_ = false, MXQuantMode MX_QUANT_MODE_ = MXQuantMode::NONE>
+struct EpilogueOnlineSoftmaxBsaMX {
+    using ArchTag = Arch::AtlasA5;
     static constexpr bool transposedMm1 = transposedMm1_;
     static constexpr MXQuantMode MX_QUANT_MODE = MX_QUANT_MODE_;
 };
 
 template <bool transposedMm1_ = false, MXQuantMode MX_QUANT_MODE_ = MXQuantMode::NONE>
-struct EpilogueComputePScaleBsa {
+struct EpilogueComputePScaleBsaMX {
     using ArchTag = Arch::AtlasA5;
     static constexpr bool transposedMm1 = transposedMm1_;
     static constexpr MXQuantMode MX_QUANT_MODE = MX_QUANT_MODE_;
 };
 
-struct EpilogueCopyGlobalMaxUbToL1Bsa {
+struct EpilogueCopyGlobalMaxUbToL1BsaMX {
     using ArchTag = Arch::AtlasA5;
+};
+
+template <
+    LseMode LSE_MODE_ = LseMode::NONE,
+    LseFormat LSE_FORMAT_ = LseFormat::BNS1>
+struct EpilogueAtlasA5BsaRescaleO {
+    using ArchTag = Arch::AtlasA5;
+    static constexpr LseMode LSE_MODE = LSE_MODE_;
+    static constexpr LseFormat LSE_FORMAT = LSE_FORMAT_;
 };
 
 template <
     LseMode LSE_MODE_ = LseMode::NONE,
     LseFormat LSE_FORMAT_ = LseFormat::BNS1,
     bool transposedMm1_ = false>
-struct EpilogueAtlasA5BsaRescaleO {
+struct EpilogueAtlasA5BsaRescaleOMX {
     using ArchTag = Arch::AtlasA5;
     static constexpr LseMode LSE_MODE = LSE_MODE_;
     static constexpr LseFormat LSE_FORMAT = LSE_FORMAT_;
