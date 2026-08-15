@@ -135,6 +135,7 @@ public:
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId[2];
     TEventID vToMte3Id[2];
+    TEventID vec1RescaleVToMte3Id;
     TBuf<> softmaxMaxBuf[3];
     TBuf<> softmaxSumBuf[3];
     TBuf<> softmaxExpBuf[3];
@@ -425,6 +426,11 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::FinalizeVec1(
     LocalTensor<float> combinedAlpha = softmaxExpBuf[runInfo.taskIdMod3].template Get<float>();
     RescaleRound0(p0, alpha1, round0RealSize, runInfo.taskIdMod2);
     Mul(combinedAlpha, combinedAlpha, alpha1, s1BaseSize);
+
+    // p0 has been dequeued before RescaleRound0, so stage1OutQue can no longer
+    // establish the dependency between these new vector writes and the L1 copy.
+    SetFlag<HardEvent::V_MTE3>(vec1RescaleVToMte3Id);
+    WaitFlag<HardEvent::V_MTE3>(vec1RescaleVToMte3Id);
   }
 
   LocalTensor<INPUT_T> pL1 = outputBuf.template GetTensor<INPUT_T>();
@@ -628,6 +634,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
 
     mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+    vec1RescaleVToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
 }
 
