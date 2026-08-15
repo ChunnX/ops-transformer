@@ -37,7 +37,7 @@ template <
     LseMode LSE_MODE_,
     LseFormat LSE_FORMAT_>
 class BlockEpilogue<
-    EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_, false>,
+    EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_>,
     ElementO_,
     ElementOTmp_,
     ElementS_,
@@ -46,7 +46,7 @@ class BlockEpilogue<
     OTmpSrcPos_>
 {
 public:
-    using DispatchPolicy = EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_, false>;
+    using DispatchPolicy = EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementO = ElementO_;
     using ElementOTmp = ElementOTmp_;
