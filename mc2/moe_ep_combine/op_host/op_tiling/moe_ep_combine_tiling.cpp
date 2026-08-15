@@ -402,11 +402,6 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check window size failed."), return ge::GRAPH_FAILED);
 
-    size_t *workSpaces = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
-    workSpaces[0] =
-        SYSTEM_NEED_WORKSPACE + static_cast<uint64_t>(info.cfg.epWorldSize) * info.sendDataWorkspaceSizePerRank;
-
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;
     uint64_t tilingKey = GET_TPL_TILING_KEY(tplHasTopkWeights, TILINGKEY_TPL_A5);
     context->SetTilingKey(tilingKey);
@@ -419,6 +414,12 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
     context->SetBlockDim(blockDim);
     info.aivNum = aivNum;
     info.totalUbSize = ubSize;
+
+    size_t *workSpaces = context->GetWorkspaceSizes(1);
+    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE +
+                    static_cast<uint64_t>(info.cfg.epWorldSize) * info.sendDataWorkspaceSizePerRank +
+                    static_cast<uint64_t>(aivNum) * UB_ALIGN;
 
     OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u", tilingKey, blockDim, aivNum);
     PrintTilingDataInfo(nodeName, info);
