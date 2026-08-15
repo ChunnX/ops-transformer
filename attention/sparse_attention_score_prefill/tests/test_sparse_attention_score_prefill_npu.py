@@ -54,6 +54,15 @@ def _npu_i32(t):
   return t.to(device="npu", dtype=torch.int32).contiguous()
 
 
+def _npu_axis0_strided(t, stride_factor):
+  storage_shape = (t.shape[0] * stride_factor, *t.shape[1:])
+  storage = torch.empty(storage_shape, device="npu", dtype=t.dtype)
+  view = storage[::stride_factor]
+  view.copy_(t.to(device="npu"))
+  assert not view.is_contiguous()
+  return view
+
+
 _load_prefill_op()
 
 
@@ -314,6 +323,42 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         batch=1, q_seqlens=[4], kv_seqlens=[512],
         #q_heads=8, kv_heads=2, top_k=1)
         q_heads=8, kv_heads=2, top_k=3)
+
+  def test_bf16_axis0_strided_qkv(self):
+    """Q/K/V views with independent leading strides match contiguous input."""
+    print("[test_bf16_axis0_strided_qkv]")
+    data = make_case(
+        batch=1, q_seqlens=[8], kv_seqlens=[300], q_heads=8, kv_heads=2,
+        head_dim=128, block_size=128, top_k=3, seed=404)
+
+    q = data["query"].npu()
+    k = data["key"].npu()
+    v = data["value"].npu()
+    inputs = [
+        data["block_table"].npu(), data["k2q_row_ptr"].npu(),
+        data["k2q_q_indices"].npu(), data["k2q_slot_indices"].npu(),
+        data["actual_seq_lengths"].npu(), data["actual_seq_lengths_kv"].npu(),
+    ]
+
+    def run(query, key, value):
+      return torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
+          query, key, value, *inputs, data["kv_heads"], data["scale_value"],
+          data["block_size"], data["top_k"], 0)
+
+    contiguous_out = run(q, k, v)
+    strided_out = run(
+        _npu_axis0_strided(q, 2), _npu_axis0_strided(k, 2), _npu_axis0_strided(v, 3))
+    torch.npu.synchronize()
+
+    contiguous_cpu = contiguous_out.cpu()
+    strided_cpu = strided_out.cpu()
+    golden = cpu_golden_prefill_bf16(
+        data["query"], data["key"], data["value"], data["k2q_row_ptr"],
+        data["k2q_q_indices"], data["k2q_slot_indices"], data["block_table"],
+        data["actual_seq_lengths"], data["actual_seq_lengths_kv"],
+        data["block_size"], data["top_k"], data["scale_value"])
+    self.assertTrue(torch.equal(contiguous_cpu, strided_cpu))
+    self.assertRtolEqual(golden.float().numpy(), strided_cpu.float().numpy(), prec=7e-3)
 
   def test_bf16_single_batch_medium(self):
     print("[test_bf16_single_batch_medium]")
