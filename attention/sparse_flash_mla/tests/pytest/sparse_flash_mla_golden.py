@@ -190,6 +190,10 @@ class GeneralizedSFA:
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
                             [G, self.D], dtype=torch.float
                         )
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = torch.zeros(
+                                [G], dtype=torch.float32
+                            )
                         continue
 
                     q_curr = q_bnsd[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :]
@@ -323,8 +327,9 @@ class GeneralizedSFA:
                             dtype=q_bnsd.dtype
                         )
                         if return_softmax_lse:
-                            softmax_max[batch, n2Idx, s1Idx, :] = x_max[:, 0]
-                            softmax_sum[batch, n2Idx, s1Idx, :] = x_sum[:, 0]
+                            softmax_lse[i_B, i_N2, i_S1, :] = x_max[:, 0] + torch.log(
+                                x_sum[:, 0] + 1e-10
+                            )
                     elif RUN_MODE == 1:
                         if empty_flag_ori:
                             ori_s2_loop_time = 0
@@ -344,60 +349,71 @@ class GeneralizedSFA:
                             row_max = torch.empty((G, 1), dtype=torch.float32)
                             row_max = cur_sinks
 
-                        for i_S2 in range(total_s2_loop_time):
-                            if i_S2 < ori_s2_loop_time:  # ori_kv
-                                if i_S2 < ori_s2_loop_time - 1:
-                                    k_tile = cur_ori_k_bnsd_fp32[
-                                        i_S2 * s2_base_size : (i_S2 + 1) * s2_base_size,
-                                        :,
-                                    ]
-                                else:
-                                    k_tile = cur_ori_k_bnsd_fp32[
-                                        i_S2 * s2_base_size :, :
-                                    ]
-                            else:  # cmp_kv
-                                if i_S2 < total_s2_loop_time - 1:
-                                    k_tile = cur_cmp_k_fp32[
-                                        (i_S2 - ori_s2_loop_time) * s2_base_size : (
-                                            i_S2 - ori_s2_loop_time + 1
-                                        )
-                                        * s2_base_size,
-                                        :,
-                                    ]
-                                else:
-                                    k_tile = cur_cmp_k_fp32[
-                                        (i_S2 - ori_s2_loop_time) * s2_base_size :, :
-                                    ]
-                            v_tile = k_tile.clone()
-                            mm1_res = torch.matmul(q_curr_fp32, k_tile.T)
-                            scale_res = (
-                                mm1_res * self.softmax_scale
-                            )  # 外层for S1 循环，据实拷入数据，因此不需要mask
+                        if total_s2_loop_time == 0:
+                            attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = (
+                                torch.zeros([G, self.D], dtype=q_bnsd.dtype)
+                            )
+                            if return_softmax_lse:
+                                softmax_lse[i_B, i_N2, i_S1, :] = torch.zeros(
+                                    [G], dtype=torch.float32
+                                )
+                        else:
+                            for i_S2 in range(total_s2_loop_time):
+                                if i_S2 < ori_s2_loop_time:  # ori_kv
+                                    if i_S2 < ori_s2_loop_time - 1:
+                                        k_tile = cur_ori_k_bnsd_fp32[
+                                            i_S2 * s2_base_size : (i_S2 + 1)
+                                            * s2_base_size,
+                                            :,
+                                        ]
+                                    else:
+                                        k_tile = cur_ori_k_bnsd_fp32[
+                                            i_S2 * s2_base_size :, :
+                                        ]
+                                else:  # cmp_kv
+                                    if i_S2 < total_s2_loop_time - 1:
+                                        k_tile = cur_cmp_k_fp32[
+                                            (i_S2 - ori_s2_loop_time) * s2_base_size : (
+                                                i_S2 - ori_s2_loop_time + 1
+                                            )
+                                            * s2_base_size,
+                                            :,
+                                        ]
+                                    else:
+                                        k_tile = cur_cmp_k_fp32[
+                                            (i_S2 - ori_s2_loop_time) * s2_base_size :,
+                                            :,
+                                        ]
+                                v_tile = k_tile.clone()
+                                mm1_res = torch.matmul(q_curr_fp32, k_tile.T)
+                                scale_res = (
+                                    mm1_res * self.softmax_scale
+                                )  # 外层for S1 循环，据实拷入数据，因此不需要mask
 
-                            row_max_old = row_max.clone()
-                            row_max_tmp = torch.max(scale_res, dim=1)[0]
-                            # row_max_tmp = row_max_tmp.unsqueeze(1)
-                            row_max = torch.max(row_max, row_max_tmp)
-                            update_mul = torch.exp(row_max_old - row_max)
-                            row_max_expand = row_max.unsqueeze(1)
-                            update_mul_expand = update_mul.unsqueeze(1)
-                            cur_softmax_res = torch.exp(scale_res - row_max_expand)
-                            row_sum = update_mul * row_sum + torch.sum(
-                                cur_softmax_res, dim=1
-                            )
-                            cur_softmax_res = cur_softmax_res.to(dtype=q_bnsd.dtype).to(
-                                dtype=torch.float
-                            )
-                            cur_o = torch.matmul(cur_softmax_res, v_tile)
-                            cur_attn_out = cur_attn_out * update_mul_expand + cur_o
-                        row_sum_expand = row_sum.unsqueeze(1)
-                        attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = (
-                            cur_attn_out / row_sum_expand
-                        ).to(dtype=q_bnsd.dtype)
-                        if return_softmax_lse:
-                            softmax_lse[i_B, i_N2, i_S1, :] = row_max + torch.log(
-                                row_sum + 1e-10
-                            )
+                                row_max_old = row_max.clone()
+                                row_max_tmp = torch.max(scale_res, dim=1)[0]
+                                # row_max_tmp = row_max_tmp.unsqueeze(1)
+                                row_max = torch.max(row_max, row_max_tmp)
+                                update_mul = torch.exp(row_max_old - row_max)
+                                row_max_expand = row_max.unsqueeze(1)
+                                update_mul_expand = update_mul.unsqueeze(1)
+                                cur_softmax_res = torch.exp(scale_res - row_max_expand)
+                                row_sum = update_mul * row_sum + torch.sum(
+                                    cur_softmax_res, dim=1
+                                )
+                                cur_softmax_res = cur_softmax_res.to(
+                                    dtype=q_bnsd.dtype
+                                ).to(dtype=torch.float)
+                                cur_o = torch.matmul(cur_softmax_res, v_tile)
+                                cur_attn_out = cur_attn_out * update_mul_expand + cur_o
+                            row_sum_expand = row_sum.unsqueeze(1)
+                            attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = (
+                                cur_attn_out / row_sum_expand
+                            ).to(dtype=q_bnsd.dtype)
+                            if return_softmax_lse:
+                                softmax_lse[i_B, i_N2, i_S1, :] = row_max + torch.log(
+                                    row_sum + 1e-10
+                                )
                     elif RUN_MODE == 2:
                         ori_s2_loop_time = math.ceil(
                             cur_ori_k_bnsd.size(0) / s2_base_size
@@ -502,6 +518,10 @@ class GeneralizedSFA:
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = (
                             O_flash / row_sum_expand / tmp_scale_16_expand
                         ).to(dtype=q_bnsd.dtype)
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = row_max + torch.log(
+                                row_sum + 1e-10
+                            )
                     else:
                         raise ValueError(f"unsupported RUN_MODE:{RUN_MODE}")
         return attn_out, softmax_lse
@@ -726,34 +746,38 @@ class GeneralizedSFA:
 
         cmp_sparse_indices_bnsd = None
         if template_idx == 2 or template_idx == 4:
-            cmp_sparse_indices_bnsd, cmp_sparse_indices_bnsd_shape = self.trans_shape_to_bnsd(
-                                                                            cmp_sparse_indices,
-                                                                            cmp_sparse_indices.shape,
-                                                                            self.layout_q,
-                                                                            cu_seqlens_q,
-                                                                            seqused_q,
-                                                                            )
+            cmp_sparse_indices_bnsd, cmp_sparse_indices_bnsd_shape = (
+                self.trans_shape_to_bnsd(
+                    cmp_sparse_indices,
+                    cmp_sparse_indices.shape,
+                    self.layout_q,
+                    cu_seqlens_q,
+                    seqused_q,
+                )
+            )
 
         ori_sparse_indices_bnsd = None
         if template_idx == 3 or template_idx == 4:
-            ori_sparse_indices_bnsd, ori_sparse_indices_bnsd_shape = self.trans_shape_to_bnsd(
-                                                                            ori_sparse_indices,
-                                                                            ori_sparse_indices.shape,
-                                                                            self.layout_q,
-                                                                            cu_seqlens_q,
-                                                                            seqused_q,
-                                                                            )
+            ori_sparse_indices_bnsd, ori_sparse_indices_bnsd_shape = (
+                self.trans_shape_to_bnsd(
+                    ori_sparse_indices,
+                    ori_sparse_indices.shape,
+                    self.layout_q,
+                    cu_seqlens_q,
+                    seqused_q,
+                )
+            )
         ori_topk_length_bnsd = None
         if (template_idx == 3 or template_idx == 4) and ori_topk_length is not None:
             ori_topk_length_bnsd, _ = self.trans_topk_length_shape_to_bnsd(
-                                        ori_topk_length, ori_topk_length.shape, self.layout_q, cu_seqlens_q)
+                ori_topk_length, ori_topk_length.shape, self.layout_q, cu_seqlens_q
+            )
 
         cmp_topk_length_bnsd = None
         if (template_idx == 2 or template_idx == 4) and cmp_topk_length is not None:
             cmp_topk_length_bnsd, _ = self.trans_topk_length_shape_to_bnsd(
-                                        cmp_topk_length, cmp_topk_length.shape, self.layout_q, cu_seqlens_q)
-
-
+                cmp_topk_length, cmp_topk_length.shape, self.layout_q, cu_seqlens_q
+            )
 
         attn_out, softmax_lse = self.calculate_by_bnsd(
             q_bnsd,
@@ -1363,9 +1387,7 @@ def resolve_compressed_actual_lengths(
     if seqused_ori_kv is None or cmp_ratio is None:
         return seqused_cmp_kv, cmp_residual_kv
     if cmp_ratio < 1:
-        raise ValueError(
-            f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}"
-        )
+        raise ValueError(f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}")
     if seqused_cmp_kv is None:
         if torch.is_tensor(seqused_ori_kv):
             seqused_cmp_kv = seqused_ori_kv // cmp_ratio
@@ -1777,13 +1799,13 @@ def gen_data(params, prepare_device_storage=True):
     if seqused_ori_kv is not None:
         max_seqlen_ori_kv = seqused_ori_kv.max().item()
     elif cu_seqlens_ori_kv is not None:
-            max_seqlen_ori_kv = get_max_adjacent_diff(cu_seqlens_ori_kv)
+        max_seqlen_ori_kv = get_max_adjacent_diff(cu_seqlens_ori_kv)
 
     max_seqlen_cmp_kv = 0
     if seqused_cmp_kv is not None:
         max_seqlen_cmp_kv = seqused_cmp_kv.max().item()
     elif cu_seqlens_cmp_kv is not None:
-            max_seqlen_cmp_kv = get_max_adjacent_diff(cu_seqlens_cmp_kv)
+        max_seqlen_cmp_kv = get_max_adjacent_diff(cu_seqlens_cmp_kv)
 
     # ORI_SPARSE/ORI_CMP_SPARSE: seqused (actualLength) not passed to op, determined by sparse_indices and topkLength
     # cu_seqlens still passed for TND kv layout (needed for data addressing in kernel)
