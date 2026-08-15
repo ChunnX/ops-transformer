@@ -650,6 +650,9 @@ def generate_data():
         fp32_bnsd = (query, key, value)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 5830debba... golden: Q/K padding 区域 FP32 置 0, 消除 actSeq < S 时的散点脏数据
         # Q/K padding 区域 (act_seq 之外) FP32 置 0: 量化后 packed=0/scale=127,
         # 避免 NPU 按 actSeq 向上取整分块时 padding 脏数据污染有效区域.
         # V 的 padding 由后续 per-batch 量化处理 (packed 填 0, scale 填 127).
@@ -661,8 +664,11 @@ def generate_data():
             if sk < s2:
                 key[b_idx, :, sk:, :] = 0
 
+<<<<<<< HEAD
 =======
 >>>>>>> 13706ea7e... ttk优化
+=======
+>>>>>>> 5830debba... golden: Q/K padding 区域 FP32 置 0, 消除 actSeq < S 时的散点脏数据
         # Q/K: 沿 D 维量化, V: 沿 S 维量化
         query_packed, q_descale = mxfp4_quantize_pack_last(
             query, quant_axis=-1, mode="baseline"

@@ -819,6 +819,26 @@ def run_fia_eager(b, n2, g, s1, s2, qk_d, v_d = None, rope_d = 0, input_layout =
     print(cpu_attn_out_mxfp4_flash.shape)
 
     # ======================== generate npu data start ========================
+    # Q/K padding 区域 (act_seq 之外) FP32 置 0: 量化后 packed=0/scale=127,
+    # 避免 NPU 按 per-batch actSeq 向上取整分块时 padding 脏数据污染有效区域.
+    # V 的 padding 由后续 per-batch 切片量化处理 (packed 填 0, scale 填 127).
+    if act_seq_lens_q is not None and len(act_seq_lens_q) > 0:
+        for b_idx in range(b):
+            sq = act_seq_lens_q[b_idx] if len(act_seq_lens_q) > 1 else act_seq_lens_q[0]
+            sq = min(sq, s1)
+            if sq < s1:
+                query[b_idx, :, sq:, :] = 0
+                if query_rope is not None:
+                    query_rope[b_idx, :, sq:, :] = 0
+    if act_seq_lens_kv is not None and len(act_seq_lens_kv) > 0:
+        for b_idx in range(b):
+            sk = act_seq_lens_kv[b_idx] if len(act_seq_lens_kv) > 1 else act_seq_lens_kv[0]
+            sk = min(sk, s2)
+            if sk < s2:
+                key[b_idx, :, sk:, :] = 0
+                if key_rope is not None:
+                    key_rope[b_idx, :, sk:, :] = 0
+
     # query dtype
     q_descale = None
     if q_dtype == "int8":
