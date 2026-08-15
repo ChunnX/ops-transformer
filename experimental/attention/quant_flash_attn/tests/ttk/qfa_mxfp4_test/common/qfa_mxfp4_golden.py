@@ -628,6 +628,17 @@ def generate_data():
         # 一致: golden 接收 FP32, 内部 _apply_input_quant 做量化反量化)
         fp32_bnsd = (query, key, value)
 
+        # Q/K padding 区域 (act_seq 之外) FP32 置 0: 量化后 packed=0/scale=127,
+        # 避免 NPU 按 actSeq 向上取整分块时 padding 脏数据污染有效区域.
+        # V 的 padding 由后续 per-batch 量化处理 (packed 填 0, scale 填 127).
+        for b_idx in range(B):
+            sq = min(act_seq_q_eff[b_idx], s1)
+            if sq < s1:
+                query[b_idx, :, sq:, :] = 0
+            sk = min(act_seq_kv_eff[b_idx], s2)
+            if sk < s2:
+                key[b_idx, :, sk:, :] = 0
+
         # Q/K: 沿 D 维量化, V: 沿 S 维量化
         query_packed, q_descale = mxfp4_quantize_pack_last(
             query, quant_axis=-1, mode="baseline"
