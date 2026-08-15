@@ -333,6 +333,15 @@ ge::graphStatus AllGatherQuantBmmTiling::SetQuantScene()
     auto scaleInv2Shape = context_->GetOptionalInputShape(SCALE_INV2);
     auto scaleInv1Desc = context_->GetOptionalInputDesc(SCALE_INV1);
     auto scaleInv2Desc = context_->GetOptionalInputDesc(SCALE_INV2);
+    OP_TILING_CHECK(isFp4_ && ((scaleInv1Shape->GetStorageShape().GetDimNum() != DIM_NUM_IS_THREE) ||
+                                   (scaleInv2Shape->GetStorageShape().GetDimNum() != DIM_NUM_IS_THREE)),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName_, "x1Scale and x2Scale",
+                        (std::to_string(scaleInv1Shape->GetStorageShape().GetDimNum()) + "D and " +
+                         std::to_string(scaleInv2Shape->GetStorageShape().GetDimNum()) + "D")
+                            .c_str(),
+                        "The shape dims of x1Scale and x2Scale must be 3D when x1 and x2 is float4_e2m1"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK((scaleInv1Shape->GetStorageShape().GetDimNum() != scaleInv2Shape->GetStorageShape().GetDimNum()),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         opName_, "x1Scale and x2Scale",

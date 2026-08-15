@@ -13,14 +13,24 @@ abbr {
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      √     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ---
 
@@ -129,9 +139,10 @@ $$
 
 - **V1 → V4**：
 
+  <!-- npu="950" id7 -->
   - Ascend 950PR/Ascend 950DT：支持不同分组轴，由groupType表示；非量化支持 x/weight转置；支持静态量化（T-C/T-T）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持动态量化（K-C/K-T/T-T/T-C/MX/G-B）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持伪量化 weight为 INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8（INT4 支持 perchannel 和 pergroup，其余仅 perchannel）。
+  <!-- end id7 -->
   - Atlas A3/A2 系列产品：支持不同分组轴，由groupType表示；非量化支持 x/weight转置；支持 x/weight/y 均为单Tensor 非量化 FLOAT32 输入；支持伪量化 weight=INT4（perchannel/pergroup 模式）。
-
 
 ## 函数原型
 
@@ -202,9 +213,11 @@ aclnnStatus aclnnGroupedMatmulV5(
   | workspaceSize（uint64_t *） | 输出 | 返回需要在Device侧申请的workspace大小（字节） | - | - | - | - | - |
   | executor（aclOpExecutor **） | 输出 | 返回op执行器，包含了算子计算流程 | - | - | - | - | - |
 
+  <!-- npu="950" id8 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - 上表数据类型列中的角标 <span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span> 代表该系列不支持的数据类型
     - 输入参数 x、weight均不支持INT16 类型，且 x不支持INT4 类型
+  <!-- end id8 -->
   - <term>Atlas A3/A2 系列产品</term>：
     - 上表数据类型列中的角标 <span title="Atlas A3/A2 不支持"><sup>2</sup></span> 代表该系列不支持的数据类型
     - 不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT8_E8M0类型
@@ -299,9 +312,9 @@ aclnnGroupedMatmulV5默认确定性实现。
 
 - groupType：支持M轴分组（0）和不分组（-1）。非量化/全量化额外支持K轴分组（2）。
 - groupListType：支持0、1、2。
-  - groupListType=0：须为非负单调非递减数列（累积和）。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
-  - groupListType=1：须为非负数列（各组大小）。例如：`[64, 0, 128, 64]`
-  - groupListType=2：仅全量化且groupType=0场景下支持，须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
+  - groupListType=0：须为非负单调非递减数列（累积和），groupList中最后一个值不大于x中tensor的第一维。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
+  - groupListType=1：须为非负数列（各组大小），groupList中数值总和不大于x中tensor的第一维。例如：`[64, 0, 128, 64]`
+  - groupListType=2：仅全量化且groupType=0场景下支持，须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置，groupList第二列的数值总和不大于x中tensor的第一维。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
 - tuningConfigOptional：不支持。
 - actType（0~5）：
   - 非量化/伪量化仅支持 0。
@@ -513,7 +526,6 @@ aclnnGroupedMatmulV5默认确定性实现。
 
 </details>
 
-
 ### Atlas A3/A2 系列产品
 
 #### 平台约束
@@ -542,6 +554,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 > x、weight、y 输入为 aclTensorList。"单" = 单元素TensorList，"多" = 多元素TensorList。
 
 各量化类型支持的 groupType 速览：
+
 - A16W8、A16W4：仅支持 groupType=-1、0。
 - A8W8、A8W4、A4W4：仅支持 groupType=0，且 x 为单 tensor。
 

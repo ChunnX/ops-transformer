@@ -2,15 +2,25 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
-|<term>Atlas 200/300/500 推理产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
+- <term>Atlas 200/300/500 推理产品</term>：不支持
 
 ## 功能说明
 
@@ -109,7 +119,7 @@ aclnnStatus aclnnMhcSinkhorn(
   | 返回值 | 错误码 | 描述 |
   |:--- |:--- |:--- |
   | ACLNN_ERR_PARAM_NULLPTR | 161001 | 必选参数（x/output）或输出参数（workspaceSize/executor）为空指针。 |
-  | ACLNN_ERR_PARAM_INVALID | 161002 | 1. x的数据类型/格式非FLOAT32/ND；<br>2. numIters超出1~100范围；<br>3. n值非4/6/8。 |
+  | ACLNN_ERR_PARAM_INVALID | 161002 | 1. x的数据类型/格式非FLOAT32/ND；<br>2. numIters超出1~100范围；<br>3. n值非4/6/8；<br>4. normOut/sumOut不为空时，其元素总数或格式不符合要求。 |
   | ACLNN_ERR_RUNTIME_ERROR | 361001 | 调用NPU Runtime接口申请内存/创建Tensor失败。 |
 
 ## aclnnMhcSinkhorn
@@ -129,7 +139,7 @@ aclnnStatus aclnnMhcSinkhorn(
 
 ## 约束说明
 
--  确定性计算
+- 确定性计算
 
   - aclnnMhcSinkhorn默认采用确定性实现，相同输入多次调用结果一致。
 
@@ -139,7 +149,7 @@ aclnnStatus aclnnMhcSinkhorn(
      - 输入Tensor `x`为空，报错`ACLNN_ERR_PARAM_NULLPTR`；
      - 所有输入/输出Tensor的数据格式仅支持`ACL_FORMAT_ND`；
      - 仅支持`FLOAT32`数据类型，不支持其他精度（如FLOAT16/DOUBLE）。
-     - normOut和sumOut为可选参数，可传空指针；传空指针时不输出对应结果。
+     - normOut和sumOut为可选参数，可传空指针；传空指针时不输出对应结果。不为空时，normOut的元素总数须为`2*numIters*T*n*8`，sumOut的元素总数须为`2*numIters*T*8`（其中`T`为输入合并后的batch数：3维时`T=x.shape[0]`，4维时`T=x.shape[0]*x.shape[1]`；`n`为矩阵维度，取值4/6/8；`8`为n按8对齐后的值），且格式须为`ACL_FORMAT_ND`，否则报错`ACLNN_ERR_PARAM_INVALID`。
      - 输入-inf/inf/nan/，输出nan/nan/nan。
   2. 内存约束：
      - Workspace内存需在Device侧申请，且大小需严格匹配第一段接口返回值；
@@ -309,12 +319,12 @@ int main() {
   aclTensor* output_tensor = nullptr;
 
   // 可选输出：norm_out（out_flag=1时有效）
-  std::vector<int64_t> norm_out_shape = {40, 4, 4, 1024};  // 2*20=40, n=4, T=1024
+  std::vector<int64_t> norm_out_shape = {40, 4, 8, 1024};  // 2*num_iters=40, n=4, n_align=8, T=1024
   void* norm_out_device_addr = nullptr;
   aclTensor* norm_out_tensor = nullptr;
 
   // 可选输出：sum_out（out_flag=1时有效）
-  std::vector<int64_t> sum_out_shape = {40, 4, 1024};  // 2*20=40, n=4, T=1024
+  std::vector<int64_t> sum_out_shape = {40, 8, 1024};  // 2*num_iters=40, n_align=8, T=1024
   void* sum_out_device_addr = nullptr;
   aclTensor* sum_out_tensor = nullptr;
 

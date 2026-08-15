@@ -63,13 +63,13 @@ attn_out, softmax_lse = torch.ops.custom.npu_quant_block_sparse_attn(
 # 也可：torch_npu.npu_quant_block_sparse_attn(...)
 ```
 
-### 与 BSA pytest 集成
+### 与 QBSA pytest 集成
 
-`tests/pytest/custom_ops.py` 通过 `BSA_CUSTOM_OPS_PATH` 检索本扩展，既支持 glob
+`tests/pytest/custom_ops.py` 通过 `QBSA_CUSTOM_OPS_PATH` 检索本扩展，既支持 glob
 `custom_ops_lib*.so`（`torch.ops.load_library`），也支持 exec `custom_ops/__init__.py`：
 
 ```sh
-export BSA_CUSTOM_OPS_PATH=<repo>/experimental/attention/quant_block_sparse_attn/torch_ops_extension
+export QBSA_CUSTOM_OPS_PATH=<repo>/experimental/attention/quant_block_sparse_attn/torch_ops_extension
 cd <repo>/experimental/attention/quant_block_sparse_attn/tests/pytest
 bash test_run.sh
 ```
@@ -80,7 +80,7 @@ bash test_run.sh
 
 - 入参/属性/输出与算子原型 `op_host/quant_block_sparse_attn_def.cpp` 一一对应。
 - `paBlockStride`（组合 `PA_BNSD` cache 的物理块外步长，单位为 FP8 元素数）不再是接口参数，
-  adapter 内部由 `key.stride(0)` 推导后传给 aclnn；`torch.compile` converter 不传该属性，沿用 IR 默认值。
+  host tiling 从 `key.stride(0)` 推导；`torch.compile` converter 也不再构造该属性。
 - `EXEC_NPU_CMD_V1` 实参按 IR 声明顺序传入（输入→属性→输出）；Python schema 为便于调用将必选张量前置，
   C++ 实现内部已按 IR 顺序重排。
 - FP8 量化：q/k per-token-per-head、v per-head、p per-tensor 静态（用户传入）。

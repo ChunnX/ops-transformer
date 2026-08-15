@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                       |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -51,7 +61,7 @@
 
     - **输出组合梯度计算**：
 
-        - **正向计算公式**：其中 $\mathbf{x}$ 为输入参数（前向输入x），$\mathbf{hPre}$ 为输入参数（前向保存的中间结果h_pre），$N$ 为输入Tensor中N维度的大小（当前仅支持4）。
+        - **正向计算公式**：其中 $\mathbf{x}$ 为输入参数（前向输入x），$\mathbf{hPre}$ 为输入参数（前向保存的中间结果h_pre），$N$ 为输入Tensor中N维度的大小（支持不超过8）。
 
         $$
         \mathbf{HIn} = \sum_{i=1}^{N} \mathbf{x}[B, S, i, :] \cdot \mathbf{hPre}[B, S, i]
@@ -531,7 +541,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
          <tr>
         <td rowspan="4">ACLNN_ERR_INNER_TILING_ERROR</td>
         <td rowspan="4">561002</td>
-        <td>N不等于4。</td>
+        <td>N大于8。</td>
       </tr>
       <tr>
         <td>输入或输出tensor的维度(shape)与参数说明不符。</td>
@@ -590,16 +600,12 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
 
 ## 约束说明
 
-- **确定性计算**：
-
-  - aclnnMhcPreSinkhornBackward默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
-
 - **规格约束**
 
   | 规格项 | 规格 | 规格说明 |
   | :--- | :--- | :--- |
   | sk_iter_count | 20 | Sinkhorn迭代次数当前仅支持20。 |
-  | N | 4 | 输入Tensor中N维度的大小仅支持4。 |
+  | N | ≤8 | N维度支持不超过8。 |
   | C | - | 大于0、小于100000且可以被128整除。 |
 
 ## 调用示例

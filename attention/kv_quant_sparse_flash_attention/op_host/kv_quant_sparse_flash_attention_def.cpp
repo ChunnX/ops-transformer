@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 /*!
  * \file kv_quant_sparse_flash_attention_def.cpp
  * \brief
@@ -74,13 +74,13 @@ public:
         this->Attr("sparse_block_size").AttrType(OPTIONAL).Int(1);
         this->Attr("layout_query").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_kv").AttrType(OPTIONAL).String("BSND");
-        this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);     // 3:默认值，只计算下三角
+        this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3); // 3:默认值，只计算下三角
         this->Attr("pre_tokens").AttrType(OPTIONAL).Int(INT64_MAX);
         this->Attr("next_tokens").AttrType(OPTIONAL).Int(INT64_MAX);
         this->Attr("attention_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("quant_scale_repo_mode").AttrType(OPTIONAL).Int(1);
-        this->Attr("tile_size").AttrType(OPTIONAL).Int(128);     // 128:默认值
-        this->Attr("rope_head_dim").AttrType(OPTIONAL).Int(64);  // 64:默认值
+        this->Attr("tile_size").AttrType(OPTIONAL).Int(128);    // 128:默认值
+        this->Attr("rope_head_dim").AttrType(OPTIONAL).Int(64); // 64:默认值
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
@@ -101,12 +101,12 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         aicore_config_95.Input("value")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         aicore_config_95.Input("sparse_indices")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
