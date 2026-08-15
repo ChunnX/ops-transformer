@@ -28,7 +28,7 @@ using namespace MicroAPI;
 #define DROPOUT false
 
 template <bool isUpdate, uint16_t KvsBase = 256>
-__simd_vf__ void processUpdateVF(__ubuf__ float *updateResUb, __ubuf__ float *mm2ResUb, __ubuf__ float *urs,
+__simd_vf__ void process_update_vf(__ubuf__ float *update_res_ub, __ubuf__ float *mm2_res_ub, __ubuf__ float *urs,
                                __ubuf__ float *rsum, __ubuf__ float *ursum)
 {
     // 更新 mm2
@@ -45,30 +45,30 @@ __simd_vf__ void processUpdateVF(__ubuf__ float *updateResUb, __ubuf__ float *mm
 
         for (uint16_t i = 0; i < KvsBase / 2; i += 4) {
             RegTensor<float> vreg_pv1, vreg_pv2, vreg_pv3, vreg_pv4, vreg_out1, vreg_out2, vreg_out3, vreg_out4;
-            LoadAlign(vreg_out1, (__ubuf__ float *)updateResUb + (i + 0) * 64);
-            LoadAlign(vreg_out2, (__ubuf__ float *)updateResUb + (i + 1) * 64);
-            LoadAlign(vreg_out3, (__ubuf__ float *)updateResUb + (i + 2) * 64);
-            LoadAlign(vreg_out4, (__ubuf__ float *)updateResUb + (i + 3) * 64);
+            LoadAlign(vreg_out1, (__ubuf__ float *)update_res_ub + (i + 0) * 64);
+            LoadAlign(vreg_out2, (__ubuf__ float *)update_res_ub + (i + 1) * 64);
+            LoadAlign(vreg_out3, (__ubuf__ float *)update_res_ub + (i + 2) * 64);
+            LoadAlign(vreg_out4, (__ubuf__ float *)update_res_ub + (i + 3) * 64);
 
             Mul(vreg_out1, vreg_out1, vreg_rs, preg_all32);
             Mul(vreg_out2, vreg_out2, vreg_rs, preg_all32);
             Mul(vreg_out3, vreg_out3, vreg_rs, preg_all32);
             Mul(vreg_out4, vreg_out4, vreg_rs, preg_all32);
 
-            LoadAlign(vreg_pv1, (__ubuf__ float *)mm2ResUb + (i + 0) * 64);
-            LoadAlign(vreg_pv2, (__ubuf__ float *)mm2ResUb + (i + 1) * 64);
-            LoadAlign(vreg_pv3, (__ubuf__ float *)mm2ResUb + (i + 2) * 64);
-            LoadAlign(vreg_pv4, (__ubuf__ float *)mm2ResUb + (i + 3) * 64);
+            LoadAlign(vreg_pv1, (__ubuf__ float *)mm2_res_ub + (i + 0) * 64);
+            LoadAlign(vreg_pv2, (__ubuf__ float *)mm2_res_ub + (i + 1) * 64);
+            LoadAlign(vreg_pv3, (__ubuf__ float *)mm2_res_ub + (i + 2) * 64);
+            LoadAlign(vreg_pv4, (__ubuf__ float *)mm2_res_ub + (i + 3) * 64);
 
             Add(vreg_out1, vreg_out1, vreg_pv1, preg_all32);
             Add(vreg_out2, vreg_out2, vreg_pv2, preg_all32);
             Add(vreg_out3, vreg_out3, vreg_pv3, preg_all32);
             Add(vreg_out4, vreg_out4, vreg_pv4, preg_all32);
 
-            StoreAlign((__ubuf__ float *)updateResUb + (i + 0) * 64, vreg_out1, preg_all32);
-            StoreAlign((__ubuf__ float *)updateResUb + (i + 1) * 64, vreg_out2, preg_all32);
-            StoreAlign((__ubuf__ float *)updateResUb + (i + 2) * 64, vreg_out3, preg_all32);
-            StoreAlign((__ubuf__ float *)updateResUb + (i + 3) * 64, vreg_out4, preg_all32);
+            StoreAlign((__ubuf__ float *)update_res_ub + (i + 0) * 64, vreg_out1, preg_all32);
+            StoreAlign((__ubuf__ float *)update_res_ub + (i + 1) * 64, vreg_out2, preg_all32);
+            StoreAlign((__ubuf__ float *)update_res_ub + (i + 2) * 64, vreg_out3, preg_all32);
+            StoreAlign((__ubuf__ float *)update_res_ub + (i + 3) * 64, vreg_out4, preg_all32);
         }
     } else {
         RegTensor<float> vreg_grsum;
@@ -77,31 +77,31 @@ __simd_vf__ void processUpdateVF(__ubuf__ float *updateResUb, __ubuf__ float *mm
 
         for (uint16_t i = 0; i < KvsBase / 2; i += 4) {
             RegTensor<float> vreg_out1, vreg_out2, vreg_out3, vreg_out4;
-            LoadAlign(vreg_out1, (__ubuf__ float *)mm2ResUb + (i + 0) * 64);
-            LoadAlign(vreg_out2, (__ubuf__ float *)mm2ResUb + (i + 1) * 64);
-            LoadAlign(vreg_out3, (__ubuf__ float *)mm2ResUb + (i + 2) * 64);
-            LoadAlign(vreg_out4, (__ubuf__ float *)mm2ResUb + (i + 3) * 64);
+            LoadAlign(vreg_out1, (__ubuf__ float *)mm2_res_ub + (i + 0) * 64);
+            LoadAlign(vreg_out2, (__ubuf__ float *)mm2_res_ub + (i + 1) * 64);
+            LoadAlign(vreg_out3, (__ubuf__ float *)mm2_res_ub + (i + 2) * 64);
+            LoadAlign(vreg_out4, (__ubuf__ float *)mm2_res_ub + (i + 3) * 64);
 
-            StoreAlign((__ubuf__ float *)updateResUb + (i + 0) * 64, vreg_out1, preg_all32);
-            StoreAlign((__ubuf__ float *)updateResUb + (i + 1) * 64, vreg_out2, preg_all32);
-            StoreAlign((__ubuf__ float *)updateResUb + (i + 2) * 64, vreg_out3, preg_all32);
-            StoreAlign((__ubuf__ float *)updateResUb + (i + 3) * 64, vreg_out4, preg_all32);
+            StoreAlign((__ubuf__ float *)update_res_ub + (i + 0) * 64, vreg_out1, preg_all32);
+            StoreAlign((__ubuf__ float *)update_res_ub + (i + 1) * 64, vreg_out2, preg_all32);
+            StoreAlign((__ubuf__ float *)update_res_ub + (i + 2) * 64, vreg_out3, preg_all32);
+            StoreAlign((__ubuf__ float *)update_res_ub + (i + 3) * 64, vreg_out4, preg_all32);
         }
     }
 }
 
 template <bool isUpdate, uint16_t KvsBase = 256>
-__aicore__ inline void processUpdate(const LocalTensor<float> &updateResUb, const LocalTensor<float> &mm2ResUb,
+__aicore__ inline void ProcessUpdateCallVF(const LocalTensor<float> &updateResUb, const LocalTensor<float> &mm2ResUb,
                                      const LocalTensor<float> &urs, const LocalTensor<float> &rsum,
                                      const LocalTensor<float> &ursum)
 {
-    __ubuf__ float *updateResUbVF = (__ubuf__ float *)updateResUb.GetPhyAddr();
-    __ubuf__ float *mm2ResUbVF = (__ubuf__ float *)mm2ResUb.GetPhyAddr();
-    __ubuf__ float *ursVF = (__ubuf__ float *)urs.GetPhyAddr();
-    __ubuf__ float *rsumVF = (__ubuf__ float *)rsum.GetPhyAddr();
-    __ubuf__ float *ursumVF = (__ubuf__ float *)ursum.GetPhyAddr();
+    __ubuf__ float *update_res_ub_buf = (__ubuf__ float *)updateResUb.GetPhyAddr();
+    __ubuf__ float *mm2_res_ub_buf = (__ubuf__ float *)mm2ResUb.GetPhyAddr();
+    __ubuf__ float *urs_buf = (__ubuf__ float *)urs.GetPhyAddr();
+    __ubuf__ float *rsum_buf = (__ubuf__ float *)rsum.GetPhyAddr();
+    __ubuf__ float *ursum_buf = (__ubuf__ float *)ursum.GetPhyAddr();
 
-    processUpdateVF<isUpdate, KvsBase>(updateResUbVF, mm2ResUbVF, ursVF, rsumVF, ursumVF);
+    process_update_vf<isUpdate, KvsBase>(update_res_ub_buf, mm2_res_ub_buf, urs_buf, rsum_buf, ursum_buf);
 }
 
 }  // namespace NpuArch::Epilogue::Block::Mxfp4VF

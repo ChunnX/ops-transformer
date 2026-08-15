@@ -17,8 +17,6 @@
 
 #ifndef VF_MM1_RES_PRE_PADDING_ALIGN_KVS32_MULTI_H
 #define VF_MM1_RES_PRE_PADDING_ALIGN_KVS32_MULTI_H
-// #include "kernel_tensor.h"
-
 #include "vf_common_def.h"
 
 namespace NpuArch::Epilogue::Block::Mxfp4VF {
@@ -27,38 +25,32 @@ using namespace AscendC;
 using namespace MicroAPI;
 
 template <typename T, uint16_t QsBase = 128>
-__simd_vf__ inline void mm1_res_pre_padding_align_kvs32_nulti_vf(__ubuf__ T *s, uint16_t actSingleLoopS2Size, uint16_t actSingleLoopS2SizeAlign32)
+__simd_vf__ inline void mm1_res_pre_padding_align_kvs32_nulti_vf(__ubuf__ T *s, uint16_t actKvsTile, uint16_t kvsActBaseTileAlign32)
 {
     // ====================== 寄存器定义 ======================
-    MaskReg mask_reg;
-    if constexpr (QsBase == 128) {
-        mask_reg = CreateMask<uint16_t, MaskPattern::ALL>();
-    } else {
-        mask_reg = CreateMask<uint16_t, MaskPattern::VL128>();
-    }
-    uint16_t s2Idx = 0;
-    // uint16_t idx2 = 0;
-    RegTensor<T> padding_tensor1;
-    Duplicate(padding_tensor1, MIN_VALUE, mask_reg);
-    Muls(padding_tensor1, padding_tensor1, TWO_VALE, mask_reg);
-    for (s2Idx = actSingleLoopS2Size; s2Idx < actSingleLoopS2SizeAlign32 - 1; s2Idx += 2) {
-        StoreAlign(s + (s2Idx * QsBase)*2, padding_tensor1, mask_reg);
-        StoreAlign(s + (s2Idx * QsBase + 1 * QsBase)*2, padding_tensor1, mask_reg);
+    MaskReg mask_reg = CreateMask<uint16_t, MaskPattern::ALL>();
+    uint16_t kvsIdx = 0;
+    RegTensor<T> padding_tensor;
+    Duplicate(padding_tensor, MIN_VALUE, mask_reg);
+    Muls(padding_tensor, padding_tensor, TWO_VALE, mask_reg);
+    for (kvsIdx = actKvsTile; kvsIdx < kvsActBaseTileAlign32 - 1; kvsIdx += 2) {
+        StoreAlign(s + (kvsIdx * QsBase) * 2, padding_tensor, mask_reg);
+        StoreAlign(s + (kvsIdx * QsBase + 1 * QsBase) * 2, padding_tensor, mask_reg);
     }
 
-    for (uint16_t idx = s2Idx; idx < actSingleLoopS2SizeAlign32; ++idx) {
-        StoreAlign(s + (idx * QsBase )*2, padding_tensor1, mask_reg);
+    for (uint16_t idx = kvsIdx; idx < kvsActBaseTileAlign32; ++idx) {
+        StoreAlign(s + (idx * QsBase) * 2, padding_tensor, mask_reg);
     }
 
 }
 
 template <typename T>
-__aicore__ inline void Mm1ResPrePaddingAlignKvs32MultiCallVF(const LocalTensor<T> &srcTensor, uint16_t actSingleLoopS2Size, uint16_t actSingleLoopS2SizeAlign32)
+__aicore__ inline void Mm1ResPrePaddingAlignKvs32MultiCallVF(const LocalTensor<T> &srcTensor, uint16_t actKvsTile, uint16_t kvsActBaseTileAlign32)
 {
-    __ubuf__ T *input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
+    __ubuf__ T *s_ub = (__ubuf__ T*) srcTensor.GetPhyAddr();
 
     mm1_res_pre_padding_align_kvs32_nulti_vf<T>(
-        input_x_local_UB, actSingleLoopS2Size, actSingleLoopS2SizeAlign32);
+        s_ub, actKvsTile, kvsActBaseTileAlign32);
 }
 
 }
