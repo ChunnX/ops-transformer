@@ -26,7 +26,8 @@ constexpr uint32_t L0C_SHARED_SIZE_256K = 262144; // 262144表示256 * 1024
 
 constexpr uint32_t BUFFER_SIZE_16K = 16384; // 16384表示16 * 1024
 constexpr uint32_t BUFFER_SIZE_32K = 32768; // 32768表示32 * 1024
-constexpr uint32_t BUFFER_SIZE_128K = 131072; // 131072表示128 * 1024
+constexpr uint32_t BUFFER_SIZE_96K = 98304; // 98304表示96 * 1024
+constexpr uint32_t BUFFER_SIZE_256K = 262144; // 262144表示256 * 1024
 
 constexpr uint32_t CV_RATIO = 2;
 constexpr uint64_t SYNC_MODE = 4;
@@ -77,7 +78,7 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
     X(TEMPLATE_MODE, QSMLATemplateMode, QSMLATemplateMode::CSA_TEMPLATE_MODE) \
     X(IS_SPLIT_G, bool, false) \
     X(QUANT_MODE, SCALE_CONTIGUOUS_MODE, SCALE_CONTIGUOUS_MODE::CONTIGUOUS) \
-    X(IS_BATCH_CONSISTENCY, bool, false) \
+    X(IS_BATCH_CONSISTENCY, bool, false)
 
 /* 1. 生成带默认值的模版Template */
 #define GEN_TYPE_PARAM(name) typename name,
