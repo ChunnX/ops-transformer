@@ -9,8 +9,10 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 
+set(quant_lightning_indexer_v2_depends attention/lightning_indexer_v2 CACHE INTERNAL
+    "Dependencies for quant_lightning_indexer_v2")
+
 if (BUILD_OPEN_PROJECT)
-    set(quant_lightning_indexer_v2_depends attention/lightning_indexer_v2 CACHE INTERNAL "Dependencies for quant_lightning_indexer_v2")
     target_sources(op_host_aclnn PRIVATE
         quant_lightning_indexer_v2_def.cpp
     )
@@ -27,4 +29,8 @@ add_ops_compile_options(
 
 if (NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE quant_lightning_indexer_v2 ACLNNTYPE aclnn)
+    file(GLOB QUANT_LIGHTNING_INDEXER_V2_CHECKER_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/checkers/*checker*.cpp
+    )
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${QUANT_LIGHTNING_INDEXER_V2_CHECKER_SOURCES})
 endif()
