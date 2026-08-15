@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "../quant_block_sparse_attn_host_ut_param.h"
+#include "quant_block_sparse_attn_tiling.h"
 #include "tiling_case_executor.h"
 #include "tiling_context_faker.h"
 
@@ -159,6 +160,12 @@ TEST_P(QuantBlockSparseAttnTilingArch35Test, param)
         EXPECT_EQ(ok, true);
         EXPECT_GT(tilingInfo.blockNum, 0U);
         EXPECT_GT(tilingInfo.tilingDataSize, 0U);
+        if (param.case_name == "tiling_fp8_missing_kv_stride") {
+            ASSERT_GE(tilingInfo.tilingDataSize, sizeof(optiling::QuantBlockSparseAttnTilingData));
+            const auto *tilingData =
+                reinterpret_cast<const optiling::QuantBlockSparseAttnTilingData *>(tilingInfo.tilingData.get());
+            EXPECT_EQ(tilingData->paParams.get_paBlockStride(), 133120U);
+        }
     } else {
         EXPECT_EQ(ok, false);
     }
