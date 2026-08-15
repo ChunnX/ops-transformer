@@ -29,12 +29,12 @@ template <
     class ElementLocalGlobalMax_,
     class LayoutLocalGlobalMax_>
 class BlockEpilogue<
-    EpilogueCopyGlobalMaxUbToL1Bsa,
+    EpilogueCopyGlobalMaxUbToL1BsaMX,
     ElementLocalGlobalMax_,
     LayoutLocalGlobalMax_>
 {
 public:
-    using DispatchPolicy = EpilogueCopyGlobalMaxUbToL1Bsa;
+    using DispatchPolicy = EpilogueCopyGlobalMaxUbToL1BsaMX;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementLocalGlobalMax = ElementLocalGlobalMax_;
     using LayoutLocalGlobalMax = LayoutLocalGlobalMax_;

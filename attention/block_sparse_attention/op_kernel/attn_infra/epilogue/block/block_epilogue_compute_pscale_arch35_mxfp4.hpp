@@ -34,13 +34,13 @@ template <
     class ElementDm_,
     class PScaleType_>
 class BlockEpilogue<
-    EpilogueComputePScaleBsa<true, MX_QUANT_MODE_>,
+    EpilogueComputePScaleBsaMX<true, MX_QUANT_MODE_>,
     ElementGroupMax_,
     ElementDm_,
     PScaleType_>
 {
 public:
-    using DispatchPolicy = EpilogueComputePScaleBsa<true, MX_QUANT_MODE_>;
+    using DispatchPolicy = EpilogueComputePScaleBsaMX<true, MX_QUANT_MODE_>;
     static constexpr MXQuantMode MX_QUANT_MODE = DispatchPolicy::MX_QUANT_MODE;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementGroupMax = ElementGroupMax_;
