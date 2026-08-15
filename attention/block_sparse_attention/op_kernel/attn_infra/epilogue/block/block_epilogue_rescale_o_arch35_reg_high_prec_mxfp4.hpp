@@ -81,10 +81,10 @@ public:
 
         if (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_ATTN_BUF_FLAG);
-            Mxfp4VF::processUpdate<false>(oUBTensor, oTmpUBTensor, dm,
+            Mxfp4VF::ProcessUpdateCallVF<false>(oUBTensor, oTmpUBTensor, dm,
                                           globalRowSumUBTensor, localRowSumUBTensor);
         } else {
-            Mxfp4VF::processUpdate<true>(oUBTensor, oTmpUBTensor, dm,
+            Mxfp4VF::ProcessUpdateCallVF<true>(oUBTensor, oTmpUBTensor, dm,
                                          globalRowSumUBTensor, localRowSumUBTensor);
         }
 
@@ -100,11 +100,10 @@ public:
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
                 AscendC::LocalTensor<ElementOTmp> outTensorFp32Ub = oTransUBTensor.template ReinterpretCast<ElementOTmp>(); // 空间复用P, bf16 vf写出是强解释fp32
-                Mxfp4VF::processOut<MXFP4::QS_BASE_SIZE, ElementO>(outTensorFp32Ub, oUBTensor, globalRowSumUBTensor);
+                Mxfp4VF::ProcessOutCallVF<MXFP4::QS_BASE_SIZE, ElementO>(outTensorFp32Ub, oUBTensor, globalRowSumUBTensor);
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::LocalTensor<ElementO> oTransUBTensorB16 = oTransUBTensor.template ReinterpretCast<ElementO>();
                 AscendC::LocalTensor<ElementO> oUBTensorB16 = oUBTensor.template ReinterpretCast<ElementO>();
-                // embding size actualOriShape.m()
                 uint32_t embedColumnCnt = EMB_ALIGN128 + MXFP4::DATA_BLOCK_BYTE / sizeof(ElementO);
                 // 搬回 oUBTensorB16
                 AscendC::DataCopy(oUBTensorB16, oTransUBTensorB16, actMSizeThisCore * embedColumnCnt);
