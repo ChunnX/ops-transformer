@@ -38,6 +38,7 @@ __simd_vf__ inline void computePscaleVF(__ubuf__ uint8_t *mxscale1, __ubuf__ uin
 {
     MaskReg preg_all16 = CreateMask<uint16_t, MaskPattern::ALL>();
     MaskReg preg_all8 = CreateMask<uint8_t, MaskPattern::ALL>();
+    MaskReg preg_all_32 = CreateMask<uint32_t, MaskPattern::ALL>();
 
     RegTensor<half> vreg_gmax, vreg_max1, vreg_max2, vreg_rs16, vreg_gmax_old;
     RegTensor<float> vreg_rs1, vreg_rs2;
@@ -64,17 +65,17 @@ __simd_vf__ inline void computePscaleVF(__ubuf__ uint8_t *mxscale1, __ubuf__ uin
         Maxs(vreg_rs16, vreg_rs16, ZERO_VALUE, preg_all16);
         Cast<int32_t, T, h2iZero>((RegTensor<int32_t> &)vreg_rs1, vreg_rs16, preg_all16);
         Cast<int32_t, T, h2iOne>((RegTensor<int32_t> &)vreg_rs2, vreg_rs16, preg_all16);
-        ShiftLefts((RegTensor<int32_t> &)vreg_rs1, (RegTensor<int32_t> &)vreg_rs1, SHIFT_VALUE, preg_all16);
-        ShiftLefts((RegTensor<int32_t> &)vreg_rs2, (RegTensor<int32_t> &)vreg_rs2, SHIFT_VALUE, preg_all16);
+        ShiftLefts((RegTensor<int32_t> &)vreg_rs1, (RegTensor<int32_t> &)vreg_rs1, SHIFT_VALUE, preg_all_32);
+        ShiftLefts((RegTensor<int32_t> &)vreg_rs2, (RegTensor<int32_t> &)vreg_rs2, SHIFT_VALUE, preg_all_32);
 
         Interleave((RegTensor<int32_t> &)vreg_rs1, (RegTensor<int32_t> &)vreg_rs2, (RegTensor<int32_t> &)vreg_rs1,
                    (RegTensor<int32_t> &)vreg_rs2);
         for (uint16_t i = 0; i < 1 - coreIndex; ++i) {
-            StoreAlign(urs, vreg_rs1, preg_all16);
+            StoreAlign(urs, vreg_rs1, preg_all_32);
         }
 
         for (uint16_t i = 0; i < coreIndex; ++i) {
-            StoreAlign(urs, vreg_rs2, preg_all16);
+            StoreAlign(urs, vreg_rs2, preg_all_32);
         }
     }
 
