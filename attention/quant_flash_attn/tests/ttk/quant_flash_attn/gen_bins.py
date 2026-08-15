@@ -212,7 +212,7 @@ def _build_kwargs(attrs):
         enable_lse=attrs.get("enable_lse", 0),
         graph_path=attrs.get("graph_path", 0),
         input_layout=attrs.get("layout_q", "TND"),
-        is_contiguous=True,
+        uncontiguous_dim=attrs.get("uncontiguous_dim", [-1] * 8),
         device_id=0,
         softmax_scale=attrs.get("softmax_scale"),
         p_scale_value=attrs.get("p_scale_value", 1.0),

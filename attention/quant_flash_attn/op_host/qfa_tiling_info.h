@@ -284,6 +284,7 @@ public:
     const gert::Stride *valueStrides = nullptr;
     const gert::Stride *kDescaleStrides = nullptr;
     const gert::Stride *vDescaleStrides = nullptr;
+    bool hasStride = false;
 };
 
 // ============================================================
