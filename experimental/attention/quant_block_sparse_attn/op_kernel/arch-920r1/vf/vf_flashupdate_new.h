@@ -198,7 +198,6 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float *dstUb, __ubuf__ f
     RegTensor<float> vreg_div;
     RegTensor<half> vreg_cast;
     RegTensor<float> vreg_exp_sum;
-    RegTensor<float> vreg_zero;
 
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_zero_sum;
@@ -208,11 +207,9 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float *dstUb, __ubuf__ f
     constexpr float int8MaxValueRec = 1 / 127.0f;
     constexpr float hifp8MaxValueRec = 1 / 32768.0f;
 
-    Duplicate(vreg_zero, 0.0f);
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_sum, expSumUb + i * reduceSize);
-        MicroAPI::Compare<float, CMPMODE::EQ>(preg_zero_sum, vreg_exp_sum, vreg_zero, preg_all);
         for (uint16_t j = 0; j < dLoops; ++j) {
             LoadAlign(vreg_input_pre, preUb + i * d + j * floatRepSize);
             LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
@@ -226,7 +223,6 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float *dstUb, __ubuf__ f
             }
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
             Div(vreg_div, vreg_add, vreg_exp_sum, preg_all);
-            Select(vreg_div, vreg_zero, vreg_div, preg_zero_sum);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_div,
                                                               preg_all);
         }
@@ -263,20 +259,16 @@ __simd_vf__ inline void FlashUpdateLastGeneralVF(__ubuf__ float *dstUb, __ubuf__
     RegTensor<float> vreg_div;
     RegTensor<half> vreg_cast;
     RegTensor<float> vreg_exp_sum;
-    RegTensor<float> vreg_zero;
 
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
-    MaskReg preg_zero_sum;
     uint32_t tmpTailD = pltTailD;
     MaskReg preg_tail_d = UpdateMask<float>(tmpTailD);
     constexpr uint16_t floatRepSize = 64;
     uint16_t dLoops = d / floatRepSize;
 
-    Duplicate(vreg_zero, 0.0f);
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_sum, expSumUb + i * reduceSize);
-        MicroAPI::Compare<float, CMPMODE::EQ>(preg_zero_sum, vreg_exp_sum, vreg_zero, preg_all);
         for (uint16_t j = 0; j < dLoops; ++j) {
             LoadAlign(vreg_input_pre, preUb + i * d + j * floatRepSize);
             LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
@@ -291,7 +283,6 @@ __simd_vf__ inline void FlashUpdateLastGeneralVF(__ubuf__ float *dstUb, __ubuf__
             }
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
             Div(vreg_div, vreg_add, vreg_exp_sum, preg_all);
-            Select(vreg_div, vreg_zero, vreg_div, preg_zero_sum);
 
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_div,
                                                               preg_all);
@@ -310,7 +301,6 @@ __simd_vf__ inline void FlashUpdateLastGeneralVF(__ubuf__ float *dstUb, __ubuf__
             }
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_tail_d);
             Div(vreg_div, vreg_add, vreg_exp_sum, preg_tail_d);
-            Select(vreg_div, vreg_zero, vreg_div, preg_zero_sum);
 
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + dLoops * floatRepSize,
                                                               vreg_div, preg_tail_d);
