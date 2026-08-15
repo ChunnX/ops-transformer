@@ -139,10 +139,29 @@ ge::graphStatus SASAPrefillTilingBase::ParseInputTensors(gert::TilingContext *co
     // Query: [total_q_tokens, num_q_heads, D]
     auto qShape = context->GetInputShape(QUERY_INDEX);
     if (qShape == nullptr) { printf("[SASAPrefillTiling] qShape is null!\n"); return ge::GRAPH_FAILED; }
-    totalQTokens_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_T));
-    numHeads_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_N));
-    embeddingSize_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_D));
-    printf("[SASAPrefillTiling] totalQTokens=%u numHeads=%u D=%u\n", totalQTokens_, numHeads_, embeddingSize_);
+    const gert::Shape &queryShape = context->InputIsView(QUERY_INDEX)
+        ? qShape->GetOriginShape() : qShape->GetStorageShape();
+    totalQTokens_ = static_cast<uint32_t>(queryShape.GetDim(TND_DIM_T));
+    numHeads_ = static_cast<uint32_t>(queryShape.GetDim(TND_DIM_N));
+    embeddingSize_ = static_cast<uint32_t>(queryShape.GetDim(TND_DIM_D));
+    queryTokenStride_ = static_cast<uint64_t>(numHeads_) * embeddingSize_;
+    if (context->InputIsView(QUERY_INDEX)) {
+        auto *queryStride = context->GetInputStride(QUERY_INDEX);
+        if (queryStride == nullptr || queryStride->GetDimNum() != 3) {
+            printf("[SASAPrefillTiling] query view stride is invalid\n");
+            return ge::GRAPH_FAILED;
+        }
+        int64_t tokenStride = queryStride->GetStride(TND_DIM_T);
+        if (tokenStride <= 0 ||
+            (numHeads_ > 1U && queryStride->GetStride(TND_DIM_N) != static_cast<int64_t>(embeddingSize_)) ||
+            (embeddingSize_ > 1U && queryStride->GetStride(TND_DIM_D) != 1)) {
+            printf("[SASAPrefillTiling] query requires dense head and embedding dimensions\n");
+            return ge::GRAPH_FAILED;
+        }
+        queryTokenStride_ = static_cast<uint64_t>(tokenStride);
+    }
+    printf("[SASAPrefillTiling] totalQTokens=%u numHeads=%u D=%u queryTokenStride=%lu\n",
+           totalQTokens_, numHeads_, embeddingSize_, queryTokenStride_);
     // KV: [num_physical_blocks, blockSize, kvHeads, D]
     auto kShape = context->GetInputShape(KEY_INDEX);
     if (kShape == nullptr) { printf("[SASAPrefillTiling] kShape is null!\n"); return ge::GRAPH_FAILED; }
@@ -153,25 +172,37 @@ ge::graphStatus SASAPrefillTilingBase::ParseInputTensors(gert::TilingContext *co
     valueBlockStride_ = keyBlockStride_;
     if (context->InputIsView(KEY_INDEX)) {
         auto *keyStride = context->GetInputStride(KEY_INDEX);
-        if (keyStride != nullptr && keyStride->GetDimNum() == BLOCKED_KV_DIM_NUM) {
-            int64_t stride = keyStride->GetStride(BLOCKED_KV_DIM_BLOCK_NUM);
-            if (stride <= 0) {
-                printf("[SASAPrefillTiling] key cache block stride is invalid\n");
-                return ge::GRAPH_FAILED;
-            }
-            keyBlockStride_ = static_cast<uint64_t>(stride);
+        if (keyStride == nullptr || keyStride->GetDimNum() != BLOCKED_KV_DIM_NUM) {
+            printf("[SASAPrefillTiling] key cache view stride is invalid\n");
+            return ge::GRAPH_FAILED;
         }
+        int64_t stride = keyStride->GetStride(BLOCKED_KV_DIM_BLOCK_NUM);
+        if (stride <= 0 ||
+            (blockSize_ > 1U && keyStride->GetStride(BLOCKED_KV_DIM_BLOCK_SIZE) !=
+                static_cast<int64_t>(kvHeads_) * embeddingSize_) ||
+            (kvHeads_ > 1U && keyStride->GetStride(BLOCKED_KV_DIM_KV_HEAD) != static_cast<int64_t>(embeddingSize_)) ||
+            (embeddingSize_ > 1U && keyStride->GetStride(BLOCKED_KV_DIM_D) != 1)) {
+            printf("[SASAPrefillTiling] key cache requires dense block-local dimensions\n");
+            return ge::GRAPH_FAILED;
+        }
+        keyBlockStride_ = static_cast<uint64_t>(stride);
     }
     if (context->InputIsView(VALUE_INDEX)) {
         auto *valueStride = context->GetInputStride(VALUE_INDEX);
-        if (valueStride != nullptr && valueStride->GetDimNum() == BLOCKED_KV_DIM_NUM) {
-            int64_t stride = valueStride->GetStride(BLOCKED_KV_DIM_BLOCK_NUM);
-            if (stride <= 0) {
-                printf("[SASAPrefillTiling] value cache block stride is invalid\n");
-                return ge::GRAPH_FAILED;
-            }
-            valueBlockStride_ = static_cast<uint64_t>(stride);
+        if (valueStride == nullptr || valueStride->GetDimNum() != BLOCKED_KV_DIM_NUM) {
+            printf("[SASAPrefillTiling] value cache view stride is invalid\n");
+            return ge::GRAPH_FAILED;
         }
+        int64_t stride = valueStride->GetStride(BLOCKED_KV_DIM_BLOCK_NUM);
+        if (stride <= 0 ||
+            (blockSize_ > 1U && valueStride->GetStride(BLOCKED_KV_DIM_BLOCK_SIZE) !=
+                static_cast<int64_t>(kvHeads_) * embeddingSize_) ||
+            (kvHeads_ > 1U && valueStride->GetStride(BLOCKED_KV_DIM_KV_HEAD) != static_cast<int64_t>(embeddingSize_)) ||
+            (embeddingSize_ > 1U && valueStride->GetStride(BLOCKED_KV_DIM_D) != 1)) {
+            printf("[SASAPrefillTiling] value cache requires dense block-local dimensions\n");
+            return ge::GRAPH_FAILED;
+        }
+        valueBlockStride_ = static_cast<uint64_t>(stride);
     }
     groupSize_ = (kvHeads_ > 0) ? (numHeads_ / kvHeads_) : 1;
     printf("[SASAPrefillTiling] kvHeads=%u groupSize=%u keyBlockStride=%lu valueBlockStride=%lu\n",
@@ -373,6 +404,7 @@ ge::graphStatus SASAPrefillTilingA5::FillTilingData(gert::TilingContext *context
     tilingData_->set_groupSize(groupSize_);
     tilingData_->set_embeddingSize(embeddingSize_);
     tilingData_->set_blockSize(blockSize_);
+    tilingData_->set_queryTokenStride(queryTokenStride_);
     tilingData_->set_keyBlockStride(keyBlockStride_);
     tilingData_->set_valueBlockStride(valueBlockStride_);
     tilingData_->set_topK(topK_);

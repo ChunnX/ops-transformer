@@ -590,6 +590,7 @@ private:
         groupSize_ = tilingData->groupSize;
         embed_ = tilingData->embeddingSize;
         blockSize_ = tilingData->blockSize;
+        queryTokenStride_ = tilingData->queryTokenStride;
         keyBlockStride_ = tilingData->keyBlockStride;
         valueBlockStride_ = tilingData->valueBlockStride;
         topK_ = tilingData->topK;
@@ -1131,7 +1132,7 @@ private:
             uint64_t kvHeadBase = static_cast<uint64_t>(kvHeadIdx) * topK_ * slotOElems_;
             // QK qBase arithmetic precomputes (== qToken*qHeads*embed + qHeadStart*embed),
             // constant within this kvHead.
-            uint64_t perQTokenStrideQ = static_cast<uint64_t>(qHeads_) * embed_;
+            uint64_t perQTokenStrideQ = queryTokenStride_;
             uint64_t qHeadStartBase = static_cast<uint64_t>(qHeadStart) * embed_;
 
             // qToken/slotK ring buffer: batch bi 的身份在 bi 填充, 在 bi+PRE_LAUNCH 被 PV 消费
@@ -1508,6 +1509,7 @@ private:
     uint32_t groupSize_;
     uint32_t embed_;
     uint32_t blockSize_;
+    uint64_t queryTokenStride_;
     uint64_t keyBlockStride_;
     uint64_t valueBlockStride_;
     uint32_t topK_;

@@ -33,8 +33,7 @@ namespace {
 // MakeContiguous: 确保所有输入 tensor 在内存中连续（contiguous）。
 // 对于非连续的 tensor，会通过 l0op::Contiguous 创建连续副本；
 // 任一输入转换失败（返回 nullptr）则整体返回错误码。
-static aclnnStatus MakeContiguous(const aclTensor *&query,
-                                  const aclTensor *&blockTable,
+static aclnnStatus MakeMetadataContiguous(const aclTensor *&blockTable,
                                   const aclTensor *&k2qRowPtr,
                                   const aclTensor *&k2qQIndices,
                                   const aclTensor *&k2qSlotIndices,
@@ -42,9 +41,6 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
                                   const aclTensor *&actualSeqLengthsKvOptional,
                                   aclOpExecutor *executor)
 {
-    query = l0op::Contiguous(query, executor);
-    CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-
     blockTable = l0op::Contiguous(blockTable, executor);
     CHECK_RET(blockTable != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
@@ -119,15 +115,18 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto *executorImpl = uniqueExecutor.get();
 
+    const aclTensor *queryView = IsContiguous(query) ? query :
+        executorImpl->CreateView(query, query->GetViewShape(), query->GetStorageShape(),
+                                 query->GetViewStrides(), query->GetViewOffset());
     const aclTensor *keyView = IsContiguous(key) ? key :
         executorImpl->CreateView(key, key->GetViewShape(), key->GetStorageShape(),
                                  key->GetViewStrides(), key->GetViewOffset());
     const aclTensor *valueView = IsContiguous(value) ? value :
         executorImpl->CreateView(value, value->GetViewShape(), value->GetStorageShape(),
                                  value->GetViewStrides(), value->GetViewOffset());
-    CHECK_RET(keyView != nullptr && valueView != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(queryView != nullptr && keyView != nullptr && valueView != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
-    aclnnStatus ret = MakeContiguous(query, blockTable,
+    aclnnStatus ret = MakeMetadataContiguous(blockTable,
                                      k2qRowPtr, k2qQIndices, k2qSlotIndices,
                                      actualSeqLengthsOptional, actualSeqLengthsKvOptional,
                                      executorImpl);
@@ -135,7 +134,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
         return ret;
     }
     auto output = l0op::SparseAttentionScorePrefill(
-        query, keyView, valueView, blockTable,
+        queryView, keyView, valueView, blockTable,
         k2qRowPtr, k2qQIndices, k2qSlotIndices,
         actualSeqLengthsOptional, actualSeqLengthsKvOptional,
         numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise,
