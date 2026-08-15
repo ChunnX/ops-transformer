@@ -21,6 +21,7 @@
 #include "err/ops_err.h"
 #include "platform/platform_infos_def.h"
 #include "../../../op_kernel/arch35/mhc_pre_backward_tiling_key.h"
+#include "../mhc_pre_backward_tiling.h"
 
 namespace optiling {
 
@@ -39,17 +40,6 @@ END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPreBackward, MhcPreBackwardTilingData);
 
-struct MhcPreBackwardCompileInfo {
-    uint64_t aicNum{0UL};
-    uint64_t aivNum{0UL};
-    uint64_t ubSize{0UL};
-    uint64_t l1Size{0UL};
-    uint64_t l2Size{0UL};
-    uint64_t l0CSize{0UL};
-    uint64_t l0ASize{0UL};
-    uint64_t l0BSize{0UL};
-};
-
 class MhcPreBackwardTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit MhcPreBackwardTiling(gert::TilingContext *context)
@@ -58,40 +48,25 @@ public:
     ~MhcPreBackwardTiling() override = default;
 
 protected:
-    bool IsCapable() override
-    {
-        return true;
-    }
+    bool IsCapable() override { return true; }
     // 1、获取平台信息比如CoreNum、UB/L1/L0C资源大小
-    ge::graphStatus GetPlatformInfo() override
-    {
-        return ge::GRAPH_SUCCESS;
-    };
+    ge::graphStatus GetPlatformInfo() override { return ge::GRAPH_SUCCESS; };
     // 2、获取INPUT/OUTPUT/ATTR信息
-    ge::graphStatus GetShapeAttrsInfo() override
-    {
-        return ge::GRAPH_SUCCESS;
-    };
+    ge::graphStatus GetShapeAttrsInfo() override { return ge::GRAPH_SUCCESS; };
     // 3、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
     // 4、计算高阶API的TilingData
-    ge::graphStatus DoLibApiTiling() override
-    {
-        return ge::GRAPH_SUCCESS;
-    };
+    ge::graphStatus DoLibApiTiling() override { return ge::GRAPH_SUCCESS; };
     // 5、计算TilingKey
     uint64_t GetTilingKey() const override;
     // 6、计算Workspace 大小
-    ge::graphStatus GetWorkspaceSize() override
-    {
-        return ge::GRAPH_SUCCESS;
-    };
+    ge::graphStatus GetWorkspaceSize() override { return ge::GRAPH_SUCCESS; };
     // 7、保存Tiling数据
     ge::graphStatus PostTiling() override;
 
     ge::graphStatus GetInputShape();
     ge::graphStatus GetInputTensors(const gert::Tensor *&gradHInTensor, const gert::Tensor *&gradHPostTensor,
-                                   const gert::Tensor *&gradHResTensor);
+                                    const gert::Tensor *&gradHResTensor);
     ge::graphStatus ValidateInputDims(int64_t gradHInDims, int64_t gradHPostDims, int64_t gradHResDims);
     ge::graphStatus ParseBSDFormat(const gert::Tensor *gradHInTensor, const gert::Tensor *gradHPostTensor,
                                    const gert::Tensor *gradHResTensor);
