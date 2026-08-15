@@ -3121,6 +3121,27 @@ class TestBSAMxfp4Golden(TestCase):
         """① BNSD 超大序列 sparse: s1=25600/s2=33024, b=2 验证超长 sparse gather + online rescale。"""
         self._run(b=2, n1=1, n2=1, g=1, s1=25600, s2=33024, qk_d=128,
                   block_shape=[128, 128], mask_kind='sparse',  out_dtype='float16')
+    
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_sparse_b64_qn4_kvn4_g1_qs128_kvs256_d128_dstmax6_0813_1(self, device="npu"):
+        """补 CX dstTypeMax=6.0 显式下界: host ValidateAdditionalParams 校验 [6.0,12.0]
+        的下边界值(dstmax0 走的是默认值路径, 显式 6.0 走校验路径), × 稀疏 mask。"""
+        self._run(b=8, n1=4, n2=4, g=1, qk_d=128,
+                  s1=3500, s2=512, 
+                  act_s1=[370, 2544, 155, 3500, 865, 239, 580, 2894], 
+                  act_s2=[178, 110, 430, 95, 512, 352, 31, 73],
+                  input_layout='BNSD', block_shape=[128, 128], mask_kind='dense')
+    
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_varlen_mha_dense_b15_qn28_kvn28_g1_actq128_padq128_actkv4096_padkv4096_d128_ceshi(self, device="npu"):
+        """CX BNSD varlen dense: b=15, n1=n2=28(MHA), per-batch actualSeq 用 list 形式传入。
+        act_s1 全 128(pad_q=128 满), act_s2 含 512 大 KV,
+        验证 BNSD padded 路径(per-batch actual 独立 kernel 路径) + CX 量化。先走通流程, 不比精度。"""
+        self._run(b=15, n1=28, n2=28, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BNSD',
+                  s1=128, s2=8193,
+                  act_s1=[128]*15,
+                  act_s2=[8193,256,256,256,256,256,256,8193,256,256,256,256,256,256,256])
                   
 if __name__ == "__main__":
     run_tests()
