@@ -231,7 +231,6 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseOptionalInputs(QuantBlockSp
                                       reinterpret_cast<const gert::Tensor *>(metadataShape) :
                                       nullptr;
 
-    const gert::Stride *keyStrideForPa = opParamInfo.key.stride;
     if (tilingInfo.quantModeVal == QBSA_QUANT_MODE_FP8) {
         const QBSAOptionalParaInfo *requiredInputs[] = {
             &opParamInfo.blockTable, &opParamInfo.cuSeqlensQ, &opParamInfo.seqUsedKV, &opParamInfo.metadata,
@@ -363,6 +362,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
         return ge::GRAPH_FAILED;
     }
 
+    const gert::Stride *keyStrideForPa = opParamInfo.key.stride;
     if (tilingInfo.quantModeVal == QBSA_QUANT_MODE_FP8) {
         const QBSARequiredParaInfo *requiredInputs[] = {
             &opParamInfo.query,          &opParamInfo.key,          &opParamInfo.value,
