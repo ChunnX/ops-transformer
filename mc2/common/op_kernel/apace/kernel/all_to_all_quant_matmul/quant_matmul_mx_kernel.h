@@ -272,6 +272,8 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Init
 
     if ((params.localParams.matmulMode == MatmulMode::REMOTE) && (params.localParams.localMatmul == 2)) {
         isAtomicAdd_ = true; // GM累加模式（local已写GM）需要原子累加
+        isBias_ = false;     // GM累加模式：bias 已在 RunLocalMatmul(LOCAL) 阶段写入 GM，
+                             // REMOTE 阶段必须跳过 bias，否则会重复累加 bias 导致精度偏差
     }
     needUpdateTail_ = false;
     ResetGmAddr(params);
