@@ -86,8 +86,14 @@ static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {
     .se = 0,
     .cqe = 0,
     .inlineEn = 0};
-static constexpr struct UrmaWqeEntry FLAG_WQE_CONFIG = {
+static constexpr struct UrmaWqeEntry FIRST_FLAG_WQE_CONFIG = {
     .odr = 6,
+    .fence = 1,
+    .se = 0,
+    .cqe = 0,
+    .inlineEn = 0};
+static constexpr struct UrmaWqeEntry FLAG_WQE_CONFIG = {
+    .odr = 5,
     .fence = 1,
     .se = 0,
     .cqe = 0,
@@ -112,7 +118,7 @@ private:
     __aicore__ inline void SendSlot(uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx,
                                     int32_t srcTopKIdx, uint32_t channelIndex, uint32_t weight);
     __aicore__ inline void SendSlotFlag(int32_t dstRank, int32_t dstTokenIdx, int32_t dstTopKIdx,
-                                       uint32_t channelIndex);
+                                       uint32_t channelIndex, bool firstFlag);
     template <auto const& config>
     __aicore__ inline void PrepareWrite(
         uint64_t commHandle, GM_ADDR dstBase, GM_ADDR dst, GM_ADDR src, uint64_t len);
@@ -434,7 +440,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendSlot(
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendSlotFlag(
-    int32_t dstRank, int32_t dstTokenIdx, int32_t dstTopKIdx, uint32_t channelIndex)
+    int32_t dstRank, int32_t dstTokenIdx, int32_t dstTopKIdx, uint32_t channelIndex, bool firstFlag)
 {
     uint64_t stateOffset =
         (static_cast<uint64_t>(dstTokenIdx) * topK_ + dstTopKIdx) * WIN_ADDR_ALIGN + sizeof(uint32_t);
@@ -446,8 +452,15 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendSlotFlag(
         DataCopyPad(localFlag, statusTensor_, flagCopyParams);
         return;
     }
-    PrepareWrite<FLAG_WQE_CONFIG>(
-        GetCommHandle(dstRank, channelIndex), winRankAddr_[dstRank], flagAddr, flagWorkspaceAddr_, sizeof(uint32_t));
+    if (firstFlag) {
+        PrepareWrite<FIRST_FLAG_WQE_CONFIG>(
+            GetCommHandle(dstRank, channelIndex), winRankAddr_[dstRank], flagAddr, flagWorkspaceAddr_,
+            sizeof(uint32_t));
+    } else {
+        PrepareWrite<FLAG_WQE_CONFIG>(
+            GetCommHandle(dstRank, channelIndex), winRankAddr_[dstRank], flagAddr, flagWorkspaceAddr_,
+            sizeof(uint32_t));
+    }
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -605,6 +618,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         uint32_t metaChunkTokens = (actualA_ < metaChunkTokenMax) ? actualA_ : metaChunkTokenMax;
         LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
         const DataCopyPadExtParams<int32_t> metaPadParams{false, 0U, 0U, 0U};
+        // This AIV uses one fixed channelIndex, so dstRank uniquely identifies its communication channel.
+        constexpr uint32_t flagBitmapWords = (Mc2Aclnn::HCCL_MAX_RANK_SIZE + 31U) / 32U;
+        uint32_t flagStarted[flagBitmapWords] = {0};
         for (uint64_t chunkStart = scanStart; chunkStart < scanEnd; chunkStart += metaChunkTokens) {
             uint64_t chunkEnd = (chunkStart + metaChunkTokens > scanEnd) ? scanEnd : (chunkStart + metaChunkTokens);
             uint32_t curChunkTokens = static_cast<uint32_t>(chunkEnd - chunkStart);
@@ -626,7 +642,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
                 }
                 int32_t dstTokenIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 1);
                 int32_t dstTopKIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
-                SendSlotFlag(dstRank, dstTokenIdx, dstTopKIdx, channelIndex);
+                uint32_t flagWord = static_cast<uint32_t>(dstRank) / 32U;
+                uint32_t flagMask = 1U << (static_cast<uint32_t>(dstRank) % 32U);
+                bool firstFlag = (flagStarted[flagWord] & flagMask) == 0;
+                flagStarted[flagWord] |= flagMask;
+                SendSlotFlag(dstRank, dstTokenIdx, dstTopKIdx, channelIndex, firstFlag);
             }
             SyncFunc<AscendC::HardEvent::S_MTE2>();
         }
