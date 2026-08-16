@@ -195,14 +195,17 @@ def _get_moe_ep_window_layout(
     dispatch_count_size = world_size * _inline_align(
         local_experts_num * state_dtype_size, win_addr_align
     )
-    dispatch_notify_count = _inline_align(num_max_tokens_per_rank, notify_cnt_align) // notify_cnt_align
-    dispatch_notify_size = world_size * win_addr_align + world_size * dispatch_notify_count * win_addr_align
+    dispatch_notify_count = (
+        _inline_align(num_max_tokens_per_rank, notify_cnt_align) // notify_cnt_align
+    )
+    dispatch_notify_size = (
+        world_size * win_addr_align
+        + world_size * dispatch_notify_count * win_addr_align
+    )
     combine_state_size = (
         num_max_tokens_per_rank * topk * win_addr_align + world_size * win_addr_align
     )
-    state_buffer_size = (
-        dispatch_count_size + dispatch_notify_size + combine_state_size
-    )
+    state_buffer_size = dispatch_count_size + dispatch_notify_size + combine_state_size
 
     metadata_bytes = _inline_align(topk * metadata_dtype_size, ub_align)
     hidden_align = _inline_align(hidden * max_out_dtype_size, ub_align)
@@ -286,6 +289,7 @@ class ElasticBuffer:
         hidden: Optional[int] = None,
         num_topk: Optional[int] = None,
         with_grad: bool = False,
+        explicitly_destroy: bool = False,
     ):
         """
         Initialize the ElasticBuffer.
@@ -296,6 +300,11 @@ class ElasticBuffer:
             num_max_tokens_per_rank: maximum MoE dispatch tokens per rank.
             hidden: hidden dimension for MoE dispatch/combine.
             num_topk: top-k value for MoE dispatch/combine.
+            with_grad: whether to enable training mode.
+            explicitly_destroy: if True, the caller needs to explicitly
+                invoke ``destroy`` to release resources; if False (default),
+                resources are released automatically when the instance is
+                garbage collected.
         """
         moe_args = (num_max_tokens_per_rank, hidden, num_topk)
         self._validate_init_args(group, num_cpu_bytes, moe_args, with_grad)
@@ -303,6 +312,7 @@ class ElasticBuffer:
         self._group = group
         self._num_cpu_bytes = num_cpu_bytes
         self._with_grad = with_grad
+        self._explicitly_destroy = explicitly_destroy
         self._rank_id = dist.get_rank(self._group)
         self._ep_world_size = dist.get_world_size(self._group)
 
@@ -320,6 +330,7 @@ class ElasticBuffer:
             self._num_cpu_bytes,
             num_max_tokens_per_rank if num_max_tokens_per_rank is not None else 0,
             self._with_grad,
+            self._explicitly_destroy,
         )
 
         self._num_max_tokens_per_rank = num_max_tokens_per_rank
@@ -412,9 +423,7 @@ class ElasticBuffer:
                 win_addr_align,
             )
             scaleout_recv_data_size = (
-                scaleout_rank_count
-                * num_max_tokens_per_rank
-                * scaleout_per_slot_bytes
+                scaleout_rank_count * num_max_tokens_per_rank * scaleout_per_slot_bytes
             )
             scaleout_recv_status_size = (
                 scaleout_rank_count * num_max_tokens_per_rank * win_addr_align
@@ -726,24 +735,22 @@ class ElasticBuffer:
             route_count,
             route_dst_scaleout,
             route_scaleout_slot,
-        ) = (
-            self._runtime.moe_ep_dispatch(
-                args.x,
-                args.topk_idx,
-                topk_weights,
-                args.scales,
-                args.cached_dst_slot_idx,
-                args.cached_route_count,
-                args.cached_route_dst_scaleout,
-                args.cached_route_scaleout_slot,
-                self._ep_world_size,
-                self._rank_id,
-                args.num_experts,
-                args.num_max_tokens_per_rank,
-                args.expert_alignment,
-                args.do_cpu_sync,
-                hp_addr,
-            )
+        ) = self._runtime.moe_ep_dispatch(
+            args.x,
+            args.topk_idx,
+            topk_weights,
+            args.scales,
+            args.cached_dst_slot_idx,
+            args.cached_route_count,
+            args.cached_route_dst_scaleout,
+            args.cached_route_scaleout_slot,
+            self._ep_world_size,
+            self._rank_id,
+            args.num_experts,
+            args.num_max_tokens_per_rank,
+            args.expert_alignment,
+            args.do_cpu_sync,
+            hp_addr,
         )
 
         actual_a = self._get_dispatch_recv_count(args)
@@ -812,18 +819,16 @@ class ElasticBuffer:
             lambda: ("bias is not supported, please set bias to None."),
         )
 
-        combined_x, combined_topk_weights = (
-            self._runtime.moe_ep_combine(
-                x,
-                handle.topk_idx,
-                handle.recv_src_metadata,
-                handle.num_recv_tokens_per_expert,
-                topk_weights,
-                self._ep_world_size,
-                self._rank_id,
-                handle.num_experts,
-                handle.num_max_tokens_per_rank,
-            )
+        combined_x, combined_topk_weights = self._runtime.moe_ep_combine(
+            x,
+            handle.topk_idx,
+            handle.recv_src_metadata,
+            handle.num_recv_tokens_per_expert,
+            topk_weights,
+            self._ep_world_size,
+            self._rank_id,
+            handle.num_experts,
+            handle.num_max_tokens_per_rank,
         )
         return combined_x, combined_topk_weights
 
