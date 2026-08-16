@@ -171,9 +171,8 @@ private:
                 inLocal = CopyInRow(prefixSumGm_, static_cast<uint64_t>(tokenIdx) * hiddenSize_);
             }
             LocalTensor<D_IN> dstRow = GetResidentRow(n);
-            // UB→UB：用 Vector Copy，勿用 DataCopy / DataCopyParams
-            Copy(dstRow, inLocal, static_cast<uint64_t>(hiddenSizeAlignBf16_), 1, {1, 1, 8, 8});
-            PipeBarrier<PIPE_V>();
+            // UB→UB：Vector Copy 分段拷贝（Level0 mask-count 单指令上限：16bit 128 元素/rep，勿用 DataCopy）
+            CopyCompactHalfsUb(dstRow, inLocal, hiddenSizeAlignBf16_);
             Cast(vRow_, inLocal, RoundMode::CAST_NONE, hiddenSize_);
             PipeBarrier<PIPE_V>();
             FreeInRow(inLocal);

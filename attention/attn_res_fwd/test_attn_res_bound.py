@@ -217,7 +217,7 @@ def run_case(dtype, B, N, H, seed, mode="bound", show_points=False, grad_scale=1
 
     prefix_sum, block_residual, norm_weight, proj_weight, grad_output = _make_inputs(
         dtype, B, N, H, seed, grad_scale, input_mode)
-
+    grad_output = grad_output*1000
     g_hidden, g_inv_rms, g_probs, g_ps, g_br, g_pw, g_nw = attn_res_golden(
         prefix_sum, block_residual, proj_weight, norm_weight, grad_output)
 

@@ -33,6 +33,7 @@ struct alignas(8) AttnResFwdTilingData {
     uint32_t stagingBytes;     // 512 倍数；false 时为 0
     uint32_t tokensPerFlush;   // staging 可攒 token 数；false 时为 0
     uint32_t elemsPerToken;    // 2*blockCount；false 时可写 0
+    uint32_t hiddenSizeChunk;  // HSLICE 分支的 h 切块大小；非 HSLICE 时可为 0
 };
 #pragma pack(pop)
 } // namespace AttnResFwd

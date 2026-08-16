@@ -10,10 +10,11 @@
 
 /*!
  * \file attn_res_fwd.cpp
- * \brief AttnResFwd kernel entry — dispatch TK-RELOAD / TK-RESIDENT
+ * \brief AttnResFwd kernel entry — dispatch TK-RELOAD / TK-RESIDENT / TK-HSLICE
  */
 #include "arch22/attn_res_fwd_reload.h"
 #include "arch22/attn_res_fwd_resident.h"
+#include "arch22/attn_res_fwd_hslice.h"
 #include "attn_res_fwd_tiling_data.h"
 #include "tiling_key_attn_res_fwd.h"
 
@@ -38,6 +39,10 @@ extern "C" __global__ __aicore__ void attn_res_fwd(GM_ADDR prefixSum, GM_ADDR bl
         op.Process();
     } else if (TILING_KEY_IS(TILING_KEY_BF16_RESIDENT)) {
         AttnResFwdResident<bfloat16_t> op(&pipe, &tilingData);
+        op.Init(initParams);
+        op.Process();
+    } else if (TILING_KEY_IS(TILING_KEY_BF16_HSLICE)) {
+        AttnResFwdHSlice<bfloat16_t> op(&pipe, &tilingData);
         op.Init(initParams);
         op.Process();
     }

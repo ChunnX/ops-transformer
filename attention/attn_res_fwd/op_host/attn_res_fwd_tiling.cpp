@@ -134,6 +134,40 @@ bool AttnResFwdTiling::CanResidentAllBlocks(uint32_t blockCount, uint32_t hidden
     return blockCount > 0 && blockCount <= CalcMaxResidentRows(hiddenSize);
 }
 
+uint32_t AttnResFwdTiling::CalcHSliceChunk() const
+{
+    // TK-HSLICE 的 h 切块大小：取满足切块 UB 预算的最大 chunk。
+    // 切块缓冲：inQue 2×chunkBf16×2B + outQue 1×chunkBf16×2B + 3 个 fp32 buf ×chunkFp32×4B；
+    // 元数据：vecMeta+metaSoftmax+sumSq+score(各 metaAlign×4B) + metaBrc(metaAlign×8×4B) + scalar + 全局开销。
+    const uint32_t B = tilingData_.blockCount;
+    const uint32_t H = tilingData_.hiddenSize;
+    if (B == 0 || H == 0) {
+        return 0;
+    }
+    const uint32_t metaAlign = AlignUpU32(B, ELEM_PER_BLK_FP32);
+    constexpr uint32_t META_FLOAT_PER_ALIGN = 1U + 1U + 8U + 1U + 1U; // vecMeta+metaSoftmax+metaBrc+sumSq+score
+    uint64_t metaBytes =
+        static_cast<uint64_t>(metaAlign) * META_FLOAT_PER_ALIGN * sizeof(float) +
+        static_cast<uint64_t>(SCALAR_LOCAL_ELEMS) * sizeof(float) + UB_OVERHEAD_BYTES;
+    if (tilingData_.needBackward != 0) {
+        metaBytes += static_cast<uint64_t>(2) * metaAlign * sizeof(float); // invQue + probsQue
+    }
+    if (metaBytes >= UB_AVAIL_BYTES) {
+        return H; // 保护：退化为整行单块（此时 kernel 按 hiddenSizeChunk=H 处理）
+    }
+    const uint64_t remain = UB_AVAIL_BYTES - metaBytes;
+    constexpr uint64_t PER_ELEM_BYTES = 18U; // inQue 2×2B + outQue 1×2B + 3 个 fp32 buf ×4B
+    uint32_t chunk = static_cast<uint32_t>(remain / PER_ELEM_BYTES);
+    chunk = AlignDownU32(chunk, ELEM_PER_BLK_BF16);
+    if (chunk < ELEM_PER_BLK_BF16) {
+        chunk = ELEM_PER_BLK_BF16;
+    }
+    if (chunk > H) {
+        chunk = H;
+    }
+    return chunk;
+}
+
 uint64_t AttnResFwdTiling::EstimateUbComputeBytes(bool resident) const
 {
     const uint32_t H = tilingData_.hiddenSize;
@@ -198,18 +232,29 @@ ge::graphStatus AttnResFwdTiling::DoOpTiling()
 
 ge::graphStatus AttnResFwdTiling::DoLibApiTiling()
 {
-    if (CanResidentAllBlocks(tilingData_.blockCount, tilingData_.hiddenSize)) {
+    const uint32_t B = tilingData_.blockCount;
+    const uint32_t H = tilingData_.hiddenSize;
+    if (CanResidentAllBlocks(B, H)) {
         tilingKey_ = TILING_KEY_BF16_RESIDENT;
+        tilingData_.hiddenSizeChunk = 0;
         OP_LOGI(context_->GetNodeName(),
                 "Select TK-RESIDENT (%lu): B=%u H=%u N_ub_max=%u needBackward=%u",
-                static_cast<unsigned long>(tilingKey_), tilingData_.blockCount, tilingData_.hiddenSize,
-                CalcMaxResidentRows(tilingData_.hiddenSize), tilingData_.needBackward);
-    } else {
+                static_cast<unsigned long>(tilingKey_), B, H,
+                CalcMaxResidentRows(H), tilingData_.needBackward);
+    } else if (EstimateUbComputeBytes(false) <= UB_AVAIL_BYTES) {
         tilingKey_ = TILING_KEY_BF16_RELOAD;
+        tilingData_.hiddenSizeChunk = 0;
         OP_LOGI(context_->GetNodeName(),
                 "Select TK-RELOAD (%lu): B=%u H=%u N_ub_max=%u needBackward=%u",
-                static_cast<unsigned long>(tilingKey_), tilingData_.blockCount, tilingData_.hiddenSize,
-                CalcMaxResidentRows(tilingData_.hiddenSize), tilingData_.needBackward);
+                static_cast<unsigned long>(tilingKey_), B, H,
+                CalcMaxResidentRows(H), tilingData_.needBackward);
+    } else {
+        tilingKey_ = TILING_KEY_BF16_HSLICE;
+        tilingData_.hiddenSizeChunk = CalcHSliceChunk();
+        OP_LOGI(context_->GetNodeName(),
+                "Select TK-HSLICE (%lu): B=%u H=%u chunk=%u N_ub_max=%u needBackward=%u",
+                static_cast<unsigned long>(tilingKey_), B, H, tilingData_.hiddenSizeChunk,
+                CalcMaxResidentRows(H), tilingData_.needBackward);
     }
     OP_CHECK_IF(FillStagingFields() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "FillStagingFields failed"), return ge::GRAPH_FAILED);

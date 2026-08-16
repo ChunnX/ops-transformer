@@ -162,6 +162,46 @@ __aicore__ inline void ReduceSumHalfInterval(const LocalTensor<float> &dst_local
 }
 
 /*!
+ * Half-interval fold of src, then WholeReduceMax into dst.
+ * NOTE: src is destroyed in-place. No GetValue/SetValue.
+ * 支持 count > ELEM_PER_REP_FP32（64）。尾区 fold 需 src 容量 ≥ RoundUpFp32(count)。
+ */
+__aicore__ inline void ReduceMaxHalfInterval(const LocalTensor<float> &dst_local, const LocalTensor<float> &src_local,
+                                             int32_t count)
+{
+    if (likely(count > static_cast<int32_t>(ELEM_PER_REP_FP32))) {
+        int32_t bodyCount = findPowerTwo(count);
+        int32_t tailCount = count - bodyCount;
+        if (tailCount > 0) {
+            // Level2 Max 计数需 8 对齐；尾区外须已 pad（如 SOFTMAX_PAD）
+            Max(src_local, src_local, src_local[bodyCount],
+                static_cast<int32_t>(RoundUpFp32(static_cast<uint32_t>(tailCount))));
+            PipeBarrier<PIPE_V>();
+        }
+        while (bodyCount > static_cast<int32_t>(ELEM_PER_REP_FP32)) {
+            bodyCount = bodyCount / HALf_INTERVAL;
+            Max(src_local, src_local, src_local[bodyCount], bodyCount);
+            PipeBarrier<PIPE_V>();
+        }
+
+        AscendCUtils::SetMask<float>(ELEM_PER_REP_FP32);
+    } else {
+        AscendCUtils::SetMask<float>(count);
+    }
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+    if ASCEND_IS_AIV {
+        WholeReduceMax<float, false>(dst_local, src_local, MASK_PLACEHOLDER, 1, 0, 1, 0);
+    }
+#else
+    WholeReduceMax<float, false>(dst_local, src_local, MASK_PLACEHOLDER, 1, 1, 1, DEFAULT_REPEAT_STRIDE);
+#endif
+    PipeBarrier<PIPE_V>();
+    SetMaskNorm();
+    ResetMask();
+    PipeBarrier<PIPE_V>();
+}
+
+/*!
  * sumSq → invRms in-place（1 元素）。
  * 对齐 ops-nn RMSNorm：Sqrt + Duplicate(1.0) + Div（避免 Rsqrt / Reciprocal 融合近似）。
  * scratch 需 ≥1 个 32B 对齐块，用于存放 1.0。
@@ -209,6 +249,34 @@ __aicore__ inline void CopyCompactFloatsUb(const LocalTensor<float>& dst, const 
              {1, 1, 8, 8});
         offset += reps * ELEM_PER_REP_FP32;
         remain -= reps * ELEM_PER_REP_FP32;
+    }
+    if (remain > 0) {
+        Copy(dst[offset], src[offset], static_cast<uint64_t>(remain), 1, {1, 1, 8, 8});
+    }
+    PipeBarrier<PIPE_V>();
+}
+
+/*!
+ * UB→UB 紧凑 16bit（bf16/half）行拷贝：Vector Copy（PIPE_V）。
+ * 16bit 类型单次 mask∈[1,128]（256B/rep，与 fp32 64 元素等价，见 AscendCUtils::SetMask）；对任意
+ * elemCount 按 128 切段（repeat≤255），支持 >128/>512。dst/src 基址须 32B 对齐。
+ */
+template <typename T>
+__aicore__ inline void CopyCompactHalfsUb(const LocalTensor<T>& dst, const LocalTensor<T>& src, uint32_t elemCount)
+{
+    if (elemCount == 0) {
+        return;
+    }
+    constexpr uint32_t ELEM_PER_REP_HALF = ELEM_PER_REP_FP32 * 2U; // 128
+    uint32_t offset = 0;
+    uint32_t remain = elemCount;
+    while (remain >= ELEM_PER_REP_HALF) {
+        const uint32_t reps =
+            (remain / ELEM_PER_REP_HALF > MAX_REP_NUM) ? MAX_REP_NUM : (remain / ELEM_PER_REP_HALF);
+        Copy(dst[offset], src[offset], static_cast<uint64_t>(ELEM_PER_REP_HALF), static_cast<uint8_t>(reps),
+             {1, 1, 8, 8});
+        offset += reps * ELEM_PER_REP_HALF;
+        remain -= reps * ELEM_PER_REP_HALF;
     }
     if (remain > 0) {
         Copy(dst[offset], src[offset], static_cast<uint64_t>(remain), 1, {1, 1, 8, 8});
@@ -334,7 +402,7 @@ __aicore__ inline void BrcbScalarRow1(const LocalTensor<float>& tmpBuffer, const
     PipeBarrier<PIPE_V>();
 }
 
-/*! curRowNum=1 末轴 Sub；tmpBuffer 已由 BrcbScalarRow1 填好 broadcast 值。 */
+/*! curRowNum=1 末轴 Sub；tmpBuffer 已由 BrcbScalarRow1 填好 broadcast 值。支持 curColNum>64。 */
 __aicore__ inline void SubLastDimRow1NoBrc(const LocalTensor<float>& output, const LocalTensor<float>& input0,
                                           const LocalTensor<float>& tmpBuffer, int32_t curColNum)
 {
@@ -346,21 +414,24 @@ __aicore__ inline void SubLastDimRow1NoBrc(const LocalTensor<float>& output, con
     }
     const int32_t numRepeatPerLine = curColNum / static_cast<int32_t>(ELEM_PER_REP_FP32);
     const int32_t numRemainPerLine = curColNum % static_cast<int32_t>(ELEM_PER_REP_FP32);
-    const int32_t dstRepStridePerLine =
-        static_cast<int32_t>(CeilDivU32(static_cast<uint32_t>(curColNum), ELEM_PER_BLK_FP32));
+    // 紧凑 1 行：每 VL 前进 8 个 block；src1 为 Brcb 块，repStride=0
     BinaryRepeatParams instrParams;
     instrParams.dstBlkStride = 1;
     instrParams.src0BlkStride = 1;
     instrParams.src1BlkStride = 0;
-    instrParams.dstRepStride = static_cast<uint8_t>(dstRepStridePerLine);
-    instrParams.src0RepStride = static_cast<uint8_t>(dstRepStridePerLine);
+    instrParams.dstRepStride = static_cast<uint8_t>(ELEM_PER_REP_FP32 / ELEM_PER_BLK_FP32);
+    instrParams.src0RepStride = static_cast<uint8_t>(ELEM_PER_REP_FP32 / ELEM_PER_BLK_FP32);
     instrParams.src1RepStride = 0;
+    if (numRepeatPerLine > 0) {
+        Sub(output, input0, tmpBuffer, ELEM_PER_REP_FP32, numRepeatPerLine, instrParams);
+        PipeBarrier<PIPE_V>();
+    }
     if (numRemainPerLine > 0) {
         Sub(output[numRepeatPerLine * static_cast<int32_t>(ELEM_PER_REP_FP32)],
             input0[numRepeatPerLine * static_cast<int32_t>(ELEM_PER_REP_FP32)], tmpBuffer,
             static_cast<uint32_t>(numRemainPerLine), 1, instrParams);
+        PipeBarrier<PIPE_V>();
     }
-    PipeBarrier<PIPE_V>();
 }
 
 __aicore__ inline void MulLastDimRow1NoBrc(const LocalTensor<float>& output, const LocalTensor<float>& input0,
@@ -374,21 +445,24 @@ __aicore__ inline void MulLastDimRow1NoBrc(const LocalTensor<float>& output, con
     }
     const int32_t numRepeatPerLine = curColNum / static_cast<int32_t>(ELEM_PER_REP_FP32);
     const int32_t numRemainPerLine = curColNum % static_cast<int32_t>(ELEM_PER_REP_FP32);
-    const int32_t dstRepStridePerLine =
-        static_cast<int32_t>(CeilDivU32(static_cast<uint32_t>(curColNum), ELEM_PER_BLK_FP32));
     BinaryRepeatParams instrParams;
     instrParams.dstBlkStride = 1;
     instrParams.src0BlkStride = 1;
     instrParams.src1BlkStride = 0;
-    instrParams.dstRepStride = static_cast<uint8_t>(dstRepStridePerLine);
-    instrParams.src0RepStride = static_cast<uint8_t>(dstRepStridePerLine);
+    instrParams.dstRepStride = static_cast<uint8_t>(ELEM_PER_REP_FP32 / ELEM_PER_BLK_FP32);
+    instrParams.src0RepStride = static_cast<uint8_t>(ELEM_PER_REP_FP32 / ELEM_PER_BLK_FP32);
     instrParams.src1RepStride = 0;
-    if (numRemainPerLine > 0) {
-        Mul(output[numRepeatPerLine * static_cast<int32_t>(ELEM_PER_REP_FP32)],
-            input0[numRepeatPerLine * static_cast<int32_t>(ELEM_PER_REP_FP32)], tmpBuffer,
-            static_cast<uint32_t>(numRemainPerLine), 1, instrParams);
+    if (numRepeatPerLine > 0) {
+        Mul(output, input0, tmpBuffer, ELEM_PER_REP_FP32, numRepeatPerLine, instrParams);
+        PipeBarrier<PIPE_V>();
     }
-    PipeBarrier<PIPE_V>();
+    if (numRemainPerLine > 0) {
+        const uint32_t remAlign = RoundUpFp32(static_cast<uint32_t>(numRemainPerLine));
+        Mul(output[numRepeatPerLine * static_cast<int32_t>(ELEM_PER_REP_FP32)],
+            input0[numRepeatPerLine * static_cast<int32_t>(ELEM_PER_REP_FP32)], tmpBuffer, remAlign, 1,
+            instrParams);
+        PipeBarrier<PIPE_V>();
+    }
 }
 
 /*! curRowNum=1 末轴 Sub broadcast（含 Brcb）。 */
@@ -421,55 +495,46 @@ __aicore__ inline void BroadcastScalarMulTensor(const LocalTensor<float>& dst, c
 
 /*!
  * 小 B Softmax（向量路径：WholeReduceMax/Sum + Brcb + Exp + Div）。
+ * 支持 blockCount > 64（N≤99，blockCount=2..100）：
+ *   - max/sum 归约在独立 foldWork 上进行（HalfInterval fold），不破坏 brcMeta 的 score/exp 值。
+ * 容量要求：brcPack ≥ metaAlign + ELEM_PER_BLK_FP32 float（brcScratch + foldWork）。
  */
 __aicore__ inline void SoftmaxSmallVec(const LocalTensor<float>& vecMeta, uint32_t blockCount, uint32_t metaAlign,
                                        const LocalTensor<float>& workScalar, const LocalTensor<float>& brcMeta,
                                        const LocalTensor<float>& brcPack)
 {
     const LocalTensor<float> brcScratch = brcPack;
+    const LocalTensor<float> foldWork = brcPack[metaAlign];
     const int32_t curColNum = static_cast<int32_t>(blockCount);
 
+    // brcMeta = score（pad 区 -1e20，供 max fold / Sub / Exp）
     Duplicate(brcMeta, SOFTMAX_PAD, metaAlign);
     PipeBarrier<PIPE_V>();
     CopyCompactFloatsUb(brcMeta, vecMeta, blockCount);
 
-    AscendCUtils::SetMask<float>(blockCount);
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    if ASCEND_IS_AIV {
-        WholeReduceMax<float, false>(workScalar, brcMeta, MASK_PLACEHOLDER, 1, 0, 1, 0);
-    }
-#else
-    WholeReduceMax<float, false>(workScalar, brcMeta, MASK_PLACEHOLDER, 1, 1, 1, DEFAULT_REPEAT_STRIDE);
-#endif
+    // max 归约：在 foldWork 上进行（破坏 foldWork，保留 brcMeta 的原始 score）
+    Duplicate(foldWork, SOFTMAX_PAD, metaAlign);
     PipeBarrier<PIPE_V>();
-    SetMaskNorm();
-    ResetMask();
-    PipeBarrier<PIPE_V>();
+    CopyCompactFloatsUb(foldWork, vecMeta, blockCount);
+    ReduceMaxHalfInterval(workScalar, foldWork, curColNum);
 
+    // brcMeta = score - max；Exp（pad 区 ≈0）
     BrcbScalarRow1(brcScratch, workScalar);
     SubLastDimRow1NoBrc(brcMeta, brcMeta, brcScratch, curColNum);
-
     Exp(brcMeta, brcMeta, metaAlign);
     PipeBarrier<PIPE_V>();
 
-    AscendCUtils::SetMask<float>(blockCount);
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    if ASCEND_IS_AIV {
-        WholeReduceSum<float, false>(workScalar, brcMeta, MASK_PLACEHOLDER, 1, 0, 1, 0);
-    }
-#else
-    WholeReduceSum<float, false>(workScalar, brcMeta, MASK_PLACEHOLDER, 1, 1, 1, DEFAULT_REPEAT_STRIDE);
-#endif
+    // sum 归约：在 foldWork 上进行（pad 区 0），保留 brcMeta 的 exp 值
+    Duplicate(foldWork, 0.0f, metaAlign);
     PipeBarrier<PIPE_V>();
-    SetMaskNorm();
-    ResetMask();
-    PipeBarrier<PIPE_V>();
+    CopyCompactFloatsUb(foldWork, brcMeta, blockCount);
+    ReduceSumHalfInterval(workScalar, foldWork, curColNum);
 
+    // prob = exp / sum
     Duplicate(brcScratch, 1.0f, 1);
     PipeBarrier<PIPE_V>();
     Div(workScalar, brcScratch, workScalar, 1);
     PipeBarrier<PIPE_V>();
-
     BrcbScalarRow1(brcScratch, workScalar);
     MulLastDimRow1NoBrc(brcMeta, brcMeta, brcScratch, curColNum);
 

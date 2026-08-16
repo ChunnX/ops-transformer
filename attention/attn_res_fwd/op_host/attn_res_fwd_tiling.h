@@ -66,6 +66,7 @@ protected:
     uint64_t EstimateUbComputeBytes(bool resident) const;
     bool CanResidentAllBlocks(uint32_t blockCount, uint32_t hiddenSize) const;
     uint32_t CalcMaxResidentRows(uint32_t hiddenSize) const;
+    uint32_t CalcHSliceChunk() const;
     uint32_t GetMinStagingBytes() const;
 
     AttnResFwdCompileInfo compileInfo_;
