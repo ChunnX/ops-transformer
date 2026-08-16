@@ -41,6 +41,7 @@ class ElasticBuffer:
         num_max_tokens_per_rank: Optional[int] = None,
         hidden: Optional[int] = None,
         num_topk: Optional[int] = None,
+        explicitly_destroy: bool = True,
         with_grad: bool = False,
     )
 
@@ -124,6 +125,7 @@ class ElasticBuffer:
 - **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大token数量上限。使用 [dispatch](#dispatch) 和 [combine](#combine) 时必须与 `hidden`、`num_topk` 一起指定；使用 `with_grad=True` 训练模式时必须指定且大于0。
 - **hidden** (`int`)：可选参数，hidden size隐藏层大小。
 - **num_topk** (`int`)：可选参数，表示选取topK个专家。
+- **explicitly_destroy** (`bool`)：可选参数，是否需要显式调用 [destroy](#destroy) 释放资源。默认为 `True`，即调用方需要显式调用 `destroy` 释放资源；设为 `False` 时，实例被垃圾回收时会自动调用 `destroy` 释放资源。推荐使用默认值 `True` 并在使用结束后手动调用 `destroy` 释放资源。
 - **with_grad** (`bool`)：可选参数，是否开启训练。默认为 `False`（推理）。设为 `True` 时，前向 [engram_fetch](#engram_fetch) 会额外保存反向所需的通信元数据（封装为 [EngramFetchCtx](#engramfetchctx)），并可通过 [engram_fetch_grad](#engram_fetch_grad) 执行反向。
 
 **输出**：无返回值，构造ElasticBuffer实例。
@@ -473,7 +475,7 @@ ccl_buffer_size = Align2(Align1MB(minimum_buffer_size) / 1MB) / 2
 
 ### destroy
 
-**功能**：释放ElasticBuffer资源，包括host pinned内存、Engram运行时资源和Dispatch/Combine通信上下文。训练模式下HCCL默认通信buffer由框架管理，无需手动释放。
+**功能**：释放ElasticBuffer资源，包括host pinned内存、Engram运行时资源和Dispatch/Combine通信上下文。训练模式下HCCL默认通信buffer由框架管理，无需手动释放。当构造时 `explicitly_destroy=False`，实例被垃圾回收时会自动调用本方法，无需手动调用；当 `explicitly_destroy=True`（默认）时，必须由调用方显式调用。
 
 **输入参数**：无参数。
 

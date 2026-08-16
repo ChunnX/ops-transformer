@@ -285,6 +285,7 @@ class ElasticBuffer:
         num_max_tokens_per_rank: Optional[int] = None,
         hidden: Optional[int] = None,
         num_topk: Optional[int] = None,
+        explicitly_destroy: bool = True,
         with_grad: bool = False,
     ):
         """
@@ -296,6 +297,9 @@ class ElasticBuffer:
             num_max_tokens_per_rank: maximum MoE dispatch tokens per rank.
             hidden: hidden dimension for MoE dispatch/combine.
             num_topk: top-k value for MoE dispatch/combine.
+            explicitly_destroy: if True (default), the caller needs to explicitly
+                invoke ``destroy`` to release resources; if False, resources are
+                released automatically when the instance is garbage collected.
         """
         moe_args = (num_max_tokens_per_rank, hidden, num_topk)
         self._validate_init_args(group, num_cpu_bytes, moe_args, with_grad)
@@ -303,6 +307,7 @@ class ElasticBuffer:
         self._group = group
         self._num_cpu_bytes = num_cpu_bytes
         self._with_grad = with_grad
+        self._explicitly_destroy = explicitly_destroy
         self._rank_id = dist.get_rank(self._group)
         self._ep_world_size = dist.get_world_size(self._group)
 
@@ -319,6 +324,7 @@ class ElasticBuffer:
             self._group_name,
             self._num_cpu_bytes,
             num_max_tokens_per_rank if num_max_tokens_per_rank is not None else 0,
+            self._explicitly_destroy,
             self._with_grad,
         )
 
