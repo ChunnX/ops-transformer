@@ -319,6 +319,83 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
     self.assertRtolEqual(
         kv_centric.float().numpy(), npu_out_cpu.float().numpy(), prec=prec)
 
+  def _run_constant_boundary_npu_test(self, q_seqlens, kv_seqlens, label):
+    """Validate large indexing boundaries with an exact constant result."""
+    batch = len(q_seqlens)
+    self.assertEqual(batch, len(kv_seqlens))
+    block_size = 128
+    head_dim = 128
+    q_heads = 1
+    kv_heads = 1
+    top_k = 1
+    total_q = sum(q_seqlens)
+    rows_per_batch = [
+        (kv_len + block_size - 1) // block_size for kv_len in kv_seqlens]
+    max_blocks = max(rows_per_batch, default=0)
+    physical_blocks = sum(rows_per_batch)
+
+    actual_q = torch.tensor(q_seqlens, dtype=torch.int32)
+    actual_kv = torch.tensor(kv_seqlens, dtype=torch.int32)
+    block_table = torch.zeros((batch, max_blocks), dtype=torch.int32)
+    select_idx = torch.empty((kv_heads, total_q, top_k), dtype=torch.int32)
+    q_offset = 0
+    physical_offset = 0
+    for batch_idx, (q_len, kv_len, kv_rows) in enumerate(
+        zip(q_seqlens, kv_seqlens, rows_per_batch)):
+      self.assertGreaterEqual(kv_len, q_len)
+      if kv_rows > 0:
+        block_table[batch_idx, :kv_rows] = (
+            torch.arange(kv_rows, dtype=torch.int32) + physical_offset)
+      if q_len > 0:
+        history_len = kv_len - q_len
+        q_positions = torch.arange(q_len, dtype=torch.int64)
+        select_idx[0, q_offset:q_offset + q_len, 0] = (
+            (history_len + q_positions) // block_size).to(torch.int32)
+      q_offset += q_len
+      physical_offset += kv_rows
+
+    row_ptr, q_indices, slot_indices = (
+        prefill_golden.build_k2q_csr_torch_reference(
+            select_idx, actual_q, actual_kv, block_size,
+            q_global_offset=True))
+
+    torch.npu.synchronize()
+    torch.npu.empty_cache()
+    query = torch.zeros(
+        (total_q, q_heads, head_dim), dtype=torch.bfloat16, device="npu")
+    key = torch.zeros(
+        (physical_blocks, block_size, kv_heads, head_dim),
+        dtype=torch.bfloat16, device="npu")
+    value = torch.full_like(key, 0.25)
+    metadata = [
+        block_table.npu(), row_ptr.npu(), q_indices.npu(),
+        slot_indices.npu(), actual_q.npu(), actual_kv.npu()]
+
+    print(
+        f"[{label}] launch total_q={total_q} kv={kv_seqlens} "
+        f"physical_blocks={physical_blocks}")
+    torch.npu.synchronize()
+    start = time.perf_counter()
+    output = torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
+        query, key, value, *metadata,
+        kv_heads, 1.0 / (head_dim ** 0.5), block_size, top_k, 4)
+    torch.npu.synchronize()
+    elapsed_ms = (time.perf_counter() - start) * 1000.0
+
+    expected = torch.tensor(0.25, dtype=torch.bfloat16, device="npu")
+    exact = bool(torch.all(output == expected).item())
+    sample_indices = [0, total_q // 2, total_q - 1]
+    samples = output[sample_indices, 0, 0].cpu().tolist()
+    print(
+        f"[{label}] elapsed_ms={elapsed_ms:.3f} exact={exact} "
+        f"samples={samples}")
+    self.assertEqual(tuple(output.shape), (total_q, q_heads, head_dim))
+    self.assertEqual(output.dtype, torch.bfloat16)
+    self.assertTrue(exact, "constant boundary output is not exactly 0.25")
+
+    del output, expected, query, key, value, metadata
+    torch.npu.empty_cache()
+
   def _run_npu_lse_test(self, batch, q_seqlens, kv_seqlens, q_heads, kv_heads,
                         top_k, seed, inner_precise=4, prec=7e-3):
     data = make_case(
@@ -447,6 +524,11 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
             batch=1, q_seqlens=[4], kv_seqlens=[kv_len],
             q_heads=8, kv_heads=2, head_dim=128, block_size=block_size,
             top_k=3, seed=1700 + index, prec=7e-3, inner_precise=4)
+
+  def test_bf16_kv_seqlen_256k_boundary(self):
+    """The maximum advertised paged KV sequence length executes correctly."""
+    self._run_constant_boundary_npu_test(
+        q_seqlens=[128], kv_seqlens=[262144], label="kv_256k_boundary")
 
   def test_bf16_axis0_strided_qkv(self):
     """Q/K/V views with independent leading strides match contiguous input."""
