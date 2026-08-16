@@ -82,6 +82,19 @@ namespace RainFusion {
         __aicore__ inline
         RainFusionAttentionKernel() {}
 
+        __aicore__ inline uint32_t calcCurMinTask(int32_t kvBlocklen, uint32_t coreNum) {
+            uint32_t idx = 0;
+            uint32_t minVal = bucket_[0];
+            for (uint32_t i = 1; i < coreNum; ++i) {
+                if ( bucket_[i] < minVal) {
+                    minVal = bucket_[i];
+                    idx = i;
+                }
+            }
+            bucket_[idx] += kvBlocklen;
+            return idx;
+        }
+
         __aicore__ inline void operator()(RainFusionAttentionKernelParams const &params)
         {
             __gm__ RainFusionAttentionTilingData *rainFusionAttentionTilingData = reinterpret_cast<__gm__ RainFusionAttentionTilingData *>(params.tiling);
@@ -256,7 +269,8 @@ namespace RainFusion {
             uint32_t curTotalQBlockNum = firstQBlockNum;
 
             // Go through each task
-            for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNum; taskIdx += uint32_t(coreNum)) {
+            // for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNum; taskIdx += uint32_t(coreNum)) {
+            for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNum; taskIdx ++) {
                 // Get the offset of each core on the GM
                 while (taskIdx >= curTotalTaskNum) {
                     ++curBatch;
@@ -319,7 +333,7 @@ namespace RainFusion {
                 uint32_t curSelectIdx = preTotalQBlockNum + qXIdx * qHeads + qHeadIdx;
                 uint32_t curSelectNum = static_cast<uint32_t>(gSelectNumIdx.GetValue(curSelectIdx));
                 // In this case, the output should be zero, so we skip this task
-                if (curSelectNum == 0) {
+                if (curSelectNum == 0 || coreIdx != calcCurMinTask(curSelectNum, coreNum)) {
                     continue;
                 }
 
@@ -581,6 +595,7 @@ namespace RainFusion {
         NpuArch::Arch::CrossCoreFlag qkReady{QK_READY_ID};
         NpuArch::Arch::CrossCoreFlag softmaxReady{SOFTMAX_READY_ID};
         NpuArch::Arch::CrossCoreFlag pvReady{PV_READY_ID};
+        uint64_t bucket_[MAX_CORE_NUM] = {0};
     };
 
 } // namespace RainFusion
