@@ -735,13 +735,24 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
   _GROUP_SIZE = 16  # = _Q_HEADS // _KV_HEADS
 
   def _run_prod_config(self, batch, q_seqlens, kv_seqlens,
-                       seed, prec=1e-2, tag=""):
+                       seed, prec=1e-2, tag="", inner_precise=4):
     if tag:
       print(f"[prod:{tag}]")
     self._run_npu_test(
         batch, q_seqlens, kv_seqlens, self._Q_HEADS, self._KV_HEADS,
         head_dim=self._HEAD_DIM, block_size=self._BLOCK_SIZE,
-        top_k=self._TOP_K, seed=seed, prec=prec)
+        top_k=self._TOP_K, seed=seed, prec=prec,
+        inner_precise=inner_precise)
+
+  def test_prod_inner_precise_matrix(self):
+    """All published precision modes on the same production GQA layout."""
+    for inner_precise, prec in ((0, 1e-2), (1, 1.5e-2), (4, 1e-2)):
+      with self.subTest(inner_precise=inner_precise):
+        self._run_prod_config(
+            batch=1, q_seqlens=[64], kv_seqlens=[4096],
+            seed=9700 + inner_precise, prec=prec,
+            tag=f"inner_precise/{inner_precise}",
+            inner_precise=inner_precise)
 
   def test_prod_topk16_seed_sweep(self):
     """Same representative shape, many seeds -> reproduce 偶现 precision flakes.

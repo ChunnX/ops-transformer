@@ -1000,6 +1000,12 @@ private:
         if (batchGroupsMax > maxGroupsBySoftmaxUb) {
             batchGroupsMax = maxGroupsBySoftmaxUb;
         }
+        if constexpr (AscendC::IsSameType<ElementS, float>::value) {
+            // The fp32-score pipeline currently has only one proven-safe Q
+            // group in flight. Two groups can reuse a staged Q/P buffer before
+            // the delayed PV consumer has finished reading it.
+            batchGroupsMax = 1U;
+        }
 #ifdef __DAV_CUBE__
         BlockMmadQK blockMmadQK;
         BlockMmadPV blockMmadPV;
