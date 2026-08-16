@@ -428,6 +428,26 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
             q_heads=q_heads, kv_heads=kv_heads, top_k=top_k, seed=seed,
             prec=1.5e-2, inner_precise=1)
 
+  def test_bf16_head_dim_256_precision_paths(self):
+    """D=256 works with every published innerPrecise path and a short block."""
+    for inner_precise, prec in ((0, 7e-3), (1, 1.5e-2), (4, 7e-3)):
+      with self.subTest(inner_precise=inner_precise):
+        self._run_npu_test(
+            batch=1, q_seqlens=[4], kv_seqlens=[72],
+            q_heads=8, kv_heads=2, head_dim=256, block_size=16,
+            top_k=3, seed=1800 + inner_precise, prec=prec,
+            inner_precise=inner_precise)
+
+  def test_bf16_paged_block_size_sweep(self):
+    """Paged KV accepts every positive multiple of 16 through 128."""
+    for index, block_size in enumerate(range(16, 129, 16)):
+      kv_len = block_size * 4 + block_size // 2
+      with self.subTest(block_size=block_size, kv_len=kv_len):
+        self._run_npu_test(
+            batch=1, q_seqlens=[4], kv_seqlens=[kv_len],
+            q_heads=8, kv_heads=2, head_dim=128, block_size=block_size,
+            top_k=3, seed=1700 + index, prec=7e-3, inner_precise=4)
+
   def test_bf16_axis0_strided_qkv(self):
     """Q/K/V views with independent leading strides match contiguous input."""
     print("[test_bf16_axis0_strided_qkv]")

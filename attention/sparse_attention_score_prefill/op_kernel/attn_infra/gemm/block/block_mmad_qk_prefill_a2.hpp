@@ -226,7 +226,12 @@ struct BlockMmadQKPrefillA2 {
         CopyGmToL1Q copyGmToL1Q;
 
         // Instantiate CopyL0CToGm for the GM workspace tensor type (RowMajor, ElementS).
-        auto gmSLayoutEx = tla::MakeLayout<ElementS, LayoutTagS>(L0_TILE_M, L0_TILE_N);
+        // The per-stage GM allocation is [L0_TILE_M, blockSize].  Keep the
+        // Fixpipe row stride identical to that physical allocation; using the
+        // L0 tile width (128) here corrupts adjacent rows/stages whenever
+        // blockSize is smaller than 128.
+        uint32_t gmSRowStride = gmSStageElems_ / L0_TILE_M;
+        auto gmSLayoutEx = tla::MakeLayout<ElementS, LayoutTagS>(L0_TILE_M, gmSRowStride);
         auto gmSEx = tla::MakeTensor(gmSWorkspace_, gmSLayoutEx, Arch::PositionGM{});
         using CopyL0CToGm = typename TileCopy::template CopyL0CToDst<decltype(gmSEx)>;
         CopyL0CToGm copyL0CToGmSub0;
