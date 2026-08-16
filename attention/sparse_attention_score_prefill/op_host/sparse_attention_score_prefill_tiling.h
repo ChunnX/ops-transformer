@@ -42,6 +42,7 @@ TILING_DATA_FIELD_DEF(uint32_t, totalTaskNumP1);         // Phase1 任务数 = n
 TILING_DATA_FIELD_DEF(uint32_t, totalTaskNumP2);         // Phase2 任务数 = totalQTokens * kvHeads
 TILING_DATA_FIELD_DEF(float, scaleValue);                // softmax 缩放因子
 TILING_DATA_FIELD_DEF(uint32_t, innerPrecise);           // 0=fp32 score softmax, 1=bf16 O_partial, 4=fp32 O_partial
+TILING_DATA_FIELD_DEF(uint32_t, softmaxLseFlag);          // whether to write [T,N,1] fp32 log-sum-exp
 TILING_DATA_FIELD_DEF(uint64_t, accumOutSize);           // workspace O_partial 元素数
 TILING_DATA_FIELD_DEF(uint64_t, lseStatSize);            // workspace max/sum 各自元素数
 TILING_DATA_FIELD_DEF(uint64_t, workSpaceSize);          // workspace 总字节数
@@ -114,6 +115,7 @@ protected:
     uint32_t k2qNnzUpperBound_ = 0;
     float scaleValue_ = 0.0f;
     uint32_t innerPrecise_ = 0;
+    bool softmaxLseFlag_ = false;
 
     bool isKvContinuous_ = false;
     uint64_t keyTokenStride_ = 0;

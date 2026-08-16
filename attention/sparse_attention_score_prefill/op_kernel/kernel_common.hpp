@@ -35,6 +35,7 @@ struct SparseAttentionScorePrefillTilingData {
     uint32_t totalTaskNumP2;        // Phase2 任务数 = totalQTokens * kvHeads
     float scaleValue;               // softmax 缩放因子
     uint32_t innerPrecise;          // 精度模式 (1=bf16 O_partial, 4=fp32 O_partial)
+    uint32_t softmaxLseFlag;        // whether to write [T,N,1] fp32 log-sum-exp
     uint64_t accumOutSize;          // workspace 中 O_partial float 元素总数
     uint64_t lseStatSize;           // workspace 中 softmaxMax/Sum 各自 float 元素总数
     uint64_t workSpaceSize;                         // workspace 总字节数

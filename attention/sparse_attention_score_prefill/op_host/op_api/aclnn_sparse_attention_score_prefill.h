@@ -31,7 +31,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
     int64_t blockSize,
     int64_t topK,
     int64_t innerPrecise,
+    bool softmaxLseFlag,
     aclTensor *attentionOut,
+    aclTensor *softmaxLse,
     uint64_t *workspaceSize,
     aclOpExecutor **executor);
 

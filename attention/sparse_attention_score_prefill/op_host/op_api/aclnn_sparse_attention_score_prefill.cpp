@@ -89,7 +89,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
     int64_t blockSize,
     int64_t topK,
     int64_t innerPrecise,
+    bool softmaxLseFlag,
     aclTensor *attentionOut,
+    aclTensor *softmaxLse,
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
@@ -103,6 +105,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
     CHECK_RET(actualSeqLengthsOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(actualSeqLengthsKvOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(attentionOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(softmaxLse != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
@@ -110,8 +113,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
                    DFX_IN(query, key, value, blockTable,
                           k2qRowPtr, k2qQIndices, k2qSlotIndices,
                           actualSeqLengthsOptional, actualSeqLengthsKvOptional,
-                          numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise),
-                   DFX_OUT(attentionOut));
+                          numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise, softmaxLseFlag),
+                   DFX_OUT(attentionOut, softmaxLse));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -148,17 +151,19 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
         queryView, keyView, valueView, blockTable,
         k2qRowPtr, k2qQIndices, k2qSlotIndices,
         actualSeqLengthsOptional, actualSeqLengthsKvOptional,
-        numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise,
+        numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise, softmaxLseFlag,
         executorImpl);
 
-    if (output == nullptr) {
+    if (output[0] == nullptr || output[1] == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
                 "SparseAttentionScorePrefill returned nullptr output.");
         return ACLNN_ERR_INNER_NULLPTR;
     }
 
-    auto viewCopyResult = l0op::ViewCopy(output, attentionOut, executorImpl);
+    auto viewCopyResult = l0op::ViewCopy(output[0], attentionOut, executorImpl);
     CHECK_RET(viewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto lseViewCopyResult = l0op::ViewCopy(output[1], softmaxLse, executorImpl);
+    CHECK_RET(lseViewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = executorImpl->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);

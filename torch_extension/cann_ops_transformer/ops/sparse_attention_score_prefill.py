@@ -23,7 +23,7 @@ class SparseAttentionScorePrefillOpBuilder(OpBuilder):
         return ['ops/csrc/sparse_attention_score_prefill.cpp']
 
     def schema(self) -> str:
-        return (
+        args = (
             "npu_sparse_attention_score_prefill("
             "Tensor query, Tensor key, Tensor value, "
             "Tensor? block_table, "
@@ -33,8 +33,12 @@ class SparseAttentionScorePrefillOpBuilder(OpBuilder):
             "Tensor actual_seq_lengths, Tensor actual_seq_lengths_kv, "
             "int num_key_value_heads, float scale_value, "
             "int block_size, int top_k, int inner_precise=4"
-            ") -> Tensor"
+            ")"
         )
+        lse_args = args.replace(
+            "npu_sparse_attention_score_prefill(",
+            "npu_sparse_attention_score_prefill_with_lse(")
+        return [args + " -> Tensor", lse_args + " -> (Tensor, Tensor)"]
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
@@ -51,6 +55,20 @@ class SparseAttentionScorePrefillOpBuilder(OpBuilder):
             return torch.empty(
                 (total_q_tokens, num_q_heads, D),
                 dtype=query.dtype, device='meta')
+
+        @impl(AS_LIBRARY, "npu_sparse_attention_score_prefill_with_lse", "Meta")
+        def npu_sparse_attention_score_prefill_with_lse_meta(
+            query, key, value, block_table,
+            k2q_row_ptr, k2q_q_indices, k2q_slot_indices,
+            actual_seq_lengths, actual_seq_lengths_kv,
+            num_key_value_heads, scale_value,
+            block_size, top_k, inner_precise=4
+        ):
+            return (
+                torch.empty(query.shape, dtype=query.dtype, device='meta'),
+                torch.empty(
+                    (query.size(0), query.size(1), 1),
+                    dtype=torch.float32, device='meta'))
 
 
 sparse_attn_prefill_builder = SparseAttentionScorePrefillOpBuilder()
@@ -71,6 +89,22 @@ def npu_sparse_attention_score_prefill(
         query, key, value, block_table,
         k2q_row_ptr,
         k2q_q_indices, k2q_slot_indices,
+        actual_seq_lengths, actual_seq_lengths_kv,
+        num_key_value_heads, scale_value,
+        block_size, top_k, inner_precise)
+
+
+@impl(AS_LIBRARY, "npu_sparse_attention_score_prefill_with_lse", "PrivateUse1")
+def npu_sparse_attention_score_prefill_with_lse(
+    query, key, value, block_table,
+    k2q_row_ptr, k2q_q_indices, k2q_slot_indices,
+    actual_seq_lengths, actual_seq_lengths_kv,
+    num_key_value_heads, scale_value,
+    block_size, top_k, inner_precise=4
+):
+    return op_module.npu_sparse_attention_score_prefill_with_lse(
+        query, key, value, block_table,
+        k2q_row_ptr, k2q_q_indices, k2q_slot_indices,
         actual_seq_lengths, actual_seq_lengths_kv,
         num_key_value_heads, scale_value,
         block_size, top_k, inner_precise)

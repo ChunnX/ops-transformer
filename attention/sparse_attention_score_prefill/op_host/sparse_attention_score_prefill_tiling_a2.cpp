@@ -143,6 +143,7 @@ ge::graphStatus SASAPrefillTilingA2::FillTilingData(gert::TilingContext *context
     printf("[SASAPrefillTilingA2] FillTilingData: basic fields written\n");
     fflush(stdout);
     tilingData_->set_innerPrecise(innerPrecise_);
+    tilingData_->set_softmaxLseFlag(static_cast<uint32_t>(softmaxLseFlag_));
     tilingData_->set_accumOutSize(accumOutSize_);
     tilingData_->set_lseStatSize(lseStatSize_);
     tilingData_->set_workSpaceSize(workSpaceSize_);

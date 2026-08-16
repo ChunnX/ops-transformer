@@ -217,6 +217,8 @@ public:
         gActualKvseqlen_.SetGlobalBuffer((__gm__ int32_t *)params.actualKvseqlen);
         AscendC::GlobalTensor<ElementO> gO;
         gO.SetGlobalBuffer((__gm__ ElementO *)params.o);
+        AscendC::GlobalTensor<float> gSoftmaxLse;
+        gSoftmaxLse.SetGlobalBuffer((__gm__ float *)params.softmaxLse);
 
         uint64_t wsOffset = 0U;
         AscendC::GlobalTensor<ElementWorkspaceO> gAccumOut;
@@ -249,7 +251,7 @@ public:
             gK2qSlotIndices, gBlockTable, gAccumOut, gSoftmaxMax, gSoftmaxSum);
         AscendC::SyncAll<false>();
 #ifdef __DAV_VEC__
-        Phase2CombineScale(gO, gAccumOut, gSoftmaxMax, gSoftmaxSum);
+        Phase2CombineScale(gO, gSoftmaxLse, gAccumOut, gSoftmaxMax, gSoftmaxSum);
 #endif
         ReleaseSyncFlags();
     }
@@ -278,6 +280,7 @@ private:
         totalTaskNumP1_ = tilingData->totalTaskNumP1;
         totalTaskNumP2_ = tilingData->totalTaskNumP2;
         scaleValue_ = tilingData->scaleValue;
+        softmaxLseFlag_ = (tilingData->softmaxLseFlag != 0U);
         accumOutSize_ = tilingData->accumOutSize;
         lseStatSize_ = tilingData->lseStatSize;
         slotOElems_ = static_cast<uint64_t>(groupSize_) * embed_;
@@ -906,6 +909,7 @@ private:
     __aicore__ inline
     void Phase2CombineScale(
         AscendC::GlobalTensor<ElementO> &gO,
+        AscendC::GlobalTensor<float> &gSoftmaxLse,
         AscendC::GlobalTensor<ElementWorkspaceO> &gAccumOut,
         AscendC::GlobalTensor<float> &gSoftmaxMax,
         AscendC::GlobalTensor<float> &gSoftmaxSum)
@@ -927,8 +931,8 @@ private:
         for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNumP2_; taskIdx += coreNum) {
             epilogueRescaleO.FlashDecodeCompute(
                 taskIdx, totalTaskNumP2_,
-                gO, gAccumOut, gSoftmaxMax, gSoftmaxSum,
-                qHeads_, kvHeads_);
+                gO, gSoftmaxLse, gAccumOut, gSoftmaxMax, gSoftmaxSum,
+                qHeads_, kvHeads_, softmaxLseFlag_);
         }
 #endif
     }
@@ -955,6 +959,7 @@ private:
     uint32_t totalTaskNumP1_;
     uint32_t totalTaskNumP2_;
     float scaleValue_;
+    bool softmaxLseFlag_ = false;
     uint64_t accumOutSize_;
     uint64_t lseStatSize_;
     uint64_t slotOElems_;

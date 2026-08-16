@@ -69,6 +69,12 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
+        // softmaxLse: [total_q_tokens, num_q_heads, 1] fp32 when enabled,
+        // otherwise an empty [0] tensor (same contract as FusedInferAttentionScore).
+        this->Output("softmaxLse")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND});
 
         // numKeyValueHeads: KV 头数，默认值 1
         this->Attr("numKeyValueHeads").AttrType(OPTIONAL).Int(1);
@@ -80,6 +86,8 @@ public:
         this->Attr("topK").AttrType(OPTIONAL).Int(8);
         // innerPrecise: 内部精度模式，默认值 4
         this->Attr("innerPrecise").AttrType(OPTIONAL).Int(4);
+        // softmaxLseFlag: 是否返回 log-sum-exp，默认关闭以保持原路径零开销。
+        this->Attr("softmaxLseFlag").AttrType(OPTIONAL).Bool(false);
 
         // 声明算子支持的 AICore 型号配置。
         // ascend950: Atlas A5 (arch35, __CCE_AICORE__==310)

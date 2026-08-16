@@ -17,6 +17,8 @@ namespace ops {
 // 算子输入/输出的索引常量，便于在推断逻辑中按索引获取形状与数据类型。
 static constexpr uint32_t QUERY_INDEX = 0;            // query 输入索引
 static constexpr uint32_t ATTENTION_OUT_INDEX = 0;    // attentionOut 输出索引
+static constexpr uint32_t SOFTMAX_LSE_INDEX = 1;      // softmaxLse 输出索引
+static constexpr uint32_t SOFTMAX_LSE_FLAG_INDEX = 5; // softmaxLseFlag 属性索引
 static constexpr uint32_t TND_DIM_NUM = 3;            // TND 布局的维度数（T, N, D）
 static constexpr int32_t UNKNOWN_DIMS = -2;           // 未知维度标记，用于动态形状场景
 
@@ -37,11 +39,15 @@ static ge::graphStatus InferShapeSparseAttentionScorePrefill(gert::InferShapeCon
     // 获取输出 attentionOut 的形状对象，待填充。
     gert::Shape *attentionOutShape = context->GetOutputShape(ATTENTION_OUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, attentionOutShape);
+    gert::Shape *softmaxLseShape = context->GetOutputShape(SOFTMAX_LSE_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, softmaxLseShape);
 
     // 动态形状场景：query 整体未知时，输出同样标记为未知维度，直接返回成功。
     if (queryShape->GetDimNum() == 1 && queryShape->GetDim(0) == UNKNOWN_DIMS) {
         attentionOutShape->SetDimNum(1);
         (*attentionOutShape)[0] = UNKNOWN_DIMS;
+        softmaxLseShape->SetDimNum(1);
+        (*softmaxLseShape)[0] = UNKNOWN_DIMS;
         return ge::GRAPH_SUCCESS;
     }
 
@@ -55,6 +61,14 @@ static ge::graphStatus InferShapeSparseAttentionScorePrefill(gert::InferShapeCon
 
     // 输出形状直接等于 query 形状（TND）。
     *attentionOutShape = *queryShape;
+    auto attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    const bool *softmaxLseFlag = attrs->GetAttrPointer<bool>(SOFTMAX_LSE_FLAG_INDEX);
+    if (softmaxLseFlag != nullptr && *softmaxLseFlag) {
+        *softmaxLseShape = {queryShape->GetDim(0), queryShape->GetDim(1), 1};
+    } else {
+        *softmaxLseShape = {0};
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -68,6 +82,7 @@ static ge::graphStatus InferDataTypeSparseAttentionScorePrefill(gert::InferDataT
     // 取 query 的数据类型并赋给输出 attentionOut。
     auto dtype = context->GetInputDataType(QUERY_INDEX);
     context->SetOutputDataType(ATTENTION_OUT_INDEX, dtype);
+    context->SetOutputDataType(SOFTMAX_LSE_INDEX, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;
 }
 

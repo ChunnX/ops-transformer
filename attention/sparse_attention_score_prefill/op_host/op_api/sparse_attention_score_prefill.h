@@ -10,11 +10,12 @@
 #ifndef SPARSE_ATTENTION_SCORE_PREFILL_L0OP_H_
 #define SPARSE_ATTENTION_SCORE_PREFILL_L0OP_H_
 
+#include <array>
 #include "opdev/op_executor.h"
 
 namespace l0op {
 
-const aclTensor *SparseAttentionScorePrefill(
+const std::array<const aclTensor *, 2> SparseAttentionScorePrefill(
     const aclTensor *query,
     const aclTensor *key,
     const aclTensor *value,
@@ -29,6 +30,7 @@ const aclTensor *SparseAttentionScorePrefill(
     int64_t blockSize,
     int64_t topK,
     int64_t innerPrecise,
+    bool softmaxLseFlag,
     aclOpExecutor *executor);
 
 } // namespace l0op

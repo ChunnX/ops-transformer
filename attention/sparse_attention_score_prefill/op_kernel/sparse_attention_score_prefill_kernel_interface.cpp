@@ -73,7 +73,7 @@ __global__ __aicore__ void SasaPrefillInferIntf(
     GM_ADDR k2qRowPtr, GM_ADDR k2qQIndices,
     GM_ADDR k2qSlotIndices,
     GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
-    GM_ADDR o, GM_ADDR workspace, GM_ADDR tiling)
+    GM_ADDR o, GM_ADDR softmaxLse, GM_ADDR workspace, GM_ADDR tiling)
 {
     // === Phase 1 组件: QK matmul (Cube) ===
     // BlockMmadQKPrefillArch35: Q[bf16] × K^T[bf16] → S[bf16], K 常驻 L1
@@ -115,7 +115,7 @@ __global__ __aicore__ void SasaPrefillInferIntf(
         q, k, v, blockTable,
         k2qRowPtr, k2qQIndices, k2qSlotIndices,
         actualQseqlen, actualKvseqlen,
-        o, workspace, tiling};
+        o, softmaxLse, workspace, tiling};
     // 实例化并执行 kernel
     SasaPrefillKernel sasaPrefillKernel;
     sasaPrefillKernel(params);
@@ -138,7 +138,7 @@ __global__ __aicore__ void SasaPrefillInferIntf(
     GM_ADDR k2qRowPtr, GM_ADDR k2qQIndices,
     GM_ADDR k2qSlotIndices,
     GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
-    GM_ADDR o, GM_ADDR workspace, GM_ADDR tiling)
+    GM_ADDR o, GM_ADDR softmaxLse, GM_ADDR workspace, GM_ADDR tiling)
 {
     // === Phase 1 组件: QK matmul (Cube) — A2 版本 ===
     using KernelBlockMmadQK = Gemm::Block::BlockMmadQKPrefillA2<InDtype, InDtype, SMDtype>;
@@ -171,7 +171,7 @@ __global__ __aicore__ void SasaPrefillInferIntf(
         q, k, v, blockTable,
         k2qRowPtr, k2qQIndices, k2qSlotIndices,
         actualQseqlen, actualKvseqlen,
-        o, workspace, tiling};
+        o, softmaxLse, workspace, tiling};
     SasaPrefillKernel sasaPrefillKernel;
     sasaPrefillKernel(params);
 }

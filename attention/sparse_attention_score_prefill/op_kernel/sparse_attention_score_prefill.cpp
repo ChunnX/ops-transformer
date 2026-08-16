@@ -77,6 +77,7 @@ extern "C" __global__ __aicore__ void sparse_attention_score_prefill(
     __gm__ uint8_t* actualSeqLengths,
     __gm__ uint8_t* actualSeqLengthsKv,
     __gm__ uint8_t* attentionOut,
+    __gm__ uint8_t* softmaxLse,
     __gm__ uint8_t* workspace,
     __gm__ uint8_t* tiling)
 {
@@ -98,7 +99,7 @@ extern "C" __global__ __aicore__ void sparse_attention_score_prefill(
             query, key, value, blockTable,
             k2qRowPtr, k2qQIndices, k2qSlotIndices,
             actualSeqLengths, actualSeqLengthsKv,
-            attentionOut, user, tiling);
+            attentionOut, softmaxLse, user, tiling);
 #endif
 
         TILING_KEY_IS(SASA_PREFILL_BF16_D128_HIGH_SOFTMAX_TILING);
@@ -107,7 +108,7 @@ extern "C" __global__ __aicore__ void sparse_attention_score_prefill(
             query, key, value, blockTable,
             k2qRowPtr, k2qQIndices, k2qSlotIndices,
             actualSeqLengths, actualSeqLengthsKv,
-            attentionOut, user, tiling);
+            attentionOut, softmaxLse, user, tiling);
 #endif
 
         // 路径 2: bf16 O_partial (innerPrecise == 1, 低精度路径)
@@ -119,7 +120,7 @@ extern "C" __global__ __aicore__ void sparse_attention_score_prefill(
             query, key, value, blockTable,
             k2qRowPtr, k2qQIndices, k2qSlotIndices,
             actualSeqLengths, actualSeqLengthsKv,
-            attentionOut, user, tiling);
+            attentionOut, softmaxLse, user, tiling);
 #endif
 #endif
 
@@ -134,7 +135,7 @@ extern "C" __global__ __aicore__ void sparse_attention_score_prefill(
             query, key, value, blockTable,
             k2qRowPtr, k2qQIndices, k2qSlotIndices,
             actualSeqLengths, actualSeqLengthsKv,
-            attentionOut, user, tiling);
+            attentionOut, softmaxLse, user, tiling);
 #endif
 
         TILING_KEY_IS(SASA_PREFILL_BF16_D128_HIGH_SOFTMAX_TILING);
@@ -143,7 +144,7 @@ extern "C" __global__ __aicore__ void sparse_attention_score_prefill(
             query, key, value, blockTable,
             k2qRowPtr, k2qQIndices, k2qSlotIndices,
             actualSeqLengths, actualSeqLengthsKv,
-            attentionOut, user, tiling);
+            attentionOut, softmaxLse, user, tiling);
 #endif
 
         // 路径 2: bf16 O_partial (innerPrecise == 1, 低精度路径)
@@ -153,7 +154,7 @@ extern "C" __global__ __aicore__ void sparse_attention_score_prefill(
             query, key, value, blockTable,
             k2qRowPtr, k2qQIndices, k2qSlotIndices,
             actualSeqLengths, actualSeqLengthsKv,
-            attentionOut, user, tiling);
+            attentionOut, softmaxLse, user, tiling);
 #endif
 #endif
     }

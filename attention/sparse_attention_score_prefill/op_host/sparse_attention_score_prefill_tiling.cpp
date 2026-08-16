@@ -80,6 +80,7 @@ constexpr int ATTR_SCALE_VALUE_INDEX = 1;
 constexpr int ATTR_BLOCK_SIZE_INDEX = 2;
 constexpr int ATTR_TOP_K_INDEX = 3;
 constexpr int ATTR_INNER_PRECISE_INDEX = 4;
+constexpr int ATTR_SOFTMAX_LSE_FLAG_INDEX = 5;
 
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 
@@ -135,8 +136,11 @@ ge::graphStatus SASAPrefillTilingBase::ParseAttrs(gert::TilingContext *context)
     blockSize_ = isKvContinuous_ ? CONTINUOUS_KV_TILE_SIZE : static_cast<uint32_t>(blockSizeAttr);
     topK_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_TOP_K_INDEX));
     innerPrecise_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_INNER_PRECISE_INDEX));
-    printf("[SASAPrefillTiling] Attrs: kvHeads=%u scaleValue=%f blockSize=%u continuousKv=%u topK=%u innerPrecise=%u\n",
-           kvHeads_, scaleValue_, blockSize_, static_cast<uint32_t>(isKvContinuous_), topK_, innerPrecise_);
+    const bool *softmaxLseFlag = attrs->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX);
+    softmaxLseFlag_ = softmaxLseFlag != nullptr && *softmaxLseFlag;
+    printf("[SASAPrefillTiling] Attrs: kvHeads=%u scaleValue=%f blockSize=%u continuousKv=%u topK=%u innerPrecise=%u softmaxLse=%u\n",
+           kvHeads_, scaleValue_, blockSize_, static_cast<uint32_t>(isKvContinuous_), topK_, innerPrecise_,
+           static_cast<uint32_t>(softmaxLseFlag_));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -479,6 +483,7 @@ ge::graphStatus SASAPrefillTilingA5::FillTilingData(gert::TilingContext *context
     tilingData_->set_totalTaskNumP2(totalQTokens_ * kvHeads_);
     tilingData_->set_scaleValue(scaleValue_);
     tilingData_->set_innerPrecise(innerPrecise_);
+    tilingData_->set_softmaxLseFlag(static_cast<uint32_t>(softmaxLseFlag_));
     tilingData_->set_accumOutSize(accumOutSize_);
     tilingData_->set_lseStatSize(lseStatSize_);
     tilingData_->set_workSpaceSize(workSpaceSize_);

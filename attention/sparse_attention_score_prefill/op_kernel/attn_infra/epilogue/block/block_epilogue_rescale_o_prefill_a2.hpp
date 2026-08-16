@@ -63,6 +63,8 @@ public:
 
     static constexpr uint32_t ACCUM_OUT_STAGES = 2U;
     static constexpr uint32_t ACCUM_OUT_FLAG_BASE = 3U;
+    static constexpr uint32_t LSE_OUT_EVENT_ID = 2U;
+    static constexpr float POS_INF_LSE = 3e+99;
 
     __aicore__ inline BlockEpilogue() {}
 
@@ -149,17 +151,17 @@ public:
     void FlashDecodeCompute(uint32_t tmpBlockIdx,
                             uint32_t totalTaskNumP2,
                             AscendC::GlobalTensor<ElementO> &gmO,
+                            AscendC::GlobalTensor<T> &gmSoftmaxLse,
                             AscendC::GlobalTensor<TwsO> &gmAccumOut,
                             AscendC::GlobalTensor<T> &gmSoftmaxMax,
                             AscendC::GlobalTensor<T> &gmSoftmaxSum,
                             uint32_t numHeads,
-                            uint32_t kvHeads)
+                            uint32_t kvHeads,
+                            bool softmaxLseFlag)
     {
         if (tmpBlockIdx >= totalTaskNumP2) {
             return;
         }
-        (void)numHeads;
-
         uint32_t qToken = tmpBlockIdx / kvHeads;
         uint32_t kvHeadIdx = tmpBlockIdx % kvHeads;
         const uint32_t subBlockNum = AscendC::GetSubBlockNum();
@@ -176,10 +178,13 @@ public:
         uint64_t attenOutOffset = static_cast<uint64_t>(qToken) * kvHeads * groupSize_ * D_
             + static_cast<uint64_t>(kvHeadIdx) * groupSize_ * D_
             + static_cast<uint64_t>(rowOffset) * D_;
+        uint64_t softmaxLseOffset = static_cast<uint64_t>(qToken) * numHeads
+            + static_cast<uint64_t>(kvHeadIdx) * groupSize_ + rowOffset;
 
         actualCombineLoopSize_ = topK_;
         CombineSplitKVRes(attenOutOffset, qToken, kvHeadIdx, rowOffset, dealRowCount,
-                          gmO, gmAccumOut, gmSoftmaxMax, gmSoftmaxSum);
+                          gmO, gmSoftmaxLse, gmAccumOut, gmSoftmaxMax, gmSoftmaxSum,
+                          softmaxLseOffset, softmaxLseFlag);
     }
 
 private:
@@ -476,7 +481,10 @@ private:
     void ComputeScaleValue(AscendC::LocalTensor<T> &lseMaxLocal,
                            AscendC::LocalTensor<T> &lseSumLocal,
                            uint32_t dealRowCount,
-                           bool dumpState)
+                           bool dumpState,
+                           AscendC::GlobalTensor<T> &gmSoftmaxLse,
+                           uint64_t softmaxLseOffset,
+                           bool softmaxLseFlag)
     {
         uint32_t dealCount = dealRowCount * FP32_ONE_BLOCK_SIZE;
         uint32_t vecRepeats = CeilDiv(dealCount, FLOAT_VECTOR_SIZE);
@@ -532,6 +540,43 @@ private:
                 (uint64_t)0, vecRepeats,
                 AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
             AscendC::PipeBarrier<PIPE_V>();
+        }
+
+        if (softmaxLseFlag) {
+            // FusedInferAttentionScore/IFA contract: LSE = globalMax + log(globalSum),
+            // laid out as [T, N, 1] fp32.  maxGlobalBuf/totalBuf are broadcast
+            // [row, 8], so a 1-float strided copy compacts one value per head.
+            AscendC::Ln<float, false>(
+                numeratorBuf, totalBuf, (uint64_t)0, vecRepeats,
+                AscendC::UnaryRepeatParams(1, 1, 8, 8));
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Add<float, false>(
+                numeratorBuf, numeratorBuf, maxGlobalBuf, (uint64_t)0, vecRepeats,
+                AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
+            AscendC::PipeBarrier<PIPE_V>();
+            for (uint32_t row = 0U; row < dealRowCount; ++row) {
+                const uint32_t rowOff = row * FP32_ONE_BLOCK_SIZE;
+                if (maxGlobalBuf.GetValue(rowOff) <= NEG_INF_LSE) {
+                    AscendC::Duplicate<float>(numeratorBuf[rowOff], POS_INF_LSE,
+                                               FP32_ONE_BLOCK_SIZE);
+                }
+            }
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(LSE_OUT_EVENT_ID);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(LSE_OUT_EVENT_ID);
+            AscendC::DataCopyExtParams lseCopyParams{};
+            lseCopyParams.blockCount = dealRowCount;
+            lseCopyParams.blockLen = sizeof(T);
+            lseCopyParams.srcStride = 0;
+            lseCopyParams.dstStride = 0;
+            AscendC::DataCopyPad(gmSoftmaxLse[softmaxLseOffset], numeratorBuf, lseCopyParams);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(LSE_OUT_EVENT_ID);
+            // numeratorBuf is reused immediately below to materialize the
+            // per-split combine scales.  Drain this GM write before allowing
+            // the vector pipe to overwrite its source, then re-prime the
+            // event for the next Phase2 task (and ReleaseSyncFlags).
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(LSE_OUT_EVENT_ID);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(LSE_OUT_EVENT_ID);
         }
 
         // Step 3: recompute one exp(rowMax - globalMax) vector and materialize
@@ -846,15 +891,21 @@ private:
                            uint32_t rowOffset,
                            uint32_t dealRowCount,
                            AscendC::GlobalTensor<ElementO> &gmO,
+                           AscendC::GlobalTensor<T> &gmSoftmaxLse,
                            AscendC::GlobalTensor<TwsO> &gmAccumOut,
                            AscendC::GlobalTensor<T> &gmSoftmaxMax,
-                           AscendC::GlobalTensor<T> &gmSoftmaxSum)
+                           AscendC::GlobalTensor<T> &gmSoftmaxSum,
+                           uint64_t softmaxLseOffset,
+                           bool softmaxLseFlag)
     {
         // EVENT_ID0 is primed by the kernel for the first task and set by
         // CopyFinalResOut for every subsequent task.  Wait before touching
         // either dstBuf_ (BF16 output source) or broadCastTmpBuf_ (FP32 cast
         // output source).
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+        if (softmaxLseFlag) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(LSE_OUT_EVENT_ID);
+        }
         CopyLseIn(qToken, kvHeadIdx, dealRowCount, rowOffset,
                   gmSoftmaxMax, gmSoftmaxSum, lseMaxBuf_, lseSumBuf_);
 #if KERNEL_DUMP_PHASE2_STATE
@@ -863,7 +914,8 @@ private:
         }
 #endif
         ComputeScaleValue(lseMaxBuf_, lseSumBuf_, dealRowCount,
-                          ShouldDumpPhase2State(qToken, kvHeadIdx, rowOffset));
+                          ShouldDumpPhase2State(qToken, kvHeadIdx, rowOffset),
+                          gmSoftmaxLse, softmaxLseOffset, softmaxLseFlag);
 #if KERNEL_DUMP_PHASE2_STATE
         if (ShouldDumpPhase2State(qToken, kvHeadIdx, rowOffset)) {
             const uint32_t lseCount = topK_ * groupSize_;

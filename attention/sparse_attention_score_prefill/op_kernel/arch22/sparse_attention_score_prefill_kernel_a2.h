@@ -464,6 +464,8 @@ public:
         gActualKvseqlen_.SetGlobalBuffer((__gm__ int32_t *)params.actualKvseqlen);
         AscendC::GlobalTensor<ElementO> gO;
         gO.SetGlobalBuffer((__gm__ ElementO *)params.o);
+        AscendC::GlobalTensor<float> gSoftmaxLse;
+        gSoftmaxLse.SetGlobalBuffer((__gm__ float *)params.softmaxLse);
 
         // 步骤 3: 绑定 workspace 三块 buffer: accumOut | softmaxMax | softmaxSum
         //   按顺序分配偏移, 与 host 侧 tiling CalculateWorkSpace 的布局一致
@@ -573,7 +575,7 @@ public:
         // 9. Phase 2: 仅 VEC 执行, combine topK 个 partial 到最终输出
         // 9. Phase 2: 仅 VEC 执行, combine topK 个 partial 到最终输出
 #ifdef __DAV_VEC__
-        Phase2CombineScale(gO, gAccumOut, gSoftmaxMax, gSoftmaxSum);
+        Phase2CombineScale(gO, gSoftmaxLse, gAccumOut, gSoftmaxMax, gSoftmaxSum);
 #endif
         // 10. 释放同步事件标志
         ReleaseSyncFlags();
@@ -603,6 +605,7 @@ private:
         totalTaskNumP1_ = tilingData->totalTaskNumP1;
         totalTaskNumP2_ = tilingData->totalTaskNumP2;
         scaleValue_ = tilingData->scaleValue;
+        softmaxLseFlag_ = (tilingData->softmaxLseFlag != 0U);
         accumOutSize_ = tilingData->accumOutSize;
         lseStatSize_ = tilingData->lseStatSize;
         gmSWorkspaceSize_ = tilingData->gmSWorkspaceSize;  // A2: per-core GM S bytes (A5=0)
@@ -1384,6 +1387,7 @@ private:
     __aicore__ inline
     void Phase2CombineScale(
         AscendC::GlobalTensor<ElementO> &gO,
+        AscendC::GlobalTensor<float> &gSoftmaxLse,
         AscendC::GlobalTensor<ElementWorkspaceO> &gAccumOut,
         AscendC::GlobalTensor<float> &gSoftmaxMax,
         AscendC::GlobalTensor<float> &gSoftmaxSum)
@@ -1520,8 +1524,8 @@ private:
         for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNumP2_; taskIdx += coreNum) {
             epilogueRescaleO.FlashDecodeCompute(
                 taskIdx, totalTaskNumP2_,
-                gO, gAccumOut, gSoftmaxMax, gSoftmaxSum,
-                qHeads_, kvHeads_);
+                gO, gSoftmaxLse, gAccumOut, gSoftmaxMax, gSoftmaxSum,
+                qHeads_, kvHeads_, softmaxLseFlag_);
         }
 #endif
 #endif
@@ -1556,6 +1560,7 @@ private:
     uint32_t totalTaskNumP1_;
     uint32_t totalTaskNumP2_;
     float scaleValue_;
+    bool softmaxLseFlag_ = false;
     uint64_t accumOutSize_;
     uint64_t lseStatSize_;
     uint64_t slotOElems_;

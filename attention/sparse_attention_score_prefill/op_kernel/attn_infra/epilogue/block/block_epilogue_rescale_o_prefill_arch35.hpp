@@ -98,6 +98,7 @@ public:
     // HardEvent types share an id safely, per the IFA fdMm2ResBuf1/2 pattern).
     static constexpr uint32_t ACCUM_OUT_STAGES = 2U;
     static constexpr uint32_t ACCUM_OUT_FLAG_BASE = 3U;     // MTE2_V/V_MTE2 id = base + bufId
+    static constexpr uint32_t LSE_OUT_EVENT_ID = 2U;
 
     __aicore__ inline BlockEpilogue() {}
 
@@ -182,25 +183,29 @@ public:
     void FlashDecodeCompute(uint32_t tmpBlockIdx,
                             uint32_t totalTaskNumP2,
                             AscendC::GlobalTensor<ElementO> &gmO,
+                            AscendC::GlobalTensor<T> &gmSoftmaxLse,
                             AscendC::GlobalTensor<TwsO> &gmAccumOut,
                             AscendC::GlobalTensor<T> &gmSoftmaxMax,
                             AscendC::GlobalTensor<T> &gmSoftmaxSum,
                             uint32_t numHeads,
-                            uint32_t kvHeads)
+                            uint32_t kvHeads,
+                            bool softmaxLseFlag)
     {
         if (tmpBlockIdx >= totalTaskNumP2) {
             return;
         }
-        (void)numHeads;
-
         uint32_t qToken = tmpBlockIdx / kvHeads;
         uint32_t kvHeadIdx = tmpBlockIdx % kvHeads;
         // IFA: bIdx * kvHeadNum * gSize * headDim + n2Idx * gSize * headDim
         uint64_t attenOutOffset = static_cast<uint64_t>(qToken) * kvHeads * groupSize_ * D_
             + static_cast<uint64_t>(kvHeadIdx) * groupSize_ * D_;
+        uint64_t softmaxLseOffset = static_cast<uint64_t>(qToken) * numHeads
+            + static_cast<uint64_t>(kvHeadIdx) * groupSize_;
 
         actualCombineLoopSize_ = topK_;
-        CombineSplitKVRes(attenOutOffset, qToken, kvHeadIdx, gmO, gmAccumOut, gmSoftmaxMax, gmSoftmaxSum);
+        CombineSplitKVRes(attenOutOffset, qToken, kvHeadIdx, gmO, gmSoftmaxLse,
+                          gmAccumOut, gmSoftmaxMax, gmSoftmaxSum,
+                          softmaxLseOffset, softmaxLseFlag);
     }
 
 private:
@@ -327,18 +332,42 @@ private:
     __aicore__ inline
     void ComputeScaleValue(AscendC::LocalTensor<T> &lseMaxLocal,
                            AscendC::LocalTensor<T> &lseSumLocal,
-                           uint32_t dealRowCount)
+                           AscendC::LocalTensor<T> &lseOutputLocal,
+                           uint32_t dealRowCount,
+                           bool softmaxLseFlag)
     {
         AscendC::LocalTensor<bfloat16_t> tmpSinkUb;
-        bool softmaxLseFlag = false;
         bool learnableSinkFlag = false;
         //AscendC::DumpTensor(lseMaxLocal, 123, 64);
         //AscendC::DumpTensor(lseSumLocal, 456, 64);
         FaVectorApi::ComputeScaleValue_VF(
-            tmpSinkUb, lseMaxLocal, lseSumLocal, accumOutBuf[0].template ReinterpretCast<T>(),
+            tmpSinkUb, lseMaxLocal, lseSumLocal, lseOutputLocal,
             dealRowCount, actualCombineLoopSize_, softmaxLseFlag, learnableSinkFlag);
         //AscendC::DumpTensor(lseSumLocal, 789, 64);
         AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    __aicore__ inline
+    void CopySoftmaxLseOut(AscendC::GlobalTensor<T> &gmSoftmaxLse,
+                           AscendC::LocalTensor<T> &lseOutputLocal,
+                           uint64_t softmaxLseOffset,
+                           uint32_t dealRowCount)
+    {
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(LSE_OUT_EVENT_ID);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(LSE_OUT_EVENT_ID);
+        AscendC::DataCopyExtParams copyParams{};
+        copyParams.blockCount = dealRowCount;
+        copyParams.blockLen = sizeof(T);
+        copyParams.srcStride = 0;
+        copyParams.dstStride = 0;
+        AscendC::DataCopyPad(gmSoftmaxLse[softmaxLseOffset], lseOutputLocal, copyParams);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(LSE_OUT_EVENT_ID);
+        // ReduceFinalRes reuses accumOutBuf[0], which is also the temporary
+        // LSE output tensor.  Complete the write before the first MTE2 load
+        // can overwrite that storage, and leave the event primed for the next
+        // task and the kernel's final flag drain.
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(LSE_OUT_EVENT_ID);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(LSE_OUT_EVENT_ID);
     }
 
     // ---------------------------------------------------------------------------
@@ -619,15 +648,28 @@ private:
                            uint32_t qToken,
                            uint32_t kvHeadIdx,
                            AscendC::GlobalTensor<ElementO> &gmO,
+                           AscendC::GlobalTensor<T> &gmSoftmaxLse,
                            AscendC::GlobalTensor<TwsO> &gmAccumOut,
                            AscendC::GlobalTensor<T> &gmSoftmaxMax,
-                           AscendC::GlobalTensor<T> &gmSoftmaxSum)
+                           AscendC::GlobalTensor<T> &gmSoftmaxSum,
+                           uint64_t softmaxLseOffset,
+                           bool softmaxLseFlag)
     {
         // groupSize <= 16 fits every UB buffer (lse 8K cap, dst/accumOut/castOut 32K slots)
         // for topK <= 16, D <= 512, so a single chunk covers the whole group.
         CopyLseIn(qToken, kvHeadIdx, groupSize_,
                   gmSoftmaxMax, gmSoftmaxSum, lseMaxBuf_, lseSumBuf_);
-        ComputeScaleValue(lseMaxBuf_, lseSumBuf_, groupSize_);
+        if (softmaxLseFlag) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(LSE_OUT_EVENT_ID);
+        }
+        AscendC::LocalTensor<T> lseOutputLocal =
+            accumOutBuf[0].template ReinterpretCast<T>();
+        ComputeScaleValue(lseMaxBuf_, lseSumBuf_, lseOutputLocal,
+                          groupSize_, softmaxLseFlag);
+        if (softmaxLseFlag) {
+            CopySoftmaxLseOut(gmSoftmaxLse, lseOutputLocal,
+                              softmaxLseOffset, groupSize_);
+        }
         AscendC::LocalTensor<TwsO> dst = dstBuf_;
         ReduceFinalRes(qToken, kvHeadIdx, dst, lseSumBuf_, groupSize_, gmAccumOut);
         CopyFinalResOut(attenOutOffset, gmO, dst, groupSize_);

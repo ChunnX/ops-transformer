@@ -36,6 +36,7 @@ _golden_spec.loader.exec_module(prefill_golden)
 
 make_case = prefill_golden.make_case
 cpu_golden_prefill_bf16 = prefill_golden.cpu_golden_prefill_bf16
+cpu_golden_prefill_phase1 = prefill_golden.cpu_golden_prefill_phase1
 
 
 def _load_prefill_op():
@@ -317,6 +318,86 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         "NPU output is all zeros (suspect Phase2 combine / scale-weight mask)")
     self.assertRtolEqual(
         kv_centric.float().numpy(), npu_out_cpu.float().numpy(), prec=prec)
+
+  def _run_npu_lse_test(self, batch, q_seqlens, kv_seqlens, q_heads, kv_heads,
+                        top_k, seed, inner_precise=4, prec=7e-3):
+    data = make_case(
+        batch, q_seqlens, kv_seqlens, q_heads, kv_heads,
+        128, 128, top_k, seed)
+    attention_golden = cpu_golden_prefill_bf16(
+        data["query"], data["key"], data["value"],
+        data["k2q_row_ptr"], data["k2q_q_indices"], data["k2q_slot_indices"],
+        data["block_table"], data["actual_seq_lengths"],
+        data["actual_seq_lengths_kv"], data["block_size"], data["top_k"],
+        data["scale_value"], inner_precise)
+    _, ws_max, ws_sum = cpu_golden_prefill_phase1(
+        data["query"], data["key"], data["value"],
+        data["k2q_row_ptr"], data["k2q_q_indices"], data["k2q_slot_indices"],
+        data["block_table"], data["actual_seq_lengths"],
+        data["actual_seq_lengths_kv"], data["block_size"], data["top_k"],
+        data["scale_value"], inner_precise)
+
+    valid = torch.isfinite(ws_max) & (ws_sum > 0)
+    safe_max = torch.where(valid, ws_max, torch.full_like(ws_max, -float("inf")))
+    global_max = safe_max.max(dim=2).values
+    exp_weight = torch.where(
+        valid,
+        torch.exp(ws_max - global_max.unsqueeze(2)),
+        torch.zeros_like(ws_sum))
+    global_sum = (ws_sum * exp_weight).sum(dim=2)
+    lse_golden = torch.where(
+        global_sum > 0,
+        global_max + torch.log(global_sum),
+        torch.full_like(global_sum, float("inf")))
+    lse_golden = lse_golden.reshape(data["query"].shape[0], q_heads, 1)
+
+    attention_out, softmax_lse = (
+        torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill_with_lse(
+            data["query"].npu(), data["key"].npu(), data["value"].npu(),
+            data["block_table"].npu(), data["k2q_row_ptr"].npu(),
+            data["k2q_q_indices"].npu(), data["k2q_slot_indices"].npu(),
+            data["actual_seq_lengths"].npu(), data["actual_seq_lengths_kv"].npu(),
+            kv_heads, data["scale_value"], data["block_size"], top_k,
+            inner_precise))
+    attention_cpu = attention_out.cpu()
+    lse_cpu = softmax_lse.cpu()
+
+    self.assertEqual(tuple(softmax_lse.shape), (sum(q_seqlens), q_heads, 1))
+    self.assertEqual(softmax_lse.dtype, torch.float32)
+    self.assertFalse(torch.any(torch.isnan(lse_cpu)))
+    self.assertTrue(torch.equal(torch.isposinf(lse_golden), torch.isposinf(lse_cpu)))
+    self.assertFalse(torch.any(torch.isneginf(lse_cpu)))
+    self.assertRtolEqual(
+        attention_golden.float().numpy(), attention_cpu.float().numpy(), prec=prec)
+    finite = torch.isfinite(lse_golden)
+    if torch.any(finite):
+      self.assertRtolEqual(
+          lse_golden[finite].numpy(), lse_cpu[finite].numpy(), prec=2e-3)
+      lse_diff = (lse_golden[finite] - lse_cpu[finite]).abs()
+      max_diff = lse_diff.max().item()
+      mean_diff = lse_diff.mean().item()
+    else:
+      max_diff = 0.0
+      mean_diff = 0.0
+    print(
+        f"[lse] q={q_seqlens} kv={kv_seqlens} top_k={top_k} "
+        f"inner_precise={inner_precise} max_diff={max_diff:.6f} "
+        f"mean_diff={mean_diff:.6f}")
+
+  def test_bf16_softmax_lse(self):
+    """LSE output has fp32 [T,N,1] metadata and matches the stable golden."""
+    cases = (
+        (1, [4], [512], 8, 2, 3, 601),
+        (1, [8], [300], 8, 2, 3, 602),
+        (1, [32], [2048], 16, 4, 5, 603),
+        (2, [4, 4], [0, 128], 8, 2, 1, 605),
+    )
+    for case in cases:
+      with self.subTest(q=case[1], kv=case[2]):
+        self._run_npu_lse_test(*case)
+    with self.subTest(q=[4], kv=[512], inner_precise=1):
+      self._run_npu_lse_test(
+          1, [4], [512], 8, 2, 3, 604, inner_precise=1, prec=1.5e-2)
 
   def test_bf16_single_batch_small(self):
     print("[test_bf16_single_batch_small]")

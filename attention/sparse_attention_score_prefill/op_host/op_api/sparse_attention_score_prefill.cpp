@@ -26,7 +26,7 @@ OP_TYPE_REGISTER(SparseAttentionScorePrefill);
 //       通过 ADD_TO_LAUNCHER_LIST_AICORE 将算子及其输入/输出/属性注册到 launcher 列表，
 //       供后续在 stream 上启动执行。
 // 返回值：分配得到的输出 tensor 指针；若 InferShape 失败则返回 nullptr。
-const aclTensor *SparseAttentionScorePrefill(
+const std::array<const aclTensor *, 2> SparseAttentionScorePrefill(
     const aclTensor *query,
     const aclTensor *key,
     const aclTensor *value,
@@ -41,12 +41,13 @@ const aclTensor *SparseAttentionScorePrefill(
     int64_t blockSize,
     int64_t topK,
     int64_t innerPrecise,
+    bool softmaxLseFlag,
     aclOpExecutor *executor)
 {
     L0_DFX(SparseAttentionScorePrefill, query, key, value, blockTable,
            k2qRowPtr, k2qQIndices, k2qSlotIndices,
            actualSeqLengthsOptional, actualSeqLengthsKvOptional,
-           numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise);
+           numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise, softmaxLseFlag);
 
     // aclTensor keeps logical dimensions in ViewShape while StorageShape may
     // be flattened for strided views.  Allocating from the logical shape
@@ -56,21 +57,34 @@ const aclTensor *SparseAttentionScorePrefill(
     if (attentionOutTensor == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
                 "SparseAttentionScorePrefill AllocTensor failed.");
-        return nullptr;
+        return {nullptr, nullptr};
+    }
+
+    const auto &queryShape = query->GetViewShape();
+    op::Shape softmaxLseShape = softmaxLseFlag
+        ? op::Shape{queryShape.GetDim(0), queryShape.GetDim(1), 1}
+        : op::Shape{0};
+    auto softmaxLseTensor = executor->AllocTensor(
+        softmaxLseShape, DataType::DT_FLOAT, Format::FORMAT_ND);
+    if (softmaxLseTensor == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
+                "SparseAttentionScorePrefill softmaxLse AllocTensor failed.");
+        return {nullptr, nullptr};
     }
 
     ADD_TO_LAUNCHER_LIST_AICORE(SparseAttentionScorePrefill,
                                 OP_INPUT(query, key, value, blockTable,
                                          k2qRowPtr, k2qQIndices, k2qSlotIndices,
                                          actualSeqLengthsOptional, actualSeqLengthsKvOptional),
-                                OP_OUTPUT(attentionOutTensor),
+                                OP_OUTPUT(attentionOutTensor, softmaxLseTensor),
                                 OP_ATTR(static_cast<int64_t>(numKeyValueHeads),
                                         static_cast<float>(scaleValue),
                                         static_cast<int64_t>(blockSize),
                                         static_cast<int64_t>(topK),
-                                        static_cast<int64_t>(innerPrecise)));
+                                        static_cast<int64_t>(innerPrecise),
+                                        softmaxLseFlag));
 
-    return attentionOutTensor;
+    return {attentionOutTensor, softmaxLseTensor};
 }
 
 } // namespace l0op
