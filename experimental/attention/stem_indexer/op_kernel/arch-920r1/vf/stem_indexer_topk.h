@@ -20,7 +20,7 @@
 #include "vf_topk_16_gather.h"
 
 namespace SIKernel {
-template <typename SCORE_T>
+template <typename SCORE_T, uint32_t TRUNK_LEN = SICommon::TOPK_TRUNK_LEN>
 class StemIndexerTopk {
 public:
     static constexpr uint32_t MAX_LOOP_M = 4;
@@ -35,8 +35,8 @@ public:
     static constexpr uint64_t IDX_WORKSPACE_SIZE_U32 = IDX_BUFFER_NUM * IDX_BUFFER_SIZE_U32;
     static constexpr uint64_t HISTOGRAM_SIZE_U32 = MAX_LOOP_M * TOPK_ALIGN_SIZE;
     static constexpr uint64_t NK_VALUE_SIZE_U32 = MAX_LOOP_M * NK_VALUE_PER_ROW;
-    // uint16路径的临时索引需要覆盖[history 256][current 512]，uint32路径只保留最终TopK索引。
-    static constexpr uint64_t TMP_INDEX_STRIDE_U16 = TOPK_ALIGN_SIZE + SICommon::TOPK_TRUNK_LEN;
+    // uint16路径的临时索引需要覆盖[history 256][current TRUNK_LEN]，uint32路径只保留最终TopK索引。
+    static constexpr uint64_t TMP_INDEX_STRIDE_U16 = TOPK_ALIGN_SIZE + TRUNK_LEN;
     static constexpr uint64_t TMP_INDEX_SIZE_U32 =
         std::is_same_v<SCORE_T, uint16_t> ? MAX_LOOP_M * TMP_INDEX_STRIDE_U16 / 2U :
                                            MAX_LOOP_M * TOPK_ALIGN_SIZE;
@@ -84,7 +84,7 @@ public:
     {
         const uint32_t offset = mrgRowStride;
         const uint32_t topkAlign = 256U;
-        const uint32_t tmpIdxStride16 = topkAlign + SICommon::TOPK_TRUNK_LEN;
+        const uint32_t tmpIdxStride16 = topkAlign + TRUNK_LEN;
         InitBuffers(reuseMm1ResLocal, reuseGlobalIndexLocal);
 
         LocalTensor<SCORE_T> inputValueLocal = mrgValueLocal[inputOffset];
@@ -166,12 +166,12 @@ public:
                 SITopkb16gather::SiTopKGatherVF(hisIndexLocal[1], tmpIdxLocal16, hisIndexLocal[0], topkAlign,
                                                 tmpIdxStride16, topkAlign, rowIdx4.v0, rowIdx4.v1, rowIdx4.v2,
                                                 rowIdx4.v3, topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3,
-                                                loopIdx * SICommon::TOPK_TRUNK_LEN - topkAlign);
+                                                loopIdx * TRUNK_LEN - topkAlign);
             } else {
                 SITopkb32gather::SiTopKGatherVF(hisIndexLocal[1], tmpIndexLocal, hisIndexLocal[0], topkAlign, topkAlign,
                                                 topkAlign, rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3, topkNum4.v0,
                                                 topkNum4.v1, topkNum4.v2, topkNum4.v3,
-                                                loopIdx * SICommon::TOPK_TRUNK_LEN - topkAlign);
+                                                loopIdx * TRUNK_LEN - topkAlign);
             }
             PipeBarrier<PIPE_V>();
             for (uint32_t m = 0; m < batchRowNum; ++m) {

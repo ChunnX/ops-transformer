@@ -79,7 +79,7 @@ __simd_callee__ inline void PadMrgOneRowNotFirstS2RangeVFCore(__ubuf__ SCORE_T *
     PadMrgRowRangeVFCore(rowBuf, topkSelectNumAlign + s2BlockValidLen, topkSelectNumAlign + s2BlockValidLenAlign);
 }
 
-template <typename SCORE_T>
+template <typename SCORE_T, uint32_t TRUNK_LEN = SICommon::TOPK_TRUNK_LEN>
 __simd_vf__ inline void
 PadMrgFourRowsFirstS2RangeVFImpl(__ubuf__ SCORE_T *mrgValueBuf, const uint32_t rowStride, const uint32_t rowIdx0,
                                  const uint32_t rowIdx1, const uint32_t rowIdx2, const uint32_t rowIdx3,
@@ -88,16 +88,16 @@ PadMrgFourRowsFirstS2RangeVFImpl(__ubuf__ SCORE_T *mrgValueBuf, const uint32_t r
                                  const uint32_t s2ValidLen2, const uint32_t s2ValidLen3)
 {
     PadMrgOneRowFirstS2RangeVFCore(mrgValueBuf + rowIdx0 * rowStride, topkNum0, s2ValidLen0,
-                                   PadMrgAlignUp(s2ValidLen0, SICommon::TOPK_TRUNK_LEN));
+                                   PadMrgAlignUp(s2ValidLen0, TRUNK_LEN));
     PadMrgOneRowFirstS2RangeVFCore(mrgValueBuf + rowIdx1 * rowStride, topkNum1, s2ValidLen1,
-                                   PadMrgAlignUp(s2ValidLen1, SICommon::TOPK_TRUNK_LEN));
+                                   PadMrgAlignUp(s2ValidLen1, TRUNK_LEN));
     PadMrgOneRowFirstS2RangeVFCore(mrgValueBuf + rowIdx2 * rowStride, topkNum2, s2ValidLen2,
-                                   PadMrgAlignUp(s2ValidLen2, SICommon::TOPK_TRUNK_LEN));
+                                   PadMrgAlignUp(s2ValidLen2, TRUNK_LEN));
     PadMrgOneRowFirstS2RangeVFCore(mrgValueBuf + rowIdx3 * rowStride, topkNum3, s2ValidLen3,
-                                   PadMrgAlignUp(s2ValidLen3, SICommon::TOPK_TRUNK_LEN));
+                                   PadMrgAlignUp(s2ValidLen3, TRUNK_LEN));
 }
 
-template <typename SCORE_T>
+template <typename SCORE_T, uint32_t TRUNK_LEN = SICommon::TOPK_TRUNK_LEN>
 __simd_vf__ inline void
 PadMrgFourRowsNotFirstS2RangeVFImpl(__ubuf__ SCORE_T *mrgValueBuf, const uint32_t rowStride, const uint32_t rowIdx0,
                                     const uint32_t rowIdx1, const uint32_t rowIdx2, const uint32_t rowIdx3,
@@ -106,13 +106,13 @@ PadMrgFourRowsNotFirstS2RangeVFImpl(__ubuf__ SCORE_T *mrgValueBuf, const uint32_
                                     const uint32_t s2ValidLen2, const uint32_t s2ValidLen3)
 {
     PadMrgOneRowNotFirstS2RangeVFCore(mrgValueBuf + rowIdx0 * rowStride, topkNum0, s2ValidLen0,
-                                      SICommon::TOPK_TRUNK_LEN);
+                                      TRUNK_LEN);
     PadMrgOneRowNotFirstS2RangeVFCore(mrgValueBuf + rowIdx1 * rowStride, topkNum1, s2ValidLen1,
-                                      SICommon::TOPK_TRUNK_LEN);
+                                      TRUNK_LEN);
     PadMrgOneRowNotFirstS2RangeVFCore(mrgValueBuf + rowIdx2 * rowStride, topkNum2, s2ValidLen2,
-                                      SICommon::TOPK_TRUNK_LEN);
+                                      TRUNK_LEN);
     PadMrgOneRowNotFirstS2RangeVFCore(mrgValueBuf + rowIdx3 * rowStride, topkNum3, s2ValidLen3,
-                                      SICommon::TOPK_TRUNK_LEN);
+                                      TRUNK_LEN);
 }
 
 template <typename SCORE_T>
@@ -146,7 +146,7 @@ __aicore__ inline void PadMrgRowsInitBlockVF(LocalTensor<SCORE_T> &mrgValueLocal
     PadMrgRowsInitBlockVFImpl<SCORE_T>(mrgValueBuf, rowStride, rowNum, topkSelectNumAlign, initialBlocks);
 }
 
-template <typename SCORE_T>
+template <typename SCORE_T, uint32_t TRUNK_LEN = SICommon::TOPK_TRUNK_LEN>
 __aicore__ inline void PadMrgFourRowsFirstS2RangeVF(const LocalTensor<SCORE_T> &mrgValueLocal,
                                                     const SICommon::RowIdx4 &rowIdx4,
                                                     const SICommon::TopkNum4 &topkNum4,
@@ -154,12 +154,12 @@ __aicore__ inline void PadMrgFourRowsFirstS2RangeVF(const LocalTensor<SCORE_T> &
 {
     __ubuf__ SCORE_T *mrgValueBuf = (__ubuf__ SCORE_T *)mrgValueLocal.GetPhyAddr();
     // The caller duplicates the last valid row into tail lanes, so VF always processes four rows without branches.
-    PadMrgFourRowsFirstS2RangeVFImpl<SCORE_T>(mrgValueBuf, rowStride, rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
-                                              topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3, s2ValidLen4.v0,
-                                              s2ValidLen4.v1, s2ValidLen4.v2, s2ValidLen4.v3);
+    PadMrgFourRowsFirstS2RangeVFImpl<SCORE_T, TRUNK_LEN>(
+        mrgValueBuf, rowStride, rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3, topkNum4.v0, topkNum4.v1,
+        topkNum4.v2, topkNum4.v3, s2ValidLen4.v0, s2ValidLen4.v1, s2ValidLen4.v2, s2ValidLen4.v3);
 }
 
-template <typename SCORE_T>
+template <typename SCORE_T, uint32_t TRUNK_LEN = SICommon::TOPK_TRUNK_LEN>
 __aicore__ inline void
 PadMrgFourRowsNotFirstS2RangeVF(const LocalTensor<SCORE_T> &mrgValueLocal, const SICommon::RowIdx4 &rowIdx4,
                                 const SICommon::TopkNum4 &topkNum4, const SICommon::S2ValidLen4 &s2ValidLen4,
@@ -167,9 +167,9 @@ PadMrgFourRowsNotFirstS2RangeVF(const LocalTensor<SCORE_T> &mrgValueLocal, const
 {
     __ubuf__ SCORE_T *mrgValueBuf = (__ubuf__ SCORE_T *)mrgValueLocal.GetPhyAddr();
     // The caller duplicates the last valid row into tail lanes, so VF always processes four rows without branches.
-    PadMrgFourRowsNotFirstS2RangeVFImpl<SCORE_T>(mrgValueBuf, rowStride, rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
-                                                 topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3, s2ValidLen4.v0,
-                                                 s2ValidLen4.v1, s2ValidLen4.v2, s2ValidLen4.v3);
+    PadMrgFourRowsNotFirstS2RangeVFImpl<SCORE_T, TRUNK_LEN>(
+        mrgValueBuf, rowStride, rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3, topkNum4.v0, topkNum4.v1,
+        topkNum4.v2, topkNum4.v3, s2ValidLen4.v0, s2ValidLen4.v1, s2ValidLen4.v2, s2ValidLen4.v3);
 }
 
 __simd_vf__ inline void PackSparseIndicesU32VFImpl(__ubuf__ uint32_t *outBuf, __ubuf__ uint32_t *topkBuf,

@@ -352,6 +352,7 @@ SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_t *kflat, __gm__ uint8_
         sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
         vectorService.InitParams(constInfo, aiCoreIdx);
+        vectorService.InitScoreWorkspace(workspace);
         vectorService.InitVecInputTensor(vbiasGm, sparseIndicesGm, sparseSeqLenGm);
     } else {
         queryGm.SetGlobalBuffer((__gm__ Q_T *)qflat);
@@ -543,8 +544,15 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
             vectorService.InitSparseIndicesToNegOne(runInfo.gS1Idx, runInfo.actMBaseSize, runInfo.actS1Size,
                                                     runInfo.indiceOutOffset);
         }
-        vectorService.ProcessVec1(runInfo);
-        vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
+        if constexpr (SIVector<SIT>::ENABLE_SCORE_GM_TOPK) {
+            vectorService.ProcessVec1ScoreGm(runInfo);
+            if (runInfo.isLastS2InnerLoop) {
+                vectorService.ProcessScoreGmTopK(runInfo);
+            }
+        } else {
+            vectorService.ProcessVec1(runInfo);
+            vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
+        }
     }
 }
 
