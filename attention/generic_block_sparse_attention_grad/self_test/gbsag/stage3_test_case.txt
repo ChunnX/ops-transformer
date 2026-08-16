@@ -1,0 +1,10 @@
+# Explicit stage-3 aggregation cases: blockX values below/above 128,
+# both layouts, GQA groups and non-contiguous sparse selections.
+[1, 4, 256, 256, 128, 2, 1.0, "gqa", "bnsd", (1, 128)]
+[2, 4, 257, 193, 128, 2, 1.0, "gqa", "tnd", (2, 127)]
+[1, 8, 511, 257, 128, 4, 0.75, "gqa", "bnsd", (7, 129)]
+[2, 8, 383, 513, 128, 4, 0.5, "gqa", "tnd", (16, 255)]
+[1, 6, 385, 319, 128, 2, 0.5, "gqa", "bnsd", (63, 127)]
+[2, 6, 513, 385, 128, 2, 0.5, "gqa", "tnd", (127, 63)]
+[1, 4, 2049, 513, 128, 2, 0.5, "gqa", "bnsd", (129, 257)]
+[2, 4, 513, 2049, 128, 2, 0.5, "gqa", "tnd", (256, 129)]

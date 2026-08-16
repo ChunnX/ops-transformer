@@ -1,0 +1,2 @@
+add_op_to_compiled_list()
+add_modules_sources(OPTYPE generic_block_sparse_attention_grad_metadata ACLNNTYPE aclnn)

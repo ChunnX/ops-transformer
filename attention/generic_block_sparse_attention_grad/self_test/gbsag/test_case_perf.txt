@@ -1,0 +1,9 @@
+# B, N1, S1_max, S2_max, D, num_kv_heads, sparsity, mha_type, format_type, block_shape
+# Run every case once with torch.float16 and once with torch.bfloat16.
+# This covers ARC22 K_OUT tiling keys 100/101/110/111; D is fixed at 128 by the operator design.
+
+# Minimal M/N tails and single K task
+#[1, 64, 14928, 14928, 128, 4, 0.14, "gqa", "bnsd", (1, 128)]
+#[1, 64, 14928, 14928, 128, 4, 0.14, "gqa", "bnsd", (1, 128)]
+# [1, 8, 128, 128, 128, 1, 0.14, "gqa", "bnsd", (1, 128)]
+[1, 2, 512, 512, 128, 1, 0.14, "gqa", "bnsd", (1, 128)]

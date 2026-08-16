@@ -1,0 +1,136 @@
+# B, N1, S1_max, S2_max, D, num_kv_heads, sparsity, mha_type, format_type, block_shape, mask_type, is_use_q_seqlen_list, is_use_kv_seqlen_list
+# Run every case once with torch.float16 and once with torch.bfloat16.
+# This covers ARC22 K_OUT tiling keys 100/101/110/111; D is fixed at 128 by the operator design.
+
+# Minimal M/N tails and single K task
+[1, 2, 1, 1, 128, 1, 1.0, 'gqa', 'bnsd', (1, 64), 1, False, False]
+[1, 2, 1, 1, 128, 1, 1.0, 'gqa', 'tnd', (1, 64), 1, False, False]
+
+# Basic-tile boundaries: 127, 128, and 129
+[1, 4, 127, 127, 128, 2, 1.0, 'gqa', 'bnsd', (1, 128), 1, False, False]
+[2, 4, 127, 127, 128, 2, 0.5, 'gqa', 'tnd', (1, 128), 1, False, False]
+[1, 4, 128, 128, 128, 2, 0.5, 'gqa', 'bnsd', (1, 128), 1, True, True]
+[2, 4, 128, 128, 128, 2, 1.0, 'gqa', 'tnd', (1, 128), 1, False, False]
+[1, 4, 129, 129, 128, 1, 0.5, 'gqa', 'bnsd', (1, 128), 1, False, False]
+[2, 4, 129, 129, 128, 1, 0.5, 'gqa', 'tnd', (1, 128), 1, False, False]
+
+# Asymmetric Q/K lengths and sparse blocks
+[1, 8, 63, 257, 128, 2, 0.5, 'gqa', 'bnsd', (1, 128), 1, False, False]
+[2, 8, 257, 63, 128, 2, 0.5, 'gqa', 'tnd', (1, 64), 1, False, False]
+[1, 8, 256, 128, 128, 4, 0.25, 'gqa', 'bnsd', (1, 128), 1, False, False]
+[3, 8, 128, 256, 128, 4, 0.75, 'gqa', 'tnd', (1, 256), 1, False, False]
+
+# Non-128-multiple sparse blocks exercise 128+tail splitting
+[1, 6, 383, 383, 128, 2, 0.5, 'gqa', 'bnsd', (1, 192), 1, False, False]
+[2, 6, 385, 385, 128, 2, 0.25, 'gqa', 'tnd', (1, 192), 1, False, False]
+
+# Host core partition boundaries: 20-task, 24-task, and uneven 68-task candidates
+[1, 8, 129, 640, 128, 4, 0.5, 'gqa', 'bnsd', (1, 128), 1, False, False]
+[1, 8, 129, 641, 128, 4, 0.5, 'gqa', 'bnsd', (1, 128), 1, False, False]
+[1, 8, 129, 2049, 128, 4, 0.25, 'gqa', 'bnsd', (1, 128), 1, False, False]
+
+# Multi-batch TND prefix and K-task advancement
+[4, 8, 511, 511, 128, 2, 0.25, 'gqa', 'tnd', (1, 128), 1, False, False]
+[3, 8, 383, 513, 128, 4, 0.5, 'gqa', 'tnd', (1, 256), 1, False, False]
+
+# GQA group-size and head-stride coverage
+[1, 16, 255, 256, 128, 2, 0.5, 'gqa', 'bnsd', (1, 128), 1, False, False]
+[2, 6, 257, 129, 128, 2, 0.75, 'gqa', 'tnd', (1, 64), 1, False, False]
+[1, 12, 256, 257, 128, 3, 0.5, 'gqa', 'bnsd', (1, 192), 1, False, False]
+[2, 10, 255, 383, 128, 2, 0.75, 'gqa', 'bnsd', (1, 192), 1, False, False]
+
+# Dense and sparse longer-loop regression
+[2, 8, 512, 512, 128, 4, 1.0, 'gqa', 'bnsd', (1, 128), 1, False, False]
+[3, 8, 512, 512, 128, 4, 0.25, 'gqa', 'tnd', (1, 256), 1, False, False]
+
+# Sequence range endpoints and 2048 block upper bound
+[1, 2, 1, 4096, 128, 1, 0.5, 'gqa', 'bnsd', (1, 2048), 1, False, False]
+[1, 2, 4096, 1, 128, 1, 0.5, 'gqa', 'tnd', (1, 128), 1, False, False]
+[1, 2, 4096, 4096, 128, 1, 0.25, 'gqa', 'bnsd', (1, 2048), 1, False, False]
+
+# Sequence and block dimensions that are multiples of 128
+[1, 4, 384, 768, 128, 2, 0.5, 'gqa', 'bnsd', (1, 768), 1, False, False]
+[2, 4, 1024, 3072, 128, 2, 0.25, 'gqa', 'tnd', (1, 1536), 1, False, False]
+[1, 4, 2048, 256, 128, 2, 0.5, 'gqa', 'bnsd', (1, 256), 1, False, False]
+[2, 4, 256, 2048, 128, 2, 0.5, 'gqa', 'tnd', (1, 1024), 1, False, False]
+
+# Sequence dimensions not divisible by 64 or 128; block dimensions not divisible by 128
+[1, 4, 65, 193, 128, 2, 1.0, 'gqa', 'bnsd', (1, 257), 1, False, False]
+[2, 4, 191, 319, 128, 2, 0.5, 'gqa', 'tnd', (1, 383), 1, True, True]
+[1, 2, 2047, 129, 128, 1, 0.5, 'gqa', 'bnsd', (1, 129), 1, False, False]
+[2, 2, 129, 2049, 128, 1, 0.25, 'gqa', 'tnd', (1, 1025), 1, False, False]
+[1, 2, 4095, 65, 128, 1, 0.5, 'gqa', 'bnsd', (1, 193), 1, False, False]
+[2, 2, 65, 4095, 128, 1, 0.5, 'gqa', 'tnd', (1, 2047), 1, False, False]
+
+# Mixed 2048 upper-bound and non-128 block dimensions
+[1, 4, 2049, 193, 128, 2, 0.5, 'gqa', 'bnsd', (1, 2047), 1, False, False]
+[2, 4, 193, 2049, 128, 2, 0.5, 'gqa', 'tnd', (1, 2048), 1, False, False]
+
+# Pairwise combinations: sequence class x block class x layout x GQA group x sparsity
+[2, 8, 1, 4096, 128, 2, 0.25, 'gqa', 'tnd', (1, 2048), 1, False, False]
+[1, 16, 4096, 1, 128, 2, 1.0, 'gqa', 'bnsd', (1, 257), 1, False, False]
+[2, 6, 4096, 4095, 128, 2, 0.5, 'gqa', 'tnd', (1, 2048), 1, False, False]
+[1, 10, 4095, 4096, 128, 2, 0.25, 'gqa', 'bnsd', (1, 2047), 1, False, False]
+[2, 8, 1024, 2049, 128, 4, 0.75, 'gqa', 'tnd', (1, 1025), 1, True, True]
+[1, 12, 2047, 3072, 128, 3, 0.5, 'gqa', 'bnsd', (1, 1536), 1, False, False]
+[3, 8, 768, 1536, 128, 2, 0.25, 'gqa', 'tnd', (1, 769), 1, False, False]
+[1, 6, 1025, 2049, 128, 2, 1.0, 'gqa', 'bnsd', (1, 2048), 1, False, False]
+[2, 16, 128, 4095, 128, 2, 0.5, 'gqa', 'tnd', (1, 2047), 1, False, False]
+[1, 10, 4095, 128, 128, 2, 0.75, 'gqa', 'bnsd', (1, 129), 1, False, False]
+[2, 8, 256, 3073, 128, 4, 0.25, 'gqa', 'tnd', (1, 1537), 1, True, True]
+[1, 8, 3073, 256, 128, 4, 0.5, 'gqa', 'bnsd', (1, 2048), 1, False, False]
+[3, 6, 193, 2048, 128, 2, 1.0, 'gqa', 'tnd', (1, 1025), 1, False, False]
+[2, 12, 2048, 193, 128, 3, 0.5, 'gqa', 'bnsd', (1, 384), 1, False, False]
+[1, 2, 4096, 4096, 128, 1, 0.25, 'gqa', 'tnd', (1, 2047), 1, False, False]
+[1, 4, 2049, 2047, 128, 1, 0.5, 'gqa', 'bnsd', (1, 2048), 1, False, False]
+
+# Stage-3 Q-block aggregation: blockX below/above 128, both layouts and GQA.
+[1, 4, 256, 256, 128, 2, 1.0, 'gqa', 'bnsd', (1, 128), 1, False, False]
+[2, 4, 257, 193, 128, 2, 1.0, 'gqa', 'tnd', (1, 128), 1, False, False]
+[1, 8, 511, 257, 128, 4, 0.75, 'gqa', 'bnsd', (1, 192), 1, False, False]
+[2, 8, 383, 513, 128, 4, 0.5, 'gqa', 'tnd', (1, 256), 1, False, False]
+[1, 6, 385, 319, 128, 2, 0.5, 'gqa', 'bnsd', (1, 128), 1, False, False]
+[2, 6, 513, 385, 128, 2, 0.5, 'gqa', 'tnd', (1, 128), 1, False, False]
+[1, 4, 2049, 513, 128, 2, 0.5, 'gqa', 'bnsd', (1, 256), 1, False, False]
+[2, 4, 513, 2049, 128, 2, 0.5, 'gqa', 'tnd', (1, 132), 1, False, False]
+
+# BSND layout: small address checks and FP16 long-sequence coverage.
+[2, 4, 64, 80, 128, 2, 0.5, 'gqa', 'bsnd', (32, 64), 1, False, False]
+[2, 4, 65, 63, 128, 2, 0.5, 'gqa', 'bsnd', (1, 64), 1, False, False]
+[1, 4, 2048, 2048, 128, 2, 0.5, 'gqa', 'bsnd', (128, 128), 1, False, False]
+[2, 4, 2048, 2048, 128, 2, 0.25, 'gqa', 'bsnd', (128, 128), 1, False, False]
+[2, 4, 2049, 2047, 128, 2, 0.5, 'gqa', 'bsnd', (1, 128), 1, False, False]
+[1, 8, 3073, 2048, 128, 4, 0.5, 'gqa', 'bsnd', (128, 128), 1, False, False]
+
+# BNSD per-batch variable actual sequence lengths. The twelfth field enables
+# variable generation for this case without changing other BNSD regressions.
+[2, 4, 65, 63, 32, 2, 0.5, 'gqa', 'bnsd', (1, 32), 1, False, False]
+[3, 6, 97, 83, 32, 3, 0.5, 'gqa', 'bnsd', (32, 32), 1, False, False]
+
+# Causal FP16 coverage.
+[1, 2, 64, 64, 128, 1, 1.0, 'gqa', 'BNSD', (64, 64), 1, False, False]
+[1, 4, 65, 129, 128, 2, 1.0, 'gqa', 'BNSD', (64, 64), 1, False, False]
+[1, 4, 129, 65, 128, 2, 1.0, 'gqa', 'BNSD', (64, 64), 1, False, False]
+[1, 4, 65, 129, 128, 2, 1.0, 'gqa', 'TND', (64, 64), 1, False, False]
+[1, 4, 129, 65, 128, 2, 1.0, 'gqa', 'TND', (64, 64), 1, False, False]
+[1, 4, 129, 129, 128, 2, 1.0, 'gqa', 'TND', (64, 64), 1, False, False]
+[1, 4, 257, 129, 128, 2, 1.0, 'gqa', 'BNSD', (128, 64), 1, False, False]
+[1, 4, 129, 257, 128, 2, 0.5, 'gqa', 'BNSD', (64, 128), 1, False, False]
+
+# Alternating causal=True/False sequence-state coverage.
+[1, 2, 64, 64, 128, 1, 1.0, 'gqa', 'BNSD', (64, 64), 1, False, False]
+[1, 2, 64, 64, 128, 1, 1.0, 'gqa', 'BNSD', (64, 64), 1, False, False]
+[1, 4, 65, 129, 128, 2, 1.0, 'gqa', 'BNSD', (64, 64), 1, False, False]
+[1, 4, 65, 129, 128, 2, 1.0, 'gqa', 'BNSD', (64, 64), 1, False, False]
+[1, 4, 129, 65, 128, 2, 1.0, 'gqa', 'BNSD', (64, 64), 1, False, False]
+[1, 4, 129, 65, 128, 2, 1.0, 'gqa', 'BNSD', (64, 64), 1, False, False]
+[1, 4, 65, 129, 128, 2, 1.0, 'gqa', 'TND', (64, 64), 1, False, False]
+[1, 4, 65, 129, 128, 2, 1.0, 'gqa', 'TND', (64, 64), 1, False, False]
+[1, 4, 129, 65, 128, 2, 1.0, 'gqa', 'TND', (64, 64), 1, False, False]
+[1, 4, 129, 65, 128, 2, 1.0, 'gqa', 'TND', (64, 64), 1, False, False]
+[1, 4, 129, 129, 128, 2, 1.0, 'gqa', 'TND', (64, 64), 1, False, False]
+[1, 4, 129, 129, 128, 2, 1.0, 'gqa', 'TND', (64, 64), 1, False, False]
+[1, 4, 257, 129, 128, 2, 1.0, 'gqa', 'BNSD', (128, 64), 1, False, False]
+[1, 4, 257, 129, 128, 2, 1.0, 'gqa', 'BNSD', (128, 64), 1, False, False]
+[1, 4, 129, 257, 128, 2, 0.5, 'gqa', 'BNSD', (64, 128), 1, False, False]
+[1, 4, 129, 257, 128, 2, 0.5, 'gqa', 'BNSD', (64, 128), 1, False, False]
