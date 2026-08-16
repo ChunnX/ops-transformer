@@ -530,6 +530,13 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
     self._run_constant_boundary_npu_test(
         q_seqlens=[128], kv_seqlens=[262144], label="kv_256k_boundary")
 
+  def test_bf16_total_q_1024k_boundary(self):
+    """The maximum advertised total Q length works across packed batches."""
+    q_seqlens = [262144] * 4
+    self._run_constant_boundary_npu_test(
+        q_seqlens=q_seqlens, kv_seqlens=q_seqlens,
+        label="total_q_1024k_boundary")
+
   def test_bf16_axis0_strided_qkv(self):
     """Q/K/V views with independent leading strides match contiguous input."""
     print("[test_bf16_axis0_strided_qkv]")
