@@ -965,9 +965,7 @@ def fp32_to_e8m0fnu_safe(scale, name="scale"):
         packed = scale_tensor.contiguous()
         nan_byte_count = int((packed.view(torch.uint8) == 0xFF).sum().item())
         if nan_byte_count:
-            raise ValueError(
-                f"{name}: {nan_byte_count} e8m0fnu NaN values (0xFF)"
-            )
+            raise ValueError(f"{name}: {nan_byte_count} e8m0fnu NaN values (0xFF)")
         return packed.clone()
 
     scale_safe = sanitize_e8m0_scale(scale, name)
@@ -994,9 +992,7 @@ def e8m0fnu_to_fp32(scale_e8m0, name="scale"):
 
     nan_byte_count = int((packed == 0xFF).sum().item())
     if nan_byte_count:
-        raise ValueError(
-            f"{name}: {nan_byte_count} e8m0fnu NaN values (0xFF)"
-        )
+        raise ValueError(f"{name}: {nan_byte_count} e8m0fnu NaN values (0xFF)")
 
     exponent = packed.to(torch.int32) - 127
     return torch.ldexp(torch.ones(packed.shape, dtype=torch.float32), exponent)
@@ -1325,9 +1321,7 @@ def generate_mxfp8_inputs(case=None, max_block_per_batch=None, atten_mask_shape=
         # P scale has the same single source of truth as Q/K/V descale: encode
         # once to E8M0 here.  CPU golden decodes these exact bytes to FP32;
         # NPU consumes the bytes directly, so arbitrary inputs cannot diverge.
-        p_scale_fp32 = torch.tensor(
-            [float(p_scale_value)], dtype=torch.float32
-        )
+        p_scale_fp32 = torch.tensor([float(p_scale_value)], dtype=torch.float32)
         if not bool(torch.isfinite(p_scale_fp32).all()) or bool(
             (p_scale_fp32 <= 0).any()
         ):
