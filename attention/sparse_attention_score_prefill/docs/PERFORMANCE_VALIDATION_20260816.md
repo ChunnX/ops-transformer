@@ -37,6 +37,11 @@ The default fp32-O_partial path (`innerPrecise=4`) meets the required 20%
 reduction. The BF16-O_partial path (`innerPrecise=1`) is also faster than the
 baseline and is 3.43% faster than the default path at 128K.
 
+The installed OPP binary was checked against the `innerPrecise=4` profile
+dump after the final rebuild. Both SHA256 values are
+`282ec1a18cba0a99188f493794377c3403fd8600f38015178dccc35bd9927396`, so the
+128K profile corresponds to the currently installed kernel.
+
 Profile evidence:
 
 - Score baseline:
@@ -80,6 +85,17 @@ rebuilt and installed:
 
 The representative precision matrix reported max absolute differences of
 `0.000244` for `innerPrecise=0/4` and `0.000488` for `innerPrecise=1`.
+
+Final revalidation after the last installation:
+
+- Production GQA inner-precision matrix: `1 passed, 3 subtests passed` in
+  59.12 seconds. Observed max differences were `0.000244`, `0.000122`, and
+  `0.000244` for modes `0`, `1`, and `4`.
+- Short capability regression: `13 passed, 19 subtests passed` in 27.95
+  seconds.
+- KV=256K and total-Q=1024K boundaries: `2 passed` in 12.03 seconds. The
+  former launched in 2.693 ms and the latter in 114.998 ms; both produced the
+  expected constant output exactly.
 
 ## High-Precision Softmax Limitation
 
