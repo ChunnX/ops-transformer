@@ -13,6 +13,11 @@ from .mega_moe import get_symm_buffer_for_mega_moe, mega_moe
 from .deep_ep import MoeDistributeBuffer
 from .flash_attn import flash_attn, flash_attn_metadata
 from .quant_flash_attn import quant_flash_attn, quant_flash_attn_metadata
+from .generic_block_sparse_attention_grad import generic_block_sparse_attention_grad
+from .generic_block_sparse_attention_grad_metadata import (
+    generic_block_sparse_attention_grad_metadata,
+)
+
 from .mixed_quant_sparse_flash_mla import (
     mixed_quant_sparse_flash_mla,
     mixed_quant_sparse_flash_mla_metadata,
