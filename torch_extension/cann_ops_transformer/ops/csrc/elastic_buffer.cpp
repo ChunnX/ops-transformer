@@ -755,7 +755,7 @@ private:
 class ElasticBuffer {
 public:
     ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank = 0,
-                  bool withGrad = false);
+                  bool explicitlyDestroy = true, bool withGrad = false);
     ~ElasticBuffer();
 
     void EngramWrite(const at::Tensor &storage);
@@ -824,6 +824,7 @@ private:
     std::string groupName_;
     int64_t engramNumCpuBytes_;
     int64_t numMaxTokensPerRank_ = 0;
+    bool explicitlyDestroy_ = true;
     bool withGrad_ = false;
 
     void *engramHostBufPtr_ = nullptr;
@@ -853,21 +854,25 @@ private:
 // Constructor
 
 ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank,
-                             bool withGrad)
+                             bool explicitlyDestroy, bool withGrad)
     : groupName_(groupName),
       engramNumCpuBytes_(numCpuBytes),
       destroyed_(false),
       engramWriteCalled_(false),
       numMaxTokensPerRank_(numMaxTokensPerRank),
+      explicitlyDestroy_(explicitlyDestroy),
       withGrad_(withGrad)
 {
     InitHcclEngineCtxFunctions();
     InitHcclFunctions();
 }
 
-// Destructor - automatic resource cleanup
+// Destructor - automatic resource cleanup only when explicitlyDestroy is false
 ElasticBuffer::~ElasticBuffer()
 {
+    if (explicitlyDestroy_) {
+        return;
+    }
     try {
         Destroy();
     } catch (const std::exception &e) {
@@ -1354,10 +1359,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("host_ptr", &OpApi::HostPinnedCounter::HostPtr);
 
     pybind11::class_<Mc2Api::ElasticBuffer>(m, "ElasticBuffer")
-        .def(pybind11::init<const std::string &, int64_t, int64_t, bool>(),
+        .def(pybind11::init<const std::string &, int64_t, int64_t, bool, bool>(),
              pybind11::arg("groupName"),
              pybind11::arg("numCpuBytes"),
              pybind11::arg("numMaxTokensPerRank") = 0,
+             pybind11::arg("explicitlyDestroy") = true,
              pybind11::arg("withGrad") = false)
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
         .def_static("engram_fetch",
