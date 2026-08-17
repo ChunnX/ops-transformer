@@ -611,12 +611,22 @@ int Sample(void *arg)
         double lastWaitNs     = (double)timingHost[6] * NS_PER_CYCLE;
         double lastTotalNs    = (double)timingHost[7] * NS_PER_CYCLE;
 
-        // avgTotalNs 已除以 loopCount (单次平均时间), 用单次数据量 sqeBytes 计算带宽
-        // lastTotalNs: benchMode=0 时 slot[7]=总量(同 slot[3]), 用总数据量; benchMode=1 时为单次, 用 sqeBytes
-        double lastData = (args->benchMode == 0)
-                          ? (double)args->loopCount * args->sqeBytes
-                          : (double)args->sqeBytes;
-        double avgBwGBs = (double)args->sqeBytes / avgTotalNs;
+        // 带宽计算: avgTotalNs 已除以 loopCount (单次平均时间)
+        // - mc2_native (-m 3): 每轮 1 个 Write = sqeBytes
+        //   benchMode=0: slot[7]=总量(同 slot[3]), lastData=loopCount*sqeBytes
+        //   benchMode=1: slot[7]=单次, lastData=sqeBytes
+        // - hcomm (-m 2): 每轮 numSqe 个 WriteNbi = numSqe*sqeBytes, slot[7]=单次
+        double avgData, lastData;
+        if (args->sqeMode == 2) {
+            avgData = (double)args->numSqe * args->sqeBytes;
+            lastData = avgData;
+        } else {
+            avgData = (double)args->sqeBytes;
+            lastData = (args->benchMode == 0)
+                      ? (double)args->loopCount * args->sqeBytes
+                      : (double)args->sqeBytes;
+        }
+        double avgBwGBs = avgData / avgTotalNs;
         double lastBwGBs = lastData / lastTotalNs;
 
         printf("[rank %u (dev %u)] avg  assemble=%.2fus issue=%.2fus wait=%.2fus total=%.2fus bw=%.2fGB/s (over %u loops)\n",
