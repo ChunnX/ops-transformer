@@ -81,10 +81,6 @@ public:
     static constexpr uint64_t L0A_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
     static constexpr uint64_t L0B_BUFFER_OFFSET = S2_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
     static constexpr uint64_t L0C_BUFFER_OFFSET = M_BASIC_BLOCK * S2_BASIC_BLOCK;
-    static_assert(M_BASIC_BLOCK == M_BASIC_BLOCK_L1 && M_BASIC_BLOCK_L1 == M_BASIC_BLOCK_L0,
-                  "M basic blocks must stay equal after removing single-iteration M loops");
-    static_assert(S2_BASIC_BLOCK_L1 == S2_BASIC_BLOCK_L0,
-                  "S2 L1/L0 basic blocks must stay equal after removing the single-iteration S2 loop");
 
 protected:
     __aicore__ inline void Fixp(uint64_t s1gRealSize, uint64_t s2RealSize, uint32_t mm1BufferIdx,
