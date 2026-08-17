@@ -106,30 +106,27 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
 
     int64_t phiDim = phiShape->GetDimNum();
     int64_t xDim = xShape->GetDimNum();
-    OP_CHECK_IF(
-        phiDim != 2,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "phi", std::to_string(phiDim).c_str(), "2"),
-        return GRAPH_FAILED);
-    OP_CHECK_IF(
-        xDim != BSND_DIM_NUM && xDim != TND_DIM_NUM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", std::to_string(xDim).c_str(), "3 or 4"),
-        return GRAPH_FAILED);
+    OP_CHECK_IF(phiDim != 2,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "phi", std::to_string(phiDim).c_str(), "2"),
+                return GRAPH_FAILED);
+    OP_CHECK_IF(xDim != BSND_DIM_NUM && xDim != TND_DIM_NUM,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", std::to_string(xDim).c_str(), "3 or 4"),
+                return GRAPH_FAILED);
 
     int64_t alphaDim = alphaShape->GetDimNum();
-    OP_CHECK_IF(
-        alphaDim != 1,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "alpha", std::to_string(alphaDim).c_str(), "1"),
-        return GRAPH_FAILED);
+    OP_CHECK_IF(alphaDim != 1,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "alpha", std::to_string(alphaDim).c_str(), "1"),
+                return GRAPH_FAILED);
 
     int64_t alphaDimSize = alphaShape->GetDim(0);
     OP_CHECK_IF(alphaDimSize != 2 && alphaDimSize != 3,
-                OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "alpha",
-                                          Ops::Base::ToString(*alphaShape).c_str(), "[2] or [3]"),
+                OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "alpha", Ops::Base::ToString(*alphaShape).c_str(),
+                                          "[2] or [3]"),
                 return GRAPH_FAILED);
     // has residual
     bool hasResi = (alphaDimSize == 3);
 
-    gert::Shape *outShapes[6] = {context->GetOutputShape(OUT_H_IN_INDEX), context->GetOutputShape(OUT_H_POST_INDEX),
+    gert::Shape *outShapes[6] = {context->GetOutputShape(OUT_H_IN_INDEX),  context->GetOutputShape(OUT_H_POST_INDEX),
                                  context->GetOutputShape(OUT_H_RES_INDEX), context->GetOutputShape(OUT_INV_RMS_INDEX),
                                  context->GetOutputShape(OUT_H_MIX_INDEX), context->GetOutputShape(OUT_H_PRE_INDEX)};
 
@@ -149,16 +146,16 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
     uint64_t nn_fac = Factorial(n);
     uint64_t nn_pow = n * n;
     uint64_t doubleN = 2 * n;
-    OP_CHECK_IF(!hasResi && phiDim0 != doubleN,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "phi",
-                                                      Ops::Base::ToString(*phiShape).c_str(),
-                                                      "alpha shape [2] requires phi shape [2n, nD]"),
-                return GRAPH_FAILED);
-    OP_CHECK_IF(hasResi && phiDim0 != nn_fac + doubleN && phiDim0 != nn_pow + doubleN,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    context->GetNodeName(), "phi", Ops::Base::ToString(*phiShape).c_str(),
-                    "alpha shape [3] requires phi to contain the residual branch"),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(
+        !hasResi && phiDim0 != doubleN,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "phi", Ops::Base::ToString(*phiShape).c_str(),
+                                              "alpha shape [2] requires phi shape [2n, nD]"),
+        return GRAPH_FAILED);
+    OP_CHECK_IF(
+        hasResi && phiDim0 != nn_fac + doubleN && phiDim0 != nn_pow + doubleN,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "phi", Ops::Base::ToString(*phiShape).c_str(),
+                                              "alpha shape [3] requires phi to contain the residual branch"),
+        return GRAPH_FAILED);
     if (phiDim0 == (nn_fac + doubleN)) {
         nn = nn_fac;
         isFac = true;

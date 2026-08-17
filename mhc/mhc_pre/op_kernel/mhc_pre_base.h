@@ -49,10 +49,7 @@ __aicore__ inline int32_t CeilDiv(int32_t a, int32_t b)
     return (a + b - 1) / b;
 }
 
-__aicore__ inline int32_t CeilAlign(int32_t a, int32_t b)
-{
-    return CeilDiv(a, b) * b;
-}
+__aicore__ inline int32_t CeilAlign(int32_t a, int32_t b) { return CeilDiv(a, b) * b; }
 
 template <typename T>
 __aicore__ inline int32_t RoundUp(int32_t num)
@@ -82,9 +79,11 @@ __aicore__ inline void GatherMaskByDiagonal(const LocalTensor<float> &output, co
     uint32_t loopCount = dim0 / 16;
     uint64_t rsvdCnt = 0;
     for (uint32_t loopIdx = 0; loopIdx < loopCount; loopIdx++) {
-        GatherMask(output[loopIdx * maskCount], input[loopIdx * totalCount], maskPattern, true, totalCount, {1, 1, 0, 0}, rsvdCnt);
+        GatherMask(output[loopIdx * maskCount], input[loopIdx * totalCount], maskPattern, true, totalCount,
+                   {1, 1, 0, 0}, rsvdCnt);
     }
-    GatherMask(output[loopCount * maskCount], input[loopCount * totalCount], maskPattern, true, maskCount, {1, dim0, src0StriRepeat, 1}, rsvdCnt);
+    GatherMask(output[loopCount * maskCount], input[loopCount * totalCount], maskPattern, true, maskCount,
+               {1, dim0, src0StriRepeat, 1}, rsvdCnt);
     PipeBarrier<PIPE_V>();
 }
 
@@ -206,8 +205,9 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
                 instrParams.src0RepStride = DEFAULT_REPEAT_STRIDE;
                 instrParams.src1RepStride = 0;
                 for (uint32_t i = 0; i < curRowNum; i++) {
-                    Mul(output[i * curColNumAlign], input0[i * curColNumAlign], tmpBuffer[(i / numN * elemInOneBlock + i % numN) * elemInOneBlock],
-                        elemInOneRepeat, numRepeatPerLine, instrParams);
+                    Mul(output[i * curColNumAlign], input0[i * curColNumAlign],
+                        tmpBuffer[(i / numN * elemInOneBlock + i % numN) * elemInOneBlock], elemInOneRepeat,
+                        numRepeatPerLine, instrParams);
                 }
             } else {
                 // 在Row方向开Repeat
@@ -723,15 +723,16 @@ __aicore__ inline void CopyInWithOuterFor(const GlobalTensor<T> &inputGm, const 
 }
 
 template <typename T>
-__aicore__ inline void CopyInWithOuterFor(const GlobalTensor<T> &inputGm, const LocalTensor<T> &inputTensor, const uint16_t outerLoop,
-                                          const uint16_t nBurst, const uint32_t copyLen, const uint32_t gmFirstDim,
-                                          const uint32_t gmLastDim)
+__aicore__ inline void CopyInWithOuterFor(const GlobalTensor<T> &inputGm, const LocalTensor<T> &inputTensor,
+                                          const uint16_t outerLoop, const uint16_t nBurst, const uint32_t copyLen,
+                                          const uint32_t gmFirstDim, const uint32_t gmLastDim)
 {
     uint32_t elemInOneBlock = BLOCK_SIZE / sizeof(T);
     uint32_t ubLastDimAlign = RoundUp<T>(copyLen);
     if (outerLoop <= nBurst) {
         for (uint32_t i = 0; i < outerLoop; i++) {
-            CopyIn(inputGm[i * nBurst * gmLastDim], inputTensor[i * nBurst * ubLastDimAlign], nBurst, copyLen, gmLastDim - copyLen);
+            CopyIn(inputGm[i * nBurst * gmLastDim], inputTensor[i * nBurst * ubLastDimAlign], nBurst, copyLen,
+                   gmLastDim - copyLen);
         }
     } else {
         uint32_t srcStride = (gmLastDim - copyLen) + (gmFirstDim - 1) * gmLastDim;

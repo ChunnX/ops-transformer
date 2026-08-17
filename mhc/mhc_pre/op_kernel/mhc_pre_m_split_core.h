@@ -81,11 +81,9 @@ public:
         if ASCEND_IS_AIC {
             // 根据 needGrad 决定输出地址
             if (needGrad_) {
-                cubeCompute_.Init(xCastWsGm, phiGm, hcBeforeNormGm, stage1BsFactor, hcMult, d,
-                                  stage1VecCoreNum);
+                cubeCompute_.Init(xCastWsGm, phiGm, hcBeforeNormGm, stage1BsFactor, hcMult, d, stage1VecCoreNum);
             } else {
-                cubeCompute_.Init(xCastWsGm, phiGm, hcBeforeNormWsGm, stage1BsFactor, hcMult, d,
-                                  stage1VecCoreNum);
+                cubeCompute_.Init(xCastWsGm, phiGm, hcBeforeNormWsGm, stage1BsFactor, hcMult, d, stage1VecCoreNum);
             }
             return;
         }
@@ -142,8 +140,7 @@ public:
             for (int32_t taskOffset = blockIdx * stage1BsFactor; taskOffset < totalTasksAligned_;
                  taskOffset += stage1VecCoreNum * stage1BsFactor) {
                 CrossCoreWaitFlag(SYNC_AIC_TO_AIV_FLAG);
-                int32_t curBs =
-                    min(static_cast<int32_t>(stage1BsFactor), static_cast<int32_t>(bs - taskOffset));
+                int32_t curBs = min(static_cast<int32_t>(stage1BsFactor), static_cast<int32_t>(bs - taskOffset));
                 if (curBs > 0) {
                     int64_t curBsOffset = taskOffset;
                     // 初始化 sum 为 0
@@ -154,8 +151,8 @@ public:
 
                     // 分段 ReduceSum
                     for (int64_t ncIdx = 0; ncIdx < stage1NcLoop; ncIdx++) {
-                        int64_t curNcSize = (ncIdx == stage1NcLoop - 1) ? tilingData->stage1TailNcFactor :
-                                                                          stage1NcFactor;
+                        int64_t curNcSize =
+                            (ncIdx == stage1NcLoop - 1) ? tilingData->stage1TailNcFactor : stage1NcFactor;
                         int64_t ncOffset = ncIdx * stage1NcFactor;
                         int64_t curNcSizeAlign = AlignUp(static_cast<uint64_t>(curNcSize), ELEMENTS_SIZE_PER_BLOCK);
 
@@ -204,8 +201,7 @@ public:
                         xCastQue.EnQue(xCastLocal);
                         xCastLocal = xCastQue.DeQue<float>();
                         int64_t xCastoffset =
-                            blockIdx * stage1BsFactor * ncSize +
-                            ping4vec * stage1VecCoreNum * stage1BsFactor * ncSize;
+                            blockIdx * stage1BsFactor * ncSize + ping4vec * stage1VecCoreNum * stage1BsFactor * ncSize;
                         CopyOut(xCastLocal, xCastWsGm[xCastoffset + ncOffset], curBs, curNcSize, ncSize - curNcSize);
                         xCastQue.FreeTensor(xCastLocal);
                     }
@@ -289,14 +285,10 @@ public:
 template <typename T, bool isFac, bool hasResi>
 class MhcPreStage2 {
 public:
-    __aicore__ inline MhcPreStage2()
-    {
-    }
+    __aicore__ inline MhcPreStage2() {}
 
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcScale, GM_ADDR hcBase, GM_ADDR y,
-                                GM_ADDR post, GM_ADDR hRes,
-                                GM_ADDR hPre, GM_ADDR hcBeforeNorm, GM_ADDR invRms,
-                                GM_ADDR workspace,
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcScale, GM_ADDR hcBase, GM_ADDR y, GM_ADDR post, GM_ADDR hRes,
+                                GM_ADDR hPre, GM_ADDR hcBeforeNorm, GM_ADDR invRms, GM_ADDR workspace,
                                 const MhcPreMembaseTilingData *tilingDataPtr, TPipe *pipePtr)
     {
         pipe = pipePtr;
@@ -513,11 +505,12 @@ public:
                 // hRes
                 if constexpr (hasResi) {
                     mixes2Local = mixesQue2.AllocTensor<float>();
-                    mixBaseOffset = stage2BlockIdx * curRowOfFormerBlock * hcMix + rowOuterIdx * curStage2RowFactor * hcMix;
+                    mixBaseOffset =
+                        stage2BlockIdx * curRowOfFormerBlock * hcMix + rowOuterIdx * curStage2RowFactor * hcMix;
                     for (int64_t j = 0; j < curRowFactor; ++j) {
                         if constexpr (isFac) {
-                            CopyIn(hcBeforeNormGm[mixBaseOffset + j * hcMix + hcMult * NUM_TWO], mixes2Local[j * resSize],
-                                   1, resSize);
+                            CopyIn(hcBeforeNormGm[mixBaseOffset + j * hcMix + hcMult * NUM_TWO],
+                                   mixes2Local[j * resSize], 1, resSize);
                         } else {
                             CopyIn(hcBeforeNormGm[mixBaseOffset + j * hcMix + hcMult * NUM_TWO],
                                    mixes2Local[j * hcMult * hcMultAlign], hcMult, hcMult);
@@ -527,8 +520,8 @@ public:
                     mixes2Local = mixesQue2.DeQue<float>();
 
                     combFragLocal = combFragQue.AllocTensor<float>();
-                    MulABLastDimBrcInline<float, false>(mxies02ReduceLocal, mixes2Local, squareSumOutLocal, rowBrcbLocal0,
-                                                        curRowFactor, resSize);
+                    MulABLastDimBrcInline<float, false>(mxies02ReduceLocal, mixes2Local, squareSumOutLocal,
+                                                        rowBrcbLocal0, curRowFactor, resSize);
                     mixesQue2.FreeTensor(mixes2Local);
                     Muls(mxies02ReduceLocal, mxies02ReduceLocal, hcScaleGm.GetValue(NUM_TWO), curRowFactor * resSize);
                     PipeBarrier<PIPE_V>();

@@ -36,10 +36,7 @@ int64_t DownAlign(int64_t x, int64_t y)
     }
     return (x / y) * y;
 }
-int64_t RoundUp(int64_t x, int64_t y)
-{
-    return CeilDiv(x, y) * y;
-}
+int64_t RoundUp(int64_t x, int64_t y) { return CeilDiv(x, y) * y; }
 int64_t Factorial(int64_t n)
 {
     int64_t r = 1;
@@ -69,8 +66,7 @@ int8_t CheckOptionalParamsExisting(const gert::StorageShape *checkShape)
 {
     OP_CHECK_IF(nullptr == checkShape, OP_LOGD("CheckOptionalParamsExisting", "Get nullptr checkShape"), return 0);
     int64_t checkShapeSize = checkShape->GetOriginShape().GetShapeSize();
-    OP_CHECK_IF(
-        (checkShapeSize <= 0), OP_LOGD("CheckOptionalParamsExisting", "Get empty checkShapeSize"), return 0);
+    OP_CHECK_IF((checkShapeSize <= 0), OP_LOGD("CheckOptionalParamsExisting", "Get empty checkShapeSize"), return 0);
     return 1;
 }
 
@@ -79,8 +75,7 @@ ge::graphStatus MhcPreMembaseTiling::GetPlatformInfo()
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
         auto compileInfoPtr = context_->GetCompileInfo<MhcPreMembaseCompileInfo>();
-        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
         aivCoreNum_ = compileInfoPtr->coreNum;
         ubSize_ = compileInfoPtr->ubSize;
     } else {
@@ -135,12 +130,12 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
     auto shapePhi = context_->GetInputShape(1);
     hcMix_ = shapePhi->GetStorageShape().GetDim(0);
     OP_CHECK_IF(hcMix_ != nn_fac && hcMix_ != nn_pow && hcMix_ != 2 * hcMult_,
-                OP_LOGE(context_->GetNodeName(),
-                        "Phi dim 0 should be equal with %ld or %ld or %ld, but is %ld", nn_fac, nn_pow, 2 * hcMult_, shapePhi->GetStorageShape().GetDim(0)),
+                OP_LOGE(context_->GetNodeName(), "Phi dim 0 should be equal with %ld or %ld or %ld, but is %ld", nn_fac,
+                        nn_pow, 2 * hcMult_, shapePhi->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(shapePhi->GetStorageShape().GetDim(1) != d_ * hcMult_,
-                OP_LOGE(context_->GetNodeName(),
-                        "Phi dim 1 should be equal with d_ * hcMult_  %ld, but is %ld", d_ * hcMult_, shapePhi->GetStorageShape().GetDim(1)),
+                OP_LOGE(context_->GetNodeName(), "Phi dim 1 should be equal with d_ * hcMult_  %ld, but is %ld",
+                        d_ * hcMult_, shapePhi->GetStorageShape().GetDim(1)),
                 return ge::GRAPH_FAILED);
     if (hcMix_ == nn_fac) {
         isFac = true;
@@ -148,8 +143,7 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
     auto shapeAlpha = context_->GetInputShape(2);
     int64_t scaleFirstDim = shapeAlpha->GetStorageShape().GetDim(0);
     OP_CHECK_IF(scaleFirstDim != 2 && scaleFirstDim != 3,
-                OP_LOGE(context_->GetNodeName(),
-                        "alpha size should be 2 or 3, but is %ld", scaleFirstDim),
+                OP_LOGE(context_->GetNodeName(), "alpha size should be 2 or 3, but is %ld", scaleFirstDim),
                 return ge::GRAPH_FAILED);
     hasResi = (scaleFirstDim == 3);
 
@@ -157,14 +151,12 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
     int64_t baseFirstDim = shapeBias->GetStorageShape().GetDim(0);
     int64_t expectedBias = hasResi ? hcMix_ : 2 * hcMult_;
     OP_CHECK_IF((!hasResi && hcMix_ != 2 * hcMult_) || (hasResi && hcMix_ == 2 * hcMult_),
-                OP_LOGE(context_->GetNodeName(),
-                        "phi dim 0 %ld is only valid with alpha size %ld; alpha size is %ld",
+                OP_LOGE(context_->GetNodeName(), "phi dim 0 %ld is only valid with alpha size %ld; alpha size is %ld",
                         hcMix_, hasResi ? 3 : 2, hasResi ? 3 : 2),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(hasResi && hcMix_ == 2 * hcMult_,
                 OP_LOGE(context_->GetNodeName(),
-                        "When alpha size is 3, phi dim 0 must include the residual branch, but is %ld",
-                        hcMix_),
+                        "When alpha size is 3, phi dim 0 must include the residual branch, but is %ld", hcMix_),
                 return ge::GRAPH_FAILED);
     auto shapeGamma = context_->GetOptionalInputShape(4);
     gammaExist = CheckOptionalParamsExisting(shapeGamma);
@@ -172,12 +164,11 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
         int64_t gammaFirstDim = shapeGamma->GetStorageShape().GetDim(0);
         int64_t gammaSecondDim = shapeGamma->GetStorageShape().GetDim(1);
         OP_CHECK_IF(gammaFirstDim != hcMult_ || gammaSecondDim != d_,
-                    OP_LOGE(context_->GetNodeName(),
-                            "gamma shape should be equal with [%ld, %ld], but is [%ld, %ld]", hcMult_, d_, gammaFirstDim, gammaSecondDim),
+                    OP_LOGE(context_->GetNodeName(), "gamma shape should be equal with [%ld, %ld], but is [%ld, %ld]",
+                            hcMult_, d_, gammaFirstDim, gammaSecondDim),
                     return ge::GRAPH_FAILED);
     }
-    OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "get attr failed."),
+    OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "get attr failed."),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -266,9 +257,9 @@ ge::graphStatus MhcPreMembaseTiling::CalcMKSplitCoreMembasePart2Tiling()
             hcBrcb1Size = RoundUp(rowFactor_ * hcMultAlign_, 8) * BLOCK_SIZE;
             reduceBufSize = rowFactor_ * hcMultAlign_ * sizeof(float);
             maskPatternSize = BLOCK_SIZE;
-            totalSize = mix0Size + mix1Size + mix2Size + squareSumSize + rsqrtSize +
-                        xSize + ySize + postSize + combFragSize + base0Size + base1Size + base2Size + xCastSize + yCastSize +
-                        rowBrcb0Size + hcBrcb1Size + reduceBufSize + maskPatternSize;
+            totalSize = mix0Size + mix1Size + mix2Size + squareSumSize + rsqrtSize + xSize + ySize + postSize +
+                        combFragSize + base0Size + base1Size + base2Size + xCastSize + yCastSize + rowBrcb0Size +
+                        hcBrcb1Size + reduceBufSize + maskPatternSize;
             if (totalSize > ubSize_) {
                 rowFactor_ = rowFactor_ - 1;
                 break;
@@ -345,12 +336,10 @@ ge::graphStatus MhcPreMembaseTiling::CalcTailBsTiling()
 
     tailBsRowLoopOfFormerBlock_ = CeilDiv(tailBsRowOfFormerBlock_, tailBsRowFactor_);
     tailBsRowLoopOfTailBlock_ = CeilDiv(tailBsRowOfTailBlock_, tailBsRowFactor_);
-    tailBsTailRowFactorOfFormerBlock_ = tailBsRowOfFormerBlock_ % tailBsRowFactor_ == 0 ?
-                                            tailBsRowFactor_ :
-                                            tailBsRowOfFormerBlock_ % tailBsRowFactor_;
-    tailBsTailRowFactorOfTailBlock_ = tailBsRowOfTailBlock_ % tailBsRowFactor_ == 0 ?
-                                          tailBsRowFactor_ :
-                                          tailBsRowOfTailBlock_ % tailBsRowFactor_;
+    tailBsTailRowFactorOfFormerBlock_ =
+        tailBsRowOfFormerBlock_ % tailBsRowFactor_ == 0 ? tailBsRowFactor_ : tailBsRowOfFormerBlock_ % tailBsRowFactor_;
+    tailBsTailRowFactorOfTailBlock_ =
+        tailBsRowOfTailBlock_ % tailBsRowFactor_ == 0 ? tailBsRowFactor_ : tailBsRowOfTailBlock_ % tailBsRowFactor_;
 
     tilingData_.set_tailBsRowOfFormerBlock(tailBsRowOfFormerBlock_);
     tilingData_.set_tailBsRowLoopOfFormerBlock(tailBsRowLoopOfFormerBlock_);
@@ -428,8 +417,10 @@ static void PrintTilingData(const gert::TilingContext *context, MhcPreMembaseTil
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: rowOfFormerBlock is %ld.", tiling.get_rowOfFormerBlock());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: rowLoopOfFormerBlock is %ld.", tiling.get_rowLoopOfFormerBlock());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: rowLoopOfTailBlock is %ld.", tiling.get_rowLoopOfTailBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailRowFactorOfFormerBlock is %ld.", tiling.get_tailRowFactorOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailRowFactorOfTailBlock is %ld.", tiling.get_tailRowFactorOfTailBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailRowFactorOfFormerBlock is %ld.",
+            tiling.get_tailRowFactorOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailRowFactorOfTailBlock is %ld.",
+            tiling.get_tailRowFactorOfTailBlock());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: dLoop is %ld.", tiling.get_dLoop());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: dFactor is %ld.", tiling.get_dFactor());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailDFactor is %ld.", tiling.get_tailDFactor());
@@ -442,13 +433,18 @@ static void PrintTilingData(const gert::TilingContext *context, MhcPreMembaseTil
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: secondUsedCoreNum is %ld.", tiling.get_secondUsedCoreNum());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: cubeCoreNum is %ld.", tiling.get_cubeCoreNum());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: needGrad is %ld.", tiling.get_needGrad());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsRowOfFormerBlock is %ld.", tiling.get_tailBsRowOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsRowLoopOfFormerBlock is %ld.", tiling.get_tailBsRowLoopOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsRowLoopOfTailBlock is %ld.", tiling.get_tailBsRowLoopOfTailBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsRowOfFormerBlock is %ld.",
+            tiling.get_tailBsRowOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsRowLoopOfFormerBlock is %ld.",
+            tiling.get_tailBsRowLoopOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsRowLoopOfTailBlock is %ld.",
+            tiling.get_tailBsRowLoopOfTailBlock());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsUsedCoreNum is %ld.", tiling.get_tailBsUsedCoreNum());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsRowFactor is %ld.", tiling.get_tailBsRowFactor());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsTailRowFactorOfFormerBlock is %ld.", tiling.get_tailBsTailRowFactorOfFormerBlock());
-    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsTailRowFactorOfTailBlock is %ld.", tiling.get_tailBsTailRowFactorOfTailBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsTailRowFactorOfFormerBlock is %ld.",
+            tiling.get_tailBsTailRowFactorOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsTailRowFactorOfTailBlock is %ld.",
+            tiling.get_tailBsTailRowFactorOfTailBlock());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: tailBsML1Size is %ld.", tiling.get_tailBsML1Size());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: stage1VecCoreNum is %ld.", tiling.get_stage1VecCoreNum());
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: stage1CubeCoreNum is %ld.", tiling.get_stage1CubeCoreNum());
@@ -574,8 +570,7 @@ ge::graphStatus TilingPrepareForMhcPre(gert::TilingParseContext *context)
 
 ge::graphStatus TilingForMhcPre(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("MhcPre", "Tiling context is null"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr, OP_LOGE("MhcPre", "Tiling context is null"), return ge::GRAPH_FAILED);
 
     if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
         OP_LOGD(context->GetNodeName(), "Using arch35 tiling for regbase soc");
@@ -586,8 +581,6 @@ ge::graphStatus TilingForMhcPre(gert::TilingContext *context)
     return membaseTiling.DoOpTiling();
 }
 
-IMPL_OP_OPTILING(MhcPre)
-    .Tiling(TilingForMhcPre)
-    .TilingParse<MhcPreMembaseCompileInfo>(TilingPrepareForMhcPre);
+IMPL_OP_OPTILING(MhcPre).Tiling(TilingForMhcPre).TilingParse<MhcPreMembaseCompileInfo>(TilingPrepareForMhcPre);
 
 } // namespace optiling

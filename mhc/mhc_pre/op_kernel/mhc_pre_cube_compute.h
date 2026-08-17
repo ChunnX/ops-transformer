@@ -38,7 +38,8 @@ class HcCubeCompute {
 public:
     __aicore__ inline HcCubeCompute(){};
     __aicore__ inline void Init(const GlobalTensor<float> &xGm, const GlobalTensor<float> &phiGm,
-                                const GlobalTensor<float> &workspaceGlobalAB, int64_t bs, int64_t n, int64_t c, int64_t vecCoreNum);
+                                const GlobalTensor<float> &workspaceGlobalAB, int64_t bs, int64_t n, int64_t c,
+                                int64_t vecCoreNum);
     __aicore__ inline void ProcessMatmulXPhi(const int32_t taskOffset, const int32_t mm1M);
 
 public:
@@ -87,7 +88,8 @@ __aicore__ inline void MHC_PRE_CUBE_COMPUTE_TEMPLATE_CLASS::Init(const GlobalTen
 }
 
 MHC_PRE_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_CUBE_COMPUTE_TEMPLATE_CLASS::ProcessMatmulXPhi(const int32_t taskOffset, const int32_t mm1M)
+__aicore__ inline void MHC_PRE_CUBE_COMPUTE_TEMPLATE_CLASS::ProcessMatmulXPhi(const int32_t taskOffset,
+                                                                              const int32_t mm1M)
 {
     if (mm1M <= 0)
         return;
