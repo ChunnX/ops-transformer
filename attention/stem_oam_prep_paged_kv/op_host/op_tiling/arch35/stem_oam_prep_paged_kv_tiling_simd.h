@@ -40,6 +40,10 @@ constexpr int64_t KV_LAYOUT_BNBD = 1;
 constexpr int64_t KV_CACHE_DIM_NUM = 4;
 constexpr int64_t V_SCALE_DIM_NUM = 1;
 constexpr int64_t STRIDE_DIM_NUM = 4;
+constexpr int64_t HKVMAX = 8;
+constexpr int64_t BATCHMAX = 16;
+constexpr int64_t KVBLOCKSIZEONE = 64;
+constexpr int64_t KVBLOCKSIZETWO = 128;
 
 constexpr size_t INPUT_KCACHE_INDEX = 0;
 constexpr size_t INPUT_VCACHE_INDEX = 1;
