@@ -47,6 +47,10 @@
 namespace Mc2Kernel {
 using namespace MoeDistributeV2Base;
 using namespace Mc2Aclnn;
+// 发送深流水启用阈值：本核发送token数达到该值才启用多slot深流水，低于该值走原有双缓冲路径
+constexpr uint32_t MIN_TOKEN_PER_AIV_FOR_PIPELINE = 3U;
+// 发送流水slot上限：A3每位置eventID上限为8，取6预留同位置余量（降低深队列与AllocTensor在途贴限风险）
+constexpr uint32_t SEND_SLOT_MAX = 6U;
 #define CombineMC2TypeClass                                                                                            \
     typename ContextHolder, typename ExpandXType, typename XType, typename ExpandIdxType, uint8_t QuantMode,           \
         bool HasAddRmsNorm
@@ -85,6 +89,8 @@ private:
     __aicore__ inline void ExpertAlltoAllDispatchInnerCopyAdd(uint32_t toRankId, uint32_t tokenId, uint32_t topkId,
                                                               uint32_t tkIndex);
     __aicore__ inline void ExpertAlltoAllDispatchCopyAdd();
+    __aicore__ inline void ExpertAlltoAllDispatchPipeline(LocalTensor<ExpandIdxType> expandIdxLocal,
+                                                          LocalTensor<float> statusTensor);
     __aicore__ inline void ProcessConstantExpert(uint32_t tokenIndex, uint32_t const_expert_idx, float scaleVal);
     __aicore__ inline void ProcessCopyExpert(uint32_t tokenIndex, float scaleVal);
     __aicore__ inline void ProcessMoeExpert(uint32_t tokenIndexOffset, uint32_t topkId, float scaleVal);
@@ -195,6 +201,7 @@ private:
     uint32_t startTokenId_{0};
     uint32_t endTokenId_{0};
     uint32_t sendCntNum_{0};
+    uint32_t sendSlotNum_{0}; // 发送流水slot数（自适应，上限SEND_SLOT_MAX）
     uint32_t ubSize_{0};
     uint32_t dataState_{0};
     uint32_t stateOffset_{0};
@@ -221,12 +228,13 @@ private:
     float armAvgFactor_{0.0};
     float epsilon_{0.0};
 
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> moeQueue_;
     TQue<QuePosition::VECIN, 1> moeSumQueue_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> expandXInAndOutQueue_;
     TQue<QuePosition::VECIN, 1> expandXInQueue_;
     TQue<QuePosition::VECOUT, 1> xOutQueue_;
     TBuf<> readStateBuf_;
+    TBuf<> calBeginBuf_; // UB用量探测起点
+    TBuf<> calEndBuf_;   // UB用量探测终点
     TBuf<> expertScalesBuf_;
     TBuf<> rowTmpFloatBuf_;
     TBuf<> sumFloatBuf_;
@@ -257,6 +265,7 @@ private:
     bool isScalingDownFlag_ = false;
     bool isShareExpertRankFlag_ = false;
     bool enableSpecialExpert_ = false;
+    bool useSendPipeline_ = false; // 本核是否启用发送深流水路径
 
     // int8量化
     TBuf<> xAbsBuf_;
@@ -509,7 +518,6 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
         selfSendCnt_ = epSendCountGM_(moeSendNum_ - 1);
     }
     SplitCoreCal();
-    tpipe_->InitBuffer(moeQueue_, BUFFER_NUM, hExpandXAlign32Size_);
     flagRcvCount_ = axisK_ + sharedExpertNum_;
 }
 
@@ -521,11 +529,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::BuffInit()
     // 单指令饱和模式
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
 #endif
+    tpipe_->InitBuffer(calBeginBuf_, UB_ALIGN);  // UB用量探测起点
     tpipe_->InitBuffer(readStateBuf_, UB_ALIGN); // 32
     if constexpr (QuantMode > UNQUANT) {
-        tpipe_->InitBuffer(expandXInQueue_, BUFFER_NUM, hExpandXAlignSize_); // 28K 存储搬入token
-        uint32_t tokenScaleAlign32Size = Ceil(tokenScaleCnt_ * sizeof(ExpandXType), UB_ALIGN) * UB_ALIGN;
-        tpipe_->InitBuffer(xOutQueue_, BUFFER_NUM, tokenScaleAlign32Size); // 28K 输出token搬运
         tpipe_->InitBuffer(xAbsBuf_, hFloatAlign256Size_); // 28K blockReduceMax计算及后续Cast计算，256对齐
         uint32_t hFloatAlign256Cnt = hFloatAlign256Size_ / sizeof(float);
         tpipe_->InitBuffer(xMaxBuf_, (hFloatAlign256Cnt / REDUCE_NUM) * sizeof(float)); // 3.5K 存储ReduceMax结果
@@ -540,13 +546,44 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::BuffInit()
         Duplicate(absFloatTensor_, float(0), hFloatAlign256Cnt); // 统一写0
         quantInst_.SetQuantInitParams(winTpSendCountFloatTensor_, fp16CastTensor_, absFloatTensor_,
                                       reduceMaxFloatTensor_, scaleDupLocalTensor_);
-    } else {
-        tpipe_->InitBuffer(expandXInAndOutQueue_, BUFFER_NUM, hExpandXAlign32Size_); // 28K 存储搬入token
     }
     if (isScalingDownFlag_) {
         elasticInst_.InitElasticInfoTensor(epWorldSizeOriginal_, elasticInfoTensor_);
     }
     tpipe_->InitBuffer(indexCountsBuf_, sendCntNum_ * EXPAND_IDX_INFO * sizeof(int32_t));
+    tpipe_->InitBuffer(calEndBuf_, UB_ALIGN); // UB用量探测终点
+    // 探测剩余UB，自适应发送流水slot数；token数或slot数不足阈值时回退原有双缓冲路径
+    uint64_t beginUbAddr = (calBeginBuf_.Get<uint8_t>()).GetPhyAddr();
+    uint64_t endUbAddr = (calEndBuf_.Get<uint8_t>()).GetPhyAddr();
+    uint64_t usedUbSize = endUbAddr - beginUbAddr + UB_ALIGN;
+    uint64_t remainUbSize = (ubSize_ > usedUbSize) ? (ubSize_ - usedUbSize) : 0U;
+    uint32_t perSlotUb = 0U;
+    if constexpr (QuantMode > UNQUANT) {
+        // 量化路径in队列消费者是V（量化），消费完即归还，固定BUFFER_NUM深度即可；
+        // 深度预算全部花在MTE3直读的出侧，先扣除in队列占用
+        uint64_t inQueueUb = static_cast<uint64_t>(BUFFER_NUM) * hExpandXAlignSize_;
+        remainUbSize = (remainUbSize > inQueueUb) ? (remainUbSize - inQueueUb) : 0U;
+        perSlotUb = Ceil(tokenScaleCnt_ * sizeof(ExpandXType), UB_ALIGN) * UB_ALIGN;
+    } else {
+        // 非量化TQueBind读写共享同一组buffer，深度即该组buffer数，一并加深
+        perSlotUb = hExpandXAlign32Size_;
+    }
+    sendSlotNum_ = static_cast<uint32_t>(remainUbSize / perSlotUb); // perSlotUb=Ceil(正数,UB_ALIGN)*UB_ALIGN，必大于0
+    sendSlotNum_ = MIN(MIN(sendSlotNum_, SEND_SLOT_MAX), sendCntNum_);
+    if (sendSlotNum_ == 0U) {
+        sendSlotNum_ = 1U;
+    }
+    useSendPipeline_ = (sendCntNum_ >= MIN_TOKEN_PER_AIV_FOR_PIPELINE) &&
+                       (sendSlotNum_ >= MIN_TOKEN_PER_AIV_FOR_PIPELINE);
+    uint32_t sendQueueDepth = useSendPipeline_ ? sendSlotNum_ : static_cast<uint32_t>(BUFFER_NUM);
+    if constexpr (QuantMode > UNQUANT) {
+        const uint32_t inQueueDepth = static_cast<uint32_t>(BUFFER_NUM); // 量化入侧消费者是V，固定双缓冲
+        const uint32_t tokenScaleAlign32Size = Ceil(tokenScaleCnt_ * sizeof(ExpandXType), UB_ALIGN) * UB_ALIGN;
+        tpipe_->InitBuffer(expandXInQueue_, inQueueDepth, hExpandXAlignSize_); // 28K 存储搬入token
+        tpipe_->InitBuffer(xOutQueue_, sendQueueDepth, tokenScaleAlign32Size); // 28K 输出token搬运
+    } else {
+        tpipe_->InitBuffer(expandXInAndOutQueue_, sendQueueDepth, hExpandXAlign32Size_); // 28K 存储搬入token
+    }
 }
 
 template <CombineMC2TypeClass>
@@ -763,6 +800,10 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
     Duplicate<float>(statusTensor, (float)1, FLOAT_PER_UB_ALIGN);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
+    if (useSendPipeline_) { // 每核token数与slot数达标，走多slot深流水路径
+        ExpertAlltoAllDispatchPipeline(expandIdxLocal, statusTensor);
+        return;
+    }
     for (uint32_t loop = 0; loop < sendCntNum_;) {
         // 处理第一个 token（总是存在）
         uint32_t tkIndexFirst = startTokenId_ + ((loop + epRankId_) % sendCntNum_); // 错位发送
@@ -808,6 +849,71 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
             DataCopy<float>(stateGMTensorSecond, statusTensor, FLOAT_PER_UB_ALIGN);
         }
         loop += (hasSecond ? 2 : 1);
+    }
+}
+
+// 发送深流水：token按sendSlotNum_分批，批内连发数据写窗口，批尾等数据落地后补发本批Flag，再进入下一批。
+// 队列深度即slot数，批内Alloc/EnQue/DeQue自然节流；相比原有路径消除了每2个token的PipeBarrier，
+// 状态Flag从"barrier后逐个补写"改为"批尾数据落地后连发"，不再阻塞数据流水。
+template <CombineMC2TypeClass>
+__aicore__ inline void
+MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAllDispatchPipeline(LocalTensor<ExpandIdxType> expandIdxLocal,
+                                                                           LocalTensor<float> statusTensor)
+{
+    // 置换步长与sendCntNum_互素，打乱token访问顺序以分散对端窗口访存压力
+    uint32_t permStride;
+    if (sendCntNum_ <= 2U) {
+        permStride = 1U;
+    } else {
+        permStride = sendCntNum_ / 2U + 1U;
+        if (((sendCntNum_ & 1U) == 0U) && ((permStride & 1U) == 0U)) {
+            permStride++;
+        }
+    }
+    uint32_t rankOffset = (epRankId_ * sendCntNum_) / epWorldSize_;
+    uint32_t permIdx = rankOffset % sendCntNum_;
+    for (uint32_t batch = 0U; batch < sendCntNum_; batch += sendSlotNum_) {
+        uint32_t batchEnd = MIN(batch + sendSlotNum_, sendCntNum_);
+        uint32_t batchPermIdx = permIdx; // 记录本批起始置换下标，Flag补发时复算三元组
+        for (uint32_t loop = batch; loop < batchEnd; loop++) {
+            uint32_t tkIndex = startTokenId_ + permIdx;
+            uint32_t baseOffset = permIdx * EXPAND_IDX_INFO;
+            uint32_t rankIdExpandIdx = static_cast<uint32_t>(expandIdxLocal(baseOffset)); // 位置0是rank_id
+            uint32_t toRankId = rankIdExpandIdx;                                          // 位置0是rank_id
+            uint32_t tokenId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 1));     // 位置1是token_id
+            uint32_t topkId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 2));      // 位置2是topk_id
+            if (isScalingDownFlag_) {
+                toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + rankIdExpandIdx);
+            }
+            ExpertAlltoAllDispatchInnerCopyAdd(toRankId, tokenId, topkId, tkIndex);
+            permIdx += permStride;
+            if (permIdx >= sendCntNum_) {
+                permIdx -= sendCntNum_;
+            }
+        }
+        // 批尾：本批数据全部落地（PIPE_MTE3全排空，与legacy路径的PipeBarrier同款语义）后再补发Flag，
+        // 保证Flag晚于数据可见；Flag连发不与数据流互相阻塞，发完再进下一批
+        PipeBarrier<PIPE_MTE3>();
+        uint32_t flagPermIdx = batchPermIdx;
+        for (uint32_t loop = batch; loop < batchEnd; loop++) {
+            uint32_t baseOffset = flagPermIdx * EXPAND_IDX_INFO;
+            uint32_t rankIdExpandIdx = static_cast<uint32_t>(expandIdxLocal(baseOffset)); // 位置0是rank_id
+            uint32_t toRankId = rankIdExpandIdx;                                          // 位置0是rank_id
+            uint32_t tokenId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 1));     // 位置1是token_id
+            uint32_t topkId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 2));      // 位置2是topk_id
+            if (isScalingDownFlag_) {
+                toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + rankIdExpandIdx);
+            }
+            GM_ADDR stateGM = GetWinStateAddrByRankId(toRankId) + tokenId * flagRcvCount_ * stateOffset_ +
+                              topkId * stateOffset_; // 计算地址偏移
+            GlobalTensor<float> stateGMTensor;
+            stateGMTensor.SetGlobalBuffer((__gm__ float *)stateGM);
+            DataCopy<float>(stateGMTensor, statusTensor, FLOAT_PER_UB_ALIGN); // 8是数据大小，按32对齐拷贝
+            flagPermIdx += permStride;
+            if (flagPermIdx >= sendCntNum_) {
+                flagPermIdx -= sendCntNum_;
+            }
+        }
     }
 }
 
