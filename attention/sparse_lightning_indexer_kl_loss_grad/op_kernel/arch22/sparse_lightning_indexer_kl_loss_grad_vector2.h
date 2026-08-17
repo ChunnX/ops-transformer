@@ -47,16 +47,19 @@ public:
     using scatterAddGmType = typename std::conditional<deterministic, GlobalTensor<MM3_OUT_T>, int8_t>::type;
 
     __aicore__ inline SLIKLLossVector2Service(){};
-    __aicore__ inline void InitParams(const struct SLIKLLossGradConstInfo &vecConstInfo,
-                                      const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData);
+    __aicore__ inline void InitParams(
+        const struct SLIKLLossGradConstInfo &vecConstInfo,
+        const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
     // =============== vector 2 functions ==============
-    __aicore__ inline void InitVector2GM(const GlobalTensor<MM3_OUT_T> &scatterAddBank0, const GlobalTensor<int32_t> &topK,
-                                         const GlobalTensor<OUT_T> &dKeyIndexGm, GlobalTensor<int32_t> &actualSeqLengthsQ,
-                                         GlobalTensor<int32_t> &actualSeqLengthsKV, scatterAddGmType scatterAddBanks[SLI_DETER_SCATTER_BANK_NUM]);
+    __aicore__ inline void InitVector2GM(const GlobalTensor<MM3_OUT_T> &scatterAddBank0,
+                                         const GlobalTensor<int32_t> &topK, const GlobalTensor<OUT_T> &dKeyIndexGm,
+                                         GlobalTensor<int32_t> &actualSeqLengthsQ,
+                                         GlobalTensor<int32_t> &actualSeqLengthsKV,
+                                         scatterAddGmType scatterAddBanks[SLI_DETER_SCATTER_BANK_NUM]);
     __aicore__ inline void ProcessVector2();
 
 private:
@@ -90,18 +93,19 @@ private:
 };
 
 template <typename SLIT>
-__aicore__ inline void SLIKLLossVector2Service<SLIT>::InitParams(const struct SLIKLLossGradConstInfo &vecConstInfo,
-                                                                 const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData)
+__aicore__ inline void SLIKLLossVector2Service<SLIT>::InitParams(
+    const struct SLIKLLossGradConstInfo &vecConstInfo,
+    const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData)
 {
     this->constInfo = vecConstInfo;
     this->tilingData = tilingData;
 }
 
 template <typename SLIT>
-__aicore__ inline void SLIKLLossVector2Service<SLIT>::InitVector2GM(const GlobalTensor<MM3_OUT_T> &scatterAddBank0,
-                                                                    const GlobalTensor<int32_t> &topK, const GlobalTensor<OUT_T> &dKeyIndexGm,
-                                                                    GlobalTensor<int32_t> &actualSeqLengthsQ, GlobalTensor<int32_t> &actualSeqLengthsKV,
-                                                                    scatterAddGmType scatterAddBanks[SLI_DETER_SCATTER_BANK_NUM])
+__aicore__ inline void SLIKLLossVector2Service<SLIT>::InitVector2GM(
+    const GlobalTensor<MM3_OUT_T> &scatterAddBank0, const GlobalTensor<int32_t> &topK,
+    const GlobalTensor<OUT_T> &dKeyIndexGm, GlobalTensor<int32_t> &actualSeqLengthsQ,
+    GlobalTensor<int32_t> &actualSeqLengthsKV, scatterAddGmType scatterAddBanks[SLI_DETER_SCATTER_BANK_NUM])
 {
     this->bmm3ResGm = scatterAddBank0;
     this->topKGm = topK;
@@ -202,8 +206,7 @@ __aicore__ inline void SLIKLLossVector2Service<SLIT>::ProcessVector2()
                 PipeBarrier<PIPE_V>();
             }
         } else {
-            DataCopy(copyInUb, bmm3ResGm[t2Idx * constInfo.dSizeQueryIndex],
-                     t2ProcessSize * constInfo.dSizeQueryIndex);
+            DataCopy(copyInUb, bmm3ResGm[t2Idx * constInfo.dSizeQueryIndex], t2ProcessSize * constInfo.dSizeQueryIndex);
             SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_SCATTER_BUF_FLAG + pingPongIdx);
             WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_SCATTER_BUF_FLAG + pingPongIdx);
         }

@@ -80,13 +80,10 @@ struct GatherParams {
 /** @name 模版类型定义
  *  @{
  */
-template <typename InputQT, typename InputKT, typename OutT,
-          SLITopKRange TopKRange,
-          SLILayout LayoutQT = SLILayout::TND,
-          SLILayout LayoutKT = SLILayout::TND,
-          SLISparseMode SparseMode = SLISparseMode::RightDown,
-          const bool HasRope = false, const bool Deterministic = false,
-          typename... Args>
+template <typename InputQT, typename InputKT, typename OutT, SLITopKRange TopKRange,
+          SLILayout LayoutQT = SLILayout::TND, SLILayout LayoutKT = SLILayout::TND,
+          SLISparseMode SparseMode = SLISparseMode::RightDown, const bool HasRope = false,
+          const bool Deterministic = false, typename... Args>
 struct SLIType {
     using inputQT = InputQT;
     using inputKT = InputKT;
