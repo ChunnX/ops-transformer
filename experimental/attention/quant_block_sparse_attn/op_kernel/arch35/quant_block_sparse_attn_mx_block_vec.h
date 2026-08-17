@@ -207,6 +207,7 @@ public:
                     ExecuteVec1Vf<true, SUB_LOOP>(
                         bmm1ResBuf, stage1CastTensor, sumUb, maxUb, mmRes, expUb, attenMaskUb, pScaleSubLoopTensor,
                         preLoopMaxUb, preLoopSumUb, firstLoopSumUb, runInfo, constInfo, s2CalcSize);
+                    attenMaskInQue_.template FreeTensor(attenMaskUb);
                 } else {
                     ExecuteVec1Vf<false, SUB_LOOP>(
                         bmm1ResBuf, stage1CastTensor, sumUb, maxUb, mmRes, expUb, attenMaskUb, pScaleSubLoopTensor,
@@ -359,9 +360,6 @@ private:
                                                    runInfo, constInfo, s2CalcSize, descaleQK);
         }
         bmm1ResBuf.SetCrossCore();
-        if constexpr (VF_HAS_ATTEN) {
-            attenMaskInQue_.template FreeTensor(attenMaskUb);
-        }
     }
 
     template <uint32_t SUB_LOOP>
