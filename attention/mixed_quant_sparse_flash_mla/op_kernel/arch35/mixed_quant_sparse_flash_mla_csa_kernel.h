@@ -538,6 +538,15 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
+    if ASCEND_IS_AIV {
+        bmm1Buffers.Get().SetCrossCore();
+        bmm1Buffers.Get().SetCrossCore();
+        bmm2Buffers.Get().SetCrossCore();
+        this->vecBlock.AllocEventID(constInfo);
+    } else {
+        this->cubeBlock.AllocEventID();
+    }
+
     int64_t maxS2LoopCnt = 0;
     if constexpr (IS_SPLIT_G) {
         maxS2LoopCnt = static_cast<int64_t>(metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_MAX_NUM, false)));
@@ -551,16 +560,21 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 }
             }
         }
+        if ASCEND_IS_AIV {
+            this->vecBlock.FreeEventID(constInfo);
+        } else {
+            this->cubeBlock.FreeEventID();
+            bmm1Buffers.Get().WaitCrossCore();
+            bmm1Buffers.Get().WaitCrossCore();
+            bmm2Buffers.Get().WaitCrossCore();
+        }
+        if constexpr (IS_BATCH_CONSISTENCY) {
+            intraCoreCombineBuffer.Uninit(fdStagingBufferManager);
+            crossCoreCombineBuffer.Uninit(fdStagingBufferManager);
+        } else {
+            fdStagingBuffer.Uninit(fdStagingBufferManager);
+        }
         return;
-    }
-
-    if ASCEND_IS_AIV {
-        bmm1Buffers.Get().SetCrossCore();
-        bmm1Buffers.Get().SetCrossCore();
-        bmm2Buffers.Get().SetCrossCore();
-        this->vecBlock.AllocEventID(constInfo);
-    } else {
-        this->cubeBlock.AllocEventID();
     }
 
     // 从meta data解析分核信息
@@ -722,6 +736,12 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
         bmm1Buffers.Get().WaitCrossCore();
         bmm1Buffers.Get().WaitCrossCore();
         bmm2Buffers.Get().WaitCrossCore();
+    }
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        intraCoreCombineBuffer.Uninit(fdStagingBufferManager);
+        crossCoreCombineBuffer.Uninit(fdStagingBufferManager);
+    } else {
+        fdStagingBuffer.Uninit(fdStagingBufferManager);
     }
 }
 

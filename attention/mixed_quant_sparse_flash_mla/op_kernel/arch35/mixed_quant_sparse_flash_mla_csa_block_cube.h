@@ -191,6 +191,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::FreeEventID()
     WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId);
     WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 1);
     WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 2);
+    mmL0ABuffers.Uninit(l0aBufferManager);
+    mmL0BBuffers.Uninit(l0bBufferManager);
 }
 
 /* 初始化GmTensor,设置shape信息并计算strides */
