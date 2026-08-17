@@ -77,12 +77,6 @@ DP_ASSERT_EQUAL()
 
 LOG_HEAD "Build ${REPOSITORY_NAME}."
 cd "${WORKSPACE}/" || exit 1
-if [[ "${task_name}" =~ Compile_Ascend_X86_ubuntu24 ]]; then
-    sed -i "1i set(CMAKE_EXPORT_COMPILE_COMMANDS ON)" "CMakeLists.txt"
-    echo "api-check=compile" >> "${ATOMGIT_OUTPUT}"
-else
-    echo "api-check=continue" >> "${ATOMGIT_OUTPUT}"
-fi
 
 non_skip_count=$(grep -vE '(\.md$|^tests/)' "${WORKSPACE}/pr_filelist.txt" | grep -cv '^$')
 if [ "${non_skip_count}" -eq 0 ]; then
@@ -90,9 +84,15 @@ if [ "${non_skip_count}" -eq 0 ]; then
     mkdir -p build_out
     touch build_out/skip_build.run
     touch single.tar.gz
+    echo "api-check=continue" >> "${ATOMGIT_OUTPUT}"
     exit 0
 fi
-
+if [[ "${task_name}" =~ Compile_Ascend_X86_ubuntu24 ]]; then
+    sed -i "1i set(CMAKE_EXPORT_COMPILE_COMMANDS ON)" "CMakeLists.txt"
+    echo "api-check=compile" >> "${ATOMGIT_OUTPUT}"
+else
+    echo "api-check=continue" >> "${ATOMGIT_OUTPUT}"
+fi
 if [ "${task_name}" == "Pre_Compile" ]; then
     LOG_DO bash build.sh --PR_PKG ./pr_filelist.txt -j32 --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH}
     ret=$?
