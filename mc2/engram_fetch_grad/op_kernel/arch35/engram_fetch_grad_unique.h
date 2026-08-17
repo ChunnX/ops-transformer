@@ -42,6 +42,10 @@ public:
 
     __aicore__ inline void WriteNumUniqueZero(GM_ADDR numUniqueOutGM);
 
+    uint64_t usaZeroCountCycle_{0};
+    uint64_t usaScatterAddCycle_{0};
+    uint64_t usaCastCycle_{0};
+
 private:
     __aicore__ inline void ZeroGradUnique(uint32_t numRecv, GM_ADDR gradUniqueOutGM, GM_ADDR gradUniqueFp32GM);
     __aicore__ inline void CountUniquesParallel(uint32_t numRecv, GM_ADDR recvLocalEntryOutGM,
@@ -120,9 +124,11 @@ __aicore__ inline void EngramFetchGradUnique::Run(
     GM_ADDR gradUniqueOutGM, GM_ADDR gradUniqueFp32GM, GM_ADDR recvGradGM,
     GM_ADDR coreStartGM, GM_ADDR segCountGM, GM_ADDR sortCompanionGM)
 {
+    uint64_t t0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
     ZeroGradUnique(numRecv, gradUniqueOutGM, gradUniqueFp32GM);
     CountUniquesParallel(numRecv, recvLocalEntryOutGM, coreStartGM, segCountGM);
     AscendC::SyncAll<true>();
+    uint64_t t1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     FixCoreStartForSkippedCores(coreStartGM, segCountGM);
     AscendC::SyncAll<true>();
@@ -131,9 +137,15 @@ __aicore__ inline void EngramFetchGradUnique::Run(
                              gradUniqueOutGM, gradUniqueFp32GM, recvGradGM,
                              coreStartGM, segCountGM, sortCompanionGM);
     AscendC::SyncAll<true>();
+    uint64_t t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     CastGradUniqueToOutput(segCountGM, numUniqueOutGM, gradUniqueOutGM, gradUniqueFp32GM);
     AscendC::SyncAll<true>();
+    uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+    usaZeroCountCycle_ = t1 - t0;
+    usaScatterAddCycle_ = t2 - t1;
+    usaCastCycle_ = t3 - t2;
 }
 
 __aicore__ inline void EngramFetchGradUnique::WriteNumUniqueZero(GM_ADDR numUniqueOutGM)
