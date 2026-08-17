@@ -90,22 +90,74 @@ ge::graphStatus MoeTutelCombineGatesTiling::CheckDtype()
     const ge::DataType xType = xDesc->GetDataType();
     // 三个浮点张量强制同 dtype：canndev OpDef 只铺同 dtype 组合，950 不擅自开放混合 dtype。
     OP_CHECK_IF(xType != ge::DT_FLOAT && xType != ge::DT_FLOAT16 && xType != ge::DT_BF16,
-                OP_LOGE(context_->GetNodeName(), "dtype of x must be float32/float16/bfloat16, but got %d",
-                        static_cast<int32_t>(xType)),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "x", Ops::Base::ToString(xType),
+                                                      "dtype of x must be float32, float16 or bfloat16"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(yDesc->GetDataType() != xType || outDesc->GetDataType() != xType,
-                OP_LOGE(context_->GetNodeName(),
-                        "dtype of x/y_grad/gates_grad must be identical, but got %d/%d/%d",
-                        static_cast<int32_t>(xType), static_cast<int32_t>(yDesc->GetDataType()),
-                        static_cast<int32_t>(outDesc->GetDataType())),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                    context_->GetNodeName(), "x, y_grad, gates_grad",
+                    Ops::Base::ToString(xType) + ", " + Ops::Base::ToString(yDesc->GetDataType()) + ", " +
+                        Ops::Base::ToString(outDesc->GetDataType()),
+                    "dtype of x, y_grad and gates_grad must be identical"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(indicesDesc->GetDataType() != ge::DT_INT32 || locationsDesc->GetDataType() != ge::DT_INT32,
-                OP_LOGE(context_->GetNodeName(), "dtype of indices/locations must be int32, but got %d/%d",
-                        static_cast<int32_t>(indicesDesc->GetDataType()),
-                        static_cast<int32_t>(locationsDesc->GetDataType())),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                    context_->GetNodeName(), "indices, locations",
+                    Ops::Base::ToString(indicesDesc->GetDataType()) + ", " +
+                        Ops::Base::ToString(locationsDesc->GetDataType()),
+                    "dtype of indices and locations must be int32"),
                 return ge::GRAPH_FAILED);
 
     dtypeSize_ = (xType == ge::DT_FLOAT) ? static_cast<int64_t>(sizeof(float)) : static_cast<int64_t>(sizeof(int16_t));
+    return ge::GRAPH_SUCCESS;
+}
+
+// 校验各输入的 rank。抽出来是为了让 GetShapeAndCheck 保持在 CodeCheck 的 50 行阈值内。
+ge::graphStatus MoeTutelCombineGatesTiling::CheckRank(const gert::Shape &xShape, const gert::Shape &yShape,
+                                                      const gert::Shape &indicesShape,
+                                                      const gert::Shape &locationsShape,
+                                                      const gert::Shape &outShape) const
+{
+    OP_CHECK_IF(xShape.GetDimNum() != X_DIM_NUM,
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "x",
+                                                         std::to_string(xShape.GetDimNum()),
+                                                         "rank of x must be 2, in the form of [S, H]"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(yShape.GetDimNum() != Y_GRAD_DIM_NUM,
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "y_grad",
+                                                         std::to_string(yShape.GetDimNum()),
+                                                         "rank of y_grad must be 3, in the form of [E, C, H]"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(indicesShape.GetDimNum() != ROUTE_DIM_NUM || locationsShape.GetDimNum() != ROUTE_DIM_NUM ||
+                    outShape.GetDimNum() != ROUTE_DIM_NUM,
+                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+                    context_->GetNodeName(), "indices, locations, gates_grad",
+                    std::to_string(indicesShape.GetDimNum()) + ", " + std::to_string(locationsShape.GetDimNum()) +
+                        ", " + std::to_string(outShape.GetDimNum()),
+                    "rank of indices, locations and gates_grad must all be 2, in the form of [E, S]"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+// 校验路由张量与输出的形状：三者必须同为 [E, S]。
+// canndev 的 taskNum = samples * y_grad.shape[0]，GM buffer 也按 S*E 设定，从不看 indices 的实际 shape；
+// K != E 在旧实现上是对 gates_grad 的真实越界写，950 判非法而不复制这个未定义行为。
+ge::graphStatus MoeTutelCombineGatesTiling::CheckRouteShape(const gert::Shape &indicesShape,
+                                                            const gert::Shape &locationsShape,
+                                                            const gert::Shape &outShape) const
+{
+    const bool routeShapeOk = (indicesShape.GetDim(DIM_0) == experts_) && (indicesShape.GetDim(DIM_1) == samples_) &&
+                              (locationsShape.GetDim(DIM_0) == experts_) &&
+                              (locationsShape.GetDim(DIM_1) == samples_) && (outShape.GetDim(DIM_0) == experts_) &&
+                              (outShape.GetDim(DIM_1) == samples_);
+    OP_CHECK_IF(!routeShapeOk,
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    context_->GetNodeName(), "indices, locations, gates_grad",
+                    Ops::Base::ToString(indicesShape) + ", " + Ops::Base::ToString(locationsShape) + ", " +
+                        Ops::Base::ToString(outShape),
+                    "shape of indices, locations and gates_grad must all be [E, S] = [" + std::to_string(experts_) +
+                        ", " + std::to_string(samples_) + "], where E is y_grad.shape[0] and S is x.shape[0]"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -128,14 +180,9 @@ ge::graphStatus MoeTutelCombineGatesTiling::GetShapeAndCheck()
     const gert::Shape &locationsShape = locationsShapePtr->GetStorageShape();
     const gert::Shape &outShape = outShapePtr->GetStorageShape();
 
-    OP_CHECK_IF(xShape.GetDimNum() != X_DIM_NUM || yShape.GetDimNum() != Y_GRAD_DIM_NUM ||
-                    indicesShape.GetDimNum() != ROUTE_DIM_NUM || locationsShape.GetDimNum() != ROUTE_DIM_NUM ||
-                    outShape.GetDimNum() != ROUTE_DIM_NUM,
-                OP_LOGE(context_->GetNodeName(),
-                        "rank must be x=2, y_grad=3, indices/locations/gates_grad=2, but got %zu/%zu/%zu/%zu/%zu",
-                        xShape.GetDimNum(), yShape.GetDimNum(), indicesShape.GetDimNum(),
-                        locationsShape.GetDimNum(), outShape.GetDimNum()),
-                return ge::GRAPH_FAILED);
+    if (CheckRank(xShape, yShape, indicesShape, locationsShape, outShape) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     samples_ = xShape.GetDim(DIM_0);
     hidden_ = xShape.GetDim(DIM_1);
@@ -143,30 +190,19 @@ ge::graphStatus MoeTutelCombineGatesTiling::GetShapeAndCheck()
     capacity_ = yShape.GetDim(DIM_1);
 
     OP_CHECK_IF(samples_ < 0 || hidden_ < 0 || experts_ < 0 || capacity_ < 0 || yShape.GetDim(DIM_2) < 0,
-                OP_LOGE(context_->GetNodeName(), "all dims must be non-negative, got S=%ld H=%ld E=%ld C=%ld",
-                        samples_, hidden_, experts_, capacity_),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    context_->GetNodeName(), "x, y_grad",
+                    Ops::Base::ToString(xShape) + ", " + Ops::Base::ToString(yShape),
+                    "every dim of x and y_grad must be non-negative"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(yShape.GetDim(DIM_2) != hidden_,
-                OP_LOGE(context_->GetNodeName(), "x.shape[1] (%ld) must equal y_grad.shape[2] (%ld)", hidden_,
-                        yShape.GetDim(DIM_2)),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    context_->GetNodeName(), "x, y_grad",
+                    Ops::Base::ToString(xShape) + ", " + Ops::Base::ToString(yShape),
+                    "x.shape[1] must equal y_grad.shape[2], they are the contracted hidden axis H"),
                 return ge::GRAPH_FAILED);
 
-    // 路由轴长度恒等于专家数（K == E）：canndev 的 taskNum = samples * y_grad.shape[0]，
-    // 且其 GM buffer 也按 S*E 设定；K != E 在旧实现上是对 gates_grad 的真实越界写，950 判非法。
-    const bool routeShapeOk = (indicesShape.GetDim(DIM_0) == experts_) && (indicesShape.GetDim(DIM_1) == samples_) &&
-                              (locationsShape.GetDim(DIM_0) == experts_) &&
-                              (locationsShape.GetDim(DIM_1) == samples_) && (outShape.GetDim(DIM_0) == experts_) &&
-                              (outShape.GetDim(DIM_1) == samples_);
-    OP_CHECK_IF(!routeShapeOk,
-                OP_LOGE(context_->GetNodeName(),
-                        "indices/locations/gates_grad shape must all be [E=%ld, S=%ld], but got "
-                        "[%ld, %ld] / [%ld, %ld] / [%ld, %ld]",
-                        experts_, samples_, indicesShape.GetDim(DIM_0), indicesShape.GetDim(DIM_1),
-                        locationsShape.GetDim(DIM_0), locationsShape.GetDim(DIM_1), outShape.GetDim(DIM_0),
-                        outShape.GetDim(DIM_1)),
-                return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
+    return CheckRouteShape(indicesShape, locationsShape, outShape);
 }
 
 ge::graphStatus MoeTutelCombineGatesTiling::SplitCore()
@@ -178,12 +214,66 @@ ge::graphStatus MoeTutelCombineGatesTiling::SplitCore()
         std::max<int64_t>(1, std::min<int64_t>(coreNum / sCoreNum, std::max<int64_t>(1, experts_)));
 
     td_.sCoreNum = static_cast<uint64_t>(sCoreNum);
-    td_.kCoreNum = static_cast<uint64_t>(kCoreNum);
     td_.sPerCoreBase = static_cast<uint64_t>(samples_ / sCoreNum);
     td_.sCoreRemain = static_cast<uint64_t>(samples_ % sCoreNum);
     td_.kPerCoreBase = static_cast<uint64_t>(experts_ / kCoreNum);
     td_.kCoreRemain = static_cast<uint64_t>(experts_ % kCoreNum);
     blockDim_ = static_cast<uint32_t>(sCoreNum * kCoreNum);
+    return ge::GRAPH_SUCCESS;
+}
+
+// UB 行长：H（或 H 分块）按 VL(fp32) 向上对齐后的字节数。
+int64_t MoeTutelCombineGatesTiling::RowBytesOf(int64_t len) const
+{
+    return CeilAlign(len, vlFp32_) * dtypeSize_;
+}
+
+// 输出 tile 的字节数。每个元素同时占一份 fp32 中间结果与一份输出 dtype。
+// tile 每行按 VL(fp32) 对齐：CastRowVF 里的 LoadOneTensorForDtypeT 会整段读满一个 VREG，
+// 只按 32B 对齐时最后一行会读到缓冲区之外。VL 对齐同时满足 DataCopyPad 对 UB 源地址的 32B 要求。
+int64_t MoeTutelCombineGatesTiling::TileBytesOf(int64_t sBlock, int64_t kBlock) const
+{
+    return kBlock * CeilAlign(sBlock, vlFp32_) * (dtypeSize_ + static_cast<int64_t>(sizeof(float)));
+}
+
+bool MoeTutelCombineGatesTiling::TryNotCutH(int64_t avail, int64_t &sBlock, int64_t &kBlock) const
+{
+    while (true) {
+        if (RowBytesOf(hidden_) * IN_BUFFER_NUM * DOUBLE_BUFFER + TileBytesOf(sBlock, kBlock) <= avail) {
+            return true;
+        }
+        if (sBlock > 1) {
+            sBlock = std::max<int64_t>(1, sBlock / 2);
+            continue;
+        }
+        if (kBlock > 1) {
+            kBlock = std::max<int64_t>(1, kBlock / 2);
+            continue;
+        }
+        return false;
+    }
+}
+
+ge::graphStatus MoeTutelCombineGatesTiling::SolveCutH(int64_t avail, int64_t &sBlock, int64_t &kBlock)
+{
+    sBlock = 1;
+    kBlock = 1;
+    const int64_t budget = avail - TileBytesOf(sBlock, kBlock) - PARTIAL_RESERVE_BYTES;
+    OP_CHECK_IF(budget < vlFp32_ * dtypeSize_ * IN_BUFFER_NUM * DOUBLE_BUFFER,
+                OP_LOGE(context_->GetNodeName(), "ub size %lu is too small for cut-h template", ubSize_),
+                return ge::GRAPH_FAILED);
+    int64_t hFactor = budget / (IN_BUFFER_NUM * DOUBLE_BUFFER * dtypeSize_) / vlFp32_ * vlFp32_;
+    hFactor = std::max<int64_t>(vlFp32_, hFactor);
+    const int64_t numChunks = CeilDiv(hidden_, hFactor);
+    OP_CHECK_IF(numChunks > MAX_NUM_CHUNKS,
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                    context_->GetNodeName(), "x", std::to_string(hidden_),
+                    "hidden axis H is too large: it would need " + std::to_string(numChunks) +
+                        " chunks, exceeding the supported limit " + std::to_string(MAX_NUM_CHUNKS)),
+                return ge::GRAPH_FAILED);
+    td_.hFactor = static_cast<uint64_t>(hFactor);
+    td_.numChunks = static_cast<uint64_t>(numChunks);
+    td_.hTail = static_cast<uint64_t>(hidden_ - (numChunks - 1) * hFactor);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -194,61 +284,18 @@ ge::graphStatus MoeTutelCombineGatesTiling::SplitUb()
                 return ge::GRAPH_FAILED);
 
     const int64_t kBlockMax = static_cast<int64_t>(td_.kPerCoreBase) + (td_.kCoreRemain > 0 ? 1 : 0);
-
-    // tile 每个元素同时占一份 fp32 中间结果与一份输出 dtype。
-    const int64_t bytesPerTileElem = dtypeSize_ + static_cast<int64_t>(sizeof(float));
     int64_t sBlock = std::max<int64_t>(1, std::min<int64_t>(S_BLOCK_INIT, std::max<int64_t>(1, samples_)));
     int64_t kBlock = std::max<int64_t>(1, kBlockMax);
-    int64_t hFactor = hidden_;
 
-    auto rowBytesOf = [&](int64_t len) { return CeilAlign(len, vlFp32_) * dtypeSize_; };
-    // tile 每行按 VL(fp32) 对齐：CastRowVF 里的 LoadOneTensorForDtypeT 会整段读满一个 VREG，
-    // 只按 32B 对齐时最后一行会读到缓冲区之外。VL 对齐同时满足 DataCopyPad 对 UB 源地址的 32B 要求。
-    auto tileBytesOf = [&](int64_t sb, int64_t kb) { return kb * CeilAlign(sb, vlFp32_) * bytesPerTileElem; };
-
-    // 第一轮：尝试 H 全载（NOT_CUT_H），放不下就依次缩 s 分块、k 窗口。
-    bool fit = false;
-    while (true) {
-        if (rowBytesOf(hFactor) * IN_BUFFER_NUM * DOUBLE_BUFFER + tileBytesOf(sBlock, kBlock) <= avail) {
-            fit = true;
-            break;
-        }
-        if (sBlock > 1) {
-            sBlock = std::max<int64_t>(1, sBlock / 2);
-            continue;
-        }
-        if (kBlock > 1) {
-            kBlock = std::max<int64_t>(1, kBlock / 2);
-            continue;
-        }
-        break;
-    }
-
-    if (fit) {
+    if (TryNotCutH(avail, sBlock, kBlock)) {
         tilingKey_ = MTCG_TILING_KEY_NOT_CUT_H;
         td_.hFactor = static_cast<uint64_t>(hidden_);
         td_.numChunks = 1;
         td_.hTail = static_cast<uint64_t>(hidden_);
+    } else if (SolveCutH(avail, sBlock, kBlock) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     } else {
-        // CUT_H：tile 收到最小，把 UB 全部让给 H 分块 + 部分和缓冲。
         tilingKey_ = MTCG_TILING_KEY_CUT_H;
-        sBlock = 1;
-        kBlock = 1;
-        const int64_t budget = avail - tileBytesOf(sBlock, kBlock) - PARTIAL_RESERVE_BYTES;
-        OP_CHECK_IF(budget < vlFp32_ * dtypeSize_ * IN_BUFFER_NUM * DOUBLE_BUFFER,
-                    OP_LOGE(context_->GetNodeName(), "ub size %lu is too small for cut-h template", ubSize_),
-                    return ge::GRAPH_FAILED);
-        hFactor = budget / (IN_BUFFER_NUM * DOUBLE_BUFFER * dtypeSize_) / vlFp32_ * vlFp32_;
-        hFactor = std::max<int64_t>(vlFp32_, hFactor);
-        const int64_t numChunks = CeilDiv(hidden_, hFactor);
-        OP_CHECK_IF(numChunks > MAX_NUM_CHUNKS,
-                    OP_LOGE(context_->GetNodeName(),
-                            "hidden %ld needs %ld chunks which exceeds the supported limit %ld", hidden_, numChunks,
-                            MAX_NUM_CHUNKS),
-                    return ge::GRAPH_FAILED);
-        td_.hFactor = static_cast<uint64_t>(hFactor);
-        td_.numChunks = static_cast<uint64_t>(numChunks);
-        td_.hTail = static_cast<uint64_t>(hidden_ - (numChunks - 1) * hFactor);
     }
 
     td_.samples = static_cast<uint64_t>(samples_);
@@ -285,10 +332,10 @@ ge::graphStatus MoeTutelCombineGatesTiling::PostTiling()
     rawTilingData->SetDataSize(sizeof(td_));
 
     OP_LOGI(context_->GetNodeName(),
-            "MoeTutelCombineGates tiling: S=%lu H=%lu E=%lu C=%lu sCoreNum=%lu kCoreNum=%lu sBlock=%lu "
+            "MoeTutelCombineGates tiling: S=%lu H=%lu E=%lu C=%lu sCoreNum=%lu sBlock=%lu "
             "sBlockAlign=%lu kBlock=%lu hFactor=%lu hFactorAlign=%lu numChunks=%lu hTail=%lu tilingKey=%lu "
             "blockDim=%u",
-            td_.samples, td_.hidden, td_.experts, td_.capacity, td_.sCoreNum, td_.kCoreNum, td_.sBlock,
+            td_.samples, td_.hidden, td_.experts, td_.capacity, td_.sCoreNum, td_.sBlock,
             td_.sBlockAlign, td_.kBlock, td_.hFactor, td_.hFactorAlign, td_.numChunks, td_.hTail, tilingKey_,
             blockDim_);
     return ge::GRAPH_SUCCESS;
