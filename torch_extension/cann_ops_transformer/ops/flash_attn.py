@@ -57,7 +57,7 @@ class FlashAttenOpBuilder(OpBuilder):
             "int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None, "
             "int? mask_mode=None, int? win_left=None, int? win_right=None, "
             "str? layout_q=None, str? layout_kv=None, str? layout_out=None) -> Tensor",
-            "flash_attn(Tensor q, Tensor k, Tensor v, *,"
+            "flash_attn(Tensor q, Tensor k, Tensor v,"
             "Tensor?block_table=None, Tensor?cu_seqlens_q=None,"
             "Tensor?cu_seqlens_kv=None, Tensor?seqused_q=None,"
             "Tensor?seqused_kv=None, Tensor?sinks=None, Tensor?attn_mask=None, Tensor?metadata=None,"
