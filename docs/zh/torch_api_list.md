@@ -63,3 +63,4 @@
 |[dense_lightning_indexer_kl_loss_grad](../../torch_extension/cann_ops_transformer/docs/zh/dense_lightning_indexer_kl_loss_grad.md)| Lightning Indexer KL Loss训练Dense场景下的反向输出。需与`dense_lightning_indexer_kl_loss_grad_metadata`配套使用。| - |默认确定性实现|
 |[sparse_flash_mla_softmax_l1_norm](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla_softmax_l1_norm.md)|`dense_lightning_indexer_kl_loss_grad`的前置接口，生成attn_softmax_l1_norm。需与`sparse_flash_mla_softmax_l1_norm_metadata`配套使用。 |-|默认确定性实现|
 |[stem_oam_prep_paged_kv](../../torch_extension/cann_ops_transformer/docs/zh/stem_oam_prep_paged_kv.md)| 大模型推理动态稀疏注意力机制的前置评分模块，为block-sparse-attention的前置评分模块。| - |默认确定性实现|
+|[lightning_indexer_kl_loss](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer_kl_loss.md)|计算Lightning Indexer中teacher分布与student分布之间的KL散度损失。|默认非确定性，支持通过`torch.use_deterministic_algorithms`开启确定性计算。|-|
