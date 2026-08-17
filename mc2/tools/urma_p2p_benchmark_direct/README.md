@@ -13,12 +13,18 @@ URMA 点对点通信基准测试工具，使用 `<<<>>>` kernel 直调方式，*
 
 `-m 3` 模式直接使用 `moe_distribute_base.h` 的原版接口（逐字复制到 `moe_distribute_base_native.h`），适合对该头文件做优化后验证效果。
 
-## mc2_native 的两种 benchMode
+## mc2_native / hcomm 的两种 benchMode
+
+`-m 2` (hcomm) 和 `-m 3` (mc2_native) 均支持两种 benchMode:
 
 | benchMode | 说明 | `-l` 含义 | timing 计算 |
 |-----------|------|----------|------------|
-| `--bench_mode 0` (batch_write) | `-l` 次 Write → 一次 Drain | WQE 发送次数 | slot[0-3]=总量, slot[4-7]=同总量(只有一批); avg 除以 loopCount 得单次平均, last 不除 |
+| `--bench_mode 0` (batch_write) | `-l` 次 Write → 一次 Drain | Write 次数 | slot[0-3]=总量, slot[4-7]=同总量(只有一批); avg 除以 loopCount 得单次平均, last 不除 |
 | `--bench_mode 1` (write_drain_loop) | 循环 `-l` 次 { Write → Drain } | Write+Drain 组数 | slot[0-3]=累计, slot[4-7]=最后一轮; avg 除以 loopCount, last 不除 |
+
+hcomm 与 mc2_native 的区别:
+- mc2_native: Write=SetCommWriteWithNotifySQE+PutCommNotifySQE(不敲DB), Drain=SendJFSDoorBell+PollCQ
+- hcomm: Write=WriteNbi\<commit=false\>(batch) 或 WriteNbi\<commit=true\>(loop), Drain=Commit+Drain 或 Drain
 
 ## 目录结构
 
@@ -87,7 +93,7 @@ bash run.sh -r ON -d 2 -m 3 -o 1 -s 4096 -l 100
 bash run.sh -r ON -d 2 -m 3 -o 0 -s 65536 -l 100 -g ON
 
 # hcomm 模式验证 (-m 2)
-bash run.sh -r ON -d 2 -m 2 -n 16 -s 65536 -l 100 -g ON
+bash run.sh -r ON -d 2 -m 2 -o 0 -s 65536 -l 100 -g ON
 
 # 其他模式
 bash run.sh -r ON -d 2 -m 0 -n 16 -s 65536 -l 100   # Write
@@ -112,7 +118,7 @@ bash run.sh -r ON -i 0,3 -m 3 -o 0 -s 65536 -l 16
 | `--dev_count` | `-d` | 2 | 设备数 (dev_ids 优先) |
 | `--peer` | `-p` | 自动 | 目标 rank (rank号, 不是设备号) |
 | `--sqe_mode` | `-m` | 1 | 0=Write, 1=WriteWithNotify, 2=Hcomm, 3=mc2_native |
-| `--bench_mode` | `-o` | 0 | 0=batch_write, 1=write_drain_loop (仅 -m 3) |
+| `--bench_mode` | `-o` | 0 | 0=batch_write, 1=write_drain_loop (-m 2, 3) |
 | `--num_sqe` | `-n` | 16 | 数据 SQE 数量 (仅 -m 0/1/2) |
 | `--sqe_bytes` | `-s` | 65536 | 每个 SQE 传输的数据量 (字节) |
 | `--buf_bytes` | `-b` | 104857600 (100MB) | 注册 workspace 大小 |
@@ -168,8 +174,8 @@ receiver (rank 1):
 | | mc2_native (-m 3) | hcomm (-m 2) |
 |---|---|---|
 | 数据区偏移 | workspace + 350KB (P2P_STATE_SIZE) | workspace + 0 (buffer 基址) |
-| 验证 chunk 数 | `min(loopCount, numSlots)` | `min(numSqe, numSlots)` |
-| 原因 | 每轮 1 个 Write，loop 轮写不同 slot | 每轮 numSqe 个 WriteNbi，同 slot 被重写 |
+| 验证 chunk 数 | `min(loopCount, numSlots)` | `min(loopCount, numSlots)` |
+| 每轮 Write 数 | 1 | 1 (对齐 mc2_native) |
 
 ### 验证范围
 
@@ -323,5 +329,5 @@ struct HcclCombinOpParam {
 - `sqeBytes` 需 ≤ `bufBytes`，建议 32B 对齐
 - WriteWithNotify 每个 SQE 占 2 个 WQEBB，`loopCount` 需满足 `loopCount * 2 < sqDepth` (通常 256)
 - 需要物理 UBC_CTP 或 UBC_TP 链路 (同机 NPU 间)
-- `benchMode` 仅 `-m 3` 支持
+- `benchMode` 仅 `-m 2`(hcomm) 和 `-m 3`(mc2_native) 支持
 - `--verify` 仅 `-m 2`(hcomm) 和 `-m 3`(mc2_native) 支持, 验证 chunk 数受 `bufBytes / sqeBytes` 限制

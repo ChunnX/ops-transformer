@@ -525,17 +525,15 @@ int Sample(void *arg)
     //
     // Mode-dependent:
     //   mc2_native (-m 3): data offset = 350KB (P2P_STATE_SIZE), chunks = min(loopCount, numSlots)
-    //   hcomm (-m 2): data offset = 0 (buffer base), chunks = min(numSqe, numSlots)
+    //   hcomm (-m 2): data offset = 0 (buffer base), chunks = min(loopCount, numSlots)
     if (args->verify && isSender) {
         uint32_t numSlotsU32 = (uint32_t)((args->sqeBytes > 0) ? (args->bufBytes / args->sqeBytes) : 1);
         if (args->sqeMode == 3) {
             g_verifyDataOffset = P2P_STATE_SIZE_HOST;
-            g_verifyChunks = (args->loopCount < numSlotsU32) ? args->loopCount : numSlotsU32;
         } else {
             g_verifyDataOffset = 0;
-            uint32_t writesPerIter = args->numSqe;
-            g_verifyChunks = (writesPerIter < numSlotsU32) ? writesPerIter : numSlotsU32;
         }
+        g_verifyChunks = (args->loopCount < numSlotsU32) ? args->loopCount : numSlotsU32;
         g_verifyBytes = (size_t)g_verifyChunks * args->sqeBytes;
         g_verifyPattern = (uint8_t*)malloc(g_verifyBytes);
         for (uint32_t c = 0; c < g_verifyChunks; c++) {
@@ -612,20 +610,13 @@ int Sample(void *arg)
         double lastTotalNs    = (double)timingHost[7] * NS_PER_CYCLE;
 
         // 带宽计算: avgTotalNs 已除以 loopCount (单次平均时间)
-        // - mc2_native (-m 3): 每轮 1 个 Write = sqeBytes
+        // -m 2 (hcomm) 和 -m 3 (mc2_native) 都对齐: 每轮 1 个 Write = sqeBytes
         //   benchMode=0: slot[7]=总量(同 slot[3]), lastData=loopCount*sqeBytes
         //   benchMode=1: slot[7]=单次, lastData=sqeBytes
-        // - hcomm (-m 2): 每轮 numSqe 个 WriteNbi = numSqe*sqeBytes, slot[7]=单次
-        double avgData, lastData;
-        if (args->sqeMode == 2) {
-            avgData = (double)args->numSqe * args->sqeBytes;
-            lastData = avgData;
-        } else {
-            avgData = (double)args->sqeBytes;
-            lastData = (args->benchMode == 0)
-                      ? (double)args->loopCount * args->sqeBytes
-                      : (double)args->sqeBytes;
-        }
+        double avgData = (double)args->sqeBytes;
+        double lastData = (args->benchMode == 0)
+                          ? (double)args->loopCount * args->sqeBytes
+                          : (double)args->sqeBytes;
         double avgBwGBs = avgData / avgTotalNs;
         double lastBwGBs = lastData / lastTotalNs;
 
