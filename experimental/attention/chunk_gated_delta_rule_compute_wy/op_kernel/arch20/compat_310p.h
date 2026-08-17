@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #ifndef COMPAT_310P_H
 #define COMPAT_310P_H
 
@@ -14,7 +30,11 @@
 struct bfloat16_t {
     uint16_t val;
     bfloat16_t() = default;
-    bfloat16_t(float v) : val(0) { (void)v; }
+    bfloat16_t(float v)
+        : val(0)
+    {
+        (void)v;
+    }
     operator float() const { return 0.f; }
 };
 #endif
@@ -32,8 +52,8 @@ struct bfloat16_t {
 // 310P has no AscendC::ToFloat — dummy bfloat16_t already has operator float()
 #ifdef __COMPAT_310P_ACTIVE__
 namespace AscendC {
-    inline float ToFloat(bfloat16_t v) { return (float)v; }
-}
+inline float ToFloat(bfloat16_t v) { return (float)v; }
+} // namespace AscendC
 #endif
 
 #endif
