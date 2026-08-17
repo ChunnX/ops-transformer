@@ -17,7 +17,7 @@
  *   1: query=fp16, key=fp16  （非量化）
  *   2: query=fp16, key=int8  （前融合 int8，scale 为反量化系数）
  *
- * A2/A3：PageAttention BBND key + sparse_mode∈{0,3}。不支持 FP8 / Ascend 950（不注册 ascend950）。
+ * A2/A3：PageAttention BBND/BNBD key 与 TND packed key；sparse_mode∈{0,3}。不支持 FP8 / Ascend 950。
  */
 
 #include <cstdint>
@@ -35,7 +35,7 @@ public:
             .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        // K_idx：P0 支持 BBND PageAttention [block_num, block_size, N2, D]
+        // K_idx：BBND [block_num, block_size, N2, D]、BNBD [block_num, N2, block_size, D]、TND [T2, N2, D]
         this->Input("key")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8})

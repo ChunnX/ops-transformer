@@ -50,7 +50,7 @@
 | query                    | 输入           | 公式中的 $Q_{idx}$。当前仅支持 TND，shape 为 $[T1, N1, D]$   | BFLOAT16, FLOAT16            | ND       |
 | key                      | 输入           | 公式中的 $K_{idx}$。支持 TND（$[T2, N2, D]$）、BNBD（$[block\_num, N2, block\_size, D]$）、BBND（$[block\_num, block\_size, N2, D]$） | BFLOAT16, FLOAT16, INT8      | ND, NZ   |
 | block_table              | 可选输入       | PageAttention 的逻辑 block → 物理 page 映射表。PA 场景必须传入，二维，第二维长度不能小于 $maxBlockNumPerSeq$；shape 为 $[B, S2/block\_size]$ | INT32                        | ND       |
-| scale                    | 可选输入       | 公式中的 $scale$，反量化系数。非量化必须为空；量化场景必选，shape 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$ | FLOAT                        | ND, NZ   |
+| scale                    | 可选输入       | 公式中的 $scale$，反量化系数。非量化必须为空；量化场景必选。PA 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$；TND 为 $[T2, N2]$ | FLOAT                        | ND, NZ   |
 | atten_mask               | 可选输入       | 控制因果可见的 mask。仅在 `sparse_mode=3` 时使用；取值为 1 表示该位不参与计算，为 0 表示参与计算；shape 为 $[2048, 2048]$ | INT8                         | ND       |
 | actual_seq_qlen | 可选输入       | 每个 Batch 中 Query 的有效 token 数。query 为 TND 时必须传入，单调不减（前缀和），shape 为 $[B+1]$ | INT32                        | ND       |
 | actual_seq_klen   | 可选输入       | 每个 Batch 中 Key 的有效 token 数。key 为 TND 时必须传入（前缀和）；PageAttention 场景下为各请求可见 $S2$，shape 为 $[B]$ | INT32                        | ND       |
@@ -63,12 +63,12 @@
 ## 约束说明
 
 - 当前 $block\_size$ 仅支持 128。
-- PageAttention 场景下，`block_table` 必须传入。
-- 非量化场景下，`key` dtype 与 `query` 相同（当前为 BFLOAT16 / FLOAT16），`scale` 必须为空；量化场景下仅支持 INT8，`scale` 必选，shape 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$，dtype 为 FLOAT。当前不支持 FP8 与 <term>Ascend 950PR/Ascend 950DT</term>。
+- PageAttention 场景下，`block_table` 必须传入；TND key 场景不得传入 `block_table`，`actual_seq_klen` 为 `[B+1]` 前缀和。
+- 非量化场景下，`key` dtype 与 `query` 相同（当前为 BFLOAT16 / FLOAT16），`scale` 必须为空；量化场景下仅支持 INT8，`scale` 必选：PA 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$，TND 为 $[T2, N2]$，dtype 为 FLOAT。当前不支持 FP8 与 <term>Ascend 950PR/Ascend 950DT</term>。
 - `sparse_mode` 当前仅支持 0、3：
     - 为 0 时，代表 defaultMask 模式，`atten_mask` 传入空；
     - 为 3 时，代表 rightDownCausal 模式，`atten_mask` 必须传入，shape 为 $[2048, 2048]$，取值为 1 代表该位不参与计算，为 0 代表该位参与计算。
-- `init_blocks`、`local_blocks` 必须 $\ge 0$ 且不超过 `block_table` 的第二维（$maxBlockNumPerSeq$）。两者均为 0 时跳过 $local\_mask$。
+- `init_blocks`、`local_blocks` 必须 $\ge 0$ 且不超过逻辑 block 数（PA 为 `block_table` 第二维；TND 为 score 末维对齐宽度）。两者均为 0 时跳过 $local\_mask$。
 - 本算子输出止于 block score，**不包含** TopK。
 
 ## 调用示例
@@ -90,7 +90,7 @@ bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
 
 > **实现备注（A2/A3）**
 >
-> - 当前仅实现 PageAttention **BBND** key；TND / BNBD 暂未落地。不支持 FP8 与 <term>Ascend 950PR/Ascend 950DT</term>。
+> - key 支持 PageAttention **BBND** / **BNBD**，以及 packed **TND**（无 `block_table`，`actual_seq_klen` 为 `[B+1]` 前缀和）。
 > - `sparse_mode=3` 的 `atten_mask[2048,2048]` 在 host 校验必选；device 侧按 rightDownCausal
 >   解析可见窗口（与 LightningIndexer 一致），不逐元素加载模板。
 > - `start_loc` 为逻辑 block 索引，与属性 `init_blocks`（默认 0）、`local_blocks`（默认 1）

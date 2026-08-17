@@ -87,7 +87,7 @@ public:
     __aicore__ inline void Init(Catlass::Arch::Resource<ArchTag> &resource, uint32_t numQHeads,
                                 uint32_t strideOutHead, uint32_t strideOutToken, uint32_t maxBlocksPerBatch,
                                 uint32_t strideScalePage, uint32_t strideScaleHead, bool isQuant,
-                                const AscendC::GlobalTensor<float> &gScore,
+                                uint32_t keyLayout, uint32_t totalK, const AscendC::GlobalTensor<float> &gScore,
                                 const AscendC::GlobalTensor<float> &gScale,
                                 const AscendC::GlobalTensor<int32_t> &gBlockTable)
     {
@@ -98,6 +98,13 @@ public:
         strideScalePage_ = strideScalePage;
         strideScaleHead_ = strideScaleHead;
         isQuant_ = isQuant;
+        keyLayout_ = keyLayout;
+        totalK_ = totalK;
+        if (keyLayout_ == MSA_KEY_LAYOUT_TND) {
+            // N2=1 packed [T2] / [T2,1]：token 步长为 1，避免误用 PA page 步长。
+            strideScalePage_ = 1;
+            strideScaleHead_ = 1;
+        }
         gScore_ = gScore;
         gScale_ = gScale;
         gBlockTable_ = gBlockTable;
@@ -611,12 +618,51 @@ private:
             if (blk >= task.visibleEndBlk) {
                 break;
             }
-            const int32_t page = gBlockTable_.GetValue(task.batchIdx * maxBlocksPerBatch_ + blk);
-            const uint64_t scaleOff = static_cast<uint64_t>(page) * strideScalePage_;
+            uint64_t scaleOff = 0;
+            uint32_t nValidScale = MSA_BLOCK_SIZE;
+            if (keyLayout_ == MSA_KEY_LAYOUT_TND) {
+                const uint32_t tokenStart = task.cuKStart + blk * MSA_BLOCK_SIZE;
+                // TND scale 为 packed [T2, N2]，N2=1 时按 token 连续存放，不能用 PA 的 page 步长。
+                scaleOff = static_cast<uint64_t>(tokenStart);
+                const uint32_t seqTok = blk * MSA_BLOCK_SIZE;
+                nValidScale = 0;
+                if (task.kvLen > 0 && seqTok < static_cast<uint32_t>(task.kvLen)) {
+                    nValidScale = static_cast<uint32_t>(task.kvLen) - seqTok;
+                    if (nValidScale > MSA_BLOCK_SIZE) {
+                        nValidScale = MSA_BLOCK_SIZE;
+                    }
+                }
+            } else {
+                const int32_t page = gBlockTable_.GetValue(task.batchIdx * maxBlocksPerBatch_ + blk);
+                scaleOff = static_cast<uint64_t>(page) * strideScalePage_;
+            }
             // 上一轮 Mul 占用 ubDeqScale_，必须等 V 完成后再 MTE2 覆盖。
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
-            AscendC::DataCopy(ubDeqScale_, gScale_[scaleOff], MSA_BLOCK_SIZE);
+            if (nValidScale < MSA_BLOCK_SIZE) {
+                AscendC::Duplicate(ubDeqScale_, 0.0f, MSA_BLOCK_SIZE);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+            }
+            if (nValidScale > 0) {
+                const uint32_t bytes = nValidScale * static_cast<uint32_t>(sizeof(float));
+                if ((bytes % 32U) == 0U) {
+                    AscendC::DataCopy(ubDeqScale_, gScale_[scaleOff], nValidScale);
+                } else {
+                    AscendC::DataCopyExtParams params;
+                    params.blockCount = 1;
+                    params.blockLen = bytes;
+                    params.srcStride = 0;
+                    params.dstStride = 0;
+                    AscendC::DataCopyPadExtParams<float> pad;
+                    pad.isPad = false;
+                    pad.leftPadding = 0;
+                    pad.rightPadding = 0;
+                    pad.paddingValue = 0;
+                    AscendC::DataCopyPad(ubDeqScale_, gScale_[scaleOff], params, pad);
+                }
+            }
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
 
@@ -745,6 +791,8 @@ private:
     uint32_t maxBlocksPerBatch_ = 0;
     uint32_t strideScalePage_ = 0;
     uint32_t strideScaleHead_ = 1;
+    uint32_t keyLayout_ = MSA_KEY_LAYOUT_BBND;
+    uint32_t totalK_ = 0;
     bool isQuant_ = false;
 };
 
