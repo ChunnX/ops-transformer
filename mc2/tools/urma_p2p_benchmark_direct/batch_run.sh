@@ -54,11 +54,16 @@ if [ ! -f "$INPUT_CSV" ]; then
 fi
 
 BIN="${CURRENT_DIR}/out/bin/test_urma_p2p_bench"
+
+# 批跑前自动编译
+echo "[INFO] Building..."
+bash "${CURRENT_DIR}/run.sh" -c ON
 if [ ! -f "$BIN" ]; then
-    echo "[ERROR] Binary not found: $BIN"
-    echo "        Run 'bash run.sh -c ON' first to build."
+    echo "[ERROR] Build failed."
     exit 1
 fi
+echo "[INFO] Build done."
+echo ""
 
 export LD_LIBRARY_PATH="${CURRENT_DIR}/out/lib:${CURRENT_DIR}/out/lib64:${ASCEND_HOME_PATH:-/usr/local/Ascend/ascend-toolkit/latest}/lib64:$LD_LIBRARY_PATH"
 

@@ -8,23 +8,29 @@ URMA 点对点通信基准测试工具，使用 `<<<>>>` kernel 直调方式，*
 |------|--------|----------|-------------|------|
 | `--sqe_mode 0` (Write) | `0x3` | 64B | 自写裸操作 | 纯数据搬运，无通知 |
 | `--sqe_mode 1` (WriteWithNotify) | `0x5` | 96B | 自写裸操作 | 数据搬运 + 远端通知 |
-| `--sqe_mode 2` (Hcomm) | N/A | N/A | `Hcomm::WriteNbi` | 高层 API，无需手动组装 SQE |
+| `--sqe_mode 2` (hcomm) | N/A | N/A | `Hcomm::WriteNbi` | 高层 API，commit 模板参数控制是否敲 DoorBell |
 | `--sqe_mode 3` (mc2_native) | `0x5` | 96B | `moe_distribute_base_native.h` | **与 mc2 算子版逻辑完全一致**，含 PutCommNotifySQE/PollCommCQUpdateSQCI/GetPICI/UpdatePICI |
 
-`-m 3` 模式直接使用 `moe_distribute_base.h` 的原版接口（逐字复制到 `moe_distribute_base_native.h`），适合对该头文件做优化后验证效果。
+`-m 2` (hcomm) 和 `-m 3` (mc2_native) 已对齐为统一的 Write/Commit/Drain 三段式 API，适合对比高层 API 与裸操作的性能差异。
+`-n` (num_sqe) 和 `-k` (db_interval) 仅 `-m 0/1` 使用。
 
 ## mc2_native / hcomm 的两种 benchMode
 
-`-m 2` (hcomm) 和 `-m 3` (mc2_native) 均支持两种 benchMode:
+`-m 2` (hcomm) 和 `-m 3` (mc2_native) 均支持两种 benchMode，API 完全对齐:
 
 | benchMode | 说明 | `-l` 含义 | timing 计算 |
 |-----------|------|----------|------------|
-| `--bench_mode 0` (batch_write) | `-l` 次 Write → 一次 Drain | Write 次数 | slot[0-3]=总量, slot[4-7]=同总量(只有一批); avg 除以 loopCount 得单次平均, last 不除 |
-| `--bench_mode 1` (write_drain_loop) | 循环 `-l` 次 { Write → Drain } | Write+Drain 组数 | slot[0-3]=累计, slot[4-7]=最后一轮; avg 除以 loopCount, last 不除 |
+| `--bench_mode 0` (batch_write) | `-l` 次 Write → Commit → Drain | Write 次数 | slot[0]=assemble(总量), slot[1]=commit(1次), slot[2]=drain(1次), slot[3]=total; avg 除以 loopCount |
+| `--bench_mode 1` (write_drain_loop) | 循环 `-l` 次 { WriteWithCommit → Drain } | Write+Drain 组数 | slot[0-3]=累计, slot[4-7]=最后一轮; avg 除以 loopCount |
 
-hcomm 与 mc2_native 的区别:
-- mc2_native: Write=SetCommWriteWithNotifySQE+PutCommNotifySQE(不敲DB), Drain=SendJFSDoorBell+PollCQ
-- hcomm: Write=WriteNbi\<commit=false\>(batch) 或 WriteNbi\<commit=true\>(loop), Drain=Commit+Drain 或 Drain
+### API 对齐
+
+| 操作 | hcomm | mc2_native |
+|------|-------|------------|
+| 不 commit 写 | `WriteNbi<false>` | `Write()` |
+| commit 写 | `WriteNbi<true>` | `WriteWithCommit()` |
+| 敲 DoorBell | `Commit()` | `Commit()` |
+| poll CQ | `Drain()` | `Drain()` |
 
 ## 目录结构
 
@@ -44,19 +50,24 @@ urma_p2p_benchmark_direct/
 │   │   ├── sqe_write_with_notify_kernel.h   #   Kernel 类
 │   │   ├── sqe_write_with_notify_launch.cpp
 │   │   └── sqe_write_with_notify_launch.h
-│   ├── hcomm/                               # -m 2: Hcomm (WriteNbi + Drain)
+│   ├── hcomm/                               # -m 2: Hcomm (WriteNbi + Commit + Drain)
 │   │   ├── hcomm_kernel.h
 │   │   ├── hcomm_launch.cpp
 │   │   └── hcomm_launch.h
 │   └── mc2_native/                          # -m 3: mc2_native (moe_distribute_base 完整接口)
 │       ├── moe_distribute_base_native.h     #   无依赖版 moe_distribute_base.h (保留全部接口含PICI)
-│       ├── mc2_native_kernel.h              #   Kernel 类: InitRankComm→Write→Drain
+│       ├── mc2_native_kernel.h              #   Kernel 类: InitRankComm→Write/Commit/Drain
 │       ├── mc2_native_launch.cpp
 │       └── mc2_native_launch.h
 ├── host/
 │   └── test_urma_p2p_bench.cpp              # C++ main: 单进程多线程 HCCL + channel setup + <<<>>>
+├── cases/
+│   ├── input_cases.csv                      # 批跑用例输入 (32条: mode×benchMode×sqeBytes×loop)
+│   └── output_results.csv                   # 批跑结果输出 (自动生成)
+├── benchmark_results.md                     # 数据整理表格模板
 ├── CMakeLists.txt
-└── run.sh
+├── run.sh                                   # 单跑脚本
+└── batch_run.sh                             # 批跑脚本
 ```
 
 ## 编译
@@ -83,22 +94,21 @@ bash run.sh -c ON -v ascend950pr_9599
 单进程多线程模式，参考 HCCL `01_send_recv` 样例：`HcclGetRootInfo` + `HcclCommInitRootInfoConfig`，每个设备一个线程。**不需要 rank table 文件**。
 
 ```bash
-# mc2_native batch_write: 16个WQE攒着发, 一次Drain
-bash run.sh -r ON -d 2 -m 3 -o 0 -s 65536 -l 16
+# mc2_native batch_write: 攒一批 Write 后 Commit + Drain
+bash run.sh -r ON -d 2 -m 3 -o 0 -s 65536 -l 100
 
-# mc2_native write_drain_loop: 100组 Write→Drain, 看平均单次延迟
+# mc2_native write_drain_loop: 每次 Write+Commit 后立即 Drain, 看平均单次延迟
 bash run.sh -r ON -d 2 -m 3 -o 1 -s 4096 -l 100
 
-# 带正确性验证: sender 填 pattern, receiver 比对 (仅 -m 3)
+# hcomm batch_write (对比 mc2_native)
+bash run.sh -r ON -d 2 -m 2 -o 0 -s 65536 -l 100
+
+# 带正确性验证: sender 填 pattern, receiver 比对 (-m 2, 3)
 bash run.sh -r ON -d 2 -m 3 -o 0 -s 65536 -l 100 -g ON
 
-# hcomm 模式验证 (-m 2)
-bash run.sh -r ON -d 2 -m 2 -o 0 -s 65536 -l 100 -g ON
-
-# 其他模式
+# 其他模式 (-m 0/1 仍用 -n)
 bash run.sh -r ON -d 2 -m 0 -n 16 -s 65536 -l 100   # Write
 bash run.sh -r ON -d 2 -m 1 -n 16 -s 65536 -l 100   # WriteWithNotify
-bash run.sh -r ON -d 2 -m 2 -n 16 -s 65536 -l 100   # Hcomm
 ```
 
 ### 指定通信的卡
@@ -110,6 +120,39 @@ bash run.sh -r ON -d 2 -m 2 -n 16 -s 65536 -l 100   # Hcomm
 bash run.sh -r ON -i 0,3 -m 3 -o 0 -s 65536 -l 16
 ```
 
+### 批量跑用例
+
+通过 `batch_run.sh` 批量跑 `cases/input_cases.csv` 里的用例，结果输出到 `cases/output_results.csv`:
+
+```bash
+# 批跑所有用例
+bash batch_run.sh
+
+# 只跑 case_id=3
+bash batch_run.sh -caseid 3
+
+# 跑多个 case
+bash batch_run.sh -caseid 3,5,7
+
+# 指定 dev_ids
+bash batch_run.sh -caseid 3 -- 0,1
+```
+
+输入 CSV 格式 (含表头):
+```
+case_id,sqe_mode,bench_mode,sqe_bytes,loop_count
+1,mc2_native,batch_write,32,1
+2,mc2_native,batch_write,65535,100
+3,hcomm,write_drain_loop,32,500
+```
+
+输出 CSV 格式 (含表头 + 字段说明):
+```
+case_id,sqe_mode,bench_mode,sqe_bytes,loop_count,assemble(us),commit/issue(us),drain(us),total(us),bw(GB/s),verify
+(sqe_mode: mc2_native/hcomm, bench_mode: batch_write/write_drain_loop)
+1,mc2_native,batch_write,32,1,0.34,0.00,0.10,0.44,72.73,PASS
+```
+
 ### 命令行参数
 
 | 参数 | 短选项 | 默认值 | 说明 |
@@ -117,9 +160,9 @@ bash run.sh -r ON -i 0,3 -m 3 -o 0 -s 65536 -l 16
 | `--dev_ids` | `-i` | `0,1` | 参与通信的物理设备ID列表 (逗号分隔) |
 | `--dev_count` | `-d` | 2 | 设备数 (dev_ids 优先) |
 | `--peer` | `-p` | 自动 | 目标 rank (rank号, 不是设备号) |
-| `--sqe_mode` | `-m` | 1 | 0=Write, 1=WriteWithNotify, 2=Hcomm, 3=mc2_native |
+| `--sqe_mode` | `-m` | 1 | 0=Write, 1=WriteWithNotify, 2=hcomm, 3=mc2_native |
 | `--bench_mode` | `-o` | 0 | 0=batch_write, 1=write_drain_loop (-m 2, 3) |
-| `--num_sqe` | `-n` | 16 | 数据 SQE 数量 (仅 -m 0/1/2) |
+| `--num_sqe` | `-n` | 16 | 数据 SQE 数量 (仅 -m 0/1) |
 | `--sqe_bytes` | `-s` | 65536 | 每个 SQE 传输的数据量 (字节) |
 | `--buf_bytes` | `-b` | 104857600 (100MB) | 注册 workspace 大小 |
 | `--db_interval` | `-k` | 1 | 每 K 个 SQE 敲一次 DoorBell (仅 -m 0/1) |
@@ -132,22 +175,42 @@ bash run.sh -r ON -i 0,3 -m 3 -o 0 -s 65536 -l 16
 ### 输出格式
 
 ```
-[rank 0 (dev 0)] avg  assemble=12.34us issue=12.34us wait=3.67us total=16.01us bw=4.09GB/s (over 16 loops)
-[rank 0 (dev 0)] last assemble=11.89us issue=11.89us wait=3.21us total=15.10us bw=4.33GB/s (last loop)
+[rank 0 (dev 0)] avg  assemble=0.27us commit=0.05us drain=10.05us total=10.37us bw=6.31GB/s (over 100 loops)
+[rank 0 (dev 0)] last assemble=0.23us commit=0.05us drain=10.02us total=10.30us bw=6.36GB/s (last loop)
 [rank 1 (dev 1)] VERIFY: PASS (6553600 bytes, 100 chunks)
+
+========== Case Summary ==========
+  mode:       mc2_native
+  bench:      batch_write
+  sqe_bytes:  65536
+  loop:       100
+  --- avg (over 100 loops) ---
+  assemble: 0.27 us  (total (N writes))
+  commit:   0.05 us  (1 call)
+  drain:    10.05 us  (1 call)
+  total:    10.37 us
+  bw:       6.31 GB/s
+  --- last (total, only 1 batch) ---
+  ...
+  verify:   PASS
+==================================
 ```
+
+benchMode=0 时显示 `assemble/commit/drain`，benchMode=1 时显示 `assemble/issue/drain`（issue=assemble，因 WriteWithCommit 合并了 Write+Commit）。
 
 | 字段 | 含义 |
 |------|------|
-| `assemble` | WQE 组装 + ring 写入时间 (mc2_native: PutCommNotifySQE 总时间) |
-| `issue` | 同 assemble (mc2_native 无 trailing SQE) |
-| `wait` | Drain 时间 (SendJFSDoorBell + PollCommCQUpdateSQCI + UpdatePICI) |
-| `total` | assemble + wait |
-| `bw` | 带宽 (avg=sqeBytes/avgTotalNs, last=总量/lastTotalNs) |
+| `assemble` | WQE 组装 + DataCopy 到 SQ ring 时间 (含 S_MTE3/MTE3_S 同步) |
+| `commit` | Commit 时间 (敲一次 DoorBell, 仅 benchMode=0) |
+| `issue` | = assemble (WriteWithCommit 合并, 仅 benchMode=1) |
+| `drain` | Drain 时间 (poll CQ 等硬件完成 + 更新 PICI) |
+| `total` | assemble + commit/issue + drain |
+| `bw` | 带宽 (avg=sqeBytes/avgTotalNs) |
 | `VERIFY` | 正确性验证结果 (仅 -g ON) |
 
 - `avg`：单次平均时间 (timing 累计值 / loopCount)
-- `last`：最后一轮的单轮值 (benchMode=0 为总量, benchMode=1 为最后一组)
+- `last`：benchMode=0 为总量 (only 1 batch), benchMode=1 为最后一轮单次值
+- 每项标注 `(total (N writes))` / `(1 call)` / `(per write)` 表示是循环总量还是单次
 
 ## 正确性验证 (`-g ON`)
 
@@ -238,7 +301,7 @@ main()
 
 ### mc2_native Kernel 侧流程 (-m 3)
 
-与 mc2 算子版 `P2pUrmaSqeComm` 逻辑完全一致：
+与 mc2 算子版 `P2pUrmaSqeComm` 逻辑一致，API 拆分为 Write/Commit/Drain 三段:
 
 ```
 InitRankComm(peer):
@@ -251,22 +314,37 @@ InitRankComm(peer):
   7. GenerateCommWriteWithNotifySQE — 生成 SQE 模板 (opcode=0x5, 96B)
   8. UpdateCommWriteWithNotifySQE   — 填 channel 元数据 (tp_id/eid/token)
 
+Write(peer, localAddr, remoteAddr, length):
+  → SetCommWriteWithNotifySQE (cqe=1: 硬件完成后写 CQE)
+  → SyncFunc<S_MTE3> (确保 S 写完, MTE3 才读)
+  → PutCommNotifySQE (DataCopy SQE 到 SQ ring, 不敲 DoorBell)
+  → SyncFunc<MTE3_S> (确保 MTE3 读完, 下一轮 S 才覆盖)
+
+Commit():
+  → SyncFunc<MTE3_S> (确保 SQE 落到 HBM)
+  → SendJFSDoorBell (敲 JFS DoorBell, 通知硬件取 WQE)
+
+Drain(peer):
+  → PollCommCQUpdateSQCI (轮询 CQ 等完成 + 敲 JFC DoorBell)
+  → UpdatePICI (写 sqPi/sqCi/cqCi 回 windowsOut, 供下次 launch 复用)
+
 benchMode=0 (batch_write):
-  for (i=0..loopCount-1):
-    Write(peer, localAddr+off, remoteAddr+off, sqeBytes)
-      → SetCommWriteWithNotifySQE (填 dataAddr/rmtAddr/length/notifyAddr/notifyData)
-      → PutCommNotifySQE (检查 SQ 空间→不够则 poll CQ 腾空间→DataCopy SQE→ring→更新 sqPi)
-  Drain(peer):
-    → SendJFSDoorBell (敲 JFS DoorBell)
-    → PollCommCQUpdateSQCI (轮询 CQ + 敲 JFC DoorBell 更新硬件 cqCi)
-    → UpdatePICI (写 sqPi/sqCi/cqCi 回 windowsOut, 供下次 launch 复用)
+  loopCount × Write → Commit → Drain
 
 benchMode=1 (write_drain_loop):
-  for (i=0..loopCount-1):
-    Write(peer, ...) → Drain(peer)
-    累加 timing
-  Host 侧除以 loopCount 得平均一次 Write+Drain 时间
+  loopCount × { WriteWithCommit(=Write+SendJFSDoorBell) → Drain }
 ```
+
+### 流水线同步
+
+打点区间内所有异步操作 (DataCopy MTE3/MTE2) 均有对应 SyncFunc 同步，测到的是真实执行时间:
+
+| 位置 | 同步 | 作用 |
+|------|------|------|
+| Write: SetCommWriteWithNotifySQE 后 | S_MTE3 | 确保 S 标量写完, MTE3 才读 sqeTensor_ |
+| Write: PutCommNotifySQE 后 | MTE3_S | 确保 MTE3 读完, 下一轮 S 才覆盖 sqeTensor_ |
+| Commit: SendJFSDoorBell 前 | MTE3_S | 确保 SQE 落到 HBM, 硬件才取 WQE |
+| CheckCqeStatus: DataCopyPad 后 | MTE2_S | 确保 CQE 搬完才能读 status |
 
 ### 关键数据结构
 
@@ -305,8 +383,10 @@ struct HcclCombinOpParam {
 ### Timing Slots
 
 ```
-[0]=assemble累计 [1]=issue累计 [2]=wait累计 [3]=total累计
-[4]=最后一轮assemble [5]=最后一轮issue [6]=最后一轮wait [7]=最后一轮total
+benchMode=0:  [0]=assemble(总量) [1]=commit [2]=drain [3]=total
+              [4-7]=同 [0-3] (只有一批)
+benchMode=1:  [0]=assemble累计 [1]=issue(=assemble) [2]=drain累计 [3]=total累计
+              [4]=最后一轮assemble [5]=最后一轮issue [6]=最后一轮drain [7]=最后一轮total
 ```
 
 ## 与 mc2 算子版的对比
@@ -327,7 +407,8 @@ struct HcclCombinOpParam {
 - 单核执行 (blockDim=1, aivId==0)
 - 单向发送: rank 0 发, rank 1 等 (URMA Write 单向)
 - `sqeBytes` 需 ≤ `bufBytes`，建议 32B 对齐
-- WriteWithNotify 每个 SQE 占 2 个 WQEBB，`loopCount` 需满足 `loopCount * 2 < sqDepth` (通常 256)
+- WriteWithNotify 每个 SQE 占 2 个 WQEBB，`loopCount` 需满足 `loopCount * 2 < sqDepth` (通常 256，超过触发自动 flush)
 - 需要物理 UBC_CTP 或 UBC_TP 链路 (同机 NPU 间)
 - `benchMode` 仅 `-m 2`(hcomm) 和 `-m 3`(mc2_native) 支持
 - `--verify` 仅 `-m 2`(hcomm) 和 `-m 3`(mc2_native) 支持, 验证 chunk 数受 `bufBytes / sqeBytes` 限制
+- `-n` (num_sqe) 和 `-k` (db_interval) 仅 `-m 0/1` 使用
