@@ -12,7 +12,7 @@
 #define CATLASS_GEMM_HELPER_HPP
 
 #include "../../template_linear_algebra_v2/catlass.hpp"
-#include "../../template_linear_algebra_v2/numeric_size.hpp"
+#include "../../template_linear_algebra_v2/tla_v2_numeric_size.hpp"
 #include "../../template_linear_algebra_v2/layout/layout.hpp"
 #include "../../template_linear_algebra_v2/gemm/gemm_type.hpp"
 
@@ -82,7 +82,6 @@ struct L1AlignHelper<Element, layout::CI1KHKWCOCI0> {
     static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
     static constexpr uint32_t COUT_ALIGNED = C0_NUM_PER_FRACTAL;
 };
-
 
 template <class ElementA, class ElementB>
 struct ElementAccumulatorSelector {

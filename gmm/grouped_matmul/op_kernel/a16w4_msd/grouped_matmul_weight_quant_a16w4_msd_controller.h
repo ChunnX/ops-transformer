@@ -15,7 +15,7 @@
 #ifndef GROUPED_MATMUL_WEIGHT_QUANT_A16W4_MSD_CONTROLLER_H
 #define GROUPED_MATMUL_WEIGHT_QUANT_A16W4_MSD_CONTROLLER_H
 
-#include "../grouped_matmul.h"
+#include "../grouped_matmul_kernel.h"
 #include "../grouped_matmul_utils.h"
 #include "kernel_operator.h"
 #include "grouped_matmul_weight_quant_a16w4_msd_basic_block_config.h"
@@ -175,9 +175,7 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CONTROLLER_CLASS::SetOffsetParam(uint64_
     offsetParam.mL1Size = offsetParam.mOffset + BASE_ML1_SIZE > mSize ? mSize - offsetParam.mOffset : BASE_ML1_SIZE;
 
     offsetParam.nOffset = nOffset;
-    offsetParam.nL1Size = offsetParam.nOffset + constParams.nL1BaseSize > constParams.nSize
-                              ? constParams.nSize - offsetParam.nOffset
-                              : constParams.nL1BaseSize;
+    offsetParam.nL1Size = offsetParam.nOffset + constParams.nL1BaseSize > constParams.nSize ? constParams.nSize - offsetParam.nOffset : constParams.nL1BaseSize;
     offsetParam.yGmAddr = reinterpret_cast<GM_ADDR>(yGm_);
     offsetParam.antiquantScaleGm = reinterpret_cast<GM_ADDR>(antiquantScaleGm);
     offsetParam.aMaxGmAddr = reinterpret_cast<GM_ADDR>(aMaxWs_);
@@ -244,7 +242,7 @@ GMM_WQ_A16W4_MSD_CONTROLLER_TEMPLATE_PARAM
 __aicore__ inline void GMM_WQ_A16W4_MSD_CONTROLLER_CLASS::InitConstParam(A16W4MsdConstParam &constParams)
 {
     constParams.kbL1Size = BASE_KL1_SIZE;
-    constParams.kaL1Size = BASE_KL1_SIZE;  // 当前实现a矩阵切分保持b矩阵一致
+    constParams.kaL1Size = BASE_KL1_SIZE; // 当前实现a矩阵切分保持b矩阵一致
     constParams.kSize = gmmBaseTiling_->k;
     constParams.nSize = gmmBaseTiling_->n;
     constParams.nL1BaseSize = 256;
@@ -272,8 +270,10 @@ __aicore__ inline uint64_t GMM_WQ_A16W4_MSD_CONTROLLER_CLASS::GetSplitValueFromG
 GMM_WQ_A16W4_MSD_CONTROLLER_TEMPLATE_PARAM
 class GMMWeightQuantA16W4MsdControllerMSparse : public GMM_WQ_A16W4_MSD_CONTROLLER_CLASS {
 public:
-    __aicore__ inline GMMWeightQuantA16W4MsdControllerMSparse() : GMM_WQ_A16W4_MSD_CONTROLLER_CLASS() {};
+    __aicore__ inline GMMWeightQuantA16W4MsdControllerMSparse()
+        : GMM_WQ_A16W4_MSD_CONTROLLER_CLASS(){};
     __aicore__ inline void Process(GM_ADDR workspace, TPipe *tPipe);
+
 private:
     __aicore__ inline void PreUpdateGmAddrForSparse(GlobalTensor<wType> &weightGmUpdate,
                                                     GlobalTensor<xType> &antiquantScaleGmUpdate,
@@ -339,10 +339,10 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CONTROLLER_CLASS_M_SPARSE::Process(GM_AD
             while (curCoreStartBlockId < totalBasicBlockCount) {
                 for (uint64_t kOffset = 0; kOffset < constParams.kSize; kOffset += BASE_KUB_SIZE) {
                     this->SetOffsetParam(mSize,
-                        ((curCoreStartBlockId - startBasicBlockId) / nBlockNum) * BASE_ML1_SIZE,
-                        ((curCoreStartBlockId - startBasicBlockId) % nBlockNum) * constParams.nL1BaseSize,
-                        kOffset, constParams, offsetParam[processId],
-                        (__gm__ xType *)antiquantScaleGmUpdate.GetPhyAddr());
+                                         ((curCoreStartBlockId - startBasicBlockId) / nBlockNum) * BASE_ML1_SIZE,
+                                         ((curCoreStartBlockId - startBasicBlockId) % nBlockNum) * constParams.nL1BaseSize,
+                                         kOffset, constParams, offsetParam[processId],
+                                         (__gm__ xType *)antiquantScaleGmUpdate.GetPhyAddr());
                     basicBlock.ComputeBasicBlock(constParams, offsetParam[processId], offsetParam[1 - processId]);
                     processId = 1 - processId;
                 }
@@ -381,6 +381,6 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CONTROLLER_CLASS_M_SPARSE::PostUpdateGmA
     this->aMaxWs_ += mSize * 8;
     this->yGm_ += mSize * nSize;
 }
-}  // namespace GROUPED_MATMUL::A16W4Msd
+} // namespace GROUPED_MATMUL::A16W4Msd
 
-#endif  // GROUPED_MATMUL_WEIGHT_QUANT_A16W4_MSD_CONTROLLER_H
+#endif // GROUPED_MATMUL_WEIGHT_QUANT_A16W4_MSD_CONTROLLER_H

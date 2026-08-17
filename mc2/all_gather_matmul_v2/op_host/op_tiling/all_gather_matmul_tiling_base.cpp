@@ -24,7 +24,7 @@
 #include <cstdint>
 
 #include "all_gather_matmul_v2_formulaic_tiling.h"
-#include "all_gather_matmul_tiling_base.h"
+#include "all_gather_matmul_tiling_base_v2.h"
 #include "../../op_kernel/all_gather_matmul_v2_apt_tiling_key.h"
 #include "graph/utils/type_utils.h"
 #include "mc2_comm_utils.h"
@@ -399,7 +399,6 @@ ge::graphStatus AllGatherMatmulTilingBase::AnalyzeShapeAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-
 void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling,
                                                         ::TCubeTiling &tailTiling, uint32_t debugMode)
 {
@@ -468,7 +467,6 @@ void AllGatherMatmulTilingBase::DoAllGatherTiling(Mc2Tiling::RCSTiling &rcsCfg, 
     // 计算一下额外申请的内存
     storageA_ = GetStorageA(rcsCfg);
 }
-
 
 void AllGatherMatmulTilingBase::SetRcsTilingData(Mc2Tiling::RCSTiling &rcsCfg)
 {

@@ -16,7 +16,7 @@
 #ifndef OP_KERNEL_GROUPED_MATMUL_SWIGLU_QUANT_V2_A4W4_MID_H
 #define OP_KERNEL_GROUPED_MATMUL_SWIGLU_QUANT_V2_A4W4_MID_H
 
-#include "grouped_matmul_swiglu_quant_v2_utils.h"
+#include "grouped_matmul_swiglu_quant_v2_utils_kernel.h"
 
 #ifdef GMM_SWIGLU_QUANT_V2_A4W4
 
@@ -32,7 +32,8 @@ public:
     using bT = typename mmType::BT;
 
 public:
-    __aicore__ inline GMMA4W4MidProcess(typename mmType::MT &matmul) : mm(matmul)
+    __aicore__ inline GMMA4W4MidProcess(typename mmType::MT &matmul)
+        : mm(matmul)
     {
     }
     __aicore__ inline void Init(const GMAddrParams gmAddrParams,
@@ -119,8 +120,9 @@ __aicore__ inline void GMMA4W4MidProcess<mmType>::SetMNConfig(const int32_t spli
     mnConfig.baseM = gmmSwigluQuantV2BaseParams->baseM;
     mnConfig.baseN = gmmSwigluQuantV2BaseParams->baseN;
     mnConfig.singleM = gmmSwigluQuantV2BaseParams->baseM;
-    mnConfig.singleN = gmmSwigluQuantV2BaseParams->singleN != 0 && gmmSwigluQuantV2BaseParams->quantGroupNum == 1? 
-                         gmmSwigluQuantV2BaseParams->singleN : gmmSwigluQuantV2BaseParams->baseN;                    
+    mnConfig.singleN = gmmSwigluQuantV2BaseParams->singleN != 0 && gmmSwigluQuantV2BaseParams->quantGroupNum == 1 ?
+                           gmmSwigluQuantV2BaseParams->singleN :
+                           gmmSwigluQuantV2BaseParams->baseN;
 }
 
 template <typename mmType>
@@ -135,8 +137,9 @@ __aicore__ inline void GMMA4W4MidProcess<mmType>::Process(WorkSpaceSplitConfig &
         mnConfig.baseM = gmmSwigluQuantV2BaseParams->baseM;
         mnConfig.baseN = gmmSwigluQuantV2BaseParams->baseN;
         mnConfig.singleM = gmmSwigluQuantV2BaseParams->baseM;
-        mnConfig.singleN = gmmSwigluQuantV2BaseParams->singleN != 0 && gmmSwigluQuantV2BaseParams->quantGroupNum == 1? 
-                            gmmSwigluQuantV2BaseParams->singleN : gmmSwigluQuantV2BaseParams->baseN;
+        mnConfig.singleN = gmmSwigluQuantV2BaseParams->singleN != 0 && gmmSwigluQuantV2BaseParams->quantGroupNum == 1 ?
+                               gmmSwigluQuantV2BaseParams->singleN :
+                               gmmSwigluQuantV2BaseParams->baseN;
         mnConfig.k = gmmSwigluQuantV2BaseParams->K; // tilingData
         mnConfig.n = gmmSwigluQuantV2BaseParams->N; // tilingData
         mnConfig.blockDimN = Ceil(mnConfig.n, mnConfig.singleN);

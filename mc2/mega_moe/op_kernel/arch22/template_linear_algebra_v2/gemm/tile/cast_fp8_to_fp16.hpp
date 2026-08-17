@@ -13,7 +13,7 @@
 
 #include "../../../template_linear_algebra_v2/catlass.hpp"
 #include "../../../template_linear_algebra_v2/arch/resource.hpp"
-#include "../../../template_linear_algebra_v2/coord.hpp"
+#include "../../../template_linear_algebra_v2/tla_v2_coord.hpp"
 #include "../../../template_linear_algebra_v2/gemm_coord.hpp"
 #include "../../../template_linear_algebra_v2/gemm/dispatch_policy.hpp"
 #include "../../../template_linear_algebra_v2/gemm/helper.hpp"
@@ -56,7 +56,8 @@ struct TileCastFp8ToFp16Dequant {
     }
 
     CATLASS_DEVICE
-    TileCastFp8ToFp16Dequant(Arch::Resource<ArchTag> &resource, Params const &params_) : params(params_)
+    TileCastFp8ToFp16Dequant(Arch::Resource<ArchTag> &resource, Params const &params_)
+        : params(params_)
     {
         int64_t bufferOffset = 0;
         for (uint32_t i = 0; i < BUFFER_NUM; i++) {

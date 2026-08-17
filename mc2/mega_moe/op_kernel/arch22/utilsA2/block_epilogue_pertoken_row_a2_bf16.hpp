@@ -17,7 +17,7 @@
 #include "../template_linear_algebra_v2/gemm_coord.hpp"
 #include "../template_linear_algebra_v2/matrix_coord.hpp"
 #include "../template_linear_algebra_v2/layout/layout.hpp"
-#include "../template_linear_algebra_v2/detail/callback.hpp"
+#include "../template_linear_algebra_v2/detail/tla_v2_callback.hpp"
 #include "../template_linear_algebra_v2/epilogue/block/block_epilogue.hpp"
 
 namespace Catlass::Epilogue::Block {
@@ -62,13 +62,16 @@ public:
 
         CATLASS_DEVICE
         Params(int32_t EP_, int32_t expertPerRank_, __gm__ int32_t *ptrTokenPerExpert_)
-            : ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), expertPerRank(expertPerRank_)
+            : ptrTokenPerExpert(ptrTokenPerExpert_),
+              EP(EP_),
+              expertPerRank(expertPerRank_)
         {
         }
     };
 
     CATLASS_DEVICE
-    BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{}) : params(params)
+    BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{})
+        : params(params)
     {
         size_t ubOffset = 4096;
         int32_t eventVMTE2 = 0;

@@ -12,7 +12,7 @@
 #define CATLASS_LAYOUT_TENSOR_HPP
 
 #include "../../template_linear_algebra_v2/catlass.hpp"
-#include "../../template_linear_algebra_v2/detail/alignment.hpp"
+#include "../../template_linear_algebra_v2/detail/tla_v2_alignment.hpp"
 #include "../../template_linear_algebra_v2/conv_coord.hpp"
 
 namespace Catlass::layout {
@@ -50,12 +50,15 @@ public:
     CATLASS_HOST_DEVICE
     NC1HWC0(Index batch, Index c1, Index h, Index w, Index c0, LongIndex strideBatch, LongIndex strideC1,
             LongIndex strideH, LongIndex strideW, LongIndex strideC0)
-        : shape_(MakeCoord(batch, c1, h, w, c0)), stride_(MakeCoord(strideBatch, strideC1, strideH, strideW, strideC0))
+        : shape_(MakeCoord(batch, c1, h, w, c0)),
+          stride_(MakeCoord(strideBatch, strideC1, strideH, strideW, strideC0))
     {
     }
 
     CATLASS_HOST_DEVICE
-    NC1HWC0(Shape shape, Stride stride) : shape_(shape), stride_(stride)
+    NC1HWC0(Shape shape, Stride stride)
+        : shape_(shape),
+          stride_(stride)
     {
     }
 
@@ -193,7 +196,9 @@ public:
     }
 
     CATLASS_HOST_DEVICE
-    CI1KHKWCOCI0(Shape shape, Stride stride) : shape_(shape), stride_(stride)
+    CI1KHKWCOCI0(Shape shape, Stride stride)
+        : shape_(shape),
+          stride_(stride)
     {
     }
 

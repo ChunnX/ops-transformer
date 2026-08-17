@@ -29,7 +29,7 @@
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/gemm/kernel/kernel_qgmm_swiglu_mx.h"
 #include "blaze/epilogue/block/block_epilogue_swiglu_mx_quant.h"
-#include "../grouped_matmul_swiglu_quant_v2_utils.h"
+#include "../grouped_matmul_swiglu_quant_v2_utils_kernel.h"
 #include "grouped_matmul_swiglu_quant_v2_tensor_api_tiling_data.h"
 
 template <typename layoutA, typename layoutB>
@@ -101,12 +101,12 @@ __aicore__ inline void GmmTensorApiSwigluQuantMxFp8Kernel(
     GM_ADDR yScaleDataAddr = yScale;
 
     GM_ADDR bDataAddr = singleW == 1 ?
-        reinterpret_cast<GM_ADDR>(GroupedMatmulDequantSwigluQuant::GetTensorAddr<BType>(0, weight)) :
-        weight;
+                            reinterpret_cast<GM_ADDR>(GroupedMatmulDequantSwigluQuant::GetTensorAddr<BType>(0, weight)) :
+                            weight;
     GM_ADDR scaleBDataAddr = singleW == 1 ?
-        reinterpret_cast<GM_ADDR>(
-            GroupedMatmulDequantSwigluQuant::GetTensorAddr<AscendC::fp8_e8m0_t>(0, weightScale)) :
-        weightScale;
+                                 reinterpret_cast<GM_ADDR>(
+                                     GroupedMatmulDequantSwigluQuant::GetTensorAddr<AscendC::fp8_e8m0_t>(0, weightScale)) :
+                                 weightScale;
 
     GM_ADDR groupListDataAddr = groupList;
 
