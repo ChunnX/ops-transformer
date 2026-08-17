@@ -117,7 +117,8 @@ private:
     __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
     __aicore__ inline void RunGmm1ActivationForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
                                                       uint32_t &startBlockIdx, int32_t &gmTileSequence,
-                                                      uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount);
+                                                      uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount,
+                                                      uint32_t gmm1TilesPerMGroup);
     __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
                                                    uint32_t &startBlockIdx, int32_t &gmTileSequence,
                                                    uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount);
@@ -159,10 +160,8 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Prepare
 template <TemplateMegaMoeA8W4WaveTypeClass>
 __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1ActivationForExpert(
     ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence,
-    uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount)
+    uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup)
 {
-    uint32_t gmm1TilesPerMGroup =
-        Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
     UpdateMoeExpertGmm1GlobalBuffer<ActivationType, Weight1Type, ActivationQuantOutType, QuantScaleOutType,
                                     A_ELEMS_PER_BYTE, true, TopkWeightsPrefetch>(
         gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, epilogueOp_,
@@ -218,11 +217,11 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     uint32_t startBlockIdx = 0U;
 
     const uint32_t expertCount = commonConfig_.moeExpertPerRank;
-    const uint32_t gmm1NTileCount =
+    const uint32_t gmm1TilesPerMGroup =
         Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
-    // Wave 以完整 M group 为切分单位；一个 M group 会产生 gmm1NTileCount 个 scheduler tile。
+    // Wave 以完整 M group 为切分单位；一个 M group 会产生 gmm1TilesPerMGroup 个 scheduler tile。
     waveMGroupTarget_ =
-        Ops::Base::CeilDiv(A8W4_GMM1_TILES_PER_JOB_TARGET * gmmExecutionConfig_.blockJob.totalJobs, gmm1NTileCount);
+        Ops::Base::CeilDiv(A8W4_GMM1_TILES_PER_JOB_TARGET * gmmExecutionConfig_.blockJob.totalJobs, gmm1TilesPerMGroup);
 
     ExpertTokenPosition dispatchPosition{};
 
@@ -252,8 +251,9 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
         uint32_t nextDispatchWaveMGroupCount = 0U;
         bool nextWaveNeedsDispatch = false;
         if constexpr (g_coreType == AIV) {
-            nextWaveNeedsDispatch =
-                GetSubBlockIdx() == 1U && !IsWaveComplete(dispatchPosition, nextDispatchWaveMGroupCount);
+            if (GetSubBlockIdx() == 1U) {
+                nextWaveNeedsDispatch = !IsWaveComplete(dispatchPosition, nextDispatchWaveMGroupCount);
+            }
         }
 
         while (currentWaveNeedsGmm1 || nextWaveNeedsDispatch) {
@@ -281,7 +281,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
                     expertTokenCount, waveMGroupTarget_, currentWaveMGroupCount, gmm1Position);
                 if (sliceTokenCount != 0U) {
                     RunGmm1ActivationForExpert(gmm1State, gmm1AddrInfo, startBlockIdx, gmTileSequence,
-                                               sliceTokenStartIndexInExpert, sliceTokenCount);
+                                               sliceTokenStartIndexInExpert, sliceTokenCount, gmm1TilesPerMGroup);
                 }
                 waveEndPosition = gmm1Position;
                 currentWaveNeedsGmm1 = !IsWaveComplete(gmm1Position, currentWaveMGroupCount);
