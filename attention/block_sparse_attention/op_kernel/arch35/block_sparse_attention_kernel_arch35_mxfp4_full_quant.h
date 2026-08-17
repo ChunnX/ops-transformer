@@ -162,7 +162,8 @@ public:
         coreIdx = AscendC::GetBlockIdx();
 
         uint32_t kvBufId = 0;
-        BlockMmadQK blockMmadQK(resource, kvBufId);
+        uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&scaleValue_));
+        BlockMmadQK blockMmadQK(resource, kvBufId, deqScalar);
         BlockMmadPV blockMmadPV(resource, kvBufId);
         BlockMmadCopyGlobalMaxL1ToUB blockGMaxL1ToUb(resource);
  #endif	 
@@ -172,7 +173,7 @@ public:
         half NEG_LOG2_CX = static_cast<half>(-log2Cx_);
         half LOG2_CX_CEIL = static_cast<half>(log2CxCeil_);
 
-        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_, NEG_LOG2_CX);
+        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, NEG_LOG2_CX);
         EpilogueCopyGlobalMaxUbToL1 epilogueCopyGlobalMaxUbToL1(resource);
         EpilogueComputePScale epilogueComputePScale(resource, LOG2_CX_CEIL);
         EpilogueRescaleO epilogueRescaleO(resource);

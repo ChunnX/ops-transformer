@@ -84,7 +84,8 @@ public:
     static constexpr uint32_t QK_L0C_EVENT0 = 2;
     static constexpr uint32_t QK_L0C_EVENT1 = 3;
 
-    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t& kvBufId) : kBufId(kvBufId) {
+    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t& kvBufId, uint64_t deqScalar) : kBufId(kvBufId) {
+        deqScalar_ = deqScalar;
         for (uint32_t i = 0; i < MXFP4::L1_Q_BUF_CNT; i++) {
             l1BTensor[i] = resource.l1Buf.template GetBufferByByte<ElementA>(MXFP4::L1_Q_BUF_OFFSET + MXFP4::L1_Q_BUF_SIZE * i);
         }
@@ -321,9 +322,9 @@ public:
         using CopyL0CToUB = Tile::CopyL0CToUBTla<
             ArchTag, decltype(l0CTensorTla), TensorUB,
             Tile::CopyL0CToUBMode::NO_SPLIT,
-            Tile::ScaleGranularity::NO_QUANT, false>;
+            Tile::ScaleGranularity::PER_TENSOR, false>;
         CopyL0CToUB copyL0CToUB;
-        copyL0CToUB(ubSTensorTla, l0CTensorTla, subBlockId);
+        copyL0CToUB(ubSTensorTla, l0CTensorTla, deqScalar_, subBlockId);
     }
 
     // 发一次 nSub 的 fixpipe（含 M_FIX / FIX_M 的成对同步）。
@@ -495,6 +496,7 @@ protected:
     uint32_t& kBufId;
     uint32_t qkL0abBufId = 0;
     uint32_t qkL0cBufId = 0;
+    uint64_t deqScalar_;
 };
 
 }  // namespace NpuArch::Gemm::Block
