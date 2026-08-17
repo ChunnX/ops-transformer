@@ -136,7 +136,10 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     // A 模板 (205): grad_cos/grad_sin 已在 Phase 1 融合计算直接写回 GM，无 reduce
     // ================================================================
     if constexpr (DcosFlag) {
-        PipeBarrier<PIPE_ALL>();
+        // SyncAll 内部先执行核内 PipeBarrier<PIPE_ALL> (排空本核 MTE3 写 GM) 再做全核同步,
+        // 覆盖跨核 RAW 依赖: Phase1 各核写 workspace -> Phase2 reduce 跨核读取全量分片,
+        // 无需额外的前置 PipeBarrier; dCosFlag=0 时本块编译期裁剪, 两输出路径不受影响
+        SyncAll();
 
         using ReduceOp = ReduceSch<REDUCE_TPL_VALUE,
             ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<DTYPE_GRAD_QUERY_EMBED, float>::OpDag>;
