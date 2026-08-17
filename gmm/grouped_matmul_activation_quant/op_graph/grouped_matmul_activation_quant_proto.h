@@ -55,8 +55,9 @@ namespace ge {
 * @li y_dtype: An int. Indicates the data type of y. It supports DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2,
 * DT_FLOAT4_E2M1 and DT_FLOAT4_E1M2. DT_UNDEFINED makes y follow x. Default: DT_UNDEFINED.
 * @li round_mode: A string. The rounding mode. Current scenario only supports "rint". Default: "rint".
-* @li scale_alg: An int. The scale algorithm. 0 means OCP implementation, and 1 means cuBLAS implementation.
-* Default: 0.
+* @li scale_alg: An int. The scale algorithm. 0 means OCP implementation, 1 means cuBLAS implementation for
+* FLOAT8 output, and 2 means dynamic dtype range implementation for FLOAT4_E2M1 output. FLOAT4_E1M2 output only
+* supports 0. Default: 0.
 * @li dst_type_max: A float. Indicates Amax(DType). Default: 0.0.
 */
 REG_OP(GroupedMatmulActivationQuant)

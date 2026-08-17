@@ -50,7 +50,8 @@ extern "C" {
  * @param [in] roundMode:
  * 表示量化舍入模式，当前仅支持"rint"；传入nullptr或空字符串时按"rint"处理。
  * @param [in] scaleAlg:
- * 表示量化因子计算算法，当前支持0或1，其中0表示OCP实现，1表示cuBLAS实现。
+ * 表示量化因子计算算法，支持0、1和2。0表示OCP实现；1表示cuBLAS实现且仅支持FLOAT8输出；
+ * 2表示FLOAT4动态范围实现且仅支持FLOAT4_E2M1输出。FLOAT4_E1M2输出仅支持0。
  * @param [in] dstTypeMax:
  * 表示maxType的取值，对应公式中的Amax(DType)。当前MX场景仅支持0.0。
  * @param [out] y:

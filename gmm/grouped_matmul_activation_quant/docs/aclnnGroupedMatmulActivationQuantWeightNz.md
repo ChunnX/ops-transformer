@@ -101,6 +101,8 @@
 
             | DataType | emax |
             | :---: | :---: |
+            | FLOAT4_E2M1 | 2 |
+            | FLOAT4_E1M2 | 0 |
             | FLOAT8_E4M3FN | 8 |
             | FLOAT8_E5M2 | 15 |
 
@@ -143,6 +145,23 @@
           $$
 
           最终输出的量化结果为$\left(S^b, [d^j]_{j=1}^{k}\right)$，其中$S^b$表示块缩放因子$S_{ue8m0}^b$，$[d^j]_{j=1}^{k}$表示块内量化后的数据。
+
+        - 场景3，当scaleAlg为2时，只涉及FLOAT4_E2M1输出。当前接口固定`dstTypeMax=0.0`，将激活结果$S_i$在N轴按$group\_size=32$分组，并依据块内最大绝对值的指数和高位尾数确定是否对共享指数进位：
+
+          $$
+          shared\_exp = \begin{cases}
+          ceil(log_2(max_j(|V_j|))) - emax, & \text{如果尾数高位满足进位条件且尾数不全为0} \\
+          floor(log_2(max_j(|V_j|))) - emax, & \text{其他情况}
+          \end{cases}
+          $$
+
+          其中FLOAT4_E2M1的$emax=2$，随后计算$YScale=2^{shared\_exp}$，并执行：
+
+          $$
+          P_j = cast\_to\_FLOAT4\_E2M1(V_j / YScale, roundMode)
+          $$
+
+          量化后的$P_j$组成输出$Y$，每个32元素分组对应一个FLOAT8_E8M0类型的$YScale$。
 
   </details>
 
@@ -322,7 +341,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>scaleAlg（int64_t）</td>
       <td>输入</td>
       <td>表示量化因子计算算法。</td>
-      <td>当前MX量化场景下支持0或1，其中0表示OCP实现，1表示cuBLAS实现。</td>
+      <td>支持0、1和2：0表示OCP实现；1表示cuBLAS实现且仅支持FLOAT8输出；2表示FLOAT4动态范围实现且仅支持FLOAT4_E2M1输出。FLOAT4_E1M2输出仅支持0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

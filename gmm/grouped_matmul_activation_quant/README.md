@@ -70,7 +70,7 @@
 | quant_mode | 可选属性 | 量化模式，当前仅支持`"mx"`。 | STRING | - | - |
 | y_dtype | 可选属性 | 输出`y`的数据类型，默认0（DT_UNDEFINED），此时输出类型跟随`x`；当前支持0、35、36、40、41，其中35/36表示两种FP8，40/41表示两种FP4。 | INT64 | - | - |
 | round_mode | 可选属性 | 量化舍入模式，默认`"rint"`，当前仅支持`"rint"`。 | STRING | - | - |
-| scale_alg | 可选属性 | MX量化scale算法，默认0；支持0或1，其中0表示OCP实现，1表示cuBLAS实现。 | INT64 | - | - |
+| scale_alg | 可选属性 | MX量化scale算法，默认0；支持0、1、2。0支持全部输出类型；1仅支持FP8输出；2仅支持FLOAT4_E2M1输出。 | INT64 | - | - |
 | dst_type_max | 可选属性 | 表示maxType的取值，对应公式中的Amax(DType)，默认0.0。当前MX场景仅支持0.0。 | FLOAT | - | - |
 
 ## 约束说明
@@ -78,6 +78,7 @@
 - `x`仅支持非转置输入；`weight`支持非转置和转置输入，`weight_scale`转置属性需要与`weight`保持一致。
 - `N`必须为64的整数倍，`group_list`第一维取值范围为[1, 1024]。
 - MXFP4场景下`K`必须为偶数且不能为2，weight的NZ storageShape尾维为64；MXFP8场景尾维为32。
+- `scale_alg=1`仅支持FLOAT8输出；`scale_alg=2`仅支持FLOAT4_E2M1输出；FLOAT4_E1M2输出仅支持`scale_alg=0`。
 - `bias`为空时，支持nullptr、空tensorList或长度为1且元素shape为(0)的空tensorList。
 
 ## 调用说明

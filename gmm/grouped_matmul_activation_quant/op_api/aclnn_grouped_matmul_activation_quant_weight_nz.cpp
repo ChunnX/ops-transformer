@@ -47,6 +47,7 @@ constexpr int64_t FLOAT4_E2M1_VALUE = static_cast<int64_t>(DataType::DT_FLOAT4_E
 constexpr int64_t FLOAT4_E1M2_VALUE = static_cast<int64_t>(DataType::DT_FLOAT4_E1M2);
 constexpr int64_t SCALE_ALG_OCP = 0L;
 constexpr int64_t SCALE_ALG_CUBLAS = 1L;
+constexpr int64_t SCALE_ALG_DYNAMIC_DTYPE_RANGE = 2L;
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0F;
 constexpr float FLOAT_EPS = 1e-6F;
 
@@ -542,9 +543,21 @@ aclnnStatus CheckMxQuantAttrs(int64_t groupListType, int64_t effectiveYDtype, co
     GMMAQ_CHECK_WITH_LOG(groupListType == 0 || groupListType == 1, ACLNN_ERR_PARAM_INVALID,
                          OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupListType", std::to_string(groupListType),
                                                                "groupListType must be 0 or 1"));
-    GMMAQ_CHECK_WITH_LOG(scaleAlg == SCALE_ALG_OCP || scaleAlg == SCALE_ALG_CUBLAS, ACLNN_ERR_PARAM_INVALID,
+    GMMAQ_CHECK_WITH_LOG(scaleAlg == SCALE_ALG_OCP || scaleAlg == SCALE_ALG_CUBLAS ||
+                             scaleAlg == SCALE_ALG_DYNAMIC_DTYPE_RANGE,
+                         ACLNN_ERR_PARAM_INVALID,
                          OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "scaleAlg", std::to_string(scaleAlg),
-                                                               "when the quantization mode is mx, scaleAlg must be 0 or 1"));
+                                                               "when the quantization mode is mx, scaleAlg must be 0, 1 or 2"));
+    GMMAQ_CHECK_WITH_LOG(scaleAlg != SCALE_ALG_CUBLAS ||
+                             effectiveYDtype == FLOAT8_E4M3FN_VALUE || effectiveYDtype == FLOAT8_E5M2_VALUE,
+                         ACLNN_ERR_PARAM_INVALID,
+                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                             OP_NAME, "scaleAlg", std::to_string(scaleAlg),
+                             "scaleAlg 1 only supports FLOAT8_E4M3FN or FLOAT8_E5M2 output"));
+    GMMAQ_CHECK_WITH_LOG(scaleAlg != SCALE_ALG_DYNAMIC_DTYPE_RANGE || effectiveYDtype == FLOAT4_E2M1_VALUE,
+                         ACLNN_ERR_PARAM_INVALID,
+                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "scaleAlg", std::to_string(scaleAlg),
+                                                               "scaleAlg 2 only supports FLOAT4_E2M1 output"));
     GMMAQ_CHECK_WITH_LOG(std::fabs(dstTypeMax - DEFAULT_DST_TYPE_MAX) <= FLOAT_EPS, ACLNN_ERR_PARAM_INVALID,
                          OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "dstTypeMax", std::to_string(dstTypeMax),
                                                                "when the quantization mode is mx, dstTypeMax must be 0.0"));
