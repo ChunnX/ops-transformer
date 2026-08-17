@@ -163,7 +163,8 @@ def get_mxfp8_per_token_group_quant_scale(tensor, fp8_dtype, group_size=32):
     emax_elem = _EMAX_MAP[fp8_dtype]
 
     dim1, dim2, dim3, dim4 = tensor.shape
-    num_groups = math.ceil(dim4 / group_size)
+    dim4_align = (dim4 + 63) // 64 * 64
+    num_groups = math.ceil(dim4_align / group_size)
     pad_size = num_groups * group_size - dim4
     if pad_size > 0:
         tensor = torch.nn.functional.pad(tensor, (0, pad_size))
@@ -1063,10 +1064,10 @@ def cpu_mxfp8_golden(
     # dequant_scale 按 group_size 扩展，用于逐元素反量化
     dequant_scale_q_expanded = dequant_scale_q.repeat_interleave(
         QUANT_GROUP_SIZE, dim=-1
-    )
+    )[:, :, :, :D]
     dequant_scale_k_expanded = dequant_scale_k.repeat_interleave(
         QUANT_GROUP_SIZE, dim=-1
-    )
+    )[:, :, :, :D]
     v_descale_expanded = v_descale.repeat_interleave(QUANT_GROUP_SIZE, dim=2)
 
     logger.info(
@@ -2065,6 +2066,10 @@ if __name__ == "__main__":
         logger.info("\n[Step 5] LSE 精度对比")
         cpu_lse_tnd_torch = convert_q_bnsd_to_layout(
             cpu_lse, _get_seqused_q(), "TND", cu_seqlens=CU_SEQLENS_Q
+        )
+        # TND padding 位置填 inf 以匹配 NPU 行为：NPU 对超出实际序列长度的 Q 位置输出 inf LSE
+        cpu_lse_tnd_torch = fill_tnd_padding(
+            cpu_lse_tnd_torch, _get_seqused_q(), CU_SEQLENS_Q, fill_value=float("inf")
         )
         # NPU LSE 输出已改为 N-major 排布 (N, T): N 在外, T 在内
         # CPU golden 经 convert 后是 [T, N, 1] (T-major), 需转成 [N, T] 对齐
