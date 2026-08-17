@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "aclnn_ffn_to_attention_v2.h"
 #include "common/utils/op_mc2_def.h"
 #include <algorithm>
 #include "opdev/common_types.h"
@@ -47,7 +46,7 @@ static bool CheckNullStatus(const aclTensor *x, const aclTensor *sessionIds, con
         OP_LOGE_WITH_INVALID_INPUT("aclnnFFNToAttentionV2", "group");
         return false;
     }
-
+    
     return true;
 }
 
@@ -69,19 +68,19 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *sessionIds, 
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnFFNToAttentionV2GetWorkspaceSize(const aclTensor *x, const aclTensor *sessionIds,
-                                                const aclTensor *microBatchIds, const aclTensor *tokenIds,
-                                                const aclTensor *expertOffsets, const aclTensor *actualTokenNum,
-                                                const aclTensor *attnRankTable, const char *group, int64_t worldSize,
-                                                const aclIntArray *tokenInfoTableShape,
-                                                const aclIntArray *tokenDataShape, uint64_t *workspaceSize,
-                                                aclOpExecutor **executor)
+aclnnStatus aclnnFFNToAttentionV2GetWorkspaceSize(const aclTensor *context, const aclTensor *x, const aclTensor *sessionIds,
+                                                 const aclTensor *microBatchIds, const aclTensor *tokenIds,
+                                                 const aclTensor *expertOffsets, const aclTensor *actualTokenNum,
+                                                 const aclTensor *attnRankTable, const char *group, int64_t worldSize,
+                                                 const aclIntArray *tokenInfoTableShape,
+                                                 const aclIntArray *tokenDataShape, int64_t cclBufferSize,
+                                                 uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto retParam = CheckParams(x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerFFNToAttentionV2GetWorkspaceSize(
-        x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable, const_cast<char *>(group),
-        worldSize, tokenInfoTableShape, tokenDataShape, workspaceSize, executor);
+        context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable, const_cast<char *>(group),
+        worldSize, tokenInfoTableShape, tokenDataShape, cclBufferSize, workspaceSize, executor);
     return ret;
 }
 

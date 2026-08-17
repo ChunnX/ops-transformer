@@ -17,10 +17,11 @@
 #define FFN_TO_ATTENSION_V2_TILING_H
 
 #include "register/tilingdata_base.h"
+#include "../../../ffn_to_attention/op_host/op_tiling/ffn_to_attention_tiling_base.h"
 
 namespace MC2Tiling {
+
 ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context);
-ge::graphStatus FFNToAttentionTilingFunc(gert::TilingContext *context);
 } // namespace MC2Tiling
 
 #endif // FFN_TO_ATTENSION_V2_TILING_H

@@ -20,6 +20,11 @@ class FFNToAttentionV2 : public OpDef {
 public:
     explicit FFNToAttentionV2(const char *name) : OpDef(name)
     {
+        this->Input("context")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
@@ -59,7 +64,7 @@ public:
         this->Attr("world_size").AttrType(REQUIRED).Int();
         this->Attr("token_info_table_shape").AttrType(REQUIRED).ListInt();
         this->Attr("token_data_shape").AttrType(REQUIRED).ListInt();
-
+        this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
@@ -71,7 +76,7 @@ public:
             .ExtendCfgInfo("jitCompile.flag", "static_true")
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
         this->AICore().AddConfig("ascend950", aicore_config);
-        this->MC2().HcclGroup({"group"});
+        //this->MC2().HcclGroup({"group"});
     }
 };
 
