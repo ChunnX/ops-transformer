@@ -27,7 +27,8 @@ namespace Mc2Kernel {
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
 
-template <typename XInType, typename ExpandXOutType, typename XOutType, int32_t QuantMode, bool IsSmoothScaleExist>
+template <typename XInType, typename ExpandXOutType, typename XOutType, int32_t QuantMode, bool IsSmoothScaleExist,
+          bool EnableGroupParallel = false>
 class MoeDistributeDispatchV2Quant {
 public:
     uint32_t axisH_{0};
@@ -257,8 +258,9 @@ public:
             __ubuf__ int8_t *outLocalAddr = (__ubuf__ int8_t *)outLocal.GetPhyAddr();
             __ubuf__ float *scaleOutLocalAddr = (__ubuf__ float *)outLocal[Align128<uint32_t>(axisH_)].GetPhyAddr();
 
-            Quant::ComputePerTileDynamic<XInType, ExpandXOutType, AscendC::RoundMode::CAST_RINT, IsSmoothScaleExist>(
-                srcAddr, smoothLocalAddr, scaleOutLocalAddr, outLocalAddr, axisH_);
+            Quant::ComputePerTileDynamic<XInType, ExpandXOutType, AscendC::RoundMode::CAST_RINT, IsSmoothScaleExist,
+                                         EnableGroupParallel>(srcAddr, smoothLocalAddr, scaleOutLocalAddr, outLocalAddr,
+                                                              axisH_);
         }
     }
 

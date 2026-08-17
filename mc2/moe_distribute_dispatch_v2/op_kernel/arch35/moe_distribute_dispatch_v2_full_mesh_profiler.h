@@ -30,7 +30,7 @@
 
 // quant_mode=3调试开关：保留输入和smooth scale搬运及FP8通信，只跳过per-group计算。
 #ifndef FULLMESH_BYPASS_PERGROUP_COMPUTE
-#define FULLMESH_BYPASS_PERGROUP_COMPUTE 1
+#define FULLMESH_BYPASS_PERGROUP_COMPUTE 0
 #endif
 
 namespace MoeDistributeDispatchV2FullMeshProfiler {
