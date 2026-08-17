@@ -46,7 +46,7 @@ constexpr size_t OUTPUT_TENSOR_COUNT = 2U;
 constexpr size_t TENSOR_FIELD_COUNT = 4U;
 constexpr size_t SCALAR_FIELD_COUNT = 19U;
 constexpr size_t CSV_COLUMN_COUNT = SCALAR_FIELD_COUNT + (INPUT_TENSOR_COUNT + OUTPUT_TENSOR_COUNT) *
-                                                           TENSOR_FIELD_COUNT;
+                                                             TENSOR_FIELD_COUNT;
 constexpr uint32_t DEFAULT_L1_SIZE = 512288U;
 constexpr uint32_t DEFAULT_L2_SIZE = 134217728U;
 constexpr uint32_t DEFAULT_L0C_SIZE = 262144U;
@@ -240,8 +240,7 @@ const vector<GroupedMatmulActivationQuantTilingCase> &GetAscend950Cases()
     return cases;
 }
 
-class TestGroupedMatmulActivationQuantTiling950 :
-    public testing::TestWithParam<GroupedMatmulActivationQuantTilingCase> {
+class TestGroupedMatmulActivationQuantTiling950 : public testing::TestWithParam<GroupedMatmulActivationQuantTilingCase> {
 };
 
 TEST_P(TestGroupedMatmulActivationQuantTiling950, csvDrivenCase)
