@@ -22,7 +22,6 @@ if("${CONDITION_UNIT}" STREQUAL "ascend950")
         OP_NAME SparseLightningIndexerGradKLLoss
         COMPUTE_UNIT Ascend950PR_9599
         OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
-        -g
     )
 endif()
 
