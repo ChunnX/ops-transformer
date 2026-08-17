@@ -1,5 +1,10 @@
 # SparseAttentionScorePrefill A2 Performance Validation
 
+> 本文是 2026-08-16/17 的历史快照，保留用于追踪优化过程。当前安装对象、
+> `innerPrecise=0/1/4 × KV=64K/128K/256K` 的最终数据和性能门禁以
+> [PERFORMANCE_REPORT.md](PERFORMANCE_REPORT.md) 为准；下文旧对象的 3×3
+> 矩阵不得作为当前版本结论。
+
 ## Scope
 
 Target: Ascend 910B. The 2026-08-16 matrix used physical device 1; the final
