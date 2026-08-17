@@ -25,10 +25,10 @@
 #include "../common.h"
 
 #include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h"
-#include "matmul_all_reduce_add_x3.h"
-#include "matmul_all_reduce_quant_perchannel.h"
-#include "matmul_all_reduce_quant_reduce_sum.h"
-#include "matmul_all_reduce_dequant_perchannel.h"
+#include "matmul_all_reduce_add_x3_arch35.h"
+#include "matmul_all_reduce_quant_perchannel_arch35.h"
+#include "matmul_all_reduce_quant_reduce_sum_arch35.h"
+#include "matmul_all_reduce_dequant_perchannel_arch35.h"
 
 namespace MatmulAllReduceImpl {
 constexpr uint32_t MAX_HANDLE_NUM = 16U;
@@ -345,18 +345,18 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType,
     }
 }
 
-#define INVOKE_MC2_QUANT_COMM_INT8_910_OP_IMPL(templateClass, coreType, commMode, scaleType, ...)                      \
-    do {                                                                                                               \
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, tilingData, tilingGM);                \
-        MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                                           \
-        QuantGmAddrs quantAddrs = {nullptr, nullptr, nullptr, dequantGM, pertokenGM};                                  \
-        using OpType = templateClass<DTYPE_X1, DTYPE_X2, scaleType, DTYPE_BIAS, DTYPE_Y, X1_FORMAT, X2_FORMAT,         \
-                                     Y_FORMAT, __VA_ARGS__>;                                                           \
-        MatmulAllReduceQuantCommInt8<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, commMode> op;                      \
-        op.Init(aGM, bGM, biasGM, addGM, dequantGM, pertokenGM, commQuantScale1GM, commQuantScale2GM, cGM, userWS,     \
-                &tilingData, &tPipe);                                                                                  \
-        op.Process();                                                                                                  \
-        tPipe.Destroy();                                                                                               \
+#define INVOKE_MC2_QUANT_COMM_INT8_910_OP_IMPL(templateClass, coreType, commMode, scaleType, ...) \
+    do { \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, tilingData, tilingGM); \
+        MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM}; \
+        QuantGmAddrs quantAddrs = {nullptr, nullptr, nullptr, dequantGM, pertokenGM}; \
+        using OpType = templateClass<DTYPE_X1, DTYPE_X2, scaleType, DTYPE_BIAS, DTYPE_Y, X1_FORMAT, X2_FORMAT, \
+                                     Y_FORMAT, __VA_ARGS__>; \
+        MatmulAllReduceQuantCommInt8<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, commMode> op; \
+        op.Init(aGM, bGM, biasGM, addGM, dequantGM, pertokenGM, commQuantScale1GM, commQuantScale2GM, cGM, userWS, \
+                &tilingData, &tPipe); \
+        op.Process(); \
+        tPipe.Destroy(); \
     } while (0)
 
 } // namespace MatmulAllReduceImpl

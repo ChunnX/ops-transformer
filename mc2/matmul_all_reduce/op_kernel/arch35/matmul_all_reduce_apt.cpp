@@ -20,16 +20,16 @@
 #endif
 #include "lib/matmul_intf.h"
 #include "../common.h"
-#include "matmul_all_reduce_empty_tensor_k_general.h"
+#include "matmul_all_reduce_empty_tensor_k_general_arch35.h"
 #include "matmul_all_reduce_apt_tiling_key.h"
 
 // david非量化
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
-#include "matmul_all_reduce_910_general.h"
+#include "matmul_all_reduce_910_general_arch35.h"
 #endif
 
 #if defined(WEIGHT_W4_W8)
-#include "matmul_all_reduce_weight_quant.h"
+#include "matmul_all_reduce_weight_quant_arch35.h"
 #endif
 
 #if defined(WEIGHT_F8) || defined(WEIGHT_W4_W8)
@@ -41,19 +41,19 @@ static constexpr Mc2WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig VEC_ANT
 static constexpr Mc2WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_1 = {4, 512};
 static constexpr Mc2WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_2 = {2, 1024};
 static constexpr Mc2WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_3 = {4,
-                                                                                                   256}; // b 非转置场景
+                                                                                                   256};    // b 非转置场景
 static constexpr Mc2WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_4 = {2, 256}; // solomon
 } // namespace
 #endif
 
-#if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_INT8)) ||                                                \
-    (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) ||                                           \
-     (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                    \
-      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))) ||                                  \
+#if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_INT8)) || \
+    (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) || \
+     (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
+      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))) || \
     ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
 #include "matmul_all_reduce_quant_pertoken.h"
 #include "matmul_all_reduce_quant_pertoken_comm_int8.h"
-#include "matmul_all_reduce_quant.h"
+#include "matmul_all_reduce_quant_arch35.h"
 #include "matmul_all_reduce_quant_comm_int8.h"
 #include "matmul_all_reduce_quant_perblock.h"
 #include "matmul_all_reduce_quant_commfp8_mixed_calc.h"
@@ -140,8 +140,8 @@ __global__ __aicore__ void quant_matmul_all_reduce(GM_ADDR aGM, GM_ADDR bGM, GM_
         INVOKE_MC2_QUANT_MXFP_910_OP_IMPL(AscendC::MatMulASWKernel, Mc2CoreType::ON_CUBE_AND_VECTOR, APT_A2A_RS_AG,
                                           APT_COMM_MODE, false, true);
     }
-#elif (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) ||                                         \
-       (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                  \
+#elif (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) || \
+       (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
         ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))))
 // fp8,hif8和mixfp的场景，bias都是float
 #undef DTYPE_BIAS

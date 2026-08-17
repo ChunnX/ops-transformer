@@ -24,7 +24,7 @@
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/callback.hpp"
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
-#include "matmul_allto_all_util.h"
+#include "matmul_allto_all_util_arch22.h"
 
 namespace Catlass::Gemm::Kernel {
 template <class BlockMmad_, class BlockEpilogue_, class BlockScheduler_, uint32_t WORKSPACE_STAGES_>
@@ -89,11 +89,24 @@ public:
                LayoutPerTokenScale layoutPerTokenScale_, GM_ADDR ptrBias_, LayoutBias layoutBias_, GM_ADDR ptrPeerMem_,
                LayoutD layoutD_, GM_ADDR ptrWorkspace_, GM_ADDR ptrOut_, CommBase commUtil_, int32_t pipeDepth_,
                bool transB_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              ptrScale(ptrScale_), layoutScale(layoutScale_), ptrPerTokenScale(ptrPerTokenScale_),
-              layoutPerTokenScale(layoutPerTokenScale_), ptrBias(ptrBias_), layoutBias(layoutBias_),
-              ptrPeerMem(ptrPeerMem_), layoutD(layoutD_), ptrWorkspace(ptrWorkspace_), ptrOut(ptrOut_),
-              commUtil(commUtil_), pipeDepth(pipeDepth_), transB(transB_)
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrScale(ptrScale_),
+              layoutScale(layoutScale_),
+              ptrPerTokenScale(ptrPerTokenScale_),
+              layoutPerTokenScale(layoutPerTokenScale_),
+              ptrBias(ptrBias_),
+              layoutBias(layoutBias_),
+              ptrPeerMem(ptrPeerMem_),
+              layoutD(layoutD_),
+              ptrWorkspace(ptrWorkspace_),
+              ptrOut(ptrOut_),
+              commUtil(commUtil_),
+              pipeDepth(pipeDepth_),
+              transB(transB_)
         {
         }
     };
@@ -241,7 +254,7 @@ public:
         LayoutPerTokenScale layoutPerTokenScale =
             params.layoutPerTokenScale.GetTileLayout(params.problemShape.template GetCoordByAxis<0>());
         LayoutD layoutD = params.layoutD;
-        EpilogueParams epilogueParams{params.ptrScale,     layoutScale,    params.ptrPerTokenScale,
+        EpilogueParams epilogueParams{params.ptrScale, layoutScale, params.ptrPerTokenScale,
                                       layoutPerTokenScale, params.ptrBias, layoutBias};
         blockEpilogue.UpdateParams(epilogueParams);
 
