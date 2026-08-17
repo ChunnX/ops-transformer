@@ -1,0 +1,189 @@
+diff --git a/op_plugin/config/op_plugin_functions.yaml b/op_plugin/config/op_plugin_functions.yaml
+index 4df210f..1867026 100644
+--- a/op_plugin/config/op_plugin_functions.yaml
++++ b/op_plugin/config/op_plugin_functions.yaml
+@@ -6153,7 +6153,7 @@ custom:
+     op_api: all_version
+     exposed: all_version
+ 
+-  - func: npu_sparse_flash_attention_grad(Tensor query, Tensor key, Tensor value, Tensor sparse_indices, Tensor d_out, Tensor out, Tensor softmax_max, Tensor softmax_sum, float scale_value, int sparse_block_size, Tensor? query_rope=None, Tensor? key_rope=None, Tensor? actual_seq_qlen=None, Tensor? actual_seq_kvlen=None, str? layout="BSND", int? sparse_mode=3, int? pre_tokens=9223372036854775807, int? next_tokens=9223372036854775807, int? attention_mode=0) -> (Tensor, Tensor, Tensor, Tensor, Tensor)
++  - func: npu_sparse_flash_attention_grad(Tensor query, Tensor key, Tensor? value, Tensor sparse_indices, Tensor d_out, Tensor out, Tensor softmax_max, Tensor softmax_sum, float scale_value, int sparse_block_size, Tensor? query_rope=None, Tensor? key_rope=None, Tensor? actual_seq_qlen=None, Tensor? actual_seq_kvlen=None, str? layout="BSND", int? sparse_mode=3, int? pre_tokens=9223372036854775807, int? next_tokens=9223372036854775807, int? attention_mode=0) -> (Tensor, Tensor, Tensor, Tensor, Tensor)
+     op_api: all_version
+ 
+   - func: npu_sparse_lightning_indexer_grad_kl_loss(Tensor query, Tensor key, Tensor query_index, Tensor key_index, Tensor weights, Tensor sparse_indices, Tensor softmax_max, Tensor softmax_sum, float scale_value, *, Tensor? query_rope=None, Tensor? key_rope=None, SymInt[]? actual_seq_qlen=None, SymInt[]? actual_seq_klen=None, str? layout='BSND', int? sparse_mode=3, int? pre_tokens=9223372036854775807, int? next_tokens=9223372036854775807) -> (Tensor, Tensor, Tensor, Tensor)
+diff --git a/op_plugin/ops/opapi/SparseFlashAttentionGradKernelNpuOpApi.cpp b/op_plugin/ops/opapi/SparseFlashAttentionGradKernelNpuOpApi.cpp
+index 59f72e8..b66b398 100644
+--- a/op_plugin/ops/opapi/SparseFlashAttentionGradKernelNpuOpApi.cpp
++++ b/op_plugin/ops/opapi/SparseFlashAttentionGradKernelNpuOpApi.cpp
+@@ -28,7 +28,7 @@ const int DIMENSION_4D = 4;
+ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_sparse_flash_attention_grad(
+     const at::Tensor &query,
+     const at::Tensor &key,
+-    const at::Tensor &value,
++    const c10::optional<at::Tensor> &value,
+     const at::Tensor &sparse_indices,
+     const at::Tensor &d_out,
+     const at::Tensor &out,
+@@ -46,6 +46,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_spars
+     c10::optional<int64_t> next_tokens,
+     c10::optional<int64_t> attention_mode)
+ {
++    const at::Tensor &value_const = value.value_or(at::Tensor());
+     const at::Tensor &query_rope_const = query_rope.value_or(at::Tensor());
+     const at::Tensor &key_rope_const = key_rope.value_or(at::Tensor());
+     const at::Tensor &ac_seq_qlen = actual_seq_qlen.value_or(at::Tensor());
+@@ -53,6 +54,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_spars
+     TORCH_CHECK(query.dim() == DIMENSION_3D || query.dim() == DIMENSION_4D,
+         "The shapes of the input query should be 3 or 4 dimensional, but got ",
+         query.dim(), "-dimensional", OPS_ERROR(ErrCode::PARAM));
++    TORCH_CHECK(query_rope_const.defined() == key_rope_const.defined(),
++        "query_rope and key_rope must be both present or both absent", OPS_ERROR(ErrCode::PARAM));
+     if (query_rope_const.defined()) {
+         TORCH_CHECK(query_rope_const.dim() == DIMENSION_3D || query_rope_const.dim() == DIMENSION_4D,
+             "The shapes of the input query_rope should be 3 or 4 dimensional, but got ",
+@@ -66,21 +69,34 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_spars
+             "The shapes of the input key_rope should be 3 or 4 dimensional, but got ",
+             key_rope_const.dim(), "-dimensional", OPS_ERROR(ErrCode::PARAM));
+     }
+-    TORCH_CHECK(value.dim() == DIMENSION_3D || value.dim() == DIMENSION_4D,
+-        "The shapes of the input value should be 3 or 4 dimensional, but got ",
+-        value.dim(), "-dimensional", OPS_ERROR(ErrCode::PARAM));
++    if (value_const.defined()) {
++        TORCH_CHECK(value_const.dim() == DIMENSION_3D || value_const.dim() == DIMENSION_4D,
++            "The shapes of the input value should be 3 or 4 dimensional, but got ",
++            value_const.dim(), "-dimensional", OPS_ERROR(ErrCode::PARAM));
++    }
+     at::Tensor d_query = OpPreparation::apply_tensor_without_format(query);
+     at::Tensor d_key = OpPreparation::apply_tensor_without_format(key);
+-    at::Tensor d_value = OpPreparation::apply_tensor_without_format(value);
++    at::Tensor d_value_out;
++    at::Tensor d_value;
++    if (value_const.defined()) {
++        d_value = OpPreparation::apply_tensor_without_format(value_const);
++        d_value_out = d_value;
++    } else {
++        d_value = at::empty({0}, key.options());
++    }
++    at::Tensor d_query_rope_out;
++    at::Tensor d_key_rope_out;
+     at::Tensor d_query_rope;
+     at::Tensor d_key_rope;
+     if (query_rope_const.defined()) {
+         d_query_rope = OpPreparation::apply_tensor_without_format(query_rope_const);
++        d_query_rope_out = d_query_rope;
+     } else {
+         d_query_rope = at::empty({0}, query.options());
+     }
+     if (key_rope_const.defined()) {
+         d_key_rope = OpPreparation::apply_tensor_without_format(key_rope_const);
++        d_key_rope_out = d_key_rope;
+     } else {
+         d_key_rope = at::empty({0}, key.options());
+     }
+@@ -94,10 +110,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_spars
+     const bool deterministic_const = true;
+ 
+     EXEC_NPU_NO_FORMAT_CHECK_CMD(
+-        aclnnSparseFlashAttentionGrad, query, key, value, sparse_indices, d_out,
++        aclnnSparseFlashAttentionGrad, query, key, value_const, sparse_indices, d_out,
+         out, softmax_max, softmax_sum, ac_seq_qlen, ac_seq_kvlen, query_rope_const, key_rope_const,
+         scale_value, sparse_block_size, layout_ptr, sparse_mode_const, pre_tokens_const, next_tokens_const,
+-        deterministic_const, d_query, d_key, d_value, d_query_rope, d_key_rope);
++        deterministic_const, d_query, d_key, d_value_out, d_query_rope_out, d_key_rope_out);
+ 
+     return std::make_tuple(d_query, d_key, d_value, d_query_rope, d_key_rope);
+ }
+diff --git a/op_plugin/python/meta/_meta_registrations.py b/op_plugin/python/meta/_meta_registrations.py
+index 514c081..aa7239b 100644
+--- a/op_plugin/python/meta/_meta_registrations.py
++++ b/op_plugin/python/meta/_meta_registrations.py
+@@ -3187,9 +3187,11 @@ def npu_sparse_flash_attention_forward(query, key, value, sparse_indices, scale_
+ 
+ @impl(m, "npu_sparse_flash_attention_grad")
+ def npu_sparse_flash_attention_grad_meta(query, key, value, sparse_indices, d_out, out, softmax_max, softmax_sum, scale_value, sparse_block_size, query_rope=None, key_rope=None, actual_seq_qlen=None, actual_seq_kvlen=None, layout="BSND", sparse_mode=3, pre_tokens=9223372036854775807, next_tokens=9223372036854775807, attention_mode=0):
++    if (query_rope is None) != (key_rope is None):
++        raise RuntimeError("query_rope and key_rope must be both present or both absent")
+     d_query = query.new_empty(query.shape, dtype=query.dtype, device='meta')
+     d_key = key.new_empty(key.shape, dtype=key.dtype, device='meta')
+-    d_value = value.new_empty(value.shape, dtype=value.dtype, device='meta')
++    d_value = torch.empty([0], dtype=key.dtype, device='meta') if value is None else value.new_empty(value.shape, dtype=value.dtype, device='meta')
+     d_query_rope = torch.empty([0], dtype=query.dtype, device='meta') if query_rope is None else query_rope.new_empty(query_rope.shape, dtype=query_rope.dtype, device='meta')
+     d_key_rope = torch.empty([0], dtype=key.dtype, device='meta') if key_rope is None else key_rope.new_empty(key_rope.shape, dtype=key_rope.dtype, device='meta')
+     return (d_query, d_key, d_value, d_query_rope, d_key_rope)
+diff --git a/test/core_tests/test_fake_tensor.py b/test/core_tests/test_fake_tensor.py
+index 8317a86..8170062 100644
+--- a/test/core_tests/test_fake_tensor.py
++++ b/test/core_tests/test_fake_tensor.py
+@@ -3347,6 +3347,52 @@ class TestNpuDSA(TestCase):
+                 self.assertEqual(npu_softmax_sum.dtype, expect_softmax_sum.dtype)
+                 self.assertEqual(npu_softmax_sum.shape, expect_softmax_sum.shape)
+     
++    def test_dsa_npu_sparse_flash_attention_grad_output_contract(self):
++        with FakeTensorMode():
++            query = torch.empty((1, 16, 8, 512), dtype=torch.bfloat16, device='npu')
++            key = torch.empty((1, 128, 1, 512), dtype=torch.bfloat16, device='npu')
++            value = torch.empty_like(key)
++            sparse_indices = torch.empty((1, 16, 1, 1024), dtype=torch.int32, device='npu')
++            d_out = torch.empty_like(query)
++            out = torch.empty_like(query)
++            softmax_max = torch.empty((1, 8, 16), dtype=torch.float32, device='npu')
++            softmax_sum = torch.empty_like(softmax_max)
++
++            normal_outputs = torch_npu.npu_sparse_flash_attention_grad(
++                query, key, value, sparse_indices, d_out, out, softmax_max, softmax_sum, 0.0441941738, 1)
++            self.assertEqual(len(normal_outputs), 5)
++            self.assertEqual(normal_outputs[0].shape, query.shape)
++            self.assertEqual(normal_outputs[1].shape, key.shape)
++            self.assertEqual(normal_outputs[2].shape, value.shape)
++            self.assertEqual(normal_outputs[3].shape, (0,))
++            self.assertEqual(normal_outputs[4].shape, (0,))
++
++            merge_outputs = torch_npu.npu_sparse_flash_attention_grad(
++                query, key, None, sparse_indices, d_out, out, softmax_max, softmax_sum, 0.0441941738, 1)
++            self.assertEqual(len(merge_outputs), 5)
++            self.assertEqual(merge_outputs[0].shape, query.shape)
++            self.assertEqual(merge_outputs[1].shape, key.shape)
++            self.assertEqual(merge_outputs[2].shape, (0,))
++            self.assertEqual(merge_outputs[3].shape, (0,))
++            self.assertEqual(merge_outputs[4].shape, (0,))
++
++            query_rope = torch.empty((1, 16, 8, 64), dtype=torch.bfloat16, device='npu')
++            key_rope = torch.empty((1, 128, 1, 64), dtype=torch.bfloat16, device='npu')
++            rope_outputs = torch_npu.npu_sparse_flash_attention_grad(
++                query, key, None, sparse_indices, d_out, out, softmax_max, softmax_sum, 0.0441941738, 1,
++                query_rope=query_rope, key_rope=key_rope)
++            self.assertEqual(len(rope_outputs), 5)
++            self.assertEqual(rope_outputs[0].shape, query.shape)
++            self.assertEqual(rope_outputs[1].shape, key.shape)
++            self.assertEqual(rope_outputs[2].shape, (0,))
++            self.assertEqual(rope_outputs[3].shape, query_rope.shape)
++            self.assertEqual(rope_outputs[4].shape, key_rope.shape)
++
++            with self.assertRaisesRegex(RuntimeError, "query_rope and key_rope must be both present or both absent"):
++                torch_npu.npu_sparse_flash_attention_grad(
++                    query, key, None, sparse_indices, d_out, out, softmax_max, softmax_sum, 0.0441941738, 1,
++                    query_rope=query_rope)
++
+     @unittest.skip("skip sparse_flash_attention_grad now")
+     def test_dsa_npu_sparse_flash_attention_grad(self):
+         with FakeTensorMode():
+diff --git a/test/core_tests/torch_npu_OpApi_schema_all.json b/test/core_tests/torch_npu_OpApi_schema_all.json
+index 17a54bd..41e2ed3 100644
+--- a/test/core_tests/torch_npu_OpApi_schema_all.json
++++ b/test/core_tests/torch_npu_OpApi_schema_all.json
+@@ -1223,7 +1223,7 @@
+   "func: npu_sparse_flash_attention(Tensor query, Tensor key, Tensor value, Tensor sparse_indices, float scale_value, *, Tensor? block_table=None, Tensor? actual_seq_lengths_query=None, Tensor? actual_seq_lengths_kv=None, Tensor? query_rope=None, Tensor? key_rope=None, int sparse_block_size=1, str layout_query=\"BSND\", str layout_kv=\"BSND\", int sparse_mode=3, int pre_tokens=9223372036854775807, int next_tokens=9223372036854775807, int attention_mode=0, bool return_softmax_lse=False) -> (Tensor, Tensor, Tensor)": {
+     "version": ["all_version"]
+   },
+-  "func: npu_sparse_flash_attention_grad(Tensor query, Tensor key, Tensor value, Tensor sparse_indices, Tensor d_out, Tensor out, Tensor softmax_max, Tensor softmax_sum, float scale_value, int sparse_block_size, Tensor? query_rope=None, Tensor? key_rope=None, Tensor? actual_seq_qlen=None, Tensor? actual_seq_kvlen=None, str? layout=\"BSND\", int? sparse_mode=3, int? pre_tokens=9223372036854775807, int? next_tokens=9223372036854775807, int? attention_mode=0) -> (Tensor, Tensor, Tensor, Tensor, Tensor)": {
++  "func: npu_sparse_flash_attention_grad(Tensor query, Tensor key, Tensor? value, Tensor sparse_indices, Tensor d_out, Tensor out, Tensor softmax_max, Tensor softmax_sum, float scale_value, int sparse_block_size, Tensor? query_rope=None, Tensor? key_rope=None, Tensor? actual_seq_qlen=None, Tensor? actual_seq_kvlen=None, str? layout=\"BSND\", int? sparse_mode=3, int? pre_tokens=9223372036854775807, int? next_tokens=9223372036854775807, int? attention_mode=0) -> (Tensor, Tensor, Tensor, Tensor, Tensor)": {
+     "version": ["all_version"]
+   },
+   "func: npu_sparse_lightning_indexer_grad_kl_loss(Tensor query, Tensor key, Tensor query_index, Tensor key_index, Tensor weights, Tensor sparse_indices, Tensor softmax_max, Tensor softmax_sum, float scale_value, *, Tensor? query_rope=None, Tensor? key_rope=None, SymInt[]? actual_seq_qlen=None, SymInt[]? actual_seq_klen=None, str? layout='BSND', int? sparse_mode=3, int? pre_tokens=9223372036854775807, int? next_tokens=9223372036854775807) -> (Tensor, Tensor, Tensor, Tensor)": {
+@@ -4568,4 +4568,4 @@
+   "func: fused_linear_cross_entropy_loss_with_max_sum_grad(Tensor grad, Tensor input, Tensor weight, Tensor target_mask, Tensor masked_target, float label_smoothing=0.0, Tensor? logits_max=None, Tensor? sum_exp_logits=None, Tensor? softmax=None) -> (Tensor, Tensor)": {
+     "version": ["all_version"]
+   }
+-}
+\ No newline at end of file
++}

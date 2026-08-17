@@ -390,11 +390,19 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     const gert::Shape &indicesShape = context_->GetInputShape(static_cast<size_t>(InputIndex::TOPK_INDICES))->GetStorageShape();
     auto qRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::Q_ROPE));
     auto kRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::K_ROPE));
-    const gert::Shape &dqShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DQ))->GetStorageShape();
-    const gert::Shape &dkShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DK))->GetStorageShape();
+    auto dqOutputShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DQ));
+    auto dkOutputShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DK));
+    OP_CHECK_IF(dqOutputShape == nullptr || dkOutputShape == nullptr,
+        OPS_REPORT_VECTOR_INNER_ERR(opName, "OutputShape of dq or dk is nullptr."),
+        return ge::GRAPH_FAILED);
+    const gert::Shape &dqShape = dqOutputShape->GetStorageShape();
+    const gert::Shape &dkShape = dkOutputShape->GetStorageShape();
     auto dvOutputShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DV));
     tmpData.deterministic = (context_->GetDeterministic() == 1);
     uint32_t dimSize = queryShape.GetDimNum();
+    OP_CHECK_IF(keyShape.GetDimNum() != dimSize || valueShape.GetDimNum() != dimSize,
+        OPS_REPORT_VECTOR_INNER_ERR(opName, "The dimensions of query, key and value must be equal."),
+        return ge::GRAPH_FAILED);
     int64_t dimDq = queryShape.GetDim(dimSize - 1);
     int64_t dimDk = keyShape.GetDim(dimSize - 1);
     int64_t dimDv = valueShape.GetDim(dimSize - 1);
@@ -422,7 +430,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
                 sparse_mode);
         return ge::GRAPH_FAILED;
     }
-    if (dimDq != D_SIZE && dimDq != D_SIZE) {
+    if (dimDq != D_SIZE || dimDk != D_SIZE) {
         OP_LOGE(context_, "head_dim of Query[%ld] should be equal to head_dim of Key[%ld], and their value must be 512.", dimDq, dimDk);
         return ge::GRAPH_FAILED;
     }
@@ -459,21 +467,28 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
             return ge::GRAPH_FAILED;
         }
     }
-    if (qRopeTensor != nullptr && kRopeTensor != nullptr) {
+    OP_CHECK_IF((qRopeTensor == nullptr) != (kRopeTensor == nullptr),
+        OPS_REPORT_VECTOR_INNER_ERR(opName, "query_rope and key_rope must be both present or both absent."),
+        return ge::GRAPH_FAILED);
+    if (qRopeTensor != nullptr) {
         OP_LOGD(context_, "SparseFlashAttentionGrad qRope and kRope is not nullptr, rope is enabled.");
         tmpData.ropeEnable = true;
-        const gert::Shape &qRopeShape = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::Q_ROPE))->GetStorageShape();
-        const gert::Shape &kRopeShape = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::K_ROPE))->GetStorageShape();
-        const gert::Shape &dqRopeShape = context_->GetOutputShape(DIM_3)->GetStorageShape();
-        const gert::Shape &dkRopeShape = context_->GetOutputShape(DIM_4)->GetStorageShape();
+        const gert::Shape &qRopeShape = qRopeTensor->GetStorageShape();
+        const gert::Shape &kRopeShape = kRopeTensor->GetStorageShape();
+        OP_CHECK_IF(qRopeShape.GetDimNum() != dimSize || kRopeShape.GetDimNum() != dimSize,
+            OPS_REPORT_VECTOR_INNER_ERR(opName, "The dimensions of query_rope and key_rope must match query."),
+            return ge::GRAPH_FAILED);
+        auto dqRopeOutputShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DQ_ROPE));
+        auto dkRopeOutputShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DK_ROPE));
+        OP_CHECK_IF(dqRopeOutputShape == nullptr || dkRopeOutputShape == nullptr,
+            OPS_REPORT_VECTOR_INNER_ERR(opName, "OutputShape of dq_rope or dk_rope is nullptr."),
+            return ge::GRAPH_FAILED);
+        const gert::Shape &dqRopeShape = dqRopeOutputShape->GetStorageShape();
+        const gert::Shape &dkRopeShape = dkRopeOutputShape->GetStorageShape();
         auto qRopeDim = qRopeShape.GetDim(dimSize - 1);
         auto kRopeDim = kRopeShape.GetDim(dimSize - 1);
-        if (qRopeDim != DROPE_SIZE && kRopeDim != DROPE_SIZE) {
+        if (qRopeDim != DROPE_SIZE || kRopeDim != DROPE_SIZE) {
             OP_LOGE(context_, "SparseFlashAttentionGrad headDim of qRope and kRope should be 64, but qRope[%ld], kRope[%ld].", qRopeDim, kRopeDim);
-            return ge::GRAPH_FAILED;
-        }
-        if (qRopeDim != kRopeDim) {
-            OP_LOGE(context_, "SparseFlashAttentionGrad headDim of qRope and kRope should be equal.");
             return ge::GRAPH_FAILED;
         }
         tmpData.ropeDim = kRopeDim;
@@ -481,7 +496,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
         if (status == ge::GRAPH_FAILED) {
             return ge::GRAPH_FAILED;
         }
-        status = CheckOutShapeInfo(qRopeShape, "key_rope", dqRopeShape, inputLayout);
+        status = CheckOutShapeInfo(kRopeShape, "key_rope", dkRopeShape, inputLayout);
         if (status == ge::GRAPH_FAILED) {
             return ge::GRAPH_FAILED;
         }

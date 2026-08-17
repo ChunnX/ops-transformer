@@ -62,7 +62,9 @@ enum class InputIndex : uint32_t {
 enum class OutputIndex : uint32_t {
     DQ = 0,
     DK,
-    DV
+    DV,
+    DQ_ROPE,
+    DK_ROPE
 };
 
 enum class AttrIndex : uint32_t {

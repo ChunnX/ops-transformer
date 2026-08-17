@@ -64,6 +64,9 @@ ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *con
     const gert::Shape *keyRopeShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::K_ROPE));
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
+    OP_CHECK_IF((queryRopeShape == nullptr) != (keyRopeShape == nullptr),
+        OP_LOGE(context, "query_rope and key_rope must be both present or both absent"),
+        return ge::GRAPH_FAILED);
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
