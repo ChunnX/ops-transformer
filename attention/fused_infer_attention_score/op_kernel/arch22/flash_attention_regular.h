@@ -528,10 +528,10 @@ public:
         uint64_t gmOffsetO = oBOffset +
                              static_cast<uint64_t>(qSBlockIdx * curQSBlockTile) * strideO +
                              static_cast<uint64_t>(qNStartIdx * embedV);
-        if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::nZ>) {
+        if constexpr (PAGED_CACHE_FLAG && (std::is_same_v<LayoutK, layout::nZ> || BlockMmadQK::BNBD_FLAG)) {
             gmOffsetK = kBOffset + kvNIdx * embed * pagedBlockSize;
         }
-        if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutV, layout::zN>) {
+        if constexpr (PAGED_CACHE_FLAG && (std::is_same_v<LayoutV, layout::zN> || BlockMmadQK::BNBD_FLAG)) {
             gmOffsetV = vBOffset + kvNIdx * embedV * pagedBlockSize;
         }
         uint64_t gmOffsetLse = lseBOffset +
@@ -656,10 +656,18 @@ public:
             kCol = pagedBlockSize;
             layoutKTemp = LayoutK::template MakeLayout<ElementK>(kRow, kCol);
         }
+        if constexpr (PAGED_CACHE_FLAG && BlockMmadQK::BNBD_FLAG) {
+            // BNBD: token stride within a block is embed (head selected via gmOffsetK)
+            layoutKTemp = LayoutK(embed, stackSeqTile);
+        }
         if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutV, layout::zN>) {
             vRow = pagedBlockSize;
             vCol = blockStackNum * strideV;
             layoutVTemp = LayoutV::template MakeLayout<ElementV>(vRow, vCol);
+        }
+        if constexpr (PAGED_CACHE_FLAG && BlockMmadQK::BNBD_FLAG) {
+            // BNBD: token stride within a block is embedV (head selected via gmOffsetV)
+            layoutVTemp = LayoutV(stackSeqTile, embedV);
         }
         blockMmadQK.resetBlockStart(kvStart, pagedBlockSize);
         blockMmadPV.resetBlockStart(kvStart, pagedBlockSize);

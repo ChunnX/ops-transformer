@@ -254,6 +254,11 @@ public:
             uint64_t qNStartOffset = static_cast<uint64_t>(qNStartIdx) * embed;
             uint64_t kNStartOffset = static_cast<uint64_t>(kvNStartIdx) * embed;
             uint64_t vNStartOffset = static_cast<uint64_t>(kvNStartIdx) * embedV;
+            if constexpr (BlockMmadQK::BNBD_FLAG) {
+                // BNBD: within a block, the head stride is pagedBlockSize * embed
+                kNStartOffset = static_cast<uint64_t>(kvNStartIdx) * pagedBlockSize * embed;
+                vNStartOffset = static_cast<uint64_t>(kvNStartIdx) * pagedBlockSize * embedV;
+            }
             uint64_t oSOffset = 0;
             uint64_t oNStartOffset = static_cast<uint64_t>(qNStartIdx) * embedV;
             uint64_t lseTokenOffset = 0;
@@ -270,6 +275,11 @@ public:
             LayoutQ layoutQTemp(rowNum, embed);
             LayoutK layoutKTemp(strideK, blockStackNum * pagedBlockSize);
             LayoutV layoutVTemp(blockStackNum * pagedBlockSize, strideV);
+            if constexpr (BlockMmadQK::BNBD_FLAG) {
+                // BNBD: token stride within a block is embed (head selected via gmOffsetK)
+                layoutKTemp = LayoutK(embed, blockStackNum * pagedBlockSize);
+                layoutVTemp = LayoutV(blockStackNum * pagedBlockSize, embedV);
+            }
 #endif
             for (uint32_t kvSIdx = 0; kvSIdx < kvSLoopNumTotal + preKVNum; kvSIdx += blockStackNum) {
                 if (kvSIdx < kvSLoopNumTotal) {
@@ -296,6 +306,11 @@ public:
                                              static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);
                         uint64_t gmOffsetK = kBOffset + kNStartOffset +
                                              static_cast<uint64_t>(kvNIncreIdx * embed);
+                        if constexpr (BlockMmadQK::BNBD_FLAG) {
+                            // BNBD: head offset within a block = kvNIncreIdx * blockSize * D
+                            gmOffsetK = kBOffset + kNStartOffset +
+                                        static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embed);
+                        }
                         uint64_t sWorkspaceIncreOffset =
                             static_cast<uint64_t>(kvNIncreIdx) * rowNum * MAX_KV_STACK_LEN;
                         uint64_t gmOffsetS =
@@ -510,6 +525,11 @@ public:
                 uint64_t qNStartOffset = static_cast<uint64_t>(tailQNStartIdx) * embed;
                 uint64_t kNStartOffset = static_cast<uint64_t>(tailKvNStartIdx) * embed;
                 uint64_t vNStartOffset = static_cast<uint64_t>(tailKvNStartIdx) * embedV;
+                if constexpr (BlockMmadQK::BNBD_FLAG) {
+                    // BNBD: within a block, the head stride is pagedBlockSize * embed
+                    kNStartOffset = static_cast<uint64_t>(tailKvNStartIdx) * pagedBlockSize * embed;
+                    vNStartOffset = static_cast<uint64_t>(tailKvNStartIdx) * pagedBlockSize * embedV;
+                }
                 uint64_t oSOffset = 0;
                 uint64_t oNStartOffset = static_cast<uint64_t>(tailQNStartIdx) * embedV;
                 uint64_t lseTokenOffset = 0;
@@ -527,6 +547,11 @@ public:
                 LayoutQ layoutQTemp(rowNum, embed);
                 LayoutK layoutKTemp(strideK, blockStackNum * pagedBlockSize);
                 LayoutV layoutVTemp(blockStackNum * pagedBlockSize, strideV);
+                if constexpr (BlockMmadQK::BNBD_FLAG) {
+                    // BNBD: token stride within a block is embed (head selected via gmOffsetK)
+                    layoutKTemp = LayoutK(embed, blockStackNum * pagedBlockSize);
+                    layoutVTemp = LayoutV(blockStackNum * pagedBlockSize, embedV);
+                }
 #endif
                 for (uint32_t kvSIdx = 0; kvSIdx < kvSLoopNumTotal + preKVNum; kvSIdx += blockStackNum) {
                     if (kvSIdx < kvSLoopNumTotal) {
@@ -552,6 +577,11 @@ public:
                                                  static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);
                             uint64_t gmOffsetK = tailKBOffset + kNStartOffset +
                                                  static_cast<uint64_t>(kvNIncreIdx * embed);
+                            if constexpr (BlockMmadQK::BNBD_FLAG) {
+                                // BNBD: head offset within a block = kvNIncreIdx * blockSize * D
+                                gmOffsetK = tailKBOffset + kNStartOffset +
+                                            static_cast<uint64_t>(kvNIncreIdx * pagedBlockSize * embed);
+                            }
                             uint64_t sWorkspaceIncreOffset =
                                 static_cast<uint64_t>(kvNIncreIdx) * rowNum * MAX_KV_STACK_LEN;
                             uint64_t gmOffsetS =
