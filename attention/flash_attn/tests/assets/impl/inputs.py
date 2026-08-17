@@ -134,7 +134,7 @@ def customize_inputs(
     layout_kv="BSND",
     layout_out="BSND",
     return_softmax_lse=False,
-    context=None,
+    context: "TtkContext" = None,
     **kwargs,
 ):
     """Fill auxiliary tensors in-place for FlashAttn TTK cases.
