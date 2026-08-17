@@ -262,7 +262,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputTotalStemBlockAndProcessKVF
                 }
             }
             if (i >= startStemBlock && i < endStemBlock) {
-                ProcessKVFlatTest(batchIdx, hKvIdx, stemBlockIdx);
+                ProcessKVFlat(batchIdx, hKvIdx, stemBlockIdx);
             }
             if (i == endStemBlock) {
                 break;
