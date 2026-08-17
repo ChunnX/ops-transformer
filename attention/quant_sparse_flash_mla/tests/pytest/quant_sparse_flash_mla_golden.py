@@ -161,12 +161,6 @@ class GeneralizedSFAQuant:
                         logging.info(
                             f"      进度：{current_pct:.1f}% | 步数：{i_S1:>{len(str(cur_act_q))}}/{cur_act_q}"
                         )
-                    if self.ori_mask_mode == 3 and i_S1 < cur_act_q - cur_ori_act_kv:
-                        attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
-                            [G, self.D], dtype=torch.float
-                        )
-                        continue
-
                     if self.ori_mask_mode == 0:
                         ori_win_start = 0
                         ori_win_end = cur_ori_act_kv
@@ -192,7 +186,12 @@ class GeneralizedSFAQuant:
                                 cur_ori_act_kv,
                             )
 
-                    cur_ori_k_bnsd = ori_k_bnsd[i_B, i_N2, ori_win_start:ori_win_end, :]
+                    if ori_win_start >= ori_win_end:
+                        cur_ori_k_bnsd = torch.zeros(
+                            [0, self.D], dtype=ori_k_bnsd.dtype
+                        )
+                    else:
+                        cur_ori_k_bnsd = ori_k_bnsd[i_B, i_N2, ori_win_start:ori_win_end, :]
 
                     if (
                         self.template_run_mode == "CSA"
@@ -273,6 +272,16 @@ class GeneralizedSFAQuant:
                     else:
                         cmp_s2_loop_time = math.ceil(cur_cmp_k.size(0) / s2_base_size)
                         cur_cmp_k_fp32 = cur_cmp_k.to(dtype=torch.float32)
+
+                    if cur_ori_k_bnsd.size(0) == 0 and cur_cmp_k == []:
+                        attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
+                            [G, self.D], dtype=torch.float
+                        )
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = torch.zeros(
+                                [G], dtype=torch.float32
+                            )
+                        continue
 
                     q_curr = q_bnsd[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :]
                     q_curr_fp32 = q_curr.to(dtype=torch.float32)
@@ -358,15 +367,24 @@ class GeneralizedSFAQuant:
                         mm2_res = mm2_res * cur_v_descale
                         acc_o = acc_o * score_max_pre.unsqueeze(1) + mm2_res
 
-                    acc_o = torch.div(acc_o, sumexp.unsqueeze(1))
-                    acc_o = acc_o / hifp8_scale_value
-                    attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(
-                        torch.bfloat16
-                    )
-                    if return_softmax_lse:
-                        softmax_lse[i_B, i_N2, i_S1, :] = score_max + torch.log(
-                            sumexp + 1e-10
+                    if total_s2_loop_time == 0:
+                        attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
+                            [G, self.D], dtype=torch.bfloat16
                         )
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = torch.zeros(
+                                [G], dtype=torch.float32
+                            )
+                    else:
+                        acc_o = torch.div(acc_o, sumexp.unsqueeze(1))
+                        acc_o = acc_o / hifp8_scale_value
+                        attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(
+                            torch.bfloat16
+                        )
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = score_max + torch.log(
+                                sumexp + 1e-10
+                            )
         return attn_out, softmax_lse
 
     def gather_ori_kv(

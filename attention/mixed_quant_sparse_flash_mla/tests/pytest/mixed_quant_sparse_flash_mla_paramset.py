@@ -177,7 +177,7 @@ TEST_PARAMS = {
         "actlen_mode": ["full"],
         "S1EQS2": [False],
         "ori_kv_topk_mode": ["fullK"],     # fullK random
-        "cmp_kv_topk_mode": ["fullK"],     
+        "cmp_kv_topk_mode": ["fullK"],
         "ori_sparse_indices_mode": ["full"],    # full random
         "cmp_sparse_indices_mode": ["full"],
         "ori_topk_length": [None],
