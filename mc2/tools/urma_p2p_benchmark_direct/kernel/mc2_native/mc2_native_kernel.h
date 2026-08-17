@@ -233,6 +233,8 @@ public:
     // ========================================================================
     // Write — 提交一个 WriteWithNotify SQE (不敲 DoorBell, 不 poll CQ)
     //
+    // 对齐 hcomm 的 WriteNbi<commit=false>: 只写 WQE 到 SQ ring, 不通知硬件
+    //
     // 参数:
     //   dstRankId  - 目标 rank ID
     //   localAddr  - 本端源数据地址 (HBM, URMA 从这里读数据)
@@ -241,18 +243,11 @@ public:
     //
     // 流程:
     //   1. SQ 溢出保护: 如果 pendingSqCnt_ >= 200, 先 FlushPendingSqes
-    //      (敲 DoorBell + poll CQ 腾空间, 防止 SQ ring 写满)
-    //   2. 计算 notifyAddr 和 notifyData:
-    //      notifyAddr = 对端 workspace 状态区 + 本 rank 的偏移
-    //      notifyData = 0x3F800000 (float 1.0 的位模式, 作为完成标志)
-    //      (远端写完数据后, 往 notifyAddr 写 notifyData, 接收方可轮询此地址感知数据到达)
-    //   3. SetCommWriteWithNotifySQE: 填 dataAddr/rmtAddr/length/notifyAddr/notifyData (cqe=0, 不生成 CQE)
-    //   4. PutCommNotifySQE: 检查 SQ 空间 → DataCopy SQE 到 SQ ring → 更新 outSqPi
-    //   5. pendingSqCnt_++
+    //   2. SetCommWriteWithNotifySQE: 填 dataAddr/rmtAddr/length/notifyAddr/notifyData (cqe=0)
+    //   3. PutCommNotifySQE: DataCopy SQE 到 SQ ring, 更新 outSqPi
+    //   4. pendingSqCnt_++
     //
-    // 注意: 此函数不敲 JFS DoorBell, WQE 写到 SQ ring 但硬件不知道
-    //       需要调用方在适当时机调用 Drain (或 FlushPendingSqes) 敲 DoorBell
-    //       (批量写模式: 攒一批 SQE 后统一敲一次 DoorBell, 减少 DoorBell 开销)
+    // 注意: 不敲 DoorBell, 需调用方后续调 Commit() + Drain()
     // ========================================================================
     __aicore__ inline void Write(int32_t dstRankId, uint64_t localAddr,
                                   uint64_t remoteAddr, uint32_t length)
@@ -263,54 +258,71 @@ public:
         }
 
         // notifyAddr: 远端窗口状态区 + 本 rank 的状态偏移
-        // 远端写完数据后, 往 notifyAddr 写 notifyData, 作为完成通知
-        // GetRemoteWinStateAddr(dstRankId, 0) = windowsIn[dstRankId] + 0 * P2P_WIN_STATE_OFFSET
-        //   = windowsIn[dstRankId] (状态区起始)
-        // + P2P_STATE_OFFSET * epRankId_ = + 32 * myRank (每个 rank 占 32B 状态区)
         uint64_t notifyAddr = reinterpret_cast<uint64_t>(GetRemoteWinStateAddr(dstRankId, notifyDataState_))
                               + P2P_STATE_OFFSET * (uint64_t)epRankId_;
         uint64_t notifyData = P2P_NOTIFY_DATA_FLAG;
 
         // 填充 SQE 数据字段 (cqe=0: 不生成 CQE, 因为后面会统一 Drain)
         SetCommWriteWithNotifySQE(sqeTensor_, localAddr, remoteAddr, length, notifyAddr, notifyData, 0);
+        // 同步: S→MTE3, 确保 S 标量写 sqeTensor_ 完成后, MTE3 才开始 DataCopy 读 sqeTensor_
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
         // 拷 SQE 到 SQ ring (不敲 DoorBell), 更新 outSqPi
         PutCommNotifySQE(sqInfoTensor_, cqInfoTensor_, sqeTensor_, cqeTensor_, jfcDoorBellTensor_,
                          1, outSqPi_, outSqPiLinear_, outSqCi_, outCqCi_, outCqCiLinear_);
+        // 同步: MTE3→S, 确保 MTE3 读完 sqeTensor_ 后, 下一轮 S 才覆盖 sqeTensor_
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
         pendingSqCnt_++;
     }
 
     // ========================================================================
-    // Drain — 敲 DoorBell + 轮询 CQ 等完成 + 更新 PICI
+    // WriteWithCommit — 提交一个 WriteWithNotify SQE 并立即敲 DoorBell
     //
-    // 参数:
-    //   dstRankId - 目标 rank ID
+    // 对齐 hcomm 的 WriteNbi<commit=true>: 写 WQE + 敲 DoorBell, 一步到位
+    //
+    // 与 Write 的区别: 末尾多一个 SendJFSDoorBell, 硬件立即开始处理此 WQE
+    // ========================================================================
+    __aicore__ inline void WriteWithCommit(int32_t dstRankId, uint64_t localAddr,
+                                            uint64_t remoteAddr, uint32_t length)
+    {
+        Write(dstRankId, localAddr, remoteAddr, length);
+        // 同步: MTE3→S, 确保 SQE 已落到 HBM, 硬件收到 DoorBell 后才能从 SQ ring 取 WQE
+        // (Write 末尾的 MTE3_S 保证 sqeTensor_ 可复用, 这里再敲 DoorBell)
+        SendJFSDoorBell(jfsDoorBellTensor_, sqInfoTensor_, outSqPiLinear_);
+    }
+
+    // ========================================================================
+    // Commit — 敲 JFS DoorBell, 通知硬件 SQ 有新 WQE
+    //
+    // 对齐 hcomm 的 Commit: 只敲 DoorBell, 不 poll CQ
+    //
+    // 配合 Write (commit=false) 使用: 攒一批 WQE 后统一 Commit
+    // ========================================================================
+    __aicore__ inline void Commit()
+    {
+        // 同步: MTE3→S, 确保最后一批 SQE 已落到 HBM, 硬件收到 DoorBell 后才能从 SQ ring 取 WQE
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+        SendJFSDoorBell(jfsDoorBellTensor_, sqInfoTensor_, outSqPiLinear_);
+    }
+
+    // ========================================================================
+    // Drain — 轮询 CQ 等完成 + 更新 PICI
+    //
+    // 对齐 hcomm 的 Drain: 只 poll CQ, 不敲 DoorBell
     //
     // 流程:
-    //   1. SendJFSDoorBell: 敲 JFS DoorBell, 通知硬件 "SQ 有新 WQE 了"
-    //      传入 outSqPiLinear_ (线性计数, 不取模, 硬件用此判断新 WQE 数量)
-    //   2. PollCommCQUpdateSQCI: 轮询 CQ 等待所有 WQE 完成
-    //      循环读 CQE 直到 status=0xff (未完成), 消费已完成的 CQE, 更新 sqCi/cqCi
-    //      敲 JFC DoorBell 通知硬件 CQE 已消费
-    //   3. UpdatePICI: 将最新的 SQ/CQ 索引写回 PICI 窗口
-    //      供下次 launch 的 GetPICI 读取, 实现跨 launch 状态续传
-    //   4. pendingSqCnt_ = 0
+    //   1. PollCommCQUpdateSQCI: 轮询 CQ 等待所有 WQE 完成, 更新 sqCi/cqCi
+    //   2. UpdatePICI: 将 SQ/CQ 索引写回 PICI 窗口, 供下次 launch 复用
+    //   3. pendingSqCnt_ = 0
     //
-    // 注意: Drain 会阻塞直到所有已提交的 WQE 完成 (CQE 全部消费)
+    // 注意: 调用前需先 Commit() 敲 DoorBell 通知硬件
     // ========================================================================
     __aicore__ inline void Drain(int32_t dstRankId)
     {
-        // 步骤1: 敲 JFS DoorBell, 通知硬件 SQ 有新 WQE
-        // outSqPiLinear_ 是 SQ 线性计数 (不取模), 硬件用此判断新增的 WQE 数量
-        SendJFSDoorBell(jfsDoorBellTensor_, sqInfoTensor_, outSqPiLinear_);
-
-        // 步骤2: 轮询 CQ 等待完成, 更新 sqCi
-        // 循环读 CQE: status=0 (完成) → 消费 + 递增 cqCi; status=0xff (未完成) → break
-        // 敲 JFC DoorBell 通知硬件 cqCi 更新
+        // 轮询 CQ 等待完成, 更新 sqCi
         PollCommCQUpdateSQCI(sqInfoTensor_, cqInfoTensor_, cqeTensor_, jfcDoorBellTensor_,
                              outSqCi_, outCqCi_, outCqCiLinear_);
 
-        // 步骤3: 更新 PICI, 保存到 HcclCombinOpParam 的 windowsOut 中
-        // 下次 launch 的 GetPICI 会读出这些值, 实现 SQ/CQ 状态续传
+        // 更新 PICI, 保存到 HcclCombinOpParam 的 windowsOut 中
         UpdatePICI((GM_ADDR)hcclContext_, epRankId_, dstRankId,
                    outSqPi_, outSqCi_, outCqPi_, outCqCi_, outSqPiLinear_, outCqCiLinear_);
         pendingSqCnt_ = 0;
@@ -319,31 +331,20 @@ public:
     // ========================================================================
     // Process — kernel 入口
     //
-    // benchMode=0 (BATCH_WRITE): loopCount 次 Write → 一次 Drain
-    //   - 测批量发送带宽: 攒一批 SQE 再统一 flush
-    //   - timing: assemble=全部Write时间, wait=Drain时间, total=Write+Drain
-    //   - 适合大块数据传输, 看 URMA 峰值带宽
+    // benchMode=0 (BATCH_WRITE): loopCount 次 Write → Commit → Drain
+    //   - 对齐 hcomm benchMode=0: WriteNbi<false>×N → Commit → Drain
+    //   - timing: assemble / commit / drain / total
     //
-    // benchMode=1 (WRITE_DRAIN_LOOP): 循环 loopCount 次 { 一次Write → 一次Drain }
-    //   - 测单次往返延迟: 每次 Write 后立即 Drain 等完成
-    //   - timing 累加所有轮, Host 侧除以 loopCount 得平均一次 Write+Drain 时间
-    //   - 测 URMA 单次操作延迟 (含 DoorBell + CQ 轮询开销)
+    // benchMode=1 (WRITE_DRAIN_LOOP): 循环 loopCount 次 { WriteWithCommit → Drain }
+    //   - 对齐 hcomm benchMode=1: WriteNbi<true> → Drain
+    //   - timing: assemble(=Write+Commit) / issue(=assemble) / drain / total
     //
     // Timing 打点 (8 个 int64_t):
-    //   [0]=assemble累计 [1]=issue累计 [2]=wait累计 [3]=total累计
-    //   [4]=最后一轮assemble [5]=最后一轮issue [6]=最后一轮wait [7]=最后一轮total
-    //
-    // 地址预计算 (在打点外, 不计入 timing):
-    //   localBase  = workspace + totalWinSizeEp * peer + P2P_STATE_SIZE
-    //              = 本端 workspace 数据区起始 (源数据)
-    //   remoteBase = windowsIn[peer] + P2P_STATE_SIZE
-    //              = 对端 workspace 数据区起始 (目的地址)
-    //   每次 Write 的偏移: off = (i % numSlots) * sqeBytes
-    //   (在 workspace 内循环使用不同偏移, 避免每次写同一地址)
+    //   [0]=assemble累计 [1]=commit/issue累计 [2]=drain累计 [3]=total累计
+    //   [4]=最后一轮assemble [5]=最后一轮commit/issue [6]=最后一轮drain [7]=最后一轮total
     // ========================================================================
     __aicore__ inline void Process()
     {
-        // 单核执行 (blockDim=1, 仅 aivId==0 执行)
         if (aivId_ != 0) return;
 
         const uint32_t peer      = tiling_->peer;
@@ -352,56 +353,44 @@ public:
         const uint32_t loopCount = (tiling_->loopCount > 0U) ? tiling_->loopCount : 1U;
         const uint32_t benchMode = tiling_->benchMode;
 
-        // totalWinSizeEp: 每个 rank 的窗口大小 = bufBytes (整个 workspace)
-        // winDataSizeOffset: 数据区在窗口内的偏移 = 0 (状态区已由地址计算处理)
         uint64_t totalWinSizeEp = bufBytes;
         uint64_t winDataSizeOffset = 0;
         notifyDataState_ = 0;
 
-        // 初始化与 peer 的通信上下文 (8 步, 见 InitRankComm 注释)
         InitRankComm(peer);
 
-        // numSlots: workspace 可容纳多少个 sqeBytes 大小的数据块
-        // 用于循环写入不同偏移, 避免每次写同一地址
         uint64_t numSlots = (sqeBytes > 0U) ? (bufBytes / sqeBytes) : 1U;
         if (numSlots < 1U) numSlots = 1U;
         const uint32_t sqeDataBytes = static_cast<uint32_t>(sqeBytes);
 
         AscendC::LocalTensor<int64_t> timingLocal = timingBuf_.Get<int64_t>();
 
-        // 预计算地址: 放打点外, 不计入 timing
-        // localBase: 本端源数据地址 = workspace + myRank * winSize + 状态区(350KB) + offset
         uint64_t localBase = reinterpret_cast<uint64_t>(GetLocalWinAddr(epRankId_, totalWinSizeEp, winDataSizeOffset));
-        // remoteBase: 对端目的地址 = windowsIn[peer] + 状态区(350KB) + offset
         uint64_t remoteBase = reinterpret_cast<uint64_t>(GetRemoteWinAddr(peer, winDataSizeOffset));
 
         if (benchMode == BENCH_MODE_BATCH_WRITE) {
-            // ========== 场景0: loopCount 次 Write → 一次 Drain ==========
-            // 攒一批 SQE (不敲 DoorBell), 最后统一 Drain
-            // 测 URMA 批量写带宽 (DoorBell 开销分摊到所有 WQE)
+            // ========== benchMode=0: loopCount × Write → Commit → Drain ==========
             int64_t t0 = AscendC::GetSystemCycle();
             for (uint32_t i = 0; i < loopCount; ++i) {
-                // 循环使用 workspace 内不同偏移: off = (i % numSlots) * sqeBytes
                 uint64_t off = (static_cast<uint64_t>(i) % numSlots) * sqeBytes;
                 Write(peer, localBase + off, remoteBase + off, sqeDataBytes);
             }
             int64_t t1 = AscendC::GetSystemCycle();
-            Drain(peer);
+            Commit();
             int64_t t2 = AscendC::GetSystemCycle();
+            Drain(peer);
+            int64_t t3 = AscendC::GetSystemCycle();
 
-            // batch 模式: 累计值和最后一轮值相同 (只有一轮)
             timingLocal.SetValue(0, t1 - t0);  // assemble: 全部 Write
-            timingLocal.SetValue(1, t1 - t0);  // issue: 同 assemble (mc2_native 无 trailing SQE)
-            timingLocal.SetValue(2, t2 - t1);  // wait: Drain
-            timingLocal.SetValue(3, t2 - t0);  // total
-            timingLocal.SetValue(4, t1 - t0);  // 最后一轮 (同累计, 只有一轮)
-            timingLocal.SetValue(5, t1 - t0);
-            timingLocal.SetValue(6, t2 - t1);
-            timingLocal.SetValue(7, t2 - t0);
+            timingLocal.SetValue(1, t2 - t1);  // commit: Commit (敲一次 DoorBell)
+            timingLocal.SetValue(2, t3 - t2);  // drain: Drain (poll CQ 等完成)
+            timingLocal.SetValue(3, t3 - t0);  // total
+            timingLocal.SetValue(4, t1 - t0);  // last assemble
+            timingLocal.SetValue(5, t2 - t1);  // last commit
+            timingLocal.SetValue(6, t3 - t2);  // last drain
+            timingLocal.SetValue(7, t3 - t0);  // last total
         } else {
-            // ========== 场景1: 循环 loopCount 次 { Write → Drain } ==========
-            // 每次 Write 后立即 Drain 等完成
-            // 测 URMA 单次往返延迟 (含 DoorBell + CQ 轮询开销)
+            // ========== benchMode=1: 循环 loopCount 次 { WriteWithCommit → Drain } ==========
             int64_t sumWrite = 0, sumDrain = 0, sumTotal = 0;
             int64_t lastWrite = 0, lastDrain = 0, lastTotal = 0;
 
@@ -409,7 +398,7 @@ public:
                 uint64_t off = (static_cast<uint64_t>(i) % numSlots) * sqeBytes;
 
                 int64_t t0 = AscendC::GetSystemCycle();
-                Write(peer, localBase + off, remoteBase + off, sqeDataBytes);
+                WriteWithCommit(peer, localBase + off, remoteBase + off, sqeDataBytes);
                 int64_t t1 = AscendC::GetSystemCycle();
                 Drain(peer);
                 int64_t t2 = AscendC::GetSystemCycle();
@@ -422,19 +411,16 @@ public:
                 sumTotal  += lastTotal;
             }
 
-            // 累计值 [0-3], 最后一轮值 [4-7]
-            // Host 侧除以 loopCount 得平均单次时间
-            timingLocal.SetValue(0, sumWrite);    // 累计 Write 时间
-            timingLocal.SetValue(1, sumWrite);    // 累计 issue (同 Write)
-            timingLocal.SetValue(2, sumDrain);    // 累计 Drain 时间
+            timingLocal.SetValue(0, sumWrite);    // 累计 Write+Commit
+            timingLocal.SetValue(1, sumWrite);    // 累计 issue (同 assemble)
+            timingLocal.SetValue(2, sumDrain);    // 累计 Drain
             timingLocal.SetValue(3, sumTotal);    // 累计 total
-            timingLocal.SetValue(4, lastWrite);   // 最后一轮 Write
+            timingLocal.SetValue(4, lastWrite);   // 最后一轮 Write+Commit
             timingLocal.SetValue(5, lastWrite);   // 最后一轮 issue
             timingLocal.SetValue(6, lastDrain);   // 最后一轮 Drain
             timingLocal.SetValue(7, lastTotal);   // 最后一轮 total
         }
 
-        // DataCopy timing 到 GM, Host 侧 aclrtMemcpy D2H 读取
         AscendC::GlobalTensor<int64_t> timingGm;
         timingGm.SetGlobalBuffer((__gm__ int64_t*)timingGm_);
         AscendC::DataCopy(timingGm, timingLocal, TIMING_SLOTS);
@@ -480,15 +466,14 @@ private:
     }
 
     // ========================================================================
-    // FlushPendingSqes — 攒满 SQ 时自动 flush (敲 DoorBell + poll CQ + 更新 PICI)
+    // FlushPendingSqes — 攒满 SQ 时自动 flush (Commit + Drain)
     //
-    // 与 Drain 的区别: 不重置 pendingSqCnt_ 为 0 由调用方处理
-    // (实际上这里也设为 0, Drain 内部也调了这个)
+    // 调用 Commit() 敲 DoorBell + Drain() 轮询 CQ, 释放 SQ 空间
     // ========================================================================
     __aicore__ inline void FlushPendingSqes()
     {
         if (pendingSqCnt_ == 0) return;
-        SendJFSDoorBell(jfsDoorBellTensor_, sqInfoTensor_, outSqPiLinear_);
+        Commit();
         PollCommCQUpdateSQCI(sqInfoTensor_, cqInfoTensor_, cqeTensor_, jfcDoorBellTensor_,
                              outSqCi_, outCqCi_, outCqCiLinear_);
         UpdatePICI((GM_ADDR)hcclContext_, epRankId_, curDstRankId_,

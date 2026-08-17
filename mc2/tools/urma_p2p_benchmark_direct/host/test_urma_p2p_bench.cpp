@@ -621,9 +621,10 @@ int Sample(void *arg)
         double avgBwGBs = avgData / avgTotalNs;
         double lastBwGBs = lastData / lastTotalNs;
 
-        // hcomm benchMode=0: issue=commit, wait=drain
-        const char* issueLabel = (args->sqeMode == 2 && args->benchMode == 0) ? "commit" : "issue";
-        const char* waitLabel  = (args->sqeMode == 2) ? "drain" : "wait";
+        // benchMode=0: issue=commit, wait=drain (assemble/commit/drain/total)
+        // benchMode=1: issue=issue(=assemble), wait=drain (assemble/issue/drain/total)
+        const char* issueLabel = (args->benchMode == 0) ? "commit" : "issue";
+        const char* waitLabel  = "drain";
 
         printf("[rank %u (dev %u)] avg  assemble=%.2fus %s=%.2fus %s=%.2fus total=%.2fus bw=%.2fGB/s (over %u loops)\n",
                rank, physicalDev,
