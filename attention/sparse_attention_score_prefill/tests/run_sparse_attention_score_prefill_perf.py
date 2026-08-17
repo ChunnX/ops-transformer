@@ -94,9 +94,14 @@ def build_k2q_csr(select_idx, args):
   total_rows = args.batch * blocks_per_batch
   batch_ids = torch.arange(args.batch, dtype=torch.int64).repeat_interleave(
       args.q_seqlen)
-  row_offsets = (batch_ids * blocks_per_batch).view(1, total_q, 1)
   valid = select_idx >= 0
-  rows = select_idx.to(torch.int64) + row_offsets
+  # The kernel decodes dense rows in MSA order: for each local KV block,
+  # visit every batch that owns that block. All batches in this standalone
+  # runner have the same KV length, so packed_row = local_block * B + batch.
+  rows = (
+      select_idx.to(torch.int64) * args.batch
+      + batch_ids.view(1, total_q, 1)
+  )
   q_ids = torch.arange(total_q, dtype=torch.int32).view(1, total_q, 1).expand(
       args.kv_heads, total_q, args.top_k)
   slot_ids = torch.arange(args.top_k, dtype=torch.int32).view(1, 1, args.top_k).expand(
@@ -155,6 +160,7 @@ def main():
   validate_args(args)
   torch_npu.npu.set_device(args.device)
   inputs = make_inputs(args)
+  torch.npu.empty_cache()
 
   def run_prefill():
     return torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(

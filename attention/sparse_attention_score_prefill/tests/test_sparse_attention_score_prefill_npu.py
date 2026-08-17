@@ -16,6 +16,7 @@ and compares against NPU kernel output.
 import importlib.util
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -37,6 +38,8 @@ _golden_spec.loader.exec_module(prefill_golden)
 make_case = prefill_golden.make_case
 cpu_golden_prefill_bf16 = prefill_golden.cpu_golden_prefill_bf16
 cpu_golden_prefill_phase1 = prefill_golden.cpu_golden_prefill_phase1
+
+_NPU_OP_TIMEOUT_SECONDS = 180.0
 
 
 def _load_prefill_op():
@@ -281,24 +284,43 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         data["actual_seq_lengths"], data["actual_seq_lengths_kv"],
         data["block_size"], data["top_k"], data["scale_value"], inner_precise)
 
-    npu_out = torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
-        data["query"].npu(),
-        data["key"].npu(),
-        data["value"].npu(),
-        data["block_table"].npu(),
-        data["k2q_row_ptr"].npu(),
-        data["k2q_q_indices"].npu(),
-        data["k2q_slot_indices"].npu(),
-        data["actual_seq_lengths"].npu(),
-        data["actual_seq_lengths_kv"].npu(),
-        kv_heads,
-        data["scale_value"],
-        block_size,
-        top_k,
-        inner_precise,
-    )
+    def abort_hung_npu():
+      print(
+          f"[npu-timeout] exceeded {_NPU_OP_TIMEOUT_SECONDS:.0f}s; "
+          "terminating the test process",
+          flush=True)
+      os._exit(124)
 
-    npu_out_cpu = npu_out.cpu()
+    timeout = threading.Timer(_NPU_OP_TIMEOUT_SECONDS, abort_hung_npu)
+    timeout.daemon = True
+    npu_start = time.perf_counter()
+    print(
+        f"[npu-launch] batch={batch} q={q_seqlens} kv={kv_seqlens} "
+        f"head_dim={head_dim} top_k={top_k} inner_precise={inner_precise}",
+        flush=True)
+    timeout.start()
+    try:
+      npu_out = torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
+          data["query"].npu(),
+          data["key"].npu(),
+          data["value"].npu(),
+          data["block_table"].npu(),
+          data["k2q_row_ptr"].npu(),
+          data["k2q_q_indices"].npu(),
+          data["k2q_slot_indices"].npu(),
+          data["actual_seq_lengths"].npu(),
+          data["actual_seq_lengths_kv"].npu(),
+          kv_heads,
+          data["scale_value"],
+          block_size,
+          top_k,
+          inner_precise,
+      )
+      npu_out_cpu = npu_out.cpu()
+    finally:
+      timeout.cancel()
+    npu_elapsed_ms = (time.perf_counter() - npu_start) * 1000.0
+    print(f"[npu-done] elapsed_ms={npu_elapsed_ms:.3f}", flush=True)
     max_diff = self._max_abs_diff(kv_centric, npu_out_cpu)
     mean_diff = (kv_centric.float() - npu_out_cpu.float()).abs().mean().item()
     print(
@@ -528,6 +550,16 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
             batch=1, q_seqlens=[4], kv_seqlens=[512],
             q_heads=16, kv_heads=1, head_dim=256, block_size=128,
             top_k=4, seed=1850 + inner_precise, prec=prec,
+            inner_precise=inner_precise)
+
+  def test_bf16_gqa16_head_dim_256_topk16_precision_paths(self):
+    """D=256 covers the non-uniform 7/7/2 Phase2 split grouping."""
+    for inner_precise, prec in ((0, 7e-3), (1, 1.5e-2), (4, 7e-3)):
+      with self.subTest(inner_precise=inner_precise):
+        self._run_npu_test(
+            batch=1, q_seqlens=[4], kv_seqlens=[2048],
+            q_heads=16, kv_heads=1, head_dim=256, block_size=128,
+            top_k=16, seed=1860 + inner_precise, prec=prec,
             inner_precise=inner_precise)
 
   def test_bf16_max_heads_d256_mid_block_precision_paths(self):
@@ -888,7 +920,8 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
   # ---------------------------------------------------------------------------
   # Production-config precision sweep. FIXED dims (do NOT vary):
   #   head_dim=128, block_size=128, top_k=16,
-  #   q_heads=64, kv_heads=4, group_size=16 (batchGroupsMax=8).
+  #   q_heads=64, kv_heads=4, group_size=16 (A2 batchGroupsMax=4;
+  #   the kernel derives this from its L0/UB capacity formula).
   # Only batch / q_seqlens / kv_seqlens / seed vary. Production shows
   # INTERMITTENT (seed/shape-dependent) precision regressions, so the cases
   # target the accumulation / per-core split-row paths that only fire on
@@ -929,7 +962,7 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
     for inner_precise, prec in ((0, 1e-2), (1, 1.5e-2), (4, 1e-2)):
       with self.subTest(inner_precise=inner_precise):
         self._run_prod_config(
-            batch=1, q_seqlens=[16], kv_seqlens=[4096],
+            batch=1, q_seqlens=[64], kv_seqlens=[4096],
             seed=9700 + inner_precise, prec=prec,
             tag=f"inner_precise/{inner_precise}",
             inner_precise=inner_precise)
