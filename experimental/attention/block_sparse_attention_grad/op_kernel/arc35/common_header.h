@@ -38,6 +38,8 @@ struct ConstInfo {
     int32_t head_dim{0};
     int32_t q_block_num{0};
     int32_t kv_block_num{0};
+    int32_t max_block_num{0};   // PerBlockSizeMask 最后一维的 block 数量 max(q_block_num, kv_block_num)
+    bool has_per_block_size_mask{false}; // 是否启用 PerBlockSizeMask（maskType=1）
 };
 
 struct RunTimeInfo {
@@ -152,6 +154,38 @@ __aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int64_t b
                       kv_block_idx * const_info.q_block_num + q_block_idx;
     bool is_valid = block_sparse_mask[offset];
     return is_valid;
+}
+
+
+/*
+ * 读取 PerBlockSizeMask[b, n, block_idx, axis]。
+ * mask 布局: [B, N, maxBlockNum, 2], dtype INT32。
+ * axis=0 -> Q 方向 actualSizeX (≤ block_x), axis=1 -> KV 方向 actualSizeY (≤ block_y)。
+ */
+__aicore__ inline int32_t GetPerBlockSizeMaskValue(const ConstInfo &const_info,
+                                                   __gm__ int32_t *per_block_size_mask,
+                                                   const int64_t batch_idx, const int64_t n1_idx,
+                                                   const int64_t block_idx, const int32_t axis)
+{
+    int64_t offset = batch_idx * (const_info.q_head_num * const_info.max_block_num * 2) +
+                     n1_idx * (const_info.max_block_num * 2) +
+                     block_idx * 2 + axis;
+    return per_block_size_mask[offset];
+}
+
+/*
+ * 把 base 块长度截断到当前 mask block 的 actualSize 边界。
+ * 当前 mask block 内 [0, actual_size) 有效，[actual_size, block_size) 为 padding。
+ * start_idx 为 base 块在 SingleBlock 内的绝对坐标，local_idx = start_idx % block_size。
+ */
+__aicore__ inline int32_t ClipLenByActualSize(int32_t start_idx, int32_t len, int32_t block_size, int32_t actual_size)
+{
+    int32_t local_idx = start_idx % block_size;      // 在当前 mask block 内的局部坐标
+    int32_t valid_remain = actual_size - local_idx;  // 距 actualSize 边界的剩余有效长度
+    if (valid_remain <= 0) {
+        return 0;                                    // 起点已在 padding 区，整块无效
+    }
+    return len < valid_remain ? len : valid_remain;  // min(len, valid_remain)
 }
 
 
