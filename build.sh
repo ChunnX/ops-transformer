@@ -576,7 +576,6 @@ function build_example()
     fi
     # Obtain the example file corresponding to the input soc unit.
     if [[ "$ASCEND_SOC_UNITS" == "ascend950" ]]; then
-        echo "ascend 950"
         # 1. ascend950/ascend950 example is independent of other soc units.
         files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/arch35/${pattern}*.cpp"))
         if [[ -z "$files" ]]; then
