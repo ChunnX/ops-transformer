@@ -17,15 +17,6 @@ import custom_ops  # noqa: E402, F401
 from fused_gdn_gating_paramset import ENABLED_PARAMS  # noqa: E402
 import fused_gdn_gating_golden  # noqa: E402
 
-_OP_REGISTERED = custom_ops.has_npu_fused_gdn_gating_op()
-_OP_SKIP_REASON = (
-    "torch.ops.custom.npu_fused_gdn_gating is not registered. "
-    "Install the CANN custom operator package "
-    "(`bash build.sh --pkg --experimental --ops=fused_gdn_gating --soc=<soc> "
-    "&& bash output/custom_opp_*.run`), or set FUSED_GDN_GATING_CUSTOM_OPS_PATH "
-    "to a directory containing custom_ops_lib*.so."
-)
-
 
 def case_id(case):
     return f"{case['case_id']}:{case['testcase_name']}"
@@ -42,8 +33,6 @@ def _is_310p():
 @pytest.mark.ci
 @pytest.mark.parametrize("case", ENABLED_PARAMS, ids=case_id)
 def test_fused_gdn_gating(case):
-    if not _OP_REGISTERED:
-        pytest.skip(_OP_SKIP_REASON)
     is_310p = _is_310p()
     if case["soc"] == "910b" and is_310p:
         pytest.skip("BF16 not supported on 310P")

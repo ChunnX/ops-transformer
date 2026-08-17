@@ -12,11 +12,8 @@
 
 """Custom op loader for fused_gdn_gating pytest.
 
-The fused_gdn_gating pytest tree does not ship a local torch_ops_extension.
-The operator must be registered externally (CANN custom operator package,
-npu_ops_transformer_ext, or any torch extension that registers
-`torch.ops.custom.npu_fused_gdn_gating`). This module only probes the torch
-registry and optionally loads an external extension when
+The fused_gdn_gating pytest tree should not hard-code one development worktree.  This module
+checks the current torch registry and only loads an external extension when
 `FUSED_GDN_GATING_CUSTOM_OPS_PATH` explicitly points to one.
 """
 
@@ -57,6 +54,7 @@ def _candidate_roots():
     value = os.environ.get("FUSED_GDN_GATING_CUSTOM_OPS_PATH")
     if value:
         roots.extend(Path(part) for part in value.split(":") if part)
+    roots.append(Path(__file__).resolve().parents[2] / "torch_ops_extension")
     deduped = []
     seen = set()
     for root in roots:
