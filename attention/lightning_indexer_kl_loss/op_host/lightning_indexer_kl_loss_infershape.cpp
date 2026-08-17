@@ -55,5 +55,7 @@ static ge::graphStatus InferDataTypeLightningIndexerKLLoss(gert::InferDataTypeCo
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(LightningIndexerKLLoss).InferShape(InferShapeLightningIndexerKLLoss).InferDataType(InferDataTypeLightningIndexerKLLoss);
+IMPL_OP_INFERSHAPE(LightningIndexerKLLoss)
+    .InferShape(InferShapeLightningIndexerKLLoss)
+    .InferDataType(InferDataTypeLightningIndexerKLLoss);
 } // namespace ops

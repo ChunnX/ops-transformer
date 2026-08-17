@@ -40,8 +40,8 @@ void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
 {
     auto size = GetShapeSize(shape);
     std::vector<float> resultData(size, 0);
-    auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
-                           *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+    auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), *deviceAddr,
+                           size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
@@ -132,14 +132,12 @@ int main()
     aclTensor *indexProbs = nullptr;
     aclTensor *loss = nullptr;
 
-    ret = CreateAclTensor(targetScoreHostData, inputShape, &targetScoreDeviceAddr,
-                          aclDataType::ACL_FLOAT, &targetScore);
+    ret =
+        CreateAclTensor(targetScoreHostData, inputShape, &targetScoreDeviceAddr, aclDataType::ACL_FLOAT, &targetScore);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(indexProbsHostData, inputShape, &indexProbsDeviceAddr,
-                          aclDataType::ACL_FLOAT, &indexProbs);
+    ret = CreateAclTensor(indexProbsHostData, inputShape, &indexProbsDeviceAddr, aclDataType::ACL_FLOAT, &indexProbs);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(lossHostData, lossShape, &lossDeviceAddr,
-                          aclDataType::ACL_FLOAT, &loss);
+    ret = CreateAclTensor(lossHostData, lossShape, &lossDeviceAddr, aclDataType::ACL_FLOAT, &loss);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // eps 参数
@@ -153,10 +151,9 @@ int main()
     aclOpExecutor *executor;
 
     // 4. 调用 aclnnLightningIndexerKLLoss 第一段接口
-    ret = aclnnLightningIndexerKLLossGetWorkspaceSize(
-        targetScore, indexProbs, eps, weightType, loss, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnLightningIndexerKLLossGetWorkspaceSize failed. ERROR: %d\n", ret);
+    ret = aclnnLightningIndexerKLLossGetWorkspaceSize(targetScore, indexProbs, eps, weightType, loss, &workspaceSize,
+                                                      &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnLightningIndexerKLLossGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
     // 根据 workspaceSize 申请 device 内存

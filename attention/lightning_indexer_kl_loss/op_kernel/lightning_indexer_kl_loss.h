@@ -31,9 +31,8 @@ template <typename T, bool isDeterministic, bool weightType>
 class LightningIndexerKLLoss {
 public:
     __aicore__ inline LightningIndexerKLLoss(){};
-    __aicore__ inline void Init(GM_ADDR targetScore, GM_ADDR indexProbs, GM_ADDR loss,
-                                GM_ADDR workspace, const LightningIndexerKLLossTilingData *tilingData,
-                                TPipe *pipe);
+    __aicore__ inline void Init(GM_ADDR targetScore, GM_ADDR indexProbs, GM_ADDR loss, GM_ADDR workspace,
+                                const LightningIndexerKLLossTilingData *tilingData, TPipe *pipe);
     __aicore__ inline void InitWorkspaceDet(GM_ADDR workspace);
     __aicore__ inline void InitHalfBufs();
     __aicore__ inline void Process();
@@ -96,8 +95,9 @@ private:
 };
 
 template <typename T, bool isDeterministic, bool weightType>
-__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::Init(GM_ADDR targetScore, GM_ADDR indexProbs,
-                                                                                    GM_ADDR loss, GM_ADDR workspace, const LightningIndexerKLLossTilingData *tilingData, TPipe *pipe)
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::Init(
+    GM_ADDR targetScore, GM_ADDR indexProbs, GM_ADDR loss, GM_ADDR workspace,
+    const LightningIndexerKLLossTilingData *tilingData, TPipe *pipe)
 {
     totalLength_ = tilingData->totalLength;
     K_ = tilingData->K;
@@ -183,15 +183,15 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::I
     uint32_t floatDword = tileLength_ * KAligned_ * sizeof(float);
     uint32_t halfOff = (KAligned_ * 2 - halfKAligned_) * sizeof(T);
     ubHalfTarget = tmpBuf_.GetWithOffset<T>(tileElemsAligned, halfOff);
-    ubHalfIndexProbs = tmpBuf_.GetWithOffset<T>(tileElemsAligned,
-                                                floatDword + halfOff);
+    ubHalfIndexProbs = tmpBuf_.GetWithOffset<T>(tileElemsAligned, floatDword + halfOff);
     copyParams.blockLen = K_ * sizeof(T);
     copyParams.dstStride = (KAligned_ * 2 - halfKAligned_) / HALF_BLOCK_SIZE;
     padParams.rightPadding = halfKAligned_ - K_;
 }
 
 template <typename T, bool isDeterministic, bool weightType>
-__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::CopyIn(uint32_t rowOffset, uint32_t curTileLen)
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::CopyIn(uint32_t rowOffset,
+                                                                                      uint32_t curTileLen)
 {
     uint64_t offset = (uint64_t)rowOffset * (uint64_t)K_;
     copyParams.blockCount = curTileLen;
@@ -216,7 +216,8 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
 
 /* ---------- Compute: Vector 全部计算，含 setflag/waitflag ---------- */
 template <typename T, bool isDeterministic, bool weightType>
-__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::Compute(uint32_t tileElems, uint32_t curTileLen)
+__aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::Compute(uint32_t tileElems,
+                                                                                       uint32_t curTileLen)
 {
     uint32_t repeat, remain;
     constexpr uint32_t MAX_REPEAT_TIME = 255;
@@ -226,13 +227,12 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
         remain = KAligned_ % FLOAT_VECTOR_SIZE;
         UnaryRepeatParams repeatParams(1, 1, 8, 4);
         for (uint32_t i = 0; i < curTileLen; ++i) {
-            Cast(ubIndexProbsIn[i * KAligned_],
-                 ubHalfIndexProbs[i * KAligned_ * 2],
-                 RoundMode::CAST_NONE, FLOAT_VECTOR_SIZE, repeat, repeatParams);
+            Cast(ubIndexProbsIn[i * KAligned_], ubHalfIndexProbs[i * KAligned_ * 2], RoundMode::CAST_NONE,
+                 FLOAT_VECTOR_SIZE, repeat, repeatParams);
             if (remain) {
                 Cast(ubIndexProbsIn[i * KAligned_ + repeat * FLOAT_VECTOR_SIZE],
-                     ubHalfIndexProbs[i * KAligned_ * 2 + repeat * FLOAT_VECTOR_SIZE],
-                     RoundMode::CAST_NONE, remain, 1, repeatParams);
+                     ubHalfIndexProbs[i * KAligned_ * 2 + repeat * FLOAT_VECTOR_SIZE], RoundMode::CAST_NONE, remain, 1,
+                     repeatParams);
             }
         }
     }
@@ -244,13 +244,12 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
     if constexpr (!std::is_same_v<T, float>) {
         UnaryRepeatParams repeatParams(1, 1, 8, 4);
         for (uint32_t i = 0; i < curTileLen; ++i) {
-            Cast(ubTargetScoreIn[i * KAligned_],
-                 ubHalfTarget[i * KAligned_ * 2],
-                 RoundMode::CAST_NONE, FLOAT_VECTOR_SIZE, repeat, repeatParams);
+            Cast(ubTargetScoreIn[i * KAligned_], ubHalfTarget[i * KAligned_ * 2], RoundMode::CAST_NONE,
+                 FLOAT_VECTOR_SIZE, repeat, repeatParams);
             if (remain) {
                 Cast(ubTargetScoreIn[i * KAligned_ + repeat * FLOAT_VECTOR_SIZE],
-                     ubHalfTarget[i * KAligned_ * 2 + repeat * FLOAT_VECTOR_SIZE],
-                     RoundMode::CAST_NONE, remain, 1, repeatParams);
+                     ubHalfTarget[i * KAligned_ * 2 + repeat * FLOAT_VECTOR_SIZE], RoundMode::CAST_NONE, remain, 1,
+                     repeatParams);
             }
         }
     }
@@ -274,14 +273,17 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
         remain = curTileLen % FLOAT_VECTOR_SIZE;
         Add(ubReduceSum[reduceOff], ubReduceSum[reduceOff], ubLogP, FLOAT_VECTOR_SIZE, repeat, {1, 1, 1, 8, 8, 8});
         if (remain) {
-            Add(ubReduceSum[reduceOff + repeat * FLOAT_VECTOR_SIZE], ubReduceSum[reduceOff + repeat * FLOAT_VECTOR_SIZE], ubLogP[repeat * FLOAT_VECTOR_SIZE], remain, 1, {1, 1, 1, 8, 8, 8});
+            Add(ubReduceSum[reduceOff + repeat * FLOAT_VECTOR_SIZE],
+                ubReduceSum[reduceOff + repeat * FLOAT_VECTOR_SIZE], ubLogP[repeat * FLOAT_VECTOR_SIZE], remain, 1,
+                {1, 1, 1, 8, 8, 8});
         }
     }
     repeat = curTileLen / FLOAT_VECTOR_SIZE;
     remain = curTileLen % FLOAT_VECTOR_SIZE;
     Adds(ubReduceSum[reduceOff], ubReduceSum[reduceOff], eps_, FLOAT_VECTOR_SIZE, repeat, {1, 1, 8, 8});
     if (remain) {
-        Adds(ubReduceSum[reduceOff + repeat * FLOAT_VECTOR_SIZE], ubReduceSum[reduceOff + repeat * FLOAT_VECTOR_SIZE], eps_, remain, 1, {1, 1, 8, 8});
+        Adds(ubReduceSum[reduceOff + repeat * FLOAT_VECTOR_SIZE], ubReduceSum[reduceOff + repeat * FLOAT_VECTOR_SIZE],
+             eps_, remain, 1, {1, 1, 8, 8});
     }
 
     repeat = (curTileLen + 7) / 8;
@@ -290,19 +292,12 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
     remain = KAligned_ % FLOAT_VECTOR_SIZE;
     BinaryRepeatParams divParams{1, 1, 0, 8, 8, 0};
     for (uint32_t i = 0; i < curTileLen; ++i) {
-        Div(ubTmp[i * KAligned_],
-            ubTargetScoreIn[i * KAligned_],
-            ubReduceSum[i * FLOAT_BLOCK_SIZE],
-            FLOAT_VECTOR_SIZE,
-            repeat,
-            divParams);
+        Div(ubTmp[i * KAligned_], ubTargetScoreIn[i * KAligned_], ubReduceSum[i * FLOAT_BLOCK_SIZE], FLOAT_VECTOR_SIZE,
+            repeat, divParams);
         if (remain) {
             Div(ubTmp[i * KAligned_ + repeat * FLOAT_VECTOR_SIZE],
-                ubTargetScoreIn[i * KAligned_ + repeat * FLOAT_VECTOR_SIZE],
-                ubReduceSum[i * FLOAT_BLOCK_SIZE],
-                remain,
-                1,
-                divParams);
+                ubTargetScoreIn[i * KAligned_ + repeat * FLOAT_VECTOR_SIZE], ubReduceSum[i * FLOAT_BLOCK_SIZE], remain,
+                1, divParams);
         }
     }
     ClampMin(ubLogP, ubTmp, eps_, tileElems);
