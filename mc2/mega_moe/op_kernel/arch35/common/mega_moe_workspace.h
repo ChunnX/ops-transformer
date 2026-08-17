@@ -20,9 +20,12 @@
 #include "kernel_operator.h"
 #include "op_kernel/math_util.h"
 #define HOST_DEVICE __forceinline__[aicore]
+// 命名空间级自由函数用：device 侧复用 HOST_DEVICE，host 侧需显式 inline 保 ODR。
+#define HOST_DEVICE_FN HOST_DEVICE
 #else
 #define GM_ADDR uint8_t *
 #define HOST_DEVICE
+#define HOST_DEVICE_FN inline
 #endif
 #include "../mega_moe_tiling.h"
 #include "mega_moe_constants.h"
@@ -41,6 +44,25 @@ constexpr uint8_t GROUPED_MATMUL_MODE_A4W4 = 3U;
 constexpr int64_t TOPO_TYPE_MTE = 0U;  // mte
 constexpr int64_t TOPO_TYPE_URMA = 1U; // urma
 
+/*
+ * mask 槽几何是跨卡共用的布局：按全卡一致的 numMaxTokensPerRank 上界推导，各卡必须一致
+ * （可变 bs 下各卡真实 bs 可不同，attr=0 时上界=bs，与原布局逐位等价）。
+ * PeermemInfo 布局与编排层 SendMaskConfig 均以此为唯一事实源。
+ */
+HOST_DEVICE_FN int64_t CalcDispatchMaskAlignSize(const MegaMoeTilingData *tilingData)
+{
+    int64_t sendTotalNum = static_cast<int64_t>(tilingData->numMaxTokensPerRank) * tilingData->topK;
+    int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * static_cast<int64_t>(sizeof(int32_t)), ALIGN_256) /
+                           static_cast<int64_t>(sizeof(int32_t));
+    return Ops::Base::CeilAlign(compareCount / 8, ALIGN_32);
+}
+
+// 每个 (expert, srcRank) mask 槽 = mask 位区 + 末尾 32B count 区。
+HOST_DEVICE_FN int64_t GetMaskSlotSize(int64_t maskAlignSize)
+{
+    return maskAlignSize + ALIGN_32;
+}
+
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 struct PeermemInfo {
     GM_ADDR rankSyncInWorldPtr;
@@ -58,12 +80,9 @@ struct PeermemInfo {
         int64_t offset = PEERMEM_DATA_OFFSET;
         maskRecvPtr = base + offset;
         // 窗口各区尺寸一律按全卡一致的 numMaxTokensPerRank 上界开设(可变 bs 下各卡真实 bs 可不同,
-        // 但跨卡读写共用同一套偏移, 布局必须逐字节一致); attr=0 时上界=bs, 与原布局逐位等价。
-        int64_t sendTotalNum = static_cast<int64_t>(tilingData->numMaxTokensPerRank) * tilingData->topK;
-        int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * static_cast<int64_t>(sizeof(int32_t)), ALIGN_256) /
-                               static_cast<int64_t>(sizeof(int32_t));
-        int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, ALIGN_32);
-        int64_t maskSlotSize = maskAlignSize + ALIGN_32;
+        // 但跨卡读写共用同一套偏移, 布局必须逐字节一致)。
+        int64_t maskAlignSize = CalcDispatchMaskAlignSize(tilingData);
+        int64_t maskSlotSize = GetMaskSlotSize(maskAlignSize);
         offset += Ops::Base::CeilAlign(
             static_cast<int64_t>(tilingData->moeExpertPerRank) * tilingData->epWorldSize * maskSlotSize, ALIGN_512);
 
@@ -132,6 +151,12 @@ struct WorkspaceInfo {
     GM_ADDR dispatchDonePtr{nullptr};   // dispatch done
     GM_ADDR dispatchL2CommPtr{nullptr}; // dispatch l2 communication workspace
 
+    // 连续 flag 通知区（自 flagActivationToGmm2Ptr 起）的 int32 元素总数。
+    // 在分配处顺手记账，保证 ResetSyncStatus 的清零范围与分配范围恒同源。
+    int64_t flagResetElementCount{0};
+    // prefetch 软同步 GMM1 tile 状态区的 int32 元素总数（未分配时为 0）。
+    int64_t gmm1TileStatusElementCount{0};
+
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
     HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t serverNum = 1)
@@ -190,6 +215,7 @@ struct WorkspaceInfo {
 
         // 所有 Scalar 通知都放在同一段连续 workspace 中。每个逻辑槽独占一个 64B cache line，
         // 因而 ResetFlagList 可以按任务分区一次清理完整区域。
+        int64_t flagRegionBeginOffset = workspaceSize;
         flagActivationToGmm2Ptr = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * moeExpertCount * activationFlagSlotsPerExpert;
         flagDispatchToGmm1Ptr = base + workspaceSize;
@@ -230,6 +256,7 @@ struct WorkspaceInfo {
             workspaceSize +=
                 SIZE_INT_32 * tokenGroupCount * static_cast<int64_t>(tilingData->sharedExpertNum) * INT_CACHELINE;
         }
+        flagResetElementCount = (workspaceSize - flagRegionBeginOffset) / SIZE_INT_32;
 
         // A8W4 / Combine 量化路径的条件 workspace 分配。
         // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / ENABLE_A4W4 / CombineQuantMode) 一致，
@@ -279,6 +306,7 @@ struct WorkspaceInfo {
             gmm1TileStatusPtr = base + workspaceSize;
             int64_t statusSlots =
                 static_cast<int64_t>(tilingData->moeExpertPerRank) * tilingData->maxTilesPerExpert + 1;
+            gmm1TileStatusElementCount = statusSlots * INT_CACHELINE;
             int64_t statusBytes = SIZE_INT_32 * statusSlots * INT_CACHELINE;
             workspaceSize += Ops::Base::CeilAlign(statusBytes, ALIGN_512);
         }
