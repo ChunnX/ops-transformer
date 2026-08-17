@@ -33,20 +33,22 @@ class SingleBlock {
      *        跳过稀疏 mask 标记为无效的 base 块，逐个产出有效 base 块的 (起始idx, 长度)。
      */
 public:
-    __aicore__ inline void Reset(const ConstInfo &const_info, __gm__ uint8_t *block_sparse_mask, const int32_t b_idx,
+    __aicore__ inline void Reset(const ConstInfo &const_info, __gm__ uint8_t *block_sparse_mask,
+                                 __gm__ int32_t *per_block_size_mask, const int32_t b_idx,
                                  const int32_t n1_idx, const int32_t s1_idx, const int32_t s2_idx, const int32_t s1_len,
                                  int32_t &base_s1_start_idx, int32_t &base_s1_len)
     /*
      * 参数：
-     *   const_info         - 常量上下文（head 数、block 尺寸等）
-     *   block_sparse_mask  - GM 上的稀疏 mask 指针
-     *   b_idx / n1_idx     - 当前 batch / query head 索引
-     *   s1_idx             - SingleBlock 在 S1 方向的起点
-     *   s2_idx             - 当前 BaseBlock 在 S2 方向的起点（整个 SingleBlock 内固定）
-     *   s1_len             - SingleBlock 在 S1 方向的长度
+     *   const_info           - 常量上下文（head 数、block 尺寸等）
+     *   block_sparse_mask    - GM 上的稀疏 mask 指针
+     *   per_block_size_mask  - GM 上的 PerBlockSizeMask 指针（maskType=1 时非空，否则 nullptr）
+     *   b_idx / n1_idx       - 当前 batch / query head 索引
+     *   s1_idx               - SingleBlock 在 S1 方向的起点
+     *   s2_idx               - 当前 BaseBlock 在 S2 方向的起点（整个 SingleBlock 内固定）
+     *   s1_len               - SingleBlock 在 S1 方向的长度
      * 出参：
-     *   base_s1_start_idx  - 第一个有效 base 块的 S1 起点
-     *   base_s1_len        - 第一个有效 base 块的 S1 长度
+     *   base_s1_start_idx    - 第一个有效 base 块的 S1 起点
+     *   base_s1_len          - 第一个有效 base 块的 S1 长度
      */
     {
         /*
@@ -59,6 +61,7 @@ public:
         this->is_finish_ = false;                   // 重置完成标志，准备开始遍历
         this->s1_start_idx_ = s1_idx;               // 记录 S1 起点
         this->s1_end_idx_ = s1_idx + s1_len;        // 记录 S1 终点（exclusive）
+        this->per_block_size_mask_ = per_block_size_mask;  // 保存 PerBlockSizeMask 指针供 Update 使用
         // 立即推进一次，吐出首个有效 base 块信息
         this->Update(const_info, block_sparse_mask, b_idx, n1_idx, s2_idx, base_s1_start_idx, base_s1_len);
     }
@@ -176,6 +179,13 @@ private:
         if (base_s1_start_idx + base_s1_len > mask_boundary) {
             base_s1_len = mask_boundary - base_s1_start_idx;                  // 截断到 mask 边界
         }
+        // PerBlockSizeMask (maskType=1): 用 actualSizeX 截断到当前 mask block 的有效长度
+        // actualSizeX < block_x 时，[actualSizeX, block_x) 为 padding，不参与计算
+        if (const_info.has_per_block_size_mask && this->per_block_size_mask_ != nullptr) {
+            int32_t actual_size_x = GetPerBlockSizeMaskValue(const_info, this->per_block_size_mask_,
+                                                            b_idx, n1_idx, q_block_idx_cur, 0);
+            base_s1_len = ClipLenByActualSize(base_s1_start_idx, base_s1_len, const_info.block_x, actual_size_x);
+        }
         this->s1_start_idx_ += base_s1_len;                                   // 推进到下一个 base 块起点
 
         // --- 步骤 2：检查是否到达 SingleBlock 末尾 ---
@@ -191,10 +201,23 @@ private:
 
         // --- 步骤 4：连续跳过无效 base 块 ---
         // 连续跳过无效 base 块，直到命中有效块或越过 SingleBlock 边界
+        // 无效判定：block_sparse_mask=0，或 PerBlockSizeMask 截断后长度<=0（actualSizeX=0 或起点在 padding 区）
         while (true) {
             // 查 mask：当前 (q_block_idx, kv_block_idx) 是否标记为计算
             if (IsValidBlock(const_info, b_idx, n1_idx, q_block_idx, kv_block_idx, block_sparse_mask)) {
-                break;  // 命中有效块，退出循环
+                // block_sparse_mask 有效，但还需检查 PerBlockSizeMask 是否把整个 block 标为 padding
+                if (const_info.has_per_block_size_mask && this->per_block_size_mask_ != nullptr) {
+                    int32_t actual_size_x = GetPerBlockSizeMaskValue(const_info, this->per_block_size_mask_,
+                                                                    b_idx, n1_idx, q_block_idx, 0);
+                    int32_t local_idx = this->s1_start_idx_ % const_info.block_x;
+                    if (actual_size_x - local_idx <= 0) {
+                        // actualSizeX=0 或起点已在 padding 区，视为无效块，继续跳过
+                    } else {
+                        break;  // block_sparse_mask 有效且 PerBlockSizeMask 也有效，命中有效块
+                    }
+                } else {
+                    break;  // 无 PerBlockSizeMask，block_sparse_mask 有效即命中
+                }
             }
             // 无效块：跳过
             int32_t tmp_s1_len = GetBlockLen(this->s1_start_idx_, this->s1_end_idx_, s1_base_size_);
@@ -223,6 +246,7 @@ private:
     int32_t s1_base_size_{0};   // base 块在 S1 方向的步长（= base_m）
     bool is_finish_{true};      // 当前 SingleBlock 是否已遍历完
     RunTimeInfo runTimeInfoBak_; // 上一次 Reset 时的上下文，供 UpdateRunTimeInfo 续推
+    __gm__ int32_t *per_block_size_mask_{nullptr};  // PerBlockSizeMask GM 指针（maskType=1 时非空）
 };
 
 template <typename BSA_TYPE>
@@ -356,6 +380,8 @@ public:
         const_info_.head_dim = head_dim_;
         const_info_.q_block_num = q_block_num_;
         const_info_.kv_block_num = kv_block_num_;
+        const_info_.max_block_num = max_block_num_;
+        const_info_.has_per_block_size_mask = has_per_block_size_mask_;
 
         // ---- 确定本核在 cube 核集合中的索引 ----
         if ASCEND_IS_AIC {
@@ -409,9 +435,18 @@ public:
             if (s2Idx_ + s2_len > kv_mask_boundary) {
                 s2_len = kv_mask_boundary - s2Idx_;  // 截断到 mask 边界
             }
+            // PerBlockSizeMask (maskType=1): 用 actualSizeY 截断到当前 KV mask block 的有效长度
+            // actualSizeY < block_y 时，[actualSizeY, block_y) 为 padding，不参与计算
+            if (has_per_block_size_mask_) {
+                int32_t actual_size_y = GetPerBlockSizeMaskValue(const_info_,
+                    reinterpret_cast<__gm__ int32_t *>(perBlockSizeMask_),
+                    bIdx_, n1Idx_, kv_block_idx_cur, 1);
+                s2_len = ClipLenByActualSize(s2Idx_, s2_len, block_y_, actual_size_y);
+            }
 
             // 检查当前 SingleBlock 内是否至少含一个有效 base 块
-            if (IsValidSingleBlock(vaild_s1_idx, vaild_s1_len)) {
+            // PerBlockSizeMask 截断后 s2_len 可能为 0（actualSizeY=0），此时不下发任务
+            if (s2_len > 0 && IsValidSingleBlock(vaild_s1_idx, vaild_s1_len)) {
                 // 当前 SingleBlock 至少含一个有效 base 块，登记为一次任务
                 RunTimeInfoRecord(runTimeInfo, vaild_s1_idx, s2Idx_, vaild_s1_len, s2_len);
             }
@@ -445,6 +480,15 @@ private:
             int32_t block_x_idx = s1_idx / block_x_;   // 当前 Q 方向 mask block 索引
             // 查 mask：(b, n1, block_x_idx, block_y_idx) 是否标记为计算
             if (IsValidBlock(const_info_, bIdx_, n1Idx_, block_x_idx, block_y_idx, blockSparseMask_)) {
+                // PerBlockSizeMask: actualSizeX=0 的 block 视为无效（无有效数据）
+                if (has_per_block_size_mask_) {
+                    int32_t actual_size_x = GetPerBlockSizeMaskValue(const_info_,
+                        reinterpret_cast<__gm__ int32_t *>(perBlockSizeMask_),
+                        bIdx_, n1Idx_, block_x_idx, 0);
+                    if (actual_size_x <= 0) {
+                        continue;  // actualSizeX=0，跳过此 block 继续扫描
+                    }
+                }
                 find_vaild_block = true;
                 vaild_s1_idx = s1_idx;                 // 记录第一个有效 mask block 的 S1 起点
                 vaild_s1_len = s1_end_idx - s1_idx;    // 长度延伸到 SingleBlock 末尾（后续由 base_m 细分）
@@ -568,7 +612,9 @@ private:
         // 重置 SingleBlock 推进器，并立即取出第一个有效 base 块的信息
         int32_t base_s1_idx;
         int32_t base_s1_len;
-        single_block_.Reset(const_info_, blockSparseMask_, bIdx_, n1Idx_, vaild_s1_idx, vaild_s2_idx, vaild_s1_len,
+        single_block_.Reset(const_info_, blockSparseMask_,
+                            reinterpret_cast<__gm__ int32_t *>(perBlockSizeMask_),
+                            bIdx_, n1Idx_, vaild_s1_idx, vaild_s2_idx, vaild_s1_len,
                             base_s1_idx, base_s1_len);
         int32_t n2Idx = n1Idx_ / q_group_;  // GQA: kv head = q head / group
 
