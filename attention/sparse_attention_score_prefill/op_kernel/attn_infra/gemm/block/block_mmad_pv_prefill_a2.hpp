@@ -137,7 +137,6 @@ struct BlockMmadPVPrefillA2 {
     static constexpr uint32_t L0C_HALF_SIZE = ArchTag::L0C_SIZE / 2;
     static constexpr uint32_t L0C_BUF_SIZE = L0C_HALF_SIZE / L0_STAGES;
     static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16;       // V0/V1 flag id 偏移 (MODE_4 双 AIV)
-    static constexpr uint32_t COPY_GRANULARITY = 2;
     static constexpr uint32_t C0_SIZE = 16;                    // Cube 基本块大小
 
     // === L1/L0 缓冲 Tensor ===
@@ -483,10 +482,11 @@ struct BlockMmadPVPrefillA2 {
                     copyL1ToL0A(l0ATensorTla, l1PSubTile);                       // L1 P → L0A
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);   // L0A 就绪
 
-                    // 最后一个 K tile: 通知 VEC 可以覆写 L1 P buffer (softmax 写下一个 batch)
+                    // The next softmax can reuse this GM P stage only after the
+                    // MTE1 transfer has consumed the final L1 P tile.
                     if ((mL0Itr == mL0Num - 1U) && (nL0Itr == nL0Num - 1U) &&
                         (kL0Itr == kL0Num - 1U)) {
-                        SetCrossCoreSync<0x2U, PIPE_FIX>(smToMm2Flag);
+                        SetCrossCoreSync<0x2U, PIPE_MTE1>(smToMm2Flag);
                     }
 
                     bool initMmad = (kL0Itr == 0);               // 首个 K tile: 清空 L0C
@@ -544,31 +544,15 @@ struct BlockMmadPVPrefillA2 {
             // 将 L0C[batchM, nAct] scatter (分散写入) 到每个 qToken 的 GM slot:
             //   wsOOff = qToken × perQTokenStride + kvHeadBase + slotK × slotOElems
             //   GM slot 布局: [groupRows, D], 只写有效 groupRows 行 (不写对齐 padding)
-            //   ndNum=2 优化: 一次写 2 个 qToken 的 slot (dstNdStride 计算两 slot 间距)
+            // Each qToken is scattered independently. This keeps the source
+            // group and destination slot identities aligned for arbitrary CSR
+            // order; a two-destination Fixpipe cannot restore a reordered pair.
             uint32_t tileGroupStart = (mL0Itr * L0_TILE_M) / groupRows;
             uint32_t tileGroupCount = CeilDiv(mAct, groupRows);
-            for (uint32_t g = 0; g < tileGroupCount; g += COPY_GRANULARITY) {
+            for (uint32_t g = 0; g < tileGroupCount; ++g) {
                 uint32_t globalGroup = tileGroupStart + g;
                 uint64_t wsOOff = static_cast<uint64_t>(qTokens[globalGroup]) * perQTokenStride + kvHeadBase
                                 + static_cast<uint64_t>(slotKs[globalGroup]) * slotOElems;
-                uint16_t ndNum = 1;
-                uint16_t srcNdStride = 1;
-                uint32_t dstNdStride = 1;
-                    if (g + 1 < tileGroupCount) {
-                    uint32_t nextQ = qTokens[globalGroup + 1U];
-                    uint32_t nextSlot = slotKs[globalGroup + 1U];
-                    if (nextQ > qTokens[globalGroup]) {
-                        dstNdStride = static_cast<int32_t>(nextQ - qTokens[globalGroup]) * perQTokenStride + static_cast<int32_t>(nextSlot - slotKs[globalGroup]) * static_cast<int32_t>(slotOElems);
-                    } else {
-                        dstNdStride = static_cast<int32_t>(qTokens[globalGroup] - nextQ) * perQTokenStride + static_cast<int32_t>(slotKs[globalGroup] - nextSlot) * static_cast<int32_t>(slotOElems);
-                        wsOOff = static_cast<uint64_t>(nextQ) * perQTokenStride + kvHeadBase
-                                + static_cast<uint64_t>(nextSlot) * slotOElems;
-                    }
-                    // L0C uses zN/fractal storage: advancing one logical row
-                    // consumes one C0 (16 elements), not one element.
-                    srcNdStride = groupRows * C0_SIZE;
-                    ndNum = COPY_GRANULARITY;
-                }
 #if KERNEL_DUMP_OPARTIAL
                 if (qTokens[globalGroup] < KERNEL_DUMP_OPARTIAL_Q_LIMIT) {
                     printf("wsOOff = %llu\n", static_cast<unsigned long long>(wsOOff));
@@ -582,7 +566,7 @@ struct BlockMmadPVPrefillA2 {
                     tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(groupRows, nFixPAligned8));
                 auto l0CTile = GetTile(l0CTensorTla,
                     tla::MakeCoord(g * groupRows, 0), tla::MakeShape(mFixPAligned8Grp, nAct));
-                copyL0CToGm(oTile, l0CTile, ndNum, srcNdStride, dstNdStride);
+                copyL0CToGm(oTile, l0CTile, 1U, 1U, 1U);
             }
             // Dump gAccumOut (O_partial in GM workspace after fixpipe scatter).
 #if KERNEL_DUMP_SYNC_TRACE

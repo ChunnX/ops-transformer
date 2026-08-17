@@ -98,7 +98,6 @@ struct BlockMmadQKPrefillA2 {
     static constexpr uint32_t L0C_BUF_SIZE = L0C_HALF_SIZE / L0_STAGES;
     static constexpr uint32_t L1_Q_STAGES = 1;
     static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16;
-    static constexpr uint32_t COPY_GRANULARITY = 2;
     static constexpr uint32_t C0_SIZE = 16;
 
     AscendC::LocalTensor<ElementK> l1KTensor_;
@@ -244,40 +243,17 @@ struct BlockMmadQKPrefillA2 {
         // === 阶段 1: Q gather — 从 GM 收集不连续的 Q tile 到 L1 连续空间 ===
         // MTE1_MTE2(EVENT_ID1) 同步: 等上一个 batch 的 L1→L0A MTE1 完成, L1 Q 空间可覆盖
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID1);
-        // 每次最多搬 2 个 group。ndNum=2 只能保持 GM 地址递增顺序；逆序或超 stride
-        // 的 Q token 必须逐个搬运，保证 L1 group 顺序与 qTokens 一致。
-        for (uint32_t g = 0; g < groupCount; g += COPY_GRANULARITY) {
-            uint32_t pairCount = (g + 1U < groupCount) ? COPY_GRANULARITY : 1U;
-            uint64_t srcStride64 = 0U;
-            bool canBatchPair = false;
-            if (pairCount == COPY_GRANULARITY && qTokens[g + 1U] > qTokens[g]) {
-                srcStride64 = static_cast<uint64_t>(qTokens[g + 1U] - qTokens[g]) * perQTokenStrideQ;
-                uint64_t tileElems = static_cast<uint64_t>(groupRows) * K;
-                canBatchPair = srcStride64 >= tileElems && srcStride64 < STRIDE_LIMIT;
-            }
-
-            if (canBatchPair) {
-                uint64_t qBase = static_cast<uint64_t>(qTokens[g]) * perQTokenStrideQ + qHeadStartBase;
-                auto gmQTensor = tla::MakeTensor(gQ[qBase], gmQLayout, Arch::PositionGM{});
-                auto gmQTile = GetTile(gmQTensor,
-                    tla::MakeCoord(0, 0), tla::MakeShape(groupRows, K));
-                auto l1QTile = GetTile(l1QTensorTla,
-                    tla::MakeCoord(g * groupRows, 0), tla::MakeShape(groupRows, K));
-                copyGmToL1Q(l1QTile, gmQTile, COPY_GRANULARITY,
-                            static_cast<uint32_t>(srcStride64), groupRows * C0_SIZE);
-                continue;
-            }
-
-            for (uint32_t pairIdx = 0; pairIdx < pairCount; pairIdx++) {
-                uint32_t groupIdx = g + pairIdx;
-                uint64_t qBase = static_cast<uint64_t>(qTokens[groupIdx]) * perQTokenStrideQ + qHeadStartBase;
-                auto gmQTensor = tla::MakeTensor(gQ[qBase], gmQLayout, Arch::PositionGM{});
-                auto gmQTile = GetTile(gmQTensor,
-                    tla::MakeCoord(0, 0), tla::MakeShape(groupRows, K));
-                auto l1QTile = GetTile(l1QTensorTla,
-                    tla::MakeCoord(groupIdx * groupRows, 0), tla::MakeShape(groupRows, K));
-                copyGmToL1Q(l1QTile, gmQTile);
-            }
+        // Preserve the CSR order explicitly. A batched Nd2Nz copy can only
+        // advance through GM addresses, so it cannot represent arbitrary
+        // qToken order without swapping logical groups in L1.
+        for (uint32_t g = 0; g < groupCount; ++g) {
+            uint64_t qBase = static_cast<uint64_t>(qTokens[g]) * perQTokenStrideQ + qHeadStartBase;
+            auto gmQTensor = tla::MakeTensor(gQ[qBase], gmQLayout, Arch::PositionGM{});
+            auto gmQTile = GetTile(gmQTensor,
+                tla::MakeCoord(0, 0), tla::MakeShape(groupRows, K));
+            auto l1QTile = GetTile(l1QTensorTla,
+                tla::MakeCoord(g * groupRows, 0), tla::MakeShape(groupRows, K));
+            copyGmToL1Q(l1QTile, gmQTile);
         }
         // MTE2→MTE1 同步: 等 GM→L1 完成, L1 Q 数据就绪可供 L1→L0A 读取
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID1);

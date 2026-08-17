@@ -18,6 +18,22 @@
 #define KERNEL_DUMP 0
 #endif
 
+#ifndef KERNEL_DUMP_SCORE
+#define KERNEL_DUMP_SCORE 0
+#endif
+
+#ifndef KERNEL_DUMP_CORE
+#define KERNEL_DUMP_CORE 9U
+#endif
+
+#ifndef KERNEL_DUMP_SUBBLOCK
+#define KERNEL_DUMP_SUBBLOCK 1U
+#endif
+
+#ifndef KERNEL_DUMP_BI
+#define KERNEL_DUMP_BI 0U
+#endif
+
 #ifndef KERNEL_DUMP_P
 #define KERNEL_DUMP_P 0
 #endif
@@ -243,10 +259,10 @@ public:
 
     // gmUb/glUb are 2-deep by ubSBufId inside the prefill softmax epilogue (see
     // reg_low_prec_bf16.hpp ctor). CopyPartialStatsToGm (MTE3) reads gmUb[ubSBufId]/
-    // glUb[ubSBufId] right after each softmax; the epilogue waits MTE3_V(ubSBufId)
-    // before overwriting the same stage, and this kernel sets MTE3_V(ubSBufId) after
-    // the copy. InitSyncFlags pre-sets MTE3_V(0,1) so the first block per stage is
-    // unblocked. No single-buffer reuse -> no race.
+    // glUb[ubSBufId] right after each softmax; the epilogue waits
+    // MTE3_V(ubSBufId + 4) before overwriting the same stage, and this kernel
+    // returns that event after the copy. InitSyncFlags primes IDs 4/5 for the
+    // first block of each stage. No single-buffer reuse -> no race.
     // Offsets alias the prefill softmax ctor's 2-deep gmUb/glUb regions (must stay
     // byte-identical to that ctor). gmUb = this AIV's rowMax (fp32), glUb = rowSum.
     static constexpr uint32_t SM_UB_BLOCK = 16384U;  // A2 UB_UINT8_BLOCK_SIZE
@@ -261,7 +277,10 @@ public:
     // CSR batch-read UB buffers (VEC only): replace per-element GlobalTensor::GetValue
     // (blacklisted API, ~100 cycles each) with one DataCopyPad per task + LocalTensor
     // GetValue (~few cycles each).  Free UB starts after GL stage 1.
-    static constexpr uint32_t CSR_UB_MAX_QTOKENS = 512U;  // max Q tokens per CSR row
+    // The A2 UB layout leaves 14 KiB after two 8192-entry int32 CSR arrays.
+    // Keeping an entire hot CSR row in UB avoids scalar GM reads in the
+    // 128K causal workload, whose longest row is 2048 entries.
+    static constexpr uint32_t CSR_UB_MAX_QTOKENS = 8192U;
     static constexpr uint32_t CSR_UB_QINDICES_OFFSET = SM_UB_GL_OFFSET + 2U * SM_UB_STAGE_BYTES;
     static constexpr uint32_t CSR_UB_SLOTK_OFFSET = CSR_UB_QINDICES_OFFSET + CSR_UB_MAX_QTOKENS * sizeof(int32_t);
 
@@ -348,6 +367,7 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
@@ -390,7 +410,7 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+        // MTE3_V IDs 4/5 are drained at the end of Phase1 by the stats ring.
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
@@ -546,6 +566,11 @@ public:
         Phase1KvCentricCompute(
             taskCoreIdx, taskCoreNum, gQ, gK, gV, gK2qRowPtr, gK2qQIndices,
             gK2qSlotIndices, gBlockTable, gAccumOut, gSoftmaxMax, gSoftmaxSum);
+#ifdef __DAV_CUBE__
+        // SyncAll orders cores, but does not drain the final asynchronous
+        // L0C-to-GM O_partial write that Phase2 consumes.
+        AscendC::PipeBarrier<PIPE_FIX>();
+#endif
 #if KERNEL_DUMP_SYNC_TRACE
 #ifdef __DAV_CUBE__
         if (coreIdx < 4U) {
@@ -563,6 +588,15 @@ public:
         }
         // 8. 全局同步: 确保 Phase1 全部完成, workspace 数据就绪
         AscendC::SyncAll<false>();
+#ifdef __DAV_CUBE__
+        // SyncAll only orders peers of the same core type.  After every AIC
+        // has drained FIX and reached the AIC barrier, publish completion to
+        // both co-located AIVs before they start reading O_partial in Phase2.
+        AscendC::CrossCoreSetFlag<0x2U, PIPE_FIX>(5U);
+#endif
+#ifdef __DAV_VEC__
+        AscendC::CrossCoreWaitFlag<0x2U, PIPE_V>(5U);
+#endif
 #if KERNEL_DUMP_SYNC_TRACE
         if (coreIdx < 4U) {
             auto traceUb = resource.ubBuf.template GetBufferByByte<float>(0);
@@ -661,6 +695,8 @@ private:
             AscendC::DataCopyPad(gSoftmaxMax[off], ubMax, {1, blockLen, 0, 0});
             AscendC::DataCopyPad(gSoftmaxSum[off], ubSum, {1, blockLen, 0, 0});
         }
+        // The following SyncAll only orders core control flow.  Drain the
+        // asynchronous MTE3 writes so every core observes initialized stats.
         AscendC::PipeBarrier<PIPE_ALL>();
 #endif
     }
@@ -838,6 +874,8 @@ private:
             AscendC::DataCopyPad(
                 gSoftmaxSum[lseOffset], rowSumLocal,
                 AscendC::DataCopyExtParams{1U, static_cast<uint16_t>(rowCount * sizeof(float)), 0U, 0U, 0U});
+            // The next group may immediately reuse this UB region.  Drain the
+            // small, single-group MTE3 copy before returning to the caller.
             AscendC::PipeBarrier<PIPE_ALL>();
             return;
         }
@@ -917,6 +955,7 @@ private:
                                  gmUbAlias[localOff], glUbAlias[localOff],
                                  lseOffset, groupRows, 1U, 0U, 0U);
         }
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 4U);
     }
 
     // Phase 1: KV-centric partial compute (Cube QK/PV + Vector softmax)
@@ -974,10 +1013,10 @@ private:
         AscendC::GlobalTensor<float> &gSoftmaxSum)
     {
         // Batched QK/softmax/PV: BATCH_GROUPS qTokens per batch -> M = groupCount*groupSize_
-        // (up to BlockMmadQK::L0_TILE_M=128). MAX_BATCH_GROUPS caps per-batch arrays; groupSize>=16
+        // (up to BlockMmadQK::L0_TILE_M=64). MAX_BATCH_GROUPS caps per-batch arrays; groupSize>=16
         // fills the tile, smaller groupSize underfills but stays correct.
         // 批量QK/softmax/PV：BATCH_GROUPS 每批qTokens数量 -> M = groupCount*groupSize_
-        // （最大为BlockMmadQK::L0_TILE_M=128）。
+        // （最大为BlockMmadQK::L0_TILE_M=64）。
         // MAX_BATCH_GROUPS限制每批数组的数量；
         // groupSize>=16时填满tile，groupSize较小时虽未填满但结果仍然正确。
         constexpr uint32_t MAX_BATCH_GROUPS = 8U;
@@ -999,12 +1038,6 @@ private:
         }
         if (batchGroupsMax > maxGroupsBySoftmaxUb) {
             batchGroupsMax = maxGroupsBySoftmaxUb;
-        }
-        if constexpr (AscendC::IsSameType<ElementS, float>::value) {
-            // The fp32-score pipeline currently has only one proven-safe Q
-            // group in flight. Two groups can reuse a staged Q/P buffer before
-            // the delayed PV consumer has finished reading it.
-            batchGroupsMax = 1U;
         }
 #ifdef __DAV_CUBE__
         BlockMmadQK blockMmadQK;
@@ -1124,15 +1157,18 @@ private:
                     resource.ubBuf.template GetBufferByByte<int32_t>(CSR_UB_SLOTK_OFFSET);
                 AscendC::DataCopyExtParams csrCp;
                 csrCp.blockCount = 1U;
-                csrCp.blockLen = static_cast<uint16_t>(numQTokens * sizeof(int32_t));
+                csrCp.blockLen = static_cast<uint32_t>(numQTokens * sizeof(int32_t));
                 csrCp.srcStride = 0;
                 csrCp.dstStride = 0;
                 AscendC::DataCopyPadExtParams<int32_t> csrPad(false, 0, 0, 0);
                 AscendC::DataCopyPad(ubQIdx, gK2qQIndices[csrDataBase + csrStart], csrCp, csrPad);
                 AscendC::DataCopyPad(ubSlotK, gK2qSlotIndices[csrDataBase + csrStart], csrCp, csrPad);
-                // DataCopyPad uses MTE2 pipe; GetValue is a Scalar read.
-                // PipeBarrier<PIPE_ALL> on VEC only syncs S/V/MTE2/MTE3 (no fixpipe).
-                AscendC::PipeBarrier<PIPE_ALL>();
+                // DataCopyPad uses MTE2 and the CSR entries are read with
+                // LocalTensor::GetValue on Scalar below.
+                // Static-tensor programming reserves event IDs 6/7.  This is
+                // the only MTE2_S dependency in the A2 path, so ID0 is free.
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
             }
 #endif
 
@@ -1348,13 +1384,9 @@ private:
 #endif
         }
 #ifdef __DAV_VEC__
-        // The last stats scatter submits asynchronous UB->GM MTE3 copies.
-        // SyncAll only synchronizes the AIV/AIC control flow; it does not make
-        // those outstanding transfers visible to Phase2. Drain the final
-        // transfer before returning so Phase2 never reads a partially written
-        // rowMax/rowSum slot.
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
+        // Drain both stats stages before Phase2 reads their GM workspace.
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
 #endif
     }
 
@@ -1518,9 +1550,8 @@ private:
 
         EpilogueRescaleO epilogueRescaleO;
         epilogueRescaleO.InitFDBuffers(ubBase, embed_, groupSize_, topK_, kvHeads_);
-        // A2 reports GetBlockIdx() as the linear AIV id.  The two AIVs of one
-        // MIX block must execute the same Phase2 task; the epilogue splits
-        // that task's GQA rows by GetSubBlockIdx().
+        // The two AIVs of one MIX block execute the same Phase2 task; the
+        // epilogue splits that task's GQA rows by GetSubBlockIdx().
         uint32_t subBlockNum = AscendC::GetSubBlockNum();
         uint32_t coreIdx = AscendC::GetBlockIdx() / subBlockNum;
         uint32_t coreNum = AscendC::GetBlockNum();

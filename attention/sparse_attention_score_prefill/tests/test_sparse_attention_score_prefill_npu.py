@@ -782,12 +782,16 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
     self._run_arch22_precision_once(data, [0, 64, 127], "arch22_q128_hot_csr")
 
   def test_arch22_bf16_q16_hot_csr_precision(self):
-    """Regression: same high logical block ids with four query batches."""
+    """Regression: groupSize=16 fills an M=64 tile in every precision path."""
     print("[test_arch22_bf16_q16_hot_csr_precision]")
     torch.npu.synchronize()
     torch.npu.empty_cache()
     data = self._make_arch22_133120_case(q_seqlen=16)
-    self._run_arch22_precision_once(data, [0, 8, 15], "arch22_q16_hot_csr")
+    for inner_precise in (0, 4):
+      with self.subTest(inner_precise=inner_precise):
+        data["inner_precise"] = inner_precise
+        self._run_arch22_precision_once(
+            data, [0, 8, 15], f"arch22_q16_hot_csr_inner{inner_precise}")
 
   def test_arch22_bf16_q16_hot_csr_phase1_dump(self):
     """Manual DEBUG_MODE=1/2/3 probe; compare against saved phase1 golden."""

@@ -18,8 +18,8 @@
  *    handling unaligned tailN via SetVecMask + Muls(0) for A2 VEC alignment.
  *  - Cross-core sync: CUBE signals on PIPE_FIX (after fixpipe L0C→GM); VEC waits on
  *    PIPE_V (matching A5 — InitSyncFlags primes cross-core flags 0,1 on PIPE_V).
- *    V→MTE3 sync (V_MTE3 ubSBufId+3) then activates MTE3 for DataCopyPad GM→UB.
- *    MTE3_V sync (unprimed ID ubSBufId+5) then releases V for compute.
+ *    A V_MTE2 bridge orders the cross-core wait before GM→UB DataCopyPad.
+ *    MTE3_V IDs ubSBufId+4 protect the two asynchronous stats stages.
  *    CRITICAL: both m==0 and normal paths must Set mm1ToSmFlag on the SAME pipe
  *    (PIPE_V) — MODE_4 requires V0/V1 to use the same pipe for the same flag.
  */
@@ -38,6 +38,10 @@
 
 #ifndef KERNEL_DUMP
 #define KERNEL_DUMP 0
+#endif
+
+#ifndef KERNEL_DUMP_SCORE
+#define KERNEL_DUMP_SCORE 0
 #endif
 
 #ifndef KERNEL_DUMP_P
@@ -90,6 +94,9 @@ public:
     static constexpr uint32_t ELE_NUM_PER_C0 = 16;
     static constexpr uint32_t C0_NUM_PER_FRACTAL = 16;
     static constexpr uint32_t REDUCE_UB_SIZE = 1024;
+    // Static-tensor programming reserves event IDs 6/7.  V_MTE2 IDs 0/1
+    // protect the two S stages, leaving ID2 for this cross-pipe bridge.
+    static constexpr uint32_t QK_READY_TO_MTE2_EVENT_ID = EVENT_ID2;
 
     // A batch may contain eight query groups.  With the two AIV sub-blocks
     // each owning four groups and groupSize=16, one sub-block needs 64 stats
@@ -605,14 +612,14 @@ public:
 
         // === A2: DataCopyPad GM→UB to load S from GM workspace ===
         // CUBE fixpiped L0C→GM and signaled via MODE_2 cross-core flag.
-        // VEC waits (non-templated, PIPE_S). After Wait, V pipe is active.
-        // Need V→MTE3 sync (V_MTE3 ubSBufId+3) to activate MTE3 for
-        // DataCopyPad. Then MTE3_V(ubSBufId+5) syncs MTE3→V for compute.
+        // The cross-core wait runs on V, while the following GM->UB transfer
+        // runs on MTE2. Bridge the dependency before issuing that transfer.
         WaitCrossCoreSync<0x2U, PIPE_V>(mm1ToSmFlag);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(QK_READY_TO_MTE2_EVENT_ID);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(QK_READY_TO_MTE2_EVENT_ID);
 
-        // V→MTE3 sync for DataCopyPad (GM→UB)
-        // GM -> UB is an MTE2 transfer; order it with the matching V_MTE2
-        // and MTE2_V events instead of the unrelated MTE3 pipeline.
+        // GM->UB is an MTE2 transfer. The stage event protects UB reuse;
+        // QK_READY_TO_MTE2_EVENT_ID above protects GM S visibility.
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(ubSBufId);
         uint32_t gmStageOffset = (bi % 2U) * gmSStageElems_;
         // QK's A2 fixpipe keeps a fixed physical row stride of
@@ -636,10 +643,10 @@ public:
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(ubSBufId);
-#if KERNEL_DUMP || KERNEL_DUMP_P
+#if KERNEL_DUMP || KERNEL_DUMP_P || KERNEL_DUMP_SCORE
         const bool dumpThisBatch = AscendC::GetBlockIdx() == KERNEL_DUMP_CORE &&
             subBlockIdx_ == KERNEL_DUMP_SUBBLOCK && bi == KERNEL_DUMP_BI;
-#if KERNEL_DUMP
+#if KERNEL_DUMP || KERNEL_DUMP_SCORE
         if (dumpThisBatch) {
             // S is the unscaled QK result read back from GM staging.
             if constexpr (AscendC::IsSameType<ElementInput, float>::value) {
@@ -654,6 +661,9 @@ public:
         // Wait for previous iteration's UB→L1 copy (MTE3) to complete before
         // V can safely overwrite lpStage. Pre-primed in InitSyncFlags for first iteration.
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2U);
+        // gmUb/glUb share this two-stage ring with the asynchronous stats
+        // scatter. Do not overwrite a stage until its prior MTE3 copy is done.
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 4U);
 
         // V compute: fp32 score is already resident in fsStage; bf16 score is cast first.
         CastSToFloat(fsStage, lsStage, m, nRound);
