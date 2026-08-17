@@ -1,6 +1,6 @@
 # SparseAttentionScorePrefill A2 性能优化报告
 
-更新时间：2026-08-14
+更新时间：2026-08-18
 
 ## 0. A2 `batchGroupsMax` 结论（2026-08-18）
 
@@ -155,17 +155,31 @@ Phase2 从两个 AIV 分别处理 8 行，调整为每个线性 AIV 独立处理
 
 精度入口为 [test_sparse_attention_score_prefill_npu.py](../tests/test_sparse_attention_score_prefill_npu.py)。
 
-## 7. 待验证改动
+2026-08-18 远端物理 Device 7 的补充回归结果：
 
-当前工作区还包含 Phase1 基于 CSR nnz 的连续负载均衡实验 `ComputeCoreBounds`。目标 CSR 在固定模 20 分核时，最忙 core 处理约 2048 个 QK pair，普通 core 约 1536 个；静态估算平衡后最大值可降到约 1640。
+| 回归集合 | 结果 |
+|---|---|
+| medium + partial-tail + GQA16 uneven + group-size sweep | `4 passed, 26 subtests passed` |
+| D256 四组路径 | `4 passed, 12 subtests passed` |
+| blockSize 16/32/.../128 | `1 passed, 24 subtests passed` |
+| KV/Q 边界、连续 KV、多 batch | `5 passed, 35 subtests passed` |
 
-当前工作区源码因此不再与 `2648.453 us` 对应的 Vector `Div` profile 二进制完全一致。直接重新编译当前工作区会得到“Vector Div + Phase1 nnz 负载均衡”的组合版本，而不是报告中的已验证最佳版本。主要已验证优化已提交在 `cbd2f5927`；后续 Phase2 改动和 Phase1 实验仍处于未提交状态。
+补充集合的最大绝对误差为 `9.77e-4`；没有 NaN、Inf 或全零输出。上述测试均使用当前安装对象，且覆盖 `innerPrecise=0/1/4`（按用例配置）。
 
-该改动尚未完成重新编译、安装、精度回归和 `msprof` 采集，因此：
+## 7. 当前版本状态
 
-- 不计入 `2648.453 us` 当前最佳结果；
-- 不作为已完成性能收益；
-- 在 q16/q128/q2048 精度通过并得到同口径 profile 前，不应提交或合入性能结论。
+当前源码提交 `762999c4d` 已包含动态 A2 batch-group 上限、D256/blockSize/GQA/KV 边界测试和超时保护；远端安装的 kernel 对象 hash 为
+`aa352364400927e119f27eadc9dfefc004de225239082106d4ac55f2f10f0bfa`，与本轮 profile 中抓取的对象一致。
+
+`batchGroupsMax=1U` 不再作为 `ElementS=float` 的固定限制。当前有效上限为：
+
+```text
+min(8, 64 / groupSize, 8192 / (RoundUp(blockSize, 16) * groupSize))
+```
+
+对 `groupSize=16, blockSize=128`，上限为 4；Q=16/32/64 分别覆盖 1/2/4 个 group，全部通过全量 CPU golden。恢复固定 1 会保留正确性但丢失已验证的流水并行度，不应作为正式实现。
+
+本轮没有未验证的 Phase1/Phase2 源码改动混入性能结果；后续实验应重新编译、安装并用对象 hash 与 profile 对齐后再纳入报告。
 
 ## 8. 复现命令
 
@@ -178,7 +192,8 @@ source <CONDA_ROOT>/etc/profile.d/conda.sh
 conda activate rrh
 source <CANN_TOOLKIT>/set_env.sh
 export ASCEND_CUSTOM_OPP_PATH=<CUSTOM_OPP_PATH>
-export ASCEND_RT_VISIBLE_DEVICES=1
+unset ASCEND_RT_VISIBLE_DEVICES
+export NPU_DEVICE=npu:7
 
 cd <OPS_TRANSFORMER_ROOT>
 bash build.sh --pkg --soc=ascend910b --ops=sparse_attention_score_prefill -j16
@@ -204,10 +219,7 @@ python -m pytest -q -s \
 cd <OPS_TRANSFORMER_ROOT>/attention/sparse_attention_score_prefill
 OUT=<PROFILE_OUTPUT_DIR>
 
-msprof --output="${OUT}" \
-  --aic-metrics=PipeUtilization \
-  --task-time=on \
-  python tests/run_sparse_attention_score_prefill_perf.py \
+msprof op --application="/root/miniconda3/envs/rrh/bin/python tests/run_sparse_attention_score_prefill_perf.py \
     --batch 1 \
     --q-seqlen 2048 \
     --kv-seqlen 131072 \
@@ -216,10 +228,15 @@ msprof --output="${OUT}" \
     --head-dim 128 \
     --block-size 128 \
     --top-k 16 \
-    --inner-precise 4 \
+    --inner-precise 0 \
     --warmup 3 \
-    --repeat 1 \
-    --device npu:0
+    --repeat 20 \
+    --device npu:7" \
+  --aic-metrics=BasicInfo \
+  --launch-count=10 \
+  --warm-up=5 \
+  --replay-mode=kernel \
+  --output="${OUT}"
 ```
 
 ## 9. Profile 归档
@@ -235,17 +252,36 @@ msprof --output="${OUT}" \
 | Phase2 full AIV | `/opt/rrh/code3/sparse_attention_test/prefill_128k_phase2_full_aiv_npu1_20260814_1133` |
 | Phase2 Brcb | `/opt/rrh/code3/sparse_attention_test/prefill_128k_phase2_brcb_npu1_20260814_1138` |
 | Phase2 Vector Div | `/opt/rrh/code3/sparse_attention_test/prefill_128k_phase2_vecdiv_npu1_20260814_1146` |
+| 当前 64K inner0 | `/opt/rrh/code3/sparse_attention_test/prefill_current_64k_inner0_npu7_fresh_20260818/OPPROF_20260818024451_PMYNLNAZJVLRRQTK` |
+| 当前 128K inner0 | `/opt/rrh/code3/sparse_attention_test/prefill_current_128k_inner0_npu7_fresh_20260818/OPPROF_20260818024304_XXLVCHRPFGHXCXIG` |
+| 当前 256K inner0 | `/opt/rrh/code3/sparse_attention_test/prefill_current_256k_inner0_npu7_fresh_20260818/OPPROF_20260818024529_ZHGSOCZWYNOJJZBU` |
 
-## 10. 后续建议
+## 10. 2026-08-18 inner0 性能门禁
 
-1. 完成 Phase1 nnz 负载均衡的编译、q16/q128/q2048 精度回归和同口径 profile；只有实测收益为正才保留。
+以下数据均为物理 Device 7、`Current Freq=Rated Freq=1800 MHz`、Block/Mix=20/40，取同一次
+`msprof op --application` 采集的 10 次 Task Duration 中位数。Prefill 使用 0708 toolkit，Score
+基线使用 0805-2 toolkit；两者 shape、seed 和 topK 构造一致，因此结果是跨 toolkit 的同形 A/B，不能替代同一软件栈的绝对基准。
+
+| KV | Prefill key | Prefill (us) | Score key | Score (us) | Prefill 降幅 | 20% 门槛 (us) | 结果 |
+|---:|---:|---:|---:|---:|---:|---:|---|
+| 64K | 20003 | 1987.620 | 20002 | 2663.083 | 25.364% | 2130.467 | PASS |
+| 128K | 20003 | 2008.830 | 20002 | 2589.002 | 22.409% | 2071.201 | PASS |
+| 256K | 20003 | 2036.261 | 20002 | 2602.212 | 21.749% | 2081.770 | PASS |
+
+Prefill 三档使用同一对象 hash `aa352364400927e119f27eadc9dfefc004de225239082106d4ac55f2f10f0bfa`；
+Score 三档对象 hash 为 `27dddbb4c0ccadb3fdba09535093a1acb7596bc207ac622ff6a664fc393732c4`。
+三档均满足 `prefill <= 0.8 * score`。Python/NPU Event 仅用于确认进程完成，不作为性能门禁。
+
+## 11. 后续建议
+
+1. 如继续尝试 Phase1 nnz 负载均衡，必须先做 q16/q128/q2048 精度回归，再用同口径 profile 与本报告基线比较；只有实测收益为正才保留。
 2. 统一所有性能版本的 `msprof` launch-count 和 warmup 采样口径，至少重复 3 轮，使用 median 作为最终门禁。
 3. 对 Phase1 的 core8 长尾做专门 profile；若负载均衡收益不足，继续减少 QK/softmax/PV pipeline 的标量控制和同步等待。
 4. Phase2 后续优化优先考虑 task 级 MTE2/Vector overlap；继续做单个 scalar loop 的微优化预计收益有限。
 5. 保持 decode 算子不参与 performance runner，避免把另一算子的耗时和同步行为混入 prefill 结果。
 6. 降低scalar耗时，减少GetValue、SetValue使用
 7. UB使用率不高，是否可以使用更多UB或者GM换性能
-## 11. 目标
+## 12. 目标
 1. 给定shape，batch=1，qSeqlen=2048，numHeads=16，kvHeads=1，headSize=128，blockSize=128，topK=16，kvseq=128k进行性能优化，
 2. 性能测试使用msprof op采集，测试脚本为[run_sparse_attention_score_prefill_perf.py]
 3. 修改后不需要手动同步，会自动同步到环境上
