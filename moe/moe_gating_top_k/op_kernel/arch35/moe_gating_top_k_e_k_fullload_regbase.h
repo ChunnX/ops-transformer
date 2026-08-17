@@ -163,7 +163,7 @@ __aicore__ inline void MoeGatingTopKEKFullloadRegbase<T>::ComputeX()
             MicroAPI::DataCopy(sigmoidOutAddr + i * EK_VL_FLOAT_SIZE, vregSigmoidResult, preg0);
             MicroAPI::DataCopy(addBiasOutAddr + i * EK_VL_FLOAT_SIZE, vregBiasResult, preg0);
         }
-        MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE>();
+        MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
     }
 
     xInQueue_.FreeTensor(xInLocalTensor);
@@ -221,7 +221,7 @@ __aicore__ inline void MoeGatingTopKEKFullloadRegbase<T>::SelectTopKGroupIndex()
     if (duplicateNum > 0) {
         uint64_t mask0 = UINT64_MAX << groupCount_;
         uint64_t mask[2] = {mask0, 0};
-        Duplicate(groupTop2SumTensor, MIN_FP32, mask, 1, 1, 8);
+        Duplicate(groupTop2SumTensor.ReinterpretCast<int32_t>(), MIN_FP32, mask, 1, 1, 1);
         PipeBarrier<PIPE_V>();
     }
 
@@ -239,7 +239,7 @@ __aicore__ inline void MoeGatingTopKEKFullloadRegbase<T>::SelectTopKGroupIndex()
     if (duplicateNum > 0) {
         uint64_t mask0 = UINT64_MAX << kGroup_;
         uint64_t mask[2] = {mask0, 0};
-        Duplicate(sortedGroupTensor, MIN_FP32, mask, 1, 1, 8);
+        Duplicate(sortedGroupTensor.ReinterpretCast<int32_t>(), MIN_FP32, mask, 1, 1, 1);
         PipeBarrier<PIPE_V>();
     }
     Sort32(top2ValueInGroupTensor, sortedGroupTensor, sortedGroupIndexTensor.template ReinterpretCast<uint32_t>(), 1);
