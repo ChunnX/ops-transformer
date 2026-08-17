@@ -822,18 +822,24 @@ int main(int argc, char *argv[])
     printf("  sqe_bytes:  %lu\n", g_args.sqeBytes);
     printf("  loop:       %u\n", g_args.loopCount);
     if (g_result.valid) {
+        // benchMode=0: assemble 是 loopCount 次循环总量, commit/drain 只 1 次
+        // benchMode=1: 全部是单次值
+        const char* assembleUnit = (g_args.benchMode == 0) ? "total (N writes)" : "per write";
+        const char* commitUnit   = (g_args.benchMode == 0) ? "1 call" : "per write";
+        const char* drainUnit    = (g_args.benchMode == 0) ? "1 call" : "per write";
+
         printf("  --- avg (over %u loops) ---\n", g_args.loopCount);
-        printf("  assemble: %.2f us\n", g_result.avgAssembleUs);
-        printf("  %s: %.2f us\n", issueName, g_result.avgIssueUs);
-        printf("  drain:    %.2f us\n", g_result.avgDrainUs);
+        printf("  assemble: %.2f us  (%s)\n", g_result.avgAssembleUs, assembleUnit);
+        printf("  %s: %.2f us  (%s)\n", issueName, g_result.avgIssueUs, commitUnit);
+        printf("  drain:    %.2f us  (%s)\n", g_result.avgDrainUs, drainUnit);
         printf("  total:    %.2f us\n", g_result.avgTotalUs);
         printf("  bw:       %.2f GB/s\n", g_result.avgBwGBs);
 
-        const char* lastNote = (g_args.benchMode == 0) ? "= avg (only 1 batch)" : "last loop";
+        const char* lastNote = (g_args.benchMode == 0) ? "total, only 1 batch" : "last loop";
         printf("  --- last (%s) ---\n", lastNote);
-        printf("  assemble: %.2f us\n", g_result.lastAssembleUs);
-        printf("  %s: %.2f us\n", issueName, g_result.lastIssueUs);
-        printf("  drain:    %.2f us\n", g_result.lastDrainUs);
+        printf("  assemble: %.2f us  (%s)\n", g_result.lastAssembleUs, assembleUnit);
+        printf("  %s: %.2f us  (%s)\n", issueName, g_result.lastIssueUs, commitUnit);
+        printf("  drain:    %.2f us  (%s)\n", g_result.lastDrainUs, drainUnit);
         printf("  total:    %.2f us\n", g_result.lastTotalUs);
         printf("  bw:       %.2f GB/s\n", g_result.lastBwGBs);
 
