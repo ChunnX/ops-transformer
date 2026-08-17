@@ -19,7 +19,8 @@ constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
 
 class GroupedMatmulActivationQuant : public OpDef {
 public:
-    explicit GroupedMatmulActivationQuant(const char *name) : OpDef(name)
+    explicit GroupedMatmulActivationQuant(const char *name)
+        : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
