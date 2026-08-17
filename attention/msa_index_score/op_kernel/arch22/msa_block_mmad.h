@@ -63,7 +63,7 @@ public:
     using L1BAlignHelper = Catlass::Gemm::helper::L1AlignHelper<ElementB, LayoutB>;
 
     // K (B) 的 L1 流水级数。非量化 3 级：fixpipe 减半（fp16 S）后 MTE2 的逐页延迟
-    //（~390ns，L2 命中）会成为新的关键路径，加深一级让 MTE2 提前两页预取。
+    // （~390ns，L2 命中）会成为新的关键路径，加深一级让 MTE2 提前两页预取。
     // int8 保持 2 级：K 源是每 stile 复用的 per-core scratch，AIV 下一 stile 的 cast
     // 会重写该区，更深的预取与 cast 重写产生竞态（实测 STAGES=3 下 int8 崩溃）。
     // L1 占用：A 32KB + 3×32KB B = 128KB / 512KB。
@@ -194,9 +194,7 @@ public:
             uint32_t kActualNext = 0;
             if (kLoopIdx < kTileCount - 1) {
                 const uint32_t kLoopIdxNext = kLoopIdx + 1;
-                kActualNext = (kLoopIdxNext < kTileCount - 1)
-                                  ? L1_K
-                                  : (actualShape.k() - kLoopIdxNext * L1_K);
+                kActualNext = (kLoopIdxNext < kTileCount - 1) ? L1_K : (actualShape.k() - kLoopIdxNext * L1_K);
                 Catlass::MatrixCoord gmTileBOffset{kLoopIdxNext * L1_K, 0};
                 auto gmTileB = gmB[layoutB.GetOffset(gmTileBOffset)];
                 AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventList_[l1ListIdNext]);
