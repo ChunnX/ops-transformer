@@ -1,335 +1,462 @@
-# apace_quant_matmul_reduce_scatter_v3 算子设计文档
+# quantMatmulReduceScatter 设计文档
 
-> **路线**：APACE MC2 通算融合（UDMA PUT 直调）
-> **v2 基底**：`operators/apace_quant_matmul_reduce_scatter_v2/`（已通过审查 PASS 98/100，12/12 精度 PASS，57.6us vs v1 143us ≈ 2.48×）
-> **v3 定位**：在 v2 基础上做**外科手术式优化**——取消 workspace 轮转回压，workspace 按「每核全量 tile 数」开辟，每 tile 独占槽位（无取模）
+## 1. 背景与目标
 
----
+### 1.1 背景
 
-## 0. 概述
+在超大模型（如 MoE、DeepSeek 等）的分布式训练/推理场景中，多个 rank 各自持有一份输入数据 A 与完整权重 B，独立执行量化 MatMul 计算后，需要通过集合通信将各 rank 的计算结果进行聚合。传统实现将计算与通信串行执行，导致通信等待期间计算单元空闲，严重制约端到端性能。
 
-### 0.0 需求类型判断
+quantMatmulReduceScatter 是 MC2（通算融合）算子族中的一员，在 Ascend 950（Apace 架构）上实现量化 MatMul 计算与集合通信聚合的深度融合，通过**AlltoAll 分发 + reduceSum 求和**完成跨卡数据聚合，以流水线并行掩盖通信延迟。
 
-**通用**：支持多种 FP8 dtype 组合和 shape 配置，4 卡 ReduceScatter 通信，3 级流水架构（继承 v2）。
+### 1.2 目标
 
-### 0.1 基本信息
-
-| 项目 | 内容 |
-|-----|------|
-| 算子名称 | apace_quant_matmul_reduce_scatter_v3 |
-| 算子类别 | MC2 通算融合（Quant MatMul + AllToAll PUT 通信 + ReduceSum 流水线） |
-| 需求类型 | 通用 |
-| 支持数据类型 | A/B = fp8_e4m3fn_t / fp8_e5m2_t（4 种组合），C = bfloat16_t |
-| 支持芯片 | Ascend950PR（DAV_3510） |
-| NpuArch | DAV_3510（`__NPU_ARCH__` = 3510）（经 `/npu-arch` skill 确认） |
-| `--npu-arch` 编译参数 | `dav-3510` |
-| SocVersion | ASCEND950 |
-| CANN 版本 | 9.2.0（`/home/l00947526/Ascend806/cann-9.2.0`，编译/验证前必须 `source set_env.sh`；`/home/l00947526/Ascend806/cann` 为指向 `cann-9.2.0` 的软链接，已核实，二者等价） |
-| 通信模式 | UDMA PUT（直调仅支持 UDMA） |
-| 多卡拓扑 | 4 卡 ReduceScatter via AllToAll PUT |
-| 流水线 | 3 级流水 mm→comm→reduceSum（继承 v2），**workspace 取消轮转，每 tile 独占槽位** |
-| 特殊约束 | APACE 路线四大红线（与 v2 相同，见 v2 DESIGN §2.0） |
-
-### 0.2 用户原始需求
-
-| # | 需求内容 |
-|---|---------|
-| 1 | 在已完成的 v2（3 级流水 mm→comm→reduceSum，PIPELINE_NUM=4 workspace 轮转）基础上做外科手术式优化：**取消 workspace 轮转回压** |
-| 2 | workspace 按「每核全量 tile 数」开辟，每 tile 独占槽位（无取模），删除通道 3 回压 flag（AIC 永不等待槽位释放） |
-| 3 | 不考虑 local 后置和 fragmentTensor（后续版本） |
-| 4 | 不考虑 buffer 复用（Win 区/workspace 足够大，大 shape workspace 增大到 ~18MB 可接受） |
-| 5 | 其余全部保留：通道 1（通信就绪 per-tile）、通道 2（mm 完成 flagId=5）、reduceSum UB buffer + MTE2/MTE3 event、Blaze 组件、AllToAll PUT 通信、localMatmul 默认 0 |
-| 6 | CommFlagIdV2 映射可简化（3 不再需要避开；只需避开 5 和 [11-14]）——可选优化 |
-| 7 | 必须核实 BlockSchedulerQuantBatchMatmulV3 的 UpdateTailTile 尾块拆分行为，给出可证明安全的 maxTilesPerCore 上界公式 |
-
-### 0.3 v2 → v3 变更概述
-
-v2 中 workspace 采用 PIPELINE_NUM=4 槽位轮转，需要通道 3 回压 flag（AIV reduceSum 消费完通知 AIC 槽位可复用）防止 AIC 覆盖未消费数据。v3 将 workspace 扩大为「每核全量 tile 数 × 核数」个独占槽位，AIC 每完成一个 tile 写入新的槽位，**无需等待任何槽位释放**，删除通道 3 全部逻辑。数学语义、通信拓扑、Blaze 组件、reduceSum 搬运逻辑完全不变。
+- **功能目标**：完成 `MatMul + Dequant + AlltoAll + reduceSum` 的融合计算，支持 MX 量化（MXFP8/MXFP4）输入。
+- **性能目标**：计算与通信流水并行，通信延迟被计算掩盖；支持 2/4/8/16/32/64 卡扩展。
+- **架构目标**：基于 Apace 统一通信框架（`Apace::AivComm`）与统一量化 MatMul 调度框架（`Blaze::Gemm`），最大化公共代码复用，与 AllGatherQuantMatmul、AllToAllQuantMatmul 保持一致的架构风格。
 
 ---
 
-## 1. v3 变更点（相对 v2 的 diff 级描述）
+## 2. 功能描述
 
-> 本节为 v3 全部变更的完整清单。**未列出的部分与 v2 完全一致**（见 v2 DESIGN.md）。
+### 2.1 功能定义
 
-### 1.1 变更点清单
-
-| # | 位置（v2 文件:行） | v2 行为 | v3 行为 | 类型 |
-|---|---------------------|---------|---------|------|
-| C1 | `quant_matmul_mx_kernel.h` L403-405 | AIC 在 `cubeNum_ >= PIPELINE_NUM(4)` 时 `CrossCoreWaitFlag<SYNC_MODE2, PIPE_M>(SYNC_AIV_AIC_FLAG=3)` 等 AIV 释放槽位 | **删除整段**（AIC 永不等待槽位释放） | 删除 |
-| C2 | `quant_matmul_mx_kernel.h` L418-419 | `workSpaceOffset = baseM×baseN×(coreIdx + (cubeNum_ % pipelineNum_)×coreNum_)` | `workSpaceOffset = baseM×baseN×(coreIdx + cubeNum_×coreNum_)`（**去取模**，每 tile 独占槽位） | 修改 |
-| C3 | `quant_matmul_mx_kernel.h` L216-217 + L507-519 | `Run()` 末尾调用 `PostCompute()` drain 剩余 Min(cubeNum_, 4) 个回压 flag | **删除 `PostCompute()` 调用与方法本体** | 删除 |
-| C4 | `udma_impl.h` RunReduceSum L362-363 | `workSpaceOffset = baseM×baseN×(coreIdx + (cubeNum % pipelineNum)×coreNum)` | `workSpaceOffset = baseM×baseN×(coreIdx + cubeNum×coreNum)`（与 AIC 侧同步去取模） | 修改 |
-| C5 | `udma_impl.h` RunReduceSum L399-400 | AIV 每 tile 末尾 `CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_AIC_FLAG=3)` 通知槽位可复用 | **删除**（cubeNum 自增保留，仍用于槽位寻址） | 删除 |
-| C6 | `tiling_data.h` 及 `pipelineNum` 全链 | `uint32_t pipelineNum{4}`（轮转深度） | 替换为 `uint32_t maxTilesPerCore{0}`（每核全量 tile 数上界，host 推导，仅用于 workspace 分配与校验；kernel 槽位寻址不消费该字段）。**plumbing 全链删除**（C2/C4 去取模后无消费者，避免死字段误导）：`tiling_data.h` 字段 → `main.cpp` 赋值（v2 L201）→ `InitBaseParams` 传参（udma_impl.h L421）→ `baseParams_.pipelineNum`（L197）→ `SetupParams` → `LocalParams.pipelineNum`（kernel L136）→ kernel 成员 `pipelineNum_`（L193）及两处赋值代码，一并删除/替换 | 修改 |
-| C7 | Host `main.cpp` workspace 分配 | `workspaceSize = PIPELINE_NUM × coreNum × baseM × baseN × 2B` | `workspaceSize = maxTilesPerCore × coreNum × baseM × baseN × sizeof(BF16)`，公式见 §2 | 修改 |
-| C8 | Host `main.cpp` 输入校验 | 无 | **新增**：`maxTilesPerCore ≤ 15`（flagId=5 计数器上界保护，见 §4.3）。**执行顺序**：在 SWAT tiling 完成之后、workspace `aclrtMalloc` **之前**执行（避免大 shape 先分配后拒绝）；**取值来源**：`maxTilesPerCore` 的四个输入（m、n、baseM、baseN、usedCoreNum）全部取自 SWAT tiling 最终输出 `tilingData.tileQbmmTilingData`（v2 main.cpp L196-198 已有取数先例），不使用 raw `M/4` 或 baseM 候选默认值 | 新增 |
-| C9 | `udma_impl.h` CommFlagIdV2 L59-66 | 避开 3、5、[11-14]，可用集 10 个 | **可选**：3 不再需要避开，可用集 11 个（见 §4.4）；默认实现可保持不变（原映射天然满足新约束） | 可选 |
-| C10 | 常量定义 | `SYNC_AIV_AIC_FLAG_V2=3`（回压通道）、`PIPELINE_NUM_V2=4` | 删除回压常量；`SYNC_AIC_AIV_FLAG=5`、`SYNC_MODE2=2` 保留（更名 _V3） | 修改 |
-
-### 1.2 明确保留不变的部分
-
-| 项 | 说明 |
-|----|------|
-| 通道 1（通信就绪） | AIV `SetFlag<0x2, PIPE_MTE3>(commFlagId)` / AIC `WaitFlag<0x2, PIPE_MTE2>(commFlagId)`，per-tile，含 `CalcDependTileIdx` 去重与循环末尾 `readyTileIdx` 兜底 drain（kernel L501-504），**完全不变** |
-| 通道 2（mm 完成） | AIC `SetFlag<SYNC_MODE2, PIPE_FIX>(5)` / AIV `WaitFlag<SYNC_MODE2, PIPE_MTE2>(5)`，每 tile 配对一次，**完全不变** |
-| reduceSum 实现 | UB buffer（baseM×AlignUp(baseN,32)×2B）、DataCopyPad 2D 搬运参数（cpIn/cpOut）、MTE2↔MTE3 event 配对（RAW/WAR）、`outOffset = mPos×N + nPos`，**完全不变** |
-| AIV 复用 BlockScheduler | v2 DESIGN §2.16 方案 (b) 的 6 项复刻要求**全部保留**（cubeNum 序列构造一致是 v3 槽位寻址两侧对齐的前提） |
-| Blaze 组件 | BlockMmad / BlockSchedulerQuantBatchMatmulV3 / MatmulWithScaleMx / QuantMatmulTilingSwat，**完全不变** |
-| 通信 | AllToAll PUT（data + scale 双通道）、TeamBarrier、SyncAll、Win 区布局，**完全不变** |
-| localMatmul | 默认 0（REMOTE-only）；DEFERRED_SYNC 分支代码保留（mm 输出地址同样去取模） | 
-| 精度策略 | rtol=atol=1e-2，BF16 输出，L0C FP32 跨 rank 累加，**完全不变** |
-| APACE 红线 | 禁止 `__schedmode__`/`core_ratio`；Blaze 模板；禁止改 block/tiling 共享层；UDMA 直调；无 Hccl::；`KERNEL_TYPE_MIX_AIC_1_1`，**完全不变** |
-
----
-
-## 2. maxTilesPerCore 安全上界公式（Blaze 源码依据）
-
-### 2.1 结论
+quantMatmulReduceScatter 实现如下计算流程：
 
 ```
-blockDimM        = CeilDiv(mLocal, baseM)          // mLocal = M / rankSize
-blockDimN        = CeilDiv(N, baseN)
-blockNums        = blockDimM × blockDimN
-maxTilesPerCore  = CeilDiv(blockNums, coreNum)     // 严格上界，无需 +1（§2.2 证明）
-
-workspaceSize    = maxTilesPerCore × coreNum × baseM × baseN × sizeof(bfloat16_t)
+output = reduceSum(AlltoAll(Dequant(QuantA @ QuantB) + bias))
 ```
 
-### 2.2 Blaze 源码依据
+**核心语义**：本算子**不涉及 TP 切分**，每张卡持有完整的 K 维度：
 
-来源：`operators/apace_quant_matmul_reduce_scatter_v2/third_party/ops-tensor/include/blaze/gemm/block/block_scheduler_qbmm.h`（`BlockSchedulerQuantBatchMatmulV3`）。
+- A 矩阵：每卡持有完整 `[m, k]`（K 不切分）。
+- B 矩阵：每卡持有完整 `[k, n]`（K 不切分）。
+- 每卡独立计算完整结果 `C_i = Dequant(QuantA_i @ QuantB) + bias`，得到 `[m, n]`。
 
-**证据 1：每核基础 tile 数 = `roundNums_` ≤ CeilDiv(blockNums_, coreNums_)**（构造函数 L51-66）：
+由于无 TP 切分，不存在跨卡的部分和（splitK/splitM），**AIC 计算阶段无需 L0C 原子累加**。跨卡聚合完全由通信阶段完成：**AlltoAll 将各卡的完整计算结果分发到目标 rank，AIV 核在收到数据后执行 reduceSum 逐元素求和**。
+
+### 2.2 计算流程
+
+```
+原始输入（每卡一份，完全独立）
+    │
+    ▼
+┌─────────────────────┐
+│  A     [m, k]       │  完整输入（MX 量化，含 ScaleA，K 不切分）
+│  B     [k, n]       │  完整权重（MX 量化，含 ScaleB，K 不切分）
+│  bias  [n]          │  可选偏置
+└─────────────────────┘
+    │
+    ▼
+┌─────────────────────┐
+│  QuantMatMul        │  每卡独立计算完整结果，无跨卡数据依赖
+│  (Dequant)          │  C_i = A_i × B + bias → [m, n]
+└─────────────────────┘
+    │ C_i [m, n]（各卡完整）
+    ▼
+┌─────────────────────┐
+│  AlltoAll           │  将各卡 C_i 按目标 rank 分发
+└─────────────────────┘
+    │
+    ▼
+┌─────────────────────┐
+│  reduceSum          │  对收到的多份结果逐元素求和
+└─────────────────────┘
+    │
+    ▼
+    output [m, n]
+```
+
+### 2.3 量化模式
+
+支持 MX 量化（Microscaling）场景，对应 `QuantMatmulMxKernel` 实现：
+
+| 量化模式 | A 矩阵 | A Scale | B 矩阵 | B Scale | Scale 格式 |
+|---------|--------|---------|--------|---------|------------|
+| MXFP8  | `fp8_e4m3fn` / `fp8_e5m2` | `fp8_e8m0_t` | 同 A | `fp8_e8m0_t` | shape: `[M, ceil(K/64) * 2]` |
+| MXFP4  | `fp8_e4m3fn` / `fp8_e5m2` | `fp8_e8m0_t` | `fp8_e4m3fn`/`fp8_e5m2` | `fp8_e8m0_t` | shape: `[M, ceil(K/64) * 2]` |
+
+- Scale 的 K 方向分组大小为 64（`MXFP_DIVISOR_SIZE = 64`）。
+- 每个 Scale 元素为 1 字节 `fp8_e8m0_t`，每组 2 字节（`MXFP_MULTI_BASE_SIZE = 2`）。
+
+---
+
+## 3. 总体架构设计
+
+### 3.1 架构分层
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Host 侧 (Tiling)                                                    │
+│  ┌────────────────────┐  ┌────────────────────────┐                  │
+│  │ QuantMatmulTiling  │  │ AlltoAll + reduceSum   │                 │
+│  │ (SWAT 策略)        │  │ Tile 切分/求和配置     │                 │
+│  └─────────┬──────────┘  └─────────┬──────────────┘                  │
+│            └──────────┬────────────┘                                 │
+│                       ▼                                              │
+│              TilingData 序列化                                         │
+│        ┌─────────────────────────────┐                               │
+│        │ QuantMatmulTilingData       │  MatMul 侧 tiling             │
+│        │ CommTilingData              │  通信侧切分                    │
+│        └─────────────────────────────┘                               │
+└─────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Device 侧 (Kernel)                                                  │
+│  ┌───────────────────┐         ┌───────────────────┐                 │
+│  │ AIV               │         │ AIC               │                 │
+│  │ AlltoAll 通信     │  Flag   │ 量化 MatMul 计算   │                 │
+│  │ + reduceSum 求和  │ ──────► │ (独立计算，无 L0C  │                 │
+│  │ CollectiveComm    │ 同步    │  原子累加)         │                 │
+│  └───────────────────┘         └───────────────────┘                 │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 3.2 核角色分工
+
+| 核类型 | 职责 | 说明 |
+|-------|------|------|
+| AIC（Cube） | 量化 MatMul 计算 | 每卡独立执行完整的 `A × B + bias` 计算，无跨卡数据依赖，**无需 L0C 原子累加** |
+| AIV（Vector） | AlltoAll 通信 + reduceSum 求和 | 通过 `CollectiveComm` 框架执行 AlltoAll 分发，收齐后对多份结果执行逐元素 reduceSum 求和 |
+
+### 3.3 模块划分
+
+| 模块 | 文件（参考路径） | 职责 |
+|------|-----------------|------|
+| MatMul Tiling | `apace/tiling/quant_matmul_tiling_base.h` | 公共 Tiling 基类，管理平台信息查询与 shape 参数初始化 |
+| MatMul Tiling 策略 | `apace/tiling/quant_matmul_tiling_swat.h` | SWAT 流式 Tiling 策略（非全量装载路径） |
+| Tiling 数据 | `apace/tiling/quant_matmul_tiling_data.h` | Host→Device 序列化 Tiling 数据 POD 结构 |
+| 通信 Tiling 数据 | `apace/tiling/comm_tiling_data.h` | 通信切分的统一 5 段式 Tiling 数据 |
+| MatMul Kernel | `apace/kernel/all_to_all_quant_matmul/quant_matmul_mx_kernel.h` | 量化 MatMul 内核实现，支持 LOCAL/REMOTE/DEFERRED_SYNC 三种模式 |
+| 通信框架 | `apace/block/aiv_comm/` | `CollectiveComm` 统一通信 API、Barrier、AllGather/AllToAll 实现 |
+| 算子实现 | `apace/kernel/quant_matmul_reduce_scatter/` | 本算子的 Init/Process 编排逻辑 |
+
+---
+
+## 4. 数据流设计
+
+### 4.1 数据布局
+
+#### 4.1.1 输入/输出布局
+
+每张卡持有完整输入，独立计算完整输出：
+
+```
+Rank 0: A_0 [m, k]    B [k, n]    →  C_0 [m, n]（完整结果）
+Rank 1: A_1 [m, k]    B [k, n]    →  C_1 [m, n]（完整结果）
+...
+Rank R: A_{R-1} [m, k]  B [k, n]  →  C_{R-1} [m, n]（完整结果）
+```
+
+各卡将完整的 `C_i` 通过 **AlltoAll** 分发出去，每卡收齐所有 rank 的结果后执行 **reduceSum**：
+
+```
+output = Σ_{r=0}^{R-1} C_r   // 逐元素求和，shape 为 [m, n]
+```
+
+#### 4.1.2 通信窗口布局
+
+复用 `Apace::AivComm` 的统一通信窗口（Win Buffer）设计，GMA 窗口按 rank-major 布局：
+
+```
+┌─────────────────────────────────────────────────┐
+│ rank_0 数据块 │ rank_1 数据块 │ ... │ rank_{R-1} 数据块 │  ← AlltoAll 通信窗口
+└─────────────────────────────────────────────────┘
+```
+
+- 每个数据块大小 = `m × n × sizeof(CType)`（C 为 MatMul 输出）
+
+### 4.2 通信切分策略
+
+采用统一的 `CommTilingData` 5 段式格式：
 
 ```cpp
-mBlockNums_ = CeilDiv(m, baseM_);            // L51
-nBlockNums_ = CeilDiv(n, baseN_);            // L52
-blockNums_  = mBlockNums_ * nBlockNums_;     // L53
-endBlockIdx_ = (blockNums_ - 1) % coreNums_; // L62
-roundNums_  = CeilDiv(blockNums_, coreNums_);// L63
-if (blockIdx_ > endBlockIdx_) roundNums_ -= 1; // L64-66：只会减少，不会增加
+struct CommTilingData {
+    uint64_t splitAxisTileSize;   // 切分轴头块大小（块数/行数）
+    uint64_t splitAxisTileCnt;    // 切分轴头块数量
+    uint64_t splitAxisTailSize;   // 切分轴尾块大小（块数/行数）
+    uint64_t splitAxisTailCnt;    // 切分轴尾块数量
+    uint64_t nonSplitAxisSize;    // 非切分轴大小（元素个数）
+};
 ```
 
-**证据 2：`GetTileIdx()` 的迭代次数严格等于 `roundNums_`**（L190-235）：`if (roundIdx_ >= roundNums_) return false;`，每次返回 true 时 `roundIdx_++`。即**每核处理的 tile 数 = roundNums_（UpdateTailTile 调整后的值）**，不多不少。
+- **切分轴** = M 轴（输出矩阵行方向，按 `m / rank_size` 行分发给各目标 rank）
+- **非切分轴** = N 轴（输出矩阵列方向，整行发送）
+- 主块（head tile）和尾块（tail tile）分别存储，以适配不同 shape 的负载均衡
 
-**证据 3：`UpdateTailTile` 对每核 tile 数的影响至多为 +1**（L85-101）：
+### 4.3 数据流阶段
+
+```
+阶段 1: QuantMatMul（每卡独立完整计算）
+    AIC: 计算本卡完整的 C_i = A_i × B + bias → [m, n]
+         （无跨卡数据依赖，无 L0C 原子累加）
+    AIV: 等待 AIC 计算完成信号
+
+阶段 2: AlltoAll 分发 + reduceSum 求和（流水）
+    AIV: 将本卡 C_i 按目标 rank 切块，通过 AlltoAll 分发到各目标窗口
+    AIV: 每收齐一个 rank 的数据（或收齐全部后），逐元素执行 reduceSum 累加
+
+阶段 3: 输出
+    AIV: 将求和结果写入 output GM
+```
+
+---
+
+## 5. MatMul Tiling 策略设计
+
+### 5.1 Tiling 数据
+
+复用 `QuantMatmulTilingData` 作为 MatMul 侧 Tiling 数据：
 
 ```cpp
-totalTailTile_ = mTailTile * nTailTile;                          // L89
-tailOriginalBlockNums = min(blockNums_, endBlockIdx_ + 1);       // L90
-newEndBlockIdx = endBlockIdx_ + tailOriginalBlockNums * (totalTailTile_ - 1); // L91
-if (blockIdx_ > endBlockIdx_ && blockIdx_ <= newEndBlockIdx) {
-    roundNums_ += 1;                                             // L92-94：唯一的增量，且只 +1
+struct QuantMatmulTilingData {
+    uint32_t m, n, k;              // 原始问题 shape
+    uint32_t baseM, baseN, baseK;  // 基础 tile 形状
+    uint32_t scaleKL1;             // K 方向 L1 中缓存的 scale 覆盖长度
+    uint32_t mTailTile, nTailTile; // 尾块 M/N 切分因子
+    uint32_t mBaseTailSplitCnt;    // 基础尾块 M 方向再切分数
+    uint32_t nBaseTailSplitCnt;    // 基础尾块 N 方向再切分数
+    uint32_t mTailMain;            // 尾块 M 方向的均衡主块大小
+    uint32_t nTailMain;            // 尾块 N 方向的均衡主块大小
+    uint32_t usedCoreNum;          // 启动的 AIC 核数
+    uint8_t  stepK;                // 每次外层流水跨越的 baseK tile 数
+    uint8_t  nBufferNum;           // L1 滚动缓冲区槽位数
+    uint8_t  dbL0c;                // L0C double-buffer 模式
+};
+```
+
+### 5.2 SWAT 流式策略要点
+
+`QuantMatmulTilingSwat` 实现非全量装载（non-full-load）路径的 Tiling，核心决策流程：
+
+1. **基础块搜索**（`CalcBasicBlock`）：
+   - 初始候选：`baseM = min(m, 256)`，`baseN = min(n, 256)`，`baseK = min(k, 128/256)`
+   - 当块数不足时调用 `AdjustBasicBlock` 再平衡 M/N 比例
+   - 对齐约束：M 按 `CUBE_BLOCK`（16）对齐，N 按 `CUBE_BLOCK` 对齐，K 按 `TILING_MXFP_DIVISOR_SIZE`（64）对齐
+
+2. **边缘优化**（`OptimizeEdgeBasicBlock`）：当 K 轴满足 cache-line 对齐时，对 M/N 尾部执行 merge 优化，减少尾块的开销占比。
+
+3. **尾块切分**（`CalcTailBasicBlock`）：在剩余核数允许范围内，优先切分更大的尾边（M tail 或 N tail），并支持 `mTailAlign` 对齐选项。
+
+4. **L1 深度计算**（`CalcPathSpecificL1`）：
+   - 对称分配 A/B/ScaleA/ScaleB 四个缓冲区
+   - 先搜索公共深度，再独立精化 A/B 两侧深度
+   - `stepK = min(stepKa, stepKb)` 保持两侧 K 推进步调一致
+
+5. **Scale 复用因子**（`CalcScaleFactors`）：在 L1 剩余空间内求解 Scale 的复用深度，两边尽量平衡分配。
+
+### 5.3 调度器
+
+复用 `Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3` 作为块调度器，支持：
+
+- M/N 二维 tile 遍历
+- 尾块合并切分（`mTailTile × nTailTile` 子块）
+- `NONE_FULL_LOAD_MODE` 非全量装载模式
+
+---
+
+## 6. 通信设计
+
+### 6.1 通信架构
+
+本算子采用 **AlltoAll + reduceSum** 实现跨卡聚合，在 AIV 侧完成全部通信与求和逻辑：
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ AIV 侧通信流水（AlltoAll + reduceSum）                         │
+│                                                              │
+│  C_i [m, n]  ──► AlltoAll 按 M 轴切块分发 ──► 各 rank 窗口    │
+│                                                              │
+│  ┌─────────────────────────────────────────────────┐          │
+│  │ rank_0 块 │ rank_1 块 │ ... │ rank_{R-1} 块    │          │
+│  └─────────────────────────────────────────────────┘          │
+│       │  每收齐一个 rank 的块
+│       ▼
+│  ┌─────────────┐
+│  │ reduceSum   │  ← 逐元素求和（V 核向量指令）
+│  └─────────────┘
+│       │
+│       ▼
+│     output [m, n]
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 6.2 通信组件复用
+
+复用 `Apace::AivComm::CollectiveComm` 框架的 `AllToAll` 实现：
+
+```cpp
+using AllToAllComm = Apace::AivComm::CollectiveComm<
+    Apace::AivComm::CommCollectiveOp::AllToAll,
+    Apace::AivComm::CommMode::PUT,   // 或 GET，按硬件/场景选择
+    CType,                           // 通信数据类型（MatMul 输出）
+    TeamBarrier>;
+
+// 通信窗口布局：每个 rank 一块，对应目标 rank 的 M 行分片
+// 窗口大小 = rank_size × (m / rank_size) × n × sizeof(CType)
+```
+
+### 6.3 通信+求和流水
+
+```
+时间轴 ──────────────────────────────────────────────────────►
+
+AIC: [完整计算 C_i = A_i × B + bias（无 L0C 原子累加）]
+                             │ FixPipe 输出
+                             ▼
+AIV: [AlltoAll 分块发送 C_i] [收齐 rank_0 → reduceSum] [收齐 rank_1 → 累加] ... [最终求和结果写 GM]
+```
+
+- **逐块求和**：每收齐一个目标 rank 的 M 行分片，AIV 立即对该块执行 `Add` 向量操作累加到累加缓冲区，避免等待全部数据收齐造成的尾部延迟。
+- **本地合并**：本卡自己的 C_i 直接作为累加初值，无需经过通信链路。
+- **最终写出**：所有 rank 的分片累加完成后，将结果从累加缓冲区写回 output GM。
+
+### 6.4 与 AIC 计算阶段的同步
+
+由于无 TP 切分、无 L0C 原子累加，AIC 与 AIV 之间的同步简化为一次握手：
+
+| 同步机制 | 用途 | 说明 |
+|---------|------|------|
+| `CrossCoreSetFlag` / `CrossCoreWaitFlag` | AIC → AIV 计算完成通知 | AIC 完成 `C_i` 计算并 FixPipe 后，通知 AIV 可开始 AlltoAll 分发 |
+| `SetAtomicAdd` / `SetAtomicNone` | **不使用** | 无跨卡部分和，计算侧无原子累加需求 |
+
+---
+
+## 7. 内存设计
+
+### 7.1 L1 缓冲区布局
+
+SWAT 策略在 L1 中维护 4 个滚动缓冲区：
+
+```
+┌──────────────────────────────────────────┐
+│ A 数据缓冲区 (depthA1 × baseM × baseK)  │  ← 量化后 A tile
+├──────────────────────────────────────────┤
+│ B 数据缓冲区 (depthB1 × baseN × baseK)  │  ← 量化后 B tile
+├──────────────────────────────────────────┤
+│ ScaleA 缓冲区 (scaleFactorA × baseM)    │  ← 优化 ScaleA 复用
+├──────────────────────────────────────────┤
+│ ScaleB 缓冲区 (scaleFactorB × baseN)    │  ← 优化 ScaleB 复用
+└──────────────────────────────────────────┘
+```
+
+### 7.2 L0 缓冲区
+
+- **L0A/L0B**：存放从 L1 加载的 A/B 基础 tile，大小由 `baseM × baseK` 和 `baseN × baseK` 决定
+- **L0C**：`baseM × baseN` 输出累加缓冲区，支持 double-buffer（`dbL0c=2`）或单缓冲（`dbL0c=1`）
+
+### 7.3 通信窗口（Workspace）
+
+通信窗口位于 GM 侧，由外部申请并传入，存放 AlltoAll 分发的计算结果：
+
+- 数据窗口：`rank_size × (m / rank_size) × n × sizeof(CType)` 字节
+  - 每个目标 rank 一份，每份为 `(m / rank_size)` 行 × `n` 列的 C 分片
+- 累加缓冲区：`(m / rank_size) × n × sizeof(CType)` 字节（UB 侧，用于 reduceSum 逐元素累加）
+
+窗口偏移计算与 AllToAll 变体一致，按 rank-major 连续存放。
+
+---
+
+## 8. Kernel 实现设计
+
+### 8.1 算子入口
+
+```cpp
+__global__ __aicore__ void QuantMatmulReduceScatterKernel(
+    __gm__ CommContext* hcommCtx,
+    GM_ADDR aGM, GM_ADDR aScaleGM,
+    GM_ADDR bGM, GM_ADDR bScaleGM,
+    GM_ADDR biasGM, GM_ADDR cGM,
+    QuantMatmulReduceScatterTilingData tilingData)
+{
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+    QuantMatmulReduceScatterImpl<
+        fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t> impl;
+    impl.Init(hcommCtx, aGM, aScaleGM, bGM, bScaleGM, biasGM, cGM, &tilingData);
+    impl.Process();
 }
-if (blockIdx_ > newEndBlockIdx) { mTailTile_ = 1; ... }          // L95-99：超出范围的核不拆分
 ```
 
-关键点 1：`+1` 的核与 `roundNums_ = CeilDiv` 的核互斥——`roundNums_ = CeilDiv` 恰是 `blockIdx_ ≤ endBlockIdx_` 的核（L64-66 未减 1），永远不满足 L92 的 `blockIdx_ > endBlockIdx_` 条件；满足 +1 条件的核（`blockIdx_ > endBlockIdx_`）从 `CeilDiv - 1` 起跳，+1 后**至多回到 CeilDiv**。因此 **max(roundNums_) = CeilDiv，与是否尾块拆分无关，严格上界不需要 +1**。
-
-关键点 2：尾块拆分**不是**把一个 tail tile 在同一核上变成 `totalTailTile_` 个子 tile，而是把子 tile **摊到空闲核上**（这正是 kernel 侧调用条件 `(endBlockIdx_+1) × mTailTile × nTailTile ≤ GetBlockNum()` 的语义——拆分后的子 tile 总数能被空闲核容纳）。落到单个核上，只是多处理**一个**子 tile（最后一轮 `roundIdx_ == roundNums_-1` 时处理 `blockIdx_ / totalTailTile_` 对应的子块，见 L199）。且 `UpdateTailTile` 在 kernel 中由 `needUpdateTail_` 保护**至多调用一次**（v2 kernel L375-380，单 batch，`ProcessSingleBatch` 仅调用一次），`UpdateNextBatchBlockRoundParams`（L176-188，多 batch 用）本算子不触及。
-
-**证据 4：实际处理 tile 数只会 ≤ roundNums_**：尾块拆分轮中 `GetBlockShape` 可能返回 `{0,0,0,0}`（L168-170，子块偏移越界），AIC 侧 `return` 早退、AIV 侧 `break`，`cubeNum` 不再自增。因此实际 `cubeNum` 终值 T ≤ roundNums_。
-
-**综上（可证明安全，且为严格上界）**：
-
-```
-T_actual ≤ roundNums_ ≤ CeilDiv(blockNums_, coreNums_) = maxTilesPerCore
-```
-
-最大槽位偏移：`baseM×baseN×((coreNum-1) + (maxTilesPerCore-1)×coreNum) + baseM×baseN = maxTilesPerCore×coreNum×baseM×baseN`，恰好等于 workspace 分配大小，**无越界写**。
-
-> **可选加固**（防御性编程，非必需）：host 可按 `maxTilesPerCore + 1` 分配，代价仅 1 行槽位（128KB×coreNum≈4MB），为未来 Blaze 调度器行为变化留余量。v3 默认按上述严格上界（CeilDiv，无 +1）分配。
-
-### 2.3 与 v2 废弃公式 `totalMmTiles` 的关系
-
-v2 DESIGN §2.16 Issue 2 已论证「每核 tile 数依赖运行时 `GetBlockNum()`、尾块拆分参数与早退逻辑，host 无法**精确**预算」，因此 AIV 循环由 `bsAiv.GetTileIdx()` 隐式终止。v3 的 `maxTilesPerCore` 不是精确预算，而是**可证明的上界**（证据 1-4 给出严格不等式），用途仅限于 host 侧 workspace 分配与校验，kernel 运行时不消费——与 v2 的决策不冲突。
-
----
-
-## 3. workspace 大小新公式与各 shape 估算表
-
-### 3.1 公式
-
-```
-workspaceSize = maxTilesPerCore × coreNum × baseM × baseN × sizeof(bfloat16_t)
-其中 maxTilesPerCore = CeilDiv(CeilDiv(mLocal,baseM) × CeilDiv(N,baseN), coreNum)   // 严格上界，无 +1
-     coreNum = usedCoreNum（QuantMatmulTilingSwat 推导，≤ 32 @950PR Server / ≤ 28 @950PR PCIE）
-```
-
-> baseM/baseN/usedCoreNum 由 SWAT tiling 引擎运行时推导（初始候选 256，按 shape 细化），下表为**代表性配置估算**，精确值以运行时 tiling 日志为准。
-
-### 3.2 估算表（sizeof(BF16)=2B；coreNum = min(32, blockNums) 为**假设值**）
-
-| shape (M,K,N) | mLocal | baseM×baseN | blockDimM×blockDimN | blockNums | coreNum | maxTiles=T | v3 workspace | v2 workspace (4 槽轮转) | 备注 |
-|---------------|--------|-------------|---------------------|-----------|---------|------------|--------------|--------------------------|------|
-| 512,1024,512 | 128 | 128×256 | 1×2 | 2 | 2 | 1 | 0.13 MB | 0.52 MB | v2 ST 用例 |
-| 1120,2048,1024 | 280 | 256×256 | 2×4 | 8 | 8 | 1 | 1.0 MB | 4.2 MB | v2 ST 用例 |
-| 2048,4096,2048 | 512 | 256×256 | 2×8 | 16 | 16 | 1 | 2.1 MB | 8.4 MB | v2 ST 主用例 |
-| 16384,4096,2048 | 4096 | 256×256 | 16×8 | 128 | 32 | 4 | **16.8 MB** | 16.8 MB | 大 shape，T=4（v2 回压恰在边界触发） |
-| 16384,4096,2048 | 4096 | 128×256 | 32×8 | 256 | 32 | 8 | **16.8 MB ≈ ~18MB** | 8.4 MB | 大 shape 另一 tiling 配置，T=8>4，回压消除收益场景 |
-| 16384,4096,4096 | 4096 | 256×256 | 16×16 | 256 | 32 | 8 | **32.0 MB** | 16.8 MB | tiles/core=8，重点验证回压消除收益 |
-
-> ⚠️ **coreNum=32 为假设值，以运行时 SWAT tiling 日志为准**（见 §8 T11/T12 前置验证步骤）。若实际 usedCoreNum < 32，T 与 workspace 需按实际值重算。
-
-结论：
-- 小 shape（T ≤ 4）：v3 workspace **不大于** v2，内存反而下降；
-- 大 shape（T > 4）：v3 workspace 随 T 线性增长；M=16384,N=2048 两种 tiling 配置均为 16.8MB（符合用户「~18MB 可接受」口径）；**M=16384,N=4096 最大配置为 32.0MB，超出用户 ~18MB 口径约 1.8 倍——已提交用户确认（见 §8 备注与 WALKTHROUGH.md 串讲记录）**；
-- T ≤ 15 的 shape 均被覆盖（见 §4.3 计数器约束），T=15 对应 blockNums≈480（如 mLocal=4096、N=7680 @256×256），覆盖目标 shape 范围。
-
----
-
-## 4. 删除通道 3 后的 flag 编排正确性论证
-
-### 4.1 v3 通道编排（2 通道 + SyncAll）
-
-| 通道 | 方向 | API 配对 | flagId | 配对关系 |
-|------|------|----------|--------|----------|
-| 1 通信就绪 | AIV→AIC | `SetFlag<0x2, PIPE_MTE3>(fid)` / `WaitFlag<0x2, PIPE_MTE2>(fid)` | CommFlagIdV2(tid)，避开 5、[11-14] | 每个 fid Set 1 次 / Wait ≤1 次（去重 + 兜底 drain 配平） |
-| 2 mm 完成 | AIC→AIV | `SetFlag<2, PIPE_FIX>(5)` / `WaitFlag<2, PIPE_MTE2>(5)` | 5（常量） | AIC Set T 次 ⇔ AIV Wait T 次（同一 BlockScheduler 枚举序，v2 §2.16 已证） |
-| — 块间同步 | AIV↔AIV | `SyncAll<true>()` | 3510 架构下 `isAIVOnly=true` 实际仅占 **AIV flagId 14**（`SyncAll.md` 表 3 已核实）；本设计**保守避开 [11-14]** | 不变 |
-
-### 4.2 通道 1/2 配对不受通道 3 删除影响
-
-- **flagId 空间独立**：通道 1 用 fid∈{0..4,6..10,15}，通道 2 用 5，SyncAll 实际占用 14（本设计保守避开 [11-14]），原通道 3 的 3 被释放后**无任何通道使用 3**，无新增冲突。
-- **配对计数独立**：每个 flagId 有独立计数器（key_features.md：Set 完成 → 计数器 +1，Wait 解除阻塞 → 计数器 -1）。删除通道 3 的 Set/Wait 不改变通道 1/2 的 Set/Wait 次数与顺序。
-- **AIV 侧顺序不变**：RunReduceSum 循环结构、BlockScheduler 复刻序列、cubeNum 自增位置全部保留，仅删末尾 Set(3) 一行；AIV 的 Wait(5) 次数仍 = AIC Set(5) 次数 = T。
-- **AIC 侧顺序不变**：除删除回压 Wait 外，通信等待（通道 1）→ mm → Set(5) → cubeNum++ 的 per-tile 序列不变；循环末尾 readyTileIdx 兜底 drain（通道 1）保留。
-
-### 4.3 ⚠️ 新风险与约束：flagId=5 计数器上界（0-15）——必须 host 校验
-
-**风险**：官方文档（`CrossCoreWaitFlag_ISASI.md` flagId 约束，已核实原文）：「flagId 对应的计数器**计数范围为 0-15。如果计数器的值超出该范围，则会异常报错，中断流程**。」v2 中回压机制将 AIC 领先 AIV 的 tile 数钳制在 ≤4，故 flagId=5 的未消费计数 ≤4，安全。**v3 删除回压后，AIC 不再被 AIV reduceSum 进度钳制**：当 AIV 尚处于通信阶段（Phase 1）时，AIC 可连续完成全部 T 个 tile 并 Set(5) T 次，计数器峰值 = T。若 T > 15（计数器需达到 16），将触发硬件异常报错。
-
-**结论**：v3 的正确性依赖 **T ≤ maxTilesPerCore ≤ 15**，必须作为 host 侧输入校验（变更点 C8）：
-
-```
-校验：maxTilesPerCore ≤ 15   // maxTilesPerCore = CeilDiv(blockNums, coreNum)（严格上界，§2.2）
-                              // 等价于 flagId=5 计数器峰值 ≤ 15，恰好用满硬件上限、不越界
-不满足 → 拒绝 launch（报错提示 shape 超出 v3 支持范围，可回退 v2）
-```
-
-注：采用 §2.2 的严格上界后，校验门控的是 `CeilDiv ≤ 15`，T=15 的边界 shape 可合法放行（计数器峰值 15 ∈ [0,15]）；不存在保守 1 档误拒。
-
-覆盖性评估：T ≤ 15 对应 blockNums ≤ 480（coreNum=32），即 mLocal×N ≤ 480×65536 元素（256×256 tile 下，如 mLocal=4096 时 N ≤ 7680），覆盖全部目标 shape（M=16384 大 shape T=5~9）。**该约束不是回压的变相恢复**——它是静态 shape 校验，不在 kernel 热路径上引入任何等待。
-
-> 可选加固（本期不实施）：若未来需要 T > 15，可利用释放的 flagId=3 做 mm 完成双 flag 轮转（tile 奇偶分别 Set 5/3，AIV 同序 Wait），将上界提升至 30。需要时再启用。
-
-### 4.4 CommFlagIdV2 简化（可选优化，变更点 C9）
-
-通道 3 删除后，通信就绪 flag 只需避开 5 和 SyncAll 占用。经核实 `SyncAll.md` 表 3：3510 架构下 `SyncAll<true>`（isAIVOnly=true）实际**仅占 AIV flagId 14**；占 AIC 11/12/13 + AIV 12/13 的是 `isAIVOnly=false + __mix__(1,1)` 模式。v2/v3 实际调用为 `SyncAll<true>()`（v2 udma_impl.h L299，AIV-only 路径），故真实占用只有 14。本设计**保守避开 [11-14]**（覆盖未来改用 `SyncAll<false>` 的情形，此时需重新评估 AIC 侧 11/12/13 冲突）。保守口径下可用集 = {0,1,2,3,4,6,7,8,9,10,15} 共 **11** 个（原 10 个）：
+### 8.2 Init 流程
 
 ```cpp
-// v3 可选简化映射（tid ≤ 10，即通信 tile 上限 10→11）
-fid = (tid < 5) ? tid : (tid + 1);   // tid 0..4→0..4；tid 5..9→6..10；tid 10→11 命中 [11-14]
-if (fid >= 11 && fid <= 14) fid = 15;
+__aicore__ inline void Init(...)
+{
+    // 1. 解析 Tiling 参数（MatMul tile + 通信 tile）
+    // 2. 初始化通信上下文（hccl_/udmaCtx_/ubmemCtx_）
+    // 3. 初始化 CollectiveComm（AlltoAll 通信链）
+    // 4. 初始化 reduceSum 累加缓冲区（UB）
+    // 5. 初始化 QuantMatmulMxKernel（模板参数绑定 BlockMmad + BlockScheduler，NONE_FULL_LOAD_MODE）
+}
 ```
 
-**决策**：默认**保持 v2 映射不变**（原映射避开 3 是更强约束，天然满足新约束，零风险）；仅当未来需要第 11 个通信 tile 时才切换。host 校验 `headTileCnt + tailTileCnt ≤ 10` 保持不变。
+### 8.3 Process 流程
 
-### 4.5 无死锁论证
+```cpp
+__aicore__ inline void Process()
+{
+    if ASCEND_IS_AIC {
+        // AIC 侧：每卡独立完整计算，无跨卡依赖
+        //   - 使用 MatmulMode::LOCAL（仅本卡数据，splitK=1）
+        //   - 无需 L0C 原子累加
+        //   - FixPipe 将完整 C_i [m, n] 写出到 GM
+        RunMatmul();
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0);  // 通知 AIV 计算完成
+    }
+    if ASCEND_IS_AIV {
+        // AIV 侧：等待 AIC 计算完成，然后执行 AlltoAll + reduceSum
+        CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
+        // 1. 将本卡 C_i 按 M 轴切块，通过 AlltoAll 分发到各目标 rank
+        for (uint32_t turn = 0; turn < commTurn_; ++turn) {
+            allToAll_.Commit();      // 分发一个 M 分片
+            allToAll_.template Wait<...>();  // 等待 channel 排空
+            ReduceSumOneRank();     // 收齐一个 rank 的分片 → 向量 Add 累加
+        }
+        // 2. 全部收齐后，将累加结果写回 output GM
+        DataCopy(outputGM_, accumBuf_, totalBytes);
+        allToAll_.Finalize();
+    }
+}
+```
 
-- **AIC 侧**：唯一等待源为通道 1（通信就绪）。AIV Phase 1 无条件完成全部 commTurn 轮通信并 Set 全部 commFlagId（不依赖 AIC 任何状态），故通道 1 的 Wait 必然解除；AIC 再无其他 Wait（回压已删，PostCompute drain 已删）→ **AIC 必然运行至结束**。
-- **AIV 侧**：Phase 1 完成后进入 Phase 2，唯一等待源为通道 2 Wait(5)，次数 = 本核 BlockScheduler 枚举 tile 数 T；AIC 侧同一枚举序 Set(5) T 次（v2 §2.16 方案 b 复刻论证不变）→ 配对平衡，**AIV 必然运行至结束**。
-- **跨核/跨卡**：SyncAll、TeamBarrier、AllToAll Wait<BARRIER_DEVICE> 逻辑完全未动，无新依赖环。
-- **计数器**：通道 1 每 fid 计数 ≤1；通道 2 计数峰值 = AIC 领先数 ≤ T ≤ 15（§4.3 校验保证）→ 无溢出。
-- **早退分支残留计数（已知行为，继承 v2，非 v3 回归）**：尾块拆分轮 `GetBlockShape` 返回零形状时 AIC 直接 `return`（v2 kernel L397-398），**跳过循环末尾的通道 1 兜底 drain**（L501-504）；此时 AIV Phase 1 已无条件 Set 全部 commFlagId，未被 Wait 的 fid 计数器在 kernel 退出时残留为 1。残留计数 ≤ commTurn ≤ 10，不超 0-15 上限，**无溢出风险**；残留计数是否跨 launch 持久以硬件行为为准——v2 12/12 精度 PASS（每用例独立进程/launch）实证未暴露问题，大概率硬件在每次 kernel launch 时初始化调度模块计数器。v3 保持该行为完全不变，记录为已知行为，无需代码改动。
+### 8.4 关键同步机制
 
-### 4.6 无越界论证
-
-- AIC 写：`workspaceGmAddr_ + baseM×baseN×(coreIdx + cubeNum×coreNum)`，cubeNum ≤ T-1 ≤ maxTilesPerCore-1 → 最大写地址 < workspaceSize（§2.2 证明）。
-- AIV 读：同一公式、同一 cubeNum 序列（BlockScheduler 复刻保证枚举序一致）→ 读地址集合 = 写地址集合，且每个槽位**先写后读**由通道 2（Wait(5) 在 DataCopyPad 之前）保证。
-- 槽位独占：每 (coreIdx, cubeNum) 对应唯一槽位，无复用 → **无需回压的根本依据**；不同核槽位区间不相交（coreIdx 项错位 coreNum 步长），无写冲突。
-
----
-
-## 5. L2 cache 影响分析
-
-| 维度 | v2（4 槽轮转） | v3（独占槽位） | 影响评估 |
-|------|----------------|----------------|----------|
-| workspace 热工作集 | 4×coreNum×slot（4~17MB），槽位循环复写，大概率高频驻留 L2 | maxTiles×coreNum×slot（0.1~32MB），每槽位写 1 次读 1 次，**无复用** | v3 失去「槽位复用驻留」红利 |
-| AIV reduceSum 读 workspace | 读最近 4 个槽位，L2 命中率高 | 读 tile k 时距 AIC 写 tile k 的时间差 = AIC 领先度 × 单 tile mm 耗时；领先度小则仍在 L2 | **流水近距离消费时影响小** |
-| 最坏情形 | 不存在（回压钳制领先 ≤4） | AIV 通信阶段 AIC 可无阻塞跑完全部 T 个 tile，最早写入的槽位可能被后续写流 + B/ScaleB/A Win 数据流挤出 L2 | 950PR Server L2=128MB（PCIE 112MB），workspace ≤32MB 占比 <1/3，且 mm 本身是计算瓶颈、fixpipe 写流速率有限，整体挤占有限 |
-| reduceSum 读 miss 代价 | — | GM 读走 MTE2，单 tile 128KB，流水掩盖下增量有限 | 可接受 |
-| 净结论 | — | — | **预期性能净收益为正**：消除的是 AIC 侧 M 流水硬阻塞（v2 在 T>4 时每 tile 都可能等 AIV 搬运）；L2 命中率下降只影响 AIV MTE2 读延迟，且被流水掩盖。以 M=16384（T=5~9）用例实测对比 v2 57.6us 基线验证 |
-
-> 缓解项（如实测回退再考虑，本期不实施）：对 workspace Tensor 可设置 `SetL2CacheHint(CACHE_MODE_DISABLE)` 让 fixpipe 写绕开 L2、避免污染 B/ScaleB 的 L2 驻留——但这会同时让 AIV 读必 miss，需实测权衡。
-
----
-
-## 6. 与 v2 的差异对比表
-
-| 维度 | v2 | v3 |
-|------|----|----|
-| workspace 槽位分配 | PIPELINE_NUM=4 槽轮转，`cubeNum % 4` | 每 tile 独占槽位，无取模 |
-| workspace 大小 | 4×coreNum×baseM×baseN×2B（固定） | maxTilesPerCore×coreNum×baseM×baseN×2B（随 shape 伸缩；小 shape 更小，M=16384 大 shape ~17-32MB） |
-| 回压通道（flagId=3） | AIV Set(3) / AIC Wait(3) + PostCompute drain | **全部删除**（3 处：kernel L403-405、L507-519、udma_impl L399-400） |
-| CrossCore 通道数 | 3（通信就绪 + mm 完成 + 回压） | 2（通信就绪 + mm 完成） |
-| AIC 阻塞条件 | 通道 1 通信等待 + cubeNum≥4 回压 | 仅通道 1 通信等待 |
-| flagId=5 计数器峰值 | ≤4（回压钳制） | ≤T（≤15，host 校验保证，§4.3） |
-| 新增 host 校验 | — | maxTilesPerCore ≤ 15 |
-| tiling 字段 | `pipelineNum=4` | `maxTilesPerCore`（替换，kernel 不消费，仅 host 分配/校验用） |
-| CommFlagIdV2 | 避开 3/5/[11-14]，上限 10 tile | 默认不变；可选简化为避开 5/[11-14]，上限 11 tile |
-| 通信就绪 flag 校验 | headTileCnt+tailTileCnt ≤ 10 | 不变（≤10） |
-| 数学语义 / 精度 | BF16 输出，L0C FP32 跨 rank 累加，rtol=atol=1e-2 | **完全相同**（v3 仅改同步与寻址，不改任何数值路径） |
-| Blaze 组件 / 通信组件 | — | **完全不变** |
-| reduceSum 搬运 | DataCopyPad 2D + MTE2/MTE3 event | **完全不变**（仅槽位寻址去取模 + 删 Set(3)） |
+| 同步机制 | 用途 | 说明 |
+|---------|------|------|
+| `CrossCoreSetFlag` / `CrossCoreWaitFlag` | AIC → AIV 计算完成通知 | AIC 完成 `C_i` 计算并 FixPipe 后，通知 AIV 可开始 AlltoAll 分发 |
+| `AscendC::SyncAll<true>()` | 所有核同步 | 每轮通信后全局同步，确保各 AIV 的分发/接收就绪 |
+| Hccl Handle Wait / UDMA Drain | 通信完成等待 | 等待 AlltoAll 通信 channel 完成，保证数据到达后再 sum |
+| `SetAtomicAdd` / `SetAtomicNone` | **不使用** | 无 splitK/splitM 部分和，AIC 计算侧无原子累加需求，求和完全在 AIV reduceSum 完成 |
 
 ---
 
-## 7. 文件清单（v3，复制自 v2 + 修改）
-
-#### [MODIFY] 算子层文件（3 个 kernel 头文件，从 v2 复制后按 §1.1 变更点修改）
-
-| 文件 | 变更 |
-|------|------|
-| `kernel/apace_quant_matmul_reduce_scatter_v3/quant_matmul_mx_kernel.h` | C1（删回压 Wait）、C2（寻址去取模）、C3（删 PostCompute）、C10（常量更名 _V3，删回压常量） |
-| `kernel/apace_quant_matmul_reduce_scatter_v3/apace_quant_matmul_reduce_scatter_v3_udma_impl.h` | C4（AIV 寻址去取模）、C5（删 Set(3)）、C9（可选 CommFlagIdV2 简化）、类名/常量更名 _V3 |
-| `kernel/apace_quant_matmul_reduce_scatter_v3/apace_quant_matmul_reduce_scatter_v3_tiling_data.h` | C6（pipelineNum→maxTilesPerCore，含 LocalParams/baseParams_/kernel 成员全链清理，见 §1.1 C6）、结构体/常量更名 _V3 |
-
-#### [MODIFY] ST 工程（从 v2 复制后修改）
-
-| 文件 | 变更 |
-|------|------|
-| `st/apace_quant_matmul_reduce_scatter_v3/src/main.cpp` | C7（workspace 新公式）、C8（maxTilesPerCore ≤ 15 校验）、日志更名 |
-| `st/apace_quant_matmul_reduce_scatter_v3/src/kernel_launcher.h` | 4 个入口函数更名 _V3 |
-| `st/apace_quant_matmul_reduce_scatter_v3/cases.csv` | 保留 v2 10 用例 + 新增大 shape 用例（§8） |
-| 其余（CMakeLists/run.sh/scripts） | 复制更名 |
-
-#### [REUSE] 共享层（禁止修改，同 v2）
-
-`block/`、`tiling/`、`basic/`、`utils/`、`third_party/ops-tensor`（Blaze）。
+"## 9. 关键设计决策\n\n### 9.1 为什么用 AlltoAll + reduceSum 替代 ReduceScatter\n\n本算子场景**不涉及 TP 切分**：每卡持有完整 A 和 B，独立计算出完整的 `C_i [m, n]`。聚合目标是"所有 rank 的完整结果逐元素求和后广播到每卡"，语义上等价于 AllReduce，但通过 **AlltoAll（分发）+ reduceSum（求和）** 分步实现：\n\n- **无需计算侧原子累加**：不存在 splitK/splitM 的部分和，`C_i` 是每卡的完整计算结果，L0C 无需跨卡累加。\n- **求和下沉到 AIV**：AlltoAll 仅负责数据分发，接收侧 AIV 用向量指令对多份结果执行逐元素 Add，将归约从 Cube 侧卸载到 Vector 侧，与通信天然流水。\n- **逐块流水求和**：每收齐一个 rank 的分片即累加一次，避免全量收齐后的突发计算。\n\n### 9.2 为什么计算阶段无需 LOCAL/REMOTE 模式\n\n`QuantMatmulMxKernel` 的 LOCAL/REMOTE/DEFERRED_SYNC 模式是为**跨卡部分和**（splitK/splitM）设计的。本算子每卡独立算出完整结果，计算阶段仅需一次 `LOCAL` 模式的完整 MatMul（`splitKNum = 1`），随后 FixPipe 输出完整 `C_i` 供通信阶段消费，**不使用 REMOTE/DEFERRED_SYNC 模式**。\n\n### 9.3 AIC / AIV 的流水重叠\n\n天然的两阶段流水：\n- AIC 在计算 `C_i` 时，AIV 空闲等待（或预分配通信窗口）；\n- AIC 完成后通过一次 `CrossCoreFlag` 通知 AIV，AIV 立即开始 AlltoAll 分发与逐步 reduceSum；\n- 若需要进一步重叠，可将 AIC 对 C 的 FixPipe 按 M 分片进行，让 AIV 边收边算（未来优化方向）。"
 
 ---
 
-## 8. 测试计划
+## 10. 约束与限制
 
-精度标准（继承 v2）：rtol=atol=1e-2，4 dtype 组合覆盖。
+- **输入约束**：
+  - A 矩阵 shape 为 `[m, k]`，m 为 rank_size 的整数倍
+  - B 矩阵 shape 为 `[k, n]`
+  - A、B 均为 MX 量化格式，Scale shape 为 `[m, ceil(k/64) * 2]` / `[n, ceil(k/64) * 2]`
+  - 支持 MXFP8（`fp8_e4m3fn`/`fp8_e5m2`）与 MXFP4 量化
 
-| 编号 | 用例 | shape (M,K,N) | 目的 |
-|------|------|---------------|------|
-| T0（前置） | tiling 假设核实 | 复用 v2 工程对 T11/T12 shape 打印 SWAT tiling 日志 | 框架搭建阶段确认实际 `usedCoreNum`（§3.2 表中 coreNum=32 为假设值）。若 T12 实际 usedCoreNum ≤ 17（`CeilDiv(256, usedCoreNum) > 15`），host 校验将拒绝 launch → 预设备选方案：调整 shape 或 baseM/baseN 候选使 `CeilDiv ≤ 15` 成立后再进入 T12 |
-| T1-T10 | v2 全部 10 用例回归 | 2048/512/1120 系列 × 4 dtype | 回归：小 shape（T≤4）功能等价 v2 |
-| T11 | 大 shape 边界 | M=16384, K=4096, N=2048（mLocal=4096，T=4~8 视 tiling） | 大 shape 正确性 + workspace ~17MB 分配 |
-| T12 | **tiles/core > 4 重点用例** | M=16384, K=4096, N=4096（T=8，workspace 32.0MB） | **验证回压消除收益**（v2 在此类 shape 上 AIC 每 tile 等回压）；精度 + 性能双验证 |
-| T13 | maxTilesPerCore 上界校验 | 构造 `CeilDiv(blockNums, coreNum) > 15` 的 shape（如 M=32768, N=8192）；**增补边界用例**：构造 `CeilDiv = 15` 恰好放行的 shape | 验证 host 校验正确拒绝（不 launch、报错信息清晰）+ 边界恰好放行 |
-| T14 | 尾块拆分路径 | M 非 baseM 整数倍且满足 UpdateTailTile 条件（如 M=1120 已覆盖；可补 M=2252 类 shape） | 验证严格上界（CeilDiv，无 +1）在尾块拆分路径下的正确性（精度 PASS 即证明槽位寻址无错位）；同时覆盖早退跳过通道 1 兜底 drain 分支（§4.5 已知行为） |
+- **卡数约束**：支持 2、4、8、16、32、64 卡
 
-**性能验收**：以 v2 同 shape 数据为基线（v2 主用例 57.6us）；T12 为重点对比用例，预期 v3 < v2（回压消除）；T1-T10（T≤4）预期与 v2 持平（回压本不触发，仅省 PostCompute drain）。
+- **通信约束**：ReduceScatter 通信数据总量受通信缓冲区大小限制
 
-> ⚠️ **用户确认事项**：T12 对应的最大 workspace 为 **32.0MB**（收紧公式后），超出用户「~18MB 可接受」口径约 1.8 倍；M=16384,N=2048 的两种 tiling 配置均为 16.8MB（符合口径）。32.0MB 是否可接受需用户确认（见 WALKTHROUGH.md 串讲记录）。
+- **硬件约束**：仅在 Apace 架构（Ascend 950 系列）上生效，通过 `ASC_DEVKIT_MAJOR >= 9` 条件编译隔离
 
 ---
 
-## 9. 确认清单
+## 11. 未来扩展方向（预留设计）
 
-- [x] v3 变更点 diff 级清单完成（§1.1，C1-C10）
-- [x] 未变更部分明确标注（§1.2）
-- [x] maxTilesPerCore 安全上界公式 + Blaze 源码 4 项证据（§2，block_scheduler_qbmm.h L51-66/L85-101/L190-235/L168-170）
-- [x] workspace 新公式 + 各 shape 估算表（§3，收紧上界后 M=16384 ~17-32MB；32MB 项已提交用户确认）
-- [x] 删除通道 3 后 flag 编排正确性论证（§4：通道 1/2 配对不受影响、无死锁、无越界）
-- [x] **新风险识别**：flagId=5 计数器 0-15 上界 → maxTilesPerCore ≤ 15 host 校验（§4.3，官方文档 CrossCoreWaitFlag_ISASI.md 已核实）
-- [x] L2 cache 影响分析（§5）
-- [x] 与 v2 差异对比表（§6）
-- [x] 测试计划（§8，重点 T12 tiles/core>4 回压消除收益验证）
-- [x] NpuArch 确认：DAV_3510 / `__NPU_ARCH__`=3510 / `--npu-arch dav-3510`（`/npu-arch` skill）
-- [x] APACE 红线确认（继承 v2 §2.0，本期变更不触碰任何红线项）
+- **FP8 Dynamic Quant 前置阶段**：参考 `Fp8DynamicQuantPertoken` 模板，在 MatMul 前增加动态量化（per-token）预处理，将 FP16/BF16 输入量化为 FP8 后再进入融合计算。
+- **INT8 量化支持**：参考 `Mc2QuantBatchMatmulASWKernel` 的 per-token/per-channel 反量化路径，扩展非 MX 量化模式。
+- **DEFERRED_SYNC 模式优化**：在 localMatmul=2 时，将本卡计算和远端计算在同一次 FixPipe 中完成，减少 L0C → L1 → L0C 的往返开销。
+
+---
+
+> **文档状态**：初稿
+> **适用版本**：CANN 8.1+（Apace 架构）

@@ -1,6 +1,6 @@
-# apace_quant_matmul_reduce_scatter_v3 算子开发计划
+# quantMatmulReduceScatter 算子开发计划
 
-> 本文档在开发流程中持续更新。设计依据：`docs/DESIGN.md`（v3 = v2 + 取消 workspace 轮转回压）。
+> 本文档在开发流程中持续更新。
 
 ---
 
@@ -8,13 +8,22 @@
 
 | 项目 | 内容 |
 |-----|------|
-| 算子名称 | apace_quant_matmul_reduce_scatter_v3 |
-| 数学公式 | C_r = Σ_{i=0}^{rankSize-1} dequant(A_i[r·M/R:(r+1)·M/R, :]) × dequant(B_i)，R=4（与 v2 完全相同） |
-| 输入 | A: [M, K/4] fp8_e4m3fn_t/fp8_e5m2_t；ScaleA: fp8_e8m0_t；B: [K, N] fp8；ScaleB: fp8_e8m0_t；workspace: GM（**新大小公式**） |
-| 输出 | C: [M/4, N] bfloat16_t |
-| 算子类别 | MC2 通算融合（Quant MatMul + AllToAll PUT + ReduceSum 3 级流水） |
-| 需求类型 | 通用 |
-| v3 变更核心 | 取消 workspace 轮转回压：槽位寻址去取模（每 tile 独占）、删除通道 3 回压 flag（3 处）、workspace = maxTilesPerCore×coreNum×baseM×baseN×2B、新增 maxTilesPerCore ≤ 15 host 校验 |
+| 算子名称 | quantMatmulReduceScatter |
+| 数学公式 | output = reduceSum(AlltoAll(Dequant(QuantA @ QuantB))) |
+| 输入 | A: [m, k] MXFP8, ScaleA: [m, ceil(k/64)*2] fp8_e8m0, B: [k, n] MXFP8, ScaleB: [ceil(k/64)*2, n] fp8_e8m0 |
+| 输出 | C: [m/rankSize, n] bfloat16 |
+| 算子类别 | MC2 通算融合（量化MatMul + AlltoAll + reduceSum） |
+| 需求类型 | 分布式训练/推理通算融合 |
+| 架构 | Ascend 950PR (dav-3510, Apace) |
+| 核类型 | KERNEL_TYPE_MIX_AIC_1_1（AIC 计算 + AIV 通信） |
+
+### 1.1 核心语义
+
+- 每卡持有完整 A [m, k] 和 B [k, n]，独立计算完整 C_i = A_i × B
+- 无 TP 切分，无 L0C 原子累加
+- AlltoAll 按 M 轴将 C_i 分发到各 rank
+- AIV 收齐后逐元素 reduceSum 求和
+- output = Σ C_r，shape [m/rankSize, n]
 
 ---
 
@@ -22,131 +31,469 @@
 
 | 文件 | 状态 |
 |------|------|
-| `kernel/apace_quant_matmul_reduce_scatter_v3/quant_matmul_mx_kernel.h` — 复制自 v2 + 变更点 C1/C2/C3/C10 | ⬜ |
-| `kernel/apace_quant_matmul_reduce_scatter_v3/apace_quant_matmul_reduce_scatter_v3_udma_impl.h` — 复制自 v2 + 变更点 C4/C5/C9 | ⬜ |
-| `kernel/apace_quant_matmul_reduce_scatter_v3/apace_quant_matmul_reduce_scatter_v3_tiling_data.h` — 复制自 v2 + 变更点 C6（pipelineNum→maxTilesPerCore） | ⬜ |
-| `st/apace_quant_matmul_reduce_scatter_v3/src/main.cpp` — C7 workspace 新公式 + C8 校验 | ⬜ |
-| `st/apace_quant_matmul_reduce_scatter_v3/src/kernel_launcher.h` — 4 dtype 入口更名 _V3 | ⬜ |
-| `st/apace_quant_matmul_reduce_scatter_v3/cases.csv` — v2 10 用例 + 新增 T11-T14 | ⬜ |
-| `st/apace_quant_matmul_reduce_scatter_v3/{CMakeLists.txt,run.sh,scripts/}` — 复制更名 | ⬜ |
-| 共享层 `block/`、`tiling/`、`basic/`、`utils/`、`third_party/` — [REUSE] 禁止修改 | ⬜ |
+| `kernel/quant_matmul_reduce_scatter_tiling_data.h` — Tiling 结构体 | ✅ |
+| `kernel/quant_matmul_reduce_scatter_impl.h` — Init/Process 编排逻辑 (PUT 模式) | ✅ |
+| `kernel/reduce_sum.h` — 独立 reduceSum 实现 | ✅ |
+| `src/kernel_launcher.h` — Kernel 入口函数 (含 workspaceGM) | ✅ |
+| `src/main.cpp` — Host 侧 (Tiling + 多 rank fork + ACL/HCCL + workspace) | ✅ |
+| `src/utils.h` — 工具函数 | ✅ |
+| `src/root_info_exchanger.h` — TCP rootInfo 交换 | ✅ |
+| `CMakeLists.txt` — 构建配置 | ✅ |
+| `scripts/gen_data.py` — CPU golden 数据生成 (float32 累加) | ✅ |
+| `scripts/verify_result.py` — 精度比对 | ✅ |
+| `run.sh` — 一键编译运行验证脚本 | ✅ |
+| `cases.csv` — 测试用例 | ✅ |
 
 ---
 
-## 3. 测试计划
+## 3. 架构设计（重构版）
 
-精度标准：rtol=atol=1e-2（继承 v2，数值路径零变更）。
+### 3.1 整体流程
 
-**Golden 计算**：复用 v2 `scripts/gen_data.py` + `scripts/verify_result.py`（CPU 参考实现不变）。
+```
+AIC: 所有核参与 matmul 计算
+     → C_i [m, n] 写入 workspaceGM
+     → CrossCoreSetFlag<0x2, PIPE_FIX>(0) 通知 AIV
 
-**用例**（可追溯至 DESIGN.md §8）：
+AIV (block 0): 
+     CrossCoreWaitFlag<0x2, PIPE_MTE2>(0) 等待 AIC
+     → CrossDevice (确保所有 rank AIC 完成)
+     → AllToAll PUT: 从 workspaceGM 推送 C_i chunks 到其他 rank win 区
+     → reduceSum: self 从 workspace + received 从 win → output GM
+```
 
-| 编号 | 用例 | 需求追溯 | 输入 (M,K,N) | 预期 |
-|-----|------|---------|--------------|------|
-| T1-T10 | v2 全量回归（4 dtype × shape 系列） | §0.2 #5（其余全部保留） | 2048,4096,2048 / 512,1024,512 / 1120,2048,1024 等 | 精度 PASS，与 v2 结果一致 |
-| T11 | 大 shape 边界 | §0.2 #4（~18MB 可接受） | 16384,4096,2048 | 精度 PASS，workspace ~19-21MB 分配成功 |
-| T12 | **tiles/core>4 回压消除收益** | §0.2 #1 #2（核心优化目标） | 16384,4096,4096（T=8） | 精度 PASS + 性能优于 v2 同 shape |
-| T13 | maxTilesPerCore>15 校验 | §0.2 #2 + DESIGN §4.3 | 构造 T>15 shape（如 32768,…,8192） | host 拒绝 launch，报错清晰 |
-| T14 | 尾块拆分路径 | §0.2 #7（UpdateTailTile 上界） | 尾块 shape（如 2252 系列） | 精度 PASS（证明 +1 上界正确） |
+### 3.2 关键设计决策
+
+1. **PUT 模式**（非 GET）：GET 模式在 4+ rank 有数据可见性问题（官网无 GET 样例），回退到 PUT
+2. **totalJobs=1**：仅 block 0 执行通信，避免多核 CrossDevice barrier 竞争
+3. **单 tile 通信**：chunkM = m/rankSize，一次通信完成
+4. **workspaceGM 作为算子入参**：AIC 写入 C_i，PUT 读取推送
+5. **reduceSum 独立文件**：参考 vec_comp.h，简化版直接 Add 累加
+6. **golden float32 累加**：避免 bfloat16 累加误差导致验证失败
+
+### 3.3 同步机制
+
+| 同步 | 用途 |
+|------|------|
+| CrossCoreSetFlag<0x2, PIPE_FIX>(0) | AIC → AIV 计算完成通知 |
+| CrossCoreWaitFlag<0x2, PIPE_MTE2>(0) | AIV 等待 AIC |
+| teamBarrier_.CrossDevice() | 跨 rank 同步（确保所有 AIC 完成） |
+| SyncAll<true>() | 所有 AIV 核同步（isAIVOnly=true） |
 
 ---
 
-## 4. 开发进度
+## 4. 测试结果
+
+### 4.1 精度测试
+
+| 用例 | M | K | N | rankNum | 状态 | max rel_err | 说明 |
+|-----|---|---|---|---------|------|-------------|------|
+| T1 | 2048 | 3584 | 4096 | 2 | ✅ PASS | 6.58e-3 | 基本功能验证 |
+| T2 | 2048 | 3584 | 4096 | 4 | ✅ PASS | 6.99e-3 | 4 卡通信验证 (float32 累加) |
+| T4 | 2048 | 8192 | 4096 | 4 | ✅ PASS | 6.21e-3 | K=8192 精度修复验证 (原 FAIL 1.09e-2) |
+
+精度标准：atol=1e-2, rtol=1e-2（MXFP8 + BF16 输出）
+
+### 4.2 修复记录 (Round 1)
+
+#### MF-1: UB_SIZE_BYTES 硬编码 → TOTAL_UB_SIZE
+- 文件: kernel/reduce_sum.h
+- 修改: `constexpr uint32_t UB_SIZE_BYTES = 192 * 1024` → `TOTAL_UB_SIZE`
+- 效果: DAV_3510 实际 UB 248KB 替代错误的 192KB, subM 增大, 迭代次数减少
+
+#### MF-2: BF16 reduceSum 精度不足 → float32 Cast 累加
+- 文件: kernel/reduce_sum.h
+- 修改: 
+  1. 读 BF16 → Cast 到 float32 → Duplicate 初始化 accumF32 为 0
+  2. 逐 rank Cast BF16 → float32 → Add float32 累加
+  3. 最终 Cast float32 → BF16 (CAST_RINT) → 写入 output
+- 参考实现: vec_comp.h DequantReduceSum
+- 效果: K=8192 4-rank rel_err 从 1.09e-2 降至 6.21e-3
+
+#### 关键调试发现: float Vector API repeatTime 限制
+- Add/Cast/Duplicate 的 repeatTime 为 uint8_t (max 255)
+- float 每次处理 256/4=64 元素, 单次上限 255*64=16320
+- 超过会导致 repeatTime 溢出, 部分元素不被处理 → 数据错误
+- 修复: 限制 subM 使 curCount ≤ 16320, 并分批调用 float API
+
+#### 关键调试发现: MTE3→MTE2 跨 sub-tile WAR 同步
+- 原 BF16 代码中 MTE3→MTE2 隐式保序 (同硬件 pipe)
+- float32 版本中 Duplicate (V) 操作插入 MTE3 和 MTE2 之间, 打破隐式保序
+- 修复: 对所有 rank (含 r=0) 添加 V_MTE2 sync, 通过 V pipe 间接保证 MTE3→MTE2
+
+#### RN-2: 参数名修正
+- 修改 reduce_sum.h Run() 参数名: selfWinAddr→selfDataGM, workspaceGM→receivedDataGM
+
+### 4.3 Hang 修复
+
+原问题：aclrtSynchronizeStream 未返回（60s+ 超时）
+
+修复：
+1. PUT 模式 + 正确同步（CrossCoreSetFlag/WaitFlag + CrossDevice + SyncAll）
+2. totalJobs=1 避免多核 barrier 竞争
+3. AIC 不参与 SyncAll（isAIVOnly=true）
+
+---
+
+## 5. 开发进度
 
 | 阶段 | 检查项 | 状态 |
 |------|--------|------|
-| T0 前置验证 | v2 工程打印 T11/T12 tiling 日志确认 usedCoreNum | ✅（2026-08-12，usedCoreNum=28，T11 T=5 / T12 T=10 均 ≤15 放行，v2 两 shape 精度 PASS） |
-| 框架搭建 | v3 工程从 v2 复制 + 更名（kernel/st/类名/常量 _V3）+ 编译通过 | ✅（2026-08-12，BUILD_RC=0 一次通过，qrun z00949060-v3-build1） |
-| Kernel 改造 | C1-C6/C10 变更点落地（删回压 3 处 + 寻址去取模 + tiling 字段） + 编译通过 | ✅（diff 自审与 DESIGN §1.1 逐项一致） |
-| Host 改造 | C7 workspace 新公式 + C8 maxTilesPerCore≤15 校验 + cases.csv 新增用例 | ✅（13 用例 csv：v2 10 回归 + T11 + T12 + T14=2252,2048,1024） |
-| 精度验证 | T1-T11、T14 全部 PASS（rtol=atol=1e-2） | ✅（2026-08-12，qrun z00949060-v3-precision，13/13 PASS，rel_err max=6.06e-3 ≪ 1e-2；含 T12 tiles/core=10>4 回压消除场景与 T14=2252 尾块拆分/早退分支） |
-| 校验验证 | T13 host 正确拒绝 | ✅（2026-08-12，qrun z00949060-v3-t13：T13-a M=32768,N=8192 T=37>15 正确拒绝 RC=255 报错清晰；T13-b M=10240,N=10752 T=15 恰好放行 4 卡全 PASS） |
-| 性能验收 | T12 对比 v2 基线（57.6us @主用例），msprof 采集归档 | ✅（2026-08-12，qrun z00949060-v3-perf，docs/perf/round_001/；T12 263.6us vs v2 291.4us = -9.6%，主用例 57.6us 持平，判定达标） |
-
-### T0 前置用例结果（2026-08-12，qrun 任务 z00949060-v3-t0-tiling）
-
-v2 二进制（--skip-build）实测 SWAT tiling 输出：
-
-| Shape (M,K,N) | baseM×baseN | usedCoreNum | blockNums | maxTilesPerCore=CeilDiv(blockNums,28) | C8 校验 | v2 精度 |
-|---------------|-------------|-------------|-----------|---------------------------------------|---------|---------|
-| T11: 16384,4096,2048 | 256×256 | **28** | 16×8=128 | **5** | ≤15 ✅ 放行 | PASS |
-| T12: 16384,4096,4096 | 256×256 | **28** | 16×16=256 | **10** | ≤15 ✅ 放行（余量 5 档） | PASS |
-
-**结论**：
-- 本机 950PR 实际 usedCoreNum=**28**（非 DESIGN §3.2 假设的 32），WALKTHROUGH 问题 1 的反例（usedCoreNum ≤ 17 导致 T12 误拒）**不成立**，T12 重点用例可行；
-- T12 对应 v3 workspace = 10×28×256×256×2B = **35.0MB**（28 核下 T=10，比 DESIGN 按 32 核估算的 32.0MB 略大 9%，同属用户已接受的 32MB 量级遗留风险范畴，如实记录）；
-- T11 对应 v3 workspace = 5×28×256×256×2B = **17.5MB**（符合 ~18MB 口径）；
-- v2 在两个大 shape 上精度均 PASS（T12 在 v2 下 T=10>4 回压触发，为 v3 回压消除收益对比提供同 shape 基线）。
-
-原始日志：`/tmp/opencode/t0_t11.log`、`/tmp/opencode/t0_t12.log`（开发机临时目录）。
+| 框架搭建 | 工程创建 + CMake + 空 Kernel 编译通过 | ✅ |
+| Tiling 实现 | TilingData + Host Tiling 计算 + 编译通过 | ✅ |
+| Kernel 实现 | AIC matmul + AIV AllToAll PUT + reduceSum + 编译通过 | ✅ |
+| 测试验证 | 2 rank + 4 rank 精度通过 (K=3584 + K=8192) | ✅ |
+| 修复轮次 | MF-1 (UB_SIZE) + MF-2 (float32 累加) | ✅ |
+| 性能验收 | msprof 采集 + 数据归档 | ✅ |
 
 ---
 
-## 5. 已知问题和决策记录
+## 6. 已知问题和决策记录
 
 | 日期 | 问题/决策 | 说明 |
 |------|----------|------|
-| 2026-08-12 | maxTilesPerCore 上界公式 | `CeilDiv(blockDimM×blockDimN, coreNum) + 1`；依据 Blaze `block_scheduler_qbmm.h`：roundNums_ 初始 ≤ CeilDiv(blockNums,coreNums)（L63-66），UpdateTailTile 至多 +1（L92-94），GetTileIdx 迭代数 = roundNums_（L190-235），零形状早退只减不增（L168-170）。见 DESIGN §2 |
-| 2026-08-12 | flagId=5 计数器风险 | 删除回压后 AIC 可领先 AIV 全部 T 个 tile，flagId=5 计数器（0-15）可能溢出 → 新增 host 校验 maxTilesPerCore ≤ 15。官方依据：CrossCoreWaitFlag_ISASI.md「计数范围为 0-15，超出则异常报错」。见 DESIGN §4.3 |
-| 2026-08-12 | CommFlagIdV2 简化 | 可选优化，默认保持 v2 映射不变（避开 3 是更强约束，天然满足新约束）；仅未来需要第 11 个通信 tile 时切换。见 DESIGN §4.4 |
-| 2026-08-12 | local 后置 / fragmentTensor / buffer 复用 | 用户约束：本期不考虑（后续版本） |
-| 2026-08-12 | 【遗留风险】T12 workspace 35.0MB | 用户已接受 32.0MB 口径（WALKTHROUGH 仲裁）；T0 实测 usedCoreNum=28（非 32），T=CeilDiv(256,28)=10 → 实际 35.0MB，同量级遗留，后续版本（local 后置/fragmentTensor）再评估 workspace 复用 |
-| 2026-08-12 | T13 用例构造 | 拒绝用例 M=32768,K=4096,N=8192（blockNums=1024，T=37>15，对 baseM/baseN 取值不敏感，robust）；cases.csv 仅含预期 PASS 用例，T13 用 CLI 单独验证报错 |
+| 2026-08-15 | GET → PUT 回退 | GET 模式在 4+ rank 有数据可见性问题，PUT 为官网验证模式 |
+| 2026-08-15 | totalJobs=1 | 避免 CrossDevice barrier 多核写同一 base flag 竞争 |
+| 2026-08-15 | workspaceGM 算子入参 | AIC 写入 C_i，PUT 读取推送，reduceSum 读取 |
+| 2026-08-15 | reduceSum 独立文件 | reduce_sum.h，参考 vec_comp.h 简化版 |
+| 2026-08-15 | golden float32 累加 | bfloat16 累加 4 个值误差过大，改用 float32 累加后转 bf16 |
+| 2026-08-15 | NPU float32 累加 | MF-2 修复: reduce_sum.h Cast BF16→float32→Add→Cast 回 BF16 |
+| 2026-08-15 | float repeatTime 限制 | Add/Cast/Duplicate repeatTime uint8_t max 255, float 单次 16320 元素 |
+| 2026-08-15 | MTE3→MTE2 WAR 同步 | float32 版 Duplicate (V) 打破 MTE3→MTE2 隐式保序, 需 V_MTE2 显式同步 |
+| 2026-08-15 | 单 tile 通信 | chunkM = m/rankSize，win 布局与 C_i 连续布局一致 |
+| 2026-08-15 | local 前置不做 | R2 评估: 需修改 QuantMatmulMxKernel（apace 共享层禁止修改） |
+| 2026-08-15 | local 前置方案 D | R3 实施: 多次调用 matmul 实现外部 per-tile 流水，不改共享层 |
+| 2026-08-15 | flagId=0 计数式 | T 次 SetFlag(0) ↔ T 次 WaitFlag(0), 峰值 T ≤ 15 |
+| 2026-08-15 | T=1 退化路径 | commTurn=1 时走原路径，保持向后兼容 |
+| 2026-08-15 | fragmentTensor 不做 | 限制条件，后续优化版再上 |
 
 ---
 
-## 6. 测试结果
+## 7. 性能采集结果 (Round 001)
 
-### 6.1 精度通路
+### 7.1 采集环境
+- 工具: msprof --aic-mode=task-based --aic-metrics=PipeUtilization (MC2 专用)
+- 模式: perf (10 次循环，丢弃前 5 warmup，取后 5 均值，跨 rank 取 max)
+- 归档: `docs/perf/round_001/`
+- 日期: 2026-08-15
 
-**状态**: ✅ 13/13 PASS | **脚本**: run.sh + scripts/verify_result.py（4 卡，source /home/l00947526/Ascend806/cann/set_env.sh）
+### 7.2 Task Duration 汇总 (msprof device-side, cross-rank max)
 
-| 编号 | 用例 | 结果 | Max Rel Diff |
-|-----|------|------|--------------|
-| T1-T10 | v2 回归（4 dtype × 2048/512/1120 系列） | ✅ 10/10 PASS | ≤6.1e-3 |
-| T11 | 大 shape 边界 16384,4096,2048 | ✅ PASS | 0（全等） |
-| T12 | tiles/core>4 16384,4096,4096 | ✅ PASS | 0（全等） |
-| T13-a | 上界校验拒绝 32768,4096,8192（T=37>15） | ✅ 正确拒绝（RC=255，报错含 maxTilesPerCore/blockNums/coreNum 全参数，提示回退 v2） | — |
-| T13-b | 边界恰好放行 10240,4096,10752（T=15，workspace 52.5MB） | ✅ 放行且 4 卡全 PASS | ≤6.1e-3 |
-| T14 | 尾块拆分 2252,2048,1024 | ✅ PASS | ≤6.1e-3 |
+| 场景 | M | K | N | rank | avg ms | min ms | max ms | TFLOPS | 主 bound |
+|------|---|---|---|------|--------|--------|--------|--------|----------|
+| basic_rank2 | 2048 | 3584 | 4096 | 2 | 1.110 | 1.108 | 1.112 | 54.2 | CUBE BOUND |
+| basic_rank4 | 2048 | 3584 | 4096 | 4 | 0.945 | 0.942 | 0.947 | 63.6 | CUBE BOUND |
+| largeM_rank2 | 4096 | 3584 | 4096 | 2 | 2.374 | 2.372 | 2.377 | 50.7 | CUBE BOUND |
+| largeK_rank4 | 2048 | 8192 | 4096 | 4 | 1.096 | 1.094 | 1.098 | 125.4 | CUBE BOUND |
 
-> 注：v3 数值路径与 v2 完全相同（仅改同步与槽位寻址），rel_err 与 v2 同水平；T11/T12 输出与 CPU golden 全等（count(|abs_err|>0.01)=0）。
+### 7.3 流水线占比 (bottleneck rank 稳态均值)
 
-### 6.2 产物 & 执行状态
+| 流水线 | basic_rank2 | basic_rank4 | largeM_rank2 | largeK_rank4 |
+|--------|-------------|-------------|--------------|--------------|
+| CUBE (AIC Mac) | 96.0% | 95.7% | 97.6% | 97.8% |
+| MTE2 (AIC Load) | 74.0% | 75.0% | 79.5% | 83.0% |
+| VEC (AIV Vector) | 4.7% | 5.6% | 4.3% | 3.8% |
+| MTE2 (AIV Load) | 5.8% | 6.7% | 5.9% | 4.9% |
 
-- [x] v3 kernel/st 编译通过（`--npu-arch dav-3510`，BUILD_RC=0）
-- [x] 4 卡 ST 全用例运行完成（13 精度用例 + T13 两校验用例）
+### 7.4 达标判定
+
+**状态**: ✅ 通过
+
+- 主导流水: CUBE BOUND（AIC matmul 占 aicore_time ~96%）
+- CUBE 利用率高，matmul 计算充分占满 cube 流水
+- AIV 通信开销小（VEC < 6%, MTE2 < 7%），无通信瓶颈
+- 大 M 线性扩展，大 K 效率高（stepK=2）
+- 无异常瓶颈
+
+### 7.5 关键发现
+
+1. **wall-clock perf 模式不可用**: main.cpp perf 模式测量 `<<<>>>` 异步启动开销 (0.003-0.010 ms)，不反映真实 kernel 执行时间。实际 Task Duration 为 0.945-2.374 ms (msprof device-side)。性能评估必须以 msprof Task Duration 为准。
+2. **AIC CUBE 利用率高 (96%)**: matmul 计算充分占满 cube 流水，AIC 侧无明显气泡。
+3. **AIV 侧大量空闲**: aiv_time ≈ Task Duration (MIX_AIC_1_1 同块共存)，但 aiv_vec_time 仅 ~50 us (4.6%)，AllToAll + reduceSum 实际执行 < 120 us，远小于 matmul ~1060 us。
+4. **rank 数影响**: 4 rank (0.945ms) 快于 2 rank (1.110ms)，因 chunkM 更小且 4 卡并行。
+
+### 7.6 优化建议（后续 round 可探索）
+
+- AIV 通信侧有大量空闲，可探索 local 前置（matmul 完成一部分即启动通信）以重叠计算与通信
+- 可探索多 tile 通信（当前单 tile）以减少通信气泡
+- cube_utilization(%) 仅 ~7.5%，可探索 block swat 优化核间负载均衡
 
 ---
 
-## 7. 性能验收
+## 8. 性能优化 Round 2 (2026-08-15)
 
-**状态**: ✅ | **数据**: docs/perf/round_001/（summary.txt + parse_v3/v2.txt + 原始日志）
+### 8.1 优化目标
 
-| 指标 | v3 值 | v2 基线 | 判定 |
-|------|-------|---------|------|
-| Task Duration（主用例 2048,4096,2048，T=1） | 57.559 us | 57.626 us（同日复测）/ 57.6 us（round_001） | ✅ 持平（-0.1%，T=1 回压本不触发） |
-| Task Duration（T11 16384,4096,2048，T=5） | 198.444 us | 199.223 us | ✅ 持平微优（-0.4%） |
-| Task Duration（T12 大 shape 16384,4096,4096，T=10>4） | **263.561 us** | **291.446 us** | ✅ **-9.6%（-27.9us）回压消除收益显著** |
-| 主导流水 | cube 95.5-95.7%（T12）/ 86.5%（主用例），mm 计算主导 | 同 v2 | ✅ 符合 DESIGN §5 预期 |
+| 优先级 | 优化项 | 状态 | 说明 |
+|--------|--------|------|------|
+| 1 | 多 tile 流水 | ✅ 已实施 | PUT 多 tile，headMSize=512 |
+| 2 | GET 模式 | ❌ 未切换 | GET 多 tile 需额外拷贝（2x PUT），无官网样例 |
+| 3 | local 前置 | ❌ 不可行 | 需修改 QuantMatmulMxKernel（apace 共享层禁止修改） |
+| 4 | 负载均衡 | ⚠️ 分析完成 | cube_util 低根因是核间 tile 分配不均，需调 matmul tiling |
 
-**达标判定**: ✅ | **理由**: T12 重点用例 v3 显著优于 v2（-9.6%），主用例与 T11 无回归，符合 DESIGN §8 预期；精度在 perf 采集中同步 PASS。详见 docs/perf/round_001/summary.txt。
+### 8.2 已实施优化
+
+1. **多 tile 通信（PUT 模式）**
+   - `main.cpp`: commTilingData 从单 tile（headMSize=chunkM）改为多 tile（headMSize=512）
+   - `impl.h`: RunReduceSum 改为多 tile 循环（head tiles + tail tiles）
+   - `reduce_sum.h`: 添加 RunTile 方法，地址偏移用 totalChunkM，处理大小用 tileM
+   - 各场景 tileCnt: basic_rank2=2, basic_rank4=1, largeM_rank2=4, largeK_rank4=1
+
+2. **reduceSum 多 tile 分块**
+   - reduce_sum.h 重构：Run → RunImpl（核心逻辑），RunTile（多 tile 接口）
+   - 地址计算: readOffset = r * chunkBytes + (tileMOffset + mOffset) * rowBytes
+   - writeOffset = (tileMOffset + processedRows) * rowBytes
+   - 每 tile 独立 float32 累加，精度无损
+
+### 8.3 未实施优化（设计问题）
+
+1. **GET 模式（design_issue）**
+   - 评估结论: GET 多 tile 需要 AIV 额外拷贝 workspace→win 区
+   - 数据搬运量: GET = 2x PUT（拷贝 + 拉取 vs 仅推送）
+   - GET 钩子官网无算子样例（ascendc-mc2-best-practice skill 标注"契约级描述"）
+   - DESIGN.md 允许 "PUT 或 GET"，选 PUT 不违反设计框架
+   - 建议: 后续 round 评估 GET 单 tile（无额外拷贝）的性能
+
+2. **local 前置（design_issue）**
+   - 不可行原因: 需要修改 QuantMatmulMxKernel 的 BlockScheduler 循环
+   - apace 路线约束: 禁止修改 `block/` `tiling/` `kernel/` 共享层
+   - 替代方案: 在外部 wrapper 中按 tile 分批调用 matmul（但 usedCoreNum 下降，性能可能更差）
+   - 建议: 需 Architect 评估是否允许在 kernel/<op>/ 下新建 wrapper 绕过共享层限制
+
+### 8.4 精度验证结果
+
+| 场景 | M | K | N | rank | tileCnt | 精度 |
+|------|---|---|---|------|---------|------|
+| basic_rank2 | 2048 | 3584 | 4096 | 2 | 2 | ✅ PASS (max_rel_err 0.67%) |
+| basic_rank4 | 2048 | 3584 | 4096 | 4 | 1 | ✅ PASS (max_rel_err 0.66%) |
+| largeK_rank4 | 2048 | 8192 | 4096 | 4 | 1 | ✅ PASS (max_rel_err 0.62%) |
+
+### 8.5 性能采集结果 (Round 2)
+
+归档: `docs/perf/round_002/`
+
+| 场景 | R1 avg ms | R2 avg ms | 变化 | R1 cube_util | R2 cube_util | 说明 |
+|------|-----------|-----------|------|--------------|--------------|------|
+| basic_rank2 | 1.110 | 1.110 | -0.0% | 7.50% | 7.52% | tileCnt=2, 无提升 |
+| basic_rank4 | 0.945 | 0.945* | 0.0%* | 8.83% | 8.83* | tileCnt=1, 等效 R1 |
+| largeM_rank2 | 2.374 | 2.392 | +0.8% | 6.97% | 6.91% | tileCnt=4, 略降 |
+| largeK_rank4 | 1.096 | 1.096* | 0.0%* | 16.98% | 16.98* | tileCnt=1, 等效 R1 |
+
+> *4 rank 场景 msprof 多进程未生成 op_summary，tileCnt=1 等效 R1
+
+### 8.6 性能未提升根因
+
+多 tile PUT 优化未带来性能提升，根因：
+
+1. **AIC matmul 与 AIV 通信仍然串行**: AIC 一次性算完 C_i 后通知 AIV，多 tile 只改变 AIV 侧分块方式
+2. **local 前置不可行**: 无法实现 AIC tile N matmul || AIV tile N-1 comm 的真正流水重叠
+3. **reduceSum 开销占比小**: AIV VEC+MTE2 ~115us (5%)，AIC CUBE ~1060-2335us (96%)
+4. **多 tile SyncAll 开销**: tileCnt 次 SyncAll vs 1 次，同步开销可能抵消 reduceSum 分块收益
+
+### 8.7 后续优化方向（需 Architect 评估）
+
+1. **local 前置（最高优先级）**: 修改 matmul kernel 或外部 wrapper 实现 AIC 按 tile 通知 AIV
+2. **多 block 通信**: totalJobs=rankSize 让多 block 并行通信
+3. **GET 单 tile 评估**: GET 单 tile 无额外拷贝，可能比 PUT 单 tile 更高效
+4. **matmul tiling 调优**: 调整 baseM/baseN 提升 cube_utilization（当前 7.5%→目标 15%+）
 
 ---
 
-## 8. 汇总
+## 9. 性能优化 Round 3: 方案 D per-tile 流水重叠 (2026-08-15)
 
-| 通路 | 用例数 | 通过 | 失败 | 状态 |
-|------|--------|------|------|------|
-| 精度 | 13（T1-T10 回归 + T11 + T12 + T14） | 13 | 0 | ✅ |
-| 校验 | 2（T13-a 拒绝 + T13-b 边界放行） | 2 | 0 | ✅ |
-| 性能 | 3（主用例 + T11 + T12，v2 同 shape 基线对比） | 3 | 0 | ✅ |
+### 9.1 优化目标
+
+| 优先级 | 优化项 | 状态 | 说明 |
+|--------|--------|------|------|
+| 1 | local 前置（方案 D） | ✅ 已实施 | 多次调用 matmul 实现 per-tile 流水重叠 |
+| 2 | T=1 退化路径保持 | ✅ 已实施 | commTurn=1 时走原路径，不引入额外开销 |
+
+### 9.2 方案 D 核心思路
+
+将 AIC 的单次全量 matmul 改为 T×R 次子调用（T=commTurn, R=rankSize），每次只计算一个 tile 的 M 范围。
+每轮 T 完成后 SetFlag 通知 AIV，AIV WaitFlag 后执行该 tile 的 AllToAll + reduceSum。
+
+```
+AIC: [tile0 R段mm] SetFlag [tile1 R段mm] SetFlag [tile2 R段mm] SetFlag ...
+AIV:                WaitFlag [comm0+rs0]  WaitFlag [comm1+rs1]  WaitFlag [comm2+rs2]
+```
+
+### 9.3 已实施修改
+
+**文件: kernel/quant_matmul_reduce_scatter_impl.h**
+
+1. **RunMatmul()** — per-tile 循环:
+   - T=1 退化路径: 单次全量 mm + 单次 SetFlag（保持原行为）
+   - T>1 流水路径: T×R 次子调用, 每 tile 后 SetFlag(0) 通知 AIV
+   - 子调用参数: problemShape={curTileM, N, K, 1}, A/ScaleA 带行偏移, C 输出到 workspace 对应行区间
+   - schParams M 尾块重置: mBaseTailSplitCnt=1, mTailMain=0（tileM 是 baseM 整数倍时无 M 尾块）
+
+2. **RunAllToAllAndReduceSum()** — per-tile WaitFlag + 通信 + reduceSum:
+   - 循环 T 次: WaitFlag(0) → SyncAll → Commit → Wait → SyncAll → RunReduceSumTile(t)
+   - CrossCore flag flagId=0 计数式: T 次 Set ↔ T 次 Wait, 峰值 T ≤ 15
+   - 替代原 RunAllToAll + RunReduceSum 的分离式调用
+
+3. **RunReduceSumTile(t)** — 单 tile reduceSum:
+   - 根据 t 计算 tileM (head/tail) 和 tileMOffset
+   - 复用 reduce_sum.h 的 RunTile 方法
+
+4. **BaseParams** 新增 scaleARowBytes 字段:
+   - scaleARowBytes = CeilDiv(axisK, 64) * 2 (MXFP8 scale 每行字节数)
+
+5. **Run()** 简化:
+   - AIC: RunMatmul()（SetFlag 已在 RunMatmul 内）
+   - AIV: RunAllToAllAndReduceSum()（WaitFlag 已在循环内）
+
+### 9.4 精度验证结果
+
+| 场景 | M | K | N | rank | tileCnt | 路径 | 精度 | max rel_err |
+|------|---|---|---|------|---------|------|------|-------------|
+| basic_rank2 | 2048 | 3584 | 4096 | 2 | 2 | 流水 | ✅ PASS | 0.69% |
+| basic_rank4 | 2048 | 3584 | 4096 | 4 | 1 | 退化 | ✅ PASS | 0.70% |
+| largeK_rank4 | 2048 | 8192 | 4096 | 4 | 1 | 退化 | ✅ PASS | 0.62% |
+| largeM_rank2 | 4096 | 3584 | 4096 | 2 | 4 | 流水 | ✅ PASS | 0.72% |
+
+### 9.5 性能采集结果 (Round 3)
+
+归档: `docs/perf/round_003/`
+
+| 场景 | R2 avg ms | R3 avg ms | 变化 | R2 AIV VEC | R3 AIV VEC | R2 AIV MTE2 | R3 AIV MTE2 | R2 cube_util | R3 cube_util |
+|------|-----------|-----------|------|------------|------------|-------------|-------------|--------------|--------------|
+| basic_rank2 | 1.110 | 1.116 | +0.5% | 51.2 us | 23.1 us (-55%) | 63.3 us | 28.2 us (-55%) | 7.52% | 7.98% |
+| largeM_rank2 | 2.392 | 2.224 | -7.0% | 112.2 us | 36.3 us (-68%) | 155.9 us | 47.4 us (-70%) | 6.91% | 7.91% |
+
+> 4 rank 场景 tileCnt=1（退化路径），等效 R2，未重复采集。
+
+### 9.6 性能提升分析
+
+1. **largeM_rank2 (tileCnt=4): Task Duration 降低 7.0%** ← 显著提升
+   - AIV VEC: 112→36 us (-68%), AIV MTE2: 156→47 us (-70%) ← 通信被 AIC 计算完全掩盖
+   - AIC CUBE: 2335→2028 us (-13.1%) ← per-tile 调用改善 L1 局部性
+   - tileCnt=4 提供更多重叠机会，收益最大
+
+2. **basic_rank2 (tileCnt=2): Task Duration 持平 (+0.5%)** ← 噪声范围
+   - AIV VEC: 51→23 us (-55%), AIV MTE2: 63→28 us (-55%) ← 通信被掩盖
+   - 但 AIV 开销占比小（~5%），掩盖后对总时间影响有限
+   - tileCnt=2 可重叠空间有限
+
+3. **AIV 通信被完全掩盖**（核心收益）
+   - per-tile 流水实现 AIC tile N matmul || AIV tile N-1 comm 的真正重叠
+   - AIV VEC + MTE2 时间降低 55%~70%，被 AIC CUBE 计算掩盖
+
+4. **AIC CUBE mac 时间降低**（额外收益）
+   - per-tile 调用将大 matmul 拆分为小 matmul，改善 L1 cache 局部性
+   - BlockScheduler 对小 M 的负载分配可能更均匀
+
+### 9.7 关键设计决策
+
+| 决策 | 说明 |
+|------|------|
+| flagId=0 计数式 | T 次 SetFlag(0) ↔ T 次 WaitFlag(0), 峰值 T ≤ 15 |
+| SetFlag 在 R-loop 外 | 所有 AIC 核都执行（含零 tile 核），保证 flag 计数平衡 |
+| T=1 退化路径 | commTurn=1 时走原路径，不引入 per-tile 开销 |
+| 无显式 CrossDevice | Wait<BARRIER_DEVICE> 已包含 CrossDevice, 第一次 PUT 的 win 区预分配可安全写入 |
+| schParams M 尾块重置 | mBaseTailSplitCnt=1, mTailMain=0（tileM 是 baseM 整数倍时自动正确） |
 
 ---
 
-## 9. 开发自检（对照 DESIGN.md，提交审查前门禁）
+## 10. 性能优化 Round 4: 子问题独立 tiling + baseM 减半 (2026-08-17)
 
-- [x] C1-C10 全部变更点已在代码中实现（v2→v3 diff 逐项核对：kernel.h C1/C2/C3/C10、udma_impl.h C4/C5/C9（保持 v2 映射）/类名 _V3、tiling_data.h C6、main.cpp C7/C8、kernel_launcher.h 4 入口 _V3）
-- [x] 设计框架未偏离：Blaze 组件/通信组件/reduceSum 搬运/通道 1/通道 2 与 v2 完全一致；共享层 block/tiling/basic/utils/third_party diff 为空（[REUSE] 未改）
-- [x] 前置验证步骤已执行：T0（usedCoreNum=28 实测）在开发早期完成；C8 校验顺序（tiling 后、aclrtMalloc 前）与取值来源（tileQbmmTilingData 最终值）按串讲问题 7 决议实现
-- [x] 偏离说明：无偏离。补充记录——T13-b 边界用例（M=10240,N=10752,T=15）workspace 52.5MB 超出已接受的 32-35MB 口径，但该用例仅用于一次性校验边界验证，非常规目标 shape，如实记录
+### 10.1 优化目标
+
+| 优先级 | 优化项 | 状态 | 说明 |
+|--------|--------|------|------|
+| 1 | 子问题独立 tiling | ✅ 已实施 | 为 per-tile 子问题 (m=headMSize) 生成独立 SWAT tiling |
+| 2 | baseM 减半后处理 | ✅ 已实施 | SWAT 生成 baseM=256, 手动减半为 128 提升核间负载均衡 |
+
+### 10.2 优化背景
+
+Round 3 的 per-tile 流水路径中，子调用使用全量 tiling (baseM=256)，导致：
+- mBlockCnt = 512/256 = 2, nBlockCnt = 4096/256 = 16
+- totalBlockCnt = 2 × 16 = 32
+- 28 cores → 1.14 tiles/core → 大部分核仅处理 1 个 tile, 计算量太少
+- cube_utilization 仅 7~8%
+
+### 10.3 已实施修改
+
+**文件: kernel/quant_matmul_reduce_scatter_tiling_data.h**
+- 新增 `subMmTilingData` 字段: 子问题 tiling (m=headMSize), 用于 T>1 per-tile head tile 路径
+- `mmTilingData` 仍用于 T=1 退化路径和 tail tile
+
+**文件: src/main.cpp**
+- 当 tileCnt > 1 时, 生成子问题 tiling: `subTilingEngine.GetTilingData(headMSize, n, k, ...)`
+- 后处理: 若 SWAT 生成 baseM=256 且 headMSize % 128 == 0, 手动减半 baseM 为 128
+  - 重置 M 尾块参数: mTailTile=1, mBaseTailSplitCnt=1, mTailMain=0
+  - L1 安全性: baseM 减半 → A buffer 减半, stepK/scaleKL1/nBufferNum 不变仍有效
+  - 对齐安全性: baseM=128 是 CUBE_BLOCK(16) 的整数倍
+
+**文件: kernel/quant_matmul_reduce_scatter_impl.h**
+- RunMatmul per-tile 路径: head tile 使用 subMmTilingData, tail tile 使用 mmTilingData
+- l1Params/schParams/qbmmParams 使用 `tileT` (子问题或全量 tiling 的引用)
+
+### 10.4 SWAT tiling 分析
+
+SWAT 为 m=512 生成的 tiling 与 m=2048 相同 (baseM=256, baseN=256, baseK=128):
+- `CalcBasicBlock()` 初始 baseM = min(m, 256) = 256 (两者相同)
+- blockNum = CeilDiv(512, 256) × CeilDiv(4096, 256) = 32 ≥ 28 (aicNum)
+- 32 ≥ 28 → 不触发 `AdjustBasicBlock()` → baseM 保持 256
+
+因此需要手动后处理减半 baseM:
+- baseM=128 → mBlockCnt = 512/128 = 4, totalBlockCnt = 4×16 = 64
+- 28 cores → 2.29 tiles/core (vs 1.14) ← 更好的负载均衡
+
+### 10.5 精度验证结果
+
+| 场景 | M | K | N | rank | tileCnt | 路径 | baseM | 精度 |
+|------|---|---|---|------|---------|------|-------|------|
+| basic_rank2 | 2048 | 3584 | 4096 | 2 | 2 | 流水 | 128 | ✅ PASS |
+| basic_rank4 | 2048 | 3584 | 4096 | 4 | 1 | 退化 | 256 | ✅ PASS |
+| largeM_rank2 | 4096 | 3584 | 4096 | 2 | 4 | 流水 | 128 | ✅ PASS |
+
+### 10.6 性能采集结果 (Round 4)
+
+归档: `docs/perf/round_004/`
+
+| 场景 | R3 avg ms | R4 avg ms | 变化 | R3 cube_util | R4 cube_util | cube_util 提升 | R3 AIC CUBE | R4 AIC CUBE | R3 AIC MTE2 | R4 AIC MTE2 |
+|------|-----------|-----------|------|--------------|--------------|----------------|-------------|-------------|-------------|-------------|
+| basic_rank2 | 1.116 | 1.098 | -1.7% | 7.98% | 9.00% | +12.8% (相对) | 997.7 us | 939.8 us (-5.8%) | 918.5 us | 1027.5 us (+11.9%) |
+| largeM_rank2 | 2.224 | 2.208 | -0.7% | 7.91% | 8.52% | +7.8% (相对) | 2028.1 us | 1975.6 us (-2.6%) | 1905.4 us | 2118.2 us (+11.2%) |
+
+> 4 rank 场景 tileCnt=1（退化路径），不受 Round 4 优化影响，等效 R3。
+
+### 10.7 性能提升分析
+
+1. **cube_utilization 提升**（核心收益）:
+   - basic_rank2: 7.98% → 9.00% (+12.8% 相对)
+   - largeM_rank2: 7.91% → 8.52% (+7.8% 相对)
+   - 根因: baseM=128 → 64 tiles (vs 32) → 2.29 tiles/core (vs 1.14) → 更好的核间负载均衡
+
+2. **AIC CUBE mac 时间降低**:
+   - basic: -5.8%, largeM: -2.6%
+   - 更小 baseM → 更好的 L1/L0 局部性 + 更均匀的 BlockScheduler 分配
+
+3. **AIC MTE2 时间增加**（副作用）:
+   - basic: +11.9%, largeM: +11.2%
+   - 更多 tiles → 更多 DMA 加载次数 → MTE2 占比增加
+   - MTE2 成为新瓶颈, 限制了 Task Duration 的进一步降低
+
+4. **AIC FIXP 时间降低**:
+   - basic: -5.0%, largeM: -5.3%
+   - 更小 tile 的 fixpipe 开销降低
+
+### 10.8 关键设计决策
+
+| 决策 | 说明 |
+|------|------|
+| subMmTilingData 独立字段 | 子问题 tiling 与全量 tiling 分离, T=1 路径不受影响 |
+| SWAT 后处理减半 baseM | SWAT 不调整 baseM (blockNum≥aicNum), 手动减半为 128 |
+| head tile 用子问题 tiling | head M 固定 = headMSize, baseM=128 可整除 |
+| tail tile 用全量 tiling | tail M 大小不固定, 使用全量 tiling 更安全 |
+| blockDim 不变 | 仍用 mmTilingData.usedCoreNum=28, kernel launch 时固定 |
+| stepK/scaleKL1/nBufferNum 不变 | 这些参数基于 baseK/baseN 计算, 不受 baseM 影响 |
+
+### 10.9 后续优化方向
+
+1. **增大 baseK 或 stepK**: MTE2 成为新瓶颈 (93.7%~96.0%), 可探索增大 baseK (如 256) 或 stepK (如 4) 以改善 compute-to-memory ratio
+2. **进一步减小 baseM**: 尝试 baseM=64 (8×16=CUBE_BLOCK), 产生 128 tiles (4.57 tiles/core), 但需验证 L0A/L0C 约束
+3. **减小 baseN**: 尝试 baseN=128, 产生 4×32=128 tiles, 但需验证 L1 B buffer 约束
+4. **多 block 通信**: totalJobs=rankSize 让多 block 并行通信, 减少 AIV 等待

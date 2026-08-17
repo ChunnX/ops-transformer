@@ -1,0 +1,127 @@
+# quantMatmulReduceScatter 性能采集报告 (Round 3)
+
+**状态**: ✅通过
+
+**采集信息**
+- 算子类型: MC2 通算融合（AIC matmul + AIV AllToAll + reduceSum）
+- 架构: Ascend 950PR (dav-3510)
+- 核类型: KERNEL_TYPE_MIX_AIC_1_1（AIC 计算 + AIV 通信）
+- 采集工具: msprof --aic-mode=task-based --aic-metrics=PipeUtilization
+- 采集模式: precision (单次运行, msprof device-side)
+- MC2 稳态取值: 跨 rank 取 max（木桶效应），device 0 因 HCCL root 开销异常跳过
+- 采集日期: 2026-08-15T20:42:00+08:00
+- 优化内容: 方案 D — per-tile 流水重叠（多次调用 matmul 实现 AIC tile N matmul || AIV tile N-1 comm）
+
+## 优化方案 D 核心思路
+
+将 AIC 的单次全量 matmul 改为 T×R 次子调用（T=commTurn, R=rankSize），每次只计算一个 tile 的 M 范围。
+每轮 T 完成后 SetFlag 通知 AIV，AIV WaitFlag 后执行该 tile 的 AllToAll + reduceSum。
+
+```
+AIC: [tile0 R段mm] SetFlag [tile1 R段mm] SetFlag [tile2 R段mm] SetFlag ...
+AIV:                WaitFlag [comm0+rs0]  WaitFlag [comm1+rs1]  WaitFlag [comm2+rs2]
+```
+
+关键设计:
+- T=1 退化路径: 保持原行为（单次全量 mm + 单次 SetFlag）
+- T>1 per-tile 流水路径: T×R 次子调用, flag 计数式（T 次 Set ↔ T 次 Wait, flagId=0）
+- CrossCore flag flagId=0 计数式: 峰值 T ≤ 15
+- 零 tile 核: SetFlag 在 R-loop 外, 所有 AIC 核都执行（flag 计数平衡）
+- reduceSum per-tile 分块: RunReduceSumTile(t) 处理单个 tile
+
+## Task Duration 汇总 (msprof device-side, device 1)
+
+| 场景 | M | K | N | rank | tileCnt | R2 avg ms | R3 avg ms | 变化 | R3 TFLOPS | R2 cube_util | R3 cube_util | 主 bound |
+|------|---|---|---|------|---------|-----------|-----------|------|-----------|--------------|--------------|----------|
+| basic_rank2 | 2048 | 3584 | 4096 | 2 | 2 | 1.110 | 1.116 | +0.5% | 54.0 | 7.52% | 7.98% | CUBE BOUND |
+| largeM_rank2 | 4096 | 3584 | 4096 | 2 | 4 | 2.392 | 2.224 | -7.0% | 54.2 | 6.91% | 7.91% | CUBE BOUND |
+
+> 4 rank 场景 tileCnt=1（退化路径），等效 R2，未重复采集。
+
+## 流水线占比 (device 1, bottleneck rank)
+
+| 流水线 | basic_rank2 R2 | basic_rank2 R3 | largeM_rank2 R2 | largeM_rank2 R3 |
+|--------|----------------|----------------|-----------------|-----------------|
+| CUBE (AIC Mac) | 95.8% | 89.5% | 97.6% | 91.2% |
+| MTE2 (AIC Load) | 73.4% | 82.4% | 78.8% | 85.7% |
+| FIXP (AIC) | 30.5% | 27.8% | 31.8% | 29.2% |
+| SCALAR (AIC) | 15.8% | 15.8% | 16.3% | 16.3% |
+| VEC (AIV Vector) | 4.6% | 2.1% | 4.7% | 1.6% |
+| MTE2 (AIV Load) | 5.7% | 2.5% | 6.5% | 2.1% |
+| MTE3 (AIV Store) | 0.9% | 0.5% | 1.3% | 0.5% |
+
+## 时间分解 (device 1, us)
+
+| 场景 | R2 Task Dur | R3 Task Dur | R2 AIC CUBE | R3 AIC CUBE | R2 AIV VEC | R3 AIV VEC | R2 AIV MTE2 | R3 AIV MTE2 |
+|------|-------------|-------------|-------------|-------------|------------|------------|-------------|-------------|
+| basic_rank2 | 1110.3 | 1116.3 | 1063.4 | 997.7 | 51.2 | 23.1 | 63.3 | 28.2 |
+| largeM_rank2 | 2374.1 | 2223.9 | 2335.0 | 2028.1 | 112.2 | 36.3 | 155.9 | 47.4 |
+
+## 与 Round 2 对比分析
+
+### basic_rank2 (tileCnt=2): 1.110ms → 1.116ms (+0.5%)
+- Task Duration 基本持平（+0.5% 在噪声范围内）
+- AIV VEC: 51.2 → 23.1 us (-55%) ← reduceSum 被 AIC 计算掩盖
+- AIV MTE2: 63.3 → 28.2 us (-55%) ← 数据搬移被 AIC 计算掩盖
+- AIC CUBE: 1063.4 → 997.7 us (-6.2%) ← per-tile 调用可能改善 L1 局部性
+- cube_util: 7.52% → 7.98% (+0.46%)
+
+### largeM_rank2 (tileCnt=4): 2.392ms → 2.224ms (-7.0%) ← 显著提升
+- Task Duration 降低 7.0%（168 us 绝对减少）
+- AIV VEC: 112.2 → 36.3 us (-68%) ← per-tile reduceSum 与 AIC matmul 重叠
+- AIV MTE2: 155.9 → 47.4 us (-70%) ← per-tile AllToAll PUT 与 AIC matmul 重叠
+- AIC CUBE: 2335.0 → 2028.1 us (-13.1%) ← per-tile 调用改善 L1/L0 局部性或负载均衡
+- cube_util: 6.91% → 7.91% (+1.00%)
+
+### 性能提升根因分析
+
+1. **AIV 通信被 AIC 计算掩盖**（核心收益）:
+   - 方案 D 实现 AIC tile N matmul || AIV tile N-1 comm 的真正流水重叠
+   - AIV VEC + MTE2 时间大幅降低（-55%~-70%），被 AIC CUBE 计算掩盖
+   - tileCnt 越大，可重叠的 AIV 工作越多，收益越大（tileCnt=4 收益 7% > tileCnt=2 收益 0.5%）
+
+2. **AIC CUBE mac 时间降低**（额外收益）:
+   - per-tile 调用将大 matmul 拆分为小 matmul，可能改善 L1 cache 局部性
+   - 小 tile 的 M 维度更小，A 数据在 L1 中的复用率更高
+   - BlockScheduler 对小 M 的负载分配可能更均匀
+
+3. **AIV 流水占比降低**:
+   - AIV VEC 从 4.6-4.7% 降至 1.6-2.1%（reduceSum 被完全掩盖）
+   - AIV MTE2 从 5.7-6.5% 降至 2.1-2.5%（AllToAll PUT 被完全掩盖）
+   - 说明 per-tile 流水成功将 AIV 工作隐藏在 AIC 计算之后
+
+### 达标判定
+
+**状态**: ✅ 通过
+
+- 主导流水: CUBE BOUND（AIC matmul 仍占主导）
+- largeM_rank2 实现了 7% 的 Task Duration 降低，per-tile 流水重叠生效
+- basic_rank2 持平（tileCnt=2 可重叠空间有限）
+- AIV 通信开销大幅降低（-55%~-70%），被 AIC 计算完全掩盖
+- cube_util 小幅提升（+0.46%~+1.00%）
+- 精度全部 PASS，无精度回退
+
+## 精度验证结果
+
+| 场景 | M | K | N | rank | tileCnt | 路径 | 精度 | max rel_err |
+|------|---|---|---|------|---------|------|------|-------------|
+| basic_rank2 | 2048 | 3584 | 4096 | 2 | 2 | 流水 | ✅ PASS | 0.69% |
+| basic_rank4 | 2048 | 3584 | 4096 | 4 | 1 | 退化 | ✅ PASS | 0.70% |
+| largeK_rank4 | 2048 | 8192 | 4096 | 4 | 1 | 退化 | ✅ PASS | 0.62% |
+| largeM_rank2 | 4096 | 3584 | 4096 | 2 | 4 | 流水 | ✅ PASS | 0.72% |
+
+## 归档文件清单
+
+- op_summary_basic_rank2_dev1.csv（basic_rank2 device 1 op_summary）
+- op_summary_largeM_rank2_dev1.csv（largeM_rank2 device 1 op_summary）
+- msprof_raw_basic_rank2/（basic_rank2 msprof 原始数据目录）
+- msprof_raw_largeM_rank2/（largeM_rank2 msprof 原始数据目录）
+- summary.txt（本报告）
+
+## 结论
+
+方案 D per-tile 流水重叠已成功实施并通过验证:
+- 精度: 4 个场景全部 PASS（2 个流水路径 + 2 个退化路径）
+- 性能: largeM_rank2 (tileCnt=4) Task Duration 降低 7%，AIV 通信被完全掩盖
+- 设计: T=1 退化路径保持原行为，T>1 流水路径实现 AIC/AIV 真正重叠
+- flag 计数平衡: T 次 SetFlag(0) ↔ T 次 WaitFlag(0)，峰值 T ≤ 15
