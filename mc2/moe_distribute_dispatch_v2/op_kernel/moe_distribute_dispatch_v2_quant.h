@@ -124,6 +124,27 @@ public:
 #endif
     }
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    // 保留输入和smooth scale的MTE2依赖，仅用于FullMeshV2的per-group计算旁路对照。
+    __aicore__ inline void PreparePerGroupInputsForProfile(uint32_t expertIndex,
+                                                           GlobalTensor<float> &scalesGMTensor_)
+    {
+        if constexpr (QuantMode == PERGROUP_DYNAMIC_QUANT) {
+            if constexpr (IsSmoothScaleExist) {
+                DataCopyPad(smoothScalesTensor_, scalesGMTensor_[expertIndex * axisH_], scalesInParams_,
+                            scalesPadParams_);
+            }
+            SyncFunc<AscendC::HardEvent::MTE2_V>();
+            if constexpr (IsSmoothScaleExist) {
+                if (smoothTailCount_ > 0U) {
+                    Duplicate<float>(smoothScalesTensor_[smoothTailOffset_], 0.0f, smoothTailCount_);
+                    PipeBarrier<PIPE_V>();
+                }
+            }
+        }
+    }
+#endif
+
     __aicore__ inline void QuantStatic(LocalTensor<XOutType> &outLocal, LocalTensor<XInType> &inLocal,
                                        uint32_t expertIndex, uint32_t scalesCount_,
                                        GlobalTensor<float> &scalesGMTensor_)
