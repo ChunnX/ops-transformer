@@ -101,9 +101,9 @@ public:
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         // value_l1
         value_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
-        l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
+        l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         value_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
-        l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
+        l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         // dy_l1
         dy_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
