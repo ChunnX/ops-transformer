@@ -57,21 +57,21 @@ static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *con
 
     sparseIndicesShape->SetDimNum(queryShape->GetDimNum());
     if (inputLayoutQueryPtrStr == "BSND") {
-        OP_CHECK_IF(
-            queryShape->GetDimNum() != 4,
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("LightningIndexerV2", "q",
-                                                     std::to_string(queryShape->GetDimNum()).c_str(), "When in BSND case, the shape dim of q must be 4"),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(queryShape->GetDimNum() != 4,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("LightningIndexerV2", "q",
+                                                             std::to_string(queryShape->GetDimNum()).c_str(),
+                                                             "When in BSND case, the shape dim of q must be 4"),
+                    return ge::GRAPH_FAILED);
         sparseIndicesShape->SetDim(0, queryShape->GetDim(0)); // 0:Dim B
         sparseIndicesShape->SetDim(1, queryShape->GetDim(1)); // 1:Dim S
         sparseIndicesShape->SetDim(2, keyShape->GetDim(2));   // 2:Dim N
         sparseIndicesShape->SetDim(3, *seleced_count);        // 3:Dim K
     } else {
-        OP_CHECK_IF(
-            queryShape->GetDimNum() != 3,
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("LightningIndexerV2", "q",
-                                                     std::to_string(queryShape->GetDimNum()).c_str(), "When in TND case, the shape dim of q must be 3"),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(queryShape->GetDimNum() != 3,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("LightningIndexerV2", "q",
+                                                             std::to_string(queryShape->GetDimNum()).c_str(),
+                                                             "When in TND case, the shape dim of q must be 3"),
+                    return ge::GRAPH_FAILED);
         sparseIndicesShape->SetDim(0, queryShape->GetDim(0));            // 0:Dim T
         int32_t nDimIndex = (inputLayoutKeyPtrStr == "PA_BBND") ? 2 : 1; // 2:Key Dim N
         sparseIndicesShape->SetDim(1, keyShape->GetDim(nDimIndex));      // 1:Dim N
