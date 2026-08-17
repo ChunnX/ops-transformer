@@ -168,7 +168,7 @@ private:
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                          RunInfo &runInfo, ConstInfo &constInfo, uint32_t roundIdx);
     __aicore__ inline void FinalizeVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                        RunInfo &runInfo, ConstInfo &constInfo, bool hasRound1);
+                                        RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void CopyRoundToL1(LocalTensor<INPUT_T> &dstTensor, LocalTensor<INPUT_T> &srcTensor,
                                          uint32_t roundIdx, uint32_t realK);
     __aicore__ inline void ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
@@ -243,13 +243,10 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1_1(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
 {
-  bool hasRound1 = runInfo.s2SparseBlkRealSize[2] + runInfo.s2SparseBlkRealSize[3] > 0;
-  if (hasRound1) {
+  if (runInfo.hasRound1) {
     ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, constInfo, 1U);
-    FinalizeVec1(outputBuf, runInfo, constInfo, true);
-  } else {
-    FinalizeVec1(outputBuf, runInfo, constInfo, false);
   }
+  FinalizeVec1(outputBuf, runInfo, constInfo);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -386,15 +383,14 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::CopyRoundToL1(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::FinalizeVec1(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo,
-    bool hasRound1)
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo)
 {
   uint32_t round0RealSize = static_cast<uint32_t>(runInfo.s2SparseBlkRealSize[0] +
                                                   runInfo.s2SparseBlkRealSize[1]);
   uint32_t round1RealSize = static_cast<uint32_t>(runInfo.s2SparseBlkRealSize[2] +
                                                   runInfo.s2SparseBlkRealSize[3]);
   LocalTensor<INPUT_T> p0 = round0StageTensor[runInfo.taskIdMod2];
-  if (hasRound1) {
+  if (runInfo.hasRound1) {
     LocalTensor<float> alpha1 = round1ExpBuf.template Get<float>();
     LocalTensor<float> combinedAlpha = softmaxExpBuf[runInfo.taskIdMod3].template Get<float>();
     FaVectorApi::RescaleRound0(p0, alpha1, round0RealSize);
@@ -408,7 +404,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::FinalizeVec1(
 
   LocalTensor<INPUT_T> pL1 = outputBuf.template GetTensor<INPUT_T>();
   CopyRoundToL1(pL1, p0, 0U, round0RealSize);
-  if (hasRound1) {
+  if (runInfo.hasRound1) {
     LocalTensor<INPUT_T> p1 = round1StageTensor[runInfo.taskIdMod2];
     CopyRoundToL1(pL1, p1, 1U, round1RealSize);
     stage1OutQue[runInfo.taskIdMod2 * 2U + 1U].template FreeTensor(p1);

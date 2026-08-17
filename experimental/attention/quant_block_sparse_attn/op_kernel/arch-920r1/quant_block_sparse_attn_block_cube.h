@@ -448,8 +448,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
     uint32_t secondSlot = firstSlot + 1U;
     uint32_t actualS2RealSize = static_cast<uint32_t>(runInfo.s2SparseBlkRealSize[firstSlot] +
                                                       runInfo.s2SparseBlkRealSize[secondSlot]);
-    bool hasRound1 = runInfo.s2SparseBlkRealSize[2] + runInfo.s2SparseBlkRealSize[3] > 0;
-    bool isLastRound = roundIdx == 1U || !hasRound1;
+    bool isLastRound = roundIdx == 1U || !runInfo.hasRound1;
     Buffer<BufferType::L1> mm1A;
     Buffer<BufferType::L1> mm1B;
     if (unlikely(runInfo.s2LoopCount == 0 && roundIdx == 0U)) {
@@ -601,8 +600,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
     uint32_t secondSlot = firstSlot + 1U;
     uint32_t roundRealSize = static_cast<uint32_t>(runInfo.s2SparseBlkRealSize[firstSlot] +
                                                    runInfo.s2SparseBlkRealSize[secondSlot]);
-    bool hasRound1 = runInfo.s2SparseBlkRealSize[2] + runInfo.s2SparseBlkRealSize[3] > 0;
-    bool isLastRound = roundIdx == 1U || !hasRound1;
+    bool isLastRound = roundIdx == 1U || !runInfo.hasRound1;
     // 计算key的offset
     Buffer<BufferType::L1> mm1A;
     Buffer<BufferType::L1> mm1B;
