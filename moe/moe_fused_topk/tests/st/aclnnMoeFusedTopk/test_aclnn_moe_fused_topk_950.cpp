@@ -24,11 +24,7 @@
 
 namespace {
 
-enum class InputType {
-    kFp32,
-    kFp16,
-    kBf16
-};
+enum class InputType { kFp32, kFp16, kBf16 };
 
 struct TestCase {
     const char *name;
@@ -356,7 +352,7 @@ bool RunTestCase(const TestCase &testCase, aclrtStream stream)
     return false;
 }
 
-} // namespace
+}  // namespace
 
 int main()
 {

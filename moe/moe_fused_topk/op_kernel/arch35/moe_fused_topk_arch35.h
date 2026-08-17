@@ -42,8 +42,8 @@ __aicore__ inline void MoeFusedTopk<inputT, calT, enableExpertMapping>::GroupRed
     LocalTensor<int32_t> indicesLocal = sortedTensor[wholeSortNum_].template ReinterpretCast<int32_t>();
     LocalTensor<bool> finishLocal;
     AscendC::TopKInfo topkInfo = {static_cast<int32_t>(groupNum_),
-                                  CeilAlign(static_cast<int32_t>(groupEles_), SORT_UNIT),
-                                  static_cast<int32_t>(groupEles_)};
+                                    CeilAlign(static_cast<int32_t>(groupEles_), SORT_UNIT),
+                                    static_cast<int32_t>(groupEles_)};
     AscendC::TopK<calT, false, false, false, TopKMode::TOPK_NORMAL>(
         sortedTensor, indicesLocal, xLocal, indicesLocal, finishLocal, tempTensor, n_, topkTilingData_, topkInfo);
     AscendC::PipeBarrier<PIPE_V>();

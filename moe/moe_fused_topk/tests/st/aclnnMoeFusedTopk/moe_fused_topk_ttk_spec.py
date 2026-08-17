@@ -122,10 +122,7 @@ class AclnnMoeFusedTopkTestSpec:
             masked[row_indices.reshape(-1), deselected.reshape(-1)] = 0.0
 
         sorted_scores, sorted_indices = torch.sort(
-            masked.reshape(token_count, expert_count),
-            dim=-1,
-            descending=True,
-            stable=True,
+            masked.reshape(token_count, expert_count), dim=-1, descending=True, stable=True
         )
         del sorted_scores
         selected_indices = sorted_indices[:, :top_k]
@@ -140,11 +137,7 @@ class AclnnMoeFusedTopkTestSpec:
             for batch_index in range(token_count):
                 for topk_index in range(top_k):
                     expert_id = int(selected_indices[batch_index, topk_index].item())
-                    redundant_offset = batch_index % max(
-                        1, int(mappingNum[expert_id].item())
-                    )
-                    output_indices[batch_index, topk_index] = mappingTable[
-                        expert_id, redundant_offset
-                    ]
+                    redundant_offset = batch_index % max(1, int(mappingNum[expert_id].item()))
+                    output_indices[batch_index, topk_index] = mappingTable[expert_id, redundant_offset]
 
         return [result.to(dtype=y.dtype), output_indices.to(dtype=indices.dtype)]

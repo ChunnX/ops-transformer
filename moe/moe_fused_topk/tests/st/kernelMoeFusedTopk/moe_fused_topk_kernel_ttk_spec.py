@@ -15,9 +15,7 @@ __spec__ = {"moe_fused_topk": "MoeFusedTopkKernelTestSpec"}
 @lru_cache(maxsize=1)
 def _special_inputs() -> dict[str, dict[str, str]]:
     """Read the retained ATK NaN/Inf intent for the selected 200 source cases."""
-    source = (
-        Path(__file__).parents[1] / "aclnnMoeFusedTopk" / "atk_aclnnMoeFusedTopk.json"
-    )
+    source = Path(__file__).parents[1] / "aclnnMoeFusedTopk" / "atk_aclnnMoeFusedTopk.json"
     result: dict[str, dict[str, str]] = {}
     for case in json.loads(source.read_text(encoding="utf-8")):
         values = {item["name"]: item["range_values"] for item in case["inputs"]}
@@ -99,15 +97,9 @@ class MoeFusedTopkKernelTestSpec:
 
         del activate_type
         x_t = torch.from_numpy(numpy.ascontiguousarray(x, dtype=numpy.float32))
-        add_num_t = torch.from_numpy(
-            numpy.ascontiguousarray(add_num, dtype=numpy.float32)
-        )
-        mapping_num_t = torch.from_numpy(
-            numpy.ascontiguousarray(mapping_num, dtype=numpy.int32)
-        )
-        mapping_table_t = torch.from_numpy(
-            numpy.ascontiguousarray(mapping_table, dtype=numpy.int32)
-        )
+        add_num_t = torch.from_numpy(numpy.ascontiguousarray(add_num, dtype=numpy.float32))
+        mapping_num_t = torch.from_numpy(numpy.ascontiguousarray(mapping_num, dtype=numpy.int32))
+        mapping_table_t = torch.from_numpy(numpy.ascontiguousarray(mapping_table, dtype=numpy.int32))
 
         sigmoid = torch.sigmoid(x_t)
         scores = sigmoid + add_num_t
@@ -127,10 +119,7 @@ class MoeFusedTopkKernelTestSpec:
             masked[rows.reshape(-1), deselected.reshape(-1)] = 0.0
 
         selected_indices = torch.sort(
-            masked.reshape(token_count, expert_count),
-            dim=-1,
-            descending=True,
-            stable=True,
+            masked.reshape(token_count, expert_count), dim=-1, descending=True, stable=True
         ).indices[:, :top_k]
         result = torch.gather(sigmoid, dim=-1, index=selected_indices)
         if bool(is_norm):
@@ -144,11 +133,6 @@ class MoeFusedTopkKernelTestSpec:
                 for topk_index in range(top_k):
                     expert_id = int(selected_indices[batch_index, topk_index].item())
                     offset = batch_index % max(1, int(mapping_num_t[expert_id].item()))
-                    output_indices[batch_index, topk_index] = mapping_table_t[
-                        expert_id, offset
-                    ]
+                    output_indices[batch_index, topk_index] = mapping_table_t[expert_id, offset]
 
-        return [
-            result.numpy().astype(numpy.float32, copy=False),
-            output_indices.numpy(),
-        ]
+        return [result.numpy().astype(numpy.float32, copy=False), output_indices.numpy()]

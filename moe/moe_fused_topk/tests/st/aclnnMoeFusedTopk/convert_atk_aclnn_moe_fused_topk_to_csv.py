@@ -58,9 +58,7 @@ ATTRIBUTE_NAMES = {
 
 def stable_number(case_id: int, attribute_name: str) -> int:
     """Return a cross-version stable pseudo-random integer for one field."""
-    digest = hashlib.sha256(
-        f"MoeFusedTopk:{case_id}:{attribute_name}".encode()
-    ).digest()
+    digest = hashlib.sha256(f"MoeFusedTopk:{case_id}:{attribute_name}".encode()).digest()
     return int.from_bytes(digest[:8], byteorder="big")
 
 
@@ -69,9 +67,7 @@ def materialize_attribute(case_id: int, name: str, value: Any) -> Any:
     if not isinstance(value, list):
         return value
     if len(value) != 2 or not all(isinstance(item, (int, float)) for item in value):
-        raise ValueError(
-            f"Unsupported attribute range for case {case_id}, {name}: {value!r}"
-        )
+        raise ValueError(f"Unsupported attribute range for case {case_id}, {name}: {value!r}")
 
     low, high = value
     if isinstance(low, int) and isinstance(high, int):
@@ -81,21 +77,11 @@ def materialize_attribute(case_id: int, name: str, value: Any) -> Any:
     return round(low + (high - low) * fraction, 8)
 
 
-def tensor_range(
-    case_id: int, name: str, value: Any
-) -> tuple[float | int, float | int]:
+def tensor_range(case_id: int, name: str, value: Any) -> tuple[float | int, float | int]:
     """Return the range syntax accepted by TTK for an ATK tensor field."""
-    if (
-        isinstance(value, list)
-        and len(value) == 2
-        and all(isinstance(item, (int, float)) for item in value)
-    ):
+    if isinstance(value, list) and len(value) == 2 and all(isinstance(item, (int, float)) for item in value):
         return tuple(value)
-    if (
-        isinstance(value, list)
-        and len(value) == 1
-        and value[0] in {"nan", "inf", "-inf"}
-    ):
+    if isinstance(value, list) and len(value) == 1 and value[0] in {"nan", "inf", "-inf"}:
         # TTK's random range cannot encode these values.  The paired input
         # plugin loads the exact special value from the retained source JSON.
         return (-1.0, 1.0)
@@ -105,23 +91,11 @@ def tensor_range(
 def input_by_name(case: dict[str, Any]) -> dict[str, dict[str, Any]]:
     result = {item["name"]: item for item in case["inputs"]}
     required = {
-        "x",
-        "add_num",
-        "mapping_num",
-        "mapping_table",
-        "group_num",
-        "group_topk",
-        "top_n",
-        "top_k",
-        "activate_type",
-        "is_norm",
-        "scale",
-        "enable_expert_mapping",
+        "x", "add_num", "mapping_num", "mapping_table", "group_num", "group_topk",
+        "top_n", "top_k", "activate_type", "is_norm", "scale", "enable_expert_mapping",
     }
     if set(result) != required:
-        raise ValueError(
-            f"Unexpected field set in ATK case {case['id']}: {sorted(result)}"
-        )
+        raise ValueError(f"Unexpected field set in ATK case {case['id']}: {sorted(result)}")
     return result
 
 
@@ -132,17 +106,9 @@ def build_row(case: dict[str, Any]) -> dict[str, str]:
     token_count, expert_count = x_shape
     top_k = materialize_attribute(case_id, "top_k", values["top_k"]["range_values"])
     attributes = {
-        ATTRIBUTE_NAMES.get(name, name): materialize_attribute(
-            case_id, name, values[name]["range_values"]
-        )
+        ATTRIBUTE_NAMES.get(name, name): materialize_attribute(case_id, name, values[name]["range_values"])
         for name in (
-            "group_num",
-            "group_topk",
-            "top_n",
-            "top_k",
-            "activate_type",
-            "is_norm",
-            "scale",
+            "group_num", "group_topk", "top_n", "top_k", "activate_type", "is_norm", "scale",
             "enable_expert_mapping",
         )
     }
@@ -173,9 +139,7 @@ def build_row(case: dict[str, Any]) -> dict[str, str]:
         and len(values[name]["range_values"]) == 1
         and isinstance(values[name]["range_values"][0], str)
     ]
-    special_remark = (
-        "; special_inputs=" + ",".join(special_inputs) if special_inputs else ""
-    )
+    special_remark = "; special_inputs=" + ",".join(special_inputs) if special_inputs else ""
 
     return {
         "testcase_name": f"moe_fused_topk_atk_{case_id:03d}",
@@ -208,9 +172,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=SOURCE_JSON)
     parser.add_argument("--output", type=Path, default=OUTPUT_CSV)
-    parser.add_argument(
-        "--check", action="store_true", help="fail if the checked-in CSV is stale"
-    )
+    parser.add_argument("--check", action="store_true", help="fail if the checked-in CSV is stale")
     args = parser.parse_args()
 
     cases = json.loads(args.source.read_text(encoding="utf-8"))
@@ -218,10 +180,7 @@ def main() -> int:
         raise ValueError(f"Expected 201 ATK cases, found {len(cases)}")
     rendered = render_csv(cases)
     if args.check:
-        if (
-            not args.output.is_file()
-            or args.output.read_text(encoding="utf-8") != rendered
-        ):
+        if not args.output.is_file() or args.output.read_text(encoding="utf-8") != rendered:
             raise SystemExit(f"{args.output} is stale; rerun {Path(__file__).name}")
         print(f"Verified {len(cases)} CSV cases: {args.output}")
         return 0
