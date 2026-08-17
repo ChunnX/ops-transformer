@@ -109,16 +109,16 @@ static aclnnStatus CheckRequiredInputs(const char *apiName, const aclTensor *x, 
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const char* apiName,
-    GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize, aclOpExecutor **executor)
+static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const char *apiName,
+                                                                       GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     GmmDsqHandlerFactory factory;
     auto npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
     factory.registerHandler(NpuArch::DAV_2201,
-        std::make_unique<gmm_dsq_base::GroupedMatmulSwigluQuantBaseHandler>());
+                            std::make_unique<gmm_dsq_base::GroupedMatmulSwigluQuantBaseHandler>());
     factory.registerHandler(NpuArch::DAV_3510,
-        std::make_unique<gmmSwigluQuantV2::GroupedMatmulSwigluQuantBaseHandler>());
+                            std::make_unique<gmmSwigluQuantV2::GroupedMatmulSwigluQuantBaseHandler>());
 
     if (auto *handler = factory.getHandler(npuArch)) {
         handler->Initialize(apiName, params, workspaceSize, executor);
@@ -134,7 +134,7 @@ static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const cha
 }
 
 static aclnnStatus CheckMxfp4WeightNzViewShape(const char *apiName, const aclTensor *weight,
-    const op::Shape &viewShape, size_t expectedViewDimNum)
+                                               const op::Shape &viewShape, size_t expectedViewDimNum)
 {
     if (weight->GetDataType() != DataType::DT_FLOAT4_E2M1 && weight->GetDataType() != DataType::DT_FLOAT4_E1M2) {
         return ACLNN_SUCCESS;
@@ -161,14 +161,14 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(const aclTensor *x,
-        const aclTensorList *weight, const aclTensorList *weightScale,
-        const aclTensorList *weightAssistMatrix, const aclTensor *bias,
-        const aclTensor *xScale, const aclTensor *smoothScale,
-        const aclTensor *groupList, int64_t dequantMode, 
-        int64_t dequantDtype, int64_t quantMode,
-        int64_t groupListType, const aclIntArray *tuningConfigOptional, 
-        aclTensor *output, aclTensor *outputScale,
-        uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                            const aclTensorList *weight, const aclTensorList *weightScale,
+                                                            const aclTensorList *weightAssistMatrix, const aclTensor *bias,
+                                                            const aclTensor *xScale, const aclTensor *smoothScale,
+                                                            const aclTensor *groupList, int64_t dequantMode,
+                                                            int64_t dequantDtype, int64_t quantMode,
+                                                            int64_t groupListType, const aclIntArray *tuningConfigOptional,
+                                                            aclTensor *output, aclTensor *outputScale,
+                                                            uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     auto status = CheckRequiredInputs(ACLNN_GMM_SWIGLU_QUANT_V2_API_NAME, x, weight, weightScale, xScale, groupList,
@@ -181,14 +181,18 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(const aclTensor *x,
                    DFX_OUT(output, outputScale));
     GroupedMatmulSwigluQuantParamsBase params =
         GroupedMatmulSwigluQuantParamsBuilder::Create(x, weight, weightScale, output, outputScale)
-        .SetXScale(xScale).SetSmoothScale(smoothScale)
-        .SetGroupList(groupList).SetGroupListType(groupListType)
-        .SetWeightAssistMatrix(weightAssistMatrix)
-        .SetDequantAttr(dequantMode, dequantDtype)
-        .SetQuantAttr(quantMode, static_cast<int64_t> (output->GetDataType()))
-        .SetTransposeAttr(false).SetBias(bias)
-        .SetScenario()
-        .SetTuningConfig(tuningConfigOptional).Build();
+            .SetXScale(xScale)
+            .SetSmoothScale(smoothScale)
+            .SetGroupList(groupList)
+            .SetGroupListType(groupListType)
+            .SetWeightAssistMatrix(weightAssistMatrix)
+            .SetDequantAttr(dequantMode, dequantDtype)
+            .SetQuantAttr(quantMode, static_cast<int64_t>(output->GetDataType()))
+            .SetTransposeAttr(false)
+            .SetBias(bias)
+            .SetScenario()
+            .SetTuningConfig(tuningConfigOptional)
+            .Build();
 
     // 调用公共接口
     return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(
@@ -251,14 +255,14 @@ static aclnnStatus ProcessMultiWeightNz(const aclTensorList *weight)
 }
 
 aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTensor *x,
-        const aclTensorList *weight, const aclTensorList *weightScale,
-        const aclTensorList *weightAssistMatrix, const aclTensor *bias,
-        const aclTensor *xScale, const aclTensor *smoothScale,
-        const aclTensor *groupList, int64_t dequantMode,
-        int64_t dequantDtype, int64_t quantMode,
-        int64_t groupListType, const aclIntArray *tuningConfigOptional,
-        aclTensor *output, aclTensor *outputScale,
-        uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                                    const aclTensorList *weight, const aclTensorList *weightScale,
+                                                                    const aclTensorList *weightAssistMatrix, const aclTensor *bias,
+                                                                    const aclTensor *xScale, const aclTensor *smoothScale,
+                                                                    const aclTensor *groupList, int64_t dequantMode,
+                                                                    int64_t dequantDtype, int64_t quantMode,
+                                                                    int64_t groupListType, const aclIntArray *tuningConfigOptional,
+                                                                    aclTensor *output, aclTensor *outputScale,
+                                                                    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     auto status = CheckRequiredInputs(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V2_API_NAME, x, weight, weightScale, xScale,
@@ -282,14 +286,18 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
 
     GroupedMatmulSwigluQuantParamsBase params =
         GroupedMatmulSwigluQuantParamsBuilder::Create(x, weight, weightScale, output, outputScale)
-        .SetXScale(xScale).SetSmoothScale(smoothScale)
-        .SetGroupList(groupList).SetGroupListType(groupListType)
-        .SetWeightAssistMatrix(weightAssistMatrix)
-        .SetDequantAttr(dequantMode, dequantDtype)
-        .SetQuantAttr(quantMode, static_cast<int64_t>(output->GetDataType()))
-        .SetTransposeAttr(false).SetBias(bias)
-        .SetScenario()
-        .SetTuningConfig(tuningConfigOptional).Build();
+            .SetXScale(xScale)
+            .SetSmoothScale(smoothScale)
+            .SetGroupList(groupList)
+            .SetGroupListType(groupListType)
+            .SetWeightAssistMatrix(weightAssistMatrix)
+            .SetDequantAttr(dequantMode, dequantDtype)
+            .SetQuantAttr(quantMode, static_cast<int64_t>(output->GetDataType()))
+            .SetTransposeAttr(false)
+            .SetBias(bias)
+            .SetScenario()
+            .SetTuningConfig(tuningConfigOptional)
+            .Build();
 
     // 调用公共接口
     return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(

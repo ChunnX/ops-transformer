@@ -40,7 +40,6 @@ using namespace std;
 using namespace ge;
 using namespace optiling;
 
-
 namespace {
 
 using ops::ut::ParseBool;
@@ -219,7 +218,6 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
             continue;
         }
 
-
         try {
             size_t idx = 0;
             GroupedMatmulSwigluQuantV2TilingCase tc;
@@ -237,9 +235,12 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
             tc.expectTilingKey = stoll(Trim(items[idx++]));
 
             tc.compileInfo = {
-                static_cast<uint64_t>(stoull(Trim(items[idx++]))), static_cast<uint32_t>(stoul(Trim(items[idx++]))),
-                static_cast<uint32_t>(stoul(Trim(items[idx++]))),  static_cast<uint32_t>(stoul(Trim(items[idx++]))),
-                static_cast<uint32_t>(stoul(Trim(items[idx++]))),  ParseBool(Trim(items[idx++])),
+                static_cast<uint64_t>(stoull(Trim(items[idx++]))),
+                static_cast<uint32_t>(stoul(Trim(items[idx++]))),
+                static_cast<uint32_t>(stoul(Trim(items[idx++]))),
+                static_cast<uint32_t>(stoul(Trim(items[idx++]))),
+                static_cast<uint32_t>(stoul(Trim(items[idx++]))),
+                ParseBool(Trim(items[idx++])),
             };
 
             for (size_t tensorIdx = 0; tensorIdx < kInputTensorCount; ++tensorIdx) {
@@ -278,7 +279,6 @@ string MakeParamName(const testing::TestParamInfo<GroupedMatmulSwigluQuantV2Tili
 namespace GroupedMatmulSwigluQuantV2UT {
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(TestGroupedMatmulSwigluQuantV2Tiling950);
-
 
 const vector<GroupedMatmulSwigluQuantV2TilingCase> &GetAscend950Cases()
 {
