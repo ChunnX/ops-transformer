@@ -61,7 +61,7 @@
 
     - **输出组合梯度计算**：
 
-        - **正向计算公式**：其中 $\mathbf{x}$ 为输入参数（前向输入x），$\mathbf{hPre}$ 为输入参数（前向保存的中间结果h_pre），$N$ 为输入Tensor中N维度的大小（支持不超过8）。
+        - **正向计算公式**：其中 $\mathbf{x}$ 为输入参数（前向输入x），$\mathbf{hPre}$ 为输入参数（前向保存的中间结果h_pre），$N$ 为输入Tensor中N维度的大小。
 
         $$
         \mathbf{HIn} = \sum_{i=1}^{N} \mathbf{x}[B, S, i, :] \cdot \mathbf{hPre}[B, S, i]
@@ -362,7 +362,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>phi(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数phi。</td>
-        <td>支持空Tensor。</td>
+        <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(2N+N^2, N*C)</td>
@@ -372,7 +372,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>alpha(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数alpha。</td>
-        <td>支持空Tensor。</td>
+        <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(3)</td>
@@ -382,7 +382,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>bias(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数bias。</td>
-        <td>支持空Tensor。</td>
+        <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(2N+N^2)</td>
@@ -541,7 +541,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
          <tr>
         <td rowspan="4">ACLNN_ERR_INNER_TILING_ERROR</td>
         <td rowspan="4">561002</td>
-        <td>N大于8。</td>
+        <td><!-- npu="950" id25 -->N大于8或小于等于0。<!-- end id25 --><!-- npu="A3,910b" id26 -->N不等于4。<!-- end id26 --></td>
       </tr>
       <tr>
         <td>输入或输出tensor的维度(shape)与参数说明不符。</td>
@@ -600,13 +600,34 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
 
 ## 约束说明
 
+- **维度格式约束**
+
+  <!-- npu="950" id7 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：输入支持两种维度格式：BSND（4维）和TND（3维）。其中T = B × S，表示所有Batch序列长度的累加和。所有带B/S维度的输入需保持维度格式一致（同为4维BSND或同为3维TND）。
+  <!-- end id7 -->
+
+  <!-- npu="A3,910b" id8 -->
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：输入仅支持BSND（4维）格式。
+  <!-- end id8 -->
+
 - **规格约束**
 
   | 规格项 | 规格 | 规格说明 |
   | :--- | :--- | :--- |
   | sk_iter_count | 20 | Sinkhorn迭代次数当前仅支持20。 |
-  | N | ≤8 | N维度支持不超过8。 |
+  | N（<!-- npu="950" id11 --><term>Ascend 950PR/Ascend 950DT</term><!-- end id11 -->） | >0且≤8 | N维度支持大于0且不超过8。 |
+  | N（<!-- npu="A3,910b" id12 --><term>Atlas A2/A3</term><!-- end id12 -->） | 4 | N维度仅支持4。 |
   | C | - | 大于0、小于100000且可以被128整除。 |
+
+- 确定性计算
+
+  <!-- npu="950" id13 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：默认采用确定性实现，相同输入多次调用结果一致。
+  <!-- end id13 -->
+
+  <!-- npu="A3,910b" id14 -->
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：默认非确定性实现，支持通过`aclrtCtxSetSysParamOpt`开启确定性。
+  <!-- end id14 -->
 
 ## 调用示例
 
