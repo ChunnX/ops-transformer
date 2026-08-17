@@ -370,8 +370,8 @@ public:
         AscendC::LocalTensor<int64_t> timingLocal = timingBuf_.Get<int64_t>();
 
         // 预计算地址: 放打点外, 不计入 timing
-        // localBase: 本端源数据地址 = workspace + peer * winSize + 状态区(350KB) + offset
-        uint64_t localBase = reinterpret_cast<uint64_t>(GetLocalWinAddr(peer, totalWinSizeEp, winDataSizeOffset));
+        // localBase: 本端源数据地址 = workspace + myRank * winSize + 状态区(350KB) + offset
+        uint64_t localBase = reinterpret_cast<uint64_t>(GetLocalWinAddr(epRankId_, totalWinSizeEp, winDataSizeOffset));
         // remoteBase: 对端目的地址 = windowsIn[peer] + 状态区(350KB) + offset
         uint64_t remoteBase = reinterpret_cast<uint64_t>(GetRemoteWinAddr(peer, winDataSizeOffset));
 

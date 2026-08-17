@@ -17,8 +17,8 @@ URMA 点对点通信基准测试工具，使用 `<<<>>>` kernel 直调方式，*
 
 | benchMode | 说明 | `-l` 含义 | timing 计算 |
 |-----------|------|----------|------------|
-| `--bench_mode 0` (batch_write) | `-l` 次 Write → 一次 Drain | WQE 发送次数 | 不除以 loopCount（总量） |
-| `--bench_mode 1` (write_drain_loop) | 循环 `-l` 次 { Write → Drain } | Write+Drain 组数 | 除以 loopCount 得平均单次 |
+| `--bench_mode 0` (batch_write) | `-l` 次 Write → 一次 Drain | WQE 发送次数 | slot[0-3]=总量, slot[4-7]=同总量(只有一批); avg 除以 loopCount 得单次平均, last 不除 |
+| `--bench_mode 1` (write_drain_loop) | 循环 `-l` 次 { Write → Drain } | Write+Drain 组数 | slot[0-3]=累计, slot[4-7]=最后一轮; avg 除以 loopCount, last 不除 |
 
 ## 目录结构
 
@@ -83,6 +83,12 @@ bash run.sh -r ON -d 2 -m 3 -o 0 -s 65536 -l 16
 # mc2_native write_drain_loop: 100组 Write→Drain, 看平均单次延迟
 bash run.sh -r ON -d 2 -m 3 -o 1 -s 4096 -l 100
 
+# 带正确性验证: sender 填 pattern, receiver 比对 (仅 -m 3)
+bash run.sh -r ON -d 2 -m 3 -o 0 -s 65536 -l 100 -g ON
+
+# hcomm 模式验证 (-m 2)
+bash run.sh -r ON -d 2 -m 2 -n 16 -s 65536 -l 100 -g ON
+
 # 其他模式
 bash run.sh -r ON -d 2 -m 0 -n 16 -s 65536 -l 100   # Write
 bash run.sh -r ON -d 2 -m 1 -n 16 -s 65536 -l 100   # WriteWithNotify
@@ -112,6 +118,7 @@ bash run.sh -r ON -i 0,3 -m 3 -o 0 -s 65536 -l 16
 | `--buf_bytes` | `-b` | 104857600 (100MB) | 注册 workspace 大小 |
 | `--db_interval` | `-k` | 1 | 每 K 个 SQE 敲一次 DoorBell (仅 -m 0/1) |
 | `--loop_count` | `-l` | 100 | kernel 内循环次数 |
+| `--verify` | `-g` | OFF | ON=开启正确性验证 (仅 -m 2, 3) |
 | `--soc-version` | `-v` | ascend950pr_9599 | 芯片版本 |
 | `--cmake-rebuild` | `-c` | OFF | ON=重新编译 |
 | `--run-test` | `-r` | OFF | ON=运行测试 |
@@ -121,6 +128,7 @@ bash run.sh -r ON -i 0,3 -m 3 -o 0 -s 65536 -l 16
 ```
 [rank 0 (dev 0)] avg  assemble=12.34us issue=12.34us wait=3.67us total=16.01us bw=4.09GB/s (over 16 loops)
 [rank 0 (dev 0)] last assemble=11.89us issue=11.89us wait=3.21us total=15.10us bw=4.33GB/s (last loop)
+[rank 1 (dev 1)] VERIFY: PASS (6553600 bytes, 100 chunks)
 ```
 
 | 字段 | 含义 |
@@ -129,10 +137,62 @@ bash run.sh -r ON -i 0,3 -m 3 -o 0 -s 65536 -l 16
 | `issue` | 同 assemble (mc2_native 无 trailing SQE) |
 | `wait` | Drain 时间 (SendJFSDoorBell + PollCommCQUpdateSQCI + UpdatePICI) |
 | `total` | assemble + wait |
-| `bw` | 带宽 |
+| `bw` | 带宽 (avg=sqeBytes/avgTotalNs, last=总量/lastTotalNs) |
+| `VERIFY` | 正确性验证结果 (仅 -g ON) |
 
-- `avg`：所有轮的平均值（benchMode=1 时除以 loopCount）
-- `last`：最后一轮的单轮值
+- `avg`：单次平均时间 (timing 累计值 / loopCount)
+- `last`：最后一轮的单轮值 (benchMode=0 为总量, benchMode=1 为最后一组)
+
+## 正确性验证 (`-g ON`)
+
+开启后验证 URMA P2P 通信是否真正成功——sender 的数据是否被 receiver 正确接收。支持 `-m 2` (hcomm) 和 `-m 3` (mc2_native)。
+
+### 原理
+
+```
+sender (rank 0):
+  1. kernel launch 前向 workspace 数据区填充按位置编码的 pattern
+     每个 uint32 = chunk_index * 0x10000 + word_offset_in_chunk
+     (trailing bytes: chunk_index * 0x5A + byte_offset)
+  2. barrier → kernel 通过 URMA Write 把 pattern 搬到对端 workspace
+  3. aclrtSynchronizeStream 等 kernel 完成 → barrier
+
+receiver (rank 1):
+  1. barrier 等 sender 填好 pattern
+  2. barrier 等 sender kernel 完成 (URMA 写入已落盘)
+  3. D2H 拷贝 workspace 数据区 → 逐字节比对 pattern
+```
+
+### Mode 差异
+
+| | mc2_native (-m 3) | hcomm (-m 2) |
+|---|---|---|
+| 数据区偏移 | workspace + 350KB (P2P_STATE_SIZE) | workspace + 0 (buffer 基址) |
+| 验证 chunk 数 | `min(loopCount, numSlots)` | `min(numSqe, numSlots)` |
+| 原因 | 每轮 1 个 Write，loop 轮写不同 slot | 每轮 numSqe 个 WriteNbi，同 slot 被重写 |
+
+### 验证范围
+
+`numSlots = bufBytes / sqeBytes`。chunk 数取写入数与 numSlots 的较小值（超过会 wrap 覆盖）。
+
+### 输出
+
+```
+[rank 1 (dev 1)] VERIFY: PASS (6553600 bytes, 100 chunks)
+```
+
+或失败时定位到具体字节:
+
+```
+[rank 1 (dev 1)] VERIFY: FAIL at byte 65536 (chunk 1, offset 0): expected 0x01, got 0x00
+```
+
+### 注意
+
+- 验证逻辑在 kernel 外执行，**不影响 timing 打点**
+- barrier 为自实现线程同步 (atomic 计数器 + generation 计数器, 可复用)
+- 仅支持 `-m 2` (hcomm) 和 `-m 3` (mc2_native)
+- 验证数据量受 workspace 大小限制 (`-b`)
 
 ## 工作原理
 
@@ -146,7 +206,7 @@ main()
   │   ├─ aclrtSetDevice + aclrtCreateContext
   │   ├─ HcclCommInitRootInfoConfig         # 初始化通信域
   │   ├─ setup_ctx():
-  │   │   ├─ [1/6] aclrtMalloc workspace    # 分配 URMA 目标缓冲区
+  │   │   ├─ [1/6] aclrtMalloc workspace    # 分配 URMA 目标缓冲区 (GM)
   │   │   ├─ [2/6] HcclCommMemReg           # 注册 workspace, 使对端可 URMA 写入
   │   │   ├─ [3/6] build_channel_descs      # 枚举 UBC_CTP/UBC_TP 链路, 构建 ChannelDesc
   │   │   ├─ [4/6] HcclChannelAcquire       # 跨 rank 握手, 获取 ChannelHandle
@@ -160,10 +220,14 @@ main()
   │   │       ├─ 设置 windowsIn[peer] (对端 workspace 地址)
   │   │       ├─ 设置 windowsOut[myRank] (PICI 窗口 GM, 含 1MB 前缀)
   │   │       └─ 拷 HcclCombinOpParam 到 device
+  │   ├─ 如果 -g ON (verify):
+  │   │   └─ sender 填 pattern 到 workspace 数据区 (H2D)
   │   ├─ barrier (等所有 rank 就绪)
-  │   └─ rank 0: <<<>>> launch → synchronize → 读 timing → 打印
-  │      rank 1: sleep (URMA 单向, 接收方不做事)
-  └─ join all threads
+  │   ├─ rank 0: <<<>>> launch → synchronize → 读 timing → 打印
+  │   │  rank 1: (等待)
+  │   ├─ 如果 -g ON (verify):
+  │   │   └─ barrier → receiver D2H 读 workspace → 逐字节比对 pattern
+  │   └─ join all threads
 ```
 
 ### mc2_native Kernel 侧流程 (-m 3)
@@ -260,3 +324,4 @@ struct HcclCombinOpParam {
 - WriteWithNotify 每个 SQE 占 2 个 WQEBB，`loopCount` 需满足 `loopCount * 2 < sqDepth` (通常 256)
 - 需要物理 UBC_CTP 或 UBC_TP 链路 (同机 NPU 间)
 - `benchMode` 仅 `-m 3` 支持
+- `--verify` 仅 `-m 2`(hcomm) 和 `-m 3`(mc2_native) 支持, 验证 chunk 数受 `bufBytes / sqeBytes` 限制

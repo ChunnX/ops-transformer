@@ -75,6 +75,7 @@ constexpr uint64_t P2P_STATE_SIZE_HOST = 350UL * 1024UL;
 static uint8_t* g_verifyPattern = nullptr;
 static size_t g_verifyBytes = 0;
 static uint32_t g_verifyChunks = 0;
+static uint64_t g_verifyDataOffset = 0;
 
 struct BenchCtx {
     uint32_t rank{0};
@@ -521,9 +522,20 @@ int Sample(void *arg)
     // Verify mode: sender fills workspace data region with position-encoded pattern
     // Pattern: each uint32 = chunk_index * 0x10000 + word_offset_in_chunk
     // Trailing bytes (if sqeBytes not 4-byte aligned): chunk_index * 0x5A + byte_offset
+    //
+    // Mode-dependent:
+    //   mc2_native (-m 3): data offset = 350KB (P2P_STATE_SIZE), chunks = min(loopCount, numSlots)
+    //   hcomm (-m 2): data offset = 0 (buffer base), chunks = min(numSqe, numSlots)
     if (args->verify && isSender) {
         uint32_t numSlotsU32 = (uint32_t)((args->sqeBytes > 0) ? (args->bufBytes / args->sqeBytes) : 1);
-        g_verifyChunks = (args->loopCount < numSlotsU32) ? args->loopCount : numSlotsU32;
+        if (args->sqeMode == 3) {
+            g_verifyDataOffset = P2P_STATE_SIZE_HOST;
+            g_verifyChunks = (args->loopCount < numSlotsU32) ? args->loopCount : numSlotsU32;
+        } else {
+            g_verifyDataOffset = 0;
+            uint32_t writesPerIter = args->numSqe;
+            g_verifyChunks = (writesPerIter < numSlotsU32) ? writesPerIter : numSlotsU32;
+        }
         g_verifyBytes = (size_t)g_verifyChunks * args->sqeBytes;
         g_verifyPattern = (uint8_t*)malloc(g_verifyBytes);
         for (uint32_t c = 0; c < g_verifyChunks; c++) {
@@ -536,10 +548,10 @@ int Sample(void *arg)
                 chunk[k] = (uint8_t)(c * 0x5A + k);
             }
         }
-        void* dataRegion = (void*)((uint64_t)ctx->workspaceDev + P2P_STATE_SIZE_HOST);
+        void* dataRegion = (void*)((uint64_t)ctx->workspaceDev + g_verifyDataOffset);
         aclrtMemcpy(dataRegion, g_verifyBytes, g_verifyPattern, g_verifyBytes, ACL_MEMCPY_HOST_TO_DEVICE);
-        fprintf(stderr, "[INFO] rank %u: verify pattern filled (%zu bytes, %u chunks)\n",
-                rank, g_verifyBytes, g_verifyChunks);
+        fprintf(stderr, "[INFO] rank %u: verify pattern filled (%zu bytes, %u chunks, offset=%lu)\n",
+                rank, g_verifyBytes, g_verifyChunks, (unsigned long)g_verifyDataOffset);
     }
 
     barrier(devCount);
@@ -626,7 +638,7 @@ int Sample(void *arg)
         barrier(devCount);
         if (!isSender) {
             uint8_t* recvBuf = (uint8_t*)malloc(g_verifyBytes);
-            void* dataRegion = (void*)((uint64_t)ctx->workspaceDev + P2P_STATE_SIZE_HOST);
+            void* dataRegion = (void*)((uint64_t)ctx->workspaceDev + g_verifyDataOffset);
             aclrtMemcpy(recvBuf, g_verifyBytes, dataRegion, g_verifyBytes, ACL_MEMCPY_DEVICE_TO_HOST);
 
             bool pass = true;
@@ -702,8 +714,8 @@ int main(int argc, char *argv[])
     }
     g_args.devCount = (uint32_t)g_args.devIds.size();
 
-    if (g_args.verify && g_args.sqeMode != 3) {
-        fprintf(stderr, "[ERROR] --verify only supported with --sqe_mode=3 (mc2_native)\n");
+    if (g_args.verify && g_args.sqeMode != 2 && g_args.sqeMode != 3) {
+        fprintf(stderr, "[ERROR] --verify only supported with --sqe_mode=2(hcomm) or 3(mc2_native)\n");
         return 1;
     }
 
