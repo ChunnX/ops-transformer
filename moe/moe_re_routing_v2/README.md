@@ -158,9 +158,13 @@
   - N：表示卡数，取值无限制。
   - E：表示卡上的专家数，取值无限制。
 - 输入值域限制
-  - expert_token_num_type，即输出expert_token_num的模式。0为cumsum模式，1为count模式，默认值为1。当前只支持为1。
-  - idx_type，即输出permute_token_idx的索引类型。0为gather索引，1为scatter索引，默认值为0。
-  - expert_topk_weight与permute_topk_weight必须同时传入或同时不传入。
+  - expert_token_num_type当前只支持为1（count模式）。
   - expert_topk_weight输入要求为2维，shape为[A, 1]，数据类型仅支持FLOAT。
 - 输出类型限制
   - expert_token_num类型应与输入的expert_token_num_per_rank类型保持一致。
+
+## 调用说明
+
+| 调用方式   | 样例代码           | 说明                                         |
+| ---------------- | --------------------------- | --------------------------------------------------- |
+| aclnn接口  | [test_geir_moe_re_routing_v2](examples/test_geir_moe_re_routing_v2.cpp) | 通过图模式方式调用MoeReRoutingV2算子。 |

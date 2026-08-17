@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持非量化、静态量化和动态量化模式。本接口针对V3接口[aclnnMoeInitRoutingV3](../moe_init_routing_v3/docs/aclnnMoeInitRoutingV3.md)做了如下功能变更，请根据实际情况选择合适的接口：
+- 算子功能：MoE的routing计算，根据MoeGatingTopKSoftmax算子的计算结果做routing处理，支持非量化、静态量化和动态量化模式。本算子针对MoeInitRoutingV3算子做了如下功能变更，请根据实际情况选择合适的算子：
 
     1.active_num从属性改为可选输入，支持图模式下动态传入active_num值。
 
@@ -251,14 +251,17 @@
 
 ## 约束说明
 
-- activeNum为可选输入，不输入时默认为NUM_ROWS*K；输入时为标量Tensor，数据类型为INT64，值大于等于0。
 - expertCapacity在Dropless场景下仅校验其值，不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。
-- quantMode支持-1、0、1、2、3、4、5、6、7、8、9、11、12、13、14、15、16、17，分别表示非量化、静态量化、动态量化到INT8、MXFP8量化到FLOAT8_E5M2、MXFP8量化到FLOAT8_E4M3FN、FP8 PerGroup量化到FLOAT8_E5M2、FP8 PerGroup量化到FLOAT8_E4M3FN、按直转方式量化到HIFLOAT8、按PERTENSOR模式量化到HIFLOAT8、按PERTOKEN模式量化到HIFLOAT8，MXFP4量化到FLOAT4_E2M1，FP8 PerBlock量化到FLOAT8_E5M2，FP8 PerBlock量化到FLOAT8_E4M3FN，INT4动态量化，FP8 PerGroup+Amax量化到FLOAT8_E5M2，FP8 PerGroup+Amax量化到FLOAT8_E4M3FN，MXFP8 RoundScale+Amax量化到FLOAT8_E5M2，MXFP8 RoundScale+Amax量化到FLOAT8_E4M3FN。
 - 支持quantMode为13的INT4动态量化场景，需同时满足：
   - x数据类型为FLOAT32或BFLOAT16，expandedXOut数据类型为INT4。
   - H为偶数，用于沿H维每两个INT4值打包为1个字节。
   - scaleOptional不输入，或输入shape为(1, H)、数据类型为FLOAT32；offsetOptional不输入。
-- topkWeight与expandedTopkWeightOut必须同时传入或同时不传入。
 - DropPad模式特殊约束（dropPadMode=1时）：
   - quantMode仅支持-1（非量化），且数据类型仅支持FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8。
-  - expandedXOut必须是3D Tensor，shape为[expertNum, expertCapacity, H]。
+  - rowIdxType仅支持0（gather索引）。
+
+## 调用说明
+
+| 调用方式   | 样例代码           | 说明                                         |
+| ---------------- | --------------------------- | --------------------------------------------------- |
+| aclnn接口  | [test_aclnn_moe_init_routing_v4](examples/test_aclnn_moe_init_routing_v4.cpp) | 通过[aclnnMoeInitRoutingV4](docs/aclnnMoeInitRoutingV4.md)接口方式调用MoeInitRoutingV4算子。 |
