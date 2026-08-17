@@ -643,28 +643,44 @@ int Sample(void *arg)
 
         // [0-3]=累计值, [4-7]=最后一轮单轮值
         // slot 语义:
-        //   mc2_native: [0]=assemble [1]=issue(=assemble) [2]=wait(Drain) [3]=total
-        //   hcomm benchMode=0: [0]=assemble [1]=commit [2]=drain [3]=total
-        //   hcomm benchMode=1: [0]=assemble [1]=issue(=assemble) [2]=drain [3]=total
+        //   benchMode=0: [0]=assemble(总量) [1]=commit(1次) [2]=drain(1次) [3]=total(1次)
+        //     → assemble 除以 loopCount 得单次平均, commit/drain/total 不除
+        //   benchMode=1: [0]=assemble累计 [1]=issue(=assemble) [2]=drain累计 [3]=total累计
+        //     → 全部除以 loopCount
         double divisor = (double)args->loopCount;
-        double avgAssembleNs = (double)timingHost[0] * NS_PER_CYCLE / divisor;
-        double avgIssueNs    = (double)timingHost[1] * NS_PER_CYCLE / divisor;
-        double avgWaitNs     = (double)timingHost[2] * NS_PER_CYCLE / divisor;
-        double avgTotalNs    = (double)timingHost[3] * NS_PER_CYCLE / divisor;
+        double avgAssembleNs, avgIssueNs, avgWaitNs, avgTotalNs;
+
+        if (args->benchMode == 0) {
+            // assemble 是 loopCount 次循环的总量, 除以 loopCount 得单次平均
+            // commit/drain/total 只执行 1 次, 不除
+            avgAssembleNs = (double)timingHost[0] * NS_PER_CYCLE / divisor;
+            avgIssueNs    = (double)timingHost[1] * NS_PER_CYCLE;
+            avgWaitNs     = (double)timingHost[2] * NS_PER_CYCLE;
+            avgTotalNs    = (double)timingHost[3] * NS_PER_CYCLE;
+        } else {
+            // benchMode=1: 全部是 loopCount 次循环的累计值, 都除
+            avgAssembleNs = (double)timingHost[0] * NS_PER_CYCLE / divisor;
+            avgIssueNs    = (double)timingHost[1] * NS_PER_CYCLE / divisor;
+            avgWaitNs     = (double)timingHost[2] * NS_PER_CYCLE / divisor;
+            avgTotalNs    = (double)timingHost[3] * NS_PER_CYCLE / divisor;
+        }
 
         double lastAssembleNs = (double)timingHost[4] * NS_PER_CYCLE;
         double lastIssueNs    = (double)timingHost[5] * NS_PER_CYCLE;
         double lastWaitNs     = (double)timingHost[6] * NS_PER_CYCLE;
         double lastTotalNs    = (double)timingHost[7] * NS_PER_CYCLE;
 
-        // 带宽计算: avgTotalNs 已除以 loopCount (单次平均时间)
-        // -m 2 (hcomm) 和 -m 3 (mc2_native) 都对齐: 每轮 1 个 Write = sqeBytes
-        //   benchMode=0: slot[7]=总量(同 slot[3]), lastData=loopCount*sqeBytes
-        //   benchMode=1: slot[7]=单次, lastData=sqeBytes
-        double avgData = (double)args->sqeBytes;
-        double lastData = (args->benchMode == 0)
-                          ? (double)args->loopCount * args->sqeBytes
-                          : (double)args->sqeBytes;
+        // 带宽计算:
+        //   benchMode=0: totalData=loopCount*sqeBytes, totalNs=slot[3](不除), bw=totalData/totalNs
+        //   benchMode=1: perIterData=sqeBytes, avgTotalNs=slot[3]/loopCount, bw=sqeBytes/avgTotalNs
+        double avgData, lastData;
+        if (args->benchMode == 0) {
+            avgData = (double)args->loopCount * args->sqeBytes;
+            lastData = avgData;
+        } else {
+            avgData = (double)args->sqeBytes;
+            lastData = (double)args->sqeBytes;
+        }
         double avgBwGBs = avgData / avgTotalNs;
         double lastBwGBs = lastData / lastTotalNs;
 
@@ -856,24 +872,25 @@ int main(int argc, char *argv[])
     printf("  sqe_bytes:  %lu\n", g_args.sqeBytes);
     printf("  loop:       %u\n", g_args.loopCount);
     if (g_result.valid) {
-        // benchMode=0: assemble 是 loopCount 次循环总量, commit/drain 只 1 次
-        // benchMode=1: 全部是单次值
-        const char* assembleUnit = (g_args.benchMode == 0) ? "total (N writes)" : "per write";
-        const char* commitUnit   = (g_args.benchMode == 0) ? "1 call" : "per write";
-        const char* drainUnit    = (g_args.benchMode == 0) ? "1 call" : "per write";
+        // benchMode=0: assemble 是 loopCount 次平均, commit/drain/total 是 1 次实际值
+        // benchMode=1: 全部是 loopCount 次平均
+        const char* assembleUnit = (g_args.benchMode == 0) ? "avg per write" : "avg per write";
+        const char* commitUnit   = (g_args.benchMode == 0) ? "1 call" : "avg per write";
+        const char* drainUnit    = (g_args.benchMode == 0) ? "1 call" : "avg per write";
+        const char* avgTitle     = (g_args.benchMode == 0) ? "result" : "avg (over N loops)";
 
-        printf("  --- avg (over %u loops) ---\n", g_args.loopCount);
+        printf("  --- %s ---\n", avgTitle);
         printf("  assemble: %.2f us  (%s)\n", g_result.avgAssembleUs, assembleUnit);
         printf("  %s: %.2f us  (%s)\n", issueName, g_result.avgIssueUs, commitUnit);
         printf("  drain:    %.2f us  (%s)\n", g_result.avgDrainUs, drainUnit);
         printf("  total:    %.2f us\n", g_result.avgTotalUs);
         printf("  bw:       %.2f GB/s\n", g_result.avgBwGBs);
 
-        const char* lastNote = (g_args.benchMode == 0) ? "total, only 1 batch" : "last loop";
+        const char* lastNote = (g_args.benchMode == 0) ? "= above (only 1 batch)" : "last loop";
         printf("  --- last (%s) ---\n", lastNote);
-        printf("  assemble: %.2f us  (%s)\n", g_result.lastAssembleUs, assembleUnit);
-        printf("  %s: %.2f us  (%s)\n", issueName, g_result.lastIssueUs, commitUnit);
-        printf("  drain:    %.2f us  (%s)\n", g_result.lastDrainUs, drainUnit);
+        printf("  assemble: %.2f us\n", g_result.lastAssembleUs);
+        printf("  %s: %.2f us\n", issueName, g_result.lastIssueUs);
+        printf("  drain:    %.2f us\n", g_result.lastDrainUs);
         printf("  total:    %.2f us\n", g_result.lastTotalUs);
         printf("  bw:       %.2f GB/s\n", g_result.lastBwGBs);
 
