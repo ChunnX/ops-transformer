@@ -150,6 +150,59 @@ class _Compose:
         return [out]
 
 
+def _dedup_routes(x, gates, indices, locations, **kwargs):
+    """把随机生成的路由修成「合法路由的目的槽位两两不同」，其余一概不动。
+
+    为什么必须有这一步：算子语义是 scatter，(indices[e,s], locations[e,s]) 撞车时
+    y[expert][slot] 由哪条路由写入取决于核间调度，属未定义行为（01_requirement §6.5）。
+    随机生成的 indices/locations 必然大量撞车，此时 golden 与 kernel 谁都不算错，
+    但两者必然对不上。这里只消除撞车，**不**改变越界 / gates 为零这些合法的无效路由，
+    泛化覆盖面不受影响。
+
+    撞车的处理顺序：优先改派到尚未被占用的空槽（保留这条路由的「有效」属性），
+    空槽用尽后才把 locations 置为 capacity 让它落入越界分支。
+    """
+    capacity = int(_attr(kwargs, "capacity", 0))
+    if capacity <= 0 or gates.size == 0:
+        return (x, gates, indices, locations)
+
+    expert_num = gates.shape[0]
+    idx = indices.astype(np.int64).ravel()
+    loc = locations.astype(np.int64).ravel()
+    # gates 判零与 kernel 的按位判定一致：±0.0 为零，NaN / Inf / denormal 非零
+    nz = (gates != 0).ravel()
+
+    valid = (idx >= 0) & (idx < expert_num) & (loc >= 0) & (loc < capacity) & nz
+    pos = np.nonzero(valid)[0]
+    if pos.size == 0:
+        return (x, gates, indices, locations)
+
+    keys = idx[pos] * capacity + loc[pos]
+    uniq, first = np.unique(keys, return_index=True)
+    dup = np.delete(pos, first)
+    if dup.size == 0:
+        return (x, gates, indices, locations)
+
+    free = np.setdiff1d(
+        np.arange(expert_num * capacity, dtype=np.int64), uniq, assume_unique=True
+    )
+    take = min(dup.size, free.size)
+    if take > 0:
+        idx[dup[:take]] = free[:take] // capacity
+        loc[dup[:take]] = free[:take] % capacity
+    if take < dup.size:
+        loc[dup[take:]] = (
+            capacity  # 槽位耗尽，退化成越界路由（kernel 与 golden 都会跳过）
+        )
+
+    return (
+        x,
+        gates,
+        idx.reshape(indices.shape).astype(indices.dtype),
+        loc.reshape(locations.shape).astype(locations.dtype),
+    )
+
+
 class MoeTutelDispatchKernelSpec:
     """kernel + geir 共用。golden 收 numpy.ndarray，返 numpy.ndarray。
 
@@ -171,6 +224,7 @@ class MoeTutelDispatchKernelSpec:
             result.append(arr)
         return result
 
+    customize_inputs = _dedup_routes
     third_party = {"torch": _Compose}
     tolerance = _TOL
 
