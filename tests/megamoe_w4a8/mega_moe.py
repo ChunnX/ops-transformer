@@ -2052,9 +2052,17 @@ def init_hccl_comm_two_ep(rank):
         if rank in tp_ranks:
             tp_group_dispatch = tmp_group
 
-    ep_hcomm_info_dispatch = ep_group_dispatch._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
-    ep2_hcomm_info_mega = ep_group_mega._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
-    tp_hcomm_info_dispatch = tp_group_dispatch._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
+    ep_group_rank = dist.get_rank(ep_group_dispatch)
+    ep2_group_rank = dist.get_rank(ep_group_mega)
+    tp_group_rank = dist.get_rank(tp_group_dispatch)
+    ep_hcomm_info_dispatch = ep_group_dispatch._get_backend(torch.device("npu")).get_hccl_comm_name(ep_group_rank)
+    ep2_hcomm_info_mega = ep_group_mega._get_backend(torch.device("npu")).get_hccl_comm_name(ep2_group_rank)
+    tp_hcomm_info_dispatch = tp_group_dispatch._get_backend(torch.device("npu")).get_hccl_comm_name(tp_group_rank)
+    print(
+        f"[INFO] device_{rank} HCCL子通信域初始化完成 "
+        f"(ep_rank={ep_group_rank}, ep2_rank={ep2_group_rank}, tp_rank={tp_group_rank})",
+        flush=True,
+    )
 
     return ep_hcomm_info_dispatch, tp_hcomm_info_dispatch, ep2_hcomm_info_mega, ep_group_dispatch, tp_group_dispatch, ep_group_mega
 
