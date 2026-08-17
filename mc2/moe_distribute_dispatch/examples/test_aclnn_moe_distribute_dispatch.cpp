@@ -237,7 +237,6 @@ int launchOneThreadDispatchAndCombine(Args &args)
 
     /* 依次执行dispatch及combine算子 */
     // 调用dispatch算子第一阶段接口
-    LOG_PRINT("[INFO] BEFORE aclnnMoeDistributeDispatchGetWorkspaceSize\n");
     ret = aclnnMoeDistributeDispatchGetWorkspaceSize(
         x, expertIds, (quantMode > 0 ? scales : nullptr), nullptr, expertScales, hcomEpName, EP_WORLD_SIZE,
         args.epRankId, moeExpertNum, nullptr, 0, 0, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode,
