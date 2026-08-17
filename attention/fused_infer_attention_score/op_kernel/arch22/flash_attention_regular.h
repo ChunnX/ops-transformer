@@ -47,6 +47,7 @@ public:
     using LayoutP = typename BlockMmadPV::LayoutA;
     using ElementV = typename BlockMmadPV::ElementB;
     using LayoutV = typename BlockMmadPV::LayoutB;
+    static constexpr bool BNBD_FLAG = BlockMmadQK::BNBD_FLAG;
 
     using ElementMask = typename EpilogueOnlineSoftmax::ElementMask;
     using LayoutMask = typename EpilogueOnlineSoftmax::LayoutMask;
@@ -530,8 +531,13 @@ public:
                              static_cast<uint64_t>(qNStartIdx * embedV);
         if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::nZ>) {
             gmOffsetK = kBOffset + kvNIdx * embed * pagedBlockSize;
+        } else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+            // BNBD layout: (numBlocks, kvHeads, blockSize, D), head offset = kvNIdx * blockSize * D
+            gmOffsetK = kBOffset + kvNIdx * embed * pagedBlockSize;
         }
         if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutV, layout::zN>) {
+            gmOffsetV = vBOffset + kvNIdx * embedV * pagedBlockSize;
+        } else if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
             gmOffsetV = vBOffset + kvNIdx * embedV * pagedBlockSize;
         }
         uint64_t gmOffsetLse = lseBOffset +

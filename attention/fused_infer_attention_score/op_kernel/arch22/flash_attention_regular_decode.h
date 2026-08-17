@@ -258,6 +258,11 @@ public:
             uint64_t oSOffset = 0;
             uint64_t oNStartOffset = static_cast<uint64_t>(qNStartIdx) * embedV;
             uint64_t lseTokenOffset = 0;
+            if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+                // BNBD: head stride within a block is pagedBlockSize * embed
+                kNStartOffset = static_cast<uint64_t>(kvNStartIdx) * pagedBlockSize * embed;
+                vNStartOffset = static_cast<uint64_t>(kvNStartIdx) * pagedBlockSize * embedV;
+            }
 
             uint32_t noSkipKvS = kvSeqlen;
             uint32_t kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(noSkipKvS, pagedBlockSize);
@@ -271,6 +276,11 @@ public:
             LayoutQ layoutQTemp(rowNum, embed);
             LayoutK layoutKTemp(strideK, blockStackNum * pagedBlockSize);
             LayoutV layoutVTemp(blockStackNum * pagedBlockSize, strideV);
+            if constexpr (PAGED_CACHE_FLAG && BNBD_FLAG) {
+                // BNBD: token stride within a block is embed (head selected via gmOffsetK)
+                layoutKTemp = LayoutK(embed, blockStackNum * pagedBlockSize);
+                layoutVTemp = LayoutV(blockStackNum * pagedBlockSize, embedV);
+            }
 #endif
             for (uint32_t kvSIdx = 0; kvSIdx < kvSLoopNumTotal + preKVNum; kvSIdx += blockStackNum) {
                 if (kvSIdx < kvSLoopNumTotal) {
