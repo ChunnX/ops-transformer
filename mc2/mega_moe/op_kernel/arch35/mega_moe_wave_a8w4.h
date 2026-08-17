@@ -69,12 +69,15 @@ private:
                   "MegaMoeA8W4Wave requires fp8 activation and fp4 weight");
 
     using MegaMoeBase::DispatchBuffInit;
-    using MegaMoeBase::CrossRankSyncInWorldSize;
     using MegaMoeBase::InitTokenUnpermuteBuffers;
     using MegaMoeBase::ProcessSharedExpertGmm1;
     using MegaMoeBase::ProcessSharedExpertGmm2;
     using MegaMoeBase::SendAndQuantBuffInit;
-    using MegaMoeBase::dispatchPrepareConfig_;
+    using MegaMoeBase::aivJob_;
+    using MegaMoeBase::rankId_;
+    using MegaMoeBase::worldSize_;
+    using MegaMoeBase::aivCoreIdx_;
+    using MegaMoeBase::blockAivNum_;
     using MegaMoeBase::epilogueOp_;
     using MegaMoeBase::commonConfig_;
     using MegaMoeBase::countWorkspace_;
@@ -87,11 +90,10 @@ private:
     using MegaMoeBase::quantCombineBufferConfig_;
     using MegaMoeBase::quantCombineConfig_;
     using MegaMoeBase::resetTensor_;
-    using MegaMoeBase::resetWorkspaceConfig_;
+    using MegaMoeBase::resetBatchElementCount_;
     using MegaMoeBase::sendMaskConfig_;
     using MegaMoeBase::sendMaskScratch_;
     using MegaMoeBase::sharedExpertNum_;
-    using MegaMoeBase::sharedExpertPrepareConfig_;
     using MegaMoeBase::sharedExpertPrepareScratch_;
     using MegaMoeBase::tokenDispatchConfig_;
     using MegaMoeBase::tokenDispatchScratch_;
@@ -160,7 +162,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
                 QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch, false>(
         params_, state.problemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, gmmExecutionConfig_.blockJob);
     ScheduleQuantizedMoeExpertCombine<CombineQuantMode>(
-        quantCombineConfig_, quantCombineBufferConfig_, params_, gmmAddrInfo,
+        quantCombineConfig_, commonConfig_, quantCombineBufferConfig_, params_, gmmAddrInfo,
         static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)),
         static_cast<uint32_t>(state.globalTokenStartIndex), expertIdx);
 }
@@ -201,7 +203,8 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
                 uint64_t dispatchedTokenCount = 0U;
                 RunMoeExpertDispatchStage<ActivationType, QuantScaleOutType, true, GMM1_TILE_M,
                                           TopkWeightsPrefetch>(
-                    tokenDispatchConfig_, syncWorkspaceLayout_, params_, winRankAddr_,
+                    tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, countWorkspace_,
+                    syncWorkspaceLayout_, params_, winRankAddr_,
                     tokenDispatchScratch_, dispatchExpert,
                     dispatchedTokenCount);
                 dispatchedWaveTileCount += GetA8W4Gmm1TileCount<GMM1_TILE_M>(
@@ -231,7 +234,8 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
                     uint64_t dispatchedTokenCount = 0U;
                     RunMoeExpertDispatchStage<ActivationType, QuantScaleOutType, true, GMM1_TILE_M,
                                               TopkWeightsPrefetch>(
-                        tokenDispatchConfig_, syncWorkspaceLayout_, params_, winRankAddr_, tokenDispatchScratch_,
+                        tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, countWorkspace_,
+                        syncWorkspaceLayout_, params_, winRankAddr_, tokenDispatchScratch_,
                         dispatchExpert, dispatchedTokenCount);
                     nextDispatchWaveTileCount += GetA8W4Gmm1TileCount<GMM1_TILE_M>(
                         static_cast<uint32_t>(dispatchedTokenCount), gmm1NTileCount);
@@ -269,13 +273,12 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
 
     // 输入准备：量化本卡 token、发布路由 mask，并重置共享同步状态。
     QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
-        dispatchPrepareConfig_, params_, quantProcessConfig_, quantScratch_);
-    GatherAndSendExpertMasks(dispatchPrepareConfig_, params_, winRankAddr_, sendMaskConfig_, sendMaskScratch_);
-    ResetSyncStatus<TopkWeightsPrefetch>(
-        dispatchPrepareConfig_, params_, resetWorkspaceConfig_, resetTensor_);
+        aivJob_, commonConfig_, params_, quantProcessConfig_, quantScratch_);
+    GatherAndSendExpertMasks(aivJob_, commonConfig_, params_, winRankAddr_, sendMaskConfig_, sendMaskScratch_);
+    ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
     if (sharedExpertNum_ > 0U) {
         PrepareSharedExpertInput<ActivationType, QuantScaleOutType, A_ELEMS_PER_BYTE>(
-            dispatchPrepareConfig_, params_, sharedExpertPrepareConfig_, sharedExpertPrepareScratch_);
+            aivJob_, commonConfig_, params_, quantProcessConfig_, sharedExpertPrepareScratch_);
     }
     if constexpr (g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
@@ -287,14 +290,15 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
         ProcessSharedExpertGmm1(gmTileSequence);
     }
 
-    CrossRankSyncInWorldSize();
+    CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_,
+                             aivCoreIdx_, blockAivNum_);
 
     // MoE 专家流水：动态 Wave Dispatch、GMM1/Activation、GMM2 和 Combine。
     ProcessMoeExpertStages(gmTileSequence);
 
     if constexpr (g_coreType == AIV) {
-        if (GetSubBlockIdx() == 1U && tokenDispatchConfig_.countWorkspace.blockIdx == 0U) {
-            ExportExpertTokenCounts<ActivationType, true>(tokenDispatchConfig_, tokenDispatchScratch_, params_);
+        if (GetSubBlockIdx() == 1U && countWorkspace_.blockIdx == 0U) {
+            ExportExpertTokenCounts<ActivationType, true>(commonConfig_, tokenDispatchScratch_, params_);
         }
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
@@ -306,10 +310,11 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
 
     // 所有 rank 完成 Combine 结果发送后，再开始输出聚合。
     if constexpr (g_coreType == AIV) {
-        CrossRankSyncInWorldSize();
+        CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_,
+                                 aivCoreIdx_, blockAivNum_);
         MegaMoeUnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
-            tokenUnpermuteConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
+            tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
