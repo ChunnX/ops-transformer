@@ -45,12 +45,16 @@ struct Args {
 };
 
 const uint32_t MACHINE_NUM = 1;
-const char *rank_table_file = std::getenv("RANK_TABLE_FILE");
-const char *first_rank_id = std::getenv("FIRST_RANK_ID");
+// const char *rank_table_file = std::getenv("RANK_TABLE_FILE");
+// const char *first_rank_id = std::getenv("FIRST_RANK_ID");
 const char *env_dev_num = std::getenv("ENV_DEV_NUM");
 
 uint32_t EP_WORLD_SIZE = 0;
 uint32_t DEV_NUM = 0;
+
+const bool IS_TEST_A2 = false;
+const bool IS_TEST_A3A5 = true;
+
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -97,14 +101,14 @@ int launchOneThreadDispatchAndCombine(Args &args)
     int64_t expertShardType = 0;
     int64_t sharedExpertNum = 0;
     int64_t sharedExpertRankNum = 0;
-    if (!rank_table_file && !first_rank_id) {
-        sharedExpertNum = 1;
-        sharedExpertRankNum = 1;
-    }
-    if (rank_table_file && !first_rank_id) {
-        sharedExpertNum = 1;
-        sharedExpertRankNum = 0;
-    }
+    // if (!rank_table_file && !first_rank_id) {  //确认是否要删
+    //     sharedExpertNum = 1;
+    //     sharedExpertRankNum = 1;
+    // }
+    // if (rank_table_file && !first_rank_id) {
+    //     sharedExpertNum = 1;
+    //     sharedExpertRankNum = 0;
+    // }
     int64_t moeExpertNum = EP_WORLD_SIZE - sharedExpertRankNum;
     int64_t quantMode = 0;
     int64_t globalBS = BS * EP_WORLD_SIZE;
@@ -470,17 +474,12 @@ int main(int argc, char *argv[])
         LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %d, currently not supported\n", actual_env_dev_num, DEV_NUM);
         return 0;
     }
-    if (!rank_table_file && !first_rank_id) {
+    if (IS_TEST_A3A5) {
         LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
         EP_WORLD_SIZE = 8;
         DEV_NUM = EP_WORLD_SIZE;
         int ret = run_example_on_A3A5();
-    } else if (rank_table_file && !first_rank_id) {
-        LOG_PRINT("[INFO] %s are not identified and example on <Atlas A5> will be executed!\n", env_var_name);
-        EP_WORLD_SIZE = 2;
-        DEV_NUM = 2;
-        int ret = run_example_on_A3A5();
-    } else if (rank_table_file && first_rank_id) {
+    }else if (IS_TEST_A3A5) {
         LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
         EP_WORLD_SIZE = 16;
         DEV_NUM = EP_WORLD_SIZE;
