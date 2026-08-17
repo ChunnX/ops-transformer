@@ -655,7 +655,7 @@ inline void SectionStreamKImpl::ScheduleFa(const FaConfig &faConfig, const Compu
             if (assignContext.curS2Idx == (assignContext.s1GCache.s2End - 1U)) {
                 curCost = assignContext.s1GCache.s1GLastBlockCost;
             }
-            if (assignContext.curS2Idx == 0 && assignContext.s1GCache.s1GBlock != 1) {
+            if (assignContext.curS2Idx == assignContext.s1GCache.s2Start && assignContext.s1GCache.s1GBlock != 1) {
                 curCost += m_param.v0Cost;
             }
             assignContext.coreCache.costLimit = std::max(assignContext.coreCache.costLimit, curCost);
@@ -879,7 +879,7 @@ inline void SectionStreamKImpl::AssignByBlock(AssignContext &assignContext)
     }
 
     int64_t realCost = curCost;
-    if (assignContext.curS2Idx == 0U && assignContext.s1GCache.s1GBlock != 1U) {
+    if (assignContext.curS2Idx == assignContext.s1GCache.s2Start && assignContext.s1GCache.s1GBlock != 1U) {
         realCost += m_param.v0Cost;
     }
 
@@ -896,7 +896,7 @@ inline void SectionStreamKImpl::AssignByBlock(AssignContext &assignContext)
         assignContext.s1GCache.s1GBlock--;
 
         realCost = curCost;
-        if (assignContext.curS2Idx == 0U && assignContext.s1GCache.s1GBlock != 1U) {
+        if (assignContext.curS2Idx == assignContext.s1GCache.s2Start && assignContext.s1GCache.s1GBlock != 1U) {
             realCost += m_param.v0Cost;
         }
     }
