@@ -219,14 +219,12 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
         if constexpr ((TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
                        TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                        TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
-                      isPa && QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS) {
-            if (constInfo.useVecS2PhyAddr) {
-                this->vecBlock.GetKVPhyAddr(hasLoad, bN2StartIdx, bN2EndIdx, gS1StartIdx, nextGs1Idx,
-                                            hasActualSeqQlen, hasCuSeqlensQ, hasActualSeqOriKvlen, hasCuSeqlensOriKv,
-                                            actualSeqOriKvlenGm, cuSeqlensOriKvGm, oriTopkLengthGm, hasActualSeqCmpKvlen,
-                                            hasCuSeqlensCmpKv, actualSeqCmpKvlenGm, cuSeqlensCmpKvGm, cmpTopkLengthGm,
-                                            cmpResidualKvGm, actualSeqQlenGm, cuSeqlensQGm, workspace, constInfo);
-            }
+                      isPa && QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS && IS_VEC_S2PHYADDR) {
+            this->vecBlock.GetKVPhyAddr(hasLoad, bN2StartIdx, bN2EndIdx, gS1StartIdx, nextGs1Idx,
+                                        hasActualSeqQlen, hasCuSeqlensQ, hasActualSeqOriKvlen, hasCuSeqlensOriKv,
+                                        actualSeqOriKvlenGm, cuSeqlensOriKvGm, oriTopkLengthGm, hasActualSeqCmpKvlen,
+                                        hasCuSeqlensCmpKv, actualSeqCmpKvlenGm, cuSeqlensCmpKvGm, cmpTopkLengthGm,
+                                        cmpResidualKvGm, actualSeqQlenGm, cuSeqlensQGm, workspace, constInfo);
         }
     }
     /* cube侧不依赖sharedParams的scalar前置 */
@@ -274,7 +272,6 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
         (constInfo.oriSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) / SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
     constInfo.alignedCmpSparseBlockCount =
         (constInfo.cmpSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) / SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
-    constInfo.useVecS2PhyAddr = mixedQuantSparseFlashMlaBaseParams.useVecS2PhyAddr != 0;
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         constInfo.cmpRatio = mixedQuantSparseFlashMlaBaseParams.cmpRatio;
@@ -447,7 +444,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     uint64_t v0RegionSize = static_cast<uint64_t>(v0ResSize) * 3 *
                             (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
     uint64_t phyAddrRegionSize = 0;
-    if (constInfo.useVecS2PhyAddr) {
+    if constexpr (IS_VEC_S2PHYADDR) {
         uint64_t totalBS1 = (LAYOUT_T == QSMLA_LAYOUT::TND) ? constInfo.s1Size :
                                                               static_cast<uint64_t>(constInfo.bSize) * constInfo.s1Size;
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
