@@ -16,7 +16,6 @@
 #ifndef FLASH_ATTN_TILING_DATA_H_
 #define FLASH_ATTN_TILING_DATA_H_
 
-
 namespace optiling {
 constexpr uint32_t FA_AIC_CORE_NUM = 36;
 constexpr uint32_t FA_AIV_CORE_NUM = 72;
@@ -100,11 +99,6 @@ struct FlashAttnS1OuterSplitCoreParams {
     uint64_t totalSize;
 };
 
-struct FlashAttnMetaData {
-    uint32_t FAMetadata[FA_AIC_CORE_NUM][FLASH_ATTN_METADATA_SIZE];
-    uint32_t FDMetadata[FA_AIV_CORE_NUM][FA_FD_METADATA_SIZE];
-};
-
 class FlashAttnNoQuantTilingArch35 {
 public:
     FlashAttnBaseParams flashAttnBaseParams;
@@ -117,7 +111,6 @@ public:
 class FlashAttnTilingData {
 public:
     FlashAttnNoQuantTilingArch35 baseTiling;
-    FlashAttnMetaData flashAttnMetaData;
 };
 
 } // namespace optiling

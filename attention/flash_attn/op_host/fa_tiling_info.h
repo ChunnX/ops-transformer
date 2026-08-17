@@ -235,7 +235,6 @@ public:
     KvStorageMode kvStorageMode = KvStorageMode::BATCH_CONTINUOUS;
     bool softmaxLseFlag = false;
     bool sinksFlag = false;
-    bool emptyTensorFlag = false;
 
     // kvcache strides (tensor v2 view inputs). hasViewStride == false means old opbase
     // without view info, key/value are guaranteed contiguous.

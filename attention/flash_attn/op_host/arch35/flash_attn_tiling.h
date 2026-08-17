@@ -12,8 +12,8 @@
  * \file flash_attn_tiling.h
  * \brief
  */
-#ifndef FLASH_ATTN_TILING_IMPL_H_
-#define FLASH_ATTN_TILING_IMPL_H_
+#ifndef FLASH_ATTN_TILING_H_
+#define FLASH_ATTN_TILING_H_
 
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
@@ -49,7 +49,8 @@ struct FaPlatFormInfo {
 
 class FlashAttnTilingImpl : public FiaTilingBase {
 public:
-    explicit FlashAttnTilingImpl(gert::TilingContext *context) : FiaTilingBase(context)
+    explicit FlashAttnTilingImpl(gert::TilingContext *context)
+        : FiaTilingBase(context)
     {
     }
     ~FlashAttnTilingImpl() override = default;
@@ -63,12 +64,12 @@ private:
     ge::graphStatus SetPlatMemoryInfo();
     void SplitPolicy();
     void ComputeTilingData();
-    void GenTilingKey();
+    ge::graphStatus GenTilingKey();
     void CalcWorkspaceSize();
-    void UpdateTilingKeyConfig();
+    ge::graphStatus UpdateTilingKeyConfig();
     void UpdateTilingKeyLayout();
     void UpdateTilingKeyKvLayout();
-    void UpdateTilingKeyInfo();
+    ge::graphStatus UpdateTilingKeyInfo();
     void SetFATilingData();
     void InitImplParam();
     void PrintAllTilingData();
@@ -104,4 +105,4 @@ private:
 
 } // namespace flash_attn
 } // namespace optiling
-#endif // FLASH_ATTN_TILING_IMPL_H_
+#endif // FLASH_ATTN_TILING_H_
