@@ -110,73 +110,69 @@ int64_t GetKeyBatchSizeLiV2(int64_t batchSize, const aclTensor *cuSeqlensKOption
     return batchSize;
 }
 
-aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topk,
-                                 int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK, const char *layoutQOptional,
-                                 const char *layoutKOptional, int64_t maskMode, int64_t cmpRatio, uint32_t aicCoreNum, uint32_t aivCoreNum,
-                                 const std::string &socVersion)
+aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topk, int64_t batchSize,
+                                 int64_t maxSeqlenQ, int64_t maxSeqlenK, const char *layoutQOptional,
+                                 const char *layoutKOptional, int64_t maskMode, int64_t cmpRatio, uint32_t aicCoreNum,
+                                 uint32_t aivCoreNum, const std::string &socVersion)
 {
     // num_heads_q 校验
     if (numHeadsQ < LI_V2_NUM_HEADS_Q_LOWER_BOUND || numHeadsQ > LI_V2_NUM_HEADS_Q_UPPER_BOUND) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "num_heads_q",
-                                              std::to_string(numHeadsQ),
-                                              "The value of num_heads_q should be in range [" + std::to_string(LI_V2_NUM_HEADS_Q_LOWER_BOUND) + ", " +
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "num_heads_q", std::to_string(numHeadsQ),
+                                              "The value of num_heads_q should be in range [" +
+                                                  std::to_string(LI_V2_NUM_HEADS_Q_LOWER_BOUND) + ", " +
                                                   std::to_string(LI_V2_NUM_HEADS_Q_UPPER_BOUND) + "]");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // num_heads_k 校验
     if (numHeadsK != 1) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "num_heads_kv",
-                                              std::to_string(numHeadsK),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "num_heads_kv", std::to_string(numHeadsK),
                                               "The value of num_heads_kv should be 1");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // head_dim 校验
     if (headDim != 128) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "head_dim",
-                                              std::to_string(numHeadsK),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "head_dim", std::to_string(numHeadsK),
                                               "The value of head_dim should be 128");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // topk 校验
     if (topk < LI_V2_TOPK_LOWER_BOUND || topk > LI_V2_TOPK_UPPER_BOUND) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "topk", std::to_string(topk),
-                                              "The value of topk should be in range [" + std::to_string(LI_V2_TOPK_LOWER_BOUND) + ", " +
+                                              "The value of topk should be in range [" +
+                                                  std::to_string(LI_V2_TOPK_LOWER_BOUND) + ", " +
                                                   std::to_string(LI_V2_TOPK_UPPER_BOUND) + "]");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // batch_size 非负校验
     if (batchSize < 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "batch_size",
-                                              std::to_string(batchSize),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "batch_size", std::to_string(batchSize),
                                               "The value of batch_size should not be negative");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // max_seqlen_q 校验
     if (maxSeqlenQ < -1) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "max_seqlen_q",
-                                              std::to_string(maxSeqlenQ),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "max_seqlen_q", std::to_string(maxSeqlenQ),
                                               "The value of max_seqlen_q should be >= -1");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // max_seqlen_k 校验
     if (maxSeqlenK < -1) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "max_seqlen_k",
-                                              std::to_string(maxSeqlenK),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "max_seqlen_k", std::to_string(maxSeqlenK),
                                               "The value of max_seqlen_k should be >= -1");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // mask_mode 校验
     if ((maskMode != LI_V2_NO_MASK_MODE) && (maskMode != LI_V2_CAUSAL_MASK_MODE)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "mask_mode", std::to_string(maskMode),
-                                              "The value of mask_mode should be " + std::to_string(LI_V2_NO_MASK_MODE) + " or " +
-                                                  std::to_string(LI_V2_CAUSAL_MASK_MODE));
+                                              "The value of mask_mode should be " + std::to_string(LI_V2_NO_MASK_MODE) +
+                                                  " or " + std::to_string(LI_V2_CAUSAL_MASK_MODE));
         return ACLNN_ERR_PARAM_INVALID;
     }
     // cmp_ratio 校验
     if ((cmpRatio < LI_V2_CMP_RATIO_LOWER_BOUND) || (cmpRatio > LI_V2_CMP_RATIO_UPPER_BOUND)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "cmp_ratio",
-                                              std::to_string(cmpRatio),
-                                              "The value of cmp_ratio should be in range [" + std::to_string(LI_V2_CMP_RATIO_LOWER_BOUND) + ", " +
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "cmp_ratio", std::to_string(cmpRatio),
+                                              "The value of cmp_ratio should be in range [" +
+                                                  std::to_string(LI_V2_CMP_RATIO_LOWER_BOUND) + ", " +
                                                   std::to_string(LI_V2_CMP_RATIO_UPPER_BOUND) + "]");
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -209,16 +205,14 @@ aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t h
     }
     // 校验 layout_q 为 BSND 时，max_seqlen_q 必须大于 0
     if ((strcmp(layoutQOptional, "BSND") == 0) && (maxSeqlenQ <= 0)) {
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(LI_V2_ACLNN_OP_NAME, "max_seqlen_q",
-                                               std::to_string(maxSeqlenQ),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(LI_V2_ACLNN_OP_NAME, "max_seqlen_q", std::to_string(maxSeqlenQ),
                                                "When layout_q is BSND, the value of max_seqlen_q "
                                                "must be equal to the size of the second axis of q");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 校验 layout_k 为 BSND 时，max_seqlen_k 必须大于 0
     if ((strcmp(layoutKOptional, "BSND") == 0) && (maxSeqlenK <= 0)) {
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(LI_V2_ACLNN_OP_NAME, "max_seqlen_k",
-                                               std::to_string(maxSeqlenK),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(LI_V2_ACLNN_OP_NAME, "max_seqlen_k", std::to_string(maxSeqlenK),
                                                "When layout_k is BSND, the value of max_seqlen_k "
                                                "must be equal to the size of the second axis of k");
         return ACLNN_ERR_PARAM_INVALID;
@@ -234,8 +228,9 @@ aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t h
 }
 
 aclnnStatus CheckExistenceLiV2(int64_t maskMode, int64_t cmpRatio, const aclTensor *cuSeqlensQOptional,
-                               const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKOptional,
-                               const aclTensor *cmpResidualKOptional, int64_t maxSeqlenQ, int64_t maxSeqlenK, const char *layoutQOptional,
+                               const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional,
+                               const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional,
+                               int64_t maxSeqlenQ, int64_t maxSeqlenK, const char *layoutQOptional,
                                const char *layoutKOptional, const aclTensor *metadata)
 {
     // cu_seqlens_q 存在性校验
@@ -246,8 +241,9 @@ aclnnStatus CheckExistenceLiV2(int64_t maskMode, int64_t cmpRatio, const aclTens
     }
     // layout_q BSND, seqused_q 不存在时，max_seqlen_q 不能为-1
     if (strcmp(layoutQOptional, "BSND") == 0 && !IsTensorExistLiV2(sequsedQOptional) && (maxSeqlenQ <= -1)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "max_seqlen_q", std::to_string(maxSeqlenQ),
-                                              "When layout_q is BSND and seqused_q is not provided, max_seqlen_q can not be -1");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            LI_V2_ACLNN_OP_NAME, "max_seqlen_q", std::to_string(maxSeqlenQ),
+            "When layout_q is BSND and seqused_q is not provided, max_seqlen_q can not be -1");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // cu_seqlens_k 存在性校验
@@ -264,15 +260,17 @@ aclnnStatus CheckExistenceLiV2(int64_t maskMode, int64_t cmpRatio, const aclTens
     }
     // layout_k BSND, seqused_k 不存在时，max_seqlen_k 不能为-1
     if (strcmp(layoutKOptional, "BSND") == 0 && !IsTensorExistLiV2(sequsedKOptional) && maxSeqlenK <= -1) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(LI_V2_ACLNN_OP_NAME, "max_seqlen_k", std::to_string(maxSeqlenK),
-                                              "When layout_k is BSND and seqused_k is not provided, max_seqlen_k can not be -1");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            LI_V2_ACLNN_OP_NAME, "max_seqlen_k", std::to_string(maxSeqlenK),
+            "When layout_k is BSND and seqused_k is not provided, max_seqlen_k can not be -1");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // cmp_residual_k 存在性校验
     if ((cmpRatio != LI_V2_CMP_RATIO_LOWER_BOUND) && (maskMode == LI_V2_CAUSAL_MASK_MODE) &&
         !IsTensorExistLiV2(cmpResidualKOptional)) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(LI_V2_ACLNN_OP_NAME, "cmp_residual_k",
-                                                 "When cmp_ratio is not 1 and mask_mode is CAUSAL, cmp_residual_k must be provided");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            LI_V2_ACLNN_OP_NAME, "cmp_residual_k",
+            "When cmp_ratio is not 1 and mask_mode is CAUSAL, cmp_residual_k must be provided");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // metadata 存在性校验
@@ -284,9 +282,9 @@ aclnnStatus CheckExistenceLiV2(int64_t maskMode, int64_t cmpRatio, const aclTens
 }
 
 aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQOptional,
-                                 const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKOptional,
-                                 const aclTensor *cmpResidualKOptional, const char *layoutQOptional, const char *layoutKOptional,
-                                 const aclTensor *metadata)
+                                 const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional,
+                                 const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional,
+                                 const char *layoutQOptional, const char *layoutKOptional, const aclTensor *metadata)
 {
     int64_t dimNum = -1;
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
@@ -389,10 +387,11 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
     int64_t keyBatchSize =
         GetKeyBatchSizeLiV2(batchSize, cuSeqlensKOptional, sequsedKOptional, layoutKOptional, keySource);
     if (queryBatchSize != keyBatchSize) {
-        OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(LI_V2_ACLNN_OP_NAME, querySource + " and " + keySource,
-                                                   std::to_string(GetRawShapeSizeLiV2(querySource, queryBatchSize)) + " and " +
-                                                       std::to_string(GetRawShapeSizeLiV2(keySource, keyBatchSize)),
-                                                   "The batch_size obtained from query should be the same as that obtained from key");
+        OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
+            LI_V2_ACLNN_OP_NAME, querySource + " and " + keySource,
+            std::to_string(GetRawShapeSizeLiV2(querySource, queryBatchSize)) + " and " +
+                std::to_string(GetRawShapeSizeLiV2(keySource, keyBatchSize)),
+            "The batch_size obtained from query should be the same as that obtained from key");
         if (IsTensorSourceLiV2(querySource) && IsTensorSourceLiV2(keySource)) {
             OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
                 LI_V2_ACLNN_OP_NAME, querySource + " and " + keySource,
@@ -401,13 +400,11 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
                 "The batch_size obtained from query should be the same as that obtained from key");
         } else if (IsTensorSourceLiV2(querySource)) {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-                LI_V2_ACLNN_OP_NAME, querySource,
-                std::to_string(GetRawShapeSizeLiV2(querySource, queryBatchSize)),
+                LI_V2_ACLNN_OP_NAME, querySource, std::to_string(GetRawShapeSizeLiV2(querySource, queryBatchSize)),
                 "The batch_size obtained from query should be the same as that obtained from key");
         } else {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-                LI_V2_ACLNN_OP_NAME, keySource,
-                std::to_string(GetRawShapeSizeLiV2(keySource, keyBatchSize)),
+                LI_V2_ACLNN_OP_NAME, keySource, std::to_string(GetRawShapeSizeLiV2(keySource, keyBatchSize)),
                 "The batch_size obtained from query should be the same as that obtained from key");
         }
         return ACLNN_ERR_PARAM_INVALID;
@@ -416,12 +413,12 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
     if (strcmp(layoutQOptional, "TND") == 0 && IsTensorExistLiV2(sequsedQOptional)) {
         int64_t cuSeqlensQBatchSize = cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
         if (cuSeqlensQBatchSize != queryBatchSize) {
-            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(LI_V2_ACLNN_OP_NAME, "cu_seqlens_q and seqused_q",
-                                                       std::to_string(cuSeqlensQBatchSize) + " and " +
-                                                           std::to_string(queryBatchSize),
-                                                       "When layout_q is TND and seqused_q is passed, "
-                                                       "the shape size of cu_seqlens_q minus 1 must be equal to "
-                                                       "the shape size of seqused_q");
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
+                LI_V2_ACLNN_OP_NAME, "cu_seqlens_q and seqused_q",
+                std::to_string(cuSeqlensQBatchSize) + " and " + std::to_string(queryBatchSize),
+                "When layout_q is TND and seqused_q is passed, "
+                "the shape size of cu_seqlens_q minus 1 must be equal to "
+                "the shape size of seqused_q");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -429,12 +426,12 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
     if (strcmp(layoutKOptional, "TND") == 0 && IsTensorExistLiV2(sequsedKOptional)) {
         int64_t cuSeqlensKBatchSize = cuSeqlensKOptional->GetViewShape().GetDim(0) - 1;
         if (cuSeqlensKBatchSize != keyBatchSize) {
-            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(LI_V2_ACLNN_OP_NAME, "cu_seqlens_k and seqused_k",
-                                                       std::to_string(cuSeqlensKBatchSize) + " and " +
-                                                           std::to_string(keyBatchSize),
-                                                       "When layout_k is TND and seqused_k is passed, "
-                                                       "the shape size of cu_seqlens_k minus 1 must be equal to "
-                                                       "the shape size of seqused_k");
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
+                LI_V2_ACLNN_OP_NAME, "cu_seqlens_k and seqused_k",
+                std::to_string(cuSeqlensKBatchSize) + " and " + std::to_string(keyBatchSize),
+                "When layout_k is TND and seqused_k is passed, "
+                "the shape size of cu_seqlens_k minus 1 must be equal to "
+                "the shape size of seqused_k");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -449,8 +446,7 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
                 "The batch_size of cmp_residual_k should match the valid batch size");
         } else {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-                LI_V2_ACLNN_OP_NAME, "cmp_residual_k",
-                std::to_string(cmpResidualKBatch),
+                LI_V2_ACLNN_OP_NAME, "cmp_residual_k", std::to_string(cmpResidualKBatch),
                 "The batch_size of cmp_residual_k should match the valid batch size");
         }
         return ACLNN_ERR_PARAM_INVALID;
@@ -458,23 +454,26 @@ aclnnStatus CheckConsistencyLiV2(int64_t batchSize, const aclTensor *cuSeqlensQO
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus ParamsCheckLiV2(
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional, int64_t numHeadsQ, int64_t numHeadsK,
-    int64_t headDim, int64_t topk, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK, char *layoutQOptional,
-    char *layoutKOptional, int64_t maskMode, int64_t cmpRatio, const aclTensor *metadata, uint32_t aicCoreNum,
-    uint32_t aivCoreNum, const std::string &socVersion)
+aclnnStatus ParamsCheckLiV2(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKOptional,
+                            const aclTensor *sequsedQOptional, const aclTensor *sequsedKOptional,
+                            const aclTensor *cmpResidualKOptional, int64_t numHeadsQ, int64_t numHeadsK,
+                            int64_t headDim, int64_t topk, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK,
+                            char *layoutQOptional, char *layoutKOptional, int64_t maskMode, int64_t cmpRatio,
+                            const aclTensor *metadata, uint32_t aicCoreNum, uint32_t aivCoreNum,
+                            const std::string &socVersion)
 {
-    auto ret = CheckSingleParamLiV2(numHeadsQ, numHeadsK, headDim, topk, batchSize, maxSeqlenQ, maxSeqlenK,
-                                    layoutQOptional, layoutKOptional, maskMode, cmpRatio, aicCoreNum, aivCoreNum, socVersion);
+    auto ret =
+        CheckSingleParamLiV2(numHeadsQ, numHeadsK, headDim, topk, batchSize, maxSeqlenQ, maxSeqlenK, layoutQOptional,
+                             layoutKOptional, maskMode, cmpRatio, aicCoreNum, aivCoreNum, socVersion);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     ret = CheckExistenceLiV2(maskMode, cmpRatio, cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional,
-                             sequsedKOptional, cmpResidualKOptional, maxSeqlenQ, maxSeqlenK, layoutQOptional, layoutKOptional, metadata);
+                             sequsedKOptional, cmpResidualKOptional, maxSeqlenQ, maxSeqlenK, layoutQOptional,
+                             layoutKOptional, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
-    ret = CheckConsistencyLiV2(batchSize, cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional,
-                               sequsedKOptional, cmpResidualKOptional, layoutQOptional, layoutKOptional, metadata);
+    ret = CheckConsistencyLiV2(batchSize, cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional,
+                               cmpResidualKOptional, layoutQOptional, layoutKOptional, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;

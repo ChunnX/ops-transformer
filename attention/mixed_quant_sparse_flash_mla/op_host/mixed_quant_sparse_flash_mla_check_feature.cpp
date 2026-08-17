@@ -25,14 +25,12 @@ namespace optiling {
 ge::graphStatus MQSMLATilingCheck::CheckFeatureWinKV() const
 {
     OP_CHECK_IF(oriWinLeft_ != -1 && oriWinLeft_ < 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ori_win_left",
-                                                      std::to_string(oriWinLeft_).c_str(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ori_win_left", std::to_string(oriWinLeft_).c_str(),
                                                       "Ori_win_left only supports -1 or >=0"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(oriWinRight_ != -1 && oriWinRight_ < 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ori_win_right",
-                                                      std::to_string(oriWinLeft_).c_str(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ori_win_right", std::to_string(oriWinLeft_).c_str(),
                                                       "Ori_win_right only supports -1 or >=0"),
                 return ge::GRAPH_FAILED);
 
@@ -42,18 +40,18 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureWinKV() const
 ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantShape() const
 {
     OP_CHECK_IF(bSize_ <= 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "batch_size",
-                                                      std::to_string(bSize_).c_str(), "batch_size should be greater than 0"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "batch_size", std::to_string(bSize_).c_str(),
+                                                      "batch_size should be greater than 0"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qTSize_ <= 0 && (qLayout_ == MQSMLALayout::TND),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "T_size of query",
-                                                      std::to_string(qTSize_).c_str(), "T_size of query should be greater than 0"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "T_size of query", std::to_string(qTSize_).c_str(),
+                                                      "T_size of query should be greater than 0"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(n2Size_ != 1,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kv_head_num",
-                                                      std::to_string(n2Size_).c_str(), "kv_head_num only support 1"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kv_head_num", std::to_string(n2Size_).c_str(),
+                                                      "kv_head_num only support 1"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(n1Size_ % n2Size_ != 0,
@@ -63,29 +61,31 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantShape() const
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(dSize_ != 512, // 512:当前不泛化
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "Head dim of input q",
-                                                      std::to_string(dSize_).c_str(), "Head dim of input q only support 512"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "Head dim of input q", std::to_string(dSize_).c_str(),
+                                                      "Head dim of input q only support 512"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(dSizeV_ != 512, // 512:当前不泛化
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "dSizeV",
-                                                      std::to_string(dSizeV_).c_str(), "dSizeV only support 512"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "dSizeV", std::to_string(dSizeV_).c_str(),
+                                                      "dSizeV only support 512"),
                 return ge::GRAPH_FAILED);
 
     if (quant_mode_ == 1) {
-        OP_CHECK_IF(dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName_, "ori_kv", ToStringRaw(opParamInfo_.oriKv.tensor->GetStorageShape()).c_str(),
-                        "When quant_mode is 1, dSizeVInput only supports " + std::to_string(KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE) +
-                            ", but got " + std::to_string(dSizeVInput_)),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                opName_, "ori_kv", ToStringRaw(opParamInfo_.oriKv.tensor->GetStorageShape()).c_str(),
+                "When quant_mode is 1, dSizeVInput only supports " + std::to_string(KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE) +
+                    ", but got " + std::to_string(dSizeVInput_)),
+            return ge::GRAPH_FAILED);
     } else if (quant_mode_ == 2) {
-        OP_CHECK_IF(dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName_, "ori_kv", ToStringRaw(opParamInfo_.oriKv.tensor->GetStorageShape()).c_str(),
-                        "When quant_mode is 2, dSizeVInput only supports " + std::to_string(KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO) +
-                            ", but got " + std::to_string(dSizeVInput_)),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                opName_, "ori_kv", ToStringRaw(opParamInfo_.oriKv.tensor->GetStorageShape()).c_str(),
+                "When quant_mode is 2, dSizeVInput only supports " + std::to_string(KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO) +
+                    ", but got " + std::to_string(dSizeVInput_)),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -96,8 +96,7 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantLayout() const
     const std::vector<std::string> layoutSupportList = {"BSND", "TND"};
     std::string layoutQuery = opParamInfo_.layoutQ;
     OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layoutQuery) == layoutSupportList.end(),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q",
-                                                      layoutQuery.c_str(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q", layoutQuery.c_str(),
                                                       "Layout_q only supports BSND or TND"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -105,22 +104,22 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantLayout() const
 
 ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantDtype() const
 {
-    OP_CHECK_IF(qType_ != ge::DT_BF16,
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "query",
-                                                      MQSMLADataTypeToSerialString(qType_).c_str(),
-                                                      "query dtype only support " + MQSMLADataTypeToSerialString(ge::DT_BF16) + " and " +
-                                                          MQSMLADataTypeToSerialString(ge::DT_FLOAT16)),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        qType_ != ge::DT_BF16,
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "query", MQSMLADataTypeToSerialString(qType_).c_str(),
+                                              "query dtype only support " + MQSMLADataTypeToSerialString(ge::DT_BF16) +
+                                                  " and " + MQSMLADataTypeToSerialString(ge::DT_FLOAT16)),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantAttr() const
 {
-    OP_CHECK_IF(*opParamInfo_.quantMode != 1 && *opParamInfo_.quantMode != 2,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode",
-                                                      std::to_string(*opParamInfo_.quantMode).c_str(),
-                                                      "Quant_mode only support 1 and 2"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        *opParamInfo_.quantMode != 1 && *opParamInfo_.quantMode != 2,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode", std::to_string(*opParamInfo_.quantMode).c_str(),
+                                              "Quant_mode only support 1 and 2"),
+        return ge::GRAPH_FAILED);
 
     if (*opParamInfo_.quantMode == 1 || *opParamInfo_.quantMode == 2) {
         OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() == ge::DT_HIFLOAT8, // 前面已校验dtype在fp8 e4m3和hif8之间
@@ -171,9 +170,6 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquant() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MQSMLATilingCheck::CheckFeature() const
-{
-    return CheckFeatureAntiquant();
-}
+ge::graphStatus MQSMLATilingCheck::CheckFeature() const { return CheckFeatureAntiquant(); }
 
 } // namespace optiling
