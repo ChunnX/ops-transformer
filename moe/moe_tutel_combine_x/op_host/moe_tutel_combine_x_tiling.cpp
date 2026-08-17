@@ -127,41 +127,29 @@ ge::graphStatus MoeTutelCombineXTiling::CheckDtype()
 
     dtypeSize_ = static_cast<int64_t>(ge::GetSizeByDataType(dtype_));
     OP_CHECK_IF(dtypeSize_ <= 0,
-                OP_LOGE(context_->GetNodeName(), "Get size of y_grad dtype failed."),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "y_grad",
+                                                      ge::TypeUtils::DataTypeToSerialString(dtype_),
+                                                      "failed to get the byte width of this dtype"),
                 return ge::GRAPH_FAILED);
     blockElemT_ = UB_BLOCK_SIZE / dtypeSize_;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeTutelCombineXTiling::CheckShape()
+// 三张路由表（gates / indices / locations）必须严格同 shape：K 取 gates.dim(0)，
+// 与同族 MoeTutelDispatch 的口径一致，不等则跨 K 归约的下标没有唯一解释。
+ge::graphStatus MoeTutelCombineXTiling::CheckRouteShape(const gert::Shape &gatesShape)
 {
-    auto yGradShapePtr = context_->GetRequiredInputShape(INPUT_Y_GRAD_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, yGradShapePtr);
-    auto gatesShapePtr = context_->GetRequiredInputShape(INPUT_GATES_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, gatesShapePtr);
     auto indicesShapePtr = context_->GetRequiredInputShape(INPUT_INDICES_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, indicesShapePtr);
     auto locationsShapePtr = context_->GetRequiredInputShape(INPUT_LOCATIONS_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, locationsShapePtr);
-    auto xGradShapePtr = context_->GetOutputShape(OUTPUT_X_GRAD_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, xGradShapePtr);
-
-    const gert::Shape &yGradShape = yGradShapePtr->GetStorageShape();
-    const gert::Shape &gatesShape = gatesShapePtr->GetStorageShape();
     const gert::Shape &indicesShape = indicesShapePtr->GetStorageShape();
     const gert::Shape &locationsShape = locationsShapePtr->GetStorageShape();
-    const gert::Shape &xGradShape = xGradShapePtr->GetStorageShape();
 
-    OP_CHECK_IF(yGradShape.GetDimNum() != Y_GRAD_DIM_NUM,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "y_grad", ShapeToStr(yGradShape),
-                                                      "y_grad must be a 3D tensor of [E, C, H]"),
-                return ge::GRAPH_FAILED);
     OP_CHECK_IF(gatesShape.GetDimNum() != ROUTE_DIM_NUM,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "gates", ShapeToStr(gatesShape),
                                                       "gates must be a 2D tensor of [K, S]"),
                 return ge::GRAPH_FAILED);
-    // K 取 gates.dim(0)，与同族 MoeTutelDispatch 的口径一致；三张路由表必须严格同 shape，
-    // 否则跨 K 归约的下标就没有唯一解释。
     OP_CHECK_IF(indicesShape != gatesShape,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "indices", ShapeToStr(indicesShape),
                                                       "indices must have the same shape as gates " +
@@ -172,6 +160,29 @@ ge::graphStatus MoeTutelCombineXTiling::CheckShape()
                                                       "locations must have the same shape as gates " +
                                                           ShapeToStr(gatesShape)),
                 return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeTutelCombineXTiling::CheckShape()
+{
+    auto yGradShapePtr = context_->GetRequiredInputShape(INPUT_Y_GRAD_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, yGradShapePtr);
+    auto gatesShapePtr = context_->GetRequiredInputShape(INPUT_GATES_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, gatesShapePtr);
+    auto xGradShapePtr = context_->GetOutputShape(OUTPUT_X_GRAD_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, xGradShapePtr);
+
+    const gert::Shape &yGradShape = yGradShapePtr->GetStorageShape();
+    const gert::Shape &gatesShape = gatesShapePtr->GetStorageShape();
+    const gert::Shape &xGradShape = xGradShapePtr->GetStorageShape();
+
+    OP_CHECK_IF(yGradShape.GetDimNum() != Y_GRAD_DIM_NUM,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "y_grad", ShapeToStr(yGradShape),
+                                                      "y_grad must be a 3D tensor of [E, C, H]"),
+                return ge::GRAPH_FAILED);
+    if (CheckRouteShape(gatesShape) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     expertNum_ = yGradShape.GetDim(DIM_0);
     capacity_ = yGradShape.GetDim(DIM_1);
@@ -217,31 +228,14 @@ int64_t MoeTutelCombineXTiling::CalcUbBytes(int64_t hChunk, int64_t rowF, int64_
     return accBytes + outBytes + rowBytes + routeBytes;
 }
 
-ge::graphStatus MoeTutelCombineXTiling::DoOpTiling()
+// H 分块：先按最小配置（rowFactor=1, kFactor=1）解出能放下的最大 hFactor，再取 min(hidden)。
+// hFactor_ == hidden_ 时即整行全载。
+ge::graphStatus MoeTutelCombineXTiling::SolveHFactor()
 {
-    // 空输出：S==0 或 H==0 时 x_grad 没有元素，直接派 1 个核走空循环，不报错（与 A2 一致）。
-    if (samples_ == 0 || hidden_ == 0) {
-        usedCoreNum_ = 1;
-        rowOfFormerBlock_ = 0;
-        rowOfTailBlock_ = 0;
-        rowFactor_ = 1;
-        kFactor_ = 1;
-        hFactor_ = (hidden_ > 0) ? hidden_ : 1;
-        return ge::GRAPH_SUCCESS;
-    }
-
-    // 核间：按 token 均分，输出区间互不重叠，无原子累加。
-    rowOfFormerBlock_ = Ops::Base::CeilDiv(samples_, totalCoreNum_);
-    usedCoreNum_ = Ops::Base::CeilDiv(samples_, rowOfFormerBlock_);
-    rowOfTailBlock_ = samples_ - (usedCoreNum_ - 1) * rowOfFormerBlock_;
-
-    // H 分块：先按最小配置（rowFactor=1, kFactor=1）解出能放下的最大 hFactor，再取 min(hidden)。
     const bool isFp32 = (dtypeSize_ == FP32_SIZE);
-    const int64_t bytesPerElemMin =
-        isFp32 ? (DOUBLE_BUFFER * FP32_SIZE + DOUBLE_BUFFER * FP32_SIZE) : (FP32_SIZE + DOUBLE_BUFFER * dtypeSize_ + DOUBLE_BUFFER * dtypeSize_);
+    const int64_t bytesPerElemMin = isFp32 ? (DOUBLE_BUFFER * FP32_SIZE + DOUBLE_BUFFER * FP32_SIZE) : (FP32_SIZE + DOUBLE_BUFFER * dtypeSize_ + DOUBLE_BUFFER * dtypeSize_);
     const int64_t routeFixed = CalcUbBytes(0, 1, 1);
-    int64_t hCap = (usableUb_ - routeFixed) / bytesPerElemMin;
-    hCap = Ops::Base::FloorAlign(hCap, blockElemT_);
+    int64_t hCap = Ops::Base::FloorAlign((usableUb_ - routeFixed) / bytesPerElemMin, blockElemT_);
     hFactor_ = std::min(hidden_, std::max(hCap, blockElemT_));
     while (hFactor_ > blockElemT_ && CalcUbBytes(hFactor_, 1, 1) > usableUb_) {
         hFactor_ -= blockElemT_;
@@ -249,19 +243,28 @@ ge::graphStatus MoeTutelCombineXTiling::DoOpTiling()
     OP_CHECK_IF(CalcUbBytes(hFactor_, 1, 1) > usableUb_,
                 OP_LOGE(context_->GetNodeName(), "UB is too small to hold one hidden block, ubSize=%ld.", usableUb_),
                 return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
 
-    // token 分块：只有 H 整行全载时才批多个 token（H 被切开时批 token 收益有限）。
-    // 留一半 UB 给 gather 行缓冲，避免把 kFactor 挤到 1。
+// token 分块：只有 H 整行全载时才批多个 token（H 被切开时批 token 收益有限）。
+// 留一半 UB 给 gather 行缓冲，避免把 kFactor 挤到 1。
+void MoeTutelCombineXTiling::SolveRowFactor()
+{
     rowFactor_ = 1;
-    if (hFactor_ == hidden_) {
-        const int64_t maxRow = std::min(MAX_ROW_FACTOR, rowOfFormerBlock_);
-        while (rowFactor_ * DOUBLE_BUFFER <= maxRow &&
-               CalcUbBytes(hFactor_, rowFactor_ * DOUBLE_BUFFER, 1) * DOUBLE_BUFFER <= usableUb_) {
-            rowFactor_ *= DOUBLE_BUFFER;
-        }
+    if (hFactor_ != hidden_) {
+        return;
     }
+    const int64_t maxRow = std::min(MAX_ROW_FACTOR, rowOfFormerBlock_);
+    while (rowFactor_ * DOUBLE_BUFFER <= maxRow &&
+           CalcUbBytes(hFactor_, rowFactor_ * DOUBLE_BUFFER, 1) * DOUBLE_BUFFER <= usableUb_) {
+        rowFactor_ *= DOUBLE_BUFFER;
+    }
+}
 
-    // k 分块：用剩余 UB 反推，再按 CeilAlign(kF,8) 的取整误差回退。
+// k 分块：用剩余 UB 反推，再按 CeilAlign(kF,8) 的取整误差回退。
+ge::graphStatus MoeTutelCombineXTiling::SolveKFactor()
+{
+    const bool isFp32 = (dtypeSize_ == FP32_SIZE);
     const int64_t alignT = Ops::Base::CeilAlign(hFactor_, blockElemT_);
     const int64_t routeStride = Ops::Base::CeilAlign(rowFactor_, ROUTE_ALIGN);
     const int64_t bytesPerK = DOUBLE_BUFFER * alignT * dtypeSize_ +
@@ -281,6 +284,32 @@ ge::graphStatus MoeTutelCombineXTiling::DoOpTiling()
                         usableUb_, hFactor_, rowFactor_),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeTutelCombineXTiling::DoOpTiling()
+{
+    // 空输出：S==0 或 H==0 时 x_grad 没有元素，直接派 1 个核走空循环，不报错（与 A2 一致）。
+    // hFactor_ 取 1 只为让 InitBuffer 拿到非零长度，kernel 侧循环次数为 0，不会用到。
+    if (samples_ == 0 || hidden_ == 0) {
+        usedCoreNum_ = 1;
+        rowOfFormerBlock_ = 0;
+        rowOfTailBlock_ = 0;
+        rowFactor_ = 1;
+        kFactor_ = 1;
+        hFactor_ = (hidden_ > 0) ? hidden_ : 1;
+        return ge::GRAPH_SUCCESS;
+    }
+
+    // 核间：按 token 均分，输出区间互不重叠，无原子累加。
+    rowOfFormerBlock_ = Ops::Base::CeilDiv(samples_, totalCoreNum_);
+    usedCoreNum_ = Ops::Base::CeilDiv(samples_, rowOfFormerBlock_);
+    rowOfTailBlock_ = samples_ - (usedCoreNum_ - 1) * rowOfFormerBlock_;
+
+    if (SolveHFactor() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    SolveRowFactor();
+    return SolveKFactor();
 }
 
 ge::graphStatus MoeTutelCombineXTiling::DoLibApiTiling()

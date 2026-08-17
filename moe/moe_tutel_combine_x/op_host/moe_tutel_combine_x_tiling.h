@@ -64,6 +64,10 @@ protected:
 private:
     ge::graphStatus CheckDtype();
     ge::graphStatus CheckShape();
+    ge::graphStatus CheckRouteShape(const gert::Shape &gatesShape);
+    ge::graphStatus SolveHFactor();
+    void SolveRowFactor();
+    ge::graphStatus SolveKFactor();
     // 给定 (H 分块, token 分块, k 分块) 时 kernel 侧的 UB 占用字节数。
     // 与 op_kernel/moe_tutel_combine_x.cpp 的 InitBuffer 序列逐项对应，改一处必须改另一处。
     int64_t CalcUbBytes(int64_t hChunk, int64_t rowF, int64_t kF) const;

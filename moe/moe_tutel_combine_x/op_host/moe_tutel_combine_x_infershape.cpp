@@ -13,6 +13,8 @@
  * \brief
  */
 
+#include <string>
+
 #include "log/log.h"
 #include "register/op_impl_registry.h"
 
@@ -43,12 +45,16 @@ static ge::graphStatus InferShape4MoeTutelCombineX(gert::InferShapeContext *cont
     OP_CHECK_NULL_WITH_CONTEXT(context, xGradShape);
 
     // -2（UNKNOWN_RANK）不支持：H 与 S 都要从具体轴上取，rank 未知时推不出输出。
-    if (yGradShape->GetDimNum() != Y_GRAD_DIM_NUM || gatesShape->GetDimNum() != GATES_DIM_NUM) {
-        OP_LOGE(context->GetNodeName(),
-                "y_grad rank must be 3 and gates rank must be 2, but got %zu and %zu.",
-                yGradShape->GetDimNum(), gatesShape->GetDimNum());
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF(yGradShape->GetDimNum() != Y_GRAD_DIM_NUM,
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "y_grad",
+                                                         std::to_string(yGradShape->GetDimNum()),
+                                                         "y_grad must be a 3D tensor of [E, C, H]"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(gatesShape->GetDimNum() != GATES_DIM_NUM,
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "gates",
+                                                         std::to_string(gatesShape->GetDimNum()),
+                                                         "gates must be a 2D tensor of [K, S]"),
+                return ge::GRAPH_FAILED);
 
     xGradShape->SetDimNum(X_GRAD_DIM_NUM);
     xGradShape->SetDim(0, gatesShape->GetDim(GATES_S_IDX));

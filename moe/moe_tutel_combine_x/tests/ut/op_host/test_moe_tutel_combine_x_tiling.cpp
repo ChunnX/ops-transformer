@@ -139,6 +139,40 @@ TEST_F(MoeTutelCombineXTiling, moe_tutel_combine_x_tiling_empty_hidden)
     ExecuteTestCase(optilingContextPara, ge::GRAPH_SUCCESS, TILING_KEY_MAIN);
 }
 
+// C=0（每专家容量为 0）：locations < 0 恒假，全部路由无效，kernel 写全 0。
+TEST_F(MoeTutelCombineXTiling, moe_tutel_combine_x_tiling_empty_capacity)
+{
+    gert::TilingContextPara optilingContextPara("MoeTutelCombineX",
+                                                {
+                                                    {{{4, 0, 128}, {4, 0, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                    {{{2, 16}, {2, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                    {{{2, 16}, {2, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                    {{{2, 16}, {2, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                },
+                                                {
+                                                    {{{16, 128}, {16, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                },
+                                                {}, nullptr, "Ascend950");
+    ExecuteTestCase(optilingContextPara, ge::GRAPH_SUCCESS, TILING_KEY_MAIN);
+}
+
+// E=0（专家数为 0）：tiling 不拒收；E 不参与任何计算，越界索引由调用方契约保证。
+TEST_F(MoeTutelCombineXTiling, moe_tutel_combine_x_tiling_empty_expert)
+{
+    gert::TilingContextPara optilingContextPara("MoeTutelCombineX",
+                                                {
+                                                    {{{0, 8, 128}, {0, 8, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                    {{{2, 16}, {2, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                    {{{2, 16}, {2, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                    {{{2, 16}, {2, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                },
+                                                {
+                                                    {{{16, 128}, {16, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                },
+                                                {}, nullptr, "Ascend950");
+    ExecuteTestCase(optilingContextPara, ge::GRAPH_SUCCESS, TILING_KEY_MAIN);
+}
+
 // H 超大：单行放不进 UB，hFactor 被切小，仍走同一个 TilingKey。
 TEST_F(MoeTutelCombineXTiling, moe_tutel_combine_x_tiling_huge_hidden)
 {
