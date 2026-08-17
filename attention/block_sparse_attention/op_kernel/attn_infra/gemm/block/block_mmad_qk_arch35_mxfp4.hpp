@@ -326,6 +326,23 @@ public:
         copyL0CToUB(ubSTensorTla, l0CTensorTla, subBlockId);
     }
 
+    // 发一次 nSub 的 fixpipe（含 M_FIX / FIX_M 的成对同步）。
+    //   拆出来是为了能延后一拍发射：调用点把它插在 mmad 之后、下一轮的 WaitFlag<MTE1_M> 之前，
+    //   用它的发射时间掩盖跨流水 flag 的往返延迟。
+    template <class TensorUB>
+    __aicore__ inline void EmitFixpipeMm1(uint32_t l0cBufId, uint32_t nSubRowStart, uint32_t nCur,
+                                          uint32_t qsActBaseTileAlign16, TensorUB &ubSTensorTla,
+                                          uint32_t subBlockIdx)
+    {
+        AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(QK_L0C_EVENT0 + l0cBufId);
+        // nCur 偶数对齐用于 Fixpipe mSize
+        uint32_t nCurEven = (nCur + 1) >> 1 << 1;
+        auto ubSSubTla = GetTile(
+            ubSTensorTla, tla::MakeCoord(nSubRowStart, 0), tla::MakeShape(nCurEven, qsActBaseTileAlign16));
+        FixpipeMm1(qsActBaseTileAlign16, nCur, ubSSubTla, subBlockIdx != 0, l0cBufId);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(QK_L0C_EVENT0 + l0cBufId);
+    }
+
     template <class TensorQ, class TensorK, class TensorUB, class TaskInfoT, class TileInfoT>
     __aicore__ inline
     void operator()(TensorQ &gQTensorTla,
@@ -374,6 +391,18 @@ public:
             CopyQScaleGmToL1(qsActBaseTile, scaleK, gQDequantScale, qBufId, qHeadMul);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);
+
+            // [Q 常驻 L0B] Q 在整个 task 内不变，LoadQToL0B 的实参全是循环不变量；
+            //   而 QK 的 L0B(offset 0..16K) 与 PV 的(16K 起)分属不同区间，无人覆盖，
+            //   故在此一次灌满两个 ping-pong 槽，nSub 循环里不再重复装载。
+            //   原实现每个 nSub 都重装同一份 Q，一个 task 的 518 次装载里 516 次是冗余。
+            for (uint32_t i = 0; i < MXFP4::L0A_QK_BUF_CNT; ++i) {
+                AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(QK_L0AB_EVENT0 + qkL0abBufId);
+                LoadQToL0B(qsActBaseTileAlign16, embed, qsActBaseTileAlign16,
+                           qsActBaseTileAlign16, scaleK, qBufId, qkL0abBufId);
+                AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(QK_L0AB_EVENT0 + qkL0abBufId);
+                qkL0abBufId = (qkL0abBufId + 1) % MXFP4::L0A_QK_BUF_CNT;
+            }
         }
 
         // 每 tile 稀疏 gather K / K-scale 到 L1
@@ -388,8 +417,20 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
 
-        // n 方向按 L0_TILE_N 子切分
+        // n 方向按 L0_TILE_N 子切分。
+        // [软流水] fixpipe 延后一拍发射：原实现里 SetFlag/WaitFlag 成对紧挨着（M 等 MTE1、
+        //   FIX 等 M），两次跨流水往返中间没有任何工作可掩盖，实测每个 nSub 白等约 92 cycle。
+        //   改成：mmad(k) 发完只 Set 不 Wait，把 fixpipe(k-1) 插到 LoadK(k) 与 mmad(k) 之间，
+        //   于是 MTE1_M 的往返被 fixpipe 的发射盖住、M_FIX 的往返被 LoadK 盖住。
+        //   L0C 双缓冲天然够用：c_k 的 FIX_M 由 k+1 轮释放，k+2 轮才复用。
+        //   注意不能把 pending 的 fixpipe 带出本次调用——kernel 紧接着会 CrossCoreSetFlag
+        //   通知向量核 S 已就绪，所以循环结束必须 flush。
         uint32_t nLoopNum = CeilDivision(kvsActBaseTile, L0_TILE_N);
+        bool fixPending = false;
+        uint32_t pendL0cBufId = 0;
+        uint32_t pendNSubRowStart = 0;
+        uint32_t pendNCur = 0;
+
         for (uint32_t nSub = 0; nSub < nLoopNum; ++nSub) {
             uint32_t l0ABEventId = QK_L0AB_EVENT0 + qkL0abBufId;
             uint32_t l0CEventId = QK_L0C_EVENT0 + qkL0cBufId;
@@ -398,26 +439,34 @@ public:
 
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
 
-            {
-                AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
-                LoadQToL0B(qsActBaseTileAlign16, embed, qsActBaseTileAlign16, qsActBaseTileAlign16, scaleK, qBufId, qkL0abBufId);
-                LoadKToL0A(nSubRowStart, nCur, embed, kvsActBaseTileAlign16, scaleK, kBufId, qkL0abBufId);
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
-                MatmulQK(nCur, qsActBaseTileAlign16, embed, qkL0cBufId, qkL0abBufId);
-                AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
-                qkL0abBufId = (qkL0abBufId + 1) % MXFP4::L0A_QK_BUF_CNT;
+            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
+            // Q 已在 task 首 tile 常驻两个 L0B 槽，此处只需装 K
+            LoadKToL0A(nSubRowStart, nCur, embed, kvsActBaseTileAlign16, scaleK, kBufId, qkL0abBufId);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
+
+            // 上一轮的 fixpipe 插在这里，掩盖刚发出的 MTE1_M 往返
+            if (fixPending) {
+                EmitFixpipeMm1(pendL0cBufId, pendNSubRowStart, pendNCur,
+                               qsActBaseTileAlign16, ubSTensorTla, subBlockIdx);
+                fixPending = false;
             }
 
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
+            MatmulQK(nCur, qsActBaseTileAlign16, embed, qkL0cBufId, qkL0abBufId);
+            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
+            qkL0abBufId = (qkL0abBufId + 1) % MXFP4::L0A_QK_BUF_CNT;
+
+            // 只 Set 不 Wait，本轮的 fixpipe 推迟到下一轮（或循环外的 flush）
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-            AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-            // nCur 偶数对齐用于 Fixpipe mSize
-            uint32_t nCurEven = (nCur + 1) >> 1 << 1;
-            auto ubSSubTla = GetTile(
-                ubSTensorTla, tla::MakeCoord(nSubRowStart, 0), tla::MakeShape(nCurEven, qsActBaseTileAlign16));
-            FixpipeMm1(qsActBaseTileAlign16, nCur, ubSSubTla, subBlockIdx != 0, qkL0cBufId);
-            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
+            pendL0cBufId = qkL0cBufId;
+            pendNSubRowStart = nSubRowStart;
+            pendNCur = nCur;
+            fixPending = true;
             qkL0cBufId = (qkL0cBufId + 1) % MXFP4::L0C_QK_BUF_CNT;
+        }
+        if (fixPending) {
+            EmitFixpipeMm1(pendL0cBufId, pendNSubRowStart, pendNCur,
+                           qsActBaseTileAlign16, ubSTensorTla, subBlockIdx);
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
         kBufId = (kBufId + 1) % MXFP4::L1_KV_BUF_CNT;
