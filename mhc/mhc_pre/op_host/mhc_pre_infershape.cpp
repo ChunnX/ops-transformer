@@ -129,10 +129,10 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
     // has residual
     bool hasResi = (alphaDimSize == 3);
 
-    gert::Shape *outShapes[6] = {context->GetOutputShape(OUT_H_IN_INDEX),   context->GetOutputShape(OUT_H_POST_INDEX),
-                                 context->GetOutputShape(OUT_H_RES_INDEX),  context->GetOutputShape(OUT_INV_RMS_INDEX),
+    gert::Shape *outShapes[6] = {context->GetOutputShape(OUT_H_IN_INDEX), context->GetOutputShape(OUT_H_POST_INDEX),
+                                 context->GetOutputShape(OUT_H_RES_INDEX), context->GetOutputShape(OUT_INV_RMS_INDEX),
                                  context->GetOutputShape(OUT_H_MIX_INDEX), context->GetOutputShape(OUT_H_PRE_INDEX)};
-    
+
     uint64_t phiDim0 = phiShape->GetDim(0);
     uint64_t n = 0;
     uint64_t d = 0;
@@ -145,7 +145,7 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
         n = xShape->GetDim(1);
         d = xShape->GetDim(2);
     }
-    
+
     uint64_t nn_fac = Factorial(n);
     uint64_t nn_pow = n * n;
     uint64_t doubleN = 2 * n;
@@ -165,8 +165,7 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
     } else {
         nn = nn_pow;
     }
-    
-   
+
     if (xDim == BSND_DIM_NUM) {
         // b,s,n,d
         uint64_t b = xShape->GetDim(0), s = xShape->GetDim(1);

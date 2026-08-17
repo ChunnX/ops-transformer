@@ -248,7 +248,7 @@ static bool CheckInputDims(const MhcParamsBase &params)
         OP_LOGE_FOR_INVALID_SHAPEDIM(ACLNN_OP_NAME, "x", std::to_string(xDimNum).c_str(), "3 or 4");
         return false;
     }
-    // phi dims must be 2,  alpha dims must be 1, bias dims must be 1, 
+    // phi dims must be 2,  alpha dims must be 1, bias dims must be 1,
     if (!CheckTensorRank(params.phi, "phi", DIM_NUM_2) || !CheckTensorRank(params.alpha, "alpha", DIM_NUM_1) ||
         !CheckTensorRank(params.bias, "bias", DIM_NUM_1)) {
         return false;
@@ -306,7 +306,7 @@ static bool CheckOutputDimsA2(const MhcParamsBase &params)
     } else if (xDimNum == DIM_NUM_3) {
         n = xShape.GetDim(1);
     }
-    
+
     size_t outputDimNum = xDimNum == DIM_NUM_4 ? DIM_NUM_3 : DIM_NUM_2;
     if (!CheckTensorRank(params.hIn, "hIn", outputDimNum)) {
         return false;
@@ -315,7 +315,7 @@ static bool CheckOutputDimsA2(const MhcParamsBase &params)
     if (!CheckTensorRank(params.hPost, "hPost", outputDimNum)) {
         return false;
     }
-    
+
     int64_t alphaSize = params.alpha->GetViewShape().GetDim(0);
     int64_t expectedPhiRows_factorial = Factorial(n) + 2 * n;
     int64_t expectedPhiRows_pow = n * n + 2 * n;
@@ -407,9 +407,9 @@ static bool CheckParamShapes(const MhcParamsBase &params, int64_t n, int64_t d, 
 }
 
 static bool CheckParamShapesA2(const MhcParamsBase &params, int64_t n, int64_t d, int64_t nD,
-                             int64_t alphaSize, 
-                             int64_t expectedPhiRows_factorial, int64_t expectedPhiRows_pow,
-                             int64_t phiShape_dim0)
+                               int64_t alphaSize,
+                               int64_t expectedPhiRows_factorial, int64_t expectedPhiRows_pow,
+                               int64_t phiShape_dim0)
 {
     // n,d must bigger than 0  || n must be 4,6,8 ||  d must align to 16/128
     if (!ValidateNDParamsA2(n, d)) {
@@ -426,7 +426,7 @@ static bool CheckParamShapesA2(const MhcParamsBase &params, int64_t n, int64_t d
         }
         if (biasShape.GetDim(0) != expectedPhiRows) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be %ld, but got %ld", expectedPhiRows,
-                biasShape.GetDim(0));
+                    biasShape.GetDim(0));
             return false;
         }
     } else {
@@ -446,7 +446,7 @@ static bool CheckParamShapesA2(const MhcParamsBase &params, int64_t n, int64_t d
         return false;
     }
 
-    if(params.gammaOptional != nullptr && !CheckTensorShape(params.gammaOptional, {n, d}, "gammaOptional")){
+    if (params.gammaOptional != nullptr && !CheckTensorShape(params.gammaOptional, {n, d}, "gammaOptional")) {
         return false;
     }
     return true;
@@ -472,9 +472,9 @@ static bool CheckOutputShape4D(const MhcParamsBase &params, int64_t n, int64_t d
            CheckTensorShape(params.hPreOptional, {b, s, n}, "hPreOptional");
 }
 
-static bool CheckOutputShape4DA2(const MhcParamsBase &params, int64_t b, int64_t s, int64_t n, int64_t d, 
-                             int64_t alphaSize, int64_t expectedPhiRows_factorial, int64_t expectedPhiRows_pow, 
-                             int64_t phiShape_dim0)
+static bool CheckOutputShape4DA2(const MhcParamsBase &params, int64_t b, int64_t s, int64_t n, int64_t d,
+                                 int64_t alphaSize, int64_t expectedPhiRows_factorial, int64_t expectedPhiRows_pow,
+                                 int64_t phiShape_dim0)
 {
     if (!CheckTensorShape(params.hIn, {b, s, d}, "hIn")) {
         return false;
@@ -525,7 +525,7 @@ static bool CheckOutputShape3D(const MhcParamsBase &params, int64_t n, int64_t d
            CheckTensorShape(params.hPreOptional, {t, n}, "hPreOptional");
 }
 
-static bool CheckOutputShape3DA2(const MhcParamsBase &params, int64_t t, int64_t n, int64_t d, 
+static bool CheckOutputShape3DA2(const MhcParamsBase &params, int64_t t, int64_t n, int64_t d,
                                  int64_t alphaSize,
                                  int64_t expectedPhiRows_factorial, int64_t expectedPhiRows_pow, int64_t phiShape_dim0)
 {
@@ -541,7 +541,7 @@ static bool CheckOutputShape3DA2(const MhcParamsBase &params, int64_t t, int64_t
     if (alphaSize == ALPHA_DIM_SIZE_3 && phiShape_dim0 == expectedPhiRows_factorial && !CheckTensorShape(params.hRes, {t, Factorial(n)}, "hRes")) {
         return false;
     }
-    
+
     if (alphaSize == ALPHA_DIM_SIZE_3 && phiShape_dim0 == expectedPhiRows_pow && !CheckTensorShape(params.hMixOptional, {t, expectedPhiRows_pow}, "hMixOptional")) {
         return false;
     }
@@ -692,13 +692,13 @@ static bool ValidateNDParamsA2(int64_t n, int64_t d)
     // 910 only support n = 4
     if (n != N_VALID_VALUE_A2) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "n", std::to_string(n).c_str(),
-                                            "n in x shape must be 4");
+                                              "n in x shape must be 4");
         return false;
     }
 
     if (d % D_ALIGNMENT_A2 != 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "D", std::to_string(d).c_str(),
-                                            "D in x shape must be aligned to 128 elements");
+                                              "D in x shape must be aligned to 128 elements");
         return false;
     }
     return true;
@@ -869,9 +869,9 @@ static aclnnStatus CheckParams(const MhcParamsBase &params)
     }
     CHECK_RET(CheckAlphaShape(params.alpha), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckRequiredHRes(params), ACLNN_ERR_PARAM_NULLPTR);
-     if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
         CHECK_RET(CheckOutputDimsA2(params), ACLNN_ERR_PARAM_INVALID);
-        CHECK_RET(CheckOptionalOutputGroup(params), ACLNN_ERR_PARAM_INVALID); 
+        CHECK_RET(CheckOptionalOutputGroup(params), ACLNN_ERR_PARAM_INVALID);
         CHECK_RET(CheckOptionalOutputDimsA2(params), ACLNN_ERR_PARAM_INVALID);
         CHECK_RET(CheckInputOutShapeA2(params), ACLNN_ERR_PARAM_INVALID);
     } else {

@@ -38,7 +38,7 @@ public:
         uint64_t blockIdx = GetBlockIdx();
         uint64_t cubeCoreId = blockIdx;
         uint64_t vecCoreId = blockIdx;
-        
+
         // 计算 workspace 偏移
         int64_t ncSize = hcMult * d;
 
@@ -155,7 +155,7 @@ public:
                     // 分段 ReduceSum
                     for (int64_t ncIdx = 0; ncIdx < stage1NcLoop; ncIdx++) {
                         int64_t curNcSize = (ncIdx == stage1NcLoop - 1) ? tilingData->stage1TailNcFactor :
-                                                                                      stage1NcFactor;
+                                                                          stage1NcFactor;
                         int64_t ncOffset = ncIdx * stage1NcFactor;
                         int64_t curNcSizeAlign = AlignUp(static_cast<uint64_t>(curNcSize), ELEMENTS_SIZE_PER_BLOCK);
 
@@ -180,7 +180,7 @@ public:
                         uint32_t srcShape[2] = {static_cast<uint32_t>(curBs), static_cast<uint32_t>(curNcSize)};
                         AscendC::ReduceSum<float, Pattern::Reduce::AR, true>(squareLocal, squareLocal, srcShape, true);
                         PipeBarrier<PIPE_V>();
-                        
+
                         // 累加到总和
                         Add(sumLocal, sumLocal, squareLocal, curBs);
                         PipeBarrier<PIPE_V>();
@@ -233,7 +233,7 @@ public:
                     invRmsQue.FreeTensor(invRmsLocal);
                     ping4vec = 1 - ping4vec;
                 }
-            CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_TO_AIC_FLAG);
+                CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_TO_AIC_FLAG);
             }
             CrossCoreWaitFlag(SYNC_AIC_TO_AIV_FLAG);
             CrossCoreWaitFlag(SYNC_AIC_TO_AIV_FLAG);
@@ -245,27 +245,27 @@ public:
     const MhcPreMembaseTilingData *tilingData;
 
     // GM 地址
-    GlobalTensor<T> xGm;                    // 输入 X (BF16)
-    GlobalTensor<float> phiGm;              // phi 矩阵 (FP32)
-    GlobalTensor<float> invRmsGm;           // inv_rms 输出 (FP32)
-    GlobalTensor<float> hcBeforeNormGm;     // hcBeforeNorm 输出 (FP32)
-    GlobalTensor<float> xCastWsGm;          // X_cast workspace
-    GlobalTensor<float> invRmsWsGm;         // invRms workspace (needGrad=false)
-    GlobalTensor<float> hcBeforeNormWsGm;   // hcBeforeNorm workspace (needGrad=false)
-    GlobalTensor<float> gammaGm;            // gamma (FP32, 可选)
+    GlobalTensor<T> xGm;                  // 输入 X (BF16)
+    GlobalTensor<float> phiGm;            // phi 矩阵 (FP32)
+    GlobalTensor<float> invRmsGm;         // inv_rms 输出 (FP32)
+    GlobalTensor<float> hcBeforeNormGm;   // hcBeforeNorm 输出 (FP32)
+    GlobalTensor<float> xCastWsGm;        // X_cast workspace
+    GlobalTensor<float> invRmsWsGm;       // invRms workspace (needGrad=false)
+    GlobalTensor<float> hcBeforeNormWsGm; // hcBeforeNorm workspace (needGrad=false)
+    GlobalTensor<float> gammaGm;          // gamma (FP32, 可选)
 
     // Queue
-    TQue<QuePosition::VECIN, NUM_TWO> xQue;         // X 输入队列
-    TQue<QuePosition::VECOUT, NUM_TWO> xCastQue;    // X_cast 输出队列
+    TQue<QuePosition::VECIN, NUM_TWO> xQue;      // X 输入队列
+    TQue<QuePosition::VECOUT, NUM_TWO> xCastQue; // X_cast 输出队列
     TBuf<QuePosition::VECCALC> tmpQue;
-    TBuf<QuePosition::VECCALC> sumAddQue;      // sum 队列
-    TBuf<QuePosition::VECCALC> sumQue;         // sum 队列
-    TQue<QuePosition::VECOUT, NUM_TWO> invRmsQue;   // inv_rms 队列
-    TQue<QuePosition::VECIN, 1> gammaQue;     // gamma UB buffer (per nc segment)
+    TBuf<QuePosition::VECCALC> sumAddQue;         // sum 队列
+    TBuf<QuePosition::VECCALC> sumQue;            // sum 队列
+    TQue<QuePosition::VECOUT, NUM_TWO> invRmsQue; // inv_rms 队列
+    TQue<QuePosition::VECIN, 1> gammaQue;         // gamma UB buffer (per nc segment)
 
     // Cube Compute
     HcCubeCompute<float, isFac, hasResi> cubeCompute_;
-    
+
     // 标志
     bool needGrad_ = true;
     bool hasGamma_ = false;
@@ -330,7 +330,7 @@ public:
             hcBeforeNormGm.SetGlobalBuffer((__gm__ float *)workspace + xCastWsTotalSize + invRmsWsTotalSize);
         }
 
-         // InQue
+        // InQue
         int64_t mixesQue01Size = stage2RowFactor * hcMultAlign * NUM_TWO * sizeof(float);
         pipe->InitBuffer(mixesQue01, NUM_TWO, mixesQue01Size);
         pipe->InitBuffer(squareSumQue, NUM_TWO, stage2RowFactor * SQUARE_SUM_SIZE * sizeof(float));
@@ -391,7 +391,7 @@ public:
     {
         SyncAll();
         isTailBsLoop_ = isTailBsLoop;
-        
+
         int64_t curRowOfFormerBlock = isTailBsLoop ? tilingData->tailBsRowOfFormerBlock : tilingData->rowOfFormerBlock;
         int64_t curRowLoopOfFormerBlock =
             isTailBsLoop ? tilingData->tailBsRowLoopOfFormerBlock : tilingData->rowLoopOfFormerBlock;
@@ -404,7 +404,7 @@ public:
         int64_t curTailRowFactorOfTailBlock =
             isTailBsLoop ? tilingData->tailBsTailRowFactorOfTailBlock : tilingData->tailRowFactorOfTailBlock;
         int64_t curML1Size = isTailBsLoop ? tilingData->tailBsML1Size : tilingData->mL1Size;
-        
+
         if ASCEND_IS_AIV {
             int64_t stage1UsedCoreNum = tilingData->cubeBlockDimK;
             int64_t stage2BlockIdx = GetBlockIdx();
@@ -441,13 +441,13 @@ public:
             for (int64_t rowOuterIdx = 0; rowOuterIdx < rowOuterLoop; rowOuterIdx++) {
                 int64_t xGmBsBaseOffsetPart2 = rowOuterIdx * curStage2RowFactor * hcMult * d;
                 int64_t curRowFactor = (rowOuterIdx == rowOuterLoop - 1) ? tailRowFactor : curStage2RowFactor;
-                                
+
                 squareSumOutLocal = squareSumQue.AllocTensor<float>();
                 Duplicate(rowBrcbLocal0, static_cast<float>(1.0f), curRowFactor);
 
                 CopyIn(invRmsGm[stage2BlockIdx * curRowOfFormerBlock + rowOuterIdx * curStage2RowFactor],
                        squareSumOutLocal, 1, curRowFactor);
-                
+
                 squareSumQue.EnQue(squareSumOutLocal);
                 squareSumOutLocal = squareSumQue.DeQue<float>();
                 // 搬运矩阵乘的前两段结果--> 内存格式的变更： 连续地址改为 bs *n ; bs *n ,n为4
@@ -511,7 +511,7 @@ public:
                 postQue.FreeTensor(postLocal);
 
                 // hRes
-            if constexpr (hasResi) {
+                if constexpr (hasResi) {
                     mixes2Local = mixesQue2.AllocTensor<float>();
                     mixBaseOffset = stage2BlockIdx * curRowOfFormerBlock * hcMix + rowOuterIdx * curStage2RowFactor * hcMix;
                     for (int64_t j = 0; j < curRowFactor; ++j) {

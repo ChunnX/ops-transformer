@@ -63,9 +63,9 @@ constexpr int64_t HC_EPS_ATTR_IDX = 2;
 constexpr int64_t BS_SPLIT_THRESHOLD = 128;
 constexpr int64_t MAX_BS_PER_LOOP = 32;
 constexpr int64_t MAX_REDUCE_SIZE = 256;
-}
+} // namespace
 
-int8_t CheckOptionalParamsExisting(const gert::StorageShape* checkShape)
+int8_t CheckOptionalParamsExisting(const gert::StorageShape *checkShape)
 {
     OP_CHECK_IF(nullptr == checkShape, OP_LOGD("CheckOptionalParamsExisting", "Get nullptr checkShape"), return 0);
     int64_t checkShapeSize = checkShape->GetOriginShape().GetShapeSize();
@@ -80,7 +80,7 @@ ge::graphStatus MhcPreMembaseTiling::GetPlatformInfo()
     if (platformInfo == nullptr) {
         auto compileInfoPtr = context_->GetCompileInfo<MhcPreMembaseCompileInfo>();
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"),
-                      return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
         aivCoreNum_ = compileInfoPtr->coreNum;
         ubSize_ = compileInfoPtr->ubSize;
     } else {
@@ -98,7 +98,7 @@ ge::graphStatus MhcPreMembaseTiling::GetPlatformInfo()
 
 ge::graphStatus MhcPreMembaseTiling::GetAttr()
 {
-    auto* attrs = context_->GetAttrs();
+    auto *attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
 
     auto outFlagAttr = attrs->GetAttrPointer<int64_t>(OUT_FLAG_ATTR_IDX);
@@ -112,7 +112,7 @@ ge::graphStatus MhcPreMembaseTiling::GetAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t& gammaExist)
+ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
 {
     auto xShape = context_->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShape);
@@ -135,37 +135,37 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t& gammaExist)
     auto shapePhi = context_->GetInputShape(1);
     hcMix_ = shapePhi->GetStorageShape().GetDim(0);
     OP_CHECK_IF(hcMix_ != nn_fac && hcMix_ != nn_pow && hcMix_ != 2 * hcMult_,
-                    OP_LOGE(context_->GetNodeName(),
-                             "Phi dim 0 should be equal with %ld or %ld or %ld, but is %ld", nn_fac, nn_pow, 2 * hcMult_, shapePhi->GetStorageShape().GetDim(0)),
-                    return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(),
+                        "Phi dim 0 should be equal with %ld or %ld or %ld, but is %ld", nn_fac, nn_pow, 2 * hcMult_, shapePhi->GetStorageShape().GetDim(0)),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(shapePhi->GetStorageShape().GetDim(1) != d_ * hcMult_,
-                    OP_LOGE(context_->GetNodeName(),
-                             "Phi dim 1 should be equal with d_ * hcMult_  %ld, but is %ld", d_ * hcMult_, shapePhi->GetStorageShape().GetDim(1)),
-                    return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(),
+                        "Phi dim 1 should be equal with d_ * hcMult_  %ld, but is %ld", d_ * hcMult_, shapePhi->GetStorageShape().GetDim(1)),
+                return ge::GRAPH_FAILED);
     if (hcMix_ == nn_fac) {
         isFac = true;
     }
     auto shapeAlpha = context_->GetInputShape(2);
     int64_t scaleFirstDim = shapeAlpha->GetStorageShape().GetDim(0);
     OP_CHECK_IF(scaleFirstDim != 2 && scaleFirstDim != 3,
-                    OP_LOGE(context_->GetNodeName(),
-                             "alpha size should be 2 or 3, but is %ld", scaleFirstDim),
-                    return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(),
+                        "alpha size should be 2 or 3, but is %ld", scaleFirstDim),
+                return ge::GRAPH_FAILED);
     hasResi = (scaleFirstDim == 3);
 
     auto shapeBias = context_->GetInputShape(3);
     int64_t baseFirstDim = shapeBias->GetStorageShape().GetDim(0);
     int64_t expectedBias = hasResi ? hcMix_ : 2 * hcMult_;
     OP_CHECK_IF((!hasResi && hcMix_ != 2 * hcMult_) || (hasResi && hcMix_ == 2 * hcMult_),
-                    OP_LOGE(context_->GetNodeName(),
-                            "phi dim 0 %ld is only valid with alpha size %ld; alpha size is %ld",
-                            hcMix_, hasResi ? 3 : 2, hasResi ? 3 : 2),
-                    return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(),
+                        "phi dim 0 %ld is only valid with alpha size %ld; alpha size is %ld",
+                        hcMix_, hasResi ? 3 : 2, hasResi ? 3 : 2),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(hasResi && hcMix_ == 2 * hcMult_,
-                    OP_LOGE(context_->GetNodeName(),
-                             "When alpha size is 3, phi dim 0 must include the residual branch, but is %ld",
-                             hcMix_),
-                    return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(),
+                        "When alpha size is 3, phi dim 0 must include the residual branch, but is %ld",
+                        hcMix_),
+                return ge::GRAPH_FAILED);
     auto shapeGamma = context_->GetOptionalInputShape(4);
     gammaExist = CheckOptionalParamsExisting(shapeGamma);
     if (gammaExist == 1) {
@@ -173,12 +173,12 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t& gammaExist)
         int64_t gammaSecondDim = shapeGamma->GetStorageShape().GetDim(1);
         OP_CHECK_IF(gammaFirstDim != hcMult_ || gammaSecondDim != d_,
                     OP_LOGE(context_->GetNodeName(),
-                             "gamma shape should be equal with [%ld, %ld], but is [%ld, %ld]", hcMult_, d_, gammaFirstDim, gammaSecondDim),
+                            "gamma shape should be equal with [%ld, %ld], but is [%ld, %ld]", hcMult_, d_, gammaFirstDim, gammaSecondDim),
                     return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS,
-                  OP_LOGE(context_->GetNodeName(), "get attr failed."),
-                  return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "get attr failed."),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -281,7 +281,7 @@ ge::graphStatus MhcPreMembaseTiling::CalcMKSplitCoreMembasePart2Tiling()
     rowLoopOfTailBlock_ = CeilDiv(rowOfTailBlock_, rowFactor_);
     tailRowFactorOfFormerBlock_ = rowOfFormerBlock_ % rowFactor_ == 0 ? rowFactor_ : rowOfFormerBlock_ % rowFactor_;
     tailRowFactorOfTailBlock_ = rowOfTailBlock_ % rowFactor_ == 0 ? rowFactor_ : rowOfTailBlock_ % rowFactor_;
-    
+
     tilingData_.set_bs(bs_);
     tilingData_.set_hcMix(hcMix_);
     tilingData_.set_hcMult(hcMult_);
@@ -330,26 +330,28 @@ ge::graphStatus MhcPreMembaseTiling::CalcTailBsTiling()
         tilingData_.set_tailBsML1Size(tilingData_.get_mL1Size());
         return ge::GRAPH_SUCCESS;
     }
-    
+
     uint64_t tailMDimNum = std::min(aicCoreNum_, static_cast<uint64_t>(CeilDiv(tailBs_, M_L1_MAX_SIZE)));
     uint64_t tailSingleCoreM = RoundUp(CeilDiv(tailBs_, tailMDimNum), AscendC::BLOCK_CUBE);
-    
+
     tailBsML1Size_ = std::min(M_L1_MAX_SIZE, tailSingleCoreM);
 
     tailBsRowOfFormerBlock_ = CeilDiv(tailBs_, static_cast<int64_t>(aivCoreNum_));
     tailBsUsedCoreNum_ = std::min(CeilDiv(tailBs_, tailBsRowOfFormerBlock_), static_cast<int64_t>(aivCoreNum_));
     tailBsRowOfTailBlock_ = tailBs_ - (tailBsUsedCoreNum_ - 1) * tailBsRowOfFormerBlock_;
-    
+
     int64_t minRowPerCore = 1;
     tailBsRowFactor_ = std::min(tailBsRowOfFormerBlock_, minRowPerCore);
-    
+
     tailBsRowLoopOfFormerBlock_ = CeilDiv(tailBsRowOfFormerBlock_, tailBsRowFactor_);
     tailBsRowLoopOfTailBlock_ = CeilDiv(tailBsRowOfTailBlock_, tailBsRowFactor_);
     tailBsTailRowFactorOfFormerBlock_ = tailBsRowOfFormerBlock_ % tailBsRowFactor_ == 0 ?
-                                         tailBsRowFactor_ : tailBsRowOfFormerBlock_ % tailBsRowFactor_;
+                                            tailBsRowFactor_ :
+                                            tailBsRowOfFormerBlock_ % tailBsRowFactor_;
     tailBsTailRowFactorOfTailBlock_ = tailBsRowOfTailBlock_ % tailBsRowFactor_ == 0 ?
-                                       tailBsRowFactor_ : tailBsRowOfTailBlock_ % tailBsRowFactor_;
-    
+                                          tailBsRowFactor_ :
+                                          tailBsRowOfTailBlock_ % tailBsRowFactor_;
+
     tilingData_.set_tailBsRowOfFormerBlock(tailBsRowOfFormerBlock_);
     tilingData_.set_tailBsRowLoopOfFormerBlock(tailBsRowLoopOfFormerBlock_);
     tilingData_.set_tailBsRowLoopOfTailBlock(tailBsRowLoopOfTailBlock_);
@@ -358,7 +360,7 @@ ge::graphStatus MhcPreMembaseTiling::CalcTailBsTiling()
     tilingData_.set_tailBsTailRowFactorOfFormerBlock(tailBsTailRowFactorOfFormerBlock_);
     tilingData_.set_tailBsTailRowFactorOfTailBlock(tailBsTailRowFactorOfTailBlock_);
     tilingData_.set_tailBsML1Size(tailBsML1Size_);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -374,10 +376,10 @@ ge::graphStatus MhcPreMembaseTiling::CalcOpTiling()
 
     uint64_t kDimNum = aicCoreNum_ / mDimNum;
     uint64_t splitKSize = RoundUp(CeilDiv(kSize, kDimNum), K_MULIT_CORE_SPLIT_BASE_SIZE);
-    
+
     tilingData_.set_cubeBlockDimK(CeilDiv(kSize, splitKSize));
     tilingData_.set_mL1Size(std::min(M_L1_MAX_SIZE, singleCoreM));
-    
+
     tilingData_.set_cvLoopKSize(1024);
 
     tilingData_.set_cubeCoreNum(static_cast<int64_t>(aicCoreNum_));
@@ -415,7 +417,7 @@ ge::graphStatus MhcPreMembaseTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-static void PrintTilingData(const gert::TilingContext* context, MhcPreMembaseTilingData& tiling)
+static void PrintTilingData(const gert::TilingContext *context, MhcPreMembaseTilingData &tiling)
 {
     OP_LOGD(context->GetNodeName(), ">>>>>>>>>> Start to print MhcPre tiling data <<<<<<<<<<");
     OP_LOGD(context->GetNodeName(), "MhcPre_tiling: bs is %ld.", tiling.get_bs());
@@ -462,14 +464,14 @@ ge::graphStatus MhcPreMembaseTiling::CalcStage1Tiling()
     // 1. 计算核心数量
     int64_t vecCoreNum = static_cast<int64_t>(aivCoreNum_);
     int64_t cubeCoreNum = static_cast<int64_t>(aicCoreNum_);
-    
+
     tilingData_.set_stage1VecCoreNum(vecCoreNum);
     tilingData_.set_stage1CubeCoreNum(cubeCoreNum);
 
     int64_t bsFactor = MAX_BS_PER_LOOP;
 
     tilingData_.set_stage1BsFactor(bsFactor);
-    
+
     // 4. 计算 ReduceSum 切分（每次最多 256 个元素）
     int64_t ncSize = hcMult_ * d_;
     int64_t ncLoop = CeilDiv(ncSize, MAX_REDUCE_SIZE);
@@ -478,7 +480,7 @@ ge::graphStatus MhcPreMembaseTiling::CalcStage1Tiling()
     if (tailNcFactor == 0) {
         tailNcFactor = MAX_REDUCE_SIZE;
     }
-    
+
     tilingData_.set_stage1NcLoop(ncLoop);
     tilingData_.set_stage1NcFactor(ncFactor);
     tilingData_.set_stage1TailNcFactor(tailNcFactor);
@@ -492,7 +494,7 @@ ge::graphStatus MhcPreMembaseTiling::CalcStage1Tiling()
 
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE("TilingForMhcPre", "Tiling platformInfo is null"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
 
     auto featureDataType = matmul_tiling::DataType::DT_FLOAT;
@@ -515,7 +517,7 @@ ge::graphStatus MhcPreMembaseTiling::CalcStage1Tiling()
     int64_t xCastWsSize = bsFactor * vecCoreNum * 2 * ncSize * sizeof(float);
     workspaceSize_ += xCastWsSize;
     tilingData_.set_stage1XCastWsSize(xCastWsSize);
-    
+
     // 6. 计算额外的 workspace 大小（needGrad=false 时使用）
     if (!needGrad_) {
         // invRms: bs * sizeof(float)
@@ -526,10 +528,10 @@ ge::graphStatus MhcPreMembaseTiling::CalcStage1Tiling()
             hcMix = 2 * hcMult_;
         }
         int64_t hcBeforeNormWsSize = bs_ * hcMix * sizeof(float);
-        
+
         workspaceSize_ += invRmsWsSize + hcBeforeNormWsSize;
     }
-    
+
     int64_t kBlockNum = 1;
     tilingData_.set_cubeBlockDimK(kBlockNum);
 
@@ -549,16 +551,16 @@ ge::graphStatus MhcPreMembaseTiling::PostTiling()
         tilingKey = 10;
     } else if (!isFac && !hasResi) {
         tilingKey = 11;
-    } else{
+    } else {
         tilingKey = 0;
     }
     context_->SetTilingKey(tilingKey);
     context_->SetBlockDim(aicCoreNum_);
-    size_t* workspaces = context_->GetWorkspaceSizes(1);
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize_;
-    
+
     PrintTilingData(context_, tilingData_);
-    
+
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
     return ge::GRAPH_SUCCESS;
@@ -573,7 +575,7 @@ ge::graphStatus TilingPrepareForMhcPre(gert::TilingParseContext *context)
 ge::graphStatus TilingForMhcPre(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("MhcPre", "Tiling context is null"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
 
     if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
         OP_LOGD(context->GetNodeName(), "Using arch35 tiling for regbase soc");
@@ -588,4 +590,4 @@ IMPL_OP_OPTILING(MhcPre)
     .Tiling(TilingForMhcPre)
     .TilingParse<MhcPreMembaseCompileInfo>(TilingPrepareForMhcPre);
 
-}  // namespace optiling
+} // namespace optiling

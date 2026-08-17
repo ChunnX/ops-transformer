@@ -29,7 +29,7 @@ namespace MhcPre {
 
 constexpr MatmulConfig MHC_PRE_GRAD_MM1_CFG = GetMDLConfig(true, false, 0, false, false, false, true);
 
-#define MHC_PRE_CUBE_COMPUTE_TEMPLATE_PARAM template<typename T, bool isFac, bool hasResi>
+#define MHC_PRE_CUBE_COMPUTE_TEMPLATE_PARAM template <typename T, bool isFac, bool hasResi>
 #define MHC_PRE_CUBE_COMPUTE_TEMPLATE_CLASS HcCubeCompute<T, isFac, hasResi>
 
 // 不切K使用的矩阵乘实现
@@ -48,7 +48,7 @@ public:
     using AType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
     using BType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T, true>;
     using CType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
-    
+
     matmul::MatmulImpl<AType, BType, CType, CType, MHC_PRE_GRAD_MM1_CFG> mm1_;
 
     int64_t n_, c_, curBs_;
@@ -60,9 +60,9 @@ public:
 
 MHC_PRE_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void MHC_PRE_CUBE_COMPUTE_TEMPLATE_CLASS::Init(const GlobalTensor<float> &xGm,
-                                                                          const GlobalTensor<float> &phiGm,
-                                                                          const GlobalTensor<float> &workspaceGlobalAB,
-                                                                          int64_t bs, int64_t n, int64_t c, int64_t vecCoreNum)
+                                                                 const GlobalTensor<float> &phiGm,
+                                                                 const GlobalTensor<float> &workspaceGlobalAB,
+                                                                 int64_t bs, int64_t n, int64_t c, int64_t vecCoreNum)
 {
     blockIdx_ = GetBlockIdx();
     xGm_ = xGm;
@@ -82,7 +82,7 @@ __aicore__ inline void MHC_PRE_CUBE_COMPUTE_TEMPLATE_CLASS::Init(const GlobalTen
     } else {
         mm1N_ = 2 * n_;
     }
-    
+
     mm1K_ = n_ * c_;
 }
 
@@ -91,16 +91,16 @@ __aicore__ inline void MHC_PRE_CUBE_COMPUTE_TEMPLATE_CLASS::ProcessMatmulXPhi(co
 {
     if (mm1M <= 0)
         return;
-    uint64_t xxoffset = blockIdx_ * curBs_* 2 * mm1K_ + ping4Cub * vecCoreNum_ * curBs_*  mm1K_;
-    mm1_.SetTensorA(xGm_[blockIdx_ * curBs_* 2 * mm1K_ + ping4Cub * vecCoreNum_ * curBs_*  mm1K_]);
+    uint64_t xxoffset = blockIdx_ * curBs_ * 2 * mm1K_ + ping4Cub * vecCoreNum_ * curBs_ * mm1K_;
+    mm1_.SetTensorA(xGm_[blockIdx_ * curBs_ * 2 * mm1K_ + ping4Cub * vecCoreNum_ * curBs_ * mm1K_]);
     mm1_.SetTensorB(phiGm_, true);
     // mm1_.SetHF32(true, 1);
     mm1_.SetOrgShape(mm1M, mm1N_, mm1K_);
     mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
-    mm1_.template IterateAll<false> (workspaceGlobalAB_[taskOffset * mm1N_]);
+    mm1_.template IterateAll<false>(workspaceGlobalAB_[taskOffset * mm1N_]);
     mm1_.End();
     ping4Cub = 1 - ping4Cub;
 }
-}  // namespace MhcPre
+} // namespace MhcPre
 
-#endif  // MHC_PRE_CUBE_COMPUTE_H
+#endif // MHC_PRE_CUBE_COMPUTE_H

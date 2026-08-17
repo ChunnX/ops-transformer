@@ -25,9 +25,9 @@ using namespace MhcPre;
 using namespace AscendC;
 
 extern "C" __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias, GM_ADDR gamma,
-                                             GM_ADDR hin, GM_ADDR hPost, GM_ADDR hRes,
-                                             GM_ADDR invRms, GM_ADDR hMix, GM_ADDR hPre,
-                                             GM_ADDR workspace, GM_ADDR tiling)
+                                              GM_ADDR hin, GM_ADDR hPost, GM_ADDR hRes,
+                                              GM_ADDR invRms, GM_ADDR hMix, GM_ADDR hPre,
+                                              GM_ADDR workspace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     if (workspace == nullptr) {
@@ -55,8 +55,8 @@ extern "C" __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR al
         TPipe pipeStage2;
         MhcPre::MhcPreStage2<DTYPE_X, true, true> op2;
         op2.Init(x, alpha, bias, hin, hPost, hRes,
-                    hPre, hMix, invRms,
-                    userWs, tilingData, &pipeStage2);
+                 hPre, hMix, invRms,
+                 userWs, tilingData, &pipeStage2);
         op2.Process(false);
         pipeStage2.Destroy();
     } else if (TILING_KEY_IS(10)) {
@@ -72,8 +72,8 @@ extern "C" __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR al
         TPipe pipeStage2;
         MhcPre::MhcPreStage2<DTYPE_X, false, true> opStage2;
         opStage2.Init(x, alpha, bias, hin, hPost, hRes,
-                    hPre, hMix, invRms,
-                    userWs, tilingData, &pipeStage2);
+                      hPre, hMix, invRms,
+                      userWs, tilingData, &pipeStage2);
         opStage2.Process(false);
         pipeStage2.Destroy();
     } else if (TILING_KEY_IS(11)) {
@@ -89,8 +89,8 @@ extern "C" __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR al
         TPipe pipeStage2;
         MhcPre::MhcPreStage2<DTYPE_X, false, false> opStage2;
         opStage2.Init(x, alpha, bias, hin, hPost, hRes,
-                    hPre, hMix, invRms,
-                    userWs, tilingData, &pipeStage2);
+                      hPre, hMix, invRms,
+                      userWs, tilingData, &pipeStage2);
         opStage2.Process(false);
         pipeStage2.Destroy();
     }
